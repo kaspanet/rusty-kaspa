@@ -1,0 +1,22 @@
+[package]
+name = "kaspa-wasm"
+version = "0.1.0"
+authors = ["Your Name <you@example.com>"]
+description = "KASPA bindings"
+license = "MIT/Apache-2.0"
+edition = "2018"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+#borsh = "0.9.3"
+#serde = { version = "1.0", features = ["derive"] }
+
+kaspa-core = { path = "../core" }
+kaspa-wallet = { path = "../wallet" }
+
+wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
+wasm-bindgen-futures = "0.4.29"
+js-sys = "0.3.56"
+async-std = "1.11.0"
