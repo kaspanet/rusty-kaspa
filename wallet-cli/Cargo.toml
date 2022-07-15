@@ -1,0 +1,21 @@
+[package]
+name = "kaspa-wallet-cli"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+
+rand = "0.7.3"
+log = "0.4.16"
+console = "0.15.0"
+wasm-bindgen = "0.2.79"
+wasm-bindgen-futures = "0.4.29"
+web-sys = { version = "0.3.56", features = ['console'] }
+js-sys = "0.3.56"
+bs58 = "0.4.0"
+async-std = "1.11.0"
+regex = "1"
+#derivative = "2.2.0"
+
+
+kaspa-core = {path="../core"}
