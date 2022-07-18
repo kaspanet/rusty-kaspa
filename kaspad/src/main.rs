@@ -5,12 +5,15 @@ use kaspa_core::core::Core;
 
 mod domain;
 
+use domain::consensus::processes::reachabilitymanager::interval;
 use domain::consensus::model::externalapi::hash::DomainHash;
 
 pub fn main() {
 
     trace!("Kaspad starting...");
-    
+
+    let interval = interval::Interval::maximal();
+    println!("{:?}", interval);
 
     let hash_str = "8e40af02265360d59f4ecf9ae9ebf8f00a3118408f5a9cdcbcc9c0f93642f3af";
     let hash = DomainHash::from_string(&hash_str.to_owned());
