@@ -230,27 +230,14 @@ mod tests {
         assert_eq!(exp_fractions[0], exp_fractions[1]);
     }
 
-
     #[test]
     fn test_contains() {
-        assert!(
-            Interval::new(1, 100)
-                .contains(&Interval::new(1, 100)));
-        assert!(
-            Interval::new(1, 100)
-                .contains(&Interval::new(1, 99)));
-        assert!(
-            Interval::new(1, 100)
-                .contains(&Interval::new(2, 100)));
-        assert!(
-            Interval::new(1, 100)
-                .contains(&Interval::new(2, 99)));
-        assert!(
-            !Interval::new(1, 100)
-                .contains(&Interval::new(50, 150)));
-        assert!(
-            !Interval::new(1, 100)
-                .contains(&Interval::new(150, 160)));
+        assert!(Interval::new(1, 100).contains(&Interval::new(1, 100)));
+        assert!(Interval::new(1, 100).contains(&Interval::new(1, 99)));
+        assert!(Interval::new(1, 100).contains(&Interval::new(2, 100)));
+        assert!(Interval::new(1, 100).contains(&Interval::new(2, 99)));
+        assert!(!Interval::new(1, 100).contains(&Interval::new(50, 150)));
+        assert!(!Interval::new(1, 100).contains(&Interval::new(150, 160)));
     }
 
     #[test]
