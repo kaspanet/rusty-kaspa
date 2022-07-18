@@ -1,16 +1,18 @@
 use std::sync::Arc;
 
-use kaspa_core::*;
 use kaspa_core::core::Core;
+use kaspa_core::*;
 
 mod domain;
 
 use domain::consensus::model::externalapi::hash::DomainHash;
+use domain::consensus::processes::reachabilitymanager::interval;
 
 pub fn main() {
-
     trace!("Kaspad starting...");
-    
+
+    let interval = interval::Interval::maximal();
+    println!("{:?}", interval);
 
     let hash_str = "8e40af02265360d59f4ecf9ae9ebf8f00a3118408f5a9cdcbcc9c0f93642f3af";
     let hash = DomainHash::from_string(&hash_str.to_owned());
@@ -19,7 +21,6 @@ pub fn main() {
     let core = Arc::new(Core::new());
     let signals = Arc::new(signals::Signals::new(core.clone()));
     signals.init();
-
 
     let monitor = Arc::new(monitor::Monitor::new());
     let test_service_a = Arc::new(test_service::TestService::new("test servivce A"));
@@ -33,6 +34,4 @@ pub fn main() {
     core.run();
 
     trace!("Kaspad is finished...");
-
 }
-
