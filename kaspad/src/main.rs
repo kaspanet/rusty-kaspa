@@ -1,3 +1,7 @@
+#![feature(test)]
+
+extern crate core;
+
 use std::sync::Arc;
 
 use kaspa_core::core::Core;
