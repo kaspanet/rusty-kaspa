@@ -1,4 +1,4 @@
-#![feature(test)]
+#![cfg_attr(all(test, feature = "bench"), feature(test))]
 
 extern crate core;
 
@@ -9,7 +9,7 @@ use kaspa_core::*;
 
 mod domain;
 
-use domain::consensus::model::externalapi::hash::DomainHash;
+use domain::consensus::model::api::hash::DomainHash;
 use domain::consensus::processes::reachabilitymanager::interval;
 
 pub fn main() {
