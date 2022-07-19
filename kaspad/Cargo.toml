@@ -11,3 +11,6 @@ async-std = "1.11.0"
 regex = "1"
 hex = "0.4.3"
 kaspa-core = {path="../core"}
+
+[features]
+bench = []
