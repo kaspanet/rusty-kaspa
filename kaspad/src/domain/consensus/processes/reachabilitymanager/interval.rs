@@ -28,7 +28,7 @@ impl Interval {
     pub fn size(&self) -> u64 {
         // Empty intervals are indicated by `self.end == self.start - 1`, so
         // we avoid the overflow by first adding 1
-        return (self.end + 1) - self.start;
+        (self.end + 1) - self.start
     }
 
     pub fn increase(&self, offset: u64) -> Self {
@@ -122,12 +122,11 @@ impl Interval {
         let mut biased_sizes = Vec::<u64>::with_capacity(sizes.len());
         let exp_fractions = exponential_fractions(sizes);
         for (i, fraction) in exp_fractions.iter().enumerate() {
-            let bias: u64;
-            if i == exp_fractions.len() - 1 {
-                bias = remaining_bias;
+            let bias: u64 = if i == exp_fractions.len() - 1 {
+                remaining_bias
             } else {
-                bias = remaining_bias.min(f64::round(total_bias * fraction) as u64);
-            }
+                remaining_bias.min(f64::round(total_bias * fraction) as u64)
+            };
             biased_sizes.push(sizes[i] + bias);
             remaining_bias -= bias;
         }
@@ -140,7 +139,7 @@ impl Interval {
     }
 }
 
-/// Returns a fraction of each size in sizes
+/// Returns a fraction for each size in sizes
 /// as follows:
 ///   fraction[i] = 2^size[i] / sum_j(2^size[j])
 /// In the code below the above equation is divided by 2^max(size)
@@ -157,8 +156,8 @@ fn exponential_fractions(sizes: &[u64]) -> Vec<f64> {
         .collect::<Vec<f64>>();
 
     let fractions_sum = fractions.iter().sum::<f64>();
-    for i in 0..fractions.len() {
-        fractions[i] /= fractions_sum;
+    for item in &mut fractions {
+        *item /= fractions_sum;
     }
 
     fractions

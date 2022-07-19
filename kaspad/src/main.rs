@@ -1,3 +1,7 @@
+#![cfg_attr(all(test, feature = "bench"), feature(test))]
+
+extern crate core;
+
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 
@@ -6,7 +10,7 @@ use kaspa_core::*;
 
 mod domain;
 
-use domain::consensus::model::externalapi::hash::DomainHash;
+use domain::consensus::model::api::hash::DomainHash;
 use domain::consensus::processes::reachabilitymanager::interval;
 
 const SERVICE_THREADS : usize = 1;
