@@ -22,13 +22,13 @@ impl Signals {
         ctrlc::set_handler(move || {
 
             let v = signals.iterations.load(Ordering::SeqCst);
-            if v > 2 {
+            if v > 1 {
                 println!("^SIGNAL - halting");
                 std::process::exit(1);
             }
             signals.iterations.store(v+1, Ordering::SeqCst);
 
-            println!("^SIGNAL - shutting down core...");
+            println!("^SIGNAL - shutting down core... (CTRL+C again to halt)");
             core.shutdown();
         }).expect("Error setting signal handler");
     }
