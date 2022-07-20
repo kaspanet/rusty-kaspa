@@ -10,6 +10,7 @@ include = [
 async-std = "1.11.0"
 regex = "1"
 hex = "0.4.3"
+thiserror = "1.0.31"
 kaspa-core = {path="../core"}
 
 [features]
