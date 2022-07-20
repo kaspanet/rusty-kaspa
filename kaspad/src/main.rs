@@ -11,7 +11,7 @@ use kaspa_core::*;
 mod domain;
 
 use domain::consensus::model::api::hash::DomainHash;
-use domain::consensus::processes::reachabilitymanager::interval;
+use domain::consensus::processes::reachability::interval;
 
 const SERVICE_THREADS : usize = 1;
 // if sleep time is < 0, sleep is skipped

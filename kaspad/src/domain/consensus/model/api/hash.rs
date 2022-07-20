@@ -4,6 +4,14 @@ use std::fmt::Debug;
 
 const DOMAIN_HASH_SIZE: usize = 32;
 
+/**
+ * TODO: consider the right design for passing domain hashes around. Some options:
+ * 1. Pass around by value. Pros: simple concurrency management; no indirect access to heap. Cons: x4 size of a pointer
+ * 2. Use Box<DomainHash> or Arc<DomainHash> or a combination per need.    
+ *
+ * Ideally we manage to wrap the type correctly and make easy conventions for using it.
+ */
+
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub struct DomainHash {
     byte_array: [u8; DOMAIN_HASH_SIZE],

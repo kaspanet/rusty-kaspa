@@ -114,7 +114,9 @@ impl Interval {
             return self.split_exact(sizes);
         }
 
+        //
         // Add a fractional bias to every size in the provided sizes
+        //
 
         let mut remaining_bias = interval_size - sizes_sum;
         let total_bias = remaining_bias as f64;
