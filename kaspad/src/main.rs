@@ -10,7 +10,7 @@ use kaspa_core::*;
 mod domain;
 
 use domain::consensus::model::api::hash::DomainHash;
-use domain::consensus::processes::reachabilitymanager::interval;
+use domain::consensus::processes::reachability::interval;
 
 pub fn main() {
     trace!("Kaspad starting...");
