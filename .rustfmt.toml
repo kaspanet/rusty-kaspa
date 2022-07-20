@@ -1,0 +1,8 @@
+max_width = 120
+chain_width = 50
+fn_args_layout = "Compressed"
+use_field_init_shorthand = true
+use_try_shorthand = true
+use_small_heuristics = "Max"
+newline_style = "unix"
+edition = "2021"
