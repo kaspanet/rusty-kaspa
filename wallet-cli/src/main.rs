@@ -3,13 +3,11 @@ use kaspa_core::*;
 // use kaspa_core::core::Core;
 
 pub fn main() {
-
     trace!("Kaspa Wallet starting...");
-    
+
     // let core = Arc::new(Core::new());
     // let signals = Arc::new(signals::Signals::new(core.clone()));
     // signals.init();
-
 
     // let monitor = Arc::new(monitor::Monitor::new());
     // let test_service_a = Arc::new(test_service::TestService::new("test servivce A"));
@@ -23,6 +21,4 @@ pub fn main() {
     // core.run();
 
     trace!("Kaspa wallet is finished...");
-
 }
-

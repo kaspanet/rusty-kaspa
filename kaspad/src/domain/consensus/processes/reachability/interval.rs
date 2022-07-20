@@ -67,21 +67,14 @@ impl Interval {
     fn split_fraction(&self, fraction: f32) -> (Self, Self) {
         let left_size = f32::ceil(self.size() as f32 * fraction) as u64;
 
-        (
-            Self::new(self.start, self.start + left_size - 1),
-            Self::new(self.start + left_size, self.end),
-        )
+        (Self::new(self.start, self.start + left_size - 1), Self::new(self.start + left_size, self.end))
     }
 
     /// Splits this interval to exactly |sizes| parts where
     /// |part_i| = sizes[i]. This method expects sum(sizes) to be exactly
     /// equal to the interval's size.
     pub fn split_exact(&self, sizes: &[u64]) -> Vec<Self> {
-        assert_eq!(
-            sizes.iter().sum::<u64>(),
-            self.size(),
-            "sum of sizes must be equal to the interval's size"
-        );
+        assert_eq!(sizes.iter().sum::<u64>(), self.size(), "sum of sizes must be equal to the interval's size");
         let mut intervals = Vec::<Self>::with_capacity(sizes.len());
         let mut start = self.start;
         for size in sizes {
@@ -105,10 +98,7 @@ impl Interval {
     pub fn split_exponential(&self, sizes: &[u64]) -> Vec<Self> {
         let interval_size = self.size();
         let sizes_sum = sizes.iter().sum::<u64>();
-        assert!(
-            interval_size >= sizes_sum,
-            "interval's size must be greater than or equal to sum of sizes"
-        );
+        assert!(interval_size >= sizes_sum, "interval's size must be greater than or equal to sum of sizes");
         assert!(sizes_sum > 0, "cannot split to 0 parts");
         if interval_size == sizes_sum {
             return self.split_exact(sizes);
@@ -250,11 +240,7 @@ mod tests {
         }
 
         let tests = [
-            Test {
-                interval: Interval::new(1, 100),
-                sizes: vec![100u64],
-                expected: vec![Interval::new(1, 100)],
-            },
+            Test { interval: Interval::new(1, 100), sizes: vec![100u64], expected: vec![Interval::new(1, 100)] },
             Test {
                 interval: Interval::new(1, 100),
                 sizes: vec![50u64, 50],
@@ -283,54 +269,35 @@ mod tests {
             Test {
                 interval: Interval::new(1, 100),
                 sizes: vec![33u64, 33, 33],
-                expected: vec![
-                    Interval::new(1, 33),
-                    Interval::new(34, 66),
-                    Interval::new(67, 100),
-                ],
+                expected: vec![Interval::new(1, 33), Interval::new(34, 66), Interval::new(67, 100)],
             },
             Test {
                 interval: Interval::new(1, 100),
                 sizes: vec![10u64, 15, 25],
-                expected: vec![
-                    Interval::new(1, 10),
-                    Interval::new(11, 25),
-                    Interval::new(26, 100),
-                ],
+                expected: vec![Interval::new(1, 10), Interval::new(11, 25), Interval::new(26, 100)],
             },
             Test {
                 interval: Interval::new(1, 100),
                 sizes: vec![25u64, 15, 10],
-                expected: vec![
-                    Interval::new(1, 75),
-                    Interval::new(76, 90),
-                    Interval::new(91, 100),
-                ],
+                expected: vec![Interval::new(1, 75), Interval::new(76, 90), Interval::new(91, 100)],
             },
             Test {
                 interval: Interval::new(1, 10_000),
                 sizes: vec![10u64, 10, 20],
-                expected: vec![
-                    Interval::new(1, 20),
-                    Interval::new(21, 40),
-                    Interval::new(41, 10_000),
-                ],
+                expected: vec![Interval::new(1, 20), Interval::new(21, 40), Interval::new(41, 10_000)],
             },
             Test {
                 interval: Interval::new(1, 100_000),
                 sizes: vec![31_000u64, 31_000, 30_001],
-                expected: vec![
-                    Interval::new(1, 35_000),
-                    Interval::new(35_001, 69_999),
-                    Interval::new(70_000, 100_000),
-                ],
+                expected: vec![Interval::new(1, 35_000), Interval::new(35_001, 69_999), Interval::new(70_000, 100_000)],
             },
         ];
 
         for test in &tests {
             assert_eq!(
                 test.expected,
-                test.interval.split_exponential(test.sizes.as_slice())
+                test.interval
+                    .split_exponential(test.sizes.as_slice())
             );
         }
     }
