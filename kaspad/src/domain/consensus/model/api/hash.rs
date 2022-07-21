@@ -1,6 +1,7 @@
 use hex;
 use std::convert::TryInto;
 use std::fmt::Debug;
+use std::mem::size_of;
 
 const DOMAIN_HASH_SIZE: usize = 32;
 
@@ -24,6 +25,12 @@ impl ToString for DomainHash {
 }
 
 impl DomainHash {
+    pub fn from_u64(word: u64) -> Self {
+        let mut byte_array = [0u8; DOMAIN_HASH_SIZE];
+        byte_array[0..size_of::<u64>()].copy_from_slice(&word.to_le_bytes());
+        DomainHash { byte_array }
+    }
+
     pub fn from_string(hash_str: &str) -> Result<Self, hex::FromHexError> {
         let mut byte_array = [0u8; DOMAIN_HASH_SIZE];
         hex::decode_to_slice(hash_str, &mut byte_array)?;
@@ -74,6 +81,12 @@ mod tests {
                 _ => panic!("Expected hex invalid length error"),
             },
         }
+    }
+
+    #[test]
+    fn test_from_u64() {
+        let _ = DomainHash::from_u64(7);
+        // println!("{}", hash.to_string());
     }
 }
 

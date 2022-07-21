@@ -39,6 +39,10 @@ pub struct MemoryReachabilityStore {
 }
 
 impl MemoryReachabilityStore {
+    pub fn new() -> Self {
+        Self { map: HashMap::new() }
+    }
+
     fn get_data_mut(&mut self, hash: &DomainHash) -> Result<&mut ReachabilityData, StoreError> {
         match self.map.get_mut(hash) {
             Some(data) => Ok(data),
@@ -107,5 +111,19 @@ impl ReachabilityStore for MemoryReachabilityStore {
             .get_data(hash)?
             .future_covering_set
             .as_slice())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_store_basics() {
+        let mut store: Box<dyn ReachabilityStore> = Box::new(MemoryReachabilityStore::new());
+        let (hash, parent) = (DomainHash::from_u64(7), DomainHash::from_u64(15));
+        let interval = Interval::maximal();
+        store.init(&hash, &parent, interval).unwrap();
+        // let 
     }
 }
