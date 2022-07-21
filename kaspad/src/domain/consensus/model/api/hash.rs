@@ -12,7 +12,7 @@ const DOMAIN_HASH_SIZE: usize = 32;
  * Ideally we manage to wrap the type correctly and make easy conventions for using it.
  */
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Hash)]
 pub struct DomainHash {
     byte_array: [u8; DOMAIN_HASH_SIZE],
 }
@@ -53,8 +53,7 @@ mod tests {
         assert_eq!(hash, hash2);
 
         let hash3 =
-            DomainHash::from_string("8e40af02265360d59f4ecf9ae9ebf8f00a3118408f5a9cdcbcc9c0f93642f3ab")
-                .unwrap();
+            DomainHash::from_string("8e40af02265360d59f4ecf9ae9ebf8f00a3118408f5a9cdcbcc9c0f93642f3ab").unwrap();
         assert_ne!(hash2, hash3);
 
         let odd_str = "8e40af02265360d59f4ecf9ae9ebf8f00a3118408f5a9cdcbcc9c0f93642f3a";
