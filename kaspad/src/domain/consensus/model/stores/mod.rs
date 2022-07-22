@@ -1,2 +1,2 @@
 pub mod errors;
-pub mod reachability_store;
+pub mod reachability;

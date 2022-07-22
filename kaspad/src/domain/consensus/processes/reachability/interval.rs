@@ -31,6 +31,10 @@ impl Interval {
         (self.end + 1) - self.start
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.size() == 0
+    }
+
     pub fn increase(&self, offset: u64) -> Self {
         Self::new(self.start + offset, self.end + offset)
     }

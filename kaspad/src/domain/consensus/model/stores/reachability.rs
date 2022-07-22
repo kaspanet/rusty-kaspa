@@ -18,29 +18,30 @@ impl ReachabilityData {
 }
 
 pub trait ReachabilityStore {
-    fn init(&mut self, hash: &DomainHash, parent: &DomainHash, interval: Interval) -> Result<(), StoreError>;
-
+    fn insert(&mut self, hash: &DomainHash, parent: &DomainHash, interval: Interval) -> Result<(), StoreError>;
     fn set_interval(&mut self, hash: &DomainHash, interval: Interval) -> Result<(), StoreError>;
     fn append_child(&mut self, hash: &DomainHash, child: &DomainHash) -> Result<(), StoreError>;
     fn insert_future_covering_item(
         &mut self, hash: &DomainHash, fci: &DomainHash, insertion_index: usize,
     ) -> Result<(), StoreError>;
-
     fn has(&self, hash: &DomainHash) -> Result<bool, StoreError>;
-
     fn get_interval(&self, hash: &DomainHash) -> Result<Interval, StoreError>;
     fn get_parent(&self, hash: &DomainHash) -> Result<&DomainHash, StoreError>;
     fn get_children(&self, hash: &DomainHash) -> Result<&[DomainHash], StoreError>;
     fn get_future_covering_set(&self, hash: &DomainHash) -> Result<&[DomainHash], StoreError>;
+
+    fn set_reindex_root(&mut self, root: &DomainHash) -> Result<(), StoreError>;
+    fn get_reindex_root(&self) -> Result<&DomainHash, StoreError>;
 }
 
 pub struct MemoryReachabilityStore {
     map: HashMap<DomainHash, ReachabilityData>,
+    reindex_root: Option<DomainHash>,
 }
 
 impl MemoryReachabilityStore {
     pub fn new() -> Self {
-        Self { map: HashMap::new() }
+        Self { map: HashMap::new(), reindex_root: None }
     }
 
     fn get_data_mut(&mut self, hash: &DomainHash) -> Result<&mut ReachabilityData, StoreError> {
@@ -59,7 +60,7 @@ impl MemoryReachabilityStore {
 }
 
 impl ReachabilityStore for MemoryReachabilityStore {
-    fn init(&mut self, hash: &DomainHash, parent: &DomainHash, interval: Interval) -> Result<(), StoreError> {
+    fn insert(&mut self, hash: &DomainHash, parent: &DomainHash, interval: Interval) -> Result<(), StoreError> {
         if self.map.contains_key(hash) {
             Err(StoreError::KeyAlreadyExists)
         } else {
@@ -112,6 +113,18 @@ impl ReachabilityStore for MemoryReachabilityStore {
             .future_covering_set
             .as_slice())
     }
+
+    fn set_reindex_root(&mut self, root: &DomainHash) -> Result<(), StoreError> {
+        self.reindex_root = Some(*root);
+        Ok(())
+    }
+
+    fn get_reindex_root(&self) -> Result<&DomainHash, StoreError> {
+        match &self.reindex_root {
+            Some(root) => Ok(root),
+            None => Err(StoreError::KeyNotFound),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -123,7 +136,19 @@ mod tests {
         let mut store: Box<dyn ReachabilityStore> = Box::new(MemoryReachabilityStore::new());
         let (hash, parent) = (DomainHash::from_u64(7), DomainHash::from_u64(15));
         let interval = Interval::maximal();
-        store.init(&hash, &parent, interval).unwrap();
-        // let 
+        store.insert(&hash, &parent, interval).unwrap();
+        store
+            .append_child(&hash, &DomainHash::from_u64(31))
+            .unwrap();
+        let children = store.get_children(&hash).unwrap();
+        println!("{:?}", children);
+        // store
+        //     .append_child(&hash, &DomainHash::from_u64(63))
+        //     .unwrap();
+        store
+            .get_interval(&DomainHash::from_u64(7))
+            .unwrap();
+        // let children = store.get_children(&hash).unwrap();
+        println!("{:?}", children);
     }
 }

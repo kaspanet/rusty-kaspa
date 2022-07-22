@@ -1,2 +1,4 @@
+mod extensions;
+pub mod inquirer;
 pub mod interval;
-pub mod manager;
+mod reindex;
