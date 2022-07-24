@@ -1,7 +1,13 @@
 #![cfg_attr(all(test, feature = "bench"), feature(test))]
 
+// Until the codebase stables up, we will have a lot of these -- ignore for now  
+// TODO: remove this
+#![allow(dead_code, unused_variables)]
+
+
 extern crate core;
 
+use std::str::FromStr;
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 
@@ -25,7 +31,7 @@ pub fn main() {
     println!("{:?}", interval);
 
     let hash_str = "8e40af02265360d59f4ecf9ae9ebf8f00a3118408f5a9cdcbcc9c0f93642f3af";
-    let hash = DomainHash::from_string(hash_str);
+    let hash = DomainHash::from_str(hash_str).unwrap();
     println!("{:?}", hash);
 
     let core = Arc::new(Core::new());
@@ -51,15 +57,15 @@ pub fn main() {
     ));
 
     // signals.bind(&core);
-    core.bind(monitor.clone());
+    core.bind(monitor);
 
     // we are starting emitter first - channels will buffer
     // until consumers start, however, when shutting down
     // the shutdown will be done in the startup order, resulting
     // in emitter going down first...
-    core.bind(emitter.clone());
-    core.bind(service.clone());
-    core.bind(consumer.clone());
+    core.bind(emitter);
+    core.bind(service);
+    core.bind(consumer);
 
     core.run();
 

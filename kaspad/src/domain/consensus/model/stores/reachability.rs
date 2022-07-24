@@ -26,12 +26,12 @@ pub trait ReachabilityStore {
     ) -> Result<(), StoreError>;
     fn has(&self, hash: &DomainHash) -> Result<bool, StoreError>;
     fn get_interval(&self, hash: &DomainHash) -> Result<Interval, StoreError>;
-    fn get_parent(&self, hash: &DomainHash) -> Result<&DomainHash, StoreError>;
+    fn get_parent(&self, hash: &DomainHash) -> Result<DomainHash, StoreError>;
     fn get_children(&self, hash: &DomainHash) -> Result<&[DomainHash], StoreError>;
     fn get_future_covering_set(&self, hash: &DomainHash) -> Result<&[DomainHash], StoreError>;
 
     fn set_reindex_root(&mut self, root: &DomainHash) -> Result<(), StoreError>;
-    fn get_reindex_root(&self) -> Result<&DomainHash, StoreError>;
+    fn get_reindex_root(&self) -> Result<DomainHash, StoreError>;
 }
 
 pub struct MemoryReachabilityStore {
@@ -99,8 +99,8 @@ impl ReachabilityStore for MemoryReachabilityStore {
         Ok(self.get_data(hash)?.interval)
     }
 
-    fn get_parent(&self, hash: &DomainHash) -> Result<&DomainHash, StoreError> {
-        Ok(&self.get_data(hash)?.parent)
+    fn get_parent(&self, hash: &DomainHash) -> Result<DomainHash, StoreError> {
+        Ok(self.get_data(hash)?.parent)
     }
 
     fn get_children(&self, hash: &DomainHash) -> Result<&[DomainHash], StoreError> {
@@ -119,8 +119,8 @@ impl ReachabilityStore for MemoryReachabilityStore {
         Ok(())
     }
 
-    fn get_reindex_root(&self) -> Result<&DomainHash, StoreError> {
-        match &self.reindex_root {
+    fn get_reindex_root(&self) -> Result<DomainHash, StoreError> {
+        match self.reindex_root {
             Some(root) => Ok(root),
             None => Err(StoreError::KeyNotFound),
         }

@@ -1,16 +1,5 @@
-use thiserror::Error;
-
-use crate::domain::consensus::model::{
-    api::hash::DomainHash, stores::errors::StoreError, stores::reachability::ReachabilityStore,
-};
-
-#[derive(Error, Debug)]
-pub enum ReachabilityError {
-    #[error("data store error")]
-    ReachabilityStoreError(#[from] StoreError),
-}
-
-pub type Result<T> = std::result::Result<T, ReachabilityError>;
+use super::*;
+use crate::domain::consensus::model::{api::hash::DomainHash, stores::reachability::ReachabilityStore};
 
 pub fn init(store: &mut dyn ReachabilityStore) -> Result<()> {
     todo!()
@@ -46,6 +35,12 @@ pub fn add_block(
     // }
 
     Ok(())
+}
+
+pub fn is_strict_chain_ancestor_of(
+    store: &dyn ReachabilityStore, anchor: &DomainHash, queried: &DomainHash,
+) -> Result<bool> {
+    todo!()
 }
 
 pub fn is_chain_ancestor_of(store: &dyn ReachabilityStore, anchor: &DomainHash, queried: &DomainHash) -> Result<bool> {

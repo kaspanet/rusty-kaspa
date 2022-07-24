@@ -2,11 +2,11 @@ use hex;
 use std::convert::TryInto;
 use std::fmt::Debug;
 use std::mem::size_of;
+use std::str::FromStr;
 
 const DOMAIN_HASH_SIZE: usize = 32;
 
-
-#[derive(PartialEq, Eq, Clone, Copy, Debug, Hash)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Hash, Default)]
 pub struct DomainHash {
     byte_array: [u8; DOMAIN_HASH_SIZE],
 }
@@ -17,6 +17,16 @@ impl ToString for DomainHash {
     }
 }
 
+impl FromStr for DomainHash {
+    type Err = hex::FromHexError;
+
+    fn from_str(hash_str: &str) -> Result<Self, Self::Err> {
+        let mut byte_array = [0u8; DOMAIN_HASH_SIZE];
+        hex::decode_to_slice(hash_str, &mut byte_array)?;
+        Ok(DomainHash { byte_array })
+    }
+}
+
 impl DomainHash {
     pub fn from_u64(word: u64) -> Self {
         let mut byte_array = [0u8; DOMAIN_HASH_SIZE];
@@ -24,14 +34,12 @@ impl DomainHash {
         DomainHash { byte_array }
     }
 
-    pub fn from_string(hash_str: &str) -> Result<Self, hex::FromHexError> {
-        let mut byte_array = [0u8; DOMAIN_HASH_SIZE];
-        hex::decode_to_slice(hash_str, &mut byte_array)?;
-        Ok(DomainHash { byte_array })
+    pub fn has_default_value(&self) -> bool {
+        *self == Default::default()
     }
 
     #[allow(dead_code)]
-    pub fn from_string_slow(hash_str: &str) -> Result<Self, hex::FromHexError> {
+    pub fn from_str_slow(hash_str: &str) -> Result<Self, hex::FromHexError> {
         match hex::decode(hash_str)?.try_into() {
             Ok(byte_array) => Ok(DomainHash { byte_array }),
             Err(_) => Err(hex::FromHexError::InvalidStringLength),
@@ -46,20 +54,20 @@ mod tests {
     #[test]
     fn test_hash_basics() {
         let hash_str = "8e40af02265360d59f4ecf9ae9ebf8f00a3118408f5a9cdcbcc9c0f93642f3af";
-        let hash = DomainHash::from_string(hash_str).unwrap();
+        let hash = DomainHash::from_str(hash_str).unwrap();
         assert_eq!(hash_str, hash.to_string());
+        assert!(!hash.has_default_value());
 
-        let hash2 = DomainHash::from_string(hash_str).unwrap();
+        let hash2 = DomainHash::from_str(hash_str).unwrap();
         assert_eq!(hash, hash2);
 
-        let hash3 =
-            DomainHash::from_string("8e40af02265360d59f4ecf9ae9ebf8f00a3118408f5a9cdcbcc9c0f93642f3ab").unwrap();
+        let hash3 = DomainHash::from_str("8e40af02265360d59f4ecf9ae9ebf8f00a3118408f5a9cdcbcc9c0f93642f3ab").unwrap();
         assert_ne!(hash2, hash3);
 
         let odd_str = "8e40af02265360d59f4ecf9ae9ebf8f00a3118408f5a9cdcbcc9c0f93642f3a";
         let short_str = "8e40af02265360d59f4ecf9ae9ebf8f00a3118408f5a9cdcbcc9c0f93642f3";
 
-        match DomainHash::from_string(odd_str) {
+        match DomainHash::from_str(odd_str) {
             Ok(_) => panic!("Expected hex error"),
             Err(e) => match e {
                 hex::FromHexError::OddLength => (),
@@ -67,7 +75,7 @@ mod tests {
             },
         }
 
-        match DomainHash::from_string(short_str) {
+        match DomainHash::from_str(short_str) {
             Ok(_) => panic!("Expected hex error"),
             Err(e) => match e {
                 hex::FromHexError::InvalidStringLength => (),
@@ -90,21 +98,21 @@ mod benches {
     use super::*;
 
     #[bench]
-    pub fn bench_from_string_slow(bh: &mut Bencher) {
+    pub fn bench_from_str_slow(bh: &mut Bencher) {
         bh.iter(|| {
             for _ in 0..1000 {
                 let hash_str = "8e40af02265360d59f4ecf9ae9ebf8f00a3118408f5a9cdcbcc9c0f93642f3af";
-                black_box(DomainHash::from_string_slow(hash_str).unwrap());
+                black_box(DomainHash::from_str_slow(hash_str).unwrap());
             }
         });
     }
 
     #[bench]
-    pub fn bench_from_string_fast(bh: &mut Bencher) {
+    pub fn bench_from_str_fast(bh: &mut Bencher) {
         bh.iter(|| {
             for _ in 0..1000 {
                 let hash_str = "8e40af02265360d59f4ecf9ae9ebf8f00a3118408f5a9cdcbcc9c0f93642f3af";
-                black_box(DomainHash::from_string(hash_str).unwrap());
+                black_box(DomainHash::from_str(hash_str).unwrap());
             }
         });
     }
