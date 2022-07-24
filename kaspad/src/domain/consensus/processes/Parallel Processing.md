@@ -4,7 +4,7 @@
 
 ## Current sequential processing flow
 
-Below we detail the current state of affairs in *go-kaspad*. Processing dependencies between various stages is detailed in square brackets [***deps; type***].
+Below we detail the current state of affairs in *go-kaspad* and discuss future parallelism opportunities. Processing dependencies between various stages are detailed in square brackets [***deps; type***].
 
 ### Header processing 
 
@@ -74,7 +74,7 @@ There are two levels of possible concurrency to support: (i) process the various
 
 ### Pipeline concurrency
 
-The current code design (*go-kaspad*) already logically supports this since the various processing stages were already decoupled for supporting efficient IBD.  
+The current code design (*go-kaspad*) already logically supports this since the various processing stages were already decoupled for supporting efficient IBD. 
 
 ### Header processing parallelism
 
@@ -82,7 +82,7 @@ If you analyze the dependency graph above you can see this is the most challengi
 
 I suggest we split the staging/writes during header processing into two categories: (i) writes that are append-only, meaning they only affect store data related to the currently processed block (for instance ghostdag data store, headers store, header status store, finality and merge root stores, windows stores -- all support this property); (ii) writes that modify state of other shared data (reachability reindexing, block relations children).
 
-It seems to me that only DAG related write data is not append-only. So I suggest moving reachability and relations writes to a new processing unit named "Header DAG processing". This unit will support adding multiple blocks at one call to the reachability tree by performing a single reindexing for all (can be easily supported). 
+It seems to me that only DAG related write data is not append-only. So I suggest moving reachability and relations writes to a new processing unit named "Header DAG processing". This unit will support adding multiple blocks at one call to the reachability tree by performing a single reindexing for all (can be easily supported by current algos). 
 
 
 ### Block processing parallelism
@@ -95,4 +95,4 @@ Seems straightforward.
 * Process each chain block + mergeset sequentially.
 * Within each such step:
     * txs within each block can be validated against the utxo set in parallel 
-    * blocks in the mergeset and txs within can be processed in parallel based on the consensus-agreed topological mergeset ordering -- however conflicts might arise and need to be taken care of  
+    * blocks in the mergeset and txs within can be processed in parallel based on the consensus-agreed topological mergeset ordering -- however conflicts might arise and need to be taken care of according to said order.
