@@ -9,7 +9,7 @@ pub fn add_block(
     store: &mut dyn ReachabilityStore, block: &DomainHash, selected_parent: &DomainHash, mergeset: &[DomainHash],
     is_selected_leaf: bool,
 ) -> Result<()> {
-    let remaining = store.remaining_interval_after(selected_parent)?;
+    let remaining = store.interval_remaining_after(selected_parent)?;
 
     store.append_child(selected_parent, block)?;
 
