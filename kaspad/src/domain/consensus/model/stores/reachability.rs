@@ -1,4 +1,7 @@
-use std::{collections::HashMap, rc::Rc};
+use std::{
+    collections::{hash_map::Entry::Vacant, HashMap},
+    rc::Rc,
+};
 
 use super::errors::StoreError;
 use crate::domain::consensus::{model::api::hash::Hash, processes::reachability::interval::Interval};
@@ -61,12 +64,11 @@ impl MemoryReachabilityStore {
 
 impl ReachabilityStore for MemoryReachabilityStore {
     fn insert(&mut self, hash: Hash, parent: Hash, interval: Interval) -> Result<(), StoreError> {
-        if self.map.contains_key(&hash) {
-            Err(StoreError::KeyAlreadyExists)
-        } else {
-            self.map
-                .insert(hash, ReachabilityData::new(parent, interval));
+        if let Vacant(e) = self.map.entry(hash) {
+            e.insert(ReachabilityData::new(parent, interval));
             Ok(())
+        } else {
+            Err(StoreError::KeyAlreadyExists)
         }
     }
 

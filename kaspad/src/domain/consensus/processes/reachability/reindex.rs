@@ -178,11 +178,21 @@ impl<'a> ReindexOperationContext<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::consensus::model::stores::reachability::MemoryReachabilityStore;
+    use crate::domain::consensus::{
+        model::stores::reachability::MemoryReachabilityStore, processes::reachability::interval::Interval,
+    };
 
     #[test]
     fn test_count_subtrees() {
-        let mut store = MemoryReachabilityStore::new();
-        // store.insert(Hash::new_unique(), parent, interval)
+        let mut store: Box<dyn ReachabilityStore> = Box::new(MemoryReachabilityStore::new());
+        let root = Hash::new_unique();
+        store
+            .insert(root, Hash::DEFAULT, Interval::maximal())
+            .unwrap();
+
+        let mut ctx = ReindexOperationContext::new(store.as_mut(), root, None, None);
+        ctx.count_subtrees(root).unwrap();
+
+        println!("{:?}", ctx.subtree_sizes);
     }
 }

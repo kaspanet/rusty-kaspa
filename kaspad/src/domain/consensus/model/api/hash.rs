@@ -44,7 +44,7 @@ impl Hash {
         Hash(bytes)
     }
 
-    const DEFAULT: Hash = Hash([0u8; 32]);
+    pub const DEFAULT: Hash = Hash([0u8; 32]);
 
     pub fn is_default(&self) -> bool {
         self.eq(&Self::DEFAULT)
