@@ -8,12 +8,12 @@ use super::interval::Interval;
 impl dyn ReachabilityStore + '_ {
     /// Returns the reachability allocation capacity for children of `block`
     pub(super) fn interval_children_capacity(&self, block: &Hash) -> StoreResult<Interval> {
-        // The interval of a block should *strictly* contain the intervals of its 
+        // The interval of a block should *strictly* contain the intervals of its
         // tree children, hence we subtract 1 from the end of the range.
         Ok(self.get_interval(block)?.decrease_end(1))
     }
 
-    /// Returns the available interval to allocate for tree children, taken from the 
+    /// Returns the available interval to allocate for tree children, taken from the
     /// beginning of children allocation capacity
     pub(super) fn interval_remaining_before(&self, block: &Hash) -> StoreResult<Interval> {
         let alloc_capacity = self.interval_children_capacity(block)?;
@@ -26,7 +26,7 @@ impl dyn ReachabilityStore + '_ {
         }
     }
 
-    /// Returns the available interval to allocate for tree children, taken from the 
+    /// Returns the available interval to allocate for tree children, taken from the
     /// end of children allocation capacity
     pub(super) fn interval_remaining_after(&self, block: &Hash) -> StoreResult<Interval> {
         let alloc_capacity = self.interval_children_capacity(block)?;

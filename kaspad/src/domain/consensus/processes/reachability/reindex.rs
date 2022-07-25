@@ -37,7 +37,7 @@ impl<'a> ReindexOperationContext<'a> {
 
             let parent = self.store.get_parent(&current)?;
 
-            if parent.has_default_value() {
+            if parent.is_default() {
                 // TODO: comment and add detailed inner error
                 return Err(ReachabilityError::ReachabilityDataOverflowError);
             }
@@ -87,10 +87,9 @@ impl<'a> ReindexOperationContext<'a> {
             return Ok(());
         }
 
-        let mut queue = VecDeque::<Hash>::new();
+        let mut queue = VecDeque::<Hash>::from([block]);
         let mut counts = HashMap::<Hash, u64>::new();
 
-        queue.push_back(block);
         while !queue.is_empty() {
             let mut current = queue.pop_front().unwrap();
             let children = self.store.get_children(&current)?;
@@ -110,18 +109,18 @@ impl<'a> ReindexOperationContext<'a> {
             while current != block {
                 current = self.store.get_parent(&current)?;
 
-                // If the current has default value, it means that the previous
+                // If `current` has default value, it means that the previous
                 // `current` was the (virtual) genesis block -- the only block that
                 // does not have parents
-                if current.has_default_value() {
+                if current.is_default() {
                     break;
                 }
 
-                let entry = counts.entry(current).or_insert(0);
-                *entry += 1;
+                let count_entry = counts.entry(current).or_insert(0);
                 let children = self.store.get_children(&current)?;
 
-                if *entry != children.len() as u64 {
+                *count_entry += 1;
+                if *count_entry < children.len() as u64 {
                     // Not all subtrees of the current block are ready
                     break;
                 }

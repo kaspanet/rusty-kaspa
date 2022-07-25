@@ -4,16 +4,14 @@ use std::fmt::Debug;
 use std::mem::size_of;
 use std::str::FromStr;
 
-const DOMAIN_HASH_SIZE: usize = 32;
+const HASH_SIZE: usize = 32;
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Hash, Default)]
-pub struct Hash {
-    byte_array: [u8; DOMAIN_HASH_SIZE],
-}
+pub struct Hash([u8; HASH_SIZE]);
 
 impl ToString for Hash {
     fn to_string(&self) -> String {
-        hex::encode(self.byte_array)
+        hex::encode(self.0)
     }
 }
 
@@ -21,27 +19,29 @@ impl FromStr for Hash {
     type Err = hex::FromHexError;
 
     fn from_str(hash_str: &str) -> Result<Self, Self::Err> {
-        let mut byte_array = [0u8; DOMAIN_HASH_SIZE];
-        hex::decode_to_slice(hash_str, &mut byte_array)?;
-        Ok(Hash { byte_array })
+        let mut bytes = [0u8; HASH_SIZE];
+        hex::decode_to_slice(hash_str, &mut bytes)?;
+        Ok(Hash(bytes))
     }
 }
 
 impl Hash {
     pub fn from_u64(word: u64) -> Self {
-        let mut byte_array = [0u8; DOMAIN_HASH_SIZE];
-        byte_array[0..size_of::<u64>()].copy_from_slice(&word.to_le_bytes());
-        Hash { byte_array }
+        let mut bytes = [0u8; HASH_SIZE];
+        bytes[0..size_of::<u64>()].copy_from_slice(&word.to_le_bytes());
+        Hash(bytes)
     }
 
-    pub fn has_default_value(&self) -> bool {
-        *self == Default::default()
+    const DEFAULT: Hash = Hash([0u8; 32]);
+
+    pub fn is_default(&self) -> bool {
+        self.eq(&Self::DEFAULT)
     }
 
     #[allow(dead_code)]
     pub fn from_str_slow(hash_str: &str) -> Result<Self, hex::FromHexError> {
         match hex::decode(hash_str)?.try_into() {
-            Ok(byte_array) => Ok(Hash { byte_array }),
+            Ok(bytes) => Ok(Hash(bytes)),
             Err(_) => Err(hex::FromHexError::InvalidStringLength),
         }
     }
@@ -56,7 +56,7 @@ mod tests {
         let hash_str = "8e40af02265360d59f4ecf9ae9ebf8f00a3118408f5a9cdcbcc9c0f93642f3af";
         let hash = Hash::from_str(hash_str).unwrap();
         assert_eq!(hash_str, hash.to_string());
-        assert!(!hash.has_default_value());
+        assert!(!hash.is_default());
 
         let hash2 = Hash::from_str(hash_str).unwrap();
         assert_eq!(hash, hash2);

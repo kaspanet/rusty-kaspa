@@ -6,8 +6,7 @@ pub fn init(store: &mut dyn ReachabilityStore) -> Result<()> {
 }
 
 pub fn add_block(
-    store: &mut dyn ReachabilityStore, block: &Hash, selected_parent: &Hash, mergeset: &[Hash],
-    is_selected_leaf: bool,
+    store: &mut dyn ReachabilityStore, block: &Hash, selected_parent: &Hash, mergeset: &[Hash], is_selected_leaf: bool,
 ) -> Result<()> {
     let remaining = store.interval_remaining_after(selected_parent)?;
 
@@ -37,9 +36,7 @@ pub fn add_block(
     Ok(())
 }
 
-pub fn is_strict_chain_ancestor_of(
-    store: &dyn ReachabilityStore, anchor: &Hash, queried: &Hash,
-) -> Result<bool> {
+pub fn is_strict_chain_ancestor_of(store: &dyn ReachabilityStore, anchor: &Hash, queried: &Hash) -> Result<bool> {
     todo!()
 }
 
@@ -51,8 +48,6 @@ pub fn is_dag_ancestor_of(store: &dyn ReachabilityStore, anchor: &Hash, queried:
     todo!()
 }
 
-pub fn get_next_chain_ancestor(
-    store: &dyn ReachabilityStore, descendant: &Hash, ancestor: &Hash,
-) -> Result<Hash> {
+pub fn get_next_chain_ancestor(store: &dyn ReachabilityStore, descendant: &Hash, ancestor: &Hash) -> Result<Hash> {
     todo!()
 }

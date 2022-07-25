@@ -143,9 +143,7 @@ mod tests {
         // store
         //     .append_child(&hash, &DomainHash::from_u64(63))
         //     .unwrap();
-        store
-            .get_interval(&Hash::from_u64(7))
-            .unwrap();
+        store.get_interval(&Hash::from_u64(7)).unwrap();
         // let children = store.get_children(&hash).unwrap();
         println!("{:?}", children);
     }
