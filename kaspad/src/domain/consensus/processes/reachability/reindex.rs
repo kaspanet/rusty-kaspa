@@ -101,7 +101,7 @@ impl<'a> ReindexOperationContext<'a> {
                 // We haven't yet calculated the subtree size of
                 // the current block. Add all its children to the
                 // queue
-                queue.extend(children);
+                queue.extend(children.iter());
                 continue;
             }
 
@@ -152,7 +152,7 @@ impl<'a> ReindexOperationContext<'a> {
         queue.push_back(block);
         while !queue.is_empty() {
             let current = queue.pop_front().unwrap();
-            let children = self.store.get_children(&current)?.to_vec();
+            let children = self.store.get_children(&current)?;
             if !children.is_empty() {
                 let sizes: Vec<u64> = children
                     .iter()
@@ -163,7 +163,7 @@ impl<'a> ReindexOperationContext<'a> {
                 for (c, ci) in children.iter().zip(intervals) {
                     self.store.set_interval(c, ci)?;
                 }
-                queue.extend(children);
+                queue.extend(children.iter());
             }
         }
         Ok(())

@@ -1,19 +1,21 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, rc::Rc};
 
 use super::errors::StoreError;
 use crate::domain::consensus::{model::api::hash::DomainHash, processes::reachability::interval::Interval};
 
+type HashArray = Rc<Vec<DomainHash>>;
+
 #[derive(Clone)]
 pub struct ReachabilityData {
-    pub children: Vec<DomainHash>,
+    pub children: HashArray,
     pub parent: DomainHash,
     pub interval: Interval,
-    pub future_covering_set: Vec<DomainHash>,
+    pub future_covering_set: HashArray,
 }
 
 impl ReachabilityData {
     pub fn new(parent: &DomainHash, interval: Interval) -> Self {
-        Self { children: vec![], parent: *parent, interval, future_covering_set: vec![] }
+        Self { children: Rc::new(vec![]), parent: *parent, interval, future_covering_set: Rc::new(vec![]) }
     }
 }
 
@@ -27,8 +29,8 @@ pub trait ReachabilityStore {
     fn has(&self, hash: &DomainHash) -> Result<bool, StoreError>;
     fn get_interval(&self, hash: &DomainHash) -> Result<Interval, StoreError>;
     fn get_parent(&self, hash: &DomainHash) -> Result<DomainHash, StoreError>;
-    fn get_children(&self, hash: &DomainHash) -> Result<&[DomainHash], StoreError>;
-    fn get_future_covering_set(&self, hash: &DomainHash) -> Result<&[DomainHash], StoreError>;
+    fn get_children(&self, hash: &DomainHash) -> Result<HashArray, StoreError>;
+    fn get_future_covering_set(&self, hash: &DomainHash) -> Result<HashArray, StoreError>;
 
     fn set_reindex_root(&mut self, root: &DomainHash) -> Result<(), StoreError>;
     fn get_reindex_root(&self) -> Result<DomainHash, StoreError>;
@@ -78,7 +80,7 @@ impl ReachabilityStore for MemoryReachabilityStore {
 
     fn append_child(&mut self, hash: &DomainHash, child: &DomainHash) -> Result<(), StoreError> {
         let data = self.get_data_mut(hash)?;
-        data.children.push(*child);
+        Rc::make_mut(&mut data.children).push(*child);
         Ok(())
     }
 
@@ -86,8 +88,7 @@ impl ReachabilityStore for MemoryReachabilityStore {
         &mut self, hash: &DomainHash, fci: &DomainHash, insertion_index: usize,
     ) -> Result<(), StoreError> {
         let data = self.get_data_mut(hash)?;
-        data.future_covering_set
-            .insert(insertion_index, *fci);
+        Rc::make_mut(&mut data.future_covering_set).insert(insertion_index, *fci);
         Ok(())
     }
 
@@ -103,15 +104,12 @@ impl ReachabilityStore for MemoryReachabilityStore {
         Ok(self.get_data(hash)?.parent)
     }
 
-    fn get_children(&self, hash: &DomainHash) -> Result<&[DomainHash], StoreError> {
-        Ok(self.get_data(hash)?.children.as_slice())
+    fn get_children(&self, hash: &DomainHash) -> Result<HashArray, StoreError> {
+        Ok(Rc::clone(&self.get_data(hash)?.children))
     }
 
-    fn get_future_covering_set(&self, hash: &DomainHash) -> Result<&[DomainHash], StoreError> {
-        Ok(self
-            .get_data(hash)?
-            .future_covering_set
-            .as_slice())
+    fn get_future_covering_set(&self, hash: &DomainHash) -> Result<HashArray, StoreError> {
+        Ok(Rc::clone(&self.get_data(hash)?.future_covering_set))
     }
 
     fn set_reindex_root(&mut self, root: &DomainHash) -> Result<(), StoreError> {
