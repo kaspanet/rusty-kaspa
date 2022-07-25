@@ -1,15 +1,13 @@
 use crate::domain::consensus::model::{
-    api::hash::DomainHash,
-    stores::{errors::StoreError, reachability::ReachabilityStore},
+    api::hash::Hash,
+    stores::{errors::StoreResult, reachability::ReachabilityStore},
 };
 
 use super::interval::Interval;
 
-pub(super) type StoreResult<T> = std::result::Result<T, StoreError>;
-
 impl dyn ReachabilityStore + '_ {
     /// Returns the reachability allocation capacity for children of `block`
-    pub(super) fn interval_children_capacity(&self, block: &DomainHash) -> StoreResult<Interval> {
+    pub(super) fn interval_children_capacity(&self, block: &Hash) -> StoreResult<Interval> {
         // The interval of a block should *strictly* contain the intervals of its 
         // tree children, hence we subtract 1 from the end of the range.
         Ok(self.get_interval(block)?.decrease_end(1))
@@ -17,7 +15,7 @@ impl dyn ReachabilityStore + '_ {
 
     /// Returns the available interval to allocate for tree children, taken from the 
     /// beginning of children allocation capacity
-    pub(super) fn interval_remaining_before(&self, block: &DomainHash) -> StoreResult<Interval> {
+    pub(super) fn interval_remaining_before(&self, block: &Hash) -> StoreResult<Interval> {
         let alloc_capacity = self.interval_children_capacity(block)?;
         match self.get_children(block)?.first() {
             Some(first_child) => {
@@ -30,7 +28,7 @@ impl dyn ReachabilityStore + '_ {
 
     /// Returns the available interval to allocate for tree children, taken from the 
     /// end of children allocation capacity
-    pub(super) fn interval_remaining_after(&self, block: &DomainHash) -> StoreResult<Interval> {
+    pub(super) fn interval_remaining_after(&self, block: &Hash) -> StoreResult<Interval> {
         let alloc_capacity = self.interval_children_capacity(block)?;
         match self.get_children(block)?.last() {
             Some(last_child) => {

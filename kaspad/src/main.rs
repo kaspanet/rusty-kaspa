@@ -14,7 +14,7 @@ use kaspa_core::*;
 
 mod domain;
 
-use domain::consensus::model::api::hash::DomainHash;
+use domain::consensus::model::api::hash::Hash;
 use domain::consensus::processes::reachability::interval;
 
 const SERVICE_THREADS: usize = 1;
@@ -29,7 +29,7 @@ pub fn main() {
     println!("{:?}", interval);
 
     let hash_str = "8e40af02265360d59f4ecf9ae9ebf8f00a3118408f5a9cdcbcc9c0f93642f3af";
-    let hash = DomainHash::from_str(hash_str).unwrap();
+    let hash = Hash::from_str(hash_str).unwrap();
     println!("{:?}", hash);
 
     let core = Arc::new(Core::new());

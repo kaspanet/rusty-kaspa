@@ -1,12 +1,12 @@
 use super::*;
-use crate::domain::consensus::model::{api::hash::DomainHash, stores::reachability::ReachabilityStore};
+use crate::domain::consensus::model::{api::hash::Hash, stores::reachability::ReachabilityStore};
 
 pub fn init(store: &mut dyn ReachabilityStore) -> Result<()> {
     todo!()
 }
 
 pub fn add_block(
-    store: &mut dyn ReachabilityStore, block: &DomainHash, selected_parent: &DomainHash, mergeset: &[DomainHash],
+    store: &mut dyn ReachabilityStore, block: &Hash, selected_parent: &Hash, mergeset: &[Hash],
     is_selected_leaf: bool,
 ) -> Result<()> {
     let remaining = store.interval_remaining_after(selected_parent)?;
@@ -38,21 +38,21 @@ pub fn add_block(
 }
 
 pub fn is_strict_chain_ancestor_of(
-    store: &dyn ReachabilityStore, anchor: &DomainHash, queried: &DomainHash,
+    store: &dyn ReachabilityStore, anchor: &Hash, queried: &Hash,
 ) -> Result<bool> {
     todo!()
 }
 
-pub fn is_chain_ancestor_of(store: &dyn ReachabilityStore, anchor: &DomainHash, queried: &DomainHash) -> Result<bool> {
+pub fn is_chain_ancestor_of(store: &dyn ReachabilityStore, anchor: &Hash, queried: &Hash) -> Result<bool> {
     todo!()
 }
 
-pub fn is_dag_ancestor_of(store: &dyn ReachabilityStore, anchor: &DomainHash, queried: &DomainHash) -> Result<bool> {
+pub fn is_dag_ancestor_of(store: &dyn ReachabilityStore, anchor: &Hash, queried: &Hash) -> Result<bool> {
     todo!()
 }
 
 pub fn get_next_chain_ancestor(
-    store: &dyn ReachabilityStore, descendant: &DomainHash, ancestor: &DomainHash,
-) -> Result<DomainHash> {
+    store: &dyn ReachabilityStore, descendant: &Hash, ancestor: &Hash,
+) -> Result<Hash> {
     todo!()
 }

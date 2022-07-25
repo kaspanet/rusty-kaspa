@@ -21,3 +21,5 @@ pub enum StoreError {
     // #[error("unknown data store error")]
     // Unknown,
 }
+
+pub type StoreResult<T> = std::result::Result<T, StoreError>;

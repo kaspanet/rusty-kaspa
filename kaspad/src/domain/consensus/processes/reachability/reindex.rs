@@ -1,21 +1,21 @@
 use std::collections::{HashMap, VecDeque};
 
 use super::*;
-use crate::domain::consensus::model::{api::hash::DomainHash, stores::reachability::ReachabilityStore};
+use crate::domain::consensus::model::{api::hash::Hash, stores::reachability::ReachabilityStore};
 
 const DEFAULT_REINDEX_DEPTH: u64 = 200;
 const DEFAULT_REINDEX_SLACK: u64 = 1 << 12;
 
 struct ReindexOperationContext<'a> {
     store: &'a mut dyn ReachabilityStore,
-    root: DomainHash,
-    subtree_sizes: HashMap<DomainHash, u64>,
+    root: Hash,
+    subtree_sizes: HashMap<Hash, u64>,
     depth: u64,
     slack: u64,
 }
 
 impl<'a> ReindexOperationContext<'a> {
-    fn new(store: &'a mut dyn ReachabilityStore, root: &DomainHash, depth: Option<u64>, slack: Option<u64>) -> Self {
+    fn new(store: &'a mut dyn ReachabilityStore, root: &Hash, depth: Option<u64>, slack: Option<u64>) -> Self {
         Self {
             store,
             root: *root,
@@ -25,7 +25,7 @@ impl<'a> ReindexOperationContext<'a> {
         }
     }
 
-    fn reindex_intervals(&mut self, new_child: &DomainHash) -> Result<()> {
+    fn reindex_intervals(&mut self, new_child: &Hash) -> Result<()> {
         let mut current = *new_child;
         loop {
             let current_interval = self.store.get_interval(&current)?;
@@ -82,13 +82,13 @@ impl<'a> ReindexOperationContext<'a> {
     // intermediate updates from leaves via parent chains until all
     // size information is gathered at the root of the operation
     // (i.e. at block).
-    fn count_subtrees(&mut self, block: DomainHash) -> Result<()> {
+    fn count_subtrees(&mut self, block: Hash) -> Result<()> {
         if self.subtree_sizes.contains_key(&block) {
             return Ok(());
         }
 
-        let mut queue = VecDeque::<DomainHash>::new();
-        let mut counts = HashMap::<DomainHash, u64>::new();
+        let mut queue = VecDeque::<Hash>::new();
+        let mut counts = HashMap::<Hash, u64>::new();
 
         queue.push_back(block);
         while !queue.is_empty() {
@@ -144,11 +144,11 @@ impl<'a> ReindexOperationContext<'a> {
     // propagate_interval propagates a new interval using a BFS traversal.
     // Subtree intervals are recursively allocated according to subtree sizes and
     // the allocation rule in Interval::split_exponential.
-    fn propagate_interval(&mut self, block: DomainHash) -> Result<()> {
+    fn propagate_interval(&mut self, block: Hash) -> Result<()> {
         // Make sure subtrees are counted before propagating
         self.count_subtrees(block)?;
 
-        let mut queue = VecDeque::<DomainHash>::new();
+        let mut queue = VecDeque::<Hash>::new();
         queue.push_back(block);
         while !queue.is_empty() {
             let current = queue.pop_front().unwrap();
@@ -170,7 +170,7 @@ impl<'a> ReindexOperationContext<'a> {
     }
 
     fn reindex_intervals_earlier_than_root(
-        &mut self, allocation_block: DomainHash, common_ancestor: DomainHash, required_allocation: u64,
+        &mut self, allocation_block: Hash, common_ancestor: Hash, required_allocation: u64,
     ) -> Result<()> {
         todo!()
     }

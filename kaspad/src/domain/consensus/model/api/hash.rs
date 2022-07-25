@@ -7,31 +7,31 @@ use std::str::FromStr;
 const DOMAIN_HASH_SIZE: usize = 32;
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Hash, Default)]
-pub struct DomainHash {
+pub struct Hash {
     byte_array: [u8; DOMAIN_HASH_SIZE],
 }
 
-impl ToString for DomainHash {
+impl ToString for Hash {
     fn to_string(&self) -> String {
         hex::encode(self.byte_array)
     }
 }
 
-impl FromStr for DomainHash {
+impl FromStr for Hash {
     type Err = hex::FromHexError;
 
     fn from_str(hash_str: &str) -> Result<Self, Self::Err> {
         let mut byte_array = [0u8; DOMAIN_HASH_SIZE];
         hex::decode_to_slice(hash_str, &mut byte_array)?;
-        Ok(DomainHash { byte_array })
+        Ok(Hash { byte_array })
     }
 }
 
-impl DomainHash {
+impl Hash {
     pub fn from_u64(word: u64) -> Self {
         let mut byte_array = [0u8; DOMAIN_HASH_SIZE];
         byte_array[0..size_of::<u64>()].copy_from_slice(&word.to_le_bytes());
-        DomainHash { byte_array }
+        Hash { byte_array }
     }
 
     pub fn has_default_value(&self) -> bool {
@@ -41,7 +41,7 @@ impl DomainHash {
     #[allow(dead_code)]
     pub fn from_str_slow(hash_str: &str) -> Result<Self, hex::FromHexError> {
         match hex::decode(hash_str)?.try_into() {
-            Ok(byte_array) => Ok(DomainHash { byte_array }),
+            Ok(byte_array) => Ok(Hash { byte_array }),
             Err(_) => Err(hex::FromHexError::InvalidStringLength),
         }
     }
@@ -54,20 +54,20 @@ mod tests {
     #[test]
     fn test_hash_basics() {
         let hash_str = "8e40af02265360d59f4ecf9ae9ebf8f00a3118408f5a9cdcbcc9c0f93642f3af";
-        let hash = DomainHash::from_str(hash_str).unwrap();
+        let hash = Hash::from_str(hash_str).unwrap();
         assert_eq!(hash_str, hash.to_string());
         assert!(!hash.has_default_value());
 
-        let hash2 = DomainHash::from_str(hash_str).unwrap();
+        let hash2 = Hash::from_str(hash_str).unwrap();
         assert_eq!(hash, hash2);
 
-        let hash3 = DomainHash::from_str("8e40af02265360d59f4ecf9ae9ebf8f00a3118408f5a9cdcbcc9c0f93642f3ab").unwrap();
+        let hash3 = Hash::from_str("8e40af02265360d59f4ecf9ae9ebf8f00a3118408f5a9cdcbcc9c0f93642f3ab").unwrap();
         assert_ne!(hash2, hash3);
 
         let odd_str = "8e40af02265360d59f4ecf9ae9ebf8f00a3118408f5a9cdcbcc9c0f93642f3a";
         let short_str = "8e40af02265360d59f4ecf9ae9ebf8f00a3118408f5a9cdcbcc9c0f93642f3";
 
-        match DomainHash::from_str(odd_str) {
+        match Hash::from_str(odd_str) {
             Ok(_) => panic!("Expected hex error"),
             Err(e) => match e {
                 hex::FromHexError::OddLength => (),
@@ -75,7 +75,7 @@ mod tests {
             },
         }
 
-        match DomainHash::from_str(short_str) {
+        match Hash::from_str(short_str) {
             Ok(_) => panic!("Expected hex error"),
             Err(e) => match e {
                 hex::FromHexError::InvalidStringLength => (),
@@ -86,7 +86,7 @@ mod tests {
 
     #[test]
     fn test_from_u64() {
-        let _ = DomainHash::from_u64(7);
+        let _ = Hash::from_u64(7);
         // println!("{}", hash.to_string());
     }
 }
@@ -102,7 +102,7 @@ mod benches {
         bh.iter(|| {
             for _ in 0..1000 {
                 let hash_str = "8e40af02265360d59f4ecf9ae9ebf8f00a3118408f5a9cdcbcc9c0f93642f3af";
-                black_box(DomainHash::from_str_slow(hash_str).unwrap());
+                black_box(Hash::from_str_slow(hash_str).unwrap());
             }
         });
     }
@@ -112,7 +112,7 @@ mod benches {
         bh.iter(|| {
             for _ in 0..1000 {
                 let hash_str = "8e40af02265360d59f4ecf9ae9ebf8f00a3118408f5a9cdcbcc9c0f93642f3af";
-                black_box(DomainHash::from_str(hash_str).unwrap());
+                black_box(Hash::from_str(hash_str).unwrap());
             }
         });
     }
