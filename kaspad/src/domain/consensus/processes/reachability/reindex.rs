@@ -15,27 +15,27 @@ struct ReindexOperationContext<'a> {
 }
 
 impl<'a> ReindexOperationContext<'a> {
-    fn new(store: &'a mut dyn ReachabilityStore, root: &Hash, depth: Option<u64>, slack: Option<u64>) -> Self {
+    fn new(store: &'a mut dyn ReachabilityStore, root: Hash, depth: Option<u64>, slack: Option<u64>) -> Self {
         Self {
             store,
-            root: *root,
+            root,
             subtree_sizes: HashMap::new(),
             depth: depth.unwrap_or(DEFAULT_REINDEX_DEPTH),
             slack: slack.unwrap_or(DEFAULT_REINDEX_SLACK),
         }
     }
 
-    fn reindex_intervals(&mut self, new_child: &Hash) -> Result<()> {
-        let mut current = *new_child;
+    fn reindex_intervals(&mut self, new_child: Hash) -> Result<()> {
+        let mut current = new_child;
         loop {
-            let current_interval = self.store.get_interval(&current)?;
+            let current_interval = self.store.get_interval(current)?;
             self.count_subtrees(current)?;
 
             if current_interval.size() >= self.subtree_sizes[&current] {
                 break;
             }
 
-            let parent = self.store.get_parent(&current)?;
+            let parent = self.store.get_parent(current)?;
 
             if parent.is_default() {
                 // TODO: comment and add detailed inner error
@@ -92,7 +92,7 @@ impl<'a> ReindexOperationContext<'a> {
 
         while !queue.is_empty() {
             let mut current = queue.pop_front().unwrap();
-            let children = self.store.get_children(&current)?;
+            let children = self.store.get_children(current)?;
             if children.is_empty() {
                 // We reached a leaf
                 self.subtree_sizes.insert(current, 1);
@@ -107,7 +107,7 @@ impl<'a> ReindexOperationContext<'a> {
             // We reached a leaf or a pre-calculated subtree.
             // Push information up
             while current != block {
-                current = self.store.get_parent(&current)?;
+                current = self.store.get_parent(current)?;
 
                 // If `current` has default value, it means that the previous
                 // `current` was the (virtual) genesis block -- the only block that
@@ -117,7 +117,7 @@ impl<'a> ReindexOperationContext<'a> {
                 }
 
                 let count_entry = counts.entry(current).or_insert(0);
-                let children = self.store.get_children(&current)?;
+                let children = self.store.get_children(current)?;
 
                 *count_entry += 1;
                 if *count_entry < children.len() as u64 {
@@ -151,15 +151,15 @@ impl<'a> ReindexOperationContext<'a> {
         queue.push_back(block);
         while !queue.is_empty() {
             let current = queue.pop_front().unwrap();
-            let children = self.store.get_children(&current)?;
+            let children = self.store.get_children(current)?;
             if !children.is_empty() {
                 let sizes: Vec<u64> = children
                     .iter()
                     .map(|c| self.subtree_sizes[c])
                     .collect();
-                let interval = self.store.interval_children_capacity(&current)?;
+                let interval = self.store.interval_children_capacity(current)?;
                 let intervals = interval.split_exponential(&sizes);
-                for (c, ci) in children.iter().zip(intervals) {
+                for (c, ci) in children.iter().cloned().zip(intervals) {
                     self.store.set_interval(c, ci)?;
                 }
                 queue.extend(children.iter());
@@ -172,5 +172,17 @@ impl<'a> ReindexOperationContext<'a> {
         &mut self, allocation_block: Hash, common_ancestor: Hash, required_allocation: u64,
     ) -> Result<()> {
         todo!()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::consensus::model::stores::reachability::MemoryReachabilityStore;
+
+    #[test]
+    fn test_count_subtrees() {
+        let mut store = MemoryReachabilityStore::new();
+        // store.insert(Hash::new_unique(), parent, interval)
     }
 }

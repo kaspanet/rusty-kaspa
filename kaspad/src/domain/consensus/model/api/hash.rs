@@ -26,6 +26,18 @@ impl FromStr for Hash {
 }
 
 impl Hash {
+    pub fn new(bytes: &[u8]) -> Self {
+        Self(<[u8; HASH_SIZE]>::try_from(<&[u8]>::clone(&bytes)).expect("Slice must have the length of Hash"))
+    }
+
+    pub fn new_unique() -> Self {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static COUNTER: AtomicU64 = AtomicU64::new(1);
+
+        let c = COUNTER.fetch_add(1, Ordering::Relaxed);
+        Self::from_u64(c)
+    }
+
     pub fn from_u64(word: u64) -> Self {
         let mut bytes = [0u8; HASH_SIZE];
         bytes[0..size_of::<u64>()].copy_from_slice(&word.to_le_bytes());
@@ -57,6 +69,8 @@ mod tests {
         let hash = Hash::from_str(hash_str).unwrap();
         assert_eq!(hash_str, hash.to_string());
         assert!(!hash.is_default());
+
+        assert_ne!(Hash::new_unique(), Hash::new_unique());
 
         let hash2 = Hash::from_str(hash_str).unwrap();
         assert_eq!(hash, hash2);

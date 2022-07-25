@@ -6,7 +6,7 @@ pub fn init(store: &mut dyn ReachabilityStore) -> Result<()> {
 }
 
 pub fn add_block(
-    store: &mut dyn ReachabilityStore, block: &Hash, selected_parent: &Hash, mergeset: &[Hash], is_selected_leaf: bool,
+    store: &mut dyn ReachabilityStore, block: Hash, selected_parent: Hash, mergeset: &[Hash], is_selected_leaf: bool,
 ) -> Result<()> {
     let remaining = store.interval_remaining_after(selected_parent)?;
 
