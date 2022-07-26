@@ -141,8 +141,7 @@ impl<'a> ReindexOperationContext<'a> {
         // Make sure subtrees are counted before propagating
         self.count_subtrees(block)?;
 
-        let mut queue = VecDeque::<Hash>::new();
-        queue.push_back(block);
+        let mut queue = VecDeque::<Hash>::from([block]);
         while !queue.is_empty() {
             let current = queue.pop_front().unwrap();
             let children = self.store.get_children(current)?;
@@ -228,7 +227,7 @@ mod tests {
             .unwrap();
         ctx.propagate_interval(root).unwrap();
 
-        // Assert
+        // Assert intervals manually
         let expected_intervals = [
             (1u64, (1u64, 8u64)),
             (2, (1, 6)),
@@ -244,5 +243,7 @@ mod tests {
             .collect::<Vec<(u64, (u64, u64))>>();
         assert_eq!(actual_intervals, expected_intervals);
 
+        // Assert intervals follow the general rules
+        inquirer::tests::validate_intervals(store.as_ref(), root).unwrap();
     }
 }

@@ -20,6 +20,7 @@ impl From<Interval> for (u64, u64) {
 
 impl Interval {
     pub fn new(start: u64, end: u64) -> Self {
+        debug_assert!(end >= start - 1); // TODO: make sure this is actually debug-only
         Interval { start, end }
     }
 
@@ -34,6 +35,7 @@ impl Interval {
     pub fn size(&self) -> u64 {
         // Empty intervals are indicated by `self.end == self.start - 1`, so
         // we avoid the overflow by first adding 1
+        // Note: this function will panic if `self.end < self.start - 1` due to overflow
         (self.end + 1) - self.start
     }
 
@@ -136,8 +138,12 @@ impl Interval {
         self.split_exact(biased_sizes.as_slice())
     }
 
-    pub fn contains(&self, other: &Self) -> bool {
+    pub fn contains(&self, other: Self) -> bool {
         self.start <= other.start && other.end <= self.end
+    }
+
+    pub fn strictly_contains(&self, other: Self) -> bool {
+        self.start <= other.start && other.end < self.end
     }
 }
 
@@ -233,12 +239,12 @@ mod tests {
 
     #[test]
     fn test_contains() {
-        assert!(Interval::new(1, 100).contains(&Interval::new(1, 100)));
-        assert!(Interval::new(1, 100).contains(&Interval::new(1, 99)));
-        assert!(Interval::new(1, 100).contains(&Interval::new(2, 100)));
-        assert!(Interval::new(1, 100).contains(&Interval::new(2, 99)));
-        assert!(!Interval::new(1, 100).contains(&Interval::new(50, 150)));
-        assert!(!Interval::new(1, 100).contains(&Interval::new(150, 160)));
+        assert!(Interval::new(1, 100).contains(Interval::new(1, 100)));
+        assert!(Interval::new(1, 100).contains(Interval::new(1, 99)));
+        assert!(Interval::new(1, 100).contains(Interval::new(2, 100)));
+        assert!(Interval::new(1, 100).contains(Interval::new(2, 99)));
+        assert!(!Interval::new(1, 100).contains(Interval::new(50, 150)));
+        assert!(!Interval::new(1, 100).contains(Interval::new(150, 160)));
     }
 
     #[test]

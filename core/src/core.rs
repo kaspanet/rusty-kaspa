@@ -8,6 +8,12 @@ pub struct Core {
     services: Mutex<Vec<Arc<dyn Service>>>,
 }
 
+impl Default for Core {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Core {
     pub fn new() -> Core {
         Core { keep_running: AtomicBool::new(true), services: Mutex::new(Vec::new()) }

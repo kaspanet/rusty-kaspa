@@ -42,6 +42,12 @@ pub struct MemoryReachabilityStore {
     reindex_root: Option<Hash>,
 }
 
+impl Default for MemoryReachabilityStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MemoryReachabilityStore {
     pub fn new() -> Self {
         Self { map: HashMap::new(), reindex_root: None }
