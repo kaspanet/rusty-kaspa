@@ -1,7 +1,7 @@
 use std::collections::{HashMap, VecDeque};
 
 use super::*;
-use crate::domain::consensus::model::{api::hash::Hash, stores::reachability::ReachabilityStore};
+use crate::model::{api::hash::Hash, stores::reachability::ReachabilityStore};
 
 const DEFAULT_REINDEX_DEPTH: u64 = 200;
 const DEFAULT_REINDEX_SLACK: u64 = 1 << 12;
@@ -66,7 +66,6 @@ impl<'a> ReindexOperationContext<'a> {
     /// and populates self.subtree_sizes with the results.
     /// It is equivalent to the following recursive implementation:
     ///
-    /// ```
     /// fn count_subtrees(&mut self, block: Hash) -> Result<u64> {
     ///     let mut subtree_size = 0u64;
     ///     for child in self.store.get_children(block)?.iter().cloned() {
@@ -75,7 +74,6 @@ impl<'a> ReindexOperationContext<'a> {
     ///     self.subtree_sizes.insert(block, subtree_size + 1);
     ///     Ok(subtree_size + 1)
     /// }
-    /// ```
     ///
     /// However, we are expecting (linearly) deep trees, and so a
     /// recursive stack-based approach is inefficient and will hit
@@ -174,9 +172,7 @@ impl<'a> ReindexOperationContext<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::consensus::{
-        model::stores::reachability::MemoryReachabilityStore, processes::reachability::interval::Interval,
-    };
+    use crate::{model::stores::reachability::MemoryReachabilityStore, processes::reachability::interval::Interval};
 
     struct StoreBuilder<'a> {
         store: &'a mut dyn ReachabilityStore,
