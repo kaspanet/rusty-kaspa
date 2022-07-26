@@ -1,6 +1,6 @@
-///
-/// Test utils shared across the super module
-///
+//!
+//! Test utils shared across the super module
+//!
 use crate::{
     model::{
         api::hash::Hash,
@@ -25,7 +25,7 @@ impl<'a> StoreBuilder<'a> {
         self.store
             .insert(hash, parent, Interval::empty())
             .unwrap();
-        if !parent.is_default() {
+        if !parent.is_zero() {
             self.store.append_child(parent, hash).unwrap();
         }
         self

@@ -1,8 +1,15 @@
-use super::{reindex::ReindexOperationContext, *};
+use super::interval::Interval;
+use super::{tree::*, *};
+use crate::model;
 use crate::model::{api::hash::Hash, stores::reachability::ReachabilityStore};
 
 pub fn init(store: &mut dyn ReachabilityStore) -> Result<()> {
-    todo!()
+    if store.has(model::ORIGIN)? {
+        return Ok(());
+    }
+    store.insert(model::ORIGIN, Hash::ZERO, Interval::maximal())?;
+    store.set_reindex_root(model::ORIGIN)?;
+    Ok(())
 }
 
 pub fn add_block(
@@ -24,28 +31,6 @@ pub fn add_block(
     Ok(())
 }
 
-fn add_tree_child(store: &mut dyn ReachabilityStore, new_child: Hash, parent: Hash) -> Result<()> {
-    // Get the remaining interval capacity
-    let remaining = store.interval_remaining_after(parent)?;
-    // Append the new child to `parent.children`
-    store.append_child(parent, new_child)?;
-    if remaining.is_empty() {
-        // Init with the empty interval.
-        // Note: internal logic relies on interval being this specific interval
-        //       which comes exactly at the end of current capacity
-        store.insert(new_child, parent, remaining)?;
-
-        // Start a reindex operation (TODO: add timing)
-        let reindex_root = store.get_reindex_root()?;
-        let mut ctx = ReindexOperationContext::new(store, reindex_root, None, None);
-        ctx.reindex_intervals(new_child)?;
-    } else {
-        let allocated = remaining.split_half().0;
-        store.insert(new_child, parent, allocated)?;
-    };
-    Ok(())
-}
-
 pub fn is_strict_chain_ancestor_of(store: &dyn ReachabilityStore, anchor: &Hash, queried: &Hash) -> Result<bool> {
     todo!()
 }
@@ -63,7 +48,7 @@ pub fn get_next_chain_ancestor(store: &dyn ReachabilityStore, descendant: &Hash,
 }
 
 #[cfg(test)]
-pub(super) mod tests {
+mod tests {
     use super::super::tests::*;
     use super::*;
     use crate::{model::stores::reachability::MemoryReachabilityStore, processes::reachability::interval::Interval};
@@ -91,7 +76,7 @@ pub(super) mod tests {
         // Init
         let root: Hash = 1.into();
         store
-            .insert(root, Hash::DEFAULT, Interval::maximal())
+            .insert(root, Hash::ZERO, Interval::maximal())
             .unwrap();
 
         // Act

@@ -39,7 +39,7 @@ impl<'a> ReindexOperationContext<'a> {
 
             let parent = self.store.get_parent(current)?;
 
-            if parent.is_default() {
+            if parent.is_zero() {
                 // TODO: comment and add detailed inner error
                 return Err(ReachabilityError::ReachabilityDataOverflowError);
             }
@@ -183,7 +183,7 @@ mod tests {
         // Arrange
         let root: Hash = 1.into();
         StoreBuilder::new(store.as_mut())
-            .add_block(root, Hash::DEFAULT)
+            .add_block(root, Hash::ZERO)
             .add_block(2.into(), root)
             .add_block(3.into(), 2.into())
             .add_block(4.into(), 2.into())

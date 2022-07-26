@@ -2,11 +2,11 @@ mod extensions;
 pub mod inquirer;
 pub mod interval;
 mod reindex;
-pub(self) mod tests;
-
-use thiserror::Error;
+mod tests;
+mod tree;
 
 use crate::model::stores::errors::StoreError;
+use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum ReachabilityError {
