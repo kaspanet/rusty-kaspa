@@ -1,6 +1,6 @@
 use std::fmt::{Display, Formatter};
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct Interval {
     pub start: u64,
     pub end: u64,
@@ -29,6 +29,10 @@ impl Interval {
         // Empty intervals are indicated by `self.end == self.start - 1`, so
         // we avoid the overflow by first adding 1
         (self.end + 1) - self.start
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.size() == 0
     }
 
     pub fn increase(&self, offset: u64) -> Self {

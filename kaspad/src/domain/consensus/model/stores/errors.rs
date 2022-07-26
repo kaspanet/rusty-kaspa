@@ -2,8 +2,11 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum StoreError {
-    #[error("Key not found in store")]
+    #[error("key not found in store")]
     KeyNotFound,
+
+    #[error("key already exists in store")]
+    KeyAlreadyExists,
     // More usage examples:
     //
     // #[error("data store disconnected")]
@@ -18,3 +21,5 @@ pub enum StoreError {
     // #[error("unknown data store error")]
     // Unknown,
 }
+
+pub type StoreResult<T> = std::result::Result<T, StoreError>;
