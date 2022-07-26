@@ -1,5 +1,4 @@
 use hex;
-use std::convert::TryInto;
 use std::fmt::{Debug, Formatter};
 use std::mem::size_of;
 use std::str::FromStr;
@@ -66,14 +65,6 @@ impl Hash {
 
     pub fn is_default(&self) -> bool {
         self.eq(&Self::DEFAULT)
-    }
-
-    #[allow(dead_code)]
-    pub fn from_str_slow(hash_str: &str) -> Result<Self, hex::FromHexError> {
-        match hex::decode(hash_str)?.try_into() {
-            Ok(bytes) => Ok(Hash(bytes)),
-            Err(_) => Err(hex::FromHexError::InvalidStringLength),
-        }
     }
 }
 
