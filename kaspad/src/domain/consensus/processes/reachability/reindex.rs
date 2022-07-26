@@ -57,31 +57,34 @@ impl<'a> ReindexOperationContext<'a> {
         self.propagate_interval(current)
     }
 
-    //
-    // Core (BFS) algorithms used during reindexing (see `count_subtrees` and `propagate_interval` below)
-    //
+    ///
+    /// Core (BFS) algorithms used during reindexing (see `count_subtrees` and `propagate_interval` below)
+    ///
 
-    // count_subtrees counts the size of each subtree under this block,
-    // and populates self.subtree_sizes with the results.
-    // It is equivalent to the following recursive implementation:
-    //
-    // fn count_subtrees(&mut self, block: DomainHash) -> Result<u64> {
-    //     let mut subtree_size = 0u64;
-    //     for child in self.store.get_children(&block)?.to_vec() {
-    //         subtree_size += self.count_subtrees(child)?;
-    //     }
-    //     self.subtree_sizes.insert(block, subtree_size + 1);
-    //     Ok(subtree_size + 1)
-    // }
-    //
-    // However, we are expecting (linearly) deep trees, and so a
-    // recursive stack-based approach is inefficient and will hit
-    // recursion limits. Instead, the same logic was implemented
-    // using a (queue-based) BFS method. At a high level, the
-    // algorithm uses BFS for reaching all leaves and pushes
-    // intermediate updates from leaves via parent chains until all
-    // size information is gathered at the root of the operation
-    // (i.e. at block).
+    ///
+    /// count_subtrees counts the size of each subtree under this block,
+    /// and populates self.subtree_sizes with the results.
+    /// It is equivalent to the following recursive implementation:
+    ///
+    /// ```
+    /// fn count_subtrees(&mut self, block: Hash) -> Result<u64> {
+    ///     let mut subtree_size = 0u64;
+    ///     for child in self.store.get_children(block)?.iter().cloned() {
+    ///         subtree_size += self.count_subtrees(child)?;
+    ///     }
+    ///     self.subtree_sizes.insert(block, subtree_size + 1);
+    ///     Ok(subtree_size + 1)
+    /// }
+    /// ```
+    ///
+    /// However, we are expecting (linearly) deep trees, and so a
+    /// recursive stack-based approach is inefficient and will hit
+    /// recursion limits. Instead, the same logic was implemented
+    /// using a (queue-based) BFS method. At a high level, the
+    /// algorithm uses BFS for reaching all leaves and pushes
+    /// intermediate updates from leaves via parent chains until all
+    /// size information is gathered at the root of the operation
+    /// (i.e. at block).
     fn count_subtrees(&mut self, block: Hash) -> Result<()> {
         if self.subtree_sizes.contains_key(&block) {
             return Ok(());
@@ -109,18 +112,11 @@ impl<'a> ReindexOperationContext<'a> {
             while current != block {
                 current = self.store.get_parent(current)?;
 
-                // If `current` has default value, it means that the previous
-                // `current` was the (virtual) genesis block -- the only block that
-                // does not have parents
-                if current.is_default() {
-                    break;
-                }
-
-                let count_entry = counts.entry(current).or_insert(0);
+                let count = counts.entry(current).or_insert(0);
                 let children = self.store.get_children(current)?;
 
-                *count_entry += 1;
-                if *count_entry < children.len() as u64 {
+                *count += 1;
+                if *count < children.len() as u64 {
                     // Not all subtrees of the current block are ready
                     break;
                 }
@@ -140,9 +136,9 @@ impl<'a> ReindexOperationContext<'a> {
         Ok(())
     }
 
-    // propagate_interval propagates a new interval using a BFS traversal.
-    // Subtree intervals are recursively allocated according to subtree sizes and
-    // the allocation rule in Interval::split_exponential.
+    /// propagate_interval propagates a new interval using a BFS traversal.
+    /// Subtree intervals are recursively allocated according to subtree sizes and
+    /// the allocation rule in Interval::split_exponential.
     fn propagate_interval(&mut self, block: Hash) -> Result<()> {
         // Make sure subtrees are counted before propagating
         self.count_subtrees(block)?;
@@ -229,6 +225,5 @@ mod tests {
             .collect::<HashMap<Hash, u64>>();
 
         assert_eq!(expected, ctx.subtree_sizes);
-        // println!("{:?}", ctx.subtree_sizes);
     }
 }
