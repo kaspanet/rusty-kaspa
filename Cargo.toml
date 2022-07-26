@@ -1,22 +1,8 @@
-[package]
-name = "kaspa"
-version = "0.1.0"
-description = "Kaspa"
-edition = "2021"
-authors = ["Kaspa Developers"]
-
 [workspace]
 members = [
     "core",
     "wallet",
-    "wallet-cli",
+    "consensus",
     "kaspad",
     "wasm",
 ]
-
-
-[dependencies]
-tide = "0.16.0"
-async-std = { version = "1.8.0", features = ["attributes"] }
-serde = { version = "1.0", features = ["derive"] }
-# flow-server = {path="../flow-server"}

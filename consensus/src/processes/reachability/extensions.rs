@@ -1,4 +1,4 @@
-use crate::domain::consensus::model::{
+use crate::model::{
     api::hash::Hash,
     stores::{errors::StoreResult, reachability::ReachabilityStore},
 };

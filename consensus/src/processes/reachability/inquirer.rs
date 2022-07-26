@@ -1,5 +1,5 @@
 use super::*;
-use crate::domain::consensus::model::{api::hash::Hash, stores::reachability::ReachabilityStore};
+use crate::model::{api::hash::Hash, stores::reachability::ReachabilityStore};
 
 pub fn init(store: &mut dyn ReachabilityStore) -> Result<()> {
     todo!()

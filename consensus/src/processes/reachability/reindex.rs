@@ -1,7 +1,7 @@
 use std::collections::{HashMap, VecDeque};
 
 use super::*;
-use crate::domain::consensus::model::{api::hash::Hash, stores::reachability::ReachabilityStore};
+use crate::model::{api::hash::Hash, stores::reachability::ReachabilityStore};
 
 const DEFAULT_REINDEX_DEPTH: u64 = 200;
 const DEFAULT_REINDEX_SLACK: u64 = 1 << 12;
@@ -174,9 +174,7 @@ impl<'a> ReindexOperationContext<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::consensus::{
-        model::stores::reachability::MemoryReachabilityStore, processes::reachability::interval::Interval,
-    };
+    use crate::{model::stores::reachability::MemoryReachabilityStore, processes::reachability::interval::Interval};
 
     struct StoreBuilder<'a> {
         store: &'a mut dyn ReachabilityStore,
