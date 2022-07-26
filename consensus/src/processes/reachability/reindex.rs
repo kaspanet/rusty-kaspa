@@ -49,7 +49,7 @@ impl<'a> ReindexOperationContext<'a> {
                 return Err(ReachabilityError::ReachabilityDataOverflowError);
             }
 
-            if inquirer::is_strict_chain_ancestor_of(self.store, &parent, &self.root)? {
+            if inquirer::is_strict_chain_ancestor_of(self.store, parent, self.root)? {
                 return self.reindex_intervals_earlier_than_root(current, parent, self.subtree_sizes[&current]);
             }
 

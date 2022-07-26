@@ -2,8 +2,8 @@ use std::fmt::{Display, Formatter};
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct Interval {
-    pub start: u64,
-    pub end: u64,
+    pub(super) start: u64,
+    pub(super) end: u64,
 }
 
 impl Display for Interval {
