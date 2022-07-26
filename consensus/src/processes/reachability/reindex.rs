@@ -6,7 +6,7 @@ use crate::model::{api::hash::Hash, stores::reachability::ReachabilityStore};
 const DEFAULT_REINDEX_DEPTH: u64 = 200;
 const DEFAULT_REINDEX_SLACK: u64 = 1 << 12;
 
-struct ReindexOperationContext<'a> {
+pub(super) struct ReindexOperationContext<'a> {
     store: &'a mut dyn ReachabilityStore,
     root: Hash,
     subtree_sizes: HashMap<Hash, u64>,
@@ -15,7 +15,9 @@ struct ReindexOperationContext<'a> {
 }
 
 impl<'a> ReindexOperationContext<'a> {
-    fn new(store: &'a mut dyn ReachabilityStore, root: Hash, depth: Option<u64>, slack: Option<u64>) -> Self {
+    pub(super) fn new(
+        store: &'a mut dyn ReachabilityStore, root: Hash, depth: Option<u64>, slack: Option<u64>,
+    ) -> Self {
         Self {
             store,
             root,
@@ -25,7 +27,7 @@ impl<'a> ReindexOperationContext<'a> {
         }
     }
 
-    fn reindex_intervals(&mut self, new_child: Hash) -> Result<()> {
+    pub(super) fn reindex_intervals(&mut self, new_child: Hash) -> Result<()> {
         let mut current = new_child;
         loop {
             let current_interval = self.store.get_interval(current)?;
@@ -170,27 +172,9 @@ impl<'a> ReindexOperationContext<'a> {
 
 #[cfg(test)]
 mod tests {
+    use super::super::tests::*;
     use super::*;
     use crate::{model::stores::reachability::MemoryReachabilityStore, processes::reachability::interval::Interval};
-
-    struct StoreBuilder<'a> {
-        store: &'a mut dyn ReachabilityStore,
-    }
-
-    impl<'a> StoreBuilder<'a> {
-        fn new(store: &'a mut dyn ReachabilityStore) -> Self {
-            Self { store }
-        }
-        fn add_block(&mut self, hash: Hash, parent: Hash) -> &mut Self {
-            self.store
-                .insert(hash, parent, Interval::empty())
-                .unwrap();
-            if !parent.is_default() {
-                self.store.append_child(parent, hash).unwrap();
-            }
-            self
-        }
-    }
 
     #[test]
     fn test_count_subtrees() {
@@ -244,6 +228,6 @@ mod tests {
         assert_eq!(actual_intervals, expected_intervals);
 
         // Assert intervals follow the general rules
-        inquirer::tests::validate_intervals(store.as_ref(), root).unwrap();
+        validate_intervals(store.as_ref(), root).unwrap();
     }
 }

@@ -1,4 +1,4 @@
-use super::*;
+use super::{reindex::ReindexOperationContext, *};
 use crate::model::{api::hash::Hash, stores::reachability::ReachabilityStore};
 
 pub fn init(store: &mut dyn ReachabilityStore) -> Result<()> {
@@ -6,22 +6,10 @@ pub fn init(store: &mut dyn ReachabilityStore) -> Result<()> {
 }
 
 pub fn add_block(
-    store: &mut dyn ReachabilityStore, block: Hash, selected_parent: Hash, mergeset: &[Hash], is_selected_leaf: bool,
+    store: &mut dyn ReachabilityStore, new_block: Hash, selected_parent: Hash, mergeset: &[Hash],
+    is_selected_leaf: bool,
 ) -> Result<()> {
-    let remaining = store.interval_remaining_after(selected_parent)?;
-
-    store.append_child(selected_parent, block)?;
-
-    if remaining.is_empty() {
-        store.insert(block, selected_parent, remaining)?;
-
-        //
-        // Start reindex context
-        //
-    } else {
-        let allocated = remaining.split_half().0;
-        store.insert(block, selected_parent, allocated)?;
-    }
+    add_tree_child(store, new_block, selected_parent)?;
 
     // // Update the future covering set for blocks in the mergeset
     // for merged_block in mergeset {
@@ -33,6 +21,28 @@ pub fn add_block(
     //     self.update_reindex_root(store, &block)?;
     // }
 
+    Ok(())
+}
+
+fn add_tree_child(store: &mut dyn ReachabilityStore, new_child: Hash, parent: Hash) -> Result<()> {
+    // Get the remaining interval capacity
+    let remaining = store.interval_remaining_after(parent)?;
+    // Append the new child to `parent.children`
+    store.append_child(parent, new_child)?;
+    if remaining.is_empty() {
+        // Init with the empty interval.
+        // Note: internal logic relies on interval being this specific interval
+        //       which comes exactly at the end of current capacity
+        store.insert(new_child, parent, remaining)?;
+
+        // Start a reindex operation (TODO: add timing)
+        let reindex_root = store.get_reindex_root()?;
+        let mut ctx = ReindexOperationContext::new(store, reindex_root, None, None);
+        ctx.reindex_intervals(new_child)?;
+    } else {
+        let allocated = remaining.split_half().0;
+        store.insert(new_child, parent, allocated)?;
+    };
     Ok(())
 }
 
@@ -54,62 +64,47 @@ pub fn get_next_chain_ancestor(store: &dyn ReachabilityStore, descendant: &Hash,
 
 #[cfg(test)]
 pub(super) mod tests {
+    use super::super::tests::*;
     use super::*;
-    use crate::processes::reachability::interval::Interval;
-    use std::collections::VecDeque;
-    use thiserror::Error;
+    use crate::{model::stores::reachability::MemoryReachabilityStore, processes::reachability::interval::Interval};
 
-    #[derive(Error, Debug)]
-    pub enum TestError {
-        #[error("data store error")]
-        StoreError(#[from] StoreError),
-
-        #[error("empty interval")]
-        EmptyInterval(Hash, Interval),
-
-        #[error("sibling intervals are expected to be consecutive")]
-        NonConsecutiveSiblingIntervals(Interval, Interval),
-
-        #[error("child interval out of parent bounds")]
-        IntervalOutOfParentBounds { parent: Hash, child: Hash, parent_interval: Interval, child_interval: Interval },
+    /// A struct with fluent API to streamline tree building
+    struct TreeBuilder<'a> {
+        store: &'a mut dyn ReachabilityStore,
     }
 
-    pub fn validate_intervals(store: &dyn ReachabilityStore, root: Hash) -> std::result::Result<(), TestError> {
-        let mut queue = VecDeque::<Hash>::from([root]);
-        while !queue.is_empty() {
-            let parent = queue.pop_front().unwrap();
-            let children = store.get_children(parent)?;
-            queue.extend(children.iter());
-
-            let parent_interval = store.get_interval(parent)?;
-            if parent_interval.is_empty() {
-                return Err(TestError::EmptyInterval(parent, parent_interval));
-            }
-
-            for child in children.iter().cloned() {
-                let child_interval = store.get_interval(child)?;
-                if !parent_interval.strictly_contains(child_interval) {
-                    return Err(TestError::IntervalOutOfParentBounds {
-                        parent,
-                        child,
-                        parent_interval,
-                        child_interval,
-                    });
-                }
-            }
-
-            // Iterate over consecutive siblings
-            for siblings in children.windows(2) {
-                let sibling_interval = store.get_interval(siblings[0])?;
-                let current_interval = store.get_interval(siblings[1])?;
-                if sibling_interval.end + 1 != current_interval.start {
-                    return Err(TestError::NonConsecutiveSiblingIntervals(sibling_interval, current_interval));
-                }
-            }
+    impl<'a> TreeBuilder<'a> {
+        pub fn new(store: &'a mut dyn ReachabilityStore) -> Self {
+            Self { store }
         }
-        Ok(())
+
+        pub fn add_block(&mut self, hash: Hash, parent: Hash) -> &mut Self {
+            add_tree_child(self.store, hash, parent).unwrap();
+            self
+        }
     }
 
     #[test]
-    fn test_add_block() {}
+    fn test_add_blocks() {
+        let mut store: Box<dyn ReachabilityStore> = Box::new(MemoryReachabilityStore::new());
+
+        // Init
+        let root: Hash = 1.into();
+        store
+            .insert(root, Hash::DEFAULT, Interval::maximal())
+            .unwrap();
+
+        // Act
+        TreeBuilder::new(store.as_mut())
+            .add_block(2.into(), root)
+            .add_block(3.into(), 2.into())
+            .add_block(4.into(), 2.into())
+            .add_block(5.into(), 3.into())
+            .add_block(6.into(), 5.into())
+            .add_block(7.into(), 1.into())
+            .add_block(8.into(), 6.into());
+
+        // Assert
+        validate_intervals(store.as_ref(), root).unwrap();
+    }
 }
