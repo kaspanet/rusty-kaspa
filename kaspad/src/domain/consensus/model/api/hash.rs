@@ -1,12 +1,12 @@
 use hex;
 use std::convert::TryInto;
-use std::fmt::Debug;
+use std::fmt::{Debug, Formatter};
 use std::mem::size_of;
 use std::str::FromStr;
 
 const HASH_SIZE: usize = 32;
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug, Hash, Default)]
+#[derive(PartialEq, Eq, Clone, Copy, Hash, Default)]
 pub struct Hash([u8; HASH_SIZE]);
 
 impl ToString for Hash {
@@ -25,9 +25,26 @@ impl FromStr for Hash {
     }
 }
 
+impl From<u64> for Hash {
+    fn from(word: u64) -> Self {
+        Self::from_u64(word)
+    }
+}
+
+impl Debug for Hash {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        if self.0[8..32].eq(&[0u8; 24]) {
+            let word: u64 = u64::from_le_bytes(<[u8; 8]>::try_from(&self.0[0..8]).unwrap());
+            f.debug_tuple("Hash").field(&word).finish()
+        } else {
+            f.debug_tuple("Hash").field(&self.0).finish()
+        }
+    }
+}
+
 impl Hash {
     pub fn new(bytes: &[u8]) -> Self {
-        Self(<[u8; HASH_SIZE]>::try_from(<&[u8]>::clone(&bytes)).expect("Slice must have the length of Hash"))
+        Self(<[u8; HASH_SIZE]>::try_from(bytes).expect("Slice must have the length of Hash"))
     }
 
     pub fn new_unique() -> Self {
@@ -39,6 +56,7 @@ impl Hash {
     }
 
     pub fn from_u64(word: u64) -> Self {
+        assert_ne!(word, 0, "0 is reserved for the default Hash");
         let mut bytes = [0u8; HASH_SIZE];
         bytes[0..size_of::<u64>()].copy_from_slice(&word.to_le_bytes());
         Hash(bytes)
@@ -71,6 +89,8 @@ mod tests {
         assert!(!hash.is_default());
 
         assert_ne!(Hash::new_unique(), Hash::new_unique());
+        let vec = vec![2u8; 32];
+        let _ = Hash::new(&vec);
 
         let hash2 = Hash::from_str(hash_str).unwrap();
         assert_eq!(hash, hash2);

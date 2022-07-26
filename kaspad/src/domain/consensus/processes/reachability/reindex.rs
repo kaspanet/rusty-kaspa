@@ -182,17 +182,53 @@ mod tests {
         model::stores::reachability::MemoryReachabilityStore, processes::reachability::interval::Interval,
     };
 
+    struct StoreBuilder<'a> {
+        store: &'a mut dyn ReachabilityStore,
+    }
+
+    impl<'a> StoreBuilder<'a> {
+        fn new(store: &'a mut dyn ReachabilityStore) -> Self {
+            Self { store }
+        }
+        fn add_block(&mut self, hash: Hash, parent: Hash) -> &mut Self {
+            self.store
+                .insert(hash, parent, Interval::empty())
+                .unwrap();
+            if !parent.is_default() {
+                self.store.append_child(parent, hash).unwrap();
+            }
+            self
+        }
+    }
+
     #[test]
     fn test_count_subtrees() {
         let mut store: Box<dyn ReachabilityStore> = Box::new(MemoryReachabilityStore::new());
-        let root = Hash::new_unique();
-        store
-            .insert(root, Hash::DEFAULT, Interval::maximal())
-            .unwrap();
 
+        // Arrange
+        let root: Hash = 1.into();
+        StoreBuilder::new(store.as_mut())
+            .add_block(root, Hash::DEFAULT)
+            .add_block(2.into(), root)
+            .add_block(3.into(), 2.into())
+            .add_block(4.into(), 2.into())
+            .add_block(5.into(), 3.into())
+            .add_block(6.into(), 5.into())
+            .add_block(7.into(), 1.into())
+            .add_block(8.into(), 6.into());
+
+        // Act
         let mut ctx = ReindexOperationContext::new(store.as_mut(), root, None, None);
         ctx.count_subtrees(root).unwrap();
 
-        println!("{:?}", ctx.subtree_sizes);
+        // Assert
+        let expected = [(1u64, 8u64), (2, 6), (3, 4), (4, 1), (5, 3), (6, 2), (7, 1), (8, 1)]
+            .iter()
+            .cloned()
+            .map(|(h, c)| (Hash::from(h), c))
+            .collect::<HashMap<Hash, u64>>();
+
+        assert_eq!(expected, ctx.subtree_sizes);
+        // println!("{:?}", ctx.subtree_sizes);
     }
 }
