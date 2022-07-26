@@ -4,7 +4,7 @@ use std::{
 };
 
 use super::errors::StoreError;
-use crate::domain::consensus::{model::api::hash::Hash, processes::reachability::interval::Interval};
+use crate::{model::api::hash::Hash, processes::reachability::interval::Interval};
 
 type HashArray = Rc<Vec<Hash>>;
 

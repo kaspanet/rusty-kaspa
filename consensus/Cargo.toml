@@ -1,7 +1,7 @@
 [package]
-name = "kaspad"
+name = "consensus"
 version = "0.1.0"
-description = "Kaspa full node daemon"
+description = "Kaspa consensus lib"
 edition = "2021"
 authors = ["Kaspa developers"]
 include = [
@@ -14,4 +14,10 @@ regex = "1"
 hex = "0.4.3"
 thiserror = "1.0.31"
 kaspa-core = {path="../core"}
-consensus = {path="../consensus"}
+
+[dev-dependencies]
+criterion = "0.3.6"
+
+[[bench]]
+name = "hash_benchmarks"
+harness = false

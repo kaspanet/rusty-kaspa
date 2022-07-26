@@ -5,7 +5,7 @@ mod reindex;
 
 use thiserror::Error;
 
-use crate::domain::consensus::model::stores::errors::StoreError;
+use crate::model::stores::errors::StoreError;
 
 #[derive(Error, Debug)]
 pub enum ReachabilityError {

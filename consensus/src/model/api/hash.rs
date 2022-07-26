@@ -1,5 +1,4 @@
 use hex;
-use std::convert::TryInto;
 use std::fmt::{Debug, Formatter};
 use std::mem::size_of;
 use std::str::FromStr;
@@ -67,14 +66,6 @@ impl Hash {
     pub fn is_default(&self) -> bool {
         self.eq(&Self::DEFAULT)
     }
-
-    #[allow(dead_code)]
-    pub fn from_str_slow(hash_str: &str) -> Result<Self, hex::FromHexError> {
-        match hex::decode(hash_str)?.try_into() {
-            Ok(bytes) => Ok(Hash(bytes)),
-            Err(_) => Err(hex::FromHexError::InvalidStringLength),
-        }
-    }
 }
 
 #[cfg(test)]
@@ -122,32 +113,5 @@ mod tests {
     fn test_from_u64() {
         let _ = Hash::from_u64(7);
         // println!("{}", hash.to_string());
-    }
-}
-
-#[cfg(all(test, feature = "bench"))]
-mod benches {
-    extern crate test;
-    use self::test::{black_box, Bencher};
-    use super::*;
-
-    #[bench]
-    pub fn bench_from_str_slow(bh: &mut Bencher) {
-        bh.iter(|| {
-            for _ in 0..1000 {
-                let hash_str = "8e40af02265360d59f4ecf9ae9ebf8f00a3118408f5a9cdcbcc9c0f93642f3af";
-                black_box(Hash::from_str_slow(hash_str).unwrap());
-            }
-        });
-    }
-
-    #[bench]
-    pub fn bench_from_str_fast(bh: &mut Bencher) {
-        bh.iter(|| {
-            for _ in 0..1000 {
-                let hash_str = "8e40af02265360d59f4ecf9ae9ebf8f00a3118408f5a9cdcbcc9c0f93642f3af";
-                black_box(Hash::from_str(hash_str).unwrap());
-            }
-        });
     }
 }
