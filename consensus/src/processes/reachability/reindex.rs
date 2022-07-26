@@ -221,5 +221,28 @@ mod tests {
             .collect::<HashMap<Hash, u64>>();
 
         assert_eq!(expected, ctx.subtree_sizes);
+
+        // Act
+        ctx.store
+            .set_interval(root, Interval::new(1, 8))
+            .unwrap();
+        ctx.propagate_interval(root).unwrap();
+
+        // Assert
+        let expected_intervals = [
+            (1u64, (1u64, 8u64)),
+            (2, (1, 6)),
+            (3, (1, 4)),
+            (4, (5, 5)),
+            (5, (1, 3)),
+            (6, (1, 2)),
+            (7, (7, 7)),
+            (8, (1, 1)),
+        ];
+        let actual_intervals = (1u64..=8)
+            .map(|i| (i, ctx.store.get_interval(i.into()).unwrap().into()))
+            .collect::<Vec<(u64, (u64, u64))>>();
+        assert_eq!(actual_intervals, expected_intervals);
+
     }
 }

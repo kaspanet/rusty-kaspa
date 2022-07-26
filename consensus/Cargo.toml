@@ -21,3 +21,6 @@ criterion = "0.3.6"
 [[bench]]
 name = "hash_benchmarks"
 harness = false
+
+[features]
+html_reports = []

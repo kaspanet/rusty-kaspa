@@ -12,6 +12,12 @@ impl Display for Interval {
     }
 }
 
+impl From<Interval> for (u64, u64) {
+    fn from(val: Interval) -> Self {
+        (val.start, val.end)
+    }
+}
+
 impl Interval {
     pub fn new(start: u64, end: u64) -> Self {
         Interval { start, end }
