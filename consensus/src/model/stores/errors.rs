@@ -3,10 +3,10 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 pub enum StoreError {
     #[error("key not found in store")]
-    KeyNotFound,
+    KeyNotFound(String),
 
     #[error("key already exists in store")]
-    KeyAlreadyExists,
+    KeyAlreadyExists(String),
     // More usage examples:
     //
     // #[error("data store disconnected")]

@@ -50,14 +50,14 @@ impl MemoryReachabilityStore {
     fn get_data_mut(&mut self, hash: Hash) -> Result<&mut ReachabilityData, StoreError> {
         match self.map.get_mut(&hash) {
             Some(data) => Ok(data),
-            None => Err(StoreError::KeyNotFound),
+            None => Err(StoreError::KeyNotFound(hash.to_string())),
         }
     }
 
     fn get_data(&self, hash: Hash) -> Result<&ReachabilityData, StoreError> {
         match self.map.get(&hash) {
             Some(data) => Ok(data),
-            None => Err(StoreError::KeyNotFound),
+            None => Err(StoreError::KeyNotFound(hash.to_string())),
         }
     }
 }
@@ -68,7 +68,7 @@ impl ReachabilityStore for MemoryReachabilityStore {
             e.insert(ReachabilityData::new(parent, interval));
             Ok(())
         } else {
-            Err(StoreError::KeyAlreadyExists)
+            Err(StoreError::KeyAlreadyExists(hash.to_string()))
         }
     }
 
@@ -118,7 +118,7 @@ impl ReachabilityStore for MemoryReachabilityStore {
     fn get_reindex_root(&self) -> Result<Hash, StoreError> {
         match self.reindex_root {
             Some(root) => Ok(root),
-            None => Err(StoreError::KeyNotFound),
+            None => Err(StoreError::KeyNotFound("reindex root".to_string())),
         }
     }
 }
