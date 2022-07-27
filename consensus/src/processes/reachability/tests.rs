@@ -1,7 +1,7 @@
 //!
 //! Test utils for reachability
 //!
-use super::{inquirer::*, reindex::*, tree::*};
+use super::{inquirer::*, tree::*};
 use crate::{
     model::{
         api::hash::Hash,
@@ -40,7 +40,11 @@ pub struct TreeBuilder<'a> {
 
 impl<'a> TreeBuilder<'a> {
     pub fn new(store: &'a mut dyn ReachabilityStore) -> Self {
-        Self { store, reindex_depth: DEFAULT_REINDEX_DEPTH, reindex_slack: DEFAULT_REINDEX_SLACK }
+        Self {
+            store,
+            reindex_depth: crate::constants::perf::DEFAULT_REINDEX_DEPTH,
+            reindex_slack: crate::constants::perf::DEFAULT_REINDEX_SLACK,
+        }
     }
 
     pub fn new_with_params(store: &'a mut dyn ReachabilityStore, reindex_depth: u64, reindex_slack: u64) -> Self {

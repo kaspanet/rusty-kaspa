@@ -2,9 +2,6 @@ use super::{interval::Interval, *};
 use crate::model::{api::hash::Hash, stores::reachability::ReachabilityStore};
 use std::collections::{HashMap, VecDeque};
 
-pub const DEFAULT_REINDEX_DEPTH: u64 = 100;
-pub const DEFAULT_REINDEX_SLACK: u64 = 1 << 12;
-
 pub(super) struct ReindexOperationContext<'a> {
     store: &'a mut dyn ReachabilityStore,
     subtree_sizes: HashMap<Hash, u64>, // Cache for subtree sizes computed during this operation

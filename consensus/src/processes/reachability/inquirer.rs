@@ -1,5 +1,5 @@
 use super::interval::Interval;
-use super::{reindex::*, tree::*, *};
+use super::{tree::*, *};
 use crate::model;
 use crate::model::{api::hash::Hash, stores::reachability::ReachabilityStore};
 
@@ -33,8 +33,8 @@ fn add_block_with_params(
         store,
         new_block,
         selected_parent,
-        reindex_depth.unwrap_or(DEFAULT_REINDEX_DEPTH),
-        reindex_slack.unwrap_or(DEFAULT_REINDEX_SLACK),
+        reindex_depth.unwrap_or(crate::constants::perf::DEFAULT_REINDEX_DEPTH),
+        reindex_slack.unwrap_or(crate::constants::perf::DEFAULT_REINDEX_SLACK),
     )?;
     add_dag_block(store, new_block, mergeset)?;
     Ok(())
@@ -53,7 +53,12 @@ fn add_dag_block(store: &mut dyn ReachabilityStore, new_block: Hash, mergeset: &
 /// as moving the reindex point. The consensus runtime is expected to call this function
 /// for a new header selected tip which is `header only` / `pending UTXO verification`, or for a completely resolved `VSP`.
 pub fn hint_virtual_selected_parent(store: &mut dyn ReachabilityStore, hint: Hash) -> Result<()> {
-    try_advancing_reindex_root(store, hint, DEFAULT_REINDEX_DEPTH, DEFAULT_REINDEX_SLACK)
+    try_advancing_reindex_root(
+        store,
+        hint,
+        crate::constants::perf::DEFAULT_REINDEX_DEPTH,
+        crate::constants::perf::DEFAULT_REINDEX_SLACK,
+    )
 }
 
 /// Checks if the `anchor` block is a strict chain ancestor of the `queried` block.
