@@ -21,6 +21,8 @@ impl From<Interval> for (u64, u64) {
 impl Interval {
     pub fn new(start: u64, end: u64) -> Self {
         debug_assert!(end >= start - 1); // TODO: make sure this is actually debug-only
+        debug_assert!(start > 0);
+        debug_assert!(end < u64::MAX);
         Interval { start, end }
     }
 
@@ -28,6 +30,9 @@ impl Interval {
         Self::new(1, 0)
     }
 
+    /// Returns the maximally allowed `u64` interval. We leave a margin of 1 from
+    /// both `u64` bounds (`0` and `u64::MAX`) in order to support the reduction of any
+    /// legal interval to an empty one by setting `end = start - 1` or `start = end + 1`
     pub fn maximal() -> Self {
         Self::new(1, u64::MAX - 1)
     }

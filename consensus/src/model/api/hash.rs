@@ -65,18 +65,18 @@ impl Hash {
     pub const VIRTUAL: Hash = Hash([0xff; HASH_SIZE]);
     pub const ORIGIN: Hash = Hash([0xfe; HASH_SIZE]);
 
-    /// Hash::ZERO is the `null` block hash.
+    /// `Hash::ZERO` is the `null` block hash.
     pub fn is_zero(&self) -> bool {
         self.eq(&Self::ZERO)
     }
 
-    /// Hash::VIRTUAL represents a special hash representing the `virtual` block.
+    /// `Hash::VIRTUAL` is a special hash representing the `virtual` block.
     pub fn is_virtual(&self) -> bool {
         self.eq(&Self::VIRTUAL)
     }
 
-    /// Hash::ORIGIN represent a special hash used as a virtual genesis.
-    /// It acts as a special local block which all locally-known
+    /// `Hash::ORIGIN` is a special hash representing a `virtual genesis` block.
+    /// It serves as a special local block which all locally-known
     /// blocks are in its future.
     pub fn is_origin(&self) -> bool {
         self.eq(&Self::ORIGIN)

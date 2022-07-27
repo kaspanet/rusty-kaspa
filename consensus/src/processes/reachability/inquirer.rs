@@ -4,34 +4,53 @@ use crate::model;
 use crate::model::{api::hash::Hash, stores::reachability::ReachabilityStore};
 
 pub fn init(store: &mut dyn ReachabilityStore) -> Result<()> {
-    if store.has(model::ORIGIN)? {
+    init_with_params(store, model::ORIGIN, Interval::maximal())
+}
+
+fn init_with_params(store: &mut dyn ReachabilityStore, origin: Hash, capacity: Interval) -> Result<()> {
+    if store.has(origin)? {
         return Ok(());
     }
-    store.insert(model::ORIGIN, Hash::ZERO, Interval::maximal())?;
-    store.set_reindex_root(model::ORIGIN)?;
+    store.insert(origin, Hash::ZERO, capacity)?;
+    store.set_reindex_root(origin)?;
     Ok(())
 }
 
 pub fn add_block(
     store: &mut dyn ReachabilityStore, new_block: Hash, selected_parent: Hash, mergeset: &[Hash],
-    is_selected_leaf: bool,
 ) -> Result<()> {
-    add_tree_child(store, new_block, selected_parent)?;
-
-    // // Update the future covering set for blocks in the mergeset
-    // for merged_block in mergeset {
-    //     self.insert_to_fcs(store, merged_block, &block)?;
-    // }
-
-    // // Update the reindex root by the new selected leaf
-    // if is_selected_leaf {
-    //     self.update_reindex_root(store, &block)?;
-    // }
-
+    add_tree_block(store, new_block, selected_parent, None, None)?;
+    add_dag_block(store, new_block, mergeset)?;
     Ok(())
 }
 
-/// is_strict_chain_ancestor_of checks if the `anchor` block is a strict
+fn add_block_with_params(
+    store: &mut dyn ReachabilityStore, new_block: Hash, selected_parent: Hash, mergeset: &[Hash],
+    reindex_depth: Option<u64>, reindex_slack: Option<u64>,
+) -> Result<()> {
+    add_tree_block(store, new_block, selected_parent, reindex_depth, reindex_slack)?;
+    add_dag_block(store, new_block, mergeset)?;
+    Ok(())
+}
+
+fn add_dag_block(store: &mut dyn ReachabilityStore, new_block: Hash, mergeset: &[Hash]) -> Result<()> {
+    // // Update the future covering set for blocks in the mergeset
+    // for merged_block in mergeset {
+    //     insert_to_fcs(store, merged_block, block)?;
+    // }
+    Ok(())
+}
+
+/// Hint to the reachability algorithm that `new_vsp_candidate` is a candidate to become
+/// the `virtual selected parent` (`VSP`). This might affect internal reachability heuristics such
+/// as moving the reindex point. The consensus runtime is expected to call this function
+/// for a new header selected tip which is `pending UTXO verification`, or for a completely resolved `VSP`.
+pub fn hint_virtual_selected_parent(store: &mut dyn ReachabilityStore, new_vsp_candidate: Hash) -> Result<()> {
+    // let current_root
+    todo!()
+}
+
+/// `is_strict_chain_ancestor_of` checks if the `anchor` block is a strict
 /// chain ancestor of the `queried` block. Note that this results in `false`
 /// if `anchor == queried`
 pub fn is_strict_chain_ancestor_of(store: &dyn ReachabilityStore, anchor: Hash, queried: Hash) -> Result<bool> {
@@ -40,7 +59,7 @@ pub fn is_strict_chain_ancestor_of(store: &dyn ReachabilityStore, anchor: Hash, 
         .strictly_contains(store.get_interval(queried)?))
 }
 
-/// is_chain_ancestor_of checks if the `anchor` block is a chain ancestor
+/// `is_chain_ancestor_of checks` if the `anchor` block is a chain ancestor
 /// of the `queried` block. Note that we use the graph theory convention
 /// here which defines that a block is also an ancestor of itself.
 pub fn is_chain_ancestor_of(store: &dyn ReachabilityStore, anchor: Hash, queried: Hash) -> Result<bool> {
@@ -200,23 +219,28 @@ mod tests {
     /// A struct with fluent API to streamline tree building
     struct TreeBuilder<'a> {
         store: &'a mut dyn ReachabilityStore,
+        reindex_depth: Option<u64>,
+        reindex_slack: Option<u64>,
     }
 
     impl<'a> TreeBuilder<'a> {
         pub fn new(store: &'a mut dyn ReachabilityStore) -> Self {
-            Self { store }
+            Self { store, reindex_depth: None, reindex_slack: None }
         }
 
-        pub fn init(&mut self, root: Hash, interval: Interval) -> &mut Self {
-            self.store
-                .insert(root, Hash::ZERO, interval)
-                .unwrap();
-            self.store.set_reindex_root(root).unwrap();
+        pub fn new_with_params(
+            store: &'a mut dyn ReachabilityStore, reindex_depth: Option<u64>, reindex_slack: Option<u64>,
+        ) -> Self {
+            Self { store, reindex_depth, reindex_slack }
+        }
+
+        pub fn init(&mut self, origin: Hash, capacity: Interval) -> &mut Self {
+            init_with_params(self.store, origin, capacity).unwrap();
             self
         }
 
         pub fn add_block(&mut self, hash: Hash, parent: Hash) -> &mut Self {
-            add_tree_child(self.store, hash, parent).unwrap();
+            add_tree_block(self.store, hash, parent, self.reindex_depth, self.reindex_slack).unwrap();
             self
         }
     }
