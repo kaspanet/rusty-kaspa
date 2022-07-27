@@ -91,6 +91,12 @@ pub fn get_next_chain_ancestor(store: &dyn ReachabilityStore, descendant: Hash, 
         return Err(ReachabilityError::BadQuery);
     }
 
+    get_next_chain_ancestor_unchecked(store, descendant, ancestor)
+}
+
+pub(super) fn get_next_chain_ancestor_unchecked(
+    store: &dyn ReachabilityStore, descendant: Hash, ancestor: Hash,
+) -> Result<Hash> {
     let point = store.get_interval(descendant)?.start;
     let children = store.get_children(ancestor)?;
 

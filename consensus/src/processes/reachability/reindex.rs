@@ -1,7 +1,6 @@
-use std::collections::{HashMap, VecDeque};
-
-use super::*;
+use super::{interval::Interval, *};
 use crate::model::{api::hash::Hash, stores::reachability::ReachabilityStore};
+use std::collections::{HashMap, VecDeque};
 
 pub const DEFAULT_REINDEX_DEPTH: u64 = 100;
 pub const DEFAULT_REINDEX_SLACK: u64 = 1 << 12;
@@ -162,9 +161,109 @@ impl<'a> ReindexOperationContext<'a> {
     }
 
     pub(super) fn concentrate_interval(
-        &mut self, ancestor: Hash, child: Hash, is_final_reindex_root: bool,
+        &mut self, parent: Hash, child: Hash, is_final_reindex_root: bool,
     ) -> Result<()> {
-        todo!()
+        let children = self.store.get_children(parent)?;
+
+        // Split the `children` of `parent` to siblings before `child` and siblings after `child`
+        let mut split = children.split(|c| *c == child);
+        let (siblings_before, siblings_after) = (split.next().unwrap(), split.next().unwrap());
+        assert!(split.next().is_none());
+
+        let siblings_before_subtrees_sum: u64 = self.tighten_intervals_before(parent, siblings_before)?;
+        let siblings_after_subtrees_sum: u64 = self.tighten_intervals_after(parent, siblings_after)?;
+
+        self.expand_interval_to_chosen(
+            parent,
+            child,
+            siblings_before_subtrees_sum,
+            siblings_after_subtrees_sum,
+            is_final_reindex_root,
+        )?;
+
+        Ok(())
+    }
+
+    pub(super) fn tighten_intervals_before(&mut self, parent: Hash, children_before: &[Hash]) -> Result<u64> {
+        let sizes = children_before
+            .iter()
+            .cloned()
+            .map(|block| {
+                self.count_subtrees(block)?;
+                Ok(self.subtree_sizes[&block])
+            })
+            .collect::<Result<Vec<u64>>>()?;
+        let sum = sizes.iter().sum();
+
+        let interval = self.store.get_interval(parent)?;
+        let interval_before = Interval::new(interval.start + self.slack, interval.start + self.slack + sum - 1);
+
+        for (c, ci) in children_before
+            .iter()
+            .cloned()
+            .zip(interval_before.split_exact(sizes.as_slice()))
+        {
+            self.store.set_interval(c, ci)?;
+            self.propagate_interval(c)?;
+        }
+
+        Ok(sum)
+    }
+
+    pub(super) fn tighten_intervals_after(&mut self, parent: Hash, children_after: &[Hash]) -> Result<u64> {
+        let sizes = children_after
+            .iter()
+            .cloned()
+            .map(|block| {
+                self.count_subtrees(block)?;
+                Ok(self.subtree_sizes[&block])
+            })
+            .collect::<Result<Vec<u64>>>()?;
+        let sum = sizes.iter().sum();
+
+        let interval = self.store.get_interval(parent)?;
+        let interval_after = Interval::new(interval.end - self.slack - sum, interval.end - self.slack - 1);
+
+        for (c, ci) in children_after
+            .iter()
+            .cloned()
+            .zip(interval_after.split_exact(sizes.as_slice()))
+        {
+            self.store.set_interval(c, ci)?;
+            self.propagate_interval(c)?;
+        }
+
+        Ok(sum)
+    }
+
+    pub(super) fn expand_interval_to_chosen(
+        &mut self, parent: Hash, child: Hash, siblings_before_subtrees_sum: u64, siblings_after_subtrees_sum: u64,
+        is_final_reindex_root: bool,
+    ) -> Result<()> {
+        let interval = self.store.get_interval(parent)?;
+        let allocation = Interval::new(
+            interval.start + siblings_before_subtrees_sum + self.slack,
+            interval.end - siblings_after_subtrees_sum - self.slack - 1,
+        );
+        let current = self.store.get_interval(child)?;
+
+        // Propagate interval only if the chosen `child` is the final reindex root AND
+        // the new interval doesn't contain the previous one
+        if is_final_reindex_root && !allocation.contains(current) {
+            /*
+            We deallocate slack on both sides as an optimization. Were we to
+            assign the fully allocated interval, the next time the reindex root moves we
+            would need to propagate intervals again. However when we do allocate slack,
+            next time this method is called (next time the reindex root moves), `allocation` is likely to contain `current`.
+            Note that below following the propagation we reassign the full `allocation` to `child`.
+            */
+            let narrowed = Interval::new(allocation.start + self.slack, allocation.end - self.slack);
+            self.store.set_interval(child, narrowed)?;
+            self.propagate_interval(child)?;
+        }
+
+        self.store.set_interval(child, allocation)?;
+        Ok(())
     }
 }
 

@@ -74,7 +74,7 @@ pub fn find_next_reindex_root(
     // Iterate from ancestor towards the selected tip (`hint`) until passing the
     // `reindex_window` threshold, for finding the new reindex root
     loop {
-        let child = get_next_chain_ancestor(store, hint, next)?;
+        let child = get_next_chain_ancestor_unchecked(store, hint, next)?;
         let child_height = store.get_height(child)?;
 
         if hint_height < child_height {
@@ -107,7 +107,7 @@ pub fn try_advancing_reindex_root(
     //     trace!("next reindex root is an ancestor of current one, skipping concentration.")
     // }
     while ancestor != next {
-        let child = get_next_chain_ancestor(store, next, ancestor)?;
+        let child = get_next_chain_ancestor_unchecked(store, next, ancestor)?;
         let mut ctx = ReindexOperationContext::new(store, current, reindex_depth, reindex_slack);
         ctx.concentrate_interval(ancestor, child, child == next)?;
         ancestor = child;
