@@ -3,8 +3,8 @@ use std::collections::{HashMap, VecDeque};
 use super::*;
 use crate::model::{api::hash::Hash, stores::reachability::ReachabilityStore};
 
-const DEFAULT_REINDEX_DEPTH: u64 = 200;
-const DEFAULT_REINDEX_SLACK: u64 = 1 << 12;
+pub const DEFAULT_REINDEX_DEPTH: u64 = 100;
+pub const DEFAULT_REINDEX_SLACK: u64 = 1 << 12;
 
 pub(super) struct ReindexOperationContext<'a> {
     store: &'a mut dyn ReachabilityStore,
@@ -15,16 +15,8 @@ pub(super) struct ReindexOperationContext<'a> {
 }
 
 impl<'a> ReindexOperationContext<'a> {
-    pub(super) fn new(
-        store: &'a mut dyn ReachabilityStore, root: Hash, depth: Option<u64>, slack: Option<u64>,
-    ) -> Self {
-        Self {
-            store,
-            root,
-            subtree_sizes: HashMap::new(),
-            depth: depth.unwrap_or(DEFAULT_REINDEX_DEPTH),
-            slack: slack.unwrap_or(DEFAULT_REINDEX_SLACK),
-        }
+    pub(super) fn new(store: &'a mut dyn ReachabilityStore, root: Hash, depth: u64, slack: u64) -> Self {
+        Self { store, root, subtree_sizes: HashMap::new(), depth, slack }
     }
 
     pub(super) fn reindex_intervals(&mut self, new_child: Hash) -> Result<()> {
@@ -168,6 +160,12 @@ impl<'a> ReindexOperationContext<'a> {
     ) -> Result<()> {
         todo!()
     }
+
+    pub(super) fn concentrate_interval(
+        &mut self, ancestor: Hash, child: Hash, is_final_reindex_root: bool,
+    ) -> Result<()> {
+        todo!()
+    }
 }
 
 #[cfg(test)]
@@ -193,7 +191,7 @@ mod tests {
             .add_block(8.into(), 6.into());
 
         // Act
-        let mut ctx = ReindexOperationContext::new(store.as_mut(), root, None, None);
+        let mut ctx = ReindexOperationContext::new(store.as_mut(), root, 10, 16);
         ctx.count_subtrees(root).unwrap();
 
         // Assert

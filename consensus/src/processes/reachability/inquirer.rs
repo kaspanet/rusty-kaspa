@@ -1,5 +1,5 @@
 use super::interval::Interval;
-use super::{tree::*, *};
+use super::{reindex::*, tree::*, *};
 use crate::model;
 use crate::model::{api::hash::Hash, stores::reachability::ReachabilityStore};
 
@@ -22,16 +22,20 @@ fn init_with_params(store: &mut dyn ReachabilityStore, origin: Hash, capacity: I
 pub fn add_block(
     store: &mut dyn ReachabilityStore, new_block: Hash, selected_parent: Hash, mergeset: &[Hash],
 ) -> Result<()> {
-    add_tree_block(store, new_block, selected_parent, None, None)?;
-    add_dag_block(store, new_block, mergeset)?;
-    Ok(())
+    add_block_with_params(store, new_block, selected_parent, mergeset, None, None)
 }
 
 fn add_block_with_params(
     store: &mut dyn ReachabilityStore, new_block: Hash, selected_parent: Hash, mergeset: &[Hash],
     reindex_depth: Option<u64>, reindex_slack: Option<u64>,
 ) -> Result<()> {
-    add_tree_block(store, new_block, selected_parent, reindex_depth, reindex_slack)?;
+    add_tree_block(
+        store,
+        new_block,
+        selected_parent,
+        reindex_depth.unwrap_or(DEFAULT_REINDEX_DEPTH),
+        reindex_slack.unwrap_or(DEFAULT_REINDEX_SLACK),
+    )?;
     add_dag_block(store, new_block, mergeset)?;
     Ok(())
 }
@@ -49,8 +53,7 @@ fn add_dag_block(store: &mut dyn ReachabilityStore, new_block: Hash, mergeset: &
 /// as moving the reindex point. The consensus runtime is expected to call this function
 /// for a new header selected tip which is `header only` / `pending UTXO verification`, or for a completely resolved `VSP`.
 pub fn hint_virtual_selected_parent(store: &mut dyn ReachabilityStore, hint: Hash) -> Result<()> {
-    // let current_root
-    todo!()
+    try_advancing_reindex_root(store, hint, DEFAULT_REINDEX_DEPTH, DEFAULT_REINDEX_SLACK)
 }
 
 /// Checks if the `anchor` block is a strict chain ancestor of the `queried` block.
@@ -90,6 +93,15 @@ pub fn get_next_chain_ancestor(store: &dyn ReachabilityStore, descendant: Hash, 
 
     let point = store.get_interval(descendant)?.start;
     let children = store.get_children(ancestor)?;
+
+    // Works only with nightly and by adding the line `#![feature(is_sorted)]` to lib.rs
+    //
+    // debug_assert!(children.iter().is_sorted_by_key(|c| {
+    //     store
+    //         .get_interval(*c)
+    //         .expect("reachability interval data missing from store")
+    //         .start
+    // }));
 
     // We use an `expect` here since otherwise we need to implement `binary_search`
     // ourselves, which is not worth the effort since this is an unrecoverable error anyhow
@@ -236,18 +248,16 @@ mod tests {
     /// A struct with fluent API to streamline tree building
     struct TreeBuilder<'a> {
         store: &'a mut dyn ReachabilityStore,
-        reindex_depth: Option<u64>,
-        reindex_slack: Option<u64>,
+        reindex_depth: u64,
+        reindex_slack: u64,
     }
 
     impl<'a> TreeBuilder<'a> {
         pub fn new(store: &'a mut dyn ReachabilityStore) -> Self {
-            Self { store, reindex_depth: None, reindex_slack: None }
+            Self { store, reindex_depth: DEFAULT_REINDEX_DEPTH, reindex_slack: DEFAULT_REINDEX_SLACK }
         }
 
-        pub fn new_with_params(
-            store: &'a mut dyn ReachabilityStore, reindex_depth: Option<u64>, reindex_slack: Option<u64>,
-        ) -> Self {
+        pub fn new_with_params(store: &'a mut dyn ReachabilityStore, reindex_depth: u64, reindex_slack: u64) -> Self {
             Self { store, reindex_depth, reindex_slack }
         }
 
