@@ -2,6 +2,8 @@ use super::{inquirer::get_next_chain_ancestor_unchecked, interval::Interval, *};
 use crate::model::{api::hash::Hash, stores::reachability::ReachabilityStore};
 use std::collections::{HashMap, VecDeque};
 
+/// A struct used during reindex operations. It represents a temporary context
+/// for caching subtree information during the *current* reindex operation only
 pub(super) struct ReindexOperationContext<'a> {
     store: &'a mut dyn ReachabilityStore,
     subtree_sizes: HashMap<Hash, u64>, // Cache for subtree sizes computed during this operation
@@ -14,12 +16,21 @@ impl<'a> ReindexOperationContext<'a> {
         Self { store, subtree_sizes: HashMap::new(), depth, slack }
     }
 
+    /// Traverses the reachability subtree that's defined by the new child
+    /// block and reallocates reachability interval space
+    /// such that another reindexing is unlikely to occur shortly
+    /// thereafter. It does this by traversing down the reachability
+    /// tree until it finds a block with an interval size that's greater than
+    /// its subtree size. See `propagate_interval` for further details.
     pub(super) fn reindex_intervals(&mut self, new_child: Hash, reindex_root: Hash) -> Result<()> {
         let mut current = new_child;
+
+        // Search for the first ancestor with sufficient interval space
         loop {
             let current_interval = self.store.get_interval(current)?;
             self.count_subtrees(current)?;
 
+            // `current` has sufficient space, break and propagate
             if current_interval.size() >= self.subtree_sizes[&current] {
                 break;
             }
@@ -27,16 +38,38 @@ impl<'a> ReindexOperationContext<'a> {
             let parent = self.store.get_parent(current)?;
 
             if parent.is_zero() {
-                // TODO: comment and add detailed inner error
-                return Err(ReachabilityError::DataOverflow);
+                // If we ended up here it means that there are more
+                // than 2^64 blocks, which shouldn't ever happen.
+                return Err(ReachabilityError::DataOverflow(
+                    "missing tree
+                        parent during reindexing. Theoretically, this 
+                        should only ever happen if there are more 
+                        than 2^64 blocks in the DAG."
+                        .to_string(),
+                ));
             }
 
             if current == reindex_root {
-                // TODO: comment and add detailed inner error
-                return Err(ReachabilityError::DataOverflow);
+                // Reindex root is expected to hold enough capacity as long as there are less
+                // than ~2^52 blocks in the DAG, which should never happen in our lifetimes
+                // even if block rate per second is above 100. The calculation follows from the allocation of
+                // 2^12 (which equals 2^64/2^52) for slack per chain block below the reindex root.
+                return Err(ReachabilityError::DataOverflow(format!(
+                    "unexpected behavior: reindex root {} is out of capacity during reindexing. 
+                    Theoretically, this should only ever happen if there are more than ~2^52 blocks in the DAG.",
+                    reindex_root.to_string()
+                )));
             }
 
             if inquirer::is_strict_chain_ancestor_of(self.store, parent, reindex_root)? {
+                // In this case parent is guaranteed to have sufficient interval space,
+                // however we avoid reindexing the entire subtree above parent
+                // (which includes root and thus majority of blocks mined since)
+                // and use slacks along the chain up forward from parent to reindex root.
+                // Notes:
+                // 1. we set `required_allocation` = subtree size of current in order to double the
+                // current interval capacity
+                // 2. it might be the case that current is the `new_child` itself
                 return self.reindex_intervals_earlier_than_root(
                     current,
                     reindex_root,
@@ -367,6 +400,7 @@ impl<'a> ReindexOperationContext<'a> {
         Ok(())
     }
 
+    /// A method for handling reindex operations triggered by moving the reindex root
     pub(super) fn concentrate_interval(
         &mut self, parent: Hash, child: Hash, is_final_reindex_root: bool,
     ) -> Result<()> {

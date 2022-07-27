@@ -14,7 +14,7 @@ pub enum ReachabilityError {
     StoreError(#[from] StoreError),
 
     #[error("data overflow error")]
-    DataOverflow,
+    DataOverflow(String),
 
     #[error("data inconsistency error")]
     DataInconsistency,

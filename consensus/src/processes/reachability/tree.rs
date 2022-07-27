@@ -4,6 +4,9 @@
 use super::{inquirer::*, reindex::ReindexOperationContext, *};
 use crate::model::{api::hash::Hash, stores::reachability::ReachabilityStore};
 
+/// Adds `new_block` as a child of `parent` in the tree structure. If this block
+/// has no remaining interval to allocate, a reindexing is triggered. When a reindexing
+/// is triggered, the reindex root point is used within the reindex algorithm's logic
 pub fn add_tree_block(
     store: &mut dyn ReachabilityStore, new_block: Hash, parent: Hash, reindex_depth: u64, reindex_slack: u64,
 ) -> Result<()> {
@@ -89,6 +92,13 @@ pub fn find_next_reindex_root(
     Ok((ancestor, next))
 }
 
+/// Attempts to advance or move the current reindex root according to the
+/// provided `virtual selected parent` (`VSP`) hint.
+/// It is important for the reindex root point to follow the consensus-agreed chain
+/// since this way it can benefit from chain-robustness which is implied by the security
+/// of the ordering protocol. That is, it enjoys from the fact that all future blocks are
+/// expected to elect the root subtree (by converging to the agreement to have it on the
+/// selected chain). See also the reachability algorithms overview (TODO)
 pub fn try_advancing_reindex_root(
     store: &mut dyn ReachabilityStore, hint: Hash, reindex_depth: u64, reindex_slack: u64,
 ) -> Result<()> {
