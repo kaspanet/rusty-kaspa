@@ -110,15 +110,21 @@ pub fn get_next_chain_ancestor(store: &dyn ReachabilityStore, descendant: Hash, 
 }
 
 pub fn forward_chain_iterator(
-    store: &dyn ReachabilityStore, descendant: Hash, ancestor: Hash, inclusive: bool,
+    store: &dyn ReachabilityStore, from_ancestor: Hash, to_descendant: Hash, inclusive: bool,
 ) -> ForwardChainIterator<'_> {
-    ForwardChainIterator::new(store, ancestor, descendant, inclusive)
+    ForwardChainIterator::new(store, from_ancestor, to_descendant, inclusive)
 }
 
 pub fn backward_chain_iterator(
-    store: &dyn ReachabilityStore, descendant: Hash, ancestor: Hash, inclusive: bool,
+    store: &dyn ReachabilityStore, from_descendant: Hash, to_ancestor: Hash, inclusive: bool,
 ) -> BackwardChainIterator<'_> {
-    BackwardChainIterator::new(store, descendant, ancestor, inclusive)
+    BackwardChainIterator::new(store, from_descendant, to_ancestor, inclusive)
+}
+
+/// Returns the default chain iterator, walking from `from` backward down the
+/// selected chain until `virtual genesis` (aka `model::ORIGIN`; exclusive)
+pub fn default_chain_iterator(store: &dyn ReachabilityStore, from: Hash) -> BackwardChainIterator<'_> {
+    BackwardChainIterator::new(store, from, model::ORIGIN, false)
 }
 
 pub struct ForwardChainIterator<'a> {
@@ -129,8 +135,8 @@ pub struct ForwardChainIterator<'a> {
 }
 
 impl<'a> ForwardChainIterator<'a> {
-    fn new(store: &'a dyn ReachabilityStore, current: Hash, descendant: Hash, inclusive: bool) -> Self {
-        Self { store, current: Some(current), descendant, inclusive }
+    fn new(store: &'a dyn ReachabilityStore, from_ancestor: Hash, to_descendant: Hash, inclusive: bool) -> Self {
+        Self { store, current: Some(from_ancestor), descendant: to_descendant, inclusive }
     }
 }
 
@@ -173,8 +179,8 @@ pub struct BackwardChainIterator<'a> {
 }
 
 impl<'a> BackwardChainIterator<'a> {
-    fn new(store: &'a dyn ReachabilityStore, current: Hash, ancestor: Hash, inclusive: bool) -> Self {
-        Self { store, current: Some(current), ancestor, inclusive }
+    fn new(store: &'a dyn ReachabilityStore, from_descendant: Hash, to_ancestor: Hash, inclusive: bool) -> Self {
+        Self { store, current: Some(from_descendant), ancestor: to_ancestor, inclusive }
     }
 }
 
@@ -290,7 +296,7 @@ mod tests {
             .add_block(11.into(), 6.into());
 
         // Exclusive
-        let iter = forward_chain_iterator(store.as_ref(), 10.into(), 2.into(), false);
+        let iter = forward_chain_iterator(store.as_ref(), 2.into(), 10.into(), false);
 
         // Assert
         let expected_hashes = [2u64, 3, 5, 6].map(Hash::from);
@@ -300,7 +306,7 @@ mod tests {
             .eq(iter.map(|r| r.unwrap())));
 
         // Inclusive
-        let iter = forward_chain_iterator(store.as_ref(), 10.into(), 2.into(), true);
+        let iter = forward_chain_iterator(store.as_ref(), 2.into(), 10.into(), true);
 
         // Assert
         let expected_hashes = [2u64, 3, 5, 6, 10].map(Hash::from);
@@ -310,7 +316,7 @@ mod tests {
             .eq(iter.map(|r| r.unwrap())));
 
         // Compare backward to reversed forward
-        let forward_iter = forward_chain_iterator(store.as_ref(), 10.into(), 2.into(), true).map(|r| r.unwrap());
+        let forward_iter = forward_chain_iterator(store.as_ref(), 2.into(), 10.into(), true).map(|r| r.unwrap());
         let backward_iter: Result<Vec<Hash>> =
             backward_chain_iterator(store.as_ref(), 10.into(), 2.into(), true).collect();
         assert!(forward_iter.eq(backward_iter.unwrap().iter().cloned().rev()))
@@ -330,13 +336,13 @@ mod tests {
             .map(Hash::from)
             .iter()
             .cloned()
-            .eq(forward_chain_iterator(store.as_ref(), 2.into(), 1.into(), true).map(|r| r.unwrap())));
+            .eq(forward_chain_iterator(store.as_ref(), 1.into(), 2.into(), true).map(|r| r.unwrap())));
 
         assert!([1u64]
             .map(Hash::from)
             .iter()
             .cloned()
-            .eq(forward_chain_iterator(store.as_ref(), 2.into(), 1.into(), false).map(|r| r.unwrap())));
+            .eq(forward_chain_iterator(store.as_ref(), 1.into(), 2.into(), false).map(|r| r.unwrap())));
 
         assert!([2u64, 1]
             .map(Hash::from)
