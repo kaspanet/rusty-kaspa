@@ -161,6 +161,70 @@ impl<'a> ReindexOperationContext<'a> {
         todo!()
     }
 
+    fn reclaim_interval_before(
+        &mut self, allocation_block: Hash, common_ancestor: Hash, chosen_child: Hash, reindex_root: Hash,
+        required_allocation: u64,
+    ) -> Result<()> {
+        let mut slack_sum = 0u64;
+        let mut path_len = 0u64;
+        let mut path_slack_alloc = 0u64;
+
+        let mut current = chosen_child;
+        // Walk up the chain from common ancestor's chosen child towards reindex root
+        loop {
+            if current == reindex_root {
+                // Reached reindex root. In this case, since we reached (the unlimited) root,
+                // we also re-allocate new slack for the chain we just traversed
+                let offset = required_allocation + self.slack * path_len - slack_sum;
+                self.apply_interval_op_and_propagate(current, offset, Interval::increase_start)?;
+                self.offset_siblings_before(allocation_block, current, offset)?;
+
+                // Set the slack for each chain block to be reserved below during the chain walk-down
+                path_slack_alloc = self.slack;
+                break;
+            }
+
+            let slack_before_current = self
+                .store
+                .interval_remaining_before(current)?
+                .size();
+            slack_sum += slack_before_current;
+
+            if slack_sum >= required_allocation {
+                // Set offset to be just enough to satisfy required allocation
+                let offset = slack_before_current - (slack_sum - required_allocation);
+                self.apply_interval_op(current, offset, Interval::increase_start)?;
+                self.offset_siblings_before(allocation_block, current, offset)?;
+
+                break;
+            }
+
+            current = get_next_chain_ancestor_unchecked(self.store, reindex_root, current)?;
+            path_len += 1;
+        }
+
+        // Go back down the reachability tree towards the common ancestor.
+        // On every hop we reindex the reachability subtree before the
+        // current block with an interval that is smaller.
+        // This is to make room for the required allocation.
+        loop {
+            current = self.store.get_parent(current)?;
+            if current == common_ancestor {
+                break;
+            }
+
+            let slack_before_current = self
+                .store
+                .interval_remaining_before(current)?
+                .size();
+            let offset = slack_before_current - path_slack_alloc;
+            self.apply_interval_op(current, offset, Interval::increase_start)?;
+            self.offset_siblings_before(allocation_block, current, offset)?;
+        }
+
+        Ok(())
+    }
+
     fn reclaim_interval_after(
         &mut self, allocation_block: Hash, common_ancestor: Hash, chosen_child: Hash, reindex_root: Hash,
         required_allocation: u64,
