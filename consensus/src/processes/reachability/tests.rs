@@ -22,12 +22,10 @@ impl<'a> StoreBuilder<'a> {
     }
 
     pub fn add_block(&mut self, hash: Hash, parent: Hash) -> &mut Self {
+        let parent_height = if !parent.is_zero() { self.store.append_child(parent, hash).unwrap() } else { 0 };
         self.store
-            .insert(hash, parent, Interval::empty())
+            .insert(hash, parent, Interval::empty(), parent_height + 1)
             .unwrap();
-        if !parent.is_zero() {
-            self.store.append_child(parent, hash).unwrap();
-        }
         self
     }
 }

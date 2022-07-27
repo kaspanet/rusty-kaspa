@@ -13,7 +13,7 @@ fn init_with_params(store: &mut dyn ReachabilityStore, origin: Hash, capacity: I
     if store.has(origin)? {
         return Ok(());
     }
-    store.insert(origin, Hash::ZERO, capacity)?;
+    store.insert(origin, Hash::ZERO, capacity, 0)?;
     store.set_reindex_root(origin)?;
     Ok(())
 }
@@ -46,8 +46,8 @@ fn add_dag_block(store: &mut dyn ReachabilityStore, new_block: Hash, mergeset: &
 
 /// Hint to the reachability algorithm that `hint` is a candidate to become
 /// the `virtual selected parent` (`VSP`). This might affect internal reachability heuristics such
-/// as moving the reindex center point. The consensus runtime is expected to call this function
-/// for a new header selected tip which is `pending UTXO verification`, or for a completely resolved `VSP`.
+/// as moving the reindex point. The consensus runtime is expected to call this function
+/// for a new header selected tip which is `header only` / `pending UTXO verification`, or for a completely resolved `VSP`.
 pub fn hint_virtual_selected_parent(store: &mut dyn ReachabilityStore, hint: Hash) -> Result<()> {
     // let current_root
     todo!()
@@ -315,6 +315,10 @@ mod tests {
             .iter()
             .cloned()
             .eq(iter.map(|r| r.unwrap())));
+        assert_eq!(
+            store.get_height(2.into()).unwrap() + expected_hashes.len() as u64,
+            store.get_height(10.into()).unwrap()
+        );
 
         // Inclusive
         let iter = forward_chain_iterator(store.as_ref(), 2.into(), 10.into(), true);
