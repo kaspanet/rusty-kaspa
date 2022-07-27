@@ -72,8 +72,8 @@ pub fn is_dag_ancestor_of(store: &dyn ReachabilityStore, anchor: Hash, queried: 
     todo!()
 }
 
-/// get_next_chain_ancestor finds the reachability/selection tree child
-/// of 'ancestor' which is also an ancestor of 'descendant'.
+/// `get_next_chain_ancestor` finds the child of `ancestor`
+/// which is also a chain ancestor of `descendant`.
 pub fn get_next_chain_ancestor(store: &dyn ReachabilityStore, descendant: Hash, ancestor: Hash) -> Result<Hash> {
     if descendant == ancestor {
         // The next ancestor does not exist
@@ -116,7 +116,7 @@ pub fn forward_chain_iterator(
 }
 
 pub fn backward_chain_iterator(
-    store: &dyn ReachabilityStore, descendant: Hash, ancestor: Option<Hash>, inclusive: bool,
+    store: &dyn ReachabilityStore, descendant: Hash, ancestor: Hash, inclusive: bool,
 ) -> BackwardChainIterator<'_> {
     BackwardChainIterator::new(store, descendant, ancestor, inclusive)
 }
@@ -173,8 +173,8 @@ pub struct BackwardChainIterator<'a> {
 }
 
 impl<'a> BackwardChainIterator<'a> {
-    fn new(store: &'a dyn ReachabilityStore, current: Hash, ancestor: Option<Hash>, inclusive: bool) -> Self {
-        Self { store, current: Some(current), ancestor: ancestor.unwrap_or(model::ORIGIN), inclusive }
+    fn new(store: &'a dyn ReachabilityStore, current: Hash, ancestor: Hash, inclusive: bool) -> Self {
+        Self { store, current: Some(current), ancestor, inclusive }
     }
 }
 
@@ -184,8 +184,7 @@ impl<'a> Iterator for BackwardChainIterator<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(current) = self.current {
             if current == self.ancestor {
-                // Besides the stopping point `self.ancestor` we also halt at Hash::ZERO
-                if self.inclusive && !current.is_zero() {
+                if self.inclusive {
                     self.current = None;
                     Some(Ok(current))
                 } else {
@@ -193,6 +192,7 @@ impl<'a> Iterator for BackwardChainIterator<'a> {
                     None
                 }
             } else {
+                debug_assert_ne!(current, Hash::ZERO);
                 match self.store.get_parent(current) {
                     Ok(next) => {
                         self.current = Some(next);
@@ -312,7 +312,48 @@ mod tests {
         // Compare backward to reversed forward
         let forward_iter = forward_chain_iterator(store.as_ref(), 10.into(), 2.into(), true).map(|r| r.unwrap());
         let backward_iter: Result<Vec<Hash>> =
-            backward_chain_iterator(store.as_ref(), 10.into(), Some(2.into()), true).collect();
+            backward_chain_iterator(store.as_ref(), 10.into(), 2.into(), true).collect();
         assert!(forward_iter.eq(backward_iter.unwrap().iter().cloned().rev()))
+    }
+
+    #[test]
+    fn test_iterator_boundaries() {
+        // Arrange & Act
+        let mut store: Box<dyn ReachabilityStore> = Box::new(MemoryReachabilityStore::new());
+        let root: Hash = 1.into();
+        TreeBuilder::new(store.as_mut())
+            .init(root, Interval::new(1, 5))
+            .add_block(2.into(), root);
+
+        // Asserts
+        assert!([1u64, 2]
+            .map(Hash::from)
+            .iter()
+            .cloned()
+            .eq(forward_chain_iterator(store.as_ref(), 2.into(), 1.into(), true).map(|r| r.unwrap())));
+
+        assert!([1u64]
+            .map(Hash::from)
+            .iter()
+            .cloned()
+            .eq(forward_chain_iterator(store.as_ref(), 2.into(), 1.into(), false).map(|r| r.unwrap())));
+
+        assert!([2u64, 1]
+            .map(Hash::from)
+            .iter()
+            .cloned()
+            .eq(backward_chain_iterator(store.as_ref(), 2.into(), root, true).map(|r| r.unwrap())));
+
+        assert!([2u64]
+            .map(Hash::from)
+            .iter()
+            .cloned()
+            .eq(backward_chain_iterator(store.as_ref(), 2.into(), root, false).map(|r| r.unwrap())));
+
+        assert!(std::iter::once_with(|| root)
+            .eq(backward_chain_iterator(store.as_ref(), root, root, true).map(|r| r.unwrap())));
+
+        assert!(std::iter::empty::<Hash>()
+            .eq(backward_chain_iterator(store.as_ref(), root, root, false).map(|r| r.unwrap())));
     }
 }
