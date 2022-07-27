@@ -41,12 +41,12 @@ impl<'a> ReindexOperationContext<'a> {
 
             if parent.is_zero() {
                 // TODO: comment and add detailed inner error
-                return Err(ReachabilityError::ReachabilityDataOverflowError);
+                return Err(ReachabilityError::DataOverflow);
             }
 
             if current == self.root {
                 // TODO: comment and add detailed inner error
-                return Err(ReachabilityError::ReachabilityDataOverflowError);
+                return Err(ReachabilityError::DataOverflow);
             }
 
             if inquirer::is_strict_chain_ancestor_of(self.store, parent, self.root)? {

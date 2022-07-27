@@ -53,8 +53,76 @@ pub fn is_dag_ancestor_of(store: &dyn ReachabilityStore, anchor: Hash, queried: 
     todo!()
 }
 
+/// get_next_chain_ancestor finds the reachability/selection tree child
+/// of 'ancestor' which is also an ancestor of 'descendant'.
 pub fn get_next_chain_ancestor(store: &dyn ReachabilityStore, descendant: Hash, ancestor: Hash) -> Result<Hash> {
-    todo!()
+    if descendant == ancestor {
+        // The next ancestor does not exist
+        return Err(ReachabilityError::BadQuery);
+    }
+    if !is_strict_chain_ancestor_of(store, ancestor, descendant)? {
+        // `ancestor` isn't actually a chain ancestor of `descendant`, so by def
+        // we cannot find the next ancestor
+        return Err(ReachabilityError::BadQuery);
+    }
+
+    let point = store.get_interval(descendant)?.start;
+    let children = store.get_children(ancestor)?;
+
+    // We use an `expect` here since otherwise we need to implement `binary_search`
+    // ourselves, which is not worth the effort since this is an unrecoverable error anyhow
+    match children.binary_search_by_key(&point, |c| {
+        store
+            .get_interval(*c)
+            .expect("reachability interval data missing from store")
+            .start
+    }) {
+        Ok(i) => Ok(children[i]),
+        Err(i) => {
+            // `i` is where `point` was expected (i.e., point < children[i].interval.start),
+            // so we expect `children[i - 1].interval` to contain `point`
+            if i > 0 && is_chain_ancestor_of(store, children[i - 1], descendant)? {
+                Ok(children[i - 1])
+            } else {
+                Err(ReachabilityError::DataInconsistency)
+            }
+        }
+    }
+}
+
+pub fn forward_chain_iterator(
+    store: &dyn ReachabilityStore, descendant: Hash, ancestor: Hash,
+) -> ForwardChainIterator<'_> {
+    ForwardChainIterator::new(store, ancestor, descendant, false)
+}
+
+pub struct ForwardChainIterator<'a> {
+    store: &'a dyn ReachabilityStore,
+    current: Hash,
+    descendant: Hash,
+    inclusive: bool,
+}
+
+impl<'a> ForwardChainIterator<'a> {
+    fn new(store: &'a dyn ReachabilityStore, current: Hash, descendant: Hash, inclusive: bool) -> Self {
+        Self { store, current, descendant, inclusive }
+    }
+}
+
+impl<'a> Iterator for ForwardChainIterator<'a> {
+    type Item = Result<Hash>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let current = self.current;
+        // TODO: test for end of sequence
+        match get_next_chain_ancestor(self.store, self.descendant, current) {
+            Ok(next) => {
+                self.current = next;
+                Some(Ok(current))
+            }
+            Err(e) => Some(Err(e)),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -109,5 +177,32 @@ mod tests {
 
         // Assert
         validate_intervals(store.as_ref(), root).unwrap();
+    }
+
+    #[test]
+    fn test_forward_iterator() {
+        // Arrange
+        let mut store: Box<dyn ReachabilityStore> = Box::new(MemoryReachabilityStore::new());
+        let root: Hash = 1.into();
+        TreeBuilder::new(store.as_mut())
+            .init(root, Interval::new(1, 15))
+            .add_block(2.into(), root)
+            .add_block(3.into(), 2.into())
+            .add_block(4.into(), 2.into())
+            .add_block(5.into(), 3.into())
+            .add_block(6.into(), 5.into())
+            .add_block(7.into(), 1.into())
+            .add_block(8.into(), 6.into())
+            .add_block(9.into(), 6.into())
+            .add_block(10.into(), 6.into())
+            .add_block(11.into(), 6.into());
+
+        // Act
+        let iter = forward_chain_iterator(store.as_ref(), 10.into(), 2.into());
+
+        // Assert (wip)
+        for block in iter.take(12) {
+            println!("{:?}", block);
+        }
     }
 }
