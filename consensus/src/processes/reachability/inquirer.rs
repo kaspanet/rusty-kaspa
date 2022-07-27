@@ -3,6 +3,8 @@ use super::{tree::*, *};
 use crate::model;
 use crate::model::{api::hash::Hash, stores::reachability::ReachabilityStore};
 
+/// Init the reachability store to match the state required by the algorithmic layer.
+/// The function first checks the store for possibly being initialized already.
 pub fn init(store: &mut dyn ReachabilityStore) -> Result<()> {
     init_with_params(store, model::ORIGIN, Interval::maximal())
 }
@@ -16,6 +18,7 @@ fn init_with_params(store: &mut dyn ReachabilityStore, origin: Hash, capacity: I
     Ok(())
 }
 
+/// Add a block to the DAG reachability data structures and persist using the provided `store`.
 pub fn add_block(
     store: &mut dyn ReachabilityStore, new_block: Hash, selected_parent: Hash, mergeset: &[Hash],
 ) -> Result<()> {
@@ -41,39 +44,39 @@ fn add_dag_block(store: &mut dyn ReachabilityStore, new_block: Hash, mergeset: &
     Ok(())
 }
 
-/// Hint to the reachability algorithm that `new_vsp_candidate` is a candidate to become
+/// Hint to the reachability algorithm that `hint` is a candidate to become
 /// the `virtual selected parent` (`VSP`). This might affect internal reachability heuristics such
-/// as moving the reindex point. The consensus runtime is expected to call this function
+/// as moving the reindex center point. The consensus runtime is expected to call this function
 /// for a new header selected tip which is `pending UTXO verification`, or for a completely resolved `VSP`.
-pub fn hint_virtual_selected_parent(store: &mut dyn ReachabilityStore, new_vsp_candidate: Hash) -> Result<()> {
+pub fn hint_virtual_selected_parent(store: &mut dyn ReachabilityStore, hint: Hash) -> Result<()> {
     // let current_root
     todo!()
 }
 
-/// `is_strict_chain_ancestor_of` checks if the `anchor` block is a strict
-/// chain ancestor of the `queried` block. Note that this results in `false`
-/// if `anchor == queried`
+/// Checks if the `anchor` block is a strict chain ancestor of the `queried` block.
+/// Note that this results in `false` if `anchor == queried`
 pub fn is_strict_chain_ancestor_of(store: &dyn ReachabilityStore, anchor: Hash, queried: Hash) -> Result<bool> {
     Ok(store
         .get_interval(anchor)?
         .strictly_contains(store.get_interval(queried)?))
 }
 
-/// `is_chain_ancestor_of checks` if the `anchor` block is a chain ancestor
-/// of the `queried` block. Note that we use the graph theory convention
-/// here which defines that a block is also an ancestor of itself.
+/// Checks if `anchor` block is a chain ancestor of `queried` block. Note that we use the
+/// graph theory convention here which defines that a block is also an ancestor of itself.
 pub fn is_chain_ancestor_of(store: &dyn ReachabilityStore, anchor: Hash, queried: Hash) -> Result<bool> {
     Ok(store
         .get_interval(anchor)?
         .contains(store.get_interval(queried)?))
 }
 
+/// Returns true if `anchor` is a DAG ancestor of `queried`.
+/// Note: this method will return true if `anchor == queried`.
+/// The complexity of this method is O(log(|future_covering_set(anchor)|))
 pub fn is_dag_ancestor_of(store: &dyn ReachabilityStore, anchor: Hash, queried: Hash) -> Result<bool> {
     todo!()
 }
 
-/// `get_next_chain_ancestor` finds the child of `ancestor`
-/// which is also a chain ancestor of `descendant`.
+/// Finds the child of `ancestor` which is also a chain ancestor of `descendant`.
 pub fn get_next_chain_ancestor(store: &dyn ReachabilityStore, descendant: Hash, ancestor: Hash) -> Result<Hash> {
     if descendant == ancestor {
         // The next ancestor does not exist
@@ -109,12 +112,20 @@ pub fn get_next_chain_ancestor(store: &dyn ReachabilityStore, descendant: Hash, 
     }
 }
 
+/// Returns a forward iterator walking up the chain-selection tree from `from_ancestor`
+/// to `to_descendant`, where `to_descendant` is included if `inclusive` is set to true.
+/// The caller is expected to verify that `from_ancestor` is indeed a chain ancestor of
+/// `to_descendant`, otherwise a `ReachabilityError::BadQuery` error will be returned.  
 pub fn forward_chain_iterator(
     store: &dyn ReachabilityStore, from_ancestor: Hash, to_descendant: Hash, inclusive: bool,
 ) -> ForwardChainIterator<'_> {
     ForwardChainIterator::new(store, from_ancestor, to_descendant, inclusive)
 }
 
+/// Returns a backward iterator walking down the selected chain from `from_descendant`
+/// to `to_ancestor`, where `to_ancestor` is included if `inclusive` is set to true.
+/// The caller is expected to verify that `to_ancestor` is indeed a chain ancestor of
+/// `from_descendant`, otherwise the iterator will eventually return an error.  
 pub fn backward_chain_iterator(
     store: &dyn ReachabilityStore, from_descendant: Hash, to_ancestor: Hash, inclusive: bool,
 ) -> BackwardChainIterator<'_> {
