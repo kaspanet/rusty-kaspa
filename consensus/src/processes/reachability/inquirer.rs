@@ -93,7 +93,13 @@ pub fn get_next_chain_ancestor(store: &dyn ReachabilityStore, descendant: Hash, 
 pub fn forward_chain_iterator(
     store: &dyn ReachabilityStore, descendant: Hash, ancestor: Hash, inclusive: bool,
 ) -> ForwardChainIterator<'_> {
-    ForwardChainIterator::new(store, ancestor, descendant, false)
+    ForwardChainIterator::new(store, ancestor, descendant, inclusive)
+}
+
+pub fn backward_chain_iterator(
+    store: &dyn ReachabilityStore, descendant: Hash, ancestor: Option<Hash>, inclusive: bool,
+) -> BackwardChainIterator<'_> {
+    BackwardChainIterator::new(store, descendant, ancestor, inclusive)
 }
 
 pub struct ForwardChainIterator<'a> {
@@ -131,6 +137,51 @@ impl<'a> Iterator for ForwardChainIterator<'a> {
                     Err(e) => {
                         self.current = None;
                         Some(Err(e))
+                    }
+                }
+            }
+        } else {
+            None
+        }
+    }
+}
+
+pub struct BackwardChainIterator<'a> {
+    store: &'a dyn ReachabilityStore,
+    current: Option<Hash>,
+    ancestor: Hash,
+    inclusive: bool,
+}
+
+impl<'a> BackwardChainIterator<'a> {
+    fn new(store: &'a dyn ReachabilityStore, current: Hash, ancestor: Option<Hash>, inclusive: bool) -> Self {
+        Self { store, current: Some(current), ancestor: ancestor.unwrap_or(model::ORIGIN), inclusive }
+    }
+}
+
+impl<'a> Iterator for BackwardChainIterator<'a> {
+    type Item = Result<Hash>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(current) = self.current {
+            if current == self.ancestor {
+                // Besides the stopping point `self.ancestor` we also halt at Hash::ZERO
+                if self.inclusive && !current.is_zero() {
+                    self.current = None;
+                    Some(Ok(current))
+                } else {
+                    self.current = None;
+                    None
+                }
+            } else {
+                match self.store.get_parent(current) {
+                    Ok(next) => {
+                        self.current = Some(next);
+                        Some(Ok(current))
+                    }
+                    Err(e) => {
+                        self.current = None;
+                        Some(Err(ReachabilityError::StoreError(e)))
                     }
                 }
             }
@@ -214,10 +265,30 @@ mod tests {
             .add_block(10.into(), 6.into())
             .add_block(11.into(), 6.into());
 
+        // Exclusive
         let iter = forward_chain_iterator(store.as_ref(), 10.into(), 2.into(), false);
 
-        // Assert 
+        // Assert
         let expected_hashes = [2u64, 3, 5, 6].map(Hash::from);
-        assert!(expected_hashes.iter().cloned().eq(iter.map(|r| r.unwrap())));
+        assert!(expected_hashes
+            .iter()
+            .cloned()
+            .eq(iter.map(|r| r.unwrap())));
+
+        // Inclusive
+        let iter = forward_chain_iterator(store.as_ref(), 10.into(), 2.into(), true);
+
+        // Assert
+        let expected_hashes = [2u64, 3, 5, 6, 10].map(Hash::from);
+        assert!(expected_hashes
+            .iter()
+            .cloned()
+            .eq(iter.map(|r| r.unwrap())));
+
+        // Compare backward to reversed forward
+        let forward_iter = forward_chain_iterator(store.as_ref(), 10.into(), 2.into(), true).map(|r| r.unwrap());
+        let backward_iter: Result<Vec<Hash>> =
+            backward_chain_iterator(store.as_ref(), 10.into(), Some(2.into()), true).collect();
+        assert!(forward_iter.eq(backward_iter.unwrap().iter().cloned().rev()))
     }
 }
