@@ -91,21 +91,21 @@ pub fn get_next_chain_ancestor(store: &dyn ReachabilityStore, descendant: Hash, 
 }
 
 pub fn forward_chain_iterator(
-    store: &dyn ReachabilityStore, descendant: Hash, ancestor: Hash,
+    store: &dyn ReachabilityStore, descendant: Hash, ancestor: Hash, inclusive: bool,
 ) -> ForwardChainIterator<'_> {
     ForwardChainIterator::new(store, ancestor, descendant, false)
 }
 
 pub struct ForwardChainIterator<'a> {
     store: &'a dyn ReachabilityStore,
-    current: Hash,
+    current: Option<Hash>,
     descendant: Hash,
     inclusive: bool,
 }
 
 impl<'a> ForwardChainIterator<'a> {
     fn new(store: &'a dyn ReachabilityStore, current: Hash, descendant: Hash, inclusive: bool) -> Self {
-        Self { store, current, descendant, inclusive }
+        Self { store, current: Some(current), descendant, inclusive }
     }
 }
 
@@ -113,14 +113,29 @@ impl<'a> Iterator for ForwardChainIterator<'a> {
     type Item = Result<Hash>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let current = self.current;
-        // TODO: test for end of sequence
-        match get_next_chain_ancestor(self.store, self.descendant, current) {
-            Ok(next) => {
-                self.current = next;
-                Some(Ok(current))
+        if let Some(current) = self.current {
+            if current == self.descendant {
+                if self.inclusive {
+                    self.current = None;
+                    Some(Ok(current))
+                } else {
+                    self.current = None;
+                    None
+                }
+            } else {
+                match get_next_chain_ancestor(self.store, self.descendant, current) {
+                    Ok(next) => {
+                        self.current = Some(next);
+                        Some(Ok(current))
+                    }
+                    Err(e) => {
+                        self.current = None;
+                        Some(Err(e))
+                    }
+                }
             }
-            Err(e) => Some(Err(e)),
+        } else {
+            None
         }
     }
 }
@@ -183,6 +198,8 @@ mod tests {
     fn test_forward_iterator() {
         // Arrange
         let mut store: Box<dyn ReachabilityStore> = Box::new(MemoryReachabilityStore::new());
+
+        // Act
         let root: Hash = 1.into();
         TreeBuilder::new(store.as_mut())
             .init(root, Interval::new(1, 15))
@@ -197,12 +214,10 @@ mod tests {
             .add_block(10.into(), 6.into())
             .add_block(11.into(), 6.into());
 
-        // Act
-        let iter = forward_chain_iterator(store.as_ref(), 10.into(), 2.into());
+        let iter = forward_chain_iterator(store.as_ref(), 10.into(), 2.into(), false);
 
-        // Assert (wip)
-        for block in iter.take(12) {
-            println!("{:?}", block);
-        }
+        // Assert 
+        let expected_hashes = [2u64, 3, 5, 6].map(Hash::from);
+        assert!(expected_hashes.iter().cloned().eq(iter.map(|r| r.unwrap())));
     }
 }
