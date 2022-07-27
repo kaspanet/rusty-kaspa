@@ -1,4 +1,4 @@
-use super::{interval::Interval, *};
+use super::{inquirer::get_next_chain_ancestor_unchecked, interval::Interval, *};
 use crate::model::{api::hash::Hash, stores::reachability::ReachabilityStore};
 use std::collections::{HashMap, VecDeque};
 
@@ -49,12 +49,12 @@ impl<'a> ReindexOperationContext<'a> {
     ///
     /// Core (BFS) algorithms used during reindexing (see `count_subtrees` and `propagate_interval` below)
     ///
-
     ///
     /// count_subtrees counts the size of each subtree under this block,
     /// and populates self.subtree_sizes with the results.
     /// It is equivalent to the following recursive implementation:
     ///
+    /// ```no_run
     /// fn count_subtrees(&mut self, block: Hash) -> Result<u64> {
     ///     let mut subtree_size = 0u64;
     ///     for child in self.store.get_children(block)?.iter().cloned() {
@@ -63,6 +63,7 @@ impl<'a> ReindexOperationContext<'a> {
     ///     self.subtree_sizes.insert(block, subtree_size + 1);
     ///     Ok(subtree_size + 1)
     /// }
+    /// ```
     ///
     /// However, we are expecting (linearly) deep trees, and so a
     /// recursive stack-based approach is inefficient and will hit
@@ -123,9 +124,9 @@ impl<'a> ReindexOperationContext<'a> {
         Ok(())
     }
 
-    /// propagate_interval propagates a new interval using a BFS traversal.
+    /// Propagates a new interval using a BFS traversal.
     /// Subtree intervals are recursively allocated according to subtree sizes and
-    /// the allocation rule in Interval::split_exponential.
+    /// the allocation rule in `Interval::split_exponential`.
     fn propagate_interval(&mut self, block: Hash) -> Result<()> {
         // Make sure subtrees are counted before propagating
         self.count_subtrees(block)?;
@@ -160,15 +161,128 @@ impl<'a> ReindexOperationContext<'a> {
         todo!()
     }
 
+    fn reclaim_interval_after(
+        &mut self, allocation_block: Hash, common_ancestor: Hash, chosen_child: Hash, reindex_root: Hash,
+        required_allocation: u64,
+    ) -> Result<()> {
+        let mut slack_sum = 0u64;
+        let mut path_len = 0u64;
+        let mut path_slack_alloc = 0u64;
+
+        let mut current = chosen_child;
+        // Walk up the chain from common ancestor's chosen child towards reindex root
+        loop {
+            if current == reindex_root {
+                // Reached reindex root. In this case, since we reached (the unlimited) root,
+                // we also re-allocate new slack for the chain we just traversed
+                let offset = required_allocation + self.slack * path_len - slack_sum;
+                self.apply_interval_op_and_propagate(current, offset, Interval::decrease_end)?;
+                self.offset_siblings_after(allocation_block, current, offset)?;
+
+                // Set the slack for each chain block to be reserved below during the chain walk-down
+                path_slack_alloc = self.slack;
+                break;
+            }
+
+            let slack_after_current = self
+                .store
+                .interval_remaining_after(current)?
+                .size();
+            slack_sum += slack_after_current;
+
+            if slack_sum >= required_allocation {
+                // Set offset to be just enough to satisfy required allocation
+                let offset = slack_after_current - (slack_sum - required_allocation);
+                self.apply_interval_op(current, offset, Interval::decrease_end)?;
+                self.offset_siblings_after(allocation_block, current, offset)?;
+
+                break;
+            }
+
+            current = get_next_chain_ancestor_unchecked(self.store, reindex_root, current)?;
+            path_len += 1;
+        }
+
+        // Go back down the reachability tree towards the common ancestor.
+        // On every hop we reindex the reachability subtree before the
+        // current block with an interval that is smaller.
+        // This is to make room for the required allocation.
+        loop {
+            current = self.store.get_parent(current)?;
+            if current == common_ancestor {
+                break;
+            }
+
+            let slack_after_current = self
+                .store
+                .interval_remaining_after(current)?
+                .size();
+            let offset = slack_after_current - path_slack_alloc;
+            self.apply_interval_op(current, offset, Interval::decrease_end)?;
+            self.offset_siblings_after(allocation_block, current, offset)?;
+        }
+
+        Ok(())
+    }
+
+    fn offset_siblings_before(&mut self, allocation_block: Hash, current: Hash, offset: u64) -> Result<()> {
+        let parent = self.store.get_parent(current)?;
+        let children = self.store.get_children(parent)?;
+
+        let (siblings_before, _) = split_children(&children, current)?;
+        for sibling in siblings_before.iter().cloned().rev() {
+            if sibling == allocation_block {
+                // We reached our final destination, allocate `offset` to `allocation_block` by increasing end and break
+                self.apply_interval_op_and_propagate(allocation_block, offset, Interval::increase_end)?;
+                break;
+            }
+            // For non-`allocation_block` siblings offset the interval upwards in order to create space
+            self.apply_interval_op_and_propagate(sibling, offset, Interval::increase)?;
+        }
+
+        Ok(())
+    }
+
+    fn offset_siblings_after(&mut self, allocation_block: Hash, current: Hash, offset: u64) -> Result<()> {
+        let parent = self.store.get_parent(current)?;
+        let children = self.store.get_children(parent)?;
+
+        let (_, siblings_after) = split_children(&children, current)?;
+        for sibling in siblings_after.iter().cloned() {
+            if sibling == allocation_block {
+                // We reached our final destination, allocate `offset` to `allocation_block` by decreasing only start and break
+                self.apply_interval_op_and_propagate(allocation_block, offset, Interval::decrease_start)?;
+                break;
+            }
+            // For siblings before `allocation_block` offset the interval downwards to create space
+            self.apply_interval_op_and_propagate(sibling, offset, Interval::decrease)?;
+        }
+
+        Ok(())
+    }
+
+    fn apply_interval_op(&mut self, block: Hash, offset: u64, op: fn(&Interval, u64) -> Interval) -> Result<()> {
+        self.store
+            .set_interval(block, op(&self.store.get_interval(block)?, offset))?;
+        Ok(())
+    }
+
+    fn apply_interval_op_and_propagate(
+        &mut self, block: Hash, offset: u64, op: fn(&Interval, u64) -> Interval,
+    ) -> Result<()> {
+        self.store
+            .set_interval(block, op(&self.store.get_interval(block)?, offset))?;
+        self.propagate_interval(block)?;
+        Ok(())
+    }
+
     pub(super) fn concentrate_interval(
         &mut self, parent: Hash, child: Hash, is_final_reindex_root: bool,
     ) -> Result<()> {
         let children = self.store.get_children(parent)?;
 
         // Split the `children` of `parent` to siblings before `child` and siblings after `child`
-        let mut split = children.split(|c| *c == child);
-        let (siblings_before, siblings_after) = (split.next().unwrap(), split.next().unwrap());
-        assert!(split.next().is_none());
+        let (siblings_before, siblings_after) = split_children(&children, child)?;
 
         let siblings_before_subtrees_sum: u64 = self.tighten_intervals_before(parent, siblings_before)?;
         let siblings_after_subtrees_sum: u64 = self.tighten_intervals_after(parent, siblings_after)?;
@@ -264,6 +378,15 @@ impl<'a> ReindexOperationContext<'a> {
 
         self.store.set_interval(child, allocation)?;
         Ok(())
+    }
+}
+
+/// Splits `children` into two slices: the blocks that are before `pivot` and the blocks that are after.
+fn split_children(children: &std::rc::Rc<Vec<Hash>>, pivot: Hash) -> Result<(&[Hash], &[Hash])> {
+    if let Some(index) = children.iter().cloned().position(|c| c == pivot) {
+        Ok((&children[..index], &children[index + 1..]))
+    } else {
+        Err(ReachabilityError::DataInconsistency)
     }
 }
 
