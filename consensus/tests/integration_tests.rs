@@ -7,7 +7,7 @@ extern crate consensus;
 use consensus::model::api::hash::Hash;
 use consensus::model::stores::reachability::{MemoryReachabilityStore, ReachabilityStore};
 use consensus::processes::reachability::interval::Interval;
-use consensus::processes::reachability::tests::TreeBuilder;
+use consensus::processes::reachability::tests::{validate_intervals, TreeBuilder};
 
 #[test]
 fn reachability_test() {
@@ -24,4 +24,5 @@ fn reachability_test() {
 
     // Should trigger an earlier than reindex root allocation
     builder.add_block(100.into(), 2.into());
+    validate_intervals(store.as_ref(), root).unwrap();
 }

@@ -37,7 +37,12 @@ impl<'a> ReindexOperationContext<'a> {
             }
 
             if inquirer::is_strict_chain_ancestor_of(self.store, parent, reindex_root)? {
-                return self.reindex_intervals_earlier_than_root(current, parent, self.subtree_sizes[&current]);
+                return self.reindex_intervals_earlier_than_root(
+                    current,
+                    reindex_root,
+                    parent,
+                    self.subtree_sizes[&current],
+                );
             }
 
             current = parent
@@ -54,7 +59,6 @@ impl<'a> ReindexOperationContext<'a> {
     /// and populates self.subtree_sizes with the results.
     /// It is equivalent to the following recursive implementation:
     ///
-    /// ```no_run
     /// fn count_subtrees(&mut self, block: Hash) -> Result<u64> {
     ///     let mut subtree_size = 0u64;
     ///     for child in self.store.get_children(block)?.iter().cloned() {
@@ -63,7 +67,6 @@ impl<'a> ReindexOperationContext<'a> {
     ///     self.subtree_sizes.insert(block, subtree_size + 1);
     ///     Ok(subtree_size + 1)
     /// }
-    /// ```
     ///
     /// However, we are expecting (linearly) deep trees, and so a
     /// recursive stack-based approach is inefficient and will hit
@@ -156,9 +159,33 @@ impl<'a> ReindexOperationContext<'a> {
     /// `required_allocation` to be added to interval of `allocation_block`. `common_ancestor` is
     /// expected to be a direct parent of `allocation_block` and an ancestor of current `reindex_root`.
     fn reindex_intervals_earlier_than_root(
-        &mut self, allocation_block: Hash, common_ancestor: Hash, required_allocation: u64,
+        &mut self, allocation_block: Hash, reindex_root: Hash, common_ancestor: Hash, required_allocation: u64,
     ) -> Result<()> {
-        todo!()
+        // The chosen child is: (i) child of `common_ancestor`; (ii) an
+        // ancestor of `reindex_root` or `reindex_root` itself
+        let chosen_child = get_next_chain_ancestor_unchecked(self.store, reindex_root, common_ancestor)?;
+        let block_interval = self.store.get_interval(allocation_block)?;
+        let chosen_interval = self.store.get_interval(chosen_child)?;
+
+        if block_interval.start < chosen_interval.start {
+            // `allocation_block` is in the subtree before the chosen child
+            self.reclaim_interval_before(
+                allocation_block,
+                common_ancestor,
+                chosen_child,
+                reindex_root,
+                required_allocation,
+            )
+        } else {
+            // `allocation_block` is in the subtree after the chosen child
+            self.reclaim_interval_after(
+                allocation_block,
+                common_ancestor,
+                chosen_child,
+                reindex_root,
+                required_allocation,
+            )
+        }
     }
 
     fn reclaim_interval_before(
