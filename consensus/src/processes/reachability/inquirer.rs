@@ -9,7 +9,7 @@ pub fn init(store: &mut dyn ReachabilityStore) -> Result<()> {
     init_with_params(store, model::ORIGIN, Interval::maximal())
 }
 
-fn init_with_params(store: &mut dyn ReachabilityStore, origin: Hash, capacity: Interval) -> Result<()> {
+pub(super) fn init_with_params(store: &mut dyn ReachabilityStore, origin: Hash, capacity: Interval) -> Result<()> {
     if store.has(origin)? {
         return Ok(());
     }
@@ -250,33 +250,6 @@ mod tests {
     use super::super::tests::*;
     use super::*;
     use crate::{model::stores::reachability::MemoryReachabilityStore, processes::reachability::interval::Interval};
-
-    /// A struct with fluent API to streamline tree building
-    struct TreeBuilder<'a> {
-        store: &'a mut dyn ReachabilityStore,
-        reindex_depth: u64,
-        reindex_slack: u64,
-    }
-
-    impl<'a> TreeBuilder<'a> {
-        pub fn new(store: &'a mut dyn ReachabilityStore) -> Self {
-            Self { store, reindex_depth: DEFAULT_REINDEX_DEPTH, reindex_slack: DEFAULT_REINDEX_SLACK }
-        }
-
-        pub fn new_with_params(store: &'a mut dyn ReachabilityStore, reindex_depth: u64, reindex_slack: u64) -> Self {
-            Self { store, reindex_depth, reindex_slack }
-        }
-
-        pub fn init(&mut self, origin: Hash, capacity: Interval) -> &mut Self {
-            init_with_params(self.store, origin, capacity).unwrap();
-            self
-        }
-
-        pub fn add_block(&mut self, hash: Hash, parent: Hash) -> &mut Self {
-            add_tree_block(self.store, hash, parent, self.reindex_depth, self.reindex_slack).unwrap();
-            self
-        }
-    }
 
     #[test]
     fn test_add_blocks() {

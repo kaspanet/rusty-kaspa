@@ -1,6 +1,7 @@
 //!
-//! Test utils shared across the super module
+//! Test utils for reachability
 //!
+use super::{inquirer::*, reindex::*, tree::*};
 use crate::{
     model::{
         api::hash::Hash,
@@ -26,6 +27,34 @@ impl<'a> StoreBuilder<'a> {
         self.store
             .insert(hash, parent, Interval::empty(), parent_height + 1)
             .unwrap();
+        self
+    }
+}
+
+/// A struct with fluent API to streamline tree building
+pub struct TreeBuilder<'a> {
+    store: &'a mut dyn ReachabilityStore,
+    reindex_depth: u64,
+    reindex_slack: u64,
+}
+
+impl<'a> TreeBuilder<'a> {
+    pub fn new(store: &'a mut dyn ReachabilityStore) -> Self {
+        Self { store, reindex_depth: DEFAULT_REINDEX_DEPTH, reindex_slack: DEFAULT_REINDEX_SLACK }
+    }
+
+    pub fn new_with_params(store: &'a mut dyn ReachabilityStore, reindex_depth: u64, reindex_slack: u64) -> Self {
+        Self { store, reindex_depth, reindex_slack }
+    }
+
+    pub fn init(&mut self, origin: Hash, capacity: Interval) -> &mut Self {
+        init_with_params(self.store, origin, capacity).unwrap();
+        self
+    }
+
+    pub fn add_block(&mut self, hash: Hash, parent: Hash) -> &mut Self {
+        add_tree_block(self.store, hash, parent, self.reindex_depth, self.reindex_slack).unwrap();
+        try_advancing_reindex_root(self.store, hash, self.reindex_depth, self.reindex_slack).unwrap();
         self
     }
 }

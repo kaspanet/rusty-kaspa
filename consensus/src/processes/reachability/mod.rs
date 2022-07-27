@@ -2,7 +2,7 @@ mod extensions;
 pub mod inquirer;
 pub mod interval;
 mod reindex;
-mod tests;
+pub mod tests;
 mod tree;
 
 use crate::model::stores::errors::StoreError;

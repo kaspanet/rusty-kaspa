@@ -7,18 +7,17 @@ pub const DEFAULT_REINDEX_SLACK: u64 = 1 << 12;
 
 pub(super) struct ReindexOperationContext<'a> {
     store: &'a mut dyn ReachabilityStore,
-    root: Hash,
-    subtree_sizes: HashMap<Hash, u64>,
+    subtree_sizes: HashMap<Hash, u64>, // Cache for subtree sizes computed during this operation
     depth: u64,
     slack: u64,
 }
 
 impl<'a> ReindexOperationContext<'a> {
-    pub(super) fn new(store: &'a mut dyn ReachabilityStore, root: Hash, depth: u64, slack: u64) -> Self {
-        Self { store, root, subtree_sizes: HashMap::new(), depth, slack }
+    pub(super) fn new(store: &'a mut dyn ReachabilityStore, depth: u64, slack: u64) -> Self {
+        Self { store, subtree_sizes: HashMap::new(), depth, slack }
     }
 
-    pub(super) fn reindex_intervals(&mut self, new_child: Hash) -> Result<()> {
+    pub(super) fn reindex_intervals(&mut self, new_child: Hash, reindex_root: Hash) -> Result<()> {
         let mut current = new_child;
         loop {
             let current_interval = self.store.get_interval(current)?;
@@ -35,12 +34,12 @@ impl<'a> ReindexOperationContext<'a> {
                 return Err(ReachabilityError::DataOverflow);
             }
 
-            if current == self.root {
+            if current == reindex_root {
                 // TODO: comment and add detailed inner error
                 return Err(ReachabilityError::DataOverflow);
             }
 
-            if inquirer::is_strict_chain_ancestor_of(self.store, parent, self.root)? {
+            if inquirer::is_strict_chain_ancestor_of(self.store, parent, reindex_root)? {
                 return self.reindex_intervals_earlier_than_root(current, parent, self.subtree_sizes[&current]);
             }
 
@@ -154,6 +153,10 @@ impl<'a> ReindexOperationContext<'a> {
         Ok(())
     }
 
+    /// This method implements the reindex algorithm for the case where the
+    /// new child node is not in reindex root's subtree. The function is expected to allocate
+    /// `required_allocation` to be added to interval of `allocation_block`. `common_ancestor` is
+    /// expected to be a direct parent of `allocation_block` and an ancestor of current `reindex_root`.
     fn reindex_intervals_earlier_than_root(
         &mut self, allocation_block: Hash, common_ancestor: Hash, required_allocation: u64,
     ) -> Result<()> {
@@ -290,7 +293,7 @@ mod tests {
             .add_block(8.into(), 6.into());
 
         // Act
-        let mut ctx = ReindexOperationContext::new(store.as_mut(), root, 10, 16);
+        let mut ctx = ReindexOperationContext::new(store.as_mut(), 10, 16);
         ctx.count_subtrees(root).unwrap();
 
         // Assert

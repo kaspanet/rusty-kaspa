@@ -19,8 +19,8 @@ pub fn add_tree_block(
 
         // Start a reindex operation (TODO: add timing)
         let reindex_root = store.get_reindex_root()?;
-        let mut ctx = ReindexOperationContext::new(store, reindex_root, reindex_depth, reindex_slack);
-        ctx.reindex_intervals(new_block)?;
+        let mut ctx = ReindexOperationContext::new(store, reindex_depth, reindex_slack);
+        ctx.reindex_intervals(new_block, reindex_root)?;
     } else {
         let allocated = remaining.split_half().0;
         store.insert(new_block, parent, allocated, parent_height + 1)?;
@@ -108,7 +108,7 @@ pub fn try_advancing_reindex_root(
     // }
     while ancestor != next {
         let child = get_next_chain_ancestor_unchecked(store, next, ancestor)?;
-        let mut ctx = ReindexOperationContext::new(store, current, reindex_depth, reindex_slack);
+        let mut ctx = ReindexOperationContext::new(store, reindex_depth, reindex_slack);
         ctx.concentrate_interval(ancestor, child, child == next)?;
         ancestor = child;
     }
