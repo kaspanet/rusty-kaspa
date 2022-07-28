@@ -61,6 +61,10 @@ impl<'a> TreeBuilder<'a> {
         try_advancing_reindex_root(self.store, hash, self.reindex_depth, self.reindex_slack).unwrap();
         self
     }
+
+    pub fn store(&self) -> &&'a mut dyn ReachabilityStore {
+        &self.store
+    }
 }
 
 #[derive(Error, Debug)]
