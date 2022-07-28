@@ -107,7 +107,6 @@ pub fn is_dag_ancestor_of(store: &dyn ReachabilityStore, anchor: Hash, queried: 
     if is_chain_ancestor_of(store, anchor, queried)? {
         return Ok(true);
     }
-
     // Otherwise, use previously registered future blocks to complete the
     // DAG reachability test
     match binary_search_descendant(store, store.get_future_covering_set(anchor)?.as_slice(), queried)? {
@@ -131,6 +130,9 @@ pub fn get_next_chain_ancestor(store: &dyn ReachabilityStore, descendant: Hash, 
     get_next_chain_ancestor_unchecked(store, descendant, ancestor)
 }
 
+/// Note: it is important to keep the unchecked version for internal module use,
+/// since in some scenarios during reindexing `descendant` might have a modified
+/// interval which was not propagated yet.
 pub(super) fn get_next_chain_ancestor_unchecked(
     store: &dyn ReachabilityStore, descendant: Hash, ancestor: Hash,
 ) -> Result<Hash> {
@@ -173,11 +175,15 @@ fn binary_search_descendant(
 }
 
 fn assert_hashes_ordered(store: &dyn ReachabilityStore, ordered_hashes: &[Hash]) {
-    let points: Vec<u64> = ordered_hashes
+    let intervals: Vec<Interval> = ordered_hashes
         .iter()
-        .map(|c| store.get_interval(*c).unwrap().start)
+        .cloned()
+        .map(|c| store.get_interval(c).unwrap())
         .collect();
-    debug_assert!(points.as_slice().windows(2).all(|w| w[0] <= w[1]))
+    debug_assert!(intervals
+        .as_slice()
+        .windows(2)
+        .all(|w| !w[0].is_empty() && w[0].end < w[1].start && !w[1].is_empty()))
 }
 
 /// Returns a forward iterator walking up the chain-selection tree from `from_ancestor`
