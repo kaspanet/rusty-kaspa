@@ -51,7 +51,23 @@ fn add_dag_block(store: &mut dyn ReachabilityStore, new_block: Hash, mergeset_it
 }
 
 fn insert_to_future_covering_set(store: &mut dyn ReachabilityStore, merged_block: Hash, new_block: Hash) -> Result<()> {
-    Ok(())
+    match binary_search_descendant(
+        store,
+        store
+            .get_future_covering_set(merged_block)?
+            .as_slice(),
+        new_block,
+    )? {
+        // We expect the query to not succeed, and to only return the correct insertion index.
+        // The existences of a `future covering item` (`FCI`) which is a chain ancestor of `new_block`
+        // contradicts `merged_block ∈ mergeset(new_block)`. Similarly, the existence of an FCI
+        // which `new_block` is a chain ancestor of, contradicts processing order.
+        SearchOutput::Found(_, _) => Err(ReachabilityError::DataInconsistency),
+        SearchOutput::NotFound(i) => {
+            store.insert_future_covering_item(merged_block, new_block, i)?;
+            Ok(())
+        }
+    }
 }
 
 /// Hint to the reachability algorithm that `hint` is a candidate to become
@@ -94,25 +110,9 @@ pub fn is_dag_ancestor_of(store: &dyn ReachabilityStore, anchor: Hash, queried: 
 
     // Otherwise, use previously registered future blocks to complete the
     // DAG reachability test
-    let point = store.get_interval(queried)?.start;
-    let future_covering_set = store.get_future_covering_set(anchor)?;
-
-    match future_covering_set.binary_search_by_key(&point, |fci| {
-        store
-            .get_interval(*fci)
-            .expect("reachability interval data missing from store")
-            .start
-    }) {
-        Ok(i) => Ok(true),
-        Err(i) => {
-            // `i` is where `point` was expected (i.e., point < future_covering_set[i].interval.start),
-            // so we check if `future_covering_set[i - 1].interval` contains `point`
-            if i > 0 && is_chain_ancestor_of(store, future_covering_set[i - 1], queried)? {
-                Ok(true)
-            } else {
-                Ok(false)
-            }
-        }
+    match binary_search_descendant(store, store.get_future_covering_set(anchor)?.as_slice(), queried)? {
+        SearchOutput::Found(_, _) => Ok(true),
+        SearchOutput::NotFound(_) => Ok(false),
     }
 }
 
@@ -124,7 +124,7 @@ pub fn get_next_chain_ancestor(store: &dyn ReachabilityStore, descendant: Hash, 
     }
     if !is_strict_chain_ancestor_of(store, ancestor, descendant)? {
         // `ancestor` isn't actually a chain ancestor of `descendant`, so by def
-        // we cannot find the next ancestor
+        // we cannot find the next ancestor as well
         return Err(ReachabilityError::BadQuery);
     }
 
@@ -134,37 +134,50 @@ pub fn get_next_chain_ancestor(store: &dyn ReachabilityStore, descendant: Hash, 
 pub(super) fn get_next_chain_ancestor_unchecked(
     store: &dyn ReachabilityStore, descendant: Hash, ancestor: Hash,
 ) -> Result<Hash> {
+    match binary_search_descendant(store, store.get_children(ancestor)?.as_slice(), descendant)? {
+        SearchOutput::Found(hash, i) => Ok(hash),
+        SearchOutput::NotFound(i) => Err(ReachabilityError::BadQuery),
+    }
+}
+
+enum SearchOutput {
+    NotFound(usize), // `usize` is the position to insert at
+    Found(Hash, usize),
+}
+
+fn binary_search_descendant(
+    store: &dyn ReachabilityStore, ordered_hashes: &[Hash], descendant: Hash,
+) -> Result<SearchOutput> {
+    if cfg!(debug_assertions) {
+        // This is a linearly expensive assertion, keep it debug only
+        assert_hashes_ordered(store, ordered_hashes);
+    }
+
     let point = store.get_interval(descendant)?.start;
-    let children = store.get_children(ancestor)?;
 
-    // Works only with nightly and by adding the line `#![feature(is_sorted)]` to lib.rs
-    //
-    // debug_assert!(children.iter().is_sorted_by_key(|c| {
-    //     store
-    //         .get_interval(*c)
-    //         .expect("reachability interval data missing from store")
-    //         .start
-    // }));
-
-    // We use an `expect` here since otherwise we need to implement `binary_search`
-    // ourselves, which is not worth the effort since this is an unrecoverable error anyhow
-    match children.binary_search_by_key(&point, |c| {
-        store
-            .get_interval(*c)
-            .expect("reachability interval data missing from store")
-            .start
-    }) {
-        Ok(i) => Ok(children[i]),
+    // We use an `unwrap` here since otherwise we need to implement `binary_search`
+    // ourselves, which is not worth the effort given that this would be an unrecoverable
+    // error anyhow
+    match ordered_hashes.binary_search_by_key(&point, |c| store.get_interval(*c).unwrap().start) {
+        Ok(i) => Ok(SearchOutput::Found(ordered_hashes[i], i)),
         Err(i) => {
-            // `i` is where `point` was expected (i.e., point < children[i].interval.start),
-            // so we expect `children[i - 1].interval` to contain `point`
-            if i > 0 && is_chain_ancestor_of(store, children[i - 1], descendant)? {
-                Ok(children[i - 1])
+            // `i` is where `point` was expected (i.e., point < ordered_hashes[i].interval.start),
+            // so we expect `ordered_hashes[i - 1].interval` to contain `point`
+            if i > 0 && is_chain_ancestor_of(store, ordered_hashes[i - 1], descendant)? {
+                Ok(SearchOutput::Found(ordered_hashes[i - 1], i - 1))
             } else {
-                Err(ReachabilityError::DataInconsistency)
+                Ok(SearchOutput::NotFound(i))
             }
         }
     }
+}
+
+fn assert_hashes_ordered(store: &dyn ReachabilityStore, ordered_hashes: &[Hash]) {
+    let points: Vec<u64> = ordered_hashes
+        .iter()
+        .map(|c| store.get_interval(*c).unwrap().start)
+        .collect();
+    debug_assert!(points.as_slice().windows(2).all(|w| w[0] <= w[1]))
 }
 
 /// Returns a forward iterator walking up the chain-selection tree from `from_ancestor`
