@@ -18,15 +18,17 @@ pub(super) fn init_with_params(store: &mut dyn ReachabilityStore, origin: Hash, 
     Ok(())
 }
 
+type HashIterator<'a> = &'a mut dyn Iterator<Item = Hash>;
+
 /// Add a block to the DAG reachability data structures and persist using the provided `store`.
 pub fn add_block(
-    store: &mut dyn ReachabilityStore, new_block: Hash, selected_parent: Hash, mergeset: &[Hash],
+    store: &mut dyn ReachabilityStore, new_block: Hash, selected_parent: Hash, mergeset_iterator: HashIterator,
 ) -> Result<()> {
-    add_block_with_params(store, new_block, selected_parent, mergeset, None, None)
+    add_block_with_params(store, new_block, selected_parent, mergeset_iterator, None, None)
 }
 
 fn add_block_with_params(
-    store: &mut dyn ReachabilityStore, new_block: Hash, selected_parent: Hash, mergeset: &[Hash],
+    store: &mut dyn ReachabilityStore, new_block: Hash, selected_parent: Hash, mergeset_iterator: HashIterator,
     reindex_depth: Option<u64>, reindex_slack: Option<u64>,
 ) -> Result<()> {
     add_tree_block(
@@ -36,15 +38,19 @@ fn add_block_with_params(
         reindex_depth.unwrap_or(crate::constants::perf::DEFAULT_REINDEX_DEPTH),
         reindex_slack.unwrap_or(crate::constants::perf::DEFAULT_REINDEX_SLACK),
     )?;
-    add_dag_block(store, new_block, mergeset)?;
+    add_dag_block(store, new_block, mergeset_iterator)?;
     Ok(())
 }
 
-fn add_dag_block(store: &mut dyn ReachabilityStore, new_block: Hash, mergeset: &[Hash]) -> Result<()> {
-    // // Update the future covering set for blocks in the mergeset
-    // for merged_block in mergeset {
-    //     insert_to_fcs(store, merged_block, block)?;
-    // }
+fn add_dag_block(store: &mut dyn ReachabilityStore, new_block: Hash, mergeset_iterator: HashIterator) -> Result<()> {
+    // Update the future covering set for blocks in the mergeset
+    for merged_block in mergeset_iterator {
+        insert_to_future_covering_set(store, merged_block, new_block)?;
+    }
+    Ok(())
+}
+
+fn insert_to_future_covering_set(store: &mut dyn ReachabilityStore, merged_block: Hash, new_block: Hash) -> Result<()> {
     Ok(())
 }
 
@@ -61,7 +67,7 @@ pub fn hint_virtual_selected_parent(store: &mut dyn ReachabilityStore, hint: Has
     )
 }
 
-/// Checks if the `anchor` block is a strict chain ancestor of the `queried` block.
+/// Checks if the `anchor` block is a strict chain ancestor of the `queried` block (aka `anchor ∈ chain(queried)`).
 /// Note that this results in `false` if `anchor == queried`
 pub fn is_strict_chain_ancestor_of(store: &dyn ReachabilityStore, anchor: Hash, queried: Hash) -> Result<bool> {
     Ok(store
@@ -69,19 +75,45 @@ pub fn is_strict_chain_ancestor_of(store: &dyn ReachabilityStore, anchor: Hash, 
         .strictly_contains(store.get_interval(queried)?))
 }
 
-/// Checks if `anchor` block is a chain ancestor of `queried` block. Note that we use the
-/// graph theory convention here which defines that a block is also an ancestor of itself.
+/// Checks if `anchor` block is a chain ancestor of `queried` block (aka `anchor ∈ chain(queried) ∪ {queried}`).
+/// Note that we use the graph theory convention here which defines that a block is also an ancestor of itself.
 pub fn is_chain_ancestor_of(store: &dyn ReachabilityStore, anchor: Hash, queried: Hash) -> Result<bool> {
     Ok(store
         .get_interval(anchor)?
         .contains(store.get_interval(queried)?))
 }
 
-/// Returns true if `anchor` is a DAG ancestor of `queried`.
+/// Returns true if `anchor` is a DAG ancestor of `queried` (aka `queried ∈ future(anchor) ∪ {anchor}`).
 /// Note: this method will return true if `anchor == queried`.
 /// The complexity of this method is O(log(|future_covering_set(anchor)|))
 pub fn is_dag_ancestor_of(store: &dyn ReachabilityStore, anchor: Hash, queried: Hash) -> Result<bool> {
-    todo!()
+    // First, check if `anchor` is a chain ancestor of queried
+    if is_chain_ancestor_of(store, anchor, queried)? {
+        return Ok(true);
+    }
+
+    // Otherwise, use previously registered future blocks to complete the
+    // DAG reachability test
+    let point = store.get_interval(queried)?.start;
+    let future_covering_set = store.get_future_covering_set(anchor)?;
+
+    match future_covering_set.binary_search_by_key(&point, |fci| {
+        store
+            .get_interval(*fci)
+            .expect("reachability interval data missing from store")
+            .start
+    }) {
+        Ok(i) => Ok(true),
+        Err(i) => {
+            // `i` is where `point` was expected (i.e., point < future_covering_set[i].interval.start),
+            // so we check if `future_covering_set[i - 1].interval` contains `point`
+            if i > 0 && is_chain_ancestor_of(store, future_covering_set[i - 1], queried)? {
+                Ok(true)
+            } else {
+                Ok(false)
+            }
+        }
+    }
 }
 
 /// Finds the child of `ancestor` which is also a chain ancestor of `descendant`.
