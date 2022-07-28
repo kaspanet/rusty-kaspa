@@ -183,7 +183,7 @@ fn assert_hashes_ordered(store: &dyn ReachabilityStore, ordered_hashes: &[Hash])
     debug_assert!(intervals
         .as_slice()
         .windows(2)
-        .all(|w| !w[0].is_empty() && w[0].end < w[1].start && !w[1].is_empty()))
+        .all(|w| w[0].end < w[1].start))
 }
 
 /// Returns a forward iterator walking up the chain-selection tree from `from_ancestor`

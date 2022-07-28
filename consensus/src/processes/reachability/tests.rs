@@ -51,6 +51,11 @@ impl<'a> TreeBuilder<'a> {
         Self { store, reindex_depth, reindex_slack }
     }
 
+    pub fn init_default(&mut self) -> &mut Self {
+        init(self.store).unwrap();
+        self
+    }
+
     pub fn init(&mut self, origin: Hash, capacity: Interval) -> &mut Self {
         init_with_params(self.store, origin, capacity).unwrap();
         self
