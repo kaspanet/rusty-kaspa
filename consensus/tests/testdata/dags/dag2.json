@@ -1,0 +1,126 @@
+{
+  "K": 18,
+  "GenesisID": "786",
+  "ExpectedReds": [],
+  "Blocks": [
+    {
+      "ID": "21d",
+      "ExpectedScore": 1,
+      "ExpectedSelectedParent": "786",
+      "ExpectedReds": [],
+      "ExpectedBlues": [
+        "786"
+      ],
+      "Parents": [
+        "786"
+      ]
+    },
+    {
+      "ID": "6ef",
+      "ExpectedScore": 2,
+      "ExpectedSelectedParent": "21d",
+      "ExpectedReds": [],
+      "ExpectedBlues": [
+        "21d"
+      ],
+      "Parents": [
+        "21d"
+      ]
+    },
+    {
+      "ID": "c98",
+      "ExpectedScore": 3,
+      "ExpectedSelectedParent": "6ef",
+      "ExpectedReds": [],
+      "ExpectedBlues": [
+        "6ef"
+      ],
+      "Parents": [
+        "6ef"
+      ]
+    },
+    {
+      "ID": "d1c",
+      "ExpectedScore": 1,
+      "ExpectedSelectedParent": "786",
+      "ExpectedReds": [],
+      "ExpectedBlues": [
+        "786"
+      ],
+      "Parents": [
+        "786"
+      ]
+    },
+    {
+      "ID": "ec9",
+      "ExpectedScore": 5,
+      "ExpectedSelectedParent": "c98",
+      "ExpectedReds": [],
+      "ExpectedBlues": [
+        "c98",
+        "d1c"
+      ],
+      "Parents": [
+        "d1c",
+        "c98"
+      ]
+    },
+    {
+      "ID": "f154",
+      "ExpectedScore": 1,
+      "ExpectedSelectedParent": "786",
+      "ExpectedReds": [],
+      "ExpectedBlues": [
+        "786"
+      ],
+      "Parents": [
+        "786"
+      ]
+    },
+    {
+      "ID": "6c7",
+      "ExpectedScore": 4,
+      "ExpectedSelectedParent": "f154",
+      "ExpectedReds": [],
+      "ExpectedBlues": [
+        "f154",
+        "21d",
+        "d1c"
+      ],
+      "Parents": [
+        "d1c",
+        "21d",
+        "f154"
+      ]
+    },
+    {
+      "ID": "015",
+      "ExpectedScore": 8,
+      "ExpectedSelectedParent": "ec9",
+      "ExpectedReds": [],
+      "ExpectedBlues": [
+        "ec9",
+        "f154",
+        "6c7"
+      ],
+      "Parents": [
+        "ec9",
+        "6c7"
+      ]
+    },
+    {
+      "ID": "crash",
+      "ExpectedScore": 6,
+      "ExpectedSelectedParent": "6c7",
+      "ExpectedReds": [],
+      "ExpectedBlues": [
+        "6c7",
+        "6ef"
+      ],
+      "Parents": [
+        "6ef",
+        "6c7"
+      ]
+    }
+  ]
+}
