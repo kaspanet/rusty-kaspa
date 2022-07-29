@@ -1,11 +1,12 @@
 use hex;
 use std::fmt::{Debug, Formatter};
 use std::mem::size_of;
+use std::rc::Rc;
 use std::str::FromStr;
 
 const HASH_SIZE: usize = 32;
 
-#[derive(PartialEq, Eq, Clone, Copy, Hash, Default)]
+#[derive(PartialEq, Eq, Clone, Copy, Hash, Default, PartialOrd, Ord)]
 pub struct Hash([u8; HASH_SIZE]);
 
 impl ToString for Hash {
@@ -82,6 +83,8 @@ impl Hash {
         self.eq(&Self::ORIGIN)
     }
 }
+
+pub type HashArray = Rc<Vec<Hash>>;
 
 #[cfg(test)]
 mod tests {
