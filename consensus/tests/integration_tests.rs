@@ -4,7 +4,6 @@
 
 use consensus::model::api::hash::Hash;
 use consensus::model::stores::reachability::{MemoryReachabilityStore, ReachabilityStore};
-use consensus::processes::reachability::interval::Interval;
 use consensus::processes::reachability::tests::{validate_intervals, TreeBuilder};
 
 use flate2::read::GzDecoder;
@@ -48,11 +47,11 @@ impl DagBlock {
 // Test configuration
 const NUM_BLOCKS_EXPONENT: i32 = 12;
 
-#[test]
-fn reachability_stretch_test() {
+fn reachability_stretch_test(use_attack_json: bool) {
     // Arrange
     let path_str = format!(
-        "tests/testdata/reachability/noattack-dag-blocks--2^{}-delay-factor--1-k--18.json.gz",
+        "tests/testdata/reachability/{}attack-dag-blocks--2^{}-delay-factor--1-k--18.json.gz",
+        if use_attack_json { "" } else { "no" },
         NUM_BLOCKS_EXPONENT
     );
     let path = Path::new(&path_str);
@@ -87,20 +86,44 @@ fn reachability_stretch_test() {
     validate_intervals(*builder.store(), root).unwrap();
 
     let num_chains = blocks.len() / 2;
-    // let max_chain = 20;
-    // let validation_freq = usize::max(1, num_chains/100);
+    let max_chain = 20;
+    let validation_freq = usize::max(1, num_chains / 100);
 
     use rand::prelude::*;
     let mut rng = StdRng::seed_from_u64(22322);
 
-    for _ in 0..num_chains {
+    for i in 0..num_chains {
         let rand_idx = rng.gen_range(0..blocks.len());
         let rand_parent = blocks[rand_idx];
         let new_block: Hash = ((blocks.len() + 1) as u64).into();
         builder.add_block(new_block, rand_parent);
         blocks.push(new_block);
         map.insert(new_block, DagBlock { hash: new_block, parents: vec![rand_parent] });
-        validate_intervals(*builder.store(), root).unwrap();
+
+        // Add a random-length chain with probability 1/8
+        if rng.gen_range(0..8) == 0 {
+            let chain_len = rng.gen_range(0..max_chain);
+            let mut chain_tip = new_block;
+            for _ in 0..chain_len {
+                let new_block: Hash = ((blocks.len() + 1) as u64).into();
+                builder.add_block(new_block, chain_tip);
+                blocks.push(new_block);
+                map.insert(new_block, DagBlock { hash: new_block, parents: vec![chain_tip] });
+                chain_tip = new_block;
+            }
+        }
+
+        if cfg!(debug_assertions) {
+            if i % validation_freq == 0 || i == num_chains - 1 {
+                validate_intervals(*builder.store(), root).unwrap();
+            } else {
+                // In debug mode and for most iterations, validate intervals for
+                // new chain only in order to shorten the test
+                validate_intervals(*builder.store(), new_block).unwrap();
+            }
+        } else {
+            validate_intervals(*builder.store(), root).unwrap();
+        }
     }
 
     // Assert
@@ -108,19 +131,11 @@ fn reachability_stretch_test() {
 }
 
 #[test]
-fn reachability_test() {
-    // Arrange
-    let mut store: Box<dyn ReachabilityStore> = Box::new(MemoryReachabilityStore::new());
+fn test_attack_json() {
+    reachability_stretch_test(true);
+}
 
-    // Act
-    let root: Hash = 1.into();
-    let mut builder = TreeBuilder::new_with_params(store.as_mut(), 2, 5);
-    builder.init(root, Interval::maximal());
-    for i in 2u64..100 {
-        builder.add_block(i.into(), (i / 2).into());
-    }
-
-    // Should trigger an earlier than reindex root allocation
-    builder.add_block(100.into(), 2.into());
-    validate_intervals(store.as_ref(), root).unwrap();
+#[test]
+fn test_noattack_json() {
+    reachability_stretch_test(false);
 }

@@ -155,6 +155,7 @@ fn binary_search_descendant(
         assert_hashes_ordered(store, ordered_hashes);
     }
 
+    // `Interval::end` represents the unique number allocated to this block
     let point = store.get_interval(descendant)?.end;
 
     // We use an `unwrap` here since otherwise we need to implement `binary_search`
@@ -164,7 +165,7 @@ fn binary_search_descendant(
         Ok(i) => Ok(SearchOutput::Found(ordered_hashes[i], i)),
         Err(i) => {
             // `i` is where `point` was expected (i.e., point < ordered_hashes[i].interval.start),
-            // so we expect `ordered_hashes[i - 1].interval` to contain `point`
+            // so we expect `ordered_hashes[i - 1].interval` to be the only candidate to contain `point`
             if i > 0 && is_chain_ancestor_of(store, ordered_hashes[i - 1], descendant)? {
                 Ok(SearchOutput::Found(ordered_hashes[i - 1], i - 1))
             } else {
@@ -332,12 +333,29 @@ mod tests {
     }
 
     #[test]
+    fn test_add_early_blocks() {
+        // Arrange
+        let mut store: Box<dyn ReachabilityStore> = Box::new(MemoryReachabilityStore::new());
+
+        // Act
+        let root: Hash = 1.into();
+        let mut builder = TreeBuilder::new_with_params(store.as_mut(), 2, 5);
+        builder.init(root, Interval::maximal());
+        for i in 2u64..100 {
+            builder.add_block(i.into(), (i / 2).into());
+        }
+
+        // Should trigger an earlier than reindex root allocation
+        builder.add_block(100.into(), 2.into());
+        validate_intervals(store.as_ref(), root).unwrap();
+    }
+
+    #[test]
     fn test_add_dag_blocks() {
         // Arrange
         let mut store: Box<dyn ReachabilityStore> = Box::new(MemoryReachabilityStore::new());
 
         // Act
-        // let root: Hash = 1.into();
         DagBuilder::new(store.as_mut())
             .init()
             .add_block(DagBlock::new(1.into(), vec![Hash::ORIGIN]))
