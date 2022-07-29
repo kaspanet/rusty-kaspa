@@ -1,0 +1,93 @@
+{
+  "K": 3,
+  "GenesisID": "0",
+  "Blocks": [
+    {
+      "ID": "1",
+      "ExpectedScore": 1,
+      "ExpectedSelectedParent": "0",
+      "ExpectedReds": [],
+      "ExpectedBlues": [
+        "0"
+      ],
+      "Parents": [
+        "0"
+      ]
+    },
+    {
+      "ID": "2",
+      "ExpectedScore": 1,
+      "ExpectedSelectedParent": "0",
+      "ExpectedReds": [],
+      "ExpectedBlues": [
+        "0"
+      ],
+      "Parents": [
+        "0"
+      ]
+    },
+    {
+      "ID": "3",
+      "ExpectedScore": 1,
+      "ExpectedSelectedParent": "0",
+      "ExpectedReds": [],
+      "ExpectedBlues": [
+        "0"
+      ],
+      "Parents": [
+        "0"
+      ]
+    },
+    {
+      "ID": "4",
+      "ExpectedScore": 1,
+      "ExpectedSelectedParent": "0",
+      "ExpectedReds": [],
+      "ExpectedBlues": [
+        "0"
+      ],
+      "Parents": [
+        "0"
+      ]
+    },
+    {
+      "ID": "5",
+      "ExpectedScore": 4,
+      "ExpectedSelectedParent": "3",
+      "ExpectedReds": [],
+      "ExpectedBlues": [
+        "3", "1", "2"
+      ],
+      "Parents": [
+        "1",
+        "2",
+        "3"
+      ]
+    },
+    {
+      "ID": "6",
+      "ExpectedScore": 5,
+      "ExpectedSelectedParent": "4",
+      "ExpectedReds": [],
+      "ExpectedBlues": [
+        "4", "1", "2", "3"
+      ],
+      "Parents": [
+        "1", "2", "3", "4"
+      ]
+    },
+    {
+      "ID": "7",
+      "ExpectedScore": 6,
+      "ExpectedSelectedParent": "6",
+      "ExpectedReds": ["5"],
+      "ExpectedBlues": [
+       "6"
+      ],
+      "Parents": [
+        "5",
+        "6"
+      ]
+    }
+  ]
+}

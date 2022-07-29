@@ -1,0 +1,121 @@
+{
+  "K": 2,
+  "GenesisID": "0",
+  "Blocks": [
+    {
+      "ID": "1",
+      "ExpectedScore": 1,
+      "ExpectedSelectedParent": "0",
+      "ExpectedReds": [],
+      "ExpectedBlues": [
+        "0"
+      ],
+      "Parents": [
+        "0"
+      ]
+    },
+    {
+      "ID": "2",
+      "ExpectedScore": 1,
+      "ExpectedSelectedParent": "0",
+      "ExpectedReds": [],
+      "ExpectedBlues": [
+        "0"
+      ],
+      "Parents": [
+        "0"
+      ]
+    },
+    {
+      "ID": "3",
+      "ExpectedScore": 2,
+      "ExpectedSelectedParent": "2",
+      "ExpectedReds": [],
+      "ExpectedBlues": [
+        "2"
+      ],
+      "Parents": [
+        "2"
+      ]
+    },
+    {
+      "ID": "4",
+      "ExpectedScore": 2,
+      "ExpectedSelectedParent": "2",
+      "ExpectedReds": [],
+      "ExpectedBlues": [
+        "2"
+      ],
+      "Parents": [
+        "2"
+      ]
+    },
+    {
+      "ID": "5",
+      "ExpectedScore": 2,
+      "ExpectedSelectedParent": "1",
+      "ExpectedReds": [],
+      "ExpectedBlues": [
+        "1"
+      ],
+      "Parents": [
+        "1"
+      ]
+    },
+    {
+      "ID": "6",
+      "ExpectedScore": 5,
+      "ExpectedSelectedParent": "5",
+      "ExpectedReds": [],
+      "ExpectedBlues": [
+        "5",
+        "2",
+        "4"
+      ],
+      "Parents": [
+        "4",
+        "5"
+      ]
+    },
+    {
+      "ID": "7",
+      "ExpectedScore": 5,
+      "ExpectedSelectedParent": "5",
+      "ExpectedReds": [],
+      "ExpectedBlues": [
+        "5",
+        "2",
+        "3"
+      ],
+      "Parents": [
+        "3",
+        "5"
+      ]
+    },
+    {
+      "ID": "8",
+      "ExpectedScore": 3,
+      "ExpectedSelectedParent": "3",
+      "ExpectedReds": [],
+      "ExpectedBlues": [
+        "3"
+      ],
+      "Parents": [
+        "3"
+      ]
+    },
+    {
+      "ID": "9",
+      "ExpectedScore": 6,
+      "ExpectedSelectedParent": "7",
+      "ExpectedReds": ["4", "8", "6"],
+      "ExpectedBlues": [
+        "7"
+      ],
+      "Parents": [
+        "6","7","8"
+      ]
+    }
+
+  ]
+}

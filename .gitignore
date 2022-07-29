@@ -4,5 +4,3 @@ web-root
 /.idea/*
 /rust-toolchain
 /.vscode/
-**/testdata/**/*.json
-**/testdata/**/*.json.gz
