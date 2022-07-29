@@ -9,7 +9,7 @@ use crate::{
     },
     processes::reachability::interval::Interval,
 };
-use std::collections::VecDeque;
+use std::collections::{HashMap, HashSet, VecDeque};
 use thiserror::Error;
 
 /// A struct with fluent API to streamline reachability store building
@@ -69,6 +69,80 @@ impl<'a> TreeBuilder<'a> {
 
     pub fn store(&self) -> &&'a mut dyn ReachabilityStore {
         &self.store
+    }
+}
+
+#[derive(Clone)]
+pub(super) struct DagBlock {
+    hash: Hash,
+    parents: Vec<Hash>,
+}
+
+impl DagBlock {
+    pub fn new(hash: Hash, parents: Vec<Hash>) -> Self {
+        Self { hash, parents }
+    }
+}
+
+/// A struct with fluent API to streamline DAG building
+pub(super) struct DagBuilder<'a> {
+    store: &'a mut dyn ReachabilityStore,
+    map: HashMap<Hash, DagBlock>,
+}
+
+impl<'a> DagBuilder<'a> {
+    pub fn new(store: &'a mut dyn ReachabilityStore) -> Self {
+        Self { store, map: HashMap::new() }
+    }
+
+    pub fn init(&mut self) -> &mut Self {
+        init(self.store).unwrap();
+        self
+    }
+
+    pub fn add_block(&mut self, block: DagBlock) -> &mut Self {
+        self.map.insert(block.hash, block.clone());
+        // Select by height (longest chain) just for the sake of internal isolated tests
+        let selected_parent = block
+            .parents
+            .iter()
+            .cloned()
+            .max_by_key(|p| self.store.get_height(*p).unwrap())
+            .unwrap();
+        let mergeset = self.mergeset(&block, selected_parent);
+        add_block(self.store, block.hash, selected_parent, &mut mergeset.iter().cloned()).unwrap();
+        self
+    }
+
+    fn mergeset(&self, block: &DagBlock, selected_parent: Hash) -> Vec<Hash> {
+        let mut vec: Vec<Hash> = block
+            .parents
+            .iter()
+            .filter(|p| **p != selected_parent)
+            .cloned()
+            .collect();
+        let mut set = HashSet::<Hash>::from_iter(vec.iter().cloned());
+        let mut past = HashSet::<Hash>::new();
+        let mut queue = VecDeque::<Hash>::from_iter(vec.iter().cloned());
+
+        while !queue.is_empty() {
+            let current = queue.pop_front().unwrap();
+            for parent in self.map[&current].parents.iter() {
+                if set.contains(parent) || past.contains(parent) {
+                    continue;
+                }
+
+                if is_dag_ancestor_of(self.store, *parent, selected_parent).unwrap() {
+                    past.insert(*parent);
+                    continue;
+                }
+
+                set.insert(*parent);
+                vec.push(*parent);
+                queue.push_back(*parent);
+            }
+        }
+        vec
     }
 }
 

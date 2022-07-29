@@ -45,40 +45,6 @@ impl DagBlock {
     }
 }
 
-// struct Dag<'a> {
-//     store: &'a mut dyn ReachabilityStore,
-//     map: HashMap<Hash, DagBlock>,
-// }
-
-// impl<'a> Dag<'a> {
-//     fn new(store: &'a mut dyn ReachabilityStore) -> Self {
-//         Self { store, map: HashMap::new() }
-//     }
-
-//     pub fn init(&mut self) -> &mut Self {
-//         reachability::inquirer::init(self.store).unwrap();
-//         self
-//     }
-
-//     pub fn add_block(&mut self, block: DagBlock) -> &mut Self {
-//         self.map.insert(block.hash, block.clone());
-//         let selected_parent = block
-//             .parents
-//             .iter()
-//             .cloned()
-//             .max_by_key(|p| self.store.get_height(*p).unwrap())
-//             .unwrap();
-//         let mergeset = self.mergeset(&block, selected_parent);
-//         reachability::inquirer::add_block(self.store, block.hash, selected_parent, &mut mergeset.iter().cloned())
-//             .unwrap();
-//         self
-//     }
-
-//     fn mergeset(&self, block: &DagBlock, selected_parent: Hash) -> Vec<Hash> {
-//         vec![] // TODO
-//     }
-// }
-
 // Test configuration
 const NUM_BLOCKS_EXPONENT: i32 = 12;
 

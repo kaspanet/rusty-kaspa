@@ -155,7 +155,7 @@ fn binary_search_descendant(
         assert_hashes_ordered(store, ordered_hashes);
     }
 
-    let point = store.get_interval(descendant)?.start;
+    let point = store.get_interval(descendant)?.end;
 
     // We use an `unwrap` here since otherwise we need to implement `binary_search`
     // ourselves, which is not worth the effort given that this would be an unrecoverable
@@ -308,7 +308,7 @@ mod tests {
     use crate::{model::stores::reachability::MemoryReachabilityStore, processes::reachability::interval::Interval};
 
     #[test]
-    fn test_add_blocks() {
+    fn test_add_tree_blocks() {
         // Arrange
         let mut store: Box<dyn ReachabilityStore> = Box::new(MemoryReachabilityStore::new());
 
@@ -329,6 +329,75 @@ mod tests {
 
         // Assert
         validate_intervals(store.as_ref(), root).unwrap();
+    }
+
+    #[test]
+    fn test_add_dag_blocks() {
+        // Arrange
+        let mut store: Box<dyn ReachabilityStore> = Box::new(MemoryReachabilityStore::new());
+
+        // Act
+        // let root: Hash = 1.into();
+        DagBuilder::new(store.as_mut())
+            .init()
+            .add_block(DagBlock::new(1.into(), vec![Hash::ORIGIN]))
+            .add_block(DagBlock::new(2.into(), vec![1.into()]))
+            .add_block(DagBlock::new(3.into(), vec![1.into()]))
+            .add_block(DagBlock::new(4.into(), vec![2.into(), 3.into()]))
+            .add_block(DagBlock::new(5.into(), vec![4.into()]))
+            .add_block(DagBlock::new(6.into(), vec![1.into()]))
+            .add_block(DagBlock::new(7.into(), vec![5.into(), 6.into()]))
+            .add_block(DagBlock::new(8.into(), vec![1.into()]))
+            .add_block(DagBlock::new(9.into(), vec![1.into()]))
+            .add_block(DagBlock::new(10.into(), vec![7.into(), 8.into(), 9.into()]))
+            .add_block(DagBlock::new(11.into(), vec![1.into()]))
+            .add_block(DagBlock::new(12.into(), vec![11.into(), 10.into()]));
+
+        // Assert intervals
+        validate_intervals(store.as_ref(), Hash::ORIGIN).unwrap();
+
+        // Util helpers
+        let in_future = |block: u64, other: u64| -> bool {
+            if block == other {
+                return false;
+            }
+            // Checks if `other` is in the future of `block`
+            let res = is_dag_ancestor_of(store.as_ref(), block.into(), other.into()).unwrap();
+            if res {
+                // Assert that the `future` relation is indeed asymmetric
+                assert!(!is_dag_ancestor_of(store.as_ref(), other.into(), block.into()).unwrap())
+            }
+            res
+        };
+        let are_anticone = |block: u64, other: u64| -> bool {
+            !is_dag_ancestor_of(store.as_ref(), block.into(), other.into()).unwrap()
+                && !is_dag_ancestor_of(store.as_ref(), other.into(), block.into()).unwrap()
+        };
+
+        // Assert genesis
+        for i in 2u64..=12 {
+            assert!(in_future(1, i));
+        }
+
+        // Assert some futures
+        assert!(in_future(2, 4));
+        assert!(in_future(2, 5));
+        assert!(in_future(2, 7));
+        assert!(in_future(5, 10));
+        assert!(in_future(6, 10));
+        assert!(in_future(10, 12));
+        assert!(in_future(11, 12));
+
+        // Assert some anticones
+        assert!(are_anticone(2, 3));
+        assert!(are_anticone(2, 6));
+        assert!(are_anticone(3, 6));
+        assert!(are_anticone(5, 6));
+        assert!(are_anticone(3, 8));
+        assert!(are_anticone(11, 2));
+        assert!(are_anticone(11, 4));
+        assert!(are_anticone(11, 6));
+        assert!(are_anticone(11, 9));
     }
 
     #[test]
