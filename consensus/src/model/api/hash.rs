@@ -61,10 +61,25 @@ impl Hash {
         Hash(bytes)
     }
 
-    pub const DEFAULT: Hash = Hash([0u8; 32]);
+    pub const ZERO: Hash = Hash([0u8; HASH_SIZE]);
+    pub const VIRTUAL: Hash = Hash([0xff; HASH_SIZE]);
+    pub const ORIGIN: Hash = Hash([0xfe; HASH_SIZE]);
 
-    pub fn is_default(&self) -> bool {
-        self.eq(&Self::DEFAULT)
+    /// `Hash::ZERO` is the `null` block hash.
+    pub fn is_zero(&self) -> bool {
+        self.eq(&Self::ZERO)
+    }
+
+    /// `Hash::VIRTUAL` is a special hash representing the `virtual` block.
+    pub fn is_virtual(&self) -> bool {
+        self.eq(&Self::VIRTUAL)
+    }
+
+    /// `Hash::ORIGIN` is a special hash representing a `virtual genesis` block.
+    /// It serves as a special local block which all locally-known
+    /// blocks are in its future.
+    pub fn is_origin(&self) -> bool {
+        self.eq(&Self::ORIGIN)
     }
 }
 
@@ -77,7 +92,7 @@ mod tests {
         let hash_str = "8e40af02265360d59f4ecf9ae9ebf8f00a3118408f5a9cdcbcc9c0f93642f3af";
         let hash = Hash::from_str(hash_str).unwrap();
         assert_eq!(hash_str, hash.to_string());
-        assert!(!hash.is_default());
+        assert!(!hash.is_zero());
 
         assert_ne!(Hash::new_unique(), Hash::new_unique());
         let vec = vec![2u8; 32];
