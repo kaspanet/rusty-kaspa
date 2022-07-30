@@ -1,17 +1,18 @@
 use hex;
-use std::fmt::{Debug, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 use std::mem::size_of;
 use std::rc::Rc;
 use std::str::FromStr;
 
 const HASH_SIZE: usize = 32;
 
+// TODO: Check that PartialOrd/Ord is implemented as needed
 #[derive(PartialEq, Eq, Clone, Copy, Hash, Default, PartialOrd, Ord)]
 pub struct Hash([u8; HASH_SIZE]);
 
-impl ToString for Hash {
-    fn to_string(&self) -> String {
-        hex::encode(self.0)
+impl Display for Hash {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", hex::encode(self.0))
     }
 }
 
