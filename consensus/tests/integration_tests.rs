@@ -3,8 +3,9 @@
 //!
 
 use consensus::model::api::hash::Hash;
-use consensus::model::stores::ghostdag::{GhostdagStore, InMemoryGhostdagStore};
+use consensus::model::stores::ghostdag::{GhostdagStore, MemoryGhostdagStore};
 use consensus::model::stores::reachability::{MemoryReachabilityStore, ReachabilityStore};
+use consensus::model::stores::relations::{MemoryRelationsStore, RelationsStore};
 use consensus::processes::ghostdag::protocol::{GhostdagManager, StoreAccess};
 use consensus::processes::reachability::interval::Interval;
 use consensus::processes::reachability::tests::{validate_intervals, TreeBuilder};
@@ -144,34 +145,38 @@ fn test_noattack_json() {
 }
 
 struct StoreAccessImpl {
-    ghostdag_store_impl: Box<dyn GhostdagStore>,
-    relations_store_impl: Box<dyn RelationsStore>,
-    reachability_store_impl: Box<dyn ReachabilityStore>,
+    ghostdag_store_impl: MemoryGhostdagStore,
+    relations_store_impl: MemoryRelationsStore,
+    reachability_store_impl: MemoryReachabilityStore,
 }
 
-impl StoreAccess for StoreAccessImpl {
-    fn ghostdag_store(&self) -> &mut dyn consensus::model::stores::ghostdag::GhostdagStore {
+impl StoreAccess<MemoryGhostdagStore, MemoryRelationsStore, MemoryReachabilityStore> for StoreAccessImpl {
+    fn relations_store(&self) -> &MemoryRelationsStore {
+        &self.relations_store_impl
+    }
+
+    fn reachability_store(&self) -> &MemoryReachabilityStore {
+        &self.reachability_store_impl
+    }
+
+    fn ghostdag_store_as_mut(&mut self) -> &mut MemoryGhostdagStore {
         &mut self.ghostdag_store_impl
     }
 
-    fn relations_store(&self) -> &dyn consensus::model::stores::relations::RelationsStore {
-        todo!()
-    }
-
-    fn reachability_store(&self) -> &dyn ReachabilityStore {
-        todo!()
+    fn ghostdag_store(&self) -> &MemoryGhostdagStore {
+        &self.ghostdag_store_impl
     }
 }
 
 #[test]
 fn ghostdag_test() {
-    let sa = StoreAccessImpl {
-        ghostdag_store_impl: Box::new(InMemoryGhostdagStore::new()),
-        relations_store_impl: Box::new(InMemoryRelationsStore::new()),
-        reachability_store_impl: Box::new(MemoryReachabilityStore::new()),
+    let mut sa = StoreAccessImpl {
+        ghostdag_store_impl: MemoryGhostdagStore::new(),
+        relations_store_impl: MemoryRelationsStore::new(),
+        reachability_store_impl: MemoryReachabilityStore::new(),
     };
 
     let root: Hash = 1.into();
     let manager = GhostdagManager { genesis_hash: root };
-    manager.add_block(&sa, root);
+    manager.add_block(&mut sa, root);
 }
