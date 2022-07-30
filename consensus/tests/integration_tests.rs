@@ -3,7 +3,10 @@
 //!
 
 use consensus::model::api::hash::Hash;
+use consensus::model::stores::ghostdag::{GhostdagStore, InMemoryGhostdagStore};
 use consensus::model::stores::reachability::{MemoryReachabilityStore, ReachabilityStore};
+use consensus::processes::ghostdag::protocol::{GhostdagManager, StoreAccess};
+use consensus::processes::reachability::interval::Interval;
 use consensus::processes::reachability::tests::{validate_intervals, TreeBuilder};
 
 use flate2::read::GzDecoder;
@@ -138,4 +141,37 @@ fn test_attack_json() {
 #[test]
 fn test_noattack_json() {
     reachability_stretch_test(false);
+}
+
+struct StoreAccessImpl {
+    ghostdag_store_impl: Box<dyn GhostdagStore>,
+    relations_store_impl: Box<dyn RelationsStore>,
+    reachability_store_impl: Box<dyn ReachabilityStore>,
+}
+
+impl StoreAccess for StoreAccessImpl {
+    fn ghostdag_store(&self) -> &mut dyn consensus::model::stores::ghostdag::GhostdagStore {
+        &mut self.ghostdag_store_impl
+    }
+
+    fn relations_store(&self) -> &dyn consensus::model::stores::relations::RelationsStore {
+        todo!()
+    }
+
+    fn reachability_store(&self) -> &dyn ReachabilityStore {
+        todo!()
+    }
+}
+
+#[test]
+fn ghostdag_test() {
+    let sa = StoreAccessImpl {
+        ghostdag_store_impl: Box::new(InMemoryGhostdagStore::new()),
+        relations_store_impl: Box::new(InMemoryRelationsStore::new()),
+        reachability_store_impl: Box::new(MemoryReachabilityStore::new()),
+    };
+
+    let root: Hash = 1.into();
+    let manager = GhostdagManager { genesis_hash: root };
+    manager.add_block(&sa, root);
 }

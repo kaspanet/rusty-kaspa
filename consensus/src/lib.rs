@@ -3,5 +3,6 @@
 #![allow(dead_code, unused_variables)]
 
 pub mod constants;
+pub mod misc;
 pub mod model;
 pub mod processes;
