@@ -14,9 +14,9 @@ use consensus::processes::reachability::tests::{validate_intervals, TreeBuilder}
 use flate2::read::GzDecoder;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::BufReader;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -221,9 +221,6 @@ struct GhostdagTestDag {
     #[serde(rename = "GenesisID")]
     genesis_id: String,
 
-    #[serde(rename = "ExpectedReds")]
-    expected_reds: Vec<String>,
-
     #[serde(rename = "Blocks")]
     blocks: Vec<GhostdagTestBlock>,
 }
@@ -251,90 +248,98 @@ struct GhostdagTestBlock {
 
 #[test]
 fn ghostdag_test() {
-    let path = Path::new("/home/ori/rusty-kaspa/consensus/tests/testdata/dags/dag0.json");
-    let file = File::open(path).unwrap();
-    let reader = BufReader::new(file);
-    let test: GhostdagTestDag = serde_json::from_reader(reader).unwrap();
+    let mut path_strings: Vec<String> = fs::read_dir("./tests/testdata/dags")
+        .unwrap()
+        .map(|f| f.unwrap().path().to_str().unwrap().to_owned())
+        .collect();
+    path_strings.sort();
+    for path_string in path_strings.iter() {
+        println!("Running test {}", path_string);
+        let path = Path::new(&path_string);
+        let file = File::open(path).unwrap();
+        let reader = BufReader::new(file);
+        let test: GhostdagTestDag = serde_json::from_reader(reader).unwrap();
 
-    let mut reachability_store = MemoryReachabilityStore::new();
-    let mut builder = TreeBuilder::new_with_params(&mut reachability_store, 2, 5);
-    builder.init_default();
+        let mut reachability_store = MemoryReachabilityStore::new();
+        let mut builder = TreeBuilder::new_with_params(&mut reachability_store, 2, 5);
+        builder.init_default();
 
-    let genesis: Hash = string_to_hash(&test.genesis_id);
-    // let genesis_child: Hash = 2.into();
-    builder.add_block(genesis, ORIGIN);
-    // builder.add_block(genesis_child, genesis);
+        let genesis: Hash = string_to_hash(&test.genesis_id);
+        // let genesis_child: Hash = 2.into();
+        builder.add_block(genesis, ORIGIN);
+        // builder.add_block(genesis_child, genesis);
 
-    let mut relations_store = MemoryRelationsStore::new();
-    // relations_store.set_parents(genesis_child, Rc::new(vec![genesis]));
+        let mut relations_store = MemoryRelationsStore::new();
+        // relations_store.set_parents(genesis_child, Rc::new(vec![genesis]));
 
-    let mut ghostdag_store = MemoryGhostdagStore::new();
+        let mut ghostdag_store = MemoryGhostdagStore::new();
 
-    ghostdag_store.set_blue_score(genesis, 0).unwrap();
-    ghostdag_store
-        .set_blue_work(genesis, Uint256::from_u64(0))
-        .unwrap();
-    ghostdag_store
-        .set_selected_parent(genesis, ORIGIN)
-        .unwrap();
-    ghostdag_store
-        .set_merge_set_blues(genesis, HashArray::new(Vec::new()))
-        .unwrap();
-    ghostdag_store
-        .set_merge_set_reds(genesis, HashArray::new(Vec::new()))
-        .unwrap();
-    ghostdag_store
-        .set_blues_anticone_sizes(genesis, Rc::new(HashMap::new()))
-        .unwrap();
+        ghostdag_store.set_blue_score(genesis, 0).unwrap();
+        ghostdag_store
+            .set_blue_work(genesis, Uint256::from_u64(0))
+            .unwrap();
+        ghostdag_store
+            .set_selected_parent(genesis, ORIGIN)
+            .unwrap();
+        ghostdag_store
+            .set_merge_set_blues(genesis, HashArray::new(Vec::new()))
+            .unwrap();
+        ghostdag_store
+            .set_merge_set_reds(genesis, HashArray::new(Vec::new()))
+            .unwrap();
+        ghostdag_store
+            .set_blues_anticone_sizes(genesis, Rc::new(HashMap::new()))
+            .unwrap();
 
-    for block in &test.blocks {
-        let block_id = string_to_hash(&block.id);
-        let parents = strings_to_hashes(&block.parents);
-        relations_store.set_parents(block_id, Rc::clone(&parents));
-        builder.add_block(block_id, parents[0]);
-    }
+        for block in &test.blocks {
+            let block_id = string_to_hash(&block.id);
+            let parents = strings_to_hashes(&block.parents);
+            relations_store.set_parents(block_id, Rc::clone(&parents));
+            builder.add_block(block_id, parents[0]);
+        }
 
-    let mut sa = StoreAccessImpl {
-        ghostdag_store_impl: ghostdag_store,
-        relations_store_impl: relations_store,
-        reachability_store_impl: reachability_store,
-    };
+        let mut sa = StoreAccessImpl {
+            ghostdag_store_impl: ghostdag_store,
+            relations_store_impl: relations_store,
+            reachability_store_impl: reachability_store,
+        };
 
-    let manager = GhostdagManager { genesis_hash: genesis, k: test.k };
-    for block in test.blocks {
-        println!("Processing block {}", block.id);
-        let block_id = string_to_hash(&block.id);
-        manager.add_block(&mut sa, block_id);
+        let manager = GhostdagManager { genesis_hash: genesis, k: test.k };
+        for block in test.blocks {
+            println!("Processing block {}", block.id);
+            let block_id = string_to_hash(&block.id);
+            manager.add_block(&mut sa, block_id);
 
-        assert_eq!(
-            sa.ghostdag_store()
-                .get_merge_set_blues(block_id, false)
-                .unwrap(),
-            strings_to_hashes(&block.merge_set_blues)
-        );
+            assert_eq!(
+                sa.ghostdag_store()
+                    .get_merge_set_blues(block_id, false)
+                    .unwrap(),
+                strings_to_hashes(&block.merge_set_blues)
+            );
 
-        assert_eq!(
-            sa.ghostdag_store()
-                .get_blue_score(block_id, false)
-                .unwrap(),
-            block.score,
-            "blue score assertion failed for {}",
-            block.id,
-        );
+            assert_eq!(
+                sa.ghostdag_store()
+                    .get_blue_score(block_id, false)
+                    .unwrap(),
+                block.score,
+                "blue score assertion failed for {}",
+                block.id,
+            );
 
-        assert_eq!(
-            sa.ghostdag_store()
-                .get_selected_parent(block_id, false)
-                .unwrap(),
-            string_to_hash(&block.selected_parent)
-        );
+            assert_eq!(
+                sa.ghostdag_store()
+                    .get_selected_parent(block_id, false)
+                    .unwrap(),
+                string_to_hash(&block.selected_parent)
+            );
 
-        assert_eq!(
-            sa.ghostdag_store()
-                .get_merge_set_reds(block_id, false)
-                .unwrap(),
-            strings_to_hashes(&block.merge_set_reds)
-        );
+            assert_eq!(
+                sa.ghostdag_store()
+                    .get_merge_set_reds(block_id, false)
+                    .unwrap(),
+                strings_to_hashes(&block.merge_set_reds)
+            );
+        }
     }
 }
 
