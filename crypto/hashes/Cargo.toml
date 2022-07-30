@@ -9,6 +9,5 @@ edition = "2021"
 hex = "0.4"
 blake2b_simd = "1"
 blake2 = "0.10"
-
-[features]
-bench = []
+sha2 = "0.10"
+once_cell = "0.2"
