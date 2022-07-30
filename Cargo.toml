@@ -6,4 +6,5 @@ members = [
     "kaspad",
     "wasm",
     "misc",
+    "crypto/hashes",
 ]
