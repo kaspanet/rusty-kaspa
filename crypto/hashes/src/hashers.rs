@@ -7,6 +7,10 @@ pub trait Hasher: Clone {
     fn reset(&mut self);
 }
 
+// Implemented manually in pow_hashers:
+//  struct PowHash => `cSHAKE256("ProofOfWorkHash")
+//  struct HeavyHash => `cSHAKE256("HeavyHash")
+pub use crate::pow_hashers::{HeavyHash, PowHash};
 blake2b_hasher! {
     struct TransactionHash => b"TransactionHash",
     struct TransactionID => b"TransactionID",
@@ -103,6 +107,11 @@ macro_rules! impl_hasher {
 
             fn reset(&mut self) {
                 *self = Self::new();
+            }
+        }
+        impl Default for $name {
+            fn default() -> Self {
+                Self::new()
             }
         }
     };

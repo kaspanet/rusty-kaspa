@@ -10,4 +10,15 @@ hex = "0.4"
 blake2b_simd = "1"
 blake2 = "0.10"
 sha2 = "0.10"
-once_cell = "0.2"
+once_cell = "1"
+keccak = { version = "0.1", optional = true }
+
+[target.'cfg(any(target_os = "windows", not(target_arch = "x86_64")))'.dependencies]
+keccak = "0.1"
+
+[dev-dependencies]
+# TODO: Replace with a published version once they publish it: https://github.com/RustCrypto/hashes/pull/355#issuecomment-1200243329
+sha3 = { git = "https://github.com/RustCrypto/hashes.git", rev = "53d9671baf76133cd729ab9be37338ff2c50d973" }
+
+[build-dependencies]
+cc = "1"
