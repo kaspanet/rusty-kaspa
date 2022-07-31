@@ -7,6 +7,3 @@ authors = ["Kaspa developers"]
 include = [
 "src/**/*.rs",
 ]
-
-[features]
-html_reports = []
