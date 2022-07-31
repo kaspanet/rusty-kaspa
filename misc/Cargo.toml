@@ -1,0 +1,12 @@
+[package]
+name = "misc"
+version = "0.1.0"
+description = "Kaspa miscellaneous lib"
+edition = "2022"
+authors = ["Kaspa developers"]
+include = [
+"src/**/*.rs",
+]
+
+[features]
+html_reports = []

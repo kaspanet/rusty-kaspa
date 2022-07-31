@@ -219,7 +219,7 @@ fn ghostdag_sanity_test() {
         .set_blues_anticone_sizes(genesis, Rc::new(HashMap::new()))
         .unwrap();
 
-    let manager = GhostdagManager { genesis_hash: genesis, k: 18 };
+    let manager = GhostdagManager::new(genesis, 18);
     manager.add_block(&mut sa, genesis_child);
 }
 
@@ -311,7 +311,7 @@ fn ghostdag_test() {
             reachability_store_impl: reachability_store,
         };
 
-        let manager = GhostdagManager { genesis_hash: genesis, k: test.k };
+        let manager = GhostdagManager::new(genesis, test.k);
         for block in test.blocks {
             println!("Processing block {}", block.id);
             let block_id = string_to_hash(&block.id);

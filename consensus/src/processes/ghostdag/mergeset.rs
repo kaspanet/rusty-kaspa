@@ -7,13 +7,10 @@ use std::collections::{HashSet, VecDeque};
 
 use crate::processes::reachability::inquirer::is_dag_ancestor_of;
 
-use super::ordering::*;
 use super::protocol::{GhostdagManager, StoreAccess};
 
-impl GhostdagManager {
-    pub fn merge_set_without_selected_parent<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore>(
-        &self, sa: &impl StoreAccess<T, S, U>, selected_parent: &Hash, parents: &HashArray,
-    ) -> Vec<Hash> {
+impl<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore, V: StoreAccess<T, S, U>> GhostdagManager<T, S, U, V> {
+    pub fn merge_set_without_selected_parent(&self, sa: &V, selected_parent: &Hash, parents: &HashArray) -> Vec<Hash> {
         let mut merge_set_set: HashSet<Hash> = HashSet::with_capacity(self.k.into());
         let mut selected_parent_past: HashSet<Hash> = HashSet::new();
         let mut queue: VecDeque<Hash> = VecDeque::new();
@@ -58,6 +55,6 @@ impl GhostdagManager {
             }
         }
 
-        sort_blocks(sa, merge_set_set)
+        Self::sort_blocks(sa, merge_set_set)
     }
 }
