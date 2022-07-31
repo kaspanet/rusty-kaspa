@@ -10,8 +10,8 @@ use crate::processes::reachability::inquirer::is_dag_ancestor_of;
 use super::protocol::{GhostdagManager, StoreAccess};
 
 impl<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore, V: StoreAccess<T, S, U>> GhostdagManager<T, S, U, V> {
-    pub fn merge_set_without_selected_parent(&self, sa: &V, selected_parent: &Hash, parents: &HashArray) -> Vec<Hash> {
-        let mut merge_set_set: HashSet<Hash> = HashSet::with_capacity(self.k.into());
+    pub fn mergeset_without_selected_parent(&self, sa: &V, selected_parent: &Hash, parents: &HashArray) -> Vec<Hash> {
+        let mut mergeset_set: HashSet<Hash> = HashSet::with_capacity(self.k.into());
         let mut selected_parent_past: HashSet<Hash> = HashSet::new();
         let mut queue: VecDeque<Hash> = VecDeque::new();
 
@@ -20,7 +20,7 @@ impl<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore, V: StoreAccess<T
                 continue;
             }
 
-            merge_set_set.insert(*parent);
+            mergeset_set.insert(*parent);
             queue.push_back(*parent);
         }
 
@@ -34,7 +34,7 @@ impl<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore, V: StoreAccess<T
                     // For each parent of the current block we check whether it is in the past of the selected parent. If not,
                     // we add it to the resulting merge-set and queue it for further processing.
                     for parent in current_parents.unwrap().iter() {
-                        if merge_set_set.contains(parent) {
+                        if mergeset_set.contains(parent) {
                             break;
                         }
 
@@ -47,7 +47,7 @@ impl<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore, V: StoreAccess<T
                             continue;
                         }
 
-                        merge_set_set.insert(*parent);
+                        mergeset_set.insert(*parent);
                         queue.push_back(*parent);
                     }
                 }
@@ -55,6 +55,6 @@ impl<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore, V: StoreAccess<T
             }
         }
 
-        Self::sort_blocks(sa, merge_set_set)
+        Self::sort_blocks(sa, mergeset_set)
     }
 }

@@ -7,15 +7,15 @@ pub trait GhostdagStore {
     fn set_blue_score(&mut self, hash: Hash, blue_score: u64) -> Result<(), StoreError>;
     fn set_blue_work(&mut self, hash: Hash, blue_work: Uint256) -> Result<(), StoreError>;
     fn set_selected_parent(&mut self, hash: Hash, selected_parent: Hash) -> Result<(), StoreError>;
-    fn set_merge_set_blues(&mut self, hash: Hash, blues: HashArray) -> Result<(), StoreError>;
-    fn set_merge_set_reds(&mut self, hash: Hash, reds: HashArray) -> Result<(), StoreError>;
+    fn set_mergeset_blues(&mut self, hash: Hash, blues: HashArray) -> Result<(), StoreError>;
+    fn set_mergeset_reds(&mut self, hash: Hash, reds: HashArray) -> Result<(), StoreError>;
     fn set_blues_anticone_sizes(&mut self, hash: Hash, sizes: Rc<HashMap<Hash, u8>>) -> Result<(), StoreError>;
 
     fn get_blue_score(&self, hash: Hash, is_trusted_data: bool) -> Result<u64, StoreError>;
     fn get_blue_work(&self, hash: Hash, is_trusted_data: bool) -> Result<Uint256, StoreError>;
     fn get_selected_parent(&self, hash: Hash, is_trusted_data: bool) -> Result<Hash, StoreError>;
-    fn get_merge_set_blues(&self, hash: Hash, is_trusted_data: bool) -> Result<HashArray, StoreError>;
-    fn get_merge_set_reds(&self, hash: Hash, is_trusted_data: bool) -> Result<HashArray, StoreError>;
+    fn get_mergeset_blues(&self, hash: Hash, is_trusted_data: bool) -> Result<HashArray, StoreError>;
+    fn get_mergeset_reds(&self, hash: Hash, is_trusted_data: bool) -> Result<HashArray, StoreError>;
     fn get_blues_anticone_sizes(&self, hash: Hash, is_trusted_data: bool) -> Result<Rc<HashMap<Hash, u8>>, StoreError>;
 }
 
@@ -23,8 +23,8 @@ pub struct MemoryGhostdagStore {
     blue_score_map: HashMap<Hash, u64>,
     blue_work_map: HashMap<Hash, Uint256>,
     selected_parent_map: HashMap<Hash, Hash>,
-    merge_set_blues_map: HashMap<Hash, HashArray>,
-    merge_set_reds_map: HashMap<Hash, HashArray>,
+    mergeset_blues_map: HashMap<Hash, HashArray>,
+    mergeset_reds_map: HashMap<Hash, HashArray>,
     blues_anticone_sizes_map: HashMap<Hash, Rc<HashMap<Hash, u8>>>,
 }
 
@@ -34,8 +34,8 @@ impl MemoryGhostdagStore {
             blue_score_map: HashMap::new(),
             blue_work_map: HashMap::new(),
             selected_parent_map: HashMap::new(),
-            merge_set_blues_map: HashMap::new(),
-            merge_set_reds_map: HashMap::new(),
+            mergeset_blues_map: HashMap::new(),
+            mergeset_reds_map: HashMap::new(),
             blues_anticone_sizes_map: HashMap::new(),
         }
     }
@@ -64,13 +64,13 @@ impl GhostdagStore for MemoryGhostdagStore {
         Ok(())
     }
 
-    fn set_merge_set_blues(&mut self, hash: Hash, blues: HashArray) -> Result<(), StoreError> {
-        self.merge_set_blues_map.insert(hash, blues);
+    fn set_mergeset_blues(&mut self, hash: Hash, blues: HashArray) -> Result<(), StoreError> {
+        self.mergeset_blues_map.insert(hash, blues);
         Ok(())
     }
 
-    fn set_merge_set_reds(&mut self, hash: Hash, reds: HashArray) -> Result<(), StoreError> {
-        self.merge_set_reds_map.insert(hash, reds);
+    fn set_mergeset_reds(&mut self, hash: Hash, reds: HashArray) -> Result<(), StoreError> {
+        self.mergeset_reds_map.insert(hash, reds);
         Ok(())
     }
 
@@ -100,16 +100,16 @@ impl GhostdagStore for MemoryGhostdagStore {
         }
     }
 
-    fn get_merge_set_blues(&self, hash: Hash, is_trusted_data: bool) -> Result<HashArray, StoreError> {
-        match self.merge_set_blues_map.get(&hash) {
-            Some(merge_set_blues) => Ok(Rc::clone(merge_set_blues)),
+    fn get_mergeset_blues(&self, hash: Hash, is_trusted_data: bool) -> Result<HashArray, StoreError> {
+        match self.mergeset_blues_map.get(&hash) {
+            Some(mergeset_blues) => Ok(Rc::clone(mergeset_blues)),
             None => Err(StoreError::KeyNotFound(hash.to_string())),
         }
     }
 
-    fn get_merge_set_reds(&self, hash: Hash, is_trusted_data: bool) -> Result<HashArray, StoreError> {
-        match self.merge_set_reds_map.get(&hash) {
-            Some(merge_set_reds) => Ok(Rc::clone(merge_set_reds)),
+    fn get_mergeset_reds(&self, hash: Hash, is_trusted_data: bool) -> Result<HashArray, StoreError> {
+        match self.mergeset_reds_map.get(&hash) {
+            Some(mergeset_reds) => Ok(Rc::clone(mergeset_reds)),
             None => Err(StoreError::KeyNotFound(hash.to_string())),
         }
     }

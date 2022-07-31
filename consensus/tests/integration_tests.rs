@@ -210,10 +210,10 @@ fn ghostdag_sanity_test() {
         .set_selected_parent(genesis, ORIGIN)
         .unwrap();
     sa.ghostdag_store_as_mut()
-        .set_merge_set_blues(genesis, HashArray::new(Vec::new()))
+        .set_mergeset_blues(genesis, HashArray::new(Vec::new()))
         .unwrap();
     sa.ghostdag_store_as_mut()
-        .set_merge_set_reds(genesis, HashArray::new(Vec::new()))
+        .set_mergeset_reds(genesis, HashArray::new(Vec::new()))
         .unwrap();
     sa.ghostdag_store_as_mut()
         .set_blues_anticone_sizes(genesis, Rc::new(HashMap::new()))
@@ -247,10 +247,10 @@ struct GhostdagTestBlock {
     selected_parent: String,
 
     #[serde(rename = "ExpectedReds")]
-    merge_set_reds: Vec<String>,
+    mergeset_reds: Vec<String>,
 
     #[serde(rename = "ExpectedBlues")]
-    merge_set_blues: Vec<String>,
+    mergeset_blues: Vec<String>,
 
     #[serde(rename = "Parents")]
     parents: Vec<String>,
@@ -289,10 +289,10 @@ fn ghostdag_test() {
             .set_selected_parent(genesis, ORIGIN)
             .unwrap();
         ghostdag_store
-            .set_merge_set_blues(genesis, HashArray::new(Vec::new()))
+            .set_mergeset_blues(genesis, HashArray::new(Vec::new()))
             .unwrap();
         ghostdag_store
-            .set_merge_set_reds(genesis, HashArray::new(Vec::new()))
+            .set_mergeset_reds(genesis, HashArray::new(Vec::new()))
             .unwrap();
         ghostdag_store
             .set_blues_anticone_sizes(genesis, Rc::new(HashMap::new()))
@@ -328,18 +328,18 @@ fn ghostdag_test() {
 
             assert_eq!(
                 sa.ghostdag_store()
-                    .get_merge_set_reds(block_id, false)
+                    .get_mergeset_reds(block_id, false)
                     .unwrap(),
-                strings_to_hashes(&block.merge_set_reds),
+                strings_to_hashes(&block.mergeset_reds),
                 "mergeset reds assertion failed for {}",
                 block.id,
             );
 
             assert_eq!(
                 sa.ghostdag_store()
-                    .get_merge_set_blues(block_id, false)
+                    .get_mergeset_blues(block_id, false)
                     .unwrap(),
-                strings_to_hashes(&block.merge_set_blues),
+                strings_to_hashes(&block.mergeset_blues),
                 "mergeset blues assertion failed for {:?} with SP {:?}",
                 string_to_hash(&block.id),
                 string_to_hash(&block.selected_parent)

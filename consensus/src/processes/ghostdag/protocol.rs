@@ -23,7 +23,7 @@ struct BlockData {
     blue_score: u64,
     blue_work: Uint256,
     selected_parent: Hash,
-    merge_set_blues: HashArray,
+    mergeset_blues: HashArray,
     blues_anticone_sizes: Rc<HashMap<Hash, u8>>,
 }
 
@@ -48,10 +48,10 @@ impl<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore, V: StoreAccess<T
                 .set_blue_work(block, Uint256::new([0; 4]))
                 .unwrap();
             sa.ghostdag_store_as_mut()
-                .set_merge_set_blues(block, HashArray::new(Vec::new()))
+                .set_mergeset_blues(block, HashArray::new(Vec::new()))
                 .unwrap();
             sa.ghostdag_store_as_mut()
-                .set_merge_set_reds(block, HashArray::new(Vec::new()))
+                .set_mergeset_reds(block, HashArray::new(Vec::new()))
                 .unwrap();
             sa.ghostdag_store_as_mut()
                 .set_blues_anticone_sizes(block, Rc::new(HashMap::new()))
@@ -59,30 +59,30 @@ impl<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore, V: StoreAccess<T
         }
 
         let selected_parent = Self::find_selected_parent(sa, &parents);
-        let mut merge_set_blues = Vec::with_capacity((self.k + 1) as usize);
-        merge_set_blues.push(selected_parent);
+        let mut mergeset_blues = Vec::with_capacity((self.k + 1) as usize);
+        mergeset_blues.push(selected_parent);
 
         let mut blues_anticone_sizes: HashMap<Hash, u8> = HashMap::with_capacity(self.k as usize);
         blues_anticone_sizes.insert(selected_parent, 0);
-        let merge_set = self.merge_set_without_selected_parent(sa, &selected_parent, &parents);
+        let mergeset = self.mergeset_without_selected_parent(sa, &selected_parent, &parents);
 
         let mut new_block_data = Rc::new(BlockData {
             blue_score: 0,
             blue_work: Default::default(),
             selected_parent,
-            merge_set_blues: Rc::new(merge_set_blues),
+            mergeset_blues: Rc::new(mergeset_blues),
             blues_anticone_sizes: Rc::new(blues_anticone_sizes),
         });
 
         let mut mergeset_reds: Vec<Hash> = Vec::new();
-        for blue_candidate in merge_set.iter().cloned() {
+        for blue_candidate in mergeset.iter().cloned() {
             let (is_blue, candidate_blue_anticone_size, candidate_blues_anticone_sizes) =
                 self.check_blue_candidate(sa, Rc::clone(&new_block_data), blue_candidate);
 
             if is_blue {
                 // No k-cluster violation found, we can now set the candidate block as blue
                 let new_block_data_mut = Rc::make_mut(&mut new_block_data);
-                Rc::make_mut(&mut new_block_data_mut.merge_set_blues).push(blue_candidate);
+                Rc::make_mut(&mut new_block_data_mut.mergeset_blues).push(blue_candidate);
                 Rc::make_mut(&mut new_block_data_mut.blues_anticone_sizes)
                     .insert(blue_candidate, candidate_blue_anticone_size);
                 for (blue, size) in candidate_blues_anticone_sizes {
@@ -97,7 +97,7 @@ impl<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore, V: StoreAccess<T
             .ghostdag_store()
             .get_blue_score(selected_parent, false)
             .unwrap()
-            + new_block_data.merge_set_blues.len() as u64;
+            + new_block_data.mergeset_blues.len() as u64;
 
         // TODO: This is just a placeholder until calc_work is implemented.
         let blue_work = Uint256::from_u64(blue_score);
@@ -115,11 +115,11 @@ impl<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore, V: StoreAccess<T
             .unwrap();
 
         sa.ghostdag_store_as_mut()
-            .set_merge_set_blues(block, Rc::clone(&new_block_data.merge_set_blues))
+            .set_mergeset_blues(block, Rc::clone(&new_block_data.mergeset_blues))
             .unwrap();
 
         sa.ghostdag_store_as_mut()
-            .set_merge_set_reds(block, Rc::new(mergeset_reds))
+            .set_mergeset_reds(block, Rc::new(mergeset_reds))
             .unwrap();
 
         sa.ghostdag_store_as_mut()
@@ -127,7 +127,7 @@ impl<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore, V: StoreAccess<T
             .unwrap();
 
         // TODO: Reachability should be changed somewhere else
-        inquirer::add_block(sa.reachability_store_as_mut(), block, selected_parent, &mut merge_set.iter().cloned())
+        inquirer::add_block(sa.reachability_store_as_mut(), block, selected_parent, &mut mergeset.iter().cloned())
             .unwrap();
     }
 
@@ -152,7 +152,7 @@ impl<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore, V: StoreAccess<T
             }
         }
 
-        for block in chain_block.data.merge_set_blues.iter().cloned() {
+        for block in chain_block.data.mergeset_blues.iter().cloned() {
             // Skip blocks that exist in the past of blue_candidate.
             if is_dag_ancestor_of(sa.reachability_store(), block, blue_candidate).unwrap() {
                 continue;
@@ -232,9 +232,9 @@ impl<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore, V: StoreAccess<T
     fn check_blue_candidate(
         &self, sa: &V, new_block_data: Rc<BlockData>, blue_candidate: Hash,
     ) -> (bool, u8, HashMap<Hash, u8>) {
-        // The maximum length of new_block_data.merge_set_blues can be K+1 because
+        // The maximum length of new_block_data.mergeset_blues can be K+1 because
         // it contains the selected parent.
-        if new_block_data.merge_set_blues.len() as u8 == self.k + 1 {
+        if new_block_data.mergeset_blues.len() as u8 == self.k + 1 {
             return (false, 0, HashMap::new());
         }
 
@@ -278,9 +278,9 @@ impl<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore, V: StoreAccess<T
                 .ghostdag_store()
                 .get_selected_parent(chain_block.data.selected_parent, false)
                 .unwrap();
-            let selected_parent_merge_set_blues = sa
+            let selected_parent_mergeset_blues = sa
                 .ghostdag_store()
-                .get_merge_set_blues(chain_block.data.selected_parent, false)
+                .get_mergeset_blues(chain_block.data.selected_parent, false)
                 .unwrap();
             let selected_parent_blues_anticone_sizes = sa
                 .ghostdag_store()
@@ -293,7 +293,7 @@ impl<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore, V: StoreAccess<T
                     blue_score: selected_parent_blue_score,
                     blue_work: selected_parent_blue_work,
                     selected_parent: selected_parent_selected_parent,
-                    merge_set_blues: selected_parent_merge_set_blues,
+                    mergeset_blues: selected_parent_mergeset_blues,
                     blues_anticone_sizes: selected_parent_blues_anticone_sizes,
                 }),
             }
