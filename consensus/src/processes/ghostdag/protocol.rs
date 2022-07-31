@@ -126,6 +126,7 @@ impl GhostdagManager {
             .set_blues_anticone_sizes(block, Rc::clone(&new_block_data.blues_anticone_sizes))
             .unwrap();
 
+        // TODO: Reachability should be changed somewhere else
         inquirer::add_block(sa.reachability_store_as_mut(), block, selected_parent, &mut merge_set.iter().cloned())
             .unwrap();
     }
