@@ -1,10 +1,8 @@
-use crate::{
-    misc::uint256::Uint256,
-    model::{
-        api::hash::Hash,
-        stores::{ghostdag::GhostdagStore, reachability::ReachabilityStore, relations::RelationsStore},
-    },
+use crate::model::{
+    api::hash::Hash,
+    stores::{ghostdag::GhostdagStore, reachability::ReachabilityStore, relations::RelationsStore},
 };
+use misc::uint256::Uint256;
 
 use std::{cmp::Ordering, collections::HashSet};
 
