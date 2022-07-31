@@ -8,7 +8,7 @@ use crate::{
 
 use std::{cmp::Ordering, collections::HashSet};
 
-use super::protocol::StoreAccess;
+use super::protocol::{GhostdagManager, StoreAccess};
 
 #[derive(Eq)]
 pub struct SortableBlock {
@@ -38,22 +38,22 @@ impl Ord for SortableBlock {
     }
 }
 
-pub fn sort_blocks<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore>(
-    sa: &impl StoreAccess<T, S, U>, blocks: HashSet<Hash>,
-) -> Vec<Hash> {
-    let mut sorted_blocks: Vec<SortableBlock> = blocks
-        .iter()
-        .map(|block| SortableBlock {
-            hash: *block,
-            blue_work: sa
-                .ghostdag_store()
-                .get_blue_work(*block, false)
-                .unwrap(),
-        })
-        .collect();
-    sorted_blocks.sort();
-    sorted_blocks
-        .iter()
-        .map(|block| block.hash)
-        .collect()
+impl<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore, V: StoreAccess<T, S, U>> GhostdagManager<T, S, U, V> {
+    pub fn sort_blocks(sa: &V, blocks: HashSet<Hash>) -> Vec<Hash> {
+        let mut sorted_blocks: Vec<SortableBlock> = blocks
+            .iter()
+            .map(|block| SortableBlock {
+                hash: *block,
+                blue_work: sa
+                    .ghostdag_store()
+                    .get_blue_work(*block, false)
+                    .unwrap(),
+            })
+            .collect();
+        sorted_blocks.sort();
+        sorted_blocks
+            .iter()
+            .map(|block| block.hash)
+            .collect()
+    }
 }

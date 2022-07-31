@@ -1,13 +1,11 @@
-use crate::processes::reachability::inquirer::{self, is_dag_ancestor_of};
-use crate::{
-    misc::uint256::Uint256,
-    model::{
-        api::hash::{Hash, HashArray},
-        stores::{ghostdag::GhostdagStore, reachability::ReachabilityStore, relations::RelationsStore},
-        ORIGIN,
-    },
+use crate::model::{
+    api::hash::{Hash, HashArray},
+    stores::{ghostdag::GhostdagStore, reachability::ReachabilityStore, relations::RelationsStore},
+    ORIGIN,
 };
-
+use crate::processes::reachability::inquirer::{self, is_dag_ancestor_of};
+use core::marker::PhantomData;
+use misc::uint256::Uint256;
 use std::{collections::HashMap, rc::Rc};
 
 use super::ordering::*;
@@ -29,15 +27,17 @@ struct BlockData {
     blues_anticone_sizes: Rc<HashMap<Hash, u8>>,
 }
 
-pub struct GhostdagManager {
-    pub genesis_hash: Hash,
-    pub k: u8,
+pub struct GhostdagManager<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore, V: StoreAccess<T, S, U>> {
+    genesis_hash: Hash,
+    pub(super) k: u8,
+    _phantom: PhantomData<(T, S, U, V)>,
 }
 
-impl GhostdagManager {
-    pub fn add_block<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore>(
-        &self, sa: &mut impl StoreAccess<T, S, U>, block: Hash,
-    ) {
+impl<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore, V: StoreAccess<T, S, U>> GhostdagManager<T, S, U, V> {
+    pub fn new(genesis_hash: Hash, k: u8) -> Self {
+        Self { genesis_hash, k, _phantom: Default::default() }
+    }
+    pub fn add_block(&self, sa: &mut V, block: Hash) {
         let parents = sa.relations_store().get_parents(&block).unwrap();
         let is_genesis = parents.len() == 0;
         if is_genesis {
@@ -58,7 +58,7 @@ impl GhostdagManager {
                 .unwrap();
         }
 
-        let selected_parent = find_selected_parent(sa, &parents);
+        let selected_parent = Self::find_selected_parent(sa, &parents);
         let mut merge_set_blues = Vec::with_capacity((self.k + 1) as usize);
         merge_set_blues.push(selected_parent);
 
@@ -131,10 +131,9 @@ impl GhostdagManager {
             .unwrap();
     }
 
-    fn check_blue_candidate_with_chain_block<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore>(
-        &self, sa: &impl StoreAccess<T, S, U>, new_block_data: &BlockData, chain_block: &ChainBlockData,
-        blue_candidate: Hash, candidate_blues_anticone_sizes: &mut HashMap<Hash, u8>,
-        candidate_blue_anticone_size: &mut u8,
+    fn check_blue_candidate_with_chain_block(
+        &self, sa: &V, new_block_data: &BlockData, chain_block: &ChainBlockData, blue_candidate: Hash,
+        candidate_blues_anticone_sizes: &mut HashMap<Hash, u8>, candidate_blue_anticone_size: &mut u8,
     ) -> (bool, bool) {
         // If blue_candidate is in the future of chain_block, it means
         // that all remaining blues are in the past of chain_block and thus
@@ -193,9 +192,7 @@ impl GhostdagManager {
 
     // blue_anticone_size returns the blue anticone size of 'block' from the worldview of 'context'.
     // Expects 'block' to be in the blue set of 'context'
-    fn blue_anticone_size<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore>(
-        &self, sa: &impl StoreAccess<T, S, U>, block: Hash, context: &BlockData,
-    ) -> u8 {
+    fn blue_anticone_size(&self, sa: &V, block: Hash, context: &BlockData) -> u8 {
         let mut is_trusted_data = false;
         let mut current_blues_anticone_sizes = Rc::clone(&context.blues_anticone_sizes);
         let mut current_selected_parent = context.selected_parent;
@@ -232,8 +229,8 @@ impl GhostdagManager {
         }
     }
 
-    fn check_blue_candidate<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore>(
-        &self, sa: &impl StoreAccess<T, S, U>, new_block_data: Rc<BlockData>, blue_candidate: Hash,
+    fn check_blue_candidate(
+        &self, sa: &V, new_block_data: Rc<BlockData>, blue_candidate: Hash,
     ) -> (bool, u8, HashMap<Hash, u8>) {
         // The maximum length of new_block_data.merge_set_blues can be K+1 because
         // it contains the selected parent.
@@ -304,25 +301,22 @@ impl GhostdagManager {
 
         (true, candidate_blue_anticone_size, candidate_blues_anticone_sizes)
     }
-}
 
-fn find_selected_parent<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore>(
-    sa: &impl StoreAccess<T, S, U>, parents: &HashArray,
-) -> Hash {
-    parents
-        .iter()
-        .map(|parent| SortableBlock {
-            hash: *parent,
-            blue_work: sa
-                .ghostdag_store()
-                .get_blue_work(*parent, false)
-                .unwrap(),
-        })
-        .max()
-        .unwrap()
-        .hash
+    fn find_selected_parent(sa: &V, parents: &HashArray) -> Hash {
+        parents
+            .iter()
+            .map(|parent| SortableBlock {
+                hash: *parent,
+                blue_work: sa
+                    .ghostdag_store()
+                    .get_blue_work(*parent, false)
+                    .unwrap(),
+            })
+            .max()
+            .unwrap()
+            .hash
+    }
 }
-
 struct ChainBlockData {
     hash: Option<Hash>,
     data: Rc<BlockData>,

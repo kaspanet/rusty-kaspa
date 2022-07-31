@@ -2,6 +2,4 @@
 // TODO: remove this
 #![allow(dead_code, unused_variables)]
 
-pub mod constants;
-pub mod model;
-pub mod processes;
+pub mod uint256;
