@@ -366,7 +366,7 @@ fn string_to_hash(s: &str) -> Hash {
 fn strings_to_hashes(strings: &Vec<String>) -> HashArray {
     let mut arr = Vec::with_capacity(strings.len());
     for string in strings {
-        arr.push(string_to_hash(&string));
+        arr.push(string_to_hash(string));
     }
     Rc::new(arr)
 }

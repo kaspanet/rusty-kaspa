@@ -57,7 +57,7 @@ impl<'a> ReindexOperationContext<'a> {
                 return Err(ReachabilityError::DataOverflow(format!(
                     "unexpected behavior: reindex root {} is out of capacity during reindexing. 
                     Theoretically, this should only ever happen if there are more than ~2^52 blocks in the DAG.",
-                    reindex_root.to_string()
+                    reindex_root
                 )));
             }
 
