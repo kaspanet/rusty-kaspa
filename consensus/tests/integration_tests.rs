@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::BufReader;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::rc::Rc;
 
 #[derive(Serialize, Deserialize, Debug)]
