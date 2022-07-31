@@ -2,7 +2,6 @@
 //! Integration tests
 //!
 
-use consensus::misc::uint256::Uint256;
 use consensus::model::api::hash::{Hash, HashArray};
 use consensus::model::stores::ghostdag::{GhostdagStore, MemoryGhostdagStore};
 use consensus::model::stores::reachability::{MemoryReachabilityStore, ReachabilityStore};
@@ -11,6 +10,7 @@ use consensus::model::ORIGIN;
 use consensus::processes::ghostdag::protocol::{GhostdagManager, StoreAccess};
 use consensus::processes::reachability::inquirer;
 use consensus::processes::reachability::tests::{validate_intervals, TreeBuilder};
+use misc::uint256::Uint256;
 
 use flate2::read::GzDecoder;
 use serde::{Deserialize, Serialize};

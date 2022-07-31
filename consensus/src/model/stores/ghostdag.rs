@@ -1,6 +1,6 @@
 use super::errors::StoreError;
-use crate::misc::uint256::Uint256;
 use crate::model::api::hash::{Hash, HashArray};
+use misc::uint256::Uint256;
 use std::{collections::HashMap, rc::Rc};
 
 pub trait GhostdagStore {
