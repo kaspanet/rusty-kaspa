@@ -2,16 +2,23 @@
 //! Integration tests
 //!
 
-use consensus::model::api::hash::Hash;
+use consensus::model::api::hash::{Hash, HashArray};
+use consensus::model::stores::ghostdag::{GhostdagStore, MemoryGhostdagStore};
 use consensus::model::stores::reachability::{MemoryReachabilityStore, ReachabilityStore};
+use consensus::model::stores::relations::{MemoryRelationsStore, RelationsStore};
+use consensus::model::ORIGIN;
+use consensus::processes::ghostdag::protocol::{GhostdagManager, StoreAccess};
+use consensus::processes::reachability::inquirer;
 use consensus::processes::reachability::tests::{validate_intervals, TreeBuilder};
+use misc::uint256::Uint256;
 
 use flate2::read::GzDecoder;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::BufReader;
 use std::path::Path;
+use std::rc::Rc;
 
 #[derive(Serialize, Deserialize, Debug)]
 struct JsonBlock {
@@ -138,4 +145,228 @@ fn test_attack_json() {
 #[test]
 fn test_noattack_json() {
     reachability_stretch_test(false);
+}
+
+struct StoreAccessImpl {
+    ghostdag_store_impl: MemoryGhostdagStore,
+    relations_store_impl: MemoryRelationsStore,
+    reachability_store_impl: MemoryReachabilityStore,
+}
+
+impl StoreAccess<MemoryGhostdagStore, MemoryRelationsStore, MemoryReachabilityStore> for StoreAccessImpl {
+    fn relations_store(&self) -> &MemoryRelationsStore {
+        &self.relations_store_impl
+    }
+
+    fn reachability_store(&self) -> &MemoryReachabilityStore {
+        &self.reachability_store_impl
+    }
+
+    fn reachability_store_as_mut(&mut self) -> &mut MemoryReachabilityStore {
+        &mut self.reachability_store_impl
+    }
+
+    fn ghostdag_store_as_mut(&mut self) -> &mut MemoryGhostdagStore {
+        &mut self.ghostdag_store_impl
+    }
+
+    fn ghostdag_store(&self) -> &MemoryGhostdagStore {
+        &self.ghostdag_store_impl
+    }
+}
+
+#[test]
+fn ghostdag_sanity_test() {
+    let mut reachability_store = MemoryReachabilityStore::new();
+    // let mut builder = TreeBuilder::new_with_params(&mut reachability_store, 2, 5);
+    // builder.init_default();
+
+    inquirer::init(&mut reachability_store).unwrap();
+
+    let genesis: Hash = 1.into();
+    let genesis_child: Hash = 2.into();
+
+    inquirer::add_block(&mut reachability_store, genesis, ORIGIN, &mut std::iter::empty()).unwrap();
+
+    // builder.add_block(genesis, ORIGIN);
+    // builder.add_block(genesis_child, genesis);
+
+    let mut relations_store = MemoryRelationsStore::new();
+    relations_store.set_parents(genesis_child, Rc::new(vec![genesis]));
+
+    let mut sa = StoreAccessImpl {
+        ghostdag_store_impl: MemoryGhostdagStore::new(),
+        relations_store_impl: relations_store,
+        reachability_store_impl: reachability_store,
+    };
+
+    sa.ghostdag_store_as_mut()
+        .set_blue_score(genesis, 0)
+        .unwrap();
+    sa.ghostdag_store_as_mut()
+        .set_blue_work(genesis, Uint256::from_u64(0))
+        .unwrap();
+    sa.ghostdag_store_as_mut()
+        .set_selected_parent(genesis, ORIGIN)
+        .unwrap();
+    sa.ghostdag_store_as_mut()
+        .set_mergeset_blues(genesis, HashArray::new(Vec::new()))
+        .unwrap();
+    sa.ghostdag_store_as_mut()
+        .set_mergeset_reds(genesis, HashArray::new(Vec::new()))
+        .unwrap();
+    sa.ghostdag_store_as_mut()
+        .set_blues_anticone_sizes(genesis, Rc::new(HashMap::new()))
+        .unwrap();
+
+    let manager = GhostdagManager::new(genesis, 18);
+    manager.add_block(&mut sa, genesis_child);
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct GhostdagTestDag {
+    #[serde(rename = "K")]
+    k: u8,
+
+    #[serde(rename = "GenesisID")]
+    genesis_id: String,
+
+    #[serde(rename = "Blocks")]
+    blocks: Vec<GhostdagTestBlock>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct GhostdagTestBlock {
+    #[serde(rename = "ID")]
+    id: String,
+
+    #[serde(rename = "ExpectedScore")]
+    score: u64,
+
+    #[serde(rename = "ExpectedSelectedParent")]
+    selected_parent: String,
+
+    #[serde(rename = "ExpectedReds")]
+    mergeset_reds: Vec<String>,
+
+    #[serde(rename = "ExpectedBlues")]
+    mergeset_blues: Vec<String>,
+
+    #[serde(rename = "Parents")]
+    parents: Vec<String>,
+}
+
+#[test]
+fn ghostdag_test() {
+    let mut path_strings: Vec<String> = fs::read_dir("tests/testdata/dags")
+        .unwrap()
+        .map(|f| f.unwrap().path().to_str().unwrap().to_owned())
+        .collect();
+    path_strings.sort();
+
+    for path_string in path_strings.iter() {
+        println!("Running test {}", path_string);
+        let path = Path::new(&path_string);
+        let file = File::open(path).unwrap();
+        let reader = BufReader::new(file);
+        let test: GhostdagTestDag = serde_json::from_reader(reader).unwrap();
+
+        let mut reachability_store = MemoryReachabilityStore::new();
+
+        inquirer::init(&mut reachability_store).unwrap();
+
+        let genesis: Hash = string_to_hash(&test.genesis_id);
+        inquirer::add_block(&mut reachability_store, genesis, ORIGIN, &mut std::iter::empty()).unwrap();
+
+        let mut relations_store = MemoryRelationsStore::new();
+        let mut ghostdag_store = MemoryGhostdagStore::new();
+
+        ghostdag_store.set_blue_score(genesis, 0).unwrap();
+        ghostdag_store
+            .set_blue_work(genesis, Uint256::from_u64(0))
+            .unwrap();
+        ghostdag_store
+            .set_selected_parent(genesis, ORIGIN)
+            .unwrap();
+        ghostdag_store
+            .set_mergeset_blues(genesis, HashArray::new(Vec::new()))
+            .unwrap();
+        ghostdag_store
+            .set_mergeset_reds(genesis, HashArray::new(Vec::new()))
+            .unwrap();
+        ghostdag_store
+            .set_blues_anticone_sizes(genesis, Rc::new(HashMap::new()))
+            .unwrap();
+
+        for block in &test.blocks {
+            let block_id = string_to_hash(&block.id);
+            let parents = strings_to_hashes(&block.parents);
+            relations_store.set_parents(block_id, Rc::clone(&parents));
+            // builder.add_block(block_id, parents[0]);
+        }
+
+        let mut sa = StoreAccessImpl {
+            ghostdag_store_impl: ghostdag_store,
+            relations_store_impl: relations_store,
+            reachability_store_impl: reachability_store,
+        };
+
+        let manager = GhostdagManager::new(genesis, test.k);
+        for block in test.blocks {
+            println!("Processing block {}", block.id);
+            let block_id = string_to_hash(&block.id);
+            manager.add_block(&mut sa, block_id);
+
+            assert_eq!(
+                sa.ghostdag_store()
+                    .get_selected_parent(block_id, false)
+                    .unwrap(),
+                string_to_hash(&block.selected_parent),
+                "selected parent assertion failed for {}",
+                block.id,
+            );
+
+            assert_eq!(
+                sa.ghostdag_store()
+                    .get_mergeset_reds(block_id, false)
+                    .unwrap(),
+                strings_to_hashes(&block.mergeset_reds),
+                "mergeset reds assertion failed for {}",
+                block.id,
+            );
+
+            assert_eq!(
+                sa.ghostdag_store()
+                    .get_mergeset_blues(block_id, false)
+                    .unwrap(),
+                strings_to_hashes(&block.mergeset_blues),
+                "mergeset blues assertion failed for {:?} with SP {:?}",
+                string_to_hash(&block.id),
+                string_to_hash(&block.selected_parent)
+            );
+
+            assert_eq!(
+                sa.ghostdag_store()
+                    .get_blue_score(block_id, false)
+                    .unwrap(),
+                block.score,
+                "blue score assertion failed for {}",
+                block.id,
+            );
+        }
+    }
+}
+
+fn string_to_hash(s: &str) -> Hash {
+    let mut data = s.as_bytes().to_vec();
+    data.resize(32, 0);
+    Hash::new(&data)
+}
+
+fn strings_to_hashes(strings: &Vec<String>) -> HashArray {
+    let mut arr = Vec::with_capacity(strings.len());
+    for string in strings {
+        arr.push(string_to_hash(&string));
+    }
+    Rc::new(arr)
 }
