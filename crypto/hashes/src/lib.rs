@@ -8,10 +8,19 @@ const HASH_SIZE: usize = 32;
 
 pub use hashers::*;
 
+// TODO: Check if we use hash more as an array of u64 or of bytes and change the default accordingly
 #[derive(PartialEq, Eq, Clone, Copy, Hash, Default, Debug)]
 pub struct Hash([u8; HASH_SIZE]);
 
 impl Hash {
+    pub const fn from_bytes(bytes: [u8; HASH_SIZE]) -> Self {
+        Hash(bytes)
+    }
+
+    pub const fn as_bytes(self) -> [u8; 32] {
+        self.0
+    }
+
     pub fn iter_u64_le(&self) -> impl ExactSizeIterator<Item = u64> + '_ {
         self.0
             .chunks_exact(8)

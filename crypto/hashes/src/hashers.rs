@@ -1,24 +1,31 @@
 // use sha3::CShake256;
 use once_cell::sync::Lazy;
 
-pub trait Hasher: Clone {
+pub trait Hasher: Clone + Default {
     fn update<A: AsRef<[u8]>>(&mut self, data: A) -> &mut Self;
     fn finalize(self) -> crate::Hash;
     fn reset(&mut self);
+    #[inline(always)]
+    fn hash<A: AsRef<[u8]>>(data: A) -> crate::Hash {
+        let mut hasher = Self::default();
+        hasher.update(data);
+        hasher.finalize()
+    }
 }
 
 // Implemented manually in pow_hashers:
 //  struct PowHash => `cSHAKE256("ProofOfWorkHash")
-//  struct HeavyHash => `cSHAKE256("HeavyHash")
-pub use crate::pow_hashers::{HeavyHash, PowHash};
+//  struct KHeavyHash => `cSHAKE256("KHeavyHash")
+pub use crate::pow_hashers::{KHeavyHash, PowHash};
 blake2b_hasher! {
     struct TransactionHash => b"TransactionHash",
     struct TransactionID => b"TransactionID",
     struct TransactionSigningHash => b"TransactionSigningHash",
     struct BlockHash => b"BlockHash",
     struct ProofOfWorkHash => b"ProofOfWorkHash",
-    struct HeavyHash => b"HeavyHash",
     struct MerkleBranchHash => b"MerkleBranchHash",
+    struct MuHashElementHash => b"MuHashElement",
+    struct MuHashFinalizeHash => b"MuHashFinalize",
 }
 
 sha256_hasher! {
