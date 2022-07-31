@@ -6,7 +6,6 @@ use std::str::FromStr;
 
 const HASH_SIZE: usize = 32;
 
-// TODO: Check that PartialOrd/Ord is implemented as needed
 #[derive(PartialEq, Eq, Clone, Copy, Hash, Default, PartialOrd, Ord)]
 pub struct Hash([u8; HASH_SIZE]);
 
