@@ -81,32 +81,33 @@ impl GhostdagManager {
 
             if is_blue {
                 // No k-cluster violation found, we can now set the candidate block as blue
-                Rc::make_mut(&mut Rc::make_mut(&mut new_block_data).merge_set_blues).push(blue_candidate);
-                Rc::make_mut(&mut Rc::make_mut(&mut new_block_data).blues_anticone_sizes)
+                let new_block_data_mut = Rc::make_mut(&mut new_block_data);
+                Rc::make_mut(&mut new_block_data_mut.merge_set_blues).push(blue_candidate);
+                Rc::make_mut(&mut new_block_data_mut.blues_anticone_sizes)
                     .insert(blue_candidate, candidate_blue_anticone_size);
                 for (blue, size) in candidate_blues_anticone_sizes {
-                    Rc::make_mut(&mut Rc::make_mut(&mut new_block_data).blues_anticone_sizes).insert(blue, size + 1);
+                    Rc::make_mut(&mut new_block_data_mut.blues_anticone_sizes).insert(blue, size + 1);
                 }
             } else {
                 mergeset_reds.push(blue_candidate);
             }
         }
 
-        Rc::make_mut(&mut new_block_data).blue_score = sa
+        let blue_score = sa
             .ghostdag_store()
             .get_blue_score(selected_parent, false)
             .unwrap()
             + new_block_data.merge_set_blues.len() as u64;
 
         // TODO: This is just a placeholder until calc_work is implemented.
-        Rc::make_mut(&mut new_block_data).blue_work = Uint256::from_u64(new_block_data.blue_score);
+        let blue_work = Uint256::from_u64(blue_score);
 
         sa.ghostdag_store_as_mut()
-            .set_blue_score(block, new_block_data.blue_score)
+            .set_blue_score(block, blue_score)
             .unwrap();
 
         sa.ghostdag_store_as_mut()
-            .set_blue_work(block, new_block_data.blue_work)
+            .set_blue_work(block, blue_work)
             .unwrap();
 
         sa.ghostdag_store_as_mut()

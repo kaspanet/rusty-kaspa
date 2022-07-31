@@ -263,6 +263,7 @@ fn ghostdag_test() {
         .map(|f| f.unwrap().path().to_str().unwrap().to_owned())
         .collect();
     path_strings.sort();
+
     for path_string in path_strings.iter() {
         println!("Running test {}", path_string);
         let path = Path::new(&path_string);
@@ -271,20 +272,13 @@ fn ghostdag_test() {
         let test: GhostdagTestDag = serde_json::from_reader(reader).unwrap();
 
         let mut reachability_store = MemoryReachabilityStore::new();
-        // let mut builder = TreeBuilder::new_with_params(&mut reachability_store, 2, 5);
-        // builder.init_default();
 
         inquirer::init(&mut reachability_store).unwrap();
 
         let genesis: Hash = string_to_hash(&test.genesis_id);
-        // let genesis_child: Hash = 2.into();
-        // builder.add_block(genesis, ORIGIN);
         inquirer::add_block(&mut reachability_store, genesis, ORIGIN, &mut std::iter::empty()).unwrap();
-        // builder.add_block(genesis_child, genesis);
 
         let mut relations_store = MemoryRelationsStore::new();
-        // relations_store.set_parents(genesis_child, Rc::new(vec![genesis]));
-
         let mut ghostdag_store = MemoryGhostdagStore::new();
 
         ghostdag_store.set_blue_score(genesis, 0).unwrap();
