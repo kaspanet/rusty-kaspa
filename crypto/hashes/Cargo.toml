@@ -17,8 +17,7 @@ keccak = { version = "0.1", optional = true }
 keccak = "0.1"
 
 [dev-dependencies]
-# TODO: Replace with a published version once they publish it: https://github.com/RustCrypto/hashes/pull/355#issuecomment-1200243329
-sha3 = { git = "https://github.com/RustCrypto/hashes.git", rev = "53d9671baf76133cd729ab9be37338ff2c50d973" }
+sha3 = "0.10"
 
 [build-dependencies]
 cc = "1"
