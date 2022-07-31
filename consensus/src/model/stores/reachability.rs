@@ -4,9 +4,10 @@ use std::{
 };
 
 use super::errors::StoreError;
-use crate::{model::api::hash::Hash, processes::reachability::interval::Interval};
-
-type HashArray = Rc<Vec<Hash>>;
+use crate::{
+    model::api::hash::{Hash, HashArray},
+    processes::reachability::interval::Interval,
+};
 
 #[derive(Clone)]
 pub struct ReachabilityData {

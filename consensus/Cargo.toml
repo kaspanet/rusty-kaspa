@@ -14,6 +14,7 @@ regex = "1"
 hex = "0.4.3"
 thiserror = "1.0.31"
 kaspa-core = {path="../core"}
+misc = {path="../misc"}
 
 [dev-dependencies]
 criterion = "0.3.6"
