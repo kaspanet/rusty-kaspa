@@ -1,4 +1,4 @@
-use crate::processes::reachability::inquirer::is_dag_ancestor_of;
+use crate::processes::reachability::inquirer::{self, is_dag_ancestor_of};
 use crate::{
     misc::uint256::Uint256,
     model::{
@@ -17,6 +17,7 @@ pub trait StoreAccess<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore>
     fn ghostdag_store_as_mut(&mut self) -> &mut T;
     fn relations_store(&self) -> &S;
     fn reachability_store(&self) -> &U;
+    fn reachability_store_as_mut(&mut self) -> &mut U;
 }
 
 #[derive(Clone)]
@@ -74,7 +75,7 @@ impl GhostdagManager {
         });
 
         let mut mergeset_reds: Vec<Hash> = Vec::new();
-        for blue_candidate in merge_set {
+        for blue_candidate in merge_set.iter().cloned() {
             let (is_blue, candidate_blue_anticone_size, candidate_blues_anticone_sizes) =
                 self.check_blue_candidate(sa, Rc::clone(&new_block_data), blue_candidate);
 
@@ -122,6 +123,9 @@ impl GhostdagManager {
 
         sa.ghostdag_store_as_mut()
             .set_blues_anticone_sizes(block, Rc::clone(&new_block_data.blues_anticone_sizes))
+            .unwrap();
+
+        inquirer::add_block(sa.reachability_store_as_mut(), block, selected_parent, &mut merge_set.iter().cloned())
             .unwrap();
     }
 

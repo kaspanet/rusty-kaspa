@@ -9,6 +9,7 @@ use consensus::model::stores::reachability::{MemoryReachabilityStore, Reachabili
 use consensus::model::stores::relations::{MemoryRelationsStore, RelationsStore};
 use consensus::model::ORIGIN;
 use consensus::processes::ghostdag::protocol::{GhostdagManager, StoreAccess};
+use consensus::processes::reachability::inquirer;
 use consensus::processes::reachability::tests::{validate_intervals, TreeBuilder};
 
 use flate2::read::GzDecoder;
@@ -161,6 +162,10 @@ impl StoreAccess<MemoryGhostdagStore, MemoryRelationsStore, MemoryReachabilitySt
         &self.reachability_store_impl
     }
 
+    fn reachability_store_as_mut(&mut self) -> &mut MemoryReachabilityStore {
+        &mut self.reachability_store_impl
+    }
+
     fn ghostdag_store_as_mut(&mut self) -> &mut MemoryGhostdagStore {
         &mut self.ghostdag_store_impl
     }
@@ -173,13 +178,18 @@ impl StoreAccess<MemoryGhostdagStore, MemoryRelationsStore, MemoryReachabilitySt
 #[test]
 fn ghostdag_sanity_test() {
     let mut reachability_store = MemoryReachabilityStore::new();
-    let mut builder = TreeBuilder::new_with_params(&mut reachability_store, 2, 5);
-    builder.init_default();
+    // let mut builder = TreeBuilder::new_with_params(&mut reachability_store, 2, 5);
+    // builder.init_default();
+
+    inquirer::init(&mut reachability_store).unwrap();
 
     let genesis: Hash = 1.into();
     let genesis_child: Hash = 2.into();
-    builder.add_block(genesis, ORIGIN);
-    builder.add_block(genesis_child, genesis);
+
+    inquirer::add_block(&mut reachability_store, genesis, ORIGIN, &mut std::iter::empty()).unwrap();
+
+    // builder.add_block(genesis, ORIGIN);
+    // builder.add_block(genesis_child, genesis);
 
     let mut relations_store = MemoryRelationsStore::new();
     relations_store.set_parents(genesis_child, Rc::new(vec![genesis]));
@@ -248,7 +258,7 @@ struct GhostdagTestBlock {
 
 #[test]
 fn ghostdag_test() {
-    let mut path_strings: Vec<String> = fs::read_dir("./tests/testdata/dags")
+    let mut path_strings: Vec<String> = fs::read_dir("tests/testdata/dags")
         .unwrap()
         .map(|f| f.unwrap().path().to_str().unwrap().to_owned())
         .collect();
@@ -261,12 +271,15 @@ fn ghostdag_test() {
         let test: GhostdagTestDag = serde_json::from_reader(reader).unwrap();
 
         let mut reachability_store = MemoryReachabilityStore::new();
-        let mut builder = TreeBuilder::new_with_params(&mut reachability_store, 2, 5);
-        builder.init_default();
+        // let mut builder = TreeBuilder::new_with_params(&mut reachability_store, 2, 5);
+        // builder.init_default();
+
+        inquirer::init(&mut reachability_store).unwrap();
 
         let genesis: Hash = string_to_hash(&test.genesis_id);
         // let genesis_child: Hash = 2.into();
-        builder.add_block(genesis, ORIGIN);
+        // builder.add_block(genesis, ORIGIN);
+        inquirer::add_block(&mut reachability_store, genesis, ORIGIN, &mut std::iter::empty()).unwrap();
         // builder.add_block(genesis_child, genesis);
 
         let mut relations_store = MemoryRelationsStore::new();
@@ -295,7 +308,7 @@ fn ghostdag_test() {
             let block_id = string_to_hash(&block.id);
             let parents = strings_to_hashes(&block.parents);
             relations_store.set_parents(block_id, Rc::clone(&parents));
-            builder.add_block(block_id, parents[0]);
+            // builder.add_block(block_id, parents[0]);
         }
 
         let mut sa = StoreAccessImpl {
@@ -312,9 +325,30 @@ fn ghostdag_test() {
 
             assert_eq!(
                 sa.ghostdag_store()
+                    .get_selected_parent(block_id, false)
+                    .unwrap(),
+                string_to_hash(&block.selected_parent),
+                "selected parent assertion failed for {}",
+                block.id,
+            );
+
+            assert_eq!(
+                sa.ghostdag_store()
+                    .get_merge_set_reds(block_id, false)
+                    .unwrap(),
+                strings_to_hashes(&block.merge_set_reds),
+                "mergeset reds assertion failed for {}",
+                block.id,
+            );
+
+            assert_eq!(
+                sa.ghostdag_store()
                     .get_merge_set_blues(block_id, false)
                     .unwrap(),
-                strings_to_hashes(&block.merge_set_blues)
+                strings_to_hashes(&block.merge_set_blues),
+                "mergeset blues assertion failed for {:?} with SP {:?}",
+                string_to_hash(&block.id),
+                string_to_hash(&block.selected_parent)
             );
 
             assert_eq!(
@@ -324,20 +358,6 @@ fn ghostdag_test() {
                 block.score,
                 "blue score assertion failed for {}",
                 block.id,
-            );
-
-            assert_eq!(
-                sa.ghostdag_store()
-                    .get_selected_parent(block_id, false)
-                    .unwrap(),
-                string_to_hash(&block.selected_parent)
-            );
-
-            assert_eq!(
-                sa.ghostdag_store()
-                    .get_merge_set_reds(block_id, false)
-                    .unwrap(),
-                strings_to_hashes(&block.merge_set_reds)
             );
         }
     }
