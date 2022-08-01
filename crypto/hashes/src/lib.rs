@@ -3,7 +3,6 @@ mod pow_hashers;
 
 use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Display, Formatter};
-use std::mem::size_of;
 use std::str::{self, FromStr};
 
 pub const HASH_SIZE: usize = 32;
@@ -15,25 +14,32 @@ pub use hashers::*;
 pub struct Hash([u8; HASH_SIZE]);
 
 impl Hash {
+    #[inline(always)]
     pub const fn from_bytes(bytes: [u8; HASH_SIZE]) -> Self {
         Hash(bytes)
     }
 
+    #[inline(always)]
     pub const fn as_bytes(self) -> [u8; 32] {
         self.0
     }
 
+    #[inline(always)]
+    /// # Panics
+    /// Panics if `bytes` length is not exactly `HASH_SIZE`.
     pub fn from_slice(bytes: &[u8]) -> Self {
         Self(<[u8; HASH_SIZE]>::try_from(bytes).expect("Slice must have the length of Hash"))
     }
 
-    pub fn iter_u64_le(&self) -> impl ExactSizeIterator<Item = u64> + '_ {
+    #[inline(always)]
+    pub fn iter_le_u64(&self) -> impl ExactSizeIterator<Item = u64> + '_ {
         self.0
             .chunks_exact(8)
             .map(|chunk| u64::from_le_bytes(chunk.try_into().unwrap()))
     }
 
-    fn from_u64_le(arr: [u64; 4]) -> Self {
+    #[inline(always)]
+    fn from_le_u64(arr: [u64; 4]) -> Self {
         let mut ret = [0; HASH_SIZE];
         ret.chunks_exact_mut(8)
             .zip(arr.iter())
@@ -41,14 +47,14 @@ impl Hash {
         Self(ret)
     }
 
+    #[inline(always)]
     pub fn from_u64_word(word: u64) -> Self {
-        let mut bytes = [0u8; HASH_SIZE];
-        bytes[0..size_of::<u64>()].copy_from_slice(&word.to_le_bytes());
-        Hash(bytes)
+        Self::from_le_u64([word, 0, 0, 0])
     }
 }
 
 impl Display for Hash {
+    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let mut hex = [0u8; HASH_SIZE * 2];
         hex::encode_to_slice(&self.0, &mut hex).expect("The output is exactly twice the size of the input");
@@ -59,6 +65,7 @@ impl Display for Hash {
 impl FromStr for Hash {
     type Err = hex::FromHexError;
 
+    #[inline]
     fn from_str(hash_str: &str) -> Result<Self, Self::Err> {
         let mut bytes = [0u8; HASH_SIZE];
         hex::decode_to_slice(hash_str, &mut bytes)?;
