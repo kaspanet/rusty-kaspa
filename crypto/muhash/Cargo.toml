@@ -10,3 +10,11 @@ rand_chacha = "0.3"
 hashes = { path = "../hashes" }
 hex = "*"
 
+
+[dev-dependencies]
+criterion = "0.3"
+
+[[bench]]
+name = "bench"
+harness = false
+
