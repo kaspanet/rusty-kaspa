@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::{hash_map::Entry::Vacant, HashMap},
     sync::Arc,
+    sync::RwLock,
 };
 
 type DB = DBWithThreadMode<MultiThreaded>;
@@ -79,12 +80,12 @@ pub trait ReachabilityStore {
 pub struct DbReachabilityStore {
     db: DB,
     cache: Cache<Hash, Arc<ReachabilityData>>,
-    reindex_root: Option<Hash>,
+    reindex_root: RwLock<Option<Hash>>,
 }
 
 impl DbReachabilityStore {
     pub fn new(db_path: &str, cache_size: u64) -> Self {
-        Self { db: DB::open_default(db_path).unwrap(), cache: Cache::new(cache_size), reindex_root: None }
+        Self { db: DB::open_default(db_path).unwrap(), cache: Cache::new(cache_size), reindex_root: RwLock::new(None) }
     }
 
     fn read(&self, hash: Hash) -> Result<Arc<ReachabilityData>, StoreError> {
@@ -104,7 +105,7 @@ impl DbReachabilityStore {
 
     fn write(&self, hash: Hash, data: Arc<ReachabilityData>) -> Result<(), StoreError> {
         let cache = &self.cache; //.clone(); // See TODO above
-        cache.insert(hash, data.clone());
+        cache.insert(hash, Arc::clone(&data));
         let serial_data: SerializableReachabilityData = data.as_ref().into();
         let bin_data = bincode::serialize(&serial_data)?;
         self.db.put(hash, bin_data)?;
@@ -172,18 +173,18 @@ impl ReachabilityStore for DbReachabilityStore {
     }
 
     fn set_reindex_root(&mut self, root: Hash) -> Result<(), StoreError> {
-        self.reindex_root = Some(root);
+        *self.reindex_root.write().unwrap() = Some(root);
         let bin_data = bincode::serialize(&root)?;
         self.db.put(b"reindex_root", bin_data)?;
         Ok(())
     }
 
     fn get_reindex_root(&self) -> Result<Hash, StoreError> {
-        if let Some(root) = self.reindex_root {
+        if let Some(root) = *self.reindex_root.read().unwrap() {
             Ok(root)
         } else if let Some(slice) = self.db.get_pinned(b"reindex_root")? {
             let root: Hash = bincode::deserialize(&slice)?;
-            // self.reindex_root = Some(root); // TODO: interior mutability
+            *self.reindex_root.write().unwrap() = Some(root);
             Ok(root)
         } else {
             Err(StoreError::KeyNotFound("reindex_root".to_string()))
