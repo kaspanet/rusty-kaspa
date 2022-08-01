@@ -4,3 +4,4 @@ web-root
 /.idea/*
 /rust-toolchain
 /.vscode/
+**/db-*

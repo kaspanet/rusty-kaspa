@@ -4,7 +4,7 @@
 
 use consensus::model::api::hash::{Hash, HashArray};
 use consensus::model::stores::ghostdag::{GhostdagStore, MemoryGhostdagStore};
-use consensus::model::stores::reachability::{MemoryReachabilityStore, ReachabilityStore};
+use consensus::model::stores::reachability::{DbReachabilityStore, MemoryReachabilityStore, ReachabilityStore};
 use consensus::model::stores::relations::{MemoryRelationsStore, RelationsStore};
 use consensus::model::ORIGIN;
 use consensus::processes::ghostdag::protocol::{GhostdagManager, StoreAccess};
@@ -76,7 +76,7 @@ fn reachability_stretch_test(use_attack_json: bool) {
     }
 
     // Act
-    let mut store: Box<dyn ReachabilityStore> = Box::new(MemoryReachabilityStore::new());
+    let mut store: Box<dyn ReachabilityStore> = Box::new(DbReachabilityStore::new("db-reach", 500));
     let mut builder = TreeBuilder::new_with_params(store.as_mut(), 2, 5);
 
     let root = consensus::model::ORIGIN;

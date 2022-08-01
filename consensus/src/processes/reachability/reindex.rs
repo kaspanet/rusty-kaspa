@@ -507,7 +507,7 @@ impl<'a> ReindexOperationContext<'a> {
 }
 
 /// Splits `children` into two slices: the blocks that are before `pivot` and the blocks that are after.
-fn split_children(children: &std::rc::Rc<Vec<Hash>>, pivot: Hash) -> Result<(&[Hash], &[Hash])> {
+fn split_children(children: &std::sync::Arc<Vec<Hash>>, pivot: Hash) -> Result<(&[Hash], &[Hash])> {
     if let Some(index) = children.iter().cloned().position(|c| c == pivot) {
         Ok((&children[..index], &children[index + 1..]))
     } else {
