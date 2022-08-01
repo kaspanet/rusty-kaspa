@@ -17,14 +17,12 @@ pub(crate) const LIMBS: usize = crate::ELEMENT_BYTE_SIZE / LIMB_SIZE_BYTES;
 
 pub(crate) const PRIME_DIFF: Limb = 1103717;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct U3072 {
     limbs: [Limb; LIMBS],
 }
 
 impl U3072 {
-    pub(crate) const MAX: Self = U3072 { limbs: [Limb::MAX; LIMBS] };
-
     #[inline(always)]
     pub(super) const fn zero() -> Self {
         Self { limbs: [0; LIMBS] }

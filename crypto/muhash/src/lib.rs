@@ -28,7 +28,7 @@ pub struct MuHash {
     denominator: U3072,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct OverflowError;
 
 impl Display for OverflowError {
@@ -67,7 +67,8 @@ impl MuHash {
         self.denominator *= other.numerator;
     }
 
-    pub fn finalize(mut self) -> Hash {
+    // #[inline]
+    pub fn finalize(&mut self) -> Hash {
         let serialized = self.serialize();
         MuHashFinalizeHash::hash(serialized)
     }
@@ -108,11 +109,13 @@ impl Default for MuHash {
 
 #[cfg(test)]
 mod tests {
-    use crate::u3072;
+    use std::mem;
+    use crate::OverflowError;
     use crate::{MuHash, EMPTY_MUHASH, U3072};
     use hashes::Hash;
     use rand_chacha::rand_core::{RngCore, SeedableRng};
     use rand_chacha::ChaCha8Rng;
+    use crate::u3072::{Limb, PRIME_DIFF};
 
     struct TestVector {
         data: &'static [u8],
@@ -175,11 +178,14 @@ mod tests {
         },
     ];
 
-    const MAX_MU_HASH: MuHash = MuHash { numerator: U3072::MAX, denominator: U3072::MAX };
+    fn element_from_byte(b: u8) -> [u8; 32] {
+        let mut out = [0u8; 32];
+        out[0] = b;
+        out
+    }
 
     #[test]
     fn test_random_muhash_arithmetic() {
-        let element_from_byte = |b| [b; 32];
         let mut rng = rand_chacha::ChaCha8Rng::seed_from_u64(1);
         let rng_get_byte = |rng: &mut ChaCha8Rng| {
             let mut byte = [0u8; 1];
@@ -195,7 +201,7 @@ mod tests {
                 let mut acc = MuHash::new();
                 for i in 0..4 {
                     let t = table[i ^ order];
-                    if (t & 4) == 1 {
+                    if (t & 4) != 0 {
                         acc.remove_element(&element_from_byte(t & 3));
                     } else {
                         acc.add_element(&element_from_byte(t & 3));
@@ -208,8 +214,8 @@ mod tests {
                     assert_eq!(res, out);
                 }
             }
-            let mut x = element_from_byte(rng_get_byte(&mut rng)); // x=X
-            let mut y = element_from_byte(rng_get_byte(&mut rng)); // x=X, y=Y
+            let x = element_from_byte(rng_get_byte(&mut rng)); // x=X
+            let y = element_from_byte(rng_get_byte(&mut rng)); // x=X, y=Y
             let mut z = MuHash::new(); // x=X, y=X, z=1
             let mut yx = MuHash::new(); // x=X, y=Y, z=1 yx=1
             yx.add_element(&y); // x=X, y=X, z=1, yx=Y
@@ -218,10 +224,162 @@ mod tests {
             z.add_element(&x); // x=X, y=Y, z=X, yx=Y*X
             z.add_element(&y); // x=X, y=Y, z=X*Y, yx = Y*X
             z.denominator *= yx.numerator; // x=X, y=Y, z=1, yx=Y*X
-
-            let empty = MuHash::new();
-            assert_eq!(EMPTY_MUHASH, empty.finalize());
             assert_eq!(z.finalize(), EMPTY_MUHASH);
         }
     }
+
+    #[test]
+    fn test_empty_hash() {
+        let mut empty = MuHash::new();
+        assert_eq!(empty.finalize(), EMPTY_MUHASH);
+    }
+
+    #[test]
+    fn test_new_pre_computed() {
+        let expected = "b557f7cfc13cf9abc31374832715e7bff2cf5859897523337a0ead9dde012974";
+        let mut acc = MuHash::new();
+        acc.add_element(&element_from_byte(0));
+        acc.add_element(&element_from_byte(1));
+        acc.remove_element(&element_from_byte(2));
+        assert_eq!(acc.finalize().to_string(), expected);
+    }
+
+    #[test]
+    fn test_serialize() {
+        let expected = [
+            50, 5, 73, 166, 198, 210, 31, 202, 37, 64, 219, 222, 57, 158, 121, 89, 67, 188, 211, 73, 217, 251, 250,
+            178, 135, 196, 39, 250, 122, 202, 56, 228, 146, 233, 249, 16, 68, 9, 255, 158, 152, 84, 168, 146, 121, 81,
+            181, 60, 96, 141, 114, 26, 127, 140, 164, 90, 87, 187, 24, 4, 187, 151, 135, 91, 9, 249, 103, 124, 91, 55,
+            72, 202, 43, 241, 196, 243, 201, 237, 141, 158, 166, 125, 185, 26, 201, 232, 80, 72, 3, 7, 248, 152, 116,
+            148, 44, 250, 108, 167, 175, 61, 128, 159, 48, 148, 28, 247, 22, 158, 40, 130, 41, 154, 93, 184, 199, 177,
+            0, 170, 212, 159, 61, 233, 131, 243, 16, 17, 246, 132, 114, 31, 155, 37, 25, 97, 107, 11, 100, 17, 23, 61,
+            12, 218, 176, 129, 173, 148, 221, 6, 152, 157, 112, 106, 90, 5, 215, 0, 133, 133, 41, 241, 217, 237, 6,
+            202, 106, 252, 196, 244, 209, 141, 220, 236, 40, 221, 219, 122, 222, 96, 27, 189, 60, 69, 150, 124, 29, 78,
+            206, 249, 146, 179, 191, 11, 187, 178, 48, 114, 127, 155, 74, 137, 140, 109, 182, 88, 192, 120, 71, 141,
+            197, 93, 178, 179, 254, 252, 167, 251, 245, 77, 112, 186, 216, 30, 239, 147, 168, 67, 89, 96, 14, 102, 165,
+            187, 163, 232, 51, 77, 117, 134, 160, 254, 89, 201, 57, 113, 76, 137, 99, 101, 233, 35, 46, 213, 124, 38,
+            247, 12, 125, 203, 220, 54, 114, 68, 242, 192, 107, 216, 226, 140, 66, 78, 65, 166, 255, 4, 2, 89, 247,
+            184, 204, 145, 54, 105, 210, 209, 195, 248, 63, 207, 199, 218, 253, 92, 150, 190, 212, 216, 23, 121, 18,
+            14, 27, 35, 191, 203, 50, 238, 10, 190, 192, 47, 210, 100, 58, 38, 201, 103, 199, 59, 32, 72, 37, 221, 104,
+            87, 120, 222, 61, 144, 107, 107, 114, 27, 152, 88, 232, 113, 97, 184, 69, 116, 17, 59, 245, 151, 99, 140,
+            167, 85, 47, 28, 51, 198, 140, 233, 21, 92, 211, 79, 1, 68, 217, 131, 37, 19, 5, 107, 51, 219, 141, 109,
+            155, 196, 183, 148, 16, 113, 227, 141, 202, 215, 191, 50, 241, 244,
+        ];
+
+        let mut check = MuHash::new();
+        check.add_element(&element_from_byte(1));
+        check.add_element(&element_from_byte(2));
+        let ser = check.serialize();
+        assert_eq!(ser, expected);
+
+        let mut deserialized = MuHash::deserialize(ser).unwrap();
+        assert_eq!(deserialized.finalize(), check.finalize());
+        let overflow = [255; 384];
+        assert_eq!(MuHash::deserialize(overflow).unwrap_err(), OverflowError);
+
+        let mut zeroed = MuHash::new();
+        zeroed.numerator *= U3072::zero();
+        assert_eq!(zeroed.serialize(), [0u8; 384]);
+
+        let mut deserialized = MuHash::deserialize(zeroed.serialize()).unwrap();
+        zeroed.normalize();
+        deserialized.normalize();
+        assert_eq!(zeroed.numerator, deserialized.numerator);
+    }
+
+    #[test]
+    fn test_vectors_hash() {
+        for test in TEST_VECTORS {
+            let mut m = MuHash::new();
+            m.add_element(test.data);
+            assert_eq!(m.finalize(), test.multiset_hash);
+        }
+    }
+    #[test]
+    fn test_vectors_add_remove() {
+        let mut m = MuHash::new();
+
+        for test in TEST_VECTORS {
+            m.add_element(test.data);
+            assert_eq!(m.finalize(), test.cumulative_hash);
+        }
+
+        for (i, test) in TEST_VECTORS.iter().enumerate().rev() {
+            m.remove_element(test.data);
+            if i != 0 {
+                assert_eq!(m.finalize(), TEST_VECTORS[i - 1].cumulative_hash);
+            }
+        }
+        assert_eq!(m.finalize(), EMPTY_MUHASH);
+    }
+
+    #[test]
+    fn test_vectors_combine_subtract() {
+        let mut m1 = MuHash::new();
+        let mut m2 = MuHash::new();
+        for test in TEST_VECTORS {
+            m1.add_element(test.data);
+            m2.remove_element(test.data);
+        }
+        m1.combine(&m2);
+        assert_eq!(m1.finalize(), EMPTY_MUHASH);
+    }
+
+    #[test]
+    fn test_vectors_commutativity() {
+        // Here we first remove an element from an empty multiset, and then add some other
+        // elements, and then we create a new empty multiset, then we add the same elements
+        // we added to the previous multiset, and then we remove the same element we remove
+        // the same element we removed from the previous multiset. According to commutativity
+        // laws, the result should be the same.
+        for remove_index in 0..TEST_VECTORS.len() {
+            let remove_data = TEST_VECTORS[remove_index].data;
+            let mut m1 = MuHash::new();
+            let mut m2 = MuHash::new();
+            m1.remove_element(remove_data);
+            for (i, test) in TEST_VECTORS.iter().enumerate() {
+                if i != remove_index {
+                    m1.add_element(test.data);
+                    m2.add_element(test.data);
+                }
+            }
+            m2.remove_element(remove_data);
+            assert_eq!(m1.finalize(), m2.finalize());
+        }
+    }
+
+    #[test]
+    fn test_parse_muhash_fail() {
+        let mut serialized = [0u8; 384];
+        serialized[0..mem::size_of::<Limb>()].copy_from_slice(&PRIME_DIFF.to_le_bytes());
+        serialized[mem::size_of::<Limb>()..192].copy_from_slice(&[u8::MAX; 192-mem::size_of::<Limb>()]);
+
+        assert_eq!(MuHash::deserialize(serialized).unwrap_err(), OverflowError);
+
+        serialized[0] = 0;
+        let _ = MuHash::deserialize(serialized).unwrap();
+    }
+
+
+    #[test]
+    fn test_muhash_add_remove() {
+        const LOOPS: usize = 1024;
+        let mut rng = rand_chacha::ChaCha8Rng::seed_from_u64(42);
+        let mut set = MuHash::new();
+        let list: Vec<_> =  (0..LOOPS).map(|_| {
+            let mut data = [0u8; 100];
+            rng.fill_bytes(&mut data);
+            set.add_element(&data);
+            data
+        }).collect();
+
+        assert_ne!(set.finalize(), EMPTY_MUHASH);
+
+        for elem in list.iter() {
+            set.remove_element(elem);
+        }
+
+        assert_eq!(set.finalize(), EMPTY_MUHASH);
+    }
+
 }
