@@ -26,6 +26,7 @@ criterion = "0.3.6"
 serde_json = "1.0"
 flate2 = "1.0.24"
 rand = "0.8"
+tempfile = "3.3.0"
 
 [[bench]]
 name = "hash_benchmarks"

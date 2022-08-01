@@ -76,8 +76,10 @@ fn reachability_stretch_test(use_attack_json: bool) {
     }
 
     // Act
-    let mut store: Box<dyn ReachabilityStore> = Box::new(DbReachabilityStore::new("db-reach", 500));
-    let mut builder = TreeBuilder::new_with_params(store.as_mut(), 2, 5);
+    let db_tempdir = tempfile::tempdir().unwrap();
+    let mut store: Box<dyn ReachabilityStore> =
+        Box::new(DbReachabilityStore::new(db_tempdir.path().to_str().unwrap(), 100000));
+    let mut builder = TreeBuilder::new(store.as_mut());
 
     let root = consensus::model::ORIGIN;
     builder.init_default();
@@ -178,18 +180,12 @@ impl StoreAccess<MemoryGhostdagStore, MemoryRelationsStore, MemoryReachabilitySt
 #[test]
 fn ghostdag_sanity_test() {
     let mut reachability_store = MemoryReachabilityStore::new();
-    // let mut builder = TreeBuilder::new_with_params(&mut reachability_store, 2, 5);
-    // builder.init_default();
-
     inquirer::init(&mut reachability_store).unwrap();
 
     let genesis: Hash = 1.into();
     let genesis_child: Hash = 2.into();
 
     inquirer::add_block(&mut reachability_store, genesis, ORIGIN, &mut std::iter::empty()).unwrap();
-
-    // builder.add_block(genesis, ORIGIN);
-    // builder.add_block(genesis_child, genesis);
 
     let mut relations_store = MemoryRelationsStore::new();
     relations_store.set_parents(genesis_child, Rc::new(vec![genesis]));
@@ -302,7 +298,6 @@ fn ghostdag_test() {
             let block_id = string_to_hash(&block.id);
             let parents = strings_to_hashes(&block.parents);
             relations_store.set_parents(block_id, Rc::clone(&parents));
-            // builder.add_block(block_id, parents[0]);
         }
 
         let mut sa = StoreAccessImpl {
