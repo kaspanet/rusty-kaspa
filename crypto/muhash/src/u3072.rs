@@ -34,7 +34,8 @@ impl U3072 {
         s.limbs[0] = 1;
         s
     }
-    #[inline]
+
+    #[inline(always)]
     #[must_use]
     pub(super) fn is_overflow(&self) -> bool {
         // If the smallest limb is smaller than MAX-PRIME_DIFF then it is not overflown.
@@ -72,7 +73,7 @@ impl U3072 {
         res
     }
 
-    #[inline]
+    #[inline(always)]
     fn full_reduce(&mut self) {
         let mut low = PRIME_DIFF;
         let mut high: Limb = 0;
@@ -85,7 +86,6 @@ impl U3072 {
         }
     }
 
-    #[inline]
     fn mul(&mut self, other: &U3072) {
         let (mut carry_low, mut carry_high, mut carry_highest) = (0, 0, 0);
         let mut tmp = Self::one();
@@ -109,7 +109,7 @@ impl U3072 {
         }
 
         // Compute limb N-1 of a*b into tmp
-        assert_eq!(carry_highest, 0);
+        debug_assert_eq!(carry_highest, 0);
 
         for i in 0..LIMBS {
             (carry_low, carry_high, carry_highest) =
@@ -129,8 +129,8 @@ impl U3072 {
             // Extract the result into self and shift the carries.
             (self.limbs[i], carry_low, carry_high) = (carry_low, carry_high, overflow as _);
         }
-        assert_eq!(carry_high, 0);
-        assert!(carry_low == 0 || carry_low == 1);
+        debug_assert_eq!(carry_high, 0);
+        debug_assert!(carry_low == 0 || carry_low == 1);
         //  Perform up to two more reductions if the internal state has already overflown the MAX of u3072
         //  or if it is larger than the modulus or if both are the case.
 
@@ -172,7 +172,7 @@ impl U3072 {
             (tmp.limbs[j], c0, c1, c2) = (c0, c1, c2, 0);
         }
 
-        assert_eq!(c2, 0);
+        debug_assert_eq!(c2, 0);
 
         for i in 0..LIMBS / 2 {
             (c0, c1, c2) = mul_double_add(c0, c1, c2, self.limbs[i], self.limbs[LIMBS - 1 - i]);
@@ -190,8 +190,8 @@ impl U3072 {
             (self.limbs[i], c0, c1) = (c0, c1, overflow as _);
         }
 
-        assert_eq!(c1, 0);
-        assert!(c0 == 0 || c0 == 1);
+        debug_assert_eq!(c1, 0);
+        debug_assert!(c0 == 0 || c0 == 1);
 
         // Perform up to two more reductions if the internal state has already overflown the MAX of Num3072
         // or if it is larger than the modulus or if both are the case.
@@ -275,12 +275,14 @@ impl U3072 {
 }
 
 impl DivAssign for U3072 {
+    #[inline(always)]
     fn div_assign(&mut self, rhs: Self) {
         self.div(&rhs);
     }
 }
 
 impl MulAssign for U3072 {
+    #[inline(always)]
     fn mul_assign(&mut self, rhs: Self) {
         self.mul(&rhs);
     }
@@ -354,6 +356,7 @@ fn muln2(low: Limb, high: Limb, n: Limb) -> (Limb, Limb) {
 }
 
 impl Default for U3072 {
+    #[inline(always)]
     fn default() -> Self {
         Self::zero()
     }

@@ -38,7 +38,7 @@ macro_rules! sha256_hasher {
         pub struct $name(sha2::Sha256);
 
         impl $name {
-            #[inline(always)]
+            #[inline]
             pub fn new() -> Self {
                 use sha2::{Sha256, Digest};
                 // We use Lazy in order to avoid rehashing it
@@ -103,20 +103,23 @@ macro_rules! blake2b_hasher {
 macro_rules! impl_hasher {
     (struct $name:ident) => {
         impl Hasher for $name {
+            #[inline(always)]
             fn update<A: AsRef<[u8]>>(&mut self, data: A) -> &mut Self {
                 self.write(data);
                 self
             }
+            #[inline(always)]
             fn finalize(self) -> crate::Hash {
                 // Call the method
                 $name::finalize(self)
             }
-
+            #[inline(always)]
             fn reset(&mut self) {
                 *self = Self::new();
             }
         }
         impl Default for $name {
+            #[inline(always)]
             fn default() -> Self {
                 Self::new()
             }

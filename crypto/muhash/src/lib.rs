@@ -40,12 +40,14 @@ impl Display for OverflowError {
 impl Error for OverflowError {}
 
 impl MuHash {
+    #[inline]
     /// return an empty initialized set.
     /// when finalized it should be equal to a finalized set with all elements removed.
     pub fn new() -> Self {
         Self { numerator: U3072::one(), denominator: U3072::one() }
     }
 
+    #[inline]
     // hashes the data and adds it to the muhash.
     // Supports arbitrary length data (subject to the underlying hash function(Blake2b) limits)
     pub fn add_element(&mut self, data: &[u8]) {
@@ -53,6 +55,7 @@ impl MuHash {
         self.numerator *= element;
     }
 
+    #[inline]
     // hashes the data and removes it from the muhash.
     // Supports arbitrary length data (subject to the underlying hash function(Blake2b) limits)
     pub fn remove_element(&mut self, data: &[u8]) {
@@ -60,6 +63,7 @@ impl MuHash {
         self.denominator *= element;
     }
 
+    #[inline]
     // will add the MuHash together. Equivalent to manually adding all the data elements
     // from one set to the other.
     pub fn combine(&mut self, other: &Self) {
@@ -67,22 +71,25 @@ impl MuHash {
         self.denominator *= other.numerator;
     }
 
-    // #[inline]
+    #[inline]
     pub fn finalize(&mut self) -> Hash {
         let serialized = self.serialize();
         MuHashFinalizeHash::hash(serialized)
     }
 
+    #[inline]
     fn normalize(&mut self) {
         self.numerator /= self.denominator;
         self.denominator = U3072::one();
     }
 
+    #[inline]
     pub fn serialize(&mut self) -> [u8; SERIALIZED_MUHASH_SIZE] {
         self.normalize();
         self.numerator.to_le_bytes()
     }
 
+    #[inline]
     pub fn deserialize(data: [u8; SERIALIZED_MUHASH_SIZE]) -> Result<Self, OverflowError> {
         let numerator = U3072::from_le_bytes(data);
         if numerator.is_overflow() {
@@ -93,6 +100,7 @@ impl MuHash {
     }
 }
 
+#[inline]
 fn data_to_element(data: &[u8]) -> U3072 {
     let hash = MuHashElementHash::hash(data);
     let mut stream = ChaCha20Rng::from_seed(hash.as_bytes());
@@ -102,6 +110,7 @@ fn data_to_element(data: &[u8]) -> U3072 {
 }
 
 impl Default for MuHash {
+    #[inline]
     fn default() -> Self {
         Self::new()
     }

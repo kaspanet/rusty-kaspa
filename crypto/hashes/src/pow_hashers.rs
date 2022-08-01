@@ -18,10 +18,10 @@ impl PowHash {
         3784524041015224902, 1082795874807940378, 13952716920571277634, 13411128033953605860, 15060696040649351053,
         9928834659948351306, 5237849264682708699, 12825353012139217522, 6706187291358897596, 196324915476054915,
     ];
-    #[inline(always)]
+    #[inline]
     pub fn new(pre_pow_hash: Hash, timestamp: u64) -> Self {
         let mut start = Self::INITIAL_STATE;
-        for (pre_pow_word, state_word) in pre_pow_hash.iter_u64_le().zip(start.iter_mut()) {
+        for (pre_pow_word, state_word) in pre_pow_hash.iter_le_u64().zip(start.iter_mut()) {
             *state_word ^= pre_pow_word;
         }
         start[4] ^= timestamp;
@@ -32,7 +32,7 @@ impl PowHash {
     pub fn finalize_with_nonce(mut self, nonce: u64) -> Hash {
         self.0[9] ^= nonce;
         keccak256::f1600(&mut self.0);
-        Hash::from_u64_le(self.0[..4].try_into().unwrap())
+        Hash::from_le_u64(self.0[..4].try_into().unwrap())
     }
 }
 
@@ -48,24 +48,26 @@ impl KHeavyHash {
         8596393687355028144, 570094237299545110, 9119540418498120711, 16901969272480492857, 13372017233735502424,
         14372891883993151831, 5171152063242093102, 10573107899694386186, 6096431547456407061, 1592359455985097269,
     ];
-    #[inline(always)]
+    #[inline]
     pub fn hash(in_hash: Hash) -> Hash {
         let mut state = Self::INITIAL_STATE;
-        for (pre_pow_word, state_word) in in_hash.iter_u64_le().zip(state.iter_mut()) {
+        for (pre_pow_word, state_word) in in_hash.iter_le_u64().zip(state.iter_mut()) {
             *state_word ^= pre_pow_word;
         }
         keccak256::f1600(&mut state);
-        Hash::from_u64_le(state[..4].try_into().unwrap())
+        Hash::from_le_u64(state[..4].try_into().unwrap())
     }
 }
 
 mod keccak256 {
     #[cfg(any(not(target_arch = "x86_64"), feature = "no-asm", target_os = "windows"))]
+    #[inline(always)]
     pub(super) fn f1600(state: &mut [u64; 25]) {
         keccak::f1600(state);
     }
 
     #[cfg(all(target_arch = "x86_64", not(feature = "no-asm"), not(target_os = "windows")))]
+    #[inline(always)]
     pub(super) fn f1600(state: &mut [u64; 25]) {
         extern "C" {
             fn KeccakF1600(state: &mut [u64; 25]);
