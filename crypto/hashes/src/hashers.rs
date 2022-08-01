@@ -164,18 +164,6 @@ mod tests {
                 "3b79b78b967233843ad30f707b165eb3d6a91af8338076be8755c46a963c3d1d",
             ],
         );
-
-        run_test_vector(
-            &input_data,
-            TransactionSigningHash::new,
-            &[
-                "34c75037ad62740d4b3228f88f844f7901c07bfacd55a045be518eabc15e52ce",
-                "8523b0471bcbea04575ccaa635eef9f9114f2890bda54367e5ff8caa3878bf82",
-                "a51c49d9eb3d13f9de16e1aa8d1ff17668d55633ce00f36a643ac714b0fb137f",
-                "487f199ef74c3e893e85bd37770e6334575a2d4d113b2e10474593c49807de93",
-                "6392adc33a8e24e9a0a0c4c5f07f9c1cc958ad40c16d7a9a276e374cebb4e32b",
-            ],
-        );
         run_test_vector(
             &input_data,
             TransactionID::new,

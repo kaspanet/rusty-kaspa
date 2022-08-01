@@ -74,8 +74,6 @@ mod keccak256 {
     }
 }
 
-
-
 #[cfg(test)]
 mod tests {
     use super::{KHeavyHash, PowHash};
@@ -93,7 +91,6 @@ mod tests {
         let pre_pow_hash = Hash([42; 32]);
         let hasher = PowHash::new(pre_pow_hash, timestamp);
         let hash1 = hasher.finalize_with_nonce(nonce);
-
 
         let hasher = CShake256::from_core(CShake256Core::new(PROOF_OF_WORK_DOMAIN))
             .chain(pre_pow_hash.0)

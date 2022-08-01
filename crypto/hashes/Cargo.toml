@@ -8,7 +8,6 @@ edition = "2021"
 [dependencies]
 hex = "0.4"
 blake2b_simd = "1"
-blake2 = "0.10"
 sha2 = "0.10"
 once_cell = "1"
 keccak = { version = "0.1", optional = true }
@@ -18,6 +17,12 @@ keccak = "0.1"
 
 [dev-dependencies]
 sha3 = "0.10"
+criterion = "0.3"
+rand = "0.8"
 
 [build-dependencies]
 cc = "1"
+
+[[bench]]
+name = "bench"
+harness = false
