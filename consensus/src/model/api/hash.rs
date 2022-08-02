@@ -2,8 +2,8 @@ use hex;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Display, Formatter};
 use std::mem::size_of;
-use std::rc::Rc;
 use std::str::FromStr;
+use std::sync::Arc;
 
 const HASH_SIZE: usize = 32;
 
@@ -91,7 +91,7 @@ impl Hash {
     }
 }
 
-pub type HashArray = Rc<Vec<Hash>>;
+pub type HashArray = Arc<Vec<Hash>>;
 
 #[cfg(test)]
 mod tests {

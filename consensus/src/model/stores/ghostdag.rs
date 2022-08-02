@@ -1,7 +1,9 @@
 use super::errors::StoreError;
 use crate::model::api::hash::{Hash, HashArray};
 use misc::uint256::Uint256;
-use std::{collections::HashMap, rc::Rc};
+use std::{collections::HashMap, sync::Arc};
+
+pub type HashU8Map = Arc<HashMap<Hash, u8>>;
 
 pub trait GhostdagStoreReader {
     fn get_blue_score(&self, hash: Hash, is_trusted_data: bool) -> Result<u64, StoreError>;
@@ -9,7 +11,7 @@ pub trait GhostdagStoreReader {
     fn get_selected_parent(&self, hash: Hash, is_trusted_data: bool) -> Result<Hash, StoreError>;
     fn get_mergeset_blues(&self, hash: Hash, is_trusted_data: bool) -> Result<HashArray, StoreError>;
     fn get_mergeset_reds(&self, hash: Hash, is_trusted_data: bool) -> Result<HashArray, StoreError>;
-    fn get_blues_anticone_sizes(&self, hash: Hash, is_trusted_data: bool) -> Result<Rc<HashMap<Hash, u8>>, StoreError>;
+    fn get_blues_anticone_sizes(&self, hash: Hash, is_trusted_data: bool) -> Result<HashU8Map, StoreError>;
 }
 
 pub trait GhostdagStore: GhostdagStoreReader {
@@ -18,7 +20,7 @@ pub trait GhostdagStore: GhostdagStoreReader {
     #[allow(clippy::too_many_arguments)]
     fn insert(
         &mut self, hash: Hash, blue_score: u64, blue_work: Uint256, selected_parent: Hash, mergeset_blues: HashArray,
-        mergeset_reds: HashArray, blues_anticone_sizes: Rc<HashMap<Hash, u8>>,
+        mergeset_reds: HashArray, blues_anticone_sizes: HashU8Map,
     ) -> Result<(), StoreError>;
 }
 
@@ -28,7 +30,7 @@ pub struct MemoryGhostdagStore {
     selected_parent_map: HashMap<Hash, Hash>,
     mergeset_blues_map: HashMap<Hash, HashArray>,
     mergeset_reds_map: HashMap<Hash, HashArray>,
-    blues_anticone_sizes_map: HashMap<Hash, Rc<HashMap<Hash, u8>>>,
+    blues_anticone_sizes_map: HashMap<Hash, HashU8Map>,
 }
 
 impl MemoryGhostdagStore {
@@ -53,7 +55,7 @@ impl Default for MemoryGhostdagStore {
 impl GhostdagStore for MemoryGhostdagStore {
     fn insert(
         &mut self, hash: Hash, blue_score: u64, blue_work: Uint256, selected_parent: Hash, mergeset_blues: HashArray,
-        mergeset_reds: HashArray, blues_anticone_sizes: Rc<HashMap<Hash, u8>>,
+        mergeset_reds: HashArray, blues_anticone_sizes: HashU8Map,
     ) -> Result<(), StoreError> {
         if self.blue_score_map.contains_key(&hash) {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
@@ -95,21 +97,21 @@ impl GhostdagStoreReader for MemoryGhostdagStore {
 
     fn get_mergeset_blues(&self, hash: Hash, is_trusted_data: bool) -> Result<HashArray, StoreError> {
         match self.mergeset_blues_map.get(&hash) {
-            Some(mergeset_blues) => Ok(Rc::clone(mergeset_blues)),
+            Some(mergeset_blues) => Ok(HashArray::clone(mergeset_blues)),
             None => Err(StoreError::KeyNotFound(hash.to_string())),
         }
     }
 
     fn get_mergeset_reds(&self, hash: Hash, is_trusted_data: bool) -> Result<HashArray, StoreError> {
         match self.mergeset_reds_map.get(&hash) {
-            Some(mergeset_reds) => Ok(Rc::clone(mergeset_reds)),
+            Some(mergeset_reds) => Ok(HashArray::clone(mergeset_reds)),
             None => Err(StoreError::KeyNotFound(hash.to_string())),
         }
     }
 
-    fn get_blues_anticone_sizes(&self, hash: Hash, is_trusted_data: bool) -> Result<Rc<HashMap<Hash, u8>>, StoreError> {
+    fn get_blues_anticone_sizes(&self, hash: Hash, is_trusted_data: bool) -> Result<HashU8Map, StoreError> {
         match self.blues_anticone_sizes_map.get(&hash) {
-            Some(sizes) => Ok(Rc::clone(sizes)),
+            Some(sizes) => Ok(HashU8Map::clone(sizes)),
             None => Err(StoreError::KeyNotFound(hash.to_string())),
         }
     }

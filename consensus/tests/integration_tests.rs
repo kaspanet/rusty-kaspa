@@ -17,7 +17,6 @@ use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::BufReader;
 use std::path::Path;
-use std::rc::Rc;
 
 #[derive(Serialize, Deserialize, Debug)]
 struct JsonBlock {
@@ -182,7 +181,7 @@ fn ghostdag_sanity_test() {
     inquirer::add_block(&mut reachability_store, genesis, ORIGIN, &mut std::iter::empty()).unwrap();
 
     let mut relations_store = MemoryRelationsStore::new();
-    relations_store.set_parents(genesis_child, Rc::new(vec![genesis]));
+    relations_store.set_parents(genesis_child, HashArray::new(vec![genesis]));
 
     let mut sa = StoreAccessImpl {
         ghostdag_store_impl: MemoryGhostdagStore::new(),
@@ -244,7 +243,6 @@ fn ghostdag_test() {
         let test: GhostdagTestDag = serde_json::from_reader(reader).unwrap();
 
         let mut reachability_store = MemoryReachabilityStore::new();
-
         inquirer::init(&mut reachability_store).unwrap();
 
         let genesis: Hash = string_to_hash(&test.genesis_id);
@@ -256,7 +254,7 @@ fn ghostdag_test() {
         for block in &test.blocks {
             let block_id = string_to_hash(&block.id);
             let parents = strings_to_hashes(&block.parents);
-            relations_store.set_parents(block_id, Rc::clone(&parents));
+            relations_store.set_parents(block_id, HashArray::clone(&parents));
         }
 
         let mut sa = StoreAccessImpl {
@@ -324,5 +322,5 @@ fn strings_to_hashes(strings: &Vec<String>) -> HashArray {
     for string in strings {
         arr.push(string_to_hash(string));
     }
-    Rc::new(arr)
+    HashArray::new(arr)
 }

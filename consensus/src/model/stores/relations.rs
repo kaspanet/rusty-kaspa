@@ -1,7 +1,6 @@
-use std::{collections::HashMap, rc::Rc};
-
 use super::errors::StoreError;
 use crate::model::api::hash::{Hash, HashArray};
+use std::collections::HashMap;
 
 pub trait RelationsStore {
     fn get_parents(&self, hash: &Hash) -> Result<HashArray, StoreError>;
@@ -27,7 +26,7 @@ impl Default for MemoryRelationsStore {
 impl RelationsStore for MemoryRelationsStore {
     fn get_parents(&self, hash: &Hash) -> Result<HashArray, StoreError> {
         match self.map.get(hash) {
-            Some(parents) => Ok(Rc::clone(parents)),
+            Some(parents) => Ok(HashArray::clone(parents)),
             None => Err(StoreError::KeyNotFound(hash.to_string())),
         }
     }

@@ -1,6 +1,10 @@
 use crate::model::{
     api::hash::{Hash, HashArray},
-    stores::{ghostdag::GhostdagStore, reachability::ReachabilityStore, relations::RelationsStore},
+    stores::{
+        ghostdag::{GhostdagStore, HashU8Map},
+        reachability::ReachabilityStore,
+        relations::RelationsStore,
+    },
     ORIGIN,
 };
 use crate::processes::reachability::inquirer::{self, is_dag_ancestor_of};
@@ -24,7 +28,7 @@ struct BlockData {
     blue_work: Uint256,
     selected_parent: Hash,
     mergeset_blues: HashArray,
-    blues_anticone_sizes: Rc<HashMap<Hash, u8>>,
+    blues_anticone_sizes: HashU8Map,
 }
 
 pub struct GhostdagManager<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore, V: StoreAccess<T, S, U>> {
@@ -47,7 +51,7 @@ impl<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore, V: StoreAccess<T
                 ORIGIN,
                 HashArray::new(Vec::new()),
                 HashArray::new(Vec::new()),
-                Rc::new(HashMap::new()),
+                HashU8Map::new(HashMap::new()),
             )
             .unwrap();
     }
@@ -68,8 +72,8 @@ impl<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore, V: StoreAccess<T
             blue_score: 0,
             blue_work: Default::default(),
             selected_parent,
-            mergeset_blues: Rc::new(mergeset_blues),
-            blues_anticone_sizes: Rc::new(blues_anticone_sizes),
+            mergeset_blues: HashArray::new(mergeset_blues),
+            blues_anticone_sizes: HashU8Map::new(blues_anticone_sizes),
         });
 
         let mut mergeset_reds: Vec<Hash> = Vec::new();
@@ -80,11 +84,11 @@ impl<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore, V: StoreAccess<T
             if is_blue {
                 // No k-cluster violation found, we can now set the candidate block as blue
                 let new_block_data_mut = Rc::make_mut(&mut new_block_data);
-                Rc::make_mut(&mut new_block_data_mut.mergeset_blues).push(blue_candidate);
-                Rc::make_mut(&mut new_block_data_mut.blues_anticone_sizes)
+                HashArray::make_mut(&mut new_block_data_mut.mergeset_blues).push(blue_candidate);
+                HashU8Map::make_mut(&mut new_block_data_mut.blues_anticone_sizes)
                     .insert(blue_candidate, candidate_blue_anticone_size);
                 for (blue, size) in candidate_blues_anticone_sizes {
-                    Rc::make_mut(&mut new_block_data_mut.blues_anticone_sizes).insert(blue, size + 1);
+                    HashU8Map::make_mut(&mut new_block_data_mut.blues_anticone_sizes).insert(blue, size + 1);
                 }
             } else {
                 mergeset_reds.push(blue_candidate);
@@ -106,9 +110,9 @@ impl<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore, V: StoreAccess<T
                 blue_score,
                 blue_work,
                 new_block_data.selected_parent,
-                Rc::clone(&new_block_data.mergeset_blues),
-                Rc::new(mergeset_reds),
-                Rc::clone(&new_block_data.blues_anticone_sizes),
+                HashArray::clone(&new_block_data.mergeset_blues),
+                HashArray::new(mergeset_reds),
+                HashU8Map::clone(&new_block_data.blues_anticone_sizes),
             )
             .unwrap();
 
@@ -180,7 +184,7 @@ impl<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore, V: StoreAccess<T
     // Expects 'block' to be in the blue set of 'context'
     fn blue_anticone_size(&self, sa: &V, block: Hash, context: &BlockData) -> u8 {
         let mut is_trusted_data = false;
-        let mut current_blues_anticone_sizes = Rc::clone(&context.blues_anticone_sizes);
+        let mut current_blues_anticone_sizes = HashU8Map::clone(&context.blues_anticone_sizes);
         let mut current_selected_parent = context.selected_parent;
         loop {
             if let Some(size) = current_blues_anticone_sizes.get(&block) {
