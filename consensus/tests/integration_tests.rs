@@ -88,7 +88,7 @@ fn reachability_stretch_test(use_attack_json: bool) {
         // For now, choose the first parent as selected
         let parent = map[block].parents.first().unwrap_or(&root);
         builder.add_block(*block, *parent);
-        if i % 10 == 0 {
+        if i % 100 == 0 {
             validate_intervals(*builder.store(), root).unwrap();
         }
     }
@@ -122,16 +122,12 @@ fn reachability_stretch_test(use_attack_json: bool) {
             }
         }
 
-        if cfg!(debug_assertions) {
-            if i % validation_freq == 0 || i == num_chains - 1 {
-                validate_intervals(*builder.store(), root).unwrap();
-            } else {
-                // In debug mode and for most iterations, validate intervals for
-                // new chain only in order to shorten the test
-                validate_intervals(*builder.store(), new_block).unwrap();
-            }
-        } else {
+        if i % validation_freq == 0 {
             validate_intervals(*builder.store(), root).unwrap();
+        } else {
+            // For most iterations, validate intervals for
+            // new chain only in order to shorten the test
+            validate_intervals(*builder.store(), new_block).unwrap();
         }
     }
 

@@ -62,16 +62,19 @@ pub struct SerializableReachabilityData {
     pub future_covering_set: Vec<Hash>,
 }
 
-pub trait ReachabilityStore {
-    fn insert(&mut self, hash: Hash, parent: Hash, interval: Interval, height: u64) -> Result<(), StoreError>;
-    fn set_interval(&mut self, hash: Hash, interval: Interval) -> Result<(), StoreError>;
-    fn append_child(&mut self, hash: Hash, child: Hash) -> Result<u64, StoreError>;
-    fn insert_future_covering_item(&mut self, hash: Hash, fci: Hash, insertion_index: usize) -> Result<(), StoreError>;
+pub trait ReachabilityStoreReader {
     fn has(&self, hash: Hash) -> Result<bool, StoreError>;
     fn get_interval(&self, hash: Hash) -> Result<Interval, StoreError>;
     fn get_parent(&self, hash: Hash) -> Result<Hash, StoreError>;
     fn get_children(&self, hash: Hash) -> Result<HashArray, StoreError>;
     fn get_future_covering_set(&self, hash: Hash) -> Result<HashArray, StoreError>;
+}
+
+pub trait ReachabilityStore: ReachabilityStoreReader {
+    fn insert(&mut self, hash: Hash, parent: Hash, interval: Interval, height: u64) -> Result<(), StoreError>;
+    fn set_interval(&mut self, hash: Hash, interval: Interval) -> Result<(), StoreError>;
+    fn append_child(&mut self, hash: Hash, child: Hash) -> Result<u64, StoreError>;
+    fn insert_future_covering_item(&mut self, hash: Hash, fci: Hash, insertion_index: usize) -> Result<(), StoreError>;
     fn get_height(&self, hash: Hash) -> Result<u64, StoreError>;
     fn set_reindex_root(&mut self, root: Hash) -> Result<(), StoreError>;
     fn get_reindex_root(&self) -> Result<Hash, StoreError>;
@@ -118,8 +121,7 @@ impl DbReachabilityStore {
     }
 
     fn write(&self, hash: Hash, data: Arc<ReachabilityData>) -> Result<(), StoreError> {
-        let cache = &self.cache; //.clone(); // See TODO above
-        cache.insert(hash, Arc::clone(&data));
+        self.cache.insert(hash, Arc::clone(&data));
         let serial_data: SerializableReachabilityData = data.as_ref().into();
         let bin_data = bincode::serialize(&serial_data)?;
         self.db.put(hash, bin_data)?;
@@ -128,10 +130,6 @@ impl DbReachabilityStore {
 }
 
 impl ReachabilityStore for DbReachabilityStore {
-    fn has(&self, hash: Hash) -> Result<bool, StoreError> {
-        Ok(self.cache.contains_key(&hash) || self.db.get_pinned(hash)?.is_some())
-    }
-
     fn insert(&mut self, hash: Hash, parent: Hash, interval: Interval, height: u64) -> Result<(), StoreError> {
         if self.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
@@ -166,22 +164,6 @@ impl ReachabilityStore for DbReachabilityStore {
         Ok(())
     }
 
-    fn get_interval(&self, hash: Hash) -> Result<Interval, StoreError> {
-        Ok(self.read_and_cache(hash)?.interval)
-    }
-
-    fn get_parent(&self, hash: Hash) -> Result<Hash, StoreError> {
-        Ok(self.read_and_cache(hash)?.parent)
-    }
-
-    fn get_children(&self, hash: Hash) -> Result<HashArray, StoreError> {
-        Ok(Arc::clone(&self.read_and_cache(hash)?.children))
-    }
-
-    fn get_future_covering_set(&self, hash: Hash) -> Result<HashArray, StoreError> {
-        Ok(Arc::clone(&self.read_and_cache(hash)?.future_covering_set))
-    }
-
     fn get_height(&self, hash: Hash) -> Result<u64, StoreError> {
         Ok(self.read_and_cache(hash)?.height)
     }
@@ -203,6 +185,28 @@ impl ReachabilityStore for DbReachabilityStore {
         } else {
             Err(StoreError::KeyNotFound("reindex_root".to_string()))
         }
+    }
+}
+
+impl ReachabilityStoreReader for DbReachabilityStore {
+    fn has(&self, hash: Hash) -> Result<bool, StoreError> {
+        Ok(self.cache.contains_key(&hash) || self.db.get_pinned(hash)?.is_some())
+    }
+
+    fn get_interval(&self, hash: Hash) -> Result<Interval, StoreError> {
+        Ok(self.read_and_cache(hash)?.interval)
+    }
+
+    fn get_parent(&self, hash: Hash) -> Result<Hash, StoreError> {
+        Ok(self.read_and_cache(hash)?.parent)
+    }
+
+    fn get_children(&self, hash: Hash) -> Result<HashArray, StoreError> {
+        Ok(Arc::clone(&self.read_and_cache(hash)?.children))
+    }
+
+    fn get_future_covering_set(&self, hash: Hash) -> Result<HashArray, StoreError> {
+        Ok(Arc::clone(&self.read_and_cache(hash)?.future_covering_set))
     }
 }
 
@@ -265,6 +269,24 @@ impl ReachabilityStore for MemoryReachabilityStore {
         Ok(())
     }
 
+    fn get_height(&self, hash: Hash) -> Result<u64, StoreError> {
+        Ok(self.get_data(hash)?.height)
+    }
+
+    fn set_reindex_root(&mut self, root: Hash) -> Result<(), StoreError> {
+        self.reindex_root = Some(root);
+        Ok(())
+    }
+
+    fn get_reindex_root(&self) -> Result<Hash, StoreError> {
+        match self.reindex_root {
+            Some(root) => Ok(root),
+            None => Err(StoreError::KeyNotFound("reindex root".to_string())),
+        }
+    }
+}
+
+impl ReachabilityStoreReader for MemoryReachabilityStore {
     fn has(&self, hash: Hash) -> Result<bool, StoreError> {
         Ok(self.map.contains_key(&hash))
     }
@@ -283,22 +305,6 @@ impl ReachabilityStore for MemoryReachabilityStore {
 
     fn get_future_covering_set(&self, hash: Hash) -> Result<HashArray, StoreError> {
         Ok(Arc::clone(&self.get_data(hash)?.future_covering_set))
-    }
-
-    fn get_height(&self, hash: Hash) -> Result<u64, StoreError> {
-        Ok(self.get_data(hash)?.height)
-    }
-
-    fn set_reindex_root(&mut self, root: Hash) -> Result<(), StoreError> {
-        self.reindex_root = Some(root);
-        Ok(())
-    }
-
-    fn get_reindex_root(&self) -> Result<Hash, StoreError> {
-        match self.reindex_root {
-            Some(root) => Ok(root),
-            None => Err(StoreError::KeyNotFound("reindex root".to_string())),
-        }
     }
 }
 
