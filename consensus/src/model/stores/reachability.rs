@@ -1,5 +1,4 @@
 use moka::sync::Cache;
-use rocksdb::{DBWithThreadMode, MultiThreaded};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{hash_map::Entry::Vacant, HashMap},
@@ -7,14 +6,13 @@ use std::{
     sync::RwLock,
 };
 
-type DB = DBWithThreadMode<MultiThreaded>;
+use super::{errors::StoreError, DB};
+use crate::{
+    model::api::hash::{Hash, HashArray},
+    processes::reachability::interval::Interval,
+};
 
-use super::errors::StoreError;
-use crate::{model::api::hash::Hash, processes::reachability::interval::Interval};
-
-type HashArray = Arc<Vec<Hash>>;
-
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct ReachabilityData {
     pub children: HashArray,
     pub parent: Hash,
@@ -29,39 +27,6 @@ impl ReachabilityData {
     }
 }
 
-impl From<SerializableReachabilityData> for ReachabilityData {
-    fn from(srd: SerializableReachabilityData) -> Self {
-        Self {
-            children: Arc::new(srd.children),
-            parent: srd.parent,
-            interval: srd.interval,
-            height: srd.height,
-            future_covering_set: Arc::new(srd.future_covering_set),
-        }
-    }
-}
-
-impl From<&ReachabilityData> for SerializableReachabilityData {
-    fn from(srd: &ReachabilityData) -> Self {
-        Self {
-            children: (*srd.children).clone(), // TODO: `Arc::unwrap_or_clone` would be perfect here (and below for FCS) but is unstable yet
-            parent: srd.parent,
-            interval: srd.interval,
-            height: srd.height,
-            future_covering_set: (*srd.future_covering_set).clone(),
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct SerializableReachabilityData {
-    pub children: Vec<Hash>,
-    pub parent: Hash,
-    pub interval: Interval,
-    pub height: u64,
-    pub future_covering_set: Vec<Hash>,
-}
-
 pub trait ReachabilityStoreReader {
     fn has(&self, hash: Hash) -> Result<bool, StoreError>;
     fn get_interval(&self, hash: Hash) -> Result<Interval, StoreError>;
@@ -69,7 +34,6 @@ pub trait ReachabilityStoreReader {
     fn get_children(&self, hash: Hash) -> Result<HashArray, StoreError>;
     fn get_future_covering_set(&self, hash: Hash) -> Result<HashArray, StoreError>;
 }
-
 pub trait ReachabilityStore: ReachabilityStoreReader {
     fn insert(&mut self, hash: Hash, parent: Hash, interval: Interval, height: u64) -> Result<(), StoreError>;
     fn set_interval(&mut self, hash: Hash, interval: Interval) -> Result<(), StoreError>;
@@ -101,8 +65,7 @@ impl DbReachabilityStore {
         if let Some(data) = self.cache.get(&hash) {
             Ok(data)
         } else if let Some(slice) = self.db.get_pinned(hash)? {
-            let deserial_data: SerializableReachabilityData = bincode::deserialize(&slice)?;
-            let data: Arc<ReachabilityData> = Arc::new(deserial_data.into());
+            let data: Arc<ReachabilityData> = Arc::new(bincode::deserialize(&slice)?);
             if should_cache {
                 self.cache.insert(hash, Arc::clone(&data));
             }
@@ -122,8 +85,7 @@ impl DbReachabilityStore {
 
     fn write(&self, hash: Hash, data: Arc<ReachabilityData>) -> Result<(), StoreError> {
         self.cache.insert(hash, Arc::clone(&data));
-        let serial_data: SerializableReachabilityData = data.as_ref().into();
-        let bin_data = bincode::serialize(&serial_data)?;
+        let bin_data = bincode::serialize(data.as_ref())?;
         self.db.put(hash, bin_data)?;
         Ok(())
     }
