@@ -5,7 +5,10 @@ use super::{inquirer::*, tree::*};
 use crate::{
     model::{
         api::hash::Hash,
-        stores::{errors::StoreError, reachability::ReachabilityStore},
+        stores::{
+            errors::StoreError,
+            reachability::{ReachabilityStore, ReachabilityStoreReader},
+        },
     },
     processes::reachability::interval::Interval,
 };
@@ -13,12 +16,12 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use thiserror::Error;
 
 /// A struct with fluent API to streamline reachability store building
-pub struct StoreBuilder<'a> {
-    store: &'a mut dyn ReachabilityStore,
+pub struct StoreBuilder<'a, T: ReachabilityStore + ?Sized> {
+    store: &'a mut T,
 }
 
-impl<'a> StoreBuilder<'a> {
-    pub fn new(store: &'a mut dyn ReachabilityStore) -> Self {
+impl<'a, T: ReachabilityStore + ?Sized> StoreBuilder<'a, T> {
+    pub fn new(store: &'a mut T) -> Self {
         Self { store }
     }
 
@@ -32,14 +35,14 @@ impl<'a> StoreBuilder<'a> {
 }
 
 /// A struct with fluent API to streamline tree building
-pub struct TreeBuilder<'a> {
-    store: &'a mut dyn ReachabilityStore,
+pub struct TreeBuilder<'a, T: ReachabilityStore + ?Sized> {
+    store: &'a mut T,
     reindex_depth: u64,
     reindex_slack: u64,
 }
 
-impl<'a> TreeBuilder<'a> {
-    pub fn new(store: &'a mut dyn ReachabilityStore) -> Self {
+impl<'a, T: ReachabilityStore + ?Sized> TreeBuilder<'a, T> {
+    pub fn new(store: &'a mut T) -> Self {
         Self {
             store,
             reindex_depth: crate::constants::perf::DEFAULT_REINDEX_DEPTH,
@@ -47,7 +50,7 @@ impl<'a> TreeBuilder<'a> {
         }
     }
 
-    pub fn new_with_params(store: &'a mut dyn ReachabilityStore, reindex_depth: u64, reindex_slack: u64) -> Self {
+    pub fn new_with_params(store: &'a mut T, reindex_depth: u64, reindex_slack: u64) -> Self {
         Self { store, reindex_depth, reindex_slack }
     }
 
@@ -67,7 +70,7 @@ impl<'a> TreeBuilder<'a> {
         self
     }
 
-    pub fn store(&self) -> &&'a mut dyn ReachabilityStore {
+    pub fn store(&self) -> &&'a mut T {
         &self.store
     }
 }
@@ -85,13 +88,13 @@ impl DagBlock {
 }
 
 /// A struct with fluent API to streamline DAG building
-pub(super) struct DagBuilder<'a> {
-    store: &'a mut dyn ReachabilityStore,
+pub(super) struct DagBuilder<'a, T: ReachabilityStore + ?Sized> {
+    store: &'a mut T,
     map: HashMap<Hash, DagBlock>,
 }
 
-impl<'a> DagBuilder<'a> {
-    pub fn new(store: &'a mut dyn ReachabilityStore) -> Self {
+impl<'a, T: ReachabilityStore + ?Sized> DagBuilder<'a, T> {
+    pub fn new(store: &'a mut T) -> Self {
         Self { store, map: HashMap::new() }
     }
 
@@ -161,7 +164,9 @@ pub enum TestError {
     IntervalOutOfParentBounds { parent: Hash, child: Hash, parent_interval: Interval, child_interval: Interval },
 }
 
-pub fn validate_intervals(store: &dyn ReachabilityStore, root: Hash) -> std::result::Result<(), TestError> {
+pub fn validate_intervals(
+    store: &(impl ReachabilityStoreReader + ?Sized), root: Hash,
+) -> std::result::Result<(), TestError> {
     let mut queue = VecDeque::<Hash>::from([root]);
     while !queue.is_empty() {
         let parent = queue.pop_front().unwrap();
