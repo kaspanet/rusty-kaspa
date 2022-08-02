@@ -3,14 +3,13 @@
 //!
 
 use consensus::model::api::hash::{Hash, HashArray};
-use consensus::model::stores::ghostdag::{GhostdagStore, MemoryGhostdagStore};
+use consensus::model::stores::ghostdag::{GhostdagStoreReader, MemoryGhostdagStore};
 use consensus::model::stores::reachability::{DbReachabilityStore, MemoryReachabilityStore};
 use consensus::model::stores::relations::{MemoryRelationsStore, RelationsStore};
 use consensus::model::ORIGIN;
 use consensus::processes::ghostdag::protocol::{GhostdagManager, StoreAccess};
 use consensus::processes::reachability::inquirer;
 use consensus::processes::reachability::tests::{validate_intervals, TreeBuilder};
-use misc::uint256::Uint256;
 
 use flate2::read::GzDecoder;
 use serde::{Deserialize, Serialize};
@@ -191,26 +190,8 @@ fn ghostdag_sanity_test() {
         reachability_store_impl: reachability_store,
     };
 
-    sa.ghostdag_store_as_mut()
-        .set_blue_score(genesis, 0)
-        .unwrap();
-    sa.ghostdag_store_as_mut()
-        .set_blue_work(genesis, Uint256::from_u64(0))
-        .unwrap();
-    sa.ghostdag_store_as_mut()
-        .set_selected_parent(genesis, ORIGIN)
-        .unwrap();
-    sa.ghostdag_store_as_mut()
-        .set_mergeset_blues(genesis, HashArray::new(Vec::new()))
-        .unwrap();
-    sa.ghostdag_store_as_mut()
-        .set_mergeset_reds(genesis, HashArray::new(Vec::new()))
-        .unwrap();
-    sa.ghostdag_store_as_mut()
-        .set_blues_anticone_sizes(genesis, Rc::new(HashMap::new()))
-        .unwrap();
-
     let manager = GhostdagManager::new(genesis, 18);
+    manager.init(&mut sa);
     manager.add_block(&mut sa, genesis_child);
 }
 
@@ -270,24 +251,7 @@ fn ghostdag_test() {
         inquirer::add_block(&mut reachability_store, genesis, ORIGIN, &mut std::iter::empty()).unwrap();
 
         let mut relations_store = MemoryRelationsStore::new();
-        let mut ghostdag_store = MemoryGhostdagStore::new();
-
-        ghostdag_store.set_blue_score(genesis, 0).unwrap();
-        ghostdag_store
-            .set_blue_work(genesis, Uint256::from_u64(0))
-            .unwrap();
-        ghostdag_store
-            .set_selected_parent(genesis, ORIGIN)
-            .unwrap();
-        ghostdag_store
-            .set_mergeset_blues(genesis, HashArray::new(Vec::new()))
-            .unwrap();
-        ghostdag_store
-            .set_mergeset_reds(genesis, HashArray::new(Vec::new()))
-            .unwrap();
-        ghostdag_store
-            .set_blues_anticone_sizes(genesis, Rc::new(HashMap::new()))
-            .unwrap();
+        let ghostdag_store = MemoryGhostdagStore::new();
 
         for block in &test.blocks {
             let block_id = string_to_hash(&block.id);
@@ -302,6 +266,8 @@ fn ghostdag_test() {
         };
 
         let manager = GhostdagManager::new(genesis, test.k);
+        manager.init(&mut sa);
+
         for block in test.blocks {
             println!("Processing block {}", block.id);
             let block_id = string_to_hash(&block.id);

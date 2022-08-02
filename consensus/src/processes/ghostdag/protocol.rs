@@ -37,26 +37,24 @@ impl<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore, V: StoreAccess<T
     pub fn new(genesis_hash: Hash, k: u8) -> Self {
         Self { genesis_hash, k, _phantom: Default::default() }
     }
+
+    pub fn init(&self, sa: &mut V) {
+        sa.ghostdag_store_as_mut()
+            .insert(
+                self.genesis_hash,
+                0,
+                Uint256::from_u64(0),
+                ORIGIN,
+                HashArray::new(Vec::new()),
+                HashArray::new(Vec::new()),
+                Rc::new(HashMap::new()),
+            )
+            .unwrap();
+    }
+
     pub fn add_block(&self, sa: &mut V, block: Hash) {
         let parents = sa.relations_store().get_parents(&block).unwrap();
-        let is_genesis = parents.len() == 0;
-        if is_genesis {
-            sa.ghostdag_store_as_mut()
-                .set_blue_score(block, 0)
-                .unwrap();
-            sa.ghostdag_store_as_mut()
-                .set_blue_work(block, Uint256::new([0; 4]))
-                .unwrap();
-            sa.ghostdag_store_as_mut()
-                .set_mergeset_blues(block, HashArray::new(Vec::new()))
-                .unwrap();
-            sa.ghostdag_store_as_mut()
-                .set_mergeset_reds(block, HashArray::new(Vec::new()))
-                .unwrap();
-            sa.ghostdag_store_as_mut()
-                .set_blues_anticone_sizes(block, Rc::new(HashMap::new()))
-                .unwrap();
-        }
+        assert!(parents.len() > 0, "genesis must be added via a call to init");
 
         let selected_parent = Self::find_selected_parent(sa, &parents);
         let mut mergeset_blues = Vec::with_capacity((self.k + 1) as usize);
@@ -103,27 +101,15 @@ impl<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore, V: StoreAccess<T
         let blue_work = Uint256::from_u64(blue_score);
 
         sa.ghostdag_store_as_mut()
-            .set_blue_score(block, blue_score)
-            .unwrap();
-
-        sa.ghostdag_store_as_mut()
-            .set_blue_work(block, blue_work)
-            .unwrap();
-
-        sa.ghostdag_store_as_mut()
-            .set_selected_parent(block, new_block_data.selected_parent)
-            .unwrap();
-
-        sa.ghostdag_store_as_mut()
-            .set_mergeset_blues(block, Rc::clone(&new_block_data.mergeset_blues))
-            .unwrap();
-
-        sa.ghostdag_store_as_mut()
-            .set_mergeset_reds(block, Rc::new(mergeset_reds))
-            .unwrap();
-
-        sa.ghostdag_store_as_mut()
-            .set_blues_anticone_sizes(block, Rc::clone(&new_block_data.blues_anticone_sizes))
+            .insert(
+                block,
+                blue_score,
+                blue_work,
+                new_block_data.selected_parent,
+                Rc::clone(&new_block_data.mergeset_blues),
+                Rc::new(mergeset_reds),
+                Rc::clone(&new_block_data.blues_anticone_sizes),
+            )
             .unwrap();
 
         // TODO: Reachability should be changed somewhere else

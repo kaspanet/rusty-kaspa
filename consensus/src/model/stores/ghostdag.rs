@@ -3,20 +3,23 @@ use crate::model::api::hash::{Hash, HashArray};
 use misc::uint256::Uint256;
 use std::{collections::HashMap, rc::Rc};
 
-pub trait GhostdagStore {
-    fn set_blue_score(&mut self, hash: Hash, blue_score: u64) -> Result<(), StoreError>;
-    fn set_blue_work(&mut self, hash: Hash, blue_work: Uint256) -> Result<(), StoreError>;
-    fn set_selected_parent(&mut self, hash: Hash, selected_parent: Hash) -> Result<(), StoreError>;
-    fn set_mergeset_blues(&mut self, hash: Hash, blues: HashArray) -> Result<(), StoreError>;
-    fn set_mergeset_reds(&mut self, hash: Hash, reds: HashArray) -> Result<(), StoreError>;
-    fn set_blues_anticone_sizes(&mut self, hash: Hash, sizes: Rc<HashMap<Hash, u8>>) -> Result<(), StoreError>;
-
+pub trait GhostdagStoreReader {
     fn get_blue_score(&self, hash: Hash, is_trusted_data: bool) -> Result<u64, StoreError>;
     fn get_blue_work(&self, hash: Hash, is_trusted_data: bool) -> Result<Uint256, StoreError>;
     fn get_selected_parent(&self, hash: Hash, is_trusted_data: bool) -> Result<Hash, StoreError>;
     fn get_mergeset_blues(&self, hash: Hash, is_trusted_data: bool) -> Result<HashArray, StoreError>;
     fn get_mergeset_reds(&self, hash: Hash, is_trusted_data: bool) -> Result<HashArray, StoreError>;
     fn get_blues_anticone_sizes(&self, hash: Hash, is_trusted_data: bool) -> Result<Rc<HashMap<Hash, u8>>, StoreError>;
+}
+
+pub trait GhostdagStore: GhostdagStoreReader {
+    /// Insert GHOSTDAG data for block `hash` into the store. Note that GHOSTDAG data
+    /// is added once and never modified, so no need for specific setters for each element
+    #[allow(clippy::too_many_arguments)]
+    fn insert(
+        &mut self, hash: Hash, blue_score: u64, blue_work: Uint256, selected_parent: Hash, mergeset_blues: HashArray,
+        mergeset_reds: HashArray, blues_anticone_sizes: Rc<HashMap<Hash, u8>>,
+    ) -> Result<(), StoreError>;
 }
 
 pub struct MemoryGhostdagStore {
@@ -48,37 +51,27 @@ impl Default for MemoryGhostdagStore {
 }
 
 impl GhostdagStore for MemoryGhostdagStore {
-    fn set_blue_score(&mut self, hash: Hash, blue_score: u64) -> Result<(), StoreError> {
+    fn insert(
+        &mut self, hash: Hash, blue_score: u64, blue_work: Uint256, selected_parent: Hash, mergeset_blues: HashArray,
+        mergeset_reds: HashArray, blues_anticone_sizes: Rc<HashMap<Hash, u8>>,
+    ) -> Result<(), StoreError> {
+        if self.blue_score_map.contains_key(&hash) {
+            return Err(StoreError::KeyAlreadyExists(hash.to_string()));
+        }
         self.blue_score_map.insert(hash, blue_score);
-        Ok(())
-    }
-
-    fn set_blue_work(&mut self, hash: Hash, blue_work: Uint256) -> Result<(), StoreError> {
         self.blue_work_map.insert(hash, blue_work);
-        Ok(())
-    }
-
-    fn set_selected_parent(&mut self, hash: Hash, selected_parent: Hash) -> Result<(), StoreError> {
         self.selected_parent_map
             .insert(hash, selected_parent);
+        self.mergeset_blues_map
+            .insert(hash, mergeset_blues);
+        self.mergeset_reds_map.insert(hash, mergeset_reds);
+        self.blues_anticone_sizes_map
+            .insert(hash, blues_anticone_sizes);
         Ok(())
     }
+}
 
-    fn set_mergeset_blues(&mut self, hash: Hash, blues: HashArray) -> Result<(), StoreError> {
-        self.mergeset_blues_map.insert(hash, blues);
-        Ok(())
-    }
-
-    fn set_mergeset_reds(&mut self, hash: Hash, reds: HashArray) -> Result<(), StoreError> {
-        self.mergeset_reds_map.insert(hash, reds);
-        Ok(())
-    }
-
-    fn set_blues_anticone_sizes(&mut self, hash: Hash, sizes: Rc<HashMap<Hash, u8>>) -> Result<(), StoreError> {
-        self.blues_anticone_sizes_map.insert(hash, sizes);
-        Ok(())
-    }
-
+impl GhostdagStoreReader for MemoryGhostdagStore {
     fn get_blue_score(&self, hash: Hash, is_trusted_data: bool) -> Result<u64, StoreError> {
         match self.blue_score_map.get(&hash) {
             Some(blue_score) => Ok(*blue_score),
