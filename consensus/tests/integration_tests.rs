@@ -9,7 +9,7 @@ use consensus::model::stores::relations::{MemoryRelationsStore, RelationsStore};
 use consensus::model::ORIGIN;
 use consensus::processes::ghostdag::protocol::{GhostdagManager, StoreAccess};
 use consensus::processes::reachability::inquirer;
-use consensus::processes::reachability::tests::{StoreValidationExtensions, TreeBuilder};
+use consensus::processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions};
 
 use flate2::read::GzDecoder;
 use serde::{Deserialize, Serialize};
@@ -24,12 +24,6 @@ struct JsonBlock {
     parents: Vec<String>,
 }
 
-#[derive(Clone)]
-struct DagBlock {
-    hash: Hash,
-    parents: Vec<Hash>,
-}
-
 impl From<&JsonBlock> for DagBlock {
     fn from(src: &JsonBlock) -> Self {
         // Apply +1 to ids to avoid the zero hash
@@ -40,12 +34,6 @@ impl From<&JsonBlock> for DagBlock {
                 .map(|id| (id.parse::<u64>().unwrap() + 1).into())
                 .collect(),
         )
-    }
-}
-
-impl DagBlock {
-    fn new(hash: Hash, parents: Vec<Hash>) -> Self {
-        Self { hash, parents }
     }
 }
 
@@ -65,26 +53,30 @@ fn reachability_stretch_test(use_attack_json: bool) {
     let decoder = GzDecoder::new(reader);
     let json_blocks: Vec<JsonBlock> = serde_json::from_reader(decoder).unwrap();
 
+    let root = ORIGIN;
     let mut map = HashMap::<Hash, DagBlock>::new();
     let mut blocks = Vec::<Hash>::new();
+
     for json_block in &json_blocks {
         let block: DagBlock = json_block.into();
         blocks.push(block.hash);
         map.insert(block.hash, block);
     }
+    // Set root as genesis parent
+    map.get_mut(&blocks[0])
+        .unwrap()
+        .parents
+        .push(root);
 
     // Act
     let db_tempdir = tempfile::tempdir().unwrap();
     let mut store = DbReachabilityStore::new(db_tempdir.path().to_str().unwrap(), 100000);
-    let mut builder = TreeBuilder::new(&mut store);
+    let mut builder = DagBuilder::new(&mut store);
 
-    let root = consensus::model::ORIGIN;
-    builder.init_default();
+    builder.init();
 
     for (i, block) in blocks.iter().enumerate() {
-        // For now, choose the first parent as selected
-        let parent = map[block].parents.first().unwrap_or(&root);
-        builder.add_block(*block, *parent);
+        builder.add_block(map[block].clone());
         if i % 100 == 0 {
             builder.store().validate_intervals(root).unwrap();
         }
@@ -101,21 +93,23 @@ fn reachability_stretch_test(use_attack_json: bool) {
     for i in 0..num_chains {
         let rand_idx = rng.gen_range(0..blocks.len());
         let rand_parent = blocks[rand_idx];
-        let new_block: Hash = ((blocks.len() + 1) as u64).into();
-        builder.add_block(new_block, rand_parent);
-        blocks.push(new_block);
-        map.insert(new_block, DagBlock { hash: new_block, parents: vec![rand_parent] });
+        let new_hash: Hash = ((blocks.len() + 1) as u64).into();
+        let new_block = DagBlock::new(new_hash, vec![rand_parent]);
+        builder.add_block(new_block.clone());
+        blocks.push(new_hash);
+        map.insert(new_hash, new_block);
 
         // Add a random-length chain with probability 1/8
         if rng.gen_range(0..8) == 0 {
             let chain_len = rng.gen_range(0..max_chain);
-            let mut chain_tip = new_block;
+            let mut chain_tip = new_hash;
             for _ in 0..chain_len {
-                let new_block: Hash = ((blocks.len() + 1) as u64).into();
-                builder.add_block(new_block, chain_tip);
-                blocks.push(new_block);
-                map.insert(new_block, DagBlock { hash: new_block, parents: vec![chain_tip] });
-                chain_tip = new_block;
+                let new_hash: Hash = ((blocks.len() + 1) as u64).into();
+                let new_block = DagBlock::new(new_hash, vec![chain_tip]);
+                builder.add_block(new_block.clone());
+                blocks.push(new_hash);
+                map.insert(new_hash, new_block);
+                chain_tip = new_hash;
             }
         }
 
@@ -126,7 +120,7 @@ fn reachability_stretch_test(use_attack_json: bool) {
             // new chain only in order to shorten the test
             builder
                 .store()
-                .validate_intervals(new_block)
+                .validate_intervals(new_hash)
                 .unwrap();
         }
     }

@@ -54,12 +54,12 @@ impl<'a, T: ReachabilityStore + ?Sized> TreeBuilder<'a, T> {
         Self { store, reindex_depth, reindex_slack }
     }
 
-    pub fn init_default(&mut self) -> &mut Self {
+    pub fn init(&mut self) -> &mut Self {
         init(self.store).unwrap();
         self
     }
 
-    pub fn init(&mut self, origin: Hash, capacity: Interval) -> &mut Self {
+    pub fn init_with_params(&mut self, origin: Hash, capacity: Interval) -> &mut Self {
         init_with_params(self.store, origin, capacity).unwrap();
         self
     }
@@ -77,8 +77,8 @@ impl<'a, T: ReachabilityStore + ?Sized> TreeBuilder<'a, T> {
 
 #[derive(Clone)]
 pub struct DagBlock {
-    hash: Hash,
-    parents: Vec<Hash>,
+    pub hash: Hash,
+    pub parents: Vec<Hash>,
 }
 
 impl DagBlock {
@@ -104,7 +104,6 @@ impl<'a, T: ReachabilityStore + ?Sized> DagBuilder<'a, T> {
     }
 
     pub fn add_block(&mut self, block: DagBlock) -> &mut Self {
-        self.map.insert(block.hash, block.clone());
         // Select by height (longest chain) just for the sake of internal isolated tests
         let selected_parent = block
             .parents
@@ -114,6 +113,8 @@ impl<'a, T: ReachabilityStore + ?Sized> DagBuilder<'a, T> {
             .unwrap();
         let mergeset = self.mergeset(&block, selected_parent);
         add_block(self.store, block.hash, selected_parent, &mut mergeset.iter().cloned()).unwrap();
+        hint_virtual_selected_parent(self.store, block.hash).unwrap();
+        self.map.insert(block.hash, block);
         self
     }
 
@@ -146,6 +147,10 @@ impl<'a, T: ReachabilityStore + ?Sized> DagBuilder<'a, T> {
             }
         }
         vec
+    }
+
+    pub fn store(&self) -> &&'a mut T {
+        &self.store
     }
 }
 

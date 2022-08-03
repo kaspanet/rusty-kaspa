@@ -334,7 +334,7 @@ mod tests {
         // Act
         let root: Hash = 1.into();
         TreeBuilder::new(&mut store)
-            .init(root, Interval::new(1, 15))
+            .init_with_params(root, Interval::new(1, 15))
             .add_block(2.into(), root)
             .add_block(3.into(), 2.into())
             .add_block(4.into(), 2.into())
@@ -358,7 +358,7 @@ mod tests {
         // Act
         let root: Hash = 1.into();
         let mut builder = TreeBuilder::new_with_params(&mut store, 2, 5);
-        builder.init(root, Interval::maximal());
+        builder.init_with_params(root, Interval::maximal());
         for i in 2u64..100 {
             builder.add_block(i.into(), (i / 2).into());
         }
@@ -426,7 +426,7 @@ mod tests {
         // Act
         let root: Hash = 1.into();
         TreeBuilder::new(&mut store)
-            .init(root, Interval::new(1, 15))
+            .init_with_params(root, Interval::new(1, 15))
             .add_block(2.into(), root)
             .add_block(3.into(), 2.into())
             .add_block(4.into(), 2.into())
@@ -474,7 +474,7 @@ mod tests {
         let mut store = MemoryReachabilityStore::new();
         let root: Hash = 1.into();
         TreeBuilder::new(&mut store)
-            .init(root, Interval::new(1, 5))
+            .init_with_params(root, Interval::new(1, 5))
             .add_block(2.into(), root);
 
         // Asserts
