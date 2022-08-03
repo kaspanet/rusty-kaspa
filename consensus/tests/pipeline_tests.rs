@@ -29,8 +29,8 @@ fn test() {
     // Commit the staging changes
     staging.commit().unwrap();
 
-    // Reopen the store with a new cache
-    let store = store.new_from(10000);
+    // Clone with a new cache in order to verify correct writes to the DB itself
+    let store = store.clone_with_new_cache(10000);
 
     // Assert intervals
     store.validate_intervals(Hash::ORIGIN).unwrap();
