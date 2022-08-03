@@ -1,4 +1,3 @@
-use moka::sync::Cache;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{hash_map::Entry::Vacant, HashMap},
@@ -6,7 +5,7 @@ use std::{
     sync::RwLock,
 };
 
-use super::{errors::StoreError, DB};
+use super::{errors::StoreError, store::CachedDbAccess, DB};
 use crate::{
     model::api::hash::{Hash, HashArray},
     processes::reachability::interval::Interval,
@@ -47,87 +46,58 @@ pub trait ReachabilityStore: ReachabilityStoreReader {
 #[derive(Clone)]
 pub struct DbReachabilityStore {
     db: Arc<DB>,
-    // The cache type supports shallow cloning and manages ref counting internally, so no need for Arc
-    cache: Cache<Hash, Arc<ReachabilityData>>,
+    access: CachedDbAccess<Hash, ReachabilityData>, // `CachedDbAccess` is shallow cloned so no need to wrap with Arc
     reindex_root: Arc<RwLock<Option<Hash>>>,
 }
 
 impl DbReachabilityStore {
     pub fn new(db_path: &str, cache_size: u64) -> Self {
+        let db = Arc::new(DB::open_default(db_path).unwrap());
         Self {
-            db: Arc::new(DB::open_default(db_path).unwrap()),
-            cache: Cache::new(cache_size),
+            db: Arc::clone(&db),
+            access: CachedDbAccess::new(db, cache_size),
             reindex_root: Arc::new(RwLock::new(None)),
         }
-    }
-
-    fn read(&self, hash: Hash, should_cache: bool) -> Result<Arc<ReachabilityData>, StoreError> {
-        if let Some(data) = self.cache.get(&hash) {
-            Ok(data)
-        } else if let Some(slice) = self.db.get_pinned(hash)? {
-            let data: Arc<ReachabilityData> = Arc::new(bincode::deserialize(&slice)?);
-            if should_cache {
-                self.cache.insert(hash, Arc::clone(&data));
-            }
-            Ok(data)
-        } else {
-            Err(StoreError::KeyNotFound(hash.to_string()))
-        }
-    }
-
-    fn read_and_cache(&self, hash: Hash) -> Result<Arc<ReachabilityData>, StoreError> {
-        self.read(hash, true)
-    }
-
-    fn read_for_write(&self, hash: Hash) -> Result<Arc<ReachabilityData>, StoreError> {
-        self.read(hash, false)
-    }
-
-    fn write(&self, hash: Hash, data: Arc<ReachabilityData>) -> Result<(), StoreError> {
-        self.cache.insert(hash, Arc::clone(&data));
-        let bin_data = bincode::serialize(data.as_ref())?;
-        self.db.put(hash, bin_data)?;
-        Ok(())
     }
 }
 
 impl ReachabilityStore for DbReachabilityStore {
     fn insert(&mut self, hash: Hash, parent: Hash, interval: Interval, height: u64) -> Result<(), StoreError> {
-        if self.has(hash)? {
+        if self.access.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
         let data = Arc::new(ReachabilityData::new(parent, interval, height));
-        self.write(hash, data)?;
+        self.access.write(hash, &data)?;
         Ok(())
     }
 
     fn set_interval(&mut self, hash: Hash, interval: Interval) -> Result<(), StoreError> {
-        let mut data = self.read_for_write(hash)?;
+        let mut data = self.access.read(hash)?;
         Arc::make_mut(&mut data).interval = interval;
-        self.write(hash, data)?;
+        self.access.write(hash, &data)?;
         Ok(())
     }
 
     fn append_child(&mut self, hash: Hash, child: Hash) -> Result<u64, StoreError> {
-        let mut data = self.read_for_write(hash)?;
+        let mut data = self.access.read(hash)?;
         let height = data.height;
         let mut_data = Arc::make_mut(&mut data);
         Arc::make_mut(&mut mut_data.children).push(child);
-        self.write(hash, data)?;
+        self.access.write(hash, &data)?;
         Ok(height)
     }
 
     fn insert_future_covering_item(&mut self, hash: Hash, fci: Hash, insertion_index: usize) -> Result<(), StoreError> {
-        let mut data = self.read_for_write(hash)?;
+        let mut data = self.access.read(hash)?;
         let height = data.height;
         let mut_data = Arc::make_mut(&mut data);
-        Arc::make_mut(&mut mut_data.children).insert(insertion_index, fci);
-        self.write(hash, data)?;
+        Arc::make_mut(&mut mut_data.future_covering_set).insert(insertion_index, fci);
+        self.access.write(hash, &data)?;
         Ok(())
     }
 
     fn get_height(&self, hash: Hash) -> Result<u64, StoreError> {
-        Ok(self.read_and_cache(hash)?.height)
+        Ok(self.access.read(hash)?.height)
     }
 
     fn set_reindex_root(&mut self, root: Hash) -> Result<(), StoreError> {
@@ -152,23 +122,23 @@ impl ReachabilityStore for DbReachabilityStore {
 
 impl ReachabilityStoreReader for DbReachabilityStore {
     fn has(&self, hash: Hash) -> Result<bool, StoreError> {
-        Ok(self.cache.contains_key(&hash) || self.db.get_pinned(hash)?.is_some())
+        self.access.has(hash)
     }
 
     fn get_interval(&self, hash: Hash) -> Result<Interval, StoreError> {
-        Ok(self.read_and_cache(hash)?.interval)
+        Ok(self.access.read(hash)?.interval)
     }
 
     fn get_parent(&self, hash: Hash) -> Result<Hash, StoreError> {
-        Ok(self.read_and_cache(hash)?.parent)
+        Ok(self.access.read(hash)?.parent)
     }
 
     fn get_children(&self, hash: Hash) -> Result<HashArray, StoreError> {
-        Ok(Arc::clone(&self.read_and_cache(hash)?.children))
+        Ok(Arc::clone(&self.access.read(hash)?.children))
     }
 
     fn get_future_covering_set(&self, hash: Hash) -> Result<HashArray, StoreError> {
-        Ok(Arc::clone(&self.read_and_cache(hash)?.future_covering_set))
+        Ok(Arc::clone(&self.access.read(hash)?.future_covering_set))
     }
 }
 
