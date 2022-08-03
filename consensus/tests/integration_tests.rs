@@ -9,7 +9,7 @@ use consensus::model::stores::relations::{MemoryRelationsStore, RelationsStore};
 use consensus::model::ORIGIN;
 use consensus::processes::ghostdag::protocol::{GhostdagManager, StoreAccess};
 use consensus::processes::reachability::inquirer;
-use consensus::processes::reachability::tests::{validate_intervals, TreeBuilder};
+use consensus::processes::reachability::tests::{StoreValidationExtensions, TreeBuilder};
 
 use flate2::read::GzDecoder;
 use serde::{Deserialize, Serialize};
@@ -86,10 +86,10 @@ fn reachability_stretch_test(use_attack_json: bool) {
         let parent = map[block].parents.first().unwrap_or(&root);
         builder.add_block(*block, *parent);
         if i % 100 == 0 {
-            validate_intervals(*builder.store(), root).unwrap();
+            builder.store().validate_intervals(root).unwrap();
         }
     }
-    validate_intervals(*builder.store(), root).unwrap();
+    builder.store().validate_intervals(root).unwrap();
 
     let num_chains = blocks.len() / 2;
     let max_chain = 20;
@@ -120,16 +120,19 @@ fn reachability_stretch_test(use_attack_json: bool) {
         }
 
         if i % validation_freq == 0 {
-            validate_intervals(*builder.store(), root).unwrap();
+            builder.store().validate_intervals(root).unwrap();
         } else {
             // For most iterations, validate intervals for
             // new chain only in order to shorten the test
-            validate_intervals(*builder.store(), new_block).unwrap();
+            builder
+                .store()
+                .validate_intervals(new_block)
+                .unwrap();
         }
     }
 
     // Assert
-    validate_intervals(&store, root).unwrap();
+    store.validate_intervals(root).unwrap();
 }
 
 #[test]

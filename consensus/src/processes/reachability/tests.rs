@@ -76,7 +76,7 @@ impl<'a, T: ReachabilityStore + ?Sized> TreeBuilder<'a, T> {
 }
 
 #[derive(Clone)]
-pub(super) struct DagBlock {
+pub struct DagBlock {
     hash: Hash,
     parents: Vec<Hash>,
 }
@@ -88,7 +88,7 @@ impl DagBlock {
 }
 
 /// A struct with fluent API to streamline DAG building
-pub(super) struct DagBuilder<'a, T: ReachabilityStore + ?Sized> {
+pub struct DagBuilder<'a, T: ReachabilityStore + ?Sized> {
     store: &'a mut T,
     map: HashMap<Hash, DagBlock>,
 }
@@ -164,36 +164,70 @@ pub enum TestError {
     IntervalOutOfParentBounds { parent: Hash, child: Hash, parent_interval: Interval, child_interval: Interval },
 }
 
-pub fn validate_intervals(
-    store: &(impl ReachabilityStoreReader + ?Sized), root: Hash,
-) -> std::result::Result<(), TestError> {
-    let mut queue = VecDeque::<Hash>::from([root]);
-    while !queue.is_empty() {
-        let parent = queue.pop_front().unwrap();
-        let children = store.get_children(parent)?;
-        queue.extend(children.iter());
+pub trait StoreValidationExtensions {
+    /// Checks if `block` is in the past of `other` (creates hashes from the u64 numbers)
+    fn in_past_of(&self, block: u64, other: u64) -> bool;
 
-        let parent_interval = store.get_interval(parent)?;
-        if parent_interval.is_empty() {
-            return Err(TestError::EmptyInterval(parent, parent_interval));
-        }
+    /// Checks if `block` and `other` are in the anticone of each other
+    /// (creates hashes from the u64 numbers)
+    fn are_anticone(&self, block: u64, other: u64) -> bool;
 
-        // Verify parent-child strict relation
-        for child in children.iter().cloned() {
-            let child_interval = store.get_interval(child)?;
-            if !parent_interval.strictly_contains(child_interval) {
-                return Err(TestError::IntervalOutOfParentBounds { parent, child, parent_interval, child_interval });
-            }
-        }
+    /// Validates that all tree intervals match the expected interval relations
+    fn validate_intervals(&self, root: Hash) -> std::result::Result<(), TestError>;
+}
 
-        // Iterate over consecutive siblings
-        for siblings in children.windows(2) {
-            let sibling_interval = store.get_interval(siblings[0])?;
-            let current_interval = store.get_interval(siblings[1])?;
-            if sibling_interval.end + 1 != current_interval.start {
-                return Err(TestError::NonConsecutiveSiblingIntervals(sibling_interval, current_interval));
-            }
+impl<T: ReachabilityStoreReader + ?Sized> StoreValidationExtensions for T {
+    fn in_past_of(&self, block: u64, other: u64) -> bool {
+        if block == other {
+            return false;
         }
+        let res = is_dag_ancestor_of(self, block.into(), other.into()).unwrap();
+        if res {
+            // Assert that the `future` relation is indeed asymmetric
+            assert!(!is_dag_ancestor_of(self, other.into(), block.into()).unwrap())
+        }
+        res
     }
-    Ok(())
+
+    fn are_anticone(&self, block: u64, other: u64) -> bool {
+        !is_dag_ancestor_of(self, block.into(), other.into()).unwrap()
+            && !is_dag_ancestor_of(self, other.into(), block.into()).unwrap()
+    }
+
+    fn validate_intervals(&self, root: Hash) -> std::result::Result<(), TestError> {
+        let mut queue = VecDeque::<Hash>::from([root]);
+        while !queue.is_empty() {
+            let parent = queue.pop_front().unwrap();
+            let children = self.get_children(parent)?;
+            queue.extend(children.iter());
+
+            let parent_interval = self.get_interval(parent)?;
+            if parent_interval.is_empty() {
+                return Err(TestError::EmptyInterval(parent, parent_interval));
+            }
+
+            // Verify parent-child strict relation
+            for child in children.iter().cloned() {
+                let child_interval = self.get_interval(child)?;
+                if !parent_interval.strictly_contains(child_interval) {
+                    return Err(TestError::IntervalOutOfParentBounds {
+                        parent,
+                        child,
+                        parent_interval,
+                        child_interval,
+                    });
+                }
+            }
+
+            // Iterate over consecutive siblings
+            for siblings in children.windows(2) {
+                let sibling_interval = self.get_interval(siblings[0])?;
+                let current_interval = self.get_interval(siblings[1])?;
+                if sibling_interval.end + 1 != current_interval.start {
+                    return Err(TestError::NonConsecutiveSiblingIntervals(sibling_interval, current_interval));
+                }
+            }
+        }
+        Ok(())
+    }
 }

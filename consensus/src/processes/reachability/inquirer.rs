@@ -347,7 +347,7 @@ mod tests {
             .add_block(11.into(), 6.into());
 
         // Assert
-        validate_intervals(&store, root).unwrap();
+        store.validate_intervals(root).unwrap();
     }
 
     #[test]
@@ -365,7 +365,7 @@ mod tests {
 
         // Should trigger an earlier than reindex root allocation
         builder.add_block(100.into(), 2.into());
-        validate_intervals(&store, root).unwrap();
+        store.validate_intervals(root).unwrap();
     }
 
     #[test]
@@ -390,50 +390,32 @@ mod tests {
             .add_block(DagBlock::new(12.into(), vec![11.into(), 10.into()]));
 
         // Assert intervals
-        validate_intervals(&store, Hash::ORIGIN).unwrap();
-
-        // Util helpers
-        let in_future = |block: u64, other: u64| -> bool {
-            if block == other {
-                return false;
-            }
-            // Checks if `other` is in the future of `block`
-            let res = is_dag_ancestor_of(&store, block.into(), other.into()).unwrap();
-            if res {
-                // Assert that the `future` relation is indeed asymmetric
-                assert!(!is_dag_ancestor_of(&store, other.into(), block.into()).unwrap())
-            }
-            res
-        };
-        let are_anticone = |block: u64, other: u64| -> bool {
-            !is_dag_ancestor_of(&store, block.into(), other.into()).unwrap()
-                && !is_dag_ancestor_of(&store, other.into(), block.into()).unwrap()
-        };
+        store.validate_intervals(Hash::ORIGIN).unwrap();
 
         // Assert genesis
         for i in 2u64..=12 {
-            assert!(in_future(1, i));
+            assert!(store.in_past_of(1, i));
         }
 
         // Assert some futures
-        assert!(in_future(2, 4));
-        assert!(in_future(2, 5));
-        assert!(in_future(2, 7));
-        assert!(in_future(5, 10));
-        assert!(in_future(6, 10));
-        assert!(in_future(10, 12));
-        assert!(in_future(11, 12));
+        assert!(store.in_past_of(2, 4));
+        assert!(store.in_past_of(2, 5));
+        assert!(store.in_past_of(2, 7));
+        assert!(store.in_past_of(5, 10));
+        assert!(store.in_past_of(6, 10));
+        assert!(store.in_past_of(10, 12));
+        assert!(store.in_past_of(11, 12));
 
         // Assert some anticones
-        assert!(are_anticone(2, 3));
-        assert!(are_anticone(2, 6));
-        assert!(are_anticone(3, 6));
-        assert!(are_anticone(5, 6));
-        assert!(are_anticone(3, 8));
-        assert!(are_anticone(11, 2));
-        assert!(are_anticone(11, 4));
-        assert!(are_anticone(11, 6));
-        assert!(are_anticone(11, 9));
+        assert!(store.are_anticone(2, 3));
+        assert!(store.are_anticone(2, 6));
+        assert!(store.are_anticone(3, 6));
+        assert!(store.are_anticone(5, 6));
+        assert!(store.are_anticone(3, 8));
+        assert!(store.are_anticone(11, 2));
+        assert!(store.are_anticone(11, 4));
+        assert!(store.are_anticone(11, 6));
+        assert!(store.are_anticone(11, 9));
     }
 
     #[test]

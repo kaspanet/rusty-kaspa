@@ -578,6 +578,6 @@ mod tests {
         assert_eq!(actual_intervals, expected_intervals);
 
         // Assert intervals follow the general rules
-        validate_intervals(&store, root).unwrap();
+        store.validate_intervals(root).unwrap();
     }
 }
