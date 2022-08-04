@@ -1,7 +1,11 @@
 use consensus::{
-    model::{api::hash::Hash, stores::reachability::DbReachabilityStore},
+    model::{
+        api::hash::Hash,
+        stores::reachability::{DbReachabilityStore, StagingReachabilityStore},
+    },
     processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions},
 };
+use parking_lot::RwLock;
 
 mod common;
 
@@ -9,8 +13,8 @@ mod common;
 fn test_reachability_staging() {
     // Arrange
     let (_tempdir, db) = common::create_temp_db();
-    let store = DbReachabilityStore::new(db, 10000);
-    let mut staging = store.new_staging();
+    let store = RwLock::new(DbReachabilityStore::new(db, 10000));
+    let mut staging = StagingReachabilityStore::new(store.upgradable_read());
 
     // Act
     DagBuilder::new(&mut staging)
@@ -32,7 +36,7 @@ fn test_reachability_staging() {
     staging.commit().unwrap();
 
     // Clone with a new cache in order to verify correct writes to the DB itself
-    let store = store.clone_with_new_cache(10000);
+    let store = store.read().clone_with_new_cache(10000);
 
     // Assert intervals
     store.validate_intervals(Hash::ORIGIN).unwrap();

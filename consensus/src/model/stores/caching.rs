@@ -50,7 +50,7 @@ where
         }
     }
 
-    pub fn write(&self, key: TKey, data: &Arc<TData>) -> Result<(), StoreError>
+    pub fn write(&mut self, key: TKey, data: &Arc<TData>) -> Result<(), StoreError>
     where
         TKey: Copy + AsRef<[u8]>,
         TData: Serialize,
@@ -61,7 +61,7 @@ where
         Ok(())
     }
 
-    pub fn write_batch(&self, batch: &mut WriteBatch, key: TKey, data: &Arc<TData>) -> Result<(), StoreError>
+    pub fn write_batch(&mut self, batch: &mut WriteBatch, key: TKey, data: &Arc<TData>) -> Result<(), StoreError>
     where
         TKey: Copy + AsRef<[u8]>,
         TData: Serialize,
@@ -102,7 +102,7 @@ impl<T> CachedDbItem<T> {
         }
     }
 
-    pub fn write(&self, item: &T) -> Result<(), StoreError>
+    pub fn write(&mut self, item: &T) -> Result<(), StoreError>
     where
         T: Copy + Serialize, // Copy can be relaxed to Clone if needed by new usages
     {
@@ -112,7 +112,7 @@ impl<T> CachedDbItem<T> {
         Ok(())
     }
 
-    pub fn write_batch(&self, batch: &mut WriteBatch, item: &T) -> Result<(), StoreError>
+    pub fn write_batch(&mut self, batch: &mut WriteBatch, item: &T) -> Result<(), StoreError>
     where
         T: Copy + Serialize,
     {

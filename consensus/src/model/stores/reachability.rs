@@ -1,11 +1,9 @@
+use parking_lot::RwLockUpgradableReadGuard;
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{hash_map::Entry::Vacant, HashMap},
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
+    sync::Arc,
 };
 
 use super::{caching::CachedDbAccess, caching::CachedDbItem, errors::StoreError, DB};
@@ -53,7 +51,6 @@ pub struct DbReachabilityStore {
     raw_db: Arc<DB>,
     cached_access: CachedDbAccess<Hash, ReachabilityData>, // `CachedDbAccess` is shallow cloned so no need to wrap with Arc
     reindex_root: CachedDbItem<Hash>,
-    staged: Arc<AtomicBool>, // Used as a poor man mechanism to verify that reachability is never staged concurrently
 }
 
 impl DbReachabilityStore {
@@ -62,7 +59,6 @@ impl DbReachabilityStore {
             raw_db: Arc::clone(&db),
             cached_access: CachedDbAccess::new(Arc::clone(&db), cache_size),
             reindex_root: CachedDbItem::new(db, REINDEX_ROOT_KEY),
-            staged: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -71,28 +67,6 @@ impl DbReachabilityStore {
             raw_db: Arc::clone(&self.raw_db),
             cached_access: CachedDbAccess::new(Arc::clone(&self.raw_db), cache_size),
             reindex_root: CachedDbItem::new(Arc::clone(&self.raw_db), REINDEX_ROOT_KEY),
-            staged: Arc::new(AtomicBool::new(false)),
-        }
-    }
-
-    pub fn new_staging(&self) -> StagingReachabilityStore {
-        if self
-            .staged
-            .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
-            != Ok(false)
-        {
-            panic!("only a single reachability staging is allowed")
-        }
-        StagingReachabilityStore::new(self)
-    }
-
-    pub(self) fn release_staging(&self) {
-        if self
-            .staged
-            .compare_exchange(true, false, Ordering::Relaxed, Ordering::Relaxed)
-            != Ok(true)
-        {
-            panic!("expected staged to be true")
         }
     }
 }
@@ -168,44 +142,38 @@ impl ReachabilityStoreReader for DbReachabilityStore {
 }
 
 pub struct StagingReachabilityStore<'a> {
-    inner_store: &'a DbReachabilityStore,
+    store_read: RwLockUpgradableReadGuard<'a, DbReachabilityStore>,
     staging_writes: HashMap<Hash, ReachabilityData>,
     staging_reindex_root: Option<Hash>,
 }
 
 impl<'a> StagingReachabilityStore<'a> {
-    pub fn new(inner_store: &'a DbReachabilityStore) -> Self {
-        Self { inner_store, staging_writes: HashMap::new(), staging_reindex_root: None }
+    pub fn new(store_read: RwLockUpgradableReadGuard<'a, DbReachabilityStore>) -> Self {
+        Self { store_read, staging_writes: HashMap::new(), staging_reindex_root: None }
     }
 
-    pub fn commit(&mut self) -> Result<(), StoreError> {
+    pub fn commit(self) -> Result<(), StoreError> {
+        let mut store_write = RwLockUpgradableReadGuard::upgrade(self.store_read);
         let mut batch = WriteBatch::default();
-        for (k, v) in self.staging_writes.drain() {
+        for (k, v) in self.staging_writes {
             let data = Arc::new(v);
-            self.inner_store
+            store_write
                 .cached_access
                 .write_batch(&mut batch, k, &data)?
         }
         if let Some(root) = self.staging_reindex_root {
-            self.inner_store
+            store_write
                 .reindex_root
                 .write_batch(&mut batch, &root)?;
-            self.staging_reindex_root = None; // Cleanup
         }
-        self.inner_store.raw_db.write(batch)?;
+        store_write.raw_db.write(batch)?;
         Ok(())
-    }
-}
-
-impl Drop for StagingReachabilityStore<'_> {
-    fn drop(&mut self) {
-        self.inner_store.release_staging()
     }
 }
 
 impl ReachabilityStore for StagingReachabilityStore<'_> {
     fn insert(&mut self, hash: Hash, parent: Hash, interval: Interval, height: u64) -> Result<(), StoreError> {
-        if self.inner_store.has(hash)? {
+        if self.store_read.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
         if let Vacant(e) = self.staging_writes.entry(hash) {
@@ -222,7 +190,7 @@ impl ReachabilityStore for StagingReachabilityStore<'_> {
             return Ok(());
         }
 
-        let mut data = (*self.inner_store.cached_access.read(hash)?).clone();
+        let mut data = (*self.store_read.cached_access.read(hash)?).clone();
         data.interval = interval;
         self.staging_writes.insert(hash, data);
 
@@ -235,7 +203,7 @@ impl ReachabilityStore for StagingReachabilityStore<'_> {
             return Ok(data.height);
         }
 
-        let mut data = (*self.inner_store.cached_access.read(hash)?).clone();
+        let mut data = (*self.store_read.cached_access.read(hash)?).clone();
         let height = data.height;
         Arc::make_mut(&mut data.children).push(child);
         self.staging_writes.insert(hash, data);
@@ -249,7 +217,7 @@ impl ReachabilityStore for StagingReachabilityStore<'_> {
             return Ok(());
         }
 
-        let mut data = (*self.inner_store.cached_access.read(hash)?).clone();
+        let mut data = (*self.store_read.cached_access.read(hash)?).clone();
         Arc::make_mut(&mut data.future_covering_set).insert(insertion_index, fci);
         self.staging_writes.insert(hash, data);
 
@@ -260,7 +228,7 @@ impl ReachabilityStore for StagingReachabilityStore<'_> {
         if let Some(data) = self.staging_writes.get(&hash) {
             Ok(data.height)
         } else {
-            Ok(self.inner_store.cached_access.read(hash)?.height)
+            Ok(self.store_read.cached_access.read(hash)?.height)
         }
     }
 
@@ -273,25 +241,21 @@ impl ReachabilityStore for StagingReachabilityStore<'_> {
         if let Some(root) = self.staging_reindex_root {
             Ok(root)
         } else {
-            Ok(self.inner_store.get_reindex_root()?)
+            Ok(self.store_read.get_reindex_root()?)
         }
     }
 }
 
 impl ReachabilityStoreReader for StagingReachabilityStore<'_> {
     fn has(&self, hash: Hash) -> Result<bool, StoreError> {
-        Ok(self.staging_writes.contains_key(&hash) || self.inner_store.cached_access.has(hash)?)
+        Ok(self.staging_writes.contains_key(&hash) || self.store_read.cached_access.has(hash)?)
     }
 
     fn get_interval(&self, hash: Hash) -> Result<Interval, StoreError> {
         if let Some(data) = self.staging_writes.get(&hash) {
             Ok(data.interval)
         } else {
-            Ok(self
-                .inner_store
-                .cached_access
-                .read(hash)?
-                .interval)
+            Ok(self.store_read.cached_access.read(hash)?.interval)
         }
     }
 
@@ -299,7 +263,7 @@ impl ReachabilityStoreReader for StagingReachabilityStore<'_> {
         if let Some(data) = self.staging_writes.get(&hash) {
             Ok(data.parent)
         } else {
-            Ok(self.inner_store.cached_access.read(hash)?.parent)
+            Ok(self.store_read.cached_access.read(hash)?.parent)
         }
     }
 
@@ -307,13 +271,7 @@ impl ReachabilityStoreReader for StagingReachabilityStore<'_> {
         if let Some(data) = self.staging_writes.get(&hash) {
             Ok(HashArray::clone(&data.children))
         } else {
-            Ok(HashArray::clone(
-                &self
-                    .inner_store
-                    .cached_access
-                    .read(hash)?
-                    .children,
-            ))
+            Ok(HashArray::clone(&self.store_read.cached_access.read(hash)?.children))
         }
     }
 
@@ -323,7 +281,7 @@ impl ReachabilityStoreReader for StagingReachabilityStore<'_> {
         } else {
             Ok(HashArray::clone(
                 &self
-                    .inner_store
+                    .store_read
                     .cached_access
                     .read(hash)?
                     .future_covering_set,
