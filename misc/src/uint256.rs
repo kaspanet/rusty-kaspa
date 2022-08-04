@@ -1,6 +1,6 @@
 use core::cmp::Ordering;
-use std::fmt;
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
 pub fn u256_from_compact_target(bits: u32) -> Uint256 {
     // This is a floating-point "compact" encoding originally used by
