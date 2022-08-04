@@ -144,19 +144,19 @@ fn test_noattack_json() {
 struct StoreAccessImpl {
     ghostdag_store_impl: DbGhostdagStore,
     relations_store_impl: MemoryRelationsStore,
-    reachability_store_impl: MemoryReachabilityStore,
+    reachability_store_impl: DbReachabilityStore,
 }
 
-impl StoreAccess<DbGhostdagStore, MemoryRelationsStore, MemoryReachabilityStore> for StoreAccessImpl {
+impl StoreAccess<DbGhostdagStore, MemoryRelationsStore, DbReachabilityStore> for StoreAccessImpl {
     fn relations_store(&self) -> &MemoryRelationsStore {
         &self.relations_store_impl
     }
 
-    fn reachability_store(&self) -> &MemoryReachabilityStore {
+    fn reachability_store(&self) -> &DbReachabilityStore {
         &self.reachability_store_impl
     }
 
-    fn reachability_store_as_mut(&mut self) -> &mut MemoryReachabilityStore {
+    fn reachability_store_as_mut(&mut self) -> &mut DbReachabilityStore {
         &mut self.reachability_store_impl
     }
 
@@ -269,17 +269,16 @@ fn ghostdag_test() {
         let reader = BufReader::new(file);
         let test: GhostdagTestDag = serde_json::from_reader(reader).unwrap();
 
-        let mut reachability_store = MemoryReachabilityStore::new();
+        let (_tempdir, db) = common::create_temp_db();
+        let ghostdag_store = DbGhostdagStore::new(db.clone(), 100000);
+
+        let mut reachability_store = DbReachabilityStore::new(db, 100000);
         inquirer::init(&mut reachability_store).unwrap();
 
         let genesis: Hash = string_to_hash(&test.genesis_id);
         inquirer::add_block(&mut reachability_store, genesis, ORIGIN, &mut std::iter::empty()).unwrap();
 
         let mut relations_store = MemoryRelationsStore::new();
-        // let ghostdag_store = MemoryGhostdagStore::new();
-
-        let (_tempdir, db) = common::create_temp_db();
-        let ghostdag_store = DbGhostdagStore::new(db, 100000);
 
         for block in &test.blocks {
             let block_id = string_to_hash(&block.id);

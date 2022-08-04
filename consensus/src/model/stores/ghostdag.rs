@@ -62,6 +62,8 @@ pub trait GhostdagStore: GhostdagStoreReader {
     fn insert(&mut self, hash: Hash, data: Arc<GhostdagData>) -> Result<(), StoreError>;
 }
 
+const STORE_PREFIX: &[u8] = b"block-ghostdag-data"; // TODO: use fixed value constants for for store prefixes
+
 #[derive(Clone)]
 pub struct DbGhostdagStore {
     raw_db: Arc<DB>,
@@ -71,13 +73,13 @@ pub struct DbGhostdagStore {
 
 impl DbGhostdagStore {
     pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
-        Self { raw_db: Arc::clone(&db), cached_access: CachedDbAccess::new(Arc::clone(&db), cache_size) }
+        Self { raw_db: Arc::clone(&db), cached_access: CachedDbAccess::new(Arc::clone(&db), cache_size, STORE_PREFIX) }
     }
 
     pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {
         Self {
             raw_db: Arc::clone(&self.raw_db),
-            cached_access: CachedDbAccess::new(Arc::clone(&self.raw_db), cache_size),
+            cached_access: CachedDbAccess::new(Arc::clone(&self.raw_db), cache_size, STORE_PREFIX),
         }
     }
 }

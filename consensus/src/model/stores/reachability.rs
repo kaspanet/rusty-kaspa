@@ -44,7 +44,8 @@ pub trait ReachabilityStore: ReachabilityStoreReader {
     fn get_reindex_root(&self) -> Result<Hash, StoreError>;
 }
 
-const REINDEX_ROOT_KEY: &[u8] = b"reindex_root";
+const REINDEX_ROOT_KEY: &[u8] = b"reachability-reindex-root";
+const STORE_PREFIX: &[u8] = b"reachability-data"; // TODO: use fixed value constants for store prefixes
 
 #[derive(Clone)]
 pub struct DbReachabilityStore {
@@ -58,7 +59,7 @@ impl DbReachabilityStore {
     pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
         Self {
             raw_db: Arc::clone(&db),
-            cached_access: CachedDbAccess::new(Arc::clone(&db), cache_size),
+            cached_access: CachedDbAccess::new(Arc::clone(&db), cache_size, STORE_PREFIX),
             reindex_root: CachedDbItem::new(db, REINDEX_ROOT_KEY),
         }
     }
@@ -66,7 +67,7 @@ impl DbReachabilityStore {
     pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {
         Self {
             raw_db: Arc::clone(&self.raw_db),
-            cached_access: CachedDbAccess::new(Arc::clone(&self.raw_db), cache_size),
+            cached_access: CachedDbAccess::new(Arc::clone(&self.raw_db), cache_size, STORE_PREFIX),
             reindex_root: CachedDbItem::new(Arc::clone(&self.raw_db), REINDEX_ROOT_KEY),
         }
     }

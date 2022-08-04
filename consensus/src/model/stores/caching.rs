@@ -4,6 +4,29 @@ use rocksdb::WriteBatch;
 use serde::{de::DeserializeOwned, Serialize};
 use std::sync::{Arc, RwLock};
 
+const SEP: u8 = b'/';
+
+struct DbKey {
+    path: Vec<u8>,
+}
+
+impl DbKey {
+    fn new<TKey: Copy + AsRef<[u8]>>(prefix: &[u8], key: TKey) -> Self {
+        let key = key.as_ref();
+        let mut path = Vec::<u8>::with_capacity(prefix.len() + 1 + key.len());
+        path.extend_from_slice(prefix);
+        path.push(SEP);
+        path.extend_from_slice(key);
+        Self { path }
+    }
+}
+
+impl AsRef<[u8]> for DbKey {
+    fn as_ref(&self) -> &[u8] {
+        &self.path
+    }
+}
+
 /// A concurrent DB store with typed caching.
 #[derive(Clone)]
 pub struct CachedDbAccess<TKey, TData>
@@ -15,7 +38,10 @@ where
     // The moka cache type supports shallow cloning and manages
     // ref counting internally, so no need for Arc
     cache: Cache<TKey, Arc<TData>>,
-    // TODO: manage DB bucket/path
+
+    // DB bucket/path (TODO: eventually this must become dynamic in
+    // order to support `active/inactive` consensus instances)
+    prefix: &'static [u8],
 }
 
 impl<TKey, TData> CachedDbAccess<TKey, TData>
@@ -23,15 +49,19 @@ where
     TKey: std::hash::Hash + Eq + Send + Sync + 'static,
     TData: Clone + Send + Sync + 'static,
 {
-    pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
-        Self { db, cache: Cache::new(cache_size) }
+    pub fn new(db: Arc<DB>, cache_size: u64, prefix: &'static [u8]) -> Self {
+        Self { db, cache: Cache::new(cache_size), prefix }
     }
 
     pub fn has(&self, key: TKey) -> Result<bool, StoreError>
     where
         TKey: Copy + AsRef<[u8]>,
     {
-        Ok(self.cache.contains_key(&key) || self.db.get_pinned(key)?.is_some())
+        Ok(self.cache.contains_key(&key)
+            || self
+                .db
+                .get_pinned(DbKey::new(self.prefix, key))?
+                .is_some())
     }
 
     pub fn read(&self, key: TKey) -> Result<Arc<TData>, StoreError>
@@ -41,7 +71,7 @@ where
     {
         if let Some(data) = self.cache.get(&key) {
             Ok(data)
-        } else if let Some(slice) = self.db.get_pinned(key)? {
+        } else if let Some(slice) = self.db.get_pinned(DbKey::new(self.prefix, key))? {
             let data: Arc<TData> = Arc::new(bincode::deserialize(&slice)?);
             self.cache.insert(key, Arc::clone(&data));
             Ok(data)
@@ -57,7 +87,8 @@ where
     {
         self.cache.insert(key, Arc::clone(data));
         let bin_data = bincode::serialize(data.as_ref())?;
-        self.db.put(key, bin_data)?;
+        self.db
+            .put(DbKey::new(self.prefix, key), bin_data)?;
         Ok(())
     }
 
@@ -68,7 +99,7 @@ where
     {
         self.cache.insert(key, Arc::clone(data));
         let bin_data = bincode::serialize(data.as_ref())?;
-        batch.put(key, bin_data);
+        batch.put(DbKey::new(self.prefix, key), bin_data);
         Ok(())
     }
 }
