@@ -12,12 +12,14 @@ struct DbKey {
 
 impl DbKey {
     fn new<TKey: Copy + AsRef<[u8]>>(prefix: &[u8], key: TKey) -> Self {
-        let key = key.as_ref();
-        let mut path = Vec::<u8>::with_capacity(prefix.len() + 1 + key.len());
-        path.extend_from_slice(prefix);
-        path.push(SEP);
-        path.extend_from_slice(key);
-        Self { path }
+        Self {
+            path: prefix
+                .iter()
+                .chain(std::iter::once(&SEP))
+                .chain(key.as_ref().iter())
+                .copied()
+                .collect(),
+        }
     }
 }
 

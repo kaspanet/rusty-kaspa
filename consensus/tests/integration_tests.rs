@@ -5,7 +5,7 @@
 use consensus::model::api::hash::{Hash, HashArray};
 use consensus::model::stores::ghostdag::{DbGhostdagStore, GhostdagStoreReader, MemoryGhostdagStore};
 use consensus::model::stores::reachability::{DbReachabilityStore, MemoryReachabilityStore};
-use consensus::model::stores::relations::{MemoryRelationsStore, RelationsStore};
+use consensus::model::stores::relations::{DbRelationsStore, MemoryRelationsStore, RelationsStore};
 use consensus::model::ORIGIN;
 use consensus::processes::ghostdag::protocol::{GhostdagManager, StoreAccess};
 use consensus::processes::reachability::inquirer;
@@ -85,7 +85,7 @@ fn reachability_stretch_test(use_attack_json: bool) {
     }
     builder.store().validate_intervals(root).unwrap();
 
-    let num_chains = blocks.len() / 2;
+    let num_chains = if use_attack_json { blocks.len() / 8 } else { blocks.len() / 2 };
     let max_chain = 20;
     let validation_freq = usize::max(1, num_chains / 100);
 
@@ -143,12 +143,12 @@ fn test_noattack_json() {
 
 struct StoreAccessImpl {
     ghostdag_store_impl: DbGhostdagStore,
-    relations_store_impl: MemoryRelationsStore,
+    relations_store_impl: DbRelationsStore,
     reachability_store_impl: DbReachabilityStore,
 }
 
-impl StoreAccess<DbGhostdagStore, MemoryRelationsStore, DbReachabilityStore> for StoreAccessImpl {
-    fn relations_store(&self) -> &MemoryRelationsStore {
+impl StoreAccess<DbGhostdagStore, DbRelationsStore, DbReachabilityStore> for StoreAccessImpl {
+    fn relations_store(&self) -> &DbRelationsStore {
         &self.relations_store_impl
     }
 
@@ -208,7 +208,9 @@ fn ghostdag_sanity_test() {
     inquirer::add_block(&mut reachability_store, genesis, ORIGIN, &mut std::iter::empty()).unwrap();
 
     let mut relations_store = MemoryRelationsStore::new();
-    relations_store.set_parents(genesis_child, HashArray::new(vec![genesis]));
+    relations_store
+        .set_parents(genesis_child, HashArray::new(vec![genesis]))
+        .unwrap();
 
     let mut sa = StoreAccessMemoryImpl {
         ghostdag_store_impl: MemoryGhostdagStore::new(),
@@ -270,20 +272,22 @@ fn ghostdag_test() {
         let test: GhostdagTestDag = serde_json::from_reader(reader).unwrap();
 
         let (_tempdir, db) = common::create_temp_db();
-        let ghostdag_store = DbGhostdagStore::new(db.clone(), 100000);
 
-        let mut reachability_store = DbReachabilityStore::new(db, 100000);
-        inquirer::init(&mut reachability_store).unwrap();
+        let ghostdag_store = DbGhostdagStore::new(db.clone(), 100000);
+        let mut reachability_store = DbReachabilityStore::new(db.clone(), 100000);
+        let mut relations_store = DbRelationsStore::new(db, 100000);
 
         let genesis: Hash = string_to_hash(&test.genesis_id);
-        inquirer::add_block(&mut reachability_store, genesis, ORIGIN, &mut std::iter::empty()).unwrap();
 
-        let mut relations_store = MemoryRelationsStore::new();
+        inquirer::init(&mut reachability_store).unwrap();
+        inquirer::add_block(&mut reachability_store, genesis, ORIGIN, &mut std::iter::empty()).unwrap();
 
         for block in &test.blocks {
             let block_id = string_to_hash(&block.id);
             let parents = strings_to_hashes(&block.parents);
-            relations_store.set_parents(block_id, HashArray::clone(&parents));
+            relations_store
+                .set_parents(block_id, HashArray::clone(&parents))
+                .unwrap();
         }
 
         let mut sa = StoreAccessImpl {

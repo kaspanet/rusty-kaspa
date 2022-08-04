@@ -50,7 +50,7 @@ impl<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore, V: StoreAccess<T
     }
 
     pub fn add_block(&self, sa: &mut V, block: Hash) {
-        let parents = sa.relations_store().get_parents(&block).unwrap();
+        let parents = sa.relations_store().get_parents(block).unwrap();
         assert!(parents.len() > 0, "genesis must be added via a call to init");
 
         let selected_parent = Self::find_selected_parent(sa, &parents);
