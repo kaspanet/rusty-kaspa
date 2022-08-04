@@ -82,7 +82,7 @@ mod tests {
     use sha3::{CShake256, CShake256Core};
 
     const PROOF_OF_WORK_DOMAIN: &[u8] = b"ProofOfWorkHash";
-    const HEAVY_HASH_DOMAIN: &[u8] = b"KHeavyHash";
+    const HEAVY_HASH_DOMAIN: &[u8] = b"HeavyHash";
 
     #[test]
     fn test_pow_hash() {
