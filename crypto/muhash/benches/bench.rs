@@ -1,10 +1,11 @@
-use rand_chacha::{ChaCha8Rng, rand_core::{SeedableRng, RngCore}};
-use std::time::UNIX_EPOCH;
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use rand_chacha::{
+    rand_core::{RngCore, SeedableRng},
+    ChaCha8Rng,
+};
+use std::time::UNIX_EPOCH;
 
 use muhash::MuHash;
-
-
 
 fn bench_muhash(c: &mut Criterion) {
     let time = UNIX_EPOCH.elapsed().unwrap().as_micros();
@@ -17,7 +18,6 @@ fn bench_muhash(c: &mut Criterion) {
     let mut rand_set_serialized = [0u8; 384];
     rng.fill_bytes(&mut rand_set_serialized);
     let mut rand_set = MuHash::deserialize(rand_set_serialized).unwrap();
-
 
     c.bench_function("MuHash::add_element", |b| {
         let mut muhash = MuHash::new();
@@ -55,35 +55,26 @@ fn bench_muhash(c: &mut Criterion) {
     c.bench_function("MuHash::serialize worst", |b| {
         let mut muhash_serialized = [255u8; 384];
         //  make sure it's lower than the prime
-        muhash_serialized[0..4].copy_from_slice(&[130, 193, 152, 0]);
-        muhash_serialized[192..196].copy_from_slice(&[129, 193, 152, 0]);
+        muhash_serialized[0..3].copy_from_slice(&[154, 40, 239]);
+        muhash_serialized[192..195].copy_from_slice(&[153, 40, 239]);
         let muhash = MuHash::deserialize(muhash_serialized).unwrap();
-        b.iter(|| {
-            black_box(muhash.clone()).serialize()
-        });
+        b.iter(|| black_box(muhash.clone()).serialize());
     });
 
     c.bench_function("MuHash::serialize best", |b| {
         let muhash = MuHash::new();
-        b.iter(|| {
-            black_box(muhash.clone()).serialize()
-        })
+        b.iter(|| black_box(muhash.clone()).serialize())
     });
 
     c.bench_function("MuHash::serialize rand", |b| {
         let muhash = MuHash::deserialize(rand_set_serialized).unwrap();
-        b.iter(|| {
-            black_box(muhash.clone()).serialize()
-        })
+        b.iter(|| black_box(muhash.clone()).serialize())
     });
 
     c.bench_function("MuHash::finalize", |b| {
         let muhash = MuHash::deserialize(rand_set_serialized).unwrap();
-        b.iter(|| {
-            black_box(muhash.clone()).finalize()
-        });
+        b.iter(|| black_box(muhash.clone()).finalize());
     });
-
 }
 
 criterion_group!(benches, bench_muhash);
