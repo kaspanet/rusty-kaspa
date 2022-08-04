@@ -5,4 +5,4 @@ pub mod reachability;
 pub mod relations;
 
 use rocksdb::{DBWithThreadMode, MultiThreaded};
-type DB = DBWithThreadMode<MultiThreaded>;
+pub type DB = DBWithThreadMode<MultiThreaded>;

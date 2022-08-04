@@ -57,8 +57,7 @@ pub struct DbReachabilityStore {
 }
 
 impl DbReachabilityStore {
-    pub fn new(db_path: &str, cache_size: u64) -> Self {
-        let db = Arc::new(DB::open_default(db_path).unwrap());
+    pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
         Self {
             raw_db: Arc::clone(&db),
             cached_access: CachedDbAccess::new(Arc::clone(&db), cache_size),

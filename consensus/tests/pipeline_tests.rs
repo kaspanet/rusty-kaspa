@@ -3,11 +3,13 @@ use consensus::{
     processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions},
 };
 
+mod common;
+
 #[test]
-fn test() {
+fn test_reachability_staging() {
     // Arrange
-    let db_tempdir = tempfile::tempdir().unwrap();
-    let store = DbReachabilityStore::new(db_tempdir.path().to_str().unwrap(), 10000);
+    let (_tempdir, db) = common::create_temp_db();
+    let store = DbReachabilityStore::new(db, 10000);
     let mut staging = store.new_staging();
 
     // Act

@@ -37,7 +37,7 @@ where
     pub fn read(&self, key: TKey) -> Result<Arc<TData>, StoreError>
     where
         TKey: Copy + AsRef<[u8]> + ToString,
-        TData: DeserializeOwned, // We need `DeserializeOwned` since slice coming from `db.get_pinned` has short lifetime
+        TData: DeserializeOwned, // We need `DeserializeOwned` since the slice coming from `db.get_pinned` has short lifetime
     {
         if let Some(data) = self.cache.get(&key) {
             Ok(data)

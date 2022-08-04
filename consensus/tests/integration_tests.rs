@@ -18,6 +18,8 @@ use std::fs::{self, File};
 use std::io::BufReader;
 use std::path::Path;
 
+mod common;
+
 #[derive(Serialize, Deserialize, Debug)]
 struct JsonBlock {
     id: String,
@@ -69,8 +71,8 @@ fn reachability_stretch_test(use_attack_json: bool) {
         .push(root);
 
     // Act
-    let db_tempdir = tempfile::tempdir().unwrap();
-    let mut store = DbReachabilityStore::new(db_tempdir.path().to_str().unwrap(), 100000);
+    let (_tempdir, db) = common::create_temp_db();
+    let mut store = DbReachabilityStore::new(db, 100000);
     let mut builder = DagBuilder::new(&mut store);
 
     builder.init();
