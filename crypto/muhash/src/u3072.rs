@@ -109,7 +109,7 @@ impl U3072 {
         }
 
         // Compute limb N-1 of a*b into tmp
-        debug_assert_eq!(carry_highest, 0);
+        assert_eq!(carry_highest, 0);
 
         for i in 0..LIMBS {
             (carry_low, carry_high, carry_highest) =
@@ -129,8 +129,8 @@ impl U3072 {
             // Extract the result into self and shift the carries.
             (self.limbs[i], carry_low, carry_high) = (carry_low, carry_high, overflow as _);
         }
-        debug_assert_eq!(carry_high, 0);
-        debug_assert!(carry_low == 0 || carry_low == 1);
+        assert_eq!(carry_high, 0);
+        assert!(carry_low == 0 || carry_low == 1);
         //  Perform up to two more reductions if the internal state has already overflown the MAX of u3072
         //  or if it is larger than the modulus or if both are the case.
 
@@ -172,7 +172,7 @@ impl U3072 {
             (tmp.limbs[j], c0, c1, c2) = (c0, c1, c2, 0);
         }
 
-        debug_assert_eq!(c2, 0);
+        assert_eq!(c2, 0);
 
         for i in 0..LIMBS / 2 {
             (c0, c1, c2) = mul_double_add(c0, c1, c2, self.limbs[i], self.limbs[LIMBS - 1 - i]);
@@ -190,8 +190,8 @@ impl U3072 {
             (self.limbs[i], c0, c1) = (c0, c1, overflow as _);
         }
 
-        debug_assert_eq!(c1, 0);
-        debug_assert!(c0 == 0 || c0 == 1);
+        assert_eq!(c1, 0);
+        assert!(c0 == 0 || c0 == 1);
 
         // Perform up to two more reductions if the internal state has already overflown the MAX of Num3072
         // or if it is larger than the modulus or if both are the case.
@@ -359,5 +359,307 @@ impl Default for U3072 {
     #[inline(always)]
     fn default() -> Self {
         Self::zero()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::u3072::{self, Limb, LIMBS, PRIME_DIFF, U3072};
+    use rand::{Rng, SeedableRng};
+    use rand_chacha::ChaCha8Rng;
+    use std::iter;
+
+    #[test]
+    fn test_mul() {
+        struct TestVector {
+            a: Limb,
+            b: Limb,
+            expected_low: Limb,
+            expected_high: Limb,
+        }
+        let tests = [
+            TestVector { a: Limb::MAX, b: Limb::MAX, expected_low: 1, expected_high: 18446744073709551614 },
+            TestVector {
+                a: Limb::MAX - 100,
+                b: Limb::MAX - 30,
+                expected_low: 3131,
+                expected_high: 18446744073709551484,
+            },
+        ];
+
+        for test in tests {
+            let (low, high) = u3072::mul_wide(test.a, test.b);
+            assert_eq!(low, test.expected_low);
+            assert_eq!(high, test.expected_high);
+        }
+    }
+
+    #[test]
+    fn test_mulnadd3() {
+        struct TestVector {
+            c0: Limb,
+            c1: Limb,
+            d0: Limb,
+            d1: Limb,
+            d2: Limb,
+            n: Limb,
+            expected_c0: Limb,
+            expected_c1: Limb,
+            expected_c2: Limb,
+        }
+        let tests = [
+            TestVector {
+                c0: Limb::MAX - 99,
+                c1: Limb::MAX - 75,
+                d0: Limb::MAX - 30,
+                d1: Limb::MAX - 3452,
+                d2: 829429,
+                n: 48569320,
+                expected_c0: 18446744072203902596,
+                expected_c1: 18446743906048258900,
+                expected_c2: 40284851087600,
+            },
+            TestVector {
+                c0: 0,
+                c1: Limb::MAX - 32432432,
+                d0: Limb::MAX - 534532431432423,
+                d1: 1,
+                d2: 342356341,
+                n: 878998734,
+                expected_c0: 3687790413486659920,
+                expected_c1: 1725539564,
+                expected_c2: 300930790315872295,
+            },
+        ];
+        for test in tests {
+            println!("a");
+            let (c0, c1, c2) = u3072::mulnadd3(test.c0, test.c1, test.d0, test.d1, test.d2, test.n);
+            assert_eq!(c0, test.expected_c0);
+            assert_eq!(c1, test.expected_c1);
+            assert_eq!(c2, test.expected_c2);
+        }
+    }
+
+    #[test]
+    fn test_muln2() {
+        struct TestVector {
+            low: Limb,
+            high: Limb,
+            n: Limb,
+            expected_low: Limb,
+            expected_high: Limb,
+        }
+        let tests = [
+            TestVector {
+                low: Limb::MAX - 99,
+                high: Limb::MAX - 75,
+                n: Limb::MAX - 543,
+                expected_low: 54400,
+                expected_high: 40700,
+            },
+            TestVector {
+                low: 0,
+                high: Limb::MAX - 32432432,
+                n: Limb::MAX - 546546456543,
+                expected_low: 0,
+                expected_high: 17725831333250691552,
+            },
+        ];
+        for test in tests {
+            let (low, high) = u3072::muln2(test.low, test.high, test.n);
+            assert_eq!(low, test.expected_low);
+            assert_eq!(high, test.expected_high);
+        }
+    }
+
+    #[test]
+    fn test_muladd3() {
+        struct TestVector {
+            a: Limb,
+            b: Limb,
+            low: Limb,
+            high: Limb,
+            carry: Limb,
+            expected_low: Limb,
+            expected_high: Limb,
+            expected_carry: Limb,
+        }
+        let tests = [
+            TestVector {
+                a: Limb::MAX - 30,
+                b: Limb::MAX - 3452,
+                low: Limb::MAX - 99,
+                high: Limb::MAX - 75,
+                carry: Limb::MAX - 100,
+                expected_low: 106943,
+                expected_high: 18446744073709548057,
+                expected_carry: 18446744073709551516,
+            },
+            TestVector {
+                a: Limb::MAX - 534543534534,
+                b: 1,
+                low: 0,
+                high: Limb::MAX - 32432432,
+                carry: Limb::MAX - 534532431432423,
+                expected_low: 18446743539166017081,
+                expected_high: 18446744073677119183,
+                expected_carry: 18446209541278119192,
+            },
+        ];
+        for test in tests {
+            let (low, high, carry) = u3072::muladd3(test.a, test.b, test.low, test.high, test.carry);
+            assert_eq!(low, test.expected_low);
+            assert_eq!(high, test.expected_high);
+            assert_eq!(carry, test.expected_carry);
+        }
+    }
+
+    #[test]
+    fn test_mul_double_add() {
+        struct TestVector {
+            a: Limb,
+            b: Limb,
+            low: Limb,
+            high: Limb,
+            carry: Limb,
+            expected_low: Limb,
+            expected_high: Limb,
+            expected_carry: Limb,
+        }
+        let tests = [
+            TestVector {
+                a: Limb::MAX - 30,
+                b: Limb::MAX - 3452,
+                low: Limb::MAX - 99,
+                high: Limb::MAX - 75,
+                carry: Limb::MAX - 100,
+                expected_low: 213986,
+                expected_high: 18446744073709544573,
+                expected_carry: 18446744073709551517,
+            },
+            TestVector {
+                a: Limb::MAX - 534543534534,
+                b: 1,
+                low: 0,
+                high: Limb::MAX - 32432432,
+                carry: Limb::MAX - 534532431432423,
+                expected_low: 18446743004622482546,
+                expected_high: 18446744073677119184,
+                expected_carry: 18446209541278119192,
+            },
+        ];
+        for test in tests {
+            let (low, high, carry) = u3072::mul_double_add(test.low, test.high, test.carry, test.a, test.b);
+            assert_eq!(low, test.expected_low);
+            assert_eq!(high, test.expected_high);
+            assert_eq!(carry, test.expected_carry);
+        }
+    }
+
+    #[test]
+    fn test_inverse() {
+        let mut rng = ChaCha8Rng::seed_from_u64(42);
+        for _ in 0..5 {
+            let mut element = U3072::zero();
+            rng.fill(&mut element.limbs[..]);
+            let inv = element.inverse();
+            let again = inv.inverse();
+            assert_eq!(again, element);
+            element.mul(&inv);
+            assert_eq!(element, U3072::one());
+        }
+    }
+
+    fn is_one(v: &U3072) -> bool {
+        v.limbs[0] == 1 && v.limbs[1..].iter().all(|&l| l == 0)
+    }
+
+    #[test]
+    fn test_div_overflow() {
+        let max = U3072 { limbs: [Limb::MAX; LIMBS] };
+        let one = U3072::one();
+        let mut rng = ChaCha8Rng::seed_from_u64(1);
+        // Randomly test a bunch of overflown numbers to make sure they're handled correctly.
+        // There are only 1,103,717 overflowing numbers, so when our inversion algorithm gets faster (egcd)) we can exhuastively check them.
+        iter::once(0)
+            .chain(rand::seq::index::sample(&mut rng, u3072::PRIME_DIFF as usize, 64))
+            .map(|i| i + 1)
+            .for_each(|i| {
+                let overflown = {
+                    let mut overflown = max;
+                    overflown.limbs[0] = Limb::MAX - i as Limb + 1;
+                    overflown
+                };
+                {
+                    let mut overflown_copy = overflown;
+                    overflown_copy /= one;
+                    assert_eq!(overflown_copy.limbs[0], u3072::PRIME_DIFF - i as Limb);
+                    assert!(overflown_copy.limbs[1..].iter().all(|&x| x == 0));
+                }
+
+                // Zero doesn't have a modular inverse
+                if i as Limb != PRIME_DIFF {
+                    let mut lhs = overflown;
+                    let rhs = overflown;
+                    lhs /= rhs;
+                    assert!(is_one(&lhs));
+                }
+            })
+    }
+
+    #[test]
+    fn test_mul_max() {
+        let mut max = U3072 { limbs: [Limb::MAX; LIMBS] };
+        max.limbs[0] -= u3072::PRIME_DIFF;
+        let copy_max = max;
+        max *= copy_max;
+        assert!(is_one(&max), "(p-1)*(p-1) mod p should equal 1");
+    }
+
+    #[test]
+    fn test_mul_div() {
+        const LOOPS: usize = 64;
+
+        let mut rng = ChaCha8Rng::seed_from_u64(1);
+
+        let list: Vec<_> = (0..LOOPS)
+            .map(|_| {
+                let mut element = U3072::zero();
+                rng.fill(&mut element.limbs[..]);
+                element
+            })
+            .collect();
+
+        let mut start = U3072::one();
+        for &elem in list.iter() {
+            start *= elem;
+        }
+        assert!(!is_one(&start));
+
+        for &elem in list.iter() {
+            start /= elem;
+        }
+        assert!(is_one(&start));
+    }
+
+    #[test]
+    fn test_inverse_edge_case() {
+        #[rustfmt::skip]
+        let orig = U3072 {
+            limbs: [
+                7122228832992001076, 984226626229791276, 7630161757215403889, 6284986028532537849, 8045609952094061025,
+                11960578682873843289, 13746438324198032094, 13918942278011779234, 17733507388171786846, 10563242470999117317,
+                17037155475664456442, 17937456968131788544, 12599342294785769540, 13386260146859547870, 2817582499516127913,
+                652557987984108933, 9669847560665129471, 17711760030167214508, 5376140856964249866, 18051557786492143716,
+                2482926987284881227, 8605482545261324676, 7878786448874819977, 1266815984192471985, 2678516262590404672,
+                14004775981272003760, 10357003870690124643, 2730710396948079405, 4635754375072562978, 13656184258619915136,
+                803512205739688286, 11844116904145642840, 5760653310472302601, 15069027324939031326, 14913021043324743434,
+                17567013163360751106, 6302557725767759643, 17458497366820989801, 3410551217786514778, 14182717432968305815,
+                12471950523812677269, 2294197765573979691, 3220941588656114052, 605606616684921311, 1440136155000853957,
+                16361481774333736133, 11385241783616172231, 13968855456762740410,
+            ],
+        };
+        let inv = orig.inverse();
+        assert_eq!(inv.inverse(), orig);
     }
 }

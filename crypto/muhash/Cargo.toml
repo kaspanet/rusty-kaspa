@@ -13,7 +13,7 @@ hex = "*"
 
 [dev-dependencies]
 criterion = "0.3"
-
+rand = "0.8"
 [[bench]]
 name = "bench"
 harness = false

@@ -67,8 +67,8 @@ impl MuHash {
     // will add the MuHash together. Equivalent to manually adding all the data elements
     // from one set to the other.
     pub fn combine(&mut self, other: &Self) {
-        self.numerator *= other.denominator;
-        self.denominator *= other.numerator;
+        self.numerator *= other.numerator;
+        self.denominator *= other.denominator;
     }
 
     #[inline]
@@ -118,13 +118,11 @@ impl Default for MuHash {
 
 #[cfg(test)]
 mod tests {
-    use std::mem;
     use crate::OverflowError;
     use crate::{MuHash, EMPTY_MUHASH, U3072};
     use hashes::Hash;
-    use rand_chacha::rand_core::{RngCore, SeedableRng};
+    use rand::{Rng, SeedableRng};
     use rand_chacha::ChaCha8Rng;
-    use crate::u3072::{Limb, PRIME_DIFF};
 
     struct TestVector {
         data: &'static [u8],
@@ -195,16 +193,11 @@ mod tests {
 
     #[test]
     fn test_random_muhash_arithmetic() {
-        let mut rng = rand_chacha::ChaCha8Rng::seed_from_u64(1);
-        let rng_get_byte = |rng: &mut ChaCha8Rng| {
-            let mut byte = [0u8; 1];
-            rng.fill_bytes(&mut byte);
-            byte[0]
-        };
+        let mut rng = ChaCha8Rng::seed_from_u64(1);
         for _ in 0..10 {
             let mut res = Hash::default();
             let mut table = [0u8; 4];
-            rng.fill_bytes(&mut table);
+            rng.fill(&mut table[..]);
 
             for order in 0..4 {
                 let mut acc = MuHash::new();
@@ -223,8 +216,8 @@ mod tests {
                     assert_eq!(res, out);
                 }
             }
-            let x = element_from_byte(rng_get_byte(&mut rng)); // x=X
-            let y = element_from_byte(rng_get_byte(&mut rng)); // x=X, y=Y
+            let x = element_from_byte(rng.gen()); // x=X
+            let y = element_from_byte(rng.gen()); // x=X, y=Y
             let mut z = MuHash::new(); // x=X, y=X, z=1
             let mut yx = MuHash::new(); // x=X, y=Y, z=1 yx=1
             yx.add_element(&y); // x=X, y=X, z=1, yx=Y
@@ -330,7 +323,10 @@ mod tests {
             m1.add_element(test.data);
             m2.remove_element(test.data);
         }
+        let m1_orig = m1.clone();
         m1.combine(&m2);
+        m2.combine(&m1_orig);
+        assert_eq!(m1.finalize(), m2.finalize());
         assert_eq!(m1.finalize(), EMPTY_MUHASH);
     }
 
@@ -341,7 +337,7 @@ mod tests {
         // we added to the previous multiset, and then we remove the same element we remove
         // the same element we removed from the previous multiset. According to commutativity
         // laws, the result should be the same.
-        for remove_index in 0..TEST_VECTORS.len() {
+        for (remove_index, _) in TEST_VECTORS.iter().enumerate() {
             let remove_data = TEST_VECTORS[remove_index].data;
             let mut m1 = MuHash::new();
             let mut m2 = MuHash::new();
@@ -359,9 +355,8 @@ mod tests {
 
     #[test]
     fn test_parse_muhash_fail() {
-        let mut serialized = [0u8; 384];
-        serialized[0..mem::size_of::<Limb>()].copy_from_slice(&PRIME_DIFF.to_le_bytes());
-        serialized[mem::size_of::<Limb>()..192].copy_from_slice(&[u8::MAX; 192-mem::size_of::<Limb>()]);
+        let mut serialized = [255; 384];
+        serialized[0..3].copy_from_slice(&[155, 40, 239]);
 
         assert_eq!(MuHash::deserialize(serialized).unwrap_err(), OverflowError);
 
@@ -369,18 +364,19 @@ mod tests {
         let _ = MuHash::deserialize(serialized).unwrap();
     }
 
-
     #[test]
     fn test_muhash_add_remove() {
         const LOOPS: usize = 1024;
-        let mut rng = rand_chacha::ChaCha8Rng::seed_from_u64(42);
+        let mut rng = ChaCha8Rng::seed_from_u64(42);
         let mut set = MuHash::new();
-        let list: Vec<_> =  (0..LOOPS).map(|_| {
-            let mut data = [0u8; 100];
-            rng.fill_bytes(&mut data);
-            set.add_element(&data);
-            data
-        }).collect();
+        let list: Vec<_> = (0..LOOPS)
+            .map(|_| {
+                let mut data = [0u8; 100];
+                rng.fill(&mut data[..]);
+                set.add_element(&data);
+                data
+            })
+            .collect();
 
         assert_ne!(set.finalize(), EMPTY_MUHASH);
 
@@ -390,5 +386,4 @@ mod tests {
 
         assert_eq!(set.finalize(), EMPTY_MUHASH);
     }
-
 }
