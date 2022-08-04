@@ -1,4 +1,4 @@
-use super::errors::StoreError;
+use super::{caching::CachedDbAccess, errors::StoreError, DB};
 use crate::model::api::hash::{Hash, HashArray};
 use misc::uint256::Uint256;
 use serde::{Deserialize, Serialize};
@@ -60,6 +60,75 @@ pub trait GhostdagStore: GhostdagStoreReader {
     /// Insert GHOSTDAG data for block `hash` into the store. Note that GHOSTDAG data
     /// is added once and never modified, so no need for specific setters for each element
     fn insert(&mut self, hash: Hash, data: Arc<GhostdagData>) -> Result<(), StoreError>;
+}
+
+#[derive(Clone)]
+pub struct DbGhostdagStore {
+    raw_db: Arc<DB>,
+    // `CachedDbAccess` is shallow cloned so no need to wrap with Arc
+    cached_access: CachedDbAccess<Hash, GhostdagData>,
+}
+
+impl DbGhostdagStore {
+    pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
+        Self { raw_db: Arc::clone(&db), cached_access: CachedDbAccess::new(Arc::clone(&db), cache_size) }
+    }
+
+    pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {
+        Self {
+            raw_db: Arc::clone(&self.raw_db),
+            cached_access: CachedDbAccess::new(Arc::clone(&self.raw_db), cache_size),
+        }
+    }
+}
+
+impl GhostdagStoreReader for DbGhostdagStore {
+    fn get_blue_score(&self, hash: Hash, is_trusted_data: bool) -> Result<u64, StoreError> {
+        Ok(self.cached_access.read(hash)?.blue_score)
+    }
+
+    fn get_blue_work(&self, hash: Hash, is_trusted_data: bool) -> Result<Uint256, StoreError> {
+        Ok(self.cached_access.read(hash)?.blue_work)
+    }
+
+    fn get_selected_parent(&self, hash: Hash, is_trusted_data: bool) -> Result<Hash, StoreError> {
+        Ok(self.cached_access.read(hash)?.selected_parent)
+    }
+
+    fn get_mergeset_blues(&self, hash: Hash, is_trusted_data: bool) -> Result<HashArray, StoreError> {
+        Ok(Arc::clone(&self.cached_access.read(hash)?.mergeset_blues))
+    }
+
+    fn get_mergeset_reds(&self, hash: Hash, is_trusted_data: bool) -> Result<HashArray, StoreError> {
+        Ok(Arc::clone(&self.cached_access.read(hash)?.mergeset_reds))
+    }
+
+    fn get_blues_anticone_sizes(&self, hash: Hash, is_trusted_data: bool) -> Result<HashU8Map, StoreError> {
+        Ok(Arc::clone(
+            &self
+                .cached_access
+                .read(hash)?
+                .blues_anticone_sizes,
+        ))
+    }
+
+    fn get_data(&self, hash: Hash, is_trusted_data: bool) -> Result<Arc<GhostdagData>, StoreError> {
+        self.cached_access.read(hash)
+    }
+
+    fn has(&self, hash: Hash, is_trusted_data: bool) -> Result<bool, StoreError> {
+        self.cached_access.has(hash)
+    }
+}
+
+impl GhostdagStore for DbGhostdagStore {
+    fn insert(&mut self, hash: Hash, data: Arc<GhostdagData>) -> Result<(), StoreError> {
+        if self.cached_access.has(hash)? {
+            return Err(StoreError::KeyAlreadyExists(hash.to_string()));
+        }
+        self.cached_access.write(hash, &data)?;
+        Ok(())
+    }
 }
 
 pub struct MemoryGhostdagStore {

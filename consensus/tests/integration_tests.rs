@@ -3,7 +3,7 @@
 //!
 
 use consensus::model::api::hash::{Hash, HashArray};
-use consensus::model::stores::ghostdag::{GhostdagStoreReader, MemoryGhostdagStore};
+use consensus::model::stores::ghostdag::{DbGhostdagStore, GhostdagStoreReader, MemoryGhostdagStore};
 use consensus::model::stores::reachability::{DbReachabilityStore, MemoryReachabilityStore};
 use consensus::model::stores::relations::{MemoryRelationsStore, RelationsStore};
 use consensus::model::ORIGIN;
@@ -142,12 +142,40 @@ fn test_noattack_json() {
 }
 
 struct StoreAccessImpl {
+    ghostdag_store_impl: DbGhostdagStore,
+    relations_store_impl: MemoryRelationsStore,
+    reachability_store_impl: MemoryReachabilityStore,
+}
+
+impl StoreAccess<DbGhostdagStore, MemoryRelationsStore, MemoryReachabilityStore> for StoreAccessImpl {
+    fn relations_store(&self) -> &MemoryRelationsStore {
+        &self.relations_store_impl
+    }
+
+    fn reachability_store(&self) -> &MemoryReachabilityStore {
+        &self.reachability_store_impl
+    }
+
+    fn reachability_store_as_mut(&mut self) -> &mut MemoryReachabilityStore {
+        &mut self.reachability_store_impl
+    }
+
+    fn ghostdag_store_as_mut(&mut self) -> &mut DbGhostdagStore {
+        &mut self.ghostdag_store_impl
+    }
+
+    fn ghostdag_store(&self) -> &DbGhostdagStore {
+        &self.ghostdag_store_impl
+    }
+}
+
+struct StoreAccessMemoryImpl {
     ghostdag_store_impl: MemoryGhostdagStore,
     relations_store_impl: MemoryRelationsStore,
     reachability_store_impl: MemoryReachabilityStore,
 }
 
-impl StoreAccess<MemoryGhostdagStore, MemoryRelationsStore, MemoryReachabilityStore> for StoreAccessImpl {
+impl StoreAccess<MemoryGhostdagStore, MemoryRelationsStore, MemoryReachabilityStore> for StoreAccessMemoryImpl {
     fn relations_store(&self) -> &MemoryRelationsStore {
         &self.relations_store_impl
     }
@@ -182,7 +210,7 @@ fn ghostdag_sanity_test() {
     let mut relations_store = MemoryRelationsStore::new();
     relations_store.set_parents(genesis_child, HashArray::new(vec![genesis]));
 
-    let mut sa = StoreAccessImpl {
+    let mut sa = StoreAccessMemoryImpl {
         ghostdag_store_impl: MemoryGhostdagStore::new(),
         relations_store_impl: relations_store,
         reachability_store_impl: reachability_store,
@@ -248,7 +276,10 @@ fn ghostdag_test() {
         inquirer::add_block(&mut reachability_store, genesis, ORIGIN, &mut std::iter::empty()).unwrap();
 
         let mut relations_store = MemoryRelationsStore::new();
-        let ghostdag_store = MemoryGhostdagStore::new();
+        // let ghostdag_store = MemoryGhostdagStore::new();
+
+        let (_tempdir, db) = common::create_temp_db();
+        let ghostdag_store = DbGhostdagStore::new(db, 100000);
 
         for block in &test.blocks {
             let block_id = string_to_hash(&block.id);

@@ -49,7 +49,8 @@ const REINDEX_ROOT_KEY: &[u8] = b"reindex_root";
 #[derive(Clone)]
 pub struct DbReachabilityStore {
     raw_db: Arc<DB>,
-    cached_access: CachedDbAccess<Hash, ReachabilityData>, // `CachedDbAccess` is shallow cloned so no need to wrap with Arc
+    // `CachedDbAccess` is shallow cloned so no need to wrap with Arc
+    cached_access: CachedDbAccess<Hash, ReachabilityData>,
     reindex_root: CachedDbItem<Hash>,
 }
 
