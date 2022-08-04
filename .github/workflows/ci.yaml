@@ -32,7 +32,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: check
-          args: --tests --workspace
+          args: --tests --workspace --benches
 
   test:
     name: Test Suite
@@ -76,7 +76,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: -p hashes --features=no-asm
+          args: -p hashes --features=no-asm --benches
 
 
   test-release:
@@ -118,11 +118,11 @@ jobs:
           command: test
           args: --release
 
-      - name: Run cargo test on hashes without asm
+      - name: Run cargo test release on hashes without asm
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: -p hashes --features=no-asm --release
+          args: -p hashes --features=no-asm --benches --release
 
   lints:
     name: Lints
@@ -161,4 +161,4 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: clippy
-          args: --tests -- -D warnings
+          args: --tests --benches -- -D warnings
