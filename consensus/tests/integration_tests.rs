@@ -3,14 +3,13 @@
 //!
 
 use consensus::model::api::hash::{Hash, HashArray};
-use consensus::model::stores::ghostdag::{GhostdagStore, MemoryGhostdagStore};
-use consensus::model::stores::reachability::{MemoryReachabilityStore, ReachabilityStore};
-use consensus::model::stores::relations::{MemoryRelationsStore, RelationsStore};
+use consensus::model::stores::ghostdag::{DbGhostdagStore, GhostdagStoreReader, MemoryGhostdagStore};
+use consensus::model::stores::reachability::{DbReachabilityStore, MemoryReachabilityStore};
+use consensus::model::stores::relations::{DbRelationsStore, MemoryRelationsStore, RelationsStore};
 use consensus::model::ORIGIN;
 use consensus::processes::ghostdag::protocol::{GhostdagManager, StoreAccess};
 use consensus::processes::reachability::inquirer;
-use consensus::processes::reachability::tests::{validate_intervals, TreeBuilder};
-use misc::uint256::Uint256;
+use consensus::processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions};
 
 use flate2::read::GzDecoder;
 use serde::{Deserialize, Serialize};
@@ -18,18 +17,13 @@ use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::BufReader;
 use std::path::Path;
-use std::rc::Rc;
+
+mod common;
 
 #[derive(Serialize, Deserialize, Debug)]
 struct JsonBlock {
     id: String,
     parents: Vec<String>,
-}
-
-#[derive(Clone)]
-struct DagBlock {
-    hash: Hash,
-    parents: Vec<Hash>,
 }
 
 impl From<&JsonBlock> for DagBlock {
@@ -42,12 +36,6 @@ impl From<&JsonBlock> for DagBlock {
                 .map(|id| (id.parse::<u64>().unwrap() + 1).into())
                 .collect(),
         )
-    }
-}
-
-impl DagBlock {
-    fn new(hash: Hash, parents: Vec<Hash>) -> Self {
-        Self { hash, parents }
     }
 }
 
@@ -67,32 +55,37 @@ fn reachability_stretch_test(use_attack_json: bool) {
     let decoder = GzDecoder::new(reader);
     let json_blocks: Vec<JsonBlock> = serde_json::from_reader(decoder).unwrap();
 
+    let root = ORIGIN;
     let mut map = HashMap::<Hash, DagBlock>::new();
     let mut blocks = Vec::<Hash>::new();
+
     for json_block in &json_blocks {
         let block: DagBlock = json_block.into();
         blocks.push(block.hash);
         map.insert(block.hash, block);
     }
+    // Set root as genesis parent
+    map.get_mut(&blocks[0])
+        .unwrap()
+        .parents
+        .push(root);
 
     // Act
-    let mut store: Box<dyn ReachabilityStore> = Box::new(MemoryReachabilityStore::new());
-    let mut builder = TreeBuilder::new_with_params(store.as_mut(), 2, 5);
+    let (_tempdir, db) = common::create_temp_db();
+    let mut store = DbReachabilityStore::new(db, 100000);
+    let mut builder = DagBuilder::new(&mut store);
 
-    let root = consensus::model::ORIGIN;
-    builder.init_default();
+    builder.init();
 
     for (i, block) in blocks.iter().enumerate() {
-        // For now, choose the first parent as selected
-        let parent = map[block].parents.first().unwrap_or(&root);
-        builder.add_block(*block, *parent);
-        if i % 10 == 0 {
-            validate_intervals(*builder.store(), root).unwrap();
+        builder.add_block(map[block].clone());
+        if i % 100 == 0 {
+            builder.store().validate_intervals(root).unwrap();
         }
     }
-    validate_intervals(*builder.store(), root).unwrap();
+    builder.store().validate_intervals(root).unwrap();
 
-    let num_chains = blocks.len() / 2;
+    let num_chains = if use_attack_json { blocks.len() / 8 } else { blocks.len() / 2 };
     let max_chain = 20;
     let validation_freq = usize::max(1, num_chains / 100);
 
@@ -102,39 +95,40 @@ fn reachability_stretch_test(use_attack_json: bool) {
     for i in 0..num_chains {
         let rand_idx = rng.gen_range(0..blocks.len());
         let rand_parent = blocks[rand_idx];
-        let new_block: Hash = ((blocks.len() + 1) as u64).into();
-        builder.add_block(new_block, rand_parent);
-        blocks.push(new_block);
-        map.insert(new_block, DagBlock { hash: new_block, parents: vec![rand_parent] });
+        let new_hash: Hash = ((blocks.len() + 1) as u64).into();
+        let new_block = DagBlock::new(new_hash, vec![rand_parent]);
+        builder.add_block(new_block.clone());
+        blocks.push(new_hash);
+        map.insert(new_hash, new_block);
 
         // Add a random-length chain with probability 1/8
         if rng.gen_range(0..8) == 0 {
             let chain_len = rng.gen_range(0..max_chain);
-            let mut chain_tip = new_block;
+            let mut chain_tip = new_hash;
             for _ in 0..chain_len {
-                let new_block: Hash = ((blocks.len() + 1) as u64).into();
-                builder.add_block(new_block, chain_tip);
-                blocks.push(new_block);
-                map.insert(new_block, DagBlock { hash: new_block, parents: vec![chain_tip] });
-                chain_tip = new_block;
+                let new_hash: Hash = ((blocks.len() + 1) as u64).into();
+                let new_block = DagBlock::new(new_hash, vec![chain_tip]);
+                builder.add_block(new_block.clone());
+                blocks.push(new_hash);
+                map.insert(new_hash, new_block);
+                chain_tip = new_hash;
             }
         }
 
-        if cfg!(debug_assertions) {
-            if i % validation_freq == 0 || i == num_chains - 1 {
-                validate_intervals(*builder.store(), root).unwrap();
-            } else {
-                // In debug mode and for most iterations, validate intervals for
-                // new chain only in order to shorten the test
-                validate_intervals(*builder.store(), new_block).unwrap();
-            }
+        if i % validation_freq == 0 {
+            builder.store().validate_intervals(root).unwrap();
         } else {
-            validate_intervals(*builder.store(), root).unwrap();
+            // For most iterations, validate intervals for
+            // new chain only in order to shorten the test
+            builder
+                .store()
+                .validate_intervals(new_hash)
+                .unwrap();
         }
     }
 
     // Assert
-    validate_intervals(store.as_ref(), root).unwrap();
+    store.validate_intervals(root).unwrap();
 }
 
 #[test]
@@ -148,12 +142,40 @@ fn test_noattack_json() {
 }
 
 struct StoreAccessImpl {
+    ghostdag_store_impl: DbGhostdagStore,
+    relations_store_impl: DbRelationsStore,
+    reachability_store_impl: DbReachabilityStore,
+}
+
+impl StoreAccess<DbGhostdagStore, DbRelationsStore, DbReachabilityStore> for StoreAccessImpl {
+    fn relations_store(&self) -> &DbRelationsStore {
+        &self.relations_store_impl
+    }
+
+    fn reachability_store(&self) -> &DbReachabilityStore {
+        &self.reachability_store_impl
+    }
+
+    fn reachability_store_as_mut(&mut self) -> &mut DbReachabilityStore {
+        &mut self.reachability_store_impl
+    }
+
+    fn ghostdag_store_as_mut(&mut self) -> &mut DbGhostdagStore {
+        &mut self.ghostdag_store_impl
+    }
+
+    fn ghostdag_store(&self) -> &DbGhostdagStore {
+        &self.ghostdag_store_impl
+    }
+}
+
+struct StoreAccessMemoryImpl {
     ghostdag_store_impl: MemoryGhostdagStore,
     relations_store_impl: MemoryRelationsStore,
     reachability_store_impl: MemoryReachabilityStore,
 }
 
-impl StoreAccess<MemoryGhostdagStore, MemoryRelationsStore, MemoryReachabilityStore> for StoreAccessImpl {
+impl StoreAccess<MemoryGhostdagStore, MemoryRelationsStore, MemoryReachabilityStore> for StoreAccessMemoryImpl {
     fn relations_store(&self) -> &MemoryRelationsStore {
         &self.relations_store_impl
     }
@@ -178,9 +200,6 @@ impl StoreAccess<MemoryGhostdagStore, MemoryRelationsStore, MemoryReachabilitySt
 #[test]
 fn ghostdag_sanity_test() {
     let mut reachability_store = MemoryReachabilityStore::new();
-    // let mut builder = TreeBuilder::new_with_params(&mut reachability_store, 2, 5);
-    // builder.init_default();
-
     inquirer::init(&mut reachability_store).unwrap();
 
     let genesis: Hash = 1.into();
@@ -188,38 +207,19 @@ fn ghostdag_sanity_test() {
 
     inquirer::add_block(&mut reachability_store, genesis, ORIGIN, &mut std::iter::empty()).unwrap();
 
-    // builder.add_block(genesis, ORIGIN);
-    // builder.add_block(genesis_child, genesis);
-
     let mut relations_store = MemoryRelationsStore::new();
-    relations_store.set_parents(genesis_child, Rc::new(vec![genesis]));
+    relations_store
+        .set_parents(genesis_child, HashArray::new(vec![genesis]))
+        .unwrap();
 
-    let mut sa = StoreAccessImpl {
+    let mut sa = StoreAccessMemoryImpl {
         ghostdag_store_impl: MemoryGhostdagStore::new(),
         relations_store_impl: relations_store,
         reachability_store_impl: reachability_store,
     };
 
-    sa.ghostdag_store_as_mut()
-        .set_blue_score(genesis, 0)
-        .unwrap();
-    sa.ghostdag_store_as_mut()
-        .set_blue_work(genesis, Uint256::from_u64(0))
-        .unwrap();
-    sa.ghostdag_store_as_mut()
-        .set_selected_parent(genesis, ORIGIN)
-        .unwrap();
-    sa.ghostdag_store_as_mut()
-        .set_mergeset_blues(genesis, HashArray::new(Vec::new()))
-        .unwrap();
-    sa.ghostdag_store_as_mut()
-        .set_mergeset_reds(genesis, HashArray::new(Vec::new()))
-        .unwrap();
-    sa.ghostdag_store_as_mut()
-        .set_blues_anticone_sizes(genesis, Rc::new(HashMap::new()))
-        .unwrap();
-
     let manager = GhostdagManager::new(genesis, 18);
+    manager.init(&mut sa);
     manager.add_block(&mut sa, genesis_child);
 }
 
@@ -271,38 +271,23 @@ fn ghostdag_test() {
         let reader = BufReader::new(file);
         let test: GhostdagTestDag = serde_json::from_reader(reader).unwrap();
 
-        let mut reachability_store = MemoryReachabilityStore::new();
+        let (_tempdir, db) = common::create_temp_db();
 
-        inquirer::init(&mut reachability_store).unwrap();
+        let ghostdag_store = DbGhostdagStore::new(db.clone(), 100000);
+        let mut reachability_store = DbReachabilityStore::new(db.clone(), 100000);
+        let mut relations_store = DbRelationsStore::new(db, 100000);
 
         let genesis: Hash = string_to_hash(&test.genesis_id);
+
+        inquirer::init(&mut reachability_store).unwrap();
         inquirer::add_block(&mut reachability_store, genesis, ORIGIN, &mut std::iter::empty()).unwrap();
-
-        let mut relations_store = MemoryRelationsStore::new();
-        let mut ghostdag_store = MemoryGhostdagStore::new();
-
-        ghostdag_store.set_blue_score(genesis, 0).unwrap();
-        ghostdag_store
-            .set_blue_work(genesis, Uint256::from_u64(0))
-            .unwrap();
-        ghostdag_store
-            .set_selected_parent(genesis, ORIGIN)
-            .unwrap();
-        ghostdag_store
-            .set_mergeset_blues(genesis, HashArray::new(Vec::new()))
-            .unwrap();
-        ghostdag_store
-            .set_mergeset_reds(genesis, HashArray::new(Vec::new()))
-            .unwrap();
-        ghostdag_store
-            .set_blues_anticone_sizes(genesis, Rc::new(HashMap::new()))
-            .unwrap();
 
         for block in &test.blocks {
             let block_id = string_to_hash(&block.id);
             let parents = strings_to_hashes(&block.parents);
-            relations_store.set_parents(block_id, Rc::clone(&parents));
-            // builder.add_block(block_id, parents[0]);
+            relations_store
+                .set_parents(block_id, HashArray::clone(&parents))
+                .unwrap();
         }
 
         let mut sa = StoreAccessImpl {
@@ -312,6 +297,8 @@ fn ghostdag_test() {
         };
 
         let manager = GhostdagManager::new(genesis, test.k);
+        manager.init(&mut sa);
+
         for block in test.blocks {
             println!("Processing block {}", block.id);
             let block_id = string_to_hash(&block.id);
@@ -368,5 +355,5 @@ fn strings_to_hashes(strings: &Vec<String>) -> HashArray {
     for string in strings {
         arr.push(string_to_hash(string));
     }
-    Rc::new(arr)
+    HashArray::new(arr)
 }

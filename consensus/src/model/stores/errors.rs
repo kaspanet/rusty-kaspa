@@ -7,6 +7,12 @@ pub enum StoreError {
 
     #[error("key already exists in store")]
     KeyAlreadyExists(String),
+
+    #[error("rocksdb error")]
+    DbError(#[from] rocksdb::Error),
+
+    #[error("bincode error")]
+    DeserializationError(#[from] Box<bincode::ErrorKind>),
     // More usage examples:
     //
     // #[error("data store disconnected")]

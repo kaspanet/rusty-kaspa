@@ -1,12 +1,13 @@
 use hex;
+use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Display, Formatter};
 use std::mem::size_of;
-use std::rc::Rc;
 use std::str::FromStr;
+use std::sync::Arc;
 
 const HASH_SIZE: usize = 32;
 
-#[derive(PartialEq, Eq, Clone, Copy, Hash, Default, PartialOrd, Ord)]
+#[derive(PartialEq, Eq, Clone, Copy, Hash, Default, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Hash([u8; HASH_SIZE]);
 
 impl Display for Hash {
@@ -39,6 +40,12 @@ impl Debug for Hash {
         } else {
             f.debug_tuple("Hash").field(&self.0).finish()
         }
+    }
+}
+
+impl AsRef<[u8]> for Hash {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
     }
 }
 
@@ -84,7 +91,7 @@ impl Hash {
     }
 }
 
-pub type HashArray = Rc<Vec<Hash>>;
+pub type HashArray = Arc<Vec<Hash>>;
 
 #[cfg(test)]
 mod tests {
