@@ -1,5 +1,6 @@
 use core::cmp::Ordering;
 use std::fmt;
+use serde::{Deserialize, Serialize};
 
 pub fn u256_from_compact_target(bits: u32) -> Uint256 {
     // This is a floating-point "compact" encoding originally used by
@@ -24,7 +25,7 @@ pub fn u256_from_compact_target(bits: u32) -> Uint256 {
 }
 
 /// Little-endian large integer type
-#[derive(Copy, Clone, PartialEq, Eq, Hash, Default, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Default, Debug, Serialize, Deserialize)]
 pub struct Uint256(pub [u64; 4]);
 
 impl Uint256 {
