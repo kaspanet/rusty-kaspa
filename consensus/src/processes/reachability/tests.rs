@@ -5,7 +5,10 @@ use super::{inquirer::*, tree::*};
 use crate::{
     model::{
         api::hash::Hash,
-        stores::{errors::StoreError, reachability::ReachabilityStore},
+        stores::{
+            errors::StoreError,
+            reachability::{ReachabilityStore, ReachabilityStoreReader},
+        },
     },
     processes::reachability::interval::Interval,
 };
@@ -13,12 +16,12 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use thiserror::Error;
 
 /// A struct with fluent API to streamline reachability store building
-pub struct StoreBuilder<'a> {
-    store: &'a mut dyn ReachabilityStore,
+pub struct StoreBuilder<'a, T: ReachabilityStore + ?Sized> {
+    store: &'a mut T,
 }
 
-impl<'a> StoreBuilder<'a> {
-    pub fn new(store: &'a mut dyn ReachabilityStore) -> Self {
+impl<'a, T: ReachabilityStore + ?Sized> StoreBuilder<'a, T> {
+    pub fn new(store: &'a mut T) -> Self {
         Self { store }
     }
 
@@ -32,14 +35,14 @@ impl<'a> StoreBuilder<'a> {
 }
 
 /// A struct with fluent API to streamline tree building
-pub struct TreeBuilder<'a> {
-    store: &'a mut dyn ReachabilityStore,
+pub struct TreeBuilder<'a, T: ReachabilityStore + ?Sized> {
+    store: &'a mut T,
     reindex_depth: u64,
     reindex_slack: u64,
 }
 
-impl<'a> TreeBuilder<'a> {
-    pub fn new(store: &'a mut dyn ReachabilityStore) -> Self {
+impl<'a, T: ReachabilityStore + ?Sized> TreeBuilder<'a, T> {
+    pub fn new(store: &'a mut T) -> Self {
         Self {
             store,
             reindex_depth: crate::constants::perf::DEFAULT_REINDEX_DEPTH,
@@ -47,16 +50,16 @@ impl<'a> TreeBuilder<'a> {
         }
     }
 
-    pub fn new_with_params(store: &'a mut dyn ReachabilityStore, reindex_depth: u64, reindex_slack: u64) -> Self {
+    pub fn new_with_params(store: &'a mut T, reindex_depth: u64, reindex_slack: u64) -> Self {
         Self { store, reindex_depth, reindex_slack }
     }
 
-    pub fn init_default(&mut self) -> &mut Self {
+    pub fn init(&mut self) -> &mut Self {
         init(self.store).unwrap();
         self
     }
 
-    pub fn init(&mut self, origin: Hash, capacity: Interval) -> &mut Self {
+    pub fn init_with_params(&mut self, origin: Hash, capacity: Interval) -> &mut Self {
         init_with_params(self.store, origin, capacity).unwrap();
         self
     }
@@ -67,15 +70,15 @@ impl<'a> TreeBuilder<'a> {
         self
     }
 
-    pub fn store(&self) -> &&'a mut dyn ReachabilityStore {
+    pub fn store(&self) -> &&'a mut T {
         &self.store
     }
 }
 
 #[derive(Clone)]
-pub(super) struct DagBlock {
-    hash: Hash,
-    parents: Vec<Hash>,
+pub struct DagBlock {
+    pub hash: Hash,
+    pub parents: Vec<Hash>,
 }
 
 impl DagBlock {
@@ -85,13 +88,13 @@ impl DagBlock {
 }
 
 /// A struct with fluent API to streamline DAG building
-pub(super) struct DagBuilder<'a> {
-    store: &'a mut dyn ReachabilityStore,
+pub struct DagBuilder<'a, T: ReachabilityStore + ?Sized> {
+    store: &'a mut T,
     map: HashMap<Hash, DagBlock>,
 }
 
-impl<'a> DagBuilder<'a> {
-    pub fn new(store: &'a mut dyn ReachabilityStore) -> Self {
+impl<'a, T: ReachabilityStore + ?Sized> DagBuilder<'a, T> {
+    pub fn new(store: &'a mut T) -> Self {
         Self { store, map: HashMap::new() }
     }
 
@@ -101,7 +104,6 @@ impl<'a> DagBuilder<'a> {
     }
 
     pub fn add_block(&mut self, block: DagBlock) -> &mut Self {
-        self.map.insert(block.hash, block.clone());
         // Select by height (longest chain) just for the sake of internal isolated tests
         let selected_parent = block
             .parents
@@ -111,6 +113,8 @@ impl<'a> DagBuilder<'a> {
             .unwrap();
         let mergeset = self.mergeset(&block, selected_parent);
         add_block(self.store, block.hash, selected_parent, &mut mergeset.iter().cloned()).unwrap();
+        hint_virtual_selected_parent(self.store, block.hash).unwrap();
+        self.map.insert(block.hash, block);
         self
     }
 
@@ -144,6 +148,10 @@ impl<'a> DagBuilder<'a> {
         }
         vec
     }
+
+    pub fn store(&self) -> &&'a mut T {
+        &self.store
+    }
 }
 
 #[derive(Error, Debug)]
@@ -161,34 +169,70 @@ pub enum TestError {
     IntervalOutOfParentBounds { parent: Hash, child: Hash, parent_interval: Interval, child_interval: Interval },
 }
 
-pub fn validate_intervals(store: &dyn ReachabilityStore, root: Hash) -> std::result::Result<(), TestError> {
-    let mut queue = VecDeque::<Hash>::from([root]);
-    while !queue.is_empty() {
-        let parent = queue.pop_front().unwrap();
-        let children = store.get_children(parent)?;
-        queue.extend(children.iter());
+pub trait StoreValidationExtensions {
+    /// Checks if `block` is in the past of `other` (creates hashes from the u64 numbers)
+    fn in_past_of(&self, block: u64, other: u64) -> bool;
 
-        let parent_interval = store.get_interval(parent)?;
-        if parent_interval.is_empty() {
-            return Err(TestError::EmptyInterval(parent, parent_interval));
-        }
+    /// Checks if `block` and `other` are in the anticone of each other
+    /// (creates hashes from the u64 numbers)
+    fn are_anticone(&self, block: u64, other: u64) -> bool;
 
-        // Verify parent-child strict relation
-        for child in children.iter().cloned() {
-            let child_interval = store.get_interval(child)?;
-            if !parent_interval.strictly_contains(child_interval) {
-                return Err(TestError::IntervalOutOfParentBounds { parent, child, parent_interval, child_interval });
-            }
-        }
+    /// Validates that all tree intervals match the expected interval relations
+    fn validate_intervals(&self, root: Hash) -> std::result::Result<(), TestError>;
+}
 
-        // Iterate over consecutive siblings
-        for siblings in children.windows(2) {
-            let sibling_interval = store.get_interval(siblings[0])?;
-            let current_interval = store.get_interval(siblings[1])?;
-            if sibling_interval.end + 1 != current_interval.start {
-                return Err(TestError::NonConsecutiveSiblingIntervals(sibling_interval, current_interval));
-            }
+impl<T: ReachabilityStoreReader + ?Sized> StoreValidationExtensions for T {
+    fn in_past_of(&self, block: u64, other: u64) -> bool {
+        if block == other {
+            return false;
         }
+        let res = is_dag_ancestor_of(self, block.into(), other.into()).unwrap();
+        if res {
+            // Assert that the `future` relation is indeed asymmetric
+            assert!(!is_dag_ancestor_of(self, other.into(), block.into()).unwrap())
+        }
+        res
     }
-    Ok(())
+
+    fn are_anticone(&self, block: u64, other: u64) -> bool {
+        !is_dag_ancestor_of(self, block.into(), other.into()).unwrap()
+            && !is_dag_ancestor_of(self, other.into(), block.into()).unwrap()
+    }
+
+    fn validate_intervals(&self, root: Hash) -> std::result::Result<(), TestError> {
+        let mut queue = VecDeque::<Hash>::from([root]);
+        while !queue.is_empty() {
+            let parent = queue.pop_front().unwrap();
+            let children = self.get_children(parent)?;
+            queue.extend(children.iter());
+
+            let parent_interval = self.get_interval(parent)?;
+            if parent_interval.is_empty() {
+                return Err(TestError::EmptyInterval(parent, parent_interval));
+            }
+
+            // Verify parent-child strict relation
+            for child in children.iter().cloned() {
+                let child_interval = self.get_interval(child)?;
+                if !parent_interval.strictly_contains(child_interval) {
+                    return Err(TestError::IntervalOutOfParentBounds {
+                        parent,
+                        child,
+                        parent_interval,
+                        child_interval,
+                    });
+                }
+            }
+
+            // Iterate over consecutive siblings
+            for siblings in children.windows(2) {
+                let sibling_interval = self.get_interval(siblings[0])?;
+                let current_interval = self.get_interval(siblings[1])?;
+                if sibling_interval.end + 1 != current_interval.start {
+                    return Err(TestError::NonConsecutiveSiblingIntervals(sibling_interval, current_interval));
+                }
+            }
+        }
+        Ok(())
+    }
 }

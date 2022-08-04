@@ -29,11 +29,11 @@ impl<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore, V: StoreAccess<T
 
             match current {
                 Some(current) => {
-                    let current_parents = sa.relations_store().get_parents(&current);
+                    let current_parents = sa.relations_store().get_parents(current).unwrap();
 
                     // For each parent of the current block we check whether it is in the past of the selected parent. If not,
                     // we add it to the resulting merge-set and queue it for further processing.
-                    for parent in current_parents.unwrap().iter() {
+                    for parent in current_parents.iter() {
                         if mergeset_set.contains(parent) {
                             break;
                         }

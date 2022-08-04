@@ -1,18 +1,20 @@
-use super::{inquirer::get_next_chain_ancestor_unchecked, interval::Interval, *};
+use super::{
+    extensions::ReachabilityStoreIntervalExtensions, inquirer::get_next_chain_ancestor_unchecked, interval::Interval, *,
+};
 use crate::model::{api::hash::Hash, stores::reachability::ReachabilityStore};
 use std::collections::{HashMap, VecDeque};
 
 /// A struct used during reindex operations. It represents a temporary context
 /// for caching subtree information during the *current* reindex operation only
-pub(super) struct ReindexOperationContext<'a> {
-    store: &'a mut dyn ReachabilityStore,
+pub(super) struct ReindexOperationContext<'a, T: ReachabilityStore + ?Sized> {
+    store: &'a mut T,
     subtree_sizes: HashMap<Hash, u64>, // Cache for subtree sizes computed during this operation
     depth: u64,
     slack: u64,
 }
 
-impl<'a> ReindexOperationContext<'a> {
-    pub(super) fn new(store: &'a mut dyn ReachabilityStore, depth: u64, slack: u64) -> Self {
+impl<'a, T: ReachabilityStore + ?Sized> ReindexOperationContext<'a, T> {
+    pub(super) fn new(store: &'a mut T, depth: u64, slack: u64) -> Self {
         Self { store, subtree_sizes: HashMap::new(), depth, slack }
     }
 
@@ -507,7 +509,7 @@ impl<'a> ReindexOperationContext<'a> {
 }
 
 /// Splits `children` into two slices: the blocks that are before `pivot` and the blocks that are after.
-fn split_children(children: &std::rc::Rc<Vec<Hash>>, pivot: Hash) -> Result<(&[Hash], &[Hash])> {
+fn split_children(children: &std::sync::Arc<Vec<Hash>>, pivot: Hash) -> Result<(&[Hash], &[Hash])> {
     if let Some(index) = children.iter().cloned().position(|c| c == pivot) {
         Ok((&children[..index], &children[index + 1..]))
     } else {
@@ -519,15 +521,18 @@ fn split_children(children: &std::rc::Rc<Vec<Hash>>, pivot: Hash) -> Result<(&[H
 mod tests {
     use super::super::tests::*;
     use super::*;
-    use crate::{model::stores::reachability::MemoryReachabilityStore, processes::reachability::interval::Interval};
+    use crate::{
+        model::stores::reachability::{MemoryReachabilityStore, ReachabilityStoreReader},
+        processes::reachability::interval::Interval,
+    };
 
     #[test]
     fn test_count_subtrees() {
-        let mut store: Box<dyn ReachabilityStore> = Box::new(MemoryReachabilityStore::new());
+        let mut store = MemoryReachabilityStore::new();
 
         // Arrange
         let root: Hash = 1.into();
-        StoreBuilder::new(store.as_mut())
+        StoreBuilder::new(&mut store)
             .add_block(root, Hash::ZERO)
             .add_block(2.into(), root)
             .add_block(3.into(), 2.into())
@@ -538,7 +543,7 @@ mod tests {
             .add_block(8.into(), 6.into());
 
         // Act
-        let mut ctx = ReindexOperationContext::new(store.as_mut(), 10, 16);
+        let mut ctx = ReindexOperationContext::new(&mut store, 10, 16);
         ctx.count_subtrees(root).unwrap();
 
         // Assert
@@ -573,6 +578,6 @@ mod tests {
         assert_eq!(actual_intervals, expected_intervals);
 
         // Assert intervals follow the general rules
-        validate_intervals(store.as_ref(), root).unwrap();
+        store.validate_intervals(root).unwrap();
     }
 }

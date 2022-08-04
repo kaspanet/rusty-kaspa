@@ -1,14 +1,15 @@
 //!
 //! Tree-related functions internal to the module
 //!
-use super::{inquirer::*, reindex::ReindexOperationContext, *};
+use super::{extensions::ReachabilityStoreIntervalExtensions, inquirer::*, reindex::ReindexOperationContext, *};
 use crate::model::{api::hash::Hash, stores::reachability::ReachabilityStore};
 
 /// Adds `new_block` as a child of `parent` in the tree structure. If this block
 /// has no remaining interval to allocate, a reindexing is triggered. When a reindexing
 /// is triggered, the reindex root point is used within the reindex algorithm's logic
 pub fn add_tree_block(
-    store: &mut dyn ReachabilityStore, new_block: Hash, parent: Hash, reindex_depth: u64, reindex_slack: u64,
+    store: &mut (impl ReachabilityStore + ?Sized), new_block: Hash, parent: Hash, reindex_depth: u64,
+    reindex_slack: u64,
 ) -> Result<()> {
     // Get the remaining interval capacity
     let remaining = store.interval_remaining_after(parent)?;
@@ -35,7 +36,9 @@ pub fn add_tree_block(
 /// Note that we assume that almost always the chain between the reindex root and the common
 /// ancestor is longer than the chain between block and the common ancestor, hence we iterate
 /// from `block`.
-pub fn find_common_tree_ancestor(store: &dyn ReachabilityStore, block: Hash, reindex_root: Hash) -> Result<Hash> {
+pub fn find_common_tree_ancestor(
+    store: &(impl ReachabilityStore + ?Sized), block: Hash, reindex_root: Hash,
+) -> Result<Hash> {
     let mut current = block;
     loop {
         if is_chain_ancestor_of(store, current, reindex_root)? {
@@ -47,7 +50,7 @@ pub fn find_common_tree_ancestor(store: &dyn ReachabilityStore, block: Hash, rei
 
 /// Finds a possible new reindex root, based on the `current` reindex root and the selected tip `hint`
 pub fn find_next_reindex_root(
-    store: &dyn ReachabilityStore, current: Hash, hint: Hash, reindex_depth: u64, reindex_slack: u64,
+    store: &(impl ReachabilityStore + ?Sized), current: Hash, hint: Hash, reindex_depth: u64, reindex_slack: u64,
 ) -> Result<(Hash, Hash)> {
     let mut ancestor = current;
     let mut next = current;
@@ -100,7 +103,7 @@ pub fn find_next_reindex_root(
 /// expected to elect the root subtree (by converging to the agreement to have it on the
 /// selected chain). See also the reachability algorithms overview (TODO)
 pub fn try_advancing_reindex_root(
-    store: &mut dyn ReachabilityStore, hint: Hash, reindex_depth: u64, reindex_slack: u64,
+    store: &mut (impl ReachabilityStore + ?Sized), hint: Hash, reindex_depth: u64, reindex_slack: u64,
 ) -> Result<()> {
     // Get current root from the store
     let current = store.get_reindex_root()?;
