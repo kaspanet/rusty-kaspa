@@ -62,7 +62,7 @@ pub trait GhostdagStore: GhostdagStoreReader {
     fn insert(&mut self, hash: Hash, data: Arc<GhostdagData>) -> Result<(), StoreError>;
 }
 
-const STORE_PREFIX: &[u8] = b"block-ghostdag-data"; // TODO: use fixed value constants for for store prefixes
+const STORE_PREFIX: &[u8] = b"block-ghostdag-data";
 
 #[derive(Clone)]
 pub struct DbGhostdagStore {

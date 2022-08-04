@@ -7,7 +7,7 @@ pub trait RelationsStore {
     fn set_parents(&mut self, hash: Hash, parents: HashArray) -> Result<(), StoreError>;
 }
 
-const STORE_PREFIX: &[u8] = b"block-relations"; // TODO: use fixed value constants for for store prefixes
+const STORE_PREFIX: &[u8] = b"block-relations";
 
 #[derive(Clone)]
 pub struct DbRelationsStore {

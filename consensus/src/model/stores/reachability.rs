@@ -45,7 +45,8 @@ pub trait ReachabilityStore: ReachabilityStoreReader {
 }
 
 const REINDEX_ROOT_KEY: &[u8] = b"reachability-reindex-root";
-const STORE_PREFIX: &[u8] = b"reachability-data"; // TODO: use fixed value constants for store prefixes
+const STORE_PREFIX: &[u8] = b"reachability-data";
+// TODO: explore perf to see if using fixed-length constants for store prefixes is preferable
 
 #[derive(Clone)]
 pub struct DbReachabilityStore {
