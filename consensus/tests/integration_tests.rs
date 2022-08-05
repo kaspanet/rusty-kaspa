@@ -3,7 +3,9 @@
 //!
 
 use consensus::model::api::hash::{Hash, HashArray};
-use consensus::model::stores::ghostdag::{DbGhostdagStore, GhostdagStoreReader, MemoryGhostdagStore};
+use consensus::model::stores::ghostdag::{
+    DbGhostdagStore, GhostdagStoreReader, KType as GhostdagKType, MemoryGhostdagStore,
+};
 use consensus::model::stores::reachability::{DbReachabilityStore, MemoryReachabilityStore};
 use consensus::model::stores::relations::{DbRelationsStore, MemoryRelationsStore, RelationsStore};
 use consensus::model::ORIGIN;
@@ -226,7 +228,7 @@ fn ghostdag_sanity_test() {
 #[derive(Serialize, Deserialize, Debug)]
 struct GhostdagTestDag {
     #[serde(rename = "K")]
-    k: u8,
+    k: GhostdagKType,
 
     #[serde(rename = "GenesisID")]
     genesis_id: String,

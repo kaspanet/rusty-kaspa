@@ -4,7 +4,8 @@ use misc::uint256::Uint256;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc};
 
-pub type HashU8Map = Arc<HashMap<Hash, u8>>;
+pub type KType = u8; // This type must be increased to u16 if we ever set GHOSTDAG K > 255
+pub type HashKTypeMap = Arc<HashMap<Hash, KType>>;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct GhostdagData {
@@ -13,20 +14,20 @@ pub struct GhostdagData {
     pub selected_parent: Hash,
     pub mergeset_blues: HashArray,
     pub mergeset_reds: HashArray,
-    pub blues_anticone_sizes: HashU8Map,
+    pub blues_anticone_sizes: HashKTypeMap,
 }
 
 impl GhostdagData {
     pub fn new(
         blue_score: u64, blue_work: Uint256, selected_parent: Hash, mergeset_blues: HashArray,
-        mergeset_reds: HashArray, blues_anticone_sizes: HashU8Map,
+        mergeset_reds: HashArray, blues_anticone_sizes: HashKTypeMap,
     ) -> Self {
         Self { blue_score, blue_work, selected_parent, mergeset_blues, mergeset_reds, blues_anticone_sizes }
     }
 
-    pub fn with_selected_parent(selected_parent: Hash, k: u8) -> Self {
+    pub fn new_with_selected_parent(selected_parent: Hash, k: KType) -> Self {
         let mut mergeset_blues: Vec<Hash> = Vec::with_capacity((k + 1) as usize);
-        let mut blues_anticone_sizes: HashMap<Hash, u8> = HashMap::with_capacity(k as usize);
+        let mut blues_anticone_sizes: HashMap<Hash, KType> = HashMap::with_capacity(k as usize);
         mergeset_blues.push(selected_parent);
         blues_anticone_sizes.insert(selected_parent, 0);
 
@@ -36,8 +37,45 @@ impl GhostdagData {
             selected_parent,
             mergeset_blues: HashArray::new(mergeset_blues),
             mergeset_reds: Default::default(),
-            blues_anticone_sizes: HashU8Map::new(blues_anticone_sizes),
+            blues_anticone_sizes: HashKTypeMap::new(blues_anticone_sizes),
         }
+    }
+}
+
+impl GhostdagData {
+    pub fn add_blue(
+        self: &mut Arc<Self>, block: Hash, blue_anticone_size: KType, block_blues_anticone_sizes: &HashMap<Hash, KType>,
+    ) {
+        // Extract mutable data
+        let data = Arc::make_mut(self);
+
+        // Add the new blue block to mergeset blues
+        HashArray::make_mut(&mut data.mergeset_blues).push(block);
+
+        // Get a mut ref to internal anticone size map
+        let blues_anticone_sizes = HashKTypeMap::make_mut(&mut data.blues_anticone_sizes);
+
+        // Insert the new blue block with its blue anticone size to the map
+        blues_anticone_sizes.insert(block, blue_anticone_size);
+
+        // Insert/update map entries for blocks affected by this insertion
+        for (blue, size) in block_blues_anticone_sizes {
+            blues_anticone_sizes.insert(*blue, size + 1);
+        }
+    }
+
+    pub fn add_red(self: &mut Arc<Self>, block: Hash) {
+        // Extract mutable data
+        let data = Arc::make_mut(self);
+
+        // Add the new red block to mergeset reds
+        HashArray::make_mut(&mut data.mergeset_reds).push(block);
+    }
+
+    pub fn finalize_score_and_work(self: &mut Arc<Self>, blue_score: u64, blue_work: Uint256) {
+        let data = Arc::make_mut(self);
+        data.blue_score = blue_score;
+        data.blue_work = blue_work;
     }
 }
 
@@ -47,7 +85,7 @@ pub trait GhostdagStoreReader {
     fn get_selected_parent(&self, hash: Hash, is_trusted_data: bool) -> Result<Hash, StoreError>;
     fn get_mergeset_blues(&self, hash: Hash, is_trusted_data: bool) -> Result<HashArray, StoreError>;
     fn get_mergeset_reds(&self, hash: Hash, is_trusted_data: bool) -> Result<HashArray, StoreError>;
-    fn get_blues_anticone_sizes(&self, hash: Hash, is_trusted_data: bool) -> Result<HashU8Map, StoreError>;
+    fn get_blues_anticone_sizes(&self, hash: Hash, is_trusted_data: bool) -> Result<HashKTypeMap, StoreError>;
 
     /// Returns full block data for the requested hash
     fn get_data(&self, hash: Hash, is_trusted_data: bool) -> Result<Arc<GhostdagData>, StoreError>;
@@ -105,7 +143,7 @@ impl GhostdagStoreReader for DbGhostdagStore {
         Ok(Arc::clone(&self.cached_access.read(hash)?.mergeset_reds))
     }
 
-    fn get_blues_anticone_sizes(&self, hash: Hash, is_trusted_data: bool) -> Result<HashU8Map, StoreError> {
+    fn get_blues_anticone_sizes(&self, hash: Hash, is_trusted_data: bool) -> Result<HashKTypeMap, StoreError> {
         Ok(Arc::clone(
             &self
                 .cached_access
@@ -139,7 +177,7 @@ pub struct MemoryGhostdagStore {
     selected_parent_map: HashMap<Hash, Hash>,
     mergeset_blues_map: HashMap<Hash, HashArray>,
     mergeset_reds_map: HashMap<Hash, HashArray>,
-    blues_anticone_sizes_map: HashMap<Hash, HashU8Map>,
+    blues_anticone_sizes_map: HashMap<Hash, HashKTypeMap>,
 }
 
 impl MemoryGhostdagStore {
@@ -216,9 +254,9 @@ impl GhostdagStoreReader for MemoryGhostdagStore {
         }
     }
 
-    fn get_blues_anticone_sizes(&self, hash: Hash, is_trusted_data: bool) -> Result<HashU8Map, StoreError> {
+    fn get_blues_anticone_sizes(&self, hash: Hash, is_trusted_data: bool) -> Result<HashKTypeMap, StoreError> {
         match self.blues_anticone_sizes_map.get(&hash) {
-            Some(sizes) => Ok(HashU8Map::clone(sizes)),
+            Some(sizes) => Ok(HashKTypeMap::clone(sizes)),
             None => Err(StoreError::KeyNotFound(hash.to_string())),
         }
     }

@@ -119,8 +119,7 @@ impl<'a, T: ReachabilityStore + ?Sized> ReindexOperationContext<'a, T> {
         let mut queue = VecDeque::<Hash>::from([block]);
         let mut counts = HashMap::<Hash, u64>::new();
 
-        while !queue.is_empty() {
-            let mut current = queue.pop_front().unwrap();
+        while let Some(mut current) = queue.pop_front() {
             let children = self.store.get_children(current)?;
             if children.is_empty() {
                 // We reached a leaf
@@ -170,8 +169,7 @@ impl<'a, T: ReachabilityStore + ?Sized> ReindexOperationContext<'a, T> {
         self.count_subtrees(block)?;
 
         let mut queue = VecDeque::<Hash>::from([block]);
-        while !queue.is_empty() {
-            let current = queue.pop_front().unwrap();
+        while let Some(current) = queue.pop_front() {
             let children = self.store.get_children(current)?;
             if !children.is_empty() {
                 let sizes: Vec<u64> = children
