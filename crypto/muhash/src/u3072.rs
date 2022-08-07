@@ -13,23 +13,22 @@ pub(crate) type DoubleLimb = u64;
 
 const LIMB_SIZE_BYTES: usize = std::mem::size_of::<Limb>();
 const LIMB_SIZE: usize = std::mem::size_of::<Limb>() * 8;
-pub(crate) const LIMBS: usize = crate::ELEMENT_BYTE_SIZE / LIMB_SIZE_BYTES;
+pub const LIMBS: usize = crate::ELEMENT_BYTE_SIZE / LIMB_SIZE_BYTES;
 
-pub(crate) const PRIME_DIFF: Limb = 1103717;
+pub const PRIME_DIFF: Limb = 1103717;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) struct U3072 {
+pub struct U3072 {
     limbs: [Limb; LIMBS],
 }
-
 impl U3072 {
     #[inline(always)]
-    pub(super) const fn zero() -> Self {
+    pub const fn zero() -> Self {
         Self { limbs: [0; LIMBS] }
     }
 
     #[inline(always)]
-    pub(super) const fn one() -> Self {
+    pub const fn one() -> Self {
         let mut s = Self::zero();
         s.limbs[0] = 1;
         s
@@ -37,7 +36,7 @@ impl U3072 {
 
     #[inline(always)]
     #[must_use]
-    pub(super) fn is_overflow(&self) -> bool {
+    pub fn is_overflow(&self) -> bool {
         // If the smallest limb is smaller than MAX-PRIME_DIFF then it is not overflown.
         if self.limbs[0] <= Limb::MAX - PRIME_DIFF {
             return false;
@@ -49,7 +48,7 @@ impl U3072 {
     }
 
     #[inline(always)]
-    pub(super) fn from_le_bytes(bytes: [u8; ELEMENT_BYTE_SIZE]) -> Self {
+    pub fn from_le_bytes(bytes: [u8; ELEMENT_BYTE_SIZE]) -> Self {
         let mut res = Self::zero();
         bytes
             .chunks_exact(LIMB_SIZE_BYTES)
@@ -62,7 +61,7 @@ impl U3072 {
 
     #[inline(always)]
     #[must_use]
-    pub(super) fn to_le_bytes(self) -> [u8; ELEMENT_BYTE_SIZE] {
+    pub fn to_le_bytes(self) -> [u8; ELEMENT_BYTE_SIZE] {
         let mut res = [0u8; ELEMENT_BYTE_SIZE];
         self.limbs
             .iter()

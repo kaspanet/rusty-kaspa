@@ -1,3 +1,7 @@
+// Make u3072 public if we're fuzzing
+#[cfg(fuzzing)]
+pub mod u3072;
+#[cfg(not(fuzzing))]
 mod u3072;
 
 use crate::u3072::U3072;
