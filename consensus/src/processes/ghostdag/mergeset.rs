@@ -1,18 +1,14 @@
-use crate::model::api::hash::{Hash, HashArray};
-use crate::model::stores::ghostdag::GhostdagStore;
-use crate::model::stores::reachability::ReachabilityStore;
-use crate::model::stores::relations::RelationsStore;
-
 use std::collections::{HashSet, VecDeque};
 
-use crate::processes::reachability::inquirer::is_dag_ancestor_of;
+use crate::model::api::hash::{Hash, HashArray};
+use crate::model::services::reachability::ReachabilityService;
+use crate::model::stores::ghostdag::GhostdagStore;
+use crate::model::stores::relations::RelationsStore;
 
-use super::protocol::{GhostdagManager, StoreAccess};
+use super::protocol::GhostdagManager;
 
-impl<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore, V: StoreAccess<T, S, U>> GhostdagManager<T, S, U, V> {
-    pub fn ordered_mergeset_without_selected_parent(
-        &self, sa: &V, selected_parent: Hash, parents: &HashArray,
-    ) -> Vec<Hash> {
+impl<T: GhostdagStore, S: RelationsStore, U: ReachabilityService> GhostdagManager<T, S, U> {
+    pub fn ordered_mergeset_without_selected_parent(&self, selected_parent: Hash, parents: &HashArray) -> Vec<Hash> {
         let mut queue: VecDeque<Hash> = parents
             .iter()
             .cloned()
@@ -22,7 +18,7 @@ impl<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore, V: StoreAccess<T
         let mut selected_parent_past: HashSet<Hash> = HashSet::new();
 
         while let Some(current) = queue.pop_front() {
-            let current_parents = sa.relations_store().get_parents(current).unwrap();
+            let current_parents = self.relations_store.get_parents(current).unwrap();
 
             // For each parent of the current block we check whether it is in the past of the selected parent. If not,
             // we add it to the resulting merge-set and queue it for further processing.
@@ -35,7 +31,10 @@ impl<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore, V: StoreAccess<T
                     break;
                 }
 
-                if is_dag_ancestor_of(sa.reachability_store(), *parent, selected_parent).unwrap() {
+                if self
+                    .reachability_service
+                    .is_dag_ancestor_of(*parent, selected_parent)
+                {
                     selected_parent_past.insert(*parent);
                     continue;
                 }
@@ -45,6 +44,6 @@ impl<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore, V: StoreAccess<T
             }
         }
 
-        Self::sort_blocks(sa, mergeset)
+        self.sort_blocks(mergeset)
     }
 }

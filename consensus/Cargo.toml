@@ -18,6 +18,8 @@ rocksdb = "0.18.0"
 moka = "0.9"
 bincode = "1.3.3"
 parking_lot = "0.12.1"
+crossbeam-channel="0.5"
+crossbeam = "*"
 
 kaspa-core = {path="../core"}
 misc = {path="../misc"}

@@ -2,7 +2,7 @@ use super::{caching::CachedDbAccess, errors::StoreError, DB};
 use crate::model::api::hash::{Hash, HashArray};
 use misc::uint256::Uint256;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, sync::Arc};
+use std::{cell::RefCell, collections::HashMap, sync::Arc};
 
 pub type KType = u8; // This type must be increased to u16 if we ever set GHOSTDAG K > 255
 pub type HashKTypeMap = Arc<HashMap<Hash, KType>>;
@@ -97,7 +97,7 @@ pub trait GhostdagStoreReader {
 pub trait GhostdagStore: GhostdagStoreReader {
     /// Insert GHOSTDAG data for block `hash` into the store. Note that GHOSTDAG data
     /// is added once and never modified, so no need for specific setters for each element
-    fn insert(&mut self, hash: Hash, data: Arc<GhostdagData>) -> Result<(), StoreError>;
+    fn insert(&self, hash: Hash, data: Arc<GhostdagData>) -> Result<(), StoreError>;
 }
 
 const STORE_PREFIX: &[u8] = b"block-ghostdag-data";
@@ -162,7 +162,7 @@ impl GhostdagStoreReader for DbGhostdagStore {
 }
 
 impl GhostdagStore for DbGhostdagStore {
-    fn insert(&mut self, hash: Hash, data: Arc<GhostdagData>) -> Result<(), StoreError> {
+    fn insert(&self, hash: Hash, data: Arc<GhostdagData>) -> Result<(), StoreError> {
         if self.cached_access.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
@@ -172,23 +172,23 @@ impl GhostdagStore for DbGhostdagStore {
 }
 
 pub struct MemoryGhostdagStore {
-    blue_score_map: HashMap<Hash, u64>,
-    blue_work_map: HashMap<Hash, Uint256>,
-    selected_parent_map: HashMap<Hash, Hash>,
-    mergeset_blues_map: HashMap<Hash, HashArray>,
-    mergeset_reds_map: HashMap<Hash, HashArray>,
-    blues_anticone_sizes_map: HashMap<Hash, HashKTypeMap>,
+    blue_score_map: RefCell<HashMap<Hash, u64>>,
+    blue_work_map: RefCell<HashMap<Hash, Uint256>>,
+    selected_parent_map: RefCell<HashMap<Hash, Hash>>,
+    mergeset_blues_map: RefCell<HashMap<Hash, HashArray>>,
+    mergeset_reds_map: RefCell<HashMap<Hash, HashArray>>,
+    blues_anticone_sizes_map: RefCell<HashMap<Hash, HashKTypeMap>>,
 }
 
 impl MemoryGhostdagStore {
     pub fn new() -> Self {
         Self {
-            blue_score_map: HashMap::new(),
-            blue_work_map: HashMap::new(),
-            selected_parent_map: HashMap::new(),
-            mergeset_blues_map: HashMap::new(),
-            mergeset_reds_map: HashMap::new(),
-            blues_anticone_sizes_map: HashMap::new(),
+            blue_score_map: RefCell::new(HashMap::new()),
+            blue_work_map: RefCell::new(HashMap::new()),
+            selected_parent_map: RefCell::new(HashMap::new()),
+            mergeset_blues_map: RefCell::new(HashMap::new()),
+            mergeset_reds_map: RefCell::new(HashMap::new()),
+            blues_anticone_sizes_map: RefCell::new(HashMap::new()),
         }
     }
 }
@@ -200,19 +200,27 @@ impl Default for MemoryGhostdagStore {
 }
 
 impl GhostdagStore for MemoryGhostdagStore {
-    fn insert(&mut self, hash: Hash, data: Arc<GhostdagData>) -> Result<(), StoreError> {
+    fn insert(&self, hash: Hash, data: Arc<GhostdagData>) -> Result<(), StoreError> {
         if self.has(hash, false)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
-        self.blue_score_map.insert(hash, data.blue_score);
-        self.blue_work_map.insert(hash, data.blue_work);
+        self.blue_score_map
+            .borrow_mut()
+            .insert(hash, data.blue_score);
+        self.blue_work_map
+            .borrow_mut()
+            .insert(hash, data.blue_work);
         self.selected_parent_map
+            .borrow_mut()
             .insert(hash, data.selected_parent);
         self.mergeset_blues_map
+            .borrow_mut()
             .insert(hash, data.mergeset_blues.clone());
         self.mergeset_reds_map
+            .borrow_mut()
             .insert(hash, data.mergeset_reds.clone());
         self.blues_anticone_sizes_map
+            .borrow_mut()
             .insert(hash, data.blues_anticone_sizes.clone());
         Ok(())
     }
@@ -220,42 +228,42 @@ impl GhostdagStore for MemoryGhostdagStore {
 
 impl GhostdagStoreReader for MemoryGhostdagStore {
     fn get_blue_score(&self, hash: Hash, is_trusted_data: bool) -> Result<u64, StoreError> {
-        match self.blue_score_map.get(&hash) {
+        match self.blue_score_map.borrow().get(&hash) {
             Some(blue_score) => Ok(*blue_score),
             None => Err(StoreError::KeyNotFound(hash.to_string())),
         }
     }
 
     fn get_blue_work(&self, hash: Hash, is_trusted_data: bool) -> Result<Uint256, StoreError> {
-        match self.blue_work_map.get(&hash) {
+        match self.blue_work_map.borrow().get(&hash) {
             Some(blue_work) => Ok(*blue_work),
             None => Err(StoreError::KeyNotFound(hash.to_string())),
         }
     }
 
     fn get_selected_parent(&self, hash: Hash, is_trusted_data: bool) -> Result<Hash, StoreError> {
-        match self.selected_parent_map.get(&hash) {
+        match self.selected_parent_map.borrow().get(&hash) {
             Some(selected_parent) => Ok(*selected_parent),
             None => Err(StoreError::KeyNotFound(hash.to_string())),
         }
     }
 
     fn get_mergeset_blues(&self, hash: Hash, is_trusted_data: bool) -> Result<HashArray, StoreError> {
-        match self.mergeset_blues_map.get(&hash) {
+        match self.mergeset_blues_map.borrow().get(&hash) {
             Some(mergeset_blues) => Ok(HashArray::clone(mergeset_blues)),
             None => Err(StoreError::KeyNotFound(hash.to_string())),
         }
     }
 
     fn get_mergeset_reds(&self, hash: Hash, is_trusted_data: bool) -> Result<HashArray, StoreError> {
-        match self.mergeset_reds_map.get(&hash) {
+        match self.mergeset_reds_map.borrow().get(&hash) {
             Some(mergeset_reds) => Ok(HashArray::clone(mergeset_reds)),
             None => Err(StoreError::KeyNotFound(hash.to_string())),
         }
     }
 
     fn get_blues_anticone_sizes(&self, hash: Hash, is_trusted_data: bool) -> Result<HashKTypeMap, StoreError> {
-        match self.blues_anticone_sizes_map.get(&hash) {
+        match self.blues_anticone_sizes_map.borrow().get(&hash) {
             Some(sizes) => Ok(HashKTypeMap::clone(sizes)),
             None => Err(StoreError::KeyNotFound(hash.to_string())),
         }
@@ -266,16 +274,16 @@ impl GhostdagStoreReader for MemoryGhostdagStore {
             return Err(StoreError::KeyNotFound(hash.to_string()));
         }
         Ok(Arc::new(GhostdagData::new(
-            self.blue_score_map[&hash],
-            self.blue_work_map[&hash],
-            self.selected_parent_map[&hash],
-            self.mergeset_blues_map[&hash].clone(),
-            self.mergeset_reds_map[&hash].clone(),
-            self.blues_anticone_sizes_map[&hash].clone(),
+            self.blue_score_map.borrow()[&hash],
+            self.blue_work_map.borrow()[&hash],
+            self.selected_parent_map.borrow()[&hash],
+            self.mergeset_blues_map.borrow()[&hash].clone(),
+            self.mergeset_reds_map.borrow()[&hash].clone(),
+            self.blues_anticone_sizes_map.borrow()[&hash].clone(),
         )))
     }
 
     fn has(&self, hash: Hash, is_trusted_data: bool) -> Result<bool, StoreError> {
-        Ok(self.blue_score_map.contains_key(&hash))
+        Ok(self.blue_score_map.borrow().contains_key(&hash))
     }
 }

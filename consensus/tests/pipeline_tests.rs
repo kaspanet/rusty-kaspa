@@ -66,3 +66,42 @@ fn test_reachability_staging() {
     assert!(store.are_anticone(11, 6));
     assert!(store.are_anticone(11, 9));
 }
+
+#[test]
+fn test_concurrent_pipeline() {
+    use crossbeam_channel::unbounded;
+    use std::thread;
+
+    // let (_tempdir, db) = common::create_temp_db();
+
+    // let ghostdag_store = DbGhostdagStore::new(db.clone(), 100000);
+    // let mut reachability_store = DbReachabilityStore::new(db.clone(), 100000);
+    // let relations_store = DbRelationsStore::new(db, 100000);
+
+    // let genesis: Hash = 1.into();
+
+    // inquirer::init(&mut reachability_store).unwrap();
+    // inquirer::add_block(&mut reachability_store, genesis, ORIGIN, &mut std::iter::empty()).unwrap();
+
+    // let mut stores =
+    //     StoreAccessDbImpl::new(ghostdag_store, relations_store, STReachabilityService::new(reachability_store));
+    // let manager = GhostdagManager::new(genesis, 6);
+    // manager.init(&mut stores);
+
+    let (s, r) = unbounded();
+
+    // Computes the n-th Fibonacci number.
+    fn fib(n: i32) -> i32 {
+        if n <= 1 {
+            n
+        } else {
+            fib(n - 1) + fib(n - 2)
+        }
+    }
+
+    // Spawn an asynchronous computation.
+    thread::spawn(move || s.send(fib(20)).unwrap());
+
+    // Print the result of the computation.
+    println!("{}", r.recv().unwrap());
+}

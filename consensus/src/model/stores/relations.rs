@@ -1,10 +1,10 @@
 use super::{caching::CachedDbAccess, errors::StoreError, DB};
 use crate::model::api::hash::{Hash, HashArray};
-use std::{collections::HashMap, sync::Arc};
+use std::{cell::RefCell, collections::HashMap, sync::Arc};
 
 pub trait RelationsStore {
     fn get_parents(&self, hash: Hash) -> Result<HashArray, StoreError>;
-    fn set_parents(&mut self, hash: Hash, parents: HashArray) -> Result<(), StoreError>;
+    fn set_parents(&self, hash: Hash, parents: HashArray) -> Result<(), StoreError>;
 }
 
 const STORE_PREFIX: &[u8] = b"block-relations";
@@ -34,19 +34,19 @@ impl RelationsStore for DbRelationsStore {
         Ok(Arc::clone(&self.cached_access.read(hash)?))
     }
 
-    fn set_parents(&mut self, hash: Hash, parents: HashArray) -> Result<(), StoreError> {
+    fn set_parents(&self, hash: Hash, parents: HashArray) -> Result<(), StoreError> {
         self.cached_access.write(hash, &parents)?;
         Ok(())
     }
 }
 
 pub struct MemoryRelationsStore {
-    map: HashMap<Hash, HashArray>,
+    map: RefCell<HashMap<Hash, HashArray>>,
 }
 
 impl MemoryRelationsStore {
     pub fn new() -> Self {
-        Self { map: HashMap::new() }
+        Self { map: RefCell::new(HashMap::new()) }
     }
 }
 
@@ -58,14 +58,14 @@ impl Default for MemoryRelationsStore {
 
 impl RelationsStore for MemoryRelationsStore {
     fn get_parents(&self, hash: Hash) -> Result<HashArray, StoreError> {
-        match self.map.get(&hash) {
+        match self.map.borrow().get(&hash) {
             Some(parents) => Ok(HashArray::clone(parents)),
             None => Err(StoreError::KeyNotFound(hash.to_string())),
         }
     }
 
-    fn set_parents(&mut self, hash: Hash, parents: HashArray) -> Result<(), StoreError> {
-        self.map.insert(hash, parents);
+    fn set_parents(&self, hash: Hash, parents: HashArray) -> Result<(), StoreError> {
+        self.map.borrow_mut().insert(hash, parents);
         Ok(())
     }
 }

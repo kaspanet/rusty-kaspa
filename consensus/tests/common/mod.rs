@@ -1,5 +1,6 @@
-use consensus::model::stores::DB;
 use std::sync::Arc;
+
+use consensus::model::stores::DB;
 
 pub fn create_temp_db() -> (tempfile::TempDir, Arc<DB>) {
     let db_tempdir = tempfile::tempdir().unwrap();

@@ -3,22 +3,25 @@
 //!
 
 use consensus::model::api::hash::{Hash, HashArray};
-use consensus::model::stores::ghostdag::{
-    DbGhostdagStore, GhostdagStoreReader, KType as GhostdagKType, MemoryGhostdagStore,
-};
-use consensus::model::stores::reachability::{DbReachabilityStore, MemoryReachabilityStore};
-use consensus::model::stores::relations::{DbRelationsStore, MemoryRelationsStore, RelationsStore};
+use consensus::model::services::reachability::MTReachabilityService;
+use consensus::model::stores::ghostdag::{DbGhostdagStore, GhostdagStore, GhostdagStoreReader, KType as GhostdagKType};
+use consensus::model::stores::reachability::DbReachabilityStore;
+use consensus::model::stores::relations::{DbRelationsStore, RelationsStore};
 use consensus::model::ORIGIN;
-use consensus::processes::ghostdag::protocol::{GhostdagManager, StoreAccess};
+use consensus::pipeline::HeaderProcessingContext;
+use consensus::processes::ghostdag::protocol::GhostdagManager;
 use consensus::processes::reachability::inquirer;
 use consensus::processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions};
 
 use flate2::read::GzDecoder;
+use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::BufReader;
+use std::ops::DerefMut;
 use std::path::Path;
+use std::sync::Arc;
 
 mod common;
 
@@ -143,87 +146,34 @@ fn test_noattack_json() {
     reachability_stretch_test(false);
 }
 
-struct StoreAccessImpl {
-    ghostdag_store_impl: DbGhostdagStore,
-    relations_store_impl: DbRelationsStore,
-    reachability_store_impl: DbReachabilityStore,
-}
+// TODO: restore this test once API is finalized
+// #[test]
+// fn ghostdag_sanity_test() {
+//     let mut reachability_store = MemoryReachabilityStore::new();
+//     inquirer::init(&mut reachability_store).unwrap();
 
-impl StoreAccess<DbGhostdagStore, DbRelationsStore, DbReachabilityStore> for StoreAccessImpl {
-    fn relations_store(&self) -> &DbRelationsStore {
-        &self.relations_store_impl
-    }
+//     let genesis: Hash = 1.into();
+//     let genesis_child: Hash = 2.into();
 
-    fn reachability_store(&self) -> &DbReachabilityStore {
-        &self.reachability_store_impl
-    }
+//     inquirer::add_block(&mut reachability_store, genesis, ORIGIN, &mut std::iter::empty()).unwrap();
 
-    fn reachability_store_as_mut(&mut self) -> &mut DbReachabilityStore {
-        &mut self.reachability_store_impl
-    }
+//     let relations_store = MemoryRelationsStore::new();
+//     relations_store
+//         .set_parents(genesis_child, HashArray::new(vec![genesis]))
+//         .unwrap();
 
-    fn ghostdag_store_as_mut(&mut self) -> &mut DbGhostdagStore {
-        &mut self.ghostdag_store_impl
-    }
-
-    fn ghostdag_store(&self) -> &DbGhostdagStore {
-        &self.ghostdag_store_impl
-    }
-}
-
-struct StoreAccessMemoryImpl {
-    ghostdag_store_impl: MemoryGhostdagStore,
-    relations_store_impl: MemoryRelationsStore,
-    reachability_store_impl: MemoryReachabilityStore,
-}
-
-impl StoreAccess<MemoryGhostdagStore, MemoryRelationsStore, MemoryReachabilityStore> for StoreAccessMemoryImpl {
-    fn relations_store(&self) -> &MemoryRelationsStore {
-        &self.relations_store_impl
-    }
-
-    fn reachability_store(&self) -> &MemoryReachabilityStore {
-        &self.reachability_store_impl
-    }
-
-    fn reachability_store_as_mut(&mut self) -> &mut MemoryReachabilityStore {
-        &mut self.reachability_store_impl
-    }
-
-    fn ghostdag_store_as_mut(&mut self) -> &mut MemoryGhostdagStore {
-        &mut self.ghostdag_store_impl
-    }
-
-    fn ghostdag_store(&self) -> &MemoryGhostdagStore {
-        &self.ghostdag_store_impl
-    }
-}
-
-#[test]
-fn ghostdag_sanity_test() {
-    let mut reachability_store = MemoryReachabilityStore::new();
-    inquirer::init(&mut reachability_store).unwrap();
-
-    let genesis: Hash = 1.into();
-    let genesis_child: Hash = 2.into();
-
-    inquirer::add_block(&mut reachability_store, genesis, ORIGIN, &mut std::iter::empty()).unwrap();
-
-    let mut relations_store = MemoryRelationsStore::new();
-    relations_store
-        .set_parents(genesis_child, HashArray::new(vec![genesis]))
-        .unwrap();
-
-    let mut sa = StoreAccessMemoryImpl {
-        ghostdag_store_impl: MemoryGhostdagStore::new(),
-        relations_store_impl: relations_store,
-        reachability_store_impl: reachability_store,
-    };
-
-    let manager = GhostdagManager::new(genesis, 18);
-    manager.init(&mut sa);
-    manager.add_block(&mut sa, genesis_child);
-}
+//     let manager = GhostdagManager::new(
+//         genesis,
+//         18,
+//         Arc::new(MemoryGhostdagStore::new()),
+//         Arc::new(relations_store),
+//         Arc::new(STReachabilityService::new(reachability_store)),
+//     );
+//     let mut ctx = HeaderProcessingContext::new(genesis);
+//     manager.init(&mut ctx);
+//     let mut ctx = HeaderProcessingContext::new(genesis_child);
+//     manager.add_block(&mut ctx, genesis_child); // TODO
+// }
 
 #[derive(Serialize, Deserialize, Debug)]
 struct GhostdagTestDag {
@@ -275,14 +225,17 @@ fn ghostdag_test() {
 
         let (_tempdir, db) = common::create_temp_db();
 
-        let ghostdag_store = DbGhostdagStore::new(db.clone(), 100000);
-        let mut reachability_store = DbReachabilityStore::new(db.clone(), 100000);
-        let mut relations_store = DbRelationsStore::new(db, 100000);
+        let ghostdag_store = Arc::new(DbGhostdagStore::new(db.clone(), 100000));
+        let reachability_store = Arc::new(RwLock::new(DbReachabilityStore::new(db.clone(), 100000)));
+        let relations_store = Arc::new(DbRelationsStore::new(db, 100000));
 
         let genesis: Hash = string_to_hash(&test.genesis_id);
 
-        inquirer::init(&mut reachability_store).unwrap();
-        inquirer::add_block(&mut reachability_store, genesis, ORIGIN, &mut std::iter::empty()).unwrap();
+        {
+            let mut write_guard = reachability_store.write();
+            inquirer::init(write_guard.deref_mut()).unwrap();
+            inquirer::add_block(write_guard.deref_mut(), genesis, ORIGIN, &mut std::iter::empty()).unwrap();
+        }
 
         for block in &test.blocks {
             let block_id = string_to_hash(&block.id);
@@ -292,56 +245,64 @@ fn ghostdag_test() {
                 .unwrap();
         }
 
-        let mut sa = StoreAccessImpl {
-            ghostdag_store_impl: ghostdag_store,
-            relations_store_impl: relations_store,
-            reachability_store_impl: reachability_store,
-        };
+        let manager = GhostdagManager::new(
+            genesis,
+            test.k,
+            Arc::clone(&ghostdag_store),
+            Arc::clone(&relations_store),
+            Arc::new(MTReachabilityService::new(reachability_store.clone())),
+        );
 
-        let manager = GhostdagManager::new(genesis, test.k);
-        manager.init(&mut sa);
+        let mut ctx = HeaderProcessingContext::new(genesis);
+        manager.init(&mut ctx);
+        if let Some(data) = ctx.staged_ghostdag_data {
+            ghostdag_store.insert(ctx.hash, data).unwrap();
+        }
 
         for block in test.blocks {
             println!("Processing block {}", block.id);
             let block_id = string_to_hash(&block.id);
-            manager.add_block(&mut sa, block_id);
+
+            let mut ctx = HeaderProcessingContext::new(block_id);
+            manager.add_block(&mut ctx, block_id);
+            if let Some(data) = ctx.staged_ghostdag_data {
+                ghostdag_store
+                    .insert(ctx.hash, data.clone())
+                    .unwrap();
+                inquirer::add_block(
+                    reachability_store.write().deref_mut(),
+                    ctx.hash,
+                    data.selected_parent,
+                    &mut ctx.cached_mergeset.unwrap().iter().cloned(),
+                )
+                .unwrap();
+            }
+
+            let output_ghostdag_data = ghostdag_store.get_data(block_id, false).unwrap();
 
             assert_eq!(
-                sa.ghostdag_store()
-                    .get_selected_parent(block_id, false)
-                    .unwrap(),
+                output_ghostdag_data.selected_parent,
                 string_to_hash(&block.selected_parent),
                 "selected parent assertion failed for {}",
                 block.id,
             );
 
             assert_eq!(
-                sa.ghostdag_store()
-                    .get_mergeset_reds(block_id, false)
-                    .unwrap(),
+                output_ghostdag_data.mergeset_reds,
                 strings_to_hashes(&block.mergeset_reds),
                 "mergeset reds assertion failed for {}",
                 block.id,
             );
 
             assert_eq!(
-                sa.ghostdag_store()
-                    .get_mergeset_blues(block_id, false)
-                    .unwrap(),
+                output_ghostdag_data.mergeset_blues,
                 strings_to_hashes(&block.mergeset_blues),
                 "mergeset blues assertion failed for {:?} with SP {:?}",
                 string_to_hash(&block.id),
                 string_to_hash(&block.selected_parent)
             );
 
-            assert_eq!(
-                sa.ghostdag_store()
-                    .get_blue_score(block_id, false)
-                    .unwrap(),
-                block.score,
-                "blue score assertion failed for {}",
-                block.id,
-            );
+            assert_eq!(output_ghostdag_data.blue_score, block.score, "blue score assertion failed for {}", block.id,);
         }
     }
 }

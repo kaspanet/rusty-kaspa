@@ -1,12 +1,14 @@
-use crate::model::{
-    api::hash::Hash,
-    stores::{ghostdag::GhostdagStore, reachability::ReachabilityStore, relations::RelationsStore},
-};
-use misc::uint256::Uint256;
-
 use std::{cmp::Ordering, collections::HashSet};
 
-use super::protocol::{GhostdagManager, StoreAccess};
+use misc::uint256::Uint256;
+
+use crate::model::{
+    api::hash::Hash,
+    services::reachability::ReachabilityService,
+    stores::{ghostdag::GhostdagStore, relations::RelationsStore},
+};
+
+use super::protocol::GhostdagManager;
 
 #[derive(Eq)]
 pub struct SortableBlock {
@@ -36,14 +38,14 @@ impl Ord for SortableBlock {
     }
 }
 
-impl<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore, V: StoreAccess<T, S, U>> GhostdagManager<T, S, U, V> {
-    pub fn sort_blocks(sa: &V, blocks: HashSet<Hash>) -> Vec<Hash> {
+impl<T: GhostdagStore, S: RelationsStore, U: ReachabilityService> GhostdagManager<T, S, U> {
+    pub fn sort_blocks(&self, blocks: HashSet<Hash>) -> Vec<Hash> {
         let mut sorted_blocks: Vec<SortableBlock> = blocks
             .iter()
             .map(|block| SortableBlock {
                 hash: *block,
-                blue_work: sa
-                    .ghostdag_store()
+                blue_work: self
+                    .ghostdag_store
                     .get_blue_work(*block, false)
                     .unwrap(),
             })
