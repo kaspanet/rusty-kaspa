@@ -5,7 +5,7 @@ use misc::uint256::Uint256;
 use crate::model::{
     api::hash::Hash,
     services::reachability::ReachabilityService,
-    stores::{ghostdag::GhostdagStore, relations::RelationsStore},
+    stores::{ghostdag::GhostdagStoreReader, relations::RelationsStoreReader},
 };
 
 use super::protocol::GhostdagManager;
@@ -38,7 +38,7 @@ impl Ord for SortableBlock {
     }
 }
 
-impl<T: GhostdagStore, S: RelationsStore, U: ReachabilityService> GhostdagManager<T, S, U> {
+impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService> GhostdagManager<T, S, U> {
     pub fn sort_blocks(&self, blocks: HashSet<Hash>) -> Vec<Hash> {
         let mut sorted_blocks: Vec<SortableBlock> = blocks
             .iter()

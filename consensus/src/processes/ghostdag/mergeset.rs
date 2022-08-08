@@ -2,12 +2,12 @@ use std::collections::{HashSet, VecDeque};
 
 use crate::model::api::hash::{Hash, HashArray};
 use crate::model::services::reachability::ReachabilityService;
-use crate::model::stores::ghostdag::GhostdagStore;
-use crate::model::stores::relations::RelationsStore;
+use crate::model::stores::ghostdag::GhostdagStoreReader;
+use crate::model::stores::relations::RelationsStoreReader;
 
 use super::protocol::GhostdagManager;
 
-impl<T: GhostdagStore, S: RelationsStore, U: ReachabilityService> GhostdagManager<T, S, U> {
+impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService> GhostdagManager<T, S, U> {
     pub fn ordered_mergeset_without_selected_parent(&self, selected_parent: Hash, parents: &HashArray) -> Vec<Hash> {
         let mut queue: VecDeque<Hash> = parents
             .iter()

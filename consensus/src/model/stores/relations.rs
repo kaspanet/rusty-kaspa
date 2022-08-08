@@ -2,8 +2,11 @@ use super::{caching::CachedDbAccess, errors::StoreError, DB};
 use crate::model::api::hash::{Hash, HashArray};
 use std::{cell::RefCell, collections::HashMap, sync::Arc};
 
-pub trait RelationsStore {
+pub trait RelationsStoreReader {
     fn get_parents(&self, hash: Hash) -> Result<HashArray, StoreError>;
+}
+
+pub trait RelationsStore: RelationsStoreReader {
     fn set_parents(&self, hash: Hash, parents: HashArray) -> Result<(), StoreError>;
 }
 
@@ -29,11 +32,13 @@ impl DbRelationsStore {
     }
 }
 
-impl RelationsStore for DbRelationsStore {
+impl RelationsStoreReader for DbRelationsStore {
     fn get_parents(&self, hash: Hash) -> Result<HashArray, StoreError> {
         Ok(Arc::clone(&self.cached_access.read(hash)?))
     }
+}
 
+impl RelationsStore for DbRelationsStore {
     fn set_parents(&self, hash: Hash, parents: HashArray) -> Result<(), StoreError> {
         self.cached_access.write(hash, &parents)?;
         Ok(())
@@ -56,14 +61,16 @@ impl Default for MemoryRelationsStore {
     }
 }
 
-impl RelationsStore for MemoryRelationsStore {
+impl RelationsStoreReader for MemoryRelationsStore {
     fn get_parents(&self, hash: Hash) -> Result<HashArray, StoreError> {
         match self.map.borrow().get(&hash) {
             Some(parents) => Ok(HashArray::clone(parents)),
             None => Err(StoreError::KeyNotFound(hash.to_string())),
         }
     }
+}
 
+impl RelationsStore for MemoryRelationsStore {
     fn set_parents(&self, hash: Hash, parents: HashArray) -> Result<(), StoreError> {
         self.map.borrow_mut().insert(hash, parents);
         Ok(())

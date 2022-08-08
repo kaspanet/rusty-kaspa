@@ -7,8 +7,8 @@ use crate::{
         api::hash::{Hash, HashArray},
         services::reachability::ReachabilityService,
         stores::{
-            ghostdag::{GhostdagData, GhostdagStore, HashKTypeMap, KType},
-            relations::RelationsStore,
+            ghostdag::{GhostdagData, GhostdagStoreReader, HashKTypeMap, KType},
+            relations::RelationsStoreReader,
         },
         ORIGIN,
     },
@@ -17,7 +17,7 @@ use crate::{
 
 use super::ordering::*;
 
-pub struct GhostdagManager<T: GhostdagStore, S: RelationsStore, U: ReachabilityService> {
+pub struct GhostdagManager<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService> {
     genesis_hash: Hash,
     pub(super) k: KType,
     pub(super) ghostdag_store: Arc<T>,
@@ -25,7 +25,7 @@ pub struct GhostdagManager<T: GhostdagStore, S: RelationsStore, U: ReachabilityS
     pub(super) reachability_service: Arc<U>,
 }
 
-impl<T: GhostdagStore, S: RelationsStore, U: ReachabilityService> GhostdagManager<T, S, U> {
+impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService> GhostdagManager<T, S, U> {
     pub fn new(
         genesis_hash: Hash, k: KType, ghostdag_store: Arc<T>, relations_store: Arc<S>, reachability_service: Arc<U>,
     ) -> Self {
@@ -38,7 +38,7 @@ impl<T: GhostdagStore, S: RelationsStore, U: ReachabilityService> GhostdagManage
             .has(self.genesis_hash, false)
             .unwrap()
         {
-            ctx.cache_mergeset(HashArray::new(vec![]));
+            ctx.cache_mergeset(HashArray::new(Vec::new()));
             ctx.stage_ghostdag_data(Arc::new(GhostdagData::new(
                 0,
                 Uint256::from_u64(0),
