@@ -21,6 +21,7 @@ use consensus::{
     },
 };
 use crossbeam::select;
+use crossbeam_channel::{Receiver, Sender};
 use parking_lot::RwLock;
 
 mod common;
@@ -112,30 +113,46 @@ fn test_concurrent_pipeline() {
     manager.init(&mut ctx);
     if let Some(data) = ctx.staged_ghostdag_data {
         ghostdag_store.insert(ctx.hash, data).unwrap();
+        inquirer::add_block(reachability_store.write().deref_mut(), genesis, ORIGIN, &mut std::iter::empty()).unwrap();
     }
 
-    let (s, r) = unbounded();
+    let (s, r): (Sender<DagBlock>, Receiver<DagBlock>) = unbounded();
     let reachability_store_clone = reachability_store.clone();
 
-    // Spawn an asynchronous reachability processor.
+    // Spawn an asynchronous header processor.
     let handle = thread::spawn(move || loop {
         select! {
-            recv(r) -> data => {
-                let ctx: HeaderProcessingContext = data.unwrap();
-                if let Some(data) = ctx.staged_ghostdag_data {
-                    let mut staging = StagingReachabilityStore::new(reachability_store_clone.upgradable_read());
-                    // Add block to staging
-                    inquirer::add_block(
-                        &mut staging,
-                        ctx.hash,
-                        data.selected_parent,
-                        &mut ctx.cached_mergeset.unwrap().iter().cloned(),
-                    )
+        recv(r) -> data => {
+            if let Ok(block) = data {
+            // Write parents (should be a stage)
+            relations_store
+                .set_parents(block.hash, HashArray::new(block.parents))
+                .unwrap();
+            // Create context
+            let mut ctx = HeaderProcessingContext::new(block.hash);
+            // Add the block to GHOSTDAG
+            manager.add_block(&mut ctx, block.hash);
+            // Commit staged GHOSTDAG data
+            if let Some(data) = ctx.staged_ghostdag_data {
+                ghostdag_store
+                    .insert(ctx.hash, data.clone())
                     .unwrap();
-                    // Commit the staging changes
-                    staging.commit().unwrap();
-                }
+                let mut staging = StagingReachabilityStore::new(reachability_store_clone.upgradable_read());
+                // Add block to staging
+                inquirer::add_block(
+                    &mut staging,
+                    ctx.hash,
+                    data.selected_parent,
+                    &mut ctx.cached_mergeset.unwrap().iter().cloned(),
+                )
+                .unwrap();
+                // Commit the staging changes
+                staging.commit().unwrap();
             }
+        } else {
+            break;
+        }
+        }
         }
     });
 
@@ -154,32 +171,11 @@ fn test_concurrent_pipeline() {
         DagBlock::new(12.into(), vec![11.into(), 10.into()]),
     ];
 
-    let mut ctx = HeaderProcessingContext::new(genesis);
-    manager.init(&mut ctx);
-    if let Some(data) = ctx.staged_ghostdag_data.clone() {
-        ghostdag_store.insert(ctx.hash, data).unwrap();
-        s.send(ctx).unwrap();
-    }
-
     for block in blocks.iter().skip(1).cloned() {
-        // Write parents (should be a stage)
-        relations_store
-            .set_parents(block.hash, HashArray::new(block.parents))
-            .unwrap();
-        // Create context
-        let mut ctx = HeaderProcessingContext::new(block.hash);
-        // Add the bock to GHOSTDAG
-        manager.add_block(&mut ctx, block.hash);
-        // Commit staged GHOSTDAG data
-        if let Some(data) = ctx.staged_ghostdag_data.clone() {
-            ghostdag_store
-                .insert(ctx.hash, data.clone())
-                .unwrap();
-        }
-        // Send to reachability processor
-        s.send(ctx).unwrap();
+        // Send to header processor
+        s.send(block).unwrap();
     }
-
+    drop(s);
     handle.join().unwrap();
 
     // Clone with a new cache in order to verify correct writes to the DB itself
