@@ -1,7 +1,9 @@
 use super::{
     extensions::ReachabilityStoreIntervalExtensions, inquirer::get_next_chain_ancestor_unchecked, interval::Interval, *,
 };
-use crate::model::{api::hash::Hash, stores::reachability::ReachabilityStore};
+use crate::model::stores::reachability::ReachabilityStore;
+use consensus_core::blockhash::BlockHashExtensions;
+use hashes::Hash;
 use std::collections::{HashMap, VecDeque};
 
 /// A struct used during reindex operations. It represents a temporary context
@@ -39,7 +41,7 @@ impl<'a, T: ReachabilityStore + ?Sized> ReindexOperationContext<'a, T> {
 
             let parent = self.store.get_parent(current)?;
 
-            if parent.is_zero() {
+            if parent.is_none() {
                 // If we ended up here it means that there are more
                 // than 2^64 blocks, which shouldn't ever happen.
                 return Err(ReachabilityError::DataOverflow(
@@ -523,6 +525,7 @@ mod tests {
         model::stores::reachability::{MemoryReachabilityStore, ReachabilityStoreReader},
         processes::reachability::interval::Interval,
     };
+    use consensus_core::blockhash;
 
     #[test]
     fn test_count_subtrees() {
@@ -531,7 +534,7 @@ mod tests {
         // Arrange
         let root: Hash = 1.into();
         StoreBuilder::new(&mut store)
-            .add_block(root, Hash::ZERO)
+            .add_block(root, blockhash::NONE)
             .add_block(2.into(), root)
             .add_block(3.into(), 2.into())
             .add_block(4.into(), 2.into())

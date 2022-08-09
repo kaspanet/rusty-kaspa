@@ -1,3 +1,4 @@
+use consensus_core::blockhash::BlockHashes;
 use parking_lot::RwLockUpgradableReadGuard;
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
@@ -7,18 +8,16 @@ use std::{
 };
 
 use super::{caching::CachedDbAccess, caching::CachedDbItem, errors::StoreError, DB};
-use crate::{
-    model::api::hash::{Hash, HashArray},
-    processes::reachability::interval::Interval,
-};
+use crate::processes::reachability::interval::Interval;
+use hashes::Hash;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct ReachabilityData {
-    pub children: HashArray,
+    pub children: BlockHashes,
     pub parent: Hash,
     pub interval: Interval,
     pub height: u64,
-    pub future_covering_set: HashArray,
+    pub future_covering_set: BlockHashes,
 }
 
 impl ReachabilityData {
@@ -31,8 +30,8 @@ pub trait ReachabilityStoreReader {
     fn has(&self, hash: Hash) -> Result<bool, StoreError>;
     fn get_interval(&self, hash: Hash) -> Result<Interval, StoreError>;
     fn get_parent(&self, hash: Hash) -> Result<Hash, StoreError>;
-    fn get_children(&self, hash: Hash) -> Result<HashArray, StoreError>;
-    fn get_future_covering_set(&self, hash: Hash) -> Result<HashArray, StoreError>;
+    fn get_children(&self, hash: Hash) -> Result<BlockHashes, StoreError>;
+    fn get_future_covering_set(&self, hash: Hash) -> Result<BlockHashes, StoreError>;
 }
 pub trait ReachabilityStore: ReachabilityStoreReader {
     fn insert(&mut self, hash: Hash, parent: Hash, interval: Interval, height: u64) -> Result<(), StoreError>;
@@ -135,11 +134,11 @@ impl ReachabilityStoreReader for DbReachabilityStore {
         Ok(self.cached_access.read(hash)?.parent)
     }
 
-    fn get_children(&self, hash: Hash) -> Result<HashArray, StoreError> {
+    fn get_children(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
         Ok(Arc::clone(&self.cached_access.read(hash)?.children))
     }
 
-    fn get_future_covering_set(&self, hash: Hash) -> Result<HashArray, StoreError> {
+    fn get_future_covering_set(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
         Ok(Arc::clone(&self.cached_access.read(hash)?.future_covering_set))
     }
 }
@@ -270,19 +269,19 @@ impl ReachabilityStoreReader for StagingReachabilityStore<'_> {
         }
     }
 
-    fn get_children(&self, hash: Hash) -> Result<HashArray, StoreError> {
+    fn get_children(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
         if let Some(data) = self.staging_writes.get(&hash) {
-            Ok(HashArray::clone(&data.children))
+            Ok(BlockHashes::clone(&data.children))
         } else {
-            Ok(HashArray::clone(&self.store_read.cached_access.read(hash)?.children))
+            Ok(BlockHashes::clone(&self.store_read.cached_access.read(hash)?.children))
         }
     }
 
-    fn get_future_covering_set(&self, hash: Hash) -> Result<HashArray, StoreError> {
+    fn get_future_covering_set(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
         if let Some(data) = self.staging_writes.get(&hash) {
-            Ok(HashArray::clone(&data.future_covering_set))
+            Ok(BlockHashes::clone(&data.future_covering_set))
         } else {
-            Ok(HashArray::clone(
+            Ok(BlockHashes::clone(
                 &self
                     .store_read
                     .cached_access
@@ -382,11 +381,11 @@ impl ReachabilityStoreReader for MemoryReachabilityStore {
         Ok(self.get_data(hash)?.parent)
     }
 
-    fn get_children(&self, hash: Hash) -> Result<HashArray, StoreError> {
+    fn get_children(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
         Ok(Arc::clone(&self.get_data(hash)?.children))
     }
 
-    fn get_future_covering_set(&self, hash: Hash) -> Result<HashArray, StoreError> {
+    fn get_future_covering_set(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
         Ok(Arc::clone(&self.get_data(hash)?.future_covering_set))
     }
 }

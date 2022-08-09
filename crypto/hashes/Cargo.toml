@@ -11,6 +11,7 @@ no-asm = ["keccak"]
 
 [dependencies]
 hex = "0.4"
+serde = "1.0"
 blake2b_simd = "1"
 sha2 = "0.10"
 once_cell = "1"

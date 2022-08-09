@@ -1,9 +1,9 @@
 use std::{cmp::Ordering, collections::HashSet};
 
+use hashes::Hash;
 use misc::uint256::Uint256;
 
 use crate::model::{
-    api::hash::Hash,
     services::reachability::ReachabilityService,
     stores::{ghostdag::GhostdagStoreReader, relations::RelationsStoreReader},
 };

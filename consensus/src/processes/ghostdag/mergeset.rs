@@ -1,6 +1,8 @@
 use std::collections::{HashSet, VecDeque};
 
-use crate::model::api::hash::{Hash, HashArray};
+use consensus_core::blockhash::BlockHashes;
+use hashes::Hash;
+
 use crate::model::services::reachability::ReachabilityService;
 use crate::model::stores::ghostdag::GhostdagStoreReader;
 use crate::model::stores::relations::RelationsStoreReader;
@@ -8,7 +10,7 @@ use crate::model::stores::relations::RelationsStoreReader;
 use super::protocol::GhostdagManager;
 
 impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService> GhostdagManager<T, S, U> {
-    pub fn ordered_mergeset_without_selected_parent(&self, selected_parent: Hash, parents: &HashArray) -> Vec<Hash> {
+    pub fn ordered_mergeset_without_selected_parent(&self, selected_parent: Hash, parents: &BlockHashes) -> Vec<Hash> {
         let mut queue: VecDeque<Hash> = parents
             .iter()
             .cloned()

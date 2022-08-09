@@ -2,14 +2,12 @@ use std::{ops::DerefMut, sync::Arc, thread};
 
 use consensus::{
     model::{
-        api::hash::{Hash, HashArray},
         services::reachability::MTReachabilityService,
         stores::{
             ghostdag::{DbGhostdagStore, GhostdagStore, KType},
             reachability::{DbReachabilityStore, StagingReachabilityStore},
             relations::{DbRelationsStore, RelationsStore},
         },
-        ORIGIN,
     },
     pipeline::HeaderProcessingContext,
     processes::{
@@ -20,8 +18,10 @@ use consensus::{
         },
     },
 };
+use consensus_core::blockhash::{self, BlockHashes};
 use crossbeam::select;
 use crossbeam_channel::{unbounded, Receiver, Sender};
+use hashes::Hash;
 use parking_lot::RwLock;
 
 mod common;
@@ -36,7 +36,7 @@ fn test_reachability_staging() {
     // Act
     DagBuilder::new(&mut staging)
         .init()
-        .add_block(DagBlock::new(1.into(), vec![Hash::ORIGIN]))
+        .add_block(DagBlock::new(1.into(), vec![blockhash::ORIGIN]))
         .add_block(DagBlock::new(2.into(), vec![1.into()]))
         .add_block(DagBlock::new(3.into(), vec![1.into()]))
         .add_block(DagBlock::new(4.into(), vec![2.into(), 3.into()]))
@@ -56,7 +56,9 @@ fn test_reachability_staging() {
     let store = store.read().clone_with_new_cache(10000);
 
     // Assert intervals
-    store.validate_intervals(Hash::ORIGIN).unwrap();
+    store
+        .validate_intervals(blockhash::ORIGIN)
+        .unwrap();
 
     // Assert genesis
     for i in 2u64..=12 {
@@ -169,7 +171,7 @@ impl HeaderProcessor {
     fn process_header(self: &Arc<HeaderProcessor>, header: &Header) {
         // Write parents (TODO: should be a staged and batched)
         self.relations_store
-            .set_parents(header.hash, HashArray::new(header.parents.clone()))
+            .set_parents(header.hash, BlockHashes::new(header.parents.clone()))
             .unwrap();
 
         // Create processing context
@@ -212,7 +214,8 @@ impl HeaderProcessor {
                 .unwrap();
             let mut write_guard = self.reachability_store.write();
             inquirer::init(write_guard.deref_mut()).unwrap();
-            inquirer::add_block(write_guard.deref_mut(), self.genesis_hash, ORIGIN, &mut std::iter::empty()).unwrap();
+            inquirer::add_block(write_guard.deref_mut(), self.genesis_hash, blockhash::ORIGIN, &mut std::iter::empty())
+                .unwrap();
         }
     }
 }
@@ -269,7 +272,9 @@ fn test_concurrent_pipeline() {
         .clone_with_new_cache(10000);
 
     // Assert intervals
-    store.validate_intervals(Hash::ORIGIN).unwrap();
+    store
+        .validate_intervals(blockhash::ORIGIN)
+        .unwrap();
 
     // Assert genesis
     for i in 2u64..=12 {

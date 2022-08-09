@@ -1,9 +1,6 @@
-use crate::model::{
-    api::hash::Hash,
-    stores::{errors::StoreResult, reachability::ReachabilityStoreReader},
-};
-
 use super::interval::Interval;
+use crate::model::stores::{errors::StoreResult, reachability::ReachabilityStoreReader};
+use hashes::Hash;
 
 pub(super) trait ReachabilityStoreIntervalExtensions {
     fn interval_children_capacity(&self, block: Hash) -> StoreResult<Interval>;

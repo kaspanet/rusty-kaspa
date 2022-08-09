@@ -1,16 +1,16 @@
 use std::{collections::HashMap, sync::Arc};
 
+use consensus_core::blockhash::{self, BlockHashes};
+use hashes::Hash;
 use misc::uint256::Uint256;
 
 use crate::{
     model::{
-        api::hash::{Hash, HashArray},
         services::reachability::ReachabilityService,
         stores::{
             ghostdag::{GhostdagData, GhostdagStoreReader, HashKTypeMap, KType},
             relations::RelationsStoreReader,
         },
-        ORIGIN,
     },
     pipeline::HeaderProcessingContext,
 };
@@ -38,19 +38,19 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService> Gh
             .has(self.genesis_hash, false)
             .unwrap()
         {
-            ctx.cache_mergeset(HashArray::new(Vec::new()));
+            ctx.cache_mergeset(BlockHashes::new(Vec::new()));
             ctx.stage_ghostdag_data(Arc::new(GhostdagData::new(
                 0,
                 Uint256::from_u64(0),
-                ORIGIN,
-                HashArray::new(Vec::new()),
-                HashArray::new(Vec::new()),
+                blockhash::ORIGIN,
+                BlockHashes::new(Vec::new()),
+                BlockHashes::new(Vec::new()),
                 HashKTypeMap::new(HashMap::new()),
             )));
         }
     }
 
-    fn find_selected_parent(&self, parents: &HashArray) -> Hash {
+    fn find_selected_parent(&self, parents: &BlockHashes) -> Hash {
         parents
             .iter()
             .map(|parent| SortableBlock {
@@ -192,7 +192,7 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService> Gh
                 .get_selected_parent(current_selected_parent, is_trusted_data)
                 .unwrap();
 
-            if current_selected_parent == ORIGIN {
+            if current_selected_parent == blockhash::ORIGIN {
                 is_trusted_data = true;
                 current_blues_anticone_sizes = self
                     .ghostdag_store

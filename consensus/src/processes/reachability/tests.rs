@@ -3,15 +3,14 @@
 //!
 use super::{inquirer::*, tree::*};
 use crate::{
-    model::{
-        api::hash::Hash,
-        stores::{
-            errors::StoreError,
-            reachability::{ReachabilityStore, ReachabilityStoreReader},
-        },
+    model::stores::{
+        errors::StoreError,
+        reachability::{ReachabilityStore, ReachabilityStoreReader},
     },
     processes::reachability::interval::Interval,
 };
+use consensus_core::blockhash::BlockHashExtensions;
+use hashes::Hash;
 use std::collections::{HashMap, HashSet, VecDeque};
 use thiserror::Error;
 
@@ -26,7 +25,7 @@ impl<'a, T: ReachabilityStore + ?Sized> StoreBuilder<'a, T> {
     }
 
     pub fn add_block(&mut self, hash: Hash, parent: Hash) -> &mut Self {
-        let parent_height = if !parent.is_zero() { self.store.append_child(parent, hash).unwrap() } else { 0 };
+        let parent_height = if !parent.is_none() { self.store.append_child(parent, hash).unwrap() } else { 0 };
         self.store
             .insert(hash, parent, Interval::empty(), parent_height + 1)
             .unwrap();

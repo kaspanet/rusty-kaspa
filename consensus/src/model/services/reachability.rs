@@ -4,8 +4,8 @@ use std::sync::Arc;
 use parking_lot::RwLock;
 
 use crate::model::stores::reachability::ReachabilityStoreReader;
-use crate::model::Hash;
 use crate::processes::reachability::inquirer;
+use hashes::Hash;
 
 pub trait ReachabilityService {
     fn is_chain_ancestor_of(&self, this: Hash, queried: Hash) -> bool;

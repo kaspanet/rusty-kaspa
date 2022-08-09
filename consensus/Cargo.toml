@@ -21,6 +21,8 @@ parking_lot = "0.12.1"
 crossbeam-channel="0.5"
 crossbeam = "*"
 
+hashes = {path="../crypto/hashes"}
+consensus-core = {path="./core"}
 kaspa-core = {path="../core"}
 misc = {path="../misc"}
 

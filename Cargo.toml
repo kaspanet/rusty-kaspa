@@ -2,6 +2,7 @@
 members = [
     "core",
     "wallet",
+    "consensus/core",
     "consensus",
     "kaspad",
     "wasm",

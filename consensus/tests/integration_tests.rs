@@ -2,16 +2,16 @@
 //! Integration tests
 //!
 
-use consensus::model::api::hash::{Hash, HashArray};
 use consensus::model::services::reachability::MTReachabilityService;
 use consensus::model::stores::ghostdag::{DbGhostdagStore, GhostdagStore, GhostdagStoreReader, KType as GhostdagKType};
 use consensus::model::stores::reachability::DbReachabilityStore;
 use consensus::model::stores::relations::{DbRelationsStore, RelationsStore};
-use consensus::model::ORIGIN;
 use consensus::pipeline::HeaderProcessingContext;
 use consensus::processes::ghostdag::protocol::GhostdagManager;
 use consensus::processes::reachability::inquirer;
 use consensus::processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions};
+use consensus_core::blockhash::{self, BlockHashes};
+use hashes::Hash;
 
 use flate2::read::GzDecoder;
 use parking_lot::RwLock;
@@ -60,7 +60,7 @@ fn reachability_stretch_test(use_attack_json: bool) {
     let decoder = GzDecoder::new(reader);
     let json_blocks: Vec<JsonBlock> = serde_json::from_reader(decoder).unwrap();
 
-    let root = ORIGIN;
+    let root = blockhash::ORIGIN;
     let mut map = HashMap::<Hash, DagBlock>::new();
     let mut blocks = Vec::<Hash>::new();
 
@@ -234,14 +234,14 @@ fn ghostdag_test() {
         {
             let mut write_guard = reachability_store.write();
             inquirer::init(write_guard.deref_mut()).unwrap();
-            inquirer::add_block(write_guard.deref_mut(), genesis, ORIGIN, &mut std::iter::empty()).unwrap();
+            inquirer::add_block(write_guard.deref_mut(), genesis, blockhash::ORIGIN, &mut std::iter::empty()).unwrap();
         }
 
         for block in &test.blocks {
             let block_id = string_to_hash(&block.id);
             let parents = strings_to_hashes(&block.parents);
             relations_store
-                .set_parents(block_id, HashArray::clone(&parents))
+                .set_parents(block_id, BlockHashes::clone(&parents))
                 .unwrap();
         }
 
@@ -310,13 +310,13 @@ fn ghostdag_test() {
 fn string_to_hash(s: &str) -> Hash {
     let mut data = s.as_bytes().to_vec();
     data.resize(32, 0);
-    Hash::new(&data)
+    Hash::from_slice(&data)
 }
 
-fn strings_to_hashes(strings: &Vec<String>) -> HashArray {
+fn strings_to_hashes(strings: &Vec<String>) -> BlockHashes {
     let mut arr = Vec::with_capacity(strings.len());
     for string in strings {
         arr.push(string_to_hash(string));
     }
-    HashArray::new(arr)
+    BlockHashes::new(arr)
 }

@@ -1,13 +1,14 @@
 use super::{caching::CachedDbAccess, errors::StoreError, DB};
-use crate::model::api::hash::{Hash, HashArray};
+use consensus_core::blockhash::BlockHashes;
+use hashes::Hash;
 use std::{cell::RefCell, collections::HashMap, sync::Arc};
 
 pub trait RelationsStoreReader {
-    fn get_parents(&self, hash: Hash) -> Result<HashArray, StoreError>;
+    fn get_parents(&self, hash: Hash) -> Result<BlockHashes, StoreError>;
 }
 
 pub trait RelationsStore: RelationsStoreReader {
-    fn set_parents(&self, hash: Hash, parents: HashArray) -> Result<(), StoreError>;
+    fn set_parents(&self, hash: Hash, parents: BlockHashes) -> Result<(), StoreError>;
 }
 
 const STORE_PREFIX: &[u8] = b"block-relations";
@@ -33,20 +34,20 @@ impl DbRelationsStore {
 }
 
 impl RelationsStoreReader for DbRelationsStore {
-    fn get_parents(&self, hash: Hash) -> Result<HashArray, StoreError> {
+    fn get_parents(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
         Ok(Arc::clone(&self.cached_access.read(hash)?))
     }
 }
 
 impl RelationsStore for DbRelationsStore {
-    fn set_parents(&self, hash: Hash, parents: HashArray) -> Result<(), StoreError> {
+    fn set_parents(&self, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
         self.cached_access.write(hash, &parents)?;
         Ok(())
     }
 }
 
 pub struct MemoryRelationsStore {
-    map: RefCell<HashMap<Hash, HashArray>>,
+    map: RefCell<HashMap<Hash, BlockHashes>>,
 }
 
 impl MemoryRelationsStore {
@@ -62,16 +63,16 @@ impl Default for MemoryRelationsStore {
 }
 
 impl RelationsStoreReader for MemoryRelationsStore {
-    fn get_parents(&self, hash: Hash) -> Result<HashArray, StoreError> {
+    fn get_parents(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
         match self.map.borrow().get(&hash) {
-            Some(parents) => Ok(HashArray::clone(parents)),
+            Some(parents) => Ok(BlockHashes::clone(parents)),
             None => Err(StoreError::KeyNotFound(hash.to_string())),
         }
     }
 }
 
 impl RelationsStore for MemoryRelationsStore {
-    fn set_parents(&self, hash: Hash, parents: HashArray) -> Result<(), StoreError> {
+    fn set_parents(&self, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
         self.map.borrow_mut().insert(hash, parents);
         Ok(())
     }
