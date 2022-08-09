@@ -50,7 +50,7 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService> Gh
         }
     }
 
-    fn find_selected_parent(&self, parents: &BlockHashes) -> Hash {
+    fn find_selected_parent(&self, parents: &[Hash]) -> Hash {
         parents
             .iter()
             .map(|parent| SortableBlock {
@@ -66,15 +66,15 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService> Gh
     }
 
     pub fn add_block(&self, ctx: &mut HeaderProcessingContext, block: Hash) {
-        let parents = self.relations_store.get_parents(block).unwrap();
-        assert!(parents.len() > 0, "genesis must be added via a call to init");
+        let parents = &ctx.header.parents;
+        assert!(!parents.is_empty(), "genesis must be added via a call to init");
 
         // Run the GHOSTDAG parent selection algorithm
-        let selected_parent = self.find_selected_parent(&parents);
+        let selected_parent = self.find_selected_parent(parents);
         // Initialize new GHOSTDAG block data with the selected parent
         let mut new_block_data = Arc::new(GhostdagData::new_with_selected_parent(selected_parent, self.k));
         // Get the mergeset in consensus-agreed topological order (topological here means forward in time from blocks to children)
-        let ordered_mergeset = self.ordered_mergeset_without_selected_parent(selected_parent, &parents);
+        let ordered_mergeset = self.ordered_mergeset_without_selected_parent(selected_parent, parents);
 
         for blue_candidate in ordered_mergeset.iter().cloned() {
             let (is_blue, candidate_blue_anticone_size, candidate_blues_anticone_sizes) =

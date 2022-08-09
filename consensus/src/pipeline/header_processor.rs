@@ -5,6 +5,7 @@ use crate::{
             ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStore, KType},
             reachability::{DbReachabilityStore, StagingReachabilityStore},
             relations::{DbRelationsStore, RelationsStore},
+            DB,
         },
     },
     processes::{ghostdag::protocol::GhostdagManager, reachability::inquirer},
@@ -18,20 +19,19 @@ use crossbeam::select;
 use crossbeam_channel::Receiver;
 use hashes::Hash;
 use parking_lot::RwLock;
+use rocksdb::WriteBatch;
 use std::{ops::DerefMut, sync::Arc};
 
-pub struct HeaderProcessingContext {
+pub struct HeaderProcessingContext<'a> {
     pub hash: Hash,
-    // header: Header,
-    // cached_parents: Option<HashArray>,
-    // cached_selected_parent: Option<Hash>,
+    pub header: &'a Header,
     pub cached_mergeset: Option<BlockHashes>,
     pub staged_ghostdag_data: Option<Arc<GhostdagData>>,
 }
 
-impl HeaderProcessingContext {
-    pub fn new(hash: Hash) -> Self {
-        Self { hash, cached_mergeset: None, staged_ghostdag_data: None }
+impl<'a> HeaderProcessingContext<'a> {
+    pub fn new(hash: Hash, header: &'a Header) -> Self {
+        Self { hash, header, cached_mergeset: None, staged_ghostdag_data: None }
     }
 
     pub fn cache_mergeset(&mut self, mergeset: BlockHashes) {
@@ -52,6 +52,9 @@ pub struct HeaderProcessor {
     genesis_hash: Hash,
     // ghostdag_k: KType,
 
+    // DB
+    db: Arc<DB>,
+
     // Stores
     relations_store: Arc<RwLock<DbRelationsStore>>,
     reachability_store: Arc<RwLock<DbReachabilityStore>>,
@@ -68,7 +71,7 @@ pub struct HeaderProcessor {
 impl HeaderProcessor {
     pub fn new(
         receiver: Receiver<Arc<Block>>, /*, sender: Sender<Arc<Block>>*/
-        genesis_hash: Hash, ghostdag_k: KType, relations_store: Arc<RwLock<DbRelationsStore>>,
+        genesis_hash: Hash, ghostdag_k: KType, db: Arc<DB>, relations_store: Arc<RwLock<DbRelationsStore>>,
         reachability_store: Arc<RwLock<DbReachabilityStore>>, ghostdag_store: Arc<DbGhostdagStore>,
     ) -> Self {
         Self {
@@ -76,6 +79,7 @@ impl HeaderProcessor {
             // sender,
             genesis_hash,
             // ghostdag_k,
+            db,
             relations_store: relations_store.clone(),
             reachability_store: reachability_store.clone(),
             ghostdag_store: ghostdag_store.clone(),
@@ -109,24 +113,14 @@ impl HeaderProcessor {
     }
 
     fn process_header(self: &Arc<HeaderProcessor>, header: &Header) {
-        // Write parents (TODO: should be a staged and batched)
-        self.relations_store
-            .write()
-            .insert(header.hash, BlockHashes::new(header.parents.clone()))
-            .unwrap();
-
         // Create processing context
-        let mut ctx = HeaderProcessingContext::new(header.hash);
+        let mut ctx = HeaderProcessingContext::new(header.hash, header);
 
-        // Add the block to GHOSTDAG
+        // Run GHOSTDAG for the new header
         self.ghostdag_manager
             .add_block(&mut ctx, header.hash);
 
-        // Commit staged GHOSTDAG data (TODO: batch)
         let data = ctx.staged_ghostdag_data.unwrap();
-        self.ghostdag_store
-            .insert(ctx.hash, data.clone())
-            .unwrap();
 
         // Create staging reachability store
         let mut staging = StagingReachabilityStore::new(self.reachability_store.upgradable_read());
@@ -138,15 +132,34 @@ impl HeaderProcessor {
             &mut ctx.cached_mergeset.unwrap().iter().cloned(),
         )
         .unwrap();
-        // Commit the staging changes
-        staging.commit().unwrap();
+
+        // Create a DB batch writer
+        let mut batch = WriteBatch::default();
+
+        // Write block relations
+        let mut relations_write = self.relations_store.write(); // Note we lock until the batch is written
+        relations_write
+            .insert_batch(&mut batch, header.hash, BlockHashes::new(header.parents.clone()))
+            .unwrap();
+
+        // Write GHOSTDAG data
+        // Note: GHOSTDAG data is append-only and requires no lock
+        self.ghostdag_store
+            .insert_batch(&mut batch, ctx.hash, data)
+            .unwrap();
+
+        // Write reachability data
+        let write_guard = staging.commit(&mut batch).unwrap(); // Note we hold the lock until the batch is written
+
+        // Flush the batch to the DB
+        self.db.write(batch).unwrap();
     }
 
     pub fn insert_genesis_if_needed(self: &Arc<HeaderProcessor>, header: &Header) {
         assert_eq!(header.hash, self.genesis_hash);
         assert_eq!(header.parents.len(), 0);
 
-        let mut ctx = HeaderProcessingContext::new(self.genesis_hash);
+        let mut ctx = HeaderProcessingContext::new(self.genesis_hash, header);
         self.ghostdag_manager.init(&mut ctx);
 
         if let Some(data) = ctx.staged_ghostdag_data {

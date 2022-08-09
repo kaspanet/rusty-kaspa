@@ -12,6 +12,7 @@ use consensus::processes::ghostdag::protocol::GhostdagManager;
 use consensus::processes::reachability::inquirer;
 use consensus::processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions};
 use consensus_core::blockhash::{self, BlockHashes};
+use consensus_core::header::Header;
 use hashes::Hash;
 
 use flate2::read::GzDecoder;
@@ -231,6 +232,7 @@ fn ghostdag_test() {
         let relations_store = Arc::new(RwLock::new(DbRelationsStore::new(db, 100000)));
 
         let genesis: Hash = string_to_hash(&test.genesis_id);
+        let genesis_header = Header::new(genesis, Vec::new());
 
         {
             let mut write_guard = reachability_store.write();
@@ -247,7 +249,7 @@ fn ghostdag_test() {
             let parents = strings_to_hashes(&block.parents);
             relations_store
                 .write()
-                .insert(block_id, BlockHashes::clone(&parents))
+                .insert(block_id, BlockHashes::new(parents))
                 .unwrap();
         }
 
@@ -259,7 +261,7 @@ fn ghostdag_test() {
             Arc::new(MTReachabilityService::new(reachability_store.clone())),
         );
 
-        let mut ctx = HeaderProcessingContext::new(genesis);
+        let mut ctx = HeaderProcessingContext::new(genesis, &genesis_header);
         manager.init(&mut ctx);
         if let Some(data) = ctx.staged_ghostdag_data {
             ghostdag_store.insert(ctx.hash, data).unwrap();
@@ -268,8 +270,9 @@ fn ghostdag_test() {
         for block in test.blocks {
             println!("Processing block {}", block.id);
             let block_id = string_to_hash(&block.id);
+            let block_header = Header::new(block_id, strings_to_hashes(&block.parents));
 
-            let mut ctx = HeaderProcessingContext::new(block_id);
+            let mut ctx = HeaderProcessingContext::new(block_id, &block_header);
             manager.add_block(&mut ctx, block_id);
             if let Some(data) = ctx.staged_ghostdag_data {
                 ghostdag_store
@@ -294,14 +297,14 @@ fn ghostdag_test() {
             );
 
             assert_eq!(
-                output_ghostdag_data.mergeset_reds,
+                output_ghostdag_data.mergeset_reds.to_vec(),
                 strings_to_hashes(&block.mergeset_reds),
                 "mergeset reds assertion failed for {}",
                 block.id,
             );
 
             assert_eq!(
-                output_ghostdag_data.mergeset_blues,
+                output_ghostdag_data.mergeset_blues.to_vec(),
                 strings_to_hashes(&block.mergeset_blues),
                 "mergeset blues assertion failed for {:?} with SP {:?}",
                 string_to_hash(&block.id),
@@ -319,10 +322,10 @@ fn string_to_hash(s: &str) -> Hash {
     Hash::from_slice(&data)
 }
 
-fn strings_to_hashes(strings: &Vec<String>) -> BlockHashes {
-    let mut arr = Vec::with_capacity(strings.len());
+fn strings_to_hashes(strings: &Vec<String>) -> Vec<Hash> {
+    let mut vec = Vec::with_capacity(strings.len());
     for string in strings {
-        arr.push(string_to_hash(string));
+        vec.push(string_to_hash(string));
     }
-    BlockHashes::new(arr)
+    vec
 }

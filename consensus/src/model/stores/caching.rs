@@ -94,7 +94,7 @@ where
         Ok(())
     }
 
-    pub fn write_batch(&mut self, batch: &mut WriteBatch, key: TKey, data: &Arc<TData>) -> Result<(), StoreError>
+    pub fn write_batch(&self, batch: &mut WriteBatch, key: TKey, data: &Arc<TData>) -> Result<(), StoreError>
     where
         TKey: Copy + AsRef<[u8]>,
         TData: Serialize,

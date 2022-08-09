@@ -2,6 +2,7 @@ use super::{caching::CachedDbAccess, errors::StoreError, DB};
 use consensus_core::blockhash::BlockHashes;
 use hashes::Hash;
 use misc::uint256::Uint256;
+use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
 use std::{cell::RefCell, collections::HashMap, sync::Arc};
 
@@ -120,6 +121,15 @@ impl DbGhostdagStore {
             raw_db: Arc::clone(&self.raw_db),
             cached_access: CachedDbAccess::new(Arc::clone(&self.raw_db), cache_size, STORE_PREFIX),
         }
+    }
+
+    pub fn insert_batch(&self, batch: &mut WriteBatch, hash: Hash, data: Arc<GhostdagData>) -> Result<(), StoreError> {
+        if self.cached_access.has(hash)? {
+            return Err(StoreError::KeyAlreadyExists(hash.to_string()));
+        }
+        self.cached_access
+            .write_batch(batch, hash, &data)?;
+        Ok(())
     }
 }
 

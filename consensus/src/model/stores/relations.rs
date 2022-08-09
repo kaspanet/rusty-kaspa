@@ -1,6 +1,7 @@
 use super::{caching::CachedDbAccess, errors::StoreError, DB};
 use consensus_core::blockhash::BlockHashes;
 use hashes::Hash;
+use rocksdb::WriteBatch;
 use std::{
     collections::{hash_map::Entry::Vacant, HashMap},
     sync::Arc,
@@ -44,6 +45,30 @@ impl DbRelationsStore {
             children_access: CachedDbAccess::new(Arc::clone(&self.raw_db), cache_size, CHILDREN_PREFIX),
         }
     }
+
+    pub fn insert_batch(&mut self, batch: &mut WriteBatch, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
+        if self.has(hash)? {
+            return Err(StoreError::KeyAlreadyExists(hash.to_string()));
+        }
+
+        // Insert a new entry for `hash`
+        self.parents_access
+            .write_batch(batch, hash, &parents)?;
+
+        // The new hash has no children yet
+        self.children_access
+            .write_batch(batch, hash, &BlockHashes::new(Vec::new()))?;
+
+        // Update `children` for each parent
+        for parent in parents.iter().cloned() {
+            let mut children = (*self.get_children(parent)?).clone();
+            children.push(hash);
+            self.children_access
+                .write_batch(batch, parent, &BlockHashes::new(children))?;
+        }
+
+        Ok(())
+    }
 }
 
 impl RelationsStoreReader for DbRelationsStore {
@@ -66,6 +91,7 @@ impl RelationsStoreReader for DbRelationsStore {
 }
 
 impl RelationsStore for DbRelationsStore {
+    /// See `insert_batch` as well
     fn insert(&mut self, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
         if self.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
@@ -147,6 +173,51 @@ impl RelationsStore for MemoryRelationsStore {
             Ok(())
         } else {
             Err(StoreError::KeyAlreadyExists(hash.to_string()))
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_memory_relations_store() {
+        test_relations_store(MemoryRelationsStore::new());
+    }
+
+    #[test]
+    fn test_db_relations_store() {
+        let db_tempdir = tempfile::tempdir().unwrap();
+        let db = Arc::new(DB::open_default(db_tempdir.path().to_owned().to_str().unwrap()).unwrap());
+        test_relations_store(DbRelationsStore::new(db, 2));
+    }
+
+    fn test_relations_store<T: RelationsStore>(mut store: T) {
+        let parents = [(1, vec![]), (2, vec![1]), (3, vec![1]), (4, vec![2, 3]), (5, vec![1, 4])];
+        for (i, vec) in parents.iter().cloned() {
+            store
+                .insert(i.into(), BlockHashes::new(vec.iter().cloned().map(|j| j.into()).collect()))
+                .unwrap();
+        }
+
+        let expected_children = [(1, vec![2, 3, 5]), (2, vec![4]), (3, vec![4]), (4, vec![5]), (5, vec![])];
+        for (i, vec) in expected_children {
+            assert!(store
+                .get_children(i.into())
+                .unwrap()
+                .iter()
+                .cloned()
+                .eq(vec.iter().cloned().map(|j| j.into())));
+        }
+
+        for (i, vec) in parents {
+            assert!(store
+                .get_parents(i.into())
+                .unwrap()
+                .iter()
+                .cloned()
+                .eq(vec.iter().cloned().map(|j| j.into())));
         }
     }
 }

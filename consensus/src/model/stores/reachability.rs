@@ -1,5 +1,5 @@
 use consensus_core::blockhash::BlockHashes;
-use parking_lot::RwLockUpgradableReadGuard;
+use parking_lot::{RwLockUpgradableReadGuard, RwLockWriteGuard};
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -154,22 +154,20 @@ impl<'a> StagingReachabilityStore<'a> {
         Self { store_read, staging_writes: HashMap::new(), staging_reindex_root: None }
     }
 
-    pub fn commit(self) -> Result<(), StoreError> {
+    pub fn commit(self, batch: &mut WriteBatch) -> Result<RwLockWriteGuard<'a, DbReachabilityStore>, StoreError> {
         let mut store_write = RwLockUpgradableReadGuard::upgrade(self.store_read);
-        let mut batch = WriteBatch::default();
         for (k, v) in self.staging_writes {
             let data = Arc::new(v);
             store_write
                 .cached_access
-                .write_batch(&mut batch, k, &data)?
+                .write_batch(batch, k, &data)?
         }
         if let Some(root) = self.staging_reindex_root {
             store_write
                 .reindex_root
-                .write_batch(&mut batch, &root)?;
+                .write_batch(batch, &root)?;
         }
-        store_write.raw_db.write(batch)?;
-        Ok(())
+        Ok(store_write)
     }
 }
 

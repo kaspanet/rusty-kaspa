@@ -11,6 +11,7 @@ use consensus_core::{block::Block, blockhash, header::Header};
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use hashes::Hash;
 use parking_lot::RwLock;
+use rocksdb::WriteBatch;
 use std::{sync::Arc, thread};
 
 mod common;
@@ -19,7 +20,7 @@ mod common;
 fn test_reachability_staging() {
     // Arrange
     let (_tempdir, db) = common::create_temp_db();
-    let store = RwLock::new(DbReachabilityStore::new(db, 10000));
+    let store = RwLock::new(DbReachabilityStore::new(db.clone(), 10000));
     let mut staging = StagingReachabilityStore::new(store.upgradable_read());
 
     // Act
@@ -39,7 +40,11 @@ fn test_reachability_staging() {
         .add_block(DagBlock::new(12.into(), vec![11.into(), 10.into()]));
 
     // Commit the staging changes
-    staging.commit().unwrap();
+    let mut batch = WriteBatch::default();
+    {
+        let _write_guard = staging.commit(&mut batch).unwrap();
+        db.write(batch).unwrap();
+    }
 
     // Clone with a new cache in order to verify correct writes to the DB itself
     let store = store.read().clone_with_new_cache(10000);
@@ -81,7 +86,7 @@ fn test_concurrent_pipeline() {
 
     let relations_store = Arc::new(RwLock::new(DbRelationsStore::new(db.clone(), 100000)));
     let reachability_store = Arc::new(RwLock::new(DbReachabilityStore::new(db.clone(), 100000)));
-    let ghostdag_store = Arc::new(DbGhostdagStore::new(db, 100000));
+    let ghostdag_store = Arc::new(DbGhostdagStore::new(db.clone(), 100000));
 
     let genesis: Hash = 1.into();
     let ghostdag_k: KType = 18;
@@ -91,6 +96,7 @@ fn test_concurrent_pipeline() {
         receiver,
         genesis,
         ghostdag_k,
+        db,
         relations_store,
         reachability_store.clone(),
         ghostdag_store,
