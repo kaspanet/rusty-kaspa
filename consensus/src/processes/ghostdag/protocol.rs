@@ -12,7 +12,7 @@ use crate::{
             relations::RelationsStoreReader,
         },
     },
-    pipeline::HeaderProcessingContext,
+    pipeline::header_processor::HeaderProcessingContext,
 };
 
 use super::ordering::*;

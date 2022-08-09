@@ -6,7 +6,7 @@ use consensus::model::services::reachability::MTReachabilityService;
 use consensus::model::stores::ghostdag::{DbGhostdagStore, GhostdagStore, GhostdagStoreReader, KType as GhostdagKType};
 use consensus::model::stores::reachability::DbReachabilityStore;
 use consensus::model::stores::relations::{DbRelationsStore, RelationsStore};
-use consensus::pipeline::HeaderProcessingContext;
+use consensus::pipeline::header_processor::HeaderProcessingContext;
 use consensus::processes::ghostdag::protocol::GhostdagManager;
 use consensus::processes::reachability::inquirer;
 use consensus::processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions};
