@@ -3,6 +3,7 @@
 //!
 
 use consensus::model::services::reachability::MTReachabilityService;
+use consensus::model::services::relations::MTRelationsService;
 use consensus::model::stores::ghostdag::{DbGhostdagStore, GhostdagStore, GhostdagStoreReader, KType as GhostdagKType};
 use consensus::model::stores::reachability::DbReachabilityStore;
 use consensus::model::stores::relations::{DbRelationsStore, RelationsStore};
@@ -227,7 +228,7 @@ fn ghostdag_test() {
 
         let ghostdag_store = Arc::new(DbGhostdagStore::new(db.clone(), 100000));
         let reachability_store = Arc::new(RwLock::new(DbReachabilityStore::new(db.clone(), 100000)));
-        let relations_store = Arc::new(DbRelationsStore::new(db, 100000));
+        let relations_store = Arc::new(RwLock::new(DbRelationsStore::new(db, 100000)));
 
         let genesis: Hash = string_to_hash(&test.genesis_id);
 
@@ -236,12 +237,17 @@ fn ghostdag_test() {
             inquirer::init(write_guard.deref_mut()).unwrap();
             inquirer::add_block(write_guard.deref_mut(), genesis, blockhash::ORIGIN, &mut std::iter::empty()).unwrap();
         }
+        relations_store
+            .write()
+            .insert(genesis, BlockHashes::new(Vec::new()))
+            .unwrap();
 
         for block in &test.blocks {
             let block_id = string_to_hash(&block.id);
             let parents = strings_to_hashes(&block.parents);
             relations_store
-                .set_parents(block_id, BlockHashes::clone(&parents))
+                .write()
+                .insert(block_id, BlockHashes::clone(&parents))
                 .unwrap();
         }
 
@@ -249,7 +255,7 @@ fn ghostdag_test() {
             genesis,
             test.k,
             Arc::clone(&ghostdag_store),
-            Arc::clone(&relations_store),
+            Arc::new(MTRelationsService::new(relations_store.clone())),
             Arc::new(MTReachabilityService::new(reachability_store.clone())),
         );
 

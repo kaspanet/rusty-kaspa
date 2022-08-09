@@ -79,7 +79,7 @@ fn test_reachability_staging() {
 fn test_concurrent_pipeline() {
     let (_tempdir, db) = common::create_temp_db();
 
-    let relations_store = Arc::new(DbRelationsStore::new(db.clone(), 100000));
+    let relations_store = Arc::new(RwLock::new(DbRelationsStore::new(db.clone(), 100000)));
     let reachability_store = Arc::new(RwLock::new(DbReachabilityStore::new(db.clone(), 100000)));
     let ghostdag_store = Arc::new(DbGhostdagStore::new(db, 100000));
 

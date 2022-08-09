@@ -1,6 +1,6 @@
 use crate::{
     model::{
-        services::reachability::MTReachabilityService,
+        services::{reachability::MTReachabilityService, relations::MTRelationsService},
         stores::{
             ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStore, KType},
             reachability::{DbReachabilityStore, StagingReachabilityStore},
@@ -53,18 +53,22 @@ pub struct HeaderProcessor {
     // ghostdag_k: KType,
 
     // Stores
-    relations_store: Arc<DbRelationsStore>, // TODO: needs a lock as it is not append-only
+    relations_store: Arc<RwLock<DbRelationsStore>>,
     reachability_store: Arc<RwLock<DbReachabilityStore>>,
     ghostdag_store: Arc<DbGhostdagStore>,
 
     // Managers and services
-    ghostdag_manager: GhostdagManager<DbGhostdagStore, DbRelationsStore, MTReachabilityService<DbReachabilityStore>>,
+    ghostdag_manager: GhostdagManager<
+        DbGhostdagStore,
+        MTRelationsService<DbRelationsStore>,
+        MTReachabilityService<DbReachabilityStore>,
+    >,
 }
 
 impl HeaderProcessor {
     pub fn new(
         receiver: Receiver<Arc<Block>>, /*, sender: Sender<Arc<Block>>*/
-        genesis_hash: Hash, ghostdag_k: KType, relations_store: Arc<DbRelationsStore>,
+        genesis_hash: Hash, ghostdag_k: KType, relations_store: Arc<RwLock<DbRelationsStore>>,
         reachability_store: Arc<RwLock<DbReachabilityStore>>, ghostdag_store: Arc<DbGhostdagStore>,
     ) -> Self {
         Self {
@@ -79,7 +83,7 @@ impl HeaderProcessor {
                 genesis_hash,
                 ghostdag_k,
                 ghostdag_store,
-                relations_store,
+                Arc::new(MTRelationsService::new(relations_store)),
                 Arc::new(MTReachabilityService::new(reachability_store)),
             ),
         }
@@ -107,7 +111,8 @@ impl HeaderProcessor {
     fn process_header(self: &Arc<HeaderProcessor>, header: &Header) {
         // Write parents (TODO: should be a staged and batched)
         self.relations_store
-            .set_parents(header.hash, BlockHashes::new(header.parents.clone()))
+            .write()
+            .insert(header.hash, BlockHashes::new(header.parents.clone()))
             .unwrap();
 
         // Create processing context
@@ -145,6 +150,10 @@ impl HeaderProcessor {
         self.ghostdag_manager.init(&mut ctx);
 
         if let Some(data) = ctx.staged_ghostdag_data {
+            self.relations_store
+                .write()
+                .insert(self.genesis_hash, BlockHashes::new(Vec::new()))
+                .unwrap();
             self.ghostdag_store
                 .insert(ctx.hash, data)
                 .unwrap();
