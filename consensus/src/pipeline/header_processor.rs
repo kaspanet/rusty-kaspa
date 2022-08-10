@@ -160,6 +160,7 @@ impl HeaderProcessor {
         let mut ctx = HeaderProcessingContext::new(self.genesis_hash, &header);
         self.ghostdag_manager.init(&mut ctx);
 
+        // TODO: must use batch writing as well
         if let Some(data) = ctx.staged_ghostdag_data {
             self.relations_store
                 .write()

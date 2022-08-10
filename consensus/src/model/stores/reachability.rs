@@ -395,16 +395,14 @@ mod tests {
     #[test]
     fn test_store_basics() {
         let mut store: Box<dyn ReachabilityStore> = Box::new(MemoryReachabilityStore::new());
-        let (hash, parent) = (Hash::from_u64(7), Hash::from_u64(15));
+        let (hash, parent) = (7.into(), 15.into());
         let interval = Interval::maximal();
         store.insert(hash, parent, interval, 5).unwrap();
-        let height = store
-            .append_child(hash, Hash::from_u64(31))
-            .unwrap();
+        let height = store.append_child(hash, 31.into()).unwrap();
         assert_eq!(height, 5);
         let children = store.get_children(hash).unwrap();
         println!("{:?}", children);
-        store.get_interval(Hash::from_u64(7)).unwrap();
+        store.get_interval(7.into()).unwrap();
         println!("{:?}", children);
     }
 }

@@ -33,3 +33,12 @@ impl BlockHashExtensions for Hash {
         self.eq(&ORIGIN)
     }
 }
+
+/// Generates a unique block hash for each call to this function.
+/// To be used for test purposes only.
+pub fn new_unique() -> Hash {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(1);
+    let c = COUNTER.fetch_add(1, Ordering::Relaxed);
+    Hash::from_u64_word(c)
+}

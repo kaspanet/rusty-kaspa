@@ -27,14 +27,6 @@ impl Hash {
         Self(<[u8; HASH_SIZE]>::try_from(bytes).expect("Slice must have the length of Hash"))
     }
 
-    /// To be used for test purposes only
-    pub fn new_unique() -> Self {
-        use std::sync::atomic::{AtomicU64, Ordering};
-        static COUNTER: AtomicU64 = AtomicU64::new(1);
-        let c = COUNTER.fetch_add(1, Ordering::Relaxed);
-        Self::from_u64(c)
-    }
-
     pub fn iter_u64_le(&self) -> impl ExactSizeIterator<Item = u64> + '_ {
         self.0
             .chunks_exact(8)
@@ -49,7 +41,7 @@ impl Hash {
         Self(ret)
     }
 
-    pub fn from_u64(word: u64) -> Self {
+    pub fn from_u64_word(word: u64) -> Self {
         let mut bytes = [0u8; HASH_SIZE];
         bytes[0..size_of::<u64>()].copy_from_slice(&word.to_le_bytes());
         Hash(bytes)
@@ -76,7 +68,7 @@ impl FromStr for Hash {
 
 impl From<u64> for Hash {
     fn from(word: u64) -> Self {
-        Self::from_u64(word)
+        Self::from_u64_word(word)
     }
 }
 
