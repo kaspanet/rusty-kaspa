@@ -106,8 +106,8 @@ fn test_concurrent_pipeline() {
         consensus.validate_and_insert_block(Arc::new(block));
     }
 
-    // Clone with a new cache in order to verify correct writes to the DB itself
     let (store, _) = consensus.drop();
+    // Clone with a new cache in order to verify correct writes to the DB itself
     let store = store.read().clone_with_new_cache(10000);
 
     wait_handle.join().unwrap();

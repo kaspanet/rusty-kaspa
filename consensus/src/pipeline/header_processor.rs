@@ -3,7 +3,7 @@ use crate::{
         services::{reachability::MTReachabilityService, relations::MTRelationsService},
         stores::{
             ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStoreReader, KType},
-            reachability::{DbReachabilityStore, StagingReachabilityStore},
+            reachability::{DbReachabilityStore, ReachabilityStoreReader, StagingReachabilityStore},
             relations::DbRelationsStore,
             DB,
         },
@@ -12,11 +12,14 @@ use crate::{
 };
 use consensus_core::{block::Block, blockhash::BlockHashes, header::Header};
 use crossbeam::select;
-use crossbeam_channel::Receiver;
+use crossbeam_channel::{Receiver, Sender};
 use hashes::Hash;
-use parking_lot::RwLock;
+use parking_lot::{Mutex, RwLock};
 use rocksdb::WriteBatch;
-use std::sync::Arc;
+use std::{
+    collections::{hash_map::Entry::Vacant, HashMap},
+    sync::Arc,
+};
 
 pub struct HeaderProcessingContext<'a> {
     pub hash: Hash,
@@ -35,10 +38,17 @@ impl<'a> HeaderProcessingContext<'a> {
     }
 }
 
+pub enum BlockTask {
+    Yield,
+    Exit,
+    External(Arc<Block>),
+    Resent(Arc<Block>),
+}
+
 pub struct HeaderProcessor {
     // Channels
-    receiver: Receiver<Arc<Block>>,
-    // sender: Sender<Arc<Block>>,
+    receiver: Receiver<BlockTask>,
+    sender: Sender<BlockTask>, // Used for self-sending pending blocks
 
     // Config
     genesis_hash: Hash,
@@ -58,17 +68,20 @@ pub struct HeaderProcessor {
         MTRelationsService<DbRelationsStore>,
         MTReachabilityService<DbReachabilityStore>,
     >,
+
+    // Pending block management
+    pending: Mutex<HashMap<Hash, Vec<Arc<Block>>>>,
 }
 
 impl HeaderProcessor {
     pub fn new(
-        receiver: Receiver<Arc<Block>>, /*, sender: Sender<Arc<Block>>*/
-        genesis_hash: Hash, ghostdag_k: KType, db: Arc<DB>, relations_store: Arc<RwLock<DbRelationsStore>>,
-        reachability_store: Arc<RwLock<DbReachabilityStore>>, ghostdag_store: Arc<DbGhostdagStore>,
+        receiver: Receiver<BlockTask>, sender: Sender<BlockTask>, genesis_hash: Hash, ghostdag_k: KType, db: Arc<DB>,
+        relations_store: Arc<RwLock<DbRelationsStore>>, reachability_store: Arc<RwLock<DbReachabilityStore>>,
+        ghostdag_store: Arc<DbGhostdagStore>,
     ) -> Self {
         Self {
             receiver,
-            // sender,
+            sender,
             genesis_hash,
             // ghostdag_k,
             db,
@@ -82,26 +95,91 @@ impl HeaderProcessor {
                 Arc::new(MTRelationsService::new(relations_store)),
                 Arc::new(MTReachabilityService::new(reachability_store)),
             ),
+            pending: Mutex::new(HashMap::new()),
         }
     }
 
     pub fn worker(self: &Arc<HeaderProcessor>) {
         let receiver = self.receiver.clone();
         // let sender = self.sender.clone();
+
+        let mut exiting = false;
         loop {
+            if exiting {
+                let pending = self.pending.lock();
+                if pending.is_empty() {
+                    break;
+                }
+            }
             select! {
                 recv(receiver) -> data => {
-                    if let Ok(block) = data {
-                        // TODO: spawn the task to a thread-pool and manage dependencies
-                        self.process_header(&block.header);
-                        // sender.send(block).unwrap();
+                    if let Ok(task) = data {
+                        match task {
+                            BlockTask::Yield => (),
+                            BlockTask::Exit => exiting = true,
+                            BlockTask::External(block) | BlockTask::Resent(block) =>
+                                self.queue_block(block),
+                        };
                     } else {
-                        // All senders are dropped, break
+                        // All senders are dropped, exit
                         break;
                     }
                 }
             }
         }
+    }
+
+    fn queue_block(self: &Arc<HeaderProcessor>, block: Arc<Block>) {
+        let hash = block.header.hash;
+
+        {
+            // Lock pending. The contention around this map is expected to be negligible in header processing time
+            let mut pending = self.pending.lock();
+
+            if self.header_was_processed(hash) {
+                return;
+            }
+
+            if let Vacant(e) = pending.entry(hash) {
+                e.insert(Vec::new());
+            }
+
+            for parent in block.header.parents.iter().cloned() {
+                if self.header_was_processed(parent) {
+                    continue;
+                }
+                if let Some(write) = pending.get_mut(&parent) {
+                    write.push(block);
+                    return; // The block will be resent once the pending parent completes processing
+                } else {
+                    // TODO: should notify sender about missing parents
+                    panic!("parent is not pending nor processed")
+                }
+            }
+        }
+
+        let processor = self.clone();
+        rayon::spawn(move || {
+            processor.process_header(&block.header);
+            let mut pending = processor.pending.lock();
+            let deps = pending
+                .remove(&hash)
+                .expect("processed block is expected to be in pending map");
+            for dep in deps {
+                // Resend the block through the channel.
+                processor
+                    .sender
+                    .send(BlockTask::Resent(dep))
+                    .unwrap();
+            }
+            processor.sender.send(BlockTask::Yield).unwrap();
+        });
+    }
+
+    fn header_was_processed(self: &Arc<HeaderProcessor>, hash: Hash) -> bool {
+        // For now, use `reachability_store.has` as an indication for processing.
+        // TODO: block status store should be used.
+        self.reachability_store.read().has(hash).unwrap()
     }
 
     fn process_header(self: &Arc<HeaderProcessor>, header: &Header) {

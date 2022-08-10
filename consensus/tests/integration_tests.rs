@@ -222,8 +222,9 @@ fn ghostdag_test() {
             consensus.validate_and_insert_block(Arc::new(Block::from_header(block_header)));
         }
 
-        // Clone with a new cache in order to verify correct writes to the DB itself
         let (_, ghostdag_store) = consensus.drop();
+
+        // Clone with a new cache in order to verify correct writes to the DB itself
         let ghostdag_store = ghostdag_store.clone_with_new_cache(10000);
 
         // Wait for async consensus processors to exit

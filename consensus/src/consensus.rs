@@ -5,7 +5,7 @@ use crate::{
         relations::DbRelationsStore,
         DB,
     },
-    pipeline::header_processor::HeaderProcessor,
+    pipeline::header_processor::{BlockTask, HeaderProcessor},
     processes::reachability::inquirer as reachability,
 };
 use consensus_core::block::Block;
@@ -23,7 +23,7 @@ pub struct Consensus {
     db: Arc<DB>,
 
     // Channels
-    block_sender: Sender<Arc<Block>>,
+    block_sender: Sender<BlockTask>,
 
     // Processors
     header_processor: Arc<HeaderProcessor>,
@@ -39,10 +39,11 @@ impl Consensus {
         let reachability_store = Arc::new(RwLock::new(DbReachabilityStore::new(db.clone(), 100000)));
         let ghostdag_store = Arc::new(DbGhostdagStore::new(db.clone(), 100000));
 
-        let (sender, receiver): (Sender<Arc<Block>>, Receiver<Arc<Block>>) = unbounded();
+        let (sender, receiver): (Sender<BlockTask>, Receiver<BlockTask>) = unbounded();
 
         let header_processor = Arc::new(HeaderProcessor::new(
             receiver,
+            sender.clone(), // `HeaderProcessor` uses this for resending pending blocks
             genesis,
             ghostdag_k,
             db.clone(),
@@ -50,6 +51,12 @@ impl Consensus {
             reachability_store.clone(),
             ghostdag_store.clone(),
         ));
+
+        // TODO: place and config at system startup
+        // rayon::ThreadPoolBuilder::new()
+        //     .num_threads(4)
+        //     .build_global()
+        //     .unwrap();
 
         Self { db, block_sender: sender, header_processor, reachability_store, ghostdag_store }
     }
@@ -67,12 +74,15 @@ impl Consensus {
     }
 
     pub fn validate_and_insert_block(&self, block: Arc<Block>) {
-        self.block_sender.send(block).unwrap();
+        self.block_sender
+            .send(BlockTask::External(block))
+            .unwrap();
     }
 
     /// Drops consensus, and specifically drops sender channels so that
     /// internal workers fold up and can be joined.
     pub fn drop(self) -> (Arc<RwLock<DbReachabilityStore>>, Arc<DbGhostdagStore>) {
+        self.block_sender.send(BlockTask::Exit).unwrap();
         (self.reachability_store, self.ghostdag_store)
     }
 }
