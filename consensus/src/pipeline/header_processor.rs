@@ -17,7 +17,7 @@ use hashes::Hash;
 use parking_lot::{Mutex, RwLock};
 use rocksdb::WriteBatch;
 use std::{
-    collections::{hash_map::Entry::Vacant, HashMap},
+    collections::{hash_map::Entry::Vacant, HashMap, HashSet},
     sync::Arc,
 };
 
@@ -45,6 +45,20 @@ pub enum BlockTask {
     Resent(Arc<Block>),
 }
 
+struct PendingBlocksManager {
+    /// Holds pending block hashes and their dependent blocks
+    pub pending: HashMap<Hash, Vec<Arc<Block>>>,
+
+    /// Holds the currently processed set of blocks
+    pub processing: HashSet<Hash>,
+}
+
+impl PendingBlocksManager {
+    fn new() -> Self {
+        Self { pending: HashMap::new(), processing: HashSet::new() }
+    }
+}
+
 pub struct HeaderProcessor {
     // Channels
     receiver: Receiver<BlockTask>,
@@ -69,8 +83,8 @@ pub struct HeaderProcessor {
         MTReachabilityService<DbReachabilityStore>,
     >,
 
-    // Pending block management
-    pending: Mutex<HashMap<Hash, Vec<Arc<Block>>>>,
+    // Pending blocks management
+    pending_manager: Mutex<PendingBlocksManager>,
 }
 
 impl HeaderProcessor {
@@ -95,7 +109,7 @@ impl HeaderProcessor {
                 Arc::new(MTRelationsService::new(relations_store)),
                 Arc::new(MTReachabilityService::new(reachability_store)),
             ),
-            pending: Mutex::new(HashMap::new()),
+            pending_manager: Mutex::new(PendingBlocksManager::new()),
         }
     }
 
@@ -106,8 +120,8 @@ impl HeaderProcessor {
         let mut exiting = false;
         loop {
             if exiting {
-                let pending = self.pending.lock();
-                if pending.is_empty() {
+                let manager = self.pending_manager.lock();
+                if manager.pending.is_empty() {
                     break;
                 }
             }
@@ -117,8 +131,7 @@ impl HeaderProcessor {
                         match task {
                             BlockTask::Yield => (),
                             BlockTask::Exit => exiting = true,
-                            BlockTask::External(block) | BlockTask::Resent(block) =>
-                                self.queue_block(block),
+                            BlockTask::External(block) | BlockTask::Resent(block) => self.queue_block(block),
                         };
                     } else {
                         // All senders are dropped, exit
@@ -133,36 +146,42 @@ impl HeaderProcessor {
         let hash = block.header.hash;
 
         {
-            // Lock pending. The contention around this map is expected to be negligible in header processing time
-            let mut pending = self.pending.lock();
+            // Lock pending manager. The contention around the manager is
+            // expected to be negligible in header processing time
+            let mut manager = self.pending_manager.lock();
 
-            if self.header_was_processed(hash) {
-                return;
-            }
-
-            if let Vacant(e) = pending.entry(hash) {
+            if let Vacant(e) = manager.pending.entry(hash) {
                 e.insert(Vec::new());
             }
 
-            for parent in block.header.parents.iter().cloned() {
-                if self.header_was_processed(parent) {
-                    continue;
-                }
-                if let Some(write) = pending.get_mut(&parent) {
-                    write.push(block);
+            for parent in block.header.parents.iter() {
+                if let Some(deps) = manager.pending.get_mut(parent) {
+                    deps.push(block);
                     return; // The block will be resent once the pending parent completes processing
-                } else {
-                    // TODO: should notify sender about missing parents
-                    panic!("parent is not pending nor processed")
                 }
+            }
+
+            if !manager.processing.insert(hash) {
+                return; // Block is already being processed
             }
         }
 
         let processor = self.clone();
         rayon::spawn(move || {
+            // TODO: report duplicate block to job sender
+            if processor.header_was_processed(hash) {
+                return;
+            }
+
+            // TODO: report missing parents to job sender (currently will panic for missing keys)
+
             processor.process_header(&block.header);
-            let mut pending = processor.pending.lock();
-            let deps = pending
+            let mut manager = processor.pending_manager.lock();
+
+            assert!(manager.processing.remove(&hash), "processed block is expected to be in processing set");
+
+            let deps = manager
+                .pending
                 .remove(&hash)
                 .expect("processed block is expected to be in pending map");
             for dep in deps {
@@ -172,6 +191,7 @@ impl HeaderProcessor {
                     .send(BlockTask::Resent(dep))
                     .unwrap();
             }
+            // Yield the receiver to check its exit state
             processor.sender.send(BlockTask::Yield).unwrap();
         });
     }

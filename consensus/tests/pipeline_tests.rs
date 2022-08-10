@@ -102,8 +102,10 @@ fn test_concurrent_pipeline() {
     ];
 
     for block in blocks {
-        // Submit to consensus
-        consensus.validate_and_insert_block(Arc::new(block));
+        // Submit to consensus twice to make sure duplicates are handled
+        let b = Arc::new(block);
+        consensus.validate_and_insert_block(Arc::clone(&b));
+        consensus.validate_and_insert_block(b);
     }
 
     let (store, _) = consensus.drop();
