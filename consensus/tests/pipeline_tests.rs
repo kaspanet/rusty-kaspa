@@ -1,18 +1,16 @@
 use consensus::{
+    consensus::Consensus,
     model::stores::{
-        ghostdag::{DbGhostdagStore, KType},
+        ghostdag::KType,
         reachability::{DbReachabilityStore, StagingReachabilityStore},
-        relations::DbRelationsStore,
     },
-    pipeline::header_processor::HeaderProcessor,
     processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions},
 };
-use consensus_core::{block::Block, blockhash, header::Header};
-use crossbeam_channel::{unbounded, Receiver, Sender};
+use consensus_core::{block::Block, blockhash};
 use hashes::Hash;
 use parking_lot::RwLock;
 use rocksdb::WriteBatch;
-use std::{sync::Arc, thread};
+use std::sync::Arc;
 
 mod common;
 
@@ -82,29 +80,12 @@ fn test_reachability_staging() {
 
 #[test]
 fn test_concurrent_pipeline() {
-    let (_tempdir, db) = common::create_temp_db();
-
-    let relations_store = Arc::new(RwLock::new(DbRelationsStore::new(db.clone(), 100000)));
-    let reachability_store = Arc::new(RwLock::new(DbReachabilityStore::new(db.clone(), 100000)));
-    let ghostdag_store = Arc::new(DbGhostdagStore::new(db.clone(), 100000));
-
     let genesis: Hash = 1.into();
     let ghostdag_k: KType = 18;
-    let (sender, receiver): (Sender<Arc<Block>>, Receiver<Arc<Block>>) = unbounded();
 
-    let header_processor = Arc::new(HeaderProcessor::new(
-        receiver,
-        genesis,
-        ghostdag_k,
-        db,
-        relations_store,
-        reachability_store.clone(),
-        ghostdag_store,
-    ));
-    header_processor.insert_genesis_if_needed(&Header::new(genesis, vec![]));
-
-    // Spawn an asynchronous header processor.
-    let handle = thread::spawn(move || header_processor.worker());
+    let (_tempdir, db) = common::create_temp_db();
+    let consensus = Consensus::new(db, genesis, ghostdag_k);
+    let wait_handle = consensus.init();
 
     let blocks = vec![
         Block::new(2.into(), vec![1.into()]),
@@ -121,16 +102,17 @@ fn test_concurrent_pipeline() {
     ];
 
     for block in blocks {
-        // Send to header processor
-        sender.send(Arc::new(block)).unwrap();
+        // Submit to consensus
+        consensus.validate_and_insert_block(Arc::new(block));
     }
-    drop(sender);
-    handle.join().unwrap();
 
     // Clone with a new cache in order to verify correct writes to the DB itself
-    let store = reachability_store
+    let store = consensus
+        .drop()
         .read()
         .clone_with_new_cache(10000);
+
+    wait_handle.join().unwrap();
 
     // Assert intervals
     store

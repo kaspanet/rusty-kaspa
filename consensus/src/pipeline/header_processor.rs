@@ -155,11 +155,9 @@ impl HeaderProcessor {
         self.db.write(batch).unwrap();
     }
 
-    pub fn insert_genesis_if_needed(self: &Arc<HeaderProcessor>, header: &Header) {
-        assert_eq!(header.hash, self.genesis_hash);
-        assert_eq!(header.parents.len(), 0);
-
-        let mut ctx = HeaderProcessingContext::new(self.genesis_hash, header);
+    pub fn insert_genesis_if_needed(self: &Arc<HeaderProcessor>) {
+        let header = Header::new(self.genesis_hash, vec![]);
+        let mut ctx = HeaderProcessingContext::new(self.genesis_hash, &header);
         self.ghostdag_manager.init(&mut ctx);
 
         if let Some(data) = ctx.staged_ghostdag_data {
