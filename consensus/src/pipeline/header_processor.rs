@@ -2,44 +2,36 @@ use crate::{
     model::{
         services::{reachability::MTReachabilityService, relations::MTRelationsService},
         stores::{
-            ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStore, KType},
+            ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStoreReader, KType},
             reachability::{DbReachabilityStore, StagingReachabilityStore},
-            relations::{DbRelationsStore, RelationsStore},
+            relations::DbRelationsStore,
             DB,
         },
     },
     processes::{ghostdag::protocol::GhostdagManager, reachability::inquirer},
 };
-use consensus_core::{
-    block::Block,
-    blockhash::{self, BlockHashes},
-    header::Header,
-};
+use consensus_core::{block::Block, blockhash::BlockHashes, header::Header};
 use crossbeam::select;
 use crossbeam_channel::Receiver;
 use hashes::Hash;
 use parking_lot::RwLock;
 use rocksdb::WriteBatch;
-use std::{ops::DerefMut, sync::Arc};
+use std::sync::Arc;
 
 pub struct HeaderProcessingContext<'a> {
     pub hash: Hash,
     pub header: &'a Header,
-    pub cached_mergeset: Option<BlockHashes>,
-    pub staged_ghostdag_data: Option<Arc<GhostdagData>>,
+
+    /// Mergeset w/o selected parent
+    pub mergeset: Option<BlockHashes>,
+
+    // Staging data
+    pub ghostdag_data: Option<Arc<GhostdagData>>,
 }
 
 impl<'a> HeaderProcessingContext<'a> {
     pub fn new(hash: Hash, header: &'a Header) -> Self {
-        Self { hash, header, cached_mergeset: None, staged_ghostdag_data: None }
-    }
-
-    pub fn cache_mergeset(&mut self, mergeset: BlockHashes) {
-        self.cached_mergeset = Some(mergeset);
-    }
-
-    pub fn stage_ghostdag_data(&mut self, ghostdag_data: Arc<GhostdagData>) {
-        self.staged_ghostdag_data = Some(ghostdag_data);
+        Self { hash, header, mergeset: None, ghostdag_data: None }
     }
 }
 
@@ -120,59 +112,65 @@ impl HeaderProcessor {
         self.ghostdag_manager
             .add_block(&mut ctx, header.hash);
 
-        let data = ctx.staged_ghostdag_data.unwrap();
+        //
+        // TODO: imp all remaining header validation and processing steps :)
+        //
 
-        // Create staging reachability store
+        self.commit_header(ctx, header);
+    }
+
+    fn commit_header(self: &Arc<HeaderProcessor>, ctx: HeaderProcessingContext, header: &Header) {
+        let ghostdag_data = ctx.ghostdag_data.unwrap();
+
+        // Create staging reachability store. We use an upgradable read here to avoid concurrent
+        // staging reachability operations. PERF: we assume that reachability processing time << header processing
+        // time, and thus serializing this part will do no harm. However this should be benchmarked. The
+        // alternative is to create a separate ReachabilityProcessor and to manage things more tightly.
         let mut staging = StagingReachabilityStore::new(self.reachability_store.upgradable_read());
         // Add block to staging reachability
         inquirer::add_block(
             &mut staging,
             ctx.hash,
-            data.selected_parent,
-            &mut ctx.cached_mergeset.unwrap().iter().cloned(),
+            ghostdag_data.selected_parent,
+            &mut ctx.mergeset.unwrap().iter().cloned(),
         )
         .unwrap();
 
         // Create a DB batch writer
         let mut batch = WriteBatch::default();
 
-        // Write block relations
+        // Write GHOSTDAG data. GHOSTDAG data is append-only and requires no lock
+        self.ghostdag_store
+            .insert_batch(&mut batch, ctx.hash, ghostdag_data)
+            .unwrap();
+
+        // Write block relations. Block relations are not append-only, since children arrays of parents are
+        // updated as well, hence the need to write lock.
         let mut relations_write = self.relations_store.write(); // Note we lock until the batch is written
         relations_write
             .insert_batch(&mut batch, header.hash, BlockHashes::new(header.parents.clone()))
             .unwrap();
 
-        // Write GHOSTDAG data
-        // Note: GHOSTDAG data is append-only and requires no lock
-        self.ghostdag_store
-            .insert_batch(&mut batch, ctx.hash, data)
-            .unwrap();
-
-        // Write reachability data
+        // Write reachability data. Only at this brief moment the reachability store is locked for reads.
+        // We take special care for this since reachability read queries are used throughout the system frequently.
         let write_guard = staging.commit(&mut batch).unwrap(); // Note we hold the lock until the batch is written
 
         // Flush the batch to the DB
         self.db.write(batch).unwrap();
     }
 
-    pub fn insert_genesis_if_needed(self: &Arc<HeaderProcessor>) {
+    pub fn process_genesis_if_needed(self: &Arc<HeaderProcessor>) {
+        if self
+            .ghostdag_store
+            .has(self.genesis_hash, false)
+            .unwrap()
+        {
+            return;
+        }
         let header = Header::new(self.genesis_hash, vec![]);
         let mut ctx = HeaderProcessingContext::new(self.genesis_hash, &header);
-        self.ghostdag_manager.init(&mut ctx);
-
-        // TODO: must use batch writing as well
-        if let Some(data) = ctx.staged_ghostdag_data {
-            self.relations_store
-                .write()
-                .insert(self.genesis_hash, BlockHashes::new(Vec::new()))
-                .unwrap();
-            self.ghostdag_store
-                .insert(ctx.hash, data)
-                .unwrap();
-            let mut write_guard = self.reachability_store.write();
-            inquirer::init(write_guard.deref_mut()).unwrap();
-            inquirer::add_block(write_guard.deref_mut(), self.genesis_hash, blockhash::ORIGIN, &mut std::iter::empty())
-                .unwrap();
-        }
+        self.ghostdag_manager
+            .add_genesis_if_needed(&mut ctx);
+        self.commit_header(ctx, &header);
     }
 }

@@ -6,21 +6,30 @@ use crate::{
         DB,
     },
     pipeline::header_processor::HeaderProcessor,
+    processes::reachability::inquirer as reachability,
 };
 use consensus_core::block::Block;
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use hashes::Hash;
 use parking_lot::RwLock;
 use std::{
+    ops::DerefMut,
     sync::Arc,
     thread::{self, JoinHandle},
 };
 
 pub struct Consensus {
+    // DB
     db: Arc<DB>,
+
+    // Channels
     block_sender: Sender<Arc<Block>>,
+
+    // Processors
     header_processor: Arc<HeaderProcessor>,
-    reachability_store: Arc<RwLock<DbReachabilityStore>>, // TEMP
+
+    // Stores
+    reachability_store: Arc<RwLock<DbReachabilityStore>>,
 }
 
 impl Consensus {
@@ -45,9 +54,14 @@ impl Consensus {
     }
 
     pub fn init(&self) -> JoinHandle<()> {
-        self.header_processor.insert_genesis_if_needed();
+        // Ensure that reachability store is initialized
+        reachability::init(self.reachability_store.write().deref_mut()).unwrap();
+
+        // Ensure that genesis was processed
+        self.header_processor.process_genesis_if_needed();
+
+        // Spawn the asynchronous header processor.
         let header_processor = self.header_processor.clone();
-        // Spawn an asynchronous header processor.
         thread::spawn(move || header_processor.worker())
     }
 
@@ -55,7 +69,8 @@ impl Consensus {
         self.block_sender.send(block).unwrap();
     }
 
-    /// TEMP
+    /// Drops consensus, and specifically drops sender channels so that
+    /// internal workers fold up and can be joined.
     pub fn drop(self) -> Arc<RwLock<DbReachabilityStore>> {
         self.reachability_store
     }

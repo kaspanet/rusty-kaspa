@@ -1,4 +1,4 @@
-use consensus_core::blockhash::BlockHashes;
+use consensus_core::blockhash::{self, BlockHashes};
 use parking_lot::{RwLockUpgradableReadGuard, RwLockWriteGuard};
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
@@ -34,6 +34,7 @@ pub trait ReachabilityStoreReader {
     fn get_future_covering_set(&self, hash: Hash) -> Result<BlockHashes, StoreError>;
 }
 pub trait ReachabilityStore: ReachabilityStoreReader {
+    fn init(&mut self, origin: Hash, capacity: Interval) -> Result<(), StoreError>;
     fn insert(&mut self, hash: Hash, parent: Hash, interval: Interval, height: u64) -> Result<(), StoreError>;
     fn set_interval(&mut self, hash: Hash, interval: Interval) -> Result<(), StoreError>;
     fn append_child(&mut self, hash: Hash, child: Hash) -> Result<u64, StoreError>;
@@ -74,6 +75,20 @@ impl DbReachabilityStore {
 }
 
 impl ReachabilityStore for DbReachabilityStore {
+    fn init(&mut self, origin: Hash, capacity: Interval) -> Result<(), StoreError> {
+        debug_assert!(!self.cached_access.has(origin)?);
+
+        let data = Arc::new(ReachabilityData::new(blockhash::NONE, capacity, 0));
+        let mut batch = WriteBatch::default();
+        self.cached_access
+            .write_batch(&mut batch, origin, &data)?;
+        self.reindex_root
+            .write_batch(&mut batch, &origin)?;
+        self.raw_db.write(batch)?;
+
+        Ok(())
+    }
+
     fn insert(&mut self, hash: Hash, parent: Hash, interval: Interval, height: u64) -> Result<(), StoreError> {
         if self.cached_access.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
@@ -172,6 +187,12 @@ impl<'a> StagingReachabilityStore<'a> {
 }
 
 impl ReachabilityStore for StagingReachabilityStore<'_> {
+    fn init(&mut self, origin: Hash, capacity: Interval) -> Result<(), StoreError> {
+        self.insert(origin, blockhash::NONE, capacity, 0)?;
+        self.set_reindex_root(origin)?;
+        Ok(())
+    }
+
     fn insert(&mut self, hash: Hash, parent: Hash, interval: Interval, height: u64) -> Result<(), StoreError> {
         if self.store_read.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
@@ -322,6 +343,12 @@ impl MemoryReachabilityStore {
 }
 
 impl ReachabilityStore for MemoryReachabilityStore {
+    fn init(&mut self, origin: Hash, capacity: Interval) -> Result<(), StoreError> {
+        self.insert(origin, blockhash::NONE, capacity, 0)?;
+        self.set_reindex_root(origin)?;
+        Ok(())
+    }
+
     fn insert(&mut self, hash: Hash, parent: Hash, interval: Interval, height: u64) -> Result<(), StoreError> {
         if let Vacant(e) = self.map.entry(hash) {
             e.insert(ReachabilityData::new(parent, interval, height));

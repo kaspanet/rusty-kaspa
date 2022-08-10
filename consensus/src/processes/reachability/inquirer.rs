@@ -16,8 +16,7 @@ pub(super) fn init_with_params(
     if store.has(origin)? {
         return Ok(());
     }
-    store.insert(origin, blockhash::NONE, capacity, 0)?;
-    store.set_reindex_root(origin)?;
+    store.init(origin, capacity)?;
     Ok(())
 }
 

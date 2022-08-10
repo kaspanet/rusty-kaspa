@@ -262,8 +262,8 @@ fn ghostdag_test() {
         );
 
         let mut ctx = HeaderProcessingContext::new(genesis, &genesis_header);
-        manager.init(&mut ctx);
-        if let Some(data) = ctx.staged_ghostdag_data {
+        manager.add_genesis_if_needed(&mut ctx);
+        if let Some(data) = ctx.ghostdag_data {
             ghostdag_store.insert(ctx.hash, data).unwrap();
         }
 
@@ -274,7 +274,7 @@ fn ghostdag_test() {
 
             let mut ctx = HeaderProcessingContext::new(block_id, &block_header);
             manager.add_block(&mut ctx, block_id);
-            if let Some(data) = ctx.staged_ghostdag_data {
+            if let Some(data) = ctx.ghostdag_data {
                 ghostdag_store
                     .insert(ctx.hash, data.clone())
                     .unwrap();
@@ -282,7 +282,7 @@ fn ghostdag_test() {
                     reachability_store.write().deref_mut(),
                     ctx.hash,
                     data.selected_parent,
-                    &mut ctx.cached_mergeset.unwrap().iter().cloned(),
+                    &mut ctx.mergeset.unwrap().iter().cloned(),
                 )
                 .unwrap();
             }

@@ -32,14 +32,14 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService> Gh
         Self { genesis_hash, k, ghostdag_store, relations_store, reachability_service }
     }
 
-    pub fn init(&self, ctx: &mut HeaderProcessingContext) {
+    pub fn add_genesis_if_needed(&self, ctx: &mut HeaderProcessingContext) {
         if !self
             .ghostdag_store
             .has(self.genesis_hash, false)
             .unwrap()
         {
-            ctx.cache_mergeset(BlockHashes::new(Vec::new()));
-            ctx.stage_ghostdag_data(Arc::new(GhostdagData::new(
+            ctx.mergeset = Some(BlockHashes::new(Vec::new()));
+            ctx.ghostdag_data = Some(Arc::new(GhostdagData::new(
                 0,
                 Uint256::from_u64(0),
                 blockhash::ORIGIN,
@@ -98,9 +98,9 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService> Gh
         new_block_data.finalize_score_and_work(blue_score, blue_work);
 
         // Cache mergeset in context
-        ctx.cache_mergeset(Arc::new(ordered_mergeset));
+        ctx.mergeset = Some(BlockHashes::new(ordered_mergeset));
         // Stage new block data
-        ctx.stage_ghostdag_data(new_block_data);
+        ctx.ghostdag_data = Some(new_block_data);
     }
 
     fn check_blue_candidate_with_chain_block(
