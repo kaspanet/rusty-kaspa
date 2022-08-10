@@ -107,10 +107,8 @@ fn test_concurrent_pipeline() {
     }
 
     // Clone with a new cache in order to verify correct writes to the DB itself
-    let store = consensus
-        .drop()
-        .read()
-        .clone_with_new_cache(10000);
+    let (store, _) = consensus.drop();
+    let store = store.read().clone_with_new_cache(10000);
 
     wait_handle.join().unwrap();
 

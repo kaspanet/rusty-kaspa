@@ -30,6 +30,7 @@ pub struct Consensus {
 
     // Stores
     reachability_store: Arc<RwLock<DbReachabilityStore>>,
+    ghostdag_store: Arc<DbGhostdagStore>,
 }
 
 impl Consensus {
@@ -47,10 +48,10 @@ impl Consensus {
             db.clone(),
             relations_store,
             reachability_store.clone(),
-            ghostdag_store,
+            ghostdag_store.clone(),
         ));
 
-        Self { db, block_sender: sender, header_processor, reachability_store }
+        Self { db, block_sender: sender, header_processor, reachability_store, ghostdag_store }
     }
 
     pub fn init(&self) -> JoinHandle<()> {
@@ -71,7 +72,7 @@ impl Consensus {
 
     /// Drops consensus, and specifically drops sender channels so that
     /// internal workers fold up and can be joined.
-    pub fn drop(self) -> Arc<RwLock<DbReachabilityStore>> {
-        self.reachability_store
+    pub fn drop(self) -> (Arc<RwLock<DbReachabilityStore>>, Arc<DbGhostdagStore>) {
+        (self.reachability_store, self.ghostdag_store)
     }
 }

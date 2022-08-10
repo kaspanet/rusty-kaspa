@@ -2,26 +2,20 @@
 //! Integration tests
 //!
 
-use consensus::model::services::reachability::MTReachabilityService;
-use consensus::model::services::relations::MTRelationsService;
-use consensus::model::stores::ghostdag::{DbGhostdagStore, GhostdagStore, GhostdagStoreReader, KType as GhostdagKType};
+use consensus::consensus::Consensus;
+use consensus::model::stores::ghostdag::{GhostdagStoreReader, KType as GhostdagKType};
 use consensus::model::stores::reachability::DbReachabilityStore;
-use consensus::model::stores::relations::{DbRelationsStore, RelationsStore};
-use consensus::pipeline::header_processor::HeaderProcessingContext;
-use consensus::processes::ghostdag::protocol::GhostdagManager;
-use consensus::processes::reachability::inquirer;
 use consensus::processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions};
-use consensus_core::blockhash::{self, BlockHashes};
+use consensus_core::block::Block;
+use consensus_core::blockhash;
 use consensus_core::header::Header;
 use hashes::Hash;
 
 use flate2::read::GzDecoder;
-use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::BufReader;
-use std::ops::DerefMut;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -148,34 +142,21 @@ fn test_noattack_json() {
     reachability_stretch_test(false);
 }
 
-// TODO: restore this test once API is finalized
-// #[test]
-// fn ghostdag_sanity_test() {
-//     let mut reachability_store = MemoryReachabilityStore::new();
-//     inquirer::init(&mut reachability_store).unwrap();
+#[test]
+fn consensus_sanity_test() {
+    let genesis: Hash = 1.into();
+    let ghostdag_k = 18;
 
-//     let genesis: Hash = 1.into();
-//     let genesis_child: Hash = 2.into();
+    let genesis_child: Hash = 2.into();
 
-//     inquirer::add_block(&mut reachability_store, genesis, ORIGIN, &mut std::iter::empty()).unwrap();
+    let (_tempdir, db) = common::create_temp_db();
+    let consensus = Consensus::new(db, genesis, ghostdag_k);
+    let wait_handle = consensus.init();
 
-//     let relations_store = MemoryRelationsStore::new();
-//     relations_store
-//         .set_parents(genesis_child, HashArray::new(vec![genesis]))
-//         .unwrap();
-
-//     let manager = GhostdagManager::new(
-//         genesis,
-//         18,
-//         Arc::new(MemoryGhostdagStore::new()),
-//         Arc::new(relations_store),
-//         Arc::new(STReachabilityService::new(reachability_store)),
-//     );
-//     let mut ctx = HeaderProcessingContext::new(genesis);
-//     manager.init(&mut ctx);
-//     let mut ctx = HeaderProcessingContext::new(genesis_child);
-//     manager.add_block(&mut ctx, genesis_child); // TODO
-// }
+    consensus.validate_and_insert_block(Arc::new(Block::new(genesis_child, vec![genesis])));
+    consensus.drop();
+    wait_handle.join().unwrap();
+}
 
 #[derive(Serialize, Deserialize, Debug)]
 struct GhostdagTestDag {
@@ -225,68 +206,33 @@ fn ghostdag_test() {
         let reader = BufReader::new(file);
         let test: GhostdagTestDag = serde_json::from_reader(reader).unwrap();
 
-        let (_tempdir, db) = common::create_temp_db();
-
-        let ghostdag_store = Arc::new(DbGhostdagStore::new(db.clone(), 100000));
-        let reachability_store = Arc::new(RwLock::new(DbReachabilityStore::new(db.clone(), 100000)));
-        let relations_store = Arc::new(RwLock::new(DbRelationsStore::new(db, 100000)));
-
         let genesis: Hash = string_to_hash(&test.genesis_id);
-        let genesis_header = Header::new(genesis, Vec::new());
+        let ghostdag_k = test.k;
 
-        {
-            let mut write_guard = reachability_store.write();
-            inquirer::init(write_guard.deref_mut()).unwrap();
-            inquirer::add_block(write_guard.deref_mut(), genesis, blockhash::ORIGIN, &mut std::iter::empty()).unwrap();
-        }
-        relations_store
-            .write()
-            .insert(genesis, BlockHashes::new(Vec::new()))
-            .unwrap();
+        let (_tempdir, db) = common::create_temp_db();
+        let consensus = Consensus::new(db, genesis, ghostdag_k);
+        let wait_handle = consensus.init();
 
-        for block in &test.blocks {
-            let block_id = string_to_hash(&block.id);
-            let parents = strings_to_hashes(&block.parents);
-            relations_store
-                .write()
-                .insert(block_id, BlockHashes::new(parents))
-                .unwrap();
-        }
-
-        let manager = GhostdagManager::new(
-            genesis,
-            test.k,
-            Arc::clone(&ghostdag_store),
-            Arc::new(MTRelationsService::new(relations_store.clone())),
-            Arc::new(MTReachabilityService::new(reachability_store.clone())),
-        );
-
-        let mut ctx = HeaderProcessingContext::new(genesis, &genesis_header);
-        manager.add_genesis_if_needed(&mut ctx);
-        if let Some(data) = ctx.ghostdag_data {
-            ghostdag_store.insert(ctx.hash, data).unwrap();
-        }
-
-        for block in test.blocks {
+        for block in test.blocks.iter() {
             println!("Processing block {}", block.id);
             let block_id = string_to_hash(&block.id);
             let block_header = Header::new(block_id, strings_to_hashes(&block.parents));
 
-            let mut ctx = HeaderProcessingContext::new(block_id, &block_header);
-            manager.add_block(&mut ctx, block_id);
-            if let Some(data) = ctx.ghostdag_data {
-                ghostdag_store
-                    .insert(ctx.hash, data.clone())
-                    .unwrap();
-                inquirer::add_block(
-                    reachability_store.write().deref_mut(),
-                    ctx.hash,
-                    data.selected_parent,
-                    &mut ctx.mergeset.unwrap().iter().cloned(),
-                )
-                .unwrap();
-            }
+            // Submit to consensus
+            consensus.validate_and_insert_block(Arc::new(Block::from_header(block_header)));
+        }
 
+        // Clone with a new cache in order to verify correct writes to the DB itself
+        let (_, ghostdag_store) = consensus.drop();
+        let ghostdag_store = ghostdag_store.clone_with_new_cache(10000);
+
+        // Wait for async consensus processors to exit
+        wait_handle.join().unwrap();
+
+        // Assert GHOSTDAG output data
+        for block in test.blocks {
+            println!("Asserting block {}", block.id);
+            let block_id = string_to_hash(&block.id);
             let output_ghostdag_data = ghostdag_store.get_data(block_id, false).unwrap();
 
             assert_eq!(

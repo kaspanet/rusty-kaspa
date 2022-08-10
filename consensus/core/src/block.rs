@@ -9,4 +9,8 @@ impl Block {
     pub fn new(hash: Hash, parents: Vec<Hash>) -> Self {
         Self { header: Header::new(hash, parents) }
     }
+
+    pub fn from_header(header: Header) -> Self {
+        Self { header }
+    }
 }
