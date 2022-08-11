@@ -1,4 +1,5 @@
-use parking_lot::RwLockUpgradableReadGuard;
+use consensus_core::blockhash::{self, BlockHashes};
+use parking_lot::{RwLockUpgradableReadGuard, RwLockWriteGuard};
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -7,18 +8,16 @@ use std::{
 };
 
 use super::{caching::CachedDbAccess, caching::CachedDbItem, errors::StoreError, DB};
-use crate::{
-    model::api::hash::{Hash, HashArray},
-    processes::reachability::interval::Interval,
-};
+use crate::processes::reachability::interval::Interval;
+use hashes::Hash;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct ReachabilityData {
-    pub children: HashArray,
+    pub children: BlockHashes,
     pub parent: Hash,
     pub interval: Interval,
     pub height: u64,
-    pub future_covering_set: HashArray,
+    pub future_covering_set: BlockHashes,
 }
 
 impl ReachabilityData {
@@ -31,10 +30,11 @@ pub trait ReachabilityStoreReader {
     fn has(&self, hash: Hash) -> Result<bool, StoreError>;
     fn get_interval(&self, hash: Hash) -> Result<Interval, StoreError>;
     fn get_parent(&self, hash: Hash) -> Result<Hash, StoreError>;
-    fn get_children(&self, hash: Hash) -> Result<HashArray, StoreError>;
-    fn get_future_covering_set(&self, hash: Hash) -> Result<HashArray, StoreError>;
+    fn get_children(&self, hash: Hash) -> Result<BlockHashes, StoreError>;
+    fn get_future_covering_set(&self, hash: Hash) -> Result<BlockHashes, StoreError>;
 }
 pub trait ReachabilityStore: ReachabilityStoreReader {
+    fn init(&mut self, origin: Hash, capacity: Interval) -> Result<(), StoreError>;
     fn insert(&mut self, hash: Hash, parent: Hash, interval: Interval, height: u64) -> Result<(), StoreError>;
     fn set_interval(&mut self, hash: Hash, interval: Interval) -> Result<(), StoreError>;
     fn append_child(&mut self, hash: Hash, child: Hash) -> Result<u64, StoreError>;
@@ -75,6 +75,20 @@ impl DbReachabilityStore {
 }
 
 impl ReachabilityStore for DbReachabilityStore {
+    fn init(&mut self, origin: Hash, capacity: Interval) -> Result<(), StoreError> {
+        debug_assert!(!self.cached_access.has(origin)?);
+
+        let data = Arc::new(ReachabilityData::new(blockhash::NONE, capacity, 0));
+        let mut batch = WriteBatch::default();
+        self.cached_access
+            .write_batch(&mut batch, origin, &data)?;
+        self.reindex_root
+            .write_batch(&mut batch, &origin)?;
+        self.raw_db.write(batch)?;
+
+        Ok(())
+    }
+
     fn insert(&mut self, hash: Hash, parent: Hash, interval: Interval, height: u64) -> Result<(), StoreError> {
         if self.cached_access.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
@@ -135,11 +149,11 @@ impl ReachabilityStoreReader for DbReachabilityStore {
         Ok(self.cached_access.read(hash)?.parent)
     }
 
-    fn get_children(&self, hash: Hash) -> Result<HashArray, StoreError> {
+    fn get_children(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
         Ok(Arc::clone(&self.cached_access.read(hash)?.children))
     }
 
-    fn get_future_covering_set(&self, hash: Hash) -> Result<HashArray, StoreError> {
+    fn get_future_covering_set(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
         Ok(Arc::clone(&self.cached_access.read(hash)?.future_covering_set))
     }
 }
@@ -155,26 +169,30 @@ impl<'a> StagingReachabilityStore<'a> {
         Self { store_read, staging_writes: HashMap::new(), staging_reindex_root: None }
     }
 
-    pub fn commit(self) -> Result<(), StoreError> {
+    pub fn commit(self, batch: &mut WriteBatch) -> Result<RwLockWriteGuard<'a, DbReachabilityStore>, StoreError> {
         let mut store_write = RwLockUpgradableReadGuard::upgrade(self.store_read);
-        let mut batch = WriteBatch::default();
         for (k, v) in self.staging_writes {
             let data = Arc::new(v);
             store_write
                 .cached_access
-                .write_batch(&mut batch, k, &data)?
+                .write_batch(batch, k, &data)?
         }
         if let Some(root) = self.staging_reindex_root {
             store_write
                 .reindex_root
-                .write_batch(&mut batch, &root)?;
+                .write_batch(batch, &root)?;
         }
-        store_write.raw_db.write(batch)?;
-        Ok(())
+        Ok(store_write)
     }
 }
 
 impl ReachabilityStore for StagingReachabilityStore<'_> {
+    fn init(&mut self, origin: Hash, capacity: Interval) -> Result<(), StoreError> {
+        self.insert(origin, blockhash::NONE, capacity, 0)?;
+        self.set_reindex_root(origin)?;
+        Ok(())
+    }
+
     fn insert(&mut self, hash: Hash, parent: Hash, interval: Interval, height: u64) -> Result<(), StoreError> {
         if self.store_read.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
@@ -270,19 +288,19 @@ impl ReachabilityStoreReader for StagingReachabilityStore<'_> {
         }
     }
 
-    fn get_children(&self, hash: Hash) -> Result<HashArray, StoreError> {
+    fn get_children(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
         if let Some(data) = self.staging_writes.get(&hash) {
-            Ok(HashArray::clone(&data.children))
+            Ok(BlockHashes::clone(&data.children))
         } else {
-            Ok(HashArray::clone(&self.store_read.cached_access.read(hash)?.children))
+            Ok(BlockHashes::clone(&self.store_read.cached_access.read(hash)?.children))
         }
     }
 
-    fn get_future_covering_set(&self, hash: Hash) -> Result<HashArray, StoreError> {
+    fn get_future_covering_set(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
         if let Some(data) = self.staging_writes.get(&hash) {
-            Ok(HashArray::clone(&data.future_covering_set))
+            Ok(BlockHashes::clone(&data.future_covering_set))
         } else {
-            Ok(HashArray::clone(
+            Ok(BlockHashes::clone(
                 &self
                     .store_read
                     .cached_access
@@ -325,6 +343,12 @@ impl MemoryReachabilityStore {
 }
 
 impl ReachabilityStore for MemoryReachabilityStore {
+    fn init(&mut self, origin: Hash, capacity: Interval) -> Result<(), StoreError> {
+        self.insert(origin, blockhash::NONE, capacity, 0)?;
+        self.set_reindex_root(origin)?;
+        Ok(())
+    }
+
     fn insert(&mut self, hash: Hash, parent: Hash, interval: Interval, height: u64) -> Result<(), StoreError> {
         if let Vacant(e) = self.map.entry(hash) {
             e.insert(ReachabilityData::new(parent, interval, height));
@@ -382,11 +406,11 @@ impl ReachabilityStoreReader for MemoryReachabilityStore {
         Ok(self.get_data(hash)?.parent)
     }
 
-    fn get_children(&self, hash: Hash) -> Result<HashArray, StoreError> {
+    fn get_children(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
         Ok(Arc::clone(&self.get_data(hash)?.children))
     }
 
-    fn get_future_covering_set(&self, hash: Hash) -> Result<HashArray, StoreError> {
+    fn get_future_covering_set(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
         Ok(Arc::clone(&self.get_data(hash)?.future_covering_set))
     }
 }
@@ -398,16 +422,14 @@ mod tests {
     #[test]
     fn test_store_basics() {
         let mut store: Box<dyn ReachabilityStore> = Box::new(MemoryReachabilityStore::new());
-        let (hash, parent) = (Hash::from_u64(7), Hash::from_u64(15));
+        let (hash, parent) = (7.into(), 15.into());
         let interval = Interval::maximal();
         store.insert(hash, parent, interval, 5).unwrap();
-        let height = store
-            .append_child(hash, Hash::from_u64(31))
-            .unwrap();
+        let height = store.append_child(hash, 31.into()).unwrap();
         assert_eq!(height, 5);
         let children = store.get_children(hash).unwrap();
         println!("{:?}", children);
-        store.get_interval(Hash::from_u64(7)).unwrap();
+        store.get_interval(7.into()).unwrap();
         println!("{:?}", children);
     }
 }

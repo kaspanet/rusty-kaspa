@@ -82,10 +82,7 @@ where
         }
     }
 
-    // It is important to keep this function `mut` in order to avoid concurrent reads during a write
-    // which might result in a non updated read value overriding the new write to the cache. It might
-    // be argued that this can be handled on higher levels of the logic, but for now this is safer.
-    pub fn write(&mut self, key: TKey, data: &Arc<TData>) -> Result<(), StoreError>
+    pub fn write(&self, key: TKey, data: &Arc<TData>) -> Result<(), StoreError>
     where
         TKey: Copy + AsRef<[u8]>,
         TData: Serialize,
@@ -97,7 +94,7 @@ where
         Ok(())
     }
 
-    pub fn write_batch(&mut self, batch: &mut WriteBatch, key: TKey, data: &Arc<TData>) -> Result<(), StoreError>
+    pub fn write_batch(&self, batch: &mut WriteBatch, key: TKey, data: &Arc<TData>) -> Result<(), StoreError>
     where
         TKey: Copy + AsRef<[u8]>,
         TData: Serialize,

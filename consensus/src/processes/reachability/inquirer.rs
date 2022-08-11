@@ -1,13 +1,13 @@
 use super::interval::Interval;
 use super::{tree::*, *};
-use crate::model;
-use crate::model::stores::reachability::ReachabilityStoreReader;
-use crate::model::{api::hash::Hash, stores::reachability::ReachabilityStore};
+use crate::model::stores::reachability::{ReachabilityStore, ReachabilityStoreReader};
+use consensus_core::blockhash;
+use hashes::Hash;
 
 /// Init the reachability store to match the state required by the algorithmic layer.
 /// The function first checks the store for possibly being initialized already.
 pub fn init(store: &mut (impl ReachabilityStore + ?Sized)) -> Result<()> {
-    init_with_params(store, model::ORIGIN, Interval::maximal())
+    init_with_params(store, blockhash::ORIGIN, Interval::maximal())
 }
 
 pub(super) fn init_with_params(
@@ -16,8 +16,7 @@ pub(super) fn init_with_params(
     if store.has(origin)? {
         return Ok(());
     }
-    store.insert(origin, Hash::ZERO, capacity, 0)?;
-    store.set_reindex_root(origin)?;
+    store.init(origin, capacity)?;
     Ok(())
 }
 
@@ -228,7 +227,7 @@ pub fn backward_chain_iterator(
 pub fn default_chain_iterator(
     store: &(impl ReachabilityStoreReader + ?Sized), from: Hash,
 ) -> impl Iterator<Item = Result<Hash>> + '_ {
-    BackwardChainIterator::new(store, from, model::ORIGIN, false)
+    BackwardChainIterator::new(store, from, blockhash::ORIGIN, false)
 }
 
 pub struct ForwardChainIterator<'a, T: ReachabilityStoreReader + ?Sized> {
@@ -302,7 +301,7 @@ impl<'a, T: ReachabilityStoreReader + ?Sized> Iterator for BackwardChainIterator
                     None
                 }
             } else {
-                debug_assert_ne!(current, Hash::ZERO);
+                debug_assert_ne!(current, blockhash::NONE);
                 match self.store.get_parent(current) {
                     Ok(next) => {
                         self.current = Some(next);
@@ -376,7 +375,7 @@ mod tests {
         // Act
         DagBuilder::new(&mut store)
             .init()
-            .add_block(DagBlock::new(1.into(), vec![Hash::ORIGIN]))
+            .add_block(DagBlock::new(1.into(), vec![blockhash::ORIGIN]))
             .add_block(DagBlock::new(2.into(), vec![1.into()]))
             .add_block(DagBlock::new(3.into(), vec![1.into()]))
             .add_block(DagBlock::new(4.into(), vec![2.into(), 3.into()]))
@@ -390,7 +389,9 @@ mod tests {
             .add_block(DagBlock::new(12.into(), vec![11.into(), 10.into()]));
 
         // Assert intervals
-        store.validate_intervals(Hash::ORIGIN).unwrap();
+        store
+            .validate_intervals(blockhash::ORIGIN)
+            .unwrap();
 
         // Assert genesis
         for i in 2u64..=12 {

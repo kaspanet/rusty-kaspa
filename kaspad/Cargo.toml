@@ -13,5 +13,14 @@ async-std = "1.11.0"
 regex = "1"
 hex = "0.4.3"
 thiserror = "1.0.31"
+rand_distr = "0.4.3"
+rand = "0.8"
+tempfile = "3.3.0"
+rayon = "1.5.3"
+num-format = "0.4.0"
+
+misc = {path="../misc"}
+hashes = {path="../crypto/hashes"}
 kaspa-core = {path="../core"}
+consensus-core = {path="../consensus/core"}
 consensus = {path="../consensus"}

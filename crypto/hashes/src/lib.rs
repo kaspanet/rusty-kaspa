@@ -1,15 +1,17 @@
 mod hashers;
 mod pow_hashers;
 
+use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Display, Formatter};
+use std::mem::size_of;
 use std::str::{self, FromStr};
 
-const HASH_SIZE: usize = 32;
+pub const HASH_SIZE: usize = 32;
 
 pub use hashers::*;
 
 // TODO: Check if we use hash more as an array of u64 or of bytes and change the default accordingly
-#[derive(PartialEq, Eq, Clone, Copy, Hash, Default, Debug)]
+#[derive(PartialEq, Eq, Clone, Copy, Hash, Default, Debug, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Hash([u8; HASH_SIZE]);
 
 impl Hash {
@@ -19,6 +21,10 @@ impl Hash {
 
     pub const fn as_bytes(self) -> [u8; 32] {
         self.0
+    }
+
+    pub fn from_slice(bytes: &[u8]) -> Self {
+        Self(<[u8; HASH_SIZE]>::try_from(bytes).expect("Slice must have the length of Hash"))
     }
 
     pub fn iter_u64_le(&self) -> impl ExactSizeIterator<Item = u64> + '_ {
@@ -33,6 +39,12 @@ impl Hash {
             .zip(arr.iter())
             .for_each(|(bytes, word)| bytes.copy_from_slice(&word.to_le_bytes()));
         Self(ret)
+    }
+
+    pub fn from_u64_word(word: u64) -> Self {
+        let mut bytes = [0u8; HASH_SIZE];
+        bytes[0..size_of::<u64>()].copy_from_slice(&word.to_le_bytes());
+        Hash(bytes)
     }
 }
 
@@ -51,6 +63,18 @@ impl FromStr for Hash {
         let mut bytes = [0u8; HASH_SIZE];
         hex::decode_to_slice(hash_str, &mut bytes)?;
         Ok(Hash(bytes))
+    }
+}
+
+impl From<u64> for Hash {
+    fn from(word: u64) -> Self {
+        Self::from_u64_word(word)
+    }
+}
+
+impl AsRef<[u8]> for Hash {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
     }
 }
 
