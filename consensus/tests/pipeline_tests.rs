@@ -9,6 +9,7 @@ use consensus::{
 use consensus_core::{block::Block, blockhash};
 use hashes::Hash;
 use parking_lot::RwLock;
+use rand_distr::{Distribution, Poisson};
 use rocksdb::WriteBatch;
 use std::sync::Arc;
 
@@ -143,4 +144,50 @@ fn test_concurrent_pipeline() {
     assert!(store.are_anticone(11, 4));
     assert!(store.are_anticone(11, 6));
     assert!(store.are_anticone(11, 9));
+}
+
+#[test]
+fn test_pipeline_stream() {
+    let genesis: Hash = blockhash::new_unique();
+    let ghostdag_k: KType = 18;
+    let bps = 8;
+    let delay = 2;
+
+    let poi = Poisson::new((bps * delay) as f64).unwrap();
+    let mut thread_rng = rand::thread_rng();
+
+    let (_tempdir, db) = common::create_temp_db();
+    let consensus = Consensus::new(db, genesis, ghostdag_k);
+    let wait_handle = consensus.init();
+
+    let mut tips = vec![genesis];
+    let mut total = 10000i64;
+    while total > 0 {
+        let v = poi.sample(&mut thread_rng) as i64;
+        if v == 0 {
+            continue;
+        }
+        total -= v;
+        // println!("{} is from a Poisson(2) distribution", v);
+        let mut new_tips = Vec::with_capacity(v as usize);
+        for _ in 0..v {
+            let hash = blockhash::new_unique();
+            new_tips.push(hash);
+            let b = Block::new(hash, tips.clone());
+            // Submit to consensus
+            consensus.validate_and_insert_block(Arc::new(b));
+        }
+        tips = new_tips;
+    }
+
+    let (_store, _) = consensus.drop();
+    // Clone with a new cache in order to verify correct writes to the DB itself
+    // let store = store.read().clone_with_new_cache(10000);
+
+    wait_handle.join().unwrap();
+
+    // Assert intervals
+    // store
+    //     .validate_intervals(blockhash::ORIGIN)
+    //     .unwrap();
 }

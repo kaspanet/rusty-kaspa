@@ -8,18 +8,20 @@ use crate::{
             DB,
         },
     },
-    processes::{ghostdag::protocol::GhostdagManager, reachability::inquirer},
+    processes::{ghostdag::protocol::GhostdagManager, reachability::inquirer as reachability},
 };
 use consensus_core::{block::Block, blockhash::BlockHashes, header::Header};
 use crossbeam::select;
-use crossbeam_channel::{Receiver, Sender};
+use crossbeam_channel::{unbounded, Receiver, Sender};
 use hashes::Hash;
-use parking_lot::{Mutex, RwLock};
+use parking_lot::{Condvar, Mutex, RwLock};
 use rocksdb::WriteBatch;
 use std::{
     collections::{hash_map::Entry::Vacant, HashMap, HashSet},
-    sync::Arc,
+    sync::{atomic::Ordering, Arc},
 };
+
+use super::ProcessingCounters;
 
 pub struct HeaderProcessingContext<'a> {
     pub hash: Hash,
@@ -39,11 +41,16 @@ impl<'a> HeaderProcessingContext<'a> {
 }
 
 pub enum BlockTask {
-    Yield,
     Exit,
-    External(Arc<Block>),
-    Resent(Arc<Block>),
+    Process(Arc<Block>),
 }
+
+pub enum PendingTask {
+    Yield,
+    Process(Arc<Block>),
+}
+
+const SIGNAL_THRESHOLD: usize = 18;
 
 struct PendingBlocksManager {
     /// Holds pending block hashes and their dependent blocks
@@ -62,7 +69,10 @@ impl PendingBlocksManager {
 pub struct HeaderProcessor {
     // Channels
     receiver: Receiver<BlockTask>,
-    sender: Sender<BlockTask>, // Used for self-sending pending blocks
+
+    // Channels used for resending pending blocks
+    _pending_resend: Sender<PendingTask>,
+    _pending_receiver: Receiver<PendingTask>,
 
     // Config
     genesis_hash: Hash,
@@ -85,17 +95,26 @@ pub struct HeaderProcessor {
 
     // Pending blocks management
     pending_manager: Mutex<PendingBlocksManager>,
+
+    // Counters
+    counters: Arc<ProcessingCounters>,
+
+    /// Used to signal workers availability
+    pub signal: Condvar,
 }
 
 impl HeaderProcessor {
     pub fn new(
-        receiver: Receiver<BlockTask>, sender: Sender<BlockTask>, genesis_hash: Hash, ghostdag_k: KType, db: Arc<DB>,
+        receiver: Receiver<BlockTask>, genesis_hash: Hash, ghostdag_k: KType, db: Arc<DB>,
         relations_store: Arc<RwLock<DbRelationsStore>>, reachability_store: Arc<RwLock<DbReachabilityStore>>,
-        ghostdag_store: Arc<DbGhostdagStore>,
+        ghostdag_store: Arc<DbGhostdagStore>, counters: Arc<ProcessingCounters>,
     ) -> Self {
+        let (_pending_resend, _pending_receiver): (Sender<PendingTask>, Receiver<PendingTask>) = unbounded();
+
         Self {
             receiver,
-            sender,
+            _pending_resend,
+            _pending_receiver,
             genesis_hash,
             // ghostdag_k,
             db,
@@ -110,31 +129,37 @@ impl HeaderProcessor {
                 Arc::new(MTReachabilityService::new(reachability_store)),
             ),
             pending_manager: Mutex::new(PendingBlocksManager::new()),
+            counters,
+            signal: Condvar::new(),
         }
     }
 
     pub fn worker(self: &Arc<HeaderProcessor>) {
-        let receiver = self.receiver.clone();
-        // let sender = self.sender.clone();
-
-        let mut exiting = false;
         loop {
-            if exiting {
-                let manager = self.pending_manager.lock();
-                if manager.pending.is_empty() {
-                    break;
-                }
-            }
             select! {
-                recv(receiver) -> data => {
+                recv(self.receiver) -> data => {
                     if let Ok(task) = data {
                         match task {
-                            BlockTask::Yield => (),
-                            BlockTask::Exit => exiting = true,
-                            BlockTask::External(block) | BlockTask::Resent(block) => self.queue_block(block),
+                            BlockTask::Exit => break,
+                            BlockTask::Process(block) => {
+
+                                let mut manager = self.pending_manager.lock();
+
+                                if let Vacant(e) = manager.pending.entry(block.header.hash) {
+                                    e.insert(Vec::new());
+                                    if manager.pending.len() > SIGNAL_THRESHOLD {
+                                        self.signal.wait(&mut manager);
+                                    }
+
+                                    let processor = self.clone();
+                                    rayon::spawn(move || {
+                                        processor.queue_block(block);
+                                    });
+                                }
+                            }
                         };
                     } else {
-                        // All senders are dropped, exit
+                        // All senders are dropped
                         break;
                     }
                 }
@@ -150,10 +175,6 @@ impl HeaderProcessor {
             // expected to be negligible in header processing time
             let mut manager = self.pending_manager.lock();
 
-            if let Vacant(e) = manager.pending.entry(hash) {
-                e.insert(Vec::new());
-            }
-
             for parent in block.header.parents.iter() {
                 if let Some(deps) = manager.pending.get_mut(parent) {
                     deps.push(block);
@@ -166,34 +187,30 @@ impl HeaderProcessor {
             }
         }
 
-        let processor = self.clone();
-        rayon::spawn(move || {
-            // TODO: report duplicate block to job sender
-            if processor.header_was_processed(hash) {
-                return;
-            }
+        // TODO: report duplicate block to job sender
+        if self.header_was_processed(hash) {
+            return;
+        }
 
-            // TODO: report missing parents to job sender (currently will panic for missing keys)
+        // TODO: report missing parents to job sender (currently will panic for missing keys)
 
-            processor.process_header(&block.header);
-            let mut manager = processor.pending_manager.lock();
+        self.process_header(&block.header);
 
-            assert!(manager.processing.remove(&hash), "processed block is expected to be in processing set");
+        let mut manager = self.pending_manager.lock();
+        assert!(manager.processing.remove(&hash), "processed block is expected to be in processing set");
+        let deps = manager
+            .pending
+            .remove(&hash)
+            .expect("processed block is expected to be in pending map");
 
-            let deps = manager
-                .pending
-                .remove(&hash)
-                .expect("processed block is expected to be in pending map");
-            for dep in deps {
-                // Resend the block through the channel.
-                processor
-                    .sender
-                    .send(BlockTask::Resent(dep))
-                    .unwrap();
-            }
-            // Yield the receiver to check its exit state
-            processor.sender.send(BlockTask::Yield).unwrap();
-        });
+        if manager.pending.len() == SIGNAL_THRESHOLD {
+            self.signal.notify_one();
+        }
+
+        for dep in deps {
+            let processor = self.clone();
+            rayon::spawn(move || processor.queue_block(dep));
+        }
     }
 
     fn header_was_processed(self: &Arc<HeaderProcessor>, hash: Hash) -> bool {
@@ -215,6 +232,14 @@ impl HeaderProcessor {
         //
 
         self.commit_header(ctx, header);
+
+        // Report to counters
+        self.counters
+            .header_counts
+            .fetch_add(1, Ordering::SeqCst);
+        self.counters
+            .dep_counts
+            .fetch_add(header.parents.len() as u64, Ordering::SeqCst);
     }
 
     fn commit_header(self: &Arc<HeaderProcessor>, ctx: HeaderProcessingContext, header: &Header) {
@@ -225,14 +250,18 @@ impl HeaderProcessor {
         // time, and thus serializing this part will do no harm. However this should be benchmarked. The
         // alternative is to create a separate ReachabilityProcessor and to manage things more tightly.
         let mut staging = StagingReachabilityStore::new(self.reachability_store.upgradable_read());
+
         // Add block to staging reachability
-        inquirer::add_block(
+        reachability::add_block(
             &mut staging,
             ctx.hash,
             ghostdag_data.selected_parent,
             &mut ctx.mergeset.unwrap().iter().cloned(),
         )
         .unwrap();
+        // Hint a new tip.
+        // TODO: imp header tips store and call this only for an actual header selected tip
+        reachability::hint_virtual_selected_parent(&mut staging, ctx.hash).unwrap();
 
         // Create a DB batch writer
         let mut batch = WriteBatch::default();
