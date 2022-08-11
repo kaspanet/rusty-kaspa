@@ -3,15 +3,14 @@
 //!
 use super::{inquirer::*, tree::*};
 use crate::{
-    model::{
-        api::hash::Hash,
-        stores::{
-            errors::StoreError,
-            reachability::{ReachabilityStore, ReachabilityStoreReader},
-        },
+    model::stores::{
+        errors::StoreError,
+        reachability::{ReachabilityStore, ReachabilityStoreReader},
     },
     processes::reachability::interval::Interval,
 };
+use consensus_core::blockhash::BlockHashExtensions;
+use hashes::Hash;
 use std::collections::{HashMap, HashSet, VecDeque};
 use thiserror::Error;
 
@@ -26,7 +25,7 @@ impl<'a, T: ReachabilityStore + ?Sized> StoreBuilder<'a, T> {
     }
 
     pub fn add_block(&mut self, hash: Hash, parent: Hash) -> &mut Self {
-        let parent_height = if !parent.is_zero() { self.store.append_child(parent, hash).unwrap() } else { 0 };
+        let parent_height = if !parent.is_none() { self.store.append_child(parent, hash).unwrap() } else { 0 };
         self.store
             .insert(hash, parent, Interval::empty(), parent_height + 1)
             .unwrap();
@@ -119,20 +118,18 @@ impl<'a, T: ReachabilityStore + ?Sized> DagBuilder<'a, T> {
     }
 
     fn mergeset(&self, block: &DagBlock, selected_parent: Hash) -> Vec<Hash> {
-        let mut vec: Vec<Hash> = block
+        let mut queue: VecDeque<Hash> = block
             .parents
             .iter()
-            .filter(|p| **p != selected_parent)
             .cloned()
+            .filter(|p| *p != selected_parent)
             .collect();
-        let mut set = HashSet::<Hash>::from_iter(vec.iter().cloned());
-        let mut past = HashSet::<Hash>::new();
-        let mut queue = VecDeque::<Hash>::from_iter(vec.iter().cloned());
+        let mut mergeset = HashSet::<Hash>::from_iter(queue.iter().cloned());
+        let mut past: HashSet<Hash> = HashSet::new();
 
-        while !queue.is_empty() {
-            let current = queue.pop_front().unwrap();
+        while let Some(current) = queue.pop_front() {
             for parent in self.map[&current].parents.iter() {
-                if set.contains(parent) || past.contains(parent) {
+                if mergeset.contains(parent) || past.contains(parent) {
                     continue;
                 }
 
@@ -141,12 +138,12 @@ impl<'a, T: ReachabilityStore + ?Sized> DagBuilder<'a, T> {
                     continue;
                 }
 
-                set.insert(*parent);
-                vec.push(*parent);
+                mergeset.insert(*parent);
                 queue.push_back(*parent);
             }
         }
-        vec
+
+        Vec::<Hash>::from_iter(mergeset.iter().cloned())
     }
 
     pub fn store(&self) -> &&'a mut T {
@@ -201,8 +198,7 @@ impl<T: ReachabilityStoreReader + ?Sized> StoreValidationExtensions for T {
 
     fn validate_intervals(&self, root: Hash) -> std::result::Result<(), TestError> {
         let mut queue = VecDeque::<Hash>::from([root]);
-        while !queue.is_empty() {
-            let parent = queue.pop_front().unwrap();
+        while let Some(parent) = queue.pop_front() {
             let children = self.get_children(parent)?;
             queue.extend(children.iter());
 

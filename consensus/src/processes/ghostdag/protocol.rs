@@ -1,106 +1,111 @@
-use crate::model::{
-    api::hash::{Hash, HashArray},
-    stores::{
-        ghostdag::{GhostdagData, GhostdagStore, HashU8Map},
-        reachability::ReachabilityStore,
-        relations::RelationsStore,
-    },
-    ORIGIN,
-};
-use crate::processes::reachability::inquirer::{self, is_dag_ancestor_of};
-use core::marker::PhantomData;
-use misc::uint256::Uint256;
 use std::{collections::HashMap, sync::Arc};
+
+use consensus_core::blockhash::{self, BlockHashes};
+use hashes::Hash;
+use misc::uint256::Uint256;
+
+use crate::{
+    model::{
+        services::reachability::ReachabilityService,
+        stores::{
+            ghostdag::{GhostdagData, GhostdagStoreReader, HashKTypeMap, KType},
+            relations::RelationsStoreReader,
+        },
+    },
+    pipeline::header_processor::HeaderProcessingContext,
+};
 
 use super::ordering::*;
 
-pub trait StoreAccess<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore> {
-    fn ghostdag_store(&self) -> &T;
-    fn ghostdag_store_as_mut(&mut self) -> &mut T;
-    fn relations_store(&self) -> &S;
-    fn reachability_store(&self) -> &U;
-    fn reachability_store_as_mut(&mut self) -> &mut U;
-}
-
-pub struct GhostdagManager<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore, V: StoreAccess<T, S, U>> {
+pub struct GhostdagManager<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService> {
     genesis_hash: Hash,
-    pub(super) k: u8,
-    _phantom: PhantomData<(T, S, U, V)>,
+    pub(super) k: KType,
+    pub(super) ghostdag_store: Arc<T>,
+    pub(super) relations_store: Arc<S>,
+    pub(super) reachability_service: Arc<U>,
 }
 
-impl<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore, V: StoreAccess<T, S, U>> GhostdagManager<T, S, U, V> {
-    pub fn new(genesis_hash: Hash, k: u8) -> Self {
-        Self { genesis_hash, k, _phantom: Default::default() }
+impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService> GhostdagManager<T, S, U> {
+    pub fn new(
+        genesis_hash: Hash, k: KType, ghostdag_store: Arc<T>, relations_store: Arc<S>, reachability_service: Arc<U>,
+    ) -> Self {
+        Self { genesis_hash, k, ghostdag_store, relations_store, reachability_service }
     }
 
-    pub fn init(&self, sa: &mut V) {
-        sa.ghostdag_store_as_mut()
-            .insert(
-                self.genesis_hash,
-                Arc::new(GhostdagData::new(
-                    0,
-                    Uint256::from_u64(0),
-                    ORIGIN,
-                    HashArray::new(Vec::new()),
-                    HashArray::new(Vec::new()),
-                    HashU8Map::new(HashMap::new()),
-                )),
-            )
-            .unwrap();
+    pub fn add_genesis_if_needed(&self, ctx: &mut HeaderProcessingContext) {
+        if !self
+            .ghostdag_store
+            .has(self.genesis_hash, false)
+            .unwrap()
+        {
+            ctx.mergeset = Some(BlockHashes::new(Vec::new()));
+            ctx.ghostdag_data = Some(Arc::new(GhostdagData::new(
+                0,
+                Uint256::from_u64(0),
+                blockhash::ORIGIN,
+                BlockHashes::new(Vec::new()),
+                BlockHashes::new(Vec::new()),
+                HashKTypeMap::new(HashMap::new()),
+            )));
+        }
     }
 
-    pub fn add_block(&self, sa: &mut V, block: Hash) {
-        let parents = sa.relations_store().get_parents(block).unwrap();
-        assert!(parents.len() > 0, "genesis must be added via a call to init");
+    fn find_selected_parent(&self, parents: &[Hash]) -> Hash {
+        parents
+            .iter()
+            .map(|parent| SortableBlock {
+                hash: *parent,
+                blue_work: self
+                    .ghostdag_store
+                    .get_blue_work(*parent, false)
+                    .unwrap(),
+            })
+            .max()
+            .unwrap()
+            .hash
+    }
 
-        let selected_parent = Self::find_selected_parent(sa, &parents);
-        let mut new_block_data = Arc::new(GhostdagData::with_selected_parent(selected_parent, self.k));
+    pub fn add_block(&self, ctx: &mut HeaderProcessingContext, block: Hash) {
+        let parents = &ctx.header.parents;
+        assert!(!parents.is_empty(), "genesis must be added via a call to init");
 
-        let mergeset = self.mergeset_without_selected_parent(sa, &selected_parent, &parents);
+        // Run the GHOSTDAG parent selection algorithm
+        let selected_parent = self.find_selected_parent(parents);
+        // Initialize new GHOSTDAG block data with the selected parent
+        let mut new_block_data = Arc::new(GhostdagData::new_with_selected_parent(selected_parent, self.k));
+        // Get the mergeset in consensus-agreed topological order (topological here means forward in time from blocks to children)
+        let ordered_mergeset = self.ordered_mergeset_without_selected_parent(selected_parent, parents);
 
-        for blue_candidate in mergeset.iter().cloned() {
+        for blue_candidate in ordered_mergeset.iter().cloned() {
             let (is_blue, candidate_blue_anticone_size, candidate_blues_anticone_sizes) =
-                self.check_blue_candidate(sa, &new_block_data, blue_candidate);
+                self.check_blue_candidate(&new_block_data, blue_candidate);
 
             if is_blue {
                 // No k-cluster violation found, we can now set the candidate block as blue
-                let new_block_data_mut = Arc::make_mut(&mut new_block_data);
-                HashArray::make_mut(&mut new_block_data_mut.mergeset_blues).push(blue_candidate);
-                HashU8Map::make_mut(&mut new_block_data_mut.blues_anticone_sizes)
-                    .insert(blue_candidate, candidate_blue_anticone_size);
-                for (blue, size) in candidate_blues_anticone_sizes {
-                    HashU8Map::make_mut(&mut new_block_data_mut.blues_anticone_sizes).insert(blue, size + 1);
-                }
+                new_block_data.add_blue(blue_candidate, candidate_blue_anticone_size, &candidate_blues_anticone_sizes);
             } else {
-                let new_block_data_mut = Arc::make_mut(&mut new_block_data);
-                HashArray::make_mut(&mut new_block_data_mut.mergeset_reds).push(blue_candidate);
+                new_block_data.add_red(blue_candidate);
             }
         }
 
-        let blue_score = sa
-            .ghostdag_store()
+        let blue_score = self
+            .ghostdag_store
             .get_blue_score(selected_parent, false)
             .unwrap()
             + new_block_data.mergeset_blues.len() as u64;
-
-        let new_block_data_mut = Arc::make_mut(&mut new_block_data);
-        new_block_data_mut.blue_score = blue_score;
-
         // TODO: This is just a placeholder until calc_work is implemented.
-        new_block_data_mut.blue_work = Uint256::from_u64(blue_score);
+        let blue_work = Uint256::from_u64(blue_score);
+        new_block_data.finalize_score_and_work(blue_score, blue_work);
 
-        sa.ghostdag_store_as_mut()
-            .insert(block, new_block_data)
-            .unwrap();
-
-        // TODO: Reachability should be changed somewhere else
-        inquirer::add_block(sa.reachability_store_as_mut(), block, selected_parent, &mut mergeset.iter().cloned())
-            .unwrap();
+        // Cache mergeset in context
+        ctx.mergeset = Some(BlockHashes::new(ordered_mergeset));
+        // Stage new block data
+        ctx.ghostdag_data = Some(new_block_data);
     }
 
     fn check_blue_candidate_with_chain_block(
-        &self, sa: &V, new_block_data: &GhostdagData, chain_block: &ChainBlockData, blue_candidate: Hash,
-        candidate_blues_anticone_sizes: &mut HashMap<Hash, u8>, candidate_blue_anticone_size: &mut u8,
+        &self, new_block_data: &GhostdagData, chain_block: &ChainBlockData, blue_candidate: Hash,
+        candidate_blues_anticone_sizes: &mut HashMap<Hash, KType>, candidate_blue_anticone_size: &mut KType,
     ) -> (bool, bool) {
         // If blue_candidate is in the future of chain_block, it means
         // that all remaining blues are in the past of chain_block and thus
@@ -112,20 +117,25 @@ impl<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore, V: StoreAccess<T
         // no point in checking it.
 
         // We check if chain_block is not the new block by checking if it has a hash.
-
         if let Some(hash) = chain_block.hash {
-            if is_dag_ancestor_of(sa.reachability_store(), hash, blue_candidate).unwrap() {
+            if self
+                .reachability_service
+                .is_dag_ancestor_of(hash, blue_candidate)
+            {
                 return (true, false);
             }
         }
 
         for block in chain_block.data.mergeset_blues.iter().cloned() {
             // Skip blocks that exist in the past of blue_candidate.
-            if is_dag_ancestor_of(sa.reachability_store(), block, blue_candidate).unwrap() {
+            if self
+                .reachability_service
+                .is_dag_ancestor_of(block, blue_candidate)
+            {
                 continue;
             }
 
-            candidate_blues_anticone_sizes.insert(block, self.blue_anticone_size(sa, block, new_block_data));
+            candidate_blues_anticone_sizes.insert(block, self.blue_anticone_size(block, new_block_data));
 
             *candidate_blue_anticone_size += 1;
             if *candidate_blue_anticone_size > self.k {
@@ -145,23 +155,23 @@ impl<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore, V: StoreAccess<T
 
             // This is a sanity check that validates that a blue
             // block's blue anticone is not already larger than K.
-            if *candidate_blues_anticone_sizes
-                .get(&block)
-                .unwrap()
-                > self.k
-            {
-                panic!("found blue anticone larger than K");
-            }
+            assert!(
+                *candidate_blues_anticone_sizes
+                    .get(&block)
+                    .unwrap()
+                    <= self.k,
+                "found blue anticone larger than K"
+            );
         }
 
         (false, false)
     }
 
-    // blue_anticone_size returns the blue anticone size of 'block' from the worldview of 'context'.
-    // Expects 'block' to be in the blue set of 'context'
-    fn blue_anticone_size(&self, sa: &V, block: Hash, context: &GhostdagData) -> u8 {
+    /// Returns the blue anticone size of `block` from the worldview of `context`.
+    /// Expects `block` to be in the blue set of `context`
+    fn blue_anticone_size(&self, block: Hash, context: &GhostdagData) -> KType {
         let mut is_trusted_data = false;
-        let mut current_blues_anticone_sizes = HashU8Map::clone(&context.blues_anticone_sizes);
+        let mut current_blues_anticone_sizes = HashKTypeMap::clone(&context.blues_anticone_sizes);
         let mut current_selected_parent = context.selected_parent;
         loop {
             if let Some(size) = current_blues_anticone_sizes.get(&block) {
@@ -172,24 +182,25 @@ impl<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore, V: StoreAccess<T
                 panic!("block {} is not in blue set of the given context", block);
             }
 
-            current_blues_anticone_sizes = sa
-                .ghostdag_store()
+            current_blues_anticone_sizes = self
+                .ghostdag_store
                 .get_blues_anticone_sizes(current_selected_parent, is_trusted_data)
                 .unwrap();
 
-            current_selected_parent = sa
-                .ghostdag_store()
+            current_selected_parent = self
+                .ghostdag_store
                 .get_selected_parent(current_selected_parent, is_trusted_data)
                 .unwrap();
-            if current_selected_parent == ORIGIN {
+
+            if current_selected_parent == blockhash::ORIGIN {
                 is_trusted_data = true;
-                current_blues_anticone_sizes = sa
-                    .ghostdag_store()
+                current_blues_anticone_sizes = self
+                    .ghostdag_store
                     .get_blues_anticone_sizes(current_selected_parent, is_trusted_data)
                     .unwrap();
 
-                current_selected_parent = sa
-                    .ghostdag_store()
+                current_selected_parent = self
+                    .ghostdag_store
                     .get_selected_parent(current_selected_parent, is_trusted_data)
                     .unwrap();
             }
@@ -197,15 +208,15 @@ impl<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore, V: StoreAccess<T
     }
 
     fn check_blue_candidate(
-        &self, sa: &V, new_block_data: &Arc<GhostdagData>, blue_candidate: Hash,
-    ) -> (bool, u8, HashMap<Hash, u8>) {
+        &self, new_block_data: &Arc<GhostdagData>, blue_candidate: Hash,
+    ) -> (bool, KType, HashMap<Hash, KType>) {
         // The maximum length of new_block_data.mergeset_blues can be K+1 because
         // it contains the selected parent.
-        if new_block_data.mergeset_blues.len() as u8 == self.k + 1 {
+        if new_block_data.mergeset_blues.len() as KType == self.k + 1 {
             return (false, 0, HashMap::new());
         }
 
-        let mut candidate_blues_anticone_sizes: HashMap<Hash, u8> = HashMap::with_capacity(self.k as usize);
+        let mut candidate_blues_anticone_sizes: HashMap<Hash, KType> = HashMap::with_capacity(self.k as usize);
 
         // Iterate over all blocks in the blue past of the new block that are not in the past
         // of blue_candidate, and check for each one of them if blue_candidate potentially
@@ -213,11 +224,10 @@ impl<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore, V: StoreAccess<T
         // of blue_candidate to be over K.
         let mut chain_block = ChainBlockData { hash: None, data: Arc::clone(new_block_data) };
 
-        let mut candidate_blue_anticone_size: u8 = 0;
+        let mut candidate_blue_anticone_size: KType = 0;
 
         loop {
             let (is_blue, is_red) = self.check_blue_candidate_with_chain_block(
-                sa,
                 new_block_data,
                 &chain_block,
                 blue_candidate,
@@ -235,8 +245,8 @@ impl<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore, V: StoreAccess<T
 
             chain_block = ChainBlockData {
                 hash: Some(chain_block.data.selected_parent),
-                data: sa
-                    .ghostdag_store()
+                data: self
+                    .ghostdag_store
                     .get_data(chain_block.data.selected_parent, false)
                     .unwrap(),
             }
@@ -244,22 +254,8 @@ impl<T: GhostdagStore, S: RelationsStore, U: ReachabilityStore, V: StoreAccess<T
 
         (true, candidate_blue_anticone_size, candidate_blues_anticone_sizes)
     }
-
-    fn find_selected_parent(sa: &V, parents: &HashArray) -> Hash {
-        parents
-            .iter()
-            .map(|parent| SortableBlock {
-                hash: *parent,
-                blue_work: sa
-                    .ghostdag_store()
-                    .get_blue_work(*parent, false)
-                    .unwrap(),
-            })
-            .max()
-            .unwrap()
-            .hash
-    }
 }
+
 struct ChainBlockData {
     hash: Option<Hash>,
     data: Arc<GhostdagData>,

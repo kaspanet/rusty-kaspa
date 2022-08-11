@@ -1,7 +1,7 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use std::str::FromStr;
 
-use consensus::model::api::hash::Hash;
+use hashes::Hash;
 
 /// Placeholder for actual benchmarks
 pub fn hash_benchmark(c: &mut Criterion) {

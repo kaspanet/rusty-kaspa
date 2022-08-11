@@ -26,11 +26,9 @@ impl TestConsumer {
     }
 
     pub fn worker(self: &Arc<TestConsumer>, _core: Arc<Core>) {
+        let receiver = self.receiver.clone();
         loop {
-            let receiver = self.receiver.clone();
-
             select! {
-
                 recv(receiver) -> data => {
                     let op = data.unwrap();
                     match op {
