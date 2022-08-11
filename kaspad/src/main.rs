@@ -17,7 +17,13 @@ use crate::emulator::ConsensusMonitor;
 mod emulator;
 
 pub fn main() {
-    trace!("Kaspad starting... (emulated)");
+    let genesis: Hash = blockhash::new_unique();
+    let ghostdag_k: KType = 18;
+    let bps = 8.0;
+    let delay = 2.0;
+    let target_blocks = 32000;
+
+    trace!("Kaspad starting... (round-based simulation with BPS={} and D={})", bps, delay);
 
     rayon::ThreadPoolBuilder::new()
         .num_threads(8)
@@ -31,12 +37,6 @@ pub fn main() {
     signals.init();
 
     // ---
-
-    let genesis: Hash = blockhash::new_unique();
-    let ghostdag_k: KType = 18;
-    let bps = 8.0;
-    let delay = 2.0;
-    let target_blocks = 100000;
 
     let db_tempdir = tempfile::tempdir().unwrap();
     let db = Arc::new(DB::open_default(db_tempdir.path().to_owned().to_str().unwrap()).unwrap());

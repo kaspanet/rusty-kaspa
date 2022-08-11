@@ -12,7 +12,7 @@ use crate::{
 };
 use consensus_core::{block::Block, blockhash::BlockHashes, header::Header};
 use crossbeam::select;
-use crossbeam_channel::{unbounded, Receiver, Sender};
+use crossbeam_channel::Receiver;
 use hashes::Hash;
 use parking_lot::{Condvar, Mutex, RwLock};
 use rocksdb::WriteBatch;
@@ -45,13 +45,6 @@ pub enum BlockTask {
     Process(Arc<Block>),
 }
 
-pub enum PendingTask {
-    Yield,
-    Process(Arc<Block>),
-}
-
-const SIGNAL_THRESHOLD: usize = 18;
-
 struct PendingBlocksManager {
     /// Holds pending block hashes and their dependent blocks
     pub pending: HashMap<Hash, Vec<Arc<Block>>>,
@@ -69,10 +62,6 @@ impl PendingBlocksManager {
 pub struct HeaderProcessor {
     // Channels
     receiver: Receiver<BlockTask>,
-
-    // Channels used for resending pending blocks
-    _pending_resend: Sender<PendingTask>,
-    _pending_receiver: Receiver<PendingTask>,
 
     // Config
     genesis_hash: Hash,
@@ -99,8 +88,10 @@ pub struct HeaderProcessor {
     // Counters
     counters: Arc<ProcessingCounters>,
 
-    /// Used to signal workers availability
-    pub signal: Condvar,
+    // Used to signal that workers are available/idle
+    ready_signal: Condvar,
+    idle_signal: Condvar,
+    ready_threshold: usize,
 }
 
 impl HeaderProcessor {
@@ -109,12 +100,8 @@ impl HeaderProcessor {
         relations_store: Arc<RwLock<DbRelationsStore>>, reachability_store: Arc<RwLock<DbReachabilityStore>>,
         ghostdag_store: Arc<DbGhostdagStore>, counters: Arc<ProcessingCounters>,
     ) -> Self {
-        let (_pending_resend, _pending_receiver): (Sender<PendingTask>, Receiver<PendingTask>) = unbounded();
-
         Self {
             receiver,
-            _pending_resend,
-            _pending_receiver,
             genesis_hash,
             // ghostdag_k,
             db,
@@ -130,7 +117,12 @@ impl HeaderProcessor {
             ),
             pending_manager: Mutex::new(PendingBlocksManager::new()),
             counters,
-            signal: Condvar::new(),
+            ready_signal: Condvar::new(),
+            idle_signal: Condvar::new(),
+
+            // Note: If we ever switch to a non-global thread-pool,
+            // then `num_threads` should be taken from that specific pool
+            ready_threshold: rayon::current_num_threads() * 4,
         }
     }
 
@@ -147,8 +139,8 @@ impl HeaderProcessor {
 
                                 if let Vacant(e) = manager.pending.entry(block.header.hash) {
                                     e.insert(Vec::new());
-                                    if manager.pending.len() > SIGNAL_THRESHOLD {
-                                        self.signal.wait(&mut manager);
+                                    if manager.pending.len() > self.ready_threshold {
+                                        self.ready_signal.wait(&mut manager);
                                     }
 
                                     let processor = self.clone();
@@ -164,6 +156,12 @@ impl HeaderProcessor {
                     }
                 }
             }
+        }
+
+        // Wait until all workers are idle before exiting
+        let mut manager = self.pending_manager.lock();
+        if !manager.pending.is_empty() {
+            self.idle_signal.wait(&mut manager);
         }
     }
 
@@ -203,8 +201,12 @@ impl HeaderProcessor {
             .remove(&hash)
             .expect("processed block is expected to be in pending map");
 
-        if manager.pending.len() == SIGNAL_THRESHOLD {
-            self.signal.notify_one();
+        if manager.pending.len() == self.ready_threshold {
+            self.ready_signal.notify_one();
+        }
+
+        if manager.pending.is_empty() {
+            self.idle_signal.notify_one();
         }
 
         for dep in deps {

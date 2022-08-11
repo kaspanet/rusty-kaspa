@@ -147,7 +147,7 @@ fn test_concurrent_pipeline() {
 }
 
 #[test]
-fn test_pipeline_stream() {
+fn test_concurrent_pipeline_random() {
     let genesis: Hash = blockhash::new_unique();
     let ghostdag_k: KType = 18;
     let bps = 8;
@@ -161,7 +161,7 @@ fn test_pipeline_stream() {
     let wait_handle = consensus.init();
 
     let mut tips = vec![genesis];
-    let mut total = 10000i64;
+    let mut total = 1000i64;
     while total > 0 {
         let v = poi.sample(&mut thread_rng) as i64;
         if v == 0 {
@@ -180,14 +180,14 @@ fn test_pipeline_stream() {
         tips = new_tips;
     }
 
-    let (_store, _) = consensus.drop();
+    let (store, _) = consensus.drop();
     // Clone with a new cache in order to verify correct writes to the DB itself
-    // let store = store.read().clone_with_new_cache(10000);
+    let store = store.read().clone_with_new_cache(10000);
 
     wait_handle.join().unwrap();
 
     // Assert intervals
-    // store
-    //     .validate_intervals(blockhash::ORIGIN)
-    //     .unwrap();
+    store
+        .validate_intervals(blockhash::ORIGIN)
+        .unwrap();
 }
