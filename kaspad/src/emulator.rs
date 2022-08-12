@@ -43,7 +43,7 @@ impl RandomBlockEmitter {
         }
     }
 
-    pub fn worker(self: &Arc<RandomBlockEmitter>, _core: Arc<Core>) {
+    pub fn worker(self: &Arc<RandomBlockEmitter>, core: Arc<Core>) {
         let poi = Poisson::new(self.bps * self.delay).unwrap();
         let mut thread_rng = rand::thread_rng();
 
@@ -74,10 +74,11 @@ impl RandomBlockEmitter {
             tips = new_tips;
             self.counters
                 .blocks_submitted
-                .fetch_add(v, Ordering::SeqCst);
+                .fetch_add(v, Ordering::Relaxed);
         }
-        // core.shutdown();
         self.consensus.signal_exit();
+        thread::sleep(Duration::from_millis(4000));
+        core.shutdown();
     }
 }
 
@@ -94,6 +95,7 @@ impl Service for RandomBlockEmitter {
         self.terminate.store(true, Ordering::SeqCst);
     }
 }
+
 pub struct ConsensusMonitor {
     terminate: AtomicBool,
     // Counters

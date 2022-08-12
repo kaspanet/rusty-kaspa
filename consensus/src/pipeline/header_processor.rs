@@ -2,7 +2,7 @@ use crate::{
     model::{
         services::{reachability::MTReachabilityService, relations::MTRelationsService},
         stores::{
-            ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStoreReader, KType},
+            ghostdag::{DbGhostdagStore, GhostdagData, KType},
             reachability::{DbReachabilityStore, ReachabilityStoreReader, StagingReachabilityStore},
             relations::DbRelationsStore,
             DB,
@@ -176,7 +176,7 @@ impl HeaderProcessor {
             for parent in block.header.parents.iter() {
                 if let Some(deps) = manager.pending.get_mut(parent) {
                     deps.push(block);
-                    return; // The block will be resent once the pending parent completes processing
+                    return; // The block will be reprocessed once the pending parent completes processing
                 }
             }
 
@@ -235,13 +235,13 @@ impl HeaderProcessor {
 
         self.commit_header(ctx, header);
 
-        // Report to counters
+        // Report counters
         self.counters
             .header_counts
-            .fetch_add(1, Ordering::SeqCst);
+            .fetch_add(1, Ordering::Relaxed);
         self.counters
             .dep_counts
-            .fetch_add(header.parents.len() as u64, Ordering::SeqCst);
+            .fetch_add(header.parents.len() as u64, Ordering::Relaxed);
     }
 
     fn commit_header(self: &Arc<HeaderProcessor>, ctx: HeaderProcessingContext, header: &Header) {
@@ -289,11 +289,7 @@ impl HeaderProcessor {
     }
 
     pub fn process_genesis_if_needed(self: &Arc<HeaderProcessor>) {
-        if self
-            .ghostdag_store
-            .has(self.genesis_hash, false)
-            .unwrap()
-        {
+        if self.header_was_processed(self.genesis_hash) {
             return;
         }
         let header = Header::new(self.genesis_hash, vec![]);
