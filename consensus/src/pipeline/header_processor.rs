@@ -17,7 +17,7 @@ use hashes::Hash;
 use parking_lot::{Condvar, Mutex, RwLock};
 use rocksdb::WriteBatch;
 use std::{
-    collections::{hash_map::Entry::Vacant, HashMap, HashSet},
+    collections::{hash_map::Entry::Vacant, HashMap},
     sync::{atomic::Ordering, Arc},
 };
 
@@ -45,20 +45,6 @@ pub enum BlockTask {
     Process(Arc<Block>),
 }
 
-struct PendingBlocksManager {
-    /// Holds pending block hashes and their dependent blocks
-    pub pending: HashMap<Hash, Vec<Arc<Block>>>,
-
-    /// Holds the currently processed set of blocks
-    pub processing: HashSet<Hash>,
-}
-
-impl PendingBlocksManager {
-    fn new() -> Self {
-        Self { pending: HashMap::new(), processing: HashSet::new() }
-    }
-}
-
 pub struct HeaderProcessor {
     // Channels
     receiver: Receiver<BlockTask>,
@@ -82,8 +68,8 @@ pub struct HeaderProcessor {
         MTReachabilityService<DbReachabilityStore>,
     >,
 
-    // Pending blocks management
-    pending_manager: Mutex<PendingBlocksManager>,
+    /// Holds pending block hashes and their dependent blocks
+    pending: Mutex<HashMap<Hash, Vec<Arc<Block>>>>,
 
     // Counters
     counters: Arc<ProcessingCounters>,
@@ -91,6 +77,7 @@ pub struct HeaderProcessor {
     // Used to signal that workers are available/idle
     ready_signal: Condvar,
     idle_signal: Condvar,
+
     ready_threshold: usize,
 }
 
@@ -115,7 +102,7 @@ impl HeaderProcessor {
                 Arc::new(MTRelationsService::new(relations_store)),
                 Arc::new(MTReachabilityService::new(reachability_store)),
             ),
-            pending_manager: Mutex::new(PendingBlocksManager::new()),
+            pending: Mutex::new(HashMap::new()),
             counters,
             ready_signal: Condvar::new(),
             idle_signal: Condvar::new(),
@@ -135,12 +122,12 @@ impl HeaderProcessor {
                             BlockTask::Exit => break,
                             BlockTask::Process(block) => {
 
-                                let mut manager = self.pending_manager.lock();
+                                let mut pending = self.pending.lock();
 
-                                if let Vacant(e) = manager.pending.entry(block.header.hash) {
+                                if let Vacant(e) = pending.entry(block.header.hash) {
                                     e.insert(Vec::new());
-                                    if manager.pending.len() > self.ready_threshold {
-                                        self.ready_signal.wait(&mut manager);
+                                    if pending.len() > self.ready_threshold {
+                                        self.ready_signal.wait(&mut pending);
                                     }
 
                                     let processor = self.clone();
@@ -159,9 +146,9 @@ impl HeaderProcessor {
         }
 
         // Wait until all workers are idle before exiting
-        let mut manager = self.pending_manager.lock();
-        if !manager.pending.is_empty() {
-            self.idle_signal.wait(&mut manager);
+        let mut pending = self.pending.lock();
+        if !pending.is_empty() {
+            self.idle_signal.wait(&mut pending);
         }
     }
 
@@ -171,17 +158,13 @@ impl HeaderProcessor {
         {
             // Lock pending manager. The contention around the manager is
             // expected to be negligible in header processing time
-            let mut manager = self.pending_manager.lock();
+            let mut pending = self.pending.lock();
 
             for parent in block.header.parents.iter() {
-                if let Some(deps) = manager.pending.get_mut(parent) {
+                if let Some(deps) = pending.get_mut(parent) {
                     deps.push(block);
                     return; // The block will be reprocessed once the pending parent completes processing
                 }
-            }
-
-            if !manager.processing.insert(hash) {
-                return; // Block is already being processed
             }
         }
 
@@ -194,18 +177,16 @@ impl HeaderProcessor {
 
         self.process_header(&block.header);
 
-        let mut manager = self.pending_manager.lock();
-        assert!(manager.processing.remove(&hash), "processed block is expected to be in processing set");
-        let deps = manager
-            .pending
+        let mut pending = self.pending.lock();
+        let deps = pending
             .remove(&hash)
             .expect("processed block is expected to be in pending map");
 
-        if manager.pending.len() == self.ready_threshold {
+        if pending.len() == self.ready_threshold {
             self.ready_signal.notify_one();
         }
 
-        if manager.pending.is_empty() {
+        if pending.is_empty() {
             self.idle_signal.notify_one();
         }
 

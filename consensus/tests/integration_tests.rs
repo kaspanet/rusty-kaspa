@@ -154,7 +154,7 @@ fn consensus_sanity_test() {
     let wait_handle = consensus.init();
 
     consensus.validate_and_insert_block(Arc::new(Block::new(genesis_child, vec![genesis])));
-    consensus.drop();
+    let (_, _) = consensus.drop();
     wait_handle.join().unwrap();
 }
 
