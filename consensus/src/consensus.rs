@@ -73,6 +73,8 @@ impl Consensus {
         // Spawn the asynchronous header processor.
         let header_processor = self.header_processor.clone();
         thread::spawn(move || header_processor.worker())
+
+        // TODO: add block body processor and virtual state processor workers and return a vec of join handles.
     }
 
     pub fn validate_and_insert_block(&self, block: Arc<Block>) {

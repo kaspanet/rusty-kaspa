@@ -78,6 +78,8 @@ impl GhostdagData {
         let data = Arc::make_mut(self);
         data.blue_score = blue_score;
         data.blue_work = blue_work;
+
+        // TODO: should be accumulated through `add_blue`
     }
 }
 
@@ -98,12 +100,15 @@ pub trait GhostdagStoreReader {
 
 pub trait GhostdagStore: GhostdagStoreReader {
     /// Insert GHOSTDAG data for block `hash` into the store. Note that GHOSTDAG data
-    /// is added once and never modified, so no need for specific setters for each element
+    /// is added once and never modified, so no need for specific setters for each element.
+    /// Additionally, this means writes are semantically "append-only", which is why
+    /// we can keep the `insert` method non-mutable on self. See "Parallel Processing.md" for an overview.
     fn insert(&self, hash: Hash, data: Arc<GhostdagData>) -> Result<(), StoreError>;
 }
 
 const STORE_PREFIX: &[u8] = b"block-ghostdag-data";
 
+/// A DB + cache implementation of `GhostdagStore` trait, with concurrency support.
 #[derive(Clone)]
 pub struct DbGhostdagStore {
     raw_db: Arc<DB>,
@@ -182,6 +187,9 @@ impl GhostdagStore for DbGhostdagStore {
     }
 }
 
+/// An in-memory implementation of `GhostdagStore` trait to be used for tests.
+/// Uses `RefCell` for interior mutability in order to workaround `insert`
+/// being non-mutable.
 pub struct MemoryGhostdagStore {
     blue_score_map: RefCell<HashMap<Hash, u64>>,
     blue_work_map: RefCell<HashMap<Hash, Uint256>>,

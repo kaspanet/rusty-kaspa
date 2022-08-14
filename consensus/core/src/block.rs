@@ -6,11 +6,16 @@ pub struct Block {
 }
 
 impl Block {
-    pub fn new(hash: Hash, parents: Vec<Hash>) -> Self {
-        Self { header: Header::new(hash, parents) }
+    pub fn new(version: u16, parents: Vec<Hash>, nonce: u64) -> Self {
+        Self { header: Header::new(version, parents, nonce) }
     }
 
     pub fn from_header(header: Header) -> Self {
         Self { header }
+    }
+
+    /// Temp function for injecting the hash externally
+    pub fn from_precomputed_hash(hash: Hash, parents: Vec<Hash>) -> Self {
+        Self { header: Header::from_precomputed_hash(hash, parents) }
     }
 }

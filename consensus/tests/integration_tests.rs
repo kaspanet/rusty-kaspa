@@ -153,8 +153,8 @@ fn consensus_sanity_test() {
     let consensus = Consensus::new(db, genesis, ghostdag_k);
     let wait_handle = consensus.init();
 
-    consensus.validate_and_insert_block(Arc::new(Block::new(genesis_child, vec![genesis])));
-    consensus.drop();
+    consensus.validate_and_insert_block(Arc::new(Block::from_precomputed_hash(genesis_child, vec![genesis])));
+    let (_, _) = consensus.drop();
     wait_handle.join().unwrap();
 }
 
@@ -216,7 +216,7 @@ fn ghostdag_test() {
         for block in test.blocks.iter() {
             println!("Processing block {}", block.id);
             let block_id = string_to_hash(&block.id);
-            let block_header = Header::new(block_id, strings_to_hashes(&block.parents));
+            let block_header = Header::from_precomputed_hash(block_id, strings_to_hashes(&block.parents));
 
             // Submit to consensus
             consensus.validate_and_insert_block(Arc::new(Block::from_header(block_header)));

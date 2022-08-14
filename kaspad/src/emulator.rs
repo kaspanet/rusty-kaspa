@@ -1,5 +1,5 @@
 use consensus::{consensus::Consensus, pipeline::ProcessingCounters};
-use consensus_core::{block::Block, blockhash};
+use consensus_core::block::Block;
 use hashes::Hash;
 use kaspa_core::{core::Core, service::Service, trace};
 use num_format::{Locale, ToFormattedString};
@@ -43,7 +43,7 @@ impl RandomBlockEmitter {
         }
     }
 
-    pub fn worker(self: &Arc<RandomBlockEmitter>, _core: Arc<Core>) {
+    pub fn worker(self: &Arc<RandomBlockEmitter>, core: Arc<Core>) {
         let poi = Poisson::new(self.bps * self.delay).unwrap();
         let mut thread_rng = rand::thread_rng();
 
@@ -62,11 +62,10 @@ impl RandomBlockEmitter {
             }
 
             let mut new_tips = Vec::with_capacity(v as usize);
-            for _ in 0..v {
-                let hash = blockhash::new_unique();
-                new_tips.push(hash);
+            for i in 0..v {
                 // Create a new block referencing all tips from the previous round
-                let b = Block::new(hash, tips.clone());
+                let b = Block::new(0, tips.clone(), i);
+                new_tips.push(b.header.hash);
                 // Submit to consensus
                 self.consensus
                     .validate_and_insert_block(Arc::new(b));
@@ -74,10 +73,11 @@ impl RandomBlockEmitter {
             tips = new_tips;
             self.counters
                 .blocks_submitted
-                .fetch_add(v, Ordering::SeqCst);
+                .fetch_add(v, Ordering::Relaxed);
         }
-        // core.shutdown();
         self.consensus.signal_exit();
+        thread::sleep(Duration::from_millis(4000));
+        core.shutdown();
     }
 }
 
@@ -94,6 +94,7 @@ impl Service for RandomBlockEmitter {
         self.terminate.store(true, Ordering::SeqCst);
     }
 }
+
 pub struct ConsensusMonitor {
     terminate: AtomicBool,
     // Counters
