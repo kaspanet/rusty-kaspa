@@ -2,7 +2,9 @@
 
 # Parallel Block Processing
 
-## Current sequential processing flow
+A design document intended to guide the new concurrent implementation of header and block processing.
+
+## Sequential processing flow (in go-kaspad)
 
 Below we detail the current state of affairs in *go-kaspad* and discuss future parallelism opportunities. Processing dependencies between various stages are detailed in square brackets [***deps; type***].
 
@@ -78,11 +80,21 @@ The current code design (*go-kaspad*) already logically supports this since the 
 
 ### Header processing parallelism
 
-If you analyze the dependency graph above you can see this is the most challenging part. For instance, we cannot create multiple staging areas in parallel, since committing them might introduce conflicts. 
+If you analyze the dependency graph above you can see this is the most challenging part. For instance, we cannot easily create multiple staging areas in parallel, since committing them with out synchronization will introduce logical write conflicts. 
 
-I suggest we split the staging/writes during header processing into two categories: (i) writes that are append-only, meaning they only affect store data related to the currently processed block (for instance ghostdag data store, headers store, header status store, finality and merge root stores, windows stores -- all support this property); (ii) writes that modify state of other shared data (reachability reindexing, block relations children).
+#### **Natural DAG parallelism**
 
-It seems to me that only DAG related write data is not append-only. So I suggest moving reachability and relations writes to a new processing unit named "Header DAG processing". This unit will support adding multiple blocks at one call to the reachability tree by performing a single reindexing for all (can be easily supported by current algos). 
+Throughout header processing, the computation naturally depends on previous output over parents and ancestors of the currently processed header. This means we cannot concurrently process a block with its defendants, however we can process in parallel blocks which are parallel to each other in the DAG structure (i.e. blocks which are in the anticone of each other). As we increase block rate, more blocks will be mined in parallel -- thus creating more parallelism opportunities as well. 
+
+This logic is already implement in `pipeline::HeaderProcessor` struct. The code uses a simple DAG-dependency mechanism to delay processing tasks until all depending tasks are completed. If there are no dependencies, a `rayon::spawn` assigns a thread-pool worker to the ready-to-be processed header.
+
+#### **Managing store writes**
+
+Most of DB writes during header processing are append-only. That is, a new item is inserted to the store for the new header, and it is never modified in the future. This semantic means that no lock is needed in order to write to such a store as long as we verify that only a single worker thread "owns" each header (`DbGhostdagStore` is an example; note that the DB and cache instances used within already support concurrency). 
+
+There are two exceptions to this: reachability and relations stores are both non-append-only. We currently assume that their processing time is negligible compared to overall header processing and thus use serialized upgradable-read/write locks in order to manage this part. See `pipeline::HeaderProcessor::commit_header`. 
+
+Current design should be benchmarked when header processing is fully implemented. If the reachability algorithms are a bottleneck, we can consider moving reachability and relations writes to a new processing unit named "Header DAG processing". This unit will support adding multiple blocks at one call to the reachability tree by performing a single reindexing for all (can be easily supported by current algos). 
 
 
 ### Block processing parallelism

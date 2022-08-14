@@ -78,6 +78,8 @@ pub struct HeaderProcessor {
     ready_signal: Condvar,
     idle_signal: Condvar,
 
+    // Threshold to the number of pending items above which we wait for
+    // workers to complete some work before queuing further work
     ready_threshold: usize,
 }
 
@@ -127,6 +129,8 @@ impl HeaderProcessor {
                                 if let Vacant(e) = pending.entry(block.header.hash) {
                                     e.insert(Vec::new());
                                     if pending.len() > self.ready_threshold {
+                                        // If the number of pending items is already too large,
+                                        // wait for workers to signal readiness.
                                         self.ready_signal.wait(&mut pending);
                                     }
 
@@ -242,7 +246,7 @@ impl HeaderProcessor {
             &mut ctx.mergeset.unwrap().iter().cloned(),
         )
         .unwrap();
-        // Hint a new tip.
+        // Hint reachability about the new tip.
         // TODO: imp header tips store and call this only for an actual header selected tip
         reachability::hint_virtual_selected_parent(&mut staging, ctx.hash).unwrap();
 
