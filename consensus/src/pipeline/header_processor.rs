@@ -273,7 +273,7 @@ impl HeaderProcessor {
         if self.header_was_processed(self.genesis_hash) {
             return;
         }
-        let header = Header::new(self.genesis_hash, vec![]);
+        let header = Header::from_precomputed_hash(self.genesis_hash, vec![]); // TODO
         let mut ctx = HeaderProcessingContext::new(self.genesis_hash, &header);
         self.ghostdag_manager
             .add_genesis_if_needed(&mut ctx);

@@ -1,5 +1,5 @@
 use consensus::{consensus::Consensus, pipeline::ProcessingCounters};
-use consensus_core::{block::Block, blockhash};
+use consensus_core::block::Block;
 use hashes::Hash;
 use kaspa_core::{core::Core, service::Service, trace};
 use num_format::{Locale, ToFormattedString};
@@ -62,11 +62,10 @@ impl RandomBlockEmitter {
             }
 
             let mut new_tips = Vec::with_capacity(v as usize);
-            for _ in 0..v {
-                let hash = blockhash::new_unique();
-                new_tips.push(hash);
+            for i in 0..v {
                 // Create a new block referencing all tips from the previous round
-                let b = Block::new(hash, tips.clone());
+                let b = Block::new(0, tips.clone(), i);
+                new_tips.push(b.header.hash);
                 // Submit to consensus
                 self.consensus
                     .validate_and_insert_block(Arc::new(b));
