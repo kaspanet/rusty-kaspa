@@ -84,13 +84,13 @@ If you analyze the dependency graph above you can see this is the most challengi
 
 #### **Natural DAG parallelism**
 
-Throughout header processing, the computation naturally depends on previous output over parents and ancestors of the currently processed header. This means we cannot concurrently process a block with its defendants, however we can process in parallel blocks which are parallel to each other in the DAG structure (i.e. blocks which are in the anticone of each other). As we increase block rate, more blocks will be mined in parallel -- thus creating more parallelism opportunities as well. 
+Throughout header processing, the computation naturally depends on previous output from parents and ancestors of the currently processed header. This means we cannot concurrently process a block with its ancestors, however we can concurrently process blocks which are parallel to each other in the DAG structure (i.e. blocks which are in the anticone of each other). As we increase block rate, more blocks will be mined in parallel -- thus creating more parallelism opportunities as well. 
 
 This logic is already implement in `pipeline::HeaderProcessor` struct. The code uses a simple DAG-dependency mechanism to delay processing tasks until all depending tasks are completed. If there are no dependencies, a `rayon::spawn` assigns a thread-pool worker to the ready-to-be processed header.
 
 #### **Managing store writes**
 
-Most of DB writes during header processing are append-only. That is, a new item is inserted to the store for the new header, and it is never modified in the future. This semantic means that no lock is needed in order to write to such a store as long as we verify that only a single worker thread "owns" each header (`DbGhostdagStore` is an example; note that the DB and cache instances used within already support concurrency). 
+Most of DB writes during header processing are append-only. That is, a new item is inserted to the store for the new header, and it is never modified in the future. This semantic means that no lock is needed in order to write to such a store as long as we verify that only a single worker thread "owns" each header (`DbGhostdagStore` is an example; note that the DB and cache instances used therein already support concurrency). 
 
 There are two exceptions to this: reachability and relations stores are both non-append-only. We currently assume that their processing time is negligible compared to overall header processing and thus use serialized upgradable-read/write locks in order to manage this part. See `pipeline::HeaderProcessor::commit_header`. 
 
