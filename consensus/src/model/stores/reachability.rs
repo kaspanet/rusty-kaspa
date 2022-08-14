@@ -26,6 +26,7 @@ impl ReachabilityData {
     }
 }
 
+/// Reader API for `ReachabilityStore`.
 pub trait ReachabilityStoreReader {
     fn has(&self, hash: Hash) -> Result<bool, StoreError>;
     fn get_interval(&self, hash: Hash) -> Result<Interval, StoreError>;
@@ -33,6 +34,9 @@ pub trait ReachabilityStoreReader {
     fn get_children(&self, hash: Hash) -> Result<BlockHashes, StoreError>;
     fn get_future_covering_set(&self, hash: Hash) -> Result<BlockHashes, StoreError>;
 }
+
+/// Write API for `ReachabilityStore`. All write functions are deliberately `mut`
+/// since reachability writes are not append-only and thus need to be guarded.  
 pub trait ReachabilityStore: ReachabilityStoreReader {
     fn init(&mut self, origin: Hash, capacity: Interval) -> Result<(), StoreError>;
     fn insert(&mut self, hash: Hash, parent: Hash, interval: Interval, height: u64) -> Result<(), StoreError>;
@@ -48,6 +52,7 @@ const REINDEX_ROOT_KEY: &[u8] = b"reachability-reindex-root";
 const STORE_PREFIX: &[u8] = b"reachability-data";
 // TODO: explore perf to see if using fixed-length constants for store prefixes is preferable
 
+/// A DB + cache implementation of `ReachabilityStore` trait, with concurrent readers support.
 #[derive(Clone)]
 pub struct DbReachabilityStore {
     raw_db: Arc<DB>,

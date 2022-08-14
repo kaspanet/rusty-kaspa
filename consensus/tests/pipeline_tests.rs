@@ -89,17 +89,17 @@ fn test_concurrent_pipeline() {
     let wait_handle = consensus.init();
 
     let blocks = vec![
-        Block::new(2.into(), vec![1.into()]),
-        Block::new(3.into(), vec![1.into()]),
-        Block::new(4.into(), vec![2.into(), 3.into()]),
-        Block::new(5.into(), vec![4.into()]),
-        Block::new(6.into(), vec![1.into()]),
-        Block::new(7.into(), vec![5.into(), 6.into()]),
-        Block::new(8.into(), vec![1.into()]),
-        Block::new(9.into(), vec![1.into()]),
-        Block::new(10.into(), vec![7.into(), 8.into(), 9.into()]),
-        Block::new(11.into(), vec![1.into()]),
-        Block::new(12.into(), vec![11.into(), 10.into()]),
+        Block::from_precomputed_hash(2.into(), vec![1.into()]),
+        Block::from_precomputed_hash(3.into(), vec![1.into()]),
+        Block::from_precomputed_hash(4.into(), vec![2.into(), 3.into()]),
+        Block::from_precomputed_hash(5.into(), vec![4.into()]),
+        Block::from_precomputed_hash(6.into(), vec![1.into()]),
+        Block::from_precomputed_hash(7.into(), vec![5.into(), 6.into()]),
+        Block::from_precomputed_hash(8.into(), vec![1.into()]),
+        Block::from_precomputed_hash(9.into(), vec![1.into()]),
+        Block::from_precomputed_hash(10.into(), vec![7.into(), 8.into(), 9.into()]),
+        Block::from_precomputed_hash(11.into(), vec![1.into()]),
+        Block::from_precomputed_hash(12.into(), vec![11.into(), 10.into()]),
     ];
 
     for block in blocks {
@@ -173,7 +173,7 @@ fn test_concurrent_pipeline_random() {
         for _ in 0..v {
             let hash = blockhash::new_unique();
             new_tips.push(hash);
-            let b = Block::new(hash, tips.clone());
+            let b = Block::from_precomputed_hash(hash, tips.clone());
             // Submit to consensus
             consensus.validate_and_insert_block(Arc::new(b));
         }

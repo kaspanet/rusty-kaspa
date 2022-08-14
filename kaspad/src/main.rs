@@ -25,10 +25,10 @@ pub fn main() {
 
     trace!("Kaspad starting... (round-based simulation with BPS={} and D={})", bps, delay);
 
-    rayon::ThreadPoolBuilder::new()
-        .num_threads(8)
-        .build_global()
-        .unwrap();
+    // rayon::ThreadPoolBuilder::new()
+    //     .num_threads(8)
+    //     .build_global()
+    //     .unwrap();
 
     println!("Using rayon thread pool with {} threads", rayon::current_num_threads());
 

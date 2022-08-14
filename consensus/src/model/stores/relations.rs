@@ -7,12 +7,16 @@ use std::{
     sync::Arc,
 };
 
+/// Reader API for `RelationsStore`.
 pub trait RelationsStoreReader {
     fn get_parents(&self, hash: Hash) -> Result<BlockHashes, StoreError>;
     fn get_children(&self, hash: Hash) -> Result<BlockHashes, StoreError>;
     fn has(&self, hash: Hash) -> Result<bool, StoreError>;
 }
 
+/// Write API for `RelationsStore`. The insert function is deliberately `mut`
+/// since it modifies the children arrays for previously added parents which is
+/// non-append-only and thus needs to be guarded.  
 pub trait RelationsStore: RelationsStoreReader {
     /// Inserts `parents` into a new store entry for `hash`, and for each `parent ∈ parents` adds `hash` to `parent.children`  
     fn insert(&mut self, hash: Hash, parents: BlockHashes) -> Result<(), StoreError>;
@@ -21,6 +25,7 @@ pub trait RelationsStore: RelationsStoreReader {
 const PARENTS_PREFIX: &[u8] = b"block-parents";
 const CHILDREN_PREFIX: &[u8] = b"block-children";
 
+/// A DB + cache implementation of `RelationsStore` trait, with concurrent readers support.
 #[derive(Clone)]
 pub struct DbRelationsStore {
     raw_db: Arc<DB>,
