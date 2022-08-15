@@ -17,6 +17,3 @@ kaspa-core = { path = "../core" }
 kaspa-wallet = { path = "../wallet" }
 
 wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
-wasm-bindgen-futures = "0.4.29"
-js-sys = "0.3.56"
-async-std = "1.11.0"

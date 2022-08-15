@@ -8,4 +8,5 @@ members = [
     "wasm",
     "misc",
     "crypto/hashes",
+    "crypto/muhash",
 ]
