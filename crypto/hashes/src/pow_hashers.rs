@@ -37,7 +37,7 @@ impl PowHash {
 }
 
 impl KHeavyHash {
-    // The initial state of `cSHAKE256("KHeavyHash")`
+    // The initial state of `cSHAKE256("HeavyHash")`
     // [4] -> 16654558671554924254 ^ 0x04(padding byte) = 16654558671554924250
     // [16] -> 9793466274154320918 ^ 0x8000000000000000(final padding) = 570094237299545110
     #[rustfmt::skip]
