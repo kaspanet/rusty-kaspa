@@ -5,11 +5,12 @@ pub struct Header {
     pub version: u16,
     pub parents: Vec<Hash>,
     pub nonce: u64,
+    pub time_in_ms: u64,
     // TODO: add parent levels and all remaining fields
 }
 
 impl Header {
-    pub fn new(version: u16, parents: Vec<Hash>, nonce: u64) -> Self {
+    pub fn new(version: u16, parents: Vec<Hash>, nonce: u64, time_in_ms: u64) -> Self {
         let mut hasher = BlockHash::new();
         hasher
             .update(version.to_le_bytes())
@@ -18,11 +19,11 @@ impl Header {
             hasher.write(parent);
         }
         hasher.update(nonce.to_le_bytes());
-        Self { hash: hasher.finalize(), version, parents, nonce }
+        Self { hash: hasher.finalize(), version, parents, nonce, time_in_ms }
     }
 
     /// Temp function for injecting the hash externally
     pub fn from_precomputed_hash(hash: Hash, parents: Vec<Hash>) -> Self {
-        Self { version: 0, hash, parents, nonce: 0 }
+        Self { version: 0, hash, parents, nonce: 0, time_in_ms: 0 }
     }
 }

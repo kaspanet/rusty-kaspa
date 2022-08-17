@@ -10,7 +10,7 @@ use crate::{
     },
     processes::{ghostdag::protocol::GhostdagManager, reachability::inquirer as reachability},
 };
-use consensus_core::{block::Block, blockhash::BlockHashes, header::Header};
+use consensus_core::{block::Block, blockhash::BlockHashes, errors::ConsensusResult, header::Header};
 use crossbeam::select;
 use crossbeam_channel::Receiver;
 use hashes::Hash;
@@ -21,7 +21,7 @@ use std::{
     sync::{atomic::Ordering, Arc},
 };
 
-use super::ProcessingCounters;
+use super::super::ProcessingCounters;
 
 pub struct HeaderProcessingContext<'a> {
     pub hash: Hash,
@@ -50,7 +50,10 @@ pub struct HeaderProcessor {
     receiver: Receiver<BlockTask>,
 
     // Config
-    genesis_hash: Hash,
+    pub(super) genesis_hash: Hash,
+    pub(super) timestamp_deviation_tolerance: u64,
+    pub(super) target_time_per_block: u64,
+    pub(super) max_block_parents: u64,
     // ghostdag_k: KType,
 
     // DB
@@ -112,6 +115,9 @@ impl HeaderProcessor {
             // Note: If we ever switch to a non-global thread-pool,
             // then `num_threads` should be taken from that specific pool
             ready_threshold: rayon::current_num_threads() * 4,
+            timestamp_deviation_tolerance: todo!(),
+            target_time_per_block: todo!(),
+            max_block_parents: todo!(),
         }
     }
 
@@ -206,7 +212,7 @@ impl HeaderProcessor {
         self.reachability_store.read().has(hash).unwrap()
     }
 
-    fn process_header(self: &Arc<HeaderProcessor>, header: &Header) {
+    fn process_header(self: &Arc<HeaderProcessor>, header: &Header) -> ConsensusResult<()> {
         // Create processing context
         let mut ctx = HeaderProcessingContext::new(header.hash, header);
 
@@ -217,6 +223,7 @@ impl HeaderProcessor {
         //
         // TODO: imp all remaining header validation and processing steps :)
         //
+        self.validate_header_in_isolation(header)?;
 
         self.commit_header(ctx, header);
 
@@ -227,6 +234,7 @@ impl HeaderProcessor {
         self.counters
             .dep_counts
             .fetch_add(header.parents.len() as u64, Ordering::Relaxed);
+        Ok(())
     }
 
     fn commit_header(self: &Arc<HeaderProcessor>, ctx: HeaderProcessingContext, header: &Header) {
