@@ -10,7 +10,6 @@ use consensus::processes::reachability::tests::{DagBlock, DagBuilder, StoreValid
 use consensus::test_helpers::{block_from_precomputed_hash, header_from_precomputed_hash};
 use consensus_core::block::Block;
 use consensus_core::blockhash;
-use consensus_core::header::Header;
 use hashes::Hash;
 
 use flate2::read::GzDecoder;
