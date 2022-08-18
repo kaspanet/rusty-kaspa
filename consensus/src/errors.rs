@@ -23,8 +23,8 @@ pub enum RuleError {
     #[error("block has no parents")]
     NoParents,
 
-    #[error("block has too many parents")]
-    TooManyParents(u64),
+    #[error("block has too many parents: got {0} when the limit is {1}")]
+    TooManyParents(usize, usize),
 }
 
 pub type ConsensusResult<T> = std::result::Result<T, ConsensusError>;

@@ -41,8 +41,11 @@ impl HeaderProcessor {
             return Err(ConsensusError::RuleError(RuleError::NoParents));
         }
 
-        if header.parents.len() as u8 > self.max_block_parents {
-            return Err(ConsensusError::RuleError(RuleError::TooManyParents(header.parents.len() as u64)));
+        if header.parents.len() > self.max_block_parents as usize {
+            return Err(ConsensusError::RuleError(RuleError::TooManyParents(
+                header.parents.len(),
+                self.max_block_parents as usize,
+            )));
         }
 
         Ok(())
