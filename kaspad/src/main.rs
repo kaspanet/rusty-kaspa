@@ -5,7 +5,6 @@ extern crate hashes;
 use std::sync::Arc;
 
 use consensus::consensus::Consensus;
-use consensus::model::stores::ghostdag::KType;
 use consensus::model::stores::DB;
 use consensus::params::MAINNET_PARAMS;
 use consensus_core::blockhash;

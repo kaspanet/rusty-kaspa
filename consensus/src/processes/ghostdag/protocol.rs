@@ -93,6 +93,7 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService> Gh
             .get_blue_score(selected_parent, false)
             .unwrap()
             + new_block_data.mergeset_blues.len() as u64;
+
         // TODO: This is just a placeholder until calc_work is implemented.
         let blue_work = Uint256::from_u64(blue_score);
         new_block_data.finalize_score_and_work(blue_score, blue_work);
