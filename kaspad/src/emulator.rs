@@ -1,10 +1,11 @@
-use consensus::{consensus::Consensus, pipeline::ProcessingCounters};
+use consensus::{consensus::Consensus, constants::BLOCK_VERSION, pipeline::ProcessingCounters};
 use consensus_core::block::Block;
 use hashes::Hash;
 use kaspa_core::{core::Core, service::Service, trace};
 use num_format::{Locale, ToFormattedString};
 use rand_distr::{Distribution, Poisson};
 use std::{
+    cmp::min,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -20,6 +21,7 @@ pub struct RandomBlockEmitter {
     name: String,
     consensus: Arc<Consensus>,
     genesis: Hash,
+    max_block_parents: u64,
     bps: f64,
     delay: f64,
     target_blocks: u64,
@@ -29,13 +31,17 @@ pub struct RandomBlockEmitter {
 }
 
 impl RandomBlockEmitter {
-    pub fn new(name: &str, consensus: Arc<Consensus>, genesis: Hash, bps: f64, delay: f64, target_blocks: u64) -> Self {
+    pub fn new(
+        name: &str, consensus: Arc<Consensus>, genesis: Hash, max_block_parents: u64, bps: f64, delay: f64,
+        target_blocks: u64,
+    ) -> Self {
         let counters = consensus.counters.clone();
         Self {
             terminate: AtomicBool::new(false),
             name: name.to_string(),
             consensus,
             genesis,
+            max_block_parents,
             bps,
             delay,
             target_blocks,
@@ -51,7 +57,7 @@ impl RandomBlockEmitter {
         let mut total = 0;
 
         while total < self.target_blocks {
-            let v = poi.sample(&mut thread_rng) as u64;
+            let v = min(self.max_block_parents, poi.sample(&mut thread_rng) as u64);
             if v == 0 {
                 continue;
             }
@@ -64,7 +70,7 @@ impl RandomBlockEmitter {
             let mut new_tips = Vec::with_capacity(v as usize);
             for i in 0..v {
                 // Create a new block referencing all tips from the previous round
-                let b = Block::new(0, tips.clone(), i, 0);
+                let b = Block::new(BLOCK_VERSION, tips.clone(), i, 0);
                 new_tips.push(b.header.hash);
                 // Submit to consensus
                 self.consensus

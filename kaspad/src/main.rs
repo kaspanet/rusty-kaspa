@@ -41,12 +41,16 @@ pub fn main() {
     let db_tempdir = tempfile::tempdir().unwrap();
     let db = Arc::new(DB::open_default(db_tempdir.path().to_owned().to_str().unwrap()).unwrap());
 
-    let consensus = Arc::new(Consensus::new(db, &MAINNET_PARAMS));
+    let mut params = MAINNET_PARAMS;
+    params.genesis_hash = genesis;
+
+    let consensus = Arc::new(Consensus::new(db, &params));
     let monitor = Arc::new(ConsensusMonitor::new(consensus.clone()));
     let emitter = Arc::new(emulator::RandomBlockEmitter::new(
         "block-emitter",
         consensus.clone(),
         genesis,
+        params.max_block_parents.into(),
         bps,
         delay,
         target_blocks,

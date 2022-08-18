@@ -166,8 +166,7 @@ fn test_concurrent_pipeline_random() {
     let mut tips = vec![genesis];
     let mut total = 1000i64;
     while total > 0 {
-        let mut v = poi.sample(&mut thread_rng) as i64;
-        v = min(params.max_block_parents as i64, v);
+        let v = min(params.max_block_parents as i64, poi.sample(&mut thread_rng) as i64);
         if v == 0 {
             continue;
         }
