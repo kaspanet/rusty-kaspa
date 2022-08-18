@@ -13,7 +13,6 @@ impl Header {
     pub fn new(version: u16, parents: Vec<Hash>, nonce: u64, timestamp: u64) -> Self {
         let mut hasher = BlockHash::new();
         hasher
-            .update(timestamp.to_le_bytes())
             .update(version.to_le_bytes())
             .update((parents.len() as u64).to_le_bytes());
 
@@ -21,7 +20,9 @@ impl Header {
             // TODO: Hash properly for multi-level parents
             hasher.write(parent);
         }
-        hasher.update(nonce.to_le_bytes());
+        hasher
+            .update(timestamp.to_le_bytes())
+            .update(nonce.to_le_bytes());
         Self { hash: hasher.finalize(), version, parents, nonce, timestamp }
     }
 }
