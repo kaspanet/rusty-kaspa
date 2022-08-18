@@ -5,8 +5,8 @@ extern crate hashes;
 use std::sync::Arc;
 
 use consensus::consensus::Consensus;
-use consensus::model::stores::ghostdag::KType;
 use consensus::model::stores::DB;
+use consensus::params::MAINNET_PARAMS;
 use consensus_core::blockhash;
 use hashes::Hash;
 use kaspa_core::core::Core;
@@ -18,7 +18,6 @@ mod emulator;
 
 pub fn main() {
     let genesis: Hash = blockhash::new_unique();
-    let ghostdag_k: KType = 18;
     let bps = 8.0;
     let delay = 2.0;
     let target_blocks = 32000;
@@ -41,12 +40,16 @@ pub fn main() {
     let db_tempdir = tempfile::tempdir().unwrap();
     let db = Arc::new(DB::open_default(db_tempdir.path().to_owned().to_str().unwrap()).unwrap());
 
-    let consensus = Arc::new(Consensus::new(db, genesis, ghostdag_k));
+    let mut params = MAINNET_PARAMS;
+    params.genesis_hash = genesis;
+
+    let consensus = Arc::new(Consensus::new(db, &params));
     let monitor = Arc::new(ConsensusMonitor::new(consensus.clone()));
     let emitter = Arc::new(emulator::RandomBlockEmitter::new(
         "block-emitter",
         consensus.clone(),
         genesis,
+        params.max_block_parents.into(),
         bps,
         delay,
         target_blocks,

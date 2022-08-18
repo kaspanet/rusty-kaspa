@@ -1,14 +1,17 @@
 use crate::{
+    errors::BlockProcessResult,
     model::{
         services::{reachability::MTReachabilityService, relations::MTRelationsService},
         stores::{
-            ghostdag::{DbGhostdagStore, GhostdagData, KType},
+            ghostdag::{DbGhostdagStore, GhostdagData},
             reachability::{DbReachabilityStore, ReachabilityStoreReader, StagingReachabilityStore},
             relations::DbRelationsStore,
             DB,
         },
     },
+    params::Params,
     processes::{ghostdag::protocol::GhostdagManager, reachability::inquirer as reachability},
+    test_helpers::header_from_precomputed_hash,
 };
 use consensus_core::{block::Block, blockhash::BlockHashes, header::Header};
 use crossbeam::select;
@@ -21,7 +24,7 @@ use std::{
     sync::{atomic::Ordering, Arc},
 };
 
-use super::ProcessingCounters;
+use super::super::ProcessingCounters;
 
 pub struct HeaderProcessingContext<'a> {
     pub hash: Hash,
@@ -50,7 +53,10 @@ pub struct HeaderProcessor {
     receiver: Receiver<BlockTask>,
 
     // Config
-    genesis_hash: Hash,
+    pub(super) genesis_hash: Hash,
+    pub(super) timestamp_deviation_tolerance: u64,
+    pub(super) target_time_per_block: u64,
+    pub(super) max_block_parents: u8,
     // ghostdag_k: KType,
 
     // DB
@@ -85,21 +91,21 @@ pub struct HeaderProcessor {
 
 impl HeaderProcessor {
     pub fn new(
-        receiver: Receiver<BlockTask>, genesis_hash: Hash, ghostdag_k: KType, db: Arc<DB>,
-        relations_store: Arc<RwLock<DbRelationsStore>>, reachability_store: Arc<RwLock<DbReachabilityStore>>,
-        ghostdag_store: Arc<DbGhostdagStore>, counters: Arc<ProcessingCounters>,
+        receiver: Receiver<BlockTask>, params: &Params, db: Arc<DB>, relations_store: Arc<RwLock<DbRelationsStore>>,
+        reachability_store: Arc<RwLock<DbReachabilityStore>>, ghostdag_store: Arc<DbGhostdagStore>,
+        counters: Arc<ProcessingCounters>,
     ) -> Self {
         Self {
             receiver,
-            genesis_hash,
+            genesis_hash: params.genesis_hash,
             // ghostdag_k,
             db,
             relations_store: relations_store.clone(),
             reachability_store: reachability_store.clone(),
             ghostdag_store: ghostdag_store.clone(),
             ghostdag_manager: GhostdagManager::new(
-                genesis_hash,
-                ghostdag_k,
+                params.genesis_hash,
+                params.ghostdag_k,
                 ghostdag_store,
                 Arc::new(MTRelationsService::new(relations_store)),
                 Arc::new(MTReachabilityService::new(reachability_store)),
@@ -112,6 +118,9 @@ impl HeaderProcessor {
             // Note: If we ever switch to a non-global thread-pool,
             // then `num_threads` should be taken from that specific pool
             ready_threshold: rayon::current_num_threads() * 4,
+            timestamp_deviation_tolerance: params.timestamp_deviation_tolerance,
+            target_time_per_block: params.target_time_per_block,
+            max_block_parents: params.max_block_parents,
         }
     }
 
@@ -179,7 +188,7 @@ impl HeaderProcessor {
 
         // TODO: report missing parents to job sender (currently will panic for missing keys)
 
-        self.process_header(&block.header);
+        self.process_header(&block.header).unwrap(); // TODO: Handle error properly
 
         let mut pending = self.pending.lock();
         let deps = pending
@@ -206,7 +215,7 @@ impl HeaderProcessor {
         self.reachability_store.read().has(hash).unwrap()
     }
 
-    fn process_header(self: &Arc<HeaderProcessor>, header: &Header) {
+    fn process_header(self: &Arc<HeaderProcessor>, header: &Header) -> BlockProcessResult<()> {
         // Create processing context
         let mut ctx = HeaderProcessingContext::new(header.hash, header);
 
@@ -217,6 +226,7 @@ impl HeaderProcessor {
         //
         // TODO: imp all remaining header validation and processing steps :)
         //
+        self.validate_header_in_isolation(header)?;
 
         self.commit_header(ctx, header);
 
@@ -227,6 +237,7 @@ impl HeaderProcessor {
         self.counters
             .dep_counts
             .fetch_add(header.parents.len() as u64, Ordering::Relaxed);
+        Ok(())
     }
 
     fn commit_header(self: &Arc<HeaderProcessor>, ctx: HeaderProcessingContext, header: &Header) {
@@ -277,7 +288,7 @@ impl HeaderProcessor {
         if self.header_was_processed(self.genesis_hash) {
             return;
         }
-        let header = Header::from_precomputed_hash(self.genesis_hash, vec![]); // TODO
+        let header = header_from_precomputed_hash(self.genesis_hash, vec![]); // TODO
         let mut ctx = HeaderProcessingContext::new(self.genesis_hash, &header);
         self.ghostdag_manager
             .add_genesis_if_needed(&mut ctx);

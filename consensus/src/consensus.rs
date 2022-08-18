@@ -1,10 +1,6 @@
 use crate::{
-    model::stores::{
-        ghostdag::{DbGhostdagStore, KType},
-        reachability::DbReachabilityStore,
-        relations::DbRelationsStore,
-        DB,
-    },
+    model::stores::{ghostdag::DbGhostdagStore, reachability::DbReachabilityStore, relations::DbRelationsStore, DB},
+    params::Params,
     pipeline::{
         header_processor::{BlockTask, HeaderProcessor},
         ProcessingCounters,
@@ -13,7 +9,6 @@ use crate::{
 };
 use consensus_core::block::Block;
 use crossbeam_channel::{bounded, Receiver, Sender};
-use hashes::Hash;
 use kaspa_core::{core::Core, service::Service};
 use parking_lot::RwLock;
 use std::{
@@ -41,7 +36,7 @@ pub struct Consensus {
 }
 
 impl Consensus {
-    pub fn new(db: Arc<DB>, genesis: Hash, ghostdag_k: KType) -> Self {
+    pub fn new(db: Arc<DB>, params: &Params) -> Self {
         let relations_store = Arc::new(RwLock::new(DbRelationsStore::new(db.clone(), 100000)));
         let reachability_store = Arc::new(RwLock::new(DbReachabilityStore::new(db.clone(), 100000)));
         let ghostdag_store = Arc::new(DbGhostdagStore::new(db.clone(), 100000));
@@ -51,8 +46,7 @@ impl Consensus {
 
         let header_processor = Arc::new(HeaderProcessor::new(
             receiver,
-            genesis,
-            ghostdag_k,
+            params,
             db.clone(),
             relations_store,
             reachability_store.clone(),
