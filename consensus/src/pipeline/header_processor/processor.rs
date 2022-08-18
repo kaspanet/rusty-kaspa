@@ -9,6 +9,7 @@ use crate::{
             DB,
         },
     },
+    params::Params,
     processes::{ghostdag::protocol::GhostdagManager, reachability::inquirer as reachability},
     test_helpers::header_from_precomputed_hash,
 };
@@ -90,22 +91,21 @@ pub struct HeaderProcessor {
 
 impl HeaderProcessor {
     pub fn new(
-        receiver: Receiver<BlockTask>, genesis_hash: Hash, ghostdag_k: KType, timestamp_deviation_tolerance: u64,
-        target_time_per_block: u64, max_block_parents: u8, db: Arc<DB>, relations_store: Arc<RwLock<DbRelationsStore>>,
+        receiver: Receiver<BlockTask>, params: &Params, db: Arc<DB>, relations_store: Arc<RwLock<DbRelationsStore>>,
         reachability_store: Arc<RwLock<DbReachabilityStore>>, ghostdag_store: Arc<DbGhostdagStore>,
         counters: Arc<ProcessingCounters>,
     ) -> Self {
         Self {
             receiver,
-            genesis_hash,
+            genesis_hash: params.genesis_hash,
             // ghostdag_k,
             db,
             relations_store: relations_store.clone(),
             reachability_store: reachability_store.clone(),
             ghostdag_store: ghostdag_store.clone(),
             ghostdag_manager: GhostdagManager::new(
-                genesis_hash,
-                ghostdag_k,
+                params.genesis_hash,
+                params.ghostdag_k,
                 ghostdag_store,
                 Arc::new(MTRelationsService::new(relations_store)),
                 Arc::new(MTReachabilityService::new(reachability_store)),
@@ -118,9 +118,9 @@ impl HeaderProcessor {
             // Note: If we ever switch to a non-global thread-pool,
             // then `num_threads` should be taken from that specific pool
             ready_threshold: rayon::current_num_threads() * 4,
-            timestamp_deviation_tolerance,
-            target_time_per_block,
-            max_block_parents,
+            timestamp_deviation_tolerance: params.timestamp_deviation_tolerance,
+            target_time_per_block: params.target_time_per_block,
+            max_block_parents: params.max_block_parents,
         }
     }
 

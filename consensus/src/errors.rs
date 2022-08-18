@@ -7,9 +7,9 @@ pub enum RuleError {
     WrongBlockVersion(u16),
 
     #[error(
-        "the block timestamp is too much in the future: block timestamp is {0} but maximum timestamp allowed is {1}"
+        "the block timestamp is too far into the future: block timestamp is {0} but maximum timestamp allowed is {1}"
     )]
-    TimeTooMuchInTheFuture(u64, u64),
+    TimeTooFarIntoTheFuture(u64, u64),
 
     #[error("block has no parents")]
     NoParents,

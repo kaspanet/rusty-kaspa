@@ -36,7 +36,7 @@ pub struct Consensus {
 }
 
 impl Consensus {
-    pub fn new(db: Arc<DB>, params: Params) -> Self {
+    pub fn new(db: Arc<DB>, params: &Params) -> Self {
         let relations_store = Arc::new(RwLock::new(DbRelationsStore::new(db.clone(), 100000)));
         let reachability_store = Arc::new(RwLock::new(DbReachabilityStore::new(db.clone(), 100000)));
         let ghostdag_store = Arc::new(DbGhostdagStore::new(db.clone(), 100000));
@@ -46,11 +46,7 @@ impl Consensus {
 
         let header_processor = Arc::new(HeaderProcessor::new(
             receiver,
-            params.genesis_hash,
-            params.ghostdag_k,
-            params.timestamp_deviation_tolerance,
-            params.target_time_per_block,
-            params.max_block_parents,
+            &params,
             db.clone(),
             relations_store,
             reachability_store.clone(),

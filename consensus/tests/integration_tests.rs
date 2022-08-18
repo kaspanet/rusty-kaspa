@@ -149,7 +149,7 @@ fn consensus_sanity_test() {
     let genesis_child: Hash = 2.into();
 
     let (_tempdir, db) = common::create_temp_db();
-    let consensus = Consensus::new(db, MAINNET_PARAMS);
+    let consensus = Consensus::new(db, &MAINNET_PARAMS);
     let wait_handle = consensus.init();
 
     consensus.validate_and_insert_block(Arc::new(block_from_precomputed_hash(
@@ -214,7 +214,7 @@ fn ghostdag_test() {
         params.genesis_hash = string_to_hash(&test.genesis_id);
         params.ghostdag_k = test.k;
 
-        let consensus = Consensus::new(db, params);
+        let consensus = Consensus::new(db, &params);
         let wait_handle = consensus.init();
 
         for block in test.blocks.iter() {

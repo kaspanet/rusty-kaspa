@@ -10,7 +10,7 @@ use hashes::Hash;
 use parking_lot::RwLock;
 use rand_distr::{Distribution, Poisson};
 use rocksdb::WriteBatch;
-use std::sync::Arc;
+use std::{cmp::min, sync::Arc};
 
 mod common;
 
@@ -85,7 +85,7 @@ fn test_concurrent_pipeline() {
     let mut params = MAINNET_PARAMS;
     params.genesis_hash = 1.into();
 
-    let consensus = Consensus::new(db, params);
+    let consensus = Consensus::new(db, &params);
     let wait_handle = consensus.init();
 
     let blocks = vec![
@@ -160,13 +160,14 @@ fn test_concurrent_pipeline_random() {
     let mut params = MAINNET_PARAMS;
     params.genesis_hash = genesis;
 
-    let consensus = Consensus::new(db, params);
+    let consensus = Consensus::new(db, &params);
     let wait_handle = consensus.init();
 
     let mut tips = vec![genesis];
     let mut total = 1000i64;
     while total > 0 {
-        let v = poi.sample(&mut thread_rng) as i64;
+        let mut v = poi.sample(&mut thread_rng) as i64;
+        v = min(params.max_block_parents as i64, v);
         if v == 0 {
             continue;
         }

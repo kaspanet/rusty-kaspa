@@ -14,6 +14,8 @@ impl HeaderProcessor {
         }
 
         self.check_header_version(header)?;
+        self.check_block_timestamp_in_isolation(header)?;
+        self.check_parents_limit(header)?;
         Ok(())
     }
 
@@ -30,14 +32,14 @@ impl HeaderProcessor {
             .unwrap()
             .as_millis() as u64;
         let max_block_time = now + self.timestamp_deviation_tolerance * self.target_time_per_block;
-        if header.time_in_ms > now {
-            return Err(RuleError::TimeTooMuchInTheFuture(header.time_in_ms, now));
+        if header.timestamp > now {
+            return Err(RuleError::TimeTooFarIntoTheFuture(header.timestamp, now));
         }
         Ok(())
     }
 
     fn check_parents_limit(self: &Arc<HeaderProcessor>, header: &Header) -> BlockProcessResult<()> {
-        if header.parents.len() == 0 {
+        if header.parents.is_empty() {
             return Err(RuleError::NoParents);
         }
 
