@@ -3,7 +3,7 @@ use crate::{
     model::{
         services::{reachability::MTReachabilityService, relations::MTRelationsService},
         stores::{
-            ghostdag::{DbGhostdagStore, GhostdagData, KType},
+            ghostdag::{DbGhostdagStore, GhostdagData},
             reachability::{DbReachabilityStore, ReachabilityStoreReader, StagingReachabilityStore},
             relations::DbRelationsStore,
             DB,

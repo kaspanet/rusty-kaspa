@@ -46,7 +46,7 @@ impl Consensus {
 
         let header_processor = Arc::new(HeaderProcessor::new(
             receiver,
-            &params,
+            params,
             db.clone(),
             relations_store,
             reachability_store.clone(),
