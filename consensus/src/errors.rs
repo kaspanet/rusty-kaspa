@@ -2,15 +2,6 @@ use crate::constants;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum ConsensusError {
-    #[error("rule error")]
-    RuleError(RuleError),
-
-    #[error("unknown error")]
-    Unknown(String),
-}
-
-#[derive(Error, Debug)]
 pub enum RuleError {
     #[error("wrong block version: got {0} but expected {}", constants::BLOCK_VERSION)]
     WrongBlockVersion(u16),
@@ -27,4 +18,4 @@ pub enum RuleError {
     TooManyParents(usize, usize),
 }
 
-pub type ConsensusResult<T> = std::result::Result<T, ConsensusError>;
+pub type BlockProcessResult<T> = std::result::Result<T, RuleError>;

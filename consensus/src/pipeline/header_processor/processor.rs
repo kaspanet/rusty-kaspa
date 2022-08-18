@@ -1,5 +1,5 @@
 use crate::{
-    errors::ConsensusResult,
+    errors::BlockProcessResult,
     model::{
         services::{reachability::MTReachabilityService, relations::MTRelationsService},
         stores::{
@@ -215,7 +215,7 @@ impl HeaderProcessor {
         self.reachability_store.read().has(hash).unwrap()
     }
 
-    fn process_header(self: &Arc<HeaderProcessor>, header: &Header) -> ConsensusResult<()> {
+    fn process_header(self: &Arc<HeaderProcessor>, header: &Header) -> BlockProcessResult<()> {
         // Create processing context
         let mut ctx = HeaderProcessingContext::new(header.hash, header);
 
