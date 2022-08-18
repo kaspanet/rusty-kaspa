@@ -13,9 +13,4 @@ impl Block {
     pub fn from_header(header: Header) -> Self {
         Self { header }
     }
-
-    /// Temp function for injecting the hash externally
-    pub fn from_precomputed_hash(hash: Hash, parents: Vec<Hash>) -> Self {
-        Self { header: Header::from_precomputed_hash(hash, parents) }
-    }
 }

@@ -21,9 +21,4 @@ impl Header {
         hasher.update(nonce.to_le_bytes());
         Self { hash: hasher.finalize(), version, parents, nonce, time_in_ms }
     }
-
-    /// Temp function for injecting the hash externally
-    pub fn from_precomputed_hash(hash: Hash, parents: Vec<Hash>) -> Self {
-        Self { version: 0, hash, parents, nonce: 0, time_in_ms: 0 }
-    }
 }

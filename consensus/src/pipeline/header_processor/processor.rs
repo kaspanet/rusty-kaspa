@@ -1,4 +1,5 @@
 use crate::{
+    errors::ConsensusResult,
     model::{
         services::{reachability::MTReachabilityService, relations::MTRelationsService},
         stores::{
@@ -9,8 +10,9 @@ use crate::{
         },
     },
     processes::{ghostdag::protocol::GhostdagManager, reachability::inquirer as reachability},
+    test_helpers::header_from_precomputed_hash,
 };
-use consensus_core::{block::Block, blockhash::BlockHashes, errors::ConsensusResult, header::Header};
+use consensus_core::{block::Block, blockhash::BlockHashes, header::Header};
 use crossbeam::select;
 use crossbeam_channel::Receiver;
 use hashes::Hash;
@@ -53,7 +55,7 @@ pub struct HeaderProcessor {
     pub(super) genesis_hash: Hash,
     pub(super) timestamp_deviation_tolerance: u64,
     pub(super) target_time_per_block: u64,
-    pub(super) max_block_parents: u64,
+    pub(super) max_block_parents: u8,
     // ghostdag_k: KType,
 
     // DB
@@ -88,9 +90,10 @@ pub struct HeaderProcessor {
 
 impl HeaderProcessor {
     pub fn new(
-        receiver: Receiver<BlockTask>, genesis_hash: Hash, ghostdag_k: KType, db: Arc<DB>,
-        relations_store: Arc<RwLock<DbRelationsStore>>, reachability_store: Arc<RwLock<DbReachabilityStore>>,
-        ghostdag_store: Arc<DbGhostdagStore>, counters: Arc<ProcessingCounters>,
+        receiver: Receiver<BlockTask>, genesis_hash: Hash, ghostdag_k: KType, timestamp_deviation_tolerance: u64,
+        target_time_per_block: u64, max_block_parents: u8, db: Arc<DB>, relations_store: Arc<RwLock<DbRelationsStore>>,
+        reachability_store: Arc<RwLock<DbReachabilityStore>>, ghostdag_store: Arc<DbGhostdagStore>,
+        counters: Arc<ProcessingCounters>,
     ) -> Self {
         Self {
             receiver,
@@ -115,9 +118,9 @@ impl HeaderProcessor {
             // Note: If we ever switch to a non-global thread-pool,
             // then `num_threads` should be taken from that specific pool
             ready_threshold: rayon::current_num_threads() * 4,
-            timestamp_deviation_tolerance: todo!(),
-            target_time_per_block: todo!(),
-            max_block_parents: todo!(),
+            timestamp_deviation_tolerance,
+            target_time_per_block,
+            max_block_parents,
         }
     }
 
@@ -185,7 +188,7 @@ impl HeaderProcessor {
 
         // TODO: report missing parents to job sender (currently will panic for missing keys)
 
-        self.process_header(&block.header);
+        self.process_header(&block.header).unwrap(); // TODO: Handle error properly
 
         let mut pending = self.pending.lock();
         let deps = pending
@@ -285,7 +288,7 @@ impl HeaderProcessor {
         if self.header_was_processed(self.genesis_hash) {
             return;
         }
-        let header = Header::from_precomputed_hash(self.genesis_hash, vec![]); // TODO
+        let header = header_from_precomputed_hash(self.genesis_hash, vec![]); // TODO
         let mut ctx = HeaderProcessingContext::new(self.genesis_hash, &header);
         self.ghostdag_manager
             .add_genesis_if_needed(&mut ctx);

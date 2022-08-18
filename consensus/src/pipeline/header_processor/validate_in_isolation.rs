@@ -1,14 +1,11 @@
+use super::*;
+use crate::constants;
+use crate::errors::{ConsensusError, ConsensusResult, RuleError};
+use consensus_core::header::Header;
 use std::{
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
-
-use consensus_core::{
-    errors::{ConsensusError, ConsensusResult, RuleError},
-    header::Header,
-};
-
-use super::*;
 
 impl HeaderProcessor {
     pub(super) fn validate_header_in_isolation(self: &Arc<HeaderProcessor>, header: &Header) -> ConsensusResult<()> {
@@ -21,8 +18,8 @@ impl HeaderProcessor {
     }
 
     fn check_header_version(self: &Arc<HeaderProcessor>, header: &Header) -> ConsensusResult<()> {
-        if header.version != 1 {
-            return Err(ConsensusError::RuleError(RuleError::WrongBlockVersion(1)));
+        if header.version != constants::BLOCK_VERSION {
+            return Err(ConsensusError::RuleError(RuleError::WrongBlockVersion(header.version)));
         }
         Ok(())
     }
@@ -34,7 +31,7 @@ impl HeaderProcessor {
             .as_millis() as u64;
         let max_block_time = now + self.timestamp_deviation_tolerance * self.target_time_per_block;
         if header.time_in_ms > now {
-            return Err(ConsensusError::RuleError(RuleError::TimeTooMuchInTheFuture(1)));
+            return Err(ConsensusError::RuleError(RuleError::TimeTooMuchInTheFuture(header.time_in_ms, now)));
         }
         Ok(())
     }
@@ -44,7 +41,7 @@ impl HeaderProcessor {
             return Err(ConsensusError::RuleError(RuleError::NoParents));
         }
 
-        if header.parents.len() as u64 > self.max_block_parents {
+        if header.parents.len() as u8 > self.max_block_parents {
             return Err(ConsensusError::RuleError(RuleError::TooManyParents(header.parents.len() as u64)));
         }
 
