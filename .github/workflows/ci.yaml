@@ -36,7 +36,8 @@ jobs:
 
   test:
     name: Test Suite
-    runs-on: ${{ matrix.os }}
+    # runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
@@ -79,50 +80,51 @@ jobs:
           args: -p hashes --features=no-asm --benches
 
 
-  test-release:
-    name: Test Suite Release
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ ubuntu-latest, macos-latest, windows-latest ]
-    steps:
-      - name: Checkout sources
-        uses: actions/checkout@v2
+  # test-release:
+  #   name: Test Suite Release
+  #   runs-on: ${{ matrix.os }}
+    
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       os: [ ubuntu-latest, macos-latest, windows-latest ]
+  #   steps:
+  #     - name: Checkout sources
+  #       uses: actions/checkout@v2
 
-      - name: Fix CRLF on Windows
-        if: runner.os == 'Windows'
-        run: git config --global core.autocrlf false
+  #     - name: Fix CRLF on Windows
+  #       if: runner.os == 'Windows'
+  #       run: git config --global core.autocrlf false
 
-      - name: Install stable toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
+  #     - name: Install stable toolchain
+  #       uses: actions-rs/toolchain@v1
+  #       with:
+  #         profile: minimal
+  #         toolchain: stable
+  #         override: true
 
-      - name: Cache
-        uses: actions/cache@v2
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+  #     - name: Cache
+  #       uses: actions/cache@v2
+  #       with:
+  #         path: |
+  #           ~/.cargo/bin/
+  #           ~/.cargo/registry/index/
+  #           ~/.cargo/registry/cache/
+  #           ~/.cargo/git/db/
+  #           target/
+  #         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Run cargo test release regular features
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --release
+  #     - name: Run cargo test release regular features
+  #       uses: actions-rs/cargo@v1
+  #       with:
+  #         command: test
+  #         args: --release
 
-      - name: Run cargo test release on hashes without asm
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: -p hashes --features=no-asm --benches --release
+  #     - name: Run cargo test release on hashes without asm
+  #       uses: actions-rs/cargo@v1
+  #       with:
+  #         command: test
+  #         args: -p hashes --features=no-asm --benches --release
 
   lints:
     name: Lints
