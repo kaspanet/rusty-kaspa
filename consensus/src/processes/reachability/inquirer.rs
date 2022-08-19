@@ -90,39 +90,37 @@ pub fn hint_virtual_selected_parent(store: &mut (impl ReachabilityStore + ?Sized
     )
 }
 
-/// Checks if the `anchor` block is a strict chain ancestor of the `queried` block (aka `anchor ∈ chain(queried)`).
-/// Note that this results in `false` if `anchor == queried`
+/// Checks if the `this` block is a strict chain ancestor of the `queried` block (aka `this ∈ chain(queried)`).
+/// Note that this results in `false` if `this == queried`
 pub fn is_strict_chain_ancestor_of(
-    store: &(impl ReachabilityStoreReader + ?Sized), anchor: Hash, queried: Hash,
+    store: &(impl ReachabilityStoreReader + ?Sized), this: Hash, queried: Hash,
 ) -> Result<bool> {
     Ok(store
-        .get_interval(anchor)?
+        .get_interval(this)?
         .strictly_contains(store.get_interval(queried)?))
 }
 
-/// Checks if `anchor` block is a chain ancestor of `queried` block (aka `anchor ∈ chain(queried) ∪ {queried}`).
+/// Checks if `this` block is a chain ancestor of `queried` block (aka `this ∈ chain(queried) ∪ {queried}`).
 /// Note that we use the graph theory convention here which defines that a block is also an ancestor of itself.
 pub fn is_chain_ancestor_of(
-    store: &(impl ReachabilityStoreReader + ?Sized), anchor: Hash, queried: Hash,
+    store: &(impl ReachabilityStoreReader + ?Sized), this: Hash, queried: Hash,
 ) -> Result<bool> {
     Ok(store
-        .get_interval(anchor)?
+        .get_interval(this)?
         .contains(store.get_interval(queried)?))
 }
 
-/// Returns true if `anchor` is a DAG ancestor of `queried` (aka `queried ∈ future(anchor) ∪ {anchor}`).
-/// Note: this method will return true if `anchor == queried`.
-/// The complexity of this method is O(log(|future_covering_set(anchor)|))
-pub fn is_dag_ancestor_of(
-    store: &(impl ReachabilityStoreReader + ?Sized), anchor: Hash, queried: Hash,
-) -> Result<bool> {
-    // First, check if `anchor` is a chain ancestor of queried
-    if is_chain_ancestor_of(store, anchor, queried)? {
+/// Returns true if `this` is a DAG ancestor of `queried` (aka `queried ∈ future(this) ∪ {this}`).
+/// Note: this method will return true if `this == queried`.
+/// The complexity of this method is O(log(|future_covering_set(this)|))
+pub fn is_dag_ancestor_of(store: &(impl ReachabilityStoreReader + ?Sized), this: Hash, queried: Hash) -> Result<bool> {
+    // First, check if `this` is a chain ancestor of queried
+    if is_chain_ancestor_of(store, this, queried)? {
         return Ok(true);
     }
     // Otherwise, use previously registered future blocks to complete the
     // DAG reachability test
-    match binary_search_descendant(store, store.get_future_covering_set(anchor)?.as_slice(), queried)? {
+    match binary_search_descendant(store, store.get_future_covering_set(this)?.as_slice(), queried)? {
         SearchOutput::Found(_, _) => Ok(true),
         SearchOutput::NotFound(_) => Ok(false),
     }
@@ -200,123 +198,6 @@ fn assert_hashes_ordered(store: &(impl ReachabilityStoreReader + ?Sized), ordere
         .as_slice()
         .windows(2)
         .all(|w| w[0].end < w[1].start))
-}
-
-/// Returns a forward iterator walking up the chain-selection tree from `from_ancestor`
-/// to `to_descendant`, where `to_descendant` is included if `inclusive` is set to true.
-/// The caller is expected to verify that `from_ancestor` is indeed a chain ancestor of
-/// `to_descendant`, otherwise a `ReachabilityError::BadQuery` error will be returned.  
-pub fn forward_chain_iterator(
-    store: &(impl ReachabilityStoreReader + ?Sized), from_ancestor: Hash, to_descendant: Hash, inclusive: bool,
-) -> impl Iterator<Item = Result<Hash>> + '_ {
-    ForwardChainIterator::new(store, from_ancestor, to_descendant, inclusive)
-}
-
-/// Returns a backward iterator walking down the selected chain from `from_descendant`
-/// to `to_ancestor`, where `to_ancestor` is included if `inclusive` is set to true.
-/// The caller is expected to verify that `to_ancestor` is indeed a chain ancestor of
-/// `from_descendant`, otherwise the iterator will eventually return an error.  
-pub fn backward_chain_iterator(
-    store: &(impl ReachabilityStoreReader + ?Sized), from_descendant: Hash, to_ancestor: Hash, inclusive: bool,
-) -> impl Iterator<Item = Result<Hash>> + '_ {
-    BackwardChainIterator::new(store, from_descendant, to_ancestor, inclusive)
-}
-
-/// Returns the default chain iterator, walking from `from` backward down the
-/// selected chain until `virtual genesis` (aka `model::ORIGIN`; exclusive)
-pub fn default_chain_iterator(
-    store: &(impl ReachabilityStoreReader + ?Sized), from: Hash,
-) -> impl Iterator<Item = Result<Hash>> + '_ {
-    BackwardChainIterator::new(store, from, blockhash::ORIGIN, false)
-}
-
-pub struct ForwardChainIterator<'a, T: ReachabilityStoreReader + ?Sized> {
-    store: &'a T,
-    current: Option<Hash>,
-    descendant: Hash,
-    inclusive: bool,
-}
-
-impl<'a, T: ReachabilityStoreReader + ?Sized> ForwardChainIterator<'a, T> {
-    fn new(store: &'a T, from_ancestor: Hash, to_descendant: Hash, inclusive: bool) -> Self {
-        Self { store, current: Some(from_ancestor), descendant: to_descendant, inclusive }
-    }
-}
-
-impl<'a, T: ReachabilityStoreReader + ?Sized> Iterator for ForwardChainIterator<'a, T> {
-    type Item = Result<Hash>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if let Some(current) = self.current {
-            if current == self.descendant {
-                if self.inclusive {
-                    self.current = None;
-                    Some(Ok(current))
-                } else {
-                    self.current = None;
-                    None
-                }
-            } else {
-                match get_next_chain_ancestor(self.store, self.descendant, current) {
-                    Ok(next) => {
-                        self.current = Some(next);
-                        Some(Ok(current))
-                    }
-                    Err(e) => {
-                        self.current = None;
-                        Some(Err(e))
-                    }
-                }
-            }
-        } else {
-            None
-        }
-    }
-}
-
-pub struct BackwardChainIterator<'a, T: ReachabilityStoreReader + ?Sized> {
-    store: &'a T,
-    current: Option<Hash>,
-    ancestor: Hash,
-    inclusive: bool,
-}
-
-impl<'a, T: ReachabilityStoreReader + ?Sized> BackwardChainIterator<'a, T> {
-    fn new(store: &'a T, from_descendant: Hash, to_ancestor: Hash, inclusive: bool) -> Self {
-        Self { store, current: Some(from_descendant), ancestor: to_ancestor, inclusive }
-    }
-}
-
-impl<'a, T: ReachabilityStoreReader + ?Sized> Iterator for BackwardChainIterator<'a, T> {
-    type Item = Result<Hash>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if let Some(current) = self.current {
-            if current == self.ancestor {
-                if self.inclusive {
-                    self.current = None;
-                    Some(Ok(current))
-                } else {
-                    self.current = None;
-                    None
-                }
-            } else {
-                debug_assert_ne!(current, blockhash::NONE);
-                match self.store.get_parent(current) {
-                    Ok(next) => {
-                        self.current = Some(next);
-                        Some(Ok(current))
-                    }
-                    Err(e) => {
-                        self.current = None;
-                        Some(Err(ReachabilityError::StoreError(e)))
-                    }
-                }
-            }
-        } else {
-            None
-        }
-    }
 }
 
 #[cfg(test)]
@@ -417,94 +298,5 @@ mod tests {
         assert!(store.are_anticone(11, 4));
         assert!(store.are_anticone(11, 6));
         assert!(store.are_anticone(11, 9));
-    }
-
-    #[test]
-    fn test_forward_iterator() {
-        // Arrange
-        let mut store = MemoryReachabilityStore::new();
-
-        // Act
-        let root: Hash = 1.into();
-        TreeBuilder::new(&mut store)
-            .init_with_params(root, Interval::new(1, 15))
-            .add_block(2.into(), root)
-            .add_block(3.into(), 2.into())
-            .add_block(4.into(), 2.into())
-            .add_block(5.into(), 3.into())
-            .add_block(6.into(), 5.into())
-            .add_block(7.into(), 1.into())
-            .add_block(8.into(), 6.into())
-            .add_block(9.into(), 6.into())
-            .add_block(10.into(), 6.into())
-            .add_block(11.into(), 6.into());
-
-        // Exclusive
-        let iter = forward_chain_iterator(&store, 2.into(), 10.into(), false);
-
-        // Assert
-        let expected_hashes = [2u64, 3, 5, 6].map(Hash::from);
-        assert!(expected_hashes
-            .iter()
-            .cloned()
-            .eq(iter.map(|r| r.unwrap())));
-        assert_eq!(
-            store.get_height(2.into()).unwrap() + expected_hashes.len() as u64,
-            store.get_height(10.into()).unwrap()
-        );
-
-        // Inclusive
-        let iter = forward_chain_iterator(&store, 2.into(), 10.into(), true);
-
-        // Assert
-        let expected_hashes = [2u64, 3, 5, 6, 10].map(Hash::from);
-        assert!(expected_hashes
-            .iter()
-            .cloned()
-            .eq(iter.map(|r| r.unwrap())));
-
-        // Compare backward to reversed forward
-        let forward_iter = forward_chain_iterator(&store, 2.into(), 10.into(), true).map(|r| r.unwrap());
-        let backward_iter: Result<Vec<Hash>> = backward_chain_iterator(&store, 10.into(), 2.into(), true).collect();
-        assert!(forward_iter.eq(backward_iter.unwrap().iter().cloned().rev()))
-    }
-
-    #[test]
-    fn test_iterator_boundaries() {
-        // Arrange & Act
-        let mut store = MemoryReachabilityStore::new();
-        let root: Hash = 1.into();
-        TreeBuilder::new(&mut store)
-            .init_with_params(root, Interval::new(1, 5))
-            .add_block(2.into(), root);
-
-        // Asserts
-        assert!([1u64, 2]
-            .map(Hash::from)
-            .iter()
-            .cloned()
-            .eq(forward_chain_iterator(&store, 1.into(), 2.into(), true).map(|r| r.unwrap())));
-
-        assert!([1u64]
-            .map(Hash::from)
-            .iter()
-            .cloned()
-            .eq(forward_chain_iterator(&store, 1.into(), 2.into(), false).map(|r| r.unwrap())));
-
-        assert!([2u64, 1]
-            .map(Hash::from)
-            .iter()
-            .cloned()
-            .eq(backward_chain_iterator(&store, 2.into(), root, true).map(|r| r.unwrap())));
-
-        assert!([2u64]
-            .map(Hash::from)
-            .iter()
-            .cloned()
-            .eq(backward_chain_iterator(&store, 2.into(), root, false).map(|r| r.unwrap())));
-
-        assert!(std::iter::once_with(|| root).eq(backward_chain_iterator(&store, root, root, true).map(|r| r.unwrap())));
-
-        assert!(std::iter::empty::<Hash>().eq(backward_chain_iterator(&store, root, root, false).map(|r| r.unwrap())));
     }
 }
