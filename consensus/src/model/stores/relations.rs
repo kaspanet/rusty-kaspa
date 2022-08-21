@@ -78,11 +78,11 @@ impl DbRelationsStore {
 
 impl RelationsStoreReader for DbRelationsStore {
     fn get_parents(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
-        Ok(Arc::clone(&self.parents_access.read(hash)?))
+        self.parents_access.read(hash)
     }
 
     fn get_children(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
-        Ok(Arc::clone(&self.children_access.read(hash)?))
+        self.children_access.read(hash)
     }
 
     fn has(&self, hash: Hash) -> Result<bool, StoreError> {
