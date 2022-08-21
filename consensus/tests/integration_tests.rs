@@ -237,7 +237,7 @@ fn ghostdag_test() {
         for block in test.blocks {
             println!("Asserting block {}", block.id);
             let block_id = string_to_hash(&block.id);
-            let output_ghostdag_data = ghostdag_store.get_data(block_id, false).unwrap();
+            let output_ghostdag_data = ghostdag_store.get_data(block_id).unwrap();
 
             assert_eq!(
                 output_ghostdag_data.selected_parent,

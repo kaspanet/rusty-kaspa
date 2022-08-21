@@ -35,7 +35,7 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService> Gh
     pub fn add_genesis_if_needed(&self, ctx: &mut HeaderProcessingContext) {
         if !self
             .ghostdag_store
-            .has(self.genesis_hash, false)
+            .has(self.genesis_hash)
             .unwrap()
         {
             ctx.mergeset = Some(BlockHashes::new(Vec::new()));
@@ -57,7 +57,7 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService> Gh
                 hash: *parent,
                 blue_work: self
                     .ghostdag_store
-                    .get_blue_work(*parent, false)
+                    .get_blue_work(*parent)
                     .unwrap(),
             })
             .max()
@@ -89,7 +89,7 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService> Gh
 
         let blue_score = self
             .ghostdag_store
-            .get_blue_score(selected_parent, false)
+            .get_blue_score(selected_parent)
             .unwrap()
             + new_block_data.mergeset_blues.len() as u64;
 
@@ -104,7 +104,7 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService> Gh
     }
 
     fn check_blue_candidate_with_chain_block(
-        &self, new_block_data: &GhostdagData, chain_block: &ChainBlockData, blue_candidate: Hash,
+        &self, new_block_data: &GhostdagData, chain_block: &ChainBlock, blue_candidate: Hash,
         candidate_blues_anticone_sizes: &mut HashMap<Hash, KType>, candidate_blue_anticone_size: &mut KType,
     ) -> ColoringState {
         // If blue_candidate is in the future of chain_block, it means
@@ -170,7 +170,6 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService> Gh
     /// Returns the blue anticone size of `block` from the worldview of `context`.
     /// Expects `block` to be in the blue set of `context`
     fn blue_anticone_size(&self, block: Hash, context: &GhostdagData) -> KType {
-        let mut is_trusted_data = false;
         let mut current_blues_anticone_sizes = HashKTypeMap::clone(&context.blues_anticone_sizes);
         let mut current_selected_parent = context.selected_parent;
         loop {
@@ -178,32 +177,19 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService> Gh
                 return *size;
             }
 
-            if current_selected_parent == self.genesis_hash {
+            if current_selected_parent == self.genesis_hash || current_selected_parent == blockhash::ORIGIN {
                 panic!("block {} is not in blue set of the given context", block);
             }
 
             current_blues_anticone_sizes = self
                 .ghostdag_store
-                .get_blues_anticone_sizes(current_selected_parent, is_trusted_data)
+                .get_blues_anticone_sizes(current_selected_parent)
                 .unwrap();
 
             current_selected_parent = self
                 .ghostdag_store
-                .get_selected_parent(current_selected_parent, is_trusted_data)
+                .get_selected_parent(current_selected_parent)
                 .unwrap();
-
-            if current_selected_parent == blockhash::ORIGIN {
-                is_trusted_data = true;
-                current_blues_anticone_sizes = self
-                    .ghostdag_store
-                    .get_blues_anticone_sizes(current_selected_parent, is_trusted_data)
-                    .unwrap();
-
-                current_selected_parent = self
-                    .ghostdag_store
-                    .get_selected_parent(current_selected_parent, is_trusted_data)
-                    .unwrap();
-            }
         }
     }
 
@@ -220,7 +206,7 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService> Gh
         // of blue_candidate, and check for each one of them if blue_candidate potentially
         // enlarges their blue anticone to be over K, or that they enlarge the blue anticone
         // of blue_candidate to be over K.
-        let mut chain_block = ChainBlockData { hash: None, data: Arc::clone(new_block_data) };
+        let mut chain_block = ChainBlock { hash: None, data: Arc::clone(new_block_data) };
 
         let mut candidate_blue_anticone_size: KType = 0;
 
@@ -238,32 +224,35 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService> Gh
                     return ColoringOutput::Blue(candidate_blue_anticone_size, candidate_blues_anticone_sizes)
                 }
                 ColoringState::Red => return ColoringOutput::Red,
-                ColoringState::Pending => (),
+                ColoringState::Pending => (), // continue looping
             }
 
-            chain_block = ChainBlockData {
+            chain_block = ChainBlock {
                 hash: Some(chain_block.data.selected_parent),
                 data: self
                     .ghostdag_store
-                    .get_data(chain_block.data.selected_parent, false)
+                    .get_data(chain_block.data.selected_parent)
                     .unwrap(),
             }
         }
     }
 }
 
-struct ChainBlockData {
-    hash: Option<Hash>,
+/// Chain block with attached ghostdag data
+struct ChainBlock {
+    hash: Option<Hash>, // if set to `None`, signals being the new block
     data: Arc<GhostdagData>,
 }
 
+/// Represents the intermediate GHOSTDAG coloring state for the current candidate
 enum ColoringState {
     Blue,
     Red,
     Pending,
 }
 
+/// Represents the final output of GHOSTDAG coloring for the current candidate
 enum ColoringOutput {
-    Blue(KType, HashMap<Hash, KType>),
+    Blue(KType, HashMap<Hash, KType>), // (blue anticone size, map of blue anticone sizes for each affected blue)
     Red,
 }
