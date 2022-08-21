@@ -43,10 +43,7 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService> Gh
         let mut sorted_blocks: Vec<Hash> = Vec::from_iter(blocks.iter().cloned());
         sorted_blocks.sort_by_cached_key(|block| SortableBlock {
             hash: *block,
-            blue_work: self
-                .ghostdag_store
-                .get_blue_work(*block, false)
-                .unwrap(),
+            blue_work: self.ghostdag_store.get_blue_work(*block).unwrap(),
         });
         sorted_blocks
     }
