@@ -77,12 +77,11 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService> Gh
         let ordered_mergeset = self.ordered_mergeset_without_selected_parent(selected_parent, parents);
 
         for blue_candidate in ordered_mergeset.iter().cloned() {
-            let (is_blue, candidate_blue_anticone_size, candidate_blues_anticone_sizes) =
-                self.check_blue_candidate(&new_block_data, blue_candidate);
+            let coloring = self.check_blue_candidate(&new_block_data, blue_candidate);
 
-            if is_blue {
+            if let ColoringOutput::Blue(blue_anticone_size, blues_anticone_sizes) = coloring {
                 // No k-cluster violation found, we can now set the candidate block as blue
-                new_block_data.add_blue(blue_candidate, candidate_blue_anticone_size, &candidate_blues_anticone_sizes);
+                new_block_data.add_blue(blue_candidate, blue_anticone_size, &blues_anticone_sizes);
             } else {
                 new_block_data.add_red(blue_candidate);
             }
@@ -107,7 +106,7 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService> Gh
     fn check_blue_candidate_with_chain_block(
         &self, new_block_data: &GhostdagData, chain_block: &ChainBlockData, blue_candidate: Hash,
         candidate_blues_anticone_sizes: &mut HashMap<Hash, KType>, candidate_blue_anticone_size: &mut KType,
-    ) -> (bool, bool) {
+    ) -> ColoringState {
         // If blue_candidate is in the future of chain_block, it means
         // that all remaining blues are in the past of chain_block and thus
         // in the past of blue_candidate. In this case we know for sure that
@@ -123,7 +122,7 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService> Gh
                 .reachability_service
                 .is_dag_ancestor_of(hash, blue_candidate)
             {
-                return (true, false);
+                return ColoringState::Blue;
             }
         }
 
@@ -141,7 +140,7 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService> Gh
             *candidate_blue_anticone_size += 1;
             if *candidate_blue_anticone_size > self.k {
                 // k-cluster violation: The candidate's blue anticone exceeded k
-                return (false, true);
+                return ColoringState::Red;
             }
 
             if *candidate_blues_anticone_sizes
@@ -151,7 +150,7 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService> Gh
             {
                 // k-cluster violation: A block in candidate's blue anticone already
                 // has k blue blocks in its own anticone
-                return (false, true);
+                return ColoringState::Red;
             }
 
             // This is a sanity check that validates that a blue
@@ -165,7 +164,7 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService> Gh
             );
         }
 
-        (false, false)
+        ColoringState::Pending
     }
 
     /// Returns the blue anticone size of `block` from the worldview of `context`.
@@ -208,13 +207,11 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService> Gh
         }
     }
 
-    fn check_blue_candidate(
-        &self, new_block_data: &Arc<GhostdagData>, blue_candidate: Hash,
-    ) -> (bool, KType, HashMap<Hash, KType>) {
+    fn check_blue_candidate(&self, new_block_data: &Arc<GhostdagData>, blue_candidate: Hash) -> ColoringOutput {
         // The maximum length of new_block_data.mergeset_blues can be K+1 because
         // it contains the selected parent.
         if new_block_data.mergeset_blues.len() as KType == self.k + 1 {
-            return (false, 0, HashMap::new());
+            return ColoringOutput::Red;
         }
 
         let mut candidate_blues_anticone_sizes: HashMap<Hash, KType> = HashMap::with_capacity(self.k as usize);
@@ -228,7 +225,7 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService> Gh
         let mut candidate_blue_anticone_size: KType = 0;
 
         loop {
-            let (is_blue, is_red) = self.check_blue_candidate_with_chain_block(
+            let state = self.check_blue_candidate_with_chain_block(
                 new_block_data,
                 &chain_block,
                 blue_candidate,
@@ -236,12 +233,12 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService> Gh
                 &mut candidate_blue_anticone_size,
             );
 
-            if is_blue {
-                break;
-            }
-
-            if is_red {
-                return (false, 0, HashMap::new());
+            match state {
+                ColoringState::Blue => {
+                    return ColoringOutput::Blue(candidate_blue_anticone_size, candidate_blues_anticone_sizes)
+                }
+                ColoringState::Red => return ColoringOutput::Red,
+                ColoringState::Pending => (),
             }
 
             chain_block = ChainBlockData {
@@ -252,12 +249,21 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService> Gh
                     .unwrap(),
             }
         }
-
-        (true, candidate_blue_anticone_size, candidate_blues_anticone_sizes)
     }
 }
 
 struct ChainBlockData {
     hash: Option<Hash>,
     data: Arc<GhostdagData>,
+}
+
+enum ColoringState {
+    Blue,
+    Red,
+    Pending,
+}
+
+enum ColoringOutput {
+    Blue(KType, HashMap<Hash, KType>),
+    Red,
 }
