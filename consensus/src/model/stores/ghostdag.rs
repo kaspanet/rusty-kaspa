@@ -84,18 +84,18 @@ impl GhostdagData {
 }
 
 pub trait GhostdagStoreReader {
-    fn get_blue_score(&self, hash: Hash, is_trusted_data: bool) -> Result<u64, StoreError>;
-    fn get_blue_work(&self, hash: Hash, is_trusted_data: bool) -> Result<Uint256, StoreError>;
-    fn get_selected_parent(&self, hash: Hash, is_trusted_data: bool) -> Result<Hash, StoreError>;
-    fn get_mergeset_blues(&self, hash: Hash, is_trusted_data: bool) -> Result<BlockHashes, StoreError>;
-    fn get_mergeset_reds(&self, hash: Hash, is_trusted_data: bool) -> Result<BlockHashes, StoreError>;
-    fn get_blues_anticone_sizes(&self, hash: Hash, is_trusted_data: bool) -> Result<HashKTypeMap, StoreError>;
+    fn get_blue_score(&self, hash: Hash) -> Result<u64, StoreError>;
+    fn get_blue_work(&self, hash: Hash) -> Result<Uint256, StoreError>;
+    fn get_selected_parent(&self, hash: Hash) -> Result<Hash, StoreError>;
+    fn get_mergeset_blues(&self, hash: Hash) -> Result<BlockHashes, StoreError>;
+    fn get_mergeset_reds(&self, hash: Hash) -> Result<BlockHashes, StoreError>;
+    fn get_blues_anticone_sizes(&self, hash: Hash) -> Result<HashKTypeMap, StoreError>;
 
     /// Returns full block data for the requested hash
-    fn get_data(&self, hash: Hash, is_trusted_data: bool) -> Result<Arc<GhostdagData>, StoreError>;
+    fn get_data(&self, hash: Hash) -> Result<Arc<GhostdagData>, StoreError>;
 
     /// Check if the store contains data for the requested hash
-    fn has(&self, hash: Hash, is_trusted_data: bool) -> Result<bool, StoreError>;
+    fn has(&self, hash: Hash) -> Result<bool, StoreError>;
 }
 
 pub trait GhostdagStore: GhostdagStoreReader {
@@ -139,27 +139,27 @@ impl DbGhostdagStore {
 }
 
 impl GhostdagStoreReader for DbGhostdagStore {
-    fn get_blue_score(&self, hash: Hash, is_trusted_data: bool) -> Result<u64, StoreError> {
+    fn get_blue_score(&self, hash: Hash) -> Result<u64, StoreError> {
         Ok(self.cached_access.read(hash)?.blue_score)
     }
 
-    fn get_blue_work(&self, hash: Hash, is_trusted_data: bool) -> Result<Uint256, StoreError> {
+    fn get_blue_work(&self, hash: Hash) -> Result<Uint256, StoreError> {
         Ok(self.cached_access.read(hash)?.blue_work)
     }
 
-    fn get_selected_parent(&self, hash: Hash, is_trusted_data: bool) -> Result<Hash, StoreError> {
+    fn get_selected_parent(&self, hash: Hash) -> Result<Hash, StoreError> {
         Ok(self.cached_access.read(hash)?.selected_parent)
     }
 
-    fn get_mergeset_blues(&self, hash: Hash, is_trusted_data: bool) -> Result<BlockHashes, StoreError> {
+    fn get_mergeset_blues(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
         Ok(Arc::clone(&self.cached_access.read(hash)?.mergeset_blues))
     }
 
-    fn get_mergeset_reds(&self, hash: Hash, is_trusted_data: bool) -> Result<BlockHashes, StoreError> {
+    fn get_mergeset_reds(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
         Ok(Arc::clone(&self.cached_access.read(hash)?.mergeset_reds))
     }
 
-    fn get_blues_anticone_sizes(&self, hash: Hash, is_trusted_data: bool) -> Result<HashKTypeMap, StoreError> {
+    fn get_blues_anticone_sizes(&self, hash: Hash) -> Result<HashKTypeMap, StoreError> {
         Ok(Arc::clone(
             &self
                 .cached_access
@@ -168,11 +168,11 @@ impl GhostdagStoreReader for DbGhostdagStore {
         ))
     }
 
-    fn get_data(&self, hash: Hash, is_trusted_data: bool) -> Result<Arc<GhostdagData>, StoreError> {
+    fn get_data(&self, hash: Hash) -> Result<Arc<GhostdagData>, StoreError> {
         self.cached_access.read(hash)
     }
 
-    fn has(&self, hash: Hash, is_trusted_data: bool) -> Result<bool, StoreError> {
+    fn has(&self, hash: Hash) -> Result<bool, StoreError> {
         self.cached_access.has(hash)
     }
 }
@@ -220,7 +220,7 @@ impl Default for MemoryGhostdagStore {
 
 impl GhostdagStore for MemoryGhostdagStore {
     fn insert(&self, hash: Hash, data: Arc<GhostdagData>) -> Result<(), StoreError> {
-        if self.has(hash, false)? {
+        if self.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
         self.blue_score_map
@@ -246,50 +246,50 @@ impl GhostdagStore for MemoryGhostdagStore {
 }
 
 impl GhostdagStoreReader for MemoryGhostdagStore {
-    fn get_blue_score(&self, hash: Hash, is_trusted_data: bool) -> Result<u64, StoreError> {
+    fn get_blue_score(&self, hash: Hash) -> Result<u64, StoreError> {
         match self.blue_score_map.borrow().get(&hash) {
             Some(blue_score) => Ok(*blue_score),
             None => Err(StoreError::KeyNotFound(hash.to_string())),
         }
     }
 
-    fn get_blue_work(&self, hash: Hash, is_trusted_data: bool) -> Result<Uint256, StoreError> {
+    fn get_blue_work(&self, hash: Hash) -> Result<Uint256, StoreError> {
         match self.blue_work_map.borrow().get(&hash) {
             Some(blue_work) => Ok(*blue_work),
             None => Err(StoreError::KeyNotFound(hash.to_string())),
         }
     }
 
-    fn get_selected_parent(&self, hash: Hash, is_trusted_data: bool) -> Result<Hash, StoreError> {
+    fn get_selected_parent(&self, hash: Hash) -> Result<Hash, StoreError> {
         match self.selected_parent_map.borrow().get(&hash) {
             Some(selected_parent) => Ok(*selected_parent),
             None => Err(StoreError::KeyNotFound(hash.to_string())),
         }
     }
 
-    fn get_mergeset_blues(&self, hash: Hash, is_trusted_data: bool) -> Result<BlockHashes, StoreError> {
+    fn get_mergeset_blues(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
         match self.mergeset_blues_map.borrow().get(&hash) {
             Some(mergeset_blues) => Ok(BlockHashes::clone(mergeset_blues)),
             None => Err(StoreError::KeyNotFound(hash.to_string())),
         }
     }
 
-    fn get_mergeset_reds(&self, hash: Hash, is_trusted_data: bool) -> Result<BlockHashes, StoreError> {
+    fn get_mergeset_reds(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
         match self.mergeset_reds_map.borrow().get(&hash) {
             Some(mergeset_reds) => Ok(BlockHashes::clone(mergeset_reds)),
             None => Err(StoreError::KeyNotFound(hash.to_string())),
         }
     }
 
-    fn get_blues_anticone_sizes(&self, hash: Hash, is_trusted_data: bool) -> Result<HashKTypeMap, StoreError> {
+    fn get_blues_anticone_sizes(&self, hash: Hash) -> Result<HashKTypeMap, StoreError> {
         match self.blues_anticone_sizes_map.borrow().get(&hash) {
             Some(sizes) => Ok(HashKTypeMap::clone(sizes)),
             None => Err(StoreError::KeyNotFound(hash.to_string())),
         }
     }
 
-    fn get_data(&self, hash: Hash, is_trusted_data: bool) -> Result<Arc<GhostdagData>, StoreError> {
-        if !self.has(hash, is_trusted_data)? {
+    fn get_data(&self, hash: Hash) -> Result<Arc<GhostdagData>, StoreError> {
+        if !self.has(hash)? {
             return Err(StoreError::KeyNotFound(hash.to_string()));
         }
         Ok(Arc::new(GhostdagData::new(
@@ -302,7 +302,7 @@ impl GhostdagStoreReader for MemoryGhostdagStore {
         )))
     }
 
-    fn has(&self, hash: Hash, is_trusted_data: bool) -> Result<bool, StoreError> {
+    fn has(&self, hash: Hash) -> Result<bool, StoreError> {
         Ok(self.blue_score_map.borrow().contains_key(&hash))
     }
 }

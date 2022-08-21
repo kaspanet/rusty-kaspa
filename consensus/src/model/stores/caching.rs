@@ -106,6 +106,84 @@ where
     }
 }
 
+/// A concurrent DB store with typed caching for `Copy` types.
+/// TODO: try and generalize under `CachedDbAccess`
+#[derive(Clone)]
+pub struct CachedDbAccessForCopy<TKey, TData>
+where
+    TKey: std::hash::Hash + Eq + Send + Sync + 'static,
+    TData: Clone + Copy + Send + Sync + 'static,
+{
+    db: Arc<DB>,
+    // The moka cache type supports shallow cloning and manages
+    // ref counting internally, so no need for Arc
+    cache: Cache<TKey, TData>,
+
+    // DB bucket/path (TODO: eventually this must become dynamic in
+    // order to support `active/inactive` consensus instances)
+    prefix: &'static [u8],
+}
+
+impl<TKey, TData> CachedDbAccessForCopy<TKey, TData>
+where
+    TKey: std::hash::Hash + Eq + Send + Sync + 'static,
+    TData: Clone + Copy + Send + Sync + 'static,
+{
+    pub fn new(db: Arc<DB>, cache_size: u64, prefix: &'static [u8]) -> Self {
+        Self { db, cache: Cache::new(cache_size), prefix }
+    }
+
+    pub fn has(&self, key: TKey) -> Result<bool, StoreError>
+    where
+        TKey: Copy + AsRef<[u8]>,
+    {
+        Ok(self.cache.contains_key(&key)
+            || self
+                .db
+                .get_pinned(DbKey::new(self.prefix, key))?
+                .is_some())
+    }
+
+    pub fn read(&self, key: TKey) -> Result<TData, StoreError>
+    where
+        TKey: Copy + AsRef<[u8]> + ToString,
+        TData: DeserializeOwned, // We need `DeserializeOwned` since the slice coming from `db.get_pinned` has short lifetime
+    {
+        if let Some(data) = self.cache.get(&key) {
+            Ok(data)
+        } else if let Some(slice) = self.db.get_pinned(DbKey::new(self.prefix, key))? {
+            let data: TData = bincode::deserialize(&slice)?;
+            self.cache.insert(key, data);
+            Ok(data)
+        } else {
+            Err(StoreError::KeyNotFound(key.to_string()))
+        }
+    }
+
+    pub fn write(&self, key: TKey, data: TData) -> Result<(), StoreError>
+    where
+        TKey: Copy + AsRef<[u8]>,
+        TData: Serialize,
+    {
+        self.cache.insert(key, data);
+        let bin_data = bincode::serialize(&data)?;
+        self.db
+            .put(DbKey::new(self.prefix, key), bin_data)?;
+        Ok(())
+    }
+
+    pub fn write_batch(&self, batch: &mut WriteBatch, key: TKey, data: TData) -> Result<(), StoreError>
+    where
+        TKey: Copy + AsRef<[u8]>,
+        TData: Serialize,
+    {
+        self.cache.insert(key, data);
+        let bin_data = bincode::serialize(&data)?;
+        batch.put(DbKey::new(self.prefix, key), bin_data);
+        Ok(())
+    }
+}
+
 /// A cached DB item with concurrency support
 #[derive(Clone)]
 pub struct CachedDbItem<T> {

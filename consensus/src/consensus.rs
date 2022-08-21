@@ -1,5 +1,11 @@
 use crate::{
-    model::stores::{ghostdag::DbGhostdagStore, reachability::DbReachabilityStore, relations::DbRelationsStore, DB},
+    model::{
+        services::{reachability::MTReachabilityService, relations::MTRelationsService, statuses::MTStatusesService},
+        stores::{
+            ghostdag::DbGhostdagStore, reachability::DbReachabilityStore, relations::DbRelationsStore,
+            statuses::DbStatusesStore, DB,
+        },
+    },
     params::Params,
     pipeline::{
         header_processor::{BlockTask, HeaderProcessor},
@@ -28,8 +34,17 @@ pub struct Consensus {
     header_processor: Arc<HeaderProcessor>,
 
     // Stores
+    statuses_store: Arc<RwLock<DbStatusesStore>>,
+    relations_store: Arc<RwLock<DbRelationsStore>>,
     reachability_store: Arc<RwLock<DbReachabilityStore>>,
+
+    // Append-only stores
     ghostdag_store: Arc<DbGhostdagStore>,
+
+    // Services
+    statuses_service: Arc<MTStatusesService<DbStatusesStore>>,
+    relations_service: Arc<MTRelationsService<DbRelationsStore>>,
+    reachability_service: Arc<MTReachabilityService<DbReachabilityStore>>,
 
     // Counters
     pub counters: Arc<ProcessingCounters>,
@@ -37,9 +52,14 @@ pub struct Consensus {
 
 impl Consensus {
     pub fn new(db: Arc<DB>, params: &Params) -> Self {
+        let statuses_store = Arc::new(RwLock::new(DbStatusesStore::new(db.clone(), 100000)));
         let relations_store = Arc::new(RwLock::new(DbRelationsStore::new(db.clone(), 100000)));
         let reachability_store = Arc::new(RwLock::new(DbReachabilityStore::new(db.clone(), 100000)));
         let ghostdag_store = Arc::new(DbGhostdagStore::new(db.clone(), 100000));
+
+        let statuses_service = Arc::new(MTStatusesService::new(statuses_store.clone()));
+        let relations_service = Arc::new(MTRelationsService::new(relations_store.clone()));
+        let reachability_service = Arc::new(MTReachabilityService::new(reachability_store.clone()));
 
         let (sender, receiver): (Sender<BlockTask>, Receiver<BlockTask>) = bounded(2000);
         let counters = Arc::new(ProcessingCounters::default());
@@ -48,13 +68,27 @@ impl Consensus {
             receiver,
             params,
             db.clone(),
-            relations_store,
+            relations_store.clone(),
             reachability_store.clone(),
             ghostdag_store.clone(),
             counters.clone(),
         ));
 
-        Self { db, block_sender: sender, header_processor, reachability_store, ghostdag_store, counters }
+        Self {
+            db,
+            block_sender: sender,
+            header_processor,
+            statuses_store,
+            relations_store,
+            reachability_store,
+            ghostdag_store,
+
+            statuses_service,
+            relations_service,
+            reachability_service,
+
+            counters,
+        }
     }
 
     pub fn init(&self) -> JoinHandle<()> {
