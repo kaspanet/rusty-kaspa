@@ -2,7 +2,8 @@ use crate::{
     model::{
         services::{reachability::MTReachabilityService, relations::MTRelationsService, statuses::MTStatusesService},
         stores::{
-            ghostdag::DbGhostdagStore, reachability::DbReachabilityStore, relations::DbRelationsStore,
+            block_window_cache::BlockWindowCacheStore, daa::DbDaaStore, ghostdag::DbGhostdagStore,
+            pruning::DbPruningStore, reachability::DbReachabilityStore, relations::DbRelationsStore,
             statuses::DbStatusesStore, DB,
         },
     },
@@ -44,7 +45,7 @@ pub struct Consensus {
     // Services
     statuses_service: Arc<MTStatusesService<DbStatusesStore>>,
     relations_service: Arc<MTRelationsService<DbRelationsStore>>,
-    reachability_service: Arc<MTReachabilityService<DbReachabilityStore>>,
+    reachability_service: MTReachabilityService<DbReachabilityStore>,
 
     // Counters
     pub counters: Arc<ProcessingCounters>,
@@ -55,11 +56,14 @@ impl Consensus {
         let statuses_store = Arc::new(RwLock::new(DbStatusesStore::new(db.clone(), 100000)));
         let relations_store = Arc::new(RwLock::new(DbRelationsStore::new(db.clone(), 100000)));
         let reachability_store = Arc::new(RwLock::new(DbReachabilityStore::new(db.clone(), 100000)));
+        let pruning_store = Arc::new(RwLock::new(DbPruningStore::new(db.clone())));
         let ghostdag_store = Arc::new(DbGhostdagStore::new(db.clone(), 100000));
+        let daa_store = Arc::new(DbDaaStore::new(db.clone(), 100000));
+        let block_window_cache_store = Arc::new(BlockWindowCacheStore::new(2000));
 
         let statuses_service = Arc::new(MTStatusesService::new(statuses_store.clone()));
         let relations_service = Arc::new(MTRelationsService::new(relations_store.clone()));
-        let reachability_service = Arc::new(MTReachabilityService::new(reachability_store.clone()));
+        let reachability_service = MTReachabilityService::new(reachability_store.clone());
 
         let (sender, receiver): (Sender<BlockTask>, Receiver<BlockTask>) = bounded(2000);
         let counters = Arc::new(ProcessingCounters::default());
@@ -71,6 +75,11 @@ impl Consensus {
             relations_store.clone(),
             reachability_store.clone(),
             ghostdag_store.clone(),
+            daa_store.clone(),
+            statuses_store.clone(),
+            pruning_store.clone(),
+            block_window_cache_store,
+            reachability_service.clone(),
             counters.clone(),
         ));
 

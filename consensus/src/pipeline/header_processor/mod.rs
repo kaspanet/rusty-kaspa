@@ -1,3 +1,3 @@
 mod processor;
-mod validate_in_isolation;
+mod pre_pow_validation;
 pub use processor::*;

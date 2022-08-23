@@ -29,3 +29,17 @@ pub enum StoreError {
 }
 
 pub type StoreResult<T> = std::result::Result<T, StoreError>;
+
+pub trait StoreResultExtensions<T> {
+    fn unwrap_option(self) -> Option<T>;
+}
+
+impl<T> StoreResultExtensions<T> for StoreResult<T> {
+    fn unwrap_option(self) -> Option<T> {
+        if let Err(StoreError::KeyNotFound(_)) = self {
+            return None;
+        }
+
+        Some(self.unwrap())
+    }
+}

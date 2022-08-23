@@ -3,14 +3,23 @@ use crate::{
     model::{
         services::{reachability::MTReachabilityService, relations::MTRelationsService},
         stores::{
+            block_window_cache::BlockWindowCacheStore,
+            daa::DbDaaStore,
             ghostdag::{DbGhostdagStore, GhostdagData},
+            pruning::DbPruningStore,
             reachability::{DbReachabilityStore, ReachabilityStoreReader, StagingReachabilityStore},
             relations::DbRelationsStore,
+            statuses::DbStatusesStore,
             DB,
         },
     },
     params::Params,
-    processes::{ghostdag::protocol::GhostdagManager, reachability::inquirer as reachability},
+    processes::{
+        dagtraversalmanager::DagTraversalManager,
+        difficulty::DifficultyManager,
+        ghostdag::{ordering::SortableBlock, protocol::GhostdagManager},
+        reachability::inquirer as reachability,
+    },
     test_helpers::header_from_precomputed_hash,
 };
 use consensus_core::{block::Block, blockhash::BlockHashes, header::Header};
@@ -20,7 +29,8 @@ use hashes::Hash;
 use parking_lot::{Condvar, Mutex, RwLock};
 use rocksdb::WriteBatch;
 use std::{
-    collections::{hash_map::Entry::Vacant, HashMap},
+    cmp::Reverse,
+    collections::{hash_map::Entry::Vacant, BinaryHeap, HashMap},
     sync::{atomic::Ordering, Arc},
 };
 
@@ -35,11 +45,34 @@ pub struct HeaderProcessingContext<'a> {
 
     // Staging data
     pub ghostdag_data: Option<Arc<GhostdagData>>,
+    pub block_window: Option<BinaryHeap<Reverse<SortableBlock>>>,
+    pub daa_added_blocks: Option<Vec<Hash>>,
+
+    // Cache
+    non_pruned_parents_option: Option<BlockHashes>,
 }
 
 impl<'a> HeaderProcessingContext<'a> {
     pub fn new(hash: Hash, header: &'a Header) -> Self {
-        Self { hash, header, mergeset: None, ghostdag_data: None }
+        Self {
+            hash,
+            header,
+            mergeset: None,
+            ghostdag_data: None,
+            non_pruned_parents_option: None,
+            block_window: None,
+            daa_added_blocks: None,
+        }
+    }
+
+    pub fn non_pruned_parents(&mut self) -> BlockHashes {
+        if let Some(parents) = self.non_pruned_parents_option.clone() {
+            return parents;
+        }
+
+        let non_pruned_parents = Arc::new(self.header.direct_parents().clone()); // TODO: Exclude pruned parents
+        self.non_pruned_parents_option = Some(non_pruned_parents.clone());
+        non_pruned_parents.clone()
     }
 }
 
@@ -57,6 +90,7 @@ pub struct HeaderProcessor {
     pub(super) timestamp_deviation_tolerance: u64,
     pub(super) target_time_per_block: u64,
     pub(super) max_block_parents: u8,
+    pub(super) difficulty_window_size: usize,
     // ghostdag_k: KType,
 
     // DB
@@ -66,6 +100,9 @@ pub struct HeaderProcessor {
     relations_store: Arc<RwLock<DbRelationsStore>>,
     reachability_store: Arc<RwLock<DbReachabilityStore>>,
     ghostdag_store: Arc<DbGhostdagStore>,
+    pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
+    pub(super) pruning_store: Arc<RwLock<DbPruningStore>>,
+    pub(super) block_window_cache_store: Arc<BlockWindowCacheStore>,
 
     // Managers and services
     ghostdag_manager: GhostdagManager<
@@ -73,6 +110,9 @@ pub struct HeaderProcessor {
         MTRelationsService<DbRelationsStore>,
         MTReachabilityService<DbReachabilityStore>,
     >,
+    pub(super) dagtraversal_manager: DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore>,
+    pub(super) difficulty_manager: DifficultyManager<DbDaaStore>,
+    pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
 
     /// Holds pending block hashes and their dependent blocks
     pending: Mutex<HashMap<Hash, Vec<Arc<Block>>>>,
@@ -93,23 +133,35 @@ impl HeaderProcessor {
     pub fn new(
         receiver: Receiver<BlockTask>, params: &Params, db: Arc<DB>, relations_store: Arc<RwLock<DbRelationsStore>>,
         reachability_store: Arc<RwLock<DbReachabilityStore>>, ghostdag_store: Arc<DbGhostdagStore>,
-        counters: Arc<ProcessingCounters>,
+        daa_store: Arc<DbDaaStore>, statuses_store: Arc<RwLock<DbStatusesStore>>,
+        pruning_store: Arc<RwLock<DbPruningStore>>, block_window_cache_store: Arc<BlockWindowCacheStore>,
+        reachability_service: MTReachabilityService<DbReachabilityStore>, counters: Arc<ProcessingCounters>,
     ) -> Self {
         Self {
             receiver,
             genesis_hash: params.genesis_hash,
-            // ghostdag_k,
+            difficulty_window_size: params.difficulty_window_size,
             db,
             relations_store: relations_store.clone(),
             reachability_store: reachability_store.clone(),
             ghostdag_store: ghostdag_store.clone(),
+            statuses_store,
+            pruning_store,
+            block_window_cache_store: block_window_cache_store.clone(),
             ghostdag_manager: GhostdagManager::new(
                 params.genesis_hash,
                 params.ghostdag_k,
-                ghostdag_store,
+                ghostdag_store.clone(),
                 Arc::new(MTRelationsService::new(relations_store)),
-                Arc::new(MTReachabilityService::new(reachability_store)),
+                reachability_service.clone(),
             ),
+            dagtraversal_manager: DagTraversalManager::new(
+                params.genesis_hash,
+                ghostdag_store.clone(),
+                block_window_cache_store.clone(),
+            ),
+            difficulty_manager: DifficultyManager::new(daa_store),
+            reachability_service,
             pending: Mutex::new(HashMap::new()),
             counters,
             ready_signal: Condvar::new(),
@@ -173,7 +225,7 @@ impl HeaderProcessor {
             // expected to be negligible in header processing time
             let mut pending = self.pending.lock();
 
-            for parent in block.header.parents.iter() {
+            for parent in block.header.direct_parents().iter() {
                 if let Some(deps) = pending.get_mut(parent) {
                     deps.push(block);
                     return; // The block will be reprocessed once the pending parent completes processing
@@ -221,12 +273,12 @@ impl HeaderProcessor {
 
         // Run GHOSTDAG for the new header
         self.ghostdag_manager
-            .add_block(&mut ctx, header.hash);
+            .add_block(&mut ctx, header.hash); // TODO: Run GHOSTDAG for all block levels
 
         //
         // TODO: imp all remaining header validation and processing steps :)
         //
-        self.validate_header_in_isolation(header)?;
+        self.pre_pow_validation(&mut ctx, header)?;
 
         self.commit_header(ctx, header);
 
@@ -236,7 +288,7 @@ impl HeaderProcessor {
             .fetch_add(1, Ordering::Relaxed);
         self.counters
             .dep_counts
-            .fetch_add(header.parents.len() as u64, Ordering::Relaxed);
+            .fetch_add(header.direct_parents().len() as u64, Ordering::Relaxed);
         Ok(())
     }
 
@@ -273,7 +325,7 @@ impl HeaderProcessor {
         // updated as well, hence the need to write lock.
         let mut relations_write = self.relations_store.write(); // Note we lock until the batch is written
         relations_write
-            .insert_batch(&mut batch, header.hash, BlockHashes::new(header.parents.clone()))
+            .insert_batch(&mut batch, header.hash, BlockHashes::new(header.direct_parents().clone()))
             .unwrap();
 
         // Write reachability data. Only at this brief moment the reachability store is locked for reads.

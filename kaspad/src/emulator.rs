@@ -70,7 +70,7 @@ impl RandomBlockEmitter {
             let mut new_tips = Vec::with_capacity(v as usize);
             for i in 0..v {
                 // Create a new block referencing all tips from the previous round
-                let b = Block::new(BLOCK_VERSION, tips.clone(), i, 0);
+                let b = Block::new(BLOCK_VERSION, tips.clone(), 0, i, 0);
                 new_tips.push(b.header.hash);
                 // Submit to consensus
                 self.consensus

@@ -6,6 +6,7 @@ pub struct Params {
     pub timestamp_deviation_tolerance: u64,
     pub target_time_per_block: u64,
     pub max_block_parents: u8,
+    pub difficulty_window_size: usize,
 }
 
 pub const MAINNET_PARAMS: Params = Params {
@@ -14,4 +15,5 @@ pub const MAINNET_PARAMS: Params = Params {
     timestamp_deviation_tolerance: 132,
     target_time_per_block: 1000,
     max_block_parents: 10,
+    difficulty_window_size: 2641,
 };
