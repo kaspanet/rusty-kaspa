@@ -6,10 +6,11 @@ use crate::{
             block_window_cache::BlockWindowCacheStore,
             daa::DbDaaStore,
             ghostdag::{DbGhostdagStore, GhostdagData},
+            headers::DbHeadersStore,
             pruning::DbPruningStore,
-            reachability::{DbReachabilityStore, ReachabilityStoreReader, StagingReachabilityStore},
+            reachability::{DbReachabilityStore, StagingReachabilityStore},
             relations::DbRelationsStore,
-            statuses::DbStatusesStore,
+            statuses::{BlockStatus::StatusHeaderOnly, DbStatusesStore, StatusesStoreReader},
             DB,
         },
     },
@@ -103,6 +104,8 @@ pub struct HeaderProcessor {
     pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
     pub(super) pruning_store: Arc<RwLock<DbPruningStore>>,
     pub(super) block_window_cache_store: Arc<BlockWindowCacheStore>,
+    pub(super) daa_store: Arc<DbDaaStore>,
+    pub(super) headers_store: Arc<DbHeadersStore>,
 
     // Managers and services
     ghostdag_manager: GhostdagManager<
@@ -111,7 +114,7 @@ pub struct HeaderProcessor {
         MTReachabilityService<DbReachabilityStore>,
     >,
     pub(super) dagtraversal_manager: DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore>,
-    pub(super) difficulty_manager: DifficultyManager<DbDaaStore>,
+    pub(super) difficulty_manager: DifficultyManager<DbHeadersStore>,
     pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
 
     /// Holds pending block hashes and their dependent blocks
@@ -133,7 +136,7 @@ impl HeaderProcessor {
     pub fn new(
         receiver: Receiver<BlockTask>, params: &Params, db: Arc<DB>, relations_store: Arc<RwLock<DbRelationsStore>>,
         reachability_store: Arc<RwLock<DbReachabilityStore>>, ghostdag_store: Arc<DbGhostdagStore>,
-        daa_store: Arc<DbDaaStore>, statuses_store: Arc<RwLock<DbStatusesStore>>,
+        headers_store: Arc<DbHeadersStore>, daa_store: Arc<DbDaaStore>, statuses_store: Arc<RwLock<DbStatusesStore>>,
         pruning_store: Arc<RwLock<DbPruningStore>>, block_window_cache_store: Arc<BlockWindowCacheStore>,
         reachability_service: MTReachabilityService<DbReachabilityStore>, counters: Arc<ProcessingCounters>,
     ) -> Self {
@@ -147,6 +150,8 @@ impl HeaderProcessor {
             ghostdag_store: ghostdag_store.clone(),
             statuses_store,
             pruning_store,
+            daa_store,
+            headers_store: headers_store.clone(),
             block_window_cache_store: block_window_cache_store.clone(),
             ghostdag_manager: GhostdagManager::new(
                 params.genesis_hash,
@@ -160,7 +165,7 @@ impl HeaderProcessor {
                 ghostdag_store.clone(),
                 block_window_cache_store.clone(),
             ),
-            difficulty_manager: DifficultyManager::new(daa_store),
+            difficulty_manager: DifficultyManager::new(headers_store, 0, params.difficulty_window_size), // TODO: Use real genesis bits
             reachability_service,
             pending: Mutex::new(HashMap::new()),
             counters,
@@ -262,9 +267,7 @@ impl HeaderProcessor {
     }
 
     fn header_was_processed(self: &Arc<HeaderProcessor>, hash: Hash) -> bool {
-        // For now, use `reachability_store.has` as an indication for processing.
-        // TODO: block status store should be used.
-        self.reachability_store.read().has(hash).unwrap()
+        self.statuses_store.read().has(hash).unwrap()
     }
 
     fn process_header(self: &Arc<HeaderProcessor>, header: &Header) -> BlockProcessResult<()> {
@@ -316,16 +319,28 @@ impl HeaderProcessor {
         // Create a DB batch writer
         let mut batch = WriteBatch::default();
 
-        // Write GHOSTDAG data. GHOSTDAG data is append-only and requires no lock
+        // Write to append only stores: this requires no lock
         self.ghostdag_store
             .insert_batch(&mut batch, ctx.hash, ghostdag_data)
             .unwrap();
+        self.block_window_cache_store
+            .insert(ctx.hash, Arc::new(ctx.block_window.unwrap()));
+        self.daa_store
+            .insert_batch(&mut batch, ctx.hash, Arc::new(ctx.daa_added_blocks.unwrap()))
+            .unwrap();
+        self.headers_store
+            .insert_batch(&mut batch, ctx.hash, Arc::new(ctx.header.clone()))
+            .unwrap();
 
-        // Write block relations. Block relations are not append-only, since children arrays of parents are
-        // updated as well, hence the need to write lock.
-        let mut relations_write = self.relations_store.write(); // Note we lock until the batch is written
-        relations_write
+        // Non-append only stores need to use a write lock
+        self.relations_store
+            .write()
             .insert_batch(&mut batch, header.hash, BlockHashes::new(header.direct_parents().clone()))
+            .unwrap(); // Note we lock until the batch is written
+
+        self.statuses_store
+            .write()
+            .set_batch(&mut batch, ctx.hash, StatusHeaderOnly)
             .unwrap();
 
         // Write reachability data. Only at this brief moment the reachability store is locked for reads.
@@ -344,6 +359,8 @@ impl HeaderProcessor {
         let mut ctx = HeaderProcessingContext::new(self.genesis_hash, &header);
         self.ghostdag_manager
             .add_genesis_if_needed(&mut ctx);
+        ctx.block_window = Some(Default::default());
+        ctx.daa_added_blocks = Some(Default::default());
         self.commit_header(ctx, &header);
     }
 }

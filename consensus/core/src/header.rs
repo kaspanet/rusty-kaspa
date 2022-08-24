@@ -1,5 +1,7 @@
 use hashes::{BlockHash, Hash, Hasher};
+use serde::{Deserialize, Serialize};
 
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Header {
     pub hash: Hash, // cached hash
     pub version: u16,

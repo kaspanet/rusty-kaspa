@@ -3,8 +3,8 @@ use crate::{
         services::{reachability::MTReachabilityService, relations::MTRelationsService, statuses::MTStatusesService},
         stores::{
             block_window_cache::BlockWindowCacheStore, daa::DbDaaStore, ghostdag::DbGhostdagStore,
-            pruning::DbPruningStore, reachability::DbReachabilityStore, relations::DbRelationsStore,
-            statuses::DbStatusesStore, DB,
+            headers::DbHeadersStore, pruning::DbPruningStore, reachability::DbReachabilityStore,
+            relations::DbRelationsStore, statuses::DbStatusesStore, DB,
         },
     },
     params::Params,
@@ -59,6 +59,7 @@ impl Consensus {
         let pruning_store = Arc::new(RwLock::new(DbPruningStore::new(db.clone())));
         let ghostdag_store = Arc::new(DbGhostdagStore::new(db.clone(), 100000));
         let daa_store = Arc::new(DbDaaStore::new(db.clone(), 100000));
+        let headers_store = Arc::new(DbHeadersStore::new(db.clone(), 100000));
         let block_window_cache_store = Arc::new(BlockWindowCacheStore::new(2000));
 
         let statuses_service = Arc::new(MTStatusesService::new(statuses_store.clone()));
@@ -75,6 +76,7 @@ impl Consensus {
             relations_store.clone(),
             reachability_store.clone(),
             ghostdag_store.clone(),
+            headers_store.clone(),
             daa_store.clone(),
             statuses_store.clone(),
             pruning_store.clone(),

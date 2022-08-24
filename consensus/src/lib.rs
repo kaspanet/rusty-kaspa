@@ -10,3 +10,4 @@ pub mod params;
 pub mod pipeline;
 pub mod processes;
 pub mod test_helpers;
+pub mod test_consensus;

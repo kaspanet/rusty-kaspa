@@ -35,6 +35,9 @@ pub enum RuleError {
 
     #[error("expected header daa score {0} but got {1}")]
     UnexpectedHeaderDaaScore(u64, u64),
+
+    #[error("block difficulty of {0} is not the expected value of {0}")]
+    UnexpectedDifficulty(u32, u32),
 }
 
 pub type BlockProcessResult<T> = std::result::Result<T, RuleError>;
