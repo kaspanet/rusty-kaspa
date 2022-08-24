@@ -1,16 +1,15 @@
 use consensus::{
-    consensus::Consensus,
+    consensus::test_consensus::TestConsensus,
     model::stores::reachability::{DbReachabilityStore, StagingReachabilityStore},
     params::MAINNET_PARAMS,
     processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions},
-    test_helpers::block_from_precomputed_hash,
 };
 use consensus_core::blockhash;
 use hashes::Hash;
 use parking_lot::RwLock;
 use rand_distr::{Distribution, Poisson};
 use rocksdb::WriteBatch;
-use std::{cmp::min, sync::Arc};
+use std::{cmp::min, sync::Arc, thread::sleep, time::Duration};
 
 mod common;
 
@@ -85,28 +84,29 @@ fn test_concurrent_pipeline() {
     let mut params = MAINNET_PARAMS;
     params.genesis_hash = 1.into();
 
-    let consensus = Consensus::new(db, &params);
+    let consensus = TestConsensus::new(db, &params);
     let wait_handle = consensus.init();
 
     let blocks = vec![
-        block_from_precomputed_hash(2.into(), vec![1.into()]),
-        block_from_precomputed_hash(3.into(), vec![1.into()]),
-        block_from_precomputed_hash(4.into(), vec![2.into(), 3.into()]),
-        block_from_precomputed_hash(5.into(), vec![4.into()]),
-        block_from_precomputed_hash(6.into(), vec![1.into()]),
-        block_from_precomputed_hash(7.into(), vec![5.into(), 6.into()]),
-        block_from_precomputed_hash(8.into(), vec![1.into()]),
-        block_from_precomputed_hash(9.into(), vec![1.into()]),
-        block_from_precomputed_hash(10.into(), vec![7.into(), 8.into(), 9.into()]),
-        block_from_precomputed_hash(11.into(), vec![1.into()]),
-        block_from_precomputed_hash(12.into(), vec![11.into(), 10.into()]),
+        (2.into(), vec![1.into()]),
+        (3.into(), vec![1.into()]),
+        (4.into(), vec![2.into(), 3.into()]),
+        (5.into(), vec![4.into()]),
+        (6.into(), vec![1.into()]),
+        (7.into(), vec![5.into(), 6.into()]),
+        (8.into(), vec![1.into()]),
+        (9.into(), vec![1.into()]),
+        (10.into(), vec![7.into(), 8.into(), 9.into()]),
+        (11.into(), vec![1.into()]),
+        (12.into(), vec![11.into(), 10.into()]),
     ];
 
-    for block in blocks {
+    for (hash, parents) in blocks {
         // Submit to consensus twice to make sure duplicates are handled
-        let b = Arc::new(block);
+        let b = Arc::new(consensus.build_block_with_parents(hash, parents));
         consensus.validate_and_insert_block(Arc::clone(&b));
         consensus.validate_and_insert_block(b);
+        sleep(Duration::from_millis(100)); // TODO: Find a better mechanism to process blocks sequentially
     }
 
     let (store, _) = consensus.drop();
@@ -160,7 +160,7 @@ fn test_concurrent_pipeline_random() {
     let mut params = MAINNET_PARAMS;
     params.genesis_hash = genesis;
 
-    let consensus = Consensus::new(db, &params);
+    let consensus = TestConsensus::new(db, &params);
     let wait_handle = consensus.init();
 
     let mut tips = vec![genesis];
@@ -176,9 +176,10 @@ fn test_concurrent_pipeline_random() {
         for _ in 0..v {
             let hash = blockhash::new_unique();
             new_tips.push(hash);
-            let b = block_from_precomputed_hash(hash, tips.clone());
+            let b = consensus.build_block_with_parents(hash, tips.clone());
             // Submit to consensus
             consensus.validate_and_insert_block(Arc::new(b));
+            sleep(Duration::from_millis(100)); // TODO: Find a better mechanism to process blocks sequentially
         }
         tips = new_tips;
     }

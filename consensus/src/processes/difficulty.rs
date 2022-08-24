@@ -55,7 +55,7 @@ impl<T: HeaderStoreReader> DifficultyManager<T> {
         }
 
         let window_headers = window_hashes
-            .into_iter()
+            .iter()
             .map(|hash| self.headers_store.get_header(*hash));
         0 // TODO: Calculate real difficulty
     }

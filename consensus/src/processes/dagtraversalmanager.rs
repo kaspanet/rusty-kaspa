@@ -83,10 +83,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader> DagTraversalManager<T, U
             return true;
         }
 
-        let mut blues: Vec<Hash> = ghostdag_data.mergeset_blues[1..]
-            .iter()
-            .cloned()
-            .collect(); // Remove the selected parent
+        let mut blues: Vec<Hash> = ghostdag_data.mergeset_blues[1..].to_vec(); // Remove the selected parent
         blues.reverse(); // Go over the merge set in reverse because it's ordered in reverse by blueWork.
         for blue in blues.iter().cloned() {
             let added = heap.try_push(blue);
@@ -109,7 +106,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader> DagTraversalManager<T, U
             }
         }
 
-        return false;
+        false
     }
 }
 

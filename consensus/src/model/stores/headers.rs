@@ -69,11 +69,11 @@ impl HeaderStoreReader for DbHeadersStore {
         if let Some(header) = self.cached_headers_access.read_from_cache(hash) {
             return Ok(header.daa_score);
         }
-        Ok(self.cached_daa_score_access.read(hash)?)
+        self.cached_daa_score_access.read(hash)
     }
 
     fn get_header(&self, hash: Hash) -> Result<Arc<Header>, StoreError> {
-        Ok(self.cached_headers_access.read(hash)?)
+        self.cached_headers_access.read(hash)
     }
 }
 

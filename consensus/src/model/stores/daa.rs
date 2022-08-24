@@ -57,7 +57,7 @@ impl DbDaaStore {
 
 impl DaaStoreReader for DbDaaStore {
     fn get_daa_added_blocks(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
-        Ok(self.cached_daa_added_blocks_access.read(hash)?)
+        self.cached_daa_added_blocks_access.read(hash)
     }
 }
 

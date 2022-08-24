@@ -3,12 +3,10 @@
 //!
 
 use consensus::consensus::test_consensus::TestConsensus;
-use consensus::consensus::Consensus;
 use consensus::model::stores::ghostdag::{GhostdagStoreReader, KType as GhostdagKType};
 use consensus::model::stores::reachability::DbReachabilityStore;
 use consensus::params::MAINNET_PARAMS;
 use consensus::processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions};
-use consensus::test_helpers::block_from_precomputed_hash;
 use consensus_core::block::Block;
 use consensus_core::blockhash;
 use hashes::Hash;
@@ -151,13 +149,12 @@ fn consensus_sanity_test() {
     let genesis_child: Hash = 2.into();
 
     let (_tempdir, db) = common::create_temp_db();
-    let consensus = Consensus::new(db, &MAINNET_PARAMS);
+    let consensus = TestConsensus::new(db, &MAINNET_PARAMS);
     let wait_handle = consensus.init();
 
-    consensus.validate_and_insert_block(Arc::new(block_from_precomputed_hash(
-        genesis_child,
-        vec![MAINNET_PARAMS.genesis_hash],
-    )));
+    consensus.validate_and_insert_block(Arc::new(
+        consensus.build_block_with_parents(genesis_child, vec![MAINNET_PARAMS.genesis_hash]),
+    ));
     let (_, _) = consensus.drop();
     wait_handle.join().unwrap();
 }

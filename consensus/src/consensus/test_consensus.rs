@@ -56,6 +56,10 @@ impl TestConsensus {
         header
     }
 
+    pub fn build_block_with_parents(&self, hash: Hash, parents: Vec<Hash>) -> Block {
+        Block::from_header(self.build_header_with_parents(hash, parents))
+    }
+
     pub fn validate_and_insert_block(&self, block: Arc<Block>) {
         self.consensus.validate_and_insert_block(block)
     }

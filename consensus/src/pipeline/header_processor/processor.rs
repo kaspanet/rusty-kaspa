@@ -77,7 +77,7 @@ impl<'a> HeaderProcessingContext<'a> {
 
         let non_pruned_parents = Arc::new(self.header.direct_parents().clone()); // TODO: Exclude pruned parents
         self.non_pruned_parents_option = Some(non_pruned_parents.clone());
-        non_pruned_parents.clone()
+        non_pruned_parents
     }
 }
 
@@ -153,8 +153,8 @@ impl HeaderProcessor {
             genesis_hash: params.genesis_hash,
             difficulty_window_size: params.difficulty_window_size,
             db,
-            relations_store: relations_store.clone(),
-            reachability_store: reachability_store.clone(),
+            relations_store,
+            reachability_store,
             ghostdag_store: ghostdag_store.clone(),
             statuses_store,
             pruning_store,
@@ -170,8 +170,8 @@ impl HeaderProcessor {
             ),
             dagtraversal_manager: DagTraversalManager::new(
                 params.genesis_hash,
-                ghostdag_store.clone(),
-                block_window_cache_store.clone(),
+                ghostdag_store,
+                block_window_cache_store,
                 params.difficulty_window_size,
             ),
             difficulty_manager: DifficultyManager::new(
