@@ -12,7 +12,10 @@ use crate::{
         header_processor::{BlockTask, HeaderProcessor},
         ProcessingCounters,
     },
-    processes::reachability::inquirer as reachability,
+    processes::{
+        dagtraversalmanager::DagTraversalManager, difficulty::DifficultyManager, ghostdag::protocol::GhostdagManager,
+        reachability::inquirer as reachability,
+    },
 };
 use consensus_core::block::Block;
 use crossbeam_channel::{bounded, Receiver, Sender};
@@ -42,10 +45,17 @@ pub struct Consensus {
     // Append-only stores
     ghostdag_store: Arc<DbGhostdagStore>,
 
-    // Services
+    // Services and managers
     statuses_service: Arc<MTStatusesService<DbStatusesStore>>,
     relations_service: Arc<MTRelationsService<DbRelationsStore>>,
     reachability_service: MTReachabilityService<DbReachabilityStore>,
+    pub(super) difficulty_manager: DifficultyManager<DbHeadersStore>,
+    pub(super) dag_traversal_manager: DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore>,
+    pub(super) ghostdag_manager: GhostdagManager<
+        DbGhostdagStore,
+        MTRelationsService<DbRelationsStore>,
+        MTReachabilityService<DbReachabilityStore>,
+    >,
 
     // Counters
     pub counters: Arc<ProcessingCounters>,
@@ -80,8 +90,9 @@ impl Consensus {
             daa_store.clone(),
             statuses_store.clone(),
             pruning_store.clone(),
-            block_window_cache_store,
+            block_window_cache_store.clone(),
             reachability_service.clone(),
+            relations_service.clone(),
             counters.clone(),
         ));
 
@@ -92,11 +103,24 @@ impl Consensus {
             statuses_store,
             relations_store,
             reachability_store,
-            ghostdag_store,
+            ghostdag_store: ghostdag_store.clone(),
 
             statuses_service,
-            relations_service,
-            reachability_service,
+            relations_service: relations_service.clone(),
+            reachability_service: reachability_service.clone(),
+            difficulty_manager: DifficultyManager::new(headers_store, 0, params.difficulty_window_size), // TODO: Use real genesis bits
+            dag_traversal_manager: DagTraversalManager::new(
+                params.genesis_hash,
+                ghostdag_store.clone(),
+                block_window_cache_store.clone(),
+            ),
+            ghostdag_manager: GhostdagManager::new(
+                params.genesis_hash,
+                params.ghostdag_k,
+                ghostdag_store.clone(),
+                relations_service.clone(),
+                reachability_service.clone(),
+            ),
 
             counters,
         }

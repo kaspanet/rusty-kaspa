@@ -2,12 +2,13 @@
 //! Integration tests
 //!
 
+use consensus::consensus::test_consensus::TestConsensus;
 use consensus::consensus::Consensus;
 use consensus::model::stores::ghostdag::{GhostdagStoreReader, KType as GhostdagKType};
 use consensus::model::stores::reachability::DbReachabilityStore;
 use consensus::params::MAINNET_PARAMS;
 use consensus::processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions};
-use consensus::test_helpers::{block_from_precomputed_hash, header_from_precomputed_hash};
+use consensus::test_helpers::block_from_precomputed_hash;
 use consensus_core::block::Block;
 use consensus_core::blockhash;
 use hashes::Hash;
@@ -19,6 +20,8 @@ use std::fs::{self, File};
 use std::io::BufReader;
 use std::path::Path;
 use std::sync::Arc;
+use std::thread::sleep;
+use std::time::Duration;
 
 mod common;
 
@@ -194,7 +197,7 @@ struct GhostdagTestBlock {
 
 #[test]
 fn ghostdag_test() {
-    let mut path_strings: Vec<String> = fs::read_dir("tests/testdata/dags")
+    let mut path_strings: Vec<String> = fs::read_dir("/home/ori/rusty-kaspa/consensus/tests/testdata/dags")
         .unwrap()
         .map(|f| f.unwrap().path().to_str().unwrap().to_owned())
         .collect();
@@ -213,16 +216,17 @@ fn ghostdag_test() {
         params.genesis_hash = string_to_hash(&test.genesis_id);
         params.ghostdag_k = test.k;
 
-        let consensus = Consensus::new(db, &params);
+        let consensus = TestConsensus::new(db, &params);
         let wait_handle = consensus.init();
 
         for block in test.blocks.iter() {
             println!("Processing block {}", block.id);
             let block_id = string_to_hash(&block.id);
-            let block_header = header_from_precomputed_hash(block_id, strings_to_hashes(&block.parents));
+            let block_header = consensus.build_header_with_parents(block_id, strings_to_hashes(&block.parents));
 
             // Submit to consensus
             consensus.validate_and_insert_block(Arc::new(Block::from_header(block_header)));
+            sleep(Duration::from_millis(100)); // TODO: Find a better mechanism to process blocks sequentially
         }
 
         let (_, ghostdag_store) = consensus.drop();

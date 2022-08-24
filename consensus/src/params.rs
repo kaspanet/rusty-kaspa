@@ -1,5 +1,6 @@
 use hashes::{Hash, HASH_SIZE};
 
+#[derive(Clone)]
 pub struct Params {
     pub genesis_hash: Hash,
     pub ghostdag_k: u8,

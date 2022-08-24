@@ -10,8 +10,8 @@ pub struct DifficultyManager<T: HeaderStoreReader> {
 }
 
 impl<T: HeaderStoreReader> DifficultyManager<T> {
-    pub fn new(daa_store: Arc<T>, genesis_bits: u32, difficulty_adjustment_window_size: usize) -> Self {
-        Self { headers_store: daa_store, difficulty_adjustment_window_size, genesis_bits }
+    pub fn new(headers_store: Arc<T>, genesis_bits: u32, difficulty_adjustment_window_size: usize) -> Self {
+        Self { headers_store, difficulty_adjustment_window_size, genesis_bits }
     }
 
     pub fn calc_daa_score_and_added_blocks(

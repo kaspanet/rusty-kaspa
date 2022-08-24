@@ -138,7 +138,8 @@ impl HeaderProcessor {
         reachability_store: Arc<RwLock<DbReachabilityStore>>, ghostdag_store: Arc<DbGhostdagStore>,
         headers_store: Arc<DbHeadersStore>, daa_store: Arc<DbDaaStore>, statuses_store: Arc<RwLock<DbStatusesStore>>,
         pruning_store: Arc<RwLock<DbPruningStore>>, block_window_cache_store: Arc<BlockWindowCacheStore>,
-        reachability_service: MTReachabilityService<DbReachabilityStore>, counters: Arc<ProcessingCounters>,
+        reachability_service: MTReachabilityService<DbReachabilityStore>,
+        relations_service: Arc<MTRelationsService<DbRelationsStore>>, counters: Arc<ProcessingCounters>,
     ) -> Self {
         Self {
             receiver,
@@ -157,7 +158,7 @@ impl HeaderProcessor {
                 params.genesis_hash,
                 params.ghostdag_k,
                 ghostdag_store.clone(),
-                Arc::new(MTRelationsService::new(relations_store)),
+                relations_service,
                 reachability_service.clone(),
             ),
             dagtraversal_manager: DagTraversalManager::new(
