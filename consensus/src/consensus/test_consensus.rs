@@ -47,6 +47,12 @@ impl TestConsensus {
             .calc_daa_score_and_added_blocks(&window_hashes, &ghostdag_data);
 
         header.daa_score = daa_score;
+
+        header.timestamp = self
+            .consensus
+            .past_median_time_manager
+            .calc_past_median_time(ghostdag_data)
+            + 1;
         header
     }
 

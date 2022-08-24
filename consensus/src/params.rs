@@ -8,6 +8,8 @@ pub struct Params {
     pub target_time_per_block: u64,
     pub max_block_parents: u8,
     pub difficulty_window_size: usize,
+    pub genesis_timestamp: u64,
+    pub genesis_bits: u32,
 }
 
 pub const MAINNET_PARAMS: Params = Params {
@@ -17,4 +19,6 @@ pub const MAINNET_PARAMS: Params = Params {
     target_time_per_block: 1000,
     max_block_parents: 10,
     difficulty_window_size: 2641,
+    genesis_timestamp: 0, // TODO: Use real value
+    genesis_bits: 0,      // TODO: Use real value
 };

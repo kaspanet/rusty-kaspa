@@ -11,15 +11,20 @@ use consensus_core::blockhash::BlockHashExtensions;
 use hashes::Hash;
 use misc::uint256::Uint256;
 
+#[derive(Clone)]
 pub struct DagTraversalManager<T: GhostdagStoreReader, U: BlockWindowCacheReader> {
     genesis_hash: Hash,
     ghostdag_store: Arc<T>,
     block_window_cache_store: Arc<U>,
+    block_window_cache_store_window_size: usize,
 }
 
 impl<T: GhostdagStoreReader, U: BlockWindowCacheReader> DagTraversalManager<T, U> {
-    pub fn new(genesis_hash: Hash, ghostdag_store: Arc<T>, block_window_cache_store: Arc<U>) -> Self {
-        Self { genesis_hash, ghostdag_store, block_window_cache_store }
+    pub fn new(
+        genesis_hash: Hash, ghostdag_store: Arc<T>, block_window_cache_store: Arc<U>,
+        block_window_cache_store_window_size: usize,
+    ) -> Self {
+        Self { genesis_hash, ghostdag_store, block_window_cache_store, block_window_cache_store_window_size }
     }
     pub fn block_window(
         &self, high_ghostdag_data: Arc<GhostdagData>, window_size: usize,
@@ -31,20 +36,22 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader> DagTraversalManager<T, U
 
         let mut current_gd = high_ghostdag_data;
 
-        if let Some(select_parent_binary_heap) = self
-            .block_window_cache_store
-            .get(&current_gd.selected_parent)
-        {
-            let mut window_heap = SizedUpBlockHeap::from_binary_heap(
-                self.ghostdag_store.clone(),
-                window_size,
-                (*select_parent_binary_heap).clone(),
-            );
-            if current_gd.selected_parent != self.genesis_hash {
-                self.try_push_mergeset(&mut window_heap, &current_gd);
-            }
+        if window_size == self.block_window_cache_store_window_size {
+            if let Some(select_parent_binary_heap) = self
+                .block_window_cache_store
+                .get(&current_gd.selected_parent)
+            {
+                let mut window_heap = SizedUpBlockHeap::from_binary_heap(
+                    self.ghostdag_store.clone(),
+                    window_size,
+                    (*select_parent_binary_heap).clone(),
+                );
+                if current_gd.selected_parent != self.genesis_hash {
+                    self.try_push_mergeset(&mut window_heap, &current_gd);
+                }
 
-            return window_heap.binary_heap;
+                return window_heap.binary_heap;
+            }
         }
 
         // Walk down the chain until we finish

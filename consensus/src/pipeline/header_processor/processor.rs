@@ -10,7 +10,10 @@ use crate::{
             pruning::DbPruningStore,
             reachability::{DbReachabilityStore, StagingReachabilityStore},
             relations::DbRelationsStore,
-            statuses::{BlockStatus::StatusHeaderOnly, DbStatusesStore, StatusesStoreReader},
+            statuses::{
+                BlockStatus::{StatusHeaderOnly, StatusInvalid},
+                DbStatusesStore, StatusesStore, StatusesStoreReader,
+            },
             DB,
         },
     },
@@ -19,6 +22,7 @@ use crate::{
         dagtraversalmanager::DagTraversalManager,
         difficulty::DifficultyManager,
         ghostdag::{ordering::SortableBlock, protocol::GhostdagManager},
+        pastmediantime::PastMedianTimeManager,
         reachability::inquirer as reachability,
     },
     test_helpers::header_from_precomputed_hash,
@@ -115,6 +119,7 @@ pub struct HeaderProcessor {
     >,
     pub(super) dagtraversal_manager: DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore>,
     pub(super) difficulty_manager: DifficultyManager<DbHeadersStore>,
+    pub(super) past_median_time_manager: PastMedianTimeManager<DbHeadersStore, DbGhostdagStore, BlockWindowCacheStore>,
     pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
 
     /// Holds pending block hashes and their dependent blocks
@@ -139,7 +144,9 @@ impl HeaderProcessor {
         headers_store: Arc<DbHeadersStore>, daa_store: Arc<DbDaaStore>, statuses_store: Arc<RwLock<DbStatusesStore>>,
         pruning_store: Arc<RwLock<DbPruningStore>>, block_window_cache_store: Arc<BlockWindowCacheStore>,
         reachability_service: MTReachabilityService<DbReachabilityStore>,
-        relations_service: Arc<MTRelationsService<DbRelationsStore>>, counters: Arc<ProcessingCounters>,
+        relations_service: Arc<MTRelationsService<DbRelationsStore>>,
+        past_median_time_manager: PastMedianTimeManager<DbHeadersStore, DbGhostdagStore, BlockWindowCacheStore>,
+        counters: Arc<ProcessingCounters>,
     ) -> Self {
         Self {
             receiver,
@@ -165,9 +172,15 @@ impl HeaderProcessor {
                 params.genesis_hash,
                 ghostdag_store.clone(),
                 block_window_cache_store.clone(),
+                params.difficulty_window_size,
             ),
-            difficulty_manager: DifficultyManager::new(headers_store, 0, params.difficulty_window_size), // TODO: Use real genesis bits
+            difficulty_manager: DifficultyManager::new(
+                headers_store,
+                params.genesis_bits,
+                params.difficulty_window_size,
+            ),
             reachability_service,
+            past_median_time_manager,
             pending: Mutex::new(HashMap::new()),
             counters,
             ready_signal: Condvar::new(),
@@ -283,6 +296,14 @@ impl HeaderProcessor {
         // TODO: imp all remaining header validation and processing steps :)
         //
         self.pre_pow_validation(&mut ctx, header)?;
+
+        if let Err(e) = self.post_pow_validation(&mut ctx, header) {
+            self.statuses_store
+                .write()
+                .set(ctx.hash, StatusInvalid)
+                .unwrap();
+            return Err(e);
+        }
 
         self.commit_header(ctx, header);
 

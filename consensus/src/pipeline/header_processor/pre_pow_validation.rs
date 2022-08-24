@@ -166,9 +166,10 @@ impl HeaderProcessor {
     fn check_difficulty_and_daa_score(
         self: &Arc<HeaderProcessor>, ctx: &mut HeaderProcessingContext, header: &Header,
     ) -> BlockProcessResult<()> {
+        let ghostdag_data = ctx.ghostdag_data.clone().unwrap();
         let window = self
             .dagtraversal_manager
-            .block_window(ctx.ghostdag_data.clone().unwrap(), self.difficulty_window_size);
+            .block_window(ghostdag_data, self.difficulty_window_size);
 
         ctx.block_window = Some(window.clone());
         let window_hashes = window
