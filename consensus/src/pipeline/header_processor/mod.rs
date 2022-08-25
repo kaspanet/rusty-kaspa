@@ -1,3 +1,4 @@
+pub mod post_pow_validation;
+mod pre_pow_validation;
 mod processor;
-mod validate_in_isolation;
 pub use processor::*;

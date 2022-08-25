@@ -22,12 +22,12 @@ pub struct GhostdagManager<T: GhostdagStoreReader, S: RelationsStoreReader, U: R
     pub(super) k: KType,
     pub(super) ghostdag_store: Arc<T>,
     pub(super) relations_store: Arc<S>,
-    pub(super) reachability_service: Arc<U>,
+    pub(super) reachability_service: U,
 }
 
 impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService> GhostdagManager<T, S, U> {
     pub fn new(
-        genesis_hash: Hash, k: KType, ghostdag_store: Arc<T>, relations_store: Arc<S>, reachability_service: Arc<U>,
+        genesis_hash: Hash, k: KType, ghostdag_store: Arc<T>, relations_store: Arc<S>, reachability_service: U,
     ) -> Self {
         Self { genesis_hash, k, ghostdag_store, relations_store, reachability_service }
     }
@@ -66,7 +66,7 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService> Gh
     }
 
     pub fn add_block(&self, ctx: &mut HeaderProcessingContext, block: Hash) {
-        let parents = &ctx.header.parents;
+        let parents = ctx.header.direct_parents();
         assert!(!parents.is_empty(), "genesis must be added via a call to init");
 
         // Run the GHOSTDAG parent selection algorithm

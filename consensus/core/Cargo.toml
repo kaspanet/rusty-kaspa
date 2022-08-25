@@ -6,3 +6,4 @@ edition = "2021"
 [dependencies]
 hashes = {path="../../crypto/hashes"}
 thiserror = "1.0.31"
+serde = { version = "1.0", features = ["derive", "rc"] }

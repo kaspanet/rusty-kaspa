@@ -1,9 +1,12 @@
+pub mod test_consensus;
+
 use crate::{
     model::{
         services::{reachability::MTReachabilityService, relations::MTRelationsService, statuses::MTStatusesService},
         stores::{
-            ghostdag::DbGhostdagStore, reachability::DbReachabilityStore, relations::DbRelationsStore,
-            statuses::DbStatusesStore, DB,
+            block_window_cache::BlockWindowCacheStore, daa::DbDaaStore, ghostdag::DbGhostdagStore,
+            headers::DbHeadersStore, pruning::DbPruningStore, reachability::DbReachabilityStore,
+            relations::DbRelationsStore, statuses::DbStatusesStore, DB,
         },
     },
     params::Params,
@@ -11,7 +14,10 @@ use crate::{
         header_processor::{BlockTask, HeaderProcessor},
         ProcessingCounters,
     },
-    processes::reachability::inquirer as reachability,
+    processes::{
+        dagtraversalmanager::DagTraversalManager, difficulty::DifficultyManager, ghostdag::protocol::GhostdagManager,
+        pastmediantime::PastMedianTimeManager, reachability::inquirer as reachability,
+    },
 };
 use consensus_core::block::Block;
 use crossbeam_channel::{bounded, Receiver, Sender};
@@ -41,10 +47,18 @@ pub struct Consensus {
     // Append-only stores
     ghostdag_store: Arc<DbGhostdagStore>,
 
-    // Services
+    // Services and managers
     statuses_service: Arc<MTStatusesService<DbStatusesStore>>,
     relations_service: Arc<MTRelationsService<DbRelationsStore>>,
-    reachability_service: Arc<MTReachabilityService<DbReachabilityStore>>,
+    reachability_service: MTReachabilityService<DbReachabilityStore>,
+    pub(super) difficulty_manager: DifficultyManager<DbHeadersStore>,
+    pub(super) dag_traversal_manager: DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore>,
+    pub(super) ghostdag_manager: GhostdagManager<
+        DbGhostdagStore,
+        MTRelationsService<DbRelationsStore>,
+        MTReachabilityService<DbReachabilityStore>,
+    >,
+    pub(super) past_median_time_manager: PastMedianTimeManager<DbHeadersStore, DbGhostdagStore, BlockWindowCacheStore>,
 
     // Counters
     pub counters: Arc<ProcessingCounters>,
@@ -55,11 +69,30 @@ impl Consensus {
         let statuses_store = Arc::new(RwLock::new(DbStatusesStore::new(db.clone(), 100000)));
         let relations_store = Arc::new(RwLock::new(DbRelationsStore::new(db.clone(), 100000)));
         let reachability_store = Arc::new(RwLock::new(DbReachabilityStore::new(db.clone(), 100000)));
+        let pruning_store = Arc::new(RwLock::new(DbPruningStore::new(db.clone())));
         let ghostdag_store = Arc::new(DbGhostdagStore::new(db.clone(), 100000));
+        let daa_store = Arc::new(DbDaaStore::new(db.clone(), 100000));
+        let headers_store = Arc::new(DbHeadersStore::new(db.clone(), 100000));
+        let block_window_cache_for_difficulty = Arc::new(BlockWindowCacheStore::new(2000));
+        let block_window_cache_for_past_median_time = Arc::new(BlockWindowCacheStore::new(2000));
 
         let statuses_service = Arc::new(MTStatusesService::new(statuses_store.clone()));
         let relations_service = Arc::new(MTRelationsService::new(relations_store.clone()));
-        let reachability_service = Arc::new(MTReachabilityService::new(reachability_store.clone()));
+        let reachability_service = MTReachabilityService::new(reachability_store.clone());
+        let dag_traversal_manager = DagTraversalManager::new(
+            params.genesis_hash,
+            ghostdag_store.clone(),
+            block_window_cache_for_difficulty.clone(),
+            block_window_cache_for_past_median_time.clone(),
+            params.difficulty_window_size,
+            (2 * params.timestamp_deviation_tolerance - 1) as usize,
+        );
+        let past_median_time_manager = PastMedianTimeManager::new(
+            headers_store.clone(),
+            dag_traversal_manager.clone(),
+            params.timestamp_deviation_tolerance as usize,
+            params.genesis_timestamp,
+        );
 
         let (sender, receiver): (Sender<BlockTask>, Receiver<BlockTask>) = bounded(2000);
         let counters = Arc::new(ProcessingCounters::default());
@@ -71,6 +104,16 @@ impl Consensus {
             relations_store.clone(),
             reachability_store.clone(),
             ghostdag_store.clone(),
+            headers_store.clone(),
+            daa_store,
+            statuses_store.clone(),
+            pruning_store,
+            block_window_cache_for_difficulty,
+            block_window_cache_for_past_median_time,
+            reachability_service.clone(),
+            relations_service.clone(),
+            past_median_time_manager.clone(),
+            dag_traversal_manager.clone(),
             counters.clone(),
         ));
 
@@ -81,11 +124,25 @@ impl Consensus {
             statuses_store,
             relations_store,
             reachability_store,
-            ghostdag_store,
+            ghostdag_store: ghostdag_store.clone(),
 
             statuses_service,
-            relations_service,
-            reachability_service,
+            relations_service: relations_service.clone(),
+            reachability_service: reachability_service.clone(),
+            difficulty_manager: DifficultyManager::new(
+                headers_store,
+                params.genesis_bits,
+                params.difficulty_window_size,
+            ),
+            dag_traversal_manager,
+            ghostdag_manager: GhostdagManager::new(
+                params.genesis_hash,
+                params.ghostdag_k,
+                ghostdag_store,
+                relations_service,
+                reachability_service,
+            ),
+            past_median_time_manager,
 
             counters,
         }

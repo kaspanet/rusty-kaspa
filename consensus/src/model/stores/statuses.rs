@@ -2,10 +2,10 @@ use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-use super::{caching::CachedDbAccessForCopy, errors::StoreError, DB};
+use super::{caching::CachedDbAccessForCopy, errors::StoreResult, DB};
 use hashes::Hash;
 
-#[derive(Clone, Copy, Serialize, Deserialize)]
+#[derive(Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[repr(u8)]
 pub enum BlockStatus {
     /// StatusInvalid indicates that the block is invalid.
@@ -28,15 +28,15 @@ pub enum BlockStatus {
 
 /// Reader API for `StatusesStore`.
 pub trait StatusesStoreReader {
-    fn get(&self, hash: Hash) -> Result<BlockStatus, StoreError>;
-    fn has(&self, hash: Hash) -> Result<bool, StoreError>;
+    fn get(&self, hash: Hash) -> StoreResult<BlockStatus>;
+    fn has(&self, hash: Hash) -> StoreResult<bool>;
 }
 
 /// Write API for `StatusesStore`. The set function is deliberately `mut`
 /// since status is not append-only and thus needs to be guarded.
 /// TODO: can be optimized to avoid the locking if needed.
 pub trait StatusesStore: StatusesStoreReader {
-    fn set(&mut self, hash: Hash, status: BlockStatus) -> Result<(), StoreError>;
+    fn set(&mut self, hash: Hash, status: BlockStatus) -> StoreResult<()>;
 }
 
 const STORE_PREFIX: &[u8] = b"block-statuses";
@@ -63,24 +63,24 @@ impl DbStatusesStore {
         }
     }
 
-    pub fn set_batch(&mut self, batch: &mut WriteBatch, hash: Hash, status: BlockStatus) -> Result<(), StoreError> {
+    pub fn set_batch(&mut self, batch: &mut WriteBatch, hash: Hash, status: BlockStatus) -> StoreResult<()> {
         self.cached_access
             .write_batch(batch, hash, status)
     }
 }
 
 impl StatusesStoreReader for DbStatusesStore {
-    fn get(&self, hash: Hash) -> Result<BlockStatus, StoreError> {
+    fn get(&self, hash: Hash) -> StoreResult<BlockStatus> {
         self.cached_access.read(hash)
     }
 
-    fn has(&self, hash: Hash) -> Result<bool, StoreError> {
+    fn has(&self, hash: Hash) -> StoreResult<bool> {
         self.cached_access.has(hash)
     }
 }
 
 impl StatusesStore for DbStatusesStore {
-    fn set(&mut self, hash: Hash, status: BlockStatus) -> Result<(), StoreError> {
+    fn set(&mut self, hash: Hash, status: BlockStatus) -> StoreResult<()> {
         self.cached_access.write(hash, status)
     }
 }

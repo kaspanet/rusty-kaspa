@@ -15,6 +15,7 @@ pub trait ReachabilityService {
 }
 
 /// Multi-threaded reachability service imp
+#[derive(Clone)]
 pub struct MTReachabilityService<T: ReachabilityStoreReader + ?Sized> {
     store: Arc<RwLock<T>>,
 }
