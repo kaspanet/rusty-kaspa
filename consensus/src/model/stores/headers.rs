@@ -92,7 +92,7 @@ impl HeaderStoreReader for DbHeadersStore {
 
     fn get_timestamp(&self, hash: Hash) -> Result<u64, StoreError> {
         if let Some(header) = self.cached_headers_access.read_from_cache(hash) {
-            return Ok(header.daa_score);
+            return Ok(header.timestamp);
         }
         Ok(self
             .cached_compact_headers_access
