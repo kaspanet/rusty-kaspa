@@ -1,6 +1,7 @@
 pub mod test_consensus;
 
 use crate::{
+    errors::BlockProcessResult,
     model::{
         services::{reachability::MTReachabilityService, relations::MTRelationsService, statuses::MTStatusesService},
         stores::{
@@ -28,6 +29,7 @@ use std::{
     sync::Arc,
     thread::{self, JoinHandle},
 };
+use tokio::sync::oneshot;
 
 pub struct Consensus {
     // DB
@@ -162,10 +164,12 @@ impl Consensus {
         // TODO: add block body processor and virtual state processor workers and return a vec of join handles.
     }
 
-    pub fn validate_and_insert_block(&self, block: Arc<Block>) {
+    pub async fn validate_and_insert_block(&self, block: Arc<Block>) -> BlockProcessResult<()> {
+        let (tx, rx): (oneshot::Sender<BlockProcessResult<()>>, _) = oneshot::channel();
         self.block_sender
-            .send(BlockTask::Process(block))
+            .send(BlockTask::Process(block, tx))
             .unwrap();
+        rx.await.unwrap()
     }
 
     pub fn signal_exit(&self) {

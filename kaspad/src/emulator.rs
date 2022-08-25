@@ -49,6 +49,7 @@ impl RandomBlockEmitter {
         }
     }
 
+    #[allow(unused_must_use)] // Temp until fixing the emulator
     pub fn worker(self: &Arc<RandomBlockEmitter>, core: Arc<Core>) {
         let poi = Poisson::new(self.bps * self.delay).unwrap();
         let mut thread_rng = rand::thread_rng();

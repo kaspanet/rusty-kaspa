@@ -34,6 +34,7 @@ use std::{
     collections::{hash_map::Entry::Vacant, HashMap},
     sync::{atomic::Ordering, Arc},
 };
+use tokio::sync::oneshot;
 
 use super::super::ProcessingCounters;
 
@@ -81,7 +82,19 @@ impl<'a> HeaderProcessingContext<'a> {
 
 pub enum BlockTask {
     Exit,
-    Process(Arc<Block>),
+    Process(Arc<Block>, oneshot::Sender<BlockProcessResult<()>>),
+}
+
+struct BlockTaskInternal {
+    block: Arc<Block>,
+    result_transmitters: Vec<oneshot::Sender<BlockProcessResult<()>>>,
+    deps: Vec<Hash>,
+}
+
+impl BlockTaskInternal {
+    fn new(block: Arc<Block>, tx: oneshot::Sender<BlockProcessResult<()>>) -> Self {
+        Self { block, result_transmitters: vec![tx], deps: Vec::new() }
+    }
 }
 
 pub struct HeaderProcessor {
@@ -122,7 +135,7 @@ pub struct HeaderProcessor {
     pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
 
     /// Holds pending block hashes and their dependent blocks
-    pending: Mutex<HashMap<Hash, Vec<Arc<Block>>>>,
+    pending: Mutex<HashMap<Hash, BlockTaskInternal>>,
 
     // Counters
     counters: Arc<ProcessingCounters>,
@@ -200,22 +213,27 @@ impl HeaderProcessor {
                     if let Ok(task) = data {
                         match task {
                             BlockTask::Exit => break,
-                            BlockTask::Process(block) => {
+                            BlockTask::Process(block, tx) => {
 
                                 let mut pending = self.pending.lock();
 
-                                if let Vacant(e) = pending.entry(block.header.hash) {
-                                    e.insert(Vec::new());
-                                    if pending.len() > self.ready_threshold {
-                                        // If the number of pending items is already too large,
-                                        // wait for workers to signal readiness.
-                                        self.ready_signal.wait(&mut pending);
-                                    }
+                                match pending.entry(block.header.hash) {
+                                    Vacant(e) => {
+                                        e.insert(BlockTaskInternal::new(block.clone(), tx));
+                                        if pending.len() > self.ready_threshold {
+                                            // If the number of pending items is already too large,
+                                            // wait for workers to signal readiness.
+                                            self.ready_signal.wait(&mut pending);
+                                        }
 
-                                    let processor = self.clone();
-                                    rayon::spawn(move || {
-                                        processor.queue_block(block);
-                                    });
+                                        let processor = self.clone();
+                                        rayon::spawn(move || {
+                                            processor.queue_block(block);
+                                        });
+                                    }
+                                    e => {
+                                        e.and_modify(|v| v.result_transmitters.push(tx));
+                                    }
                                 }
                             }
                         };
@@ -243,26 +261,23 @@ impl HeaderProcessor {
             let mut pending = self.pending.lock();
 
             for parent in block.header.direct_parents().iter() {
-                if let Some(deps) = pending.get_mut(parent) {
-                    deps.push(block);
+                if let Some(task) = pending.get_mut(parent) {
+                    task.deps.push(hash);
                     return; // The block will be reprocessed once the pending parent completes processing
                 }
             }
         }
 
-        // TODO: report duplicate block to job sender
-        if self.header_was_processed(hash) {
-            return;
-        }
-
-        // TODO: report missing parents to job sender (currently will panic for missing keys)
-
-        self.process_header(&block.header).unwrap(); // TODO: Handle error properly
+        let res = self.process_header(&block.header);
 
         let mut pending = self.pending.lock();
-        let deps = pending
+        let task = pending
             .remove(&hash)
             .expect("processed block is expected to be in pending map");
+
+        for tx in task.result_transmitters {
+            tx.send(res.clone()).unwrap();
+        }
 
         if pending.len() == self.ready_threshold {
             self.ready_signal.notify_one();
@@ -272,9 +287,10 @@ impl HeaderProcessor {
             self.idle_signal.notify_one();
         }
 
-        for dep in deps {
+        for dep in task.deps {
+            let block = pending.get(&dep).unwrap().block.clone();
             let processor = self.clone();
-            rayon::spawn(move || processor.queue_block(dep));
+            rayon::spawn(move || processor.queue_block(block));
         }
     }
 
@@ -283,6 +299,10 @@ impl HeaderProcessor {
     }
 
     fn process_header(self: &Arc<HeaderProcessor>, header: &Header) -> BlockProcessResult<()> {
+        if self.header_was_processed(header.hash) {
+            return Ok(());
+        }
+
         // Create processing context
         let mut ctx = HeaderProcessingContext::new(header.hash, header);
 
