@@ -82,9 +82,13 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader> DagTraversalManager<T, U
             return true;
         }
 
-        let mut blues: Vec<Hash> = ghostdag_data.mergeset_blues[1..].to_vec(); // Remove the selected parent
-        blues.reverse(); // Go over the merge set in reverse because it's ordered in reverse by blueWork.
-        for blue in blues.iter().cloned() {
+        for blue in ghostdag_data
+            .mergeset_blues
+            .iter()
+            .skip(1) // Remove the selected parent
+            .rev()
+            .cloned()
+        {
             let added = heap.try_push(blue);
 
             // If it's smaller than minimum then we won't be able to add the rest because they're even smaller.
@@ -93,10 +97,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader> DagTraversalManager<T, U
             }
         }
 
-        let mut reds = ghostdag_data.mergeset_reds.clone();
-        let reds = Arc::make_mut(&mut reds);
-        reds.reverse(); // Go over the merge set in reverse because it's ordered in reverse by blueWork.
-        for red in reds.iter().cloned() {
+        for red in ghostdag_data.mergeset_reds.iter().rev().cloned() {
             let added = heap.try_push(red);
 
             // If it's smaller than minimum then we won't be able to add the rest because they're even smaller.
