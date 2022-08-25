@@ -138,6 +138,7 @@ pub struct HeaderProcessor {
 }
 
 impl HeaderProcessor {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         receiver: Receiver<BlockTask>, params: &Params, db: Arc<DB>, relations_store: Arc<RwLock<DbRelationsStore>>,
         reachability_store: Arc<RwLock<DbReachabilityStore>>, ghostdag_store: Arc<DbGhostdagStore>,

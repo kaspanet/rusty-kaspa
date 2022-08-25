@@ -11,7 +11,7 @@ use crate::{
     test_helpers::header_from_precomputed_hash,
 };
 
-use super::consensus::Consensus;
+use super::Consensus;
 
 pub struct TestConsensus {
     consensus: Consensus,
