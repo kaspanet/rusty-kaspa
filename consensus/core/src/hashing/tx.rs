@@ -1,3 +1,4 @@
+use super::HasherExtensions;
 use crate::tx::{Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput};
 use hashes::{Hash, Hasher};
 
@@ -30,13 +31,13 @@ pub(crate) fn transaction_id(tx: &Transaction) -> TransactionId {
 fn write_transaction<T: Hasher>(hasher: &mut T, tx: &Transaction, encoding_flags: TxEncodingFlags) {
     hasher
         .update(tx.version.to_le_bytes())
-        .update((tx.inputs.len() as u64).to_le_bytes());
+        .write_len(tx.inputs.len());
     for input in tx.inputs.iter() {
         // Write the tx input
         write_input(hasher, input, encoding_flags);
     }
 
-    hasher.update((tx.outputs.len() as u64).to_le_bytes());
+    hasher.write_len(tx.outputs.len());
     for output in tx.outputs.iter() {
         // Write the tx output
         write_output(hasher, output);
@@ -45,18 +46,17 @@ fn write_transaction<T: Hasher>(hasher: &mut T, tx: &Transaction, encoding_flags
     hasher
         .update(tx.lock_time.to_le_bytes())
         .update(&tx.subnetwork_id)
-        .update(tx.gas.to_le_bytes());
-
-    write_var_bytes(hasher, &tx.payload);
+        .update(tx.gas.to_le_bytes())
+        .write_var_bytes(&tx.payload);
 }
 
 #[inline(always)]
 fn write_input<T: Hasher>(hasher: &mut T, input: &TransactionInput, encoding_flags: TxEncodingFlags) {
     write_outpoint(hasher, &input.previous_outpoint);
     if encoding_flags & TX_ENCODING_EXCLUDE_SIGNATURE_SCRIPT != TX_ENCODING_EXCLUDE_SIGNATURE_SCRIPT {
-        write_var_bytes(hasher, input.signature_script.as_slice());
+        hasher.write_var_bytes(input.signature_script.as_slice());
     } else {
-        write_var_bytes(hasher, &[]);
+        hasher.write_var_bytes(&[]);
     }
     hasher.update(input.sequence.to_le_bytes());
 }
@@ -74,13 +74,6 @@ fn write_output<T: Hasher>(hasher: &mut T, output: &TransactionOutput) {
         .update(output.value.to_le_bytes())
         .update(output.script_public_key.version.to_le_bytes())
         .update(&output.script_public_key.script);
-}
-
-#[inline(always)]
-fn write_var_bytes<T: Hasher>(hasher: &mut T, bytes: &[u8]) {
-    hasher
-        .update((bytes.len() as u64).to_le_bytes())
-        .update(bytes);
 }
 
 #[cfg(test)]
