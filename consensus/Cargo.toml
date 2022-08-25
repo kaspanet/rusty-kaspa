@@ -19,6 +19,8 @@ parking_lot = "0.12.1"
 crossbeam-channel="0.5"
 crossbeam = "*"
 rayon = "1.5.3"
+tokio = { version = "1.20.1", features = ["sync"] }
+
 
 hashes = {path="../crypto/hashes"}
 consensus-core = {path="./core"}
@@ -32,6 +34,7 @@ flate2 = "1.0.24"
 rand = "0.8"
 tempfile = "3.3.0"
 rand_distr = "0.4.3"
+tokio = { version = "1.20.1", features = ["full"] }
 
 [[bench]]
 name = "hash_benchmarks"

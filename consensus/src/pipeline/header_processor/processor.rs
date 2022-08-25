@@ -34,6 +34,7 @@ use std::{
     collections::{hash_map::Entry::Vacant, HashMap},
     sync::{atomic::Ordering, Arc},
 };
+use tokio::sync::oneshot;
 
 use super::super::ProcessingCounters;
 
@@ -79,9 +80,11 @@ impl<'a> HeaderProcessingContext<'a> {
     }
 }
 
+type BlockWithChannel = (Arc<Block>, oneshot::Sender<BlockProcessResult<()>>);
+
 pub enum BlockTask {
     Exit,
-    Process(Arc<Block>),
+    Process(BlockWithChannel),
 }
 
 pub struct HeaderProcessor {
@@ -122,7 +125,7 @@ pub struct HeaderProcessor {
     pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
 
     /// Holds pending block hashes and their dependent blocks
-    pending: Mutex<HashMap<Hash, Vec<Arc<Block>>>>,
+    pending: Mutex<HashMap<Hash, Vec<BlockWithChannel>>>,
 
     // Counters
     counters: Arc<ProcessingCounters>,
@@ -204,7 +207,7 @@ impl HeaderProcessor {
 
                                 let mut pending = self.pending.lock();
 
-                                if let Vacant(e) = pending.entry(block.header.hash) {
+                                if let Vacant(e) = pending.entry(block.0.header.hash) {
                                     e.insert(Vec::new());
                                     if pending.len() > self.ready_threshold {
                                         // If the number of pending items is already too large,
@@ -234,17 +237,22 @@ impl HeaderProcessor {
         }
     }
 
-    fn queue_block(self: &Arc<HeaderProcessor>, block: Arc<Block>) {
-        let hash = block.header.hash;
+    fn queue_block(self: &Arc<HeaderProcessor>, block_with_channel: BlockWithChannel) {
+        let hash = block_with_channel.0.header.hash;
 
         {
             // Lock pending manager. The contention around the manager is
             // expected to be negligible in header processing time
             let mut pending = self.pending.lock();
 
-            for parent in block.header.direct_parents().iter() {
+            for parent in block_with_channel
+                .0
+                .header
+                .direct_parents()
+                .iter()
+            {
                 if let Some(deps) = pending.get_mut(parent) {
-                    deps.push(block);
+                    deps.push(block_with_channel);
                     return; // The block will be reprocessed once the pending parent completes processing
                 }
             }
@@ -252,12 +260,16 @@ impl HeaderProcessor {
 
         // TODO: report duplicate block to job sender
         if self.header_was_processed(hash) {
+            block_with_channel.1.send(Ok(())).unwrap();
             return;
         }
 
         // TODO: report missing parents to job sender (currently will panic for missing keys)
 
-        self.process_header(&block.header).unwrap(); // TODO: Handle error properly
+        block_with_channel
+            .1
+            .send(self.process_header(&block_with_channel.0.header))
+            .unwrap(); // TODO: Handle error properly
 
         let mut pending = self.pending.lock();
         let deps = pending

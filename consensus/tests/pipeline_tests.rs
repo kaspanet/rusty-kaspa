@@ -10,6 +10,7 @@ use parking_lot::RwLock;
 use rand_distr::{Distribution, Poisson};
 use rocksdb::WriteBatch;
 use std::{cmp::min, sync::Arc, thread::sleep, time::Duration};
+use tokio::join;
 
 mod common;
 
@@ -77,8 +78,8 @@ fn test_reachability_staging() {
     assert!(store.are_anticone(11, 9));
 }
 
-#[test]
-fn test_concurrent_pipeline() {
+#[tokio::test]
+async fn test_concurrent_pipeline() {
     let (_tempdir, db) = common::create_temp_db();
 
     let mut params = MAINNET_PARAMS;
@@ -104,9 +105,10 @@ fn test_concurrent_pipeline() {
     for (hash, parents) in blocks {
         // Submit to consensus twice to make sure duplicates are handled
         let b = Arc::new(consensus.build_block_with_parents(hash, parents));
-        consensus.validate_and_insert_block(Arc::clone(&b));
-        consensus.validate_and_insert_block(b);
-        sleep(Duration::from_millis(100)); // TODO: Find a better mechanism to process blocks sequentially
+        let results =
+            join!(consensus.validate_and_insert_block(Arc::clone(&b)), consensus.validate_and_insert_block(b));
+        results.0.unwrap();
+        results.1.unwrap();
     }
 
     let (store, _) = consensus.drop();

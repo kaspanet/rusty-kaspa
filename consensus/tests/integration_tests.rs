@@ -152,7 +152,7 @@ fn consensus_sanity_test() {
     let consensus = TestConsensus::new(db, &MAINNET_PARAMS);
     let wait_handle = consensus.init();
 
-    consensus.validate_and_insert_block(Arc::new(
+    let _ = consensus.validate_and_insert_block(Arc::new(
         consensus.build_block_with_parents(genesis_child, vec![MAINNET_PARAMS.genesis_hash]),
     ));
     let (_, _) = consensus.drop();
@@ -192,8 +192,8 @@ struct GhostdagTestBlock {
     parents: Vec<String>,
 }
 
-#[test]
-fn ghostdag_test() {
+#[tokio::test]
+async fn ghostdag_test() {
     let mut path_strings: Vec<String> = fs::read_dir("tests/testdata/dags")
         .unwrap()
         .map(|f| f.unwrap().path().to_str().unwrap().to_owned())
@@ -222,8 +222,10 @@ fn ghostdag_test() {
             let block_header = consensus.build_header_with_parents(block_id, strings_to_hashes(&block.parents));
 
             // Submit to consensus
-            consensus.validate_and_insert_block(Arc::new(Block::from_header(block_header)));
-            sleep(Duration::from_millis(100)); // TODO: Find a better mechanism to process blocks sequentially
+            consensus
+                .validate_and_insert_block(Arc::new(Block::from_header(block_header)))
+                .await
+                .unwrap();
         }
 
         let (_, ghostdag_store) = consensus.drop();
