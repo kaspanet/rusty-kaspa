@@ -37,9 +37,8 @@ impl<T: HeaderStoreReader, U: GhostdagStoreReader, V: BlockWindowCacheReader> Pa
             .iter()
             .map(|item| {
                 self.headers_store
-                    .get_header(item.0.hash)
+                    .get_timestamp(item.0.hash)
                     .unwrap()
-                    .timestamp
             })
             .collect();
         window_timestamps.sort_unstable(); // This is deterministic because we sort u64
