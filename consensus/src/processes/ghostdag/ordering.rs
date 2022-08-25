@@ -10,7 +10,7 @@ use crate::model::{
 
 use super::protocol::GhostdagManager;
 
-#[derive(Eq)]
+#[derive(Eq, Clone)]
 pub struct SortableBlock {
     pub hash: Hash,
     pub blue_work: Uint256,

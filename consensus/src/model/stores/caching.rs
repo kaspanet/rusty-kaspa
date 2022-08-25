@@ -55,6 +55,13 @@ where
         Self { db, cache: Cache::new(cache_size), prefix }
     }
 
+    pub fn read_from_cache(&self, key: TKey) -> Option<Arc<TData>>
+    where
+        TKey: Copy + AsRef<[u8]>,
+    {
+        self.cache.get(&key)
+    }
+
     pub fn has(&self, key: TKey) -> Result<bool, StoreError>
     where
         TKey: Copy + AsRef<[u8]>,
