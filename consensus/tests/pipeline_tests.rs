@@ -9,7 +9,7 @@ use hashes::Hash;
 use parking_lot::RwLock;
 use rand_distr::{Distribution, Poisson};
 use rocksdb::WriteBatch;
-use std::{cmp::min, sync::Arc, thread::sleep, time::Duration};
+use std::{cmp::min, sync::Arc};
 use tokio::join;
 
 mod common;
@@ -148,8 +148,8 @@ async fn test_concurrent_pipeline() {
     assert!(store.are_anticone(11, 9));
 }
 
-#[test]
-fn test_concurrent_pipeline_random() {
+#[tokio::test]
+async fn test_concurrent_pipeline_random() {
     let genesis: Hash = blockhash::new_unique();
     let bps = 8;
     let delay = 2;
@@ -180,8 +180,10 @@ fn test_concurrent_pipeline_random() {
             new_tips.push(hash);
             let b = consensus.build_block_with_parents(hash, tips.clone());
             // Submit to consensus
-            consensus.validate_and_insert_block(Arc::new(b));
-            sleep(Duration::from_millis(100)); // TODO: Find a better mechanism to process blocks sequentially
+            consensus
+                .validate_and_insert_block(Arc::new(b))
+                .await
+                .unwrap();
         }
         tips = new_tips;
     }

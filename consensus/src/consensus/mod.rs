@@ -25,7 +25,6 @@ use crossbeam_channel::{bounded, Receiver, Sender};
 use kaspa_core::{core::Core, service::Service};
 use parking_lot::RwLock;
 use std::{
-    future::Future,
     ops::DerefMut,
     sync::Arc,
     thread::{self, JoinHandle},
@@ -168,7 +167,7 @@ impl Consensus {
     pub async fn validate_and_insert_block(&self, block: Arc<Block>) -> BlockProcessResult<()> {
         let (tx, rx): (oneshot::Sender<BlockProcessResult<()>>, _) = oneshot::channel();
         self.block_sender
-            .send(BlockTask::Process((block, tx)))
+            .send(BlockTask::Process(block, tx))
             .unwrap();
         rx.await.unwrap()
     }
