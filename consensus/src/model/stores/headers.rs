@@ -22,7 +22,7 @@ pub trait HeaderStore: HeaderStoreReader {
 const HEADERS_STORE_PREFIX: &[u8] = b"headers";
 const DAA_SCORE_STORE_PREFIX: &[u8] = b"daa-score";
 
-/// A DB + cache implementation of `GhostdagStore` trait, with concurrency support.
+/// A DB + cache implementation of `HeaderStore` trait, with concurrency support.
 #[derive(Clone)]
 pub struct DbHeadersStore {
     raw_db: Arc<DB>,

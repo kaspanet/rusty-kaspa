@@ -16,7 +16,7 @@ pub trait DaaStore: DaaStoreReader {
 
 const ADDED_BLOCKS_STORE_PREFIX: &[u8] = b"daa-added-blocks";
 
-/// A DB + cache implementation of `GhostdagStore` trait, with concurrency support.
+/// A DB + cache implementation of `DaaStore` trait, with concurrency support.
 #[derive(Clone)]
 pub struct DbDaaStore {
     raw_db: Arc<DB>,

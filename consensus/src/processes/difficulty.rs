@@ -22,17 +22,17 @@ impl<T: HeaderStoreReader> DifficultyManager<T> {
         }
 
         let mergeset_len = ghostdag_data.mergeset_blues.len() + ghostdag_data.mergeset_reds.len();
-        let mut merge_set = HashSet::with_capacity(mergeset_len);
+        let mut mergeset = HashSet::with_capacity(mergeset_len);
         for blue in ghostdag_data.mergeset_blues.iter() {
-            merge_set.insert(blue);
+            mergeset.insert(blue);
         }
         for red in ghostdag_data.mergeset_reds.iter() {
-            merge_set.insert(red);
+            mergeset.insert(red);
         }
 
         let mut daa_added_blocks = Vec::with_capacity(mergeset_len);
         for hash in window_hashes {
-            if merge_set.contains(&hash) {
+            if mergeset.contains(&hash) {
                 daa_added_blocks.push(hash);
                 if daa_added_blocks.len() == mergeset_len {
                     break;

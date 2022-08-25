@@ -10,7 +10,7 @@ pub trait PruningStoreReader {
 
 const STORE_PREFIX: &[u8] = b"pruning";
 
-/// A DB + cache implementation of `StatusesStore` trait, with concurrent readers support.
+/// A DB + cache implementation of `PruningStore` trait, with concurrent readers support.
 #[derive(Clone)]
 pub struct DbPruningStore {
     raw_db: Arc<DB>,

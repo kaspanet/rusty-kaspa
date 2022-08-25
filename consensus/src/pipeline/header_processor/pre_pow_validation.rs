@@ -109,7 +109,7 @@ impl HeaderProcessor {
     fn check_parents_incest(
         self: &Arc<HeaderProcessor>, ctx: &mut HeaderProcessingContext, header: &Header,
     ) -> BlockProcessResult<()> {
-        let parents = ctx.non_pruned_parents();
+        let parents = ctx.get_non_pruned_parents();
         for parent_a in parents.iter() {
             for parent_b in parents.iter() {
                 if parent_a == parent_b {
@@ -139,7 +139,7 @@ impl HeaderProcessor {
         {
             None => Ok(()), // It implictly means that genesis is the pruning point - so no violation can exist
             Some(pruning_point) => {
-                let non_pruned_parents = ctx.non_pruned_parents();
+                let non_pruned_parents = ctx.get_non_pruned_parents();
                 if non_pruned_parents.is_empty() {
                     return Ok(());
                 }

@@ -51,7 +51,7 @@ pub struct HeaderProcessingContext<'a> {
     pub daa_added_blocks: Option<Vec<Hash>>,
 
     // Cache
-    non_pruned_parents_option: Option<BlockHashes>,
+    non_pruned_parents: Option<BlockHashes>,
 }
 
 impl<'a> HeaderProcessingContext<'a> {
@@ -61,20 +61,20 @@ impl<'a> HeaderProcessingContext<'a> {
             header,
             mergeset: None,
             ghostdag_data: None,
-            non_pruned_parents_option: None,
+            non_pruned_parents: None,
             block_window_for_difficulty: None,
             daa_added_blocks: None,
             block_window_for_past_median_time: None,
         }
     }
 
-    pub fn non_pruned_parents(&mut self) -> BlockHashes {
-        if let Some(parents) = self.non_pruned_parents_option.clone() {
+    pub fn get_non_pruned_parents(&mut self) -> BlockHashes {
+        if let Some(parents) = self.non_pruned_parents.clone() {
             return parents;
         }
 
         let non_pruned_parents = Arc::new(self.header.direct_parents().clone()); // TODO: Exclude pruned parents
-        self.non_pruned_parents_option = Some(non_pruned_parents.clone());
+        self.non_pruned_parents = Some(non_pruned_parents.clone());
         non_pruned_parents
     }
 }
