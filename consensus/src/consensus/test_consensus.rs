@@ -36,15 +36,12 @@ impl TestConsensus {
             .dag_traversal_manager
             .block_window(ghostdag_data.clone(), self.params.difficulty_window_size);
 
-        let window_hashes = window
-            .into_iter()
-            .map(|item| item.0.hash)
-            .collect();
+        let mut window_hashes = window.into_iter().map(|item| item.0.hash);
 
         let (daa_score, _) = self
             .consensus
             .difficulty_manager
-            .calc_daa_score_and_added_blocks(&window_hashes, &ghostdag_data);
+            .calc_daa_score_and_added_blocks(&mut window_hashes, &ghostdag_data);
 
         header.daa_score = daa_score;
 

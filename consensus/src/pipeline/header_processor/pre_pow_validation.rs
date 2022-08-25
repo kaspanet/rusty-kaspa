@@ -171,15 +171,12 @@ impl HeaderProcessor {
             .dagtraversal_manager
             .block_window(ghostdag_data, self.difficulty_window_size);
 
-        ctx.block_window = Some(window.clone());
-        let window_hashes = window
-            .into_iter()
-            .map(|item| item.0.hash)
-            .collect();
-
         let (daa_score, daa_added_blocks) = self
             .difficulty_manager
-            .calc_daa_score_and_added_blocks(&window_hashes, &ctx.ghostdag_data.clone().unwrap());
+            .calc_daa_score_and_added_blocks(
+                &mut window.iter().map(|item| item.0.hash),
+                &ctx.ghostdag_data.clone().unwrap(),
+            );
 
         if daa_score != header.daa_score {
             return Err(RuleError::UnexpectedHeaderDaaScore(daa_score, header.daa_score));
@@ -189,10 +186,12 @@ impl HeaderProcessor {
 
         let expected_bits = self
             .difficulty_manager
-            .calculate_difficulty_bits(&window_hashes);
+            .calculate_difficulty_bits(&mut window.iter().map(|item| item.0.hash));
         if header.bits != expected_bits {
             return Err(RuleError::UnexpectedDifficulty(header.bits, expected_bits));
         }
+
+        ctx.block_window = Some(window);
         Ok(())
     }
 }

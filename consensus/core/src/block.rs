@@ -1,6 +1,7 @@
 use crate::header::Header;
 use hashes::Hash;
 
+#[derive(Debug)]
 pub struct Block {
     pub header: Header,
 }

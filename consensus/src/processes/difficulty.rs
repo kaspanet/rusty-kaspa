@@ -15,9 +15,9 @@ impl<T: HeaderStoreReader> DifficultyManager<T> {
     }
 
     pub fn calc_daa_score_and_added_blocks(
-        &self, window_hashes: &Vec<Hash>, ghostdag_data: &GhostdagData,
+        &self, window_hashes: &mut impl ExactSizeIterator<Item = Hash>, ghostdag_data: &GhostdagData,
     ) -> (u64, Vec<Hash>) {
-        if window_hashes.is_empty() {
+        if window_hashes.len() == 0 {
             return (0, Vec::new());
         }
 
@@ -33,7 +33,7 @@ impl<T: HeaderStoreReader> DifficultyManager<T> {
         let mut daa_added_blocks = Vec::with_capacity(mergeset_len);
         for hash in window_hashes {
             if merge_set.contains(&hash) {
-                daa_added_blocks.push(*hash);
+                daa_added_blocks.push(hash);
                 if daa_added_blocks.len() == mergeset_len {
                     break;
                 }
@@ -48,15 +48,13 @@ impl<T: HeaderStoreReader> DifficultyManager<T> {
         (sp_daa_score + daa_added_blocks.len() as u64, daa_added_blocks)
     }
 
-    pub fn calculate_difficulty_bits(&self, window_hashes: &Vec<Hash>) -> u32 {
+    pub fn calculate_difficulty_bits(&self, window_hashes: &mut impl ExactSizeIterator<Item = Hash>) -> u32 {
         // Until there are enough blocks for a full block window the difficulty should remain constant.
         if window_hashes.len() < self.difficulty_adjustment_window_size {
             return self.genesis_bits;
         }
 
-        let window_headers = window_hashes
-            .iter()
-            .map(|hash| self.headers_store.get_header(*hash));
+        let window_headers = window_hashes.map(|hash| self.headers_store.get_header(hash));
         0 // TODO: Calculate real difficulty
     }
 }

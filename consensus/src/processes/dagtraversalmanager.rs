@@ -37,14 +37,14 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader> DagTraversalManager<T, U
         let mut current_gd = high_ghostdag_data;
 
         if window_size == self.block_window_cache_store_window_size {
-            if let Some(select_parent_binary_heap) = self
+            if let Some(selected_parent_binary_heap) = self
                 .block_window_cache_store
                 .get(&current_gd.selected_parent)
             {
                 let mut window_heap = SizedUpBlockHeap::from_binary_heap(
                     self.ghostdag_store.clone(),
                     window_size,
-                    (*select_parent_binary_heap).clone(),
+                    (*selected_parent_binary_heap).clone(),
                 );
                 if current_gd.selected_parent != self.genesis_hash {
                     self.try_push_mergeset(&mut window_heap, &current_gd);
@@ -132,7 +132,6 @@ impl<T: GhostdagStoreReader> SizedUpBlockHeap<T> {
 
     fn try_push_with_blue_work(&mut self, hash: Hash, blue_work: Uint256) -> bool {
         let r_sortable_block = Reverse(SortableBlock { hash, blue_work });
-        let blue_work = self.ghostdag_store.get_blue_work(hash).unwrap();
         if self.binary_heap.len() == self.size {
             if let Some(max) = self.binary_heap.peek() {
                 if *max < r_sortable_block {
