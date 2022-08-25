@@ -276,7 +276,7 @@ impl HeaderProcessor {
             .expect("processed block is expected to be in pending map");
 
         for tx in task.result_transmitters {
-            tx.send(Ok(())).unwrap();
+            tx.send(res.clone()).unwrap();
         }
 
         if pending.len() == self.ready_threshold {

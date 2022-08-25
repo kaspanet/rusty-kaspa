@@ -18,8 +18,6 @@ use std::fs::{self, File};
 use std::io::BufReader;
 use std::path::Path;
 use std::sync::Arc;
-use std::thread::sleep;
-use std::time::Duration;
 
 mod common;
 

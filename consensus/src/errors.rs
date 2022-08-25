@@ -2,7 +2,7 @@ use crate::constants;
 use hashes::Hash;
 use thiserror::Error;
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone)]
 pub enum RuleError {
     #[error("wrong block version: got {0} but expected {}", constants::BLOCK_VERSION)]
     WrongBlockVersion(u16),
