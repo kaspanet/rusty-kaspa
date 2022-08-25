@@ -1,3 +1,4 @@
+use crate::hashing::HasherExtensions;
 use hashes::{BlockHash, Hash, Hasher};
 use serde::{Deserialize, Serialize};
 
@@ -18,13 +19,7 @@ impl Header {
         let mut hasher = BlockHash::new();
         hasher
             .update(version.to_le_bytes())
-            .update((parents.len() as u64).to_le_bytes());
-
-        for parent in parents.iter() {
-            // TODO: Hash properly for multi-level parents
-            hasher.write(parent);
-        }
-        hasher
+            .write_var_array(&parents) // TODO: hash multi-level parents
             .update(timestamp.to_le_bytes())
             .update(bits.to_le_bytes())
             .update(nonce.to_le_bytes())

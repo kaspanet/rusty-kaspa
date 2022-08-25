@@ -2,7 +2,7 @@ use hashes::Hasher;
 
 pub mod tx;
 
-trait HasherExtensions {
+pub(crate) trait HasherExtensions {
     fn write_len(&mut self, len: usize) -> &mut Self;
     fn write_var_bytes(&mut self, bytes: &[u8]) -> &mut Self;
     fn write_var_array<D: AsRef<[u8]>>(&mut self, arr: &[D]) -> &mut Self;
