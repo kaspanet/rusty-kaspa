@@ -1,10 +1,12 @@
 use consensus::{
     consensus::test_consensus::TestConsensus,
+    errors::RuleError,
     model::stores::reachability::{DbReachabilityStore, StagingReachabilityStore},
     params::MAINNET_PARAMS,
     processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions},
 };
 use consensus_core::blockhash;
+use futures::future::join_all;
 use hashes::Hash;
 use parking_lot::RwLock;
 use rand_distr::{Distribution, Poisson};
@@ -175,16 +177,20 @@ async fn test_concurrent_pipeline_random() {
         total -= v;
         // println!("{} is from a Poisson(2) distribution", v);
         let mut new_tips = Vec::with_capacity(v as usize);
+        let mut futures = Vec::new();
         for _ in 0..v {
             let hash = blockhash::new_unique();
             new_tips.push(hash);
             let b = consensus.build_block_with_parents(hash, tips.clone());
             // Submit to consensus
-            consensus
-                .validate_and_insert_block(Arc::new(b))
-                .await
-                .unwrap();
+            let f = consensus.validate_and_insert_block(Arc::new(b));
+            futures.push(f);
         }
+        join_all(futures)
+            .await
+            .into_iter()
+            .collect::<Result<Vec<()>, RuleError>>()
+            .unwrap();
         tips = new_tips;
     }
 

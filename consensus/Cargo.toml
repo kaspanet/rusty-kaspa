@@ -20,7 +20,7 @@ crossbeam-channel="0.5"
 crossbeam = "*"
 rayon = "1.5.3"
 tokio = { version = "1.20.1", features = ["sync"] }
-
+futures = "0.3.23"
 
 hashes = {path="../crypto/hashes"}
 consensus-core = {path="./core"}
