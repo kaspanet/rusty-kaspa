@@ -22,10 +22,10 @@ pub trait HeaderStore: HeaderStoreReader {
 }
 
 const HEADERS_STORE_PREFIX: &[u8] = b"headers";
-const COPMACT_HEADERS_STORE_PREFIX: &[u8] = b"compact-headers";
+const COPMACT_HEADER_DATA_STORE_PREFIX: &[u8] = b"compact-header-data";
 
 #[derive(Clone, Copy, Serialize, Deserialize)]
-struct CompactHeader {
+struct CompactHeaderData {
     daa_score: u64,
     timestamp: u64,
 }
@@ -35,7 +35,7 @@ struct CompactHeader {
 pub struct DbHeadersStore {
     raw_db: Arc<DB>,
     // `CachedDbAccess` is shallow cloned so no need to wrap with Arc
-    cached_compact_headers_access: CachedDbAccessForCopy<Hash, CompactHeader>,
+    cached_compact_headers_access: CachedDbAccessForCopy<Hash, CompactHeaderData>,
     cached_headers_access: CachedDbAccess<Hash, Header>,
 }
 
@@ -46,7 +46,7 @@ impl DbHeadersStore {
             cached_compact_headers_access: CachedDbAccessForCopy::new(
                 Arc::clone(&db),
                 cache_size,
-                COPMACT_HEADERS_STORE_PREFIX,
+                COPMACT_HEADER_DATA_STORE_PREFIX,
             ),
             cached_headers_access: CachedDbAccess::new(Arc::clone(&db), cache_size, HEADERS_STORE_PREFIX),
         }
@@ -58,7 +58,7 @@ impl DbHeadersStore {
             cached_compact_headers_access: CachedDbAccessForCopy::new(
                 Arc::clone(&self.raw_db),
                 cache_size,
-                COPMACT_HEADERS_STORE_PREFIX,
+                COPMACT_HEADER_DATA_STORE_PREFIX,
             ),
             cached_headers_access: CachedDbAccess::new(Arc::clone(&self.raw_db), cache_size, HEADERS_STORE_PREFIX),
         }
@@ -73,7 +73,7 @@ impl DbHeadersStore {
         self.cached_compact_headers_access.write_batch(
             batch,
             hash,
-            CompactHeader { daa_score: header.daa_score, timestamp: header.timestamp },
+            CompactHeaderData { daa_score: header.daa_score, timestamp: header.timestamp },
         )?;
         Ok(())
     }
@@ -111,7 +111,7 @@ impl HeaderStore for DbHeadersStore {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
         self.cached_compact_headers_access
-            .write(hash, CompactHeader { daa_score: header.daa_score, timestamp: header.timestamp })?;
+            .write(hash, CompactHeaderData { daa_score: header.daa_score, timestamp: header.timestamp })?;
         self.cached_headers_access.write(hash, &header)?;
         Ok(())
     }
