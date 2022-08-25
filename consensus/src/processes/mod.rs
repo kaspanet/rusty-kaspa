@@ -1,5 +1,5 @@
 pub mod dagtraversalmanager;
-pub mod ghostdag;
-pub mod reachability;
 pub mod difficulty;
+pub mod ghostdag;
 pub mod pastmediantime;
+pub mod reachability;

@@ -1,4 +1,4 @@
-mod processor;
-mod pre_pow_validation;
 pub mod post_pow_validation;
+mod pre_pow_validation;
+mod processor;
 pub use processor::*;
