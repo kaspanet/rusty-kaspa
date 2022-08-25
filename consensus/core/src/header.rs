@@ -1,5 +1,5 @@
-use crate::hashing::HasherExtensions;
-use hashes::{BlockHash, Hash, Hasher};
+use crate::{blockhash, hashing};
+use hashes::Hash;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -16,24 +16,17 @@ pub struct Header {
 
 impl Header {
     pub fn new(version: u16, parents: Vec<Hash>, timestamp: u64, bits: u32, nonce: u64, daa_score: u64) -> Self {
-        let mut hasher = BlockHash::new();
-        hasher
-            .update(version.to_le_bytes())
-            .write_var_array(&parents) // TODO: hash multi-level parents
-            .update(timestamp.to_le_bytes())
-            .update(bits.to_le_bytes())
-            .update(nonce.to_le_bytes())
-            .update(daa_score.to_le_bytes());
-
-        Self {
-            hash: hasher.finalize(),
+        let mut header = Self {
+            hash: blockhash::NONE, // Temp init before the hashing below
             version,
             parents_by_level: vec![parents], // TODO: Handle multi level parents properly
             nonce,
             timestamp,
             daa_score,
             bits,
-        }
+        };
+        header.hash = hashing::header::header_hash(&header);
+        header
     }
 
     pub fn direct_parents(&self) -> &Vec<Hash> {

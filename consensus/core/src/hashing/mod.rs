@@ -1,10 +1,16 @@
 use hashes::Hasher;
 
+pub mod header;
 pub mod tx;
 
 pub(crate) trait HasherExtensions {
+    /// Writes the len as u64 little endian bytes  
     fn write_len(&mut self, len: usize) -> &mut Self;
+
+    /// Writes the number of bytes followed by the bytes themselves
     fn write_var_bytes(&mut self, bytes: &[u8]) -> &mut Self;
+
+    /// Writes the array len followed by each element as [[u8]]
     fn write_var_array<D: AsRef<[u8]>>(&mut self, arr: &[D]) -> &mut Self;
 }
 
