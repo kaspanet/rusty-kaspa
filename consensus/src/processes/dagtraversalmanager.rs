@@ -7,7 +7,6 @@ use crate::{
     },
     processes::ghostdag::ordering::SortableBlock,
 };
-use consensus_core::blockhash::BlockHashExtensions;
 use hashes::Hash;
 use misc::uint256::Uint256;
 
@@ -56,7 +55,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader> DagTraversalManager<T, U
 
         // Walk down the chain until we finish
         loop {
-            if current_gd.selected_parent == self.genesis_hash || current_gd.selected_parent.is_origin() {
+            if current_gd.selected_parent == self.genesis_hash {
                 break;
             }
 
