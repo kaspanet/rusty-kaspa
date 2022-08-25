@@ -7,6 +7,7 @@ use crate::{
     },
     processes::ghostdag::ordering::SortableBlock,
 };
+use consensus_core::blockhash::BlockHashExtensions;
 use hashes::Hash;
 use misc::uint256::Uint256;
 
@@ -55,6 +56,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader> DagTraversalManager<T, U
 
         // Walk down the chain until we finish
         loop {
+            assert!(!current_gd.selected_parent.is_origin(), "Block window should never get to the origin block");
             if current_gd.selected_parent == self.genesis_hash {
                 break;
             }
@@ -82,6 +84,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader> DagTraversalManager<T, U
             return true;
         }
 
+        // Go over the merge set blues in reverse because it's ordered in reverse by blueWork.
         for blue in ghostdag_data
             .mergeset_blues
             .iter()
@@ -97,6 +100,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader> DagTraversalManager<T, U
             }
         }
 
+        // Go over the merge set reds in reverse because it's ordered in reverse by blueWork.
         for red in ghostdag_data.mergeset_reds.iter().rev().cloned() {
             let added = heap.try_push(red);
 
