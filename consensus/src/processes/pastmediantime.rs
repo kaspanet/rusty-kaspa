@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::model::stores::{
-    block_window_cache::BlockWindowCacheReader,
+    block_window_cache::{BlockWindowCacheReader, BlockWindowHeap},
     ghostdag::{GhostdagData, GhostdagStoreReader},
     headers::HeaderStoreReader,
 };
@@ -24,17 +24,17 @@ impl<T: HeaderStoreReader, U: GhostdagStoreReader, V: BlockWindowCacheReader> Pa
         Self { headers_store, dag_traversal_manager, timestamp_deviation_tolerance, genesis_timestamp }
     }
 
-    pub fn calc_past_median_time(&self, ghostdag_data: Arc<GhostdagData>) -> u64 {
+    pub fn calc_past_median_time(&self, ghostdag_data: Arc<GhostdagData>) -> (u64, BlockWindowHeap) {
         let window = self
             .dag_traversal_manager
             .block_window(ghostdag_data, 2 * self.timestamp_deviation_tolerance - 1);
 
         if window.is_empty() {
-            return self.genesis_timestamp;
+            return (self.genesis_timestamp, Default::default());
         }
 
         let mut window_timestamps: Vec<u64> = window
-            .into_iter()
+            .iter()
             .map(|item| {
                 self.headers_store
                     .get_header(item.0.hash)
@@ -43,6 +43,6 @@ impl<T: HeaderStoreReader, U: GhostdagStoreReader, V: BlockWindowCacheReader> Pa
             })
             .collect();
         window_timestamps.sort();
-        window_timestamps[window_timestamps.len() / 2]
+        (window_timestamps[window_timestamps.len() / 2], window)
     }
 }

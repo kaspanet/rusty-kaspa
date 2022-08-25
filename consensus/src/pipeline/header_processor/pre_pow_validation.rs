@@ -168,7 +168,7 @@ impl HeaderProcessor {
     ) -> BlockProcessResult<()> {
         let ghostdag_data = ctx.ghostdag_data.clone().unwrap();
         let window = self
-            .dagtraversal_manager
+            .dag_traversal_manager
             .block_window(ghostdag_data, self.difficulty_window_size);
 
         let (daa_score, daa_added_blocks) = self
@@ -191,7 +191,7 @@ impl HeaderProcessor {
             return Err(RuleError::UnexpectedDifficulty(header.bits, expected_bits));
         }
 
-        ctx.block_window = Some(window);
+        ctx.block_window_for_difficulty = Some(window);
         Ok(())
     }
 }

@@ -16,9 +16,10 @@ impl HeaderProcessor {
     pub fn check_median_timestamp(
         self: &Arc<HeaderProcessor>, ctx: &mut HeaderProcessingContext, header: &Header,
     ) -> BlockProcessResult<()> {
-        let expected_ts = self
+        let (expected_ts, window) = self
             .past_median_time_manager
             .calc_past_median_time(ctx.ghostdag_data.clone().unwrap());
+        ctx.block_window_for_past_median_time = Some(window);
 
         if header.timestamp <= expected_ts {
             return Err(RuleError::ErrTimeTooOld(header.timestamp, expected_ts));

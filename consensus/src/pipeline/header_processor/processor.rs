@@ -3,7 +3,7 @@ use crate::{
     model::{
         services::{reachability::MTReachabilityService, relations::MTRelationsService},
         stores::{
-            block_window_cache::BlockWindowCacheStore,
+            block_window_cache::{BlockWindowCacheStore, BlockWindowHeap},
             daa::DbDaaStore,
             ghostdag::{DbGhostdagStore, GhostdagData},
             headers::DbHeadersStore,
@@ -19,11 +19,8 @@ use crate::{
     },
     params::Params,
     processes::{
-        dagtraversalmanager::DagTraversalManager,
-        difficulty::DifficultyManager,
-        ghostdag::{ordering::SortableBlock, protocol::GhostdagManager},
-        pastmediantime::PastMedianTimeManager,
-        reachability::inquirer as reachability,
+        dagtraversalmanager::DagTraversalManager, difficulty::DifficultyManager, ghostdag::protocol::GhostdagManager,
+        pastmediantime::PastMedianTimeManager, reachability::inquirer as reachability,
     },
     test_helpers::header_from_precomputed_hash,
 };
@@ -34,8 +31,7 @@ use hashes::Hash;
 use parking_lot::{Condvar, Mutex, RwLock};
 use rocksdb::WriteBatch;
 use std::{
-    cmp::Reverse,
-    collections::{hash_map::Entry::Vacant, BinaryHeap, HashMap},
+    collections::{hash_map::Entry::Vacant, HashMap},
     sync::{atomic::Ordering, Arc},
 };
 
@@ -50,7 +46,8 @@ pub struct HeaderProcessingContext<'a> {
 
     // Staging data
     pub ghostdag_data: Option<Arc<GhostdagData>>,
-    pub block_window: Option<BinaryHeap<Reverse<SortableBlock>>>,
+    pub block_window_for_difficulty: Option<BlockWindowHeap>,
+    pub block_window_for_past_median_time: Option<BlockWindowHeap>,
     pub daa_added_blocks: Option<Vec<Hash>>,
 
     // Cache
@@ -65,8 +62,9 @@ impl<'a> HeaderProcessingContext<'a> {
             mergeset: None,
             ghostdag_data: None,
             non_pruned_parents_option: None,
-            block_window: None,
+            block_window_for_difficulty: None,
             daa_added_blocks: None,
+            block_window_for_past_median_time: None,
         }
     }
 
@@ -107,7 +105,8 @@ pub struct HeaderProcessor {
     ghostdag_store: Arc<DbGhostdagStore>,
     pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
     pub(super) pruning_store: Arc<RwLock<DbPruningStore>>,
-    pub(super) block_window_cache_store: Arc<BlockWindowCacheStore>,
+    pub(super) block_window_cache_for_difficulty: Arc<BlockWindowCacheStore>,
+    pub(super) block_window_cache_for_past_median_time: Arc<BlockWindowCacheStore>,
     pub(super) daa_store: Arc<DbDaaStore>,
     pub(super) headers_store: Arc<DbHeadersStore>,
 
@@ -117,7 +116,7 @@ pub struct HeaderProcessor {
         MTRelationsService<DbRelationsStore>,
         MTReachabilityService<DbReachabilityStore>,
     >,
-    pub(super) dagtraversal_manager: DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore>,
+    pub(super) dag_traversal_manager: DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore>,
     pub(super) difficulty_manager: DifficultyManager<DbHeadersStore>,
     pub(super) past_median_time_manager: PastMedianTimeManager<DbHeadersStore, DbGhostdagStore, BlockWindowCacheStore>,
     pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
@@ -143,10 +142,12 @@ impl HeaderProcessor {
         receiver: Receiver<BlockTask>, params: &Params, db: Arc<DB>, relations_store: Arc<RwLock<DbRelationsStore>>,
         reachability_store: Arc<RwLock<DbReachabilityStore>>, ghostdag_store: Arc<DbGhostdagStore>,
         headers_store: Arc<DbHeadersStore>, daa_store: Arc<DbDaaStore>, statuses_store: Arc<RwLock<DbStatusesStore>>,
-        pruning_store: Arc<RwLock<DbPruningStore>>, block_window_cache_store: Arc<BlockWindowCacheStore>,
+        pruning_store: Arc<RwLock<DbPruningStore>>, block_window_cache_for_difficulty: Arc<BlockWindowCacheStore>,
+        block_window_cache_for_past_median_time: Arc<BlockWindowCacheStore>,
         reachability_service: MTReachabilityService<DbReachabilityStore>,
         relations_service: Arc<MTRelationsService<DbRelationsStore>>,
         past_median_time_manager: PastMedianTimeManager<DbHeadersStore, DbGhostdagStore, BlockWindowCacheStore>,
+        dag_traversal_manager: DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore>,
         counters: Arc<ProcessingCounters>,
     ) -> Self {
         Self {
@@ -161,20 +162,16 @@ impl HeaderProcessor {
             pruning_store,
             daa_store,
             headers_store: headers_store.clone(),
-            block_window_cache_store: block_window_cache_store.clone(),
+            block_window_cache_for_difficulty,
+            block_window_cache_for_past_median_time,
             ghostdag_manager: GhostdagManager::new(
                 params.genesis_hash,
                 params.ghostdag_k,
-                ghostdag_store.clone(),
+                ghostdag_store,
                 relations_service,
                 reachability_service.clone(),
             ),
-            dagtraversal_manager: DagTraversalManager::new(
-                params.genesis_hash,
-                ghostdag_store,
-                block_window_cache_store,
-                params.difficulty_window_size,
-            ),
+            dag_traversal_manager,
             difficulty_manager: DifficultyManager::new(
                 headers_store,
                 params.genesis_bits,
@@ -346,8 +343,10 @@ impl HeaderProcessor {
         self.ghostdag_store
             .insert_batch(&mut batch, ctx.hash, ghostdag_data)
             .unwrap();
-        self.block_window_cache_store
-            .insert(ctx.hash, Arc::new(ctx.block_window.unwrap()));
+        self.block_window_cache_for_difficulty
+            .insert(ctx.hash, Arc::new(ctx.block_window_for_difficulty.unwrap()));
+        self.block_window_cache_for_past_median_time
+            .insert(ctx.hash, Arc::new(ctx.block_window_for_past_median_time.unwrap()));
         self.daa_store
             .insert_batch(&mut batch, ctx.hash, Arc::new(ctx.daa_added_blocks.unwrap()))
             .unwrap();
@@ -382,7 +381,8 @@ impl HeaderProcessor {
         let mut ctx = HeaderProcessingContext::new(self.genesis_hash, &header);
         self.ghostdag_manager
             .add_genesis_if_needed(&mut ctx);
-        ctx.block_window = Some(Default::default());
+        ctx.block_window_for_difficulty = Some(Default::default());
+        ctx.block_window_for_past_median_time = Some(Default::default());
         ctx.daa_added_blocks = Some(Default::default());
         self.commit_header(ctx, &header);
     }

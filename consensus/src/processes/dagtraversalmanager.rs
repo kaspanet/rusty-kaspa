@@ -2,7 +2,7 @@ use std::{cmp::Reverse, collections::BinaryHeap, sync::Arc};
 
 use crate::{
     model::stores::{
-        block_window_cache::BlockWindowCacheReader,
+        block_window_cache::{BlockWindowCacheReader, BlockWindowHeap},
         ghostdag::{GhostdagData, GhostdagStoreReader},
     },
     processes::ghostdag::ordering::SortableBlock,
@@ -15,20 +15,28 @@ use misc::uint256::Uint256;
 pub struct DagTraversalManager<T: GhostdagStoreReader, U: BlockWindowCacheReader> {
     genesis_hash: Hash,
     ghostdag_store: Arc<T>,
-    block_window_cache_store: Arc<U>,
-    block_window_cache_store_window_size: usize,
+    block_window_cache_for_difficulty: Arc<U>,
+    block_window_cache_for_past_median_time: Arc<U>,
+    difficulty_window_size: usize,
+    past_median_time_window_size: usize,
 }
 
 impl<T: GhostdagStoreReader, U: BlockWindowCacheReader> DagTraversalManager<T, U> {
     pub fn new(
-        genesis_hash: Hash, ghostdag_store: Arc<T>, block_window_cache_store: Arc<U>,
-        block_window_cache_store_window_size: usize,
+        genesis_hash: Hash, ghostdag_store: Arc<T>, block_window_cache_for_difficulty: Arc<U>,
+        block_window_cache_for_past_median_time: Arc<U>, difficulty_window_size: usize,
+        past_median_time_window_size: usize,
     ) -> Self {
-        Self { genesis_hash, ghostdag_store, block_window_cache_store, block_window_cache_store_window_size }
+        Self {
+            genesis_hash,
+            ghostdag_store,
+            block_window_cache_for_difficulty,
+            difficulty_window_size,
+            block_window_cache_for_past_median_time,
+            past_median_time_window_size,
+        }
     }
-    pub fn block_window(
-        &self, high_ghostdag_data: Arc<GhostdagData>, window_size: usize,
-    ) -> BinaryHeap<Reverse<SortableBlock>> {
+    pub fn block_window(&self, high_ghostdag_data: Arc<GhostdagData>, window_size: usize) -> BlockWindowHeap {
         let mut window_heap = SizedUpBlockHeap::new(self.ghostdag_store.clone(), window_size);
         if window_size == 0 {
             return window_heap.binary_heap;
@@ -36,11 +44,16 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader> DagTraversalManager<T, U
 
         let mut current_gd = high_ghostdag_data;
 
-        if window_size == self.block_window_cache_store_window_size {
-            if let Some(selected_parent_binary_heap) = self
-                .block_window_cache_store
-                .get(&current_gd.selected_parent)
-            {
+        let cache = if window_size == self.difficulty_window_size {
+            Some(&self.block_window_cache_for_difficulty)
+        } else if window_size == self.past_median_time_window_size {
+            Some(&self.block_window_cache_for_past_median_time)
+        } else {
+            None
+        };
+
+        if let Some(cache) = cache {
+            if let Some(selected_parent_binary_heap) = cache.get(&current_gd.selected_parent) {
                 let mut window_heap = SizedUpBlockHeap::from_binary_heap(
                     self.ghostdag_store.clone(),
                     window_size,
@@ -115,7 +128,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader> DagTraversalManager<T, U
 }
 
 struct SizedUpBlockHeap<T: GhostdagStoreReader> {
-    binary_heap: BinaryHeap<Reverse<SortableBlock>>,
+    binary_heap: BlockWindowHeap,
     ghostdag_store: Arc<T>,
     size: usize,
 }
@@ -125,7 +138,7 @@ impl<T: GhostdagStoreReader> SizedUpBlockHeap<T> {
         Self::from_binary_heap(ghostdag_store, size, BinaryHeap::new())
     }
 
-    fn from_binary_heap(ghostdag_store: Arc<T>, size: usize, binary_heap: BinaryHeap<Reverse<SortableBlock>>) -> Self {
+    fn from_binary_heap(ghostdag_store: Arc<T>, size: usize, binary_heap: BlockWindowHeap) -> Self {
         Self { ghostdag_store, size, binary_heap }
     }
 

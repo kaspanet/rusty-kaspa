@@ -73,7 +73,8 @@ impl Consensus {
         let ghostdag_store = Arc::new(DbGhostdagStore::new(db.clone(), 100000));
         let daa_store = Arc::new(DbDaaStore::new(db.clone(), 100000));
         let headers_store = Arc::new(DbHeadersStore::new(db.clone(), 100000));
-        let block_window_cache_store = Arc::new(BlockWindowCacheStore::new(2000));
+        let block_window_cache_for_difficulty = Arc::new(BlockWindowCacheStore::new(2000));
+        let block_window_cache_for_past_median_time = Arc::new(BlockWindowCacheStore::new(2000));
 
         let statuses_service = Arc::new(MTStatusesService::new(statuses_store.clone()));
         let relations_service = Arc::new(MTRelationsService::new(relations_store.clone()));
@@ -81,8 +82,10 @@ impl Consensus {
         let dag_traversal_manager = DagTraversalManager::new(
             params.genesis_hash,
             ghostdag_store.clone(),
-            block_window_cache_store.clone(),
+            block_window_cache_for_difficulty.clone(),
+            block_window_cache_for_past_median_time.clone(),
             params.difficulty_window_size,
+            (2 * params.timestamp_deviation_tolerance - 1) as usize,
         );
         let past_median_time_manager = PastMedianTimeManager::new(
             headers_store.clone(),
@@ -105,10 +108,12 @@ impl Consensus {
             daa_store,
             statuses_store.clone(),
             pruning_store,
-            block_window_cache_store,
+            block_window_cache_for_difficulty,
+            block_window_cache_for_past_median_time,
             reachability_service.clone(),
             relations_service.clone(),
             past_median_time_manager.clone(),
+            dag_traversal_manager.clone(),
             counters.clone(),
         ));
 

@@ -49,6 +49,7 @@ impl TestConsensus {
             .consensus
             .past_median_time_manager
             .calc_past_median_time(ghostdag_data)
+            .0
             + 1;
         header
     }
