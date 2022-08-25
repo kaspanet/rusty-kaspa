@@ -29,11 +29,11 @@ impl UtxoDiff {
         Ok(clone)
     }
 
-    pub fn with_diff_in_place(&mut self, other: &UtxoDiff) -> UtxoAlgebraResult<()> {
+    pub fn with_diff_in_place(&mut self, _other: &UtxoDiff) -> UtxoAlgebraResult<()> {
         todo!()
     }
 
-    pub fn diff_from(&self, other: &UtxoDiff) -> UtxoAlgebraResult<UtxoDiff> {
+    pub fn diff_from(&self, _other: &UtxoDiff) -> UtxoAlgebraResult<UtxoDiff> {
         todo!()
     }
 
@@ -53,11 +53,11 @@ impl UtxoDiff {
         Ok(())
     }
 
-    fn remove_entry(&mut self, outpoint: &TransactionOutpoint, entry: &UtxoEntry) -> UtxoAlgebraResult<()> {
+    fn remove_entry(&mut self, _outpoint: &TransactionOutpoint, _entry: &UtxoEntry) -> UtxoAlgebraResult<()> {
         todo!()
     }
 
-    fn add_entry(&mut self, outpoint: TransactionOutpoint, entry: UtxoEntry) -> UtxoAlgebraResult<()> {
+    fn add_entry(&mut self, _outpoint: TransactionOutpoint, _entry: UtxoEntry) -> UtxoAlgebraResult<()> {
         todo!()
     }
 }
