@@ -5,6 +5,7 @@ use hashes::Hash;
 use parking_lot::RwLock;
 
 use crate::{
+    errors::BlockProcessResult,
     model::stores::{ghostdag::DbGhostdagStore, reachability::DbReachabilityStore, DB},
     params::Params,
     pipeline::header_processor::HeaderProcessingContext,
@@ -58,8 +59,10 @@ impl TestConsensus {
         Block::from_header(self.build_header_with_parents(hash, parents))
     }
 
-    pub fn validate_and_insert_block(&self, block: Arc<Block>) {
-        self.consensus.validate_and_insert_block(block)
+    pub async fn validate_and_insert_block(&self, block: Arc<Block>) -> BlockProcessResult<()> {
+        self.consensus
+            .validate_and_insert_block(block)
+            .await
     }
 
     pub fn init(&self) -> JoinHandle<()> {

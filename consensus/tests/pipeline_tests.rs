@@ -1,15 +1,18 @@
 use consensus::{
     consensus::test_consensus::TestConsensus,
+    errors::RuleError,
     model::stores::reachability::{DbReachabilityStore, StagingReachabilityStore},
     params::MAINNET_PARAMS,
     processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions},
 };
 use consensus_core::blockhash;
+use futures::future::join_all;
 use hashes::Hash;
 use parking_lot::RwLock;
 use rand_distr::{Distribution, Poisson};
 use rocksdb::WriteBatch;
-use std::{cmp::min, sync::Arc, thread::sleep, time::Duration};
+use std::{cmp::min, sync::Arc};
+use tokio::join;
 
 mod common;
 
@@ -77,8 +80,8 @@ fn test_reachability_staging() {
     assert!(store.are_anticone(11, 9));
 }
 
-#[test]
-fn test_concurrent_pipeline() {
+#[tokio::test]
+async fn test_concurrent_pipeline() {
     let (_tempdir, db) = common::create_temp_db();
 
     let mut params = MAINNET_PARAMS;
@@ -104,9 +107,10 @@ fn test_concurrent_pipeline() {
     for (hash, parents) in blocks {
         // Submit to consensus twice to make sure duplicates are handled
         let b = Arc::new(consensus.build_block_with_parents(hash, parents));
-        consensus.validate_and_insert_block(Arc::clone(&b));
-        consensus.validate_and_insert_block(b);
-        sleep(Duration::from_millis(100)); // TODO: Find a better mechanism to process blocks sequentially
+        let results =
+            join!(consensus.validate_and_insert_block(Arc::clone(&b)), consensus.validate_and_insert_block(b));
+        results.0.unwrap();
+        results.1.unwrap();
     }
 
     let (store, _) = consensus.drop();
@@ -146,8 +150,8 @@ fn test_concurrent_pipeline() {
     assert!(store.are_anticone(11, 9));
 }
 
-#[test]
-fn test_concurrent_pipeline_random() {
+#[tokio::test]
+async fn test_concurrent_pipeline_random() {
     let genesis: Hash = blockhash::new_unique();
     let bps = 8;
     let delay = 2;
@@ -173,14 +177,20 @@ fn test_concurrent_pipeline_random() {
         total -= v;
         // println!("{} is from a Poisson(2) distribution", v);
         let mut new_tips = Vec::with_capacity(v as usize);
+        let mut futures = Vec::new();
         for _ in 0..v {
             let hash = blockhash::new_unique();
             new_tips.push(hash);
             let b = consensus.build_block_with_parents(hash, tips.clone());
             // Submit to consensus
-            consensus.validate_and_insert_block(Arc::new(b));
-            sleep(Duration::from_millis(100)); // TODO: Find a better mechanism to process blocks sequentially
+            let f = consensus.validate_and_insert_block(Arc::new(b));
+            futures.push(f);
         }
+        join_all(futures)
+            .await
+            .into_iter()
+            .collect::<Result<Vec<()>, RuleError>>()
+            .unwrap();
         tips = new_tips;
     }
 
