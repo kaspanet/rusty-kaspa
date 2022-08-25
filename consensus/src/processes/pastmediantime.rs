@@ -42,7 +42,7 @@ impl<T: HeaderStoreReader, U: GhostdagStoreReader, V: BlockWindowCacheReader> Pa
                     .timestamp
             })
             .collect();
-        window_timestamps.sort();
+        window_timestamps.sort_unstable(); // This is deterministic because we sort u64
         (window_timestamps[window_timestamps.len() / 2], window)
     }
 }
