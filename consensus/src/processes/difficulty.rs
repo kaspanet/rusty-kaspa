@@ -1,6 +1,6 @@
 use crate::model::stores::{ghostdag::GhostdagData, headers::HeaderStoreReader};
+use consensus_core::BlueWorkType;
 use hashes::Hash;
-use misc::uint256::Uint256;
 use std::{collections::HashSet, sync::Arc};
 
 pub struct DifficultyManager<T: HeaderStoreReader> {
@@ -63,5 +63,5 @@ struct DifficultyBlock {
     timestamp: u64,
     bits: u32,
     hash: Hash,
-    blue_work: Uint256,
+    blue_work: BlueWorkType,
 }

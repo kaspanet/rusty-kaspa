@@ -7,9 +7,8 @@ use crate::{
     },
     processes::ghostdag::ordering::SortableBlock,
 };
-use consensus_core::blockhash::BlockHashExtensions;
+use consensus_core::{blockhash::BlockHashExtensions, BlueWorkType};
 use hashes::Hash;
-use misc::uint256::Uint256;
 
 #[derive(Clone)]
 pub struct DagTraversalManager<T: GhostdagStoreReader, U: BlockWindowCacheReader> {
@@ -147,7 +146,7 @@ impl<T: GhostdagStoreReader> SizedUpBlockHeap<T> {
         self.try_push_with_blue_work(hash, blue_work)
     }
 
-    fn try_push_with_blue_work(&mut self, hash: Hash, blue_work: Uint256) -> bool {
+    fn try_push_with_blue_work(&mut self, hash: Hash, blue_work: BlueWorkType) -> bool {
         let r_sortable_block = Reverse(SortableBlock { hash, blue_work });
         if self.binary_heap.len() == self.size {
             if let Some(max) = self.binary_heap.peek() {

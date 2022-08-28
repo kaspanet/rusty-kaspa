@@ -2,7 +2,6 @@ use std::{collections::HashMap, sync::Arc};
 
 use consensus_core::blockhash::{self, BlockHashes};
 use hashes::Hash;
-use misc::uint256::Uint256;
 
 use crate::{
     model::{
@@ -41,7 +40,7 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService> Gh
             ctx.mergeset = Some(BlockHashes::new(Vec::new()));
             ctx.ghostdag_data = Some(Arc::new(GhostdagData::new(
                 0,
-                Uint256::from_u64(0),
+                Default::default(),
                 blockhash::ORIGIN,
                 BlockHashes::new(Vec::new()),
                 BlockHashes::new(Vec::new()),
@@ -94,7 +93,7 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService> Gh
             + new_block_data.mergeset_blues.len() as u64;
 
         // TODO: This is just a placeholder until calc_work is implemented.
-        let blue_work = Uint256::from_u64(blue_score);
+        let blue_work = blue_score.into();
         new_block_data.finalize_score_and_work(blue_score, blue_work);
 
         // Cache mergeset in context

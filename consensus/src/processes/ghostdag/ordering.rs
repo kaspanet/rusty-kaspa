@@ -1,7 +1,7 @@
 use std::{cmp::Ordering, collections::HashSet};
 
+use consensus_core::BlueWorkType;
 use hashes::Hash;
-use misc::uint256::Uint256;
 
 use crate::model::{
     services::reachability::ReachabilityService,
@@ -13,7 +13,7 @@ use super::protocol::GhostdagManager;
 #[derive(Eq, Clone)]
 pub struct SortableBlock {
     pub hash: Hash,
-    pub blue_work: Uint256,
+    pub blue_work: BlueWorkType,
 }
 
 impl PartialEq for SortableBlock {
