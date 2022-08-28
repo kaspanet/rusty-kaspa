@@ -21,8 +21,8 @@ struct BlockTaskInternal {
 }
 
 impl BlockTaskInternal {
-    fn new(block: Arc<Block>, tx: oneshot::Sender<BlockProcessResult<()>>) -> Self {
-        Self { block, result_transmitters: vec![tx], dependent_tasks: Vec::new() }
+    fn new(block: Arc<Block>, result_transmitters: Vec<oneshot::Sender<BlockProcessResult<()>>>) -> Self {
+        Self { block, result_transmitters, dependent_tasks: Vec::new() }
     }
 }
 
@@ -50,17 +50,19 @@ impl BlockTaskDependencyManager {
         }
     }
 
-    /// Registers the `(block, result_transmitter)` pair as a pending task. If the block is already pending
+    /// Registers the `(block, result_transmitters)` pair as a pending task. If the block is already pending
     /// and has a corresponding internal task, the task is updated with the additional
-    /// result transmitter and the function returns `false` indicating that the task shall
-    /// not be queued for processing yet. Note: this function will block if workers are too busy
+    /// result transmitters and the function returns `false` indicating that the task shall
+    /// not be queued for processing. Note: this function will block if workers are too busy
     /// with previous pending tasks. The function is expected to be called by a single-thread controlling
     /// the reception of block processing tasks.
-    pub fn register(&self, block: Arc<Block>, result_transmitter: oneshot::Sender<BlockProcessResult<()>>) -> bool {
+    pub fn register(
+        &self, block: Arc<Block>, mut result_transmitters: Vec<oneshot::Sender<BlockProcessResult<()>>>,
+    ) -> bool {
         let mut pending = self.pending.lock();
         match pending.entry(block.header.hash) {
             Vacant(e) => {
-                e.insert(BlockTaskInternal::new(block, result_transmitter));
+                e.insert(BlockTaskInternal::new(block, result_transmitters));
                 if pending.len() > self.ready_threshold {
                     // If the number of pending items is already too large,
                     // wait for workers to signal readiness.
@@ -69,7 +71,13 @@ impl BlockTaskDependencyManager {
                 true
             }
             e => {
-                e.and_modify(|v| v.result_transmitters.push(result_transmitter));
+                e.and_modify(|v| {
+                    v.result_transmitters
+                        .append(&mut result_transmitters);
+                    if v.block.is_header_only() && !block.is_header_only() {
+                        v.block = block;
+                    }
+                });
                 false
             }
         }
@@ -96,7 +104,7 @@ impl BlockTaskDependencyManager {
     /// Report the completion of a processing task. Signals progress to the managing thread.
     /// The function returns the final list of `result_transmitters` and a list of
     /// `dependent_tasks` which should be requeued to workers.
-    pub fn end(&self, hash: Hash) -> (Vec<oneshot::Sender<BlockProcessResult<()>>>, Vec<Hash>) {
+    pub fn end(&self, hash: Hash) -> (Arc<Block>, Vec<oneshot::Sender<BlockProcessResult<()>>>, Vec<Hash>) {
         // Re-lock for post-processing steps
         let mut pending = self.pending.lock();
         let task = pending
@@ -111,7 +119,7 @@ impl BlockTaskDependencyManager {
             self.idle_signal.notify_one();
         }
 
-        (task.result_transmitters, task.dependent_tasks)
+        (task.block, task.result_transmitters, task.dependent_tasks)
     }
 
     /// Wait until all pending tasks are completed and workers are idle.

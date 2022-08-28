@@ -12,6 +12,7 @@ use crate::{
     },
     params::Params,
     pipeline::{
+        block_processor::{BlockBodyProcessor, BlockBodyTask},
         header_processor::{BlockTask, HeaderProcessor},
         ProcessingCounters,
     },
@@ -21,7 +22,7 @@ use crate::{
     },
 };
 use consensus_core::block::Block;
-use crossbeam_channel::{bounded, Receiver, Sender};
+use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
 use kaspa_core::{core::Core, service::Service};
 use parking_lot::RwLock;
 use std::{
@@ -40,6 +41,7 @@ pub struct Consensus {
 
     // Processors
     header_processor: Arc<HeaderProcessor>,
+    body_processor: Arc<BlockBodyProcessor>,
 
     // Stores
     statuses_store: Arc<RwLock<DbStatusesStore>>,
@@ -97,10 +99,13 @@ impl Consensus {
         );
 
         let (sender, receiver): (Sender<BlockTask>, Receiver<BlockTask>) = bounded(2000);
+        let (body_sender, body_receiver): (Sender<BlockBodyTask>, Receiver<BlockBodyTask>) = unbounded();
+
         let counters = Arc::new(ProcessingCounters::default());
 
         let header_processor = Arc::new(HeaderProcessor::new(
             receiver,
+            body_sender,
             params,
             db.clone(),
             relations_store.clone(),
@@ -119,10 +124,18 @@ impl Consensus {
             counters.clone(),
         ));
 
+        let block_body_processor = Arc::new(BlockBodyProcessor::new(
+            body_receiver,
+            db.clone(),
+            statuses_store.clone(),
+            reachability_service.clone(),
+        ));
+
         Self {
             db,
             block_sender: sender,
             header_processor,
+            body_processor: block_body_processor,
             statuses_store,
             relations_store,
             reachability_store,
@@ -150,18 +163,23 @@ impl Consensus {
         }
     }
 
-    pub fn init(&self) -> JoinHandle<()> {
+    pub fn init(&self) -> Vec<JoinHandle<()>> {
         // Ensure that reachability store is initialized
         reachability::init(self.reachability_store.write().deref_mut()).unwrap();
 
         // Ensure that genesis was processed
         self.header_processor.process_genesis_if_needed();
 
-        // Spawn the asynchronous header processor.
+        // Spawn the asynchronous processors.
         let header_processor = self.header_processor.clone();
-        thread::spawn(move || header_processor.worker())
+        let header_join = thread::spawn(move || header_processor.worker());
 
-        // TODO: add block body processor and virtual state processor workers and return a vec of join handles.
+        let body_processor = self.body_processor.clone();
+        let body_join = thread::spawn(move || body_processor.worker());
+
+        // TODO: add virtual state processor worker.
+
+        vec![header_join, body_join]
     }
 
     pub async fn validate_and_insert_block(&self, block: Arc<Block>) -> BlockProcessResult<()> {
@@ -190,7 +208,7 @@ impl Service for Consensus {
     }
 
     fn start(self: Arc<Consensus>, core: Arc<Core>) -> Vec<JoinHandle<()>> {
-        vec![self.init()]
+        self.init()
     }
 
     fn stop(self: Arc<Consensus>) {

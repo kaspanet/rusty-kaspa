@@ -18,7 +18,7 @@ use crate::{
         },
     },
     params::Params,
-    pipeline::deps_manager::BlockTaskDependencyManager,
+    pipeline::{block_processor::BlockBodyTask, deps_manager::BlockTaskDependencyManager},
     processes::{
         dagtraversalmanager::DagTraversalManager, difficulty::DifficultyManager, ghostdag::protocol::GhostdagManager,
         pastmediantime::PastMedianTimeManager, reachability::inquirer as reachability,
@@ -27,7 +27,7 @@ use crate::{
 };
 use consensus_core::{block::Block, blockhash::BlockHashes, header::Header};
 use crossbeam::select;
-use crossbeam_channel::Receiver;
+use crossbeam_channel::{Receiver, Sender};
 use hashes::Hash;
 use parking_lot::RwLock;
 use rocksdb::WriteBatch;
@@ -86,6 +86,7 @@ pub enum BlockTask {
 pub struct HeaderProcessor {
     // Channels
     receiver: Receiver<BlockTask>,
+    body_sender: Sender<BlockBodyTask>,
 
     // Config
     pub(super) genesis_hash: Hash,
@@ -130,10 +131,11 @@ pub struct HeaderProcessor {
 impl HeaderProcessor {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        receiver: Receiver<BlockTask>, params: &Params, db: Arc<DB>, relations_store: Arc<RwLock<DbRelationsStore>>,
-        reachability_store: Arc<RwLock<DbReachabilityStore>>, ghostdag_store: Arc<DbGhostdagStore>,
-        headers_store: Arc<DbHeadersStore>, daa_store: Arc<DbDaaStore>, statuses_store: Arc<RwLock<DbStatusesStore>>,
-        pruning_store: Arc<RwLock<DbPruningStore>>, block_window_cache_for_difficulty: Arc<BlockWindowCacheStore>,
+        receiver: Receiver<BlockTask>, body_sender: Sender<BlockBodyTask>, params: &Params, db: Arc<DB>,
+        relations_store: Arc<RwLock<DbRelationsStore>>, reachability_store: Arc<RwLock<DbReachabilityStore>>,
+        ghostdag_store: Arc<DbGhostdagStore>, headers_store: Arc<DbHeadersStore>, daa_store: Arc<DbDaaStore>,
+        statuses_store: Arc<RwLock<DbStatusesStore>>, pruning_store: Arc<RwLock<DbPruningStore>>,
+        block_window_cache_for_difficulty: Arc<BlockWindowCacheStore>,
         block_window_cache_for_past_median_time: Arc<BlockWindowCacheStore>,
         reachability_service: MTReachabilityService<DbReachabilityStore>,
         relations_service: Arc<MTRelationsService<DbRelationsStore>>,
@@ -143,6 +145,7 @@ impl HeaderProcessor {
     ) -> Self {
         Self {
             receiver,
+            body_sender,
             genesis_hash: params.genesis_hash,
             difficulty_window_size: params.difficulty_window_size,
             db,
@@ -190,7 +193,7 @@ impl HeaderProcessor {
                             BlockTask::Process(block, tx) => {
 
                                 let hash = block.header.hash;
-                                if self.task_manager.register(block, tx) {
+                                if self.task_manager.register(block, vec![tx]) {
                                     let processor = self.clone();
                                     rayon::spawn(move || {
                                         processor.queue_block(hash);
@@ -208,16 +211,27 @@ impl HeaderProcessor {
 
         // Wait until all workers are idle before exiting
         self.task_manager.wait_for_idle();
+
+        // Pass the exit signal on to the body processor
+        self.body_sender
+            .send(BlockBodyTask::Exit)
+            .unwrap();
     }
 
     fn queue_block(self: &Arc<HeaderProcessor>, hash: Hash) {
         if let Some(block) = self.task_manager.try_begin(hash) {
             let res = self.process_header(&block.header);
 
-            let (result_transmitters, dependent_tasks) = self.task_manager.end(hash);
+            let (block, result_transmitters, dependent_tasks) = self.task_manager.end(hash);
 
-            for tx in result_transmitters {
-                tx.send(res.clone()).unwrap();
+            if block.is_header_only() {
+                for transmitter in result_transmitters {
+                    transmitter.send(res.clone()).unwrap();
+                }
+            } else {
+                self.body_sender
+                    .send(BlockBodyTask::Process(block, result_transmitters))
+                    .unwrap();
             }
 
             for dep in dependent_tasks {
@@ -303,7 +317,7 @@ impl HeaderProcessor {
         // TODO: imp header tips store and call this only for an actual header selected tip
         reachability::hint_virtual_selected_parent(&mut staging, ctx.hash).unwrap();
 
-        // Non-append only stores need to use a write locks.
+        // Non-append only stores need to use write locks.
         // Note we need to keep the lock write guards until the batch is written.
         let relations_write_guard = self
             .relations_store
@@ -323,7 +337,7 @@ impl HeaderProcessor {
         // Flush the batch to the DB
         self.db.write(batch).unwrap();
 
-        // Calling the drops explicitly after the batch is written in order to avoid confusion.
+        // Calling the drops explicitly after the batch is written in order to avoid possible errors.
         drop(reachability_write_guard);
         drop(statuses_write_guard);
         drop(relations_write_guard);
