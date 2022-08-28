@@ -97,6 +97,89 @@ impl BlockTaskInternal {
     }
 }
 
+struct BlockTaskDependencyManager {
+    /// Holds pending block hashes and their dependent blocks
+    pending: Mutex<HashMap<Hash, BlockTaskInternal>>,
+
+    // Used to signal that workers are available/idle
+    ready_signal: Condvar,
+    idle_signal: Condvar,
+
+    // Threshold to the number of pending items above which we wait for
+    // workers to complete some work before queuing further work
+    ready_threshold: usize,
+}
+
+impl BlockTaskDependencyManager {
+    fn new(ready_threshold: usize) -> Self {
+        Self {
+            pending: Mutex::new(HashMap::new()),
+            ready_signal: Condvar::new(),
+            idle_signal: Condvar::new(),
+            ready_threshold,
+        }
+    }
+
+    fn insert(&self, block: Arc<Block>, tx: oneshot::Sender<BlockProcessResult<()>>) -> bool {
+        let mut pending = self.pending.lock();
+        match pending.entry(block.header.hash) {
+            Vacant(e) => {
+                e.insert(BlockTaskInternal::new(block, tx));
+                if pending.len() > self.ready_threshold {
+                    // If the number of pending items is already too large,
+                    // wait for workers to signal readiness.
+                    self.ready_signal.wait(&mut pending);
+                }
+                true
+            }
+            e => {
+                e.and_modify(|v| v.result_transmitters.push(tx));
+                false
+            }
+        }
+    }
+
+    fn begin(&self, hash: Hash) -> (bool, Arc<Block>) {
+        // Lock pending manager. The contention around the manager is
+        // expected to be negligible in header processing time
+        let mut pending = self.pending.lock();
+        let block = pending.get(&hash).unwrap().block.clone();
+        for parent in block.header.direct_parents().iter() {
+            if let Some(task) = pending.get_mut(parent) {
+                task.deps.push(hash);
+                return (false, block); // The block will be reprocessed once the pending parent completes processing
+            }
+        }
+        (true, block)
+    }
+
+    fn end(&self, hash: Hash) -> (Vec<oneshot::Sender<BlockProcessResult<()>>>, Vec<Hash>) {
+        // Re-lock for post-processing steps
+        let mut pending = self.pending.lock();
+        let task = pending
+            .remove(&hash)
+            .expect("processed block is expected to be in pending map");
+
+        if pending.len() == self.ready_threshold {
+            self.ready_signal.notify_one();
+        }
+
+        if pending.is_empty() {
+            self.idle_signal.notify_one();
+        }
+
+        (task.result_transmitters, task.deps)
+    }
+
+    fn wait_for_idle(&self) {
+        // Wait until all workers are idle before exiting
+        let mut pending = self.pending.lock();
+        if !pending.is_empty() {
+            self.idle_signal.wait(&mut pending);
+        }
+    }
+}
+
 pub struct HeaderProcessor {
     // Channels
     receiver: Receiver<BlockTask>,
@@ -134,19 +217,11 @@ pub struct HeaderProcessor {
     pub(super) past_median_time_manager: PastMedianTimeManager<DbHeadersStore, DbGhostdagStore, BlockWindowCacheStore>,
     pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
 
-    /// Holds pending block hashes and their dependent blocks
-    pending: Mutex<HashMap<Hash, BlockTaskInternal>>,
+    // Dependency manager
+    task_manager: BlockTaskDependencyManager,
 
     // Counters
     counters: Arc<ProcessingCounters>,
-
-    // Used to signal that workers are available/idle
-    ready_signal: Condvar,
-    idle_signal: Condvar,
-
-    // Threshold to the number of pending items above which we wait for
-    // workers to complete some work before queuing further work
-    ready_threshold: usize,
 }
 
 impl HeaderProcessor {
@@ -192,14 +267,10 @@ impl HeaderProcessor {
             ),
             reachability_service,
             past_median_time_manager,
-            pending: Mutex::new(HashMap::new()),
-            counters,
-            ready_signal: Condvar::new(),
-            idle_signal: Condvar::new(),
-
             // Note: If we ever switch to a non-global thread-pool,
             // then `num_threads` should be taken from that specific pool
-            ready_threshold: rayon::current_num_threads() * 4,
+            task_manager: BlockTaskDependencyManager::new(rayon::current_num_threads() * 4),
+            counters,
             timestamp_deviation_tolerance: params.timestamp_deviation_tolerance,
             target_time_per_block: params.target_time_per_block,
             max_block_parents: params.max_block_parents,
@@ -214,7 +285,14 @@ impl HeaderProcessor {
                         match task {
                             BlockTask::Exit => break,
                             BlockTask::Process(block, tx) => {
-                                self.handle_received_block(block, tx);
+
+                                let hash = block.header.hash;
+                                if self.task_manager.insert(block, tx) {
+                                    let processor = self.clone();
+                                    rayon::spawn(move || {
+                                        processor.queue_block(hash);
+                                    });
+                                }
                             }
                         };
                     } else {
@@ -226,72 +304,24 @@ impl HeaderProcessor {
         }
 
         // Wait until all workers are idle before exiting
-        let mut pending = self.pending.lock();
-        if !pending.is_empty() {
-            self.idle_signal.wait(&mut pending);
-        }
-    }
-
-    fn handle_received_block(
-        self: &Arc<HeaderProcessor>, block: Arc<Block>, tx: oneshot::Sender<BlockProcessResult<()>>,
-    ) {
-        let mut pending = self.pending.lock();
-        let hash = block.header.hash;
-        match pending.entry(hash) {
-            Vacant(e) => {
-                e.insert(BlockTaskInternal::new(block, tx));
-                if pending.len() > self.ready_threshold {
-                    // If the number of pending items is already too large,
-                    // wait for workers to signal readiness.
-                    self.ready_signal.wait(&mut pending);
-                }
-
-                let processor = self.clone();
-                rayon::spawn(move || {
-                    processor.queue_block(hash);
-                });
-            }
-            e => {
-                e.and_modify(|v| v.result_transmitters.push(tx));
-            }
-        }
+        self.task_manager.wait_for_idle();
     }
 
     fn queue_block(self: &Arc<HeaderProcessor>, hash: Hash) {
-        // Lock pending manager. The contention around the manager is
-        // expected to be negligible in header processing time
-        let mut pending = self.pending.lock();
-        let block = pending.get(&hash).unwrap().block.clone();
-        for parent in block.header.direct_parents().iter() {
-            if let Some(task) = pending.get_mut(parent) {
-                task.deps.push(hash);
-                return; // The block will be reprocessed once the pending parent completes processing
-            }
+        let (should_process, block) = self.task_manager.begin(hash);
+        if !should_process {
+            return;
         }
-        // Unlock before processing
-        drop(pending);
 
         let res = self.process_header(&block.header);
 
-        // Re-lock for post-processing steps
-        let mut pending = self.pending.lock();
-        let task = pending
-            .remove(&hash)
-            .expect("processed block is expected to be in pending map");
+        let (result_transmitters, deps) = self.task_manager.end(hash);
 
-        for tx in task.result_transmitters {
+        for tx in result_transmitters {
             tx.send(res.clone()).unwrap();
         }
 
-        if pending.len() == self.ready_threshold {
-            self.ready_signal.notify_one();
-        }
-
-        if pending.is_empty() {
-            self.idle_signal.notify_one();
-        }
-
-        for dep in task.deps {
+        for dep in deps {
             let processor = self.clone();
             rayon::spawn(move || processor.queue_block(dep));
         }
