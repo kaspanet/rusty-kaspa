@@ -47,7 +47,7 @@ pub struct Consensus {
     reachability_store: Arc<RwLock<DbReachabilityStore>>,
 
     // Append-only stores
-    ghostdag_store: Arc<DbGhostdagStore>,
+    pub(super) ghostdag_store: Arc<DbGhostdagStore>,
 
     // Services and managers
     statuses_service: Arc<MTStatusesService<DbStatusesStore>>,
