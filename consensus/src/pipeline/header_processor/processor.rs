@@ -214,27 +214,7 @@ impl HeaderProcessor {
                         match task {
                             BlockTask::Exit => break,
                             BlockTask::Process(block, tx) => {
-
-                                let mut pending = self.pending.lock();
-
-                                match pending.entry(block.header.hash) {
-                                    Vacant(e) => {
-                                        e.insert(BlockTaskInternal::new(block.clone(), tx));
-                                        if pending.len() > self.ready_threshold {
-                                            // If the number of pending items is already too large,
-                                            // wait for workers to signal readiness.
-                                            self.ready_signal.wait(&mut pending);
-                                        }
-
-                                        let processor = self.clone();
-                                        rayon::spawn(move || {
-                                            processor.queue_block(block);
-                                        });
-                                    }
-                                    e => {
-                                        e.and_modify(|v| v.result_transmitters.push(tx));
-                                    }
-                                }
+                                self.handle_received_block(block, tx);
                             }
                         };
                     } else {
@@ -252,24 +232,48 @@ impl HeaderProcessor {
         }
     }
 
-    fn queue_block(self: &Arc<HeaderProcessor>, block: Arc<Block>) {
+    fn handle_received_block(
+        self: &Arc<HeaderProcessor>, block: Arc<Block>, tx: oneshot::Sender<BlockProcessResult<()>>,
+    ) {
+        let mut pending = self.pending.lock();
         let hash = block.header.hash;
-
-        {
-            // Lock pending manager. The contention around the manager is
-            // expected to be negligible in header processing time
-            let mut pending = self.pending.lock();
-
-            for parent in block.header.direct_parents().iter() {
-                if let Some(task) = pending.get_mut(parent) {
-                    task.deps.push(hash);
-                    return; // The block will be reprocessed once the pending parent completes processing
+        match pending.entry(hash) {
+            Vacant(e) => {
+                e.insert(BlockTaskInternal::new(block, tx));
+                if pending.len() > self.ready_threshold {
+                    // If the number of pending items is already too large,
+                    // wait for workers to signal readiness.
+                    self.ready_signal.wait(&mut pending);
                 }
+
+                let processor = self.clone();
+                rayon::spawn(move || {
+                    processor.queue_block(hash);
+                });
+            }
+            e => {
+                e.and_modify(|v| v.result_transmitters.push(tx));
             }
         }
+    }
+
+    fn queue_block(self: &Arc<HeaderProcessor>, hash: Hash) {
+        // Lock pending manager. The contention around the manager is
+        // expected to be negligible in header processing time
+        let mut pending = self.pending.lock();
+        let block = pending.get(&hash).unwrap().block.clone();
+        for parent in block.header.direct_parents().iter() {
+            if let Some(task) = pending.get_mut(parent) {
+                task.deps.push(hash);
+                return; // The block will be reprocessed once the pending parent completes processing
+            }
+        }
+        // Unlock before processing
+        drop(pending);
 
         let res = self.process_header(&block.header);
 
+        // Re-lock for post-processing steps
         let mut pending = self.pending.lock();
         let task = pending
             .remove(&hash)
@@ -288,9 +292,8 @@ impl HeaderProcessor {
         }
 
         for dep in task.deps {
-            let block = pending.get(&dep).unwrap().block.clone();
             let processor = self.clone();
-            rayon::spawn(move || processor.queue_block(block));
+            rayon::spawn(move || processor.queue_block(dep));
         }
     }
 
