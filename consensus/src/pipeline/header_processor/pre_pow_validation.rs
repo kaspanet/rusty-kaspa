@@ -186,7 +186,7 @@ impl HeaderProcessor {
 
         let expected_bits = self
             .difficulty_manager
-            .calculate_difficulty_bits(&mut window.iter().map(|item| item.0.hash));
+            .calculate_difficulty_bits(&window);
         if header.bits != expected_bits {
             return Err(RuleError::UnexpectedDifficulty(header.bits, expected_bits));
         }

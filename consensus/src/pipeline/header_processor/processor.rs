@@ -134,7 +134,7 @@ impl HeaderProcessor {
         relations_service: Arc<MTRelationsService<DbRelationsStore>>,
         past_median_time_manager: PastMedianTimeManager<DbHeadersStore, DbGhostdagStore, BlockWindowCacheStore>,
         dag_traversal_manager: DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore>,
-        counters: Arc<ProcessingCounters>,
+        difficulty_manager: DifficultyManager<DbHeadersStore>, counters: Arc<ProcessingCounters>,
     ) -> Self {
         Self {
             receiver,
@@ -148,7 +148,7 @@ impl HeaderProcessor {
             statuses_store,
             pruning_store,
             daa_store,
-            headers_store: headers_store.clone(),
+            headers_store,
             block_window_cache_for_difficulty,
             block_window_cache_for_past_median_time,
             ghostdag_manager: GhostdagManager::new(
@@ -159,11 +159,7 @@ impl HeaderProcessor {
                 reachability_service.clone(),
             ),
             dag_traversal_manager,
-            difficulty_manager: DifficultyManager::new(
-                headers_store,
-                params.genesis_bits,
-                params.difficulty_window_size,
-            ),
+            difficulty_manager,
             reachability_service,
             past_median_time_manager,
             task_manager: BlockTaskDependencyManager::new(),
