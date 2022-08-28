@@ -9,10 +9,10 @@ use crate::{
             headers::DbHeadersStore,
             pruning::DbPruningStore,
             reachability::{DbReachabilityStore, StagingReachabilityStore},
-            relations::DbRelationsStore,
+            relations::{DbRelationsStore, RelationsStoreBatchExtensions},
             statuses::{
                 BlockStatus::{StatusHeaderOnly, StatusInvalid},
-                DbStatusesStore, StatusesStore, StatusesStoreReader,
+                DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader,
             },
             DB,
         },
@@ -214,13 +214,13 @@ impl HeaderProcessor {
         if let Some(block) = self.task_manager.try_begin(hash) {
             let res = self.process_header(&block.header);
 
-            let (result_transmitters, deps) = self.task_manager.end(hash);
+            let (result_transmitters, dependent_tasks) = self.task_manager.end(hash);
 
             for tx in result_transmitters {
                 tx.send(res.clone()).unwrap();
             }
 
-            for dep in deps {
+            for dep in dependent_tasks {
                 let processor = self.clone();
                 rayon::spawn(move || processor.queue_block(dep));
             }
@@ -270,29 +270,12 @@ impl HeaderProcessor {
 
     fn commit_header(self: &Arc<HeaderProcessor>, ctx: HeaderProcessingContext, header: &Header) {
         let ghostdag_data = ctx.ghostdag_data.unwrap();
-
-        // Create staging reachability store. We use an upgradable read here to avoid concurrent
-        // staging reachability operations. PERF: we assume that reachability processing time << header processing
-        // time, and thus serializing this part will do no harm. However this should be benchmarked. The
-        // alternative is to create a separate ReachabilityProcessor and to manage things more tightly.
-        let mut staging = StagingReachabilityStore::new(self.reachability_store.upgradable_read());
-
-        // Add block to staging reachability
-        reachability::add_block(
-            &mut staging,
-            ctx.hash,
-            ghostdag_data.selected_parent,
-            &mut ctx.mergeset.unwrap().iter().cloned(),
-        )
-        .unwrap();
-        // Hint reachability about the new tip.
-        // TODO: imp header tips store and call this only for an actual header selected tip
-        reachability::hint_virtual_selected_parent(&mut staging, ctx.hash).unwrap();
+        let selected_parent = ghostdag_data.selected_parent;
 
         // Create a DB batch writer
         let mut batch = WriteBatch::default();
 
-        // Write to append only stores: this requires no lock
+        // Write to append only stores: this requires no lock and hence done first
         self.ghostdag_store
             .insert_batch(&mut batch, ctx.hash, ghostdag_data)
             .unwrap();
@@ -307,23 +290,43 @@ impl HeaderProcessor {
             .insert_batch(&mut batch, ctx.hash, Arc::new(ctx.header.clone()))
             .unwrap();
 
-        // Non-append only stores need to use a write lock
-        self.relations_store
-            .write()
-            .insert_batch(&mut batch, header.hash, BlockHashes::new(header.direct_parents().clone()))
-            .unwrap(); // Note we lock until the batch is written
+        // Create staging reachability store. We use an upgradable read here to avoid concurrent
+        // staging reachability operations. PERF: we assume that reachability processing time << header processing
+        // time, and thus serializing this part will do no harm. However this should be benchmarked. The
+        // alternative is to create a separate ReachabilityProcessor and to manage things more tightly.
+        let mut staging = StagingReachabilityStore::new(self.reachability_store.upgradable_read());
 
-        self.statuses_store
-            .write()
+        // Add block to staging reachability
+        reachability::add_block(&mut staging, ctx.hash, selected_parent, &mut ctx.mergeset.unwrap().iter().cloned())
+            .unwrap();
+        // Hint reachability about the new tip.
+        // TODO: imp header tips store and call this only for an actual header selected tip
+        reachability::hint_virtual_selected_parent(&mut staging, ctx.hash).unwrap();
+
+        // Non-append only stores need to use a write locks.
+        // Note we need to keep the lock write guards until the batch is written.
+        let relations_write_guard = self
+            .relations_store
+            .insert_batch(&mut batch, header.hash, BlockHashes::new(header.direct_parents().clone()))
+            .unwrap();
+
+        let statuses_write_guard = self
+            .statuses_store
             .set_batch(&mut batch, ctx.hash, StatusHeaderOnly)
             .unwrap();
 
         // Write reachability data. Only at this brief moment the reachability store is locked for reads.
         // We take special care for this since reachability read queries are used throughout the system frequently.
-        let write_guard = staging.commit(&mut batch).unwrap(); // Note we hold the lock until the batch is written
+        // Note we hold the lock until the batch is written
+        let reachability_write_guard = staging.commit(&mut batch).unwrap();
 
         // Flush the batch to the DB
         self.db.write(batch).unwrap();
+
+        // Calling the drops explicitly after the batch is written in order to avoid confusion.
+        drop(reachability_write_guard);
+        drop(statuses_write_guard);
+        drop(relations_write_guard);
     }
 
     pub fn process_genesis_if_needed(self: &Arc<HeaderProcessor>) {
