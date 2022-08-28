@@ -1,7 +1,6 @@
 use super::{caching::CachedDbAccess, errors::StoreError, DB};
-use consensus_core::blockhash::BlockHashes;
+use consensus_core::{blockhash::BlockHashes, BlueWorkType};
 use hashes::Hash;
-use misc::uint256::Uint256;
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
 use std::{cell::RefCell, collections::HashMap, sync::Arc};
@@ -12,7 +11,7 @@ pub type HashKTypeMap = Arc<HashMap<Hash, KType>>;
 #[derive(Clone, Serialize, Deserialize)]
 pub struct GhostdagData {
     pub blue_score: u64,
-    pub blue_work: Uint256,
+    pub blue_work: BlueWorkType,
     pub selected_parent: Hash,
     pub mergeset_blues: BlockHashes,
     pub mergeset_reds: BlockHashes,
@@ -21,7 +20,7 @@ pub struct GhostdagData {
 
 impl GhostdagData {
     pub fn new(
-        blue_score: u64, blue_work: Uint256, selected_parent: Hash, mergeset_blues: BlockHashes,
+        blue_score: u64, blue_work: BlueWorkType, selected_parent: Hash, mergeset_blues: BlockHashes,
         mergeset_reds: BlockHashes, blues_anticone_sizes: HashKTypeMap,
     ) -> Self {
         Self { blue_score, blue_work, selected_parent, mergeset_blues, mergeset_reds, blues_anticone_sizes }
@@ -74,7 +73,7 @@ impl GhostdagData {
         BlockHashes::make_mut(&mut data.mergeset_reds).push(block);
     }
 
-    pub fn finalize_score_and_work(self: &mut Arc<Self>, blue_score: u64, blue_work: Uint256) {
+    pub fn finalize_score_and_work(self: &mut Arc<Self>, blue_score: u64, blue_work: BlueWorkType) {
         let data = Arc::make_mut(self);
         data.blue_score = blue_score;
         data.blue_work = blue_work;
@@ -85,7 +84,7 @@ impl GhostdagData {
 
 pub trait GhostdagStoreReader {
     fn get_blue_score(&self, hash: Hash) -> Result<u64, StoreError>;
-    fn get_blue_work(&self, hash: Hash) -> Result<Uint256, StoreError>;
+    fn get_blue_work(&self, hash: Hash) -> Result<BlueWorkType, StoreError>;
     fn get_selected_parent(&self, hash: Hash) -> Result<Hash, StoreError>;
     fn get_mergeset_blues(&self, hash: Hash) -> Result<BlockHashes, StoreError>;
     fn get_mergeset_reds(&self, hash: Hash) -> Result<BlockHashes, StoreError>;
@@ -143,7 +142,7 @@ impl GhostdagStoreReader for DbGhostdagStore {
         Ok(self.cached_access.read(hash)?.blue_score)
     }
 
-    fn get_blue_work(&self, hash: Hash) -> Result<Uint256, StoreError> {
+    fn get_blue_work(&self, hash: Hash) -> Result<BlueWorkType, StoreError> {
         Ok(self.cached_access.read(hash)?.blue_work)
     }
 
@@ -192,7 +191,7 @@ impl GhostdagStore for DbGhostdagStore {
 /// being non-mutable.
 pub struct MemoryGhostdagStore {
     blue_score_map: RefCell<HashMap<Hash, u64>>,
-    blue_work_map: RefCell<HashMap<Hash, Uint256>>,
+    blue_work_map: RefCell<HashMap<Hash, BlueWorkType>>,
     selected_parent_map: RefCell<HashMap<Hash, Hash>>,
     mergeset_blues_map: RefCell<HashMap<Hash, BlockHashes>>,
     mergeset_reds_map: RefCell<HashMap<Hash, BlockHashes>>,
@@ -253,7 +252,7 @@ impl GhostdagStoreReader for MemoryGhostdagStore {
         }
     }
 
-    fn get_blue_work(&self, hash: Hash) -> Result<Uint256, StoreError> {
+    fn get_blue_work(&self, hash: Hash) -> Result<BlueWorkType, StoreError> {
         match self.blue_work_map.borrow().get(&hash) {
             Some(blue_work) => Ok(*blue_work),
             None => Err(StoreError::KeyNotFound(hash.to_string())),
