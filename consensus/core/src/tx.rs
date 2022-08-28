@@ -58,6 +58,7 @@ impl Display for TransactionOutpoint {
 }
 
 /// Represents a Kaspa transaction input
+#[derive(Debug)]
 pub struct TransactionInput {
     pub previous_outpoint: TransactionOutpoint,
     pub signature_script: Vec<u8>,
@@ -76,12 +77,14 @@ impl TransactionInput {
 }
 
 /// Represents a Kaspad transaction output
+#[derive(Debug)]
 pub struct TransactionOutput {
     pub value: u64,
     pub script_public_key: Arc<ScriptPublicKey>,
 }
 
 /// Represents a Kaspa transaction
+#[derive(Debug)]
 pub struct Transaction {
     pub version: u16,
     pub inputs: Vec<Arc<TransactionInput>>,

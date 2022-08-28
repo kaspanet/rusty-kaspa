@@ -1,3 +1,4 @@
+pub mod deps_manager;
 pub mod header_processor;
 
 use std::sync::atomic::{AtomicU64, Ordering};

@@ -18,6 +18,7 @@ use crate::{
         },
     },
     params::Params,
+    pipeline::deps_manager::BlockTaskDependencyManager,
     processes::{
         dagtraversalmanager::DagTraversalManager, difficulty::DifficultyManager, ghostdag::protocol::GhostdagManager,
         pastmediantime::PastMedianTimeManager, reachability::inquirer as reachability,
@@ -28,12 +29,9 @@ use consensus_core::{block::Block, blockhash::BlockHashes, header::Header};
 use crossbeam::select;
 use crossbeam_channel::Receiver;
 use hashes::Hash;
-use parking_lot::{Condvar, Mutex, RwLock};
+use parking_lot::RwLock;
 use rocksdb::WriteBatch;
-use std::{
-    collections::{hash_map::Entry::Vacant, HashMap},
-    sync::{atomic::Ordering, Arc},
-};
+use std::sync::{atomic::Ordering, Arc};
 use tokio::sync::oneshot;
 
 use super::super::ProcessingCounters;
@@ -83,101 +81,6 @@ impl<'a> HeaderProcessingContext<'a> {
 pub enum BlockTask {
     Exit,
     Process(Arc<Block>, oneshot::Sender<BlockProcessResult<()>>),
-}
-
-struct BlockTaskInternal {
-    block: Arc<Block>,
-    result_transmitters: Vec<oneshot::Sender<BlockProcessResult<()>>>,
-    deps: Vec<Hash>,
-}
-
-impl BlockTaskInternal {
-    fn new(block: Arc<Block>, tx: oneshot::Sender<BlockProcessResult<()>>) -> Self {
-        Self { block, result_transmitters: vec![tx], deps: Vec::new() }
-    }
-}
-
-struct BlockTaskDependencyManager {
-    /// Holds pending block hashes and their dependent blocks
-    pending: Mutex<HashMap<Hash, BlockTaskInternal>>,
-
-    // Used to signal that workers are available/idle
-    ready_signal: Condvar,
-    idle_signal: Condvar,
-
-    // Threshold to the number of pending items above which we wait for
-    // workers to complete some work before queuing further work
-    ready_threshold: usize,
-}
-
-impl BlockTaskDependencyManager {
-    fn new(ready_threshold: usize) -> Self {
-        Self {
-            pending: Mutex::new(HashMap::new()),
-            ready_signal: Condvar::new(),
-            idle_signal: Condvar::new(),
-            ready_threshold,
-        }
-    }
-
-    fn insert(&self, block: Arc<Block>, tx: oneshot::Sender<BlockProcessResult<()>>) -> bool {
-        let mut pending = self.pending.lock();
-        match pending.entry(block.header.hash) {
-            Vacant(e) => {
-                e.insert(BlockTaskInternal::new(block, tx));
-                if pending.len() > self.ready_threshold {
-                    // If the number of pending items is already too large,
-                    // wait for workers to signal readiness.
-                    self.ready_signal.wait(&mut pending);
-                }
-                true
-            }
-            e => {
-                e.and_modify(|v| v.result_transmitters.push(tx));
-                false
-            }
-        }
-    }
-
-    fn begin(&self, hash: Hash) -> (bool, Arc<Block>) {
-        // Lock pending manager. The contention around the manager is
-        // expected to be negligible in header processing time
-        let mut pending = self.pending.lock();
-        let block = pending.get(&hash).unwrap().block.clone();
-        for parent in block.header.direct_parents().iter() {
-            if let Some(task) = pending.get_mut(parent) {
-                task.deps.push(hash);
-                return (false, block); // The block will be reprocessed once the pending parent completes processing
-            }
-        }
-        (true, block)
-    }
-
-    fn end(&self, hash: Hash) -> (Vec<oneshot::Sender<BlockProcessResult<()>>>, Vec<Hash>) {
-        // Re-lock for post-processing steps
-        let mut pending = self.pending.lock();
-        let task = pending
-            .remove(&hash)
-            .expect("processed block is expected to be in pending map");
-
-        if pending.len() == self.ready_threshold {
-            self.ready_signal.notify_one();
-        }
-
-        if pending.is_empty() {
-            self.idle_signal.notify_one();
-        }
-
-        (task.result_transmitters, task.deps)
-    }
-
-    fn wait_for_idle(&self) {
-        // Wait until all workers are idle before exiting
-        let mut pending = self.pending.lock();
-        if !pending.is_empty() {
-            self.idle_signal.wait(&mut pending);
-        }
-    }
 }
 
 pub struct HeaderProcessor {
@@ -287,7 +190,7 @@ impl HeaderProcessor {
                             BlockTask::Process(block, tx) => {
 
                                 let hash = block.header.hash;
-                                if self.task_manager.insert(block, tx) {
+                                if self.task_manager.register(block, tx) {
                                     let processor = self.clone();
                                     rayon::spawn(move || {
                                         processor.queue_block(hash);
@@ -308,22 +211,19 @@ impl HeaderProcessor {
     }
 
     fn queue_block(self: &Arc<HeaderProcessor>, hash: Hash) {
-        let (should_process, block) = self.task_manager.begin(hash);
-        if !should_process {
-            return;
-        }
+        if let Some(block) = self.task_manager.try_begin(hash) {
+            let res = self.process_header(&block.header);
 
-        let res = self.process_header(&block.header);
+            let (result_transmitters, deps) = self.task_manager.end(hash);
 
-        let (result_transmitters, deps) = self.task_manager.end(hash);
+            for tx in result_transmitters {
+                tx.send(res.clone()).unwrap();
+            }
 
-        for tx in result_transmitters {
-            tx.send(res.clone()).unwrap();
-        }
-
-        for dep in deps {
-            let processor = self.clone();
-            rayon::spawn(move || processor.queue_block(dep));
+            for dep in deps {
+                let processor = self.clone();
+                rayon::spawn(move || processor.queue_block(dep));
+            }
         }
     }
 
