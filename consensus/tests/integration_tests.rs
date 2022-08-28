@@ -17,6 +17,7 @@ use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::BufReader;
 use std::path::Path;
+use std::str::from_utf8;
 use std::sync::Arc;
 
 mod common;
@@ -279,4 +280,99 @@ fn strings_to_hashes(strings: &Vec<String>) -> Vec<Hash> {
         vec.push(string_to_hash(string));
     }
     vec
+}
+
+#[tokio::test]
+async fn block_window_test() {
+    let (_, db) = common::create_temp_db();
+
+    let mut params = MAINNET_PARAMS;
+    params.genesis_hash = string_to_hash("A");
+    params.ghostdag_k = 1;
+
+    let consensus = TestConsensus::new(db, &params);
+    let wait_handle = consensus.init();
+
+    struct TestBlock {
+        parents: Vec<&'static str>,
+        id: &'static str,
+        expected_window: Vec<&'static str>,
+    }
+
+    let test_blocks = vec![
+        TestBlock { parents: vec!["A"], id: "B", expected_window: vec![] },
+        TestBlock { parents: vec!["B"], id: "C", expected_window: vec!["B"] },
+        TestBlock { parents: vec!["B"], id: "D", expected_window: vec!["B"] },
+        TestBlock { parents: vec!["D", "C"], id: "E", expected_window: vec!["D", "C", "B"] },
+        TestBlock { parents: vec!["D", "C"], id: "F", expected_window: vec!["D", "C", "B"] },
+        TestBlock { parents: vec!["A"], id: "G", expected_window: vec![] },
+        TestBlock { parents: vec!["G"], id: "H", expected_window: vec!["G"] },
+        TestBlock { parents: vec!["H", "F"], id: "I", expected_window: vec!["F", "H", "D", "C", "G", "B"] },
+        TestBlock { parents: vec!["I"], id: "J", expected_window: vec!["I", "F", "H", "D", "C", "G", "B"] },
+        TestBlock { parents: vec!["J"], id: "K", expected_window: vec!["J", "I", "F", "H", "D", "C", "G", "B"] },
+        TestBlock { parents: vec!["K"], id: "L", expected_window: vec!["K", "J", "I", "F", "H", "D", "C", "G", "B"] },
+        TestBlock {
+            parents: vec!["L"],
+            id: "M",
+            expected_window: vec!["L", "K", "J", "I", "F", "H", "D", "C", "G", "B"],
+        },
+        TestBlock {
+            parents: vec!["M"],
+            id: "N",
+            expected_window: vec!["M", "L", "K", "J", "I", "F", "H", "D", "C", "G"],
+        },
+        TestBlock {
+            parents: vec!["N"],
+            id: "O",
+            expected_window: vec!["N", "M", "L", "K", "J", "I", "F", "H", "D", "C"],
+        },
+    ];
+
+    for test_block in test_blocks {
+        println!("Processing block {}", test_block.id);
+        let block_id = string_to_hash(test_block.id);
+        let block = consensus.build_block_with_parents(
+            block_id,
+            strings_to_hashes(
+                &test_block
+                    .parents
+                    .iter()
+                    .map(|parent| String::from(*parent))
+                    .collect(),
+            ),
+        );
+
+        // Submit to consensus
+        consensus
+            .validate_and_insert_block(Arc::new(block))
+            .await
+            .unwrap();
+
+        let window = consensus.dag_traversal_manager().block_window(
+            consensus
+                .ghostdag_store()
+                .get_data(block_id)
+                .unwrap(),
+            10,
+        );
+
+        let window_hashes: Vec<String> = window
+            .into_sorted_vec()
+            .iter()
+            .map(|item| {
+                let slice = &item.0.hash.as_bytes()[..1];
+                from_utf8(slice).unwrap().to_owned()
+            })
+            .collect();
+
+        let expected_window_ids: Vec<String> = test_block
+            .expected_window
+            .iter()
+            .map(|id| String::from(*id))
+            .collect();
+        assert_eq!(expected_window_ids, window_hashes);
+    }
+
+    consensus.drop();
+    wait_handle.join().unwrap();
 }
