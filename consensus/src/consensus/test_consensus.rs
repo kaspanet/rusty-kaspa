@@ -6,9 +6,12 @@ use parking_lot::RwLock;
 
 use crate::{
     errors::BlockProcessResult,
-    model::stores::{ghostdag::DbGhostdagStore, reachability::DbReachabilityStore, DB},
+    model::stores::{
+        block_window_cache::BlockWindowCacheStore, ghostdag::DbGhostdagStore, reachability::DbReachabilityStore, DB,
+    },
     params::Params,
     pipeline::header_processor::HeaderProcessingContext,
+    processes::dagtraversalmanager::DagTraversalManager,
     test_helpers::header_from_precomputed_hash,
 };
 
@@ -71,5 +74,13 @@ impl TestConsensus {
 
     pub fn drop(self) -> (Arc<RwLock<DbReachabilityStore>>, Arc<DbGhostdagStore>) {
         self.consensus.drop()
+    }
+
+    pub fn dag_traversal_manager(&self) -> &DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore> {
+        &self.consensus.dag_traversal_manager
+    }
+
+    pub fn ghostdag_store(&self) -> &Arc<DbGhostdagStore> {
+        &self.consensus.ghostdag_store
     }
 }
