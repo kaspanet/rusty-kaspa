@@ -5,3 +5,5 @@ pub mod header;
 pub mod subnets;
 pub mod tx;
 pub mod utxo;
+
+pub type BlueWorkType = u128;
