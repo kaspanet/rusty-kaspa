@@ -392,7 +392,7 @@ async fn block_window_test() {
 async fn header_in_isolation_validation_test() {
     let params = &MAINNET_PARAMS;
     let consensus = TestConsensus::create_from_temp_db(params);
-    let wait_handle = consensus.init();
+    let wait_handles = consensus.init();
     let block = consensus.build_block_with_parents(1.into(), vec![params.genesis_hash]);
 
     {
@@ -473,14 +473,16 @@ async fn header_in_isolation_validation_test() {
     }
 
     let _ = consensus.drop();
-    wait_handle.join().unwrap();
+    for handle in wait_handles {
+        handle.join().unwrap();
+    }
 }
 
 #[tokio::test]
 async fn incest_test() {
     let params = &MAINNET_PARAMS;
     let consensus = TestConsensus::create_from_temp_db(params);
-    let wait_handle = consensus.init();
+    let wait_handles = consensus.init();
     let block = consensus.build_block_with_parents(1.into(), vec![params.genesis_hash]);
     consensus
         .validate_and_insert_block(Arc::new(block))
@@ -502,5 +504,7 @@ async fn incest_test() {
         }
     }
     let _ = consensus.drop();
-    wait_handle.join().unwrap();
+    for handle in wait_handles {
+        handle.join().unwrap();
+    }
 }
