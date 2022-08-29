@@ -85,9 +85,15 @@ impl BlockBodyProcessor {
 
             let (block, result_transmitters, dependent_tasks) = self.task_manager.end(hash);
 
-            self.sender
-                .send(BlockTask::Process(block, result_transmitters))
-                .unwrap();
+            if let Err(e) = res {
+                for tx in result_transmitters {
+                    tx.send(Err(e.clone())).unwrap();
+                }
+            } else {
+                self.sender
+                    .send(BlockTask::Process(block, result_transmitters))
+                    .unwrap();
+            }
 
             for dep in dependent_tasks {
                 let processor = self.clone();
