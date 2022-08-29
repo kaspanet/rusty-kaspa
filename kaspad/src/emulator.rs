@@ -1,5 +1,6 @@
-use consensus::{consensus::Consensus, constants::BLOCK_VERSION, pipeline::ProcessingCounters};
+use consensus::{consensus::Consensus, constants::BLOCK_VERSION, errors::RuleError, pipeline::ProcessingCounters};
 use consensus_core::block::Block;
+use futures::future::join_all;
 use hashes::Hash;
 use kaspa_core::{core::Core, service::Service, trace};
 use num_format::{Locale, ToFormattedString};
@@ -49,38 +50,51 @@ impl RandomBlockEmitter {
         }
     }
 
-    #[allow(unused_must_use)] // Temp until fixing the emulator
-    pub fn worker(self: &Arc<RandomBlockEmitter>, core: Arc<Core>) {
+    #[tokio::main]
+    pub async fn worker(self: &Arc<RandomBlockEmitter>, core: Arc<Core>) {
         let poi = Poisson::new(self.bps * self.delay).unwrap();
         let mut thread_rng = rand::thread_rng();
 
         let mut tips = vec![self.genesis];
         let mut total = 0;
+        let mut timestamp = 0u64;
 
         while total < self.target_blocks {
             let v = min(self.max_block_parents, poi.sample(&mut thread_rng) as u64);
+            timestamp += (self.delay as u64) * 1000;
             if v == 0 {
                 continue;
             }
-            total += v;
 
             if self.terminate.load(Ordering::SeqCst) {
                 break;
             }
 
             let mut new_tips = Vec::with_capacity(v as usize);
-            for i in 0..v {
-                // Create a new block referencing all tips from the previous round
-                let b = Block::new(BLOCK_VERSION, tips.clone(), 0, 0, i, 0);
-                new_tips.push(b.header.hash);
-                // Submit to consensus
-                self.consensus
-                    .validate_and_insert_block(Arc::new(b));
-            }
-            tips = new_tips;
+            let mut futures = Vec::new();
+
             self.counters
                 .blocks_submitted
-                .fetch_add(v, Ordering::Relaxed);
+                .fetch_add(v, Ordering::SeqCst);
+                
+            for i in 0..v {
+                // Create a new block referencing all tips from the previous round
+                let b = Block::new(BLOCK_VERSION, tips.clone(), timestamp, 0, i, total);
+                new_tips.push(b.header.hash);
+                // Submit to consensus
+                let f = self
+                    .consensus
+                    .validate_and_insert_block(Arc::new(b));
+                futures.push(f);
+            }
+            join_all(futures)
+                .await
+                .into_iter()
+                .collect::<Result<Vec<()>, RuleError>>()
+                .unwrap();
+
+            tips = new_tips;
+            total += v;
         }
         self.consensus.signal_exit();
         thread::sleep(Duration::from_millis(4000));
