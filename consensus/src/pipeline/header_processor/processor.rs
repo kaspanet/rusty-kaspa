@@ -26,7 +26,6 @@ use crate::{
     test_helpers::header_from_precomputed_hash,
 };
 use consensus_core::{blockhash::BlockHashes, header::Header};
-use crossbeam::select;
 use crossbeam_channel::{Receiver, Sender};
 use hashes::Hash;
 use parking_lot::RwLock;
@@ -176,29 +175,22 @@ impl HeaderProcessor {
     }
 
     pub fn worker(self: &Arc<HeaderProcessor>) {
-        loop {
-            select! {
-                recv(self.receiver) -> data => {
-                    if let Ok(task) = data {
-                        match task {
-                            BlockTask::Exit => break,
-                            BlockTask::Process(block, result_transmitters) => {
-
-                                let hash = block.header.hash;
-                                if self.task_manager.register(block, result_transmitters) {
-                                    let processor = self.clone();
-                                    rayon::spawn(move || {
-                                        processor.queue_block(hash);
-                                    });
-                                }
-                            }
-                        };
-                    } else {
-                        // All senders are dropped
-                        break;
+        while let Ok(task) = self.receiver.recv() {
+            match task {
+                BlockTask::Exit => break,
+                BlockTask::Process(block, result_transmitters) => {
+                    let hash = block.header.hash;
+                    if self
+                        .task_manager
+                        .register(block, result_transmitters)
+                    {
+                        let processor = self.clone();
+                        rayon::spawn(move || {
+                            processor.queue_block(hash);
+                        });
                     }
                 }
-            }
+            };
         }
 
         // Wait until all workers are idle before exiting

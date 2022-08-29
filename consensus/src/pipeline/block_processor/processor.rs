@@ -7,7 +7,6 @@ use crate::{
     pipeline::deps_manager::{BlockTask, BlockTaskDependencyManager},
 };
 use consensus_core::block::Block;
-use crossbeam::select;
 use crossbeam_channel::{Receiver, Sender};
 use hashes::Hash;
 use parking_lot::RwLock;
@@ -47,29 +46,22 @@ impl BlockBodyProcessor {
     }
 
     pub fn worker(self: &Arc<BlockBodyProcessor>) {
-        loop {
-            select! {
-                recv(self.receiver) -> data => {
-                    if let Ok(task) = data {
-                        match task {
-                            BlockTask::Exit => break,
-                            BlockTask::Process(block, result_transmitters) => {
-
-                                let hash = block.header.hash;
-                                if self.task_manager.register(block, result_transmitters) {
-                                    let processor = self.clone();
-                                    rayon::spawn(move || {
-                                        processor.queue_block(hash);
-                                    });
-                                }
-                            }
-                        };
-                    } else {
-                        // All senders are dropped
-                        break;
+        while let Ok(task) = self.receiver.recv() {
+            match task {
+                BlockTask::Exit => break,
+                BlockTask::Process(block, result_transmitters) => {
+                    let hash = block.header.hash;
+                    if self
+                        .task_manager
+                        .register(block, result_transmitters)
+                    {
+                        let processor = self.clone();
+                        rayon::spawn(move || {
+                            processor.queue_block(hash);
+                        });
                     }
                 }
-            }
+            };
         }
 
         // Wait until all workers are idle before exiting

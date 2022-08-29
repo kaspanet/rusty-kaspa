@@ -7,7 +7,6 @@ use crate::{
     pipeline::deps_manager::BlockTask,
 };
 use consensus_core::block::Block;
-use crossbeam::select;
 use crossbeam_channel::Receiver;
 use parking_lot::RwLock;
 use std::sync::Arc;
@@ -35,25 +34,16 @@ impl VirtualStateProcessor {
     }
 
     pub fn worker(self: &Arc<VirtualStateProcessor>) {
-        loop {
-            select! {
-                recv(self.receiver) -> data => {
-                    if let Ok(task) = data {
-                        match task {
-                            BlockTask::Exit => break,
-                            BlockTask::Process(block, result_transmitters) => {
-                                let res = self.resolve_virtual(&block);
-                                for tx in result_transmitters {
-                                    tx.send(res.clone()).unwrap();
-                                }
-                            }
-                        };
-                    } else {
-                        // All senders are dropped
-                        break;
+        while let Ok(task) = self.receiver.recv() {
+            match task {
+                BlockTask::Exit => break,
+                BlockTask::Process(block, result_transmitters) => {
+                    let res = self.resolve_virtual(&block);
+                    for tx in result_transmitters {
+                        tx.send(res.clone()).unwrap();
                     }
                 }
-            }
+            };
         }
     }
 
