@@ -1,8 +1,13 @@
+use parking_lot::{RwLock, RwLockWriteGuard};
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-use super::{caching::CachedDbAccessForCopy, errors::StoreResult, DB};
+use super::{
+    caching::CachedDbAccessForCopy,
+    errors::{StoreError, StoreResult},
+    DB,
+};
 use hashes::Hash;
 
 #[derive(Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -62,10 +67,23 @@ impl DbStatusesStore {
             cached_access: CachedDbAccessForCopy::new(Arc::clone(&self.raw_db), cache_size, STORE_PREFIX),
         }
     }
+}
 
-    pub fn set_batch(&mut self, batch: &mut WriteBatch, hash: Hash, status: BlockStatus) -> StoreResult<()> {
-        self.cached_access
-            .write_batch(batch, hash, status)
+pub trait StatusesStoreBatchExtensions {
+    fn set_batch(
+        &self, batch: &mut WriteBatch, hash: Hash, status: BlockStatus,
+    ) -> Result<RwLockWriteGuard<DbStatusesStore>, StoreError>;
+}
+
+impl StatusesStoreBatchExtensions for Arc<RwLock<DbStatusesStore>> {
+    fn set_batch(
+        &self, batch: &mut WriteBatch, hash: Hash, status: BlockStatus,
+    ) -> Result<RwLockWriteGuard<DbStatusesStore>, StoreError> {
+        let write_guard = self.write();
+        write_guard
+            .cached_access
+            .write_batch(batch, hash, status)?;
+        Ok(write_guard)
     }
 }
 

@@ -149,13 +149,15 @@ fn consensus_sanity_test() {
 
     let (_tempdir, db) = common::create_temp_db();
     let consensus = TestConsensus::new(db, &MAINNET_PARAMS);
-    let wait_handle = consensus.init();
+    let wait_handles = consensus.init();
 
     let _ = consensus.validate_and_insert_block(Arc::new(
         consensus.build_block_with_parents(genesis_child, vec![MAINNET_PARAMS.genesis_hash]),
     ));
     let (_, _) = consensus.drop();
-    wait_handle.join().unwrap();
+    for handle in wait_handles {
+        handle.join().unwrap();
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -213,7 +215,7 @@ async fn ghostdag_test() {
         params.ghostdag_k = test.k;
 
         let consensus = TestConsensus::new(db, &params);
-        let wait_handle = consensus.init();
+        let wait_handles = consensus.init();
 
         for block in test.blocks.iter() {
             println!("Processing block {}", block.id);
@@ -233,7 +235,9 @@ async fn ghostdag_test() {
         let ghostdag_store = ghostdag_store.clone_with_new_cache(10000);
 
         // Wait for async consensus processors to exit
-        wait_handle.join().unwrap();
+        for handle in wait_handles {
+            handle.join().unwrap();
+        }
 
         // Assert GHOSTDAG output data
         for block in test.blocks {
@@ -291,7 +295,7 @@ async fn block_window_test() {
     params.ghostdag_k = 1;
 
     let consensus = TestConsensus::new(db, &params);
-    let wait_handle = consensus.init();
+    let wait_handles = consensus.init();
 
     struct TestBlock {
         parents: Vec<&'static str>,
@@ -374,5 +378,7 @@ async fn block_window_test() {
     }
 
     consensus.drop();
-    wait_handle.join().unwrap();
+    for handle in wait_handles {
+        handle.join().unwrap();
+    }
 }

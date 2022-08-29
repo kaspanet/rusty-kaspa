@@ -88,7 +88,7 @@ async fn test_concurrent_pipeline() {
     params.genesis_hash = 1.into();
 
     let consensus = TestConsensus::new(db, &params);
-    let wait_handle = consensus.init();
+    let wait_handles = consensus.init();
 
     let blocks = vec![
         (2.into(), vec![1.into()]),
@@ -117,7 +117,9 @@ async fn test_concurrent_pipeline() {
     // Clone with a new cache in order to verify correct writes to the DB itself
     let store = store.read().clone_with_new_cache(10000);
 
-    wait_handle.join().unwrap();
+    for handle in wait_handles {
+        handle.join().unwrap();
+    }
 
     // Assert intervals
     store
@@ -165,7 +167,7 @@ async fn test_concurrent_pipeline_random() {
     params.genesis_hash = genesis;
 
     let consensus = TestConsensus::new(db, &params);
-    let wait_handle = consensus.init();
+    let wait_handles = consensus.init();
 
     let mut tips = vec![genesis];
     let mut total = 1000i64;
@@ -181,7 +183,11 @@ async fn test_concurrent_pipeline_random() {
         for _ in 0..v {
             let hash = blockhash::new_unique();
             new_tips.push(hash);
-            let b = consensus.build_block_with_parents(hash, tips.clone());
+            let mut b = consensus.build_block_with_parents(hash, tips.clone());
+
+            // Push a fake transaction to make the block propagate to body and virtual processors
+            b.transactions.push(());
+
             // Submit to consensus
             let f = consensus.validate_and_insert_block(Arc::new(b));
             futures.push(f);
@@ -198,7 +204,9 @@ async fn test_concurrent_pipeline_random() {
     // Clone with a new cache in order to verify correct writes to the DB itself
     let store = store.read().clone_with_new_cache(10000);
 
-    wait_handle.join().unwrap();
+    for handle in wait_handles {
+        handle.join().unwrap();
+    }
 
     // Assert intervals
     store

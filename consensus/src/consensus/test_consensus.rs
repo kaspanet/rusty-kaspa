@@ -68,7 +68,7 @@ impl TestConsensus {
             .await
     }
 
-    pub fn init(&self) -> JoinHandle<()> {
+    pub fn init(&self) -> Vec<JoinHandle<()>> {
         self.consensus.init()
     }
 
