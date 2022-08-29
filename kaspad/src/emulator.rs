@@ -76,7 +76,7 @@ impl RandomBlockEmitter {
             self.counters
                 .blocks_submitted
                 .fetch_add(v, Ordering::SeqCst);
-                
+
             for i in 0..v {
                 // Create a new block referencing all tips from the previous round
                 let b = Block::new(BLOCK_VERSION, tips.clone(), timestamp, 0, i, total);
