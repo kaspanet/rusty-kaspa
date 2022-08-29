@@ -1,16 +1,10 @@
 use super::*;
-use crate::constants;
 use crate::errors::{BlockProcessResult, RuleError};
 use crate::model::services::reachability::ReachabilityService;
 use crate::model::stores::errors::StoreResultExtensions;
 use crate::model::stores::pruning::PruningStoreReader;
-use crate::model::stores::statuses::{BlockStatus::StatusInvalid, StatusesStoreReader};
-use consensus_core::blockhash::BlockHashExtensions;
 use consensus_core::header::Header;
-use std::{
-    sync::Arc,
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::sync::Arc;
 
 impl HeaderProcessor {
     pub(super) fn pre_pow_validation(

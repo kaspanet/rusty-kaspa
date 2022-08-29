@@ -1,10 +1,11 @@
 use crate::{
-    errors::BlockProcessResult,
+    errors::{BlockProcessResult, RuleError},
     model::{
         services::{reachability::MTReachabilityService, relations::MTRelationsService},
         stores::{
             block_window_cache::{BlockWindowCacheStore, BlockWindowHeap},
             daa::DbDaaStore,
+            errors::StoreResultExtensions,
             ghostdag::{DbGhostdagStore, GhostdagData},
             headers::DbHeadersStore,
             pruning::DbPruningStore,
@@ -87,7 +88,7 @@ pub struct HeaderProcessor {
     pub(super) target_time_per_block: u64,
     pub(super) max_block_parents: u8,
     pub(super) difficulty_window_size: usize,
-    // ghostdag_k: KType,
+    pub(super) mergeset_size_limit: u64,
 
     // DB
     db: Arc<DB>,
@@ -167,6 +168,7 @@ impl HeaderProcessor {
             timestamp_deviation_tolerance: params.timestamp_deviation_tolerance,
             target_time_per_block: params.target_time_per_block,
             max_block_parents: params.max_block_parents,
+            mergeset_size_limit: params.mergeset_size_limit,
         }
     }
 
@@ -224,8 +226,16 @@ impl HeaderProcessor {
     }
 
     fn process_header(self: &Arc<HeaderProcessor>, header: &Header) -> BlockProcessResult<()> {
-        if self.header_was_processed(header.hash) {
-            return Ok(());
+        let status_option = self
+            .statuses_store
+            .read()
+            .get(header.hash)
+            .unwrap_option();
+
+        match status_option {
+            Some(StatusInvalid) => return Err(RuleError::KnownInvalid),
+            Some(_) => return Ok(()),
+            None => {}
         }
 
         // Create processing context
