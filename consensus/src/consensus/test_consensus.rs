@@ -1,4 +1,4 @@
-use std::{sync::Arc, thread::JoinHandle};
+use std::{env, fs, sync::Arc, thread::JoinHandle};
 
 use consensus_core::{block::Block, header::Header};
 use hashes::Hash;
@@ -25,6 +25,11 @@ pub struct TestConsensus {
 impl TestConsensus {
     pub fn new(db: Arc<DB>, params: &Params) -> Self {
         Self { consensus: Consensus::new(db, params), params: params.clone() }
+    }
+
+    pub fn create_from_temp_db(params: &Params) -> Self {
+        let (_, db) = create_temp_db();
+        TestConsensus::new(db, params)
     }
 
     pub fn build_header_with_parents(&self, hash: Hash, parents: Vec<Hash>) -> Header {
@@ -83,4 +88,15 @@ impl TestConsensus {
     pub fn ghostdag_store(&self) -> &Arc<DbGhostdagStore> {
         &self.consensus.ghostdag_store
     }
+}
+
+fn create_temp_db() -> (tempfile::TempDir, Arc<DB>) {
+    let global_tempdir = env::temp_dir();
+    let kaspa_tempdir = global_tempdir.join("kaspa-rust");
+    fs::create_dir_all(kaspa_tempdir.as_path()).unwrap();
+
+    let db_tempdir = tempfile::tempdir_in(kaspa_tempdir.as_path()).unwrap();
+    let db_path = db_tempdir.path().to_owned();
+
+    (db_tempdir, Arc::new(DB::open_default(db_path.to_str().unwrap()).unwrap()))
 }

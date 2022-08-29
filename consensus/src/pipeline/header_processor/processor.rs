@@ -232,6 +232,7 @@ impl HeaderProcessor {
         let mut ctx = HeaderProcessingContext::new(header.hash, header);
 
         // Run GHOSTDAG for the new header
+        self.pre_ghostdag_validation(&mut ctx, header)?;
         self.ghostdag_manager
             .add_block(&mut ctx, header.hash); // TODO: Run GHOSTDAG for all block levels
 

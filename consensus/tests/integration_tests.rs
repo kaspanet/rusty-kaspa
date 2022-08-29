@@ -3,14 +3,18 @@
 //!
 
 use consensus::consensus::test_consensus::TestConsensus;
+use consensus::constants::BLOCK_VERSION;
+use consensus::errors::RuleError;
 use consensus::model::stores::ghostdag::{GhostdagStoreReader, KType as GhostdagKType};
 use consensus::model::stores::reachability::DbReachabilityStore;
 use consensus::params::MAINNET_PARAMS;
 use consensus::processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions};
 use consensus_core::block::Block;
 use consensus_core::blockhash;
+use consensus_core::hashing::header;
 use hashes::Hash;
 
+use core::num;
 use flate2::read::GzDecoder;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -19,6 +23,7 @@ use std::io::BufReader;
 use std::path::Path;
 use std::str::from_utf8;
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 mod common;
 
@@ -381,4 +386,121 @@ async fn block_window_test() {
     for handle in wait_handles {
         handle.join().unwrap();
     }
+}
+
+#[tokio::test]
+async fn header_in_isolation_validation_test() {
+    let params = &MAINNET_PARAMS;
+    let consensus = TestConsensus::create_from_temp_db(params);
+    let wait_handle = consensus.init();
+    let block = consensus.build_block_with_parents(1.into(), vec![params.genesis_hash]);
+
+    {
+        let mut block = block.clone();
+        let block_version = BLOCK_VERSION - 1;
+        block.header.version = block_version;
+        match consensus
+            .validate_and_insert_block(Arc::new(block))
+            .await
+        {
+            Err(RuleError::WrongBlockVersion(wrong_version)) => {
+                assert_eq!(wrong_version, block_version)
+            }
+            res => {
+                panic!("Unexpected result: {:?}", res)
+            }
+        }
+    }
+
+    {
+        let mut block = block.clone();
+        block.header.hash = 2.into();
+
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64;
+        let block_ts = now + params.timestamp_deviation_tolerance * params.target_time_per_block + 2000;
+        block.header.timestamp = block_ts;
+        match consensus
+            .validate_and_insert_block(Arc::new(block.clone()))
+            .await
+        {
+            Err(RuleError::TimeTooFarIntoTheFuture(ts, _)) => {
+                assert_eq!(ts, block_ts)
+            }
+            res => {
+                panic!("Unexpected result: {:?}", res)
+            }
+        }
+    }
+
+    {
+        let mut block = block.clone();
+        block.header.hash = 3.into();
+
+        block.header.parents_by_level[0] = vec![];
+        match consensus
+            .validate_and_insert_block(Arc::new(block.clone()))
+            .await
+        {
+            Err(RuleError::NoParents) => {}
+            res => {
+                panic!("Unexpected result: {:?}", res)
+            }
+        }
+    }
+
+    {
+        let mut block = block.clone();
+        block.header.hash = 4.into();
+
+        block.header.parents_by_level[0] = (1..(params.max_block_parents + 2))
+            .map(|_| params.genesis_hash)
+            .collect();
+        match consensus
+            .validate_and_insert_block(Arc::new(block.clone()))
+            .await
+        {
+            Err(RuleError::TooManyParents(num_parents, limit)) => {
+                assert_eq!((params.max_block_parents + 1) as usize, num_parents);
+                assert_eq!(limit, params.max_block_parents as usize);
+            }
+            res => {
+                panic!("Unexpected result: {:?}", res)
+            }
+        }
+    }
+
+    let _ = consensus.drop();
+    wait_handle.join().unwrap();
+}
+
+#[tokio::test]
+async fn incest_test() {
+    let params = &MAINNET_PARAMS;
+    let consensus = TestConsensus::create_from_temp_db(params);
+    let wait_handle = consensus.init();
+    let block = consensus.build_block_with_parents(1.into(), vec![params.genesis_hash]);
+    consensus
+        .validate_and_insert_block(Arc::new(block))
+        .await
+        .unwrap();
+
+    let mut block = consensus.build_block_with_parents(2.into(), vec![params.genesis_hash]);
+    block.header.parents_by_level[0] = vec![1.into(), params.genesis_hash];
+    match consensus
+        .validate_and_insert_block(Arc::new(block.clone()))
+        .await
+    {
+        Err(RuleError::InvalidParentsRelation(a, b)) => {
+            assert_eq!(a, params.genesis_hash);
+            assert_eq!(b, 1.into());
+        }
+        res => {
+            panic!("Unexpected result: {:?}", res)
+        }
+    }
+    let _ = consensus.drop();
+    wait_handle.join().unwrap();
 }
