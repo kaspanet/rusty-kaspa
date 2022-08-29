@@ -8,20 +8,27 @@ use std::{
 };
 use tokio::sync::oneshot;
 
+pub type BlockResultSender = oneshot::Sender<BlockProcessResult<()>>;
+
+pub enum BlockTask {
+    Exit,
+    Process(Arc<Block>, Vec<BlockResultSender>),
+}
+
 /// An internal struct used to manage a block processing task
 struct BlockTaskInternal {
     // The actual block
     block: Arc<Block>,
 
     // A list of channel senders for transmitting the processing result of this task to the async callers
-    result_transmitters: Vec<oneshot::Sender<BlockProcessResult<()>>>,
+    result_transmitters: Vec<BlockResultSender>,
 
     // A list of block hashes depending on the completion of this task
     dependent_tasks: Vec<Hash>,
 }
 
 impl BlockTaskInternal {
-    fn new(block: Arc<Block>, result_transmitters: Vec<oneshot::Sender<BlockProcessResult<()>>>) -> Self {
+    fn new(block: Arc<Block>, result_transmitters: Vec<BlockResultSender>) -> Self {
         Self { block, result_transmitters, dependent_tasks: Vec::new() }
     }
 }
@@ -56,9 +63,7 @@ impl BlockTaskDependencyManager {
     /// not be queued for processing. Note: this function will block if workers are too busy
     /// with previous pending tasks. The function is expected to be called by a single-thread controlling
     /// the reception of block processing tasks.
-    pub fn register(
-        &self, block: Arc<Block>, mut result_transmitters: Vec<oneshot::Sender<BlockProcessResult<()>>>,
-    ) -> bool {
+    pub fn register(&self, block: Arc<Block>, mut result_transmitters: Vec<BlockResultSender>) -> bool {
         let mut pending = self.pending.lock();
         match pending.entry(block.header.hash) {
             Vacant(e) => {
@@ -74,6 +79,7 @@ impl BlockTaskDependencyManager {
                 e.and_modify(|v| {
                     v.result_transmitters
                         .append(&mut result_transmitters);
+                    // The block now includes transactions, so we update the internal block data
                     if v.block.is_header_only() && !block.is_header_only() {
                         v.block = block;
                     }
@@ -104,7 +110,7 @@ impl BlockTaskDependencyManager {
     /// Report the completion of a processing task. Signals progress to the managing thread.
     /// The function returns the final list of `result_transmitters` and a list of
     /// `dependent_tasks` which should be requeued to workers.
-    pub fn end(&self, hash: Hash) -> (Arc<Block>, Vec<oneshot::Sender<BlockProcessResult<()>>>, Vec<Hash>) {
+    pub fn end(&self, hash: Hash) -> (Arc<Block>, Vec<BlockResultSender>, Vec<Hash>) {
         // Re-lock for post-processing steps
         let mut pending = self.pending.lock();
         let task = pending
@@ -119,6 +125,7 @@ impl BlockTaskDependencyManager {
             self.idle_signal.notify_one();
         }
 
+        // We return the block as well, in case it was updated to a non-header only block
         (task.block, task.result_transmitters, task.dependent_tasks)
     }
 

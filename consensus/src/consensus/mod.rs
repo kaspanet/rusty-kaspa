@@ -12,8 +12,9 @@ use crate::{
     },
     params::Params,
     pipeline::{
-        block_processor::{BlockBodyProcessor, BlockBodyTask},
-        header_processor::{BlockTask, HeaderProcessor},
+        block_processor::BlockBodyProcessor,
+        deps_manager::{BlockResultSender, BlockTask},
+        header_processor::HeaderProcessor,
         ProcessingCounters,
     },
     processes::{
@@ -99,7 +100,7 @@ impl Consensus {
         );
 
         let (sender, receiver): (Sender<BlockTask>, Receiver<BlockTask>) = bounded(2000);
-        let (body_sender, body_receiver): (Sender<BlockBodyTask>, Receiver<BlockBodyTask>) = unbounded();
+        let (body_sender, body_receiver): (Sender<BlockTask>, Receiver<BlockTask>) = unbounded();
 
         let counters = Arc::new(ProcessingCounters::default());
 
@@ -183,9 +184,9 @@ impl Consensus {
     }
 
     pub async fn validate_and_insert_block(&self, block: Arc<Block>) -> BlockProcessResult<()> {
-        let (tx, rx): (oneshot::Sender<BlockProcessResult<()>>, _) = oneshot::channel();
+        let (tx, rx): (BlockResultSender, _) = oneshot::channel();
         self.block_sender
-            .send(BlockTask::Process(block, tx))
+            .send(BlockTask::Process(block, vec![tx]))
             .unwrap();
         rx.await.unwrap()
     }

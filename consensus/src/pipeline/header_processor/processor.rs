@@ -18,21 +18,20 @@ use crate::{
         },
     },
     params::Params,
-    pipeline::{block_processor::BlockBodyTask, deps_manager::BlockTaskDependencyManager},
+    pipeline::deps_manager::{BlockTask, BlockTaskDependencyManager},
     processes::{
         dagtraversalmanager::DagTraversalManager, difficulty::DifficultyManager, ghostdag::protocol::GhostdagManager,
         pastmediantime::PastMedianTimeManager, reachability::inquirer as reachability,
     },
     test_helpers::header_from_precomputed_hash,
 };
-use consensus_core::{block::Block, blockhash::BlockHashes, header::Header};
+use consensus_core::{blockhash::BlockHashes, header::Header};
 use crossbeam::select;
 use crossbeam_channel::{Receiver, Sender};
 use hashes::Hash;
 use parking_lot::RwLock;
 use rocksdb::WriteBatch;
 use std::sync::{atomic::Ordering, Arc};
-use tokio::sync::oneshot;
 
 use super::super::ProcessingCounters;
 
@@ -78,15 +77,10 @@ impl<'a> HeaderProcessingContext<'a> {
     }
 }
 
-pub enum BlockTask {
-    Exit,
-    Process(Arc<Block>, oneshot::Sender<BlockProcessResult<()>>),
-}
-
 pub struct HeaderProcessor {
     // Channels
     receiver: Receiver<BlockTask>,
-    body_sender: Sender<BlockBodyTask>,
+    body_sender: Sender<BlockTask>,
 
     // Config
     pub(super) genesis_hash: Hash,
@@ -131,7 +125,7 @@ pub struct HeaderProcessor {
 impl HeaderProcessor {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        receiver: Receiver<BlockTask>, body_sender: Sender<BlockBodyTask>, params: &Params, db: Arc<DB>,
+        receiver: Receiver<BlockTask>, body_sender: Sender<BlockTask>, params: &Params, db: Arc<DB>,
         relations_store: Arc<RwLock<DbRelationsStore>>, reachability_store: Arc<RwLock<DbReachabilityStore>>,
         ghostdag_store: Arc<DbGhostdagStore>, headers_store: Arc<DbHeadersStore>, daa_store: Arc<DbDaaStore>,
         statuses_store: Arc<RwLock<DbStatusesStore>>, pruning_store: Arc<RwLock<DbPruningStore>>,
@@ -190,10 +184,10 @@ impl HeaderProcessor {
                     if let Ok(task) = data {
                         match task {
                             BlockTask::Exit => break,
-                            BlockTask::Process(block, tx) => {
+                            BlockTask::Process(block, result_transmitters) => {
 
                                 let hash = block.header.hash;
-                                if self.task_manager.register(block, vec![tx]) {
+                                if self.task_manager.register(block, result_transmitters) {
                                     let processor = self.clone();
                                     rayon::spawn(move || {
                                         processor.queue_block(hash);
@@ -213,9 +207,7 @@ impl HeaderProcessor {
         self.task_manager.wait_for_idle();
 
         // Pass the exit signal on to the body processor
-        self.body_sender
-            .send(BlockBodyTask::Exit)
-            .unwrap();
+        self.body_sender.send(BlockTask::Exit).unwrap();
     }
 
     fn queue_block(self: &Arc<HeaderProcessor>, hash: Hash) {
@@ -230,7 +222,7 @@ impl HeaderProcessor {
                 }
             } else {
                 self.body_sender
-                    .send(BlockBodyTask::Process(block, result_transmitters))
+                    .send(BlockTask::Process(block, result_transmitters))
                     .unwrap();
             }
 

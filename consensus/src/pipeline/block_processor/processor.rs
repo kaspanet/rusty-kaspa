@@ -4,7 +4,7 @@ use crate::{
         services::reachability::MTReachabilityService,
         stores::{reachability::DbReachabilityStore, statuses::DbStatusesStore, DB},
     },
-    pipeline::deps_manager::BlockTaskDependencyManager,
+    pipeline::deps_manager::{BlockTask, BlockTaskDependencyManager},
 };
 use consensus_core::block::Block;
 use crossbeam::select;
@@ -12,16 +12,10 @@ use crossbeam_channel::Receiver;
 use hashes::Hash;
 use parking_lot::RwLock;
 use std::sync::Arc;
-use tokio::sync::oneshot;
-
-pub enum BlockBodyTask {
-    Exit,
-    Process(Arc<Block>, Vec<oneshot::Sender<BlockProcessResult<()>>>),
-}
 
 pub struct BlockBodyProcessor {
     // Channels
-    receiver: Receiver<BlockBodyTask>,
+    receiver: Receiver<BlockTask>,
 
     // DB
     db: Arc<DB>,
@@ -38,7 +32,7 @@ pub struct BlockBodyProcessor {
 
 impl BlockBodyProcessor {
     pub fn new(
-        receiver: Receiver<BlockBodyTask>, db: Arc<DB>, statuses_store: Arc<RwLock<DbStatusesStore>>,
+        receiver: Receiver<BlockTask>, db: Arc<DB>, statuses_store: Arc<RwLock<DbStatusesStore>>,
         reachability_service: MTReachabilityService<DbReachabilityStore>,
     ) -> Self {
         Self {
@@ -56,8 +50,8 @@ impl BlockBodyProcessor {
                 recv(self.receiver) -> data => {
                     if let Ok(task) = data {
                         match task {
-                            BlockBodyTask::Exit => break,
-                            BlockBodyTask::Process(block, result_transmitters) => {
+                            BlockTask::Exit => break,
+                            BlockTask::Process(block, result_transmitters) => {
 
                                 let hash = block.header.hash;
                                 if self.task_manager.register(block, result_transmitters) {
