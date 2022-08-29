@@ -167,9 +167,7 @@ impl HeaderProcessor {
             ),
             reachability_service,
             past_median_time_manager,
-            // Note: If we ever switch to a non-global thread-pool,
-            // then `num_threads` should be taken from that specific pool
-            task_manager: BlockTaskDependencyManager::new(rayon::current_num_threads() * 4),
+            task_manager: BlockTaskDependencyManager::new(),
             counters,
             timestamp_deviation_tolerance: params.timestamp_deviation_tolerance,
             target_time_per_block: params.target_time_per_block,

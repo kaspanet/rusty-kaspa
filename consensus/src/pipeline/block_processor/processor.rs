@@ -42,7 +42,7 @@ impl BlockBodyProcessor {
             db,
             statuses_store,
             reachability_service,
-            task_manager: BlockTaskDependencyManager::new(rayon::current_num_threads() * 4),
+            task_manager: BlockTaskDependencyManager::new(),
         }
     }
 

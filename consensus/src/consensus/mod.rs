@@ -24,7 +24,7 @@ use crate::{
     },
 };
 use consensus_core::block::Block;
-use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
+use crossbeam_channel::{unbounded, Receiver, Sender};
 use kaspa_core::{core::Core, service::Service};
 use parking_lot::RwLock;
 use std::{
@@ -101,7 +101,7 @@ impl Consensus {
             params.genesis_timestamp,
         );
 
-        let (sender, receiver): (Sender<BlockTask>, Receiver<BlockTask>) = bounded(2000);
+        let (sender, receiver): (Sender<BlockTask>, Receiver<BlockTask>) = unbounded();
         let (body_sender, body_receiver): (Sender<BlockTask>, Receiver<BlockTask>) = unbounded();
         let (virtual_sender, virtual_receiver): (Sender<BlockTask>, Receiver<BlockTask>) = unbounded();
 

@@ -38,41 +38,25 @@ pub(crate) struct BlockTaskDependencyManager {
     /// Holds pending block hashes and their corresponding tasks
     pending: Mutex<HashMap<Hash, BlockTaskInternal>>,
 
-    // Used to signal that workers are available/idle
-    ready_signal: Condvar,
+    // Used to signal that workers are idle
     idle_signal: Condvar,
-
-    // Threshold to the number of pending items above which we wait for
-    // workers to complete some work before queuing further work
-    ready_threshold: usize,
 }
 
 impl BlockTaskDependencyManager {
-    pub fn new(ready_threshold: usize) -> Self {
-        Self {
-            pending: Mutex::new(HashMap::new()),
-            ready_signal: Condvar::new(),
-            idle_signal: Condvar::new(),
-            ready_threshold,
-        }
+    pub fn new() -> Self {
+        Self { pending: Mutex::new(HashMap::new()), idle_signal: Condvar::new() }
     }
 
     /// Registers the `(block, result_transmitters)` pair as a pending task. If the block is already pending
     /// and has a corresponding internal task, the task is updated with the additional
     /// result transmitters and the function returns `false` indicating that the task shall
-    /// not be queued for processing. Note: this function will block if workers are too busy
-    /// with previous pending tasks. The function is expected to be called by a single-thread controlling
-    /// the reception of block processing tasks.
+    /// not be queued for processing. The function is expected to be called by a worker
+    /// controlling the reception of block processing tasks.
     pub fn register(&self, block: Arc<Block>, mut result_transmitters: Vec<BlockResultSender>) -> bool {
         let mut pending = self.pending.lock();
         match pending.entry(block.header.hash) {
             Vacant(e) => {
                 e.insert(BlockTaskInternal::new(block, result_transmitters));
-                if pending.len() > self.ready_threshold {
-                    // If the number of pending items is already too large,
-                    // wait for workers to signal readiness.
-                    self.ready_signal.wait(&mut pending);
-                }
                 true
             }
             e => {
@@ -116,10 +100,6 @@ impl BlockTaskDependencyManager {
         let task = pending
             .remove(&hash)
             .expect("processed block is expected to be in pending map");
-
-        if pending.len() == self.ready_threshold {
-            self.ready_signal.notify_one();
-        }
 
         if pending.is_empty() {
             self.idle_signal.notify_one();
