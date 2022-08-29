@@ -15,5 +15,5 @@ pub fn header_from_precomputed_hash(hash: Hash, parents: Vec<Hash>) -> Header {
 }
 
 pub fn block_from_precomputed_hash(hash: Hash, parents: Vec<Hash>) -> Block {
-    Block { header: header_from_precomputed_hash(hash, parents) }
+    Block::from_header(header_from_precomputed_hash(hash, parents))
 }

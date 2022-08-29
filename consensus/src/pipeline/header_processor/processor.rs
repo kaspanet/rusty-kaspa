@@ -9,32 +9,28 @@ use crate::{
             headers::DbHeadersStore,
             pruning::DbPruningStore,
             reachability::{DbReachabilityStore, StagingReachabilityStore},
-            relations::DbRelationsStore,
+            relations::{DbRelationsStore, RelationsStoreBatchExtensions},
             statuses::{
                 BlockStatus::{StatusHeaderOnly, StatusInvalid},
-                DbStatusesStore, StatusesStore, StatusesStoreReader,
+                DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader,
             },
             DB,
         },
     },
     params::Params,
+    pipeline::deps_manager::{BlockTask, BlockTaskDependencyManager},
     processes::{
         dagtraversalmanager::DagTraversalManager, difficulty::DifficultyManager, ghostdag::protocol::GhostdagManager,
         pastmediantime::PastMedianTimeManager, reachability::inquirer as reachability,
     },
     test_helpers::header_from_precomputed_hash,
 };
-use consensus_core::{block::Block, blockhash::BlockHashes, header::Header};
-use crossbeam::select;
-use crossbeam_channel::Receiver;
+use consensus_core::{blockhash::BlockHashes, header::Header};
+use crossbeam_channel::{Receiver, Sender};
 use hashes::Hash;
-use parking_lot::{Condvar, Mutex, RwLock};
+use parking_lot::RwLock;
 use rocksdb::WriteBatch;
-use std::{
-    collections::{hash_map::Entry::Vacant, HashMap},
-    sync::{atomic::Ordering, Arc},
-};
-use tokio::sync::oneshot;
+use std::sync::{atomic::Ordering, Arc};
 
 use super::super::ProcessingCounters;
 
@@ -80,26 +76,10 @@ impl<'a> HeaderProcessingContext<'a> {
     }
 }
 
-pub enum BlockTask {
-    Exit,
-    Process(Arc<Block>, oneshot::Sender<BlockProcessResult<()>>),
-}
-
-struct BlockTaskInternal {
-    block: Arc<Block>,
-    result_transmitters: Vec<oneshot::Sender<BlockProcessResult<()>>>,
-    deps: Vec<Hash>,
-}
-
-impl BlockTaskInternal {
-    fn new(block: Arc<Block>, tx: oneshot::Sender<BlockProcessResult<()>>) -> Self {
-        Self { block, result_transmitters: vec![tx], deps: Vec::new() }
-    }
-}
-
 pub struct HeaderProcessor {
     // Channels
     receiver: Receiver<BlockTask>,
+    body_sender: Sender<BlockTask>,
 
     // Config
     pub(super) genesis_hash: Hash,
@@ -134,28 +114,21 @@ pub struct HeaderProcessor {
     pub(super) past_median_time_manager: PastMedianTimeManager<DbHeadersStore, DbGhostdagStore, BlockWindowCacheStore>,
     pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
 
-    /// Holds pending block hashes and their dependent blocks
-    pending: Mutex<HashMap<Hash, BlockTaskInternal>>,
+    // Dependency manager
+    task_manager: BlockTaskDependencyManager,
 
     // Counters
     counters: Arc<ProcessingCounters>,
-
-    // Used to signal that workers are available/idle
-    ready_signal: Condvar,
-    idle_signal: Condvar,
-
-    // Threshold to the number of pending items above which we wait for
-    // workers to complete some work before queuing further work
-    ready_threshold: usize,
 }
 
 impl HeaderProcessor {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        receiver: Receiver<BlockTask>, params: &Params, db: Arc<DB>, relations_store: Arc<RwLock<DbRelationsStore>>,
-        reachability_store: Arc<RwLock<DbReachabilityStore>>, ghostdag_store: Arc<DbGhostdagStore>,
-        headers_store: Arc<DbHeadersStore>, daa_store: Arc<DbDaaStore>, statuses_store: Arc<RwLock<DbStatusesStore>>,
-        pruning_store: Arc<RwLock<DbPruningStore>>, block_window_cache_for_difficulty: Arc<BlockWindowCacheStore>,
+        receiver: Receiver<BlockTask>, body_sender: Sender<BlockTask>, params: &Params, db: Arc<DB>,
+        relations_store: Arc<RwLock<DbRelationsStore>>, reachability_store: Arc<RwLock<DbReachabilityStore>>,
+        ghostdag_store: Arc<DbGhostdagStore>, headers_store: Arc<DbHeadersStore>, daa_store: Arc<DbDaaStore>,
+        statuses_store: Arc<RwLock<DbStatusesStore>>, pruning_store: Arc<RwLock<DbPruningStore>>,
+        block_window_cache_for_difficulty: Arc<BlockWindowCacheStore>,
         block_window_cache_for_past_median_time: Arc<BlockWindowCacheStore>,
         reachability_service: MTReachabilityService<DbReachabilityStore>,
         relations_service: Arc<MTRelationsService<DbRelationsStore>>,
@@ -165,6 +138,7 @@ impl HeaderProcessor {
     ) -> Self {
         Self {
             receiver,
+            body_sender,
             genesis_hash: params.genesis_hash,
             difficulty_window_size: params.difficulty_window_size,
             db,
@@ -192,14 +166,8 @@ impl HeaderProcessor {
             ),
             reachability_service,
             past_median_time_manager,
-            pending: Mutex::new(HashMap::new()),
+            task_manager: BlockTaskDependencyManager::new(),
             counters,
-            ready_signal: Condvar::new(),
-            idle_signal: Condvar::new(),
-
-            // Note: If we ever switch to a non-global thread-pool,
-            // then `num_threads` should be taken from that specific pool
-            ready_threshold: rayon::current_num_threads() * 4,
             timestamp_deviation_tolerance: params.timestamp_deviation_tolerance,
             target_time_per_block: params.target_time_per_block,
             max_block_parents: params.max_block_parents,
@@ -207,90 +175,51 @@ impl HeaderProcessor {
     }
 
     pub fn worker(self: &Arc<HeaderProcessor>) {
-        loop {
-            select! {
-                recv(self.receiver) -> data => {
-                    if let Ok(task) = data {
-                        match task {
-                            BlockTask::Exit => break,
-                            BlockTask::Process(block, tx) => {
-
-                                let mut pending = self.pending.lock();
-
-                                match pending.entry(block.header.hash) {
-                                    Vacant(e) => {
-                                        e.insert(BlockTaskInternal::new(block.clone(), tx));
-                                        if pending.len() > self.ready_threshold {
-                                            // If the number of pending items is already too large,
-                                            // wait for workers to signal readiness.
-                                            self.ready_signal.wait(&mut pending);
-                                        }
-
-                                        let processor = self.clone();
-                                        rayon::spawn(move || {
-                                            processor.queue_block(block);
-                                        });
-                                    }
-                                    e => {
-                                        e.and_modify(|v| v.result_transmitters.push(tx));
-                                    }
-                                }
-                            }
-                        };
-                    } else {
-                        // All senders are dropped
-                        break;
+        while let Ok(task) = self.receiver.recv() {
+            match task {
+                BlockTask::Exit => break,
+                BlockTask::Process(block, result_transmitters) => {
+                    let hash = block.header.hash;
+                    if self
+                        .task_manager
+                        .register(block, result_transmitters)
+                    {
+                        let processor = self.clone();
+                        rayon::spawn(move || {
+                            processor.queue_block(hash);
+                        });
                     }
                 }
-            }
+            };
         }
 
         // Wait until all workers are idle before exiting
-        let mut pending = self.pending.lock();
-        if !pending.is_empty() {
-            self.idle_signal.wait(&mut pending);
-        }
+        self.task_manager.wait_for_idle();
+
+        // Pass the exit signal on to the following processor
+        self.body_sender.send(BlockTask::Exit).unwrap();
     }
 
-    fn queue_block(self: &Arc<HeaderProcessor>, block: Arc<Block>) {
-        let hash = block.header.hash;
+    fn queue_block(self: &Arc<HeaderProcessor>, hash: Hash) {
+        if let Some(block) = self.task_manager.try_begin(hash) {
+            let res = self.process_header(&block.header);
 
-        {
-            // Lock pending manager. The contention around the manager is
-            // expected to be negligible in header processing time
-            let mut pending = self.pending.lock();
+            let (block, result_transmitters, dependent_tasks) = self.task_manager.end(hash);
 
-            for parent in block.header.direct_parents().iter() {
-                if let Some(task) = pending.get_mut(parent) {
-                    task.deps.push(hash);
-                    return; // The block will be reprocessed once the pending parent completes processing
+            if res.is_err() || block.is_header_only() {
+                for transmitter in result_transmitters {
+                    transmitter.send(res.clone()).unwrap();
                 }
+            } else {
+                self.body_sender
+                    .send(BlockTask::Process(block, result_transmitters))
+                    .unwrap();
             }
-        }
 
-        let res = self.process_header(&block.header);
-
-        let mut pending = self.pending.lock();
-        let task = pending
-            .remove(&hash)
-            .expect("processed block is expected to be in pending map");
-
-        for tx in task.result_transmitters {
-            tx.send(res.clone()).unwrap();
-        }
-
-        if pending.len() == self.ready_threshold {
-            self.ready_signal.notify_one();
-        }
-
-        if pending.is_empty() {
-            self.idle_signal.notify_one();
-        }
-
-        for dep in task.deps {
-            let block = pending.get(&dep).unwrap().block.clone();
-            let processor = self.clone();
-            rayon::spawn(move || processor.queue_block(block));
+            for dep in dependent_tasks {
+                let processor = self.clone();
+                rayon::spawn(move || processor.queue_block(dep));
+            }
         }
     }
 
@@ -337,29 +266,12 @@ impl HeaderProcessor {
 
     fn commit_header(self: &Arc<HeaderProcessor>, ctx: HeaderProcessingContext, header: &Header) {
         let ghostdag_data = ctx.ghostdag_data.unwrap();
-
-        // Create staging reachability store. We use an upgradable read here to avoid concurrent
-        // staging reachability operations. PERF: we assume that reachability processing time << header processing
-        // time, and thus serializing this part will do no harm. However this should be benchmarked. The
-        // alternative is to create a separate ReachabilityProcessor and to manage things more tightly.
-        let mut staging = StagingReachabilityStore::new(self.reachability_store.upgradable_read());
-
-        // Add block to staging reachability
-        reachability::add_block(
-            &mut staging,
-            ctx.hash,
-            ghostdag_data.selected_parent,
-            &mut ctx.mergeset.unwrap().iter().cloned(),
-        )
-        .unwrap();
-        // Hint reachability about the new tip.
-        // TODO: imp header tips store and call this only for an actual header selected tip
-        reachability::hint_virtual_selected_parent(&mut staging, ctx.hash).unwrap();
+        let selected_parent = ghostdag_data.selected_parent;
 
         // Create a DB batch writer
         let mut batch = WriteBatch::default();
 
-        // Write to append only stores: this requires no lock
+        // Write to append only stores: this requires no lock and hence done first
         self.ghostdag_store
             .insert_batch(&mut batch, ctx.hash, ghostdag_data)
             .unwrap();
@@ -374,23 +286,43 @@ impl HeaderProcessor {
             .insert_batch(&mut batch, ctx.hash, Arc::new(ctx.header.clone()))
             .unwrap();
 
-        // Non-append only stores need to use a write lock
-        self.relations_store
-            .write()
-            .insert_batch(&mut batch, header.hash, BlockHashes::new(header.direct_parents().clone()))
-            .unwrap(); // Note we lock until the batch is written
+        // Create staging reachability store. We use an upgradable read here to avoid concurrent
+        // staging reachability operations. PERF: we assume that reachability processing time << header processing
+        // time, and thus serializing this part will do no harm. However this should be benchmarked. The
+        // alternative is to create a separate ReachabilityProcessor and to manage things more tightly.
+        let mut staging = StagingReachabilityStore::new(self.reachability_store.upgradable_read());
 
-        self.statuses_store
-            .write()
+        // Add block to staging reachability
+        reachability::add_block(&mut staging, ctx.hash, selected_parent, &mut ctx.mergeset.unwrap().iter().cloned())
+            .unwrap();
+        // Hint reachability about the new tip.
+        // TODO: imp header tips store and call this only for an actual header selected tip
+        reachability::hint_virtual_selected_parent(&mut staging, ctx.hash).unwrap();
+
+        // Non-append only stores need to use write locks.
+        // Note we need to keep the lock write guards until the batch is written.
+        let relations_write_guard = self
+            .relations_store
+            .insert_batch(&mut batch, header.hash, BlockHashes::new(header.direct_parents().clone()))
+            .unwrap();
+
+        let statuses_write_guard = self
+            .statuses_store
             .set_batch(&mut batch, ctx.hash, StatusHeaderOnly)
             .unwrap();
 
         // Write reachability data. Only at this brief moment the reachability store is locked for reads.
         // We take special care for this since reachability read queries are used throughout the system frequently.
-        let write_guard = staging.commit(&mut batch).unwrap(); // Note we hold the lock until the batch is written
+        // Note we hold the lock until the batch is written
+        let reachability_write_guard = staging.commit(&mut batch).unwrap();
 
         // Flush the batch to the DB
         self.db.write(batch).unwrap();
+
+        // Calling the drops explicitly after the batch is written in order to avoid possible errors.
+        drop(reachability_write_guard);
+        drop(statuses_write_guard);
+        drop(relations_write_guard);
     }
 
     pub fn process_genesis_if_needed(self: &Arc<HeaderProcessor>) {

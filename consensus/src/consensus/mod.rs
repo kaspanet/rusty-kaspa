@@ -12,7 +12,10 @@ use crate::{
     },
     params::Params,
     pipeline::{
-        header_processor::{BlockTask, HeaderProcessor},
+        block_processor::BlockBodyProcessor,
+        deps_manager::{BlockResultSender, BlockTask},
+        header_processor::HeaderProcessor,
+        virtual_processor::VirtualStateProcessor,
         ProcessingCounters,
     },
     processes::{
@@ -21,7 +24,7 @@ use crate::{
     },
 };
 use consensus_core::block::Block;
-use crossbeam_channel::{bounded, Receiver, Sender};
+use crossbeam_channel::{unbounded, Receiver, Sender};
 use kaspa_core::{core::Core, service::Service};
 use parking_lot::RwLock;
 use std::{
@@ -40,6 +43,8 @@ pub struct Consensus {
 
     // Processors
     header_processor: Arc<HeaderProcessor>,
+    body_processor: Arc<BlockBodyProcessor>,
+    virtual_processor: Arc<VirtualStateProcessor>,
 
     // Stores
     statuses_store: Arc<RwLock<DbStatusesStore>>,
@@ -96,11 +101,15 @@ impl Consensus {
             params.genesis_timestamp,
         );
 
-        let (sender, receiver): (Sender<BlockTask>, Receiver<BlockTask>) = bounded(2000);
+        let (sender, receiver): (Sender<BlockTask>, Receiver<BlockTask>) = unbounded();
+        let (body_sender, body_receiver): (Sender<BlockTask>, Receiver<BlockTask>) = unbounded();
+        let (virtual_sender, virtual_receiver): (Sender<BlockTask>, Receiver<BlockTask>) = unbounded();
+
         let counters = Arc::new(ProcessingCounters::default());
 
         let header_processor = Arc::new(HeaderProcessor::new(
             receiver,
+            body_sender,
             params,
             db.clone(),
             relations_store.clone(),
@@ -119,10 +128,27 @@ impl Consensus {
             counters.clone(),
         ));
 
+        let body_processor = Arc::new(BlockBodyProcessor::new(
+            body_receiver,
+            virtual_sender,
+            db.clone(),
+            statuses_store.clone(),
+            reachability_service.clone(),
+        ));
+
+        let virtual_processor = Arc::new(VirtualStateProcessor::new(
+            virtual_receiver,
+            db.clone(),
+            statuses_store.clone(),
+            reachability_service.clone(),
+        ));
+
         Self {
             db,
             block_sender: sender,
             header_processor,
+            body_processor,
+            virtual_processor,
             statuses_store,
             relations_store,
             reachability_store,
@@ -150,24 +176,29 @@ impl Consensus {
         }
     }
 
-    pub fn init(&self) -> JoinHandle<()> {
+    pub fn init(&self) -> Vec<JoinHandle<()>> {
         // Ensure that reachability store is initialized
         reachability::init(self.reachability_store.write().deref_mut()).unwrap();
 
         // Ensure that genesis was processed
         self.header_processor.process_genesis_if_needed();
 
-        // Spawn the asynchronous header processor.
+        // Spawn the asynchronous processors.
         let header_processor = self.header_processor.clone();
-        thread::spawn(move || header_processor.worker())
+        let body_processor = self.body_processor.clone();
+        let virtual_processor = self.virtual_processor.clone();
 
-        // TODO: add block body processor and virtual state processor workers and return a vec of join handles.
+        vec![
+            thread::spawn(move || header_processor.worker()),
+            thread::spawn(move || body_processor.worker()),
+            thread::spawn(move || virtual_processor.worker()),
+        ]
     }
 
     pub async fn validate_and_insert_block(&self, block: Arc<Block>) -> BlockProcessResult<()> {
-        let (tx, rx): (oneshot::Sender<BlockProcessResult<()>>, _) = oneshot::channel();
+        let (tx, rx): (BlockResultSender, _) = oneshot::channel();
         self.block_sender
-            .send(BlockTask::Process(block, tx))
+            .send(BlockTask::Process(block, vec![tx]))
             .unwrap();
         rx.await.unwrap()
     }
@@ -190,7 +221,7 @@ impl Service for Consensus {
     }
 
     fn start(self: Arc<Consensus>, core: Arc<Core>) -> Vec<JoinHandle<()>> {
-        vec![self.init()]
+        self.init()
     }
 
     fn stop(self: Arc<Consensus>) {
