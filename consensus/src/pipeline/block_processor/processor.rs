@@ -8,7 +8,7 @@ use crate::{
 };
 use consensus_core::block::Block;
 use crossbeam::select;
-use crossbeam_channel::Receiver;
+use crossbeam_channel::{Receiver, Sender};
 use hashes::Hash;
 use parking_lot::RwLock;
 use std::sync::Arc;
@@ -16,6 +16,7 @@ use std::sync::Arc;
 pub struct BlockBodyProcessor {
     // Channels
     receiver: Receiver<BlockTask>,
+    sender: Sender<BlockTask>,
 
     // DB
     db: Arc<DB>,
@@ -32,11 +33,12 @@ pub struct BlockBodyProcessor {
 
 impl BlockBodyProcessor {
     pub fn new(
-        receiver: Receiver<BlockTask>, db: Arc<DB>, statuses_store: Arc<RwLock<DbStatusesStore>>,
-        reachability_service: MTReachabilityService<DbReachabilityStore>,
+        receiver: Receiver<BlockTask>, sender: Sender<BlockTask>, db: Arc<DB>,
+        statuses_store: Arc<RwLock<DbStatusesStore>>, reachability_service: MTReachabilityService<DbReachabilityStore>,
     ) -> Self {
         Self {
             receiver,
+            sender,
             db,
             statuses_store,
             reachability_service,
@@ -72,6 +74,9 @@ impl BlockBodyProcessor {
 
         // Wait until all workers are idle before exiting
         self.task_manager.wait_for_idle();
+
+        // Pass the exit signal on to the following processor
+        self.sender.send(BlockTask::Exit).unwrap();
     }
 
     fn queue_block(self: &Arc<BlockBodyProcessor>, hash: Hash) {
@@ -80,9 +85,9 @@ impl BlockBodyProcessor {
 
             let (block, result_transmitters, dependent_tasks) = self.task_manager.end(hash);
 
-            for tx in result_transmitters {
-                tx.send(res.clone()).unwrap();
-            }
+            self.sender
+                .send(BlockTask::Process(block, result_transmitters))
+                .unwrap();
 
             for dep in dependent_tasks {
                 let processor = self.clone();

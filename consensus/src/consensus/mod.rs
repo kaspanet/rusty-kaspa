@@ -15,6 +15,7 @@ use crate::{
         block_processor::BlockBodyProcessor,
         deps_manager::{BlockResultSender, BlockTask},
         header_processor::HeaderProcessor,
+        virtual_processor::VirtualStateProcessor,
         ProcessingCounters,
     },
     processes::{
@@ -43,6 +44,7 @@ pub struct Consensus {
     // Processors
     header_processor: Arc<HeaderProcessor>,
     body_processor: Arc<BlockBodyProcessor>,
+    virtual_processor: Arc<VirtualStateProcessor>,
 
     // Stores
     statuses_store: Arc<RwLock<DbStatusesStore>>,
@@ -101,6 +103,7 @@ impl Consensus {
 
         let (sender, receiver): (Sender<BlockTask>, Receiver<BlockTask>) = bounded(2000);
         let (body_sender, body_receiver): (Sender<BlockTask>, Receiver<BlockTask>) = unbounded();
+        let (virtual_sender, virtual_receiver): (Sender<BlockTask>, Receiver<BlockTask>) = unbounded();
 
         let counters = Arc::new(ProcessingCounters::default());
 
@@ -125,8 +128,16 @@ impl Consensus {
             counters.clone(),
         ));
 
-        let block_body_processor = Arc::new(BlockBodyProcessor::new(
+        let body_processor = Arc::new(BlockBodyProcessor::new(
             body_receiver,
+            virtual_sender,
+            db.clone(),
+            statuses_store.clone(),
+            reachability_service.clone(),
+        ));
+
+        let virtual_processor = Arc::new(VirtualStateProcessor::new(
+            virtual_receiver,
             db.clone(),
             statuses_store.clone(),
             reachability_service.clone(),
@@ -136,7 +147,8 @@ impl Consensus {
             db,
             block_sender: sender,
             header_processor,
-            body_processor: block_body_processor,
+            body_processor,
+            virtual_processor,
             statuses_store,
             relations_store,
             reachability_store,
@@ -173,14 +185,14 @@ impl Consensus {
 
         // Spawn the asynchronous processors.
         let header_processor = self.header_processor.clone();
-        let header_join = thread::spawn(move || header_processor.worker());
-
         let body_processor = self.body_processor.clone();
-        let body_join = thread::spawn(move || body_processor.worker());
+        let virtual_processor = self.virtual_processor.clone();
 
-        // TODO: add virtual state processor worker.
-
-        vec![header_join, body_join]
+        vec![
+            thread::spawn(move || header_processor.worker()),
+            thread::spawn(move || body_processor.worker()),
+            thread::spawn(move || virtual_processor.worker()),
+        ]
     }
 
     pub async fn validate_and_insert_block(&self, block: Arc<Block>) -> BlockProcessResult<()> {

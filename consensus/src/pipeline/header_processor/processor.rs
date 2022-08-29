@@ -206,7 +206,7 @@ impl HeaderProcessor {
         // Wait until all workers are idle before exiting
         self.task_manager.wait_for_idle();
 
-        // Pass the exit signal on to the body processor
+        // Pass the exit signal on to the following processor
         self.body_sender.send(BlockTask::Exit).unwrap();
     }
 
