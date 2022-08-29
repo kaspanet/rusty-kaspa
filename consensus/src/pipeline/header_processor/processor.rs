@@ -214,7 +214,7 @@ impl HeaderProcessor {
 
             let (block, result_transmitters, dependent_tasks) = self.task_manager.end(hash);
 
-            if block.is_header_only() {
+            if res.is_err() || block.is_header_only() {
                 for transmitter in result_transmitters {
                     transmitter.send(res.clone()).unwrap();
                 }
