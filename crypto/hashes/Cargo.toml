@@ -10,7 +10,7 @@ edition = "2021"
 no-asm = ["keccak"]
 
 [dependencies]
-hex = "0.4"
+faster-hex = "0.6"
 serde = { version = "1.0", features = ["derive"] }
 blake2b_simd = "1"
 sha2 = "0.10"
