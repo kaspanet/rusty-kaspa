@@ -8,7 +8,6 @@ edition = "2021"
 [dependencies]
 rand_chacha = "0.3"
 hashes = { path = "../hashes" }
-hex = "*"
 
 
 [dev-dependencies]
