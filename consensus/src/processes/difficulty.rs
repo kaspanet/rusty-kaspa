@@ -58,7 +58,7 @@ impl<T: HeaderStoreReader> DifficultyManager<T> {
     }
 
     pub fn calculate_difficulty_bits(&self, window: &BlockWindowHeap) -> u32 {
-        let difficulty_blocks: Vec<DifficultyBlock> = window
+        let mut difficulty_blocks: Vec<DifficultyBlock> = window
             .iter()
             .map(|item| {
                 let data = self
@@ -85,9 +85,11 @@ impl<T: HeaderStoreReader> DifficultyManager<T> {
 
         let targets_len = difficulty_blocks.len() - 1;
 
+        // We remove the minimal block because we want the average target for the internal window.
+        difficulty_blocks.swap_remove(min_ts_index);
+
         let targets = difficulty_blocks
             .into_iter()
-            .skip(min_ts_index)
             .map(|diff_block| compact_to_target(diff_block.bits));
 
         let targets_sum: u64 = targets.sum();
