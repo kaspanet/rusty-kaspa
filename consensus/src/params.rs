@@ -1,9 +1,11 @@
 use hashes::{Hash, HASH_SIZE};
 
+use crate::model::stores::ghostdag::KType;
+
 #[derive(Clone)]
 pub struct Params {
     pub genesis_hash: Hash,
-    pub ghostdag_k: u8,
+    pub ghostdag_k: KType,
     pub timestamp_deviation_tolerance: u64,
     pub target_time_per_block: u64,
     pub max_block_parents: u8,
@@ -13,7 +15,7 @@ pub struct Params {
     pub mergeset_size_limit: u64,
 }
 
-const DEFAULT_GHOSTDAG_K: u8 = 18;
+const DEFAULT_GHOSTDAG_K: KType = 18;
 pub const MAINNET_PARAMS: Params = Params {
     genesis_hash: Hash::from_bytes([1u8; HASH_SIZE]), // TODO: Use real mainnet genesis here
     ghostdag_k: DEFAULT_GHOSTDAG_K,
