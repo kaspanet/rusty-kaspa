@@ -117,9 +117,11 @@ impl TempDbLifetime {
 
 impl Drop for TempDbLifetime {
     fn drop(&mut self) {
-        assert!(
-            self.weak_db_ref.strong_count() == 0,
-            "DB is expected to have no strong references when lifetime is dropped"
+        assert_eq!(
+            self.weak_db_ref.strong_count(),
+            0,
+            "DB is expected to have no strong 
+            references when lifetime is dropped"
         );
         if let Some(dir) = self.tempdir.take() {
             let options = rocksdb::Options::default();
