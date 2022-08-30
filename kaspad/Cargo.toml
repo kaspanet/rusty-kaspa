@@ -7,7 +7,6 @@ authors = ["Kaspa developers"]
 include = ["src/**/*.rs"]
 
 [dependencies]
-hex = "0.4.3"
 thiserror = "1.0.31"
 rand_distr = "0.4.3"
 rand = "0.8"
@@ -17,7 +16,6 @@ num-format = "0.4.0"
 tokio = { version = "1.20.1", features = ["full"] }
 futures = "0.3.23"
 
-misc = { path = "../misc" }
 hashes = { path = "../crypto/hashes" }
 kaspa-core = { path = "../core" }
 consensus-core = { path = "../consensus/core" }
