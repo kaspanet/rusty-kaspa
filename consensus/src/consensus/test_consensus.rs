@@ -1,4 +1,8 @@
-use std::{env, fs, sync::Arc, thread::JoinHandle};
+use std::{
+    env, fs,
+    sync::{Arc, Weak},
+    thread::JoinHandle,
+};
 
 use consensus_core::{block::Block, header::Header};
 use hashes::Hash;
@@ -82,7 +86,7 @@ impl TestConsensus {
         self.consensus.signal_exit()
     }
 
-    pub fn shutdown(self, wait_handles: Vec<JoinHandle<()>>) {
+    pub fn shutdown(&self, wait_handles: Vec<JoinHandle<()>>) {
         self.consensus.shutdown(wait_handles)
     }
 
@@ -101,28 +105,27 @@ impl TestConsensus {
 
 #[derive(Default)]
 pub struct TempDbLifetime {
+    weak_db_ref: Weak<DB>,
     tempdir: Option<tempfile::TempDir>,
 }
 
 impl TempDbLifetime {
-    pub fn new(tempdir: tempfile::TempDir) -> Self {
-        Self { tempdir: Some(tempdir) }
+    pub fn new(tempdir: tempfile::TempDir, weak_db_ref: Weak<DB>) -> Self {
+        Self { tempdir: Some(tempdir), weak_db_ref }
     }
 }
 
 impl Drop for TempDbLifetime {
     fn drop(&mut self) {
+        assert!(
+            self.weak_db_ref.strong_count() == 0,
+            "DB is expected to have no strong references when lifetime is dropped"
+        );
         if let Some(dir) = self.tempdir.take() {
             let options = rocksdb::Options::default();
-            let path = dir.path().to_owned();
-            let path = path.to_str().unwrap();
-            if let Err(e) = DB::destroy(&options, path) {
-                std::thread::sleep(std::time::Duration::from_millis(1000));
-                // Retry
-                if let Err(e) = DB::destroy(&options, path) {
-                    println!("Warning: temp database at path {} was not deleted due to an error ({})", path, e);
-                }
-            }
+            let path_buf = dir.path().to_owned();
+            let path = path_buf.to_str().unwrap();
+            DB::destroy(&options, path).expect("DB is expected to be deletable since there are no references to it");
         }
     }
 }
@@ -137,5 +140,6 @@ pub fn create_temp_db() -> (TempDbLifetime, Arc<DB>) {
     let db_tempdir = tempfile::tempdir_in(kaspa_tempdir.as_path()).unwrap();
     let db_path = db_tempdir.path().to_owned();
 
-    (TempDbLifetime::new(db_tempdir), Arc::new(DB::open_default(db_path.to_str().unwrap()).unwrap()))
+    let db = Arc::new(DB::open_default(db_path.to_str().unwrap()).unwrap());
+    (TempDbLifetime::new(db_tempdir, Arc::downgrade(&db)), db)
 }

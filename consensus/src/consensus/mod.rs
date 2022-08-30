@@ -210,7 +210,7 @@ impl Consensus {
         self.block_sender.send(BlockTask::Exit).unwrap();
     }
 
-    pub fn shutdown(self, wait_handles: Vec<JoinHandle<()>>) {
+    pub fn shutdown(&self, wait_handles: Vec<JoinHandle<()>>) {
         self.signal_exit();
         // Wait for async consensus processors to exit
         for handle in wait_handles {
