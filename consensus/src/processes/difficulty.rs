@@ -1,5 +1,6 @@
 use crate::model::stores::{block_window_cache::BlockWindowHeap, ghostdag::GhostdagData, headers::HeaderStoreReader};
 use hashes::Hash;
+use kaspa_core::*;
 use std::{
     cmp::{max, Ordering},
     collections::HashSet,
@@ -7,6 +8,7 @@ use std::{
 };
 
 use super::ghostdag::ordering::SortableBlock;
+use itertools::{Itertools, MinMaxResult::MinMax};
 
 #[derive(Clone)]
 pub struct DifficultyManager<T: HeaderStoreReader> {
@@ -74,14 +76,11 @@ impl<T: HeaderStoreReader> DifficultyManager<T> {
             return self.genesis_bits;
         }
 
-        let (min_ts_index, min_diff_block) = difficulty_blocks
-            .iter()
-            .enumerate()
-            .min_by(|(_, a), (_, b)| a.cmp(b))
-            .unwrap();
-        let min_ts = min_diff_block.timestamp;
-        let max_diff_block = difficulty_blocks.iter().max().unwrap();
-        let max_ts = max_diff_block.timestamp;
+        let (min_ts_index, max_ts_index) =
+            extract_enum_value!(difficulty_blocks.iter().position_minmax(), MinMax(a,b) => (a,b));
+
+        let min_ts = difficulty_blocks[min_ts_index].timestamp;
+        let max_ts = difficulty_blocks[max_ts_index].timestamp;
 
         let targets_len = difficulty_blocks.len() - 1;
 
