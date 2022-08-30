@@ -82,8 +82,6 @@ impl<T: HeaderStoreReader> DifficultyManager<T> {
         let min_ts = difficulty_blocks[min_ts_index].timestamp;
         let max_ts = difficulty_blocks[max_ts_index].timestamp;
 
-        let targets_len = difficulty_blocks.len() - 1;
-
         // We remove the minimal block because we want the average target for the internal window.
         difficulty_blocks.swap_remove(min_ts_index);
 
@@ -93,7 +91,8 @@ impl<T: HeaderStoreReader> DifficultyManager<T> {
             .map(|diff_block| compact_to_target(diff_block.bits))
             .sum();
         let average_target = targets_sum / (difficulty_blocks_len as u64);
-        let new_target = average_target * max(max_ts - min_ts, 1) / self.target_time_per_block / targets_len as u64;
+        let new_target =
+            average_target * max(max_ts - min_ts, 1) / self.target_time_per_block / difficulty_blocks_len as u64;
         0 // TODO: Calculate real difficulty
     }
 }
