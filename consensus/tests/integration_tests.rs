@@ -2,7 +2,7 @@
 //! Integration tests
 //!
 
-use consensus::consensus::test_consensus::TestConsensus;
+use consensus::consensus::test_consensus::{create_temp_db, TestConsensus};
 use consensus::constants::BLOCK_VERSION;
 use consensus::errors::RuleError;
 use consensus::model::stores::ghostdag::{GhostdagStoreReader, KType as GhostdagKType};
@@ -76,7 +76,7 @@ fn reachability_stretch_test(use_attack_json: bool) {
         .push(root);
 
     // Act
-    let (_tempdir, db) = common::create_temp_db();
+    let (_temp_db_lifetime, db) = create_temp_db();
     let mut store = DbReachabilityStore::new(db, 100000);
     let mut builder = DagBuilder::new(&mut store);
 
@@ -150,17 +150,15 @@ fn test_noattack_json() {
 fn consensus_sanity_test() {
     let genesis_child: Hash = 2.into();
 
-    let (_tempdir, db) = common::create_temp_db();
+    let (_temp_db_lifetime, db) = create_temp_db();
     let consensus = TestConsensus::new(db, &MAINNET_PARAMS);
     let wait_handles = consensus.init();
 
     let _ = consensus.validate_and_insert_block(Arc::new(
         consensus.build_block_with_parents(genesis_child, vec![MAINNET_PARAMS.genesis_hash]),
     ));
-    let (_, _) = consensus.drop();
-    for handle in wait_handles {
-        handle.join().unwrap();
-    }
+
+    consensus.shutdown(wait_handles);
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -211,7 +209,7 @@ async fn ghostdag_test() {
         let reader = BufReader::new(file);
         let test: GhostdagTestDag = serde_json::from_reader(reader).unwrap();
 
-        let (_tempdir, db) = common::create_temp_db();
+        let (_temp_db_lifetime, db) = create_temp_db();
 
         let mut params = MAINNET_PARAMS;
         params.genesis_hash = string_to_hash(&test.genesis_id);
@@ -232,15 +230,10 @@ async fn ghostdag_test() {
                 .unwrap();
         }
 
-        let (_, ghostdag_store) = consensus.drop();
-
         // Clone with a new cache in order to verify correct writes to the DB itself
-        let ghostdag_store = ghostdag_store.clone_with_new_cache(10000);
-
-        // Wait for async consensus processors to exit
-        for handle in wait_handles {
-            handle.join().unwrap();
-        }
+        let ghostdag_store = consensus
+            .ghostdag_store()
+            .clone_with_new_cache(10000);
 
         // Assert GHOSTDAG output data
         for block in test.blocks {
@@ -272,6 +265,8 @@ async fn ghostdag_test() {
 
             assert_eq!(output_ghostdag_data.blue_score, block.score, "blue score assertion failed for {}", block.id,);
         }
+
+        consensus.shutdown(wait_handles);
     }
 }
 
@@ -291,7 +286,7 @@ fn strings_to_hashes(strings: &Vec<String>) -> Vec<Hash> {
 
 #[tokio::test]
 async fn block_window_test() {
-    let (_, db) = common::create_temp_db();
+    let (_temp_db_lifetime, db) = create_temp_db();
 
     let mut params = MAINNET_PARAMS;
     params.genesis_hash = string_to_hash("A");
@@ -380,10 +375,7 @@ async fn block_window_test() {
         assert_eq!(expected_window_ids, window_hashes);
     }
 
-    consensus.drop();
-    for handle in wait_handles {
-        handle.join().unwrap();
-    }
+    consensus.shutdown(wait_handles);
 }
 
 #[tokio::test]
@@ -470,10 +462,7 @@ async fn header_in_isolation_validation_test() {
         }
     }
 
-    let _ = consensus.drop();
-    for handle in wait_handles {
-        handle.join().unwrap();
-    }
+    consensus.shutdown(wait_handles);
 }
 
 #[tokio::test]
@@ -501,10 +490,8 @@ async fn incest_test() {
             panic!("Unexpected result: {:?}", res)
         }
     }
-    let _ = consensus.drop();
-    for handle in wait_handles {
-        handle.join().unwrap();
-    }
+
+    consensus.shutdown(wait_handles);
 }
 
 #[tokio::test]
@@ -525,10 +512,8 @@ async fn missing_parents_test() {
             panic!("Unexpected result: {:?}", res)
         }
     }
-    let _ = consensus.drop();
-    for handle in wait_handles {
-        handle.join().unwrap();
-    }
+
+    consensus.shutdown(wait_handles);
 }
 
 // Errors such as ErrTimeTooOld which happen after DAA and PoW validation should set the block
@@ -559,10 +544,7 @@ async fn known_invalid_test() {
         }
     }
 
-    let _ = consensus.drop();
-    for handle in wait_handles {
-        handle.join().unwrap();
-    }
+    consensus.shutdown(wait_handles);
 }
 
 #[tokio::test]
@@ -616,10 +598,7 @@ async fn median_time_test() {
         .await
         .unwrap();
 
-    let _ = consensus.drop();
-    for handle in wait_handles {
-        handle.join().unwrap();
-    }
+    consensus.shutdown(wait_handles);
 }
 
 #[tokio::test]
@@ -664,8 +643,5 @@ async fn mergeset_size_limit_test() {
         }
     }
 
-    let _ = consensus.drop();
-    for handle in wait_handles {
-        handle.join().unwrap();
-    }
+    consensus.shutdown(wait_handles);
 }

@@ -1,5 +1,5 @@
 use consensus::{
-    consensus::test_consensus::TestConsensus,
+    consensus::test_consensus::{create_temp_db, TestConsensus},
     errors::RuleError,
     model::stores::reachability::{DbReachabilityStore, StagingReachabilityStore},
     params::MAINNET_PARAMS,
@@ -19,7 +19,7 @@ mod common;
 #[test]
 fn test_reachability_staging() {
     // Arrange
-    let (_tempdir, db) = common::create_temp_db();
+    let (_temp_db_lifetime, db) = create_temp_db();
     let store = RwLock::new(DbReachabilityStore::new(db.clone(), 10000));
     let mut staging = StagingReachabilityStore::new(store.upgradable_read());
 
@@ -82,7 +82,7 @@ fn test_reachability_staging() {
 
 #[tokio::test]
 async fn test_concurrent_pipeline() {
-    let (_tempdir, db) = common::create_temp_db();
+    let (_temp_db_lifetime, db) = create_temp_db();
 
     let mut params = MAINNET_PARAMS;
     params.genesis_hash = 1.into();
@@ -113,13 +113,11 @@ async fn test_concurrent_pipeline() {
         results.1.unwrap();
     }
 
-    let (store, _) = consensus.drop();
     // Clone with a new cache in order to verify correct writes to the DB itself
-    let store = store.read().clone_with_new_cache(10000);
-
-    for handle in wait_handles {
-        handle.join().unwrap();
-    }
+    let store = consensus
+        .reachability_store()
+        .read()
+        .clone_with_new_cache(10000);
 
     // Assert intervals
     store
@@ -150,6 +148,8 @@ async fn test_concurrent_pipeline() {
     assert!(store.are_anticone(11, 4));
     assert!(store.are_anticone(11, 6));
     assert!(store.are_anticone(11, 9));
+
+    consensus.shutdown(wait_handles);
 }
 
 #[tokio::test]
@@ -161,7 +161,7 @@ async fn test_concurrent_pipeline_random() {
     let poi = Poisson::new((bps * delay) as f64).unwrap();
     let mut thread_rng = rand::thread_rng();
 
-    let (_tempdir, db) = common::create_temp_db();
+    let (_temp_db_lifetime, db) = create_temp_db();
 
     let mut params = MAINNET_PARAMS;
     params.genesis_hash = genesis;
@@ -200,16 +200,16 @@ async fn test_concurrent_pipeline_random() {
         tips = new_tips;
     }
 
-    let (store, _) = consensus.drop();
     // Clone with a new cache in order to verify correct writes to the DB itself
-    let store = store.read().clone_with_new_cache(10000);
-
-    for handle in wait_handles {
-        handle.join().unwrap();
-    }
+    let store = consensus
+        .reachability_store()
+        .read()
+        .clone_with_new_cache(10000);
 
     // Assert intervals
     store
         .validate_intervals(blockhash::ORIGIN)
         .unwrap();
+
+    consensus.shutdown(wait_handles);
 }

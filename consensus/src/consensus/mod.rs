@@ -210,11 +210,12 @@ impl Consensus {
         self.block_sender.send(BlockTask::Exit).unwrap();
     }
 
-    /// Drops consensus, and specifically drops sender channels so that
-    /// internal workers fold up and can be joined.
-    pub fn drop(self) -> (Arc<RwLock<DbReachabilityStore>>, Arc<DbGhostdagStore>) {
+    pub fn shutdown(self, wait_handles: Vec<JoinHandle<()>>) {
         self.signal_exit();
-        (self.reachability_store, self.ghostdag_store)
+        // Wait for async consensus processors to exit
+        for handle in wait_handles {
+            handle.join().unwrap();
+        }
     }
 }
 
