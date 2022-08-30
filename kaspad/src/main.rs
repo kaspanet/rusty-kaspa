@@ -31,13 +31,14 @@ pub fn main() {
 
     println!("Using rayon thread pool with {} threads", rayon::current_num_threads());
 
+    // Make sure to create the DB first, so it cleans up last
+    let (_temp_db_lifetime, db) = create_temp_db();
+
     let core = Arc::new(Core::new());
-    let signals = Arc::new(signals::Signals::new(core.clone()));
+    let signals = Arc::new(signals::Signals::new(&core));
     signals.init();
 
     // ---
-
-    let (_temp_db_lifetime, db) = create_temp_db();
 
     let mut params = MAINNET_PARAMS;
     params.genesis_hash = genesis;
