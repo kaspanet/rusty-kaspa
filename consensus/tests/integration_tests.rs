@@ -209,13 +209,11 @@ async fn ghostdag_test() {
         let reader = BufReader::new(file);
         let test: GhostdagTestDag = serde_json::from_reader(reader).unwrap();
 
-        let (_temp_db_lifetime, db) = create_temp_db();
-
         let mut params = MAINNET_PARAMS;
         params.genesis_hash = string_to_hash(&test.genesis_id);
         params.ghostdag_k = test.k;
 
-        let consensus = TestConsensus::new(db, &params);
+        let consensus = TestConsensus::create_from_temp_db(&params);
         let wait_handles = consensus.init();
 
         for block in test.blocks.iter() {

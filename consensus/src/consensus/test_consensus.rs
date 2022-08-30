@@ -25,11 +25,7 @@ pub struct TestConsensus {
 
 impl TestConsensus {
     pub fn new(db: Arc<DB>, params: &Params) -> Self {
-        Self {
-            consensus: Consensus::new(db, params),
-            params: params.clone(),
-            temp_db_lifetime: TempDbLifetime::new(None),
-        }
+        Self { consensus: Consensus::new(db, params), params: params.clone(), temp_db_lifetime: Default::default() }
     }
 
     pub fn create_from_temp_db(params: &Params) -> Self {
@@ -103,13 +99,14 @@ impl TestConsensus {
     }
 }
 
+#[derive(Default)]
 pub struct TempDbLifetime {
     tempdir: Option<tempfile::TempDir>,
 }
 
 impl TempDbLifetime {
-    pub fn new(tempdir: Option<tempfile::TempDir>) -> Self {
-        Self { tempdir }
+    pub fn new(tempdir: tempfile::TempDir) -> Self {
+        Self { tempdir: Some(tempdir) }
     }
 }
 
@@ -117,7 +114,15 @@ impl Drop for TempDbLifetime {
     fn drop(&mut self) {
         if let Some(dir) = self.tempdir.take() {
             let options = rocksdb::Options::default();
-            DB::destroy(&options, dir.path().to_owned().to_str().unwrap()).unwrap();
+            let path = dir.path().to_owned();
+            let path = path.to_str().unwrap();
+            if let Err(e) = DB::destroy(&options, path) {
+                std::thread::sleep(std::time::Duration::from_millis(1000));
+                // Retry
+                if let Err(e) = DB::destroy(&options, path) {
+                    println!("Warning: temp database at path {} was not deleted due to an error ({})", path, e);
+                }
+            }
         }
     }
 }
@@ -132,5 +137,5 @@ pub fn create_temp_db() -> (TempDbLifetime, Arc<DB>) {
     let db_tempdir = tempfile::tempdir_in(kaspa_tempdir.as_path()).unwrap();
     let db_path = db_tempdir.path().to_owned();
 
-    (TempDbLifetime::new(Some(db_tempdir)), Arc::new(DB::open_default(db_path.to_str().unwrap()).unwrap()))
+    (TempDbLifetime::new(db_tempdir), Arc::new(DB::open_default(db_path.to_str().unwrap()).unwrap()))
 }
