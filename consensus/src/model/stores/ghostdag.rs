@@ -41,6 +41,10 @@ impl GhostdagData {
             blues_anticone_sizes: HashKTypeMap::new(blues_anticone_sizes),
         }
     }
+
+    pub fn mergeset_size(&self) -> usize {
+        self.mergeset_blues.len() + self.mergeset_reds.len()
+    }
 }
 
 impl GhostdagData {

@@ -1,15 +1,15 @@
 use kaspa_core::core::Core;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 
 pub struct Signals {
-    core: Arc<Core>,
+    core: Weak<Core>,
     iterations: AtomicU64,
 }
 
 impl Signals {
-    pub fn new(core: Arc<Core>) -> Signals {
-        Signals { core, iterations: AtomicU64::new(0) }
+    pub fn new(core: &Arc<Core>) -> Signals {
+        Signals { core: Arc::downgrade(core), iterations: AtomicU64::new(0) }
     }
 
     pub fn init(self: &Arc<Signals>) {
@@ -23,7 +23,9 @@ impl Signals {
             }
 
             println!("^SIGNAL - shutting down core... (CTRL+C again to halt)");
-            core.shutdown();
+            if let Some(actual_core) = core.upgrade() {
+                actual_core.shutdown();
+            }
         })
         .expect("Error setting signal handler");
     }
