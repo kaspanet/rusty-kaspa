@@ -57,18 +57,18 @@ impl Display for Hash {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let mut hex = [0u8; HASH_SIZE * 2];
-        hex::encode_to_slice(&self.0, &mut hex).expect("The output is exactly twice the size of the input");
+        faster_hex::hex_encode(&self.0, &mut hex).expect("The output is exactly twice the size of the input");
         f.write_str(str::from_utf8(&hex).expect("hex is always valid UTF-8"))
     }
 }
 
 impl FromStr for Hash {
-    type Err = hex::FromHexError;
+    type Err = faster_hex::Error;
 
     #[inline]
     fn from_str(hash_str: &str) -> Result<Self, Self::Err> {
         let mut bytes = [0u8; HASH_SIZE];
-        hex::decode_to_slice(hash_str, &mut bytes)?;
+        faster_hex::hex_decode(hash_str.as_bytes(), &mut bytes)?;
         Ok(Hash(bytes))
     }
 }
@@ -104,7 +104,7 @@ mod tests {
         let odd_str = "8e40af02265360d59f4ecf9ae9ebf8f00a3118408f5a9cdcbcc9c0f93642f3a";
         let short_str = "8e40af02265360d59f4ecf9ae9ebf8f00a3118408f5a9cdcbcc9c0f93642f3";
 
-        assert_eq!(Hash::from_str(odd_str), Err(hex::FromHexError::OddLength));
-        assert_eq!(Hash::from_str(short_str), Err(hex::FromHexError::InvalidStringLength));
+        assert!(matches!(dbg!(Hash::from_str(odd_str)), Err(faster_hex::Error::InvalidLength(len)) if len == 64));
+        assert!(matches!(dbg!(Hash::from_str(short_str)), Err(faster_hex::Error::InvalidLength(len)) if len == 64));
     }
 }
