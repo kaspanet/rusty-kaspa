@@ -100,6 +100,12 @@ impl Consensus {
             params.timestamp_deviation_tolerance as usize,
             params.genesis_timestamp,
         );
+        let difficulty_manager = DifficultyManager::new(
+            headers_store.clone(),
+            params.genesis_bits,
+            params.difficulty_window_size,
+            params.target_time_per_block,
+        );
 
         let (sender, receiver): (Sender<BlockTask>, Receiver<BlockTask>) = unbounded();
         let (body_sender, body_receiver): (Sender<BlockTask>, Receiver<BlockTask>) = unbounded();
@@ -115,7 +121,7 @@ impl Consensus {
             relations_store.clone(),
             reachability_store.clone(),
             ghostdag_store.clone(),
-            headers_store.clone(),
+            headers_store,
             daa_store,
             statuses_store.clone(),
             pruning_store,
@@ -125,6 +131,7 @@ impl Consensus {
             relations_service.clone(),
             past_median_time_manager.clone(),
             dag_traversal_manager.clone(),
+            difficulty_manager.clone(),
             counters.clone(),
         ));
 
@@ -157,11 +164,7 @@ impl Consensus {
             statuses_service,
             relations_service: relations_service.clone(),
             reachability_service: reachability_service.clone(),
-            difficulty_manager: DifficultyManager::new(
-                headers_store,
-                params.genesis_bits,
-                params.difficulty_window_size,
-            ),
+            difficulty_manager,
             dag_traversal_manager,
             ghostdag_manager: GhostdagManager::new(
                 params.genesis_hash,
@@ -207,11 +210,12 @@ impl Consensus {
         self.block_sender.send(BlockTask::Exit).unwrap();
     }
 
-    /// Drops consensus, and specifically drops sender channels so that
-    /// internal workers fold up and can be joined.
-    pub fn drop(self) -> (Arc<RwLock<DbReachabilityStore>>, Arc<DbGhostdagStore>) {
+    pub fn shutdown(self, wait_handles: Vec<JoinHandle<()>>) {
         self.signal_exit();
-        (self.reachability_store, self.ghostdag_store)
+        // Wait for async consensus processors to exit
+        for handle in wait_handles {
+            handle.join().unwrap();
+        }
     }
 }
 

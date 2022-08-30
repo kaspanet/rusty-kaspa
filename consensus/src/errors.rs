@@ -40,7 +40,13 @@ pub enum RuleError {
     UnexpectedDifficulty(u32, u32),
 
     #[error("block timestamp of {0} is not after expected {1}")]
-    ErrTimeTooOld(u64, u64),
+    TimeTooOld(u64, u64),
+
+    #[error("block is known to be invalid")]
+    KnownInvalid,
+
+    #[error("The block merges {0} blocks > {1} merge set size limit")]
+    MergeSetTooBig(u64, u64),
 }
 
 pub type BlockProcessResult<T> = std::result::Result<T, RuleError>;

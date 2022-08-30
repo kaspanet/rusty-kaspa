@@ -14,6 +14,7 @@ pub trait HeaderStoreReader {
     fn get_daa_score(&self, hash: Hash) -> Result<u64, StoreError>;
     fn get_timestamp(&self, hash: Hash) -> Result<u64, StoreError>;
     fn get_header(&self, hash: Hash) -> Result<Arc<Header>, StoreError>;
+    fn get_compact_header_data(&self, hash: Hash) -> Result<CompactHeaderData, StoreError>;
 }
 
 pub trait HeaderStore: HeaderStoreReader {
@@ -25,9 +26,10 @@ const HEADERS_STORE_PREFIX: &[u8] = b"headers";
 const COPMACT_HEADER_DATA_STORE_PREFIX: &[u8] = b"compact-header-data";
 
 #[derive(Clone, Copy, Serialize, Deserialize)]
-struct CompactHeaderData {
-    daa_score: u64,
-    timestamp: u64,
+pub struct CompactHeaderData {
+    pub daa_score: u64,
+    pub timestamp: u64,
+    pub bits: u32,
 }
 
 /// A DB + cache implementation of `HeaderStore` trait, with concurrency support.
@@ -73,7 +75,7 @@ impl DbHeadersStore {
         self.cached_compact_headers_access.write_batch(
             batch,
             hash,
-            CompactHeaderData { daa_score: header.daa_score, timestamp: header.timestamp },
+            CompactHeaderData { daa_score: header.daa_score, timestamp: header.timestamp, bits: header.bits },
         )?;
         Ok(())
     }
@@ -103,6 +105,17 @@ impl HeaderStoreReader for DbHeadersStore {
     fn get_header(&self, hash: Hash) -> Result<Arc<Header>, StoreError> {
         self.cached_headers_access.read(hash)
     }
+
+    fn get_compact_header_data(&self, hash: Hash) -> Result<CompactHeaderData, StoreError> {
+        if let Some(header) = self.cached_headers_access.read_from_cache(hash) {
+            return Ok(CompactHeaderData {
+                daa_score: header.daa_score,
+                timestamp: header.timestamp,
+                bits: header.bits,
+            });
+        }
+        self.cached_compact_headers_access.read(hash)
+    }
 }
 
 impl HeaderStore for DbHeadersStore {
@@ -110,8 +123,10 @@ impl HeaderStore for DbHeadersStore {
         if self.cached_headers_access.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
-        self.cached_compact_headers_access
-            .write(hash, CompactHeaderData { daa_score: header.daa_score, timestamp: header.timestamp })?;
+        self.cached_compact_headers_access.write(
+            hash,
+            CompactHeaderData { daa_score: header.daa_score, timestamp: header.timestamp, bits: header.bits },
+        )?;
         self.cached_headers_access.write(hash, &header)?;
         Ok(())
     }

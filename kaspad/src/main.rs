@@ -4,8 +4,8 @@ extern crate hashes;
 
 use std::sync::Arc;
 
+use consensus::consensus::test_consensus::create_temp_db;
 use consensus::consensus::Consensus;
-use consensus::model::stores::DB;
 use consensus::params::MAINNET_PARAMS;
 use consensus_core::blockhash;
 use hashes::Hash;
@@ -31,14 +31,14 @@ pub fn main() {
 
     println!("Using rayon thread pool with {} threads", rayon::current_num_threads());
 
+    // Make sure to create the DB first, so it cleans up last
+    let (_temp_db_lifetime, db) = create_temp_db();
+
     let core = Arc::new(Core::new());
-    let signals = Arc::new(signals::Signals::new(core.clone()));
+    let signals = Arc::new(signals::Signals::new(&core));
     signals.init();
 
     // ---
-
-    let db_tempdir = tempfile::tempdir().unwrap();
-    let db = Arc::new(DB::open_default(db_tempdir.path().to_owned().to_str().unwrap()).unwrap());
 
     let mut params = MAINNET_PARAMS;
     params.genesis_hash = genesis;
