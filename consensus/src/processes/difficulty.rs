@@ -112,7 +112,8 @@ struct DifficultyBlock {
 
 impl PartialEq for DifficultyBlock {
     fn eq(&self, other: &Self) -> bool {
-        self.timestamp == other.timestamp && self.sortable_block == other.sortable_block
+        // If the sortable blocks are equal the timestamps and bits that are associated with the block are equal for sure.
+        self.sortable_block == other.sortable_block
     }
 }
 
