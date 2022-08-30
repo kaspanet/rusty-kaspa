@@ -32,18 +32,11 @@ impl HeaderProcessor {
     pub fn check_merge_size_limit(
         self: &Arc<HeaderProcessor>, ctx: &mut HeaderProcessingContext, header: &Header,
     ) -> BlockProcessResult<()> {
-        let mergeset_size = (ctx
+        let mergeset_size = ctx
             .ghostdag_data
             .as_ref()
             .unwrap()
-            .mergeset_blues
-            .len()
-            + ctx
-                .ghostdag_data
-                .as_ref()
-                .unwrap()
-                .mergeset_reds
-                .len()) as u64;
+            .mergeset_size() as u64;
 
         if mergeset_size > self.mergeset_size_limit {
             return Err(RuleError::MergeSetTooBig(mergeset_size, self.mergeset_size_limit));
