@@ -39,9 +39,6 @@ pub struct HeaderProcessingContext<'a> {
     pub hash: Hash,
     pub header: &'a Header,
 
-    /// Mergeset w/o selected parent
-    pub mergeset: Option<BlockHashes>,
-
     // Staging data
     pub ghostdag_data: Option<Arc<GhostdagData>>,
     pub block_window_for_difficulty: Option<BlockWindowHeap>,
@@ -57,7 +54,6 @@ impl<'a> HeaderProcessingContext<'a> {
         Self {
             hash,
             header,
-            mergeset: None,
             ghostdag_data: None,
             non_pruned_parents: None,
             block_window_for_difficulty: None,
@@ -273,14 +269,13 @@ impl HeaderProcessor {
 
     fn commit_header(self: &Arc<HeaderProcessor>, ctx: HeaderProcessingContext, header: &Header) {
         let ghostdag_data = ctx.ghostdag_data.unwrap();
-        let selected_parent = ghostdag_data.selected_parent;
 
         // Create a DB batch writer
         let mut batch = WriteBatch::default();
 
         // Write to append only stores: this requires no lock and hence done first
         self.ghostdag_store
-            .insert_batch(&mut batch, ctx.hash, ghostdag_data)
+            .insert_batch(&mut batch, ctx.hash, &ghostdag_data)
             .unwrap();
         self.block_window_cache_for_difficulty
             .insert(ctx.hash, Arc::new(ctx.block_window_for_difficulty.unwrap()));
@@ -300,8 +295,13 @@ impl HeaderProcessor {
         let mut staging = StagingReachabilityStore::new(self.reachability_store.upgradable_read());
 
         // Add block to staging reachability
-        reachability::add_block(&mut staging, ctx.hash, selected_parent, &mut ctx.mergeset.unwrap().iter().cloned())
-            .unwrap();
+        reachability::add_block(
+            &mut staging,
+            ctx.hash,
+            ghostdag_data.selected_parent,
+            &mut ghostdag_data.unordered_mergeset_without_selected_parent(),
+        )
+        .unwrap();
         // Hint reachability about the new tip.
         // TODO: imp header tips store and call this only for an actual header selected tip
         reachability::hint_virtual_selected_parent(&mut staging, ctx.hash).unwrap();

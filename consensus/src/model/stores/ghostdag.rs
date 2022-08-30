@@ -171,12 +171,12 @@ impl DbGhostdagStore {
         }
     }
 
-    pub fn insert_batch(&self, batch: &mut WriteBatch, hash: Hash, data: Arc<GhostdagData>) -> Result<(), StoreError> {
+    pub fn insert_batch(&self, batch: &mut WriteBatch, hash: Hash, data: &Arc<GhostdagData>) -> Result<(), StoreError> {
         if self.cached_access.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
         self.cached_access
-            .write_batch(batch, hash, &data)?;
+            .write_batch(batch, hash, data)?;
         Ok(())
     }
 }
