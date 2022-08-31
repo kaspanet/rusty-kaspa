@@ -37,7 +37,6 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService> Gh
             .has(self.genesis_hash)
             .unwrap()
         {
-            ctx.mergeset = Some(BlockHashes::new(Vec::new()));
             ctx.ghostdag_data = Some(Arc::new(GhostdagData::new(
                 0,
                 Default::default(),
@@ -96,8 +95,6 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService> Gh
         let blue_work = blue_score.into();
         new_block_data.finalize_score_and_work(blue_score, blue_work);
 
-        // Cache mergeset in context
-        ctx.mergeset = Some(BlockHashes::new(ordered_mergeset));
         // Stage new block data
         ctx.ghostdag_data = Some(new_block_data);
     }
