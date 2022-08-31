@@ -213,8 +213,7 @@ async fn ghostdag_test() {
         params.genesis_hash = string_to_hash(&test.genesis_id);
         params.ghostdag_k = test.k;
 
-        let (_temp_db_lifetime, db) = create_temp_db();
-        let consensus = TestConsensus::new(db, &params);
+        let consensus = TestConsensus::create_from_temp_db(&params);
         let wait_handles = consensus.init();
 
         for block in test.blocks.iter() {
@@ -265,6 +264,7 @@ async fn ghostdag_test() {
             assert_eq!(output_ghostdag_data.blue_score, block.score, "blue score assertion failed for {}", block.id,);
         }
 
+        drop(ghostdag_store);
         consensus
             .shutdown_async(wait_handles)
             .await
@@ -386,8 +386,7 @@ async fn block_window_test() {
 #[tokio::test]
 async fn header_in_isolation_validation_test() {
     let params = &MAINNET_PARAMS;
-    let (_temp_db_lifetime, db) = create_temp_db();
-    let consensus = TestConsensus::new(db, params);
+    let consensus = TestConsensus::create_from_temp_db(params);
     let wait_handles = consensus.init();
     let block = consensus.build_block_with_parents(1.into(), vec![params.genesis_hash]);
 
@@ -477,8 +476,7 @@ async fn header_in_isolation_validation_test() {
 #[tokio::test]
 async fn incest_test() {
     let params = &MAINNET_PARAMS;
-    let (_temp_db_lifetime, db) = create_temp_db();
-    let consensus = TestConsensus::new(db, params);
+    let consensus = TestConsensus::create_from_temp_db(params);
     let wait_handles = consensus.init();
     let block = consensus.build_block_with_parents(1.into(), vec![params.genesis_hash]);
     consensus
@@ -510,8 +508,7 @@ async fn incest_test() {
 #[tokio::test]
 async fn missing_parents_test() {
     let params = &MAINNET_PARAMS;
-    let (_temp_db_lifetime, db) = create_temp_db();
-    let consensus = TestConsensus::new(db, params);
+    let consensus = TestConsensus::create_from_temp_db(params);
     let wait_handles = consensus.init();
     let mut block = consensus.build_block_with_parents(1.into(), vec![params.genesis_hash]);
     block.header.parents_by_level[0] = vec![0.into()];
@@ -538,8 +535,7 @@ async fn missing_parents_test() {
 #[tokio::test]
 async fn known_invalid_test() {
     let params = &MAINNET_PARAMS;
-    let (_temp_db_lifetime, db) = create_temp_db();
-    let consensus = TestConsensus::new(db, params);
+    let consensus = TestConsensus::create_from_temp_db(params);
     let wait_handles = consensus.init();
     let mut block = consensus.build_block_with_parents(1.into(), vec![params.genesis_hash]);
     block.header.timestamp -= 1;
@@ -571,8 +567,7 @@ async fn known_invalid_test() {
 #[tokio::test]
 async fn median_time_test() {
     let params = &MAINNET_PARAMS;
-    let (_temp_db_lifetime, db) = create_temp_db();
-    let consensus = TestConsensus::new(db, params);
+    let consensus = TestConsensus::create_from_temp_db(params);
     let wait_handles = consensus.init();
 
     let num_blocks = 2 * params.timestamp_deviation_tolerance - 1;
@@ -629,8 +624,7 @@ async fn median_time_test() {
 #[tokio::test]
 async fn mergeset_size_limit_test() {
     let params = &MAINNET_PARAMS;
-    let (_temp_db_lifetime, db) = create_temp_db();
-    let consensus = TestConsensus::new(db, params);
+    let consensus = TestConsensus::create_from_temp_db(params);
     let wait_handles = consensus.init();
 
     let num_blocks_per_chain = params.mergeset_size_limit + 1;

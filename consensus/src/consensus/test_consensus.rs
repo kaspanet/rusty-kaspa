@@ -24,11 +24,17 @@ use super::Consensus;
 pub struct TestConsensus {
     consensus: Consensus,
     params: Params,
+    temp_db_lifetime: TempDbLifetime,
 }
 
 impl TestConsensus {
     pub fn new(db: Arc<DB>, params: &Params) -> Self {
-        Self { consensus: Consensus::new(db, params), params: params.clone() }
+        Self { consensus: Consensus::new(db, params), params: params.clone(), temp_db_lifetime: Default::default() }
+    }
+
+    pub fn create_from_temp_db(params: &Params) -> Self {
+        let (temp_db_lifetime, db) = create_temp_db();
+        Self { consensus: Consensus::new(db, params), params: params.clone(), temp_db_lifetime }
     }
 
     pub fn build_header_with_parents(&self, hash: Hash, parents: Vec<Hash>) -> Header {
@@ -85,7 +91,9 @@ impl TestConsensus {
     }
 
     pub fn shutdown_async(self, wait_handles: Vec<JoinHandle<()>>) -> tokio::task::JoinHandle<()> {
-        self.consensus.shutdown_async(wait_handles)
+        tokio::task::spawn_blocking(move || {
+            self.shutdown(wait_handles);
+        })
     }
 
     pub fn dag_traversal_manager(&self) -> &DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore> {
@@ -115,6 +123,14 @@ impl TempDbLifetime {
 
 impl Drop for TempDbLifetime {
     fn drop(&mut self) {
+        for _ in 0..16 {
+            if self.weak_db_ref.strong_count() > 0 {
+                // Sometimes another thread is shuting-down and cleaning resources
+                std::thread::sleep(std::time::Duration::from_millis(1000));
+            } else {
+                break;
+            }
+        }
         assert_eq!(
             self.weak_db_ref.strong_count(),
             0,
