@@ -11,14 +11,14 @@ const REV_CHARSET: [u8; 123] = [
 
 // Checksome for bech32
 // https://bch.info/en/specifications
-fn polymod<'data, I>(values: I) -> u64
+fn polymod<I>(values: I) -> u64
 where
-    I: Iterator<Item = &'data u8>,
+    I: Iterator<Item=u8>,
 {
     let mut c = 1u64;
     for d in values {
         let c0 = c >> 35;
-        c = ((c & 0x07ffffffff) << 5) ^ (*d as u64);
+        c = ((c & 0x07ffffffff) << 5) ^ (d as u64);
 
         if c0 & 0x01 != 0 {
             c ^= 0x98f2bc8e61;
@@ -42,10 +42,10 @@ where
 fn checksum(payload: &[u8], prefix: &[u8]) -> u64 {
     polymod(
         prefix
-            .iter()
-            .chain(&[0u8])
-            .chain(payload)
-            .chain(&vec![0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8]),
+            .iter().cloned()
+            .chain([0u8].iter().cloned())
+            .chain(payload.iter().cloned())
+            .chain([0u8; 8].iter().cloned()),
     )
 }
 
