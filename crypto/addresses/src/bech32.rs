@@ -50,84 +50,50 @@ fn checksum(payload: &[u8], prefix: &[u8]) -> u64 {
 }
 
 // Convert 8bit array to 5bit array with right padding
-fn conv8to5(payload: &[u8]) -> Vec<u8> {
-    payload
-        .chunks(5)
-        .flat_map(
-            // 5b
-            |chunk| match chunk.len() {
-                0 => vec![],
-                1 => vec![chunk[0] >> 3, (chunk[0] & 0x07) << 2],
-                2 => vec![
-                    chunk[0] >> 3,
-                    (chunk[0] & 0x07) << 2 | chunk[1] >> 6,
-                    (chunk[1] & 0x3f) >> 1,
-                    (chunk[1] & 0x01) << 4,
-                ],
-                3 => vec![
-                    chunk[0] >> 3,
-                    (chunk[0] & 0x07) << 2 | chunk[1] >> 6,
-                    (chunk[1] & 0x3f) >> 1,
-                    (chunk[1] & 0x01) << 4 | chunk[2] >> 4,
-                    (chunk[2] & 0x0f) << 1,
-                ],
-                4 => vec![
-                    chunk[0] >> 3,
-                    (chunk[0] & 0x07) << 2 | chunk[1] >> 6,
-                    (chunk[1] & 0x3f) >> 1,
-                    (chunk[1] & 0x01) << 4 | chunk[2] >> 4,
-                    (chunk[2] & 0x0f) << 1 | chunk[3] >> 7,
-                    (chunk[3] & 0x7f) >> 2,
-                    (chunk[3] & 0x03) << 3,
-                ],
-                5 => vec![
-                    chunk[0] >> 3,
-                    (chunk[0] & 0x07) << 2 | chunk[1] >> 6,
-                    (chunk[1] & 0x3f) >> 1,
-                    (chunk[1] & 0x01) << 4 | chunk[2] >> 4,
-                    (chunk[2] & 0x0f) << 1 | chunk[3] >> 7,
-                    (chunk[3] & 0x7f) >> 2,
-                    (chunk[3] & 0x03) << 3 | chunk[4] >> 5,
-                    (chunk[4] & 0x1f),
-                ],
-                _ => unreachable!(),
-            },
-        )
-        .collect()
+fn conv8to5 (payload: &[u8]) -> Vec<u8> {
+    let padding = match payload.len() % 5 == 0 {
+        true => 0,
+        false => 1
+    };
+    let mut five_bit = vec![0u8; payload.len() * 8 / 5 + padding];
+    let mut current_idx = 0;
+
+    let mut buff = 0u16;
+    let mut bits = 0;
+    for char in payload.iter() {
+        buff = (buff << 8) | *char as u16;
+        bits += 8;
+        while bits >= 5 {
+            bits -= 5;
+            five_bit[current_idx] = (buff >> bits) as u8;
+            buff = buff & ((1 << bits) - 1);
+            current_idx += 1;
+        }
+    }
+    if bits > 0 {
+        five_bit[current_idx] = (buff << (5-bits)) as u8;
+    }
+    five_bit
 }
 
 // Convert 5 bit array to 8 bit array, ignore right side padding
 fn conv5to8(payload: &[u8]) -> Vec<u8> {
-    payload
-        .chunks(8)
-        .flat_map(
-            // 5b
-            |chunk| match chunk.len() {
-                0 | 1 => vec![],
-                2 | 3 => vec![(chunk[0] << 3) | (chunk[1] >> 2)],
-                4 => vec![(chunk[0] << 3) | (chunk[1] >> 2), (chunk[1] << 6) | (chunk[2] << 1) | (chunk[3] >> 4)],
-                5 | 6 => vec![
-                    (chunk[0] << 3) | (chunk[1] >> 2),
-                    (chunk[1] << 6) | (chunk[2] << 1) | (chunk[3] >> 4),
-                    (chunk[3] << 4) | (chunk[4] >> 1),
-                ],
-                7 => vec![
-                    (chunk[0] << 3) | (chunk[1] >> 2),
-                    (chunk[1] << 6) | (chunk[2] << 1) | (chunk[3] >> 4),
-                    (chunk[3] << 4) | (chunk[4] >> 1),
-                    (chunk[4] << 7) | (chunk[5] << 2) | (chunk[6] >> 3),
-                ],
-                8 => vec![
-                    (chunk[0] << 3) | (chunk[1] >> 2),
-                    (chunk[1] << 6) | (chunk[2] << 1) | (chunk[3] >> 4),
-                    (chunk[3] << 4) | (chunk[4] >> 1),
-                    (chunk[4] << 7) | (chunk[5] << 2) | (chunk[6] >> 3),
-                    (chunk[6] << 5) | chunk[7],
-                ],
-                _ => unreachable!(),
-            },
-        )
-        .collect()
+    let mut eight_bit = vec![0u8; payload.len() * 5 / 8];
+    let mut current_idx = 0;
+
+    let mut buff = 0u16;
+    let mut bits = 0;
+    for char in payload.iter() {
+        buff = (buff << 5) | *char as u16;
+        bits += 5;
+        while bits >= 8 {
+            bits -= 8;
+            eight_bit[current_idx] = (buff >> bits) as u8;
+            buff = buff & ((1 << bits) - 1);
+            current_idx += 1;
+        }
+    }
+    eight_bit
 }
 
 impl Address {
