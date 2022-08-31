@@ -57,9 +57,9 @@ impl TryFrom<&str> for Prefix {
 
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub struct Address {
-    prefix: Prefix,
-    payload: Vec<u8>,
-    version: u8,
+    pub prefix: Prefix,
+    pub payload: Vec<u8>,
+    pub version: u8,
 }
 
 impl From<Address> for String {
