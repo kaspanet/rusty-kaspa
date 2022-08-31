@@ -42,10 +42,10 @@ where
 fn checksum(payload: &[u8], prefix: &[u8]) -> u64 {
     polymod(
         prefix
-            .iter().cloned()
-            .chain([0u8].iter().cloned())
-            .chain(payload.iter().cloned())
-            .chain([0u8; 8].iter().cloned()),
+            .iter().copied()
+            .chain([0u8])
+            .chain(payload.iter().copied())
+            .chain([0u8; 8]),
     )
 }
 
