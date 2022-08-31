@@ -82,18 +82,8 @@ impl TestConsensus {
         self.consensus.init()
     }
 
-    pub fn signal_exit(&self) {
-        self.consensus.signal_exit()
-    }
-
     pub fn shutdown(&self, wait_handles: Vec<JoinHandle<()>>) {
         self.consensus.shutdown(wait_handles)
-    }
-
-    pub fn shutdown_async(self, wait_handles: Vec<JoinHandle<()>>) -> tokio::task::JoinHandle<()> {
-        tokio::task::spawn_blocking(move || {
-            self.shutdown(wait_handles);
-        })
     }
 
     pub fn dag_traversal_manager(&self) -> &DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore> {

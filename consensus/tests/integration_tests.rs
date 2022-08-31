@@ -264,11 +264,7 @@ async fn ghostdag_test() {
             assert_eq!(output_ghostdag_data.blue_score, block.score, "blue score assertion failed for {}", block.id,);
         }
 
-        drop(ghostdag_store);
-        consensus
-            .shutdown_async(wait_handles)
-            .await
-            .unwrap();
+        consensus.shutdown(wait_handles);
     }
 }
 
@@ -377,10 +373,7 @@ async fn block_window_test() {
         assert_eq!(expected_window_ids, window_hashes);
     }
 
-    consensus
-        .shutdown_async(wait_handles)
-        .await
-        .unwrap();
+    consensus.shutdown(wait_handles);
 }
 
 #[tokio::test]
@@ -467,10 +460,7 @@ async fn header_in_isolation_validation_test() {
         }
     }
 
-    consensus
-        .shutdown_async(wait_handles)
-        .await
-        .unwrap();
+    consensus.shutdown(wait_handles);
 }
 
 #[tokio::test]
@@ -499,10 +489,7 @@ async fn incest_test() {
         }
     }
 
-    consensus
-        .shutdown_async(wait_handles)
-        .await
-        .unwrap();
+    consensus.shutdown(wait_handles);
 }
 
 #[tokio::test]
@@ -524,10 +511,7 @@ async fn missing_parents_test() {
         }
     }
 
-    consensus
-        .shutdown_async(wait_handles)
-        .await
-        .unwrap();
+    consensus.shutdown(wait_handles);
 }
 
 // Errors such as ErrTimeTooOld which happen after DAA and PoW validation should set the block
@@ -558,10 +542,7 @@ async fn known_invalid_test() {
         }
     }
 
-    consensus
-        .shutdown_async(wait_handles)
-        .await
-        .unwrap();
+    consensus.shutdown(wait_handles);
 }
 
 #[tokio::test]
@@ -615,10 +596,7 @@ async fn median_time_test() {
         .await
         .unwrap();
 
-    consensus
-        .shutdown_async(wait_handles)
-        .await
-        .unwrap();
+    consensus.shutdown(wait_handles);
 }
 
 #[tokio::test]
@@ -663,8 +641,5 @@ async fn mergeset_size_limit_test() {
         }
     }
 
-    consensus
-        .shutdown_async(wait_handles)
-        .await
-        .unwrap();
+    consensus.shutdown(wait_handles);
 }
