@@ -55,10 +55,7 @@ pub struct DbStatusesStore {
 
 impl DbStatusesStore {
     pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
-        Self {
-            raw_db: Arc::clone(&db),
-            cached_access: CachedDbAccessForCopy::new(Arc::clone(&db), cache_size, STORE_PREFIX),
-        }
+        Self { raw_db: Arc::clone(&db), cached_access: CachedDbAccessForCopy::new(db, cache_size, STORE_PREFIX) }
     }
 
     pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {

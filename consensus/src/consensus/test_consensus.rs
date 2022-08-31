@@ -24,17 +24,11 @@ use super::Consensus;
 pub struct TestConsensus {
     consensus: Consensus,
     params: Params,
-    temp_db_lifetime: TempDbLifetime,
 }
 
 impl TestConsensus {
     pub fn new(db: Arc<DB>, params: &Params) -> Self {
-        Self { consensus: Consensus::new(db, params), params: params.clone(), temp_db_lifetime: Default::default() }
-    }
-
-    pub fn create_from_temp_db(params: &Params) -> Self {
-        let (temp_db_lifetime, db) = create_temp_db();
-        Self { consensus: Consensus::new(db, params), params: params.clone(), temp_db_lifetime }
+        Self { consensus: Consensus::new(db, params), params: params.clone() }
     }
 
     pub fn build_header_with_parents(&self, hash: Hash, parents: Vec<Hash>) -> Header {
@@ -90,6 +84,10 @@ impl TestConsensus {
         self.consensus.shutdown(wait_handles)
     }
 
+    pub fn shutdown_async(self, wait_handles: Vec<JoinHandle<()>>) -> tokio::task::JoinHandle<()> {
+        self.consensus.shutdown_async(wait_handles)
+    }
+
     pub fn dag_traversal_manager(&self) -> &DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore> {
         &self.consensus.dag_traversal_manager
     }
@@ -120,8 +118,7 @@ impl Drop for TempDbLifetime {
         assert_eq!(
             self.weak_db_ref.strong_count(),
             0,
-            "DB is expected to have no strong 
-            references when lifetime is dropped"
+            "DB is expected to have no strong references when lifetime is dropped"
         );
         if let Some(dir) = self.tempdir.take() {
             let options = rocksdb::Options::default();

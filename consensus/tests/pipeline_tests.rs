@@ -149,7 +149,10 @@ async fn test_concurrent_pipeline() {
     assert!(store.are_anticone(11, 6));
     assert!(store.are_anticone(11, 9));
 
-    consensus.shutdown(wait_handles);
+    consensus
+        .shutdown_async(wait_handles)
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
@@ -211,5 +214,8 @@ async fn test_concurrent_pipeline_random() {
         .validate_intervals(blockhash::ORIGIN)
         .unwrap();
 
-    consensus.shutdown(wait_handles);
+    consensus
+        .shutdown_async(wait_handles)
+        .await
+        .unwrap();
 }
