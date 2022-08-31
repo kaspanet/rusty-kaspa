@@ -1,10 +1,11 @@
 use crate::{
-    errors::BlockProcessResult,
+    errors::{BlockProcessResult, RuleError},
     model::{
         services::{reachability::MTReachabilityService, relations::MTRelationsService},
         stores::{
             block_window_cache::{BlockWindowCacheStore, BlockWindowHeap},
             daa::DbDaaStore,
+            errors::StoreResultExtensions,
             ghostdag::{DbGhostdagStore, GhostdagData},
             headers::DbHeadersStore,
             pruning::DbPruningStore,
@@ -38,9 +39,6 @@ pub struct HeaderProcessingContext<'a> {
     pub hash: Hash,
     pub header: &'a Header,
 
-    /// Mergeset w/o selected parent
-    pub mergeset: Option<BlockHashes>,
-
     // Staging data
     pub ghostdag_data: Option<Arc<GhostdagData>>,
     pub block_window_for_difficulty: Option<BlockWindowHeap>,
@@ -56,7 +54,6 @@ impl<'a> HeaderProcessingContext<'a> {
         Self {
             hash,
             header,
-            mergeset: None,
             ghostdag_data: None,
             non_pruned_parents: None,
             block_window_for_difficulty: None,
@@ -87,7 +84,7 @@ pub struct HeaderProcessor {
     pub(super) target_time_per_block: u64,
     pub(super) max_block_parents: u8,
     pub(super) difficulty_window_size: usize,
-    // ghostdag_k: KType,
+    pub(super) mergeset_size_limit: u64,
 
     // DB
     db: Arc<DB>,
@@ -134,7 +131,7 @@ impl HeaderProcessor {
         relations_service: Arc<MTRelationsService<DbRelationsStore>>,
         past_median_time_manager: PastMedianTimeManager<DbHeadersStore, DbGhostdagStore, BlockWindowCacheStore>,
         dag_traversal_manager: DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore>,
-        counters: Arc<ProcessingCounters>,
+        difficulty_manager: DifficultyManager<DbHeadersStore>, counters: Arc<ProcessingCounters>,
     ) -> Self {
         Self {
             receiver,
@@ -148,7 +145,7 @@ impl HeaderProcessor {
             statuses_store,
             pruning_store,
             daa_store,
-            headers_store: headers_store.clone(),
+            headers_store,
             block_window_cache_for_difficulty,
             block_window_cache_for_past_median_time,
             ghostdag_manager: GhostdagManager::new(
@@ -159,11 +156,7 @@ impl HeaderProcessor {
                 reachability_service.clone(),
             ),
             dag_traversal_manager,
-            difficulty_manager: DifficultyManager::new(
-                headers_store,
-                params.genesis_bits,
-                params.difficulty_window_size,
-            ),
+            difficulty_manager,
             reachability_service,
             past_median_time_manager,
             task_manager: BlockTaskDependencyManager::new(),
@@ -171,6 +164,7 @@ impl HeaderProcessor {
             timestamp_deviation_tolerance: params.timestamp_deviation_tolerance,
             target_time_per_block: params.target_time_per_block,
             max_block_parents: params.max_block_parents,
+            mergeset_size_limit: params.mergeset_size_limit,
         }
     }
 
@@ -228,14 +222,23 @@ impl HeaderProcessor {
     }
 
     fn process_header(self: &Arc<HeaderProcessor>, header: &Header) -> BlockProcessResult<()> {
-        if self.header_was_processed(header.hash) {
-            return Ok(());
+        let status_option = self
+            .statuses_store
+            .read()
+            .get(header.hash)
+            .unwrap_option();
+
+        match status_option {
+            Some(StatusInvalid) => return Err(RuleError::KnownInvalid),
+            Some(_) => return Ok(()),
+            None => {}
         }
 
         // Create processing context
         let mut ctx = HeaderProcessingContext::new(header.hash, header);
 
         // Run GHOSTDAG for the new header
+        self.pre_ghostdag_validation(&mut ctx, header)?;
         self.ghostdag_manager
             .add_block(&mut ctx, header.hash); // TODO: Run GHOSTDAG for all block levels
 
@@ -266,14 +269,13 @@ impl HeaderProcessor {
 
     fn commit_header(self: &Arc<HeaderProcessor>, ctx: HeaderProcessingContext, header: &Header) {
         let ghostdag_data = ctx.ghostdag_data.unwrap();
-        let selected_parent = ghostdag_data.selected_parent;
 
         // Create a DB batch writer
         let mut batch = WriteBatch::default();
 
         // Write to append only stores: this requires no lock and hence done first
         self.ghostdag_store
-            .insert_batch(&mut batch, ctx.hash, ghostdag_data)
+            .insert_batch(&mut batch, ctx.hash, &ghostdag_data)
             .unwrap();
         self.block_window_cache_for_difficulty
             .insert(ctx.hash, Arc::new(ctx.block_window_for_difficulty.unwrap()));
@@ -293,8 +295,13 @@ impl HeaderProcessor {
         let mut staging = StagingReachabilityStore::new(self.reachability_store.upgradable_read());
 
         // Add block to staging reachability
-        reachability::add_block(&mut staging, ctx.hash, selected_parent, &mut ctx.mergeset.unwrap().iter().cloned())
-            .unwrap();
+        reachability::add_block(
+            &mut staging,
+            ctx.hash,
+            ghostdag_data.selected_parent,
+            &mut ghostdag_data.unordered_mergeset_without_selected_parent(),
+        )
+        .unwrap();
         // Hint reachability about the new tip.
         // TODO: imp header tips store and call this only for an actual header selected tip
         reachability::hint_virtual_selected_parent(&mut staging, ctx.hash).unwrap();

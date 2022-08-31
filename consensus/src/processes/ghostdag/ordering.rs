@@ -16,9 +16,15 @@ pub struct SortableBlock {
     pub blue_work: BlueWorkType,
 }
 
+impl SortableBlock {
+    pub fn new(hash: Hash, blue_work: BlueWorkType) -> Self {
+        Self { hash, blue_work }
+    }
+}
+
 impl PartialEq for SortableBlock {
     fn eq(&self, other: &Self) -> bool {
-        self.hash == other.hash && self.blue_work == other.blue_work
+        self.hash == other.hash
     }
 }
 

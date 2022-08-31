@@ -1,4 +1,8 @@
-use std::{sync::Arc, thread::JoinHandle};
+use std::{
+    env, fs,
+    sync::{Arc, Weak},
+    thread::JoinHandle,
+};
 
 use consensus_core::{block::Block, header::Header};
 use hashes::Hash;
@@ -20,11 +24,17 @@ use super::Consensus;
 pub struct TestConsensus {
     consensus: Consensus,
     params: Params,
+    temp_db_lifetime: TempDbLifetime,
 }
 
 impl TestConsensus {
     pub fn new(db: Arc<DB>, params: &Params) -> Self {
-        Self { consensus: Consensus::new(db, params), params: params.clone() }
+        Self { consensus: Consensus::new(db, params), params: params.clone(), temp_db_lifetime: Default::default() }
+    }
+
+    pub fn create_from_temp_db(params: &Params) -> Self {
+        let (temp_db_lifetime, db) = create_temp_db();
+        Self { consensus: Consensus::new(db, params), params: params.clone(), temp_db_lifetime }
     }
 
     pub fn build_header_with_parents(&self, hash: Hash, parents: Vec<Hash>) -> Header {
@@ -72,8 +82,8 @@ impl TestConsensus {
         self.consensus.init()
     }
 
-    pub fn drop(self) -> (Arc<RwLock<DbReachabilityStore>>, Arc<DbGhostdagStore>) {
-        self.consensus.drop()
+    pub fn shutdown(&self, wait_handles: Vec<JoinHandle<()>>) {
+        self.consensus.shutdown(wait_handles)
     }
 
     pub fn dag_traversal_manager(&self) -> &DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore> {
@@ -83,4 +93,58 @@ impl TestConsensus {
     pub fn ghostdag_store(&self) -> &Arc<DbGhostdagStore> {
         &self.consensus.ghostdag_store
     }
+
+    pub fn reachability_store(&self) -> &Arc<RwLock<DbReachabilityStore>> {
+        &self.consensus.reachability_store
+    }
+}
+
+#[derive(Default)]
+pub struct TempDbLifetime {
+    weak_db_ref: Weak<DB>,
+    tempdir: Option<tempfile::TempDir>,
+}
+
+impl TempDbLifetime {
+    pub fn new(tempdir: tempfile::TempDir, weak_db_ref: Weak<DB>) -> Self {
+        Self { tempdir: Some(tempdir), weak_db_ref }
+    }
+}
+
+impl Drop for TempDbLifetime {
+    fn drop(&mut self) {
+        for _ in 0..16 {
+            if self.weak_db_ref.strong_count() > 0 {
+                // Sometimes another thread is shuting-down and cleaning resources
+                std::thread::sleep(std::time::Duration::from_millis(1000));
+            } else {
+                break;
+            }
+        }
+        assert_eq!(
+            self.weak_db_ref.strong_count(),
+            0,
+            "DB is expected to have no strong references when lifetime is dropped"
+        );
+        if let Some(dir) = self.tempdir.take() {
+            let options = rocksdb::Options::default();
+            let path_buf = dir.path().to_owned();
+            let path = path_buf.to_str().unwrap();
+            DB::destroy(&options, path).expect("DB is expected to be deletable since there are no references to it");
+        }
+    }
+}
+
+/// Creates a DB within a temp directory under `<OS SPECIFIC TEMP DIR>/kaspa-rust`
+/// Callers must keep the `TempDbLifetime` guard for as long as they wish the DB to exist.
+pub fn create_temp_db() -> (TempDbLifetime, Arc<DB>) {
+    let global_tempdir = env::temp_dir();
+    let kaspa_tempdir = global_tempdir.join("kaspa-rust");
+    fs::create_dir_all(kaspa_tempdir.as_path()).unwrap();
+
+    let db_tempdir = tempfile::tempdir_in(kaspa_tempdir.as_path()).unwrap();
+    let db_path = db_tempdir.path().to_owned();
+
+    let db = Arc::new(DB::open_default(db_path.to_str().unwrap()).unwrap());
+    (TempDbLifetime::new(db_tempdir, Arc::downgrade(&db)), db)
 }

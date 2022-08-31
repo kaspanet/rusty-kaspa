@@ -1,4 +1,4 @@
-use std::{cmp::Reverse, collections::BinaryHeap, sync::Arc};
+use std::{cmp::Reverse, collections::BinaryHeap, ops::Deref, sync::Arc};
 
 use crate::{
     model::stores::{
@@ -88,36 +88,15 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader> DagTraversalManager<T, U
     }
 
     fn try_push_mergeset(&self, heap: &mut SizedUpBlockHeap<T>, ghostdag_data: &GhostdagData) -> bool {
-        let added = heap.try_push(ghostdag_data.selected_parent);
-
         // If the window is full and the selected parent is less than the minimum then we break
-        // because this means that there cannot be any more blocks in the past with higher blueWork
-        if !added {
+        // because this means that there cannot be any more blocks in the past with higher blue work
+        if !heap.try_push(ghostdag_data.selected_parent) {
             return true;
         }
 
-        // Go over the merge set blues in reverse because it's ordered in reverse by blueWork.
-        for blue in ghostdag_data
-            .mergeset_blues
-            .iter()
-            .skip(1) // Remove the selected parent
-            .rev()
-            .cloned()
-        {
-            let added = heap.try_push(blue);
-
-            // If it's smaller than minimum then we won't be able to add the rest because they're even smaller.
-            if !added {
-                break;
-            }
-        }
-
-        // Go over the merge set reds in reverse because it's ordered in reverse by blueWork.
-        for red in ghostdag_data.mergeset_reds.iter().rev().cloned() {
-            let added = heap.try_push(red);
-
-            // If it's smaller than minimum then we won't be able to add the rest because they're even smaller.
-            if !added {
+        for block in ghostdag_data.descending_mergeset_without_selected_parent(self.ghostdag_store.deref()) {
+            // If it's smaller than minimum then we won't be able to add the rest because we iterate in descending blue work order.
+            if !heap.try_push_with_blue_work(block.hash, block.blue_work) {
                 break;
             }
         }

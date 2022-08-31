@@ -1,7 +1,7 @@
 use crate::header::Header;
 use hashes::Hash;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Block {
     pub header: Header,
     pub transactions: Vec<()>, // TODO: hold actual transactions
