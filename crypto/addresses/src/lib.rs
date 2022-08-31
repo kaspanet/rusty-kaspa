@@ -32,13 +32,19 @@ pub enum Prefix {
     Devnet,
 }
 
-impl Display for Prefix {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
+impl Prefix {
+    fn as_str(&self) -> &'static str {
+        match self {
             Prefix::Mainnet => "kaspa",
             Prefix::Testnet => "kaspatest",
             Prefix::Devnet => "kaspadev",
-        })
+        }
+    }
+}
+
+impl Display for Prefix {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
     }
 }
 

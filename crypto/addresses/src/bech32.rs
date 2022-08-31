@@ -13,7 +13,7 @@ const REV_CHARSET: [u8; 123] = [
 // https://bch.info/en/specifications
 fn polymod<I>(values: I) -> u64
 where
-    I: Iterator<Item=u8>,
+    I: Iterator<Item = u8>,
 {
     let mut c = 1u64;
     for d in values {
@@ -39,10 +39,12 @@ where
     c ^ 1
 }
 
-fn checksum(payload: &[u8], prefix: &[u8]) -> u64 {
+fn checksum<I>(payload: &[u8], prefix: I) -> u64
+where
+    I: Iterator<Item = u8>,
+{
     polymod(
         prefix
-            .iter().copied()
             .chain([0u8])
             .chain(payload.iter().copied())
             .chain([0u8; 8]),
@@ -50,10 +52,10 @@ fn checksum(payload: &[u8], prefix: &[u8]) -> u64 {
 }
 
 // Convert 8bit array to 5bit array with right padding
-fn conv8to5 (payload: &[u8]) -> Vec<u8> {
+fn conv8to5(payload: &[u8]) -> Vec<u8> {
     let padding = match payload.len() % 5 == 0 {
         true => 0,
-        false => 1
+        false => 1,
     };
     let mut five_bit = vec![0u8; payload.len() * 8 / 5 + padding];
     let mut current_idx = 0;
@@ -66,12 +68,12 @@ fn conv8to5 (payload: &[u8]) -> Vec<u8> {
         while bits >= 5 {
             bits -= 5;
             five_bit[current_idx] = (buff >> bits) as u8;
-            buff = buff & ((1 << bits) - 1);
+            buff &= (1 << bits) - 1;
             current_idx += 1;
         }
     }
     if bits > 0 {
-        five_bit[current_idx] = (buff << (5-bits)) as u8;
+        five_bit[current_idx] = (buff << (5 - bits)) as u8;
     }
     five_bit
 }
@@ -89,7 +91,7 @@ fn conv5to8(payload: &[u8]) -> Vec<u8> {
         while bits >= 8 {
             bits -= 8;
             eight_bit[current_idx] = (buff >> bits) as u8;
-            buff = buff & ((1 << bits) - 1);
+            buff &= (1 << bits) - 1;
             current_idx += 1;
         }
     }
@@ -99,16 +101,16 @@ fn conv5to8(payload: &[u8]) -> Vec<u8> {
 impl Address {
     pub(crate) fn encode_payload(&self) -> String {
         // Convert into 5 bits vector
-        let fivebit_payload = conv8to5(&[vec![self.version], self.payload.clone()].concat());
-        let fivebit_prefix: Vec<u8> = self
+        let fivebit_payload = conv8to5(&[[self.version].as_slice(), self.payload.as_slice()].concat());
+        let fivebit_prefix = self
             .prefix
-            .to_string()
+            .as_str()
             .as_bytes()
             .iter()
-            .map(|c| c & 0x1fu8)
-            .collect();
+            .copied()
+            .map(|c| c & 0x1fu8);
 
-        let checksum = checksum(fivebit_payload.as_slice(), fivebit_prefix.as_slice());
+        let checksum = checksum(fivebit_payload.as_slice(), fivebit_prefix);
 
         String::from_utf8(
             [fivebit_payload, conv8to5(&checksum.to_be_bytes()[3..])]
@@ -136,12 +138,12 @@ impl Address {
             .collect::<Vec<u8>>();
         err?;
         let (payload_u5, checksum_u5) = address_u5.split_at(address.len() - 8);
-        let fivebit_prefix: Vec<u8> = prefix
-            .to_string()
+        let fivebit_prefix = prefix
+            .as_str()
             .as_bytes()
             .iter()
-            .map(|c| c & 0x1fu8)
-            .collect();
+            .copied()
+            .map(|c| c & 0x1fu8);
 
         // Convert to number
         let checksum_ = u64::from_be_bytes(
@@ -151,7 +153,7 @@ impl Address {
                 .expect("Is exactly 8 bytes"),
         );
 
-        if checksum(payload_u5, fivebit_prefix.as_slice()) != checksum_ {
+        if checksum(payload_u5, fivebit_prefix) != checksum_ {
             return Err(AddressError::BadChecksum);
         }
 
