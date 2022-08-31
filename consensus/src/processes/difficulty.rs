@@ -32,14 +32,8 @@ impl<T: HeaderStoreReader> DifficultyManager<T> {
             return (0, Vec::new());
         }
 
-        let mergeset_len = ghostdag_data.mergeset_blues.len() + ghostdag_data.mergeset_reds.len();
-        let mut mergeset = HashSet::with_capacity(mergeset_len);
-        for blue in ghostdag_data.mergeset_blues.iter() {
-            mergeset.insert(blue);
-        }
-        for red in ghostdag_data.mergeset_reds.iter() {
-            mergeset.insert(red);
-        }
+        let mergeset_len = ghostdag_data.mergeset_size();
+        let mergeset: HashSet<Hash> = ghostdag_data.unordered_mergeset().collect();
 
         let mut daa_added_blocks = Vec::with_capacity(mergeset_len);
         for hash in window_hashes {
