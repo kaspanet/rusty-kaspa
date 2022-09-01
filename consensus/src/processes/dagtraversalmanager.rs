@@ -36,9 +36,8 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader> DagTraversalManager<T, U
         }
     }
     pub fn block_window(&self, high_ghostdag_data: Arc<GhostdagData>, window_size: usize) -> BlockWindowHeap {
-        let mut window_heap = SizedUpBlockHeap::new(self.ghostdag_store.clone(), window_size);
         if window_size == 0 {
-            return window_heap.binary_heap;
+            return BlockWindowHeap::new();
         }
 
         let mut current_gd = high_ghostdag_data;
@@ -65,6 +64,8 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader> DagTraversalManager<T, U
                 return window_heap.binary_heap;
             }
         }
+        
+        let mut window_heap = SizedUpBlockHeap::new(self.ghostdag_store.clone(), window_size);
 
         // Walk down the chain until we finish
         loop {
@@ -113,7 +114,7 @@ struct SizedUpBlockHeap<T: GhostdagStoreReader> {
 
 impl<T: GhostdagStoreReader> SizedUpBlockHeap<T> {
     fn new(ghostdag_store: Arc<T>, size: usize) -> Self {
-        Self::from_binary_heap(ghostdag_store, size, BinaryHeap::new())
+        Self::from_binary_heap(ghostdag_store, size, BinaryHeap::with_capacity(size))
     }
 
     fn from_binary_heap(ghostdag_store: Arc<T>, size: usize, binary_heap: BlockWindowHeap) -> Self {
