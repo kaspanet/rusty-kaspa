@@ -20,7 +20,7 @@ impl ScriptPublicKey {
     }
 }
 
-/// Houses details about an individual transaction output in a utxo
+/// Holds details about an individual transaction output in a utxo
 /// set such as whether or not it was contained in a coinbase tx, the daa
 /// score of the block that accepts the tx, its public key script, and how
 /// much it pays.
@@ -39,7 +39,7 @@ impl UtxoEntry {
 }
 
 /// Represents a Kaspa transaction outpoint
-#[derive(Eq, Hash, PartialEq, Debug, Clone)]
+#[derive(Eq, Hash, PartialEq, Debug, Copy, Clone)]
 pub struct TransactionOutpoint {
     pub transaction_id: TransactionId,
     pub index: u32,
