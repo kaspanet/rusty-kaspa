@@ -39,8 +39,9 @@ impl VirtualStateProcessor {
                 BlockTask::Exit => break,
                 BlockTask::Process(block, result_transmitters) => {
                     let res = self.resolve_virtual(&block);
-                    for tx in result_transmitters {
-                        tx.send(res.clone()).unwrap();
+                    for transmitter in result_transmitters {
+                        // We don't care if receivers were dropped
+                        let _ = transmitter.send(res.clone());
                     }
                 }
             };

@@ -146,17 +146,19 @@ fn test_noattack_json() {
     reachability_stretch_test(false);
 }
 
-#[test]
-fn consensus_sanity_test() {
+#[tokio::test]
+async fn consensus_sanity_test() {
     let genesis_child: Hash = 2.into();
 
-    let (_temp_db_lifetime, db) = create_temp_db();
-    let consensus = TestConsensus::new(db, &MAINNET_PARAMS);
+    let consensus = TestConsensus::create_from_temp_db(&MAINNET_PARAMS);
     let wait_handles = consensus.init();
 
-    let _ = consensus.validate_and_insert_block(Arc::new(
-        consensus.build_block_with_parents(genesis_child, vec![MAINNET_PARAMS.genesis_hash]),
-    ));
+    consensus
+        .validate_and_insert_block(Arc::new(
+            consensus.build_block_with_parents(genesis_child, vec![MAINNET_PARAMS.genesis_hash]),
+        ))
+        .await
+        .unwrap();
 
     consensus.shutdown(wait_handles);
 }
