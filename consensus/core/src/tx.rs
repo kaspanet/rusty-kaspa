@@ -2,7 +2,7 @@ use crate::{
     hashing,
     subnets::{self, SubnetworkId},
 };
-use std::{cell::RefCell, fmt::Display, sync::Arc};
+use std::{fmt::Display, sync::Arc};
 
 /// Represents the ID of a Kaspa transaction
 pub type TransactionId = hashes::Hash;
@@ -84,7 +84,7 @@ pub struct TransactionOutput {
 }
 
 /// Represents a Kaspa transaction
-#[derive(Debug)]
+#[derive(Debug, Clone, Default)]
 pub struct Transaction {
     pub version: u16,
     pub inputs: Vec<Arc<TransactionInput>>,
@@ -99,7 +99,7 @@ pub struct Transaction {
 
     // A field that is used to cache the transaction ID.
     // Always use the corresponding self.id() instead of accessing this field directly
-    cached_id: RefCell<Option<TransactionId>>, // TODO: see how should be adapted for multi-threading
+    id: TransactionId,
 }
 
 impl Transaction {
@@ -107,7 +107,7 @@ impl Transaction {
         version: u16, inputs: Vec<Arc<TransactionInput>>, outputs: Vec<Arc<TransactionOutput>>, lock_time: u64,
         subnetwork_id: SubnetworkId, gas: u64, payload: Vec<u8>, fee: u64, mass: u64,
     ) -> Self {
-        Self {
+        let mut tx = Self {
             version,
             inputs,
             outputs,
@@ -117,8 +117,10 @@ impl Transaction {
             payload,
             fee,
             mass,
-            cached_id: RefCell::new(None),
-        }
+            id: Default::default(), // Temp init before the finalize below
+        };
+        tx.finalize();
+        tx
     }
 
     /// Determines whether or not a transaction is a coinbase transaction. A coinbase
@@ -130,19 +132,13 @@ impl Transaction {
         self.subnetwork_id == subnets::SUBNETWORK_ID_COINBASE
     }
 
+    pub fn finalize(&mut self) {
+        self.id = hashing::tx::id(self);
+    }
+
+    /// Returns the transaction ID
     pub fn id(&self) -> TransactionId {
-        // This method should probably be implemented in a thread-safe manner,
-        // however for single-thread usage the usage of RefCell is perfectly
-        // fine since we borrow_mut exactly once
-
-        if let Some(id) = *self.cached_id.borrow() {
-            return id;
-        }
-
-        let mut op = self.cached_id.borrow_mut();
-        let id = hashing::tx::transaction_id(self);
-        *op = Some(id);
-        id
+        self.id
     }
 }
 

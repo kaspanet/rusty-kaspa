@@ -10,14 +10,14 @@ pub const TX_ENCODING_FULL: TxEncodingFlags = 0;
 pub const TX_ENCODING_EXCLUDE_SIGNATURE_SCRIPT: TxEncodingFlags = 1;
 
 /// Returns the transaction hash. Note that this is different than the transaction ID.
-pub fn transaction_hash(tx: &Transaction) -> Hash {
+pub fn hash(tx: &Transaction) -> Hash {
     let mut hasher = hashes::TransactionHash::new();
     write_transaction(&mut hasher, tx, TX_ENCODING_FULL);
     hasher.finalize()
 }
 
 /// Not intended for direct use by clients. Instead use `tx.id()`
-pub(crate) fn transaction_id(tx: &Transaction) -> TransactionId {
+pub(crate) fn id(tx: &Transaction) -> TransactionId {
     // Encode the transaction, replace signature script with zeroes, cut off
     // payload and hash the result.
 

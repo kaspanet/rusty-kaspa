@@ -3,7 +3,7 @@ use crate::header::Header;
 use hashes::{Hash, Hasher};
 
 /// Returns the header hash.
-pub fn header_hash(header: &Header) -> Hash {
+pub fn hash(header: &Header) -> Hash {
     let mut hasher = hashes::BlockHash::new();
     hasher
         .update(header.version.to_le_bytes())
