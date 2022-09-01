@@ -25,6 +25,7 @@ use crate::{
 };
 use consensus_core::block::Block;
 use crossbeam_channel::{unbounded, Receiver, Sender};
+use futures::Future;
 use kaspa_core::{core::Core, service::Service};
 use parking_lot::RwLock;
 use std::{
@@ -198,12 +199,12 @@ impl Consensus {
         ]
     }
 
-    pub async fn validate_and_insert_block(&self, block: Arc<Block>) -> BlockProcessResult<()> {
+    pub fn validate_and_insert_block(&self, block: Arc<Block>) -> impl Future<Output = BlockProcessResult<()>> {
         let (tx, rx): (BlockResultSender, _) = oneshot::channel();
         self.block_sender
             .send(BlockTask::Process(block, vec![tx]))
             .unwrap();
-        rx.await.unwrap()
+        async { rx.await.unwrap() }
     }
 
     pub fn signal_exit(&self) {
