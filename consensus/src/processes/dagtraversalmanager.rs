@@ -64,7 +64,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader> DagTraversalManager<T, U
                 return window_heap.binary_heap;
             }
         }
-        
+
         let mut window_heap = SizedUpBlockHeap::new(self.ghostdag_store.clone(), window_size);
 
         // Walk down the chain until we finish
