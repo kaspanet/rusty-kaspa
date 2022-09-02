@@ -65,9 +65,9 @@ impl TryFrom<&str> for Prefix {
             "kaspatest" => Ok(Prefix::Testnet),
             "kaspadev" => Ok(Prefix::Devnet),
             #[cfg(test)]
-            "a"=> Ok(Prefix::A),
+            "a" => Ok(Prefix::A),
             #[cfg(test)]
-            "b"=> Ok(Prefix::B),
+            "b" => Ok(Prefix::B),
             _ => Err(AddressError::InvalidPrefix(prefix.to_string())),
         }
     }
@@ -132,7 +132,10 @@ mod tests {
     #[test]
     fn check_from_string() {
         for (expected_address, address_str) in cases() {
-            let address: Address = address_str.to_string().try_into().expect("Test failed");
+            let address: Address = address_str
+                .to_string()
+                .try_into()
+                .expect("Test failed");
             assert_eq!(address, expected_address);
         }
     }
