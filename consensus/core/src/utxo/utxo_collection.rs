@@ -3,8 +3,6 @@ use std::collections::HashMap;
 
 pub type UtxoCollection = HashMap<TransactionOutpoint, UtxoEntry>;
 
-pub type UtxoIntersectionRule = fn(&TransactionOutpoint, &UtxoEntry, &UtxoEntry) -> bool;
-
 pub trait UtxoCollectionExtensions {
     /// Checks if the `outpoint` key exists with an entry that holds `entry.block_daa_score == daa_score`
     fn contains_with_daa_score(&self, outpoint: &TransactionOutpoint, daa_score: u64) -> bool;
@@ -21,7 +19,9 @@ pub trait UtxoCollectionExtensions {
 
     /// Checks if there is an intersection between two utxo collections satisfying an arbitrary `rule`.
     /// Returns the first outpoint in such an intersection, or `None` if the intersection is empty.
-    fn intersects_with_rule(&self, other: &Self, rule: UtxoIntersectionRule) -> Option<TransactionOutpoint>;
+    fn intersects_with_rule<F>(&self, other: &Self, rule: F) -> Option<TransactionOutpoint>
+    where
+        F: Fn(&TransactionOutpoint, &UtxoEntry, &UtxoEntry) -> bool;
 }
 
 impl UtxoCollectionExtensions for UtxoCollection {
@@ -57,14 +57,26 @@ impl UtxoCollectionExtensions for UtxoCollection {
         false
     }
 
-    fn intersects_with_rule(&self, other: &Self, rule: UtxoIntersectionRule) -> Option<TransactionOutpoint> {
+    fn intersects_with_rule<F>(&self, other: &Self, rule: F) -> Option<TransactionOutpoint>
+    where
+        F: Fn(&TransactionOutpoint, &UtxoEntry, &UtxoEntry) -> bool,
+    {
         // We prefer iterating over the smaller set
-        let (iter, other) = if self.len() <= other.len() { (self.iter(), other) } else { (other.iter(), self) };
-
-        for (k, v1) in iter {
-            if let Some(v2) = other.get(k) {
-                if rule(k, v1, v2) {
-                    return Some(*k);
+        if self.len() <= other.len() {
+            for (k, v1) in self.iter() {
+                if let Some(v2) = other.get(k) {
+                    if rule(k, v1, v2) {
+                        return Some(*k);
+                    }
+                }
+            }
+        } else {
+            for (k, v2) in other.iter() {
+                if let Some(v1) = self.get(k) {
+                    // Note we always make sure to call the rule in the correct order
+                    if rule(k, v1, v2) {
+                        return Some(*k);
+                    }
                 }
             }
         }
@@ -81,7 +93,7 @@ impl UtxoCollectionExtensions for UtxoCollection {
 ///
 /// `result    = result ∪ (this ∩ other)`
 ///
-/// `remainder = remainder ∪ (this \setminus other)`
+/// `remainder = remainder ∪ (this ∖ other)`
 ///
 /// where the set operators demand equality also on the DAA score dimension
 pub(super) fn intersection_with_remainder_having_daa_score_in_place(
@@ -99,7 +111,7 @@ pub(super) fn intersection_with_remainder_having_daa_score_in_place(
 /// Calculates the subtraction between two utxo collections.
 /// The function returns with the following outcome:
 ///
-/// `result    = result ∪ (this \setminus other)`
+/// `result    = result ∪ (this ∖ other)`
 ///
 /// where the set operators demand equality also on the DAA score dimension
 pub(super) fn subtraction_having_daa_score_in_place(
@@ -115,7 +127,7 @@ pub(super) fn subtraction_having_daa_score_in_place(
 /// Calculates the subtraction and intersection between two utxo collections.
 /// The function returns with the following outcome:
 ///
-/// `result    = result ∪ (this \setminus other)`
+/// `result    = result ∪ (this ∖ other)`
 ///
 /// `remainder = remainder ∪ (this ∩ other)`
 ///
