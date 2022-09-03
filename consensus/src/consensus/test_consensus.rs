@@ -5,6 +5,7 @@ use std::{
 };
 
 use consensus_core::{block::Block, header::Header};
+use futures::Future;
 use hashes::Hash;
 use parking_lot::RwLock;
 
@@ -72,10 +73,8 @@ impl TestConsensus {
         Block::from_header(self.build_header_with_parents(hash, parents))
     }
 
-    pub async fn validate_and_insert_block(&self, block: Arc<Block>) -> BlockProcessResult<()> {
-        self.consensus
-            .validate_and_insert_block(block)
-            .await
+    pub fn validate_and_insert_block(&self, block: Arc<Block>) -> impl Future<Output = BlockProcessResult<()>> {
+        self.consensus.validate_and_insert_block(block)
     }
 
     pub fn init(&self) -> Vec<JoinHandle<()>> {
