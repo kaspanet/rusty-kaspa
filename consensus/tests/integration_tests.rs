@@ -683,7 +683,7 @@ struct RPCBlockVerboseData {
 
 #[tokio::test]
 async fn json_test() {
-    let file = File::open("tests/json_test.json.gz").unwrap();
+    let file = File::open("tests/testdata/json_test.json.gz").unwrap();
     let reader = BufReader::new(file);
     let decoder = GzDecoder::new(reader);
     let mut lines = io::BufReader::new(decoder).lines();
