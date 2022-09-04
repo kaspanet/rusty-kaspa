@@ -22,11 +22,11 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService> Gh
             // we add it to the resulting merge-set and queue it for further processing.
             for parent in current_parents.iter() {
                 if mergeset.contains(parent) {
-                    break;
+                    continue;
                 }
 
                 if selected_parent_past.contains(parent) {
-                    break;
+                    continue;
                 }
 
                 if self
