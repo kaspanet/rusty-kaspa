@@ -74,7 +74,7 @@ impl TestConsensus {
             + 1;
         header.blue_score = ghostdag_data.blue_score;
         header.blue_work = ghostdag_data.blue_work;
-        assert_eq!(ghostdag_data.blue_work, header.blue_work);
+
         header
     }
 

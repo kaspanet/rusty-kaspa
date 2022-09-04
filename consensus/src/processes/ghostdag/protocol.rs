@@ -112,7 +112,6 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
             .map(|hash| calc_work(self.headers_store.get_bits(hash).unwrap()))
             .sum();
 
-        // TODO: This is just a placeholder until calc_work is implemented.
         let blue_work = self
             .ghostdag_store
             .get_blue_work(selected_parent)
