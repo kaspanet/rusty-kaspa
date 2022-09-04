@@ -19,6 +19,8 @@ rayon = "1.5.3"
 tokio = { version = "1.20.1", features = ["sync"] }
 tempfile = "3.3.0"
 itertools = "0.10.3"
+futures = "0.3.23"
+
 
 hashes = { path = "../crypto/hashes" }
 consensus-core = { path = "./core" }
@@ -31,7 +33,6 @@ flate2 = "1.0.24"
 rand = "0.8"
 rand_distr = "0.4.3"
 tokio = { version = "1.20.1", features = ["full"] }
-futures = "0.3.23"
 
 [[bench]]
 name = "hash_benchmarks"

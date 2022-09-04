@@ -202,7 +202,8 @@ impl HeaderProcessor {
 
             if res.is_err() || block.is_header_only() {
                 for transmitter in result_transmitters {
-                    transmitter.send(res.clone()).unwrap();
+                    // We don't care if receivers were dropped
+                    let _ = transmitter.send(res.clone());
                 }
             } else {
                 self.body_sender
