@@ -1,5 +1,5 @@
 use super::HasherExtensions;
-use crate::header::Header;
+use crate::{header::Header, BlueWorkType};
 use hashes::{Hash, Hasher};
 
 /// Returns the header hash.
@@ -21,9 +21,23 @@ pub fn header_hash(header: &Header) -> Hash {
         .update(header.nonce.to_le_bytes())
         .update(header.daa_score.to_le_bytes())
         .update(header.blue_score.to_le_bytes())
-        .update(header.blue_work.to_le_bytes());
+        .update(serialize_blue_work(header.blue_work));
 
     hasher.finalize()
+}
+
+fn serialize_blue_work(work: BlueWorkType) -> Vec<u8> {
+    let be_bytes = work.to_be_bytes();
+    let start = be_bytes
+        .iter()
+        .cloned()
+        .position(|byte| byte != 0);
+
+    if let Some(start) = start {
+        be_bytes[start..].to_vec()
+    } else {
+        Vec::new()
+    }
 }
 
 #[cfg(test)]
@@ -37,5 +51,10 @@ mod tests {
         assert_ne!(blockhash::NONE, header.hash);
 
         // TODO: tests comparing to golang ref
+    }
+
+    #[test]
+    fn test_serialize_blue_work() {
+        assert_eq!(serialize_blue_work(123456), vec![1, 226, 64])
     }
 }
