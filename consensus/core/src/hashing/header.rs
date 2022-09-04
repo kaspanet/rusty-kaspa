@@ -20,13 +20,14 @@ pub fn header_hash(header: &Header) -> Hash {
         .update(header.bits.to_le_bytes())
         .update(header.nonce.to_le_bytes())
         .update(header.daa_score.to_le_bytes())
-        .update(header.blue_score.to_le_bytes())
-        .update(serialize_blue_work(header.blue_work));
+        .update(header.blue_score.to_le_bytes());
+
+    hash_blue_work(&mut hasher, header.blue_work);
 
     hasher.finalize()
 }
 
-fn serialize_blue_work(work: BlueWorkType) -> Vec<u8> {
+fn hash_blue_work(hasher: &mut impl Hasher, work: BlueWorkType) {
     let be_bytes = work.to_be_bytes();
     let start = be_bytes
         .iter()
@@ -34,9 +35,11 @@ fn serialize_blue_work(work: BlueWorkType) -> Vec<u8> {
         .position(|byte| byte != 0);
 
     if let Some(start) = start {
-        be_bytes[start..].to_vec()
+        hasher
+            .update(((be_bytes.len()) as u64 - (start as u64)).to_le_bytes())
+            .update(&be_bytes[start..]);
     } else {
-        Vec::new()
+        hasher.update((0 as u64).to_le_bytes());
     }
 }
 
@@ -54,7 +57,12 @@ mod tests {
     }
 
     #[test]
-    fn test_serialize_blue_work() {
-        assert_eq!(serialize_blue_work(123456), vec![1, 226, 64])
+    fn test_hash_blue_work() {
+        let mut hasher = hashes::BlockHash::new();
+        hash_blue_work(&mut hasher, 123456);
+
+        let mut hasher2 = hashes::BlockHash::new();
+        hasher2.update(vec![3, 0, 0, 0, 0, 0, 0, 0, 1, 226, 64]);
+        assert_eq!(hasher.finalize(), hasher2.finalize())
     }
 }
