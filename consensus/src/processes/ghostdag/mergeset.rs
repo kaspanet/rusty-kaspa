@@ -1,11 +1,13 @@
 use super::protocol::GhostdagManager;
-use crate::model::services::reachability::ReachabilityService;
 use crate::model::stores::ghostdag::GhostdagStoreReader;
 use crate::model::stores::relations::RelationsStoreReader;
+use crate::model::{services::reachability::ReachabilityService, stores::headers::HeaderStoreReader};
 use hashes::Hash;
 use std::collections::{HashSet, VecDeque};
 
-impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService> GhostdagManager<T, S, U> {
+impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V: HeaderStoreReader>
+    GhostdagManager<T, S, U, V>
+{
     pub fn ordered_mergeset_without_selected_parent(&self, selected_parent: Hash, parents: &[Hash]) -> Vec<Hash> {
         let mut queue: VecDeque<Hash> = parents
             .iter()
@@ -22,11 +24,11 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService> Gh
             // we add it to the resulting merge-set and queue it for further processing.
             for parent in current_parents.iter() {
                 if mergeset.contains(parent) {
-                    break;
+                    continue;
                 }
 
                 if selected_parent_past.contains(parent) {
-                    break;
+                    continue;
                 }
 
                 if self

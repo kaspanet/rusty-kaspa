@@ -5,7 +5,7 @@ use hashes::Hash;
 
 use crate::model::{
     services::reachability::ReachabilityService,
-    stores::{ghostdag::GhostdagStoreReader, relations::RelationsStoreReader},
+    stores::{ghostdag::GhostdagStoreReader, headers::HeaderStoreReader, relations::RelationsStoreReader},
 };
 
 use super::protocol::GhostdagManager;
@@ -44,7 +44,9 @@ impl Ord for SortableBlock {
     }
 }
 
-impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService> GhostdagManager<T, S, U> {
+impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V: HeaderStoreReader>
+    GhostdagManager<T, S, U, V>
+{
     pub fn sort_blocks(&self, blocks: HashSet<Hash>) -> Vec<Hash> {
         let mut sorted_blocks: Vec<Hash> = Vec::from_iter(blocks.iter().cloned());
         sorted_blocks.sort_by_cached_key(|block| SortableBlock {

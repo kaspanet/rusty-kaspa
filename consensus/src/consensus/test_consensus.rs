@@ -46,26 +46,35 @@ impl TestConsensus {
             .add_block(&mut ctx, hash);
 
         let ghostdag_data = ctx.ghostdag_data.unwrap();
+
         let window = self
             .consensus
             .dag_traversal_manager
             .block_window(ghostdag_data.clone(), self.params.difficulty_window_size);
 
-        let mut window_hashes = window.into_iter().map(|item| item.0.hash);
+        let mut window_hashes = window.iter().map(|item| item.0.hash);
 
         let (daa_score, _) = self
             .consensus
             .difficulty_manager
             .calc_daa_score_and_added_blocks(&mut window_hashes, &ghostdag_data);
 
+        header.bits = self
+            .consensus
+            .difficulty_manager
+            .calculate_difficulty_bits(&window);
+
         header.daa_score = daa_score;
 
         header.timestamp = self
             .consensus
             .past_median_time_manager
-            .calc_past_median_time(ghostdag_data)
+            .calc_past_median_time(ghostdag_data.clone())
             .0
             + 1;
+        header.blue_score = ghostdag_data.blue_score;
+        header.blue_work = ghostdag_data.blue_work;
+
         header
     }
 

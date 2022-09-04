@@ -79,7 +79,7 @@ impl RandomBlockEmitter {
 
             for i in 0..v {
                 // Create a new block referencing all tips from the previous round
-                let b = Block::new(BLOCK_VERSION, tips.clone(), timestamp, 0, i, total);
+                let b = Block::new(BLOCK_VERSION, tips.clone(), timestamp, 0, i, total, 0, 0); // TODO: Use real blue work and score.
                 new_tips.push(b.header.hash);
                 // Submit to consensus
                 let f = self
