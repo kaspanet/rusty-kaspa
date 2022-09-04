@@ -1,6 +1,9 @@
 use std::{collections::HashMap, sync::Arc};
 
-use consensus_core::blockhash::{self, BlockHashes};
+use consensus_core::{
+    blockhash::{self, BlockHashes},
+    BlueWorkType,
+};
 use hashes::Hash;
 
 use crate::{
@@ -8,27 +11,38 @@ use crate::{
         services::reachability::ReachabilityService,
         stores::{
             ghostdag::{GhostdagData, GhostdagStoreReader, HashKTypeMap, KType},
+            headers::HeaderStoreReader,
             relations::RelationsStoreReader,
         },
     },
     pipeline::header_processor::HeaderProcessingContext,
+    processes::difficulty::calc_work,
 };
 
 use super::ordering::*;
 
-pub struct GhostdagManager<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService> {
+pub struct GhostdagManager<
+    T: GhostdagStoreReader,
+    S: RelationsStoreReader,
+    U: ReachabilityService,
+    V: HeaderStoreReader,
+> {
     genesis_hash: Hash,
     pub(super) k: KType,
     pub(super) ghostdag_store: Arc<T>,
     pub(super) relations_store: Arc<S>,
+    pub(super) headers_store: Arc<V>,
     pub(super) reachability_service: U,
 }
 
-impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService> GhostdagManager<T, S, U> {
+impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V: HeaderStoreReader>
+    GhostdagManager<T, S, U, V>
+{
     pub fn new(
-        genesis_hash: Hash, k: KType, ghostdag_store: Arc<T>, relations_store: Arc<S>, reachability_service: U,
+        genesis_hash: Hash, k: KType, ghostdag_store: Arc<T>, relations_store: Arc<S>, headers_store: Arc<V>,
+        reachability_service: U,
     ) -> Self {
-        Self { genesis_hash, k, ghostdag_store, relations_store, reachability_service }
+        Self { genesis_hash, k, ghostdag_store, relations_store, reachability_service, headers_store }
     }
 
     pub fn add_genesis_if_needed(&self, ctx: &mut HeaderProcessingContext) {
@@ -91,8 +105,20 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService> Gh
             .unwrap()
             + new_block_data.mergeset_blues.len() as u64;
 
+        let added_blue_work: BlueWorkType = new_block_data
+            .mergeset_blues
+            .iter()
+            .cloned()
+            .map(|hash| calc_work(self.headers_store.get_bits(hash).unwrap()))
+            .sum();
+
         // TODO: This is just a placeholder until calc_work is implemented.
-        let blue_work = ctx.header.blue_work;
+        let blue_work = self
+            .ghostdag_store
+            .get_blue_work(selected_parent)
+            .unwrap()
+            + added_blue_work;
+
         new_block_data.finalize_score_and_work(blue_score, blue_work);
 
         // Stage new block data

@@ -201,7 +201,7 @@ struct GhostdagTestBlock {
 
 #[tokio::test]
 async fn ghostdag_test() {
-    let mut path_strings: Vec<String> = fs::read_dir("tests/testdata/dags")
+    let mut path_strings: Vec<String> = fs::read_dir("/home/ori/rusty-kaspa/consensus/tests/testdata/dags")
         .unwrap()
         .map(|f| f.unwrap().path().to_str().unwrap().to_owned())
         .collect();
