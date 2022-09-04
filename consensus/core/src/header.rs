@@ -1,4 +1,4 @@
-use crate::{blockhash, hashing, BlueWorkType};
+use crate::{hashing, BlueWorkType};
 use hashes::Hash;
 use serde::{Deserialize, Serialize};
 
