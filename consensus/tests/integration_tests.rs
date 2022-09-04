@@ -11,17 +11,20 @@ use consensus::params::MAINNET_PARAMS;
 use consensus::processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions};
 use consensus_core::block::Block;
 use consensus_core::blockhash;
+use consensus_core::header::Header;
 use hashes::Hash;
 
 use flate2::read::GzDecoder;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::fs::{self, File};
-use std::io::BufReader;
-use std::path::Path;
-use std::str::from_utf8;
-use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::{
+    collections::HashMap,
+    fs::{self, File},
+    io::{self, BufRead, BufReader},
+    path::Path,
+    str::{from_utf8, FromStr},
+    sync::Arc,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 
 mod common;
 
@@ -644,4 +647,97 @@ async fn mergeset_size_limit_test() {
     }
 
     consensus.shutdown(wait_handles);
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Debug)]
+struct RPCBlock {
+    Header: RPCBlockHeader,
+    VerboseData: RPCBlockVerboseData,
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Debug)]
+struct RPCBlockHeader {
+    Version: u16,
+    Parents: Vec<RPCBlockLevelParents>,
+    Timestamp: u64,
+    Bits: u32,
+    Nonce: u64,
+    DAAScore: u64,
+    BlueScore: u64,
+    BlueWork: String,
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Debug)]
+struct RPCBlockLevelParents {
+    ParentHashes: Vec<String>,
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Debug)]
+struct RPCBlockVerboseData {
+    Hash: String,
+}
+
+#[tokio::test]
+async fn json_test() {
+    let file = File::open("tests/testdata/json_test.json.gz").unwrap();
+    let reader = BufReader::new(file);
+    let decoder = GzDecoder::new(reader);
+    let mut lines = io::BufReader::new(decoder).lines();
+    let first_line = lines.next().unwrap();
+    let genesis = json_line_to_block(first_line.unwrap());
+    let mut params = MAINNET_PARAMS;
+    params.genesis_bits = genesis.header.bits;
+    params.genesis_hash = genesis.header.hash;
+    params.genesis_timestamp = genesis.header.timestamp;
+
+    let consensus = TestConsensus::create_from_temp_db(&params);
+    let wait_handles = consensus.init();
+
+    let mut last_time = SystemTime::now();
+    let mut last_index: usize = 0;
+    for (i, line) in lines.enumerate() {
+        let now = SystemTime::now();
+        let passed = now.duration_since(last_time).unwrap();
+        if passed > Duration::new(10, 0) {
+            println!("Processed {} blocks in the last {} seconds", i - last_index, passed.as_secs());
+            last_time = now;
+            last_index = i;
+        }
+        let block = json_line_to_block(line.unwrap());
+        let hash = block.header.hash;
+        consensus
+            .validate_and_insert_block(Arc::new(block))
+            .await
+            .unwrap_or_else(|e| panic!("block {} {} failed: {}", i, hash, e));
+    }
+    consensus.shutdown(wait_handles);
+}
+
+fn json_line_to_block(line: String) -> Block {
+    let rpc_block: RPCBlock = serde_json::from_str(&line).unwrap();
+    Block::from_header(Header {
+        hash: Hash::from_str(&rpc_block.VerboseData.Hash).unwrap(),
+        version: rpc_block.Header.Version,
+        parents_by_level: rpc_block
+            .Header
+            .Parents
+            .iter()
+            .map(|item| {
+                item.ParentHashes
+                    .iter()
+                    .map(|parent| Hash::from_str(parent).unwrap())
+                    .collect()
+            })
+            .collect(),
+        timestamp: rpc_block.Header.Timestamp,
+        bits: rpc_block.Header.Bits,
+        nonce: rpc_block.Header.Nonce,
+        daa_score: rpc_block.Header.DAAScore,
+        blue_work: u128::from_str_radix(&rpc_block.Header.BlueWork, 16).unwrap(),
+        blue_score: rpc_block.Header.BlueScore,
+    })
 }

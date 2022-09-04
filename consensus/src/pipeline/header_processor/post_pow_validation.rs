@@ -11,7 +11,9 @@ impl HeaderProcessor {
         self: &Arc<HeaderProcessor>, ctx: &mut HeaderProcessingContext, header: &Header,
     ) -> BlockProcessResult<()> {
         self.check_median_timestamp(ctx, header)?;
-        self.check_merge_size_limit(ctx, header)
+        self.check_merge_size_limit(ctx, header)?;
+        self.check_blue_score(ctx, header)?;
+        self.check_blue_work(ctx, header)
     }
 
     pub fn check_median_timestamp(
@@ -40,6 +42,26 @@ impl HeaderProcessor {
 
         if mergeset_size > self.mergeset_size_limit {
             return Err(RuleError::MergeSetTooBig(mergeset_size, self.mergeset_size_limit));
+        }
+        Ok(())
+    }
+
+    fn check_blue_score(
+        self: &Arc<HeaderProcessor>, ctx: &mut HeaderProcessingContext, header: &Header,
+    ) -> BlockProcessResult<()> {
+        let gd_blue_score = ctx.ghostdag_data.as_ref().unwrap().blue_score;
+        if gd_blue_score != header.blue_score {
+            return Err(RuleError::UnexpectedHeaderBlueScore(gd_blue_score, header.blue_score));
+        }
+        Ok(())
+    }
+
+    fn check_blue_work(
+        self: &Arc<HeaderProcessor>, ctx: &mut HeaderProcessingContext, header: &Header,
+    ) -> BlockProcessResult<()> {
+        let gd_blue_work = ctx.ghostdag_data.as_ref().unwrap().blue_work;
+        if gd_blue_work != header.blue_work {
+            return Err(RuleError::UnexpectedHeaderBlueWork(gd_blue_work, header.blue_work));
         }
         Ok(())
     }

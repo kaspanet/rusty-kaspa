@@ -85,6 +85,7 @@ pub struct HeaderProcessor {
     pub(super) max_block_parents: u8,
     pub(super) difficulty_window_size: usize,
     pub(super) mergeset_size_limit: u64,
+    pub(super) genesis_bits: u32,
 
     // DB
     db: Arc<DB>,
@@ -105,6 +106,7 @@ pub struct HeaderProcessor {
         DbGhostdagStore,
         MTRelationsService<DbRelationsStore>,
         MTReachabilityService<DbReachabilityStore>,
+        DbHeadersStore,
     >,
     pub(super) dag_traversal_manager: DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore>,
     pub(super) difficulty_manager: DifficultyManager<DbHeadersStore>,
@@ -145,7 +147,7 @@ impl HeaderProcessor {
             statuses_store,
             pruning_store,
             daa_store,
-            headers_store,
+            headers_store: headers_store.clone(),
             block_window_cache_for_difficulty,
             block_window_cache_for_past_median_time,
             ghostdag_manager: GhostdagManager::new(
@@ -153,6 +155,7 @@ impl HeaderProcessor {
                 params.ghostdag_k,
                 ghostdag_store,
                 relations_service,
+                headers_store,
                 reachability_service.clone(),
             ),
             dag_traversal_manager,
@@ -165,6 +168,7 @@ impl HeaderProcessor {
             target_time_per_block: params.target_time_per_block,
             max_block_parents: params.max_block_parents,
             mergeset_size_limit: params.mergeset_size_limit,
+            genesis_bits: params.genesis_bits,
         }
     }
 
@@ -337,7 +341,8 @@ impl HeaderProcessor {
         if self.header_was_processed(self.genesis_hash) {
             return;
         }
-        let header = header_from_precomputed_hash(self.genesis_hash, vec![]); // TODO
+        let mut header = header_from_precomputed_hash(self.genesis_hash, vec![]); // TODO
+        header.bits = self.genesis_bits;
         let mut ctx = HeaderProcessingContext::new(self.genesis_hash, &header);
         self.ghostdag_manager
             .add_genesis_if_needed(&mut ctx);

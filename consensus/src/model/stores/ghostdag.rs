@@ -148,8 +148,6 @@ impl GhostdagData {
         let data = Arc::make_mut(self);
         data.blue_score = blue_score;
         data.blue_work = blue_work;
-
-        // TODO: should be accumulated through `add_blue`
     }
 }
 
