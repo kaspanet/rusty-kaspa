@@ -92,7 +92,7 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService> Gh
             + new_block_data.mergeset_blues.len() as u64;
 
         // TODO: This is just a placeholder until calc_work is implemented.
-        let blue_work = blue_score.into();
+        let blue_work = ctx.header.blue_work;
         new_block_data.finalize_score_and_work(blue_score, blue_work);
 
         // Stage new block data

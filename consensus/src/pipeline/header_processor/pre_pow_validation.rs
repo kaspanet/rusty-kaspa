@@ -14,9 +14,20 @@ impl HeaderProcessor {
             return Ok(());
         }
 
+        self.check_blue_score(ctx, header)?;
         self.check_pruning_violation(ctx, header)?;
         self.check_pow(ctx, header)?;
         self.check_difficulty_and_daa_score(ctx, header)?;
+        Ok(())
+    }
+
+    fn check_blue_score(
+        self: &Arc<HeaderProcessor>, ctx: &mut HeaderProcessingContext, header: &Header,
+    ) -> BlockProcessResult<()> {
+        let gd_blue_score = ctx.ghostdag_data.as_ref().unwrap().blue_score;
+        if gd_blue_score != header.blue_score {
+            return Err(RuleError::UnexpectedHeaderBlueScore(gd_blue_score, header.blue_score));
+        }
         Ok(())
     }
 

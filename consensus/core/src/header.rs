@@ -1,4 +1,4 @@
-use crate::{blockhash, hashing};
+use crate::{blockhash, hashing, BlueWorkType};
 use hashes::Hash;
 use serde::{Deserialize, Serialize};
 
@@ -11,11 +11,16 @@ pub struct Header {
     pub bits: u32,
     pub nonce: u64,
     pub daa_score: u64,
+    pub blue_work: BlueWorkType,
+    pub blue_score: u64,
     // TODO: add parent levels and all remaining fields
 }
 
 impl Header {
-    pub fn new(version: u16, parents: Vec<Hash>, timestamp: u64, bits: u32, nonce: u64, daa_score: u64) -> Self {
+    pub fn new(
+        version: u16, parents: Vec<Hash>, timestamp: u64, bits: u32, nonce: u64, daa_score: u64,
+        blue_work: BlueWorkType, blue_score: u64,
+    ) -> Self {
         let mut header = Self {
             hash: blockhash::NONE, // Temp init before the hashing below
             version,
@@ -24,6 +29,8 @@ impl Header {
             timestamp,
             daa_score,
             bits,
+            blue_work,
+            blue_score,
         };
         header.hash = hashing::header::header_hash(&header);
         header

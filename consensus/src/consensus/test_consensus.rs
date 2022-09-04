@@ -45,7 +45,13 @@ impl TestConsensus {
             .ghostdag_manager
             .add_block(&mut ctx, hash);
 
-        let ghostdag_data = ctx.ghostdag_data.unwrap();
+        let ghostdag_data = {
+            let mut ghostdag_data = ctx.ghostdag_data.unwrap();
+            let mut ghostdag_data = Arc::make_mut(&mut ghostdag_data);
+            ghostdag_data.blue_work = ghostdag_data.blue_score.into();
+            Arc::new(ghostdag_data.clone())
+        };
+
         let window = self
             .consensus
             .dag_traversal_manager
@@ -63,9 +69,12 @@ impl TestConsensus {
         header.timestamp = self
             .consensus
             .past_median_time_manager
-            .calc_past_median_time(ghostdag_data)
+            .calc_past_median_time(ghostdag_data.clone())
             .0
             + 1;
+        header.blue_score = ghostdag_data.blue_score;
+        header.blue_work = ghostdag_data.blue_work;
+        assert_eq!(ghostdag_data.blue_work, header.blue_work);
         header
     }
 
