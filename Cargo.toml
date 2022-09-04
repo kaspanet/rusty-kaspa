@@ -9,4 +9,5 @@ members = [
     "misc",
     "crypto/hashes",
     "crypto/muhash",
+    "crypto/addresses",
 ]
