@@ -34,13 +34,8 @@ fn hash_blue_work(hasher: &mut impl Hasher, work: BlueWorkType) {
         .cloned()
         .position(|byte| byte != 0);
 
-    if let Some(start) = start {
-        hasher
-            .update(((be_bytes.len()) as u64 - (start as u64)).to_le_bytes())
-            .update(&be_bytes[start..]);
-    } else {
-        hasher.update((0 as u64).to_le_bytes());
-    }
+    let slice = if let Some(start) = start { &be_bytes[start..] } else { &[] };
+    hasher.write_var_bytes(slice);
 }
 
 #[cfg(test)]
@@ -58,11 +53,16 @@ mod tests {
 
     #[test]
     fn test_hash_blue_work() {
-        let mut hasher = hashes::BlockHash::new();
-        hash_blue_work(&mut hasher, 123456);
+        let tests: Vec<(BlueWorkType, Vec<u8>)> =
+            vec![(0, vec![0, 0, 0, 0, 0, 0, 0, 0]), (123456, vec![3, 0, 0, 0, 0, 0, 0, 0, 1, 226, 64])];
 
-        let mut hasher2 = hashes::BlockHash::new();
-        hasher2.update(vec![3, 0, 0, 0, 0, 0, 0, 0, 1, 226, 64]);
-        assert_eq!(hasher.finalize(), hasher2.finalize())
+        for test in tests {
+            let mut hasher = hashes::BlockHash::new();
+            hash_blue_work(&mut hasher, test.0);
+
+            let mut hasher2 = hashes::BlockHash::new();
+            hasher2.update(test.1);
+            assert_eq!(hasher.finalize(), hasher2.finalize())
+        }
     }
 }
