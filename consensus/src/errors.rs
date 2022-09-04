@@ -1,4 +1,5 @@
 use crate::constants;
+use consensus_core::BlueWorkType;
 use hashes::Hash;
 use thiserror::Error;
 
@@ -35,6 +36,12 @@ pub enum RuleError {
 
     #[error("expected header daa score {0} but got {1}")]
     UnexpectedHeaderDaaScore(u64, u64),
+
+    #[error("expected header blue score {0} but got {1}")]
+    UnexpectedHeaderBlueScore(u64, u64),
+
+    #[error("expected header blue work {0} but got {1}")]
+    UnexpectedHeaderBlueWork(BlueWorkType, BlueWorkType),
 
     #[error("block difficulty of {0} is not the expected value of {1}")]
     UnexpectedDifficulty(u32, u32),

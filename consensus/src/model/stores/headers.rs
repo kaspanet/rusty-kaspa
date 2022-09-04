@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 pub trait HeaderStoreReader {
     fn get_daa_score(&self, hash: Hash) -> Result<u64, StoreError>;
     fn get_timestamp(&self, hash: Hash) -> Result<u64, StoreError>;
+    fn get_bits(&self, hash: Hash) -> Result<u32, StoreError>;
     fn get_header(&self, hash: Hash) -> Result<Arc<Header>, StoreError>;
     fn get_compact_header_data(&self, hash: Hash) -> Result<CompactHeaderData, StoreError>;
 }
@@ -100,6 +101,16 @@ impl HeaderStoreReader for DbHeadersStore {
             .cached_compact_headers_access
             .read(hash)?
             .timestamp)
+    }
+
+    fn get_bits(&self, hash: Hash) -> Result<u32, StoreError> {
+        if let Some(header) = self.cached_headers_access.read_from_cache(hash) {
+            return Ok(header.bits);
+        }
+        Ok(self
+            .cached_compact_headers_access
+            .read(hash)?
+            .bits)
     }
 
     fn get_header(&self, hash: Hash) -> Result<Arc<Header>, StoreError> {
