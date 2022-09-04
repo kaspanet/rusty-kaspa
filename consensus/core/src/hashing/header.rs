@@ -32,10 +32,10 @@ fn hash_blue_work(hasher: &mut impl Hasher, work: BlueWorkType) {
     let start = be_bytes
         .iter()
         .cloned()
-        .position(|byte| byte != 0);
+        .position(|byte| byte != 0)
+        .unwrap_or(be_bytes.len());
 
-    let slice = if let Some(start) = start { &be_bytes[start..] } else { &[] };
-    hasher.write_var_bytes(slice);
+    hasher.write_var_bytes(&be_bytes[start..]);
 }
 
 #[cfg(test)]
