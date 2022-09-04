@@ -712,7 +712,7 @@ async fn json_test() {
         consensus
             .validate_and_insert_block(Arc::new(block))
             .await
-            .expect(&format!("block {} {} failed", i, hash));
+            .unwrap_or_else(|e| panic!("block {} {} failed: {}", i, hash, e));
     }
     consensus.shutdown(wait_handles);
 }
