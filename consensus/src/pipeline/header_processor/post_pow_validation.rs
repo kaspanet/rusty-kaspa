@@ -1,19 +1,20 @@
-use std::sync::Arc;
-
-use consensus_core::header::Header;
-
-use crate::errors::{BlockProcessResult, RuleError};
-
 use super::{HeaderProcessingContext, HeaderProcessor};
+use crate::errors::{BlockProcessResult, RuleError};
+use crate::model::services::reachability::ReachabilityService;
+use consensus_core::header::Header;
+use hashes::Hash;
+use std::sync::Arc;
 
 impl HeaderProcessor {
     pub fn post_pow_validation(
         self: &Arc<HeaderProcessor>, ctx: &mut HeaderProcessingContext, header: &Header,
     ) -> BlockProcessResult<()> {
+        self.check_blue_score(ctx, header)?;
+        self.check_blue_work(ctx, header)?;
         self.check_median_timestamp(ctx, header)?;
         self.check_merge_size_limit(ctx, header)?;
-        self.check_blue_score(ctx, header)?;
-        self.check_blue_work(ctx, header)
+        self.check_bounded_merge_depth(ctx, header)?;
+        self.check_indirect_parents(ctx, header)
     }
 
     pub fn check_median_timestamp(
@@ -63,6 +64,52 @@ impl HeaderProcessor {
         if gd_blue_work != header.blue_work {
             return Err(RuleError::UnexpectedHeaderBlueWork(gd_blue_work, header.blue_work));
         }
+        Ok(())
+    }
+
+    pub fn check_indirect_parents(
+        self: &Arc<HeaderProcessor>, ctx: &mut HeaderProcessingContext, header: &Header,
+    ) -> BlockProcessResult<()> {
+        // TODO: Implement this
+        Ok(())
+    }
+
+    pub fn check_bounded_merge_depth(
+        self: &Arc<HeaderProcessor>, ctx: &mut HeaderProcessingContext, header: &Header,
+    ) -> BlockProcessResult<()> {
+        let gd_data = ctx.ghostdag_data.as_ref().unwrap();
+        let merge_depth_root = self
+            .depth_manager
+            .calc_merge_depth_root(&gd_data, ctx.pruning_point);
+        let finality_point = self
+            .depth_manager
+            .calc_finality_point(&gd_data, ctx.pruning_point);
+        let non_bounded_merge_depth_violating_blues: Vec<Hash> = self
+            .depth_manager
+            .non_bounded_merge_depth_violating_blues(&gd_data, merge_depth_root)
+            .collect();
+
+        for red in gd_data.mergeset_reds.iter().cloned() {
+            if self
+                .reachability_service
+                .is_dag_ancestor_of(merge_depth_root, red)
+            {
+                continue;
+            }
+
+            if !non_bounded_merge_depth_violating_blues
+                .iter()
+                .any(|blue| {
+                    self.reachability_service
+                        .is_dag_ancestor_of(merge_depth_root, red)
+                })
+            {
+                return Err(RuleError::ViolatingBoundedMergeDepth);
+            }
+        }
+
+        ctx.merge_depth_root = Some(merge_depth_root);
+        ctx.finality_point = Some(finality_point);
         Ok(())
     }
 }

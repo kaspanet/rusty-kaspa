@@ -8,6 +8,10 @@ pub trait PruningStoreReader {
     fn pruning_point(&self) -> StoreResult<Hash>;
 }
 
+pub trait PruningStore: PruningStoreReader {
+    fn set(&mut self, hash: Hash) -> StoreResult<()>;
+}
+
 const STORE_PREFIX: &[u8] = b"pruning";
 
 /// A DB + cache implementation of `PruningStore` trait, with concurrent readers support.
@@ -35,5 +39,11 @@ impl DbPruningStore {
 impl PruningStoreReader for DbPruningStore {
     fn pruning_point(&self) -> StoreResult<Hash> {
         self.pruning_point.read()
+    }
+}
+
+impl PruningStore for DbPruningStore {
+    fn set(&mut self, hash: Hash) -> StoreResult<()> {
+        self.pruning_point.write(&hash)
     }
 }

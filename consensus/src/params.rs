@@ -13,6 +13,8 @@ pub struct Params {
     pub genesis_timestamp: u64,
     pub genesis_bits: u32,
     pub mergeset_size_limit: u64,
+    pub merge_depth: u64,
+    pub finality_depth: u64,
 }
 
 const DEFAULT_GHOSTDAG_K: KType = 18;
@@ -26,4 +28,6 @@ pub const MAINNET_PARAMS: Params = Params {
     genesis_timestamp: 0,     // TODO: Use real value
     genesis_bits: 0x207fffff, // TODO: Use real value
     mergeset_size_limit: (DEFAULT_GHOSTDAG_K as u64) * 10,
+    merge_depth: 3600,
+    finality_depth: 86400,
 };
