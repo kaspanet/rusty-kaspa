@@ -2,7 +2,7 @@ use thiserror::Error;
 
 use crate::tx::TransactionOutpoint;
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, PartialEq, Eq)]
 pub enum UtxoAlgebraError {
     #[error("outpoint {0} both in self.remove and in other.remove")]
     DuplicateRemovePoint(TransactionOutpoint),

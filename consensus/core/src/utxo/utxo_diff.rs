@@ -1,22 +1,19 @@
 use super::{
-    utxo_collection::{
-        intersection_with_remainder_having_daa_score_in_place, subtraction_having_daa_score_in_place,
-        subtraction_with_remainder_having_daa_score_in_place, UtxoCollection, UtxoCollectionExtensions,
-    },
+    utxo_collection::*,
     utxo_error::{UtxoAlgebraError, UtxoResult},
 };
 use crate::tx::{Transaction, TransactionOutpoint, UtxoEntry};
 use std::collections::hash_map::Entry::Vacant;
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Debug, PartialEq, Eq)]
 pub struct UtxoDiff {
     pub add: UtxoCollection,
     pub remove: UtxoCollection,
 }
 
 impl UtxoDiff {
-    pub fn new() -> Self {
-        Self { add: Default::default(), remove: Default::default() }
+    pub fn new(add: UtxoCollection, remove: UtxoCollection) -> Self {
+        Self { add, remove }
     }
 
     pub fn with_diff(&self, other: &UtxoDiff) -> UtxoResult<UtxoDiff> {
@@ -169,7 +166,7 @@ impl UtxoDiff {
             ));
         }
 
-        let mut result = UtxoDiff::new();
+        let mut result = UtxoDiff::default();
 
         // All transactions in self.add:
         // If they are not in other.add - should be added in result.remove
@@ -249,8 +246,75 @@ impl UtxoDiff {
 
 #[cfg(test)]
 mod tests {
-    // use super::*;
+    use super::*;
+    use crate::tx::{ScriptPublicKey, TransactionId};
+    use std::{str::FromStr, sync::Arc};
 
     #[test]
-    fn test_types() {}
+    fn test_utxo_diff_rules() {
+        let tx_id0 = TransactionId::from_str("0".repeat(64).as_str()).unwrap();
+        let outpoint0 = TransactionOutpoint::new(tx_id0, 0);
+        let utxo_entry1 = UtxoEntry::new(10, Arc::new(ScriptPublicKey::new(Vec::new(), 0)), 0, true);
+        let utxo_entry2 = UtxoEntry::new(20, Arc::new(ScriptPublicKey::new(Vec::new(), 0)), 1, true);
+
+        struct Test {
+            name: &'static str,
+            this: UtxoDiff,
+            other: UtxoDiff,
+            expected_diff_from_result: UtxoResult<UtxoDiff>,
+            expected_with_diff_result: UtxoResult<UtxoDiff>,
+        }
+
+        let tests = [
+            Test {
+                name: "first add in this, first add in other",
+                this: UtxoDiff::new(UtxoCollection::from([(outpoint0, utxo_entry1.clone())]), UtxoCollection::from([])),
+                other: UtxoDiff::new(
+                    UtxoCollection::from([(outpoint0, utxo_entry1.clone())]),
+                    UtxoCollection::from([]),
+                ),
+                expected_diff_from_result: Ok(UtxoDiff::default()),
+                expected_with_diff_result: Err(UtxoAlgebraError::DuplicateAddPoint(outpoint0)),
+            },
+            Test {
+                name: "first add in this, second add in other",
+                this: UtxoDiff::new(UtxoCollection::from([(outpoint0, utxo_entry1.clone())]), UtxoCollection::from([])),
+                other: UtxoDiff::new(
+                    UtxoCollection::from([(outpoint0, utxo_entry2.clone())]),
+                    UtxoCollection::from([]),
+                ),
+                expected_diff_from_result: Ok(UtxoDiff::new(
+                    UtxoCollection::from([(outpoint0, utxo_entry2.clone())]),
+                    UtxoCollection::from([(outpoint0, utxo_entry1.clone())]),
+                )),
+                expected_with_diff_result: Err(UtxoAlgebraError::DuplicateAddPoint(outpoint0)),
+            },
+        ];
+
+        for test in tests {
+            let diff_from_result = test.this.diff_from(&test.other);
+            assert_eq!(diff_from_result, test.expected_diff_from_result, "diff_from failed for test \"{}\"", test.name);
+
+            if let Ok(diff_from_inner) = diff_from_result {
+                assert_eq!(
+                    test.this.with_diff(&diff_from_inner).unwrap(),
+                    test.other,
+                    "reverse diff_from failed for test \"{}\"",
+                    test.name
+                );
+            }
+
+            let with_diff_result = test.this.with_diff(&test.other);
+            assert_eq!(with_diff_result, test.expected_with_diff_result, "with_diff failed for test \"{}\"", test.name);
+
+            if let Ok(with_diff_inner) = with_diff_result {
+                assert_eq!(
+                    test.this.diff_from(&with_diff_inner).unwrap(),
+                    test.other,
+                    "reverse with_diff failed for test \"{}\"",
+                    test.name
+                );
+            }
+        }
+    }
 }

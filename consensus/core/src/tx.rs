@@ -8,7 +8,7 @@ use std::{fmt::Display, sync::Arc};
 pub type TransactionId = hashes::Hash;
 
 /// Represents a Kaspad ScriptPublicKey
-#[derive(Default, Debug)]
+#[derive(Default, Debug, PartialEq, Eq)]
 pub struct ScriptPublicKey {
     pub script: Vec<u8>,
     pub version: u16,
@@ -24,7 +24,7 @@ impl ScriptPublicKey {
 /// set such as whether or not it was contained in a coinbase tx, the daa
 /// score of the block that accepts the tx, its public key script, and how
 /// much it pays.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UtxoEntry {
     pub amount: u64,
     pub script_public_key: Arc<ScriptPublicKey>,
