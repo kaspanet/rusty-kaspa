@@ -6,6 +6,7 @@ use super::{
     utxo_error::{UtxoAlgebraError, UtxoResult},
 };
 use crate::tx::{Transaction, TransactionOutpoint, UtxoEntry};
+use std::collections::hash_map::Entry::Vacant;
 
 #[derive(Clone, Default)]
 pub struct UtxoDiff {
@@ -136,12 +137,32 @@ impl UtxoDiff {
         Ok(())
     }
 
-    fn remove_entry(&mut self, _outpoint: &TransactionOutpoint, _entry: &UtxoEntry) -> UtxoResult<()> {
-        todo!()
+    fn remove_entry(&mut self, outpoint: &TransactionOutpoint, entry: &UtxoEntry) -> UtxoResult<()> {
+        if self
+            .add
+            .contains_with_daa_score(outpoint, entry.block_daa_score)
+        {
+            self.add.remove(outpoint);
+        } else if let Vacant(e) = self.remove.entry(*outpoint) {
+            e.insert(entry.clone());
+        } else {
+            return Err(UtxoAlgebraError::DoubleRemoveCall(*outpoint));
+        }
+        Ok(())
     }
 
-    fn add_entry(&mut self, _outpoint: TransactionOutpoint, _entry: UtxoEntry) -> UtxoResult<()> {
-        todo!()
+    fn add_entry(&mut self, outpoint: TransactionOutpoint, entry: UtxoEntry) -> UtxoResult<()> {
+        if self
+            .remove
+            .contains_with_daa_score(&outpoint, entry.block_daa_score)
+        {
+            self.remove.remove(&outpoint);
+        } else if let Vacant(e) = self.add.entry(outpoint) {
+            e.insert(entry);
+        } else {
+            return Err(UtxoAlgebraError::DoubleAddCall(outpoint));
+        }
+        Ok(())
     }
 }
 
