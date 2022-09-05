@@ -2,7 +2,7 @@ use thiserror::Error;
 
 use crate::tx::TransactionOutpoint;
 
-#[derive(Error, Debug, PartialEq, Eq)]
+#[derive(Error, Debug, Eq)]
 pub enum UtxoAlgebraError {
     #[error("outpoint {0} both in self.remove and in other.remove")]
     DuplicateRemovePoint(TransactionOutpoint),
@@ -21,6 +21,21 @@ pub enum UtxoAlgebraError {
 
     #[error("{0}")]
     General(&'static str),
+}
+
+/// Explicit imp in order to ignore the description strings in test equality assertions
+impl PartialEq for UtxoAlgebraError {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::DuplicateRemovePoint(l0), Self::DuplicateRemovePoint(r0)) => l0 == r0,
+            (Self::DuplicateAddPoint(l0), Self::DuplicateAddPoint(r0)) => l0 == r0,
+            (Self::DoubleRemoveCall(l0), Self::DoubleRemoveCall(r0)) => l0 == r0,
+            (Self::DoubleAddCall(l0), Self::DoubleAddCall(r0)) => l0 == r0,
+            (Self::DiffIntersectionPoint(l0, _), Self::DiffIntersectionPoint(r0, _)) => l0 == r0, // Ignore the description string
+            (Self::General(_), Self::General(_)) => true,
+            (_, _) => false,
+        }
+    }
 }
 
 pub type UtxoResult<T> = std::result::Result<T, UtxoAlgebraError>;
