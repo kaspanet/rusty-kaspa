@@ -96,7 +96,6 @@ impl UtxoCollectionExtensions for UtxoCollection {
 /// `remainder = remainder ∪ (this ∖ other)`
 ///
 /// where the set operators demand equality also on the DAA score dimension
-#[allow(dead_code)]
 pub(super) fn intersection_with_remainder_having_daa_score_in_place(
     this: &UtxoCollection, other: &UtxoCollection, result: &mut UtxoCollection, remainder: &mut UtxoCollection,
 ) {
