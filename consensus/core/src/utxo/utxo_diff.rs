@@ -265,28 +265,66 @@ mod tests {
             expected_with_diff_result: UtxoResult<UtxoDiff>,
         }
 
+        struct UtxoDiffBuilder {
+            diff: Option<UtxoDiff>,
+        }
+
+        impl UtxoDiffBuilder {
+            fn new() -> Self {
+                Self { diff: Some(UtxoDiff::default()) }
+            }
+
+            fn insert_add_point(&mut self, outpoint: TransactionOutpoint, entry: UtxoEntry) -> &mut Self {
+                assert!(self
+                    .diff
+                    .as_mut()
+                    .unwrap()
+                    .add
+                    .insert(outpoint, entry)
+                    .is_none());
+                self
+            }
+
+            fn insert_remove_point(&mut self, outpoint: TransactionOutpoint, entry: UtxoEntry) -> &mut Self {
+                assert!(self
+                    .diff
+                    .as_mut()
+                    .unwrap()
+                    .remove
+                    .insert(outpoint, entry)
+                    .is_none());
+                self
+            }
+
+            fn build(&mut self) -> UtxoDiff {
+                self.diff.take().unwrap()
+            }
+        }
+
         let tests = [
             Test {
                 name: "first add in this, first add in other",
-                this: UtxoDiff::new(UtxoCollection::from([(outpoint0, utxo_entry1.clone())]), UtxoCollection::from([])),
-                other: UtxoDiff::new(
-                    UtxoCollection::from([(outpoint0, utxo_entry1.clone())]),
-                    UtxoCollection::from([]),
-                ),
-                expected_diff_from_result: Ok(UtxoDiff::default()),
+                this: UtxoDiffBuilder::new()
+                    .insert_add_point(outpoint0, utxo_entry1.clone())
+                    .build(),
+                other: UtxoDiffBuilder::new()
+                    .insert_add_point(outpoint0, utxo_entry1.clone())
+                    .build(),
+                expected_diff_from_result: Ok(UtxoDiffBuilder::new().build()),
                 expected_with_diff_result: Err(UtxoAlgebraError::DuplicateAddPoint(outpoint0)),
             },
             Test {
                 name: "first add in this, second add in other",
-                this: UtxoDiff::new(UtxoCollection::from([(outpoint0, utxo_entry1.clone())]), UtxoCollection::from([])),
-                other: UtxoDiff::new(
-                    UtxoCollection::from([(outpoint0, utxo_entry2.clone())]),
-                    UtxoCollection::from([]),
-                ),
-                expected_diff_from_result: Ok(UtxoDiff::new(
-                    UtxoCollection::from([(outpoint0, utxo_entry2.clone())]),
-                    UtxoCollection::from([(outpoint0, utxo_entry1.clone())]),
-                )),
+                this: UtxoDiffBuilder::new()
+                    .insert_add_point(outpoint0, utxo_entry1.clone())
+                    .build(),
+                other: UtxoDiffBuilder::new()
+                    .insert_add_point(outpoint0, utxo_entry2.clone())
+                    .build(),
+                expected_diff_from_result: Ok(UtxoDiffBuilder::new()
+                    .insert_add_point(outpoint0, utxo_entry2.clone())
+                    .insert_remove_point(outpoint0, utxo_entry1.clone())
+                    .build()),
                 expected_with_diff_result: Err(UtxoAlgebraError::DuplicateAddPoint(outpoint0)),
             },
         ];
@@ -316,5 +354,9 @@ mod tests {
                 );
             }
         }
+
+        // Avoid compiler warnings on the last clone
+        drop(utxo_entry1);
+        drop(utxo_entry2);
     }
 }
