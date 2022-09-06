@@ -80,13 +80,13 @@ impl HeaderProcessor {
         let gd_data = ctx.ghostdag_data.as_ref().unwrap();
         let merge_depth_root = self
             .depth_manager
-            .calc_merge_depth_root(&gd_data, ctx.pruning_point);
+            .calc_merge_depth_root(gd_data, ctx.pruning_point);
         let finality_point = self
             .depth_manager
-            .calc_finality_point(&gd_data, ctx.pruning_point);
+            .calc_finality_point(gd_data, ctx.pruning_point);
         let non_bounded_merge_depth_violating_blues: Vec<Hash> = self
             .depth_manager
-            .non_bounded_merge_depth_violating_blues(&gd_data, merge_depth_root)
+            .non_bounded_merge_depth_violating_blues(gd_data, merge_depth_root)
             .collect();
 
         for red in gd_data.mergeset_reds.iter().cloned() {
