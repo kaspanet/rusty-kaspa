@@ -22,8 +22,8 @@ use crate::{
     params::Params,
     pipeline::deps_manager::{BlockTask, BlockTaskDependencyManager},
     processes::{
-        block_at_depth::BlockDepthDepthManager, dagtraversalmanager::DagTraversalManager,
-        difficulty::DifficultyManager, ghostdag::protocol::GhostdagManager, pastmediantime::PastMedianTimeManager,
+        block_at_depth::BlockDepthManager, dagtraversalmanager::DagTraversalManager, difficulty::DifficultyManager,
+        ghostdag::protocol::GhostdagManager, pastmediantime::PastMedianTimeManager,
         reachability::inquirer as reachability,
     },
     test_helpers::header_from_precomputed_hash,
@@ -123,7 +123,7 @@ pub struct HeaderProcessor {
     pub(super) dag_traversal_manager: DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore>,
     pub(super) difficulty_manager: DifficultyManager<DbHeadersStore>,
     pub(super) past_median_time_manager: PastMedianTimeManager<DbHeadersStore, DbGhostdagStore, BlockWindowCacheStore>,
-    pub(super) depth_manager: BlockDepthDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>,
+    pub(super) depth_manager: BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>,
     pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
 
     // Dependency manager
@@ -147,7 +147,7 @@ impl HeaderProcessor {
         past_median_time_manager: PastMedianTimeManager<DbHeadersStore, DbGhostdagStore, BlockWindowCacheStore>,
         dag_traversal_manager: DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore>,
         difficulty_manager: DifficultyManager<DbHeadersStore>,
-        depth_manager: BlockDepthDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>,
+        depth_manager: BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>,
         counters: Arc<ProcessingCounters>,
     ) -> Self {
         Self {
