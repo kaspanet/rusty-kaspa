@@ -101,7 +101,7 @@ impl HeaderProcessor {
                 .iter()
                 .any(|blue| {
                     self.reachability_service
-                        .is_dag_ancestor_of(merge_depth_root, red)
+                        .is_dag_ancestor_of(red, *blue)
                 })
             {
                 return Err(RuleError::ViolatingBoundedMergeDepth);

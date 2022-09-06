@@ -87,6 +87,12 @@ impl TestConsensus {
         header
     }
 
+    pub fn add_block_with_parents(
+        &self, hash: Hash, parents: Vec<Hash>,
+    ) -> impl Future<Output = BlockProcessResult<()>> {
+        self.validate_and_insert_block(Arc::new(self.build_block_with_parents(hash, parents)))
+    }
+
     pub fn build_block_with_parents(&self, hash: Hash, parents: Vec<Hash>) -> Block {
         Block::from_header(self.build_header_with_parents(hash, parents))
     }
