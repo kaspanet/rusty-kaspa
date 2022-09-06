@@ -10,8 +10,8 @@ use consensus::model::stores::reachability::DbReachabilityStore;
 use consensus::params::MAINNET_PARAMS;
 use consensus::processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions};
 use consensus_core::block::Block;
-use consensus_core::blockhash;
 use consensus_core::header::Header;
+use consensus_core::{blockhash, hashing};
 use hashes::Hash;
 
 use flate2::read::GzDecoder;
@@ -661,12 +661,16 @@ struct RPCBlock {
 struct RPCBlockHeader {
     Version: u16,
     Parents: Vec<RPCBlockLevelParents>,
+    HashMerkleRoot: String,
+    AcceptedIDMerkleRoot: String,
+    UTXOCommitment: String,
     Timestamp: u64,
     Bits: u32,
     Nonce: u64,
     DAAScore: u64,
     BlueScore: u64,
     BlueWork: String,
+    PruningPoint: String,
 }
 
 #[allow(non_snake_case)]
@@ -709,6 +713,8 @@ async fn json_test() {
         }
         let block = json_line_to_block(line.unwrap());
         let hash = block.header.hash;
+        // Test our hashing implementation vs the hash accepted from the json source
+        assert_eq!(hashing::header::hash(&block.header), hash, "header hashing for block {} {} failed", i, hash);
         consensus
             .validate_and_insert_block(Arc::new(block))
             .await
@@ -733,11 +739,15 @@ fn json_line_to_block(line: String) -> Block {
                     .collect()
             })
             .collect(),
+        hash_merkle_root: Hash::from_str(&rpc_block.Header.HashMerkleRoot).unwrap(),
+        accepted_id_merkle_root: Hash::from_str(&rpc_block.Header.AcceptedIDMerkleRoot).unwrap(),
+        utxo_commitment: Hash::from_str(&rpc_block.Header.UTXOCommitment).unwrap(),
         timestamp: rpc_block.Header.Timestamp,
         bits: rpc_block.Header.Bits,
         nonce: rpc_block.Header.Nonce,
         daa_score: rpc_block.Header.DAAScore,
         blue_work: u128::from_str_radix(&rpc_block.Header.BlueWork, 16).unwrap(),
         blue_score: rpc_block.Header.BlueScore,
+        pruning_point: Hash::from_str(&rpc_block.Header.PruningPoint).unwrap(),
     })
 }

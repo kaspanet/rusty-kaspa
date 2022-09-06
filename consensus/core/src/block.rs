@@ -1,10 +1,10 @@
-use crate::{header::Header, BlueWorkType};
+use crate::{header::Header, tx::Transaction, BlueWorkType};
 use hashes::Hash;
 
 #[derive(Debug, Clone)]
 pub struct Block {
     pub header: Header,
-    pub transactions: Vec<()>, // TODO: hold actual transactions
+    pub transactions: Vec<Transaction>,
 }
 
 impl Block {
