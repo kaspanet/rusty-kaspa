@@ -807,3 +807,99 @@ fn json_line_to_block(line: String) -> Block {
         pruning_point: Hash::from_str(&rpc_block.Header.PruningPoint).unwrap(),
     })
 }
+
+#[tokio::test]
+async fn bounded_merge_depth_test() {
+    let mut params = MAINNET_PARAMS;
+    params.ghostdag_k = 5;
+    params.merge_depth = 7;
+
+    assert!((params.ghostdag_k as u64) < params.merge_depth, "K must be smaller than merge depth for this test to run");
+
+    let consensus = TestConsensus::create_from_temp_db(&params);
+    let wait_handles = consensus.init();
+
+    let mut selected_chain = vec![params.genesis_hash];
+    for i in 1..(params.merge_depth + 3) {
+        let hash: Hash = (i + 1).into();
+        consensus
+            .add_block_with_parents(hash, vec![*selected_chain.last().unwrap()])
+            .await
+            .unwrap();
+        selected_chain.push(hash);
+    }
+
+    // The length of block_chain_2 is shorter by one than selected_chain, so selected_chain will remain the selected chain.
+    let mut block_chain_2 = vec![params.genesis_hash];
+    for i in 1..(params.merge_depth + 2) {
+        let hash: Hash = (i + params.merge_depth + 3).into();
+        consensus
+            .add_block_with_parents(hash, vec![*block_chain_2.last().unwrap()])
+            .await
+            .unwrap();
+        block_chain_2.push(hash);
+    }
+
+    // The merge depth root belongs to selected_chain, and block_chain_2[1] is red and doesn't have it in its past, and is not in the
+    // past of any kosherizing block, so we expect the next block to be rejected.
+    match consensus
+        .add_block_with_parents(100.into(), vec![block_chain_2[1], *selected_chain.last().unwrap()])
+        .await
+    {
+        Err(RuleError::ViolatingBoundedMergeDepth) => {}
+        res => panic!("Unexpected result: {:?}", res),
+    }
+
+    // A block that points to tip of both chains will be rejected for similar reasons (since block_chain_2 tip is also red).
+    match consensus
+        .add_block_with_parents(101.into(), vec![*block_chain_2.last().unwrap(), *selected_chain.last().unwrap()])
+        .await
+    {
+        Err(RuleError::ViolatingBoundedMergeDepth) => {}
+        res => panic!("Unexpected result: {:?}", res),
+    }
+
+    let kosherizing_hash: Hash = 102.into();
+    // This will pass since now genesis is the mutual merge depth root.
+    consensus
+        .add_block_with_parents(
+            kosherizing_hash,
+            vec![block_chain_2[block_chain_2.len() - 3], selected_chain[selected_chain.len() - 3]],
+        )
+        .await
+        .unwrap();
+
+    let point_at_blue_kosherizing: Hash = 103.into();
+    // We expect it to pass because all of the reds are in the past of a blue kosherizing block.
+    consensus
+        .add_block_with_parents(point_at_blue_kosherizing, vec![kosherizing_hash, *selected_chain.last().unwrap()])
+        .await
+        .unwrap();
+
+    // We extend the selected chain until kosherizing_hash will be red from the virtual POV.
+    for i in 0..params.ghostdag_k {
+        let hash = Hash::from_u64_word(i as u64 * 1000);
+        consensus
+            .add_block_with_parents(hash, vec![*selected_chain.last().unwrap()])
+            .await
+            .unwrap();
+        selected_chain.push(hash);
+    }
+
+    // Since kosherizing_hash is now red, we expect this to fail.
+    match consensus
+        .add_block_with_parents(1100.into(), vec![kosherizing_hash, *selected_chain.last().unwrap()])
+        .await
+    {
+        Err(RuleError::ViolatingBoundedMergeDepth) => {}
+        res => panic!("Unexpected result: {:?}", res),
+    }
+
+    // point_at_blue_kosherizing is kosherizing kosherizing_hash, so this should pass.
+    consensus
+        .add_block_with_parents(1101.into(), vec![point_at_blue_kosherizing, *selected_chain.last().unwrap()])
+        .await
+        .unwrap();
+
+    consensus.shutdown(wait_handles);
+}

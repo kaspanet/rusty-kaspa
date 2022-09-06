@@ -12,7 +12,8 @@ use parking_lot::RwLock;
 use crate::{
     errors::BlockProcessResult,
     model::stores::{
-        block_window_cache::BlockWindowCacheStore, ghostdag::DbGhostdagStore, reachability::DbReachabilityStore, DB,
+        block_window_cache::BlockWindowCacheStore, ghostdag::DbGhostdagStore, pruning::PruningStoreReader,
+        reachability::DbReachabilityStore, DB,
     },
     params::Params,
     pipeline::header_processor::HeaderProcessingContext,
@@ -40,7 +41,15 @@ impl TestConsensus {
 
     pub fn build_header_with_parents(&self, hash: Hash, parents: Vec<Hash>) -> Header {
         let mut header = header_from_precomputed_hash(hash, parents);
-        let mut ctx: HeaderProcessingContext = HeaderProcessingContext::new(hash, &header);
+        let mut ctx: HeaderProcessingContext = HeaderProcessingContext::new(
+            hash,
+            &header,
+            self.consensus
+                .pruning_store
+                .read()
+                .pruning_point()
+                .unwrap(),
+        );
         self.consensus
             .ghostdag_manager
             .add_block(&mut ctx, hash);
@@ -76,6 +85,12 @@ impl TestConsensus {
         header.blue_work = ghostdag_data.blue_work;
 
         header
+    }
+
+    pub fn add_block_with_parents(
+        &self, hash: Hash, parents: Vec<Hash>,
+    ) -> impl Future<Output = BlockProcessResult<()>> {
+        self.validate_and_insert_block(Arc::new(self.build_block_with_parents(hash, parents)))
     }
 
     pub fn build_block_with_parents(&self, hash: Hash, parents: Vec<Hash>) -> Block {
