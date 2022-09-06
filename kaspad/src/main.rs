@@ -4,8 +4,7 @@ extern crate hashes;
 
 use std::sync::Arc;
 
-use consensus::consensus::test_consensus::create_temp_db;
-use consensus::consensus::Consensus;
+use consensus::consensus::test_consensus::TestConsensus;
 use consensus::params::MAINNET_PARAMS;
 use consensus_core::blockhash;
 use hashes::Hash;
@@ -31,8 +30,11 @@ pub fn main() {
 
     println!("Using rayon thread pool with {} threads", rayon::current_num_threads());
 
+    let mut params = MAINNET_PARAMS;
+    params.genesis_hash = genesis;
+
     // Make sure to create the DB first, so it cleans up last
-    let (_temp_db_lifetime, db) = create_temp_db();
+    let consensus = Arc::new(TestConsensus::create_from_temp_db(&params));
 
     let core = Arc::new(Core::new());
     let signals = Arc::new(signals::Signals::new(&core));
@@ -40,13 +42,8 @@ pub fn main() {
 
     // ---
 
-    let mut params = MAINNET_PARAMS;
-    params.genesis_hash = genesis;
-
-    let consensus = Arc::new(Consensus::new(db, &params));
-    let monitor = Arc::new(ConsensusMonitor::new(consensus.clone()));
+    let monitor = Arc::new(ConsensusMonitor::new(consensus.processing_counters().clone()));
     let emitter = Arc::new(emulator::RandomBlockEmitter::new(
-        "block-emitter",
         consensus.clone(),
         genesis,
         params.max_block_parents.into(),

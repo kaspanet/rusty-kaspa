@@ -1,5 +1,4 @@
-use consensus::{consensus::Consensus, constants::BLOCK_VERSION, errors::RuleError, pipeline::ProcessingCounters};
-use consensus_core::block::Block;
+use consensus::{consensus::test_consensus::TestConsensus, errors::RuleError, pipeline::ProcessingCounters};
 use futures::future::join_all;
 use hashes::Hash;
 use kaspa_core::{core::Core, service::Service, trace};
@@ -19,8 +18,7 @@ use std::{
 /// blocks in each round is distributed ~ Poisson(bps * delay).
 pub struct RandomBlockEmitter {
     terminate: AtomicBool,
-    name: String,
-    consensus: Arc<Consensus>,
+    consensus: Arc<TestConsensus>,
     genesis: Hash,
     max_block_parents: u64,
     bps: f64,
@@ -33,13 +31,11 @@ pub struct RandomBlockEmitter {
 
 impl RandomBlockEmitter {
     pub fn new(
-        name: &str, consensus: Arc<Consensus>, genesis: Hash, max_block_parents: u64, bps: f64, delay: f64,
-        target_blocks: u64,
+        consensus: Arc<TestConsensus>, genesis: Hash, max_block_parents: u64, bps: f64, delay: f64, target_blocks: u64,
     ) -> Self {
-        let counters = consensus.counters.clone();
+        let counters = consensus.processing_counters().clone();
         Self {
             terminate: AtomicBool::new(false),
-            name: name.to_string(),
             consensus,
             genesis,
             max_block_parents,
@@ -79,7 +75,12 @@ impl RandomBlockEmitter {
 
             for i in 0..v {
                 // Create a new block referencing all tips from the previous round
-                let b = Block::new(BLOCK_VERSION, tips.clone(), timestamp, 0, i, total, 0, 0); // TODO: Use real blue work and score.
+                let mut b = self
+                    .consensus
+                    .build_block_with_parents(Default::default(), tips.clone());
+                b.header.timestamp = timestamp;
+                b.header.nonce = i;
+                b.header.finalize();
                 new_tips.push(b.header.hash);
                 // Submit to consensus
                 let f = self
@@ -96,7 +97,7 @@ impl RandomBlockEmitter {
             tips = new_tips;
             total += v;
         }
-        self.consensus.signal_exit();
+        self.consensus.clone().stop();
         thread::sleep(Duration::from_millis(4000));
         core.shutdown();
     }
@@ -104,7 +105,7 @@ impl RandomBlockEmitter {
 
 impl Service for RandomBlockEmitter {
     fn ident(self: Arc<RandomBlockEmitter>) -> String {
-        self.name.clone()
+        "block-emitter".into()
     }
 
     fn start(self: Arc<RandomBlockEmitter>, core: Arc<Core>) -> Vec<JoinHandle<()>> {
@@ -123,8 +124,8 @@ pub struct ConsensusMonitor {
 }
 
 impl ConsensusMonitor {
-    pub fn new(consensus: Arc<Consensus>) -> ConsensusMonitor {
-        ConsensusMonitor { terminate: AtomicBool::new(false), counters: consensus.counters.clone() }
+    pub fn new(counters: Arc<ProcessingCounters>) -> ConsensusMonitor {
+        ConsensusMonitor { terminate: AtomicBool::new(false), counters }
     }
 
     pub fn worker(self: &Arc<ConsensusMonitor>) {
