@@ -1,6 +1,7 @@
 pub mod block_window_cache;
 pub mod caching;
 pub mod daa;
+pub mod depth;
 pub mod errors;
 pub mod ghostdag;
 pub mod headers;

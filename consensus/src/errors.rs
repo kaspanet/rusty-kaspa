@@ -52,8 +52,11 @@ pub enum RuleError {
     #[error("block is known to be invalid")]
     KnownInvalid,
 
-    #[error("The block merges {0} blocks > {1} merge set size limit")]
+    #[error("block merges {0} blocks > {1} merge set size limit")]
     MergeSetTooBig(u64, u64),
+
+    #[error("block is violating bounded merge depth")]
+    ViolatingBoundedMergeDepth,
 }
 
 pub type BlockProcessResult<T> = std::result::Result<T, RuleError>;
