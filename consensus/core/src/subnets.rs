@@ -2,7 +2,7 @@
 pub const SUBNETWORK_ID_SIZE: usize = 20;
 
 /// The domain representation of a Subnetwork ID
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Clone, Default, Eq, PartialEq)]
 pub struct SubnetworkId([u8; SUBNETWORK_ID_SIZE]);
 
 impl AsRef<[u8]> for SubnetworkId {
