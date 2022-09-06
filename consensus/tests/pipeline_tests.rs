@@ -5,7 +5,7 @@ use consensus::{
     params::MAINNET_PARAMS,
     processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions},
 };
-use consensus_core::blockhash;
+use consensus_core::{blockhash, tx::Transaction};
 use futures::future::join_all;
 use hashes::Hash;
 use parking_lot::RwLock;
@@ -186,7 +186,7 @@ async fn test_concurrent_pipeline_random() {
             let mut b = consensus.build_block_with_parents(hash, tips.clone());
 
             // Push a fake transaction to make the block propagate to body and virtual processors
-            b.transactions.push(());
+            b.transactions.push(Transaction::default());
 
             // Submit to consensus
             let f = consensus.validate_and_insert_block(Arc::new(b));

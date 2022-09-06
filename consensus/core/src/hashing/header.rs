@@ -1,9 +1,9 @@
 use super::HasherExtensions;
-use crate::{header::Header, BlueWorkType};
+use crate::header::Header;
 use hashes::{Hash, Hasher};
 
 /// Returns the header hash.
-pub fn header_hash(header: &Header) -> Hash {
+pub fn hash(header: &Header) -> Hash {
     let mut hasher = hashes::BlockHash::new();
     hasher
         .update(header.version.to_le_bytes())
@@ -16,32 +16,24 @@ pub fn header_hash(header: &Header) -> Hash {
 
     // Write all header fields
     hasher
+        .update(header.hash_merkle_root)
+        .update(header.accepted_id_merkle_root)
+        .update(header.utxo_commitment)
         .update(header.timestamp.to_le_bytes())
         .update(header.bits.to_le_bytes())
         .update(header.nonce.to_le_bytes())
         .update(header.daa_score.to_le_bytes())
-        .update(header.blue_score.to_le_bytes());
-
-    hash_blue_work(&mut hasher, header.blue_work);
+        .update(header.blue_score.to_le_bytes())
+        .write_blue_work(header.blue_work)
+        .update(header.pruning_point);
 
     hasher.finalize()
-}
-
-fn hash_blue_work(hasher: &mut impl Hasher, work: BlueWorkType) {
-    let be_bytes = work.to_be_bytes();
-    let start = be_bytes
-        .iter()
-        .cloned()
-        .position(|byte| byte != 0)
-        .unwrap_or(be_bytes.len());
-
-    hasher.write_var_bytes(&be_bytes[start..]);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::blockhash;
+    use crate::{blockhash, BlueWorkType};
 
     #[test]
     fn test_header_hashing() {
@@ -58,7 +50,7 @@ mod tests {
 
         for test in tests {
             let mut hasher = hashes::BlockHash::new();
-            hash_blue_work(&mut hasher, test.0);
+            hasher.write_blue_work(test.0);
 
             let mut hasher2 = hashes::BlockHash::new();
             hasher2.update(test.1);

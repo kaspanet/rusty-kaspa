@@ -2,13 +2,13 @@ use crate::{
     hashing,
     subnets::{self, SubnetworkId},
 };
-use std::{cell::RefCell, fmt::Display, sync::Arc};
+use std::{fmt::Display, sync::Arc};
 
 /// Represents the ID of a Kaspa transaction
 pub type TransactionId = hashes::Hash;
 
 /// Represents a Kaspad ScriptPublicKey
-#[derive(Default, Debug)]
+#[derive(Default, Debug, PartialEq, Eq)]
 pub struct ScriptPublicKey {
     pub script: Vec<u8>,
     pub version: u16,
@@ -20,11 +20,11 @@ impl ScriptPublicKey {
     }
 }
 
-/// Houses details about an individual transaction output in a utxo
+/// Holds details about an individual transaction output in a utxo
 /// set such as whether or not it was contained in a coinbase tx, the daa
 /// score of the block that accepts the tx, its public key script, and how
 /// much it pays.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UtxoEntry {
     pub amount: u64,
     pub script_public_key: Arc<ScriptPublicKey>,
@@ -39,7 +39,7 @@ impl UtxoEntry {
 }
 
 /// Represents a Kaspa transaction outpoint
-#[derive(Eq, Hash, PartialEq, Debug, Clone)]
+#[derive(Eq, Hash, PartialEq, Debug, Copy, Clone)]
 pub struct TransactionOutpoint {
     pub transaction_id: TransactionId,
     pub index: u32,
@@ -83,8 +83,14 @@ pub struct TransactionOutput {
     pub script_public_key: Arc<ScriptPublicKey>,
 }
 
+impl TransactionOutput {
+    pub fn new(value: u64, script_public_key: Arc<ScriptPublicKey>) -> Self {
+        Self { value, script_public_key }
+    }
+}
+
 /// Represents a Kaspa transaction
-#[derive(Debug)]
+#[derive(Debug, Clone, Default)]
 pub struct Transaction {
     pub version: u16,
     pub inputs: Vec<Arc<TransactionInput>>,
@@ -99,7 +105,7 @@ pub struct Transaction {
 
     // A field that is used to cache the transaction ID.
     // Always use the corresponding self.id() instead of accessing this field directly
-    cached_id: RefCell<Option<TransactionId>>, // TODO: see how should be adapted for multi-threading
+    id: TransactionId,
 }
 
 impl Transaction {
@@ -107,7 +113,7 @@ impl Transaction {
         version: u16, inputs: Vec<Arc<TransactionInput>>, outputs: Vec<Arc<TransactionOutput>>, lock_time: u64,
         subnetwork_id: SubnetworkId, gas: u64, payload: Vec<u8>, fee: u64, mass: u64,
     ) -> Self {
-        Self {
+        let mut tx = Self {
             version,
             inputs,
             outputs,
@@ -117,8 +123,10 @@ impl Transaction {
             payload,
             fee,
             mass,
-            cached_id: RefCell::new(None),
-        }
+            id: Default::default(), // Temp init before the finalize below
+        };
+        tx.finalize();
+        tx
     }
 
     /// Determines whether or not a transaction is a coinbase transaction. A coinbase
@@ -130,19 +138,13 @@ impl Transaction {
         self.subnetwork_id == subnets::SUBNETWORK_ID_COINBASE
     }
 
+    pub fn finalize(&mut self) {
+        self.id = hashing::tx::id(self);
+    }
+
+    /// Returns the transaction ID
     pub fn id(&self) -> TransactionId {
-        // This method should probably be implemented in a thread-safe manner,
-        // however for single-thread usage the usage of RefCell is perfectly
-        // fine since we borrow_mut exactly once
-
-        if let Some(id) = *self.cached_id.borrow() {
-            return id;
-        }
-
-        let mut op = self.cached_id.borrow_mut();
-        let id = hashing::tx::transaction_id(self);
-        *op = Some(id);
-        id
+        self.id
     }
 }
 
