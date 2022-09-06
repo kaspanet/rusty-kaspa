@@ -81,13 +81,14 @@ impl UtxoDiff {
     ///
     /// diff_from follows a set of rules represented by the following 3 by 3 table:
     ///
+    /// ```ignore
     ///          |           |   this    |           |
     /// ---------+-----------+-----------+-----------+-----------
     ///          |           |   add     |   remove  | None
     /// ---------+-----------+-----------+-----------+-----------
-    /// other    |   add     | -         | X         |   add
+    /// other    |   add     |   -       |   X       |   add
     /// ---------+-----------+-----------+-----------+-----------
-    ///          |   remove  | X         | -         |   remove
+    ///          |   remove  |   X       |   -       |   remove
     /// ---------+-----------+-----------+-----------+-----------
     ///          |   None    |   remove  |   add     |   -
     ///
@@ -96,6 +97,7 @@ impl UtxoDiff {
     /// X         Return an error
     /// add       Add the UTXO into the add collection of the result
     /// remove    Add the UTXO into the remove collection of the result
+    /// ```
     ///
     /// Examples:
     /// 1. This diff contains a UTXO in add, and the other diff contains it in remove
