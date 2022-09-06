@@ -83,6 +83,12 @@ pub struct TransactionOutput {
     pub script_public_key: Arc<ScriptPublicKey>,
 }
 
+impl TransactionOutput {
+    pub fn new(value: u64, script_public_key: Arc<ScriptPublicKey>) -> Self {
+        Self { value, script_public_key }
+    }
+}
+
 /// Represents a Kaspa transaction
 #[derive(Debug, Clone, Default)]
 pub struct Transaction {
