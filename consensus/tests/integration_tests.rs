@@ -774,7 +774,7 @@ async fn bounded_merge_depth_test() {
         block_chain_2.push(hash);
     }
 
-    // The merge depth root belongs to selected_chain, and block_chain_2[1] is red doesn't have it in its past, and is not in the
+    // The merge depth root belongs to selected_chain, and block_chain_2[1] is red and doesn't have it in its past, and is not in the
     // past of any kosherizing block, so we expect the next block to be rejected.
     match consensus
         .add_block_with_parents(100.into(), vec![block_chain_2[1], *selected_chain.last().unwrap()])

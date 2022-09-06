@@ -19,7 +19,7 @@ use crate::{
         ProcessingCounters,
     },
     processes::{
-        block_at_depth::BlockAtDepthDepthManager, dagtraversalmanager::DagTraversalManager,
+        block_at_depth::BlockDepthDepthManager, dagtraversalmanager::DagTraversalManager,
         difficulty::DifficultyManager, ghostdag::protocol::GhostdagManager, pastmediantime::PastMedianTimeManager,
         reachability::inquirer as reachability,
     },
@@ -112,7 +112,7 @@ impl Consensus {
             params.target_time_per_block,
         );
 
-        let depth_manager = BlockAtDepthDepthManager::new(
+        let depth_manager = BlockDepthDepthManager::new(
             params.merge_depth,
             params.finality_depth,
             params.genesis_hash,

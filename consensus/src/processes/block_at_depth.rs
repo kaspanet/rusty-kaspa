@@ -11,7 +11,7 @@ use crate::model::{
     },
 };
 
-pub struct BlockAtDepthDepthManager<S: DepthStoreReader, U: ReachabilityStoreReader, V: GhostdagStoreReader> {
+pub struct BlockDepthDepthManager<S: DepthStoreReader, U: ReachabilityStoreReader, V: GhostdagStoreReader> {
     merge_depth: u64,
     finality_depth: u64,
     genesis_hash: Hash,
@@ -20,7 +20,7 @@ pub struct BlockAtDepthDepthManager<S: DepthStoreReader, U: ReachabilityStoreRea
     ghostdag_store: Arc<V>,
 }
 
-impl<S: DepthStoreReader, U: ReachabilityStoreReader, V: GhostdagStoreReader> BlockAtDepthDepthManager<S, U, V> {
+impl<S: DepthStoreReader, U: ReachabilityStoreReader, V: GhostdagStoreReader> BlockDepthDepthManager<S, U, V> {
     pub fn new(
         merge_depth: u64, finality_depth: u64, genesis_hash: Hash, depth_store: Arc<S>,
         reachability_service: MTReachabilityService<U>, ghostdag_store: Arc<V>,
