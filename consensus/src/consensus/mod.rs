@@ -5,7 +5,7 @@ use crate::{
     model::{
         services::{reachability::MTReachabilityService, relations::MTRelationsService, statuses::MTStatusesService},
         stores::{
-            block_window_cache::BlockWindowCacheStore, daa::DbDaaStore, ghostdag::DbGhostdagStore,
+            block_window_cache::BlockWindowCacheStore, daa::DbDaaStore, depth::DbDepthStore, ghostdag::DbGhostdagStore,
             headers::DbHeadersStore, pruning::DbPruningStore, reachability::DbReachabilityStore,
             relations::DbRelationsStore, statuses::DbStatusesStore, DB,
         },
@@ -19,8 +19,9 @@ use crate::{
         ProcessingCounters,
     },
     processes::{
-        dagtraversalmanager::DagTraversalManager, difficulty::DifficultyManager, ghostdag::protocol::GhostdagManager,
-        pastmediantime::PastMedianTimeManager, reachability::inquirer as reachability,
+        block_at_depth::BlockDepthManager, dagtraversalmanager::DagTraversalManager, difficulty::DifficultyManager,
+        ghostdag::protocol::GhostdagManager, pastmediantime::PastMedianTimeManager,
+        reachability::inquirer as reachability,
     },
 };
 use consensus_core::block::Block;
@@ -51,6 +52,7 @@ pub struct Consensus {
     statuses_store: Arc<RwLock<DbStatusesStore>>,
     relations_store: Arc<RwLock<DbRelationsStore>>,
     reachability_store: Arc<RwLock<DbReachabilityStore>>,
+    pruning_store: Arc<RwLock<DbPruningStore>>,
 
     // Append-only stores
     pub(super) ghostdag_store: Arc<DbGhostdagStore>,
@@ -82,6 +84,7 @@ impl Consensus {
         let ghostdag_store = Arc::new(DbGhostdagStore::new(db.clone(), 100000));
         let daa_store = Arc::new(DbDaaStore::new(db.clone(), 100000));
         let headers_store = Arc::new(DbHeadersStore::new(db.clone(), 100000));
+        let depth_store = Arc::new(DbDepthStore::new(db.clone(), 100000));
         let block_window_cache_for_difficulty = Arc::new(BlockWindowCacheStore::new(2000));
         let block_window_cache_for_past_median_time = Arc::new(BlockWindowCacheStore::new(2000));
 
@@ -109,6 +112,15 @@ impl Consensus {
             params.target_time_per_block,
         );
 
+        let depth_manager = BlockDepthManager::new(
+            params.merge_depth,
+            params.finality_depth,
+            params.genesis_hash,
+            depth_store.clone(),
+            reachability_service.clone(),
+            ghostdag_store.clone(),
+        );
+
         let (sender, receiver): (Sender<BlockTask>, Receiver<BlockTask>) = unbounded();
         let (body_sender, body_receiver): (Sender<BlockTask>, Receiver<BlockTask>) = unbounded();
         let (virtual_sender, virtual_receiver): (Sender<BlockTask>, Receiver<BlockTask>) = unbounded();
@@ -126,7 +138,8 @@ impl Consensus {
             headers_store.clone(),
             daa_store,
             statuses_store.clone(),
-            pruning_store,
+            pruning_store.clone(),
+            depth_store,
             block_window_cache_for_difficulty,
             block_window_cache_for_past_median_time,
             reachability_service.clone(),
@@ -134,6 +147,7 @@ impl Consensus {
             past_median_time_manager.clone(),
             dag_traversal_manager.clone(),
             difficulty_manager.clone(),
+            depth_manager,
             counters.clone(),
         ));
 
@@ -162,6 +176,7 @@ impl Consensus {
             relations_store,
             reachability_store,
             ghostdag_store: ghostdag_store.clone(),
+            pruning_store,
 
             statuses_service,
             relations_service: relations_service.clone(),
