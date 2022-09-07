@@ -1,7 +1,7 @@
 use consensus::{consensus::test_consensus::TestConsensus, errors::RuleError, pipeline::ProcessingCounters};
 use futures::future::join_all;
 use hashes::Hash;
-use kaspa_core::{core::Core, service::Service, trace};
+use kaspa_core::{core::Core, service::Service, signals::Shutdown, trace};
 use num_format::{Locale, ToFormattedString};
 use rand_distr::{Distribution, Poisson};
 use std::{
@@ -98,7 +98,6 @@ impl RandomBlockEmitter {
             total += v;
         }
         self.consensus.clone().stop();
-        thread::sleep(Duration::from_millis(4000));
         core.shutdown();
     }
 }
@@ -113,6 +112,12 @@ impl Service for RandomBlockEmitter {
     }
 
     fn stop(self: Arc<RandomBlockEmitter>) {
+        self.terminate.store(true, Ordering::SeqCst);
+    }
+}
+
+impl Shutdown for RandomBlockEmitter {
+    fn shutdown(self: &Arc<Self>) {
         self.terminate.store(true, Ordering::SeqCst);
     }
 }
@@ -133,6 +138,10 @@ impl ConsensusMonitor {
 
         loop {
             thread::sleep(Duration::from_millis(1000));
+
+            if self.terminate.load(Ordering::SeqCst) {
+                break;
+            }
 
             let snapshot = self.counters.snapshot();
 
@@ -156,10 +165,6 @@ impl ConsensusMonitor {
             );
 
             last_snapshot = snapshot;
-
-            if self.terminate.load(Ordering::SeqCst) {
-                break;
-            }
         }
 
         trace!("monitor thread exiting");

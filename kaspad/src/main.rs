@@ -30,18 +30,15 @@ pub fn main() {
 
     println!("Using rayon thread pool with {} threads", rayon::current_num_threads());
 
+    let core = Arc::new(Core::new());
+
+    // ---
+
     let mut params = MAINNET_PARAMS;
     params.genesis_hash = genesis;
 
     // Make sure to create the DB first, so it cleans up last
     let consensus = Arc::new(TestConsensus::create_from_temp_db(&params));
-
-    let core = Arc::new(Core::new());
-    let signals = Arc::new(signals::Signals::new(&core));
-    signals.init();
-
-    // ---
-
     let monitor = Arc::new(ConsensusMonitor::new(consensus.processing_counters().clone()));
     let emitter = Arc::new(emulator::RandomBlockEmitter::new(
         consensus.clone(),
@@ -52,12 +49,12 @@ pub fn main() {
         target_blocks,
     ));
 
-    // we are starting emitter first - channels will buffer
-    // until consumers start, however, when shutting down
-    // the shutdown will be done in the startup order, resulting
-    // in emitter going down first...
-    core.bind(emitter);
+    // Bind the keyboard signal to the emitter. The emitter will then shutdown core
+    Arc::new(signals::Signals::new(&emitter)).init();
+
+    // Consensus must start first in order to init genesis in stores
     core.bind(consensus);
+    core.bind(emitter);
     core.bind(monitor);
 
     core.run();
