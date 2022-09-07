@@ -81,7 +81,7 @@ mod tests {
     use super::*;
     use crate::{
         subnets::{self, SubnetworkId},
-        tx::{ScriptPublicKey, UtxoEntry},
+        tx::ScriptPublicKey,
     };
     use std::{str::FromStr, sync::Arc};
 
@@ -107,7 +107,7 @@ mod tests {
             vec![1, 2],
             7,
             5,
-            Some(UtxoEntry::new(0, Arc::new(ScriptPublicKey::new(Vec::new(), 0)), 0, false)),
+            None,
         ))];
 
         // Test #2
@@ -152,7 +152,7 @@ mod tests {
             vec![1, 2],
             7,
             5,
-            Some(UtxoEntry::new(0, Arc::new(ScriptPublicKey::new(Vec::new(), 0)), 0, false)),
+            None,
         ))];
 
         // Test #5
