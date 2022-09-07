@@ -1,4 +1,4 @@
-use consensus_core::{block::Block, hashing, merkle::calc_hash_merkle_root};
+use consensus_core::{block::Block, merkle::calc_hash_merkle_root};
 
 use crate::errors::{BlockProcessResult, RuleError};
 
@@ -10,7 +10,6 @@ impl BlockBodyProcessor {
     }
 
     fn check_hash_merkle_tree(block: &Block) -> BlockProcessResult<()> {
-        let tx_hashes = block.transactions.iter().map(hashing::tx::hash);
         let calculated = calc_hash_merkle_root(block.transactions.iter());
         if calculated != block.header.hash_merkle_root {
             return Err(RuleError::BadMerkleRoot(block.header.hash_merkle_root, calculated));
