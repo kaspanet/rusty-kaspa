@@ -10,7 +10,7 @@ use super::{
 };
 use hashes::Hash;
 
-#[derive(Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Debug)]
 #[repr(u8)]
 pub enum BlockStatus {
     /// StatusInvalid indicates that the block is invalid.
