@@ -97,7 +97,6 @@ impl RandomBlockEmitter {
             tips = new_tips;
             total += v;
         }
-        self.consensus.clone().stop();
         core.shutdown();
     }
 }
