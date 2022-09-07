@@ -64,13 +64,13 @@ pub struct TransactionInput {
     pub signature_script: Vec<u8>,
     pub sequence: u64,
     pub sig_op_count: u8,
-    pub utxo_entry: UtxoEntry,
+    pub utxo_entry: Option<UtxoEntry>,
 }
 
 impl TransactionInput {
     pub fn new(
         previous_outpoint: TransactionOutpoint, signature_script: Vec<u8>, sequence: u64, sig_op_count: u8,
-        utxo_entry: UtxoEntry,
+        utxo_entry: Option<UtxoEntry>,
     ) -> Self {
         Self { previous_outpoint, signature_script, sequence, sig_op_count, utxo_entry }
     }

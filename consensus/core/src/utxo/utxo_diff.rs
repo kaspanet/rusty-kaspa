@@ -203,7 +203,7 @@ impl UtxoDiff {
 
     pub fn add_transaction(&mut self, transaction: &Transaction, block_daa_score: u64) -> UtxoResult<()> {
         for input in transaction.inputs.iter() {
-            self.remove_entry(&input.previous_outpoint, &input.utxo_entry)?;
+            self.remove_entry(&input.previous_outpoint, input.utxo_entry.as_ref().unwrap())?;
         }
 
         let is_coinbase = transaction.is_coinbase();

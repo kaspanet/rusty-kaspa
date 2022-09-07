@@ -4,7 +4,7 @@ use std::{
     thread::JoinHandle,
 };
 
-use consensus_core::{block::Block, header::Header};
+use consensus_core::{block::Block, header::Header, merkle::calc_hash_merkle_root, tx::Transaction};
 use futures::Future;
 use hashes::Hash;
 use parking_lot::RwLock;
@@ -91,6 +91,16 @@ impl TestConsensus {
         &self, hash: Hash, parents: Vec<Hash>,
     ) -> impl Future<Output = BlockProcessResult<()>> {
         self.validate_and_insert_block(Arc::new(self.build_block_with_parents(hash, parents)))
+    }
+
+    pub fn build_block_with_parents_and_transactions(
+        &self, hash: Hash, parents: Vec<Hash>, txs: Vec<Transaction>,
+    ) -> Block {
+        let mut header = self.build_header_with_parents(hash, parents);
+        if !txs.is_empty() {
+            header.hash_merkle_root = calc_hash_merkle_root(txs.iter());
+        }
+        Block { header, transactions: txs }
     }
 
     pub fn build_block_with_parents(&self, hash: Hash, parents: Vec<Hash>) -> Block {

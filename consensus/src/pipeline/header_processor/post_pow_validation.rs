@@ -14,6 +14,7 @@ impl HeaderProcessor {
         self.check_median_timestamp(ctx, header)?;
         self.check_merge_size_limit(ctx, header)?;
         self.check_bounded_merge_depth(ctx, header)?;
+        self.check_pruning_point(ctx, header)?;
         self.check_indirect_parents(ctx, header)
     }
 
@@ -68,6 +69,13 @@ impl HeaderProcessor {
     }
 
     pub fn check_indirect_parents(
+        self: &Arc<HeaderProcessor>, ctx: &mut HeaderProcessingContext, header: &Header,
+    ) -> BlockProcessResult<()> {
+        // TODO: Implement this
+        Ok(())
+    }
+
+    pub fn check_pruning_point(
         self: &Arc<HeaderProcessor>, ctx: &mut HeaderProcessingContext, header: &Header,
     ) -> BlockProcessResult<()> {
         // TODO: Implement this
