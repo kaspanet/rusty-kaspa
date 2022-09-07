@@ -24,9 +24,9 @@ num-bigint = "0.4.3"
 
 
 hashes = { path = "../crypto/hashes" }
+merkle = { path = "../crypto/merkle" }
 consensus-core = { path = "./core" }
 kaspa-core = { path = "../core" }
-misc = { path = "../misc" }
 
 [dev-dependencies]
 criterion = "0.3.6"

@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 hashes = {path="../../crypto/hashes"}
+merkle = {path="../../crypto/merkle"}
 thiserror = "1.0.31"
 serde = { version = "1.0", features = ["derive", "rc"] }
 faster-hex = "0.6"

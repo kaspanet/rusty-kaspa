@@ -1,40 +1,16 @@
-use consensus_core::{hashing, tx::Transaction};
-use hashes::{Hash, Hasher, MerkleBranchHash};
-
-fn calc_merkle_root(hashes: impl ExactSizeIterator<Item = Hash>) -> Hash {
-    let next_pot = hashes.len().next_power_of_two();
-    let vec_len = 2 * next_pot - 1;
-    let mut merkles = vec![None; vec_len];
-    for (i, hash) in hashes.enumerate() {
-        merkles[i] = Some(hash);
-    }
-    let mut offset = next_pot;
-    for i in (0..vec_len - 1).step_by(2) {
-        if merkles[i].is_none() {
-            merkles[offset] = None;
-        } else {
-            merkles[offset] = Some(merkle_hash(merkles[i].unwrap(), merkles[i + 1].unwrap_or_default()));
-        }
-        offset += 1
-    }
-    merkles.last().unwrap().unwrap()
-}
+use crate::{hashing, tx::Transaction};
+use hashes::Hash;
+use merkle::calc_merkle_root;
 
 pub fn calc_hash_merkle_root<'a>(txs: impl ExactSizeIterator<Item = &'a Transaction>) -> Hash {
     calc_merkle_root(txs.map(hashing::tx::hash))
-}
-
-fn merkle_hash(left: Hash, right: Hash) -> Hash {
-    let mut hasher = MerkleBranchHash::new();
-    hasher.update(left.as_bytes()).update(right);
-    hasher.finalize()
 }
 
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
 
-    use consensus_core::{
+    use crate::{
         subnets::{SUBNETWORK_ID_COINBASE, SUBNETWORK_ID_NATIVE},
         tx::{ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput},
     };

@@ -1,5 +1,4 @@
-use consensus_core::{block::Block, hashing};
-use misc::merkle::calc_hash_merkle_root;
+use consensus_core::{block::Block, hashing, merkle::calc_hash_merkle_root};
 
 use crate::errors::{BlockProcessResult, RuleError};
 

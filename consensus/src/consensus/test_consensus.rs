@@ -4,10 +4,9 @@ use std::{
     thread::JoinHandle,
 };
 
-use consensus_core::{block::Block, header::Header, tx::Transaction};
+use consensus_core::{block::Block, header::Header, merkle::calc_hash_merkle_root, tx::Transaction};
 use futures::Future;
 use hashes::Hash;
-use misc::merkle::calc_hash_merkle_root;
 use parking_lot::RwLock;
 
 use crate::{

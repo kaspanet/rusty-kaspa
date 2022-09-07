@@ -85,6 +85,8 @@ impl AsRef<[u8]> for Hash {
     }
 }
 
+pub const ZERO_HASH: Hash = Hash([0; HASH_SIZE]);
+
 #[cfg(test)]
 mod tests {
     use super::Hash;

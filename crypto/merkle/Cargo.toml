@@ -1,0 +1,12 @@
+[package]
+name = "merkle"
+version = "0.1.0"
+description = "Kaspa miscellaneous lib"
+edition = "2021"
+authors = ["Kaspa developers"]
+include = [
+"src/**/*.rs",
+]
+
+[dependencies]
+hashes = { path = "../hashes" }
