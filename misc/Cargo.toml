@@ -10,8 +10,8 @@ include = [
 
 [dependencies]
 serde = { version = "1.0", features = ["derive", "rc"] }
+itertools = "0.10.3"
+consensus-core = { path = "../consensus/core" }
+
 
 hashes = { path = "../crypto/hashes" }
-
-[dev-dependencies]
-consensus-core = { path = "../consensus/core" }

@@ -1,15 +1,14 @@
 use crate::{
-    errors::{BlockProcessResult, RuleError},
+    errors::BlockProcessResult,
     model::{
         services::reachability::MTReachabilityService,
         stores::{reachability::DbReachabilityStore, statuses::DbStatusesStore, DB},
     },
     pipeline::deps_manager::{BlockTask, BlockTaskDependencyManager},
 };
-use consensus_core::{block::Block, hashing};
+use consensus_core::block::Block;
 use crossbeam_channel::{Receiver, Sender};
 use hashes::Hash;
-use misc::merkle::calc_merkle_root;
 use parking_lot::RwLock;
 use std::sync::Arc;
 

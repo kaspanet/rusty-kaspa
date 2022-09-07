@@ -14,10 +14,9 @@ use consensus_core::header::Header;
 use consensus_core::subnets::SubnetworkId;
 use consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
 use consensus_core::{blockhash, hashing};
-use hashes::{Hash, TransactionID};
+use hashes::Hash;
 
 use flate2::read::GzDecoder;
-use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -700,12 +699,6 @@ struct RPCTransactionInput {
 struct RPCOutpoint {
     TransactionID: String,
     Index: u32,
-}
-
-#[allow(non_snake_case)]
-#[derive(Deserialize, Debug)]
-struct RPCTransactionVerboseData {
-    Hash: String,
 }
 
 #[allow(non_snake_case)]
