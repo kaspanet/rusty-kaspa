@@ -7,6 +7,7 @@ use std::{
 use consensus_core::{block::Block, header::Header, merkle::calc_hash_merkle_root, tx::Transaction};
 use futures::Future;
 use hashes::Hash;
+use kaspa_core::{core::Core, service::Service};
 use parking_lot::RwLock;
 
 use crate::{
@@ -16,7 +17,7 @@ use crate::{
         reachability::DbReachabilityStore, DB,
     },
     params::Params,
-    pipeline::header_processor::HeaderProcessingContext,
+    pipeline::{header_processor::HeaderProcessingContext, ProcessingCounters},
     processes::dagtraversalmanager::DagTraversalManager,
     test_helpers::header_from_precomputed_hash,
 };
@@ -129,6 +130,24 @@ impl TestConsensus {
 
     pub fn reachability_store(&self) -> &Arc<RwLock<DbReachabilityStore>> {
         &self.consensus.reachability_store
+    }
+
+    pub fn processing_counters(&self) -> &Arc<ProcessingCounters> {
+        &self.consensus.counters
+    }
+}
+
+impl Service for TestConsensus {
+    fn ident(self: Arc<TestConsensus>) -> String {
+        "test-consensus".to_owned()
+    }
+
+    fn start(self: Arc<TestConsensus>, core: Arc<Core>) -> Vec<JoinHandle<()>> {
+        self.init()
+    }
+
+    fn stop(self: Arc<TestConsensus>) {
+        self.consensus.signal_exit()
     }
 }
 

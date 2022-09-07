@@ -92,21 +92,28 @@ impl BlockTaskDependencyManager {
     }
 
     /// Report the completion of a processing task. Signals progress to the managing thread.
-    /// The function returns the final list of `result_transmitters` and a list of
-    /// `dependent_tasks` which should be requeued to workers.
-    pub fn end(&self, hash: Hash) -> (Arc<Block>, Vec<BlockResultSender>, Vec<Hash>) {
+    /// The function passes the block and the final list of `result_transmitters` to the
+    /// provided `callback` function (note that callback is called under the internal lock),
+    /// and returns a list of `dependent_tasks` which should be requeued to workers.
+    pub fn end<F>(&self, hash: Hash, callback: F) -> Vec<Hash>
+    where
+        F: Fn(Arc<Block>, Vec<BlockResultSender>),
+    {
         // Re-lock for post-processing steps
         let mut pending = self.pending.lock();
         let task = pending
             .remove(&hash)
             .expect("processed block is expected to be in pending map");
 
+        // Callback within the lock
+        callback(task.block, task.result_transmitters);
+
         if pending.is_empty() {
             self.idle_signal.notify_one();
         }
 
         // We return the block as well, in case it was updated to a non-header only block
-        (task.block, task.result_transmitters, task.dependent_tasks)
+        task.dependent_tasks
     }
 
     /// Wait until all pending tasks are completed and workers are idle.

@@ -219,18 +219,20 @@ impl HeaderProcessor {
         if let Some(block) = self.task_manager.try_begin(hash) {
             let res = self.process_header(&block.header);
 
-            let (block, result_transmitters, dependent_tasks) = self.task_manager.end(hash);
-
-            if res.is_err() || block.is_header_only() {
-                for transmitter in result_transmitters {
-                    // We don't care if receivers were dropped
-                    let _ = transmitter.send(res.clone());
-                }
-            } else {
-                self.body_sender
-                    .send(BlockTask::Process(block, result_transmitters))
-                    .unwrap();
-            }
+            let dependent_tasks = self
+                .task_manager
+                .end(hash, |block, result_transmitters| {
+                    if res.is_err() || block.is_header_only() {
+                        for transmitter in result_transmitters {
+                            // We don't care if receivers were dropped
+                            let _ = transmitter.send(res.clone());
+                        }
+                    } else {
+                        self.body_sender
+                            .send(BlockTask::Process(block, result_transmitters))
+                            .unwrap();
+                    }
+                });
 
             for dep in dependent_tasks {
                 let processor = self.clone();

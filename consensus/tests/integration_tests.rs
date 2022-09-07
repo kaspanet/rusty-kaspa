@@ -4,7 +4,7 @@
 
 use consensus::consensus::test_consensus::{create_temp_db, TestConsensus};
 use consensus::constants::BLOCK_VERSION;
-use consensus::errors::RuleError;
+use consensus::errors::{BlockProcessResult, RuleError};
 use consensus::model::stores::ghostdag::{GhostdagStoreReader, KType as GhostdagKType};
 use consensus::model::stores::reachability::DbReachabilityStore;
 use consensus::params::MAINNET_PARAMS;
@@ -13,10 +13,13 @@ use consensus_core::block::Block;
 use consensus_core::header::Header;
 use consensus_core::subnets::SubnetworkId;
 use consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
-use consensus_core::{blockhash, hashing};
+use consensus_core::{blockhash, hashing, BlueWorkType};
+use futures::future::join_all;
+use futures::Future;
 use hashes::Hash;
 
 use flate2::read::GzDecoder;
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -768,6 +771,59 @@ async fn json_test() {
     consensus.shutdown(wait_handles);
 }
 
+#[tokio::test]
+async fn json_concurrency_test() {
+    let file = File::open("tests/testdata/json_test.json.gz").unwrap();
+    let reader = BufReader::new(file);
+    let decoder = GzDecoder::new(reader);
+    let mut lines = io::BufReader::new(decoder).lines();
+    let first_line = lines.next().unwrap();
+    let genesis = json_line_to_block(first_line.unwrap());
+    let mut params = MAINNET_PARAMS;
+    params.genesis_bits = genesis.header.bits;
+    params.genesis_hash = genesis.header.hash;
+    params.genesis_timestamp = genesis.header.timestamp;
+
+    let consensus = TestConsensus::create_from_temp_db(&params);
+    let wait_handles = consensus.init();
+
+    let chunks = lines.into_iter().chunks(1000);
+    let mut iter = chunks.into_iter();
+    let mut chunk = iter.next().unwrap();
+    let mut prev_joins = submit_chunk(&consensus, &mut chunk);
+
+    for mut chunk in iter {
+        let current_joins = submit_chunk(&consensus, &mut chunk);
+
+        join_all(prev_joins)
+            .await
+            .into_iter()
+            .collect::<Result<Vec<()>, RuleError>>()
+            .unwrap();
+
+        prev_joins = current_joins;
+    }
+
+    join_all(prev_joins)
+        .await
+        .into_iter()
+        .collect::<Result<Vec<()>, RuleError>>()
+        .unwrap();
+
+    consensus.shutdown(wait_handles);
+}
+
+fn submit_chunk(
+    consensus: &TestConsensus, chunk: &mut impl Iterator<Item = std::io::Result<String>>,
+) -> Vec<impl Future<Output = BlockProcessResult<()>>> {
+    let mut futures = Vec::new();
+    for line in chunk {
+        let f = consensus.validate_and_insert_block(Arc::new(json_line_to_block(line.unwrap())));
+        futures.push(f);
+    }
+    futures
+}
+
 fn json_line_to_block(line: String) -> Block {
     let rpc_block: RPCBlock = serde_json::from_str(&line).unwrap();
     Block {
@@ -792,7 +848,7 @@ fn json_line_to_block(line: String) -> Block {
             bits: rpc_block.Header.Bits,
             nonce: rpc_block.Header.Nonce,
             daa_score: rpc_block.Header.DAAScore,
-            blue_work: u128::from_str_radix(&rpc_block.Header.BlueWork, 16).unwrap(),
+            blue_work: BlueWorkType::from_str_radix(&rpc_block.Header.BlueWork, 16).unwrap(),
             blue_score: rpc_block.Header.BlueScore,
             pruning_point: Hash::from_str(&rpc_block.Header.PruningPoint).unwrap(),
         },
