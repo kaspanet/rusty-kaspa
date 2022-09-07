@@ -10,3 +10,5 @@ include = [
 
 [dependencies]
 serde = { version = "1.0", features = ["derive", "rc"] }
+
+hashes = { path = "../crypto/hashes" }

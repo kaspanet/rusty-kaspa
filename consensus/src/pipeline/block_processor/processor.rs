@@ -1,14 +1,15 @@
 use crate::{
-    errors::BlockProcessResult,
+    errors::{BlockProcessResult, RuleError},
     model::{
         services::reachability::MTReachabilityService,
         stores::{reachability::DbReachabilityStore, statuses::DbStatusesStore, DB},
     },
     pipeline::deps_manager::{BlockTask, BlockTaskDependencyManager},
 };
-use consensus_core::block::Block;
+use consensus_core::{block::Block, hashing};
 use crossbeam_channel::{Receiver, Sender};
 use hashes::Hash;
+use misc::merkle::calc_merkle_root;
 use parking_lot::RwLock;
 use std::sync::Arc;
 
@@ -96,6 +97,6 @@ impl BlockBodyProcessor {
     }
 
     fn process_block_body(self: &Arc<BlockBodyProcessor>, block: &Block) -> BlockProcessResult<()> {
-        Ok(())
+        self.validate_body(block)
     }
 }

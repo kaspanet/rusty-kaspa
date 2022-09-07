@@ -31,6 +31,13 @@ impl SubnetworkId {
     pub fn is_builtin_or_native(&self) -> bool {
         *self == SUBNETWORK_ID_NATIVE || self.is_builtin()
     }
+
+    #[inline]
+    pub fn from_str(str: &str) -> Result<Self, faster_hex::Error> {
+        let mut bytes = [0u8; SUBNETWORK_ID_SIZE];
+        faster_hex::hex_decode(str.as_bytes(), &mut bytes)?;
+        Ok(SubnetworkId(bytes))
+    }
 }
 
 /// The default subnetwork ID which is used for transactions without related payload data

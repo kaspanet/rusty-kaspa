@@ -107,7 +107,7 @@ mod tests {
             vec![1, 2],
             7,
             5,
-            UtxoEntry::new(0, Arc::new(ScriptPublicKey::new(Vec::new(), 0)), 0, false),
+            Some(UtxoEntry::new(0, Arc::new(ScriptPublicKey::new(Vec::new(), 0)), 0, false)),
         ))];
 
         // Test #2
@@ -152,7 +152,7 @@ mod tests {
             vec![1, 2],
             7,
             5,
-            UtxoEntry::new(0, Arc::new(ScriptPublicKey::new(Vec::new(), 0)), 0, false),
+            Some(UtxoEntry::new(0, Arc::new(ScriptPublicKey::new(Vec::new(), 0)), 0, false)),
         ))];
 
         // Test #5
