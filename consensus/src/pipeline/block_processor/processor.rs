@@ -2,7 +2,11 @@ use crate::{
     errors::BlockProcessResult,
     model::{
         services::reachability::MTReachabilityService,
-        stores::{reachability::DbReachabilityStore, statuses::DbStatusesStore, DB},
+        stores::{
+            reachability::DbReachabilityStore,
+            statuses::{BlockStatus, DbStatusesStore},
+            DB,
+        },
     },
     pipeline::deps_manager::{BlockTask, BlockTaskDependencyManager},
 };
@@ -97,7 +101,8 @@ impl BlockBodyProcessor {
         }
     }
 
-    fn process_block_body(self: &Arc<BlockBodyProcessor>, block: &Block) -> BlockProcessResult<()> {
-        Self::validate_body_in_isolation(block)
+    fn process_block_body(self: &Arc<BlockBodyProcessor>, block: &Block) -> BlockProcessResult<BlockStatus> {
+        Self::validate_body_in_isolation(block)?;
+        Ok(BlockStatus::StatusUTXOPendingVerification)
     }
 }

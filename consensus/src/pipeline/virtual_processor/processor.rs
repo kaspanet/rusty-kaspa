@@ -2,7 +2,11 @@ use crate::{
     errors::BlockProcessResult,
     model::{
         services::reachability::MTReachabilityService,
-        stores::{reachability::DbReachabilityStore, statuses::DbStatusesStore, DB},
+        stores::{
+            reachability::DbReachabilityStore,
+            statuses::{BlockStatus, DbStatusesStore},
+            DB,
+        },
     },
     pipeline::deps_manager::BlockTask,
 };
@@ -48,7 +52,7 @@ impl VirtualStateProcessor {
         }
     }
 
-    fn resolve_virtual(self: &Arc<VirtualStateProcessor>, block: &Block) -> BlockProcessResult<()> {
-        Ok(())
+    fn resolve_virtual(self: &Arc<VirtualStateProcessor>, block: &Block) -> BlockProcessResult<BlockStatus> {
+        Ok(BlockStatus::StatusUTXOPendingVerification)
     }
 }

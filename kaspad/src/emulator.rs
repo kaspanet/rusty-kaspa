@@ -1,4 +1,7 @@
-use consensus::{consensus::test_consensus::TestConsensus, errors::RuleError, pipeline::ProcessingCounters};
+use consensus::{
+    consensus::test_consensus::TestConsensus, errors::RuleError, model::stores::statuses::BlockStatus,
+    pipeline::ProcessingCounters,
+};
 use futures::future::join_all;
 use hashes::Hash;
 use kaspa_core::{core::Core, service::Service, signals::Shutdown, trace};
@@ -91,7 +94,7 @@ impl RandomBlockEmitter {
             join_all(futures)
                 .await
                 .into_iter()
-                .collect::<Result<Vec<()>, RuleError>>()
+                .collect::<Result<Vec<BlockStatus>, RuleError>>()
                 .unwrap();
 
             tips = new_tips;

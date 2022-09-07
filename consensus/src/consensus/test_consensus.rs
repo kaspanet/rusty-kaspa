@@ -14,7 +14,7 @@ use crate::{
     errors::BlockProcessResult,
     model::stores::{
         block_window_cache::BlockWindowCacheStore, ghostdag::DbGhostdagStore, pruning::PruningStoreReader,
-        reachability::DbReachabilityStore, DB,
+        reachability::DbReachabilityStore, statuses::BlockStatus, DB,
     },
     params::Params,
     pipeline::{header_processor::HeaderProcessingContext, ProcessingCounters},
@@ -90,7 +90,7 @@ impl TestConsensus {
 
     pub fn add_block_with_parents(
         &self, hash: Hash, parents: Vec<Hash>,
-    ) -> impl Future<Output = BlockProcessResult<()>> {
+    ) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
         self.validate_and_insert_block(Arc::new(self.build_block_with_parents(hash, parents)))
     }
 
@@ -108,7 +108,9 @@ impl TestConsensus {
         Block::from_header(self.build_header_with_parents(hash, parents))
     }
 
-    pub fn validate_and_insert_block(&self, block: Arc<Block>) -> impl Future<Output = BlockProcessResult<()>> {
+    pub fn validate_and_insert_block(
+        &self, block: Arc<Block>,
+    ) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
         self.consensus.validate_and_insert_block(block)
     }
 

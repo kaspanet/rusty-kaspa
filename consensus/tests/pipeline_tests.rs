@@ -1,7 +1,10 @@
 use consensus::{
     consensus::test_consensus::{create_temp_db, TestConsensus},
     errors::RuleError,
-    model::stores::reachability::{DbReachabilityStore, StagingReachabilityStore},
+    model::stores::{
+        reachability::{DbReachabilityStore, StagingReachabilityStore},
+        statuses::BlockStatus,
+    },
     params::MAINNET_PARAMS,
     processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions},
 };
@@ -195,7 +198,7 @@ async fn test_concurrent_pipeline_random() {
         join_all(futures)
             .await
             .into_iter()
-            .collect::<Result<Vec<()>, RuleError>>()
+            .collect::<Result<Vec<BlockStatus>, RuleError>>()
             .unwrap();
         tips = new_tips;
     }
