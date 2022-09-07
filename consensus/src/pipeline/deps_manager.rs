@@ -1,4 +1,4 @@
-use crate::errors::BlockProcessResult;
+use crate::{errors::BlockProcessResult, model::stores::statuses::BlockStatus};
 use consensus_core::block::Block;
 use hashes::Hash;
 use parking_lot::{Condvar, Mutex};
@@ -8,7 +8,7 @@ use std::{
 };
 use tokio::sync::oneshot;
 
-pub type BlockResultSender = oneshot::Sender<BlockProcessResult<()>>;
+pub type BlockResultSender = oneshot::Sender<BlockProcessResult<BlockStatus>>;
 
 pub enum BlockTask {
     Exit,

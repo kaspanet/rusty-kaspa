@@ -7,6 +7,7 @@ use consensus::constants::BLOCK_VERSION;
 use consensus::errors::{BlockProcessResult, RuleError};
 use consensus::model::stores::ghostdag::{GhostdagStoreReader, KType as GhostdagKType};
 use consensus::model::stores::reachability::DbReachabilityStore;
+use consensus::model::stores::statuses::BlockStatus;
 use consensus::params::MAINNET_PARAMS;
 use consensus::processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions};
 use consensus_core::block::Block;
@@ -763,10 +764,11 @@ async fn json_test() {
         let hash = block.header.hash;
         // Test our hashing implementation vs the hash accepted from the json source
         assert_eq!(hashing::header::hash(&block.header), hash, "header hashing for block {} {} failed", i, hash);
-        consensus
+        let status = consensus
             .validate_and_insert_block(Arc::new(block))
             .await
             .unwrap_or_else(|e| panic!("block {} {} failed: {}", i, hash, e));
+        assert!(status == BlockStatus::StatusUTXOPendingVerification || status == BlockStatus::StatusUTXOValid);
     }
     consensus.shutdown(wait_handles);
 }
@@ -798,7 +800,7 @@ async fn json_concurrency_test() {
         join_all(prev_joins)
             .await
             .into_iter()
-            .collect::<Result<Vec<()>, RuleError>>()
+            .collect::<Result<Vec<BlockStatus>, RuleError>>()
             .unwrap();
 
         prev_joins = current_joins;
@@ -807,7 +809,7 @@ async fn json_concurrency_test() {
     join_all(prev_joins)
         .await
         .into_iter()
-        .collect::<Result<Vec<()>, RuleError>>()
+        .collect::<Result<Vec<BlockStatus>, RuleError>>()
         .unwrap();
 
     consensus.shutdown(wait_handles);
@@ -815,7 +817,7 @@ async fn json_concurrency_test() {
 
 fn submit_chunk(
     consensus: &TestConsensus, chunk: &mut impl Iterator<Item = std::io::Result<String>>,
-) -> Vec<impl Future<Output = BlockProcessResult<()>>> {
+) -> Vec<impl Future<Output = BlockProcessResult<BlockStatus>>> {
     let mut futures = Vec::new();
     for line in chunk {
         let f = consensus.validate_and_insert_block(Arc::new(json_line_to_block(line.unwrap())));

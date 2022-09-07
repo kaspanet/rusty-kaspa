@@ -13,7 +13,7 @@ use crate::{
             reachability::{DbReachabilityStore, StagingReachabilityStore},
             relations::{DbRelationsStore, RelationsStoreBatchExtensions},
             statuses::{
-                BlockStatus::{StatusHeaderOnly, StatusInvalid},
+                BlockStatus::{self, StatusHeaderOnly, StatusInvalid},
                 DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader,
             },
             DB,
@@ -245,7 +245,7 @@ impl HeaderProcessor {
         self.statuses_store.read().has(hash).unwrap()
     }
 
-    fn process_header(self: &Arc<HeaderProcessor>, header: &Header) -> BlockProcessResult<()> {
+    fn process_header(self: &Arc<HeaderProcessor>, header: &Header) -> BlockProcessResult<BlockStatus> {
         let status_option = self
             .statuses_store
             .read()
@@ -254,7 +254,7 @@ impl HeaderProcessor {
 
         match status_option {
             Some(StatusInvalid) => return Err(RuleError::KnownInvalid),
-            Some(_) => return Ok(()),
+            Some(status) => return Ok(status),
             None => {}
         }
 
@@ -289,7 +289,7 @@ impl HeaderProcessor {
         self.counters
             .dep_counts
             .fetch_add(header.direct_parents().len() as u64, Ordering::Relaxed);
-        Ok(())
+        Ok(StatusHeaderOnly)
     }
 
     fn commit_header(self: &Arc<HeaderProcessor>, ctx: HeaderProcessingContext, header: &Header) {

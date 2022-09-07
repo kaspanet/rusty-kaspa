@@ -5,9 +5,16 @@ use crate::{
     model::{
         services::{reachability::MTReachabilityService, relations::MTRelationsService, statuses::MTStatusesService},
         stores::{
-            block_window_cache::BlockWindowCacheStore, daa::DbDaaStore, depth::DbDepthStore, ghostdag::DbGhostdagStore,
-            headers::DbHeadersStore, pruning::DbPruningStore, reachability::DbReachabilityStore,
-            relations::DbRelationsStore, statuses::DbStatusesStore, DB,
+            block_window_cache::BlockWindowCacheStore,
+            daa::DbDaaStore,
+            depth::DbDepthStore,
+            ghostdag::DbGhostdagStore,
+            headers::DbHeadersStore,
+            pruning::DbPruningStore,
+            reachability::DbReachabilityStore,
+            relations::DbRelationsStore,
+            statuses::{BlockStatus, DbStatusesStore},
+            DB,
         },
     },
     params::Params,
@@ -216,7 +223,9 @@ impl Consensus {
         ]
     }
 
-    pub fn validate_and_insert_block(&self, block: Arc<Block>) -> impl Future<Output = BlockProcessResult<()>> {
+    pub fn validate_and_insert_block(
+        &self, block: Arc<Block>,
+    ) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
         let (tx, rx): (BlockResultSender, _) = oneshot::channel();
         self.block_sender
             .send(BlockTask::Process(block, vec![tx]))
