@@ -11,6 +11,8 @@ use consensus::params::MAINNET_PARAMS;
 use consensus::processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions};
 use consensus_core::block::Block;
 use consensus_core::header::Header;
+use consensus_core::subnets::SubnetworkId;
+use consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
 use consensus_core::{blockhash, hashing};
 use hashes::Hash;
 
@@ -653,7 +655,50 @@ async fn mergeset_size_limit_test() {
 #[derive(Deserialize, Debug)]
 struct RPCBlock {
     Header: RPCBlockHeader,
+    Transactions: Vec<RPCTransaction>,
     VerboseData: RPCBlockVerboseData,
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Debug)]
+struct RPCTransaction {
+    Version: u16,
+    Inputs: Vec<RPCTransactionInput>,
+    Outputs: Vec<RPCTransactionOutput>,
+    LockTime: u64,
+    SubnetworkID: String,
+    Gas: u64,
+    Payload: String,
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Debug)]
+struct RPCTransactionOutput {
+    Amount: u64,
+    ScriptPublicKey: RPCScriptPublicKey,
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Debug)]
+struct RPCScriptPublicKey {
+    Version: u16,
+    Script: String,
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Debug)]
+struct RPCTransactionInput {
+    PreviousOutpoint: RPCOutpoint,
+    SignatureScript: String,
+    Sequence: u64,
+    SigOpCount: u8,
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Debug)]
+struct RPCOutpoint {
+    TransactionID: String,
+    Index: u32,
 }
 
 #[allow(non_snake_case)]
@@ -725,31 +770,81 @@ async fn json_test() {
 
 fn json_line_to_block(line: String) -> Block {
     let rpc_block: RPCBlock = serde_json::from_str(&line).unwrap();
-    Block::from_header(Header {
-        hash: Hash::from_str(&rpc_block.VerboseData.Hash).unwrap(),
-        version: rpc_block.Header.Version,
-        parents_by_level: rpc_block
-            .Header
-            .Parents
+    Block {
+        header: Header {
+            hash: Hash::from_str(&rpc_block.VerboseData.Hash).unwrap(),
+            version: rpc_block.Header.Version,
+            parents_by_level: rpc_block
+                .Header
+                .Parents
+                .iter()
+                .map(|item| {
+                    item.ParentHashes
+                        .iter()
+                        .map(|parent| Hash::from_str(parent).unwrap())
+                        .collect()
+                })
+                .collect(),
+            hash_merkle_root: Hash::from_str(&rpc_block.Header.HashMerkleRoot).unwrap(),
+            accepted_id_merkle_root: Hash::from_str(&rpc_block.Header.AcceptedIDMerkleRoot).unwrap(),
+            utxo_commitment: Hash::from_str(&rpc_block.Header.UTXOCommitment).unwrap(),
+            timestamp: rpc_block.Header.Timestamp,
+            bits: rpc_block.Header.Bits,
+            nonce: rpc_block.Header.Nonce,
+            daa_score: rpc_block.Header.DAAScore,
+            blue_work: u128::from_str_radix(&rpc_block.Header.BlueWork, 16).unwrap(),
+            blue_score: rpc_block.Header.BlueScore,
+            pruning_point: Hash::from_str(&rpc_block.Header.PruningPoint).unwrap(),
+        },
+        transactions: rpc_block
+            .Transactions
             .iter()
-            .map(|item| {
-                item.ParentHashes
-                    .iter()
-                    .map(|parent| Hash::from_str(parent).unwrap())
-                    .collect()
+            .map(|tx| {
+                Transaction::new(
+                    tx.Version,
+                    tx.Inputs
+                        .iter()
+                        .map(|input| {
+                            Arc::new(TransactionInput {
+                                previous_outpoint: TransactionOutpoint {
+                                    transaction_id: Hash::from_str(&input.PreviousOutpoint.TransactionID).unwrap(),
+                                    index: input.PreviousOutpoint.Index,
+                                },
+                                signature_script: hex_decode(&input.SignatureScript),
+                                sequence: input.Sequence,
+                                sig_op_count: input.SigOpCount,
+                                utxo_entry: None,
+                            })
+                        })
+                        .collect(),
+                    tx.Outputs
+                        .iter()
+                        .map(|output| {
+                            Arc::new(TransactionOutput {
+                                value: output.Amount,
+                                script_public_key: Arc::new(ScriptPublicKey {
+                                    script: hex_decode(&output.ScriptPublicKey.Script),
+                                    version: output.ScriptPublicKey.Version,
+                                }),
+                            })
+                        })
+                        .collect(),
+                    tx.LockTime,
+                    SubnetworkId::from_str(&tx.SubnetworkID).unwrap(),
+                    tx.Gas,
+                    hex_decode(&tx.Payload),
+                    0,
+                    0,
+                )
             })
             .collect(),
-        hash_merkle_root: Hash::from_str(&rpc_block.Header.HashMerkleRoot).unwrap(),
-        accepted_id_merkle_root: Hash::from_str(&rpc_block.Header.AcceptedIDMerkleRoot).unwrap(),
-        utxo_commitment: Hash::from_str(&rpc_block.Header.UTXOCommitment).unwrap(),
-        timestamp: rpc_block.Header.Timestamp,
-        bits: rpc_block.Header.Bits,
-        nonce: rpc_block.Header.Nonce,
-        daa_score: rpc_block.Header.DAAScore,
-        blue_work: u128::from_str_radix(&rpc_block.Header.BlueWork, 16).unwrap(),
-        blue_score: rpc_block.Header.BlueScore,
-        pruning_point: Hash::from_str(&rpc_block.Header.PruningPoint).unwrap(),
-    })
+    }
+}
+
+fn hex_decode(src: &str) -> Vec<u8> {
+    let mut dst: Vec<u8> = vec![0; src.len() / 2];
+    faster_hex::hex_decode(src.as_bytes(), &mut dst).unwrap();
+    dst
 }
 
 #[tokio::test]
