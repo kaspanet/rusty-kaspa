@@ -97,6 +97,6 @@ impl BlockBodyProcessor {
     }
 
     fn process_block_body(self: &Arc<BlockBodyProcessor>, block: &Block) -> BlockProcessResult<()> {
-        self.validate_body(block)
+        Self::validate_body_in_isolation(block)
     }
 }

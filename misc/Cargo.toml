@@ -12,3 +12,6 @@ include = [
 serde = { version = "1.0", features = ["derive", "rc"] }
 
 hashes = { path = "../crypto/hashes" }
+
+[dev-dependencies]
+consensus-core = { path = "../consensus/core" }

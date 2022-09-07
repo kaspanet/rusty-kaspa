@@ -8,7 +8,7 @@ use crate::errors::{BlockProcessResult, RuleError};
 use super::BlockBodyProcessor;
 
 impl BlockBodyProcessor {
-    pub fn validate_body(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {
+    pub fn validate_body_in_isolation(block: &Block) -> BlockProcessResult<()> {
         Self::check_hash_merkle_tree(block)
     }
 
