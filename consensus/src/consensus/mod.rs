@@ -19,16 +19,17 @@ use crate::{
     },
     params::Params,
     pipeline::{
-        block_processor::BlockBodyProcessor,
+        body_processor::BlockBodyProcessor,
         deps_manager::{BlockResultSender, BlockTask},
         header_processor::HeaderProcessor,
         virtual_processor::VirtualStateProcessor,
         ProcessingCounters,
     },
     processes::{
-        block_at_depth::BlockDepthManager, dagtraversalmanager::DagTraversalManager, difficulty::DifficultyManager,
-        ghostdag::protocol::GhostdagManager, pastmediantime::PastMedianTimeManager,
-        reachability::inquirer as reachability,
+        block_at_depth::BlockDepthManager, coinbase::CoinbaseManager, dagtraversalmanager::DagTraversalManager,
+        difficulty::DifficultyManager, ghostdag::protocol::GhostdagManager, mass::MassCalculator,
+        pastmediantime::PastMedianTimeManager, reachability::inquirer as reachability,
+        transaction_validator::TransactionValidator,
     },
 };
 use consensus_core::block::Block;
@@ -128,6 +129,19 @@ impl Consensus {
             ghostdag_store.clone(),
         );
 
+        let coinbase_manager =
+            CoinbaseManager::new(params.coinbase_payload_script_public_key_max_len, params.max_coinbase_payload_len);
+
+        let mass_calculator =
+            MassCalculator::new(params.mass_per_tx_byte, params.mass_per_script_pub_key_byte, params.mass_per_sig_op);
+
+        let transaction_validator = TransactionValidator::new(
+            params.max_tx_inputs,
+            params.max_tx_outputs,
+            params.max_signature_script_len,
+            params.max_script_public_key_len,
+        );
+
         let (sender, receiver): (Sender<BlockTask>, Receiver<BlockTask>) = unbounded();
         let (body_sender, body_receiver): (Sender<BlockTask>, Receiver<BlockTask>) = unbounded();
         let (virtual_sender, virtual_receiver): (Sender<BlockTask>, Receiver<BlockTask>) = unbounded();
@@ -164,6 +178,10 @@ impl Consensus {
             db.clone(),
             statuses_store.clone(),
             reachability_service.clone(),
+            coinbase_manager,
+            mass_calculator,
+            transaction_validator,
+            params.max_block_mass,
         ));
 
         let virtual_processor = Arc::new(VirtualStateProcessor::new(

@@ -9,6 +9,7 @@ use crate::{
         },
     },
     pipeline::deps_manager::{BlockTask, BlockTaskDependencyManager},
+    processes::{coinbase::CoinbaseManager, mass::MassCalculator, transaction_validator::TransactionValidator},
 };
 use consensus_core::block::Block;
 use crossbeam_channel::{Receiver, Sender};
@@ -24,11 +25,17 @@ pub struct BlockBodyProcessor {
     // DB
     db: Arc<DB>,
 
+    // Config
+    pub(super) max_block_mass: u64,
+
     // Stores
     pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
 
     // Managers and services
     pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
+    pub(super) coinbase_manager: CoinbaseManager,
+    pub(super) mass_calculator: MassCalculator,
+    pub(super) transaction_validator: TransactionValidator,
 
     // Dependency manager
     task_manager: BlockTaskDependencyManager,
@@ -38,6 +45,8 @@ impl BlockBodyProcessor {
     pub fn new(
         receiver: Receiver<BlockTask>, sender: Sender<BlockTask>, db: Arc<DB>,
         statuses_store: Arc<RwLock<DbStatusesStore>>, reachability_service: MTReachabilityService<DbReachabilityStore>,
+        coinbase_manager: CoinbaseManager, mass_calculator: MassCalculator,
+        transaction_validator: TransactionValidator, max_block_mass: u64,
     ) -> Self {
         Self {
             receiver,
@@ -45,6 +54,10 @@ impl BlockBodyProcessor {
             db,
             statuses_store,
             reachability_service,
+            coinbase_manager,
+            mass_calculator,
+            transaction_validator,
+            max_block_mass,
             task_manager: BlockTaskDependencyManager::new(),
         }
     }
@@ -102,7 +115,7 @@ impl BlockBodyProcessor {
     }
 
     fn process_block_body(self: &Arc<BlockBodyProcessor>, block: &Block) -> BlockProcessResult<BlockStatus> {
-        Self::validate_body_in_isolation(block)?;
+        self.validate_body_in_isolation(block)?;
         Ok(BlockStatus::StatusUTXOPendingVerification)
     }
 }

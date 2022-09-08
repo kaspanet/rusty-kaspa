@@ -4,3 +4,6 @@ pub mod difficulty;
 pub mod ghostdag;
 pub mod pastmediantime;
 pub mod reachability;
+pub mod coinbase;
+pub mod transaction_validator;
+pub mod mass;

@@ -886,7 +886,6 @@ fn json_line_to_block(line: String) -> Block {
                     tx.Gas,
                     hex_decode(&tx.Payload),
                     0,
-                    0,
                 )
             })
             .collect(),

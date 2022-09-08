@@ -13,3 +13,4 @@ pub mod perf {
 }
 
 pub const BLOCK_VERSION: u16 = 1;
+pub const TX_VERSION: u16 = 0;

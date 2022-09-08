@@ -1,5 +1,11 @@
-use crate::constants;
-use consensus_core::BlueWorkType;
+use crate::{
+    constants,
+    processes::{coinbase::CoinbaseError, transaction_validator::errors::TxRuleError},
+};
+use consensus_core::{
+    tx::{TransactionId, TransactionOutpoint},
+    BlueWorkType,
+};
 use hashes::Hash;
 use thiserror::Error;
 
@@ -60,6 +66,33 @@ pub enum RuleError {
 
     #[error("invalid merkle root: header indicates {0} but calculated value is {1}")]
     BadMerkleRoot(Hash, Hash),
+
+    #[error("block has no transactions")]
+    NoTransactions,
+
+    #[error("block first transaction is not coinbase")]
+    FirstTxNotCoinbase,
+
+    #[error("block has second coinbase transaction as index {0}")]
+    MultipleCoinbases(usize),
+
+    #[error("bad coinbase payload: {0}")]
+    BadCoinbasePayload(CoinbaseError),
+
+    #[error("coinbase blue score of {0} is not the expected value of {1}")]
+    BadCoinbasePayloadBlueScore(u64, u64),
+
+    #[error("transaction in isolation validation failed for tx {0}: {1}")]
+    TxInIsolationValidationFailed(TransactionId, TxRuleError),
+
+    #[error("block exceeded mass limit of {0}")]
+    ExceedsMassLimit(u64),
+
+    #[error("outpoint {0} is spent more than once on the same block")]
+    DoubleSpendInSameBlock(TransactionOutpoint),
+
+    #[error("outpoint {0} is created and spent on the same block")]
+    ChainedTransaction(TransactionOutpoint),
 }
 
 pub type BlockProcessResult<T> = std::result::Result<T, RuleError>;
