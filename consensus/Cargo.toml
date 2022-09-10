@@ -23,6 +23,7 @@ futures = "0.3.23"
 num-bigint = "0.4.3"
 
 
+math = { path = "../math" }
 hashes = { path = "../crypto/hashes" }
 merkle = { path = "../crypto/merkle" }
 consensus-core = { path = "./core" }

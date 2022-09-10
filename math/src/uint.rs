@@ -2,7 +2,7 @@
 macro_rules! construct_uint {
     ($name:ident, $n_words:literal) => {
         /// Little-endian large integer type
-        #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
+        #[derive(Default, Copy, Clone, PartialEq, Eq, Hash, Debug)]
         pub struct $name(pub [u64; $n_words]);
         #[allow(unused)]
         impl $name {
@@ -372,6 +372,17 @@ macro_rules! construct_uint {
             }
         }
 
+        impl core::ops::Mul<u64> for $name {
+            type Output = $name;
+
+            #[inline]
+            fn mul(self, other: u64) -> $name {
+                let (product, carry) = self.overflowing_mul_u64(other);
+                debug_assert!(!carry, "attempt to multiply with overflow"); // Check in debug that it didn't overflow
+                product
+            }
+        }
+
         impl core::ops::Div<$name> for $name {
             type Output = $name;
 
@@ -385,6 +396,22 @@ macro_rules! construct_uint {
 
             fn rem(self, other: $name) -> $name {
                 self.div_rem(other).1
+            }
+        }
+
+        impl core::ops::Div<u64> for $name {
+            type Output = $name;
+
+            fn div(self, other: u64) -> $name {
+                self.div_rem_word(other).0
+            }
+        }
+
+        impl core::ops::Rem<u64> for $name {
+            type Output = u64;
+
+            fn rem(self, other: u64) -> u64 {
+                self.div_rem_word(other).1
             }
         }
 
@@ -456,6 +483,37 @@ macro_rules! construct_uint {
                 let (res, carry) = self.overflowing_shr(shift);
                 debug_assert!(!carry, "attempt to shift left with overflow"); // Check in debug that it didn't overflow
                 res
+            }
+        }
+
+        impl core::iter::Sum for $name {
+            fn sum<I: Iterator<Item = Self>>(mut iter: I) -> Self {
+                let first = iter.next().unwrap_or_else(|| Self::ZERO);
+                iter.fold(first, |a, b| a + b)
+            }
+        }
+
+        impl core::iter::Product for $name {
+            fn product<I: Iterator<Item = Self>>(mut iter: I) -> Self {
+                let first = iter.next().unwrap_or_else(|| Self::from_u64(1));
+                iter.fold(first, |a, b| a * b)
+            }
+        }
+
+        impl<'a> core::iter::Sum<&'a $name> for $name {
+            fn sum<I: Iterator<Item = &'a Self>>(mut iter: I) -> Self {
+                let first = iter.next().copied().unwrap_or_else(|| Self::ZERO);
+                iter.fold(first, |a, &b| a + b)
+            }
+        }
+
+        impl<'a> core::iter::Product<&'a $name> for $name {
+            fn product<I: Iterator<Item = &'a Self>>(mut iter: I) -> Self {
+                let first = iter
+                    .next()
+                    .copied()
+                    .unwrap_or_else(|| Self::from_u64(1));
+                iter.fold(first, |a, &b| a * b)
             }
         }
 
@@ -665,7 +723,7 @@ mod tests {
             assert_equal_args(format_args!("{a:0128b}"), format_args!("{b:0128b}")); // Test binary with length
             assert_equal_args(format_args!("{a:x}"), format_args!("{b:x}")); // Test LowerHex
             assert_equal_args(format_args!("{a:#x}"), format_args!("{b:#x}")); // Test LowerHex with prefix
-            // Test LowerHex with padding
+                                                                               // Test LowerHex with padding
             assert_equal_args(format_args!("{a:0256x}"), format_args!("{b:0256x}"));
         };
         let mut rng = ChaCha8Rng::from_seed([0; 32]);

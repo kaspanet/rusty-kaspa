@@ -1,5 +1,5 @@
 [package]
-name = "misc"
+name = "math"
 version = "0.1.0"
 description = "Kaspa miscellaneous lib"
 edition = "2021"
