@@ -20,16 +20,25 @@ macro_rules! construct_uint {
                 ret
             }
 
+            #[inline]
+            pub fn as_u128(self) -> u128 {
+                self.0[0] as u128 | ((self.0[1] as u128) << 64)
+            }
+
+            #[inline]
+            pub fn as_u64(self) -> u64 {
+                self.0[0] as u64
+            }
+
             /// Return the least number of bits needed to represent the number
             #[inline]
-            pub fn bits(&self) -> usize {
-                let last_non_zero_index = self
-                    .0
-                    .iter()
-                    .rev()
-                    .position(|&w| w != 0)
-                    .unwrap_or(0);
-                (last_non_zero_index + 1) * 64 - self.0[last_non_zero_index].leading_zeros() as usize
+            pub fn bits(&self) -> u32 {
+                for (i, &word) in self.0.iter().enumerate().rev() {
+                    if word != 0 {
+                        return u64::BITS * (i as u32 + 1) - word.leading_zeros();
+                    }
+                }
+                0
             }
 
             #[inline]
@@ -103,7 +112,13 @@ macro_rules! construct_uint {
 
             /// Multiplication by u64
             #[inline]
-            pub fn overflowing_mul_u64(mut self, other: u64) -> ($name, bool) {
+            pub fn overflowing_mul_u64(self, other: u64) -> ($name, bool) {
+                let (this, carry) = self.carrying_mul_u64(other);
+                (this, carry != 0)
+            }
+
+            #[inline]
+            pub fn carrying_mul_u64(mut self, other: u64) -> ($name, u64) {
                 let mut carry: u128 = 0;
                 for i in 0..Self::LIMBS {
                     // TODO: Use `carrying_mul` when stabilized: https://github.com/rust-lang/rust/issues/85532
@@ -111,7 +126,7 @@ macro_rules! construct_uint {
                     self.0[i] = n as u64;
                     carry = (n >> 64) & u64::MAX as u128;
                 }
-                (self, carry != 0)
+                (self, carry as u64)
             }
 
             #[inline]
@@ -156,41 +171,53 @@ macro_rules! construct_uint {
                 out
             }
 
+            #[inline]
+            pub fn div_rem_word(mut self, other: u64) -> (Self, u64) {
+                let mut rem = 0u64;
+                self.0.iter_mut().rev().for_each(|d| {
+                    let n = (rem as u128) << 64 | (*d as u128);
+                    *d = (n / other as u128) as u64;
+                    rem = (n % other as u128) as u64;
+                });
+                (self, rem)
+            }
+
             // divmod like operation, returns (quotient, remainder)
-            // #[inline]
-            // fn div_rem(self, other: Self) -> (Self, Self) {
-            //     let mut sub_copy = self;
-            //     let mut shift_copy = other;
-            //     let mut ret = [0u64; $n_words];
-            //
-            //     let my_bits = self.bits();
-            //     let your_bits = other.bits();
-            //
-            //     // Check for division by 0
-            //     assert!(your_bits != 0, "attempted to divide {} by zero", self);
-            //
-            //     // Early return in case we are dividing by a larger number than us
-            //     if my_bits < your_bits {
-            //         return ($name(ret), sub_copy);
-            //     }
-            //
-            //     // Bitwise long division
-            //     let mut shift = my_bits - your_bits;
-            //     shift_copy = shift_copy << shift;
-            //     loop {
-            //         if sub_copy >= shift_copy {
-            //             ret[shift / 64] |= 1 << (shift % 64);
-            //             sub_copy = sub_copy - shift_copy;
-            //         }
-            //         shift_copy = shift_copy >> 1;
-            //         if shift == 0 {
-            //             break;
-            //         }
-            //         shift -= 1;
-            //     }
-            //
-            //     ($name(ret), sub_copy)
-            // }
+            #[inline]
+            pub fn div_rem(self, other: Self) -> (Self, Self) {
+                let mut sub_copy = self;
+                let mut shift_copy = other;
+                let mut ret = [0u64; Self::LIMBS];
+
+                let my_bits = self.bits();
+                let your_bits = other.bits();
+
+                // Check for division by 0
+                assert_ne!(your_bits, 0, "attempted to divide {:b} by zero", self);
+
+                // Early return in case we are dividing by a larger number than us
+                if my_bits < your_bits {
+                    return (Self(ret), sub_copy);
+                }
+
+                // Bitwise long division
+                let mut shift = my_bits - your_bits;
+                shift_copy = shift_copy << shift;
+                loop {
+                    if sub_copy >= shift_copy {
+                        let (shift_index, shift_val) = ((shift / 64) as usize, shift % 64);
+                        ret[shift_index] |= 1 << shift_val;
+                        sub_copy = sub_copy - shift_copy;
+                    }
+                    shift_copy = shift_copy >> 1;
+                    if shift == 0 {
+                        break;
+                    }
+                    shift -= 1;
+                }
+
+                (Self(ret), sub_copy)
+            }
 
             #[inline]
             pub fn iter_be_bits(self) -> impl ExactSizeIterator<Item = bool> + core::iter::FusedIterator {
@@ -292,21 +319,21 @@ macro_rules! construct_uint {
             }
         }
 
-        // impl core::ops::Div<$name> for $name {
-        //     type Output = $name;
-        //
-        //     fn div(self, other: $name) -> $name {
-        //         self.div_rem(other).0
-        //     }
-        // }
+        impl core::ops::Div<$name> for $name {
+            type Output = $name;
 
-        // impl core::ops::Rem<$name> for $name {
-        //     type Output = $name;
-        //
-        //     fn rem(self, other: $name) -> $name {
-        //         self.div_rem(other).1
-        //     }
-        // }
+            fn div(self, other: $name) -> $name {
+                self.div_rem(other).0
+            }
+        }
+
+        impl core::ops::Rem<$name> for $name {
+            type Output = $name;
+
+            fn rem(self, other: $name) -> $name {
+                self.div_rem(other).1
+            }
+        }
 
         impl core::ops::BitAnd<$name> for $name {
             type Output = $name;
@@ -373,7 +400,7 @@ macro_rules! construct_uint {
 
             #[inline]
             fn shr(self, shift: u32) -> $name {
-                let (res, carry) = self.overflowing_shl(shift);
+                let (res, carry) = self.overflowing_shr(shift);
                 debug_assert!(!carry, "attempt to shift left with overflow"); // Check in debug that it didn't overflow
                 res
             }
