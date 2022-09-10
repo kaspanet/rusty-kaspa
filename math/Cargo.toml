@@ -15,3 +15,8 @@ faster-hex = "0.6"
 
 [dev-dependencies]
 rand_chacha = "0.3"
+criterion = "0.3"
+
+[[bench]]
+name = "bench"
+harness = false

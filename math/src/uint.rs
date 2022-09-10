@@ -778,6 +778,14 @@ mod tests {
                 assert_equal(mine_divrem.0, default_divrem.0, check_fmt);
                 assert_eq!(mine_divrem.1, u64::try_from(default_divrem.1).unwrap());
             }
+            // Test fast u64 multiplication
+            {
+                let rand_u64 = rng.next_u64();
+                let mine_mult = mine.overflowing_mul_u64(rand_u64);
+                let default_divrem = default.overflowing_mul(rand_u64 as u128);
+                assert_equal(mine_mult.0, default_divrem.0, check_fmt);
+                assert_eq!(mine_mult.1, default_divrem.1);
+            }
         }
     }
 }
