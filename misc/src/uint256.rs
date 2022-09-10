@@ -31,23 +31,23 @@ macro_rules! construct_uint {
             }
 
             #[inline]
-            pub fn overflowing_shl(mut self, mut s: u32) -> ($name, bool) {
-                let overflows = s >= $n_words * 64;
+            pub fn overflowing_shl(self, mut s: u32) -> ($name, bool) {
+                let overflows = s >= Self::BITS;
                 s &= Self::BITS - 1;
-                if s == 0 {
-                    return (self, overflows);
+                let mut ret = [0u64; $n_words];
+                let left_words = (s / 64) as usize;
+                let left_shifts = s % 64;
+
+                for i in left_words..$n_words {
+                    ret[i] = self.0[i - left_words] << left_shifts;
                 }
-                let left_words = (s / u64::BITS) as usize;
-                let left_shifts = s % u64::BITS;
-                let mut carry = 0;
-                let left_over = u64::BITS - left_shifts;
-                for word in self.0[left_words..].iter_mut() {
-                    let tmp = *word;
-                    *word = tmp.wrapping_shl(left_shifts) | carry;
-                    carry = tmp.wrapping_shr(left_over);
+                if left_shifts > 0 {
+                    let left_over = 64 - left_shifts;
+                    for i in left_words + 1..$n_words {
+                        ret[i] |= self.0[i - 1 - left_words] >> left_over;
+                    }
                 }
-                self.0[..left_words].fill(0);
-                (self, (carry != 0) | overflows)
+                (Self(ret), overflows)
             }
 
             #[inline]
