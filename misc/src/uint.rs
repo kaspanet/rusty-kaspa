@@ -1,9 +1,10 @@
+#[macro_export]
 macro_rules! construct_uint {
     ($name:ident, $n_words:literal) => {
         /// Little-endian large integer type
         #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
         pub struct $name(pub [u64; $n_words]);
-
+        #[allow(unused)]
         impl $name {
             pub const ZERO: Self = $name([0; $n_words]);
             pub const MIN: Self = Self::ZERO;
@@ -171,6 +172,17 @@ macro_rules! construct_uint {
                 out
             }
 
+            /// Convert's the Uint into big endian byte array
+            #[inline(always)]
+            pub fn to_be_bytes(self) -> [u8; Self::BYTES] {
+                let mut out = [0u8; Self::BYTES];
+                // This should optimize to basically a transmute.
+                out.chunks_exact_mut(8)
+                    .zip(self.0.into_iter().rev())
+                    .for_each(|(bytes, word)| bytes.copy_from_slice(&word.to_be_bytes()));
+                out
+            }
+
             #[inline]
             pub fn div_rem_word(mut self, other: u64) -> (Self, u64) {
                 let mut rem = 0u64;
@@ -223,8 +235,7 @@ macro_rules! construct_uint {
             pub fn iter_be_bits(self) -> impl ExactSizeIterator<Item = bool> + core::iter::FusedIterator {
                 struct BinaryIterator {
                     array: [u64; $n_words],
-                    word: usize,
-                    bit: u32,
+                    bit: usize,
                 }
 
                 impl Iterator for BinaryIterator {
@@ -232,40 +243,76 @@ macro_rules! construct_uint {
 
                     #[inline]
                     fn next(&mut self) -> Option<Self::Item> {
-                        if self.bit == 64 {
-                            self.word += 1;
-                            self.bit = 0;
-                        }
-                        if self.word == $n_words {
+                        if self.bit >= 64 * $n_words {
                             return None;
                         }
-                        let current_bit = self.array[$n_words - self.word - 1] & (1 << 64 - self.bit - 1);
+                        let (word, subbit) = (self.bit / 64, self.bit % 64);
+                        let current_bit = self.array[$n_words - word - 1] & (1 << 64 - subbit - 1);
                         self.bit += 1;
                         Some(current_bit != 0)
                     }
 
                     #[inline]
                     fn nth(&mut self, n: usize) -> Option<Self::Item> {
-                        // TODO: add const assert that $n_words * 64 =< u32::MAX.
-                        if n >= u32::MAX as usize {
-                            return None;
+                        match self.bit.checked_add(n) {
+                            Some(bit) => {
+                                self.bit = bit;
+                                self.next()
+                            }
+                            None => {
+                                self.bit = usize::MAX;
+                                None
+                            }
                         }
-                        // TODO: add const assert that usize::BITS >= u32::BITS.
-                        let new_bit = self.bit + n as u32;
-                        self.word += (new_bit / u64::BITS) as usize;
-                        self.bit = new_bit % u64::BITS;
-                        self.next()
                     }
                     #[inline]
                     fn size_hint(&self) -> (usize, Option<usize>) {
-                        let remaining_bits = ($n_words - self.word) * 64 + (64 - self.bit as usize);
+                        let remaining_bits = $n_words * (u64::BITS as usize) - self.bit;
                         (remaining_bits, Some(remaining_bits))
                     }
                 }
                 impl ExactSizeIterator for BinaryIterator {}
                 impl core::iter::FusedIterator for BinaryIterator {}
 
-                BinaryIterator { array: self.0, word: 0, bit: 0 }
+                BinaryIterator { array: self.0, bit: 0 }
+            }
+        }
+
+        impl PartialEq<u64> for $name {
+            #[inline]
+            fn eq(&self, other: &u64) -> bool {
+                let bigger = self.0[1..].iter().any(|&x| x != 0);
+                !bigger && self.0[0] == *other
+            }
+        }
+        impl PartialOrd<u64> for $name {
+            #[inline]
+            fn partial_cmp(&self, other: &u64) -> Option<core::cmp::Ordering> {
+                let bigger = self.0[1..].iter().any(|&x| x != 0);
+                if bigger {
+                    Some(core::cmp::Ordering::Greater)
+                } else {
+                    self.0[0].partial_cmp(other)
+                }
+            }
+        }
+
+        impl PartialEq<u128> for $name {
+            #[inline]
+            fn eq(&self, other: &u128) -> bool {
+                let bigger = self.0[2..].iter().any(|&x| x != 0);
+                !bigger && self.0[0] == (*other as u64) && self.0[1] == ((*other >> 64) as u64)
+            }
+        }
+        impl PartialOrd<u128> for $name {
+            #[inline]
+            fn partial_cmp(&self, other: &u128) -> Option<core::cmp::Ordering> {
+                let bigger = self.0[2..].iter().any(|&x| x != 0);
+                if bigger {
+                    Some(core::cmp::Ordering::Greater)
+                } else {
+                    self.as_u128().partial_cmp(other)
+                }
             }
         }
 
@@ -410,9 +457,71 @@ macro_rules! construct_uint {
             #[inline]
             fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
                 let mut hex = [0u8; Self::BYTES * 2];
-                let bytes = self.to_le_bytes();
+                let bytes = self.to_be_bytes();
                 faster_hex::hex_encode(&bytes, &mut hex).expect("The output is exactly twice the size of the input");
-                f.write_str(core::str::from_utf8(&hex).expect("hex is always valid UTF-8"))
+                let first_non_zero = hex.iter().position(|&x| x != b'0').unwrap_or(hex.len()-1);
+                // The string is hex encoded so must be valid UTF8.
+                let str = unsafe {core::str::from_utf8_unchecked(&hex[first_non_zero..])};
+                f.pad_integral(true, "0x", str)
+            }
+        }
+
+        // Based on https://github.com/rust-lang/rust/blob/2e44c17c12cec45b6a682b1e53a04ac5b5fcc9d2/library/core/src/fmt/num.rs#L209
+        impl core::fmt::Display for $name {
+            #[inline]
+            fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+                // 2 digit decimal look up table
+                static DEC_DIGITS_LUT: &[u8; 200] = b"0001020304050607080910111213141516171819\
+            2021222324252627282930313233343536373839\
+            4041424344454647484950515253545556575859\
+            6061626364656667686970717273747576777879\
+            8081828384858687888990919293949596979899";
+
+                let mut buf = [0u8; $name::LIMBS * 20]; // 2**64-1 takes 20 digits to represent.
+                let mut n = *self;
+                let mut curr = buf.len();
+
+                // eagerly decode 4 characters at a time
+                const STEP: u64 = 10_000;
+                while n >= STEP {
+                    let rem: u64;
+                    (n, rem) = n.div_rem_word(STEP);
+                    let rem = rem as usize;
+                    let d1 = (rem / 100) << 1;
+                    let d2 = (rem % 100) << 1;
+                    curr -= 4;
+
+                    buf[curr] = DEC_DIGITS_LUT[d1];
+                    buf[curr + 1] = DEC_DIGITS_LUT[d1 + 1];
+                    buf[curr + 2] = DEC_DIGITS_LUT[d2];
+                    buf[curr + 3] = DEC_DIGITS_LUT[d2 + 1];
+                }
+                // if we reach here numbers are <= 9999, so at most 4 chars long
+                let mut n = n.as_u64() as usize; // possibly reduce 64bit math
+
+                // decode 2 more chars, if > 2 chars
+                if n >= 100 {
+                    let d1 = (n % 100) << 1;
+                    n /= 100;
+                    curr -= 2;
+                    buf[curr] = DEC_DIGITS_LUT[d1 as usize];
+                    buf[curr + 1] = DEC_DIGITS_LUT[d1 + 1 as usize];
+                }
+
+                // decode last 1 or 2 chars
+                if n < 10 {
+                    curr -= 1;
+                    buf[curr] = (n as u8) + b'0'
+                } else {
+                    let d1 = n << 1;
+                    curr -= 2;
+                    buf[curr] = DEC_DIGITS_LUT[d1];
+                    buf[curr + 1] = DEC_DIGITS_LUT[d1 + 1];
+                }
+
+                // SAFETY: everything up to `curr` is valid UTF8 because `DEC_DIGITS_LUT` is.
+                let buf_str = unsafe { std::str::from_utf8_unchecked(&buf[curr..]) };
+                f.pad_integral(true, "", buf_str)
             }
         }
 
@@ -421,14 +530,14 @@ macro_rules! construct_uint {
             fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
                 const BIN_LEN: usize = $name::BITS as usize;
                 let mut buf = [0u8; BIN_LEN];
-                let mut first_one = BIN_LEN;
+                let mut first_one = BIN_LEN-1;
                 for (index, (bit, char)) in self
                     .iter_be_bits()
                     .zip(buf.iter_mut())
                     .enumerate()
                 {
                     *char = bit as u8 + b'0';
-                    if first_one == BIN_LEN && bit {
+                    if first_one == BIN_LEN-1 && bit {
                         first_one = index;
                     }
                 }
@@ -439,31 +548,54 @@ macro_rules! construct_uint {
         }
     };
 }
-construct_uint!(Uint256, 4);
-construct_uint!(Uint128, 2);
-construct_uint!(Uint512, 8);
-construct_uint!(Uint3072, 384);
 
 #[cfg(test)]
 mod tests {
-    use super::{Uint128, Uint256, Uint3072};
     use rand_chacha::{
         rand_core::{RngCore, SeedableRng},
         ChaCha8Rng,
     };
+    use std::fmt::Write;
+    construct_uint!(Uint128, 2);
+
     #[test]
     fn test_u128() {
+        use core::fmt::Arguments;
+        let mut fmt_buf = String::with_capacity(256);
+        let mut fmt_buf2 = String::with_capacity(256);
+        let mut assert_equal_args = |arg1: Arguments, arg2: Arguments| {
+            fmt_buf.clear();
+            fmt_buf2.clear();
+            fmt_buf.write_fmt(arg1).unwrap();
+            fmt_buf2.write_fmt(arg2).unwrap();
+            assert_eq!(fmt_buf, fmt_buf2);
+        };
+        let mut assert_equal = |a: Uint128, b: u128, check_fmt: bool| {
+            assert_eq!(a, b);
+            assert_eq!(a.to_le_bytes(), b.to_le_bytes());
+            if !check_fmt {return;}
+
+            assert_equal_args(format_args!("{a:}"), format_args!("{b:}"));
+            assert_equal_args(format_args!("{a:b}"), format_args!("{b:b}")); // Test Binary
+            assert_equal_args(format_args!("{a:#b}"), format_args!("{b:#b}")); // Test Binary with prefix
+            assert_equal_args(format_args!("{a:0128b}"), format_args!("{b:0128b}")); // Test binary with length
+            assert_equal_args(format_args!("{a:x}"), format_args!("{b:x}")); // Test LowerHex
+            assert_equal_args(format_args!("{a:#x}"), format_args!("{b:#x}")); // Test LowerHex with prefix
+            assert_equal_args(format_args!("{a:0256x}"), format_args!("{b:0256x}")); // Test LowerHex with prefix
+        };
         let mut rng = ChaCha8Rng::from_seed([0; 32]);
         let mut buf = [0u8; 16];
-        for _ in 0..1_000_000 {
+        for i in 0..64_000 {
+            // Checking all the fmt's is quite expensive.
+            let check_fmt = i % 8 == 1;
             rng.fill_bytes(&mut buf);
             let mine = Uint128::from_le_bytes(buf);
             let default = u128::from_le_bytes(buf);
             rng.fill_bytes(&mut buf);
             let mine2 = Uint128::from_le_bytes(buf);
             let default2 = u128::from_le_bytes(buf);
-            assert_eq!(mine.to_le_bytes(), default.to_le_bytes());
-            assert_eq!(mine2.to_le_bytes(), default2.to_le_bytes());
+            assert_equal(mine, default, check_fmt);
+            assert_equal(mine2, default2, check_fmt);
 
             let mine = mine
                 .overflowing_add(mine2)
@@ -475,228 +607,34 @@ mod tests {
                 .0
                 .overflowing_mul(default2)
                 .0;
-            assert_eq!(mine.to_le_bytes(), default.to_le_bytes());
+            assert_equal(mine, default, check_fmt);
             let shift = rng.next_u32() % 4096;
-            let mine_overflow_shl = mine.overflowing_shl(shift);
-            let default_overflow_shl = default.overflowing_shl(shift);
-            assert_eq!(mine_overflow_shl.1, default_overflow_shl.1);
-            assert_eq!(mine_overflow_shl.0.to_le_bytes(), default_overflow_shl.0.to_le_bytes());
-            assert_eq!(mine.overflowing_shr(shift).0.to_le_bytes(), default.overflowing_shr(shift).0.to_le_bytes());
+            {
+                let mine_overflow_shl = mine.overflowing_shl(shift);
+                let default_overflow_shl = default.overflowing_shl(shift);
+                assert_equal(mine_overflow_shl.0, default_overflow_shl.0, check_fmt);
+                assert_eq!(mine_overflow_shl.1, default_overflow_shl.1);
+            }
+            {
+                let mine_overflow_shr = mine.overflowing_shl(shift);
+                let default_overflow_shr = default.overflowing_shl(shift);
+                assert_equal(mine_overflow_shr.0, default_overflow_shr.0, check_fmt);
+                assert_eq!(mine_overflow_shr.1, default_overflow_shr.1);
+            }
+            {
+                let mine_divrem = mine.div_rem(mine2);
+                let default_divrem = (default / default2, default % default2);
+                assert_equal(mine_divrem.0, default_divrem.0, check_fmt);
+                assert_equal(mine_divrem.1, default_divrem.1, check_fmt);
+            }
+            // Test fast u64 division.
+            {
+                let rand_u64 = rng.next_u64();
+                let mine_divrem = mine.div_rem_word(rand_u64);
+                let default_divrem = (default / u128::from(rand_u64), default % u128::from(rand_u64));
+                assert_equal(mine_divrem.0, default_divrem.0, check_fmt);
+                assert_eq!(mine_divrem.1, u64::try_from(default_divrem.1).unwrap());
+            }
         }
     }
-
-    // #[test]
-    // fn test_u256() {
-    //         let mut rng = ChaCha8Rng::from_seed([0; 32]);
-    //         let mut buf = [0u8; 32];
-    //         for _ in 0..1_000_000 {
-    //             rng.fill_bytes(&mut buf);
-    //             let a = Uint256::from_le_bytes(buf);
-    //             rng.fill_bytes(&mut buf);
-    //             let a2 = Uint256::from_le_bytes(buf);
-    //
-    //             let a = a.overflowing_add(a2).0.overflowing_mul(a2).0;
-    //             let shift = rng.next_u32() % 4096;
-    //             assert_eq!(a_overflow_shl.0, b_overflow_shl);
-    //             // assert_eq!(a_overflow_shl.0.to_le_bytes(), b_overflow_shl.0.to_le_bytes());
-    //             // println!("\nnum: {b}, shift: {shift}");
-    //             // println!("\nmine:  {:0128b}", a);
-    //             // println!("other: {:0128b}", b);
-    //             // assert_eq!(a.overflowing_shr(shift).0.to_le_bytes(), le(b >> shift));
-    //         }
-    // }
-    //
-    // #[inline]
-    // fn shl_bitcoin<const N: usize>(mut original: [u64; N], shift: u32) -> [u64; N] {
-    //     let a = original;
-    //     original.fill(0);
-    //     let k = (shift / 64) as usize;
-    //     let shift = shift % 64;
-    //
-    //     for i in 0..N {
-    //         if i + k + 1 < N && shift != 0 {
-    //             original[i + k + 1] |= (a[i] >> (64 - shift));
-    //         }
-    //         if i + k < N {
-    //             original[i + k] |= (a[i] << shift);
-    //         }
-    //     }
-    //     original
-    // }
-    // extern crate test;
-    //
-    // use test::{black_box, Bencher};
-    // #[bench]
-    // fn bench_u256(b: &mut Bencher) {
-    //     let mut rng = ChaCha8Rng::from_seed([0; 32]);
-    //     let mut buf = [0u8; 32];
-    //     let mut ints = vec![];
-    //     let mut shifts = vec![];
-    //     for _ in 0..100 {
-    //         rng.fill_bytes(&mut buf);
-    //         ints.push(Uint256::from_le_bytes(buf));
-    //         shifts.push(rng.next_u32() % 512);
-    //     }
-    //     b.iter(|| for (&shift, &int) in shifts.iter().zip(ints.iter()) {
-    //         black_box(int.overflowing_shl(shift).0);
-    //     });
-    // }
-    //
-    // #[bench]
-    // fn bench_u256_shl(b: &mut Bencher) {
-    //     let mut rng = ChaCha8Rng::from_seed([0; 32]);
-    //     let mut buf = [0u8; 32];
-    //     let mut ints = vec![];
-    //     let mut shifts = vec![];
-    //     for _ in 0..100 {
-    //         rng.fill_bytes(&mut buf);
-    //         ints.push(Uint256::from_le_bytes(buf));
-    //         shifts.push(rng.next_u32() % 512);
-    //     }
-    //     b.iter(|| for (&shift, &int) in shifts.iter().zip(ints.iter()) {
-    //         black_box(shl(int.0, shift));
-    //     });
-    // }
-    //
-    // #[bench]
-    // fn bench_u256_shl_bitcoin(b: &mut Bencher) {
-    //     let mut rng = ChaCha8Rng::from_seed([0; 32]);
-    //     let mut buf = [0u8; 32];
-    //     let mut ints = vec![];
-    //     let mut shifts = vec![];
-    //     for _ in 0..100 {
-    //         rng.fill_bytes(&mut buf);
-    //         ints.push(Uint256::from_le_bytes(buf));
-    //         shifts.push(rng.next_u32() % 512);
-    //     }
-    //     b.iter(|| for (&shift, &int) in shifts.iter().zip(ints.iter()) {
-    //         black_box(shl_bitcoin(int.0, shift));
-    //     });
-    // }
-    //
-    // #[bench]
-    // fn bench_u3072(b: &mut Bencher) {
-    //     let mut rng = ChaCha8Rng::from_seed([0; 32]);
-    //     let mut buf = [0u8; 3072];
-    //     let mut ints = vec![];
-    //     let mut shifts = vec![];
-    //     for _ in 0..100 {
-    //         rng.fill_bytes(&mut buf);
-    //         ints.push(Uint3072::from_le_bytes(buf));
-    //         shifts.push(rng.next_u32() % 6144);
-    //     }
-    //     b.iter(|| for (&shift, &int) in shifts.iter().zip(ints.iter()) {
-    //         black_box(int.overflowing_shl(shift).0);
-    //     });
-    // }
-    //
-    // #[bench]
-    // fn bench_u3072_shl(b: &mut Bencher) {
-    //     let mut rng = ChaCha8Rng::from_seed([0; 32]);
-    //     let mut buf = [0u8; 3072];
-    //     let mut ints = vec![];
-    //     let mut shifts = vec![];
-    //     for _ in 0..100 {
-    //         rng.fill_bytes(&mut buf);
-    //         ints.push(Uint3072::from_le_bytes(buf));
-    //         shifts.push(rng.next_u32() % 6144);
-    //     }
-    //     b.iter(|| for (&shift, &int) in shifts.iter().zip(ints.iter()) {
-    //         black_box(shl(int.0, shift));
-    //     });
-    // }
-    //
-    // #[bench]
-    // fn bench_u3072_shl_bitcoin(b: &mut Bencher) {
-    //     let mut rng = ChaCha8Rng::from_seed([0; 32]);
-    //     let mut buf = [0u8; 3072];
-    //     let mut ints = vec![];
-    //     let mut shifts = vec![];
-    //     for _ in 0..100 {
-    //         rng.fill_bytes(&mut buf);
-    //         ints.push(Uint3072::from_le_bytes(buf));
-    //         shifts.push(rng.next_u32() % 6144);
-    //     }
-    //     b.iter(|| for (&shift, &int) in shifts.iter().zip(ints.iter()) {
-    //         black_box(shl_bitcoin(int.0, shift));
-    //     });
-    // }
-
-    // #[test]
-    // fn test_u128() {
-    //     let b = 92345481025148679904203189876114489134;
-    //     let shift = 1514;
-    //     let a = Uint128::from_u128(b);
-    //
-    //     println!("before: {:0128b}", a);
-    //     println!("before: {:0128b}", b);
-    //     println!("num: {b}, shift: {shift}");
-    //     let mine = a.overflowing_shr(shift).0;
-    //     let other = b.overflowing_shr(shift).0;
-    //     println!("\nmine:  {:0128b}", mine);
-    //     println!("other: {:0128b}", other);
-    //     println!("other: {:064b}, {:064b}", other as u64, (other >> 64) as u64);
-    //     assert_eq!(a.overflowing_shr(shift).0.to_le_bytes(), b.overflowing_shr(shift).0.to_le_bytes());
-    // //     let mut rng = ChaCha8Rng::from_seed([0; 32]);
-    // //     let mut buf = [0u8; 16];
-    // //     for _ in 0..1_000_000 {
-    // //         rng.fill_bytes(&mut buf);
-    // //         let a = Uint128::from_le_bytes(buf);
-    // //         let b = u128::from_le_bytes(buf);
-    // //         rng.fill_bytes(&mut buf);
-    // //         let a2 = Uint128::from_le_bytes(buf);
-    // //         let b2 = u128::from_le_bytes(buf);
-    // //         assert_eq!(a.to_le_bytes(), b.to_le_bytes());
-    // //         assert_eq!(a2.to_le_bytes(), b2.to_le_bytes());
-    // //
-    // //         let a = a.overflowing_add(a2).0.overflowing_mul(a2).0;
-    // //         let b = b.overflowing_add(b2).0.overflowing_mul(b2).0;
-    // //         assert_eq!(a.to_le_bytes(), b.to_le_bytes());
-    // //         let shift = rng.next_u32() % 4096;
-    // //         let a_overflow_shl = a.overflowing_shl(shift);
-    // //         let b_overflow_shl = a.overflowing_shl(shift);
-    // //         assert_eq!(a_overflow_shl.1, b_overflow_shl.1);
-    // //         assert_eq!(a_overflow_shl.0.to_le_bytes(), b_overflow_shl.0.to_le_bytes());
-    // //         println!("\nnum: {b}, shift: {shift}");
-    // //         println!("\nmine:  {:0128b}", a);
-    // //         println!("other: {:0128b}", b);
-    // //         assert_eq!(a.overflowing_shr(shift).0.to_le_bytes(), b.overflowing_shr(shift).0.to_le_bytes());
-    // //     }
-    // }
-    //
-    // // extern crate test;
-    // // #[bench]
-    // // fn bench_u128_mul(bench: &mut test::Bencher) {
-    // //     let mut rng = ChaCha8Rng::from_seed([0; 32]);
-    // //     let mut buf = [0u8; 16];
-    // //     rng.fill_bytes(&mut buf);
-    // //     let mut a = u128::from_le_bytes(buf);
-    // //     let mut b = u128::from_le_bytes(buf);
-    // //
-    // //     bench.iter(|| {
-    // //         for _ in 0..10_000 {
-    // //             a = a.overflowing_mul(test::black_box(b)).0;
-    // //             test::black_box(format!("{a:x}"));
-    // //         }
-    // //     });
-    // //     test::black_box(a);
-    // //
-    // // }
-    //
-    // // #[bench]
-    // // fn bench_U128_mul(bench: &mut test::Bencher) {
-    // //     let mut rng = ChaCha8Rng::from_seed([0; 32]);
-    // //     let mut buf = [0u8; 16];
-    // //     rng.fill_bytes(&mut buf);
-    // //     let mut a = Uint128::from_le_bytes(buf);
-    // //     let mut b = Uint128::from_le_bytes(buf);
-    // //
-    // //     bench.iter(|| {
-    // //         for _ in 0..10_000 {
-    // //             a = a.overflowing_mul(test::black_box(b)).0;
-    // //             test::black_box(format!("{a:x}"));
-    // //         }
-    // //     });
-    // //     test::black_box(a);
-    // // }
 }

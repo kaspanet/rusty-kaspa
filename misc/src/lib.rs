@@ -1,2 +1,2 @@
-// #![feature(test)]
-pub mod uint256;
+mod uint;
+construct_uint!(Uint256, 4);
