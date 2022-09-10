@@ -14,6 +14,12 @@ macro_rules! construct_uint {
             pub const LIMBS: usize = $n_words;
 
             #[inline]
+            pub fn from_u64(n: u64) -> Self {
+                let mut ret = Self::ZERO;
+                ret.0[0] = n;
+                ret
+            }
+            #[inline]
             pub fn from_u128(n: u128) -> Self {
                 let mut ret = Self::ZERO;
                 ret.0[0] = n as u64;
@@ -459,9 +465,12 @@ macro_rules! construct_uint {
                 let mut hex = [0u8; Self::BYTES * 2];
                 let bytes = self.to_be_bytes();
                 faster_hex::hex_encode(&bytes, &mut hex).expect("The output is exactly twice the size of the input");
-                let first_non_zero = hex.iter().position(|&x| x != b'0').unwrap_or(hex.len()-1);
+                let first_non_zero = hex
+                    .iter()
+                    .position(|&x| x != b'0')
+                    .unwrap_or(hex.len() - 1);
                 // The string is hex encoded so must be valid UTF8.
-                let str = unsafe {core::str::from_utf8_unchecked(&hex[first_non_zero..])};
+                let str = unsafe { core::str::from_utf8_unchecked(&hex[first_non_zero..]) };
                 f.pad_integral(true, "0x", str)
             }
         }
@@ -530,20 +539,93 @@ macro_rules! construct_uint {
             fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
                 const BIN_LEN: usize = $name::BITS as usize;
                 let mut buf = [0u8; BIN_LEN];
-                let mut first_one = BIN_LEN-1;
+                let mut first_one = BIN_LEN - 1;
                 for (index, (bit, char)) in self
                     .iter_be_bits()
                     .zip(buf.iter_mut())
                     .enumerate()
                 {
                     *char = bit as u8 + b'0';
-                    if first_one == BIN_LEN-1 && bit {
+                    if first_one == BIN_LEN - 1 && bit {
                         first_one = index;
                     }
                 }
                 // We only wrote '0' and '1' so this is always valid UTF-8
                 let buf_str = unsafe { std::str::from_utf8_unchecked(&buf[first_one..]) };
                 f.pad_integral(true, "0b", buf_str)
+            }
+        }
+
+        // We can't derive because the array might be bigger than 32,
+        // so we just implement it the same as arrays.
+        impl serde::Serialize for $name {
+            #[inline]
+            fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+                use serde::ser::SerializeTuple;
+                let mut seq = serializer.serialize_tuple(Self::LIMBS)?;
+                for limb in &self.0 {
+                    seq.serialize_element(limb)?;
+                }
+                seq.end()
+            }
+        }
+
+        impl<'de> serde::Deserialize<'de> for $name {
+            #[inline]
+            fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+                use core::{fmt, marker::PhantomData};
+                use serde::de::{Error, SeqAccess, Visitor};
+                struct EmptyVisitor(PhantomData<$name>);
+                impl<'de> Visitor<'de> for EmptyVisitor {
+                    type Value = $name;
+                    #[inline]
+
+                    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                        formatter.write_str(concat!("an integer with ", $n_words, " limbs"))
+                    }
+
+                    #[inline]
+                    fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
+                        let mut ret = $name::ZERO;
+                        for (i, limb) in ret.0.iter_mut().enumerate() {
+                            *limb = seq
+                                .next_element()?
+                                .ok_or_else(|| Error::invalid_length(i, &self))?;
+                        }
+                        Ok(ret)
+                    }
+                }
+                deserializer.deserialize_tuple(Self::LIMBS, EmptyVisitor(PhantomData))
+            }
+
+            #[inline]
+            fn deserialize_in_place<D: serde::Deserializer<'de>>(
+                deserializer: D, place: &mut Self,
+            ) -> Result<(), D::Error> {
+                use core::fmt;
+                use serde::de::{Error, SeqAccess, Visitor};
+                struct InPlaceVisitor<'a>(&'a mut $name);
+
+                impl<'de, 'a> Visitor<'de> for InPlaceVisitor<'a> {
+                    type Value = ();
+                    #[inline]
+                    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                        formatter.write_str(concat!("an integer with ", $n_words, " limbs"))
+                    }
+                    #[inline]
+                    fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
+                        for (idx, dest) in self.0 .0[..].iter_mut().enumerate() {
+                            match seq.next_element()? {
+                                Some(elem) => *dest = elem,
+                                None => {
+                                    return Err(Error::invalid_length(idx, &self));
+                                }
+                            }
+                        }
+                        Ok(())
+                    }
+                }
+                deserializer.deserialize_tuple(Self::LIMBS, InPlaceVisitor(place))
             }
         }
     };
@@ -573,7 +655,9 @@ mod tests {
         let mut assert_equal = |a: Uint128, b: u128, check_fmt: bool| {
             assert_eq!(a, b);
             assert_eq!(a.to_le_bytes(), b.to_le_bytes());
-            if !check_fmt {return;}
+            if !check_fmt {
+                return;
+            }
 
             assert_equal_args(format_args!("{a:}"), format_args!("{b:}"));
             assert_equal_args(format_args!("{a:b}"), format_args!("{b:b}")); // Test Binary
@@ -581,7 +665,8 @@ mod tests {
             assert_equal_args(format_args!("{a:0128b}"), format_args!("{b:0128b}")); // Test binary with length
             assert_equal_args(format_args!("{a:x}"), format_args!("{b:x}")); // Test LowerHex
             assert_equal_args(format_args!("{a:#x}"), format_args!("{b:#x}")); // Test LowerHex with prefix
-            assert_equal_args(format_args!("{a:0256x}"), format_args!("{b:0256x}")); // Test LowerHex with prefix
+            // Test LowerHex with padding
+            assert_equal_args(format_args!("{a:0256x}"), format_args!("{b:0256x}"));
         };
         let mut rng = ChaCha8Rng::from_seed([0; 32]);
         let mut buf = [0u8; 16];
