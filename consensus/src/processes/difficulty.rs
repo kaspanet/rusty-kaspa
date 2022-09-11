@@ -1,8 +1,8 @@
 use crate::model::stores::{block_window_cache::BlockWindowHeap, ghostdag::GhostdagData, headers::HeaderStoreReader};
 use consensus_core::BlueWorkType;
 use hashes::Hash;
-use kaspa_core::*;
-use num_bigint::{BigInt, Sign};
+use kaspa_core::extract_enum_value;
+use math::{Uint256, Uint320};
 use std::{
     cmp::{max, Ordering},
     collections::HashSet,
@@ -81,20 +81,25 @@ impl<T: HeaderStoreReader> DifficultyManager<T> {
         // We remove the minimal block because we want the average target for the internal window.
         difficulty_blocks.swap_remove(min_ts_index);
 
+        // We need Uint320 to avoid overflow when summing and multiplying by the window size.
+        // TODO: Try to see if we can use U256 instead, by modifying the algorithm.
         let difficulty_blocks_len = difficulty_blocks.len();
-        let targets_sum: BigInt = difficulty_blocks
+        let targets_sum: Uint320 = difficulty_blocks
             .into_iter()
-            .map(|diff_block| big_from_compact_target(diff_block.bits))
+            .map(|diff_block| Uint320::from(u256_from_compact_target(diff_block.bits)))
             .sum();
         let average_target = targets_sum / (difficulty_blocks_len as u64);
         let new_target =
             average_target * max(max_ts - min_ts, 1) / self.target_time_per_block / difficulty_blocks_len as u64;
-        compact_target_from_big(&new_target)
+        compact_target_from_uint256(
+            new_target
+                .try_into()
+                .expect("Expected target should be less than 2^256"),
+        )
     }
 }
 
-// TODO: Replace BigInt with U256
-pub fn big_from_compact_target(bits: u32) -> BigInt {
+pub fn u256_from_compact_target(bits: u32) -> Uint256 {
     // This is a floating-point "compact" encoding originally used by
     // OpenSSL, which satoshi put into consensus code, so we're stuck
     // with it. The exponent needs to have 3 subtracted from it, hence
@@ -102,7 +107,7 @@ pub fn big_from_compact_target(bits: u32) -> BigInt {
     let (mant, expt) = {
         let unshifted_expt = bits >> 24;
         if unshifted_expt <= 3 {
-            ((bits & 0xFFFFFF) >> (8 * (3 - unshifted_expt as usize)), 0)
+            ((bits & 0xFFFFFF) >> (8 * (3 - unshifted_expt)), 0)
         } else {
             (bits & 0xFFFFFF, 8 * ((bits >> 24) - 3))
         }
@@ -110,21 +115,20 @@ pub fn big_from_compact_target(bits: u32) -> BigInt {
 
     // The mantissa is signed but may not be negative
     if mant > 0x7FFFFF {
-        Default::default()
+        Uint256::ZERO
     } else {
-        BigInt::from(mant) << (expt as usize)
+        Uint256::from_u64(u64::from(mant)) << expt
     }
 }
 
-// TODO: Replace BigInt with U256
 /// Computes the target value in float format from BigInt format.
-fn compact_target_from_big(value: &BigInt) -> u32 {
+fn compact_target_from_uint256(value: Uint256) -> u32 {
     let mut size = (value.bits() + 7) / 8;
     let mut compact = if size <= 3 {
-        (value.to_u64_digits().1[0] << (8 * (3 - size))) as u32
+        (value.as_u64() << (8 * (3 - size))) as u32
     } else {
         let bn = value >> (8 * (size - 3));
-        bn.to_u32_digits().1[0]
+        bn.as_u64() as u32
     };
 
     if (compact & 0x00800000) != 0 {
@@ -136,14 +140,16 @@ fn compact_target_from_big(value: &BigInt) -> u32 {
 }
 
 pub fn calc_work(bits: u32) -> BlueWorkType {
-    let target = big_from_compact_target(bits);
-    if target.sign() == Sign::Minus {
-        return 0;
-    }
+    let target = u256_from_compact_target(bits);
+    // Source: https://github.com/bitcoin/bitcoin/blob/2e34374bf3e12b37b0c66824a6c998073cdfab01/src/chain.cpp#L131
+    // We need to compute 2**256 / (bnTarget+1), but we can't represent 2**256
+    // as it's too large for an arith_uint256. However, as 2**256 is at least as large
+    // as bnTarget+1, it is equal to ((2**256 - bnTarget - 1) / (bnTarget+1)) + 1,
+    // or ~bnTarget / (bnTarget+1) + 1.
 
-    let denominator: BigInt = target + 1;
-    let one_lsh_256: BigInt = BigInt::from(1) << 256;
-    (one_lsh_256 / denominator).try_into().unwrap()
+    let res = (!target / (target + 1)) + 1;
+    res.try_into()
+        .expect("Work should not exceed 2**128")
 }
 
 #[derive(Eq)]
