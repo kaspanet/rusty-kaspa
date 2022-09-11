@@ -4,7 +4,7 @@ use libfuzzer_sys::fuzz_target;
 use math::construct_uint;
 use num_bigint::BigUint;
 use num_traits::Zero;
-use std::{convert::TryInto, clone};
+use std::convert::TryInto;
 
 construct_uint!(Uint256, 4);
 

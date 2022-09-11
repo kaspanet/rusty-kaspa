@@ -100,11 +100,17 @@ macro_rules! construct_uint {
 
             #[inline]
             pub fn overflowing_add(mut self, other: $name) -> ($name, bool) {
+                // Replace with std once stabilized:https://github.com/rust-lang/rust/issues/85532
+                #[inline(always)]
+                pub const fn carrying_add_u64(lhs: u64, rhs: u64, carry: bool) -> (u64, bool) {
+                    let (a, b) = lhs.overflowing_add(rhs);
+                    let (c, d) = a.overflowing_add(carry as u64);
+                    (c, b != d)
+                }
                 let mut carry = false;
                 let mut carry_out;
                 for i in 0..Self::LIMBS {
-                    (self.0[i], carry_out) = self.0[i].overflowing_add(other.0[i]);
-                    self.0[i] += carry as u64; // This cannot overflow as we are adding at most 2^64 - 1 to 2^64 - 1
+                    (self.0[i], carry_out) = carrying_add_u64(self.0[i], other.0[i], carry);
                     carry = carry_out;
                 }
                 (self, carry)
@@ -125,11 +131,18 @@ macro_rules! construct_uint {
 
             #[inline]
             pub fn overflowing_sub(mut self, other: $name) -> ($name, bool) {
+                // Replace with std once stabilized:https://github.com/rust-lang/rust/issues/85532
+                #[inline(always)]
+                pub const fn borrowing_sub_u64(lhs: u64, rhs: u64, borrow: bool) -> (u64, bool) {
+                    let (a, b) = lhs.overflowing_sub(rhs);
+                    let (c, d) = a.overflowing_sub(borrow as u64);
+                    (c, b != d)
+                }
+
                 let mut carry = false;
                 let mut carry_out;
                 for i in 0..Self::LIMBS {
-                    (self.0[i], carry_out) = self.0[i].overflowing_sub(other.0[i]);
-                    self.0[i] -= carry as u64; // This cannot overflow as we are subtracting at most 2^64 - 1 from 2^64 - 1
+                    (self.0[i], carry_out) = borrowing_sub_u64(self.0[i], other.0[i], carry);
                     carry = carry_out;
                 }
                 (self, carry)
@@ -582,7 +595,8 @@ macro_rules! construct_uint {
             fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
                 let mut hex = [0u8; Self::BYTES * 2];
                 let bytes = self.to_be_bytes();
-                $crate::uint::faster_hex::hex_encode(&bytes, &mut hex).expect("The output is exactly twice the size of the input");
+                $crate::uint::faster_hex::hex_encode(&bytes, &mut hex)
+                    .expect("The output is exactly twice the size of the input");
                 let first_non_zero = hex
                     .iter()
                     .position(|&x| x != b'0')

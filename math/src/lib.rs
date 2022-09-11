@@ -24,3 +24,25 @@ impl core::convert::TryFrom<Uint320> for Uint256 {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::Uint256;
+
+    #[test]
+    fn test_overflow_bug() {
+        let a = Uint256::from_le_bytes([
+            255, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255,
+        ]);
+        let b = Uint256::from_le_bytes([
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 71, 33, 0,
+            0, 0, 0, 0, 0, 0, 32, 0, 0, 0,
+        ]);
+        let c = a.overflowing_add(b).0;
+        let expected = [
+            254, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 255, 71, 33, 0, 0, 0, 0, 0, 0, 0, 32, 0, 0, 0,
+        ];
+        assert_eq!(c.to_le_bytes(), expected);
+    }
+}
