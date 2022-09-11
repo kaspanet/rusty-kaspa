@@ -1,4 +1,4 @@
-mod uint;
+pub mod uint;
 construct_uint!(Uint256, 4);
 construct_uint!(Uint320, 5);
 
@@ -16,7 +16,7 @@ impl core::convert::TryFrom<Uint320> for Uint256 {
     #[inline]
     fn try_from(value: Uint320) -> Result<Self, Self::Error> {
         if value.0[4] != 0 {
-            Err(crate::uint::TryFromIntError(()))
+            Err(crate::uint::TryFromIntError)
         } else {
             let mut result = Uint256::ZERO;
             result.0.copy_from_slice(&value.0[..4]);

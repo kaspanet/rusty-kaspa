@@ -1,3 +1,8 @@
+#[doc(hidden)]
+pub use faster_hex;
+#[doc(hidden)]
+pub use serde;
+
 #[macro_export]
 macro_rules! construct_uint {
     ($name:ident, $n_words:literal) => {
@@ -224,7 +229,7 @@ macro_rules! construct_uint {
                 let your_bits = other.bits();
 
                 // Check for division by 0
-                assert_ne!(your_bits, 0, "attempted to divide {:b} by zero", self);
+                assert_ne!(your_bits, 0, "attempted to divide {} by zero", self);
 
                 // Early return in case we are dividing by a larger number than us
                 if my_bits < your_bits {
@@ -565,7 +570,7 @@ macro_rules! construct_uint {
             #[inline]
             fn try_from(value: $name) -> Result<Self, Self::Error> {
                 if value.0[2..].iter().any(|&x| x != 0) {
-                    Err($crate::uint::TryFromIntError(()))
+                    Err($crate::uint::TryFromIntError)
                 } else {
                     Ok(value.as_u128())
                 }
@@ -577,7 +582,7 @@ macro_rules! construct_uint {
             fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
                 let mut hex = [0u8; Self::BYTES * 2];
                 let bytes = self.to_be_bytes();
-                faster_hex::hex_encode(&bytes, &mut hex).expect("The output is exactly twice the size of the input");
+                $crate::uint::faster_hex::hex_encode(&bytes, &mut hex).expect("The output is exactly twice the size of the input");
                 let first_non_zero = hex
                     .iter()
                     .position(|&x| x != b'0')
@@ -671,10 +676,10 @@ macro_rules! construct_uint {
 
         // We can't derive because the array might be bigger than 32,
         // so we just implement it the same as arrays.
-        impl serde::Serialize for $name {
+        impl $crate::uint::serde::Serialize for $name {
             #[inline]
-            fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-                use serde::ser::SerializeTuple;
+            fn serialize<S: $crate::uint::serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+                use $crate::uint::serde::ser::SerializeTuple;
                 let mut seq = serializer.serialize_tuple(Self::LIMBS)?;
                 for limb in &self.0 {
                     seq.serialize_element(limb)?;
@@ -683,11 +688,11 @@ macro_rules! construct_uint {
             }
         }
 
-        impl<'de> serde::Deserialize<'de> for $name {
+        impl<'de> $crate::uint::serde::Deserialize<'de> for $name {
             #[inline]
-            fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+            fn deserialize<D: $crate::uint::serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
                 use core::{fmt, marker::PhantomData};
-                use serde::de::{Error, SeqAccess, Visitor};
+                use $crate::uint::serde::de::{Error, SeqAccess, Visitor};
                 struct EmptyVisitor(PhantomData<$name>);
                 impl<'de> Visitor<'de> for EmptyVisitor {
                     type Value = $name;
@@ -712,11 +717,11 @@ macro_rules! construct_uint {
             }
 
             #[inline]
-            fn deserialize_in_place<D: serde::Deserializer<'de>>(
+            fn deserialize_in_place<D: $crate::uint::serde::Deserializer<'de>>(
                 deserializer: D, place: &mut Self,
             ) -> Result<(), D::Error> {
                 use core::fmt;
-                use serde::de::{Error, SeqAccess, Visitor};
+                use $crate::uint::serde::de::{Error, SeqAccess, Visitor};
                 struct InPlaceVisitor<'a>(&'a mut $name);
 
                 impl<'de, 'a> Visitor<'de> for InPlaceVisitor<'a> {
@@ -746,7 +751,7 @@ macro_rules! construct_uint {
 
 /// The error type returned when a checked integral type conversion fails.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct TryFromIntError(pub(crate) ());
+pub struct TryFromIntError;
 
 impl std::error::Error for TryFromIntError {}
 
