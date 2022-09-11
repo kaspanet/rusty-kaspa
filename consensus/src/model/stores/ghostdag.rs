@@ -7,6 +7,7 @@ use itertools::EitherOrBoth::{Both, Left, Right};
 use itertools::Itertools;
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
+use std::iter::once;
 use std::{cell::RefCell, collections::HashMap, sync::Arc};
 
 pub type KType = u8; // This type must be increased to u16 if we ever set GHOSTDAG K > 255
@@ -103,6 +104,18 @@ impl GhostdagData {
             .skip(1) // Skip the selected parent
             .cloned()
             .chain(self.mergeset_reds.iter().cloned())
+    }
+
+    /// Returns an iterator to the mergeset in topological consensus order -- starting with the selected parent,
+    /// and adding the mergeset in increasing blue work order. Note that this is a topological order even though
+    /// the selected parent has highest blue work by def -- since the mergeset is in its anticone.  
+    pub fn consensus_ordered_mergeset<'a>(
+        &'a self, store: &'a (impl GhostdagStoreReader + ?Sized),
+    ) -> impl Iterator<Item = Hash> + '_ {
+        once(self.selected_parent).chain(
+            self.ascending_mergeset_without_selected_parent(store)
+                .map(|s| s.hash),
+        )
     }
 
     /// Returns an iterator to the mergeset with no specified order (including the selected parent)
