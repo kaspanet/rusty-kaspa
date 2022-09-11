@@ -434,6 +434,11 @@ mod tests {
                 .collect::<Vec<Hash>>()
         );
 
+        itertools::assert_equal(
+            once(1.into()).chain(expected.iter().cloned()),
+            data.consensus_ordered_mergeset(&store),
+        );
+
         expected.reverse();
         assert_eq!(
             expected,
