@@ -264,12 +264,11 @@ impl HeaderProcessor {
 
         // Run GHOSTDAG for the new header
         self.pre_ghostdag_validation(&mut ctx, header)?;
-        self.ghostdag_manager
-            .add_block(&mut ctx, header.hash); // TODO: Run GHOSTDAG for all block levels
+        ctx.ghostdag_data = Some(
+            self.ghostdag_manager
+                .ghostdag(header.direct_parents()),
+        ); // TODO: Run GHOSTDAG for all block levels
 
-        //
-        // TODO: imp all remaining header validation and processing steps :)
-        //
         self.pre_pow_validation(&mut ctx, header)?;
 
         if let Err(e) = self.post_pow_validation(&mut ctx, header) {

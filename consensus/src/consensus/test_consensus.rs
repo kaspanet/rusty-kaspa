@@ -13,11 +13,11 @@ use parking_lot::RwLock;
 use crate::{
     errors::BlockProcessResult,
     model::stores::{
-        block_window_cache::BlockWindowCacheStore, ghostdag::DbGhostdagStore, pruning::PruningStoreReader,
-        reachability::DbReachabilityStore, statuses::BlockStatus, DB,
+        block_window_cache::BlockWindowCacheStore, ghostdag::DbGhostdagStore, reachability::DbReachabilityStore,
+        statuses::BlockStatus, DB,
     },
     params::Params,
-    pipeline::{header_processor::HeaderProcessingContext, ProcessingCounters},
+    pipeline::ProcessingCounters,
     processes::dagtraversalmanager::DagTraversalManager,
     test_helpers::header_from_precomputed_hash,
 };
@@ -42,20 +42,10 @@ impl TestConsensus {
 
     pub fn build_header_with_parents(&self, hash: Hash, parents: Vec<Hash>) -> Header {
         let mut header = header_from_precomputed_hash(hash, parents);
-        let mut ctx: HeaderProcessingContext = HeaderProcessingContext::new(
-            hash,
-            &header,
-            self.consensus
-                .pruning_store
-                .read()
-                .pruning_point()
-                .unwrap(),
-        );
-        self.consensus
+        let ghostdag_data = self
+            .consensus
             .ghostdag_manager
-            .add_block(&mut ctx, hash);
-
-        let ghostdag_data = ctx.ghostdag_data.unwrap();
+            .ghostdag(header.direct_parents());
 
         let window = self
             .consensus
