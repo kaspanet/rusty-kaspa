@@ -106,6 +106,19 @@ macro_rules! construct_uint {
             }
 
             #[inline]
+            pub fn overflowing_add_word(mut self, other: u64) -> ($name, bool) {
+                let mut carry: bool;
+                (self.0[0], carry) = self.0[0].overflowing_add(other);
+                for i in 1..Self::LIMBS {
+                    if !carry {
+                        break;
+                    }
+                    (self.0[i], carry) = self.0[i].overflowing_add(1);
+                }
+                (self, carry)
+            }
+
+            #[inline]
             pub fn overflowing_sub(mut self, other: $name) -> ($name, bool) {
                 let mut carry = false;
                 let mut carry_out;
@@ -343,8 +356,21 @@ macro_rules! construct_uint {
             type Output = $name;
 
             #[inline]
+            #[track_caller]
             fn add(self, other: $name) -> $name {
                 let (sum, carry) = self.overflowing_add(other);
+                debug_assert!(!carry, "attempt to add with overflow"); // Check in debug that it didn't overflow
+                sum
+            }
+        }
+
+        impl core::ops::Add<u64> for $name {
+            type Output = $name;
+
+            #[inline]
+            #[track_caller]
+            fn add(self, other: u64) -> $name {
+                let (sum, carry) = self.overflowing_add_word(other);
                 debug_assert!(!carry, "attempt to add with overflow"); // Check in debug that it didn't overflow
                 sum
             }
@@ -354,6 +380,7 @@ macro_rules! construct_uint {
             type Output = $name;
 
             #[inline]
+            #[track_caller]
             fn sub(self, other: $name) -> $name {
                 let (sum, carry) = self.overflowing_sub(other);
                 debug_assert!(!carry, "attempt to subtract with overflow"); // Check in debug that it didn't overflow
@@ -365,6 +392,7 @@ macro_rules! construct_uint {
             type Output = $name;
 
             #[inline]
+            #[track_caller]
             fn mul(self, other: $name) -> $name {
                 let (product, carry) = self.overflowing_mul(other);
                 debug_assert!(!carry, "attempt to multiply with overflow"); // Check in debug that it didn't overflow
@@ -376,6 +404,7 @@ macro_rules! construct_uint {
             type Output = $name;
 
             #[inline]
+            #[track_caller]
             fn mul(self, other: u64) -> $name {
                 let (product, carry) = self.overflowing_mul_u64(other);
                 debug_assert!(!carry, "attempt to multiply with overflow"); // Check in debug that it didn't overflow
@@ -386,6 +415,7 @@ macro_rules! construct_uint {
         impl core::ops::Div<$name> for $name {
             type Output = $name;
 
+            #[inline]
             fn div(self, other: $name) -> $name {
                 self.div_rem(other).0
             }
@@ -394,6 +424,7 @@ macro_rules! construct_uint {
         impl core::ops::Rem<$name> for $name {
             type Output = $name;
 
+            #[inline]
             fn rem(self, other: $name) -> $name {
                 self.div_rem(other).1
             }
@@ -402,6 +433,7 @@ macro_rules! construct_uint {
         impl core::ops::Div<u64> for $name {
             type Output = $name;
 
+            #[inline]
             fn div(self, other: u64) -> $name {
                 self.div_rem_word(other).0
             }
@@ -468,6 +500,7 @@ macro_rules! construct_uint {
             type Output = $name;
 
             #[inline]
+            #[track_caller]
             fn shl(self, shift: u32) -> $name {
                 let (res, carry) = self.overflowing_shl(shift);
                 debug_assert!(!carry, "attempt to shift left with overflow"); // Check in debug that it didn't overflow
@@ -479,6 +512,7 @@ macro_rules! construct_uint {
             type Output = $name;
 
             #[inline]
+            #[track_caller]
             fn shr(self, shift: u32) -> $name {
                 let (res, carry) = self.overflowing_shr(shift);
                 debug_assert!(!carry, "attempt to shift left with overflow"); // Check in debug that it didn't overflow
@@ -487,6 +521,8 @@ macro_rules! construct_uint {
         }
 
         impl core::iter::Sum for $name {
+            #[inline]
+            #[track_caller]
             fn sum<I: Iterator<Item = Self>>(mut iter: I) -> Self {
                 let first = iter.next().unwrap_or_else(|| Self::ZERO);
                 iter.fold(first, |a, b| a + b)
@@ -494,6 +530,8 @@ macro_rules! construct_uint {
         }
 
         impl core::iter::Product for $name {
+            #[inline]
+            #[track_caller]
             fn product<I: Iterator<Item = Self>>(mut iter: I) -> Self {
                 let first = iter.next().unwrap_or_else(|| Self::from_u64(1));
                 iter.fold(first, |a, b| a * b)
@@ -501,6 +539,8 @@ macro_rules! construct_uint {
         }
 
         impl<'a> core::iter::Sum<&'a $name> for $name {
+            #[inline]
+            #[track_caller]
             fn sum<I: Iterator<Item = &'a Self>>(mut iter: I) -> Self {
                 let first = iter.next().copied().unwrap_or_else(|| Self::ZERO);
                 iter.fold(first, |a, &b| a + b)
@@ -508,12 +548,27 @@ macro_rules! construct_uint {
         }
 
         impl<'a> core::iter::Product<&'a $name> for $name {
+            #[inline]
+            #[track_caller]
             fn product<I: Iterator<Item = &'a Self>>(mut iter: I) -> Self {
                 let first = iter
                     .next()
                     .copied()
                     .unwrap_or_else(|| Self::from_u64(1));
                 iter.fold(first, |a, &b| a * b)
+            }
+        }
+
+        impl core::convert::TryFrom<$name> for u128 {
+            type Error = $crate::uint::TryFromIntError;
+
+            #[inline]
+            fn try_from(value: $name) -> Result<Self, Self::Error> {
+                if value.0[2..].iter().any(|&x| x != 0) {
+                    Err($crate::uint::TryFromIntError(()))
+                } else {
+                    Ok(value.as_u128())
+                }
             }
         }
 
@@ -689,6 +744,24 @@ macro_rules! construct_uint {
     };
 }
 
+/// The error type returned when a checked integral type conversion fails.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct TryFromIntError(pub(crate) ());
+
+impl std::error::Error for TryFromIntError {}
+
+impl core::fmt::Display for TryFromIntError {
+    fn fmt(&self, fmt: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        "out of range integral type conversion attempted".fmt(fmt)
+    }
+}
+
+impl From<core::convert::Infallible> for TryFromIntError {
+    fn from(x: core::convert::Infallible) -> TryFromIntError {
+        match x {}
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use rand_chacha::{
@@ -782,9 +855,17 @@ mod tests {
             {
                 let rand_u64 = rng.next_u64();
                 let mine_mult = mine.overflowing_mul_u64(rand_u64);
-                let default_divrem = default.overflowing_mul(rand_u64 as u128);
-                assert_equal(mine_mult.0, default_divrem.0, check_fmt);
-                assert_eq!(mine_mult.1, default_divrem.1);
+                let default_mult = default.overflowing_mul(rand_u64 as u128);
+                assert_equal(mine_mult.0, default_mult.0, check_fmt);
+                assert_eq!(mine_mult.1, default_mult.1);
+            }
+            // Test fast u64 addition
+            {
+                let rand_u64 = rng.next_u64();
+                let mine_add = mine.overflowing_add_word(rand_u64);
+                let default_add = default.overflowing_add(rand_u64 as u128);
+                assert_equal(mine_add.0, default_add.0, check_fmt);
+                assert_eq!(mine_add.1, default_add.1);
             }
         }
     }

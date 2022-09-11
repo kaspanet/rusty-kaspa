@@ -31,13 +31,6 @@ fn bench_uint128(c: &mut Criterion) {
 
     let mut u128_c = c.benchmark_group("u128");
 
-    u128_c.bench_function("multiplication", |b| {
-        b.iter(|| {
-            for (&a, &b) in u128_one.iter().zip(u128_two.iter()) {
-                black_box(a * b);
-            }
-        });
-    });
     u128_c.bench_function("addition", |b| {
         b.iter(|| {
             for (&a, &b) in u128_one.iter().zip(u128_two.iter()) {
@@ -45,7 +38,20 @@ fn bench_uint128(c: &mut Criterion) {
             }
         });
     });
-
+    u128_c.bench_function("addition u64", |b| {
+        b.iter(|| {
+            for (&a, &b) in u128_one.iter().zip(u128_two.iter()) {
+                black_box(a + (b as u64 as u128));
+            }
+        });
+    });
+    u128_c.bench_function("multiplication", |b| {
+        b.iter(|| {
+            for (&a, &b) in u128_one.iter().zip(u128_two.iter()) {
+                black_box(a * b);
+            }
+        });
+    });
     u128_c.bench_function("division", |b| {
         b.iter(|| {
             for (&a, &b) in u128_one.iter().zip(u128_two.iter()) {
@@ -53,7 +59,6 @@ fn bench_uint128(c: &mut Criterion) {
             }
         });
     });
-
     u128_c.bench_function("u64 division", |b| {
         b.iter(|| {
             for (&a, &b) in u128_one.iter().zip(u128_two.iter()) {
@@ -61,7 +66,6 @@ fn bench_uint128(c: &mut Criterion) {
             }
         });
     });
-
     u128_c.bench_function("left shift", |b| {
         b.iter(|| {
             for (&a, &b) in u128_one.iter().zip(shifts.iter()) {
@@ -69,7 +73,6 @@ fn bench_uint128(c: &mut Criterion) {
             }
         });
     });
-
     u128_c.bench_function("right shift", |b| {
         b.iter(|| {
             for (&a, &b) in u128_one.iter().zip(shifts.iter()) {
@@ -90,17 +93,24 @@ fn bench_uint128(c: &mut Criterion) {
         .map(Uint128::from_u128)
         .collect();
 
-    uint128_c.bench_function("multiplication", |b| {
-        b.iter(|| {
-            for (&a, &b) in uint128_one.iter().zip(uint128_two.iter()) {
-                black_box(a * b);
-            }
-        });
-    });
     uint128_c.bench_function("addition", |b| {
         b.iter(|| {
             for (&a, &b) in uint128_one.iter().zip(uint128_two.iter()) {
                 black_box(a + b);
+            }
+        });
+    });
+    uint128_c.bench_function("addition u64", |b| {
+        b.iter(|| {
+            for (&a, &b) in uint128_one.iter().zip(uint128_two.iter()) {
+                black_box(a + b.as_u64());
+            }
+        });
+    });
+    uint128_c.bench_function("multiplication", |b| {
+        b.iter(|| {
+            for (&a, &b) in uint128_one.iter().zip(uint128_two.iter()) {
+                black_box(a * b);
             }
         });
     });
@@ -119,7 +129,6 @@ fn bench_uint128(c: &mut Criterion) {
             }
         });
     });
-
     uint128_c.bench_function("left shift", |b| {
         b.iter(|| {
             for (&a, &b) in uint128_one.iter().zip(shifts.iter()) {
@@ -127,7 +136,6 @@ fn bench_uint128(c: &mut Criterion) {
             }
         });
     });
-
     uint128_c.bench_function("right shift", |b| {
         b.iter(|| {
             for (&a, &b) in uint128_one.iter().zip(shifts.iter()) {
@@ -135,7 +143,6 @@ fn bench_uint128(c: &mut Criterion) {
             }
         });
     });
-
     uint128_c.finish();
 }
 
