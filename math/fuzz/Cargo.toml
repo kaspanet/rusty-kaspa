@@ -10,6 +10,9 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
+num-bigint = "0.4"
+num-traits = "0.2"
+
 
 [dependencies.math]
 path = ".."
@@ -21,5 +24,11 @@ members = ["."]
 [[bin]]
 name = "u128"
 path = "fuzz_targets/u128.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "u256"
+path = "fuzz_targets/u256.rs"
 test = false
 doc = false
