@@ -3,18 +3,26 @@ use crate::{
     model::{
         services::reachability::MTReachabilityService,
         stores::{
+            block_transactions::DbBlockTransactionsStore,
+            block_window_cache::BlockWindowCacheStore,
+            ghostdag::DbGhostdagStore,
+            headers::DbHeadersStore,
             reachability::DbReachabilityStore,
-            statuses::{BlockStatus, DbStatusesStore},
+            statuses::{BlockStatus, DbStatusesStore, StatusesStoreBatchExtensions},
             DB,
         },
     },
     pipeline::deps_manager::{BlockTask, BlockTaskDependencyManager},
-    processes::{coinbase::CoinbaseManager, mass::MassCalculator, transaction_validator::TransactionValidator},
+    processes::{
+        coinbase::CoinbaseManager, mass::MassCalculator, pastmediantime::PastMedianTimeManager,
+        transaction_validator::TransactionValidator,
+    },
 };
 use consensus_core::block::Block;
 use crossbeam_channel::{Receiver, Sender};
 use hashes::Hash;
 use parking_lot::RwLock;
+use rocksdb::WriteBatch;
 use std::sync::Arc;
 
 pub struct BlockBodyProcessor {
@@ -27,26 +35,35 @@ pub struct BlockBodyProcessor {
 
     // Config
     pub(super) max_block_mass: u64,
+    pub(super) genesis_hash: Hash,
 
     // Stores
     pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
+    pub(super) ghostdag_store: Arc<DbGhostdagStore>,
+    pub(super) headers_store: Arc<DbHeadersStore>,
+    pub(super) block_transactions_store: Arc<DbBlockTransactionsStore>,
 
     // Managers and services
     pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
     pub(super) coinbase_manager: CoinbaseManager,
     pub(super) mass_calculator: MassCalculator,
     pub(super) transaction_validator: TransactionValidator,
+    pub(super) past_median_time_manager: PastMedianTimeManager<DbHeadersStore, DbGhostdagStore, BlockWindowCacheStore>,
 
     // Dependency manager
     task_manager: BlockTaskDependencyManager,
 }
 
 impl BlockBodyProcessor {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         receiver: Receiver<BlockTask>, sender: Sender<BlockTask>, db: Arc<DB>,
-        statuses_store: Arc<RwLock<DbStatusesStore>>, reachability_service: MTReachabilityService<DbReachabilityStore>,
-        coinbase_manager: CoinbaseManager, mass_calculator: MassCalculator,
-        transaction_validator: TransactionValidator, max_block_mass: u64,
+        statuses_store: Arc<RwLock<DbStatusesStore>>, ghostdag_store: Arc<DbGhostdagStore>,
+        headers_store: Arc<DbHeadersStore>, block_transactions_store: Arc<DbBlockTransactionsStore>,
+        reachability_service: MTReachabilityService<DbReachabilityStore>, coinbase_manager: CoinbaseManager,
+        mass_calculator: MassCalculator, transaction_validator: TransactionValidator,
+        past_median_time_manager: PastMedianTimeManager<DbHeadersStore, DbGhostdagStore, BlockWindowCacheStore>,
+        max_block_mass: u64, genesis_hash: Hash,
     ) -> Self {
         Self {
             receiver,
@@ -54,10 +71,15 @@ impl BlockBodyProcessor {
             db,
             statuses_store,
             reachability_service,
+            ghostdag_store,
+            headers_store,
+            block_transactions_store,
             coinbase_manager,
             mass_calculator,
             transaction_validator,
+            past_median_time_manager,
             max_block_mass,
+            genesis_hash,
             task_manager: BlockTaskDependencyManager::new(),
         }
     }
@@ -116,6 +138,27 @@ impl BlockBodyProcessor {
 
     fn process_block_body(self: &Arc<BlockBodyProcessor>, block: &Block) -> BlockProcessResult<BlockStatus> {
         self.validate_body_in_isolation(block)?;
+        self.validate_body_in_context(block)?;
+        self.commit_body(block);
         Ok(BlockStatus::StatusUTXOPendingVerification)
+    }
+
+    fn commit_body(self: &Arc<BlockBodyProcessor>, block: &Block) {
+        let mut batch = WriteBatch::default();
+
+        // This is an append only store so it requires no lock.
+        self.block_transactions_store
+            .insert_batch(&mut batch, block.header.hash, block.transactions.clone())
+            .unwrap();
+
+        let statuses_write_guard = self
+            .statuses_store
+            .set_batch(&mut batch, block.header.hash, BlockStatus::StatusUTXOPendingVerification)
+            .unwrap();
+
+        self.db.write(batch).unwrap();
+
+        // Calling the drops explicitly after the batch is written in order to avoid possible errors.
+        drop(statuses_write_guard);
     }
 }

@@ -93,6 +93,15 @@ pub enum RuleError {
 
     #[error("outpoint {0} is created and spent on the same block")]
     ChainedTransaction(TransactionOutpoint),
+
+    #[error("transaction in context validation failed for tx {0}: {1}")]
+    TxInContextFailed(TransactionId, TxRuleError),
+
+    #[error("wrong coinbase subsidy: expected {0} but got {1}")]
+    WrongSubsidy(u64, u64),
+
+    #[error("Transaction {0} is found more than once in the block")]
+    DuplicateTransactions(TransactionId),
 }
 
 pub type BlockProcessResult<T> = std::result::Result<T, RuleError>;

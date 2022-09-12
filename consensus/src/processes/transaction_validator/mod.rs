@@ -1,5 +1,6 @@
 pub mod errors;
 mod tx_validation_in_isolation;
+pub mod tx_validation_not_utxo_related;
 pub use tx_validation_in_isolation::*;
 
 #[derive(Clone, Copy)]

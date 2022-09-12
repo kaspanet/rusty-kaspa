@@ -25,6 +25,8 @@ pub struct Params {
     pub mass_per_script_pub_key_byte: u64,
     pub mass_per_sig_op: u64,
     pub max_block_mass: u64,
+    pub deflationary_phase_daa_score: u64,
+    pub pre_deflationary_phase_base_subsidy: u64,
 }
 
 const DEFAULT_GHOSTDAG_K: KType = 18;
@@ -56,4 +58,13 @@ pub const MAINNET_PARAMS: Params = Params {
     mass_per_script_pub_key_byte: 10,
     mass_per_sig_op: 1000,
     max_block_mass: 500_000,
+
+    // deflationary_phase_daa_score is the DAA score after which the pre-deflationary period
+    // switches to the deflationary period. This number is calculated as follows:
+    // We define a year as 365.25 days
+    // Half a year in seconds = 365.25 / 2 * 24 * 60 * 60 = 15778800
+    // The network was down for three days shortly after launch
+    // Three days in seconds = 3 * 24 * 60 * 60 = 259200
+    deflationary_phase_daa_score: 15778800 - 259200,
+    pre_deflationary_phase_base_subsidy: 50000000000,
 };

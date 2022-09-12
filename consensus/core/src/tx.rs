@@ -1,3 +1,5 @@
+use serde::{Deserialize, Serialize};
+
 use crate::{
     hashing,
     subnets::{self, SubnetworkId},
@@ -8,7 +10,7 @@ use std::{fmt::Display, sync::Arc};
 pub type TransactionId = hashes::Hash;
 
 /// Represents a Kaspad ScriptPublicKey
-#[derive(Default, Debug, PartialEq, Eq)]
+#[derive(Default, Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]
 pub struct ScriptPublicKey {
     pub script: Vec<u8>,
     pub version: u16,
@@ -24,7 +26,7 @@ impl ScriptPublicKey {
 /// set such as whether or not it was contained in a coinbase tx, the daa
 /// score of the block that accepts the tx, its public key script, and how
 /// much it pays.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UtxoEntry {
     pub amount: u64,
     pub script_public_key: Arc<ScriptPublicKey>,
@@ -39,7 +41,7 @@ impl UtxoEntry {
 }
 
 /// Represents a Kaspa transaction outpoint
-#[derive(Eq, Hash, PartialEq, Debug, Copy, Clone)]
+#[derive(Eq, Hash, PartialEq, Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct TransactionOutpoint {
     pub transaction_id: TransactionId,
     pub index: u32,
@@ -58,7 +60,7 @@ impl Display for TransactionOutpoint {
 }
 
 /// Represents a Kaspa transaction input
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize, Clone)] // TODO: Implement a custom serializer for input that drops utxo_entry
 pub struct TransactionInput {
     pub previous_outpoint: TransactionOutpoint,
     pub signature_script: Vec<u8>,
@@ -77,7 +79,7 @@ impl TransactionInput {
 }
 
 /// Represents a Kaspad transaction output
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TransactionOutput {
     pub value: u64,
     pub script_public_key: Arc<ScriptPublicKey>,
@@ -90,7 +92,7 @@ impl TransactionOutput {
 }
 
 /// Represents a Kaspa transaction
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Transaction {
     pub version: u16,
     pub inputs: Vec<Arc<TransactionInput>>,

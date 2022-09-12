@@ -1,9 +1,9 @@
 pub mod block_at_depth;
+pub mod coinbase;
 pub mod dagtraversalmanager;
 pub mod difficulty;
 pub mod ghostdag;
+pub mod mass;
 pub mod pastmediantime;
 pub mod reachability;
-pub mod coinbase;
 pub mod transaction_validator;
-pub mod mass;

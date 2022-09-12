@@ -14,3 +14,4 @@ pub mod perf {
 
 pub const BLOCK_VERSION: u16 = 1;
 pub const TX_VERSION: u16 = 0;
+pub const LOCK_TIME_THRESHOLD: u64 = 500_000_000_000;

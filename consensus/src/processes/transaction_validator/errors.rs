@@ -20,11 +20,17 @@ pub enum TxRuleError {
     #[error("transaction has {0} inputs where the max allowed is {1}")]
     TooManyInputs(usize, usize),
 
+    #[error("transaction has {0} outputs where the max allowed is {1}")]
+    TooManyOutputs(usize, usize),
+
     #[error("transaction input #{0} signature script is above {1} bytes")]
     TooBigSignatureScript(usize, usize),
 
     #[error("transaction input #{0} signature script is above {1} bytes")]
     TooBigScriptPublicKey(usize, usize),
+
+    #[error("transaction input #{0} is not finalized")]
+    NotFinalized(usize),
 }
 
 pub type TxResult<T> = std::result::Result<T, TxRuleError>;
