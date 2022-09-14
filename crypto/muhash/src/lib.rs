@@ -133,11 +133,6 @@ impl<'a> MuHashElementBuilder<'a> {
         Self { muhash_field, element_hasher: MuHashElementHash::new() }
     }
 
-    pub fn update<A: AsRef<[u8]>>(&mut self, data: A) -> &mut Self {
-        self.element_hasher.write(data);
-        self
-    }
-
     pub fn finalize(self) {
         let hash = self.element_hasher.finalize();
         let mut stream = ChaCha20Rng::from_seed(hash.as_bytes());
