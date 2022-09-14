@@ -30,6 +30,12 @@ pub enum BlockStatus {
     StatusHeaderOnly,
 }
 
+impl BlockStatus {
+    pub fn has_block_body(self) -> bool {
+        matches!(self, Self::StatusUTXOValid | Self::StatusUTXOPendingVerification | Self::StatusDisqualifiedFromChain)
+    }
+}
+
 /// Reader API for `StatusesStore`.
 pub trait StatusesStoreReader {
     fn get(&self, hash: Hash) -> StoreResult<BlockStatus>;
