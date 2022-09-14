@@ -180,7 +180,7 @@ impl<'a, T: ReachabilityStore + ?Sized> ReindexOperationContext<'a, T> {
                     .collect();
                 let interval = self.store.interval_children_capacity(current)?;
                 let intervals = interval.split_exponential(&sizes);
-                for (c, ci) in children.iter().cloned().zip(intervals) {
+                for (c, ci) in children.iter().copied().zip(intervals) {
                     self.store.set_interval(c, ci)?;
                 }
                 queue.extend(children.iter());

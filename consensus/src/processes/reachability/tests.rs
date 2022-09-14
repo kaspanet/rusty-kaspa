@@ -121,10 +121,10 @@ impl<'a, T: ReachabilityStore + ?Sized> DagBuilder<'a, T> {
         let mut queue: VecDeque<Hash> = block
             .parents
             .iter()
-            .cloned()
+            .copied()
             .filter(|p| *p != selected_parent)
             .collect();
-        let mut mergeset = HashSet::<Hash>::from_iter(queue.iter().cloned());
+        let mut mergeset: HashSet<_> = queue.iter().copied().collect();
         let mut past: HashSet<Hash> = HashSet::new();
 
         while let Some(current) = queue.pop_front() {

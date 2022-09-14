@@ -220,7 +220,7 @@ mod tests {
         let parents = [(1, vec![]), (2, vec![1]), (3, vec![1]), (4, vec![2, 3]), (5, vec![1, 4])];
         for (i, vec) in parents.iter().cloned() {
             store
-                .insert(i.into(), BlockHashes::new(vec.iter().cloned().map(|j| j.into()).collect()))
+                .insert(i.into(), BlockHashes::new(vec.iter().copied().map(Hash::from).collect()))
                 .unwrap();
         }
 
@@ -230,8 +230,8 @@ mod tests {
                 .get_children(i.into())
                 .unwrap()
                 .iter()
-                .cloned()
-                .eq(vec.iter().cloned().map(|j| j.into())));
+                .copied()
+                .eq(vec.iter().copied().map(Hash::from)));
         }
 
         for (i, vec) in parents {
@@ -239,8 +239,8 @@ mod tests {
                 .get_parents(i.into())
                 .unwrap()
                 .iter()
-                .cloned()
-                .eq(vec.iter().cloned().map(|j| j.into())));
+                .copied()
+                .eq(vec.iter().copied().map(Hash::from)));
         }
     }
 }

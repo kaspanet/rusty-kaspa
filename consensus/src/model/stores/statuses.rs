@@ -11,10 +11,9 @@ use super::{
 use hashes::Hash;
 
 #[derive(Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Debug)]
-#[repr(u8)]
 pub enum BlockStatus {
     /// StatusInvalid indicates that the block is invalid.
-    StatusInvalid = 0,
+    StatusInvalid,
 
     /// StatusUTXOValid indicates the block is valid from any UTXO related aspects and has passed all the other validations as well.
     StatusUTXOValid,

@@ -97,7 +97,7 @@ impl GhostdagData {
     }
 
     /// Returns an iterator to the mergeset with no specified order (excluding the selected parent)
-    pub fn unordered_mergeset_without_selected_parent<'a>(&'a self) -> impl Iterator<Item = Hash> + '_ {
+    pub fn unordered_mergeset_without_selected_parent(&self) -> impl Iterator<Item = Hash> + '_ {
         self.mergeset_blues
             .iter()
             .skip(1) // Skip the selected parent
@@ -106,7 +106,7 @@ impl GhostdagData {
     }
 
     /// Returns an iterator to the mergeset with no specified order (including the selected parent)
-    pub fn unordered_mergeset<'a>(&'a self) -> impl Iterator<Item = Hash> + '_ {
+    pub fn unordered_mergeset(&self) -> impl Iterator<Item = Hash> + '_ {
         self.mergeset_blues
             .iter()
             .cloned()

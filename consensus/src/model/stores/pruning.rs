@@ -29,10 +29,7 @@ impl DbPruningStore {
     }
 
     pub fn clone_with_new_cache(&self) -> Self {
-        Self {
-            raw_db: Arc::clone(&self.raw_db),
-            pruning_point: CachedDbItem::new(Arc::clone(&self.raw_db), PRUNING_POINT_KEY),
-        }
+        Self::new(Arc::clone(&self.raw_db))
     }
 }
 

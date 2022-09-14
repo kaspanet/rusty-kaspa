@@ -36,11 +36,9 @@ impl PartialOrd for SortableBlock {
 
 impl Ord for SortableBlock {
     fn cmp(&self, other: &Self) -> Ordering {
-        let res = self.blue_work.cmp(&other.blue_work);
-        match res {
-            Ordering::Equal => self.hash.cmp(&other.hash),
-            _ => res,
-        }
+        self.blue_work
+            .cmp(&other.blue_work)
+            .then_with(|| self.hash.cmp(&other.hash))
     }
 }
 
