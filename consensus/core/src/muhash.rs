@@ -1,23 +1,23 @@
 use crate::{
     hashing::HasherExtensions,
-    tx::{Transaction, TransactionOutpoint, UtxoEntry},
+    tx::{PopulatedTransaction, TransactionOutpoint, UtxoEntry},
 };
 use hashes::HasherBase;
 use muhash::MuHash;
 
 pub trait MuHashExtensions {
-    fn add_transaction(&mut self, tx: &Transaction, block_daa_score: u64);
+    fn add_transaction(&mut self, tx: &PopulatedTransaction, block_daa_score: u64);
 }
 
 impl MuHashExtensions for MuHash {
-    fn add_transaction(&mut self, tx: &Transaction, block_daa_score: u64) {
+    fn add_transaction(&mut self, tx: &PopulatedTransaction, block_daa_score: u64) {
         let tx_id = tx.id();
-        for input in tx.inputs.iter() {
+        for (input, entry) in tx.populated_inputs() {
             let mut writer = self.remove_element_builder();
-            write_utxo(&mut writer, input.utxo_entry.as_ref().unwrap(), &input.previous_outpoint);
+            write_utxo(&mut writer, entry, &input.previous_outpoint);
             writer.finalize();
         }
-        for (i, output) in tx.outputs.iter().enumerate() {
+        for (i, output) in tx.outputs().enumerate() {
             let outpoint = TransactionOutpoint::new(tx_id, i as u32);
             let entry = UtxoEntry::new(output.value, output.script_public_key.clone(), block_daa_score, tx.is_coinbase());
             let mut writer = self.add_element_builder();

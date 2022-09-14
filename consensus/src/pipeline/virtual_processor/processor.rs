@@ -16,6 +16,7 @@ use consensus_core::{
     block::Block,
     blockhash,
     muhash::MuHashExtensions,
+    tx::PopulatedTransaction,
     utxo::{utxo_collection::UtxoCollection, utxo_diff::UtxoDiff},
     DomainHashMap, DomainHashSet,
 };
@@ -168,19 +169,20 @@ impl VirtualStateProcessor {
                         let mut utxo_diff = UtxoDiff::default();
                         let chain_block = state.blocks.get(&chain_hash).unwrap();
 
-                        // TODO: prefill and populate UTXO entry data
-                        utxo_diff.add_transaction(&chain_block.transactions[0], chain_block.header.daa_score).unwrap(); // TODO: mergeset + utxo state tests
-                        accumulated_diff.with_diff_in_place(&utxo_diff).unwrap();
-                        e.insert(utxo_diff);
-
                         // Temp logic
                         assert!(!state.multiset_hashes.contains_key(&chain_hash));
                         let mut multiset_hash = state.multiset_hashes.get(&selected_parent).unwrap().clone();
 
                         if selected_parent != self.genesis_hash {
                             let selected_parent_block = state.blocks.get(&selected_parent).unwrap();
-                            multiset_hash.add_transaction(&selected_parent_block.transactions[0], chain_block.header.daa_score);
+                            let populated_coinbase = PopulatedTransaction::new_without_inputs(&selected_parent_block.transactions[0]);
+                            // TODO: prefill and populate UTXO entry data for all mergeset
+                            utxo_diff.add_transaction(&populated_coinbase, chain_block.header.daa_score).unwrap();
+                            multiset_hash.add_transaction(&populated_coinbase, chain_block.header.daa_score);
                         }
+
+                        accumulated_diff.with_diff_in_place(&utxo_diff).unwrap();
+                        e.insert(utxo_diff);
 
                         // Verify the header UTXO commitment
                         let expected_commitment = multiset_hash.finalize();

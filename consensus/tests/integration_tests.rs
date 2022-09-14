@@ -755,7 +755,6 @@ fn json_line_to_block(line: String) -> Block {
                                     signature_script: hex_decode(&input.SignatureScript),
                                     sequence: input.Sequence,
                                     sig_op_count: input.SigOpCount,
-                                    utxo_entry: None,
                                 })
                             })
                             .collect(),

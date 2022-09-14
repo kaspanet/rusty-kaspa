@@ -165,7 +165,6 @@ mod tests {
                         signature_script: vec![],
                         sequence: u64::MAX,
                         sig_op_count: 0,
-                        utxo_entry: None,
                     })],
                     vec![Arc::new(TransactionOutput {
                         value: 0x12a05f200,
@@ -197,7 +196,6 @@ mod tests {
                             signature_script: vec![],
                             sequence: u64::MAX,
                             sig_op_count: 0,
-                            utxo_entry: None,
                         }),
                         Arc::new(TransactionInput {
                             previous_outpoint: TransactionOutpoint {
@@ -210,7 +208,6 @@ mod tests {
                             signature_script: vec![],
                             sequence: u64::MAX,
                             sig_op_count: 0,
-                            utxo_entry: None,
                         }),
                     ],
                     vec![],
@@ -245,7 +242,6 @@ mod tests {
                         ],
                         sequence: u64::MAX,
                         sig_op_count: 0,
-                        utxo_entry: None,
                     })],
                     vec![
                         Arc::new(TransactionOutput {
@@ -307,7 +303,6 @@ mod tests {
                         ],
                         sequence: u64::MAX,
                         sig_op_count: 0,
-                        utxo_entry: None,
                     })],
                     vec![
                         Arc::new(TransactionOutput {
@@ -370,7 +365,6 @@ mod tests {
                         ],
                         sequence: u64::MAX,
                         sig_op_count: 0,
-                        utxo_entry: None,
                     })],
                     vec![Arc::new(TransactionOutput {
                         value: 0xf4240,

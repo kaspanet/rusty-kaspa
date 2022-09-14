@@ -140,7 +140,6 @@ mod tests {
                 signature_script: vec![],
                 sequence: u64::MAX,
                 sig_op_count: 0,
-                utxo_entry: None,
             })],
             vec![Arc::new(TransactionOutput {
                 value: 0x12a05f200,
@@ -186,7 +185,6 @@ mod tests {
                 ],
                 sequence: u64::MAX,
                 sig_op_count: 0,
-                utxo_entry: None,
             })],
             vec![
                 Arc::new(TransactionOutput {

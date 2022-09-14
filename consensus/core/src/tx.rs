@@ -66,18 +66,11 @@ pub struct TransactionInput {
     pub signature_script: Vec<u8>,
     pub sequence: u64,
     pub sig_op_count: u8,
-    pub utxo_entry: Option<UtxoEntry>,
 }
 
 impl TransactionInput {
-    pub fn new(
-        previous_outpoint: TransactionOutpoint,
-        signature_script: Vec<u8>,
-        sequence: u64,
-        sig_op_count: u8,
-        utxo_entry: Option<UtxoEntry>,
-    ) -> Self {
-        Self { previous_outpoint, signature_script, sequence, sig_op_count, utxo_entry }
+    pub fn new(previous_outpoint: TransactionOutpoint, signature_script: Vec<u8>, sequence: u64, sig_op_count: u8) -> Self {
+        Self { previous_outpoint, signature_script, sequence, sig_op_count }
     }
 }
 
@@ -98,8 +91,8 @@ impl TransactionOutput {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Transaction {
     pub version: u16,
-    pub inputs: Vec<Arc<TransactionInput>>,
-    pub outputs: Vec<Arc<TransactionOutput>>,
+    pub inputs: Vec<Arc<TransactionInput>>,   // TODO: arcs make no sense here
+    pub outputs: Vec<Arc<TransactionOutput>>, // TODO: arcs make no sense here
     pub lock_time: u64,
     pub subnetwork_id: SubnetworkId,
     pub gas: u64,
@@ -153,6 +146,39 @@ impl Transaction {
     /// Returns the transaction ID
     pub fn id(&self) -> TransactionId {
         self.id
+    }
+}
+
+/// Represents a transaction with populated UTXO entry data
+pub struct PopulatedTransaction<'a> {
+    tx: &'a Transaction,
+    entries: Vec<UtxoEntry>,
+}
+
+impl<'a> PopulatedTransaction<'a> {
+    pub fn new(tx: &'a Transaction, entries: Vec<UtxoEntry>) -> Self {
+        assert_eq!(tx.inputs.len(), entries.len());
+        Self { tx, entries }
+    }
+
+    pub fn new_without_inputs(tx: &'a Transaction) -> Self {
+        Self::new(tx, Vec::new())
+    }
+
+    pub fn populated_inputs(&self) -> impl ExactSizeIterator<Item = (&TransactionInput, &UtxoEntry)> {
+        self.tx.inputs.iter().map(std::ops::Deref::deref).zip(self.entries.iter())
+    }
+
+    pub fn outputs(&self) -> impl ExactSizeIterator<Item = &TransactionOutput> {
+        self.tx.outputs.iter().map(std::ops::Deref::deref)
+    }
+
+    pub fn is_coinbase(&self) -> bool {
+        self.tx.is_coinbase()
+    }
+
+    pub fn id(&self) -> TransactionId {
+        self.tx.id()
     }
 }
 

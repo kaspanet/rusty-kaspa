@@ -94,8 +94,7 @@ mod tests {
             },
         ];
 
-        let inputs =
-            vec![Arc::new(TransactionInput::new(TransactionOutpoint::new(Hash::from_u64_word(0), 2), vec![1, 2], 7, 5, None))];
+        let inputs = vec![Arc::new(TransactionInput::new(TransactionOutpoint::new(Hash::from_u64_word(0), 2), vec![1, 2], 7, 5))];
 
         // Test #2
         tests.push(Test {
@@ -125,7 +124,6 @@ mod tests {
             vec![1, 2],
             7,
             5,
-            None,
         ))];
 
         // Test #5

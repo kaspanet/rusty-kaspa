@@ -213,7 +213,7 @@ mod tests {
             vec![parent],
             vec![Transaction::new(
                 TX_VERSION,
-                vec![Arc::new(TransactionInput::new(TransactionOutpoint::new(1.into(), 0), vec![], sequence, 0, None))],
+                vec![Arc::new(TransactionInput::new(TransactionOutpoint::new(1.into(), 0), vec![], sequence, 0))],
                 vec![],
                 lock_time,
                 SUBNETWORK_ID_NATIVE,

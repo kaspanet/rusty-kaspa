@@ -2,7 +2,7 @@ use super::{
     utxo_collection::*,
     utxo_error::{UtxoAlgebraError, UtxoResult},
 };
-use crate::tx::{Transaction, TransactionOutpoint, UtxoEntry};
+use crate::tx::{PopulatedTransaction, TransactionOutpoint, UtxoEntry};
 use std::collections::hash_map::Entry::Vacant;
 
 pub trait ImmutableUtxoDiff {
@@ -203,15 +203,15 @@ impl UtxoDiff {
         Ok(result)
     }
 
-    pub fn add_transaction(&mut self, transaction: &Transaction, block_daa_score: u64) -> UtxoResult<()> {
-        for input in transaction.inputs.iter() {
-            self.remove_entry(&input.previous_outpoint, input.utxo_entry.as_ref().unwrap())?;
+    pub fn add_transaction(&mut self, transaction: &PopulatedTransaction, block_daa_score: u64) -> UtxoResult<()> {
+        for (input, entry) in transaction.populated_inputs() {
+            self.remove_entry(&input.previous_outpoint, entry)?;
         }
 
         let is_coinbase = transaction.is_coinbase();
         let tx_id = transaction.id();
 
-        for (i, output) in transaction.outputs.iter().enumerate() {
+        for (i, output) in transaction.outputs().enumerate() {
             let outpoint = TransactionOutpoint::new(tx_id, i as u32);
             let entry = UtxoEntry::new(output.value, output.script_public_key.clone(), block_daa_score, is_coinbase);
             self.add_entry(outpoint, entry)?;
