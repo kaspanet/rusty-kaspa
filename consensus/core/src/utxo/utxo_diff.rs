@@ -5,10 +5,45 @@ use super::{
 use crate::tx::{Transaction, TransactionOutpoint, UtxoEntry};
 use std::collections::hash_map::Entry::Vacant;
 
+pub trait ImmutableUtxoDiff {
+    fn added(&self) -> &UtxoCollection;
+    fn removed(&self) -> &UtxoCollection;
+}
+
 #[derive(Clone, Default, Debug, PartialEq, Eq)]
 pub struct UtxoDiff {
     pub add: UtxoCollection,
     pub remove: UtxoCollection,
+}
+
+impl ImmutableUtxoDiff for UtxoDiff {
+    fn added(&self) -> &UtxoCollection {
+        &self.add
+    }
+
+    fn removed(&self) -> &UtxoCollection {
+        &self.remove
+    }
+}
+
+pub struct ReversedUtxoDiff<'a> {
+    inner: &'a UtxoDiff,
+}
+
+impl<'a> ReversedUtxoDiff<'a> {
+    pub fn new(inner: &'a UtxoDiff) -> Self {
+        Self { inner }
+    }
+}
+
+impl ImmutableUtxoDiff for ReversedUtxoDiff<'_> {
+    fn added(&self) -> &UtxoCollection {
+        &self.inner.remove // Reverse inner
+    }
+
+    fn removed(&self) -> &UtxoCollection {
+        &self.inner.add // Reverse inner
+    }
 }
 
 impl UtxoDiff {
@@ -16,7 +51,11 @@ impl UtxoDiff {
         Self { add, remove }
     }
 
-    pub fn with_diff(&self, other: &UtxoDiff) -> UtxoResult<UtxoDiff> {
+    pub fn reversed(&self) -> impl ImmutableUtxoDiff + '_ {
+        ReversedUtxoDiff::new(self)
+    }
+
+    pub fn with_diff(&self, other: &impl ImmutableUtxoDiff) -> UtxoResult<UtxoDiff> {
         let mut clone = self.clone();
         clone.with_diff_in_place(other)?;
         Ok(clone)
@@ -24,8 +63,8 @@ impl UtxoDiff {
 
     /// Applies the provided diff to this diff in-place. This is equal to if the
     /// first diff, and then the second diff were applied to the same base UTXO set
-    pub fn with_diff_in_place(&mut self, other: &UtxoDiff) -> UtxoResult<()> {
-        if let Some(offending_outpoint) = other.remove.intersects_with_rule(
+    pub fn with_diff_in_place(&mut self, other: &impl ImmutableUtxoDiff) -> UtxoResult<()> {
+        if let Some(offending_outpoint) = other.removed().intersects_with_rule(
             &self.remove,
             |outpoint: &TransactionOutpoint, entry_to_add: &UtxoEntry, _existing_entry: &UtxoEntry| {
                 !self
@@ -36,11 +75,11 @@ impl UtxoDiff {
             return Err(UtxoAlgebraError::DuplicateRemovePoint(offending_outpoint));
         }
 
-        if let Some(offending_outpoint) = other.add.intersects_with_rule(
+        if let Some(offending_outpoint) = other.added().intersects_with_rule(
             &self.add,
             |outpoint: &TransactionOutpoint, _entry_to_add: &UtxoEntry, existing_entry: &UtxoEntry| {
                 !other
-                    .remove
+                    .removed()
                     .contains_with_daa_score(outpoint, existing_entry.block_daa_score)
             },
         ) {
@@ -51,7 +90,7 @@ impl UtxoDiff {
 
         // If does not exists neither in `add` nor in `remove` - add to `remove`
         intersection_with_remainder_having_daa_score_in_place(
-            &other.remove,
+            other.removed(),
             &self.add,
             &mut intersection,
             &mut self.remove,
@@ -63,7 +102,7 @@ impl UtxoDiff {
 
         // If does not exists neither in `add` nor in `remove`, or exists in `remove' with different DAA score - add to 'add'
         intersection_with_remainder_having_daa_score_in_place(
-            &other.add,
+            other.added(),
             &self.remove,
             &mut intersection,
             &mut self.add,
@@ -104,7 +143,7 @@ impl UtxoDiff {
     ///    diffFrom results in an error
     /// 2. This diff contains a UTXO in remove, and the other diff does not contain it
     ///    diffFrom results in the UTXO being added to add
-    pub fn diff_from(&self, other: &UtxoDiff) -> UtxoResult<UtxoDiff> {
+    pub fn diff_from(&self, other: &impl ImmutableUtxoDiff) -> UtxoResult<UtxoDiff> {
         // Note that the following cases are not accounted for, as they are impossible
         // as long as the base UTXO set is the same:
         // - if utxo entry is in this.add and other.remove
@@ -118,13 +157,13 @@ impl UtxoDiff {
                         .add
                         .contains_with_daa_score(outpoint, other_entry.block_daa_score)
                         || other
-                            .remove
+                            .removed()
                             .contains_with_daa_score(outpoint, this_entry.block_daa_score)))
             };
 
         if let Some(offending_outpoint) = self
             .remove
-            .intersects_with_rule(&other.add, rule_not_added_output_removed_with_daa_score)
+            .intersects_with_rule(other.added(), rule_not_added_output_removed_with_daa_score)
         {
             return Err(UtxoAlgebraError::DiffIntersectionPoint(
                 offending_outpoint,
@@ -140,13 +179,13 @@ impl UtxoDiff {
                         .remove
                         .contains_with_daa_score(outpoint, other_entry.block_daa_score)
                         || other
-                            .add
+                            .added()
                             .contains_with_daa_score(outpoint, this_entry.block_daa_score)))
             };
 
         if let Some(offending_outpoint) = self
             .add
-            .intersects_with_rule(&other.remove, rule_not_removed_output_added_with_daa_score)
+            .intersects_with_rule(other.removed(), rule_not_removed_output_added_with_daa_score)
         {
             return Err(UtxoAlgebraError::DiffIntersectionPoint(
                 offending_outpoint,
@@ -157,7 +196,7 @@ impl UtxoDiff {
         // If we have the same entry in self.remove and other.remove
         // and existing entry is with different DAA score -> Error
         if let Some(offending_outpoint) = self.remove.intersects_with_rule(
-            &other.remove,
+            other.removed(),
             |_outpoint: &TransactionOutpoint, this_entry: &UtxoEntry, other_entry: &UtxoEntry| {
                 other_entry.block_daa_score != this_entry.block_daa_score
             },
@@ -175,12 +214,12 @@ impl UtxoDiff {
         let mut in_both_to_add = UtxoCollection::new();
         subtraction_with_remainder_having_daa_score_in_place(
             &self.add,
-            &other.add,
+            other.added(),
             &mut result.remove,
             &mut in_both_to_add,
         );
         // If they are in other.remove - base utxo-set is not the same
-        if in_both_to_add.intersects(&self.remove) != in_both_to_add.intersects(&other.remove) {
+        if in_both_to_add.intersects(&self.remove) != in_both_to_add.intersects(other.removed()) {
             return Err(UtxoAlgebraError::General(
                 "diff_from: outpoint both in self.add, other.add, and only one of self.remove and other.remove",
             ));
@@ -188,15 +227,15 @@ impl UtxoDiff {
 
         // All transactions in other.remove:
         // If they are not in self.remove - should be added in result.remove
-        subtraction_having_daa_score_in_place(&other.remove, &self.remove, &mut result.remove);
+        subtraction_having_daa_score_in_place(other.removed(), &self.remove, &mut result.remove);
 
         // All transactions in self.remove:
         // If they are not in other.remove - should be added in result.add
-        subtraction_having_daa_score_in_place(&self.remove, &other.remove, &mut result.add);
+        subtraction_having_daa_score_in_place(&self.remove, other.removed(), &mut result.add);
 
         // All transactions in other.add:
         // If they are not in self.add - should be added in result.add
-        subtraction_having_daa_score_in_place(&other.add, &self.add, &mut result.add);
+        subtraction_having_daa_score_in_place(other.added(), &self.add, &mut result.add);
 
         Ok(result)
     }

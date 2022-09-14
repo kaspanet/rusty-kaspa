@@ -131,9 +131,8 @@ impl Transaction {
 
     /// Determines whether or not a transaction is a coinbase transaction. A coinbase
     /// transaction is a special transaction created by miners that distributes fees and block subsidy
-    /// to the previous blocks' miners, and to specify the scriptPubKey that will be used to pay the current
-    /// miner in future blocks. Each input of the coinbase transaction should set index to maximum
-    /// value and reference the relevant block id, instead of previous transaction id.
+    /// to the previous blocks' miners, and specifies the script_pub_key that will be used to pay the current
+    /// miner in future blocks.
     pub fn is_coinbase(&self) -> bool {
         self.subnetwork_id == subnets::SUBNETWORK_ID_COINBASE
     }

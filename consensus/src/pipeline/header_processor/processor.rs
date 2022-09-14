@@ -371,8 +371,7 @@ impl HeaderProcessor {
         let mut header = header_from_precomputed_hash(self.genesis_hash, vec![]); // TODO
         header.bits = self.genesis_bits;
         let mut ctx = HeaderProcessingContext::new(self.genesis_hash, &header, ORIGIN);
-        self.ghostdag_manager
-            .add_genesis_if_needed(&mut ctx);
+        ctx.ghostdag_data = Some(self.ghostdag_manager.genesis_ghostdag_data());
         ctx.block_window_for_difficulty = Some(Default::default());
         ctx.block_window_for_past_median_time = Some(Default::default());
         ctx.daa_added_blocks = Some(Default::default());

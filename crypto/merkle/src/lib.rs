@@ -1,4 +1,4 @@
-use hashes::{Hash, Hasher, MerkleBranchHash, ZERO_HASH};
+use hashes::{Hash, HasherBase, MerkleBranchHash, ZERO_HASH};
 
 pub fn calc_merkle_root(hashes: impl ExactSizeIterator<Item = Hash>) -> Hash {
     let next_pot = hashes.len().next_power_of_two();

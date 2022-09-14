@@ -15,12 +15,12 @@ use crate::{
             relations::RelationsStoreReader,
         },
     },
-    pipeline::header_processor::HeaderProcessingContext,
     processes::difficulty::calc_work,
 };
 
 use super::ordering::*;
 
+#[derive(Clone)]
 pub struct GhostdagManager<
     T: GhostdagStoreReader,
     S: RelationsStoreReader,
@@ -45,21 +45,15 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
         Self { genesis_hash, k, ghostdag_store, relations_store, reachability_service, headers_store }
     }
 
-    pub fn add_genesis_if_needed(&self, ctx: &mut HeaderProcessingContext) {
-        if !self
-            .ghostdag_store
-            .has(self.genesis_hash)
-            .unwrap()
-        {
-            ctx.ghostdag_data = Some(Arc::new(GhostdagData::new(
-                0,
-                Default::default(),
-                blockhash::ORIGIN,
-                BlockHashes::new(Vec::new()),
-                BlockHashes::new(Vec::new()),
-                HashKTypeMap::new(HashMap::new()),
-            )));
-        }
+    pub fn genesis_ghostdag_data(&self) -> Arc<GhostdagData> {
+        Arc::new(GhostdagData::new(
+            0,
+            Default::default(), // TODO: take blue score and work from actual genesis
+            blockhash::ORIGIN,
+            BlockHashes::new(Vec::new()),
+            BlockHashes::new(Vec::new()),
+            HashKTypeMap::new(HashMap::new()),
+        ))
     }
 
     pub fn find_selected_parent(&self, parents: &[Hash]) -> Hash {

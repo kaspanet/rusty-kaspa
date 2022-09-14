@@ -24,6 +24,7 @@ num-bigint = "0.4.3"
 
 
 hashes = { path = "../crypto/hashes" }
+muhash = { path = "../crypto/muhash" }
 merkle = { path = "../crypto/merkle" }
 consensus-core = { path = "./core" }
 kaspa-core = { path = "../core" }

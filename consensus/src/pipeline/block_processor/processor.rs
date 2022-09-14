@@ -4,7 +4,7 @@ use crate::{
         services::reachability::MTReachabilityService,
         stores::{
             reachability::DbReachabilityStore,
-            statuses::{BlockStatus, DbStatusesStore},
+            statuses::{BlockStatus, DbStatusesStore, StatusesStore},
             DB,
         },
     },
@@ -102,7 +102,22 @@ impl BlockBodyProcessor {
     }
 
     fn process_block_body(self: &Arc<BlockBodyProcessor>, block: &Block) -> BlockProcessResult<BlockStatus> {
-        Self::validate_body_in_isolation(block)?;
-        Ok(BlockStatus::StatusUTXOPendingVerification)
+        match Self::validate_body_in_isolation(block) {
+            Ok(_) => {
+                self.statuses_store
+                    .write()
+                    .set(block.header.hash, BlockStatus::StatusUTXOPendingVerification)
+                    .unwrap();
+
+                Ok(BlockStatus::StatusUTXOPendingVerification)
+            }
+            Err(e) => {
+                self.statuses_store
+                    .write()
+                    .set(block.header.hash, BlockStatus::StatusInvalid)
+                    .unwrap();
+                Err(e)
+            }
+        }
     }
 }

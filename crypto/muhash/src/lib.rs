@@ -5,7 +5,7 @@ pub mod u3072;
 mod u3072;
 
 use crate::u3072::U3072;
-use hashes::{Hash, Hasher, MuHashElementHash, MuHashFinalizeHash};
+use hashes::{Hash, Hasher, HasherBase, MuHashElementHash, MuHashFinalizeHash};
 use rand_chacha::rand_core::{RngCore, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use std::error::Error;
@@ -68,6 +68,18 @@ impl MuHash {
     }
 
     #[inline]
+    // returns a hasher for hashing data which on `finalize` adds the finalized hash to the muhash.
+    pub fn add_element_builder(&mut self) -> MuHashElementBuilder {
+        MuHashElementBuilder::new(&mut self.numerator)
+    }
+
+    #[inline]
+    // returns a hasher for hashing data which on `finalize` removes the finalized hash from the muhash.
+    pub fn remove_element_builder(&mut self) -> MuHashElementBuilder {
+        MuHashElementBuilder::new(&mut self.denominator)
+    }
+
+    #[inline]
     // will add the MuHash together. Equivalent to manually adding all the data elements
     // from one set to the other.
     pub fn combine(&mut self, other: &Self) {
@@ -101,6 +113,37 @@ impl MuHash {
         } else {
             Ok(Self { numerator, denominator: U3072::one() })
         }
+    }
+}
+
+pub struct MuHashElementBuilder<'a> {
+    muhash_field: &'a mut U3072,
+    element_hasher: MuHashElementHash,
+}
+
+impl<'a> HasherBase for MuHashElementBuilder<'a> {
+    fn update<A: AsRef<[u8]>>(&mut self, data: A) -> &mut Self {
+        self.element_hasher.write(data);
+        self
+    }
+}
+
+impl<'a> MuHashElementBuilder<'a> {
+    pub fn new(muhash_field: &'a mut U3072) -> Self {
+        Self { muhash_field, element_hasher: MuHashElementHash::new() }
+    }
+
+    pub fn update<A: AsRef<[u8]>>(&mut self, data: A) -> &mut Self {
+        self.element_hasher.write(data);
+        self
+    }
+
+    pub fn finalize(self) {
+        let hash = self.element_hasher.finalize();
+        let mut stream = ChaCha20Rng::from_seed(hash.as_bytes());
+        let mut bytes = [0u8; ELEMENT_BYTE_SIZE];
+        stream.fill_bytes(&mut bytes);
+        *self.muhash_field *= U3072::from_le_bytes(bytes);
     }
 }
 

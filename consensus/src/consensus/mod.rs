@@ -43,6 +43,13 @@ use std::{
 };
 use tokio::sync::oneshot;
 
+pub type DbGhostdagManager = GhostdagManager<
+    DbGhostdagStore,
+    MTRelationsService<DbRelationsStore>,
+    MTReachabilityService<DbReachabilityStore>,
+    DbHeadersStore,
+>;
+
 pub struct Consensus {
     // DB
     db: Arc<DB>,
@@ -70,12 +77,7 @@ pub struct Consensus {
     reachability_service: MTReachabilityService<DbReachabilityStore>,
     pub(super) difficulty_manager: DifficultyManager<DbHeadersStore>,
     pub(super) dag_traversal_manager: DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore>,
-    pub(super) ghostdag_manager: GhostdagManager<
-        DbGhostdagStore,
-        MTRelationsService<DbRelationsStore>,
-        MTReachabilityService<DbReachabilityStore>,
-        DbHeadersStore,
-    >,
+    pub(super) ghostdag_manager: DbGhostdagManager,
     pub(super) past_median_time_manager: PastMedianTimeManager<DbHeadersStore, DbGhostdagStore, BlockWindowCacheStore>,
 
     // Counters
@@ -118,7 +120,6 @@ impl Consensus {
             params.difficulty_window_size,
             params.target_time_per_block,
         );
-
         let depth_manager = BlockDepthManager::new(
             params.merge_depth,
             params.finality_depth,
@@ -126,6 +127,14 @@ impl Consensus {
             depth_store.clone(),
             reachability_service.clone(),
             ghostdag_store.clone(),
+        );
+        let ghostdag_manager = GhostdagManager::new(
+            params.genesis_hash,
+            params.ghostdag_k,
+            ghostdag_store.clone(),
+            relations_service.clone(),
+            headers_store.clone(),
+            reachability_service.clone(),
         );
 
         let (sender, receiver): (Sender<BlockTask>, Receiver<BlockTask>) = unbounded();
@@ -142,7 +151,7 @@ impl Consensus {
             relations_store.clone(),
             reachability_store.clone(),
             ghostdag_store.clone(),
-            headers_store.clone(),
+            headers_store,
             daa_store,
             statuses_store.clone(),
             pruning_store.clone(),
@@ -168,8 +177,10 @@ impl Consensus {
 
         let virtual_processor = Arc::new(VirtualStateProcessor::new(
             virtual_receiver,
+            params,
             db.clone(),
             statuses_store.clone(),
+            ghostdag_manager.clone(),
             reachability_service.clone(),
         ));
 
@@ -182,22 +193,15 @@ impl Consensus {
             statuses_store,
             relations_store,
             reachability_store,
-            ghostdag_store: ghostdag_store.clone(),
+            ghostdag_store,
             pruning_store,
 
             statuses_service,
-            relations_service: relations_service.clone(),
-            reachability_service: reachability_service.clone(),
+            relations_service,
+            reachability_service,
             difficulty_manager,
             dag_traversal_manager,
-            ghostdag_manager: GhostdagManager::new(
-                params.genesis_hash,
-                params.ghostdag_k,
-                ghostdag_store,
-                relations_service,
-                headers_store,
-                reachability_service,
-            ),
+            ghostdag_manager,
             past_median_time_manager,
 
             counters,
