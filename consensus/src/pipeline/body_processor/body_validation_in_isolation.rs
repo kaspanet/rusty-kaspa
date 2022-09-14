@@ -11,7 +11,6 @@ impl BlockBodyProcessor {
         Self::check_has_transactions(block)?;
         Self::check_hash_merkle_root(block)?;
         Self::check_only_one_coinbase(block)?;
-        self.check_coinbase_in_isolation(block)?;
         self.check_transactions_in_isolation(block)?;
         self.check_block_mass(block)?;
         self.check_duplicate_transactions(block)?;
@@ -49,22 +48,6 @@ impl BlockBodyProcessor {
         }
 
         Ok(())
-    }
-
-    fn check_coinbase_in_isolation(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {
-        match self
-            .coinbase_manager
-            .validate_coinbase_payload_in_isolation_and_extract_coinbase_data(&block.transactions[0])
-        {
-            Ok(data) => {
-                if data.blue_score != block.header.blue_score {
-                    Err(RuleError::BadCoinbasePayloadBlueScore(data.blue_score, block.header.blue_score))
-                } else {
-                    Ok(())
-                }
-            }
-            Err(e) => Err(RuleError::BadCoinbasePayload(e)),
-        }
     }
 
     fn check_transactions_in_isolation(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {
@@ -462,12 +445,6 @@ mod tests {
         txs[1].subnetwork_id = SUBNETWORK_ID_COINBASE;
         block.header.hash_merkle_root = calc_hash_merkle_root(txs.iter());
         assert!(matches!(body_processor.validate_body_in_isolation(&block), Err(RuleError::MultipleCoinbases(_))));
-
-        let mut block = example_block.clone();
-        let txs = Arc::make_mut(&mut block.transactions);
-        txs[0].payload = vec![];
-        block.header.hash_merkle_root = calc_hash_merkle_root(txs.iter());
-        assert!(matches!(body_processor.validate_body_in_isolation(&block), Err(RuleError::BadCoinbasePayload(_))));
 
         let mut block = example_block.clone();
         let txs = Arc::make_mut(&mut block.transactions);

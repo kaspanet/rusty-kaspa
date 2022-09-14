@@ -10,7 +10,7 @@ use std::sync::Arc;
 impl BlockBodyProcessor {
     pub fn validate_body_in_context(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {
         self.check_parent_bodies_exist(block)?;
-        self.check_coinbase_subsidy(block)?;
+        self.check_coinbase_blue_score_and_subsidy(block)?;
         self.check_block_transactions_in_context(block)?;
         self.check_block_is_not_pruned(block)
     }
@@ -66,20 +66,28 @@ impl BlockBodyProcessor {
         Ok(())
     }
 
-    fn check_coinbase_subsidy(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {
-        let coinbase_subsidy = self
-        .coinbase_manager
-        .validate_coinbase_payload_in_isolation_and_extract_coinbase_data(&block.transactions[0])
-        .unwrap() // It's ok to unwrap since it was already validated on check_coinbase_in_isolation
-        .subsidy;
-        let expected_subsidy = self
+    fn check_coinbase_blue_score_and_subsidy(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {
+        match self
             .coinbase_manager
-            .calc_block_subsidy(block.header.daa_score);
-        if coinbase_subsidy != expected_subsidy {
-            return Err(RuleError::WrongSubsidy(expected_subsidy, coinbase_subsidy));
-        }
+            .validate_coinbase_payload_in_isolation_and_extract_coinbase_data(&block.transactions[0])
+        {
+            Ok(data) => {
+                if data.blue_score != block.header.blue_score {
+                    return Err(RuleError::BadCoinbasePayloadBlueScore(data.blue_score, block.header.blue_score));
+                }
 
-        Ok(())
+                let expected_subsidy = self
+                    .coinbase_manager
+                    .calc_block_subsidy(block.header.daa_score);
+
+                if data.subsidy != expected_subsidy {
+                    return Err(RuleError::WrongSubsidy(expected_subsidy, data.subsidy));
+                }
+
+                Ok(())
+            }
+            Err(e) => Err(RuleError::BadCoinbasePayload(e)),
+        }
     }
 }
 
@@ -139,15 +147,43 @@ mod tests {
             assert!(matches!(consensus.validate_and_insert_block(block).await, Err(RuleError::KnownInvalid)));
         }
 
+        {
+            let mut block = consensus.build_block_with_parents_and_transactions(4.into(), vec![3.into()], vec![]);
+            Arc::make_mut(&mut block.transactions)[0].payload[0..8].copy_from_slice(&(100_u64).to_le_bytes());
+            block.header.hash_merkle_root = calc_hash_merkle_root(block.transactions.iter());
+
+            let block = Arc::new(block);
+            assert!(matches!(
+                consensus
+                    .validate_and_insert_block(block.clone())
+                    .await,
+                Err(RuleError::BadCoinbasePayloadBlueScore(_, _))
+            ));
+        }
+
+        {
+            let mut block = consensus.build_block_with_parents_and_transactions(5.into(), vec![3.into()], vec![]);
+            Arc::make_mut(&mut block.transactions)[0].payload = vec![];
+            block.header.hash_merkle_root = calc_hash_merkle_root(block.transactions.iter());
+
+            let block = Arc::new(block);
+            assert!(matches!(
+                consensus
+                    .validate_and_insert_block(block.clone())
+                    .await,
+                Err(RuleError::BadCoinbasePayload(_))
+            ));
+        }
+
         let valid_block_child =
-            Arc::new(consensus.build_block_with_parents_and_transactions(4.into(), vec![3.into()], vec![]));
+            Arc::new(consensus.build_block_with_parents_and_transactions(6.into(), vec![3.into()], vec![]));
         consensus
             .validate_and_insert_block(valid_block_child.clone())
             .await
             .unwrap();
         {
             // The block DAA score is 2, so the subsidy should be calculated according to the deflationary stage.
-            let mut block = consensus.build_block_with_parents_and_transactions(5.into(), vec![4.into()], vec![]);
+            let mut block = consensus.build_block_with_parents_and_transactions(7.into(), vec![6.into()], vec![]);
             Arc::make_mut(&mut block.transactions)[0].payload[8..16].copy_from_slice(&(5_u64).to_le_bytes());
             block.header.hash_merkle_root = calc_hash_merkle_root(block.transactions.iter());
             assert!(
@@ -161,7 +197,7 @@ mod tests {
             check_for_lock_time_and_sequence(
                 &consensus,
                 valid_block_child.header.hash,
-                6.into(),
+                8.into(),
                 tip_daa_score + 1,
                 0,
                 false,
@@ -171,7 +207,7 @@ mod tests {
             check_for_lock_time_and_sequence(
                 &consensus,
                 valid_block_child.header.hash,
-                7.into(),
+                9.into(),
                 tip_daa_score,
                 0,
                 false,
@@ -181,7 +217,7 @@ mod tests {
             check_for_lock_time_and_sequence(
                 &consensus,
                 valid_block_child.header.hash,
-                8.into(),
+                10.into(),
                 tip_daa_score - 1,
                 0,
                 true,
@@ -202,7 +238,7 @@ mod tests {
             check_for_lock_time_and_sequence(
                 &consensus,
                 valid_block_child.header.hash,
-                9.into(),
+                10.into(),
                 past_median_time + 1,
                 0,
                 false,
@@ -212,7 +248,7 @@ mod tests {
             check_for_lock_time_and_sequence(
                 &consensus,
                 valid_block_child.header.hash,
-                10.into(),
+                11.into(),
                 past_median_time,
                 0,
                 false,
@@ -222,7 +258,7 @@ mod tests {
             check_for_lock_time_and_sequence(
                 &consensus,
                 valid_block_child.header.hash,
-                11.into(),
+                12.into(),
                 past_median_time - 1,
                 0,
                 true,
@@ -233,7 +269,7 @@ mod tests {
             check_for_lock_time_and_sequence(
                 &consensus,
                 valid_block_child.header.hash,
-                12.into(),
+                13.into(),
                 past_median_time + 1,
                 u64::MAX,
                 true,
@@ -243,7 +279,7 @@ mod tests {
             check_for_lock_time_and_sequence(
                 &consensus,
                 valid_block_child.header.hash,
-                13.into(),
+                14.into(),
                 tip_daa_score + 1,
                 u64::MAX,
                 true,
@@ -260,7 +296,7 @@ mod tests {
         // The block DAA score is 2, so the subsidy should be calculated according to the deflationary stage.
         let block = consensus.build_block_with_parents_and_transactions(
             block_hash,
-            vec![4.into()],
+            vec![parent],
             vec![Transaction::new(
                 TX_VERSION,
                 vec![Arc::new(TransactionInput::new(TransactionOutpoint::new(1.into(), 0), vec![], sequence, 0, None))],
