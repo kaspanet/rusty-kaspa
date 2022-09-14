@@ -105,8 +105,8 @@ impl RandomBlockEmitter {
 }
 
 impl Service for RandomBlockEmitter {
-    fn ident(self: Arc<RandomBlockEmitter>) -> String {
-        "block-emitter".into()
+    fn ident(self: Arc<RandomBlockEmitter>) -> &'static str {
+        "block-emitter"
     }
 
     fn start(self: Arc<RandomBlockEmitter>, core: Arc<Core>) -> Vec<JoinHandle<()>> {
@@ -175,8 +175,8 @@ impl ConsensusMonitor {
 
 // service trait implementation for Monitor
 impl Service for ConsensusMonitor {
-    fn ident(self: Arc<ConsensusMonitor>) -> String {
-        "consensus-monitor".into()
+    fn ident(self: Arc<ConsensusMonitor>) -> &'static str {
+        "consensus-monitor"
     }
 
     fn start(self: Arc<ConsensusMonitor>, _core: Arc<Core>) -> Vec<JoinHandle<()>> {

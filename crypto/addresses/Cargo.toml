@@ -8,8 +8,8 @@ edition = "2021"
 [dependencies]
 
 [dev-dependencies]
-criterion = "0.3"
-#rand = "0.8"
+criterion = { version = "0.4", default-features = false }
+
 [[bench]]
 name = "bench"
 harness = false

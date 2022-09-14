@@ -97,7 +97,7 @@ impl GhostdagData {
     }
 
     /// Returns an iterator to the mergeset with no specified order (excluding the selected parent)
-    pub fn unordered_mergeset_without_selected_parent<'a>(&'a self) -> impl Iterator<Item = Hash> + '_ {
+    pub fn unordered_mergeset_without_selected_parent(&self) -> impl Iterator<Item = Hash> + '_ {
         self.mergeset_blues
             .iter()
             .skip(1) // Skip the selected parent
@@ -106,7 +106,7 @@ impl GhostdagData {
     }
 
     /// Returns an iterator to the mergeset with no specified order (including the selected parent)
-    pub fn unordered_mergeset<'a>(&'a self) -> impl Iterator<Item = Hash> + '_ {
+    pub fn unordered_mergeset(&self) -> impl Iterator<Item = Hash> + '_ {
         self.mergeset_blues
             .iter()
             .cloned()
@@ -186,14 +186,11 @@ pub struct DbGhostdagStore {
 
 impl DbGhostdagStore {
     pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
-        Self { raw_db: Arc::clone(&db), cached_access: CachedDbAccess::new(Arc::clone(&db), cache_size, STORE_PREFIX) }
+        Self { raw_db: Arc::clone(&db), cached_access: CachedDbAccess::new(db, cache_size, STORE_PREFIX) }
     }
 
     pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {
-        Self {
-            raw_db: Arc::clone(&self.raw_db),
-            cached_access: CachedDbAccess::new(Arc::clone(&self.raw_db), cache_size, STORE_PREFIX),
-        }
+        Self::new(Arc::clone(&self.raw_db), cache_size)
     }
 
     pub fn insert_batch(&self, batch: &mut WriteBatch, hash: Hash, data: &Arc<GhostdagData>) -> Result<(), StoreError> {

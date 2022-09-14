@@ -1,7 +1,6 @@
 use crate::model::stores::{block_window_cache::BlockWindowHeap, ghostdag::GhostdagData, headers::HeaderStoreReader};
 use consensus_core::BlueWorkType;
 use hashes::Hash;
-use kaspa_core::extract_enum_value;
 use math::{Uint256, Uint320};
 use std::{
     cmp::{max, Ordering},
@@ -10,7 +9,7 @@ use std::{
 };
 
 use super::ghostdag::ordering::SortableBlock;
-use itertools::{Itertools, MinMaxResult::MinMax};
+use itertools::Itertools;
 
 #[derive(Clone)]
 pub struct DifficultyManager<T: HeaderStoreReader> {
@@ -37,15 +36,10 @@ impl<T: HeaderStoreReader> DifficultyManager<T> {
         let mergeset_len = ghostdag_data.mergeset_size();
         let mergeset: HashSet<Hash> = ghostdag_data.unordered_mergeset().collect();
 
-        let mut daa_added_blocks = Vec::with_capacity(mergeset_len);
-        for hash in window_hashes {
-            if mergeset.contains(&hash) {
-                daa_added_blocks.push(hash);
-                if daa_added_blocks.len() == mergeset_len {
-                    break;
-                }
-            }
-        }
+        let daa_added_blocks: Vec<_> = window_hashes
+            .filter(|h| mergeset.contains(h))
+            .take(mergeset_len)
+            .collect();
 
         let sp_daa_score = self
             .headers_store
@@ -72,8 +66,11 @@ impl<T: HeaderStoreReader> DifficultyManager<T> {
             return self.genesis_bits;
         }
 
-        let (min_ts_index, max_ts_index) =
-            extract_enum_value!(difficulty_blocks.iter().position_minmax(), MinMax(a,b) => (a,b));
+        let (min_ts_index, max_ts_index) = difficulty_blocks
+            .iter()
+            .position_minmax()
+            .into_option()
+            .unwrap();
 
         let min_ts = difficulty_blocks[min_ts_index].timestamp;
         let max_ts = difficulty_blocks[max_ts_index].timestamp;
@@ -174,10 +171,8 @@ impl PartialOrd for DifficultyBlock {
 
 impl Ord for DifficultyBlock {
     fn cmp(&self, other: &Self) -> Ordering {
-        let res = self.timestamp.cmp(&other.timestamp);
-        match res {
-            Ordering::Equal => self.sortable_block.cmp(&other.sortable_block),
-            _ => res,
-        }
+        self.timestamp
+            .cmp(&other.timestamp)
+            .then_with(|| self.sortable_block.cmp(&other.sortable_block))
     }
 }

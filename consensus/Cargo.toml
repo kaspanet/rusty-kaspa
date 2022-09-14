@@ -28,7 +28,7 @@ consensus-core = { path = "./core" }
 kaspa-core = { path = "../core" }
 
 [dev-dependencies]
-criterion = "0.3.6"
+criterion = { version = "0.4", default-features = false }
 serde_json = "1.0"
 flate2 = "1.0.24"
 rand = "0.8"

@@ -17,9 +17,9 @@ pub trait RelationsStoreReader {
 
 /// Write API for `RelationsStore`. The insert function is deliberately `mut`
 /// since it modifies the children arrays for previously added parents which is
-/// non-append-only and thus needs to be guarded.  
+/// non-append-only and thus needs to be guarded.
 pub trait RelationsStore: RelationsStoreReader {
-    /// Inserts `parents` into a new store entry for `hash`, and for each `parent ∈ parents` adds `hash` to `parent.children`  
+    /// Inserts `parents` into a new store entry for `hash`, and for each `parent ∈ parents` adds `hash` to `parent.children`
     fn insert(&mut self, hash: Hash, parents: BlockHashes) -> Result<(), StoreError>;
 }
 
@@ -40,16 +40,12 @@ impl DbRelationsStore {
         Self {
             raw_db: Arc::clone(&db),
             parents_access: CachedDbAccess::new(Arc::clone(&db), cache_size, PARENTS_PREFIX),
-            children_access: CachedDbAccess::new(Arc::clone(&db), cache_size, CHILDREN_PREFIX),
+            children_access: CachedDbAccess::new(db, cache_size, CHILDREN_PREFIX),
         }
     }
 
     pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {
-        Self {
-            raw_db: Arc::clone(&self.raw_db),
-            parents_access: CachedDbAccess::new(Arc::clone(&self.raw_db), cache_size, PARENTS_PREFIX),
-            children_access: CachedDbAccess::new(Arc::clone(&self.raw_db), cache_size, CHILDREN_PREFIX),
-        }
+        Self::new(Arc::clone(&self.raw_db), cache_size)
     }
 
     // Should be kept private and used only through `RelationsStoreBatchExtensions.insert_batch`
@@ -220,7 +216,7 @@ mod tests {
         let parents = [(1, vec![]), (2, vec![1]), (3, vec![1]), (4, vec![2, 3]), (5, vec![1, 4])];
         for (i, vec) in parents.iter().cloned() {
             store
-                .insert(i.into(), BlockHashes::new(vec.iter().cloned().map(|j| j.into()).collect()))
+                .insert(i.into(), BlockHashes::new(vec.iter().copied().map(Hash::from).collect()))
                 .unwrap();
         }
 
@@ -230,8 +226,8 @@ mod tests {
                 .get_children(i.into())
                 .unwrap()
                 .iter()
-                .cloned()
-                .eq(vec.iter().cloned().map(|j| j.into())));
+                .copied()
+                .eq(vec.iter().copied().map(Hash::from)));
         }
 
         for (i, vec) in parents {
@@ -239,8 +235,8 @@ mod tests {
                 .get_parents(i.into())
                 .unwrap()
                 .iter()
-                .cloned()
-                .eq(vec.iter().cloned().map(|j| j.into())));
+                .copied()
+                .eq(vec.iter().copied().map(Hash::from)));
         }
     }
 }

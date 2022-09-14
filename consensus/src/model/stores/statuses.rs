@@ -11,10 +11,9 @@ use super::{
 use hashes::Hash;
 
 #[derive(Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Debug)]
-#[repr(u8)]
 pub enum BlockStatus {
     /// StatusInvalid indicates that the block is invalid.
-    StatusInvalid = 0,
+    StatusInvalid,
 
     /// StatusUTXOValid indicates the block is valid from any UTXO related aspects and has passed all the other validations as well.
     StatusUTXOValid,
@@ -59,10 +58,7 @@ impl DbStatusesStore {
     }
 
     pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {
-        Self {
-            raw_db: Arc::clone(&self.raw_db),
-            cached_access: CachedDbAccessForCopy::new(Arc::clone(&self.raw_db), cache_size, STORE_PREFIX),
-        }
+        Self::new(Arc::clone(&self.raw_db), cache_size)
     }
 }
 
