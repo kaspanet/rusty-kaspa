@@ -17,9 +17,9 @@ pub trait RelationsStoreReader {
 
 /// Write API for `RelationsStore`. The insert function is deliberately `mut`
 /// since it modifies the children arrays for previously added parents which is
-/// non-append-only and thus needs to be guarded.  
+/// non-append-only and thus needs to be guarded.
 pub trait RelationsStore: RelationsStoreReader {
-    /// Inserts `parents` into a new store entry for `hash`, and for each `parent ∈ parents` adds `hash` to `parent.children`  
+    /// Inserts `parents` into a new store entry for `hash`, and for each `parent ∈ parents` adds `hash` to `parent.children`
     fn insert(&mut self, hash: Hash, parents: BlockHashes) -> Result<(), StoreError>;
 }
 

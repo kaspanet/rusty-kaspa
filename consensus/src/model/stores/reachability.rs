@@ -36,7 +36,7 @@ pub trait ReachabilityStoreReader {
 }
 
 /// Write API for `ReachabilityStore`. All write functions are deliberately `mut`
-/// since reachability writes are not append-only and thus need to be guarded.  
+/// since reachability writes are not append-only and thus need to be guarded.
 pub trait ReachabilityStore: ReachabilityStoreReader {
     fn init(&mut self, origin: Hash, capacity: Interval) -> Result<(), StoreError>;
     fn insert(&mut self, hash: Hash, parent: Hash, interval: Interval, height: u64) -> Result<(), StoreError>;

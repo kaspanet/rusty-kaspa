@@ -46,8 +46,8 @@ impl<'a, T: ReachabilityStore + ?Sized> ReindexOperationContext<'a, T> {
                 // than 2^64 blocks, which shouldn't ever happen.
                 return Err(ReachabilityError::DataOverflow(
                     "missing tree
-                        parent during reindexing. Theoretically, this 
-                        should only ever happen if there are more 
+                        parent during reindexing. Theoretically, this
+                        should only ever happen if there are more
                         than 2^64 blocks in the DAG."
                         .to_string(),
                 ));
@@ -59,7 +59,7 @@ impl<'a, T: ReachabilityStore + ?Sized> ReindexOperationContext<'a, T> {
                 // even if block rate per second is above 100. The calculation follows from the allocation of
                 // 2^12 (which equals 2^64/2^52) for slack per chain block below the reindex root.
                 return Err(ReachabilityError::DataOverflow(format!(
-                    "unexpected behavior: reindex root {} is out of capacity during reindexing. 
+                    "unexpected behavior: reindex root {} is out of capacity during reindexing.
                     Theoretically, this should only ever happen if there are more than ~2^52 blocks in the DAG.",
                     reindex_root
                 )));
