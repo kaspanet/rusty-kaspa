@@ -70,18 +70,22 @@ impl DbStatusesStore {
 
 pub trait StatusesStoreBatchExtensions {
     fn set_batch(
-        &self, batch: &mut WriteBatch, hash: Hash, status: BlockStatus,
+        &self,
+        batch: &mut WriteBatch,
+        hash: Hash,
+        status: BlockStatus,
     ) -> Result<RwLockWriteGuard<DbStatusesStore>, StoreError>;
 }
 
 impl StatusesStoreBatchExtensions for Arc<RwLock<DbStatusesStore>> {
     fn set_batch(
-        &self, batch: &mut WriteBatch, hash: Hash, status: BlockStatus,
+        &self,
+        batch: &mut WriteBatch,
+        hash: Hash,
+        status: BlockStatus,
     ) -> Result<RwLockWriteGuard<DbStatusesStore>, StoreError> {
         let write_guard = self.write();
-        write_guard
-            .cached_access
-            .write_batch(batch, hash, status)?;
+        write_guard.cached_access.write_batch(batch, hash, status)?;
         Ok(write_guard)
     }
 }

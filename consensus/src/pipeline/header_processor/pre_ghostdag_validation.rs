@@ -13,7 +13,9 @@ use std::{
 
 impl HeaderProcessor {
     pub(super) fn pre_ghostdag_validation(
-        self: &Arc<HeaderProcessor>, ctx: &mut HeaderProcessingContext, header: &Header,
+        self: &Arc<HeaderProcessor>,
+        ctx: &mut HeaderProcessingContext,
+        header: &Header,
     ) -> BlockProcessResult<()> {
         if header.hash == self.genesis_hash {
             return Ok(());
@@ -45,10 +47,7 @@ impl HeaderProcessor {
     }
 
     fn check_block_timestamp_in_isolation(self: &Arc<HeaderProcessor>, header: &Header) -> BlockProcessResult<()> {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as u64;
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64;
         let max_block_time = now + self.timestamp_deviation_tolerance * self.target_time_per_block;
         if header.timestamp > now {
             return Err(RuleError::TimeTooFarIntoTheFuture(header.timestamp, now));
@@ -69,11 +68,7 @@ impl HeaderProcessor {
     }
 
     fn check_parents_not_origin(header: &Header) -> BlockProcessResult<()> {
-        if header
-            .direct_parents()
-            .iter()
-            .any(|&parent| parent.is_origin())
-        {
+        if header.direct_parents().iter().any(|&parent| parent.is_origin()) {
             return Err(RuleError::OriginParent);
         }
 
@@ -83,12 +78,7 @@ impl HeaderProcessor {
     fn check_parents_exist(self: &Arc<HeaderProcessor>, header: &Header) -> BlockProcessResult<()> {
         let mut missing_parents = Vec::new();
         for parent in header.direct_parents() {
-            match self
-                .statuses_store
-                .read()
-                .get(*parent)
-                .unwrap_option()
-            {
+            match self.statuses_store.read().get(*parent).unwrap_option() {
                 None => missing_parents.push(*parent),
                 Some(StatusInvalid) => {
                     return Err(RuleError::InvalidParent(*parent));
@@ -103,7 +93,9 @@ impl HeaderProcessor {
     }
 
     fn check_parents_incest(
-        self: &Arc<HeaderProcessor>, ctx: &mut HeaderProcessingContext, header: &Header,
+        self: &Arc<HeaderProcessor>,
+        ctx: &mut HeaderProcessingContext,
+        header: &Header,
     ) -> BlockProcessResult<()> {
         let parents = ctx.get_non_pruned_parents();
         for parent_a in parents.iter() {
@@ -112,10 +104,7 @@ impl HeaderProcessor {
                     continue;
                 }
 
-                if self
-                    .reachability_service
-                    .is_dag_ancestor_of(*parent_a, *parent_b)
-                {
+                if self.reachability_service.is_dag_ancestor_of(*parent_a, *parent_b) {
                     return Err(RuleError::InvalidParentsRelation(*parent_a, *parent_b));
                 }
             }

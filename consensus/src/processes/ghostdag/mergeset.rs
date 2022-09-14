@@ -5,15 +5,9 @@ use crate::model::{services::reachability::ReachabilityService, stores::headers:
 use hashes::Hash;
 use std::collections::{HashSet, VecDeque};
 
-impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V: HeaderStoreReader>
-    GhostdagManager<T, S, U, V>
-{
+impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V: HeaderStoreReader> GhostdagManager<T, S, U, V> {
     pub fn ordered_mergeset_without_selected_parent(&self, selected_parent: Hash, parents: &[Hash]) -> Vec<Hash> {
-        let mut queue: VecDeque<_> = parents
-            .iter()
-            .copied()
-            .filter(|p| p != &selected_parent)
-            .collect();
+        let mut queue: VecDeque<_> = parents.iter().copied().filter(|p| p != &selected_parent).collect();
         let mut mergeset: HashSet<_> = queue.iter().copied().collect();
         let mut selected_parent_past = HashSet::new();
 
@@ -31,10 +25,7 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
                     continue;
                 }
 
-                if self
-                    .reachability_service
-                    .is_dag_ancestor_of(*parent, selected_parent)
-                {
+                if self.reachability_service.is_dag_ancestor_of(*parent, selected_parent) {
                     selected_parent_past.insert(*parent);
                     continue;
                 }

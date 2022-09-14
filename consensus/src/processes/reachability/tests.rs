@@ -26,9 +26,7 @@ impl<'a, T: ReachabilityStore + ?Sized> StoreBuilder<'a, T> {
 
     pub fn add_block(&mut self, hash: Hash, parent: Hash) -> &mut Self {
         let parent_height = if !parent.is_none() { self.store.append_child(parent, hash).unwrap() } else { 0 };
-        self.store
-            .insert(hash, parent, Interval::empty(), parent_height + 1)
-            .unwrap();
+        self.store.insert(hash, parent, Interval::empty(), parent_height + 1).unwrap();
         self
     }
 }
@@ -104,12 +102,7 @@ impl<'a, T: ReachabilityStore + ?Sized> DagBuilder<'a, T> {
 
     pub fn add_block(&mut self, block: DagBlock) -> &mut Self {
         // Select by height (longest chain) just for the sake of internal isolated tests
-        let selected_parent = block
-            .parents
-            .iter()
-            .cloned()
-            .max_by_key(|p| self.store.get_height(*p).unwrap())
-            .unwrap();
+        let selected_parent = block.parents.iter().cloned().max_by_key(|p| self.store.get_height(*p).unwrap()).unwrap();
         let mergeset = self.mergeset(&block, selected_parent);
         add_block(self.store, block.hash, selected_parent, &mut mergeset.iter().cloned()).unwrap();
         hint_virtual_selected_parent(self.store, block.hash).unwrap();
@@ -118,12 +111,7 @@ impl<'a, T: ReachabilityStore + ?Sized> DagBuilder<'a, T> {
     }
 
     fn mergeset(&self, block: &DagBlock, selected_parent: Hash) -> Vec<Hash> {
-        let mut queue: VecDeque<Hash> = block
-            .parents
-            .iter()
-            .copied()
-            .filter(|p| *p != selected_parent)
-            .collect();
+        let mut queue: VecDeque<Hash> = block.parents.iter().copied().filter(|p| *p != selected_parent).collect();
         let mut mergeset: HashSet<_> = queue.iter().copied().collect();
         let mut past: HashSet<Hash> = HashSet::new();
 
@@ -210,12 +198,7 @@ impl<T: ReachabilityStoreReader + ?Sized> StoreValidationExtensions for T {
             for child in children.iter().cloned() {
                 let child_interval = self.get_interval(child)?;
                 if !parent_interval.strictly_contains(child_interval) {
-                    return Err(TestError::IntervalOutOfParentBounds {
-                        parent,
-                        child,
-                        parent_interval,
-                        child_interval,
-                    });
+                    return Err(TestError::IntervalOutOfParentBounds { parent, child, parent_interval, child_interval });
                 }
             }
 

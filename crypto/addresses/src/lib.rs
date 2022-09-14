@@ -132,10 +132,7 @@ mod tests {
     #[test]
     fn check_from_string() {
         for (expected_address, address_str) in cases() {
-            let address: Address = address_str
-                .to_string()
-                .try_into()
-                .expect("Test failed");
+            let address: Address = address_str.to_string().try_into().expect("Test failed");
             assert_eq!(address, expected_address);
         }
     }

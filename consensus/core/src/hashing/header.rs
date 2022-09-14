@@ -5,9 +5,7 @@ use hashes::{Hash, Hasher};
 /// Returns the header hash.
 pub fn hash(header: &Header) -> Hash {
     let mut hasher = hashes::BlockHash::new();
-    hasher
-        .update(header.version.to_le_bytes())
-        .write_len(header.parents_by_level.len()); // Write the number of parent levels
+    hasher.update(header.version.to_le_bytes()).write_len(header.parents_by_level.len()); // Write the number of parent levels
 
     // Write parents at each level
     for parents_at_level in header.parents_by_level.iter() {

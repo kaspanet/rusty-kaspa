@@ -61,8 +61,7 @@ impl BlockTaskDependencyManager {
             }
             e => {
                 e.and_modify(|v| {
-                    v.result_transmitters
-                        .append(&mut result_transmitters);
+                    v.result_transmitters.append(&mut result_transmitters);
                     // The block now includes transactions, so we update the internal block data
                     if v.block.is_header_only() && !block.is_header_only() {
                         v.block = block;
@@ -101,9 +100,7 @@ impl BlockTaskDependencyManager {
     {
         // Re-lock for post-processing steps
         let mut pending = self.pending.lock();
-        let task = pending
-            .remove(&hash)
-            .expect("processed block is expected to be in pending map");
+        let task = pending.remove(&hash).expect("processed block is expected to be in pending map");
 
         // Callback within the lock
         callback(task.block, task.result_transmitters);

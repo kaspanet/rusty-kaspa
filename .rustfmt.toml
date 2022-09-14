@@ -1,6 +1,4 @@
-max_width = 120
-chain_width = 50
-fn_args_layout = "Compressed"
+max_width = 135
 use_field_init_shorthand = true
 use_try_shorthand = true
 use_small_heuristics = "Max"

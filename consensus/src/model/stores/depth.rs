@@ -41,13 +41,16 @@ impl DbDepthStore {
     }
 
     pub fn insert_batch(
-        &self, batch: &mut WriteBatch, hash: Hash, merge_depth_root: Hash, finality_point: Hash,
+        &self,
+        batch: &mut WriteBatch,
+        hash: Hash,
+        merge_depth_root: Hash,
+        finality_point: Hash,
     ) -> Result<(), StoreError> {
         if self.cached_access.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
-        self.cached_access
-            .write_batch(batch, hash, StoreValue { merge_depth_root, finality_point })?;
+        self.cached_access.write_batch(batch, hash, StoreValue { merge_depth_root, finality_point })?;
         Ok(())
     }
 }
@@ -67,8 +70,7 @@ impl DepthStore for DbDepthStore {
         if self.cached_access.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
-        self.cached_access
-            .write(hash, StoreValue { merge_depth_root, finality_point })?;
+        self.cached_access.write(hash, StoreValue { merge_depth_root, finality_point })?;
         Ok(())
     }
 }

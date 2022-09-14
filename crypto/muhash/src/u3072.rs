@@ -42,20 +42,15 @@ impl U3072 {
             return false;
         }
         // If all other limbs == MAX it is overflown.
-        self.limbs[1..]
-            .iter()
-            .all(|&limb| limb == Limb::MAX)
+        self.limbs[1..].iter().all(|&limb| limb == Limb::MAX)
     }
 
     #[inline(always)]
     pub fn from_le_bytes(bytes: [u8; ELEMENT_BYTE_SIZE]) -> Self {
         let mut res = Self::zero();
-        bytes
-            .chunks_exact(LIMB_SIZE_BYTES)
-            .zip(res.limbs.iter_mut())
-            .for_each(|(chunk, word)| {
-                *word = Limb::from_le_bytes(chunk.try_into().unwrap());
-            });
+        bytes.chunks_exact(LIMB_SIZE_BYTES).zip(res.limbs.iter_mut()).for_each(|(chunk, word)| {
+            *word = Limb::from_le_bytes(chunk.try_into().unwrap());
+        });
         res
     }
 
@@ -63,12 +58,9 @@ impl U3072 {
     #[must_use]
     pub fn to_le_bytes(self) -> [u8; ELEMENT_BYTE_SIZE] {
         let mut res = [0u8; ELEMENT_BYTE_SIZE];
-        self.limbs
-            .iter()
-            .zip(res.chunks_exact_mut(LIMB_SIZE_BYTES))
-            .for_each(|(limb, chunk)| {
-                chunk.copy_from_slice(&limb.to_le_bytes());
-            });
+        self.limbs.iter().zip(res.chunks_exact_mut(LIMB_SIZE_BYTES)).for_each(|(limb, chunk)| {
+            chunk.copy_from_slice(&limb.to_le_bytes());
+        });
         res
     }
 
@@ -151,13 +143,8 @@ impl U3072 {
                 (d0, d1, d2) = mul_double_add(d0, d1, d2, self.limbs[i + j + 1], self.limbs[LIMBS - 1 - i]);
             }
             if (j + 1) & 1 == 1 {
-                (d0, d1, d2) = muladd3(
-                    self.limbs[(LIMBS - 1 - j) / 2 + j + 1],
-                    self.limbs[LIMBS - 1 - (LIMBS - 1 - j) / 2],
-                    d0,
-                    d1,
-                    d2,
-                );
+                (d0, d1, d2) =
+                    muladd3(self.limbs[(LIMBS - 1 - j) / 2 + j + 1], self.limbs[LIMBS - 1 - (LIMBS - 1 - j) / 2], d0, d1, d2);
             }
             (c0, c1, c2) = mulnadd3(c0, c1, d0, d1, d2, PRIME_DIFF);
 
@@ -378,12 +365,7 @@ mod tests {
         }
         let tests = [
             TestVector { a: Limb::MAX, b: Limb::MAX, expected_low: 1, expected_high: 18446744073709551614 },
-            TestVector {
-                a: Limb::MAX - 100,
-                b: Limb::MAX - 30,
-                expected_low: 3131,
-                expected_high: 18446744073709551484,
-            },
+            TestVector { a: Limb::MAX - 100, b: Limb::MAX - 30, expected_low: 3131, expected_high: 18446744073709551484 },
         ];
 
         for test in tests {
@@ -449,13 +431,7 @@ mod tests {
             expected_high: Limb,
         }
         let tests = [
-            TestVector {
-                low: Limb::MAX - 99,
-                high: Limb::MAX - 75,
-                n: Limb::MAX - 543,
-                expected_low: 54400,
-                expected_high: 40700,
-            },
+            TestVector { low: Limb::MAX - 99, high: Limb::MAX - 75, n: Limb::MAX - 543, expected_low: 54400, expected_high: 40700 },
             TestVector {
                 low: 0,
                 high: Limb::MAX - 32432432,
@@ -580,30 +556,27 @@ mod tests {
         let mut rng = ChaCha8Rng::seed_from_u64(1);
         // Randomly test a bunch of overflown numbers to make sure they're handled correctly.
         // There are only 1,103,717 overflowing numbers, so when our inversion algorithm gets faster (egcd)) we can exhuastively check them.
-        iter::once(0)
-            .chain(rand::seq::index::sample(&mut rng, u3072::PRIME_DIFF as usize, 64))
-            .map(|i| i + 1)
-            .for_each(|i| {
-                let overflown = {
-                    let mut overflown = max;
-                    overflown.limbs[0] = Limb::MAX - i as Limb + 1;
-                    overflown
-                };
-                {
-                    let mut overflown_copy = overflown;
-                    overflown_copy /= one;
-                    assert_eq!(overflown_copy.limbs[0], u3072::PRIME_DIFF - i as Limb);
-                    assert!(overflown_copy.limbs[1..].iter().all(|&x| x == 0));
-                }
+        iter::once(0).chain(rand::seq::index::sample(&mut rng, u3072::PRIME_DIFF as usize, 64)).map(|i| i + 1).for_each(|i| {
+            let overflown = {
+                let mut overflown = max;
+                overflown.limbs[0] = Limb::MAX - i as Limb + 1;
+                overflown
+            };
+            {
+                let mut overflown_copy = overflown;
+                overflown_copy /= one;
+                assert_eq!(overflown_copy.limbs[0], u3072::PRIME_DIFF - i as Limb);
+                assert!(overflown_copy.limbs[1..].iter().all(|&x| x == 0));
+            }
 
-                // Zero doesn't have a modular inverse
-                if i as Limb != PRIME_DIFF {
-                    let mut lhs = overflown;
-                    let rhs = overflown;
-                    lhs /= rhs;
-                    assert!(is_one(&lhs));
-                }
-            })
+            // Zero doesn't have a modular inverse
+            if i as Limb != PRIME_DIFF {
+                let mut lhs = overflown;
+                let rhs = overflown;
+                lhs /= rhs;
+                assert!(is_one(&lhs));
+            }
+        })
     }
 
     #[test]

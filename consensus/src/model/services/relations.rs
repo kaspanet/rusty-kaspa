@@ -15,15 +15,11 @@ impl<T: RelationsStoreReader> MTRelationsService<T> {
 }
 
 impl<T: RelationsStoreReader> RelationsStoreReader for MTRelationsService<T> {
-    fn get_parents(
-        &self, hash: Hash,
-    ) -> Result<consensus_core::blockhash::BlockHashes, crate::model::stores::errors::StoreError> {
+    fn get_parents(&self, hash: Hash) -> Result<consensus_core::blockhash::BlockHashes, crate::model::stores::errors::StoreError> {
         self.store.read().get_parents(hash)
     }
 
-    fn get_children(
-        &self, hash: Hash,
-    ) -> Result<consensus_core::blockhash::BlockHashes, crate::model::stores::errors::StoreError> {
+    fn get_children(&self, hash: Hash) -> Result<consensus_core::blockhash::BlockHashes, crate::model::stores::errors::StoreError> {
         self.store.read().get_children(hash)
     }
 
