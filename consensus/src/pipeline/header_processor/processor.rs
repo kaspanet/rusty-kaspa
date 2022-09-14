@@ -23,8 +23,7 @@ use crate::{
     pipeline::deps_manager::{BlockTask, BlockTaskDependencyManager},
     processes::{
         block_at_depth::BlockDepthManager, dagtraversalmanager::DagTraversalManager, difficulty::DifficultyManager,
-        ghostdag::protocol::GhostdagManager, pastmediantime::PastMedianTimeManager,
-        reachability::inquirer as reachability,
+        ghostdag::protocol::GhostdagManager, pastmediantime::PastMedianTimeManager, reachability::inquirer as reachability,
     },
     test_helpers::header_from_precomputed_hash,
 };
@@ -136,11 +135,19 @@ pub struct HeaderProcessor {
 impl HeaderProcessor {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        receiver: Receiver<BlockTask>, body_sender: Sender<BlockTask>, params: &Params, db: Arc<DB>,
-        relations_store: Arc<RwLock<DbRelationsStore>>, reachability_store: Arc<RwLock<DbReachabilityStore>>,
-        ghostdag_store: Arc<DbGhostdagStore>, headers_store: Arc<DbHeadersStore>, daa_store: Arc<DbDaaStore>,
-        statuses_store: Arc<RwLock<DbStatusesStore>>, pruning_store: Arc<RwLock<DbPruningStore>>,
-        depth_store: Arc<DbDepthStore>, block_window_cache_for_difficulty: Arc<BlockWindowCacheStore>,
+        receiver: Receiver<BlockTask>,
+        body_sender: Sender<BlockTask>,
+        params: &Params,
+        db: Arc<DB>,
+        relations_store: Arc<RwLock<DbRelationsStore>>,
+        reachability_store: Arc<RwLock<DbReachabilityStore>>,
+        ghostdag_store: Arc<DbGhostdagStore>,
+        headers_store: Arc<DbHeadersStore>,
+        daa_store: Arc<DbDaaStore>,
+        statuses_store: Arc<RwLock<DbStatusesStore>>,
+        pruning_store: Arc<RwLock<DbPruningStore>>,
+        depth_store: Arc<DbDepthStore>,
+        block_window_cache_for_difficulty: Arc<BlockWindowCacheStore>,
         block_window_cache_for_past_median_time: Arc<BlockWindowCacheStore>,
         reachability_service: MTReachabilityService<DbReachabilityStore>,
         relations_service: Arc<MTRelationsService<DbRelationsStore>>,
@@ -195,10 +202,7 @@ impl HeaderProcessor {
                 BlockTask::Exit => break,
                 BlockTask::Process(block, result_transmitters) => {
                     let hash = block.header.hash;
-                    if self
-                        .task_manager
-                        .register(block, result_transmitters)
-                    {
+                    if self.task_manager.register(block, result_transmitters) {
                         let processor = self.clone();
                         rayon::spawn(move || {
                             processor.queue_block(hash);
@@ -219,20 +223,16 @@ impl HeaderProcessor {
         if let Some(block) = self.task_manager.try_begin(hash) {
             let res = self.process_header(&block.header);
 
-            let dependent_tasks = self
-                .task_manager
-                .end(hash, |block, result_transmitters| {
-                    if res.is_err() || block.is_header_only() {
-                        for transmitter in result_transmitters {
-                            // We don't care if receivers were dropped
-                            let _ = transmitter.send(res.clone());
-                        }
-                    } else {
-                        self.body_sender
-                            .send(BlockTask::Process(block, result_transmitters))
-                            .unwrap();
+            let dependent_tasks = self.task_manager.end(hash, |block, result_transmitters| {
+                if res.is_err() || block.is_header_only() {
+                    for transmitter in result_transmitters {
+                        // We don't care if receivers were dropped
+                        let _ = transmitter.send(res.clone());
                     }
-                });
+                } else {
+                    self.body_sender.send(BlockTask::Process(block, result_transmitters)).unwrap();
+                }
+            });
 
             for dep in dependent_tasks {
                 let processor = self.clone();
@@ -246,11 +246,7 @@ impl HeaderProcessor {
     }
 
     fn process_header(self: &Arc<HeaderProcessor>, header: &Header) -> BlockProcessResult<BlockStatus> {
-        let status_option = self
-            .statuses_store
-            .read()
-            .get(header.hash)
-            .unwrap_option();
+        let status_option = self.statuses_store.read().get(header.hash).unwrap_option();
 
         match status_option {
             Some(StatusInvalid) => return Err(RuleError::KnownInvalid),
@@ -259,13 +255,11 @@ impl HeaderProcessor {
         }
 
         // Create processing context
-        let mut ctx =
-            HeaderProcessingContext::new(header.hash, header, self.pruning_store.read().pruning_point().unwrap());
+        let mut ctx = HeaderProcessingContext::new(header.hash, header, self.pruning_store.read().pruning_point().unwrap());
 
         // Run GHOSTDAG for the new header
         self.pre_ghostdag_validation(&mut ctx, header)?;
-        self.ghostdag_manager
-            .add_block(&mut ctx, header.hash); // TODO: Run GHOSTDAG for all block levels
+        self.ghostdag_manager.add_block(&mut ctx, header.hash); // TODO: Run GHOSTDAG for all block levels
 
         //
         // TODO: imp all remaining header validation and processing steps :)
@@ -273,22 +267,15 @@ impl HeaderProcessor {
         self.pre_pow_validation(&mut ctx, header)?;
 
         if let Err(e) = self.post_pow_validation(&mut ctx, header) {
-            self.statuses_store
-                .write()
-                .set(ctx.hash, StatusInvalid)
-                .unwrap();
+            self.statuses_store.write().set(ctx.hash, StatusInvalid).unwrap();
             return Err(e);
         }
 
         self.commit_header(ctx, header);
 
         // Report counters
-        self.counters
-            .header_counts
-            .fetch_add(1, Ordering::Relaxed);
-        self.counters
-            .dep_counts
-            .fetch_add(header.direct_parents().len() as u64, Ordering::Relaxed);
+        self.counters.header_counts.fetch_add(1, Ordering::Relaxed);
+        self.counters.dep_counts.fetch_add(header.direct_parents().len() as u64, Ordering::Relaxed);
         Ok(StatusHeaderOnly)
     }
 
@@ -299,22 +286,12 @@ impl HeaderProcessor {
         let mut batch = WriteBatch::default();
 
         // Write to append only stores: this requires no lock and hence done first
-        self.ghostdag_store
-            .insert_batch(&mut batch, ctx.hash, &ghostdag_data)
-            .unwrap();
-        self.block_window_cache_for_difficulty
-            .insert(ctx.hash, Arc::new(ctx.block_window_for_difficulty.unwrap()));
-        self.block_window_cache_for_past_median_time
-            .insert(ctx.hash, Arc::new(ctx.block_window_for_past_median_time.unwrap()));
-        self.daa_store
-            .insert_batch(&mut batch, ctx.hash, Arc::new(ctx.daa_added_blocks.unwrap()))
-            .unwrap();
-        self.headers_store
-            .insert_batch(&mut batch, ctx.hash, Arc::new(ctx.header.clone()))
-            .unwrap();
-        self.depth_store
-            .insert_batch(&mut batch, ctx.hash, ctx.merge_depth_root.unwrap(), ctx.finality_point.unwrap())
-            .unwrap();
+        self.ghostdag_store.insert_batch(&mut batch, ctx.hash, &ghostdag_data).unwrap();
+        self.block_window_cache_for_difficulty.insert(ctx.hash, Arc::new(ctx.block_window_for_difficulty.unwrap()));
+        self.block_window_cache_for_past_median_time.insert(ctx.hash, Arc::new(ctx.block_window_for_past_median_time.unwrap()));
+        self.daa_store.insert_batch(&mut batch, ctx.hash, Arc::new(ctx.daa_added_blocks.unwrap())).unwrap();
+        self.headers_store.insert_batch(&mut batch, ctx.hash, Arc::new(ctx.header.clone())).unwrap();
+        self.depth_store.insert_batch(&mut batch, ctx.hash, ctx.merge_depth_root.unwrap(), ctx.finality_point.unwrap()).unwrap();
 
         // Create staging reachability store. We use an upgradable read here to avoid concurrent
         // staging reachability operations. PERF: we assume that reachability processing time << header processing
@@ -336,15 +313,10 @@ impl HeaderProcessor {
 
         // Non-append only stores need to use write locks.
         // Note we need to keep the lock write guards until the batch is written.
-        let relations_write_guard = self
-            .relations_store
-            .insert_batch(&mut batch, header.hash, BlockHashes::new(header.direct_parents().clone()))
-            .unwrap();
+        let relations_write_guard =
+            self.relations_store.insert_batch(&mut batch, header.hash, BlockHashes::new(header.direct_parents().clone())).unwrap();
 
-        let statuses_write_guard = self
-            .statuses_store
-            .set_batch(&mut batch, ctx.hash, StatusHeaderOnly)
-            .unwrap();
+        let statuses_write_guard = self.statuses_store.set_batch(&mut batch, ctx.hash, StatusHeaderOnly).unwrap();
 
         // Write reachability data. Only at this brief moment the reachability store is locked for reads.
         // We take special care for this since reachability read queries are used throughout the system frequently.
@@ -365,15 +337,11 @@ impl HeaderProcessor {
             return;
         }
 
-        self.pruning_store
-            .write()
-            .set(self.genesis_hash)
-            .unwrap();
+        self.pruning_store.write().set(self.genesis_hash).unwrap();
         let mut header = header_from_precomputed_hash(self.genesis_hash, vec![]); // TODO
         header.bits = self.genesis_bits;
         let mut ctx = HeaderProcessingContext::new(self.genesis_hash, &header, ORIGIN);
-        self.ghostdag_manager
-            .add_genesis_if_needed(&mut ctx);
+        self.ghostdag_manager.add_genesis_if_needed(&mut ctx);
         ctx.block_window_for_difficulty = Some(Default::default());
         ctx.block_window_for_past_median_time = Some(Default::default());
         ctx.daa_added_blocks = Some(Default::default());

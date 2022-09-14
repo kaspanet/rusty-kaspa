@@ -52,7 +52,10 @@ impl<T: ReachabilityStoreReader + ?Sized> MTReachabilityService<T> {
     /// The caller is expected to verify that `from_ancestor` is indeed a chain ancestor of
     /// `to_descendant`, otherwise an error will be returned.
     pub fn forward_chain_iterator(
-        &self, from_ancestor: Hash, to_descendant: Hash, inclusive: bool,
+        &self,
+        from_ancestor: Hash,
+        to_descendant: Hash,
+        inclusive: bool,
     ) -> impl Iterator<Item = Result<Hash>> {
         ForwardChainIterator::new(self.store.clone(), from_ancestor, to_descendant, inclusive)
     }
@@ -65,7 +68,10 @@ impl<T: ReachabilityStoreReader + ?Sized> MTReachabilityService<T> {
     /// The caller is expected to verify that `to_ancestor` is indeed a chain ancestor of
     /// `from_descendant`, otherwise the iterator will eventually return an error.
     pub fn backward_chain_iterator(
-        &self, from_descendant: Hash, to_ancestor: Hash, inclusive: bool,
+        &self,
+        from_descendant: Hash,
+        to_ancestor: Hash,
+        inclusive: bool,
     ) -> impl Iterator<Item = Result<Hash>> {
         BackwardChainIterator::new(self.store.clone(), from_descendant, to_ancestor, inclusive)
     }
@@ -207,28 +213,18 @@ mod tests {
 
         // Assert
         let expected_hashes = [2u64, 3, 5, 6].map(Hash::from);
-        assert!(expected_hashes
-            .iter()
-            .cloned()
-            .eq(iter.map(|r| r.unwrap())));
+        assert!(expected_hashes.iter().cloned().eq(iter.map(|r| r.unwrap())));
 
         // Inclusive
         let iter = service.forward_chain_iterator(2.into(), 10.into(), true);
 
         // Assert
         let expected_hashes = [2u64, 3, 5, 6, 10].map(Hash::from);
-        assert!(expected_hashes
-            .iter()
-            .cloned()
-            .eq(iter.map(|r| r.unwrap())));
+        assert!(expected_hashes.iter().cloned().eq(iter.map(|r| r.unwrap())));
 
         // Compare backward to reversed forward
-        let forward_iter = service
-            .forward_chain_iterator(2.into(), 10.into(), true)
-            .map(|r| r.unwrap());
-        let backward_iter: Result<Vec<Hash>> = service
-            .backward_chain_iterator(10.into(), 2.into(), true)
-            .collect();
+        let forward_iter = service.forward_chain_iterator(2.into(), 10.into(), true).map(|r| r.unwrap());
+        let backward_iter: Result<Vec<Hash>> = service.backward_chain_iterator(10.into(), 2.into(), true).collect();
         assert!(forward_iter.eq(backward_iter.unwrap().iter().cloned().rev()))
     }
 
@@ -237,9 +233,7 @@ mod tests {
         // Arrange & Act
         let mut store = MemoryReachabilityStore::new();
         let root: Hash = 1.into();
-        TreeBuilder::new(&mut store)
-            .init_with_params(root, Interval::new(1, 5))
-            .add_block(2.into(), root);
+        TreeBuilder::new(&mut store).init_with_params(root, Interval::new(1, 5)).add_block(2.into(), root);
 
         let service = MTReachabilityService::new(Arc::new(RwLock::new(store)));
 
@@ -248,32 +242,24 @@ mod tests {
             .map(Hash::from)
             .iter()
             .cloned()
-            .eq(service
-                .forward_chain_iterator(1.into(), 2.into(), true)
-                .map(|r| r.unwrap())));
+            .eq(service.forward_chain_iterator(1.into(), 2.into(), true).map(|r| r.unwrap())));
 
-        assert!([1u64].map(Hash::from).iter().cloned().eq(service
-            .forward_chain_iterator(1.into(), 2.into(), false)
-            .map(|r| r.unwrap())));
+        assert!([1u64]
+            .map(Hash::from)
+            .iter()
+            .cloned()
+            .eq(service.forward_chain_iterator(1.into(), 2.into(), false).map(|r| r.unwrap())));
 
         assert!([2u64, 1]
             .map(Hash::from)
             .iter()
             .cloned()
-            .eq(service
-                .backward_chain_iterator(2.into(), root, true)
-                .map(|r| r.unwrap())));
+            .eq(service.backward_chain_iterator(2.into(), root, true).map(|r| r.unwrap())));
 
-        assert!([2u64].map(Hash::from).iter().cloned().eq(service
-            .backward_chain_iterator(2.into(), root, false)
-            .map(|r| r.unwrap())));
+        assert!([2u64].map(Hash::from).iter().cloned().eq(service.backward_chain_iterator(2.into(), root, false).map(|r| r.unwrap())));
 
-        assert!(std::iter::once_with(|| root).eq(service
-            .backward_chain_iterator(root, root, true)
-            .map(|r| r.unwrap())));
+        assert!(std::iter::once_with(|| root).eq(service.backward_chain_iterator(root, root, true).map(|r| r.unwrap())));
 
-        assert!(std::iter::empty::<Hash>().eq(service
-            .backward_chain_iterator(root, root, false)
-            .map(|r| r.unwrap())));
+        assert!(std::iter::empty::<Hash>().eq(service.backward_chain_iterator(root, root, false).map(|r| r.unwrap())));
     }
 }

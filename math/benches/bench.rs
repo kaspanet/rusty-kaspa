@@ -19,15 +19,9 @@ fn bench_uint128(c: &mut Criterion) {
     seed[0..16].copy_from_slice(&time.to_ne_bytes());
     let mut rng = ChaCha8Rng::from_seed(seed);
 
-    let u128_one: Vec<_> = (0..ITERS_128)
-        .map(|_| (rng.next_u64() as u128) << 64 | rng.next_u64() as u128)
-        .collect();
-    let u128_two: Vec<_> = (0..ITERS_128)
-        .map(|_| (rng.next_u64() as u128) << 64 | rng.next_u64() as u128)
-        .collect();
-    let shifts: Vec<_> = (0..ITERS_128)
-        .map(|_| rng.next_u32() % 1024)
-        .collect();
+    let u128_one: Vec<_> = (0..ITERS_128).map(|_| (rng.next_u64() as u128) << 64 | rng.next_u64() as u128).collect();
+    let u128_two: Vec<_> = (0..ITERS_128).map(|_| (rng.next_u64() as u128) << 64 | rng.next_u64() as u128).collect();
+    let shifts: Vec<_> = (0..ITERS_128).map(|_| rng.next_u32() % 1024).collect();
 
     let mut u128_c = c.benchmark_group("u128");
 
@@ -84,14 +78,8 @@ fn bench_uint128(c: &mut Criterion) {
 
     let mut uint128_c = c.benchmark_group("Uint128");
 
-    let uint128_one: Vec<_> = u128_one
-        .into_iter()
-        .map(Uint128::from_u128)
-        .collect();
-    let uint128_two: Vec<_> = u128_two
-        .into_iter()
-        .map(Uint128::from_u128)
-        .collect();
+    let uint128_one: Vec<_> = u128_one.into_iter().map(Uint128::from_u128).collect();
+    let uint128_two: Vec<_> = u128_two.into_iter().map(Uint128::from_u128).collect();
 
     uint128_c.bench_function("addition", |b| {
         b.iter(|| {
@@ -164,9 +152,7 @@ fn bench_uint256(c: &mut Criterion) {
             Uint256::from_le_bytes(seed)
         })
         .collect();
-    let shifts: Vec<_> = (0..ITERS_256)
-        .map(|_| rng.next_u32() % 2048)
-        .collect();
+    let shifts: Vec<_> = (0..ITERS_256).map(|_| rng.next_u32() % 2048).collect();
 
     let mut uint256_c = c.benchmark_group("uint256");
 

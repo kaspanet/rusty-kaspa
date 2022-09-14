@@ -33,14 +33,11 @@ impl DbBlockTransactionsStore {
         Self::new(Arc::clone(&self.raw_db), cache_size)
     }
 
-    pub fn insert_batch(
-        &self, batch: &mut WriteBatch, hash: Hash, transactions: Arc<Vec<Transaction>>,
-    ) -> Result<(), StoreError> {
+    pub fn insert_batch(&self, batch: &mut WriteBatch, hash: Hash, transactions: Arc<Vec<Transaction>>) -> Result<(), StoreError> {
         if self.cached_access.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
-        self.cached_access
-            .write_batch(batch, hash, &transactions)?;
+        self.cached_access.write_batch(batch, hash, &transactions)?;
         Ok(())
     }
 }

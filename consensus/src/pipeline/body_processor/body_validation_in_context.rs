@@ -22,18 +22,9 @@ impl BlockBodyProcessor {
     }
 
     fn check_block_transactions_in_context(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {
-        let (pmt, _) = self
-            .past_median_time_manager
-            .calc_past_median_time(
-                self.ghostdag_store
-                    .get_data(block.hash())
-                    .unwrap(),
-            );
+        let (pmt, _) = self.past_median_time_manager.calc_past_median_time(self.ghostdag_store.get_data(block.hash()).unwrap());
         for tx in block.transactions.iter() {
-            if let Err(e) = self
-                .transaction_validator
-                .utxo_free_tx_validation(tx, block.header.daa_score, pmt)
-            {
+            if let Err(e) = self.transaction_validator.utxo_free_tx_validation(tx, block.header.daa_score, pmt) {
                 return Err(RuleError::TxInContextFailed(tx.id(), e));
             }
         }
@@ -67,18 +58,13 @@ impl BlockBodyProcessor {
     }
 
     fn check_coinbase_blue_score_and_subsidy(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {
-        match self
-            .coinbase_manager
-            .validate_coinbase_payload_in_isolation_and_extract_coinbase_data(&block.transactions[0])
-        {
+        match self.coinbase_manager.validate_coinbase_payload_in_isolation_and_extract_coinbase_data(&block.transactions[0]) {
             Ok(data) => {
                 if data.blue_score != block.header.blue_score {
                     return Err(RuleError::BadCoinbasePayloadBlueScore(data.blue_score, block.header.blue_score));
                 }
 
-                let expected_subsidy = self
-                    .coinbase_manager
-                    .calc_block_subsidy(block.header.daa_score);
+                let expected_subsidy = self.coinbase_manager.calc_block_subsidy(block.header.daa_score);
 
                 if data.subsidy != expected_subsidy {
                     return Err(RuleError::WrongSubsidy(expected_subsidy, data.subsidy));
@@ -96,8 +82,7 @@ mod tests {
 
     use crate::{
         consensus::test_consensus::TestConsensus, constants::TX_VERSION, errors::RuleError,
-        model::stores::ghostdag::GhostdagStoreReader, params::MAINNET_PARAMS,
-        processes::transaction_validator::errors::TxRuleError,
+        model::stores::ghostdag::GhostdagStoreReader, params::MAINNET_PARAMS, processes::transaction_validator::errors::TxRuleError,
     };
     use consensus_core::{
         merkle::calc_hash_merkle_root,
@@ -116,10 +101,7 @@ mod tests {
 
         let body_processor = consensus.block_body_processor();
 
-        consensus
-            .add_block_with_parents(1.into(), vec![params.genesis_hash])
-            .await
-            .unwrap();
+        consensus.add_block_with_parents(1.into(), vec![params.genesis_hash]).await.unwrap();
 
         {
             let block = consensus.build_block_with_parents_and_transactions(2.into(), vec![1.into()], vec![]);
@@ -127,12 +109,8 @@ mod tests {
             assert!(matches!(body_processor.validate_body_in_context(&block), Err(RuleError::MissingParents(_))));
         }
 
-        let valid_block =
-            consensus.build_block_with_parents_and_transactions(3.into(), vec![params.genesis_hash], vec![]);
-        consensus
-            .validate_and_insert_block(Arc::new(valid_block))
-            .await
-            .unwrap();
+        let valid_block = consensus.build_block_with_parents_and_transactions(3.into(), vec![params.genesis_hash], vec![]);
+        consensus.validate_and_insert_block(Arc::new(valid_block)).await.unwrap();
         {
             let mut block = consensus.build_block_with_parents_and_transactions(2.into(), vec![3.into()], vec![]);
             Arc::make_mut(&mut block.transactions)[0].payload[8..16].copy_from_slice(&(5_u64).to_le_bytes());
@@ -154,9 +132,7 @@ mod tests {
 
             let block = Arc::new(block);
             assert!(matches!(
-                consensus
-                    .validate_and_insert_block(block.clone())
-                    .await,
+                consensus.validate_and_insert_block(block.clone()).await,
                 Err(RuleError::BadCoinbasePayloadBlueScore(_, _))
             ));
         }
@@ -167,20 +143,11 @@ mod tests {
             block.header.hash_merkle_root = calc_hash_merkle_root(block.transactions.iter());
 
             let block = Arc::new(block);
-            assert!(matches!(
-                consensus
-                    .validate_and_insert_block(block.clone())
-                    .await,
-                Err(RuleError::BadCoinbasePayload(_))
-            ));
+            assert!(matches!(consensus.validate_and_insert_block(block.clone()).await, Err(RuleError::BadCoinbasePayload(_))));
         }
 
-        let valid_block_child =
-            Arc::new(consensus.build_block_with_parents_and_transactions(6.into(), vec![3.into()], vec![]));
-        consensus
-            .validate_and_insert_block(valid_block_child.clone())
-            .await
-            .unwrap();
+        let valid_block_child = Arc::new(consensus.build_block_with_parents_and_transactions(6.into(), vec![3.into()], vec![]));
+        consensus.validate_and_insert_block(valid_block_child.clone()).await.unwrap();
         {
             // The block DAA score is 2, so the subsidy should be calculated according to the deflationary stage.
             let mut block = consensus.build_block_with_parents_and_transactions(7.into(), vec![6.into()], vec![]);
@@ -194,76 +161,25 @@ mod tests {
         {
             // Check that the same daa score as the block's daa score or higher fails, but lower passes.
             let tip_daa_score = valid_block_child.header.daa_score + 1;
-            check_for_lock_time_and_sequence(
-                &consensus,
-                valid_block_child.header.hash,
-                8.into(),
-                tip_daa_score + 1,
-                0,
-                false,
-            )
-            .await;
+            check_for_lock_time_and_sequence(&consensus, valid_block_child.header.hash, 8.into(), tip_daa_score + 1, 0, false).await;
 
-            check_for_lock_time_and_sequence(
-                &consensus,
-                valid_block_child.header.hash,
-                9.into(),
-                tip_daa_score,
-                0,
-                false,
-            )
-            .await;
+            check_for_lock_time_and_sequence(&consensus, valid_block_child.header.hash, 9.into(), tip_daa_score, 0, false).await;
 
-            check_for_lock_time_and_sequence(
-                &consensus,
-                valid_block_child.header.hash,
-                10.into(),
-                tip_daa_score - 1,
-                0,
-                true,
-            )
-            .await;
+            check_for_lock_time_and_sequence(&consensus, valid_block_child.header.hash, 10.into(), tip_daa_score - 1, 0, true).await;
 
-            let valid_block_child_gd = consensus
-                .ghostdag_store()
-                .get_data(valid_block_child.header.hash)
-                .unwrap();
-            let (valid_block_child_gd_pmt, _) = consensus
-                .past_median_time_manager()
-                .calc_past_median_time(valid_block_child_gd);
+            let valid_block_child_gd = consensus.ghostdag_store().get_data(valid_block_child.header.hash).unwrap();
+            let (valid_block_child_gd_pmt, _) = consensus.past_median_time_manager().calc_past_median_time(valid_block_child_gd);
             let past_median_time = valid_block_child_gd_pmt + 1;
 
             // Check that the same past median time as the block's or higher fails, but lower passes.
             let tip_daa_score = valid_block_child.header.daa_score + 1;
-            check_for_lock_time_and_sequence(
-                &consensus,
-                valid_block_child.header.hash,
-                10.into(),
-                past_median_time + 1,
-                0,
-                false,
-            )
-            .await;
+            check_for_lock_time_and_sequence(&consensus, valid_block_child.header.hash, 10.into(), past_median_time + 1, 0, false)
+                .await;
 
-            check_for_lock_time_and_sequence(
-                &consensus,
-                valid_block_child.header.hash,
-                11.into(),
-                past_median_time,
-                0,
-                false,
-            )
-            .await;
+            check_for_lock_time_and_sequence(&consensus, valid_block_child.header.hash, 11.into(), past_median_time, 0, false).await;
 
-            check_for_lock_time_and_sequence(
-                &consensus,
-                valid_block_child.header.hash,
-                12.into(),
-                past_median_time - 1,
-                0,
-                true,
-            )
-            .await;
+            check_for_lock_time_and_sequence(&consensus, valid_block_child.header.hash, 12.into(), past_median_time - 1, 0, true)
+                .await;
 
             // We check that if the transaction is marked as finalized it'll pass for any lock time.
             check_for_lock_time_and_sequence(
@@ -276,22 +192,20 @@ mod tests {
             )
             .await;
 
-            check_for_lock_time_and_sequence(
-                &consensus,
-                valid_block_child.header.hash,
-                14.into(),
-                tip_daa_score + 1,
-                u64::MAX,
-                true,
-            )
-            .await;
+            check_for_lock_time_and_sequence(&consensus, valid_block_child.header.hash, 14.into(), tip_daa_score + 1, u64::MAX, true)
+                .await;
         }
 
         consensus.shutdown(wait_handles);
     }
 
     async fn check_for_lock_time_and_sequence(
-        consensus: &TestConsensus, parent: Hash, block_hash: Hash, lock_time: u64, sequence: u64, should_pass: bool,
+        consensus: &TestConsensus,
+        parent: Hash,
+        block_hash: Hash,
+        lock_time: u64,
+        sequence: u64,
+        should_pass: bool,
     ) {
         // The block DAA score is 2, so the subsidy should be calculated according to the deflationary stage.
         let block = consensus.build_block_with_parents_and_transactions(
@@ -310,10 +224,7 @@ mod tests {
         );
 
         if should_pass {
-            consensus
-                .validate_and_insert_block(Arc::new(block))
-                .await
-                .unwrap();
+            consensus.validate_and_insert_block(Arc::new(block)).await.unwrap();
         } else {
             assert!(matches!(
                 consensus

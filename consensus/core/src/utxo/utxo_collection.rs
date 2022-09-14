@@ -97,7 +97,10 @@ impl UtxoCollectionExtensions for UtxoCollection {
 ///
 /// where the set operators demand equality also on the DAA score dimension
 pub(super) fn intersection_with_remainder_having_daa_score_in_place(
-    this: &UtxoCollection, other: &UtxoCollection, result: &mut UtxoCollection, remainder: &mut UtxoCollection,
+    this: &UtxoCollection,
+    other: &UtxoCollection,
+    result: &mut UtxoCollection,
+    remainder: &mut UtxoCollection,
 ) {
     for (outpoint, entry) in this.iter() {
         if other.contains_with_daa_score(outpoint, entry.block_daa_score) {
@@ -114,9 +117,7 @@ pub(super) fn intersection_with_remainder_having_daa_score_in_place(
 /// `result    = result ∪ (this ∖ other)`
 ///
 /// where the set operators demand equality also on the DAA score dimension
-pub(super) fn subtraction_having_daa_score_in_place(
-    this: &UtxoCollection, other: &UtxoCollection, result: &mut UtxoCollection,
-) {
+pub(super) fn subtraction_having_daa_score_in_place(this: &UtxoCollection, other: &UtxoCollection, result: &mut UtxoCollection) {
     for (outpoint, entry) in this.iter() {
         if !other.contains_with_daa_score(outpoint, entry.block_daa_score) {
             result.insert(*outpoint, entry.clone());
@@ -133,7 +134,10 @@ pub(super) fn subtraction_having_daa_score_in_place(
 ///
 /// where the set operators demand equality also on the DAA score dimension
 pub(super) fn subtraction_with_remainder_having_daa_score_in_place(
-    this: &UtxoCollection, other: &UtxoCollection, result: &mut UtxoCollection, remainder: &mut UtxoCollection,
+    this: &UtxoCollection,
+    other: &UtxoCollection,
+    result: &mut UtxoCollection,
+    remainder: &mut UtxoCollection,
 ) {
     for (outpoint, entry) in this.iter() {
         if !other.contains_with_daa_score(outpoint, entry.block_daa_score) {
@@ -155,12 +159,7 @@ mod tests {
 
         map.insert(
             TransactionOutpoint { transaction_id: 6.into(), index: 1 },
-            UtxoEntry {
-                amount: 5,
-                script_public_key: Arc::new(ScriptPublicKey::default()),
-                block_daa_score: 765,
-                is_coinbase: false,
-            },
+            UtxoEntry { amount: 5, script_public_key: Arc::new(ScriptPublicKey::default()), block_daa_score: 765, is_coinbase: false },
         );
         dbg!(map);
     }

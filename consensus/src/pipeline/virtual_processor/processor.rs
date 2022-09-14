@@ -31,7 +31,9 @@ pub struct VirtualStateProcessor {
 
 impl VirtualStateProcessor {
     pub fn new(
-        receiver: Receiver<BlockTask>, db: Arc<DB>, statuses_store: Arc<RwLock<DbStatusesStore>>,
+        receiver: Receiver<BlockTask>,
+        db: Arc<DB>,
+        statuses_store: Arc<RwLock<DbStatusesStore>>,
         reachability_service: MTReachabilityService<DbReachabilityStore>,
     ) -> Self {
         Self { receiver, db, statuses_store, reachability_service }

@@ -29,8 +29,7 @@ use crate::{
     processes::{
         block_at_depth::BlockDepthManager, coinbase::CoinbaseManager, dagtraversalmanager::DagTraversalManager,
         difficulty::DifficultyManager, ghostdag::protocol::GhostdagManager, mass::MassCalculator,
-        pastmediantime::PastMedianTimeManager, reachability::inquirer as reachability,
-        transaction_validator::TransactionValidator,
+        pastmediantime::PastMedianTimeManager, reachability::inquirer as reachability, transaction_validator::TransactionValidator,
     },
 };
 use consensus_core::block::Block;
@@ -196,12 +195,8 @@ impl Consensus {
             params.genesis_hash,
         ));
 
-        let virtual_processor = Arc::new(VirtualStateProcessor::new(
-            virtual_receiver,
-            db.clone(),
-            statuses_store.clone(),
-            reachability_service.clone(),
-        ));
+        let virtual_processor =
+            Arc::new(VirtualStateProcessor::new(virtual_receiver, db.clone(), statuses_store.clone(), reachability_service.clone()));
 
         Self {
             db,
@@ -254,13 +249,9 @@ impl Consensus {
         ]
     }
 
-    pub fn validate_and_insert_block(
-        &self, block: Arc<Block>,
-    ) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
+    pub fn validate_and_insert_block(&self, block: Arc<Block>) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
         let (tx, rx): (BlockResultSender, _) = oneshot::channel();
-        self.block_sender
-            .send(BlockTask::Process(block, vec![tx]))
-            .unwrap();
+        self.block_sender.send(BlockTask::Process(block, vec![tx])).unwrap();
         async { rx.await.unwrap() }
     }
 

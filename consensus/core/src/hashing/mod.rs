@@ -34,11 +34,7 @@ impl<T: Hasher> HasherExtensions for T {
     #[inline(always)]
     fn write_blue_work(&mut self, work: BlueWorkType) -> &mut Self {
         let be_bytes = work.to_be_bytes();
-        let start = be_bytes
-            .iter()
-            .cloned()
-            .position(|byte| byte != 0)
-            .unwrap_or(be_bytes.len());
+        let start = be_bytes.iter().cloned().position(|byte| byte != 0).unwrap_or(be_bytes.len());
 
         self.write_var_bytes(&be_bytes[start..])
     }

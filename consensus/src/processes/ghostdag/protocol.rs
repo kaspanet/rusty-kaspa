@@ -21,12 +21,7 @@ use crate::{
 
 use super::ordering::*;
 
-pub struct GhostdagManager<
-    T: GhostdagStoreReader,
-    S: RelationsStoreReader,
-    U: ReachabilityService,
-    V: HeaderStoreReader,
-> {
+pub struct GhostdagManager<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V: HeaderStoreReader> {
     genesis_hash: Hash,
     pub(super) k: KType,
     pub(super) ghostdag_store: Arc<T>,
@@ -35,22 +30,20 @@ pub struct GhostdagManager<
     pub(super) reachability_service: U,
 }
 
-impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V: HeaderStoreReader>
-    GhostdagManager<T, S, U, V>
-{
+impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V: HeaderStoreReader> GhostdagManager<T, S, U, V> {
     pub fn new(
-        genesis_hash: Hash, k: KType, ghostdag_store: Arc<T>, relations_store: Arc<S>, headers_store: Arc<V>,
+        genesis_hash: Hash,
+        k: KType,
+        ghostdag_store: Arc<T>,
+        relations_store: Arc<S>,
+        headers_store: Arc<V>,
         reachability_service: U,
     ) -> Self {
         Self { genesis_hash, k, ghostdag_store, relations_store, reachability_service, headers_store }
     }
 
     pub fn add_genesis_if_needed(&self, ctx: &mut HeaderProcessingContext) {
-        if !self
-            .ghostdag_store
-            .has(self.genesis_hash)
-            .unwrap()
-        {
+        if !self.ghostdag_store.has(self.genesis_hash).unwrap() {
             ctx.ghostdag_data = Some(Arc::new(GhostdagData::new(
                 0,
                 Default::default(),
@@ -65,13 +58,7 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
     fn find_selected_parent(&self, parents: &[Hash]) -> Hash {
         parents
             .iter()
-            .map(|parent| SortableBlock {
-                hash: *parent,
-                blue_work: self
-                    .ghostdag_store
-                    .get_blue_work(*parent)
-                    .unwrap(),
-            })
+            .map(|parent| SortableBlock { hash: *parent, blue_work: self.ghostdag_store.get_blue_work(*parent).unwrap() })
             .max()
             .unwrap()
             .hash
@@ -99,24 +86,12 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
             }
         }
 
-        let blue_score = self
-            .ghostdag_store
-            .get_blue_score(selected_parent)
-            .unwrap()
-            + new_block_data.mergeset_blues.len() as u64;
+        let blue_score = self.ghostdag_store.get_blue_score(selected_parent).unwrap() + new_block_data.mergeset_blues.len() as u64;
 
-        let added_blue_work: BlueWorkType = new_block_data
-            .mergeset_blues
-            .iter()
-            .cloned()
-            .map(|hash| calc_work(self.headers_store.get_bits(hash).unwrap()))
-            .sum();
+        let added_blue_work: BlueWorkType =
+            new_block_data.mergeset_blues.iter().cloned().map(|hash| calc_work(self.headers_store.get_bits(hash).unwrap())).sum();
 
-        let blue_work = self
-            .ghostdag_store
-            .get_blue_work(selected_parent)
-            .unwrap()
-            + added_blue_work;
+        let blue_work = self.ghostdag_store.get_blue_work(selected_parent).unwrap() + added_blue_work;
 
         new_block_data.finalize_score_and_work(blue_score, blue_work);
 
@@ -125,8 +100,12 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
     }
 
     fn check_blue_candidate_with_chain_block(
-        &self, new_block_data: &GhostdagData, chain_block: &ChainBlock, blue_candidate: Hash,
-        candidate_blues_anticone_sizes: &mut HashMap<Hash, KType>, candidate_blue_anticone_size: &mut KType,
+        &self,
+        new_block_data: &GhostdagData,
+        chain_block: &ChainBlock,
+        blue_candidate: Hash,
+        candidate_blues_anticone_sizes: &mut HashMap<Hash, KType>,
+        candidate_blue_anticone_size: &mut KType,
     ) -> ColoringState {
         // If blue_candidate is in the future of chain_block, it means
         // that all remaining blues are in the past of chain_block and thus
@@ -139,20 +118,14 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
 
         // We check if chain_block is not the new block by checking if it has a hash.
         if let Some(hash) = chain_block.hash {
-            if self
-                .reachability_service
-                .is_dag_ancestor_of(hash, blue_candidate)
-            {
+            if self.reachability_service.is_dag_ancestor_of(hash, blue_candidate) {
                 return ColoringState::Blue;
             }
         }
 
         for &block in chain_block.data.mergeset_blues.iter() {
             // Skip blocks that exist in the past of blue_candidate.
-            if self
-                .reachability_service
-                .is_dag_ancestor_of(block, blue_candidate)
-            {
+            if self.reachability_service.is_dag_ancestor_of(block, blue_candidate) {
                 continue;
             }
 
@@ -164,11 +137,7 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
                 return ColoringState::Red;
             }
 
-            if *candidate_blues_anticone_sizes
-                .get(&block)
-                .unwrap()
-                == self.k
-            {
+            if *candidate_blues_anticone_sizes.get(&block).unwrap() == self.k {
                 // k-cluster violation: A block in candidate's blue anticone already
                 // has k blue blocks in its own anticone
                 return ColoringState::Red;
@@ -176,13 +145,7 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
 
             // This is a sanity check that validates that a blue
             // block's blue anticone is not already larger than K.
-            assert!(
-                *candidate_blues_anticone_sizes
-                    .get(&block)
-                    .unwrap()
-                    <= self.k,
-                "found blue anticone larger than K"
-            );
+            assert!(*candidate_blues_anticone_sizes.get(&block).unwrap() <= self.k, "found blue anticone larger than K");
         }
 
         ColoringState::Pending
@@ -202,15 +165,9 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
                 panic!("block {} is not in blue set of the given context", block);
             }
 
-            current_blues_anticone_sizes = self
-                .ghostdag_store
-                .get_blues_anticone_sizes(current_selected_parent)
-                .unwrap();
+            current_blues_anticone_sizes = self.ghostdag_store.get_blues_anticone_sizes(current_selected_parent).unwrap();
 
-            current_selected_parent = self
-                .ghostdag_store
-                .get_selected_parent(current_selected_parent)
-                .unwrap();
+            current_selected_parent = self.ghostdag_store.get_selected_parent(current_selected_parent).unwrap();
         }
     }
 
@@ -241,19 +198,14 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
             );
 
             match state {
-                ColoringState::Blue => {
-                    return ColoringOutput::Blue(candidate_blue_anticone_size, candidate_blues_anticone_sizes)
-                }
+                ColoringState::Blue => return ColoringOutput::Blue(candidate_blue_anticone_size, candidate_blues_anticone_sizes),
                 ColoringState::Red => return ColoringOutput::Red,
                 ColoringState::Pending => (), // continue looping
             }
 
             chain_block = ChainBlock {
                 hash: Some(chain_block.data.selected_parent),
-                data: self
-                    .ghostdag_store
-                    .get_data(chain_block.data.selected_parent)
-                    .unwrap(),
+                data: self.ghostdag_store.get_data(chain_block.data.selected_parent).unwrap(),
             }
         }
     }

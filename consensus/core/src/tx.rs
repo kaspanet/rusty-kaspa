@@ -71,7 +71,10 @@ pub struct TransactionInput {
 
 impl TransactionInput {
     pub fn new(
-        previous_outpoint: TransactionOutpoint, signature_script: Vec<u8>, sequence: u64, sig_op_count: u8,
+        previous_outpoint: TransactionOutpoint,
+        signature_script: Vec<u8>,
+        sequence: u64,
+        sig_op_count: u8,
         utxo_entry: Option<UtxoEntry>,
     ) -> Self {
         Self { previous_outpoint, signature_script, sequence, sig_op_count, utxo_entry }
@@ -111,8 +114,14 @@ pub struct Transaction {
 
 impl Transaction {
     pub fn new(
-        version: u16, inputs: Vec<Arc<TransactionInput>>, outputs: Vec<Arc<TransactionOutput>>, lock_time: u64,
-        subnetwork_id: SubnetworkId, gas: u64, payload: Vec<u8>, fee: u64,
+        version: u16,
+        inputs: Vec<Arc<TransactionInput>>,
+        outputs: Vec<Arc<TransactionOutput>>,
+        lock_time: u64,
+        subnetwork_id: SubnetworkId,
+        gas: u64,
+        payload: Vec<u8>,
+        fee: u64,
     ) -> Self {
         let mut tx = Self {
             version,
