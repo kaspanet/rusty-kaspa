@@ -142,8 +142,7 @@ impl<'a, T: ReachabilityStore + ?Sized> DagBuilder<'a, T> {
                 queue.push_back(*parent);
             }
         }
-
-        Vec::<Hash>::from_iter(mergeset.iter().cloned())
+        mergeset.into_iter().collect()
     }
 
     pub fn store(&self) -> &&'a mut T {
