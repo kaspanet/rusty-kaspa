@@ -189,6 +189,7 @@ impl VirtualStateProcessor {
 
                         let mut utxo_diff = UtxoDiff::default();
                         let chain_block = state.blocks.get(&chain_hash).unwrap();
+
                         // TODO: prefill and populate UTXO entry data
                         utxo_diff
                             .add_transaction(&chain_block.transactions[0], chain_block.header.daa_score)
@@ -200,17 +201,31 @@ impl VirtualStateProcessor {
 
                         // Temp logic
                         assert!(!state.multiset_hashes.contains_key(&chain_hash));
-                        let mut base_multiset_hash = state
+                        let mut multiset_hash = state
                             .multiset_hashes
                             .get(&selected_parent)
                             .unwrap()
                             .clone();
-                        base_multiset_hash.add_transaction(&chain_block.transactions[0], chain_block.header.daa_score);
+
+                        if selected_parent != self.genesis_hash {
+                            let selected_parent_block = state.blocks.get(&selected_parent).unwrap();
+                            multiset_hash
+                                .add_transaction(&selected_parent_block.transactions[0], chain_block.header.daa_score);
+                        }
 
                         // Verify the header UTXO commitment
-                        let status = if base_multiset_hash.finalize() != chain_block.header.utxo_commitment {
+                        let expected_commitment = multiset_hash.finalize();
+                        let status = if expected_commitment != chain_block.header.utxo_commitment {
+                            trace!(
+                                "wrong commitment: {}, {}, {}, {}",
+                                selected_parent,
+                                chain_hash,
+                                expected_commitment,
+                                chain_block.header.utxo_commitment
+                            );
                             BlockStatus::StatusDisqualifiedFromChain
                         } else {
+                            // trace!("correct commitment: {}, {}, {}", selected_parent, chain_hash, expected_commitment);
                             BlockStatus::StatusUTXOValid
                         };
 
@@ -221,7 +236,7 @@ impl VirtualStateProcessor {
 
                         state
                             .multiset_hashes
-                            .insert(chain_hash, base_multiset_hash);
+                            .insert(chain_hash, multiset_hash);
                     }
                 }
             }
