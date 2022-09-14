@@ -187,7 +187,7 @@ async fn test_concurrent_pipeline_random() {
             let hash = blockhash::new_unique();
             new_tips.push(hash);
 
-            let b = consensus.build_block_with_parents(hash, tips.clone());
+            let b = consensus.build_block_with_parents_and_transactions(hash, tips.clone(), vec![]);
 
             // Submit to consensus
             let f = consensus.validate_and_insert_block(Arc::new(b));

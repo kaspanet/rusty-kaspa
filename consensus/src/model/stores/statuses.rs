@@ -11,10 +11,9 @@ use super::{
 use hashes::Hash;
 
 #[derive(Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Debug)]
-#[repr(u8)]
 pub enum BlockStatus {
     /// StatusInvalid indicates that the block is invalid.
-    StatusInvalid = 0,
+    StatusInvalid,
 
     /// StatusUTXOValid indicates the block is valid from any UTXO related aspects and has passed all the other validations as well.
     StatusUTXOValid,
@@ -29,6 +28,12 @@ pub enum BlockStatus {
 
     /// StatusHeaderOnly indicates that the block transactions are not held (pruned or wasn't added yet)
     StatusHeaderOnly,
+}
+
+impl BlockStatus {
+    pub fn has_block_body(self) -> bool {
+        matches!(self, Self::StatusUTXOValid | Self::StatusUTXOPendingVerification | Self::StatusDisqualifiedFromChain)
+    }
 }
 
 /// Reader API for `StatusesStore`.
@@ -59,10 +64,7 @@ impl DbStatusesStore {
     }
 
     pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {
-        Self {
-            raw_db: Arc::clone(&self.raw_db),
-            cached_access: CachedDbAccessForCopy::new(Arc::clone(&self.raw_db), cache_size, STORE_PREFIX),
-        }
+        Self::new(Arc::clone(&self.raw_db), cache_size)
     }
 }
 

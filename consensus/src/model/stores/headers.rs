@@ -24,7 +24,7 @@ pub trait HeaderStore: HeaderStoreReader {
 }
 
 const HEADERS_STORE_PREFIX: &[u8] = b"headers";
-const COPMACT_HEADER_DATA_STORE_PREFIX: &[u8] = b"compact-header-data";
+const COMPACT_HEADER_DATA_STORE_PREFIX: &[u8] = b"compact-header-data";
 
 #[derive(Clone, Copy, Serialize, Deserialize)]
 pub struct CompactHeaderData {
@@ -49,22 +49,14 @@ impl DbHeadersStore {
             cached_compact_headers_access: CachedDbAccessForCopy::new(
                 Arc::clone(&db),
                 cache_size,
-                COPMACT_HEADER_DATA_STORE_PREFIX,
+                COMPACT_HEADER_DATA_STORE_PREFIX,
             ),
-            cached_headers_access: CachedDbAccess::new(Arc::clone(&db), cache_size, HEADERS_STORE_PREFIX),
+            cached_headers_access: CachedDbAccess::new(db, cache_size, HEADERS_STORE_PREFIX),
         }
     }
 
     pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {
-        Self {
-            raw_db: Arc::clone(&self.raw_db),
-            cached_compact_headers_access: CachedDbAccessForCopy::new(
-                Arc::clone(&self.raw_db),
-                cache_size,
-                COPMACT_HEADER_DATA_STORE_PREFIX,
-            ),
-            cached_headers_access: CachedDbAccess::new(Arc::clone(&self.raw_db), cache_size, HEADERS_STORE_PREFIX),
-        }
+        Self::new(Arc::clone(&self.raw_db), cache_size)
     }
 
     pub fn insert_batch(&self, batch: &mut WriteBatch, hash: Hash, header: Arc<Header>) -> Result<(), StoreError> {

@@ -37,7 +37,7 @@ mod tests {
 
     #[test]
     fn test_header_hashing() {
-        let header = Header::new(1, vec![1.into()], 234, 23, 567, 0, 0, 0);
+        let header = Header::new(1, vec![1.into()], Default::default(), 234, 23, 567, 0, 0, 0);
         assert_ne!(blockhash::NONE, header.hash);
 
         // TODO: tests comparing to golang ref

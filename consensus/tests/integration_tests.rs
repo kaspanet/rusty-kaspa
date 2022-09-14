@@ -26,7 +26,6 @@ use std::{
     collections::HashMap,
     fs::{self, File},
     io::{self, BufRead, BufReader},
-    path::Path,
     str::{from_utf8, FromStr},
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -63,10 +62,8 @@ fn reachability_stretch_test(use_attack_json: bool) {
         if use_attack_json { "" } else { "no" },
         NUM_BLOCKS_EXPONENT
     );
-    let path = Path::new(&path_str);
-    let file = File::open(path).unwrap();
-    let reader = BufReader::new(file);
-    let decoder = GzDecoder::new(reader);
+    let file = File::open(path_str).unwrap();
+    let decoder = GzDecoder::new(file);
     let json_blocks: Vec<JsonBlock> = serde_json::from_reader(decoder).unwrap();
 
     let root = blockhash::ORIGIN;
@@ -215,8 +212,7 @@ async fn ghostdag_test() {
 
     for path_string in path_strings.iter() {
         println!("Running test {}", path_string);
-        let path = Path::new(&path_string);
-        let file = File::open(path).unwrap();
+        let file = File::open(path_string).unwrap();
         let reader = BufReader::new(file);
         let test: GhostdagTestDag = serde_json::from_reader(reader).unwrap();
 
@@ -737,9 +733,8 @@ struct RPCBlockVerboseData {
 #[tokio::test]
 async fn json_test() {
     let file = File::open("tests/testdata/json_test.json.gz").unwrap();
-    let reader = BufReader::new(file);
-    let decoder = GzDecoder::new(reader);
-    let mut lines = io::BufReader::new(decoder).lines();
+    let decoder = GzDecoder::new(file);
+    let mut lines = BufReader::new(decoder).lines();
     let first_line = lines.next().unwrap();
     let genesis = json_line_to_block(first_line.unwrap());
     let mut params = MAINNET_PARAMS;
@@ -776,8 +771,7 @@ async fn json_test() {
 #[tokio::test]
 async fn json_concurrency_test() {
     let file = File::open("tests/testdata/json_test.json.gz").unwrap();
-    let reader = BufReader::new(file);
-    let decoder = GzDecoder::new(reader);
+    let decoder = GzDecoder::new(file);
     let mut lines = io::BufReader::new(decoder).lines();
     let first_line = lines.next().unwrap();
     let genesis = json_line_to_block(first_line.unwrap());
@@ -854,48 +848,49 @@ fn json_line_to_block(line: String) -> Block {
             blue_score: rpc_block.Header.BlueScore,
             pruning_point: Hash::from_str(&rpc_block.Header.PruningPoint).unwrap(),
         },
-        transactions: rpc_block
-            .Transactions
-            .iter()
-            .map(|tx| {
-                Transaction::new(
-                    tx.Version,
-                    tx.Inputs
-                        .iter()
-                        .map(|input| {
-                            Arc::new(TransactionInput {
-                                previous_outpoint: TransactionOutpoint {
-                                    transaction_id: Hash::from_str(&input.PreviousOutpoint.TransactionID).unwrap(),
-                                    index: input.PreviousOutpoint.Index,
-                                },
-                                signature_script: hex_decode(&input.SignatureScript),
-                                sequence: input.Sequence,
-                                sig_op_count: input.SigOpCount,
-                                utxo_entry: None,
+        transactions: Arc::new(
+            rpc_block
+                .Transactions
+                .iter()
+                .map(|tx| {
+                    Transaction::new(
+                        tx.Version,
+                        tx.Inputs
+                            .iter()
+                            .map(|input| {
+                                Arc::new(TransactionInput {
+                                    previous_outpoint: TransactionOutpoint {
+                                        transaction_id: Hash::from_str(&input.PreviousOutpoint.TransactionID).unwrap(),
+                                        index: input.PreviousOutpoint.Index,
+                                    },
+                                    signature_script: hex_decode(&input.SignatureScript),
+                                    sequence: input.Sequence,
+                                    sig_op_count: input.SigOpCount,
+                                    utxo_entry: None,
+                                })
                             })
-                        })
-                        .collect(),
-                    tx.Outputs
-                        .iter()
-                        .map(|output| {
-                            Arc::new(TransactionOutput {
-                                value: output.Amount,
-                                script_public_key: Arc::new(ScriptPublicKey {
-                                    script: hex_decode(&output.ScriptPublicKey.Script),
-                                    version: output.ScriptPublicKey.Version,
-                                }),
+                            .collect(),
+                        tx.Outputs
+                            .iter()
+                            .map(|output| {
+                                Arc::new(TransactionOutput {
+                                    value: output.Amount,
+                                    script_public_key: Arc::new(ScriptPublicKey {
+                                        script: hex_decode(&output.ScriptPublicKey.Script),
+                                        version: output.ScriptPublicKey.Version,
+                                    }),
+                                })
                             })
-                        })
-                        .collect(),
-                    tx.LockTime,
-                    SubnetworkId::from_str(&tx.SubnetworkID).unwrap(),
-                    tx.Gas,
-                    hex_decode(&tx.Payload),
-                    0,
-                    0,
-                )
-            })
-            .collect(),
+                            .collect(),
+                        tx.LockTime,
+                        SubnetworkId::from_str(&tx.SubnetworkID).unwrap(),
+                        tx.Gas,
+                        hex_decode(&tx.Payload),
+                        0,
+                    )
+                })
+                .collect(),
+        ),
     }
 }
 

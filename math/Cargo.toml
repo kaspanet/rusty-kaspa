@@ -1,0 +1,22 @@
+[package]
+name = "math"
+version = "0.1.0"
+description = "Kaspa miscellaneous lib"
+edition = "2021"
+authors = ["Kaspa developers"]
+include = [
+"src/**/*.rs",
+]
+
+[dependencies]
+serde = { version = "1.0", default-features = false }
+faster-hex = "0.6"
+
+
+[dev-dependencies]
+rand_chacha = "0.3"
+criterion = { version = "0.4", default-features = false }
+
+[[bench]]
+name = "bench"
+harness = false

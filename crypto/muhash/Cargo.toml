@@ -11,8 +11,9 @@ hashes = { path = "../hashes" }
 
 
 [dev-dependencies]
-criterion = "0.3"
+criterion = { version = "0.4", default-features = false }
 rand = "0.8"
+
 [[bench]]
 name = "bench"
 harness = false

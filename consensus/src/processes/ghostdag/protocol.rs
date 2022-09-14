@@ -156,7 +156,7 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
             }
         }
 
-        for block in chain_block.data.mergeset_blues.iter().cloned() {
+        for &block in chain_block.data.mergeset_blues.iter() {
             // Skip blocks that exist in the past of blue_candidate.
             if self
                 .reachability_service
