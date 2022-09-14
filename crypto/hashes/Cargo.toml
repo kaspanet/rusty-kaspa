@@ -22,7 +22,7 @@ keccak = "0.1"
 
 [dev-dependencies]
 sha3 = "0.10"
-criterion = "0.3"
+criterion = { version = "0.4", default-features = false }
 rand = "0.8"
 
 [build-dependencies]
