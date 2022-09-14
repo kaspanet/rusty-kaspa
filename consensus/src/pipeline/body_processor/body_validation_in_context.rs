@@ -97,7 +97,6 @@ mod tests {
         tx::{Transaction, TransactionInput, TransactionOutpoint},
     };
     use hashes::Hash;
-    use kaspa_core::extract_enum_value;
     use std::sync::Arc;
 
     #[tokio::test]
@@ -117,7 +116,7 @@ mod tests {
         {
             let block = consensus.build_block_with_parents_and_transactions(2.into(), vec![1.into()], vec![]);
             // We expect a missing parents error since the parent is header only.
-            extract_enum_value!(body_processor.validate_body_in_context(&block),Err(RuleError::MissingParents(_)) => ());
+            assert!(matches!(body_processor.validate_body_in_context(&block), Err(RuleError::MissingParents(_))));
         }
 
         let valid_block =
@@ -132,10 +131,12 @@ mod tests {
             block.header.hash_merkle_root = calc_hash_merkle_root(block.transactions.iter());
 
             let block = Arc::new(block);
-            extract_enum_value!(consensus.validate_and_insert_block(block.clone()).await,Err(RuleError::WrongSubsidy(expected,_)) => (assert_eq!(expected, 50000000000)));
+            assert!(
+                matches!(consensus.validate_and_insert_block(block.clone()).await,Err(RuleError::WrongSubsidy(expected,_)) if expected == 50000000000)
+            );
 
             // The second time we send an invalid block we expect it to be a known invalid.
-            extract_enum_value!(consensus.validate_and_insert_block(block).await,Err(RuleError::KnownInvalid) => ());
+            assert!(matches!(consensus.validate_and_insert_block(block).await, Err(RuleError::KnownInvalid)));
         }
 
         let valid_block_child =
@@ -149,7 +150,9 @@ mod tests {
             let mut block = consensus.build_block_with_parents_and_transactions(5.into(), vec![4.into()], vec![]);
             Arc::make_mut(&mut block.transactions)[0].payload[8..16].copy_from_slice(&(5_u64).to_le_bytes());
             block.header.hash_merkle_root = calc_hash_merkle_root(block.transactions.iter());
-            extract_enum_value!(consensus.validate_and_insert_block(Arc::new(block)).await,Err(RuleError::WrongSubsidy(expected,_)) => (assert_eq!(expected, 44000000000)));
+            assert!(
+                matches!(consensus.validate_and_insert_block(Arc::new(block)).await,Err(RuleError::WrongSubsidy(expected,_)) if expected == 44000000000)
+            );
         }
 
         {
@@ -276,7 +279,12 @@ mod tests {
                 .await
                 .unwrap();
         } else {
-            extract_enum_value!(consensus.validate_and_insert_block(Arc::new(block)).await,Err(RuleError::TxInContextFailed(_,e)) => (extract_enum_value!(e, TxRuleError::NotFinalized(_) => ())));
+            assert!(matches!(
+                consensus
+                    .validate_and_insert_block(Arc::new(block))
+                    .await,
+                Err(RuleError::TxInContextFailed(_, e)) if matches!(e, TxRuleError::NotFinalized(_))
+            ));
         }
     }
 }

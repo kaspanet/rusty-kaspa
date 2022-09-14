@@ -148,7 +148,6 @@ mod tests {
         tx::{ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput},
     };
     use hashes::Hash;
-    use kaspa_core::extract_enum_value;
 
     use crate::{consensus::test_consensus::TestConsensus, errors::RuleError, params::MAINNET_PARAMS};
 
@@ -444,56 +443,59 @@ mod tests {
 
         let mut block = example_block.clone();
         Arc::make_mut(&mut block.transactions)[1].version += 1;
-        extract_enum_value!(body_processor.validate_body_in_isolation(&block),Err(RuleError::BadMerkleRoot(_, _)) => ());
+        assert!(matches!(body_processor.validate_body_in_isolation(&block), Err(RuleError::BadMerkleRoot(_, _))));
 
         let mut block = example_block.clone();
         let txs = Arc::make_mut(&mut block.transactions);
         Arc::make_mut(&mut txs[1].inputs[0]).sig_op_count = 255;
         Arc::make_mut(&mut txs[1].inputs[1]).sig_op_count = 255;
-        extract_enum_value!(body_processor.validate_body_in_isolation(&block),Err(RuleError::ExceedsMassLimit(_)) => ());
+        assert!(matches!(body_processor.validate_body_in_isolation(&block), Err(RuleError::ExceedsMassLimit(_))));
 
         let mut block = example_block.clone();
         let txs = Arc::make_mut(&mut block.transactions);
         txs.push(txs[1].clone());
         block.header.hash_merkle_root = calc_hash_merkle_root(txs.iter());
-        extract_enum_value!(body_processor.validate_body_in_isolation(&block),Err(RuleError::DuplicateTransactions(_)) => ());
+        assert!(matches!(body_processor.validate_body_in_isolation(&block), Err(RuleError::DuplicateTransactions(_))));
 
         let mut block = example_block.clone();
         let txs = Arc::make_mut(&mut block.transactions);
         txs[1].subnetwork_id = SUBNETWORK_ID_COINBASE;
         block.header.hash_merkle_root = calc_hash_merkle_root(txs.iter());
-        extract_enum_value!(body_processor.validate_body_in_isolation(&block),Err(RuleError::MultipleCoinbases(_)) => ());
+        assert!(matches!(body_processor.validate_body_in_isolation(&block), Err(RuleError::MultipleCoinbases(_))));
 
         let mut block = example_block.clone();
         let txs = Arc::make_mut(&mut block.transactions);
         txs[0].payload = vec![];
         block.header.hash_merkle_root = calc_hash_merkle_root(txs.iter());
-        extract_enum_value!(body_processor.validate_body_in_isolation(&block),Err(RuleError::BadCoinbasePayload(_)) => ());
+        assert!(matches!(body_processor.validate_body_in_isolation(&block), Err(RuleError::BadCoinbasePayload(_))));
 
         let mut block = example_block.clone();
         let txs = Arc::make_mut(&mut block.transactions);
         Arc::make_mut(&mut txs[2].inputs[0]).previous_outpoint = txs[1].inputs[0].previous_outpoint;
         block.header.hash_merkle_root = calc_hash_merkle_root(txs.iter());
-        extract_enum_value!(body_processor.validate_body_in_isolation(&block),Err(RuleError::DoubleSpendInSameBlock(_)) => ());
+        assert!(matches!(body_processor.validate_body_in_isolation(&block), Err(RuleError::DoubleSpendInSameBlock(_))));
 
         let mut block = example_block.clone();
         let txs = Arc::make_mut(&mut block.transactions);
         txs[0].subnetwork_id = SUBNETWORK_ID_NATIVE;
         block.header.hash_merkle_root = calc_hash_merkle_root(txs.iter());
-        extract_enum_value!(body_processor.validate_body_in_isolation(&block),Err(RuleError::FirstTxNotCoinbase) => ());
+        assert!(matches!(body_processor.validate_body_in_isolation(&block), Err(RuleError::FirstTxNotCoinbase)));
 
         let mut block = example_block.clone();
         let txs = Arc::make_mut(&mut block.transactions);
         txs[1].inputs = vec![];
         block.header.hash_merkle_root = calc_hash_merkle_root(txs.iter());
-        extract_enum_value!(body_processor.validate_body_in_isolation(&block),Err(RuleError::TxInIsolationValidationFailed(_, _)) => ());
+        assert!(matches!(
+            body_processor.validate_body_in_isolation(&block),
+            Err(RuleError::TxInIsolationValidationFailed(_, _))
+        ));
 
         let mut block = example_block;
         let txs = Arc::make_mut(&mut block.transactions);
         Arc::make_mut(&mut txs[3].inputs[0]).previous_outpoint =
             TransactionOutpoint { transaction_id: txs[2].id(), index: 0 };
         block.header.hash_merkle_root = calc_hash_merkle_root(txs.iter());
-        extract_enum_value!(body_processor.validate_body_in_isolation(&block),Err(RuleError::ChainedTransaction(_)) => ());
+        assert!(matches!(body_processor.validate_body_in_isolation(&block), Err(RuleError::ChainedTransaction(_))));
 
         consensus.shutdown(wait_handles);
     }
@@ -509,20 +511,30 @@ mod tests {
         Arc::make_mut(&mut block.transactions)[0].version += 1;
 
         let block = Arc::new(block);
-        extract_enum_value!(consensus.validate_and_insert_block(block.clone()).await,Err(RuleError::BadMerkleRoot(_, _)) => ());
+        assert!(matches!(
+            consensus
+                .validate_and_insert_block(block.clone())
+                .await,
+            Err(RuleError::BadMerkleRoot(_, _))
+        ));
 
         // BadMerkleRoot shouldn't mark the block as known invalid
-        extract_enum_value!(consensus.validate_and_insert_block(block).await,Err(RuleError::BadMerkleRoot(_, _)) => ());
+        assert!(matches!(consensus.validate_and_insert_block(block).await, Err(RuleError::BadMerkleRoot(_, _))));
 
         let mut block =
             consensus.build_block_with_parents_and_transactions(1.into(), vec![params.genesis_hash], vec![]);
         block.header.parents_by_level[0][0] = 0.into();
 
         let block = Arc::new(block);
-        extract_enum_value!(consensus.validate_and_insert_block(block.clone()).await,Err(RuleError::MissingParents( _)) => ());
+        assert!(matches!(
+            consensus
+                .validate_and_insert_block(block.clone())
+                .await,
+            Err(RuleError::MissingParents(_))
+        ));
 
         // MissingParents shouldn't mark the block as known invalid
-        extract_enum_value!(consensus.validate_and_insert_block(block).await,Err(RuleError::MissingParents( _)) => ());
+        assert!(matches!(consensus.validate_and_insert_block(block).await, Err(RuleError::MissingParents(_))));
 
         consensus.shutdown(wait_handles);
     }
