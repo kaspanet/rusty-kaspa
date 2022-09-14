@@ -11,21 +11,17 @@ pub struct Block {
 
 impl Block {
     pub fn new(
-        version: u16, parents: Vec<Hash>, timestamp: u64, bits: u32, nonce: u64, daa_score: u64,
-        blue_work: BlueWorkType, blue_score: u64,
+        version: u16,
+        parents: Vec<Hash>,
+        timestamp: u64,
+        bits: u32,
+        nonce: u64,
+        daa_score: u64,
+        blue_work: BlueWorkType,
+        blue_score: u64,
     ) -> Self {
         Self {
-            header: Header::new(
-                version,
-                parents,
-                Default::default(),
-                timestamp,
-                bits,
-                nonce,
-                daa_score,
-                blue_work,
-                blue_score,
-            ),
+            header: Header::new(version, parents, Default::default(), timestamp, bits, nonce, daa_score, blue_work, blue_score),
             transactions: Arc::new(Vec::new()),
         }
     }

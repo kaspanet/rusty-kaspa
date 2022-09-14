@@ -29,9 +29,7 @@ pub(crate) fn id(tx: &Transaction) -> TransactionId {
 
 /// Write the transaction into the provided hasher according to the encoding flags
 fn write_transaction<T: Hasher>(hasher: &mut T, tx: &Transaction, encoding_flags: TxEncodingFlags) {
-    hasher
-        .update(tx.version.to_le_bytes())
-        .write_len(tx.inputs.len());
+    hasher.update(tx.version.to_le_bytes()).write_len(tx.inputs.len());
     for input in tx.inputs.iter() {
         // Write the tx input
         write_input(hasher, input, encoding_flags);
@@ -43,11 +41,7 @@ fn write_transaction<T: Hasher>(hasher: &mut T, tx: &Transaction, encoding_flags
         write_output(hasher, output);
     }
 
-    hasher
-        .update(tx.lock_time.to_le_bytes())
-        .update(&tx.subnetwork_id)
-        .update(tx.gas.to_le_bytes())
-        .write_var_bytes(&tx.payload);
+    hasher.update(tx.lock_time.to_le_bytes()).update(&tx.subnetwork_id).update(tx.gas.to_le_bytes()).write_var_bytes(&tx.payload);
 }
 
 #[inline(always)]
@@ -63,9 +57,7 @@ fn write_input<T: Hasher>(hasher: &mut T, input: &TransactionInput, encoding_fla
 
 #[inline(always)]
 fn write_outpoint<T: Hasher>(hasher: &mut T, outpoint: &TransactionOutpoint) {
-    hasher
-        .update(outpoint.transaction_id)
-        .update(outpoint.index.to_le_bytes());
+    hasher.update(outpoint.transaction_id).update(outpoint.index.to_le_bytes());
 }
 
 #[inline(always)]
@@ -102,13 +94,8 @@ mod tests {
             },
         ];
 
-        let inputs = vec![Arc::new(TransactionInput::new(
-            TransactionOutpoint::new(Hash::from_u64_word(0), 2),
-            vec![1, 2],
-            7,
-            5,
-            None,
-        ))];
+        let inputs =
+            vec![Arc::new(TransactionInput::new(TransactionOutpoint::new(Hash::from_u64_word(0), 2), vec![1, 2], 7, 5, None))];
 
         // Test #2
         tests.push(Test {
@@ -117,8 +104,7 @@ mod tests {
             expected_hash: "0d9eda5b1b1eebae2fe2b942cd62fca8ac56b6a05178392a46a9d2fa25c99cf9",
         });
 
-        let outputs =
-            vec![Arc::new(TransactionOutput::new(1564, Arc::new(ScriptPublicKey::new(vec![1, 2, 3, 4, 5], 7))))];
+        let outputs = vec![Arc::new(TransactionOutput::new(1564, Arc::new(ScriptPublicKey::new(vec![1, 2, 3, 4, 5], 7))))];
 
         // Test #3
         tests.push(Test {
@@ -135,10 +121,7 @@ mod tests {
         });
 
         let inputs = vec![Arc::new(TransactionInput::new(
-            TransactionOutpoint::new(
-                Hash::from_str("59b3d6dc6cdc660c389c3fdb5704c48c598d279cdf1bab54182db586a4c95dd5").unwrap(),
-                2,
-            ),
+            TransactionOutpoint::new(Hash::from_str("59b3d6dc6cdc660c389c3fdb5704c48c598d279cdf1bab54182db586a4c95dd5").unwrap(), 2),
             vec![1, 2],
             7,
             5,
@@ -154,49 +137,21 @@ mod tests {
 
         // Test #6
         tests.push(Test {
-            tx: Transaction::new(
-                2,
-                inputs.clone(),
-                outputs.clone(),
-                54,
-                subnets::SUBNETWORK_ID_COINBASE,
-                3,
-                Vec::new(),
-                4,
-            ),
+            tx: Transaction::new(2, inputs.clone(), outputs.clone(), 54, subnets::SUBNETWORK_ID_COINBASE, 3, Vec::new(), 4),
             expected_id: "5a51df2b6c8e6a43cabef451474e5943659babed6005fe7828c3fc3279421bdb",
             expected_hash: "5fff5a913cee9d1ffdadd93c0b15280ef74ebe850cd2f9cc396e31037b352668",
         });
 
         // Test #7
         tests.push(Test {
-            tx: Transaction::new(
-                2,
-                inputs.clone(),
-                outputs.clone(),
-                54,
-                subnets::SUBNETWORK_ID_REGISTRY,
-                3,
-                Vec::new(),
-                4,
-            ),
+            tx: Transaction::new(2, inputs.clone(), outputs.clone(), 54, subnets::SUBNETWORK_ID_REGISTRY, 3, Vec::new(), 4),
             expected_id: "c542a204ab9416df910b01540b0c51b85e6d4e1724e081e224ea199a9e54e1b3",
             expected_hash: "262bb342cf082557668364e8f37770cae272e24ba373b18522373fbe1f2ea313",
         });
 
         for (i, test) in tests.iter().enumerate() {
-            assert_eq!(
-                test.tx.id(),
-                Hash::from_str(test.expected_id).unwrap(),
-                "transaction id failed for test {}",
-                i + 1
-            );
-            assert_eq!(
-                hash(&test.tx),
-                Hash::from_str(test.expected_hash).unwrap(),
-                "transaction hash failed for test {}",
-                i + 1
-            );
+            assert_eq!(test.tx.id(), Hash::from_str(test.expected_id).unwrap(), "transaction id failed for test {}", i + 1);
+            assert_eq!(hash(&test.tx), Hash::from_str(test.expected_hash).unwrap(), "transaction hash failed for test {}", i + 1);
         }
 
         // Avoid compiler warnings on the last clone

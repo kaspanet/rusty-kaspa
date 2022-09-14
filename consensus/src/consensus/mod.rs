@@ -29,8 +29,7 @@ use crate::{
     processes::{
         block_at_depth::BlockDepthManager, coinbase::CoinbaseManager, dagtraversalmanager::DagTraversalManager,
         difficulty::DifficultyManager, ghostdag::protocol::GhostdagManager, mass::MassCalculator,
-        pastmediantime::PastMedianTimeManager, reachability::inquirer as reachability,
-        transaction_validator::TransactionValidator,
+        pastmediantime::PastMedianTimeManager, reachability::inquirer as reachability, transaction_validator::TransactionValidator,
     },
 };
 use consensus_core::block::Block;
@@ -45,12 +44,8 @@ use std::{
 };
 use tokio::sync::oneshot;
 
-pub type DbGhostdagManager = GhostdagManager<
-    DbGhostdagStore,
-    MTRelationsService<DbRelationsStore>,
-    MTReachabilityService<DbReachabilityStore>,
-    DbHeadersStore,
->;
+pub type DbGhostdagManager =
+    GhostdagManager<DbGhostdagStore, MTRelationsService<DbRelationsStore>, MTReachabilityService<DbReachabilityStore>, DbHeadersStore>;
 
 pub struct Consensus {
     // DB
@@ -258,13 +253,9 @@ impl Consensus {
         ]
     }
 
-    pub fn validate_and_insert_block(
-        &self, block: Arc<Block>,
-    ) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
+    pub fn validate_and_insert_block(&self, block: Arc<Block>) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
         let (tx, rx): (BlockResultSender, _) = oneshot::channel();
-        self.block_sender
-            .send(BlockTask::Process(block, vec![tx]))
-            .unwrap();
+        self.block_sender.send(BlockTask::Process(block, vec![tx])).unwrap();
         async { rx.await.unwrap() }
     }
 

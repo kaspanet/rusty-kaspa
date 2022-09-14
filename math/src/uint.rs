@@ -176,8 +176,7 @@ macro_rules! construct_uint {
                     let mut carry = 0;
                     let mut i = 0;
                     while i + j < Self::LIMBS {
-                        let n =
-                            (self.0[i] as u128) * (other.0[j] as u128) + (result.0[i + j] as u128) + (carry as u128);
+                        let n = (self.0[i] as u128) * (other.0[j] as u128) + (result.0[i + j] as u128) + (carry as u128);
                         result.0[i + j] = n as u64;
                         carry = (n >> 64) as u64;
                         i += 1;
@@ -203,9 +202,7 @@ macro_rules! construct_uint {
             pub fn to_le_bytes(self) -> [u8; Self::BYTES] {
                 let mut out = [0u8; Self::BYTES];
                 // This should optimize to basically a transmute.
-                out.chunks_exact_mut(8)
-                    .zip(self.0)
-                    .for_each(|(bytes, word)| bytes.copy_from_slice(&word.to_le_bytes()));
+                out.chunks_exact_mut(8).zip(self.0).for_each(|(bytes, word)| bytes.copy_from_slice(&word.to_le_bytes()));
                 out
             }
 
@@ -470,10 +467,7 @@ macro_rules! construct_uint {
 
             #[inline]
             fn bitand(mut self, other: $name) -> $name {
-                self.0
-                    .iter_mut()
-                    .zip(other.0.iter())
-                    .for_each(|(a, b)| *a &= *b);
+                self.0.iter_mut().zip(other.0.iter()).for_each(|(a, b)| *a &= *b);
                 self
             }
         }
@@ -483,10 +477,7 @@ macro_rules! construct_uint {
 
             #[inline]
             fn bitxor(mut self, other: $name) -> $name {
-                self.0
-                    .iter_mut()
-                    .zip(other.0.iter())
-                    .for_each(|(a, b)| *a ^= *b);
+                self.0.iter_mut().zip(other.0.iter()).for_each(|(a, b)| *a ^= *b);
                 self
             }
         }
@@ -496,10 +487,7 @@ macro_rules! construct_uint {
 
             #[inline]
             fn bitor(mut self, other: $name) -> $name {
-                self.0
-                    .iter_mut()
-                    .zip(other.0.iter())
-                    .for_each(|(a, b)| *a |= *b);
+                self.0.iter_mut().zip(other.0.iter()).for_each(|(a, b)| *a |= *b);
                 self
             }
         }
@@ -569,10 +557,7 @@ macro_rules! construct_uint {
             #[inline]
             #[track_caller]
             fn product<I: Iterator<Item = &'a Self>>(mut iter: I) -> Self {
-                let first = iter
-                    .next()
-                    .copied()
-                    .unwrap_or_else(|| Self::from_u64(1));
+                let first = iter.next().copied().unwrap_or_else(|| Self::from_u64(1));
                 iter.fold(first, |a, &b| a * b)
             }
         }
@@ -595,12 +580,8 @@ macro_rules! construct_uint {
             fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
                 let mut hex = [0u8; Self::BYTES * 2];
                 let bytes = self.to_be_bytes();
-                $crate::uint::faster_hex::hex_encode(&bytes, &mut hex)
-                    .expect("The output is exactly twice the size of the input");
-                let first_non_zero = hex
-                    .iter()
-                    .position(|&x| x != b'0')
-                    .unwrap_or(hex.len() - 1);
+                $crate::uint::faster_hex::hex_encode(&bytes, &mut hex).expect("The output is exactly twice the size of the input");
+                let first_non_zero = hex.iter().position(|&x| x != b'0').unwrap_or(hex.len() - 1);
                 // The string is hex encoded so must be valid UTF8.
                 let str = unsafe { core::str::from_utf8_unchecked(&hex[first_non_zero..]) };
                 f.pad_integral(true, "0x", str)
@@ -672,11 +653,7 @@ macro_rules! construct_uint {
                 const BIN_LEN: usize = $name::BITS as usize;
                 let mut buf = [0u8; BIN_LEN];
                 let mut first_one = BIN_LEN - 1;
-                for (index, (bit, char)) in self
-                    .iter_be_bits()
-                    .zip(buf.iter_mut())
-                    .enumerate()
-                {
+                for (index, (bit, char)) in self.iter_be_bits().zip(buf.iter_mut()).enumerate() {
                     *char = bit as u8 + b'0';
                     if first_one == BIN_LEN - 1 && bit {
                         first_one = index;
@@ -720,9 +697,7 @@ macro_rules! construct_uint {
                     fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
                         let mut ret = $name::ZERO;
                         for (i, limb) in ret.0.iter_mut().enumerate() {
-                            *limb = seq
-                                .next_element()?
-                                .ok_or_else(|| Error::invalid_length(i, &self))?;
+                            *limb = seq.next_element()?.ok_or_else(|| Error::invalid_length(i, &self))?;
                         }
                         Ok(ret)
                     }
@@ -732,7 +707,8 @@ macro_rules! construct_uint {
 
             #[inline]
             fn deserialize_in_place<D: $crate::uint::serde::Deserializer<'de>>(
-                deserializer: D, place: &mut Self,
+                deserializer: D,
+                place: &mut Self,
             ) -> Result<(), D::Error> {
                 use core::fmt;
                 use $crate::uint::serde::de::{Error, SeqAccess, Visitor};
@@ -832,16 +808,8 @@ mod tests {
             assert_equal(mine, default, check_fmt);
             assert_equal(mine2, default2, check_fmt);
 
-            let mine = mine
-                .overflowing_add(mine2)
-                .0
-                .overflowing_mul(mine2)
-                .0;
-            let default = default
-                .overflowing_add(default2)
-                .0
-                .overflowing_mul(default2)
-                .0;
+            let mine = mine.overflowing_add(mine2).0.overflowing_mul(mine2).0;
+            let default = default.overflowing_add(default2).0.overflowing_mul(default2).0;
             assert_equal(mine, default, check_fmt);
             let shift = rng.next_u32() % 4096;
             {

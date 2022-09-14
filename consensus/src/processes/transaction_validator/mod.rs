@@ -13,7 +13,10 @@ pub struct TransactionValidator {
 
 impl TransactionValidator {
     pub fn new(
-        max_tx_inputs: usize, max_tx_outputs: usize, max_signature_script_len: usize, max_script_public_key_len: usize,
+        max_tx_inputs: usize,
+        max_tx_outputs: usize,
+        max_signature_script_len: usize,
+        max_script_public_key_len: usize,
     ) -> Self {
         Self { max_tx_inputs, max_tx_outputs, max_signature_script_len, max_script_public_key_len }
     }

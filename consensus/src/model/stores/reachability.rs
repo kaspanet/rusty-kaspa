@@ -81,10 +81,8 @@ impl ReachabilityStore for DbReachabilityStore {
 
         let data = Arc::new(ReachabilityData::new(blockhash::NONE, capacity, 0));
         let mut batch = WriteBatch::default();
-        self.cached_access
-            .write_batch(&mut batch, origin, &data)?;
-        self.reindex_root
-            .write_batch(&mut batch, &origin)?;
+        self.cached_access.write_batch(&mut batch, origin, &data)?;
+        self.reindex_root.write_batch(&mut batch, &origin)?;
         self.raw_db.write(batch)?;
 
         Ok(())
@@ -174,14 +172,10 @@ impl<'a> StagingReachabilityStore<'a> {
         let mut store_write = RwLockUpgradableReadGuard::upgrade(self.store_read);
         for (k, v) in self.staging_writes {
             let data = Arc::new(v);
-            store_write
-                .cached_access
-                .write_batch(batch, k, &data)?
+            store_write.cached_access.write_batch(batch, k, &data)?
         }
         if let Some(root) = self.staging_reindex_root {
-            store_write
-                .reindex_root
-                .write_batch(batch, &root)?;
+            store_write.reindex_root.write_batch(batch, &root)?;
         }
         Ok(store_write)
     }
@@ -301,13 +295,7 @@ impl ReachabilityStoreReader for StagingReachabilityStore<'_> {
         if let Some(data) = self.staging_writes.get(&hash) {
             Ok(BlockHashes::clone(&data.future_covering_set))
         } else {
-            Ok(BlockHashes::clone(
-                &self
-                    .store_read
-                    .cached_access
-                    .read(hash)?
-                    .future_covering_set,
-            ))
+            Ok(BlockHashes::clone(&self.store_read.cached_access.read(hash)?.future_covering_set))
         }
     }
 }

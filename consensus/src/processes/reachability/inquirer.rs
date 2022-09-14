@@ -10,9 +10,7 @@ pub fn init(store: &mut (impl ReachabilityStore + ?Sized)) -> Result<()> {
     init_with_params(store, blockhash::ORIGIN, Interval::maximal())
 }
 
-pub(super) fn init_with_params(
-    store: &mut (impl ReachabilityStore + ?Sized), origin: Hash, capacity: Interval,
-) -> Result<()> {
+pub(super) fn init_with_params(store: &mut (impl ReachabilityStore + ?Sized), origin: Hash, capacity: Interval) -> Result<()> {
     if store.has(origin)? {
         return Ok(());
     }
@@ -24,15 +22,21 @@ type HashIterator<'a> = &'a mut dyn Iterator<Item = Hash>;
 
 /// Add a block to the DAG reachability data structures and persist using the provided `store`.
 pub fn add_block(
-    store: &mut (impl ReachabilityStore + ?Sized), new_block: Hash, selected_parent: Hash,
+    store: &mut (impl ReachabilityStore + ?Sized),
+    new_block: Hash,
+    selected_parent: Hash,
     mergeset_iterator: HashIterator,
 ) -> Result<()> {
     add_block_with_params(store, new_block, selected_parent, mergeset_iterator, None, None)
 }
 
 fn add_block_with_params(
-    store: &mut (impl ReachabilityStore + ?Sized), new_block: Hash, selected_parent: Hash,
-    mergeset_iterator: HashIterator, reindex_depth: Option<u64>, reindex_slack: Option<u64>,
+    store: &mut (impl ReachabilityStore + ?Sized),
+    new_block: Hash,
+    selected_parent: Hash,
+    mergeset_iterator: HashIterator,
+    reindex_depth: Option<u64>,
+    reindex_slack: Option<u64>,
 ) -> Result<()> {
     add_tree_block(
         store,
@@ -45,9 +49,7 @@ fn add_block_with_params(
     Ok(())
 }
 
-fn add_dag_block(
-    store: &mut (impl ReachabilityStore + ?Sized), new_block: Hash, mergeset_iterator: HashIterator,
-) -> Result<()> {
+fn add_dag_block(store: &mut (impl ReachabilityStore + ?Sized), new_block: Hash, mergeset_iterator: HashIterator) -> Result<()> {
     // Update the future covering set for blocks in the mergeset
     for merged_block in mergeset_iterator {
         insert_to_future_covering_set(store, merged_block, new_block)?;
@@ -55,16 +57,8 @@ fn add_dag_block(
     Ok(())
 }
 
-fn insert_to_future_covering_set(
-    store: &mut (impl ReachabilityStore + ?Sized), merged_block: Hash, new_block: Hash,
-) -> Result<()> {
-    match binary_search_descendant(
-        store,
-        store
-            .get_future_covering_set(merged_block)?
-            .as_slice(),
-        new_block,
-    )? {
+fn insert_to_future_covering_set(store: &mut (impl ReachabilityStore + ?Sized), merged_block: Hash, new_block: Hash) -> Result<()> {
+    match binary_search_descendant(store, store.get_future_covering_set(merged_block)?.as_slice(), new_block)? {
         // We expect the query to not succeed, and to only return the correct insertion index.
         // The existences of a `future covering item` (`FCI`) which is a chain ancestor of `new_block`
         // contradicts `merged_block ∈ mergeset(new_block)`. Similarly, the existence of an FCI
@@ -92,22 +86,14 @@ pub fn hint_virtual_selected_parent(store: &mut (impl ReachabilityStore + ?Sized
 
 /// Checks if the `this` block is a strict chain ancestor of the `queried` block (aka `this ∈ chain(queried)`).
 /// Note that this results in `false` if `this == queried`
-pub fn is_strict_chain_ancestor_of(
-    store: &(impl ReachabilityStoreReader + ?Sized), this: Hash, queried: Hash,
-) -> Result<bool> {
-    Ok(store
-        .get_interval(this)?
-        .strictly_contains(store.get_interval(queried)?))
+pub fn is_strict_chain_ancestor_of(store: &(impl ReachabilityStoreReader + ?Sized), this: Hash, queried: Hash) -> Result<bool> {
+    Ok(store.get_interval(this)?.strictly_contains(store.get_interval(queried)?))
 }
 
 /// Checks if `this` block is a chain ancestor of `queried` block (aka `this ∈ chain(queried) ∪ {queried}`).
 /// Note that we use the graph theory convention here which defines that a block is also an ancestor of itself.
-pub fn is_chain_ancestor_of(
-    store: &(impl ReachabilityStoreReader + ?Sized), this: Hash, queried: Hash,
-) -> Result<bool> {
-    Ok(store
-        .get_interval(this)?
-        .contains(store.get_interval(queried)?))
+pub fn is_chain_ancestor_of(store: &(impl ReachabilityStoreReader + ?Sized), this: Hash, queried: Hash) -> Result<bool> {
+    Ok(store.get_interval(this)?.contains(store.get_interval(queried)?))
 }
 
 /// Returns true if `this` is a DAG ancestor of `queried` (aka `queried ∈ future(this) ∪ {this}`).
@@ -127,9 +113,7 @@ pub fn is_dag_ancestor_of(store: &(impl ReachabilityStoreReader + ?Sized), this:
 }
 
 /// Finds the child of `ancestor` which is also a chain ancestor of `descendant`.
-pub fn get_next_chain_ancestor(
-    store: &(impl ReachabilityStoreReader + ?Sized), descendant: Hash, ancestor: Hash,
-) -> Result<Hash> {
+pub fn get_next_chain_ancestor(store: &(impl ReachabilityStoreReader + ?Sized), descendant: Hash, ancestor: Hash) -> Result<Hash> {
     if descendant == ancestor {
         // The next ancestor does not exist
         return Err(ReachabilityError::BadQuery);
@@ -147,7 +131,9 @@ pub fn get_next_chain_ancestor(
 /// since in some scenarios during reindexing `descendant` might have a modified
 /// interval which was not propagated yet.
 pub(super) fn get_next_chain_ancestor_unchecked(
-    store: &(impl ReachabilityStoreReader + ?Sized), descendant: Hash, ancestor: Hash,
+    store: &(impl ReachabilityStoreReader + ?Sized),
+    descendant: Hash,
+    ancestor: Hash,
 ) -> Result<Hash> {
     match binary_search_descendant(store, store.get_children(ancestor)?.as_slice(), descendant)? {
         SearchOutput::Found(hash, i) => Ok(hash),
@@ -161,7 +147,9 @@ enum SearchOutput {
 }
 
 fn binary_search_descendant(
-    store: &(impl ReachabilityStoreReader + ?Sized), ordered_hashes: &[Hash], descendant: Hash,
+    store: &(impl ReachabilityStoreReader + ?Sized),
+    ordered_hashes: &[Hash],
+    descendant: Hash,
 ) -> Result<SearchOutput> {
     if cfg!(debug_assertions) {
         // This is a linearly expensive assertion, keep it debug only
@@ -189,15 +177,8 @@ fn binary_search_descendant(
 }
 
 fn assert_hashes_ordered(store: &(impl ReachabilityStoreReader + ?Sized), ordered_hashes: &[Hash]) {
-    let intervals: Vec<Interval> = ordered_hashes
-        .iter()
-        .cloned()
-        .map(|c| store.get_interval(c).unwrap())
-        .collect();
-    debug_assert!(intervals
-        .as_slice()
-        .windows(2)
-        .all(|w| w[0].end < w[1].start))
+    let intervals: Vec<Interval> = ordered_hashes.iter().cloned().map(|c| store.get_interval(c).unwrap()).collect();
+    debug_assert!(intervals.as_slice().windows(2).all(|w| w[0].end < w[1].start))
 }
 
 #[cfg(test)]
@@ -270,9 +251,7 @@ mod tests {
             .add_block(DagBlock::new(12.into(), vec![11.into(), 10.into()]));
 
         // Assert intervals
-        store
-            .validate_intervals(blockhash::ORIGIN)
-            .unwrap();
+        store.validate_intervals(blockhash::ORIGIN).unwrap();
 
         // Assert genesis
         for i in 2u64..=12 {

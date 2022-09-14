@@ -53,9 +53,7 @@ fn test_reachability_staging() {
     let store = store.read().clone_with_new_cache(10000);
 
     // Assert intervals
-    store
-        .validate_intervals(blockhash::ORIGIN)
-        .unwrap();
+    store.validate_intervals(blockhash::ORIGIN).unwrap();
 
     // Assert genesis
     for i in 2u64..=12 {
@@ -110,22 +108,16 @@ async fn test_concurrent_pipeline() {
     for (hash, parents) in blocks {
         // Submit to consensus twice to make sure duplicates are handled
         let b = Arc::new(consensus.build_block_with_parents(hash, parents));
-        let results =
-            join!(consensus.validate_and_insert_block(Arc::clone(&b)), consensus.validate_and_insert_block(b));
+        let results = join!(consensus.validate_and_insert_block(Arc::clone(&b)), consensus.validate_and_insert_block(b));
         results.0.unwrap();
         results.1.unwrap();
     }
 
     // Clone with a new cache in order to verify correct writes to the DB itself
-    let store = consensus
-        .reachability_store()
-        .read()
-        .clone_with_new_cache(10000);
+    let store = consensus.reachability_store().read().clone_with_new_cache(10000);
 
     // Assert intervals
-    store
-        .validate_intervals(blockhash::ORIGIN)
-        .unwrap();
+    store.validate_intervals(blockhash::ORIGIN).unwrap();
 
     // Assert genesis
     for i in 2u64..=12 {
@@ -193,24 +185,15 @@ async fn test_concurrent_pipeline_random() {
             let f = consensus.validate_and_insert_block(Arc::new(b));
             futures.push(f);
         }
-        join_all(futures)
-            .await
-            .into_iter()
-            .collect::<Result<Vec<BlockStatus>, RuleError>>()
-            .unwrap();
+        join_all(futures).await.into_iter().collect::<Result<Vec<BlockStatus>, RuleError>>().unwrap();
         tips = new_tips;
     }
 
     // Clone with a new cache in order to verify correct writes to the DB itself
-    let store = consensus
-        .reachability_store()
-        .read()
-        .clone_with_new_cache(10000);
+    let store = consensus.reachability_store().read().clone_with_new_cache(10000);
 
     // Assert intervals
-    store
-        .validate_intervals(blockhash::ORIGIN)
-        .unwrap();
+    store.validate_intervals(blockhash::ORIGIN).unwrap();
 
     consensus.shutdown(wait_handles);
 }

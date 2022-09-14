@@ -4,9 +4,7 @@ use std::{
     thread::JoinHandle,
 };
 
-use consensus_core::{
-    block::Block, header::Header, merkle::calc_hash_merkle_root, subnets::SUBNETWORK_ID_COINBASE, tx::Transaction,
-};
+use consensus_core::{block::Block, header::Header, merkle::calc_hash_merkle_root, subnets::SUBNETWORK_ID_COINBASE, tx::Transaction};
 use futures::Future;
 use hashes::Hash;
 use kaspa_core::{core::Core, service::Service};
@@ -45,62 +43,34 @@ impl TestConsensus {
 
     pub fn build_header_with_parents(&self, hash: Hash, parents: Vec<Hash>) -> Header {
         let mut header = header_from_precomputed_hash(hash, parents);
-        let ghostdag_data = self
-            .consensus
-            .ghostdag_manager
-            .ghostdag(header.direct_parents());
+        let ghostdag_data = self.consensus.ghostdag_manager.ghostdag(header.direct_parents());
 
-        let window = self
-            .consensus
-            .dag_traversal_manager
-            .block_window(ghostdag_data.clone(), self.params.difficulty_window_size);
+        let window = self.consensus.dag_traversal_manager.block_window(ghostdag_data.clone(), self.params.difficulty_window_size);
 
         let mut window_hashes = window.iter().map(|item| item.0.hash);
 
-        let (daa_score, _) = self
-            .consensus
-            .difficulty_manager
-            .calc_daa_score_and_added_blocks(&mut window_hashes, &ghostdag_data);
+        let (daa_score, _) = self.consensus.difficulty_manager.calc_daa_score_and_added_blocks(&mut window_hashes, &ghostdag_data);
 
-        header.bits = self
-            .consensus
-            .difficulty_manager
-            .calculate_difficulty_bits(&window);
+        header.bits = self.consensus.difficulty_manager.calculate_difficulty_bits(&window);
 
         header.daa_score = daa_score;
 
-        header.timestamp = self
-            .consensus
-            .past_median_time_manager
-            .calc_past_median_time(ghostdag_data.clone())
-            .0
-            + 1;
+        header.timestamp = self.consensus.past_median_time_manager.calc_past_median_time(ghostdag_data.clone()).0 + 1;
         header.blue_score = ghostdag_data.blue_score;
         header.blue_work = ghostdag_data.blue_work;
 
         header
     }
 
-    pub fn add_block_with_parents(
-        &self, hash: Hash, parents: Vec<Hash>,
-    ) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
+    pub fn add_block_with_parents(&self, hash: Hash, parents: Vec<Hash>) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
         self.validate_and_insert_block(Arc::new(self.build_block_with_parents(hash, parents)))
     }
 
-    pub fn build_block_with_parents_and_transactions(
-        &self, hash: Hash, parents: Vec<Hash>, txs: Vec<Transaction>,
-    ) -> Block {
+    pub fn build_block_with_parents_and_transactions(&self, hash: Hash, parents: Vec<Hash>, txs: Vec<Transaction>) -> Block {
         let mut header = self.build_header_with_parents(hash, parents);
         let mut cb_payload: Vec<u8> = vec![];
         cb_payload.append(&mut header.blue_score.to_le_bytes().to_vec());
-        cb_payload.append(
-            &mut (self
-                .consensus
-                .coinbase_manager
-                .calc_block_subsidy(header.daa_score))
-            .to_le_bytes()
-            .to_vec(),
-        ); // Subsidy
+        cb_payload.append(&mut (self.consensus.coinbase_manager.calc_block_subsidy(header.daa_score)).to_le_bytes().to_vec()); // Subsidy
         cb_payload.append(&mut (0_u16).to_le_bytes().to_vec()); // Script public key version
         cb_payload.append(&mut (0_u8).to_le_bytes().to_vec()); // Script public key length
         cb_payload.append(&mut vec![]); // Script public key
@@ -115,9 +85,7 @@ impl TestConsensus {
         Block::from_header(self.build_header_with_parents(hash, parents))
     }
 
-    pub fn validate_and_insert_block(
-        &self, block: Arc<Block>,
-    ) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
+    pub fn validate_and_insert_block(&self, block: Arc<Block>) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
         self.consensus.validate_and_insert_block(block)
     }
 
@@ -149,9 +117,7 @@ impl TestConsensus {
         &self.consensus.body_processor
     }
 
-    pub fn past_median_time_manager(
-        &self,
-    ) -> &PastMedianTimeManager<DbHeadersStore, DbGhostdagStore, BlockWindowCacheStore> {
+    pub fn past_median_time_manager(&self) -> &PastMedianTimeManager<DbHeadersStore, DbGhostdagStore, BlockWindowCacheStore> {
         &self.consensus.past_median_time_manager
     }
 }
@@ -192,11 +158,7 @@ impl Drop for TempDbLifetime {
                 break;
             }
         }
-        assert_eq!(
-            self.weak_db_ref.strong_count(),
-            0,
-            "DB is expected to have no strong references when lifetime is dropped"
-        );
+        assert_eq!(self.weak_db_ref.strong_count(), 0, "DB is expected to have no strong references when lifetime is dropped");
         if let Some(dir) = self.tempdir.take() {
             let options = rocksdb::Options::default();
             let path_buf = dir.path().to_owned();

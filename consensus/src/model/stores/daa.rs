@@ -36,14 +36,11 @@ impl DbDaaStore {
         Self::new(Arc::clone(&self.raw_db), cache_size)
     }
 
-    pub fn insert_batch(
-        &self, batch: &mut WriteBatch, hash: Hash, added_blocks: BlockHashes,
-    ) -> Result<(), StoreError> {
+    pub fn insert_batch(&self, batch: &mut WriteBatch, hash: Hash, added_blocks: BlockHashes) -> Result<(), StoreError> {
         if self.cached_daa_added_blocks_access.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
-        self.cached_daa_added_blocks_access
-            .write_batch(batch, hash, &added_blocks)?;
+        self.cached_daa_added_blocks_access.write_batch(batch, hash, &added_blocks)?;
         Ok(())
     }
 }
@@ -59,8 +56,7 @@ impl DaaStore for DbDaaStore {
         if self.cached_daa_added_blocks_access.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
-        self.cached_daa_added_blocks_access
-            .write(hash, &added_blocks)?;
+        self.cached_daa_added_blocks_access.write(hash, &added_blocks)?;
         Ok(())
     }
 }

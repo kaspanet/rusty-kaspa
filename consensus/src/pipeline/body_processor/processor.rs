@@ -57,13 +57,20 @@ pub struct BlockBodyProcessor {
 impl BlockBodyProcessor {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        receiver: Receiver<BlockTask>, sender: Sender<BlockTask>, db: Arc<DB>,
-        statuses_store: Arc<RwLock<DbStatusesStore>>, ghostdag_store: Arc<DbGhostdagStore>,
-        headers_store: Arc<DbHeadersStore>, block_transactions_store: Arc<DbBlockTransactionsStore>,
-        reachability_service: MTReachabilityService<DbReachabilityStore>, coinbase_manager: CoinbaseManager,
-        mass_calculator: MassCalculator, transaction_validator: TransactionValidator,
+        receiver: Receiver<BlockTask>,
+        sender: Sender<BlockTask>,
+        db: Arc<DB>,
+        statuses_store: Arc<RwLock<DbStatusesStore>>,
+        ghostdag_store: Arc<DbGhostdagStore>,
+        headers_store: Arc<DbHeadersStore>,
+        block_transactions_store: Arc<DbBlockTransactionsStore>,
+        reachability_service: MTReachabilityService<DbReachabilityStore>,
+        coinbase_manager: CoinbaseManager,
+        mass_calculator: MassCalculator,
+        transaction_validator: TransactionValidator,
         past_median_time_manager: PastMedianTimeManager<DbHeadersStore, DbGhostdagStore, BlockWindowCacheStore>,
-        max_block_mass: u64, genesis_hash: Hash,
+        max_block_mass: u64,
+        genesis_hash: Hash,
     ) -> Self {
         Self {
             receiver,
@@ -90,10 +97,7 @@ impl BlockBodyProcessor {
                 BlockTask::Exit => break,
                 BlockTask::Process(block, result_transmitters) => {
                     let hash = block.header.hash;
-                    if self
-                        .task_manager
-                        .register(block, result_transmitters)
-                    {
+                    if self.task_manager.register(block, result_transmitters) {
                         let processor = self.clone();
                         rayon::spawn(move || {
                             processor.queue_block(hash);
@@ -114,20 +118,16 @@ impl BlockBodyProcessor {
         if let Some(block) = self.task_manager.try_begin(hash) {
             let res = self.process_block_body(&block);
 
-            let dependent_tasks = self
-                .task_manager
-                .end(hash, |block, result_transmitters| {
-                    if res.is_err() {
-                        for transmitter in result_transmitters {
-                            // We don't care if receivers were dropped
-                            let _ = transmitter.send(res.clone());
-                        }
-                    } else {
-                        self.sender
-                            .send(BlockTask::Process(block, result_transmitters))
-                            .unwrap();
+            let dependent_tasks = self.task_manager.end(hash, |block, result_transmitters| {
+                if res.is_err() {
+                    for transmitter in result_transmitters {
+                        // We don't care if receivers were dropped
+                        let _ = transmitter.send(res.clone());
                     }
-                });
+                } else {
+                    self.sender.send(BlockTask::Process(block, result_transmitters)).unwrap();
+                }
+            });
 
             for dep in dependent_tasks {
                 let processor = self.clone();
@@ -150,10 +150,7 @@ impl BlockBodyProcessor {
             // not the block as a whole, so we shouldn't mark it as invalid.
             // TODO: implement the last part.
             if !matches!(e, RuleError::BadMerkleRoot(_, _) | RuleError::MissingParents(_)) {
-                self.statuses_store
-                    .write()
-                    .set(block.hash(), BlockStatus::StatusInvalid)
-                    .unwrap();
+                self.statuses_store.write().set(block.hash(), BlockStatus::StatusInvalid).unwrap();
             }
             return Err(e);
         }
@@ -171,14 +168,10 @@ impl BlockBodyProcessor {
         let mut batch = WriteBatch::default();
 
         // This is an append only store so it requires no lock.
-        self.block_transactions_store
-            .insert_batch(&mut batch, block.header.hash, block.transactions.clone())
-            .unwrap();
+        self.block_transactions_store.insert_batch(&mut batch, block.header.hash, block.transactions.clone()).unwrap();
 
-        let statuses_write_guard = self
-            .statuses_store
-            .set_batch(&mut batch, block.header.hash, BlockStatus::StatusUTXOPendingVerification)
-            .unwrap();
+        let statuses_write_guard =
+            self.statuses_store.set_batch(&mut batch, block.header.hash, BlockStatus::StatusUTXOPendingVerification).unwrap();
 
         self.db.write(batch).unwrap();
 

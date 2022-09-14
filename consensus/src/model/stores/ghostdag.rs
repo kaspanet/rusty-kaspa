@@ -25,8 +25,12 @@ pub struct GhostdagData {
 
 impl GhostdagData {
     pub fn new(
-        blue_score: u64, blue_work: BlueWorkType, selected_parent: Hash, mergeset_blues: BlockHashes,
-        mergeset_reds: BlockHashes, blues_anticone_sizes: HashKTypeMap,
+        blue_score: u64,
+        blue_work: BlueWorkType,
+        selected_parent: Hash,
+        mergeset_blues: BlockHashes,
+        mergeset_reds: BlockHashes,
+        blues_anticone_sizes: HashKTypeMap,
     ) -> Self {
         Self { blue_score, blue_work, selected_parent, mergeset_blues, mergeset_reds, blues_anticone_sizes }
     }
@@ -53,7 +57,8 @@ impl GhostdagData {
 
     /// Returns an iterator to the mergeset in ascending blue work order (tie-breaking by hash)
     pub fn ascending_mergeset_without_selected_parent<'a>(
-        &'a self, store: &'a (impl GhostdagStoreReader + ?Sized),
+        &'a self,
+        store: &'a (impl GhostdagStoreReader + ?Sized),
     ) -> impl Iterator<Item = SortableBlock> + '_ {
         self.mergeset_blues
             .iter()
@@ -75,7 +80,8 @@ impl GhostdagData {
 
     /// Returns an iterator to the mergeset in descending blue work order (tie-breaking by hash)
     pub fn descending_mergeset_without_selected_parent<'a>(
-        &'a self, store: &'a (impl GhostdagStoreReader + ?Sized),
+        &'a self,
+        store: &'a (impl GhostdagStoreReader + ?Sized),
     ) -> impl Iterator<Item = SortableBlock> + '_ {
         self.mergeset_blues
                 .iter()
@@ -110,27 +116,20 @@ impl GhostdagData {
     /// and adding the mergeset in increasing blue work order. Note that this is a topological order even though
     /// the selected parent has highest blue work by def -- since the mergeset is in its anticone.  
     pub fn consensus_ordered_mergeset<'a>(
-        &'a self, store: &'a (impl GhostdagStoreReader + ?Sized),
+        &'a self,
+        store: &'a (impl GhostdagStoreReader + ?Sized),
     ) -> impl Iterator<Item = Hash> + '_ {
-        once(self.selected_parent).chain(
-            self.ascending_mergeset_without_selected_parent(store)
-                .map(|s| s.hash),
-        )
+        once(self.selected_parent).chain(self.ascending_mergeset_without_selected_parent(store).map(|s| s.hash))
     }
 
     /// Returns an iterator to the mergeset with no specified order (including the selected parent)
     pub fn unordered_mergeset(&self) -> impl Iterator<Item = Hash> + '_ {
-        self.mergeset_blues
-            .iter()
-            .cloned()
-            .chain(self.mergeset_reds.iter().cloned())
+        self.mergeset_blues.iter().cloned().chain(self.mergeset_reds.iter().cloned())
     }
 }
 
 impl GhostdagData {
-    pub fn add_blue(
-        self: &mut Arc<Self>, block: Hash, blue_anticone_size: KType, block_blues_anticone_sizes: &HashMap<Hash, KType>,
-    ) {
+    pub fn add_blue(self: &mut Arc<Self>, block: Hash, blue_anticone_size: KType, block_blues_anticone_sizes: &HashMap<Hash, KType>) {
         // Extract mutable data
         let data = Arc::make_mut(self);
 
@@ -210,8 +209,7 @@ impl DbGhostdagStore {
         if self.cached_access.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
-        self.cached_access
-            .write_batch(batch, hash, data)?;
+        self.cached_access.write_batch(batch, hash, data)?;
         Ok(())
     }
 }
@@ -238,12 +236,7 @@ impl GhostdagStoreReader for DbGhostdagStore {
     }
 
     fn get_blues_anticone_sizes(&self, hash: Hash) -> Result<HashKTypeMap, StoreError> {
-        Ok(Arc::clone(
-            &self
-                .cached_access
-                .read(hash)?
-                .blues_anticone_sizes,
-        ))
+        Ok(Arc::clone(&self.cached_access.read(hash)?.blues_anticone_sizes))
     }
 
     fn get_data(&self, hash: Hash) -> Result<Arc<GhostdagData>, StoreError> {
@@ -301,24 +294,12 @@ impl GhostdagStore for MemoryGhostdagStore {
         if self.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
-        self.blue_score_map
-            .borrow_mut()
-            .insert(hash, data.blue_score);
-        self.blue_work_map
-            .borrow_mut()
-            .insert(hash, data.blue_work);
-        self.selected_parent_map
-            .borrow_mut()
-            .insert(hash, data.selected_parent);
-        self.mergeset_blues_map
-            .borrow_mut()
-            .insert(hash, data.mergeset_blues.clone());
-        self.mergeset_reds_map
-            .borrow_mut()
-            .insert(hash, data.mergeset_reds.clone());
-        self.blues_anticone_sizes_map
-            .borrow_mut()
-            .insert(hash, data.blues_anticone_sizes.clone());
+        self.blue_score_map.borrow_mut().insert(hash, data.blue_score);
+        self.blue_work_map.borrow_mut().insert(hash, data.blue_work);
+        self.selected_parent_map.borrow_mut().insert(hash, data.selected_parent);
+        self.mergeset_blues_map.borrow_mut().insert(hash, data.mergeset_blues.clone());
+        self.mergeset_reds_map.borrow_mut().insert(hash, data.mergeset_reds.clone());
+        self.blues_anticone_sizes_map.borrow_mut().insert(hash, data.blues_anticone_sizes.clone());
         Ok(())
     }
 }
@@ -424,39 +405,18 @@ mod tests {
         data.add_red(6.into());
 
         let mut expected: Vec<Hash> = vec![4.into(), 2.into(), 5.into(), 3.into(), 6.into()];
-        assert_eq!(
-            expected,
-            data.ascending_mergeset_without_selected_parent(&store)
-                .map(|b| b.hash)
-                .collect::<Vec<Hash>>()
-        );
+        assert_eq!(expected, data.ascending_mergeset_without_selected_parent(&store).map(|b| b.hash).collect::<Vec<Hash>>());
 
-        itertools::assert_equal(
-            once(1.into()).chain(expected.iter().cloned()),
-            data.consensus_ordered_mergeset(&store),
-        );
+        itertools::assert_equal(once(1.into()).chain(expected.iter().cloned()), data.consensus_ordered_mergeset(&store));
 
         expected.reverse();
-        assert_eq!(
-            expected,
-            data.descending_mergeset_without_selected_parent(&store)
-                .map(|b| b.hash)
-                .collect::<Vec<Hash>>()
-        );
+        assert_eq!(expected, data.descending_mergeset_without_selected_parent(&store).map(|b| b.hash).collect::<Vec<Hash>>());
 
         // Use sets since the below functions have no order guarantee
         let expected: HashSet<Hash> = HashSet::from([4.into(), 2.into(), 5.into(), 3.into(), 6.into()]);
-        assert_eq!(
-            expected,
-            data.unordered_mergeset_without_selected_parent()
-                .collect::<HashSet<Hash>>()
-        );
+        assert_eq!(expected, data.unordered_mergeset_without_selected_parent().collect::<HashSet<Hash>>());
 
         let expected: HashSet<Hash> = HashSet::from([1.into(), 4.into(), 2.into(), 5.into(), 3.into(), 6.into()]);
-        assert_eq!(
-            expected,
-            data.unordered_mergeset()
-                .collect::<HashSet<Hash>>()
-        );
+        assert_eq!(expected, data.unordered_mergeset().collect::<HashSet<Hash>>());
     }
 }

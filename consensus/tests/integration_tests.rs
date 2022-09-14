@@ -44,10 +44,7 @@ impl From<&JsonBlock> for DagBlock {
         // Apply +1 to ids to avoid the zero hash
         Self::new(
             (src.id.parse::<u64>().unwrap() + 1).into(),
-            src.parents
-                .iter()
-                .map(|id| (id.parse::<u64>().unwrap() + 1).into())
-                .collect(),
+            src.parents.iter().map(|id| (id.parse::<u64>().unwrap() + 1).into()).collect(),
         )
     }
 }
@@ -76,10 +73,7 @@ fn reachability_stretch_test(use_attack_json: bool) {
         map.insert(block.hash, block);
     }
     // Set root as genesis parent
-    map.get_mut(&blocks[0])
-        .unwrap()
-        .parents
-        .push(root);
+    map.get_mut(&blocks[0]).unwrap().parents.push(root);
 
     // Act
     let (_temp_db_lifetime, db) = create_temp_db();
@@ -131,10 +125,7 @@ fn reachability_stretch_test(use_attack_json: bool) {
         } else {
             // For most iterations, validate intervals for
             // new chain only in order to shorten the test
-            builder
-                .store()
-                .validate_intervals(new_hash)
-                .unwrap();
+            builder.store().validate_intervals(new_hash).unwrap();
         }
     }
 
@@ -160,9 +151,7 @@ async fn consensus_sanity_test() {
     let wait_handles = consensus.init();
 
     consensus
-        .validate_and_insert_block(Arc::new(
-            consensus.build_block_with_parents(genesis_child, vec![MAINNET_PARAMS.genesis_hash]),
-        ))
+        .validate_and_insert_block(Arc::new(consensus.build_block_with_parents(genesis_child, vec![MAINNET_PARAMS.genesis_hash])))
         .await
         .unwrap();
 
@@ -204,10 +193,8 @@ struct GhostdagTestBlock {
 
 #[tokio::test]
 async fn ghostdag_test() {
-    let mut path_strings: Vec<String> = fs::read_dir("tests/testdata/dags")
-        .unwrap()
-        .map(|f| f.unwrap().path().to_str().unwrap().to_owned())
-        .collect();
+    let mut path_strings: Vec<String> =
+        fs::read_dir("tests/testdata/dags").unwrap().map(|f| f.unwrap().path().to_str().unwrap().to_owned()).collect();
     path_strings.sort();
 
     for path_string in path_strings.iter() {
@@ -229,16 +216,11 @@ async fn ghostdag_test() {
             let block_header = consensus.build_header_with_parents(block_id, strings_to_hashes(&block.parents));
 
             // Submit to consensus
-            consensus
-                .validate_and_insert_block(Arc::new(Block::from_header(block_header)))
-                .await
-                .unwrap();
+            consensus.validate_and_insert_block(Arc::new(Block::from_header(block_header))).await.unwrap();
         }
 
         // Clone with a new cache in order to verify correct writes to the DB itself
-        let ghostdag_store = consensus
-            .ghostdag_store()
-            .clone_with_new_cache(10000);
+        let ghostdag_store = consensus.ghostdag_store().clone_with_new_cache(10000);
 
         // Assert GHOSTDAG output data
         for block in test.blocks {
@@ -318,21 +300,9 @@ async fn block_window_test() {
         TestBlock { parents: vec!["I"], id: "J", expected_window: vec!["I", "F", "H", "D", "C", "G", "B"] },
         TestBlock { parents: vec!["J"], id: "K", expected_window: vec!["J", "I", "F", "H", "D", "C", "G", "B"] },
         TestBlock { parents: vec!["K"], id: "L", expected_window: vec!["K", "J", "I", "F", "H", "D", "C", "G", "B"] },
-        TestBlock {
-            parents: vec!["L"],
-            id: "M",
-            expected_window: vec!["L", "K", "J", "I", "F", "H", "D", "C", "G", "B"],
-        },
-        TestBlock {
-            parents: vec!["M"],
-            id: "N",
-            expected_window: vec!["M", "L", "K", "J", "I", "F", "H", "D", "C", "G"],
-        },
-        TestBlock {
-            parents: vec!["N"],
-            id: "O",
-            expected_window: vec!["N", "M", "L", "K", "J", "I", "F", "H", "D", "C"],
-        },
+        TestBlock { parents: vec!["L"], id: "M", expected_window: vec!["L", "K", "J", "I", "F", "H", "D", "C", "G", "B"] },
+        TestBlock { parents: vec!["M"], id: "N", expected_window: vec!["M", "L", "K", "J", "I", "F", "H", "D", "C", "G"] },
+        TestBlock { parents: vec!["N"], id: "O", expected_window: vec!["N", "M", "L", "K", "J", "I", "F", "H", "D", "C"] },
     ];
 
     for test_block in test_blocks {
@@ -340,28 +310,13 @@ async fn block_window_test() {
         let block_id = string_to_hash(test_block.id);
         let block = consensus.build_block_with_parents(
             block_id,
-            strings_to_hashes(
-                &test_block
-                    .parents
-                    .iter()
-                    .map(|parent| String::from(*parent))
-                    .collect(),
-            ),
+            strings_to_hashes(&test_block.parents.iter().map(|parent| String::from(*parent)).collect()),
         );
 
         // Submit to consensus
-        consensus
-            .validate_and_insert_block(Arc::new(block))
-            .await
-            .unwrap();
+        consensus.validate_and_insert_block(Arc::new(block)).await.unwrap();
 
-        let window = consensus.dag_traversal_manager().block_window(
-            consensus
-                .ghostdag_store()
-                .get_data(block_id)
-                .unwrap(),
-            10,
-        );
+        let window = consensus.dag_traversal_manager().block_window(consensus.ghostdag_store().get_data(block_id).unwrap(), 10);
 
         let window_hashes: Vec<String> = window
             .into_sorted_vec()
@@ -372,11 +327,7 @@ async fn block_window_test() {
             })
             .collect();
 
-        let expected_window_ids: Vec<String> = test_block
-            .expected_window
-            .iter()
-            .map(|id| String::from(*id))
-            .collect();
+        let expected_window_ids: Vec<String> = test_block.expected_window.iter().map(|id| String::from(*id)).collect();
         assert_eq!(expected_window_ids, window_hashes);
     }
 
@@ -394,10 +345,7 @@ async fn header_in_isolation_validation_test() {
         let mut block = block.clone();
         let block_version = BLOCK_VERSION - 1;
         block.header.version = block_version;
-        match consensus
-            .validate_and_insert_block(Arc::new(block))
-            .await
-        {
+        match consensus.validate_and_insert_block(Arc::new(block)).await {
             Err(RuleError::WrongBlockVersion(wrong_version)) => {
                 assert_eq!(wrong_version, block_version)
             }
@@ -411,16 +359,10 @@ async fn header_in_isolation_validation_test() {
         let mut block = block.clone();
         block.header.hash = 2.into();
 
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as u64;
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64;
         let block_ts = now + params.timestamp_deviation_tolerance * params.target_time_per_block + 2000;
         block.header.timestamp = block_ts;
-        match consensus
-            .validate_and_insert_block(Arc::new(block.clone()))
-            .await
-        {
+        match consensus.validate_and_insert_block(Arc::new(block.clone())).await {
             Err(RuleError::TimeTooFarIntoTheFuture(ts, _)) => {
                 assert_eq!(ts, block_ts)
             }
@@ -435,10 +377,7 @@ async fn header_in_isolation_validation_test() {
         block.header.hash = 3.into();
 
         block.header.parents_by_level[0] = vec![];
-        match consensus
-            .validate_and_insert_block(Arc::new(block.clone()))
-            .await
-        {
+        match consensus.validate_and_insert_block(Arc::new(block.clone())).await {
             Err(RuleError::NoParents) => {}
             res => {
                 panic!("Unexpected result: {:?}", res)
@@ -450,13 +389,8 @@ async fn header_in_isolation_validation_test() {
         let mut block = block.clone();
         block.header.hash = 4.into();
 
-        block.header.parents_by_level[0] = (5..(params.max_block_parents + 6))
-            .map(|x| (x as u64).into())
-            .collect();
-        match consensus
-            .validate_and_insert_block(Arc::new(block.clone()))
-            .await
-        {
+        block.header.parents_by_level[0] = (5..(params.max_block_parents + 6)).map(|x| (x as u64).into()).collect();
+        match consensus.validate_and_insert_block(Arc::new(block.clone())).await {
             Err(RuleError::TooManyParents(num_parents, limit)) => {
                 assert_eq!((params.max_block_parents + 1) as usize, num_parents);
                 assert_eq!(limit, params.max_block_parents as usize);
@@ -476,17 +410,11 @@ async fn incest_test() {
     let consensus = TestConsensus::create_from_temp_db(params);
     let wait_handles = consensus.init();
     let block = consensus.build_block_with_parents(1.into(), vec![params.genesis_hash]);
-    consensus
-        .validate_and_insert_block(Arc::new(block))
-        .await
-        .unwrap();
+    consensus.validate_and_insert_block(Arc::new(block)).await.unwrap();
 
     let mut block = consensus.build_block_with_parents(2.into(), vec![params.genesis_hash]);
     block.header.parents_by_level[0] = vec![1.into(), params.genesis_hash];
-    match consensus
-        .validate_and_insert_block(Arc::new(block.clone()))
-        .await
-    {
+    match consensus.validate_and_insert_block(Arc::new(block.clone())).await {
         Err(RuleError::InvalidParentsRelation(a, b)) => {
             assert_eq!(a, params.genesis_hash);
             assert_eq!(b, 1.into());
@@ -506,10 +434,7 @@ async fn missing_parents_test() {
     let wait_handles = consensus.init();
     let mut block = consensus.build_block_with_parents(1.into(), vec![params.genesis_hash]);
     block.header.parents_by_level[0] = vec![0.into()];
-    match consensus
-        .validate_and_insert_block(Arc::new(block))
-        .await
-    {
+    match consensus.validate_and_insert_block(Arc::new(block)).await {
         Err(RuleError::MissingParents(missing)) => {
             assert_eq!(missing, vec![0.into()]);
         }
@@ -532,10 +457,7 @@ async fn known_invalid_test() {
     block.header.timestamp -= 1;
 
     let block = Arc::new(block);
-    match consensus
-        .validate_and_insert_block(block.clone())
-        .await
-    {
+    match consensus.validate_and_insert_block(block.clone()).await {
         Err(RuleError::TimeTooOld(_, _)) => {}
         res => {
             panic!("Unexpected result: {:?}", res)
@@ -563,19 +485,13 @@ async fn median_time_test() {
         let parent = if i == 1 { params.genesis_hash } else { (i - 1).into() };
         let mut block = consensus.build_block_with_parents(i.into(), vec![parent]);
         block.header.timestamp = params.genesis_timestamp + i;
-        consensus
-            .validate_and_insert_block(Arc::new(block))
-            .await
-            .unwrap();
+        consensus.validate_and_insert_block(Arc::new(block)).await.unwrap();
     }
 
     let mut block = consensus.build_block_with_parents((num_blocks + 2).into(), vec![num_blocks.into()]);
     // We set the timestamp to be less than the median time and expect the block to be rejected
     block.header.timestamp = params.genesis_timestamp + num_blocks - params.timestamp_deviation_tolerance - 1;
-    match consensus
-        .validate_and_insert_block(Arc::new(block))
-        .await
-    {
+    match consensus.validate_and_insert_block(Arc::new(block)).await {
         Err(RuleError::TimeTooOld(_, _)) => {}
         res => {
             panic!("Unexpected result: {:?}", res)
@@ -585,10 +501,7 @@ async fn median_time_test() {
     let mut block = consensus.build_block_with_parents((num_blocks + 3).into(), vec![num_blocks.into()]);
     // We set the timestamp to be the exact median time and expect the block to be rejected
     block.header.timestamp = params.genesis_timestamp + num_blocks - params.timestamp_deviation_tolerance;
-    match consensus
-        .validate_and_insert_block(Arc::new(block))
-        .await
-    {
+    match consensus.validate_and_insert_block(Arc::new(block)).await {
         Err(RuleError::TimeTooOld(_, _)) => {}
         res => {
             panic!("Unexpected result: {:?}", res)
@@ -598,10 +511,7 @@ async fn median_time_test() {
     let mut block = consensus.build_block_with_parents((num_blocks + 4).into(), vec![(num_blocks).into()]);
     // We set the timestamp to be bigger than the median time and expect the block to be inserted successfully.
     block.header.timestamp = params.genesis_timestamp + params.timestamp_deviation_tolerance + 1;
-    consensus
-        .validate_and_insert_block(Arc::new(block))
-        .await
-        .unwrap();
+    consensus.validate_and_insert_block(Arc::new(block)).await.unwrap();
 
     consensus.shutdown(wait_handles);
 }
@@ -618,27 +528,18 @@ async fn mergeset_size_limit_test() {
     for i in 1..(num_blocks_per_chain + 1) {
         let block = consensus.build_block_with_parents(i.into(), vec![tip1_hash]);
         tip1_hash = block.header.hash;
-        consensus
-            .validate_and_insert_block(Arc::new(block))
-            .await
-            .unwrap();
+        consensus.validate_and_insert_block(Arc::new(block)).await.unwrap();
     }
 
     let mut tip2_hash = params.genesis_hash;
     for i in (num_blocks_per_chain + 2)..(2 * num_blocks_per_chain + 1) {
         let block = consensus.build_block_with_parents(i.into(), vec![tip2_hash]);
         tip2_hash = block.header.hash;
-        consensus
-            .validate_and_insert_block(Arc::new(block))
-            .await
-            .unwrap();
+        consensus.validate_and_insert_block(Arc::new(block)).await.unwrap();
     }
 
     let block = consensus.build_block_with_parents((3 * num_blocks_per_chain + 1).into(), vec![tip1_hash, tip2_hash]);
-    match consensus
-        .validate_and_insert_block(Arc::new(block))
-        .await
-    {
+    match consensus.validate_and_insert_block(Arc::new(block)).await {
         Err(RuleError::MergeSetTooBig(a, b)) => {
             assert_eq!(a, params.mergeset_size_limit + 1);
             assert_eq!(b, params.mergeset_size_limit);
@@ -791,26 +692,19 @@ async fn json_concurrency_test() {
     for mut chunk in iter {
         let current_joins = submit_chunk(&consensus, &mut chunk);
 
-        join_all(prev_joins)
-            .await
-            .into_iter()
-            .collect::<Result<Vec<BlockStatus>, RuleError>>()
-            .unwrap();
+        join_all(prev_joins).await.into_iter().collect::<Result<Vec<BlockStatus>, RuleError>>().unwrap();
 
         prev_joins = current_joins;
     }
 
-    join_all(prev_joins)
-        .await
-        .into_iter()
-        .collect::<Result<Vec<BlockStatus>, RuleError>>()
-        .unwrap();
+    join_all(prev_joins).await.into_iter().collect::<Result<Vec<BlockStatus>, RuleError>>().unwrap();
 
     consensus.shutdown(wait_handles);
 }
 
 fn submit_chunk(
-    consensus: &TestConsensus, chunk: &mut impl Iterator<Item = std::io::Result<String>>,
+    consensus: &TestConsensus,
+    chunk: &mut impl Iterator<Item = std::io::Result<String>>,
 ) -> Vec<impl Future<Output = BlockProcessResult<BlockStatus>>> {
     let mut futures = Vec::new();
     for line in chunk {
@@ -830,12 +724,7 @@ fn json_line_to_block(line: String) -> Block {
                 .Header
                 .Parents
                 .iter()
-                .map(|item| {
-                    item.ParentHashes
-                        .iter()
-                        .map(|parent| Hash::from_str(parent).unwrap())
-                        .collect()
-                })
+                .map(|item| item.ParentHashes.iter().map(|parent| Hash::from_str(parent).unwrap()).collect())
                 .collect(),
             hash_merkle_root: Hash::from_str(&rpc_block.Header.HashMerkleRoot).unwrap(),
             accepted_id_merkle_root: Hash::from_str(&rpc_block.Header.AcceptedIDMerkleRoot).unwrap(),
@@ -914,10 +803,7 @@ async fn bounded_merge_depth_test() {
     let mut selected_chain = vec![params.genesis_hash];
     for i in 1..(params.merge_depth + 3) {
         let hash: Hash = (i + 1).into();
-        consensus
-            .add_block_with_parents(hash, vec![*selected_chain.last().unwrap()])
-            .await
-            .unwrap();
+        consensus.add_block_with_parents(hash, vec![*selected_chain.last().unwrap()]).await.unwrap();
         selected_chain.push(hash);
     }
 
@@ -925,28 +811,19 @@ async fn bounded_merge_depth_test() {
     let mut block_chain_2 = vec![params.genesis_hash];
     for i in 1..(params.merge_depth + 2) {
         let hash: Hash = (i + params.merge_depth + 3).into();
-        consensus
-            .add_block_with_parents(hash, vec![*block_chain_2.last().unwrap()])
-            .await
-            .unwrap();
+        consensus.add_block_with_parents(hash, vec![*block_chain_2.last().unwrap()]).await.unwrap();
         block_chain_2.push(hash);
     }
 
     // The merge depth root belongs to selected_chain, and block_chain_2[1] is red and doesn't have it in its past, and is not in the
     // past of any kosherizing block, so we expect the next block to be rejected.
-    match consensus
-        .add_block_with_parents(100.into(), vec![block_chain_2[1], *selected_chain.last().unwrap()])
-        .await
-    {
+    match consensus.add_block_with_parents(100.into(), vec![block_chain_2[1], *selected_chain.last().unwrap()]).await {
         Err(RuleError::ViolatingBoundedMergeDepth) => {}
         res => panic!("Unexpected result: {:?}", res),
     }
 
     // A block that points to tip of both chains will be rejected for similar reasons (since block_chain_2 tip is also red).
-    match consensus
-        .add_block_with_parents(101.into(), vec![*block_chain_2.last().unwrap(), *selected_chain.last().unwrap()])
-        .await
-    {
+    match consensus.add_block_with_parents(101.into(), vec![*block_chain_2.last().unwrap(), *selected_chain.last().unwrap()]).await {
         Err(RuleError::ViolatingBoundedMergeDepth) => {}
         res => panic!("Unexpected result: {:?}", res),
     }
@@ -971,27 +848,18 @@ async fn bounded_merge_depth_test() {
     // We extend the selected chain until kosherizing_hash will be red from the virtual POV.
     for i in 0..params.ghostdag_k {
         let hash = Hash::from_u64_word(i as u64 * 1000);
-        consensus
-            .add_block_with_parents(hash, vec![*selected_chain.last().unwrap()])
-            .await
-            .unwrap();
+        consensus.add_block_with_parents(hash, vec![*selected_chain.last().unwrap()]).await.unwrap();
         selected_chain.push(hash);
     }
 
     // Since kosherizing_hash is now red, we expect this to fail.
-    match consensus
-        .add_block_with_parents(1100.into(), vec![kosherizing_hash, *selected_chain.last().unwrap()])
-        .await
-    {
+    match consensus.add_block_with_parents(1100.into(), vec![kosherizing_hash, *selected_chain.last().unwrap()]).await {
         Err(RuleError::ViolatingBoundedMergeDepth) => {}
         res => panic!("Unexpected result: {:?}", res),
     }
 
     // point_at_blue_kosherizing is kosherizing kosherizing_hash, so this should pass.
-    consensus
-        .add_block_with_parents(1101.into(), vec![point_at_blue_kosherizing, *selected_chain.last().unwrap()])
-        .await
-        .unwrap();
+    consensus.add_block_with_parents(1101.into(), vec![point_at_blue_kosherizing, *selected_chain.last().unwrap()]).await.unwrap();
 
     consensus.shutdown(wait_handles);
 }

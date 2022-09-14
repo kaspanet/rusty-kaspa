@@ -55,19 +55,16 @@ impl DbRelationsStore {
         }
 
         // Insert a new entry for `hash`
-        self.parents_access
-            .write_batch(batch, hash, &parents)?;
+        self.parents_access.write_batch(batch, hash, &parents)?;
 
         // The new hash has no children yet
-        self.children_access
-            .write_batch(batch, hash, &BlockHashes::new(Vec::new()))?;
+        self.children_access.write_batch(batch, hash, &BlockHashes::new(Vec::new()))?;
 
         // Update `children` for each parent
         for parent in parents.iter().cloned() {
             let mut children = (*self.get_children(parent)?).clone();
             children.push(hash);
-            self.children_access
-                .write_batch(batch, parent, &BlockHashes::new(children))?;
+            self.children_access.write_batch(batch, parent, &BlockHashes::new(children))?;
         }
 
         Ok(())
@@ -76,13 +73,19 @@ impl DbRelationsStore {
 
 pub trait RelationsStoreBatchExtensions {
     fn insert_batch(
-        &self, batch: &mut WriteBatch, hash: Hash, parents: BlockHashes,
+        &self,
+        batch: &mut WriteBatch,
+        hash: Hash,
+        parents: BlockHashes,
     ) -> Result<RwLockWriteGuard<DbRelationsStore>, StoreError>;
 }
 
 impl RelationsStoreBatchExtensions for Arc<RwLock<DbRelationsStore>> {
     fn insert_batch(
-        &self, batch: &mut WriteBatch, hash: Hash, parents: BlockHashes,
+        &self,
+        batch: &mut WriteBatch,
+        hash: Hash,
+        parents: BlockHashes,
     ) -> Result<RwLockWriteGuard<DbRelationsStore>, StoreError> {
         let mut write_guard = self.write();
         write_guard.insert_batch(batch, hash, parents)?;
@@ -120,15 +123,13 @@ impl RelationsStore for DbRelationsStore {
         self.parents_access.write(hash, &parents)?;
 
         // The new hash has no children yet
-        self.children_access
-            .write(hash, &BlockHashes::new(Vec::new()))?;
+        self.children_access.write(hash, &BlockHashes::new(Vec::new()))?;
 
         // Update `children` for each parent
         for parent in parents.iter().cloned() {
             let mut children = (*self.get_children(parent)?).clone();
             children.push(hash);
-            self.children_access
-                .write(parent, &BlockHashes::new(children))?;
+            self.children_access.write(parent, &BlockHashes::new(children))?;
         }
 
         Ok(())
@@ -182,13 +183,11 @@ impl RelationsStore for MemoryRelationsStore {
             for parent in parents.iter().cloned() {
                 let mut children = (*self.get_children(parent)?).clone();
                 children.push(hash);
-                self.children_map
-                    .insert(parent, BlockHashes::new(children));
+                self.children_map.insert(parent, BlockHashes::new(children));
             }
 
             // The new hash has no children yet
-            self.children_map
-                .insert(hash, BlockHashes::new(Vec::new()));
+            self.children_map.insert(hash, BlockHashes::new(Vec::new()));
             Ok(())
         } else {
             Err(StoreError::KeyAlreadyExists(hash.to_string()))
@@ -215,28 +214,16 @@ mod tests {
     fn test_relations_store<T: RelationsStore>(mut store: T) {
         let parents = [(1, vec![]), (2, vec![1]), (3, vec![1]), (4, vec![2, 3]), (5, vec![1, 4])];
         for (i, vec) in parents.iter().cloned() {
-            store
-                .insert(i.into(), BlockHashes::new(vec.iter().copied().map(Hash::from).collect()))
-                .unwrap();
+            store.insert(i.into(), BlockHashes::new(vec.iter().copied().map(Hash::from).collect())).unwrap();
         }
 
         let expected_children = [(1, vec![2, 3, 5]), (2, vec![4]), (3, vec![4]), (4, vec![5]), (5, vec![])];
         for (i, vec) in expected_children {
-            assert!(store
-                .get_children(i.into())
-                .unwrap()
-                .iter()
-                .copied()
-                .eq(vec.iter().copied().map(Hash::from)));
+            assert!(store.get_children(i.into()).unwrap().iter().copied().eq(vec.iter().copied().map(Hash::from)));
         }
 
         for (i, vec) in parents {
-            assert!(store
-                .get_parents(i.into())
-                .unwrap()
-                .iter()
-                .copied()
-                .eq(vec.iter().copied().map(Hash::from)));
+            assert!(store.get_parents(i.into()).unwrap().iter().copied().eq(vec.iter().copied().map(Hash::from)));
         }
     }
 }

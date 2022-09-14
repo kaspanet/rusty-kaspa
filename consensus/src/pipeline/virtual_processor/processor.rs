@@ -60,8 +60,12 @@ pub struct VirtualStateProcessor {
 
 impl VirtualStateProcessor {
     pub fn new(
-        receiver: Receiver<BlockTask>, params: &Params, db: Arc<DB>, statuses_store: Arc<RwLock<DbStatusesStore>>,
-        ghostdag_manager: DbGhostdagManager, reachability_service: MTReachabilityService<DbReachabilityStore>,
+        receiver: Receiver<BlockTask>,
+        params: &Params,
+        db: Arc<DB>,
+        statuses_store: Arc<RwLock<DbStatusesStore>>,
+        ghostdag_manager: DbGhostdagManager,
+        reachability_service: MTReachabilityService<DbReachabilityStore>,
     ) -> Self {
         Self {
             receiver,
@@ -92,24 +96,18 @@ impl VirtualStateProcessor {
     }
 
     fn resolve_virtual(
-        self: &Arc<VirtualStateProcessor>, block: &Arc<Block>, state: &mut VirtualState,
+        self: &Arc<VirtualStateProcessor>,
+        block: &Arc<Block>,
+        state: &mut VirtualState,
     ) -> BlockProcessResult<BlockStatus> {
         // TEMP: store all blocks in memory
-        state
-            .blocks
-            .insert(block.header.hash, block.clone());
+        state.blocks.insert(block.header.hash, block.clone());
 
         // TEMP: assert only coinbase
         assert_eq!(block.transactions.len(), 1);
         // assert!(block.transactions[0].is_coinbase());
 
-        assert_eq!(
-            self.statuses_store
-                .read()
-                .get(block.header.hash)
-                .unwrap(),
-            BlockStatus::StatusUTXOPendingVerification
-        );
+        assert_eq!(self.statuses_store.read().get(block.header.hash).unwrap(), BlockStatus::StatusUTXOPendingVerification);
 
         // Update tips
         let parents_set = DomainHashSet::from_iter(block.header.direct_parents().iter().cloned());
@@ -137,15 +135,9 @@ impl VirtualStateProcessor {
             let mut split_point = blockhash::ORIGIN;
             let mut accumulated_diff = UtxoDiff::default();
 
-            for chain_hash in self
-                .reachability_service
-                .default_backward_chain_iterator(prev_selected)
-            {
+            for chain_hash in self.reachability_service.default_backward_chain_iterator(prev_selected) {
                 let chain_hash = chain_hash.unwrap();
-                if self
-                    .reachability_service
-                    .is_chain_ancestor_of(chain_hash, new_selected)
-                {
+                if self.reachability_service.is_chain_ancestor_of(chain_hash, new_selected) {
                     split_point = chain_hash;
                     break;
                 }
@@ -156,34 +148,20 @@ impl VirtualStateProcessor {
                     .unwrap();
             }
 
-            for (selected_parent, chain_hash) in self
-                .reachability_service
-                .forward_chain_iterator(split_point, new_selected, true)
-                .map(|r| r.unwrap())
-                .tuple_windows()
+            for (selected_parent, chain_hash) in
+                self.reachability_service.forward_chain_iterator(split_point, new_selected, true).map(|r| r.unwrap()).tuple_windows()
             {
                 match state.utxo_diffs.entry(chain_hash) {
                     Occupied(e) => {
                         let utxo_diff = e.get();
-                        accumulated_diff
-                            .with_diff_in_place(utxo_diff)
-                            .unwrap();
+                        accumulated_diff.with_diff_in_place(utxo_diff).unwrap();
 
                         // Temp logic
                         assert!(state.multiset_hashes.contains_key(&chain_hash));
                     }
                     Vacant(e) => {
-                        if self
-                            .statuses_store
-                            .read()
-                            .get(selected_parent)
-                            .unwrap()
-                            == BlockStatus::StatusDisqualifiedFromChain
-                        {
-                            self.statuses_store
-                                .write()
-                                .set(chain_hash, BlockStatus::StatusDisqualifiedFromChain)
-                                .unwrap();
+                        if self.statuses_store.read().get(selected_parent).unwrap() == BlockStatus::StatusDisqualifiedFromChain {
+                            self.statuses_store.write().set(chain_hash, BlockStatus::StatusDisqualifiedFromChain).unwrap();
                             continue; // TODO: optimize
                         }
 
@@ -191,26 +169,17 @@ impl VirtualStateProcessor {
                         let chain_block = state.blocks.get(&chain_hash).unwrap();
 
                         // TODO: prefill and populate UTXO entry data
-                        utxo_diff
-                            .add_transaction(&chain_block.transactions[0], chain_block.header.daa_score)
-                            .unwrap(); // TODO: mergeset + utxo state tests
-                        accumulated_diff
-                            .with_diff_in_place(&utxo_diff)
-                            .unwrap();
+                        utxo_diff.add_transaction(&chain_block.transactions[0], chain_block.header.daa_score).unwrap(); // TODO: mergeset + utxo state tests
+                        accumulated_diff.with_diff_in_place(&utxo_diff).unwrap();
                         e.insert(utxo_diff);
 
                         // Temp logic
                         assert!(!state.multiset_hashes.contains_key(&chain_hash));
-                        let mut multiset_hash = state
-                            .multiset_hashes
-                            .get(&selected_parent)
-                            .unwrap()
-                            .clone();
+                        let mut multiset_hash = state.multiset_hashes.get(&selected_parent).unwrap().clone();
 
                         if selected_parent != self.genesis_hash {
                             let selected_parent_block = state.blocks.get(&selected_parent).unwrap();
-                            multiset_hash
-                                .add_transaction(&selected_parent_block.transactions[0], chain_block.header.daa_score);
+                            multiset_hash.add_transaction(&selected_parent_block.transactions[0], chain_block.header.daa_score);
                         }
 
                         // Verify the header UTXO commitment
@@ -229,24 +198,14 @@ impl VirtualStateProcessor {
                             BlockStatus::StatusUTXOValid
                         };
 
-                        self.statuses_store
-                            .write()
-                            .set(chain_hash, status)
-                            .unwrap();
+                        self.statuses_store.write().set(chain_hash, status).unwrap();
 
-                        state
-                            .multiset_hashes
-                            .insert(chain_hash, multiset_hash);
+                        state.multiset_hashes.insert(chain_hash, multiset_hash);
                     }
                 }
             }
 
-            match self
-                .statuses_store
-                .read()
-                .get(new_selected)
-                .unwrap()
-            {
+            match self.statuses_store.read().get(new_selected).unwrap() {
                 BlockStatus::StatusUTXOValid => {
                     state.selected_tip = new_selected;
                     Ok(BlockStatus::StatusUTXOValid)

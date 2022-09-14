@@ -29,11 +29,7 @@ impl MassCalculator {
             .sum();
         let total_script_public_key_mass = total_script_public_key_size * self.mass_per_script_pub_key_byte;
 
-        let total_sigops: u64 = tx
-            .inputs
-            .iter()
-            .map(|input| input.sig_op_count as u64)
-            .sum();
+        let total_sigops: u64 = tx.inputs.iter().map(|input| input.sig_op_count as u64).sum();
         let total_sigops_mass = total_sigops * self.mass_per_sig_op;
 
         mass_for_size + total_script_public_key_mass + total_sigops_mass
@@ -48,19 +44,11 @@ fn transaction_estimated_serialized_size(tx: &Transaction) -> u64 {
     let mut size: u64 = 0;
     size += 2; // Tx version (u16)
     size += 8; // Number of inputs (u64)
-    let inputs_size: u64 = tx
-        .inputs
-        .iter()
-        .map(|input| transaction_input_estimated_serialized_size(input))
-        .sum();
+    let inputs_size: u64 = tx.inputs.iter().map(|input| transaction_input_estimated_serialized_size(input)).sum();
     size += inputs_size;
 
     size += 8; // number of outputs (u64)
-    let outputs_size: u64 = tx
-        .outputs
-        .iter()
-        .map(|output| transaction_output_estimated_serialized_size(output))
-        .sum();
+    let outputs_size: u64 = tx.outputs.iter().map(|output| transaction_output_estimated_serialized_size(output)).sum();
     size += outputs_size;
 
     size += 8; // lock time (u64)

@@ -21,8 +21,15 @@ pub struct Header {
 
 impl Header {
     pub fn new(
-        version: u16, parents: Vec<Hash>, hash_merkle_root: Hash, timestamp: u64, bits: u32, nonce: u64,
-        daa_score: u64, blue_work: BlueWorkType, blue_score: u64,
+        version: u16,
+        parents: Vec<Hash>,
+        hash_merkle_root: Hash,
+        timestamp: u64,
+        bits: u32,
+        nonce: u64,
+        daa_score: u64,
+        blue_work: BlueWorkType,
+        blue_score: u64,
     ) -> Self {
         let mut header = Self {
             hash: Default::default(), // Temp init before the finalize below
