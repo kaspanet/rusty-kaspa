@@ -104,7 +104,7 @@ impl VirtualStateProcessor {
         state.blocks.insert(block.header.hash, block.clone());
 
         // TEMP: assert only coinbase
-        assert_eq!(block.transactions.len(), 1);
+        // assert_eq!(block.transactions.len(), 1);
         // assert!(block.transactions[0].is_coinbase());
 
         assert_eq!(self.statuses_store.read().get(block.header.hash).unwrap(), BlockStatus::StatusUTXOPendingVerification);
@@ -130,7 +130,7 @@ impl VirtualStateProcessor {
             }
 
             // TEMP:
-            assert_eq!(new_selected, block.header.hash);
+            // assert_eq!(new_selected, block.header.hash);
 
             let mut split_point = blockhash::ORIGIN;
             let mut accumulated_diff = UtxoDiff::default();
@@ -198,8 +198,8 @@ impl VirtualStateProcessor {
                             BlockStatus::StatusUTXOValid
                         };
 
+                        // TODO: batch write
                         self.statuses_store.write().set(chain_hash, status).unwrap();
-
                         state.multiset_hashes.insert(chain_hash, multiset_hash);
                     }
                 }
@@ -208,11 +208,13 @@ impl VirtualStateProcessor {
             match self.statuses_store.read().get(new_selected).unwrap() {
                 BlockStatus::StatusUTXOValid => {
                     state.selected_tip = new_selected;
-                    Ok(BlockStatus::StatusUTXOValid)
                 }
-                BlockStatus::StatusDisqualifiedFromChain => Ok(BlockStatus::StatusDisqualifiedFromChain),
+                BlockStatus::StatusDisqualifiedFromChain => {
+                    // TODO: this means another chain needs to be checked
+                }
                 _ => panic!("expected utxo valid or disqualified"),
-            }
+            };
+            Ok(self.statuses_store.read().get(block.hash()).unwrap())
         } else {
             Ok(BlockStatus::StatusUTXOPendingVerification)
         }
