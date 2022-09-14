@@ -848,48 +848,49 @@ fn json_line_to_block(line: String) -> Block {
             blue_score: rpc_block.Header.BlueScore,
             pruning_point: Hash::from_str(&rpc_block.Header.PruningPoint).unwrap(),
         },
-        transactions: rpc_block
-            .Transactions
-            .iter()
-            .map(|tx| {
-                Transaction::new(
-                    tx.Version,
-                    tx.Inputs
-                        .iter()
-                        .map(|input| {
-                            Arc::new(TransactionInput {
-                                previous_outpoint: TransactionOutpoint {
-                                    transaction_id: Hash::from_str(&input.PreviousOutpoint.TransactionID).unwrap(),
-                                    index: input.PreviousOutpoint.Index,
-                                },
-                                signature_script: hex_decode(&input.SignatureScript),
-                                sequence: input.Sequence,
-                                sig_op_count: input.SigOpCount,
-                                utxo_entry: None,
+        transactions: Arc::new(
+            rpc_block
+                .Transactions
+                .iter()
+                .map(|tx| {
+                    Transaction::new(
+                        tx.Version,
+                        tx.Inputs
+                            .iter()
+                            .map(|input| {
+                                Arc::new(TransactionInput {
+                                    previous_outpoint: TransactionOutpoint {
+                                        transaction_id: Hash::from_str(&input.PreviousOutpoint.TransactionID).unwrap(),
+                                        index: input.PreviousOutpoint.Index,
+                                    },
+                                    signature_script: hex_decode(&input.SignatureScript),
+                                    sequence: input.Sequence,
+                                    sig_op_count: input.SigOpCount,
+                                    utxo_entry: None,
+                                })
                             })
-                        })
-                        .collect(),
-                    tx.Outputs
-                        .iter()
-                        .map(|output| {
-                            Arc::new(TransactionOutput {
-                                value: output.Amount,
-                                script_public_key: Arc::new(ScriptPublicKey {
-                                    script: hex_decode(&output.ScriptPublicKey.Script),
-                                    version: output.ScriptPublicKey.Version,
-                                }),
+                            .collect(),
+                        tx.Outputs
+                            .iter()
+                            .map(|output| {
+                                Arc::new(TransactionOutput {
+                                    value: output.Amount,
+                                    script_public_key: Arc::new(ScriptPublicKey {
+                                        script: hex_decode(&output.ScriptPublicKey.Script),
+                                        version: output.ScriptPublicKey.Version,
+                                    }),
+                                })
                             })
-                        })
-                        .collect(),
-                    tx.LockTime,
-                    SubnetworkId::from_str(&tx.SubnetworkID).unwrap(),
-                    tx.Gas,
-                    hex_decode(&tx.Payload),
-                    0,
-                    0,
-                )
-            })
-            .collect(),
+                            .collect(),
+                        tx.LockTime,
+                        SubnetworkId::from_str(&tx.SubnetworkID).unwrap(),
+                        tx.Gas,
+                        hex_decode(&tx.Payload),
+                        0,
+                    )
+                })
+                .collect(),
+        ),
     }
 }
 

@@ -5,6 +5,7 @@ use crate::{
     model::{
         services::{reachability::MTReachabilityService, relations::MTRelationsService, statuses::MTStatusesService},
         stores::{
+            block_transactions::DbBlockTransactionsStore,
             block_window_cache::BlockWindowCacheStore,
             daa::DbDaaStore,
             depth::DbDepthStore,
@@ -19,16 +20,17 @@ use crate::{
     },
     params::Params,
     pipeline::{
-        block_processor::BlockBodyProcessor,
+        body_processor::BlockBodyProcessor,
         deps_manager::{BlockResultSender, BlockTask},
         header_processor::HeaderProcessor,
         virtual_processor::VirtualStateProcessor,
         ProcessingCounters,
     },
     processes::{
-        block_at_depth::BlockDepthManager, dagtraversalmanager::DagTraversalManager, difficulty::DifficultyManager,
-        ghostdag::protocol::GhostdagManager, pastmediantime::PastMedianTimeManager,
-        reachability::inquirer as reachability,
+        block_at_depth::BlockDepthManager, coinbase::CoinbaseManager, dagtraversalmanager::DagTraversalManager,
+        difficulty::DifficultyManager, ghostdag::protocol::GhostdagManager, mass::MassCalculator,
+        pastmediantime::PastMedianTimeManager, reachability::inquirer as reachability,
+        transaction_validator::TransactionValidator,
     },
 };
 use consensus_core::block::Block;
@@ -52,7 +54,7 @@ pub struct Consensus {
 
     // Processors
     header_processor: Arc<HeaderProcessor>,
-    body_processor: Arc<BlockBodyProcessor>,
+    pub(super) body_processor: Arc<BlockBodyProcessor>,
     virtual_processor: Arc<VirtualStateProcessor>,
 
     // Stores
@@ -77,6 +79,7 @@ pub struct Consensus {
         DbHeadersStore,
     >,
     pub(super) past_median_time_manager: PastMedianTimeManager<DbHeadersStore, DbGhostdagStore, BlockWindowCacheStore>,
+    pub(super) coinbase_manager: CoinbaseManager,
 
     // Counters
     pub counters: Arc<ProcessingCounters>,
@@ -92,6 +95,7 @@ impl Consensus {
         let daa_store = Arc::new(DbDaaStore::new(db.clone(), 100000));
         let headers_store = Arc::new(DbHeadersStore::new(db.clone(), 100000));
         let depth_store = Arc::new(DbDepthStore::new(db.clone(), 100000));
+        let block_transactions_store = Arc::new(DbBlockTransactionsStore::new(db.clone(), 100000));
         let block_window_cache_for_difficulty = Arc::new(BlockWindowCacheStore::new(2000));
         let block_window_cache_for_past_median_time = Arc::new(BlockWindowCacheStore::new(2000));
 
@@ -126,6 +130,23 @@ impl Consensus {
             depth_store.clone(),
             reachability_service.clone(),
             ghostdag_store.clone(),
+        );
+
+        let coinbase_manager = CoinbaseManager::new(
+            params.coinbase_payload_script_public_key_max_len,
+            params.max_coinbase_payload_len,
+            params.deflationary_phase_daa_score,
+            params.pre_deflationary_phase_base_subsidy,
+        );
+
+        let mass_calculator =
+            MassCalculator::new(params.mass_per_tx_byte, params.mass_per_script_pub_key_byte, params.mass_per_sig_op);
+
+        let transaction_validator = TransactionValidator::new(
+            params.max_tx_inputs,
+            params.max_tx_outputs,
+            params.max_signature_script_len,
+            params.max_script_public_key_len,
         );
 
         let (sender, receiver): (Sender<BlockTask>, Receiver<BlockTask>) = unbounded();
@@ -163,7 +184,16 @@ impl Consensus {
             virtual_sender,
             db.clone(),
             statuses_store.clone(),
+            ghostdag_store.clone(),
+            headers_store.clone(),
+            block_transactions_store,
             reachability_service.clone(),
+            coinbase_manager.clone(),
+            mass_calculator,
+            transaction_validator,
+            past_median_time_manager.clone(),
+            params.max_block_mass,
+            params.genesis_hash,
         ));
 
         let virtual_processor = Arc::new(VirtualStateProcessor::new(
@@ -199,6 +229,7 @@ impl Consensus {
                 reachability_service,
             ),
             past_median_time_manager,
+            coinbase_manager,
 
             counters,
         }

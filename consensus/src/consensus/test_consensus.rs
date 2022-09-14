@@ -4,21 +4,24 @@ use std::{
     thread::JoinHandle,
 };
 
-use consensus_core::{block::Block, header::Header, merkle::calc_hash_merkle_root, tx::Transaction};
+use consensus_core::{
+    block::Block, header::Header, merkle::calc_hash_merkle_root, subnets::SUBNETWORK_ID_COINBASE, tx::Transaction,
+};
 use futures::Future;
 use hashes::Hash;
 use kaspa_core::{core::Core, service::Service};
 use parking_lot::RwLock;
 
 use crate::{
+    constants::TX_VERSION,
     errors::BlockProcessResult,
     model::stores::{
-        block_window_cache::BlockWindowCacheStore, ghostdag::DbGhostdagStore, pruning::PruningStoreReader,
-        reachability::DbReachabilityStore, statuses::BlockStatus, DB,
+        block_window_cache::BlockWindowCacheStore, ghostdag::DbGhostdagStore, headers::DbHeadersStore,
+        pruning::PruningStoreReader, reachability::DbReachabilityStore, statuses::BlockStatus, DB,
     },
     params::Params,
-    pipeline::{header_processor::HeaderProcessingContext, ProcessingCounters},
-    processes::dagtraversalmanager::DagTraversalManager,
+    pipeline::{body_processor::BlockBodyProcessor, header_processor::HeaderProcessingContext, ProcessingCounters},
+    processes::{dagtraversalmanager::DagTraversalManager, pastmediantime::PastMedianTimeManager},
     test_helpers::header_from_precomputed_hash,
 };
 
@@ -98,10 +101,24 @@ impl TestConsensus {
         &self, hash: Hash, parents: Vec<Hash>, txs: Vec<Transaction>,
     ) -> Block {
         let mut header = self.build_header_with_parents(hash, parents);
-        if !txs.is_empty() {
-            header.hash_merkle_root = calc_hash_merkle_root(txs.iter());
-        }
-        Block { header, transactions: txs }
+        let mut cb_payload: Vec<u8> = vec![];
+        cb_payload.append(&mut header.blue_score.to_le_bytes().to_vec());
+        cb_payload.append(
+            &mut (self
+                .consensus
+                .coinbase_manager
+                .calc_block_subsidy(header.daa_score))
+            .to_le_bytes()
+            .to_vec(),
+        ); // Subsidy
+        cb_payload.append(&mut (0_u16).to_le_bytes().to_vec()); // Script public key version
+        cb_payload.append(&mut (0_u8).to_le_bytes().to_vec()); // Script public key length
+        cb_payload.append(&mut vec![]); // Script public key
+
+        let cb = Transaction::new(TX_VERSION, vec![], vec![], 0, SUBNETWORK_ID_COINBASE, 0, cb_payload, 0);
+        let final_txs = vec![vec![cb], txs].concat();
+        header.hash_merkle_root = calc_hash_merkle_root(final_txs.iter());
+        Block { header, transactions: Arc::new(final_txs) }
     }
 
     pub fn build_block_with_parents(&self, hash: Hash, parents: Vec<Hash>) -> Block {
@@ -136,6 +153,16 @@ impl TestConsensus {
 
     pub fn processing_counters(&self) -> &Arc<ProcessingCounters> {
         &self.consensus.counters
+    }
+
+    pub fn block_body_processor(&self) -> &Arc<BlockBodyProcessor> {
+        &self.consensus.body_processor
+    }
+
+    pub fn past_median_time_manager(
+        &self,
+    ) -> &PastMedianTimeManager<DbHeadersStore, DbGhostdagStore, BlockWindowCacheStore> {
+        &self.consensus.past_median_time_manager
     }
 }
 

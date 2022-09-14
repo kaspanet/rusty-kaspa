@@ -52,7 +52,6 @@ mod tests {
                 0,
                 vec![9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
                 0,
-                0,
             ),
             Transaction::new(
                 0,
@@ -91,7 +90,6 @@ mod tests {
                 SUBNETWORK_ID_NATIVE,
                 0,
                 vec![],
-                0,
                 0,
             ),
             Transaction::new(
@@ -158,7 +156,6 @@ mod tests {
                 0,
                 vec![],
                 0,
-                0,
             ),
             Transaction::new(
                 0,
@@ -223,7 +220,6 @@ mod tests {
                 0,
                 vec![],
                 0,
-                0,
             ),
             Transaction::new(
                 0,
@@ -272,7 +268,6 @@ mod tests {
                 SUBNETWORK_ID_NATIVE,
                 0,
                 vec![],
-                0,
                 0,
             ),
         ];
