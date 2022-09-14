@@ -497,4 +497,33 @@ mod tests {
 
         consensus.shutdown(wait_handles);
     }
+
+    #[tokio::test]
+    async fn merkle_root_missing_parents_known_invalid_test() {
+        let params = MAINNET_PARAMS.clone();
+        let consensus = TestConsensus::create_from_temp_db(&params);
+        let wait_handles = consensus.init();
+
+        let mut block =
+            consensus.build_block_with_parents_and_transactions(1.into(), vec![params.genesis_hash], vec![]);
+        Arc::make_mut(&mut block.transactions)[0].version += 1;
+
+        let block = Arc::new(block);
+        extract_enum_value!(consensus.validate_and_insert_block(block.clone()).await,Err(RuleError::BadMerkleRoot(_, _)) => ());
+
+        // BadMerkleRoot shouldn't mark the block as known invalid
+        extract_enum_value!(consensus.validate_and_insert_block(block).await,Err(RuleError::BadMerkleRoot(_, _)) => ());
+
+        let mut block =
+            consensus.build_block_with_parents_and_transactions(1.into(), vec![params.genesis_hash], vec![]);
+        block.header.parents_by_level[0][0] = 0.into();
+
+        let block = Arc::new(block);
+        extract_enum_value!(consensus.validate_and_insert_block(block.clone()).await,Err(RuleError::MissingParents( _)) => ());
+
+        // MissingParents shouldn't mark the block as known invalid
+        extract_enum_value!(consensus.validate_and_insert_block(block).await,Err(RuleError::MissingParents( _)) => ());
+
+        consensus.shutdown(wait_handles);
+    }
 }

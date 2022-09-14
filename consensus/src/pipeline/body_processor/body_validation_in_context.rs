@@ -130,7 +130,12 @@ mod tests {
             let mut block = consensus.build_block_with_parents_and_transactions(2.into(), vec![3.into()], vec![]);
             Arc::make_mut(&mut block.transactions)[0].payload[8..16].copy_from_slice(&(5_u64).to_le_bytes());
             block.header.hash_merkle_root = calc_hash_merkle_root(block.transactions.iter());
-            extract_enum_value!(consensus.validate_and_insert_block(Arc::new(block)).await,Err(RuleError::WrongSubsidy(expected,_)) => (assert_eq!(expected, 50000000000)));
+
+            let block = Arc::new(block);
+            extract_enum_value!(consensus.validate_and_insert_block(block.clone()).await,Err(RuleError::WrongSubsidy(expected,_)) => (assert_eq!(expected, 50000000000)));
+
+            // The second time we send an invalid block we expect it to be a known invalid.
+            extract_enum_value!(consensus.validate_and_insert_block(block).await,Err(RuleError::KnownInvalid) => ());
         }
 
         let valid_block_child =
@@ -141,7 +146,7 @@ mod tests {
             .unwrap();
         {
             // The block DAA score is 2, so the subsidy should be calculated according to the deflationary stage.
-            let mut block = consensus.build_block_with_parents_and_transactions(2.into(), vec![4.into()], vec![]);
+            let mut block = consensus.build_block_with_parents_and_transactions(5.into(), vec![4.into()], vec![]);
             Arc::make_mut(&mut block.transactions)[0].payload[8..16].copy_from_slice(&(5_u64).to_le_bytes());
             block.header.hash_merkle_root = calc_hash_merkle_root(block.transactions.iter());
             extract_enum_value!(consensus.validate_and_insert_block(Arc::new(block)).await,Err(RuleError::WrongSubsidy(expected,_)) => (assert_eq!(expected, 44000000000)));

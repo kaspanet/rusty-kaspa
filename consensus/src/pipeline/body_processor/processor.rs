@@ -1,5 +1,5 @@
 use crate::{
-    errors::BlockProcessResult,
+    errors::{BlockProcessResult, RuleError},
     model::{
         services::reachability::MTReachabilityService,
         stores::{
@@ -8,7 +8,7 @@ use crate::{
             ghostdag::DbGhostdagStore,
             headers::DbHeadersStore,
             reachability::DbReachabilityStore,
-            statuses::{BlockStatus, DbStatusesStore, StatusesStoreBatchExtensions},
+            statuses::{BlockStatus, DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions},
             DB,
         },
     },
@@ -137,10 +137,34 @@ impl BlockBodyProcessor {
     }
 
     fn process_block_body(self: &Arc<BlockBodyProcessor>, block: &Block) -> BlockProcessResult<BlockStatus> {
-        self.validate_body_in_isolation(block)?;
-        self.validate_body_in_context(block)?;
+        if let Err(e) = self.validate_body(block) {
+            // We mark invalid blocks with status StatusInvalid except in the
+            // case of the following errors:
+            // MissingParents - If we got MissingParents the block shouldn't be
+            // considered as invalid because it could be added later on when its
+            // parents are present.
+            // BadMerkleRoot - if we get BadMerkleRoot we shouldn't mark the
+            // block as invalid because later on we can get the block with
+            // transactions that fits the merkle root.
+            // PrunedBlock - PrunedBlock is an error that rejects a block body and
+            // not the block as a whole, so we shouldn't mark it as invalid.
+            // TODO: implement the last part.
+            if !matches!(e, RuleError::BadMerkleRoot(_, _) | RuleError::MissingParents(_)) {
+                self.statuses_store
+                    .write()
+                    .set(block.hash(), BlockStatus::StatusInvalid)
+                    .unwrap();
+            }
+            return Err(e);
+        }
+
         self.commit_body(block);
         Ok(BlockStatus::StatusUTXOPendingVerification)
+    }
+
+    fn validate_body(self: &Arc<BlockBodyProcessor>, block: &Block) -> BlockProcessResult<()> {
+        self.validate_body_in_isolation(block)?;
+        self.validate_body_in_context(block)
     }
 
     fn commit_body(self: &Arc<BlockBodyProcessor>, block: &Block) {
