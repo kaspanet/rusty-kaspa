@@ -9,13 +9,13 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
     GhostdagManager<T, S, U, V>
 {
     pub fn ordered_mergeset_without_selected_parent(&self, selected_parent: Hash, parents: &[Hash]) -> Vec<Hash> {
-        let mut queue: VecDeque<Hash> = parents
+        let mut queue: VecDeque<_> = parents
             .iter()
-            .cloned()
-            .filter(|p| *p != selected_parent)
+            .copied()
+            .filter(|p| p != &selected_parent)
             .collect();
-        let mut mergeset = HashSet::<Hash>::from_iter(queue.iter().cloned());
-        let mut selected_parent_past: HashSet<Hash> = HashSet::new();
+        let mut mergeset: HashSet<_> = queue.iter().copied().collect();
+        let mut selected_parent_past = HashSet::new();
 
         while let Some(current) = queue.pop_front() {
             let current_parents = self.relations_store.get_parents(current).unwrap();

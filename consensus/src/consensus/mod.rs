@@ -247,8 +247,8 @@ impl Consensus {
 }
 
 impl Service for Consensus {
-    fn ident(self: Arc<Consensus>) -> String {
-        "consensus".to_owned()
+    fn ident(self: Arc<Consensus>) -> &'static str {
+        "consensus"
     }
 
     fn start(self: Arc<Consensus>, core: Arc<Core>) -> Vec<JoinHandle<()>> {

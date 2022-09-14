@@ -1,9 +1,9 @@
-# Kaspa on Rust  
+# Kaspa on Rust
 
 
-Work in progress to implement the Kaspa full-node and related libraries in the Rust programming language. 
+Work in progress to implement the Kaspa full-node and related libraries in the Rust programming language.
 
-## Getting started 
+## Getting started
 
 - Install the [rust toolchain](https://rustup.rs/).
 
@@ -14,7 +14,7 @@ $ cd rusty-kaspa/kaspad
 $ cargo run --release
 ```
 
-- This will run a short simulation producing a random DAG and processing it (applying all currently implemented logic). 
+- This will run a short simulation producing a random DAG and processing it (applying all currently implemented logic).
 
 - To run all current tests use:
 ```bash

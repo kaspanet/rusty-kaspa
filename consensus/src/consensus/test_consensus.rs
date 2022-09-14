@@ -140,8 +140,8 @@ impl TestConsensus {
 }
 
 impl Service for TestConsensus {
-    fn ident(self: Arc<TestConsensus>) -> String {
-        "test-consensus".to_owned()
+    fn ident(self: Arc<TestConsensus>) -> &'static str {
+        "test-consensus"
     }
 
     fn start(self: Arc<TestConsensus>, core: Arc<Core>) -> Vec<JoinHandle<()>> {

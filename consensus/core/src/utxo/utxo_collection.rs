@@ -8,7 +8,7 @@ pub trait UtxoCollectionExtensions {
     fn contains_with_daa_score(&self, outpoint: &TransactionOutpoint, daa_score: u64) -> bool;
 
     /// Adds all entries from `other` to `self`.
-    /// Note that this means that values from `other` might override values of `self`.   
+    /// Note that this means that values from `other` might override values of `self`.
     fn add_many(&mut self, other: &Self);
 
     /// Removes all elements in `other` from `self`. Equivalent to `self - other` in set theory.

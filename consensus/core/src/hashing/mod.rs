@@ -6,11 +6,11 @@ pub mod header;
 pub mod tx;
 
 pub(crate) trait HasherExtensions {
-    /// Writes the len as u64 little endian bytes  
+    /// Writes the len as u64 little endian bytes
     fn write_len(&mut self, len: usize) -> &mut Self;
 
     /// Writes blue work as big endian bytes w/o the leading zeros
-    /// (emulates bigint.bytes() in the kaspad golang ref)   
+    /// (emulates bigint.bytes() in the kaspad golang ref)
     fn write_blue_work(&mut self, work: BlueWorkType) -> &mut Self;
 
     /// Writes the number of bytes followed by the bytes themselves

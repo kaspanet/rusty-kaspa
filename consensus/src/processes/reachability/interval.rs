@@ -93,13 +93,15 @@ impl Interval {
     /// equal to the interval's size.
     pub fn split_exact(&self, sizes: &[u64]) -> Vec<Self> {
         assert_eq!(sizes.iter().sum::<u64>(), self.size(), "sum of sizes must be equal to the interval's size");
-        let mut intervals = Vec::<Self>::with_capacity(sizes.len());
         let mut start = self.start;
-        for size in sizes {
-            intervals.push(Self::new(start, start + size - 1));
-            start += size;
-        }
-        intervals
+        sizes
+            .iter()
+            .map(|size| {
+                let interval = Self::new(start, start + size - 1);
+                start += size;
+                interval
+            })
+            .collect()
     }
 
     /// Splits this interval to |sizes| parts
@@ -162,7 +164,7 @@ impl Interval {
 /// result in loss of float precision. This is not a problem - all
 /// numbers close to 0 bear effectively the same weight.
 fn exponential_fractions(sizes: &[u64]) -> Vec<f64> {
-    let max_size = sizes.iter().cloned().max().unwrap_or_default();
+    let max_size = sizes.iter().copied().max().unwrap_or_default();
 
     let mut fractions = sizes
         .iter()

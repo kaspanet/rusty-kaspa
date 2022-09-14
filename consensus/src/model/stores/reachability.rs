@@ -36,7 +36,7 @@ pub trait ReachabilityStoreReader {
 }
 
 /// Write API for `ReachabilityStore`. All write functions are deliberately `mut`
-/// since reachability writes are not append-only and thus need to be guarded.  
+/// since reachability writes are not append-only and thus need to be guarded.
 pub trait ReachabilityStore: ReachabilityStoreReader {
     fn init(&mut self, origin: Hash, capacity: Interval) -> Result<(), StoreError>;
     fn insert(&mut self, hash: Hash, parent: Hash, interval: Interval, height: u64) -> Result<(), StoreError>;
@@ -71,11 +71,7 @@ impl DbReachabilityStore {
     }
 
     pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {
-        Self {
-            raw_db: Arc::clone(&self.raw_db),
-            cached_access: CachedDbAccess::new(Arc::clone(&self.raw_db), cache_size, STORE_PREFIX),
-            reindex_root: CachedDbItem::new(Arc::clone(&self.raw_db), REINDEX_ROOT_KEY),
-        }
+        Self::new(Arc::clone(&self.raw_db), cache_size)
     }
 }
 

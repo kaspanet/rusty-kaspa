@@ -28,19 +28,12 @@ impl DbDaaStore {
     pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
         Self {
             raw_db: Arc::clone(&db),
-            cached_daa_added_blocks_access: CachedDbAccess::new(Arc::clone(&db), cache_size, ADDED_BLOCKS_STORE_PREFIX),
+            cached_daa_added_blocks_access: CachedDbAccess::new(db, cache_size, ADDED_BLOCKS_STORE_PREFIX),
         }
     }
 
     pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {
-        Self {
-            raw_db: Arc::clone(&self.raw_db),
-            cached_daa_added_blocks_access: CachedDbAccess::new(
-                Arc::clone(&self.raw_db),
-                cache_size,
-                ADDED_BLOCKS_STORE_PREFIX,
-            ),
-        }
+        Self::new(Arc::clone(&self.raw_db), cache_size)
     }
 
     pub fn insert_batch(

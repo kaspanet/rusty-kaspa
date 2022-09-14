@@ -36,10 +36,10 @@ pub trait StoreResultExtensions<T> {
 
 impl<T> StoreResultExtensions<T> for StoreResult<T> {
     fn unwrap_option(self) -> Option<T> {
-        if let Err(StoreError::KeyNotFound(_)) = self {
-            return None;
+        match self {
+            Ok(value) => Some(value),
+            Err(StoreError::KeyNotFound(_)) => None,
+            Err(err) => panic!("Unexpected store error: {:?}", err),
         }
-
-        Some(self.unwrap())
     }
 }

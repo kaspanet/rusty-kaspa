@@ -50,7 +50,7 @@ impl<T: ReachabilityStoreReader + ?Sized> MTReachabilityService<T> {
     /// To skip `from_ancestor` simply apply `skip(1)`.
     ///
     /// The caller is expected to verify that `from_ancestor` is indeed a chain ancestor of
-    /// `to_descendant`, otherwise an error will be returned.  
+    /// `to_descendant`, otherwise an error will be returned.
     pub fn forward_chain_iterator(
         &self, from_ancestor: Hash, to_descendant: Hash, inclusive: bool,
     ) -> impl Iterator<Item = Result<Hash>> {
@@ -63,7 +63,7 @@ impl<T: ReachabilityStoreReader + ?Sized> MTReachabilityService<T> {
     /// To skip `from_descendant` simply apply `skip(1)`.
     ///
     /// The caller is expected to verify that `to_ancestor` is indeed a chain ancestor of
-    /// `from_descendant`, otherwise the iterator will eventually return an error.  
+    /// `from_descendant`, otherwise the iterator will eventually return an error.
     pub fn backward_chain_iterator(
         &self, from_descendant: Hash, to_ancestor: Hash, inclusive: bool,
     ) -> impl Iterator<Item = Result<Hash>> {
