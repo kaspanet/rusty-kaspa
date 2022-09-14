@@ -40,16 +40,12 @@ impl DbRelationsStore {
         Self {
             raw_db: Arc::clone(&db),
             parents_access: CachedDbAccess::new(Arc::clone(&db), cache_size, PARENTS_PREFIX),
-            children_access: CachedDbAccess::new(Arc::clone(&db), cache_size, CHILDREN_PREFIX),
+            children_access: CachedDbAccess::new(db, cache_size, CHILDREN_PREFIX),
         }
     }
 
     pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {
-        Self {
-            raw_db: Arc::clone(&self.raw_db),
-            parents_access: CachedDbAccess::new(Arc::clone(&self.raw_db), cache_size, PARENTS_PREFIX),
-            children_access: CachedDbAccess::new(Arc::clone(&self.raw_db), cache_size, CHILDREN_PREFIX),
-        }
+        Self::new(Arc::clone(&self.raw_db), cache_size)
     }
 
     // Should be kept private and used only through `RelationsStoreBatchExtensions.insert_batch`
