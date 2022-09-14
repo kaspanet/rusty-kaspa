@@ -22,8 +22,11 @@ pub struct DagTraversalManager<T: GhostdagStoreReader, U: BlockWindowCacheReader
 
 impl<T: GhostdagStoreReader, U: BlockWindowCacheReader> DagTraversalManager<T, U> {
     pub fn new(
-        genesis_hash: Hash, ghostdag_store: Arc<T>, block_window_cache_for_difficulty: Arc<U>,
-        block_window_cache_for_past_median_time: Arc<U>, difficulty_window_size: usize,
+        genesis_hash: Hash,
+        ghostdag_store: Arc<T>,
+        block_window_cache_for_difficulty: Arc<U>,
+        block_window_cache_for_past_median_time: Arc<U>,
+        difficulty_window_size: usize,
         past_median_time_window_size: usize,
     ) -> Self {
         Self {
@@ -52,15 +55,12 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader> DagTraversalManager<T, U
 
         if let Some(cache) = cache {
             if let Some(selected_parent_binary_heap) = cache.get(&current_gd.selected_parent) {
-                let mut window_heap =
-                    BoundedSizeBlockHeap::from_binary_heap(window_size, (*selected_parent_binary_heap).clone());
+                let mut window_heap = BoundedSizeBlockHeap::from_binary_heap(window_size, (*selected_parent_binary_heap).clone());
                 if current_gd.selected_parent != self.genesis_hash {
                     self.try_push_mergeset(
                         &mut window_heap,
                         &current_gd,
-                        self.ghostdag_store
-                            .get_blue_work(current_gd.selected_parent)
-                            .unwrap(),
+                        self.ghostdag_store.get_blue_work(current_gd.selected_parent).unwrap(),
                     );
                 }
 
@@ -77,12 +77,8 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader> DagTraversalManager<T, U
                 break;
             }
 
-            let parent_gd = self
-                .ghostdag_store
-                .get_data(current_gd.selected_parent)
-                .unwrap();
-            let selected_parent_blue_work_too_low =
-                self.try_push_mergeset(&mut window_heap, &current_gd, parent_gd.blue_work);
+            let parent_gd = self.ghostdag_store.get_data(current_gd.selected_parent).unwrap();
+            let selected_parent_blue_work_too_low = self.try_push_mergeset(&mut window_heap, &current_gd, parent_gd.blue_work);
             // No need to further iterate since past of selected parent has even lower blue work
             if selected_parent_blue_work_too_low {
                 break;
@@ -94,7 +90,10 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader> DagTraversalManager<T, U
     }
 
     fn try_push_mergeset(
-        &self, heap: &mut BoundedSizeBlockHeap, ghostdag_data: &GhostdagData, selected_parent_blue_work: BlueWorkType,
+        &self,
+        heap: &mut BoundedSizeBlockHeap,
+        ghostdag_data: &GhostdagData,
+        selected_parent_blue_work: BlueWorkType,
     ) -> bool {
         // If the window is full and the selected parent is less than the minimum then we break
         // because this means that there cannot be any more blocks in the past with higher blue work

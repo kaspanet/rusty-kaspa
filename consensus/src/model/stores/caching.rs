@@ -12,14 +12,7 @@ struct DbKey {
 
 impl DbKey {
     fn new<TKey: Copy + AsRef<[u8]>>(prefix: &[u8], key: TKey) -> Self {
-        Self {
-            path: prefix
-                .iter()
-                .chain(std::iter::once(&SEP))
-                .chain(key.as_ref().iter())
-                .copied()
-                .collect(),
-        }
+        Self { path: prefix.iter().chain(std::iter::once(&SEP)).chain(key.as_ref().iter()).copied().collect() }
     }
 }
 
@@ -66,11 +59,7 @@ where
     where
         TKey: Copy + AsRef<[u8]>,
     {
-        Ok(self.cache.contains_key(&key)
-            || self
-                .db
-                .get_pinned(DbKey::new(self.prefix, key))?
-                .is_some())
+        Ok(self.cache.contains_key(&key) || self.db.get_pinned(DbKey::new(self.prefix, key))?.is_some())
     }
 
     pub fn read(&self, key: TKey) -> Result<Arc<TData>, StoreError>
@@ -96,8 +85,7 @@ where
     {
         self.cache.insert(key, Arc::clone(data));
         let bin_data = bincode::serialize(data.as_ref())?;
-        self.db
-            .put(DbKey::new(self.prefix, key), bin_data)?;
+        self.db.put(DbKey::new(self.prefix, key), bin_data)?;
         Ok(())
     }
 
@@ -144,11 +132,7 @@ where
     where
         TKey: Copy + AsRef<[u8]>,
     {
-        Ok(self.cache.contains_key(&key)
-            || self
-                .db
-                .get_pinned(DbKey::new(self.prefix, key))?
-                .is_some())
+        Ok(self.cache.contains_key(&key) || self.db.get_pinned(DbKey::new(self.prefix, key))?.is_some())
     }
 
     pub fn read(&self, key: TKey) -> Result<TData, StoreError>
@@ -174,8 +158,7 @@ where
     {
         self.cache.insert(key, data);
         let bin_data = bincode::serialize(&data)?;
-        self.db
-            .put(DbKey::new(self.prefix, key), bin_data)?;
+        self.db.put(DbKey::new(self.prefix, key), bin_data)?;
         Ok(())
     }
 

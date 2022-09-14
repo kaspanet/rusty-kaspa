@@ -51,8 +51,10 @@ pub struct MinerData<'a> {
 
 impl CoinbaseManager {
     pub fn new(
-        coinbase_payload_script_public_key_max_len: u8, max_coinbase_payload_len: usize,
-        deflationary_phase_daa_score: u64, pre_deflationary_phase_base_subsidy: u64,
+        coinbase_payload_script_public_key_max_len: u8,
+        max_coinbase_payload_len: usize,
+        deflationary_phase_daa_score: u64,
+        pre_deflationary_phase_base_subsidy: u64,
     ) -> Self {
         Self {
             coinbase_payload_script_public_key_max_len,
@@ -63,11 +65,11 @@ impl CoinbaseManager {
     }
 
     pub fn validate_coinbase_payload_in_isolation_and_extract_coinbase_data<'a>(
-        &self, coinbase: &'a Transaction,
+        &self,
+        coinbase: &'a Transaction,
     ) -> CoinbaseResult<CoinbaseData<'a>> {
         let payload = &coinbase.payload;
-        const MIN_LEN: usize =
-            UINT64_LEN + LENGTH_OF_SUBSIDY + LENGTH_OF_VERSION_SCRIPT_PUB_KEY + LENGTH_OF_SCRIPT_PUB_KEY_LENGTH;
+        const MIN_LEN: usize = UINT64_LEN + LENGTH_OF_SUBSIDY + LENGTH_OF_VERSION_SCRIPT_PUB_KEY + LENGTH_OF_SCRIPT_PUB_KEY_LENGTH;
 
         if payload.len() < MIN_LEN {
             return Err(CoinbaseError::PayloadLenBelowMin(coinbase.payload.len(), MIN_LEN));
@@ -78,11 +80,7 @@ impl CoinbaseManager {
         }
 
         let blue_score = u64::from_le_bytes(payload[..UINT64_LEN].try_into().unwrap());
-        let subsidy = u64::from_le_bytes(
-            payload[UINT64_LEN..UINT64_LEN + LENGTH_OF_SUBSIDY]
-                .try_into()
-                .unwrap(),
-        );
+        let subsidy = u64::from_le_bytes(payload[UINT64_LEN..UINT64_LEN + LENGTH_OF_SUBSIDY].try_into().unwrap());
 
         // Because LENGTH_OF_VERSION_SCRIPT_PUB_KEY is two bytes and script_pub_key_version reads only one byte, there's one byte
         // in the middle where the miner can write any arbitrary data. This means the code cannot support script pub key version
@@ -100,15 +98,13 @@ impl CoinbaseManager {
             return Err(CoinbaseError::PayloadCantContainScriptPublicKey(payload.len(), script_pub_key_len as usize));
         }
 
-        let script_pub_key_script = &payload[UINT64_LEN
-            + LENGTH_OF_SUBSIDY
-            + LENGTH_OF_VERSION_SCRIPT_PUB_KEY
-            + LENGTH_OF_SCRIPT_PUB_KEY_LENGTH
-            ..UINT64_LEN
-                + LENGTH_OF_SUBSIDY
-                + LENGTH_OF_VERSION_SCRIPT_PUB_KEY
-                + LENGTH_OF_SCRIPT_PUB_KEY_LENGTH
-                + script_pub_key_len as usize];
+        let script_pub_key_script =
+            &payload[UINT64_LEN + LENGTH_OF_SUBSIDY + LENGTH_OF_VERSION_SCRIPT_PUB_KEY + LENGTH_OF_SCRIPT_PUB_KEY_LENGTH
+                ..UINT64_LEN
+                    + LENGTH_OF_SUBSIDY
+                    + LENGTH_OF_VERSION_SCRIPT_PUB_KEY
+                    + LENGTH_OF_SCRIPT_PUB_KEY_LENGTH
+                    + script_pub_key_len as usize];
 
         let extra_data = &payload[UINT64_LEN
             + LENGTH_OF_SUBSIDY
@@ -120,10 +116,7 @@ impl CoinbaseManager {
             blue_score,
             subsidy,
             miner_data: MinerData {
-                script_public_key: ScriptPublicKey {
-                    script: script_pub_key_script.to_owned(),
-                    version: script_pub_key_version,
-                },
+                script_public_key: ScriptPublicKey { script: script_pub_key_script.to_owned(), version: script_pub_key_version },
                 extra_data,
             },
         })
@@ -139,8 +132,7 @@ impl CoinbaseManager {
         const SECONDS_PER_MONTH: u64 = 2629800;
 
         // Note that this calculation implicitly assumes that block per second = 1 (by assuming daa score diff is in second units).
-        let months_since_deflationary_phase_started =
-            (daa_score - self.deflationary_phase_daa_score) / SECONDS_PER_MONTH;
+        let months_since_deflationary_phase_started = (daa_score - self.deflationary_phase_daa_score) / SECONDS_PER_MONTH;
         assert!(months_since_deflationary_phase_started <= usize::MAX as u64);
         let months_since_deflationary_phase_started: usize = months_since_deflationary_phase_started as usize;
         if months_since_deflationary_phase_started >= SUBSIDY_BY_MONTH_TABLE.len() {
