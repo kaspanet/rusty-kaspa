@@ -152,7 +152,7 @@ impl Transaction {
 /// Represents a transaction with populated UTXO entry data
 pub struct PopulatedTransaction<'a> {
     tx: &'a Transaction,
-    entries: Vec<UtxoEntry>,
+    pub entries: Vec<UtxoEntry>,
 }
 
 impl<'a> PopulatedTransaction<'a> {
