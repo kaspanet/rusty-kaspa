@@ -189,8 +189,8 @@ impl Consensus {
             db.clone(),
             statuses_store.clone(),
             ghostdag_store.clone(),
-            headers_store,
-            block_transactions_store,
+            headers_store.clone(),
+            block_transactions_store.clone(),
             reachability_service.clone(),
             coinbase_manager.clone(),
             mass_calculator,
@@ -205,6 +205,8 @@ impl Consensus {
             params,
             db.clone(),
             statuses_store.clone(),
+            headers_store,
+            block_transactions_store,
             ghostdag_manager.clone(),
             reachability_service.clone(),
         ));
@@ -240,6 +242,8 @@ impl Consensus {
 
         // Ensure that genesis was processed
         self.header_processor.process_genesis_if_needed();
+        self.body_processor.process_genesis_if_needed();
+        self.virtual_processor.process_genesis_if_needed();
 
         // Spawn the asynchronous processors.
         let header_processor = self.header_processor.clone();

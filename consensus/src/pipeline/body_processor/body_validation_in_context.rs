@@ -173,26 +173,26 @@ mod tests {
 
             // Check that the same past median time as the block's or higher fails, but lower passes.
             let tip_daa_score = valid_block_child.header.daa_score + 1;
-            check_for_lock_time_and_sequence(&consensus, valid_block_child.header.hash, 10.into(), past_median_time + 1, 0, false)
+            check_for_lock_time_and_sequence(&consensus, valid_block_child.header.hash, 11.into(), past_median_time + 1, 0, false)
                 .await;
 
-            check_for_lock_time_and_sequence(&consensus, valid_block_child.header.hash, 11.into(), past_median_time, 0, false).await;
+            check_for_lock_time_and_sequence(&consensus, valid_block_child.header.hash, 12.into(), past_median_time, 0, false).await;
 
-            check_for_lock_time_and_sequence(&consensus, valid_block_child.header.hash, 12.into(), past_median_time - 1, 0, true)
+            check_for_lock_time_and_sequence(&consensus, valid_block_child.header.hash, 13.into(), past_median_time - 1, 0, true)
                 .await;
 
             // We check that if the transaction is marked as finalized it'll pass for any lock time.
             check_for_lock_time_and_sequence(
                 &consensus,
                 valid_block_child.header.hash,
-                13.into(),
+                14.into(),
                 past_median_time + 1,
                 u64::MAX,
                 true,
             )
             .await;
 
-            check_for_lock_time_and_sequence(&consensus, valid_block_child.header.hash, 14.into(), tip_daa_score + 1, u64::MAX, true)
+            check_for_lock_time_and_sequence(&consensus, valid_block_child.header.hash, 15.into(), tip_daa_score + 1, u64::MAX, true)
                 .await;
         }
 

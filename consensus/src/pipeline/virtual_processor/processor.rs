@@ -4,8 +4,13 @@ use crate::{
     model::{
         services::reachability::{MTReachabilityService, ReachabilityService},
         stores::{
+            block_transactions::{BlockTransactionsStoreReader, DbBlockTransactionsStore},
+            headers::{DbHeadersStore, HeaderStoreReader},
             reachability::DbReachabilityStore,
-            statuses::{BlockStatus, DbStatusesStore, StatusesStore, StatusesStoreReader},
+            statuses::{
+                BlockStatus::{self, StatusDisqualifiedFromChain, StatusUTXOPendingVerification, StatusUTXOValid},
+                DbStatusesStore, StatusesStore, StatusesStoreReader,
+            },
             DB,
         },
     },
@@ -27,10 +32,7 @@ use kaspa_core::trace;
 use muhash::MuHash;
 use parking_lot::RwLock;
 use std::{
-    collections::{
-        hash_map::Entry::{Occupied, Vacant},
-        HashMap,
-    },
+    collections::hash_map::Entry::{Occupied, Vacant},
     iter::FromIterator,
     sync::Arc,
 };
@@ -53,6 +55,8 @@ pub struct VirtualStateProcessor {
 
     // Stores
     pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
+    pub(super) headers_store: Arc<DbHeadersStore>,
+    pub(super) block_transactions_store: Arc<DbBlockTransactionsStore>,
 
     // Managers and services
     pub(super) ghostdag_manager: DbGhostdagManager,
@@ -65,6 +69,8 @@ impl VirtualStateProcessor {
         params: &Params,
         db: Arc<DB>,
         statuses_store: Arc<RwLock<DbStatusesStore>>,
+        headers_store: Arc<DbHeadersStore>,
+        block_transactions_store: Arc<DbBlockTransactionsStore>,
         ghostdag_manager: DbGhostdagManager,
         reachability_service: MTReachabilityService<DbReachabilityStore>,
     ) -> Self {
@@ -72,6 +78,8 @@ impl VirtualStateProcessor {
             receiver,
             db,
             statuses_store,
+            headers_store,
+            block_transactions_store,
             ghostdag_manager,
             reachability_service,
             genesis_hash: params.genesis_hash,
@@ -101,14 +109,17 @@ impl VirtualStateProcessor {
         block: &Arc<Block>,
         state: &mut VirtualState,
     ) -> BlockProcessResult<BlockStatus> {
-        // TEMP: store all blocks in memory
-        state.blocks.insert(block.header.hash, block.clone());
-
         // TEMP: assert only coinbase
         // assert_eq!(block.transactions.len(), 1);
         // assert!(block.transactions[0].is_coinbase());
+        // assert_eq!(self.statuses_store.read().get(block.header.hash).unwrap(), BlockStatus::StatusUTXOPendingVerification);
 
-        assert_eq!(self.statuses_store.read().get(block.header.hash).unwrap(), BlockStatus::StatusUTXOPendingVerification);
+        let status = self.statuses_store.read().get(block.header.hash).unwrap();
+        match status {
+            StatusUTXOPendingVerification => {} // Proceed to resolve virtual
+            StatusUTXOValid | StatusDisqualifiedFromChain => return Ok(status),
+            _ => panic!("unexpected block status {:?}", status),
+        }
 
         // Update tips
         let parents_set = DomainHashSet::from_iter(block.header.direct_parents().iter().cloned());
@@ -167,32 +178,30 @@ impl VirtualStateProcessor {
                         }
 
                         let mut utxo_diff = UtxoDiff::default();
-                        let chain_block = state.blocks.get(&chain_hash).unwrap();
+                        let chain_block_header = self.headers_store.get_header(chain_hash).unwrap();
 
                         // Temp logic
                         assert!(!state.multiset_hashes.contains_key(&chain_hash));
                         let mut multiset_hash = state.multiset_hashes.get(&selected_parent).unwrap().clone();
+                        let selected_parent_transactions = self.block_transactions_store.get(selected_parent).unwrap();
+                        let populated_coinbase = PopulatedTransaction::new_without_inputs(&selected_parent_transactions[0]);
 
-                        if selected_parent != self.genesis_hash {
-                            let selected_parent_block = state.blocks.get(&selected_parent).unwrap();
-                            let populated_coinbase = PopulatedTransaction::new_without_inputs(&selected_parent_block.transactions[0]);
-                            // TODO: prefill and populate UTXO entry data for all mergeset
-                            utxo_diff.add_transaction(&populated_coinbase, chain_block.header.daa_score).unwrap();
-                            multiset_hash.add_transaction(&populated_coinbase, chain_block.header.daa_score);
-                        }
+                        // TODO: prefill and populate UTXO entry data for all mergeset
+                        utxo_diff.add_transaction(&populated_coinbase, chain_block_header.daa_score).unwrap();
+                        multiset_hash.add_transaction(&populated_coinbase, chain_block_header.daa_score);
 
                         accumulated_diff.with_diff_in_place(&utxo_diff).unwrap();
                         e.insert(utxo_diff);
 
                         // Verify the header UTXO commitment
                         let expected_commitment = multiset_hash.finalize();
-                        let status = if expected_commitment != chain_block.header.utxo_commitment {
+                        let status = if expected_commitment != chain_block_header.utxo_commitment {
                             trace!(
                                 "wrong commitment: {}, {}, {}, {}",
                                 selected_parent,
                                 chain_hash,
                                 expected_commitment,
-                                chain_block.header.utxo_commitment
+                                chain_block_header.utxo_commitment
                             );
                             BlockStatus::StatusDisqualifiedFromChain
                         } else {
@@ -221,13 +230,16 @@ impl VirtualStateProcessor {
             Ok(BlockStatus::StatusUTXOPendingVerification)
         }
     }
+
+    pub fn process_genesis_if_needed(self: &Arc<VirtualStateProcessor>) {
+        // TODO: multiset store
+    }
 }
 
 /// TEMP: initial struct for holding complete virtual state in memory
 struct VirtualState {
     utxo_set: UtxoCollection,            // TEMP: represents the utxo set of virtual selected parent
     utxo_diffs: DomainHashMap<UtxoDiff>, // Holds diff of this block from selected parent
-    blocks: DomainHashMap<Arc<Block>>,   // TEMP: for now hold all blocks in memory
     tips: Vec<Hash>,
     selected_tip: Hash,
     multiset_hashes: DomainHashMap<MuHash>,
@@ -238,7 +250,6 @@ impl VirtualState {
         Self {
             utxo_set: Default::default(),
             utxo_diffs: Default::default(),
-            blocks: HashMap::new(),
             tips: vec![genesis_hash],
             selected_tip: genesis_hash,
             multiset_hashes: DomainHashMap::from([(genesis_hash, MuHash::new())]),
