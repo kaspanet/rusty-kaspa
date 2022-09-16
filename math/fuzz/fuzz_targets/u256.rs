@@ -2,8 +2,9 @@
 use core::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Rem};
 use libfuzzer_sys::fuzz_target;
 use math::construct_uint;
-use num_bigint::BigUint;
-use num_traits::Zero;
+use num_bigint::{BigInt, BigUint};
+use num_integer::Integer;
+use num_traits::{Signed, Zero};
 use std::convert::TryInto;
 
 construct_uint!(Uint256, 4);
@@ -150,4 +151,31 @@ fuzz_target!(|data: &[u8]| {
             }
         }
     }
+
+    // mod_inv
+    {
+        // the modular inverse of 1 in Z/1Z is weird, should it be 1 or 0?
+        let ((lib1, native1), (lib2, native2)) = loop {
+            let (lib1, native1) = try_opt!(generate_ints(&mut data));
+            let (lib2, native2) = try_opt!(generate_ints(&mut data));
+            if lib1 != 1u64 || lib2 != 1u64 {
+                break ((lib1, native1), (lib2, native2));
+            }
+        };
+        assert_same!(lib1.mod_inverse(lib2), bigint_mod_inv(native1, native2), "lib1: {lib1}, lib2: {lib2}");
+    }
 });
+
+fn bigint_mod_inv(a: BigUint, n: BigUint) -> BigUint {
+    let a = BigInt::from(a);
+    let n = BigInt::from(n);
+    let e_gcd = a.extended_gcd(&n);
+    // An inverse exists iff gcd(a, n) == 1
+    if e_gcd.gcd != 1u64.into() {
+        BigUint::zero()
+    } else if e_gcd.x.is_negative() {
+        (e_gcd.x + n).try_into().unwrap()
+    } else {
+        e_gcd.x.try_into().unwrap()
+    }
+}
