@@ -7,7 +7,7 @@ pub use serde;
 macro_rules! construct_uint {
     ($name:ident, $n_words:literal) => {
         /// Little-endian large integer type
-        #[derive(Default, Copy, Clone, PartialEq, Eq, Hash, Debug)]
+        #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
         pub struct $name(pub [u64; $n_words]);
         #[allow(unused)]
         impl $name {
@@ -42,8 +42,14 @@ macro_rules! construct_uint {
                 self.0[0] as u64
             }
 
-            /// Return the least number of bits needed to represent the number
+            // TODO: Benchmark this
             #[inline]
+            pub fn is_zero(self) -> bool {
+                self.0.iter().all(|&a| a == 0)
+            }
+
+            /// Return the least number of bits needed to represent the number
+            #[inline(always)]
             pub fn bits(&self) -> u32 {
                 for (i, &word) in self.0.iter().enumerate().rev() {
                     if word != 0 {
@@ -559,6 +565,20 @@ macro_rules! construct_uint {
             fn product<I: Iterator<Item = &'a Self>>(mut iter: I) -> Self {
                 let first = iter.next().copied().unwrap_or_else(|| Self::from_u64(1));
                 iter.fold(first, |a, &b| a * b)
+            }
+        }
+
+        impl Default for $name {
+            #[inline]
+            fn default() -> Self {
+                Self::ZERO
+            }
+        }
+
+        impl From<u64> for $name {
+            #[inline]
+            fn from(x: u64) -> Self {
+                Self::from_u64(x)
             }
         }
 
