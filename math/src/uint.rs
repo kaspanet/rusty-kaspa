@@ -272,6 +272,29 @@ macro_rules! construct_uint {
             }
 
             #[inline]
+            pub fn mod_inverse(self, prime: Self) -> Self {
+                use $crate::int::SignedInteger;
+                let mut t = SignedInteger::from(Self::ZERO);
+                let mut newt = SignedInteger::positive_u64(1u64);
+                let mut r = SignedInteger::from(prime);
+                let mut newr = SignedInteger::from(self);
+
+                while !newr.abs().is_zero() {
+                    let quotient = r / newr;
+                    (t, newt) = (newt, t - quotient * newt);
+                    (r, newr) = (newr, r - quotient * newr);
+                }
+                if !r.negative() && r.abs() != 1u64 {
+                    debug_assert!(false, "modular inverse does not exist");
+                    Self::ZERO
+                } else if t.negative() {
+                    prime - t.abs()
+                } else {
+                    t.abs()
+                }
+            }
+
+            #[inline]
             pub fn iter_be_bits(self) -> impl ExactSizeIterator<Item = bool> + core::iter::FusedIterator {
                 struct BinaryIterator {
                     array: [u64; $n_words],
