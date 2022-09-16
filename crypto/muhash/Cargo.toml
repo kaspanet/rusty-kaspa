@@ -7,6 +7,7 @@ include.workspace = true
 license.workspace = true
 
 [dependencies]
+math.workspace = true
 hashes.workspace = true
 rand_chacha.workspace = true
 

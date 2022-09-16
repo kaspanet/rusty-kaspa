@@ -1,6 +1,6 @@
 use crate::ELEMENT_BYTE_SIZE;
+use math::Uint3072;
 use std::ops::{DivAssign, MulAssign};
-
 #[cfg(target_pointer_width = "64")]
 pub(crate) type Limb = u64;
 #[cfg(target_pointer_width = "64")]
@@ -26,6 +26,12 @@ impl U3072 {
     pub const fn zero() -> Self {
         Self { limbs: [0; LIMBS] }
     }
+
+    const UINT_PRIME: Uint3072 = {
+        let mut max = Uint3072::MAX;
+        max.0[0] -= PRIME_DIFF - 1;
+        max
+    };
 
     #[inline(always)]
     pub const fn one() -> Self {
@@ -133,112 +139,14 @@ impl U3072 {
         }
     }
 
-    fn square(&mut self) {
-        let (mut c0, mut c1, mut c2) = (0, 0, 0);
-        let mut tmp = Self::zero();
-        // Compute limbs 0..N-2 of this*this into tmp, including one reduction
-        for j in 0..LIMBS - 1 {
-            let (mut d0, mut d1, mut d2) = (0, 0, 0);
-            for i in 0..(LIMBS - 1 - j) / 2 {
-                (d0, d1, d2) = mul_double_add(d0, d1, d2, self.limbs[i + j + 1], self.limbs[LIMBS - 1 - i]);
-            }
-            if (j + 1) & 1 == 1 {
-                (d0, d1, d2) =
-                    muladd3(self.limbs[(LIMBS - 1 - j) / 2 + j + 1], self.limbs[LIMBS - 1 - (LIMBS - 1 - j) / 2], d0, d1, d2);
-            }
-            (c0, c1, c2) = mulnadd3(c0, c1, d0, d1, d2, PRIME_DIFF);
-
-            for i in 0..(j + 1) / 2 {
-                (c0, c1, c2) = mul_double_add(c0, c1, c2, self.limbs[i], self.limbs[j - i]);
-            }
-            if (j + 1) & 1 == 1 {
-                (c0, c1, c2) = muladd3(self.limbs[(j + 1) / 2], self.limbs[j - ((j + 1) / 2)], c0, c1, c2);
-            }
-
-            (tmp.limbs[j], c0, c1, c2) = (c0, c1, c2, 0);
-        }
-
-        assert_eq!(c2, 0);
-
-        for i in 0..LIMBS / 2 {
-            (c0, c1, c2) = mul_double_add(c0, c1, c2, self.limbs[i], self.limbs[LIMBS - 1 - i]);
-        }
-
-        (tmp.limbs[LIMBS - 1], c0, c1) = (c0, c1, c2);
-
-        // Perform a second reduction
-        (c0, c1) = muln2(c0, c1, PRIME_DIFF);
-        for i in 0..LIMBS {
-            let mut overflow;
-            (c0, overflow) = c0.overflowing_add(tmp.limbs[i]);
-            (c1, overflow) = c1.overflowing_add(overflow as _);
-            // Extract the result into self and shift the carries.
-            (self.limbs[i], c0, c1) = (c0, c1, overflow as _);
-        }
-
-        assert_eq!(c1, 0);
-        assert!(c0 == 0 || c0 == 1);
-
-        // Perform up to two more reductions if the internal state has already overflown the MAX of Num3072
-        // or if it is larger than the modulus or if both are the case.
-        if self.is_overflow() {
-            self.full_reduce();
-        }
-        if c0 != 0 {
-            self.full_reduce();
-        }
-    }
-
-    #[inline(always)]
-    fn square_and_multiply(&mut self, sequence: usize, mul: &Self) {
-        for _ in 0..sequence {
-            self.square();
-        }
-        self.mul(mul);
-    }
-
     #[must_use]
     fn inverse(&self) -> Self {
-        // TODO: Replace with a generic extended Euclidean algorithm.
-
-        // For fast exponentiation a sliding window exponentiation with repunit
-        // precomputation is utilized. See "Fast Point Decompression for Standard
-        // Elliptic Curves" (Brumley, Järvinen, 2008).
-
-        let mut p = [Self::zero(); 12]; // p[i] = a^(2^(2^i)-1)
-
-        p[0] = *self;
-
-        for i in 0..11 {
-            p[i + 1] = p[i];
-            for _ in 0..(1 << i) {
-                p[i + 1].square();
-            }
-
-            // Due to the borrow checker we can't do `p[i + 1].mul(&p[i]);`
-            // so instead we split the slice right in between so we can achieve the same without overhead.
-            let (pi, pi1) = p.split_at_mut(i + 1);
-            pi1[0].mul(&pi[i]);
+        let mut a = *self;
+        if a.is_overflow() {
+            a.full_reduce();
         }
-
-        let mut out = p[11];
-
-        out.square_and_multiply(512, &p[9]);
-        out.square_and_multiply(256, &p[8]);
-        out.square_and_multiply(128, &p[7]);
-        out.square_and_multiply(64, &p[6]);
-        out.square_and_multiply(32, &p[5]);
-        out.square_and_multiply(8, &p[3]);
-        out.square_and_multiply(2, &p[1]);
-        out.square_and_multiply(1, &p[0]);
-        out.square_and_multiply(5, &p[2]);
-        out.square_and_multiply(3, &p[0]);
-        out.square_and_multiply(2, &p[0]);
-        out.square_and_multiply(4, &p[0]);
-        out.square_and_multiply(4, &p[1]);
-        out.square_and_multiply(3, &p[0]);
-
-        out
+        let inv = Uint3072(a.limbs).mod_inverse(Self::UINT_PRIME);
+        Self { limbs: inv.0 }
     }
 
     fn div(&mut self, other: &Self) {
@@ -272,23 +180,6 @@ impl MulAssign for U3072 {
     fn mul_assign(&mut self, rhs: Self) {
         self.mul(&rhs);
     }
-}
-
-#[inline(always)]
-#[must_use]
-// Input: [limb_0,limb_1,limb_2] Output: [limb_0,limb_1,limb_2] +=  2 * a * b
-fn mul_double_add(limb_0: Limb, limb_1: Limb, mut limb_2: Limb, a: Limb, b: Limb) -> (Limb, Limb, Limb) {
-    let (low, high) = mul_wide(a, b);
-
-    let (limb_0, overflow) = limb_0.overflowing_add(low);
-    let (limb_1, overflow) = limb_1.overflowing_add(high + overflow as Limb);
-    limb_2 += overflow as Limb;
-
-    let (limb_0, overflow) = limb_0.overflowing_add(low);
-    let (limb_1, overflow) = limb_1.overflowing_add(high + overflow as Limb);
-    limb_2 += overflow as Limb;
-
-    (limb_0, limb_1, limb_2)
 }
 
 // TODO: Use https://github.com/rust-lang/rust/issues/85532 once stabilized.
@@ -413,7 +304,6 @@ mod tests {
             },
         ];
         for test in tests {
-            println!("a");
             let (c0, c1, c2) = u3072::mulnadd3(test.c0, test.c1, test.d0, test.d1, test.d2, test.n);
             assert_eq!(c0, test.expected_c0);
             assert_eq!(c1, test.expected_c1);
@@ -483,48 +373,6 @@ mod tests {
         ];
         for test in tests {
             let (low, high, carry) = u3072::muladd3(test.a, test.b, test.low, test.high, test.carry);
-            assert_eq!(low, test.expected_low);
-            assert_eq!(high, test.expected_high);
-            assert_eq!(carry, test.expected_carry);
-        }
-    }
-
-    #[test]
-    fn test_mul_double_add() {
-        struct TestVector {
-            a: Limb,
-            b: Limb,
-            low: Limb,
-            high: Limb,
-            carry: Limb,
-            expected_low: Limb,
-            expected_high: Limb,
-            expected_carry: Limb,
-        }
-        let tests = [
-            TestVector {
-                a: Limb::MAX - 30,
-                b: Limb::MAX - 3452,
-                low: Limb::MAX - 99,
-                high: Limb::MAX - 75,
-                carry: Limb::MAX - 100,
-                expected_low: 213986,
-                expected_high: 18446744073709544573,
-                expected_carry: 18446744073709551517,
-            },
-            TestVector {
-                a: Limb::MAX - 534543534534,
-                b: 1,
-                low: 0,
-                high: Limb::MAX - 32432432,
-                carry: Limb::MAX - 534532431432423,
-                expected_low: 18446743004622482546,
-                expected_high: 18446744073677119184,
-                expected_carry: 18446209541278119192,
-            },
-        ];
-        for test in tests {
-            let (low, high, carry) = u3072::mul_double_add(test.low, test.high, test.carry, test.a, test.b);
             assert_eq!(low, test.expected_low);
             assert_eq!(high, test.expected_high);
             assert_eq!(carry, test.expected_carry);
