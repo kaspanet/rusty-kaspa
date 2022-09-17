@@ -7,7 +7,8 @@ use num_integer::Integer;
 use num_traits::{Signed, Zero};
 use std::convert::TryInto;
 
-construct_uint!(Uint256, 4);
+// This is important as it's a non power of two.
+construct_uint!(Uint192, 3);
 
 macro_rules! try_opt {
     ($expr: expr) => {
@@ -29,9 +30,9 @@ fn consume<const N: usize>(data: &mut &[u8]) -> Option<[u8; N]> {
 }
 
 // Consumes 16 bytes
-fn generate_ints(data: &mut &[u8]) -> Option<(Uint256, BigUint)> {
+fn generate_ints(data: &mut &[u8]) -> Option<(Uint192, BigUint)> {
     let buf = consume(data)?;
-    Some((Uint256::from_le_bytes(buf), BigUint::from_bytes_le(&buf)))
+    Some((Uint192::from_le_bytes(buf), BigUint::from_bytes_le(&buf)))
 }
 
 macro_rules! assert_same {
@@ -44,7 +45,7 @@ macro_rules! assert_same {
 #[track_caller]
 fn assert_op<T, U>(data: &mut &[u8], op_lib: T, op_native: U, ok_by_zero: bool) -> Option<()>
 where
-    T: Fn(Uint256, Uint256) -> Uint256,
+    T: Fn(Uint192, Uint192) -> Uint192,
     U: Fn(BigUint, BigUint) -> BigUint,
 {
     let (lib, native) = generate_ints(data)?;
@@ -65,16 +66,16 @@ fuzz_target!(|data: &[u8]| {
         let (lib, native) = try_opt!(generate_ints(&mut data));
         assert_same!(lib, native, "lib: {lib}");
     }
-    let mask = &BigUint::from_bytes_le(&[u8::MAX; 32]);
+    let modulo = &BigUint::from_bytes_le(&[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
 
     // Full addition
-    assert_op(&mut data, Add::add, |a, b| (a + b) & mask, true);
+    assert_op(&mut data, Add::add, |a, b| (a + b) % modulo, true);
     // Full multiplication
-    assert_op(&mut data, Mul::mul, |a, b| (a * b) & mask, true);
+    assert_op(&mut data, Mul::mul, |a, b| (a * b) % modulo, true);
     // Full division
-    assert_op(&mut data, Div::div, |a, b| (a / b) & mask, false);
+    assert_op(&mut data, Div::div, |a, b| (a / b) % modulo, false);
     // Full remainder
-    assert_op(&mut data, Rem::rem, |a, b| (a % b) & mask, false);
+    assert_op(&mut data, Rem::rem, |a, b| (a % b) % modulo, false);
     // Full bitwise And
     assert_op(&mut data, BitAnd::bitand, BitAnd::bitand, true);
     // Full bitwise Or
@@ -86,25 +87,25 @@ fuzz_target!(|data: &[u8]| {
     {
         let (lib, native) = try_opt!(generate_ints(&mut data));
         let word = u64::from_le_bytes(try_opt!(consume(&mut data)));
-        assert_same!(lib + word, (native + word) & mask, "lib: {lib}, word: {word}");
+        assert_same!(lib + word, (native + word) % modulo, "lib: {lib}, word: {word}");
     }
     // U64 multiplication
     {
         let (lib, native) = try_opt!(generate_ints(&mut data));
         let word = u64::from_le_bytes(try_opt!(consume(&mut data)));
-        assert_same!(lib * word, (native * word) & mask, "lib: {lib}, word: {word}");
+        assert_same!(lib * word, (native * word) % modulo, "lib: {lib}, word: {word}");
     }
     // Left shift
     {
         let (lib, native) = try_opt!(generate_ints(&mut data));
-        let lshift = u32::from(u16::from_le_bytes(try_opt!(consume(&mut data))) % 256);
-        assert_same!(lib << lshift, (native << lshift) & mask, "lib: {lib}, lshift: {lshift}");
+        let lshift = u32::from(u16::from_le_bytes(try_opt!(consume(&mut data))) % 192);
+        assert_same!(lib << lshift, (native << lshift) % modulo, "lib: {lib}, lshift: {lshift}");
     }
     // Right shift
     {
         let (lib, native) = try_opt!(generate_ints(&mut data));
-        let rshift = u32::from(u16::from_le_bytes(try_opt!(consume(&mut data))) % 256);
-        assert_same!(lib >> rshift, (native >> rshift) & mask, "lib: {lib}, rshift: {rshift}");
+        let rshift = u32::from(u16::from_le_bytes(try_opt!(consume(&mut data))) % 192);
+        assert_same!(lib >> rshift, (native >> rshift) % modulo, "lib: {lib}, rshift: {rshift}");
     }
     // bits
     {
@@ -140,7 +141,7 @@ fuzz_target!(|data: &[u8]| {
     {
         let (lib, native) = try_opt!(generate_ints(&mut data));
         for (i, lib_bit) in lib.iter_be_bits().enumerate() {
-            if let Some(native_bit_location) = (256 - i).checked_sub(1) {
+            if let Some(native_bit_location) = (192 - i).checked_sub(1) {
                 assert_eq!(
                     lib_bit,
                     native.bit(native_bit_location as u64),
