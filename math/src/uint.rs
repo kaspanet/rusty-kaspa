@@ -272,7 +272,7 @@ macro_rules! construct_uint {
             }
 
             #[inline]
-            pub fn mod_inverse(self, prime: Self) -> Self {
+            pub fn mod_inverse(self, prime: Self) -> Option<Self> {
                 use $crate::int::SignedInteger;
                 let mut t = SignedInteger::from(Self::ZERO);
                 let mut newt = SignedInteger::positive_u64(1u64);
@@ -285,12 +285,11 @@ macro_rules! construct_uint {
                     (r, newr) = (newr, r - quotient * newr);
                 }
                 if !r.negative() && r.abs() != 1u64 {
-                    debug_assert!(false, "modular inverse does not exist");
-                    Self::ZERO
+                    None
                 } else if t.negative() {
-                    prime - t.abs()
+                    Some(prime - t.abs())
                 } else {
-                    t.abs()
+                    Some(t.abs())
                 }
             }
 

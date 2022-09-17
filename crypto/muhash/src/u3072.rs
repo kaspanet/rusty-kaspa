@@ -145,7 +145,8 @@ impl U3072 {
         if a.is_overflow() {
             a.full_reduce();
         }
-        let inv = Uint3072(a.limbs).mod_inverse(Self::UINT_PRIME);
+        // The only value that doesn't have a multiplicative inverse is 0, and 0/x is 0.
+        let inv = Uint3072(a.limbs).mod_inverse(Self::UINT_PRIME).unwrap_or_default();
         Self { limbs: inv.0 }
     }
 
