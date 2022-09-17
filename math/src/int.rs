@@ -45,6 +45,7 @@ impl<T: Copy> SignedInteger<T> {
 impl<T: Sub<Output = T> + Add<Output = T> + Ord> Sub for SignedInteger<T> {
     type Output = Self;
     #[inline]
+    #[track_caller]
     fn sub(self, other: Self) -> Self::Output {
         match (self.negative, other.negative) {
             (false, false) | (true, true) => {
@@ -62,6 +63,7 @@ impl<T: Sub<Output = T> + Add<Output = T> + Ord> Sub for SignedInteger<T> {
 impl<T: Mul<Output = T>> Mul for SignedInteger<T> {
     type Output = Self;
     #[inline]
+    #[track_caller]
     fn mul(self, rhs: Self) -> Self::Output {
         Self { negative: self.negative ^ rhs.negative, abs: self.abs * rhs.abs }
     }
@@ -70,6 +72,7 @@ impl<T: Mul<Output = T>> Mul for SignedInteger<T> {
 impl<T: Div<Output = T>> Div for SignedInteger<T> {
     type Output = Self;
     #[inline]
+    #[track_caller]
     fn div(self, rhs: Self) -> Self::Output {
         Self { negative: self.negative ^ rhs.negative, abs: self.abs / rhs.abs }
     }
