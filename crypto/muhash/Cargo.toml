@@ -11,6 +11,9 @@ math.workspace = true
 hashes.workspace = true
 rand_chacha.workspace = true
 
+# For the exhuative tests, should only be enabled with release
+rayon = { workspace = true, optional = true }
+
 [dev-dependencies]
 criterion.workspace = true
 rand.workspace = true

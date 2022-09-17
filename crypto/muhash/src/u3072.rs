@@ -242,10 +242,9 @@ impl Default for U3072 {
 
 #[cfg(test)]
 mod tests {
-    use crate::u3072::{self, Limb, LIMBS, PRIME_DIFF, U3072};
+    use crate::u3072::{self, Limb, LIMBS, U3072};
     use rand::{Rng, SeedableRng};
     use rand_chacha::ChaCha8Rng;
-    use std::iter;
 
     #[test]
     fn test_mul() {
@@ -398,34 +397,37 @@ mod tests {
         v.limbs[0] == 1 && v.limbs[1..].iter().all(|&l| l == 0)
     }
 
+    // Otherwise this test it too long
+    #[cfg(feature = "rayon")]
     #[test]
-    fn test_div_overflow() {
+    fn exhuastive_test_div_overflow() {
+        use super::PRIME_DIFF;
+        use rayon::prelude::*;
+
         let max = U3072 { limbs: [Limb::MAX; LIMBS] };
         let one = U3072::one();
-        let mut rng = ChaCha8Rng::seed_from_u64(1);
-        // Randomly test a bunch of overflown numbers to make sure they're handled correctly.
-        // There are only 1,103,717 overflowing numbers, so when our inversion algorithm gets faster (egcd)) we can exhuastively check them.
-        iter::once(0).chain(rand::seq::index::sample(&mut rng, u3072::PRIME_DIFF as usize, 64)).map(|i| i + 1).for_each(|i| {
+        // Exhaustively test all the 1,103,717 overflowing numbers.
+        (0..PRIME_DIFF).into_par_iter().for_each(|i| {
             let overflown = {
                 let mut overflown = max;
-                overflown.limbs[0] = Limb::MAX - i as Limb + 1;
+                overflown.limbs[0] = Limb::MAX - i;
                 overflown
             };
             {
                 let mut overflown_copy = overflown;
                 overflown_copy /= one;
-                assert_eq!(overflown_copy.limbs[0], u3072::PRIME_DIFF - i as Limb);
+                assert_eq!(overflown_copy.limbs[0], PRIME_DIFF - i - 1);
                 assert!(overflown_copy.limbs[1..].iter().all(|&x| x == 0));
             }
 
             // Zero doesn't have a modular inverse
-            if i as Limb != PRIME_DIFF {
+            if i != PRIME_DIFF - 1 {
                 let mut lhs = overflown;
                 let rhs = overflown;
                 lhs /= rhs;
-                assert!(is_one(&lhs));
+                assert!(is_one(&lhs), "i: {i}, lhs: {lhs:?}");
             }
-        })
+        });
     }
 
     #[test]
