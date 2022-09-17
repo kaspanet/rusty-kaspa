@@ -162,20 +162,25 @@ fuzz_target!(|data: &[u8]| {
                 break ((lib1, native1), (lib2, native2));
             }
         };
-        assert_same!(lib1.mod_inverse(lib2), bigint_mod_inv(native1, native2), "lib1: {lib1}, lib2: {lib2}");
+        let lib_inv = lib1.mod_inverse(lib2);
+        let native_inv = bigint_mod_inv(native1, native2);
+        assert_eq!(lib_inv.is_some(), native_inv.is_some());
+        if let Some(lib_inv) = lib_inv {
+            assert_same!(lib_inv, native_inv.unwrap(), "lib1: {lib1}, lib2: {lib2}");
+        }
     }
 });
 
-fn bigint_mod_inv(a: BigUint, n: BigUint) -> BigUint {
+fn bigint_mod_inv(a: BigUint, n: BigUint) -> Option<BigUint> {
     let a = BigInt::from(a);
     let n = BigInt::from(n);
     let e_gcd = a.extended_gcd(&n);
     // An inverse exists iff gcd(a, n) == 1
     if e_gcd.gcd != 1u64.into() {
-        BigUint::zero()
+        None
     } else if e_gcd.x.is_negative() {
-        (e_gcd.x + n).try_into().unwrap()
+        (e_gcd.x + n).try_into().ok()
     } else {
-        e_gcd.x.try_into().unwrap()
+        e_gcd.x.try_into().ok()
     }
 }
