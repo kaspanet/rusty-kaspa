@@ -62,7 +62,7 @@ macro_rules! construct_uint {
             #[inline]
             pub fn overflowing_shl(self, mut s: u32) -> ($name, bool) {
                 let overflows = s >= Self::BITS;
-                s &= Self::BITS - 1;
+                s %= Self::BITS;
                 let mut ret = [0u64; $n_words];
                 let left_words = (s / 64) as usize;
                 let left_shifts = s % 64;
@@ -87,7 +87,7 @@ macro_rules! construct_uint {
             #[inline]
             pub fn overflowing_shr(self, mut s: u32) -> ($name, bool) {
                 let overflows = s >= Self::BITS;
-                s &= Self::BITS - 1;
+                s %= Self::BITS;
                 let mut ret = [0u64; Self::LIMBS];
                 let left_words = (s / 64) as usize;
                 let left_shifts = s % 64;
