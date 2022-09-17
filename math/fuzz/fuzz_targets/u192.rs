@@ -1,4 +1,6 @@
 #![no_main]
+mod utils;
+
 use core::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Rem};
 use libfuzzer_sys::fuzz_target;
 use math::construct_uint;
@@ -6,40 +8,15 @@ use num_bigint::{BigInt, BigUint};
 use num_integer::Integer;
 use num_traits::{Signed, Zero};
 use std::convert::TryInto;
+use utils::{assert_same, consume, try_opt};
 
 // This is important as it's a non power of two.
 construct_uint!(Uint192, 3);
-
-macro_rules! try_opt {
-    ($expr: expr) => {
-        match $expr {
-            Some(value) => value,
-            None => return,
-        }
-    };
-}
-
-fn consume<const N: usize>(data: &mut &[u8]) -> Option<[u8; N]> {
-    if data.len() < N {
-        None
-    } else {
-        let ret = &data[..N];
-        *data = &(*data)[N..];
-        Some(ret.try_into().unwrap())
-    }
-}
 
 // Consumes 16 bytes
 fn generate_ints(data: &mut &[u8]) -> Option<(Uint192, BigUint)> {
     let buf = consume(data)?;
     Some((Uint192::from_le_bytes(buf), BigUint::from_bytes_le(&buf)))
-}
-
-macro_rules! assert_same {
-    ($left:expr, $right:expr, $($arg:tt)+) => {
-        let right = $right.to_bytes_le();
-        assert_eq!(&$left.to_le_bytes()[..right.len()], &right[..], $($arg)+)
-    };
 }
 
 #[track_caller]
