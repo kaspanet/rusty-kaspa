@@ -1,14 +1,15 @@
 [package]
 name = "addresses"
-version = "0.1.0"
-edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
 
 [dependencies]
 
 [dev-dependencies]
-criterion = { version = "0.4", default-features = false }
+criterion.workspace = true
 
 [[bench]]
 name = "bench"

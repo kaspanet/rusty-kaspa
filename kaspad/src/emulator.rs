@@ -1,7 +1,7 @@
 use consensus::{
     consensus::test_consensus::TestConsensus, errors::RuleError, model::stores::statuses::BlockStatus, pipeline::ProcessingCounters,
 };
-use futures::future::join_all;
+use futures_util::future::join_all;
 use hashes::Hash;
 use kaspa_core::{core::Core, service::Service, signals::Shutdown, trace};
 use num_format::{Locale, ToFormattedString};
