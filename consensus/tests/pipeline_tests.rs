@@ -9,7 +9,7 @@ use consensus::{
     processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions},
 };
 use consensus_core::blockhash;
-use futures::future::join_all;
+use futures_util::future::join_all;
 use hashes::Hash;
 use parking_lot::RwLock;
 use rand_distr::{Distribution, Poisson};

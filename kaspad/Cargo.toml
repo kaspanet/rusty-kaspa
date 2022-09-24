@@ -1,22 +1,23 @@
 [package]
 name = "kaspad"
-version = "0.1.0"
 description = "Kaspa full node daemon"
-edition = "2021"
-authors = ["Kaspa developers"]
-include = ["src/**/*.rs"]
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
 
 [dependencies]
-thiserror = "1.0.31"
-rand_distr = "0.4.3"
-rand = "0.8"
-tempfile = "3.3.0"
-rayon = "1.5.3"
-num-format = "0.4.0"
-tokio = { version = "1.20.1", features = ["full"] }
-futures = "0.3.23"
+hashes.workspace = true
+kaspa-core.workspace = true
+consensus-core.workspace = true
+consensus.workspace = true
 
-hashes = { path = "../crypto/hashes" }
-kaspa-core = { path = "../core" }
-consensus-core = { path = "../consensus/core" }
-consensus = { path = "../consensus" }
+thiserror.workspace = true
+futures-util.workspace = true
+rand.workspace = true
+rayon.workspace = true
+tempfile.workspace = true
+tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread"] }
+rand_distr = "0.4"
+num-format = "0.4"

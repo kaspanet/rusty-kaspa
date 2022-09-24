@@ -1,18 +1,18 @@
 [package]
 name = "muhash"
-version = "0.1.0"
-edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
 
 [dependencies]
-rand_chacha = "0.3"
-hashes = { path = "../hashes" }
-
+hashes.workspace = true
+rand_chacha.workspace = true
 
 [dev-dependencies]
-criterion = { version = "0.4", default-features = false }
-rand = "0.8"
+criterion.workspace = true
+rand.workspace = true
 
 [[bench]]
 name = "bench"
