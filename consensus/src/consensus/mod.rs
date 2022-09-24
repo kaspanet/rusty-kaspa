@@ -34,9 +34,9 @@ use crate::{
 };
 use consensus_core::block::Block;
 use crossbeam_channel::{unbounded, Receiver, Sender};
-use futures::Future;
 use kaspa_core::{core::Core, service::Service};
 use parking_lot::RwLock;
+use std::future::Future;
 use std::{
     ops::DerefMut,
     sync::Arc,

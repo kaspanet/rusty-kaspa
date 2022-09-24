@@ -1,40 +1,41 @@
 [package]
 name = "consensus"
-version = "0.1.0"
 description = "Kaspa consensus lib"
-edition = "2021"
-authors = ["Kaspa developers"]
-include = ["src/**/*.rs"]
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
 
 [dependencies]
-faster-hex = "0.6"
-thiserror = "1.0.31"
-serde = { version = "1.0", features = ["derive", "rc"] }
-rocksdb = "0.19.0"
-moka = "0.9"
-bincode = "1.3.3"
-parking_lot = "0.12.1"
-crossbeam-channel = "0.5"
-rayon = "1.5.3"
-tokio = { version = "1.20.1", features = ["sync"] }
-tempfile = "3.3.0"
-itertools = "0.10.3"
-futures = "0.3.23"
+math.workspace = true
+hashes.workspace = true
+merkle.workspace = true
+muhash.workspace = true
+kaspa-core.workspace = true
+consensus-core.workspace = true
+faster-hex.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+itertools.workspace = true
+futures-util.workspace = true
+tokio.workspace = true
+bincode.workspace = true
+tempfile.workspace = true
+rayon.workspace = true
 
-math = { path = "../math" }
-hashes = { path = "../crypto/hashes" }
-muhash = { path = "../crypto/muhash" }
-merkle = { path = "../crypto/merkle" }
-consensus-core = { path = "./core" }
-kaspa-core = { path = "../core" }
+rocksdb = "0.19"
+moka = "0.9"
+parking_lot = "0.12"
+crossbeam-channel = "0.5"
 
 [dev-dependencies]
-criterion = { version = "0.4", default-features = false }
+criterion.workspace = true
+rand.workspace = true
+tokio = { workspace = true, features = ["rt", "macros"] }
 serde_json = "1.0"
-flate2 = "1.0.24"
-rand = "0.8"
-rand_distr = "0.4.3"
-tokio = { version = "1.20.1", features = ["full"] }
+flate2 = "1"
+rand_distr = "0.4"
 
 [[bench]]
 name = "hash_benchmarks"

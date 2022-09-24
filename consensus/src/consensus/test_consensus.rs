@@ -5,10 +5,10 @@ use std::{
 };
 
 use consensus_core::{block::Block, header::Header, merkle::calc_hash_merkle_root, subnets::SUBNETWORK_ID_COINBASE, tx::Transaction};
-use futures::Future;
 use hashes::Hash;
 use kaspa_core::{core::Core, service::Service};
 use parking_lot::RwLock;
+use std::future::Future;
 
 use crate::{
     constants::TX_VERSION,

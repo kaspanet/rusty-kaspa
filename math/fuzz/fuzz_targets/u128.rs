@@ -1,29 +1,13 @@
 #![no_main]
+mod utils;
+
 use core::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Rem};
 use libfuzzer_sys::fuzz_target;
 use math::construct_uint;
 use std::convert::TryInto;
+use utils::{consume, try_opt};
 
 construct_uint!(Uint128, 2);
-
-macro_rules! try_opt {
-    ($expr: expr) => {
-        match $expr {
-            Some(value) => value,
-            None => return,
-        }
-    };
-}
-
-fn consume<const N: usize>(data: &mut &[u8]) -> Option<[u8; N]> {
-    if data.len() < N {
-        None
-    } else {
-        let ret = &data[..N];
-        *data = &(*data)[N..];
-        Some(ret.try_into().unwrap())
-    }
-}
 
 // Consumes 16 bytes
 fn generate_ints(data: &mut &[u8]) -> Option<(Uint128, u128)> {

@@ -3,15 +3,11 @@ use rand_chacha::{
     rand_core::{RngCore, SeedableRng},
     ChaCha8Rng,
 };
-use std::time::UNIX_EPOCH;
 
 use muhash::MuHash;
 
 fn bench_muhash(c: &mut Criterion) {
-    let time = UNIX_EPOCH.elapsed().unwrap().as_micros();
-    let mut seed = [0u8; 32];
-    seed[0..16].copy_from_slice(&time.to_ne_bytes());
-    let mut rng = ChaCha8Rng::from_seed(seed);
+    let mut rng = ChaCha8Rng::from_seed([42u8; 32]);
 
     let mut data = [0u8; 100];
     rng.fill_bytes(&mut data);

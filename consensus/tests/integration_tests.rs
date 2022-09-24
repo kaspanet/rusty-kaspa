@@ -15,9 +15,9 @@ use consensus_core::header::Header;
 use consensus_core::subnets::SubnetworkId;
 use consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
 use consensus_core::{blockhash, hashing, BlueWorkType};
-use futures::future::join_all;
-use futures::Future;
+use futures_util::future::join_all;
 use hashes::Hash;
+use std::future::Future;
 
 use flate2::read::GzDecoder;
 use itertools::Itertools;

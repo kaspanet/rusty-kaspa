@@ -12,3 +12,37 @@ members = [
     "crypto/addresses",
     "crypto/merkle",
 ]
+
+[workspace.package]
+version = "0.1.0"
+authors = ["Kaspa developers"]
+license = "MIT/Apache-2.0"
+edition = "2021"
+include = ["src/**/*.rs", "Cargo.toml"]
+
+[workspace.dependencies]
+kaspa-core = { path = "core" }
+kaspa-wallet = { path = "wallet" }
+consensus = { path = "consensus" }
+consensus-core = { path = "consensus/core" }
+kaspad = { path = "kaspad" }
+wasm = { path = "wasm" }
+math = { path = "math" }
+hashes = { path = "crypto/hashes" }
+muhash = { path = "crypto/muhash" }
+addresses = { path = "crypto/addresses" }
+merkle = { path = "crypto/merkle" }
+
+thiserror = "1"
+faster-hex = "0.6"
+itertools = "0.10"
+rand = "0.8"
+rand_chacha = "0.3"
+rayon = "1"
+tempfile = "3.3"
+serde = { version = "1", features = ["derive", "rc"] }
+futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
+bincode = { version = "1", default-features = false }
+tokio = { version = "1", features = ["sync"] }
+wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
+criterion = { version = "0.4", default-features = false }

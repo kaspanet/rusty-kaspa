@@ -7,7 +7,7 @@ pub use serde;
 macro_rules! construct_uint {
     ($name:ident, $n_words:literal) => {
         /// Little-endian large integer type
-        #[derive(Default, Copy, Clone, PartialEq, Eq, Hash, Debug)]
+        #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
         pub struct $name(pub [u64; $n_words]);
         #[allow(unused)]
         impl $name {
@@ -42,8 +42,14 @@ macro_rules! construct_uint {
                 self.0[0] as u64
             }
 
-            /// Return the least number of bits needed to represent the number
+            // TODO: Benchmark this
             #[inline]
+            pub fn is_zero(self) -> bool {
+                self.0.iter().all(|&a| a == 0)
+            }
+
+            /// Return the least number of bits needed to represent the number
+            #[inline(always)]
             pub fn bits(&self) -> u32 {
                 for (i, &word) in self.0.iter().enumerate().rev() {
                     if word != 0 {
@@ -56,7 +62,7 @@ macro_rules! construct_uint {
             #[inline]
             pub fn overflowing_shl(self, mut s: u32) -> ($name, bool) {
                 let overflows = s >= Self::BITS;
-                s &= Self::BITS - 1;
+                s %= Self::BITS;
                 let mut ret = [0u64; $n_words];
                 let left_words = (s / 64) as usize;
                 let left_shifts = s % 64;
@@ -81,7 +87,7 @@ macro_rules! construct_uint {
             #[inline]
             pub fn overflowing_shr(self, mut s: u32) -> ($name, bool) {
                 let overflows = s >= Self::BITS;
-                s &= Self::BITS - 1;
+                s %= Self::BITS;
                 let mut ret = [0u64; Self::LIMBS];
                 let left_words = (s / 64) as usize;
                 let left_shifts = s % 64;
@@ -117,7 +123,7 @@ macro_rules! construct_uint {
             }
 
             #[inline]
-            pub fn overflowing_add_word(mut self, other: u64) -> ($name, bool) {
+            pub fn overflowing_add_u64(mut self, other: u64) -> ($name, bool) {
                 let mut carry: bool;
                 (self.0[0], carry) = self.0[0].overflowing_add(other);
                 for i in 1..Self::LIMBS {
@@ -218,7 +224,7 @@ macro_rules! construct_uint {
             }
 
             #[inline]
-            pub fn div_rem_word(mut self, other: u64) -> (Self, u64) {
+            pub fn div_rem_u64(mut self, other: u64) -> (Self, u64) {
                 let mut rem = 0u64;
                 self.0.iter_mut().rev().for_each(|d| {
                     let n = (rem as u128) << 64 | (*d as u128);
@@ -263,6 +269,28 @@ macro_rules! construct_uint {
                 }
 
                 (Self(ret), sub_copy)
+            }
+
+            #[inline]
+            pub fn mod_inverse(self, prime: Self) -> Option<Self> {
+                use $crate::int::SignedInteger;
+                let mut t = SignedInteger::from(Self::ZERO);
+                let mut newt = SignedInteger::positive_u64(1u64);
+                let mut r = SignedInteger::from(prime);
+                let mut newr = SignedInteger::from(self);
+
+                while !newr.abs().is_zero() {
+                    let quotient = r / newr;
+                    (t, newt) = (newt, t - quotient * newt);
+                    (r, newr) = (newr, r - quotient * newr);
+                }
+                if !r.negative() && r.abs() != 1u64 {
+                    None
+                } else if t.negative() {
+                    Some(prime - t.abs())
+                } else {
+                    Some(t.abs())
+                }
             }
 
             #[inline]
@@ -385,7 +413,7 @@ macro_rules! construct_uint {
             #[inline]
             #[track_caller]
             fn add(self, other: u64) -> $name {
-                let (sum, carry) = self.overflowing_add_word(other);
+                let (sum, carry) = self.overflowing_add_u64(other);
                 debug_assert!(!carry, "attempt to add with overflow"); // Check in debug that it didn't overflow
                 sum
             }
@@ -450,7 +478,7 @@ macro_rules! construct_uint {
 
             #[inline]
             fn div(self, other: u64) -> $name {
-                self.div_rem_word(other).0
+                self.div_rem_u64(other).0
             }
         }
 
@@ -458,7 +486,7 @@ macro_rules! construct_uint {
             type Output = u64;
 
             fn rem(self, other: u64) -> u64 {
-                self.div_rem_word(other).1
+                self.div_rem_u64(other).1
             }
         }
 
@@ -562,6 +590,20 @@ macro_rules! construct_uint {
             }
         }
 
+        impl Default for $name {
+            #[inline]
+            fn default() -> Self {
+                Self::ZERO
+            }
+        }
+
+        impl From<u64> for $name {
+            #[inline]
+            fn from(x: u64) -> Self {
+                Self::from_u64(x)
+            }
+        }
+
         impl core::convert::TryFrom<$name> for u128 {
             type Error = $crate::uint::TryFromIntError;
 
@@ -607,7 +649,7 @@ macro_rules! construct_uint {
                 const STEP: u64 = 10_000;
                 while n >= STEP {
                     let rem: u64;
-                    (n, rem) = n.div_rem_word(STEP);
+                    (n, rem) = n.div_rem_u64(STEP);
                     let rem = rem as usize;
                     let d1 = (rem / 100) << 1;
                     let d2 = (rem % 100) << 1;
@@ -833,7 +875,7 @@ mod tests {
             // Test fast u64 division.
             {
                 let rand_u64 = rng.next_u64();
-                let mine_divrem = mine.div_rem_word(rand_u64);
+                let mine_divrem = mine.div_rem_u64(rand_u64);
                 let default_divrem = (default / u128::from(rand_u64), default % u128::from(rand_u64));
                 assert_equal(mine_divrem.0, default_divrem.0, check_fmt);
                 assert_eq!(mine_divrem.1, u64::try_from(default_divrem.1).unwrap());
@@ -849,7 +891,7 @@ mod tests {
             // Test fast u64 addition
             {
                 let rand_u64 = rng.next_u64();
-                let mine_add = mine.overflowing_add_word(rand_u64);
+                let mine_add = mine.overflowing_add_u64(rand_u64);
                 let default_add = default.overflowing_add(rand_u64 as u128);
                 assert_equal(mine_add.0, default_add.0, check_fmt);
                 assert_eq!(mine_add.1, default_add.1);
