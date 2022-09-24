@@ -867,8 +867,10 @@ version = "0.1.0"
 dependencies = [
  "criterion",
  "hashes",
+ "math",
  "rand",
  "rand_chacha",
+ "rayon",
 ]
 
 [[package]]
