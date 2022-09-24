@@ -1,11 +1,14 @@
 [package]
 name = "kaspa-core"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
 
 [dependencies]
-wasm-bindgen = "0.2.79"
-ctrlc = "3.1.9"
+wasm-bindgen.workspace = true
+ctrlc = "3.2"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-intertrait="*"
+intertrait = "0.2"

@@ -1,19 +1,16 @@
 [package]
 name = "kaspa-wasm"
-version = "0.1.0"
-authors = ["Your Name <you@example.com>"]
 description = "KASPA bindings"
-license = "MIT/Apache-2.0"
-edition = "2018"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
 
 [lib]
 crate-type = ["cdylib"]
 
 [dependencies]
-#borsh = "0.9.3"
-#serde = { version = "1.0", features = ["derive"] }
-
-kaspa-core = { path = "../core" }
-kaspa-wallet = { path = "../wallet" }
-
-wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
+kaspa-core.workspace = true
+kaspa-wallet.workspace = true
+wasm-bindgen.workspace = true
