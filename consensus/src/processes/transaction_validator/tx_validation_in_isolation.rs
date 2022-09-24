@@ -1,4 +1,7 @@
-use crate::constants::TX_VERSION;
+use crate::{
+    constants::{MAX_SOMPI, TX_VERSION},
+    model::stores::headers::HeaderStoreReader,
+};
 use consensus_core::tx::Transaction;
 use std::collections::HashSet;
 
@@ -7,11 +10,12 @@ use super::{
     TransactionValidator,
 };
 
-impl TransactionValidator {
+impl<T: HeaderStoreReader> TransactionValidator<T> {
     pub fn validate_tx_in_isolation(&self, tx: &Transaction) -> TxResult<()> {
         self.check_transaction_inputs_in_isolation(tx)?;
         self.check_transaction_outputs_in_isolation(tx)?;
 
+        check_transaction_output_value_ranges(tx)?;
         check_duplicate_transaction_inputs(tx)?;
         check_gas(tx)?;
         check_transaction_payload(tx)?;
@@ -100,6 +104,31 @@ fn check_transaction_version(tx: &Transaction) -> TxResult<()> {
     Ok(())
 }
 
+fn check_transaction_output_value_ranges(tx: &Transaction) -> TxResult<()> {
+    let mut total: u64 = 0;
+    for (i, output) in tx.outputs.iter().enumerate() {
+        if output.value == 0 {
+            return Err(TxRuleError::TxOutZero(i));
+        }
+
+        if output.value > MAX_SOMPI {
+            return Err(TxRuleError::TxOutTooHigh(i));
+        }
+
+        if let Some(new_total) = total.checked_add(output.value) {
+            total = new_total
+        } else {
+            return Err(TxRuleError::OutputsValueOverflow);
+        }
+
+        if total > MAX_SOMPI {
+            return Err(TxRuleError::TotalTxOutTooHigh);
+        }
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -112,9 +141,40 @@ mod tests {
 
     use crate::{
         constants::TX_VERSION,
+        model::stores::headers::HeaderStoreReader,
         params::MAINNET_PARAMS,
         processes::transaction_validator::{errors::TxRuleError, TransactionValidator},
     };
+
+    struct HeaderStoreMock {}
+
+    impl HeaderStoreReader for HeaderStoreMock {
+        fn get_daa_score(&self, hash: hashes::Hash) -> Result<u64, crate::model::stores::errors::StoreError> {
+            todo!()
+        }
+
+        fn get_timestamp(&self, hash: hashes::Hash) -> Result<u64, crate::model::stores::errors::StoreError> {
+            todo!()
+        }
+
+        fn get_bits(&self, hash: hashes::Hash) -> Result<u32, crate::model::stores::errors::StoreError> {
+            todo!()
+        }
+
+        fn get_header(
+            &self,
+            hash: hashes::Hash,
+        ) -> Result<Arc<consensus_core::header::Header>, crate::model::stores::errors::StoreError> {
+            todo!()
+        }
+
+        fn get_compact_header_data(
+            &self,
+            hash: hashes::Hash,
+        ) -> Result<crate::model::stores::headers::CompactHeaderData, crate::model::stores::errors::StoreError> {
+            todo!()
+        }
+    }
 
     #[test]
     fn validate_tx_in_isolation_test() {
@@ -126,6 +186,8 @@ mod tests {
             params.max_tx_outputs,
             params.max_signature_script_len,
             params.max_script_public_key_len,
+            params.coinbase_maturity,
+            Arc::new(HeaderStoreMock {}),
         );
 
         let valid_cb = Transaction::new(

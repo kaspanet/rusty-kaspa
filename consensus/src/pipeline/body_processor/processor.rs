@@ -51,7 +51,7 @@ pub struct BlockBodyProcessor {
     pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
     pub(super) coinbase_manager: CoinbaseManager,
     pub(super) mass_calculator: MassCalculator,
-    pub(super) transaction_validator: TransactionValidator,
+    pub(super) transaction_validator: TransactionValidator<DbHeadersStore>,
     pub(super) past_median_time_manager: PastMedianTimeManager<DbHeadersStore, DbGhostdagStore, BlockWindowCacheStore>,
 
     // Dependency manager
@@ -71,7 +71,7 @@ impl BlockBodyProcessor {
         reachability_service: MTReachabilityService<DbReachabilityStore>,
         coinbase_manager: CoinbaseManager,
         mass_calculator: MassCalculator,
-        transaction_validator: TransactionValidator,
+        transaction_validator: TransactionValidator<DbHeadersStore>,
         past_median_time_manager: PastMedianTimeManager<DbHeadersStore, DbGhostdagStore, BlockWindowCacheStore>,
         max_block_mass: u64,
         genesis_hash: Hash,

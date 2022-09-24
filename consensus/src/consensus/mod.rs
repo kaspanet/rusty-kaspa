@@ -151,6 +151,8 @@ impl Consensus {
             params.max_tx_outputs,
             params.max_signature_script_len,
             params.max_script_public_key_len,
+            params.coinbase_maturity,
+            headers_store.clone(),
         );
 
         let (sender, receiver): (Sender<BlockTask>, Receiver<BlockTask>) = unbounded();
