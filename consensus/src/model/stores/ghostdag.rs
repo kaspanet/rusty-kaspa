@@ -1,5 +1,6 @@
 use crate::processes::ghostdag::ordering::SortableBlock;
 
+use super::caching::CachedDbAccessForCopy;
 use super::{caching::CachedDbAccess, errors::StoreError, DB};
 use consensus_core::{blockhash::BlockHashes, BlueWorkType};
 use hashes::Hash;
@@ -20,6 +21,13 @@ pub struct GhostdagData {
     pub mergeset_blues: BlockHashes,
     pub mergeset_reds: BlockHashes,
     pub blues_anticone_sizes: HashKTypeMap,
+}
+
+#[derive(Clone, Serialize, Deserialize, Copy)]
+pub struct CompactGhostdagData {
+    pub blue_score: u64,
+    pub blue_work: BlueWorkType,
+    pub selected_parent: Hash,
 }
 
 impl GhostdagData {
@@ -176,6 +184,7 @@ pub trait GhostdagStore: GhostdagStoreReader {
 }
 
 const STORE_PREFIX: &[u8] = b"block-ghostdag-data";
+const COMPACT_STORE_PREFIX: &[u8] = b"complact-block-ghostdag-data";
 
 /// A DB + cache implementation of `GhostdagStore` trait, with concurrency support.
 #[derive(Clone)]
@@ -183,11 +192,16 @@ pub struct DbGhostdagStore {
     raw_db: Arc<DB>,
     // `CachedDbAccess` is shallow cloned so no need to wrap with Arc
     cached_access: CachedDbAccess<Hash, GhostdagData>,
+    compact_cached_access: CachedDbAccessForCopy<Hash, CompactGhostdagData>,
 }
 
 impl DbGhostdagStore {
     pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
-        Self { raw_db: Arc::clone(&db), cached_access: CachedDbAccess::new(db, cache_size, STORE_PREFIX) }
+        Self {
+            raw_db: Arc::clone(&db),
+            cached_access: CachedDbAccess::new(db, cache_size, STORE_PREFIX),
+            compact_cached_access: CachedDbAccessForCopy::new(db, cache_size, COMPACT_STORE_PREFIX),
+        }
     }
 
     pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {
@@ -199,6 +213,15 @@ impl DbGhostdagStore {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
         self.cached_access.write_batch(batch, hash, data)?;
+
+        if self.compact_cached_access.has(hash)? {
+            return Err(StoreError::KeyAlreadyExists(hash.to_string()));
+        }
+        self.compact_cached_access.write_batch(
+            batch,
+            hash,
+            CompactGhostdagData { blue_score: data.blue_score, blue_work: data.blue_work, selected_parent: data.selected_parent },
+        )?;
         Ok(())
     }
 }
@@ -243,6 +266,13 @@ impl GhostdagStore for DbGhostdagStore {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
         self.cached_access.write(hash, &data)?;
+        if self.compact_cached_access.has(hash)? {
+            return Err(StoreError::KeyAlreadyExists(hash.to_string()));
+        }
+        self.compact_cached_access.write(
+            hash,
+            CompactGhostdagData { blue_score: data.blue_score, blue_work: data.blue_work, selected_parent: data.selected_parent },
+        )?;
         Ok(())
     }
 }

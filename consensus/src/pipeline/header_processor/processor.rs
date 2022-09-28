@@ -339,7 +339,7 @@ impl HeaderProcessor {
             return;
         }
 
-        self.pruning_store.write().set(self.genesis_hash).unwrap();
+        self.pruning_store.write().set_pruning_point(self.genesis_hash).unwrap();
         let mut header = header_from_precomputed_hash(self.genesis_hash, vec![]); // TODO
         header.bits = self.genesis_bits;
         let mut ctx = HeaderProcessingContext::new(self.genesis_hash, &header, ORIGIN);

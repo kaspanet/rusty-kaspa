@@ -7,3 +7,4 @@ pub mod mass;
 pub mod pastmediantime;
 pub mod reachability;
 pub mod transaction_validator;
+pub mod pruning;
