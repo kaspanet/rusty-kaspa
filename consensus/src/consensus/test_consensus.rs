@@ -43,8 +43,17 @@ impl TestConsensus {
 
     pub fn build_header_with_parents(&self, hash: Hash, parents: Vec<Hash>) -> Header {
         let mut header = header_from_precomputed_hash(hash, parents);
-        let mut ctx: HeaderProcessingContext =
-            HeaderProcessingContext::new(hash, &header, self.consensus.pruning_store.read().pruning_point().unwrap());
+        let mut ctx: HeaderProcessingContext = {
+            let read_guard = self.consensus.pruning_store.read();
+            HeaderProcessingContext::new(
+                hash,
+                &header,
+                read_guard.pruning_point().unwrap(),
+                read_guard.pruning_point_candidate().unwrap(),
+                read_guard.pruning_point_index().unwrap(),
+            )
+        };
+
         self.consensus.ghostdag_manager.add_block(&mut ctx, hash);
 
         let ghostdag_data = ctx.ghostdag_data.unwrap();

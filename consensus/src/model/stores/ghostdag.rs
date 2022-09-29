@@ -123,6 +123,10 @@ impl GhostdagData {
     pub fn unordered_mergeset(&self) -> impl Iterator<Item = Hash> + '_ {
         self.mergeset_blues.iter().cloned().chain(self.mergeset_reds.iter().cloned())
     }
+
+    pub fn to_compact(&self) -> CompactGhostdagData {
+        CompactGhostdagData { blue_score: self.blue_score, blue_work: self.blue_work, selected_parent: self.selected_parent }
+    }
 }
 
 impl GhostdagData {
@@ -171,6 +175,8 @@ pub trait GhostdagStoreReader {
     /// Returns full block data for the requested hash
     fn get_data(&self, hash: Hash) -> Result<Arc<GhostdagData>, StoreError>;
 
+    fn get_compact_data(&self, hash: Hash) -> Result<CompactGhostdagData, StoreError>;
+
     /// Check if the store contains data for the requested hash
     fn has(&self, hash: Hash) -> Result<bool, StoreError>;
 }
@@ -199,7 +205,7 @@ impl DbGhostdagStore {
     pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
         Self {
             raw_db: Arc::clone(&db),
-            cached_access: CachedDbAccess::new(db, cache_size, STORE_PREFIX),
+            cached_access: CachedDbAccess::new(db.clone(), cache_size, STORE_PREFIX),
             compact_cached_access: CachedDbAccessForCopy::new(db, cache_size, COMPACT_STORE_PREFIX),
         }
     }
@@ -253,6 +259,10 @@ impl GhostdagStoreReader for DbGhostdagStore {
 
     fn get_data(&self, hash: Hash) -> Result<Arc<GhostdagData>, StoreError> {
         self.cached_access.read(hash)
+    }
+
+    fn get_compact_data(&self, hash: Hash) -> Result<CompactGhostdagData, StoreError> {
+        self.compact_cached_access.read(hash)
     }
 
     fn has(&self, hash: Hash) -> Result<bool, StoreError> {
@@ -382,6 +392,10 @@ impl GhostdagStoreReader for MemoryGhostdagStore {
 
     fn has(&self, hash: Hash) -> Result<bool, StoreError> {
         Ok(self.blue_score_map.borrow().contains_key(&hash))
+    }
+
+    fn get_compact_data(&self, hash: Hash) -> Result<CompactGhostdagData, StoreError> {
+        Ok(self.get_data(hash)?.to_compact())
     }
 }
 

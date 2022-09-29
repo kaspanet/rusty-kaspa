@@ -103,6 +103,9 @@ pub enum RuleError {
 
     #[error("block has invalid proof-of-work")]
     InvalidPoW,
+
+    #[error("Expected header pruning point is {0} but got {1}")]
+    WrongHeaderPruningPoint(Hash, Hash),
 }
 
 pub type BlockProcessResult<T> = std::result::Result<T, RuleError>;

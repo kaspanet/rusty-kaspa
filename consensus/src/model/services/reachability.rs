@@ -5,11 +5,12 @@ use consensus_core::blockhash;
 use parking_lot::RwLock;
 
 use crate::model::stores::reachability::ReachabilityStoreReader;
-use crate::processes::reachability::{inquirer, ReachabilityError, Result};
+use crate::processes::reachability::{inquirer, Result};
 use hashes::Hash;
 
 pub trait ReachabilityService {
     fn is_chain_ancestor_of(&self, this: Hash, queried: Hash) -> bool;
+    fn is_dag_ancestor_of_result(&self, this: Hash, queried: Hash) -> Result<bool>;
     fn is_dag_ancestor_of(&self, this: Hash, queried: Hash) -> bool;
     fn get_next_chain_ancestor(&self, descendant: Hash, ancestor: Hash) -> Hash;
 }
@@ -30,6 +31,11 @@ impl<T: ReachabilityStoreReader + ?Sized> ReachabilityService for MTReachability
     fn is_chain_ancestor_of(&self, this: Hash, queried: Hash) -> bool {
         let read_guard = self.store.read();
         inquirer::is_chain_ancestor_of(read_guard.deref(), this, queried).unwrap()
+    }
+
+    fn is_dag_ancestor_of_result(&self, this: Hash, queried: Hash) -> Result<bool> {
+        let read_guard = self.store.read();
+        inquirer::is_dag_ancestor_of(read_guard.deref(), this, queried)
     }
 
     fn is_dag_ancestor_of(&self, this: Hash, queried: Hash) -> bool {

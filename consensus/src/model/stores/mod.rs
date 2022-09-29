@@ -10,6 +10,7 @@ pub mod pruning;
 pub mod reachability;
 pub mod relations;
 pub mod statuses;
+pub mod past_pruning_points;
 
 use rocksdb::{DBWithThreadMode, MultiThreaded};
 pub type DB = DBWithThreadMode<MultiThreaded>;

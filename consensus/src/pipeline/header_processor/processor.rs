@@ -9,6 +9,7 @@ use crate::{
             errors::StoreResultExtensions,
             ghostdag::{DbGhostdagStore, GhostdagData},
             headers::DbHeadersStore,
+            past_pruning_points::DbPastPruningPointsStore,
             pruning::{DbPruningStore, PruningStore, PruningStoreReader},
             reachability::{DbReachabilityStore, StagingReachabilityStore},
             relations::{DbRelationsStore, RelationsStoreBatchExtensions},
@@ -23,7 +24,8 @@ use crate::{
     pipeline::deps_manager::{BlockTask, BlockTaskDependencyManager},
     processes::{
         block_at_depth::BlockDepthManager, dagtraversalmanager::DagTraversalManager, difficulty::DifficultyManager,
-        ghostdag::protocol::GhostdagManager, pastmediantime::PastMedianTimeManager, reachability::inquirer as reachability,
+        ghostdag::protocol::GhostdagManager, pastmediantime::PastMedianTimeManager, pruning::PruningManager,
+        reachability::inquirer as reachability,
     },
     test_helpers::header_from_precomputed_hash,
 };
@@ -43,6 +45,8 @@ pub struct HeaderProcessingContext<'a> {
     pub hash: Hash,
     pub header: &'a Header,
     pub pruning_point: Hash,
+    pub pruning_point_candidate: Hash,
+    pub pruning_point_index: u64,
 
     // Staging data
     pub ghostdag_data: Option<Arc<GhostdagData>>,
@@ -57,11 +61,13 @@ pub struct HeaderProcessingContext<'a> {
 }
 
 impl<'a> HeaderProcessingContext<'a> {
-    pub fn new(hash: Hash, header: &'a Header, pruning_point: Hash) -> Self {
+    pub fn new(hash: Hash, header: &'a Header, pruning_point: Hash, pruning_point_candidate: Hash, pruning_point_index: u64) -> Self {
         Self {
             hash,
             header,
             pruning_point,
+            pruning_point_candidate,
+            pruning_point_index,
             ghostdag_data: None,
             non_pruned_parents: None,
             block_window_for_difficulty: None,
@@ -125,6 +131,7 @@ pub struct HeaderProcessor {
     pub(super) past_median_time_manager: PastMedianTimeManager<DbHeadersStore, DbGhostdagStore, BlockWindowCacheStore>,
     pub(super) depth_manager: BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>,
     pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
+    pub(super) pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
 
     // Dependency manager
     task_manager: BlockTaskDependencyManager,
@@ -156,6 +163,7 @@ impl HeaderProcessor {
         dag_traversal_manager: DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore>,
         difficulty_manager: DifficultyManager<DbHeadersStore>,
         depth_manager: BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>,
+        pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
         counters: Arc<ProcessingCounters>,
     ) -> Self {
         Self {
@@ -187,6 +195,7 @@ impl HeaderProcessor {
             reachability_service,
             past_median_time_manager,
             depth_manager,
+            pruning_manager,
             task_manager: BlockTaskDependencyManager::new(),
             counters,
             timestamp_deviation_tolerance: params.timestamp_deviation_tolerance,
@@ -257,7 +266,16 @@ impl HeaderProcessor {
         }
 
         // Create processing context
-        let mut ctx = HeaderProcessingContext::new(header.hash, header, self.pruning_store.read().pruning_point().unwrap());
+        let mut ctx = {
+            let read_guard = self.pruning_store.read();
+            HeaderProcessingContext::new(
+                header.hash,
+                header,
+                read_guard.pruning_point().unwrap(),
+                read_guard.pruning_point_candidate().unwrap(),
+                read_guard.pruning_point_index().unwrap(),
+            )
+        };
 
         // Run GHOSTDAG for the new header
         self.pre_ghostdag_validation(&mut ctx, header)?;
@@ -339,10 +357,10 @@ impl HeaderProcessor {
             return;
         }
 
-        self.pruning_store.write().set_pruning_point(self.genesis_hash).unwrap();
+        self.pruning_store.write().set(self.genesis_hash, self.genesis_hash, 0).unwrap();
         let mut header = header_from_precomputed_hash(self.genesis_hash, vec![]); // TODO
         header.bits = self.genesis_bits;
-        let mut ctx = HeaderProcessingContext::new(self.genesis_hash, &header, ORIGIN);
+        let mut ctx = HeaderProcessingContext::new(self.genesis_hash, &header, self.genesis_hash, self.genesis_hash, 0);
         self.ghostdag_manager.add_genesis_if_needed(&mut ctx);
         ctx.block_window_for_difficulty = Some(Default::default());
         ctx.block_window_for_past_median_time = Some(Default::default());

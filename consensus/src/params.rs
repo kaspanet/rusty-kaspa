@@ -15,6 +15,7 @@ pub struct Params {
     pub mergeset_size_limit: u64,
     pub merge_depth: u64,
     pub finality_depth: u64,
+    pub pruning_depth: u64,
     pub coinbase_payload_script_public_key_max_len: u8,
     pub max_coinbase_payload_len: usize,
     pub max_tx_inputs: usize,
@@ -53,6 +54,7 @@ pub const MAINNET_PARAMS: Params = Params {
     mergeset_size_limit: (DEFAULT_GHOSTDAG_K as u64) * 10,
     merge_depth: 3600,
     finality_depth: 86400,
+    pruning_depth: 185798,
     coinbase_payload_script_public_key_max_len: 150,
     max_coinbase_payload_len: 204,
 
