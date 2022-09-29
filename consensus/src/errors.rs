@@ -100,6 +100,9 @@ pub enum RuleError {
 
     #[error("Transaction {0} is found more than once in the block")]
     DuplicateTransactions(TransactionId),
+
+    #[error("block has invalid proof-of-work")]
+    InvalidPoW,
 }
 
 pub type BlockProcessResult<T> = std::result::Result<T, RuleError>;

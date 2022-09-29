@@ -8,6 +8,7 @@ include.workspace = true
 license.workspace = true
 
 [dependencies]
+pow.workspace = true
 math.workspace = true
 hashes.workspace = true
 merkle.workspace = true
