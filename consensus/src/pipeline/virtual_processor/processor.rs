@@ -3,12 +3,14 @@ use crate::{
     model::{
         services::reachability::MTReachabilityService,
         stores::{
+            errors::StoreResultExtensions,
             ghostdag::{DbGhostdagStore, GhostdagStoreReader},
             headers::DbHeadersStore,
             past_pruning_points::DbPastPruningPointsStore,
+            past_pruning_points::PastPruningPointsStore,
             pruning::{DbPruningStore, PruningStore, PruningStoreReader},
             reachability::DbReachabilityStore,
-            statuses::{BlockStatus, DbStatusesStore},
+            statuses::{BlockStatus, DbStatusesStore, StatusesStore, StatusesStoreReader},
             DB,
         },
     },
@@ -17,6 +19,7 @@ use crate::{
 };
 use consensus_core::{block::Block, blockhash::VIRTUAL};
 use crossbeam_channel::Receiver;
+use hashes::Hash;
 use parking_lot::{RwLock, RwLockUpgradableReadGuard};
 use rocksdb::WriteBatch;
 use std::sync::{
@@ -30,6 +33,9 @@ pub struct VirtualStateProcessor {
 
     // DB
     db: Arc<DB>,
+
+    // Config
+    genesis_hash: Hash,
 
     // Stores
     pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
@@ -48,6 +54,7 @@ impl VirtualStateProcessor {
     pub fn new(
         receiver: Receiver<BlockTask>,
         db: Arc<DB>,
+        genesis_hash: Hash,
         statuses_store: Arc<RwLock<DbStatusesStore>>,
         pruning_store: Arc<RwLock<DbPruningStore>>,
         ghostdag_store: Arc<DbGhostdagStore>,
@@ -58,6 +65,7 @@ impl VirtualStateProcessor {
         Self {
             receiver,
             db,
+            genesis_hash,
 
             statuses_store,
             reachability_service,
@@ -127,5 +135,13 @@ impl VirtualStateProcessor {
         }
 
         self.is_updating_pruning_point_or_candidate.store(false, atomic::Ordering::Release);
+    }
+
+    pub fn process_genesis_if_needed(self: &Arc<Self>) {
+        if let Some(BlockStatus::StatusUTXOValid) = self.statuses_store.read().get(self.genesis_hash).unwrap_option() {
+            return;
+        }
+        self.past_pruning_points_store.insert(0, self.genesis_hash).unwrap();
+        self.statuses_store.write().set(self.genesis_hash, BlockStatus::StatusUTXOValid).unwrap();
     }
 }

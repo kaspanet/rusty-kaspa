@@ -81,6 +81,7 @@ pub struct Consensus {
     >,
     pub(super) past_median_time_manager: PastMedianTimeManager<DbHeadersStore, DbGhostdagStore, BlockWindowCacheStore>,
     pub(super) coinbase_manager: CoinbaseManager,
+    pub(super) pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
 
     // Counters
     pub counters: Arc<ProcessingCounters>,
@@ -214,6 +215,7 @@ impl Consensus {
         let virtual_processor = Arc::new(VirtualStateProcessor::new(
             virtual_receiver,
             db.clone(),
+            params.genesis_hash,
             statuses_store.clone(),
             pruning_store.clone(),
             ghostdag_store.clone(),
@@ -249,6 +251,7 @@ impl Consensus {
             ),
             past_median_time_manager,
             coinbase_manager,
+            pruning_manager,
 
             counters,
         }
@@ -260,6 +263,7 @@ impl Consensus {
 
         // Ensure that genesis was processed
         self.header_processor.process_genesis_if_needed();
+        self.virtual_processor.process_genesis_if_needed();
 
         // Spawn the asynchronous processors.
         let header_processor = self.header_processor.clone();
