@@ -5,7 +5,7 @@ pub mod matrix;
 pub mod xoshiro;
 
 use crate::matrix::Matrix;
-use consensus_core::header::Header;
+use consensus_core::{header::Header, hashing};
 use hashes::PowHash;
 use math::Uint256;
 
@@ -18,10 +18,11 @@ pub struct State {
 }
 
 impl State {
-    #[inline(always)]
+    #[inline]
     pub fn new(header: &Header) -> Self {
         let target = Uint256::from_compact_target_bits(header.bits);
-        let pre_pow_hash = header.hash;
+        // Zero out the time and nonce.
+        let pre_pow_hash = hashing::header::hash_override_nonce_time(header, 0, 0);
         // PRE_POW_HASH || TIME || 32 zero byte padding || NONCE
         let hasher = PowHash::new(pre_pow_hash, header.timestamp);
         let matrix = Matrix::generate(pre_pow_hash);
@@ -29,7 +30,7 @@ impl State {
         Self { matrix, target, hasher }
     }
 
-    #[inline(always)]
+    #[inline]
     #[must_use]
     /// PRE_POW_HASH || TIME || 32 zero byte padding || NONCE
     pub fn calculate_pow(&self, nonce: u64) -> Uint256 {
@@ -39,7 +40,7 @@ impl State {
         Uint256::from_le_bytes(hash.as_bytes())
     }
 
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub fn check_pow(&self, nonce: u64) -> bool {
         let pow = self.calculate_pow(nonce);
