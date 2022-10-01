@@ -448,7 +448,7 @@ mod tests {
 
     #[tokio::test]
     async fn merkle_root_missing_parents_known_invalid_test() {
-        let params = MAINNET_PARAMS.clone();
+        let params = MAINNET_PARAMS.clone_with_skip_pow();
         let consensus = TestConsensus::create_from_temp_db(&params);
         let wait_handles = consensus.init();
 

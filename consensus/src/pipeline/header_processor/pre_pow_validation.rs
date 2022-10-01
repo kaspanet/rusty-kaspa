@@ -49,6 +49,9 @@ impl HeaderProcessor {
     }
 
     fn check_pow(self: &Arc<HeaderProcessor>, ctx: &mut HeaderProcessingContext, header: &Header) -> BlockProcessResult<()> {
+        if self.skip_proof_of_work {
+            return Ok(());
+        }
         let state = pow::State::new(header);
         if state.check_pow(header.nonce) {
             Ok(())

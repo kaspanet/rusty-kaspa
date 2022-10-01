@@ -203,7 +203,7 @@ async fn ghostdag_test() {
         let reader = BufReader::new(file);
         let test: GhostdagTestDag = serde_json::from_reader(reader).unwrap();
 
-        let mut params = MAINNET_PARAMS;
+        let mut params = MAINNET_PARAMS.clone_with_skip_pow();
         params.genesis_hash = string_to_hash(&test.genesis_id);
         params.ghostdag_k = test.k;
 
@@ -275,7 +275,7 @@ fn strings_to_hashes(strings: &Vec<String>) -> Vec<Hash> {
 async fn block_window_test() {
     let (_temp_db_lifetime, db) = create_temp_db();
 
-    let mut params = MAINNET_PARAMS;
+    let mut params = MAINNET_PARAMS.clone_with_skip_pow();
     params.genesis_hash = string_to_hash("A");
     params.ghostdag_k = 1;
 
@@ -450,8 +450,8 @@ async fn missing_parents_test() {
 // as a known invalid.
 #[tokio::test]
 async fn known_invalid_test() {
-    let params = &MAINNET_PARAMS;
-    let consensus = TestConsensus::create_from_temp_db(params);
+    let params = MAINNET_PARAMS.clone_with_skip_pow();
+    let consensus = TestConsensus::create_from_temp_db(&params);
     let wait_handles = consensus.init();
     let mut block = consensus.build_block_with_parents(1.into(), vec![params.genesis_hash]);
     block.header.timestamp -= 1;
@@ -476,8 +476,8 @@ async fn known_invalid_test() {
 
 #[tokio::test]
 async fn median_time_test() {
-    let params = &MAINNET_PARAMS;
-    let consensus = TestConsensus::create_from_temp_db(params);
+    let params = MAINNET_PARAMS.clone_with_skip_pow();
+    let consensus = TestConsensus::create_from_temp_db(&params);
     let wait_handles = consensus.init();
 
     let num_blocks = 2 * params.timestamp_deviation_tolerance - 1;
@@ -518,8 +518,8 @@ async fn median_time_test() {
 
 #[tokio::test]
 async fn mergeset_size_limit_test() {
-    let params = &MAINNET_PARAMS;
-    let consensus = TestConsensus::create_from_temp_db(params);
+    let params = MAINNET_PARAMS.clone_with_skip_pow();
+    let consensus = TestConsensus::create_from_temp_db(&params);
     let wait_handles = consensus.init();
 
     let num_blocks_per_chain = params.mergeset_size_limit + 1;
@@ -791,7 +791,7 @@ fn hex_decode(src: &str) -> Vec<u8> {
 
 #[tokio::test]
 async fn bounded_merge_depth_test() {
-    let mut params = MAINNET_PARAMS;
+    let mut params = MAINNET_PARAMS.clone_with_skip_pow();
     params.ghostdag_k = 5;
     params.merge_depth = 7;
 

@@ -5,7 +5,7 @@ pub mod matrix;
 pub mod xoshiro;
 
 use crate::matrix::Matrix;
-use consensus_core::{header::Header, hashing};
+use consensus_core::{hashing, header::Header};
 use hashes::PowHash;
 use math::Uint256;
 
