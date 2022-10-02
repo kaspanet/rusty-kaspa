@@ -11,6 +11,7 @@ impl TransactionValidator {
     pub fn validate_tx_in_isolation(&self, tx: &Transaction) -> TxResult<()> {
         self.check_transaction_inputs_in_isolation(tx)?;
         self.check_transaction_outputs_in_isolation(tx)?;
+        self.check_coinbase_in_isolation(tx)?;
 
         check_duplicate_transaction_inputs(tx)?;
         check_gas(tx)?;
@@ -26,6 +27,25 @@ impl TransactionValidator {
     fn check_transaction_outputs_in_isolation(&self, tx: &Transaction) -> TxResult<()> {
         self.check_transaction_outputs_count(tx)?;
         self.check_transaction_script_public_keys(tx)
+    }
+
+    fn check_coinbase_in_isolation(&self, tx: &consensus_core::tx::Transaction) -> TxResult<()> {
+        if !tx.is_coinbase() {
+            return Ok(());
+        }
+        if !tx.inputs.is_empty() {
+            return Err(TxRuleError::CoinbaseHasInputs(tx.inputs.len()));
+        }
+        let outputs_limit = self.ghostdag_k as u64 + 2;
+        if tx.outputs.len() as u64 > outputs_limit {
+            return Err(TxRuleError::CoinbaseTooManyOutputs(tx.outputs.len(), outputs_limit));
+        }
+        for (i, output) in tx.outputs.iter().enumerate() {
+            if output.script_public_key.script.len() > self.coinbase_payload_script_public_key_max_len as usize {
+                return Err(TxRuleError::CoinbaseScriptPublicKeyTooLong(i));
+            }
+        }
+        Ok(())
     }
 
     fn check_transaction_outputs_count(&self, tx: &Transaction) -> TxResult<()> {
@@ -125,23 +145,13 @@ mod tests {
             params.max_tx_outputs,
             params.max_signature_script_len,
             params.max_script_public_key_len,
+            params.ghostdag_k,
+            params.coinbase_payload_script_public_key_max_len,
         );
 
         let valid_cb = Transaction::new(
             0,
-            vec![Arc::new(TransactionInput {
-                previous_outpoint: TransactionOutpoint {
-                    transaction_id: TransactionId::from_slice(&[
-                        0x9b, 0x22, 0x59, 0x44, 0x66, 0xf0, 0xbe, 0x50, 0x7c, 0x1c, 0x8a, 0xf6, 0x06, 0x27, 0xe6, 0x33, 0x38, 0x7e,
-                        0xd1, 0xd5, 0x8c, 0x42, 0x59, 0x1a, 0x31, 0xac, 0x9a, 0xa6, 0x2e, 0xd5, 0x2b, 0x0f,
-                    ]),
-                    index: 0xffffffff,
-                },
-                signature_script: vec![],
-                sequence: u64::MAX,
-                sig_op_count: 0,
-                utxo_entry: None,
-            })],
+            vec![],
             vec![Arc::new(TransactionOutput {
                 value: 0x12a05f200,
                 script_public_key: Arc::new(ScriptPublicKey {

@@ -31,6 +31,15 @@ pub enum TxRuleError {
 
     #[error("transaction input #{0} is not finalized")]
     NotFinalized(usize),
+
+    #[error("coinbase transaction has {0} inputs while none are expected")]
+    CoinbaseHasInputs(usize),
+
+    #[error("coinbase transaction has {0} outputs while at most {1} are expected")]
+    CoinbaseTooManyOutputs(usize, u64),
+
+    #[error("script public key of coinbase output #{0} is too long")]
+    CoinbaseScriptPublicKeyTooLong(usize),
 }
 
 pub type TxResult<T> = std::result::Result<T, TxRuleError>;
