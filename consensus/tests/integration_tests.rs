@@ -15,23 +15,23 @@ use consensus_core::header::Header;
 use consensus_core::subnets::SubnetworkId;
 use consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
 use consensus_core::{blockhash, hashing, BlueWorkType};
-use futures_util::future::join_all;
 use hashes::Hash;
-use std::future::Future;
 
 use flate2::read::GzDecoder;
+use futures_util::future::join_all;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
-    fs::{self, File},
+    fs::File,
+    future::Future,
     io::{self, BufRead, BufReader},
     str::{from_utf8, FromStr},
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-mod common;
+pub mod common;
 
 #[derive(Serialize, Deserialize, Debug)]
 struct JsonBlock {
@@ -59,7 +59,7 @@ fn reachability_stretch_test(use_attack_json: bool) {
         if use_attack_json { "" } else { "no" },
         NUM_BLOCKS_EXPONENT
     );
-    let file = File::open(path_str).unwrap();
+    let file = common::open_file(&path_str);
     let decoder = GzDecoder::new(file);
     let json_blocks: Vec<JsonBlock> = serde_json::from_reader(decoder).unwrap();
 
@@ -194,12 +194,12 @@ struct GhostdagTestBlock {
 #[tokio::test]
 async fn ghostdag_test() {
     let mut path_strings: Vec<String> =
-        fs::read_dir("tests/testdata/dags").unwrap().map(|f| f.unwrap().path().to_str().unwrap().to_owned()).collect();
+        common::read_dir("tests/testdata/dags").map(|f| f.unwrap().path().to_str().unwrap().to_owned()).collect();
     path_strings.sort();
 
-    for path_string in path_strings.iter() {
-        println!("Running test {}", path_string);
-        let file = File::open(path_string).unwrap();
+    for path_str in path_strings.iter() {
+        println!("Running test {}", path_str);
+        let file = File::open(path_str).unwrap();
         let reader = BufReader::new(file);
         let test: GhostdagTestDag = serde_json::from_reader(reader).unwrap();
 
@@ -632,8 +632,27 @@ struct RPCBlockVerboseData {
 }
 
 #[tokio::test]
-async fn json_test() {
-    let file = File::open("tests/testdata/json_test.json.gz").unwrap();
+async fn goref_notx_test() {
+    json_test("tests/testdata/goref-notx-5000-blocks.json.gz").await
+}
+
+#[tokio::test]
+async fn goref_notx_concurrent_test() {
+    json_concurrency_test("tests/testdata/goref-notx-5000-blocks.json.gz").await
+}
+
+#[tokio::test]
+async fn goref_tx_small_test() {
+    json_test("tests/testdata/goref-905-tx-265-blocks.json.gz").await
+}
+
+#[tokio::test]
+async fn goref_tx_small_concurrent_test() {
+    json_concurrency_test("tests/testdata/goref-905-tx-265-blocks.json.gz").await
+}
+
+async fn json_test(file_path: &str) {
+    let file = common::open_file(file_path);
     let decoder = GzDecoder::new(file);
     let mut lines = BufReader::new(decoder).lines();
     let first_line = lines.next().unwrap();
@@ -669,9 +688,8 @@ async fn json_test() {
     consensus.shutdown(wait_handles);
 }
 
-#[tokio::test]
-async fn json_concurrency_test() {
-    let file = File::open("tests/testdata/json_test.json.gz").unwrap();
+async fn json_concurrency_test(file_path: &str) {
+    let file = common::open_file(file_path);
     let decoder = GzDecoder::new(file);
     let mut lines = io::BufReader::new(decoder).lines();
     let first_line = lines.next().unwrap();
@@ -691,9 +709,7 @@ async fn json_concurrency_test() {
 
     for mut chunk in iter {
         let current_joins = submit_chunk(&consensus, &mut chunk);
-
         join_all(prev_joins).await.into_iter().collect::<Result<Vec<BlockStatus>, RuleError>>().unwrap();
-
         prev_joins = current_joins;
     }
 
@@ -783,6 +799,9 @@ fn json_line_to_block(line: String) -> Block {
 }
 
 fn hex_decode(src: &str) -> Vec<u8> {
+    if src.is_empty() {
+        return Vec::new();
+    }
     let mut dst: Vec<u8> = vec![0; src.len() / 2];
     faster_hex::hex_decode(src.as_bytes(), &mut dst).unwrap();
     dst

@@ -12,10 +12,11 @@ pub mod subnets;
 pub mod tx;
 pub mod utxo;
 
+// TODO: switch to math::Uint192
 pub type BlueWorkType = u128;
 
 /// Defined in order to make it easy to experiment with various hashers
-pub type DomainHashSet = HashSet<Hash>;
+pub type BlockHashSet = HashSet<Hash>;
 
 /// Defined in order to make it easy to experiment with various hashers
-pub type DomainHashMap<T> = HashMap<Hash, T>;
+pub type BlockHashMap<T> = HashMap<Hash, T>;

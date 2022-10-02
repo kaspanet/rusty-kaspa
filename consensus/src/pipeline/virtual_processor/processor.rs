@@ -5,6 +5,7 @@ use crate::{
         services::reachability::{MTReachabilityService, ReachabilityService},
         stores::{
             block_transactions::{BlockTransactionsStoreReader, DbBlockTransactionsStore},
+            ghostdag::{DbGhostdagStore, GhostdagStoreReader},
             headers::{DbHeadersStore, HeaderStoreReader},
             reachability::DbReachabilityStore,
             statuses::{
@@ -22,8 +23,8 @@ use consensus_core::{
     blockhash,
     muhash::MuHashExtensions,
     tx::PopulatedTransaction,
-    utxo::{utxo_collection::UtxoCollection, utxo_diff::UtxoDiff},
-    DomainHashMap, DomainHashSet,
+    utxo::{utxo_collection::UtxoCollection, utxo_collection::UtxoCollectionExtensions, utxo_diff::UtxoDiff},
+    BlockHashMap, BlockHashSet,
 };
 use crossbeam_channel::Receiver;
 use hashes::Hash;
@@ -34,6 +35,7 @@ use parking_lot::RwLock;
 use std::{
     collections::hash_map::Entry::{Occupied, Vacant},
     iter::FromIterator,
+    ops::Deref,
     sync::Arc,
 };
 
@@ -55,6 +57,7 @@ pub struct VirtualStateProcessor {
 
     // Stores
     pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
+    pub(super) ghostdag_store: Arc<DbGhostdagStore>,
     pub(super) headers_store: Arc<DbHeadersStore>,
     pub(super) block_transactions_store: Arc<DbBlockTransactionsStore>,
 
@@ -69,6 +72,7 @@ impl VirtualStateProcessor {
         params: &Params,
         db: Arc<DB>,
         statuses_store: Arc<RwLock<DbStatusesStore>>,
+        ghostdag_store: Arc<DbGhostdagStore>,
         headers_store: Arc<DbHeadersStore>,
         block_transactions_store: Arc<DbBlockTransactionsStore>,
         ghostdag_manager: DbGhostdagManager,
@@ -79,6 +83,7 @@ impl VirtualStateProcessor {
             db,
             statuses_store,
             headers_store,
+            ghostdag_store,
             block_transactions_store,
             ghostdag_manager,
             reachability_service,
@@ -109,11 +114,6 @@ impl VirtualStateProcessor {
         block: &Arc<Block>,
         state: &mut VirtualState,
     ) -> BlockProcessResult<BlockStatus> {
-        // TEMP: assert only coinbase
-        // assert_eq!(block.transactions.len(), 1);
-        // assert!(block.transactions[0].is_coinbase());
-        // assert_eq!(self.statuses_store.read().get(block.header.hash).unwrap(), BlockStatus::StatusUTXOPendingVerification);
-
         let status = self.statuses_store.read().get(block.header.hash).unwrap();
         match status {
             StatusUTXOPendingVerification => {} // Proceed to resolve virtual
@@ -122,7 +122,7 @@ impl VirtualStateProcessor {
         }
 
         // Update tips
-        let parents_set = DomainHashSet::from_iter(block.header.direct_parents().iter().cloned());
+        let parents_set = BlockHashSet::from_iter(block.header.direct_parents().iter().cloned());
         state.tips.retain(|t| !parents_set.contains(t));
         state.tips.push(block.header.hash);
 
@@ -183,12 +183,48 @@ impl VirtualStateProcessor {
                         // Temp logic
                         assert!(!state.multiset_hashes.contains_key(&chain_hash));
                         let mut multiset_hash = state.multiset_hashes.get(&selected_parent).unwrap().clone();
+
+                        let mergeset_data = self.ghostdag_store.get_data(chain_hash).unwrap();
+
                         let selected_parent_transactions = self.block_transactions_store.get(selected_parent).unwrap();
                         let populated_coinbase = PopulatedTransaction::new_without_inputs(&selected_parent_transactions[0]);
 
-                        // TODO: prefill and populate UTXO entry data for all mergeset
                         utxo_diff.add_transaction(&populated_coinbase, chain_block_header.daa_score).unwrap();
                         multiset_hash.add_transaction(&populated_coinbase, chain_block_header.daa_score);
+
+                        for merged_block in mergeset_data.consensus_ordered_mergeset(self.ghostdag_store.deref()) {
+                            // TODO: prefill and populate UTXO entry data for all mergeset
+                            let txs = self.block_transactions_store.get(merged_block).unwrap();
+
+                            // Skip the coinbase tx. Note we already processed the selected parent coinbase
+                            for tx in txs.iter().skip(1) {
+                                let mut entries = Vec::with_capacity(tx.inputs.len());
+                                for input in tx.inputs.iter() {
+                                    // TODO: encapsulate and structure conditions properly
+                                    if state.utxo_set.contains_key(&input.previous_outpoint)
+                                        && !accumulated_diff.remove.contains_key(&input.previous_outpoint)
+                                        && !utxo_diff.remove.contains_key(&input.previous_outpoint)
+                                    {
+                                        entries.push(state.utxo_set.get(&input.previous_outpoint).unwrap().clone());
+                                    } else if accumulated_diff.add.contains_key(&input.previous_outpoint)
+                                        && !utxo_diff.remove.contains_key(&input.previous_outpoint)
+                                    {
+                                        entries.push(accumulated_diff.add.get(&input.previous_outpoint).unwrap().clone());
+                                    } else if utxo_diff.add.contains_key(&input.previous_outpoint) {
+                                        entries.push(utxo_diff.add.get(&input.previous_outpoint).unwrap().clone());
+                                    } else {
+                                        trace!("missing entry for block {} and outpoint {}", merged_block, input.previous_outpoint);
+                                    }
+                                }
+                                if entries.len() < tx.inputs.len() {
+                                    // Missing inputs
+                                    continue;
+                                }
+                                let populated_tx = PopulatedTransaction::new(tx, entries);
+                                utxo_diff.add_transaction(&populated_tx, chain_block_header.daa_score).unwrap();
+                                multiset_hash.add_transaction(&populated_tx, chain_block_header.daa_score);
+                            }
+                        }
 
                         accumulated_diff.with_diff_in_place(&utxo_diff).unwrap();
                         e.insert(utxo_diff);
@@ -205,7 +241,7 @@ impl VirtualStateProcessor {
                             );
                             BlockStatus::StatusDisqualifiedFromChain
                         } else {
-                            // trace!("correct commitment: {}, {}, {}", selected_parent, chain_hash, expected_commitment);
+                            trace!("correct commitment: {}, {}, {}", selected_parent, chain_hash, expected_commitment);
                             BlockStatus::StatusUTXOValid
                         };
 
@@ -219,6 +255,10 @@ impl VirtualStateProcessor {
             match self.statuses_store.read().get(new_selected).unwrap() {
                 BlockStatus::StatusUTXOValid => {
                     state.selected_tip = new_selected;
+
+                    // Apply the accumulated diff
+                    state.utxo_set.remove_many(&accumulated_diff.remove);
+                    state.utxo_set.add_many(&accumulated_diff.add);
                 }
                 BlockStatus::StatusDisqualifiedFromChain => {
                     // TODO: this means another chain needs to be checked
@@ -238,11 +278,11 @@ impl VirtualStateProcessor {
 
 /// TEMP: initial struct for holding complete virtual state in memory
 struct VirtualState {
-    utxo_set: UtxoCollection,            // TEMP: represents the utxo set of virtual selected parent
-    utxo_diffs: DomainHashMap<UtxoDiff>, // Holds diff of this block from selected parent
+    utxo_set: UtxoCollection,           // TEMP: represents the utxo set of virtual selected parent
+    utxo_diffs: BlockHashMap<UtxoDiff>, // Holds diff of this block from selected parent
     tips: Vec<Hash>,
     selected_tip: Hash,
-    multiset_hashes: DomainHashMap<MuHash>,
+    multiset_hashes: BlockHashMap<MuHash>,
 }
 
 impl VirtualState {
@@ -252,7 +292,7 @@ impl VirtualState {
             utxo_diffs: Default::default(),
             tips: vec![genesis_hash],
             selected_tip: genesis_hash,
-            multiset_hashes: DomainHashMap::from([(genesis_hash, MuHash::new())]),
+            multiset_hashes: BlockHashMap::from([(genesis_hash, MuHash::new())]),
         }
     }
 }

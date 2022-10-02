@@ -209,6 +209,7 @@ impl Consensus {
             params,
             db.clone(),
             statuses_store.clone(),
+            ghostdag_store.clone(),
             headers_store,
             block_transactions_store,
             ghostdag_manager.clone(),
