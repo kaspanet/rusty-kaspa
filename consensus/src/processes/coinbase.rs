@@ -82,10 +82,10 @@ impl CoinbaseManager {
         let blue_score = u64::from_le_bytes(payload[..UINT64_LEN].try_into().unwrap());
         let subsidy = u64::from_le_bytes(payload[UINT64_LEN..UINT64_LEN + LENGTH_OF_SUBSIDY].try_into().unwrap());
 
-        // Because LENGTH_OF_VERSION_SCRIPT_PUB_KEY is two bytes and script_pub_key_version reads only one byte, there's one byte
-        // in the middle where the miner can write any arbitrary data. This means the code cannot support script pub key version
-        // higher than 255. This can be fixed only via a soft-fork.
-        let script_pub_key_version = payload[UINT64_LEN + LENGTH_OF_SUBSIDY] as u16;
+        const VERSION_START: usize = UINT64_LEN + LENGTH_OF_SUBSIDY;
+        let script_pub_key_version =
+            u16::from_le_bytes(payload[VERSION_START..VERSION_START + LENGTH_OF_VERSION_SCRIPT_PUB_KEY].try_into().unwrap());
+
         let script_pub_key_len = payload[UINT64_LEN + LENGTH_OF_SUBSIDY + LENGTH_OF_VERSION_SCRIPT_PUB_KEY];
         if script_pub_key_len > self.coinbase_payload_script_public_key_max_len {
             return Err(CoinbaseError::PayloadScriptPublicKeyLenAboveMax(
