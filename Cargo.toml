@@ -2,8 +2,9 @@
 members = [
     "core",
     "wallet",
-    "consensus/core",
     "consensus",
+    "consensus/core",
+    "consensus/pow",
     "kaspad",
     "wasm",
     "math",
@@ -32,6 +33,7 @@ hashes = { path = "crypto/hashes" }
 muhash = { path = "crypto/muhash" }
 addresses = { path = "crypto/addresses" }
 merkle = { path = "crypto/merkle" }
+pow = { path = "consensus/pow" }
 
 thiserror = "1"
 faster-hex = "0.6"
