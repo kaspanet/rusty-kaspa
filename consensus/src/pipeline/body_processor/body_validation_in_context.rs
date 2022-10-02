@@ -94,7 +94,7 @@ mod tests {
 
     #[tokio::test]
     async fn validate_body_in_context_test() {
-        let mut params = MAINNET_PARAMS.clone();
+        let mut params = MAINNET_PARAMS.clone_with_skip_pow();
         params.deflationary_phase_daa_score = 2;
         let consensus = TestConsensus::create_from_temp_db(&params);
         let wait_handles = consensus.init();

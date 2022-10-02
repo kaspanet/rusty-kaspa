@@ -74,55 +74,15 @@ impl<T: HeaderStoreReader> DifficultyManager<T> {
         // TODO: Try to see if we can use U256 instead, by modifying the algorithm.
         let difficulty_blocks_len = difficulty_blocks.len();
         let targets_sum: Uint320 =
-            difficulty_blocks.into_iter().map(|diff_block| Uint320::from(u256_from_compact_target(diff_block.bits))).sum();
+            difficulty_blocks.into_iter().map(|diff_block| Uint320::from(Uint256::from_compact_target_bits(diff_block.bits))).sum();
         let average_target = targets_sum / (difficulty_blocks_len as u64);
         let new_target = average_target * max(max_ts - min_ts, 1) / self.target_time_per_block / difficulty_blocks_len as u64;
-        compact_target_from_uint256(new_target.try_into().expect("Expected target should be less than 2^256"))
+        Uint256::try_from(new_target).expect("Expected target should be less than 2^256").compact_target_bits()
     }
-}
-
-pub fn u256_from_compact_target(bits: u32) -> Uint256 {
-    // This is a floating-point "compact" encoding originally used by
-    // OpenSSL, which satoshi put into consensus code, so we're stuck
-    // with it. The exponent needs to have 3 subtracted from it, hence
-    // this goofy decoding code:
-    let (mant, expt) = {
-        let unshifted_expt = bits >> 24;
-        if unshifted_expt <= 3 {
-            ((bits & 0xFFFFFF) >> (8 * (3 - unshifted_expt)), 0)
-        } else {
-            (bits & 0xFFFFFF, 8 * ((bits >> 24) - 3))
-        }
-    };
-
-    // The mantissa is signed but may not be negative
-    if mant > 0x7FFFFF {
-        Uint256::ZERO
-    } else {
-        Uint256::from_u64(u64::from(mant)) << expt
-    }
-}
-
-/// Computes the target value in float format from BigInt format.
-fn compact_target_from_uint256(value: Uint256) -> u32 {
-    let mut size = (value.bits() + 7) / 8;
-    let mut compact = if size <= 3 {
-        (value.as_u64() << (8 * (3 - size))) as u32
-    } else {
-        let bn = value >> (8 * (size - 3));
-        bn.as_u64() as u32
-    };
-
-    if (compact & 0x00800000) != 0 {
-        compact >>= 8;
-        size += 1;
-    }
-
-    compact | (size << 24) as u32
 }
 
 pub fn calc_work(bits: u32) -> BlueWorkType {
-    let target = u256_from_compact_target(bits);
+    let target = Uint256::from_compact_target_bits(bits);
     // Source: https://github.com/bitcoin/bitcoin/blob/2e34374bf3e12b37b0c66824a6c998073cdfab01/src/chain.cpp#L131
     // We need to compute 2**256 / (bnTarget+1), but we can't represent 2**256
     // as it's too large for an arith_uint256. However, as 2**256 is at least as large
