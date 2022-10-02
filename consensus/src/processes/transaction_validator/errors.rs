@@ -35,6 +35,15 @@ pub enum TxRuleError {
     #[error("transaction input #{0} is not finalized")]
     NotFinalized(usize),
 
+    #[error("coinbase transaction has {0} inputs while none are expected")]
+    CoinbaseHasInputs(usize),
+
+    #[error("coinbase transaction has {0} outputs while at most {1} are expected")]
+    CoinbaseTooManyOutputs(usize, u64),
+
+    #[error("script public key of coinbase output #{0} is too long")]
+    CoinbaseScriptPublicKeyTooLong(usize),
+
     #[error("transaction input #{0} tried to spend coinbase outpoint {1} with daa score of {2} while the merging block daa score is {3} and the coinbase maturity period of {4} hasn't passed yet")]
     ImmatureCoinbaseSpend(usize, TransactionOutpoint, u64, u64, u64),
 

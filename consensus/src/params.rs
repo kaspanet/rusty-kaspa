@@ -28,6 +28,17 @@ pub struct Params {
     pub deflationary_phase_daa_score: u64,
     pub pre_deflationary_phase_base_subsidy: u64,
     pub coinbase_maturity: u64,
+    pub skip_proof_of_work: bool,
+}
+
+impl Params {
+    /// Clones the params instance and sets `skip_proof_of_work = true`.
+    /// Should be used for testing purposes only.
+    pub fn clone_with_skip_pow(&self) -> Self {
+        let mut cloned_params = self.clone();
+        cloned_params.skip_proof_of_work = true;
+        cloned_params
+    }
 }
 
 const DEFAULT_GHOSTDAG_K: KType = 18;
@@ -70,4 +81,5 @@ pub const MAINNET_PARAMS: Params = Params {
     pre_deflationary_phase_base_subsidy: 50000000000,
 
     coinbase_maturity: 100,
+    skip_proof_of_work: false,
 };

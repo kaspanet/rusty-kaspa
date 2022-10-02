@@ -142,8 +142,8 @@ mod tests {
                     ]),
                 ],
                 Hash::from_slice(&[
-                    0x86, 0x8b, 0x73, 0xcd, 0x20, 0x51, 0x23, 0x60, 0xea, 0x62, 0x99, 0x9b, 0x87, 0xf6, 0xdd, 0x8d, 0xa4, 0x0b, 0xd7,
-                    0xcf, 0xc6, 0x32, 0x38, 0xee, 0xd9, 0x68, 0x72, 0x1f, 0xa2, 0x51, 0xe4, 0x28,
+                    0x46, 0xec, 0xf4, 0x5b, 0xe3, 0xba, 0xca, 0x34, 0x9d, 0xfe, 0x8a, 0x78, 0xde, 0xaf, 0x05, 0x3b, 0x0a, 0xa6, 0xd5,
+                    0x38, 0x97, 0x4d, 0xa5, 0x0f, 0xd6, 0xef, 0xb4, 0xd2, 0x66, 0xbc, 0x8d, 0x21,
                 ]),
                 0x17305aa654a,
                 0x207fffff,
@@ -155,18 +155,7 @@ mod tests {
             transactions: Arc::new(vec![
                 Transaction::new(
                     0,
-                    vec![Arc::new(TransactionInput {
-                        previous_outpoint: TransactionOutpoint {
-                            transaction_id: TransactionId::from_slice(&[
-                                0x9b, 0x22, 0x59, 0x44, 0x66, 0xf0, 0xbe, 0x50, 0x7c, 0x1c, 0x8a, 0xf6, 0x06, 0x27, 0xe6, 0x33, 0x38,
-                                0x7e, 0xd1, 0xd5, 0x8c, 0x42, 0x59, 0x1a, 0x31, 0xac, 0x9a, 0xa6, 0x2e, 0xd5, 0x2b, 0x0f,
-                            ]),
-                            index: 0xffffffff,
-                        },
-                        signature_script: vec![],
-                        sequence: u64::MAX,
-                        sig_op_count: 0,
-                    })],
+                    vec![],
                     vec![Arc::new(TransactionOutput {
                         value: 0x12a05f200,
                         script_public_key: Arc::new(ScriptPublicKey {
@@ -400,6 +389,7 @@ mod tests {
         let txs = Arc::make_mut(&mut block.transactions);
         Arc::make_mut(&mut txs[1].inputs[0]).sig_op_count = 255;
         Arc::make_mut(&mut txs[1].inputs[1]).sig_op_count = 255;
+        block.header.hash_merkle_root = calc_hash_merkle_root(txs.iter());
         assert_match!(body_processor.validate_body_in_isolation(&block), Err(RuleError::ExceedsMassLimit(_)));
 
         let mut block = example_block.clone();
@@ -443,7 +433,7 @@ mod tests {
 
     #[tokio::test]
     async fn merkle_root_missing_parents_known_invalid_test() {
-        let params = MAINNET_PARAMS.clone();
+        let params = MAINNET_PARAMS.clone_with_skip_pow();
         let consensus = TestConsensus::create_from_temp_db(&params);
         let wait_handles = consensus.init();
 

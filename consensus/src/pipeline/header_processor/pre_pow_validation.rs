@@ -49,7 +49,15 @@ impl HeaderProcessor {
     }
 
     fn check_pow(self: &Arc<HeaderProcessor>, ctx: &mut HeaderProcessingContext, header: &Header) -> BlockProcessResult<()> {
-        Ok(()) // TODO: Check PoW
+        if self.skip_proof_of_work {
+            return Ok(());
+        }
+        let state = pow::State::new(header);
+        if state.check_pow(header.nonce) {
+            Ok(())
+        } else {
+            Err(RuleError::InvalidPoW)
+        }
     }
 
     fn check_difficulty_and_daa_score(

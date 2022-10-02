@@ -34,7 +34,7 @@ pub fn main() {
 
     // ---
 
-    let mut params = MAINNET_PARAMS;
+    let mut params = MAINNET_PARAMS.clone_with_skip_pow();
     params.genesis_hash = genesis;
 
     // Make sure to create the DB first, so it cleans up last

@@ -42,8 +42,7 @@ macro_rules! construct_uint {
                 self.0[0] as u64
             }
 
-            // TODO: Benchmark this
-            #[inline]
+            #[inline(always)]
             pub fn is_zero(self) -> bool {
                 self.0.iter().all(|&a| a == 0)
             }

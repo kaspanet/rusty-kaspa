@@ -96,6 +96,7 @@ pub struct HeaderProcessor {
     pub(super) difficulty_window_size: usize,
     pub(super) mergeset_size_limit: u64,
     pub(super) genesis_bits: u32,
+    pub(super) skip_proof_of_work: bool,
 
     // DB
     db: Arc<DB>,
@@ -193,6 +194,7 @@ impl HeaderProcessor {
             max_block_parents: params.max_block_parents,
             mergeset_size_limit: params.mergeset_size_limit,
             genesis_bits: params.genesis_bits,
+            skip_proof_of_work: params.skip_proof_of_work,
         }
     }
 

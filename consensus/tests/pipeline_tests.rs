@@ -85,7 +85,7 @@ fn test_reachability_staging() {
 async fn test_concurrent_pipeline() {
     let (_temp_db_lifetime, db) = create_temp_db();
 
-    let mut params = MAINNET_PARAMS;
+    let mut params = MAINNET_PARAMS.clone_with_skip_pow();
     params.genesis_hash = 1.into();
 
     let consensus = TestConsensus::new(db, &params);
@@ -158,7 +158,7 @@ async fn test_concurrent_pipeline_random() {
 
     let (_temp_db_lifetime, db) = create_temp_db();
 
-    let mut params = MAINNET_PARAMS;
+    let mut params = MAINNET_PARAMS.clone_with_skip_pow();
     params.genesis_hash = genesis;
 
     let consensus = TestConsensus::new(db, &params);

@@ -10,7 +10,7 @@ construct_uint!(Uint128, 2);
 construct_uint!(Uint256, 4);
 
 // Big enough to make the cache not very useful
-const ITERS_3072: usize = 1024;
+const ITERS_3072: usize = 128;
 const ITERS_256: usize = (3072 / 256) * ITERS_3072;
 const ITERS_128: usize = ITERS_256 * (256 / 128);
 
@@ -81,7 +81,7 @@ fn bench_uint256(c: &mut Criterion) {
         })
         .collect();
     let shifts: Vec<_> = (0..ITERS_256).map(|_| rng.next_u32() % 256 * 8).collect();
-    let u64s: Vec<_> = (0..ITERS_128).map(|_| rng.next_u64()).collect();
+    let u64s: Vec<_> = (0..ITERS_256).map(|_| rng.next_u64()).collect();
 
     let mut uint256_c = c.benchmark_group("Uint256");
     bench_op(&mut uint256_c, &uint256_one, &uint256_two, |a, b| a + b, "add");
@@ -110,8 +110,13 @@ fn bench_uint3072(c: &mut Criterion) {
             Uint3072::from_le_bytes(buf)
         })
         .collect();
-    let shifts: Vec<_> = (0..ITERS_256).map(|_| rng.next_u32() % 3072 * 8).collect();
-    let u64s: Vec<_> = (0..ITERS_128).map(|_| rng.next_u64()).collect();
+    let shifts: Vec<_> = (0..ITERS_3072).map(|_| rng.next_u32() % 3072 * 8).collect();
+    let u64s: Vec<_> = (0..ITERS_3072).map(|_| rng.next_u64()).collect();
+    const PRIME: Uint3072 = {
+        let mut max = Uint3072::MAX;
+        max.0[0] -= 1103716;
+        max
+    };
 
     let mut uint3072_c = c.benchmark_group("Uint3072");
     bench_op(&mut uint3072_c, &uint3072_one, &uint3072_two, |a, b| a + b, "add");
@@ -122,6 +127,13 @@ fn bench_uint3072(c: &mut Criterion) {
     bench_op(&mut uint3072_c, &uint3072_one, &u64s, |a, b| a / b, "u64 division");
     bench_op(&mut uint3072_c, &uint3072_one, &shifts, |a, b| a << b, "left shift");
     bench_op(&mut uint3072_c, &uint3072_one, &shifts, |a, b| a >> b, "right shift");
+    uint3072_c.bench_function("mod_inv Muhash prime", |b| {
+        b.iter(|| {
+            for &a in &uint3072_one[..uint3072_one.len() / 4] {
+                black_box(a.mod_inverse(PRIME));
+            }
+        });
+    });
     uint3072_c.finish();
 }
 

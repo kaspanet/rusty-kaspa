@@ -151,6 +151,8 @@ impl Consensus {
             params.max_tx_outputs,
             params.max_signature_script_len,
             params.max_script_public_key_len,
+            params.ghostdag_k,
+            params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity,
             headers_store.clone(),
         );
