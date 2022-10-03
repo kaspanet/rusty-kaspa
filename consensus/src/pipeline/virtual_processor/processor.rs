@@ -95,36 +95,48 @@ impl VirtualStateProcessor {
 
     pub fn worker(self: &Arc<VirtualStateProcessor>) {
         let mut state = VirtualState::new(self.genesis_hash);
-        while let Ok(task) = self.receiver.recv() {
-            match task {
-                BlockTask::Exit => break,
-                BlockTask::Process(block, result_transmitters) => {
-                    let res = self.resolve_virtual(&block, &mut state);
-                    for transmitter in result_transmitters {
-                        // We don't care if receivers were dropped
-                        let _ = transmitter.send(res.clone());
+        'outer: while let Ok(first_task) = self.receiver.recv() {
+            // Once a task arrived, collect all pending tasks from the channel.
+            // This is done since virtual processing is not a per-block
+            // operation, so it benefits from max available info
+            let tasks: Vec<BlockTask> = std::iter::once(first_task).chain(self.receiver.try_iter()).collect();
+            trace!("virtual processor received {} tasks", tasks.len() + 1);
+
+            let mut blocks = tasks.iter().map_while(|t| if let BlockTask::Process(b, _) = t { Some(b) } else { None });
+            self.resolve_virtual(&mut blocks, &mut state).unwrap();
+
+            let statuses_read = self.statuses_store.read();
+            for task in tasks {
+                match task {
+                    BlockTask::Exit => break 'outer,
+                    BlockTask::Process(block, result_transmitters) => {
+                        for transmitter in result_transmitters {
+                            // We don't care if receivers were dropped
+                            let _ = transmitter.send(Ok(statuses_read.get(block.hash()).unwrap()));
+                        }
                     }
-                }
-            };
+                };
+            }
         }
     }
 
-    fn resolve_virtual(
+    fn resolve_virtual<'a>(
         self: &Arc<VirtualStateProcessor>,
-        block: &Arc<Block>,
+        blocks: &mut impl Iterator<Item = &'a Arc<Block>>,
         state: &mut VirtualState,
-    ) -> BlockProcessResult<BlockStatus> {
-        let status = self.statuses_store.read().get(block.header.hash).unwrap();
-        match status {
-            StatusUTXOPendingVerification => {} // Proceed to resolve virtual
-            StatusUTXOValid | StatusDisqualifiedFromChain => return Ok(status),
-            _ => panic!("unexpected block status {:?}", status),
-        }
+    ) -> BlockProcessResult<()> {
+        for block in blocks {
+            let status = self.statuses_store.read().get(block.header.hash).unwrap();
+            match status {
+                StatusUTXOPendingVerification | StatusUTXOValid | StatusDisqualifiedFromChain => {}
+                _ => panic!("unexpected block status {:?}", status),
+            }
 
-        // Update tips
-        let parents_set = BlockHashSet::from_iter(block.header.direct_parents().iter().cloned());
-        state.tips.retain(|t| !parents_set.contains(t));
-        state.tips.push(block.header.hash);
+            // Update tips
+            let parents_set = BlockHashSet::from_iter(block.header.direct_parents().iter().cloned());
+            state.tips.retain(|t| !parents_set.contains(t));
+            state.tips.push(block.header.hash);
+        }
 
         // TEMP: using all tips as virtual parents
         let virtual_ghostdag_data = self.ghostdag_manager.ghostdag(&state.tips);
@@ -137,9 +149,9 @@ impl VirtualStateProcessor {
             let prev_selected = state.selected_tip;
             let new_selected = virtual_ghostdag_data.selected_parent;
 
-            if new_selected != block.header.hash {
-                trace!("{:?}, {}, {}, {}", state.tips, state.selected_tip, new_selected, block.header.hash);
-            }
+            // if new_selected != block.header.hash {
+            //     trace!("{:?}, {}, {}, {}", state.tips, state.selected_tip, new_selected, block.header.hash);
+            // }
 
             // TEMP:
             // assert_eq!(new_selected, block.header.hash);
@@ -265,9 +277,9 @@ impl VirtualStateProcessor {
                 }
                 _ => panic!("expected utxo valid or disqualified"),
             };
-            Ok(self.statuses_store.read().get(block.hash()).unwrap())
+            Ok(())
         } else {
-            Ok(BlockStatus::StatusUTXOPendingVerification)
+            Ok(())
         }
     }
 

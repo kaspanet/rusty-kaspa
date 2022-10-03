@@ -34,6 +34,10 @@ impl BlockStatus {
     pub fn has_block_body(self) -> bool {
         matches!(self, Self::StatusUTXOValid | Self::StatusUTXOPendingVerification | Self::StatusDisqualifiedFromChain)
     }
+
+    pub fn is_utxo_valid_or_pending(self) -> bool {
+        matches!(self, Self::StatusUTXOValid | Self::StatusUTXOPendingVerification)
+    }
 }
 
 /// Reader API for `StatusesStore`.

@@ -4,7 +4,7 @@ use std::{
     path::Path,
 };
 
-#[allow(dead_code)] // Usage by integrations tests in ignored by the compiler for some reason
+#[allow(dead_code)] // Usage by integration tests in ignored by the compiler for some reason
 pub fn open_file(file_path: &str) -> File {
     let file_res = File::open(file_path);
     match file_res {
@@ -20,7 +20,7 @@ pub fn open_file(file_path: &str) -> File {
     }
 }
 
-#[allow(dead_code)] // Usage by integrations tests in ignored by the compiler
+#[allow(dead_code)] // Usage by integration tests in ignored by the compiler
 pub fn read_dir(dir_path: &str) -> ReadDir {
     let dir_res = fs::read_dir(dir_path);
     match dir_res {

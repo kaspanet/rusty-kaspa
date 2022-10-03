@@ -683,7 +683,7 @@ async fn json_test(file_path: &str) {
             .validate_and_insert_block(Arc::new(block))
             .await
             .unwrap_or_else(|e| panic!("block {} {} failed: {}", i, hash, e));
-        assert!(status == BlockStatus::StatusUTXOPendingVerification || status == BlockStatus::StatusUTXOValid);
+        assert!(status.is_utxo_valid_or_pending());
     }
     consensus.shutdown(wait_handles);
 }
@@ -709,11 +709,13 @@ async fn json_concurrency_test(file_path: &str) {
 
     for mut chunk in iter {
         let current_joins = submit_chunk(&consensus, &mut chunk);
-        join_all(prev_joins).await.into_iter().collect::<Result<Vec<BlockStatus>, RuleError>>().unwrap();
+        let statuses = join_all(prev_joins).await.into_iter().collect::<Result<Vec<BlockStatus>, RuleError>>().unwrap();
+        assert!(statuses.iter().all(|s| s.is_utxo_valid_or_pending()));
         prev_joins = current_joins;
     }
 
-    join_all(prev_joins).await.into_iter().collect::<Result<Vec<BlockStatus>, RuleError>>().unwrap();
+    let statuses = join_all(prev_joins).await.into_iter().collect::<Result<Vec<BlockStatus>, RuleError>>().unwrap();
+    assert!(statuses.iter().all(|s| s.is_utxo_valid_or_pending()));
 
     consensus.shutdown(wait_handles);
 }
