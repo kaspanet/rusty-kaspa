@@ -87,7 +87,6 @@ impl HeaderProcessor {
         if expected != header.pruning_point {
             return Err(RuleError::WrongHeaderPruningPoint(expected, header.pruning_point));
         }
-        // TODO: Implement this
         Ok(())
     }
 

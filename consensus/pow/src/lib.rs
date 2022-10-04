@@ -42,9 +42,9 @@ impl State {
 
     #[inline]
     #[must_use]
-    pub fn check_pow(&self, nonce: u64) -> bool {
+    pub fn check_pow(&self, nonce: u64) -> (bool, Uint256) {
         let pow = self.calculate_pow(nonce);
         // The pow hash must be less or equal than the claimed target.
-        pow <= self.target
+        (pow <= self.target, pow)
     }
 }

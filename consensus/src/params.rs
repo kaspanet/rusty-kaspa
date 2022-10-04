@@ -29,6 +29,7 @@ pub struct Params {
     pub deflationary_phase_daa_score: u64,
     pub pre_deflationary_phase_base_subsidy: u64,
     pub skip_proof_of_work: bool,
+    pub max_block_level: u8,
 }
 
 impl Params {
@@ -80,6 +81,6 @@ pub const MAINNET_PARAMS: Params = Params {
     // Three days in seconds = 3 * 24 * 60 * 60 = 259200
     deflationary_phase_daa_score: 15778800 - 259200,
     pre_deflationary_phase_base_subsidy: 50000000000,
-
     skip_proof_of_work: false,
+    max_block_level: 225,
 };

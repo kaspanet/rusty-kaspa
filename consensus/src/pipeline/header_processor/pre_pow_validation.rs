@@ -49,11 +49,11 @@ impl HeaderProcessor {
     }
 
     fn check_pow(self: &Arc<HeaderProcessor>, ctx: &mut HeaderProcessingContext, header: &Header) -> BlockProcessResult<()> {
-        if self.skip_proof_of_work {
-            return Ok(());
-        }
         let state = pow::State::new(header);
-        if state.check_pow(header.nonce) {
+        let (passed, pow) = state.check_pow(header.nonce);
+        if passed || self.skip_proof_of_work {
+            let signed_block_level = self.max_block_level as i64 - pow.bits() as i64;
+            ctx.block_level = if signed_block_level > 0 { Some(signed_block_level as u8) } else { Some(0) };
             Ok(())
         } else {
             Err(RuleError::InvalidPoW)

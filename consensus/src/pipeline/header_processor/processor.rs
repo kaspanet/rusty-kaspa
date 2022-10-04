@@ -55,6 +55,7 @@ pub struct HeaderProcessingContext<'a> {
     pub daa_added_blocks: Option<Vec<Hash>>,
     pub merge_depth_root: Option<Hash>,
     pub finality_point: Option<Hash>,
+    pub block_level: Option<u8>,
 
     // Cache
     non_pruned_parents: Option<BlockHashes>,
@@ -75,6 +76,7 @@ impl<'a> HeaderProcessingContext<'a> {
             block_window_for_past_median_time: None,
             merge_depth_root: None,
             finality_point: None,
+            block_level: None,
         }
     }
 
@@ -103,6 +105,7 @@ pub struct HeaderProcessor {
     pub(super) mergeset_size_limit: u64,
     pub(super) genesis_bits: u32,
     pub(super) skip_proof_of_work: bool,
+    pub(super) max_block_level: u8,
 
     // DB
     db: Arc<DB>,
@@ -204,6 +207,7 @@ impl HeaderProcessor {
             mergeset_size_limit: params.mergeset_size_limit,
             genesis_bits: params.genesis_bits,
             skip_proof_of_work: params.skip_proof_of_work,
+            max_block_level: params.max_block_level,
         }
     }
 
@@ -310,7 +314,7 @@ impl HeaderProcessor {
         self.block_window_cache_for_difficulty.insert(ctx.hash, Arc::new(ctx.block_window_for_difficulty.unwrap()));
         self.block_window_cache_for_past_median_time.insert(ctx.hash, Arc::new(ctx.block_window_for_past_median_time.unwrap()));
         self.daa_store.insert_batch(&mut batch, ctx.hash, Arc::new(ctx.daa_added_blocks.unwrap())).unwrap();
-        self.headers_store.insert_batch(&mut batch, ctx.hash, Arc::new(ctx.header.clone())).unwrap();
+        self.headers_store.insert_batch(&mut batch, ctx.hash, Arc::new(ctx.header.clone()), ctx.block_level.unwrap()).unwrap();
         self.depth_store.insert_batch(&mut batch, ctx.hash, ctx.merge_depth_root.unwrap(), ctx.finality_point.unwrap()).unwrap();
 
         // Create staging reachability store. We use an upgradable read here to avoid concurrent
@@ -367,6 +371,7 @@ impl HeaderProcessor {
         ctx.daa_added_blocks = Some(Default::default());
         ctx.merge_depth_root = Some(ORIGIN);
         ctx.finality_point = Some(ORIGIN);
+        ctx.block_level = Some(self.max_block_level);
         self.commit_header(ctx, &header);
     }
 }
