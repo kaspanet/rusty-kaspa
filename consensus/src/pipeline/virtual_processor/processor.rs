@@ -23,7 +23,12 @@ use consensus_core::{
     blockhash,
     muhash::MuHashExtensions,
     tx::PopulatedTransaction,
-    utxo::{utxo_collection::UtxoCollection, utxo_collection::UtxoCollectionExtensions, utxo_diff::UtxoDiff},
+    utxo::{
+        utxo_collection::UtxoCollection,
+        utxo_collection::UtxoCollectionExtensions,
+        utxo_diff::UtxoDiff,
+        utxo_view::{HierarchicUtxoView, UtxoView},
+    },
     BlockHashMap, BlockHashSet,
 };
 use crossbeam_channel::Receiver;
@@ -100,7 +105,7 @@ impl VirtualStateProcessor {
             // This is done since virtual processing is not a per-block
             // operation, so it benefits from max available info
             let tasks: Vec<BlockTask> = std::iter::once(first_task).chain(self.receiver.try_iter()).collect();
-            trace!("virtual processor received {} tasks", tasks.len() + 1);
+            trace!("virtual processor received {} tasks", tasks.len());
 
             let mut blocks = tasks.iter().map_while(|t| if let BlockTask::Process(b, _) = t { Some(b) } else { None });
             self.resolve_virtual(&mut blocks, &mut state).unwrap();
@@ -211,19 +216,11 @@ impl VirtualStateProcessor {
                             // Skip the coinbase tx. Note we already processed the selected parent coinbase
                             for tx in txs.iter().skip(1) {
                                 let mut entries = Vec::with_capacity(tx.inputs.len());
+                                let inner_view = HierarchicUtxoView::new(&state.utxo_set, &accumulated_diff);
+                                let utxo_view = HierarchicUtxoView::new(&inner_view, &utxo_diff);
                                 for input in tx.inputs.iter() {
-                                    // TODO: encapsulate and structure conditions properly
-                                    if state.utxo_set.contains_key(&input.previous_outpoint)
-                                        && !accumulated_diff.remove.contains_key(&input.previous_outpoint)
-                                        && !utxo_diff.remove.contains_key(&input.previous_outpoint)
-                                    {
-                                        entries.push(state.utxo_set.get(&input.previous_outpoint).unwrap().clone());
-                                    } else if accumulated_diff.add.contains_key(&input.previous_outpoint)
-                                        && !utxo_diff.remove.contains_key(&input.previous_outpoint)
-                                    {
-                                        entries.push(accumulated_diff.add.get(&input.previous_outpoint).unwrap().clone());
-                                    } else if utxo_diff.add.contains_key(&input.previous_outpoint) {
-                                        entries.push(utxo_diff.add.get(&input.previous_outpoint).unwrap().clone());
+                                    if let Some(entry) = utxo_view.get(&input.previous_outpoint) {
+                                        entries.push(entry.clone());
                                     } else {
                                         trace!("missing entry for block {} and outpoint {}", merged_block, input.previous_outpoint);
                                     }

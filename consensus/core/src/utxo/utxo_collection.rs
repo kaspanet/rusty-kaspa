@@ -1,3 +1,4 @@
+use super::utxo_view::UtxoView;
 use crate::tx::*;
 use std::collections::HashMap;
 
@@ -22,6 +23,12 @@ pub trait UtxoCollectionExtensions {
     fn intersects_with_rule<F>(&self, other: &Self, rule: F) -> Option<TransactionOutpoint>
     where
         F: Fn(&TransactionOutpoint, &UtxoEntry, &UtxoEntry) -> bool;
+}
+
+impl UtxoView for UtxoCollection {
+    fn get(&self, outpoint: &TransactionOutpoint) -> Option<&UtxoEntry> {
+        self.get(outpoint)
+    }
 }
 
 impl UtxoCollectionExtensions for UtxoCollection {
