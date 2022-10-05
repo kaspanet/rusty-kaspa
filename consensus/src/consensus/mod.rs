@@ -198,7 +198,7 @@ impl Consensus {
             reachability_service.clone(),
             coinbase_manager.clone(),
             mass_calculator,
-            transaction_validator,
+            transaction_validator.clone(),
             past_median_time_manager.clone(),
             params.max_block_mass,
             params.genesis_hash,
@@ -214,6 +214,7 @@ impl Consensus {
             block_transactions_store,
             ghostdag_manager.clone(),
             reachability_service.clone(),
+            transaction_validator,
         ));
 
         Self {

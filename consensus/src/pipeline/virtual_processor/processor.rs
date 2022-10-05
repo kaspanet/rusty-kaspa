@@ -17,6 +17,7 @@ use crate::{
     },
     params::Params,
     pipeline::deps_manager::BlockTask,
+    processes::transaction_validator::TransactionValidator,
 };
 use consensus_core::{
     block::Block,
@@ -69,6 +70,7 @@ pub struct VirtualStateProcessor {
     // Managers and services
     pub(super) ghostdag_manager: DbGhostdagManager,
     pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
+    pub(super) transaction_validator: TransactionValidator<DbHeadersStore>,
 }
 
 impl VirtualStateProcessor {
@@ -82,6 +84,7 @@ impl VirtualStateProcessor {
         block_transactions_store: Arc<DbBlockTransactionsStore>,
         ghostdag_manager: DbGhostdagManager,
         reachability_service: MTReachabilityService<DbReachabilityStore>,
+        transaction_validator: TransactionValidator<DbHeadersStore>,
     ) -> Self {
         Self {
             receiver,
@@ -95,6 +98,7 @@ impl VirtualStateProcessor {
             genesis_hash: params.genesis_hash,
             max_block_parents: params.max_block_parents,
             mergeset_size_limit: params.mergeset_size_limit,
+            transaction_validator,
         }
     }
 
@@ -229,6 +233,19 @@ impl VirtualStateProcessor {
                                     continue;
                                 }
                                 let populated_tx = PopulatedTransaction::new(tx, entries);
+
+                                let res = self
+                                    .transaction_validator
+                                    .validate_populated_transaction_and_get_fee(&populated_tx, chain_block_header.hash);
+                                // TODO: pass DAA score instead of hash to function above ^^
+                                match res {
+                                    Ok(fee) => {} // TODO: collect fee info and verify coinbase transaction of `chain_block`
+                                    Err(tx_rule_error) => {
+                                        trace!("tx rule error {} for block {} and tx {}", tx_rule_error, merged_block, tx.id());
+                                        continue; // TODO: add to acceptance data as unaccepted tx
+                                    }
+                                }
+
                                 mergeset_diff.add_transaction(&populated_tx, chain_block_header.daa_score).unwrap();
                                 multiset_hash.add_transaction(&populated_tx, chain_block_header.daa_score);
                             }

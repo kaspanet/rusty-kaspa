@@ -62,7 +62,7 @@ impl<T: HeaderStoreReader> TransactionValidator<T> {
     fn check_transaction_output_values(tx: &PopulatedTransaction, total_in: u64) -> TxResult<u64> {
         // There's no need to check for overflow here because it was already checked by check_transaction_output_value_ranges
         let total_out: u64 = tx.outputs().map(|out| out.value).sum();
-        if total_out < total_in {
+        if total_in < total_out {
             return Err(TxRuleError::SpendTooHigh(total_out, total_in));
         }
 
@@ -78,7 +78,7 @@ impl<T: HeaderStoreReader> TransactionValidator<T> {
                 // Given a sequence number, we apply the relative time lock
                 // mask in order to obtain the time lock delta required before
                 // this input can be spent.
-                let realtive_lock = (input.sequence & SEQUENCE_LOCK_TIME_MASK) as i64;
+                let relative_lock = (input.sequence & SEQUENCE_LOCK_TIME_MASK) as i64;
 
                 // The relative lock-time for this input is expressed
                 // in blocks so we calculate the relative offset from
@@ -88,7 +88,7 @@ impl<T: HeaderStoreReader> TransactionValidator<T> {
                 //
                 // Note: in the kaspad codebase there's a use in i64 in order to use the -1 value
                 // as None. Here it's not needed, but we still use it to avoid breaking consensus.
-                let lock_daa_score = entry.block_daa_score as i64 + realtive_lock - 1;
+                let lock_daa_score = entry.block_daa_score as i64 + relative_lock - 1;
 
                 lock_daa_score >= pov_daa_score
             })
