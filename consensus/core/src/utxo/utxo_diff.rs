@@ -16,6 +16,15 @@ pub struct UtxoDiff {
     pub remove: UtxoCollection,
 }
 
+impl<T: ImmutableUtxoDiff> ImmutableUtxoDiff for &T {
+    fn added(&self) -> &UtxoCollection {
+        (*self).added()
+    }
+    fn removed(&self) -> &UtxoCollection {
+        (*self).removed()
+    }
+}
+
 impl ImmutableUtxoDiff for UtxoDiff {
     fn added(&self) -> &UtxoCollection {
         &self.add

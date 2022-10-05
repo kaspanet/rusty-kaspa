@@ -27,7 +27,7 @@ use consensus_core::{
         utxo_collection::UtxoCollection,
         utxo_collection::UtxoCollectionExtensions,
         utxo_diff::UtxoDiff,
-        utxo_view::{HierarchicUtxoView, UtxoView},
+        utxo_view::{compose_utxo_view_with_two_diff_layers, UtxoView},
     },
     BlockHashMap, BlockHashSet,
 };
@@ -194,7 +194,7 @@ impl VirtualStateProcessor {
                             continue; // TODO: optimize
                         }
 
-                        let mut utxo_diff = UtxoDiff::default();
+                        let mut mergeset_diff = UtxoDiff::default();
                         let chain_block_header = self.headers_store.get_header(chain_hash).unwrap();
 
                         // Temp logic
@@ -206,18 +206,17 @@ impl VirtualStateProcessor {
                         let selected_parent_transactions = self.block_transactions_store.get(selected_parent).unwrap();
                         let populated_coinbase = PopulatedTransaction::new_without_inputs(&selected_parent_transactions[0]);
 
-                        utxo_diff.add_transaction(&populated_coinbase, chain_block_header.daa_score).unwrap();
+                        mergeset_diff.add_transaction(&populated_coinbase, chain_block_header.daa_score).unwrap();
                         multiset_hash.add_transaction(&populated_coinbase, chain_block_header.daa_score);
 
                         for merged_block in mergeset_data.consensus_ordered_mergeset(self.ghostdag_store.deref()) {
-                            // TODO: prefill and populate UTXO entry data for all mergeset
                             let txs = self.block_transactions_store.get(merged_block).unwrap();
-
                             // Skip the coinbase tx. Note we already processed the selected parent coinbase
                             for tx in txs.iter().skip(1) {
                                 let mut entries = Vec::with_capacity(tx.inputs.len());
-                                let inner_view = HierarchicUtxoView::new(&state.utxo_set, &accumulated_diff);
-                                let utxo_view = HierarchicUtxoView::new(&inner_view, &utxo_diff);
+                                // Create a layered view from the base UTXO set + the 2 diff layers
+                                let utxo_view =
+                                    compose_utxo_view_with_two_diff_layers(&state.utxo_set, &accumulated_diff, &mergeset_diff);
                                 for input in tx.inputs.iter() {
                                     if let Some(entry) = utxo_view.get(&input.previous_outpoint) {
                                         entries.push(entry.clone());
@@ -230,13 +229,13 @@ impl VirtualStateProcessor {
                                     continue;
                                 }
                                 let populated_tx = PopulatedTransaction::new(tx, entries);
-                                utxo_diff.add_transaction(&populated_tx, chain_block_header.daa_score).unwrap();
+                                mergeset_diff.add_transaction(&populated_tx, chain_block_header.daa_score).unwrap();
                                 multiset_hash.add_transaction(&populated_tx, chain_block_header.daa_score);
                             }
                         }
 
-                        accumulated_diff.with_diff_in_place(&utxo_diff).unwrap();
-                        e.insert(utxo_diff);
+                        accumulated_diff.with_diff_in_place(&mergeset_diff).unwrap();
+                        e.insert(mergeset_diff);
 
                         // Verify the header UTXO commitment
                         let expected_commitment = multiset_hash.finalize();
