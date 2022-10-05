@@ -27,7 +27,7 @@ use consensus_core::{
         utxo_collection::UtxoCollection,
         utxo_collection::UtxoCollectionExtensions,
         utxo_diff::UtxoDiff,
-        utxo_view::{compose_utxo_view_with_two_diff_layers, UtxoView},
+        utxo_view::{self, UtxoView},
     },
     BlockHashMap, BlockHashSet,
 };
@@ -171,9 +171,9 @@ impl VirtualStateProcessor {
                     break;
                 }
 
-                let utxo_diff = state.utxo_diffs.get(&chain_hash).unwrap();
+                let mergeset_diff = state.utxo_diffs.get(&chain_hash).unwrap();
                 accumulated_diff
-                    .with_diff_in_place(&utxo_diff.reversed()) // Reverse
+                    .with_diff_in_place(&mergeset_diff.reversed()) // Reverse
                     .unwrap();
             }
 
@@ -182,8 +182,8 @@ impl VirtualStateProcessor {
             {
                 match state.utxo_diffs.entry(chain_hash) {
                     Occupied(e) => {
-                        let utxo_diff = e.get();
-                        accumulated_diff.with_diff_in_place(utxo_diff).unwrap();
+                        let mergeset_diff = e.get();
+                        accumulated_diff.with_diff_in_place(mergeset_diff).unwrap();
 
                         // Temp logic
                         assert!(state.multiset_hashes.contains_key(&chain_hash));
@@ -215,10 +215,10 @@ impl VirtualStateProcessor {
                             for tx in txs.iter().skip(1) {
                                 let mut entries = Vec::with_capacity(tx.inputs.len());
                                 // Create a layered view from the base UTXO set + the 2 diff layers
-                                let utxo_view =
-                                    compose_utxo_view_with_two_diff_layers(&state.utxo_set, &accumulated_diff, &mergeset_diff);
+                                let composed_view =
+                                    utxo_view::compose_two_diff_layers(&state.utxo_set, &accumulated_diff, &mergeset_diff);
                                 for input in tx.inputs.iter() {
-                                    if let Some(entry) = utxo_view.get(&input.previous_outpoint) {
+                                    if let Some(entry) = composed_view.get(&input.previous_outpoint) {
                                         entries.push(entry.clone());
                                     } else {
                                         trace!("missing entry for block {} and outpoint {}", merged_block, input.previous_outpoint);

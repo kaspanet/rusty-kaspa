@@ -40,11 +40,11 @@ impl<T: UtxoView> UtxoView for &T {
     }
 }
 
-pub fn compose_utxo_view_with_one_diff_layer<B: UtxoView, D1: ImmutableUtxoDiff>(base: B, diff1: D1) -> ComposedUtxoView<B, D1> {
+pub fn compose_one_diff_layer<B: UtxoView, D1: ImmutableUtxoDiff>(base: B, diff1: D1) -> ComposedUtxoView<B, D1> {
     ComposedUtxoView::new(base, diff1)
 }
 
-pub fn compose_utxo_view_with_two_diff_layers<B: UtxoView, D1: ImmutableUtxoDiff, D2: ImmutableUtxoDiff>(
+pub fn compose_two_diff_layers<B: UtxoView, D1: ImmutableUtxoDiff, D2: ImmutableUtxoDiff>(
     base: B,
     diff1: D1,
     diff2: D2,
@@ -52,7 +52,7 @@ pub fn compose_utxo_view_with_two_diff_layers<B: UtxoView, D1: ImmutableUtxoDiff
     ComposedUtxoView::new(ComposedUtxoView::new(base, diff1), diff2)
 }
 
-pub fn compose_utxo_view_with_three_diff_layers<B: UtxoView, D1: ImmutableUtxoDiff, D2: ImmutableUtxoDiff, D3: ImmutableUtxoDiff>(
+pub fn compose_three_diff_layers<B: UtxoView, D1: ImmutableUtxoDiff, D2: ImmutableUtxoDiff, D3: ImmutableUtxoDiff>(
     base: B,
     diff1: D1,
     diff2: D2,
