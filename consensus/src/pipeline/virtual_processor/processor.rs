@@ -23,7 +23,7 @@ use consensus_core::{
     block::Block,
     blockhash,
     muhash::MuHashExtensions,
-    tx::PopulatedTransaction,
+    tx::{PopulatedTransaction, Transaction},
     utxo::{
         utxo_collection::UtxoCollection,
         utxo_collection::UtxoCollectionExtensions,
@@ -38,6 +38,7 @@ use itertools::Itertools;
 use kaspa_core::trace;
 use muhash::MuHash;
 use parking_lot::RwLock;
+use rayon::prelude::*;
 use std::{
     collections::hash_map::Entry::{Occupied, Vacant},
     iter::FromIterator,
@@ -215,37 +216,18 @@ impl VirtualStateProcessor {
 
                         for merged_block in mergeset_data.consensus_ordered_mergeset(self.ghostdag_store.deref()) {
                             let txs = self.block_transactions_store.get(merged_block).unwrap();
-                            // Skip the coinbase tx. Note we already processed the selected parent coinbase
-                            for tx in txs.iter().skip(1) {
-                                let mut entries = Vec::with_capacity(tx.inputs.len());
-                                // Create a layered view from the base UTXO set + the 2 diff layers
-                                let composed_view =
-                                    utxo_view::compose_two_diff_layers(&state.utxo_set, &accumulated_diff, &mergeset_diff);
-                                for input in tx.inputs.iter() {
-                                    if let Some(entry) = composed_view.get(&input.previous_outpoint) {
-                                        entries.push(entry.clone());
-                                    } else {
-                                        trace!("missing entry for block {} and outpoint {}", merged_block, input.previous_outpoint);
-                                    }
-                                }
-                                if entries.len() < tx.inputs.len() {
-                                    // Missing inputs
-                                    continue;
-                                }
-                                let populated_tx = PopulatedTransaction::new(tx, entries);
 
-                                let res = self
-                                    .transaction_validator
-                                    .validate_populated_transaction_and_get_fee(&populated_tx, chain_block_header.hash);
-                                // TODO: pass DAA score instead of hash to function above ^^
-                                match res {
-                                    Ok(fee) => {} // TODO: collect fee info and verify coinbase transaction of `chain_block`
-                                    Err(tx_rule_error) => {
-                                        trace!("tx rule error {} for block {} and tx {}", tx_rule_error, merged_block, tx.id());
-                                        continue; // TODO: add to acceptance data as unaccepted tx
-                                    }
-                                }
+                            // Create a layered view from the base UTXO set + the 2 diff layers
+                            let composed_view = utxo_view::compose_two_diff_layers(&state.utxo_set, &accumulated_diff, &mergeset_diff);
 
+                            let valid_populated_txs: Vec<PopulatedTransaction> = txs
+                                .par_iter() // We can do this in parallel without complications since block body validation already ensured 
+                                            // that all txs in the block are independent 
+                                .skip(1) // Skip the coinbase tx. Note we already processed the selected parent coinbase
+                                .filter_map(|tx| self.process_transaction(tx, &composed_view, merged_block, chain_hash))
+                                .collect();
+
+                            for populated_tx in valid_populated_txs {
                                 mergeset_diff.add_transaction(&populated_tx, chain_block_header.daa_score).unwrap();
                                 multiset_hash.add_transaction(&populated_tx, chain_block_header.daa_score);
                             }
@@ -293,6 +275,38 @@ impl VirtualStateProcessor {
             Ok(())
         } else {
             Ok(())
+        }
+    }
+
+    /// Attempts to populate the transaction with UTXO entries and performs all tx validations
+    fn process_transaction<'a>(
+        self: &Arc<VirtualStateProcessor>,
+        transaction: &'a Transaction,
+        composed_view: &impl UtxoView,
+        merged_block: Hash,
+        merging_block: Hash,
+    ) -> Option<PopulatedTransaction<'a>> {
+        let mut entries = Vec::with_capacity(transaction.inputs.len());
+        for input in transaction.inputs.iter() {
+            if let Some(entry) = composed_view.get(&input.previous_outpoint) {
+                entries.push(entry.clone());
+            } else {
+                trace!("missing entry for block {} and outpoint {}", merged_block, input.previous_outpoint);
+            }
+        }
+        if entries.len() < transaction.inputs.len() {
+            // Missing inputs
+            return None;
+        }
+        let populated_tx = PopulatedTransaction::new(transaction, entries);
+        let res = self.transaction_validator.validate_populated_transaction_and_get_fee(&populated_tx, merging_block);
+        // TODO: pass DAA score instead of hash to function above ^^
+        match res {
+            Ok(fee) => Some(populated_tx), // TODO: collect fee info and verify coinbase transaction of `chain_block`
+            Err(tx_rule_error) => {
+                trace!("tx rule error {} for block {} and tx {}", tx_rule_error, merged_block, transaction.id());
+                None // TODO: add to acceptance data as unaccepted tx
+            }
         }
     }
 
