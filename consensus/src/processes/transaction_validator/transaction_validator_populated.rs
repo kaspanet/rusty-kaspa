@@ -21,7 +21,7 @@ impl<T: HeaderStoreReader> TransactionValidator<T> {
         Self::check_sig_op_counts(tx)?;
         Self::check_scripts(tx)?;
 
-        Ok(total_out - total_in)
+        Ok(total_in - total_out)
     }
 
     fn check_transaction_coinbase_maturity(&self, tx: &PopulatedTransaction, pov_daa_score: u64) -> TxResult<()> {
