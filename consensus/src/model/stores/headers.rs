@@ -22,8 +22,8 @@ pub trait HeaderStoreReader {
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct HeaderWithBlockLevel {
-    header: Arc<Header>,
-    block_level: u8,
+    pub header: Arc<Header>,
+    pub block_level: u8,
 }
 
 pub trait HeaderStore: HeaderStoreReader {
