@@ -195,7 +195,24 @@ impl BlockBodyProcessor {
         let status = self.statuses_store.read().get(self.genesis_hash).unwrap();
         match status {
             StatusHeaderOnly => {
-                let genesis_coinbase = Transaction::new(TX_VERSION, vec![], vec![], 0, SUBNETWORK_ID_COINBASE, 0, vec![], 0);
+                let genesis_coinbase = Transaction::new(
+                    TX_VERSION,
+                    vec![],
+                    vec![],
+                    0,
+                    SUBNETWORK_ID_COINBASE,
+                    0,
+                    vec![
+                        // Kaspad devnet coinbase payload
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // Blue score
+                        0x00, 0xE1, 0xF5, 0x05, 0x00, 0x00, 0x00, 0x00, // Subsidy
+                        0x00, 0x00, // Script version
+                        0x01, // Varint
+                        0x00, // OP-FALSE
+                        0x6b, 0x61, 0x73, 0x70, 0x61, 0x2d, 0x64, 0x65, 0x76, 0x6e, 0x65, 0x74, // kaspa-devnet
+                    ],
+                    0,
+                );
                 self.commit_body(self.genesis_hash, Arc::new(vec![genesis_coinbase]))
             }
             _ if status.has_block_body() => (),

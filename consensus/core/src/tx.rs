@@ -98,8 +98,6 @@ pub struct Transaction {
     pub gas: u64,
     pub payload: Vec<u8>,
 
-    pub fee: u64,
-
     // A field that is used to cache the transaction ID.
     // Always use the corresponding self.id() instead of accessing this field directly
     id: TransactionId,
@@ -114,7 +112,7 @@ impl Transaction {
         subnetwork_id: SubnetworkId,
         gas: u64,
         payload: Vec<u8>,
-        fee: u64,
+        _fee: u64, // TODO: remove
     ) -> Self {
         let mut tx = Self {
             version,
@@ -124,7 +122,6 @@ impl Transaction {
             subnetwork_id,
             gas,
             payload,
-            fee,
             id: Default::default(), // Temp init before the finalize below
         };
         tx.finalize();

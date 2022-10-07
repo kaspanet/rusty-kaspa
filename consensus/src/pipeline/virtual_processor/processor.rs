@@ -213,6 +213,8 @@ impl VirtualStateProcessor {
                         mergeset_diff.add_transaction(&validated_coinbase, chain_block_header.daa_score).unwrap();
                         multiset_hash.add_transaction(&validated_coinbase, chain_block_header.daa_score);
 
+                        let mut accepted_tx_ids = vec![validated_coinbase.id()];
+
                         for merged_block in mergeset_data.consensus_ordered_mergeset(self.ghostdag_store.deref()) {
                             let txs = self.block_transactions_store.get(merged_block).unwrap();
 
@@ -229,6 +231,7 @@ impl VirtualStateProcessor {
                             for validated_tx in validated_transactions {
                                 mergeset_diff.add_transaction(&validated_tx, chain_block_header.daa_score).unwrap();
                                 multiset_hash.add_transaction(&validated_tx, chain_block_header.daa_score);
+                                accepted_tx_ids.push(validated_tx.id());
                             }
                         }
 
@@ -237,7 +240,7 @@ impl VirtualStateProcessor {
 
                         // Verify the header UTXO commitment
                         let expected_commitment = multiset_hash.finalize();
-                        let status = if expected_commitment != chain_block_header.utxo_commitment {
+                        let mut status = if expected_commitment != chain_block_header.utxo_commitment {
                             trace!(
                                 "wrong commitment: {}, {}, {}, {}",
                                 selected_parent,
@@ -252,6 +255,19 @@ impl VirtualStateProcessor {
                         };
 
                         // Verify header accepted_id_merkle_root
+                        if status == BlockStatus::StatusUTXOValid {
+                            accepted_tx_ids.sort();
+                            let expected_accepted_id_merkle_root = merkle::calc_merkle_root(accepted_tx_ids.iter().copied());
+                            if expected_accepted_id_merkle_root != chain_block_header.accepted_id_merkle_root {
+                                trace!(
+                                    "wrong accepted_id_merkle_root: {}, {}",
+                                    expected_accepted_id_merkle_root,
+                                    chain_block_header.accepted_id_merkle_root
+                                );
+                                status = BlockStatus::StatusDisqualifiedFromChain;
+                            }
+                        }
+
                         // Verify coinbase transaction
                         // Verify all transactions are valid in context (and perhaps skip validation when becoming selected parent)
 
