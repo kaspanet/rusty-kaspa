@@ -1,16 +1,16 @@
 use crate::{
     hashing::HasherExtensions,
-    tx::{PopulatedTransaction, TransactionOutpoint, UtxoEntry},
+    tx::{TransactionOutpoint, UtxoEntry, ValidatedTransaction},
 };
 use hashes::HasherBase;
 use muhash::MuHash;
 
 pub trait MuHashExtensions {
-    fn add_transaction(&mut self, tx: &PopulatedTransaction, block_daa_score: u64);
+    fn add_transaction(&mut self, tx: &ValidatedTransaction, block_daa_score: u64);
 }
 
 impl MuHashExtensions for MuHash {
-    fn add_transaction(&mut self, tx: &PopulatedTransaction, block_daa_score: u64) {
+    fn add_transaction(&mut self, tx: &ValidatedTransaction, block_daa_score: u64) {
         let tx_id = tx.id();
         for (input, entry) in tx.populated_inputs() {
             let mut writer = self.remove_element_builder();

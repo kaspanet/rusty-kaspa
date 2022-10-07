@@ -23,7 +23,7 @@ use consensus_core::{
     block::Block,
     blockhash,
     muhash::MuHashExtensions,
-    tx::{PopulatedTransaction, Transaction},
+    tx::{PopulatedTransaction, Transaction, ValidatedTransaction},
     utxo::{
         utxo_collection::UtxoCollection,
         utxo_collection::UtxoCollectionExtensions,
@@ -177,9 +177,8 @@ impl VirtualStateProcessor {
                 }
 
                 let mergeset_diff = state.utxo_diffs.get(&chain_hash).unwrap();
-                accumulated_diff
-                    .with_diff_in_place(&mergeset_diff.reversed()) // Reverse
-                    .unwrap();
+                accumulated_diff.with_diff_in_place(&mergeset_diff.reversed()).unwrap();
+                // Reversing
             }
 
             for (selected_parent, chain_hash) in
@@ -209,10 +208,10 @@ impl VirtualStateProcessor {
                         let mergeset_data = self.ghostdag_store.get_data(chain_hash).unwrap();
 
                         let selected_parent_transactions = self.block_transactions_store.get(selected_parent).unwrap();
-                        let populated_coinbase = PopulatedTransaction::new_without_inputs(&selected_parent_transactions[0]);
+                        let validated_coinbase = ValidatedTransaction::new_coinbase(&selected_parent_transactions[0]);
 
-                        mergeset_diff.add_transaction(&populated_coinbase, chain_block_header.daa_score).unwrap();
-                        multiset_hash.add_transaction(&populated_coinbase, chain_block_header.daa_score);
+                        mergeset_diff.add_transaction(&validated_coinbase, chain_block_header.daa_score).unwrap();
+                        multiset_hash.add_transaction(&validated_coinbase, chain_block_header.daa_score);
 
                         for merged_block in mergeset_data.consensus_ordered_mergeset(self.ghostdag_store.deref()) {
                             let txs = self.block_transactions_store.get(merged_block).unwrap();
@@ -220,16 +219,16 @@ impl VirtualStateProcessor {
                             // Create a layered view from the base UTXO set + the 2 diff layers
                             let composed_view = utxo_view::compose_two_diff_layers(&state.utxo_set, &accumulated_diff, &mergeset_diff);
 
-                            let valid_populated_txs: Vec<PopulatedTransaction> = txs
+                            let validated_transactions: Vec<ValidatedTransaction> = txs
                                 .par_iter() // We can do this in parallel without complications since block body validation already ensured 
                                             // that all txs in the block are independent 
                                 .skip(1) // Skip the coinbase tx. Note we already processed the selected parent coinbase
-                                .filter_map(|tx| self.process_transaction(tx, &composed_view, merged_block, chain_hash))
+                                .filter_map(|tx| self.validate_transaction_in_utxo_context(tx, &composed_view, merged_block, chain_hash))
                                 .collect();
 
-                            for populated_tx in valid_populated_txs {
-                                mergeset_diff.add_transaction(&populated_tx, chain_block_header.daa_score).unwrap();
-                                multiset_hash.add_transaction(&populated_tx, chain_block_header.daa_score);
+                            for validated_tx in validated_transactions {
+                                mergeset_diff.add_transaction(&validated_tx, chain_block_header.daa_score).unwrap();
+                                multiset_hash.add_transaction(&validated_tx, chain_block_header.daa_score);
                             }
                         }
 
@@ -251,6 +250,10 @@ impl VirtualStateProcessor {
                             trace!("correct commitment: {}, {}, {}", selected_parent, chain_hash, expected_commitment);
                             BlockStatus::StatusUTXOValid
                         };
+
+                        // Verify header accepted_id_merkle_root
+                        // Verify coinbase transaction
+                        // Verify all transactions are valid in context (and perhaps skip validation when becoming selected parent)
 
                         // TODO: batch write
                         self.statuses_store.write().set(chain_hash, status).unwrap();
@@ -279,19 +282,20 @@ impl VirtualStateProcessor {
     }
 
     /// Attempts to populate the transaction with UTXO entries and performs all tx validations
-    fn process_transaction<'a>(
+    fn validate_transaction_in_utxo_context<'a>(
         self: &Arc<VirtualStateProcessor>,
         transaction: &'a Transaction,
-        composed_view: &impl UtxoView,
+        utxo_view: &impl UtxoView,
         merged_block: Hash,
         merging_block: Hash,
-    ) -> Option<PopulatedTransaction<'a>> {
+    ) -> Option<ValidatedTransaction<'a>> {
         let mut entries = Vec::with_capacity(transaction.inputs.len());
         for input in transaction.inputs.iter() {
-            if let Some(entry) = composed_view.get(&input.previous_outpoint) {
+            if let Some(entry) = utxo_view.get(&input.previous_outpoint) {
                 entries.push(entry.clone());
             } else {
                 trace!("missing entry for block {} and outpoint {}", merged_block, input.previous_outpoint);
+                break;
             }
         }
         if entries.len() < transaction.inputs.len() {
@@ -302,7 +306,7 @@ impl VirtualStateProcessor {
         let res = self.transaction_validator.validate_populated_transaction_and_get_fee(&populated_tx, merging_block);
         // TODO: pass DAA score instead of hash to function above ^^
         match res {
-            Ok(fee) => Some(populated_tx), // TODO: collect fee info and verify coinbase transaction of `chain_block`
+            Ok(calculated_fee) => Some(populated_tx.to_validated(calculated_fee)), // TODO: collect fee info and verify coinbase transaction of `chain_block`
             Err(tx_rule_error) => {
                 trace!("tx rule error {} for block {} and tx {}", tx_rule_error, merged_block, transaction.id());
                 None // TODO: add to acceptance data as unaccepted tx

@@ -161,8 +161,42 @@ impl<'a> PopulatedTransaction<'a> {
         Self { tx, entries }
     }
 
-    pub fn new_without_inputs(tx: &'a Transaction) -> Self {
-        Self::new(tx, Vec::new())
+    pub fn populated_inputs(&self) -> impl ExactSizeIterator<Item = (&TransactionInput, &UtxoEntry)> {
+        self.tx.inputs.iter().map(std::ops::Deref::deref).zip(self.entries.iter())
+    }
+
+    pub fn outputs(&self) -> impl ExactSizeIterator<Item = &TransactionOutput> {
+        self.tx.outputs.iter().map(std::ops::Deref::deref)
+    }
+
+    pub fn is_coinbase(&self) -> bool {
+        self.tx.is_coinbase()
+    }
+
+    pub fn id(&self) -> TransactionId {
+        self.tx.id()
+    }
+
+    pub fn to_validated(self, calculated_fee: u64) -> ValidatedTransaction<'a> {
+        ValidatedTransaction::new(self, calculated_fee)
+    }
+}
+
+/// Represents a validated transaction with populated UTXO entry data and a calculated fee
+pub struct ValidatedTransaction<'a> {
+    tx: &'a Transaction,
+    pub entries: Vec<UtxoEntry>,
+    pub calculated_fee: u64,
+}
+
+impl<'a> ValidatedTransaction<'a> {
+    pub fn new(populated_tx: PopulatedTransaction<'a>, calculated_fee: u64) -> Self {
+        Self { tx: populated_tx.tx, entries: populated_tx.entries, calculated_fee }
+    }
+
+    pub fn new_coinbase(tx: &'a Transaction) -> Self {
+        assert!(tx.is_coinbase());
+        Self { tx, entries: Vec::new(), calculated_fee: 0 }
     }
 
     pub fn populated_inputs(&self) -> impl ExactSizeIterator<Item = (&TransactionInput, &UtxoEntry)> {

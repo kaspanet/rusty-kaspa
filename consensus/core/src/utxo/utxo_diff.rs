@@ -2,7 +2,7 @@ use super::{
     utxo_collection::*,
     utxo_error::{UtxoAlgebraError, UtxoResult},
 };
-use crate::tx::{PopulatedTransaction, TransactionOutpoint, UtxoEntry};
+use crate::tx::{TransactionOutpoint, UtxoEntry, ValidatedTransaction};
 use std::collections::hash_map::Entry::Vacant;
 
 pub trait ImmutableUtxoDiff {
@@ -73,6 +73,7 @@ impl UtxoDiff {
     /// Applies the provided diff to this diff in-place. This is equal to if the
     /// first diff, and then the second diff were applied to the same base UTXO set
     pub fn with_diff_in_place(&mut self, other: &impl ImmutableUtxoDiff) -> UtxoResult<()> {
+        // TODO: should we apply the sanity checks below only in Debug mode?
         if let Some(offending_outpoint) = other.removed().intersects_with_rule(
             &self.remove,
             |outpoint: &TransactionOutpoint, entry_to_add: &UtxoEntry, _existing_entry: &UtxoEntry| {
@@ -144,6 +145,7 @@ impl UtxoDiff {
         // - if utxo entry is in this.add and other.remove
         // - if utxo entry is in this.remove and other.add
 
+        // TODO: should we apply the sanity checks below only in Debug mode?
         // Check that NOT(entries with unequal DAA scores AND utxo is in self.add and/or other.remove) -> Error
         let rule_not_added_output_removed_with_daa_score =
             |outpoint: &TransactionOutpoint, this_entry: &UtxoEntry, other_entry: &UtxoEntry| {
@@ -212,7 +214,7 @@ impl UtxoDiff {
         Ok(result)
     }
 
-    pub fn add_transaction(&mut self, transaction: &PopulatedTransaction, block_daa_score: u64) -> UtxoResult<()> {
+    pub fn add_transaction(&mut self, transaction: &ValidatedTransaction, block_daa_score: u64) -> UtxoResult<()> {
         for (input, entry) in transaction.populated_inputs() {
             self.remove_entry(&input.previous_outpoint, entry)?;
         }
