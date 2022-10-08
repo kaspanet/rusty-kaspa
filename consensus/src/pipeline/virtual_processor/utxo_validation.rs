@@ -1,8 +1,10 @@
 use super::VirtualStateProcessor;
-use crate::model::stores::{
-    block_transactions::BlockTransactionsStoreReader,
-    ghostdag::GhostdagData,
-    statuses::BlockStatus::{self, StatusDisqualifiedFromChain, StatusUTXOValid},
+use crate::{
+    errors::{
+        BlockProcessResult,
+        RuleError::{BadAcceptedIDMerkleRoot, BadUTXOCommitment, InvalidTransactionsInUtxoContext},
+    },
+    model::stores::{block_transactions::BlockTransactionsStoreReader, ghostdag::GhostdagData},
 };
 use consensus_core::{
     header::Header,
@@ -22,8 +24,8 @@ impl VirtualStateProcessor {
     /// UTXO valid if all the following conditions hold:
     ///     1. The block header includes the expected `utxo_commitment`.
     ///     2. The block header includes the expected `accepted_id_merkle_root`.
-    ///     3. The coinbase transaction rewards the mergeset blocks correctly.
-    ///     4. All block transactions are valid against its own UTXO view.
+    ///     3. The block coinbase transaction rewards the mergeset blocks correctly.
+    ///     4. All non-coinbase block transactions are valid against its own UTXO view.
     pub fn verify_utxo_validness_requirements<V: UtxoView + Sync>(
         self: &Arc<VirtualStateProcessor>,
         utxo_view: &V,
@@ -32,12 +34,11 @@ impl VirtualStateProcessor {
         multiset_hash: &mut MuHash,
         mut accepted_tx_ids: Vec<Hash>,
         mergeset_fees: BlockHashMap<u64>,
-    ) -> BlockStatus {
+    ) -> BlockProcessResult<()> {
         // Verify header UTXO commitment
         let expected_commitment = multiset_hash.finalize();
         if expected_commitment != header.utxo_commitment {
-            trace!("wrong commitment: {}, {}, {}", header.hash, expected_commitment, header.utxo_commitment);
-            return StatusDisqualifiedFromChain;
+            return Err(BadUTXOCommitment(header.hash, header.utxo_commitment, expected_commitment));
         } else {
             trace!("correct commitment: {}, {}", header.hash, expected_commitment);
         }
@@ -46,25 +47,31 @@ impl VirtualStateProcessor {
         accepted_tx_ids.sort();
         let expected_accepted_id_merkle_root = merkle::calc_merkle_root(accepted_tx_ids.iter().copied());
         if expected_accepted_id_merkle_root != header.accepted_id_merkle_root {
-            trace!("wrong accepted_id_merkle_root: {}, {}", expected_accepted_id_merkle_root, header.accepted_id_merkle_root);
-            return StatusDisqualifiedFromChain;
+            return Err(BadAcceptedIDMerkleRoot(header.hash, header.accepted_id_merkle_root, expected_accepted_id_merkle_root));
         }
 
         let txs = self.block_transactions_store.get(header.hash).unwrap();
-        let coinbase = &txs[0];
 
         // Verify coinbase transaction
-        // TODO: verify coinbase using `mergeset_fees`
-        // TODO: build expected coinbase
+        self.verify_coinbase_transaction(&txs[0], mergeset_fees)?;
 
         // Verify all transactions are valid in context (TODO: skip validation when becoming selected parent)
         let validated_transactions = self.validate_transactions_in_parallel(&txs, &utxo_view, header.hash, header.hash);
         if validated_transactions.len() < txs.len() - 1 {
             // Some transactions were invalid
-            return StatusDisqualifiedFromChain;
+            return Err(InvalidTransactionsInUtxoContext(txs.len() - 1 - validated_transactions.len(), txs.len() - 1));
         }
 
-        StatusUTXOValid
+        Ok(())
+    }
+
+    fn verify_coinbase_transaction(
+        self: &Arc<VirtualStateProcessor>,
+        coinbase_tx: &Transaction,
+        mergeset_fees: BlockHashMap<u64>,
+    ) -> BlockProcessResult<()> {
+        // TODO: build expected coinbase using `mergeset_fees` and compare with the given tx
+        Ok(())
     }
 
     /// Validates transactions against the provided `utxo_view` and returns a vector with all transactions
@@ -109,7 +116,7 @@ impl VirtualStateProcessor {
         let res = self.transaction_validator.validate_populated_transaction_and_get_fee(&populated_tx, merging_block);
         // TODO: pass DAA score instead of hash to function above ^^
         match res {
-            Ok(calculated_fee) => Some(populated_tx.to_validated(calculated_fee)), // TODO: collect fee info and verify coinbase transaction of `chain_block`
+            Ok(calculated_fee) => Some(populated_tx.to_validated(calculated_fee)),
             Err(tx_rule_error) => {
                 trace!("tx rule error {} for block {} and tx {}", tx_rule_error, merged_block, transaction.id());
                 None // TODO: add to acceptance data as unaccepted tx

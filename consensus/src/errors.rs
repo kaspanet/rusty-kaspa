@@ -103,6 +103,18 @@ pub enum RuleError {
 
     #[error("block has invalid proof-of-work")]
     InvalidPoW,
+
+    #[error("block {0} UTXO commitment is invalid - block header indicates {1}, but calculated value is {2}")]
+    BadUTXOCommitment(Hash, Hash, Hash),
+
+    #[error("block {0} accepted ID merkle root is invalid - block header indicates {1}, but calculated value is {2}")]
+    BadAcceptedIDMerkleRoot(Hash, Hash, Hash),
+
+    #[error("coinbase transaction is not built as expected")]
+    BadCoinbaseTransaction,
+
+    #[error("{0} non-coinbase transactions (out of {1}) are invalid in UTXO context")]
+    InvalidTransactionsInUtxoContext(usize, usize),
 }
 
 pub type BlockProcessResult<T> = std::result::Result<T, RuleError>;

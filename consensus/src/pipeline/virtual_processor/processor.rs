@@ -225,7 +225,7 @@ impl VirtualStateProcessor {
                         }
 
                         let composed_view = utxo_view::compose_two_diff_layers(&state.utxo_set, &accumulated_diff, &mergeset_diff);
-                        let status = self.verify_utxo_validness_requirements(
+                        let res = self.verify_utxo_validness_requirements(
                             &composed_view,
                             &chain_block_header,
                             &mergeset_data,
@@ -234,14 +234,16 @@ impl VirtualStateProcessor {
                             mergeset_fees,
                         );
 
-                        if status == StatusUTXOValid {
+                        if let Err(rule_error) = res {
+                            trace!("{:?}", rule_error);
+                            self.statuses_store.write().set(chain_hash, StatusDisqualifiedFromChain).unwrap();
+                        } else {
                             accumulated_diff.with_diff_in_place(&mergeset_diff).unwrap();
                             e.insert(mergeset_diff);
                             state.multiset_hashes.insert(chain_hash, multiset_hash);
+                            // TODO: batch write
+                            self.statuses_store.write().set(chain_hash, StatusUTXOValid).unwrap();
                         }
-
-                        // TODO: batch write
-                        self.statuses_store.write().set(chain_hash, status).unwrap();
                     }
                 }
             }
