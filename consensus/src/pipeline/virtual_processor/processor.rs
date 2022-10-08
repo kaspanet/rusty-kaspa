@@ -5,7 +5,7 @@ use crate::{
         services::reachability::{MTReachabilityService, ReachabilityService},
         stores::{
             block_transactions::{BlockTransactionsStoreReader, DbBlockTransactionsStore},
-            ghostdag::{DbGhostdagStore, GhostdagStoreReader},
+            ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStoreReader},
             headers::{DbHeadersStore, HeaderStoreReader},
             reachability::DbReachabilityStore,
             statuses::{
@@ -22,6 +22,7 @@ use crate::{
 use consensus_core::{
     block::Block,
     blockhash,
+    header::Header,
     muhash::MuHashExtensions,
     tx::{PopulatedTransaction, Transaction, ValidatedTransaction},
     utxo::{
@@ -159,13 +160,6 @@ impl VirtualStateProcessor {
             let prev_selected = state.selected_tip;
             let new_selected = virtual_ghostdag_data.selected_parent;
 
-            // if new_selected != block.header.hash {
-            //     trace!("{:?}, {}, {}, {}", state.tips, state.selected_tip, new_selected, block.header.hash);
-            // }
-
-            // TEMP:
-            // assert_eq!(new_selected, block.header.hash);
-
             let mut split_point = blockhash::ORIGIN;
             let mut accumulated_diff = UtxoDiff::default();
 
@@ -193,8 +187,8 @@ impl VirtualStateProcessor {
                         assert!(state.multiset_hashes.contains_key(&chain_hash));
                     }
                     Vacant(e) => {
-                        if self.statuses_store.read().get(selected_parent).unwrap() == BlockStatus::StatusDisqualifiedFromChain {
-                            self.statuses_store.write().set(chain_hash, BlockStatus::StatusDisqualifiedFromChain).unwrap();
+                        if self.statuses_store.read().get(selected_parent).unwrap() == StatusDisqualifiedFromChain {
+                            self.statuses_store.write().set(chain_hash, StatusDisqualifiedFromChain).unwrap();
                             continue; // TODO: optimize
                         }
 
@@ -214,66 +208,46 @@ impl VirtualStateProcessor {
                         multiset_hash.add_transaction(&validated_coinbase, chain_block_header.daa_score);
 
                         let mut accepted_tx_ids = vec![validated_coinbase.id()];
+                        let mut mergeset_fees = BlockHashMap::with_capacity(mergeset_data.mergeset_size());
 
                         for merged_block in mergeset_data.consensus_ordered_mergeset(self.ghostdag_store.deref()) {
                             let txs = self.block_transactions_store.get(merged_block).unwrap();
 
-                            // Create a layered view from the base UTXO set + the 2 diff layers
+                            // Create a layered UTXO view from the base UTXO set + the 2 diff layers
                             let composed_view = utxo_view::compose_two_diff_layers(&state.utxo_set, &accumulated_diff, &mergeset_diff);
 
-                            let validated_transactions: Vec<ValidatedTransaction> = txs
-                                .par_iter() // We can do this in parallel without complications since block body validation already ensured 
-                                            // that all txs in the block are independent 
-                                .skip(1) // Skip the coinbase tx. Note we already processed the selected parent coinbase
-                                .filter_map(|tx| self.validate_transaction_in_utxo_context(tx, &composed_view, merged_block, chain_hash))
-                                .collect();
+                            // Validate transactions in current UTXO context
+                            let validated_transactions =
+                                self.validate_transactions_in_parallel(&txs, &composed_view, merged_block, chain_hash);
 
+                            let mut block_fee = 0u64;
                             for validated_tx in validated_transactions {
                                 mergeset_diff.add_transaction(&validated_tx, chain_block_header.daa_score).unwrap();
                                 multiset_hash.add_transaction(&validated_tx, chain_block_header.daa_score);
                                 accepted_tx_ids.push(validated_tx.id());
+                                block_fee += validated_tx.calculated_fee;
                             }
+                            mergeset_fees.insert(merged_block, block_fee);
                         }
 
-                        accumulated_diff.with_diff_in_place(&mergeset_diff).unwrap();
-                        e.insert(mergeset_diff);
+                        let composed_view = utxo_view::compose_two_diff_layers(&state.utxo_set, &accumulated_diff, &mergeset_diff);
+                        let status = self.verify_utxo_validness_requirements(
+                            &composed_view,
+                            &chain_block_header,
+                            &mergeset_data,
+                            &mut multiset_hash,
+                            accepted_tx_ids,
+                            mergeset_fees,
+                        );
 
-                        // Verify the header UTXO commitment
-                        let expected_commitment = multiset_hash.finalize();
-                        let mut status = if expected_commitment != chain_block_header.utxo_commitment {
-                            trace!(
-                                "wrong commitment: {}, {}, {}, {}",
-                                selected_parent,
-                                chain_hash,
-                                expected_commitment,
-                                chain_block_header.utxo_commitment
-                            );
-                            BlockStatus::StatusDisqualifiedFromChain
-                        } else {
-                            trace!("correct commitment: {}, {}, {}", selected_parent, chain_hash, expected_commitment);
-                            BlockStatus::StatusUTXOValid
-                        };
-
-                        // Verify header accepted_id_merkle_root
-                        if status == BlockStatus::StatusUTXOValid {
-                            accepted_tx_ids.sort();
-                            let expected_accepted_id_merkle_root = merkle::calc_merkle_root(accepted_tx_ids.iter().copied());
-                            if expected_accepted_id_merkle_root != chain_block_header.accepted_id_merkle_root {
-                                trace!(
-                                    "wrong accepted_id_merkle_root: {}, {}",
-                                    expected_accepted_id_merkle_root,
-                                    chain_block_header.accepted_id_merkle_root
-                                );
-                                status = BlockStatus::StatusDisqualifiedFromChain;
-                            }
+                        if status == StatusUTXOValid {
+                            accumulated_diff.with_diff_in_place(&mergeset_diff).unwrap();
+                            e.insert(mergeset_diff);
+                            state.multiset_hashes.insert(chain_hash, multiset_hash);
                         }
-
-                        // Verify coinbase transaction
-                        // Verify all transactions are valid in context (and perhaps skip validation when becoming selected parent)
 
                         // TODO: batch write
                         self.statuses_store.write().set(chain_hash, status).unwrap();
-                        state.multiset_hashes.insert(chain_hash, multiset_hash);
                     }
                 }
             }
@@ -295,6 +269,72 @@ impl VirtualStateProcessor {
         } else {
             Ok(())
         }
+    }
+
+    /// Verify that the current block fully respects its own UTXO view. We define a block as
+    /// UTXO valid if all the following conditions hold:
+    ///     1. The block header includes the expected `utxo_commitment`.
+    ///     2. The block header includes the expected `accepted_id_merkle_root`.
+    ///     3. The coinbase transaction rewards the mergeset blocks correctly.
+    ///     4. All block transactions are valid against its own UTXO view.
+    fn verify_utxo_validness_requirements<V: UtxoView + Sync>(
+        self: &Arc<VirtualStateProcessor>,
+        utxo_view: &V,
+        header: &Header,
+        mergeset_data: &GhostdagData,
+        multiset_hash: &mut MuHash,
+        mut accepted_tx_ids: Vec<Hash>,
+        mergeset_fees: BlockHashMap<u64>,
+    ) -> BlockStatus {
+        // Verify header UTXO commitment
+        let expected_commitment = multiset_hash.finalize();
+        if expected_commitment != header.utxo_commitment {
+            trace!("wrong commitment: {}, {}, {}", header.hash, expected_commitment, header.utxo_commitment);
+            return StatusDisqualifiedFromChain;
+        } else {
+            trace!("correct commitment: {}, {}", header.hash, expected_commitment);
+        }
+
+        // Verify header accepted_id_merkle_root
+        accepted_tx_ids.sort();
+        let expected_accepted_id_merkle_root = merkle::calc_merkle_root(accepted_tx_ids.iter().copied());
+        if expected_accepted_id_merkle_root != header.accepted_id_merkle_root {
+            trace!("wrong accepted_id_merkle_root: {}, {}", expected_accepted_id_merkle_root, header.accepted_id_merkle_root);
+            return StatusDisqualifiedFromChain;
+        }
+
+        let txs = self.block_transactions_store.get(header.hash).unwrap();
+        let coinbase = &txs[0];
+
+        // Verify coinbase transaction
+        // TODO: verify coinbase using `mergeset_fees`
+        // TODO: build expected coinbase
+
+        // Verify all transactions are valid in context (TODO: skip validation when becoming selected parent)
+        let validated_transactions = self.validate_transactions_in_parallel(&txs, &utxo_view, header.hash, header.hash);
+        if validated_transactions.len() < txs.len() - 1 {
+            // Some transactions were invalid
+            return StatusDisqualifiedFromChain;
+        }
+
+        StatusUTXOValid
+    }
+
+    /// Validates transactions against the provided `utxo_view` and returns a vector with all transactions
+    /// which passed the validation
+    fn validate_transactions_in_parallel<'a, V: UtxoView + Sync>(
+        self: &Arc<VirtualStateProcessor>,
+        txs: &'a Vec<Transaction>,
+        utxo_view: &V,
+        merged_block: Hash,
+        merging_block: Hash,
+    ) -> Vec<ValidatedTransaction<'a>> {
+        txs
+            .par_iter() // We can do this in parallel without complications since block body validation already ensured 
+                        // that all txs in the block are independent 
+            .skip(1) // Skip the coinbase tx. 
+            .filter_map(|tx| self.validate_transaction_in_utxo_context(tx, &utxo_view, merged_block, merging_block))
+            .collect()
     }
 
     /// Attempts to populate the transaction with UTXO entries and performs all tx validations
