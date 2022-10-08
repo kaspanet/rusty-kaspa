@@ -1,8 +1,9 @@
 use super::{HeaderProcessingContext, HeaderProcessor};
-use crate::errors::{BlockProcessResult, RuleError};
+use crate::errors::{BlockProcessResult, RuleError, VecVecDisplay};
 use crate::model::services::reachability::ReachabilityService;
 use consensus_core::header::Header;
 use hashes::Hash;
+use std::collections::HashSet;
 use std::sync::Arc;
 
 impl HeaderProcessor {
@@ -69,7 +70,21 @@ impl HeaderProcessor {
         ctx: &mut HeaderProcessingContext,
         header: &Header,
     ) -> BlockProcessResult<()> {
-        // TODO: Implement this
+        let expected_block_parents = self.parents_manager.calc_block_parents(ctx.pruning_point, header.direct_parents());
+        if !expected_block_parents.iter().enumerate().all(|(block_level, expected_level_parents)| {
+            let header_level_parents = &header.parents_by_level[block_level];
+            if header_level_parents.len() != expected_level_parents.len() {
+                return false;
+            }
+
+            let expected_set = HashSet::<&Hash>::from_iter(expected_level_parents);
+            header_level_parents.iter().all(|header_parent| expected_set.contains(header_parent))
+        }) {
+            return Err(RuleError::UnexepctedIndirectParents(
+                VecVecDisplay(expected_block_parents),
+                VecVecDisplay(header.parents_by_level.clone()),
+            ));
+        };
         Ok(())
     }
 

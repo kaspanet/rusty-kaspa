@@ -29,7 +29,7 @@ use crate::{
     },
     processes::{
         block_at_depth::BlockDepthManager, coinbase::CoinbaseManager, dagtraversalmanager::DagTraversalManager,
-        difficulty::DifficultyManager, ghostdag::protocol::GhostdagManager, mass::MassCalculator,
+        difficulty::DifficultyManager, ghostdag::protocol::GhostdagManager, mass::MassCalculator, parents_builder::ParentsManager,
         pastmediantime::PastMedianTimeManager, pruning::PruningManager, reachability::inquirer as reachability,
         transaction_validator::TransactionValidator,
     },
@@ -164,6 +164,14 @@ impl Consensus {
             past_pruning_points_store.clone(),
         );
 
+        let parents_manager = ParentsManager::new(
+            params.max_block_level,
+            params.genesis_hash,
+            headers_store.clone(),
+            reachability_service.clone(),
+            relations_store.clone(),
+        );
+
         let (sender, receiver): (Sender<BlockTask>, Receiver<BlockTask>) = unbounded();
         let (body_sender, body_receiver): (Sender<BlockTask>, Receiver<BlockTask>) = unbounded();
         let (virtual_sender, virtual_receiver): (Sender<BlockTask>, Receiver<BlockTask>) = unbounded();
@@ -192,6 +200,7 @@ impl Consensus {
             difficulty_manager.clone(),
             depth_manager,
             pruning_manager.clone(),
+            parents_manager,
             counters.clone(),
         ));
 

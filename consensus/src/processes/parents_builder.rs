@@ -18,7 +18,8 @@ use crate::{
     processes::reachability::ReachabilityError,
 };
 
-pub struct ParentsBuilder<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> {
+#[derive(Clone)]
+pub struct ParentsManager<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> {
     max_block_level: u8,
     genesis_hash: Hash,
 
@@ -27,8 +28,18 @@ pub struct ParentsBuilder<T: HeaderStoreReader, U: ReachabilityStoreReader, V: R
     relations_store: Arc<RwLock<V>>,
 }
 
-impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> ParentsBuilder<T, U, V> {
-    pub fn calc_block_parents(&self, pruning_point: Hash, direct_parents: Vec<Hash>) -> Vec<Vec<Hash>> {
+impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> ParentsManager<T, U, V> {
+    pub fn new(
+        max_block_level: u8,
+        genesis_hash: Hash,
+        headers_store: Arc<T>,
+        reachability_service: MTReachabilityService<U>,
+        relations_store: Arc<RwLock<V>>,
+    ) -> Self {
+        Self { max_block_level, genesis_hash, headers_store, reachability_service, relations_store }
+    }
+
+    pub fn calc_block_parents(&self, pruning_point: Hash, direct_parents: &Vec<Hash>) -> Vec<Vec<Hash>> {
         let mut direct_parent_headers =
             direct_parents.iter().copied().map(|parent| self.headers_store.get_header_with_block_level(parent).unwrap()).collect_vec();
 
@@ -46,11 +57,11 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
         direct_parent_headers.swap(0, first_parent_in_future_of_pruning_point_index);
         drop(direct_parents); // Since `direct_parents` and `direct_parent_headers` are now sorted differently, we drop direct_parents to avoid mistakes.
 
-        let mut candidates_by_level_to_reference_blocks_map = (0..self.max_block_level).map(|level| HashMap::new()).collect_vec();
+        let mut candidates_by_level_to_reference_blocks_map = (0..self.max_block_level + 1).map(|level| HashMap::new()).collect_vec();
         // Direct parents are guaranteed to be in one other's anticones so add them all to
         // all the block levels they occupy.
         for direct_parent_header in direct_parent_headers.iter() {
-            for level in 0..direct_parent_header.block_level {
+            for level in 0..direct_parent_header.block_level + 1 {
                 candidates_by_level_to_reference_blocks_map[level as usize]
                     .insert(direct_parent_header.header.hash, vec![direct_parent_header.header.hash]);
             }
@@ -155,18 +166,18 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
         parents
     }
 
-    pub fn parents<'a>(&'a self, header: &'a Header) -> impl ExactSizeIterator<Item = &'a Vec<Hash>> {
+    pub fn parents<'a>(&'a self, header: &'a Header) -> impl ExactSizeIterator<Item = &'a [Hash]> {
         (0..self.max_block_level).map(|level| self.parents_at_level(header, level))
     }
 
-    pub fn parents_at_level<'a>(&'a self, header: &'a Header, level: u8) -> &'a Vec<Hash> {
+    pub fn parents_at_level<'a>(&'a self, header: &'a Header, level: u8) -> &'a [Hash] {
         if header.direct_parents().is_empty() {
             // If is genesis
-            &vec![]
+            &[]
         } else if header.parents_by_level.len() > level as usize {
-            &header.parents_by_level[level as usize]
+            &header.parents_by_level[level as usize][..]
         } else {
-            &vec![self.genesis_hash]
+            std::slice::from_ref(&self.genesis_hash)
         }
     }
 }

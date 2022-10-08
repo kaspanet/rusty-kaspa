@@ -24,8 +24,8 @@ use crate::{
     pipeline::deps_manager::{BlockTask, BlockTaskDependencyManager},
     processes::{
         block_at_depth::BlockDepthManager, dagtraversalmanager::DagTraversalManager, difficulty::DifficultyManager,
-        ghostdag::protocol::GhostdagManager, pastmediantime::PastMedianTimeManager, pruning::PruningManager,
-        reachability::inquirer as reachability,
+        ghostdag::protocol::GhostdagManager, parents_builder::ParentsManager, pastmediantime::PastMedianTimeManager,
+        pruning::PruningManager, reachability::inquirer as reachability,
     },
     test_helpers::header_from_precomputed_hash,
 };
@@ -135,6 +135,7 @@ pub struct HeaderProcessor {
     pub(super) depth_manager: BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>,
     pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
     pub(super) pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
+    pub(super) parents_manager: ParentsManager<DbHeadersStore, DbReachabilityStore, DbRelationsStore>,
 
     // Dependency manager
     task_manager: BlockTaskDependencyManager,
@@ -167,6 +168,7 @@ impl HeaderProcessor {
         difficulty_manager: DifficultyManager<DbHeadersStore>,
         depth_manager: BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>,
         pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
+        parents_manager: ParentsManager<DbHeadersStore, DbReachabilityStore, DbRelationsStore>,
         counters: Arc<ProcessingCounters>,
     ) -> Self {
         Self {
@@ -199,6 +201,7 @@ impl HeaderProcessor {
             past_median_time_manager,
             depth_manager,
             pruning_manager,
+            parents_manager,
             task_manager: BlockTaskDependencyManager::new(),
             counters,
             timestamp_deviation_tolerance: params.timestamp_deviation_tolerance,
@@ -337,8 +340,11 @@ impl HeaderProcessor {
 
         // Non-append only stores need to use write locks.
         // Note we need to keep the lock write guards until the batch is written.
-        let relations_write_guard =
-            self.relations_store.insert_batch(&mut batch, header.hash, BlockHashes::new(header.direct_parents().clone())).unwrap();
+        let relations_write_guard = if header.direct_parents().is_empty() {
+            self.relations_store.insert_batch(&mut batch, header.hash, BlockHashes::new(vec![ORIGIN])).unwrap()
+        } else {
+            self.relations_store.insert_batch(&mut batch, header.hash, BlockHashes::new(header.direct_parents().clone())).unwrap()
+        };
 
         let statuses_write_guard = self.statuses_store.set_batch(&mut batch, ctx.hash, StatusHeaderOnly).unwrap();
 
@@ -359,6 +365,12 @@ impl HeaderProcessor {
     pub fn process_genesis_if_needed(self: &Arc<HeaderProcessor>) {
         if self.header_was_processed(self.genesis_hash) {
             return;
+        }
+
+        {
+            let mut batch = WriteBatch::default();
+            let write_guard = self.relations_store.insert_batch(&mut batch, ORIGIN, BlockHashes::new(vec![]));
+            self.db.write(batch).unwrap();
         }
 
         self.pruning_store.write().set(self.genesis_hash, self.genesis_hash, 0).unwrap();
