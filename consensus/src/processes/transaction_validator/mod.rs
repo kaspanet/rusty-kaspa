@@ -19,7 +19,7 @@ pub struct TransactionValidator<T: HeaderStoreReader> {
     coinbase_payload_script_public_key_max_len: u8,
     coinbase_maturity: u64,
 
-    headers_store: Arc<T>,
+    headers_store: Arc<T>, // TODO: remove
 }
 
 impl<T: HeaderStoreReader> TransactionValidator<T> {

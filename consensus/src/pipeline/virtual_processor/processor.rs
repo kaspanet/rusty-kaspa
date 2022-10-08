@@ -139,36 +139,37 @@ impl VirtualStateProcessor {
 
             // Update tips
             let parents_set = BlockHashSet::from_iter(block.header.direct_parents().iter().cloned());
-            state.tips.retain(|t| !parents_set.contains(t));
-            state.tips.push(block.header.hash);
+            state.virtual_parents.retain(|t| !parents_set.contains(t));
+            state.virtual_parents.push(block.header.hash);
         }
 
         // TEMP: using all tips as virtual parents
-        let virtual_ghostdag_data = self.ghostdag_manager.ghostdag(&state.tips);
+        let virtual_ghostdag_data = self.ghostdag_manager.ghostdag(&state.virtual_parents);
 
-        if virtual_ghostdag_data.selected_parent != state.selected_tip {
+        if virtual_ghostdag_data.selected_parent != state.selected_parent {
             // Handle the UTXO state change
 
             // TODO: test finality
 
-            let prev_selected = state.selected_tip;
+            let prev_selected = state.selected_parent;
             let new_selected = virtual_ghostdag_data.selected_parent;
 
             let mut split_point = blockhash::ORIGIN;
             let mut accumulated_diff = UtxoDiff::default();
 
-            for chain_hash in self.reachability_service.default_backward_chain_iterator(prev_selected) {
-                let chain_hash = chain_hash.unwrap();
+            // Walk down to the reorg split point
+            for chain_hash in self.reachability_service.default_backward_chain_iterator(prev_selected).map(|r| r.unwrap()) {
                 if self.reachability_service.is_chain_ancestor_of(chain_hash, new_selected) {
                     split_point = chain_hash;
                     break;
                 }
 
                 let mergeset_diff = state.utxo_diffs.get(&chain_hash).unwrap();
+                // Apply the diff in reverse
                 accumulated_diff.with_diff_in_place(&mergeset_diff.reversed()).unwrap();
-                // Reversing
             }
 
+            // Walk back up to the new virtual selected parent candidate
             for (selected_parent, chain_hash) in
                 self.reachability_service.forward_chain_iterator(split_point, new_selected, true).map(|r| r.unwrap()).tuple_windows()
             {
@@ -188,6 +189,7 @@ impl VirtualStateProcessor {
 
                         let mut mergeset_diff = UtxoDiff::default();
                         let chain_block_header = self.headers_store.get_header(chain_hash).unwrap();
+                        let pov_daa_score = chain_block_header.daa_score;
 
                         // Temp logic
                         assert!(!state.multiset_hashes.contains_key(&chain_hash));
@@ -198,8 +200,8 @@ impl VirtualStateProcessor {
                         let selected_parent_transactions = self.block_transactions_store.get(selected_parent).unwrap();
                         let validated_coinbase = ValidatedTransaction::new_coinbase(&selected_parent_transactions[0]);
 
-                        mergeset_diff.add_transaction(&validated_coinbase, chain_block_header.daa_score).unwrap();
-                        multiset_hash.add_transaction(&validated_coinbase, chain_block_header.daa_score);
+                        mergeset_diff.add_transaction(&validated_coinbase, pov_daa_score).unwrap();
+                        multiset_hash.add_transaction(&validated_coinbase, pov_daa_score);
 
                         let mut accepted_tx_ids = vec![validated_coinbase.id()];
                         let mut mergeset_fees = BlockHashMap::with_capacity(mergeset_data.mergeset_size());
@@ -211,13 +213,12 @@ impl VirtualStateProcessor {
                             let composed_view = utxo_view::compose_two_diff_layers(&state.utxo_set, &accumulated_diff, &mergeset_diff);
 
                             // Validate transactions in current UTXO context
-                            let validated_transactions =
-                                self.validate_transactions_in_parallel(&txs, &composed_view, merged_block, chain_hash);
+                            let validated_transactions = self.validate_transactions_in_parallel(&txs, &composed_view, pov_daa_score);
 
                             let mut block_fee = 0u64;
                             for validated_tx in validated_transactions {
-                                mergeset_diff.add_transaction(&validated_tx, chain_block_header.daa_score).unwrap();
-                                multiset_hash.add_transaction(&validated_tx, chain_block_header.daa_score);
+                                mergeset_diff.add_transaction(&validated_tx, pov_daa_score).unwrap();
+                                multiset_hash.add_transaction(&validated_tx, pov_daa_score);
                                 accepted_tx_ids.push(validated_tx.id());
                                 block_fee += validated_tx.calculated_fee;
                             }
@@ -250,7 +251,7 @@ impl VirtualStateProcessor {
 
             match self.statuses_store.read().get(new_selected).unwrap() {
                 BlockStatus::StatusUTXOValid => {
-                    state.selected_tip = new_selected;
+                    state.selected_parent = new_selected;
 
                     // Apply the accumulated diff
                     state.utxo_set.remove_many(&accumulated_diff.remove);
@@ -276,8 +277,8 @@ impl VirtualStateProcessor {
 struct VirtualState {
     utxo_set: UtxoCollection,           // TEMP: represents the utxo set of virtual selected parent
     utxo_diffs: BlockHashMap<UtxoDiff>, // Holds diff of this block from selected parent
-    tips: Vec<Hash>,
-    selected_tip: Hash,
+    virtual_parents: Vec<Hash>,
+    selected_parent: Hash,
     multiset_hashes: BlockHashMap<MuHash>,
 }
 
@@ -286,8 +287,8 @@ impl VirtualState {
         Self {
             utxo_set: Default::default(),
             utxo_diffs: Default::default(),
-            tips: vec![genesis_hash],
-            selected_tip: genesis_hash,
+            virtual_parents: vec![genesis_hash],
+            selected_parent: genesis_hash,
             multiset_hashes: BlockHashMap::from([(genesis_hash, MuHash::new())]),
         }
     }

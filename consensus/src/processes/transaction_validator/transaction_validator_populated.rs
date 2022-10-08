@@ -1,5 +1,4 @@
 use consensus_core::tx::PopulatedTransaction;
-use hashes::Hash;
 
 use crate::{
     constants::{MAX_SOMPI, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK},
@@ -12,8 +11,7 @@ use super::{
 };
 
 impl<T: HeaderStoreReader> TransactionValidator<T> {
-    pub fn validate_populated_transaction_and_get_fee(&self, tx: &PopulatedTransaction, pov_block_hash: Hash) -> TxResult<u64> {
-        let pov_daa_score = self.headers_store.get_daa_score(pov_block_hash).unwrap();
+    pub fn validate_populated_transaction_and_get_fee(&self, tx: &PopulatedTransaction, pov_daa_score: u64) -> TxResult<u64> {
         self.check_transaction_coinbase_maturity(tx, pov_daa_score)?;
         let total_in = self.check_transaction_input_amounts(tx)?;
         let total_out = Self::check_transaction_output_values(tx, total_in)?;

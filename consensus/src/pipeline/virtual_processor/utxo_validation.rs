@@ -53,10 +53,10 @@ impl VirtualStateProcessor {
         let txs = self.block_transactions_store.get(header.hash).unwrap();
 
         // Verify coinbase transaction
-        self.verify_coinbase_transaction(&txs[0], mergeset_fees)?;
+        self.verify_coinbase_transaction(&txs[0], mergeset_data, mergeset_fees)?;
 
         // Verify all transactions are valid in context (TODO: skip validation when becoming selected parent)
-        let validated_transactions = self.validate_transactions_in_parallel(&txs, &utxo_view, header.hash, header.hash);
+        let validated_transactions = self.validate_transactions_in_parallel(&txs, &utxo_view, header.daa_score);
         if validated_transactions.len() < txs.len() - 1 {
             // Some transactions were invalid
             return Err(InvalidTransactionsInUtxoContext(txs.len() - 1 - validated_transactions.len(), txs.len() - 1));
@@ -68,9 +68,11 @@ impl VirtualStateProcessor {
     fn verify_coinbase_transaction(
         self: &Arc<VirtualStateProcessor>,
         coinbase_tx: &Transaction,
+        mergeset_data: &GhostdagData,
         mergeset_fees: BlockHashMap<u64>,
     ) -> BlockProcessResult<()> {
         // TODO: build expected coinbase using `mergeset_fees` and compare with the given tx
+        // Return `Err(BadCoinbaseTransaction)` if the expected and actual defer
         Ok(())
     }
 
@@ -80,14 +82,13 @@ impl VirtualStateProcessor {
         self: &Arc<VirtualStateProcessor>,
         txs: &'a Vec<Transaction>,
         utxo_view: &V,
-        merged_block: Hash,
-        merging_block: Hash,
+        pov_daa_score: u64,
     ) -> Vec<ValidatedTransaction<'a>> {
         txs
             .par_iter() // We can do this in parallel without complications since block body validation already ensured 
                         // that all txs in the block are independent 
             .skip(1) // Skip the coinbase tx. 
-            .filter_map(|tx| self.validate_transaction_in_utxo_context(tx, &utxo_view, merged_block, merging_block))
+            .filter_map(|tx| self.validate_transaction_in_utxo_context(tx, &utxo_view, pov_daa_score))
             .collect()
     }
 
@@ -96,15 +97,14 @@ impl VirtualStateProcessor {
         self: &Arc<VirtualStateProcessor>,
         transaction: &'a Transaction,
         utxo_view: &impl UtxoView,
-        merged_block: Hash,
-        merging_block: Hash,
+        pov_daa_score: u64,
     ) -> Option<ValidatedTransaction<'a>> {
         let mut entries = Vec::with_capacity(transaction.inputs.len());
         for input in transaction.inputs.iter() {
             if let Some(entry) = utxo_view.get(&input.previous_outpoint) {
                 entries.push(entry.clone());
             } else {
-                trace!("missing entry for block {} and outpoint {}", merged_block, input.previous_outpoint);
+                trace!("missing UTXO entry for outpoint {}", input.previous_outpoint);
                 break;
             }
         }
@@ -113,12 +113,11 @@ impl VirtualStateProcessor {
             return None;
         }
         let populated_tx = PopulatedTransaction::new(transaction, entries);
-        let res = self.transaction_validator.validate_populated_transaction_and_get_fee(&populated_tx, merging_block);
-        // TODO: pass DAA score instead of hash to function above ^^
+        let res = self.transaction_validator.validate_populated_transaction_and_get_fee(&populated_tx, pov_daa_score);
         match res {
             Ok(calculated_fee) => Some(populated_tx.to_validated(calculated_fee)),
             Err(tx_rule_error) => {
-                trace!("tx rule error {} for block {} and tx {}", tx_rule_error, merged_block, transaction.id());
+                trace!("tx rule error {} for tx {}", tx_rule_error, transaction.id());
                 None // TODO: add to acceptance data as unaccepted tx
             }
         }
