@@ -5,6 +5,7 @@ use crate::{
         services::reachability::{MTReachabilityService, ReachabilityService},
         stores::{
             block_transactions::DbBlockTransactionsStore,
+            block_window_cache::BlockWindowCacheStore,
             ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStoreReader},
             headers::{DbHeadersStore, HeaderStoreReader},
             reachability::DbReachabilityStore,
@@ -17,7 +18,9 @@ use crate::{
     },
     params::Params,
     pipeline::{deps_manager::BlockTask, virtual_processor::utxo_validation::UtxoProcessingContext},
-    processes::transaction_validator::TransactionValidator,
+    processes::{
+        dagtraversalmanager::DagTraversalManager, difficulty::DifficultyManager, transaction_validator::TransactionValidator,
+    },
 };
 use consensus_core::{
     block::Block,
@@ -32,6 +35,7 @@ use muhash::MuHash;
 use crossbeam_channel::Receiver;
 use itertools::Itertools;
 use parking_lot::RwLock;
+use rayon::ThreadPool;
 use std::{
     collections::hash_map::Entry::{Occupied, Vacant},
     iter::FromIterator,
@@ -42,12 +46,15 @@ pub struct VirtualStateProcessor {
     // Channels
     receiver: Receiver<BlockTask>,
 
+    // Thread pool
+    pub(super) thread_pool: Arc<ThreadPool>,
+
     // Config
     pub(super) genesis_hash: Hash,
     // pub(super) timestamp_deviation_tolerance: u64,
     // pub(super) target_time_per_block: u64,
     pub(super) max_block_parents: u8,
-    // pub(super) difficulty_window_size: usize,
+    pub(super) difficulty_window_size: usize,
     pub(super) mergeset_size_limit: u64,
     // pub(super) genesis_bits: u32,
 
@@ -63,10 +70,13 @@ pub struct VirtualStateProcessor {
     // Managers and services
     pub(super) ghostdag_manager: DbGhostdagManager,
     pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
+    pub(super) dag_traversal_manager: DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore>,
+    pub(super) difficulty_manager: DifficultyManager<DbHeadersStore>,
     pub(super) transaction_validator: TransactionValidator<DbHeadersStore>,
 }
 
 impl VirtualStateProcessor {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         receiver: Receiver<BlockTask>,
         params: &Params,
@@ -77,10 +87,20 @@ impl VirtualStateProcessor {
         block_transactions_store: Arc<DbBlockTransactionsStore>,
         ghostdag_manager: DbGhostdagManager,
         reachability_service: MTReachabilityService<DbReachabilityStore>,
+        dag_traversal_manager: DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore>,
+        difficulty_manager: DifficultyManager<DbHeadersStore>,
         transaction_validator: TransactionValidator<DbHeadersStore>,
     ) -> Self {
+        // We need a dedicated thread-pool to avoid possible deadlocks probably caused by the
+        // combined usage of `par_iter` (in virtual processor) and `rayon::spawn` (in header/body processors).
+        // See for instance https://github.com/rayon-rs/rayon/issues/690
+        let thread_pool = Arc::new(rayon::ThreadPoolBuilder::new()
+                .num_threads(rayon::current_num_threads()) // For now copy from global num of threads (TODO: cmd flag?)
+                .build()
+                .unwrap());
         Self {
             receiver,
+            thread_pool,
             db,
             statuses_store,
             headers_store,
@@ -90,7 +110,10 @@ impl VirtualStateProcessor {
             reachability_service,
             genesis_hash: params.genesis_hash,
             max_block_parents: params.max_block_parents,
+            difficulty_window_size: params.difficulty_window_size,
             mergeset_size_limit: params.mergeset_size_limit,
+            dag_traversal_manager,
+            difficulty_manager,
             transaction_validator,
         }
     }
@@ -152,18 +175,18 @@ impl VirtualStateProcessor {
             let new_selected = virtual_ghostdag_data.selected_parent;
 
             let mut split_point = blockhash::ORIGIN;
-            let mut accumulated_diff = UtxoDiff::default();
+            let mut accumulated_diff = state.virtual_diff.clone().to_reversed();
 
             // Walk down to the reorg split point
-            for chain_hash in self.reachability_service.default_backward_chain_iterator(prev_selected).map(|r| r.unwrap()) {
-                if self.reachability_service.is_chain_ancestor_of(chain_hash, new_selected) {
-                    split_point = chain_hash;
+            for current in self.reachability_service.default_backward_chain_iterator(prev_selected).map(|r| r.unwrap()) {
+                if self.reachability_service.is_chain_ancestor_of(current, new_selected) {
+                    split_point = current;
                     break;
                 }
 
-                let mergeset_diff = state.utxo_diffs.get(&chain_hash).unwrap();
+                let mergeset_diff = state.utxo_diffs.get(&current).unwrap();
                 // Apply the diff in reverse
-                accumulated_diff.with_diff_in_place(&mergeset_diff.reversed()).unwrap();
+                accumulated_diff.with_diff_in_place(&mergeset_diff.as_reversed()).unwrap();
             }
 
             // Walk back up to the new virtual selected parent candidate
@@ -194,7 +217,7 @@ impl VirtualStateProcessor {
                         let selected_parent_multiset_hash = &state.multiset_hashes.get(&mergeset_data.selected_parent).unwrap();
                         let selected_parent_utxo_view = utxo_view::compose_one_diff_layer(&state.utxo_set, &accumulated_diff);
 
-                        let mut ctx = UtxoProcessingContext::new(&mergeset_data, selected_parent_multiset_hash);
+                        let mut ctx = UtxoProcessingContext::new(mergeset_data, selected_parent_multiset_hash);
 
                         self.calculate_utxo_state(&mut ctx, &selected_parent_utxo_view, pov_daa_score);
                         let res = self.verify_expected_utxo_state(&mut ctx, &selected_parent_utxo_view, &header);
@@ -203,10 +226,10 @@ impl VirtualStateProcessor {
                             trace!("{:?}", rule_error);
                             self.statuses_store.write().set(current, StatusDisqualifiedFromChain).unwrap();
                         } else {
+                            // TODO: batch write
                             accumulated_diff.with_diff_in_place(&ctx.mergeset_diff).unwrap();
                             e.insert(ctx.mergeset_diff);
                             state.multiset_hashes.insert(current, ctx.multiset_hash);
-                            // TODO: batch write
                             self.statuses_store.write().set(current, StatusUTXOValid).unwrap();
                         }
                     }
@@ -215,6 +238,25 @@ impl VirtualStateProcessor {
 
             match self.statuses_store.read().get(new_selected).unwrap() {
                 BlockStatus::StatusUTXOValid => {
+                    // TODO: batch write
+
+                    // Calc new virtual diff
+                    let selected_parent_multiset_hash = &state.multiset_hashes.get(&virtual_ghostdag_data.selected_parent).unwrap();
+                    let selected_parent_utxo_view = utxo_view::compose_one_diff_layer(&state.utxo_set, &accumulated_diff);
+                    let mut ctx = UtxoProcessingContext::new(virtual_ghostdag_data.clone(), selected_parent_multiset_hash);
+
+                    // Calc virtual DAA score
+                    let window = self.dag_traversal_manager.block_window(virtual_ghostdag_data.clone(), self.difficulty_window_size);
+                    let (virtual_daa_score, _) = self
+                        .difficulty_manager
+                        .calc_daa_score_and_added_blocks(&mut window.iter().map(|item| item.0.hash), &virtual_ghostdag_data);
+                    self.calculate_utxo_state(&mut ctx, &selected_parent_utxo_view, virtual_daa_score);
+
+                    // Update the accumulated diff
+                    accumulated_diff.with_diff_in_place(&ctx.mergeset_diff).unwrap();
+
+                    // Store new virtual data
+                    state.virtual_diff = ctx.mergeset_diff;
                     state.ghostdag_data = virtual_ghostdag_data;
 
                     // Apply the accumulated diff
@@ -241,6 +283,7 @@ impl VirtualStateProcessor {
 struct VirtualState {
     utxo_set: UtxoCollection,           // TEMP: represents the utxo set of virtual selected parent
     utxo_diffs: BlockHashMap<UtxoDiff>, // Holds diff of this block from selected parent
+    virtual_diff: UtxoDiff,
     virtual_parents: Vec<Hash>,
     ghostdag_data: Arc<GhostdagData>,
     multiset_hashes: BlockHashMap<MuHash>,
@@ -251,6 +294,7 @@ impl VirtualState {
         Self {
             utxo_set: Default::default(),
             utxo_diffs: Default::default(),
+            virtual_diff: UtxoDiff::default(), // Virtual diff is initially empty since genesis receives no reward
             virtual_parents: vec![genesis_hash],
             ghostdag_data: initial_ghostdag_data,
             multiset_hashes: BlockHashMap::from([(genesis_hash, MuHash::new())]),

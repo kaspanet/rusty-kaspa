@@ -60,8 +60,12 @@ impl UtxoDiff {
         Self { add, remove }
     }
 
-    pub fn reversed(&self) -> impl ImmutableUtxoDiff + '_ {
+    pub fn as_reversed(&self) -> impl ImmutableUtxoDiff + '_ {
         ReversedUtxoDiff::new(self)
+    }
+
+    pub fn to_reversed(self) -> Self {
+        Self::new(self.remove, self.add)
     }
 
     pub fn with_diff(&self, other: &impl ImmutableUtxoDiff) -> UtxoResult<UtxoDiff> {

@@ -25,22 +25,23 @@ use std::{ops::Deref, sync::Arc};
 
 /// A context for processing the UTXO state of a block with respect to its selected parent.
 /// Note this can also be the virtual block.
-pub(super) struct UtxoProcessingContext<'a> {
-    pub mergeset_data: &'a GhostdagData,
+pub(super) struct UtxoProcessingContext {
+    pub mergeset_data: Arc<GhostdagData>,
     pub multiset_hash: MuHash,
     pub mergeset_diff: UtxoDiff,
     pub accepted_tx_ids: Vec<TransactionId>,
     pub mergeset_fees: BlockHashMap<u64>,
 }
 
-impl<'a> UtxoProcessingContext<'a> {
-    pub fn new(mergeset_data: &'a GhostdagData, selected_parent_multiset_hash: &MuHash) -> Self {
+impl UtxoProcessingContext {
+    pub fn new(mergeset_data: Arc<GhostdagData>, selected_parent_multiset_hash: &MuHash) -> Self {
+        let mergeset_size = mergeset_data.mergeset_size();
         Self {
             mergeset_data,
             multiset_hash: selected_parent_multiset_hash.clone(),
             mergeset_diff: UtxoDiff::default(),
             accepted_tx_ids: Vec::with_capacity(1), // We expect at least the selected parent coinbase tx
-            mergeset_fees: BlockHashMap::with_capacity(mergeset_data.mergeset_size()),
+            mergeset_fees: BlockHashMap::with_capacity(mergeset_size),
         }
     }
 
@@ -114,10 +115,10 @@ impl VirtualStateProcessor {
         let txs = self.block_transactions_store.get(header.hash).unwrap();
 
         // Verify coinbase transaction
-        self.verify_coinbase_transaction(&txs[0], ctx.mergeset_data, &ctx.mergeset_fees)?;
+        self.verify_coinbase_transaction(&txs[0], &ctx.mergeset_data, &ctx.mergeset_fees)?;
 
         // Verify all transactions are valid in context (TODO: skip validation when becoming selected parent)
-        let current_utxo_view = utxo_view::compose_one_diff_layer(&selected_parent_utxo_view, &ctx.mergeset_diff);
+        let current_utxo_view = utxo_view::compose_one_diff_layer(selected_parent_utxo_view, &ctx.mergeset_diff);
         let validated_transactions = self.validate_transactions_in_parallel(&txs, &current_utxo_view, header.daa_score);
         if validated_transactions.len() < txs.len() - 1 {
             // Some non-coinbase transactions are invalid
@@ -146,12 +147,14 @@ impl VirtualStateProcessor {
         utxo_view: &V,
         pov_daa_score: u64,
     ) -> Vec<ValidatedTransaction<'a>> {
-        txs
-            .par_iter() // We can do this in parallel without complications since block body validation already ensured 
-                        // that all txs in the block are independent 
-            .skip(1) // Skip the coinbase tx. 
-            .filter_map(|tx| self.validate_transaction_in_utxo_context(tx, &utxo_view, pov_daa_score))
-            .collect()
+        self.thread_pool.install(|| {
+            txs
+                .par_iter() // We can do this in parallel without complications since block body validation already ensured 
+                            // that all txs within each block are independent 
+                .skip(1) // Skip the coinbase tx. 
+                .filter_map(|tx| self.validate_transaction_in_utxo_context(tx, &utxo_view, pov_daa_score))
+                .collect()
+        })
     }
 
     /// Attempts to populate the transaction with UTXO entries and performs all tx validations

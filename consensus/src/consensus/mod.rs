@@ -214,6 +214,8 @@ impl Consensus {
             block_transactions_store,
             ghostdag_manager.clone(),
             reachability_service.clone(),
+            dag_traversal_manager.clone(),
+            difficulty_manager.clone(),
             transaction_validator,
         ));
 
