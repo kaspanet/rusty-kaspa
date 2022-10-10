@@ -1,8 +1,11 @@
 use super::{errors::StoreError, DB};
-use moka::sync::Cache;
+use rand::Rng;
 use rocksdb::WriteBatch;
 use serde::{de::DeserializeOwned, Serialize};
-use std::sync::{Arc, RwLock};
+use std::{
+    collections::HashMap,
+    sync::{Arc, RwLock},
+};
 
 const SEP: u8 = b'/';
 
@@ -22,11 +25,48 @@ impl AsRef<[u8]> for DbKey {
     }
 }
 
+#[derive(Clone)]
+pub struct Cache<TKey: Clone + std::hash::Hash + Eq + Send + Sync + 'static, TData: Clone + Send + Sync + 'static> {
+    map: Arc<RwLock<HashMap<TKey, TData>>>,
+    size: usize,
+}
+
+impl<TKey: Clone + std::hash::Hash + Eq + Send + Sync + 'static, TData: Clone + Send + Sync + 'static> Cache<TKey, TData> {
+    fn new(size: u64) -> Self {
+        Self { map: Arc::new(RwLock::new(HashMap::new())), size: size as usize }
+    }
+
+    pub fn get<'a>(&self, key: &TKey) -> Option<TData> {
+        if let Some(data) = self.map.read().unwrap().get(key) {
+            Some(data.clone())
+        } else {
+            None
+        }
+    }
+
+    pub fn contains_key<'a>(&self, key: &TKey) -> bool {
+        self.map.read().unwrap().contains_key(key)
+    }
+
+    pub fn insert<'a>(&self, key: TKey, data: TData) {
+        if self.size == 0 {
+            return;
+        }
+
+        let mut write_guard = self.map.write().unwrap();
+        if write_guard.len() == self.size {
+            let random_key = write_guard.keys().skip(rand::thread_rng().gen_range(0..self.size - 1)).next().unwrap().clone();
+            write_guard.remove(&random_key);
+        }
+        write_guard.insert(key, data);
+    }
+}
+
 /// A concurrent DB store with typed caching.
 #[derive(Clone)]
 pub struct CachedDbAccess<TKey, TData>
 where
-    TKey: std::hash::Hash + Eq + Send + Sync + 'static,
+    TKey: Clone + std::hash::Hash + Eq + Send + Sync + 'static,
     TData: Clone + Send + Sync + 'static,
 {
     db: Arc<DB>,
@@ -41,7 +81,7 @@ where
 
 impl<TKey, TData> CachedDbAccess<TKey, TData>
 where
-    TKey: std::hash::Hash + Eq + Send + Sync + 'static,
+    TKey: Clone + std::hash::Hash + Eq + Send + Sync + 'static,
     TData: Clone + Send + Sync + 'static,
 {
     pub fn new(db: Arc<DB>, cache_size: u64, prefix: &'static [u8]) -> Self {
@@ -106,7 +146,7 @@ where
 #[derive(Clone)]
 pub struct CachedDbAccessForCopy<TKey, TData>
 where
-    TKey: std::hash::Hash + Eq + Send + Sync + 'static,
+    TKey: Clone + std::hash::Hash + Eq + Send + Sync + 'static,
     TData: Clone + Copy + Send + Sync + 'static,
 {
     db: Arc<DB>,
@@ -121,7 +161,7 @@ where
 
 impl<TKey, TData> CachedDbAccessForCopy<TKey, TData>
 where
-    TKey: std::hash::Hash + Eq + Send + Sync + 'static,
+    TKey: Clone + std::hash::Hash + Eq + Send + Sync + 'static,
     TData: Clone + Copy + Send + Sync + 'static,
 {
     pub fn new(db: Arc<DB>, cache_size: u64, prefix: &'static [u8]) -> Self {
