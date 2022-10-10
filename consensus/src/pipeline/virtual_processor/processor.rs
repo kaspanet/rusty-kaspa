@@ -160,116 +160,118 @@ impl VirtualStateProcessor {
         // TEMP: using all tips as virtual parents
         let virtual_ghostdag_data = self.ghostdag_manager.ghostdag(&state.virtual_parents);
 
-        if virtual_ghostdag_data.selected_parent != state.ghostdag_data.selected_parent {
-            // Handle the UTXO state change
+        // TODO: check finality violation
+        // TODO: can return if virtual parents did not change
 
-            // TODO: test finality
+        let prev_selected = state.ghostdag_data.selected_parent;
+        let new_selected = virtual_ghostdag_data.selected_parent;
 
-            let prev_selected = state.ghostdag_data.selected_parent;
-            let new_selected = virtual_ghostdag_data.selected_parent;
+        let mut split_point = blockhash::ORIGIN;
+        let mut accumulated_diff = state.virtual_diff.clone().to_reversed();
 
-            let mut split_point = blockhash::ORIGIN;
-            let mut accumulated_diff = state.virtual_diff.clone().to_reversed();
-
-            // Walk down to the reorg split point
-            for current in self.reachability_service.default_backward_chain_iterator(prev_selected).map(|r| r.unwrap()) {
-                if self.reachability_service.is_chain_ancestor_of(current, new_selected) {
-                    split_point = current;
-                    break;
-                }
-
-                let mergeset_diff = state.utxo_diffs.get(&current).unwrap();
-                // Apply the diff in reverse
-                accumulated_diff.with_diff_in_place(&mergeset_diff.as_reversed()).unwrap();
+        // Walk down to the reorg split point
+        for current in self.reachability_service.default_backward_chain_iterator(prev_selected).map(|r| r.unwrap()) {
+            if self.reachability_service.is_chain_ancestor_of(current, new_selected) {
+                split_point = current;
+                break;
             }
 
-            // Walk back up to the new virtual selected parent candidate
-            for (selected_parent, current) in
-                self.reachability_service.forward_chain_iterator(split_point, new_selected, true).map(|r| r.unwrap()).tuple_windows()
-            {
-                match state.utxo_diffs.entry(current) {
-                    Occupied(e) => {
-                        let mergeset_diff = e.get();
-                        accumulated_diff.with_diff_in_place(mergeset_diff).unwrap();
-
-                        // Temp logic
-                        assert!(state.multiset_hashes.contains_key(&current));
-                    }
-                    Vacant(e) => {
-                        if self.statuses_store.read().get(selected_parent).unwrap() == StatusDisqualifiedFromChain {
-                            self.statuses_store.write().set(current, StatusDisqualifiedFromChain).unwrap();
-                            continue; // TODO: optimize
-                        }
-
-                        let header = self.headers_store.get_header(current).unwrap();
-                        let mergeset_data = self.ghostdag_store.get_data(current).unwrap();
-                        let pov_daa_score = header.daa_score;
-
-                        // Temp logic
-                        assert!(!state.multiset_hashes.contains_key(&current));
-
-                        let selected_parent_multiset_hash = &state.multiset_hashes.get(&mergeset_data.selected_parent).unwrap();
-                        let selected_parent_utxo_view = utxo_view::compose_one_diff_layer(&state.utxo_set, &accumulated_diff);
-
-                        let mut ctx = UtxoProcessingContext::new(mergeset_data, selected_parent_multiset_hash);
-
-                        self.calculate_utxo_state(&mut ctx, &selected_parent_utxo_view, pov_daa_score);
-                        let res = self.verify_expected_utxo_state(&mut ctx, &selected_parent_utxo_view, &header);
-
-                        if let Err(rule_error) = res {
-                            trace!("{:?}", rule_error);
-                            self.statuses_store.write().set(current, StatusDisqualifiedFromChain).unwrap();
-                        } else {
-                            // TODO: batch write
-                            accumulated_diff.with_diff_in_place(&ctx.mergeset_diff).unwrap();
-                            e.insert(ctx.mergeset_diff);
-                            state.multiset_hashes.insert(current, ctx.multiset_hash);
-                            self.statuses_store.write().set(current, StatusUTXOValid).unwrap();
-                        }
-                    }
-                }
-            }
-
-            match self.statuses_store.read().get(new_selected).unwrap() {
-                BlockStatus::StatusUTXOValid => {
-                    // TODO: batch write
-
-                    // Calc new virtual diff
-                    let selected_parent_multiset_hash = &state.multiset_hashes.get(&virtual_ghostdag_data.selected_parent).unwrap();
-                    let selected_parent_utxo_view = utxo_view::compose_one_diff_layer(&state.utxo_set, &accumulated_diff);
-                    let mut ctx = UtxoProcessingContext::new(virtual_ghostdag_data.clone(), selected_parent_multiset_hash);
-
-                    // Calc virtual DAA score
-                    let window = self.dag_traversal_manager.block_window(virtual_ghostdag_data.clone(), self.difficulty_window_size);
-                    let (virtual_daa_score, _) = self
-                        .difficulty_manager
-                        .calc_daa_score_and_added_blocks(&mut window.iter().map(|item| item.0.hash), &virtual_ghostdag_data);
-                    self.calculate_utxo_state(&mut ctx, &selected_parent_utxo_view, virtual_daa_score);
-
-                    // Update the accumulated diff
-                    accumulated_diff.with_diff_in_place(&ctx.mergeset_diff).unwrap();
-
-                    // Store new virtual data
-                    state.virtual_diff = ctx.mergeset_diff;
-                    state.ghostdag_data = virtual_ghostdag_data;
-
-                    // Apply the accumulated diff
-                    state.utxo_set.remove_many(&accumulated_diff.remove);
-                    state.utxo_set.add_many(&accumulated_diff.add);
-                }
-                BlockStatus::StatusDisqualifiedFromChain => {
-                    // TODO: this means another chain needs to be checked
-                }
-                _ => panic!("expected utxo valid or disqualified"),
-            };
-            Ok(())
-        } else {
-            Ok(())
+            let mergeset_diff = state.utxo_diffs.get(&current).unwrap();
+            // Apply the diff in reverse
+            accumulated_diff.with_diff_in_place(&mergeset_diff.as_reversed()).unwrap();
         }
+
+        // Walk back up to the new virtual selected parent candidate
+        for (selected_parent, current) in
+            self.reachability_service.forward_chain_iterator(split_point, new_selected, true).map(|r| r.unwrap()).tuple_windows()
+        {
+            match state.utxo_diffs.entry(current) {
+                Occupied(e) => {
+                    let mergeset_diff = e.get();
+                    accumulated_diff.with_diff_in_place(mergeset_diff).unwrap();
+
+                    // Temp logic
+                    assert!(state.multiset_hashes.contains_key(&current));
+                }
+                Vacant(e) => {
+                    if self.statuses_store.read().get(selected_parent).unwrap() == StatusDisqualifiedFromChain {
+                        self.statuses_store.write().set(current, StatusDisqualifiedFromChain).unwrap();
+                        continue; // TODO: optimize
+                    }
+
+                    let header = self.headers_store.get_header(current).unwrap();
+                    let mergeset_data = self.ghostdag_store.get_data(current).unwrap();
+                    let pov_daa_score = header.daa_score;
+
+                    // Temp logic
+                    assert!(!state.multiset_hashes.contains_key(&current));
+
+                    let selected_parent_multiset_hash = &state.multiset_hashes.get(&mergeset_data.selected_parent).unwrap();
+                    let selected_parent_utxo_view = utxo_view::compose_one_diff_layer(&state.utxo_set, &accumulated_diff);
+
+                    let mut ctx = UtxoProcessingContext::new(mergeset_data, selected_parent_multiset_hash);
+
+                    self.calculate_utxo_state(&mut ctx, &selected_parent_utxo_view, pov_daa_score);
+                    let res = self.verify_expected_utxo_state(&mut ctx, &selected_parent_utxo_view, &header);
+
+                    if let Err(rule_error) = res {
+                        trace!("{:?}", rule_error);
+                        self.statuses_store.write().set(current, StatusDisqualifiedFromChain).unwrap();
+                    } else {
+                        // TODO: batch write
+                        accumulated_diff.with_diff_in_place(&ctx.mergeset_diff).unwrap();
+                        e.insert(ctx.mergeset_diff);
+                        state.multiset_hashes.insert(current, ctx.multiset_hash);
+                        self.statuses_store.write().set(current, StatusUTXOValid).unwrap();
+                    }
+                }
+            }
+        }
+
+        match self.statuses_store.read().get(new_selected).unwrap() {
+            BlockStatus::StatusUTXOValid => {
+                // TODO: batch write
+
+                // Calc new virtual diff
+                let selected_parent_multiset_hash = &state.multiset_hashes.get(&virtual_ghostdag_data.selected_parent).unwrap();
+                let selected_parent_utxo_view = utxo_view::compose_one_diff_layer(&state.utxo_set, &accumulated_diff);
+                let mut ctx = UtxoProcessingContext::new(virtual_ghostdag_data.clone(), selected_parent_multiset_hash);
+
+                // Calc virtual DAA score
+                let window = self.dag_traversal_manager.block_window(virtual_ghostdag_data.clone(), self.difficulty_window_size);
+                let (virtual_daa_score, _) = self
+                    .difficulty_manager
+                    .calc_daa_score_and_added_blocks(&mut window.iter().map(|item| item.0.hash), &virtual_ghostdag_data);
+                self.calculate_utxo_state(&mut ctx, &selected_parent_utxo_view, virtual_daa_score);
+
+                // Update the accumulated diff
+                accumulated_diff.with_diff_in_place(&ctx.mergeset_diff).unwrap();
+
+                // Store new virtual data
+                state.virtual_diff = ctx.mergeset_diff;
+                state.ghostdag_data = virtual_ghostdag_data;
+
+                // Apply the accumulated diff
+                state.utxo_set.remove_many(&accumulated_diff.remove);
+                state.utxo_set.add_many(&accumulated_diff.add);
+            }
+            BlockStatus::StatusDisqualifiedFromChain => {
+                // TODO: this means another chain needs to be checked
+            }
+            _ => panic!("expected utxo valid or disqualified {}", new_selected),
+        }
+        Ok(())
     }
 
     pub fn process_genesis_if_needed(self: &Arc<VirtualStateProcessor>) {
         // TODO: multiset store
+        let status = self.statuses_store.read().get(self.genesis_hash).unwrap();
+        match status {
+            StatusUTXOPendingVerification => {
+                self.statuses_store.write().set(self.genesis_hash, StatusUTXOValid).unwrap();
+            }
+            _ => panic!("unexpected genesis status {:?}", status),
+        }
     }
 }
 
