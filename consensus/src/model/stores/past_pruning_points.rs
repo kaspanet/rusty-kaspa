@@ -23,6 +23,7 @@ impl AsRef<[u8]> for Key {
     }
 }
 
+#[allow(clippy::derive_hash_xor_eq)]
 impl std::hash::Hash for Key {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.0.hash(state);

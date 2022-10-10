@@ -655,7 +655,7 @@ struct KaspadGoParams {
 }
 
 impl KaspadGoParams {
-    fn to_params(self, genesis_header: &Header) -> Params {
+    fn into_params(self, genesis_header: &Header) -> Params {
         let finality_depth = self.FinalityDuration / self.TargetTimePerBlock;
         Params {
             genesis_hash: genesis_header.hash,
@@ -698,7 +698,7 @@ async fn json_test() {
     let params = if let Ok(go_params) = go_params_res {
         let second_line = lines.next().unwrap().unwrap();
         let genesis = json_line_to_block(second_line);
-        go_params.to_params(&genesis.header)
+        go_params.into_params(&genesis.header)
     } else {
         let genesis = json_line_to_block(first_line);
         let mut params = DEVNET_PARAMS;

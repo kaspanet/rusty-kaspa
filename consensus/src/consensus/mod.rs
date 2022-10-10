@@ -228,7 +228,7 @@ impl Consensus {
             statuses_store.clone(),
             pruning_store.clone(),
             ghostdag_store.clone(),
-            past_pruning_points_store.clone(),
+            past_pruning_points_store,
             reachability_service.clone(),
             pruning_manager.clone(),
         ));

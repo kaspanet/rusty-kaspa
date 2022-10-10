@@ -39,7 +39,7 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
         Self { max_block_level, genesis_hash, headers_store, reachability_service, relations_store }
     }
 
-    pub fn calc_block_parents(&self, pruning_point: Hash, direct_parents: &Vec<Hash>) -> Vec<Vec<Hash>> {
+    pub fn calc_block_parents(&self, pruning_point: Hash, direct_parents: &[Hash]) -> Vec<Vec<Hash>> {
         let mut direct_parent_headers =
             direct_parents.iter().copied().map(|parent| self.headers_store.get_header_with_block_level(parent).unwrap()).collect_vec();
 
@@ -55,7 +55,6 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
             .position(|parent| self.reachability_service.is_dag_ancestor_of(pruning_point, parent))
             .expect("at least one of the parents is expected to be in the future of the pruning point");
         direct_parent_headers.swap(0, first_parent_in_future_of_pruning_point_index);
-        drop(direct_parents); // Since `direct_parents` and `direct_parent_headers` are now sorted differently, we drop direct_parents to avoid mistakes.
 
         let mut candidates_by_level_to_reference_blocks_map = (0..self.max_block_level + 1).map(|level| HashMap::new()).collect_vec();
         // Direct parents are guaranteed to be in one other's anticones so add them all to
@@ -111,7 +110,7 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
                     } else {
                         let mut reference_blocks = Vec::with_capacity(origin_children.len());
                         for child_header in origin_children_headers.iter() {
-                            if self.parents_at_level(&child_header, block_level as u8).contains(&parent) {
+                            if self.parents_at_level(child_header, block_level as u8).contains(&parent) {
                                 reference_blocks.push(child_header.hash);
                             }
                         }

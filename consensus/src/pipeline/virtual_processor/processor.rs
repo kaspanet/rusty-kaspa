@@ -98,12 +98,11 @@ impl VirtualStateProcessor {
     }
 
     fn maybe_update_pruning_point_and_candidate(self: &Arc<Self>) {
-        if let Err(_) = self.is_updating_pruning_point_or_candidate.compare_exchange(
-            false,
-            true,
-            atomic::Ordering::Acquire,
-            atomic::Ordering::Relaxed,
-        ) {
+        if self
+            .is_updating_pruning_point_or_candidate
+            .compare_exchange(false, true, atomic::Ordering::Acquire, atomic::Ordering::Relaxed)
+            .is_err()
+        {
             return;
         }
 

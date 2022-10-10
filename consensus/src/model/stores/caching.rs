@@ -36,26 +36,22 @@ impl<TKey: Clone + std::hash::Hash + Eq + Send + Sync + 'static, TData: Clone + 
         Self { map: Arc::new(RwLock::new(HashMap::new())), size: size as usize }
     }
 
-    pub fn get<'a>(&self, key: &TKey) -> Option<TData> {
-        if let Some(data) = self.map.read().unwrap().get(key) {
-            Some(data.clone())
-        } else {
-            None
-        }
+    pub fn get(&self, key: &TKey) -> Option<TData> {
+        self.map.read().unwrap().get(key).cloned()
     }
 
-    pub fn contains_key<'a>(&self, key: &TKey) -> bool {
+    pub fn contains_key(&self, key: &TKey) -> bool {
         self.map.read().unwrap().contains_key(key)
     }
 
-    pub fn insert<'a>(&self, key: TKey, data: TData) {
+    pub fn insert(&self, key: TKey, data: TData) {
         if self.size == 0 {
             return;
         }
 
         let mut write_guard = self.map.write().unwrap();
         if write_guard.len() == self.size {
-            let random_key = write_guard.keys().skip(rand::thread_rng().gen_range(0..self.size - 1)).next().unwrap().clone();
+            let random_key = write_guard.keys().nth(rand::thread_rng().gen_range(0..self.size)).unwrap().clone();
             write_guard.remove(&random_key);
         }
         write_guard.insert(key, data);
