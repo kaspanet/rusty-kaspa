@@ -163,9 +163,27 @@ impl Consensus {
 
         let counters = Arc::new(ProcessingCounters::default());
 
+        // Pool for header and body processors
+        let block_processors_pool =
+            Arc::new(rayon::ThreadPoolBuilder::new()
+            .num_threads(0) // For now use the default (TODO: cmd flag?)
+            .thread_name(|i| format!("block-pool-{}", i))
+            .build()
+            .unwrap());
+        // We need a dedicated thread-pool for the virtual processor to avoid possible deadlocks probably caused by the
+        // combined usage of `par_iter` (in virtual processor) and `rayon::spawn` (in header/body processors).
+        // See for instance https://github.com/rayon-rs/rayon/issues/690
+        let virtual_pool =
+            Arc::new(rayon::ThreadPoolBuilder::new()
+            .num_threads(0) // For now use the default (TODO: cmd flag?)
+            .thread_name(|i| format!("virtual-pool-{}", i))
+            .build()
+            .unwrap());
+
         let header_processor = Arc::new(HeaderProcessor::new(
             receiver,
             body_sender,
+            block_processors_pool.clone(),
             params,
             db.clone(),
             relations_store.clone(),
@@ -190,6 +208,7 @@ impl Consensus {
         let body_processor = Arc::new(BlockBodyProcessor::new(
             body_receiver,
             virtual_sender,
+            block_processors_pool,
             db.clone(),
             statuses_store.clone(),
             ghostdag_store.clone(),
@@ -206,6 +225,7 @@ impl Consensus {
 
         let virtual_processor = Arc::new(VirtualStateProcessor::new(
             virtual_receiver,
+            virtual_pool,
             params,
             db.clone(),
             statuses_store.clone(),
@@ -258,10 +278,14 @@ impl Consensus {
         let body_processor = self.body_processor.clone();
         let virtual_processor = self.virtual_processor.clone();
 
+        let header_builder = thread::Builder::new().name("header-processor".to_string());
+        let body_builder = thread::Builder::new().name("body-processor".to_string());
+        let virtual_builder = thread::Builder::new().name("virtual-processor".to_string());
+
         vec![
-            thread::spawn(move || header_processor.worker()),
-            thread::spawn(move || body_processor.worker()),
-            thread::spawn(move || virtual_processor.worker()),
+            header_builder.spawn(move || header_processor.worker()).unwrap(),
+            body_builder.spawn(move || body_processor.worker()).unwrap(),
+            virtual_builder.spawn(move || virtual_processor.worker()).unwrap(),
         ]
     }
 

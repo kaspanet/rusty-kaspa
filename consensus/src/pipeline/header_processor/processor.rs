@@ -34,6 +34,7 @@ use consensus_core::{
 use crossbeam_channel::{Receiver, Sender};
 use hashes::Hash;
 use parking_lot::RwLock;
+use rayon::ThreadPool;
 use rocksdb::WriteBatch;
 use std::sync::{atomic::Ordering, Arc};
 
@@ -88,6 +89,9 @@ pub struct HeaderProcessor {
     receiver: Receiver<BlockTask>,
     body_sender: Sender<BlockTask>,
 
+    // Thread pool
+    pub(super) thread_pool: Arc<ThreadPool>,
+
     // Config
     pub(super) genesis_hash: Hash,
     pub(super) timestamp_deviation_tolerance: u64,
@@ -138,6 +142,7 @@ impl HeaderProcessor {
     pub fn new(
         receiver: Receiver<BlockTask>,
         body_sender: Sender<BlockTask>,
+        thread_pool: Arc<ThreadPool>,
         params: &Params,
         db: Arc<DB>,
         relations_store: Arc<RwLock<DbRelationsStore>>,
@@ -161,6 +166,7 @@ impl HeaderProcessor {
         Self {
             receiver,
             body_sender,
+            thread_pool,
             genesis_hash: params.genesis_hash,
             difficulty_window_size: params.difficulty_window_size,
             db,
@@ -206,7 +212,7 @@ impl HeaderProcessor {
                     let hash = block.header.hash;
                     if self.task_manager.register(block, result_transmitters) {
                         let processor = self.clone();
-                        rayon::spawn(move || {
+                        self.thread_pool.spawn(move || {
                             processor.queue_block(hash);
                         });
                     }
@@ -238,7 +244,7 @@ impl HeaderProcessor {
 
             for dep in dependent_tasks {
                 let processor = self.clone();
-                rayon::spawn(move || processor.queue_block(dep));
+                self.thread_pool.spawn(move || processor.queue_block(dep));
             }
         }
     }

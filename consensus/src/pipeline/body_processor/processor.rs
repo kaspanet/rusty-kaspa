@@ -26,6 +26,7 @@ use consensus_core::{block::Block, subnets::SUBNETWORK_ID_COINBASE, tx::Transact
 use crossbeam_channel::{Receiver, Sender};
 use hashes::Hash;
 use parking_lot::RwLock;
+use rayon::ThreadPool;
 use rocksdb::WriteBatch;
 use std::sync::Arc;
 
@@ -33,6 +34,9 @@ pub struct BlockBodyProcessor {
     // Channels
     receiver: Receiver<BlockTask>,
     sender: Sender<BlockTask>,
+
+    // Thread pool
+    pub(super) thread_pool: Arc<ThreadPool>,
 
     // DB
     db: Arc<DB>,
@@ -63,6 +67,7 @@ impl BlockBodyProcessor {
     pub fn new(
         receiver: Receiver<BlockTask>,
         sender: Sender<BlockTask>,
+        thread_pool: Arc<ThreadPool>,
         db: Arc<DB>,
         statuses_store: Arc<RwLock<DbStatusesStore>>,
         ghostdag_store: Arc<DbGhostdagStore>,
@@ -79,6 +84,7 @@ impl BlockBodyProcessor {
         Self {
             receiver,
             sender,
+            thread_pool,
             db,
             statuses_store,
             reachability_service,
@@ -103,7 +109,7 @@ impl BlockBodyProcessor {
                     let hash = block.header.hash;
                     if self.task_manager.register(block, result_transmitters) {
                         let processor = self.clone();
-                        rayon::spawn(move || {
+                        self.thread_pool.spawn(move || {
                             processor.queue_block(hash);
                         });
                     }
@@ -135,7 +141,7 @@ impl BlockBodyProcessor {
 
             for dep in dependent_tasks {
                 let processor = self.clone();
-                rayon::spawn(move || processor.queue_block(dep));
+                self.thread_pool.spawn(move || processor.queue_block(dep));
             }
         }
     }

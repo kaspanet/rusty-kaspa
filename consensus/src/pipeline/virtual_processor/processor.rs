@@ -79,6 +79,7 @@ impl VirtualStateProcessor {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         receiver: Receiver<BlockTask>,
+        thread_pool: Arc<ThreadPool>,
         params: &Params,
         db: Arc<DB>,
         statuses_store: Arc<RwLock<DbStatusesStore>>,
@@ -91,13 +92,6 @@ impl VirtualStateProcessor {
         difficulty_manager: DifficultyManager<DbHeadersStore>,
         transaction_validator: TransactionValidator<DbHeadersStore>,
     ) -> Self {
-        // We need a dedicated thread-pool to avoid possible deadlocks probably caused by the
-        // combined usage of `par_iter` (in virtual processor) and `rayon::spawn` (in header/body processors).
-        // See for instance https://github.com/rayon-rs/rayon/issues/690
-        let thread_pool = Arc::new(rayon::ThreadPoolBuilder::new()
-                .num_threads(rayon::current_num_threads()) // For now copy from global num of threads (TODO: cmd flag?)
-                .build()
-                .unwrap());
         Self {
             receiver,
             thread_pool,
