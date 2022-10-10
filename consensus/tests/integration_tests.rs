@@ -8,7 +8,7 @@ use consensus::errors::{BlockProcessResult, RuleError};
 use consensus::model::stores::ghostdag::{GhostdagStoreReader, KType as GhostdagKType};
 use consensus::model::stores::reachability::DbReachabilityStore;
 use consensus::model::stores::statuses::BlockStatus;
-use consensus::params::{Params, MAINNET_PARAMS};
+use consensus::params::{Params, DEVNET_PARAMS, MAINNET_PARAMS};
 use consensus::processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions};
 use consensus_core::block::Block;
 use consensus_core::header::Header;
@@ -701,7 +701,7 @@ async fn json_test() {
         go_params.to_params(&genesis.header)
     } else {
         let genesis = json_line_to_block(first_line);
-        let mut params = MAINNET_PARAMS;
+        let mut params = DEVNET_PARAMS;
         params.genesis_bits = genesis.header.bits;
         params.genesis_hash = genesis.header.hash;
         params.genesis_timestamp = genesis.header.timestamp;
@@ -741,7 +741,7 @@ async fn json_concurrency_test() {
     let mut lines = io::BufReader::new(decoder).lines();
     let first_line = lines.next().unwrap();
     let genesis = json_line_to_block(first_line.unwrap());
-    let mut params = MAINNET_PARAMS;
+    let mut params = DEVNET_PARAMS;
     params.genesis_bits = genesis.header.bits;
     params.genesis_hash = genesis.header.hash;
     params.genesis_timestamp = genesis.header.timestamp;
