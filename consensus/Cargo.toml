@@ -27,7 +27,6 @@ rand.workspace = true
 indexmap.workspace = true
 
 rocksdb = "0.19"
-moka = "0.9"
 parking_lot = "0.12"
 crossbeam-channel = "0.5"
 

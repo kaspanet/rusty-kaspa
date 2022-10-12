@@ -31,7 +31,7 @@ pub struct Cache<TKey: Clone + std::hash::Hash + Eq + Send + Sync + 'static, TDa
 }
 
 impl<TKey: Clone + std::hash::Hash + Eq + Send + Sync + 'static, TData: Clone + Send + Sync + 'static> Cache<TKey, TData> {
-    fn new(size: u64) -> Self {
+    pub fn new(size: u64) -> Self {
         Self { map: Arc::new(RwLock::new(IndexMap::with_capacity(size as usize))), size: size as usize }
     }
 
@@ -64,8 +64,6 @@ where
     TData: Clone + Send + Sync + 'static,
 {
     db: Arc<DB>,
-    // The moka cache type supports shallow cloning and manages
-    // ref counting internally, so no need for Arc
     cache: Cache<TKey, Arc<TData>>,
 
     // DB bucket/path (TODO: eventually this must become dynamic in
@@ -144,8 +142,6 @@ where
     TData: Clone + Copy + Send + Sync + 'static,
 {
     db: Arc<DB>,
-    // The moka cache type supports shallow cloning and manages
-    // ref counting internally, so no need for Arc
     cache: Cache<TKey, TData>,
 
     // DB bucket/path (TODO: eventually this must become dynamic in
