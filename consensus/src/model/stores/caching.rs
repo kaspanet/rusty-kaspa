@@ -1,4 +1,5 @@
 use super::{errors::StoreError, DB};
+use indexmap::IndexMap;
 use rand::Rng;
 use rocksdb::WriteBatch;
 use serde::{de::DeserializeOwned, Serialize};
@@ -27,13 +28,13 @@ impl AsRef<[u8]> for DbKey {
 
 #[derive(Clone)]
 pub struct Cache<TKey: Clone + std::hash::Hash + Eq + Send + Sync + 'static, TData: Clone + Send + Sync + 'static> {
-    map: Arc<RwLock<HashMap<TKey, TData>>>,
+    map: Arc<RwLock<IndexMap<TKey, TData>>>,
     size: usize,
 }
 
 impl<TKey: Clone + std::hash::Hash + Eq + Send + Sync + 'static, TData: Clone + Send + Sync + 'static> Cache<TKey, TData> {
     fn new(size: u64) -> Self {
-        Self { map: Arc::new(RwLock::new(HashMap::new())), size: size as usize }
+        Self { map: Arc::new(RwLock::new(IndexMap::with_capacity(size as usize))), size: size as usize }
     }
 
     pub fn get(&self, key: &TKey) -> Option<TData> {
@@ -51,8 +52,7 @@ impl<TKey: Clone + std::hash::Hash + Eq + Send + Sync + 'static, TData: Clone + 
 
         let mut write_guard = self.map.write().unwrap();
         if write_guard.len() == self.size {
-            let random_key = write_guard.keys().nth(rand::thread_rng().gen_range(0..self.size)).unwrap().clone();
-            write_guard.remove(&random_key);
+            write_guard.swap_remove_index(rand::thread_rng().gen_range(0..self.size));
         }
         write_guard.insert(key, data);
     }

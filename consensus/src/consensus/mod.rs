@@ -89,16 +89,17 @@ pub struct Consensus {
 
 impl Consensus {
     pub fn new(db: Arc<DB>, params: &Params) -> Self {
-        let statuses_store = Arc::new(RwLock::new(DbStatusesStore::new(db.clone(), 100000)));
-        let relations_store = Arc::new(RwLock::new(DbRelationsStore::new(db.clone(), 100000)));
-        let reachability_store = Arc::new(RwLock::new(DbReachabilityStore::new(db.clone(), 100000)));
+        const CACHE_SIZE: u64 = 100_000;
+        let statuses_store = Arc::new(RwLock::new(DbStatusesStore::new(db.clone(), CACHE_SIZE)));
+        let relations_store = Arc::new(RwLock::new(DbRelationsStore::new(db.clone(), CACHE_SIZE)));
+        let reachability_store = Arc::new(RwLock::new(DbReachabilityStore::new(db.clone(), CACHE_SIZE)));
         let pruning_store = Arc::new(RwLock::new(DbPruningStore::new(db.clone())));
-        let ghostdag_store = Arc::new(DbGhostdagStore::new(db.clone(), 100000));
-        let daa_store = Arc::new(DbDaaStore::new(db.clone(), 100000));
-        let headers_store = Arc::new(DbHeadersStore::new(db.clone(), 100000));
-        let depth_store = Arc::new(DbDepthStore::new(db.clone(), 100000));
-        let block_transactions_store = Arc::new(DbBlockTransactionsStore::new(db.clone(), 100000));
-        let past_pruning_points_store = Arc::new(DbPastPruningPointsStore::new(db.clone(), 100000));
+        let ghostdag_store = Arc::new(DbGhostdagStore::new(db.clone(), CACHE_SIZE));
+        let daa_store = Arc::new(DbDaaStore::new(db.clone(), CACHE_SIZE));
+        let headers_store = Arc::new(DbHeadersStore::new(db.clone(), CACHE_SIZE));
+        let depth_store = Arc::new(DbDepthStore::new(db.clone(), CACHE_SIZE));
+        let block_transactions_store = Arc::new(DbBlockTransactionsStore::new(db.clone(), CACHE_SIZE));
+        let past_pruning_points_store = Arc::new(DbPastPruningPointsStore::new(db.clone(), CACHE_SIZE));
         let block_window_cache_for_difficulty = Arc::new(BlockWindowCacheStore::new(2000));
         let block_window_cache_for_past_median_time = Arc::new(BlockWindowCacheStore::new(2000));
 

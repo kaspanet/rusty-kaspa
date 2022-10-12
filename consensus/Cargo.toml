@@ -24,6 +24,7 @@ bincode.workspace = true
 tempfile.workspace = true
 rayon.workspace = true
 rand.workspace = true
+indexmap.workspace = true
 
 rocksdb = "0.19"
 moka = "0.9"
