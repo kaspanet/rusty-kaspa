@@ -1,9 +1,10 @@
 use super::{errors::StoreError, DB};
 use indexmap::IndexMap;
+use parking_lot::RwLock;
 use rand::Rng;
 use rocksdb::WriteBatch;
 use serde::{de::DeserializeOwned, Serialize};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 const SEP: u8 = b'/';
 
@@ -35,11 +36,11 @@ impl<TKey: Clone + std::hash::Hash + Eq + Send + Sync + 'static, TData: Clone + 
     }
 
     pub fn get(&self, key: &TKey) -> Option<TData> {
-        self.map.read().unwrap().get(key).cloned()
+        self.map.read().get(key).cloned()
     }
 
     pub fn contains_key(&self, key: &TKey) -> bool {
-        self.map.read().unwrap().contains_key(key)
+        self.map.read().contains_key(key)
     }
 
     pub fn insert(&self, key: TKey, data: TData) {
@@ -47,7 +48,7 @@ impl<TKey: Clone + std::hash::Hash + Eq + Send + Sync + 'static, TData: Clone + 
             return;
         }
 
-        let mut write_guard = self.map.write().unwrap();
+        let mut write_guard = self.map.write();
         if write_guard.len() == self.size {
             write_guard.swap_remove_index(rand::thread_rng().gen_range(0..self.size));
         }
@@ -225,11 +226,11 @@ impl<T> CachedDbItem<T> {
     where
         T: Copy + DeserializeOwned,
     {
-        if let Some(root) = *self.cached_item.read().unwrap() {
+        if let Some(root) = *self.cached_item.read() {
             Ok(root)
         } else if let Some(slice) = self.db.get_pinned(self.key)? {
             let item: T = bincode::deserialize(&slice)?;
-            *self.cached_item.write().unwrap() = Some(item);
+            *self.cached_item.write() = Some(item);
             Ok(item)
         } else {
             Err(StoreError::KeyNotFound(String::from_utf8(Vec::from(self.key)).unwrap()))
@@ -240,7 +241,7 @@ impl<T> CachedDbItem<T> {
     where
         T: Copy + Serialize, // Copy can be relaxed to Clone if needed by new usages
     {
-        *self.cached_item.write().unwrap() = Some(*item);
+        *self.cached_item.write() = Some(*item);
         let bin_data = bincode::serialize(&item)?;
         self.db.put(self.key, bin_data)?;
         Ok(())
@@ -250,7 +251,7 @@ impl<T> CachedDbItem<T> {
     where
         T: Copy + Serialize,
     {
-        *self.cached_item.write().unwrap() = Some(*item);
+        *self.cached_item.write() = Some(*item);
         let bin_data = bincode::serialize(&item)?;
         batch.put(self.key, bin_data);
         Ok(())

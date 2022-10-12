@@ -8,7 +8,7 @@ use super::{
 use hashes::Hash;
 use rocksdb::WriteBatch;
 
-#[derive(PartialEq, Eq, Clone, Copy)]
+#[derive(PartialEq, Eq, Clone, Copy, Hash)]
 pub struct Key([u8; 8]);
 
 impl From<u64> for Key {
@@ -20,13 +20,6 @@ impl From<u64> for Key {
 impl AsRef<[u8]> for Key {
     fn as_ref(&self) -> &[u8] {
         &self.0
-    }
-}
-
-#[allow(clippy::derive_hash_xor_eq)]
-impl std::hash::Hash for Key {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.0.hash(state);
     }
 }
 
