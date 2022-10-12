@@ -25,12 +25,12 @@ impl AsRef<[u8]> for DbKey {
 }
 
 #[derive(Clone)]
-pub struct Cache<TKey: Clone + std::hash::Hash + Eq + Send + Sync + 'static, TData: Clone + Send + Sync + 'static> {
+pub struct Cache<TKey: Clone + std::hash::Hash + Eq + Send + Sync, TData: Clone + Send + Sync> {
     map: Arc<RwLock<IndexMap<TKey, TData>>>, // We use IndexMap and not HashMap, because it makes it cheaper to remove a random element when the cache is full.
     size: usize,
 }
 
-impl<TKey: Clone + std::hash::Hash + Eq + Send + Sync + 'static, TData: Clone + Send + Sync + 'static> Cache<TKey, TData> {
+impl<TKey: Clone + std::hash::Hash + Eq + Send + Sync, TData: Clone + Send + Sync> Cache<TKey, TData> {
     pub fn new(size: u64) -> Self {
         Self { map: Arc::new(RwLock::new(IndexMap::with_capacity(size as usize))), size: size as usize }
     }
@@ -60,8 +60,8 @@ impl<TKey: Clone + std::hash::Hash + Eq + Send + Sync + 'static, TData: Clone + 
 #[derive(Clone)]
 pub struct CachedDbAccess<TKey, TData>
 where
-    TKey: Clone + std::hash::Hash + Eq + Send + Sync + 'static,
-    TData: Clone + Send + Sync + 'static,
+    TKey: Clone + std::hash::Hash + Eq + Send + Sync,
+    TData: Clone + Send + Sync,
 {
     db: Arc<DB>,
     cache: Cache<TKey, Arc<TData>>,
@@ -73,8 +73,8 @@ where
 
 impl<TKey, TData> CachedDbAccess<TKey, TData>
 where
-    TKey: Clone + std::hash::Hash + Eq + Send + Sync + 'static,
-    TData: Clone + Send + Sync + 'static,
+    TKey: Clone + std::hash::Hash + Eq + Send + Sync,
+    TData: Clone + Send + Sync,
 {
     pub fn new(db: Arc<DB>, cache_size: u64, prefix: &'static [u8]) -> Self {
         Self { db, cache: Cache::new(cache_size), prefix }
@@ -138,8 +138,8 @@ where
 #[derive(Clone)]
 pub struct CachedDbAccessForCopy<TKey, TData>
 where
-    TKey: Clone + std::hash::Hash + Eq + Send + Sync + 'static,
-    TData: Clone + Copy + Send + Sync + 'static,
+    TKey: Clone + std::hash::Hash + Eq + Send + Sync,
+    TData: Clone + Copy + Send + Sync,
 {
     db: Arc<DB>,
     cache: Cache<TKey, TData>,
@@ -151,8 +151,8 @@ where
 
 impl<TKey, TData> CachedDbAccessForCopy<TKey, TData>
 where
-    TKey: Clone + std::hash::Hash + Eq + Send + Sync + 'static,
-    TData: Clone + Copy + Send + Sync + 'static,
+    TKey: Clone + std::hash::Hash + Eq + Send + Sync,
+    TData: Clone + Copy + Send + Sync,
 {
     pub fn new(db: Arc<DB>, cache_size: u64, prefix: &'static [u8]) -> Self {
         Self { db, cache: Cache::new(cache_size), prefix }
