@@ -219,10 +219,6 @@ impl DbGhostdagStore {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
         self.cached_access.write_batch(batch, hash, data)?;
-
-        if self.compact_cached_access.has(hash)? {
-            return Err(StoreError::KeyAlreadyExists(hash.to_string()));
-        }
         self.compact_cached_access.write_batch(
             batch,
             hash,

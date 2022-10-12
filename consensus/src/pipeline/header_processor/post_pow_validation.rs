@@ -1,5 +1,5 @@
 use super::{HeaderProcessingContext, HeaderProcessor};
-use crate::errors::{BlockProcessResult, RuleError, VecVecDisplay};
+use crate::errors::{BlockProcessResult, RuleError, TwoDimVecDisplay};
 use crate::model::services::reachability::ReachabilityService;
 use consensus_core::header::Header;
 use hashes::Hash;
@@ -80,9 +80,9 @@ impl HeaderProcessor {
             let expected_set = HashSet::<&Hash>::from_iter(expected_level_parents);
             header_level_parents.iter().all(|header_parent| expected_set.contains(header_parent))
         }) {
-            return Err(RuleError::UnexepctedIndirectParents(
-                VecVecDisplay(expected_block_parents),
-                VecVecDisplay(header.parents_by_level.clone()),
+            return Err(RuleError::UnexpectedIndirectParents(
+                TwoDimVecDisplay(expected_block_parents),
+                TwoDimVecDisplay(header.parents_by_level.clone()),
             ));
         };
         Ok(())
