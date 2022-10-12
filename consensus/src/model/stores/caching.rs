@@ -3,10 +3,7 @@ use indexmap::IndexMap;
 use rand::Rng;
 use rocksdb::WriteBatch;
 use serde::{de::DeserializeOwned, Serialize};
-use std::{
-    collections::HashMap,
-    sync::{Arc, RwLock},
-};
+use std::sync::{Arc, RwLock};
 
 const SEP: u8 = b'/';
 
