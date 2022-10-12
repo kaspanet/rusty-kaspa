@@ -71,15 +71,17 @@ impl HeaderProcessor {
         header: &Header,
     ) -> BlockProcessResult<()> {
         let expected_block_parents = self.parents_manager.calc_block_parents(ctx.pruning_point, header.direct_parents());
-        if !expected_block_parents.iter().enumerate().all(|(block_level, expected_level_parents)| {
-            let header_level_parents = &header.parents_by_level[block_level];
-            if header_level_parents.len() != expected_level_parents.len() {
-                return false;
-            }
+        if header.parents_by_level.len() != expected_block_parents.len()
+            || !expected_block_parents.iter().enumerate().all(|(block_level, expected_level_parents)| {
+                let header_level_parents = &header.parents_by_level[block_level];
+                if header_level_parents.len() != expected_level_parents.len() {
+                    return false;
+                }
 
-            let expected_set = HashSet::<&Hash>::from_iter(expected_level_parents);
-            header_level_parents.iter().all(|header_parent| expected_set.contains(header_parent))
-        }) {
+                let expected_set = HashSet::<&Hash>::from_iter(expected_level_parents);
+                header_level_parents.iter().all(|header_parent| expected_set.contains(header_parent))
+            })
+        {
             return Err(RuleError::UnexpectedIndirectParents(
                 TwoDimVecDisplay(expected_block_parents),
                 TwoDimVecDisplay(header.parents_by_level.clone()),
