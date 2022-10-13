@@ -155,7 +155,7 @@ impl<S: GhostdagStoreReader, T: ReachabilityStoreReader, U: HeaderStoreReader, V
             return next_or_current_pp;
         }
 
-        for i in (0..current_pruning_point_index + 1).rev() {
+        for i in (0..=current_pruning_point_index).rev() {
             let past_pp = self.past_pruning_points_store.get(i).unwrap();
             if self.is_pruning_point_in_pruning_depth(ghostdag_data.blue_score, past_pp) {
                 return past_pp;
