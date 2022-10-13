@@ -3,6 +3,7 @@ use super::{
     utxo_error::{UtxoAlgebraError, UtxoResult},
 };
 use crate::tx::{TransactionOutpoint, UtxoEntry, ValidatedTransaction};
+use serde::{Deserialize, Serialize};
 use std::collections::hash_map::Entry::Vacant;
 
 pub trait ImmutableUtxoDiff {
@@ -10,7 +11,7 @@ pub trait ImmutableUtxoDiff {
     fn removed(&self) -> &UtxoCollection;
 }
 
-#[derive(Clone, Default, Debug, PartialEq, Eq)]
+#[derive(Clone, Default, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UtxoDiff {
     pub add: UtxoCollection,
     pub remove: UtxoCollection,

@@ -5,6 +5,7 @@ use crate::{
     model::{
         services::{reachability::MTReachabilityService, relations::MTRelationsService, statuses::MTStatusesService},
         stores::{
+            acceptance_data::DbAcceptanceDataStore,
             block_transactions::DbBlockTransactionsStore,
             block_window_cache::BlockWindowCacheStore,
             daa::DbDaaStore,
@@ -16,6 +17,8 @@ use crate::{
             reachability::DbReachabilityStore,
             relations::DbRelationsStore,
             statuses::{BlockStatus, DbStatusesStore},
+            utxo_differences::DbUtxoDifferencesStore,
+            utxo_multisets::DbUtxoMultisetsStore,
             DB,
         },
     },
@@ -98,6 +101,10 @@ impl Consensus {
         let depth_store = Arc::new(DbDepthStore::new(db.clone(), CACHE_SIZE));
         let block_transactions_store = Arc::new(DbBlockTransactionsStore::new(db.clone(), CACHE_SIZE));
         let past_pruning_points_store = Arc::new(DbPastPruningPointsStore::new(db.clone(), CACHE_SIZE));
+        let utxo_differences_store = Arc::new(DbUtxoDifferencesStore::new(db.clone(), CACHE_SIZE));
+        let utxo_multisets_store = Arc::new(DbUtxoMultisetsStore::new(db.clone(), CACHE_SIZE));
+        let acceptance_data_store = Arc::new(DbAcceptanceDataStore::new(db.clone(), CACHE_SIZE));
+
         let block_window_cache_for_difficulty = Arc::new(BlockWindowCacheStore::new(2000));
         let block_window_cache_for_past_median_time = Arc::new(BlockWindowCacheStore::new(2000));
 
@@ -251,14 +258,17 @@ impl Consensus {
         let virtual_processor = Arc::new(VirtualStateProcessor::new(
             virtual_receiver,
             virtual_pool,
-            db.clone(),
             params,
+            db.clone(),
             statuses_store.clone(),
             ghostdag_store.clone(),
             headers_store,
             block_transactions_store,
             pruning_store.clone(),
             past_pruning_points_store,
+            utxo_differences_store,
+            utxo_multisets_store,
+            acceptance_data_store,
             ghostdag_manager.clone(),
             reachability_service.clone(),
             dag_traversal_manager.clone(),

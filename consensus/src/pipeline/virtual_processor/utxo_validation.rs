@@ -34,11 +34,11 @@ pub(super) struct UtxoProcessingContext {
 }
 
 impl UtxoProcessingContext {
-    pub fn new(mergeset_data: Arc<GhostdagData>, selected_parent_multiset_hash: &MuHash) -> Self {
+    pub fn new(mergeset_data: Arc<GhostdagData>, selected_parent_multiset_hash: MuHash) -> Self {
         let mergeset_size = mergeset_data.mergeset_size();
         Self {
             mergeset_data,
-            multiset_hash: selected_parent_multiset_hash.clone(),
+            multiset_hash: selected_parent_multiset_hash,
             mergeset_diff: UtxoDiff::default(),
             accepted_tx_ids: Vec::with_capacity(1), // We expect at least the selected parent coinbase tx
             mergeset_fees: BlockHashMap::with_capacity(mergeset_size),

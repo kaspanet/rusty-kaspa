@@ -4,17 +4,21 @@ use crate::{
     model::{
         services::reachability::{MTReachabilityService, ReachabilityService},
         stores::{
+            acceptance_data::{AcceptanceData, DbAcceptanceDataStore},
             block_transactions::DbBlockTransactionsStore,
             block_window_cache::BlockWindowCacheStore,
+            errors::StoreError,
             ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStoreReader},
             headers::{DbHeadersStore, HeaderStoreReader},
-            past_pruning_points::{DbPastPruningPointsStore, PastPruningPointsStore},
+            past_pruning_points::{DbPastPruningPointsStore, PastPruningPointsStore, PastPruningPointsStoreReader},
             pruning::{DbPruningStore, PruningStore, PruningStoreReader},
             reachability::DbReachabilityStore,
             statuses::{
                 BlockStatus::{self, StatusDisqualifiedFromChain, StatusUTXOPendingVerification, StatusUTXOValid},
-                DbStatusesStore, StatusesStore, StatusesStoreReader,
+                DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader,
             },
+            utxo_differences::{DbUtxoDifferencesStore, UtxoDifferencesStoreReader},
+            utxo_multisets::{DbUtxoMultisetsStore, UtxoMultisetsStoreReader},
             DB,
         },
     },
@@ -29,7 +33,7 @@ use consensus_core::{
     block::Block,
     blockhash::{self, VIRTUAL},
     utxo::{utxo_collection::UtxoCollection, utxo_collection::UtxoCollectionExtensions, utxo_diff::UtxoDiff, utxo_view},
-    BlockHashMap, BlockHashSet,
+    BlockHashSet,
 };
 use hashes::Hash;
 use kaspa_core::trace;
@@ -41,8 +45,8 @@ use parking_lot::{RwLock, RwLockUpgradableReadGuard};
 use rayon::ThreadPool;
 use rocksdb::WriteBatch;
 use std::{
-    collections::hash_map::Entry::{Occupied, Vacant},
     iter::FromIterator,
+    ops::Deref,
     sync::{
         atomic::{self, AtomicBool},
         Arc,
@@ -76,6 +80,11 @@ pub struct VirtualStateProcessor {
     pub(super) pruning_store: Arc<RwLock<DbPruningStore>>,
     pub(super) past_pruning_points_store: Arc<DbPastPruningPointsStore>,
 
+    // Utxo-related stores
+    pub(super) utxo_differences_store: Arc<DbUtxoDifferencesStore>,
+    pub(super) utxo_multisets_store: Arc<DbUtxoMultisetsStore>,
+    pub(super) acceptance_data_store: Arc<DbAcceptanceDataStore>,
+
     // Managers and services
     pub(super) ghostdag_manager: DbGhostdagManager,
     pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
@@ -92,14 +101,20 @@ impl VirtualStateProcessor {
     pub fn new(
         receiver: Receiver<BlockTask>,
         thread_pool: Arc<ThreadPool>,
-        db: Arc<DB>,
         params: &Params,
+        db: Arc<DB>,
+        // Stores
         statuses_store: Arc<RwLock<DbStatusesStore>>,
         ghostdag_store: Arc<DbGhostdagStore>,
         headers_store: Arc<DbHeadersStore>,
         block_transactions_store: Arc<DbBlockTransactionsStore>,
         pruning_store: Arc<RwLock<DbPruningStore>>,
         past_pruning_points_store: Arc<DbPastPruningPointsStore>,
+        // Utxo-related stores
+        utxo_differences_store: Arc<DbUtxoDifferencesStore>,
+        utxo_multisets_store: Arc<DbUtxoMultisetsStore>,
+        acceptance_data_store: Arc<DbAcceptanceDataStore>,
+        // Managers
         ghostdag_manager: DbGhostdagManager,
         reachability_service: MTReachabilityService<DbReachabilityStore>,
         dag_traversal_manager: DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore>,
@@ -110,6 +125,12 @@ impl VirtualStateProcessor {
         Self {
             receiver,
             thread_pool,
+
+            genesis_hash: params.genesis_hash,
+            max_block_parents: params.max_block_parents,
+            difficulty_window_size: params.difficulty_window_size,
+            mergeset_size_limit: params.mergeset_size_limit,
+
             db,
             statuses_store,
             headers_store,
@@ -117,16 +138,17 @@ impl VirtualStateProcessor {
             block_transactions_store,
             pruning_store,
             past_pruning_points_store,
+            utxo_differences_store,
+            utxo_multisets_store,
+            acceptance_data_store,
+
             ghostdag_manager,
             reachability_service,
-            genesis_hash: params.genesis_hash,
-            max_block_parents: params.max_block_parents,
-            difficulty_window_size: params.difficulty_window_size,
-            mergeset_size_limit: params.mergeset_size_limit,
             dag_traversal_manager,
             difficulty_manager,
             transaction_validator,
             pruning_manager,
+
             is_updating_pruning_point_or_candidate: false.into(),
         }
     }
@@ -195,7 +217,7 @@ impl VirtualStateProcessor {
                 break;
             }
 
-            let mergeset_diff = state.utxo_diffs.get(&current).unwrap();
+            let mergeset_diff = self.utxo_differences_store.get(current).unwrap();
             // Apply the diff in reverse
             accumulated_diff.with_diff_in_place(&mergeset_diff.as_reversed()).unwrap();
         }
@@ -204,15 +226,11 @@ impl VirtualStateProcessor {
         for (selected_parent, current) in
             self.reachability_service.forward_chain_iterator(split_point, new_selected, true).tuple_windows()
         {
-            match state.utxo_diffs.entry(current) {
-                Occupied(e) => {
-                    let mergeset_diff = e.get();
-                    accumulated_diff.with_diff_in_place(mergeset_diff).unwrap();
-
-                    // Temp logic
-                    assert!(state.multiset_hashes.contains_key(&current));
+            match self.utxo_differences_store.get(current) {
+                Ok(mergeset_diff) => {
+                    accumulated_diff.with_diff_in_place(mergeset_diff.deref()).unwrap();
                 }
-                Vacant(e) => {
+                Err(StoreError::KeyNotFound(_)) => {
                     if self.statuses_store.read().get(selected_parent).unwrap() == StatusDisqualifiedFromChain {
                         self.statuses_store.write().set(current, StatusDisqualifiedFromChain).unwrap();
                         continue; // TODO: optimize
@@ -222,10 +240,7 @@ impl VirtualStateProcessor {
                     let mergeset_data = self.ghostdag_store.get_data(current).unwrap();
                     let pov_daa_score = header.daa_score;
 
-                    // Temp logic
-                    assert!(!state.multiset_hashes.contains_key(&current));
-
-                    let selected_parent_multiset_hash = &state.multiset_hashes.get(&mergeset_data.selected_parent).unwrap();
+                    let selected_parent_multiset_hash = self.utxo_multisets_store.get(mergeset_data.selected_parent).unwrap();
                     let selected_parent_utxo_view = utxo_view::compose_one_diff_layer(&state.utxo_set, &accumulated_diff);
 
                     let mut ctx = UtxoProcessingContext::new(mergeset_data, selected_parent_multiset_hash);
@@ -237,13 +252,14 @@ impl VirtualStateProcessor {
                         trace!("{:?}", rule_error);
                         self.statuses_store.write().set(current, StatusDisqualifiedFromChain).unwrap();
                     } else {
-                        // TODO: batch write
+                        // Accumulate
                         accumulated_diff.with_diff_in_place(&ctx.mergeset_diff).unwrap();
-                        e.insert(ctx.mergeset_diff);
-                        state.multiset_hashes.insert(current, ctx.multiset_hash);
-                        self.statuses_store.write().set(current, StatusUTXOValid).unwrap();
+                        // Commit UTXO data for current chain block
+                        self.commit_utxo_state(current, ctx.mergeset_diff, ctx.multiset_hash, AcceptanceData {});
+                        // TODO: AcceptanceData
                     }
                 }
+                Err(err) => panic!("unexpected error {}", err),
             }
         }
 
@@ -252,7 +268,7 @@ impl VirtualStateProcessor {
                 // TODO: batch write
 
                 // Calc new virtual diff
-                let selected_parent_multiset_hash = &state.multiset_hashes.get(&virtual_ghostdag_data.selected_parent).unwrap();
+                let selected_parent_multiset_hash = self.utxo_multisets_store.get(virtual_ghostdag_data.selected_parent).unwrap();
                 let selected_parent_utxo_view = utxo_view::compose_one_diff_layer(&state.utxo_set, &accumulated_diff);
                 let mut ctx = UtxoProcessingContext::new(virtual_ghostdag_data.clone(), selected_parent_multiset_hash);
 
@@ -280,6 +296,17 @@ impl VirtualStateProcessor {
             _ => panic!("expected utxo valid or disqualified {}", new_selected),
         }
         Ok(())
+    }
+
+    fn commit_utxo_state(self: &Arc<Self>, current: Hash, mergeset_diff: UtxoDiff, multiset: MuHash, acceptance_data: AcceptanceData) {
+        let mut batch = WriteBatch::default();
+        self.utxo_differences_store.insert_batch(&mut batch, current, Arc::new(mergeset_diff)).unwrap();
+        self.utxo_multisets_store.insert_batch(&mut batch, current, multiset).unwrap();
+        self.acceptance_data_store.insert_batch(&mut batch, current, Arc::new(acceptance_data)).unwrap();
+        let write_guard = self.statuses_store.set_batch(&mut batch, current, StatusUTXOValid).unwrap();
+        self.db.write(batch).unwrap();
+        // Calling the drops explicitly after the batch is written in order to avoid possible errors.
+        drop(write_guard);
     }
 
     fn maybe_update_pruning_point_and_candidate(self: &Arc<Self>) {
@@ -322,12 +349,21 @@ impl VirtualStateProcessor {
     }
 
     pub fn process_genesis_if_needed(self: &Arc<Self>) {
-        // TODO: multiset store
         let status = self.statuses_store.read().get(self.genesis_hash).unwrap();
         match status {
             StatusUTXOPendingVerification => {
-                self.past_pruning_points_store.insert(0, self.genesis_hash).unwrap();
-                self.statuses_store.write().set(self.genesis_hash, StatusUTXOValid).unwrap();
+                self.commit_utxo_state(self.genesis_hash, UtxoDiff::default(), MuHash::new(), AcceptanceData {});
+                match self.past_pruning_points_store.insert(0, self.genesis_hash) {
+                    Ok(()) => {}
+                    Err(StoreError::KeyAlreadyExists(_)) => {
+                        // If already exists, make sure the store was initialized correctly
+                        match self.past_pruning_points_store.get(0) {
+                            Ok(hash) => assert_eq!(hash, self.genesis_hash, "first pruning point is not genesis"),
+                            Err(err) => panic!("unexpected error {}", err),
+                        }
+                    }
+                    Err(err) => panic!("unexpected error {}", err),
+                }
             }
             _ => panic!("unexpected genesis status {:?}", status),
         }
@@ -336,23 +372,19 @@ impl VirtualStateProcessor {
 
 /// TEMP: initial struct for holding complete virtual state in memory
 struct VirtualState {
-    utxo_set: UtxoCollection,           // TEMP: represents the utxo set of virtual selected parent
-    utxo_diffs: BlockHashMap<UtxoDiff>, // Holds diff of this block from selected parent
+    utxo_set: UtxoCollection, // TEMP: represents the utxo set of virtual selected parent
     virtual_diff: UtxoDiff,
     virtual_parents: Vec<Hash>,
     ghostdag_data: Arc<GhostdagData>,
-    multiset_hashes: BlockHashMap<MuHash>,
 }
 
 impl VirtualState {
     fn new(genesis_hash: Hash, initial_ghostdag_data: Arc<GhostdagData>) -> Self {
         Self {
             utxo_set: Default::default(),
-            utxo_diffs: Default::default(),
             virtual_diff: UtxoDiff::default(), // Virtual diff is initially empty since genesis receives no reward
             virtual_parents: vec![genesis_hash],
             ghostdag_data: initial_ghostdag_data,
-            multiset_hashes: BlockHashMap::from([(genesis_hash, MuHash::new())]),
         }
     }
 }
