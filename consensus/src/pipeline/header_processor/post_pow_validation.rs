@@ -1,8 +1,9 @@
 use super::{HeaderProcessingContext, HeaderProcessor};
-use crate::errors::{BlockProcessResult, RuleError};
+use crate::errors::{BlockProcessResult, RuleError, TwoDimVecDisplay};
 use crate::model::services::reachability::ReachabilityService;
 use consensus_core::header::Header;
 use hashes::Hash;
+use std::collections::HashSet;
 use std::sync::Arc;
 
 impl HeaderProcessor {
@@ -69,7 +70,23 @@ impl HeaderProcessor {
         ctx: &mut HeaderProcessingContext,
         header: &Header,
     ) -> BlockProcessResult<()> {
-        // TODO: Implement this
+        let expected_block_parents = self.parents_manager.calc_block_parents(ctx.pruning_point(), header.direct_parents());
+        if header.parents_by_level.len() != expected_block_parents.len()
+            || !expected_block_parents.iter().enumerate().all(|(block_level, expected_level_parents)| {
+                let header_level_parents = &header.parents_by_level[block_level];
+                if header_level_parents.len() != expected_level_parents.len() {
+                    return false;
+                }
+
+                let expected_set = HashSet::<&Hash>::from_iter(expected_level_parents);
+                header_level_parents.iter().all(|header_parent| expected_set.contains(header_parent))
+            })
+        {
+            return Err(RuleError::UnexpectedIndirectParents(
+                TwoDimVecDisplay(expected_block_parents),
+                TwoDimVecDisplay(header.parents_by_level.clone()),
+            ));
+        };
         Ok(())
     }
 
@@ -78,7 +95,11 @@ impl HeaderProcessor {
         ctx: &mut HeaderProcessingContext,
         header: &Header,
     ) -> BlockProcessResult<()> {
-        // TODO: Implement this
+        let expected =
+            self.pruning_manager.expected_header_pruning_point(ctx.ghostdag_data.as_ref().unwrap().to_compact(), ctx.pruning_info);
+        if expected != header.pruning_point {
+            return Err(RuleError::WrongHeaderPruningPoint(expected, header.pruning_point));
+        }
         Ok(())
     }
 
@@ -88,8 +109,8 @@ impl HeaderProcessor {
         header: &Header,
     ) -> BlockProcessResult<()> {
         let gd_data = ctx.ghostdag_data.as_ref().unwrap();
-        let merge_depth_root = self.depth_manager.calc_merge_depth_root(gd_data, ctx.pruning_point);
-        let finality_point = self.depth_manager.calc_finality_point(gd_data, ctx.pruning_point);
+        let merge_depth_root = self.depth_manager.calc_merge_depth_root(gd_data, ctx.pruning_point());
+        let finality_point = self.depth_manager.calc_finality_point(gd_data, ctx.pruning_point());
         let non_bounded_merge_depth_violating_blues: Vec<Hash> =
             self.depth_manager.non_bounded_merge_depth_violating_blues(gd_data, merge_depth_root).collect();
 

@@ -1,8 +1,10 @@
 use super::{errors::StoreError, DB};
-use moka::sync::Cache;
+use indexmap::IndexMap;
+use parking_lot::RwLock;
+use rand::Rng;
 use rocksdb::WriteBatch;
 use serde::{de::DeserializeOwned, Serialize};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 const SEP: u8 = b'/';
 
@@ -22,16 +24,46 @@ impl AsRef<[u8]> for DbKey {
     }
 }
 
+#[derive(Clone)]
+pub struct Cache<TKey: Clone + std::hash::Hash + Eq + Send + Sync, TData: Clone + Send + Sync> {
+    map: Arc<RwLock<IndexMap<TKey, TData>>>, // We use IndexMap and not HashMap, because it makes it cheaper to remove a random element when the cache is full.
+    size: usize,
+}
+
+impl<TKey: Clone + std::hash::Hash + Eq + Send + Sync, TData: Clone + Send + Sync> Cache<TKey, TData> {
+    pub fn new(size: u64) -> Self {
+        Self { map: Arc::new(RwLock::new(IndexMap::with_capacity(size as usize))), size: size as usize }
+    }
+
+    pub fn get(&self, key: &TKey) -> Option<TData> {
+        self.map.read().get(key).cloned()
+    }
+
+    pub fn contains_key(&self, key: &TKey) -> bool {
+        self.map.read().contains_key(key)
+    }
+
+    pub fn insert(&self, key: TKey, data: TData) {
+        if self.size == 0 {
+            return;
+        }
+
+        let mut write_guard = self.map.write();
+        if write_guard.len() == self.size {
+            write_guard.swap_remove_index(rand::thread_rng().gen_range(0..self.size));
+        }
+        write_guard.insert(key, data);
+    }
+}
+
 /// A concurrent DB store with typed caching.
 #[derive(Clone)]
 pub struct CachedDbAccess<TKey, TData>
 where
-    TKey: std::hash::Hash + Eq + Send + Sync + 'static,
-    TData: Clone + Send + Sync + 'static,
+    TKey: Clone + std::hash::Hash + Eq + Send + Sync,
+    TData: Clone + Send + Sync,
 {
     db: Arc<DB>,
-    // The moka cache type supports shallow cloning and manages
-    // ref counting internally, so no need for Arc
     cache: Cache<TKey, Arc<TData>>,
 
     // DB bucket/path (TODO: eventually this must become dynamic in
@@ -41,8 +73,8 @@ where
 
 impl<TKey, TData> CachedDbAccess<TKey, TData>
 where
-    TKey: std::hash::Hash + Eq + Send + Sync + 'static,
-    TData: Clone + Send + Sync + 'static,
+    TKey: Clone + std::hash::Hash + Eq + Send + Sync,
+    TData: Clone + Send + Sync,
 {
     pub fn new(db: Arc<DB>, cache_size: u64, prefix: &'static [u8]) -> Self {
         Self { db, cache: Cache::new(cache_size), prefix }
@@ -106,12 +138,10 @@ where
 #[derive(Clone)]
 pub struct CachedDbAccessForCopy<TKey, TData>
 where
-    TKey: std::hash::Hash + Eq + Send + Sync + 'static,
-    TData: Clone + Copy + Send + Sync + 'static,
+    TKey: Clone + std::hash::Hash + Eq + Send + Sync,
+    TData: Clone + Copy + Send + Sync,
 {
     db: Arc<DB>,
-    // The moka cache type supports shallow cloning and manages
-    // ref counting internally, so no need for Arc
     cache: Cache<TKey, TData>,
 
     // DB bucket/path (TODO: eventually this must become dynamic in
@@ -121,8 +151,8 @@ where
 
 impl<TKey, TData> CachedDbAccessForCopy<TKey, TData>
 where
-    TKey: std::hash::Hash + Eq + Send + Sync + 'static,
-    TData: Clone + Copy + Send + Sync + 'static,
+    TKey: Clone + std::hash::Hash + Eq + Send + Sync,
+    TData: Clone + Copy + Send + Sync,
 {
     pub fn new(db: Arc<DB>, cache_size: u64, prefix: &'static [u8]) -> Self {
         Self { db, cache: Cache::new(cache_size), prefix }
@@ -192,11 +222,11 @@ impl<T> CachedDbItem<T> {
     where
         T: Copy + DeserializeOwned,
     {
-        if let Some(root) = *self.cached_item.read().unwrap() {
+        if let Some(root) = *self.cached_item.read() {
             Ok(root)
         } else if let Some(slice) = self.db.get_pinned(self.key)? {
             let item: T = bincode::deserialize(&slice)?;
-            *self.cached_item.write().unwrap() = Some(item);
+            *self.cached_item.write() = Some(item);
             Ok(item)
         } else {
             Err(StoreError::KeyNotFound(String::from_utf8(Vec::from(self.key)).unwrap()))
@@ -207,7 +237,7 @@ impl<T> CachedDbItem<T> {
     where
         T: Copy + Serialize, // Copy can be relaxed to Clone if needed by new usages
     {
-        *self.cached_item.write().unwrap() = Some(*item);
+        *self.cached_item.write() = Some(*item);
         let bin_data = bincode::serialize(&item)?;
         self.db.put(self.key, bin_data)?;
         Ok(())
@@ -217,7 +247,7 @@ impl<T> CachedDbItem<T> {
     where
         T: Copy + Serialize,
     {
-        *self.cached_item.write().unwrap() = Some(*item);
+        *self.cached_item.write() = Some(*item);
         let bin_data = bincode::serialize(&item)?;
         batch.put(self.key, bin_data);
         Ok(())
