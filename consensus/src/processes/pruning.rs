@@ -7,6 +7,7 @@ use crate::model::{
         ghostdag::{CompactGhostdagData, GhostdagStoreReader},
         headers::HeaderStoreReader,
         past_pruning_points::PastPruningPointsStoreReader,
+        pruning::PruningPointInfo,
         reachability::ReachabilityStoreReader,
     },
 };
@@ -97,16 +98,12 @@ impl<S: GhostdagStoreReader, T: ReachabilityStoreReader, U: HeaderStoreReader, V
         blue_score / self.finality_depth
     }
 
-    pub fn expected_header_pruning_point(
-        &self,
-        ghostdag_data: CompactGhostdagData,
-        current_candidate: Hash,
-        current_pruning_point: Hash,
-        current_pruning_point_index: u64,
-    ) -> Hash {
+    pub fn expected_header_pruning_point(&self, ghostdag_data: CompactGhostdagData, pruning_info: PruningPointInfo) -> Hash {
         if ghostdag_data.selected_parent == self.genesis_hash {
             return self.genesis_hash;
         }
+
+        let (current_pruning_point, current_candidate, current_pruning_point_index) = pruning_info.decompose();
 
         let sp_header_pp = self.headers_store.get_header(ghostdag_data.selected_parent).unwrap().pruning_point;
         let sp_header_pp_blue_score = self.headers_store.get_blue_score(sp_header_pp).unwrap();

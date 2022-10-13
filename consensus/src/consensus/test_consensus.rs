@@ -47,12 +47,8 @@ impl TestConsensus {
         self.consensus.ghostdag_manager.add_block(&mut ctx, hash);
 
         let ghostdag_data = ctx.ghostdag_data.unwrap();
-        header.pruning_point = self.consensus.pruning_manager.expected_header_pruning_point(
-            ghostdag_data.to_compact(),
-            ctx.pruning_info.pruning_point,
-            ctx.pruning_info.candidate,
-            ctx.pruning_info.index,
-        );
+        header.pruning_point =
+            self.consensus.pruning_manager.expected_header_pruning_point(ghostdag_data.to_compact(), ctx.pruning_info);
 
         let window = self.consensus.dag_traversal_manager.block_window(ghostdag_data.clone(), self.params.difficulty_window_size);
         let mut window_hashes = window.iter().map(|item| item.0.hash);

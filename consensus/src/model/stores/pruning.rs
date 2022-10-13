@@ -20,6 +20,10 @@ impl PruningPointInfo {
     pub fn from_genesis(genesis_hash: Hash) -> Self {
         Self { pruning_point: genesis_hash, candidate: genesis_hash, index: 0 }
     }
+
+    pub fn decompose(self) -> (Hash, Hash, u64) {
+        (self.pruning_point, self.candidate, self.index)
+    }
 }
 
 /// Reader API for `PruningStore`.
