@@ -180,3 +180,8 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    // TODO: add unit-tests for calc_block_parents
+}

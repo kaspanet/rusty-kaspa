@@ -72,7 +72,6 @@ impl<S: GhostdagStoreReader, T: ReachabilityStoreReader, U: HeaderStoreReader, V
         let mut new_pruning_point_bs = self.ghostdag_store.get_blue_score(new_pruning_point).unwrap();
         let mut new_candidate = current_candidate;
 
-        // TODO: Check that iterator works if lowHash and ghostdag_data.selected_parent are the same
         for selected_child in self.reachability_service.forward_chain_iterator(low_hash, ghostdag_data.selected_parent, true) {
             let selected_child_bs = self.ghostdag_store.get_blue_score(selected_child).unwrap();
 
@@ -170,4 +169,9 @@ impl<S: GhostdagStoreReader, T: ReachabilityStoreReader, U: HeaderStoreReader, V
         let pp_bs = self.headers_store.get_blue_score(pruning_point).unwrap();
         pov_blue_score >= pp_bs + self.pruning_depth
     }
+}
+
+#[cfg(test)]
+mod tests {
+    // TODO: add unit-tests for next_pruning_point_and_candidate_by_block_hash and expected_header_pruning_point
 }

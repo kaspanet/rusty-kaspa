@@ -238,5 +238,7 @@ mod tests {
         assert!([2u64].map(Hash::from).iter().cloned().eq(service.backward_chain_iterator(2.into(), root, false)));
         assert!(std::iter::once_with(|| root).eq(service.backward_chain_iterator(root, root, true)));
         assert!(std::iter::empty::<Hash>().eq(service.backward_chain_iterator(root, root, false)));
+        assert!(std::iter::once_with(|| root).eq(service.forward_chain_iterator(root, root, true)));
+        assert!(std::iter::empty::<Hash>().eq(service.forward_chain_iterator(root, root, false)));
     }
 }
