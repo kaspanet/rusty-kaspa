@@ -72,12 +72,11 @@ impl TestConsensus {
 
     pub fn build_block_with_parents_and_transactions(&self, hash: Hash, parents: Vec<Hash>, txs: Vec<Transaction>) -> Block {
         let mut header = self.build_header_with_parents(hash, parents);
-        let mut cb_payload: Vec<u8> = vec![];
-        cb_payload.append(&mut header.blue_score.to_le_bytes().to_vec());
-        cb_payload.append(&mut (self.consensus.coinbase_manager.calc_block_subsidy(header.daa_score)).to_le_bytes().to_vec()); // Subsidy
-        cb_payload.append(&mut (0_u16).to_le_bytes().to_vec()); // Script public key version
-        cb_payload.append(&mut (0_u8).to_le_bytes().to_vec()); // Script public key length
-        cb_payload.append(&mut vec![]); // Script public key
+        let cb_payload: Vec<u8> = header.blue_score.to_le_bytes().iter().copied() // Blue score
+            .chain(self.consensus.coinbase_manager.calc_block_subsidy(header.daa_score).to_le_bytes().iter().copied()) // Subsidy
+            .chain((0_u16).to_le_bytes().iter().copied()) // Script public key version
+            .chain((0_u8).to_le_bytes().iter().copied()) // Script public key length
+            .collect();
 
         let cb = Transaction::new(TX_VERSION, vec![], vec![], 0, SUBNETWORK_ID_COINBASE, 0, cb_payload, 0);
         let final_txs = vec![vec![cb], txs].concat();
