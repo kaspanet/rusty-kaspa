@@ -101,7 +101,7 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
                     // to use some blocks in its future as reference instead.
                     // If we make sure to add a parent in the future of the pruning point first, we can
                     // know that any pruned candidate that is in the past of some blocks in the pruning
-                    // point anticone should have should be a parent (in the relevant level) of one of
+                    // point anticone should be a parent (in the relevant level) of one of
                     // the virtual genesis children in the pruning point anticone. So we can check which
                     // virtual genesis children have this block as parent and use those block as
                     // reference blocks.

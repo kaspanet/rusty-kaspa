@@ -190,7 +190,7 @@ pub trait GhostdagStore: GhostdagStoreReader {
 }
 
 const STORE_PREFIX: &[u8] = b"block-ghostdag-data";
-const COMPACT_STORE_PREFIX: &[u8] = b"complact-block-ghostdag-data";
+const COMPACT_STORE_PREFIX: &[u8] = b"compact-block-ghostdag-data";
 
 /// A DB + cache implementation of `GhostdagStore` trait, with concurrency support.
 #[derive(Clone)]
