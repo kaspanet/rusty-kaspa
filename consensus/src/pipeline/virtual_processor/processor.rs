@@ -131,7 +131,7 @@ impl VirtualStateProcessor {
         }
     }
 
-    pub fn worker(self: &Arc<VirtualStateProcessor>) {
+    pub fn worker(self: &Arc<Self>) {
         let mut state = VirtualState::new(self.genesis_hash, self.ghostdag_manager.ghostdag(&[self.genesis_hash]));
         'outer: while let Ok(first_task) = self.receiver.recv() {
             // Once a task arrived, collect all pending tasks from the channel.
@@ -159,7 +159,7 @@ impl VirtualStateProcessor {
     }
 
     fn resolve_virtual<'a>(
-        self: &Arc<VirtualStateProcessor>,
+        self: &Arc<Self>,
         blocks: &mut impl Iterator<Item = &'a Arc<Block>>,
         state: &mut VirtualState,
     ) -> BlockProcessResult<()> {
@@ -321,7 +321,7 @@ impl VirtualStateProcessor {
         self.is_updating_pruning_point_or_candidate.store(false, atomic::Ordering::Release);
     }
 
-    pub fn process_genesis_if_needed(self: &Arc<VirtualStateProcessor>) {
+    pub fn process_genesis_if_needed(self: &Arc<Self>) {
         // TODO: multiset store
         let status = self.statuses_store.read().get(self.genesis_hash).unwrap();
         match status {
