@@ -11,6 +11,7 @@ use crate::{
             depth::DbDepthStore,
             ghostdag::DbGhostdagStore,
             headers::DbHeadersStore,
+            past_pruning_points::DbPastPruningPointsStore,
             pruning::DbPruningStore,
             reachability::DbReachabilityStore,
             relations::DbRelationsStore,
@@ -28,8 +29,9 @@ use crate::{
     },
     processes::{
         block_at_depth::BlockDepthManager, coinbase::CoinbaseManager, dagtraversalmanager::DagTraversalManager,
-        difficulty::DifficultyManager, ghostdag::protocol::GhostdagManager, mass::MassCalculator,
-        pastmediantime::PastMedianTimeManager, reachability::inquirer as reachability, transaction_validator::TransactionValidator,
+        difficulty::DifficultyManager, ghostdag::protocol::GhostdagManager, mass::MassCalculator, parents_builder::ParentsManager,
+        pastmediantime::PastMedianTimeManager, pruning::PruningManager, reachability::inquirer as reachability,
+        transaction_validator::TransactionValidator,
     },
 };
 use consensus_core::block::Block;
@@ -77,6 +79,7 @@ pub struct Consensus {
     pub(super) ghostdag_manager: DbGhostdagManager,
     pub(super) past_median_time_manager: PastMedianTimeManager<DbHeadersStore, DbGhostdagStore, BlockWindowCacheStore>,
     pub(super) coinbase_manager: CoinbaseManager,
+    pub(super) pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
 
     // Counters
     pub counters: Arc<ProcessingCounters>,
@@ -84,15 +87,17 @@ pub struct Consensus {
 
 impl Consensus {
     pub fn new(db: Arc<DB>, params: &Params) -> Self {
-        let statuses_store = Arc::new(RwLock::new(DbStatusesStore::new(db.clone(), 100000)));
-        let relations_store = Arc::new(RwLock::new(DbRelationsStore::new(db.clone(), 100000)));
-        let reachability_store = Arc::new(RwLock::new(DbReachabilityStore::new(db.clone(), 100000)));
+        const CACHE_SIZE: u64 = 100_000;
+        let statuses_store = Arc::new(RwLock::new(DbStatusesStore::new(db.clone(), CACHE_SIZE)));
+        let relations_store = Arc::new(RwLock::new(DbRelationsStore::new(db.clone(), CACHE_SIZE)));
+        let reachability_store = Arc::new(RwLock::new(DbReachabilityStore::new(db.clone(), CACHE_SIZE)));
         let pruning_store = Arc::new(RwLock::new(DbPruningStore::new(db.clone())));
-        let ghostdag_store = Arc::new(DbGhostdagStore::new(db.clone(), 100000));
-        let daa_store = Arc::new(DbDaaStore::new(db.clone(), 100000));
-        let headers_store = Arc::new(DbHeadersStore::new(db.clone(), 100000));
-        let depth_store = Arc::new(DbDepthStore::new(db.clone(), 100000));
-        let block_transactions_store = Arc::new(DbBlockTransactionsStore::new(db.clone(), 100000));
+        let ghostdag_store = Arc::new(DbGhostdagStore::new(db.clone(), CACHE_SIZE));
+        let daa_store = Arc::new(DbDaaStore::new(db.clone(), CACHE_SIZE));
+        let headers_store = Arc::new(DbHeadersStore::new(db.clone(), CACHE_SIZE));
+        let depth_store = Arc::new(DbDepthStore::new(db.clone(), CACHE_SIZE));
+        let block_transactions_store = Arc::new(DbBlockTransactionsStore::new(db.clone(), CACHE_SIZE));
+        let past_pruning_points_store = Arc::new(DbPastPruningPointsStore::new(db.clone(), CACHE_SIZE));
         let block_window_cache_for_difficulty = Arc::new(BlockWindowCacheStore::new(2000));
         let block_window_cache_for_past_median_time = Arc::new(BlockWindowCacheStore::new(2000));
 
@@ -157,6 +162,24 @@ impl Consensus {
             headers_store.clone(),
         );
 
+        let pruning_manager = PruningManager::new(
+            params.pruning_depth,
+            params.finality_depth,
+            params.genesis_hash,
+            reachability_service.clone(),
+            ghostdag_store.clone(),
+            headers_store.clone(),
+            past_pruning_points_store.clone(),
+        );
+
+        let parents_manager = ParentsManager::new(
+            params.max_block_level,
+            params.genesis_hash,
+            headers_store.clone(),
+            reachability_service.clone(),
+            relations_store.clone(),
+        );
+
         let (sender, receiver): (Sender<BlockTask>, Receiver<BlockTask>) = unbounded();
         let (body_sender, body_receiver): (Sender<BlockTask>, Receiver<BlockTask>) = unbounded();
         let (virtual_sender, virtual_receiver): (Sender<BlockTask>, Receiver<BlockTask>) = unbounded();
@@ -202,6 +225,8 @@ impl Consensus {
             dag_traversal_manager.clone(),
             difficulty_manager.clone(),
             depth_manager,
+            pruning_manager.clone(),
+            parents_manager,
             counters.clone(),
         ));
 
@@ -226,17 +251,20 @@ impl Consensus {
         let virtual_processor = Arc::new(VirtualStateProcessor::new(
             virtual_receiver,
             virtual_pool,
-            params,
             db.clone(),
+            params,
             statuses_store.clone(),
             ghostdag_store.clone(),
             headers_store,
             block_transactions_store,
+            pruning_store.clone(),
+            past_pruning_points_store,
             ghostdag_manager.clone(),
             reachability_service.clone(),
             dag_traversal_manager.clone(),
             difficulty_manager.clone(),
             transaction_validator,
+            pruning_manager.clone(),
         ));
 
         Self {
@@ -259,6 +287,7 @@ impl Consensus {
             ghostdag_manager,
             past_median_time_manager,
             coinbase_manager,
+            pruning_manager,
 
             counters,
         }

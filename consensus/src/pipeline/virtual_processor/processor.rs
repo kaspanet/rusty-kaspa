@@ -8,6 +8,8 @@ use crate::{
             block_window_cache::BlockWindowCacheStore,
             ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStoreReader},
             headers::{DbHeadersStore, HeaderStoreReader},
+            past_pruning_points::{DbPastPruningPointsStore, PastPruningPointsStore},
+            pruning::{DbPruningStore, PruningStore, PruningStoreReader},
             reachability::DbReachabilityStore,
             statuses::{
                 BlockStatus::{self, StatusDisqualifiedFromChain, StatusUTXOPendingVerification, StatusUTXOValid},
@@ -19,12 +21,13 @@ use crate::{
     params::Params,
     pipeline::{deps_manager::BlockTask, virtual_processor::utxo_validation::UtxoProcessingContext},
     processes::{
-        dagtraversalmanager::DagTraversalManager, difficulty::DifficultyManager, transaction_validator::TransactionValidator,
+        dagtraversalmanager::DagTraversalManager, difficulty::DifficultyManager, pruning::PruningManager,
+        transaction_validator::TransactionValidator,
     },
 };
 use consensus_core::{
     block::Block,
-    blockhash,
+    blockhash::{self, VIRTUAL},
     utxo::{utxo_collection::UtxoCollection, utxo_collection::UtxoCollectionExtensions, utxo_diff::UtxoDiff, utxo_view},
     BlockHashMap, BlockHashSet,
 };
@@ -34,12 +37,16 @@ use muhash::MuHash;
 
 use crossbeam_channel::Receiver;
 use itertools::Itertools;
-use parking_lot::RwLock;
+use parking_lot::{RwLock, RwLockUpgradableReadGuard};
 use rayon::ThreadPool;
+use rocksdb::WriteBatch;
 use std::{
     collections::hash_map::Entry::{Occupied, Vacant},
     iter::FromIterator,
-    sync::Arc,
+    sync::{
+        atomic::{self, AtomicBool},
+        Arc,
+    },
 };
 
 pub struct VirtualStateProcessor {
@@ -48,6 +55,9 @@ pub struct VirtualStateProcessor {
 
     // Thread pool
     pub(super) thread_pool: Arc<ThreadPool>,
+
+    // DB
+    db: Arc<DB>,
 
     // Config
     pub(super) genesis_hash: Hash,
@@ -58,14 +68,13 @@ pub struct VirtualStateProcessor {
     pub(super) mergeset_size_limit: u64,
     // pub(super) genesis_bits: u32,
 
-    // DB
-    db: Arc<DB>,
-
     // Stores
     pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
     pub(super) ghostdag_store: Arc<DbGhostdagStore>,
     pub(super) headers_store: Arc<DbHeadersStore>,
     pub(super) block_transactions_store: Arc<DbBlockTransactionsStore>,
+    pub(super) pruning_store: Arc<RwLock<DbPruningStore>>,
+    pub(super) past_pruning_points_store: Arc<DbPastPruningPointsStore>,
 
     // Managers and services
     pub(super) ghostdag_manager: DbGhostdagManager,
@@ -73,6 +82,9 @@ pub struct VirtualStateProcessor {
     pub(super) dag_traversal_manager: DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore>,
     pub(super) difficulty_manager: DifficultyManager<DbHeadersStore>,
     pub(super) transaction_validator: TransactionValidator<DbHeadersStore>,
+    pub(super) pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
+
+    is_updating_pruning_point_or_candidate: AtomicBool,
 }
 
 impl VirtualStateProcessor {
@@ -80,17 +92,20 @@ impl VirtualStateProcessor {
     pub fn new(
         receiver: Receiver<BlockTask>,
         thread_pool: Arc<ThreadPool>,
-        params: &Params,
         db: Arc<DB>,
+        params: &Params,
         statuses_store: Arc<RwLock<DbStatusesStore>>,
         ghostdag_store: Arc<DbGhostdagStore>,
         headers_store: Arc<DbHeadersStore>,
         block_transactions_store: Arc<DbBlockTransactionsStore>,
+        pruning_store: Arc<RwLock<DbPruningStore>>,
+        past_pruning_points_store: Arc<DbPastPruningPointsStore>,
         ghostdag_manager: DbGhostdagManager,
         reachability_service: MTReachabilityService<DbReachabilityStore>,
         dag_traversal_manager: DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore>,
         difficulty_manager: DifficultyManager<DbHeadersStore>,
         transaction_validator: TransactionValidator<DbHeadersStore>,
+        pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
     ) -> Self {
         Self {
             receiver,
@@ -100,6 +115,8 @@ impl VirtualStateProcessor {
             headers_store,
             ghostdag_store,
             block_transactions_store,
+            pruning_store,
+            past_pruning_points_store,
             ghostdag_manager,
             reachability_service,
             genesis_hash: params.genesis_hash,
@@ -109,6 +126,8 @@ impl VirtualStateProcessor {
             dag_traversal_manager,
             difficulty_manager,
             transaction_validator,
+            pruning_manager,
+            is_updating_pruning_point_or_candidate: false.into(),
         }
     }
 
@@ -170,7 +189,7 @@ impl VirtualStateProcessor {
         let mut accumulated_diff = state.virtual_diff.clone().to_reversed();
 
         // Walk down to the reorg split point
-        for current in self.reachability_service.default_backward_chain_iterator(prev_selected).map(|r| r.unwrap()) {
+        for current in self.reachability_service.default_backward_chain_iterator(prev_selected) {
             if self.reachability_service.is_chain_ancestor_of(current, new_selected) {
                 split_point = current;
                 break;
@@ -183,7 +202,7 @@ impl VirtualStateProcessor {
 
         // Walk back up to the new virtual selected parent candidate
         for (selected_parent, current) in
-            self.reachability_service.forward_chain_iterator(split_point, new_selected, true).map(|r| r.unwrap()).tuple_windows()
+            self.reachability_service.forward_chain_iterator(split_point, new_selected, true).tuple_windows()
         {
             match state.utxo_diffs.entry(current) {
                 Occupied(e) => {
@@ -263,11 +282,51 @@ impl VirtualStateProcessor {
         Ok(())
     }
 
+    fn maybe_update_pruning_point_and_candidate(self: &Arc<Self>) {
+        if self
+            .is_updating_pruning_point_or_candidate
+            .compare_exchange(false, true, atomic::Ordering::Acquire, atomic::Ordering::Relaxed)
+            .is_err()
+        {
+            return;
+        }
+
+        {
+            let pruning_read_guard = self.pruning_store.upgradable_read();
+            let current_pp = pruning_read_guard.pruning_point().unwrap();
+            let current_pp_candidate = pruning_read_guard.pruning_point_candidate().unwrap();
+            let virtual_gd = self.ghostdag_store.get_compact_data(VIRTUAL).unwrap();
+            let (new_pruning_point, new_candidate) = self.pruning_manager.next_pruning_point_and_candidate_by_block_hash(
+                virtual_gd,
+                None,
+                current_pp_candidate,
+                current_pp,
+            );
+
+            if new_pruning_point != current_pp {
+                let mut batch = WriteBatch::default();
+                let new_pp_index = pruning_read_guard.pruning_point_index().unwrap() + 1;
+                let mut write_guard = RwLockUpgradableReadGuard::upgrade(pruning_read_guard);
+                write_guard.set_batch(&mut batch, new_pruning_point, new_candidate, new_pp_index).unwrap();
+                self.past_pruning_points_store.insert_batch(&mut batch, new_pp_index, new_pruning_point).unwrap();
+                self.db.write(batch).unwrap();
+                // TODO: Move PP UTXO etc
+            } else if new_candidate != current_pp_candidate {
+                let pp_index = pruning_read_guard.pruning_point_index().unwrap();
+                let mut write_guard = RwLockUpgradableReadGuard::upgrade(pruning_read_guard);
+                write_guard.set(new_pruning_point, new_candidate, pp_index).unwrap();
+            }
+        }
+
+        self.is_updating_pruning_point_or_candidate.store(false, atomic::Ordering::Release);
+    }
+
     pub fn process_genesis_if_needed(self: &Arc<VirtualStateProcessor>) {
         // TODO: multiset store
         let status = self.statuses_store.read().get(self.genesis_hash).unwrap();
         match status {
             StatusUTXOPendingVerification => {
+                self.past_pruning_points_store.insert(0, self.genesis_hash).unwrap();
                 self.statuses_store.write().set(self.genesis_hash, StatusUTXOValid).unwrap();
             }
             _ => panic!("unexpected genesis status {:?}", status),

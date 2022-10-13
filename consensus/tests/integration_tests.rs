@@ -8,7 +8,7 @@ use consensus::errors::{BlockProcessResult, RuleError};
 use consensus::model::stores::ghostdag::{GhostdagStoreReader, KType as GhostdagKType};
 use consensus::model::stores::reachability::DbReachabilityStore;
 use consensus::model::stores::statuses::BlockStatus;
-use consensus::params::MAINNET_PARAMS;
+use consensus::params::{Params, DEVNET_PARAMS, MAINNET_PARAMS};
 use consensus::processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions};
 use consensus_core::block::Block;
 use consensus_core::header::Header;
@@ -147,7 +147,7 @@ fn test_noattack_json() {
 async fn consensus_sanity_test() {
     let genesis_child: Hash = 2.into();
 
-    let consensus = TestConsensus::create_from_temp_db(&MAINNET_PARAMS);
+    let consensus = TestConsensus::create_from_temp_db(&MAINNET_PARAMS.clone_with_skip_pow());
     let wait_handles = consensus.init();
 
     consensus
@@ -406,8 +406,8 @@ async fn header_in_isolation_validation_test() {
 
 #[tokio::test]
 async fn incest_test() {
-    let params = &MAINNET_PARAMS;
-    let consensus = TestConsensus::create_from_temp_db(params);
+    let params = MAINNET_PARAMS.clone_with_skip_pow();
+    let consensus = TestConsensus::create_from_temp_db(&params);
     let wait_handles = consensus.init();
     let block = consensus.build_block_with_parents(1.into(), vec![params.genesis_hash]);
     consensus.validate_and_insert_block(Arc::new(block)).await.unwrap();
@@ -631,6 +631,69 @@ struct RPCBlockVerboseData {
     Hash: String,
 }
 
+#[allow(non_snake_case)]
+#[derive(Deserialize, Debug)]
+struct KaspadGoParams {
+    K: GhostdagKType,
+    TimestampDeviationTolerance: u64,
+    TargetTimePerBlock: u64,
+    MaxBlockParents: u8,
+    DifficultyAdjustmentWindowSize: usize,
+    MergeSetSizeLimit: u64,
+    MergeDepth: u64,
+    FinalityDuration: u64,
+    CoinbasePayloadScriptPublicKeyMaxLength: u8,
+    MaxCoinbasePayloadLength: usize,
+    MassPerTxByte: u64,
+    MassPerSigOp: u64,
+    MassPerScriptPubKeyByte: u64,
+    MaxBlockMass: u64,
+    DeflationaryPhaseDaaScore: u64,
+    PreDeflationaryPhaseBaseSubsidy: u64,
+    SkipProofOfWork: bool,
+    MaxBlockLevel: u8,
+}
+
+impl KaspadGoParams {
+    fn into_params(self, genesis_header: &Header) -> Params {
+        let finality_depth = self.FinalityDuration / self.TargetTimePerBlock;
+        Params {
+            genesis_hash: genesis_header.hash,
+            ghostdag_k: self.K,
+            timestamp_deviation_tolerance: self.TimestampDeviationTolerance,
+            target_time_per_block: self.TargetTimePerBlock / 1_000_000,
+            max_block_parents: self.MaxBlockParents,
+            difficulty_window_size: self.DifficultyAdjustmentWindowSize,
+            genesis_timestamp: genesis_header.timestamp,
+            genesis_bits: genesis_header.bits,
+            mergeset_size_limit: self.MergeSetSizeLimit,
+            merge_depth: self.MergeDepth,
+            finality_depth,
+            pruning_depth: 2 * finality_depth + 4 * self.MergeSetSizeLimit * self.K as u64 + 2 * self.K as u64 + 2,
+            coinbase_payload_script_public_key_max_len: self.CoinbasePayloadScriptPublicKeyMaxLength,
+            max_coinbase_payload_len: self.MaxCoinbasePayloadLength,
+            max_tx_inputs: MAINNET_PARAMS.max_tx_inputs,
+            max_tx_outputs: MAINNET_PARAMS.max_tx_outputs,
+            max_signature_script_len: MAINNET_PARAMS.max_signature_script_len,
+            max_script_public_key_len: MAINNET_PARAMS.max_script_public_key_len,
+            mass_per_tx_byte: self.MassPerTxByte,
+            mass_per_script_pub_key_byte: self.MassPerScriptPubKeyByte,
+            mass_per_sig_op: self.MassPerSigOp,
+            max_block_mass: self.MaxBlockMass,
+            deflationary_phase_daa_score: self.DeflationaryPhaseDaaScore,
+            pre_deflationary_phase_base_subsidy: self.PreDeflationaryPhaseBaseSubsidy,
+            coinbase_maturity: MAINNET_PARAMS.coinbase_maturity,
+            skip_proof_of_work: self.SkipProofOfWork,
+            max_block_level: self.MaxBlockLevel,
+        }
+    }
+}
+
+#[tokio::test]
+async fn goref_custom_pruning_depth() {
+    json_test("tests/testdata/goref_custom_pruning_depth.json.gz").await
+}
+
 #[tokio::test]
 async fn goref_notx_test() {
     json_test("tests/testdata/goref-notx-5000-blocks.json.gz").await
@@ -655,12 +718,20 @@ async fn json_test(file_path: &str) {
     let file = common::open_file(file_path);
     let decoder = GzDecoder::new(file);
     let mut lines = BufReader::new(decoder).lines();
-    let first_line = lines.next().unwrap();
-    let genesis = json_line_to_block(first_line.unwrap());
-    let mut params = MAINNET_PARAMS;
-    params.genesis_bits = genesis.header.bits;
-    params.genesis_hash = genesis.header.hash;
-    params.genesis_timestamp = genesis.header.timestamp;
+    let first_line = lines.next().unwrap().unwrap();
+    let go_params_res: Result<KaspadGoParams, _> = serde_json::from_str(&first_line);
+    let params = if let Ok(go_params) = go_params_res {
+        let second_line = lines.next().unwrap().unwrap();
+        let genesis = json_line_to_block(second_line);
+        go_params.into_params(&genesis.header)
+    } else {
+        let genesis = json_line_to_block(first_line);
+        let mut params = DEVNET_PARAMS;
+        params.genesis_bits = genesis.header.bits;
+        params.genesis_hash = genesis.header.hash;
+        params.genesis_timestamp = genesis.header.timestamp;
+        params
+    };
 
     let consensus = TestConsensus::create_from_temp_db(&params);
     let wait_handles = consensus.init();
@@ -694,7 +765,7 @@ async fn json_concurrency_test(file_path: &str) {
     let mut lines = io::BufReader::new(decoder).lines();
     let first_line = lines.next().unwrap();
     let genesis = json_line_to_block(first_line.unwrap());
-    let mut params = MAINNET_PARAMS;
+    let mut params = DEVNET_PARAMS;
     params.genesis_bits = genesis.header.bits;
     params.genesis_hash = genesis.header.hash;
     params.genesis_timestamp = genesis.header.timestamp;

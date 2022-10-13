@@ -9,7 +9,8 @@ use crate::{
             errors::StoreResultExtensions,
             ghostdag::{DbGhostdagStore, GhostdagData},
             headers::DbHeadersStore,
-            pruning::{DbPruningStore, PruningStore, PruningStoreReader},
+            past_pruning_points::DbPastPruningPointsStore,
+            pruning::{DbPruningStore, PruningPointInfo, PruningStore, PruningStoreReader},
             reachability::{DbReachabilityStore, StagingReachabilityStore},
             relations::{DbRelationsStore, RelationsStoreBatchExtensions},
             statuses::{
@@ -23,7 +24,8 @@ use crate::{
     pipeline::deps_manager::{BlockTask, BlockTaskDependencyManager},
     processes::{
         block_at_depth::BlockDepthManager, dagtraversalmanager::DagTraversalManager, difficulty::DifficultyManager,
-        ghostdag::protocol::GhostdagManager, pastmediantime::PastMedianTimeManager, reachability::inquirer as reachability,
+        ghostdag::protocol::GhostdagManager, parents_builder::ParentsManager, pastmediantime::PastMedianTimeManager,
+        pruning::PruningManager, reachability::inquirer as reachability,
     },
     test_helpers::header_from_precomputed_hash,
 };
@@ -43,7 +45,7 @@ use super::super::ProcessingCounters;
 pub struct HeaderProcessingContext<'a> {
     pub hash: Hash,
     pub header: &'a Header,
-    pub pruning_point: Hash,
+    pub pruning_info: PruningPointInfo,
 
     // Staging data
     pub ghostdag_data: Option<Arc<GhostdagData>>,
@@ -52,17 +54,18 @@ pub struct HeaderProcessingContext<'a> {
     pub daa_added_blocks: Option<Vec<Hash>>,
     pub merge_depth_root: Option<Hash>,
     pub finality_point: Option<Hash>,
+    pub block_level: Option<u8>,
 
     // Cache
     non_pruned_parents: Option<BlockHashes>,
 }
 
 impl<'a> HeaderProcessingContext<'a> {
-    pub fn new(hash: Hash, header: &'a Header, pruning_point: Hash) -> Self {
+    pub fn new(hash: Hash, header: &'a Header, pruning_info: PruningPointInfo) -> Self {
         Self {
             hash,
             header,
-            pruning_point,
+            pruning_info,
             ghostdag_data: None,
             non_pruned_parents: None,
             block_window_for_difficulty: None,
@@ -70,6 +73,7 @@ impl<'a> HeaderProcessingContext<'a> {
             block_window_for_past_median_time: None,
             merge_depth_root: None,
             finality_point: None,
+            block_level: None,
         }
     }
 
@@ -81,6 +85,10 @@ impl<'a> HeaderProcessingContext<'a> {
         let non_pruned_parents = Arc::new(self.header.direct_parents().clone()); // TODO: Exclude pruned parents
         self.non_pruned_parents = Some(non_pruned_parents.clone());
         non_pruned_parents
+    }
+
+    pub fn pruning_point(&self) -> Hash {
+        self.pruning_info.pruning_point
     }
 }
 
@@ -101,6 +109,7 @@ pub struct HeaderProcessor {
     pub(super) mergeset_size_limit: u64,
     pub(super) genesis_bits: u32,
     pub(super) skip_proof_of_work: bool,
+    pub(super) max_block_level: u8,
 
     // DB
     db: Arc<DB>,
@@ -129,6 +138,8 @@ pub struct HeaderProcessor {
     pub(super) past_median_time_manager: PastMedianTimeManager<DbHeadersStore, DbGhostdagStore, BlockWindowCacheStore>,
     pub(super) depth_manager: BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>,
     pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
+    pub(super) pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
+    pub(super) parents_manager: ParentsManager<DbHeadersStore, DbReachabilityStore, DbRelationsStore>,
 
     // Dependency manager
     task_manager: BlockTaskDependencyManager,
@@ -161,6 +172,8 @@ impl HeaderProcessor {
         dag_traversal_manager: DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore>,
         difficulty_manager: DifficultyManager<DbHeadersStore>,
         depth_manager: BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>,
+        pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
+        parents_manager: ParentsManager<DbHeadersStore, DbReachabilityStore, DbRelationsStore>,
         counters: Arc<ProcessingCounters>,
     ) -> Self {
         Self {
@@ -193,6 +206,8 @@ impl HeaderProcessor {
             reachability_service,
             past_median_time_manager,
             depth_manager,
+            pruning_manager,
+            parents_manager,
             task_manager: BlockTaskDependencyManager::new(),
             counters,
             timestamp_deviation_tolerance: params.timestamp_deviation_tolerance,
@@ -201,6 +216,7 @@ impl HeaderProcessor {
             mergeset_size_limit: params.mergeset_size_limit,
             genesis_bits: params.genesis_bits,
             skip_proof_of_work: params.skip_proof_of_work,
+            max_block_level: params.max_block_level,
         }
     }
 
@@ -263,14 +279,12 @@ impl HeaderProcessor {
         }
 
         // Create processing context
-        let mut ctx = HeaderProcessingContext::new(header.hash, header, self.pruning_store.read().pruning_point().unwrap());
+        let mut ctx = HeaderProcessingContext::new(header.hash, header, self.pruning_store.read().get().unwrap());
 
-        // Run GHOSTDAG for the new header
+        // Run all header validations for the new header
         self.pre_ghostdag_validation(&mut ctx, header)?;
         ctx.ghostdag_data = Some(self.ghostdag_manager.ghostdag(header.direct_parents())); // TODO: Run GHOSTDAG for all block levels
-
         self.pre_pow_validation(&mut ctx, header)?;
-
         if let Err(e) = self.post_pow_validation(&mut ctx, header) {
             self.statuses_store.write().set(ctx.hash, StatusInvalid).unwrap();
             return Err(e);
@@ -295,7 +309,7 @@ impl HeaderProcessor {
         self.block_window_cache_for_difficulty.insert(ctx.hash, Arc::new(ctx.block_window_for_difficulty.unwrap()));
         self.block_window_cache_for_past_median_time.insert(ctx.hash, Arc::new(ctx.block_window_for_past_median_time.unwrap()));
         self.daa_store.insert_batch(&mut batch, ctx.hash, Arc::new(ctx.daa_added_blocks.unwrap())).unwrap();
-        self.headers_store.insert_batch(&mut batch, ctx.hash, Arc::new(ctx.header.clone())).unwrap();
+        self.headers_store.insert_batch(&mut batch, ctx.hash, Arc::new(ctx.header.clone()), ctx.block_level.unwrap()).unwrap();
         self.depth_store.insert_batch(&mut batch, ctx.hash, ctx.merge_depth_root.unwrap(), ctx.finality_point.unwrap()).unwrap();
 
         // Create staging reachability store. We use an upgradable read here to avoid concurrent
@@ -318,8 +332,11 @@ impl HeaderProcessor {
 
         // Non-append only stores need to use write locks.
         // Note we need to keep the lock write guards until the batch is written.
-        let relations_write_guard =
-            self.relations_store.insert_batch(&mut batch, header.hash, BlockHashes::new(header.direct_parents().clone())).unwrap();
+        let relations_write_guard = if header.direct_parents().is_empty() {
+            self.relations_store.insert_batch(&mut batch, header.hash, BlockHashes::new(vec![ORIGIN])).unwrap()
+        } else {
+            self.relations_store.insert_batch(&mut batch, header.hash, BlockHashes::new(header.direct_parents().clone())).unwrap()
+        };
 
         let statuses_write_guard = self.statuses_store.set_batch(&mut batch, ctx.hash, StatusHeaderOnly).unwrap();
 
@@ -342,16 +359,23 @@ impl HeaderProcessor {
             return;
         }
 
-        self.pruning_store.write().set(self.genesis_hash).unwrap();
+        {
+            let mut batch = WriteBatch::default();
+            let write_guard = self.relations_store.insert_batch(&mut batch, ORIGIN, BlockHashes::new(vec![]));
+            self.db.write(batch).unwrap();
+        }
+
+        self.pruning_store.write().set(self.genesis_hash, self.genesis_hash, 0).unwrap();
         let mut header = header_from_precomputed_hash(self.genesis_hash, vec![]); // TODO
         header.bits = self.genesis_bits;
-        let mut ctx = HeaderProcessingContext::new(self.genesis_hash, &header, ORIGIN);
+        let mut ctx = HeaderProcessingContext::new(self.genesis_hash, &header, PruningPointInfo::from_genesis(self.genesis_hash));
         ctx.ghostdag_data = Some(self.ghostdag_manager.genesis_ghostdag_data());
         ctx.block_window_for_difficulty = Some(Default::default());
         ctx.block_window_for_past_median_time = Some(Default::default());
         ctx.daa_added_blocks = Some(Default::default());
         ctx.merge_depth_root = Some(ORIGIN);
         ctx.finality_point = Some(ORIGIN);
+        ctx.block_level = Some(self.max_block_level);
         self.commit_header(ctx, &header);
     }
 }

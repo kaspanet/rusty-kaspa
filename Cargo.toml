@@ -43,8 +43,11 @@ rand_chacha = "0.3"
 rayon = "1"
 tempfile = "3.3"
 serde = { version = "1", features = ["derive", "rc"] }
-futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
+futures-util = { version = "0.3", default-features = false, features = [
+    "alloc",
+] }
 bincode = { version = "1", default-features = false }
 tokio = { version = "1", features = ["sync"] }
 wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
 criterion = { version = "0.4", default-features = false }
+indexmap = "1.9.1"

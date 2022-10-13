@@ -1,9 +1,10 @@
-use moka::sync::Cache;
 use std::{cmp::Reverse, collections::BinaryHeap, sync::Arc};
 
 use crate::processes::ghostdag::ordering::SortableBlock;
 
 use hashes::Hash;
+
+use super::caching::Cache;
 
 pub type BlockWindowHeap = BinaryHeap<Reverse<SortableBlock>>;
 

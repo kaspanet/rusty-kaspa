@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use crate::{
     constants,
     processes::{coinbase::CoinbaseError, transaction_validator::errors::TxRuleError},
@@ -7,7 +9,24 @@ use consensus_core::{
     BlueWorkType,
 };
 use hashes::Hash;
+use itertools::Itertools;
 use thiserror::Error;
+
+#[derive(Clone, Debug)]
+
+pub struct VecDisplay<T: Display>(pub Vec<T>);
+impl<T: Display> Display for VecDisplay<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[{}]", self.0.iter().map(|item| item.to_string()).join(", "))
+    }
+}
+#[derive(Clone, Debug)]
+pub struct TwoDimVecDisplay<T: Display + Clone>(pub Vec<Vec<T>>);
+impl<T: Display + Clone> Display for TwoDimVecDisplay<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[\n\t{}\n]", self.0.iter().cloned().map(|item| VecDisplay(item).to_string()).join(", \n\t"))
+    }
+}
 
 #[derive(Error, Debug, Clone)]
 pub enum RuleError {
@@ -104,9 +123,13 @@ pub enum RuleError {
     #[error("block has invalid proof-of-work")]
     InvalidPoW,
 
+    #[error("Expected header pruning point is {0} but got {1}")]
+    WrongHeaderPruningPoint(Hash, Hash),
     #[error("block {0} UTXO commitment is invalid - block header indicates {1}, but calculated value is {2}")]
     BadUTXOCommitment(Hash, Hash, Hash),
 
+    #[error("Expected indirect parents {0} but got {1}")]
+    UnexpectedIndirectParents(TwoDimVecDisplay<Hash>, TwoDimVecDisplay<Hash>),
     #[error("block {0} accepted ID merkle root is invalid - block header indicates {1}, but calculated value is {2}")]
     BadAcceptedIDMerkleRoot(Hash, Hash, Hash),
 

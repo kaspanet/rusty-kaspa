@@ -161,7 +161,10 @@ mod tests {
 
     use crate::{
         constants::TX_VERSION,
-        model::stores::headers::HeaderStoreReader,
+        model::stores::{
+            errors::StoreError,
+            headers::{HeaderStoreReader, HeaderWithBlockLevel},
+        },
         params::MAINNET_PARAMS,
         processes::transaction_validator::{errors::TxRuleError, TransactionValidator},
     };
@@ -169,29 +172,31 @@ mod tests {
     struct HeaderStoreMock {}
 
     impl HeaderStoreReader for HeaderStoreMock {
-        fn get_daa_score(&self, hash: hashes::Hash) -> Result<u64, crate::model::stores::errors::StoreError> {
+        fn get_daa_score(&self, hash: hashes::Hash) -> Result<u64, StoreError> {
             todo!()
         }
 
-        fn get_timestamp(&self, hash: hashes::Hash) -> Result<u64, crate::model::stores::errors::StoreError> {
+        fn get_timestamp(&self, hash: hashes::Hash) -> Result<u64, StoreError> {
             todo!()
         }
 
-        fn get_bits(&self, hash: hashes::Hash) -> Result<u32, crate::model::stores::errors::StoreError> {
+        fn get_bits(&self, hash: hashes::Hash) -> Result<u32, StoreError> {
             todo!()
         }
 
-        fn get_header(
-            &self,
-            hash: hashes::Hash,
-        ) -> Result<Arc<consensus_core::header::Header>, crate::model::stores::errors::StoreError> {
+        fn get_header(&self, hash: hashes::Hash) -> Result<Arc<consensus_core::header::Header>, StoreError> {
             todo!()
         }
 
-        fn get_compact_header_data(
-            &self,
-            hash: hashes::Hash,
-        ) -> Result<crate::model::stores::headers::CompactHeaderData, crate::model::stores::errors::StoreError> {
+        fn get_compact_header_data(&self, hash: hashes::Hash) -> Result<crate::model::stores::headers::CompactHeaderData, StoreError> {
+            todo!()
+        }
+
+        fn get_blue_score(&self, hash: hashes::Hash) -> Result<u64, StoreError> {
+            todo!()
+        }
+
+        fn get_header_with_block_level(&self, hash: hashes::Hash) -> Result<Arc<HeaderWithBlockLevel>, StoreError> {
             todo!()
         }
     }

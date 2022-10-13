@@ -6,6 +6,7 @@ pub mod depth;
 pub mod errors;
 pub mod ghostdag;
 pub mod headers;
+pub mod past_pruning_points;
 pub mod pruning;
 pub mod reachability;
 pub mod relations;

@@ -14,7 +14,7 @@ use crate::{
     constants::TX_VERSION,
     errors::BlockProcessResult,
     model::stores::{
-        block_window_cache::BlockWindowCacheStore, ghostdag::DbGhostdagStore, headers::DbHeadersStore,
+        block_window_cache::BlockWindowCacheStore, ghostdag::DbGhostdagStore, headers::DbHeadersStore, pruning::PruningStoreReader,
         reachability::DbReachabilityStore, statuses::BlockStatus, DB,
     },
     params::Params,
@@ -44,16 +44,17 @@ impl TestConsensus {
     pub fn build_header_with_parents(&self, hash: Hash, parents: Vec<Hash>) -> Header {
         let mut header = header_from_precomputed_hash(hash, parents);
         let ghostdag_data = self.consensus.ghostdag_manager.ghostdag(header.direct_parents());
-
+        header.pruning_point = self
+            .consensus
+            .pruning_manager
+            .expected_header_pruning_point(ghostdag_data.to_compact(), self.consensus.pruning_store.read().get().unwrap());
         let window = self.consensus.dag_traversal_manager.block_window(ghostdag_data.clone(), self.params.difficulty_window_size);
         let (daa_score, _) = self
             .consensus
             .difficulty_manager
             .calc_daa_score_and_added_blocks(&mut window.iter().map(|item| item.0.hash), &ghostdag_data);
-
         header.bits = self.consensus.difficulty_manager.calculate_difficulty_bits(&window);
         header.daa_score = daa_score;
-
         header.timestamp = self.consensus.past_median_time_manager.calc_past_median_time(ghostdag_data.clone()).0 + 1;
         header.blue_score = ghostdag_data.blue_score;
         header.blue_work = ghostdag_data.blue_work;
@@ -67,12 +68,11 @@ impl TestConsensus {
 
     pub fn build_block_with_parents_and_transactions(&self, hash: Hash, parents: Vec<Hash>, txs: Vec<Transaction>) -> Block {
         let mut header = self.build_header_with_parents(hash, parents);
-        let mut cb_payload: Vec<u8> = vec![];
-        cb_payload.append(&mut header.blue_score.to_le_bytes().to_vec());
-        cb_payload.append(&mut (self.consensus.coinbase_manager.calc_block_subsidy(header.daa_score)).to_le_bytes().to_vec()); // Subsidy
-        cb_payload.append(&mut (0_u16).to_le_bytes().to_vec()); // Script public key version
-        cb_payload.append(&mut (0_u8).to_le_bytes().to_vec()); // Script public key length
-        cb_payload.append(&mut vec![]); // Script public key
+        let cb_payload: Vec<u8> = header.blue_score.to_le_bytes().iter().copied() // Blue score
+            .chain(self.consensus.coinbase_manager.calc_block_subsidy(header.daa_score).to_le_bytes().iter().copied()) // Subsidy
+            .chain((0_u16).to_le_bytes().iter().copied()) // Script public key version
+            .chain((0_u8).to_le_bytes().iter().copied()) // Script public key length
+            .collect();
 
         let cb = Transaction::new(TX_VERSION, vec![], vec![], 0, SUBNETWORK_ID_COINBASE, 0, cb_payload, 0);
         let final_txs = vec![vec![cb], txs].concat();

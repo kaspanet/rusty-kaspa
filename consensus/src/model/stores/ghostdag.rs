@@ -1,5 +1,6 @@
 use crate::processes::ghostdag::ordering::SortableBlock;
 
+use super::caching::CachedDbAccessForCopy;
 use super::{caching::CachedDbAccess, errors::StoreError, DB};
 use consensus_core::{blockhash::BlockHashes, BlueWorkType};
 use hashes::Hash;
@@ -21,6 +22,13 @@ pub struct GhostdagData {
     pub mergeset_blues: BlockHashes,
     pub mergeset_reds: BlockHashes,
     pub blues_anticone_sizes: HashKTypeMap,
+}
+
+#[derive(Clone, Serialize, Deserialize, Copy)]
+pub struct CompactGhostdagData {
+    pub blue_score: u64,
+    pub blue_work: BlueWorkType,
+    pub selected_parent: Hash,
 }
 
 impl GhostdagData {
@@ -126,6 +134,10 @@ impl GhostdagData {
     pub fn unordered_mergeset(&self) -> impl Iterator<Item = Hash> + '_ {
         self.mergeset_blues.iter().cloned().chain(self.mergeset_reds.iter().cloned())
     }
+
+    pub fn to_compact(&self) -> CompactGhostdagData {
+        CompactGhostdagData { blue_score: self.blue_score, blue_work: self.blue_work, selected_parent: self.selected_parent }
+    }
 }
 
 impl GhostdagData {
@@ -174,6 +186,8 @@ pub trait GhostdagStoreReader {
     /// Returns full block data for the requested hash
     fn get_data(&self, hash: Hash) -> Result<Arc<GhostdagData>, StoreError>;
 
+    fn get_compact_data(&self, hash: Hash) -> Result<CompactGhostdagData, StoreError>;
+
     /// Check if the store contains data for the requested hash
     fn has(&self, hash: Hash) -> Result<bool, StoreError>;
 }
@@ -187,6 +201,7 @@ pub trait GhostdagStore: GhostdagStoreReader {
 }
 
 const STORE_PREFIX: &[u8] = b"block-ghostdag-data";
+const COMPACT_STORE_PREFIX: &[u8] = b"compact-block-ghostdag-data";
 
 /// A DB + cache implementation of `GhostdagStore` trait, with concurrency support.
 #[derive(Clone)]
@@ -194,11 +209,16 @@ pub struct DbGhostdagStore {
     raw_db: Arc<DB>,
     // `CachedDbAccess` is shallow cloned so no need to wrap with Arc
     cached_access: CachedDbAccess<Hash, GhostdagData>,
+    compact_cached_access: CachedDbAccessForCopy<Hash, CompactGhostdagData>,
 }
 
 impl DbGhostdagStore {
     pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
-        Self { raw_db: Arc::clone(&db), cached_access: CachedDbAccess::new(db, cache_size, STORE_PREFIX) }
+        Self {
+            raw_db: Arc::clone(&db),
+            cached_access: CachedDbAccess::new(db.clone(), cache_size, STORE_PREFIX),
+            compact_cached_access: CachedDbAccessForCopy::new(db, cache_size, COMPACT_STORE_PREFIX),
+        }
     }
 
     pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {
@@ -210,6 +230,11 @@ impl DbGhostdagStore {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
         self.cached_access.write_batch(batch, hash, data)?;
+        self.compact_cached_access.write_batch(
+            batch,
+            hash,
+            CompactGhostdagData { blue_score: data.blue_score, blue_work: data.blue_work, selected_parent: data.selected_parent },
+        )?;
         Ok(())
     }
 }
@@ -243,6 +268,10 @@ impl GhostdagStoreReader for DbGhostdagStore {
         self.cached_access.read(hash)
     }
 
+    fn get_compact_data(&self, hash: Hash) -> Result<CompactGhostdagData, StoreError> {
+        self.compact_cached_access.read(hash)
+    }
+
     fn has(&self, hash: Hash) -> Result<bool, StoreError> {
         self.cached_access.has(hash)
     }
@@ -254,6 +283,13 @@ impl GhostdagStore for DbGhostdagStore {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
         self.cached_access.write(hash, &data)?;
+        if self.compact_cached_access.has(hash)? {
+            return Err(StoreError::KeyAlreadyExists(hash.to_string()));
+        }
+        self.compact_cached_access.write(
+            hash,
+            CompactGhostdagData { blue_score: data.blue_score, blue_work: data.blue_work, selected_parent: data.selected_parent },
+        )?;
         Ok(())
     }
 }
@@ -363,6 +399,10 @@ impl GhostdagStoreReader for MemoryGhostdagStore {
 
     fn has(&self, hash: Hash) -> Result<bool, StoreError> {
         Ok(self.blue_score_map.borrow().contains_key(&hash))
+    }
+
+    fn get_compact_data(&self, hash: Hash) -> Result<CompactGhostdagData, StoreError> {
+        Ok(self.get_data(hash)?.to_compact())
     }
 }
 
