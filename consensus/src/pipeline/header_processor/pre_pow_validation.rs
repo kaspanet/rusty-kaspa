@@ -1,9 +1,8 @@
 use super::*;
 use crate::errors::{BlockProcessResult, RuleError};
 use crate::model::services::reachability::ReachabilityService;
-use crate::model::stores::errors::StoreResultExtensions;
-use crate::model::stores::pruning::PruningStoreReader;
 use consensus_core::header::Header;
+use std::cmp::max;
 use std::sync::Arc;
 
 impl HeaderProcessor {
@@ -17,7 +16,7 @@ impl HeaderProcessor {
         }
 
         self.check_pruning_violation(ctx, header)?;
-        self.check_pow(ctx, header)?;
+        self.check_pow_and_calc_block_level(ctx, header)?;
         self.check_difficulty_and_daa_score(ctx, header)?;
         Ok(())
     }
@@ -27,33 +26,30 @@ impl HeaderProcessor {
         ctx: &mut HeaderProcessingContext,
         header: &Header,
     ) -> BlockProcessResult<()> {
-        match self.pruning_store.read().pruning_point().unwrap_option() {
-            None => Ok(()), // It implictly means that genesis is the pruning point - so no violation can exist
-            Some(pruning_point) => {
-                let non_pruned_parents = ctx.get_non_pruned_parents();
-                if non_pruned_parents.is_empty() {
-                    return Ok(());
-                }
-
-                if non_pruned_parents
-                    .iter()
-                    .cloned()
-                    .any(|parent| !self.reachability_service.is_dag_ancestor_of(pruning_point, parent))
-                {
-                    return Err(RuleError::PruningViolation(pruning_point));
-                }
-
-                Ok(())
-            }
-        }
-    }
-
-    fn check_pow(self: &Arc<HeaderProcessor>, ctx: &mut HeaderProcessingContext, header: &Header) -> BlockProcessResult<()> {
-        if self.skip_proof_of_work {
+        let non_pruned_parents = ctx.get_non_pruned_parents();
+        if non_pruned_parents.is_empty() {
             return Ok(());
         }
+
+        // We check that the new block is in the future of the pruning point by verifying that at least
+        // one of its parents is in the pruning point future (or the pruning point itself). Otherwise,
+        // the Prunality proof implies that the block can be discarded.
+        if !self.reachability_service.is_dag_ancestor_of_any(ctx.pruning_point(), &mut non_pruned_parents.iter().copied()) {
+            return Err(RuleError::PruningViolation(ctx.pruning_point()));
+        }
+        Ok(())
+    }
+
+    fn check_pow_and_calc_block_level(
+        self: &Arc<HeaderProcessor>,
+        ctx: &mut HeaderProcessingContext,
+        header: &Header,
+    ) -> BlockProcessResult<()> {
         let state = pow::State::new(header);
-        if state.check_pow(header.nonce) {
+        let (passed, pow) = state.check_pow(header.nonce);
+        if passed || self.skip_proof_of_work {
+            let signed_block_level = self.max_block_level as i64 - pow.bits() as i64;
+            ctx.block_level = Some(max(signed_block_level, 0) as u8);
             Ok(())
         } else {
             Err(RuleError::InvalidPoW)

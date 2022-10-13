@@ -69,7 +69,6 @@ impl<S: DepthStoreReader, U: ReachabilityStoreReader, V: GhostdagStoreReader> Bl
         let required_blue_score = ghostdag_data.blue_score - depth;
 
         for chain_block in self.reachability_service.forward_chain_iterator(current, ghostdag_data.selected_parent, true) {
-            let chain_block = chain_block.unwrap();
             if self.ghostdag_store.get_blue_score(chain_block).unwrap() >= required_blue_score {
                 break;
             }

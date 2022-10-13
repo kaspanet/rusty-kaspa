@@ -5,12 +5,15 @@ use consensus_core::blockhash;
 use parking_lot::RwLock;
 
 use crate::model::stores::reachability::ReachabilityStoreReader;
-use crate::processes::reachability::{inquirer, ReachabilityError, Result};
+use crate::processes::reachability::{inquirer, Result};
 use hashes::Hash;
 
 pub trait ReachabilityService {
     fn is_chain_ancestor_of(&self, this: Hash, queried: Hash) -> bool;
+    fn is_dag_ancestor_of_result(&self, this: Hash, queried: Hash) -> Result<bool>;
     fn is_dag_ancestor_of(&self, this: Hash, queried: Hash) -> bool;
+    fn is_dag_ancestor_of_any(&self, this: Hash, queried: &mut impl Iterator<Item = Hash>) -> bool;
+    fn is_any_dag_ancestor(&self, list: &mut impl Iterator<Item = Hash>, queried: Hash) -> bool;
     fn get_next_chain_ancestor(&self, descendant: Hash, ancestor: Hash) -> Hash;
 }
 
@@ -32,9 +35,24 @@ impl<T: ReachabilityStoreReader + ?Sized> ReachabilityService for MTReachability
         inquirer::is_chain_ancestor_of(read_guard.deref(), this, queried).unwrap()
     }
 
+    fn is_dag_ancestor_of_result(&self, this: Hash, queried: Hash) -> Result<bool> {
+        let read_guard = self.store.read();
+        inquirer::is_dag_ancestor_of(read_guard.deref(), this, queried)
+    }
+
     fn is_dag_ancestor_of(&self, this: Hash, queried: Hash) -> bool {
         let read_guard = self.store.read();
         inquirer::is_dag_ancestor_of(read_guard.deref(), this, queried).unwrap()
+    }
+
+    fn is_any_dag_ancestor(&self, list: &mut impl Iterator<Item = Hash>, queried: Hash) -> bool {
+        let read_guard = self.store.read();
+        list.any(|hash| inquirer::is_dag_ancestor_of(read_guard.deref(), hash, queried).unwrap())
+    }
+
+    fn is_dag_ancestor_of_any(&self, this: Hash, queried: &mut impl Iterator<Item = Hash>) -> bool {
+        let read_guard = self.store.read();
+        queried.any(|hash| inquirer::is_dag_ancestor_of(read_guard.deref(), this, hash).unwrap())
     }
 
     fn get_next_chain_ancestor(&self, descendant: Hash, ancestor: Hash) -> Hash {
@@ -50,13 +68,8 @@ impl<T: ReachabilityStoreReader + ?Sized> MTReachabilityService<T> {
     /// To skip `from_ancestor` simply apply `skip(1)`.
     ///
     /// The caller is expected to verify that `from_ancestor` is indeed a chain ancestor of
-    /// `to_descendant`, otherwise an error will be returned.
-    pub fn forward_chain_iterator(
-        &self,
-        from_ancestor: Hash,
-        to_descendant: Hash,
-        inclusive: bool,
-    ) -> impl Iterator<Item = Result<Hash>> {
+    /// `to_descendant`, otherwise the function will panic.
+    pub fn forward_chain_iterator(&self, from_ancestor: Hash, to_descendant: Hash, inclusive: bool) -> impl Iterator<Item = Hash> {
         ForwardChainIterator::new(self.store.clone(), from_ancestor, to_descendant, inclusive)
     }
 
@@ -66,19 +79,14 @@ impl<T: ReachabilityStoreReader + ?Sized> MTReachabilityService<T> {
     /// To skip `from_descendant` simply apply `skip(1)`.
     ///
     /// The caller is expected to verify that `to_ancestor` is indeed a chain ancestor of
-    /// `from_descendant`, otherwise the iterator will eventually return an error.
-    pub fn backward_chain_iterator(
-        &self,
-        from_descendant: Hash,
-        to_ancestor: Hash,
-        inclusive: bool,
-    ) -> impl Iterator<Item = Result<Hash>> {
+    /// `from_descendant`, otherwise the function will panic.
+    pub fn backward_chain_iterator(&self, from_descendant: Hash, to_ancestor: Hash, inclusive: bool) -> impl Iterator<Item = Hash> {
         BackwardChainIterator::new(self.store.clone(), from_descendant, to_ancestor, inclusive)
     }
 
     /// Returns the default chain iterator, walking from `from` backward down the
     /// selected chain until `virtual genesis` (aka `blockhash::ORIGIN`; exclusive)
-    pub fn default_chain_iterator(&self, from: Hash) -> impl Iterator<Item = Result<Hash>> {
+    pub fn default_chain_iterator(&self, from: Hash) -> impl Iterator<Item = Hash> {
         BackwardChainIterator::new(self.store.clone(), from, blockhash::ORIGIN, false)
     }
 }
@@ -103,30 +111,23 @@ impl<T: ReachabilityStoreReader + ?Sized> BackwardChainIterator<T> {
 }
 
 impl<T: ReachabilityStoreReader + ?Sized> Iterator for BackwardChainIterator<T> {
-    type Item = Result<Hash>;
+    type Item = Hash;
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(current) = self.current {
             if current == self.ancestor {
                 if self.inclusive {
                     self.current = None;
-                    Some(Ok(current))
+                    Some(current)
                 } else {
                     self.current = None;
                     None
                 }
             } else {
                 debug_assert_ne!(current, blockhash::NONE);
-                match self.store.read().get_parent(current) {
-                    Ok(next) => {
-                        self.current = Some(next);
-                        Some(Ok(current))
-                    }
-                    Err(e) => {
-                        self.current = None;
-                        Some(Err(ReachabilityError::StoreError(e)))
-                    }
-                }
+                let next = self.store.read().get_parent(current).unwrap();
+                self.current = Some(next);
+                Some(current)
             }
         } else {
             None
@@ -148,29 +149,22 @@ impl<T: ReachabilityStoreReader + ?Sized> ForwardChainIterator<T> {
 }
 
 impl<T: ReachabilityStoreReader + ?Sized> Iterator for ForwardChainIterator<T> {
-    type Item = Result<Hash>;
+    type Item = Hash;
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(current) = self.current {
             if current == self.descendant {
                 if self.inclusive {
                     self.current = None;
-                    Some(Ok(current))
+                    Some(current)
                 } else {
                     self.current = None;
                     None
                 }
             } else {
-                match inquirer::get_next_chain_ancestor(self.store.read().deref(), self.descendant, current) {
-                    Ok(next) => {
-                        self.current = Some(next);
-                        Some(Ok(current))
-                    }
-                    Err(e) => {
-                        self.current = None;
-                        Some(Err(e))
-                    }
-                }
+                let next = inquirer::get_next_chain_ancestor(self.store.read().deref(), self.descendant, current).unwrap();
+                self.current = Some(next);
+                Some(current)
             }
         } else {
             None
@@ -213,19 +207,19 @@ mod tests {
 
         // Assert
         let expected_hashes = [2u64, 3, 5, 6].map(Hash::from);
-        assert!(expected_hashes.iter().cloned().eq(iter.map(|r| r.unwrap())));
+        assert!(expected_hashes.iter().cloned().eq(iter));
 
         // Inclusive
         let iter = service.forward_chain_iterator(2.into(), 10.into(), true);
 
         // Assert
         let expected_hashes = [2u64, 3, 5, 6, 10].map(Hash::from);
-        assert!(expected_hashes.iter().cloned().eq(iter.map(|r| r.unwrap())));
+        assert!(expected_hashes.iter().cloned().eq(iter));
 
         // Compare backward to reversed forward
-        let forward_iter = service.forward_chain_iterator(2.into(), 10.into(), true).map(|r| r.unwrap());
-        let backward_iter: Result<Vec<Hash>> = service.backward_chain_iterator(10.into(), 2.into(), true).collect();
-        assert!(forward_iter.eq(backward_iter.unwrap().iter().cloned().rev()))
+        let forward_iter = service.forward_chain_iterator(2.into(), 10.into(), true);
+        let backward_iter: Vec<Hash> = service.backward_chain_iterator(10.into(), 2.into(), true).collect();
+        assert!(forward_iter.eq(backward_iter.iter().cloned().rev()))
     }
 
     #[test]
@@ -238,28 +232,13 @@ mod tests {
         let service = MTReachabilityService::new(Arc::new(RwLock::new(store)));
 
         // Asserts
-        assert!([1u64, 2]
-            .map(Hash::from)
-            .iter()
-            .cloned()
-            .eq(service.forward_chain_iterator(1.into(), 2.into(), true).map(|r| r.unwrap())));
-
-        assert!([1u64]
-            .map(Hash::from)
-            .iter()
-            .cloned()
-            .eq(service.forward_chain_iterator(1.into(), 2.into(), false).map(|r| r.unwrap())));
-
-        assert!([2u64, 1]
-            .map(Hash::from)
-            .iter()
-            .cloned()
-            .eq(service.backward_chain_iterator(2.into(), root, true).map(|r| r.unwrap())));
-
-        assert!([2u64].map(Hash::from).iter().cloned().eq(service.backward_chain_iterator(2.into(), root, false).map(|r| r.unwrap())));
-
-        assert!(std::iter::once_with(|| root).eq(service.backward_chain_iterator(root, root, true).map(|r| r.unwrap())));
-
-        assert!(std::iter::empty::<Hash>().eq(service.backward_chain_iterator(root, root, false).map(|r| r.unwrap())));
+        assert!([1u64, 2].map(Hash::from).iter().cloned().eq(service.forward_chain_iterator(1.into(), 2.into(), true)));
+        assert!([1u64].map(Hash::from).iter().cloned().eq(service.forward_chain_iterator(1.into(), 2.into(), false)));
+        assert!([2u64, 1].map(Hash::from).iter().cloned().eq(service.backward_chain_iterator(2.into(), root, true)));
+        assert!([2u64].map(Hash::from).iter().cloned().eq(service.backward_chain_iterator(2.into(), root, false)));
+        assert!(std::iter::once(root).eq(service.backward_chain_iterator(root, root, true)));
+        assert!(std::iter::empty::<Hash>().eq(service.backward_chain_iterator(root, root, false)));
+        assert!(std::iter::once(root).eq(service.forward_chain_iterator(root, root, true)));
+        assert!(std::iter::empty::<Hash>().eq(service.forward_chain_iterator(root, root, false)));
     }
 }
