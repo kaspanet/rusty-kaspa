@@ -6,6 +6,7 @@ mod u3072;
 
 use crate::u3072::U3072;
 use hashes::{Hash, Hasher, HasherBase, MuHashElementHash, MuHashFinalizeHash};
+use math::Uint3072;
 use rand_chacha::rand_core::{RngCore, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use std::error::Error;
@@ -113,6 +114,29 @@ impl MuHash {
         } else {
             Ok(Self { numerator, denominator: U3072::one() })
         }
+    }
+}
+
+#[derive(Debug)]
+pub enum MuHashError {
+    NonNormalizedValue,
+}
+
+impl TryFrom<MuHash> for Uint3072 {
+    type Error = MuHashError;
+
+    fn try_from(value: MuHash) -> Result<Self, Self::Error> {
+        if value.denominator == U3072::one() {
+            Ok(value.numerator.into())
+        } else {
+            Err(MuHashError::NonNormalizedValue)
+        }
+    }
+}
+
+impl From<Uint3072> for MuHash {
+    fn from(u: Uint3072) -> Self {
+        MuHash { numerator: u.into(), denominator: U3072::one() }
     }
 }
 

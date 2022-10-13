@@ -169,6 +169,18 @@ impl U3072 {
     }
 }
 
+impl From<U3072> for Uint3072 {
+    fn from(u: U3072) -> Self {
+        Uint3072(u.limbs)
+    }
+}
+
+impl From<Uint3072> for U3072 {
+    fn from(u: Uint3072) -> Self {
+        U3072 { limbs: u.0 }
+    }
+}
+
 impl DivAssign for U3072 {
     #[inline(always)]
     fn div_assign(&mut self, rhs: Self) {
