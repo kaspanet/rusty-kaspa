@@ -10,7 +10,7 @@ use crate::{
             ghostdag::{DbGhostdagStore, GhostdagData},
             headers::DbHeadersStore,
             past_pruning_points::DbPastPruningPointsStore,
-            pruning::{DbPruningStore, PruningStore, PruningStoreReader},
+            pruning::{DbPruningStore, PruningPointInfo, PruningStore, PruningStoreReader},
             reachability::{DbReachabilityStore, StagingReachabilityStore},
             relations::{DbRelationsStore, RelationsStoreBatchExtensions},
             statuses::{
@@ -44,9 +44,7 @@ use super::super::ProcessingCounters;
 pub struct HeaderProcessingContext<'a> {
     pub hash: Hash,
     pub header: &'a Header,
-    pub pruning_point: Hash,
-    pub pruning_point_candidate: Hash,
-    pub pruning_point_index: u64,
+    pub pruning_info: PruningPointInfo,
 
     // Staging data
     pub ghostdag_data: Option<Arc<GhostdagData>>,
@@ -62,13 +60,11 @@ pub struct HeaderProcessingContext<'a> {
 }
 
 impl<'a> HeaderProcessingContext<'a> {
-    pub fn new(hash: Hash, header: &'a Header, pruning_point: Hash, pruning_point_candidate: Hash, pruning_point_index: u64) -> Self {
+    pub fn new(hash: Hash, header: &'a Header, pruning_info: PruningPointInfo) -> Self {
         Self {
             hash,
             header,
-            pruning_point,
-            pruning_point_candidate,
-            pruning_point_index,
+            pruning_info,
             ghostdag_data: None,
             non_pruned_parents: None,
             block_window_for_difficulty: None,
@@ -88,6 +84,10 @@ impl<'a> HeaderProcessingContext<'a> {
         let non_pruned_parents = Arc::new(self.header.direct_parents().clone()); // TODO: Exclude pruned parents
         self.non_pruned_parents = Some(non_pruned_parents.clone());
         non_pruned_parents
+    }
+
+    pub fn pruning_point(&self) -> Hash {
+        self.pruning_info.pruning_point
     }
 }
 
@@ -273,26 +273,12 @@ impl HeaderProcessor {
         }
 
         // Create processing context
-        let mut ctx = {
-            let read_guard = self.pruning_store.read();
-            HeaderProcessingContext::new(
-                header.hash,
-                header,
-                read_guard.pruning_point().unwrap(),
-                read_guard.pruning_point_candidate().unwrap(),
-                read_guard.pruning_point_index().unwrap(),
-            )
-        };
+        let mut ctx = HeaderProcessingContext::new(header.hash, header, self.pruning_store.read().get().unwrap());
 
-        // Run GHOSTDAG for the new header
+        // Run all header validations for the new header
         self.pre_ghostdag_validation(&mut ctx, header)?;
         self.ghostdag_manager.add_block(&mut ctx, header.hash); // TODO: Run GHOSTDAG for all block levels
-
-        //
-        // TODO: imp all remaining header validation and processing steps :)
-        //
         self.pre_pow_validation(&mut ctx, header)?;
-
         if let Err(e) = self.post_pow_validation(&mut ctx, header) {
             self.statuses_store.write().set(ctx.hash, StatusInvalid).unwrap();
             return Err(e);
@@ -376,7 +362,7 @@ impl HeaderProcessor {
         self.pruning_store.write().set(self.genesis_hash, self.genesis_hash, 0).unwrap();
         let mut header = header_from_precomputed_hash(self.genesis_hash, vec![]); // TODO
         header.bits = self.genesis_bits;
-        let mut ctx = HeaderProcessingContext::new(self.genesis_hash, &header, self.genesis_hash, self.genesis_hash, 0);
+        let mut ctx = HeaderProcessingContext::new(self.genesis_hash, &header, PruningPointInfo::from_genesis(self.genesis_hash));
         self.ghostdag_manager.add_genesis_if_needed(&mut ctx);
         ctx.block_window_for_difficulty = Some(Default::default());
         ctx.block_window_for_past_median_time = Some(Default::default());

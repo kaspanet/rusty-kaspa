@@ -43,38 +43,22 @@ impl TestConsensus {
 
     pub fn build_header_with_parents(&self, hash: Hash, parents: Vec<Hash>) -> Header {
         let mut header = header_from_precomputed_hash(hash, parents);
-
-        let mut ctx: HeaderProcessingContext = {
-            let read_guard = self.consensus.pruning_store.read();
-            HeaderProcessingContext::new(
-                hash,
-                &header,
-                read_guard.pruning_point().unwrap(),
-                read_guard.pruning_point_candidate().unwrap(),
-                read_guard.pruning_point_index().unwrap(),
-            )
-        };
-
+        let mut ctx = HeaderProcessingContext::new(hash, &header, self.consensus.pruning_store.read().get().unwrap());
         self.consensus.ghostdag_manager.add_block(&mut ctx, hash);
 
         let ghostdag_data = ctx.ghostdag_data.unwrap();
         header.pruning_point = self.consensus.pruning_manager.expected_header_pruning_point(
             ghostdag_data.to_compact(),
-            ctx.pruning_point,
-            ctx.pruning_point_candidate,
-            ctx.pruning_point_index,
+            ctx.pruning_info.pruning_point,
+            ctx.pruning_info.candidate,
+            ctx.pruning_info.index,
         );
 
         let window = self.consensus.dag_traversal_manager.block_window(ghostdag_data.clone(), self.params.difficulty_window_size);
-
         let mut window_hashes = window.iter().map(|item| item.0.hash);
-
         let (daa_score, _) = self.consensus.difficulty_manager.calc_daa_score_and_added_blocks(&mut window_hashes, &ghostdag_data);
-
         header.bits = self.consensus.difficulty_manager.calculate_difficulty_bits(&window);
-
         header.daa_score = daa_score;
-
         header.timestamp = self.consensus.past_median_time_manager.calc_past_median_time(ghostdag_data.clone()).0 + 1;
         header.blue_score = ghostdag_data.blue_score;
         header.blue_work = ghostdag_data.blue_work;

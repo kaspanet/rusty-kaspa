@@ -5,11 +5,29 @@ use hashes::Hash;
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
 
+#[derive(Clone, Copy, Serialize, Deserialize)]
+pub struct PruningPointInfo {
+    pub pruning_point: Hash,
+    pub candidate: Hash,
+    pub index: u64,
+}
+
+impl PruningPointInfo {
+    pub fn new(pruning_point: Hash, candidate: Hash, index: u64) -> Self {
+        Self { pruning_point, candidate, index }
+    }
+
+    pub fn from_genesis(genesis_hash: Hash) -> Self {
+        Self { pruning_point: genesis_hash, candidate: genesis_hash, index: 0 }
+    }
+}
+
 /// Reader API for `PruningStore`.
 pub trait PruningStoreReader {
     fn pruning_point(&self) -> StoreResult<Hash>;
     fn pruning_point_candidate(&self) -> StoreResult<Hash>;
     fn pruning_point_index(&self) -> StoreResult<u64>;
+    fn get(&self) -> StoreResult<PruningPointInfo>;
 }
 
 pub trait PruningStore: PruningStoreReader {
@@ -17,13 +35,6 @@ pub trait PruningStore: PruningStoreReader {
 }
 
 const STORE_PREFIX: &[u8] = b"pruning";
-
-#[derive(Clone, Copy, Serialize, Deserialize)]
-pub struct PruningPointInfo {
-    pub pruning_point: Hash,
-    pub candidate: Hash,
-    pub index: u64,
-}
 
 /// A DB + cache implementation of `PruningStore` trait, with concurrent readers support.
 #[derive(Clone)]
@@ -59,6 +70,10 @@ impl PruningStoreReader for DbPruningStore {
 
     fn pruning_point_index(&self) -> StoreResult<u64> {
         Ok(self.cached_access.read()?.index)
+    }
+
+    fn get(&self) -> StoreResult<PruningPointInfo> {
+        self.cached_access.read()
     }
 }
 

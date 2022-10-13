@@ -34,8 +34,8 @@ impl HeaderProcessor {
         // We check that the new block is in the future of the pruning point by verifying that at least
         // one of its parents is in the pruning point future (or the pruning point itself). Otherwise,
         // the Prunality proof implies that the block can be discarded.
-        if !self.reachability_service.is_dag_ancestor_of_any(ctx.pruning_point, &mut non_pruned_parents.iter().copied()) {
-            return Err(RuleError::PruningViolation(ctx.pruning_point));
+        if !self.reachability_service.is_dag_ancestor_of_any(ctx.pruning_point(), &mut non_pruned_parents.iter().copied()) {
+            return Err(RuleError::PruningViolation(ctx.pruning_point()));
         }
         Ok(())
     }
