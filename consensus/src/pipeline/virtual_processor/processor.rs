@@ -200,11 +200,13 @@ impl VirtualStateProcessor {
             state.parents.push(block.header.hash);
         }
 
-        // TEMP: using all tips as virtual parents
-        let virtual_ghostdag_data = self.ghostdag_manager.ghostdag(&state.parents);
-
+        // TODO: header/body tips stores
         // TODO: check finality violation
-        // TODO: can return if virtual parents did not change
+        // TODO: coinbase validation
+        // TODO: acceptance data format
+
+        // TODO: pick virtual parents from body tips according to pruning rules
+        let virtual_ghostdag_data = self.ghostdag_manager.ghostdag(&state.parents);
 
         let prev_selected = state.ghostdag_data.selected_parent;
         let new_selected = virtual_ghostdag_data.selected_parent;
@@ -268,9 +270,7 @@ impl VirtualStateProcessor {
 
         match self.statuses_store.read().get(new_selected).unwrap() {
             BlockStatus::StatusUTXOValid => {
-                // TODO: batch write
-
-                // Calc new virtual diff
+                // Calc the new virtual UTXO diff
                 let selected_parent_multiset_hash = self.utxo_multisets_store.get(virtual_ghostdag_data.selected_parent).unwrap();
                 let selected_parent_utxo_view = utxo_view::compose_one_diff_layer(self.virtual_utxo_store.deref(), &accumulated_diff);
                 let mut ctx = UtxoProcessingContext::new(virtual_ghostdag_data.clone(), selected_parent_multiset_hash);
@@ -285,18 +285,22 @@ impl VirtualStateProcessor {
                 // Update the accumulated diff
                 accumulated_diff.with_diff_in_place(&ctx.mergeset_diff).unwrap();
 
-                // Update the new virtual data
+                // Update the new virtual state
                 state.ghostdag_data = virtual_ghostdag_data.as_ref().clone();
                 state.utxo_diff = ctx.mergeset_diff;
 
                 let mut batch = WriteBatch::default();
+
                 // Apply the accumulated diff to the virtual UTXO set
                 self.virtual_utxo_store.write_diff_batch(&mut batch, &accumulated_diff).unwrap();
+
                 // Update virtual state
                 let mut write_guard = self.virtual_state_store.write();
                 write_guard.set_batch(&mut batch, state).unwrap();
+
                 // Flush the batch changes
                 self.db.write(batch).unwrap();
+
                 // Calling the drops explicitly after the batch is written in order to avoid possible errors.
                 drop(write_guard);
             }
