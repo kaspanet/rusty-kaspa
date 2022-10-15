@@ -40,11 +40,13 @@ impl UtxoEntry {
     }
 }
 
+pub type TransactionIndexType = u32;
+
 /// Represents a Kaspa transaction outpoint
 #[derive(Eq, Hash, PartialEq, Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct TransactionOutpoint {
     pub transaction_id: TransactionId,
-    pub index: u32,
+    pub index: TransactionIndexType,
 }
 
 impl TransactionOutpoint {

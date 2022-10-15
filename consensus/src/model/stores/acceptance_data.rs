@@ -16,7 +16,7 @@ pub trait AcceptanceDataStoreReader {
 }
 
 pub trait AcceptanceDataStore: AcceptanceDataStoreReader {
-    fn insert(&self, hash: Hash, utxo_diff: Arc<AcceptanceData>) -> Result<(), StoreError>;
+    fn insert(&self, hash: Hash, acceptance_data: Arc<AcceptanceData>) -> Result<(), StoreError>;
 }
 
 const STORE_PREFIX: &[u8] = b"acceptance-data";

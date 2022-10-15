@@ -125,11 +125,13 @@ pub enum RuleError {
 
     #[error("Expected header pruning point is {0} but got {1}")]
     WrongHeaderPruningPoint(Hash, Hash),
-    #[error("block {0} UTXO commitment is invalid - block header indicates {1}, but calculated value is {2}")]
-    BadUTXOCommitment(Hash, Hash, Hash),
 
     #[error("Expected indirect parents {0} but got {1}")]
     UnexpectedIndirectParents(TwoDimVecDisplay<Hash>, TwoDimVecDisplay<Hash>),
+
+    #[error("block {0} UTXO commitment is invalid - block header indicates {1}, but calculated value is {2}")]
+    BadUTXOCommitment(Hash, Hash, Hash),
+
     #[error("block {0} accepted ID merkle root is invalid - block header indicates {1}, but calculated value is {2}")]
     BadAcceptedIDMerkleRoot(Hash, Hash, Hash),
 

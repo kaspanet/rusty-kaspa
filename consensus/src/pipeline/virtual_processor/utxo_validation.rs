@@ -167,7 +167,7 @@ impl VirtualStateProcessor {
         let mut entries = Vec::with_capacity(transaction.inputs.len());
         for input in transaction.inputs.iter() {
             if let Some(entry) = utxo_view.get(&input.previous_outpoint) {
-                entries.push(entry.clone());
+                entries.push(entry);
             } else {
                 trace!("missing UTXO entry for outpoint {}", input.previous_outpoint);
                 break;

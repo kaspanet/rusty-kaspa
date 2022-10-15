@@ -54,6 +54,18 @@ impl<TKey: Clone + std::hash::Hash + Eq + Send + Sync, TData: Clone + Send + Syn
         }
         write_guard.insert(key, data);
     }
+
+    pub fn remove(&self, key: &TKey) {
+        let mut write_guard = self.map.write();
+        write_guard.swap_remove(key);
+    }
+
+    pub fn remove_many<'a>(&'a self, key_iter: &mut impl Iterator<Item = &'a TKey>) {
+        let mut write_guard = self.map.write();
+        for key in key_iter {
+            write_guard.swap_remove(key);
+        }
+    }
 }
 
 /// A concurrent DB store with typed caching.
@@ -64,10 +76,11 @@ where
     TData: Clone + Send + Sync,
 {
     db: Arc<DB>,
+
+    // Cache
     cache: Cache<TKey, Arc<TData>>,
 
-    // DB bucket/path (TODO: eventually this must become dynamic in
-    // order to support `active/inactive` consensus instances)
+    // DB bucket/path
     prefix: &'static [u8],
 }
 
@@ -131,6 +144,15 @@ where
         batch.put(DbKey::new(self.prefix, key), bin_data);
         Ok(())
     }
+
+    pub fn delete_batch(&self, batch: &mut WriteBatch, key: TKey) -> Result<(), StoreError>
+    where
+        TKey: Copy + AsRef<[u8]>,
+    {
+        self.cache.remove(&key);
+        batch.delete(DbKey::new(self.prefix, key));
+        Ok(())
+    }
 }
 
 /// A concurrent DB store with typed caching for `Copy` types.
@@ -142,10 +164,11 @@ where
     TData: Clone + Copy + Send + Sync,
 {
     db: Arc<DB>,
+
+    // Cache
     cache: Cache<TKey, TData>,
 
-    // DB bucket/path (TODO: eventually this must become dynamic in
-    // order to support `active/inactive` consensus instances)
+    // DB bucket/path
     prefix: &'static [u8],
 }
 
@@ -229,15 +252,15 @@ impl<T> CachedDbItem<T> {
             *self.cached_item.write() = Some(item);
             Ok(item)
         } else {
-            Err(StoreError::KeyNotFound(String::from_utf8(Vec::from(self.key)).unwrap()))
+            Err(StoreError::KeyNotFound(String::from_utf8(Vec::from(self.key)).unwrap_or_else(|k| "cannot parse key".to_string())))
         }
     }
 
     pub fn write(&mut self, item: &T) -> Result<(), StoreError>
     where
-        T: Copy + Serialize, // Copy can be relaxed to Clone if needed by new usages
+        T: Clone + Serialize,
     {
-        *self.cached_item.write() = Some(*item);
+        *self.cached_item.write() = Some(item.clone());
         let bin_data = bincode::serialize(&item)?;
         self.db.put(self.key, bin_data)?;
         Ok(())
@@ -245,9 +268,9 @@ impl<T> CachedDbItem<T> {
 
     pub fn write_batch(&mut self, batch: &mut WriteBatch, item: &T) -> Result<(), StoreError>
     where
-        T: Copy + Serialize,
+        T: Clone + Serialize,
     {
-        *self.cached_item.write() = Some(*item);
+        *self.cached_item.write() = Some(item.clone());
         let bin_data = bincode::serialize(&item)?;
         batch.put(self.key, bin_data);
         Ok(())

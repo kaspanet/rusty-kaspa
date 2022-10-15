@@ -26,8 +26,8 @@ pub trait UtxoCollectionExtensions {
 }
 
 impl UtxoView for UtxoCollection {
-    fn get(&self, outpoint: &TransactionOutpoint) -> Option<&UtxoEntry> {
-        self.get(outpoint)
+    fn get(&self, outpoint: &TransactionOutpoint) -> Option<UtxoEntry> {
+        self.get(outpoint).cloned()
     }
 }
 

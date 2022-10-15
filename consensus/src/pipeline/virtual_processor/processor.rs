@@ -19,6 +19,7 @@ use crate::{
             },
             utxo_differences::{DbUtxoDifferencesStore, UtxoDifferencesStoreReader},
             utxo_multisets::{DbUtxoMultisetsStore, UtxoMultisetsStoreReader},
+            utxo_set::DbUtxoSetStore,
             DB,
         },
     },
@@ -32,7 +33,7 @@ use crate::{
 use consensus_core::{
     block::Block,
     blockhash::{self, VIRTUAL},
-    utxo::{utxo_collection::UtxoCollection, utxo_collection::UtxoCollectionExtensions, utxo_diff::UtxoDiff, utxo_view},
+    utxo::{utxo_diff::UtxoDiff, utxo_view},
     BlockHashSet,
 };
 use hashes::Hash;
@@ -84,6 +85,7 @@ pub struct VirtualStateProcessor {
     pub(super) utxo_differences_store: Arc<DbUtxoDifferencesStore>,
     pub(super) utxo_multisets_store: Arc<DbUtxoMultisetsStore>,
     pub(super) acceptance_data_store: Arc<DbAcceptanceDataStore>,
+    pub(super) virtual_utxo_store: Arc<DbUtxoSetStore>,
 
     // Managers and services
     pub(super) ghostdag_manager: DbGhostdagManager,
@@ -131,7 +133,7 @@ impl VirtualStateProcessor {
             difficulty_window_size: params.difficulty_window_size,
             mergeset_size_limit: params.mergeset_size_limit,
 
-            db,
+            db: db.clone(),
             statuses_store,
             headers_store,
             ghostdag_store,
@@ -141,6 +143,7 @@ impl VirtualStateProcessor {
             utxo_differences_store,
             utxo_multisets_store,
             acceptance_data_store,
+            virtual_utxo_store: Arc::new(DbUtxoSetStore::new(db, 10_000, b"virtual-utxo-set")), // TODO: build in consensus, decide about locking
 
             ghostdag_manager,
             reachability_service,
@@ -241,7 +244,8 @@ impl VirtualStateProcessor {
                     let pov_daa_score = header.daa_score;
 
                     let selected_parent_multiset_hash = self.utxo_multisets_store.get(mergeset_data.selected_parent).unwrap();
-                    let selected_parent_utxo_view = utxo_view::compose_one_diff_layer(&state.utxo_set, &accumulated_diff);
+                    let selected_parent_utxo_view =
+                        utxo_view::compose_one_diff_layer(self.virtual_utxo_store.deref(), &accumulated_diff);
 
                     let mut ctx = UtxoProcessingContext::new(mergeset_data, selected_parent_multiset_hash);
 
@@ -269,7 +273,7 @@ impl VirtualStateProcessor {
 
                 // Calc new virtual diff
                 let selected_parent_multiset_hash = self.utxo_multisets_store.get(virtual_ghostdag_data.selected_parent).unwrap();
-                let selected_parent_utxo_view = utxo_view::compose_one_diff_layer(&state.utxo_set, &accumulated_diff);
+                let selected_parent_utxo_view = utxo_view::compose_one_diff_layer(self.virtual_utxo_store.deref(), &accumulated_diff);
                 let mut ctx = UtxoProcessingContext::new(virtual_ghostdag_data.clone(), selected_parent_multiset_hash);
 
                 // Calc virtual DAA score
@@ -286,9 +290,10 @@ impl VirtualStateProcessor {
                 state.virtual_diff = ctx.mergeset_diff;
                 state.ghostdag_data = virtual_ghostdag_data;
 
-                // Apply the accumulated diff
-                state.utxo_set.remove_many(&accumulated_diff.remove);
-                state.utxo_set.add_many(&accumulated_diff.add);
+                let mut batch = WriteBatch::default();
+                // Apply the accumulated diff to the virtual UTXO set
+                self.virtual_utxo_store.write_diff_batch(&mut batch, &accumulated_diff).unwrap();
+                self.db.write(batch).unwrap();
             }
             BlockStatus::StatusDisqualifiedFromChain => {
                 // TODO: this means another chain needs to be checked
@@ -372,7 +377,6 @@ impl VirtualStateProcessor {
 
 /// TEMP: initial struct for holding complete virtual state in memory
 struct VirtualState {
-    utxo_set: UtxoCollection, // TEMP: represents the utxo set of virtual selected parent
     virtual_diff: UtxoDiff,
     virtual_parents: Vec<Hash>,
     ghostdag_data: Arc<GhostdagData>,
@@ -381,7 +385,6 @@ struct VirtualState {
 impl VirtualState {
     fn new(genesis_hash: Hash, initial_ghostdag_data: Arc<GhostdagData>) -> Self {
         Self {
-            utxo_set: Default::default(),
             virtual_diff: UtxoDiff::default(), // Virtual diff is initially empty since genesis receives no reward
             virtual_parents: vec![genesis_hash],
             ghostdag_data: initial_ghostdag_data,

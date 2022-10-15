@@ -14,6 +14,8 @@ pub mod relations;
 pub mod statuses;
 pub mod utxo_differences;
 pub mod utxo_multisets;
+pub mod utxo_set;
+pub mod virtual_state;
 
 use rocksdb::{DBWithThreadMode, MultiThreaded};
 pub type DB = DBWithThreadMode<MultiThreaded>;
