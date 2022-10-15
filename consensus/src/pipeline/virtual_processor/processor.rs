@@ -8,7 +8,7 @@ use crate::{
             block_transactions::DbBlockTransactionsStore,
             block_window_cache::BlockWindowCacheStore,
             errors::StoreError,
-            ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStoreReader},
+            ghostdag::{DbGhostdagStore, GhostdagStoreReader},
             headers::{DbHeadersStore, HeaderStoreReader},
             past_pruning_points::{DbPastPruningPointsStore, PastPruningPointsStore, PastPruningPointsStoreReader},
             pruning::{DbPruningStore, PruningStore, PruningStoreReader},
@@ -20,6 +20,7 @@ use crate::{
             utxo_differences::{DbUtxoDifferencesStore, UtxoDifferencesStoreReader},
             utxo_multisets::{DbUtxoMultisetsStore, UtxoMultisetsStoreReader},
             utxo_set::DbUtxoSetStore,
+            virtual_state::{DbVirtualStateStore, VirtualState, VirtualStateStore, VirtualStateStoreReader},
             DB,
         },
     },
@@ -86,6 +87,7 @@ pub struct VirtualStateProcessor {
     pub(super) utxo_multisets_store: Arc<DbUtxoMultisetsStore>,
     pub(super) acceptance_data_store: Arc<DbAcceptanceDataStore>,
     pub(super) virtual_utxo_store: Arc<DbUtxoSetStore>,
+    pub(super) virtual_state_store: Arc<RwLock<DbVirtualStateStore>>,
 
     // Managers and services
     pub(super) ghostdag_manager: DbGhostdagManager,
@@ -143,7 +145,8 @@ impl VirtualStateProcessor {
             utxo_differences_store,
             utxo_multisets_store,
             acceptance_data_store,
-            virtual_utxo_store: Arc::new(DbUtxoSetStore::new(db, 10_000, b"virtual-utxo-set")), // TODO: build in consensus, decide about locking
+            virtual_utxo_store: Arc::new(DbUtxoSetStore::new(db.clone(), 10_000, b"virtual-utxo-set")), // TODO: build in consensus, decide about locking
+            virtual_state_store: Arc::new(RwLock::new(DbVirtualStateStore::new(db))),
 
             ghostdag_manager,
             reachability_service,
@@ -157,7 +160,6 @@ impl VirtualStateProcessor {
     }
 
     pub fn worker(self: &Arc<Self>) {
-        let mut state = VirtualState::new(self.genesis_hash, self.ghostdag_manager.ghostdag(&[self.genesis_hash]));
         'outer: while let Ok(first_task) = self.receiver.recv() {
             // Once a task arrived, collect all pending tasks from the channel.
             // This is done since virtual processing is not a per-block
@@ -166,7 +168,7 @@ impl VirtualStateProcessor {
             trace!("virtual processor received {} tasks", tasks.len());
 
             let mut blocks = tasks.iter().map_while(|t| if let BlockTask::Process(b, _) = t { Some(b) } else { None });
-            self.resolve_virtual(&mut blocks, &mut state).unwrap();
+            self.resolve_virtual(&mut blocks).unwrap();
 
             let statuses_read = self.statuses_store.read();
             for task in tasks {
@@ -183,11 +185,8 @@ impl VirtualStateProcessor {
         }
     }
 
-    fn resolve_virtual<'a>(
-        self: &Arc<Self>,
-        blocks: &mut impl Iterator<Item = &'a Arc<Block>>,
-        state: &mut VirtualState,
-    ) -> BlockProcessResult<()> {
+    fn resolve_virtual<'a>(self: &Arc<Self>, blocks: &mut impl Iterator<Item = &'a Arc<Block>>) -> BlockProcessResult<()> {
+        let mut state = self.virtual_state_store.read().get().unwrap().as_ref().clone();
         for block in blocks {
             let status = self.statuses_store.read().get(block.header.hash).unwrap();
             match status {
@@ -197,12 +196,12 @@ impl VirtualStateProcessor {
 
             // Update tips
             let parents_set = BlockHashSet::from_iter(block.header.direct_parents().iter().cloned());
-            state.virtual_parents.retain(|t| !parents_set.contains(t));
-            state.virtual_parents.push(block.header.hash);
+            state.parents.retain(|t| !parents_set.contains(t));
+            state.parents.push(block.header.hash);
         }
 
         // TEMP: using all tips as virtual parents
-        let virtual_ghostdag_data = self.ghostdag_manager.ghostdag(&state.virtual_parents);
+        let virtual_ghostdag_data = self.ghostdag_manager.ghostdag(&state.parents);
 
         // TODO: check finality violation
         // TODO: can return if virtual parents did not change
@@ -211,7 +210,7 @@ impl VirtualStateProcessor {
         let new_selected = virtual_ghostdag_data.selected_parent;
 
         let mut split_point = blockhash::ORIGIN;
-        let mut accumulated_diff = state.virtual_diff.clone().to_reversed();
+        let mut accumulated_diff = state.utxo_diff.clone().to_reversed();
 
         // Walk down to the reorg split point
         for current in self.reachability_service.default_backward_chain_iterator(prev_selected) {
@@ -286,14 +285,20 @@ impl VirtualStateProcessor {
                 // Update the accumulated diff
                 accumulated_diff.with_diff_in_place(&ctx.mergeset_diff).unwrap();
 
-                // Store new virtual data
-                state.virtual_diff = ctx.mergeset_diff;
-                state.ghostdag_data = virtual_ghostdag_data;
+                // Update the new virtual data
+                state.ghostdag_data = virtual_ghostdag_data.as_ref().clone();
+                state.utxo_diff = ctx.mergeset_diff;
 
                 let mut batch = WriteBatch::default();
                 // Apply the accumulated diff to the virtual UTXO set
                 self.virtual_utxo_store.write_diff_batch(&mut batch, &accumulated_diff).unwrap();
+                // Update virtual state
+                let mut write_guard = self.virtual_state_store.write();
+                write_guard.set_batch(&mut batch, state).unwrap();
+                // Flush the batch changes
                 self.db.write(batch).unwrap();
+                // Calling the drops explicitly after the batch is written in order to avoid possible errors.
+                drop(write_guard);
             }
             BlockStatus::StatusDisqualifiedFromChain => {
                 // TODO: this means another chain needs to be checked
@@ -357,6 +362,14 @@ impl VirtualStateProcessor {
         let status = self.statuses_store.read().get(self.genesis_hash).unwrap();
         match status {
             StatusUTXOPendingVerification => {
+                // TODO: consider using a batch write
+                self.virtual_state_store
+                    .write()
+                    .set(VirtualState::from_genesis(
+                        self.genesis_hash,
+                        self.ghostdag_manager.ghostdag(&[self.genesis_hash]).as_ref().clone(),
+                    ))
+                    .unwrap();
                 self.commit_utxo_state(self.genesis_hash, UtxoDiff::default(), MuHash::new(), AcceptanceData {});
                 match self.past_pruning_points_store.insert(0, self.genesis_hash) {
                     Ok(()) => {}
@@ -371,23 +384,6 @@ impl VirtualStateProcessor {
                 }
             }
             _ => panic!("unexpected genesis status {:?}", status),
-        }
-    }
-}
-
-/// TEMP: initial struct for holding complete virtual state in memory
-struct VirtualState {
-    virtual_diff: UtxoDiff,
-    virtual_parents: Vec<Hash>,
-    ghostdag_data: Arc<GhostdagData>,
-}
-
-impl VirtualState {
-    fn new(genesis_hash: Hash, initial_ghostdag_data: Arc<GhostdagData>) -> Self {
-        Self {
-            virtual_diff: UtxoDiff::default(), // Virtual diff is initially empty since genesis receives no reward
-            virtual_parents: vec![genesis_hash],
-            ghostdag_data: initial_ghostdag_data,
         }
     }
 }

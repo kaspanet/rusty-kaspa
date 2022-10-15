@@ -243,13 +243,13 @@ impl<T> CachedDbItem<T> {
 
     pub fn read(&self) -> Result<T, StoreError>
     where
-        T: Copy + DeserializeOwned,
+        T: Clone + DeserializeOwned,
     {
-        if let Some(root) = *self.cached_item.read() {
+        if let Some(root) = self.cached_item.read().clone() {
             Ok(root)
         } else if let Some(slice) = self.db.get_pinned(self.key)? {
             let item: T = bincode::deserialize(&slice)?;
-            *self.cached_item.write() = Some(item);
+            *self.cached_item.write() = Some(item.clone());
             Ok(item)
         } else {
             Err(StoreError::KeyNotFound(String::from_utf8(Vec::from(self.key)).unwrap_or_else(|k| "cannot parse key".to_string())))
