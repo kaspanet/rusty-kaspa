@@ -756,6 +756,10 @@ async fn json_test(file_path: &str) {
             .unwrap_or_else(|e| panic!("block {} {} failed: {}", i, hash, e));
         assert!(status.is_utxo_valid_or_pending());
     }
+
+    // Assert that at least one body tip was resolved with valid UTXO
+    assert!(consensus.body_tips().iter().copied().any(|h| consensus.block_status(h) == BlockStatus::StatusUTXOValid));
+
     consensus.shutdown(wait_handles);
 }
 
@@ -787,6 +791,9 @@ async fn json_concurrency_test(file_path: &str) {
 
     let statuses = join_all(prev_joins).await.into_iter().collect::<Result<Vec<BlockStatus>, RuleError>>().unwrap();
     assert!(statuses.iter().all(|s| s.is_utxo_valid_or_pending()));
+
+    // Assert that at least one body tip was resolved with valid UTXO
+    assert!(consensus.body_tips().iter().copied().any(|h| consensus.block_status(h) == BlockStatus::StatusUTXOValid));
 
     consensus.shutdown(wait_handles);
 }

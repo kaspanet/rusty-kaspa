@@ -74,6 +74,8 @@ pub struct Consensus {
     relations_store: Arc<RwLock<DbRelationsStore>>,
     reachability_store: Arc<RwLock<DbReachabilityStore>>,
     pruning_store: Arc<RwLock<DbPruningStore>>,
+    header_tips_store: Arc<RwLock<DbTipsStore>>,
+    body_tips_store: Arc<RwLock<DbTipsStore>>,
 
     // Append-only stores
     pub(super) ghostdag_store: Arc<DbGhostdagStore>,
@@ -230,7 +232,7 @@ impl Consensus {
             statuses_store.clone(),
             pruning_store.clone(),
             depth_store,
-            header_tips_store,
+            header_tips_store.clone(),
             block_window_cache_for_difficulty,
             block_window_cache_for_past_median_time,
             reachability_service.clone(),
@@ -274,7 +276,7 @@ impl Consensus {
             block_transactions_store,
             pruning_store.clone(),
             past_pruning_points_store,
-            body_tips_store,
+            body_tips_store.clone(),
             utxo_differences_store,
             utxo_multisets_store,
             acceptance_data_store,
@@ -297,6 +299,8 @@ impl Consensus {
             reachability_store,
             ghostdag_store,
             pruning_store,
+            header_tips_store,
+            body_tips_store,
 
             statuses_service,
             relations_service,

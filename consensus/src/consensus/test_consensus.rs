@@ -4,7 +4,9 @@ use std::{
     thread::JoinHandle,
 };
 
-use consensus_core::{block::Block, header::Header, merkle::calc_hash_merkle_root, subnets::SUBNETWORK_ID_COINBASE, tx::Transaction};
+use consensus_core::{
+    block::Block, header::Header, merkle::calc_hash_merkle_root, subnets::SUBNETWORK_ID_COINBASE, tx::Transaction, BlockHashSet,
+};
 use hashes::Hash;
 use kaspa_core::{core::Core, service::Service};
 use parking_lot::RwLock;
@@ -14,8 +16,14 @@ use crate::{
     constants::TX_VERSION,
     errors::BlockProcessResult,
     model::stores::{
-        block_window_cache::BlockWindowCacheStore, ghostdag::DbGhostdagStore, headers::DbHeadersStore, pruning::PruningStoreReader,
-        reachability::DbReachabilityStore, statuses::BlockStatus, DB,
+        block_window_cache::BlockWindowCacheStore,
+        ghostdag::DbGhostdagStore,
+        headers::DbHeadersStore,
+        pruning::PruningStoreReader,
+        reachability::DbReachabilityStore,
+        statuses::{BlockStatus, StatusesStoreReader},
+        tips::TipsStoreReader,
+        DB,
     },
     params::Params,
     pipeline::{body_processor::BlockBodyProcessor, ProcessingCounters},
@@ -118,6 +126,15 @@ impl TestConsensus {
 
     pub fn past_median_time_manager(&self) -> &PastMedianTimeManager<DbHeadersStore, DbGhostdagStore, BlockWindowCacheStore> {
         &self.consensus.past_median_time_manager
+    }
+
+    // TODO: should the query methods below enter consensus API ?
+    pub fn body_tips(&self) -> Arc<BlockHashSet> {
+        self.consensus.body_tips_store.read().get().unwrap()
+    }
+
+    pub fn block_status(&self, hash: Hash) -> BlockStatus {
+        self.consensus.statuses_store.read().get(hash).unwrap()
     }
 }
 
