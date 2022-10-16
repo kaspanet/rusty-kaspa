@@ -53,10 +53,9 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
         ))
     }
 
-    pub fn find_selected_parent(&self, parents: &[Hash]) -> Hash {
+    pub fn find_selected_parent(&self, parents: &mut impl Iterator<Item = Hash>) -> Hash {
         parents
-            .iter()
-            .map(|parent| SortableBlock { hash: *parent, blue_work: self.ghostdag_store.get_blue_work(*parent).unwrap() })
+            .map(|parent| SortableBlock { hash: parent, blue_work: self.ghostdag_store.get_blue_work(parent).unwrap() })
             .max()
             .unwrap()
             .hash
@@ -84,7 +83,7 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
         assert!(!parents.is_empty(), "genesis must be added via a call to init");
 
         // Run the GHOSTDAG parent selection algorithm
-        let selected_parent = self.find_selected_parent(parents);
+        let selected_parent = self.find_selected_parent(&mut parents.iter().copied());
         // Initialize new GHOSTDAG block data with the selected parent
         let mut new_block_data = Arc::new(GhostdagData::new_with_selected_parent(selected_parent, self.k));
         // Get the mergeset in consensus-agreed topological order (topological here means forward in time from blocks to children)

@@ -1,5 +1,6 @@
 use crate::{
     consensus::DbGhostdagManager,
+    constants::{self, store_names},
     errors::BlockProcessResult,
     model::{
         services::reachability::{MTReachabilityService, ReachabilityService},
@@ -145,7 +146,13 @@ impl VirtualStateProcessor {
             utxo_differences_store,
             utxo_multisets_store,
             acceptance_data_store,
-            virtual_utxo_store: Arc::new(DbUtxoSetStore::new(db.clone(), 10_000, b"virtual-utxo-set")), // TODO: build in consensus, decide about locking
+
+            // TODO: build in consensus, decide about locking
+            virtual_utxo_store: Arc::new(DbUtxoSetStore::new(
+                db.clone(),
+                constants::perf::UTXO_CACHE_SIZE,
+                store_names::VIRTUAL_UTXO_SET,
+            )),
             virtual_state_store: Arc::new(RwLock::new(DbVirtualStateStore::new(db))),
 
             ghostdag_manager,

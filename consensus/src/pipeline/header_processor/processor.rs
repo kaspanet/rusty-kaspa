@@ -17,6 +17,7 @@ use crate::{
                 BlockStatus::{self, StatusHeaderOnly, StatusInvalid},
                 DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader,
             },
+            tips::DbTipsStore,
             DB,
         },
     },
@@ -124,6 +125,7 @@ pub struct HeaderProcessor {
     pub(super) block_window_cache_for_past_median_time: Arc<BlockWindowCacheStore>,
     pub(super) daa_store: Arc<DbDaaStore>,
     pub(super) headers_store: Arc<DbHeadersStore>,
+    pub(super) header_tips_store: Arc<RwLock<DbTipsStore>>,
     depth_store: Arc<DbDepthStore>,
 
     // Managers and services
@@ -164,6 +166,7 @@ impl HeaderProcessor {
         statuses_store: Arc<RwLock<DbStatusesStore>>,
         pruning_store: Arc<RwLock<DbPruningStore>>,
         depth_store: Arc<DbDepthStore>,
+        header_tips_store: Arc<RwLock<DbTipsStore>>,
         block_window_cache_for_difficulty: Arc<BlockWindowCacheStore>,
         block_window_cache_for_past_median_time: Arc<BlockWindowCacheStore>,
         reachability_service: MTReachabilityService<DbReachabilityStore>,
@@ -191,6 +194,7 @@ impl HeaderProcessor {
             daa_store,
             headers_store: headers_store.clone(),
             depth_store,
+            header_tips_store,
             block_window_cache_for_difficulty,
             block_window_cache_for_past_median_time,
             ghostdag_manager: GhostdagManager::new(
@@ -326,9 +330,12 @@ impl HeaderProcessor {
             &mut ghostdag_data.unordered_mergeset_without_selected_parent(),
         )
         .unwrap();
-        // Hint reachability about the new tip.
-        // TODO: imp header tips store and call this only for an actual header selected tip
-        reachability::hint_virtual_selected_parent(&mut staging, ctx.hash).unwrap();
+
+        let mut header_tips_write_guard = self.header_tips_store.write();
+        let header_tips = header_tips_write_guard.add_tip_batch(&mut batch, ctx.hash, header.direct_parents()).unwrap();
+        let header_selected_tip = self.ghostdag_manager.find_selected_parent(&mut header_tips.iter().copied());
+        // Hint reachability about the possibly new tip.
+        reachability::hint_virtual_selected_parent(&mut staging, header_selected_tip).unwrap();
 
         // Non-append only stores need to use write locks.
         // Note we need to keep the lock write guards until the batch is written.
@@ -352,6 +359,7 @@ impl HeaderProcessor {
         drop(reachability_write_guard);
         drop(statuses_write_guard);
         drop(relations_write_guard);
+        drop(header_tips_write_guard);
     }
 
     pub fn process_genesis_if_needed(self: &Arc<HeaderProcessor>) {
@@ -361,8 +369,12 @@ impl HeaderProcessor {
 
         {
             let mut batch = WriteBatch::default();
-            let write_guard = self.relations_store.insert_batch(&mut batch, ORIGIN, BlockHashes::new(vec![]));
+            let relations_write_guard = self.relations_store.insert_batch(&mut batch, ORIGIN, BlockHashes::new(vec![]));
+            let mut header_tips_write_guard = self.header_tips_store.write();
+            header_tips_write_guard.init_batch(&mut batch, self.genesis_hash).unwrap();
             self.db.write(batch).unwrap();
+            drop(header_tips_write_guard);
+            drop(relations_write_guard);
         }
 
         self.pruning_store.write().set(self.genesis_hash, self.genesis_hash, 0).unwrap();

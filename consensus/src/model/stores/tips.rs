@@ -35,6 +35,10 @@ impl DbTipsStore {
         Self::new(Arc::clone(&self.raw_db), self.prefix)
     }
 
+    pub fn init_batch(&mut self, batch: &mut WriteBatch, genesis: Hash) -> StoreResult<()> {
+        self.cached_access.write_batch(batch, &Arc::new(BlockHashSet::from([genesis])))
+    }
+
     pub fn add_tip_batch(
         &mut self,
         batch: &mut WriteBatch,

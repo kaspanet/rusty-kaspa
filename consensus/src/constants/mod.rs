@@ -10,6 +10,22 @@ pub mod perf {
     /// The default slack interval used by the reachability
     /// algorithm to encounter for blocks out of the selected chain.
     pub const DEFAULT_REINDEX_SLACK: u64 = 1 << 12;
+
+    /// The default standard cache size for per-block stores
+    pub const CACHE_SIZE: u64 = 100_000;
+
+    /// The default cache size for large data items (e.g., block DAA window)
+    pub const LARGE_DATA_CACHE_SIZE: u64 = 2_000;
+
+    /// The default cache size for UTXO set entries
+    pub const UTXO_CACHE_SIZE: u64 = 10_000;
+}
+
+pub mod store_names {
+    pub const VIRTUAL_UTXO_SET: &[u8] = b"virtual-utxo-set";
+    pub const PRUNING_UTXO_SET: &[u8] = b"pruning-utxo-set";
+    pub const HEADER_TIPS: &[u8] = b"header-tips";
+    pub const BODY_TIPS: &[u8] = b"body-tips";
 }
 
 pub const BLOCK_VERSION: u16 = 1;

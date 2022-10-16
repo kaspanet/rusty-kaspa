@@ -1,6 +1,10 @@
 pub mod test_consensus;
 
 use crate::{
+    constants::{
+        perf::{CACHE_SIZE, LARGE_DATA_CACHE_SIZE},
+        store_names,
+    },
     errors::BlockProcessResult,
     model::{
         services::{reachability::MTReachabilityService, relations::MTRelationsService, statuses::MTStatusesService},
@@ -17,6 +21,7 @@ use crate::{
             reachability::DbReachabilityStore,
             relations::DbRelationsStore,
             statuses::{BlockStatus, DbStatusesStore},
+            tips::DbTipsStore,
             utxo_differences::DbUtxoDifferencesStore,
             utxo_multisets::DbUtxoMultisetsStore,
             DB,
@@ -90,7 +95,6 @@ pub struct Consensus {
 
 impl Consensus {
     pub fn new(db: Arc<DB>, params: &Params) -> Self {
-        const CACHE_SIZE: u64 = 100_000;
         let statuses_store = Arc::new(RwLock::new(DbStatusesStore::new(db.clone(), CACHE_SIZE)));
         let relations_store = Arc::new(RwLock::new(DbRelationsStore::new(db.clone(), CACHE_SIZE)));
         let reachability_store = Arc::new(RwLock::new(DbReachabilityStore::new(db.clone(), CACHE_SIZE)));
@@ -104,9 +108,11 @@ impl Consensus {
         let utxo_differences_store = Arc::new(DbUtxoDifferencesStore::new(db.clone(), CACHE_SIZE));
         let utxo_multisets_store = Arc::new(DbUtxoMultisetsStore::new(db.clone(), CACHE_SIZE));
         let acceptance_data_store = Arc::new(DbAcceptanceDataStore::new(db.clone(), CACHE_SIZE));
+        let header_tips_store = Arc::new(RwLock::new(DbTipsStore::new(db.clone(), store_names::HEADER_TIPS)));
+        let body_tips_store = Arc::new(RwLock::new(DbTipsStore::new(db.clone(), store_names::BODY_TIPS)));
 
-        let block_window_cache_for_difficulty = Arc::new(BlockWindowCacheStore::new(2000));
-        let block_window_cache_for_past_median_time = Arc::new(BlockWindowCacheStore::new(2000));
+        let block_window_cache_for_difficulty = Arc::new(BlockWindowCacheStore::new(LARGE_DATA_CACHE_SIZE));
+        let block_window_cache_for_past_median_time = Arc::new(BlockWindowCacheStore::new(LARGE_DATA_CACHE_SIZE));
 
         let statuses_service = Arc::new(MTStatusesService::new(statuses_store.clone()));
         let relations_service = Arc::new(MTRelationsService::new(relations_store.clone()));
@@ -224,6 +230,7 @@ impl Consensus {
             statuses_store.clone(),
             pruning_store.clone(),
             depth_store,
+            header_tips_store,
             block_window_cache_for_difficulty,
             block_window_cache_for_past_median_time,
             reachability_service.clone(),
