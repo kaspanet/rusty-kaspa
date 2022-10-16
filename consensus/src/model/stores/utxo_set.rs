@@ -1,5 +1,5 @@
 use super::{
-    caching::CachedDbAccess,
+    caching::{BatchDbWriter, CachedDbAccess},
     errors::{StoreError, StoreResultExtensions},
     DB,
 };
@@ -87,13 +87,9 @@ impl DbUtxoSetStore {
     }
 
     pub fn write_diff_batch(&self, batch: &mut WriteBatch, utxo_diff: &impl ImmutableUtxoDiff) -> Result<(), StoreError> {
-        for outpoint in utxo_diff.removed().keys().copied() {
-            self.cached_access.delete_batch(batch, outpoint.into())?;
-        }
-        for (outpoint, entry) in utxo_diff.added().iter() {
-            self.cached_access.write_batch(batch, (*outpoint).into(), &Arc::new(entry.clone()))?;
-        }
-        // TODO: remove/add many
+        let mut writer = BatchDbWriter::new(batch);
+        self.cached_access.delete_many(&mut writer, &mut utxo_diff.removed().keys().map(|o| (*o).into()))?;
+        self.cached_access.write_many(&mut writer, &mut utxo_diff.added().iter().map(|(o, e)| ((*o).into(), Arc::new(e.clone()))))?;
         Ok(())
     }
 }

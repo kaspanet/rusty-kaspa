@@ -47,7 +47,6 @@ impl<TKey: Clone + std::hash::Hash + Eq + Send + Sync, TData: Clone + Send + Syn
         if self.size == 0 {
             return;
         }
-
         let mut write_guard = self.map.write();
         if write_guard.len() == self.size {
             write_guard.swap_remove_index(rand::thread_rng().gen_range(0..self.size));
@@ -55,15 +54,34 @@ impl<TKey: Clone + std::hash::Hash + Eq + Send + Sync, TData: Clone + Send + Syn
         write_guard.insert(key, data);
     }
 
+    pub fn insert_many(&self, iter: &mut impl Iterator<Item = (TKey, TData)>) {
+        if self.size == 0 {
+            return;
+        }
+        let mut write_guard = self.map.write();
+        for (key, data) in iter {
+            if write_guard.len() == self.size {
+                write_guard.swap_remove_index(rand::thread_rng().gen_range(0..self.size));
+            }
+            write_guard.insert(key, data);
+        }
+    }
+
     pub fn remove(&self, key: &TKey) {
+        if self.size == 0 {
+            return;
+        }
         let mut write_guard = self.map.write();
         write_guard.swap_remove(key);
     }
 
-    pub fn remove_many<'a>(&'a self, key_iter: &mut impl Iterator<Item = &'a TKey>) {
+    pub fn remove_many(&self, key_iter: &mut impl Iterator<Item = TKey>) {
+        if self.size == 0 {
+            return;
+        }
         let mut write_guard = self.map.write();
         for key in key_iter {
-            write_guard.swap_remove(key);
+            write_guard.swap_remove(&key);
         }
     }
 }
@@ -145,12 +163,46 @@ where
         Ok(())
     }
 
-    pub fn delete_batch(&self, batch: &mut WriteBatch, key: TKey) -> Result<(), StoreError>
+    pub fn write_many(
+        &self,
+        writer: &mut impl DbWriter,
+        iter: &mut (impl Iterator<Item = (TKey, Arc<TData>)> + Clone),
+    ) -> Result<(), StoreError>
+    where
+        TKey: Copy + AsRef<[u8]>,
+        TData: Serialize,
+    {
+        let iter_clone = iter.clone();
+        self.cache.insert_many(iter);
+        for (key, data) in iter_clone {
+            let bin_data = bincode::serialize(data.as_ref())?;
+            writer.put(DbKey::new(self.prefix, key), bin_data)?;
+        }
+        Ok(())
+    }
+
+    pub fn delete(&self, writer: &mut impl DbWriter, key: TKey) -> Result<(), StoreError>
     where
         TKey: Copy + AsRef<[u8]>,
     {
         self.cache.remove(&key);
-        batch.delete(DbKey::new(self.prefix, key));
+        writer.delete(DbKey::new(self.prefix, key))?;
+        Ok(())
+    }
+
+    pub fn delete_many(
+        &self,
+        writer: &mut impl DbWriter,
+        key_iter: &mut (impl Iterator<Item = TKey> + Clone),
+    ) -> Result<(), StoreError>
+    where
+        TKey: Copy + AsRef<[u8]>,
+    {
+        let key_iter_clone = key_iter.clone();
+        self.cache.remove_many(key_iter);
+        for key in key_iter_clone {
+            writer.delete(DbKey::new(self.prefix, key))?;
+        }
         Ok(())
     }
 }
