@@ -1,6 +1,10 @@
 use std::sync::Arc;
 
-use super::{caching::CachedDbItem, errors::StoreResult, DB};
+use super::{
+    caching::{BatchDbWriter, CachedDbItem, DirectDbWriter},
+    errors::StoreResult,
+    DB,
+};
 use consensus_core::BlockHashSet;
 use hashes::Hash;
 use rocksdb::WriteBatch;
@@ -11,7 +15,7 @@ pub trait TipsStoreReader {
 }
 
 pub trait TipsStore: TipsStoreReader {
-    fn add_tip(&mut self, new_tip: Hash, new_tip_parents: &[Hash]) -> StoreResult<()>;
+    fn add_tip(&mut self, new_tip: Hash, new_tip_parents: &[Hash]) -> StoreResult<Arc<BlockHashSet>>;
 }
 
 /// A DB + cache implementation of `VirtualStateStore` trait
@@ -31,19 +35,24 @@ impl DbTipsStore {
         Self::new(Arc::clone(&self.raw_db), self.prefix)
     }
 
-    pub fn add_tip_batch(&mut self, batch: &mut WriteBatch, new_tip: Hash, new_tip_parents: &[Hash]) -> StoreResult<()> {
-        let tips = self.read_and_update_tips(new_tip, new_tip_parents)?;
-        self.cached_access.write_batch(batch, &Arc::new(tips))
+    pub fn add_tip_batch(
+        &mut self,
+        batch: &mut WriteBatch,
+        new_tip: Hash,
+        new_tip_parents: &[Hash],
+    ) -> StoreResult<Arc<BlockHashSet>> {
+        self.cached_access.update(&mut BatchDbWriter::new(batch), |tips| update_tips(tips, new_tip_parents, new_tip))
     }
+}
 
-    fn read_and_update_tips(&mut self, new_tip: Hash, new_tip_parents: &[Hash]) -> StoreResult<BlockHashSet> {
-        let mut tips = self.cached_access.read()?.as_ref().clone();
-        for parent in new_tip_parents {
-            tips.remove(parent);
-        }
-        tips.insert(new_tip);
-        Ok(tips)
+/// Updates the internal data if possible
+fn update_tips(current_tips: Arc<BlockHashSet>, new_tip_parents: &[Hash], new_tip: Hash) -> Arc<BlockHashSet> {
+    let mut tips = Arc::try_unwrap(current_tips).unwrap_or_else(|arc| (*arc).clone());
+    for parent in new_tip_parents {
+        tips.remove(parent);
     }
+    tips.insert(new_tip);
+    Arc::new(tips)
 }
 
 impl TipsStoreReader for DbTipsStore {
@@ -53,8 +62,7 @@ impl TipsStoreReader for DbTipsStore {
 }
 
 impl TipsStore for DbTipsStore {
-    fn add_tip(&mut self, new_tip: Hash, new_tip_parents: &[Hash]) -> StoreResult<()> {
-        let tips = self.read_and_update_tips(new_tip, new_tip_parents)?;
-        self.cached_access.write(&Arc::new(tips))
+    fn add_tip(&mut self, new_tip: Hash, new_tip_parents: &[Hash]) -> StoreResult<Arc<BlockHashSet>> {
+        self.cached_access.update(&mut DirectDbWriter::new(&self.raw_db), |tips| update_tips(tips, new_tip_parents, new_tip))
     }
 }

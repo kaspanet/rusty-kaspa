@@ -245,8 +245,8 @@ impl<T> CachedDbItem<T> {
     where
         T: Clone + DeserializeOwned,
     {
-        if let Some(root) = self.cached_item.read().clone() {
-            Ok(root)
+        if let Some(item) = self.cached_item.read().clone() {
+            Ok(item)
         } else if let Some(slice) = self.db.get_pinned(self.key)? {
             let item: T = bincode::deserialize(&slice)?;
             *self.cached_item.write() = Some(item.clone());
@@ -273,6 +273,90 @@ impl<T> CachedDbItem<T> {
         *self.cached_item.write() = Some(item.clone());
         let bin_data = bincode::serialize(&item)?;
         batch.put(self.key, bin_data);
+        Ok(())
+    }
+
+    pub fn update<F>(&mut self, writer: &mut impl DbWriter, op: F) -> Result<T, StoreError>
+    where
+        T: Clone + Serialize + DeserializeOwned,
+        F: Fn(T) -> T,
+    {
+        let mut guard = self.cached_item.write();
+        let mut item = if let Some(item) = guard.take() {
+            item
+        } else if let Some(slice) = self.db.get_pinned(self.key)? {
+            let item: T = bincode::deserialize(&slice)?;
+            item
+        } else {
+            return Err(StoreError::KeyNotFound(
+                String::from_utf8(Vec::from(self.key)).unwrap_or_else(|k| "cannot parse key".to_string()),
+            ));
+        };
+
+        item = op(item); // Apply the update op
+        *guard = Some(item.clone());
+        let bin_data = bincode::serialize(&item)?;
+        writer.put(self.key, bin_data)?;
+        Ok(item)
+    }
+}
+
+/// Abstraction over direct/batched DB writing
+/// TODO: use for all CachedAccess/Item writing ops
+pub trait DbWriter {
+    fn put<K, V>(&mut self, key: K, value: V) -> Result<(), rocksdb::Error>
+    where
+        K: AsRef<[u8]>,
+        V: AsRef<[u8]>;
+    fn delete<K: AsRef<[u8]>>(&mut self, key: K) -> Result<(), rocksdb::Error>;
+}
+
+pub struct DirectDbWriter<'a> {
+    db: &'a DB,
+}
+
+impl<'a> DirectDbWriter<'a> {
+    pub fn new(db: &'a DB) -> Self {
+        Self { db }
+    }
+}
+
+impl DbWriter for DirectDbWriter<'_> {
+    fn put<K, V>(&mut self, key: K, value: V) -> Result<(), rocksdb::Error>
+    where
+        K: AsRef<[u8]>,
+        V: AsRef<[u8]>,
+    {
+        self.db.put(key, value)
+    }
+
+    fn delete<K: AsRef<[u8]>>(&mut self, key: K) -> Result<(), rocksdb::Error> {
+        self.db.delete(key)
+    }
+}
+
+pub struct BatchDbWriter<'a> {
+    batch: &'a mut WriteBatch,
+}
+
+impl<'a> BatchDbWriter<'a> {
+    pub fn new(batch: &'a mut WriteBatch) -> Self {
+        Self { batch }
+    }
+}
+
+impl DbWriter for BatchDbWriter<'_> {
+    fn put<K, V>(&mut self, key: K, value: V) -> Result<(), rocksdb::Error>
+    where
+        K: AsRef<[u8]>,
+        V: AsRef<[u8]>,
+    {
+        self.batch.put(key, value);
+        Ok(())
+    }
+
+    fn delete<K: AsRef<[u8]>>(&mut self, key: K) -> Result<(), rocksdb::Error> {
+        self.batch.delete(key);
         Ok(())
     }
 }
