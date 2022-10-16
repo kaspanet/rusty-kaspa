@@ -331,14 +331,15 @@ impl HeaderProcessor {
         )
         .unwrap();
 
+        // Non-append only stores need to use write locks.
+        // Note we need to keep the lock write guards until the batch is written.
         let mut header_tips_write_guard = self.header_tips_store.write();
         let header_tips = header_tips_write_guard.add_tip_batch(&mut batch, ctx.hash, header.direct_parents()).unwrap();
         let header_selected_tip = self.ghostdag_manager.find_selected_parent(&mut header_tips.iter().copied());
+
         // Hint reachability about the possibly new tip.
         reachability::hint_virtual_selected_parent(&mut staging, header_selected_tip).unwrap();
 
-        // Non-append only stores need to use write locks.
-        // Note we need to keep the lock write guards until the batch is written.
         let relations_write_guard = if header.direct_parents().is_empty() {
             self.relations_store.insert_batch(&mut batch, header.hash, BlockHashes::new(vec![ORIGIN])).unwrap()
         } else {
@@ -371,7 +372,7 @@ impl HeaderProcessor {
             let mut batch = WriteBatch::default();
             let relations_write_guard = self.relations_store.insert_batch(&mut batch, ORIGIN, BlockHashes::new(vec![]));
             let mut header_tips_write_guard = self.header_tips_store.write();
-            header_tips_write_guard.init_batch(&mut batch, self.genesis_hash).unwrap();
+            header_tips_write_guard.init_batch(&mut batch, &[self.genesis_hash]).unwrap();
             self.db.write(batch).unwrap();
             drop(header_tips_write_guard);
             drop(relations_write_guard);

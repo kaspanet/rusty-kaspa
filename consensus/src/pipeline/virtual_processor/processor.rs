@@ -1,7 +1,6 @@
 use crate::{
     consensus::DbGhostdagManager,
     constants::{self, store_names},
-    errors::BlockProcessResult,
     model::{
         services::reachability::{MTReachabilityService, ReachabilityService},
         stores::{
@@ -18,6 +17,7 @@ use crate::{
                 BlockStatus::{self, StatusDisqualifiedFromChain, StatusUTXOPendingVerification, StatusUTXOValid},
                 DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader,
             },
+            tips::{DbTipsStore, TipsStoreReader},
             utxo_differences::{DbUtxoDifferencesStore, UtxoDifferencesStoreReader},
             utxo_multisets::{DbUtxoMultisetsStore, UtxoMultisetsStoreReader},
             utxo_set::DbUtxoSetStore,
@@ -33,10 +33,8 @@ use crate::{
     },
 };
 use consensus_core::{
-    block::Block,
     blockhash::{self, VIRTUAL},
     utxo::{utxo_diff::UtxoDiff, utxo_view},
-    BlockHashSet,
 };
 use hashes::Hash;
 use kaspa_core::trace;
@@ -48,7 +46,6 @@ use parking_lot::{RwLock, RwLockUpgradableReadGuard};
 use rayon::ThreadPool;
 use rocksdb::WriteBatch;
 use std::{
-    iter::FromIterator,
     ops::Deref,
     sync::{
         atomic::{self, AtomicBool},
@@ -82,6 +79,7 @@ pub struct VirtualStateProcessor {
     pub(super) block_transactions_store: Arc<DbBlockTransactionsStore>,
     pub(super) pruning_store: Arc<RwLock<DbPruningStore>>,
     pub(super) past_pruning_points_store: Arc<DbPastPruningPointsStore>,
+    pub(super) body_tips_store: Arc<RwLock<DbTipsStore>>,
 
     // Utxo-related stores
     pub(super) utxo_differences_store: Arc<DbUtxoDifferencesStore>,
@@ -115,6 +113,7 @@ impl VirtualStateProcessor {
         block_transactions_store: Arc<DbBlockTransactionsStore>,
         pruning_store: Arc<RwLock<DbPruningStore>>,
         past_pruning_points_store: Arc<DbPastPruningPointsStore>,
+        body_tips_store: Arc<RwLock<DbTipsStore>>,
         // Utxo-related stores
         utxo_differences_store: Arc<DbUtxoDifferencesStore>,
         utxo_multisets_store: Arc<DbUtxoMultisetsStore>,
@@ -143,10 +142,10 @@ impl VirtualStateProcessor {
             block_transactions_store,
             pruning_store,
             past_pruning_points_store,
+            body_tips_store,
             utxo_differences_store,
             utxo_multisets_store,
             acceptance_data_store,
-
             // TODO: build in consensus, decide about locking
             virtual_utxo_store: Arc::new(DbUtxoSetStore::new(
                 db.clone(),
@@ -174,8 +173,7 @@ impl VirtualStateProcessor {
             let tasks: Vec<BlockTask> = std::iter::once(first_task).chain(self.receiver.try_iter()).collect();
             trace!("virtual processor received {} tasks", tasks.len());
 
-            let mut blocks = tasks.iter().map_while(|t| if let BlockTask::Process(b, _) = t { Some(b) } else { None });
-            self.resolve_virtual(&mut blocks).unwrap();
+            self.resolve_virtual();
 
             let statuses_read = self.statuses_store.read();
             for task in tasks {
@@ -192,27 +190,16 @@ impl VirtualStateProcessor {
         }
     }
 
-    fn resolve_virtual<'a>(self: &Arc<Self>, blocks: &mut impl Iterator<Item = &'a Arc<Block>>) -> BlockProcessResult<()> {
+    fn resolve_virtual(self: &Arc<Self>) {
         let mut state = self.virtual_state_store.read().get().unwrap().as_ref().clone();
-        for block in blocks {
-            let status = self.statuses_store.read().get(block.header.hash).unwrap();
-            match status {
-                StatusUTXOPendingVerification | StatusUTXOValid | StatusDisqualifiedFromChain => {}
-                _ => panic!("unexpected block status {:?}", status),
-            }
 
-            // Update tips
-            let parents_set = BlockHashSet::from_iter(block.header.direct_parents().iter().cloned());
-            state.parents.retain(|t| !parents_set.contains(t));
-            state.parents.push(block.header.hash);
-        }
+        // TODO: pick virtual parents from body tips according to pruning rules
+        state.parents = self.body_tips_store.read().get().unwrap().iter().copied().collect_vec();
 
-        // TODO: header/body tips stores
         // TODO: check finality violation
         // TODO: coinbase validation
         // TODO: acceptance data format
 
-        // TODO: pick virtual parents from body tips according to pruning rules
         let virtual_ghostdag_data = self.ghostdag_manager.ghostdag(&state.parents);
 
         let prev_selected = state.ghostdag_data.selected_parent;
@@ -316,7 +303,6 @@ impl VirtualStateProcessor {
             }
             _ => panic!("expected utxo valid or disqualified {}", new_selected),
         }
-        Ok(())
     }
 
     fn commit_utxo_state(self: &Arc<Self>, current: Hash, mergeset_diff: UtxoDiff, multiset: MuHash, acceptance_data: AcceptanceData) {

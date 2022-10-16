@@ -13,6 +13,7 @@ use crate::{
                 BlockStatus::{self, StatusHeaderOnly, StatusInvalid},
                 DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader,
             },
+            tips::DbTipsStore,
             DB,
         },
     },
@@ -50,6 +51,7 @@ pub struct BlockBodyProcessor {
     pub(super) ghostdag_store: Arc<DbGhostdagStore>,
     pub(super) headers_store: Arc<DbHeadersStore>,
     pub(super) block_transactions_store: Arc<DbBlockTransactionsStore>,
+    pub(super) body_tips_store: Arc<RwLock<DbTipsStore>>,
 
     // Managers and services
     pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
@@ -73,6 +75,7 @@ impl BlockBodyProcessor {
         ghostdag_store: Arc<DbGhostdagStore>,
         headers_store: Arc<DbHeadersStore>,
         block_transactions_store: Arc<DbBlockTransactionsStore>,
+        body_tips_store: Arc<RwLock<DbTipsStore>>,
         reachability_service: MTReachabilityService<DbReachabilityStore>,
         coinbase_manager: CoinbaseManager,
         mass_calculator: MassCalculator,
@@ -91,6 +94,7 @@ impl BlockBodyProcessor {
             ghostdag_store,
             headers_store,
             block_transactions_store,
+            body_tips_store,
             coinbase_manager,
             mass_calculator,
             transaction_validator,
@@ -173,7 +177,7 @@ impl BlockBodyProcessor {
             return Err(e);
         }
 
-        self.commit_body(block.hash(), block.transactions.clone());
+        self.commit_body(block.hash(), block.header.direct_parents(), block.transactions.clone());
         Ok(BlockStatus::StatusUTXOPendingVerification)
     }
 
@@ -182,12 +186,14 @@ impl BlockBodyProcessor {
         self.validate_body_in_context(block)
     }
 
-    fn commit_body(self: &Arc<BlockBodyProcessor>, hash: Hash, transactions: Arc<Vec<Transaction>>) {
+    fn commit_body(self: &Arc<BlockBodyProcessor>, hash: Hash, parents: &[Hash], transactions: Arc<Vec<Transaction>>) {
         let mut batch = WriteBatch::default();
 
         // This is an append only store so it requires no lock.
         self.block_transactions_store.insert_batch(&mut batch, hash, transactions).unwrap();
 
+        let mut body_tips_write_guard = self.body_tips_store.write();
+        body_tips_write_guard.add_tip_batch(&mut batch, hash, parents).unwrap();
         let statuses_write_guard =
             self.statuses_store.set_batch(&mut batch, hash, BlockStatus::StatusUTXOPendingVerification).unwrap();
 
@@ -195,12 +201,19 @@ impl BlockBodyProcessor {
 
         // Calling the drops explicitly after the batch is written in order to avoid possible errors.
         drop(statuses_write_guard);
+        drop(body_tips_write_guard);
     }
 
     pub fn process_genesis_if_needed(self: &Arc<BlockBodyProcessor>) {
         let status = self.statuses_store.read().get(self.genesis_hash).unwrap();
         match status {
             StatusHeaderOnly => {
+                let mut batch = WriteBatch::default();
+                let mut body_tips_write_guard = self.body_tips_store.write();
+                body_tips_write_guard.init_batch(&mut batch, &[]).unwrap();
+                self.db.write(batch).unwrap();
+                drop(body_tips_write_guard);
+
                 let genesis_coinbase = Transaction::new(
                     TX_VERSION,
                     vec![],
@@ -219,7 +232,7 @@ impl BlockBodyProcessor {
                     ],
                     0,
                 );
-                self.commit_body(self.genesis_hash, Arc::new(vec![genesis_coinbase]))
+                self.commit_body(self.genesis_hash, &[], Arc::new(vec![genesis_coinbase]))
             }
             _ if status.has_block_body() => (),
             _ => panic!("unexpected genesis status {:?}", status),
