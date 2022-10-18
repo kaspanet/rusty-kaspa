@@ -31,7 +31,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-pub mod common;
+mod common;
 
 #[derive(Serialize, Deserialize, Debug)]
 struct JsonBlock {

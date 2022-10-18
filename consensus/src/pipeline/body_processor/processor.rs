@@ -156,7 +156,7 @@ impl BlockBodyProcessor {
             StatusInvalid => return Err(RuleError::KnownInvalid),
             StatusHeaderOnly => {} // Proceed to body processing
             _ if status.has_block_body() => return Ok(status),
-            _ => panic!("unknown block status {:?}", status),
+            _ => panic!("unexpected block status {:?}", status),
         }
 
         if let Err(e) = self.validate_body(block) {

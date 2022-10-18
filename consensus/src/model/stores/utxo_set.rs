@@ -1,5 +1,5 @@
 use super::{
-    caching::{BatchDbWriter, CachedDbAccess},
+    caching::{BatchDbWriter, CachedDbAccess, DirectDbWriter},
     errors::{StoreError, StoreResultExtensions},
     DB,
 };
@@ -20,7 +20,6 @@ pub trait UtxoSetStoreReader {
 }
 
 pub trait UtxoSetStore: UtxoSetStoreReader {
-    fn write_entry(&self, outpoint: &TransactionOutpoint, entry: &UtxoEntry) -> Result<(), StoreError>;
     fn write_diff(&self, utxo_diff: &UtxoDiff) -> Result<(), StoreError>;
 }
 
@@ -77,15 +76,6 @@ impl DbUtxoSetStore {
         Self::new(Arc::clone(&self.raw_db), cache_size, self.prefix)
     }
 
-    pub fn write_entry_batch(
-        &self,
-        batch: &mut WriteBatch,
-        outpoint: &TransactionOutpoint,
-        entry: &UtxoEntry,
-    ) -> Result<(), StoreError> {
-        todo!()
-    }
-
     pub fn write_diff_batch(&self, batch: &mut WriteBatch, utxo_diff: &impl ImmutableUtxoDiff) -> Result<(), StoreError> {
         let mut writer = BatchDbWriter::new(batch);
         self.cached_access.delete_many(&mut writer, &mut utxo_diff.removed().keys().map(|o| (*o).into()))?;
@@ -107,12 +97,11 @@ impl UtxoSetStoreReader for DbUtxoSetStore {
 }
 
 impl UtxoSetStore for DbUtxoSetStore {
-    fn write_entry(&self, outpoint: &TransactionOutpoint, entry: &UtxoEntry) -> Result<(), StoreError> {
-        todo!()
-    }
-
     fn write_diff(&self, utxo_diff: &UtxoDiff) -> Result<(), StoreError> {
-        todo!()
+        let mut writer = DirectDbWriter::new(&self.raw_db);
+        self.cached_access.delete_many(&mut writer, &mut utxo_diff.removed().keys().map(|o| (*o).into()))?;
+        self.cached_access.write_many(&mut writer, &mut utxo_diff.added().iter().map(|(o, e)| ((*o).into(), Arc::new(e.clone()))))?;
+        Ok(())
     }
 }
 
@@ -122,9 +111,12 @@ mod tests {
 
     #[test]
     fn test_utxo_key_conversion() {
-        let outpoint = TransactionOutpoint::new(234.into(), 17);
+        let outpoint = TransactionOutpoint::new(2345.into(), 300);
         let key: UtxoKey = outpoint.into();
-        // println!("{}, {}", outpoint, key);
         assert_eq!(outpoint, key.into());
+        assert_eq!(
+            key.0,
+            [41, 9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 44, 1, 0, 0]
+        );
     }
 }

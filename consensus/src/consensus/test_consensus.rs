@@ -128,11 +128,12 @@ impl TestConsensus {
         &self.consensus.past_median_time_manager
     }
 
-    // TODO: should the query methods below enter consensus API ?
+    // TODO: add to consensus API
     pub fn body_tips(&self) -> Arc<BlockHashSet> {
         self.consensus.body_tips_store.read().get().unwrap()
     }
 
+    // TODO: add to consensus API
     pub fn block_status(&self, hash: Hash) -> BlockStatus {
         self.consensus.statuses_store.read().get(hash).unwrap()
     }

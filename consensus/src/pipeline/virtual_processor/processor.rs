@@ -18,7 +18,7 @@ use crate::{
                 DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader,
             },
             tips::{DbTipsStore, TipsStoreReader},
-            utxo_differences::{DbUtxoDifferencesStore, UtxoDifferencesStoreReader},
+            utxo_diffs::{DbUtxoDiffsStore, UtxoDiffsStoreReader},
             utxo_multisets::{DbUtxoMultisetsStore, UtxoMultisetsStoreReader},
             utxo_set::DbUtxoSetStore,
             virtual_state::{DbVirtualStateStore, VirtualState, VirtualStateStore, VirtualStateStoreReader},
@@ -82,7 +82,7 @@ pub struct VirtualStateProcessor {
     pub(super) body_tips_store: Arc<RwLock<DbTipsStore>>,
 
     // Utxo-related stores
-    pub(super) utxo_differences_store: Arc<DbUtxoDifferencesStore>,
+    pub(super) utxo_differences_store: Arc<DbUtxoDiffsStore>,
     pub(super) utxo_multisets_store: Arc<DbUtxoMultisetsStore>,
     pub(super) acceptance_data_store: Arc<DbAcceptanceDataStore>,
     pub(super) virtual_utxo_store: Arc<DbUtxoSetStore>,
@@ -115,7 +115,7 @@ impl VirtualStateProcessor {
         past_pruning_points_store: Arc<DbPastPruningPointsStore>,
         body_tips_store: Arc<RwLock<DbTipsStore>>,
         // Utxo-related stores
-        utxo_differences_store: Arc<DbUtxoDifferencesStore>,
+        utxo_differences_store: Arc<DbUtxoDiffsStore>,
         utxo_multisets_store: Arc<DbUtxoMultisetsStore>,
         acceptance_data_store: Arc<DbAcceptanceDataStore>,
         // Managers

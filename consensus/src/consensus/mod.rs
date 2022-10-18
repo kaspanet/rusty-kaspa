@@ -22,7 +22,7 @@ use crate::{
             relations::DbRelationsStore,
             statuses::{BlockStatus, DbStatusesStore},
             tips::DbTipsStore,
-            utxo_differences::DbUtxoDifferencesStore,
+            utxo_diffs::DbUtxoDiffsStore,
             utxo_multisets::DbUtxoMultisetsStore,
             DB,
         },
@@ -107,7 +107,7 @@ impl Consensus {
         let depth_store = Arc::new(DbDepthStore::new(db.clone(), CACHE_SIZE));
         let block_transactions_store = Arc::new(DbBlockTransactionsStore::new(db.clone(), CACHE_SIZE));
         let past_pruning_points_store = Arc::new(DbPastPruningPointsStore::new(db.clone(), CACHE_SIZE));
-        let utxo_differences_store = Arc::new(DbUtxoDifferencesStore::new(db.clone(), CACHE_SIZE));
+        let utxo_differences_store = Arc::new(DbUtxoDiffsStore::new(db.clone(), CACHE_SIZE));
         let utxo_multisets_store = Arc::new(DbUtxoMultisetsStore::new(db.clone(), CACHE_SIZE));
         let acceptance_data_store = Arc::new(DbAcceptanceDataStore::new(db.clone(), CACHE_SIZE));
         let header_tips_store = Arc::new(RwLock::new(DbTipsStore::new(db.clone(), store_names::HEADER_TIPS)));

@@ -11,11 +11,11 @@ use rocksdb::WriteBatch;
 /// block status, such that if a block has status `StatusUTXOValid` then it is expected to have
 /// utxo diff data as well as utxo multiset data and acceptance data.
 
-pub trait UtxoDifferencesStoreReader {
+pub trait UtxoDiffsStoreReader {
     fn get(&self, hash: Hash) -> Result<Arc<UtxoDiff>, StoreError>;
 }
 
-pub trait UtxoDifferencesStore: UtxoDifferencesStoreReader {
+pub trait UtxoDiffsStore: UtxoDiffsStoreReader {
     fn insert(&self, hash: Hash, utxo_diff: Arc<UtxoDiff>) -> Result<(), StoreError>;
 }
 
@@ -23,12 +23,12 @@ const STORE_PREFIX: &[u8] = b"utxo-diffs";
 
 /// A DB + cache implementation of `UtxoDifferencesStore` trait, with concurrency support.
 #[derive(Clone)]
-pub struct DbUtxoDifferencesStore {
+pub struct DbUtxoDiffsStore {
     raw_db: Arc<DB>,
     cached_access: CachedDbAccess<Hash, UtxoDiff>,
 }
 
-impl DbUtxoDifferencesStore {
+impl DbUtxoDiffsStore {
     pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
         Self { raw_db: Arc::clone(&db), cached_access: CachedDbAccess::new(Arc::clone(&db), cache_size, STORE_PREFIX) }
     }
@@ -46,13 +46,13 @@ impl DbUtxoDifferencesStore {
     }
 }
 
-impl UtxoDifferencesStoreReader for DbUtxoDifferencesStore {
+impl UtxoDiffsStoreReader for DbUtxoDiffsStore {
     fn get(&self, hash: Hash) -> Result<Arc<UtxoDiff>, StoreError> {
         self.cached_access.read(hash)
     }
 }
 
-impl UtxoDifferencesStore for DbUtxoDifferencesStore {
+impl UtxoDiffsStore for DbUtxoDiffsStore {
     fn insert(&self, hash: Hash, utxo_diff: Arc<UtxoDiff>) -> Result<(), StoreError> {
         if self.cached_access.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));

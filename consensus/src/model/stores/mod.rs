@@ -13,7 +13,7 @@ pub mod reachability;
 pub mod relations;
 pub mod statuses;
 pub mod tips;
-pub mod utxo_differences;
+pub mod utxo_diffs;
 pub mod utxo_multisets;
 pub mod utxo_set;
 pub mod virtual_state;

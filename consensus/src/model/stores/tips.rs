@@ -50,13 +50,13 @@ impl DbTipsStore {
 }
 
 /// Updates the internal data if possible
-fn update_tips(current_tips: Arc<BlockHashSet>, new_tip_parents: &[Hash], new_tip: Hash) -> Arc<BlockHashSet> {
-    let mut tips = Arc::try_unwrap(current_tips).unwrap_or_else(|arc| (*arc).clone());
+fn update_tips(mut current_tips: Arc<BlockHashSet>, new_tip_parents: &[Hash], new_tip: Hash) -> Arc<BlockHashSet> {
+    let tips = Arc::make_mut(&mut current_tips);
     for parent in new_tip_parents {
         tips.remove(parent);
     }
     tips.insert(new_tip);
-    Arc::new(tips)
+    current_tips
 }
 
 impl TipsStoreReader for DbTipsStore {
@@ -68,5 +68,17 @@ impl TipsStoreReader for DbTipsStore {
 impl TipsStore for DbTipsStore {
     fn add_tip(&mut self, new_tip: Hash, new_tip_parents: &[Hash]) -> StoreResult<Arc<BlockHashSet>> {
         self.cached_access.update(&mut DirectDbWriter::new(&self.raw_db), |tips| update_tips(tips, new_tip_parents, new_tip))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_update_tips() {
+        let mut tips = Arc::new(BlockHashSet::from([1.into(), 3.into(), 5.into()]));
+        tips = update_tips(tips, &[3.into(), 5.into()], 7.into());
+        assert_eq!(Arc::try_unwrap(tips).unwrap(), BlockHashSet::from([1.into(), 7.into()]));
     }
 }

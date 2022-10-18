@@ -304,7 +304,9 @@ impl<T> CachedDbItem<T> {
             *self.cached_item.write() = Some(item.clone());
             Ok(item)
         } else {
-            Err(StoreError::KeyNotFound(String::from_utf8(Vec::from(self.key)).unwrap_or_else(|k| "cannot parse key".to_string())))
+            Err(StoreError::KeyNotFound(
+                String::from_utf8(Vec::from(self.key)).unwrap_or_else(|k| "cannot parse key to utf8".to_string()),
+            ))
         }
     }
 
@@ -341,7 +343,7 @@ impl<T> CachedDbItem<T> {
             item
         } else {
             return Err(StoreError::KeyNotFound(
-                String::from_utf8(Vec::from(self.key)).unwrap_or_else(|k| "cannot parse key".to_string()),
+                String::from_utf8(Vec::from(self.key)).unwrap_or_else(|k| "cannot parse key to utf8".to_string()),
             ));
         };
 
