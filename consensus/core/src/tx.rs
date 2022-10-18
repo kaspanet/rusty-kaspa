@@ -150,7 +150,7 @@ impl Transaction {
 
 /// Represents a transaction with populated UTXO entry data
 pub struct PopulatedTransaction<'a> {
-    tx: &'a Transaction,
+    pub tx: &'a Transaction,
     pub entries: Vec<UtxoEntry>,
 }
 
@@ -164,8 +164,8 @@ impl<'a> PopulatedTransaction<'a> {
         self.tx.inputs.iter().map(std::ops::Deref::deref).zip(self.entries.iter())
     }
 
-    pub fn outputs(&self) -> impl ExactSizeIterator<Item = &TransactionOutput> {
-        self.tx.outputs.iter().map(std::ops::Deref::deref)
+    pub fn outputs(&self) -> &[Arc<TransactionOutput>] {
+        &self.tx.outputs
     }
 
     pub fn is_coinbase(&self) -> bool {
@@ -183,7 +183,7 @@ impl<'a> PopulatedTransaction<'a> {
 
 /// Represents a validated transaction with populated UTXO entry data and a calculated fee
 pub struct ValidatedTransaction<'a> {
-    tx: &'a Transaction,
+    pub tx: &'a Transaction,
     pub entries: Vec<UtxoEntry>,
     pub calculated_fee: u64,
 }
@@ -202,8 +202,8 @@ impl<'a> ValidatedTransaction<'a> {
         self.tx.inputs.iter().map(std::ops::Deref::deref).zip(self.entries.iter())
     }
 
-    pub fn outputs(&self) -> impl ExactSizeIterator<Item = &TransactionOutput> {
-        self.tx.outputs.iter().map(std::ops::Deref::deref)
+    pub fn outputs(&self) -> &[Arc<TransactionOutput>] {
+        &self.tx.outputs
     }
 
     pub fn is_coinbase(&self) -> bool {
@@ -213,12 +213,4 @@ impl<'a> ValidatedTransaction<'a> {
     pub fn id(&self) -> TransactionId {
         self.tx.id()
     }
-}
-
-#[cfg(test)]
-mod tests {
-    // use super::*;
-
-    #[test]
-    fn test_types() {}
 }

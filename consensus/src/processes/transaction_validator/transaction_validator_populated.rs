@@ -59,7 +59,7 @@ impl<T: HeaderStoreReader> TransactionValidator<T> {
 
     fn check_transaction_output_values(tx: &PopulatedTransaction, total_in: u64) -> TxResult<u64> {
         // There's no need to check for overflow here because it was already checked by check_transaction_output_value_ranges
-        let total_out: u64 = tx.outputs().map(|out| out.value).sum();
+        let total_out: u64 = tx.outputs().iter().map(|out| out.value).sum();
         if total_in < total_out {
             return Err(TxRuleError::SpendTooHigh(total_out, total_in));
         }

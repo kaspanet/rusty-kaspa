@@ -17,7 +17,7 @@ impl MuHashExtensions for MuHash {
             write_utxo(&mut writer, entry, &input.previous_outpoint);
             writer.finalize();
         }
-        for (i, output) in tx.outputs().enumerate() {
+        for (i, output) in tx.outputs().iter().enumerate() {
             let outpoint = TransactionOutpoint::new(tx_id, i as u32);
             let entry = UtxoEntry::new(output.value, output.script_public_key.clone(), block_daa_score, tx.is_coinbase());
             let mut writer = self.add_element_builder();

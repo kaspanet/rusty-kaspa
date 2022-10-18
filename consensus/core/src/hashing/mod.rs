@@ -35,7 +35,7 @@ impl<T: HasherBase> HasherExtensions for T {
 
     #[inline(always)]
     fn write_bool(&mut self, element: bool) -> &mut Self {
-        self.update(if element { [1u8] } else { [0u8] }) // TODO: is this the best way?
+        self.update(if element { [1u8] } else { [0u8] })
     }
 
     #[inline(always)]
