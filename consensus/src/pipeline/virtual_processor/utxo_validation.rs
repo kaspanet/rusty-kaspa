@@ -12,7 +12,7 @@ use consensus_core::{
     tx::{PopulatedTransaction, Transaction, TransactionId, ValidatedTransaction},
     utxo::{
         utxo_diff::UtxoDiff,
-        utxo_view::{self, UtxoView},
+        utxo_view::{UtxoView, UtxoViewComposition},
     },
     BlockHashMap,
 };
@@ -69,7 +69,7 @@ impl VirtualStateProcessor {
             let txs = self.block_transactions_store.get(merged_block).unwrap();
 
             // Create a layered UTXO view from the selected parent UTXO view + the mergeset UTXO diff
-            let composed_view = utxo_view::compose_one_diff_layer(selected_parent_utxo_view, &ctx.mergeset_diff);
+            let composed_view = selected_parent_utxo_view.compose(&ctx.mergeset_diff);
 
             // Validate transactions in current UTXO context
             let validated_transactions = self.validate_transactions_in_parallel(&txs, &composed_view, pov_daa_score);
@@ -118,7 +118,7 @@ impl VirtualStateProcessor {
         self.verify_coinbase_transaction(&txs[0], &ctx.mergeset_data, &ctx.mergeset_fees)?;
 
         // Verify all transactions are valid in context (TODO: skip validation when becoming selected parent)
-        let current_utxo_view = utxo_view::compose_one_diff_layer(selected_parent_utxo_view, &ctx.mergeset_diff);
+        let current_utxo_view = selected_parent_utxo_view.compose(&ctx.mergeset_diff);
         let validated_transactions = self.validate_transactions_in_parallel(&txs, &current_utxo_view, header.daa_score);
         if validated_transactions.len() < txs.len() - 1 {
             // Some non-coinbase transactions are invalid

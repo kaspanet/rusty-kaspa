@@ -34,7 +34,7 @@ use crate::{
 };
 use consensus_core::{
     blockhash::{self, VIRTUAL},
-    utxo::{utxo_diff::UtxoDiff, utxo_view},
+    utxo::{utxo_diff::UtxoDiff, utxo_view::UtxoViewComposition},
 };
 use hashes::Hash;
 use kaspa_core::trace;
@@ -239,8 +239,7 @@ impl VirtualStateProcessor {
                     let pov_daa_score = header.daa_score;
 
                     let selected_parent_multiset_hash = self.utxo_multisets_store.get(mergeset_data.selected_parent).unwrap();
-                    let selected_parent_utxo_view =
-                        utxo_view::compose_one_diff_layer(self.virtual_utxo_store.deref(), &accumulated_diff);
+                    let selected_parent_utxo_view = self.virtual_utxo_store.as_ref().compose(&accumulated_diff);
 
                     let mut ctx = UtxoProcessingContext::new(mergeset_data, selected_parent_multiset_hash);
 
@@ -266,7 +265,7 @@ impl VirtualStateProcessor {
             BlockStatus::StatusUTXOValid => {
                 // Calc the new virtual UTXO diff
                 let selected_parent_multiset_hash = self.utxo_multisets_store.get(virtual_ghostdag_data.selected_parent).unwrap();
-                let selected_parent_utxo_view = utxo_view::compose_one_diff_layer(self.virtual_utxo_store.deref(), &accumulated_diff);
+                let selected_parent_utxo_view = self.virtual_utxo_store.as_ref().compose(&accumulated_diff);
                 let mut ctx = UtxoProcessingContext::new(virtual_ghostdag_data.clone(), selected_parent_multiset_hash);
 
                 // Calc virtual DAA score

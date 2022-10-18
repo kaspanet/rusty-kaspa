@@ -40,23 +40,12 @@ impl<T: UtxoView> UtxoView for &T {
     }
 }
 
-pub fn compose_one_diff_layer<B: UtxoView, D1: ImmutableUtxoDiff>(base: B, diff1: D1) -> ComposedUtxoView<B, D1> {
-    ComposedUtxoView::new(base, diff1)
+pub trait UtxoViewComposition: UtxoView + Sized {
+    fn compose<D: ImmutableUtxoDiff>(self, diff: D) -> ComposedUtxoView<Self, D>;
 }
 
-pub fn compose_two_diff_layers<B: UtxoView, D1: ImmutableUtxoDiff, D2: ImmutableUtxoDiff>(
-    base: B,
-    diff1: D1,
-    diff2: D2,
-) -> ComposedUtxoView<ComposedUtxoView<B, D1>, D2> {
-    ComposedUtxoView::new(ComposedUtxoView::new(base, diff1), diff2)
-}
-
-pub fn compose_three_diff_layers<B: UtxoView, D1: ImmutableUtxoDiff, D2: ImmutableUtxoDiff, D3: ImmutableUtxoDiff>(
-    base: B,
-    diff1: D1,
-    diff2: D2,
-    diff3: D3,
-) -> ComposedUtxoView<ComposedUtxoView<ComposedUtxoView<B, D1>, D2>, D3> {
-    ComposedUtxoView::new(ComposedUtxoView::new(ComposedUtxoView::new(base, diff1), diff2), diff3)
+impl<T: UtxoView> UtxoViewComposition for T {
+    fn compose<D: ImmutableUtxoDiff>(self, diff: D) -> ComposedUtxoView<Self, D> {
+        ComposedUtxoView::new(self, diff)
+    }
 }
