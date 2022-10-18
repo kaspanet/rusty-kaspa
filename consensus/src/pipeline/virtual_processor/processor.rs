@@ -45,13 +45,7 @@ use itertools::Itertools;
 use parking_lot::{RwLock, RwLockUpgradableReadGuard};
 use rayon::ThreadPool;
 use rocksdb::WriteBatch;
-use std::{
-    ops::Deref,
-    sync::{
-        atomic::{self, AtomicBool},
-        Arc,
-    },
-};
+use std::{ops::Deref, sync::Arc};
 
 pub struct VirtualStateProcessor {
     // Channels
@@ -65,12 +59,9 @@ pub struct VirtualStateProcessor {
 
     // Config
     pub(super) genesis_hash: Hash,
-    // pub(super) timestamp_deviation_tolerance: u64,
-    // pub(super) target_time_per_block: u64,
     pub(super) max_block_parents: u8,
     pub(super) difficulty_window_size: usize,
     pub(super) mergeset_size_limit: u64,
-    // pub(super) genesis_bits: u32,
 
     // Stores
     pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
@@ -95,8 +86,6 @@ pub struct VirtualStateProcessor {
     pub(super) difficulty_manager: DifficultyManager<DbHeadersStore>,
     pub(super) transaction_validator: TransactionValidator<DbHeadersStore>,
     pub(super) pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
-
-    is_updating_pruning_point_or_candidate: AtomicBool,
 }
 
 impl VirtualStateProcessor {
@@ -160,8 +149,6 @@ impl VirtualStateProcessor {
             difficulty_manager,
             transaction_validator,
             pruning_manager,
-
-            is_updating_pruning_point_or_candidate: false.into(),
         }
     }
 
@@ -197,6 +184,7 @@ impl VirtualStateProcessor {
         state.parents = self.body_tips_store.read().get().unwrap().iter().copied().collect_vec();
 
         // TODO: check finality violation
+        // TODO: handle disqualified chain loop
         // TODO: coinbase validation
         // TODO: acceptance data format
 
@@ -316,49 +304,33 @@ impl VirtualStateProcessor {
     }
 
     fn maybe_update_pruning_point_and_candidate(self: &Arc<Self>) {
-        if self
-            .is_updating_pruning_point_or_candidate
-            .compare_exchange(false, true, atomic::Ordering::Acquire, atomic::Ordering::Relaxed)
-            .is_err()
-        {
-            return;
+        // TODO: call this method from resolve_virtual
+        let pruning_read_guard = self.pruning_store.upgradable_read();
+        let current_pp = pruning_read_guard.pruning_point().unwrap();
+        let current_pp_candidate = pruning_read_guard.pruning_point_candidate().unwrap();
+        let virtual_gd = self.ghostdag_store.get_compact_data(VIRTUAL).unwrap();
+        let (new_pruning_point, new_candidate) =
+            self.pruning_manager.next_pruning_point_and_candidate_by_block_hash(virtual_gd, None, current_pp_candidate, current_pp);
+
+        if new_pruning_point != current_pp {
+            let mut batch = WriteBatch::default();
+            let new_pp_index = pruning_read_guard.pruning_point_index().unwrap() + 1;
+            let mut write_guard = RwLockUpgradableReadGuard::upgrade(pruning_read_guard);
+            write_guard.set_batch(&mut batch, new_pruning_point, new_candidate, new_pp_index).unwrap();
+            self.past_pruning_points_store.insert_batch(&mut batch, new_pp_index, new_pruning_point).unwrap();
+            self.db.write(batch).unwrap();
+            // TODO: Move PP UTXO etc
+        } else if new_candidate != current_pp_candidate {
+            let pp_index = pruning_read_guard.pruning_point_index().unwrap();
+            let mut write_guard = RwLockUpgradableReadGuard::upgrade(pruning_read_guard);
+            write_guard.set(new_pruning_point, new_candidate, pp_index).unwrap();
         }
-
-        {
-            let pruning_read_guard = self.pruning_store.upgradable_read();
-            let current_pp = pruning_read_guard.pruning_point().unwrap();
-            let current_pp_candidate = pruning_read_guard.pruning_point_candidate().unwrap();
-            let virtual_gd = self.ghostdag_store.get_compact_data(VIRTUAL).unwrap();
-            let (new_pruning_point, new_candidate) = self.pruning_manager.next_pruning_point_and_candidate_by_block_hash(
-                virtual_gd,
-                None,
-                current_pp_candidate,
-                current_pp,
-            );
-
-            if new_pruning_point != current_pp {
-                let mut batch = WriteBatch::default();
-                let new_pp_index = pruning_read_guard.pruning_point_index().unwrap() + 1;
-                let mut write_guard = RwLockUpgradableReadGuard::upgrade(pruning_read_guard);
-                write_guard.set_batch(&mut batch, new_pruning_point, new_candidate, new_pp_index).unwrap();
-                self.past_pruning_points_store.insert_batch(&mut batch, new_pp_index, new_pruning_point).unwrap();
-                self.db.write(batch).unwrap();
-                // TODO: Move PP UTXO etc
-            } else if new_candidate != current_pp_candidate {
-                let pp_index = pruning_read_guard.pruning_point_index().unwrap();
-                let mut write_guard = RwLockUpgradableReadGuard::upgrade(pruning_read_guard);
-                write_guard.set(new_pruning_point, new_candidate, pp_index).unwrap();
-            }
-        }
-
-        self.is_updating_pruning_point_or_candidate.store(false, atomic::Ordering::Release);
     }
 
     pub fn process_genesis_if_needed(self: &Arc<Self>) {
         let status = self.statuses_store.read().get(self.genesis_hash).unwrap();
         match status {
             StatusUTXOPendingVerification => {
-                // TODO: consider using a batch write
                 self.virtual_state_store
                     .write()
                     .set(VirtualState::from_genesis(
