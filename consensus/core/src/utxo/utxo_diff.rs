@@ -146,7 +146,9 @@ impl UtxoDiff {
         // - if utxo entry is in this.add and other.remove
         // - if utxo entry is in this.remove and other.add
 
+        // TODO: make sure the table above is up-to-date with regard to the DAA score dimension.
         // TODO: should we apply the sanity checks below only in Debug mode?
+
         // Check that NOT(entries with unequal DAA scores AND utxo is in self.add and/or other.remove) -> Error
         let rule_not_added_output_removed_with_daa_score =
             |outpoint: &TransactionOutpoint, this_entry: &UtxoEntry, other_entry: &UtxoEntry| {

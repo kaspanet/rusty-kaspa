@@ -65,6 +65,9 @@ impl VirtualStateProcessor {
         ctx.multiset_hash.add_transaction(&validated_coinbase, pov_daa_score);
         ctx.accepted_tx_ids.push(validated_coinbase.id());
 
+        // TODO: no need to validate selected parent transactions, but only to populate and add,
+        // since selected parent txs were already validated as part of selected parent utxo state verification.
+
         for (merged_block, txs) in once((ctx.selected_parent(), selected_parent_transactions)).chain(
             ctx.ghostdag_data
                 .consensus_ordered_mergeset_without_selected_parent(self.ghostdag_store.deref())
@@ -104,6 +107,7 @@ impl VirtualStateProcessor {
         if expected_commitment != header.utxo_commitment {
             return Err(BadUTXOCommitment(header.hash, header.utxo_commitment, expected_commitment));
         }
+        trace!("correct commitment: {}, {}", header.hash, expected_commitment);
 
         // Verify header accepted_id_merkle_root
         // NOTE: when subnetworks will be enabled, the sort should consider them in order to allow grouping under a merkle subtree

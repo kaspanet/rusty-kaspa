@@ -184,6 +184,7 @@ impl VirtualStateProcessor {
         // TODO: handle disqualified chain loop
         // TODO: coinbase validation
         // TODO: acceptance data format
+        // TODO: refactor this methods into multiple methods
 
         let virtual_ghostdag_data = self.ghostdag_manager.ghostdag(&virtual_parents);
 
