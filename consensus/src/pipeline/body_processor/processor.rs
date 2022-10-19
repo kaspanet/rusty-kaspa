@@ -1,4 +1,5 @@
 use crate::{
+    constants::TX_VERSION,
     errors::{BlockProcessResult, RuleError},
     model::{
         services::reachability::MTReachabilityService,
@@ -8,7 +9,11 @@ use crate::{
             ghostdag::DbGhostdagStore,
             headers::DbHeadersStore,
             reachability::DbReachabilityStore,
-            statuses::{BlockStatus, DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions},
+            statuses::{
+                BlockStatus::{self, StatusHeaderOnly, StatusInvalid},
+                DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader,
+            },
+            tips::DbTipsStore,
             DB,
         },
     },
@@ -18,10 +23,11 @@ use crate::{
         transaction_validator::TransactionValidator,
     },
 };
-use consensus_core::block::Block;
+use consensus_core::{block::Block, subnets::SUBNETWORK_ID_COINBASE, tx::Transaction};
 use crossbeam_channel::{Receiver, Sender};
 use hashes::Hash;
 use parking_lot::RwLock;
+use rayon::ThreadPool;
 use rocksdb::WriteBatch;
 use std::sync::Arc;
 
@@ -29,6 +35,9 @@ pub struct BlockBodyProcessor {
     // Channels
     receiver: Receiver<BlockTask>,
     sender: Sender<BlockTask>,
+
+    // Thread pool
+    pub(super) thread_pool: Arc<ThreadPool>,
 
     // DB
     db: Arc<DB>,
@@ -42,6 +51,7 @@ pub struct BlockBodyProcessor {
     pub(super) ghostdag_store: Arc<DbGhostdagStore>,
     pub(super) headers_store: Arc<DbHeadersStore>,
     pub(super) block_transactions_store: Arc<DbBlockTransactionsStore>,
+    pub(super) body_tips_store: Arc<RwLock<DbTipsStore>>,
 
     // Managers and services
     pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
@@ -59,11 +69,13 @@ impl BlockBodyProcessor {
     pub fn new(
         receiver: Receiver<BlockTask>,
         sender: Sender<BlockTask>,
+        thread_pool: Arc<ThreadPool>,
         db: Arc<DB>,
         statuses_store: Arc<RwLock<DbStatusesStore>>,
         ghostdag_store: Arc<DbGhostdagStore>,
         headers_store: Arc<DbHeadersStore>,
         block_transactions_store: Arc<DbBlockTransactionsStore>,
+        body_tips_store: Arc<RwLock<DbTipsStore>>,
         reachability_service: MTReachabilityService<DbReachabilityStore>,
         coinbase_manager: CoinbaseManager,
         mass_calculator: MassCalculator,
@@ -75,12 +87,14 @@ impl BlockBodyProcessor {
         Self {
             receiver,
             sender,
+            thread_pool,
             db,
             statuses_store,
             reachability_service,
             ghostdag_store,
             headers_store,
             block_transactions_store,
+            body_tips_store,
             coinbase_manager,
             mass_calculator,
             transaction_validator,
@@ -99,7 +113,7 @@ impl BlockBodyProcessor {
                     let hash = block.header.hash;
                     if self.task_manager.register(block, result_transmitters) {
                         let processor = self.clone();
-                        rayon::spawn(move || {
+                        self.thread_pool.spawn(move || {
                             processor.queue_block(hash);
                         });
                     }
@@ -131,12 +145,20 @@ impl BlockBodyProcessor {
 
             for dep in dependent_tasks {
                 let processor = self.clone();
-                rayon::spawn(move || processor.queue_block(dep));
+                self.thread_pool.spawn(move || processor.queue_block(dep));
             }
         }
     }
 
     fn process_block_body(self: &Arc<BlockBodyProcessor>, block: &Block) -> BlockProcessResult<BlockStatus> {
+        let status = self.statuses_store.read().get(block.hash()).unwrap();
+        match status {
+            StatusInvalid => return Err(RuleError::KnownInvalid),
+            StatusHeaderOnly => {} // Proceed to body processing
+            _ if status.has_block_body() => return Ok(status),
+            _ => panic!("unexpected block status {:?}", status),
+        }
+
         if let Err(e) = self.validate_body(block) {
             // We mark invalid blocks with status StatusInvalid except in the
             // case of the following errors:
@@ -155,7 +177,7 @@ impl BlockBodyProcessor {
             return Err(e);
         }
 
-        self.commit_body(block);
+        self.commit_body(block.hash(), block.header.direct_parents(), block.transactions.clone());
         Ok(BlockStatus::StatusUTXOPendingVerification)
     }
 
@@ -164,18 +186,56 @@ impl BlockBodyProcessor {
         self.validate_body_in_context(block)
     }
 
-    fn commit_body(self: &Arc<BlockBodyProcessor>, block: &Block) {
+    fn commit_body(self: &Arc<BlockBodyProcessor>, hash: Hash, parents: &[Hash], transactions: Arc<Vec<Transaction>>) {
         let mut batch = WriteBatch::default();
 
         // This is an append only store so it requires no lock.
-        self.block_transactions_store.insert_batch(&mut batch, block.header.hash, block.transactions.clone()).unwrap();
+        self.block_transactions_store.insert_batch(&mut batch, hash, transactions).unwrap();
 
+        let mut body_tips_write_guard = self.body_tips_store.write();
+        body_tips_write_guard.add_tip_batch(&mut batch, hash, parents).unwrap();
         let statuses_write_guard =
-            self.statuses_store.set_batch(&mut batch, block.header.hash, BlockStatus::StatusUTXOPendingVerification).unwrap();
+            self.statuses_store.set_batch(&mut batch, hash, BlockStatus::StatusUTXOPendingVerification).unwrap();
 
         self.db.write(batch).unwrap();
 
         // Calling the drops explicitly after the batch is written in order to avoid possible errors.
         drop(statuses_write_guard);
+        drop(body_tips_write_guard);
+    }
+
+    pub fn process_genesis_if_needed(self: &Arc<BlockBodyProcessor>) {
+        let status = self.statuses_store.read().get(self.genesis_hash).unwrap();
+        match status {
+            StatusHeaderOnly => {
+                let mut batch = WriteBatch::default();
+                let mut body_tips_write_guard = self.body_tips_store.write();
+                body_tips_write_guard.init_batch(&mut batch, &[]).unwrap();
+                self.db.write(batch).unwrap();
+                drop(body_tips_write_guard);
+
+                let genesis_coinbase = Transaction::new(
+                    TX_VERSION,
+                    vec![],
+                    vec![],
+                    0,
+                    SUBNETWORK_ID_COINBASE,
+                    0,
+                    vec![
+                        // Kaspad devnet coinbase payload
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // Blue score
+                        0x00, 0xE1, 0xF5, 0x05, 0x00, 0x00, 0x00, 0x00, // Subsidy
+                        0x00, 0x00, // Script version
+                        0x01, // Varint
+                        0x00, // OP-FALSE
+                        0x6b, 0x61, 0x73, 0x70, 0x61, 0x2d, 0x64, 0x65, 0x76, 0x6e, 0x65, 0x74, // kaspa-devnet
+                    ],
+                    0,
+                );
+                self.commit_body(self.genesis_hash, &[], Arc::new(vec![genesis_coinbase]))
+            }
+            _ if status.has_block_body() => (),
+            _ => panic!("unexpected genesis status {:?}", status),
+        }
     }
 }

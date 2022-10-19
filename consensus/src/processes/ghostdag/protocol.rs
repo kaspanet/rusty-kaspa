@@ -15,12 +15,12 @@ use crate::{
             relations::RelationsStoreReader,
         },
     },
-    pipeline::header_processor::HeaderProcessingContext,
     processes::difficulty::calc_work,
 };
 
 use super::ordering::*;
 
+#[derive(Clone)]
 pub struct GhostdagManager<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V: HeaderStoreReader> {
     genesis_hash: Hash,
     pub(super) k: KType,
@@ -42,34 +42,48 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
         Self { genesis_hash, k, ghostdag_store, relations_store, reachability_service, headers_store }
     }
 
-    pub fn add_genesis_if_needed(&self, ctx: &mut HeaderProcessingContext) {
-        if !self.ghostdag_store.has(self.genesis_hash).unwrap() {
-            ctx.ghostdag_data = Some(Arc::new(GhostdagData::new(
-                0,
-                Default::default(),
-                blockhash::ORIGIN,
-                BlockHashes::new(Vec::new()),
-                BlockHashes::new(Vec::new()),
-                HashKTypeMap::new(HashMap::new()),
-            )));
-        }
+    pub fn genesis_ghostdag_data(&self) -> Arc<GhostdagData> {
+        Arc::new(GhostdagData::new(
+            0,
+            Default::default(), // TODO: take blue score and work from actual genesis
+            blockhash::ORIGIN,
+            BlockHashes::new(Vec::new()),
+            BlockHashes::new(Vec::new()),
+            HashKTypeMap::new(HashMap::new()),
+        ))
     }
 
-    fn find_selected_parent(&self, parents: &[Hash]) -> Hash {
+    pub fn find_selected_parent(&self, parents: &mut impl Iterator<Item = Hash>) -> Hash {
         parents
-            .iter()
-            .map(|parent| SortableBlock { hash: *parent, blue_work: self.ghostdag_store.get_blue_work(*parent).unwrap() })
+            .map(|parent| SortableBlock { hash: parent, blue_work: self.ghostdag_store.get_blue_work(parent).unwrap() })
             .max()
             .unwrap()
             .hash
     }
 
-    pub fn add_block(&self, ctx: &mut HeaderProcessingContext, block: Hash) {
-        let parents = ctx.header.direct_parents();
+    /// Runs the GHOSTDAG protocol and calculates the block GhostdagData by the given parents.
+    /// The function calculates mergeset blues by iterating over the blocks in
+    /// the anticone of the new block selected parent (which is the parent with the
+    /// highest blue work) and adds any block to the blue set if by adding
+    /// it these conditions will not be violated:
+    ///
+    /// 1) |anticone-of-candidate-block ∩ blue-set-of-new-block| ≤ K
+    ///
+    /// 2) For every blue block in blue-set-of-new-block:
+    ///    |(anticone-of-blue-block ∩ blue-set-new-block) ∪ {candidate-block}| ≤ K.
+    ///    We validate this condition by maintaining a map blues_anticone_sizes for
+    ///    each block which holds all the blue anticone sizes that were affected by
+    ///    the new added blue blocks.
+    ///    So to find out what is |anticone-of-blue ∩ blue-set-of-new-block| we just iterate in
+    ///    the selected parent chain of the new block until we find an existing entry in
+    ///    blues_anticone_sizes.
+    ///
+    /// For further details see the article https://eprint.iacr.org/2018/104.pdf
+    pub fn ghostdag(&self, parents: &[Hash]) -> Arc<GhostdagData> {
         assert!(!parents.is_empty(), "genesis must be added via a call to init");
 
         // Run the GHOSTDAG parent selection algorithm
-        let selected_parent = self.find_selected_parent(parents);
+        let selected_parent = self.find_selected_parent(&mut parents.iter().copied());
         // Initialize new GHOSTDAG block data with the selected parent
         let mut new_block_data = Arc::new(GhostdagData::new_with_selected_parent(selected_parent, self.k));
         // Get the mergeset in consensus-agreed topological order (topological here means forward in time from blocks to children)
@@ -94,9 +108,7 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
         let blue_work = self.ghostdag_store.get_blue_work(selected_parent).unwrap() + added_blue_work;
 
         new_block_data.finalize_score_and_work(blue_score, blue_work);
-
-        // Stage new block data
-        ctx.ghostdag_data = Some(new_block_data);
+        new_block_data
     }
 
     fn check_blue_candidate_with_chain_block(

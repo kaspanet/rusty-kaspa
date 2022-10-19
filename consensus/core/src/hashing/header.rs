@@ -1,6 +1,6 @@
 use super::HasherExtensions;
 use crate::header::Header;
-use hashes::{Hash, Hasher};
+use hashes::{Hash, HasherBase};
 
 /// Returns the header hash using the provided nonce+timestamp instead of those in the header.
 #[inline]

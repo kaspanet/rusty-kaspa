@@ -236,6 +236,7 @@ dependencies = [
  "kaspa-core",
  "math",
  "merkle",
+ "muhash",
  "parking_lot",
  "pow",
  "rand",
@@ -256,6 +257,7 @@ dependencies = [
  "faster-hex",
  "hashes",
  "merkle",
+ "muhash",
  "serde",
  "thiserror",
 ]
@@ -786,6 +788,7 @@ dependencies = [
  "rand",
  "rand_chacha",
  "rayon",
+ "serde",
 ]
 
 [[package]]

@@ -62,8 +62,8 @@ impl BlockTaskDependencyManager {
             e => {
                 e.and_modify(|v| {
                     v.result_transmitters.append(&mut result_transmitters);
-                    // The block now includes transactions, so we update the internal block data
                     if v.block.is_header_only() && !block.is_header_only() {
+                        // The block now includes transactions, so we update the internal block data
                         v.block = block;
                     }
                 });
@@ -90,9 +90,9 @@ impl BlockTaskDependencyManager {
         Some(block)
     }
 
-    /// Report the completion of a processing task. Signals progress to the managing thread.
-    /// The function passes the block and the final list of `result_transmitters` to the
-    /// provided `callback` function (note that callback is called under the internal lock),
+    /// Report the completion of a processing task. Signals idleness if pending task list is emptied.
+    /// The function passes the `block` and the final list of `result_transmitters` to the
+    /// provided `callback` function (note that `callback` is called under the internal lock),
     /// and returns a list of `dependent_tasks` which should be requeued to workers.
     pub fn end<F>(&self, hash: Hash, callback: F) -> Vec<Hash>
     where
@@ -109,7 +109,6 @@ impl BlockTaskDependencyManager {
             self.idle_signal.notify_one();
         }
 
-        // We return the block as well, in case it was updated to a non-header only block
         task.dependent_tasks
     }
 

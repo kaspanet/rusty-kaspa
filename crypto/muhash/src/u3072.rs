@@ -1,5 +1,6 @@
 use crate::ELEMENT_BYTE_SIZE;
 use math::Uint3072;
+use serde::{Deserialize, Serialize};
 use std::ops::{DivAssign, MulAssign};
 #[cfg(target_pointer_width = "64")]
 pub(crate) type Limb = u64;
@@ -166,6 +167,37 @@ impl U3072 {
         if self.is_overflow() {
             self.full_reduce();
         }
+    }
+}
+
+impl Serialize for U3072 {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        Uint3072(self.limbs).serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for U3072 {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let u = Uint3072::deserialize(deserializer)?;
+        Ok(U3072 { limbs: u.0 })
+    }
+}
+
+impl From<U3072> for Uint3072 {
+    fn from(u: U3072) -> Self {
+        Uint3072(u.limbs)
+    }
+}
+
+impl From<Uint3072> for U3072 {
+    fn from(u: Uint3072) -> Self {
+        U3072 { limbs: u.0 }
     }
 }
 

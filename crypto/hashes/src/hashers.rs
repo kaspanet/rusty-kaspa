@@ -1,8 +1,11 @@
 // use sha3::CShake256;
 use once_cell::sync::Lazy;
 
-pub trait Hasher: Clone + Default {
+pub trait HasherBase {
     fn update<A: AsRef<[u8]>>(&mut self, data: A) -> &mut Self;
+}
+
+pub trait Hasher: HasherBase + Clone + Default {
     fn finalize(self) -> crate::Hash;
     fn reset(&mut self);
     #[inline(always)]
@@ -102,12 +105,14 @@ macro_rules! blake2b_hasher {
 }
 macro_rules! impl_hasher {
     (struct $name:ident) => {
-        impl Hasher for $name {
+        impl HasherBase for $name {
             #[inline(always)]
             fn update<A: AsRef<[u8]>>(&mut self, data: A) -> &mut Self {
                 self.write(data);
                 self
             }
+        }
+        impl Hasher for $name {
             #[inline(always)]
             fn finalize(self) -> crate::Hash {
                 // Call the method

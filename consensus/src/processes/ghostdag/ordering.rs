@@ -2,6 +2,7 @@ use std::{cmp::Ordering, collections::HashSet};
 
 use consensus_core::BlueWorkType;
 use hashes::Hash;
+use serde::{Deserialize, Serialize};
 
 use crate::model::{
     services::reachability::ReachabilityService,
@@ -10,7 +11,7 @@ use crate::model::{
 
 use super::protocol::GhostdagManager;
 
-#[derive(Eq, Clone)]
+#[derive(Eq, Clone, Serialize, Deserialize)]
 pub struct SortableBlock {
     pub hash: Hash,
     pub blue_work: BlueWorkType,
