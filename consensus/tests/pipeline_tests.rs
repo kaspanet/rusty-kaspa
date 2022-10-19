@@ -179,7 +179,6 @@ async fn test_concurrent_pipeline_random() {
             let hash = blockhash::new_unique();
             new_tips.push(hash);
 
-            // Use fake transaction to make the block propagate to body and virtual processors
             let b = consensus.build_block_with_parents_and_transactions(hash, tips.clone(), vec![]);
 
             // Submit to consensus

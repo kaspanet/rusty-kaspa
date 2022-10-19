@@ -9,6 +9,7 @@ license.workspace = true
 [dependencies]
 hashes.workspace = true
 merkle.workspace = true
+muhash.workspace = true
 thiserror.workspace = true
 serde.workspace = true
 faster-hex.workspace = true

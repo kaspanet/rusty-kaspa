@@ -9,6 +9,7 @@ use crate::{
             errors::StoreResultExtensions,
             ghostdag::{DbGhostdagStore, GhostdagData},
             headers::DbHeadersStore,
+            headers_selected_tip::{DbHeadersSelectedTipStore, HeadersSelectedTipStoreReader},
             past_pruning_points::DbPastPruningPointsStore,
             pruning::{DbPruningStore, PruningPointInfo, PruningStore, PruningStoreReader},
             reachability::{DbReachabilityStore, StagingReachabilityStore},
@@ -23,9 +24,14 @@ use crate::{
     params::Params,
     pipeline::deps_manager::{BlockTask, BlockTaskDependencyManager},
     processes::{
-        block_at_depth::BlockDepthManager, dagtraversalmanager::DagTraversalManager, difficulty::DifficultyManager,
-        ghostdag::protocol::GhostdagManager, parents_builder::ParentsManager, pastmediantime::PastMedianTimeManager,
-        pruning::PruningManager, reachability::inquirer as reachability,
+        block_at_depth::BlockDepthManager,
+        dagtraversalmanager::DagTraversalManager,
+        difficulty::DifficultyManager,
+        ghostdag::{ordering::SortableBlock, protocol::GhostdagManager},
+        parents_builder::ParentsManager,
+        pastmediantime::PastMedianTimeManager,
+        pruning::PruningManager,
+        reachability::inquirer as reachability,
     },
     test_helpers::header_from_precomputed_hash,
 };
@@ -36,6 +42,7 @@ use consensus_core::{
 use crossbeam_channel::{Receiver, Sender};
 use hashes::Hash;
 use parking_lot::RwLock;
+use rayon::ThreadPool;
 use rocksdb::WriteBatch;
 use std::sync::{atomic::Ordering, Arc};
 
@@ -96,6 +103,9 @@ pub struct HeaderProcessor {
     receiver: Receiver<BlockTask>,
     body_sender: Sender<BlockTask>,
 
+    // Thread pool
+    pub(super) thread_pool: Arc<ThreadPool>,
+
     // Config
     pub(super) genesis_hash: Hash,
     pub(super) timestamp_deviation_tolerance: u64,
@@ -120,6 +130,7 @@ pub struct HeaderProcessor {
     pub(super) block_window_cache_for_past_median_time: Arc<BlockWindowCacheStore>,
     pub(super) daa_store: Arc<DbDaaStore>,
     pub(super) headers_store: Arc<DbHeadersStore>,
+    pub(super) headers_selected_tip_store: Arc<RwLock<DbHeadersSelectedTipStore>>,
     depth_store: Arc<DbDepthStore>,
 
     // Managers and services
@@ -149,6 +160,7 @@ impl HeaderProcessor {
     pub fn new(
         receiver: Receiver<BlockTask>,
         body_sender: Sender<BlockTask>,
+        thread_pool: Arc<ThreadPool>,
         params: &Params,
         db: Arc<DB>,
         relations_store: Arc<RwLock<DbRelationsStore>>,
@@ -159,6 +171,7 @@ impl HeaderProcessor {
         statuses_store: Arc<RwLock<DbStatusesStore>>,
         pruning_store: Arc<RwLock<DbPruningStore>>,
         depth_store: Arc<DbDepthStore>,
+        headers_selected_tip_store: Arc<RwLock<DbHeadersSelectedTipStore>>,
         block_window_cache_for_difficulty: Arc<BlockWindowCacheStore>,
         block_window_cache_for_past_median_time: Arc<BlockWindowCacheStore>,
         reachability_service: MTReachabilityService<DbReachabilityStore>,
@@ -174,6 +187,7 @@ impl HeaderProcessor {
         Self {
             receiver,
             body_sender,
+            thread_pool,
             genesis_hash: params.genesis_hash,
             difficulty_window_size: params.difficulty_window_size,
             db,
@@ -185,6 +199,7 @@ impl HeaderProcessor {
             daa_store,
             headers_store: headers_store.clone(),
             depth_store,
+            headers_selected_tip_store,
             block_window_cache_for_difficulty,
             block_window_cache_for_past_median_time,
             ghostdag_manager: GhostdagManager::new(
@@ -222,7 +237,7 @@ impl HeaderProcessor {
                     let hash = block.header.hash;
                     if self.task_manager.register(block, result_transmitters) {
                         let processor = self.clone();
-                        rayon::spawn(move || {
+                        self.thread_pool.spawn(move || {
                             processor.queue_block(hash);
                         });
                     }
@@ -254,7 +269,7 @@ impl HeaderProcessor {
 
             for dep in dependent_tasks {
                 let processor = self.clone();
-                rayon::spawn(move || processor.queue_block(dep));
+                self.thread_pool.spawn(move || processor.queue_block(dep));
             }
         }
     }
@@ -277,7 +292,7 @@ impl HeaderProcessor {
 
         // Run all header validations for the new header
         self.pre_ghostdag_validation(&mut ctx, header)?;
-        self.ghostdag_manager.add_block(&mut ctx, header.hash); // TODO: Run GHOSTDAG for all block levels
+        ctx.ghostdag_data = Some(self.ghostdag_manager.ghostdag(header.direct_parents())); // TODO: Run GHOSTDAG for all block levels
         self.pre_pow_validation(&mut ctx, header)?;
         if let Err(e) = self.post_pow_validation(&mut ctx, header) {
             self.statuses_store.write().set(ctx.hash, StatusInvalid).unwrap();
@@ -320,12 +335,17 @@ impl HeaderProcessor {
             &mut ghostdag_data.unordered_mergeset_without_selected_parent(),
         )
         .unwrap();
-        // Hint reachability about the new tip.
-        // TODO: imp header tips store and call this only for an actual header selected tip
-        reachability::hint_virtual_selected_parent(&mut staging, ctx.hash).unwrap();
 
         // Non-append only stores need to use write locks.
         // Note we need to keep the lock write guards until the batch is written.
+        let mut hst_write_guard = self.headers_selected_tip_store.write();
+        let prev_hst = hst_write_guard.get().unwrap();
+        if SortableBlock::new(ctx.hash, header.blue_work) > prev_hst {
+            // Hint reachability about the new tip.
+            reachability::hint_virtual_selected_parent(&mut staging, ctx.hash).unwrap();
+            hst_write_guard.set_batch(&mut batch, SortableBlock::new(ctx.hash, header.blue_work)).unwrap();
+        }
+
         let relations_write_guard = if header.direct_parents().is_empty() {
             self.relations_store.insert_batch(&mut batch, header.hash, BlockHashes::new(vec![ORIGIN])).unwrap()
         } else {
@@ -346,6 +366,7 @@ impl HeaderProcessor {
         drop(reachability_write_guard);
         drop(statuses_write_guard);
         drop(relations_write_guard);
+        drop(hst_write_guard);
     }
 
     pub fn process_genesis_if_needed(self: &Arc<HeaderProcessor>) {
@@ -355,15 +376,19 @@ impl HeaderProcessor {
 
         {
             let mut batch = WriteBatch::default();
-            let write_guard = self.relations_store.insert_batch(&mut batch, ORIGIN, BlockHashes::new(vec![]));
+            let relations_write_guard = self.relations_store.insert_batch(&mut batch, ORIGIN, BlockHashes::new(vec![]));
+            let mut hst_write_guard = self.headers_selected_tip_store.write();
+            hst_write_guard.set_batch(&mut batch, SortableBlock::new(self.genesis_hash, 0)).unwrap(); // TODO: take blue work from genesis block
             self.db.write(batch).unwrap();
+            drop(hst_write_guard);
+            drop(relations_write_guard);
         }
 
         self.pruning_store.write().set(self.genesis_hash, self.genesis_hash, 0).unwrap();
         let mut header = header_from_precomputed_hash(self.genesis_hash, vec![]); // TODO
         header.bits = self.genesis_bits;
         let mut ctx = HeaderProcessingContext::new(self.genesis_hash, &header, PruningPointInfo::from_genesis(self.genesis_hash));
-        self.ghostdag_manager.add_genesis_if_needed(&mut ctx);
+        ctx.ghostdag_data = Some(self.ghostdag_manager.genesis_ghostdag_data());
         ctx.block_window_for_difficulty = Some(Default::default());
         ctx.block_window_for_past_median_time = Some(Default::default());
         ctx.daa_added_blocks = Some(Default::default());

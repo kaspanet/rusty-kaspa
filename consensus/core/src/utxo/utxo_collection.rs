@@ -1,3 +1,4 @@
+use super::utxo_view::UtxoView;
 use crate::tx::*;
 use std::collections::HashMap;
 
@@ -9,10 +10,10 @@ pub trait UtxoCollectionExtensions {
 
     /// Adds all entries from `other` to `self`.
     /// Note that this means that values from `other` might override values of `self`.
-    fn add_many(&mut self, other: &Self);
+    fn add_collection(&mut self, other: &Self);
 
     /// Removes all elements in `other` from `self`. Equivalent to `self - other` in set theory.
-    fn remove_many(&mut self, other: &Self);
+    fn remove_collection(&mut self, other: &Self);
 
     /// Returns whether the intersection between the two collections is not empty.
     fn intersects(&self, other: &Self) -> bool;
@@ -24,6 +25,12 @@ pub trait UtxoCollectionExtensions {
         F: Fn(&TransactionOutpoint, &UtxoEntry, &UtxoEntry) -> bool;
 }
 
+impl UtxoView for UtxoCollection {
+    fn get(&self, outpoint: &TransactionOutpoint) -> Option<UtxoEntry> {
+        self.get(outpoint).cloned()
+    }
+}
+
 impl UtxoCollectionExtensions for UtxoCollection {
     fn contains_with_daa_score(&self, outpoint: &TransactionOutpoint, daa_score: u64) -> bool {
         if let Some(entry) = self.get(outpoint) {
@@ -33,13 +40,13 @@ impl UtxoCollectionExtensions for UtxoCollection {
         }
     }
 
-    fn add_many(&mut self, other: &Self) {
+    fn add_collection(&mut self, other: &Self) {
         for (k, v) in other.iter() {
             self.insert(*k, v.clone());
         }
     }
 
-    fn remove_many(&mut self, other: &Self) {
+    fn remove_collection(&mut self, other: &Self) {
         for k in other.keys() {
             self.remove(k);
         }
@@ -145,22 +152,5 @@ pub(super) fn subtraction_with_remainder_having_daa_score_in_place(
         } else {
             remainder.insert(*outpoint, entry.clone());
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::sync::Arc;
-
-    #[test]
-    fn test_types() {
-        let mut map = UtxoCollection::new();
-
-        map.insert(
-            TransactionOutpoint { transaction_id: 6.into(), index: 1 },
-            UtxoEntry { amount: 5, script_public_key: Arc::new(ScriptPublicKey::default()), block_daa_score: 765, is_coinbase: false },
-        );
-        dbg!(map);
     }
 }

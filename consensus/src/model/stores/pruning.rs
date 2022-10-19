@@ -38,8 +38,6 @@ pub trait PruningStore: PruningStoreReader {
     fn set(&mut self, pruning_point: Hash, candidate: Hash, index: u64) -> StoreResult<()>;
 }
 
-const STORE_PREFIX: &[u8] = b"pruning";
-
 /// A DB + cache implementation of `PruningStore` trait, with concurrent readers support.
 #[derive(Clone)]
 pub struct DbPruningStore {

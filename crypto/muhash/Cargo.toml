@@ -10,6 +10,7 @@ license.workspace = true
 math.workspace = true
 hashes.workspace = true
 rand_chacha.workspace = true
+serde.workspace = true
 
 # For the exhuative tests, should only be enabled with release
 rayon = { workspace = true, optional = true }

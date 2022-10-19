@@ -1,6 +1,9 @@
-use hashes::{Hash, Hasher, MerkleBranchHash, ZERO_HASH};
+use hashes::{Hash, HasherBase, MerkleBranchHash, ZERO_HASH};
 
 pub fn calc_merkle_root(hashes: impl ExactSizeIterator<Item = Hash>) -> Hash {
+    if hashes.len() == 0 {
+        return ZERO_HASH;
+    }
     let next_pot = hashes.len().next_power_of_two();
     let vec_len = 2 * next_pot - 1;
     let mut merkles = vec![None; vec_len];

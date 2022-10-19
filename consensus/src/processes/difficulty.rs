@@ -40,9 +40,7 @@ impl<T: HeaderStoreReader> DifficultyManager<T> {
 
         let mergeset_len = ghostdag_data.mergeset_size();
         let mergeset: HashSet<Hash> = ghostdag_data.unordered_mergeset().collect();
-
         let daa_added_blocks: Vec<_> = window_hashes.filter(|h| mergeset.contains(h)).take(mergeset_len).collect();
-
         let sp_daa_score = self.headers_store.get_daa_score(ghostdag_data.selected_parent).unwrap();
 
         (sp_daa_score + daa_added_blocks.len() as u64, daa_added_blocks)

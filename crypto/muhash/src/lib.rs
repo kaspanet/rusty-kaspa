@@ -5,9 +5,11 @@ pub mod u3072;
 mod u3072;
 
 use crate::u3072::U3072;
-use hashes::{Hash, Hasher, MuHashElementHash, MuHashFinalizeHash};
+use hashes::{Hash, Hasher, HasherBase, MuHashElementHash, MuHashFinalizeHash};
+use math::Uint3072;
 use rand_chacha::rand_core::{RngCore, SeedableRng};
 use rand_chacha::ChaCha20Rng;
+use serde::{Deserialize, Serialize};
 use std::error::Error;
 use std::fmt::Display;
 
@@ -26,7 +28,7 @@ pub(crate) const ELEMENT_BYTE_SIZE: usize = ELEMENT_BIT_SIZE / 8;
 /// which is a rolling(homomorphic) hash that you can add and remove elements from
 /// and receive the same resulting hash as-if you never hashed them.
 /// Because of that the order of adding and removing elements doesn't matter.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MuHash {
     numerator: U3072,
     denominator: U3072,
@@ -68,6 +70,18 @@ impl MuHash {
     }
 
     #[inline]
+    // returns a hasher for hashing data which on `finalize` adds the finalized hash to the muhash.
+    pub fn add_element_builder(&mut self) -> MuHashElementBuilder {
+        MuHashElementBuilder::new(&mut self.numerator)
+    }
+
+    #[inline]
+    // returns a hasher for hashing data which on `finalize` removes the finalized hash from the muhash.
+    pub fn remove_element_builder(&mut self) -> MuHashElementBuilder {
+        MuHashElementBuilder::new(&mut self.denominator)
+    }
+
+    #[inline]
     // will add the MuHash together. Equivalent to manually adding all the data elements
     // from one set to the other.
     pub fn combine(&mut self, other: &Self) {
@@ -101,6 +115,55 @@ impl MuHash {
         } else {
             Ok(Self { numerator, denominator: U3072::one() })
         }
+    }
+}
+
+#[derive(Debug)]
+pub enum MuHashError {
+    NonNormalizedValue,
+}
+
+impl TryFrom<MuHash> for Uint3072 {
+    type Error = MuHashError;
+
+    fn try_from(value: MuHash) -> Result<Self, Self::Error> {
+        if value.denominator == U3072::one() {
+            Ok(value.numerator.into())
+        } else {
+            Err(MuHashError::NonNormalizedValue)
+        }
+    }
+}
+
+impl From<Uint3072> for MuHash {
+    fn from(u: Uint3072) -> Self {
+        MuHash { numerator: u.into(), denominator: U3072::one() }
+    }
+}
+
+pub struct MuHashElementBuilder<'a> {
+    muhash_field: &'a mut U3072,
+    element_hasher: MuHashElementHash,
+}
+
+impl<'a> HasherBase for MuHashElementBuilder<'a> {
+    fn update<A: AsRef<[u8]>>(&mut self, data: A) -> &mut Self {
+        self.element_hasher.write(data);
+        self
+    }
+}
+
+impl<'a> MuHashElementBuilder<'a> {
+    pub fn new(muhash_field: &'a mut U3072) -> Self {
+        Self { muhash_field, element_hasher: MuHashElementHash::new() }
+    }
+
+    pub fn finalize(self) {
+        let hash = self.element_hasher.finalize();
+        let mut stream = ChaCha20Rng::from_seed(hash.as_bytes());
+        let mut bytes = [0u8; ELEMENT_BYTE_SIZE];
+        stream.fill_bytes(&mut bytes);
+        *self.muhash_field *= U3072::from_le_bytes(bytes);
     }
 }
 

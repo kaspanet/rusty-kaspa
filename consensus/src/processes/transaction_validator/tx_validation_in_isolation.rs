@@ -1,4 +1,4 @@
-use crate::constants::TX_VERSION;
+use crate::constants::{MAX_SOMPI, TX_VERSION};
 use consensus_core::tx::Transaction;
 use std::collections::HashSet;
 
@@ -13,6 +13,7 @@ impl TransactionValidator {
         self.check_transaction_outputs_in_isolation(tx)?;
         self.check_coinbase_in_isolation(tx)?;
 
+        check_transaction_output_value_ranges(tx)?;
         check_duplicate_transaction_inputs(tx)?;
         check_gas(tx)?;
         check_transaction_payload(tx)?;
@@ -120,6 +121,31 @@ fn check_transaction_version(tx: &Transaction) -> TxResult<()> {
     Ok(())
 }
 
+fn check_transaction_output_value_ranges(tx: &Transaction) -> TxResult<()> {
+    let mut total: u64 = 0;
+    for (i, output) in tx.outputs.iter().enumerate() {
+        if output.value == 0 {
+            return Err(TxRuleError::TxOutZero(i));
+        }
+
+        if output.value > MAX_SOMPI {
+            return Err(TxRuleError::TxOutTooHigh(i));
+        }
+
+        if let Some(new_total) = total.checked_add(output.value) {
+            total = new_total
+        } else {
+            return Err(TxRuleError::OutputsValueOverflow);
+        }
+
+        if total > MAX_SOMPI {
+            return Err(TxRuleError::TotalTxOutTooHigh);
+        }
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -128,6 +154,7 @@ mod tests {
         subnets::{SUBNETWORK_ID_COINBASE, SUBNETWORK_ID_NATIVE},
         tx::{ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput},
     };
+    use kaspa_core::assert_match;
 
     use crate::{
         constants::TX_VERSION,
@@ -147,6 +174,7 @@ mod tests {
             params.max_script_public_key_len,
             params.ghostdag_k,
             params.coinbase_payload_script_public_key_max_len,
+            params.coinbase_maturity,
         );
 
         let valid_cb = Transaction::new(
@@ -196,7 +224,6 @@ mod tests {
                 ],
                 sequence: u64::MAX,
                 sig_op_count: 0,
-                utxo_entry: None,
             })],
             vec![
                 Arc::new(TransactionOutput {
@@ -239,38 +266,38 @@ mod tests {
 
         let mut tx = valid_tx.clone();
         tx.inputs = vec![];
-        assert!(matches!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::NoTxInputs)));
+        assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::NoTxInputs));
 
         let mut tx = valid_tx.clone();
         tx.inputs = (0..params.max_tx_inputs + 1).map(|i| valid_tx.inputs[0].clone()).collect();
-        assert!(matches!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::TooManyInputs(_, _))));
+        assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::TooManyInputs(_, _)));
 
         let mut tx = valid_tx.clone();
         Arc::make_mut(&mut tx.inputs[0]).signature_script = vec![0; params.max_signature_script_len + 1];
-        assert!(matches!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::TooBigSignatureScript(_, _))));
+        assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::TooBigSignatureScript(_, _)));
 
         let mut tx = valid_tx.clone();
         tx.outputs = (0..params.max_tx_outputs + 1).map(|i| valid_tx.outputs[0].clone()).collect();
-        assert!(matches!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::TooManyOutputs(_, _))));
+        assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::TooManyOutputs(_, _)));
 
         let mut tx = valid_tx.clone();
         Arc::make_mut(&mut Arc::make_mut(&mut tx.outputs[0]).script_public_key).script = vec![0; params.max_script_public_key_len + 1];
-        assert!(matches!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::TooBigScriptPublicKey(_, _))));
+        assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::TooBigScriptPublicKey(_, _)));
 
         let mut tx = valid_tx.clone();
         tx.inputs.push(tx.inputs[0].clone());
-        assert!(matches!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::TxDuplicateInputs)));
+        assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::TxDuplicateInputs));
 
         let mut tx = valid_tx.clone();
         tx.gas = 1;
-        assert!(matches!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::TxHasGas)));
+        assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::TxHasGas));
 
         let mut tx = valid_tx.clone();
         tx.payload = vec![0];
-        assert!(matches!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::NonCoinbaseTxHasPayload)));
+        assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::NonCoinbaseTxHasPayload));
 
         let mut tx = valid_tx;
         tx.version = TX_VERSION + 1;
-        assert!(matches!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::UnknownTxVersion(_))));
+        assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::UnknownTxVersion(_)));
     }
 }
