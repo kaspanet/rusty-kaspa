@@ -2,23 +2,20 @@ use crate::{errors::BlockProcessResult, model::stores::statuses::BlockStatus};
 use consensus_core::block::Block;
 use hashes::Hash;
 use parking_lot::{Condvar, Mutex};
-use std::{
-    collections::{hash_map::Entry::Vacant, HashMap},
-    sync::Arc,
-};
+use std::collections::{hash_map::Entry::Vacant, HashMap};
 use tokio::sync::oneshot;
 
 pub type BlockResultSender = oneshot::Sender<BlockProcessResult<BlockStatus>>;
 
 pub enum BlockTask {
     Exit,
-    Process(Arc<Block>, Vec<BlockResultSender>),
+    Process(Block, Vec<BlockResultSender>),
 }
 
 /// An internal struct used to manage a block processing task
 struct BlockTaskInternal {
     // The actual block
-    block: Arc<Block>,
+    block: Block,
 
     // A list of channel senders for transmitting the processing result of this task to the async callers
     result_transmitters: Vec<BlockResultSender>,
@@ -28,7 +25,7 @@ struct BlockTaskInternal {
 }
 
 impl BlockTaskInternal {
-    fn new(block: Arc<Block>, result_transmitters: Vec<BlockResultSender>) -> Self {
+    fn new(block: Block, result_transmitters: Vec<BlockResultSender>) -> Self {
         Self { block, result_transmitters, dependent_tasks: Vec::new() }
     }
 }
@@ -52,7 +49,7 @@ impl BlockTaskDependencyManager {
     /// result transmitters and the function returns `false` indicating that the task shall
     /// not be queued for processing. The function is expected to be called by a worker
     /// controlling the reception of block processing tasks.
-    pub fn register(&self, block: Arc<Block>, mut result_transmitters: Vec<BlockResultSender>) -> bool {
+    pub fn register(&self, block: Block, mut result_transmitters: Vec<BlockResultSender>) -> bool {
         let mut pending = self.pending.lock();
         match pending.entry(block.header.hash) {
             Vacant(e) => {
@@ -76,7 +73,7 @@ impl BlockTaskDependencyManager {
     /// previously registered through `self.register`. If any of the direct parents `parent` of
     /// this hash are in `pending` state, the task is queued as a dependency to the `parent` task
     /// and wil be re-evaluated once that task completes -- in which case the function will return `None`.
-    pub fn try_begin(&self, hash: Hash) -> Option<Arc<Block>> {
+    pub fn try_begin(&self, hash: Hash) -> Option<Block> {
         // Lock the pending map. The contention around the lock is
         // expected to be negligible in header processing time
         let mut pending = self.pending.lock();
@@ -96,7 +93,7 @@ impl BlockTaskDependencyManager {
     /// and returns a list of `dependent_tasks` which should be requeued to workers.
     pub fn end<F>(&self, hash: Hash, callback: F) -> Vec<Hash>
     where
-        F: Fn(Arc<Block>, Vec<BlockResultSender>),
+        F: Fn(Block, Vec<BlockResultSender>),
     {
         // Re-lock for post-processing steps
         let mut pending = self.pending.lock();

@@ -5,7 +5,12 @@ use std::{
 };
 
 use consensus_core::{
-    block::Block, header::Header, merkle::calc_hash_merkle_root, subnets::SUBNETWORK_ID_COINBASE, tx::Transaction, BlockHashSet,
+    block::{Block, MutableBlock},
+    header::Header,
+    merkle::calc_hash_merkle_root,
+    subnets::SUBNETWORK_ID_COINBASE,
+    tx::Transaction,
+    BlockHashSet,
 };
 use hashes::Hash;
 use kaspa_core::{core::Core, service::Service};
@@ -71,10 +76,15 @@ impl TestConsensus {
     }
 
     pub fn add_block_with_parents(&self, hash: Hash, parents: Vec<Hash>) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
-        self.validate_and_insert_block(Arc::new(self.build_block_with_parents(hash, parents)))
+        self.validate_and_insert_block(self.build_block_with_parents(hash, parents).to_immutable())
     }
 
-    pub fn build_block_with_parents_and_transactions(&self, hash: Hash, parents: Vec<Hash>, txs: Vec<Transaction>) -> Block {
+    pub fn build_block_with_parents_and_transactions(
+        &self,
+        hash: Hash,
+        parents: Vec<Hash>,
+        mut txs: Vec<Transaction>,
+    ) -> MutableBlock {
         let mut header = self.build_header_with_parents(hash, parents);
         let cb_payload: Vec<u8> = header.blue_score.to_le_bytes().iter().copied() // Blue score
             .chain(self.consensus.coinbase_manager.calc_block_subsidy(header.daa_score).to_le_bytes().iter().copied()) // Subsidy
@@ -83,16 +93,16 @@ impl TestConsensus {
             .collect();
 
         let cb = Transaction::new(TX_VERSION, vec![], vec![], 0, SUBNETWORK_ID_COINBASE, 0, cb_payload, 0);
-        let final_txs = vec![vec![cb], txs].concat();
-        header.hash_merkle_root = calc_hash_merkle_root(final_txs.iter());
-        Block { header, transactions: Arc::new(final_txs) }
+        txs.insert(0, cb);
+        header.hash_merkle_root = calc_hash_merkle_root(txs.iter());
+        MutableBlock::new(header, txs)
     }
 
-    pub fn build_block_with_parents(&self, hash: Hash, parents: Vec<Hash>) -> Block {
-        Block::from_header(self.build_header_with_parents(hash, parents))
+    pub fn build_block_with_parents(&self, hash: Hash, parents: Vec<Hash>) -> MutableBlock {
+        MutableBlock::from_header(self.build_header_with_parents(hash, parents))
     }
 
-    pub fn validate_and_insert_block(&self, block: Arc<Block>) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
+    pub fn validate_and_insert_block(&self, block: Block) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
         self.consensus.validate_and_insert_block(block)
     }
 

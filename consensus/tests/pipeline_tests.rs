@@ -14,7 +14,7 @@ use hashes::Hash;
 use parking_lot::RwLock;
 use rand_distr::{Distribution, Poisson};
 use rocksdb::WriteBatch;
-use std::{cmp::min, sync::Arc};
+use std::cmp::min;
 use tokio::join;
 
 mod common;
@@ -107,8 +107,8 @@ async fn test_concurrent_pipeline() {
 
     for (hash, parents) in blocks {
         // Submit to consensus twice to make sure duplicates are handled
-        let b = Arc::new(consensus.build_block_with_parents(hash, parents));
-        let results = join!(consensus.validate_and_insert_block(Arc::clone(&b)), consensus.validate_and_insert_block(b));
+        let b = consensus.build_block_with_parents(hash, parents).to_immutable();
+        let results = join!(consensus.validate_and_insert_block(b.clone()), consensus.validate_and_insert_block(b));
         results.0.unwrap();
         results.1.unwrap();
     }
@@ -179,10 +179,10 @@ async fn test_concurrent_pipeline_random() {
             let hash = blockhash::new_unique();
             new_tips.push(hash);
 
-            let b = consensus.build_block_with_parents_and_transactions(hash, tips.clone(), vec![]);
+            let b = consensus.build_block_with_parents_and_transactions(hash, tips.clone(), vec![]).to_immutable();
 
             // Submit to consensus
-            let f = consensus.validate_and_insert_block(Arc::new(b));
+            let f = consensus.validate_and_insert_block(b);
             futures.push(f);
         }
         join_all(futures).await.into_iter().collect::<Result<Vec<BlockStatus>, RuleError>>().unwrap();

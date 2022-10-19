@@ -107,59 +107,57 @@ mod tests {
         {
             let block = consensus.build_block_with_parents_and_transactions(2.into(), vec![1.into()], vec![]);
             // We expect a missing parents error since the parent is header only.
-            assert_match!(body_processor.validate_body_in_context(&block), Err(RuleError::MissingParents(_)));
+            assert_match!(body_processor.validate_body_in_context(&block.to_immutable()), Err(RuleError::MissingParents(_)));
         }
 
         let valid_block = consensus.build_block_with_parents_and_transactions(3.into(), vec![params.genesis_hash], vec![]);
-        consensus.validate_and_insert_block(Arc::new(valid_block)).await.unwrap();
+        consensus.validate_and_insert_block(valid_block.to_immutable()).await.unwrap();
         {
             let mut block = consensus.build_block_with_parents_and_transactions(2.into(), vec![3.into()], vec![]);
-            Arc::make_mut(&mut block.transactions)[0].payload[8..16].copy_from_slice(&(5_u64).to_le_bytes());
+            block.transactions[0].payload[8..16].copy_from_slice(&(5_u64).to_le_bytes());
             block.header.hash_merkle_root = calc_hash_merkle_root(block.transactions.iter());
 
-            let block = Arc::new(block);
             assert_match!(
-                consensus.validate_and_insert_block(block.clone()).await, Err(RuleError::WrongSubsidy(expected,_)) if expected == 50000000000);
+                consensus.validate_and_insert_block(block.clone().to_immutable()).await, Err(RuleError::WrongSubsidy(expected,_)) if expected == 50000000000);
 
             // The second time we send an invalid block we expect it to be a known invalid.
-            assert_match!(consensus.validate_and_insert_block(block).await, Err(RuleError::KnownInvalid));
+            assert_match!(consensus.validate_and_insert_block(block.to_immutable()).await, Err(RuleError::KnownInvalid));
         }
 
         {
             let mut block = consensus.build_block_with_parents_and_transactions(4.into(), vec![3.into()], vec![]);
-            Arc::make_mut(&mut block.transactions)[0].payload[0..8].copy_from_slice(&(100_u64).to_le_bytes());
+            block.transactions[0].payload[0..8].copy_from_slice(&(100_u64).to_le_bytes());
             block.header.hash_merkle_root = calc_hash_merkle_root(block.transactions.iter());
 
-            let block = Arc::new(block);
-            assert_match!(consensus.validate_and_insert_block(block.clone()).await, Err(RuleError::BadCoinbasePayloadBlueScore(_, _)));
+            assert_match!(
+                consensus.validate_and_insert_block(block.to_immutable()).await,
+                Err(RuleError::BadCoinbasePayloadBlueScore(_, _))
+            );
         }
 
         {
             let mut block = consensus.build_block_with_parents_and_transactions(5.into(), vec![3.into()], vec![]);
-            Arc::make_mut(&mut block.transactions)[0].payload = vec![];
+            block.transactions[0].payload = vec![];
             block.header.hash_merkle_root = calc_hash_merkle_root(block.transactions.iter());
 
-            let block = Arc::new(block);
-            assert_match!(consensus.validate_and_insert_block(block.clone()).await, Err(RuleError::BadCoinbasePayload(_)));
+            assert_match!(consensus.validate_and_insert_block(block.to_immutable()).await, Err(RuleError::BadCoinbasePayload(_)));
         }
 
-        let valid_block_child = Arc::new(consensus.build_block_with_parents_and_transactions(6.into(), vec![3.into()], vec![]));
-        consensus.validate_and_insert_block(valid_block_child.clone()).await.unwrap();
+        let valid_block_child = consensus.build_block_with_parents_and_transactions(6.into(), vec![3.into()], vec![]);
+        consensus.validate_and_insert_block(valid_block_child.clone().to_immutable()).await.unwrap();
         {
             // The block DAA score is 2, so the subsidy should be calculated according to the deflationary stage.
             let mut block = consensus.build_block_with_parents_and_transactions(7.into(), vec![6.into()], vec![]);
-            Arc::make_mut(&mut block.transactions)[0].payload[8..16].copy_from_slice(&(5_u64).to_le_bytes());
+            block.transactions[0].payload[8..16].copy_from_slice(&(5_u64).to_le_bytes());
             block.header.hash_merkle_root = calc_hash_merkle_root(block.transactions.iter());
-            assert_match!(consensus.validate_and_insert_block(Arc::new(block)).await, Err(RuleError::WrongSubsidy(expected,_)) if expected == 44000000000);
+            assert_match!(consensus.validate_and_insert_block(block.to_immutable()).await, Err(RuleError::WrongSubsidy(expected,_)) if expected == 44000000000);
         }
 
         {
             // Check that the same daa score as the block's daa score or higher fails, but lower passes.
             let tip_daa_score = valid_block_child.header.daa_score + 1;
             check_for_lock_time_and_sequence(&consensus, valid_block_child.header.hash, 8.into(), tip_daa_score + 1, 0, false).await;
-
             check_for_lock_time_and_sequence(&consensus, valid_block_child.header.hash, 9.into(), tip_daa_score, 0, false).await;
-
             check_for_lock_time_and_sequence(&consensus, valid_block_child.header.hash, 10.into(), tip_daa_score - 1, 0, true).await;
 
             let valid_block_child_gd = consensus.ghostdag_store().get_data(valid_block_child.header.hash).unwrap();
@@ -170,9 +168,7 @@ mod tests {
             let tip_daa_score = valid_block_child.header.daa_score + 1;
             check_for_lock_time_and_sequence(&consensus, valid_block_child.header.hash, 11.into(), past_median_time + 1, 0, false)
                 .await;
-
             check_for_lock_time_and_sequence(&consensus, valid_block_child.header.hash, 12.into(), past_median_time, 0, false).await;
-
             check_for_lock_time_and_sequence(&consensus, valid_block_child.header.hash, 13.into(), past_median_time - 1, 0, true)
                 .await;
 
@@ -219,10 +215,10 @@ mod tests {
         );
 
         if should_pass {
-            consensus.validate_and_insert_block(Arc::new(block)).await.unwrap();
+            consensus.validate_and_insert_block(block.to_immutable()).await.unwrap();
         } else {
             assert_match!(
-                consensus.validate_and_insert_block(Arc::new(block)).await, 
+                consensus.validate_and_insert_block(block.to_immutable()).await, 
                 Err(RuleError::TxInContextFailed(_, e)) if matches!(e, TxRuleError::NotFinalized(_)));
         }
     }

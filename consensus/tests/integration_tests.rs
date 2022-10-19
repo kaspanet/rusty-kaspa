@@ -151,7 +151,7 @@ async fn consensus_sanity_test() {
     let wait_handles = consensus.init();
 
     consensus
-        .validate_and_insert_block(Arc::new(consensus.build_block_with_parents(genesis_child, vec![MAINNET_PARAMS.genesis_hash])))
+        .validate_and_insert_block(consensus.build_block_with_parents(genesis_child, vec![MAINNET_PARAMS.genesis_hash]).to_immutable())
         .await
         .unwrap();
 
@@ -216,7 +216,7 @@ async fn ghostdag_test() {
             let block_header = consensus.build_header_with_parents(block_id, strings_to_hashes(&block.parents));
 
             // Submit to consensus
-            consensus.validate_and_insert_block(Arc::new(Block::from_header(block_header))).await.unwrap();
+            consensus.validate_and_insert_block(Block::from_header(block_header)).await.unwrap();
         }
 
         // Clone with a new cache in order to verify correct writes to the DB itself
@@ -314,7 +314,7 @@ async fn block_window_test() {
         );
 
         // Submit to consensus
-        consensus.validate_and_insert_block(Arc::new(block)).await.unwrap();
+        consensus.validate_and_insert_block(block.to_immutable()).await.unwrap();
 
         let window = consensus.dag_traversal_manager().block_window(consensus.ghostdag_store().get_data(block_id).unwrap(), 10);
 
@@ -345,7 +345,7 @@ async fn header_in_isolation_validation_test() {
         let mut block = block.clone();
         let block_version = BLOCK_VERSION - 1;
         block.header.version = block_version;
-        match consensus.validate_and_insert_block(Arc::new(block)).await {
+        match consensus.validate_and_insert_block(block.to_immutable()).await {
             Err(RuleError::WrongBlockVersion(wrong_version)) => {
                 assert_eq!(wrong_version, block_version)
             }
@@ -362,7 +362,7 @@ async fn header_in_isolation_validation_test() {
         let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64;
         let block_ts = now + params.timestamp_deviation_tolerance * params.target_time_per_block + 2000;
         block.header.timestamp = block_ts;
-        match consensus.validate_and_insert_block(Arc::new(block.clone())).await {
+        match consensus.validate_and_insert_block(block.to_immutable()).await {
             Err(RuleError::TimeTooFarIntoTheFuture(ts, _)) => {
                 assert_eq!(ts, block_ts)
             }
@@ -375,9 +375,8 @@ async fn header_in_isolation_validation_test() {
     {
         let mut block = block.clone();
         block.header.hash = 3.into();
-
         block.header.parents_by_level[0] = vec![];
-        match consensus.validate_and_insert_block(Arc::new(block.clone())).await {
+        match consensus.validate_and_insert_block(block.to_immutable()).await {
             Err(RuleError::NoParents) => {}
             res => {
                 panic!("Unexpected result: {:?}", res)
@@ -388,9 +387,8 @@ async fn header_in_isolation_validation_test() {
     {
         let mut block = block.clone();
         block.header.hash = 4.into();
-
         block.header.parents_by_level[0] = (5..(params.max_block_parents + 6)).map(|x| (x as u64).into()).collect();
-        match consensus.validate_and_insert_block(Arc::new(block.clone())).await {
+        match consensus.validate_and_insert_block(block.to_immutable()).await {
             Err(RuleError::TooManyParents(num_parents, limit)) => {
                 assert_eq!((params.max_block_parents + 1) as usize, num_parents);
                 assert_eq!(limit, params.max_block_parents as usize);
@@ -410,11 +408,11 @@ async fn incest_test() {
     let consensus = TestConsensus::create_from_temp_db(&params);
     let wait_handles = consensus.init();
     let block = consensus.build_block_with_parents(1.into(), vec![params.genesis_hash]);
-    consensus.validate_and_insert_block(Arc::new(block)).await.unwrap();
+    consensus.validate_and_insert_block(block.to_immutable()).await.unwrap();
 
     let mut block = consensus.build_block_with_parents(2.into(), vec![params.genesis_hash]);
     block.header.parents_by_level[0] = vec![1.into(), params.genesis_hash];
-    match consensus.validate_and_insert_block(Arc::new(block.clone())).await {
+    match consensus.validate_and_insert_block(block.to_immutable()).await {
         Err(RuleError::InvalidParentsRelation(a, b)) => {
             assert_eq!(a, params.genesis_hash);
             assert_eq!(b, 1.into());
@@ -434,7 +432,7 @@ async fn missing_parents_test() {
     let wait_handles = consensus.init();
     let mut block = consensus.build_block_with_parents(1.into(), vec![params.genesis_hash]);
     block.header.parents_by_level[0] = vec![0.into()];
-    match consensus.validate_and_insert_block(Arc::new(block)).await {
+    match consensus.validate_and_insert_block(block.to_immutable()).await {
         Err(RuleError::MissingParents(missing)) => {
             assert_eq!(missing, vec![0.into()]);
         }
@@ -456,15 +454,14 @@ async fn known_invalid_test() {
     let mut block = consensus.build_block_with_parents(1.into(), vec![params.genesis_hash]);
     block.header.timestamp -= 1;
 
-    let block = Arc::new(block);
-    match consensus.validate_and_insert_block(block.clone()).await {
+    match consensus.validate_and_insert_block(block.clone().to_immutable()).await {
         Err(RuleError::TimeTooOld(_, _)) => {}
         res => {
             panic!("Unexpected result: {:?}", res)
         }
     }
 
-    match consensus.validate_and_insert_block(block).await {
+    match consensus.validate_and_insert_block(block.to_immutable()).await {
         Err(RuleError::KnownInvalid) => {}
         res => {
             panic!("Unexpected result: {:?}", res)
@@ -485,13 +482,13 @@ async fn median_time_test() {
         let parent = if i == 1 { params.genesis_hash } else { (i - 1).into() };
         let mut block = consensus.build_block_with_parents(i.into(), vec![parent]);
         block.header.timestamp = params.genesis_timestamp + i;
-        consensus.validate_and_insert_block(Arc::new(block)).await.unwrap();
+        consensus.validate_and_insert_block(block.to_immutable()).await.unwrap();
     }
 
     let mut block = consensus.build_block_with_parents((num_blocks + 2).into(), vec![num_blocks.into()]);
     // We set the timestamp to be less than the median time and expect the block to be rejected
     block.header.timestamp = params.genesis_timestamp + num_blocks - params.timestamp_deviation_tolerance - 1;
-    match consensus.validate_and_insert_block(Arc::new(block)).await {
+    match consensus.validate_and_insert_block(block.to_immutable()).await {
         Err(RuleError::TimeTooOld(_, _)) => {}
         res => {
             panic!("Unexpected result: {:?}", res)
@@ -501,7 +498,7 @@ async fn median_time_test() {
     let mut block = consensus.build_block_with_parents((num_blocks + 3).into(), vec![num_blocks.into()]);
     // We set the timestamp to be the exact median time and expect the block to be rejected
     block.header.timestamp = params.genesis_timestamp + num_blocks - params.timestamp_deviation_tolerance;
-    match consensus.validate_and_insert_block(Arc::new(block)).await {
+    match consensus.validate_and_insert_block(block.to_immutable()).await {
         Err(RuleError::TimeTooOld(_, _)) => {}
         res => {
             panic!("Unexpected result: {:?}", res)
@@ -511,7 +508,7 @@ async fn median_time_test() {
     let mut block = consensus.build_block_with_parents((num_blocks + 4).into(), vec![(num_blocks).into()]);
     // We set the timestamp to be bigger than the median time and expect the block to be inserted successfully.
     block.header.timestamp = params.genesis_timestamp + params.timestamp_deviation_tolerance + 1;
-    consensus.validate_and_insert_block(Arc::new(block)).await.unwrap();
+    consensus.validate_and_insert_block(block.to_immutable()).await.unwrap();
 
     consensus.shutdown(wait_handles);
 }
@@ -528,18 +525,18 @@ async fn mergeset_size_limit_test() {
     for i in 1..(num_blocks_per_chain + 1) {
         let block = consensus.build_block_with_parents(i.into(), vec![tip1_hash]);
         tip1_hash = block.header.hash;
-        consensus.validate_and_insert_block(Arc::new(block)).await.unwrap();
+        consensus.validate_and_insert_block(block.to_immutable()).await.unwrap();
     }
 
     let mut tip2_hash = params.genesis_hash;
     for i in (num_blocks_per_chain + 2)..(2 * num_blocks_per_chain + 1) {
         let block = consensus.build_block_with_parents(i.into(), vec![tip2_hash]);
         tip2_hash = block.header.hash;
-        consensus.validate_and_insert_block(Arc::new(block)).await.unwrap();
+        consensus.validate_and_insert_block(block.to_immutable()).await.unwrap();
     }
 
     let block = consensus.build_block_with_parents((3 * num_blocks_per_chain + 1).into(), vec![tip1_hash, tip2_hash]);
-    match consensus.validate_and_insert_block(Arc::new(block)).await {
+    match consensus.validate_and_insert_block(block.to_immutable()).await {
         Err(RuleError::MergeSetTooBig(a, b)) => {
             assert_eq!(a, params.mergeset_size_limit + 1);
             assert_eq!(b, params.mergeset_size_limit);
@@ -750,10 +747,7 @@ async fn json_test(file_path: &str) {
         let hash = block.header.hash;
         // Test our hashing implementation vs the hash accepted from the json source
         assert_eq!(hashing::header::hash(&block.header), hash, "header hashing for block {} {} failed", i, hash);
-        let status = consensus
-            .validate_and_insert_block(Arc::new(block))
-            .await
-            .unwrap_or_else(|e| panic!("block {} {} failed: {}", i, hash, e));
+        let status = consensus.validate_and_insert_block(block).await.unwrap_or_else(|e| panic!("block {} {} failed: {}", i, hash, e));
         assert!(status.is_utxo_valid_or_pending());
     }
 
@@ -804,7 +798,7 @@ fn submit_chunk(
 ) -> Vec<impl Future<Output = BlockProcessResult<BlockStatus>>> {
     let mut futures = Vec::new();
     for line in chunk {
-        let f = consensus.validate_and_insert_block(Arc::new(json_line_to_block(line.unwrap())));
+        let f = consensus.validate_and_insert_block(json_line_to_block(line.unwrap()));
         futures.push(f);
     }
     futures
@@ -812,8 +806,8 @@ fn submit_chunk(
 
 fn json_line_to_block(line: String) -> Block {
     let rpc_block: RPCBlock = serde_json::from_str(&line).unwrap();
-    Block {
-        header: Header {
+    Block::new(
+        Header {
             hash: Hash::from_str(&rpc_block.VerboseData.Hash).unwrap(),
             version: rpc_block.Header.Version,
             parents_by_level: rpc_block
@@ -833,49 +827,47 @@ fn json_line_to_block(line: String) -> Block {
             blue_score: rpc_block.Header.BlueScore,
             pruning_point: Hash::from_str(&rpc_block.Header.PruningPoint).unwrap(),
         },
-        transactions: Arc::new(
-            rpc_block
-                .Transactions
-                .iter()
-                .map(|tx| {
-                    Transaction::new(
-                        tx.Version,
-                        tx.Inputs
-                            .iter()
-                            .map(|input| {
-                                Arc::new(TransactionInput {
-                                    previous_outpoint: TransactionOutpoint {
-                                        transaction_id: Hash::from_str(&input.PreviousOutpoint.TransactionID).unwrap(),
-                                        index: input.PreviousOutpoint.Index,
-                                    },
-                                    signature_script: hex_decode(&input.SignatureScript),
-                                    sequence: input.Sequence,
-                                    sig_op_count: input.SigOpCount,
-                                })
+        rpc_block
+            .Transactions
+            .iter()
+            .map(|tx| {
+                Transaction::new(
+                    tx.Version,
+                    tx.Inputs
+                        .iter()
+                        .map(|input| {
+                            Arc::new(TransactionInput {
+                                previous_outpoint: TransactionOutpoint {
+                                    transaction_id: Hash::from_str(&input.PreviousOutpoint.TransactionID).unwrap(),
+                                    index: input.PreviousOutpoint.Index,
+                                },
+                                signature_script: hex_decode(&input.SignatureScript),
+                                sequence: input.Sequence,
+                                sig_op_count: input.SigOpCount,
                             })
-                            .collect(),
-                        tx.Outputs
-                            .iter()
-                            .map(|output| {
-                                Arc::new(TransactionOutput {
-                                    value: output.Amount,
-                                    script_public_key: Arc::new(ScriptPublicKey {
-                                        script: hex_decode(&output.ScriptPublicKey.Script),
-                                        version: output.ScriptPublicKey.Version,
-                                    }),
-                                })
+                        })
+                        .collect(),
+                    tx.Outputs
+                        .iter()
+                        .map(|output| {
+                            Arc::new(TransactionOutput {
+                                value: output.Amount,
+                                script_public_key: Arc::new(ScriptPublicKey {
+                                    script: hex_decode(&output.ScriptPublicKey.Script),
+                                    version: output.ScriptPublicKey.Version,
+                                }),
                             })
-                            .collect(),
-                        tx.LockTime,
-                        SubnetworkId::from_str(&tx.SubnetworkID).unwrap(),
-                        tx.Gas,
-                        hex_decode(&tx.Payload),
-                        0,
-                    )
-                })
-                .collect(),
-        ),
-    }
+                        })
+                        .collect(),
+                    tx.LockTime,
+                    SubnetworkId::from_str(&tx.SubnetworkID).unwrap(),
+                    tx.Gas,
+                    hex_decode(&tx.Payload),
+                    0,
+                )
+            })
+            .collect(),
+    )
 }
 
 fn hex_decode(src: &str) -> Vec<u8> {

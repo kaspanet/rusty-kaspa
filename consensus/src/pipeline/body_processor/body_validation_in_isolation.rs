@@ -110,7 +110,7 @@ mod tests {
     use std::sync::Arc;
 
     use consensus_core::{
-        block::Block,
+        block::MutableBlock,
         header::Header,
         merkle::calc_hash_merkle_root,
         subnets::{SUBNETWORK_ID_COINBASE, SUBNETWORK_ID_NATIVE},
@@ -128,8 +128,8 @@ mod tests {
         let wait_handles = consensus.init();
 
         let body_processor = consensus.block_body_processor();
-        let example_block = Block {
-            header: Header::new(
+        let example_block = MutableBlock::new(
+            Header::new(
                 0,
                 vec![
                     Hash::from_slice(&[
@@ -152,7 +152,7 @@ mod tests {
                 0,
                 9,
             ),
-            transactions: Arc::new(vec![
+            vec![
                 Transaction::new(
                     0,
                     vec![],
@@ -376,57 +376,61 @@ mod tests {
                     vec![],
                     0,
                 ),
-            ]),
-        };
+            ],
+        );
 
-        body_processor.validate_body_in_isolation(&example_block).unwrap();
-
-        let mut block = example_block.clone();
-        Arc::make_mut(&mut block.transactions)[1].version += 1;
-        assert_match!(body_processor.validate_body_in_isolation(&block), Err(RuleError::BadMerkleRoot(_, _)));
+        body_processor.validate_body_in_isolation(&example_block.clone().to_immutable()).unwrap();
 
         let mut block = example_block.clone();
-        let txs = Arc::make_mut(&mut block.transactions);
+        let txs = &mut block.transactions;
+        txs[1].version += 1;
+        assert_match!(body_processor.validate_body_in_isolation(&block.to_immutable()), Err(RuleError::BadMerkleRoot(_, _)));
+
+        let mut block = example_block.clone();
+        let txs = &mut block.transactions;
         Arc::make_mut(&mut txs[1].inputs[0]).sig_op_count = 255;
         Arc::make_mut(&mut txs[1].inputs[1]).sig_op_count = 255;
         block.header.hash_merkle_root = calc_hash_merkle_root(txs.iter());
-        assert_match!(body_processor.validate_body_in_isolation(&block), Err(RuleError::ExceedsMassLimit(_)));
+        assert_match!(body_processor.validate_body_in_isolation(&block.to_immutable()), Err(RuleError::ExceedsMassLimit(_)));
 
         let mut block = example_block.clone();
-        let txs = Arc::make_mut(&mut block.transactions);
+        let txs = &mut block.transactions;
         txs.push(txs[1].clone());
         block.header.hash_merkle_root = calc_hash_merkle_root(txs.iter());
-        assert_match!(body_processor.validate_body_in_isolation(&block), Err(RuleError::DuplicateTransactions(_)));
+        assert_match!(body_processor.validate_body_in_isolation(&block.to_immutable()), Err(RuleError::DuplicateTransactions(_)));
 
         let mut block = example_block.clone();
-        let txs = Arc::make_mut(&mut block.transactions);
+        let txs = &mut block.transactions;
         txs[1].subnetwork_id = SUBNETWORK_ID_COINBASE;
         block.header.hash_merkle_root = calc_hash_merkle_root(txs.iter());
-        assert_match!(body_processor.validate_body_in_isolation(&block), Err(RuleError::MultipleCoinbases(_)));
+        assert_match!(body_processor.validate_body_in_isolation(&block.to_immutable()), Err(RuleError::MultipleCoinbases(_)));
 
         let mut block = example_block.clone();
-        let txs = Arc::make_mut(&mut block.transactions);
+        let txs = &mut block.transactions;
         Arc::make_mut(&mut txs[2].inputs[0]).previous_outpoint = txs[1].inputs[0].previous_outpoint;
         block.header.hash_merkle_root = calc_hash_merkle_root(txs.iter());
-        assert_match!(body_processor.validate_body_in_isolation(&block), Err(RuleError::DoubleSpendInSameBlock(_)));
+        assert_match!(body_processor.validate_body_in_isolation(&block.to_immutable()), Err(RuleError::DoubleSpendInSameBlock(_)));
 
         let mut block = example_block.clone();
-        let txs = Arc::make_mut(&mut block.transactions);
+        let txs = &mut block.transactions;
         txs[0].subnetwork_id = SUBNETWORK_ID_NATIVE;
         block.header.hash_merkle_root = calc_hash_merkle_root(txs.iter());
-        assert_match!(body_processor.validate_body_in_isolation(&block), Err(RuleError::FirstTxNotCoinbase));
+        assert_match!(body_processor.validate_body_in_isolation(&block.to_immutable()), Err(RuleError::FirstTxNotCoinbase));
 
         let mut block = example_block.clone();
-        let txs = Arc::make_mut(&mut block.transactions);
+        let txs = &mut block.transactions;
         txs[1].inputs = vec![];
         block.header.hash_merkle_root = calc_hash_merkle_root(txs.iter());
-        assert_match!(body_processor.validate_body_in_isolation(&block), Err(RuleError::TxInIsolationValidationFailed(_, _)));
+        assert_match!(
+            body_processor.validate_body_in_isolation(&block.to_immutable()),
+            Err(RuleError::TxInIsolationValidationFailed(_, _))
+        );
 
-        let mut block = example_block;
-        let txs = Arc::make_mut(&mut block.transactions);
+        let mut block = example_block.clone();
+        let txs = &mut block.transactions;
         Arc::make_mut(&mut txs[3].inputs[0]).previous_outpoint = TransactionOutpoint { transaction_id: txs[2].id(), index: 0 };
         block.header.hash_merkle_root = calc_hash_merkle_root(txs.iter());
-        assert_match!(body_processor.validate_body_in_isolation(&block), Err(RuleError::ChainedTransaction(_)));
+        assert_match!(body_processor.validate_body_in_isolation(&block.to_immutable()), Err(RuleError::ChainedTransaction(_)));
 
         consensus.shutdown(wait_handles);
     }
@@ -438,22 +442,20 @@ mod tests {
         let wait_handles = consensus.init();
 
         let mut block = consensus.build_block_with_parents_and_transactions(1.into(), vec![params.genesis_hash], vec![]);
-        Arc::make_mut(&mut block.transactions)[0].version += 1;
+        block.transactions[0].version += 1;
 
-        let block = Arc::new(block);
-        assert_match!(consensus.validate_and_insert_block(block.clone()).await, Err(RuleError::BadMerkleRoot(_, _)));
+        assert_match!(consensus.validate_and_insert_block(block.clone().to_immutable()).await, Err(RuleError::BadMerkleRoot(_, _)));
 
         // BadMerkleRoot shouldn't mark the block as known invalid
-        assert_match!(consensus.validate_and_insert_block(block).await, Err(RuleError::BadMerkleRoot(_, _)));
+        assert_match!(consensus.validate_and_insert_block(block.to_immutable()).await, Err(RuleError::BadMerkleRoot(_, _)));
 
         let mut block = consensus.build_block_with_parents_and_transactions(1.into(), vec![params.genesis_hash], vec![]);
         block.header.parents_by_level[0][0] = 0.into();
 
-        let block = Arc::new(block);
-        assert_match!(consensus.validate_and_insert_block(block.clone()).await, Err(RuleError::MissingParents(_)));
+        assert_match!(consensus.validate_and_insert_block(block.clone().to_immutable()).await, Err(RuleError::MissingParents(_)));
 
         // MissingParents shouldn't mark the block as known invalid
-        assert_match!(consensus.validate_and_insert_block(block).await, Err(RuleError::MissingParents(_)));
+        assert_match!(consensus.validate_and_insert_block(block.to_immutable()).await, Err(RuleError::MissingParents(_)));
 
         consensus.shutdown(wait_handles);
     }
