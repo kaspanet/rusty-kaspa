@@ -20,6 +20,7 @@ use crate::{
             pruning::DbPruningStore,
             reachability::DbReachabilityStore,
             relations::DbRelationsStore,
+            selected_tip::DbSelectedTipStore,
             statuses::{BlockStatus, DbStatusesStore},
             tips::DbTipsStore,
             utxo_diffs::DbUtxoDiffsStore,
@@ -74,7 +75,7 @@ pub struct Consensus {
     relations_store: Arc<RwLock<DbRelationsStore>>,
     reachability_store: Arc<RwLock<DbReachabilityStore>>,
     pruning_store: Arc<RwLock<DbPruningStore>>,
-    header_tips_store: Arc<RwLock<DbTipsStore>>,
+    headers_selected_tip_store: Arc<RwLock<DbSelectedTipStore>>,
     body_tips_store: Arc<RwLock<DbTipsStore>>,
 
     // Append-only stores
@@ -110,7 +111,7 @@ impl Consensus {
         let utxo_diffs_store = Arc::new(DbUtxoDiffsStore::new(db.clone(), CACHE_SIZE));
         let utxo_multisets_store = Arc::new(DbUtxoMultisetsStore::new(db.clone(), CACHE_SIZE));
         let acceptance_data_store = Arc::new(DbAcceptanceDataStore::new(db.clone(), CACHE_SIZE));
-        let header_tips_store = Arc::new(RwLock::new(DbTipsStore::new(db.clone(), store_names::HEADER_TIPS)));
+        let headers_selected_tip_store = Arc::new(RwLock::new(DbSelectedTipStore::new(db.clone(), store_names::HEADERS_SELECTED_TIP)));
         let body_tips_store = Arc::new(RwLock::new(DbTipsStore::new(db.clone(), store_names::BODY_TIPS)));
 
         let block_window_cache_for_difficulty = Arc::new(BlockWindowCacheStore::new(LARGE_DATA_CACHE_SIZE));
@@ -232,7 +233,7 @@ impl Consensus {
             statuses_store.clone(),
             pruning_store.clone(),
             depth_store,
-            header_tips_store.clone(),
+            headers_selected_tip_store.clone(),
             block_window_cache_for_difficulty,
             block_window_cache_for_past_median_time,
             reachability_service.clone(),
@@ -299,7 +300,7 @@ impl Consensus {
             reachability_store,
             ghostdag_store,
             pruning_store,
-            header_tips_store,
+            headers_selected_tip_store,
             body_tips_store,
 
             statuses_service,

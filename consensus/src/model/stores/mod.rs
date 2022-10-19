@@ -11,6 +11,7 @@ pub mod past_pruning_points;
 pub mod pruning;
 pub mod reachability;
 pub mod relations;
+pub mod selected_tip;
 pub mod statuses;
 pub mod tips;
 pub mod utxo_diffs;

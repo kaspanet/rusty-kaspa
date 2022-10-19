@@ -13,20 +13,25 @@ use crate::{
             pruning::{DbPruningStore, PruningPointInfo, PruningStore, PruningStoreReader},
             reachability::{DbReachabilityStore, StagingReachabilityStore},
             relations::{DbRelationsStore, RelationsStoreBatchExtensions},
+            selected_tip::{DbSelectedTipStore, SelectedTipStoreReader},
             statuses::{
                 BlockStatus::{self, StatusHeaderOnly, StatusInvalid},
                 DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader,
             },
-            tips::DbTipsStore,
             DB,
         },
     },
     params::Params,
     pipeline::deps_manager::{BlockTask, BlockTaskDependencyManager},
     processes::{
-        block_at_depth::BlockDepthManager, dagtraversalmanager::DagTraversalManager, difficulty::DifficultyManager,
-        ghostdag::protocol::GhostdagManager, parents_builder::ParentsManager, pastmediantime::PastMedianTimeManager,
-        pruning::PruningManager, reachability::inquirer as reachability,
+        block_at_depth::BlockDepthManager,
+        dagtraversalmanager::DagTraversalManager,
+        difficulty::DifficultyManager,
+        ghostdag::{ordering::SortableBlock, protocol::GhostdagManager},
+        parents_builder::ParentsManager,
+        pastmediantime::PastMedianTimeManager,
+        pruning::PruningManager,
+        reachability::inquirer as reachability,
     },
     test_helpers::header_from_precomputed_hash,
 };
@@ -125,7 +130,7 @@ pub struct HeaderProcessor {
     pub(super) block_window_cache_for_past_median_time: Arc<BlockWindowCacheStore>,
     pub(super) daa_store: Arc<DbDaaStore>,
     pub(super) headers_store: Arc<DbHeadersStore>,
-    pub(super) header_tips_store: Arc<RwLock<DbTipsStore>>,
+    pub(super) headers_selected_tip_store: Arc<RwLock<DbSelectedTipStore>>,
     depth_store: Arc<DbDepthStore>,
 
     // Managers and services
@@ -166,7 +171,7 @@ impl HeaderProcessor {
         statuses_store: Arc<RwLock<DbStatusesStore>>,
         pruning_store: Arc<RwLock<DbPruningStore>>,
         depth_store: Arc<DbDepthStore>,
-        header_tips_store: Arc<RwLock<DbTipsStore>>,
+        headers_selected_tip_store: Arc<RwLock<DbSelectedTipStore>>,
         block_window_cache_for_difficulty: Arc<BlockWindowCacheStore>,
         block_window_cache_for_past_median_time: Arc<BlockWindowCacheStore>,
         reachability_service: MTReachabilityService<DbReachabilityStore>,
@@ -194,7 +199,7 @@ impl HeaderProcessor {
             daa_store,
             headers_store: headers_store.clone(),
             depth_store,
-            header_tips_store,
+            headers_selected_tip_store,
             block_window_cache_for_difficulty,
             block_window_cache_for_past_median_time,
             ghostdag_manager: GhostdagManager::new(
@@ -333,12 +338,13 @@ impl HeaderProcessor {
 
         // Non-append only stores need to use write locks.
         // Note we need to keep the lock write guards until the batch is written.
-        let mut header_tips_write_guard = self.header_tips_store.write();
-        let header_tips = header_tips_write_guard.add_tip_batch(&mut batch, ctx.hash, header.direct_parents()).unwrap();
-        let header_selected_tip = self.ghostdag_manager.find_selected_parent(&mut header_tips.iter().copied());
-
-        // Hint reachability about the possibly new tip.
-        reachability::hint_virtual_selected_parent(&mut staging, header_selected_tip).unwrap();
+        let mut hst_write_guard = self.headers_selected_tip_store.write();
+        let prev_hst = hst_write_guard.get().unwrap();
+        if SortableBlock::new(ctx.hash, header.blue_work) > prev_hst {
+            // Hint reachability about the new tip.
+            reachability::hint_virtual_selected_parent(&mut staging, ctx.hash).unwrap();
+            hst_write_guard.set_batch(&mut batch, SortableBlock::new(ctx.hash, header.blue_work)).unwrap();
+        }
 
         let relations_write_guard = if header.direct_parents().is_empty() {
             self.relations_store.insert_batch(&mut batch, header.hash, BlockHashes::new(vec![ORIGIN])).unwrap()
@@ -360,7 +366,7 @@ impl HeaderProcessor {
         drop(reachability_write_guard);
         drop(statuses_write_guard);
         drop(relations_write_guard);
-        drop(header_tips_write_guard);
+        drop(hst_write_guard);
     }
 
     pub fn process_genesis_if_needed(self: &Arc<HeaderProcessor>) {
@@ -371,10 +377,10 @@ impl HeaderProcessor {
         {
             let mut batch = WriteBatch::default();
             let relations_write_guard = self.relations_store.insert_batch(&mut batch, ORIGIN, BlockHashes::new(vec![]));
-            let mut header_tips_write_guard = self.header_tips_store.write();
-            header_tips_write_guard.init_batch(&mut batch, &[self.genesis_hash]).unwrap();
+            let mut hst_write_guard = self.headers_selected_tip_store.write();
+            hst_write_guard.set_batch(&mut batch, SortableBlock::new(self.genesis_hash, 0)).unwrap(); // TODO: take blue work from genesis block
             self.db.write(batch).unwrap();
-            drop(header_tips_write_guard);
+            drop(hst_write_guard);
             drop(relations_write_guard);
         }
 
