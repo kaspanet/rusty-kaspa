@@ -103,11 +103,10 @@ impl VirtualStateProcessor {
         let expected_commitment = ctx.multiset_hash.finalize();
         if expected_commitment != header.utxo_commitment {
             return Err(BadUTXOCommitment(header.hash, header.utxo_commitment, expected_commitment));
-        } else {
-            trace!("correct commitment: {}, {}", header.hash, expected_commitment);
         }
 
         // Verify header accepted_id_merkle_root
+        // NOTE: when subnetworks will be enabled, the sort should consider them in order to allow grouping under a merkle subtree
         ctx.accepted_tx_ids.sort();
         let expected_accepted_id_merkle_root = merkle::calc_merkle_root(ctx.accepted_tx_ids.iter().copied());
         if expected_accepted_id_merkle_root != header.accepted_id_merkle_root {
@@ -171,13 +170,8 @@ impl VirtualStateProcessor {
             if let Some(entry) = utxo_view.get(&input.previous_outpoint) {
                 entries.push(entry);
             } else {
-                trace!("missing UTXO entry for outpoint {}", input.previous_outpoint);
-                break;
+                return None; // Missing inputs
             }
-        }
-        if entries.len() < transaction.inputs.len() {
-            // Missing inputs
-            return None;
         }
         let populated_tx = PopulatedTransaction::new(transaction, entries);
         let res = self.transaction_validator.validate_populated_transaction_and_get_fee(&populated_tx, pov_daa_score);
