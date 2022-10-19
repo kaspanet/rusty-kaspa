@@ -1,13 +1,13 @@
 use consensus_core::tx::Transaction;
 
-use crate::{constants::LOCK_TIME_THRESHOLD, model::stores::headers::HeaderStoreReader};
+use crate::constants::LOCK_TIME_THRESHOLD;
 
 use super::{
     errors::{TxResult, TxRuleError},
     TransactionValidator,
 };
 
-impl<T: HeaderStoreReader> TransactionValidator<T> {
+impl TransactionValidator {
     pub fn utxo_free_tx_validation(&self, tx: &Transaction, ctx_daa_score: u64, ctx_block_time: u64) -> TxResult<()> {
         self.check_tx_is_finalized(tx, ctx_daa_score, ctx_block_time)
     }

@@ -1,16 +1,12 @@
+use crate::constants::{MAX_SOMPI, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK};
 use consensus_core::tx::PopulatedTransaction;
-
-use crate::{
-    constants::{MAX_SOMPI, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK},
-    model::stores::headers::HeaderStoreReader,
-};
 
 use super::{
     errors::{TxResult, TxRuleError},
     TransactionValidator,
 };
 
-impl<T: HeaderStoreReader> TransactionValidator<T> {
+impl TransactionValidator {
     pub fn validate_populated_transaction_and_get_fee(&self, tx: &PopulatedTransaction, pov_daa_score: u64) -> TxResult<u64> {
         self.check_transaction_coinbase_maturity(tx, pov_daa_score)?;
         let total_in = self.check_transaction_input_amounts(tx)?;

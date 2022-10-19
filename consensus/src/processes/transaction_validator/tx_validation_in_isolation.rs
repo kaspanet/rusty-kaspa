@@ -1,7 +1,4 @@
-use crate::{
-    constants::{MAX_SOMPI, TX_VERSION},
-    model::stores::headers::HeaderStoreReader,
-};
+use crate::constants::{MAX_SOMPI, TX_VERSION};
 use consensus_core::tx::Transaction;
 use std::collections::HashSet;
 
@@ -10,7 +7,7 @@ use super::{
     TransactionValidator,
 };
 
-impl<T: HeaderStoreReader> TransactionValidator<T> {
+impl TransactionValidator {
     pub fn validate_tx_in_isolation(&self, tx: &Transaction) -> TxResult<()> {
         self.check_transaction_inputs_in_isolation(tx)?;
         self.check_transaction_outputs_in_isolation(tx)?;
@@ -161,45 +158,9 @@ mod tests {
 
     use crate::{
         constants::TX_VERSION,
-        model::stores::{
-            errors::StoreError,
-            headers::{HeaderStoreReader, HeaderWithBlockLevel},
-        },
         params::MAINNET_PARAMS,
         processes::transaction_validator::{errors::TxRuleError, TransactionValidator},
     };
-
-    struct HeaderStoreMock {}
-
-    impl HeaderStoreReader for HeaderStoreMock {
-        fn get_daa_score(&self, hash: hashes::Hash) -> Result<u64, StoreError> {
-            todo!()
-        }
-
-        fn get_timestamp(&self, hash: hashes::Hash) -> Result<u64, StoreError> {
-            todo!()
-        }
-
-        fn get_bits(&self, hash: hashes::Hash) -> Result<u32, StoreError> {
-            todo!()
-        }
-
-        fn get_header(&self, hash: hashes::Hash) -> Result<Arc<consensus_core::header::Header>, StoreError> {
-            todo!()
-        }
-
-        fn get_compact_header_data(&self, hash: hashes::Hash) -> Result<crate::model::stores::headers::CompactHeaderData, StoreError> {
-            todo!()
-        }
-
-        fn get_blue_score(&self, hash: hashes::Hash) -> Result<u64, StoreError> {
-            todo!()
-        }
-
-        fn get_header_with_block_level(&self, hash: hashes::Hash) -> Result<Arc<HeaderWithBlockLevel>, StoreError> {
-            todo!()
-        }
-    }
 
     #[test]
     fn validate_tx_in_isolation_test() {
@@ -214,7 +175,6 @@ mod tests {
             params.ghostdag_k,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity,
-            Arc::new(HeaderStoreMock {}),
         );
 
         let valid_cb = Transaction::new(

@@ -175,7 +175,6 @@ impl Consensus {
             params.ghostdag_k,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity,
-            headers_store.clone(),
         );
 
         let pruning_manager = PruningManager::new(

@@ -81,7 +81,7 @@ pub struct VirtualStateProcessor {
     pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
     pub(super) dag_traversal_manager: DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore>,
     pub(super) difficulty_manager: DifficultyManager<DbHeadersStore>,
-    pub(super) transaction_validator: TransactionValidator<DbHeadersStore>,
+    pub(super) transaction_validator: TransactionValidator,
     pub(super) pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
 }
 
@@ -109,7 +109,7 @@ impl VirtualStateProcessor {
         reachability_service: MTReachabilityService<DbReachabilityStore>,
         dag_traversal_manager: DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore>,
         difficulty_manager: DifficultyManager<DbHeadersStore>,
-        transaction_validator: TransactionValidator<DbHeadersStore>,
+        transaction_validator: TransactionValidator,
         pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
     ) -> Self {
         Self {
