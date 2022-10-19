@@ -32,10 +32,7 @@ use crate::{
         transaction_validator::TransactionValidator,
     },
 };
-use consensus_core::{
-    blockhash::{self, VIRTUAL},
-    utxo::{utxo_diff::UtxoDiff, utxo_view::UtxoViewComposition},
-};
+use consensus_core::utxo::{utxo_diff::UtxoDiff, utxo_view::UtxoViewComposition};
 use hashes::Hash;
 use kaspa_core::trace;
 use muhash::MuHash;
@@ -73,7 +70,7 @@ pub struct VirtualStateProcessor {
     pub(super) body_tips_store: Arc<RwLock<DbTipsStore>>,
 
     // Utxo-related stores
-    pub(super) utxo_differences_store: Arc<DbUtxoDiffsStore>,
+    pub(super) utxo_diffs_store: Arc<DbUtxoDiffsStore>,
     pub(super) utxo_multisets_store: Arc<DbUtxoMultisetsStore>,
     pub(super) acceptance_data_store: Arc<DbAcceptanceDataStore>,
     pub(super) virtual_utxo_store: Arc<DbUtxoSetStore>,
@@ -104,7 +101,7 @@ impl VirtualStateProcessor {
         past_pruning_points_store: Arc<DbPastPruningPointsStore>,
         body_tips_store: Arc<RwLock<DbTipsStore>>,
         // Utxo-related stores
-        utxo_differences_store: Arc<DbUtxoDiffsStore>,
+        utxo_diffs_store: Arc<DbUtxoDiffsStore>,
         utxo_multisets_store: Arc<DbUtxoMultisetsStore>,
         acceptance_data_store: Arc<DbAcceptanceDataStore>,
         // Managers
@@ -132,7 +129,7 @@ impl VirtualStateProcessor {
             pruning_store,
             past_pruning_points_store,
             body_tips_store,
-            utxo_differences_store,
+            utxo_diffs_store,
             utxo_multisets_store,
             acceptance_data_store,
             // TODO: build in consensus, decide about locking
@@ -178,41 +175,43 @@ impl VirtualStateProcessor {
     }
 
     fn resolve_virtual(self: &Arc<Self>) {
-        let mut state = self.virtual_state_store.read().get().unwrap().as_ref().clone();
+        let prev_state = self.virtual_state_store.read().get().unwrap();
 
         // TODO: pick virtual parents from body tips according to pruning rules
-        state.parents = self.body_tips_store.read().get().unwrap().iter().copied().collect_vec();
+        let virtual_parents = self.body_tips_store.read().get().unwrap().iter().copied().collect_vec();
 
         // TODO: check finality violation
         // TODO: handle disqualified chain loop
         // TODO: coinbase validation
         // TODO: acceptance data format
 
-        let virtual_ghostdag_data = self.ghostdag_manager.ghostdag(&state.parents);
+        let virtual_ghostdag_data = self.ghostdag_manager.ghostdag(&virtual_parents);
 
-        let prev_selected = state.ghostdag_data.selected_parent;
+        let prev_selected = prev_state.ghostdag_data.selected_parent;
         let new_selected = virtual_ghostdag_data.selected_parent;
 
-        let mut split_point = blockhash::ORIGIN;
-        let mut accumulated_diff = state.utxo_diff.clone().to_reversed();
+        let mut split_point: Option<Hash> = None;
+        let mut accumulated_diff = prev_state.utxo_diff.clone().to_reversed();
 
         // Walk down to the reorg split point
         for current in self.reachability_service.default_backward_chain_iterator(prev_selected) {
             if self.reachability_service.is_chain_ancestor_of(current, new_selected) {
-                split_point = current;
+                split_point = Some(current);
                 break;
             }
 
-            let mergeset_diff = self.utxo_differences_store.get(current).unwrap();
+            let mergeset_diff = self.utxo_diffs_store.get(current).unwrap();
             // Apply the diff in reverse
             accumulated_diff.with_diff_in_place(&mergeset_diff.as_reversed()).unwrap();
         }
+
+        let split_point = split_point.expect("chain iterator was expected to reach the reorg split point");
 
         // Walk back up to the new virtual selected parent candidate
         for (selected_parent, current) in
             self.reachability_service.forward_chain_iterator(split_point, new_selected, true).tuple_windows()
         {
-            match self.utxo_differences_store.get(current) {
+            match self.utxo_diffs_store.get(current) {
                 Ok(mergeset_diff) => {
                     accumulated_diff.with_diff_in_place(mergeset_diff.deref()).unwrap();
                 }
@@ -226,7 +225,7 @@ impl VirtualStateProcessor {
                     let mergeset_data = self.ghostdag_store.get_data(current).unwrap();
                     let pov_daa_score = header.daa_score;
 
-                    let selected_parent_multiset_hash = self.utxo_multisets_store.get(mergeset_data.selected_parent).unwrap();
+                    let selected_parent_multiset_hash = self.utxo_multisets_store.get(selected_parent).unwrap();
                     let selected_parent_utxo_view = self.virtual_utxo_store.as_ref().compose(&accumulated_diff);
 
                     let mut ctx = UtxoProcessingContext::new(mergeset_data, selected_parent_multiset_hash);
@@ -266,9 +265,9 @@ impl VirtualStateProcessor {
                 // Update the accumulated diff
                 accumulated_diff.with_diff_in_place(&ctx.mergeset_diff).unwrap();
 
-                // Update the new virtual state
-                state.ghostdag_data = virtual_ghostdag_data.as_ref().clone();
-                state.utxo_diff = ctx.mergeset_diff;
+                // Build the new virtual state
+                let new_virtual_state =
+                    VirtualState::new(virtual_parents, virtual_ghostdag_data, virtual_daa_score, ctx.multiset_hash, ctx.mergeset_diff);
 
                 let mut batch = WriteBatch::default();
 
@@ -277,7 +276,7 @@ impl VirtualStateProcessor {
 
                 // Update virtual state
                 let mut write_guard = self.virtual_state_store.write();
-                write_guard.set_batch(&mut batch, state).unwrap();
+                write_guard.set_batch(&mut batch, new_virtual_state).unwrap();
 
                 // Flush the batch changes
                 self.db.write(batch).unwrap();
@@ -294,7 +293,7 @@ impl VirtualStateProcessor {
 
     fn commit_utxo_state(self: &Arc<Self>, current: Hash, mergeset_diff: UtxoDiff, multiset: MuHash, acceptance_data: AcceptanceData) {
         let mut batch = WriteBatch::default();
-        self.utxo_differences_store.insert_batch(&mut batch, current, Arc::new(mergeset_diff)).unwrap();
+        self.utxo_diffs_store.insert_batch(&mut batch, current, Arc::new(mergeset_diff)).unwrap();
         self.utxo_multisets_store.insert_batch(&mut batch, current, multiset).unwrap();
         self.acceptance_data_store.insert_batch(&mut batch, current, Arc::new(acceptance_data)).unwrap();
         let write_guard = self.statuses_store.set_batch(&mut batch, current, StatusUTXOValid).unwrap();
@@ -308,7 +307,7 @@ impl VirtualStateProcessor {
         let pruning_read_guard = self.pruning_store.upgradable_read();
         let current_pp = pruning_read_guard.pruning_point().unwrap();
         let current_pp_candidate = pruning_read_guard.pruning_point_candidate().unwrap();
-        let virtual_gd = self.ghostdag_store.get_compact_data(VIRTUAL).unwrap();
+        let virtual_gd = self.virtual_state_store.read().get().unwrap().ghostdag_data.to_compact();
         let (new_pruning_point, new_candidate) =
             self.pruning_manager.next_pruning_point_and_candidate_by_block_hash(virtual_gd, None, current_pp_candidate, current_pp);
 
@@ -348,7 +347,7 @@ impl VirtualStateProcessor {
                             Err(err) => panic!("unexpected error {}", err),
                         }
                     }
-                    Err(err) => panic!("unexpected error {}", err),
+                    Err(err) => panic!("unexpected store error {}", err),
                 }
             }
             _ => panic!("unexpected genesis status {:?}", status),

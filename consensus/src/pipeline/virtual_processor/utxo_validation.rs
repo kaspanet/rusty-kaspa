@@ -26,7 +26,7 @@ use std::{ops::Deref, sync::Arc};
 /// A context for processing the UTXO state of a block with respect to its selected parent.
 /// Note this can also be the virtual block.
 pub(super) struct UtxoProcessingContext {
-    pub mergeset_data: Arc<GhostdagData>,
+    pub ghostdag_data: Arc<GhostdagData>,
     pub multiset_hash: MuHash,
     pub mergeset_diff: UtxoDiff,
     pub accepted_tx_ids: Vec<TransactionId>,
@@ -34,10 +34,10 @@ pub(super) struct UtxoProcessingContext {
 }
 
 impl UtxoProcessingContext {
-    pub fn new(mergeset_data: Arc<GhostdagData>, selected_parent_multiset_hash: MuHash) -> Self {
-        let mergeset_size = mergeset_data.mergeset_size();
+    pub fn new(ghostdag_data: Arc<GhostdagData>, selected_parent_multiset_hash: MuHash) -> Self {
+        let mergeset_size = ghostdag_data.mergeset_size();
         Self {
-            mergeset_data,
+            ghostdag_data,
             multiset_hash: selected_parent_multiset_hash,
             mergeset_diff: UtxoDiff::default(),
             accepted_tx_ids: Vec::with_capacity(1), // We expect at least the selected parent coinbase tx
@@ -46,7 +46,7 @@ impl UtxoProcessingContext {
     }
 
     pub fn selected_parent(&self) -> Hash {
-        self.mergeset_data.selected_parent
+        self.ghostdag_data.selected_parent
     }
 }
 
@@ -65,7 +65,7 @@ impl VirtualStateProcessor {
         ctx.multiset_hash.add_transaction(&validated_coinbase, pov_daa_score);
         ctx.accepted_tx_ids.push(validated_coinbase.id());
 
-        for merged_block in ctx.mergeset_data.consensus_ordered_mergeset(self.ghostdag_store.deref()) {
+        for merged_block in ctx.ghostdag_data.consensus_ordered_mergeset(self.ghostdag_store.deref()) {
             let txs = self.block_transactions_store.get(merged_block).unwrap();
 
             // Create a layered UTXO view from the selected parent UTXO view + the mergeset UTXO diff
@@ -115,7 +115,7 @@ impl VirtualStateProcessor {
         let txs = self.block_transactions_store.get(header.hash).unwrap();
 
         // Verify coinbase transaction
-        self.verify_coinbase_transaction(&txs[0], &ctx.mergeset_data, &ctx.mergeset_fees)?;
+        self.verify_coinbase_transaction(&txs[0], &ctx.ghostdag_data, &ctx.mergeset_fees)?;
 
         // Verify all transactions are valid in context (TODO: skip validation when becoming selected parent)
         let current_utxo_view = selected_parent_utxo_view.compose(&ctx.mergeset_diff);

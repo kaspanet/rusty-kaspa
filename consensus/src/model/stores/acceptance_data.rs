@@ -4,8 +4,6 @@ use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-/// See overview at `utxo_differences.rs`
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AcceptanceData {
     // TODO

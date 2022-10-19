@@ -107,7 +107,7 @@ impl Consensus {
         let depth_store = Arc::new(DbDepthStore::new(db.clone(), CACHE_SIZE));
         let block_transactions_store = Arc::new(DbBlockTransactionsStore::new(db.clone(), CACHE_SIZE));
         let past_pruning_points_store = Arc::new(DbPastPruningPointsStore::new(db.clone(), CACHE_SIZE));
-        let utxo_differences_store = Arc::new(DbUtxoDiffsStore::new(db.clone(), CACHE_SIZE));
+        let utxo_diffs_store = Arc::new(DbUtxoDiffsStore::new(db.clone(), CACHE_SIZE));
         let utxo_multisets_store = Arc::new(DbUtxoMultisetsStore::new(db.clone(), CACHE_SIZE));
         let acceptance_data_store = Arc::new(DbAcceptanceDataStore::new(db.clone(), CACHE_SIZE));
         let header_tips_store = Arc::new(RwLock::new(DbTipsStore::new(db.clone(), store_names::HEADER_TIPS)));
@@ -277,7 +277,7 @@ impl Consensus {
             pruning_store.clone(),
             past_pruning_points_store,
             body_tips_store.clone(),
-            utxo_differences_store,
+            utxo_diffs_store,
             utxo_multisets_store,
             acceptance_data_store,
             ghostdag_manager.clone(),
@@ -330,14 +330,10 @@ impl Consensus {
         let body_processor = self.body_processor.clone();
         let virtual_processor = self.virtual_processor.clone();
 
-        let header_builder = thread::Builder::new().name("header-processor".to_string());
-        let body_builder = thread::Builder::new().name("body-processor".to_string());
-        let virtual_builder = thread::Builder::new().name("virtual-processor".to_string());
-
         vec![
-            header_builder.spawn(move || header_processor.worker()).unwrap(),
-            body_builder.spawn(move || body_processor.worker()).unwrap(),
-            virtual_builder.spawn(move || virtual_processor.worker()).unwrap(),
+            thread::Builder::new().name("header-processor".to_string()).spawn(move || header_processor.worker()).unwrap(),
+            thread::Builder::new().name("body-processor".to_string()).spawn(move || body_processor.worker()).unwrap(),
+            thread::Builder::new().name("virtual-processor".to_string()).spawn(move || virtual_processor.worker()).unwrap(),
         ]
     }
 

@@ -9,6 +9,7 @@ use hashes::{Hash, Hasher, HasherBase, MuHashElementHash, MuHashFinalizeHash};
 use math::Uint3072;
 use rand_chacha::rand_core::{RngCore, SeedableRng};
 use rand_chacha::ChaCha20Rng;
+use serde::{Deserialize, Serialize};
 use std::error::Error;
 use std::fmt::Display;
 
@@ -27,7 +28,7 @@ pub(crate) const ELEMENT_BYTE_SIZE: usize = ELEMENT_BIT_SIZE / 8;
 /// which is a rolling(homomorphic) hash that you can add and remove elements from
 /// and receive the same resulting hash as-if you never hashed them.
 /// Because of that the order of adding and removing elements doesn't matter.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MuHash {
     numerator: U3072,
     denominator: U3072,

@@ -3,6 +3,7 @@ use std::sync::Arc;
 use super::{caching::CachedDbItem, errors::StoreResult, ghostdag::GhostdagData, DB};
 use consensus_core::utxo::utxo_diff::UtxoDiff;
 use hashes::Hash;
+use muhash::MuHash;
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
 
@@ -10,14 +11,28 @@ use serde::{Deserialize, Serialize};
 pub struct VirtualState {
     pub parents: Vec<Hash>,
     pub ghostdag_data: GhostdagData,
+    pub daa_score: u64,
+    pub multiset: MuHash,
     pub utxo_diff: UtxoDiff,
 }
 
 impl VirtualState {
+    pub fn new(parents: Vec<Hash>, ghostdag_data: Arc<GhostdagData>, daa_score: u64, multiset: MuHash, utxo_diff: UtxoDiff) -> Self {
+        Self {
+            parents,
+            ghostdag_data: Arc::try_unwrap(ghostdag_data).unwrap_or_else(|a| (*a).clone()), // Copy of Arc::unwrap_or_clone from unstable rust
+            daa_score,
+            multiset,
+            utxo_diff,
+        }
+    }
+
     pub fn from_genesis(genesis_hash: Hash, initial_ghostdag_data: GhostdagData) -> Self {
         Self {
             parents: vec![genesis_hash],
             ghostdag_data: initial_ghostdag_data,
+            daa_score: 0,
+            multiset: MuHash::new(),
             utxo_diff: UtxoDiff::default(), // Virtual diff is initially empty since genesis receives no reward
         }
     }

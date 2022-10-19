@@ -5,8 +5,6 @@ use muhash::MuHash;
 use rocksdb::WriteBatch;
 use std::sync::Arc;
 
-/// See overview at `utxo_differences.rs`
-
 pub trait UtxoMultisetsStoreReader {
     fn get(&self, hash: Hash) -> Result<MuHash, StoreError>;
 }

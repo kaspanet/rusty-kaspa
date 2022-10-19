@@ -273,26 +273,26 @@ mod tests {
         }
 
         struct UtxoDiffBuilder {
-            diff: Option<UtxoDiff>,
+            diff: UtxoDiff,
         }
 
         impl UtxoDiffBuilder {
             fn new() -> Self {
-                Self { diff: Some(UtxoDiff::default()) }
+                Self { diff: UtxoDiff::default() }
             }
 
-            fn insert_add_point(&mut self, outpoint: TransactionOutpoint, entry: UtxoEntry) -> &mut Self {
-                assert!(self.diff.as_mut().unwrap().add.insert(outpoint, entry).is_none());
+            fn insert_add_point(mut self, outpoint: TransactionOutpoint, entry: UtxoEntry) -> Self {
+                assert!(self.diff.add.insert(outpoint, entry).is_none());
                 self
             }
 
-            fn insert_remove_point(&mut self, outpoint: TransactionOutpoint, entry: UtxoEntry) -> &mut Self {
-                assert!(self.diff.as_mut().unwrap().remove.insert(outpoint, entry).is_none());
+            fn insert_remove_point(mut self, outpoint: TransactionOutpoint, entry: UtxoEntry) -> Self {
+                assert!(self.diff.remove.insert(outpoint, entry).is_none());
                 self
             }
 
-            fn build(&mut self) -> UtxoDiff {
-                self.diff.take().unwrap()
+            fn build(self) -> UtxoDiff {
+                self.diff
             }
         }
 

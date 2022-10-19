@@ -788,6 +788,7 @@ dependencies = [
  "rand",
  "rand_chacha",
  "rayon",
+ "serde",
 ]
 
 [[package]]
