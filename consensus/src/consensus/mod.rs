@@ -1,10 +1,7 @@
 pub mod test_consensus;
 
 use crate::{
-    constants::{
-        perf::{CACHE_SIZE, LARGE_DATA_CACHE_SIZE},
-        store_names,
-    },
+    constants::perf::{CACHE_SIZE, LARGE_DATA_CACHE_SIZE},
     errors::BlockProcessResult,
     model::{
         services::{reachability::MTReachabilityService, relations::MTRelationsService, statuses::MTStatusesService},
@@ -16,11 +13,11 @@ use crate::{
             depth::DbDepthStore,
             ghostdag::DbGhostdagStore,
             headers::DbHeadersStore,
+            headers_selected_tip::DbHeadersSelectedTipStore,
             past_pruning_points::DbPastPruningPointsStore,
             pruning::DbPruningStore,
             reachability::DbReachabilityStore,
             relations::DbRelationsStore,
-            selected_tip::DbSelectedTipStore,
             statuses::{BlockStatus, DbStatusesStore},
             tips::DbTipsStore,
             utxo_diffs::DbUtxoDiffsStore,
@@ -75,7 +72,7 @@ pub struct Consensus {
     relations_store: Arc<RwLock<DbRelationsStore>>,
     reachability_store: Arc<RwLock<DbReachabilityStore>>,
     pruning_store: Arc<RwLock<DbPruningStore>>,
-    headers_selected_tip_store: Arc<RwLock<DbSelectedTipStore>>,
+    headers_selected_tip_store: Arc<RwLock<DbHeadersSelectedTipStore>>,
     body_tips_store: Arc<RwLock<DbTipsStore>>,
 
     // Append-only stores
@@ -111,8 +108,8 @@ impl Consensus {
         let utxo_diffs_store = Arc::new(DbUtxoDiffsStore::new(db.clone(), CACHE_SIZE));
         let utxo_multisets_store = Arc::new(DbUtxoMultisetsStore::new(db.clone(), CACHE_SIZE));
         let acceptance_data_store = Arc::new(DbAcceptanceDataStore::new(db.clone(), CACHE_SIZE));
-        let headers_selected_tip_store = Arc::new(RwLock::new(DbSelectedTipStore::new(db.clone(), store_names::HEADERS_SELECTED_TIP)));
-        let body_tips_store = Arc::new(RwLock::new(DbTipsStore::new(db.clone(), store_names::BODY_TIPS)));
+        let headers_selected_tip_store = Arc::new(RwLock::new(DbHeadersSelectedTipStore::new(db.clone())));
+        let body_tips_store = Arc::new(RwLock::new(DbTipsStore::new(db.clone())));
 
         let block_window_cache_for_difficulty = Arc::new(BlockWindowCacheStore::new(LARGE_DATA_CACHE_SIZE));
         let block_window_cache_for_past_median_time = Arc::new(BlockWindowCacheStore::new(LARGE_DATA_CACHE_SIZE));

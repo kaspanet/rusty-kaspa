@@ -9,11 +9,11 @@ use crate::{
             errors::StoreResultExtensions,
             ghostdag::{DbGhostdagStore, GhostdagData},
             headers::DbHeadersStore,
+            headers_selected_tip::{DbHeadersSelectedTipStore, HeadersSelectedTipStoreReader},
             past_pruning_points::DbPastPruningPointsStore,
             pruning::{DbPruningStore, PruningPointInfo, PruningStore, PruningStoreReader},
             reachability::{DbReachabilityStore, StagingReachabilityStore},
             relations::{DbRelationsStore, RelationsStoreBatchExtensions},
-            selected_tip::{DbSelectedTipStore, SelectedTipStoreReader},
             statuses::{
                 BlockStatus::{self, StatusHeaderOnly, StatusInvalid},
                 DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader,
@@ -130,7 +130,7 @@ pub struct HeaderProcessor {
     pub(super) block_window_cache_for_past_median_time: Arc<BlockWindowCacheStore>,
     pub(super) daa_store: Arc<DbDaaStore>,
     pub(super) headers_store: Arc<DbHeadersStore>,
-    pub(super) headers_selected_tip_store: Arc<RwLock<DbSelectedTipStore>>,
+    pub(super) headers_selected_tip_store: Arc<RwLock<DbHeadersSelectedTipStore>>,
     depth_store: Arc<DbDepthStore>,
 
     // Managers and services
@@ -171,7 +171,7 @@ impl HeaderProcessor {
         statuses_store: Arc<RwLock<DbStatusesStore>>,
         pruning_store: Arc<RwLock<DbPruningStore>>,
         depth_store: Arc<DbDepthStore>,
-        headers_selected_tip_store: Arc<RwLock<DbSelectedTipStore>>,
+        headers_selected_tip_store: Arc<RwLock<DbHeadersSelectedTipStore>>,
         block_window_cache_for_difficulty: Arc<BlockWindowCacheStore>,
         block_window_cache_for_past_median_time: Arc<BlockWindowCacheStore>,
         reachability_service: MTReachabilityService<DbReachabilityStore>,

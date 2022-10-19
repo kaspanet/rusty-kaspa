@@ -18,21 +18,22 @@ pub trait TipsStore: TipsStoreReader {
     fn add_tip(&mut self, new_tip: Hash, new_tip_parents: &[Hash]) -> StoreResult<Arc<BlockHashSet>>;
 }
 
-/// A DB + cache implementation of `VirtualStateStore` trait
+pub const STORE_NAME: &[u8] = b"body-tips";
+
+/// A DB + cache implementation of `TipsStore` trait
 #[derive(Clone)]
 pub struct DbTipsStore {
     raw_db: Arc<DB>,
-    prefix: &'static [u8],
     cached_access: CachedDbItem<Arc<BlockHashSet>>,
 }
 
 impl DbTipsStore {
-    pub fn new(db: Arc<DB>, prefix: &'static [u8]) -> Self {
-        Self { raw_db: Arc::clone(&db), cached_access: CachedDbItem::new(db.clone(), prefix), prefix }
+    pub fn new(db: Arc<DB>) -> Self {
+        Self { raw_db: Arc::clone(&db), cached_access: CachedDbItem::new(db.clone(), STORE_NAME) }
     }
 
     pub fn clone_with_new_cache(&self) -> Self {
-        Self::new(Arc::clone(&self.raw_db), self.prefix)
+        Self::new(Arc::clone(&self.raw_db))
     }
 
     pub fn init_batch(&mut self, batch: &mut WriteBatch, initial_tips: &[Hash]) -> StoreResult<()> {

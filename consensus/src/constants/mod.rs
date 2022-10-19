@@ -24,8 +24,6 @@ pub mod perf {
 pub mod store_names {
     pub const VIRTUAL_UTXO_SET: &[u8] = b"virtual-utxo-set";
     pub const PRUNING_UTXO_SET: &[u8] = b"pruning-utxo-set";
-    pub const BODY_TIPS: &[u8] = b"body-tips";
-    pub const HEADERS_SELECTED_TIP: &[u8] = b"headers-selected-tip";
 }
 
 pub const BLOCK_VERSION: u16 = 1;
