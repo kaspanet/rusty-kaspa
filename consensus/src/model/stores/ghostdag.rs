@@ -130,6 +130,14 @@ impl GhostdagData {
         once(self.selected_parent).chain(self.ascending_mergeset_without_selected_parent(store).map(|s| s.hash))
     }
 
+    /// Returns an iterator to the mergeset in topological consensus order without the selected parent
+    pub fn consensus_ordered_mergeset_without_selected_parent<'a>(
+        &'a self,
+        store: &'a (impl GhostdagStoreReader + ?Sized),
+    ) -> impl Iterator<Item = Hash> + '_ {
+        self.ascending_mergeset_without_selected_parent(store).map(|s| s.hash)
+    }
+
     /// Returns an iterator to the mergeset with no specified order (including the selected parent)
     pub fn unordered_mergeset(&self) -> impl Iterator<Item = Hash> + '_ {
         self.mergeset_blues.iter().cloned().chain(self.mergeset_reds.iter().cloned())

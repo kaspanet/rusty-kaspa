@@ -21,7 +21,7 @@ use kaspa_core::trace;
 use muhash::MuHash;
 
 use rayon::prelude::*;
-use std::{ops::Deref, sync::Arc};
+use std::{iter::once, ops::Deref, sync::Arc};
 
 /// A context for processing the UTXO state of a block with respect to its selected parent.
 /// Note this can also be the virtual block.
@@ -65,10 +65,12 @@ impl VirtualStateProcessor {
         ctx.multiset_hash.add_transaction(&validated_coinbase, pov_daa_score);
         ctx.accepted_tx_ids.push(validated_coinbase.id());
 
-        for merged_block in ctx.ghostdag_data.consensus_ordered_mergeset(self.ghostdag_store.deref()) {
-            let txs = self.block_transactions_store.get(merged_block).unwrap();
-
-            // Create a layered UTXO view from the selected parent UTXO view + the mergeset UTXO diff
+        for (merged_block, txs) in once((ctx.selected_parent(), selected_parent_transactions)).chain(
+            ctx.ghostdag_data
+                .consensus_ordered_mergeset_without_selected_parent(self.ghostdag_store.deref())
+                .map(|b| (b, self.block_transactions_store.get(b).unwrap())),
+        ) {
+            // Create a composed UTXO view from the selected parent UTXO view + the mergeset UTXO diff
             let composed_view = selected_parent_utxo_view.compose(&ctx.mergeset_diff);
 
             // Validate transactions in current UTXO context
