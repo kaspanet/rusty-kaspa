@@ -23,7 +23,7 @@ use crate::{
     model::stores::{
         block_window_cache::BlockWindowCacheStore,
         ghostdag::DbGhostdagStore,
-        headers::DbHeadersStore,
+        headers::{DbHeadersStore, HeaderStoreReader},
         pruning::PruningStoreReader,
         reachability::DbReachabilityStore,
         statuses::{BlockStatus, StatusesStoreReader},
@@ -36,11 +36,11 @@ use crate::{
     test_helpers::header_from_precomputed_hash,
 };
 
-use super::Consensus;
+use super::{Consensus, DbGhostdagManager};
 
 pub struct TestConsensus {
     consensus: Consensus,
-    params: Params,
+    pub params: Params,
     temp_db_lifetime: TempDbLifetime,
 }
 
@@ -126,6 +126,10 @@ impl TestConsensus {
         &self.consensus.reachability_store
     }
 
+    pub fn headers_store(&self) -> Arc<impl HeaderStoreReader> {
+        self.consensus.headers_store.clone()
+    }
+
     pub fn processing_counters(&self) -> &Arc<ProcessingCounters> {
         &self.consensus.counters
     }
@@ -146,6 +150,10 @@ impl TestConsensus {
     // TODO: add to consensus API
     pub fn block_status(&self, hash: Hash) -> BlockStatus {
         self.consensus.statuses_store.read().get(hash).unwrap()
+    }
+
+    pub fn ghostdag_manager(&self) -> &DbGhostdagManager {
+        &self.consensus.ghostdag_manager
     }
 }
 

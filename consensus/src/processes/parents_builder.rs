@@ -202,7 +202,10 @@ mod tests {
     };
 
     use super::ParentsManager;
-    use consensus_core::{blockhash::ORIGIN, header::Header};
+    use consensus_core::{
+        blockhash::{BlockHashes, ORIGIN},
+        header::Header,
+    };
     use hashes::Hash;
     use itertools::Itertools;
     use parking_lot::RwLock;
@@ -248,7 +251,7 @@ mod tests {
     }
 
     struct RelationsStoreMock {
-        pub genesis_hash: Hash,
+        pub children: BlockHashes,
     }
 
     impl RelationsStoreReader for RelationsStoreMock {
@@ -256,8 +259,8 @@ mod tests {
             todo!()
         }
 
-        fn get_children(&self, hash: Hash) -> Result<consensus_core::blockhash::BlockHashes, StoreError> {
-            Ok(Arc::new(vec![self.genesis_hash]))
+        fn get_children(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
+            Ok(self.children.clone())
         }
 
         fn has(&self, hash: Hash) -> Result<bool, StoreError> {
@@ -300,7 +303,7 @@ mod tests {
             }),
         );
 
-        let pp_anticone_block: Hash = 2001.into();
+        let pp_anticone_block: Hash = 3001.into();
         headers_store.map.write().insert(
             pp_anticone_block,
             Arc::new(HeaderWithBlockLevel {
@@ -308,11 +311,40 @@ mod tests {
                     hash: pp_anticone_block,
                     version: 0,
                     parents_by_level: vec![
-                        vec![2002.into()],
-                        vec![2002.into()],
-                        vec![2002.into()],
-                        vec![2002.into()],
-                        vec![2002.into()],
+                        vec![2001.into()],
+                        vec![2001.into()],
+                        vec![2001.into()],
+                        vec![2001.into()],
+                        vec![2001.into()],
+                    ],
+                    hash_merkle_root: 1.into(),
+                    accepted_id_merkle_root: 1.into(),
+                    utxo_commitment: 1.into(),
+                    timestamp: 0,
+                    bits: 0,
+                    nonce: 0,
+                    daa_score: 0,
+                    blue_work: 0,
+                    blue_score: 0,
+                    pruning_point: 1.into(),
+                }),
+                block_level: 0,
+            }),
+        );
+
+        let pp_anticone_block_child: Hash = 3002.into();
+        headers_store.map.write().insert(
+            pp_anticone_block_child,
+            Arc::new(HeaderWithBlockLevel {
+                header: Arc::new(Header {
+                    hash: pp_anticone_block_child,
+                    version: 0,
+                    parents_by_level: vec![
+                        vec![3001.into()],
+                        vec![2001.into()],
+                        vec![2001.into()],
+                        vec![2001.into()],
+                        vec![2001.into()],
                     ],
                     hash_merkle_root: 1.into(),
                     accepted_id_merkle_root: 1.into(),
@@ -387,8 +419,14 @@ mod tests {
             TestBlock {
                 id: 10,
                 block_level: 0,
-                direct_parents: vec![2001, 1],
-                expected_parents: vec![vec![2001, 1], vec![1001], vec![1001], vec![1001], vec![1002]], // Check that it functions well while one of the parents is in PP anticone
+                direct_parents: vec![3001, 1],
+                expected_parents: vec![vec![3001, 1], vec![1001], vec![1001], vec![1001], vec![1002]], // Check that it functions well while one of the parents is in PP anticone
+            },
+            TestBlock {
+                id: 11,
+                block_level: 0,
+                direct_parents: vec![3002, 1],
+                expected_parents: vec![vec![3002, 1], vec![1001], vec![1001], vec![1001], vec![1002]], // Check that it functions well while one of the parents is in PP anticone
             },
         ];
 
@@ -396,7 +434,8 @@ mod tests {
         dag_builder
             .init()
             .add_block(DagBlock::new(pruning_point, vec![ORIGIN]))
-            .add_block(DagBlock::new(pp_anticone_block, vec![ORIGIN]));
+            .add_block(DagBlock::new(pp_anticone_block, vec![ORIGIN]))
+            .add_block(DagBlock::new(pp_anticone_block_child, vec![pp_anticone_block]));
 
         for test_block in test_blocks.iter() {
             let hash = test_block.id.into();
@@ -432,7 +471,8 @@ mod tests {
         }
 
         let reachability_service = MTReachabilityService::new(Arc::new(RwLock::new(reachability_store)));
-        let relations_store = Arc::new(RwLock::new(RelationsStoreMock { genesis_hash: pruning_point }));
+        let relations_store =
+            Arc::new(RwLock::new(RelationsStoreMock { children: BlockHashes::new(vec![pruning_point, pp_anticone_block]) }));
         let parents_manager = ParentsManager::new(250, genesis_hash, headers_store.clone(), reachability_service, relations_store);
 
         for test_block in test_blocks {
