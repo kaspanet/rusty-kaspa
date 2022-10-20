@@ -50,7 +50,7 @@ use super::super::ProcessingCounters;
 
 pub struct HeaderProcessingContext<'a> {
     pub hash: Hash,
-    pub header: &'a Header,
+    pub header: &'a Arc<Header>,
     pub pruning_info: PruningPointInfo,
 
     // Staging data
@@ -67,7 +67,7 @@ pub struct HeaderProcessingContext<'a> {
 }
 
 impl<'a> HeaderProcessingContext<'a> {
-    pub fn new(hash: Hash, header: &'a Header, pruning_info: PruningPointInfo) -> Self {
+    pub fn new(hash: Hash, header: &'a Arc<Header>, pruning_info: PruningPointInfo) -> Self {
         Self {
             hash,
             header,
@@ -278,7 +278,7 @@ impl HeaderProcessor {
         self.statuses_store.read().has(hash).unwrap()
     }
 
-    fn process_header(self: &Arc<HeaderProcessor>, header: &Header) -> BlockProcessResult<BlockStatus> {
+    fn process_header(self: &Arc<HeaderProcessor>, header: &Arc<Header>) -> BlockProcessResult<BlockStatus> {
         let status_option = self.statuses_store.read().get(header.hash).unwrap_option();
 
         match status_option {
@@ -307,7 +307,7 @@ impl HeaderProcessor {
         Ok(StatusHeaderOnly)
     }
 
-    fn commit_header(self: &Arc<HeaderProcessor>, ctx: HeaderProcessingContext, header: &Header) {
+    fn commit_header(self: &Arc<HeaderProcessor>, ctx: HeaderProcessingContext, header: &Arc<Header>) {
         let ghostdag_data = ctx.ghostdag_data.unwrap();
 
         // Create a DB batch writer
@@ -318,7 +318,7 @@ impl HeaderProcessor {
         self.block_window_cache_for_difficulty.insert(ctx.hash, Arc::new(ctx.block_window_for_difficulty.unwrap()));
         self.block_window_cache_for_past_median_time.insert(ctx.hash, Arc::new(ctx.block_window_for_past_median_time.unwrap()));
         self.daa_store.insert_batch(&mut batch, ctx.hash, Arc::new(ctx.daa_added_blocks.unwrap())).unwrap();
-        self.headers_store.insert_batch(&mut batch, ctx.hash, Arc::new(ctx.header.clone()), ctx.block_level.unwrap()).unwrap();
+        self.headers_store.insert_batch(&mut batch, ctx.hash, ctx.header.clone(), ctx.block_level.unwrap()).unwrap();
         self.depth_store.insert_batch(&mut batch, ctx.hash, ctx.merge_depth_root.unwrap(), ctx.finality_point.unwrap()).unwrap();
 
         // Create staging reachability store. We use an upgradable read here to avoid concurrent
@@ -387,6 +387,7 @@ impl HeaderProcessor {
         self.pruning_store.write().set(self.genesis_hash, self.genesis_hash, 0).unwrap();
         let mut header = header_from_precomputed_hash(self.genesis_hash, vec![]); // TODO
         header.bits = self.genesis_bits;
+        let header = Arc::new(header);
         let mut ctx = HeaderProcessingContext::new(self.genesis_hash, &header, PruningPointInfo::from_genesis(self.genesis_hash));
         ctx.ghostdag_data = Some(self.ghostdag_manager.genesis_ghostdag_data());
         ctx.block_window_for_difficulty = Some(Default::default());

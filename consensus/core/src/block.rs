@@ -1,33 +1,45 @@
 use std::sync::Arc;
 
-use crate::{header::Header, tx::Transaction, BlueWorkType};
+use crate::{header::Header, tx::Transaction};
 use hashes::Hash;
 
+/// A mutable block structure where header and transactions within can still be mutated.
+#[derive(Debug, Clone)]
+pub struct MutableBlock {
+    pub header: Header,
+    pub transactions: Vec<Transaction>,
+}
+
+impl MutableBlock {
+    pub fn new(header: Header, txs: Vec<Transaction>) -> Self {
+        Self { header, transactions: txs }
+    }
+
+    pub fn from_header(header: Header) -> Self {
+        Self::new(header, vec![])
+    }
+
+    pub fn to_immutable(self) -> Block {
+        Block::new(self.header, self.transactions)
+    }
+}
+
+/// A block structure where the inner header and transactions are wrapped by Arcs for
+/// cheap cloning and for cross-thread safety and immutability. Note: no need to wrap
+/// this struct with an additional Arc.
 #[derive(Debug, Clone)]
 pub struct Block {
-    pub header: Header,
+    pub header: Arc<Header>,
     pub transactions: Arc<Vec<Transaction>>,
 }
 
 impl Block {
-    pub fn new(
-        version: u16,
-        parents: Vec<Hash>,
-        timestamp: u64,
-        bits: u32,
-        nonce: u64,
-        daa_score: u64,
-        blue_work: BlueWorkType,
-        blue_score: u64,
-    ) -> Self {
-        Self {
-            header: Header::new(version, parents, Default::default(), timestamp, bits, nonce, daa_score, blue_work, blue_score),
-            transactions: Arc::new(Vec::new()),
-        }
+    pub fn new(header: Header, txs: Vec<Transaction>) -> Self {
+        Self { header: Arc::new(header), transactions: Arc::new(txs) }
     }
 
     pub fn from_header(header: Header) -> Self {
-        Self { header, transactions: Arc::new(Vec::new()) }
+        Self { header: Arc::new(header), transactions: Arc::new(Vec::new()) }
     }
 
     pub fn is_header_only(&self) -> bool {
