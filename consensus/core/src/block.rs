@@ -3,6 +3,7 @@ use std::sync::Arc;
 use crate::{header::Header, tx::Transaction};
 use hashes::Hash;
 
+/// A mutable block structure where header and transactions within can still be mutated.
 #[derive(Debug, Clone)]
 pub struct MutableBlock {
     pub header: Header,
@@ -23,6 +24,9 @@ impl MutableBlock {
     }
 }
 
+/// A block structure where the inner header and transactions are wrapped by Arcs for
+/// cheap cloning and for cross-thread safety and immutability. Note: no need to wrap
+/// this struct with an additional Arc.
 #[derive(Debug, Clone)]
 pub struct Block {
     pub header: Arc<Header>,
