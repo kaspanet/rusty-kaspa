@@ -423,10 +423,10 @@ mod tests {
     fn test_mergeset_iterators() {
         let store = MemoryGhostdagStore::new();
 
-        let factory = |w| {
+        let factory = |w: u64| {
             Arc::new(GhostdagData {
                 blue_score: Default::default(),
-                blue_work: w,
+                blue_work: w.into(),
                 selected_parent: Default::default(),
                 mergeset_blues: Default::default(),
                 mergeset_reds: Default::default(),

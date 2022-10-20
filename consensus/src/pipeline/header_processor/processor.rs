@@ -378,7 +378,7 @@ impl HeaderProcessor {
             let mut batch = WriteBatch::default();
             let relations_write_guard = self.relations_store.insert_batch(&mut batch, ORIGIN, BlockHashes::new(vec![]));
             let mut hst_write_guard = self.headers_selected_tip_store.write();
-            hst_write_guard.set_batch(&mut batch, SortableBlock::new(self.genesis_hash, 0)).unwrap(); // TODO: take blue work from genesis block
+            hst_write_guard.set_batch(&mut batch, SortableBlock::new(self.genesis_hash, 0.into())).unwrap(); // TODO: take blue work from genesis block
             self.db.write(batch).unwrap();
             drop(hst_write_guard);
             drop(relations_write_guard);
