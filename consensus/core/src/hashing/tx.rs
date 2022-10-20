@@ -94,7 +94,7 @@ mod tests {
             },
         ];
 
-        let inputs = vec![Arc::new(TransactionInput::new(TransactionOutpoint::new(Hash::from_u64_word(0), 2), vec![1, 2], 7, 5))];
+        let inputs = vec![TransactionInput::new(TransactionOutpoint::new(Hash::from_u64_word(0), 2), vec![1, 2], 7, 5)];
 
         // Test #2
         tests.push(Test {
@@ -103,7 +103,7 @@ mod tests {
             expected_hash: "e4045023768d98839c976918f80c9419c6a93003724eda97f7c61a5b68de851b",
         });
 
-        let outputs = vec![Arc::new(TransactionOutput::new(1564, Arc::new(ScriptPublicKey::new(vec![1, 2, 3, 4, 5], 7))))];
+        let outputs = vec![TransactionOutput::new(1564, Arc::new(ScriptPublicKey::new(vec![1, 2, 3, 4, 5], 7)))];
 
         // Test #3
         tests.push(Test {
@@ -119,12 +119,12 @@ mod tests {
             expected_hash: "b70f2f14c2f161a29b77b9a78997887a8e727bb57effca38cd246cb270b19cd5",
         });
 
-        let inputs = vec![Arc::new(TransactionInput::new(
+        let inputs = vec![TransactionInput::new(
             TransactionOutpoint::new(Hash::from_str("59b3d6dc6cdc660c389c3fdb5704c48c598d279cdf1bab54182db586a4c95dd5").unwrap(), 2),
             vec![1, 2],
             7,
             5,
-        ))];
+        )];
 
         // Test #5
         tests.push(Test {

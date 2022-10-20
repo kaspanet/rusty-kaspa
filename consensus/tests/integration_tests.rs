@@ -836,28 +836,24 @@ fn json_line_to_block(line: String) -> Block {
                     tx.Version,
                     tx.Inputs
                         .iter()
-                        .map(|input| {
-                            Arc::new(TransactionInput {
-                                previous_outpoint: TransactionOutpoint {
-                                    transaction_id: Hash::from_str(&input.PreviousOutpoint.TransactionID).unwrap(),
-                                    index: input.PreviousOutpoint.Index,
-                                },
-                                signature_script: hex_decode(&input.SignatureScript),
-                                sequence: input.Sequence,
-                                sig_op_count: input.SigOpCount,
-                            })
+                        .map(|input| TransactionInput {
+                            previous_outpoint: TransactionOutpoint {
+                                transaction_id: Hash::from_str(&input.PreviousOutpoint.TransactionID).unwrap(),
+                                index: input.PreviousOutpoint.Index,
+                            },
+                            signature_script: hex_decode(&input.SignatureScript),
+                            sequence: input.Sequence,
+                            sig_op_count: input.SigOpCount,
                         })
                         .collect(),
                     tx.Outputs
                         .iter()
-                        .map(|output| {
-                            Arc::new(TransactionOutput {
-                                value: output.Amount,
-                                script_public_key: Arc::new(ScriptPublicKey {
-                                    script: hex_decode(&output.ScriptPublicKey.Script),
-                                    version: output.ScriptPublicKey.Version,
-                                }),
-                            })
+                        .map(|output| TransactionOutput {
+                            value: output.Amount,
+                            script_public_key: Arc::new(ScriptPublicKey {
+                                script: hex_decode(&output.ScriptPublicKey.Script),
+                                version: output.ScriptPublicKey.Version,
+                            }),
                         })
                         .collect(),
                     tx.LockTime,

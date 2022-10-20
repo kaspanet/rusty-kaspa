@@ -180,7 +180,7 @@ mod tests {
         let valid_cb = Transaction::new(
             0,
             vec![],
-            vec![Arc::new(TransactionOutput {
+            vec![TransactionOutput {
                 value: 0x12a05f200,
                 script_public_key: Arc::new(ScriptPublicKey {
                     script: vec![
@@ -189,7 +189,7 @@ mod tests {
                     ],
                     version: 0,
                 }),
-            })],
+            }],
             0,
             SUBNETWORK_ID_COINBASE,
             0,
@@ -200,7 +200,7 @@ mod tests {
 
         let valid_tx = Transaction::new(
             0,
-            vec![Arc::new(TransactionInput {
+            vec![TransactionInput {
                 previous_outpoint: TransactionOutpoint {
                     transaction_id: TransactionId::from_slice(&[
                         0x03, 0x2e, 0x38, 0xe9, 0xc0, 0xa8, 0x4c, 0x60, 0x46, 0xd6, 0x87, 0xd1, 0x05, 0x56, 0xdc, 0xac, 0xc4, 0x1d,
@@ -223,9 +223,9 @@ mod tests {
                 ],
                 sequence: u64::MAX,
                 sig_op_count: 0,
-            })],
+            }],
             vec![
-                Arc::new(TransactionOutput {
+                TransactionOutput {
                     value: 0x2123e300,
                     script_public_key: Arc::new(ScriptPublicKey {
                         script: vec![
@@ -238,8 +238,8 @@ mod tests {
                         ],
                         version: 0,
                     }),
-                }),
-                Arc::new(TransactionOutput {
+                },
+                TransactionOutput {
                     value: 0x108e20f00,
                     script_public_key: Arc::new(ScriptPublicKey {
                         script: vec![
@@ -252,7 +252,7 @@ mod tests {
                         ],
                         version: 0,
                     }),
-                }),
+                },
             ],
             0,
             SUBNETWORK_ID_NATIVE,
@@ -271,7 +271,7 @@ mod tests {
         assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::TooManyInputs(_, _)));
 
         let mut tx = valid_tx.clone();
-        Arc::make_mut(&mut tx.inputs[0]).signature_script = vec![0; params.max_signature_script_len + 1];
+        tx.inputs[0].signature_script = vec![0; params.max_signature_script_len + 1];
         assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::TooBigSignatureScript(_, _)));
 
         let mut tx = valid_tx.clone();
@@ -279,7 +279,7 @@ mod tests {
         assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::TooManyOutputs(_, _)));
 
         let mut tx = valid_tx.clone();
-        Arc::make_mut(&mut Arc::make_mut(&mut tx.outputs[0]).script_public_key).script = vec![0; params.max_script_public_key_len + 1];
+        Arc::make_mut(&mut tx.outputs[0].script_public_key).script = vec![0; params.max_script_public_key_len + 1];
         assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::TooBigScriptPublicKey(_, _)));
 
         let mut tx = valid_tx.clone();

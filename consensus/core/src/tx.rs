@@ -93,8 +93,8 @@ impl TransactionOutput {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Transaction {
     pub version: u16,
-    pub inputs: Vec<Arc<TransactionInput>>,   // TODO: arcs make no sense here
-    pub outputs: Vec<Arc<TransactionOutput>>, // TODO: arcs make no sense here
+    pub inputs: Vec<TransactionInput>,
+    pub outputs: Vec<TransactionOutput>,
     pub lock_time: u64,
     pub subnetwork_id: SubnetworkId,
     pub gas: u64,
@@ -108,8 +108,8 @@ pub struct Transaction {
 impl Transaction {
     pub fn new(
         version: u16,
-        inputs: Vec<Arc<TransactionInput>>,
-        outputs: Vec<Arc<TransactionOutput>>,
+        inputs: Vec<TransactionInput>,
+        outputs: Vec<TransactionOutput>,
         lock_time: u64,
         subnetwork_id: SubnetworkId,
         gas: u64,
@@ -160,10 +160,10 @@ impl<'a> PopulatedTransaction<'a> {
     }
 
     pub fn populated_inputs(&self) -> impl ExactSizeIterator<Item = (&TransactionInput, &UtxoEntry)> {
-        self.tx.inputs.iter().map(std::ops::Deref::deref).zip(self.entries.iter())
+        self.tx.inputs.iter().zip(self.entries.iter())
     }
 
-    pub fn outputs(&self) -> &[Arc<TransactionOutput>] {
+    pub fn outputs(&self) -> &[TransactionOutput] {
         &self.tx.outputs
     }
 
@@ -198,10 +198,10 @@ impl<'a> ValidatedTransaction<'a> {
     }
 
     pub fn populated_inputs(&self) -> impl ExactSizeIterator<Item = (&TransactionInput, &UtxoEntry)> {
-        self.tx.inputs.iter().map(std::ops::Deref::deref).zip(self.entries.iter())
+        self.tx.inputs.iter().zip(self.entries.iter())
     }
 
-    pub fn outputs(&self) -> &[Arc<TransactionOutput>] {
+    pub fn outputs(&self) -> &[TransactionOutput] {
         &self.tx.outputs
     }
 

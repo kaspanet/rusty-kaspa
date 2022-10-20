@@ -44,11 +44,11 @@ fn transaction_estimated_serialized_size(tx: &Transaction) -> u64 {
     let mut size: u64 = 0;
     size += 2; // Tx version (u16)
     size += 8; // Number of inputs (u64)
-    let inputs_size: u64 = tx.inputs.iter().map(|input| transaction_input_estimated_serialized_size(input)).sum();
+    let inputs_size: u64 = tx.inputs.iter().map(transaction_input_estimated_serialized_size).sum();
     size += inputs_size;
 
     size += 8; // number of outputs (u64)
-    let outputs_size: u64 = tx.outputs.iter().map(|output| transaction_output_estimated_serialized_size(output)).sum();
+    let outputs_size: u64 = tx.outputs.iter().map(transaction_output_estimated_serialized_size).sum();
     size += outputs_size;
 
     size += 8; // lock time (u64)
