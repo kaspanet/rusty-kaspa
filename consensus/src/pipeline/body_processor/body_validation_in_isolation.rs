@@ -426,7 +426,7 @@ mod tests {
             Err(RuleError::TxInIsolationValidationFailed(_, _))
         );
 
-        let mut block = example_block.clone();
+        let mut block = example_block;
         let txs = &mut block.transactions;
         Arc::make_mut(&mut txs[3].inputs[0]).previous_outpoint = TransactionOutpoint { transaction_id: txs[2].id(), index: 0 };
         block.header.hash_merkle_root = calc_hash_merkle_root(txs.iter());
