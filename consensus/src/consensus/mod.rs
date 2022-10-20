@@ -334,7 +334,7 @@ impl Consensus {
         ]
     }
 
-    pub fn validate_and_insert_block(&self, block: Arc<Block>) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
+    pub fn validate_and_insert_block(&self, block: Block) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
         let (tx, rx): (BlockResultSender, _) = oneshot::channel();
         self.block_sender.send(BlockTask::Process(block, vec![tx])).unwrap();
         async { rx.await.unwrap() }

@@ -50,6 +50,7 @@ impl Header {
         header
     }
 
+    /// Finalizes the header and recomputes the header hash
     pub fn finalize(&mut self) {
         self.hash = hashing::header::hash(self);
     }

@@ -77,7 +77,7 @@ impl RandomBlockEmitter {
                 b.header.finalize();
                 new_tips.push(b.header.hash);
                 // Submit to consensus
-                let f = self.consensus.validate_and_insert_block(Arc::new(b));
+                let f = self.consensus.validate_and_insert_block(b.to_immutable());
                 futures.push(f);
             }
             join_all(futures).await.into_iter().collect::<Result<Vec<BlockStatus>, RuleError>>().unwrap();
