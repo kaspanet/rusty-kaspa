@@ -14,7 +14,7 @@ pub fn header_from_precomputed_hash(hash: Hash, parents: Vec<Hash>) -> Header {
         timestamp: 0,
         daa_score: 0,
         bits: 0,
-        blue_work: 0,
+        blue_work: 0.into(),
         blue_score: 0,
         pruning_point: Default::default(),
     }

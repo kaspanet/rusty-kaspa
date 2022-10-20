@@ -10,6 +10,7 @@ license.workspace = true
 hashes.workspace = true
 merkle.workspace = true
 muhash.workspace = true
+math.workspace = true
 thiserror.workspace = true
 serde.workspace = true
 faster-hex.workspace = true

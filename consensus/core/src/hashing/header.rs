@@ -41,16 +41,14 @@ mod tests {
 
     #[test]
     fn test_header_hashing() {
-        let header = Header::new(1, vec![1.into()], Default::default(), 234, 23, 567, 0, 0, 0);
+        let header = Header::new(1, vec![1.into()], Default::default(), 234, 23, 567, 0, 0.into(), 0);
         assert_ne!(blockhash::NONE, header.hash);
-
-        // TODO: tests comparing to golang ref
     }
 
     #[test]
     fn test_hash_blue_work() {
         let tests: Vec<(BlueWorkType, Vec<u8>)> =
-            vec![(0, vec![0, 0, 0, 0, 0, 0, 0, 0]), (123456, vec![3, 0, 0, 0, 0, 0, 0, 0, 1, 226, 64])];
+            vec![(0.into(), vec![0, 0, 0, 0, 0, 0, 0, 0]), (123456.into(), vec![3, 0, 0, 0, 0, 0, 0, 0, 1, 226, 64])];
 
         for test in tests {
             let mut hasher = hashes::BlockHash::new();

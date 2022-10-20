@@ -88,7 +88,7 @@ pub fn calc_work(bits: u32) -> BlueWorkType {
     // or ~bnTarget / (bnTarget+1) + 1.
 
     let res = (!target / (target + 1)) + 1;
-    res.try_into().expect("Work should not exceed 2**128")
+    res.try_into().expect("Work should not exceed 2**192")
 }
 
 #[derive(Eq)]
