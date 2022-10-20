@@ -1023,7 +1023,7 @@ async fn difficulty_test() {
     );
     tip = block_in_the_past;
     tip = add_block(&consensus, None, vec![tip.hash]).await;
-    assert_eq!(tip.bits, 545199169); // TODO: Check that it makes sense
+    assert_eq!(tip.bits, 0x1d02c50f); // TODO: Check that it makes sense
 
     // Increase block rate to increase difficulty
     for _ in 0..params.difficulty_window_size {

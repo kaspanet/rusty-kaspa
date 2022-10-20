@@ -473,7 +473,7 @@ mod tests {
         let reachability_service = MTReachabilityService::new(Arc::new(RwLock::new(reachability_store)));
         let relations_store =
             Arc::new(RwLock::new(RelationsStoreMock { children: BlockHashes::new(vec![pruning_point, pp_anticone_block]) }));
-        let parents_manager = ParentsManager::new(250, genesis_hash, headers_store.clone(), reachability_service, relations_store);
+        let parents_manager = ParentsManager::new(250, genesis_hash, headers_store, reachability_service, relations_store);
 
         for test_block in test_blocks {
             let direct_parents = test_block.direct_parents.iter().map(|parent| Hash::from_u64_word(*parent)).collect_vec();
@@ -482,8 +482,7 @@ mod tests {
                 .iter()
                 .map(|parents| HashSet::<u64>::from_iter(parents.iter().map(|parent| hash_to_u64(*parent))))
                 .collect_vec();
-            let expected_parents =
-                test_block.expected_parents.iter().cloned().map(|parents| HashSet::from_iter(parents)).collect_vec();
+            let expected_parents = test_block.expected_parents.iter().cloned().map(HashSet::from_iter).collect_vec();
             assert_eq!(expected_parents, parents_as_u64, "failed for block {}", test_block.id);
         }
     }
