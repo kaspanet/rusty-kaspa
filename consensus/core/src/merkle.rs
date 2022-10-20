@@ -38,7 +38,6 @@ mod tests {
                 SUBNETWORK_ID_COINBASE,
                 0,
                 vec![9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                0,
             ),
             Transaction::new(
                 0,
@@ -73,7 +72,6 @@ mod tests {
                 SUBNETWORK_ID_NATIVE,
                 0,
                 vec![],
-                0,
             ),
             Transaction::new(
                 0,
@@ -135,7 +133,6 @@ mod tests {
                 SUBNETWORK_ID_NATIVE,
                 0,
                 vec![],
-                0,
             ),
             Transaction::new(
                 0,
@@ -196,7 +193,6 @@ mod tests {
                 SUBNETWORK_ID_NATIVE,
                 0,
                 vec![],
-                0,
             ),
             Transaction::new(
                 0,
@@ -242,7 +238,6 @@ mod tests {
                 SUBNETWORK_ID_NATIVE,
                 0,
                 vec![],
-                0,
             ),
         ];
         assert_eq!(

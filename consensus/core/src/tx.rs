@@ -114,7 +114,6 @@ impl Transaction {
         subnetwork_id: SubnetworkId,
         gas: u64,
         payload: Vec<u8>,
-        _fee: u64, // TODO: remove
     ) -> Self {
         let mut tx = Self {
             version,

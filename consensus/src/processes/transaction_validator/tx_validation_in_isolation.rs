@@ -194,7 +194,6 @@ mod tests {
             SUBNETWORK_ID_COINBASE,
             0,
             vec![9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            0,
         );
 
         tv.validate_tx_in_isolation(&valid_cb).unwrap();
@@ -259,7 +258,6 @@ mod tests {
             SUBNETWORK_ID_NATIVE,
             0,
             vec![],
-            0,
         );
 
         tv.validate_tx_in_isolation(&valid_tx).unwrap();

@@ -230,7 +230,6 @@ impl BlockBodyProcessor {
                         0x00, // OP-FALSE
                         0x6b, 0x61, 0x73, 0x70, 0x61, 0x2d, 0x64, 0x65, 0x76, 0x6e, 0x65, 0x74, // kaspa-devnet
                     ],
-                    0,
                 );
                 self.commit_body(self.genesis_hash, &[], Arc::new(vec![genesis_coinbase]))
             }

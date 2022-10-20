@@ -210,7 +210,6 @@ mod tests {
                 SUBNETWORK_ID_NATIVE,
                 0,
                 vec![],
-                0,
             )],
         );
 

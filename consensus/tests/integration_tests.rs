@@ -864,7 +864,6 @@ fn json_line_to_block(line: String) -> Block {
                     SubnetworkId::from_str(&tx.SubnetworkID).unwrap(),
                     tx.Gas,
                     hex_decode(&tx.Payload),
-                    0,
                 )
             })
             .collect(),
