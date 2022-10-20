@@ -59,6 +59,7 @@ pub struct VirtualStateProcessor {
     pub(super) max_block_parents: u8,
     pub(super) difficulty_window_size: usize,
     pub(super) mergeset_size_limit: u64,
+    pruning_depth: u64,
 
     // Stores
     pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
@@ -120,6 +121,7 @@ impl VirtualStateProcessor {
             max_block_parents: params.max_block_parents,
             difficulty_window_size: params.difficulty_window_size,
             mergeset_size_limit: params.mergeset_size_limit,
+            pruning_depth: params.pruning_depth,
 
             db: db.clone(),
             statuses_store,
@@ -290,6 +292,8 @@ impl VirtualStateProcessor {
             }
             _ => panic!("expected utxo valid or disqualified {}", new_selected),
         }
+
+        self.maybe_update_pruning_point_and_candidate()
     }
 
     fn commit_utxo_state(self: &Arc<Self>, current: Hash, mergeset_diff: UtxoDiff, multiset: MuHash, acceptance_data: AcceptanceData) {
@@ -304,20 +308,41 @@ impl VirtualStateProcessor {
     }
 
     fn maybe_update_pruning_point_and_candidate(self: &Arc<Self>) {
-        // TODO: call this method from resolve_virtual
+        let virtual_sp = self.virtual_state_store.read().get().unwrap().ghostdag_data.selected_parent;
+        if virtual_sp == self.genesis_hash {
+            return;
+        }
+
+        let ghostdag_data = self.ghostdag_store.get_compact_data(virtual_sp).unwrap();
         let pruning_read_guard = self.pruning_store.upgradable_read();
         let current_pp = pruning_read_guard.pruning_point().unwrap();
+        let current_pp_bs = self.ghostdag_store.get_blue_score(current_pp).unwrap();
         let current_pp_candidate = pruning_read_guard.pruning_point_candidate().unwrap();
-        let virtual_gd = self.virtual_state_store.read().get().unwrap().ghostdag_data.to_compact();
         let (new_pruning_point, new_candidate) =
-            self.pruning_manager.next_pruning_point_and_candidate_by_block_hash(virtual_gd, None, current_pp_candidate, current_pp);
+            self.pruning_manager.next_pruning_point_and_candidate_by_block_hash(ghostdag_data, None, current_pp_candidate, current_pp);
 
         if new_pruning_point != current_pp {
+            let mut past_pruning_points_to_add = Vec::new();
+            for current in self.reachability_service.backward_chain_iterator(virtual_sp, current_pp, false) {
+                let current_header = self.headers_store.get_compact_header_data(current).unwrap();
+                if current_header.pruning_point == current_pp || current_header.blue_score < current_pp_bs + self.pruning_depth {
+                    break;
+                }
+
+                if past_pruning_points_to_add.is_empty() || *past_pruning_points_to_add.last().unwrap() != current_header.pruning_point
+                {
+                    past_pruning_points_to_add.push(current_header.pruning_point);
+                }
+            }
+
+            let current_pp_index = pruning_read_guard.pruning_point_index().unwrap();
             let mut batch = WriteBatch::default();
-            let new_pp_index = pruning_read_guard.pruning_point_index().unwrap() + 1;
             let mut write_guard = RwLockUpgradableReadGuard::upgrade(pruning_read_guard);
+            for (i, past_pp) in past_pruning_points_to_add.iter().copied().rev().enumerate() {
+                self.past_pruning_points_store.insert_batch(&mut batch, current_pp_index + i as u64 + 1, past_pp).unwrap();
+            }
+            let new_pp_index = current_pp_index + past_pruning_points_to_add.len() as u64;
             write_guard.set_batch(&mut batch, new_pruning_point, new_candidate, new_pp_index).unwrap();
-            self.past_pruning_points_store.insert_batch(&mut batch, new_pp_index, new_pruning_point).unwrap();
             self.db.write(batch).unwrap();
             // TODO: Move PP UTXO etc
         } else if new_candidate != current_pp_candidate {

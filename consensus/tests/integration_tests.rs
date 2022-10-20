@@ -962,13 +962,7 @@ async fn difficulty_test() {
         });
         let mut header = consensus.build_header_with_parents(new_unique(), parents);
         header.timestamp = block_time;
-        consensus
-            .validate_and_insert_block(Arc::new(Block {
-                header: header.clone(), /* TODO: Consider removing clone */
-                transactions: Arc::new(vec![]),
-            }))
-            .await
-            .unwrap();
+        consensus.validate_and_insert_block(Block::new(header.clone(), vec![])).await.unwrap();
         header
     }
 
