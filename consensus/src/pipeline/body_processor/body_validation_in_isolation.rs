@@ -149,7 +149,7 @@ mod tests {
                 0x207fffff,
                 1,
                 0,
-                0,
+                0.into(),
                 9,
             ),
             vec![
