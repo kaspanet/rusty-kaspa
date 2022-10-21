@@ -994,7 +994,7 @@ async fn difficulty_test() {
         bits: 0,
         nonce: 0,
         daa_score: 0,
-        blue_work: 0,
+        blue_work: 0.into(),
         blue_score: 0,
         pruning_point: 0.into(),
     };
