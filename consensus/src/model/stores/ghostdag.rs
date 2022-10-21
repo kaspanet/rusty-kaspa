@@ -2,6 +2,7 @@ use crate::processes::ghostdag::ordering::SortableBlock;
 
 use super::caching::CachedDbAccessForCopy;
 use super::{caching::CachedDbAccess, errors::StoreError, DB};
+use consensus_core::BlockHashMap;
 use consensus_core::{blockhash::BlockHashes, BlueWorkType};
 use hashes::Hash;
 use itertools::EitherOrBoth::{Both, Left, Right};
@@ -9,10 +10,10 @@ use itertools::Itertools;
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
 use std::iter::once;
-use std::{cell::RefCell, collections::HashMap, sync::Arc};
+use std::{cell::RefCell, sync::Arc};
 
 pub type KType = u8; // This type must be increased to u16 if we ever set GHOSTDAG K > 255
-pub type HashKTypeMap = Arc<HashMap<Hash, KType>>;
+pub type HashKTypeMap = Arc<BlockHashMap<KType>>;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct GhostdagData {
@@ -45,7 +46,7 @@ impl GhostdagData {
 
     pub fn new_with_selected_parent(selected_parent: Hash, k: KType) -> Self {
         let mut mergeset_blues: Vec<Hash> = Vec::with_capacity((k + 1) as usize);
-        let mut blues_anticone_sizes: HashMap<Hash, KType> = HashMap::with_capacity(k as usize);
+        let mut blues_anticone_sizes: BlockHashMap<KType> = BlockHashMap::with_capacity(k as usize);
         mergeset_blues.push(selected_parent);
         blues_anticone_sizes.insert(selected_parent, 0);
 
@@ -149,7 +150,7 @@ impl GhostdagData {
 }
 
 impl GhostdagData {
-    pub fn add_blue(self: &mut Arc<Self>, block: Hash, blue_anticone_size: KType, block_blues_anticone_sizes: &HashMap<Hash, KType>) {
+    pub fn add_blue(self: &mut Arc<Self>, block: Hash, blue_anticone_size: KType, block_blues_anticone_sizes: &BlockHashMap<KType>) {
         // Extract mutable data
         let data = Arc::make_mut(self);
 
@@ -306,23 +307,23 @@ impl GhostdagStore for DbGhostdagStore {
 /// Uses `RefCell` for interior mutability in order to workaround `insert`
 /// being non-mutable.
 pub struct MemoryGhostdagStore {
-    blue_score_map: RefCell<HashMap<Hash, u64>>,
-    blue_work_map: RefCell<HashMap<Hash, BlueWorkType>>,
-    selected_parent_map: RefCell<HashMap<Hash, Hash>>,
-    mergeset_blues_map: RefCell<HashMap<Hash, BlockHashes>>,
-    mergeset_reds_map: RefCell<HashMap<Hash, BlockHashes>>,
-    blues_anticone_sizes_map: RefCell<HashMap<Hash, HashKTypeMap>>,
+    blue_score_map: RefCell<BlockHashMap<u64>>,
+    blue_work_map: RefCell<BlockHashMap<BlueWorkType>>,
+    selected_parent_map: RefCell<BlockHashMap<Hash>>,
+    mergeset_blues_map: RefCell<BlockHashMap<BlockHashes>>,
+    mergeset_reds_map: RefCell<BlockHashMap<BlockHashes>>,
+    blues_anticone_sizes_map: RefCell<BlockHashMap<HashKTypeMap>>,
 }
 
 impl MemoryGhostdagStore {
     pub fn new() -> Self {
         Self {
-            blue_score_map: RefCell::new(HashMap::new()),
-            blue_work_map: RefCell::new(HashMap::new()),
-            selected_parent_map: RefCell::new(HashMap::new()),
-            mergeset_blues_map: RefCell::new(HashMap::new()),
-            mergeset_reds_map: RefCell::new(HashMap::new()),
-            blues_anticone_sizes_map: RefCell::new(HashMap::new()),
+            blue_score_map: RefCell::new(BlockHashMap::new()),
+            blue_work_map: RefCell::new(BlockHashMap::new()),
+            selected_parent_map: RefCell::new(BlockHashMap::new()),
+            mergeset_blues_map: RefCell::new(BlockHashMap::new()),
+            mergeset_reds_map: RefCell::new(BlockHashMap::new()),
+            blues_anticone_sizes_map: RefCell::new(BlockHashMap::new()),
         }
     }
 }
@@ -417,7 +418,7 @@ impl GhostdagStoreReader for MemoryGhostdagStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashSet;
+    use consensus_core::BlockHashSet;
 
     #[test]
     fn test_mergeset_iterators() {
@@ -461,10 +462,10 @@ mod tests {
         assert_eq!(expected, data.descending_mergeset_without_selected_parent(&store).map(|b| b.hash).collect::<Vec<Hash>>());
 
         // Use sets since the below functions have no order guarantee
-        let expected: HashSet<Hash> = HashSet::from([4.into(), 2.into(), 5.into(), 3.into(), 6.into()]);
-        assert_eq!(expected, data.unordered_mergeset_without_selected_parent().collect::<HashSet<Hash>>());
+        let expected = BlockHashSet::from([4.into(), 2.into(), 5.into(), 3.into(), 6.into()]);
+        assert_eq!(expected, data.unordered_mergeset_without_selected_parent().collect::<BlockHashSet>());
 
-        let expected: HashSet<Hash> = HashSet::from([1.into(), 4.into(), 2.into(), 5.into(), 3.into(), 6.into()]);
-        assert_eq!(expected, data.unordered_mergeset().collect::<HashSet<Hash>>());
+        let expected = BlockHashSet::from([1.into(), 4.into(), 2.into(), 5.into(), 3.into(), 6.into()]);
+        assert_eq!(expected, data.unordered_mergeset().collect::<BlockHashSet>());
     }
 }

@@ -1,8 +1,8 @@
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 use consensus_core::{
     blockhash::{self, BlockHashes},
-    BlueWorkType,
+    BlockHashMap, BlueWorkType,
 };
 use hashes::Hash;
 
@@ -49,7 +49,7 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
             blockhash::ORIGIN,
             BlockHashes::new(Vec::new()),
             BlockHashes::new(Vec::new()),
-            HashKTypeMap::new(HashMap::new()),
+            HashKTypeMap::new(BlockHashMap::new()),
         ))
     }
 
@@ -116,7 +116,7 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
         new_block_data: &GhostdagData,
         chain_block: &ChainBlock,
         blue_candidate: Hash,
-        candidate_blues_anticone_sizes: &mut HashMap<Hash, KType>,
+        candidate_blues_anticone_sizes: &mut BlockHashMap<KType>,
         candidate_blue_anticone_size: &mut KType,
     ) -> ColoringState {
         // If blue_candidate is in the future of chain_block, it means
@@ -190,7 +190,7 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
             return ColoringOutput::Red;
         }
 
-        let mut candidate_blues_anticone_sizes: HashMap<Hash, KType> = HashMap::with_capacity(self.k as usize);
+        let mut candidate_blues_anticone_sizes: BlockHashMap<KType> = BlockHashMap::with_capacity(self.k as usize);
 
         // Iterate over all blocks in the blue past of the new block that are not in the past
         // of blue_candidate, and check for each one of them if blue_candidate potentially
@@ -238,6 +238,6 @@ enum ColoringState {
 
 /// Represents the final output of GHOSTDAG coloring for the current candidate
 enum ColoringOutput {
-    Blue(KType, HashMap<Hash, KType>), // (blue anticone size, map of blue anticone sizes for each affected blue)
+    Blue(KType, BlockHashMap<KType>), // (blue anticone size, map of blue anticone sizes for each affected blue)
     Red,
 }

@@ -51,3 +51,4 @@ tokio = { version = "1", features = ["sync"] }
 wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
 criterion = { version = "0.4", default-features = false }
 indexmap = "1.9.1"
+smallvec = { version = "1.10.0", features = ["serde"] }

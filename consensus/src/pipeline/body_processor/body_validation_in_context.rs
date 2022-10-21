@@ -91,7 +91,6 @@ mod tests {
     };
     use hashes::Hash;
     use kaspa_core::assert_match;
-    use std::sync::Arc;
 
     #[tokio::test]
     async fn validate_body_in_context_test() {
@@ -204,13 +203,12 @@ mod tests {
             vec![parent],
             vec![Transaction::new(
                 TX_VERSION,
-                vec![Arc::new(TransactionInput::new(TransactionOutpoint::new(1.into(), 0), vec![], sequence, 0))],
+                vec![TransactionInput::new(TransactionOutpoint::new(1.into(), 0), vec![], sequence, 0)],
                 vec![],
                 lock_time,
                 SUBNETWORK_ID_NATIVE,
                 0,
                 vec![],
-                0,
             )],
         );
 
