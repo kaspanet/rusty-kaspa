@@ -417,7 +417,7 @@ impl GhostdagStoreReader for MemoryGhostdagStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashSet;
+    use consensus_core::BlockHashSet;
 
     #[test]
     fn test_mergeset_iterators() {
@@ -461,10 +461,10 @@ mod tests {
         assert_eq!(expected, data.descending_mergeset_without_selected_parent(&store).map(|b| b.hash).collect::<Vec<Hash>>());
 
         // Use sets since the below functions have no order guarantee
-        let expected: HashSet<Hash> = HashSet::from([4.into(), 2.into(), 5.into(), 3.into(), 6.into()]);
-        assert_eq!(expected, data.unordered_mergeset_without_selected_parent().collect::<HashSet<Hash>>());
+        let expected = BlockHashSet::from([4.into(), 2.into(), 5.into(), 3.into(), 6.into()]);
+        assert_eq!(expected, data.unordered_mergeset_without_selected_parent().collect::<BlockHashSet>());
 
-        let expected: HashSet<Hash> = HashSet::from([1.into(), 4.into(), 2.into(), 5.into(), 3.into(), 6.into()]);
-        assert_eq!(expected, data.unordered_mergeset().collect::<HashSet<Hash>>());
+        let expected = BlockHashSet::from([1.into(), 4.into(), 2.into(), 5.into(), 3.into(), 6.into()]);
+        assert_eq!(expected, data.unordered_mergeset().collect::<BlockHashSet>());
     }
 }

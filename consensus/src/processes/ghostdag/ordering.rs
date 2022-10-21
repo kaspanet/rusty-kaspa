@@ -1,6 +1,6 @@
-use std::{cmp::Ordering, collections::HashSet};
+use std::cmp::Ordering;
 
-use consensus_core::BlueWorkType;
+use consensus_core::{BlockHashSet, BlueWorkType};
 use hashes::Hash;
 use serde::{Deserialize, Serialize};
 
@@ -42,7 +42,7 @@ impl Ord for SortableBlock {
 }
 
 impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V: HeaderStoreReader> GhostdagManager<T, S, U, V> {
-    pub fn sort_blocks(&self, blocks: HashSet<Hash>) -> Vec<Hash> {
+    pub fn sort_blocks(&self, blocks: BlockHashSet) -> Vec<Hash> {
         let mut sorted_blocks: Vec<Hash> = blocks.into_iter().collect();
         sorted_blocks
             .sort_by_cached_key(|block| SortableBlock { hash: *block, blue_work: self.ghostdag_store.get_blue_work(*block).unwrap() });

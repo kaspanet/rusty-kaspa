@@ -9,9 +9,9 @@ use crate::{
     },
     processes::reachability::interval::Interval,
 };
-use consensus_core::blockhash::BlockHashExtensions;
+use consensus_core::{blockhash::BlockHashExtensions, BlockHashSet};
 use hashes::Hash;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, VecDeque};
 use thiserror::Error;
 
 /// A struct with fluent API to streamline reachability store building
@@ -112,8 +112,8 @@ impl<'a, T: ReachabilityStore + ?Sized> DagBuilder<'a, T> {
 
     fn mergeset(&self, block: &DagBlock, selected_parent: Hash) -> Vec<Hash> {
         let mut queue: VecDeque<Hash> = block.parents.iter().copied().filter(|p| *p != selected_parent).collect();
-        let mut mergeset: HashSet<_> = queue.iter().copied().collect();
-        let mut past: HashSet<Hash> = HashSet::new();
+        let mut mergeset: BlockHashSet = queue.iter().copied().collect();
+        let mut past = BlockHashSet::new();
 
         while let Some(current) = queue.pop_front() {
             for parent in self.map[&current].parents.iter() {
