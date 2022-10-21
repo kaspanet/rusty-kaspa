@@ -26,6 +26,7 @@ tempfile.workspace = true
 rayon.workspace = true
 rand.workspace = true
 indexmap.workspace = true
+smallvec.workspace = true
 
 rocksdb = "0.19"
 parking_lot = "0.12"

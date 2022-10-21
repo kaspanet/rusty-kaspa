@@ -1,8 +1,8 @@
 use crate::{errors::BlockProcessResult, model::stores::statuses::BlockStatus};
-use consensus_core::block::Block;
+use consensus_core::{block::Block, BlockHashMap};
 use hashes::Hash;
 use parking_lot::{Condvar, Mutex};
-use std::collections::{hash_map::Entry::Vacant, HashMap};
+use std::collections::hash_map::Entry::Vacant;
 use tokio::sync::oneshot;
 
 pub type BlockResultSender = oneshot::Sender<BlockProcessResult<BlockStatus>>;
@@ -33,7 +33,7 @@ impl BlockTaskInternal {
 /// A concurrent data structure for managing block processing tasks and their DAG dependencies
 pub(crate) struct BlockTaskDependencyManager {
     /// Holds pending block hashes and their corresponding tasks
-    pending: Mutex<HashMap<Hash, BlockTaskInternal>>,
+    pending: Mutex<BlockHashMap<BlockTaskInternal>>,
 
     // Used to signal that workers are idle
     idle_signal: Condvar,
@@ -41,7 +41,7 @@ pub(crate) struct BlockTaskDependencyManager {
 
 impl BlockTaskDependencyManager {
     pub fn new() -> Self {
-        Self { pending: Mutex::new(HashMap::new()), idle_signal: Condvar::new() }
+        Self { pending: Mutex::new(BlockHashMap::new()), idle_signal: Condvar::new() }
     }
 
     /// Registers the `(block, result_transmitters)` pair as a pending task. If the block is already pending

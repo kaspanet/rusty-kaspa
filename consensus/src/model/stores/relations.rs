@@ -1,12 +1,9 @@
 use super::{caching::CachedDbAccess, errors::StoreError, DB};
-use consensus_core::blockhash::BlockHashes;
+use consensus_core::{blockhash::BlockHashes, BlockHashMap};
 use hashes::Hash;
 use parking_lot::{RwLock, RwLockWriteGuard};
 use rocksdb::WriteBatch;
-use std::{
-    collections::{hash_map::Entry::Vacant, HashMap},
-    sync::Arc,
-};
+use std::{collections::hash_map::Entry::Vacant, sync::Arc};
 
 /// Reader API for `RelationsStore`.
 pub trait RelationsStoreReader {
@@ -137,13 +134,13 @@ impl RelationsStore for DbRelationsStore {
 }
 
 pub struct MemoryRelationsStore {
-    parents_map: HashMap<Hash, BlockHashes>,
-    children_map: HashMap<Hash, BlockHashes>,
+    parents_map: BlockHashMap<BlockHashes>,
+    children_map: BlockHashMap<BlockHashes>,
 }
 
 impl MemoryRelationsStore {
     pub fn new() -> Self {
-        Self { parents_map: HashMap::new(), children_map: HashMap::new() }
+        Self { parents_map: BlockHashMap::new(), children_map: BlockHashMap::new() }
     }
 }
 

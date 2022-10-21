@@ -1,21 +1,21 @@
 use super::{extensions::ReachabilityStoreIntervalExtensions, inquirer::get_next_chain_ancestor_unchecked, interval::Interval, *};
 use crate::model::stores::reachability::ReachabilityStore;
-use consensus_core::blockhash::BlockHashExtensions;
+use consensus_core::{blockhash::BlockHashExtensions, BlockHashMap};
 use hashes::Hash;
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 
 /// A struct used during reindex operations. It represents a temporary context
 /// for caching subtree information during the *current* reindex operation only
 pub(super) struct ReindexOperationContext<'a, T: ReachabilityStore + ?Sized> {
     store: &'a mut T,
-    subtree_sizes: HashMap<Hash, u64>, // Cache for subtree sizes computed during this operation
+    subtree_sizes: BlockHashMap<u64>, // Cache for subtree sizes computed during this operation
     depth: u64,
     slack: u64,
 }
 
 impl<'a, T: ReachabilityStore + ?Sized> ReindexOperationContext<'a, T> {
     pub(super) fn new(store: &'a mut T, depth: u64, slack: u64) -> Self {
-        Self { store, subtree_sizes: HashMap::new(), depth, slack }
+        Self { store, subtree_sizes: BlockHashMap::new(), depth, slack }
     }
 
     /// Traverses the reachability subtree that's defined by the new child
@@ -112,7 +112,7 @@ impl<'a, T: ReachabilityStore + ?Sized> ReindexOperationContext<'a, T> {
         }
 
         let mut queue = VecDeque::<Hash>::from([block]);
-        let mut counts = HashMap::<Hash, u64>::new();
+        let mut counts = BlockHashMap::<u64>::new();
 
         while let Some(mut current) = queue.pop_front() {
             let children = self.store.get_children(current)?;
@@ -516,7 +516,7 @@ mod tests {
             .iter()
             .cloned()
             .map(|(h, c)| (Hash::from(h), c))
-            .collect::<HashMap<Hash, u64>>();
+            .collect::<BlockHashMap<u64>>();
 
         assert_eq!(expected, ctx.subtree_sizes);
 

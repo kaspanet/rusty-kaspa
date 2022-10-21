@@ -1,10 +1,8 @@
 use std::{collections::HashSet, sync::Arc};
 
-use consensus_core::{block::Block, merkle::calc_hash_merkle_root, tx::TransactionOutpoint};
-
-use crate::errors::{BlockProcessResult, RuleError};
-
 use super::BlockBodyProcessor;
+use crate::errors::{BlockProcessResult, RuleError};
+use consensus_core::{block::Block, merkle::calc_hash_merkle_root, tx::TransactionOutpoint};
 
 impl BlockBodyProcessor {
     pub fn validate_body_in_isolation(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {
@@ -107,19 +105,16 @@ impl BlockBodyProcessor {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
+    use crate::{consensus::test_consensus::TestConsensus, errors::RuleError, params::MAINNET_PARAMS};
     use consensus_core::{
         block::MutableBlock,
         header::Header,
         merkle::calc_hash_merkle_root,
         subnets::{SUBNETWORK_ID_COINBASE, SUBNETWORK_ID_NATIVE},
-        tx::{ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput},
+        tx::{scriptvec, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput},
     };
     use hashes::Hash;
     use kaspa_core::assert_match;
-
-    use crate::{consensus::test_consensus::TestConsensus, errors::RuleError, params::MAINNET_PARAMS};
 
     #[test]
     fn validate_body_in_isolation_test() {
@@ -156,26 +151,25 @@ mod tests {
                 Transaction::new(
                     0,
                     vec![],
-                    vec![Arc::new(TransactionOutput {
+                    vec![TransactionOutput {
                         value: 0x12a05f200,
-                        script_public_key: Arc::new(ScriptPublicKey {
-                            script: vec![
+                        script_public_key: ScriptPublicKey::new(
+                            0,
+                            scriptvec!(
                                 0xa9, 0x14, 0xda, 0x17, 0x45, 0xe9, 0xb5, 0x49, 0xbd, 0x0b, 0xfa, 0x1a, 0x56, 0x99, 0x71, 0xc7, 0x7e,
-                                0xba, 0x30, 0xcd, 0x5a, 0x4b, 0x87,
-                            ],
-                            version: 0,
-                        }),
-                    })],
+                                0xba, 0x30, 0xcd, 0x5a, 0x4b, 0x87
+                            ),
+                        ),
+                    }],
                     0,
                     SUBNETWORK_ID_COINBASE,
                     0,
                     vec![9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                    0,
                 ),
                 Transaction::new(
                     0,
                     vec![
-                        Arc::new(TransactionInput {
+                        TransactionInput {
                             previous_outpoint: TransactionOutpoint {
                                 transaction_id: TransactionId::from_slice(&[
                                     0x16, 0x5e, 0x38, 0xe8, 0xb3, 0x91, 0x45, 0x95, 0xd9, 0xc6, 0x41, 0xf3, 0xb8, 0xee, 0xc2, 0xf3,
@@ -186,8 +180,8 @@ mod tests {
                             signature_script: vec![],
                             sequence: u64::MAX,
                             sig_op_count: 0,
-                        }),
-                        Arc::new(TransactionInput {
+                        },
+                        TransactionInput {
                             previous_outpoint: TransactionOutpoint {
                                 transaction_id: TransactionId::from_slice(&[
                                     0x4b, 0xb0, 0x75, 0x35, 0xdf, 0xd5, 0x8e, 0x0b, 0x3c, 0xd6, 0x4f, 0xd7, 0x15, 0x52, 0x80, 0x87,
@@ -198,18 +192,17 @@ mod tests {
                             signature_script: vec![],
                             sequence: u64::MAX,
                             sig_op_count: 0,
-                        }),
+                        },
                     ],
                     vec![],
                     0,
                     SUBNETWORK_ID_NATIVE,
                     0,
                     vec![],
-                    0,
                 ),
                 Transaction::new(
                     0,
-                    vec![Arc::new(TransactionInput {
+                    vec![TransactionInput {
                         previous_outpoint: TransactionOutpoint {
                             transaction_id: TransactionId::from_slice(&[
                                 0x03, 0x2e, 0x38, 0xe9, 0xc0, 0xa8, 0x4c, 0x60, 0x46, 0xd6, 0x87, 0xd1, 0x05, 0x56, 0xdc, 0xac, 0xc4,
@@ -232,46 +225,45 @@ mod tests {
                         ],
                         sequence: u64::MAX,
                         sig_op_count: 0,
-                    })],
+                    }],
                     vec![
-                        Arc::new(TransactionOutput {
+                        TransactionOutput {
                             value: 0x2123e300,
-                            script_public_key: Arc::new(ScriptPublicKey {
-                                script: vec![
+                            script_public_key: ScriptPublicKey::new(
+                                0,
+                                scriptvec!(
                                     0x76, // OP_DUP
                                     0xa9, // OP_HASH160
                                     0x14, // OP_DATA_20
                                     0xc3, 0x98, 0xef, 0xa9, 0xc3, 0x92, 0xba, 0x60, 0x13, 0xc5, 0xe0, 0x4e, 0xe7, 0x29, 0x75, 0x5e,
                                     0xf7, 0xf5, 0x8b, 0x32, 0x88, // OP_EQUALVERIFY
-                                    0xac, // OP_CHECKSIG
-                                ],
-                                version: 0,
-                            }),
-                        }),
-                        Arc::new(TransactionOutput {
+                                    0xac  // OP_CHECKSIG
+                                ),
+                            ),
+                        },
+                        TransactionOutput {
                             value: 0x108e20f00,
-                            script_public_key: Arc::new(ScriptPublicKey {
-                                script: vec![
+                            script_public_key: ScriptPublicKey::new(
+                                0,
+                                scriptvec!(
                                     0x76, // OP_DUP
                                     0xa9, // OP_HASH160
                                     0x14, // OP_DATA_20
                                     0x94, 0x8c, 0x76, 0x5a, 0x69, 0x14, 0xd4, 0x3f, 0x2a, 0x7a, 0xc1, 0x77, 0xda, 0x2c, 0x2f, 0x6b,
                                     0x52, 0xde, 0x3d, 0x7c, 0x88, // OP_EQUALVERIFY
-                                    0xac, // OP_CHECKSIG
-                                ],
-                                version: 0,
-                            }),
-                        }),
+                                    0xac  // OP_CHECKSIG
+                                ),
+                            ),
+                        },
                     ],
                     0,
                     SUBNETWORK_ID_NATIVE,
                     0,
                     vec![],
-                    0,
                 ),
                 Transaction::new(
                     0,
-                    vec![Arc::new(TransactionInput {
+                    vec![TransactionInput {
                         previous_outpoint: TransactionOutpoint {
                             transaction_id: TransactionId::from_slice(&[
                                 0xc3, 0x3e, 0xbf, 0xf2, 0xa7, 0x09, 0xf1, 0x3d, 0x9f, 0x9a, 0x75, 0x69, 0xab, 0x16, 0xa3, 0x27, 0x86,
@@ -293,46 +285,45 @@ mod tests {
                         ],
                         sequence: u64::MAX,
                         sig_op_count: 0,
-                    })],
+                    }],
                     vec![
-                        Arc::new(TransactionOutput {
+                        TransactionOutput {
                             value: 0xf4240,
-                            script_public_key: Arc::new(ScriptPublicKey {
-                                script: vec![
+                            script_public_key: ScriptPublicKey::new(
+                                0,
+                                scriptvec!(
                                     0x76, // OP_DUP
                                     0xa9, // OP_HASH160
                                     0x14, // OP_DATA_20
                                     0xb0, 0xdc, 0xbf, 0x97, 0xea, 0xbf, 0x44, 0x04, 0xe3, 0x1d, 0x95, 0x24, 0x77, 0xce, 0x82, 0x2d,
                                     0xad, 0xbe, 0x7e, 0x10, 0x88, // OP_EQUALVERIFY
-                                    0xac, // OP_CHECKSIG
-                                ],
-                                version: 0,
-                            }),
-                        }),
-                        Arc::new(TransactionOutput {
+                                    0xac  // OP_CHECKSIG
+                                ),
+                            ),
+                        },
+                        TransactionOutput {
                             value: 0x11d260c0,
-                            script_public_key: Arc::new(ScriptPublicKey {
-                                script: vec![
+                            script_public_key: ScriptPublicKey::new(
+                                0,
+                                scriptvec!(
                                     0x76, // OP_DUP
                                     0xa9, // OP_HASH160
                                     0x14, // OP_DATA_20
                                     0x6b, 0x12, 0x81, 0xee, 0xc2, 0x5a, 0xb4, 0xe1, 0xe0, 0x79, 0x3f, 0xf4, 0xe0, 0x8a, 0xb1, 0xab,
                                     0xb3, 0x40, 0x9c, 0xd9, 0x88, // OP_EQUALVERIFY
-                                    0xac, // OP_CHECKSIG
-                                ],
-                                version: 0,
-                            }),
-                        }),
+                                    0xac  // OP_CHECKSIG
+                                ),
+                            ),
+                        },
                     ],
                     0,
                     SUBNETWORK_ID_NATIVE,
                     0,
                     vec![],
-                    0,
                 ),
                 Transaction::new(
                     0,
-                    vec![Arc::new(TransactionInput {
+                    vec![TransactionInput {
                         previous_outpoint: TransactionOutpoint {
                             transaction_id: TransactionId::from_slice(&[
                                 0x0b, 0x60, 0x72, 0xb3, 0x86, 0xd4, 0xa7, 0x73, 0x23, 0x52, 0x37, 0xf6, 0x4c, 0x11, 0x26, 0xac, 0x3b,
@@ -355,26 +346,25 @@ mod tests {
                         ],
                         sequence: u64::MAX,
                         sig_op_count: 0,
-                    })],
-                    vec![Arc::new(TransactionOutput {
+                    }],
+                    vec![TransactionOutput {
                         value: 0xf4240,
-                        script_public_key: Arc::new(ScriptPublicKey {
-                            script: vec![
+                        script_public_key: ScriptPublicKey::new(
+                            0,
+                            scriptvec!(
                                 0x76, // OP_DUP
                                 0xa9, // OP_HASH160
                                 0x14, // OP_DATA_20
                                 0x39, 0xaa, 0x3d, 0x56, 0x9e, 0x06, 0xa1, 0xd7, 0x92, 0x6d, 0xc4, 0xbe, 0x11, 0x93, 0xc9, 0x9b, 0xf2,
                                 0xeb, 0x9e, 0xe0, 0x88, // OP_EQUALVERIFY
-                                0xac, // OP_CHECKSIG
-                            ],
-                            version: 0,
-                        }),
-                    })],
+                                0xac  // OP_CHECKSIG
+                            ),
+                        ),
+                    }],
                     0,
                     SUBNETWORK_ID_NATIVE,
                     0,
                     vec![],
-                    0,
                 ),
             ],
         );
@@ -388,8 +378,8 @@ mod tests {
 
         let mut block = example_block.clone();
         let txs = &mut block.transactions;
-        Arc::make_mut(&mut txs[1].inputs[0]).sig_op_count = 255;
-        Arc::make_mut(&mut txs[1].inputs[1]).sig_op_count = 255;
+        txs[1].inputs[0].sig_op_count = 255;
+        txs[1].inputs[1].sig_op_count = 255;
         block.header.hash_merkle_root = calc_hash_merkle_root(txs.iter());
         assert_match!(body_processor.validate_body_in_isolation(&block.to_immutable()), Err(RuleError::ExceedsMassLimit(_)));
 
@@ -407,7 +397,7 @@ mod tests {
 
         let mut block = example_block.clone();
         let txs = &mut block.transactions;
-        Arc::make_mut(&mut txs[2].inputs[0]).previous_outpoint = txs[1].inputs[0].previous_outpoint;
+        txs[2].inputs[0].previous_outpoint = txs[1].inputs[0].previous_outpoint;
         block.header.hash_merkle_root = calc_hash_merkle_root(txs.iter());
         assert_match!(body_processor.validate_body_in_isolation(&block.to_immutable()), Err(RuleError::DoubleSpendInSameBlock(_)));
 
@@ -428,7 +418,7 @@ mod tests {
 
         let mut block = example_block;
         let txs = &mut block.transactions;
-        Arc::make_mut(&mut txs[3].inputs[0]).previous_outpoint = TransactionOutpoint { transaction_id: txs[2].id(), index: 0 };
+        txs[3].inputs[0].previous_outpoint = TransactionOutpoint { transaction_id: txs[2].id(), index: 0 };
         block.header.hash_merkle_root = calc_hash_merkle_root(txs.iter());
         assert_match!(body_processor.validate_body_in_isolation(&block.to_immutable()), Err(RuleError::ChainedTransaction(_)));
 

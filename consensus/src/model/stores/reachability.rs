@@ -1,11 +1,11 @@
-use consensus_core::blockhash::{self, BlockHashes};
+use consensus_core::{
+    blockhash::{self, BlockHashes},
+    BlockHashMap,
+};
 use parking_lot::{RwLockUpgradableReadGuard, RwLockWriteGuard};
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::{hash_map::Entry::Vacant, HashMap},
-    sync::Arc,
-};
+use std::{collections::hash_map::Entry::Vacant, sync::Arc};
 
 use super::{caching::CachedDbAccess, caching::CachedDbItem, errors::StoreError, DB};
 use crate::processes::reachability::interval::Interval;
@@ -159,13 +159,13 @@ impl ReachabilityStoreReader for DbReachabilityStore {
 
 pub struct StagingReachabilityStore<'a> {
     store_read: RwLockUpgradableReadGuard<'a, DbReachabilityStore>,
-    staging_writes: HashMap<Hash, ReachabilityData>,
+    staging_writes: BlockHashMap<ReachabilityData>,
     staging_reindex_root: Option<Hash>,
 }
 
 impl<'a> StagingReachabilityStore<'a> {
     pub fn new(store_read: RwLockUpgradableReadGuard<'a, DbReachabilityStore>) -> Self {
-        Self { store_read, staging_writes: HashMap::new(), staging_reindex_root: None }
+        Self { store_read, staging_writes: BlockHashMap::new(), staging_reindex_root: None }
     }
 
     pub fn commit(self, batch: &mut WriteBatch) -> Result<RwLockWriteGuard<'a, DbReachabilityStore>, StoreError> {
@@ -301,7 +301,7 @@ impl ReachabilityStoreReader for StagingReachabilityStore<'_> {
 }
 
 pub struct MemoryReachabilityStore {
-    map: HashMap<Hash, ReachabilityData>,
+    map: BlockHashMap<ReachabilityData>,
     reindex_root: Option<Hash>,
 }
 
@@ -313,7 +313,7 @@ impl Default for MemoryReachabilityStore {
 
 impl MemoryReachabilityStore {
     pub fn new() -> Self {
-        Self { map: HashMap::new(), reindex_root: None }
+        Self { map: BlockHashMap::new(), reindex_root: None }
     }
 
     fn get_data_mut(&mut self, hash: Hash) -> Result<&mut ReachabilityData, StoreError> {
