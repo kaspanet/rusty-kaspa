@@ -22,3 +22,6 @@ pub type BlockHashSet = HashSet<Hash>;
 
 /// Defined in order to make it easy to experiment with various hashers
 pub type BlockHashMap<T> = HashMap<Hash, T>;
+
+// TODO: if custom hashers are used for BlockHashMap, make sure that store caches
+// which are keyed by Hash use them as well.

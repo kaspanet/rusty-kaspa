@@ -9,9 +9,9 @@ use crate::{
     },
     processes::reachability::interval::Interval,
 };
-use consensus_core::{blockhash::BlockHashExtensions, BlockHashSet};
+use consensus_core::{blockhash::BlockHashExtensions, BlockHashMap, BlockHashSet};
 use hashes::Hash;
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 use thiserror::Error;
 
 /// A struct with fluent API to streamline reachability store building
@@ -87,12 +87,12 @@ impl DagBlock {
 /// A struct with fluent API to streamline DAG building
 pub struct DagBuilder<'a, T: ReachabilityStore + ?Sized> {
     store: &'a mut T,
-    map: HashMap<Hash, DagBlock>,
+    map: BlockHashMap<DagBlock>,
 }
 
 impl<'a, T: ReachabilityStore + ?Sized> DagBuilder<'a, T> {
     pub fn new(store: &'a mut T) -> Self {
-        Self { store, map: HashMap::new() }
+        Self { store, map: BlockHashMap::new() }
     }
 
     pub fn init(&mut self) -> &mut Self {
