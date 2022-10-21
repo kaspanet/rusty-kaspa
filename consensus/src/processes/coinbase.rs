@@ -1,6 +1,6 @@
 use std::convert::TryInto;
 
-use consensus_core::tx::{ScriptPublicKey, Transaction};
+use consensus_core::tx::{ScriptPublicKey, ScriptVec, Transaction};
 
 const UINT64_LEN: usize = 8;
 const UINT16_LEN: usize = 2;
@@ -116,7 +116,7 @@ impl CoinbaseManager {
             blue_score,
             subsidy,
             miner_data: MinerData {
-                script_public_key: ScriptPublicKey { script: script_pub_key_script.to_owned(), version: script_pub_key_version },
+                script_public_key: ScriptPublicKey::new(script_pub_key_version, ScriptVec::from_slice(script_pub_key_script)),
                 extra_data,
             },
         })

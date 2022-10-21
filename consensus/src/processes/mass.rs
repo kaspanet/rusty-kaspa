@@ -25,7 +25,7 @@ impl MassCalculator {
         let total_script_public_key_size: u64 = tx
             .outputs
             .iter()
-            .map(|output| 2 /* script public key version (u16) */ + output.script_public_key.script.len() as u64)
+            .map(|output| 2 /* script public key version (u16) */ + output.script_public_key.script().len() as u64)
             .sum();
         let total_script_public_key_mass = total_script_public_key_size * self.mass_per_script_pub_key_byte;
 
@@ -84,6 +84,6 @@ fn transaction_output_estimated_serialized_size(output: &TransactionOutput) -> u
     size += 8; // value (u64)
     size += 2; // output.ScriptPublicKey.Version (u16)
     size += 8; // length of script public key (u64)
-    size += output.script_public_key.script.len() as u64;
+    size += output.script_public_key.script().len() as u64;
     size
 }

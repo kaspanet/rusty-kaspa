@@ -27,7 +27,6 @@ use std::{
     future::Future,
     io::{self, BufRead, BufReader},
     str::{from_utf8, FromStr},
-    sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -850,10 +849,10 @@ fn json_line_to_block(line: String) -> Block {
                         .iter()
                         .map(|output| TransactionOutput {
                             value: output.Amount,
-                            script_public_key: Arc::new(ScriptPublicKey {
-                                script: hex_decode(&output.ScriptPublicKey.Script),
-                                version: output.ScriptPublicKey.Version,
-                            }),
+                            script_public_key: ScriptPublicKey::from_vec(
+                                output.ScriptPublicKey.Version,
+                                hex_decode(&output.ScriptPublicKey.Script),
+                            ),
                         })
                         .collect(),
                     tx.LockTime,

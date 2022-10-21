@@ -64,8 +64,8 @@ fn write_outpoint<T: Hasher>(hasher: &mut T, outpoint: &TransactionOutpoint) {
 fn write_output<T: Hasher>(hasher: &mut T, output: &TransactionOutput) {
     hasher
         .update(output.value.to_le_bytes())
-        .update(output.script_public_key.version.to_le_bytes())
-        .write_var_bytes(&output.script_public_key.script);
+        .update(output.script_public_key.version().to_le_bytes())
+        .write_var_bytes(output.script_public_key.script());
 }
 
 #[cfg(test)]
@@ -73,9 +73,9 @@ mod tests {
     use super::*;
     use crate::{
         subnets::{self, SubnetworkId},
-        tx::ScriptPublicKey,
+        tx::{scriptvec, ScriptPublicKey},
     };
-    use std::{str::FromStr, sync::Arc};
+    use std::str::FromStr;
 
     #[test]
     fn test_transaction_hashing() {
@@ -103,7 +103,7 @@ mod tests {
             expected_hash: "e4045023768d98839c976918f80c9419c6a93003724eda97f7c61a5b68de851b",
         });
 
-        let outputs = vec![TransactionOutput::new(1564, Arc::new(ScriptPublicKey::new(vec![1, 2, 3, 4, 5], 7)))];
+        let outputs = vec![TransactionOutput::new(1564, ScriptPublicKey::new(7, scriptvec![1, 2, 3, 4, 5]))];
 
         // Test #3
         tests.push(Test {

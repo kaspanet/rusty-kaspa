@@ -1,24 +1,43 @@
 use serde::{Deserialize, Serialize};
+use smallvec::SmallVec;
+use std::fmt::Display;
 
 use crate::{
     hashing,
     subnets::{self, SubnetworkId},
 };
-use std::{fmt::Display, sync::Arc};
 
 /// Represents the ID of a Kaspa transaction
 pub type TransactionId = hashes::Hash;
 
+/// Used as the underlying type for script public key data, optimized for the common p2pk script size (34).
+pub type ScriptVec = SmallVec<[u8; 36]>;
+
+/// Alias the `smallvec!` macro to ease maintenance
+pub use smallvec::smallvec as scriptvec;
+
 /// Represents a Kaspad ScriptPublicKey
 #[derive(Default, Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]
 pub struct ScriptPublicKey {
-    pub script: Vec<u8>,
-    pub version: u16,
+    version: u16,
+    script: ScriptVec, // Kept private to preserve read-only semantics
 }
 
 impl ScriptPublicKey {
-    pub fn new(script: Vec<u8>, version: u16) -> Self {
+    pub fn new(version: u16, script: ScriptVec) -> Self {
         Self { script, version }
+    }
+
+    pub fn from_vec(version: u16, script: Vec<u8>) -> Self {
+        Self { version, script: ScriptVec::from_vec(script) }
+    }
+
+    pub fn version(&self) -> u16 {
+        self.version
+    }
+
+    pub fn script(&self) -> &[u8] {
+        &self.script
     }
 }
 
@@ -29,13 +48,13 @@ impl ScriptPublicKey {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UtxoEntry {
     pub amount: u64,
-    pub script_public_key: Arc<ScriptPublicKey>,
+    pub script_public_key: ScriptPublicKey,
     pub block_daa_score: u64,
     pub is_coinbase: bool,
 }
 
 impl UtxoEntry {
-    pub fn new(amount: u64, script_public_key: Arc<ScriptPublicKey>, block_daa_score: u64, is_coinbase: bool) -> Self {
+    pub fn new(amount: u64, script_public_key: ScriptPublicKey, block_daa_score: u64, is_coinbase: bool) -> Self {
         Self { amount, script_public_key, block_daa_score, is_coinbase }
     }
 }
@@ -80,11 +99,11 @@ impl TransactionInput {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TransactionOutput {
     pub value: u64,
-    pub script_public_key: Arc<ScriptPublicKey>,
+    pub script_public_key: ScriptPublicKey,
 }
 
 impl TransactionOutput {
-    pub fn new(value: u64, script_public_key: Arc<ScriptPublicKey>) -> Self {
+    pub fn new(value: u64, script_public_key: ScriptPublicKey) -> Self {
         Self { value, script_public_key }
     }
 }

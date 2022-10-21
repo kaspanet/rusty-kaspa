@@ -257,14 +257,14 @@ impl UtxoDiff {
 mod tests {
     use super::*;
     use crate::tx::{ScriptPublicKey, TransactionId};
-    use std::{str::FromStr, sync::Arc};
+    use std::str::FromStr;
 
     #[test]
     fn test_utxo_diff_rules() {
         let tx_id0 = TransactionId::from_str("0".repeat(64).as_str()).unwrap();
         let outpoint0 = TransactionOutpoint::new(tx_id0, 0);
-        let utxo_entry1 = UtxoEntry::new(10, Arc::new(ScriptPublicKey::new(Vec::new(), 0)), 0, true);
-        let utxo_entry2 = UtxoEntry::new(20, Arc::new(ScriptPublicKey::new(Vec::new(), 0)), 1, true);
+        let utxo_entry1 = UtxoEntry::new(10, ScriptPublicKey::default(), 0, true);
+        let utxo_entry2 = UtxoEntry::new(20, ScriptPublicKey::default(), 1, true);
 
         struct Test {
             name: &'static str,

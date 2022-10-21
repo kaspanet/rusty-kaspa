@@ -42,7 +42,7 @@ impl TransactionValidator {
             return Err(TxRuleError::CoinbaseTooManyOutputs(tx.outputs.len(), outputs_limit));
         }
         for (i, output) in tx.outputs.iter().enumerate() {
-            if output.script_public_key.script.len() > self.coinbase_payload_script_public_key_max_len as usize {
+            if output.script_public_key.script().len() > self.coinbase_payload_script_public_key_max_len as usize {
                 return Err(TxRuleError::CoinbaseScriptPublicKeyTooLong(i));
             }
         }
@@ -80,7 +80,7 @@ impl TransactionValidator {
 
     // The main purpose of this check is to avoid overflows when calculating transaction mass later.
     fn check_transaction_script_public_keys(&self, tx: &Transaction) -> TxResult<()> {
-        if let Some(i) = tx.outputs.iter().position(|input| input.script_public_key.script.len() > self.max_script_public_key_len) {
+        if let Some(i) = tx.outputs.iter().position(|input| input.script_public_key.script().len() > self.max_script_public_key_len) {
             return Err(TxRuleError::TooBigScriptPublicKey(i, self.max_script_public_key_len));
         }
 
@@ -148,11 +148,9 @@ fn check_transaction_output_value_ranges(tx: &Transaction) -> TxResult<()> {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
     use consensus_core::{
         subnets::{SUBNETWORK_ID_COINBASE, SUBNETWORK_ID_NATIVE},
-        tx::{ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput},
+        tx::{scriptvec, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput},
     };
     use kaspa_core::assert_match;
 
@@ -182,13 +180,13 @@ mod tests {
             vec![],
             vec![TransactionOutput {
                 value: 0x12a05f200,
-                script_public_key: Arc::new(ScriptPublicKey {
-                    script: vec![
+                script_public_key: ScriptPublicKey::new(
+                    0,
+                    scriptvec!(
                         0xa9, 0x14, 0xda, 0x17, 0x45, 0xe9, 0xb5, 0x49, 0xbd, 0x0b, 0xfa, 0x1a, 0x56, 0x99, 0x71, 0xc7, 0x7e, 0xba,
-                        0x30, 0xcd, 0x5a, 0x4b, 0x87,
-                    ],
-                    version: 0,
-                }),
+                        0x30, 0xcd, 0x5a, 0x4b, 0x87
+                    ),
+                ),
             }],
             0,
             SUBNETWORK_ID_COINBASE,
@@ -227,31 +225,31 @@ mod tests {
             vec![
                 TransactionOutput {
                     value: 0x2123e300,
-                    script_public_key: Arc::new(ScriptPublicKey {
-                        script: vec![
+                    script_public_key: ScriptPublicKey::new(
+                        0,
+                        scriptvec!(
                             0x76, // OP_DUP
                             0xa9, // OP_HASH160
                             0x14, // OP_DATA_20
                             0xc3, 0x98, 0xef, 0xa9, 0xc3, 0x92, 0xba, 0x60, 0x13, 0xc5, 0xe0, 0x4e, 0xe7, 0x29, 0x75, 0x5e, 0xf7,
                             0xf5, 0x8b, 0x32, 0x88, // OP_EQUALVERIFY
-                            0xac, // OP_CHECKSIG
-                        ],
-                        version: 0,
-                    }),
+                            0xac  // OP_CHECKSIG
+                        ),
+                    ),
                 },
                 TransactionOutput {
                     value: 0x108e20f00,
-                    script_public_key: Arc::new(ScriptPublicKey {
-                        script: vec![
+                    script_public_key: ScriptPublicKey::new(
+                        0,
+                        scriptvec!(
                             0x76, // OP_DUP
                             0xa9, // OP_HASH160
                             0x14, // OP_DATA_20
                             0x94, 0x8c, 0x76, 0x5a, 0x69, 0x14, 0xd4, 0x3f, 0x2a, 0x7a, 0xc1, 0x77, 0xda, 0x2c, 0x2f, 0x6b, 0x52,
                             0xde, 0x3d, 0x7c, 0x88, // OP_EQUALVERIFY
-                            0xac, // OP_CHECKSIG
-                        ],
-                        version: 0,
-                    }),
+                            0xac  // OP_CHECKSIG
+                        ),
+                    ),
                 },
             ],
             0,
@@ -279,7 +277,7 @@ mod tests {
         assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::TooManyOutputs(_, _)));
 
         let mut tx = valid_tx.clone();
-        Arc::make_mut(&mut tx.outputs[0].script_public_key).script = vec![0; params.max_script_public_key_len + 1];
+        tx.outputs[0].script_public_key = ScriptPublicKey::new(0, scriptvec![0u8; params.max_script_public_key_len + 1]);
         assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::TooBigScriptPublicKey(_, _)));
 
         let mut tx = valid_tx.clone();
