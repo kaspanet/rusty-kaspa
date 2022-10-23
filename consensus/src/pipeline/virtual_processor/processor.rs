@@ -315,17 +315,22 @@ impl VirtualStateProcessor {
 
         let ghostdag_data = self.ghostdag_store.get_compact_data(virtual_sp).unwrap();
         let pruning_read_guard = self.pruning_store.upgradable_read();
-        let current_pp = pruning_read_guard.pruning_point().unwrap();
-        let current_pp_bs = self.ghostdag_store.get_blue_score(current_pp).unwrap();
-        let current_pp_candidate = pruning_read_guard.pruning_point_candidate().unwrap();
-        let (new_pruning_point, new_candidate) =
-            self.pruning_manager.next_pruning_point_and_candidate_by_block_hash(ghostdag_data, None, current_pp_candidate, current_pp);
+        let current_pruning_info = pruning_read_guard.get().unwrap();
+        let current_pp_bs = self.ghostdag_store.get_blue_score(current_pruning_info.pruning_point).unwrap();
+        let (new_pruning_point, new_candidate) = self.pruning_manager.next_pruning_point_and_candidate_by_block_hash(
+            ghostdag_data,
+            None,
+            current_pruning_info.candidate,
+            current_pruning_info.pruning_point,
+        );
 
-        if new_pruning_point != current_pp {
+        if new_pruning_point != current_pruning_info.pruning_point {
             let mut past_pruning_points_to_add = Vec::new();
-            for current in self.reachability_service.backward_chain_iterator(virtual_sp, current_pp, false) {
+            for current in self.reachability_service.backward_chain_iterator(virtual_sp, current_pruning_info.pruning_point, false) {
                 let current_header = self.headers_store.get_compact_header_data(current).unwrap();
-                if current_header.pruning_point == current_pp || current_header.blue_score < current_pp_bs + self.pruning_depth {
+                if current_header.pruning_point == current_pruning_info.pruning_point
+                    || current_header.blue_score < current_pp_bs + self.pruning_depth
+                {
                     break;
                 }
 
@@ -335,20 +340,18 @@ impl VirtualStateProcessor {
                 }
             }
 
-            let current_pp_index = pruning_read_guard.pruning_point_index().unwrap();
             let mut batch = WriteBatch::default();
             let mut write_guard = RwLockUpgradableReadGuard::upgrade(pruning_read_guard);
             for (i, past_pp) in past_pruning_points_to_add.iter().copied().rev().enumerate() {
-                self.past_pruning_points_store.insert_batch(&mut batch, current_pp_index + i as u64 + 1, past_pp).unwrap();
+                self.past_pruning_points_store.insert_batch(&mut batch, current_pruning_info.index + i as u64 + 1, past_pp).unwrap();
             }
-            let new_pp_index = current_pp_index + past_pruning_points_to_add.len() as u64;
+            let new_pp_index = current_pruning_info.index + past_pruning_points_to_add.len() as u64;
             write_guard.set_batch(&mut batch, new_pruning_point, new_candidate, new_pp_index).unwrap();
             self.db.write(batch).unwrap();
             // TODO: Move PP UTXO etc
-        } else if new_candidate != current_pp_candidate {
-            let pp_index = pruning_read_guard.pruning_point_index().unwrap();
+        } else if new_candidate != current_pruning_info.candidate {
             let mut write_guard = RwLockUpgradableReadGuard::upgrade(pruning_read_guard);
-            write_guard.set(new_pruning_point, new_candidate, pp_index).unwrap();
+            write_guard.set(new_pruning_point, new_candidate, current_pruning_info.index).unwrap();
         }
     }
 
