@@ -39,6 +39,7 @@ use muhash::MuHash;
 
 use crossbeam_channel::Receiver;
 use itertools::Itertools;
+use kaspa_utils::option::OptionExtensions;
 use parking_lot::{RwLock, RwLockUpgradableReadGuard};
 use rayon::ThreadPool;
 use rocksdb::WriteBatch;
@@ -334,8 +335,7 @@ impl VirtualStateProcessor {
                     break;
                 }
 
-                if past_pruning_points_to_add.is_empty() || *past_pruning_points_to_add.last().unwrap() != current_header.pruning_point
-                {
+                if !past_pruning_points_to_add.last().has_value_and(|hash| **hash == current_header.pruning_point) {
                     past_pruning_points_to_add.push(current_header.pruning_point);
                 }
             }

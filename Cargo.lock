@@ -234,6 +234,7 @@ dependencies = [
  "indexmap",
  "itertools",
  "kaspa-core",
+ "kaspa-utils",
  "math",
  "merkle",
  "muhash",
@@ -597,6 +598,10 @@ dependencies = [
  "intertrait",
  "wasm-bindgen",
 ]
+
+[[package]]
+name = "kaspa-utils"
+version = "0.1.0"
 
 [[package]]
 name = "kaspa-wallet"
