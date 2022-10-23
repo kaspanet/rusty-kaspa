@@ -40,7 +40,6 @@ pub struct CompactHeaderData {
     pub timestamp: u64,
     pub bits: u32,
     pub blue_score: u64,
-    pub pruning_point: Hash,
 }
 
 /// A DB + cache implementation of `HeaderStore` trait, with concurrency support.
@@ -82,7 +81,6 @@ impl DbHeadersStore {
                 timestamp: header.timestamp,
                 bits: header.bits,
                 blue_score: header.blue_score,
-                pruning_point: header.pruning_point,
             },
         )?;
         Ok(())
@@ -133,7 +131,6 @@ impl HeaderStoreReader for DbHeadersStore {
                 timestamp: header_with_block_level.header.timestamp,
                 bits: header_with_block_level.header.bits,
                 blue_score: header_with_block_level.header.blue_score,
-                pruning_point: header_with_block_level.header.pruning_point,
             });
         }
         self.cached_compact_headers_access.read(hash)
@@ -152,7 +149,6 @@ impl HeaderStore for DbHeadersStore {
                 timestamp: header.timestamp,
                 bits: header.bits,
                 blue_score: header.blue_score,
-                pruning_point: header.pruning_point,
             },
         )?;
         self.cached_headers_access.write(hash, &Arc::new(HeaderWithBlockLevel { header, block_level }))?;
