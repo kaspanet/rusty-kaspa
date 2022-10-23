@@ -318,21 +318,21 @@ impl VirtualStateProcessor {
         let pruning_read_guard = self.pruning_store.upgradable_read();
         let current_pruning_info = pruning_read_guard.get().unwrap();
         let current_pp_bs = self.ghostdag_store.get_blue_score(current_pruning_info.pruning_point).unwrap();
-        let (past_pruning_points_to_add, new_candidate) = self.pruning_manager.next_pruning_points_and_candidate_by_ghostdag_data(
+        let (new_pruning_points, new_candidate) = self.pruning_manager.next_pruning_points_and_candidate_by_ghostdag_data(
             ghostdag_data,
             None,
             current_pruning_info.candidate,
             current_pruning_info.pruning_point,
         );
 
-        if !past_pruning_points_to_add.is_empty() {
+        if !new_pruning_points.is_empty() {
             let mut batch = WriteBatch::default();
             let mut write_guard = RwLockUpgradableReadGuard::upgrade(pruning_read_guard);
-            for (i, past_pp) in past_pruning_points_to_add.iter().copied().rev().enumerate() {
+            for (i, past_pp) in new_pruning_points.iter().copied().rev().enumerate() {
                 self.past_pruning_points_store.insert_batch(&mut batch, current_pruning_info.index + i as u64 + 1, past_pp).unwrap();
             }
-            let new_pp_index = current_pruning_info.index + past_pruning_points_to_add.len() as u64;
-            write_guard.set_batch(&mut batch, *past_pruning_points_to_add.last().unwrap(), new_candidate, new_pp_index).unwrap();
+            let new_pp_index = current_pruning_info.index + new_pruning_points.len() as u64;
+            write_guard.set_batch(&mut batch, *new_pruning_points.last().unwrap(), new_candidate, new_pp_index).unwrap();
             self.db.write(batch).unwrap();
             // TODO: Move PP UTXO etc
         } else if new_candidate != current_pruning_info.candidate {

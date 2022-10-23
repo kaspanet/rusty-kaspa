@@ -69,8 +69,9 @@ impl<S: GhostdagStoreReader, T: ReachabilityStoreReader, U: HeaderStoreReader, V
             None => current_candidate,
         };
 
-        let mut added_past_pruning_points = Vec::with_capacity((self.pruning_depth / self.finality_depth) as usize); // If the pruning point is more out of date than that, an IBD with headers proof is needed anyway.
-        let mut new_pruning_point_bs = self.ghostdag_store.get_blue_score(current_pruning_point).unwrap();
+        // If the pruning point is more out of date than that, an IBD with headers proof is needed anyway.
+        let mut new_pruning_points = Vec::with_capacity((self.pruning_depth / self.finality_depth) as usize);
+        let mut latest_pruning_point_bs = self.ghostdag_store.get_blue_score(current_pruning_point).unwrap();
         let mut new_candidate = current_candidate;
 
         for selected_child in self.reachability_service.forward_chain_iterator(low_hash, ghostdag_data.selected_parent, true) {
@@ -83,13 +84,13 @@ impl<S: GhostdagStoreReader, T: ReachabilityStoreReader, U: HeaderStoreReader, V
             new_candidate = selected_child;
             let new_candidate_bs = selected_child_bs;
 
-            if self.finality_score(new_candidate_bs) > self.finality_score(new_pruning_point_bs) {
-                added_past_pruning_points.push(new_candidate);
-                new_pruning_point_bs = new_candidate_bs;
+            if self.finality_score(new_candidate_bs) > self.finality_score(latest_pruning_point_bs) {
+                new_pruning_points.push(new_candidate);
+                latest_pruning_point_bs = new_candidate_bs;
             }
         }
 
-        (added_past_pruning_points, new_candidate)
+        (new_pruning_points, new_candidate)
     }
 
     // finality_score is the number of finality intervals passed since
@@ -137,18 +138,14 @@ impl<S: GhostdagStoreReader, T: ReachabilityStoreReader, U: HeaderStoreReader, V
                 }
                 Err(err) => panic!("Unexpected reachability error: {:?}", err),
             };
-            let (added_past_pruning_points, _) = self.next_pruning_points_and_candidate_by_ghostdag_data(
+            let (new_pruning_points, _) = self.next_pruning_points_and_candidate_by_ghostdag_data(
                 ghostdag_data,
                 suggested_low_hash,
                 current_candidate,
                 current_pruning_point,
             );
 
-            if added_past_pruning_points.is_empty() {
-                current_pruning_point
-            } else {
-                *added_past_pruning_points.last().unwrap()
-            }
+            new_pruning_points.last().copied().unwrap_or(current_pruning_point)
         } else {
             sp_header_pp
         };
