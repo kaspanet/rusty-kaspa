@@ -50,13 +50,13 @@ impl<S: GhostdagStoreReader, T: ReachabilityStoreReader, U: HeaderStoreReader, V
         }
     }
 
-    pub fn next_pruning_point_and_candidate_by_block_hash(
+    pub fn next_pruning_points_and_candidate_by_ghostdag_data(
         &self,
         ghostdag_data: CompactGhostdagData,
         suggested_low_hash: Option<Hash>,
         current_candidate: Hash,
         current_pruning_point: Hash,
-    ) -> (Hash, Hash) {
+    ) -> (Vec<Hash>, Hash) {
         let low_hash = match suggested_low_hash {
             Some(suggested) => {
                 if !self.reachability_service.is_chain_ancestor_of(suggested, current_candidate) {
@@ -69,8 +69,8 @@ impl<S: GhostdagStoreReader, T: ReachabilityStoreReader, U: HeaderStoreReader, V
             None => current_candidate,
         };
 
-        let mut new_pruning_point = current_pruning_point;
-        let mut new_pruning_point_bs = self.ghostdag_store.get_blue_score(new_pruning_point).unwrap();
+        let mut added_past_pruning_points = Vec::with_capacity((self.pruning_depth / self.finality_depth) as usize); // If the pruning point is more out of date than that, an IBD with headers proof is needed anyway.
+        let mut new_pruning_point_bs = self.ghostdag_store.get_blue_score(current_pruning_point).unwrap();
         let mut new_candidate = current_candidate;
 
         for selected_child in self.reachability_service.forward_chain_iterator(low_hash, ghostdag_data.selected_parent, true) {
@@ -84,12 +84,12 @@ impl<S: GhostdagStoreReader, T: ReachabilityStoreReader, U: HeaderStoreReader, V
             let new_candidate_bs = selected_child_bs;
 
             if self.finality_score(new_candidate_bs) > self.finality_score(new_pruning_point_bs) {
-                new_pruning_point = new_candidate;
+                added_past_pruning_points.push(new_candidate);
                 new_pruning_point_bs = new_candidate_bs;
             }
         }
 
-        (new_pruning_point, new_candidate)
+        (added_past_pruning_points, new_candidate)
     }
 
     // finality_score is the number of finality intervals passed since
@@ -137,13 +137,18 @@ impl<S: GhostdagStoreReader, T: ReachabilityStoreReader, U: HeaderStoreReader, V
                 }
                 Err(err) => panic!("Unexpected reachability error: {:?}", err),
             };
-            let (next_or_current_pp, _) = self.next_pruning_point_and_candidate_by_block_hash(
+            let (added_past_pruning_points, _) = self.next_pruning_points_and_candidate_by_ghostdag_data(
                 ghostdag_data,
                 suggested_low_hash,
                 current_candidate,
                 current_pruning_point,
             );
-            next_or_current_pp
+
+            if added_past_pruning_points.is_empty() {
+                current_pruning_point
+            } else {
+                *added_past_pruning_points.last().unwrap()
+            }
         } else {
             sp_header_pp
         };
