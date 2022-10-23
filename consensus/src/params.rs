@@ -51,8 +51,8 @@ pub const MAINNET_PARAMS: Params = Params {
     target_time_per_block: 1000,
     max_block_parents: 10,
     difficulty_window_size: 2641,
-    genesis_timestamp: 0,     // TODO: Use real value
-    genesis_bits: 0x207fffff, // TODO: Use real value
+    genesis_timestamp: 1637609671037,
+    genesis_bits: 486722099,
     mergeset_size_limit: (DEFAULT_GHOSTDAG_K as u64) * 10,
     merge_depth: 3600,
     finality_depth: 86400,

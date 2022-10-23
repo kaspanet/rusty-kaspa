@@ -6,11 +6,13 @@ use consensus::consensus::test_consensus::{create_temp_db, TestConsensus};
 use consensus::constants::BLOCK_VERSION;
 use consensus::errors::{BlockProcessResult, RuleError};
 use consensus::model::stores::ghostdag::{GhostdagStoreReader, KType as GhostdagKType};
+use consensus::model::stores::headers::HeaderStoreReader;
 use consensus::model::stores::reachability::DbReachabilityStore;
 use consensus::model::stores::statuses::BlockStatus;
 use consensus::params::{Params, DEVNET_PARAMS, MAINNET_PARAMS};
 use consensus::processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions};
 use consensus_core::block::Block;
+use consensus_core::blockhash::new_unique;
 use consensus_core::header::Header;
 use consensus_core::subnets::SubnetworkId;
 use consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
@@ -20,7 +22,9 @@ use hashes::Hash;
 use flate2::read::GzDecoder;
 use futures_util::future::join_all;
 use itertools::Itertools;
+use math::Uint256;
 use serde::{Deserialize, Serialize};
+use std::cmp::Ordering;
 use std::{
     collections::HashMap,
     fs::File,
@@ -945,6 +949,156 @@ async fn bounded_merge_depth_test() {
 
     // point_at_blue_kosherizing is kosherizing kosherizing_hash, so this should pass.
     consensus.add_block_with_parents(1101.into(), vec![point_at_blue_kosherizing, *selected_chain.last().unwrap()]).await.unwrap();
+
+    consensus.shutdown(wait_handles);
+}
+
+#[tokio::test]
+async fn difficulty_test() {
+    async fn add_block(consensus: &TestConsensus, block_time: Option<u64>, parents: Vec<Hash>) -> Header {
+        let selected_parent = consensus.ghostdag_manager().find_selected_parent(&mut parents.iter().copied());
+        let block_time = block_time.unwrap_or_else(|| {
+            consensus.headers_store().get_timestamp(selected_parent).unwrap() + consensus.params.target_time_per_block
+        });
+        let mut header = consensus.build_header_with_parents(new_unique(), parents);
+        header.timestamp = block_time;
+        consensus.validate_and_insert_block(Block::new(header.clone(), vec![])).await.unwrap();
+        header
+    }
+
+    async fn add_block_with_min_time(consensus: &TestConsensus, parents: Vec<Hash>) -> Header {
+        let ghostdag_data = consensus.ghostdag_manager().ghostdag(&parents[..]);
+        let (pmt, _) = consensus.past_median_time_manager().calc_past_median_time(ghostdag_data);
+        add_block(consensus, Some(pmt + 1), parents).await
+    }
+
+    fn compare_bits(a: u32, b: u32) -> Ordering {
+        Uint256::from_compact_target_bits(a).cmp(&Uint256::from_compact_target_bits(b))
+    }
+
+    let mut params = MAINNET_PARAMS.clone_with_skip_pow();
+    params.ghostdag_k = 1;
+    params.difficulty_window_size = 140;
+
+    let consensus = TestConsensus::create_from_temp_db(&params);
+    let wait_handles = consensus.init();
+
+    let fake_genesis = Header {
+        hash: params.genesis_hash,
+        version: 0,
+        parents_by_level: vec![],
+        hash_merkle_root: 0.into(),
+        accepted_id_merkle_root: 0.into(),
+        utxo_commitment: 0.into(),
+        timestamp: 0,
+        bits: 0,
+        nonce: 0,
+        daa_score: 0,
+        blue_work: 0.into(),
+        blue_score: 0,
+        pruning_point: 0.into(),
+    };
+
+    let mut tip = fake_genesis;
+    for _ in 0..params.difficulty_window_size {
+        tip = add_block(&consensus, None, vec![tip.hash]).await;
+        assert_eq!(tip.bits, params.genesis_bits, "until first DAA window is created difficulty should remains unchanged");
+    }
+
+    for _ in 0..params.difficulty_window_size + 10 {
+        tip = add_block(&consensus, None, vec![tip.hash]).await;
+        assert_eq!(tip.bits, params.genesis_bits, "block rate wasn't changed so difficulty is not expected to change");
+    }
+
+    let block_in_the_past = add_block_with_min_time(&consensus, vec![tip.hash]).await;
+    assert_eq!(
+        block_in_the_past.bits, params.genesis_bits,
+        "block_in_the_past shouldn't affect its own difficulty, but only its future"
+    );
+    tip = block_in_the_past;
+    tip = add_block(&consensus, None, vec![tip.hash]).await;
+    assert_eq!(tip.bits, 0x1d02c50f); // TODO: Check that it makes sense
+
+    // Increase block rate to increase difficulty
+    for _ in 0..params.difficulty_window_size {
+        let prev_bits = tip.bits;
+        tip = add_block_with_min_time(&consensus, vec![tip.hash]).await;
+        assert!(
+            compare_bits(tip.bits, prev_bits) != Ordering::Greater,
+            "Because we're increasing the block rate, the difficulty can't decrease"
+        );
+    }
+
+    // Add blocks until difficulty stabilizes
+    let mut same_bits_count = 0;
+    while same_bits_count < params.difficulty_window_size + 1 {
+        let prev_bits = tip.bits;
+        tip = add_block(&consensus, None, vec![tip.hash]).await;
+        if tip.bits == prev_bits {
+            same_bits_count += 1;
+        } else {
+            same_bits_count = 0;
+        }
+    }
+
+    let slow_block_time = tip.timestamp + params.target_time_per_block + 1000;
+    let slow_block = add_block(&consensus, Some(slow_block_time), vec![tip.hash]).await;
+    let slow_block_bits = slow_block.bits;
+    assert_eq!(slow_block.bits, tip.bits, "The difficulty should change only when slow_block is in the past");
+
+    tip = slow_block;
+    tip = add_block(&consensus, None, vec![tip.hash]).await;
+    assert_eq!(
+        compare_bits(tip.bits, slow_block_bits),
+        Ordering::Greater,
+        "block rate was decreased due to slow_block, so we expected difficulty to be reduced"
+    );
+
+    // Here we create two chains: a chain of blue blocks, and a chain of red blocks with
+    // very low timestamps. Because the red blocks should be part of the difficulty
+    // window, their low timestamps should lower the difficulty, and we check it by
+    // comparing the bits of two blocks with the same blue score, one with the red
+    // blocks in its past and one without.
+    let split_hash = tip.hash;
+    let mut blue_tip_hash = split_hash;
+    for _ in 0..params.difficulty_window_size {
+        blue_tip_hash = add_block(&consensus, None, vec![blue_tip_hash]).await.hash;
+    }
+
+    let split_hash = tip.hash;
+    let mut red_tip_hash = split_hash;
+    const RED_CHAIN_LEN: usize = 10;
+    for _ in 0..RED_CHAIN_LEN {
+        red_tip_hash = add_block(&consensus, None, vec![red_tip_hash]).await.hash;
+    }
+
+    let tip_with_red_past = add_block(&consensus, None, vec![red_tip_hash, blue_tip_hash]).await;
+    let tip_without_red_past = add_block(&consensus, None, vec![blue_tip_hash]).await;
+    assert_eq!(
+        compare_bits(tip_with_red_past.bits, tip_without_red_past.bits),
+        Ordering::Less,
+        "we expect the red blocks to increase the difficulty of tip_with_red_past"
+    );
+
+    // We repeat the test, but now we make the blue chain longer in order to filter
+    // out the red blocks from the window, and check that the red blocks don't
+    // affect the difficulty.
+    blue_tip_hash = split_hash;
+    for _ in 0..params.difficulty_window_size + RED_CHAIN_LEN + 1 {
+        blue_tip_hash = add_block(&consensus, None, vec![blue_tip_hash]).await.hash;
+    }
+
+    red_tip_hash = split_hash;
+    for _ in 0..RED_CHAIN_LEN {
+        red_tip_hash = add_block(&consensus, None, vec![red_tip_hash]).await.hash;
+    }
+
+    let tip_with_red_past = add_block(&consensus, None, vec![red_tip_hash, blue_tip_hash]).await;
+    let tip_without_red_past = add_block(&consensus, None, vec![blue_tip_hash]).await;
+    assert_eq!(
+        tip_with_red_past.bits, tip_without_red_past.bits,
+        "we expect the red blocks to not affect the difficulty of tip_with_red_past"
+    );
 
     consensus.shutdown(wait_handles);
 }

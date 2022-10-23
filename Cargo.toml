@@ -34,6 +34,7 @@ muhash = { path = "crypto/muhash" }
 addresses = { path = "crypto/addresses" }
 merkle = { path = "crypto/merkle" }
 pow = { path = "consensus/pow" }
+kaspa-utils = { path = "utils" }
 
 thiserror = "1"
 faster-hex = "0.6"

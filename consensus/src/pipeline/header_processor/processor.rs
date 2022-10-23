@@ -108,12 +108,13 @@ pub struct HeaderProcessor {
 
     // Config
     pub(super) genesis_hash: Hash,
+    pub(super) genesis_timestamp: u64,
+    pub(super) genesis_bits: u32,
     pub(super) timestamp_deviation_tolerance: u64,
     pub(super) target_time_per_block: u64,
     pub(super) max_block_parents: u8,
     pub(super) difficulty_window_size: usize,
     pub(super) mergeset_size_limit: u64,
-    pub(super) genesis_bits: u32,
     pub(super) skip_proof_of_work: bool,
     pub(super) max_block_level: u8,
 
@@ -189,6 +190,7 @@ impl HeaderProcessor {
             body_sender,
             thread_pool,
             genesis_hash: params.genesis_hash,
+            genesis_timestamp: params.genesis_timestamp,
             difficulty_window_size: params.difficulty_window_size,
             db,
             relations_store,
@@ -387,6 +389,7 @@ impl HeaderProcessor {
         self.pruning_store.write().set(self.genesis_hash, self.genesis_hash, 0).unwrap();
         let mut header = header_from_precomputed_hash(self.genesis_hash, vec![]); // TODO
         header.bits = self.genesis_bits;
+        header.timestamp = self.genesis_timestamp;
         let header = Arc::new(header);
         let mut ctx = HeaderProcessingContext::new(self.genesis_hash, &header, PruningPointInfo::from_genesis(self.genesis_hash));
         ctx.ghostdag_data = Some(self.ghostdag_manager.genesis_ghostdag_data());

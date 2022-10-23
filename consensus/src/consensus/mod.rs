@@ -74,6 +74,7 @@ pub struct Consensus {
     pruning_store: Arc<RwLock<DbPruningStore>>,
     headers_selected_tip_store: Arc<RwLock<DbHeadersSelectedTipStore>>,
     body_tips_store: Arc<RwLock<DbTipsStore>>,
+    pub(super) headers_store: Arc<DbHeadersStore>,
 
     // Append-only stores
     pub(super) ghostdag_store: Arc<DbGhostdagStore>,
@@ -269,7 +270,7 @@ impl Consensus {
             db.clone(),
             statuses_store.clone(),
             ghostdag_store.clone(),
-            headers_store,
+            headers_store.clone(),
             block_transactions_store,
             pruning_store.clone(),
             past_pruning_points_store,
@@ -298,6 +299,7 @@ impl Consensus {
             pruning_store,
             headers_selected_tip_store,
             body_tips_store,
+            headers_store,
 
             statuses_service,
             relations_service,
