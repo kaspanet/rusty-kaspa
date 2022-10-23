@@ -11,6 +11,7 @@ use crate::model::{
     },
 };
 
+#[derive(Clone)]
 pub struct BlockDepthManager<S: DepthStoreReader, U: ReachabilityStoreReader, V: GhostdagStoreReader> {
     merge_depth: u64,
     finality_depth: u64,

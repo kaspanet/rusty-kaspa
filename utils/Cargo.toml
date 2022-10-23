@@ -1,0 +1,9 @@
+[package]
+name = "kaspa-utils"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
+
+[dependencies]

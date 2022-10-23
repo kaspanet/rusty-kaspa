@@ -59,6 +59,7 @@ pub struct VirtualStateProcessor {
     pub(super) max_block_parents: u8,
     pub(super) difficulty_window_size: usize,
     pub(super) mergeset_size_limit: u64,
+    pruning_depth: u64,
 
     // Stores
     pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
@@ -120,6 +121,7 @@ impl VirtualStateProcessor {
             max_block_parents: params.max_block_parents,
             difficulty_window_size: params.difficulty_window_size,
             mergeset_size_limit: params.mergeset_size_limit,
+            pruning_depth: params.pruning_depth,
 
             db: db.clone(),
             statuses_store,
@@ -290,6 +292,9 @@ impl VirtualStateProcessor {
             }
             _ => panic!("expected utxo valid or disqualified {}", new_selected),
         }
+
+        // TODO: Make a separate pruning processor and send to its channel here
+        self.maybe_update_pruning_point_and_candidate()
     }
 
     fn commit_utxo_state(self: &Arc<Self>, current: Hash, mergeset_diff: UtxoDiff, multiset: MuHash, acceptance_data: AcceptanceData) {
@@ -304,26 +309,35 @@ impl VirtualStateProcessor {
     }
 
     fn maybe_update_pruning_point_and_candidate(self: &Arc<Self>) {
-        // TODO: call this method from resolve_virtual
-        let pruning_read_guard = self.pruning_store.upgradable_read();
-        let current_pp = pruning_read_guard.pruning_point().unwrap();
-        let current_pp_candidate = pruning_read_guard.pruning_point_candidate().unwrap();
-        let virtual_gd = self.virtual_state_store.read().get().unwrap().ghostdag_data.to_compact();
-        let (new_pruning_point, new_candidate) =
-            self.pruning_manager.next_pruning_point_and_candidate_by_block_hash(virtual_gd, None, current_pp_candidate, current_pp);
+        let virtual_sp = self.virtual_state_store.read().get().unwrap().ghostdag_data.selected_parent;
+        if virtual_sp == self.genesis_hash {
+            return;
+        }
 
-        if new_pruning_point != current_pp {
+        let ghostdag_data = self.ghostdag_store.get_compact_data(virtual_sp).unwrap();
+        let pruning_read_guard = self.pruning_store.upgradable_read();
+        let current_pruning_info = pruning_read_guard.get().unwrap();
+        let current_pp_bs = self.ghostdag_store.get_blue_score(current_pruning_info.pruning_point).unwrap();
+        let (new_pruning_points, new_candidate) = self.pruning_manager.next_pruning_points_and_candidate_by_ghostdag_data(
+            ghostdag_data,
+            None,
+            current_pruning_info.candidate,
+            current_pruning_info.pruning_point,
+        );
+
+        if !new_pruning_points.is_empty() {
             let mut batch = WriteBatch::default();
-            let new_pp_index = pruning_read_guard.pruning_point_index().unwrap() + 1;
             let mut write_guard = RwLockUpgradableReadGuard::upgrade(pruning_read_guard);
-            write_guard.set_batch(&mut batch, new_pruning_point, new_candidate, new_pp_index).unwrap();
-            self.past_pruning_points_store.insert_batch(&mut batch, new_pp_index, new_pruning_point).unwrap();
+            for (i, past_pp) in new_pruning_points.iter().copied().enumerate() {
+                self.past_pruning_points_store.insert_batch(&mut batch, current_pruning_info.index + i as u64 + 1, past_pp).unwrap();
+            }
+            let new_pp_index = current_pruning_info.index + new_pruning_points.len() as u64;
+            write_guard.set_batch(&mut batch, *new_pruning_points.last().unwrap(), new_candidate, new_pp_index).unwrap();
             self.db.write(batch).unwrap();
             // TODO: Move PP UTXO etc
-        } else if new_candidate != current_pp_candidate {
-            let pp_index = pruning_read_guard.pruning_point_index().unwrap();
+        } else if new_candidate != current_pruning_info.candidate {
             let mut write_guard = RwLockUpgradableReadGuard::upgrade(pruning_read_guard);
-            write_guard.set(new_pruning_point, new_candidate, pp_index).unwrap();
+            write_guard.set(current_pruning_info.pruning_point, new_candidate, current_pruning_info.index).unwrap();
         }
     }
 
