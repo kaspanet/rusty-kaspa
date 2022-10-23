@@ -328,7 +328,7 @@ impl VirtualStateProcessor {
         if !new_pruning_points.is_empty() {
             let mut batch = WriteBatch::default();
             let mut write_guard = RwLockUpgradableReadGuard::upgrade(pruning_read_guard);
-            for (i, past_pp) in new_pruning_points.iter().copied().rev().enumerate() {
+            for (i, past_pp) in new_pruning_points.iter().copied().enumerate() {
                 self.past_pruning_points_store.insert_batch(&mut batch, current_pruning_info.index + i as u64 + 1, past_pp).unwrap();
             }
             let new_pp_index = current_pruning_info.index + new_pruning_points.len() as u64;
