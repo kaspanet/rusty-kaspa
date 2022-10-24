@@ -7,7 +7,12 @@ use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
 use std::{collections::hash_map::Entry::Vacant, sync::Arc};
 
-use super::{caching::CachedDbAccess, caching::CachedDbItem, errors::StoreError, DB};
+use super::{
+    caching::CachedDbAccess,
+    caching::{CachedDbItem, DbKey},
+    errors::StoreError,
+    DB,
+};
 use crate::processes::reachability::interval::Interval;
 use hashes::Hash;
 
@@ -319,14 +324,14 @@ impl MemoryReachabilityStore {
     fn get_data_mut(&mut self, hash: Hash) -> Result<&mut ReachabilityData, StoreError> {
         match self.map.get_mut(&hash) {
             Some(data) => Ok(data),
-            None => Err(StoreError::KeyNotFound(hash.to_string())),
+            None => Err(StoreError::KeyNotFound(DbKey::new(STORE_PREFIX, hash))),
         }
     }
 
     fn get_data(&self, hash: Hash) -> Result<&ReachabilityData, StoreError> {
         match self.map.get(&hash) {
             Some(data) => Ok(data),
-            None => Err(StoreError::KeyNotFound(hash.to_string())),
+            None => Err(StoreError::KeyNotFound(DbKey::new(STORE_PREFIX, hash))),
         }
     }
 }
@@ -377,7 +382,7 @@ impl ReachabilityStore for MemoryReachabilityStore {
     fn get_reindex_root(&self) -> Result<Hash, StoreError> {
         match self.reindex_root {
             Some(root) => Ok(root),
-            None => Err(StoreError::KeyNotFound("reindex root".to_string())),
+            None => Err(StoreError::KeyNotFound(DbKey::prefix_only(REINDEX_ROOT_KEY))),
         }
     }
 }

@@ -1,17 +1,18 @@
+use super::caching::DbKey;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum StoreError {
-    #[error("key not found in store")]
-    KeyNotFound(String),
+    #[error("key {0} not found in store")]
+    KeyNotFound(DbKey),
 
-    #[error("key already exists in store")]
+    #[error("key {0} already exists in store")]
     KeyAlreadyExists(String),
 
-    #[error("rocksdb error")]
+    #[error("rocksdb error {0}")]
     DbError(#[from] rocksdb::Error),
 
-    #[error("bincode error")]
+    #[error("bincode error {0}")]
     DeserializationError(#[from] Box<bincode::ErrorKind>),
 }
 

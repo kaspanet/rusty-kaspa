@@ -1,4 +1,8 @@
-use super::{caching::CachedDbAccess, errors::StoreError, DB};
+use super::{
+    caching::{CachedDbAccess, DbKey},
+    errors::StoreError,
+    DB,
+};
 use consensus_core::{blockhash::BlockHashes, BlockHashMap};
 use hashes::Hash;
 use parking_lot::{RwLock, RwLockWriteGuard};
@@ -154,14 +158,14 @@ impl RelationsStoreReader for MemoryRelationsStore {
     fn get_parents(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
         match self.parents_map.get(&hash) {
             Some(parents) => Ok(BlockHashes::clone(parents)),
-            None => Err(StoreError::KeyNotFound(hash.to_string())),
+            None => Err(StoreError::KeyNotFound(DbKey::new(PARENTS_PREFIX, hash))),
         }
     }
 
     fn get_children(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
         match self.children_map.get(&hash) {
             Some(children) => Ok(BlockHashes::clone(children)),
-            None => Err(StoreError::KeyNotFound(hash.to_string())),
+            None => Err(StoreError::KeyNotFound(DbKey::new(CHILDREN_PREFIX, hash))),
         }
     }
 

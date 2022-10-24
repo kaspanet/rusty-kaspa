@@ -115,7 +115,7 @@ impl<S: GhostdagStoreReader, T: ReachabilityStoreReader, U: HeaderStoreReader, V
             self.reachability_service.is_chain_ancestor_of(current_pruning_point, ghostdag_data.selected_parent);
 
         // Note: the pruning point from the POV of the current block is the first block in its chain that is in depth of self.pruning_depth and
-        // its finality score is greater than the previous pruning point. This is why the diff between finality_score(selected_parent.blue_score + 1) * finality_interval
+        // its finality score is greater than the previous pruning point. This is why if the diff between finality_score(selected_parent.blue_score + 1) * finality_interval
         // and the current block blue score is less than self.pruning_depth we can know for sure that this block didn't trigger a pruning point change.
         let min_required_blue_score_for_next_pruning_point = (self.finality_score(sp_header_pp_blue_score) + 1) * self.finality_depth;
         let next_or_current_pp = if has_pruning_point_in_its_selected_chain

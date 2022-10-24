@@ -4,23 +4,38 @@ use parking_lot::RwLock;
 use rand::Rng;
 use rocksdb::WriteBatch;
 use serde::{de::DeserializeOwned, Serialize};
-use std::sync::Arc;
+use std::{fmt::Display, str, sync::Arc};
 
 const SEP: u8 = b'/';
 
-struct DbKey {
+#[derive(Debug, Clone)]
+pub struct DbKey {
     path: Vec<u8>,
 }
 
 impl DbKey {
-    fn new<TKey: Copy + AsRef<[u8]>>(prefix: &[u8], key: TKey) -> Self {
+    pub fn new<TKey: Copy + AsRef<[u8]>>(prefix: &[u8], key: TKey) -> Self {
         Self { path: prefix.iter().chain(std::iter::once(&SEP)).chain(key.as_ref().iter()).copied().collect() }
+    }
+
+    pub fn prefix_only(prefix: &[u8]) -> Self {
+        Self::new(prefix, b"")
     }
 }
 
 impl AsRef<[u8]> for DbKey {
     fn as_ref(&self) -> &[u8] {
         &self.path
+    }
+}
+
+impl Display for DbKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let pos = self.path.len() - 1 - self.path.iter().rev().position(|c| *c == SEP).unwrap(); // Find the last position of `SEP`
+        let (prefix, key) = (&self.path[..pos], &self.path[pos + 1..]);
+        f.write_str(str::from_utf8(prefix).unwrap_or("{cannot display prefix}"))?;
+        f.write_str("/")?;
+        f.write_str(&faster_hex::hex_string(key))
     }
 }
 
@@ -132,12 +147,15 @@ where
     {
         if let Some(data) = self.cache.get(&key) {
             Ok(data)
-        } else if let Some(slice) = self.db.get_pinned(DbKey::new(self.prefix, key))? {
-            let data: Arc<TData> = Arc::new(bincode::deserialize(&slice)?);
-            self.cache.insert(key, Arc::clone(&data));
-            Ok(data)
         } else {
-            Err(StoreError::KeyNotFound(key.to_string()))
+            let db_key = DbKey::new(self.prefix, key);
+            if let Some(slice) = self.db.get_pinned(&db_key)? {
+                let data: Arc<TData> = Arc::new(bincode::deserialize(&slice)?);
+                self.cache.insert(key, Arc::clone(&data));
+                Ok(data)
+            } else {
+                Err(StoreError::KeyNotFound(db_key))
+            }
         }
     }
 
@@ -247,12 +265,15 @@ where
     {
         if let Some(data) = self.cache.get(&key) {
             Ok(data)
-        } else if let Some(slice) = self.db.get_pinned(DbKey::new(self.prefix, key))? {
-            let data: TData = bincode::deserialize(&slice)?;
-            self.cache.insert(key, data);
-            Ok(data)
         } else {
-            Err(StoreError::KeyNotFound(key.to_string()))
+            let db_key = DbKey::new(self.prefix, key);
+            if let Some(slice) = self.db.get_pinned(&db_key)? {
+                let data: TData = bincode::deserialize(&slice)?;
+                self.cache.insert(key, data);
+                Ok(data)
+            } else {
+                Err(StoreError::KeyNotFound(db_key))
+            }
         }
     }
 
@@ -304,9 +325,7 @@ impl<T> CachedDbItem<T> {
             *self.cached_item.write() = Some(item.clone());
             Ok(item)
         } else {
-            Err(StoreError::KeyNotFound(
-                String::from_utf8(Vec::from(self.key)).unwrap_or_else(|k| "cannot parse key to utf8".to_string()),
-            ))
+            Err(StoreError::KeyNotFound(DbKey::prefix_only(self.key)))
         }
     }
 
@@ -342,9 +361,7 @@ impl<T> CachedDbItem<T> {
             let item: T = bincode::deserialize(&slice)?;
             item
         } else {
-            return Err(StoreError::KeyNotFound(
-                String::from_utf8(Vec::from(self.key)).unwrap_or_else(|k| "cannot parse key to utf8".to_string()),
-            ));
+            return Err(StoreError::KeyNotFound(DbKey::prefix_only(self.key)));
         };
 
         item = op(item); // Apply the update op
@@ -412,5 +429,23 @@ impl DbWriter for BatchDbWriter<'_> {
     fn delete<K: AsRef<[u8]>>(&mut self, key: K) -> Result<(), rocksdb::Error> {
         self.batch.delete(key);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use hashes::Hash;
+
+    #[test]
+    fn test_db_key_display() {
+        let key1 = DbKey::new(b"human-readable", Hash::from_u64_word(34567890));
+        let key2 = DbKey::new(&[1, 2, 2, 89], Hash::from_u64_word(345690));
+        let key3 = DbKey::prefix_only(&[1, 2, 2, 89]);
+        let key4 = DbKey::prefix_only(b"direct-prefix");
+        println!("{}", key1);
+        println!("{}", key2);
+        println!("{}", key3);
+        println!("{}", key4);
     }
 }
