@@ -1,7 +1,7 @@
 use crate::processes::ghostdag::ordering::SortableBlock;
 
-use super::caching::{BatchDbWriter, CachedDbAccessForCopy, DbKey, DirectDbWriter};
-use super::{caching::CachedDbAccess, errors::StoreError, DB};
+use super::database::prelude::{BatchDbWriter, CachedDbAccess, CachedDbAccessForCopy, DbKey, DirectDbWriter};
+use super::{errors::StoreError, DB};
 use consensus_core::BlockHashMap;
 use consensus_core::{blockhash::BlockHashes, BlueWorkType};
 use hashes::Hash;

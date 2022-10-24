@@ -1,5 +1,5 @@
 use super::{
-    caching::{BatchDbWriter, CachedDbAccessForCopy, DirectDbWriter},
+    database::prelude::{BatchDbWriter, CachedDbAccessForCopy, DirectDbWriter},
     errors::StoreError,
     DB,
 };

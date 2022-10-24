@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use super::{
-    caching::{BatchDbWriter, CachedDbAccessForCopy, DirectDbWriter},
+    database::prelude::{BatchDbWriter, CachedDbAccessForCopy, DirectDbWriter},
     errors::{StoreError, StoreResult},
     DB,
 };

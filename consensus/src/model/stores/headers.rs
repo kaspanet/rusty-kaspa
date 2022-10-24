@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use super::{
-    caching::{BatchDbWriter, CachedDbAccess, CachedDbAccessForCopy, DirectDbWriter},
+    database::prelude::{BatchDbWriter, CachedDbAccess, CachedDbAccessForCopy, DirectDbWriter},
     errors::StoreError,
     DB,
 };

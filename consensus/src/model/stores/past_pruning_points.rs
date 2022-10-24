@@ -1,7 +1,7 @@
 use std::{fmt::Display, sync::Arc};
 
 use super::{
-    caching::{BatchDbWriter, CachedDbAccessForCopy, DirectDbWriter},
+    database::prelude::{BatchDbWriter, CachedDbAccessForCopy, DirectDbWriter},
     errors::{StoreError, StoreResult},
     DB,
 };

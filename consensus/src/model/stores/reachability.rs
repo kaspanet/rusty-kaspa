@@ -8,12 +8,11 @@ use serde::{Deserialize, Serialize};
 use std::{collections::hash_map::Entry::Vacant, sync::Arc};
 
 use super::{
-    caching::CachedDbAccess,
-    caching::{CachedDbItem, DbKey, DirectDbWriter},
+    database::prelude::{BatchDbWriter, CachedDbAccess, CachedDbItem, DbKey, DirectDbWriter},
     errors::StoreError,
     DB,
 };
-use crate::{model::stores::caching::BatchDbWriter, processes::reachability::interval::Interval};
+use crate::processes::reachability::interval::Interval;
 use hashes::Hash;
 
 #[derive(Clone, Serialize, Deserialize)]

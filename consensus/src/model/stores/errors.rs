@@ -1,4 +1,4 @@
-use super::caching::DbKey;
+use super::database::prelude::DbKey;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
