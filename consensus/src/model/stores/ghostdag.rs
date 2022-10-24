@@ -1,6 +1,6 @@
 use crate::processes::ghostdag::ordering::SortableBlock;
 
-use super::caching::{CachedDbAccessForCopy, DbKey};
+use super::caching::{BatchDbWriter, CachedDbAccessForCopy, DbKey, DirectDbWriter};
 use super::{caching::CachedDbAccess, errors::StoreError, DB};
 use consensus_core::BlockHashMap;
 use consensus_core::{blockhash::BlockHashes, BlueWorkType};
@@ -238,9 +238,9 @@ impl DbGhostdagStore {
         if self.cached_access.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
-        self.cached_access.write_batch(batch, hash, data)?;
-        self.compact_cached_access.write_batch(
-            batch,
+        self.cached_access.write(BatchDbWriter::new(batch), hash, data)?;
+        self.compact_cached_access.write(
+            BatchDbWriter::new(batch),
             hash,
             CompactGhostdagData { blue_score: data.blue_score, blue_work: data.blue_work, selected_parent: data.selected_parent },
         )?;
@@ -291,11 +291,12 @@ impl GhostdagStore for DbGhostdagStore {
         if self.cached_access.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
-        self.cached_access.write(hash, &data)?;
+        self.cached_access.write(DirectDbWriter::new(&self.raw_db), hash, &data)?;
         if self.compact_cached_access.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
         self.compact_cached_access.write(
+            DirectDbWriter::new(&self.raw_db),
             hash,
             CompactGhostdagData { blue_score: data.blue_score, blue_work: data.blue_work, selected_parent: data.selected_parent },
         )?;

@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use super::{
-    caching::CachedDbAccessForCopy,
+    caching::{BatchDbWriter, CachedDbAccessForCopy, DirectDbWriter},
     errors::{StoreError, StoreResult},
     DB,
 };
@@ -89,7 +89,7 @@ impl StatusesStoreBatchExtensions for Arc<RwLock<DbStatusesStore>> {
         status: BlockStatus,
     ) -> Result<RwLockWriteGuard<DbStatusesStore>, StoreError> {
         let write_guard = self.write();
-        write_guard.cached_access.write_batch(batch, hash, status)?;
+        write_guard.cached_access.write(BatchDbWriter::new(batch), hash, status)?;
         Ok(write_guard)
     }
 }
@@ -106,6 +106,6 @@ impl StatusesStoreReader for DbStatusesStore {
 
 impl StatusesStore for DbStatusesStore {
     fn set(&mut self, hash: Hash, status: BlockStatus) -> StoreResult<()> {
-        self.cached_access.write(hash, status)
+        self.cached_access.write(DirectDbWriter::new(&self.raw_db), hash, status)
     }
 }

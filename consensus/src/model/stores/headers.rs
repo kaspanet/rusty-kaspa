@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use super::{
-    caching::{CachedDbAccess, CachedDbAccessForCopy},
+    caching::{BatchDbWriter, CachedDbAccess, CachedDbAccessForCopy, DirectDbWriter},
     errors::StoreError,
     DB,
 };
@@ -68,13 +68,13 @@ impl DbHeadersStore {
         if self.cached_headers_access.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
-        self.cached_headers_access.write_batch(
-            batch,
+        self.cached_headers_access.write(
+            BatchDbWriter::new(batch),
             hash,
             &Arc::new(HeaderWithBlockLevel { header: header.clone(), block_level }),
         )?;
-        self.cached_compact_headers_access.write_batch(
-            batch,
+        self.cached_compact_headers_access.write(
+            BatchDbWriter::new(batch),
             hash,
             CompactHeaderData {
                 daa_score: header.daa_score,
@@ -143,6 +143,7 @@ impl HeaderStore for DbHeadersStore {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
         self.cached_compact_headers_access.write(
+            DirectDbWriter::new(&self.raw_db),
             hash,
             CompactHeaderData {
                 daa_score: header.daa_score,
@@ -151,7 +152,11 @@ impl HeaderStore for DbHeadersStore {
                 blue_score: header.blue_score,
             },
         )?;
-        self.cached_headers_access.write(hash, &Arc::new(HeaderWithBlockLevel { header, block_level }))?;
+        self.cached_headers_access.write(
+            DirectDbWriter::new(&self.raw_db),
+            hash,
+            &Arc::new(HeaderWithBlockLevel { header, block_level }),
+        )?;
         Ok(())
     }
 }

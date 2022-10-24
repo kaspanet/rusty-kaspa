@@ -1,6 +1,10 @@
 use std::sync::Arc;
 
-use super::{caching::CachedDbAccess, errors::StoreError, DB};
+use super::{
+    caching::{BatchDbWriter, CachedDbAccess, DirectDbWriter},
+    errors::StoreError,
+    DB,
+};
 use consensus_core::blockhash::BlockHashes;
 use hashes::Hash;
 use rocksdb::WriteBatch;
@@ -40,7 +44,7 @@ impl DbDaaStore {
         if self.cached_daa_added_blocks_access.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
-        self.cached_daa_added_blocks_access.write_batch(batch, hash, &added_blocks)?;
+        self.cached_daa_added_blocks_access.write(BatchDbWriter::new(batch), hash, &added_blocks)?;
         Ok(())
     }
 }
@@ -56,7 +60,7 @@ impl DaaStore for DbDaaStore {
         if self.cached_daa_added_blocks_access.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
-        self.cached_daa_added_blocks_access.write(hash, &added_blocks)?;
+        self.cached_daa_added_blocks_access.write(DirectDbWriter::new(&self.raw_db), hash, &added_blocks)?;
         Ok(())
     }
 }

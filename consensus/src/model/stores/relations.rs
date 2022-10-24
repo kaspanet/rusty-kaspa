@@ -1,5 +1,5 @@
 use super::{
-    caching::{CachedDbAccess, DbKey},
+    caching::{BatchDbWriter, CachedDbAccess, DbKey, DirectDbWriter},
     errors::StoreError,
     DB,
 };
@@ -56,16 +56,16 @@ impl DbRelationsStore {
         }
 
         // Insert a new entry for `hash`
-        self.parents_access.write_batch(batch, hash, &parents)?;
+        self.parents_access.write(BatchDbWriter::new(batch), hash, &parents)?;
 
         // The new hash has no children yet
-        self.children_access.write_batch(batch, hash, &BlockHashes::new(Vec::new()))?;
+        self.children_access.write(BatchDbWriter::new(batch), hash, &BlockHashes::new(Vec::new()))?;
 
         // Update `children` for each parent
         for parent in parents.iter().cloned() {
             let mut children = (*self.get_children(parent)?).clone();
             children.push(hash);
-            self.children_access.write_batch(batch, parent, &BlockHashes::new(children))?;
+            self.children_access.write(BatchDbWriter::new(batch), parent, &BlockHashes::new(children))?;
         }
 
         Ok(())
@@ -121,16 +121,16 @@ impl RelationsStore for DbRelationsStore {
         }
 
         // Insert a new entry for `hash`
-        self.parents_access.write(hash, &parents)?;
+        self.parents_access.write(DirectDbWriter::new(&self.raw_db), hash, &parents)?;
 
         // The new hash has no children yet
-        self.children_access.write(hash, &BlockHashes::new(Vec::new()))?;
+        self.children_access.write(DirectDbWriter::new(&self.raw_db), hash, &BlockHashes::new(Vec::new()))?;
 
         // Update `children` for each parent
         for parent in parents.iter().cloned() {
             let mut children = (*self.get_children(parent)?).clone();
             children.push(hash);
-            self.children_access.write(parent, &BlockHashes::new(children))?;
+            self.children_access.write(DirectDbWriter::new(&self.raw_db), parent, &BlockHashes::new(children))?;
         }
 
         Ok(())

@@ -159,31 +159,20 @@ where
         }
     }
 
-    pub fn write(&self, key: TKey, data: &Arc<TData>) -> Result<(), StoreError>
+    pub fn write(&self, mut writer: impl DbWriter, key: TKey, data: &Arc<TData>) -> Result<(), StoreError>
     where
         TKey: Copy + AsRef<[u8]>,
         TData: Serialize,
     {
         self.cache.insert(key, Arc::clone(data));
         let bin_data = bincode::serialize(data.as_ref())?;
-        self.db.put(DbKey::new(self.prefix, key), bin_data)?;
-        Ok(())
-    }
-
-    pub fn write_batch(&self, batch: &mut WriteBatch, key: TKey, data: &Arc<TData>) -> Result<(), StoreError>
-    where
-        TKey: Copy + AsRef<[u8]>,
-        TData: Serialize,
-    {
-        self.cache.insert(key, Arc::clone(data));
-        let bin_data = bincode::serialize(data.as_ref())?;
-        batch.put(DbKey::new(self.prefix, key), bin_data);
+        writer.put(DbKey::new(self.prefix, key), bin_data)?;
         Ok(())
     }
 
     pub fn write_many(
         &self,
-        writer: &mut impl DbWriter,
+        mut writer: impl DbWriter,
         iter: &mut (impl Iterator<Item = (TKey, Arc<TData>)> + Clone),
     ) -> Result<(), StoreError>
     where
@@ -199,7 +188,7 @@ where
         Ok(())
     }
 
-    pub fn delete(&self, writer: &mut impl DbWriter, key: TKey) -> Result<(), StoreError>
+    pub fn delete(&self, mut writer: impl DbWriter, key: TKey) -> Result<(), StoreError>
     where
         TKey: Copy + AsRef<[u8]>,
     {
@@ -208,11 +197,7 @@ where
         Ok(())
     }
 
-    pub fn delete_many(
-        &self,
-        writer: &mut impl DbWriter,
-        key_iter: &mut (impl Iterator<Item = TKey> + Clone),
-    ) -> Result<(), StoreError>
+    pub fn delete_many(&self, mut writer: impl DbWriter, key_iter: &mut (impl Iterator<Item = TKey> + Clone)) -> Result<(), StoreError>
     where
         TKey: Copy + AsRef<[u8]>,
     {
@@ -277,25 +262,14 @@ where
         }
     }
 
-    pub fn write(&self, key: TKey, data: TData) -> Result<(), StoreError>
+    pub fn write(&self, mut writer: impl DbWriter, key: TKey, data: TData) -> Result<(), StoreError>
     where
         TKey: Copy + AsRef<[u8]>,
         TData: Serialize,
     {
         self.cache.insert(key, data);
         let bin_data = bincode::serialize(&data)?;
-        self.db.put(DbKey::new(self.prefix, key), bin_data)?;
-        Ok(())
-    }
-
-    pub fn write_batch(&self, batch: &mut WriteBatch, key: TKey, data: TData) -> Result<(), StoreError>
-    where
-        TKey: Copy + AsRef<[u8]>,
-        TData: Serialize,
-    {
-        self.cache.insert(key, data);
-        let bin_data = bincode::serialize(&data)?;
-        batch.put(DbKey::new(self.prefix, key), bin_data);
+        writer.put(DbKey::new(self.prefix, key), bin_data)?;
         Ok(())
     }
 }
@@ -329,27 +303,17 @@ impl<T> CachedDbItem<T> {
         }
     }
 
-    pub fn write(&mut self, item: &T) -> Result<(), StoreError>
+    pub fn write(&mut self, mut writer: impl DbWriter, item: &T) -> Result<(), StoreError>
     where
         T: Clone + Serialize,
     {
         *self.cached_item.write() = Some(item.clone());
         let bin_data = bincode::serialize(&item)?;
-        self.db.put(self.key, bin_data)?;
+        writer.put(self.key, bin_data)?;
         Ok(())
     }
 
-    pub fn write_batch(&mut self, batch: &mut WriteBatch, item: &T) -> Result<(), StoreError>
-    where
-        T: Clone + Serialize,
-    {
-        *self.cached_item.write() = Some(item.clone());
-        let bin_data = bincode::serialize(&item)?;
-        batch.put(self.key, bin_data);
-        Ok(())
-    }
-
-    pub fn update<F>(&mut self, writer: &mut impl DbWriter, op: F) -> Result<T, StoreError>
+    pub fn update<F>(&mut self, mut writer: impl DbWriter, op: F) -> Result<T, StoreError>
     where
         T: Clone + Serialize + DeserializeOwned,
         F: Fn(T) -> T,
@@ -373,7 +337,6 @@ impl<T> CachedDbItem<T> {
 }
 
 /// Abstraction over direct/batched DB writing
-/// TODO: use for all CachedAccess/Item writing ops
 pub trait DbWriter {
     fn put<K, V>(&mut self, key: K, value: V) -> Result<(), rocksdb::Error>
     where
@@ -429,6 +392,22 @@ impl DbWriter for BatchDbWriter<'_> {
     fn delete<K: AsRef<[u8]>>(&mut self, key: K) -> Result<(), rocksdb::Error> {
         self.batch.delete(key);
         Ok(())
+    }
+}
+
+impl<T: DbWriter> DbWriter for &mut T {
+    #[inline]
+    fn put<K, V>(&mut self, key: K, value: V) -> Result<(), rocksdb::Error>
+    where
+        K: AsRef<[u8]>,
+        V: AsRef<[u8]>,
+    {
+        (*self).put(key, value)
+    }
+
+    #[inline]
+    fn delete<K: AsRef<[u8]>>(&mut self, key: K) -> Result<(), rocksdb::Error> {
+        (*self).delete(key)
     }
 }
 

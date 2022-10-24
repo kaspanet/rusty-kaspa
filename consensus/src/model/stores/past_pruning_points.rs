@@ -1,7 +1,7 @@
 use std::{fmt::Display, sync::Arc};
 
 use super::{
-    caching::CachedDbAccessForCopy,
+    caching::{BatchDbWriter, CachedDbAccessForCopy, DirectDbWriter},
     errors::{StoreError, StoreResult},
     DB,
 };
@@ -61,7 +61,7 @@ impl DbPastPruningPointsStore {
         if self.cached_access.has(index.into())? {
             return Err(StoreError::KeyAlreadyExists(index.to_string()));
         }
-        self.cached_access.write_batch(batch, index.into(), pruning_point)?;
+        self.cached_access.write(BatchDbWriter::new(batch), index.into(), pruning_point)?;
         Ok(())
     }
 }
@@ -77,7 +77,7 @@ impl PastPruningPointsStore for DbPastPruningPointsStore {
         if self.cached_access.has(index.into())? {
             return Err(StoreError::KeyAlreadyExists(index.to_string()));
         }
-        self.cached_access.write(index.into(), pruning_point)?;
+        self.cached_access.write(DirectDbWriter::new(&self.raw_db), index.into(), pruning_point)?;
         Ok(())
     }
 }

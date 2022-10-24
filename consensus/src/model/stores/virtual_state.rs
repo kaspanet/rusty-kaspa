@@ -1,8 +1,14 @@
 use std::sync::Arc;
 
-use super::{caching::CachedDbItem, errors::StoreResult, ghostdag::GhostdagData, DB};
+use super::{
+    caching::{BatchDbWriter, CachedDbItem, DirectDbWriter},
+    errors::StoreResult,
+    ghostdag::GhostdagData,
+    DB,
+};
 use consensus_core::utxo::utxo_diff::UtxoDiff;
 use hashes::Hash;
+use kaspa_utils::arc::ArcExtensions;
 use muhash::MuHash;
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
@@ -18,13 +24,7 @@ pub struct VirtualState {
 
 impl VirtualState {
     pub fn new(parents: Vec<Hash>, ghostdag_data: Arc<GhostdagData>, daa_score: u64, multiset: MuHash, utxo_diff: UtxoDiff) -> Self {
-        Self {
-            parents,
-            ghostdag_data: Arc::try_unwrap(ghostdag_data).unwrap_or_else(|a| (*a).clone()), // Copy of Arc::unwrap_or_clone from unstable rust
-            daa_score,
-            multiset,
-            utxo_diff,
-        }
+        Self { parents, ghostdag_data: ArcExtensions::unwrap_or_clone(ghostdag_data), daa_score, multiset, utxo_diff }
     }
 
     pub fn from_genesis(genesis_hash: Hash, initial_ghostdag_data: GhostdagData) -> Self {
@@ -66,7 +66,7 @@ impl DbVirtualStateStore {
     }
 
     pub fn set_batch(&mut self, batch: &mut WriteBatch, state: VirtualState) -> StoreResult<()> {
-        self.cached_access.write_batch(batch, &Arc::new(state))
+        self.cached_access.write(BatchDbWriter::new(batch), &Arc::new(state))
     }
 }
 
@@ -78,6 +78,6 @@ impl VirtualStateStoreReader for DbVirtualStateStore {
 
 impl VirtualStateStore for DbVirtualStateStore {
     fn set(&mut self, state: VirtualState) -> StoreResult<()> {
-        self.cached_access.write(&Arc::new(state))
+        self.cached_access.write(DirectDbWriter::new(&self.raw_db), &Arc::new(state))
     }
 }

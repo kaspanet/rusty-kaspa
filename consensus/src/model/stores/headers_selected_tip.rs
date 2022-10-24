@@ -1,4 +1,8 @@
-use super::{caching::CachedDbItem, errors::StoreResult, DB};
+use super::{
+    caching::{BatchDbWriter, CachedDbItem, DirectDbWriter},
+    errors::StoreResult,
+    DB,
+};
 use crate::processes::ghostdag::ordering::SortableBlock;
 use rocksdb::WriteBatch;
 use std::sync::Arc;
@@ -31,7 +35,7 @@ impl DbHeadersSelectedTipStore {
     }
 
     pub fn set_batch(&mut self, batch: &mut WriteBatch, block: SortableBlock) -> StoreResult<()> {
-        self.cached_access.write_batch(batch, &block)
+        self.cached_access.write(BatchDbWriter::new(batch), &block)
     }
 }
 
@@ -43,6 +47,6 @@ impl HeadersSelectedTipStoreReader for DbHeadersSelectedTipStore {
 
 impl HeadersSelectedTipStore for DbHeadersSelectedTipStore {
     fn set(&mut self, block: SortableBlock) -> StoreResult<()> {
-        self.cached_access.write(&block)
+        self.cached_access.write(DirectDbWriter::new(&self.raw_db), &block)
     }
 }

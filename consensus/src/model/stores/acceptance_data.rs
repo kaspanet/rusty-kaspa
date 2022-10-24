@@ -1,4 +1,8 @@
-use super::{caching::CachedDbAccess, errors::StoreError, DB};
+use super::{
+    caching::{BatchDbWriter, CachedDbAccess, DirectDbWriter},
+    errors::StoreError,
+    DB,
+};
 use hashes::Hash;
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
@@ -39,7 +43,7 @@ impl DbAcceptanceDataStore {
         if self.cached_access.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
-        self.cached_access.write_batch(batch, hash, &acceptance_data)?;
+        self.cached_access.write(BatchDbWriter::new(batch), hash, &acceptance_data)?;
         Ok(())
     }
 }
@@ -55,7 +59,7 @@ impl AcceptanceDataStore for DbAcceptanceDataStore {
         if self.cached_access.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
-        self.cached_access.write(hash, &acceptance_data)?;
+        self.cached_access.write(DirectDbWriter::new(&self.raw_db), hash, &acceptance_data)?;
         Ok(())
     }
 }

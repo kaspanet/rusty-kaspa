@@ -1,6 +1,10 @@
 use std::sync::Arc;
 
-use super::{caching::CachedDbAccess, errors::StoreError, DB};
+use super::{
+    caching::{BatchDbWriter, CachedDbAccess, DirectDbWriter},
+    errors::StoreError,
+    DB,
+};
 use consensus_core::utxo::utxo_diff::UtxoDiff;
 use hashes::Hash;
 use rocksdb::WriteBatch;
@@ -41,7 +45,7 @@ impl DbUtxoDiffsStore {
         if self.cached_access.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
-        self.cached_access.write_batch(batch, hash, &utxo_diff)?;
+        self.cached_access.write(BatchDbWriter::new(batch), hash, &utxo_diff)?;
         Ok(())
     }
 }
@@ -57,7 +61,7 @@ impl UtxoDiffsStore for DbUtxoDiffsStore {
         if self.cached_access.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
-        self.cached_access.write(hash, &utxo_diff)?;
+        self.cached_access.write(DirectDbWriter::new(&self.raw_db), hash, &utxo_diff)?;
         Ok(())
     }
 }
