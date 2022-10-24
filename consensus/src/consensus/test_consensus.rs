@@ -32,7 +32,7 @@ use crate::{
     },
     params::Params,
     pipeline::{body_processor::BlockBodyProcessor, ProcessingCounters},
-    processes::{dagtraversalmanager::DagTraversalManager, pastmediantime::PastMedianTimeManager},
+    processes::{past_median_time::PastMedianTimeManager, traversal_manager::DagTraversalManager},
     test_helpers::header_from_precomputed_hash,
 };
 

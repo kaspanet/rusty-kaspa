@@ -24,14 +24,14 @@ use crate::{
     params::Params,
     pipeline::deps_manager::{BlockTask, BlockTaskDependencyManager},
     processes::{
-        block_at_depth::BlockDepthManager,
-        dagtraversalmanager::DagTraversalManager,
+        block_depth::BlockDepthManager,
         difficulty::DifficultyManager,
         ghostdag::{ordering::SortableBlock, protocol::GhostdagManager},
         parents_builder::ParentsManager,
-        pastmediantime::PastMedianTimeManager,
+        past_median_time::PastMedianTimeManager,
         pruning::PruningManager,
         reachability::inquirer as reachability,
+        traversal_manager::DagTraversalManager,
     },
     test_helpers::header_from_precomputed_hash,
 };

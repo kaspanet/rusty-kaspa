@@ -34,10 +34,9 @@ use crate::{
         ProcessingCounters,
     },
     processes::{
-        block_at_depth::BlockDepthManager, coinbase::CoinbaseManager, dagtraversalmanager::DagTraversalManager,
-        difficulty::DifficultyManager, ghostdag::protocol::GhostdagManager, mass::MassCalculator, parents_builder::ParentsManager,
-        pastmediantime::PastMedianTimeManager, pruning::PruningManager, reachability::inquirer as reachability,
-        transaction_validator::TransactionValidator,
+        block_depth::BlockDepthManager, coinbase::CoinbaseManager, difficulty::DifficultyManager, ghostdag::protocol::GhostdagManager,
+        mass::MassCalculator, parents_builder::ParentsManager, past_median_time::PastMedianTimeManager, pruning::PruningManager,
+        reachability::inquirer as reachability, transaction_validator::TransactionValidator, traversal_manager::DagTraversalManager,
     },
 };
 use consensus_core::block::Block;
