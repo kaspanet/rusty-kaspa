@@ -1,19 +1,19 @@
-use consensus_core::{
-    blockhash::{self, BlockHashes},
-    BlockHashMap,
-};
-use parking_lot::{RwLockUpgradableReadGuard, RwLockWriteGuard};
-use rocksdb::WriteBatch;
-use serde::{Deserialize, Serialize};
-use std::{collections::hash_map::Entry::Vacant, sync::Arc};
-
 use super::{
     database::prelude::{BatchDbWriter, CachedDbAccess, CachedDbItem, DbKey, DirectDbWriter},
     errors::StoreError,
     DB,
 };
 use crate::processes::reachability::interval::Interval;
+use consensus_core::{
+    blockhash::{self, BlockHashes},
+    BlockHashMap, HashMapCustomHasher,
+};
 use hashes::Hash;
+
+use parking_lot::{RwLockUpgradableReadGuard, RwLockWriteGuard};
+use rocksdb::WriteBatch;
+use serde::{Deserialize, Serialize};
+use std::{collections::hash_map::Entry::Vacant, sync::Arc};
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct ReachabilityData {

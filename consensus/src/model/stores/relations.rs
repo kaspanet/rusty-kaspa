@@ -3,7 +3,7 @@ use super::{
     errors::StoreError,
     DB,
 };
-use consensus_core::{blockhash::BlockHashes, BlockHashMap};
+use consensus_core::{blockhash::BlockHashes, BlockHashMap, HashMapCustomHasher};
 use hashes::Hash;
 use parking_lot::{RwLock, RwLockWriteGuard};
 use rocksdb::WriteBatch;

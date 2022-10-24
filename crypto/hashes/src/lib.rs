@@ -3,6 +3,7 @@ mod pow_hashers;
 
 use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Display, Formatter};
+use std::hash::{Hash as StdHash, Hasher as StdHasher};
 use std::str::{self, FromStr};
 
 pub const HASH_SIZE: usize = 32;
@@ -10,7 +11,7 @@ pub const HASH_SIZE: usize = 32;
 pub use hashers::*;
 
 // TODO: Check if we use hash more as an array of u64 or of bytes and change the default accordingly
-#[derive(PartialEq, Eq, Clone, Copy, Hash, Default, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Eq, Clone, Copy, Default, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Hash([u8; HASH_SIZE]);
 
 impl Hash {
@@ -56,6 +57,24 @@ impl Hash {
     }
 }
 
+// Override the default Hash implementation, to: A. improve perf a bit (siphash works over u64s), B. allow a hasher to just take the first u64.
+// Don't change this without looking at `consensus/core/src/blockhash/BlockHashMap`.
+impl StdHash for Hash {
+    #[inline(always)]
+    fn hash<H: StdHasher>(&self, state: &mut H) {
+        self.iter_le_u64().for_each(|x| x.hash(state));
+    }
+}
+
+/// We only override PartialEq because clippy wants us to.
+/// This should always hold: PartialEq(x,y) => Hash(x) == Hash(y)
+impl PartialEq for Hash {
+    #[inline(always)]
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
 impl Display for Hash {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -83,12 +102,14 @@ impl FromStr for Hash {
 }
 
 impl From<u64> for Hash {
+    #[inline(always)]
     fn from(word: u64) -> Self {
         Self::from_u64_word(word)
     }
 }
 
 impl AsRef<[u8]> for Hash {
+    #[inline(always)]
     fn as_ref(&self) -> &[u8] {
         &self.0
     }

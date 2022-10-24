@@ -38,7 +38,7 @@ impl<T> CachedDbItem<T> {
         T: Clone + Serialize,
     {
         *self.cached_item.write() = Some(item.clone());
-        let bin_data = bincode::serialize(&item)?;
+        let bin_data = bincode::serialize(item)?;
         writer.put(self.key, bin_data)?;
         Ok(())
     }

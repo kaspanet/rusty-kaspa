@@ -1,10 +1,10 @@
-use crate::processes::ghostdag::ordering::SortableBlock;
-
 use super::database::prelude::{BatchDbWriter, CachedDbAccess, CachedDbAccessForCopy, DbKey, DirectDbWriter};
 use super::{errors::StoreError, DB};
-use consensus_core::BlockHashMap;
+use crate::processes::ghostdag::ordering::SortableBlock;
 use consensus_core::{blockhash::BlockHashes, BlueWorkType};
+use consensus_core::{BlockHashMap, HashMapCustomHasher};
 use hashes::Hash;
+
 use itertools::EitherOrBoth::{Both, Left, Right};
 use itertools::Itertools;
 use rocksdb::WriteBatch;
@@ -123,7 +123,7 @@ impl GhostdagData {
 
     /// Returns an iterator to the mergeset in topological consensus order -- starting with the selected parent,
     /// and adding the mergeset in increasing blue work order. Note that this is a topological order even though
-    /// the selected parent has highest blue work by def -- since the mergeset is in its anticone.  
+    /// the selected parent has highest blue work by def -- since the mergeset is in its anticone.
     pub fn consensus_ordered_mergeset<'a>(
         &'a self,
         store: &'a (impl GhostdagStoreReader + ?Sized),
@@ -463,10 +463,10 @@ mod tests {
         assert_eq!(expected, data.descending_mergeset_without_selected_parent(&store).map(|b| b.hash).collect::<Vec<Hash>>());
 
         // Use sets since the below functions have no order guarantee
-        let expected = BlockHashSet::from([4.into(), 2.into(), 5.into(), 3.into(), 6.into()]);
+        let expected = BlockHashSet::from_iter([4.into(), 2.into(), 5.into(), 3.into(), 6.into()]);
         assert_eq!(expected, data.unordered_mergeset_without_selected_parent().collect::<BlockHashSet>());
 
-        let expected = BlockHashSet::from([1.into(), 4.into(), 2.into(), 5.into(), 3.into(), 6.into()]);
+        let expected = BlockHashSet::from_iter([1.into(), 4.into(), 2.into(), 5.into(), 3.into(), 6.into()]);
         assert_eq!(expected, data.unordered_mergeset().collect::<BlockHashSet>());
     }
 }
