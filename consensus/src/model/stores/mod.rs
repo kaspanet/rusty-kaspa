@@ -18,6 +18,7 @@ pub mod utxo_diffs;
 pub mod utxo_multisets;
 pub mod utxo_set;
 pub mod virtual_state;
+mod common;
 
 use rocksdb::{DBWithThreadMode, MultiThreaded};
 pub type DB = DBWithThreadMode<MultiThreaded>;

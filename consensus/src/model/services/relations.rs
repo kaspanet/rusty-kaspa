@@ -27,4 +27,24 @@ impl<T: RelationsStoreReader> RelationsStoreReader for MTRelationsService<T> {
     fn has(&self, hash: Hash) -> Result<bool, crate::model::stores::errors::StoreError> {
         self.store.read().has(hash)
     }
+
+    fn get_parents_by_level(
+        &self,
+        hash: Hash,
+        level: consensus_core::BlockLevel,
+    ) -> Result<consensus_core::blockhash::BlockHashes, crate::model::stores::errors::StoreError> {
+        self.store.read().get_parents_by_level(hash, level)
+    }
+
+    fn get_children_by_level(
+        &self,
+        hash: Hash,
+        level: consensus_core::BlockLevel,
+    ) -> Result<consensus_core::blockhash::BlockHashes, crate::model::stores::errors::StoreError> {
+        self.store.read().get_children_by_level(hash, level)
+    }
+
+    fn has_by_level(&self, hash: Hash, level: consensus_core::BlockLevel) -> Result<bool, crate::model::stores::errors::StoreError> {
+        self.store.read().has_by_level(hash, level)
+    }
 }

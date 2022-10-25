@@ -262,6 +262,18 @@ mod tests {
         fn has(&self, hash: Hash) -> Result<bool, StoreError> {
             todo!()
         }
+
+        fn get_parents_by_level(&self, hash: Hash, level: consensus_core::BlockLevel) -> Result<BlockHashes, StoreError> {
+            todo!()
+        }
+
+        fn get_children_by_level(&self, hash: Hash, level: consensus_core::BlockLevel) -> Result<BlockHashes, StoreError> {
+            todo!()
+        }
+
+        fn has_by_level(&self, hash: Hash, level: consensus_core::BlockLevel) -> Result<bool, StoreError> {
+            todo!()
+        }
     }
 
     struct TestBlock {

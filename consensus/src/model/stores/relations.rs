@@ -1,19 +1,23 @@
 use super::{
-    database::prelude::{BatchDbWriter, CachedDbAccess, DbKey, DirectDbWriter},
+    common::BlockLevelWithHashKey,
+    database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter},
     errors::StoreError,
     DB,
 };
-use consensus_core::{blockhash::BlockHashes, BlockHashMap, BlockHasher, HashMapCustomHasher};
+use consensus_core::{blockhash::BlockHashes, BlockHashMap, BlockHasher, HashMapCustomHasher, BlockLevel};
 use hashes::Hash;
 use parking_lot::{RwLock, RwLockWriteGuard};
 use rocksdb::WriteBatch;
-use std::{collections::hash_map::Entry::Vacant, sync::Arc};
+use std::sync::Arc;
 
 /// Reader API for `RelationsStore`.
 pub trait RelationsStoreReader {
     fn get_parents(&self, hash: Hash) -> Result<BlockHashes, StoreError>;
+    fn get_parents_by_level(&self, hash: Hash, level: BlockLevel) -> Result<BlockHashes, StoreError>;
     fn get_children(&self, hash: Hash) -> Result<BlockHashes, StoreError>;
+    fn get_children_by_level(&self, hash: Hash, level: BlockLevel) -> Result<BlockHashes, StoreError>;
     fn has(&self, hash: Hash) -> Result<bool, StoreError>;
+    fn has_by_level(&self, hash: Hash, level: BlockLevel) -> Result<bool, StoreError>;
 }
 
 /// Write API for `RelationsStore`. The insert function is deliberately `mut`
@@ -21,7 +25,7 @@ pub trait RelationsStoreReader {
 /// non-append-only and thus needs to be guarded.
 pub trait RelationsStore: RelationsStoreReader {
     /// Inserts `parents` into a new store entry for `hash`, and for each `parent ∈ parents` adds `hash` to `parent.children`
-    fn insert(&mut self, hash: Hash, parents: BlockHashes) -> Result<(), StoreError>;
+    fn insert(&mut self, hash: Hash, level: BlockLevel, parents: BlockHashes) -> Result<(), StoreError>;
 }
 
 const PARENTS_PREFIX: &[u8] = b"block-parents";
@@ -49,10 +53,12 @@ impl DbRelationsStore {
     }
 
     // Should be kept private and used only through `RelationsStoreBatchExtensions.insert_batch`
-    fn insert_batch(&mut self, batch: &mut WriteBatch, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
+    fn insert_batch(&mut self, batch: &mut WriteBatch, hash: Hash, level: BlockLevel, parents: BlockHashes) -> Result<(), StoreError> {
         if self.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
+
+        let key = (level, hash).into();
 
         // Insert a new entry for `hash`
         self.parents_access.write(BatchDbWriter::new(batch), hash, parents.clone())?;
@@ -76,6 +82,7 @@ pub trait RelationsStoreBatchExtensions {
         &self,
         batch: &mut WriteBatch,
         hash: Hash,
+        level: BlockLevel,
         parents: BlockHashes,
     ) -> Result<RwLockWriteGuard<DbRelationsStore>, StoreError>;
 }
@@ -85,26 +92,40 @@ impl RelationsStoreBatchExtensions for Arc<RwLock<DbRelationsStore>> {
         &self,
         batch: &mut WriteBatch,
         hash: Hash,
+        level: BlockLevel,
         parents: BlockHashes,
     ) -> Result<RwLockWriteGuard<DbRelationsStore>, StoreError> {
         let mut write_guard = self.write();
-        write_guard.insert_batch(batch, hash, parents)?;
+        write_guard.insert_batch(batch, hash, level, parents)?;
         Ok(write_guard)
     }
 }
 
 impl RelationsStoreReader for DbRelationsStore {
     fn get_parents(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
-        self.parents_access.read(hash)
+        self.get_parents_by_level(hash, 0)
     }
 
     fn get_children(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
-        self.children_access.read(hash)
+        self.get_children_by_level(hash, 0)
     }
 
     fn has(&self, hash: Hash) -> Result<bool, StoreError> {
-        if self.parents_access.has(hash)? {
-            debug_assert!(self.children_access.has(hash)?);
+        self.has_by_level(hash, 0)
+    }
+
+    fn get_parents_by_level(&self, hash: Hash, level: BlockLevel) -> Result<BlockHashes, StoreError> {
+        self.parents_access.read((level, hash).into())
+    }
+
+    fn get_children_by_level(&self, hash: Hash, level: BlockLevel) -> Result<BlockHashes, StoreError> {
+        self.children_access.read((level, hash).into())
+    }
+
+    fn has_by_level(&self, hash: Hash, level: BlockLevel) -> Result<bool, StoreError> {
+        let key = (level, hash).into();
+        if self.parents_access.has(key)? {
+            debug_assert!(self.children_access.has(key)?);
             Ok(true)
         } else {
             Ok(false)
@@ -120,6 +141,7 @@ impl RelationsStore for DbRelationsStore {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
 
+        let key = (level, hash).into();
         // Insert a new entry for `hash`
         self.parents_access.write(DirectDbWriter::new(&self.db), hash, parents.clone())?;
 
@@ -154,56 +176,9 @@ impl Default for MemoryRelationsStore {
     }
 }
 
-impl RelationsStoreReader for MemoryRelationsStore {
-    fn get_parents(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
-        match self.parents_map.get(&hash) {
-            Some(parents) => Ok(BlockHashes::clone(parents)),
-            None => Err(StoreError::KeyNotFound(DbKey::new(PARENTS_PREFIX, hash))),
-        }
-    }
-
-    fn get_children(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
-        match self.children_map.get(&hash) {
-            Some(children) => Ok(BlockHashes::clone(children)),
-            None => Err(StoreError::KeyNotFound(DbKey::new(CHILDREN_PREFIX, hash))),
-        }
-    }
-
-    fn has(&self, hash: Hash) -> Result<bool, StoreError> {
-        Ok(self.parents_map.contains_key(&hash))
-    }
-}
-
-impl RelationsStore for MemoryRelationsStore {
-    fn insert(&mut self, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
-        if let Vacant(e) = self.parents_map.entry(hash) {
-            // Update the new entry for `hash`
-            e.insert(BlockHashes::clone(&parents));
-
-            // Update `children` for each parent
-            for parent in parents.iter().cloned() {
-                let mut children = (*self.get_children(parent)?).clone();
-                children.push(hash);
-                self.children_map.insert(parent, BlockHashes::new(children));
-            }
-
-            // The new hash has no children yet
-            self.children_map.insert(hash, BlockHashes::new(Vec::new()));
-            Ok(())
-        } else {
-            Err(StoreError::KeyAlreadyExists(hash.to_string()))
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_memory_relations_store() {
-        test_relations_store(MemoryRelationsStore::new());
-    }
 
     #[test]
     fn test_db_relations_store() {
@@ -215,7 +190,7 @@ mod tests {
     fn test_relations_store<T: RelationsStore>(mut store: T) {
         let parents = [(1, vec![]), (2, vec![1]), (3, vec![1]), (4, vec![2, 3]), (5, vec![1, 4])];
         for (i, vec) in parents.iter().cloned() {
-            store.insert(i.into(), BlockHashes::new(vec.iter().copied().map(Hash::from).collect())).unwrap();
+            store.insert(i.into(), 0, BlockHashes::new(vec.iter().copied().map(Hash::from).collect())).unwrap();
         }
 
         let expected_children = [(1, vec![2, 3, 5]), (2, vec![4]), (3, vec![4]), (4, vec![5]), (5, vec![])];

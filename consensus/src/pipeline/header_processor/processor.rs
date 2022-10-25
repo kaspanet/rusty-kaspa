@@ -316,7 +316,8 @@ impl HeaderProcessor {
         let mut batch = WriteBatch::default();
 
         // Write to append only stores: this requires no lock and hence done first
-        self.ghostdag_store.insert_batch(&mut batch, ctx.hash, &ghostdag_data).unwrap();
+        // TODO: Insert all levels data
+        self.ghostdag_store.insert_batch(&mut batch, ctx.hash, 0, &ghostdag_data).unwrap();
         self.block_window_cache_for_difficulty.insert(ctx.hash, Arc::new(ctx.block_window_for_difficulty.unwrap()));
         self.block_window_cache_for_past_median_time.insert(ctx.hash, Arc::new(ctx.block_window_for_past_median_time.unwrap()));
         self.daa_store.insert_batch(&mut batch, ctx.hash, Arc::new(ctx.mergeset_non_daa.unwrap())).unwrap();
@@ -349,9 +350,10 @@ impl HeaderProcessor {
         }
 
         let relations_write_guard = if header.direct_parents().is_empty() {
-            self.relations_store.insert_batch(&mut batch, header.hash, BlockHashes::new(vec![ORIGIN])).unwrap()
+            self.relations_store.insert_batch(&mut batch, header.hash, 0, BlockHashes::new(vec![ORIGIN])).unwrap()
         } else {
-            self.relations_store.insert_batch(&mut batch, header.hash, BlockHashes::new(header.direct_parents().clone())).unwrap()
+            // TODO: insert all relevant block levels here
+            self.relations_store.insert_batch(&mut batch, header.hash, 0, BlockHashes::new(header.direct_parents().clone())).unwrap()
         };
 
         let statuses_write_guard = self.statuses_store.set_batch(&mut batch, ctx.hash, StatusHeaderOnly).unwrap();
@@ -378,7 +380,8 @@ impl HeaderProcessor {
 
         {
             let mut batch = WriteBatch::default();
-            let relations_write_guard = self.relations_store.insert_batch(&mut batch, ORIGIN, BlockHashes::new(vec![]));
+            // TODO: insert all relevant block levels here
+            let relations_write_guard = self.relations_store.insert_batch(&mut batch, ORIGIN, 0, BlockHashes::new(vec![]));
             let mut hst_write_guard = self.headers_selected_tip_store.write();
             hst_write_guard.set_batch(&mut batch, SortableBlock::new(self.genesis_hash, 0.into())).unwrap(); // TODO: take blue work from genesis block
             self.db.write(batch).unwrap();
