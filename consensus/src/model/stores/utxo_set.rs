@@ -108,15 +108,14 @@ impl UtxoSetStore for DbUtxoSetStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use itertools::Itertools;
 
     #[test]
     fn test_utxo_key_conversion() {
-        let outpoint = TransactionOutpoint::new(2345.into(), 300);
+        let id = 2345.into();
+        let outpoint = TransactionOutpoint::new(id, 300);
         let key: UtxoKey = outpoint.into();
         assert_eq!(outpoint, key.into());
-        assert_eq!(
-            key.0,
-            [41, 9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 44, 1, 0, 0]
-        );
+        assert_eq!(key.0.to_vec(), id.as_bytes().iter().copied().chain([44, 1, 0, 0].iter().copied()).collect_vec());
     }
 }

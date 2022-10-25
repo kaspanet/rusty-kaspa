@@ -9,7 +9,7 @@ use crate::{
     },
     processes::reachability::interval::Interval,
 };
-use consensus_core::{blockhash::BlockHashExtensions, BlockHashMap, BlockHashSet};
+use consensus_core::{blockhash::BlockHashExtensions, BlockHashMap, BlockHashSet, HashMapCustomHasher};
 use hashes::Hash;
 use std::collections::VecDeque;
 use thiserror::Error;

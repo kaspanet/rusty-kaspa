@@ -5,7 +5,7 @@ use super::{
     errors::StoreError,
     DB,
 };
-use consensus_core::utxo::utxo_diff::UtxoDiff;
+use consensus_core::{utxo::utxo_diff::UtxoDiff, BlockHasher};
 use hashes::Hash;
 use rocksdb::WriteBatch;
 
@@ -29,7 +29,7 @@ const STORE_PREFIX: &[u8] = b"utxo-diffs";
 #[derive(Clone)]
 pub struct DbUtxoDiffsStore {
     raw_db: Arc<DB>,
-    cached_access: CachedDbAccess<Hash, UtxoDiff>,
+    cached_access: CachedDbAccess<Hash, UtxoDiff, BlockHasher>,
 }
 
 impl DbUtxoDiffsStore {

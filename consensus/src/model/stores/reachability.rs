@@ -1,19 +1,19 @@
-use consensus_core::{
-    blockhash::{self, BlockHashes},
-    BlockHashMap,
-};
-use parking_lot::{RwLockUpgradableReadGuard, RwLockWriteGuard};
-use rocksdb::WriteBatch;
-use serde::{Deserialize, Serialize};
-use std::{collections::hash_map::Entry::Vacant, sync::Arc};
-
 use super::{
     database::prelude::{BatchDbWriter, CachedDbAccess, CachedDbItem, DbKey, DirectDbWriter},
     errors::StoreError,
     DB,
 };
 use crate::processes::reachability::interval::Interval;
+use consensus_core::{
+    blockhash::{self, BlockHashes},
+    BlockHashMap, BlockHasher, HashMapCustomHasher,
+};
 use hashes::Hash;
+
+use parking_lot::{RwLockUpgradableReadGuard, RwLockWriteGuard};
+use rocksdb::WriteBatch;
+use serde::{Deserialize, Serialize};
+use std::{collections::hash_map::Entry::Vacant, sync::Arc};
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct ReachabilityData {
@@ -60,8 +60,7 @@ const STORE_PREFIX: &[u8] = b"reachability-data";
 #[derive(Clone)]
 pub struct DbReachabilityStore {
     raw_db: Arc<DB>,
-    // `CachedDbAccess` is shallow cloned so no need to wrap with Arc
-    cached_access: CachedDbAccess<Hash, ReachabilityData>,
+    cached_access: CachedDbAccess<Hash, ReachabilityData, BlockHasher>,
     reindex_root: CachedDbItem<Hash>,
 }
 

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use consensus_core::{
     blockhash::{self, BlockHashes},
-    BlockHashMap, BlueWorkType,
+    BlockHashMap, BlueWorkType, HashMapCustomHasher,
 };
 use hashes::Hash;
 

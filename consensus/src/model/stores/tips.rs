@@ -78,8 +78,8 @@ mod tests {
 
     #[test]
     fn test_update_tips() {
-        let mut tips = Arc::new(BlockHashSet::from([1.into(), 3.into(), 5.into()]));
+        let mut tips = Arc::new(BlockHashSet::from_iter([1.into(), 3.into(), 5.into()]));
         tips = update_tips(tips, &[3.into(), 5.into()], 7.into());
-        assert_eq!(Arc::try_unwrap(tips).unwrap(), BlockHashSet::from([1.into(), 7.into()]));
+        assert_eq!(Arc::try_unwrap(tips).unwrap(), BlockHashSet::from_iter([1.into(), 7.into()]));
     }
 }

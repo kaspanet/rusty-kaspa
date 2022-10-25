@@ -5,7 +5,7 @@ use super::{
     errors::StoreError,
     DB,
 };
-use consensus_core::tx::Transaction;
+use consensus_core::{tx::Transaction, BlockHasher};
 use hashes::Hash;
 use rocksdb::WriteBatch;
 
@@ -25,7 +25,7 @@ const STORE_PREFIX: &[u8] = b"block-transactions";
 pub struct DbBlockTransactionsStore {
     raw_db: Arc<DB>,
     // `CachedDbAccess` is shallow cloned so no need to wrap with Arc
-    cached_access: CachedDbAccess<Hash, Vec<Transaction>>,
+    cached_access: CachedDbAccess<Hash, Vec<Transaction>, BlockHasher>,
 }
 
 impl DbBlockTransactionsStore {
