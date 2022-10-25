@@ -19,7 +19,7 @@ pub mod utxo;
 pub type BlueWorkType = math::Uint192;
 
 /// This HashMap skips the hashing of the key and uses the key directly as the hash.
-/// Should only be used for block hashes that has correct DAA,
+/// Should only be used for block hashes that have correct DAA,
 /// otherwise it is susceptible to DOS attacks via hash collisions.
 pub type BlockHashMap<V> = HashMap<Hash, V, BlockHasher>;
 

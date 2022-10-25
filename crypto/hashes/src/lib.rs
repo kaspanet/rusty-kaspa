@@ -53,7 +53,7 @@ impl Hash {
 
     #[inline(always)]
     pub fn from_u64_word(word: u64) -> Self {
-        Self::from_le_u64([word, 0, 0, 0])
+        Self::from_le_u64([0, 0, 0, word])
     }
 }
 

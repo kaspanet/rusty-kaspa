@@ -478,16 +478,13 @@ mod tests {
         for test_block in test_blocks {
             let direct_parents = test_block.direct_parents.iter().map(|parent| Hash::from_u64_word(*parent)).collect_vec();
             let parents = parents_manager.calc_block_parents(pruning_point, &direct_parents[..]);
-            let parents_as_u64 = parents
+            let actual_parents = parents.iter().map(|parents| HashSet::<Hash>::from_iter(parents.iter().copied())).collect_vec();
+            let expected_parents = test_block
+                .expected_parents
                 .iter()
-                .map(|parents| HashSet::<u64>::from_iter(parents.iter().map(|parent| hash_to_u64(*parent))))
+                .map(|v| HashSet::from_iter(v.iter().copied().map(Hash::from_u64_word)))
                 .collect_vec();
-            let expected_parents = test_block.expected_parents.iter().cloned().map(HashSet::from_iter).collect_vec();
-            assert_eq!(expected_parents, parents_as_u64, "failed for block {}", test_block.id);
+            assert_eq!(expected_parents, actual_parents, "failed for block {}", test_block.id);
         }
-    }
-
-    fn hash_to_u64(hash: Hash) -> u64 {
-        hash.to_le_u64()[0]
     }
 }
