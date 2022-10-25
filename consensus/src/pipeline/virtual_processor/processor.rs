@@ -28,8 +28,8 @@ use crate::{
     params::Params,
     pipeline::{deps_manager::BlockTask, virtual_processor::utxo_validation::UtxoProcessingContext},
     processes::{
-        dagtraversalmanager::DagTraversalManager, difficulty::DifficultyManager, pruning::PruningManager,
-        transaction_validator::TransactionValidator,
+        difficulty::DifficultyManager, pruning::PruningManager, transaction_validator::TransactionValidator,
+        traversal_manager::DagTraversalManager,
     },
 };
 use consensus_core::utxo::{utxo_diff::UtxoDiff, utxo_view::UtxoViewComposition};

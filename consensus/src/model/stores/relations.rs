@@ -1,4 +1,8 @@
-use super::{caching::CachedDbAccess, errors::StoreError, DB};
+use super::{
+    database::prelude::{BatchDbWriter, CachedDbAccess, DbKey, DirectDbWriter},
+    errors::StoreError,
+    DB,
+};
 use consensus_core::{blockhash::BlockHashes, BlockHashMap};
 use hashes::Hash;
 use parking_lot::{RwLock, RwLockWriteGuard};
@@ -52,16 +56,16 @@ impl DbRelationsStore {
         }
 
         // Insert a new entry for `hash`
-        self.parents_access.write_batch(batch, hash, &parents)?;
+        self.parents_access.write(BatchDbWriter::new(batch), hash, &parents)?;
 
         // The new hash has no children yet
-        self.children_access.write_batch(batch, hash, &BlockHashes::new(Vec::new()))?;
+        self.children_access.write(BatchDbWriter::new(batch), hash, &BlockHashes::new(Vec::new()))?;
 
         // Update `children` for each parent
         for parent in parents.iter().cloned() {
             let mut children = (*self.get_children(parent)?).clone();
             children.push(hash);
-            self.children_access.write_batch(batch, parent, &BlockHashes::new(children))?;
+            self.children_access.write(BatchDbWriter::new(batch), parent, &BlockHashes::new(children))?;
         }
 
         Ok(())
@@ -117,16 +121,16 @@ impl RelationsStore for DbRelationsStore {
         }
 
         // Insert a new entry for `hash`
-        self.parents_access.write(hash, &parents)?;
+        self.parents_access.write(DirectDbWriter::new(&self.raw_db), hash, &parents)?;
 
         // The new hash has no children yet
-        self.children_access.write(hash, &BlockHashes::new(Vec::new()))?;
+        self.children_access.write(DirectDbWriter::new(&self.raw_db), hash, &BlockHashes::new(Vec::new()))?;
 
         // Update `children` for each parent
         for parent in parents.iter().cloned() {
             let mut children = (*self.get_children(parent)?).clone();
             children.push(hash);
-            self.children_access.write(parent, &BlockHashes::new(children))?;
+            self.children_access.write(DirectDbWriter::new(&self.raw_db), parent, &BlockHashes::new(children))?;
         }
 
         Ok(())
@@ -154,14 +158,14 @@ impl RelationsStoreReader for MemoryRelationsStore {
     fn get_parents(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
         match self.parents_map.get(&hash) {
             Some(parents) => Ok(BlockHashes::clone(parents)),
-            None => Err(StoreError::KeyNotFound(hash.to_string())),
+            None => Err(StoreError::KeyNotFound(DbKey::new(PARENTS_PREFIX, hash))),
         }
     }
 
     fn get_children(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
         match self.children_map.get(&hash) {
             Some(children) => Ok(BlockHashes::clone(children)),
-            None => Err(StoreError::KeyNotFound(hash.to_string())),
+            None => Err(StoreError::KeyNotFound(DbKey::new(CHILDREN_PREFIX, hash))),
         }
     }
 

@@ -1,6 +1,10 @@
 use std::sync::Arc;
 
-use super::{caching::CachedDbAccessForCopy, errors::StoreError, DB};
+use super::{
+    database::prelude::{BatchDbWriter, CachedDbAccessForCopy, DirectDbWriter},
+    errors::StoreError,
+    DB,
+};
 use hashes::Hash;
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
@@ -50,7 +54,7 @@ impl DbDepthStore {
         if self.cached_access.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
-        self.cached_access.write_batch(batch, hash, StoreValue { merge_depth_root, finality_point })?;
+        self.cached_access.write(BatchDbWriter::new(batch), hash, StoreValue { merge_depth_root, finality_point })?;
         Ok(())
     }
 }
@@ -70,7 +74,7 @@ impl DepthStore for DbDepthStore {
         if self.cached_access.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
-        self.cached_access.write(hash, StoreValue { merge_depth_root, finality_point })?;
+        self.cached_access.write(DirectDbWriter::new(&self.raw_db), hash, StoreValue { merge_depth_root, finality_point })?;
         Ok(())
     }
 }

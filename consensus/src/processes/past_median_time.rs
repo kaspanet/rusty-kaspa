@@ -6,7 +6,7 @@ use crate::model::stores::{
     headers::HeaderStoreReader,
 };
 
-use super::dagtraversalmanager::DagTraversalManager;
+use super::traversal_manager::DagTraversalManager;
 
 #[derive(Clone)]
 pub struct PastMedianTimeManager<T: HeaderStoreReader, U: GhostdagStoreReader, V: BlockWindowCacheReader> {

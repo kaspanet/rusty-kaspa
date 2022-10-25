@@ -13,13 +13,13 @@ use itertools::Itertools;
 use thiserror::Error;
 
 #[derive(Clone, Debug)]
-
 pub struct VecDisplay<T: Display>(pub Vec<T>);
 impl<T: Display> Display for VecDisplay<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "[{}]", self.0.iter().map(|item| item.to_string()).join(", "))
     }
 }
+
 #[derive(Clone, Debug)]
 pub struct TwoDimVecDisplay<T: Display + Clone>(pub Vec<Vec<T>>);
 impl<T: Display + Clone> Display for TwoDimVecDisplay<T> {

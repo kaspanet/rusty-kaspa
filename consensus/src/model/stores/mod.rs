@@ -1,8 +1,8 @@
 pub mod acceptance_data;
 pub mod block_transactions;
 pub mod block_window_cache;
-pub mod caching;
 pub mod daa;
+pub mod database;
 pub mod depth;
 pub mod errors;
 pub mod ghostdag;

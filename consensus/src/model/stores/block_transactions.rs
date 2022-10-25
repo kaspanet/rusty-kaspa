@@ -1,6 +1,10 @@
 use std::sync::Arc;
 
-use super::{caching::CachedDbAccess, errors::StoreError, DB};
+use super::{
+    database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter},
+    errors::StoreError,
+    DB,
+};
 use consensus_core::tx::Transaction;
 use hashes::Hash;
 use rocksdb::WriteBatch;
@@ -37,7 +41,7 @@ impl DbBlockTransactionsStore {
         if self.cached_access.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
-        self.cached_access.write_batch(batch, hash, &transactions)?;
+        self.cached_access.write(BatchDbWriter::new(batch), hash, &transactions)?;
         Ok(())
     }
 }
@@ -53,7 +57,7 @@ impl BlockTransactionsStore for DbBlockTransactionsStore {
         if self.cached_access.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
-        self.cached_access.write(hash, &transactions)?;
+        self.cached_access.write(DirectDbWriter::new(&self.raw_db), hash, &transactions)?;
         Ok(())
     }
 }
