@@ -19,7 +19,7 @@ use crate::{
     },
     pipeline::deps_manager::{BlockTask, BlockTaskDependencyManager},
     processes::{
-        coinbase::CoinbaseManager, mass::MassCalculator, pastmediantime::PastMedianTimeManager,
+        coinbase::CoinbaseManager, mass::MassCalculator, past_median_time::PastMedianTimeManager,
         transaction_validator::TransactionValidator,
     },
 };

@@ -1,10 +1,7 @@
-use std::{cmp::Reverse, collections::BinaryHeap, sync::Arc};
-
+use super::database::prelude::Cache;
 use crate::processes::ghostdag::ordering::SortableBlock;
-
 use hashes::Hash;
-
-use super::caching::Cache;
+use std::{cmp::Reverse, collections::BinaryHeap, sync::Arc};
 
 pub type BlockWindowHeap = BinaryHeap<Reverse<SortableBlock>>;
 

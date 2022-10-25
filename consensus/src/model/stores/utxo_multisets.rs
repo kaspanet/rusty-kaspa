@@ -1,4 +1,8 @@
-use super::{caching::CachedDbAccessForCopy, errors::StoreError, DB};
+use super::{
+    database::prelude::{BatchDbWriter, CachedDbAccessForCopy, DirectDbWriter},
+    errors::StoreError,
+    DB,
+};
 use hashes::Hash;
 use math::Uint3072;
 use muhash::MuHash;
@@ -35,7 +39,11 @@ impl DbUtxoMultisetsStore {
         if self.cached_access.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
-        self.cached_access.write_batch(batch, hash, multiset.try_into().expect("multiset is expected to be finalized"))?;
+        self.cached_access.write(
+            BatchDbWriter::new(batch),
+            hash,
+            multiset.try_into().expect("multiset is expected to be finalized"),
+        )?;
         Ok(())
     }
 }
@@ -51,7 +59,11 @@ impl UtxoMultisetsStore for DbUtxoMultisetsStore {
         if self.cached_access.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
-        self.cached_access.write(hash, multiset.try_into().expect("multiset is expected to be finalized"))?;
+        self.cached_access.write(
+            DirectDbWriter::new(&self.raw_db),
+            hash,
+            multiset.try_into().expect("multiset is expected to be finalized"),
+        )?;
         Ok(())
     }
 }

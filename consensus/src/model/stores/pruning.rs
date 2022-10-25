@@ -1,6 +1,10 @@
 use std::sync::Arc;
 
-use super::{caching::CachedDbItem, errors::StoreResult, DB};
+use super::{
+    database::prelude::{BatchDbWriter, CachedDbItem, DirectDbWriter},
+    errors::StoreResult,
+    DB,
+};
 use hashes::Hash;
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
@@ -57,7 +61,7 @@ impl DbPruningStore {
     }
 
     pub fn set_batch(&mut self, batch: &mut WriteBatch, pruning_point: Hash, candidate: Hash, index: u64) -> StoreResult<()> {
-        self.cached_access.write_batch(batch, &PruningPointInfo { pruning_point, candidate, index })
+        self.cached_access.write(BatchDbWriter::new(batch), &PruningPointInfo { pruning_point, candidate, index })
     }
 }
 
@@ -81,6 +85,6 @@ impl PruningStoreReader for DbPruningStore {
 
 impl PruningStore for DbPruningStore {
     fn set(&mut self, pruning_point: Hash, candidate: Hash, index: u64) -> StoreResult<()> {
-        self.cached_access.write(&PruningPointInfo { pruning_point, candidate, index })
+        self.cached_access.write(DirectDbWriter::new(&self.raw_db), &PruningPointInfo::new(pruning_point, candidate, index))
     }
 }

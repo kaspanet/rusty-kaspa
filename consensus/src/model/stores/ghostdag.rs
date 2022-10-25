@@ -1,7 +1,7 @@
 use crate::processes::ghostdag::ordering::SortableBlock;
 
-use super::caching::CachedDbAccessForCopy;
-use super::{caching::CachedDbAccess, errors::StoreError, DB};
+use super::database::prelude::{BatchDbWriter, CachedDbAccess, CachedDbAccessForCopy, DbKey, DirectDbWriter};
+use super::{errors::StoreError, DB};
 use consensus_core::BlockHashMap;
 use consensus_core::{blockhash::BlockHashes, BlueWorkType};
 use hashes::Hash;
@@ -238,9 +238,9 @@ impl DbGhostdagStore {
         if self.cached_access.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
-        self.cached_access.write_batch(batch, hash, data)?;
-        self.compact_cached_access.write_batch(
-            batch,
+        self.cached_access.write(BatchDbWriter::new(batch), hash, data)?;
+        self.compact_cached_access.write(
+            BatchDbWriter::new(batch),
             hash,
             CompactGhostdagData { blue_score: data.blue_score, blue_work: data.blue_work, selected_parent: data.selected_parent },
         )?;
@@ -291,11 +291,12 @@ impl GhostdagStore for DbGhostdagStore {
         if self.cached_access.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
-        self.cached_access.write(hash, &data)?;
+        self.cached_access.write(DirectDbWriter::new(&self.raw_db), hash, &data)?;
         if self.compact_cached_access.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
         self.compact_cached_access.write(
+            DirectDbWriter::new(&self.raw_db),
             hash,
             CompactGhostdagData { blue_score: data.blue_score, blue_work: data.blue_work, selected_parent: data.selected_parent },
         )?;
@@ -353,48 +354,48 @@ impl GhostdagStoreReader for MemoryGhostdagStore {
     fn get_blue_score(&self, hash: Hash) -> Result<u64, StoreError> {
         match self.blue_score_map.borrow().get(&hash) {
             Some(blue_score) => Ok(*blue_score),
-            None => Err(StoreError::KeyNotFound(hash.to_string())),
+            None => Err(StoreError::KeyNotFound(DbKey::new(STORE_PREFIX, hash))),
         }
     }
 
     fn get_blue_work(&self, hash: Hash) -> Result<BlueWorkType, StoreError> {
         match self.blue_work_map.borrow().get(&hash) {
             Some(blue_work) => Ok(*blue_work),
-            None => Err(StoreError::KeyNotFound(hash.to_string())),
+            None => Err(StoreError::KeyNotFound(DbKey::new(STORE_PREFIX, hash))),
         }
     }
 
     fn get_selected_parent(&self, hash: Hash) -> Result<Hash, StoreError> {
         match self.selected_parent_map.borrow().get(&hash) {
             Some(selected_parent) => Ok(*selected_parent),
-            None => Err(StoreError::KeyNotFound(hash.to_string())),
+            None => Err(StoreError::KeyNotFound(DbKey::new(STORE_PREFIX, hash))),
         }
     }
 
     fn get_mergeset_blues(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
         match self.mergeset_blues_map.borrow().get(&hash) {
             Some(mergeset_blues) => Ok(BlockHashes::clone(mergeset_blues)),
-            None => Err(StoreError::KeyNotFound(hash.to_string())),
+            None => Err(StoreError::KeyNotFound(DbKey::new(STORE_PREFIX, hash))),
         }
     }
 
     fn get_mergeset_reds(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
         match self.mergeset_reds_map.borrow().get(&hash) {
             Some(mergeset_reds) => Ok(BlockHashes::clone(mergeset_reds)),
-            None => Err(StoreError::KeyNotFound(hash.to_string())),
+            None => Err(StoreError::KeyNotFound(DbKey::new(STORE_PREFIX, hash))),
         }
     }
 
     fn get_blues_anticone_sizes(&self, hash: Hash) -> Result<HashKTypeMap, StoreError> {
         match self.blues_anticone_sizes_map.borrow().get(&hash) {
             Some(sizes) => Ok(HashKTypeMap::clone(sizes)),
-            None => Err(StoreError::KeyNotFound(hash.to_string())),
+            None => Err(StoreError::KeyNotFound(DbKey::new(STORE_PREFIX, hash))),
         }
     }
 
     fn get_data(&self, hash: Hash) -> Result<Arc<GhostdagData>, StoreError> {
         if !self.has(hash)? {
-            return Err(StoreError::KeyNotFound(hash.to_string()));
+            return Err(StoreError::KeyNotFound(DbKey::new(STORE_PREFIX, hash)));
         }
         Ok(Arc::new(GhostdagData::new(
             self.blue_score_map.borrow()[&hash],

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use super::{
-    caching::{BatchDbWriter, CachedDbItem, DirectDbWriter},
+    database::prelude::{BatchDbWriter, CachedDbItem, DirectDbWriter},
     errors::StoreResult,
     DB,
 };
@@ -37,7 +37,7 @@ impl DbTipsStore {
     }
 
     pub fn init_batch(&mut self, batch: &mut WriteBatch, initial_tips: &[Hash]) -> StoreResult<()> {
-        self.cached_access.write_batch(batch, &Arc::new(BlockHashSet::from_iter(initial_tips.iter().copied())))
+        self.cached_access.write(BatchDbWriter::new(batch), &Arc::new(BlockHashSet::from_iter(initial_tips.iter().copied())))
     }
 
     pub fn add_tip_batch(
@@ -46,7 +46,7 @@ impl DbTipsStore {
         new_tip: Hash,
         new_tip_parents: &[Hash],
     ) -> StoreResult<Arc<BlockHashSet>> {
-        self.cached_access.update(&mut BatchDbWriter::new(batch), |tips| update_tips(tips, new_tip_parents, new_tip))
+        self.cached_access.update(BatchDbWriter::new(batch), |tips| update_tips(tips, new_tip_parents, new_tip))
     }
 }
 
@@ -68,7 +68,7 @@ impl TipsStoreReader for DbTipsStore {
 
 impl TipsStore for DbTipsStore {
     fn add_tip(&mut self, new_tip: Hash, new_tip_parents: &[Hash]) -> StoreResult<Arc<BlockHashSet>> {
-        self.cached_access.update(&mut DirectDbWriter::new(&self.raw_db), |tips| update_tips(tips, new_tip_parents, new_tip))
+        self.cached_access.update(DirectDbWriter::new(&self.raw_db), |tips| update_tips(tips, new_tip_parents, new_tip))
     }
 }
 
