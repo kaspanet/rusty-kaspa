@@ -3,6 +3,7 @@ use super::{
     errors::StoreError,
     DB,
 };
+use consensus_core::BlockHasher;
 use hashes::Hash;
 use math::Uint3072;
 use muhash::MuHash;
@@ -23,7 +24,7 @@ const STORE_PREFIX: &[u8] = b"utxo-multisets";
 #[derive(Clone)]
 pub struct DbUtxoMultisetsStore {
     raw_db: Arc<DB>,
-    cached_access: CachedDbAccessForCopy<Hash, Uint3072>,
+    cached_access: CachedDbAccessForCopy<Hash, Uint3072, BlockHasher>,
 }
 
 impl DbUtxoMultisetsStore {

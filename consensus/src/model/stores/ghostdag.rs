@@ -2,7 +2,7 @@ use super::database::prelude::{BatchDbWriter, CachedDbAccess, CachedDbAccessForC
 use super::{errors::StoreError, DB};
 use crate::processes::ghostdag::ordering::SortableBlock;
 use consensus_core::{blockhash::BlockHashes, BlueWorkType};
-use consensus_core::{BlockHashMap, HashMapCustomHasher};
+use consensus_core::{BlockHashMap, BlockHasher, HashMapCustomHasher};
 use hashes::Hash;
 
 use itertools::EitherOrBoth::{Both, Left, Right};
@@ -217,8 +217,8 @@ const COMPACT_STORE_PREFIX: &[u8] = b"compact-block-ghostdag-data";
 pub struct DbGhostdagStore {
     raw_db: Arc<DB>,
     // `CachedDbAccess` is shallow cloned so no need to wrap with Arc
-    cached_access: CachedDbAccess<Hash, GhostdagData>,
-    compact_cached_access: CachedDbAccessForCopy<Hash, CompactGhostdagData>,
+    cached_access: CachedDbAccess<Hash, GhostdagData, BlockHasher>,
+    compact_cached_access: CachedDbAccessForCopy<Hash, CompactGhostdagData, BlockHasher>,
 }
 
 impl DbGhostdagStore {

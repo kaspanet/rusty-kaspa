@@ -5,6 +5,7 @@ use super::{
     errors::StoreError,
     DB,
 };
+use consensus_core::BlockHasher;
 use hashes::Hash;
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
@@ -22,7 +23,7 @@ pub trait DepthStore: DepthStoreReader {
 const STORE_PREFIX: &[u8] = b"block-at-depth";
 
 #[derive(Clone, Copy, Serialize, Deserialize)]
-struct StoreValue {
+struct BlockDepthInfo {
     merge_depth_root: Hash,
     finality_point: Hash,
 }
@@ -31,8 +32,7 @@ struct StoreValue {
 #[derive(Clone)]
 pub struct DbDepthStore {
     raw_db: Arc<DB>,
-    // `CachedDbAccessForCopy` is shallow cloned so no need to wrap with Arc
-    cached_access: CachedDbAccessForCopy<Hash, StoreValue>,
+    cached_access: CachedDbAccessForCopy<Hash, BlockDepthInfo, BlockHasher>,
 }
 
 impl DbDepthStore {
@@ -54,7 +54,7 @@ impl DbDepthStore {
         if self.cached_access.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
-        self.cached_access.write(BatchDbWriter::new(batch), hash, StoreValue { merge_depth_root, finality_point })?;
+        self.cached_access.write(BatchDbWriter::new(batch), hash, BlockDepthInfo { merge_depth_root, finality_point })?;
         Ok(())
     }
 }
@@ -74,7 +74,7 @@ impl DepthStore for DbDepthStore {
         if self.cached_access.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
-        self.cached_access.write(DirectDbWriter::new(&self.raw_db), hash, StoreValue { merge_depth_root, finality_point })?;
+        self.cached_access.write(DirectDbWriter::new(&self.raw_db), hash, BlockDepthInfo { merge_depth_root, finality_point })?;
         Ok(())
     }
 }

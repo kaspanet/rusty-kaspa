@@ -5,7 +5,7 @@ use super::{
     errors::StoreError,
     DB,
 };
-use consensus_core::header::Header;
+use consensus_core::{header::Header, BlockHasher};
 use hashes::Hash;
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
@@ -46,9 +46,8 @@ pub struct CompactHeaderData {
 #[derive(Clone)]
 pub struct DbHeadersStore {
     raw_db: Arc<DB>,
-    // `CachedDbAccess` is shallow cloned so no need to wrap with Arc
-    cached_compact_headers_access: CachedDbAccessForCopy<Hash, CompactHeaderData>,
-    cached_headers_access: CachedDbAccess<Hash, HeaderWithBlockLevel>,
+    cached_compact_headers_access: CachedDbAccessForCopy<Hash, CompactHeaderData, BlockHasher>,
+    cached_headers_access: CachedDbAccess<Hash, HeaderWithBlockLevel, BlockHasher>,
 }
 
 impl DbHeadersStore {

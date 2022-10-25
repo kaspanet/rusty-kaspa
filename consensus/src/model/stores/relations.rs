@@ -3,7 +3,7 @@ use super::{
     errors::StoreError,
     DB,
 };
-use consensus_core::{blockhash::BlockHashes, BlockHashMap, HashMapCustomHasher};
+use consensus_core::{blockhash::BlockHashes, BlockHashMap, BlockHasher, HashMapCustomHasher};
 use hashes::Hash;
 use parking_lot::{RwLock, RwLockWriteGuard};
 use rocksdb::WriteBatch;
@@ -31,9 +31,8 @@ const CHILDREN_PREFIX: &[u8] = b"block-children";
 #[derive(Clone)]
 pub struct DbRelationsStore {
     raw_db: Arc<DB>,
-    // `CachedDbAccess` is shallow cloned so no need to wrap with Arc
-    parents_access: CachedDbAccess<Hash, Vec<Hash>>,
-    children_access: CachedDbAccess<Hash, Vec<Hash>>,
+    parents_access: CachedDbAccess<Hash, Vec<Hash>, BlockHasher>,
+    children_access: CachedDbAccess<Hash, Vec<Hash>, BlockHasher>,
 }
 
 impl DbRelationsStore {

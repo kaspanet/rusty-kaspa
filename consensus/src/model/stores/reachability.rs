@@ -6,7 +6,7 @@ use super::{
 use crate::processes::reachability::interval::Interval;
 use consensus_core::{
     blockhash::{self, BlockHashes},
-    BlockHashMap, HashMapCustomHasher,
+    BlockHashMap, BlockHasher, HashMapCustomHasher,
 };
 use hashes::Hash;
 
@@ -60,8 +60,7 @@ const STORE_PREFIX: &[u8] = b"reachability-data";
 #[derive(Clone)]
 pub struct DbReachabilityStore {
     raw_db: Arc<DB>,
-    // `CachedDbAccess` is shallow cloned so no need to wrap with Arc
-    cached_access: CachedDbAccess<Hash, ReachabilityData>,
+    cached_access: CachedDbAccess<Hash, ReachabilityData, BlockHasher>,
     reindex_root: CachedDbItem<Hash>,
 }
 

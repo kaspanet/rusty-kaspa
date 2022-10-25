@@ -26,9 +26,6 @@ pub type BlockHashMap<V> = HashMap<Hash, V, BlockHasher>;
 /// Same as `BlockHashMap` but a `HashSet`.
 pub type BlockHashSet = HashSet<Hash, BlockHasher>;
 
-// TODO: if custom hashers are used for BlockHashMap, make sure that store caches
-// which are keyed by Hash use them as well.
-
 pub trait HashMapCustomHasher {
     fn new() -> Self;
     fn with_capacity(capacity: usize) -> Self;
@@ -59,7 +56,6 @@ impl HashMapCustomHasher for BlockHashSet {
 }
 
 /// `hashes::Hash` writes 4 u64s so we just use the last one as the hash here
-#[doc(hidden)]
 #[derive(Default, Clone, Copy)]
 pub struct BlockHasher(u64);
 
