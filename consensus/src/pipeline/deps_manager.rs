@@ -1,5 +1,5 @@
 use crate::{errors::BlockProcessResult, model::stores::statuses::BlockStatus};
-use consensus_core::{block::Block, BlockHashMap};
+use consensus_core::{block::Block, BlockHashMap, HashMapCustomHasher};
 use hashes::Hash;
 use parking_lot::{Condvar, Mutex};
 use std::collections::hash_map::Entry::Vacant;

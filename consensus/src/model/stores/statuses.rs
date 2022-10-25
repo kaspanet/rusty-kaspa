@@ -1,3 +1,4 @@
+use consensus_core::BlockHasher;
 use parking_lot::{RwLock, RwLockWriteGuard};
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
@@ -59,7 +60,7 @@ const STORE_PREFIX: &[u8] = b"block-statuses";
 #[derive(Clone)]
 pub struct DbStatusesStore {
     raw_db: Arc<DB>,
-    cached_access: CachedDbAccessForCopy<Hash, BlockStatus>,
+    cached_access: CachedDbAccessForCopy<Hash, BlockStatus, BlockHasher>,
 }
 
 impl DbStatusesStore {

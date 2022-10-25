@@ -3,6 +3,7 @@ use super::{
     errors::StoreError,
     DB,
 };
+use consensus_core::BlockHasher;
 use hashes::Hash;
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
@@ -27,7 +28,7 @@ const STORE_PREFIX: &[u8] = b"acceptance-data";
 #[derive(Clone)]
 pub struct DbAcceptanceDataStore {
     raw_db: Arc<DB>,
-    cached_access: CachedDbAccess<Hash, AcceptanceData>,
+    cached_access: CachedDbAccess<Hash, AcceptanceData, BlockHasher>,
 }
 
 impl DbAcceptanceDataStore {

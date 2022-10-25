@@ -2,7 +2,7 @@ use super::protocol::GhostdagManager;
 use crate::model::stores::ghostdag::GhostdagStoreReader;
 use crate::model::stores::relations::RelationsStoreReader;
 use crate::model::{services::reachability::ReachabilityService, stores::headers::HeaderStoreReader};
-use consensus_core::BlockHashSet;
+use consensus_core::{BlockHashSet, HashMapCustomHasher};
 use hashes::Hash;
 use std::collections::VecDeque;
 

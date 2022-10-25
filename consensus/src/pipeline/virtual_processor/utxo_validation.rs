@@ -14,7 +14,7 @@ use consensus_core::{
         utxo_diff::UtxoDiff,
         utxo_view::{UtxoView, UtxoViewComposition},
     },
-    BlockHashMap,
+    BlockHashMap, HashMapCustomHasher,
 };
 use hashes::Hash;
 use kaspa_core::trace;
@@ -154,9 +154,9 @@ impl VirtualStateProcessor {
     ) -> Vec<ValidatedTransaction<'a>> {
         self.thread_pool.install(|| {
             txs
-                .par_iter() // We can do this in parallel without complications since block body validation already ensured 
-                            // that all txs within each block are independent 
-                .skip(1) // Skip the coinbase tx. 
+                .par_iter() // We can do this in parallel without complications since block body validation already ensured
+                            // that all txs within each block are independent
+                .skip(1) // Skip the coinbase tx.
                 .filter_map(|tx| self.validate_transaction_in_utxo_context(tx, &utxo_view, pov_daa_score))
                 .collect()
         })

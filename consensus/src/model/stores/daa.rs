@@ -5,7 +5,7 @@ use super::{
     errors::StoreError,
     DB,
 };
-use consensus_core::blockhash::BlockHashes;
+use consensus_core::{blockhash::BlockHashes, BlockHasher};
 use hashes::Hash;
 use rocksdb::WriteBatch;
 
@@ -25,7 +25,7 @@ const ADDED_BLOCKS_STORE_PREFIX: &[u8] = b"daa-added-blocks";
 pub struct DbDaaStore {
     raw_db: Arc<DB>,
     // `CachedDbAccess` is shallow cloned so no need to wrap with Arc
-    cached_daa_added_blocks_access: CachedDbAccess<Hash, Vec<Hash>>,
+    cached_daa_added_blocks_access: CachedDbAccess<Hash, Vec<Hash>, BlockHasher>,
 }
 
 impl DbDaaStore {

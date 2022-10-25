@@ -44,7 +44,6 @@ const STORE_PREFIX: &[u8] = b"past-pruning-points";
 #[derive(Clone)]
 pub struct DbPastPruningPointsStore {
     raw_db: Arc<DB>,
-    // `CachedDbAccess` is shallow cloned so no need to wrap with Arc
     cached_access: CachedDbAccessForCopy<Key, Hash>,
 }
 

@@ -1,11 +1,11 @@
 use super::prelude::{Cache, DbKey, DbWriter};
 use crate::model::stores::{errors::StoreError, DB};
 use serde::{de::DeserializeOwned, Serialize};
-use std::sync::Arc;
+use std::{collections::hash_map::RandomState, hash::BuildHasher, sync::Arc};
 
 /// A concurrent DB store with typed caching.
 #[derive(Clone)]
-pub struct CachedDbAccess<TKey, TData>
+pub struct CachedDbAccess<TKey, TData, S = RandomState>
 where
     TKey: Clone + std::hash::Hash + Eq + Send + Sync,
     TData: Clone + Send + Sync,
@@ -13,16 +13,17 @@ where
     db: Arc<DB>,
 
     // Cache
-    cache: Cache<TKey, Arc<TData>>,
+    cache: Cache<TKey, Arc<TData>, S>,
 
     // DB bucket/path
     prefix: &'static [u8],
 }
 
-impl<TKey, TData> CachedDbAccess<TKey, TData>
+impl<TKey, TData, S> CachedDbAccess<TKey, TData, S>
 where
     TKey: Clone + std::hash::Hash + Eq + Send + Sync,
     TData: Clone + Send + Sync,
+    S: BuildHasher + Default,
 {
     pub fn new(db: Arc<DB>, cache_size: u64, prefix: &'static [u8]) -> Self {
         Self { db, cache: Cache::new(cache_size), prefix }
@@ -115,7 +116,7 @@ where
 /// A concurrent DB store with typed caching for `Copy` types.
 /// TODO: try and generalize under `CachedDbAccess`
 #[derive(Clone)]
-pub struct CachedDbAccessForCopy<TKey, TData>
+pub struct CachedDbAccessForCopy<TKey, TData, S = RandomState>
 where
     TKey: Clone + std::hash::Hash + Eq + Send + Sync,
     TData: Clone + Copy + Send + Sync,
@@ -123,16 +124,17 @@ where
     db: Arc<DB>,
 
     // Cache
-    cache: Cache<TKey, TData>,
+    cache: Cache<TKey, TData, S>,
 
     // DB bucket/path
     prefix: &'static [u8],
 }
 
-impl<TKey, TData> CachedDbAccessForCopy<TKey, TData>
+impl<TKey, TData, S> CachedDbAccessForCopy<TKey, TData, S>
 where
     TKey: Clone + std::hash::Hash + Eq + Send + Sync,
     TData: Clone + Copy + Send + Sync,
+    S: BuildHasher + Default,
 {
     pub fn new(db: Arc<DB>, cache_size: u64, prefix: &'static [u8]) -> Self {
         Self { db, cache: Cache::new(cache_size), prefix }

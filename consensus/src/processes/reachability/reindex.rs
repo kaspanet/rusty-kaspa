@@ -1,6 +1,6 @@
 use super::{extensions::ReachabilityStoreIntervalExtensions, inquirer::get_next_chain_ancestor_unchecked, interval::Interval, *};
 use crate::model::stores::reachability::ReachabilityStore;
-use consensus_core::{blockhash::BlockHashExtensions, BlockHashMap};
+use consensus_core::{blockhash::BlockHashExtensions, BlockHashMap, HashMapCustomHasher};
 use hashes::Hash;
 use std::collections::VecDeque;
 
