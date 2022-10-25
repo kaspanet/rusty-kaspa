@@ -1,4 +1,4 @@
-use consensus_core::{blockhash::ORIGIN, header::Header, BlockHashMap, BlockHasher};
+use consensus_core::{blockhash::ORIGIN, header::Header, BlockHashMap, BlockHasher, BlockLevel};
 use hashes::Hash;
 use indexmap::IndexSet;
 use itertools::Itertools;
@@ -16,7 +16,7 @@ use super::reachability::ReachabilityResultExtensions;
 
 #[derive(Clone)]
 pub struct ParentsManager<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> {
-    max_block_level: u8,
+    max_block_level: BlockLevel,
     genesis_hash: Hash,
 
     headers_store: Arc<T>,
@@ -26,7 +26,7 @@ pub struct ParentsManager<T: HeaderStoreReader, U: ReachabilityStoreReader, V: R
 
 impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> ParentsManager<T, U, V> {
     pub fn new(
-        max_block_level: u8,
+        max_block_level: BlockLevel,
         genesis_hash: Hash,
         headers_store: Arc<T>,
         reachability_service: MTReachabilityService<U>,

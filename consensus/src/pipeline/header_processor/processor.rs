@@ -37,6 +37,7 @@ use consensus_core::{
     blockstatus::BlockStatus::{self, StatusHeaderOnly, StatusInvalid},
     header::Header,
     BlockHashSet,
+    BlockLevel,
 };
 use crossbeam_channel::{Receiver, Sender};
 use hashes::Hash;
@@ -59,7 +60,7 @@ pub struct HeaderProcessingContext<'a> {
     pub mergeset_non_daa: Option<BlockHashSet>,
     pub merge_depth_root: Option<Hash>,
     pub finality_point: Option<Hash>,
-    pub block_level: Option<u8>,
+    pub block_level: Option<BlockLevel>,
 
     // Cache
     non_pruned_parents: Option<BlockHashes>,
@@ -115,7 +116,7 @@ pub struct HeaderProcessor {
     pub(super) difficulty_window_size: usize,
     pub(super) mergeset_size_limit: u64,
     pub(super) skip_proof_of_work: bool,
-    pub(super) max_block_level: u8,
+    pub(super) max_block_level: BlockLevel,
 
     // DB
     db: Arc<DB>,

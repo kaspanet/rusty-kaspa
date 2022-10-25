@@ -101,6 +101,8 @@ impl BuildHasher for BlockHasher {
     }
 }
 
+pub type BlockLevel = u8;
+
 #[cfg(test)]
 mod tests {
     use super::BlockHasher;

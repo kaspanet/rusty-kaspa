@@ -1,3 +1,4 @@
+use consensus_core::BlockLevel;
 use hashes::{Hash, HASH_SIZE};
 
 use crate::model::stores::ghostdag::KType;
@@ -30,7 +31,7 @@ pub struct Params {
     pub pre_deflationary_phase_base_subsidy: u64,
     pub coinbase_maturity: u64,
     pub skip_proof_of_work: bool,
-    pub max_block_level: u8,
+    pub max_block_level: BlockLevel,
 }
 
 impl Params {

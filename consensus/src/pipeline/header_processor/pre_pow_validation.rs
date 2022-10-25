@@ -2,6 +2,7 @@ use super::*;
 use crate::errors::{BlockProcessResult, RuleError};
 use crate::model::services::reachability::ReachabilityService;
 use consensus_core::header::Header;
+use consensus_core::BlockLevel;
 use std::cmp::max;
 use std::sync::Arc;
 
@@ -45,7 +46,7 @@ impl HeaderProcessor {
         let (passed, pow) = state.check_pow(header.nonce);
         if passed || self.skip_proof_of_work {
             let signed_block_level = self.max_block_level as i64 - pow.bits() as i64;
-            ctx.block_level = Some(max(signed_block_level, 0) as u8);
+            ctx.block_level = Some(max(signed_block_level, 0) as BlockLevel);
             Ok(())
         } else {
             Err(RuleError::InvalidPoW)

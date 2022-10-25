@@ -5,7 +5,7 @@ use super::{
     errors::StoreError,
     DB,
 };
-use consensus_core::{header::Header, BlockHasher};
+use consensus_core::{header::Header, BlockHasher, BlockLevel};
 use hashes::Hash;
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
@@ -23,12 +23,12 @@ pub trait HeaderStoreReader {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct HeaderWithBlockLevel {
     pub header: Arc<Header>,
-    pub block_level: u8,
+    pub block_level: BlockLevel,
 }
 
 pub trait HeaderStore: HeaderStoreReader {
     // This is append only
-    fn insert(&self, hash: Hash, header: Arc<Header>, block_level: u8) -> Result<(), StoreError>;
+    fn insert(&self, hash: Hash, header: Arc<Header>, block_level: BlockLevel) -> Result<(), StoreError>;
 }
 
 const HEADERS_STORE_PREFIX: &[u8] = b"headers";
@@ -63,7 +63,13 @@ impl DbHeadersStore {
         Self::new(Arc::clone(&self.db), cache_size)
     }
 
-    pub fn insert_batch(&self, batch: &mut WriteBatch, hash: Hash, header: Arc<Header>, block_level: u8) -> Result<(), StoreError> {
+    pub fn insert_batch(
+        &self,
+        batch: &mut WriteBatch,
+        hash: Hash,
+        header: Arc<Header>,
+        block_level: BlockLevel,
+    ) -> Result<(), StoreError> {
         if self.headers_access.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
