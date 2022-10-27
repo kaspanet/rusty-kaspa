@@ -13,7 +13,7 @@ use std::{
         Arc,
     },
     thread::{self, spawn, JoinHandle},
-    time::{Duration},
+    time::Duration,
 };
 
 /// Emits blocks randomly in the round-based model where number of
