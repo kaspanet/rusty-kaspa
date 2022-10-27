@@ -54,6 +54,9 @@ impl RandomBlockEmitter {
 
         while total < self.target_blocks {
             let v = min(self.max_block_parents, poi.sample(&mut thread_rng) as u64);
+            if v == 0 {
+                continue;
+            }
 
             let timestamp = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis() as u64;
 
