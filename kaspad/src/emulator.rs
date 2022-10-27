@@ -51,12 +51,11 @@ impl RandomBlockEmitter {
 
         let mut tips = vec![self.genesis];
         let mut total = 0;
-        let generate_timestamp = || -> u64 {
-                SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis() as u64
-        };
 
         while total < self.target_blocks {
             let v = min(self.max_block_parents, poi.sample(&mut thread_rng) as u64);
+
+            let timestamp = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis() as u64;
 
             if self.terminate.load(Ordering::SeqCst) {
                 break;
@@ -70,7 +69,7 @@ impl RandomBlockEmitter {
             for i in 0..v {
                 // Create a new block referencing all tips from the previous round
                 let mut b = self.consensus.build_block_with_parents(Default::default(), tips.clone());
-                b.header.timestamp = generate_timestamp();
+                b.header.timestamp = timestamp;
                 b.header.nonce = i;
                 b.header.finalize();
                 new_tips.push(b.header.hash);
