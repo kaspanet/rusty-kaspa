@@ -50,7 +50,7 @@ impl HeaderProcessor {
         let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64;
         let max_block_time = now + self.timestamp_deviation_tolerance * self.target_time_per_block;
         if header.timestamp > max_block_time {
-            return Err(RuleError::TimeTooFarIntoTheFuture(header.timestamp, now));
+            return Err(RuleError::TimeTooFarIntoTheFuture(header.timestamp, max_block_time));
         }
         Ok(())
     }
