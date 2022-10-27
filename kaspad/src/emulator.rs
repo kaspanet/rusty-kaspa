@@ -51,14 +51,14 @@ impl RandomBlockEmitter {
 
         let mut tips = vec![self.genesis];
         let mut total = 0;
+        let mut timestamp = 0u64;
 
         while total < self.target_blocks {
             let v = min(self.max_block_parents, poi.sample(&mut thread_rng) as u64);
+            timestamp += (self.delay as u64) * 1000;
             if v == 0 {
                 continue;
-            }
-
-            let timestamp = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis() as u64;
+            }         
 
             if self.terminate.load(Ordering::SeqCst) {
                 break;
