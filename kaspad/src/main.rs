@@ -36,6 +36,7 @@ pub fn main() {
 
     let mut params = MAINNET_PARAMS.clone_with_skip_pow();
     params.genesis_hash = genesis;
+    params.genesis_timestamp = 0;
 
     // Make sure to create the DB first, so it cleans up last
     let consensus = Arc::new(TestConsensus::create_from_temp_db(&params));
