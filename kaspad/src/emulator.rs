@@ -13,7 +13,7 @@ use std::{
         Arc,
     },
     thread::{self, spawn, JoinHandle},
-    time::{Duration, SystemTime},
+    time::{Duration},
 };
 
 /// Emits blocks randomly in the round-based model where number of
@@ -58,7 +58,7 @@ impl RandomBlockEmitter {
             timestamp += (self.delay as u64) * 1000;
             if v == 0 {
                 continue;
-            }         
+            }
 
             if self.terminate.load(Ordering::SeqCst) {
                 break;
