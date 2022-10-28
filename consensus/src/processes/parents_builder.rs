@@ -56,7 +56,7 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
             .expect("at least one of the parents is expected to be in the future of the pruning point");
         direct_parent_headers.swap(0, first_parent_in_future_of_pruning_point_index);
 
-        let mut candidates_by_level_to_reference_blocks_map = (0..self.max_block_level + 1).map(|level| HashMap::new()).collect_vec();
+        let mut candidates_by_level_to_reference_blocks_map = (0..self.max_block_level + 1).map(|_| HashMap::new()).collect_vec();
         // Direct parents are guaranteed to be in one other's anticones so add them all to
         // all the block levels they occupy.
         for direct_parent_header in direct_parent_headers.iter() {
@@ -158,7 +158,6 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
                 break;
             }
 
-            let level_blocks = reference_blocks_map.keys().copied().collect_vec();
             parents.push(reference_blocks_map.keys().copied().collect_vec());
         }
 
@@ -220,6 +219,7 @@ mod tests {
         }
     }
 
+    #[allow(unused_variables)]
     impl HeaderStoreReader for HeaderStoreMock {
         fn get_daa_score(&self, hash: hashes::Hash) -> Result<u64, StoreError> {
             todo!()
@@ -254,6 +254,7 @@ mod tests {
         pub children: BlockHashes,
     }
 
+    #[allow(unused_variables)]
     impl RelationsStoreReader for RelationsStoreMock {
         fn get_parents(&self, hash: Hash) -> Result<consensus_core::blockhash::BlockHashes, StoreError> {
             todo!()
