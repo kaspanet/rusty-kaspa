@@ -24,8 +24,7 @@ const ADDED_BLOCKS_STORE_PREFIX: &[u8] = b"daa-added-blocks";
 #[derive(Clone)]
 pub struct DbDaaStore {
     raw_db: Arc<DB>,
-    // `CachedDbAccess` is shallow cloned so no need to wrap with Arc
-    cached_daa_added_blocks_access: CachedDbAccess<Hash, Vec<Hash>, BlockHasher>,
+    cached_daa_added_blocks_access: CachedDbAccess<Hash, BlockHashes, BlockHasher>,
 }
 
 impl DbDaaStore {
@@ -44,7 +43,7 @@ impl DbDaaStore {
         if self.cached_daa_added_blocks_access.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
-        self.cached_daa_added_blocks_access.write(BatchDbWriter::new(batch), hash, &added_blocks)?;
+        self.cached_daa_added_blocks_access.write(BatchDbWriter::new(batch), hash, added_blocks)?;
         Ok(())
     }
 }
@@ -60,7 +59,7 @@ impl DaaStore for DbDaaStore {
         if self.cached_daa_added_blocks_access.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
-        self.cached_daa_added_blocks_access.write(DirectDbWriter::new(&self.raw_db), hash, &added_blocks)?;
+        self.cached_daa_added_blocks_access.write(DirectDbWriter::new(&self.raw_db), hash, added_blocks)?;
         Ok(())
     }
 }

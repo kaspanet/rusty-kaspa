@@ -23,21 +23,21 @@ pub const STORE_NAME: &[u8] = b"body-tips";
 /// A DB + cache implementation of `TipsStore` trait
 #[derive(Clone)]
 pub struct DbTipsStore {
-    raw_db: Arc<DB>,
-    cached_access: CachedDbItem<Arc<BlockHashSet>>,
+    db: Arc<DB>,
+    access: CachedDbItem<Arc<BlockHashSet>>,
 }
 
 impl DbTipsStore {
     pub fn new(db: Arc<DB>) -> Self {
-        Self { raw_db: Arc::clone(&db), cached_access: CachedDbItem::new(db.clone(), STORE_NAME) }
+        Self { db: Arc::clone(&db), access: CachedDbItem::new(db.clone(), STORE_NAME) }
     }
 
     pub fn clone_with_new_cache(&self) -> Self {
-        Self::new(Arc::clone(&self.raw_db))
+        Self::new(Arc::clone(&self.db))
     }
 
     pub fn init_batch(&mut self, batch: &mut WriteBatch, initial_tips: &[Hash]) -> StoreResult<()> {
-        self.cached_access.write(BatchDbWriter::new(batch), &Arc::new(BlockHashSet::from_iter(initial_tips.iter().copied())))
+        self.access.write(BatchDbWriter::new(batch), &Arc::new(BlockHashSet::from_iter(initial_tips.iter().copied())))
     }
 
     pub fn add_tip_batch(
@@ -46,7 +46,7 @@ impl DbTipsStore {
         new_tip: Hash,
         new_tip_parents: &[Hash],
     ) -> StoreResult<Arc<BlockHashSet>> {
-        self.cached_access.update(BatchDbWriter::new(batch), |tips| update_tips(tips, new_tip_parents, new_tip))
+        self.access.update(BatchDbWriter::new(batch), |tips| update_tips(tips, new_tip_parents, new_tip))
     }
 }
 
@@ -62,13 +62,13 @@ fn update_tips(mut current_tips: Arc<BlockHashSet>, new_tip_parents: &[Hash], ne
 
 impl TipsStoreReader for DbTipsStore {
     fn get(&self) -> StoreResult<Arc<BlockHashSet>> {
-        self.cached_access.read()
+        self.access.read()
     }
 }
 
 impl TipsStore for DbTipsStore {
     fn add_tip(&mut self, new_tip: Hash, new_tip_parents: &[Hash]) -> StoreResult<Arc<BlockHashSet>> {
-        self.cached_access.update(DirectDbWriter::new(&self.raw_db), |tips| update_tips(tips, new_tip_parents, new_tip))
+        self.access.update(DirectDbWriter::new(&self.db), |tips| update_tips(tips, new_tip_parents, new_tip))
     }
 }
 
