@@ -30,22 +30,22 @@ const CHILDREN_PREFIX: &[u8] = b"block-children";
 /// A DB + cache implementation of `RelationsStore` trait, with concurrent readers support.
 #[derive(Clone)]
 pub struct DbRelationsStore {
-    raw_db: Arc<DB>,
-    parents_access: CachedDbAccess<Hash, Vec<Hash>, BlockHasher>,
-    children_access: CachedDbAccess<Hash, Vec<Hash>, BlockHasher>,
+    db: Arc<DB>,
+    parents_access: CachedDbAccess<Hash, Arc<Vec<Hash>>, BlockHasher>,
+    children_access: CachedDbAccess<Hash, Arc<Vec<Hash>>, BlockHasher>,
 }
 
 impl DbRelationsStore {
     pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
         Self {
-            raw_db: Arc::clone(&db),
+            db: Arc::clone(&db),
             parents_access: CachedDbAccess::new(Arc::clone(&db), cache_size, PARENTS_PREFIX),
             children_access: CachedDbAccess::new(db, cache_size, CHILDREN_PREFIX),
         }
     }
 
     pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {
-        Self::new(Arc::clone(&self.raw_db), cache_size)
+        Self::new(Arc::clone(&self.db), cache_size)
     }
 
     // Should be kept private and used only through `RelationsStoreBatchExtensions.insert_batch`
@@ -55,16 +55,16 @@ impl DbRelationsStore {
         }
 
         // Insert a new entry for `hash`
-        self.parents_access.write(BatchDbWriter::new(batch), hash, &parents)?;
+        self.parents_access.write(BatchDbWriter::new(batch), hash, parents.clone())?;
 
         // The new hash has no children yet
-        self.children_access.write(BatchDbWriter::new(batch), hash, &BlockHashes::new(Vec::new()))?;
+        self.children_access.write(BatchDbWriter::new(batch), hash, BlockHashes::new(Vec::new()))?;
 
         // Update `children` for each parent
         for parent in parents.iter().cloned() {
             let mut children = (*self.get_children(parent)?).clone();
             children.push(hash);
-            self.children_access.write(BatchDbWriter::new(batch), parent, &BlockHashes::new(children))?;
+            self.children_access.write(BatchDbWriter::new(batch), parent, BlockHashes::new(children))?;
         }
 
         Ok(())
@@ -114,22 +114,23 @@ impl RelationsStoreReader for DbRelationsStore {
 
 impl RelationsStore for DbRelationsStore {
     /// See `insert_batch` as well
+    /// TODO: use one function with DbWriter for both this function and insert_batch
     fn insert(&mut self, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
         if self.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
 
         // Insert a new entry for `hash`
-        self.parents_access.write(DirectDbWriter::new(&self.raw_db), hash, &parents)?;
+        self.parents_access.write(DirectDbWriter::new(&self.db), hash, parents.clone())?;
 
         // The new hash has no children yet
-        self.children_access.write(DirectDbWriter::new(&self.raw_db), hash, &BlockHashes::new(Vec::new()))?;
+        self.children_access.write(DirectDbWriter::new(&self.db), hash, BlockHashes::new(Vec::new()))?;
 
         // Update `children` for each parent
         for parent in parents.iter().cloned() {
             let mut children = (*self.get_children(parent)?).clone();
             children.push(hash);
-            self.children_access.write(DirectDbWriter::new(&self.raw_db), parent, &BlockHashes::new(children))?;
+            self.children_access.write(DirectDbWriter::new(&self.db), parent, BlockHashes::new(children))?;
         }
 
         Ok(())

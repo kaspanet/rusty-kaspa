@@ -210,7 +210,7 @@ mod tests {
     use parking_lot::RwLock;
 
     struct HeaderStoreMock {
-        map: RwLock<HashMap<Hash, Arc<HeaderWithBlockLevel>>>,
+        map: RwLock<HashMap<Hash, HeaderWithBlockLevel>>,
     }
 
     impl HeaderStoreMock {
@@ -245,7 +245,7 @@ mod tests {
             todo!()
         }
 
-        fn get_header_with_block_level(&self, hash: hashes::Hash) -> Result<Arc<HeaderWithBlockLevel>, StoreError> {
+        fn get_header_with_block_level(&self, hash: hashes::Hash) -> Result<HeaderWithBlockLevel, StoreError> {
             Ok(self.map.read().get(&hash).unwrap().clone())
         }
     }
@@ -278,7 +278,7 @@ mod tests {
         let pruning_point: Hash = 1.into();
         headers_store.map.write().insert(
             pruning_point,
-            Arc::new(HeaderWithBlockLevel {
+            HeaderWithBlockLevel {
                 header: Arc::new(Header {
                     hash: pruning_point,
                     version: 0,
@@ -301,13 +301,13 @@ mod tests {
                     pruning_point: 1.into(),
                 }),
                 block_level: 0,
-            }),
+            },
         );
 
         let pp_anticone_block: Hash = 3001.into();
         headers_store.map.write().insert(
             pp_anticone_block,
-            Arc::new(HeaderWithBlockLevel {
+            HeaderWithBlockLevel {
                 header: Arc::new(Header {
                     hash: pp_anticone_block,
                     version: 0,
@@ -330,13 +330,13 @@ mod tests {
                     pruning_point: 1.into(),
                 }),
                 block_level: 0,
-            }),
+            },
         );
 
         let pp_anticone_block_child: Hash = 3002.into();
         headers_store.map.write().insert(
             pp_anticone_block_child,
-            Arc::new(HeaderWithBlockLevel {
+            HeaderWithBlockLevel {
                 header: Arc::new(Header {
                     hash: pp_anticone_block_child,
                     version: 0,
@@ -359,7 +359,7 @@ mod tests {
                     pruning_point: 1.into(),
                 }),
                 block_level: 0,
-            }),
+            },
         );
         struct TestBlock {
             id: u64,
@@ -450,7 +450,7 @@ mod tests {
 
             headers_store.map.write().insert(
                 hash,
-                Arc::new(HeaderWithBlockLevel {
+                HeaderWithBlockLevel {
                     header: Arc::new(Header {
                         hash,
                         version: 0,
@@ -467,7 +467,7 @@ mod tests {
                         pruning_point: 1.into(),
                     }),
                     block_level: test_block.block_level,
-                }),
+                },
             );
         }
 

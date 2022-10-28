@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use super::{
-    database::prelude::{BatchDbWriter, CachedDbAccessForCopy, DirectDbWriter},
+    database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter},
     errors::{StoreError, StoreResult},
     DB,
 };
@@ -59,17 +59,17 @@ const STORE_PREFIX: &[u8] = b"block-statuses";
 /// A DB + cache implementation of `StatusesStore` trait, with concurrent readers support.
 #[derive(Clone)]
 pub struct DbStatusesStore {
-    raw_db: Arc<DB>,
-    cached_access: CachedDbAccessForCopy<Hash, BlockStatus, BlockHasher>,
+    db: Arc<DB>,
+    access: CachedDbAccess<Hash, BlockStatus, BlockHasher>,
 }
 
 impl DbStatusesStore {
     pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
-        Self { raw_db: Arc::clone(&db), cached_access: CachedDbAccessForCopy::new(db, cache_size, STORE_PREFIX) }
+        Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_size, STORE_PREFIX) }
     }
 
     pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {
-        Self::new(Arc::clone(&self.raw_db), cache_size)
+        Self::new(Arc::clone(&self.db), cache_size)
     }
 }
 
@@ -90,23 +90,23 @@ impl StatusesStoreBatchExtensions for Arc<RwLock<DbStatusesStore>> {
         status: BlockStatus,
     ) -> Result<RwLockWriteGuard<DbStatusesStore>, StoreError> {
         let write_guard = self.write();
-        write_guard.cached_access.write(BatchDbWriter::new(batch), hash, status)?;
+        write_guard.access.write(BatchDbWriter::new(batch), hash, status)?;
         Ok(write_guard)
     }
 }
 
 impl StatusesStoreReader for DbStatusesStore {
     fn get(&self, hash: Hash) -> StoreResult<BlockStatus> {
-        self.cached_access.read(hash)
+        self.access.read(hash)
     }
 
     fn has(&self, hash: Hash) -> StoreResult<bool> {
-        self.cached_access.has(hash)
+        self.access.has(hash)
     }
 }
 
 impl StatusesStore for DbStatusesStore {
     fn set(&mut self, hash: Hash, status: BlockStatus) -> StoreResult<()> {
-        self.cached_access.write(DirectDbWriter::new(&self.raw_db), hash, status)
+        self.access.write(DirectDbWriter::new(&self.db), hash, status)
     }
 }

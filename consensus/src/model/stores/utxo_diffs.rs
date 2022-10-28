@@ -28,40 +28,40 @@ const STORE_PREFIX: &[u8] = b"utxo-diffs";
 /// A DB + cache implementation of `UtxoDifferencesStore` trait, with concurrency support.
 #[derive(Clone)]
 pub struct DbUtxoDiffsStore {
-    raw_db: Arc<DB>,
-    cached_access: CachedDbAccess<Hash, UtxoDiff, BlockHasher>,
+    db: Arc<DB>,
+    access: CachedDbAccess<Hash, Arc<UtxoDiff>, BlockHasher>,
 }
 
 impl DbUtxoDiffsStore {
     pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
-        Self { raw_db: Arc::clone(&db), cached_access: CachedDbAccess::new(Arc::clone(&db), cache_size, STORE_PREFIX) }
+        Self { db: Arc::clone(&db), access: CachedDbAccess::new(Arc::clone(&db), cache_size, STORE_PREFIX) }
     }
 
     pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {
-        Self::new(Arc::clone(&self.raw_db), cache_size)
+        Self::new(Arc::clone(&self.db), cache_size)
     }
 
     pub fn insert_batch(&self, batch: &mut WriteBatch, hash: Hash, utxo_diff: Arc<UtxoDiff>) -> Result<(), StoreError> {
-        if self.cached_access.has(hash)? {
+        if self.access.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
-        self.cached_access.write(BatchDbWriter::new(batch), hash, &utxo_diff)?;
+        self.access.write(BatchDbWriter::new(batch), hash, utxo_diff)?;
         Ok(())
     }
 }
 
 impl UtxoDiffsStoreReader for DbUtxoDiffsStore {
     fn get(&self, hash: Hash) -> Result<Arc<UtxoDiff>, StoreError> {
-        self.cached_access.read(hash)
+        self.access.read(hash)
     }
 }
 
 impl UtxoDiffsStore for DbUtxoDiffsStore {
     fn insert(&self, hash: Hash, utxo_diff: Arc<UtxoDiff>) -> Result<(), StoreError> {
-        if self.cached_access.has(hash)? {
+        if self.access.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
-        self.cached_access.write(DirectDbWriter::new(&self.raw_db), hash, &utxo_diff)?;
+        self.access.write(DirectDbWriter::new(&self.db), hash, utxo_diff)?;
         Ok(())
     }
 }

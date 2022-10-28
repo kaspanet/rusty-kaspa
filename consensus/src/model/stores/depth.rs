@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use super::{
-    database::prelude::{BatchDbWriter, CachedDbAccessForCopy, DirectDbWriter},
+    database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter},
     errors::StoreError,
     DB,
 };
@@ -31,17 +31,17 @@ struct BlockDepthInfo {
 /// A DB + cache implementation of `DepthStore` trait, with concurrency support.
 #[derive(Clone)]
 pub struct DbDepthStore {
-    raw_db: Arc<DB>,
-    cached_access: CachedDbAccessForCopy<Hash, BlockDepthInfo, BlockHasher>,
+    db: Arc<DB>,
+    access: CachedDbAccess<Hash, BlockDepthInfo, BlockHasher>,
 }
 
 impl DbDepthStore {
     pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
-        Self { raw_db: Arc::clone(&db), cached_access: CachedDbAccessForCopy::new(db, cache_size, STORE_PREFIX) }
+        Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_size, STORE_PREFIX) }
     }
 
     pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {
-        Self::new(Arc::clone(&self.raw_db), cache_size)
+        Self::new(Arc::clone(&self.db), cache_size)
     }
 
     pub fn insert_batch(
@@ -51,30 +51,30 @@ impl DbDepthStore {
         merge_depth_root: Hash,
         finality_point: Hash,
     ) -> Result<(), StoreError> {
-        if self.cached_access.has(hash)? {
+        if self.access.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
-        self.cached_access.write(BatchDbWriter::new(batch), hash, BlockDepthInfo { merge_depth_root, finality_point })?;
+        self.access.write(BatchDbWriter::new(batch), hash, BlockDepthInfo { merge_depth_root, finality_point })?;
         Ok(())
     }
 }
 
 impl DepthStoreReader for DbDepthStore {
     fn merge_depth_root(&self, hash: Hash) -> Result<Hash, StoreError> {
-        Ok(self.cached_access.read(hash)?.merge_depth_root)
+        Ok(self.access.read(hash)?.merge_depth_root)
     }
 
     fn finality_point(&self, hash: Hash) -> Result<Hash, StoreError> {
-        Ok(self.cached_access.read(hash)?.finality_point)
+        Ok(self.access.read(hash)?.finality_point)
     }
 }
 
 impl DepthStore for DbDepthStore {
     fn insert(&self, hash: Hash, merge_depth_root: Hash, finality_point: Hash) -> Result<(), StoreError> {
-        if self.cached_access.has(hash)? {
+        if self.access.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
-        self.cached_access.write(DirectDbWriter::new(&self.raw_db), hash, BlockDepthInfo { merge_depth_root, finality_point })?;
+        self.access.write(DirectDbWriter::new(&self.db), hash, BlockDepthInfo { merge_depth_root, finality_point })?;
         Ok(())
     }
 }
