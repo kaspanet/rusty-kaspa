@@ -22,7 +22,7 @@ impl TransactionValidator {
         if let Some((index, (input, entry))) = tx
             .populated_inputs()
             .enumerate()
-            .find(|(index, (input, entry))| entry.is_coinbase && entry.block_daa_score + self.coinbase_maturity > pov_daa_score)
+            .find(|(_, (_, entry))| entry.is_coinbase && entry.block_daa_score + self.coinbase_maturity > pov_daa_score)
         {
             return Err(TxRuleError::ImmatureCoinbaseSpend(
                 index,
@@ -65,10 +65,8 @@ impl TransactionValidator {
 
     fn check_sequence_lock(tx: &PopulatedTransaction, pov_daa_score: u64) -> TxResult<()> {
         let pov_daa_score: i64 = pov_daa_score as i64;
-        if tx
-            .populated_inputs()
-            .filter(|(input, entry)| input.sequence & SEQUENCE_LOCK_TIME_DISABLED != SEQUENCE_LOCK_TIME_DISABLED)
-            .any(|(input, entry)| {
+        if tx.populated_inputs().filter(|(input, _)| input.sequence & SEQUENCE_LOCK_TIME_DISABLED != SEQUENCE_LOCK_TIME_DISABLED).any(
+            |(input, entry)| {
                 // Given a sequence number, we apply the relative time lock
                 // mask in order to obtain the time lock delta required before
                 // this input can be spent.
@@ -85,19 +83,19 @@ impl TransactionValidator {
                 let lock_daa_score = entry.block_daa_score as i64 + relative_lock - 1;
 
                 lock_daa_score >= pov_daa_score
-            })
-        {
+            },
+        ) {
             return Err(TxRuleError::SequenceLockConditionsAreNotMet);
         }
         Ok(())
     }
 
-    fn check_sig_op_counts(tx: &PopulatedTransaction) -> TxResult<()> {
+    fn check_sig_op_counts(_tx: &PopulatedTransaction) -> TxResult<()> {
         // TODO: Implement this
         Ok(())
     }
 
-    fn check_scripts(tx: &PopulatedTransaction) -> TxResult<()> {
+    fn check_scripts(_tx: &PopulatedTransaction) -> TxResult<()> {
         // TODO: Implement this
         Ok(())
     }

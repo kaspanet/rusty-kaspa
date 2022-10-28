@@ -359,7 +359,7 @@ impl Service for Consensus {
         "consensus"
     }
 
-    fn start(self: Arc<Consensus>, core: Arc<Core>) -> Vec<JoinHandle<()>> {
+    fn start(self: Arc<Consensus>, _core: Arc<Core>) -> Vec<JoinHandle<()>> {
         self.init()
     }
 

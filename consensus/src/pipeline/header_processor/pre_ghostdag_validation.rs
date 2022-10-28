@@ -23,7 +23,7 @@ impl HeaderProcessor {
 
         self.validate_header_in_isolation(header)?;
         self.check_parents_exist(header)?;
-        self.check_parents_incest(ctx, header)?;
+        self.check_parents_incest(ctx)?;
         Ok(())
     }
 
@@ -92,11 +92,7 @@ impl HeaderProcessor {
         Ok(())
     }
 
-    fn check_parents_incest(
-        self: &Arc<HeaderProcessor>,
-        ctx: &mut HeaderProcessingContext,
-        header: &Header,
-    ) -> BlockProcessResult<()> {
+    fn check_parents_incest(self: &Arc<HeaderProcessor>, ctx: &mut HeaderProcessingContext) -> BlockProcessResult<()> {
         let parents = ctx.get_non_pruned_parents();
         for parent_a in parents.iter() {
             for parent_b in parents.iter() {

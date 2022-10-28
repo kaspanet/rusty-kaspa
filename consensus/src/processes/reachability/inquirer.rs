@@ -136,8 +136,8 @@ pub(super) fn get_next_chain_ancestor_unchecked(
     ancestor: Hash,
 ) -> Result<Hash> {
     match binary_search_descendant(store, store.get_children(ancestor)?.as_slice(), descendant)? {
-        SearchOutput::Found(hash, i) => Ok(hash),
-        SearchOutput::NotFound(i) => Err(ReachabilityError::BadQuery),
+        SearchOutput::Found(hash, _) => Ok(hash),
+        SearchOutput::NotFound(_) => Err(ReachabilityError::BadQuery),
     }
 }
 
