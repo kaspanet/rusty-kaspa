@@ -135,9 +135,9 @@ impl VirtualStateProcessor {
 
     fn verify_coinbase_transaction(
         self: &Arc<Self>,
-        coinbase_tx: &Transaction,
-        mergeset_data: &GhostdagData,
-        mergeset_fees: &BlockHashMap<u64>,
+        _coinbase_tx: &Transaction,
+        _mergeset_data: &GhostdagData,
+        _mergeset_fees: &BlockHashMap<u64>,
     ) -> BlockProcessResult<()> {
         // TODO: build expected coinbase using `mergeset_fees` and compare with the given tx
         // Return `Err(BadCoinbaseTransaction)` if the expected and actual defer

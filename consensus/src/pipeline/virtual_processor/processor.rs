@@ -317,7 +317,6 @@ impl VirtualStateProcessor {
         let ghostdag_data = self.ghostdag_store.get_compact_data(virtual_sp).unwrap();
         let pruning_read_guard = self.pruning_store.upgradable_read();
         let current_pruning_info = pruning_read_guard.get().unwrap();
-        let current_pp_bs = self.ghostdag_store.get_blue_score(current_pruning_info.pruning_point).unwrap();
         let (new_pruning_points, new_candidate) = self.pruning_manager.next_pruning_points_and_candidate_by_ghostdag_data(
             ghostdag_data,
             None,

@@ -118,7 +118,6 @@ impl ReachabilityStore for DbReachabilityStore {
 
     fn insert_future_covering_item(&mut self, hash: Hash, fci: Hash, insertion_index: usize) -> Result<(), StoreError> {
         let mut data = self.cached_access.read(hash)?;
-        let height = data.height;
         let mut_data = Arc::make_mut(&mut data);
         Arc::make_mut(&mut mut_data.future_covering_set).insert(insertion_index, fci);
         self.cached_access.write(DirectDbWriter::new(&self.raw_db), hash, &data)?;

@@ -162,7 +162,7 @@ impl Service for TestConsensus {
         "test-consensus"
     }
 
-    fn start(self: Arc<TestConsensus>, core: Arc<Core>) -> Vec<JoinHandle<()>> {
+    fn start(self: Arc<TestConsensus>, _core: Arc<Core>) -> Vec<JoinHandle<()>> {
         self.init()
     }
 

@@ -15,17 +15,13 @@ impl HeaderProcessor {
             return Ok(());
         }
 
-        self.check_pruning_violation(ctx, header)?;
+        self.check_pruning_violation(ctx)?;
         self.check_pow_and_calc_block_level(ctx, header)?;
         self.check_difficulty_and_daa_score(ctx, header)?;
         Ok(())
     }
 
-    fn check_pruning_violation(
-        self: &Arc<HeaderProcessor>,
-        ctx: &mut HeaderProcessingContext,
-        header: &Header,
-    ) -> BlockProcessResult<()> {
+    fn check_pruning_violation(self: &Arc<HeaderProcessor>, ctx: &mut HeaderProcessingContext) -> BlockProcessResult<()> {
         let non_pruned_parents = ctx.get_non_pruned_parents();
         if non_pruned_parents.is_empty() {
             return Ok(());

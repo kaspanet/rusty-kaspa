@@ -15,8 +15,8 @@ impl HeaderProcessor {
         self.check_blue_score(ctx, header)?;
         self.check_blue_work(ctx, header)?;
         self.check_median_timestamp(ctx, header)?;
-        self.check_merge_size_limit(ctx, header)?;
-        self.check_bounded_merge_depth(ctx, header)?;
+        self.check_merge_size_limit(ctx)?;
+        self.check_bounded_merge_depth(ctx)?;
         self.check_pruning_point(ctx, header)?;
         self.check_indirect_parents(ctx, header)
     }
@@ -36,11 +36,7 @@ impl HeaderProcessor {
         Ok(())
     }
 
-    pub fn check_merge_size_limit(
-        self: &Arc<HeaderProcessor>,
-        ctx: &mut HeaderProcessingContext,
-        header: &Header,
-    ) -> BlockProcessResult<()> {
+    pub fn check_merge_size_limit(self: &Arc<HeaderProcessor>, ctx: &mut HeaderProcessingContext) -> BlockProcessResult<()> {
         let mergeset_size = ctx.ghostdag_data.as_ref().unwrap().mergeset_size() as u64;
 
         if mergeset_size > self.mergeset_size_limit {
@@ -103,11 +99,7 @@ impl HeaderProcessor {
         Ok(())
     }
 
-    pub fn check_bounded_merge_depth(
-        self: &Arc<HeaderProcessor>,
-        ctx: &mut HeaderProcessingContext,
-        header: &Header,
-    ) -> BlockProcessResult<()> {
+    pub fn check_bounded_merge_depth(self: &Arc<HeaderProcessor>, ctx: &mut HeaderProcessingContext) -> BlockProcessResult<()> {
         let gd_data = ctx.ghostdag_data.as_ref().unwrap();
         let merge_depth_root = self.depth_manager.calc_merge_depth_root(gd_data, ctx.pruning_point());
         let finality_point = self.depth_manager.calc_finality_point(gd_data, ctx.pruning_point());

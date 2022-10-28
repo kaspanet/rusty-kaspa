@@ -265,7 +265,7 @@ mod tests {
         assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::NoTxInputs));
 
         let mut tx = valid_tx.clone();
-        tx.inputs = (0..params.max_tx_inputs + 1).map(|i| valid_tx.inputs[0].clone()).collect();
+        tx.inputs = (0..params.max_tx_inputs + 1).map(|_| valid_tx.inputs[0].clone()).collect();
         assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::TooManyInputs(_, _)));
 
         let mut tx = valid_tx.clone();
@@ -273,7 +273,7 @@ mod tests {
         assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::TooBigSignatureScript(_, _)));
 
         let mut tx = valid_tx.clone();
-        tx.outputs = (0..params.max_tx_outputs + 1).map(|i| valid_tx.outputs[0].clone()).collect();
+        tx.outputs = (0..params.max_tx_outputs + 1).map(|_| valid_tx.outputs[0].clone()).collect();
         assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::TooManyOutputs(_, _)));
 
         let mut tx = valid_tx.clone();
