@@ -62,24 +62,24 @@ impl From<UtxoKey> for TransactionOutpoint {
 
 #[derive(Clone)]
 pub struct DbUtxoSetStore {
-    raw_db: Arc<DB>,
+    db: Arc<DB>,
     prefix: &'static [u8],
-    cached_access: CachedDbAccess<UtxoKey, UtxoEntry>,
+    access: CachedDbAccess<UtxoKey, Arc<UtxoEntry>>,
 }
 
 impl DbUtxoSetStore {
     pub fn new(db: Arc<DB>, cache_size: u64, prefix: &'static [u8]) -> Self {
-        Self { raw_db: Arc::clone(&db), cached_access: CachedDbAccess::new(Arc::clone(&db), cache_size, prefix), prefix }
+        Self { db: Arc::clone(&db), access: CachedDbAccess::new(Arc::clone(&db), cache_size, prefix), prefix }
     }
 
     pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {
-        Self::new(Arc::clone(&self.raw_db), cache_size, self.prefix)
+        Self::new(Arc::clone(&self.db), cache_size, self.prefix)
     }
 
     pub fn write_diff_batch(&self, batch: &mut WriteBatch, utxo_diff: &impl ImmutableUtxoDiff) -> Result<(), StoreError> {
         let mut writer = BatchDbWriter::new(batch);
-        self.cached_access.delete_many(&mut writer, &mut utxo_diff.removed().keys().map(|o| (*o).into()))?;
-        self.cached_access.write_many(&mut writer, &mut utxo_diff.added().iter().map(|(o, e)| ((*o).into(), Arc::new(e.clone()))))?;
+        self.access.delete_many(&mut writer, &mut utxo_diff.removed().keys().map(|o| (*o).into()))?;
+        self.access.write_many(&mut writer, &mut utxo_diff.added().iter().map(|(o, e)| ((*o).into(), Arc::new(e.clone()))))?;
         Ok(())
     }
 }
@@ -92,15 +92,15 @@ impl UtxoView for DbUtxoSetStore {
 
 impl UtxoSetStoreReader for DbUtxoSetStore {
     fn get(&self, outpoint: &TransactionOutpoint) -> Result<Arc<UtxoEntry>, StoreError> {
-        self.cached_access.read((*outpoint).into())
+        self.access.read((*outpoint).into())
     }
 }
 
 impl UtxoSetStore for DbUtxoSetStore {
     fn write_diff(&self, utxo_diff: &UtxoDiff) -> Result<(), StoreError> {
-        let mut writer = DirectDbWriter::new(&self.raw_db);
-        self.cached_access.delete_many(&mut writer, &mut utxo_diff.removed().keys().map(|o| (*o).into()))?;
-        self.cached_access.write_many(&mut writer, &mut utxo_diff.added().iter().map(|(o, e)| ((*o).into(), Arc::new(e.clone()))))?;
+        let mut writer = DirectDbWriter::new(&self.db);
+        self.access.delete_many(&mut writer, &mut utxo_diff.removed().keys().map(|o| (*o).into()))?;
+        self.access.write_many(&mut writer, &mut utxo_diff.added().iter().map(|(o, e)| ((*o).into(), Arc::new(e.clone()))))?;
         Ok(())
     }
 }

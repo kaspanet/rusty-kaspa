@@ -52,32 +52,32 @@ const STORE_PREFIX: &[u8] = b"virtual-state";
 /// A DB + cache implementation of `VirtualStateStore` trait
 #[derive(Clone)]
 pub struct DbVirtualStateStore {
-    raw_db: Arc<DB>,
-    cached_access: CachedDbItem<Arc<VirtualState>>,
+    db: Arc<DB>,
+    access: CachedDbItem<Arc<VirtualState>>,
 }
 
 impl DbVirtualStateStore {
     pub fn new(db: Arc<DB>) -> Self {
-        Self { raw_db: Arc::clone(&db), cached_access: CachedDbItem::new(db.clone(), STORE_PREFIX) }
+        Self { db: Arc::clone(&db), access: CachedDbItem::new(db.clone(), STORE_PREFIX) }
     }
 
     pub fn clone_with_new_cache(&self) -> Self {
-        Self::new(Arc::clone(&self.raw_db))
+        Self::new(Arc::clone(&self.db))
     }
 
     pub fn set_batch(&mut self, batch: &mut WriteBatch, state: VirtualState) -> StoreResult<()> {
-        self.cached_access.write(BatchDbWriter::new(batch), &Arc::new(state))
+        self.access.write(BatchDbWriter::new(batch), &Arc::new(state))
     }
 }
 
 impl VirtualStateStoreReader for DbVirtualStateStore {
     fn get(&self) -> StoreResult<Arc<VirtualState>> {
-        self.cached_access.read()
+        self.access.read()
     }
 }
 
 impl VirtualStateStore for DbVirtualStateStore {
     fn set(&mut self, state: VirtualState) -> StoreResult<()> {
-        self.cached_access.write(DirectDbWriter::new(&self.raw_db), &Arc::new(state))
+        self.access.write(DirectDbWriter::new(&self.db), &Arc::new(state))
     }
 }

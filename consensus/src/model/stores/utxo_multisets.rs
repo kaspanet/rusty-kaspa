@@ -1,5 +1,5 @@
 use super::{
-    database::prelude::{BatchDbWriter, CachedDbAccessForCopy, DirectDbWriter},
+    database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter},
     errors::StoreError,
     DB,
 };
@@ -23,48 +23,40 @@ const STORE_PREFIX: &[u8] = b"utxo-multisets";
 /// A DB + cache implementation of `DbUtxoMultisetsStore` trait, with concurrency support.
 #[derive(Clone)]
 pub struct DbUtxoMultisetsStore {
-    raw_db: Arc<DB>,
-    cached_access: CachedDbAccessForCopy<Hash, Uint3072, BlockHasher>,
+    db: Arc<DB>,
+    access: CachedDbAccess<Hash, Uint3072, BlockHasher>,
 }
 
 impl DbUtxoMultisetsStore {
     pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
-        Self { raw_db: Arc::clone(&db), cached_access: CachedDbAccessForCopy::new(Arc::clone(&db), cache_size, STORE_PREFIX) }
+        Self { db: Arc::clone(&db), access: CachedDbAccess::new(Arc::clone(&db), cache_size, STORE_PREFIX) }
     }
 
     pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {
-        Self::new(Arc::clone(&self.raw_db), cache_size)
+        Self::new(Arc::clone(&self.db), cache_size)
     }
 
     pub fn insert_batch(&self, batch: &mut WriteBatch, hash: Hash, multiset: MuHash) -> Result<(), StoreError> {
-        if self.cached_access.has(hash)? {
+        if self.access.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
-        self.cached_access.write(
-            BatchDbWriter::new(batch),
-            hash,
-            multiset.try_into().expect("multiset is expected to be finalized"),
-        )?;
+        self.access.write(BatchDbWriter::new(batch), hash, multiset.try_into().expect("multiset is expected to be finalized"))?;
         Ok(())
     }
 }
 
 impl UtxoMultisetsStoreReader for DbUtxoMultisetsStore {
     fn get(&self, hash: Hash) -> Result<MuHash, StoreError> {
-        Ok(self.cached_access.read(hash)?.into())
+        Ok(self.access.read(hash)?.into())
     }
 }
 
 impl UtxoMultisetsStore for DbUtxoMultisetsStore {
     fn insert(&self, hash: Hash, multiset: MuHash) -> Result<(), StoreError> {
-        if self.cached_access.has(hash)? {
+        if self.access.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
-        self.cached_access.write(
-            DirectDbWriter::new(&self.raw_db),
-            hash,
-            multiset.try_into().expect("multiset is expected to be finalized"),
-        )?;
+        self.access.write(DirectDbWriter::new(&self.db), hash, multiset.try_into().expect("multiset is expected to be finalized"))?;
         Ok(())
     }
 }

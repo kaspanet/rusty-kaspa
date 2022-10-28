@@ -21,32 +21,32 @@ pub const STORE_NAME: &[u8] = b"headers-selected-tip";
 /// A DB + cache implementation of `HeadersSelectedTipStore` trait
 #[derive(Clone)]
 pub struct DbHeadersSelectedTipStore {
-    raw_db: Arc<DB>,
-    cached_access: CachedDbItem<SortableBlock>,
+    db: Arc<DB>,
+    access: CachedDbItem<SortableBlock>,
 }
 
 impl DbHeadersSelectedTipStore {
     pub fn new(db: Arc<DB>) -> Self {
-        Self { raw_db: Arc::clone(&db), cached_access: CachedDbItem::new(db.clone(), STORE_NAME) }
+        Self { db: Arc::clone(&db), access: CachedDbItem::new(db.clone(), STORE_NAME) }
     }
 
     pub fn clone_with_new_cache(&self) -> Self {
-        Self::new(Arc::clone(&self.raw_db))
+        Self::new(Arc::clone(&self.db))
     }
 
     pub fn set_batch(&mut self, batch: &mut WriteBatch, block: SortableBlock) -> StoreResult<()> {
-        self.cached_access.write(BatchDbWriter::new(batch), &block)
+        self.access.write(BatchDbWriter::new(batch), &block)
     }
 }
 
 impl HeadersSelectedTipStoreReader for DbHeadersSelectedTipStore {
     fn get(&self) -> StoreResult<SortableBlock> {
-        self.cached_access.read()
+        self.access.read()
     }
 }
 
 impl HeadersSelectedTipStore for DbHeadersSelectedTipStore {
     fn set(&mut self, block: SortableBlock) -> StoreResult<()> {
-        self.cached_access.write(DirectDbWriter::new(&self.raw_db), &block)
+        self.access.write(DirectDbWriter::new(&self.db), &block)
     }
 }
