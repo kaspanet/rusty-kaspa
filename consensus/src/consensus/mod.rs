@@ -56,9 +56,10 @@ use consensus_core::{
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use futures_util::future::BoxFuture;
 use hashes::Hash;
+use itertools::Itertools;
 use kaspa_core::{core::Core, service::Service};
 use parking_lot::RwLock;
-use std::{future::Future, sync::atomic::Ordering};
+use std::{cmp::max, future::Future, sync::atomic::Ordering};
 use std::{
     ops::DerefMut,
     sync::Arc,
@@ -137,17 +138,32 @@ impl Consensus {
 
         // Headers
         let statuses_store = Arc::new(RwLock::new(DbStatusesStore::new(db.clone(), pruning_plus_finality_size_for_caches)));
-        let relations_store = Arc::new(RwLock::new(DbRelationsStore::new(db.clone(), pruning_plus_finality_size_for_caches)));
-        let reachability_store =
-            Arc::new(RwLock::new(DbReachabilityStore::new(db.clone(), pruning_plus_finality_size_for_caches * 2)));
-        let ghostdag_store = Arc::new(DbGhostdagStore::new(db.clone(), pruning_plus_finality_size_for_caches));
+        let relations_stores = (0..=params.max_block_level)
+            .map(|level| {
+                let cache_size =
+                    max(pruning_plus_finality_size_for_caches.checked_shr(level as u32).unwrap_or(0), 2 * params.pruning_proof_m);
+                Arc::new(RwLock::new(DbRelationsStore::new(db.clone(), level, cache_size)))
+            })
+            .collect_vec();
+        let relations_store = relations_stores[0].clone();
+        let reachability_store = Arc::new(RwLock::new(DbReachabilityStore::new(db.clone(), pruning_plus_finality_size_for_caches)));
+        let ghostdag_stores = (0..=params.max_block_level)
+            .map(|level| {
+                let cache_size =
+                    max(pruning_plus_finality_size_for_caches.checked_shr(level as u32).unwrap_or(0), 2 * params.pruning_proof_m);
+                Arc::new(DbGhostdagStore::new(db.clone(), level, cache_size))
+            })
+            .collect_vec();
+        let ghostdag_store = ghostdag_stores[0].clone();
         let daa_excluded_store = Arc::new(DbDaaStore::new(db.clone(), pruning_size_for_caches));
         let headers_store = Arc::new(DbHeadersStore::new(db.clone(), perf_params.header_data_cache_size));
         let depth_store = Arc::new(DbDepthStore::new(db.clone(), perf_params.header_data_cache_size));
         // Pruning
         let pruning_store = Arc::new(RwLock::new(DbPruningStore::new(db.clone())));
         let past_pruning_points_store = Arc::new(DbPastPruningPointsStore::new(db.clone(), 4));
+
         // Block data
+
         let block_transactions_store = Arc::new(DbBlockTransactionsStore::new(db.clone(), perf_params.block_data_cache_size));
         let utxo_diffs_store = Arc::new(DbUtxoDiffsStore::new(db.clone(), perf_params.block_data_cache_size));
         let utxo_multisets_store = Arc::new(DbUtxoMultisetsStore::new(db.clone(), perf_params.block_data_cache_size));
@@ -169,7 +185,9 @@ impl Consensus {
         //
 
         let statuses_service = MTStatusesService::new(statuses_store.clone());
-        let relations_service = MTRelationsService::new(relations_store.clone());
+        let relations_services =
+            relations_stores.iter().map(|relations_store| MTRelationsService::new(relations_store.clone())).collect_vec();
+        let relations_service = relations_services[0].clone();
         let reachability_service = MTReachabilityService::new(reachability_store.clone());
         let dag_traversal_manager = DagTraversalManager::new(
             params.genesis_hash,
@@ -199,14 +217,22 @@ impl Consensus {
             reachability_service.clone(),
             ghostdag_store.clone(),
         );
-        let ghostdag_manager = GhostdagManager::new(
-            params.genesis_hash,
-            params.ghostdag_k,
-            ghostdag_store.clone(),
-            relations_service.clone(),
-            headers_store.clone(),
-            reachability_service.clone(),
-        );
+        let ghostdag_managers = ghostdag_stores
+            .iter()
+            .cloned()
+            .enumerate()
+            .map(|(level, ghostdag_store)| {
+                GhostdagManager::new(
+                    params.genesis_hash,
+                    params.ghostdag_k,
+                    ghostdag_store,
+                    relations_services[level].clone(),
+                    headers_store.clone(),
+                    reachability_service.clone(),
+                )
+            })
+            .collect_vec();
+        let ghostdag_manager = ghostdag_managers[0].clone();
 
         let coinbase_manager = CoinbaseManager::new(
             params.coinbase_payload_script_public_key_max_len,
@@ -285,9 +311,9 @@ impl Consensus {
             block_processors_pool.clone(),
             params,
             db.clone(),
-            relations_store.clone(),
+            relations_stores.clone(),
             reachability_store.clone(),
-            ghostdag_store.clone(),
+            ghostdag_stores.clone(),
             headers_store.clone(),
             daa_excluded_store.clone(),
             statuses_store.clone(),
@@ -297,13 +323,13 @@ impl Consensus {
             block_window_cache_for_difficulty,
             block_window_cache_for_past_median_time,
             reachability_service.clone(),
-            relations_service.clone(),
             past_median_time_manager.clone(),
             dag_traversal_manager.clone(),
             difficulty_manager.clone(),
             depth_manager.clone(),
             pruning_manager.clone(),
             parents_manager.clone(),
+            ghostdag_managers,
             counters.clone(),
         ));
 

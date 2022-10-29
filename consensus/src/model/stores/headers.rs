@@ -54,8 +54,8 @@ impl DbHeadersStore {
     pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
         Self {
             db: Arc::clone(&db),
-            compact_headers_access: CachedDbAccess::new(Arc::clone(&db), cache_size, COMPACT_HEADER_DATA_STORE_PREFIX),
-            headers_access: CachedDbAccess::new(db, cache_size, HEADERS_STORE_PREFIX),
+            compact_headers_access: CachedDbAccess::new(Arc::clone(&db), cache_size, COMPACT_HEADER_DATA_STORE_PREFIX.to_vec()),
+            headers_access: CachedDbAccess::new(db, cache_size, HEADERS_STORE_PREFIX.to_vec()),
         }
     }
 

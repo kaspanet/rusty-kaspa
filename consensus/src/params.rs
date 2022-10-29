@@ -32,6 +32,7 @@ pub struct Params {
     pub coinbase_maturity: u64,
     pub skip_proof_of_work: bool,
     pub max_block_level: BlockLevel,
+    pub pruning_proof_m: u64,
 }
 
 impl Params {
@@ -86,6 +87,7 @@ pub const MAINNET_PARAMS: Params = Params {
     coinbase_maturity: 100,
     skip_proof_of_work: false,
     max_block_level: 225,
+    pruning_proof_m: 1000,
 };
 
 pub const DEVNET_PARAMS: Params = Params {
@@ -129,4 +131,5 @@ pub const DEVNET_PARAMS: Params = Params {
     coinbase_maturity: 100,
     skip_proof_of_work: false,
     max_block_level: 250,
+    pruning_proof_m: 1000,
 };

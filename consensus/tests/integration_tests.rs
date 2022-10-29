@@ -430,8 +430,8 @@ async fn incest_test() {
 
 #[tokio::test]
 async fn missing_parents_test() {
-    let params = &MAINNET_PARAMS;
-    let consensus = TestConsensus::create_from_temp_db(params);
+    let params = MAINNET_PARAMS.clone_with_skip_pow();
+    let consensus = TestConsensus::create_from_temp_db(&params);
     let wait_handles = consensus.init();
     let mut block = consensus.build_block_with_parents(1.into(), vec![params.genesis_hash]);
     block.header.parents_by_level[0] = vec![0.into()];
@@ -652,6 +652,7 @@ struct KaspadGoParams {
     PreDeflationaryPhaseBaseSubsidy: u64,
     SkipProofOfWork: bool,
     MaxBlockLevel: u8,
+    PruningProofM: u64,
 }
 
 impl KaspadGoParams {
@@ -685,6 +686,7 @@ impl KaspadGoParams {
             coinbase_maturity: MAINNET_PARAMS.coinbase_maturity,
             skip_proof_of_work: self.SkipProofOfWork,
             max_block_level: self.MaxBlockLevel,
+            pruning_proof_m: self.PruningProofM,
         }
     }
 }

@@ -16,7 +16,7 @@ where
     cache: Cache<TKey, TData, S>,
 
     // DB bucket/path
-    prefix: &'static [u8],
+    prefix: Vec<u8>,
 }
 
 impl<TKey, TData, S> CachedDbAccess<TKey, TData, S>
@@ -25,7 +25,7 @@ where
     TData: Clone + Send + Sync,
     S: BuildHasher + Default,
 {
-    pub fn new(db: Arc<DB>, cache_size: u64, prefix: &'static [u8]) -> Self {
+    pub fn new(db: Arc<DB>, cache_size: u64, prefix: Vec<u8>) -> Self {
         Self { db, cache: Cache::new(cache_size), prefix }
     }
 
@@ -40,7 +40,7 @@ where
     where
         TKey: Copy + AsRef<[u8]>,
     {
-        Ok(self.cache.contains_key(&key) || self.db.get_pinned(DbKey::new(self.prefix, key))?.is_some())
+        Ok(self.cache.contains_key(&key) || self.db.get_pinned(DbKey::new(&self.prefix, key))?.is_some())
     }
 
     pub fn read(&self, key: TKey) -> Result<TData, StoreError>
@@ -51,7 +51,7 @@ where
         if let Some(data) = self.cache.get(&key) {
             Ok(data)
         } else {
-            let db_key = DbKey::new(self.prefix, key);
+            let db_key = DbKey::new(&self.prefix, key);
             if let Some(slice) = self.db.get_pinned(&db_key)? {
                 let data: TData = bincode::deserialize(&slice)?;
                 self.cache.insert(key, data.clone());
@@ -69,7 +69,7 @@ where
     {
         let bin_data = bincode::serialize(&data)?;
         self.cache.insert(key, data);
-        writer.put(DbKey::new(self.prefix, key), bin_data)?;
+        writer.put(DbKey::new(&self.prefix, key), bin_data)?;
         Ok(())
     }
 
@@ -86,7 +86,7 @@ where
         self.cache.insert_many(iter);
         for (key, data) in iter_clone {
             let bin_data = bincode::serialize(&data)?;
-            writer.put(DbKey::new(self.prefix, key), bin_data)?;
+            writer.put(DbKey::new(&self.prefix, key), bin_data)?;
         }
         Ok(())
     }
@@ -96,7 +96,7 @@ where
         TKey: Copy + AsRef<[u8]>,
     {
         self.cache.remove(&key);
-        writer.delete(DbKey::new(self.prefix, key))?;
+        writer.delete(DbKey::new(&self.prefix, key))?;
         Ok(())
     }
 
@@ -107,7 +107,7 @@ where
         let key_iter_clone = key_iter.clone();
         self.cache.remove_many(key_iter);
         for key in key_iter_clone {
-            writer.delete(DbKey::new(self.prefix, key))?;
+            writer.delete(DbKey::new(&self.prefix, key))?;
         }
         Ok(())
     }

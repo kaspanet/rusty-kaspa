@@ -72,7 +72,7 @@ pub struct DbUtxoSetStore {
 
 impl DbUtxoSetStore {
     pub fn new(db: Arc<DB>, cache_size: u64, prefix: &'static [u8]) -> Self {
-        Self { db: Arc::clone(&db), access: CachedDbAccess::new(Arc::clone(&db), cache_size, prefix), prefix }
+        Self { db: Arc::clone(&db), access: CachedDbAccess::new(Arc::clone(&db), cache_size, prefix.to_vec()), prefix }
     }
 
     pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {

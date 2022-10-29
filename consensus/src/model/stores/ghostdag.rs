@@ -2,7 +2,7 @@ use super::database::prelude::{BatchDbWriter, CachedDbAccess, DbKey, DirectDbWri
 use super::{errors::StoreError, DB};
 use crate::processes::ghostdag::ordering::SortableBlock;
 use consensus_core::{blockhash::BlockHashes, BlueWorkType};
-use consensus_core::{BlockHashMap, BlockHasher, HashMapCustomHasher};
+use consensus_core::{BlockHashMap, BlockHasher, BlockLevel, HashMapCustomHasher};
 use hashes::Hash;
 
 use itertools::EitherOrBoth::{Both, Left, Right};
@@ -207,21 +207,26 @@ const COMPACT_STORE_PREFIX: &[u8] = b"compact-block-ghostdag-data";
 #[derive(Clone)]
 pub struct DbGhostdagStore {
     db: Arc<DB>,
+    level: BlockLevel,
     access: CachedDbAccess<Hash, Arc<GhostdagData>, BlockHasher>,
     compact_access: CachedDbAccess<Hash, CompactGhostdagData, BlockHasher>,
 }
 
 impl DbGhostdagStore {
-    pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
+    pub fn new(db: Arc<DB>, level: BlockLevel, cache_size: u64) -> Self {
+        let lvl_bytes = level.to_le_bytes();
+        let prefix = STORE_PREFIX.iter().copied().chain(lvl_bytes).collect_vec();
+        let compact_prefix = COMPACT_STORE_PREFIX.iter().copied().chain(lvl_bytes).collect_vec();
         Self {
             db: Arc::clone(&db),
-            access: CachedDbAccess::new(db.clone(), cache_size, STORE_PREFIX),
-            compact_access: CachedDbAccess::new(db, cache_size, COMPACT_STORE_PREFIX),
+            level,
+            access: CachedDbAccess::new(db.clone(), cache_size, prefix),
+            compact_access: CachedDbAccess::new(db, cache_size, compact_prefix),
         }
     }
 
     pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {
-        Self::new(Arc::clone(&self.db), cache_size)
+        Self::new(Arc::clone(&self.db), self.level, cache_size)
     }
 
     pub fn insert_batch(&self, batch: &mut WriteBatch, hash: Hash, data: &Arc<GhostdagData>) -> Result<(), StoreError> {
@@ -244,7 +249,7 @@ impl GhostdagStoreReader for DbGhostdagStore {
     }
 
     fn get_blue_work(&self, hash: Hash) -> Result<BlueWorkType, StoreError> {
-        Ok(self.access.read(hash)?.blue_work)
+        Ok(self.access.read(hash).expect(&format!("blaaa {} {}", self.level, hash)).blue_work)
     }
 
     fn get_selected_parent(&self, hash: Hash) -> Result<Hash, StoreError> {

@@ -166,6 +166,10 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
         parents
     }
 
+    pub fn parents<'a>(&'a self, header: &'a Header) -> impl ExactSizeIterator<Item = &'a [Hash]> {
+        (0..=self.max_block_level).map(|level| self.parents_at_level(header, level))
+    }
+
     pub fn parents_at_level<'a>(&'a self, header: &'a Header, level: u8) -> &'a [Hash] {
         if header.direct_parents().is_empty() {
             // If is genesis
@@ -260,18 +264,6 @@ mod tests {
         }
 
         fn has(&self, hash: Hash) -> Result<bool, StoreError> {
-            todo!()
-        }
-
-        fn get_parents_by_level(&self, hash: Hash, level: consensus_core::BlockLevel) -> Result<BlockHashes, StoreError> {
-            todo!()
-        }
-
-        fn get_children_by_level(&self, hash: Hash, level: consensus_core::BlockLevel) -> Result<BlockHashes, StoreError> {
-            todo!()
-        }
-
-        fn has_by_level(&self, hash: Hash, level: consensus_core::BlockLevel) -> Result<bool, StoreError> {
             todo!()
         }
     }
