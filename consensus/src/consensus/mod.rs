@@ -417,6 +417,7 @@ impl Consensus {
         reachability::init(self.reachability_store.write().deref_mut()).unwrap();
 
         // Ensure that genesis was processed
+        self.header_processor.process_origin_if_needed();
         self.header_processor.process_genesis_if_needed();
         self.body_processor.process_genesis_if_needed();
         self.virtual_processor.process_genesis_if_needed();

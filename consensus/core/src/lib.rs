@@ -21,6 +21,7 @@ pub mod sign;
 pub mod subnets;
 pub mod tx;
 pub mod utxo;
+pub mod pruning;
 
 pub mod testutils;
 

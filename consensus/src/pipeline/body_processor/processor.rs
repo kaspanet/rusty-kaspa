@@ -47,6 +47,7 @@ pub struct BlockBodyProcessor {
     // Config
     pub(super) max_block_mass: u64,
     pub(super) genesis_hash: Hash,
+    process_genesis: bool,
 
     // Stores
     pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
@@ -103,6 +104,7 @@ impl BlockBodyProcessor {
             past_median_time_manager,
             max_block_mass,
             genesis_hash,
+            process_genesis: false,
             task_manager: BlockTaskDependencyManager::new(),
         }
     }
@@ -207,6 +209,10 @@ impl BlockBodyProcessor {
     }
 
     pub fn process_genesis_if_needed(self: &Arc<BlockBodyProcessor>) {
+        if !self.process_genesis {
+            return;
+        }
+
         let status = self.statuses_store.read().get(self.genesis_hash).unwrap();
         match status {
             StatusHeaderOnly => {

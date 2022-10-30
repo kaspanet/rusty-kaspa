@@ -90,6 +90,7 @@ pub struct VirtualStateProcessor {
     pub(super) difficulty_window_size: usize,
     pub(super) mergeset_size_limit: u64,
     pub(super) pruning_depth: u64,
+    process_genesis: bool,
 
     // Stores
     pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
@@ -168,6 +169,7 @@ impl VirtualStateProcessor {
             difficulty_window_size: params.difficulty_window_size,
             mergeset_size_limit: params.mergeset_size_limit,
             pruning_depth: params.pruning_depth,
+            process_genesis: false,
 
             db,
             statuses_store,
@@ -614,6 +616,10 @@ impl VirtualStateProcessor {
     }
 
     pub fn process_genesis_if_needed(self: &Arc<Self>) {
+        if !self.process_genesis {
+            return;
+        }
+
         let status = self.statuses_store.read().get(self.genesis_hash).unwrap();
         match status {
             StatusUTXOPendingVerification => {

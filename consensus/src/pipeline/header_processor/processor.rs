@@ -13,7 +13,7 @@ use crate::{
             past_pruning_points::DbPastPruningPointsStore,
             pruning::{DbPruningStore, PruningPointInfo, PruningStore, PruningStoreReader},
             reachability::{DbReachabilityStore, StagingReachabilityStore},
-            relations::{DbRelationsStore, RelationsStoreBatchExtensions},
+            relations::{DbRelationsStore, RelationsStoreBatchExtensions, RelationsStoreReader},
             statuses::{DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader},
             DB,
         },
@@ -113,6 +113,7 @@ pub struct HeaderProcessor {
     pub(super) mergeset_size_limit: u64,
     pub(super) skip_proof_of_work: bool,
     pub(super) max_block_level: BlockLevel,
+    process_genesis: bool,
 
     // DB
     db: Arc<DB>,
@@ -226,6 +227,7 @@ impl HeaderProcessor {
             genesis_bits: params.genesis_bits,
             skip_proof_of_work: params.skip_proof_of_work,
             max_block_level: params.max_block_level,
+            process_genesis: false,
         }
     }
 
@@ -411,20 +413,16 @@ impl HeaderProcessor {
     }
 
     pub fn process_genesis_if_needed(self: &Arc<HeaderProcessor>) {
-        if self.header_was_processed(self.genesis_hash) {
+        if !self.process_genesis || self.header_was_processed(self.genesis_hash) {
             return;
         }
 
         {
             let mut batch = WriteBatch::default();
-            let relations_write_guards = (0..=self.max_block_level)
-                .map(|level| self.relations_stores[level as usize].insert_batch(&mut batch, ORIGIN, BlockHashes::new(vec![])).unwrap())
-                .collect_vec();
             let mut hst_write_guard = self.headers_selected_tip_store.write();
             hst_write_guard.set_batch(&mut batch, SortableBlock::new(self.genesis_hash, 0.into())).unwrap(); // TODO: take blue work from genesis block
             self.db.write(batch).unwrap();
             drop(hst_write_guard);
-            drop(relations_write_guards);
         }
 
         self.pruning_store.write().set(self.genesis_hash, self.genesis_hash, 0).unwrap();
@@ -446,5 +444,21 @@ impl HeaderProcessor {
         ctx.finality_point = Some(ORIGIN);
         ctx.block_level = Some(self.max_block_level);
         self.commit_header(ctx, &header);
+    }
+
+    pub fn process_origin_if_needed(self: &Arc<HeaderProcessor>) {
+        if !self.relations_stores[0].read().has(ORIGIN).unwrap() {
+            return;
+        }
+
+        let mut batch = WriteBatch::default();
+        let relations_write_guards = (0..=self.max_block_level)
+            .map(|level| self.relations_stores[level as usize].insert_batch(&mut batch, ORIGIN, BlockHashes::new(vec![])).unwrap())
+            .collect_vec();
+        let mut hst_write_guard = self.headers_selected_tip_store.write();
+        hst_write_guard.set_batch(&mut batch, SortableBlock::new(ORIGIN, 0.into())).unwrap();
+        self.db.write(batch).unwrap();
+        drop(hst_write_guard);
+        drop(relations_write_guards);
     }
 }
