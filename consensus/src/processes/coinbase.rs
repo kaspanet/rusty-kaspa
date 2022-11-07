@@ -1,12 +1,13 @@
 use std::convert::TryInto;
 
-use consensus_core::tx::{ScriptPublicKey, ScriptVec, Transaction};
+use consensus_core::tx::{ScriptPublicKey, ScriptVec};
 
 const UINT64_LEN: usize = 8;
 const UINT16_LEN: usize = 2;
 const LENGTH_OF_SUBSIDY: usize = UINT64_LEN;
 const LENGTH_OF_SCRIPT_PUB_KEY_LENGTH: usize = 1;
 const LENGTH_OF_VERSION_SCRIPT_PUB_KEY: usize = UINT16_LEN;
+const MIN_PAYLOAD_LEN: usize = UINT64_LEN + LENGTH_OF_SUBSIDY + LENGTH_OF_VERSION_SCRIPT_PUB_KEY + LENGTH_OF_SCRIPT_PUB_KEY_LENGTH;
 
 use thiserror::Error;
 
@@ -19,10 +20,7 @@ pub enum CoinbaseError {
     PayloadLenAboveMax(usize, usize),
 
     #[error("coinbase payload script public key length is {0} while the maximum allowed length is {1}")]
-    PayloadScriptPublicKeyLenAboveMax(u8, u8),
-
-    #[error("coinbase payload script public key length is {0} while the maximum allowed length is {1}")]
-    PayloadScriptPublicKeyLen(u8, u8),
+    PayloadScriptPublicKeyLenAboveMax(usize, u8),
 
     #[error("coinbase payload length is {0} bytes but it needs to be at least {1} bytes long in order of accomodating the script public key")]
     PayloadCantContainScriptPublicKey(usize, usize),
@@ -38,15 +36,35 @@ pub struct CoinbaseManager {
     pre_deflationary_phase_base_subsidy: u64,
 }
 
+#[derive(PartialEq, Eq, Debug)]
 pub struct CoinbaseData<'a> {
     pub blue_score: u64,
     pub subsidy: u64,
     pub miner_data: MinerData<'a>,
 }
 
+#[derive(PartialEq, Eq, Debug)]
 pub struct MinerData<'a> {
     pub script_public_key: ScriptPublicKey,
     pub extra_data: &'a [u8],
+}
+
+/// Struct used to streamline payload parsing
+struct PayloadParser<'a> {
+    rem: &'a [u8], // The unparsed remainder
+}
+
+impl<'a> PayloadParser<'a> {
+    fn new(data: &'a [u8]) -> Self {
+        Self { rem: data }
+    }
+
+    /// Returns a slice with the first `n` bytes of `rem`, while setting `rem` to the remaining part
+    fn take(&mut self, n: usize) -> &[u8] {
+        let (seg, rem) = self.rem.split_at(n);
+        self.rem = rem;
+        seg
+    }
 }
 
 impl CoinbaseManager {
@@ -64,62 +82,57 @@ impl CoinbaseManager {
         }
     }
 
-    pub fn validate_coinbase_payload_in_isolation_and_extract_coinbase_data<'a>(
-        &self,
-        coinbase: &'a Transaction,
-    ) -> CoinbaseResult<CoinbaseData<'a>> {
-        let payload = &coinbase.payload;
-        const MIN_LEN: usize = UINT64_LEN + LENGTH_OF_SUBSIDY + LENGTH_OF_VERSION_SCRIPT_PUB_KEY + LENGTH_OF_SCRIPT_PUB_KEY_LENGTH;
-
-        if payload.len() < MIN_LEN {
-            return Err(CoinbaseError::PayloadLenBelowMin(coinbase.payload.len(), MIN_LEN));
-        }
-
-        if payload.len() > self.max_coinbase_payload_len {
-            return Err(CoinbaseError::PayloadLenAboveMax(coinbase.payload.len(), self.max_coinbase_payload_len));
-        }
-
-        let blue_score = u64::from_le_bytes(payload[..UINT64_LEN].try_into().unwrap());
-        let subsidy = u64::from_le_bytes(payload[UINT64_LEN..UINT64_LEN + LENGTH_OF_SUBSIDY].try_into().unwrap());
-
-        const VERSION_START: usize = UINT64_LEN + LENGTH_OF_SUBSIDY;
-        let script_pub_key_version =
-            u16::from_le_bytes(payload[VERSION_START..VERSION_START + LENGTH_OF_VERSION_SCRIPT_PUB_KEY].try_into().unwrap());
-
-        let script_pub_key_len = payload[UINT64_LEN + LENGTH_OF_SUBSIDY + LENGTH_OF_VERSION_SCRIPT_PUB_KEY];
-        if script_pub_key_len > self.coinbase_payload_script_public_key_max_len {
+    pub fn serialize_coinbase_payload(&self, data: &CoinbaseData) -> CoinbaseResult<Vec<u8>> {
+        let script_pub_key_len = data.miner_data.script_public_key.script().len();
+        if script_pub_key_len > self.coinbase_payload_script_public_key_max_len as usize {
             return Err(CoinbaseError::PayloadScriptPublicKeyLenAboveMax(
                 script_pub_key_len,
                 self.coinbase_payload_script_public_key_max_len,
             ));
         }
+        let payload: Vec<u8> = data.blue_score.to_le_bytes().iter().copied()                    // Blue score                   (u64)
+            .chain(data.subsidy.to_le_bytes().iter().copied())                                  // Subsidy                      (u64)
+            .chain(data.miner_data.script_public_key.version().to_le_bytes().iter().copied())   // Script public key version    (u16)
+            .chain((script_pub_key_len as u8).to_le_bytes().iter().copied())                    // Script public key length     (u8)
+            .chain(data.miner_data.script_public_key.script().iter().copied())                  // Script public key            
+            .chain(data.miner_data.extra_data.iter().copied())                                  // Extra data
+            .collect();
 
-        if payload.len() < MIN_LEN + script_pub_key_len as usize {
+        Ok(payload)
+    }
+
+    pub fn deserialize_coinbase_payload<'a>(&self, payload: &'a [u8]) -> CoinbaseResult<CoinbaseData<'a>> {
+        if payload.len() < MIN_PAYLOAD_LEN {
+            return Err(CoinbaseError::PayloadLenBelowMin(payload.len(), MIN_PAYLOAD_LEN));
+        }
+
+        if payload.len() > self.max_coinbase_payload_len {
+            return Err(CoinbaseError::PayloadLenAboveMax(payload.len(), self.max_coinbase_payload_len));
+        }
+
+        let mut parser = PayloadParser::new(payload);
+
+        let blue_score = u64::from_le_bytes(parser.take(UINT64_LEN).try_into().unwrap());
+        let subsidy = u64::from_le_bytes(parser.take(LENGTH_OF_SUBSIDY).try_into().unwrap());
+        let script_pub_key_version = u16::from_le_bytes(parser.take(LENGTH_OF_VERSION_SCRIPT_PUB_KEY).try_into().unwrap());
+        let script_pub_key_len = parser.take(LENGTH_OF_SCRIPT_PUB_KEY_LENGTH)[0];
+
+        if script_pub_key_len > self.coinbase_payload_script_public_key_max_len {
+            return Err(CoinbaseError::PayloadScriptPublicKeyLenAboveMax(
+                script_pub_key_len as usize,
+                self.coinbase_payload_script_public_key_max_len,
+            ));
+        }
+
+        if parser.rem.len() < script_pub_key_len as usize {
             return Err(CoinbaseError::PayloadCantContainScriptPublicKey(payload.len(), script_pub_key_len as usize));
         }
 
-        let script_pub_key_script =
-            &payload[UINT64_LEN + LENGTH_OF_SUBSIDY + LENGTH_OF_VERSION_SCRIPT_PUB_KEY + LENGTH_OF_SCRIPT_PUB_KEY_LENGTH
-                ..UINT64_LEN
-                    + LENGTH_OF_SUBSIDY
-                    + LENGTH_OF_VERSION_SCRIPT_PUB_KEY
-                    + LENGTH_OF_SCRIPT_PUB_KEY_LENGTH
-                    + script_pub_key_len as usize];
+        let script_public_key =
+            ScriptPublicKey::new(script_pub_key_version, ScriptVec::from_slice(parser.take(script_pub_key_len as usize)));
+        let extra_data = parser.rem;
 
-        let extra_data = &payload[UINT64_LEN
-            + LENGTH_OF_SUBSIDY
-            + LENGTH_OF_VERSION_SCRIPT_PUB_KEY
-            + LENGTH_OF_SCRIPT_PUB_KEY_LENGTH
-            + script_pub_key_len as usize..];
-
-        Ok(CoinbaseData {
-            blue_score,
-            subsidy,
-            miner_data: MinerData {
-                script_public_key: ScriptPublicKey::new(script_pub_key_version, ScriptVec::from_slice(script_pub_key_script)),
-                extra_data,
-            },
-        })
+        Ok(CoinbaseData { blue_score, subsidy, miner_data: MinerData { script_public_key, extra_data } })
     }
 
     pub fn calc_block_subsidy(&self, daa_score: u64) -> u64 {
@@ -144,7 +157,7 @@ impl CoinbaseManager {
 }
 
 /*
-    This table was pre-calculated by calling `calcDeflationaryPeriodBlockSubsidyFloatCalc` for all months until reaching 0 subsidy.
+    This table was pre-calculated by calling `calcDeflationaryPeriodBlockSubsidyFloatCalc` (in kaspad-go) for all months until reaching 0 subsidy.
     To regenerate this table, run `TestBuildSubsidyTable` in coinbasemanager_test.go (note the `deflationaryPhaseBaseSubsidy` therein)
 */
 #[rustfmt::skip]
@@ -171,9 +184,8 @@ const SUBSIDY_BY_MONTH_TABLE: [u64; 426] = [
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::params::MAINNET_PARAMS;
-
-    use super::CoinbaseManager;
 
     #[test]
     fn subsidy_test() {
@@ -241,5 +253,32 @@ mod tests {
         for t in tests {
             assert_eq!(cbm.calc_block_subsidy(t.daa_score), t.expected, "test '{}' failed", t.name);
         }
+    }
+
+    #[test]
+    fn payload_serialization_test() {
+        let params = &MAINNET_PARAMS;
+        let cbm = CoinbaseManager::new(
+            params.coinbase_payload_script_public_key_max_len,
+            params.max_coinbase_payload_len,
+            params.deflationary_phase_daa_score,
+            params.pre_deflationary_phase_base_subsidy,
+        );
+
+        let script_data = [33u8, 255];
+        let extra_data = [2u8, 3];
+        let data = CoinbaseData {
+            blue_score: 56,
+            subsidy: 44000000000,
+            miner_data: MinerData {
+                script_public_key: ScriptPublicKey::new(0, ScriptVec::from_slice(&script_data)),
+                extra_data: &extra_data,
+            },
+        };
+
+        let payload = cbm.serialize_coinbase_payload(&data).unwrap();
+        let deserialized_data = cbm.deserialize_coinbase_payload(&payload).unwrap();
+
+        assert_eq!(data, deserialized_data);
     }
 }

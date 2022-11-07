@@ -58,7 +58,7 @@ impl BlockBodyProcessor {
     }
 
     fn check_coinbase_blue_score_and_subsidy(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {
-        match self.coinbase_manager.validate_coinbase_payload_in_isolation_and_extract_coinbase_data(&block.transactions[0]) {
+        match self.coinbase_manager.deserialize_coinbase_payload(&block.transactions[0].payload) {
             Ok(data) => {
                 if data.blue_score != block.header.blue_score {
                     return Err(RuleError::BadCoinbasePayloadBlueScore(data.blue_score, block.header.blue_score));
