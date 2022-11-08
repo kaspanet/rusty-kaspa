@@ -17,7 +17,7 @@ impl DbKey {
     }
 
     pub fn prefix_only(prefix: &[u8]) -> Self {
-        Self::new(prefix, &[])
+        Self::new(prefix, [])
     }
 }
 
