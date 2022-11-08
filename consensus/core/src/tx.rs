@@ -81,7 +81,7 @@ impl Display for TransactionOutpoint {
 }
 
 /// Represents a Kaspa transaction input
-#[derive(Debug, Serialize, Deserialize, Clone)] // TODO: Implement a custom serializer for input that drops utxo_entry
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TransactionInput {
     pub previous_outpoint: TransactionOutpoint,
     pub signature_script: Vec<u8>,

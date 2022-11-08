@@ -74,19 +74,19 @@ pub struct CoinbaseTransactionTemplate {
 
 /// Struct used to streamline payload parsing
 struct PayloadParser<'a> {
-    rem: &'a [u8], // The unparsed remainder
+    remaining: &'a [u8], // The unparsed remainder
 }
 
 impl<'a> PayloadParser<'a> {
     fn new(data: &'a [u8]) -> Self {
-        Self { rem: data }
+        Self { remaining: data }
     }
 
-    /// Returns a slice with the first `n` bytes of `rem`, while setting `rem` to the remaining part
+    /// Returns a slice with the first `n` bytes of `remaining`, while setting `remaining` to the remaining part
     fn take(&mut self, n: usize) -> &[u8] {
-        let (seg, rem) = self.rem.split_at(n);
-        self.rem = rem;
-        seg
+        let (segment, remaining) = self.remaining.split_at(n);
+        self.remaining = remaining;
+        segment
     }
 }
 
@@ -174,7 +174,9 @@ impl CoinbaseManager {
             ));
         }
 
-        payload.truncate(LENGTH_OF_BLUE_SCORE + LENGTH_OF_SUBSIDY); // Keep only blue score and subsidy
+        // Keep only blue score and subsidy. Note that truncate does not modify capacity, so
+        // the usual case where the payloads are the same size will not trigger a reallocation
+        payload.truncate(LENGTH_OF_BLUE_SCORE + LENGTH_OF_SUBSIDY);
         payload.extend(
             miner_data.script_public_key.version().to_le_bytes().iter().copied() // Script public key version (u16)
                 .chain((script_pub_key_len as u8).to_le_bytes().iter().copied()) // Script public key length  (u8)
@@ -208,7 +210,7 @@ impl CoinbaseManager {
             ));
         }
 
-        if parser.rem.len() < script_pub_key_len as usize {
+        if parser.remaining.len() < script_pub_key_len as usize {
             return Err(CoinbaseError::PayloadCantContainScriptPublicKey(
                 payload.len(),
                 MIN_PAYLOAD_LENGTH + script_pub_key_len as usize,
@@ -217,7 +219,7 @@ impl CoinbaseManager {
 
         let script_public_key =
             ScriptPublicKey::new(script_pub_key_version, ScriptVec::from_slice(parser.take(script_pub_key_len as usize)));
-        let extra_data = parser.rem;
+        let extra_data = parser.remaining;
 
         Ok(CoinbaseData { blue_score, subsidy, miner_data: MinerData { script_public_key, extra_data } })
     }
@@ -273,6 +275,7 @@ const SUBSIDY_BY_MONTH_TABLE: [u64; 426] = [
 mod tests {
     use super::*;
     use crate::params::MAINNET_PARAMS;
+    use consensus_core::tx::scriptvec;
 
     #[test]
     fn subsidy_test() {
@@ -367,6 +370,29 @@ mod tests {
         let deserialized_data = cbm.deserialize_coinbase_payload(&payload).unwrap();
 
         assert_eq!(data, deserialized_data);
+
+        // Test an actual mainnet payload
+        let payload_hex =
+            "b612c90100000000041a763e07000000000022202b32443ff740012157716d81216d09aebc39e5493c93a7181d92cb756c02c560ac302e31322e382f";
+        let mut payload = vec![0u8; payload_hex.len() / 2];
+        faster_hex::hex_decode(payload_hex.as_bytes(), &mut payload).unwrap();
+        let deserialized_data = cbm.deserialize_coinbase_payload(&payload).unwrap();
+
+        let expected_data = CoinbaseData {
+            blue_score: 29954742,
+            subsidy: 31112698372,
+            miner_data: MinerData {
+                script_public_key: ScriptPublicKey::new(
+                    0,
+                    scriptvec![
+                        32, 43, 50, 68, 63, 247, 64, 1, 33, 87, 113, 109, 129, 33, 109, 9, 174, 188, 57, 229, 73, 60, 147, 167, 24,
+                        29, 146, 203, 117, 108, 2, 197, 96, 172,
+                    ],
+                ),
+                extra_data: &[48, 46, 49, 50, 46, 56, 47],
+            },
+        };
+        assert_eq!(expected_data, deserialized_data);
     }
 
     #[test]
