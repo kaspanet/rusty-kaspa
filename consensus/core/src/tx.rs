@@ -25,7 +25,7 @@ pub struct ScriptPublicKey {
 
 impl ScriptPublicKey {
     pub fn new(version: u16, script: ScriptVec) -> Self {
-        Self { script, version }
+        Self { version, script }
     }
 
     pub fn from_vec(version: u16, script: Vec<u8>) -> Self {
@@ -81,7 +81,7 @@ impl Display for TransactionOutpoint {
 }
 
 /// Represents a Kaspa transaction input
-#[derive(Debug, Serialize, Deserialize, Clone)] // TODO: Implement a custom serializer for input that drops utxo_entry
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TransactionInput {
     pub previous_outpoint: TransactionOutpoint,
     pub signature_script: Vec<u8>,

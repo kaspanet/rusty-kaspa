@@ -28,21 +28,17 @@ impl<T: HeaderStoreReader> DifficultyManager<T> {
         Self { headers_store, difficulty_adjustment_window_size, genesis_bits, target_time_per_block }
     }
 
-    pub fn calc_daa_score_and_added_blocks(
+    pub fn calc_daa_score_and_non_daa_mergeset_blocks(
         &self,
         window_hashes: &mut impl ExactSizeIterator<Item = Hash>,
         ghostdag_data: &GhostdagData,
-    ) -> (u64, Vec<Hash>) {
-        if window_hashes.len() == 0 {
-            return (0, Vec::new());
-        }
-
-        let mergeset_len = ghostdag_data.mergeset_size();
+    ) -> (u64, BlockHashSet) {
         let mergeset: BlockHashSet = ghostdag_data.unordered_mergeset().collect();
-        let daa_added_blocks: Vec<_> = window_hashes.filter(|h| mergeset.contains(h)).take(mergeset_len).collect();
+        let mergeset_daa: BlockHashSet = window_hashes.filter(|h| mergeset.contains(h)).take(mergeset.len()).collect();
+        let mergeset_non_daa: BlockHashSet = mergeset.difference(&mergeset_daa).copied().collect();
         let sp_daa_score = self.headers_store.get_daa_score(ghostdag_data.selected_parent).unwrap();
 
-        (sp_daa_score + daa_added_blocks.len() as u64, daa_added_blocks)
+        (sp_daa_score + mergeset_daa.len() as u64, mergeset_non_daa)
     }
 
     pub fn calculate_difficulty_bits(&self, window: &BlockWindowHeap) -> u32 {

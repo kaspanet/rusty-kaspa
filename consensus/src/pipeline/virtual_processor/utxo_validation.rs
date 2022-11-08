@@ -2,11 +2,13 @@ use super::VirtualStateProcessor;
 use crate::{
     errors::{
         BlockProcessResult,
-        RuleError::{BadAcceptedIDMerkleRoot, BadUTXOCommitment, InvalidTransactionsInUtxoContext},
+        RuleError::{BadAcceptedIDMerkleRoot, BadCoinbaseTransaction, BadUTXOCommitment, InvalidTransactionsInUtxoContext},
     },
-    model::stores::{block_transactions::BlockTransactionsStoreReader, ghostdag::GhostdagData},
+    model::stores::{block_transactions::BlockTransactionsStoreReader, daa::DaaStoreReader, ghostdag::GhostdagData},
+    processes::coinbase::BlockRewardData,
 };
 use consensus_core::{
+    hashing,
     header::Header,
     muhash::MuHashExtensions,
     tx::{PopulatedTransaction, Transaction, TransactionId, ValidatedTransaction},
@@ -14,7 +16,7 @@ use consensus_core::{
         utxo_diff::UtxoDiff,
         utxo_view::{UtxoView, UtxoViewComposition},
     },
-    BlockHashMap, HashMapCustomHasher,
+    BlockHashMap, BlockHashSet, HashMapCustomHasher,
 };
 use hashes::Hash;
 use kaspa_core::trace;
@@ -30,7 +32,7 @@ pub(super) struct UtxoProcessingContext {
     pub multiset_hash: MuHash,
     pub mergeset_diff: UtxoDiff,
     pub accepted_tx_ids: Vec<TransactionId>,
-    pub mergeset_fees: BlockHashMap<u64>,
+    pub mergeset_rewards: BlockHashMap<BlockRewardData>,
 }
 
 impl UtxoProcessingContext {
@@ -41,7 +43,7 @@ impl UtxoProcessingContext {
             multiset_hash: selected_parent_multiset_hash,
             mergeset_diff: UtxoDiff::default(),
             accepted_tx_ids: Vec::with_capacity(1), // We expect at least the selected parent coinbase tx
-            mergeset_fees: BlockHashMap::with_capacity(mergeset_size),
+            mergeset_rewards: BlockHashMap::with_capacity(mergeset_size),
         }
     }
 
@@ -86,7 +88,12 @@ impl VirtualStateProcessor {
                 ctx.accepted_tx_ids.push(validated_tx.id());
                 block_fee += validated_tx.calculated_fee;
             }
-            ctx.mergeset_fees.insert(merged_block, block_fee);
+
+            let coinbase_data = self.coinbase_manager.deserialize_coinbase_payload(&txs[0].payload).unwrap();
+            ctx.mergeset_rewards.insert(
+                merged_block,
+                BlockRewardData::new(coinbase_data.subsidy, block_fee, coinbase_data.miner_data.script_public_key),
+            );
         }
     }
 
@@ -120,7 +127,13 @@ impl VirtualStateProcessor {
         let txs = self.block_transactions_store.get(header.hash).unwrap();
 
         // Verify coinbase transaction
-        self.verify_coinbase_transaction(&txs[0], &ctx.ghostdag_data, &ctx.mergeset_fees)?;
+        self.verify_coinbase_transaction(
+            &txs[0],
+            header.daa_score,
+            &ctx.ghostdag_data,
+            &ctx.mergeset_rewards,
+            &self.daa_store.get_mergeset_non_daa(header.hash).unwrap(),
+        )?;
 
         // Verify all transactions are valid in context (TODO: skip validation when becoming selected parent)
         let current_utxo_view = selected_parent_utxo_view.compose(&ctx.mergeset_diff);
@@ -135,13 +148,30 @@ impl VirtualStateProcessor {
 
     fn verify_coinbase_transaction(
         self: &Arc<Self>,
-        _coinbase_tx: &Transaction,
-        _mergeset_data: &GhostdagData,
-        _mergeset_fees: &BlockHashMap<u64>,
+        coinbase: &Transaction,
+        daa_score: u64,
+        ghostdag_data: &GhostdagData,
+        mergeset_rewards: &BlockHashMap<BlockRewardData>,
+        mergeset_non_daa: &BlockHashSet,
     ) -> BlockProcessResult<()> {
-        // TODO: build expected coinbase using `mergeset_fees` and compare with the given tx
-        // Return `Err(BadCoinbaseTransaction)` if the expected and actual defer
-        Ok(())
+        // Extract only miner data from the provided coinbase
+        let miner_data = self.coinbase_manager.deserialize_coinbase_payload(&coinbase.payload).unwrap().miner_data;
+        let expected_coinbase = self
+            .coinbase_manager
+            .expected_coinbase_transaction(daa_score, miner_data, ghostdag_data, mergeset_rewards, mergeset_non_daa)
+            .unwrap()
+            .tx;
+        trace!(
+            "mergeset: {} blues, {} reds, {} non-DAA",
+            ghostdag_data.mergeset_blues.len(),
+            ghostdag_data.mergeset_reds.len(),
+            mergeset_non_daa.len()
+        );
+        if hashing::tx::hash(coinbase) != hashing::tx::hash(&expected_coinbase) {
+            Err(BadCoinbaseTransaction)
+        } else {
+            Ok(())
+        }
     }
 
     /// Validates transactions against the provided `utxo_view` and returns a vector with all transactions
