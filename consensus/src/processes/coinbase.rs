@@ -60,6 +60,12 @@ pub struct BlockRewardData {
     pub script_public_key: ScriptPublicKey,
 }
 
+impl BlockRewardData {
+    pub fn new(subsidy: u64, total_fees: u64, script_public_key: ScriptPublicKey) -> Self {
+        Self { subsidy, total_fees, script_public_key }
+    }
+}
+
 /// Holds a coinbase transaction along with meta-data obtained during creation
 pub struct CoinbaseTransactionTemplate {
     pub tx: Transaction,

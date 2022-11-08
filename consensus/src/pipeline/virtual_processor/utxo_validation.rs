@@ -92,11 +92,7 @@ impl VirtualStateProcessor {
             let coinbase_data = self.coinbase_manager.deserialize_coinbase_payload(&txs[0].payload).unwrap();
             ctx.mergeset_rewards.insert(
                 merged_block,
-                BlockRewardData {
-                    subsidy: coinbase_data.subsidy,
-                    total_fees: block_fee,
-                    script_public_key: coinbase_data.miner_data.script_public_key,
-                },
+                BlockRewardData::new(coinbase_data.subsidy, block_fee, coinbase_data.miner_data.script_public_key),
             );
         }
     }
@@ -131,14 +127,13 @@ impl VirtualStateProcessor {
         let txs = self.block_transactions_store.get(header.hash).unwrap();
 
         // Verify coinbase transaction
-        let mergeset_non_daa: BlockHashSet = ctx
-            .ghostdag_data
-            .unordered_mergeset()
-            .collect::<BlockHashSet>()
-            .difference(&self.daa_store.get_daa_added_blocks(header.hash).unwrap().iter().copied().collect())
-            .copied()
-            .collect();
-        self.verify_coinbase_transaction(&txs[0], header.daa_score, &ctx.ghostdag_data, &ctx.mergeset_rewards, &mergeset_non_daa)?;
+        self.verify_coinbase_transaction(
+            &txs[0],
+            header.daa_score,
+            &ctx.ghostdag_data,
+            &ctx.mergeset_rewards,
+            &self.daa_store.get_mergeset_non_daa(header.hash).unwrap(),
+        )?;
 
         // Verify all transactions are valid in context (TODO: skip validation when becoming selected parent)
         let current_utxo_view = selected_parent_utxo_view.compose(&ctx.mergeset_diff);
@@ -159,12 +154,19 @@ impl VirtualStateProcessor {
         mergeset_rewards: &BlockHashMap<BlockRewardData>,
         mergeset_non_daa: &BlockHashSet,
     ) -> BlockProcessResult<()> {
+        // Extract only miner data from the provided coinbase
         let miner_data = self.coinbase_manager.deserialize_coinbase_payload(&coinbase.payload).unwrap().miner_data;
         let expected_coinbase = self
             .coinbase_manager
             .expected_coinbase_transaction(daa_score, miner_data, ghostdag_data, mergeset_rewards, mergeset_non_daa)
             .unwrap()
             .tx;
+        trace!(
+            "mergeset: {} blues, {} reds, {} non-DAA",
+            ghostdag_data.mergeset_blues.len(),
+            ghostdag_data.mergeset_reds.len(),
+            mergeset_non_daa.len()
+        );
         if hashing::tx::hash(coinbase) != hashing::tx::hash(&expected_coinbase) {
             Err(BadCoinbaseTransaction)
         } else {

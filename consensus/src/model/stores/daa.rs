@@ -5,26 +5,26 @@ use super::{
     errors::StoreError,
     DB,
 };
-use consensus_core::{blockhash::BlockHashes, BlockHasher};
+use consensus_core::{BlockHashSet, BlockHasher};
 use hashes::Hash;
 use rocksdb::WriteBatch;
 
 pub trait DaaStoreReader {
-    fn get_daa_added_blocks(&self, hash: Hash) -> Result<BlockHashes, StoreError>;
+    fn get_mergeset_non_daa(&self, hash: Hash) -> Result<Arc<BlockHashSet>, StoreError>;
 }
 
 pub trait DaaStore: DaaStoreReader {
     // This is append only
-    fn insert(&self, hash: Hash, added_blocks: BlockHashes) -> Result<(), StoreError>;
+    fn insert(&self, hash: Hash, mergeset_non_daa: Arc<BlockHashSet>) -> Result<(), StoreError>;
 }
 
-const STORE_PREFIX: &[u8] = b"daa-added-blocks";
+const STORE_PREFIX: &[u8] = b"mergeset_non_daa";
 
 /// A DB + cache implementation of `DaaStore` trait, with concurrency support.
 #[derive(Clone)]
 pub struct DbDaaStore {
     db: Arc<DB>,
-    access: CachedDbAccess<Hash, BlockHashes, BlockHasher>,
+    access: CachedDbAccess<Hash, Arc<BlockHashSet>, BlockHasher>,
 }
 
 impl DbDaaStore {
@@ -36,27 +36,27 @@ impl DbDaaStore {
         Self::new(Arc::clone(&self.db), cache_size)
     }
 
-    pub fn insert_batch(&self, batch: &mut WriteBatch, hash: Hash, added_blocks: BlockHashes) -> Result<(), StoreError> {
+    pub fn insert_batch(&self, batch: &mut WriteBatch, hash: Hash, mergeset_non_daa: Arc<BlockHashSet>) -> Result<(), StoreError> {
         if self.access.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
-        self.access.write(BatchDbWriter::new(batch), hash, added_blocks)?;
+        self.access.write(BatchDbWriter::new(batch), hash, mergeset_non_daa)?;
         Ok(())
     }
 }
 
 impl DaaStoreReader for DbDaaStore {
-    fn get_daa_added_blocks(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
+    fn get_mergeset_non_daa(&self, hash: Hash) -> Result<Arc<BlockHashSet>, StoreError> {
         self.access.read(hash)
     }
 }
 
 impl DaaStore for DbDaaStore {
-    fn insert(&self, hash: Hash, added_blocks: BlockHashes) -> Result<(), StoreError> {
+    fn insert(&self, hash: Hash, mergeset_non_daa: Arc<BlockHashSet>) -> Result<(), StoreError> {
         if self.access.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
-        self.access.write(DirectDbWriter::new(&self.db), hash, added_blocks)?;
+        self.access.write(DirectDbWriter::new(&self.db), hash, mergeset_non_daa)?;
         Ok(())
     }
 }
