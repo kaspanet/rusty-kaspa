@@ -7,6 +7,7 @@ use crate::{
             acceptance_data::{AcceptanceData, DbAcceptanceDataStore},
             block_transactions::DbBlockTransactionsStore,
             block_window_cache::BlockWindowCacheStore,
+            daa::DbDaaStore,
             errors::StoreError,
             ghostdag::{DbGhostdagStore, GhostdagStoreReader},
             headers::{DbHeadersStore, HeaderStoreReader},
@@ -28,8 +29,8 @@ use crate::{
     params::Params,
     pipeline::{deps_manager::BlockTask, virtual_processor::utxo_validation::UtxoProcessingContext},
     processes::{
-        difficulty::DifficultyManager, pruning::PruningManager, transaction_validator::TransactionValidator,
-        traversal_manager::DagTraversalManager,
+        coinbase::CoinbaseManager, difficulty::DifficultyManager, pruning::PruningManager,
+        transaction_validator::TransactionValidator, traversal_manager::DagTraversalManager,
     },
 };
 use consensus_core::utxo::{utxo_diff::UtxoDiff, utxo_view::UtxoViewComposition};
@@ -65,6 +66,7 @@ pub struct VirtualStateProcessor {
     pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
     pub(super) ghostdag_store: Arc<DbGhostdagStore>,
     pub(super) headers_store: Arc<DbHeadersStore>,
+    pub(super) daa_store: Arc<DbDaaStore>,
     pub(super) block_transactions_store: Arc<DbBlockTransactionsStore>,
     pub(super) pruning_store: Arc<RwLock<DbPruningStore>>,
     pub(super) past_pruning_points_store: Arc<DbPastPruningPointsStore>,
@@ -82,6 +84,7 @@ pub struct VirtualStateProcessor {
     pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
     pub(super) dag_traversal_manager: DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore>,
     pub(super) difficulty_manager: DifficultyManager<DbHeadersStore>,
+    pub(super) coinbase_manager: CoinbaseManager,
     pub(super) transaction_validator: TransactionValidator,
     pub(super) pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
 }
@@ -97,6 +100,7 @@ impl VirtualStateProcessor {
         statuses_store: Arc<RwLock<DbStatusesStore>>,
         ghostdag_store: Arc<DbGhostdagStore>,
         headers_store: Arc<DbHeadersStore>,
+        daa_store: Arc<DbDaaStore>,
         block_transactions_store: Arc<DbBlockTransactionsStore>,
         pruning_store: Arc<RwLock<DbPruningStore>>,
         past_pruning_points_store: Arc<DbPastPruningPointsStore>,
@@ -110,6 +114,7 @@ impl VirtualStateProcessor {
         reachability_service: MTReachabilityService<DbReachabilityStore>,
         dag_traversal_manager: DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore>,
         difficulty_manager: DifficultyManager<DbHeadersStore>,
+        coinbase_manager: CoinbaseManager,
         transaction_validator: TransactionValidator,
         pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
     ) -> Self {
@@ -127,6 +132,7 @@ impl VirtualStateProcessor {
             statuses_store,
             headers_store,
             ghostdag_store,
+            daa_store,
             block_transactions_store,
             pruning_store,
             past_pruning_points_store,
@@ -146,6 +152,7 @@ impl VirtualStateProcessor {
             reachability_service,
             dag_traversal_manager,
             difficulty_manager,
+            coinbase_manager,
             transaction_validator,
             pruning_manager,
         }

@@ -25,7 +25,7 @@ pub struct ScriptPublicKey {
 
 impl ScriptPublicKey {
     pub fn new(version: u16, script: ScriptVec) -> Self {
-        Self { script, version }
+        Self { version, script }
     }
 
     pub fn from_vec(version: u16, script: Vec<u8>) -> Self {

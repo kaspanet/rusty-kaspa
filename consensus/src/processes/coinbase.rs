@@ -1,13 +1,17 @@
-use consensus_core::tx::{ScriptPublicKey, ScriptVec};
-use std::convert::TryInto;
+use consensus_core::{
+    subnets,
+    tx::{ScriptPublicKey, ScriptVec, Transaction, TransactionOutput},
+    BlockHashMap, BlockHashSet,
+};
+use std::{convert::TryInto, mem::size_of};
 use thiserror::Error;
 
-const UINT16_LEN: usize = 2;
-const UINT64_LEN: usize = 8;
-const LENGTH_OF_BLUE_SCORE: usize = UINT64_LEN;
-const LENGTH_OF_SUBSIDY: usize = UINT64_LEN;
-const LENGTH_OF_SCRIPT_PUB_KEY_VERSION: usize = UINT16_LEN;
-const LENGTH_OF_SCRIPT_PUB_KEY_LENGTH: usize = 1;
+use crate::{constants, model::stores::ghostdag::GhostdagData};
+
+const LENGTH_OF_BLUE_SCORE: usize = size_of::<u64>();
+const LENGTH_OF_SUBSIDY: usize = size_of::<u64>();
+const LENGTH_OF_SCRIPT_PUB_KEY_VERSION: usize = size_of::<u16>();
+const LENGTH_OF_SCRIPT_PUB_KEY_LENGTH: usize = size_of::<u8>();
 
 const MIN_PAYLOAD_LENGTH: usize =
     LENGTH_OF_BLUE_SCORE + LENGTH_OF_SUBSIDY + LENGTH_OF_SCRIPT_PUB_KEY_VERSION + LENGTH_OF_SCRIPT_PUB_KEY_LENGTH;
@@ -44,10 +48,22 @@ pub struct CoinbaseData<'a> {
     pub miner_data: MinerData<'a>,
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub struct MinerData<'a> {
     pub script_public_key: ScriptPublicKey,
     pub extra_data: &'a [u8],
+}
+
+pub struct BlockRewardData {
+    pub subsidy: u64,
+    pub total_fees: u64,
+    pub script_public_key: ScriptPublicKey,
+}
+
+/// Holds a coinbase transaction along with meta-data obtained during creation
+pub struct CoinbaseTransactionTemplate {
+    pub tx: Transaction,
+    pub has_red_reward: bool, // Does the last output contain reward for red blocks
 }
 
 /// Struct used to streamline payload parsing
@@ -81,6 +97,47 @@ impl CoinbaseManager {
             deflationary_phase_daa_score,
             pre_deflationary_phase_base_subsidy,
         }
+    }
+
+    pub fn expected_coinbase_transaction(
+        &self,
+        daa_score: u64,
+        miner_data: MinerData,
+        ghostdag_data: &GhostdagData,
+        mergeset_rewards: &BlockHashMap<BlockRewardData>,
+        mergeset_non_daa: &BlockHashSet,
+    ) -> CoinbaseResult<CoinbaseTransactionTemplate> {
+        let mut outputs = Vec::with_capacity(ghostdag_data.mergeset_blues.len() + 1); // + 1 for possible red reward
+
+        // Add an output for each mergeset blue block (∩ DAA window), paying to the script reported by the block.
+        // Note that combinatorically it is nearly impossible for a blue block to be non-DAA
+        for blue in ghostdag_data.mergeset_blues.iter().filter(|h| !mergeset_non_daa.contains(h)) {
+            let reward_data = mergeset_rewards.get(blue).unwrap();
+            if reward_data.subsidy + reward_data.total_fees > 0 {
+                outputs
+                    .push(TransactionOutput::new(reward_data.subsidy + reward_data.total_fees, reward_data.script_public_key.clone()));
+            }
+        }
+
+        // Collect all rewards from mergeset reds ∩ DAA window and create a
+        // single output rewarding all to the current block (the "merging" block)
+        let mut red_reward = 0u64;
+        for red in ghostdag_data.mergeset_reds.iter().filter(|h| !mergeset_non_daa.contains(h)) {
+            let reward_data = mergeset_rewards.get(red).unwrap();
+            red_reward += reward_data.subsidy + reward_data.total_fees;
+        }
+        if red_reward > 0 {
+            outputs.push(TransactionOutput::new(red_reward, miner_data.script_public_key.clone()));
+        }
+
+        // Build the current block's payload
+        let subsidy = self.calc_block_subsidy(daa_score);
+        let payload = self.serialize_coinbase_payload(&CoinbaseData { blue_score: ghostdag_data.blue_score, subsidy, miner_data })?;
+
+        Ok(CoinbaseTransactionTemplate {
+            tx: Transaction::new(constants::TX_VERSION, vec![], outputs, 0, subnets::SUBNETWORK_ID_COINBASE, 0, payload),
+            has_red_reward: red_reward > 0,
+        })
     }
 
     pub fn serialize_coinbase_payload(&self, data: &CoinbaseData) -> CoinbaseResult<Vec<u8>> {
@@ -136,7 +193,7 @@ impl CoinbaseManager {
         let blue_score = u64::from_le_bytes(parser.take(LENGTH_OF_BLUE_SCORE).try_into().unwrap());
         let subsidy = u64::from_le_bytes(parser.take(LENGTH_OF_SUBSIDY).try_into().unwrap());
         let script_pub_key_version = u16::from_le_bytes(parser.take(LENGTH_OF_SCRIPT_PUB_KEY_VERSION).try_into().unwrap());
-        let script_pub_key_len = parser.take(LENGTH_OF_SCRIPT_PUB_KEY_LENGTH)[0];
+        let script_pub_key_len = u8::from_le_bytes(parser.take(LENGTH_OF_SCRIPT_PUB_KEY_LENGTH).try_into().unwrap());
 
         if script_pub_key_len > self.coinbase_payload_script_public_key_max_len {
             return Err(CoinbaseError::PayloadScriptPublicKeyLenAboveMax(
@@ -146,7 +203,10 @@ impl CoinbaseManager {
         }
 
         if parser.rem.len() < script_pub_key_len as usize {
-            return Err(CoinbaseError::PayloadCantContainScriptPublicKey(payload.len(), script_pub_key_len as usize));
+            return Err(CoinbaseError::PayloadCantContainScriptPublicKey(
+                payload.len(),
+                MIN_PAYLOAD_LENGTH + script_pub_key_len as usize,
+            ));
         }
 
         let script_public_key =
