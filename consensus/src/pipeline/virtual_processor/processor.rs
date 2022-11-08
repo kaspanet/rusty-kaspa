@@ -191,7 +191,6 @@ impl VirtualStateProcessor {
 
         // TODO: check finality violation
         // TODO: handle disqualified chain loop
-        // TODO: coinbase validation
         // TODO: acceptance data format
         // TODO: refactor this methods into multiple methods
 
@@ -276,6 +275,8 @@ impl VirtualStateProcessor {
                 accumulated_diff.with_diff_in_place(&ctx.mergeset_diff).unwrap();
 
                 // Build the new virtual state
+                // TODO: store virtual mergeset fees and virtual mergeset non-DAA blocks in virtual state,
+                // so that virtual coinbase can be built (for build block template)
                 let new_virtual_state =
                     VirtualState::new(virtual_parents, virtual_ghostdag_data, virtual_daa_score, ctx.multiset_hash, ctx.mergeset_diff);
 
