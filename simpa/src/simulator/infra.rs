@@ -1,4 +1,4 @@
-use std::ops::GeneratorState::{Yielded, Complete};
+use std::ops::GeneratorState::{Complete, Yielded};
 use std::pin::Pin;
 use std::{
     cell::RefCell,
@@ -54,6 +54,10 @@ struct InnerEnv<T> {
 }
 
 impl<T> InnerEnv<T> {
+    fn new() -> Self {
+        Self { time: 0, scheduler: BinaryHeap::new(), inboxes: HashMap::new() }
+    }
+
     fn send(&mut self, delay: u64, dest: u64, msg: T) {
         self.scheduler.push(Event::new(self.time + delay, dest, Some(msg)))
     }
@@ -82,6 +86,10 @@ pub struct Env<T> {
 }
 
 impl<T> Env<T> {
+    pub fn new() -> Self {
+        Self { inner: RefCell::new(InnerEnv::new()) }
+    }
+
     pub fn send(&self, delay: u64, dest: u64, msg: T) {
         self.inner.borrow_mut().send(delay, dest, msg)
     }
@@ -100,7 +108,7 @@ impl<T> Env<T> {
                 Yield::Timeout(timeout) => self.timeout(timeout, id),
                 Yield::Wait => {}
             },
-            Complete(_) => {},
+            Complete(_) => {}
         }
     }
 
