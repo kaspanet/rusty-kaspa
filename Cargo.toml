@@ -6,6 +6,7 @@ members = [
     "consensus/core",
     "consensus/pow",
     "kaspad",
+    "simpa",
     "wasm",
     "math",
     "crypto/hashes",

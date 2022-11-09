@@ -2409,6 +2409,24 @@ dependencies = [
  "autocfg",
 ]
 
+name = "simpa"
+version = "0.1.0"
+dependencies = [
+ "consensus",
+ "consensus-core",
+ "futures-util",
+ "hashes",
+ "kaspa-core",
+ "num-format",
+ "rand",
+ "rand_distr",
+ "rayon",
+ "tempfile",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
 [[package]]
 name = "smallvec"
 version = "1.10.0"
