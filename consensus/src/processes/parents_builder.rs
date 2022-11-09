@@ -171,7 +171,7 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
     }
 
     pub fn parents_at_level<'a>(&'a self, header: &'a Header, level: u8) -> &'a [Hash] {
-        if header.direct_parents().is_empty() {
+        if header.parents_by_level.is_empty() {
             // If is genesis
             &[]
         } else if header.parents_by_level.len() > level as usize {

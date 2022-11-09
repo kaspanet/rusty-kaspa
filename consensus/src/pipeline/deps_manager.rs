@@ -1,21 +1,27 @@
-use crate::errors::BlockProcessResult;
+use crate::{errors::BlockProcessResult, model::stores::ghostdag::GhostdagData};
 use consensus_core::{block::Block, blockstatus::BlockStatus, BlockHashMap, HashMapCustomHasher};
 use hashes::Hash;
 use parking_lot::{Condvar, Mutex};
-use std::collections::hash_map::Entry::Vacant;
+use std::{collections::hash_map::Entry::Vacant, sync::Arc};
 use tokio::sync::oneshot;
 
 pub type BlockResultSender = oneshot::Sender<BlockProcessResult<BlockStatus>>;
 
 pub enum BlockTask {
     Exit,
-    Process(Block, Vec<BlockResultSender>),
+    Process(MaybeTrustedBlock, Vec<BlockResultSender>),
+}
+
+#[derive(Clone)]
+pub struct MaybeTrustedBlock {
+    pub block: Block,
+    pub ghostdag_data: Option<Arc<GhostdagData>>,
 }
 
 /// An internal struct used to manage a block processing task
 struct BlockTaskInternal {
     // The actual block
-    block: Block,
+    block: MaybeTrustedBlock,
 
     // A list of channel senders for transmitting the processing result of this task to the async callers
     result_transmitters: Vec<BlockResultSender>,
@@ -25,7 +31,7 @@ struct BlockTaskInternal {
 }
 
 impl BlockTaskInternal {
-    fn new(block: Block, result_transmitters: Vec<BlockResultSender>) -> Self {
+    fn new(block: MaybeTrustedBlock, result_transmitters: Vec<BlockResultSender>) -> Self {
         Self { block, result_transmitters, dependent_tasks: Vec::new() }
     }
 }
@@ -49,9 +55,9 @@ impl BlockTaskDependencyManager {
     /// result transmitters and the function returns `false` indicating that the task shall
     /// not be queued for processing. The function is expected to be called by a worker
     /// controlling the reception of block processing tasks.
-    pub fn register(&self, block: Block, mut result_transmitters: Vec<BlockResultSender>) -> bool {
+    pub fn register(&self, block: MaybeTrustedBlock, mut result_transmitters: Vec<BlockResultSender>) -> bool {
         let mut pending = self.pending.lock();
-        match pending.entry(block.header.hash) {
+        match pending.entry(block.block.header.hash) {
             Vacant(e) => {
                 e.insert(BlockTaskInternal::new(block, result_transmitters));
                 true
@@ -59,7 +65,7 @@ impl BlockTaskDependencyManager {
             e => {
                 e.and_modify(|v| {
                     v.result_transmitters.append(&mut result_transmitters);
-                    if v.block.is_header_only() && !block.is_header_only() {
+                    if v.block.block.is_header_only() && !block.block.is_header_only() {
                         // The block now includes transactions, so we update the internal block data
                         v.block = block;
                     }
@@ -73,12 +79,12 @@ impl BlockTaskDependencyManager {
     /// previously registered through `self.register`. If any of the direct parents `parent` of
     /// this hash are in `pending` state, the task is queued as a dependency to the `parent` task
     /// and wil be re-evaluated once that task completes -- in which case the function will return `None`.
-    pub fn try_begin(&self, hash: Hash) -> Option<Block> {
+    pub fn try_begin(&self, hash: Hash) -> Option<MaybeTrustedBlock> {
         // Lock the pending map. The contention around the lock is
         // expected to be negligible in header processing time
         let mut pending = self.pending.lock();
         let block = pending.get(&hash).unwrap().block.clone();
-        for parent in block.header.direct_parents().iter() {
+        for parent in block.block.header.direct_parents().iter() {
             if let Some(task) = pending.get_mut(parent) {
                 task.dependent_tasks.push(hash);
                 return None; // The block will be reprocessed once the pending parent completes processing
@@ -93,7 +99,7 @@ impl BlockTaskDependencyManager {
     /// and returns a list of `dependent_tasks` which should be requeued to workers.
     pub fn end<F>(&self, hash: Hash, callback: F) -> Vec<Hash>
     where
-        F: Fn(Block, Vec<BlockResultSender>),
+        F: Fn(MaybeTrustedBlock, Vec<BlockResultSender>),
     {
         // Re-lock for post-processing steps
         let mut pending = self.pending.lock();

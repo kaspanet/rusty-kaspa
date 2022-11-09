@@ -43,7 +43,7 @@ use crate::{
 use super::{Consensus, DbGhostdagManager};
 
 pub struct TestConsensus {
-    consensus: Arc<Consensus>,
+    pub consensus: Arc<Consensus>,
     pub params: Params,
     temp_db_lifetime: TempDbLifetime,
 }

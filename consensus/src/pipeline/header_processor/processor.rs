@@ -44,7 +44,10 @@ use itertools::Itertools;
 use parking_lot::RwLock;
 use rayon::ThreadPool;
 use rocksdb::WriteBatch;
-use std::sync::{atomic::Ordering, Arc};
+use std::{
+    iter::once,
+    sync::{atomic::Ordering, Arc},
+};
 
 use super::super::ProcessingCounters;
 
@@ -227,7 +230,7 @@ impl HeaderProcessor {
             genesis_bits: params.genesis_bits,
             skip_proof_of_work: params.skip_proof_of_work,
             max_block_level: params.max_block_level,
-            process_genesis: false,
+            process_genesis: false, // TODO: pass as param
         }
     }
 
@@ -236,7 +239,7 @@ impl HeaderProcessor {
             match task {
                 BlockTask::Exit => break,
                 BlockTask::Process(block, result_transmitters) => {
-                    let hash = block.header.hash;
+                    let hash = block.block.header.hash;
                     if self.task_manager.register(block, result_transmitters) {
                         let processor = self.clone();
                         self.thread_pool.spawn(move || {
@@ -256,10 +259,10 @@ impl HeaderProcessor {
 
     fn queue_block(self: &Arc<HeaderProcessor>, hash: Hash) {
         if let Some(block) = self.task_manager.try_begin(hash) {
-            let res = self.process_header(&block.header);
+            let res = self.process_header(&block.block.header, block.ghostdag_data);
 
             let dependent_tasks = self.task_manager.end(hash, |block, result_transmitters| {
-                if res.is_err() || block.is_header_only() {
+                if res.is_err() || block.block.is_header_only() {
                     for transmitter in result_transmitters {
                         // We don't care if receivers were dropped
                         let _ = transmitter.send(res.clone());
@@ -280,7 +283,11 @@ impl HeaderProcessor {
         self.statuses_store.read().has(hash).unwrap()
     }
 
-    fn process_header(self: &Arc<HeaderProcessor>, header: &Arc<Header>) -> BlockProcessResult<BlockStatus> {
+    fn process_header(
+        self: &Arc<HeaderProcessor>,
+        header: &Arc<Header>,
+        ghostdag_data_option: Option<Arc<GhostdagData>>,
+    ) -> BlockProcessResult<BlockStatus> {
         let status_option = self.statuses_store.read().get(header.hash).unwrap_option();
 
         match status_option {
@@ -315,8 +322,13 @@ impl HeaderProcessor {
 
         // Run all header validations for the new header
         self.pre_ghostdag_validation(&mut ctx, header)?;
-        let ghostdag_data = (0..=ctx.block_level.unwrap())
-            .map(|level| Arc::new(self.ghostdag_managers[level as usize].ghostdag(&ctx.non_pruned_parents[level as usize])))
+        let direct_ghostdag_data =
+            ghostdag_data_option.unwrap_or_else(|| Arc::new(self.ghostdag_managers[0].ghostdag(&ctx.non_pruned_parents[0])));
+        let ghostdag_data = once(direct_ghostdag_data)
+            .chain(
+                (1..=ctx.block_level.unwrap())
+                    .map(|level| Arc::new(self.ghostdag_managers[level as usize].ghostdag(&ctx.non_pruned_parents[level as usize]))),
+            )
             .collect_vec();
         ctx.ghostdag_data = Some(ghostdag_data);
         self.pre_pow_validation(&mut ctx, header)?;
@@ -447,7 +459,7 @@ impl HeaderProcessor {
     }
 
     pub fn process_origin_if_needed(self: &Arc<HeaderProcessor>) {
-        if !self.relations_stores[0].read().has(ORIGIN).unwrap() {
+        if self.relations_stores[0].read().has(ORIGIN).unwrap() {
             return;
         }
 

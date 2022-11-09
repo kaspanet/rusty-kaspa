@@ -8,6 +8,10 @@ use std::collections::VecDeque;
 
 impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V: HeaderStoreReader> GhostdagManager<T, S, U, V> {
     pub fn ordered_mergeset_without_selected_parent(&self, selected_parent: Hash, parents: &[Hash]) -> Vec<Hash> {
+        self.sort_blocks(self.unordered_mergeset_without_selected_parent(selected_parent, parents))
+    }
+
+    pub fn unordered_mergeset_without_selected_parent(&self, selected_parent: Hash, parents: &[Hash]) -> BlockHashSet {
         let mut queue: VecDeque<_> = parents.iter().copied().filter(|p| p != &selected_parent).collect();
         let mut mergeset: BlockHashSet = queue.iter().copied().collect();
         let mut selected_parent_past = BlockHashSet::new();
@@ -36,6 +40,6 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
             }
         }
 
-        self.sort_blocks(mergeset)
+        mergeset
     }
 }

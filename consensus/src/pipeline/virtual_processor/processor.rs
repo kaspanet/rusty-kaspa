@@ -169,7 +169,7 @@ impl VirtualStateProcessor {
             difficulty_window_size: params.difficulty_window_size,
             mergeset_size_limit: params.mergeset_size_limit,
             pruning_depth: params.pruning_depth,
-            process_genesis: false,
+            process_genesis: false, // TODO: pass as param
 
             db,
             statuses_store,
@@ -215,7 +215,7 @@ impl VirtualStateProcessor {
                     BlockTask::Process(block, result_transmitters) => {
                         for transmitter in result_transmitters {
                             // We don't care if receivers were dropped
-                            let _ = transmitter.send(Ok(statuses_read.get(block.hash()).unwrap()));
+                            let _ = transmitter.send(Ok(statuses_read.get(block.block.hash()).unwrap()));
                         }
                     }
                 };

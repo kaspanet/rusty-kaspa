@@ -104,7 +104,7 @@ impl BlockBodyProcessor {
             past_median_time_manager,
             max_block_mass,
             genesis_hash,
-            process_genesis: false,
+            process_genesis: false, // TODO: pass as param
             task_manager: BlockTaskDependencyManager::new(),
         }
     }
@@ -114,7 +114,7 @@ impl BlockBodyProcessor {
             match task {
                 BlockTask::Exit => break,
                 BlockTask::Process(block, result_transmitters) => {
-                    let hash = block.header.hash;
+                    let hash = block.block.header.hash;
                     if self.task_manager.register(block, result_transmitters) {
                         let processor = self.clone();
                         self.thread_pool.spawn(move || {
@@ -134,7 +134,7 @@ impl BlockBodyProcessor {
 
     fn queue_block(self: &Arc<BlockBodyProcessor>, hash: Hash) {
         if let Some(block) = self.task_manager.try_begin(hash) {
-            let res = self.process_block_body(&block);
+            let res = self.process_block_body(&block.block);
 
             let dependent_tasks = self.task_manager.end(hash, |block, result_transmitters| {
                 if res.is_err() {

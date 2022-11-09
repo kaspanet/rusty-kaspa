@@ -14,7 +14,7 @@ use crate::{
             block_window_cache::BlockWindowCacheStore,
             daa::DbDaaStore,
             depth::DbDepthStore,
-            ghostdag::DbGhostdagStore,
+            ghostdag::{DbGhostdagStore, GhostdagData},
             headers::DbHeadersStore,
             headers_selected_tip::DbHeadersSelectedTipStore,
             past_pruning_points::DbPastPruningPointsStore,
@@ -33,7 +33,7 @@ use crate::{
     params::Params,
     pipeline::{
         body_processor::BlockBodyProcessor,
-        deps_manager::{BlockResultSender, BlockTask},
+        deps_manager::{BlockResultSender, BlockTask, MaybeTrustedBlock},
         header_processor::HeaderProcessor,
         virtual_processor::VirtualStateProcessor,
         ProcessingCounters,
@@ -41,17 +41,21 @@ use crate::{
     processes::{
         block_depth::BlockDepthManager, coinbase::CoinbaseManager, difficulty::DifficultyManager, ghostdag::protocol::GhostdagManager,
         mass::MassCalculator, parents_builder::ParentsManager, past_median_time::PastMedianTimeManager, pruning::PruningManager,
-        reachability::inquirer as reachability, transaction_validator::TransactionValidator, traversal_manager::DagTraversalManager,
+        pruning_proof::PruningProofManager, reachability::inquirer as reachability, transaction_validator::TransactionValidator,
+        traversal_manager::DagTraversalManager,
     },
 };
 use consensus_core::{
     api::ConsensusApi,
-    block::{Block, BlockTemplate},
-    blockstatus::BlockStatus,
-    coinbase::MinerData,
+    pruning::PruningPointProof,
+    {
+        block::{Block, BlockTemplate},
+        blockstatus::BlockStatus,
+        coinbase::MinerData,
     errors::{coinbase::CoinbaseResult, tx::TxResult},
-    tx::{MutableTransaction, Transaction},
-    BlockHashSet,
+        tx::{MutableTransaction, Transaction},
+        BlockHashSet,
+    },
 };
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use futures_util::future::BoxFuture;
@@ -118,6 +122,7 @@ pub struct Consensus {
     pub(super) past_median_time_manager: PastMedianTimeManager<DbHeadersStore, DbGhostdagStore, BlockWindowCacheStore>,
     pub(super) coinbase_manager: CoinbaseManager,
     pub(super) pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
+    pub(super) pruning_proof_manager: PruningProofManager,
 
     // Counters
     pub counters: Arc<ProcessingCounters>,
@@ -329,7 +334,7 @@ impl Consensus {
             depth_manager.clone(),
             pruning_manager.clone(),
             parents_manager.clone(),
-            ghostdag_managers,
+            ghostdag_managers.clone(),
             counters.clone(),
         ));
 
@@ -378,9 +383,22 @@ impl Consensus {
             transaction_validator,
             past_median_time_manager.clone(),
             pruning_manager.clone(),
-            parents_manager,
+            parents_manager.clone(),
             depth_manager,
         ));
+
+        let pruning_proof_manager = PruningProofManager::new(
+            db.clone(),
+            headers_store.clone(),
+            reachability_store.clone(),
+            parents_manager.clone(),
+            reachability_service.clone(),
+            ghostdag_stores.clone(),
+            relations_stores.clone(),
+            ghostdag_managers.clone(),
+            params.max_block_level,
+            params.genesis_hash,
+        );
 
         Self {
             db,
@@ -407,6 +425,7 @@ impl Consensus {
             past_median_time_manager,
             coinbase_manager,
             pruning_manager,
+            pruning_proof_manager,
 
             counters,
         }
@@ -436,9 +455,24 @@ impl Consensus {
 
     pub fn validate_and_insert_block(&self, block: Block) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
         let (tx, rx): (BlockResultSender, _) = oneshot::channel();
-        self.block_sender.send(BlockTask::Process(block, vec![tx])).unwrap();
+        self.block_sender.send(BlockTask::Process(MaybeTrustedBlock { block, ghostdag_data: None }, vec![tx])).unwrap();
         self.counters.blocks_submitted.fetch_add(1, Ordering::SeqCst);
         async { rx.await.unwrap() }
+    }
+
+    pub fn validate_and_insert_trusted_block(
+        &self,
+        block: Block,
+        ghostdag_data: Arc<GhostdagData>,
+    ) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
+        let (tx, rx): (BlockResultSender, _) = oneshot::channel();
+        self.block_sender.send(BlockTask::Process(MaybeTrustedBlock { block, ghostdag_data: Some(ghostdag_data) }, vec![tx])).unwrap();
+        self.counters.blocks_submitted.fetch_add(1, Ordering::SeqCst);
+        async { rx.await.unwrap() }
+    }
+
+    pub fn apply_proof(&self, proof: PruningPointProof) {
+        self.pruning_proof_manager.apply_proof(proof)
     }
 
     pub fn build_block_template(&self, miner_data: MinerData, txs: Vec<Transaction>) -> Result<BlockTemplate, RuleError> {
