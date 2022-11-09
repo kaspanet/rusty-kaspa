@@ -6,6 +6,7 @@ use std::collections::{BinaryHeap, HashMap};
 use std::ops::Generator;
 use std::ops::GeneratorState::Yielded;
 use std::pin::Pin;
+use std::rc::Rc;
 
 struct Message {
     msg: String,
@@ -50,10 +51,12 @@ impl Ord for SimulationEvent {
     }
 }
 
-enum SimulationYield {
+pub enum SimulationYield {
     Timeout(u64),
     Receive,
 }
+
+pub type Process = Box<dyn Unpin + Generator<Yield = SimulationYield, Return = ()>>;
 
 #[derive(Default)]
 struct InnerEnv {
@@ -70,6 +73,19 @@ impl InnerEnv {
     fn timeout(&mut self, timeout: u64, dest: u64) {
         self.scheduler.push(SimulationEvent::new(self.time + timeout, dest, None))
     }
+
+    fn next(&mut self) -> u64 {
+        let event = self.scheduler.pop().unwrap();
+        self.time = event.timestamp;
+        if let Some(msg) = event.msg {
+            self.inboxes.insert(event.dest, msg);
+        }
+        event.dest
+    }
+
+    fn inbox(&mut self, dest: u64) -> Message {
+        self.inboxes.remove(&dest).unwrap()
+    }
 }
 
 #[derive(Default)]
@@ -78,10 +94,6 @@ struct Env {
 }
 
 impl Env {
-    // pub fn schedule(&self, event: SimulationEvent) {
-    //     self.inner.borrow_mut().scheduler.push(event)
-    // }
-
     fn send(&self, delay: u64, dest: u64, msg: Message) {
         self.inner.borrow_mut().send(delay, dest, msg)
     }
@@ -91,16 +103,33 @@ impl Env {
     }
 
     pub fn next(&self) -> u64 {
-        let event = self.inner.borrow_mut().scheduler.pop().unwrap();
-        self.inner.borrow_mut().time = event.timestamp;
-        if let Some(msg) = event.msg {
-            self.inner.borrow_mut().inboxes.insert(event.dest, msg);
+        self.inner.borrow_mut().next()
+    }
+
+    pub fn run(&self, processes: &mut HashMap<u64, Process>, until: u64) {
+        for i in processes.keys().copied().collect::<Vec<u64>>() {
+            let Yielded(sim_yield) = Pin::new(processes.get_mut(&i).unwrap().as_mut()).resume(()) else { unreachable!() };
+            match sim_yield {
+                SimulationYield::Timeout(timeout) => self.timeout(timeout, i),
+                SimulationYield::Receive => {}
+            }
         }
-        event.dest
+
+        loop {
+            let dest = self.next();
+            let Yielded(sim_yield) = Pin::new(processes.get_mut(&dest).unwrap().as_mut()).resume(()) else { unreachable!() };
+            match sim_yield {
+                SimulationYield::Timeout(timeout) => self.timeout(timeout, dest),
+                SimulationYield::Receive => {}
+            }
+            if self.inner.borrow().time > until {
+                break;
+            }
+        }
     }
 
     pub fn inbox(&self, dest: u64) -> Message {
-        self.inner.borrow_mut().inboxes.remove(&dest).unwrap()
+        self.inner.borrow_mut().inbox(dest)
     }
 }
 
@@ -113,7 +142,7 @@ impl Sender {
         Self { id }
     }
 
-    pub fn send(self, env: &Env) -> impl Generator<Yield = SimulationYield, Return = ()> + '_ {
+    pub fn send(self, env: Rc<Env>) -> impl Generator<Yield = SimulationYield, Return = ()> {
         move || {
             let poi = Poisson::new(8f64).unwrap();
             let mut thread_rng = rand::thread_rng();
@@ -140,36 +169,21 @@ impl Receiver {
         Self { id }
     }
 
-    pub fn receive(self, env: &Env) -> impl Generator<Yield = SimulationYield, Return = ()> + '_ {
+    pub fn receive(self, env: Rc<Env>) -> impl Generator<Yield = SimulationYield, Return = ()> {
         move || loop {
-            yield SimulationYield::Receive; // TODO
+            yield SimulationYield::Receive;
             println!("{}", env.inbox(self.id).msg);
         }
     }
 }
 
 fn main() {
-    let env = Env::default();
+    let env = Rc::new(Env::default());
 
     let mut processes = HashMap::<u64, Box<dyn Unpin + Generator<Yield = SimulationYield, Return = ()>>>::new();
-    processes.insert(0, Box::new(Receiver::new(0).receive(&env)));
-    processes.insert(1, Box::new(Sender::new(1).send(&env)));
-    processes.insert(2, Box::new(Sender::new(2).send(&env)));
+    processes.insert(0, Box::new(Receiver::new(0).receive(env.clone())));
+    processes.insert(1, Box::new(Sender::new(1).send(env.clone())));
+    processes.insert(2, Box::new(Sender::new(2).send(env.clone())));
 
-    for i in 0u64..=2 {
-        let Yielded(sim_yield) = Pin::new(processes.get_mut(&i).unwrap().as_mut()).resume(()) else { unreachable!() };
-        match sim_yield {
-            SimulationYield::Timeout(timeout) => env.timeout(timeout, i),
-            SimulationYield::Receive => {}
-        }
-    }
-
-    for _ in 0..32 {
-        let dest = env.next();
-        let Yielded(sim_yield) = Pin::new(processes.get_mut(&dest).unwrap().as_mut()).resume(()) else { unreachable!() };
-        match sim_yield {
-            SimulationYield::Timeout(timeout) => env.timeout(timeout, dest),
-            SimulationYield::Receive => {}
-        }
-    }
+    env.run(&mut processes, 128);
 }
