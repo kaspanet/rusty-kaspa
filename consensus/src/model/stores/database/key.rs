@@ -1,8 +1,8 @@
-use std::{fmt::Display, str};
+use std::{fmt::{Display, Debug}, str};
 
 const SEP: u8 = b'/';
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct DbKey {
     path: Vec<u8>,
     prefix_len: usize,
@@ -40,6 +40,12 @@ impl Display for DbKey {
         }
         // We expect that key is usually more readable as hex
         f.write_str(&faster_hex::hex_string(key))
+    }
+}
+
+impl Debug for DbKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Display::fmt(&self, f)
     }
 }
 
