@@ -240,7 +240,7 @@ impl CoinbaseManager {
         if months_since_deflationary_phase_started >= SUBSIDY_BY_MONTH_TABLE.len() {
             *SUBSIDY_BY_MONTH_TABLE.last().unwrap()
         } else {
-            SUBSIDY_BY_MONTH_TABLE[months_since_deflationary_phase_started as usize]
+            SUBSIDY_BY_MONTH_TABLE[months_since_deflationary_phase_started]
         }
     }
 }

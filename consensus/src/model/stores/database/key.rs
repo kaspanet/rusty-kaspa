@@ -1,4 +1,7 @@
-use std::{fmt::{Display, Debug}, str};
+use std::{
+    fmt::{Debug, Display},
+    str,
+};
 
 const SEP: u8 = b'/';
 
