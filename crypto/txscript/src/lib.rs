@@ -135,18 +135,18 @@ impl<'a> TxScriptEngine<'a> {
         // result is necessarily an error since the stack would end up being
         // empty which is equivalent to a false top element. Thus, just return
         // the relevant error now as an optimization.
-        if script.len() == 0 && script_pubkey.script.len() == 0 {
+        if script.len() == 0 && script_pubkey.script().len() == 0 {
             return Err(TxScriptError::FalseStackEntry);
         }
 
-        if script_pubkey.version > MAX_SCRIPT_PUBLIC_KEY_VERSION {
+        if script_pubkey.version() > MAX_SCRIPT_PUBLIC_KEY_VERSION {
             warn!("The version of the scriptPublicKey is higher than the known version - the Execute function returns true.");
             return Ok(());
         }
 
         // TODO: parseScriptAndVerifySize x2
 
-        let scripts = [script.clone(), script_pubkey.script.clone()];
+        let scripts = [script.clone(), script_pubkey.script().to_vec()];
         let unified_script = script.clone();
         // TODO: check script is non empty, o.w. skip
 
