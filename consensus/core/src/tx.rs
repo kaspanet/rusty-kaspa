@@ -84,7 +84,7 @@ impl Display for TransactionOutpoint {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TransactionInput {
     pub previous_outpoint: TransactionOutpoint,
-    pub signature_script: Vec<u8>,
+    pub signature_script: Vec<u8>, // TODO: Consider using SmallVec
     pub sequence: u64,
     pub sig_op_count: u8,
 }
