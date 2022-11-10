@@ -12,6 +12,7 @@ members = [
     "crypto/muhash",
     "crypto/addresses",
     "crypto/merkle",
+    "crypto/txscript",
 ]
 
 [workspace.package]
@@ -35,6 +36,7 @@ addresses = { path = "crypto/addresses" }
 merkle = { path = "crypto/merkle" }
 pow = { path = "consensus/pow" }
 kaspa-utils = { path = "utils" }
+txscript = { path = "consensus/txscript" }
 
 thiserror = "1"
 faster-hex = "0.6"
@@ -43,6 +45,9 @@ rand = "0.8"
 rand_chacha = "0.3"
 rayon = "1"
 tempfile = "3.3"
+log = "0.4.17"
+blake2b_simd = "1"
+sha2 = "0.10"
 serde = { version = "1", features = ["derive", "rc"] }
 futures-util = { version = "0.3", default-features = false, features = [
     "alloc",
