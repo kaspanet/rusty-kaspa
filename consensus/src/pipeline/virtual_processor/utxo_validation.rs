@@ -5,9 +5,9 @@ use crate::{
         RuleError::{BadAcceptedIDMerkleRoot, BadCoinbaseTransaction, BadUTXOCommitment, InvalidTransactionsInUtxoContext},
     },
     model::stores::{block_transactions::BlockTransactionsStoreReader, daa::DaaStoreReader, ghostdag::GhostdagData},
-    processes::coinbase::BlockRewardData,
 };
 use consensus_core::{
+    coinbase::*,
     hashing,
     header::Header,
     muhash::MuHashExtensions,
