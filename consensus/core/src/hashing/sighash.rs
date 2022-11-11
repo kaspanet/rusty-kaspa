@@ -7,6 +7,7 @@ use crate::{
 
 use super::{sighash_type::SigHashType, HasherExtensions};
 
+#[derive(Default)]
 pub struct SigHashReusedValues {
     previous_outputs_hash: Option<Hash>,
     sequence_hash: Option<Hash>,

@@ -9,7 +9,7 @@ use consensus_core::{
 
 use super::{
     errors::{TxResult, TxRuleError},
-    TransactionValidator,
+    SigCacheKey, TransactionValidator,
 };
 
 impl TransactionValidator {
@@ -19,7 +19,7 @@ impl TransactionValidator {
         let total_out = Self::check_transaction_output_values(tx, total_in)?;
         Self::check_sequence_lock(tx, pov_daa_score)?;
         Self::check_sig_op_counts(tx)?;
-        Self::check_scripts(tx)?;
+        self.check_scripts(tx)?;
 
         Ok(total_in - total_out)
     }
@@ -101,7 +101,7 @@ impl TransactionValidator {
         Ok(())
     }
 
-    fn check_scripts(tx: &PopulatedTransaction) -> TxResult<()> {
+    fn check_scripts(&self, tx: &PopulatedTransaction) -> TxResult<()> {
         let mut reused_values = SigHashReusedValues::new();
         for (i, (input, entry)) in tx.populated_inputs().enumerate() {
             // TODO: this is a temporary implementation and not ready for consensus since any invalid signature
@@ -110,7 +110,17 @@ impl TransactionValidator {
             let pk = secp256k1::XOnlyPublicKey::from_slice(pk).unwrap();
             let sig = secp256k1::schnorr::Signature::from_slice(&input.signature_script[1..65]).unwrap();
             let sig_hash = calc_schnorr_signature_hash(tx, i, SIG_HASH_ALL, &mut reused_values);
-            sig.verify(&secp256k1::Message::from_slice(sig_hash.as_bytes().as_slice()).unwrap(), &pk).unwrap();
+            let msg = secp256k1::Message::from_slice(sig_hash.as_bytes().as_slice()).unwrap();
+            let sig_cache_key = SigCacheKey { signature: sig, pub_key: pk, message: msg };
+            match self.sig_cache.get(&sig_cache_key) {
+                Some(valid) => {
+                    assert!(valid, "invalid signature in sig cache");
+                }
+                None => {
+                    sig.verify(&msg, &pk).unwrap();
+                    self.sig_cache.insert(sig_cache_key, true);
+                }
+            }
         }
 
         Ok(())
