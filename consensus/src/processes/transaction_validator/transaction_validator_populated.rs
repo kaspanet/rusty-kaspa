@@ -117,6 +117,8 @@ impl TransactionValidator {
                     assert!(valid, "invalid signature in sig cache");
                 }
                 None => {
+                    // TODO: Find a way to parallelize this part. This will be less trivial
+                    // once this code is inside the script engine.
                     sig.verify(&msg, &pk).unwrap();
                     self.sig_cache.insert(sig_cache_key, true);
                 }
