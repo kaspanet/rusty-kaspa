@@ -1,23 +1,19 @@
 [package]
 name = "simpa"
 description = "Kaspa simulation framework"
-version.workspace = true
-edition.workspace = true
-authors.workspace = true
-include.workspace = true
-license.workspace = true
+version = "0.1.0"
+authors = ["Kaspa developers"]
+license = "MIT/Apache-2.0"
+edition = "2021"
+include = [
+"src/**/*.rs",
+]
 
 [dependencies]
-hashes.workspace = true
-kaspa-core.workspace = true
-consensus-core.workspace = true
-consensus.workspace = true
-
-thiserror.workspace = true
-futures-util.workspace = true
-rand.workspace = true
-rayon.workspace = true
-tempfile.workspace = true
-tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread"] }
 rand_distr = "0.4"
-num-format = "0.4"
+rand = "0.8"
+
+hashes = {path="../crypto/hashes"}
+kaspa-core = {path="../core"}
+consensus-core = {path="../consensus/core"}
+consensus = {path="../consensus"}
