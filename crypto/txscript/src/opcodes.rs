@@ -748,7 +748,7 @@ opcode_list!{
                 //TODO: check signature length (pair[0])
                 //TODO: check public key encoding (pair[1])
                 //TODO: calculate signature hash schnorr
-                match check_signature(&vm.tx, vm.input_id, typ, key.as_slice(), sig.as_slice()) {
+                match check_signature(vm.tx.clone().unwrap(), vm.input_id.clone().unwrap(), typ, key.as_slice(), sig.as_slice()) {
                     Ok(()) => {
                         vm.dstack.push_item(true);
                         Ok(())

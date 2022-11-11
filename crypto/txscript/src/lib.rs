@@ -13,6 +13,9 @@ use log::warn;
 pub const MAX_SCRIPT_PUBLIC_KEY_VERSION: u16 = 0;
 pub const MAX_STACK_SIZE: usize = 244;
 pub const MAX_OPS_PER_SCRIPT: i32 = 201;
+// The last opcode that does not count toward operations.
+// Note that this includes OP_RESERVED which counts as a push operation.
+pub const NO_COST_OPCODE: u8 = 16;
 
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub enum TxScriptError {
@@ -56,9 +59,9 @@ pub struct TxScriptEngine<'a> {
     dstack: Stack,
     astack: Stack,
 
-    tx: &'a PopulatedTransaction<'a>,
-    input_id: usize,
-    utxo_entry: &'a UtxoEntry,
+    tx: Option<&'a PopulatedTransaction<'a>>,
+    input_id: Option<usize>,
+    utxo_entry: Option<&'a UtxoEntry>,
 
     cond_stack: Vec<i8>, // Following if stacks, and whether it is running
 
@@ -66,7 +69,7 @@ pub struct TxScriptEngine<'a> {
 }
 
 impl<'a> TxScriptEngine<'a> {
-    pub fn new(tx: &'a PopulatedTransaction<'a>, input_id: usize, utxo_entry: &'a UtxoEntry) -> Self {
+    pub fn new(tx: Option<&'a PopulatedTransaction<'a>>, input_id: Option<usize>, utxo_entry: Option<&'a UtxoEntry>) -> Self {
         Self{
             dstack: Default::default(),
             astack: Default::default(),
@@ -86,7 +89,7 @@ impl<'a> TxScriptEngine<'a> {
         // TODO: check disabled
         // TODO: check illegal
         // Note that this includes OP_RESERVED which counts as a push operation.
-        if opcode.value() > 16 {
+        if opcode.value() > NO_COST_OPCODE {
             self.num_ops+=1;
             if self.num_ops > MAX_OPS_PER_SCRIPT {
                 return Err(TxScriptError::TooManyOperations(MAX_OPS_PER_SCRIPT));
@@ -98,13 +101,19 @@ impl<'a> TxScriptEngine<'a> {
 
         // TODO: check minimal data push
         // TODO: run opcode
-        Ok(())
+        opcode.execute(self)
     }
 
-    fn execute_script(&mut self, script: &[u8]) -> Result<(), TxScriptError> {
+    pub fn execute_script(&mut self, script: &[u8]) -> Result<(), TxScriptError> {
 
         //let mut consumable = script.iter();
-        script.iter().batching(|it| Some(deserialize(it))).try_for_each(|opcode| {
+        script.iter().batching(|it| {
+            // TODO: we need to read the opcode num item here and then match to opcode
+            match it.next() {
+                Some(code) => Some(deserialize(*code, it)),
+                None => None
+            }
+        }).try_for_each(|opcode| {
             self.execute_opcode(opcode?)?;
 
             let combined_size = self.astack.len() + self.dstack.len();
@@ -163,7 +172,7 @@ impl<'a> TxScriptEngine<'a> {
     }
 
     pub fn clean_execute(tx: &'a PopulatedTransaction, input_id: usize, utxo_entry: &'a UtxoEntry) -> Result<(), TxScriptError> {
-        let mut engine = TxScriptEngine::new(tx, input_id, utxo_entry);
+        let mut engine = TxScriptEngine::new(Some(tx), Some(input_id), Some(utxo_entry));
         let script = &tx.tx.inputs[input_id].signature_script;
         //script: Vec<u8>, script_pubkey: ScriptPublicKey
         let script_pubkey = ScriptPublicKey::default();
@@ -180,7 +189,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_bad_pc() {
+    fn test_nop() {
+        let mut engine = TxScriptEngine::new(None, None, None);
+        assert_eq!(engine.execute_script(vec![0x61u8].as_slice()), Ok(()));
+        assert_eq!(engine.num_ops, 1);
 
+        let mut engine = TxScriptEngine::new(None, None, None);
+        assert_eq!(engine.execute_script(vec![0x61u8, 0x61u8].as_slice()), Ok(()));
+        assert_eq!(engine.num_ops, 2);
     }
 }

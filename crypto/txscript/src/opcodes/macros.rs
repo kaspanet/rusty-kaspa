@@ -35,8 +35,9 @@ macro_rules! opcode_serde {
             }
 
             fn deserialize<'i, I: Iterator<Item = &'i u8>>(it: &mut I) -> Result<Self, TxScriptError> {
-                let data: Vec<u8> = it.take($length).copied().collect();
-                if data.len() != $length {
+                // Static length includes the opcode itself
+                let data: Vec<u8> = it.take($length-1).copied().collect();
+                if data.len() != $length-1 {
                     // TODO: real error
                     todo!();
                 }
@@ -74,21 +75,15 @@ macro_rules! opcode_list {
             opcode!($name, $num, $length, $code, $self, $vm);
         )*
 
-        pub fn deserialize<'i, I: Iterator<Item = &'i u8>>(it: &mut I) -> Result<Box<dyn OpCodeImplementation>, TxScriptError> {
-            if let Some(code) = it.next() {
-                match code {
-                    $(
-                        $num => Ok(Box::new($name::deserialize(it)?)),
-                    )*
-                    // TODO: real error! (opcode not implemented)
-                    // In case programmer didn't implement all opcodes
-                    #[allow(unreachable_patterns)]
-                    _ => todo!(),
-                }
-            }
-            else {
-                // TODO: real error!
-                todo!()
+        pub fn deserialize<'i, I: Iterator<Item = &'i u8>>(opcode_num: u8, it: &mut I) -> Result<Box<dyn OpCodeImplementation>, TxScriptError> {
+            match opcode_num {
+                $(
+                    $num => Ok(Box::new($name::deserialize(it)?)),
+                )*
+                // TODO: real error! (opcode not implemented)
+                // In case programmer didn't implement all opcodes
+                #[allow(unreachable_patterns)]
+                _ => todo!(),
             }
         }
     };
