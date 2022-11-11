@@ -41,6 +41,7 @@ use muhash::MuHash;
 use crossbeam_channel::Receiver;
 use itertools::Itertools;
 use parking_lot::{RwLock, RwLockUpgradableReadGuard};
+use rand::seq::SliceRandom;
 use rayon::ThreadPool;
 use rocksdb::WriteBatch;
 use std::{ops::Deref, sync::Arc};
@@ -60,7 +61,7 @@ pub struct VirtualStateProcessor {
     pub(super) max_block_parents: u8,
     pub(super) difficulty_window_size: usize,
     pub(super) mergeset_size_limit: u64,
-    pruning_depth: u64,
+    pub(super) pruning_depth: u64,
 
     // Stores
     pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
@@ -185,9 +186,7 @@ impl VirtualStateProcessor {
 
     fn resolve_virtual(self: &Arc<Self>) {
         let prev_state = self.virtual_state_store.read().get().unwrap();
-
-        // TODO: pick virtual parents from body tips according to pruning rules
-        let virtual_parents = self.body_tips_store.read().get().unwrap().iter().copied().collect_vec();
+        let virtual_parents = self.pick_virtual_parents();
 
         // TODO: check finality violation
         // TODO: handle disqualified chain loop
@@ -314,6 +313,27 @@ impl VirtualStateProcessor {
         self.db.write(batch).unwrap();
         // Calling the drops explicitly after the batch is written in order to avoid possible errors.
         drop(write_guard);
+    }
+
+    fn pick_virtual_parents(self: &Arc<Self>) -> Vec<Hash> {
+        // TODO: implement virtual parents selection rules
+        // 1. Max parents
+        // 2. Mergeset limit
+        // 3. Bounded merge depth
+
+        let mut virtual_parents = self.body_tips_store.read().get().unwrap().iter().copied().collect_vec();
+        if virtual_parents.len() > self.max_block_parents as usize {
+            // TEMP
+            let selected_parent = self.ghostdag_manager.find_selected_parent(&mut virtual_parents.iter().copied());
+            let index = virtual_parents.iter().position(|&h| h == selected_parent).unwrap();
+            virtual_parents.swap_remove(index);
+            let mut rng = rand::thread_rng();
+            virtual_parents = std::iter::once(selected_parent)
+                .chain(virtual_parents.choose_multiple(&mut rng, self.max_block_parents as usize - 1).copied())
+                .collect();
+        }
+
+        virtual_parents
     }
 
     fn maybe_update_pruning_point_and_candidate(self: &Arc<Self>) {

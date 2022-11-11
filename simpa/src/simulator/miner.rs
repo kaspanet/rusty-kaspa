@@ -47,9 +47,9 @@ impl Miner {
     pub fn mine(self: Rc<Self>, sim: Rc<KaspaNetworkSimulator>) -> impl Generator<Yield = SimYield, Return = ()> {
         move || {
             let dist = Exp::new(1f64 / self.lambda * self.hashrate).unwrap();
-            let mut thread_rng = rand::thread_rng();
+            let mut rng = rand::thread_rng();
             loop {
-                yield SimYield::Timeout(max(dist.sample(&mut thread_rng) as u64, 1));
+                yield SimYield::Timeout(max(dist.sample(&mut rng) as u64, 1));
                 let block = self.new_block();
                 sim.broadcast(self.mine_id, block);
             }
