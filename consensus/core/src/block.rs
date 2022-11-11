@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::{header::Header, tx::Transaction};
+use crate::{coinbase::MinerData, header::Header, tx::Transaction};
 use hashes::Hash;
 
 /// A mutable block structure where header and transactions within can still be mutated.
@@ -49,4 +49,13 @@ impl Block {
     pub fn hash(&self) -> Hash {
         self.header.hash
     }
+}
+
+/// A block template for miners.
+#[derive(Debug, Clone)]
+pub struct BlockTemplate {
+    pub block: Block,
+    pub miner_data: MinerData<Vec<u8>>,
+    pub coinbase_has_red_reward: bool,
+    pub selected_parent_timestamp: u64,
 }

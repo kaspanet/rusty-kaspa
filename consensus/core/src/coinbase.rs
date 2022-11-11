@@ -1,16 +1,16 @@
 use crate::tx::{ScriptPublicKey, Transaction};
 
 #[derive(PartialEq, Eq, Debug, Clone)]
-pub struct MinerData<'a> {
+pub struct MinerData<T: AsRef<[u8]>> {
     pub script_public_key: ScriptPublicKey,
-    pub extra_data: &'a [u8],
+    pub extra_data: T,
 }
 
 #[derive(PartialEq, Eq, Debug)]
-pub struct CoinbaseData<'a> {
+pub struct CoinbaseData<T: AsRef<[u8]>> {
     pub blue_score: u64,
     pub subsidy: u64,
-    pub miner_data: MinerData<'a>,
+    pub miner_data: MinerData<T>,
 }
 
 pub struct BlockRewardData {

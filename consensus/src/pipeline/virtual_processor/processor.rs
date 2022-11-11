@@ -336,6 +336,8 @@ impl VirtualStateProcessor {
         virtual_parents
     }
 
+    pub fn build_block_template(self: &Arc<Self>) {}
+
     fn maybe_update_pruning_point_and_candidate(self: &Arc<Self>) {
         let virtual_sp = self.virtual_state_store.read().get().unwrap().ghostdag_data.selected_parent;
         if virtual_sp == self.genesis_hash {
