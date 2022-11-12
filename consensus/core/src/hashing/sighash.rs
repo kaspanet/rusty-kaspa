@@ -147,21 +147,23 @@ pub fn calc_schnorr_signature_hash(
 ) -> Hash {
     let input = tx.populated_inputs().nth(input_index).unwrap();
     let mut hasher = TransactionSigningHash::new();
-    hasher.write_u16(tx.tx.version);
-    hasher.update(previous_output_hash(tx, hash_type, reused_values));
-    hasher.update(sequence_hash(tx, hash_type, reused_values));
-    hasher.update(sig_op_counts_hash(tx, hash_type, reused_values));
+    hasher
+        .write_u16(tx.tx.version)
+        .update(previous_output_hash(tx, hash_type, reused_values))
+        .update(sequence_hash(tx, hash_type, reused_values))
+        .update(sig_op_counts_hash(tx, hash_type, reused_values));
     hash_outpoint(&mut hasher, input.0.previous_outpoint);
     hash_script_public_key(&mut hasher, &input.1.script_public_key);
-    hasher.write_u64(input.1.amount);
-    hasher.write_u64(input.0.sequence);
-    hasher.write_u8(input.0.sig_op_count);
-    hasher.update(outputs_hash(tx, hash_type, reused_values, input_index));
-    hasher.write_u64(tx.tx.lock_time);
-    hasher.update(&tx.tx.subnetwork_id);
-    hasher.write_u64(tx.tx.gas);
-    hasher.update(payload_hash(tx));
-    hasher.write_u8(hash_type.to_u8());
+    hasher
+        .write_u64(input.1.amount)
+        .write_u64(input.0.sequence)
+        .write_u8(input.0.sig_op_count)
+        .update(outputs_hash(tx, hash_type, reused_values, input_index))
+        .write_u64(tx.tx.lock_time)
+        .update(&tx.tx.subnetwork_id)
+        .write_u64(tx.tx.gas)
+        .update(payload_hash(tx))
+        .write_u8(hash_type.to_u8());
     hasher.finalize()
 }
 
@@ -181,6 +183,7 @@ mod tests {
 
     #[test]
     fn test_signature_hash() {
+        // TODO: Copy all sighash tests from go kaspad.
         let prev_tx_id = TransactionId::from_str("880eb9819a31821d9d2399e2f35e2433b72637e393d71ecc9b8d0250f49153c3").unwrap();
         let mut bytes = [0u8; 34];
         faster_hex::hex_decode("208325613d2eeaf7176ac6c670b13c0043156c427438ed72d74b7800862ad884e8ac".as_bytes(), &mut bytes).unwrap();
