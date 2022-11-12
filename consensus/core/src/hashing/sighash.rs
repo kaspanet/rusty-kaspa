@@ -1,4 +1,4 @@
-use hashes::{Hash, Hasher, HasherBase, TransactionSigningHash};
+use hashes::{Hash, Hasher, HasherBase, TransactionSigningHash, ZERO_HASH};
 
 use crate::{
     subnets::SUBNETWORK_ID_NATIVE,
@@ -7,23 +7,26 @@ use crate::{
 
 use super::{sighash_type::SigHashType, HasherExtensions};
 
+/// Holds all fields used in the calculation of a transaction's sig_hash which are
+/// the same for all transaction inputs.
+/// Reuse of such values prevents the quadratic hashing problem.
 #[derive(Default)]
 pub struct SigHashReusedValues {
     previous_outputs_hash: Option<Hash>,
-    sequence_hash: Option<Hash>,
+    sequences_hash: Option<Hash>,
     sig_op_counts_hash: Option<Hash>,
     outputs_hash: Option<Hash>,
 }
 
 impl SigHashReusedValues {
     pub fn new() -> Self {
-        Self { previous_outputs_hash: None, sequence_hash: None, sig_op_counts_hash: None, outputs_hash: None }
+        Self { previous_outputs_hash: None, sequences_hash: None, sig_op_counts_hash: None, outputs_hash: None }
     }
 }
 
-fn previous_output_hash(tx: &PopulatedTransaction, hash_type: SigHashType, reused_values: &mut SigHashReusedValues) -> Hash {
+fn previous_outputs_hash(tx: &PopulatedTransaction, hash_type: SigHashType, reused_values: &mut SigHashReusedValues) -> Hash {
     if hash_type.is_sighash_anyone_can_pay() {
-        return 0.into();
+        return ZERO_HASH;
     }
 
     if let Some(previous_outputs_hash) = reused_values.previous_outputs_hash {
@@ -40,27 +43,27 @@ fn previous_output_hash(tx: &PopulatedTransaction, hash_type: SigHashType, reuse
     }
 }
 
-fn sequence_hash(tx: &PopulatedTransaction, hash_type: SigHashType, reused_values: &mut SigHashReusedValues) -> Hash {
+fn sequences_hash(tx: &PopulatedTransaction, hash_type: SigHashType, reused_values: &mut SigHashReusedValues) -> Hash {
     if hash_type.is_sighash_single() || hash_type.is_sighash_anyone_can_pay() || hash_type.is_sighash_none() {
-        return 0.into();
+        return ZERO_HASH;
     }
 
-    if let Some(sequence_hash) = reused_values.sequence_hash {
-        sequence_hash
+    if let Some(sequences_hash) = reused_values.sequences_hash {
+        sequences_hash
     } else {
         let mut hasher = TransactionSigningHash::new();
         for input in tx.tx.inputs.iter() {
             hasher.write_u64(input.sequence);
         }
         let sequence_hash = hasher.finalize();
-        reused_values.sequence_hash = Some(sequence_hash);
+        reused_values.sequences_hash = Some(sequence_hash);
         sequence_hash
     }
 }
 
 fn sig_op_counts_hash(tx: &PopulatedTransaction, hash_type: SigHashType, reused_values: &mut SigHashReusedValues) -> Hash {
     if hash_type.is_sighash_anyone_can_pay() {
-        return 0.into();
+        return ZERO_HASH;
     }
 
     if let Some(sig_op_counts_hash) = reused_values.sig_op_counts_hash {
@@ -78,7 +81,7 @@ fn sig_op_counts_hash(tx: &PopulatedTransaction, hash_type: SigHashType, reused_
 
 fn payload_hash(tx: &PopulatedTransaction) -> Hash {
     if tx.tx.subnetwork_id == SUBNETWORK_ID_NATIVE {
-        return 0.into();
+        return ZERO_HASH;
     }
 
     // TODO: Right now this branch will never be executed, since payload is disabled
@@ -96,13 +99,13 @@ fn outputs_hash(
     input_index: usize,
 ) -> Hash {
     if hash_type.is_sighash_none() {
-        return 0.into();
+        return ZERO_HASH;
     }
 
     if hash_type.is_sighash_single() {
         // If the relevant output exists - return its hash, otherwise return zero-hash
         if input_index >= tx.outputs().len() {
-            return 0.into();
+            return ZERO_HASH;
         }
 
         let mut hasher = TransactionSigningHash::new();
@@ -149,8 +152,8 @@ pub fn calc_schnorr_signature_hash(
     let mut hasher = TransactionSigningHash::new();
     hasher
         .write_u16(tx.tx.version)
-        .update(previous_output_hash(tx, hash_type, reused_values))
-        .update(sequence_hash(tx, hash_type, reused_values))
+        .update(previous_outputs_hash(tx, hash_type, reused_values))
+        .update(sequences_hash(tx, hash_type, reused_values))
         .update(sig_op_counts_hash(tx, hash_type, reused_values));
     hash_outpoint(&mut hasher, input.0.previous_outpoint);
     hash_script_public_key(&mut hasher, &input.1.script_public_key);
