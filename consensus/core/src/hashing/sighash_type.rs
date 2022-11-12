@@ -33,7 +33,7 @@ impl SigHashType {
     }
 
     pub fn is_sighash_anyone_can_pay(self) -> bool {
-        self.0 & SIG_HASH_ANY_ONE_CAN_PAY.0 != 0
+        self.0 & SIG_HASH_ANY_ONE_CAN_PAY.0 == SIG_HASH_ANY_ONE_CAN_PAY.0
     }
 
     pub fn to_u8(self) -> u8 {
