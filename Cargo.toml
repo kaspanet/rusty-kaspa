@@ -6,6 +6,7 @@ members = [
     "consensus/core",
     "consensus/pow",
     "kaspad",
+    "simpa",
     "wasm",
     "math",
     "crypto/hashes",
@@ -15,7 +16,6 @@ members = [
     "rpc/core",
     "rpc/grpc",
 ]
-exclude = ["simpa"]
 
 [workspace.package]
 version = "0.1.0"

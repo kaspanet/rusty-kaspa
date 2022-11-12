@@ -1,59 +1,44 @@
-use super::infra::{Env, Process};
+use std::sync::Arc;
+use std::thread::JoinHandle;
+
+use super::infra::Simulation;
 use super::miner::Miner;
+
+use consensus::consensus::test_consensus::TestConsensus;
 use consensus::params::Params;
 use consensus_core::block::Block;
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::rc::Rc;
 
 pub struct KaspaNetworkSimulator {
     // Internal simulation env
-    pub(super) env: Env<Block>,
+    pub(super) simulation: Simulation<Block>,
 
-    // Simulation processes
-    miners: RefCell<Vec<Rc<Miner>>>,
-    processes: RefCell<HashMap<u64, Process>>,
+    // Consensus instances
+    consensuses: Vec<(Arc<TestConsensus>, Vec<JoinHandle<()>>)>,
 
-    // Config
-    params: Params,
-    delay: f64, // In millisecond units
-    bps: f64,   // Blocks per second
+    params: Params, // Consensus params
+    bps: f64,       // Blocks per second
 }
 
 impl KaspaNetworkSimulator {
     pub fn new(delay: f64, bps: f64, params: &Params) -> Self {
-        Self {
-            env: Env::new(),
-            miners: RefCell::new(Vec::new()),
-            processes: RefCell::new(HashMap::new()),
-            delay,
-            bps,
-            params: params.clone(),
-        }
+        Self { simulation: Simulation::new(delay as u64), consensuses: Vec::new(), bps, params: params.clone() }
     }
 
-    pub fn init(self: Rc<Self>, num_miners: u64) -> Rc<Self> {
+    pub fn init(&mut self, num_miners: u64) -> &mut Self {
         for i in 0..num_miners {
-            let (mine_id, recv_id) = (i * 2, i * 2 + 1);
-            let miner = Rc::new(Miner::new(mine_id, recv_id, self.bps, 1f64 / num_miners as f64, &self.params));
-            self.processes.borrow_mut().insert(mine_id, Box::new(miner.clone().mine(self.clone())));
-            self.processes.borrow_mut().insert(recv_id, Box::new(miner.clone().receive(self.clone())));
-            self.miners.borrow_mut().push(miner);
+            let consensus = Arc::new(TestConsensus::create_from_temp_db(&self.params));
+            let handles = consensus.init();
+            let miner_process = Box::new(Miner::new(i, self.bps, 1f64 / num_miners as f64, consensus.clone()));
+            self.simulation.register(i, miner_process);
+            self.consensuses.push((consensus, handles));
         }
         self
     }
 
-    pub fn broadcast(self: &Rc<Self>, sender: u64, block: Block) {
-        for miner in self.miners.borrow().iter() {
-            let delay = if miner.mine_id == sender || miner.recv_id == sender { 0 } else { self.delay as u64 };
-            self.env.send(delay, miner.recv_id, block.clone());
-        }
-    }
-
-    pub fn run(self: &Rc<Self>, until: u64) {
-        self.env.run(&mut self.processes.borrow_mut(), until);
-        for miner in self.miners.borrow_mut().drain(..) {
-            miner.consensus.shutdown(miner.handles.borrow_mut().take().unwrap());
+    pub fn run(&mut self, until: u64) {
+        self.simulation.run(until);
+        for (consensus, handles) in self.consensuses.drain(..) {
+            consensus.shutdown(handles);
         }
     }
 }

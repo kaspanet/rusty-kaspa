@@ -1,12 +1,7 @@
-use std::ops::GeneratorState::{Complete, Yielded};
-use std::pin::Pin;
-use std::{
-    cell::RefCell,
-    collections::{BinaryHeap, HashMap},
-    ops::Generator,
-};
+use std::collections::{BinaryHeap, HashMap, HashSet};
 
-pub struct Event<T> {
+/// Internal structure representing a scheduled simulator event
+struct Event<T> {
     timestamp: u64,
     dest: u64,
     msg: Option<T>,
@@ -39,94 +34,106 @@ impl<T> Ord for Event<T> {
     }
 }
 
-pub enum Yield {
+/// Process resumption trigger
+pub enum Resumption<T> {
+    Initial,
+    Scheduled,
+    Message(T),
+}
+
+/// Process suspension reason
+pub enum Suspension {
     Timeout(u64),
-    Wait,
+    Idle,
 }
 
-pub type Process = Box<dyn Unpin + Generator<Yield = Yield, Return = ()>>;
+/// A simulation process
+pub trait Process<T> {
+    fn resume(&mut self, resumption: Resumption<T>, env: &mut Environment<T>) -> Suspension;
+}
 
+pub type BoxedProcess<T> = Box<dyn Process<T>>;
+
+/// The simulation environment
 #[derive(Default)]
-struct InnerEnv<T> {
-    time: u64,
-    scheduler: BinaryHeap<Event<T>>,
-    inboxes: HashMap<u64, T>,
+pub struct Environment<T> {
+    now: u64,
+    broadcast_delay: u64,
+    event_queue: BinaryHeap<Event<T>>,
+    process_ids: HashSet<u64>,
 }
 
-impl<T> InnerEnv<T> {
-    fn new() -> Self {
-        Self { time: 0, scheduler: BinaryHeap::new(), inboxes: HashMap::new() }
+impl<T: Clone> Environment<T> {
+    pub fn new(delay: u64) -> Self {
+        Self { now: 0, broadcast_delay: delay, event_queue: BinaryHeap::new(), process_ids: HashSet::new() }
     }
 
-    fn send(&mut self, delay: u64, dest: u64, msg: T) {
-        self.scheduler.push(Event::new(self.time + delay, dest, Some(msg)))
+    pub fn now(&self) -> u64 {
+        self.now
     }
 
-    fn timeout(&mut self, timeout: u64, dest: u64) {
-        self.scheduler.push(Event::new(self.time + timeout, dest, None))
+    pub fn send(&mut self, delay: u64, dest: u64, msg: T) {
+        self.event_queue.push(Event::new(self.now + delay, dest, Some(msg)))
     }
 
-    fn next(&mut self) -> u64 {
-        let event = self.scheduler.pop().unwrap();
-        self.time = event.timestamp;
-        if let Some(msg) = event.msg {
-            self.inboxes.insert(event.dest, msg);
-        }
-        event.dest
+    pub fn timeout(&mut self, timeout: u64, dest: u64) {
+        self.event_queue.push(Event::new(self.now + timeout, dest, None))
     }
 
-    fn inbox(&mut self, dest: u64) -> T {
-        self.inboxes.remove(&dest).unwrap()
-    }
-}
-
-#[derive(Default)]
-pub struct Env<T> {
-    inner: RefCell<InnerEnv<T>>,
-}
-
-impl<T> Env<T> {
-    pub fn new() -> Self {
-        Self { inner: RefCell::new(InnerEnv::new()) }
-    }
-
-    pub fn send(&self, delay: u64, dest: u64, msg: T) {
-        self.inner.borrow_mut().send(delay, dest, msg)
-    }
-
-    pub fn timeout(&self, timeout: u64, dest: u64) {
-        self.inner.borrow_mut().timeout(timeout, dest)
-    }
-
-    pub fn next(&self) -> u64 {
-        self.inner.borrow_mut().next()
-    }
-
-    pub fn step(&self, id: u64, process: &mut Process) {
-        match Pin::new(process).resume(()) {
-            Yielded(yielded) => match yielded {
-                Yield::Timeout(timeout) => self.timeout(timeout, id),
-                Yield::Wait => {}
-            },
-            Complete(_) => {}
+    pub fn broadcast(&mut self, sender: u64, msg: T) {
+        for &id in self.process_ids.iter() {
+            let delay = if id == sender { 0 } else { self.broadcast_delay };
+            self.event_queue.push(Event::new(self.now + delay, id, Some(msg.clone())));
         }
     }
 
-    pub fn run(&self, processes: &mut HashMap<u64, Process>, until: u64) {
-        for i in processes.keys().copied().collect::<Vec<u64>>() {
-            self.step(i, processes.get_mut(&i).unwrap());
+    fn next_event(&mut self) -> Event<T> {
+        let event = self.event_queue.pop().unwrap();
+        self.now = event.timestamp;
+        event
+    }
+}
+
+/// The simulation manager
+#[derive(Default)]
+pub struct Simulation<T> {
+    env: Environment<T>,
+    processes: HashMap<u64, BoxedProcess<T>>,
+}
+
+impl<T: Clone> Simulation<T> {
+    pub fn new(delay: u64) -> Self {
+        Self { env: Environment::new(delay), processes: HashMap::new() }
+    }
+
+    pub fn register(&mut self, id: u64, process: BoxedProcess<T>) {
+        self.processes.insert(id, process);
+        self.env.process_ids.insert(id);
+    }
+
+    pub fn step(&mut self) {
+        let event = self.env.next_event();
+        let process = self.processes.get_mut(&event.dest).unwrap();
+        let op = if let Some(msg) = event.msg { Resumption::Message(msg) } else { Resumption::Scheduled };
+        match process.resume(op, &mut self.env) {
+            Suspension::Timeout(timeout) => self.env.timeout(timeout, event.dest),
+            Suspension::Idle => {}
+        }
+    }
+
+    pub fn run(&mut self, until: u64) {
+        for (&id, process) in self.processes.iter_mut() {
+            match process.resume(Resumption::Initial, &mut self.env) {
+                Suspension::Timeout(timeout) => self.env.timeout(timeout, id),
+                Suspension::Idle => {}
+            }
         }
 
         loop {
-            let dest = self.next();
-            self.step(dest, processes.get_mut(&dest).unwrap());
-            if self.inner.borrow().time > until {
+            self.step();
+            if self.env.now() > until {
                 break;
             }
         }
-    }
-
-    pub fn inbox(&self, dest: u64) -> T {
-        self.inner.borrow_mut().inbox(dest)
     }
 }
