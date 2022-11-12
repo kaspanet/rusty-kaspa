@@ -84,7 +84,7 @@ impl Display for TransactionOutpoint {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TransactionInput {
     pub previous_outpoint: TransactionOutpoint,
-    pub signature_script: Vec<u8>,
+    pub signature_script: Vec<u8>, // TODO: Consider using SmallVec
     pub sequence: u64,
     pub sig_op_count: u8,
 }
@@ -180,6 +180,10 @@ impl<'a> PopulatedTransaction<'a> {
 
     pub fn populated_inputs(&self) -> impl ExactSizeIterator<Item = (&TransactionInput, &UtxoEntry)> {
         self.tx.inputs.iter().zip(self.entries.iter())
+    }
+
+    pub fn populated_input(&self, index: usize) -> (&TransactionInput, &UtxoEntry) {
+        (&self.tx.inputs[index], &self.entries[index])
     }
 
     pub fn outputs(&self) -> &[TransactionOutput] {

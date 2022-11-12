@@ -1,9 +1,15 @@
 use crate::constants::{MAX_SOMPI, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK};
-use consensus_core::tx::PopulatedTransaction;
+use consensus_core::{
+    hashing::{
+        sighash::{calc_schnorr_signature_hash, SigHashReusedValues},
+        sighash_type::SIG_HASH_ALL,
+    },
+    tx::PopulatedTransaction,
+};
 
 use super::{
     errors::{TxResult, TxRuleError},
-    TransactionValidator,
+    SigCacheKey, TransactionValidator,
 };
 
 impl TransactionValidator {
@@ -13,7 +19,7 @@ impl TransactionValidator {
         let total_out = Self::check_transaction_output_values(tx, total_in)?;
         Self::check_sequence_lock(tx, pov_daa_score)?;
         Self::check_sig_op_counts(tx)?;
-        Self::check_scripts(tx)?;
+        self.check_scripts(tx)?;
 
         Ok(total_in - total_out)
     }
@@ -95,8 +101,30 @@ impl TransactionValidator {
         Ok(())
     }
 
-    fn check_scripts(_tx: &PopulatedTransaction) -> TxResult<()> {
-        // TODO: Implement this
+    fn check_scripts(&self, tx: &PopulatedTransaction) -> TxResult<()> {
+        let mut reused_values = SigHashReusedValues::new();
+        for (i, (input, entry)) in tx.populated_inputs().enumerate() {
+            // TODO: this is a temporary implementation and not ready for consensus since any invalid signature
+            // will crash the node. We need to replace it with a proper script engine once it's ready.
+            let pk = &entry.script_public_key.script()[1..33];
+            let pk = secp256k1::XOnlyPublicKey::from_slice(pk).unwrap();
+            let sig = secp256k1::schnorr::Signature::from_slice(&input.signature_script[1..65]).unwrap();
+            let sig_hash = calc_schnorr_signature_hash(tx, i, SIG_HASH_ALL, &mut reused_values);
+            let msg = secp256k1::Message::from_slice(sig_hash.as_bytes().as_slice()).unwrap();
+            let sig_cache_key = SigCacheKey { signature: sig, pub_key: pk, message: msg };
+            match self.sig_cache.get(&sig_cache_key) {
+                Some(valid) => {
+                    assert!(valid, "invalid signature in sig cache");
+                }
+                None => {
+                    // TODO: Find a way to parallelize this part. This will be less trivial
+                    // once this code is inside the script engine.
+                    sig.verify(&msg, &pk).unwrap();
+                    self.sig_cache.insert(sig_cache_key, true);
+                }
+            }
+        }
+
         Ok(())
     }
 }

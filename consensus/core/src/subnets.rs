@@ -22,6 +22,10 @@ impl SubnetworkId {
         SubnetworkId(bytes)
     }
 
+    pub const fn from_bytes(bytes: [u8; SUBNETWORK_ID_SIZE]) -> SubnetworkId {
+        SubnetworkId(bytes)
+    }
+
     /// Returns true if the subnetwork is a built-in subnetwork, which
     /// means all nodes, including partial nodes, must validate it, and its transactions
     /// always use 0 gas.
