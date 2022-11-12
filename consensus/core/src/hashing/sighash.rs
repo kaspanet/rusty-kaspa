@@ -145,7 +145,7 @@ pub fn calc_schnorr_signature_hash(
     hash_type: SigHashType,
     reused_values: &mut SigHashReusedValues,
 ) -> Hash {
-    let input = tx.populated_inputs().nth(input_index).unwrap();
+    let input = tx.populated_input(input_index);
     let mut hasher = TransactionSigningHash::new();
     hasher
         .write_u16(tx.tx.version)

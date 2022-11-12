@@ -182,6 +182,10 @@ impl<'a> PopulatedTransaction<'a> {
         self.tx.inputs.iter().zip(self.entries.iter())
     }
 
+    pub fn populated_input(&self, index: usize) -> (&TransactionInput, &UtxoEntry) {
+        (&self.tx.inputs[index], &self.entries[index])
+    }
+
     pub fn outputs(&self) -> &[TransactionOutput] {
         &self.tx.outputs
     }
