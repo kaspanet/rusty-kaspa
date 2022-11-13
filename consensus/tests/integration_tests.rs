@@ -714,6 +714,18 @@ async fn goref_tx_small_concurrent_test() {
     json_concurrency_test("tests/testdata/goref-905-tx-265-blocks.json.gz").await
 }
 
+#[ignore]
+#[tokio::test]
+async fn goref_tx_big_test() {
+    json_test("tests/testdata/goref-1.6M-tx-10K-blocks.json.gz").await
+}
+
+#[ignore]
+#[tokio::test]
+async fn goref_tx_big_concurrent_test() {
+    json_concurrency_test("tests/testdata/goref-1.6M-tx-10K-blocks.json.gz").await
+}
+
 async fn json_test(file_path: &str) {
     let file = common::open_file(file_path);
     let decoder = GzDecoder::new(file);
