@@ -32,13 +32,12 @@ pub struct Miner {
 
 impl Miner {
     pub fn new(id: u64, bps: f64, hashrate: f64, consensus: Arc<Consensus>) -> Self {
-        let lambda = bps / 1000.0;
         Self {
             id,
             consensus,
             miner_data: MinerData::new(ScriptPublicKey::new(0, ScriptVec::from_slice(&id.to_le_bytes())), Vec::new()), // TODO: real script pub key
             futures: Vec::new(),
-            dist: Exp::new(1f64 / (lambda * hashrate)).unwrap(),
+            dist: Exp::new(1f64 / (bps * hashrate)).unwrap(),
             rng: rand::thread_rng(),
         }
     }
@@ -60,7 +59,7 @@ impl Miner {
     }
 
     pub fn sample_mining_interval(&mut self) -> Suspension {
-        Suspension::Timeout(max(self.dist.sample(&mut self.rng) as u64, 1))
+        Suspension::Timeout(max((self.dist.sample(&mut self.rng) * 1000.0) as u64, 1))
     }
 
     fn process_block(&mut self, block: Block) -> Suspension {

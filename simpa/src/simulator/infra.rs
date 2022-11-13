@@ -135,5 +135,6 @@ impl<T: Clone> Simulation<T> {
                 break;
             }
         }
+        self.processes.clear();
     }
 }

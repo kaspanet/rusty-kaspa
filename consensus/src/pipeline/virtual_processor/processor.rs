@@ -5,7 +5,7 @@ use crate::{
         services::reachability::{MTReachabilityService, ReachabilityService},
         stores::{
             acceptance_data::{AcceptanceData, DbAcceptanceDataStore},
-            block_transactions::DbBlockTransactionsStore,
+            block_transactions::{BlockTransactionsStoreReader, DbBlockTransactionsStore},
             block_window_cache::BlockWindowCacheStore,
             daa::DbDaaStore,
             errors::StoreError,
@@ -429,11 +429,13 @@ impl VirtualStateProcessor {
         let status = self.statuses_store.read().get(self.genesis_hash).unwrap();
         match status {
             StatusUTXOPendingVerification => {
+                let txs = self.block_transactions_store.get(self.genesis_hash).unwrap();
                 self.virtual_state_store
                     .write()
                     .set(VirtualState::from_genesis(
                         self.genesis_hash,
                         self.genesis_bits,
+                        vec![txs[0].id()],
                         self.ghostdag_manager.ghostdag(&[self.genesis_hash]).as_ref().clone(),
                     ))
                     .unwrap();

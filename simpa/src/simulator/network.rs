@@ -22,7 +22,7 @@ pub struct KaspaNetworkSimulator {
 
 impl KaspaNetworkSimulator {
     pub fn new(delay: f64, bps: f64, params: &Params) -> Self {
-        Self { simulation: Simulation::new(delay as u64), consensuses: Vec::new(), bps, params: params.clone() }
+        Self { simulation: Simulation::new((delay * 1000.0) as u64), consensuses: Vec::new(), bps, params: params.clone() }
     }
 
     pub fn init(&mut self, num_miners: u64) -> &mut Self {

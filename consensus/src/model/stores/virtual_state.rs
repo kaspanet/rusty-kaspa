@@ -56,7 +56,12 @@ impl VirtualState {
         }
     }
 
-    pub fn from_genesis(genesis_hash: Hash, genesis_bits: u32, initial_ghostdag_data: GhostdagData) -> Self {
+    pub fn from_genesis(
+        genesis_hash: Hash,
+        genesis_bits: u32,
+        accepted_tx_ids: Vec<TransactionId>,
+        initial_ghostdag_data: GhostdagData,
+    ) -> Self {
         Self {
             parents: vec![genesis_hash],
             ghostdag_data: initial_ghostdag_data,
@@ -64,7 +69,7 @@ impl VirtualState {
             bits: genesis_bits,
             multiset: MuHash::new(),
             utxo_diff: UtxoDiff::default(), // Virtual diff is initially empty since genesis receives no reward
-            accepted_tx_ids: Vec::new(),
+            accepted_tx_ids,
             mergeset_rewards: BlockHashMap::new(),
             mergeset_non_daa: BlockHashSet::from_iter(std::iter::once(genesis_hash)),
             pruning_point: genesis_hash,
