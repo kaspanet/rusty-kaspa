@@ -661,6 +661,7 @@ dependencies = [
  "math",
  "merkle",
  "muhash",
+ "secp256k1",
  "serde",
  "smallvec",
  "thiserror",
