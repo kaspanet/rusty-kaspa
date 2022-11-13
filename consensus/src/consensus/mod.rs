@@ -39,7 +39,10 @@ use crate::{
         reachability::inquirer as reachability, transaction_validator::TransactionValidator, traversal_manager::DagTraversalManager,
     },
 };
-use consensus_core::block::Block;
+use consensus_core::{
+    block::{Block, BlockTemplate},
+    coinbase::MinerData,
+};
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use kaspa_core::{core::Core, service::Service};
 use parking_lot::RwLock;
@@ -239,7 +242,7 @@ impl Consensus {
             difficulty_manager.clone(),
             depth_manager,
             pruning_manager.clone(),
-            parents_manager,
+            parents_manager.clone(),
             counters.clone(),
         ));
 
@@ -285,6 +288,7 @@ impl Consensus {
             coinbase_manager.clone(),
             transaction_validator,
             pruning_manager.clone(),
+            parents_manager,
         ));
 
         Self {
@@ -341,6 +345,10 @@ impl Consensus {
         let (tx, rx): (BlockResultSender, _) = oneshot::channel();
         self.block_sender.send(BlockTask::Process(block, vec![tx])).unwrap();
         async { rx.await.unwrap() }
+    }
+
+    pub fn build_block_template(self: &Arc<Self>, timestamp: u64, nonce: u64, miner_data: MinerData) -> BlockTemplate {
+        self.virtual_processor.build_block_template(timestamp, nonce, miner_data)
     }
 
     pub fn signal_exit(&self) {

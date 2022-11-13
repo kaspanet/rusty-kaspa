@@ -1,6 +1,6 @@
 use crate::{
     consensus::DbGhostdagManager,
-    constants::{self, store_names},
+    constants::{self, store_names, BLOCK_VERSION},
     model::{
         services::reachability::{MTReachabilityService, ReachabilityService},
         stores::{
@@ -14,6 +14,7 @@ use crate::{
             past_pruning_points::{DbPastPruningPointsStore, PastPruningPointsStore, PastPruningPointsStoreReader},
             pruning::{DbPruningStore, PruningStore, PruningStoreReader},
             reachability::DbReachabilityStore,
+            relations::DbRelationsStore,
             statuses::{
                 BlockStatus::{self, StatusDisqualifiedFromChain, StatusUTXOPendingVerification, StatusUTXOValid},
                 DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader,
@@ -29,11 +30,17 @@ use crate::{
     params::Params,
     pipeline::{deps_manager::BlockTask, virtual_processor::utxo_validation::UtxoProcessingContext},
     processes::{
-        coinbase::CoinbaseManager, difficulty::DifficultyManager, pruning::PruningManager,
+        coinbase::CoinbaseManager, difficulty::DifficultyManager, parents_builder::ParentsManager, pruning::PruningManager,
         transaction_validator::TransactionValidator, traversal_manager::DagTraversalManager,
     },
 };
-use consensus_core::utxo::{utxo_diff::UtxoDiff, utxo_view::UtxoViewComposition};
+use consensus_core::{
+    block::{Block, BlockTemplate},
+    coinbase::MinerData,
+    header::Header,
+    merkle::calc_hash_merkle_root,
+    utxo::{utxo_diff::UtxoDiff, utxo_view::UtxoViewComposition},
+};
 use hashes::Hash;
 use kaspa_core::trace;
 use muhash::MuHash;
@@ -58,6 +65,7 @@ pub struct VirtualStateProcessor {
 
     // Config
     pub(super) genesis_hash: Hash,
+    pub(super) genesis_bits: u32,
     pub(super) max_block_parents: u8,
     pub(super) difficulty_window_size: usize,
     pub(super) mergeset_size_limit: u64,
@@ -88,6 +96,7 @@ pub struct VirtualStateProcessor {
     pub(super) coinbase_manager: CoinbaseManager,
     pub(super) transaction_validator: TransactionValidator,
     pub(super) pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
+    pub(super) parents_manager: ParentsManager<DbHeadersStore, DbReachabilityStore, DbRelationsStore>,
 }
 
 impl VirtualStateProcessor {
@@ -118,12 +127,14 @@ impl VirtualStateProcessor {
         coinbase_manager: CoinbaseManager,
         transaction_validator: TransactionValidator,
         pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
+        parents_manager: ParentsManager<DbHeadersStore, DbReachabilityStore, DbRelationsStore>,
     ) -> Self {
         Self {
             receiver,
             thread_pool,
 
             genesis_hash: params.genesis_hash,
+            genesis_bits: params.genesis_bits,
             max_block_parents: params.max_block_parents,
             difficulty_window_size: params.difficulty_window_size,
             mergeset_size_limit: params.mergeset_size_limit,
@@ -156,6 +167,7 @@ impl VirtualStateProcessor {
             coinbase_manager,
             transaction_validator,
             pruning_manager,
+            parents_manager,
         }
     }
 
@@ -265,19 +277,28 @@ impl VirtualStateProcessor {
 
                 // Calc virtual DAA score
                 let window = self.dag_traversal_manager.block_window(virtual_ghostdag_data.clone(), self.difficulty_window_size);
-                let (virtual_daa_score, _) = self
+                let (virtual_daa_score, mergeset_non_daa) = self
                     .difficulty_manager
                     .calc_daa_score_and_non_daa_mergeset_blocks(&mut window.iter().map(|item| item.0.hash), &virtual_ghostdag_data);
+                let virtual_bits = self.difficulty_manager.calculate_difficulty_bits(&window);
                 self.calculate_utxo_state(&mut ctx, &selected_parent_utxo_view, virtual_daa_score);
 
                 // Update the accumulated diff
                 accumulated_diff.with_diff_in_place(&ctx.mergeset_diff).unwrap();
 
                 // Build the new virtual state
-                // TODO: store virtual mergeset fees and virtual mergeset non-DAA blocks in virtual state,
-                // so that virtual coinbase can be built (for build block template)
-                let new_virtual_state =
-                    VirtualState::new(virtual_parents, virtual_ghostdag_data, virtual_daa_score, ctx.multiset_hash, ctx.mergeset_diff);
+                let new_virtual_state = VirtualState::new(
+                    virtual_parents,
+                    virtual_ghostdag_data,
+                    virtual_daa_score,
+                    virtual_bits,
+                    ctx.multiset_hash,
+                    ctx.mergeset_diff,
+                    ctx.accepted_tx_ids,
+                    ctx.mergeset_rewards,
+                    mergeset_non_daa,
+                    self.pruning_store.read().pruning_point().unwrap(),
+                );
 
                 let mut batch = WriteBatch::default();
 
@@ -336,7 +357,41 @@ impl VirtualStateProcessor {
         virtual_parents
     }
 
-    pub fn build_block_template(self: &Arc<Self>) {}
+    pub fn build_block_template(self: &Arc<Self>, timestamp: u64, nonce: u64, miner_data: MinerData) -> BlockTemplate {
+        let virtual_state = self.virtual_state_store.read().get().unwrap();
+        let coinbase = self
+            .coinbase_manager
+            .expected_coinbase_transaction(
+                virtual_state.daa_score,
+                miner_data.clone(),
+                &virtual_state.ghostdag_data,
+                &virtual_state.mergeset_rewards,
+                &virtual_state.mergeset_non_daa,
+            )
+            .unwrap();
+        let txs = vec![coinbase.tx];
+        let version = BLOCK_VERSION;
+        let parents_by_level = self.parents_manager.calc_block_parents(virtual_state.pruning_point, &virtual_state.parents);
+        let hash_merkle_root = calc_hash_merkle_root(&mut txs.iter());
+        let accepted_id_merkle_root = merkle::calc_merkle_root(virtual_state.accepted_tx_ids.iter().copied());
+        let utxo_commitment = virtual_state.multiset.clone().finalize();
+        let header = Header::new(
+            version,
+            parents_by_level,
+            hash_merkle_root,
+            accepted_id_merkle_root,
+            utxo_commitment,
+            timestamp,
+            virtual_state.bits,
+            nonce,
+            virtual_state.daa_score,
+            virtual_state.ghostdag_data.blue_work,
+            virtual_state.ghostdag_data.blue_score,
+            virtual_state.pruning_point,
+        );
+        let selected_parent_timestamp = self.headers_store.get_timestamp(virtual_state.ghostdag_data.selected_parent).unwrap();
+        BlockTemplate::new(Block::new(header, txs), miner_data, coinbase.has_red_reward, selected_parent_timestamp)
+    }
 
     fn maybe_update_pruning_point_and_candidate(self: &Arc<Self>) {
         let virtual_sp = self.virtual_state_store.read().get().unwrap().ghostdag_data.selected_parent;
@@ -378,6 +433,7 @@ impl VirtualStateProcessor {
                     .write()
                     .set(VirtualState::from_genesis(
                         self.genesis_hash,
+                        self.genesis_bits,
                         self.ghostdag_manager.ghostdag(&[self.genesis_hash]).as_ref().clone(),
                     ))
                     .unwrap();

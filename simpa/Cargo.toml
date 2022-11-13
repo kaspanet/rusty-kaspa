@@ -14,4 +14,5 @@ consensus-core.workspace = true
 consensus.workspace = true
 
 rand.workspace = true
+futures = "0.3"
 rand_distr = "0.4"

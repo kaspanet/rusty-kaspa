@@ -1,10 +1,15 @@
 use super::infra::{Environment, Process, Resumption, Suspension};
-use consensus::consensus::test_consensus::TestConsensus;
+use consensus::consensus::Consensus;
+use consensus::errors::BlockProcessResult;
+use consensus::model::stores::statuses::BlockStatus;
 use consensus_core::block::Block;
-use hashes::ZERO_HASH;
+use consensus_core::coinbase::MinerData;
+use consensus_core::tx::{ScriptPublicKey, ScriptVec};
 use rand::rngs::ThreadRng;
 use rand_distr::{Distribution, Exp};
 use std::cmp::max;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
 
 pub struct Miner {
@@ -12,7 +17,13 @@ pub struct Miner {
     pub(super) id: u64,
 
     // Consensus
-    pub(super) consensus: Arc<TestConsensus>,
+    pub(super) consensus: Arc<Consensus>,
+
+    // Miner data
+    miner_data: MinerData,
+
+    // Pending tasks
+    futures: Vec<Pin<Box<dyn Future<Output = BlockProcessResult<BlockStatus>>>>>,
 
     // Rand
     dist: Exp<f64>, // The time interval between Poisson(lambda) events distributes ~Exp(1/lambda)
@@ -20,25 +31,30 @@ pub struct Miner {
 }
 
 impl Miner {
-    pub fn new(id: u64, bps: f64, hashrate: f64, consensus: Arc<TestConsensus>) -> Self {
+    pub fn new(id: u64, bps: f64, hashrate: f64, consensus: Arc<Consensus>) -> Self {
         let lambda = bps / 1000.0;
-        Self { id, consensus, dist: Exp::new(1f64 / (lambda * hashrate)).unwrap(), rng: rand::thread_rng() }
+        Self {
+            id,
+            consensus,
+            miner_data: MinerData::new(ScriptPublicKey::new(0, ScriptVec::from_slice(&id.to_le_bytes())), Vec::new()), // TODO: real script pub key
+            futures: Vec::new(),
+            dist: Exp::new(1f64 / (lambda * hashrate)).unwrap(),
+            rng: rand::thread_rng(),
+        }
     }
 
-    fn new_block(&self) -> Block {
-        let max_parents = self.consensus.params.max_block_parents as usize;
-        let tips = self.consensus.body_tips(); // TEMP
-        let mut block = self.consensus.build_block_with_parents_and_transactions(
-            ZERO_HASH,
-            tips.iter().copied().take(max_parents).collect(),
-            vec![],
-        );
-        block.header.finalize();
-        block.to_immutable()
+    fn new_block(&mut self, timestamp: u64) -> Block {
+        // Sync on all before building the new block
+        for fut in self.futures.drain(..) {
+            futures::executor::block_on(fut).unwrap();
+        }
+        let nonce = self.id;
+        let block_template = self.consensus.build_block_template(timestamp, nonce, self.miner_data.clone());
+        block_template.block
     }
 
     pub fn mine(&mut self, env: &mut Environment<Block>) -> Suspension {
-        let block = self.new_block();
+        let block = self.new_block(env.now());
         env.broadcast(self.id, block);
         self.sample_mining_interval()
     }
@@ -48,7 +64,7 @@ impl Miner {
     }
 
     fn process_block(&mut self, block: Block) -> Suspension {
-        let _ = self.consensus.validate_and_insert_block(block);
+        self.futures.push(Box::pin(self.consensus.validate_and_insert_block(block)));
         Suspension::Idle
     }
 }

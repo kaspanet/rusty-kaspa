@@ -41,7 +41,20 @@ mod tests {
 
     #[test]
     fn test_header_hashing() {
-        let header = Header::new(1, vec![1.into()], Default::default(), 234, 23, 567, 0, 0.into(), 0);
+        let header = Header::new(
+            1,
+            vec![vec![1.into()]],
+            Default::default(),
+            Default::default(),
+            Default::default(),
+            234,
+            23,
+            567,
+            0,
+            0.into(),
+            0,
+            Default::default(),
+        );
         assert_ne!(blockhash::NONE, header.hash);
     }
 

@@ -59,3 +59,9 @@ pub struct BlockTemplate {
     pub coinbase_has_red_reward: bool,
     pub selected_parent_timestamp: u64,
 }
+
+impl BlockTemplate {
+    pub fn new(block: Block, miner_data: MinerData<Vec<u8>>, coinbase_has_red_reward: bool, selected_parent_timestamp: u64) -> Self {
+        Self { block, miner_data, coinbase_has_red_reward, selected_parent_timestamp }
+    }
+}
