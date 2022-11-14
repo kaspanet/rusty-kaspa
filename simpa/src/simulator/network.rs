@@ -9,12 +9,14 @@ use consensus::consensus::Consensus;
 use consensus::params::Params;
 use consensus_core::block::Block;
 
+type ConsensusWrapper = (Arc<Consensus>, Vec<JoinHandle<()>>, TempDbLifetime);
+
 pub struct KaspaNetworkSimulator {
     // Internal simulation env
     pub(super) simulation: Simulation<Block>,
 
     // Consensus instances
-    consensuses: Vec<(Arc<Consensus>, Vec<JoinHandle<()>>, TempDbLifetime)>,
+    consensuses: Vec<ConsensusWrapper>,
 
     params: Params, // Consensus params
     bps: f64,       // Blocks per second
@@ -40,10 +42,11 @@ impl KaspaNetworkSimulator {
         self
     }
 
-    pub fn run(&mut self, until: u64) {
+    pub fn run(&mut self, until: u64) -> ConsensusWrapper {
         self.simulation.run(until);
-        for (consensus, handles, _) in self.consensuses.drain(..) {
+        for (consensus, handles, _) in self.consensuses.drain(1..) {
             consensus.shutdown(handles);
         }
+        self.consensuses.pop().unwrap()
     }
 }

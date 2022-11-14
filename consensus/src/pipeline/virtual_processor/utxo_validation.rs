@@ -114,7 +114,7 @@ impl VirtualStateProcessor {
         if expected_commitment != header.utxo_commitment {
             return Err(BadUTXOCommitment(header.hash, header.utxo_commitment, expected_commitment));
         }
-        trace!("correct commitment: {}, {}", header.hash, expected_commitment);
+        // trace!("correct commitment: {}, {}", header.hash, expected_commitment);
 
         // Verify header accepted_id_merkle_root
         // NOTE: when subnetworks will be enabled, the sort should consider them in order to allow grouping under a merkle subtree
@@ -161,12 +161,12 @@ impl VirtualStateProcessor {
             .expected_coinbase_transaction(daa_score, miner_data, ghostdag_data, mergeset_rewards, mergeset_non_daa)
             .unwrap()
             .tx;
-        trace!(
-            "mergeset: {} blues, {} reds, {} non-DAA",
-            ghostdag_data.mergeset_blues.len(),
-            ghostdag_data.mergeset_reds.len(),
-            mergeset_non_daa.len()
-        );
+        // trace!(
+        //     "mergeset: {} blues, {} reds, {} non-DAA",
+        //     ghostdag_data.mergeset_blues.len(),
+        //     ghostdag_data.mergeset_reds.len(),
+        //     mergeset_non_daa.len()
+        // );
         if hashing::tx::hash(coinbase) != hashing::tx::hash(&expected_coinbase) {
             Err(BadCoinbaseTransaction)
         } else {

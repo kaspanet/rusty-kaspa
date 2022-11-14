@@ -52,7 +52,7 @@ impl Miner {
     }
 
     fn new_block(&mut self, timestamp: u64) -> Block {
-        // Sync on all before building the new block
+        // Sync on all processed blocks before building the new block
         for fut in self.futures.drain(..) {
             futures::executor::block_on(fut).unwrap();
         }

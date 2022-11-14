@@ -26,8 +26,7 @@ use crate::{
         headers::{DbHeadersStore, HeaderStoreReader},
         pruning::PruningStoreReader,
         reachability::DbReachabilityStore,
-        statuses::{BlockStatus, StatusesStoreReader},
-        tips::TipsStoreReader,
+        statuses::BlockStatus,
         DB,
     },
     params::Params,
@@ -142,14 +141,12 @@ impl TestConsensus {
         &self.consensus.past_median_time_manager
     }
 
-    // TODO: add to consensus API
     pub fn body_tips(&self) -> Arc<BlockHashSet> {
-        self.consensus.body_tips_store.read().get().unwrap()
+        self.consensus.body_tips()
     }
 
-    // TODO: add to consensus API
     pub fn block_status(&self, hash: Hash) -> BlockStatus {
-        self.consensus.statuses_store.read().get(hash).unwrap()
+        self.consensus.block_status(hash)
     }
 
     pub fn ghostdag_manager(&self) -> &DbGhostdagManager {

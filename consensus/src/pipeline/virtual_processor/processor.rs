@@ -177,7 +177,7 @@ impl VirtualStateProcessor {
             // This is done since virtual processing is not a per-block
             // operation, so it benefits from max available info
             let tasks: Vec<BlockTask> = std::iter::once(first_task).chain(self.receiver.try_iter()).collect();
-            trace!("virtual processor received {} tasks", tasks.len());
+            // trace!("virtual processor received {} tasks", tasks.len());
 
             self.resolve_virtual();
 

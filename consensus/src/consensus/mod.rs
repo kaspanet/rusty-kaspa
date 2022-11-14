@@ -18,8 +18,8 @@ use crate::{
             pruning::DbPruningStore,
             reachability::DbReachabilityStore,
             relations::DbRelationsStore,
-            statuses::{BlockStatus, DbStatusesStore},
-            tips::DbTipsStore,
+            statuses::{BlockStatus, DbStatusesStore, StatusesStoreReader},
+            tips::{DbTipsStore, TipsStoreReader},
             utxo_diffs::DbUtxoDiffsStore,
             utxo_multisets::DbUtxoMultisetsStore,
             DB,
@@ -42,8 +42,10 @@ use crate::{
 use consensus_core::{
     block::{Block, BlockTemplate},
     coinbase::MinerData,
+    BlockHashSet,
 };
 use crossbeam_channel::{unbounded, Receiver, Sender};
+use hashes::Hash;
 use kaspa_core::{core::Core, service::Service};
 use parking_lot::RwLock;
 use std::future::Future;
@@ -71,12 +73,13 @@ pub struct Consensus {
 
     // Stores
     statuses_store: Arc<RwLock<DbStatusesStore>>,
-    relations_store: Arc<RwLock<DbRelationsStore>>,
+    pub relations_store: Arc<RwLock<DbRelationsStore>>,
     reachability_store: Arc<RwLock<DbReachabilityStore>>,
     pruning_store: Arc<RwLock<DbPruningStore>>,
     headers_selected_tip_store: Arc<RwLock<DbHeadersSelectedTipStore>>,
     body_tips_store: Arc<RwLock<DbTipsStore>>,
-    pub(super) headers_store: Arc<DbHeadersStore>,
+    pub headers_store: Arc<DbHeadersStore>,
+    pub block_transactions_store: Arc<DbBlockTransactionsStore>,
 
     // Append-only stores
     pub(super) ghostdag_store: Arc<DbGhostdagStore>,
@@ -274,7 +277,7 @@ impl Consensus {
             ghostdag_store.clone(),
             headers_store.clone(),
             daa_store,
-            block_transactions_store,
+            block_transactions_store.clone(),
             pruning_store.clone(),
             past_pruning_points_store,
             body_tips_store.clone(),
@@ -305,6 +308,7 @@ impl Consensus {
             headers_selected_tip_store,
             body_tips_store,
             headers_store,
+            block_transactions_store,
 
             statuses_service,
             relations_service,
@@ -349,6 +353,14 @@ impl Consensus {
 
     pub fn build_block_template(self: &Arc<Self>, timestamp: u64, nonce: u64, miner_data: MinerData) -> BlockTemplate {
         self.virtual_processor.build_block_template(timestamp, nonce, miner_data)
+    }
+
+    pub fn body_tips(&self) -> Arc<BlockHashSet> {
+        self.body_tips_store.read().get().unwrap()
+    }
+
+    pub fn block_status(&self, hash: Hash) -> BlockStatus {
+        self.statuses_store.read().get(hash).unwrap()
     }
 
     pub fn signal_exit(&self) {

@@ -38,6 +38,10 @@ impl Block {
         Self { header: Arc::new(header), transactions: Arc::new(txs) }
     }
 
+    pub fn from_arcs(header: Arc<Header>, transactions: Arc<Vec<Transaction>>) -> Self {
+        Self { header, transactions }
+    }
+
     pub fn from_header(header: Header) -> Self {
         Self { header: Arc::new(header), transactions: Arc::new(Vec::new()) }
     }
