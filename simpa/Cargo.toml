@@ -16,3 +16,4 @@ consensus.workspace = true
 rand.workspace = true
 futures = "0.3"
 rand_distr = "0.4"
+secp256k1 = { version = "0.24", features = ["global-context", "rand-std"] }

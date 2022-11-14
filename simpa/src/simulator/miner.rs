@@ -21,6 +21,7 @@ pub struct Miner {
 
     // Miner data
     miner_data: MinerData,
+    _secret_key: secp256k1::SecretKey,
 
     // Pending tasks
     futures: Vec<Pin<Box<dyn Future<Output = BlockProcessResult<BlockStatus>>>>>,
@@ -31,11 +32,19 @@ pub struct Miner {
 }
 
 impl Miner {
-    pub fn new(id: u64, bps: f64, hashrate: f64, consensus: Arc<Consensus>) -> Self {
+    pub fn new(
+        id: u64,
+        bps: f64,
+        hashrate: f64,
+        sk: secp256k1::SecretKey,
+        pk: secp256k1::PublicKey,
+        consensus: Arc<Consensus>,
+    ) -> Self {
         Self {
             id,
             consensus,
-            miner_data: MinerData::new(ScriptPublicKey::new(0, ScriptVec::from_slice(&id.to_le_bytes())), Vec::new()), // TODO: real script pub key
+            miner_data: MinerData::new(ScriptPublicKey::new(0, ScriptVec::from_slice(&pk.serialize())), Vec::new()),
+            _secret_key: sk,
             futures: Vec::new(),
             dist: Exp::new(1f64 / (bps * hashrate)).unwrap(),
             rng: rand::thread_rng(),
@@ -58,7 +67,7 @@ impl Miner {
         self.sample_mining_interval()
     }
 
-    pub fn sample_mining_interval(&mut self) -> Suspension {
+    fn sample_mining_interval(&mut self) -> Suspension {
         Suspension::Timeout(max((self.dist.sample(&mut self.rng) * 1000.0) as u64, 1))
     }
 

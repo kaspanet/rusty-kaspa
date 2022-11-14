@@ -26,11 +26,14 @@ impl KaspaNetworkSimulator {
     }
 
     pub fn init(&mut self, num_miners: u64) -> &mut Self {
+        let secp = secp256k1::Secp256k1::new();
+        let mut rng = rand::thread_rng();
         for i in 0..num_miners {
             let (lifetime, db) = create_temp_db();
             let consensus = Arc::new(Consensus::new(db, &self.params));
             let handles = consensus.init();
-            let miner_process = Box::new(Miner::new(i, self.bps, 1f64 / num_miners as f64, consensus.clone()));
+            let (sk, pk) = secp.generate_keypair(&mut rng);
+            let miner_process = Box::new(Miner::new(i, self.bps, 1f64 / num_miners as f64, sk, pk, consensus.clone()));
             self.simulation.register(i, miner_process);
             self.consensuses.push((consensus, handles, lifetime));
         }
