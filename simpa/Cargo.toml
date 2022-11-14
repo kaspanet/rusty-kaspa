@@ -14,6 +14,9 @@ consensus-core.workspace = true
 consensus.workspace = true
 
 rand.workspace = true
+itertools.workspace = true
+futures-util.workspace = true
+
 futures = "0.3"
 rand_distr = "0.4"
 tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread"] }
