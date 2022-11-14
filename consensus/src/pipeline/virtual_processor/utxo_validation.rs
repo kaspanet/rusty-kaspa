@@ -95,6 +95,10 @@ impl VirtualStateProcessor {
                 BlockRewardData::new(coinbase_data.subsidy, block_fee, coinbase_data.miner_data.script_public_key),
             );
         }
+
+        // Make sure accepted tx ids are sorted before building the merkle root
+        // NOTE: when subnetworks will be enabled, the sort should consider them in order to allow grouping under a merkle subtree
+        ctx.accepted_tx_ids.sort();
     }
 
     /// Verify that the current block fully respects its own UTXO view. We define a block as
@@ -117,8 +121,6 @@ impl VirtualStateProcessor {
         // trace!("correct commitment: {}, {}", header.hash, expected_commitment);
 
         // Verify header accepted_id_merkle_root
-        // NOTE: when subnetworks will be enabled, the sort should consider them in order to allow grouping under a merkle subtree
-        ctx.accepted_tx_ids.sort();
         let expected_accepted_id_merkle_root = merkle::calc_merkle_root(ctx.accepted_tx_ids.iter().copied());
         if expected_accepted_id_merkle_root != header.accepted_id_merkle_root {
             return Err(BadAcceptedIDMerkleRoot(header.hash, header.accepted_id_merkle_root, expected_accepted_id_merkle_root));

@@ -35,7 +35,7 @@ impl KaspaNetworkSimulator {
             let consensus = Arc::new(Consensus::new(db, &self.params));
             let handles = consensus.init();
             let (sk, pk) = secp.generate_keypair(&mut rng);
-            let miner_process = Box::new(Miner::new(i, self.bps, 1f64 / num_miners as f64, sk, pk, consensus.clone()));
+            let miner_process = Box::new(Miner::new(i, self.bps, 1f64 / num_miners as f64, sk, pk, consensus.clone(), &self.params));
             self.simulation.register(i, miner_process);
             self.consensuses.push((consensus, handles, lifetime));
         }

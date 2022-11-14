@@ -17,7 +17,7 @@ pub fn sign(tx: &PopulatedTransaction, privkey: [u8; 32]) -> Transaction {
         let sig: [u8; 64] = *schnorr_key.sign_schnorr(msg).as_ref();
         input.signature_script = std::iter::once(65u8).chain(sig).chain([SIG_HASH_ALL.to_u8()]).collect();
     }
-
+    return_tx.finalize();
     return_tx
 }
 

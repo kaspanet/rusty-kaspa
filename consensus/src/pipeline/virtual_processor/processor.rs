@@ -35,10 +35,11 @@ use crate::{
     },
 };
 use consensus_core::{
-    block::{Block, BlockTemplate},
+    block::{BlockTemplate, MutableBlock},
     coinbase::MinerData,
     header::Header,
     merkle::calc_hash_merkle_root,
+    tx::Transaction,
     utxo::{utxo_diff::UtxoDiff, utxo_view::UtxoViewComposition},
 };
 use hashes::Hash;
@@ -85,8 +86,8 @@ pub struct VirtualStateProcessor {
     pub(super) utxo_diffs_store: Arc<DbUtxoDiffsStore>,
     pub(super) utxo_multisets_store: Arc<DbUtxoMultisetsStore>,
     pub(super) acceptance_data_store: Arc<DbAcceptanceDataStore>,
-    pub(super) virtual_utxo_store: Arc<DbUtxoSetStore>,
-    pub(super) virtual_state_store: Arc<RwLock<DbVirtualStateStore>>,
+    pub virtual_utxo_store: Arc<DbUtxoSetStore>,
+    pub virtual_state_store: Arc<RwLock<DbVirtualStateStore>>,
 
     // Managers and services
     pub(super) ghostdag_manager: DbGhostdagManager,
@@ -357,7 +358,13 @@ impl VirtualStateProcessor {
         virtual_parents
     }
 
-    pub fn build_block_template(self: &Arc<Self>, timestamp: u64, nonce: u64, miner_data: MinerData) -> BlockTemplate {
+    pub fn build_block_template(
+        self: &Arc<Self>,
+        timestamp: u64,
+        nonce: u64,
+        miner_data: MinerData,
+        mut txs: Vec<Transaction>,
+    ) -> BlockTemplate {
         let virtual_state = self.virtual_state_store.read().get().unwrap();
         let coinbase = self
             .coinbase_manager
@@ -369,7 +376,7 @@ impl VirtualStateProcessor {
                 &virtual_state.mergeset_non_daa,
             )
             .unwrap();
-        let txs = vec![coinbase.tx];
+        txs.insert(0, coinbase.tx);
         let version = BLOCK_VERSION;
         let parents_by_level = self.parents_manager.calc_block_parents(virtual_state.pruning_point, &virtual_state.parents);
         let hash_merkle_root = calc_hash_merkle_root(&mut txs.iter());
@@ -390,7 +397,7 @@ impl VirtualStateProcessor {
             virtual_state.pruning_point,
         );
         let selected_parent_timestamp = self.headers_store.get_timestamp(virtual_state.ghostdag_data.selected_parent).unwrap();
-        BlockTemplate::new(Block::new(header, txs), miner_data, coinbase.has_red_reward, selected_parent_timestamp)
+        BlockTemplate::new(MutableBlock::new(header, txs), miner_data, coinbase.has_red_reward, selected_parent_timestamp)
     }
 
     fn maybe_update_pruning_point_and_candidate(self: &Arc<Self>) {

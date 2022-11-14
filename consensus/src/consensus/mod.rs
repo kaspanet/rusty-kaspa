@@ -42,6 +42,7 @@ use crate::{
 use consensus_core::{
     block::{Block, BlockTemplate},
     coinbase::MinerData,
+    tx::Transaction,
     BlockHashSet,
 };
 use crossbeam_channel::{unbounded, Receiver, Sender};
@@ -69,7 +70,7 @@ pub struct Consensus {
     // Processors
     header_processor: Arc<HeaderProcessor>,
     pub(super) body_processor: Arc<BlockBodyProcessor>,
-    virtual_processor: Arc<VirtualStateProcessor>,
+    pub virtual_processor: Arc<VirtualStateProcessor>,
 
     // Stores
     statuses_store: Arc<RwLock<DbStatusesStore>>,
@@ -351,8 +352,14 @@ impl Consensus {
         async { rx.await.unwrap() }
     }
 
-    pub fn build_block_template(self: &Arc<Self>, timestamp: u64, nonce: u64, miner_data: MinerData) -> BlockTemplate {
-        self.virtual_processor.build_block_template(timestamp, nonce, miner_data)
+    pub fn build_block_template(
+        self: &Arc<Self>,
+        timestamp: u64,
+        nonce: u64,
+        miner_data: MinerData,
+        txs: Vec<Transaction>,
+    ) -> BlockTemplate {
+        self.virtual_processor.build_block_template(timestamp, nonce, miner_data, txs)
     }
 
     pub fn body_tips(&self) -> Arc<BlockHashSet> {

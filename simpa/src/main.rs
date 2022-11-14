@@ -20,7 +20,7 @@ fn main() {
     let bps = 8.0;
     let delay = 2.0;
     let num_miners = 8;
-    let until = 500 * 1000; // In milliseconds
+    let until = 50 * 1000; // In milliseconds
     let params = DEVNET_PARAMS.clone_with_skip_pow();
     let mut sim = KaspaNetworkSimulator::new(delay, bps, &params);
     let (consensus, handles, _lifetime) = sim.init(num_miners).run(until);
