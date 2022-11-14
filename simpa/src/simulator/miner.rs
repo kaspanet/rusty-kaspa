@@ -73,7 +73,7 @@ impl Miner {
             secret_key: sk,
             futures: Vec::new(),
             possible_unspent_outpoints: HashSet::new(),
-            dist: Exp::new(1f64 / (bps * hashrate)).unwrap(),
+            dist: Exp::new(bps * hashrate).unwrap(),
             rng: rand::thread_rng(),
             num_blocks: 0,
             sim_time: 0,

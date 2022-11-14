@@ -80,10 +80,9 @@ impl<T: Clone> Environment<T> {
         self.event_queue.push(Event::new(self.now + timeout, dest, None))
     }
 
-    pub fn broadcast(&mut self, sender: u64, msg: T) {
+    pub fn broadcast(&mut self, _sender: u64, msg: T) {
         for &id in self.process_ids.iter() {
-            let delay = if id == sender { 0 } else { self.broadcast_delay };
-            self.event_queue.push(Event::new(self.now + delay, id, Some(msg.clone())));
+            self.event_queue.push(Event::new(self.now + self.broadcast_delay, id, Some(msg.clone())));
         }
     }
 

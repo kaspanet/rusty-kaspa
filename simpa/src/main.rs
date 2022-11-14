@@ -30,7 +30,7 @@ struct Args {
     delay: f64,
 
     /// Number of miners
-    #[arg(short, long, default_value_t = 8)]
+    #[arg(short, long, default_value_t = 2)]
     miners: u64,
 
     /// Target transactions per block
@@ -91,7 +91,7 @@ fn main() {
 #[tokio::main]
 async fn validate(src_consensus: &Consensus, dst_consensus: &Consensus, params: &Params) {
     let hashes = topologically_ordered_hashes(src_consensus, params.genesis_hash);
-    print_stats(src_consensus, &hashes);
+    print_stats(src_consensus, &hashes, params.ghostdag_k);
     eprintln!("Validating {} blocks", hashes.len());
     let start = std::time::Instant::now();
     let chunks = hashes.into_iter().chunks(1000);
@@ -148,7 +148,7 @@ fn topologically_ordered_hashes(src_consensus: &Consensus, genesis_hash: Hash) -
     vec
 }
 
-fn print_stats(src_consensus: &Consensus, hashes: &[Hash]) {
+fn print_stats(src_consensus: &Consensus, hashes: &[Hash], k: u8) {
     let blues_mean = hashes.iter().map(|&h| src_consensus.ghostdag_store.get_data(h).unwrap().mergeset_blues.len()).sum::<usize>()
         as f64
         / hashes.len() as f64;
@@ -160,6 +160,7 @@ fn print_stats(src_consensus: &Consensus, hashes: &[Hash]) {
         / hashes.len() as f64;
     let txs_mean = hashes.iter().map(|&h| src_consensus.block_transactions_store.get(h).unwrap().len()).sum::<usize>() as f64
         / hashes.len() as f64;
+    println!("[GHOSTDAG K={}]", k);
     println!(
         "[Average stats of generated DAG] blues: {}, reds: {}, parents: {}, txs: {}",
         blues_mean, reds_mean, parents_mean, txs_mean
