@@ -83,7 +83,7 @@ pub struct Consensus {
     pub block_transactions_store: Arc<DbBlockTransactionsStore>,
 
     // Append-only stores
-    pub(super) ghostdag_store: Arc<DbGhostdagStore>,
+    pub ghostdag_store: Arc<DbGhostdagStore>,
 
     // Services and managers
     statuses_service: Arc<MTStatusesService<DbStatusesStore>>,

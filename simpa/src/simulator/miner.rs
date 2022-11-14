@@ -173,8 +173,8 @@ impl Miner {
         if !self.verbose || self.id > 0 {
             return;
         }
-        if self.num_blocks % 50 == 0 || self.sim_time / 2000 != env.now() / 2000 {
-            println!("Simulation time: {}. Generated {} blocks.", env.now() as f64 / 1000.0, self.num_blocks);
+        if self.num_blocks % 50 == 0 || self.sim_time / 5000 != env.now() / 5000 {
+            println!("Simulation time: {}.  \tGenerated {} blocks.", env.now() as f64 / 1000.0, self.num_blocks);
         }
         self.num_blocks += 1;
         self.sim_time = env.now();

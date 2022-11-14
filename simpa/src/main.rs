@@ -3,8 +3,8 @@ use consensus::{
     consensus::{test_consensus::create_temp_db, Consensus},
     errors::{BlockProcessResult, RuleError},
     model::stores::{
-        block_transactions::BlockTransactionsStoreReader, headers::HeaderStoreReader, relations::RelationsStoreReader,
-        statuses::BlockStatus,
+        block_transactions::BlockTransactionsStoreReader, ghostdag::GhostdagStoreReader, headers::HeaderStoreReader,
+        relations::RelationsStoreReader, statuses::BlockStatus,
     },
     params::{Params, DEVNET_PARAMS},
 };
@@ -90,7 +90,8 @@ fn main() {
 
 #[tokio::main]
 async fn validate(src_consensus: &Consensus, dst_consensus: &Consensus, params: &Params) {
-    let hashes = topologically_ordered_hashes(src_consensus, params);
+    let hashes = topologically_ordered_hashes(src_consensus, params.genesis_hash);
+    print_stats(src_consensus, &hashes);
     eprintln!("Validating {} blocks", hashes.len());
     let start = std::time::Instant::now();
     let chunks = hashes.into_iter().chunks(1000);
@@ -130,8 +131,8 @@ fn submit_chunk(
     futures
 }
 
-fn topologically_ordered_hashes(src_consensus: &Consensus, params: &Params) -> Vec<Hash> {
-    let mut queue: VecDeque<Hash> = std::iter::once(params.genesis_hash).collect();
+fn topologically_ordered_hashes(src_consensus: &Consensus, genesis_hash: Hash) -> Vec<Hash> {
+    let mut queue: VecDeque<Hash> = std::iter::once(genesis_hash).collect();
     let mut visited = BlockHashSet::new();
     let mut vec = Vec::new();
     let relations = src_consensus.relations_store.read();
@@ -145,4 +146,22 @@ fn topologically_ordered_hashes(src_consensus: &Consensus, params: &Params) -> V
     }
     vec.sort_by_cached_key(|&h| src_consensus.headers_store.get_timestamp(h).unwrap());
     vec
+}
+
+fn print_stats(src_consensus: &Consensus, hashes: &[Hash]) {
+    let blues_mean = hashes.iter().map(|&h| src_consensus.ghostdag_store.get_data(h).unwrap().mergeset_blues.len()).sum::<usize>()
+        as f64
+        / hashes.len() as f64;
+    let reds_mean = hashes.iter().map(|&h| src_consensus.ghostdag_store.get_data(h).unwrap().mergeset_reds.len()).sum::<usize>()
+        as f64
+        / hashes.len() as f64;
+    let parents_mean = hashes.iter().map(|&h| src_consensus.headers_store.get_header(h).unwrap().direct_parents().len()).sum::<usize>()
+        as f64
+        / hashes.len() as f64;
+    let txs_mean = hashes.iter().map(|&h| src_consensus.block_transactions_store.get(h).unwrap().len()).sum::<usize>() as f64
+        / hashes.len() as f64;
+    println!(
+        "[Average stats of generated DAG] blues: {}, reds: {}, parents: {}, txs: {}",
+        blues_mean, reds_mean, parents_mean, txs_mean
+    );
 }
