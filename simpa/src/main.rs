@@ -46,10 +46,37 @@ struct Args {
     quiet: bool,
 }
 
+/// Calculates the k parameter of the GHOSTDAG protocol such that anticones lager than k will be created
+/// with probability less than 'delta' (follows eq. 1 from section 4.2 of the PHANTOM paper)
+/// `x` is expected to be 2Dλ where D is the maximal network delay and λ is the block mining rate.
+/// `delta` is an upper bound for the probability of anticones larger than k.
+/// Returns the minimal k such that the above conditions hold.
+fn calculate_ghostdag_k(x: f64, delta: f64) -> u64 {
+    assert!(x > 0.0);
+    assert!(delta > 0.0 && delta < 1.0);
+    let (mut k_hat, mut sigma, mut fraction, exp) = (0u64, 0.0, 1.0, std::f64::consts::E.powf(-x));
+    loop {
+        sigma += exp * fraction;
+        if 1.0 - sigma < delta {
+            return k_hat;
+        }
+        k_hat += 1;
+        fraction *= x / k_hat as f64 // Computes x^k_hat/k_hat!
+    }
+}
+
 fn main() {
     let args = Args::parse();
+    let mut params = DEVNET_PARAMS.clone_with_skip_pow();
+    if args.bps > 1.0 || args.delay > 2.0 {
+        let k = calculate_ghostdag_k(2.0 * args.delay * args.bps, 0.05);
+        let k = u64::min(k, u8::MAX as u64) as u8; // Clamp to u8::MAX
+        params.ghostdag_k = k;
+        params.mergeset_size_limit = k as u64 * 10;
+        params.max_block_parents = u8::max((0.66 * k as f64) as u8, 10);
+        println!("The delay times bps product is larger than 2 (2Dλ={}), setting GHOSTDAG K={}", 2.0 * args.delay * args.bps, k);
+    }
     let until = args.sim_time * 1000; // milliseconds
-    let params = DEVNET_PARAMS.clone_with_skip_pow();
     let mut sim = KaspaNetworkSimulator::new(args.delay, args.bps, &params);
     let (consensus, handles, _lifetime) = sim.init(args.miners, args.tpb, !args.quiet).run(until);
     consensus.shutdown(handles);
