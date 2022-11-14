@@ -69,11 +69,14 @@ fn main() {
     let args = Args::parse();
     let mut params = DEVNET_PARAMS.clone_with_skip_pow();
     if args.bps > 1.0 || args.delay > 2.0 {
-        let k = calculate_ghostdag_k(2.0 * args.delay * args.bps, 0.05);
+        let k = u64::max(calculate_ghostdag_k(2.0 * args.delay * args.bps, 0.05), params.ghostdag_k as u64);
         let k = u64::min(k, u8::MAX as u64) as u8; // Clamp to u8::MAX
         params.ghostdag_k = k;
         params.mergeset_size_limit = k as u64 * 10;
         params.max_block_parents = u8::max((0.66 * k as f64) as u8, 10);
+        params.target_time_per_block = (1000.0 / args.bps) as u64;
+        params.merge_depth = (params.merge_depth as f64 * args.bps) as u64;
+        params.difficulty_window_size = (params.difficulty_window_size as f64 * args.bps) as usize; // Scale the DAA window linearly with BPS
         println!("The delay times bps product is larger than 2 (2Dλ={}), setting GHOSTDAG K={}", 2.0 * args.delay * args.bps, k);
     }
     let until = args.sim_time * 1000; // milliseconds
@@ -83,15 +86,15 @@ fn main() {
     let (_lifetime2, db2) = create_temp_db();
     let consensus2 = Arc::new(Consensus::new(db2, &params));
     let handles2 = consensus2.init();
-    validate(&consensus, &consensus2, &params);
+    validate(&consensus, &consensus2, &params, args.delay, args.bps);
     consensus2.shutdown(handles2);
     drop(consensus);
 }
 
 #[tokio::main]
-async fn validate(src_consensus: &Consensus, dst_consensus: &Consensus, params: &Params) {
+async fn validate(src_consensus: &Consensus, dst_consensus: &Consensus, params: &Params, delay: f64, bps: f64) {
     let hashes = topologically_ordered_hashes(src_consensus, params.genesis_hash);
-    print_stats(src_consensus, &hashes, params.ghostdag_k);
+    print_stats(src_consensus, &hashes, delay, bps, params.ghostdag_k);
     eprintln!("Validating {} blocks", hashes.len());
     let start = std::time::Instant::now();
     let chunks = hashes.into_iter().chunks(1000);
@@ -148,7 +151,7 @@ fn topologically_ordered_hashes(src_consensus: &Consensus, genesis_hash: Hash) -
     vec
 }
 
-fn print_stats(src_consensus: &Consensus, hashes: &[Hash], k: u8) {
+fn print_stats(src_consensus: &Consensus, hashes: &[Hash], delay: f64, bps: f64, k: u8) {
     let blues_mean = hashes.iter().map(|&h| src_consensus.ghostdag_store.get_data(h).unwrap().mergeset_blues.len()).sum::<usize>()
         as f64
         / hashes.len() as f64;
@@ -160,7 +163,7 @@ fn print_stats(src_consensus: &Consensus, hashes: &[Hash], k: u8) {
         / hashes.len() as f64;
     let txs_mean = hashes.iter().map(|&h| src_consensus.block_transactions_store.get(h).unwrap().len()).sum::<usize>() as f64
         / hashes.len() as f64;
-    println!("[GHOSTDAG K={}]", k);
+    println!("[DELAY={}, BPS={}, GHOSTDAG K={}]", delay, bps, k);
     println!(
         "[Average stats of generated DAG] blues: {}, reds: {}, parents: {}, txs: {}",
         blues_mean, reds_mean, parents_mean, txs_mean
