@@ -9,7 +9,7 @@ use consensus_core::coinbase::MinerData;
 use consensus_core::sign::sign;
 use consensus_core::subnets::SUBNETWORK_ID_NATIVE;
 use consensus_core::tx::{
-    PopulatedTransaction, ScriptPublicKey, ScriptVec, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput,
+    PopulatedTransaction, ScriptPublicKey, ScriptVec, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry,
 };
 use consensus_core::utxo::utxo_view::UtxoView;
 use kaspa_core::assert_match;
@@ -42,6 +42,10 @@ pub struct Miner {
     // Rand
     dist: Exp<f64>, // The time interval between Poisson(lambda) events distributes ~Exp(1/lambda)
     rng: ThreadRng,
+
+    // Counters
+    num_blocks: u64,
+    sim_time: u64,
 }
 
 impl Miner {
@@ -64,6 +68,8 @@ impl Miner {
             possible_outpoints: HashSet::new(),
             dist: Exp::new(1f64 / (bps * hashrate)).unwrap(),
             rng: rand::thread_rng(),
+            num_blocks: 0,
+            sim_time: 0,
         }
     }
 
@@ -87,36 +93,43 @@ impl Miner {
             if txs.len() >= 150 {
                 break;
             }
-            if let Some(entry) = self.consensus.virtual_processor.virtual_utxo_store.get(&outpoint) {
-                if entry.amount < 2
-                    || (entry.is_coinbase
-                        && (virtual_state.daa_score as i64 - entry.block_daa_score as i64) <= self.params.coinbase_maturity as i64)
-                {
-                    continue;
-                }
-                let unsigned_tx = Transaction::new(
-                    0,
-                    vec![TransactionInput::new(outpoint, vec![], 0, 0)],
-                    if self.possible_outpoints.len() < 10_000 && entry.amount > 4 {
-                        vec![
-                            TransactionOutput::new(entry.amount / 2, self.miner_data.script_public_key.clone()),
-                            TransactionOutput::new(entry.amount / 2 - 1, self.miner_data.script_public_key.clone()),
-                        ]
-                    } else {
-                        vec![TransactionOutput::new(entry.amount - 1, self.miner_data.script_public_key.clone())]
-                    },
-                    0,
-                    SUBNETWORK_ID_NATIVE,
-                    0,
-                    vec![],
-                );
-                let signed_tx = sign(&PopulatedTransaction::new(&unsigned_tx, vec![entry]), self.secret_key.secret_bytes());
-                txs.push(signed_tx);
-                spent_outpoints.insert(outpoint);
-            }
+            let Some(entry) = self.get_spendable_entry(outpoint, virtual_state.daa_score) else { continue; };
+            let unsigned_tx = self.create_unsigned_tx(outpoint, entry.amount, self.possible_outpoints.len() < 10_000);
+            let signed_tx = sign(&PopulatedTransaction::new(&unsigned_tx, vec![entry]), self.secret_key.secret_bytes());
+            txs.push(signed_tx);
+            spent_outpoints.insert(outpoint);
         }
         self.possible_outpoints.retain(|o| !spent_outpoints.contains(o));
         txs
+    }
+
+    fn get_spendable_entry(&self, outpoint: TransactionOutpoint, virtual_daa_score: u64) -> Option<UtxoEntry> {
+        let Some(entry) = self.consensus.virtual_processor.virtual_utxo_store.get(&outpoint) else { return None; };
+        if entry.amount < 2
+            || (entry.is_coinbase && (virtual_daa_score as i64 - entry.block_daa_score as i64) <= self.params.coinbase_maturity as i64)
+        {
+            return None;
+        }
+        Some(entry)
+    }
+
+    fn create_unsigned_tx(&self, outpoint: TransactionOutpoint, input_amount: u64, double_outputs: bool) -> Transaction {
+        Transaction::new(
+            0,
+            vec![TransactionInput::new(outpoint, vec![], 0, 0)],
+            if double_outputs && input_amount > 4 {
+                vec![
+                    TransactionOutput::new(input_amount / 2, self.miner_data.script_public_key.clone()),
+                    TransactionOutput::new(input_amount / 2 - 1, self.miner_data.script_public_key.clone()),
+                ]
+            } else {
+                vec![TransactionOutput::new(input_amount - 1, self.miner_data.script_public_key.clone())]
+            },
+            0,
+            SUBNETWORK_ID_NATIVE,
+            0,
+            vec![],
+        )
     }
 
     pub fn mine(&mut self, env: &mut Environment<Block>) -> Suspension {
@@ -129,7 +142,7 @@ impl Miner {
         Suspension::Timeout(max((self.dist.sample(&mut self.rng) * 1000.0) as u64, 1))
     }
 
-    fn process_block(&mut self, block: Block) -> Suspension {
+    fn process_block(&mut self, block: Block, env: &mut Environment<Block>) -> Suspension {
         for tx in block.transactions.iter() {
             for (i, output) in tx.outputs.iter().enumerate() {
                 if output.script_public_key.eq(&self.miner_data.script_public_key) {
@@ -137,8 +150,20 @@ impl Miner {
                 }
             }
         }
+        self.report_progress(env);
         self.futures.push(Box::pin(self.consensus.validate_and_insert_block(block)));
         Suspension::Idle
+    }
+
+    fn report_progress(&mut self, env: &mut Environment<Block>) {
+        if self.id > 0 {
+            return;
+        }
+        if self.num_blocks % 50 == 0 || self.sim_time / 2000 != env.now() / 2000 {
+            println!("Simulation time: {}. Processed {} blocks.", env.now(), self.num_blocks);
+        }
+        self.num_blocks += 1;
+        self.sim_time = env.now();
     }
 }
 
@@ -147,7 +172,7 @@ impl Process<Block> for Miner {
         match resumption {
             Resumption::Initial => self.sample_mining_interval(),
             Resumption::Scheduled => self.mine(env),
-            Resumption::Message(block) => self.process_block(block),
+            Resumption::Message(block) => self.process_block(block, env),
         }
     }
 }
