@@ -1,6 +1,6 @@
 use super::infra::{Environment, Process, Resumption, Suspension};
 use consensus::consensus::Consensus;
-use consensus::errors::BlockProcessResult;
+use consensus::errors::{BlockProcessResult, RuleError};
 use consensus::model::stores::statuses::BlockStatus;
 use consensus::model::stores::virtual_state::VirtualStateStoreReader;
 use consensus::params::Params;
@@ -12,7 +12,7 @@ use consensus_core::tx::{
     PopulatedTransaction, ScriptPublicKey, ScriptVec, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry,
 };
 use consensus_core::utxo::utxo_view::UtxoView;
-use kaspa_core::assert_match;
+use futures::future::join_all;
 use rand::rngs::ThreadRng;
 use rand_distr::{Distribution, Exp};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
@@ -41,7 +41,7 @@ pub struct Miner {
     possible_unspent_outpoints: HashSet<TransactionOutpoint>,
 
     // Rand
-    dist: Exp<f64>, // The time interval between Poisson(lambda) events distributes ~Exp(1/lambda)
+    dist: Exp<f64>, // The time interval between Poisson(lambda) events distributes ~Exp(lambda)
     rng: ThreadRng,
 
     // Counters
@@ -84,10 +84,12 @@ impl Miner {
 
     fn build_new_block(&mut self, timestamp: u64) -> Block {
         // Sync on all processed blocks before building the new block
-        for fut in self.futures.drain(..) {
-            let status = futures::executor::block_on(fut).unwrap();
-            assert_match!(status, BlockStatus::StatusUTXOPendingVerification | BlockStatus::StatusUTXOValid);
-        }
+        let statuses = futures::executor::block_on(join_all(self.futures.drain(..)))
+            .into_iter()
+            .collect::<Result<Vec<BlockStatus>, RuleError>>()
+            .unwrap();
+        assert!(statuses.iter().all(|s| s.is_utxo_valid_or_pending()));
+
         let txs = self.build_txs();
         let nonce = self.id;
         let block_template = self.consensus.build_block_template(timestamp, nonce, self.miner_data.clone(), txs);
