@@ -20,10 +20,11 @@ fn main() {
     let bps = 8.0;
     let delay = 2.0;
     let num_miners = 8;
+    let target_txs_per_block = 10;
     let until = 50 * 1000; // In milliseconds
     let params = DEVNET_PARAMS.clone_with_skip_pow();
     let mut sim = KaspaNetworkSimulator::new(delay, bps, &params);
-    let (consensus, handles, _lifetime) = sim.init(num_miners).run(until);
+    let (consensus, handles, _lifetime) = sim.init(num_miners, target_txs_per_block).run(until);
     consensus.shutdown(handles);
     let (_lifetime2, db2) = create_temp_db();
     let consensus2 = Arc::new(Consensus::new(db2, &params));

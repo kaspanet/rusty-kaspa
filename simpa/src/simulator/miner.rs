@@ -15,6 +15,7 @@ use consensus_core::utxo::utxo_view::UtxoView;
 use kaspa_core::assert_match;
 use rand::rngs::ThreadRng;
 use rand_distr::{Distribution, Exp};
+use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use std::cmp::max;
 use std::collections::HashSet;
 use std::future::Future;
@@ -37,7 +38,7 @@ pub struct Miner {
     futures: Vec<Pin<Box<dyn Future<Output = BlockProcessResult<BlockStatus>>>>>,
 
     // UTXO data related to this miner
-    possible_outpoints: HashSet<TransactionOutpoint>,
+    possible_unspent_outpoints: HashSet<TransactionOutpoint>,
 
     // Rand
     dist: Exp<f64>, // The time interval between Poisson(lambda) events distributes ~Exp(1/lambda)
@@ -46,6 +47,9 @@ pub struct Miner {
     // Counters
     num_blocks: u64,
     sim_time: u64,
+
+    // Config
+    target_txs_per_block: usize,
 }
 
 impl Miner {
@@ -57,6 +61,7 @@ impl Miner {
         pk: secp256k1::PublicKey,
         consensus: Arc<Consensus>,
         params: &Params,
+        target_txs_per_block: usize,
     ) -> Self {
         Self {
             id,
@@ -65,11 +70,12 @@ impl Miner {
             miner_data: MinerData::new(ScriptPublicKey::new(0, ScriptVec::from_slice(&pk.serialize())), Vec::new()),
             secret_key: sk,
             futures: Vec::new(),
-            possible_outpoints: HashSet::new(),
+            possible_unspent_outpoints: HashSet::new(),
             dist: Exp::new(1f64 / (bps * hashrate)).unwrap(),
             rng: rand::thread_rng(),
             num_blocks: 0,
             sim_time: 0,
+            target_txs_per_block,
         }
     }
 
@@ -87,19 +93,24 @@ impl Miner {
 
     fn build_txs(&mut self) -> Vec<Transaction> {
         let virtual_state = self.consensus.virtual_processor.virtual_state_store.read().get().unwrap();
-        let mut txs = Vec::new();
-        let mut spent_outpoints = HashSet::new();
-        for &outpoint in self.possible_outpoints.iter() {
-            if txs.len() >= 150 {
-                break;
-            }
-            let Some(entry) = self.get_spendable_entry(outpoint, virtual_state.daa_score) else { continue; };
-            let unsigned_tx = self.create_unsigned_tx(outpoint, entry.amount, self.possible_outpoints.len() < 10_000);
-            let signed_tx = sign(&PopulatedTransaction::new(&unsigned_tx, vec![entry]), self.secret_key.secret_bytes());
-            txs.push(signed_tx);
-            spent_outpoints.insert(outpoint);
+        let multiple_outputs = self.possible_unspent_outpoints.len() < 10_000;
+        let txs = self
+            .possible_unspent_outpoints
+            .iter()
+            .filter_map(|&outpoint| {
+                let Some(entry) = self.get_spendable_entry(outpoint, virtual_state.daa_score) else { return None; };
+                let unsigned_tx = self.create_unsigned_tx(outpoint, entry.amount, multiple_outputs);
+                Some((unsigned_tx, entry))
+            })
+            .take(self.target_txs_per_block)
+            .collect::<Vec<_>>()
+            .into_par_iter()
+            .map(|(unsigned_tx, entry)| sign(&PopulatedTransaction::new(&unsigned_tx, vec![entry]), self.secret_key.secret_bytes()))
+            .collect::<Vec<_>>();
+
+        for outpoint in txs.iter().flat_map(|t| t.inputs.iter().map(|i| i.previous_outpoint)) {
+            self.possible_unspent_outpoints.remove(&outpoint);
         }
-        self.possible_outpoints.retain(|o| !spent_outpoints.contains(o));
         txs
     }
 
@@ -113,11 +124,11 @@ impl Miner {
         Some(entry)
     }
 
-    fn create_unsigned_tx(&self, outpoint: TransactionOutpoint, input_amount: u64, double_outputs: bool) -> Transaction {
+    fn create_unsigned_tx(&self, outpoint: TransactionOutpoint, input_amount: u64, multiple_outputs: bool) -> Transaction {
         Transaction::new(
             0,
             vec![TransactionInput::new(outpoint, vec![], 0, 0)],
-            if double_outputs && input_amount > 4 {
+            if multiple_outputs && input_amount > 4 {
                 vec![
                     TransactionOutput::new(input_amount / 2, self.miner_data.script_public_key.clone()),
                     TransactionOutput::new(input_amount / 2 - 1, self.miner_data.script_public_key.clone()),
@@ -146,7 +157,7 @@ impl Miner {
         for tx in block.transactions.iter() {
             for (i, output) in tx.outputs.iter().enumerate() {
                 if output.script_public_key.eq(&self.miner_data.script_public_key) {
-                    self.possible_outpoints.insert(TransactionOutpoint::new(tx.id(), i as u32));
+                    self.possible_unspent_outpoints.insert(TransactionOutpoint::new(tx.id(), i as u32));
                 }
             }
         }
@@ -160,7 +171,7 @@ impl Miner {
             return;
         }
         if self.num_blocks % 50 == 0 || self.sim_time / 2000 != env.now() / 2000 {
-            println!("Simulation time: {}. Processed {} blocks.", env.now(), self.num_blocks);
+            println!("Simulation time: {}. Generated {} blocks.", env.now(), self.num_blocks);
         }
         self.num_blocks += 1;
         self.sim_time = env.now();

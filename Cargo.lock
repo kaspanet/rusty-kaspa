@@ -2398,6 +2398,7 @@ dependencies = [
  "kaspa-core",
  "rand 0.8.5",
  "rand_distr",
+ "rayon",
  "secp256k1",
  "tokio",
 ]
