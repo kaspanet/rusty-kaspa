@@ -49,7 +49,8 @@ pub struct Miner {
     sim_time: u64,
 
     // Config
-    target_txs_per_block: usize,
+    target_txs_per_block: u64,
+    verbose: bool,
 }
 
 impl Miner {
@@ -61,7 +62,8 @@ impl Miner {
         pk: secp256k1::PublicKey,
         consensus: Arc<Consensus>,
         params: &Params,
-        target_txs_per_block: usize,
+        target_txs_per_block: u64,
+        verbose: bool,
     ) -> Self {
         Self {
             id,
@@ -76,6 +78,7 @@ impl Miner {
             num_blocks: 0,
             sim_time: 0,
             target_txs_per_block,
+            verbose,
         }
     }
 
@@ -102,7 +105,7 @@ impl Miner {
                 let unsigned_tx = self.create_unsigned_tx(outpoint, entry.amount, multiple_outputs);
                 Some((unsigned_tx, entry))
             })
-            .take(self.target_txs_per_block)
+            .take(self.target_txs_per_block as usize)
             .collect::<Vec<_>>()
             .into_par_iter()
             .map(|(unsigned_tx, entry)| sign(&PopulatedTransaction::new(&unsigned_tx, vec![entry]), self.secret_key.secret_bytes()))
@@ -167,11 +170,11 @@ impl Miner {
     }
 
     fn report_progress(&mut self, env: &mut Environment<Block>) {
-        if self.id > 0 {
+        if !self.verbose || self.id > 0 {
             return;
         }
         if self.num_blocks % 50 == 0 || self.sim_time / 2000 != env.now() / 2000 {
-            println!("Simulation time: {}. Generated {} blocks.", env.now(), self.num_blocks);
+            println!("Simulation time: {}. Generated {} blocks.", env.now() as f64 / 1000.0, self.num_blocks);
         }
         self.num_blocks += 1;
         self.sim_time = env.now();

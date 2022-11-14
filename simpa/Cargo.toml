@@ -1,6 +1,6 @@
 [package]
 name = "simpa"
-description = "Kaspa simulation framework"
+description = "Kaspa Network Simulator"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -17,6 +17,7 @@ rand.workspace = true
 itertools.workspace = true
 futures-util.workspace = true
 rayon.workspace = true
+clap.workspace = true
 
 futures = "0.3"
 rand_distr = "0.4"

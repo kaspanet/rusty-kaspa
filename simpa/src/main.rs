@@ -1,3 +1,4 @@
+use clap::Parser;
 use consensus::{
     consensus::{test_consensus::create_temp_db, Consensus},
     errors::{BlockProcessResult, RuleError},
@@ -16,15 +17,41 @@ use std::{collections::VecDeque, sync::Arc};
 
 pub mod simulator;
 
+/// Kaspa Network Simulator
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// Simulation blocks per second
+    #[arg(short, long, default_value_t = 8.0)]
+    bps: f64,
+
+    /// Simulation delay (seconds)
+    #[arg(short, long, default_value_t = 2.0)]
+    delay: f64,
+
+    /// Number of miners
+    #[arg(short, long, default_value_t = 8)]
+    miners: u64,
+
+    /// Target transactions per block
+    #[arg(short, long, default_value_t = 100)]
+    tpb: u64,
+
+    /// Target simulation time (seconds)
+    #[arg(short, long, default_value_t = 50)]
+    sim_time: u64,
+
+    /// Avoid verbose simulation information
+    #[arg(short, long, default_value_t = false)]
+    quiet: bool,
+}
+
 fn main() {
-    let bps = 8.0;
-    let delay = 2.0;
-    let num_miners = 8;
-    let target_txs_per_block = 10;
-    let until = 50 * 1000; // In milliseconds
+    let args = Args::parse();
+    let until = args.sim_time * 1000; // milliseconds
     let params = DEVNET_PARAMS.clone_with_skip_pow();
-    let mut sim = KaspaNetworkSimulator::new(delay, bps, &params);
-    let (consensus, handles, _lifetime) = sim.init(num_miners, target_txs_per_block).run(until);
+    let mut sim = KaspaNetworkSimulator::new(args.delay, args.bps, &params);
+    let (consensus, handles, _lifetime) = sim.init(args.miners, args.tpb, !args.quiet).run(until);
     consensus.shutdown(handles);
     let (_lifetime2, db2) = create_temp_db();
     let consensus2 = Arc::new(Consensus::new(db2, &params));
