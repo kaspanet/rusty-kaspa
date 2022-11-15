@@ -7,3 +7,5 @@ include.workspace = true
 license.workspace = true
 
 [dependencies]
+async-std.workspace = true
+triggered = "0.1"
