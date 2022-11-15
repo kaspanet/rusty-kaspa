@@ -22,7 +22,7 @@ pub mod simulator;
 #[command(author, version, about, long_about = None)]
 struct Args {
     /// Simulation blocks per second
-    #[arg(short, long, default_value_t = 8.0)]
+    #[arg(short, long, default_value_t = 1.0)]
     bps: f64,
 
     /// Simulation delay (seconds)
@@ -34,11 +34,11 @@ struct Args {
     miners: u64,
 
     /// Target transactions per block
-    #[arg(short, long, default_value_t = 100)]
+    #[arg(short, long, default_value_t = 200)]
     tpb: u64,
 
     /// Target simulation time (seconds)
-    #[arg(short, long, default_value_t = 50)]
+    #[arg(short, long, default_value_t = 600)]
     sim_time: u64,
 
     /// Avoid verbose simulation information
@@ -68,7 +68,7 @@ fn calculate_ghostdag_k(x: f64, delta: f64) -> u64 {
 fn main() {
     let args = Args::parse();
     let mut params = DEVNET_PARAMS.clone_with_skip_pow();
-    if args.bps > 1.0 || args.delay > 2.0 {
+    if args.bps * args.delay > 2.0 {
         let k = u64::max(calculate_ghostdag_k(2.0 * args.delay * args.bps, 0.05), params.ghostdag_k as u64);
         let k = u64::min(k, u8::MAX as u64) as u8; // Clamp to u8::MAX
         params.ghostdag_k = k;

@@ -22,6 +22,7 @@ pub fn main() {
     let target_blocks = 32000;
 
     trace!("Kaspad starting... (round-based simulation with BPS={} and D={})", bps, delay);
+    trace!("\n\n ------ NOTE: this code is just a placeholder for the actual kaspad code, for an actual simulation run the simpa binary ------\n\n");
 
     // rayon::ThreadPoolBuilder::new()
     //     .num_threads(8)
