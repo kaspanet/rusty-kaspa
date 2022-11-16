@@ -72,10 +72,6 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
 
         for block_level in 0..self.max_block_level as usize {
             for direct_parent_header in direct_parent_headers.iter() {
-                // for (block_level, direct_parent_level_parents) in self.parents(&direct_parent_header.header).enumerate() {
-                // for block_level in 0..self.max_block_level as usize {
-                let is_empty_level = candidates_by_level_to_reference_blocks_map[block_level].is_empty();
-
                 for parent in self.parents_at_level(&direct_parent_header.header, block_level as u8).iter().copied() {
                     let mut is_in_future_origin_children = false;
                     for child in origin_children.iter().copied() {
@@ -119,7 +115,7 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
                         reference_blocks
                     };
 
-                    if is_empty_level {
+                    if candidates_by_level_to_reference_blocks_map[block_level].is_empty() {
                         candidates_by_level_to_reference_blocks_map[block_level].insert(parent, reference_blocks);
                         continue;
                     }
