@@ -97,8 +97,9 @@ fn main() {
 #[tokio::main]
 async fn validate(src_consensus: &Consensus, dst_consensus: &Consensus, params: &Params, delay: f64, bps: f64) {
     let hashes = topologically_ordered_hashes(src_consensus, params.genesis_hash);
-    print_stats(src_consensus, &hashes, delay, bps, params.ghostdag_k);
-    eprintln!("Validating {} blocks", hashes.len());
+    let num_blocks = hashes.len();
+    let num_txs = print_stats(src_consensus, &hashes, delay, bps, params.ghostdag_k);
+    eprintln!("Validating {} blocks with {} transactions overall...", num_blocks, num_txs);
     let start = std::time::Instant::now();
     let chunks = hashes.into_iter().chunks(1000);
     let mut iter = chunks.into_iter();
@@ -117,7 +118,13 @@ async fn validate(src_consensus: &Consensus, dst_consensus: &Consensus, params: 
 
     // Assert that at least one body tip was resolved with valid UTXO
     assert!(dst_consensus.body_tips().iter().copied().any(|h| dst_consensus.block_status(h) == BlockStatus::StatusUTXOValid));
-    eprintln!("Validation time: {:?}", start.elapsed());
+    let elapsed = start.elapsed();
+    eprintln!(
+        "Total validation time: {:?}, block processing rate: {:.2} (b/s), transaction processing rate: {:.2} (t/s)",
+        elapsed,
+        num_blocks as f64 / elapsed.as_secs_f64(),
+        num_txs as f64 / elapsed.as_secs_f64(),
+    );
 }
 
 fn submit_chunk(
@@ -154,7 +161,7 @@ fn topologically_ordered_hashes(src_consensus: &Consensus, genesis_hash: Hash) -
     vec
 }
 
-fn print_stats(src_consensus: &Consensus, hashes: &[Hash], delay: f64, bps: f64, k: KType) {
+fn print_stats(src_consensus: &Consensus, hashes: &[Hash], delay: f64, bps: f64, k: KType) -> usize {
     let blues_mean = hashes.iter().map(|&h| src_consensus.ghostdag_store.get_data(h).unwrap().mergeset_blues.len()).sum::<usize>()
         as f64
         / hashes.len() as f64;
@@ -164,11 +171,12 @@ fn print_stats(src_consensus: &Consensus, hashes: &[Hash], delay: f64, bps: f64,
     let parents_mean = hashes.iter().map(|&h| src_consensus.headers_store.get_header(h).unwrap().direct_parents().len()).sum::<usize>()
         as f64
         / hashes.len() as f64;
-    let txs_mean = hashes.iter().map(|&h| src_consensus.block_transactions_store.get(h).unwrap().len()).sum::<usize>() as f64
-        / hashes.len() as f64;
+    let num_txs = hashes.iter().map(|&h| src_consensus.block_transactions_store.get(h).unwrap().len()).sum::<usize>();
+    let txs_mean = num_txs as f64 / hashes.len() as f64;
     println!("[DELAY={}, BPS={}, GHOSTDAG K={}]", delay, bps, k);
     println!(
         "[Average stats of generated DAG] blues: {}, reds: {}, parents: {}, txs: {}",
         blues_mean, reds_mean, parents_mean, txs_mean
     );
+    num_txs
 }
