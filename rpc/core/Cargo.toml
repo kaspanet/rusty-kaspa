@@ -1,0 +1,25 @@
+[package]
+name = "rpc-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
+
+[dependencies]
+consensus-core.workspace = true
+hashes.workspace = true
+math.workspace = true
+kaspa-utils.workspace = true
+faster-hex.workspace = true
+serde.workspace = true
+derive_more.workspace = true
+thiserror.workspace = true
+borsh.workspace = true
+async-std.workspace = true
+async-trait = "0.1.57"
+ahash = "0.8.0"
+futures = { version = "0.3" }
+rand = "0.8"
+triggered = "0.1"
+workflow-core = "0.1.0"
