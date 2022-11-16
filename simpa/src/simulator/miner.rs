@@ -117,7 +117,7 @@ impl Miner {
             .collect::<Vec<_>>();
 
         for outpoint in txs.iter().flat_map(|t| t.inputs.iter().map(|i| i.previous_outpoint)) {
-            self.possible_unspent_outpoints.remove(&outpoint);
+            self.possible_unspent_outpoints.swap_remove(&outpoint);
         }
         txs
     }
