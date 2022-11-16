@@ -49,12 +49,12 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
         // considered as a valid candidate.
         // This is why we sort the direct parent headers in a way that the first one will be
         // in the future of the pruning point.
-        let first_parent_in_future_of_pruning_point_index = direct_parents
+        let first_parent_in_future_of_pruning_point = direct_parents
             .iter()
             .copied()
             .position(|parent| self.reachability_service.is_dag_ancestor_of(pruning_point, parent))
             .expect("at least one of the parents is expected to be in the future of the pruning point");
-        direct_parent_headers.swap(0, first_parent_in_future_of_pruning_point_index);
+        direct_parent_headers.swap(0, first_parent_in_future_of_pruning_point);
 
         let mut candidates_by_level_to_reference_blocks_map = (0..self.max_block_level + 1).map(|_| HashMap::new()).collect_vec();
         // Direct parents are guaranteed to be in one other's anticones so add them all to
@@ -70,11 +70,13 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
         let origin_children_headers =
             origin_children.iter().copied().map(|parent| self.headers_store.get_header(parent).unwrap()).collect_vec();
 
-        for direct_parent_header in direct_parent_headers {
-            for (block_level, direct_parent_level_parents) in self.parents(&direct_parent_header.header).enumerate() {
+        for block_level in 0..self.max_block_level as usize {
+            for direct_parent_header in direct_parent_headers.iter() {
+                // for (block_level, direct_parent_level_parents) in self.parents(&direct_parent_header.header).enumerate() {
+                // for block_level in 0..self.max_block_level as usize {
                 let is_empty_level = candidates_by_level_to_reference_blocks_map[block_level].is_empty();
 
-                for parent in direct_parent_level_parents.iter().copied() {
+                for parent in self.parents_at_level(&direct_parent_header.header, block_level as u8).iter().copied() {
                     let mut is_in_future_origin_children = false;
                     for child in origin_children.iter().copied() {
                         match self.reachability_service.is_dag_ancestor_of_result(child, parent) {
@@ -164,9 +166,9 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
         parents
     }
 
-    pub fn parents<'a>(&'a self, header: &'a Header) -> impl ExactSizeIterator<Item = &'a [Hash]> {
-        (0..self.max_block_level).map(|level| self.parents_at_level(header, level))
-    }
+    // pub fn parents<'a>(&'a self, header: &'a Header) -> impl ExactSizeIterator<Item = &'a [Hash]> {
+    //     (0..self.max_block_level).map(|level| self.parents_at_level(header, level))
+    // }
 
     pub fn parents_at_level<'a>(&'a self, header: &'a Header, level: u8) -> &'a [Hash] {
         if header.direct_parents().is_empty() {
