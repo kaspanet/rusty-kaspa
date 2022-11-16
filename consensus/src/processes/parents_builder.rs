@@ -67,7 +67,9 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
         let origin_children_headers =
             origin_children.iter().copied().map(|parent| self.headers_store.get_header(parent).unwrap()).collect_vec();
 
-        for block_level in 0..self.max_block_level as usize {
+        for (block_level, level_candidates) in
+            candidates_by_level_to_reference_blocks_map.iter_mut().enumerate().take(self.max_block_level as usize)
+        {
             for parent in direct_parent_headers
                 .iter()
                 .flat_map(|header| self.parents_at_level(&header.header, block_level as u8).iter().copied())
@@ -115,8 +117,8 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
                     reference_blocks
                 };
 
-                if candidates_by_level_to_reference_blocks_map[block_level].is_empty() {
-                    candidates_by_level_to_reference_blocks_map[block_level].insert(parent, reference_blocks);
+                if level_candidates.is_empty() {
+                    level_candidates.insert(parent, reference_blocks);
                     continue;
                 }
 
@@ -125,7 +127,7 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
                 }
 
                 let mut to_remove = BlockHashSet::new();
-                for (candidate, candidate_references) in candidates_by_level_to_reference_blocks_map[block_level].iter() {
+                for (candidate, candidate_references) in level_candidates.iter() {
                     if self.reachability_service.is_any_dag_ancestor(&mut candidate_references.iter().copied(), parent) {
                         to_remove.insert(*candidate);
                         continue;
@@ -133,18 +135,17 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
                 }
 
                 for hash in to_remove.iter() {
-                    candidates_by_level_to_reference_blocks_map[block_level].remove(hash);
+                    level_candidates.remove(hash);
                 }
 
-                let is_ancestor_of_any_candidate =
-                    candidates_by_level_to_reference_blocks_map[block_level].iter().any(|(_, candidate_references)| {
-                        self.reachability_service.is_dag_ancestor_of_any(parent, &mut candidate_references.iter().copied())
-                    });
+                let is_ancestor_of_any_candidate = level_candidates.iter().any(|(_, candidate_references)| {
+                    self.reachability_service.is_dag_ancestor_of_any(parent, &mut candidate_references.iter().copied())
+                });
 
                 // We should add the block as a candidate if it's in the future of another candidate
                 // or in the anticone of all candidates.
                 if !is_ancestor_of_any_candidate || !to_remove.is_empty() {
-                    candidates_by_level_to_reference_blocks_map[block_level].insert(parent, reference_blocks);
+                    level_candidates.insert(parent, reference_blocks);
                 }
             }
         }
