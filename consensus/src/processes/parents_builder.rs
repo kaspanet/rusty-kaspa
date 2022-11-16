@@ -1,4 +1,4 @@
-use consensus_core::{blockhash::ORIGIN, header::Header, BlockHashMap, BlockHashSet, BlockHasher, HashMapCustomHasher};
+use consensus_core::{blockhash::ORIGIN, header::Header, BlockHashMap, BlockHasher};
 use hashes::Hash;
 use indexmap::IndexSet;
 use itertools::Itertools;
@@ -57,7 +57,7 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
         let origin_children_headers =
             origin_children.iter().copied().map(|parent| self.headers_store.get_header(parent).unwrap()).collect_vec();
 
-        let mut parents = Vec::with_capacity(self.max_block_level as usize / 4);
+        let mut parents = Vec::with_capacity(self.max_block_level as usize);
 
         for block_level in 0..self.max_block_level as usize {
             // Direct parents are guaranteed to be in one other's anticones so add them all to
@@ -71,6 +71,7 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
             for parent in direct_parent_headers
                 .iter()
                 .flat_map(|header| self.parents_at_level(&header.header, block_level as u8).iter().copied())
+                // We use IndexSet in order to preserve iteration order
                 .collect::<IndexSet<Hash, BlockHasher>>()
             {
                 let mut is_in_future_origin_children = false;
@@ -124,17 +125,9 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
                     continue;
                 }
 
-                let mut to_remove = BlockHashSet::new();
-                for (candidate, candidate_references) in level_candidates_to_reference_blocks.iter() {
-                    if self.reachability_service.is_any_dag_ancestor(&mut candidate_references.iter().copied(), parent) {
-                        to_remove.insert(*candidate);
-                        continue;
-                    }
-                }
-
-                for hash in to_remove.iter() {
-                    level_candidates_to_reference_blocks.remove(hash);
-                }
+                let len_before_retain = level_candidates_to_reference_blocks.len();
+                level_candidates_to_reference_blocks
+                    .retain(|_, refs| !self.reachability_service.is_any_dag_ancestor(&mut refs.iter().copied(), parent));
 
                 let is_ancestor_of_any_candidate = level_candidates_to_reference_blocks.iter().any(|(_, candidate_references)| {
                     self.reachability_service.is_dag_ancestor_of_any(parent, &mut candidate_references.iter().copied())
@@ -142,7 +135,7 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
 
                 // We should add the block as a candidate if it's in the future of another candidate
                 // or in the anticone of all candidates.
-                if !is_ancestor_of_any_candidate || !to_remove.is_empty() {
+                if !is_ancestor_of_any_candidate || level_candidates_to_reference_blocks.len() < len_before_retain {
                     level_candidates_to_reference_blocks.insert(parent, reference_blocks);
                 }
             }
@@ -192,6 +185,7 @@ mod tests {
     use consensus_core::{
         blockhash::{BlockHashes, ORIGIN},
         header::Header,
+        BlockHashSet, HashMapCustomHasher,
     };
     use hashes::Hash;
     use itertools::Itertools;
