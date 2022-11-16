@@ -81,6 +81,7 @@ fn calculate_ghostdag_k(x: f64, delta: f64) -> u64 {
 
 fn main() {
     let args = Args::parse();
+    assert!(args.bps * args.delay < 200.0, "The delay times bps product is larger than 200");
     let mut params = DEVNET_PARAMS.clone_with_skip_pow();
     let mut perf_params = PERF_PARAMS;
     if args.bps * args.delay > 2.0 {
@@ -93,9 +94,16 @@ fn main() {
         params.merge_depth = (params.merge_depth as f64 * args.bps) as u64;
         params.difficulty_window_size = (params.difficulty_window_size as f64 * args.bps) as usize; // Scale the DAA window linearly with BPS
 
-        perf_params.header_data_cache_size = (perf_params.header_data_cache_size as f64 * args.bps) as u64;
-        perf_params.block_window_cache_size = (perf_params.block_window_cache_size as f64 * args.bps) as u64;
-        perf_params.block_data_cache_size = (perf_params.block_data_cache_size as f64 * f64::min(args.bps, 10.0)) as u64;
+        // Allow caching up to ~1000 full blocks
+        perf_params.block_data_cache_size = (perf_params.block_data_cache_size as f64 * f64::min(args.bps, 5.0)) as u64;
+        // Block windows are just hashes, so we can increase mildly with BPS
+        perf_params.block_window_cache_size = (perf_params.block_window_cache_size as f64 * f64::min(args.bps, 5.0)) as u64;
+        // We do not increase the header data cache size with BPS, since with high BPS the headers grow dramatically
+        // due to the growing number of parents, so we rather actually decrease the cache size if BPS*DELAY is too large.
+        while perf_params.block_data_cache_size as f64 * args.bps * args.delay > 50_000.0 {
+            // Estimation for total cached header sizes
+            perf_params.block_data_cache_size = (perf_params.block_data_cache_size as f64 * 0.75) as u64;
+        }
 
         println!("The delay times bps product is larger than 2 (2Dλ={}), setting GHOSTDAG K={}", 2.0 * args.delay * args.bps, k);
     }
