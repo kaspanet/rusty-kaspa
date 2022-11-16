@@ -6,6 +6,7 @@ use super::miner::Miner;
 
 use consensus::consensus::test_consensus::{create_temp_db, TempDbLifetime};
 use consensus::consensus::Consensus;
+use consensus::constants::perf::PerfParams;
 use consensus::params::Params;
 use consensus_core::block::Block;
 
@@ -18,13 +19,20 @@ pub struct KaspaNetworkSimulator {
     // Consensus instances
     consensuses: Vec<ConsensusWrapper>,
 
-    params: Params, // Consensus params
-    bps: f64,       // Blocks per second
+    params: Params,          // Consensus params
+    perf_params: PerfParams, // Performance params
+    bps: f64,                // Blocks per second
 }
 
 impl KaspaNetworkSimulator {
-    pub fn new(delay: f64, bps: f64, params: &Params) -> Self {
-        Self { simulation: Simulation::new((delay * 1000.0) as u64), consensuses: Vec::new(), bps, params: params.clone() }
+    pub fn new(delay: f64, bps: f64, params: &Params, perf_params: &PerfParams) -> Self {
+        Self {
+            simulation: Simulation::new((delay * 1000.0) as u64),
+            consensuses: Vec::new(),
+            bps,
+            params: params.clone(),
+            perf_params: perf_params.clone(),
+        }
     }
 
     pub fn init(&mut self, num_miners: u64, target_txs_per_block: u64, verbose: bool) -> &mut Self {
@@ -32,7 +40,7 @@ impl KaspaNetworkSimulator {
         let mut rng = rand::thread_rng();
         for i in 0..num_miners {
             let (lifetime, db) = create_temp_db();
-            let consensus = Arc::new(Consensus::new(db, &self.params));
+            let consensus = Arc::new(Consensus::with_perf_params(db, &self.params, &self.perf_params));
             let handles = consensus.init();
             let (sk, pk) = secp.generate_keypair(&mut rng);
             let miner_process = Box::new(Miner::new(

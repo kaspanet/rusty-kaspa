@@ -1,6 +1,7 @@
 use clap::Parser;
 use consensus::{
     consensus::{test_consensus::create_temp_db, Consensus},
+    constants::perf::PERF_PARAMS,
     errors::{BlockProcessResult, RuleError},
     model::stores::{
         block_transactions::BlockTransactionsStoreReader,
@@ -47,6 +48,16 @@ struct Args {
     /// Avoid verbose simulation information
     #[arg(short, long, default_value_t = false)]
     quiet: bool,
+
+    /// Number of pool-thread threads used by the header and body processors.
+    /// Defaults to the number of logical CPU cores.
+    #[arg(short, long)]
+    processors_threads: Option<usize>,
+
+    /// Number of pool-thread threads used by the virtual processor (for parallel transaction verification).
+    /// Defaults to the number of logical CPU cores.
+    #[arg(short, long)]
+    virtual_threads: Option<usize>,
 }
 
 /// Calculates the k parameter of the GHOSTDAG protocol such that anticones lager than k will be created
@@ -71,6 +82,7 @@ fn calculate_ghostdag_k(x: f64, delta: f64) -> u64 {
 fn main() {
     let args = Args::parse();
     let mut params = DEVNET_PARAMS.clone_with_skip_pow();
+    let mut perf_params = PERF_PARAMS;
     if args.bps * args.delay > 2.0 {
         let k = u64::max(calculate_ghostdag_k(2.0 * args.delay * args.bps, 0.05), params.ghostdag_k as u64);
         let k = u64::min(k, KType::MAX as u64) as KType; // Clamp to KType::MAX
@@ -80,14 +92,25 @@ fn main() {
         params.target_time_per_block = (1000.0 / args.bps) as u64;
         params.merge_depth = (params.merge_depth as f64 * args.bps) as u64;
         params.difficulty_window_size = (params.difficulty_window_size as f64 * args.bps) as usize; // Scale the DAA window linearly with BPS
+
+        perf_params.header_data_cache_size = (perf_params.header_data_cache_size as f64 * args.bps) as u64;
+        perf_params.block_window_cache_size = (perf_params.block_window_cache_size as f64 * args.bps) as u64;
+        perf_params.block_data_cache_size = (perf_params.block_data_cache_size as f64 * f64::min(args.bps, 10.0)) as u64;
+
         println!("The delay times bps product is larger than 2 (2Dλ={}), setting GHOSTDAG K={}", 2.0 * args.delay * args.bps, k);
     }
+    if let Some(processors_pool_threads) = args.processors_threads {
+        perf_params.block_processors_num_threads = processors_pool_threads;
+    }
+    if let Some(virtual_pool_threads) = args.virtual_threads {
+        perf_params.virtual_processor_num_threads = virtual_pool_threads;
+    }
     let until = args.sim_time * 1000; // milliseconds
-    let mut sim = KaspaNetworkSimulator::new(args.delay, args.bps, &params);
+    let mut sim = KaspaNetworkSimulator::new(args.delay, args.bps, &params, &perf_params);
     let (consensus, handles, _lifetime) = sim.init(args.miners, args.tpb, !args.quiet).run(until);
     consensus.shutdown(handles);
     let (_lifetime2, db2) = create_temp_db();
-    let consensus2 = Arc::new(Consensus::new(db2, &params));
+    let consensus2 = Arc::new(Consensus::with_perf_params(db2, &params, &perf_params));
     let handles2 = consensus2.init();
     validate(&consensus, &consensus2, &params, args.delay, args.bps);
     consensus2.shutdown(handles2);
