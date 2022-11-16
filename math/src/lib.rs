@@ -1,6 +1,8 @@
+use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+
 pub mod int;
 pub mod uint;
-construct_uint!(Uint192, 3);
+construct_uint!(Uint192, 3, BorshSerialize, BorshDeserialize, BorshSchema);
 construct_uint!(Uint256, 4);
 construct_uint!(Uint320, 5);
 construct_uint!(Uint3072, 48);

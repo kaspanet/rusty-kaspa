@@ -5,9 +5,9 @@ pub use serde;
 
 #[macro_export]
 macro_rules! construct_uint {
-    ($name:ident, $n_words:literal) => {
+    ($name:ident, $n_words:literal $(, $derive_trait:ty)*) => {
         /// Little-endian large integer type
-        #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
+        #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug$(, $derive_trait )*)]
         pub struct $name(pub [u64; $n_words]);
         #[allow(unused)]
         impl $name {
@@ -199,6 +199,18 @@ macro_rules! construct_uint {
                 out.iter_mut()
                     .zip(bytes.chunks_exact(8))
                     .for_each(|(word, bytes)| *word = u64::from_le_bytes(bytes.try_into().unwrap()));
+                Self(out)
+            }
+
+            /// Creates big integer value from a byte slice using
+            /// big-endian encoding
+            #[inline(always)]
+            pub fn from_be_bytes(bytes: [u8; Self::BYTES]) -> $name {
+                let mut out = [0u64; Self::LIMBS];
+                // This should optimize to basically a transmute.
+                out.iter_mut()
+                    .zip(bytes.chunks_exact(8).rev())
+                    .for_each(|(word, bytes)| *word = u64::from_be_bytes(bytes.try_into().unwrap()));
                 Self(out)
             }
 
