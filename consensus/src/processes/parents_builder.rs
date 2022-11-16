@@ -53,23 +53,21 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
             .expect("at least one of the parents is expected to be in the future of the pruning point");
         direct_parent_headers.swap(0, first_parent_in_future_of_pruning_point);
 
-        let mut candidates_by_level_to_reference_blocks_map = (0..self.max_block_level + 1).map(|_| BlockHashMap::new()).collect_vec();
-        // Direct parents are guaranteed to be in one other's anticones so add them all to
-        // all the block levels they occupy.
-        for direct_parent_header in direct_parent_headers.iter() {
-            for level in 0..direct_parent_header.block_level + 1 {
-                candidates_by_level_to_reference_blocks_map[level as usize]
-                    .insert(direct_parent_header.header.hash, vec![direct_parent_header.header.hash]);
-            }
-        }
-
         let origin_children = self.relations_store.read().get_children(ORIGIN).unwrap();
         let origin_children_headers =
             origin_children.iter().copied().map(|parent| self.headers_store.get_header(parent).unwrap()).collect_vec();
 
-        for (block_level, level_candidates) in
-            candidates_by_level_to_reference_blocks_map.iter_mut().enumerate().take(self.max_block_level as usize)
-        {
+        let mut parents = Vec::with_capacity(self.max_block_level as usize / 4);
+
+        for block_level in 0..self.max_block_level as usize {
+            // Direct parents are guaranteed to be in one other's anticones so add them all to
+            // all the block levels they occupy.
+            let mut level_candidates_to_reference_blocks = direct_parent_headers
+                .iter()
+                .filter(|h| block_level <= h.block_level as usize)
+                .map(|h| (h.header.hash, vec![h.header.hash]))
+                .collect::<BlockHashMap<_>>();
+
             for parent in direct_parent_headers
                 .iter()
                 .flat_map(|header| self.parents_at_level(&header.header, block_level as u8).iter().copied())
@@ -117,8 +115,8 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
                     reference_blocks
                 };
 
-                if level_candidates.is_empty() {
-                    level_candidates.insert(parent, reference_blocks);
+                if level_candidates_to_reference_blocks.is_empty() {
+                    level_candidates_to_reference_blocks.insert(parent, reference_blocks);
                     continue;
                 }
 
@@ -127,7 +125,7 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
                 }
 
                 let mut to_remove = BlockHashSet::new();
-                for (candidate, candidate_references) in level_candidates.iter() {
+                for (candidate, candidate_references) in level_candidates_to_reference_blocks.iter() {
                     if self.reachability_service.is_any_dag_ancestor(&mut candidate_references.iter().copied(), parent) {
                         to_remove.insert(*candidate);
                         continue;
@@ -135,28 +133,28 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
                 }
 
                 for hash in to_remove.iter() {
-                    level_candidates.remove(hash);
+                    level_candidates_to_reference_blocks.remove(hash);
                 }
 
-                let is_ancestor_of_any_candidate = level_candidates.iter().any(|(_, candidate_references)| {
+                let is_ancestor_of_any_candidate = level_candidates_to_reference_blocks.iter().any(|(_, candidate_references)| {
                     self.reachability_service.is_dag_ancestor_of_any(parent, &mut candidate_references.iter().copied())
                 });
 
                 // We should add the block as a candidate if it's in the future of another candidate
                 // or in the anticone of all candidates.
                 if !is_ancestor_of_any_candidate || !to_remove.is_empty() {
-                    level_candidates.insert(parent, reference_blocks);
+                    level_candidates_to_reference_blocks.insert(parent, reference_blocks);
                 }
             }
-        }
 
-        let mut parents = Vec::with_capacity(self.max_block_level as usize);
-        for (block_level, reference_blocks_map) in candidates_by_level_to_reference_blocks_map.iter().enumerate() {
-            if block_level > 0 && reference_blocks_map.contains_key(&self.genesis_hash) && reference_blocks_map.len() == 1 {
+            if block_level > 0
+                && level_candidates_to_reference_blocks.contains_key(&self.genesis_hash)
+                && level_candidates_to_reference_blocks.len() == 1
+            {
                 break;
             }
 
-            parents.push(reference_blocks_map.keys().copied().collect_vec());
+            parents.push(level_candidates_to_reference_blocks.keys().copied().collect_vec());
         }
 
         parents
