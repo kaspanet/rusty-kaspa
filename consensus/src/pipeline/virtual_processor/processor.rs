@@ -1,6 +1,6 @@
 use crate::{
     consensus::DbGhostdagManager,
-    constants::{self, store_names, BLOCK_VERSION},
+    constants::BLOCK_VERSION,
     model::{
         services::reachability::{MTReachabilityService, ReachabilityService},
         stores::{
@@ -120,6 +120,9 @@ impl VirtualStateProcessor {
         utxo_diffs_store: Arc<DbUtxoDiffsStore>,
         utxo_multisets_store: Arc<DbUtxoMultisetsStore>,
         acceptance_data_store: Arc<DbAcceptanceDataStore>,
+        // Virtual-related stores
+        virtual_utxo_store: Arc<DbUtxoSetStore>,
+        virtual_state_store: Arc<RwLock<DbVirtualStateStore>>,
         // Managers
         ghostdag_manager: DbGhostdagManager,
         reachability_service: MTReachabilityService<DbReachabilityStore>,
@@ -141,7 +144,7 @@ impl VirtualStateProcessor {
             mergeset_size_limit: params.mergeset_size_limit,
             pruning_depth: params.pruning_depth,
 
-            db: db.clone(),
+            db,
             statuses_store,
             headers_store,
             ghostdag_store,
@@ -153,14 +156,8 @@ impl VirtualStateProcessor {
             utxo_diffs_store,
             utxo_multisets_store,
             acceptance_data_store,
-            // TODO: build in consensus, decide about locking
-            virtual_utxo_store: Arc::new(DbUtxoSetStore::new(
-                db.clone(),
-                constants::perf::UTXO_CACHE_SIZE,
-                store_names::VIRTUAL_UTXO_SET,
-            )),
-            virtual_state_store: Arc::new(RwLock::new(DbVirtualStateStore::new(db))),
-
+            virtual_utxo_store,
+            virtual_state_store,
             ghostdag_manager,
             reachability_service,
             dag_traversal_manager,

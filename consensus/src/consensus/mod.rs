@@ -1,7 +1,10 @@
 pub mod test_consensus;
 
 use crate::{
-    constants::perf::{CACHE_SIZE, LARGE_DATA_CACHE_SIZE},
+    constants::{
+        perf::{PerfParams, PERF_PARAMS},
+        store_names,
+    },
     errors::BlockProcessResult,
     model::{
         services::{reachability::MTReachabilityService, relations::MTRelationsService, statuses::MTStatusesService},
@@ -22,6 +25,8 @@ use crate::{
             tips::{DbTipsStore, TipsStoreReader},
             utxo_diffs::DbUtxoDiffsStore,
             utxo_multisets::DbUtxoMultisetsStore,
+            utxo_set::DbUtxoSetStore,
+            virtual_state::DbVirtualStateStore,
             DB,
         },
     },
@@ -102,24 +107,48 @@ pub struct Consensus {
 
 impl Consensus {
     pub fn new(db: Arc<DB>, params: &Params) -> Self {
-        let statuses_store = Arc::new(RwLock::new(DbStatusesStore::new(db.clone(), CACHE_SIZE)));
-        let relations_store = Arc::new(RwLock::new(DbRelationsStore::new(db.clone(), CACHE_SIZE)));
-        let reachability_store = Arc::new(RwLock::new(DbReachabilityStore::new(db.clone(), CACHE_SIZE)));
+        Self::with_perf_params(db, params, &PERF_PARAMS)
+    }
+
+    pub fn with_perf_params(db: Arc<DB>, params: &Params, perf_params: &PerfParams) -> Self {
+        //
+        // Stores
+        //
+
+        let pruning_size_for_caches = params.pruning_depth;
+        let pruning_plus_finality_size_for_caches = params.pruning_depth + params.finality_depth;
+
+        // Headers
+        let statuses_store = Arc::new(RwLock::new(DbStatusesStore::new(db.clone(), pruning_plus_finality_size_for_caches)));
+        let relations_store = Arc::new(RwLock::new(DbRelationsStore::new(db.clone(), pruning_plus_finality_size_for_caches)));
+        let reachability_store =
+            Arc::new(RwLock::new(DbReachabilityStore::new(db.clone(), pruning_plus_finality_size_for_caches * 2)));
+        let ghostdag_store = Arc::new(DbGhostdagStore::new(db.clone(), pruning_plus_finality_size_for_caches));
+        let daa_excluded_store = Arc::new(DbDaaStore::new(db.clone(), pruning_size_for_caches));
+        let headers_store = Arc::new(DbHeadersStore::new(db.clone(), perf_params.header_data_cache_size));
+        let depth_store = Arc::new(DbDepthStore::new(db.clone(), perf_params.header_data_cache_size));
+        // Pruning
         let pruning_store = Arc::new(RwLock::new(DbPruningStore::new(db.clone())));
-        let ghostdag_store = Arc::new(DbGhostdagStore::new(db.clone(), CACHE_SIZE));
-        let daa_store = Arc::new(DbDaaStore::new(db.clone(), CACHE_SIZE));
-        let headers_store = Arc::new(DbHeadersStore::new(db.clone(), CACHE_SIZE));
-        let depth_store = Arc::new(DbDepthStore::new(db.clone(), CACHE_SIZE));
-        let block_transactions_store = Arc::new(DbBlockTransactionsStore::new(db.clone(), CACHE_SIZE));
-        let past_pruning_points_store = Arc::new(DbPastPruningPointsStore::new(db.clone(), CACHE_SIZE));
-        let utxo_diffs_store = Arc::new(DbUtxoDiffsStore::new(db.clone(), CACHE_SIZE));
-        let utxo_multisets_store = Arc::new(DbUtxoMultisetsStore::new(db.clone(), CACHE_SIZE));
-        let acceptance_data_store = Arc::new(DbAcceptanceDataStore::new(db.clone(), CACHE_SIZE));
+        let past_pruning_points_store = Arc::new(DbPastPruningPointsStore::new(db.clone(), 4));
+        // Block data
+        let block_transactions_store = Arc::new(DbBlockTransactionsStore::new(db.clone(), perf_params.block_data_cache_size));
+        let utxo_diffs_store = Arc::new(DbUtxoDiffsStore::new(db.clone(), perf_params.block_data_cache_size));
+        let utxo_multisets_store = Arc::new(DbUtxoMultisetsStore::new(db.clone(), perf_params.block_data_cache_size));
+        let acceptance_data_store = Arc::new(DbAcceptanceDataStore::new(db.clone(), perf_params.block_data_cache_size));
+        // Tips
         let headers_selected_tip_store = Arc::new(RwLock::new(DbHeadersSelectedTipStore::new(db.clone())));
         let body_tips_store = Arc::new(RwLock::new(DbTipsStore::new(db.clone())));
+        // Block windows
+        let block_window_cache_for_difficulty = Arc::new(BlockWindowCacheStore::new(perf_params.block_window_cache_size));
+        let block_window_cache_for_past_median_time = Arc::new(BlockWindowCacheStore::new(perf_params.block_window_cache_size));
+        // Virtual (TODO: decide about locking semantics of virtual utxo set)
+        let virtual_utxo_store =
+            Arc::new(DbUtxoSetStore::new(db.clone(), perf_params.utxo_set_cache_size, store_names::VIRTUAL_UTXO_SET));
+        let virtual_state_store = Arc::new(RwLock::new(DbVirtualStateStore::new(db.clone())));
 
-        let block_window_cache_for_difficulty = Arc::new(BlockWindowCacheStore::new(LARGE_DATA_CACHE_SIZE));
-        let block_window_cache_for_past_median_time = Arc::new(BlockWindowCacheStore::new(LARGE_DATA_CACHE_SIZE));
+        //
+        // Services and managers
+        //
 
         let statuses_service = Arc::new(MTStatusesService::new(statuses_store.clone()));
         let relations_service = Arc::new(MTRelationsService::new(relations_store.clone()));
@@ -205,22 +234,32 @@ impl Consensus {
 
         let counters = Arc::new(ProcessingCounters::default());
 
+        //
+        // Thread-pools
+        //
+
         // Pool for header and body processors
-        let block_processors_pool =
-            Arc::new(rayon::ThreadPoolBuilder::new()
-            .num_threads(0) // For now use the default (TODO: cmd flag?)
-            .thread_name(|i| format!("block-pool-{}", i))
-            .build()
-            .unwrap());
+        let block_processors_pool = Arc::new(
+            rayon::ThreadPoolBuilder::new()
+                .num_threads(perf_params.block_processors_num_threads)
+                .thread_name(|i| format!("block-pool-{}", i))
+                .build()
+                .unwrap(),
+        );
         // We need a dedicated thread-pool for the virtual processor to avoid possible deadlocks probably caused by the
         // combined usage of `par_iter` (in virtual processor) and `rayon::spawn` (in header/body processors).
         // See for instance https://github.com/rayon-rs/rayon/issues/690
-        let virtual_pool =
-            Arc::new(rayon::ThreadPoolBuilder::new()
-            .num_threads(0) // For now use the default (TODO: cmd flag?)
-            .thread_name(|i| format!("virtual-pool-{}", i))
-            .build()
-            .unwrap());
+        let virtual_pool = Arc::new(
+            rayon::ThreadPoolBuilder::new()
+                .num_threads(perf_params.virtual_processor_num_threads)
+                .thread_name(|i| format!("virtual-pool-{}", i))
+                .build()
+                .unwrap(),
+        );
+
+        //
+        // Pipeline processors
+        //
 
         let header_processor = Arc::new(HeaderProcessor::new(
             receiver,
@@ -232,7 +271,7 @@ impl Consensus {
             reachability_store.clone(),
             ghostdag_store.clone(),
             headers_store.clone(),
-            daa_store.clone(),
+            daa_excluded_store.clone(),
             statuses_store.clone(),
             pruning_store.clone(),
             depth_store,
@@ -277,7 +316,7 @@ impl Consensus {
             statuses_store.clone(),
             ghostdag_store.clone(),
             headers_store.clone(),
-            daa_store,
+            daa_excluded_store,
             block_transactions_store.clone(),
             pruning_store.clone(),
             past_pruning_points_store,
@@ -285,6 +324,8 @@ impl Consensus {
             utxo_diffs_store,
             utxo_multisets_store,
             acceptance_data_store,
+            virtual_utxo_store,
+            virtual_state_store,
             ghostdag_manager.clone(),
             reachability_service.clone(),
             dag_traversal_manager.clone(),
