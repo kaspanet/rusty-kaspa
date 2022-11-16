@@ -5,6 +5,7 @@ pub mod convert;
 pub mod errors;
 pub mod model;
 pub mod notify;
+pub mod server;
 pub mod stubs;
 
 pub mod prelude {
