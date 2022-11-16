@@ -1,12 +1,8 @@
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-};
-
-use consensus_core::{blockhash::ORIGIN, header::Header};
+use consensus_core::{blockhash::ORIGIN, header::Header, BlockHashMap, BlockHashSet, HashMapCustomHasher};
 use hashes::Hash;
 use itertools::Itertools;
 use parking_lot::RwLock;
+use std::sync::Arc;
 
 use crate::{
     model::{
@@ -56,7 +52,7 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
             .expect("at least one of the parents is expected to be in the future of the pruning point");
         direct_parent_headers.swap(0, first_parent_in_future_of_pruning_point);
 
-        let mut candidates_by_level_to_reference_blocks_map = (0..self.max_block_level + 1).map(|_| HashMap::new()).collect_vec();
+        let mut candidates_by_level_to_reference_blocks_map = (0..self.max_block_level + 1).map(|_| BlockHashMap::new()).collect_vec();
         // Direct parents are guaranteed to be in one other's anticones so add them all to
         // all the block levels they occupy.
         for direct_parent_header in direct_parent_headers.iter() {
@@ -124,7 +120,7 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
                         continue;
                     }
 
-                    let mut to_remove = HashSet::new();
+                    let mut to_remove = BlockHashSet::new();
                     for (candidate, candidate_references) in candidates_by_level_to_reference_blocks_map[block_level].iter() {
                         if self.reachability_service.is_any_dag_ancestor(&mut candidate_references.iter().copied(), parent) {
                             to_remove.insert(*candidate);
