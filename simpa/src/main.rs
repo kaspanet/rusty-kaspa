@@ -3,8 +3,11 @@ use consensus::{
     consensus::{test_consensus::create_temp_db, Consensus},
     errors::{BlockProcessResult, RuleError},
     model::stores::{
-        block_transactions::BlockTransactionsStoreReader, ghostdag::GhostdagStoreReader, headers::HeaderStoreReader,
-        relations::RelationsStoreReader, statuses::BlockStatus,
+        block_transactions::BlockTransactionsStoreReader,
+        ghostdag::{GhostdagStoreReader, KType},
+        headers::HeaderStoreReader,
+        relations::RelationsStoreReader,
+        statuses::BlockStatus,
     },
     params::{Params, DEVNET_PARAMS},
 };
@@ -70,7 +73,7 @@ fn main() {
     let mut params = DEVNET_PARAMS.clone_with_skip_pow();
     if args.bps * args.delay > 2.0 {
         let k = u64::max(calculate_ghostdag_k(2.0 * args.delay * args.bps, 0.05), params.ghostdag_k as u64);
-        let k = u64::min(k, u8::MAX as u64) as u8; // Clamp to u8::MAX
+        let k = u64::min(k, KType::MAX as u64) as KType; // Clamp to KType::MAX
         params.ghostdag_k = k;
         params.mergeset_size_limit = k as u64 * 10;
         params.max_block_parents = u8::max((0.66 * k as f64) as u8, 10);
@@ -151,7 +154,7 @@ fn topologically_ordered_hashes(src_consensus: &Consensus, genesis_hash: Hash) -
     vec
 }
 
-fn print_stats(src_consensus: &Consensus, hashes: &[Hash], delay: f64, bps: f64, k: u8) {
+fn print_stats(src_consensus: &Consensus, hashes: &[Hash], delay: f64, bps: f64, k: KType) {
     let blues_mean = hashes.iter().map(|&h| src_consensus.ghostdag_store.get_data(h).unwrap().mergeset_blues.len()).sum::<usize>()
         as f64
         / hashes.len() as f64;
