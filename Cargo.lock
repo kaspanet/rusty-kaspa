@@ -2528,6 +2528,7 @@ dependencies = [
  "futures",
  "futures-util",
  "hashes",
+ "indexmap",
  "itertools",
  "kaspa-core",
  "rand 0.8.5",

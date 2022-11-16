@@ -13,11 +13,12 @@ use consensus_core::tx::{
 };
 use consensus_core::utxo::utxo_view::UtxoView;
 use futures::future::join_all;
+use indexmap::IndexSet;
 use rand::rngs::ThreadRng;
+use rand::Rng;
 use rand_distr::{Distribution, Exp};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use std::cmp::max;
-use std::collections::HashSet;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -38,7 +39,7 @@ pub struct Miner {
     futures: Vec<Pin<Box<dyn Future<Output = BlockProcessResult<BlockStatus>>>>>,
 
     // UTXO data related to this miner
-    possible_unspent_outpoints: HashSet<TransactionOutpoint>,
+    possible_unspent_outpoints: IndexSet<TransactionOutpoint>,
 
     // Rand
     dist: Exp<f64>, // The time interval between Poisson(lambda) events distributes ~Exp(lambda)
@@ -50,6 +51,7 @@ pub struct Miner {
 
     // Config
     target_txs_per_block: u64,
+    max_cached_outpoints: usize,
     verbose: bool,
 }
 
@@ -72,12 +74,13 @@ impl Miner {
             miner_data: MinerData::new(ScriptPublicKey::new(0, ScriptVec::from_slice(&pk.serialize())), Vec::new()),
             secret_key: sk,
             futures: Vec::new(),
-            possible_unspent_outpoints: HashSet::new(),
+            possible_unspent_outpoints: IndexSet::new(),
             dist: Exp::new(bps * hashrate).unwrap(),
             rng: rand::thread_rng(),
             num_blocks: 0,
             sim_time: 0,
             target_txs_per_block,
+            max_cached_outpoints: 100_000,
             verbose,
         }
     }
@@ -162,6 +165,9 @@ impl Miner {
         for tx in block.transactions.iter() {
             for (i, output) in tx.outputs.iter().enumerate() {
                 if output.script_public_key.eq(&self.miner_data.script_public_key) {
+                    if self.possible_unspent_outpoints.len() == self.max_cached_outpoints {
+                        self.possible_unspent_outpoints.swap_remove_index(self.rng.gen_range(0..self.max_cached_outpoints));
+                    }
                     self.possible_unspent_outpoints.insert(TransactionOutpoint::new(tx.id(), i as u32));
                 }
             }
