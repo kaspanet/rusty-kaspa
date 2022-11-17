@@ -1,7 +1,7 @@
 use clap::Parser;
 use consensus::{
     consensus::{test_consensus::create_temp_db, Consensus},
-    constants::perf::PERF_PARAMS,
+    constants::perf::{PerfParams, PERF_PARAMS},
     errors::{BlockProcessResult, RuleError},
     model::stores::{
         block_transactions::BlockTransactionsStoreReader,
@@ -11,13 +11,14 @@ use consensus::{
         statuses::BlockStatus,
     },
     params::{Params, DEVNET_PARAMS},
+    processes::ghostdag::ordering::SortableBlock,
 };
-use consensus_core::{block::Block, BlockHashSet, HashMapCustomHasher};
+use consensus_core::{block::Block, header::Header, BlockHashSet, HashMapCustomHasher};
 use futures::{future::join_all, Future};
 use hashes::Hash;
 use itertools::Itertools;
 use simulator::network::KaspaNetworkSimulator;
-use std::{collections::VecDeque, sync::Arc};
+use std::{collections::VecDeque, mem::size_of, sync::Arc};
 
 pub mod simulator;
 
@@ -34,7 +35,7 @@ struct Args {
     delay: f64,
 
     /// Number of miners
-    #[arg(short, long, default_value_t = 2)]
+    #[arg(short, long, default_value_t = 1)]
     miners: u64,
 
     /// Target transactions per block
@@ -81,38 +82,13 @@ fn calculate_ghostdag_k(x: f64, delta: f64) -> u64 {
 
 fn main() {
     let args = Args::parse();
-    assert!(args.bps * args.delay < 200.0, "The delay times bps product is larger than 200");
+    assert!(args.bps * args.delay < 250.0, "The delay times bps product is larger than 250");
+
     let mut params = DEVNET_PARAMS.clone_with_skip_pow();
     let mut perf_params = PERF_PARAMS;
-    if args.bps * args.delay > 2.0 {
-        let k = u64::max(calculate_ghostdag_k(2.0 * args.delay * args.bps, 0.05), params.ghostdag_k as u64);
-        let k = u64::min(k, KType::MAX as u64) as KType; // Clamp to KType::MAX
-        params.ghostdag_k = k;
-        params.mergeset_size_limit = k as u64 * 10;
-        params.max_block_parents = u8::max((0.66 * k as f64) as u8, 10);
-        params.target_time_per_block = (1000.0 / args.bps) as u64;
-        params.merge_depth = (params.merge_depth as f64 * args.bps) as u64;
-        params.difficulty_window_size = (params.difficulty_window_size as f64 * args.bps) as usize; // Scale the DAA window linearly with BPS
+    adjust_consensus_params(&args, &mut params);
+    adjust_perf_params(&args, &params, &mut perf_params);
 
-        // Allow caching up to ~1000 full blocks
-        perf_params.block_data_cache_size = (perf_params.block_data_cache_size as f64 * f64::min(args.bps, 5.0)) as u64;
-        // Block windows are just hashes, so we can increase mildly with BPS
-        perf_params.block_window_cache_size = (perf_params.block_window_cache_size as f64 * f64::min(args.bps, 5.0)) as u64;
-        // We do not increase the header data cache size with BPS, since with high BPS the headers grow dramatically
-        // due to the growing number of parents, so we rather actually decrease the cache size if BPS*DELAY is too large.
-        while perf_params.block_data_cache_size as f64 * args.bps * args.delay > 50_000.0 {
-            // Estimation for total cached header sizes
-            perf_params.block_data_cache_size = (perf_params.block_data_cache_size as f64 * 0.75) as u64;
-        }
-
-        println!("The delay times bps product is larger than 2 (2Dλ={}), setting GHOSTDAG K={}", 2.0 * args.delay * args.bps, k);
-    }
-    if let Some(processors_pool_threads) = args.processors_threads {
-        perf_params.block_processors_num_threads = processors_pool_threads;
-    }
-    if let Some(virtual_pool_threads) = args.virtual_threads {
-        perf_params.virtual_processor_num_threads = virtual_pool_threads;
-    }
     let until = args.sim_time * 1000; // milliseconds
     let mut sim = KaspaNetworkSimulator::new(args.delay, args.bps, &params, &perf_params);
     let (consensus, handles, _lifetime) = sim.init(args.miners, args.tpb, !args.quiet).run(until);
@@ -123,6 +99,49 @@ fn main() {
     validate(&consensus, &consensus2, &params, args.delay, args.bps);
     consensus2.shutdown(handles2);
     drop(consensus);
+}
+
+fn adjust_consensus_params(args: &Args, params: &mut Params) {
+    if args.bps * args.delay > 2.0 {
+        let k = u64::max(calculate_ghostdag_k(2.0 * args.delay * args.bps, 0.05), params.ghostdag_k as u64);
+        let k = u64::min(k, KType::MAX as u64) as KType; // Clamp to KType::MAX
+        params.ghostdag_k = k;
+        params.mergeset_size_limit = k as u64 * 10;
+        params.max_block_parents = u8::max((0.66 * k as f64) as u8, 10);
+        params.target_time_per_block = (1000.0 / args.bps) as u64;
+        params.merge_depth = (params.merge_depth as f64 * args.bps) as u64;
+        params.difficulty_window_size = (params.difficulty_window_size as f64 * args.bps) as usize; // Scale the DAA window linearly with BPS
+
+        println!(
+            "The delay times bps product is larger than 2 (2Dλ={}), setting GHOSTDAG K={}, DAA window size={}",
+            2.0 * args.delay * args.bps,
+            k,
+            params.difficulty_window_size
+        );
+    }
+}
+
+fn adjust_perf_params(args: &Args, consensus_params: &Params, perf_params: &mut PerfParams) {
+    // Allow caching up to ~2000 full blocks
+    perf_params.block_data_cache_size = (perf_params.block_data_cache_size as f64 * args.bps.clamp(1.0, 10.0)) as u64;
+
+    let daa_window_memory_budget = 1_000_000_000u64; // 1GB
+    let single_window_byte_size = consensus_params.difficulty_window_size as u64 * size_of::<SortableBlock>() as u64;
+    let max_daa_window_cache_size = daa_window_memory_budget / single_window_byte_size;
+    perf_params.block_window_cache_size = u64::min(perf_params.block_window_cache_size, max_daa_window_cache_size);
+
+    let headers_memory_budget = 1_000_000_000u64; // 1GB
+    let approx_header_num_parents = (args.bps * args.delay) as u64 * 2; // x2 for multi-levels
+    let approx_header_byte_size = approx_header_num_parents * size_of::<Hash>() as u64 + size_of::<Header>() as u64;
+    let max_headers_cache_size = headers_memory_budget / approx_header_byte_size;
+    perf_params.header_data_cache_size = u64::min(perf_params.header_data_cache_size, max_headers_cache_size);
+
+    if let Some(processors_pool_threads) = args.processors_threads {
+        perf_params.block_processors_num_threads = processors_pool_threads;
+    }
+    if let Some(virtual_pool_threads) = args.virtual_threads {
+        perf_params.virtual_processor_num_threads = virtual_pool_threads;
+    }
 }
 
 #[tokio::main]

@@ -159,7 +159,7 @@ impl Consensus {
             block_window_cache_for_difficulty.clone(),
             block_window_cache_for_past_median_time.clone(),
             params.difficulty_window_size,
-            (2 * params.timestamp_deviation_tolerance - 1) as usize,
+            (2 * params.timestamp_deviation_tolerance - 1) as usize, // TODO: incorporate target_time_per_block to this calculation
         );
         let past_median_time_manager = PastMedianTimeManager::new(
             headers_store.clone(),
