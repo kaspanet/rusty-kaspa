@@ -19,19 +19,21 @@ pub struct KaspaNetworkSimulator {
     // Consensus instances
     consensuses: Vec<ConsensusWrapper>,
 
-    params: Params,          // Consensus params
-    perf_params: PerfParams, // Performance params
-    bps: f64,                // Blocks per second
+    params: Params,             // Consensus params
+    perf_params: PerfParams,    // Performance params
+    bps: f64,                   // Blocks per second
+    target_blocks: Option<u64>, // Target simulation blocs
 }
 
 impl KaspaNetworkSimulator {
-    pub fn new(delay: f64, bps: f64, params: &Params, perf_params: &PerfParams) -> Self {
+    pub fn new(delay: f64, bps: f64, target_blocks: Option<u64>, params: &Params, perf_params: &PerfParams) -> Self {
         Self {
             simulation: Simulation::new((delay * 1000.0) as u64),
             consensuses: Vec::new(),
             bps,
             params: params.clone(),
             perf_params: perf_params.clone(),
+            target_blocks,
         }
     }
 
@@ -52,7 +54,8 @@ impl KaspaNetworkSimulator {
                 consensus.clone(),
                 &self.params,
                 target_txs_per_block,
-                verbose,
+                self.target_blocks,
+                verbose && i == 0,
             ));
             self.simulation.register(i, miner_process);
             self.consensuses.push((consensus, handles, lifetime));

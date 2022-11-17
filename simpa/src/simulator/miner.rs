@@ -51,6 +51,7 @@ pub struct Miner {
 
     // Config
     target_txs_per_block: u64,
+    target_blocks: Option<u64>,
     max_cached_outpoints: usize,
     verbose: bool,
 }
@@ -65,6 +66,7 @@ impl Miner {
         consensus: Arc<Consensus>,
         params: &Params,
         target_txs_per_block: u64,
+        target_blocks: Option<u64>,
         verbose: bool,
     ) -> Self {
         Self {
@@ -80,6 +82,7 @@ impl Miner {
             num_blocks: 0,
             sim_time: 0,
             target_txs_per_block,
+            target_blocks,
             max_cached_outpoints: 100_000,
             verbose,
         }
@@ -172,20 +175,29 @@ impl Miner {
                 }
             }
         }
-        self.report_progress(env);
-        self.futures.push(Box::pin(self.consensus.validate_and_insert_block(block)));
-        Suspension::Idle
+        if self.report_progress(env) {
+            Suspension::Halt
+        } else {
+            self.futures.push(Box::pin(self.consensus.validate_and_insert_block(block)));
+            Suspension::Idle
+        }
     }
 
-    fn report_progress(&mut self, env: &mut Environment<Block>) {
-        if !self.verbose || self.id > 0 {
-            return;
+    fn report_progress(&mut self, env: &mut Environment<Block>) -> bool {
+        self.num_blocks += 1;
+        if let Some(target_blocks) = self.target_blocks {
+            if self.num_blocks > target_blocks {
+                return true; // Exit
+            }
+        }
+        if !self.verbose {
+            return false;
         }
         if self.num_blocks % 50 == 0 || self.sim_time / 5000 != env.now() / 5000 {
             println!("Simulation time: {}.  \tGenerated {} blocks.", env.now() as f64 / 1000.0, self.num_blocks);
         }
-        self.num_blocks += 1;
         self.sim_time = env.now();
+        false
     }
 }
 

@@ -46,6 +46,10 @@ struct Args {
     #[arg(short, long, default_value_t = 600)]
     sim_time: u64,
 
+    /// Target number of blocks the simulation should produce (overrides --sim-time if specified)
+    #[arg(short = 'n', long)]
+    target_blocks: Option<u64>,
+
     /// Avoid verbose simulation information
     #[arg(short, long, default_value_t = false)]
     quiet: bool,
@@ -83,14 +87,12 @@ fn calculate_ghostdag_k(x: f64, delta: f64) -> u64 {
 fn main() {
     let args = Args::parse();
     assert!(args.bps * args.delay < 250.0, "The delay times bps product is larger than 250");
-
     let mut params = DEVNET_PARAMS.clone_with_skip_pow();
     let mut perf_params = PERF_PARAMS;
     adjust_consensus_params(&args, &mut params);
     adjust_perf_params(&args, &params, &mut perf_params);
-
-    let until = args.sim_time * 1000; // milliseconds
-    let mut sim = KaspaNetworkSimulator::new(args.delay, args.bps, &params, &perf_params);
+    let until = if args.target_blocks.is_none() { args.sim_time * 1000 } else { u64::MAX }; // milliseconds
+    let mut sim = KaspaNetworkSimulator::new(args.delay, args.bps, args.target_blocks, &params, &perf_params);
     let (consensus, handles, _lifetime) = sim.init(args.miners, args.tpb, !args.quiet).run(until);
     consensus.shutdown(handles);
     let (_lifetime2, db2) = create_temp_db();

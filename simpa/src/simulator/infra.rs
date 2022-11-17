@@ -45,6 +45,7 @@ pub enum Resumption<T> {
 pub enum Suspension {
     Timeout(u64),
     Idle,
+    Halt, // Halt the simulation
 }
 
 /// A simulation process
@@ -110,13 +111,17 @@ impl<T: Clone> Simulation<T> {
         self.env.process_ids.insert(id);
     }
 
-    pub fn step(&mut self) {
+    pub fn step(&mut self) -> bool {
         let event = self.env.next_event();
         let process = self.processes.get_mut(&event.dest).unwrap();
         let op = if let Some(msg) = event.msg { Resumption::Message(msg) } else { Resumption::Scheduled };
         match process.resume(op, &mut self.env) {
-            Suspension::Timeout(timeout) => self.env.timeout(timeout, event.dest),
-            Suspension::Idle => {}
+            Suspension::Timeout(timeout) => {
+                self.env.timeout(timeout, event.dest);
+                true
+            }
+            Suspension::Idle => true,
+            Suspension::Halt => false,
         }
     }
 
@@ -125,11 +130,11 @@ impl<T: Clone> Simulation<T> {
             match process.resume(Resumption::Initial, &mut self.env) {
                 Suspension::Timeout(timeout) => self.env.timeout(timeout, id),
                 Suspension::Idle => {}
+                Suspension::Halt => panic!("not expecting halt on startup"),
             }
         }
 
-        loop {
-            self.step();
+        while self.step() {
             if self.env.now() > until {
                 break;
             }
