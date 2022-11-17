@@ -26,7 +26,6 @@ pub struct VirtualState {
     pub accepted_tx_ids: Vec<TransactionId>, // TODO: consider saving `accepted_id_merkle_root` directly
     pub mergeset_rewards: BlockHashMap<BlockRewardData>,
     pub mergeset_non_daa: BlockHashSet,
-    pub pruning_point: Hash,
 }
 
 impl VirtualState {
@@ -40,7 +39,6 @@ impl VirtualState {
         accepted_tx_ids: Vec<TransactionId>,
         mergeset_rewards: BlockHashMap<BlockRewardData>,
         mergeset_non_daa: BlockHashSet,
-        pruning_point: Hash,
     ) -> Self {
         Self {
             parents,
@@ -52,7 +50,6 @@ impl VirtualState {
             accepted_tx_ids,
             mergeset_rewards,
             mergeset_non_daa,
-            pruning_point,
         }
     }
 
@@ -72,7 +69,6 @@ impl VirtualState {
             accepted_tx_ids,
             mergeset_rewards: BlockHashMap::new(),
             mergeset_non_daa: BlockHashSet::from_iter(std::iter::once(genesis_hash)),
-            pruning_point: genesis_hash,
         }
     }
 }

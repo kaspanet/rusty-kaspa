@@ -295,7 +295,6 @@ impl VirtualStateProcessor {
                     ctx.accepted_tx_ids,
                     ctx.mergeset_rewards,
                     mergeset_non_daa,
-                    self.pruning_store.read().pruning_point().unwrap(),
                 );
 
                 let mut batch = WriteBatch::default();
@@ -362,7 +361,11 @@ impl VirtualStateProcessor {
         miner_data: MinerData,
         mut txs: Vec<Transaction>,
     ) -> BlockTemplate {
+        // TODO: tests
         let virtual_state = self.virtual_state_store.read().get().unwrap();
+        let pruning_point = self
+            .pruning_manager
+            .expected_header_pruning_point(virtual_state.ghostdag_data.to_compact(), self.pruning_store.read().get().unwrap());
         let coinbase = self
             .coinbase_manager
             .expected_coinbase_transaction(
@@ -375,7 +378,7 @@ impl VirtualStateProcessor {
             .unwrap();
         txs.insert(0, coinbase.tx);
         let version = BLOCK_VERSION;
-        let parents_by_level = self.parents_manager.calc_block_parents(virtual_state.pruning_point, &virtual_state.parents);
+        let parents_by_level = self.parents_manager.calc_block_parents(pruning_point, &virtual_state.parents);
         let hash_merkle_root = calc_hash_merkle_root(&mut txs.iter());
         let accepted_id_merkle_root = merkle::calc_merkle_root(virtual_state.accepted_tx_ids.iter().copied());
         let utxo_commitment = virtual_state.multiset.clone().finalize();
@@ -385,13 +388,13 @@ impl VirtualStateProcessor {
             hash_merkle_root,
             accepted_id_merkle_root,
             utxo_commitment,
-            timestamp,
+            timestamp, // TODO: median time manager
             virtual_state.bits,
             nonce,
             virtual_state.daa_score,
             virtual_state.ghostdag_data.blue_work,
             virtual_state.ghostdag_data.blue_score,
-            virtual_state.pruning_point,
+            pruning_point,
         );
         let selected_parent_timestamp = self.headers_store.get_timestamp(virtual_state.ghostdag_data.selected_parent).unwrap();
         BlockTemplate::new(MutableBlock::new(header, txs), miner_data, coinbase.has_red_reward, selected_parent_timestamp)
