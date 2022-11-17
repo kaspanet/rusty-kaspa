@@ -30,8 +30,9 @@ use crate::{
     params::Params,
     pipeline::{deps_manager::BlockTask, virtual_processor::utxo_validation::UtxoProcessingContext},
     processes::{
-        coinbase::CoinbaseManager, difficulty::DifficultyManager, parents_builder::ParentsManager, pruning::PruningManager,
-        transaction_validator::TransactionValidator, traversal_manager::DagTraversalManager,
+        coinbase::CoinbaseManager, difficulty::DifficultyManager, parents_builder::ParentsManager,
+        past_median_time::PastMedianTimeManager, pruning::PruningManager, transaction_validator::TransactionValidator,
+        traversal_manager::DagTraversalManager,
     },
 };
 use consensus_core::{
@@ -96,6 +97,7 @@ pub struct VirtualStateProcessor {
     pub(super) difficulty_manager: DifficultyManager<DbHeadersStore>,
     pub(super) coinbase_manager: CoinbaseManager,
     pub(super) transaction_validator: TransactionValidator,
+    pub(super) past_median_time_manager: PastMedianTimeManager<DbHeadersStore, DbGhostdagStore, BlockWindowCacheStore>,
     pub(super) pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
     pub(super) parents_manager: ParentsManager<DbHeadersStore, DbReachabilityStore, DbRelationsStore>,
 }
@@ -130,6 +132,7 @@ impl VirtualStateProcessor {
         difficulty_manager: DifficultyManager<DbHeadersStore>,
         coinbase_manager: CoinbaseManager,
         transaction_validator: TransactionValidator,
+        past_median_time_manager: PastMedianTimeManager<DbHeadersStore, DbGhostdagStore, BlockWindowCacheStore>,
         pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
         parents_manager: ParentsManager<DbHeadersStore, DbReachabilityStore, DbRelationsStore>,
     ) -> Self {
@@ -164,6 +167,7 @@ impl VirtualStateProcessor {
             difficulty_manager,
             coinbase_manager,
             transaction_validator,
+            past_median_time_manager,
             pruning_manager,
             parents_manager,
         }
@@ -274,7 +278,7 @@ impl VirtualStateProcessor {
                 let mut ctx = UtxoProcessingContext::new(virtual_ghostdag_data.clone(), selected_parent_multiset_hash);
 
                 // Calc virtual DAA score
-                let window = self.dag_traversal_manager.block_window(virtual_ghostdag_data.clone(), self.difficulty_window_size);
+                let window = self.dag_traversal_manager.block_window(&virtual_ghostdag_data, self.difficulty_window_size);
                 let (virtual_daa_score, mergeset_non_daa) = self
                     .difficulty_manager
                     .calc_daa_score_and_non_daa_mergeset_blocks(&mut window.iter().map(|item| item.0.hash), &virtual_ghostdag_data);
@@ -382,13 +386,15 @@ impl VirtualStateProcessor {
         let hash_merkle_root = calc_hash_merkle_root(&mut txs.iter());
         let accepted_id_merkle_root = merkle::calc_merkle_root(virtual_state.accepted_tx_ids.iter().copied());
         let utxo_commitment = virtual_state.multiset.clone().finalize();
+        // Past median time is the exclusive lower bound for valid block time, so we increase by 1 to get the valid min
+        let min_block_time = self.past_median_time_manager.calc_past_median_time(&virtual_state.ghostdag_data).0 + 1;
         let header = Header::new(
             version,
             parents_by_level,
             hash_merkle_root,
             accepted_id_merkle_root,
             utxo_commitment,
-            timestamp, // TODO: median time manager
+            u64::max(min_block_time, timestamp),
             virtual_state.bits,
             nonce,
             virtual_state.daa_score,

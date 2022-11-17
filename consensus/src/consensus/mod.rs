@@ -332,6 +332,7 @@ impl Consensus {
             difficulty_manager.clone(),
             coinbase_manager.clone(),
             transaction_validator,
+            past_median_time_manager.clone(),
             pruning_manager.clone(),
             parents_manager,
         ));
