@@ -34,6 +34,9 @@ jobs:
           command: check
           args: --tests --workspace --benches
 
+      - name: Install Protoc
+        run: sudo apt install -y protobuf-compiler
+
   test:
     name: Test Suite
     # runs-on: ${{ matrix.os }}
