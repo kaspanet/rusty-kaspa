@@ -17,6 +17,9 @@ jobs:
           toolchain: stable
           override: true
 
+      - name: Install protoc
+        run: sudo apt install -y protobuf-compiler
+
       - name: Cache
         uses: actions/cache@v2
         with:
@@ -33,9 +36,6 @@ jobs:
         with:
           command: check
           args: --tests --workspace --benches
-
-      - name: Install Protoc
-        run: sudo apt install -y protobuf-compiler
 
   test:
     name: Test Suite
