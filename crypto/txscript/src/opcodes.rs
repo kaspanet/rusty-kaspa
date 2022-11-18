@@ -5,21 +5,28 @@ mod hashes;
 use core::mem::size_of;
 use core::cmp::{max, min};
 use core::iter;
-use std::fmt::Debug;
+use std::fmt::{Debug, Display, Formatter};
 use sha2::{Sha256, Digest};
 use blake2b_simd::blake2b;
+use consensus_core::hashing::sighash::calc_schnorr_signature_hash;
+use consensus_core::hashing::sighash_type::SigHashType;
 use consensus_core::tx::{PopulatedTransaction};
-use crate::{Stack, TxScriptEngine, TxScriptError};
+use crate::{Stack, TxScriptEngine, TxScriptError, ScriptSource};
 use crate::opcodes::hashes::signature_hash;
 
 type OpCodeResult = Result<(),TxScriptError>;
 
-#[derive(Debug)]
 pub(crate) struct OpCode<const CODE: u8> {
     data: Vec<u8>,
 }
 
-pub trait OpCodeImplementation {
+impl<const CODE: u8> Debug for OpCode<CODE> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Opcode<{:#2x}>{{ data:{:?} }}", CODE, self.data)
+    }
+}
+
+pub trait OpCodeImplementation: Debug {
     fn execute(&self, vm: &mut TxScriptEngine) -> OpCodeResult;
     // TODO: could be implemented as staticmethod for all opcodes at once. Maybe need its own trait?
     fn value(&self) -> u8;
@@ -39,7 +46,7 @@ impl DataStack for Stack {
         where
             Vec<u8>: OpcodeData<T>
     {
-        if self.len() >= SIZE {
+        if self.len() < SIZE {
             return Err(TxScriptError::EmptyStack);
         }
         Ok(<[T; SIZE]>::try_from(self.split_off(self.len() - SIZE).iter().map(|v| v.deserialize()).collect::<Result<Vec<T>,_>>()?).expect("Already exact item"))
@@ -50,7 +57,7 @@ impl DataStack for Stack {
         where
             Vec<u8>: OpcodeData<T>
     {
-        if self.len() >= SIZE {
+        if self.len() < SIZE {
             return Err(TxScriptError::EmptyStack);
         }
         Ok(<[T; SIZE]>::try_from(self[self.len() - SIZE..].iter().map(|v| v.deserialize()).collect::<Result<Vec<T>,_>>()?).expect("Already exact item"))
@@ -58,7 +65,7 @@ impl DataStack for Stack {
 
     #[inline]
     fn pop_raw<const SIZE: usize>(&mut self) -> Result<[Vec<u8>; SIZE], TxScriptError> {
-        if self.len() >= SIZE {
+        if self.len() < SIZE {
             return Err(TxScriptError::EmptyStack);
         }
         Ok(<[Vec<u8>; SIZE]>::try_from(self.split_off(self.len() - SIZE)).expect("Already exact item"))
@@ -66,7 +73,7 @@ impl DataStack for Stack {
 
     #[inline]
     fn last_raw<const SIZE: usize>(&self) -> Result<[Vec<u8>; SIZE], TxScriptError> {
-        if self.len() >= SIZE {
+        if self.len() < SIZE {
             return Err(TxScriptError::EmptyStack);
         }
         Ok(<[Vec<u8>; SIZE]>::try_from(self[self.len() - SIZE..].to_vec()).expect("Already exact item"))
@@ -219,20 +226,6 @@ fn swap_n<const N: usize>(vm: &mut TxScriptEngine) -> OpCodeResult {
         }
         false => Err(TxScriptError::EmptyStack),
     }
-}
-
-
-#[inline]
-fn check_signature(tx: &PopulatedTransaction, input_id: usize, hash_type: u8, key: &[u8], sig: &[u8]) -> Result<(), secp256k1::Error>{
-    // TODO: calculate headers
-    // input.
-    let msg = secp256k1::Message::from_slice(
-        signature_hash(&tx).as_bytes().as_slice()
-    )?;
-
-    let key = secp256k1::XOnlyPublicKey::from_slice(key)?;
-    let sig = secp256k1::schnorr::Signature::from_slice(sig)?;
-    sig.verify(&msg, &key)
 }
 
 /*
@@ -748,14 +741,15 @@ opcode_list!{
                 //TODO: check signature length (pair[0])
                 //TODO: check public key encoding (pair[1])
                 //TODO: calculate signature hash schnorr
-                match check_signature(vm.tx.clone().unwrap(), vm.input_id.clone().unwrap(), typ, key.as_slice(), sig.as_slice()) {
+                let hash_type = SigHashType::from_u8(typ).map_err(|e| TxScriptError::InvalidState(e.into()))?;
+                match vm.check_signature(hash_type, key.as_slice(), sig.as_slice()) {
                     Ok(()) => {
                         vm.dstack.push_item(true);
                         Ok(())
-                    }
+                    },
                     Err(e) => {
                         vm.dstack.push_item(false);
-                        Err(TxScriptError::InvalidState(format!("invalid hash type {}", e)))
+                        Err(e)
                     }
                 }
             }

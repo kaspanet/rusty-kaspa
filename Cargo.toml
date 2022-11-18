@@ -36,7 +36,7 @@ addresses = { path = "crypto/addresses" }
 merkle = { path = "crypto/merkle" }
 pow = { path = "consensus/pow" }
 kaspa-utils = { path = "utils" }
-txscript = { path = "consensus/txscript" }
+txscript = { path = "crypto/txscript" }
 
 thiserror = "1"
 faster-hex = "0.6"
@@ -57,4 +57,5 @@ tokio = { version = "1", features = ["sync"] }
 wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
 criterion = { version = "0.4", default-features = false }
 indexmap = "1.9.1"
+parking_lot = "0.12"
 smallvec = { version = "1.10.0", features = ["serde"] }

@@ -14,8 +14,11 @@ hashes.workspace = true
 blake2b_simd.workspace = true
 sha2.workspace = true
 itertools.workspace = true
+rand.workspace = true
+indexmap.workspace = true
 secp256k1 ={version="0.24", features=["global-context", "rand-std"]}
 num = "0.4.0"
+parking_lot = "0.12"
 
 [dev-dependencies]
 criterion.workspace = true

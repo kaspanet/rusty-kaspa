@@ -1,13 +1,17 @@
 extern crate core;
+extern crate alloc;
 
 mod opcodes;
+pub mod caches;
 
 use core::fmt::{Display, Formatter};
-use consensus_core::tx::{PopulatedTransaction, ScriptPublicKey, UtxoEntry};
+use consensus_core::tx::{PopulatedTransaction, ScriptPublicKey, TransactionInput, UtxoEntry};
 use crate::opcodes::{OpCodeImplementation, deserialize};
 use itertools::Itertools;
 use log::warn;
-
+use consensus_core::hashing::sighash::{calc_schnorr_signature_hash, SigHashReusedValues};
+use consensus_core::hashing::sighash_type::SigHashType;
+use crate::caches::Cache;
 
 
 pub const MAX_SCRIPT_PUBLIC_KEY_VERSION: u16 = 0;
@@ -29,11 +33,22 @@ pub enum TxScriptError {
     EarlyReturn,
     VerifyError,
     InvalidState(String),
+    SignatureInvalid(secp256k1::Error),
+    SigcacheSignatureInvalid,
     TooManyOperations(i32),
+    NotATransactionInput
+}
+
+// TODO: Make it pub(crate)
+#[derive(Clone, Hash, PartialEq, Eq)]
+pub struct SigCacheKey {
+    signature: secp256k1::schnorr::Signature,
+    pub_key: secp256k1::XOnlyPublicKey,
+    message: secp256k1::Message,
 }
 
 impl Display for TxScriptError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         write!(
             f,
             "Address decoding failed: {}",
@@ -47,7 +62,10 @@ impl Display for TxScriptError {
                 Self::EarlyReturn => format!("script returned early"),
                 Self::VerifyError => format!("script ran, but verification failed"),
                 Self::InvalidState(s) => format!("encountered invalid state while running script: {}", s),
-                Self::TooManyOperations(limit) => format!("exceeded max operation limit of {}", limit)
+                Self::TooManyOperations(limit) => format!("exceeded max operation limit of {}", limit),
+                Self::NotATransactionInput => format!("Engine is not running on a transaction input"),
+                Self::SignatureInvalid(e) => format!("signature invalid: {}", e),
+                Self::SigcacheSignatureInvalid => format!("invalid signature in sig cache")
             }
         )
     }
@@ -55,13 +73,26 @@ impl Display for TxScriptError {
 
 type Stack = Vec<Vec<u8>>;
 
+enum ScriptSource<'a> {
+    TxInput{
+        tx: &'a PopulatedTransaction<'a>,
+        input: &'a TransactionInput,
+        id: usize,
+        utxo_entry: &'a UtxoEntry
+    },
+    StandAloneScripts(Vec<&'a [u8]>)
+}
+
 pub struct TxScriptEngine<'a> {
     dstack: Stack,
     astack: Stack,
 
-    tx: Option<&'a PopulatedTransaction<'a>>,
-    input_id: Option<usize>,
-    utxo_entry: Option<&'a UtxoEntry>,
+    script_source: ScriptSource<'a>,
+
+    // Outer caches for quicker calculation
+    // TODO:: make it compatible with threading
+    reused_values: &'a mut SigHashReusedValues,
+    sig_cache: &'a Cache<SigCacheKey, Result<(), secp256k1::Error>>,
 
     cond_stack: Vec<i8>, // Following if stacks, and whether it is running
 
@@ -69,13 +100,25 @@ pub struct TxScriptEngine<'a> {
 }
 
 impl<'a> TxScriptEngine<'a> {
-    pub fn new(tx: Option<&'a PopulatedTransaction<'a>>, input_id: Option<usize>, utxo_entry: Option<&'a UtxoEntry>) -> Self {
+    pub fn from_transaction_input(tx: &'a PopulatedTransaction<'a>, input: &'a TransactionInput, id: usize, utxo_entry: &'a UtxoEntry, reused_values: &'a mut SigHashReusedValues, sig_cache: &'a Cache<SigCacheKey, Result<(), secp256k1::Error>>) -> Self {
         Self{
             dstack: Default::default(),
             astack: Default::default(),
-            tx,
-            input_id,
-            utxo_entry,
+            script_source: ScriptSource::TxInput {tx, input, id, utxo_entry},
+            reused_values,
+            sig_cache,
+            cond_stack: Default::default(),
+            num_ops: 0
+        }
+    }
+
+    pub fn from_script(script: &'a [u8], reused_values: &'a mut SigHashReusedValues, sig_cache: &'a Cache<SigCacheKey, Result<(), secp256k1::Error>>) -> Self {
+        Self{
+            dstack: Default::default(),
+            astack: Default::default(),
+            script_source: ScriptSource::StandAloneScripts(vec![script]),
+            reused_values,
+            sig_cache,
             cond_stack: Default::default(),
             num_ops: 0
         }
@@ -101,6 +144,7 @@ impl<'a> TxScriptEngine<'a> {
 
         // TODO: check minimal data push
         // TODO: run opcode
+        let a = format!("{:?}", opcode);
         opcode.execute(self)
     }
 
@@ -137,26 +181,28 @@ impl<'a> TxScriptEngine<'a> {
         })
     }
 
-    pub fn execute(&mut self, script: &Vec<u8>, script_pubkey: ScriptPublicKey) -> Result<(),TxScriptError> {
+    pub fn execute(&mut self) -> Result<(),TxScriptError> {
+        let scripts = match &self.script_source {
+            ScriptSource::TxInput {input, utxo_entry, .. } => {
+                if utxo_entry.script_public_key.version() > MAX_SCRIPT_PUBLIC_KEY_VERSION {
+                    warn!("The version of the scriptPublicKey is higher than the known version - the Execute function returns true.");
+                    return Ok(());
+                }
+                // TODO: parseScriptAndVerifySize x2
+                vec![input.signature_script.as_slice(), utxo_entry.script_public_key.script()]
+            },
+            ScriptSource::StandAloneScripts(scripts) => scripts.clone()
+        };
         //TODO: removed a check on txIdx
 
         // When both the signature script and public key script are empty the
         // result is necessarily an error since the stack would end up being
         // empty which is equivalent to a false top element. Thus, just return
         // the relevant error now as an optimization.
-        if script.len() == 0 && script_pubkey.script().len() == 0 {
+        if scripts.iter().all(|e| e.len() == 0) {
             return Err(TxScriptError::FalseStackEntry);
         }
 
-        if script_pubkey.version() > MAX_SCRIPT_PUBLIC_KEY_VERSION {
-            warn!("The version of the scriptPublicKey is higher than the known version - the Execute function returns true.");
-            return Ok(());
-        }
-
-        // TODO: parseScriptAndVerifySize x2
-
-        let scripts = [script.clone(), script_pubkey.script().to_vec()];
-        let unified_script = script.clone();
         // TODO: check script is non empty, o.w. skip
 
         // TODO: isScriptHash(script_pubkey.script)
@@ -167,21 +213,43 @@ impl<'a> TxScriptEngine<'a> {
         //      executeOpcode
         //    CheckErrorCondition
 
-        let _ = scripts.iter().map(|x| self.execute_script(x));
-        Ok(())
+        scripts.iter().filter(|s| s.len() > 0).try_for_each(
+            |s| self.execute_script(s)
+        )
     }
 
-    pub fn clean_execute(tx: &'a PopulatedTransaction, input_id: usize, utxo_entry: &'a UtxoEntry) -> Result<(), TxScriptError> {
-        let mut engine = TxScriptEngine::new(Some(tx), Some(input_id), Some(utxo_entry));
-        let script = &tx.tx.inputs[input_id].signature_script;
-        //script: Vec<u8>, script_pubkey: ScriptPublicKey
-        let script_pubkey = ScriptPublicKey::default();
-        //&tx.inputs[input_id].previous_out
+    #[inline]
+    fn check_signature(&mut self, hash_type: SigHashType, key: &[u8], sig: &[u8]) -> Result<(), TxScriptError>{
+        match self.script_source {
+            ScriptSource::TxInput{tx, id, ..} => {
+                // TODO: will crash the node. We need to replace it with a proper script engine once it's ready.
+                let pk = secp256k1::XOnlyPublicKey::from_slice(key).map_err(|e|TxScriptError::SignatureInvalid(e))?;
+                let sig = secp256k1::schnorr::Signature::from_slice(sig).map_err(|e|TxScriptError::SignatureInvalid(e))?;
+                let sig_hash = calc_schnorr_signature_hash(tx, id, hash_type, self.reused_values);
+                let msg = secp256k1::Message::from_slice(sig_hash.as_bytes().as_slice()).unwrap();
+                let sig_cache_key = SigCacheKey { signature: sig, pub_key: pk, message: msg };
 
-        engine.execute(script, script_pubkey)?;
-        Ok(())
+                match self.sig_cache.get(&sig_cache_key) {
+                    Some(valid) => valid.map_err(|e|TxScriptError::SignatureInvalid(e)),
+                    None => {
+                        // TODO: Find a way to parallelize this part. This will be less trivial
+                        // once this code is inside the script engine.
+                        match sig.verify(&msg, &pk) {
+                            Ok(()) => {
+                                self.sig_cache.insert(sig_cache_key, Ok(()));
+                                Ok(())
+                            },
+                            Err(e) => {
+                                self.sig_cache.insert(sig_cache_key, Err(e.clone()));
+                                Err(TxScriptError::SignatureInvalid(e))
+                            },
+                        }
+                    }
+                }
+            },
+            _ => Err(TxScriptError::NotATransactionInput)
+        }
     }
-
 }
 
 #[cfg(test)]
@@ -190,12 +258,16 @@ mod tests {
 
     #[test]
     fn test_nop() {
-        let mut engine = TxScriptEngine::new(None, None, None);
-        assert_eq!(engine.execute_script(vec![0x61u8].as_slice()), Ok(()));
+        let mut sig_cache = Cache::new(10_000);
+        let mut reused_values = SigHashReusedValues::new();
+        let a = vec![0x61u8];
+        let mut engine = TxScriptEngine::from_script(a.as_slice(), &reused_values, &sig_cache);
+        assert_eq!(engine.execute(), Ok(()));
         assert_eq!(engine.num_ops, 1);
 
-        let mut engine = TxScriptEngine::new(None, None, None);
-        assert_eq!(engine.execute_script(vec![0x61u8, 0x61u8].as_slice()), Ok(()));
+        let a = vec![0x61u8, 0x61u8];
+        let mut engine = TxScriptEngine::from_script(a.as_slice(), &reused_values, &sig_cache);
+        assert_eq!(engine.execute(), Ok(()));
         assert_eq!(engine.num_ops, 2);
     }
 }

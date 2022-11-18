@@ -1,5 +1,6 @@
 use consensus_core::tx::TransactionOutpoint;
 use thiserror::Error;
+use txscript::TxScriptError;
 
 use crate::constants::MAX_SOMPI;
 
@@ -70,6 +71,9 @@ pub enum TxRuleError {
 
     #[error("one of the transaction sequence locks conditions was not met")]
     SequenceLockConditionsAreNotMet,
+
+    #[error("failed to verify the signature script: {0}")]
+    SignatureInvalid(TxScriptError)
 }
 
 pub type TxResult<T> = std::result::Result<T, TxRuleError>;
