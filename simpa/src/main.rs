@@ -112,6 +112,7 @@ fn adjust_consensus_params(args: &Args, params: &mut Params) {
         params.max_block_parents = u8::max((0.66 * k as f64) as u8, 10);
         params.target_time_per_block = (1000.0 / args.bps) as u64;
         params.merge_depth = (params.merge_depth as f64 * args.bps) as u64;
+        params.coinbase_maturity = (params.coinbase_maturity as f64 * f64::max(1.0, args.bps * args.delay * 0.25)) as u64;
         params.difficulty_window_size = (params.difficulty_window_size as f64 * args.bps) as usize; // Scale the DAA window linearly with BPS
 
         println!(
