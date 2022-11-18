@@ -152,7 +152,7 @@ async fn validate(src_consensus: &Consensus, dst_consensus: &Consensus, params: 
     let hashes = topologically_ordered_hashes(src_consensus, params.genesis_hash);
     let num_blocks = hashes.len();
     let num_txs = print_stats(src_consensus, &hashes, delay, bps, params.ghostdag_k);
-    eprintln!("Validating {} blocks with {} transactions overall...", num_blocks, num_txs);
+    println!("Validating {} blocks with {} transactions overall...", num_blocks, num_txs);
     let start = std::time::Instant::now();
     let chunks = hashes.into_iter().chunks(1000);
     let mut iter = chunks.into_iter();
@@ -172,7 +172,7 @@ async fn validate(src_consensus: &Consensus, dst_consensus: &Consensus, params: 
     // Assert that at least one body tip was resolved with valid UTXO
     assert!(dst_consensus.body_tips().iter().copied().any(|h| dst_consensus.block_status(h) == BlockStatus::StatusUTXOValid));
     let elapsed = start.elapsed();
-    eprintln!(
+    println!(
         "Total validation time: {:?}, block processing rate: {:.2} (b/s), transaction processing rate: {:.2} (t/s)",
         elapsed,
         num_blocks as f64 / elapsed.as_secs_f64(),
