@@ -9,7 +9,7 @@ use consensus_core::{
 
 use super::{
     errors::{TxResult, TxRuleError},
-    SigCacheKey, TransactionValidator,
+    TransactionValidator,
 };
 
 impl TransactionValidator {
@@ -18,10 +18,21 @@ impl TransactionValidator {
         let total_in = self.check_transaction_input_amounts(tx)?;
         let total_out = Self::check_transaction_output_values(tx, total_in)?;
         Self::check_sequence_lock(tx, pov_daa_score)?;
-        Self::check_sig_op_counts(tx)?;
-        self.check_scripts(tx)?;
+        let is_context_free_valid = self.context_free_populated_transaction_validation_cache.get(&tx.id());
+        if let Some(result) = is_context_free_valid {
+            result?;
+        } else {
+            let result = self.validate_populated_transaction_context_free(tx);
+            self.context_free_populated_transaction_validation_cache.insert(tx.id(), result);
+            result?;
+        }
 
         Ok(total_in - total_out)
+    }
+
+    pub fn validate_populated_transaction_context_free(&self, tx: &PopulatedTransaction) -> TxResult<()> {
+        Self::check_sig_op_counts(tx)?;
+        self.check_scripts(tx)
     }
 
     fn check_transaction_coinbase_maturity(&self, tx: &PopulatedTransaction, pov_daa_score: u64) -> TxResult<()> {
@@ -102,29 +113,30 @@ impl TransactionValidator {
     }
 
     fn check_scripts(&self, tx: &PopulatedTransaction) -> TxResult<()> {
-        let mut reused_values = SigHashReusedValues::new();
-        for (i, (input, entry)) in tx.populated_inputs().enumerate() {
-            // TODO: this is a temporary implementation and not ready for consensus since any invalid signature
-            // will crash the node. We need to replace it with a proper script engine once it's ready.
-            let pk = &entry.script_public_key.script()[1..33];
-            let pk = secp256k1::XOnlyPublicKey::from_slice(pk).unwrap();
-            let sig = secp256k1::schnorr::Signature::from_slice(&input.signature_script[1..65]).unwrap();
-            let sig_hash = calc_schnorr_signature_hash(tx, i, SIG_HASH_ALL, &mut reused_values);
-            let msg = secp256k1::Message::from_slice(sig_hash.as_bytes().as_slice()).unwrap();
-            let sig_cache_key = SigCacheKey { signature: sig, pub_key: pk, message: msg };
-            match self.sig_cache.get(&sig_cache_key) {
-                Some(valid) => {
-                    assert!(valid, "invalid signature in sig cache");
-                }
-                None => {
+        match self.context_free_populated_transaction_validation_cache.get(&tx.id()) {
+            Some(valid) => {
+                assert!(valid, "invalid signature in sig cache");
+            }
+            None => {
+                // TODO: Find a way to parallelize this part. This will be less trivial
+                // once this code is inside the script engine.
+                let mut reused_values = SigHashReusedValues::new();
+                for (i, (input, entry)) in tx.populated_inputs().enumerate() {
+                    // TODO: this is a temporary implementation and not ready for consensus since any invalid signature
+                    // will crash the node. We need to replace it with a proper script engine once it's ready.
+                    let pk = &entry.script_public_key.script()[1..33];
+                    let pk = secp256k1::XOnlyPublicKey::from_slice(pk).unwrap();
+                    let sig = secp256k1::schnorr::Signature::from_slice(&input.signature_script[1..65]).unwrap();
+                    let sig_hash = calc_schnorr_signature_hash(tx, i, SIG_HASH_ALL, &mut reused_values);
+                    let msg = secp256k1::Message::from_slice(sig_hash.as_bytes().as_slice()).unwrap();
                     // TODO: Find a way to parallelize this part. This will be less trivial
                     // once this code is inside the script engine.
                     sig.verify(&msg, &pk).unwrap();
-                    self.sig_cache.insert(sig_cache_key, true);
                 }
             }
         }
 
+        self.context_free_populated_transaction_validation_cache.insert(tx.id(), true);
         Ok(())
     }
 }

@@ -70,6 +70,9 @@ pub enum TxRuleError {
 
     #[error("one of the transaction sequence locks conditions was not met")]
     SequenceLockConditionsAreNotMet,
+
+    #[error("the transaction is cached as invalid")]
+    CachedInvalid,
 }
 
 pub type TxResult<T> = std::result::Result<T, TxRuleError>;
