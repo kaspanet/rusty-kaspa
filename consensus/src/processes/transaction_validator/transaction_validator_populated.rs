@@ -1,16 +1,10 @@
 use crate::constants::{MAX_SOMPI, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK};
-use consensus_core::{
-    hashing::{
-        sighash::{calc_schnorr_signature_hash, SigHashReusedValues},
-        sighash_type::SIG_HASH_ALL,
-    },
-    tx::PopulatedTransaction,
-};
+use consensus_core::{hashing::sighash::SigHashReusedValues, tx::PopulatedTransaction};
 use txscript::TxScriptEngine;
 
 use super::{
     errors::{TxResult, TxRuleError},
-    SigCacheKey, TransactionValidator,
+    TransactionValidator,
 };
 
 impl TransactionValidator {
@@ -106,8 +100,9 @@ impl TransactionValidator {
         let mut reused_values = SigHashReusedValues::new();
         for (i, (input, entry)) in tx.populated_inputs().enumerate() {
             // TODO: this is a temporary implementation and not ready for consensus since any invalid signature
-            let mut engine = TxScriptEngine::from_transaction_input(tx, input, i, entry, &mut reused_values, &self.sig_cache);
-            engine.execute().map_err(|e|TxRuleError::SignatureInvalid(e))?;
+            let mut engine = TxScriptEngine::from_transaction_input(tx, input, i, entry, &mut reused_values, &self.sig_cache)
+                .map_err(TxRuleError::SignatureInvalid)?;
+            engine.execute().map_err(TxRuleError::SignatureInvalid)?;
         }
 
         Ok(())
@@ -116,23 +111,13 @@ impl TransactionValidator {
 
 #[cfg(test)]
 mod tests {
-    use core::str::FromStr;
-    use smallvec::SmallVec;
-    use consensus_core::{
-        subnets::{SUBNETWORK_ID_COINBASE, SUBNETWORK_ID_NATIVE},
-        tx::{scriptvec, ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput},
-    };
     use consensus_core::subnets::SubnetworkId;
     use consensus_core::tx::{PopulatedTransaction, TransactionId, UtxoEntry};
-    use hashes::TransactionID;
-    use kaspa_core::assert_match;
+    use consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
+    use core::str::FromStr;
+    use smallvec::SmallVec;
 
-    use crate::{
-        constants::TX_VERSION,
-        params::MAINNET_PARAMS,
-        processes::transaction_validator::{errors::TxRuleError, TransactionValidator},
-    };
-    use crate::processes::transaction_validator::errors::TxResult;
+    use crate::{params::MAINNET_PARAMS, processes::transaction_validator::TransactionValidator};
 
     #[test]
     fn check_signature_test() {
@@ -165,17 +150,15 @@ mod tests {
 
         let tx = Transaction::new(
             0,
-            vec![
-                TransactionInput {
-                    previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 1 },
-                    signature_script: signature_script,
-                    sequence: 0,
-                    sig_op_count: 1,
-                },
-            ],
+            vec![TransactionInput {
+                previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 1 },
+                signature_script,
+                sequence: 0,
+                sig_op_count: 1,
+            }],
             vec![
                 TransactionOutput { value: 10360487799, script_public_key: ScriptPublicKey::new(0, script_pub_key_2.clone()) },
-                TransactionOutput { value: 10518958752, script_public_key: ScriptPublicKey::new(0, script_pub_key_1 .clone()) },
+                TransactionOutput { value: 10518958752, script_public_key: ScriptPublicKey::new(0, script_pub_key_1.clone()) },
             ],
             0,
             SubnetworkId::from_bytes([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
@@ -185,14 +168,12 @@ mod tests {
 
         let populated_tx = PopulatedTransaction::new(
             &tx,
-            vec![
-                UtxoEntry {
-                    amount: 20879456551,
-                    script_public_key: ScriptPublicKey::new(0, script_pub_key_1),
-                    block_daa_score: 32022768,
-                    is_coinbase: false,
-                },
-            ],
+            vec![UtxoEntry {
+                amount: 20879456551,
+                script_public_key: ScriptPublicKey::new(0, script_pub_key_1),
+                block_daa_score: 32022768,
+                is_coinbase: false,
+            }],
         );
 
         tv.check_scripts(&populated_tx).expect("Signature check failed");
@@ -229,17 +210,15 @@ mod tests {
 
         let tx = Transaction::new(
             0,
-            vec![
-                TransactionInput {
-                    previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 1 },
-                    signature_script: signature_script,
-                    sequence: 0,
-                    sig_op_count: 1,
-                },
-            ],
+            vec![TransactionInput {
+                previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 1 },
+                signature_script,
+                sequence: 0,
+                sig_op_count: 1,
+            }],
             vec![
                 TransactionOutput { value: 10360487799, script_public_key: ScriptPublicKey::new(0, script_pub_key_2.clone()) },
-                TransactionOutput { value: 10518958752, script_public_key: ScriptPublicKey::new(0, script_pub_key_1 .clone()) },
+                TransactionOutput { value: 10518958752, script_public_key: ScriptPublicKey::new(0, script_pub_key_1.clone()) },
             ],
             0,
             SubnetworkId::from_bytes([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
@@ -249,14 +228,12 @@ mod tests {
 
         let populated_tx = PopulatedTransaction::new(
             &tx,
-            vec![
-                UtxoEntry {
-                    amount: 20879456551,
-                    script_public_key: ScriptPublicKey::new(0, script_pub_key_2),
-                    block_daa_score: 32022768,
-                    is_coinbase: false,
-                },
-            ],
+            vec![UtxoEntry {
+                amount: 20879456551,
+                script_public_key: ScriptPublicKey::new(0, script_pub_key_2),
+                block_daa_score: 32022768,
+                is_coinbase: false,
+            }],
         );
 
         assert!(tv.check_scripts(&populated_tx).is_err(), "Failing Signature Test Failed");

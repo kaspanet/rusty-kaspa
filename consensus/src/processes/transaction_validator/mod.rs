@@ -2,11 +2,10 @@ pub mod errors;
 pub mod transaction_validator_populated;
 mod tx_validation_in_isolation;
 pub mod tx_validation_not_utxo_related;
-use crate::model::stores::{ghostdag};
+use crate::model::stores::ghostdag;
 
 pub use tx_validation_in_isolation::*;
-use txscript::{SigCacheKey, caches::Cache};
-
+use txscript::{caches::Cache, SigCacheKey};
 
 #[derive(Clone)]
 pub struct TransactionValidator {

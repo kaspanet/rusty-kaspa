@@ -19,10 +19,6 @@ impl<TKey: Clone + std::hash::Hash + Eq + Send + Sync, TData: Clone + Send + Syn
         self.map.read().get(key).cloned()
     }
 
-    pub(crate) fn contains_key(&self, key: &TKey) -> bool {
-        self.map.read().contains_key(key)
-    }
-
     pub(crate) fn insert(&self, key: TKey, data: TData) {
         if self.size == 0 {
             return;
@@ -32,36 +28,5 @@ impl<TKey: Clone + std::hash::Hash + Eq + Send + Sync, TData: Clone + Send + Syn
             write_guard.swap_remove_index(rand::thread_rng().gen_range(0..self.size));
         }
         write_guard.insert(key, data);
-    }
-
-    pub(crate) fn insert_many(&self, iter: &mut impl Iterator<Item = (TKey, TData)>) {
-        if self.size == 0 {
-            return;
-        }
-        let mut write_guard = self.map.write();
-        for (key, data) in iter {
-            if write_guard.len() == self.size {
-                write_guard.swap_remove_index(rand::thread_rng().gen_range(0..self.size));
-            }
-            write_guard.insert(key, data);
-        }
-    }
-
-    pub(crate) fn remove(&self, key: &TKey) {
-        if self.size == 0 {
-            return;
-        }
-        let mut write_guard = self.map.write();
-        write_guard.swap_remove(key);
-    }
-
-    pub(crate) fn remove_many(&self, key_iter: &mut impl Iterator<Item = TKey>) {
-        if self.size == 0 {
-            return;
-        }
-        let mut write_guard = self.map.write();
-        for key in key_iter {
-            write_guard.swap_remove(&key);
-        }
     }
 }

@@ -3,10 +3,7 @@ macro_rules! opcode_serde {
         #[allow(dead_code)]
         fn serialize(&self) -> Vec<u8> {
             let length = self.data.len() as $type;
-            [
-                length.to_le_bytes().as_slice(),
-                self.data.as_slice()
-            ].concat()
+            [length.to_le_bytes().as_slice(), self.data.as_slice()].concat()
         }
 
         fn deserialize<'i, I: Iterator<Item = &'i u8>>(it: &mut I) -> Result<Self, TxScriptError> {
@@ -18,10 +15,8 @@ macro_rules! opcode_serde {
                         // TODO: real error
                         todo!();
                     }
-                    Ok(Self {
-                        data
-                    })
-                },
+                    Ok(Self { data })
+                }
                 Err(_) => {
                     todo!()
                 }
@@ -29,23 +24,21 @@ macro_rules! opcode_serde {
         }
     };
     ($length: literal) => {
-            #[allow(dead_code)]
-            fn serialize(&self) -> Vec<u8> {
-                self.data.clone()
-            }
+        #[allow(dead_code)]
+        fn serialize(&self) -> Vec<u8> {
+            self.data.clone()
+        }
 
-            fn deserialize<'i, I: Iterator<Item = &'i u8>>(it: &mut I) -> Result<Self, TxScriptError> {
-                // Static length includes the opcode itself
-                let data: Vec<u8> = it.take($length-1).copied().collect();
-                if data.len() != $length-1 {
-                    // TODO: real error
-                    todo!();
-                }
-                Ok(Self{
-                    data,
-                })
+        fn deserialize<'i, I: Iterator<Item = &'i u8>>(it: &mut I) -> Result<Self, TxScriptError> {
+            // Static length includes the opcode itself
+            let data: Vec<u8> = it.take($length - 1).copied().collect();
+            if data.len() != $length - 1 {
+                // TODO: real error
+                todo!();
             }
-    }
+            Ok(Self { data })
+        }
+    };
 }
 
 macro_rules! opcode {
@@ -65,12 +58,79 @@ macro_rules! opcode {
             fn value(&self) -> u8 {
                 return $num;
             }
+
+            fn len(&self) -> usize {
+                self.data.len()
+            }
+
+            // TODO: add it to opcode specification
+            fn is_conditional(&self) -> bool {
+                self.value() >= 0x63 && self.value() >= 0x68
+            }
+
+            fn check_minimal_data_push(&self) -> Result<(), TxScriptError> {
+                let data_len = self.len();
+                let opcode = self.value();
+
+                if data_len == 0 {
+                    if opcode != codes::OpFalse {
+                        return Err(TxScriptError::NotMinimalData(
+                            format!("zero length data push is encoded with \
+                                opcode {:?} instead of OpFalse", self)
+                        ));
+                    }
+                } else if data_len == 1 &&  self.data[0] >= 1 && self.data[0] <= 16 {
+                    if opcode != codes::OpTrue + self.data[0]-1 {
+                        return Err(TxScriptError::NotMinimalData(
+                            format!("zero length data push is encoded with \
+                                opcode {:?} instead of Op_{}", self, self.data[0])
+                        ));
+                    }
+                } else if data_len == 1 && self.data[0] == 0x81 {
+                    if opcode != codes::Op1Negate {
+                        return Err(TxScriptError::NotMinimalData(
+                            format!("data push of the value -1 encoded \
+				                with opcode {:?} instead of OP_1NEGATE", self)
+                        ));
+                    }
+                } else if data_len <= 75 {
+                    if opcode as usize != data_len {
+                        return Err(TxScriptError::NotMinimalData(
+                            format!("data push of {} bytes encoded \
+                                with opcode {:?} instead of OP_DATA_{}", data_len, self, data_len)
+                        ));
+                    }
+                } else if data_len <= 255 {
+                    if opcode != codes::OpPushData1 {
+                        return Err(TxScriptError::NotMinimalData(
+                            format!("data push of {} bytes encoded \
+				                with opcode {:?} instead of OP_PUSHDATA1", data_len, self)
+                        ));
+		            }
+                } else if data_len < 65535 {
+                    if opcode != codes::OpPushData2 {
+                        return Err(TxScriptError::NotMinimalData(
+                            format!("data push of {} bytes encoded \
+				                with opcode {:?} instead of OP_PUSHDATA2", data_len, self)
+                        ));
+		            }
+                }
+                Ok(())
+            }
         }
     }
 }
 
 macro_rules! opcode_list {
     ( $( opcode $name:ident<$num:literal, $length:tt>($self:ident, $vm:ident) $code: expr ) *)  => {
+        pub(crate) mod codes {
+            $(
+                #[allow(non_upper_case_globals)]
+                #[allow(dead_code)]
+                pub(crate) const $name: u8 = $num;
+            )*
+        }
+
         $(
             opcode!($name, $num, $length, $code, $self, $vm);
         )*

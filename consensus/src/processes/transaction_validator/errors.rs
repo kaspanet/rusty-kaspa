@@ -73,7 +73,7 @@ pub enum TxRuleError {
     SequenceLockConditionsAreNotMet,
 
     #[error("failed to verify the signature script: {0}")]
-    SignatureInvalid(TxScriptError)
+    SignatureInvalid(TxScriptError),
 }
 
 pub type TxResult<T> = std::result::Result<T, TxRuleError>;
