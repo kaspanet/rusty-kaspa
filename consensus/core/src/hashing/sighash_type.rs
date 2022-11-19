@@ -17,7 +17,7 @@ const ALLOWED_SIG_HASH_TYPES_VALUES: [u8; 6] = [
 ];
 
 #[derive(Copy, Clone)]
-pub struct SigHashType(u8);
+pub struct SigHashType(pub(crate) u8);
 
 impl SigHashType {
     pub fn is_sighash_all(self) -> bool {
