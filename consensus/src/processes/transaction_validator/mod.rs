@@ -19,7 +19,7 @@ pub struct TransactionValidator {
     ghostdag_k: ghostdag::KType,
     coinbase_payload_script_public_key_max_len: u8,
     coinbase_maturity: u64,
-    context_free_populated_transaction_validation_cache: Cache<Hash, TxResult<()>>,
+    tx_script_validation_cache: Cache<Hash, TxResult<()>>,
 }
 
 impl TransactionValidator {
@@ -40,7 +40,7 @@ impl TransactionValidator {
             ghostdag_k,
             coinbase_payload_script_public_key_max_len,
             coinbase_maturity,
-            context_free_populated_transaction_validation_cache: Cache::new(10_000),
+            tx_script_validation_cache: Cache::new(10_000),
         }
     }
 }

@@ -18,12 +18,12 @@ impl TransactionValidator {
         let total_in = self.check_transaction_input_amounts(tx)?;
         let total_out = Self::check_transaction_output_values(tx, total_in)?;
         Self::check_sequence_lock(tx, pov_daa_score)?;
-        let is_context_free_valid = self.context_free_populated_transaction_validation_cache.get(&tx.id());
+        let is_context_free_valid = self.tx_script_validation_cache.get(&tx.id());
         if let Some(result) = is_context_free_valid {
             result?;
         } else {
             let result = self.validate_populated_transaction_context_free(tx);
-            self.context_free_populated_transaction_validation_cache.insert(tx.id(), result.clone());
+            self.tx_script_validation_cache.insert(tx.id(), result.clone());
             result?;
         }
 
