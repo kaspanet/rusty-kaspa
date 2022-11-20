@@ -113,27 +113,20 @@ impl TransactionValidator {
     }
 
     fn check_scripts(&self, tx: &PopulatedTransaction) -> TxResult<()> {
-        match self.context_free_populated_transaction_validation_cache.get(&tx.id()) {
-            Some(result) => {
-                assert!(result.is_ok(), "invalid signature in sig cache");
-            }
-            None => {
-                // TODO: Find a way to parallelize this part. This will be less trivial
-                // once this code is inside the script engine.
-                let mut reused_values = SigHashReusedValues::new();
-                for (i, (input, entry)) in tx.populated_inputs().enumerate() {
-                    // TODO: this is a temporary implementation and not ready for consensus since any invalid signature
-                    // will crash the node. We need to replace it with a proper script engine once it's ready.
-                    let pk = &entry.script_public_key.script()[1..33];
-                    let pk = secp256k1::XOnlyPublicKey::from_slice(pk).unwrap();
-                    let sig = secp256k1::schnorr::Signature::from_slice(&input.signature_script[1..65]).unwrap();
-                    let sig_hash = calc_schnorr_signature_hash(tx, i, SIG_HASH_ALL, &mut reused_values);
-                    let msg = secp256k1::Message::from_slice(sig_hash.as_bytes().as_slice()).unwrap();
-                    // TODO: Find a way to parallelize this part. This will be less trivial
-                    // once this code is inside the script engine.
-                    sig.verify(&msg, &pk).unwrap();
-                }
-            }
+        // TODO: Find a way to parallelize this part. This will be less trivial
+        // once this code is inside the script engine.
+        let mut reused_values = SigHashReusedValues::new();
+        for (i, (input, entry)) in tx.populated_inputs().enumerate() {
+            // TODO: this is a temporary implementation and not ready for consensus since any invalid signature
+            // will crash the node. We need to replace it with a proper script engine once it's ready.
+            let pk = &entry.script_public_key.script()[1..33];
+            let pk = secp256k1::XOnlyPublicKey::from_slice(pk).unwrap();
+            let sig = secp256k1::schnorr::Signature::from_slice(&input.signature_script[1..65]).unwrap();
+            let sig_hash = calc_schnorr_signature_hash(tx, i, SIG_HASH_ALL, &mut reused_values);
+            let msg = secp256k1::Message::from_slice(sig_hash.as_bytes().as_slice()).unwrap();
+            // TODO: Find a way to parallelize this part. This will be less trivial
+            // once this code is inside the script engine.
+            sig.verify(&msg, &pk).unwrap();
         }
 
         Ok(())
