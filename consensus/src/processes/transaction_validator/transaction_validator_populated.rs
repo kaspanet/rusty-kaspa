@@ -23,7 +23,7 @@ impl TransactionValidator {
             result?;
         } else {
             let result = self.validate_populated_transaction_context_free(tx);
-            self.context_free_populated_transaction_validation_cache.insert(tx.id(), result);
+            self.context_free_populated_transaction_validation_cache.insert(tx.id(), result.clone());
             result?;
         }
 
@@ -114,8 +114,8 @@ impl TransactionValidator {
 
     fn check_scripts(&self, tx: &PopulatedTransaction) -> TxResult<()> {
         match self.context_free_populated_transaction_validation_cache.get(&tx.id()) {
-            Some(valid) => {
-                assert!(valid, "invalid signature in sig cache");
+            Some(result) => {
+                assert!(result.is_ok(), "invalid signature in sig cache");
             }
             None => {
                 // TODO: Find a way to parallelize this part. This will be less trivial
@@ -136,7 +136,6 @@ impl TransactionValidator {
             }
         }
 
-        self.context_free_populated_transaction_validation_cache.insert(tx.id(), true);
         Ok(())
     }
 }
