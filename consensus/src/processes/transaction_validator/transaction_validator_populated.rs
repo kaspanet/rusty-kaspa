@@ -18,11 +18,11 @@ impl TransactionValidator {
         let total_in = self.check_transaction_input_amounts(tx)?;
         let total_out = Self::check_transaction_output_values(tx, total_in)?;
         Self::check_sequence_lock(tx, pov_daa_score)?;
-        let is_context_free_valid = self.tx_script_validation_cache.get(&tx.id());
-        if let Some(result) = is_context_free_valid {
+        let is_script_valid = self.tx_script_validation_cache.get(&tx.id());
+        if let Some(result) = is_script_valid {
             result?;
         } else {
-            let result = self.validate_populated_transaction_context_free(tx);
+            let result = self.validate_populated_transaction_scripts(tx);
             self.tx_script_validation_cache.insert(tx.id(), result.clone());
             result?;
         }
@@ -30,9 +30,9 @@ impl TransactionValidator {
         Ok(total_in - total_out)
     }
 
-    pub fn validate_populated_transaction_context_free(&self, tx: &PopulatedTransaction) -> TxResult<()> {
+    pub fn validate_populated_transaction_scripts(&self, tx: &PopulatedTransaction) -> TxResult<()> {
         Self::check_sig_op_counts(tx)?;
-        self.check_scripts(tx)
+        self.check_scripts_execution(tx)
     }
 
     fn check_transaction_coinbase_maturity(&self, tx: &PopulatedTransaction, pov_daa_score: u64) -> TxResult<()> {
@@ -112,9 +112,7 @@ impl TransactionValidator {
         Ok(())
     }
 
-    fn check_scripts(&self, tx: &PopulatedTransaction) -> TxResult<()> {
-        // TODO: Find a way to parallelize this part. This will be less trivial
-        // once this code is inside the script engine.
+    fn check_scripts_execution(&self, tx: &PopulatedTransaction) -> TxResult<()> {
         let mut reused_values = SigHashReusedValues::new();
         for (i, (input, entry)) in tx.populated_inputs().enumerate() {
             // TODO: this is a temporary implementation and not ready for consensus since any invalid signature
