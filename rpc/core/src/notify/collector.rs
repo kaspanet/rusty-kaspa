@@ -91,7 +91,7 @@ where
                                 let rpc_notification: Arc<Notification> = ArcConvert::from(msg.clone()).into();
                                 //let notification_type: crate::NotificationType = (&*rpc_notification).into();
                                 //println!("[Collector] collect_task received {:?}", notification_type);
-                                match notifier.clone().notifiy(rpc_notification) {
+                                match notifier.clone().notify(rpc_notification) {
                                     Ok(_) => (),
                                     Err(err) => {
                                         println!("[Collector] notification sender error: {:?}", err);

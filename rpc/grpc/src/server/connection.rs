@@ -20,17 +20,17 @@ pub type GrpcSender = mpsc::Sender<StatusResult<KaspadResponse>>;
 pub(crate) struct GrpcConnection {
     _address: SocketAddr,
     sender: GrpcSender,
-    notifiy_listener: ListenerReceiverSide,
+    notify_listener: ListenerReceiverSide,
     collect_shutdown: Arc<DuplexTrigger>,
     collect_is_running: Arc<AtomicBool>,
 }
 
 impl GrpcConnection {
-    pub(crate) fn new(address: SocketAddr, sender: GrpcSender, notifiy_listener: ListenerReceiverSide) -> Self {
+    pub(crate) fn new(address: SocketAddr, sender: GrpcSender, notify_listener: ListenerReceiverSide) -> Self {
         Self {
             _address: address,
             sender,
-            notifiy_listener,
+            notify_listener,
             collect_shutdown: Arc::new(DuplexTrigger::new()),
             collect_is_running: Arc::new(AtomicBool::new(false)),
         }
@@ -55,11 +55,11 @@ impl GrpcConnection {
     }
 
     fn collect_task(&self) {
-        let listener_id = self.notifiy_listener.id;
+        let listener_id = self.notify_listener.id;
         let sender = self.sender.clone();
         let collect_shutdown = self.collect_shutdown.clone();
         let collect_is_running = self.collect_is_running.clone();
-        let recv_channel = self.notifiy_listener.recv_channel.clone();
+        let recv_channel = self.notify_listener.recv_channel.clone();
         collect_is_running.store(true, Ordering::SeqCst);
 
         tokio::task::spawn(async move {
@@ -113,15 +113,15 @@ impl GrpcConnectionManager {
     }
 
     pub(crate) async fn register(&mut self, address: SocketAddr, sender: GrpcSender) -> ListenerID {
-        let notifiy_listener = self.notifier.clone().register_new_listener(None);
-        println!("register a new gRPC connection from: {0} with listener id {1}", address, notifiy_listener.id);
-        let connection = Arc::new(GrpcConnection::new(address, sender, notifiy_listener));
+        let notify_listener = self.notifier.clone().register_new_listener(None);
+        println!("register a new gRPC connection from: {0} with listener id {1}", address, notify_listener.id);
+        let connection = Arc::new(GrpcConnection::new(address, sender, notify_listener));
 
         // A pre-existing connection with same address is ignored here
         // TODO: see if some close pattern can be applied to the replaced connection
         self.connections.insert(address, connection.clone());
         connection.clone().start();
-        connection.notifiy_listener.id
+        connection.notify_listener.id
     }
 
     pub(crate) async fn unregister(&mut self, address: SocketAddr) {
