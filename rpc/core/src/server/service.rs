@@ -96,7 +96,7 @@ impl rpc::RpcApi for RpcApi {
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API
 
-    /// Register a new listenera and return an id and channel receiver.
+    /// Register a new listener and return an id and channel receiver.
     fn register_new_listener(&self, channel: Option<NotificationChannel>) -> ListenerReceiverSide {
         self.notifier.register_new_listener(channel)
     }
