@@ -7,6 +7,7 @@ use futures::{
     pin_mut,
     select,
 };
+use kaspa_core::trace;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 extern crate derive_more;
@@ -81,7 +82,7 @@ where
         let recv_channel = self.recv_channel.clone();
 
         workflow_core::task::spawn(async move {
-            println!("[Collector] collecting_task start");
+            trace!("[Collector] collecting_task start");
 
             let shutdown = collect_shutdown.request.listener.clone().fuse();
             pin_mut!(shutdown);
@@ -99,19 +100,19 @@ where
                                 match notifier.clone().notify(rpc_notification) {
                                     Ok(_) => (),
                                     Err(err) => {
-                                        println!("[Collector] notification sender error: {:?}", err);
+                                        trace!("[Collector] notification sender error: {:?}", err);
                                     },
                                 }
                             },
                             None => {
-                                println!("[Collector] notifications returned None. This should never happen");
+                                trace!("[Collector] notifications returned None. This should never happen");
                             }
                         }
                     }
                 }
             }
             collect_shutdown.response.trigger.trigger();
-            println!("[Collector] collecting_task end");
+            trace!("[Collector] collecting_task end");
         });
     }
 

@@ -1,4 +1,5 @@
 use crate::protowire::rpc_server::RpcServer;
+use kaspa_core::trace;
 use rpc_core::server::service::RpcCoreService;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -14,7 +15,7 @@ pub type StatusResult<T> = Result<T, tonic::Status>;
 // TODO: use ctrl-c signaling infrastructure of kaspa-core
 
 pub fn run_server(address: SocketAddr, core_service: Arc<RpcCoreService>) -> JoinHandle<Result<(), Error>> {
-    println!("KaspadRPCServer listening on: {}", address);
+    trace!("KaspadRPCServer listening on: {}", address);
 
     let grpc_service = service::RpcService::new(core_service);
     grpc_service.start();

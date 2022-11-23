@@ -10,6 +10,7 @@ license.workspace = true
 consensus-core.workspace = true
 hashes.workspace = true
 math.workspace = true
+kaspa-core.workspace = true
 kaspa-utils.workspace = true
 faster-hex.workspace = true
 serde.workspace = true

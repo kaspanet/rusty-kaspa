@@ -6,6 +6,7 @@ use futures::{
     pin_mut,
     select,
 };
+use kaspa_core::trace;
 use kaspa_utils::triggers::DuplexTrigger;
 use rpc_core::{
     api::ops::{RpcApiOps, SubscribeCommand},
@@ -15,7 +16,7 @@ use rpc_core::{
 use std::{
     collections::VecDeque,
     sync::{
-        atomic::{AtomicBool, AtomicU64, Ordering},
+        atomic::{AtomicBool, Ordering},
         Arc, Mutex,
     },
     time::{Duration, Instant},
@@ -26,17 +27,14 @@ use tokio::sync::{
 };
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::Streaming;
-use tonic::{
-    codec::CompressionEncoding,
-    transport::{Channel, Endpoint},
-};
+use tonic::{codec::CompressionEncoding, transport::Endpoint};
 
 use matcher::*;
 mod matcher;
 
-pub type SenderResponse = tokio::sync::oneshot::Sender<Result<KaspadResponse>>;
+pub const TIMEOUT_DURATION: u64 = 5_000;
 
-//pub(crate) type RequestID = u64;
+pub type SenderResponse = tokio::sync::oneshot::Sender<Result<KaspadResponse>>;
 
 #[derive(Debug)]
 struct Pending {
@@ -56,7 +54,7 @@ impl Pending {
     }
 }
 
-/// A struct to handle messages flowing to (requestes) and from (responses) a protowire server.
+/// A struct to handle messages flowing to (requests) and from (responses) a protowire server.
 /// Incoming responses are associated to pending requests based on their matching operation
 /// type and, for some operations like [`ClientApiOps::GetBlock`], on their properties.
 ///
@@ -88,7 +86,6 @@ impl Pending {
 ///
 #[derive(Debug)]
 pub(super) struct Resolver {
-    _inner: RpcClient<Channel>,
     handle_stop_notify: bool,
 
     // Pushing incoming notifications forward
@@ -107,19 +104,13 @@ pub(super) struct Resolver {
     // Pending timeout cleaning task
     timeout_is_running: AtomicBool,
     timeout_shutdown: DuplexTrigger,
-    timeout_timer_interval: AtomicU64,
-    timeout_duration: AtomicU64,
+    timeout_timer_interval: u64,
+    timeout_duration: u64,
 }
 
 impl Resolver {
-    pub(super) fn new(
-        client: RpcClient<Channel>,
-        handle_stop_notify: bool,
-        notify_send: NotificationSender,
-        request_send: Sender<KaspadRequest>,
-    ) -> Self {
+    pub(super) fn new(handle_stop_notify: bool, notify_send: NotificationSender, request_send: Sender<KaspadRequest>) -> Self {
         Self {
-            _inner: client,
             handle_stop_notify,
             notify_send,
             request_send,
@@ -130,8 +121,8 @@ impl Resolver {
             receiver_shutdown: DuplexTrigger::new(),
             timeout_is_running: AtomicBool::new(false),
             timeout_shutdown: DuplexTrigger::new(),
-            timeout_duration: AtomicU64::new(5_000),
-            timeout_timer_interval: AtomicU64::new(1_000),
+            timeout_duration: TIMEOUT_DURATION,
+            timeout_timer_interval: 1_000,
         }
     }
 
@@ -164,7 +155,7 @@ impl Resolver {
 
         match stream.message().await? {
             Some(ref msg) => {
-                println!("GetInfo got response {:?}", msg);
+                trace!("GetInfo got response {:?}", msg);
                 let response: RpcResult<GetInfoResponse> = msg.try_into();
                 if let Ok(response) = response {
                     handle_stop_notify = response.has_notify_command;
@@ -175,7 +166,7 @@ impl Resolver {
             }
         }
 
-        let resolver = Arc::new(Resolver::new(client, handle_stop_notify, notify_send, request_send));
+        let resolver = Arc::new(Resolver::new(handle_stop_notify, notify_send, request_send));
 
         // KaspadRequest timeout cleaner
         resolver.clone().timeout_task();
@@ -195,7 +186,7 @@ impl Resolver {
 
     pub(crate) async fn call(&self, op: RpcApiOps, request: impl Into<KaspadRequest>) -> Result<KaspadResponse> {
         let request: KaspadRequest = request.into();
-        println!("resolver call: {:?}", request);
+        trace!("resolver call: {:?}", request);
         if request.payload.is_some() {
             let (sender, receiver) = oneshot::channel::<Result<KaspadResponse>>();
 
@@ -224,17 +215,17 @@ impl Resolver {
             pin_mut!(shutdown);
 
             loop {
-                let timeout_timer_interval = Duration::from_millis(self.timeout_timer_interval.load(Ordering::SeqCst));
+                let timeout_timer_interval = Duration::from_millis(self.timeout_timer_interval);
                 let delay = tokio::time::sleep(timeout_timer_interval).fuse();
                 pin_mut!(delay);
 
                 select! {
                     _ = shutdown => { break; },
                     _ = delay => {
-                        println!("[Resolver] running timeout task");
+                        trace!("[Resolver] running timeout task");
                         let mut pending_calls = self.pending_calls.lock().unwrap();
                         let mut purge = Vec::<usize>::new();
-                        let timeout = Duration::from_millis(self.timeout_duration.load(Ordering::Relaxed));
+                        let timeout = Duration::from_millis(self.timeout_duration);
 
                         pending_calls.make_contiguous();
                         let (pending_slice, _) = pending_calls.as_slices();
@@ -249,7 +240,7 @@ impl Resolver {
                             let pending = pending_calls.remove(*index);
                             if let Some(pending) = pending {
 
-                                println!("[Resolver] timeout task purged request emmited {:?}", pending.timestamp);
+                                trace!("[Resolver] timeout task purged request emmited {:?}", pending.timestamp);
 
                                 // This attribute doesn't seem to work at expression level
                                 // So it is duplicated at fn level
@@ -261,7 +252,7 @@ impl Resolver {
                 }
             }
 
-            println!("[Resolver] terminating timeout task");
+            trace!("[Resolver] terminating timeout task");
             self.timeout_is_running.store(false, Ordering::SeqCst);
             self.timeout_shutdown.response.trigger.trigger();
         });
@@ -272,10 +263,10 @@ impl Resolver {
 
         tokio::spawn(async move {
             loop {
-                println!("[Resolver] sender task loop");
+                trace!("[Resolver] sender task loop");
 
                 if send.is_closed() {
-                    println!("[Resolver] sender_task sender is closed");
+                    trace!("[Resolver] sender_task sender is closed");
                     break;
                 }
 
@@ -290,24 +281,24 @@ impl Resolver {
                                 match msg {
                                     Some(response) => {
                                         if let Err(err) = send.send(response).await {
-                                            println!("[Resolver] sender_task sender error: {:?}", err);
+                                            trace!("[Resolver] sender_task sender error: {:?}", err);
                                         }
                                     },
                                     None =>{
-                                        println!("[Resolver] sender_task sender error: no payload");
+                                        trace!("[Resolver] sender_task sender error: no payload");
                                         break;
                                     }
                                 }
                             },
                             Err(err) => {
-                                println!("[Resolver] sender_task sender error: {:?}", err);
+                                trace!("[Resolver] sender_task sender error: {:?}", err);
                             }
                         }
                     }
                 }
             }
 
-            println!("[Resolver] terminating sender task");
+            trace!("[Resolver] terminating sender task");
             self.sender_is_running.store(false, Ordering::SeqCst);
             self.sender_shutdown.response.trigger.trigger();
         });
@@ -318,7 +309,7 @@ impl Resolver {
 
         tokio::spawn(async move {
             loop {
-                println!("[Resolver] receiver task loop");
+                trace!("[Resolver] receiver task loop");
 
                 let shutdown = self.receiver_shutdown.request.listener.clone();
                 pin_mut!(shutdown);
@@ -329,7 +320,7 @@ impl Resolver {
                 }
             }
 
-            println!("[Resolver] terminating receiver task");
+            trace!("[Resolver] terminating receiver task");
             self.receiver_is_running.store(false, Ordering::SeqCst);
             self.receiver_shutdown.response.trigger.trigger();
         });
@@ -338,22 +329,22 @@ impl Resolver {
     #[allow(unused_must_use)]
     fn handle_response(&self, response: KaspadResponse) {
         if response.is_notification() {
-            println!("[Resolver] handle_response received a notification");
+            trace!("[Resolver] handle_response received a notification");
             match Notification::try_from(&response) {
                 Ok(notification) => {
                     let event: EventType = (&notification).into();
-                    println!("[Resolver] handle_response received notification: {:?}", event);
+                    trace!("[Resolver] handle_response received notification: {:?}", event);
 
                     // Here we ignore any returned error
                     self.notify_send.try_send(Arc::new(notification));
                 }
                 Err(err) => {
-                    println!("[Resolver] handle_response error converting reponse into notification: {:?}", err);
+                    trace!("[Resolver] handle_response error converting reponse into notification: {:?}", err);
                 }
             }
         } else if response.payload.is_some() {
             let response_op: RpcApiOps = response.payload.as_ref().unwrap().into();
-            println!("[Resolver] handle_response type: {:?}", response_op);
+            trace!("[Resolver] handle_response type: {:?}", response_op);
             let mut pending_calls = self.pending_calls.lock().unwrap();
             let mut pending: Option<Pending> = None;
             if pending_calls.front().is_some() {
@@ -372,7 +363,7 @@ impl Resolver {
             }
             drop(pending_calls);
             if let Some(pending) = pending {
-                println!("[Resolver] handle_response matching request found: {:?}", pending.request);
+                trace!("[Resolver] handle_response matching request found: {:?}", pending.request);
 
                 // This attribute doesn't seem to work at expression level
                 // So it is duplicated at fn level
@@ -417,7 +408,7 @@ impl Resolver {
 #[async_trait]
 impl SubscriptionManager for Resolver {
     async fn start_notify(self: Arc<Self>, _: ListenerID, notification_type: NotificationType) -> RpcResult<()> {
-        println!("[Resolver] start_notify: {:?}", notification_type);
+        trace!("[Resolver] start_notify: {:?}", notification_type);
         // FIXME: Enhance protowire with Subscribe Commands (handle explicit Start)
         let request = kaspad_request::Payload::from_notification_type(&notification_type, SubscribeCommand::Start);
         self.clone().call((&request).into(), request).await?;
@@ -426,11 +417,11 @@ impl SubscriptionManager for Resolver {
 
     async fn stop_notify(self: Arc<Self>, _: ListenerID, notification_type: NotificationType) -> RpcResult<()> {
         if self.handle_stop_notify {
-            println!("[Resolver] stop_notify: {:?}", notification_type);
+            trace!("[Resolver] stop_notify: {:?}", notification_type);
             let request = kaspad_request::Payload::from_notification_type(&notification_type, SubscribeCommand::Stop);
             self.clone().call((&request).into(), request).await?;
         } else {
-            println!("[Resolver] stop_notify ignored because not supported by server: {:?}", notification_type);
+            trace!("[Resolver] stop_notify ignored because not supported by server: {:?}", notification_type);
         }
         Ok(())
     }

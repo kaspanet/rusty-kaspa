@@ -5,6 +5,7 @@ use crate::protowire::{
 };
 use crate::server::StatusResult;
 use futures::Stream;
+use kaspa_core::trace;
 use rpc_core::notify::channel::NotificationChannel;
 use rpc_core::notify::listener::{ListenerID, ListenerReceiverSide, ListenerUtxoNotificationFilterSetting};
 use rpc_core::notify::subscriber::DynSubscriptionManager;
@@ -118,7 +119,7 @@ impl Rpc for RpcService {
             tonic::Status::new(tonic::Code::InvalidArgument, "Incoming connection opening request has no remote address".to_string())
         })?;
 
-        println!("MessageStream from {:?}", remote_addr);
+        trace!("MessageStream from {:?}", remote_addr);
 
         // External sender and reciever
         let (send_channel, mut recv_channel) = mpsc::channel::<StatusResult<KaspadResponse>>(128);
@@ -135,7 +136,7 @@ impl Rpc for RpcService {
                     Ok(_) => {}
                     Err(_) => {
                         // If sending failed, then remove the connection from connection manager
-                        println!("[Remote] stream tx sending error. Remote {:?}", &remote_addr);
+                        trace!("[Remote] stream tx sending error. Remote {:?}", &remote_addr);
                         connection_manager.write().await.unregister(remote_addr).await;
                     }
                 }
@@ -151,7 +152,7 @@ impl Rpc for RpcService {
             loop {
                 match stream.message().await {
                     Ok(Some(request)) => {
-                        println!("Request is {:?}", request);
+                        trace!("Request is {:?}", request);
                         let response: KaspadResponse = match request.payload {
                             Some(Payload::GetBlockRequest(ref request)) => match request.try_into() {
                                 Ok(request) => core_service.get_block(request).await.into(),
@@ -183,12 +184,12 @@ impl Rpc for RpcService {
                         match send_channel.send(Ok(response)).await {
                             Ok(_) => {}
                             Err(err) => {
-                                println!("tx send error: {:?}", err);
+                                trace!("tx send error: {:?}", err);
                             }
                         }
                     }
                     Ok(None) => {
-                        println!("Request handler stream {0} got Ok(None). Connection terminated by the server", remote_addr);
+                        trace!("Request handler stream {0} got Ok(None). Connection terminated by the server", remote_addr);
                         break;
                     }
 
@@ -209,7 +210,7 @@ impl Rpc for RpcService {
                     }
                 }
             }
-            println!("Request handler {0} terminated", remote_addr);
+            trace!("Request handler {0} terminated", remote_addr);
             connection_manager.write().await.unregister(remote_addr).await;
         });
 

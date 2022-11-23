@@ -1,6 +1,7 @@
 use async_std::channel::{Receiver, Sender};
 use async_trait::async_trait;
 use core::fmt::Debug;
+use kaspa_core::trace;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex,
@@ -86,7 +87,7 @@ impl Subscriber {
                         match subscription_manager.clone().start_notify(listener_id, notification_type.clone()).await {
                             Ok(_) => (),
                             Err(err) => {
-                                println!("[Reporter] start notify error: {:?}", err);
+                                trace!("[Reporter] start notify error: {:?}", err);
                             }
                         }
                     }
@@ -95,7 +96,7 @@ impl Subscriber {
                         match subscription_manager.clone().stop_notify(listener_id, notification_type.clone()).await {
                             Ok(_) => (),
                             Err(err) => {
-                                println!("[Reporter] start notify error: {:?}", err);
+                                trace!("[Reporter] start notify error: {:?}", err);
                             }
                         }
                     }

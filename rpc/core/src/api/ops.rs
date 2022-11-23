@@ -77,6 +77,6 @@ mod tests {
 
     #[test]
     fn test_rpc_api_ops_convert() {
-        assert_eq!(0_u32, RpcApiOps::Ping.into());
+        assert_eq!(0_u32, u32::from(RpcApiOps::Ping));
     }
 }

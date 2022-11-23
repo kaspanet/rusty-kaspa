@@ -12,6 +12,7 @@ use crate::{api::ops::SubscribeCommand, Notification, NotificationType, RpcResul
 use ahash::AHashMap;
 use async_std::channel::{Receiver, Sender};
 use async_trait::async_trait;
+use kaspa_core::trace;
 use kaspa_utils::channel::Channel;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -58,7 +59,7 @@ impl Notifier {
     }
 
     pub fn start_notify(&self, id: ListenerID, notification_type: NotificationType) -> Result<()> {
-        println!("[Notifier] start sending to listener {0} notifications of type {1:?}", id, notification_type);
+        trace!("[Notifier] start sending to listener {0} notifications of type {1:?}", id, notification_type);
         self.inner.clone().start_notify(id, notification_type)
     }
 
@@ -67,7 +68,7 @@ impl Notifier {
     }
 
     pub fn stop_notify(&self, id: ListenerID, notification_type: NotificationType) -> Result<()> {
-        println!("[Notifier] stop sending to listener {0} notifications of type {1:?}", id, notification_type);
+        trace!("[Notifier] stop sending to listener {0} notifications of type {1:?}", id, notification_type);
         self.inner.clone().stop_notify(id, notification_type)
     }
 
@@ -79,16 +80,13 @@ impl Notifier {
 #[async_trait]
 impl SubscriptionManager for Notifier {
     async fn start_notify(self: Arc<Self>, id: ListenerID, notification_type: NotificationType) -> RpcResult<()> {
-        println!(
-            "[Notifier] as subscription manager start sending to listener {0} notifications of type {1:?}",
-            id, notification_type
-        );
+        trace!("[Notifier] as subscription manager start sending to listener {0} notifications of type {1:?}", id, notification_type);
         self.inner.clone().start_notify(id, notification_type)?;
         Ok(())
     }
 
     async fn stop_notify(self: Arc<Self>, id: ListenerID, notification_type: NotificationType) -> RpcResult<()> {
-        println!("[Notifier] as subscription manager stop sending to listener {0} notifications of type {1:?}", id, notification_type);
+        trace!("[Notifier] as subscription manager stop sending to listener {0} notifications of type {1:?}", id, notification_type);
         self.inner.clone().stop_notify(id, notification_type)?;
         Ok(())
     }
@@ -172,14 +170,14 @@ impl Inner {
         // This is necessary for the correct handling of repeating start/stop cycles.
 
         workflow_core::task::spawn(async move {
-            println!("[Notifier] dispatch_task spawned");
+            trace!("[Notifier] dispatch_task spawned");
 
             fn send_subscribe_message(send_subscriber: Sender<SubscribeMessage>, message: SubscribeMessage) {
-                println!("[Notifier] dispatch_task send subscribe message: {:?}", message);
+                trace!("[Notifier] dispatch_task send subscribe message: {:?}", message);
                 match send_subscriber.try_send(message) {
                     Ok(_) => {}
                     Err(err) => {
-                        println!("[Notifier] sending subscribe message error: {:?}", err);
+                        trace!("[Notifier] sending subscribe message error: {:?}", err);
                     }
                 }
             }
@@ -297,7 +295,7 @@ impl Inner {
         let event: EventType = (&notification_type).into();
         let mut listeners = self.listeners.lock().unwrap();
         if let Some(listener) = listeners.get_mut(&id) {
-            println!("[Notifier] start notify to {0} about {1:?}", id, notification_type);
+            trace!("[Notifier] start notify to {0} about {1:?}", id, notification_type);
 
             // Any mutation in the listener will trigger a dispatch of a brand new ListenerSenderSide
             // eventually creating or replacing this listener in the matching dispatcher.
@@ -322,7 +320,7 @@ impl Inner {
         let event: EventType = (&notification_type).into();
         let mut listeners = self.listeners.lock().unwrap();
         if let Some(listener) = listeners.get_mut(&id) {
-            println!("[Notifier] stop notify to {0} about {1:?}", id, notification_type);
+            trace!("[Notifier] stop notify to {0} about {1:?}", id, notification_type);
 
             if listener.toggle(notification_type, false) {
                 let msg = DispatchMessage::RemoveListener(listener.id());

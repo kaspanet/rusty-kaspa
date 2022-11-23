@@ -10,6 +10,7 @@ license.workspace = true
 thiserror.workspace = true
 rpc-core.workspace = true
 kaspa-utils.workspace = true
+kaspa-core.workspace = true
 faster-hex.workspace = true
 async-std.workspace = true
 async-trait = "0.1.57"
