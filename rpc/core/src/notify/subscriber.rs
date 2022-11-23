@@ -71,7 +71,7 @@ impl Subscriber {
     /// Launch the subscription receiver
     fn spawn_subscription_receiver_task(&self, shutdown_trigger: triggered::Trigger, subscribe_rx: Receiver<SubscribeMessage>) {
         // The task can only be spawned once
-        if self.clone().is_started.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst) != Ok(false) {
+        if self.is_started.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst) != Ok(false) {
             return;
         }
         let subscription_manager = self.subscription_manager.clone();
@@ -115,7 +115,7 @@ impl Subscriber {
     }
 
     async fn stop_subscription_receiver_task(self: Arc<Self>) -> Result<()> {
-        if self.clone().is_started.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst) != Ok(true) {
+        if self.is_started.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst) != Ok(true) {
             return Err(Error::AlreadyStoppedError);
         }
         let mut result: Result<()> = Ok(());
@@ -134,6 +134,6 @@ impl Subscriber {
     }
 
     pub async fn stop(self: Arc<Self>) -> Result<()> {
-        self.clone().stop_subscription_receiver_task().await
+        self.stop_subscription_receiver_task().await
     }
 }
