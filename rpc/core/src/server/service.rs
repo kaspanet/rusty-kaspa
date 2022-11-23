@@ -38,18 +38,17 @@ use std::{
 /// by adding respectively to the registered service a Collector and a
 /// Subscriber.
 #[derive(Debug)]
-pub struct RpcApi {
+pub struct RpcCoreService {
     notifier: Arc<Notifier>,
 }
 
-impl RpcApi {
+impl RpcCoreService {
     pub fn new(consensus_recv: ConsensusNotificationReceiver) -> Arc<Self> {
-        // // FIXME: the channel receiver should be obtained by registering to a consensus notification service
-        // let consensus_notifications: ConsensusNotificationChannel = Channel::default();
+        // TODO: the channel receiver should be obtained by registering to a consensus notification service
 
         let collector = Arc::new(ConsensusCollector::new(consensus_recv));
 
-        // FIXME: Some consensus-compatible subscriber could be provided here
+        // TODO: Some consensus-compatible subscriber could be provided here
         let notifier = Arc::new(Notifier::new(Some(collector), None, ListenerUtxoNotificationFilterSetting::All));
 
         Arc::new(Self { notifier })
@@ -70,19 +69,21 @@ impl RpcApi {
 }
 
 #[async_trait]
-impl rpc::RpcApi for RpcApi {
+impl rpc::RpcApi for RpcCoreService {
     async fn get_block(&self, req: GetBlockRequest) -> RpcResult<GetBlockResponse> {
+        // TODO: Remove the following test when consensus is used to fetch data
+
         // This is a test to simulate a consensus error
         if req.hash.as_bytes()[0] == 0 {
             return Err(RpcError::General(format!("Block {0} not found", req.hash)));
         }
 
-        // This is a test to simulate a respons containing a block
+        // TODO: query info from consensus and use it to build the response
         Ok(GetBlockResponse { block: create_dummy_rpc_block() })
     }
 
     async fn get_info(&self, _req: GetInfoRequest) -> RpcResult<GetInfoResponse> {
-        // Info should be queried from consensus
+        // TODO: query info from consensus and use it to build the response
         Ok(GetInfoResponse {
             p2p_id: "test".to_string(),
             mempool_size: 1,
@@ -96,7 +97,7 @@ impl rpc::RpcApi for RpcApi {
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API
 
-    /// Register a new listener and return an id and channel receiver.
+    /// Register a new listener and returns an id and a channel receiver.
     fn register_new_listener(&self, channel: Option<NotificationChannel>) -> ListenerReceiverSide {
         self.notifier.register_new_listener(channel)
     }
@@ -122,6 +123,7 @@ impl rpc::RpcApi for RpcApi {
     }
 }
 
+// TODO: Remove the following function when consensus is used to fetch data
 fn create_dummy_rpc_block() -> RpcBlock {
     let sel_parent_hash = Hash::from_str("5963be67f12da63004ce1baceebd7733c4fb601b07e9b0cfb447a3c5f4f3c4f0").unwrap();
     RpcBlock {

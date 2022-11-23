@@ -11,9 +11,9 @@ use rpc_core::notify::subscriber::DynSubscriptionManager;
 use rpc_core::notify::subscriber::Subscriber;
 use rpc_core::RpcResult;
 use rpc_core::{
-    api::rpc::RpcApi as RpcApiT,
+    api::rpc::RpcApi,
     notify::{collector::RpcCoreCollector, events::EVENT_TYPE_ARRAY, notifier::Notifier},
-    server::service::RpcApi,
+    server::service::RpcCoreService,
 };
 use std::{io::ErrorKind, net::SocketAddr, pin::Pin, sync::Arc};
 use tokio::sync::{mpsc, RwLock};
@@ -49,7 +49,7 @@ use tonic::{Request, Response};
 ///
 /// TODO: implement a queue of requests and a pool of workers preparing and sending back the reponses.
 pub struct RpcService {
-    core_service: Arc<RpcApi>,
+    core_service: Arc<RpcCoreService>,
     core_channel: NotificationChannel,
     core_listener: Arc<ListenerReceiverSide>,
     connection_manager: Arc<RwLock<GrpcConnectionManager>>,
@@ -57,7 +57,7 @@ pub struct RpcService {
 }
 
 impl RpcService {
-    pub fn new(core_service: Arc<RpcApi>) -> Self {
+    pub fn new(core_service: Arc<RpcCoreService>) -> Self {
         // Prepare core objects
         let core_channel = NotificationChannel::default();
         let core_listener = Arc::new(core_service.register_new_listener(Some(core_channel.clone())));

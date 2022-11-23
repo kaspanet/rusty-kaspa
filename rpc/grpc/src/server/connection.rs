@@ -18,7 +18,9 @@ use tokio::sync::mpsc;
 pub type GrpcSender = mpsc::Sender<StatusResult<KaspadResponse>>;
 
 pub(crate) struct GrpcConnection {
+    // This field is required for logs/debugging
     _address: SocketAddr,
+
     sender: GrpcSender,
     notify_listener: ListenerReceiverSide,
     collect_shutdown: Arc<DuplexTrigger>,
@@ -37,24 +39,14 @@ impl GrpcConnection {
     }
 
     pub(crate) fn start(self: Arc<Self>) {
-        self.collect_task();
-    }
-
-    pub(crate) async fn _send(&self, message: StatusResult<KaspadResponse>) {
-        match self.sender.send(message).await {
-            Ok(_) => {}
-            Err(err) => {
-                println!("[send] SendError: to {}, {:?}", self._address, err);
-                // TODO: drop this connection
-            }
-        }
+        self.spawn_collecting_task();
     }
 
     async fn stop(self: Arc<Self>) {
         self.stop_collect().await
     }
 
-    fn collect_task(&self) {
+    fn spawn_collecting_task(&self) {
         let listener_id = self.notify_listener.id;
         let sender = self.sender.clone();
         let collect_shutdown = self.collect_shutdown.clone();
@@ -77,6 +69,9 @@ impl GrpcConnection {
                                 match sender.send(Ok((&*notification).into())).await {
                                     Ok(_) => (),
                                     Err(err) => {
+
+                                        // TODO: we need to decide here if we close connection immediately, or wait for TTL to close it
+
                                         println!("[Connection] notification sender error: {:?}", err);
                                     },
                                 }
@@ -114,7 +109,7 @@ impl GrpcConnectionManager {
 
     pub(crate) async fn register(&mut self, address: SocketAddr, sender: GrpcSender) -> ListenerID {
         let notify_listener = self.notifier.clone().register_new_listener(None);
-        println!("register a new gRPC connection from: {0} with listener id {1}", address, notify_listener.id);
+        println!("registering a new gRPC connection from: {0} with listener id {1}", address, notify_listener.id);
         let connection = Arc::new(GrpcConnection::new(address, sender, notify_listener));
 
         // A pre-existing connection with same address is ignored here

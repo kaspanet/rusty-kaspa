@@ -159,7 +159,7 @@ pub trait RpcApi: Sync + Send {
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API
 
-    /// Register a new listener and return an id and channel receiver.
+    /// Register a new listener and returns an id and a channel receiver.
     fn register_new_listener(&self, channel: Option<NotificationChannel>) -> ListenerReceiverSide;
 
     /// Unregister an existing listener.

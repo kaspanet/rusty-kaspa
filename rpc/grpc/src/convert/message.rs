@@ -14,20 +14,6 @@ impl From<&rpc_core::GetBlockRequest> for protowire::GetBlockRequestMessage {
 
 impl From<RpcResult<&rpc_core::GetBlockResponse>> for protowire::GetBlockResponseMessage {
     fn from(item: RpcResult<&rpc_core::GetBlockResponse>) -> Self {
-        // match item {
-        //     Ok(response) => {
-        //         Self {
-        //             block: Some((&response.block).into()),
-        //             error: None,
-        //         }
-        //     },
-        //     Err(err) => {
-        //         Self {
-        //             block: None,
-        //             error: Some(err.into()),
-        //         }
-        //     }
-        // };
         Self {
             block: item.as_ref().map(|x| protowire::RpcBlock::from(&x.block)).ok(),
             error: item.map_err(protowire::RpcError::from).err(),
@@ -92,20 +78,9 @@ impl TryFrom<&protowire::GetBlockRequestMessage> for rpc_core::GetBlockRequest {
 impl TryFrom<&protowire::GetBlockResponseMessage> for rpc_core::GetBlockResponse {
     type Error = RpcError;
     fn try_from(item: &protowire::GetBlockResponseMessage) -> RpcResult<Self> {
-        // if item.block.is_some() {
-        //     Ok(Self {
-        //         block: rpc_core::RpcBlock::try_from(item.block.as_ref().unwrap())?,
-        //     })
-        // } else {
-        //     Err(item.error
-        //         .as_ref()
-        //         .expect("in absence of a block, an error message is present")
-        //         .into())
-        // }
         item.block
             .as_ref()
             .map_or_else(
-                //|| Err(item.error.as_ref().expect("in absence of a block, an error message is present").into()),
                 || {
                     item.error
                         .as_ref()

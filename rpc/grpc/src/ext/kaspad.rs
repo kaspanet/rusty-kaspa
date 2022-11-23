@@ -9,7 +9,6 @@ impl KaspadRequest {
 }
 
 impl kaspad_request::Payload {
-    // FIXME: Enhance protowire with Subscribe Commands
     pub fn from_notification_type(notification_type: &NotificationType, command: SubscribeCommand) -> Self {
         match notification_type {
             NotificationType::BlockAdded => {
