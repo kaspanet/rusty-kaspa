@@ -6,7 +6,7 @@ use crate::protowire::{
 use crate::server::StatusResult;
 use futures::Stream;
 use rpc_core::notify::channel::NotificationChannel;
-use rpc_core::notify::listener::{ListenerID, ListenerReceiverSide, SendingChangedUtxo};
+use rpc_core::notify::listener::{ListenerID, ListenerReceiverSide, ListenerUtxoNotificationFilterSetting};
 use rpc_core::notify::subscriber::DynSubscriptionManager;
 use rpc_core::notify::subscriber::Subscriber;
 use rpc_core::RpcResult;
@@ -66,7 +66,8 @@ impl RpcService {
         let collector = Arc::new(RpcCoreCollector::new(core_channel.receiver()));
         let subscription_manager: DynSubscriptionManager = core_service.notifier();
         let subscriber = Subscriber::new(subscription_manager, core_listener.id);
-        let notifier = Arc::new(Notifier::new(Some(collector), Some(subscriber), SendingChangedUtxo::FilteredByAddress));
+        let notifier =
+            Arc::new(Notifier::new(Some(collector), Some(subscriber), ListenerUtxoNotificationFilterSetting::FilteredByAddress));
         let connection_manager = Arc::new(RwLock::new(GrpcConnectionManager::new(notifier.clone())));
 
         Self { core_service, core_channel, core_listener, connection_manager, notifier }

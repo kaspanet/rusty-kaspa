@@ -1,18 +1,19 @@
 use std::fmt::Debug;
 use std::sync::Arc;
 
-use super::channel::NotificationChannel;
-use super::events::{EventArray, EventType};
-use super::result::Result;
-use super::utxo_address_map::RpcUtxoAddressMap;
+use crate::notify::{
+    channel::NotificationChannel,
+    events::{EventArray, EventType},
+    result::Result,
+    utxo_address_map::RpcUtxoAddressMap,
+};
 use crate::stubs::RpcUtxoAddress;
 use crate::{Notification, NotificationReceiver, NotificationSender, NotificationType};
 
-// TODO: consider the use of a newtype instead
 pub type ListenerID = u64;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum SendingChangedUtxo {
+pub enum ListenerUtxoNotificationFilterSetting {
     /// Send all changed UTXO events, whatever the address
     All,
 
@@ -24,7 +25,7 @@ pub enum SendingChangedUtxo {
 ///
 /// ### Implementation details
 ///
-/// This struct is not asyn protected against mutations.
+/// This struct is not async protected against mutations.
 /// It is the responsability of code using a [Listener] to guard memory
 /// before calling toggle.
 ///
@@ -111,9 +112,9 @@ pub(crate) struct ListenerSenderSide {
 }
 
 impl ListenerSenderSide {
-    pub(crate) fn new(listener: &Listener, sending_changed_utxos: SendingChangedUtxo, event: EventType) -> Self {
+    pub(crate) fn new(listener: &Listener, sending_changed_utxos: ListenerUtxoNotificationFilterSetting, event: EventType) -> Self {
         match event {
-            EventType::UtxosChanged if sending_changed_utxos == SendingChangedUtxo::FilteredByAddress => Self {
+            EventType::UtxosChanged if sending_changed_utxos == ListenerUtxoNotificationFilterSetting::FilteredByAddress => Self {
                 send_channel: listener.channel.sender(),
                 filter: Box::new(FilterUtxoAddress { utxos_addresses: listener.utxo_addresses.clone() }),
             },
@@ -126,7 +127,7 @@ impl ListenerSenderSide {
     /// If the notification does not meet requirements (see [`Notification::UtxosChanged`]) returns `Ok(false)`,
     /// otherwise returns `Ok(true)`.
     pub(crate) fn try_send(&self, notification: Arc<Notification>) -> Result<bool> {
-        if self.filter.filter(notification.clone()) {
+        if self.filter.matches(notification.clone()) {
             match self.send_channel.try_send(notification) {
                 Ok(_) => {
                     return Ok(true);
@@ -145,7 +146,7 @@ impl ListenerSenderSide {
 }
 
 trait InnerFilter {
-    fn filter(&self, notification: Arc<Notification>) -> bool;
+    fn matches(&self, notification: Arc<Notification>) -> bool;
 }
 
 trait Filter: InnerFilter + Debug {}
@@ -153,7 +154,7 @@ trait Filter: InnerFilter + Debug {}
 #[derive(Clone, Debug)]
 struct Unfiltered;
 impl InnerFilter for Unfiltered {
-    fn filter(&self, _: Arc<Notification>) -> bool {
+    fn matches(&self, _: Arc<Notification>) -> bool {
         true
     }
 }
@@ -165,7 +166,7 @@ struct FilterUtxoAddress {
 }
 
 impl InnerFilter for FilterUtxoAddress {
-    fn filter(&self, notification: Arc<Notification>) -> bool {
+    fn matches(&self, notification: Arc<Notification>) -> bool {
         if let Notification::UtxosChanged(ref notification) = *notification {
             return self.utxos_addresses.contains_key(&notification.utxo_address);
         }

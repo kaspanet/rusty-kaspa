@@ -6,7 +6,7 @@ use crate::{
     model::*,
     notify::{
         channel::NotificationChannel,
-        listener::{ListenerID, ListenerReceiverSide, SendingChangedUtxo},
+        listener::{ListenerID, ListenerReceiverSide, ListenerUtxoNotificationFilterSetting},
         notifier::Notifier,
     },
     NotificationType, RpcError, RpcResult,
@@ -50,7 +50,7 @@ impl RpcApi {
         let collector = Arc::new(ConsensusCollector::new(consensus_recv));
 
         // FIXME: Some consensus-compatible subscriber could be provided here
-        let notifier = Arc::new(Notifier::new(Some(collector), None, SendingChangedUtxo::All));
+        let notifier = Arc::new(Notifier::new(Some(collector), None, ListenerUtxoNotificationFilterSetting::All));
 
         Arc::new(Self { notifier })
     }

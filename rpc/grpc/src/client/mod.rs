@@ -9,7 +9,7 @@ use rpc_core::{
     notify::{
         channel::NotificationChannel,
         collector::RpcCoreCollector,
-        listener::{ListenerID, ListenerReceiverSide, SendingChangedUtxo},
+        listener::{ListenerID, ListenerReceiverSide, ListenerUtxoNotificationFilterSetting},
         notifier::Notifier,
         subscriber::Subscriber,
     },
@@ -32,7 +32,8 @@ impl RpcApiGrpc {
         let collector = Arc::new(RpcCoreCollector::new(notify_channel.receiver()));
         let subscriber = Subscriber::new(inner.clone(), 0);
 
-        let notifier = Arc::new(Notifier::new(Some(collector), Some(subscriber), SendingChangedUtxo::FilteredByAddress));
+        let notifier =
+            Arc::new(Notifier::new(Some(collector), Some(subscriber), ListenerUtxoNotificationFilterSetting::FilteredByAddress));
 
         Ok(Self { inner, notifier })
     }

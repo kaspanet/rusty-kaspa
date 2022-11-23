@@ -3,7 +3,7 @@ use super::{
     collector::DynCollector,
     errors::Error,
     events::{EventArray, EventType, EVENT_TYPE_ARRAY},
-    listener::{Listener, ListenerID, ListenerReceiverSide, ListenerSenderSide, SendingChangedUtxo},
+    listener::{Listener, ListenerID, ListenerReceiverSide, ListenerSenderSide, ListenerUtxoNotificationFilterSetting},
     message::{DispatchMessage, SubscribeMessage},
     result::Result,
     subscriber::{Subscriber, SubscriptionManager},
@@ -28,7 +28,11 @@ pub struct Notifier {
 }
 
 impl Notifier {
-    pub fn new(collector: Option<DynCollector>, subscriber: Option<Subscriber>, sending_changed_utxos: SendingChangedUtxo) -> Self {
+    pub fn new(
+        collector: Option<DynCollector>,
+        subscriber: Option<Subscriber>,
+        sending_changed_utxos: ListenerUtxoNotificationFilterSetting,
+    ) -> Self {
         Self { inner: Arc::new(Inner::new(collector, subscriber, sending_changed_utxos)) }
     }
 
@@ -107,11 +111,15 @@ struct Inner {
     subscriber: Arc<Option<Arc<Subscriber>>>,
 
     /// How to handle UtxoChanged notifications
-    sending_changed_utxos: SendingChangedUtxo,
+    sending_changed_utxos: ListenerUtxoNotificationFilterSetting,
 }
 
 impl Inner {
-    fn new(collector: Option<DynCollector>, subscriber: Option<Subscriber>, sending_changed_utxos: SendingChangedUtxo) -> Self {
+    fn new(
+        collector: Option<DynCollector>,
+        subscriber: Option<Subscriber>,
+        sending_changed_utxos: ListenerUtxoNotificationFilterSetting,
+    ) -> Self {
         let subscriber = subscriber.map(Arc::new);
         Self {
             listeners: Arc::new(Mutex::new(AHashMap::new())),
@@ -179,7 +187,7 @@ impl Inner {
             // We will send subscribe messages for all dispatch messages if event is a filtered UtxosChanged.
             // Otherwise, subscribe message is only sent when needed by the execution of the dispatche message.
             let report_all_changes =
-                event == EventType::UtxosChanged && sending_changed_utxos == SendingChangedUtxo::FilteredByAddress;
+                event == EventType::UtxosChanged && sending_changed_utxos == ListenerUtxoNotificationFilterSetting::FilteredByAddress;
 
             let mut need_subscribe: bool = false;
             loop {
