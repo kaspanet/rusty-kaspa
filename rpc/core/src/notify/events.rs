@@ -3,7 +3,6 @@ use std::ops::{Index, IndexMut};
 use crate::{Notification, NotificationType};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[repr(u8)]
 pub enum EventType {
     BlockAdded = 0,
     VirtualSelectedParentChainChanged,
@@ -86,12 +85,6 @@ impl From<&NotificationType> for EventType {
 /// Generic array with [`EventType`] strongly-typed index
 #[derive(Default, Clone, Copy, Debug)]
 pub(crate) struct EventArray<T>([T; EVENT_COUNT]);
-
-impl<T> EventArray<T> {
-    pub(crate) fn _len(&self) -> usize {
-        self.0.len()
-    }
-}
 
 impl<T> Index<EventType> for EventArray<T> {
     type Output = T;
