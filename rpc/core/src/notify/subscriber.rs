@@ -6,7 +6,7 @@ use std::sync::{
     Arc, Mutex,
 };
 extern crate derive_more;
-use super::{listener::ListenerID, message::SubscribeMessage, result::Result};
+use super::{errors::Error, listener::ListenerID, message::SubscribeMessage, result::Result};
 use crate::{api::ops::SubscribeCommand, NotificationType, RpcResult};
 use kaspa_utils::channel::Channel;
 
@@ -38,10 +38,12 @@ pub struct Subscriber {
     subscription_manager: DynSubscriptionManager,
     listener_id: ListenerID,
 
+    /// Has this subscriber been started?
+    is_started: Arc<AtomicBool>,
+
     /// Feedback channel
     subscribe_channel: Channel<SubscribeMessage>,
     subscribe_shutdown_listener: Arc<Mutex<Option<triggered::Listener>>>,
-    subscribe_is_running: Arc<AtomicBool>,
 }
 
 impl Subscriber {
@@ -51,7 +53,7 @@ impl Subscriber {
             listener_id,
             subscribe_channel: Channel::default(),
             subscribe_shutdown_listener: Arc::new(Mutex::new(None)),
-            subscribe_is_running: Arc::new(AtomicBool::default()),
+            is_started: Arc::new(AtomicBool::default()),
         }
     }
 
@@ -60,20 +62,19 @@ impl Subscriber {
     }
 
     pub fn start(self: Arc<Self>) {
-        if !self.subscribe_is_running.load(Ordering::SeqCst) {
-            let (shutdown_trigger, shutdown_listener) = triggered::trigger();
-            let mut subscribe_shutdown_listener = self.subscribe_shutdown_listener.lock().unwrap();
-            *subscribe_shutdown_listener = Some(shutdown_listener);
-            self.subscribe_task(shutdown_trigger, self.subscribe_channel.receiver());
-        }
+        let (shutdown_trigger, shutdown_listener) = triggered::trigger();
+        let mut subscribe_shutdown_listener = self.subscribe_shutdown_listener.lock().unwrap();
+        *subscribe_shutdown_listener = Some(shutdown_listener);
+        self.spawn_subscription_receiver_task(shutdown_trigger, self.subscribe_channel.receiver());
     }
 
-    /// Launch the subscribe task
-    fn subscribe_task(&self, shutdown_trigger: triggered::Trigger, subscribe_rx: Receiver<SubscribeMessage>) {
-        let subscribe_is_running = self.subscribe_is_running.clone();
-        subscribe_is_running.store(true, Ordering::SeqCst);
+    /// Launch the subscription receiver
+    fn spawn_subscription_receiver_task(&self, shutdown_trigger: triggered::Trigger, subscribe_rx: Receiver<SubscribeMessage>) {
+        // The task can only be spawned once
+        if self.clone().is_started.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst) != Ok(false) {
+            return;
+        }
         let subscription_manager = self.subscription_manager.clone();
-        // let listener = self.listener.clone();
         let listener_id = self.listener_id;
 
         workflow_core::task::spawn(async move {
@@ -104,7 +105,6 @@ impl Subscriber {
                     }
                 }
             }
-            subscribe_is_running.store(false, Ordering::SeqCst);
             shutdown_trigger.trigger();
         });
     }
@@ -114,25 +114,26 @@ impl Subscriber {
         Ok(())
     }
 
-    async fn stop_subscribe(self: Arc<Self>) -> Result<()> {
+    async fn stop_subscription_receiver_task(self: Arc<Self>) -> Result<()> {
+        if self.clone().is_started.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst) != Ok(true) {
+            return Err(Error::AlreadyStoppedError);
+        }
         let mut result: Result<()> = Ok(());
-        if self.subscribe_is_running.load(Ordering::SeqCst) {
-            match self.clone().try_send_subscribe(SubscribeMessage::Shutdown) {
-                Ok(_) => {
-                    let shutdown_listener: triggered::Listener;
-                    {
-                        let mut subscribe_shutdown_listener = self.subscribe_shutdown_listener.lock().unwrap();
-                        shutdown_listener = subscribe_shutdown_listener.take().unwrap();
-                    }
-                    shutdown_listener.await;
+        match self.clone().try_send_subscribe(SubscribeMessage::Shutdown) {
+            Ok(_) => {
+                let shutdown_listener: triggered::Listener;
+                {
+                    let mut subscribe_shutdown_listener = self.subscribe_shutdown_listener.lock().unwrap();
+                    shutdown_listener = subscribe_shutdown_listener.take().unwrap();
                 }
-                Err(err) => result = Err(err),
+                shutdown_listener.await;
             }
+            Err(err) => result = Err(err),
         }
         result
     }
 
     pub async fn stop(self: Arc<Self>) -> Result<()> {
-        self.clone().stop_subscribe().await
+        self.clone().stop_subscription_receiver_task().await
     }
 }

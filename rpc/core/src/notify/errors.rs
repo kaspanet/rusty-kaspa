@@ -6,13 +6,16 @@ pub type BoxedStdError = Box<(dyn std::error::Error + Sync + std::marker::Send +
 #[derive(Debug, Error)]
 pub enum Error {
     #[error("Error: {0}")]
-    String(String),
+    General(String),
 
     #[error("Notification: channel receive error")]
     ChannelRecvError,
 
     #[error("Notification: channel send error")]
     ChannelSendError,
+
+    #[error("object already stopped")]
+    AlreadyStoppedError,
 }
 
 impl From<Error> for RpcError {
@@ -23,7 +26,7 @@ impl From<Error> for RpcError {
 
 impl From<BoxedStdError> for Error {
     fn from(err: BoxedStdError) -> Self {
-        Error::String(err.to_string())
+        Error::General(err.to_string())
     }
 }
 

@@ -164,7 +164,7 @@ impl Rpc for RpcService {
 
                             Some(Payload::NotifyBlockAddedRequest(ref request)) => NotifyBlockAddedResponseMessage::from({
                                 let request = rpc_core::NotifyBlockAddedRequest::try_from(request).unwrap();
-                                notifier.clone().execute_notify_command(
+                                notifier.clone().execute_subscribe_command(
                                     listener_id,
                                     rpc_core::NotificationType::BlockAdded,
                                     request.command,

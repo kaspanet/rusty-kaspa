@@ -10,7 +10,7 @@ use futures::{
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 extern crate derive_more;
-use crate::notify::{collector, notifier::Notifier, result::Result};
+use crate::notify::{collector, errors::Error, notifier::Notifier, result::Result};
 use crate::Notification;
 use derive_more::Deref;
 use kaspa_utils::channel::Channel;
@@ -20,9 +20,17 @@ pub type CollectorNotificationChannel<T> = Channel<Arc<T>>;
 pub type CollectorNotificationSender<T> = Sender<Arc<T>>;
 pub type CollectorNotificationReceiver<T> = Receiver<Arc<T>>;
 
+/// A notification collector, acting as a notification source for a [`Notifier`].
+///
+/// A [`Collector`] is responsible for collecting notifications of
+/// a specific form from a specific source, convert them if necessary
+/// into [`Notification`]s and forward them to the [Notifier] provided
+/// to `Collector::start`.
 #[async_trait]
 pub trait Collector: Send + Sync + Debug {
+    /// Start collecting notifications for `nofifier`
     fn start(self: Arc<Self>, notifier: Arc<Notifier>);
+    /// Stop collecting notifications
     async fn stop(self: Arc<Self>) -> Result<()>;
 }
 
@@ -39,17 +47,20 @@ impl<T> From<Arc<T>> for ArcConvert<T> {
     }
 }
 
-/// A notifications collector that receives [`T`] from a channel,
-/// converts it into a [Notification] and sends it to a its
-/// [Notifier].
+/// A notification [`Collector`] that receives [`T`] from a channel,
+/// converts it into a [`Notification`] and sends it to a its
+/// [`Notifier`].
 #[derive(Debug)]
 pub struct CollectorFrom<T>
 where
     T: Send + Sync + 'static + Sized,
 {
     recv_channel: CollectorNotificationReceiver<T>,
+
+    /// Has this collector been started?
+    is_started: Arc<AtomicBool>,
+
     collect_shutdown: Arc<DuplexTrigger>,
-    collect_is_running: Arc<AtomicBool>,
 }
 
 impl<T> CollectorFrom<T>
@@ -58,23 +69,19 @@ where
     ArcConvert<T>: Into<Arc<Notification>>,
 {
     pub fn new(recv_channel: CollectorNotificationReceiver<T>) -> Self {
-        Self { recv_channel, collect_shutdown: Arc::new(DuplexTrigger::new()), collect_is_running: Arc::new(AtomicBool::new(false)) }
+        Self { recv_channel, collect_shutdown: Arc::new(DuplexTrigger::new()), is_started: Arc::new(AtomicBool::new(false)) }
     }
 
-    fn start_collect(&self, notifier: Arc<Notifier>) {
-        if !self.collect_is_running.load(Ordering::SeqCst) {
-            self.collect_task(notifier);
+    fn spawn_collecting_task(&self, notifier: Arc<Notifier>) {
+        // The task can only be spawned once
+        if self.clone().is_started.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst) != Ok(false) {
+            return;
         }
-    }
-
-    fn collect_task(&self, notifier: Arc<Notifier>) {
         let collect_shutdown = self.collect_shutdown.clone();
-        let collect_is_running = self.collect_is_running.clone();
         let recv_channel = self.recv_channel.clone();
-        collect_is_running.store(true, Ordering::SeqCst);
 
         workflow_core::task::spawn(async move {
-            println!("[Collector] collect_task start");
+            println!("[Collector] collecting_task start");
 
             let shutdown = collect_shutdown.request.listener.clone().fuse();
             pin_mut!(shutdown);
@@ -89,8 +96,6 @@ where
                         match notification {
                             Some(msg) => {
                                 let rpc_notification: Arc<Notification> = ArcConvert::from(msg.clone()).into();
-                                //let notification_type: crate::NotificationType = (&*rpc_notification).into();
-                                //println!("[Collector] collect_task received {:?}", notification_type);
                                 match notifier.clone().notify(rpc_notification) {
                                     Ok(_) => (),
                                     Err(err) => {
@@ -105,17 +110,17 @@ where
                     }
                 }
             }
-            collect_is_running.store(false, Ordering::SeqCst);
             collect_shutdown.response.trigger.trigger();
-            println!("[Collector] collect_task end");
+            println!("[Collector] collecting_task end");
         });
     }
 
-    async fn stop_collect(&self) -> Result<()> {
-        if self.collect_is_running.load(Ordering::SeqCst) {
-            self.collect_shutdown.request.trigger.trigger();
-            self.collect_shutdown.response.listener.clone().await;
+    async fn stop_collecting_task(&self) -> Result<()> {
+        if self.clone().is_started.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst) != Ok(true) {
+            return Err(Error::AlreadyStoppedError);
         }
+        self.collect_shutdown.request.trigger.trigger();
+        self.collect_shutdown.response.listener.clone().await;
         Ok(())
     }
 }
@@ -127,11 +132,11 @@ where
     ArcConvert<T>: Into<Arc<Notification>>,
 {
     fn start(self: Arc<Self>, notifier: Arc<Notifier>) {
-        self.start_collect(notifier);
+        self.spawn_collecting_task(notifier);
     }
 
     async fn stop(self: Arc<Self>) -> Result<()> {
-        self.stop_collect().await
+        self.stop_collecting_task().await
     }
 }
 
