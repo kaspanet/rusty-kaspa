@@ -5,7 +5,7 @@ use crate::notify::{
     channel::NotificationChannel,
     events::{EventArray, EventType},
     result::Result,
-    utxo_address_map::RpcUtxoAddressMap,
+    utxo_address_map::RpcUtxoAddressSet,
 };
 use crate::stubs::RpcUtxoAddress;
 use crate::{Notification, NotificationReceiver, NotificationSender, NotificationType};
@@ -36,13 +36,13 @@ pub(crate) struct Listener {
     id: u64,
     channel: NotificationChannel,
     active_event: EventArray<bool>,
-    utxo_addresses: RpcUtxoAddressMap,
+    utxo_addresses: RpcUtxoAddressSet,
 }
 
 impl Listener {
     pub(crate) fn new(id: ListenerID, channel: Option<NotificationChannel>) -> Listener {
         let channel = channel.unwrap_or_default();
-        Self { id, channel, active_event: EventArray::default(), utxo_addresses: RpcUtxoAddressMap::new() }
+        Self { id, channel, active_event: EventArray::default(), utxo_addresses: RpcUtxoAddressSet::new() }
     }
 
     pub(crate) fn id(&self) -> ListenerID {
@@ -54,8 +54,8 @@ impl Listener {
         self.active_event[event]
     }
 
-    fn toggle_utxo_addresses(&mut self, utxo_addresses: &Vec<RpcUtxoAddress>) -> bool {
-        let utxo_addresses: RpcUtxoAddressMap = utxo_addresses.into();
+    fn toggle_utxo_addresses(&mut self, utxo_addresses: &[RpcUtxoAddress]) -> bool {
+        let utxo_addresses = RpcUtxoAddressSet::from_iter(utxo_addresses.iter().cloned());
         if utxo_addresses != self.utxo_addresses {
             self.utxo_addresses = utxo_addresses;
             return true;
@@ -162,13 +162,13 @@ impl Filter for Unfiltered {}
 
 #[derive(Clone, Debug)]
 struct FilterUtxoAddress {
-    utxos_addresses: RpcUtxoAddressMap,
+    utxos_addresses: RpcUtxoAddressSet,
 }
 
 impl InnerFilter for FilterUtxoAddress {
     fn matches(&self, notification: Arc<Notification>) -> bool {
         if let Notification::UtxosChanged(ref notification) = *notification {
-            return self.utxos_addresses.contains_key(&notification.utxo_address);
+            return self.utxos_addresses.contains(&notification.utxo_address);
         }
         false
     }
