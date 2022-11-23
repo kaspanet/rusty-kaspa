@@ -10,7 +10,6 @@ use std::str::{self, FromStr};
 use crate::RpcError;
 
 /// A RPC-dedicated representation of BlueWorkType in which string representation is always hexadecimal.
-#[repr(transparent)]
 #[derive(Debug, PartialEq, Eq, Copy, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase", try_from = "String", into = "String")]
 pub struct RpcBlueWorkType(BlueWorkType);

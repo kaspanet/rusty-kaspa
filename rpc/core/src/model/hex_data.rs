@@ -9,7 +9,6 @@ use std::str::{self, FromStr};
 use crate::errors;
 
 // Represents binary data stringifyed in hexadecimal form
-#[repr(transparent)]
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase", try_from = "String", into = "String")]
 pub struct RpcHexData(Vec<u8>);

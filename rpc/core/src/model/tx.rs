@@ -78,12 +78,7 @@ pub struct RpcTransactionInputVerboseData {}
 #[serde(rename_all = "camelCase")]
 pub struct RpcTransactionOutputVerboseData {
     pub script_public_key_type: RpcScriptClass,
-    pub script_public_key_address: String, // FIXME ? (investigate /crpyto/addresses/src/lib.rs)
-}
 
-// #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
-// #[serde(rename_all = "camelCase")]
-// pub struct RpcAddress {
-//     pub prefix: u32,
-//     pub public_key: ScriptKey,
-// }
+    // TODO: change the type of this field for a better binary representation
+    pub script_public_key_address: String,
+}

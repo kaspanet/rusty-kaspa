@@ -6,8 +6,9 @@ use std::{
     str::FromStr,
 };
 
+// TODO: in the future it should be a newtype of ScriptClass, that will be probably a type
+// associated with the script engine
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
-#[repr(u8)]
 pub enum RpcScriptClass {
     /// None of the recognized forms.
     NonStandardTy = 0,
