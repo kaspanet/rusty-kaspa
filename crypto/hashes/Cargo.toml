@@ -10,13 +10,13 @@ license.workspace = true
 no-asm = ["keccak"]
 
 [dependencies]
+borsh.workspace = true
 faster-hex.workspace = true
 serde.workspace = true
 blake2b_simd = "1"
 sha2 = "0.10"
 once_cell = "1"
 keccak = { version = "0.1", optional = true }
-borsh = "0.9.3"
 
 [target.'cfg(any(target_os = "windows", not(target_arch = "x86_64")))'.dependencies]
 keccak = "0.1"

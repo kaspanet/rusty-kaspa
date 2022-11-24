@@ -10,7 +10,7 @@ license.workspace = true
 [dependencies]
 serde.workspace = true
 faster-hex.workspace = true
-borsh = "0.9.3"
+borsh.workspace = true
 
 [dev-dependencies]
 rand_chacha.workspace = true

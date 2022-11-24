@@ -1,13 +1,14 @@
 use std::fmt::{Debug, Display, Formatter};
 use std::str::{self, FromStr};
 
+use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
 
 /// The size of the array used to store subnetwork IDs.
 pub const SUBNETWORK_ID_SIZE: usize = 20;
 
 /// The domain representation of a Subnetwork ID
-#[derive(Debug, Clone, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Eq, PartialEq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct SubnetworkId([u8; SUBNETWORK_ID_SIZE]);
 
 impl AsRef<[u8]> for SubnetworkId {
