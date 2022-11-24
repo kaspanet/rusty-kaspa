@@ -1,8 +1,7 @@
 fn main() {
     let proto_file1 = "./proto/messages.proto";
-    let proto_file2 = "./proto/kaspadrpc.proto";
 
-    println!("cargo:rerun-if-changed={}, {}", proto_file1, proto_file2);
+    println!("cargo:rerun-if-changed={}", proto_file1);
 
     tonic_build::configure()
         .build_server(true)
