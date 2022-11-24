@@ -9,6 +9,7 @@ pub mod hashing;
 pub mod header;
 pub mod merkle;
 pub mod muhash;
+pub mod notify;
 pub mod subnets;
 pub mod tx;
 pub mod utxo;
