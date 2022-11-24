@@ -15,4 +15,3 @@ thiserror.workspace = true
 serde.workspace = true
 faster-hex.workspace = true
 smallvec.workspace = true
-borsh.workspace = true

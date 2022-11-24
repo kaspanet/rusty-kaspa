@@ -664,7 +664,6 @@ dependencies = [
 name = "consensus-core"
 version = "0.1.0"
 dependencies = [
- "borsh",
  "faster-hex",
  "hashes",
  "math",
