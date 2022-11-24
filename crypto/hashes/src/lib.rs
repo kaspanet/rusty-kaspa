@@ -1,6 +1,7 @@
 mod hashers;
 mod pow_hashers;
 
+use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Display, Formatter};
 use std::hash::{Hash as StdHash, Hasher as StdHasher};
@@ -11,7 +12,7 @@ pub const HASH_SIZE: usize = 32;
 pub use hashers::*;
 
 // TODO: Check if we use hash more as an array of u64 or of bytes and change the default accordingly
-#[derive(Eq, Clone, Copy, Default, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Eq, Clone, Copy, Default, PartialOrd, Ord, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct Hash([u8; HASH_SIZE]);
 
 impl Hash {
