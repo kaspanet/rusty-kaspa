@@ -59,7 +59,7 @@ macro_rules! construct_uint {
             }
 
             #[inline]
-            pub fn overflowing_shl(self, mut s: u32) -> ($name, bool) {
+            pub fn overflowing_shl(self, mut s: u32) -> (Self, bool) {
                 let overflows = s >= Self::BITS;
                 s %= Self::BITS;
                 let mut ret = [0u64; $n_words];
@@ -79,12 +79,12 @@ macro_rules! construct_uint {
             }
 
             #[inline]
-            pub fn wrapping_shl(self, s: u32) -> $name {
+            pub fn wrapping_shl(self, s: u32) -> Self {
                 self.overflowing_shl(s).0
             }
 
             #[inline]
-            pub fn overflowing_shr(self, mut s: u32) -> ($name, bool) {
+            pub fn overflowing_shr(self, mut s: u32) -> (Self, bool) {
                 let overflows = s >= Self::BITS;
                 s %= Self::BITS;
                 let mut ret = [0u64; Self::LIMBS];
@@ -104,7 +104,7 @@ macro_rules! construct_uint {
             }
 
             #[inline]
-            pub fn overflowing_add(mut self, other: $name) -> ($name, bool) {
+            pub fn overflowing_add(mut self, other: Self) -> (Self, bool) {
                 // Replace with std once stabilized:https://github.com/rust-lang/rust/issues/85532
                 #[inline(always)]
                 pub const fn carrying_add_u64(lhs: u64, rhs: u64, carry: bool) -> (u64, bool) {
@@ -122,7 +122,7 @@ macro_rules! construct_uint {
             }
 
             #[inline]
-            pub fn overflowing_add_u64(mut self, other: u64) -> ($name, bool) {
+            pub fn overflowing_add_u64(mut self, other: u64) -> (Self, bool) {
                 let mut carry: bool;
                 (self.0[0], carry) = self.0[0].overflowing_add(other);
                 for i in 1..Self::LIMBS {
@@ -135,7 +135,7 @@ macro_rules! construct_uint {
             }
 
             #[inline]
-            pub fn overflowing_sub(mut self, other: $name) -> ($name, bool) {
+            pub fn overflowing_sub(mut self, other: Self) -> (Self, bool) {
                 // Replace with std once stabilized:https://github.com/rust-lang/rust/issues/85532
                 #[inline(always)]
                 pub const fn borrowing_sub_u64(lhs: u64, rhs: u64, borrow: bool) -> (u64, bool) {
@@ -155,13 +155,13 @@ macro_rules! construct_uint {
 
             /// Multiplication by u64
             #[inline]
-            pub fn overflowing_mul_u64(self, other: u64) -> ($name, bool) {
+            pub fn overflowing_mul_u64(self, other: u64) -> (Self, bool) {
                 let (this, carry) = self.carrying_mul_u64(other);
                 (this, carry != 0)
             }
 
             #[inline]
-            pub fn carrying_mul_u64(mut self, other: u64) -> ($name, u64) {
+            pub fn carrying_mul_u64(mut self, other: u64) -> (Self, u64) {
                 let mut carry: u128 = 0;
                 for i in 0..Self::LIMBS {
                     // TODO: Use `carrying_mul` when stabilized: https://github.com/rust-lang/rust/issues/85532
@@ -173,9 +173,9 @@ macro_rules! construct_uint {
             }
 
             #[inline]
-            pub fn overflowing_mul(self, other: $name) -> ($name, bool) {
+            pub fn overflowing_mul(self, other: Self) -> (Self, bool) {
                 // We should probably replace this with a Montgomery multiplication algorithm
-                let mut result = $name::ZERO;
+                let mut result = Self::ZERO;
                 let mut carry_out = false;
                 for j in 0..Self::LIMBS {
                     let mut carry = 0;
@@ -193,7 +193,7 @@ macro_rules! construct_uint {
             /// Creates big integer value from a byte slice using
             /// little-endian encoding
             #[inline(always)]
-            pub fn from_le_bytes(bytes: [u8; Self::BYTES]) -> $name {
+            pub fn from_le_bytes(bytes: [u8; Self::BYTES]) -> Self {
                 let mut out = [0u64; Self::LIMBS];
                 // This should optimize to basically a transmute.
                 out.iter_mut()
@@ -205,7 +205,7 @@ macro_rules! construct_uint {
             /// Creates big integer value from a byte slice using
             /// big-endian encoding
             #[inline(always)]
-            pub fn from_be_bytes(bytes: [u8; Self::BYTES]) -> $name {
+            pub fn from_be_bytes(bytes: [u8; Self::BYTES]) -> Self {
                 let mut out = [0u64; Self::LIMBS];
                 out.iter_mut()
                     .rev()
