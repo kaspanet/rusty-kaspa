@@ -1,3 +1,5 @@
+use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
 mod bech32;
@@ -25,7 +27,7 @@ impl Display for AddressError {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub enum Prefix {
     Mainnet,
     Testnet,
@@ -73,7 +75,7 @@ impl TryFrom<&str> for Prefix {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct Address {
     pub prefix: Prefix,
     pub payload: Vec<u8>,
