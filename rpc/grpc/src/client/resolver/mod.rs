@@ -60,13 +60,13 @@ impl Pending {
 ///
 /// Data flow:
 /// ```
-/// // KaspadRequest -> send_channel -> recv -> stream -> send -> recv_channel -> KaspadResponse
+/// //   KaspadRequest -> request_send -> stream -> KaspadResponse
 /// ```
 ///
 /// Execution flow:
 /// ```
-/// // | call --------------------------------------------------------------------------------->|
-/// //                                 | sender_task ----------->| receiver_task -------------->|
+/// // | call ---------------------------------------------------->|
+/// //                                  | response_receiver_task ->|
 /// ```
 ///
 ///
@@ -140,7 +140,7 @@ impl Resolver {
         let (request_send, request_recv) = mpsc::channel(16);
 
         // Force the opening of the stream when connected to a go kaspad server.
-        // This is also needed to query server capabilities.
+        // This is also needed for querying server capabilities.
         request_send.send(GetInfoRequestMessage {}.into()).await?;
 
         // Actual KaspadRequest to KaspadResponse stream
@@ -148,7 +148,6 @@ impl Resolver {
 
         // Collect server capabilities as stated in GetInfoResponse
         let mut handle_stop_notify = false;
-
         match stream.message().await? {
             Some(ref msg) => {
                 trace!("GetInfo got response {:?}", msg);
@@ -162,12 +161,13 @@ impl Resolver {
             }
         }
 
+        // create the resolver
         let resolver = Arc::new(Resolver::new(handle_stop_notify, notify_send, request_send));
 
-        // KaspadRequest timeout cleaner
-        resolver.clone().spawn_timeout_monitor();
+        // Start the request timeout cleaner
+        resolver.clone().spawn_request_timeout_monitor();
 
-        // KaspaRequest response receiving task
+        // Start the response receiving task
         resolver.clone().spawn_response_receiver_task(stream);
 
         Ok(resolver)
@@ -201,7 +201,7 @@ impl Resolver {
 
     /// Launch a task that periodically checks pending requests and deletes those that have
     /// waited longer than a predefined delay.
-    fn spawn_timeout_monitor(self: Arc<Self>) {
+    fn spawn_request_timeout_monitor(self: Arc<Self>) {
         self.timeout_is_running.store(true, Ordering::SeqCst);
 
         tokio::spawn(async move {
