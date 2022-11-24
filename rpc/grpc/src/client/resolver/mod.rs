@@ -32,7 +32,10 @@ use tonic::{codec::CompressionEncoding, transport::Endpoint};
 use matcher::*;
 mod matcher;
 
-pub const TIMEOUT_DURATION: u64 = 5_000;
+pub const CONNECT_TIMEOUT_DURATION: u64 = 20_000;
+pub const KEEP_ALIVE_DURATION: u64 = 5_000;
+pub const REQUEST_TIMEOUT_DURATION: u64 = 5_000;
+pub const TIMEOUT_MONITORING_INTERVAL: u64 = 1_000;
 
 pub type SenderResponse = tokio::sync::oneshot::Sender<Result<KaspadResponse>>;
 
@@ -120,16 +123,16 @@ impl Resolver {
             receiver_shutdown: DuplexTrigger::new(),
             timeout_is_running: AtomicBool::new(false),
             timeout_shutdown: DuplexTrigger::new(),
-            timeout_duration: TIMEOUT_DURATION,
-            timeout_timer_interval: 1_000,
+            timeout_duration: REQUEST_TIMEOUT_DURATION,
+            timeout_timer_interval: TIMEOUT_MONITORING_INTERVAL,
         }
     }
 
     pub(crate) async fn connect(address: String, notify_send: NotificationSender) -> Result<Arc<Self>> {
         let channel = Endpoint::from_shared(address.clone())?
-            .timeout(tokio::time::Duration::from_secs(5))
-            .connect_timeout(tokio::time::Duration::from_secs(20))
-            .tcp_keepalive(Some(tokio::time::Duration::from_secs(5)))
+            .timeout(tokio::time::Duration::from_millis(REQUEST_TIMEOUT_DURATION))
+            .connect_timeout(tokio::time::Duration::from_millis(CONNECT_TIMEOUT_DURATION))
+            .tcp_keepalive(Some(tokio::time::Duration::from_millis(KEEP_ALIVE_DURATION)))
             .connect()
             .await?;
 

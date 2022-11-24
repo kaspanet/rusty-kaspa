@@ -131,7 +131,7 @@ impl Inner {
     }
 
     fn start(self: Arc<Self>, notifier: Arc<Notifier>) {
-        if self.is_started.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst) == Ok(false) {
+        if self.is_started.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
             if let Some(ref subscriber) = self.subscriber.clone().as_ref() {
                 subscriber.clone().start();
             }
@@ -354,7 +354,7 @@ impl Inner {
     }
 
     async fn stop(self: Arc<Self>) -> Result<()> {
-        if self.is_started.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst) == Ok(true) {
+        if self.is_started.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
             if let Some(ref collector) = self.collector.clone().as_ref() {
                 collector.clone().stop().await?;
             }

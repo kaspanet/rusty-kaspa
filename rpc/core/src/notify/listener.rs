@@ -5,7 +5,7 @@ use crate::notify::{
     channel::NotificationChannel,
     events::{EventArray, EventType},
     result::Result,
-    utxo_address_map::RpcUtxoAddressSet,
+    utxo_address_set::RpcUtxoAddressSet,
 };
 use crate::stubs::RpcUtxoAddress;
 use crate::{Notification, NotificationReceiver, NotificationSender, NotificationType};

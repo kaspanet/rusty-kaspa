@@ -75,7 +75,7 @@ where
 
     fn spawn_collecting_task(self: Arc<Self>, notifier: Arc<Notifier>) {
         // The task can only be spawned once
-        if self.is_started.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst) != Ok(false) {
+        if self.is_started.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
             return;
         }
         let collect_shutdown = self.collect_shutdown.clone();
@@ -117,7 +117,7 @@ where
     }
 
     async fn stop_collecting_task(self: Arc<Self>) -> Result<()> {
-        if self.is_started.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst) != Ok(true) {
+        if self.is_started.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_err() {
             return Err(Error::AlreadyStoppedError);
         }
         self.collect_shutdown.request.trigger.trigger();

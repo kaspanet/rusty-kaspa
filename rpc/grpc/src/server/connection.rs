@@ -19,9 +19,7 @@ use tokio::sync::mpsc;
 pub type GrpcSender = mpsc::Sender<StatusResult<KaspadResponse>>;
 
 pub(crate) struct GrpcConnection {
-    // This field is required for logs/debugging
-    _address: SocketAddr,
-
+    address: SocketAddr,
     sender: GrpcSender,
     notify_listener: ListenerReceiverSide,
     collect_shutdown: Arc<DuplexTrigger>,
@@ -31,7 +29,7 @@ pub(crate) struct GrpcConnection {
 impl GrpcConnection {
     pub(crate) fn new(address: SocketAddr, sender: GrpcSender, notify_listener: ListenerReceiverSide) -> Self {
         Self {
-            _address: address,
+            address,
             sender,
             notify_listener,
             collect_shutdown: Arc::new(DuplexTrigger::new()),
@@ -110,8 +108,8 @@ impl GrpcConnectionManager {
 
     pub(crate) async fn register(&mut self, address: SocketAddr, sender: GrpcSender) -> ListenerID {
         let notify_listener = self.notifier.clone().register_new_listener(None);
-        trace!("registering a new gRPC connection from: {0} with listener id {1}", address, notify_listener.id);
         let connection = Arc::new(GrpcConnection::new(address, sender, notify_listener));
+        trace!("registering a new gRPC connection from: {0} with listener id {1}", connection.address, connection.notify_listener.id);
 
         // A pre-existing connection with same address is ignored here
         // TODO: see if some close pattern can be applied to the replaced connection
@@ -121,8 +119,8 @@ impl GrpcConnectionManager {
     }
 
     pub(crate) async fn unregister(&mut self, address: SocketAddr) {
-        trace!("dismiss a gRPC connection from: {}", address);
         if let Some(connection) = self.connections.remove(&address) {
+            trace!("dismiss a gRPC connection from: {}", connection.address);
             //connection.sender.closed().await;
             connection.stop().await;
         }
