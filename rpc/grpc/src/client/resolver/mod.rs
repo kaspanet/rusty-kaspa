@@ -22,7 +22,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::sync::{
-    mpsc::{self, Receiver, Sender},
+    mpsc::{self, Sender},
     oneshot,
 };
 use tokio_stream::wrappers::ReceiverStream;
@@ -78,9 +78,12 @@ impl Pending {
 /// For now, RpcApiGrpc::start_notify only gets a result reflecting the call to
 /// Notifier::try_send_dispatch. This is not complete.
 ///
+/// Investigate a possible bottleneck in handle_response with the processing of pendings.
+/// If this is the case, some concurrent alternative should be considered.
+///
 /// Design/flow:
 ///
-/// Currently call is blocking until receiver_task or timeout_task do solve the pending.
+/// Currently call is blocking until response_receiver_task or timeout_task do solve the pending.
 /// So actual concurrency must happen higher in the code.
 /// Is there a better way to handle the flow?
 ///
@@ -94,8 +97,6 @@ pub(super) struct Resolver {
     // Sending to server
     request_send: Sender<KaspadRequest>,
     pending_calls: Arc<Mutex<VecDeque<Pending>>>,
-    sender_is_running: AtomicBool,
-    sender_shutdown: DuplexTrigger,
 
     // Receiving from server
     receiver_is_running: AtomicBool,
@@ -115,8 +116,6 @@ impl Resolver {
             notify_send,
             request_send,
             pending_calls: Arc::new(Mutex::new(VecDeque::new())),
-            sender_is_running: AtomicBool::new(false),
-            sender_shutdown: DuplexTrigger::new(),
             receiver_is_running: AtomicBool::new(false),
             receiver_shutdown: DuplexTrigger::new(),
             timeout_is_running: AtomicBool::new(false),
@@ -144,9 +143,6 @@ impl Resolver {
         // This is also needed to query server capabilities.
         request_send.send(GetInfoRequestMessage {}.into()).await?;
 
-        // Internal channel
-        let (response_send, response_recv) = mpsc::channel(16);
-
         // Actual KaspadRequest to KaspadResponse stream
         let mut stream: Streaming<KaspadResponse> = client.message_stream(ReceiverStream::new(request_recv)).await?.into_inner();
 
@@ -169,13 +165,10 @@ impl Resolver {
         let resolver = Arc::new(Resolver::new(handle_stop_notify, notify_send, request_send));
 
         // KaspadRequest timeout cleaner
-        resolver.clone().timeout_task();
+        resolver.clone().spawn_timeout_monitor();
 
-        // KaspaRequest sender
-        resolver.clone().sender_task(stream, response_send);
-
-        // KaspadResponse receiver
-        resolver.clone().receiver_task(response_recv);
+        // KaspaRequest response receiving task
+        resolver.clone().spawn_response_receiver_task(stream);
 
         Ok(resolver)
     }
@@ -206,8 +199,9 @@ impl Resolver {
         }
     }
 
-    #[allow(unused_must_use)]
-    fn timeout_task(self: Arc<Self>) {
+    /// Launch a task that periodically checks pending requests and deletes those that have
+    /// waited longer than a predefined delay.
+    fn spawn_timeout_monitor(self: Arc<Self>) {
         self.timeout_is_running.store(true, Ordering::SeqCst);
 
         tokio::spawn(async move {
@@ -224,28 +218,27 @@ impl Resolver {
                     _ = delay => {
                         trace!("[Resolver] running timeout task");
                         let mut pending_calls = self.pending_calls.lock().unwrap();
-                        let mut purge = Vec::<usize>::new();
                         let timeout = Duration::from_millis(self.timeout_duration);
 
-                        pending_calls.make_contiguous();
-                        let (pending_slice, _) = pending_calls.as_slices();
-                        for i in (0..pending_slice.len()).rev() {
-                            let pending = pending_calls.get(i).unwrap();
-                            if pending.timestamp.elapsed() > timeout {
-                                purge.push(i);
+                        let mut index: usize = 0;
+                        loop {
+                            if index >= pending_calls.len() {
+                                break;
                             }
-                        }
-
-                        for index in purge.iter() {
-                            let pending = pending_calls.remove(*index);
-                            if let Some(pending) = pending {
-
-                                trace!("[Resolver] timeout task purged request emmited {:?}", pending.timestamp);
-
-                                // This attribute doesn't seem to work at expression level
-                                // So it is duplicated at fn level
-                                #[allow(unused_must_use)]
-                                pending.sender.send(Err(Error::Timeout));
+                            let pending = pending_calls.get(index).unwrap();
+                            if pending.timestamp.elapsed() > timeout {
+                                let pending = pending_calls.remove(index).unwrap();
+                                match pending.sender.send(Err(Error::Timeout)) {
+                                    Ok(_) => {},
+                                    Err(err) => {
+                                        trace!("[Resolver] the timeout monitor failed to send a timeout error: {:?}", err);
+                                    },
+                                }
+                            } else {
+                                // The call to pending_calls.remove moves whichever end is closer to the
+                                // removal point. So to prevent skipping items, we only increment index when
+                                // no removal occurs.
+                                index += 1;
                             }
                         }
                     },
@@ -258,19 +251,15 @@ impl Resolver {
         });
     }
 
-    fn sender_task(self: Arc<Self>, mut stream: Streaming<KaspadResponse>, send: Sender<KaspadResponse>) {
-        self.sender_is_running.store(true, Ordering::SeqCst);
+    /// Launch a task receiving and handling response messages sent by the server.
+    fn spawn_response_receiver_task(self: Arc<Self>, mut stream: Streaming<KaspadResponse>) {
+        self.receiver_is_running.store(true, Ordering::SeqCst);
 
         tokio::spawn(async move {
             loop {
-                trace!("[Resolver] sender task loop");
+                trace!("[Resolver] response receiver loop");
 
-                if send.is_closed() {
-                    trace!("[Resolver] sender_task sender is closed");
-                    break;
-                }
-
-                let shutdown = self.sender_shutdown.request.listener.clone();
+                let shutdown = self.receiver_shutdown.request.listener.clone();
                 pin_mut!(shutdown);
 
                 tokio::select! {
@@ -280,53 +269,33 @@ impl Resolver {
                             Ok(msg) => {
                                 match msg {
                                     Some(response) => {
-                                        if let Err(err) = send.send(response).await {
-                                            trace!("[Resolver] sender_task sender error: {:?}", err);
-                                        }
+                                        self.handle_response(response);
                                     },
                                     None =>{
-                                        trace!("[Resolver] sender_task sender error: no payload");
+                                        trace!("[Resolver] the incoming stream of the response receiver is closed");
+
+                                        // This event makes the whole object unable to work anymore.
+                                        // This should be reported to the owner of this Resolver.
+                                        //
+                                        // Some automatical reconnection mecanism could also be investigated.
                                         break;
                                     }
                                 }
                             },
                             Err(err) => {
-                                trace!("[Resolver] sender_task sender error: {:?}", err);
+                                trace!("[Resolver] the response receiver gets an error from the server: {:?}", err);
                             }
                         }
                     }
                 }
             }
 
-            trace!("[Resolver] terminating sender task");
-            self.sender_is_running.store(false, Ordering::SeqCst);
-            self.sender_shutdown.response.trigger.trigger();
-        });
-    }
-
-    fn receiver_task(self: Arc<Self>, mut recv_channel: Receiver<KaspadResponse>) {
-        self.receiver_is_running.store(true, Ordering::SeqCst);
-
-        tokio::spawn(async move {
-            loop {
-                trace!("[Resolver] receiver task loop");
-
-                let shutdown = self.receiver_shutdown.request.listener.clone();
-                pin_mut!(shutdown);
-
-                tokio::select! {
-                    _ = shutdown => { break; }
-                    Some(response) = recv_channel.recv() => { self.handle_response(response); }
-                }
-            }
-
-            trace!("[Resolver] terminating receiver task");
+            trace!("[Resolver] terminating response receiver");
             self.receiver_is_running.store(false, Ordering::SeqCst);
             self.receiver_shutdown.response.trigger.trigger();
         });
     }
 
-    #[allow(unused_must_use)]
     fn handle_response(&self, response: KaspadResponse) {
         if response.is_notification() {
             trace!("[Resolver] handle_response received a notification");
@@ -336,7 +305,12 @@ impl Resolver {
                     trace!("[Resolver] handle_response received notification: {:?}", event);
 
                     // Here we ignore any returned error
-                    self.notify_send.try_send(Arc::new(notification));
+                    match self.notify_send.try_send(Arc::new(notification)) {
+                        Ok(_) => {}
+                        Err(err) => {
+                            trace!("[Resolver] error while trying to send a notification to the notifier: {:?}", err);
+                        }
+                    }
                 }
                 Err(err) => {
                     trace!("[Resolver] handle_response error converting reponse into notification: {:?}", err);
@@ -351,9 +325,9 @@ impl Resolver {
                 if pending_calls.front().unwrap().is_matching(&response, response_op.clone()) {
                     pending = pending_calls.pop_front();
                 } else {
-                    pending_calls.make_contiguous();
-                    let (pending_slice, _) = pending_calls.as_slices();
-                    for i in (0..pending_slice.len()).rev() {
+                    let pending_slice = pending_calls.make_contiguous();
+                    // Iterate the queue front to back, so older pendings first
+                    for i in 0..pending_slice.len() {
                         if pending_calls.get(i).unwrap().is_matching(&response, response_op.clone()) {
                             pending = pending_calls.remove(i);
                             break;
@@ -364,31 +338,23 @@ impl Resolver {
             drop(pending_calls);
             if let Some(pending) = pending {
                 trace!("[Resolver] handle_response matching request found: {:?}", pending.request);
-
-                // This attribute doesn't seem to work at expression level
-                // So it is duplicated at fn level
-                #[allow(unused_must_use)]
-                pending.sender.send(Ok(response));
+                match pending.sender.send(Ok(response)) {
+                    Ok(_) => {}
+                    Err(err) => {
+                        trace!("[Resolver] handle_response failed to send the response of a pending: {:?}", err);
+                    }
+                }
             }
         }
     }
 
     pub async fn shutdown(&self) -> Result<()> {
-        self.stop_timeout().await?;
-        self.stop_sender().await?;
-        self.stop_receiver().await?;
+        self.stop_timeout_monitor().await?;
+        self.stop_response_receiver_task().await?;
         Ok(())
     }
 
-    async fn stop_sender(&self) -> Result<()> {
-        if self.sender_is_running.load(Ordering::SeqCst) {
-            self.sender_shutdown.request.trigger.trigger();
-            self.sender_shutdown.response.listener.clone().await;
-        }
-        Ok(())
-    }
-
-    async fn stop_receiver(&self) -> Result<()> {
+    async fn stop_response_receiver_task(&self) -> Result<()> {
         if self.receiver_is_running.load(Ordering::SeqCst) {
             self.receiver_shutdown.request.trigger.trigger();
             self.receiver_shutdown.response.listener.clone().await;
@@ -396,7 +362,7 @@ impl Resolver {
         Ok(())
     }
 
-    async fn stop_timeout(&self) -> Result<()> {
+    async fn stop_timeout_monitor(&self) -> Result<()> {
         if self.timeout_is_running.load(Ordering::SeqCst) {
             self.timeout_shutdown.request.trigger.trigger();
             self.timeout_shutdown.response.listener.clone().await;
@@ -409,7 +375,6 @@ impl Resolver {
 impl SubscriptionManager for Resolver {
     async fn start_notify(self: Arc<Self>, _: ListenerID, notification_type: NotificationType) -> RpcResult<()> {
         trace!("[Resolver] start_notify: {:?}", notification_type);
-        // FIXME: Enhance protowire with Subscribe Commands (handle explicit Start)
         let request = kaspad_request::Payload::from_notification_type(&notification_type, SubscribeCommand::Start);
         self.clone().call((&request).into(), request).await?;
         Ok(())
@@ -421,7 +386,7 @@ impl SubscriptionManager for Resolver {
             let request = kaspad_request::Payload::from_notification_type(&notification_type, SubscribeCommand::Stop);
             self.clone().call((&request).into(), request).await?;
         } else {
-            trace!("[Resolver] stop_notify ignored because not supported by server: {:?}", notification_type);
+            trace!("[Resolver] stop_notify ignored because not supported by the server: {:?}", notification_type);
         }
         Ok(())
     }
