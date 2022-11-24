@@ -207,9 +207,9 @@ macro_rules! construct_uint {
             #[inline(always)]
             pub fn from_be_bytes(bytes: [u8; Self::BYTES]) -> $name {
                 let mut out = [0u64; Self::LIMBS];
-                // This should optimize to basically a transmute.
                 out.iter_mut()
-                    .zip(bytes.chunks_exact(8).rev())
+                    .rev()
+                    .zip(bytes.chunks_exact(8))
                     .for_each(|(word, bytes)| *word = u64::from_be_bytes(bytes.try_into().unwrap()));
                 Self(out)
             }
@@ -348,6 +348,20 @@ macro_rules! construct_uint {
                 impl core::iter::FusedIterator for BinaryIterator {}
 
                 BinaryIterator { array: self.0, bit: 0 }
+            }
+
+            /// Converts a Self::BYTES*2 hex string interperted as big endian, into a Uint
+            #[inline]
+            pub fn from_hex(hex: &str) -> Result<Self, faster_hex::Error> {
+                if hex.len() > Self::BYTES * 2 {
+                    return Err(faster_hex::Error::InvalidLength(hex.len()));
+                }
+                let mut out = [0u8; Self::BYTES];
+                let mut input = [b'0'; Self::BYTES * 2];
+                let start = input.len() - hex.len();
+                input[start..].copy_from_slice(hex.as_bytes());
+                faster_hex::hex_decode(&input, &mut out)?;
+                Ok(Self::from_be_bytes(out))
             }
         }
 
@@ -845,10 +859,11 @@ mod tests {
             assert_equal_args(format_args!("{a:x}"), format_args!("{b:x}")); // Test LowerHex
             assert_equal_args(format_args!("{a:#x}"), format_args!("{b:#x}")); // Test LowerHex with prefix
                                                                                // Test LowerHex with padding
-            assert_equal_args(format_args!("{a:0256x}"), format_args!("{b:0256x}"));
+            assert_equal_args(format_args!("{a:032x}"), format_args!("{b:032x}"));
         };
         let mut rng = ChaCha8Rng::from_seed([0; 32]);
         let mut buf = [0u8; 16];
+        let mut str_buf = String::with_capacity(32);
         for i in 0..64_000 {
             // Checking all the fmt's is quite expensive.
             let check_fmt = i % 8 == 1;
@@ -906,6 +921,26 @@ mod tests {
                 let default_add = default.overflowing_add(rand_u64 as u128);
                 assert_equal(mine_add.0, default_add.0, check_fmt);
                 assert_eq!(mine_add.1, default_add.1);
+            }
+            // Roundtrip Little-Endian bytes conversion
+            {
+                let mine_le = mine.to_le_bytes();
+                let default_le = default.to_le_bytes();
+                assert_eq!(mine_le, default_le);
+                assert_eq!(mine, Uint128::from_le_bytes(mine_le));
+            }
+            // Roundtrip Big-Endian bytes conversion
+            {
+                let mine_le = mine.to_be_bytes();
+                let default_le = default.to_be_bytes();
+                assert_eq!(mine_le, default_le);
+                assert_eq!(mine, Uint128::from_be_bytes(mine_le));
+            }
+            // Roundtrip hex
+            if check_fmt {
+                str_buf.clear();
+                str_buf.write_fmt(format_args!("{mine:032x}")).unwrap();
+                assert_eq!(mine, Uint128::from_hex(&str_buf).unwrap());
             }
         }
     }
