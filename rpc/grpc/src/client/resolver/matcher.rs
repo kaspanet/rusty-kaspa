@@ -32,6 +32,8 @@ impl Matcher<&kaspad_response::Payload> for GetBlockRequestMessage {
 impl Matcher<&kaspad_response::Payload> for kaspad_request::Payload {
     fn is_matching(&self, response: &kaspad_response::Payload) -> bool {
         match self {
+            kaspad_request::Payload::SubmitBlockRequest(_) => true,
+            kaspad_request::Payload::GetBlockTemplateRequest(_) => true,
             kaspad_request::Payload::GetBlockRequest(ref request) => request.is_matching(response),
             kaspad_request::Payload::GetCurrentNetworkRequest(_) => true,
             kaspad_request::Payload::NotifyBlockAddedRequest(_) => true,

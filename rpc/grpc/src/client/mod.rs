@@ -13,7 +13,8 @@ use rpc_core::{
         notifier::Notifier,
         subscriber::Subscriber,
     },
-    GetBlockRequest, GetBlockResponse, GetInfoRequest, GetInfoResponse, NotificationType, RpcError, RpcResult,
+    GetBlockRequest, GetBlockResponse, GetBlockTemplateRequest, GetBlockTemplateResponse, GetInfoRequest, GetInfoResponse,
+    NotificationType, RpcError, RpcResult, SubmitBlockRequest, SubmitBlockResponse,
 };
 
 mod errors;
@@ -59,11 +60,19 @@ impl RpcApiGrpc {
 
 #[async_trait]
 impl RpcApi for RpcApiGrpc {
-    async fn get_block(&self, request: GetBlockRequest) -> RpcResult<GetBlockResponse> {
+    async fn submit_block_call(&self, request: SubmitBlockRequest) -> RpcResult<SubmitBlockResponse> {
+        self.inner.clone().call(RpcApiOps::SubmitBlock, request).await?.as_ref().try_into()
+    }
+
+    async fn get_block_template_call(&self, request: GetBlockTemplateRequest) -> RpcResult<GetBlockTemplateResponse> {
+        self.inner.clone().call(RpcApiOps::GetBlockTemplate, request).await?.as_ref().try_into()
+    }
+
+    async fn get_block_call(&self, request: GetBlockRequest) -> RpcResult<GetBlockResponse> {
         self.inner.clone().call(RpcApiOps::GetBlock, request).await?.as_ref().try_into()
     }
 
-    async fn get_info(&self, request: GetInfoRequest) -> RpcResult<GetInfoResponse> {
+    async fn get_info_call(&self, request: GetInfoRequest) -> RpcResult<GetInfoResponse> {
         self.inner.clone().call(RpcApiOps::GetInfo, request).await?.as_ref().try_into()
     }
 

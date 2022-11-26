@@ -14,6 +14,11 @@ use crate::{
 };
 use async_trait::async_trait;
 
+/// Client RPC Api
+///
+/// The [`RpcApi`] trait defines RPC calls taking a request message as unique parameter.
+///
+/// For each RPC call a matching readily implemented function taking detailed parameters is also provided.
 #[async_trait]
 pub trait RpcApi: Sync + Send {
     // async fn ping(
@@ -25,16 +30,19 @@ pub trait RpcApi: Sync + Send {
     //     &self
     // ) -> RpcResult<NetworkType>;
 
-    // async fn submit_block(
-    //     &self,
-    //     block: RpcBlock,
-    //     allow_non_daa_blocks : bool
-    // ) -> RpcResult<SubmitBlockResponse>;
+    /// Submit a block into the DAG.
+    /// Blocks are generally expected to have been generated using the get_block_template call.
+    async fn submit_block(&self, block: RpcBlock, allow_non_daa_blocks: bool) -> RpcResult<SubmitBlockResponse> {
+        self.submit_block_call(SubmitBlockRequest::new(block, allow_non_daa_blocks)).await
+    }
+    async fn submit_block_call(&self, request: SubmitBlockRequest) -> RpcResult<SubmitBlockResponse>;
 
-    // async fn get_block_template(
-    //     &self,
-    //     req: GetBlockTemplateRequest
-    // ) -> RpcResult<GetBlockTemplateResponse>;
+    /// Request a current block template.
+    /// Callers are expected to solve the block template and submit it using the submit_block call.
+    async fn get_block_template(&self, pay_address: RpcAddress, extra_data: String) -> RpcResult<GetBlockTemplateResponse> {
+        self.get_block_template_call(GetBlockTemplateRequest::new(pay_address, extra_data)).await
+    }
+    async fn get_block_template_call(&self, request: GetBlockTemplateRequest) -> RpcResult<GetBlockTemplateResponse>;
 
     // async fn get_peer_addresses(
     //     &self
@@ -46,7 +54,7 @@ pub trait RpcApi: Sync + Send {
 
     // async fn get_mempool_entry(
     //     &self,
-    //     req:  GetMempoolEntryRequest
+    //     request:  GetMempoolEntryRequest
     // ) -> RpcResult<GetMempoolEntriesResponse>;
 
     // async fn get_mempool_entries(
@@ -61,7 +69,7 @@ pub trait RpcApi: Sync + Send {
 
     // async fn add_peer(
     //     &self,
-    //     req: AddPeerRequest
+    //     request: AddPeerRequest
     // ) -> RpcResult<AddPeerResponse>;
 
     // async fn submit_transaction(
@@ -70,36 +78,40 @@ pub trait RpcApi: Sync + Send {
     //     allow_orphan: bool,
     // ) -> RpcResult<SubmitTransactionResponse>;
 
-    async fn get_block(&self, req: GetBlockRequest) -> RpcResult<GetBlockResponse>;
+    /// Requests information about a specific block.
+    async fn get_block(&self, hash: RpcHash, include_transactions: bool) -> RpcResult<GetBlockResponse> {
+        self.get_block_call(GetBlockRequest::new(hash, include_transactions)).await
+    }
+    async fn get_block_call(&self, request: GetBlockRequest) -> RpcResult<GetBlockResponse>;
 
     // async fn get_subnetwork(
     //     &self,
-    //     req: GetSubnetworkRequest
+    //     request: GetSubnetworkRequest
     // ) -> RpcResult<GetSubnetworkResponse>;
 
     // async fn get_virtual_selected_parent_chain_from_block(
     //     &self,
-    //     req: GetVirtualSelectedParentChainFromBlockRequest
+    //     request: GetVirtualSelectedParentChainFromBlockRequest
     // ) -> RpcResult<GetVirtualSelectedParentChainFromBlockResponse>;
 
     // async fn get_blocks(
     //     &self,
-    //     req: GetBlocksRequest
+    //     request: GetBlocksRequest
     // ) -> RpcResult<GetBlocksResponse>;
 
     // async fn get_block_count(
     //     &self,
-    //     req: GetBlockCountRequest
+    //     request: GetBlockCountRequest
     // ) -> RpcResult<GetBlockCountResponse>;
 
     // async fn get_block_dag_info(
     //     &self,
-    //     req: GetBlockDagInfoRequest
+    //     request: GetBlockDagInfoRequest
     // ) -> RpcResult<GetBlockDagInfoResponse>;
 
     // async fn resolve_finality_conflict(
     //     &self,
-    //     req: ResolveFinalityConflictRequest
+    //     request: ResolveFinalityConflictRequest
     // ) -> RpcResult<ResolveFinalityConflictResponse>;
 
     // async fn shutdown(
@@ -108,7 +120,7 @@ pub trait RpcApi: Sync + Send {
 
     // async fn get_headers(
     //     &self,
-    //     req: GetHeadersRequest
+    //     request: GetHeadersRequest
     // ) -> RpcResult<GetHeadersResponse>;
 
     // async fn get_utxos_by_address(
@@ -132,24 +144,27 @@ pub trait RpcApi: Sync + Send {
 
     // async fn ban(
     //     &self,
-    //     req: BanRequest
+    //     request: BanRequest
     // ) -> RpcResult<BanResponse>;
 
     // async fn unban(
     //     &self,
-    //     req: UnbanRequest
+    //     request: UnbanRequest
     // ) -> RpcResult<UnbanResponse>;
 
-    async fn get_info(&self, req: GetInfoRequest) -> RpcResult<GetInfoResponse>;
+    async fn get_info_call(&self, request: GetInfoRequest) -> RpcResult<GetInfoResponse>;
+    async fn get_info(&self) -> RpcResult<GetInfoResponse> {
+        self.get_info_call(GetInfoRequest {}).await
+    }
 
     // async fn estimate_network_hashes_per_second(
     //     &self,
-    //     req: EstimateNetworkHashesPerSecondRequest
+    //     request: EstimateNetworkHashesPerSecondRequest
     // ) -> RpcResult<u64>;
 
     // async fn get_mempool_entries_by_addresses(
     //     &self,
-    //     req: GetMempoolEntriesByAddressesRequest
+    //     request: GetMempoolEntriesByAddressesRequest
     // ) -> RpcResult<GetMempoolEntriesByAddressesResponse>;
 
     // async fn get_coin_supply(

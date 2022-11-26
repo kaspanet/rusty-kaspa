@@ -1,7 +1,7 @@
 use super::connection::{GrpcConnectionManager, GrpcSender};
 use crate::protowire::{
-    kaspad_request::Payload, rpc_server::Rpc, GetBlockResponseMessage, GetInfoResponseMessage, KaspadRequest, KaspadResponse,
-    NotifyBlockAddedResponseMessage,
+    kaspad_request::Payload, rpc_server::Rpc, GetBlockResponseMessage, GetBlockTemplateResponseMessage, GetInfoResponseMessage,
+    KaspadRequest, KaspadResponse, NotifyBlockAddedResponseMessage, SubmitBlockResponseMessage,
 };
 use crate::server::StatusResult;
 use futures::Stream;
@@ -155,13 +155,23 @@ impl Rpc for RpcService {
                     Ok(Some(request)) => {
                         trace!("Request is {:?}", request);
                         let response: KaspadResponse = match request.payload {
+                            Some(Payload::SubmitBlockRequest(ref request)) => match request.try_into() {
+                                Ok(request) => core_service.submit_block_call(request).await.into(),
+                                Err(err) => SubmitBlockResponseMessage::from(err).into(),
+                            },
+
+                            Some(Payload::GetBlockTemplateRequest(ref request)) => match request.try_into() {
+                                Ok(request) => core_service.get_block_template_call(request).await.into(),
+                                Err(err) => GetBlockTemplateResponseMessage::from(err).into(),
+                            },
+
                             Some(Payload::GetBlockRequest(ref request)) => match request.try_into() {
-                                Ok(request) => core_service.get_block(request).await.into(),
+                                Ok(request) => core_service.get_block_call(request).await.into(),
                                 Err(err) => GetBlockResponseMessage::from(err).into(),
                             },
 
                             Some(Payload::GetInfoRequest(ref request)) => match request.try_into() {
-                                Ok(request) => core_service.get_info(request).await.into(),
+                                Ok(request) => core_service.get_info_call(request).await.into(),
                                 Err(err) => GetInfoResponseMessage::from(err).into(),
                             },
 

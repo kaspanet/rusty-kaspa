@@ -4,6 +4,8 @@ use rpc_core::api::ops::RpcApiOps;
 impl From<&kaspad_request::Payload> for RpcApiOps {
     fn from(item: &kaspad_request::Payload) -> Self {
         match item {
+            kaspad_request::Payload::SubmitBlockRequest(_) => RpcApiOps::SubmitBlock,
+            kaspad_request::Payload::GetBlockTemplateRequest(_) => RpcApiOps::GetBlockTemplate,
             kaspad_request::Payload::GetCurrentNetworkRequest(_) => RpcApiOps::GetCurrentNetwork,
             kaspad_request::Payload::GetBlockRequest(_) => RpcApiOps::GetBlock,
             kaspad_request::Payload::GetInfoRequest(_) => RpcApiOps::GetInfo,
@@ -17,6 +19,8 @@ impl From<&kaspad_request::Payload> for RpcApiOps {
 impl From<&kaspad_response::Payload> for RpcApiOps {
     fn from(item: &kaspad_response::Payload) -> Self {
         match item {
+            kaspad_response::Payload::SubmitBlockResponse(_) => RpcApiOps::SubmitBlock,
+            kaspad_response::Payload::GetBlockTemplateResponse(_) => RpcApiOps::GetBlockTemplate,
             kaspad_response::Payload::GetCurrentNetworkResponse(_) => RpcApiOps::GetCurrentNetwork,
             kaspad_response::Payload::GetBlockResponse(_) => RpcApiOps::GetBlock,
             kaspad_response::Payload::GetInfoResponse(_) => RpcApiOps::GetInfo,
@@ -52,6 +56,8 @@ pub mod kaspad_request_convert {
     use crate::protowire::*;
     use rpc_core::{RpcError, RpcResult};
 
+    impl_into_kaspad_request!(rpc_core::SubmitBlockRequest, SubmitBlockRequestMessage, SubmitBlockRequest);
+    impl_into_kaspad_request!(rpc_core::GetBlockTemplateRequest, GetBlockTemplateRequestMessage, GetBlockTemplateRequest);
     impl_into_kaspad_request!(rpc_core::GetBlockRequest, GetBlockRequestMessage, GetBlockRequest);
     impl_into_kaspad_request!(rpc_core::NotifyBlockAddedRequest, NotifyBlockAddedRequestMessage, NotifyBlockAddedRequest);
     impl_into_kaspad_request!(rpc_core::GetInfoRequest, GetInfoRequestMessage, GetInfoRequest);
@@ -137,6 +143,8 @@ pub mod kaspad_response_convert {
     use crate::protowire::*;
     use rpc_core::{RpcError, RpcResult};
 
+    impl_into_kaspad_response!(rpc_core::SubmitBlockResponse, SubmitBlockResponseMessage, SubmitBlockResponse);
+    impl_into_kaspad_response!(rpc_core::GetBlockTemplateResponse, GetBlockTemplateResponseMessage, GetBlockTemplateResponse);
     impl_into_kaspad_response!(rpc_core::GetBlockResponse, GetBlockResponseMessage, GetBlockResponse);
     impl_into_kaspad_response!(rpc_core::GetInfoResponse, GetInfoResponseMessage, GetInfoResponse);
 

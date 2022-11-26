@@ -8,6 +8,7 @@ license.workspace = true
 
 [dependencies]
 consensus-core.workspace = true
+addresses.workspace = true
 hashes.workspace = true
 math.workspace = true
 kaspa-core.workspace = true
