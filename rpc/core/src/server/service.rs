@@ -2,7 +2,7 @@
 
 use super::collector::{ConsensusCollector, ConsensusNotificationReceiver};
 use crate::{
-    api::rpc,
+    api::rpc::RpcApi,
     model::*,
     notify::{
         channel::NotificationChannel,
@@ -69,8 +69,18 @@ impl RpcCoreService {
 }
 
 #[async_trait]
-impl rpc::RpcApi for RpcCoreService {
-    async fn get_block(&self, req: GetBlockRequest) -> RpcResult<GetBlockResponse> {
+impl RpcApi for RpcCoreService {
+    async fn submit_block_call(&self, _request: SubmitBlockRequest) -> RpcResult<SubmitBlockResponse> {
+        // TODO: Remove the following test when consensus is used to fetch data
+        Ok(SubmitBlockResponse { report: SubmitBlockReport::Success })
+    }
+
+    async fn get_block_template_call(&self, _request: GetBlockTemplateRequest) -> RpcResult<GetBlockTemplateResponse> {
+        // TODO: Remove the following test when consensus is used to fetch data
+        Ok(GetBlockTemplateResponse { block: create_dummy_rpc_block(), is_synced: true })
+    }
+
+    async fn get_block_call(&self, req: GetBlockRequest) -> RpcResult<GetBlockResponse> {
         // TODO: Remove the following test when consensus is used to fetch data
 
         // This is a test to simulate a consensus error
@@ -82,7 +92,7 @@ impl rpc::RpcApi for RpcCoreService {
         Ok(GetBlockResponse { block: create_dummy_rpc_block() })
     }
 
-    async fn get_info(&self, _req: GetInfoRequest) -> RpcResult<GetInfoResponse> {
+    async fn get_info_call(&self, _req: GetInfoRequest) -> RpcResult<GetInfoResponse> {
         // TODO: query info from consensus and use it to build the response
         Ok(GetInfoResponse {
             p2p_id: "test".to_string(),
