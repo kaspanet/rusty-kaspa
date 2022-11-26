@@ -27,6 +27,8 @@ impl Display for AddressError {
     }
 }
 
+impl std::error::Error for AddressError {}
+
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub enum Prefix {
     Mainnet,
@@ -84,6 +86,12 @@ pub struct Address {
 
 impl From<Address> for String {
     fn from(address: Address) -> Self {
+        (&address).into()
+    }
+}
+
+impl From<&Address> for String {
+    fn from(address: &Address) -> Self {
         format!("{}:{}", address.prefix, address.encode_payload())
     }
 }
