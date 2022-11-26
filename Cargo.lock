@@ -6,7 +6,9 @@ version = 3
 name = "addresses"
 version = "0.1.0"
 dependencies = [
+ "borsh",
  "criterion",
+ "serde",
 ]
 
 [[package]]
@@ -2317,6 +2319,7 @@ dependencies = [
 name = "rpc-core"
 version = "0.1.0"
 dependencies = [
+ "addresses",
  "ahash 0.8.2",
  "async-std",
  "async-trait",
