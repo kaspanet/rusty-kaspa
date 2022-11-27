@@ -68,7 +68,8 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
 
             for parent in direct_parent_headers
                 .iter()
-                .flat_map(|header| self.parents_at_level(&header.header, block_level as u8).iter().copied())
+                .filter(|h| block_level > h.block_level as usize) // We need to iterate parent's parents only if parent is not at block_level
+                .flat_map(|h| self.parents_at_level(&h.header, block_level as u8).iter().copied())
                 // We use IndexSet in order to preserve iteration order
                 .collect::<IndexSet<Hash, BlockHasher>>()
             {
