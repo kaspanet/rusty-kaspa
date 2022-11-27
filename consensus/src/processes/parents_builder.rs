@@ -4,6 +4,7 @@ use indexmap::IndexSet;
 use itertools::Itertools;
 use kaspa_utils::option::OptionExtensions;
 use parking_lot::RwLock;
+use smallvec::{smallvec, SmallVec};
 use std::sync::Arc;
 
 use crate::model::{
@@ -63,8 +64,8 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
             let mut level_candidates_to_reference_blocks = direct_parent_headers
                 .iter()
                 .filter(|h| block_level <= h.block_level as usize)
-                .map(|h| (h.header.hash, vec![h.header.hash]))
-                .collect::<BlockHashMap<_>>();
+                .map(|h| (h.header.hash, smallvec![h.header.hash]))
+                .collect::<BlockHashMap<SmallVec<[Hash; 1]>>>();
 
             for parent in direct_parent_headers
                 .iter()
@@ -92,9 +93,9 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
                 // virtual genesis children have this block as parent and use those block as
                 // reference blocks.
                 let reference_blocks = if is_in_origin_children_future {
-                    vec![parent]
+                    smallvec![parent]
                 } else {
-                    let mut reference_blocks = Vec::with_capacity(origin_children.len());
+                    let mut reference_blocks = SmallVec::with_capacity(origin_children.len());
                     for child_header in origin_children_headers.iter() {
                         if self.parents_at_level(child_header, block_level as u8).contains(&parent) {
                             reference_blocks.push(child_header.hash);
