@@ -2,18 +2,16 @@ use consensus_core::{blockhash::ORIGIN, header::Header, BlockHashMap, BlockHashe
 use hashes::Hash;
 use indexmap::IndexSet;
 use itertools::Itertools;
+use kaspa_utils::option::OptionExtensions;
 use parking_lot::RwLock;
 use std::sync::Arc;
 
-use crate::{
-    model::{
-        services::reachability::{MTReachabilityService, ReachabilityService},
-        stores::{
-            errors::StoreError, headers::HeaderStoreReader, reachability::ReachabilityStoreReader, relations::RelationsStoreReader,
-        },
-    },
-    processes::reachability::ReachabilityError,
+use crate::model::{
+    services::reachability::{MTReachabilityService, ReachabilityService},
+    stores::{headers::HeaderStoreReader, reachability::ReachabilityStoreReader, relations::RelationsStoreReader},
 };
+
+use super::reachability::ReachabilityResultExtensions;
 
 #[derive(Clone)]
 pub struct ParentsManager<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> {
@@ -74,25 +72,11 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
                 // We use IndexSet in order to preserve iteration order
                 .collect::<IndexSet<Hash, BlockHasher>>()
             {
-                let mut is_in_future_origin_children = false;
-                for child in origin_children.iter().copied() {
-                    match self.reachability_service.is_dag_ancestor_of_result(child, parent) {
-                        Ok(is_in_future_of_child) => {
-                            if is_in_future_of_child {
-                                is_in_future_origin_children = true;
-                                break;
-                            }
-                        }
-                        Err(ReachabilityError::StoreError(e)) => {
-                            if let StoreError::KeyNotFound(_) = e {
-                                break;
-                            } else {
-                                panic!("Unexpected store error: {:?}", e)
-                            }
-                        }
-                        Err(err) => panic!("Unexpected reachability error: {:?}", err),
-                    }
-                }
+                let is_in_origin_children_future = self
+                    .reachability_service
+                    .is_any_dag_ancestor_result(&mut origin_children.iter().copied(), parent)
+                    .unwrap_option()
+                    .has_value_and(|&r| r);
 
                 // Reference blocks are the blocks that are used in reachability queries to check if
                 // a candidate is in the future of another candidate. In most cases this is just the
@@ -104,7 +88,7 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
                 // the virtual genesis children in the pruning point anticone. So we can check which
                 // virtual genesis children have this block as parent and use those block as
                 // reference blocks.
-                let reference_blocks = if is_in_future_origin_children {
+                let reference_blocks = if is_in_origin_children_future {
                     vec![parent]
                 } else {
                     let mut reference_blocks = Vec::with_capacity(origin_children.len());
@@ -121,7 +105,7 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
                     continue;
                 }
 
-                if !is_in_future_origin_children {
+                if !is_in_origin_children_future {
                     continue;
                 }
 
