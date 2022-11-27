@@ -59,7 +59,7 @@ impl Block {
 #[derive(Debug, Clone)]
 pub struct BlockTemplate {
     pub block: MutableBlock,
-    pub miner_data: MinerData<Vec<u8>>,
+    pub miner_data: MinerData,
     pub coinbase_has_red_reward: bool,
     pub selected_parent_timestamp: u64,
 }
@@ -67,7 +67,7 @@ pub struct BlockTemplate {
 impl BlockTemplate {
     pub fn new(
         block: MutableBlock,
-        miner_data: MinerData<Vec<u8>>,
+        miner_data: MinerData,
         coinbase_has_red_reward: bool,
         selected_parent_timestamp: u64,
     ) -> Self {
