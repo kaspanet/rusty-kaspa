@@ -68,9 +68,11 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
 
             for parent in direct_parent_headers
                 .iter()
-                .filter(|h| block_level > h.block_level as usize) // We need to iterate parent's parents only if parent is not at block_level
+                // We need to iterate parent's parents only if parent is not at block_level
+                .filter(|h| block_level > h.block_level as usize)
                 .flat_map(|h| self.parents_at_level(&h.header, block_level as u8).iter().copied())
-                // We use IndexSet in order to preserve iteration order
+                // We use IndexSet in order to preserve iteration order and make sure we visit the parents of the first 
+                // parent first (since we verified it was in the pruning point's future)
                 .collect::<IndexSet<Hash, BlockHasher>>()
             {
                 let is_in_origin_children_future = self
