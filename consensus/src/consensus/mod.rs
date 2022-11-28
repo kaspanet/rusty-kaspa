@@ -394,14 +394,8 @@ impl Consensus {
         async { rx.await.unwrap() }
     }
 
-    pub fn build_block_template(
-        self: &Arc<Self>,
-        timestamp: u64,
-        nonce: u64,
-        miner_data: MinerData,
-        txs: Vec<Transaction>,
-    ) -> BlockTemplate {
-        self.virtual_processor.build_block_template(timestamp, nonce, miner_data, txs)
+    pub fn build_block_template(self: &Arc<Self>, miner_data: MinerData, txs: Vec<Transaction>) -> BlockTemplate {
+        self.virtual_processor.build_block_template(miner_data, txs)
     }
 
     pub fn body_tips(&self) -> Arc<BlockHashSet> {

@@ -53,7 +53,7 @@ use parking_lot::{RwLock, RwLockUpgradableReadGuard};
 use rand::seq::SliceRandom;
 use rayon::ThreadPool;
 use rocksdb::WriteBatch;
-use std::{ops::Deref, sync::Arc};
+use std::{ops::Deref, sync::Arc, time::SystemTime};
 
 pub struct VirtualStateProcessor {
     // Channels
@@ -358,14 +358,9 @@ impl VirtualStateProcessor {
         virtual_parents
     }
 
-    pub fn build_block_template(
-        self: &Arc<Self>,
-        timestamp: u64,
-        nonce: u64,
-        miner_data: MinerData,
-        mut txs: Vec<Transaction>,
-    ) -> BlockTemplate {
+    pub fn build_block_template(self: &Arc<Self>, miner_data: MinerData, mut txs: Vec<Transaction>) -> BlockTemplate {
         // TODO: tests
+        // TODO: validate transactions in utxo context
         let virtual_state = self.virtual_state_store.read().get().unwrap();
         let pruning_point = self
             .pruning_manager
@@ -388,15 +383,16 @@ impl VirtualStateProcessor {
         let utxo_commitment = virtual_state.multiset.clone().finalize();
         // Past median time is the exclusive lower bound for valid block time, so we increase by 1 to get the valid min
         let min_block_time = self.past_median_time_manager.calc_past_median_time(&virtual_state.ghostdag_data).0 + 1;
+        let now = SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64;
         let header = Header::new(
             version,
             parents_by_level,
             hash_merkle_root,
             accepted_id_merkle_root,
             utxo_commitment,
-            u64::max(min_block_time, timestamp),
+            u64::max(min_block_time, now),
             virtual_state.bits,
-            nonce,
+            0,
             virtual_state.daa_score,
             virtual_state.ghostdag_data.blue_work,
             virtual_state.ghostdag_data.blue_score,

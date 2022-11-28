@@ -98,7 +98,10 @@ impl Miner {
 
         let txs = self.build_txs();
         let nonce = self.id;
-        let block_template = self.consensus.build_block_template(timestamp, nonce, self.miner_data.clone(), txs);
+        let mut block_template = self.consensus.build_block_template(self.miner_data.clone(), txs);
+        block_template.block.header.timestamp = timestamp; // Use simulation time rather than real time
+        block_template.block.header.nonce = nonce;
+        block_template.block.header.finalize();
         block_template.block.to_immutable()
     }
 
