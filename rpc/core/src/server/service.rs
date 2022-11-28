@@ -12,6 +12,11 @@ use crate::{
     NotificationType, RpcError, RpcResult,
 };
 use async_trait::async_trait;
+use consensus_core::{
+    api::DynConsensus,
+    stubs::MinerData,
+    tx::{ScriptPublicKey, ScriptVec},
+};
 use hashes::Hash;
 use std::{
     str::FromStr,
@@ -37,13 +42,15 @@ use std::{
 /// from this instance to registered services and backwards should occur
 /// by adding respectively to the registered service a Collector and a
 /// Subscriber.
-#[derive(Debug)]
 pub struct RpcCoreService {
+    consensus: DynConsensus,
     notifier: Arc<Notifier>,
 }
 
 impl RpcCoreService {
-    pub fn new(consensus_recv: ConsensusNotificationReceiver) -> Arc<Self> {
+    pub fn new(consensus: DynConsensus, consensus_recv: ConsensusNotificationReceiver) -> Arc<Self> {
+        // TODO: instead of getting directly a DynConsensus, rely on some Context equivalent
+        //       See app\rpc\rpccontext\context.go
         // TODO: the channel receiver should be obtained by registering to a consensus notification service
 
         let collector = Arc::new(ConsensusCollector::new(consensus_recv));
@@ -51,7 +58,7 @@ impl RpcCoreService {
         // TODO: Some consensus-compatible subscriber could be provided here
         let notifier = Arc::new(Notifier::new(Some(collector), None, ListenerUtxoNotificationFilterSetting::All));
 
-        Arc::new(Self { notifier })
+        Arc::new(Self { consensus, notifier })
     }
 
     pub fn start(&self) {
@@ -75,9 +82,24 @@ impl RpcApi for RpcCoreService {
         Ok(SubmitBlockResponse { report: SubmitBlockReport::Success })
     }
 
-    async fn get_block_template_call(&self, _request: GetBlockTemplateRequest) -> RpcResult<GetBlockTemplateResponse> {
-        // TODO: Remove the following test when consensus is used to fetch data
-        Ok(GetBlockTemplateResponse { block: create_dummy_rpc_block(), is_synced: true })
+    async fn get_block_template_call(&self, request: GetBlockTemplateRequest) -> RpcResult<GetBlockTemplateResponse> {
+        // TODO: Replace this hack by a call to build the script (some txscript.PayToAddrScript(payAddress) equivalent).
+        //       See app\rpc\rpchandlers\get_block_template.go HandleGetBlockTemplate
+        const ADDRESS_PUBLIC_KEY_SCRIPT_PUBLIC_KEY_VERSION: u16 = 0;
+        const OP_CHECK_SIG: u8 = 172;
+        let mut script_addr = request.pay_address.payload.clone();
+        let mut pay_to_pub_key_script = Vec::with_capacity(34);
+        pay_to_pub_key_script.push(u8::try_from(script_addr.len()).unwrap());
+        pay_to_pub_key_script.append(&mut script_addr);
+        pay_to_pub_key_script.push(OP_CHECK_SIG);
+
+        let script = ScriptVec::from_vec(pay_to_pub_key_script);
+
+        let script_public_key = ScriptPublicKey::new(ADDRESS_PUBLIC_KEY_SCRIPT_PUBLIC_KEY_VERSION, script);
+        let miner_data: MinerData = MinerData::new(script_public_key, request.extra_data);
+        let block_template = self.consensus.clone().build_block_template(miner_data, vec![]);
+
+        Ok((&block_template).into())
     }
 
     async fn get_block_call(&self, req: GetBlockRequest) -> RpcResult<GetBlockResponse> {

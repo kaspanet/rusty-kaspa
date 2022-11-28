@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
-use crate::{RpcBlock, RpcBlockVerboseData, RpcError, RpcResult};
-use consensus_core::block::Block;
+use crate::{GetBlockTemplateResponse, RpcBlock, RpcBlockVerboseData, RpcError, RpcResult};
+use consensus_core::{
+    block::{Block, MutableBlock},
+    stubs::BlockTemplate,
+};
 
 // ----------------------------------------------------------------------------
 // consensus_core to rpc_core
@@ -18,7 +21,8 @@ impl From<&Block> for RpcBlockVerboseData {
         // TODO: Fill all fields with real values.
         // see kaspad\app\rpc\rpccontext\verbosedata.go PopulateBlockWithVerboseData
         Self {
-            hash: item.hash(),
+            // TODO: determine if we can safely use item.header.hash instead
+            hash: consensus_core::hashing::header::hash(&item.header),
             difficulty: 0.into(),
             selected_parent_hash: 0.into(),
             transaction_ids: vec![],
@@ -28,6 +32,23 @@ impl From<&Block> for RpcBlockVerboseData {
             merge_set_blues_hashes: vec![],
             merge_set_reds_hashes: vec![],
             is_chain_block: false,
+        }
+    }
+}
+
+impl From<&MutableBlock> for RpcBlock {
+    fn from(item: &MutableBlock) -> Self {
+        Self { header: (&item.header).into(), transactions: vec![], verbose_data: (&item.clone().to_immutable()).into() }
+    }
+}
+
+impl From<&BlockTemplate> for GetBlockTemplateResponse {
+    fn from(item: &BlockTemplate) -> Self {
+        Self {
+            block: (&item.block).into(),
+            // TODO: either call some Block.is_synced() if/when available or implement
+            // a functional equivalent here based on item.selected_parent_timestamp
+            is_synced: true,
         }
     }
 }
