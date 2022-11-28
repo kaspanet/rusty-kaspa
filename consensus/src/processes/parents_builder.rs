@@ -65,17 +65,40 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
                 .iter()
                 .filter(|h| block_level <= h.block_level as usize)
                 .map(|h| (h.header.hash, smallvec![h.header.hash]))
+                // We use smallvec with size 1 in order to optimize for the common case
+                // where the block itself is the only reference block
                 .collect::<BlockHashMap<SmallVec<[Hash; 1]>>>();
 
-            for parent in direct_parent_headers
-                .iter()
-                // We need to iterate parent's parents only if parent is not at block_level
-                .filter(|h| block_level > h.block_level as usize)
-                .flat_map(|h| self.parents_at_level(&h.header, block_level as u8).iter().copied())
-                // We use IndexSet in order to preserve iteration order and make sure we visit the parents of the first 
-                // parent first (since we verified it was in the pruning point's future)
-                .collect::<IndexSet<Hash, BlockHasher>>()
-            {
+            let mut first_parent_marker = 0;
+            let grandparents = if level_candidates_to_reference_blocks.is_empty() {
+                // This means no direct parents at the level, hence we must give precedence to first parent's parents
+                // which should all be added as candidates in the processing loop below (since we verified that first
+                // parent was in the pruning point's future)
+                let mut grandparents = self.parents_at_level(&direct_parent_headers[0].header, block_level as u8)
+                    .iter()
+                    .copied()
+                    // We use IndexSet in order to preserve iteration order and make sure the 
+                    // processing loop visits the parents of the first parent first
+                    .collect::<IndexSet<Hash, BlockHasher>>();
+                // Mark the end index of first parent's parents
+                first_parent_marker = grandparents.len();
+                // Add the remaining level-grandparents
+                grandparents.extend(
+                    direct_parent_headers[1..]
+                        .iter()
+                        .flat_map(|h| self.parents_at_level(&h.header, block_level as u8).iter().copied()),
+                );
+                grandparents
+            } else {
+                direct_parent_headers
+                    .iter()
+                    // We need to iterate parent's parents only if parent is not at block_level
+                    .filter(|h| block_level > h.block_level as usize)
+                    .flat_map(|h| self.parents_at_level(&h.header, block_level as u8).iter().copied())
+                    .collect::<IndexSet<Hash, BlockHasher>>()
+            };
+
+            for (i, parent) in grandparents.into_iter().enumerate() {
                 let is_in_origin_children_future = self
                     .reachability_service
                     .is_any_dag_ancestor_result(&mut origin_children.iter().copied(), parent)
@@ -104,7 +127,7 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
                     reference_blocks
                 };
 
-                if level_candidates_to_reference_blocks.is_empty() {
+                if i < first_parent_marker {
                     level_candidates_to_reference_blocks.insert(parent, reference_blocks);
                     continue;
                 }
