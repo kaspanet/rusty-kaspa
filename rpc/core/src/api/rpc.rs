@@ -39,7 +39,7 @@ pub trait RpcApi: Sync + Send {
 
     /// Request a current block template.
     /// Callers are expected to solve the block template and submit it using the submit_block call.
-    async fn get_block_template(&self, pay_address: RpcAddress, extra_data: String) -> RpcResult<GetBlockTemplateResponse> {
+    async fn get_block_template(&self, pay_address: RpcAddress, extra_data: RpcExtraData) -> RpcResult<GetBlockTemplateResponse> {
         self.get_block_template_call(GetBlockTemplateRequest::new(pay_address, extra_data)).await
     }
     async fn get_block_template_call(&self, request: GetBlockTemplateRequest) -> RpcResult<GetBlockTemplateResponse>;

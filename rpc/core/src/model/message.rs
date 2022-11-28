@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{api::ops::SubscribeCommand, RpcAddress, RpcBlock, RpcHash};
 
+pub type RpcExtraData = Vec<u8>;
+
 /// SubmitBlockRequest requests to submit a block into the DAG.
 /// Blocks are generally expected to have been generated using the getBlockTemplate call.
 ///
@@ -71,10 +73,10 @@ pub struct SubmitBlockResponse {
 pub struct GetBlockTemplateRequest {
     /// Which kaspa address should the coinbase block reward transaction pay into
     pub pay_address: RpcAddress,
-    pub extra_data: String,
+    pub extra_data: RpcExtraData,
 }
 impl GetBlockTemplateRequest {
-    pub fn new(pay_address: RpcAddress, extra_data: String) -> Self {
+    pub fn new(pay_address: RpcAddress, extra_data: RpcExtraData) -> Self {
         Self { pay_address, extra_data }
     }
 }
