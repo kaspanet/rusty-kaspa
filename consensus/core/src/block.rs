@@ -65,12 +65,7 @@ pub struct BlockTemplate {
 }
 
 impl BlockTemplate {
-    pub fn new(
-        block: MutableBlock,
-        miner_data: MinerData,
-        coinbase_has_red_reward: bool,
-        selected_parent_timestamp: u64,
-    ) -> Self {
+    pub fn new(block: MutableBlock, miner_data: MinerData, coinbase_has_red_reward: bool, selected_parent_timestamp: u64) -> Self {
         Self { block, miner_data, coinbase_has_red_reward, selected_parent_timestamp }
     }
 }
