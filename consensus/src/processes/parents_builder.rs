@@ -264,6 +264,13 @@ mod tests {
         }
     }
 
+    struct TestBlock {
+        id: u64,
+        block_level: u8,
+        direct_parents: Vec<u64>,
+        expected_parents: Vec<Vec<u64>>,
+    }
+
     #[test]
     fn test_calc_block_parents() {
         let mut reachability_store = MemoryReachabilityStore::new();
@@ -356,12 +363,6 @@ mod tests {
                 block_level: 0,
             },
         );
-        struct TestBlock {
-            id: u64,
-            block_level: u8,
-            direct_parents: Vec<u64>,
-            expected_parents: Vec<Vec<u64>>,
-        }
 
         let test_blocks = vec![
             TestBlock {
@@ -469,6 +470,106 @@ mod tests {
         let reachability_service = MTReachabilityService::new(Arc::new(RwLock::new(reachability_store)));
         let relations_store =
             Arc::new(RwLock::new(RelationsStoreMock { children: BlockHashes::new(vec![pruning_point, pp_anticone_block]) }));
+        let parents_manager = ParentsManager::new(250, genesis_hash, headers_store, reachability_service, relations_store);
+
+        for test_block in test_blocks {
+            let direct_parents = test_block.direct_parents.iter().map(|parent| Hash::from_u64_word(*parent)).collect_vec();
+            let parents = parents_manager.calc_block_parents(pruning_point, &direct_parents);
+            let actual_parents = parents.iter().map(|parents| BlockHashSet::from_iter(parents.iter().copied())).collect_vec();
+            let expected_parents = test_block
+                .expected_parents
+                .iter()
+                .map(|v| BlockHashSet::from_iter(v.iter().copied().map(Hash::from_u64_word)))
+                .collect_vec();
+            assert_eq!(expected_parents, actual_parents, "failed for block {}", test_block.id);
+        }
+    }
+
+    #[test]
+    fn test_multiple_pruned_parents() {
+        /*
+        Tests the following special case of multiple parallel high-level parents which are below the pruning point:
+               B
+             /   \
+            0     0
+            |     |
+            \    /
+              PP (level 0)
+             /  \
+            1    1
+        */
+
+        let mut reachability_store = MemoryReachabilityStore::new();
+        let headers_store = Arc::new(HeaderStoreMock::new());
+
+        let genesis_hash = 3000.into();
+        let pruning_point: Hash = 1.into();
+        headers_store.map.write().insert(
+            pruning_point,
+            HeaderWithBlockLevel {
+                header: Arc::new(Header {
+                    hash: pruning_point,
+                    version: 0,
+                    parents_by_level: vec![vec![1001.into(), 1002.into()], vec![1001.into(), 1002.into()]],
+                    hash_merkle_root: 1.into(),
+                    accepted_id_merkle_root: 1.into(),
+                    utxo_commitment: 1.into(),
+                    timestamp: 0,
+                    bits: 0,
+                    nonce: 0,
+                    daa_score: 0,
+                    blue_work: 0.into(),
+                    blue_score: 0,
+                    pruning_point: 1.into(),
+                }),
+                block_level: 0,
+            },
+        );
+
+        let test_blocks = vec![
+            TestBlock { id: 2, block_level: 0, direct_parents: vec![1], expected_parents: vec![vec![1], vec![1001, 1002]] },
+            TestBlock { id: 3, block_level: 0, direct_parents: vec![1], expected_parents: vec![vec![1], vec![1001, 1002]] },
+            TestBlock { id: 4, block_level: 0, direct_parents: vec![2, 3], expected_parents: vec![vec![2, 3], vec![1001, 1002]] },
+        ];
+
+        let mut dag_builder = DagBuilder::new(&mut reachability_store);
+        dag_builder.init().add_block(DagBlock::new(pruning_point, vec![ORIGIN]));
+
+        for test_block in test_blocks.iter() {
+            let hash = test_block.id.into();
+            let direct_parents = test_block.direct_parents.iter().map(|parent| Hash::from_u64_word(*parent)).collect_vec();
+            let expected_parents: Vec<Vec<Hash>> = test_block
+                .expected_parents
+                .iter()
+                .map(|parents| parents.iter().map(|parent| Hash::from_u64_word(*parent)).collect_vec())
+                .collect_vec();
+            dag_builder.add_block(DagBlock::new(hash, direct_parents));
+
+            headers_store.map.write().insert(
+                hash,
+                HeaderWithBlockLevel {
+                    header: Arc::new(Header {
+                        hash,
+                        version: 0,
+                        parents_by_level: expected_parents,
+                        hash_merkle_root: 1.into(),
+                        accepted_id_merkle_root: 1.into(),
+                        utxo_commitment: 1.into(),
+                        timestamp: 0,
+                        bits: 0,
+                        nonce: 0,
+                        daa_score: 0,
+                        blue_work: 0.into(),
+                        blue_score: 0,
+                        pruning_point: 1.into(),
+                    }),
+                    block_level: test_block.block_level,
+                },
+            );
+        }
+
+        let reachability_service = MTReachabilityService::new(Arc::new(RwLock::new(reachability_store)));
+        let relations_store = Arc::new(RwLock::new(RelationsStoreMock { children: BlockHashes::new(vec![pruning_point]) }));
         let parents_manager = ParentsManager::new(250, genesis_hash, headers_store, reachability_service, relations_store);
 
         for test_block in test_blocks {
