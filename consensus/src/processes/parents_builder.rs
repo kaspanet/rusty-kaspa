@@ -125,6 +125,9 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
                     reference_blocks
                 };
 
+                // Make sure we process and insert all first parent's parents. See comments above.
+                // Note that as parents of an already validated block, they all form an antichain,
+                // hence no need for reachability queries yet.
                 if i < first_parent_marker {
                     level_candidates_to_reference_blocks.insert(parent, reference_blocks);
                     continue;
@@ -137,14 +140,15 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
                 let len_before_retain = level_candidates_to_reference_blocks.len();
                 level_candidates_to_reference_blocks
                     .retain(|_, refs| !self.reachability_service.is_any_dag_ancestor(&mut refs.iter().copied(), parent));
-
-                let is_ancestor_of_any_candidate = level_candidates_to_reference_blocks.iter().any(|(_, candidate_references)| {
-                    self.reachability_service.is_dag_ancestor_of_any(parent, &mut candidate_references.iter().copied())
-                });
+                let is_any_candidate_ancestor_of = level_candidates_to_reference_blocks.len() < len_before_retain;
 
                 // We should add the block as a candidate if it's in the future of another candidate
                 // or in the anticone of all candidates.
-                if !is_ancestor_of_any_candidate || level_candidates_to_reference_blocks.len() < len_before_retain {
+                if is_any_candidate_ancestor_of
+                    || !level_candidates_to_reference_blocks.iter().any(|(_, candidate_references)| {
+                        self.reachability_service.is_dag_ancestor_of_any(parent, &mut candidate_references.iter().copied())
+                    })
+                {
                     level_candidates_to_reference_blocks.insert(parent, reference_blocks);
                 }
             }
