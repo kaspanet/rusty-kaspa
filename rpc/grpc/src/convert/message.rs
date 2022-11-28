@@ -1,5 +1,5 @@
 use crate::protowire::{self, submit_block_response_message::RejectReason};
-use rpc_core::{RpcError, RpcHash, RpcResult};
+use rpc_core::{RpcError, RpcExtraData, RpcHash, RpcResult};
 use std::str::FromStr;
 
 // ----------------------------------------------------------------------------
@@ -33,7 +33,10 @@ impl From<RpcResult<&rpc_core::SubmitBlockResponse>> for protowire::SubmitBlockR
 
 impl From<&rpc_core::GetBlockTemplateRequest> for protowire::GetBlockTemplateRequestMessage {
     fn from(item: &rpc_core::GetBlockTemplateRequest) -> Self {
-        Self { pay_address: (&item.pay_address).into(), extra_data: item.extra_data.clone() }
+        Self {
+            pay_address: (&item.pay_address).into(),
+            extra_data: String::from_utf8(item.extra_data.clone()).expect("extra data has to be valid UTF-8"),
+        }
     }
 }
 
@@ -138,7 +141,7 @@ impl TryFrom<&protowire::SubmitBlockResponseMessage> for rpc_core::SubmitBlockRe
 impl TryFrom<&protowire::GetBlockTemplateRequestMessage> for rpc_core::GetBlockTemplateRequest {
     type Error = RpcError;
     fn try_from(item: &protowire::GetBlockTemplateRequestMessage) -> RpcResult<Self> {
-        Ok(Self { pay_address: item.pay_address.clone().try_into()?, extra_data: item.extra_data.clone() })
+        Ok(Self { pay_address: item.pay_address.clone().try_into()?, extra_data: RpcExtraData::from_iter(item.extra_data.bytes()) })
     }
 }
 
