@@ -58,12 +58,12 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
 
         let mut parents = Vec::with_capacity(self.max_block_level as usize);
 
-        for block_level in 0..self.max_block_level as usize {
+        for block_level in 0..self.max_block_level {
             // Direct parents are guaranteed to be in one other's anticones so add them all to
             // all the block levels they occupy.
             let mut level_candidates_to_reference_blocks = direct_parent_headers
                 .iter()
-                .filter(|h| block_level <= h.block_level as usize)
+                .filter(|h| block_level <= h.block_level)
                 .map(|h| (h.header.hash, smallvec![h.header.hash]))
                 // We use smallvec with size 1 in order to optimize for the common case
                 // where the block itself is the only reference block
@@ -74,7 +74,7 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
                 // This means no direct parents at the level, hence we must give precedence to first parent's parents
                 // which should all be added as candidates in the processing loop below (since we verified that first
                 // parent was in the pruning point's future)
-                let mut grandparents = self.parents_at_level(&direct_parent_headers[0].header, block_level as u8)
+                let mut grandparents = self.parents_at_level(&direct_parent_headers[0].header, block_level)
                     .iter()
                     .copied()
                     // We use IndexSet in order to preserve iteration order and make sure the 
@@ -84,17 +84,15 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
                 first_parent_marker = grandparents.len();
                 // Add the remaining level-grandparents
                 grandparents.extend(
-                    direct_parent_headers[1..]
-                        .iter()
-                        .flat_map(|h| self.parents_at_level(&h.header, block_level as u8).iter().copied()),
+                    direct_parent_headers[1..].iter().flat_map(|h| self.parents_at_level(&h.header, block_level).iter().copied()),
                 );
                 grandparents
             } else {
                 direct_parent_headers
                     .iter()
                     // We need to iterate parent's parents only if parent is not at block_level
-                    .filter(|h| block_level > h.block_level as usize)
-                    .flat_map(|h| self.parents_at_level(&h.header, block_level as u8).iter().copied())
+                    .filter(|h| block_level > h.block_level)
+                    .flat_map(|h| self.parents_at_level(&h.header, block_level).iter().copied())
                     .collect::<IndexSet<Hash, BlockHasher>>()
             };
 
@@ -120,7 +118,7 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
                 } else {
                     let mut reference_blocks = SmallVec::with_capacity(origin_children.len());
                     for child_header in origin_children_headers.iter() {
-                        if self.parents_at_level(child_header, block_level as u8).contains(&parent) {
+                        if self.parents_at_level(child_header, block_level).contains(&parent) {
                             reference_blocks.push(child_header.hash);
                         }
                     }
@@ -152,8 +150,8 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
             }
 
             if block_level > 0
-                && level_candidates_to_reference_blocks.contains_key(&self.genesis_hash)
                 && level_candidates_to_reference_blocks.len() == 1
+                && level_candidates_to_reference_blocks.contains_key(&self.genesis_hash)
             {
                 break;
             }
