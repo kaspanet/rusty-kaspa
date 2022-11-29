@@ -10,7 +10,6 @@ use consensus_core::{
     coinbase::BlockRewardData, tx::TransactionId, utxo::utxo_diff::UtxoDiff, BlockHashMap, BlockHashSet, HashMapCustomHasher,
 };
 use hashes::Hash;
-use kaspa_utils::arc::ArcExtensions;
 use muhash::MuHash;
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
@@ -31,7 +30,6 @@ pub struct VirtualState {
 impl VirtualState {
     pub fn new(
         parents: Vec<Hash>,
-        ghostdag_data: Arc<GhostdagData>,
         daa_score: u64,
         bits: u32,
         multiset: MuHash,
@@ -39,18 +37,9 @@ impl VirtualState {
         accepted_tx_ids: Vec<TransactionId>,
         mergeset_rewards: BlockHashMap<BlockRewardData>,
         mergeset_non_daa: BlockHashSet,
+        ghostdag_data: GhostdagData,
     ) -> Self {
-        Self {
-            parents,
-            ghostdag_data: ArcExtensions::unwrap_or_clone(ghostdag_data),
-            daa_score,
-            bits,
-            multiset,
-            utxo_diff,
-            accepted_tx_ids,
-            mergeset_rewards,
-            mergeset_non_daa,
-        }
+        Self { parents, ghostdag_data, daa_score, bits, multiset, utxo_diff, accepted_tx_ids, mergeset_rewards, mergeset_non_daa }
     }
 
     pub fn from_genesis(

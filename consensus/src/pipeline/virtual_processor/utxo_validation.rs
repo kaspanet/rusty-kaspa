@@ -20,6 +20,7 @@ use consensus_core::{
 };
 use hashes::Hash;
 use kaspa_core::trace;
+use kaspa_utils::refs::Refs;
 use muhash::MuHash;
 
 use rayon::prelude::*;
@@ -27,16 +28,16 @@ use std::{iter::once, ops::Deref, sync::Arc};
 
 /// A context for processing the UTXO state of a block with respect to its selected parent.
 /// Note this can also be the virtual block.
-pub(super) struct UtxoProcessingContext {
-    pub ghostdag_data: Arc<GhostdagData>,
+pub(super) struct UtxoProcessingContext<'a> {
+    pub ghostdag_data: Refs<'a, GhostdagData>,
     pub multiset_hash: MuHash,
     pub mergeset_diff: UtxoDiff,
     pub accepted_tx_ids: Vec<TransactionId>,
     pub mergeset_rewards: BlockHashMap<BlockRewardData>,
 }
 
-impl UtxoProcessingContext {
-    pub fn new(ghostdag_data: Arc<GhostdagData>, selected_parent_multiset_hash: MuHash) -> Self {
+impl<'a> UtxoProcessingContext<'a> {
+    pub fn new(ghostdag_data: Refs<'a, GhostdagData>, selected_parent_multiset_hash: MuHash) -> Self {
         let mergeset_size = ghostdag_data.mergeset_size();
         Self {
             ghostdag_data,

@@ -250,7 +250,7 @@ impl VirtualStateProcessor {
                     let selected_parent_multiset_hash = self.utxo_multisets_store.get(selected_parent).unwrap();
                     let selected_parent_utxo_view = self.virtual_utxo_store.as_ref().compose(&accumulated_diff);
 
-                    let mut ctx = UtxoProcessingContext::new(mergeset_data, selected_parent_multiset_hash);
+                    let mut ctx = UtxoProcessingContext::new(mergeset_data.into(), selected_parent_multiset_hash);
 
                     self.calculate_utxo_state(&mut ctx, &selected_parent_utxo_view, pov_daa_score);
                     let res = self.verify_expected_utxo_state(&mut ctx, &selected_parent_utxo_view, &header);
@@ -275,7 +275,7 @@ impl VirtualStateProcessor {
                 // Calc the new virtual UTXO diff
                 let selected_parent_multiset_hash = self.utxo_multisets_store.get(virtual_ghostdag_data.selected_parent).unwrap();
                 let selected_parent_utxo_view = self.virtual_utxo_store.as_ref().compose(&accumulated_diff);
-                let mut ctx = UtxoProcessingContext::new(virtual_ghostdag_data.clone(), selected_parent_multiset_hash);
+                let mut ctx = UtxoProcessingContext::new((&virtual_ghostdag_data).into(), selected_parent_multiset_hash);
 
                 // Calc virtual DAA score
                 let window = self.dag_traversal_manager.block_window(&virtual_ghostdag_data, self.difficulty_window_size);
@@ -291,7 +291,6 @@ impl VirtualStateProcessor {
                 // Build the new virtual state
                 let new_virtual_state = VirtualState::new(
                     virtual_parents,
-                    virtual_ghostdag_data,
                     virtual_daa_score,
                     virtual_bits,
                     ctx.multiset_hash,
@@ -299,6 +298,7 @@ impl VirtualStateProcessor {
                     ctx.accepted_tx_ids,
                     ctx.mergeset_rewards,
                     mergeset_non_daa,
+                    virtual_ghostdag_data,
                 );
 
                 let mut batch = WriteBatch::default();
@@ -445,7 +445,7 @@ impl VirtualStateProcessor {
                         self.genesis_hash,
                         self.genesis_bits,
                         vec![txs[0].id()],
-                        self.ghostdag_manager.ghostdag(&[self.genesis_hash]).as_ref().clone(),
+                        self.ghostdag_manager.ghostdag(&[self.genesis_hash]),
                     ))
                     .unwrap();
                 self.commit_utxo_state(self.genesis_hash, UtxoDiff::default(), MuHash::new(), AcceptanceData {});

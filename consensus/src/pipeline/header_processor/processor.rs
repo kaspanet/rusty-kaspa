@@ -295,7 +295,7 @@ impl HeaderProcessor {
 
         // Run all header validations for the new header
         self.pre_ghostdag_validation(&mut ctx, header)?;
-        ctx.ghostdag_data = Some(self.ghostdag_manager.ghostdag(header.direct_parents())); // TODO: Run GHOSTDAG for all block levels
+        ctx.ghostdag_data = Some(Arc::new(self.ghostdag_manager.ghostdag(header.direct_parents()))); // TODO: Run GHOSTDAG for all block levels
         self.pre_pow_validation(&mut ctx, header)?;
         if let Err(e) = self.post_pow_validation(&mut ctx, header) {
             self.statuses_store.write().set(ctx.hash, StatusInvalid).unwrap();
