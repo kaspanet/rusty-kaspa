@@ -18,6 +18,7 @@ use rpc_core::{
 };
 use std::{io::ErrorKind, net::SocketAddr, pin::Pin, sync::Arc};
 use tokio::sync::{mpsc, RwLock};
+use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response};
 
 /// A protowire RPC service.
@@ -49,7 +50,7 @@ use tonic::{Request, Response};
 /// #### Further development
 ///
 /// TODO: implement a queue of requests and a pool of workers preparing and sending back the reponses.
-pub struct RpcService {
+pub struct GrpcService {
     core_service: Arc<RpcCoreService>,
     core_channel: NotificationChannel,
     core_listener: Arc<ListenerReceiverSide>,
@@ -57,7 +58,7 @@ pub struct RpcService {
     notifier: Arc<Notifier>,
 }
 
-impl RpcService {
+impl GrpcService {
     pub fn new(core_service: Arc<RpcCoreService>) -> Self {
         // Prepare core objects
         let core_channel = NotificationChannel::default();
@@ -109,7 +110,7 @@ impl RpcService {
 }
 
 #[tonic::async_trait]
-impl Rpc for RpcService {
+impl Rpc for Arc<GrpcService> {
     type MessageStreamStream = Pin<Box<dyn Stream<Item = Result<KaspadResponse, tonic::Status>> + Send + Sync + 'static>>;
 
     async fn message_stream(
@@ -148,10 +149,10 @@ impl Rpc for RpcService {
         let core_service = self.core_service.clone();
         let connection_manager = self.connection_manager.clone();
         let notifier = self.notifier.clone();
-        let mut stream: tonic::Streaming<KaspadRequest> = request.into_inner();
+        let mut request_stream: tonic::Streaming<KaspadRequest> = request.into_inner();
         tokio::spawn(async move {
             loop {
-                match stream.message().await {
+                match request_stream.message().await {
                     Ok(Some(request)) => {
                         trace!("Request is {:?}", request);
                         let response: KaspadResponse = match request.payload {
@@ -209,7 +210,7 @@ impl Rpc for RpcService {
                             if io_err.kind() == ErrorKind::BrokenPipe {
                                 // here you can handle special case when client
                                 // disconnected in unexpected way
-                                eprintln!("\tRequest handler stream {0} error: client disconnected, broken pipe", remote_addr);
+                                trace!("\tRequest handler stream {0} error: client disconnected, broken pipe", remote_addr);
                                 break;
                             }
                         }
@@ -226,8 +227,8 @@ impl Rpc for RpcService {
         });
 
         // Return connection stream
-
-        Ok(Response::new(Box::pin(tokio_stream::wrappers::ReceiverStream::new(stream_rx))))
+        let response_stream = ReceiverStream::new(stream_rx);
+        Ok(Response::new(Box::pin(response_stream)))
     }
 }
 
