@@ -9,6 +9,7 @@ use crate::{
 };
 use consensus_core::{blockhash::BlockHashExtensions, BlueWorkType};
 use hashes::Hash;
+use kaspa_utils::refs::Refs;
 
 #[derive(Clone)]
 pub struct DagTraversalManager<T: GhostdagStoreReader, U: BlockWindowCacheReader> {
@@ -43,8 +44,6 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader> DagTraversalManager<T, U
             return BlockWindowHeap::new();
         }
 
-        let current_ghostdag = high_ghostdag_data;
-
         let cache = if window_size == self.difficulty_window_size {
             Some(&self.block_window_cache_for_difficulty)
         } else if window_size == self.past_median_time_window_size {
@@ -54,13 +53,13 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader> DagTraversalManager<T, U
         };
 
         if let Some(cache) = cache {
-            if let Some(selected_parent_binary_heap) = cache.get(&current_ghostdag.selected_parent) {
+            if let Some(selected_parent_binary_heap) = cache.get(&high_ghostdag_data.selected_parent) {
                 let mut window_heap = BoundedSizeBlockHeap::from_binary_heap(window_size, (*selected_parent_binary_heap).clone());
-                if current_ghostdag.selected_parent != self.genesis_hash {
+                if high_ghostdag_data.selected_parent != self.genesis_hash {
                     self.try_push_mergeset(
                         &mut window_heap,
-                        current_ghostdag,
-                        self.ghostdag_store.get_blue_work(current_ghostdag.selected_parent).unwrap(),
+                        high_ghostdag_data,
+                        self.ghostdag_store.get_blue_work(high_ghostdag_data.selected_parent).unwrap(),
                     );
                 }
 
@@ -69,30 +68,25 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader> DagTraversalManager<T, U
         }
 
         let mut window_heap = BoundedSizeBlockHeap::new(window_size);
-        let mut current_ghostdag_option = self.process_current(&mut window_heap, current_ghostdag);
+        let mut current_ghostdag: Refs<GhostdagData> = high_ghostdag_data.into();
 
         // Walk down the chain until we cross the window boundaries
-        while let Some(current_ghostdag) = current_ghostdag_option {
-            current_ghostdag_option = self.process_current(&mut window_heap, &current_ghostdag);
+        loop {
+            assert!(!current_ghostdag.selected_parent.is_origin(), "block window should never get to the origin block");
+            if current_ghostdag.selected_parent == self.genesis_hash {
+                break;
+            }
+            let parent_ghostdag = self.ghostdag_store.get_data(current_ghostdag.selected_parent).unwrap();
+            let selected_parent_blue_work_too_low =
+                self.try_push_mergeset(&mut window_heap, &current_ghostdag, parent_ghostdag.blue_work);
+            // No need to further iterate since past of selected parent has even lower blue work
+            if selected_parent_blue_work_too_low {
+                break;
+            }
+            current_ghostdag = parent_ghostdag.into();
         }
 
         window_heap.binary_heap
-    }
-
-    /// Processes the mergeset of current block and moves on to the selected parent block.
-    /// Returns `None` to indicate search has ended
-    fn process_current(&self, heap: &mut BoundedSizeBlockHeap, current_ghostdag: &GhostdagData) -> Option<Arc<GhostdagData>> {
-        assert!(!current_ghostdag.selected_parent.is_origin(), "block window should never get to the origin block");
-        if current_ghostdag.selected_parent == self.genesis_hash {
-            return None;
-        }
-        let parent_ghostdag = self.ghostdag_store.get_data(current_ghostdag.selected_parent).unwrap();
-        let selected_parent_blue_work_too_low = self.try_push_mergeset(heap, current_ghostdag, parent_ghostdag.blue_work);
-        // No need to further iterate since past of selected parent has even lower blue work
-        if selected_parent_blue_work_too_low {
-            return None;
-        }
-        Some(parent_ghostdag)
     }
 
     fn try_push_mergeset(
