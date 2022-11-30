@@ -1434,6 +1434,8 @@ dependencies = [
  "rand 0.8.5",
  "rand_distr",
  "rayon",
+ "rpc-core",
+ "rpc-grpc",
  "tempfile",
  "thiserror",
  "tokio",

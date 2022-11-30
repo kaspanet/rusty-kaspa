@@ -101,7 +101,6 @@ impl GrpcService {
         Ok(())
     }
 
-    // TODO: implement a proper server shutdown actually calling finalize.
     pub async fn finalize(&self) -> RpcResult<()> {
         self.core_service.unregister_listener(self.core_listener.id).await?;
         self.core_channel.receiver().close();

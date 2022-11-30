@@ -10,9 +10,14 @@ use consensus_core::blockhash;
 use hashes::Hash;
 use kaspa_core::core::Core;
 use kaspa_core::*;
+use rpc_core::server::collector::ConsensusNotificationChannel;
+use rpc_core::server::service::RpcCoreService;
+use rpc_grpc::server::GrpcServer;
 
+use crate::async_runtime::AsyncRuntime;
 use crate::emulator::ConsensusMonitor;
 
+mod async_runtime;
 mod emulator;
 
 pub fn main() {
@@ -50,6 +55,12 @@ pub fn main() {
         target_blocks,
     ));
 
+    let notification_channel = ConsensusNotificationChannel::default();
+    let rpc_core_service = Arc::new(RpcCoreService::new(consensus.clone(), notification_channel.receiver()));
+    let grpc_server_addr = "[::1]:10000".parse().unwrap();
+    let grpc_server = Arc::new(GrpcServer::new(grpc_server_addr, rpc_core_service));
+    let async_runtime = Arc::new(AsyncRuntime::_new(grpc_server));
+
     // Bind the keyboard signal to the emitter. The emitter will then shutdown core
     Arc::new(signals::Signals::new(&emitter)).init();
 
@@ -57,6 +68,7 @@ pub fn main() {
     core.bind(consensus);
     core.bind(emitter);
     core.bind(monitor);
+    core.bind(async_runtime);
 
     core.run();
 

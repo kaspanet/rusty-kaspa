@@ -9,4 +9,5 @@ pub mod model;
 pub mod params;
 pub mod pipeline;
 pub mod processes;
+pub mod stubs;
 pub mod test_helpers;
