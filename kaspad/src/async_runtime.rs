@@ -25,8 +25,8 @@ impl AsyncRuntime {
         vec![thread::Builder::new().name(ASYNC_RUNTIME.to_string()).spawn(move || self.worker()).unwrap()]
     }
 
-    /// Launch a tokio Runtime and run the top-level objects
-    #[tokio::main]
+    /// Launch a tokio Runtime and run the top-level async objects
+    #[tokio::main(worker_threads = 2)]
     pub async fn worker(self: &Arc<AsyncRuntime>) {
         trace!("Starting the async runtime");
 
