@@ -44,7 +44,7 @@ use consensus_core::{
     utxo::{utxo_diff::UtxoDiff, utxo_view::UtxoViewComposition},
 };
 use hashes::Hash;
-use kaspa_core::trace;
+use kaspa_core::{info, trace};
 use muhash::MuHash;
 
 use crossbeam_channel::Receiver;
@@ -89,6 +89,7 @@ pub struct VirtualStateProcessor {
     pub(super) acceptance_data_store: Arc<DbAcceptanceDataStore>,
     pub virtual_utxo_store: Arc<DbUtxoSetStore>,
     pub virtual_state_store: Arc<RwLock<DbVirtualStateStore>>,
+    // TODO: remove all pub from stores when StoreManager is implemented
 
     // Managers and services
     pub(super) ghostdag_manager: DbGhostdagManager,
@@ -179,7 +180,7 @@ impl VirtualStateProcessor {
             // This is done since virtual processing is not a per-block
             // operation, so it benefits from max available info
             let tasks: Vec<BlockTask> = std::iter::once(first_task).chain(self.receiver.try_iter()).collect();
-            // trace!("virtual processor received {} tasks", tasks.len());
+            trace!("virtual processor received {} tasks", tasks.len());
 
             self.resolve_virtual();
 
@@ -256,7 +257,7 @@ impl VirtualStateProcessor {
                     let res = self.verify_expected_utxo_state(&mut ctx, &selected_parent_utxo_view, &header);
 
                     if let Err(rule_error) = res {
-                        trace!("{:?}", rule_error);
+                        info!("{:?}", rule_error);
                         self.statuses_store.write().set(current, StatusDisqualifiedFromChain).unwrap();
                     } else {
                         // Accumulate

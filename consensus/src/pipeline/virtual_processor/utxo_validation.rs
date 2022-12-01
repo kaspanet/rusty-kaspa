@@ -19,7 +19,7 @@ use consensus_core::{
     BlockHashMap, BlockHashSet, HashMapCustomHasher,
 };
 use hashes::Hash;
-use kaspa_core::trace;
+use kaspa_core::{info, trace};
 use kaspa_utils::refs::Refs;
 use muhash::MuHash;
 
@@ -119,7 +119,7 @@ impl VirtualStateProcessor {
         if expected_commitment != header.utxo_commitment {
             return Err(BadUTXOCommitment(header.hash, header.utxo_commitment, expected_commitment));
         }
-        // trace!("correct commitment: {}, {}", header.hash, expected_commitment);
+        trace!("correct commitment: {}, {}", header.hash, expected_commitment);
 
         // Verify header accepted_id_merkle_root
         let expected_accepted_id_merkle_root = merkle::calc_merkle_root(ctx.accepted_tx_ids.iter().copied());
@@ -164,12 +164,6 @@ impl VirtualStateProcessor {
             .expected_coinbase_transaction(daa_score, miner_data, ghostdag_data, mergeset_rewards, mergeset_non_daa)
             .unwrap()
             .tx;
-        // trace!(
-        //     "mergeset: {} blues, {} reds, {} non-DAA",
-        //     ghostdag_data.mergeset_blues.len(),
-        //     ghostdag_data.mergeset_reds.len(),
-        //     mergeset_non_daa.len()
-        // );
         if hashing::tx::hash(coinbase) != hashing::tx::hash(&expected_coinbase) {
             Err(BadCoinbaseTransaction)
         } else {
@@ -215,7 +209,7 @@ impl VirtualStateProcessor {
         match res {
             Ok(calculated_fee) => Some(populated_tx.to_validated(calculated_fee)),
             Err(tx_rule_error) => {
-                trace!("tx rule error {} for tx {}", tx_rule_error, transaction.id());
+                info!("tx rule error {} for tx {}", tx_rule_error, transaction.id());
                 None
             }
         }

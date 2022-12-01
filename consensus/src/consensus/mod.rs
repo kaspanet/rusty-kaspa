@@ -86,6 +86,7 @@ pub struct Consensus {
     body_tips_store: Arc<RwLock<DbTipsStore>>,
     pub headers_store: Arc<DbHeadersStore>,
     pub block_transactions_store: Arc<DbBlockTransactionsStore>,
+    // TODO: remove all pub from stores and processors when StoreManager is implemented
 
     // Append-only stores
     pub ghostdag_store: Arc<DbGhostdagStore>,

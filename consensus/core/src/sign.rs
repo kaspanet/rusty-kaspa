@@ -15,6 +15,7 @@ pub fn sign(tx: &PopulatedTransaction, privkey: [u8; 32]) -> Transaction {
         let sig_hash = calc_schnorr_signature_hash(tx, i, SIG_HASH_ALL, &mut reused_values);
         let msg = secp256k1::Message::from_slice(sig_hash.as_bytes().as_slice()).unwrap();
         let sig: [u8; 64] = *schnorr_key.sign_schnorr(msg).as_ref();
+        // This represents OP_DATA_65 <SIGNATURE+SIGHASH_TYPE> (since signature length is 64 bytes and SIGHASH_TYPE is one byte)
         input.signature_script = std::iter::once(65u8).chain(sig).chain([SIG_HASH_ALL.to_u8()]).collect();
     }
     return_tx.finalize();

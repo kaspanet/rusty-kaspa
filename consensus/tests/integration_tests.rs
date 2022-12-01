@@ -717,12 +717,14 @@ async fn goref_tx_small_concurrent_test() {
 #[ignore]
 #[tokio::test]
 async fn goref_tx_big_test() {
+    // TODO: add this file to a data repo and fetch dynamically
     json_test("tests/testdata/goref-1.6M-tx-10K-blocks.json.gz").await
 }
 
 #[ignore]
 #[tokio::test]
 async fn goref_tx_big_concurrent_test() {
+    // TODO: add this file to a data repo and fetch dynamically
     json_concurrency_test("tests/testdata/goref-1.6M-tx-10K-blocks.json.gz").await
 }
 
