@@ -8,7 +8,7 @@ use crate::prelude::{RpcBlockHeader, RpcHash, RpcTransaction};
 pub struct RpcBlock {
     pub header: RpcBlockHeader,
     pub transactions: Vec<RpcTransaction>,
-    pub verbose_data: RpcBlockVerboseData,
+    pub verbose_data: Option<RpcBlockVerboseData>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]

@@ -26,6 +26,12 @@ impl fmt::Display for RpcHexData {
     }
 }
 
+impl From<&[u8]> for RpcHexData {
+    fn from(item: &[u8]) -> Self {
+        RpcHexData(item.into())
+    }
+}
+
 impl From<&Vec<u8>> for RpcHexData {
     fn from(item: &Vec<u8>) -> RpcHexData {
         RpcHexData(item.clone())

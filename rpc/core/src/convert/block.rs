@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::{GetBlockTemplateResponse, RpcBlock, RpcBlockVerboseData, RpcError, RpcResult};
+use crate::{GetBlockTemplateResponse, RpcBlock, RpcError, RpcResult, RpcTransaction};
 use consensus_core::{
     block::{Block, MutableBlock},
     stubs::BlockTemplate,
@@ -12,33 +12,22 @@ use consensus_core::{
 
 impl From<&Block> for RpcBlock {
     fn from(item: &Block) -> Self {
-        Self { header: (&*item.header).into(), transactions: vec![], verbose_data: item.into() }
-    }
-}
-
-impl From<&Block> for RpcBlockVerboseData {
-    fn from(item: &Block) -> Self {
-        // TODO: Fill all fields with real values.
-        // see kaspad\app\rpc\rpccontext\verbosedata.go PopulateBlockWithVerboseData
         Self {
-            // TODO: determine if we can safely use item.header.hash instead
-            hash: consensus_core::hashing::header::hash(&item.header),
-            difficulty: 0.into(),
-            selected_parent_hash: 0.into(),
-            transaction_ids: vec![],
-            is_header_only: true,
-            blue_score: 0u64,
-            children_hashes: vec![],
-            merge_set_blues_hashes: vec![],
-            merge_set_reds_hashes: vec![],
-            is_chain_block: false,
+            header: (&*item.header).into(),
+            transactions: item.transactions.iter().map(RpcTransaction::from).collect(),
+            // TODO: Implement a populating process inspired from kaspad\app\rpc\rpccontext\verbosedata.go
+            verbose_data: None,
         }
     }
 }
 
 impl From<&MutableBlock> for RpcBlock {
     fn from(item: &MutableBlock) -> Self {
-        Self { header: (&item.header).into(), transactions: vec![], verbose_data: (&item.clone().to_immutable()).into() }
+        Self {
+            header: (&item.header).into(),
+            transactions: item.transactions.iter().map(RpcTransaction::from).collect(),
+            verbose_data: None,
+        }
     }
 }
 
@@ -65,7 +54,7 @@ impl TryFrom<&RpcBlock> for Block {
 
             // TODO: Implement converters for all tx structs and fill transactions
             // with real values.
-            transactions: Arc::new(vec![]), // FIXME
+            transactions: Arc::new(vec![]),
         })
     }
 }

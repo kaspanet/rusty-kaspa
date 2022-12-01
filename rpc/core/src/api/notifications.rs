@@ -53,7 +53,7 @@ impl Display for Notification {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Notification::BlockAdded(ref notification) => {
-                write!(f, "Notification BlockAdded with hash {}", notification.block.verbose_data.hash)
+                write!(f, "Notification BlockAdded with hash {}", notification.block.header.hash)
             }
             _ => write!(f, "Notification type not implemented yet"),
             // Notification::VirtualSelectedParentChainChanged(_) => todo!(),

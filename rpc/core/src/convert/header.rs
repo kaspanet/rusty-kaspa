@@ -8,6 +8,7 @@ use consensus_core::header::Header;
 impl From<&Header> for RpcBlockHeader {
     fn from(item: &Header) -> Self {
         Self {
+            hash: item.hash,
             version: item.version.into(),
             parents: item.parents_by_level.iter().map(|x| RpcBlockLevelParents { parent_hashes: x.clone() }).collect(),
             hash_merkle_root: item.hash_merkle_root,
