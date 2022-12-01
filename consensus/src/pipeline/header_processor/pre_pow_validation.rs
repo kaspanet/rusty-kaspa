@@ -58,7 +58,7 @@ impl HeaderProcessor {
         header: &Header,
     ) -> BlockProcessResult<()> {
         let ghostdag_data = ctx.ghostdag_data.clone().unwrap();
-        let window = self.dag_traversal_manager.block_window(ghostdag_data.clone(), self.difficulty_window_size);
+        let window = self.dag_traversal_manager.block_window(&ghostdag_data, self.difficulty_window_size);
 
         let (daa_score, mergeset_non_daa) = self
             .difficulty_manager

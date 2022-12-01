@@ -147,18 +147,13 @@ impl GhostdagData {
     pub fn to_compact(&self) -> CompactGhostdagData {
         CompactGhostdagData { blue_score: self.blue_score, blue_work: self.blue_work, selected_parent: self.selected_parent }
     }
-}
 
-impl GhostdagData {
-    pub fn add_blue(self: &mut Arc<Self>, block: Hash, blue_anticone_size: KType, block_blues_anticone_sizes: &BlockHashMap<KType>) {
-        // Extract mutable data
-        let data = Arc::make_mut(self);
-
+    pub fn add_blue(&mut self, block: Hash, blue_anticone_size: KType, block_blues_anticone_sizes: &BlockHashMap<KType>) {
         // Add the new blue block to mergeset blues
-        BlockHashes::make_mut(&mut data.mergeset_blues).push(block);
+        BlockHashes::make_mut(&mut self.mergeset_blues).push(block);
 
         // Get a mut ref to internal anticone size map
-        let blues_anticone_sizes = HashKTypeMap::make_mut(&mut data.blues_anticone_sizes);
+        let blues_anticone_sizes = HashKTypeMap::make_mut(&mut self.blues_anticone_sizes);
 
         // Insert the new blue block with its blue anticone size to the map
         blues_anticone_sizes.insert(block, blue_anticone_size);
@@ -169,18 +164,14 @@ impl GhostdagData {
         }
     }
 
-    pub fn add_red(self: &mut Arc<Self>, block: Hash) {
-        // Extract mutable data
-        let data = Arc::make_mut(self);
-
+    pub fn add_red(&mut self, block: Hash) {
         // Add the new red block to mergeset reds
-        BlockHashes::make_mut(&mut data.mergeset_reds).push(block);
+        BlockHashes::make_mut(&mut self.mergeset_reds).push(block);
     }
 
-    pub fn finalize_score_and_work(self: &mut Arc<Self>, blue_score: u64, blue_work: BlueWorkType) {
-        let data = Arc::make_mut(self);
-        data.blue_score = blue_score;
-        data.blue_work = blue_work;
+    pub fn finalize_score_and_work(&mut self, blue_score: u64, blue_work: BlueWorkType) {
+        self.blue_score = blue_score;
+        self.blue_work = blue_work;
     }
 }
 
@@ -445,7 +436,7 @@ mod tests {
         store.insert(5.into(), factory(9)).unwrap();
         store.insert(6.into(), factory(11)).unwrap(); // Tie-breaking case
 
-        let mut data = Arc::new(GhostdagData::new_with_selected_parent(1.into(), 5));
+        let mut data = GhostdagData::new_with_selected_parent(1.into(), 5);
         data.add_blue(2.into(), Default::default(), &Default::default());
         data.add_blue(3.into(), Default::default(), &Default::default());
 

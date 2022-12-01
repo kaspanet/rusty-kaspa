@@ -1,4 +1,5 @@
 use consensus_core::{
+    coinbase::*,
     subnets,
     tx::{ScriptPublicKey, ScriptVec, Transaction, TransactionOutput},
     BlockHashMap, BlockHashSet,
@@ -41,37 +42,6 @@ pub struct CoinbaseManager {
     pre_deflationary_phase_base_subsidy: u64,
 }
 
-#[derive(PartialEq, Eq, Debug)]
-pub struct CoinbaseData<'a> {
-    pub blue_score: u64,
-    pub subsidy: u64,
-    pub miner_data: MinerData<'a>,
-}
-
-#[derive(PartialEq, Eq, Debug, Clone)]
-pub struct MinerData<'a> {
-    pub script_public_key: ScriptPublicKey,
-    pub extra_data: &'a [u8],
-}
-
-pub struct BlockRewardData {
-    pub subsidy: u64,
-    pub total_fees: u64,
-    pub script_public_key: ScriptPublicKey,
-}
-
-impl BlockRewardData {
-    pub fn new(subsidy: u64, total_fees: u64, script_public_key: ScriptPublicKey) -> Self {
-        Self { subsidy, total_fees, script_public_key }
-    }
-}
-
-/// Holds a coinbase transaction along with meta-data obtained during creation
-pub struct CoinbaseTransactionTemplate {
-    pub tx: Transaction,
-    pub has_red_reward: bool, // Does the last output contain reward for red blocks
-}
-
 /// Struct used to streamline payload parsing
 struct PayloadParser<'a> {
     remaining: &'a [u8], // The unparsed remainder
@@ -105,10 +75,10 @@ impl CoinbaseManager {
         }
     }
 
-    pub fn expected_coinbase_transaction(
+    pub fn expected_coinbase_transaction<T: AsRef<[u8]>>(
         &self,
         daa_score: u64,
-        miner_data: MinerData,
+        miner_data: MinerData<T>,
         ghostdag_data: &GhostdagData,
         mergeset_rewards: &BlockHashMap<BlockRewardData>,
         mergeset_non_daa: &BlockHashSet,
@@ -146,7 +116,7 @@ impl CoinbaseManager {
         })
     }
 
-    pub fn serialize_coinbase_payload(&self, data: &CoinbaseData) -> CoinbaseResult<Vec<u8>> {
+    pub fn serialize_coinbase_payload<T: AsRef<[u8]>>(&self, data: &CoinbaseData<T>) -> CoinbaseResult<Vec<u8>> {
         let script_pub_key_len = data.miner_data.script_public_key.script().len();
         if script_pub_key_len > self.coinbase_payload_script_public_key_max_len as usize {
             return Err(CoinbaseError::PayloadScriptPublicKeyLenAboveMax(
@@ -159,13 +129,13 @@ impl CoinbaseManager {
             .chain(data.miner_data.script_public_key.version().to_le_bytes().iter().copied())   // Script public key version    (u16)
             .chain((script_pub_key_len as u8).to_le_bytes().iter().copied())                    // Script public key length     (u8)
             .chain(data.miner_data.script_public_key.script().iter().copied())                  // Script public key            
-            .chain(data.miner_data.extra_data.iter().copied())                                  // Extra data
+            .chain(data.miner_data.extra_data.as_ref().iter().copied())                         // Extra data
             .collect();
 
         Ok(payload)
     }
 
-    pub fn modify_coinbase_payload(&self, mut payload: Vec<u8>, miner_data: &MinerData) -> CoinbaseResult<Vec<u8>> {
+    pub fn modify_coinbase_payload<T: AsRef<[u8]>>(&self, mut payload: Vec<u8>, miner_data: &MinerData<T>) -> CoinbaseResult<Vec<u8>> {
         let script_pub_key_len = miner_data.script_public_key.script().len();
         if script_pub_key_len > self.coinbase_payload_script_public_key_max_len as usize {
             return Err(CoinbaseError::PayloadScriptPublicKeyLenAboveMax(
@@ -181,13 +151,13 @@ impl CoinbaseManager {
             miner_data.script_public_key.version().to_le_bytes().iter().copied() // Script public key version (u16)
                 .chain((script_pub_key_len as u8).to_le_bytes().iter().copied()) // Script public key length  (u8)
                 .chain(miner_data.script_public_key.script().iter().copied())    // Script public key
-                .chain(miner_data.extra_data.iter().copied()), // Extra data
+                .chain(miner_data.extra_data.as_ref().iter().copied()), // Extra data
         );
 
         Ok(payload)
     }
 
-    pub fn deserialize_coinbase_payload<'a>(&self, payload: &'a [u8]) -> CoinbaseResult<CoinbaseData<'a>> {
+    pub fn deserialize_coinbase_payload<'a>(&self, payload: &'a [u8]) -> CoinbaseResult<CoinbaseData<&'a [u8]>> {
         if payload.len() < MIN_PAYLOAD_LENGTH {
             return Err(CoinbaseError::PayloadLenBelowMin(payload.len(), MIN_PAYLOAD_LENGTH));
         }
@@ -240,7 +210,7 @@ impl CoinbaseManager {
         if months_since_deflationary_phase_started >= SUBSIDY_BY_MONTH_TABLE.len() {
             *SUBSIDY_BY_MONTH_TABLE.last().unwrap()
         } else {
-            SUBSIDY_BY_MONTH_TABLE[months_since_deflationary_phase_started as usize]
+            SUBSIDY_BY_MONTH_TABLE[months_since_deflationary_phase_started]
         }
     }
 }
@@ -362,7 +332,7 @@ mod tests {
             subsidy: 44000000000,
             miner_data: MinerData {
                 script_public_key: ScriptPublicKey::new(0, ScriptVec::from_slice(&script_data)),
-                extra_data: &extra_data,
+                extra_data: &extra_data as &[u8],
             },
         };
 
@@ -389,7 +359,7 @@ mod tests {
                         29, 146, 203, 117, 108, 2, 197, 96, 172,
                     ],
                 ),
-                extra_data: &[48, 46, 49, 50, 46, 56, 47],
+                extra_data: &[48u8, 46, 49, 50, 46, 56, 47] as &[u8],
             },
         };
         assert_eq!(expected_data, deserialized_data);
@@ -422,7 +392,7 @@ mod tests {
             miner_data: MinerData {
                 // Modify only miner data
                 script_public_key: ScriptPublicKey::new(0, ScriptVec::from_slice(&[33u8, 255, 33])),
-                extra_data: &[2u8, 3, 23, 98, 34, 34],
+                extra_data: &[2u8, 3, 23, 98, 34, 34] as &[u8],
             },
         };
 

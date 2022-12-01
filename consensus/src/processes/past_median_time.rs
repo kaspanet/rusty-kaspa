@@ -26,7 +26,7 @@ impl<T: HeaderStoreReader, U: GhostdagStoreReader, V: BlockWindowCacheReader> Pa
         Self { headers_store, dag_traversal_manager, timestamp_deviation_tolerance, genesis_timestamp }
     }
 
-    pub fn calc_past_median_time(&self, ghostdag_data: Arc<GhostdagData>) -> (u64, BlockWindowHeap) {
+    pub fn calc_past_median_time(&self, ghostdag_data: &GhostdagData) -> (u64, BlockWindowHeap) {
         let window = self.dag_traversal_manager.block_window(ghostdag_data, 2 * self.timestamp_deviation_tolerance - 1);
 
         if window.is_empty() {

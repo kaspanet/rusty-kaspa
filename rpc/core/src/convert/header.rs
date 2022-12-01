@@ -31,23 +31,19 @@ impl From<&Header> for RpcBlockHeader {
 impl TryFrom<&RpcBlockHeader> for Header {
     type Error = RpcError;
     fn try_from(item: &RpcBlockHeader) -> RpcResult<Self> {
-        let mut header = Self::new(
+        Ok(Self::new(
             item.version.try_into()?,
-            vec![],
+            item.parents.iter().map(|x| x.parent_hashes.clone()).collect(),
             item.hash_merkle_root,
+            item.accepted_id_merkle_root,
+            item.utxo_commitment,
             item.timestamp.try_into()?,
             item.bits,
             item.nonce,
             item.daa_score,
             item.blue_work.into(),
             item.blue_score,
-        );
-        header.parents_by_level = item.parents.iter().map(|x| x.parent_hashes.clone()).collect();
-        header.accepted_id_merkle_root = item.accepted_id_merkle_root;
-        header.utxo_commitment = item.utxo_commitment;
-        header.pruning_point = item.pruning_point;
-        header.finalize();
-
-        Ok(header)
+            item.pruning_point,
+        ))
     }
 }

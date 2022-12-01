@@ -26,11 +26,11 @@ impl HeaderProcessor {
         ctx: &mut HeaderProcessingContext,
         header: &Header,
     ) -> BlockProcessResult<()> {
-        let (expected_ts, window) = self.past_median_time_manager.calc_past_median_time(ctx.ghostdag_data.clone().unwrap());
+        let (past_median_time, window) = self.past_median_time_manager.calc_past_median_time(&ctx.ghostdag_data.clone().unwrap());
         ctx.block_window_for_past_median_time = Some(window);
 
-        if header.timestamp <= expected_ts {
-            return Err(RuleError::TimeTooOld(header.timestamp, expected_ts));
+        if header.timestamp <= past_median_time {
+            return Err(RuleError::TimeTooOld(header.timestamp, past_median_time));
         }
 
         Ok(())

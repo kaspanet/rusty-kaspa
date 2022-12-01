@@ -5,6 +5,7 @@ use consensus_core::{
     BlockHashMap, BlueWorkType, HashMapCustomHasher,
 };
 use hashes::Hash;
+use kaspa_utils::refs::Refs;
 
 use crate::{
     model::{
@@ -79,13 +80,13 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
     ///    blues_anticone_sizes.
     ///
     /// For further details see the article https://eprint.iacr.org/2018/104.pdf
-    pub fn ghostdag(&self, parents: &[Hash]) -> Arc<GhostdagData> {
+    pub fn ghostdag(&self, parents: &[Hash]) -> GhostdagData {
         assert!(!parents.is_empty(), "genesis must be added via a call to init");
 
         // Run the GHOSTDAG parent selection algorithm
         let selected_parent = self.find_selected_parent(&mut parents.iter().copied());
         // Initialize new GHOSTDAG block data with the selected parent
-        let mut new_block_data = Arc::new(GhostdagData::new_with_selected_parent(selected_parent, self.k));
+        let mut new_block_data = GhostdagData::new_with_selected_parent(selected_parent, self.k);
         // Get the mergeset in consensus-agreed topological order (topological here means forward in time from blocks to children)
         let ordered_mergeset = self.ordered_mergeset_without_selected_parent(selected_parent, parents);
 
@@ -101,13 +102,11 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
         }
 
         let blue_score = self.ghostdag_store.get_blue_score(selected_parent).unwrap() + new_block_data.mergeset_blues.len() as u64;
-
         let added_blue_work: BlueWorkType =
             new_block_data.mergeset_blues.iter().cloned().map(|hash| calc_work(self.headers_store.get_bits(hash).unwrap())).sum();
-
         let blue_work = self.ghostdag_store.get_blue_work(selected_parent).unwrap() + added_blue_work;
-
         new_block_data.finalize_score_and_work(blue_score, blue_work);
+
         new_block_data
     }
 
@@ -183,7 +182,7 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
         }
     }
 
-    fn check_blue_candidate(&self, new_block_data: &Arc<GhostdagData>, blue_candidate: Hash) -> ColoringOutput {
+    fn check_blue_candidate(&self, new_block_data: &GhostdagData, blue_candidate: Hash) -> ColoringOutput {
         // The maximum length of new_block_data.mergeset_blues can be K+1 because
         // it contains the selected parent.
         if new_block_data.mergeset_blues.len() as KType == self.k + 1 {
@@ -196,7 +195,7 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
         // of blue_candidate, and check for each one of them if blue_candidate potentially
         // enlarges their blue anticone to be over K, or that they enlarge the blue anticone
         // of blue_candidate to be over K.
-        let mut chain_block = ChainBlock { hash: None, data: Arc::clone(new_block_data) };
+        let mut chain_block = ChainBlock { hash: None, data: new_block_data.into() };
 
         let mut candidate_blue_anticone_size: KType = 0;
 
@@ -217,16 +216,16 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
 
             chain_block = ChainBlock {
                 hash: Some(chain_block.data.selected_parent),
-                data: self.ghostdag_store.get_data(chain_block.data.selected_parent).unwrap(),
+                data: self.ghostdag_store.get_data(chain_block.data.selected_parent).unwrap().into(),
             }
         }
     }
 }
 
 /// Chain block with attached ghostdag data
-struct ChainBlock {
+struct ChainBlock<'a> {
     hash: Option<Hash>, // if set to `None`, signals being the new block
-    data: Arc<GhostdagData>,
+    data: Refs<'a, GhostdagData>,
 }
 
 /// Represents the intermediate GHOSTDAG coloring state for the current candidate

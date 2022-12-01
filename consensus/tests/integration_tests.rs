@@ -319,7 +319,7 @@ async fn block_window_test() {
         // Submit to consensus
         consensus.validate_and_insert_block(block.to_immutable()).await.unwrap();
 
-        let window = consensus.dag_traversal_manager().block_window(consensus.ghostdag_store().get_data(block_id).unwrap(), 10);
+        let window = consensus.dag_traversal_manager().block_window(&consensus.ghostdag_store().get_data(block_id).unwrap(), 10);
 
         let window_hashes: Vec<String> = window
             .into_sorted_vec()
@@ -714,6 +714,20 @@ async fn goref_tx_small_concurrent_test() {
     json_concurrency_test("tests/testdata/goref-905-tx-265-blocks.json.gz").await
 }
 
+#[ignore]
+#[tokio::test]
+async fn goref_tx_big_test() {
+    // TODO: add this file to a data repo and fetch dynamically
+    json_test("tests/testdata/goref-1.6M-tx-10K-blocks.json.gz").await
+}
+
+#[ignore]
+#[tokio::test]
+async fn goref_tx_big_concurrent_test() {
+    // TODO: add this file to a data repo and fetch dynamically
+    json_concurrency_test("tests/testdata/goref-1.6M-tx-10K-blocks.json.gz").await
+}
+
 async fn json_test(file_path: &str) {
     let file = common::open_file(file_path);
     let decoder = GzDecoder::new(file);
@@ -967,7 +981,7 @@ async fn difficulty_test() {
 
     async fn add_block_with_min_time(consensus: &TestConsensus, parents: Vec<Hash>) -> Header {
         let ghostdag_data = consensus.ghostdag_manager().ghostdag(&parents[..]);
-        let (pmt, _) = consensus.past_median_time_manager().calc_past_median_time(ghostdag_data);
+        let (pmt, _) = consensus.past_median_time_manager().calc_past_median_time(&ghostdag_data);
         add_block(consensus, Some(pmt + 1), parents).await
     }
 
