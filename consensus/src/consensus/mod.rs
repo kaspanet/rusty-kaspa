@@ -45,6 +45,7 @@ use crate::{
     },
 };
 use consensus_core::{
+    api::ConsensusApi,
     block::{Block, BlockTemplate},
     coinbase::MinerData,
     tx::Transaction,
@@ -395,7 +396,7 @@ impl Consensus {
         async { rx.await.unwrap() }
     }
 
-    pub fn build_block_template(self: &Arc<Self>, miner_data: MinerData, txs: Vec<Transaction>) -> BlockTemplate {
+    pub fn build_block_template(&self, miner_data: MinerData, txs: Vec<Transaction>) -> BlockTemplate {
         self.virtual_processor.build_block_template(miner_data, txs)
     }
 
@@ -417,6 +418,12 @@ impl Consensus {
         for handle in wait_handles {
             handle.join().unwrap();
         }
+    }
+}
+
+impl ConsensusApi for Consensus {
+    fn build_block_template(self: Arc<Self>, miner_data: MinerData, txs: Vec<Transaction>) -> BlockTemplate {
+        self.as_ref().build_block_template(miner_data, txs)
     }
 }
 

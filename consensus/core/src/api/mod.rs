@@ -1,9 +1,6 @@
 use std::sync::Arc;
 
-use crate::{
-    stubs::{BlockTemplate, MinerData},
-    tx::Transaction,
-};
+use crate::{block::BlockTemplate, coinbase::MinerData, tx::Transaction};
 
 /// Abstracts the consensus external API
 pub trait ConsensusApi: Send + Sync {

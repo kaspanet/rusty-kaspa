@@ -1,10 +1,7 @@
 use std::sync::Arc;
 
 use crate::{GetBlockTemplateResponse, RpcBlock, RpcError, RpcResult, RpcTransaction};
-use consensus_core::{
-    block::{Block, MutableBlock},
-    stubs::BlockTemplate,
-};
+use consensus_core::block::{Block, BlockTemplate, MutableBlock};
 
 // ----------------------------------------------------------------------------
 // consensus_core to rpc_core

@@ -13,7 +13,6 @@ pub mod merkle;
 pub mod muhash;
 pub mod notify;
 pub mod sign;
-pub mod stubs;
 pub mod subnets;
 pub mod tx;
 pub mod utxo;

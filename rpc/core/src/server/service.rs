@@ -14,7 +14,7 @@ use crate::{
 use async_trait::async_trait;
 use consensus_core::{
     api::DynConsensus,
-    stubs::MinerData,
+    coinbase::MinerData,
     tx::{ScriptPublicKey, ScriptVec},
 };
 use hashes::Hash;

@@ -5,7 +5,9 @@ use std::{
 };
 
 use consensus_core::{
-    block::{Block, MutableBlock},
+    api::ConsensusApi,
+    block::{Block, BlockTemplate, MutableBlock},
+    coinbase::MinerData,
     header::Header,
     merkle::calc_hash_merkle_root,
     subnets::SUBNETWORK_ID_COINBASE,
@@ -151,6 +153,12 @@ impl TestConsensus {
 
     pub fn ghostdag_manager(&self) -> &DbGhostdagManager {
         &self.consensus.ghostdag_manager
+    }
+}
+
+impl ConsensusApi for TestConsensus {
+    fn build_block_template(self: Arc<Self>, miner_data: MinerData, txs: Vec<Transaction>) -> BlockTemplate {
+        self.consensus.build_block_template(miner_data, txs)
     }
 }
 
