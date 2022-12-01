@@ -160,6 +160,7 @@ fn create_dummy_rpc_block() -> RpcBlock {
     let sel_parent_hash = Hash::from_str("5963be67f12da63004ce1baceebd7733c4fb601b07e9b0cfb447a3c5f4f3c4f0").unwrap();
     RpcBlock {
         header: RpcBlockHeader {
+            hash: Hash::from_str("8270e63a0295d7257785b9c9b76c9a2efb7fb8d6ac0473a1bff1571c5030e995").unwrap(),
             version: 1,
             parents: vec![],
             hash_merkle_root: Hash::from_str("4b5a041951c4668ecc190c6961f66e54c1ce10866bef1cf1308e46d66adab270").unwrap(),
@@ -174,7 +175,7 @@ fn create_dummy_rpc_block() -> RpcBlock {
             blue_score: 12345678901,
         },
         transactions: vec![],
-        verbose_data: RpcBlockVerboseData {
+        verbose_data: Some(RpcBlockVerboseData {
             hash: Hash::from_str("8270e63a0295d7257785b9c9b76c9a2efb7fb8d6ac0473a1bff1571c5030e995").unwrap(),
             difficulty: 5678.0,
             selected_parent_hash: sel_parent_hash,
@@ -185,6 +186,6 @@ fn create_dummy_rpc_block() -> RpcBlock {
             merge_set_blues_hashes: vec![],
             merge_set_reds_hashes: vec![],
             is_chain_block: true,
-        },
+        }),
     }
 }

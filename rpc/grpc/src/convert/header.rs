@@ -38,7 +38,10 @@ impl From<&rpc_core::RpcBlockLevelParents> for protowire::RpcBlockLevelParents {
 impl TryFrom<&protowire::RpcBlockHeader> for rpc_core::RpcBlockHeader {
     type Error = RpcError;
     fn try_from(item: &protowire::RpcBlockHeader) -> RpcResult<Self> {
+        // TODO: determine if we need to calculate the hash here.
+        // If so, do a rpc-core to consensus-core conversion to get the hash.
         Ok(Self {
+            hash: Default::default(),
             version: item.version,
             parents: item
                 .parents
