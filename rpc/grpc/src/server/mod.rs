@@ -45,10 +45,10 @@ impl GrpcServer {
         tokio::spawn(async move {
             match Server::builder().add_service(svc).serve_with_shutdown(address, shutdown_signal).await {
                 Ok(_) => {
-                    trace!("gRpc server exited gracefully");
+                    trace!("gRPC server exited gracefully");
                 }
                 Err(err) => {
-                    trace!("gRpc server exited with error {0}", err);
+                    trace!("gRPC server exited with error {0}", err);
                 }
             }
             shutdown_executed.trigger();
@@ -61,10 +61,11 @@ impl GrpcServer {
 
     pub fn stop(self: &Arc<GrpcServer>) -> JoinHandle<()> {
         // Launch the shutdown process as a task
-        let shutdown_signal = self.shutdown.response.listener.clone();
+        let shutdown_executed_signal = self.shutdown.response.listener.clone();
         let grpc_service = self.grpc_service.clone();
         tokio::spawn(async move {
-            shutdown_signal.await;
+            // Wait for the tonic server to gracefully shutdown
+            shutdown_executed_signal.await;
 
             // Stop the gRPC service gracefully
             match grpc_service.stop().await {
