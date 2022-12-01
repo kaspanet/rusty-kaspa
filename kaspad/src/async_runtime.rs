@@ -17,20 +17,21 @@ pub struct AsyncRuntime {
 }
 
 impl AsyncRuntime {
-    pub fn _new(grpc_server: Arc<GrpcServer>) -> Self {
+    pub fn new(grpc_server: Arc<GrpcServer>) -> Self {
+        trace!("Creating the async runtime service");
         Self { grpc_server }
     }
 
     pub fn init(self: Arc<AsyncRuntime>) -> Vec<JoinHandle<()>> {
+        trace!("Initializing the async runtime service");
         vec![thread::Builder::new().name(ASYNC_RUNTIME.to_string()).spawn(move || self.worker()).unwrap()]
     }
 
     /// Launch a tokio Runtime and run the top-level async objects
     #[tokio::main(worker_threads = 2)]
     pub async fn worker(self: &Arc<AsyncRuntime>) {
-        trace!("Starting the async runtime");
-
         // Start all the top-level objects
+        trace!("Starting the async runtime worker");
         let result = join!(self.grpc_server.start());
         match result.0 {
             Ok(_) => {}
@@ -40,6 +41,7 @@ impl AsyncRuntime {
         }
 
         // Stop all the top-level objects
+        trace!("Stopping the async runtime worker");
         let result = join!(self.grpc_server.stop());
         match result.0 {
             Ok(_) => {}
@@ -50,6 +52,7 @@ impl AsyncRuntime {
     }
 
     pub fn signal_exit(self: Arc<AsyncRuntime>) {
+        trace!("Sending an exit signal to the async runtime");
         self.grpc_server.signal_exit();
     }
 }

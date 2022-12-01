@@ -408,6 +408,10 @@ impl Consensus {
         self.statuses_store.read().get(hash).unwrap()
     }
 
+    pub fn processing_counters(&self) -> &Arc<ProcessingCounters> {
+        &self.counters
+    }
+
     pub fn signal_exit(&self) {
         self.block_sender.send(BlockTask::Exit).unwrap();
     }

@@ -32,7 +32,7 @@ pub struct RandomBlockEmitter {
 }
 
 impl RandomBlockEmitter {
-    pub fn new(
+    pub fn _new(
         consensus: Arc<TestConsensus>,
         genesis: Hash,
         max_block_parents: u64,
