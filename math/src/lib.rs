@@ -45,7 +45,7 @@ impl Uint256 {
             compact >>= 8;
             size += 1;
         }
-        compact | (size << 24) as u32
+        compact | (size << 24)
     }
 }
 

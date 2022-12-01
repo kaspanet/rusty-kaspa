@@ -5,9 +5,9 @@ use crate::{
         RuleError::{BadAcceptedIDMerkleRoot, BadCoinbaseTransaction, BadUTXOCommitment, InvalidTransactionsInUtxoContext},
     },
     model::stores::{block_transactions::BlockTransactionsStoreReader, daa::DaaStoreReader, ghostdag::GhostdagData},
-    processes::coinbase::BlockRewardData,
 };
 use consensus_core::{
+    coinbase::*,
     hashing,
     header::Header,
     muhash::MuHashExtensions,
@@ -19,7 +19,8 @@ use consensus_core::{
     BlockHashMap, BlockHashSet, HashMapCustomHasher,
 };
 use hashes::Hash;
-use kaspa_core::trace;
+use kaspa_core::{info, trace};
+use kaspa_utils::refs::Refs;
 use muhash::MuHash;
 
 use rayon::prelude::*;
@@ -27,16 +28,16 @@ use std::{iter::once, ops::Deref, sync::Arc};
 
 /// A context for processing the UTXO state of a block with respect to its selected parent.
 /// Note this can also be the virtual block.
-pub(super) struct UtxoProcessingContext {
-    pub ghostdag_data: Arc<GhostdagData>,
+pub(super) struct UtxoProcessingContext<'a> {
+    pub ghostdag_data: Refs<'a, GhostdagData>,
     pub multiset_hash: MuHash,
     pub mergeset_diff: UtxoDiff,
     pub accepted_tx_ids: Vec<TransactionId>,
     pub mergeset_rewards: BlockHashMap<BlockRewardData>,
 }
 
-impl UtxoProcessingContext {
-    pub fn new(ghostdag_data: Arc<GhostdagData>, selected_parent_multiset_hash: MuHash) -> Self {
+impl<'a> UtxoProcessingContext<'a> {
+    pub fn new(ghostdag_data: Refs<'a, GhostdagData>, selected_parent_multiset_hash: MuHash) -> Self {
         let mergeset_size = ghostdag_data.mergeset_size();
         Self {
             ghostdag_data,
@@ -95,6 +96,10 @@ impl VirtualStateProcessor {
                 BlockRewardData::new(coinbase_data.subsidy, block_fee, coinbase_data.miner_data.script_public_key),
             );
         }
+
+        // Make sure accepted tx ids are sorted before building the merkle root
+        // NOTE: when subnetworks will be enabled, the sort should consider them in order to allow grouping under a merkle subtree
+        ctx.accepted_tx_ids.sort();
     }
 
     /// Verify that the current block fully respects its own UTXO view. We define a block as
@@ -117,8 +122,6 @@ impl VirtualStateProcessor {
         trace!("correct commitment: {}, {}", header.hash, expected_commitment);
 
         // Verify header accepted_id_merkle_root
-        // NOTE: when subnetworks will be enabled, the sort should consider them in order to allow grouping under a merkle subtree
-        ctx.accepted_tx_ids.sort();
         let expected_accepted_id_merkle_root = merkle::calc_merkle_root(ctx.accepted_tx_ids.iter().copied());
         if expected_accepted_id_merkle_root != header.accepted_id_merkle_root {
             return Err(BadAcceptedIDMerkleRoot(header.hash, header.accepted_id_merkle_root, expected_accepted_id_merkle_root));
@@ -161,12 +164,6 @@ impl VirtualStateProcessor {
             .expected_coinbase_transaction(daa_score, miner_data, ghostdag_data, mergeset_rewards, mergeset_non_daa)
             .unwrap()
             .tx;
-        trace!(
-            "mergeset: {} blues, {} reds, {} non-DAA",
-            ghostdag_data.mergeset_blues.len(),
-            ghostdag_data.mergeset_reds.len(),
-            mergeset_non_daa.len()
-        );
         if hashing::tx::hash(coinbase) != hashing::tx::hash(&expected_coinbase) {
             Err(BadCoinbaseTransaction)
         } else {
@@ -212,7 +209,7 @@ impl VirtualStateProcessor {
         match res {
             Ok(calculated_fee) => Some(populated_tx.to_validated(calculated_fee)),
             Err(tx_rule_error) => {
-                trace!("tx rule error {} for tx {}", tx_rule_error, transaction.id());
+                info!("tx rule error {} for tx {}", tx_rule_error, transaction.id());
                 None
             }
         }

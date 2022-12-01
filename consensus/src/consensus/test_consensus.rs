@@ -26,8 +26,7 @@ use crate::{
         headers::{DbHeadersStore, HeaderStoreReader},
         pruning::PruningStoreReader,
         reachability::DbReachabilityStore,
-        statuses::{BlockStatus, StatusesStoreReader},
-        tips::TipsStoreReader,
+        statuses::BlockStatus,
         DB,
     },
     params::Params,
@@ -61,14 +60,14 @@ impl TestConsensus {
             .consensus
             .pruning_manager
             .expected_header_pruning_point(ghostdag_data.to_compact(), self.consensus.pruning_store.read().get().unwrap());
-        let window = self.consensus.dag_traversal_manager.block_window(ghostdag_data.clone(), self.params.difficulty_window_size);
+        let window = self.consensus.dag_traversal_manager.block_window(&ghostdag_data, self.params.difficulty_window_size);
         let (daa_score, _) = self
             .consensus
             .difficulty_manager
             .calc_daa_score_and_non_daa_mergeset_blocks(&mut window.iter().map(|item| item.0.hash), &ghostdag_data);
         header.bits = self.consensus.difficulty_manager.calculate_difficulty_bits(&window);
         header.daa_score = daa_score;
-        header.timestamp = self.consensus.past_median_time_manager.calc_past_median_time(ghostdag_data.clone()).0 + 1;
+        header.timestamp = self.consensus.past_median_time_manager.calc_past_median_time(&ghostdag_data).0 + 1;
         header.blue_score = ghostdag_data.blue_score;
         header.blue_work = ghostdag_data.blue_work;
 
@@ -142,14 +141,12 @@ impl TestConsensus {
         &self.consensus.past_median_time_manager
     }
 
-    // TODO: add to consensus API
     pub fn body_tips(&self) -> Arc<BlockHashSet> {
-        self.consensus.body_tips_store.read().get().unwrap()
+        self.consensus.body_tips()
     }
 
-    // TODO: add to consensus API
     pub fn block_status(&self, hash: Hash) -> BlockStatus {
-        self.consensus.statuses_store.read().get(hash).unwrap()
+        self.consensus.block_status(hash)
     }
 
     pub fn ghostdag_manager(&self) -> &DbGhostdagManager {
