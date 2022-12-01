@@ -840,8 +840,7 @@ fn json_line_to_block(line: String) -> Block {
             bits: rpc_block.Header.Bits,
             nonce: rpc_block.Header.Nonce,
             daa_score: rpc_block.Header.DAAScore,
-            // TODO: use Uint192::from_hex when implemented
-            blue_work: BlueWorkType::from_u128(u128::from_str_radix(&rpc_block.Header.BlueWork, 16).unwrap()),
+            blue_work: BlueWorkType::from_hex(&rpc_block.Header.BlueWork).unwrap(),
             blue_score: rpc_block.Header.BlueScore,
             pruning_point: Hash::from_str(&rpc_block.Header.PruningPoint).unwrap(),
         },
