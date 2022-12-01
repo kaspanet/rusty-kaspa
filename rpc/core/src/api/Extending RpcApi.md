@@ -4,13 +4,11 @@ As an illustration, let's pretend that we add a new `submit_block` method.
 
 ## consensus-core
 
-1. Add a function to the trait XXX
-   (TODO: create this trait)
+1. If necessary, add a function into the ConsensusApi trait.
 
 ## consensus
 
-1. Implement the function in consensus
-   (TODO: be more precise when some actual impl is available)
+1. Implement the function for Consensus
 
 ## rpc-core
 
@@ -20,7 +18,8 @@ As an illustration, let's pretend that we add a new `submit_block` method.
    (ie. `SubmitBlockRequest` and `SubmitBlockResponse`).
 3. Implement a constructor for the request.
 4. If necessary, implement converters to handle consensus-core <-> rpc-core under `rpc_core::convert`.
-5. Add a pair of new async functions to the `rpc_core::api::RpcApi` trait, one with detailed parameters and one with a unique request message.
+5. Add a pair of new async functions to the `rpc_core::api::RpcApi` trait, one with detailed parameters
+   and one with a unique request message.
    Implement the first as a call to the second.
    (ie. `async fn submit_block(&self, block: RpcBlock, allow_non_daa_blocks: bool) -> RpcResult<SubmitBlockResponse>` and
    `async fn submit_block_call(&self, request: SubmitBlockRequest) -> RpcResult<SubmitBlockResponse>;`)
@@ -40,4 +39,5 @@ As an illustration, let's pretend that we add a new `submit_block` method.
    (ie. `impl_into_kaspad_request!(rpc_core::SubmitBlockRequest, SubmitBlockRequestMessage, SubmitBlockRequest);` and
    `impl_into_kaspad_response!(rpc_core::SubmitBlockResponse, SubmitBlockResponseMessage, SubmitBlockResponse);`).
 8. Implement the function having a `_call` prefix into `rpc_grpc::client::RpcApiGrpc`.
-9. In `rpc_grpc::server::service::RpcService::message_stream`, requests handler, add an arm and implement a handler for the new method.
+9. In `rpc_grpc::server::service::RpcService::message_stream`, requests handler, add an arm and implement
+   a handler for the new method.
