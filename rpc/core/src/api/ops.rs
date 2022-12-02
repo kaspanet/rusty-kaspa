@@ -37,6 +37,7 @@ pub enum RpcApiOps {
 
     // Subscription commands for starting/stopping notifications
     NotifyBlockAdded,
+    NotifyNewBlockTemplate,
 
     // Server to client notification
     Notification,

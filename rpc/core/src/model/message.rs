@@ -159,3 +159,29 @@ pub struct GetInfoResponse {
     pub is_synced: bool,
     pub has_notify_command: bool,
 }
+
+/// NotifyNewBlockTemplateRequest registers this connection for blockAdded notifications.
+///
+/// See: [`NewBlockTemplateNotification`]
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct NotifyNewBlockTemplateRequest {
+    pub command: SubscribeCommand,
+}
+impl NotifyNewBlockTemplateRequest {
+    pub fn new(command: SubscribeCommand) -> Self {
+        Self { command }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct NotifyNewBlockTemplateResponse {}
+
+/// NewBlockTemplateNotification is sent whenever a blocks has been added (NOT accepted)
+/// into the DAG.
+///
+/// See: [`NotifyNewBlockTemplateRequest`]
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct NewBlockTemplateNotification {}

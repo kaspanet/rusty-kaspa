@@ -38,6 +38,7 @@ impl Matcher<&kaspad_response::Payload> for kaspad_request::Payload {
             kaspad_request::Payload::GetCurrentNetworkRequest(_) => true,
             kaspad_request::Payload::NotifyBlockAddedRequest(_) => true,
             kaspad_request::Payload::GetInfoRequest(_) => true,
+            kaspad_request::Payload::NotifyNewBlockTemplateRequest(_) => true,
         }
     }
 }

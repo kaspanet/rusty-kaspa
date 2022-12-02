@@ -107,6 +107,18 @@ impl From<RpcResult<&rpc_core::GetInfoResponse>> for protowire::GetInfoResponseM
     }
 }
 
+impl From<&rpc_core::NotifyNewBlockTemplateRequest> for protowire::NotifyNewBlockTemplateRequestMessage {
+    fn from(item: &rpc_core::NotifyNewBlockTemplateRequest) -> Self {
+        Self { command: item.command.into() }
+    }
+}
+
+impl From<RpcResult<&rpc_core::NotifyNewBlockTemplateResponse>> for protowire::NotifyNewBlockTemplateResponseMessage {
+    fn from(item: RpcResult<&rpc_core::NotifyNewBlockTemplateResponse>) -> Self {
+        Self { error: item.map_err(protowire::RpcError::from).err() }
+    }
+}
+
 // ----------------------------------------------------------------------------
 // protowire to rpc_core
 // ----------------------------------------------------------------------------
@@ -226,6 +238,20 @@ impl TryFrom<&protowire::GetInfoResponseMessage> for rpc_core::GetInfoResponse {
                 has_notify_command: item.has_notify_command,
             })
         }
+    }
+}
+
+impl TryFrom<&protowire::NotifyNewBlockTemplateRequestMessage> for rpc_core::NotifyNewBlockTemplateRequest {
+    type Error = RpcError;
+    fn try_from(item: &protowire::NotifyNewBlockTemplateRequestMessage) -> RpcResult<Self> {
+        Ok(Self { command: item.command.into() })
+    }
+}
+
+impl TryFrom<&protowire::NotifyNewBlockTemplateResponseMessage> for rpc_core::NotifyNewBlockTemplateResponse {
+    type Error = RpcError;
+    fn try_from(item: &protowire::NotifyNewBlockTemplateResponseMessage) -> RpcResult<Self> {
+        item.error.as_ref().map_or(Ok(rpc_core::NotifyNewBlockTemplateResponse {}), |x| Err(x.into()))
     }
 }
 

@@ -12,6 +12,7 @@ impl From<&kaspad_request::Payload> for RpcApiOps {
 
             // Subscription commands for starting/stopping notifications
             kaspad_request::Payload::NotifyBlockAddedRequest(_) => RpcApiOps::NotifyBlockAdded,
+            kaspad_request::Payload::NotifyNewBlockTemplateRequest(_) => RpcApiOps::NotifyNewBlockTemplate,
         }
     }
 }
@@ -27,9 +28,11 @@ impl From<&kaspad_response::Payload> for RpcApiOps {
 
             // Subscription commands for starting/stopping notifications
             kaspad_response::Payload::NotifyBlockAddedResponse(_) => RpcApiOps::NotifyBlockAdded,
+            kaspad_response::Payload::NotifyNewBlockTemplateResponse(_) => RpcApiOps::NotifyNewBlockTemplate,
 
             // Notifications
             kaspad_response::Payload::BlockAddedNotification(_) => RpcApiOps::Notification,
+            kaspad_response::Payload::NewBlockTemplateNotification(_) => RpcApiOps::Notification,
         }
     }
 }
@@ -61,6 +64,11 @@ pub mod kaspad_request_convert {
     impl_into_kaspad_request!(rpc_core::GetBlockRequest, GetBlockRequestMessage, GetBlockRequest);
     impl_into_kaspad_request!(rpc_core::NotifyBlockAddedRequest, NotifyBlockAddedRequestMessage, NotifyBlockAddedRequest);
     impl_into_kaspad_request!(rpc_core::GetInfoRequest, GetInfoRequestMessage, GetInfoRequest);
+    impl_into_kaspad_request!(
+        rpc_core::NotifyNewBlockTemplateRequest,
+        NotifyNewBlockTemplateRequestMessage,
+        NotifyNewBlockTemplateRequest
+    );
 
     macro_rules! impl_into_kaspad_request {
         ($($core_struct:ident)::+, $($protowire_struct:ident)::+, $($variant:ident)::+) => {
@@ -150,6 +158,16 @@ pub mod kaspad_response_convert {
 
     impl_into_kaspad_response!(rpc_core::NotifyBlockAddedResponse, NotifyBlockAddedResponseMessage, NotifyBlockAddedResponse);
     impl_into_kaspad_notify_response!(rpc_core::NotifyBlockAddedResponse, NotifyBlockAddedResponseMessage, NotifyBlockAddedResponse);
+    impl_into_kaspad_response!(
+        rpc_core::NotifyNewBlockTemplateResponse,
+        NotifyNewBlockTemplateResponseMessage,
+        NotifyNewBlockTemplateResponse
+    );
+    impl_into_kaspad_notify_response!(
+        rpc_core::NotifyNewBlockTemplateResponse,
+        NotifyNewBlockTemplateResponseMessage,
+        NotifyNewBlockTemplateResponse
+    );
 
     macro_rules! impl_into_kaspad_response {
         ($($core_struct:ident)::+, $($protowire_struct:ident)::+, $($variant:ident)::+) => {

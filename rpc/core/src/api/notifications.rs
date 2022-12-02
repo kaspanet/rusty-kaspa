@@ -55,6 +55,9 @@ impl Display for Notification {
             Notification::BlockAdded(ref notification) => {
                 write!(f, "Notification BlockAdded with hash {}", notification.block.header.hash)
             }
+            Notification::NewBlockTemplate(_) => {
+                write!(f, "Notification NewBlockTemplate")
+            }
             _ => write!(f, "Notification type not implemented yet"),
             // Notification::VirtualSelectedParentChainChanged(_) => todo!(),
             // Notification::FinalityConflict(_) => todo!(),
@@ -63,7 +66,6 @@ impl Display for Notification {
             // Notification::VirtualSelectedParentBlueScoreChanged(_) => todo!(),
             // Notification::VirtualDaaScoreChanged(_) => todo!(),
             // Notification::PruningPointUTXOSetOverride(_) => todo!(),
-            // Notification::NewBlockTemplate(_) => todo!(),
         }
     }
 }

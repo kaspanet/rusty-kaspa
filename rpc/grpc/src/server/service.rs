@@ -1,4 +1,5 @@
 use super::connection::{GrpcConnectionManager, GrpcSender};
+use crate::protowire::NotifyNewBlockTemplateResponseMessage;
 use crate::protowire::{
     kaspad_request::Payload, rpc_server::Rpc, GetBlockResponseMessage, GetBlockTemplateResponseMessage, GetInfoResponseMessage,
     KaspadRequest, KaspadResponse, NotifyBlockAddedResponseMessage, SubmitBlockResponseMessage,
@@ -184,6 +185,18 @@ impl Rpc for Arc<GrpcService> {
                                 )
                             })
                             .into(),
+
+                            Some(Payload::NotifyNewBlockTemplateRequest(ref request)) => {
+                                NotifyNewBlockTemplateResponseMessage::from({
+                                    let request = rpc_core::NotifyNewBlockTemplateRequest::try_from(request).unwrap();
+                                    notifier.clone().execute_subscribe_command(
+                                        listener_id,
+                                        rpc_core::NotificationType::NewBlockTemplate,
+                                        request.command,
+                                    )
+                                })
+                                .into()
+                            }
 
                             // TODO: This must be replaced by actual handling of all request variants
                             _ => GetBlockResponseMessage::from(rpc_core::RpcError::General(

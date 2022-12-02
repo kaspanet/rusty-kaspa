@@ -1,6 +1,9 @@
 use rpc_core::{api::ops::SubscribeCommand, NotificationType};
 
-use crate::protowire::{kaspad_request, kaspad_response, KaspadRequest, KaspadResponse, NotifyBlockAddedRequestMessage};
+use crate::protowire::{
+    kaspad_request, kaspad_response, KaspadRequest, KaspadResponse, NotifyBlockAddedRequestMessage,
+    NotifyNewBlockTemplateRequestMessage,
+};
 
 impl KaspadRequest {
     pub fn from_notification_type(notification_type: &NotificationType, command: SubscribeCommand) -> Self {
@@ -13,7 +16,10 @@ impl kaspad_request::Payload {
         match notification_type {
             NotificationType::BlockAdded => {
                 kaspad_request::Payload::NotifyBlockAddedRequest(NotifyBlockAddedRequestMessage { command: command.into() })
-            }
+            },
+            NotificationType::NewBlockTemplate => {
+                kaspad_request::Payload::NotifyNewBlockTemplateRequest(NotifyNewBlockTemplateRequestMessage { command: command.into() })
+            },
 
             // TODO: implement all other notifications
             _ => {

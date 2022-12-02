@@ -11,7 +11,8 @@ message KaspadRequest {
     NotifyBlockAddedRequestMessage notifyBlockAddedRequest = 1007;
     GetBlockRequestMessage getBlockRequest = 1025;
     GetInfoRequestMessage getInfoRequest = 1063;
-  }
+    NotifyNewBlockTemplateRequestMessage notifyNewBlockTemplateRequest = 1081;
+}
 }
 
 message KaspadResponse {
@@ -23,6 +24,8 @@ message KaspadResponse {
     BlockAddedNotificationMessage blockAddedNotification = 1009;
     GetBlockResponseMessage getBlockResponse = 1026;
     GetInfoResponseMessage getInfoResponse = 1064;
+    NotifyNewBlockTemplateResponseMessage notifyNewBlockTemplateResponse = 1082;
+    NewBlockTemplateNotificationMessage newBlockTemplateNotification = 1083;
   }
 }
 

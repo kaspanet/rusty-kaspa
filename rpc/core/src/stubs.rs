@@ -38,6 +38,3 @@ pub struct VirtualDaaScoreChangedNotification;
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct PruningPointUTXOSetOverrideNotification;
-
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
-pub struct NewBlockTemplateNotification;

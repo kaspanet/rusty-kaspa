@@ -713,7 +713,6 @@ message NotifyNewBlockTemplateResponseMessage {
 //
 // See NotifyNewBlockTemplateRequestMessage
 message NewBlockTemplateNotificationMessage {
-  RpcNotifyCommand command = 101;
 }
 
 message MempoolEntryByAddress{
