@@ -1,10 +1,12 @@
 use crate::protowire::rpc_server::RpcServer;
-use kaspa_core::{task::service::AsyncService, trace};
+use kaspa_core::{
+    task::service::{AsynServiceFuture, AsyncService},
+    trace,
+};
 use kaspa_utils::triggers::DuplexTrigger;
 use rpc_core::server::service::RpcCoreService;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::task::JoinHandle;
 use tonic::{codec::CompressionEncoding, transport::Server};
 
 pub mod connection;
@@ -32,26 +34,28 @@ impl AsyncService for GrpcServer {
         GRPC_SERVER
     }
 
-    fn start(self: Arc<Self>) -> JoinHandle<()> {
+    fn start(self: Arc<Self>) -> AsynServiceFuture {
         trace!("{} starting", GRPC_SERVER);
-        trace!("gRPC server listening on: {}", self.address);
 
-        // Start the gRPC service
         let grpc_service = self.grpc_service.clone();
-        grpc_service.start();
-
-        // Create a protowire RPC server
-        let svc = RpcServer::new(self.grpc_service.clone())
-            .send_compressed(CompressionEncoding::Gzip)
-            .accept_compressed(CompressionEncoding::Gzip);
-
-        // Prepare a shutdown future
-        let shutdown_signal = self.shutdown.request.listener.clone();
-
-        // Launch the tonic server and wait for it to shutdown
         let address = self.address;
+
+        // Prepare a start shutdown signal receiver and a shutwdown ended signal sender
+        let shutdown_signal = self.shutdown.request.listener.clone();
         let shutdown_executed = self.shutdown.response.trigger.clone();
-        tokio::spawn(async move {
+
+        // Return a future launching the tonic server and waiting for it to shutdown
+        Box::pin(async move {
+            // Start the gRPC service
+            grpc_service.start();
+
+            // Create a protowire RPC server
+            let svc = RpcServer::new(self.grpc_service.clone())
+                .send_compressed(CompressionEncoding::Gzip)
+                .accept_compressed(CompressionEncoding::Gzip);
+
+            // Start the tonic gRPC server
+            trace!("gRPC server listening on: {}", address);
             match Server::builder().add_service(svc).serve_with_shutdown(address, shutdown_signal).await {
                 Ok(_) => {
                     trace!("gRPC server exited gracefully");
@@ -60,6 +64,8 @@ impl AsyncService for GrpcServer {
                     trace!("gRPC server exited with error {0}", err);
                 }
             }
+
+            // Send a signl telling the shutdown is done
             shutdown_executed.trigger();
         })
     }
@@ -69,12 +75,12 @@ impl AsyncService for GrpcServer {
         self.shutdown.request.trigger.trigger();
     }
 
-    fn stop(self: Arc<Self>) -> JoinHandle<()> {
+    fn stop(self: Arc<Self>) -> AsynServiceFuture {
         trace!("{} stopping", GRPC_SERVER);
         // Launch the shutdown process as a task
         let shutdown_executed_signal = self.shutdown.response.listener.clone();
         let grpc_service = self.grpc_service.clone();
-        tokio::spawn(async move {
+        Box::pin(async move {
             // Wait for the tonic server to gracefully shutdown
             shutdown_executed_signal.await;
 

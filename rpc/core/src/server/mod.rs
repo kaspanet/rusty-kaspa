@@ -1,9 +1,11 @@
 use std::sync::Arc;
 
 use consensus_core::api::DynConsensus;
-use kaspa_core::{task::service::AsyncService, trace};
+use kaspa_core::{
+    task::service::{AsynServiceFuture, AsyncService},
+    trace,
+};
 use kaspa_utils::triggers::DuplexTrigger;
-use tokio::task::JoinHandle;
 
 use self::{collector::ConsensusNotificationReceiver, service::RpcCoreService};
 
@@ -12,6 +14,7 @@ pub mod service;
 
 const RPC_CORE_SERVICE: &str = "rpc-core-service";
 
+/// [`RpcCoreServer`] encapsulates and exposes a [`RpcCoreService`] as an [`AsyncService`].
 pub struct RpcCoreServer {
     service: Arc<RpcCoreService>,
     shutdown: DuplexTrigger,
@@ -29,23 +32,23 @@ impl RpcCoreServer {
     }
 }
 
-// This could be opted out in the wasm32 context
+// It might be necessary to opt this out in the context of wasm32
 
 impl AsyncService for RpcCoreServer {
     fn ident(self: Arc<Self>) -> &'static str {
         RPC_CORE_SERVICE
     }
 
-    fn start(self: Arc<Self>) -> JoinHandle<()> {
+    fn start(self: Arc<Self>) -> AsynServiceFuture {
         trace!("{} starting", RPC_CORE_SERVICE);
         let service = self.service.clone();
 
-        // Prepare a shutdown future
+        // Prepare a start shutdown signal receiver and a shutwdown ended signal sender
         let shutdown_signal = self.shutdown.request.listener.clone();
+        let shutdown_executed = self.shutdown.response.trigger.clone();
 
         // Launch the service and wait for a shutdown signal
-        let shutdown_executed = self.shutdown.response.trigger.clone();
-        tokio::spawn(async move {
+        Box::pin(async move {
             service.start();
             shutdown_signal.await;
             shutdown_executed.trigger();
@@ -57,11 +60,11 @@ impl AsyncService for RpcCoreServer {
         self.shutdown.request.trigger.trigger();
     }
 
-    fn stop(self: Arc<Self>) -> JoinHandle<()> {
+    fn stop(self: Arc<Self>) -> AsynServiceFuture {
         trace!("{} stopping", RPC_CORE_SERVICE);
         let service = self.service.clone();
         let shutdown_executed_signal = self.shutdown.response.listener.clone();
-        tokio::spawn(async move {
+        Box::pin(async move {
             // Wait for the service start task to exit
             shutdown_executed_signal.await;
 

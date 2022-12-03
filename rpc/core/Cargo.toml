@@ -25,4 +25,3 @@ futures = { version = "0.3" }
 rand = "0.8"
 triggered = "0.1"
 workflow-core = "0.1.0"
-tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread"] }

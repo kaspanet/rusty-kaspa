@@ -45,13 +45,17 @@ impl AsyncRuntime {
     #[tokio::main(worker_threads = 2)]
     pub async fn worker(self: &Arc<AsyncRuntime>) {
         // Start all async services
+        // All services futures are spawned as tokio tasks to enable parallelism
         trace!("async-runtime worker starting");
-        let futures = self.services.lock().unwrap().iter().map(|x| x.clone().start()).collect::<Vec<TaskJoinHandle<()>>>();
+        let futures =
+            self.services.lock().unwrap().iter().map(|x| tokio::spawn(x.clone().start())).collect::<Vec<TaskJoinHandle<()>>>();
         join_all(futures).await.into_iter().collect::<Result<Vec<()>, JoinError>>().unwrap();
 
         // Stop all async services
+        // All services futures are spawned as tokio tasks to enable parallelism
         trace!("async-runtime worker stopping");
-        let futures = self.services.lock().unwrap().iter().map(|x| x.clone().stop()).collect::<Vec<TaskJoinHandle<()>>>();
+        let futures =
+            self.services.lock().unwrap().iter().map(|x| tokio::spawn(x.clone().stop())).collect::<Vec<TaskJoinHandle<()>>>();
         join_all(futures).await.into_iter().collect::<Result<Vec<()>, JoinError>>().unwrap();
 
         trace!("async-runtime worker exiting");
