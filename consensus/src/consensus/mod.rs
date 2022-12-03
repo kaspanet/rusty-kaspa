@@ -52,6 +52,7 @@ use consensus_core::{
     BlockHashSet,
 };
 use crossbeam_channel::{unbounded, Receiver, Sender};
+use futures_util::future::BoxFuture;
 use hashes::Hash;
 use kaspa_core::{core::Core, service::Service};
 use parking_lot::RwLock;
@@ -428,6 +429,11 @@ impl Consensus {
 impl ConsensusApi for Consensus {
     fn build_block_template(self: Arc<Self>, miner_data: MinerData, txs: Vec<Transaction>) -> BlockTemplate {
         self.as_ref().build_block_template(miner_data, txs)
+    }
+
+    fn validate_and_insert_block(self: Arc<Self>, block: Block, _update_virtual: bool) -> BoxFuture<'static, Result<(), String>> {
+        let result = self.as_ref().validate_and_insert_block(block);
+        Box::pin(async move { result.await.map_err(|err| err.to_string()).map(|_| ()) })
     }
 }
 

@@ -682,6 +682,7 @@ version = "0.1.0"
 dependencies = [
  "borsh",
  "faster-hex",
+ "futures-util",
  "hashes",
  "math",
  "merkle",
