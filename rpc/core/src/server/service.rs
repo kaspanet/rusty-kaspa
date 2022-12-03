@@ -14,6 +14,7 @@ use crate::{
 use async_trait::async_trait;
 use consensus_core::{
     api::DynConsensus,
+    block::Block,
     coinbase::MinerData,
     tx::{ScriptPublicKey, ScriptVec},
 };
@@ -78,9 +79,15 @@ impl RpcCoreService {
 
 #[async_trait]
 impl RpcApi for RpcCoreService {
-    async fn submit_block_call(&self, _request: SubmitBlockRequest) -> RpcResult<SubmitBlockResponse> {
-        // TODO: Remove the following test when consensus is used to fetch data
-        Ok(SubmitBlockResponse { report: SubmitBlockReport::Success })
+    async fn submit_block_call(&self, request: SubmitBlockRequest) -> RpcResult<SubmitBlockResponse> {
+        trace!("[RpcCoreService] submit_block_call request {:?}", request);
+
+        let block: Block = (&request.block).try_into()?;
+        match self.consensus.clone().validate_and_insert_block(block, true).await {
+            Ok(_) => Ok(SubmitBlockResponse { report: SubmitBlockReport::Success }),
+            Err(_) => Ok(SubmitBlockResponse { report: SubmitBlockReport::Reject(SubmitBlockRejectReason::BlockInvalid) }),
+            // TODO: handle also the IsInIBD reject reason
+        }
     }
 
     async fn get_block_template_call(&self, request: GetBlockTemplateRequest) -> RpcResult<GetBlockTemplateResponse> {
