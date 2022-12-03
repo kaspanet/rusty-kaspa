@@ -18,6 +18,7 @@ use consensus_core::{
     tx::{ScriptPublicKey, ScriptVec},
 };
 use hashes::Hash;
+use kaspa_core::trace;
 use std::{
     str::FromStr,
     sync::Arc,
@@ -83,6 +84,7 @@ impl RpcApi for RpcCoreService {
     }
 
     async fn get_block_template_call(&self, request: GetBlockTemplateRequest) -> RpcResult<GetBlockTemplateResponse> {
+        trace!("[RpcCoreService] get_block_template_call request {:?}", request);
         // TODO: Replace this hack by a call to build the script (some txscript.PayToAddrScript(payAddress) equivalent).
         //       See app\rpc\rpchandlers\get_block_template.go HandleGetBlockTemplate
         const ADDRESS_PUBLIC_KEY_SCRIPT_PUBLIC_KEY_VERSION: u16 = 0;
@@ -97,7 +99,9 @@ impl RpcApi for RpcCoreService {
 
         let script_public_key = ScriptPublicKey::new(ADDRESS_PUBLIC_KEY_SCRIPT_PUBLIC_KEY_VERSION, script);
         let miner_data: MinerData = MinerData::new(script_public_key, request.extra_data);
+        trace!("[RpcCoreService] get_block_template_call miner data {:?}", miner_data);
         let block_template = self.consensus.clone().build_block_template(miner_data, vec![]);
+        trace!("[RpcCoreService] get_block_template_call block template {:?}", block_template);
 
         Ok((&block_template).into())
     }

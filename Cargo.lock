@@ -1481,7 +1481,9 @@ name = "kaspa-core"
 version = "0.1.0"
 dependencies = [
  "ctrlc",
+ "futures-util",
  "intertrait",
+ "tokio",
  "wasm-bindgen",
 ]
 
@@ -2356,6 +2358,7 @@ dependencies = [
  "rand 0.8.5",
  "serde",
  "thiserror",
+ "tokio",
  "triggered",
  "workflow-core",
 ]

@@ -1,5 +1,5 @@
 use crate::protowire::rpc_server::RpcServer;
-use kaspa_core::trace;
+use kaspa_core::{task::service::AsyncService, trace};
 use kaspa_utils::triggers::DuplexTrigger;
 use rpc_core::server::service::RpcCoreService;
 use std::net::SocketAddr;
@@ -12,6 +12,8 @@ pub mod service;
 
 pub type StatusResult<T> = Result<T, tonic::Status>;
 
+const GRPC_SERVER: &str = "grpc-server";
+
 pub struct GrpcServer {
     address: SocketAddr,
     grpc_service: Arc<service::GrpcService>,
@@ -23,8 +25,15 @@ impl GrpcServer {
         let grpc_service = Arc::new(service::GrpcService::new(core_service));
         Self { address, grpc_service, shutdown: DuplexTrigger::default() }
     }
+}
 
-    pub fn start(self: &Arc<GrpcServer>) -> JoinHandle<()> {
+impl AsyncService for GrpcServer {
+    fn ident(self: Arc<Self>) -> &'static str {
+        GRPC_SERVER
+    }
+
+    fn start(self: Arc<Self>) -> JoinHandle<()> {
+        trace!("{} starting", GRPC_SERVER);
         trace!("gRPC server listening on: {}", self.address);
 
         // Start the gRPC service
@@ -55,11 +64,13 @@ impl GrpcServer {
         })
     }
 
-    pub fn signal_exit(self: &Arc<GrpcServer>) {
+    fn signal_exit(self: Arc<Self>) {
+        trace!("sending an exit signal to {}", GRPC_SERVER);
         self.shutdown.request.trigger.trigger();
     }
 
-    pub fn stop(self: &Arc<GrpcServer>) -> JoinHandle<()> {
+    fn stop(self: Arc<Self>) -> JoinHandle<()> {
+        trace!("{} stopping", GRPC_SERVER);
         // Launch the shutdown process as a task
         let shutdown_executed_signal = self.shutdown.response.listener.clone();
         let grpc_service = self.grpc_service.clone();
@@ -80,6 +91,7 @@ impl GrpcServer {
                     trace!("Error while finalizing the gRPC service: {0}", err);
                 }
             }
+            trace!("{} exiting", GRPC_SERVER);
         })
     }
 }

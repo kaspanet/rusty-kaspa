@@ -6,3 +6,4 @@ pub mod core;
 pub mod log;
 pub mod service;
 pub mod signals;
+pub mod task;

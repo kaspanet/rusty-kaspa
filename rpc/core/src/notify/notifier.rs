@@ -59,7 +59,6 @@ impl Notifier {
     }
 
     pub fn start_notify(&self, id: ListenerID, notification_type: NotificationType) -> Result<()> {
-        trace!("[Notifier] start sending to listener {0} notifications of type {1:?}", id, notification_type);
         self.inner.clone().start_notify(id, notification_type)
     }
 
@@ -68,7 +67,6 @@ impl Notifier {
     }
 
     pub fn stop_notify(&self, id: ListenerID, notification_type: NotificationType) -> Result<()> {
-        trace!("[Notifier] stop sending to listener {0} notifications of type {1:?}", id, notification_type);
         self.inner.clone().stop_notify(id, notification_type)
     }
 
@@ -144,6 +142,9 @@ impl Inner {
             if let Some(ref collector) = self.collector.clone().as_ref() {
                 collector.clone().start(notifier);
             }
+            trace!("[Notifier] started");
+        } else {
+            trace!("[Notifier] start ignored since already started");
         }
     }
 
@@ -170,10 +171,10 @@ impl Inner {
         // This is necessary for the correct handling of repeating start/stop cycles.
 
         workflow_core::task::spawn(async move {
-            trace!("[Notifier] dispatch_task spawned");
+            trace!("[Notifier] dispatcher_task starting for notification type {:?}", event);
 
             fn send_subscribe_message(send_subscriber: Sender<SubscribeMessage>, message: SubscribeMessage) {
-                trace!("[Notifier] dispatch_task send subscribe message: {:?}", message);
+                trace!("[Notifier] dispatcher_task send subscribe message: {:?}", message);
                 match send_subscriber.try_send(message) {
                     Ok(_) => {}
                     Err(err) => {
@@ -248,6 +249,7 @@ impl Inner {
                 }
             }
             shutdown_trigger.trigger();
+            trace!("[Notifier] dispatcher_task exiting for notification type {:?}", event);
         });
     }
 
@@ -295,7 +297,7 @@ impl Inner {
         let event: EventType = (&notification_type).into();
         let mut listeners = self.listeners.lock().unwrap();
         if let Some(listener) = listeners.get_mut(&id) {
-            trace!("[Notifier] start notify to {0} about {1:?}", id, notification_type);
+            trace!("[Notifier] start notifying to {0} about {1:?}", id, notification_type);
 
             // Any mutation in the listener will trigger a dispatch of a brand new ListenerSenderSide
             // eventually creating or replacing this listener in the matching dispatcher.
@@ -320,9 +322,8 @@ impl Inner {
         let event: EventType = (&notification_type).into();
         let mut listeners = self.listeners.lock().unwrap();
         if let Some(listener) = listeners.get_mut(&id) {
-            trace!("[Notifier] stop notify to {0} about {1:?}", id, notification_type);
-
-            if listener.toggle(notification_type, false) {
+            if listener.toggle(notification_type.clone(), false) {
+                trace!("[Notifier] stop notifying to {0} about {1:?}", id, notification_type);
                 let msg = DispatchMessage::RemoveListener(listener.id());
                 self.clone().try_send_dispatch(event, msg)?;
             }
@@ -363,8 +364,10 @@ impl Inner {
                 subscriber.clone().stop().await?;
             }
         } else {
+            trace!("[Notifier] stop ignored since already stopped");
             return Err(Error::AlreadyStoppedError);
         }
+        trace!("[Notifier] stopped");
         Ok(())
     }
 }

@@ -7,6 +7,8 @@ include.workspace = true
 license.workspace = true
 
 [dependencies]
+futures-util.workspace = true
+tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread"] }
 wasm-bindgen.workspace = true
 ctrlc = "3.2"
 

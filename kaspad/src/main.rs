@@ -4,6 +4,7 @@ extern crate hashes;
 
 use clap::Parser;
 use consensus::model::stores::DB;
+use kaspa_core::task::runtime::AsyncRuntime;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -16,13 +17,11 @@ use hashes::Hash;
 use kaspa_core::core::Core;
 use kaspa_core::*;
 use rpc_core::server::collector::ConsensusNotificationChannel;
-use rpc_core::server::service::RpcCoreService;
+use rpc_core::server::RpcCoreServer;
 use rpc_grpc::server::GrpcServer;
 
-use crate::async_runtime::AsyncRuntime;
 use crate::emulator::ConsensusMonitor;
 
-mod async_runtime;
 mod emulator;
 
 const DEFAULT_DATA_DIR: &str = "datadir";
@@ -67,7 +66,7 @@ pub fn main() {
     println!("Application directory: {}", app_dir.as_display());
     println!("Data directory: {}", db_dir.as_display());
     fs::create_dir_all(db_dir.as_path()).unwrap();
-    let grpc_server_addr = args.rpc_listen.unwrap_or_else(|| "[::1]:16110".to_string()).parse().unwrap();
+    let grpc_server_addr = args.rpc_listen.unwrap_or_else(|| "127.0.0.1:16110".to_string()).parse().unwrap();
 
     let genesis: Hash = blockhash::new_unique();
     let bps = 8.0;
@@ -98,9 +97,13 @@ pub fn main() {
     let monitor = Arc::new(ConsensusMonitor::new(consensus.processing_counters().clone()));
 
     let notification_channel = ConsensusNotificationChannel::default();
-    let rpc_core_service = Arc::new(RpcCoreService::new(consensus.clone(), notification_channel.receiver()));
-    let grpc_server = Arc::new(GrpcServer::new(grpc_server_addr, rpc_core_service));
-    let async_runtime = Arc::new(AsyncRuntime::new(grpc_server));
+    let rpc_core_server = Arc::new(RpcCoreServer::new(consensus.clone(), notification_channel.receiver()));
+    let grpc_server = Arc::new(GrpcServer::new(grpc_server_addr, rpc_core_server.service()));
+
+    // Create an async runtime and register the top-level async services
+    let async_runtime = Arc::new(AsyncRuntime::new());
+    async_runtime.register(rpc_core_server);
+    async_runtime.register(grpc_server);
 
     // Bind the keyboard signal to the emitter. The emitter will then shutdown core
     Arc::new(signals::Signals::new(&core)).init();
