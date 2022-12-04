@@ -64,7 +64,7 @@ impl GrpcConnection {
                     notification = recv_channel.recv() => {
                         match notification {
                             Ok(notification) => {
-                                println!("[GrpcConnection] collect_task listener id {}: {:?}", listener_id, notification);
+                                trace!("sending {} to listener id {}", notification, listener_id);
                                 match sender.send(Ok((&*notification).into())).await {
                                     Ok(_) => (),
                                     Err(err) => {
