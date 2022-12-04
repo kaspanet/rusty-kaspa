@@ -48,10 +48,12 @@ impl TryFrom<&RpcBlock> for Block {
     fn try_from(item: &RpcBlock) -> RpcResult<Self> {
         Ok(Self {
             header: Arc::new((&item.header).try_into()?),
-
-            // TODO: Implement converters for all tx structs and fill transactions
-            // with real values.
-            transactions: Arc::new(vec![]),
+            transactions: Arc::new(
+                item.transactions
+                    .iter()
+                    .map(consensus_core::tx::Transaction::try_from)
+                    .collect::<RpcResult<Vec<consensus_core::tx::Transaction>>>()?,
+            ),
         })
     }
 }
