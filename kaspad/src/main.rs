@@ -70,7 +70,8 @@ pub fn main() {
 
     // ---
 
-    let params = DEVNET_PARAMS;
+    let mut params = DEVNET_PARAMS;
+    params.genesis_bits = 0x1f4e54ab;
     let db = Arc::new(DB::open_default(db_dir.to_str().unwrap()).unwrap());
     let consensus = Arc::new(Consensus::new(db, &params));
     // Disable monitoring temporarily since it generates overflows

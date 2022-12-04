@@ -9,7 +9,7 @@ use crate::{
         listener::{ListenerID, ListenerReceiverSide, ListenerUtxoNotificationFilterSetting},
         notifier::Notifier,
     },
-    NotificationType, RpcError, RpcResult,
+    Notification, NotificationType, RpcError, RpcResult,
 };
 use async_trait::async_trait;
 use consensus_core::{
@@ -80,28 +80,30 @@ impl RpcCoreService {
 #[async_trait]
 impl RpcApi for RpcCoreService {
     async fn submit_block_call(&self, request: SubmitBlockRequest) -> RpcResult<SubmitBlockResponse> {
-        trace!("[RpcCoreService] submit_block_call request {:?}", request);
+        let try_block: RpcResult<Block> = (&request.block).try_into();
+        if let Err(ref err) = try_block {
+            trace!("incoming SubmitBlockRequest with block conversion error: {}", err);
+        }
+        let block = try_block?;
+        trace!("incoming SubmitBlockRequest for block {}", block.header.hash);
 
-        let block: Block = (&request.block).try_into()?;
-
-        // TODO: reenable NewBlockTemplate notification
-        //let result =
-        match self.consensus.clone().validate_and_insert_block(block, true).await {
+        let result = match self.consensus.clone().validate_and_insert_block(block, true).await {
             Ok(_) => Ok(SubmitBlockResponse { report: SubmitBlockReport::Success }),
             Err(err) => {
                 trace!("submit block error: {}", err);
                 Ok(SubmitBlockResponse { report: SubmitBlockReport::Reject(SubmitBlockRejectReason::BlockInvalid) })
             } // TODO: handle also the IsInIBD reject reason
-        }
+        };
 
         // Emit a NewBlockTemplate notification
-        //self.notifier.clone().notify(Arc::new(Notification::NewBlockTemplate(NewBlockTemplateNotification {}))).unwrap();
+        self.notifier.clone().notify(Arc::new(Notification::NewBlockTemplate(NewBlockTemplateNotification {}))).unwrap();
 
-        //result
+        result
     }
 
     async fn get_block_template_call(&self, request: GetBlockTemplateRequest) -> RpcResult<GetBlockTemplateResponse> {
-        //trace!("[RpcCoreService] get_block_template_call request {:?}", request);
+        trace!("incoming GetBlockTemplate request");
+
         // TODO: Replace this hack by a call to build the script (some txscript.PayToAddrScript(payAddress) equivalent).
         //       See app\rpc\rpchandlers\get_block_template.go HandleGetBlockTemplate
         const ADDRESS_PUBLIC_KEY_SCRIPT_PUBLIC_KEY_VERSION: u16 = 0;
