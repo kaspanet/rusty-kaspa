@@ -9,7 +9,7 @@ use crate::{
         listener::{ListenerID, ListenerReceiverSide, ListenerUtxoNotificationFilterSetting},
         notifier::Notifier,
     },
-    Notification, NotificationType, RpcError, RpcResult,
+    NotificationType, RpcError, RpcResult,
 };
 use async_trait::async_trait;
 use consensus_core::{
@@ -83,16 +83,19 @@ impl RpcApi for RpcCoreService {
         trace!("[RpcCoreService] submit_block_call request {:?}", request);
 
         let block: Block = (&request.block).try_into()?;
-        let result = match self.consensus.clone().validate_and_insert_block(block, true).await {
+
+        // TODO: reenable NewBlockTemplate notification
+        //let result =
+        match self.consensus.clone().validate_and_insert_block(block, true).await {
             Ok(_) => Ok(SubmitBlockResponse { report: SubmitBlockReport::Success }),
             Err(_) => Ok(SubmitBlockResponse { report: SubmitBlockReport::Reject(SubmitBlockRejectReason::BlockInvalid) }),
             // TODO: handle also the IsInIBD reject reason
-        };
+        }
 
         // Emit a NewBlockTemplate notification
-        self.notifier.clone().notify(Arc::new(Notification::NewBlockTemplate(NewBlockTemplateNotification {}))).unwrap();
+        //self.notifier.clone().notify(Arc::new(Notification::NewBlockTemplate(NewBlockTemplateNotification {}))).unwrap();
 
-        result
+        //result
     }
 
     async fn get_block_template_call(&self, request: GetBlockTemplateRequest) -> RpcResult<GetBlockTemplateResponse> {
