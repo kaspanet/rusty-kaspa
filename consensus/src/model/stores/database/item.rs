@@ -23,8 +23,9 @@ impl<T> CachedDbItem<T> {
         T: Clone + DeserializeOwned,
     {
         if let Some(item) = self.cached_item.read().clone() {
-            Ok(item)
-        } else if let Some(slice) = self.db.get_pinned(self.key)? {
+            return Ok(item);
+        }
+        if let Some(slice) = self.db.get_pinned(self.key)? {
             let item: T = bincode::deserialize(&slice)?;
             *self.cached_item.write() = Some(item.clone());
             Ok(item)
