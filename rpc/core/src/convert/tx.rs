@@ -79,8 +79,14 @@ impl TryFrom<&RpcTransaction> for Transaction {
     fn try_from(item: &RpcTransaction) -> RpcResult<Self> {
         Ok(Transaction::new(
             item.version,
-            vec![],
-            vec![],
+            item.inputs
+                .iter()
+                .map(consensus_core::tx::TransactionInput::try_from)
+                .collect::<RpcResult<Vec<consensus_core::tx::TransactionInput>>>()?,
+            item.outputs
+                .iter()
+                .map(consensus_core::tx::TransactionOutput::try_from)
+                .collect::<RpcResult<Vec<consensus_core::tx::TransactionOutput>>>()?,
             item.lock_time,
             item.subnetwork_id.clone(),
             item.gas,
