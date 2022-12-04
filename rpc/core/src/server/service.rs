@@ -88,8 +88,10 @@ impl RpcApi for RpcCoreService {
         //let result =
         match self.consensus.clone().validate_and_insert_block(block, true).await {
             Ok(_) => Ok(SubmitBlockResponse { report: SubmitBlockReport::Success }),
-            Err(_) => Ok(SubmitBlockResponse { report: SubmitBlockReport::Reject(SubmitBlockRejectReason::BlockInvalid) }),
-            // TODO: handle also the IsInIBD reject reason
+            Err(err) => {
+                trace!("submit block error: {}", err);
+                Ok(SubmitBlockResponse { report: SubmitBlockReport::Reject(SubmitBlockRejectReason::BlockInvalid) })
+            } // TODO: handle also the IsInIBD reject reason
         }
 
         // Emit a NewBlockTemplate notification

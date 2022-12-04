@@ -154,7 +154,7 @@ impl Rpc for Arc<GrpcService> {
             loop {
                 match request_stream.message().await {
                     Ok(Some(request)) => {
-                        println!("Request is {:?}", request);
+                        trace!("Incoming {:?}", request);
                         let response: KaspadResponse = match request.payload {
                             Some(Payload::SubmitBlockRequest(ref request)) => match request.try_into() {
                                 Ok(request) => core_service.submit_block_call(request).await.into(),
@@ -205,7 +205,7 @@ impl Rpc for Arc<GrpcService> {
                             .into(),
                         };
 
-                        println!("Response is {:?}", response);
+                        trace!("Outgoing {:?}", response);
 
                         match send_channel.send(Ok(response)).await {
                             Ok(_) => {}
