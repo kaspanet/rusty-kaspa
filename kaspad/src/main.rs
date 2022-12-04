@@ -11,9 +11,7 @@ use std::sync::Arc;
 use thiserror::__private::PathAsDisplay;
 
 use consensus::consensus::Consensus;
-use consensus::params::MAINNET_PARAMS;
-use consensus_core::blockhash;
-use hashes::Hash;
+use consensus::params::DEVNET_PARAMS;
 use kaspa_core::core::Core;
 use kaspa_core::*;
 use rpc_core::server::collector::ConsensusNotificationChannel;
@@ -68,31 +66,12 @@ pub fn main() {
     fs::create_dir_all(db_dir.as_path()).unwrap();
     let grpc_server_addr = args.rpc_listen.unwrap_or_else(|| "127.0.0.1:16110".to_string()).parse().unwrap();
 
-    let genesis: Hash = blockhash::new_unique();
-    let bps = 8.0;
-    let delay = 2.0;
-
-    trace!("Kaspad starting... (round-based simulation with BPS={} and D={})", bps, delay);
-    trace!("\n\n ------ NOTE: this code is just a placeholder for the actual kaspad code, for an actual simulation run the simpa binary ------\n\n");
-
-    // rayon::ThreadPoolBuilder::new()
-    //     .num_threads(8)
-    //     .build_global()
-    //     .unwrap();
-
-    println!("Using rayon thread pool with {} threads", rayon::current_num_threads());
-
     let core = Arc::new(Core::new());
 
     // ---
 
-    let mut params = MAINNET_PARAMS.clone_with_skip_pow();
-    params.genesis_hash = genesis;
-    params.genesis_timestamp = 0;
-
+    let params = DEVNET_PARAMS;
     let db = Arc::new(DB::open_default(db_dir.to_str().unwrap()).unwrap());
-
-    // Make sure to create the DB first, so it cleans up last
     let consensus = Arc::new(Consensus::new(db, &params));
     let monitor = Arc::new(ConsensusMonitor::new(consensus.processing_counters().clone()));
 
