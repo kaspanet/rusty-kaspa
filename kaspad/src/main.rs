@@ -64,7 +64,7 @@ pub fn main() {
     println!("Application directory: {}", app_dir.as_display());
     println!("Data directory: {}", db_dir.as_display());
     fs::create_dir_all(db_dir.as_path()).unwrap();
-    let grpc_server_addr = args.rpc_listen.unwrap_or_else(|| "127.0.0.1:16110".to_string()).parse().unwrap();
+    let grpc_server_addr = args.rpc_listen.unwrap_or_else(|| "127.0.0.1:16610".to_string()).parse().unwrap();
 
     let core = Arc::new(Core::new());
 
@@ -73,7 +73,8 @@ pub fn main() {
     let params = DEVNET_PARAMS;
     let db = Arc::new(DB::open_default(db_dir.to_str().unwrap()).unwrap());
     let consensus = Arc::new(Consensus::new(db, &params));
-    let monitor = Arc::new(ConsensusMonitor::new(consensus.processing_counters().clone()));
+    // Disable monitoring temporarily since it generates overflows
+    let _monitor = Arc::new(ConsensusMonitor::new(consensus.processing_counters().clone()));
 
     let notification_channel = ConsensusNotificationChannel::default();
     let rpc_core_server = Arc::new(RpcCoreServer::new(consensus.clone(), notification_channel.receiver()));
@@ -89,7 +90,8 @@ pub fn main() {
 
     // Consensus must start first in order to init genesis in stores
     core.bind(consensus);
-    core.bind(monitor);
+    // Disable monitoring temporarily since it generates overflows
+    // core.bind(monitor);
     core.bind(async_runtime);
 
     core.run();
