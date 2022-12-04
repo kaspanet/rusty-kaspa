@@ -16,9 +16,9 @@ macro_rules! trace {
 macro_rules! trace {
     ($($t:tt)*) => {
         #[allow(unused_unsafe)]
-        let _ = format_args!($($t)*); // Dummy code for using the variables
+        //let _ = format_args!($($t)*); // Dummy code for using the variables
         // Disable trace until we implement log-level cmd configuration
-        // unsafe { println!("TRACE: {}",&format_args!($($t)*).to_string()) }
+        unsafe { println!("TRACE: {}",&format_args!($($t)*).to_string()) }
     };
 }
 

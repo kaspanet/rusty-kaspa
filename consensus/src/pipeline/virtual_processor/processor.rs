@@ -461,8 +461,8 @@ impl VirtualStateProcessor {
                     }
                     Err(err) => panic!("unexpected store error {}", err),
                 }
-            },
-            StatusUTXOValid => {},
+            }
+            StatusUTXOValid => {}
             _ => panic!("unexpected genesis status {:?}", status),
         }
     }

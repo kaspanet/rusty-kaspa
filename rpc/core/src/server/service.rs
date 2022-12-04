@@ -9,7 +9,7 @@ use crate::{
         listener::{ListenerID, ListenerReceiverSide, ListenerUtxoNotificationFilterSetting},
         notifier::Notifier,
     },
-    NotificationType, RpcError, RpcResult,
+    Notification, NotificationType, RpcError, RpcResult,
 };
 use async_trait::async_trait;
 use consensus_core::{
@@ -83,15 +83,20 @@ impl RpcApi for RpcCoreService {
         trace!("[RpcCoreService] submit_block_call request {:?}", request);
 
         let block: Block = (&request.block).try_into()?;
-        match self.consensus.clone().validate_and_insert_block(block, true).await {
+        let result = match self.consensus.clone().validate_and_insert_block(block, true).await {
             Ok(_) => Ok(SubmitBlockResponse { report: SubmitBlockReport::Success }),
             Err(_) => Ok(SubmitBlockResponse { report: SubmitBlockReport::Reject(SubmitBlockRejectReason::BlockInvalid) }),
             // TODO: handle also the IsInIBD reject reason
-        }
+        };
+
+        // Emit a NewBlockTemplate notification
+        self.notifier.clone().notify(Arc::new(Notification::NewBlockTemplate(NewBlockTemplateNotification {}))).unwrap();
+
+        result
     }
 
     async fn get_block_template_call(&self, request: GetBlockTemplateRequest) -> RpcResult<GetBlockTemplateResponse> {
-        trace!("[RpcCoreService] get_block_template_call request {:?}", request);
+        //trace!("[RpcCoreService] get_block_template_call request {:?}", request);
         // TODO: Replace this hack by a call to build the script (some txscript.PayToAddrScript(payAddress) equivalent).
         //       See app\rpc\rpchandlers\get_block_template.go HandleGetBlockTemplate
         const ADDRESS_PUBLIC_KEY_SCRIPT_PUBLIC_KEY_VERSION: u16 = 0;
@@ -106,9 +111,9 @@ impl RpcApi for RpcCoreService {
 
         let script_public_key = ScriptPublicKey::new(ADDRESS_PUBLIC_KEY_SCRIPT_PUBLIC_KEY_VERSION, script);
         let miner_data: MinerData = MinerData::new(script_public_key, request.extra_data);
-        trace!("[RpcCoreService] get_block_template_call miner data {:?}", miner_data);
+        //trace!("[RpcCoreService] get_block_template_call miner data {:?}", miner_data);
         let block_template = self.consensus.clone().build_block_template(miner_data, vec![]);
-        trace!("[RpcCoreService] get_block_template_call block template {:?}", block_template);
+        //trace!("[RpcCoreService] get_block_template_call {:?}", block_template);
 
         Ok((&block_template).into())
     }
