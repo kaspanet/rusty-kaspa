@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use crate::{
     block::{Block, BlockTemplate},
+    blockstatus::BlockStatus,
     coinbase::MinerData,
     tx::Transaction,
 };
@@ -11,8 +12,11 @@ use crate::{
 pub trait ConsensusApi: Send + Sync {
     fn build_block_template(self: Arc<Self>, miner_data: MinerData, txs: Vec<Transaction>) -> BlockTemplate;
 
-    fn validate_and_insert_block(self: Arc<Self>, block: Block, update_virtual: bool) -> BoxFuture<'static, Result<(), String>>;
-    // TODO: Change the result of the future to get closer to what Consensus actually returns.
+    fn validate_and_insert_block(
+        self: Arc<Self>,
+        block: Block,
+        update_virtual: bool,
+    ) -> BoxFuture<'static, Result<BlockStatus, String>>;
 }
 
 pub type DynConsensus = Arc<dyn ConsensusApi>;

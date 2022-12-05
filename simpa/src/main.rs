@@ -8,12 +8,11 @@ use consensus::{
         ghostdag::{GhostdagStoreReader, KType},
         headers::HeaderStoreReader,
         relations::RelationsStoreReader,
-        statuses::BlockStatus,
     },
     params::{Params, DEVNET_PARAMS},
     processes::ghostdag::ordering::SortableBlock,
 };
-use consensus_core::{block::Block, header::Header, BlockHashSet, HashMapCustomHasher};
+use consensus_core::{block::Block, blockstatus::BlockStatus, header::Header, BlockHashSet, HashMapCustomHasher};
 use futures::{future::join_all, Future};
 use hashes::Hash;
 use itertools::Itertools;

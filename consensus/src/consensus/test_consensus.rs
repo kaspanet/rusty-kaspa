@@ -7,6 +7,7 @@ use std::{
 use consensus_core::{
     api::ConsensusApi,
     block::{Block, BlockTemplate, MutableBlock},
+    blockstatus::BlockStatus,
     coinbase::MinerData,
     header::Header,
     merkle::calc_hash_merkle_root,
@@ -29,7 +30,6 @@ use crate::{
         headers::{DbHeadersStore, HeaderStoreReader},
         pruning::PruningStoreReader,
         reachability::DbReachabilityStore,
-        statuses::BlockStatus,
         DB,
     },
     params::Params,
@@ -162,7 +162,11 @@ impl ConsensusApi for TestConsensus {
         self.consensus.clone().build_block_template(miner_data, txs)
     }
 
-    fn validate_and_insert_block(self: Arc<Self>, block: Block, update_virtual: bool) -> BoxFuture<'static, Result<(), String>> {
+    fn validate_and_insert_block(
+        self: Arc<Self>,
+        block: Block,
+        update_virtual: bool,
+    ) -> BoxFuture<'static, Result<BlockStatus, String>> {
         self.consensus.clone().validate_and_insert_block(block, update_virtual)
     }
 }

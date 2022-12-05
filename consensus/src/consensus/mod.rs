@@ -21,7 +21,7 @@ use crate::{
             pruning::DbPruningStore,
             reachability::DbReachabilityStore,
             relations::DbRelationsStore,
-            statuses::{BlockStatus, DbStatusesStore, StatusesStoreReader},
+            statuses::{DbStatusesStore, StatusesStoreReader},
             tips::{DbTipsStore, TipsStoreReader},
             utxo_diffs::DbUtxoDiffsStore,
             utxo_multisets::DbUtxoMultisetsStore,
@@ -47,6 +47,7 @@ use crate::{
 use consensus_core::{
     api::ConsensusApi,
     block::{Block, BlockTemplate},
+    blockstatus::BlockStatus,
     coinbase::MinerData,
     tx::Transaction,
     BlockHashSet,
@@ -431,9 +432,13 @@ impl ConsensusApi for Consensus {
         self.as_ref().build_block_template(miner_data, txs)
     }
 
-    fn validate_and_insert_block(self: Arc<Self>, block: Block, _update_virtual: bool) -> BoxFuture<'static, Result<(), String>> {
+    fn validate_and_insert_block(
+        self: Arc<Self>,
+        block: Block,
+        _update_virtual: bool,
+    ) -> BoxFuture<'static, Result<BlockStatus, String>> {
         let result = self.as_ref().validate_and_insert_block(block);
-        Box::pin(async move { result.await.map_err(|err| err.to_string()).map(|_| ()) })
+        Box::pin(async move { result.await.map_err(|err| err.to_string()) })
     }
 }
 

@@ -1,10 +1,10 @@
 use super::infra::{Environment, Process, Resumption, Suspension};
 use consensus::consensus::Consensus;
 use consensus::errors::{BlockProcessResult, RuleError};
-use consensus::model::stores::statuses::BlockStatus;
 use consensus::model::stores::virtual_state::VirtualStateStoreReader;
 use consensus::params::Params;
 use consensus_core::block::Block;
+use consensus_core::blockstatus::BlockStatus;
 use consensus_core::coinbase::MinerData;
 use consensus_core::sign::sign;
 use consensus_core::subnets::SUBNETWORK_ID_NATIVE;
