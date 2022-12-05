@@ -1,20 +1,20 @@
-use crate::{RpcBlockHeader, RpcBlockLevelParents, RpcError, RpcResult};
+use crate::{RpcBlockLevelParents, RpcError, RpcHeader, RpcResult};
 use consensus_core::header::Header;
 
 // ----------------------------------------------------------------------------
 // consensus_core to rpc_core
 // ----------------------------------------------------------------------------
 
-impl From<&Header> for RpcBlockHeader {
+impl From<&Header> for RpcHeader {
     fn from(item: &Header) -> Self {
         Self {
             hash: item.hash,
-            version: item.version.into(),
+            version: item.version,
             parents: item.parents_by_level.iter().map(|x| RpcBlockLevelParents { parent_hashes: x.clone() }).collect(),
             hash_merkle_root: item.hash_merkle_root,
             accepted_id_merkle_root: item.accepted_id_merkle_root,
             utxo_commitment: item.utxo_commitment,
-            timestamp: item.timestamp.try_into().expect("time stamp is convertible from u64 to i64"),
+            timestamp: item.timestamp,
             bits: item.bits,
             nonce: item.nonce,
             daa_score: item.daa_score,
@@ -29,16 +29,16 @@ impl From<&Header> for RpcBlockHeader {
 // rpc_core to consensus_core
 // ----------------------------------------------------------------------------
 
-impl TryFrom<&RpcBlockHeader> for Header {
+impl TryFrom<&RpcHeader> for Header {
     type Error = RpcError;
-    fn try_from(item: &RpcBlockHeader) -> RpcResult<Self> {
+    fn try_from(item: &RpcHeader) -> RpcResult<Self> {
         let mut header = Self::new(
-            item.version.try_into()?,
+            item.version,
             item.parents.iter().map(|x| x.parent_hashes.clone()).collect(),
             item.hash_merkle_root,
             item.accepted_id_merkle_root,
             item.utxo_commitment,
-            item.timestamp.try_into()?,
+            item.timestamp,
             item.bits,
             item.nonce,
             item.daa_score,
