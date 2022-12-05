@@ -322,7 +322,7 @@ impl VirtualStateProcessor {
         }
 
         // TODO: Make a separate pruning processor and send to its channel here
-        self.maybe_update_pruning_point_and_candidate()
+        self.advance_pruning_point_and_candidate_if_possible()
     }
 
     fn commit_utxo_state(self: &Arc<Self>, current: Hash, mergeset_diff: UtxoDiff, multiset: MuHash, acceptance_data: AcceptanceData) {
@@ -401,7 +401,7 @@ impl VirtualStateProcessor {
         BlockTemplate::new(MutableBlock::new(header, txs), miner_data, coinbase.has_red_reward, selected_parent_timestamp)
     }
 
-    fn maybe_update_pruning_point_and_candidate(self: &Arc<Self>) {
+    fn advance_pruning_point_and_candidate_if_possible(self: &Arc<Self>) {
         let virtual_sp = self.virtual_state_store.read().get().unwrap().ghostdag_data.selected_parent;
         if virtual_sp == self.genesis_hash {
             return;

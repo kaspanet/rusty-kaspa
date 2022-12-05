@@ -391,7 +391,7 @@ impl HeaderProcessor {
         header.timestamp = self.genesis_timestamp;
         let header = Arc::new(header);
         let mut ctx = HeaderProcessingContext::new(self.genesis_hash, &header, PruningPointInfo::from_genesis(self.genesis_hash));
-        ctx.ghostdag_data = Some(self.ghostdag_manager.genesis_ghostdag_data());
+        ctx.ghostdag_data = Some(Arc::new(self.ghostdag_manager.genesis_ghostdag_data()));
         ctx.block_window_for_difficulty = Some(Default::default());
         ctx.block_window_for_past_median_time = Some(Default::default());
         ctx.mergeset_non_daa = Some(Default::default());
