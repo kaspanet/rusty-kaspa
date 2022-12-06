@@ -57,7 +57,7 @@ use futures_util::future::BoxFuture;
 use hashes::Hash;
 use kaspa_core::{core::Core, service::Service};
 use parking_lot::RwLock;
-use std::future::Future;
+use std::{future::Future, sync::atomic::Ordering};
 use std::{
     ops::DerefMut,
     sync::Arc,
@@ -395,6 +395,7 @@ impl Consensus {
     pub fn validate_and_insert_block(&self, block: Block) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
         let (tx, rx): (BlockResultSender, _) = oneshot::channel();
         self.block_sender.send(BlockTask::Process(block, vec![tx])).unwrap();
+        self.counters.blocks_submitted.fetch_add(1, Ordering::SeqCst);
         async { rx.await.unwrap() }
     }
 

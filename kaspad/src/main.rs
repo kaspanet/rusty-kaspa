@@ -10,17 +10,15 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use thiserror::__private::PathAsDisplay;
 
+use crate::monitor::ConsensusMonitor;
 use consensus::consensus::Consensus;
 use consensus::params::DEVNET_PARAMS;
+use kaspa_core::{info, trace};
 use rpc_core::server::collector::ConsensusNotificationChannel;
 use rpc_core::server::RpcCoreServer;
 use rpc_grpc::server::GrpcServer;
 
-use log::{info, trace};
-
-use crate::emulator::ConsensusMonitor;
-
-mod emulator;
+mod monitor;
 
 const DEFAULT_DATA_DIR: &str = "datadir";
 
@@ -67,6 +65,8 @@ pub fn main() {
     // Initialize the logger
     kaspa_core::log::init_logger(&args.log_level);
 
+    info!("{} v{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+
     // TODO: Refactor all this quick-and-dirty code
     let app_dir = args
         .app_dir
@@ -87,8 +87,7 @@ pub fn main() {
     let params = DEVNET_PARAMS;
     let db = Arc::new(DB::open_default(db_dir.to_str().unwrap()).unwrap());
     let consensus = Arc::new(Consensus::new(db, &params));
-    // Disable monitoring temporarily since it generates overflows
-    let _monitor = Arc::new(ConsensusMonitor::new(consensus.processing_counters().clone()));
+    let monitor = Arc::new(ConsensusMonitor::new(consensus.processing_counters().clone()));
 
     let notification_channel = ConsensusNotificationChannel::default();
     let rpc_core_server = Arc::new(RpcCoreServer::new(consensus.clone(), notification_channel.receiver()));
@@ -104,8 +103,7 @@ pub fn main() {
 
     // Consensus must start first in order to init genesis in stores
     core.bind(consensus);
-    // Disable monitoring temporarily since it generates overflows
-    // core.bind(monitor);
+    core.bind(monitor);
     core.bind(async_runtime);
 
     core.run();
