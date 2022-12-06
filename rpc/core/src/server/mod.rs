@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use consensus_core::api::DynConsensus;
 use kaspa_core::{
-    task::service::{AsynServiceFuture, AsyncService},
+    task::service::{AsyncService, AsyncServiceFuture},
     trace,
 };
 use kaspa_utils::triggers::DuplexTrigger;
@@ -39,7 +39,7 @@ impl AsyncService for RpcCoreServer {
         RPC_CORE_SERVICE
     }
 
-    fn start(self: Arc<Self>) -> AsynServiceFuture {
+    fn start(self: Arc<Self>) -> AsyncServiceFuture {
         trace!("{} starting", RPC_CORE_SERVICE);
         let service = self.service.clone();
 
@@ -60,7 +60,7 @@ impl AsyncService for RpcCoreServer {
         self.shutdown.request.trigger.trigger();
     }
 
-    fn stop(self: Arc<Self>) -> AsynServiceFuture {
+    fn stop(self: Arc<Self>) -> AsyncServiceFuture {
         trace!("{} stopping", RPC_CORE_SERVICE);
         let service = self.service.clone();
         let shutdown_executed_signal = self.shutdown.response.listener.clone();

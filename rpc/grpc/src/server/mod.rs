@@ -1,6 +1,6 @@
 use crate::protowire::rpc_server::RpcServer;
 use kaspa_core::{
-    task::service::{AsynServiceFuture, AsyncService},
+    task::service::{AsyncService, AsyncServiceFuture},
     trace,
 };
 use kaspa_utils::triggers::DuplexTrigger;
@@ -34,13 +34,13 @@ impl AsyncService for GrpcServer {
         GRPC_SERVER
     }
 
-    fn start(self: Arc<Self>) -> AsynServiceFuture {
+    fn start(self: Arc<Self>) -> AsyncServiceFuture {
         trace!("{} starting", GRPC_SERVER);
 
         let grpc_service = self.grpc_service.clone();
         let address = self.address;
 
-        // Prepare a start shutdown signal receiver and a shutwdown ended signal sender
+        // Prepare a start shutdown signal receiver and a shutdown ended signal sender
         let shutdown_signal = self.shutdown.request.listener.clone();
         let shutdown_executed = self.shutdown.response.trigger.clone();
 
@@ -65,7 +65,7 @@ impl AsyncService for GrpcServer {
                 }
             }
 
-            // Send a signl telling the shutdown is done
+            // Send a signal telling the shutdown is done
             shutdown_executed.trigger();
         })
     }
@@ -75,7 +75,7 @@ impl AsyncService for GrpcServer {
         self.shutdown.request.trigger.trigger();
     }
 
-    fn stop(self: Arc<Self>) -> AsynServiceFuture {
+    fn stop(self: Arc<Self>) -> AsyncServiceFuture {
         trace!("{} stopping", GRPC_SERVER);
         // Launch the shutdown process as a task
         let shutdown_executed_signal = self.shutdown.response.listener.clone();

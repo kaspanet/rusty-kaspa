@@ -23,9 +23,9 @@ impl ConsensusMonitor {
 
     pub fn worker(self: &Arc<ConsensusMonitor>) {
         let mut last_snapshot = self.counters.snapshot();
-
+        let snapshot_interval = 10;
         loop {
-            thread::sleep(Duration::from_millis(1000));
+            thread::sleep(Duration::from_secs(snapshot_interval));
 
             if self.terminate.load(Ordering::SeqCst) {
                 break;
@@ -33,19 +33,19 @@ impl ConsensusMonitor {
 
             let snapshot = self.counters.snapshot();
 
-            let send_rate = snapshot.blocks_submitted - last_snapshot.blocks_submitted;
-            let header_rate = snapshot.header_counts - last_snapshot.header_counts;
-            let deps_rate = snapshot.dep_counts - last_snapshot.dep_counts;
+            let send_rate = (snapshot.blocks_submitted - last_snapshot.blocks_submitted) as f64 / snapshot_interval as f64;
+            let header_rate = (snapshot.header_counts - last_snapshot.header_counts) as f64 / snapshot_interval as f64;
+            let deps_rate = (snapshot.dep_counts - last_snapshot.dep_counts) as f64 / snapshot_interval as f64;
             let pending: i64 = i64::try_from(snapshot.blocks_submitted).unwrap() - i64::try_from(snapshot.header_counts).unwrap();
 
             info!(
-                "sent: {}, processed: {}, pending: {}, -> send rate b/s: {}, process rate b/s: {}, deps rate e/s: {}",
+                "sent: {}, processed: {}, pending: {}, -> send rate b/s: {:.2}, process rate b/s: {:.2}, deps rate e/s: {:.2}",
                 snapshot.blocks_submitted.to_formatted_string(&Locale::en),
                 snapshot.header_counts.to_formatted_string(&Locale::en),
                 pending.to_formatted_string(&Locale::en),
-                send_rate.to_formatted_string(&Locale::en),
-                header_rate.to_formatted_string(&Locale::en),
-                deps_rate.to_formatted_string(&Locale::en),
+                send_rate,
+                header_rate,
+                deps_rate,
             );
 
             last_snapshot = snapshot;

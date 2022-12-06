@@ -9,7 +9,7 @@ use std::{
 };
 use tokio::task::{JoinError, JoinHandle as TaskJoinHandle};
 
-const ASYNC_RUNTIME: &str = "asnyc-runtime";
+const ASYNC_RUNTIME: &str = "async-runtime";
 
 /// AsyncRuntime registers async services and provides
 /// a tokio Runtime to run them.
