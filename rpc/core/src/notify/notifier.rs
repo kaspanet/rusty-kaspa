@@ -184,7 +184,7 @@ impl Inner {
             }
 
             // We will send subscribe messages for all dispatch messages if event is a filtered UtxosChanged.
-            // Otherwise, subscribe message is only sent when needed by the execution of the dispatche message.
+            // Otherwise, subscribe message is only sent when needed by the execution of the dispatch message.
             let report_all_changes =
                 event == EventType::UtxosChanged && sending_changed_utxos == ListenerUtxoNotificationFilterSetting::FilteredByAddress;
 
@@ -193,7 +193,7 @@ impl Inner {
                 // If needed, send subscribe message based on listeners map being empty or not
                 if need_subscribe && has_subscriber {
                     if listeners.len() > 0 {
-                        // TODO: handle actual utxo addresse set
+                        // TODO: handle actual utxo address set
 
                         send_subscribe_message(send_subscriber.as_ref().unwrap().clone(), SubscribeMessage::StartEvent(event.into()));
                     } else {

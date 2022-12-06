@@ -46,11 +46,11 @@ use tonic::{Request, Response};
 ///     - stop
 /// - finalize
 ///
-/// _Object is ready for being dropped. Any further usage of it is undefined behaviour._
+/// _Object is ready for being dropped. Any further usage of it is undefined behavior._
 ///
 /// #### Further development
 ///
-/// TODO: implement a queue of requests and a pool of workers preparing and sending back the reponses.
+/// TODO: implement a queue of requests and a pool of workers preparing and sending back the responses.
 pub struct GrpcService {
     core_service: Arc<RpcCoreService>,
     core_channel: NotificationChannel,
@@ -123,11 +123,11 @@ impl Rpc for Arc<GrpcService> {
 
         trace!("MessageStream from {:?}", remote_addr);
 
-        // External sender and reciever
+        // External sender and receiver
         let (send_channel, mut recv_channel) = mpsc::channel::<StatusResult<KaspadResponse>>(128);
         let listener_id = self.register_connection(remote_addr, send_channel.clone()).await;
 
-        // Internal related sender and reciever
+        // Internal related sender and receiver
         let (stream_tx, stream_rx) = mpsc::channel::<StatusResult<KaspadResponse>>(10);
 
         // KaspadResponse forwarder
@@ -230,7 +230,7 @@ impl Rpc for Arc<GrpcService> {
 
                         match send_channel.send(Err(err)).await {
                             Ok(_) => (),
-                            Err(_err) => break, // response was droped
+                            Err(_err) => break, // response was dropped
                         }
                     }
                 }
