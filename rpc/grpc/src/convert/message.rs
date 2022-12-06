@@ -259,5 +259,4 @@ impl TryFrom<&protowire::NotifyNewBlockTemplateResponseMessage> for rpc_core::No
 // Unit tests
 // ----------------------------------------------------------------------------
 
-#[cfg(test)]
-mod tests {}
+// TODO: tests

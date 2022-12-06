@@ -118,9 +118,7 @@ impl RpcApi for RpcCoreService {
 
         let script_public_key = ScriptPublicKey::new(ADDRESS_PUBLIC_KEY_SCRIPT_PUBLIC_KEY_VERSION, script);
         let miner_data: MinerData = MinerData::new(script_public_key, request.extra_data);
-        //trace!("[RpcCoreService] get_block_template_call miner data {:?}", miner_data);
         let block_template = self.consensus.clone().build_block_template(miner_data, vec![]);
-        //trace!("[RpcCoreService] get_block_template_call {:?}", block_template);
 
         Ok((&block_template).into())
     }

@@ -204,7 +204,6 @@ impl Rpc for Arc<GrpcService> {
                             ))
                             .into(),
                         };
-
                         //trace!("Outgoing {:?}", response);
 
                         match send_channel.send(Ok(response)).await {
