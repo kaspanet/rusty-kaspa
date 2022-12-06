@@ -12,7 +12,7 @@ As an illustration, let's pretend that we add a new `submit_block` method.
 
 ## rpc-core
 
-1. Create an ops in `rpc_core::api::ops::RpcApiOps`
+1. Create an op variant in `rpc_core::api::ops::RpcApiOps`
    (ie. `SubmitBlock`)
 2. Create in `rpc_core::model::message` a pair of request and response structures
    (ie. `SubmitBlockRequest` and `SubmitBlockResponse`).
