@@ -22,6 +22,7 @@ rayon.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread"] }
 clap.workspace = true
+log.workspace = true
 rand_distr = "0.4"
 num-format = "0.4"
 dirs = "4.0"

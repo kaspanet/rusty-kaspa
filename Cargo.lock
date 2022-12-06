@@ -41,6 +41,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "aho-corasick"
+version = "0.7.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cc936419f96fa211c1b9166887b38e5e40b19958e5b895be7c1f93adec7071ac"
+dependencies = [
+ "memchr",
+]
+
+[[package]]
 name = "anes"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -658,6 +667,7 @@ dependencies = [
  "itertools",
  "kaspa-core",
  "kaspa-utils",
+ "log",
  "math",
  "merkle",
  "muhash",
@@ -950,6 +960,19 @@ name = "either"
 version = "1.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "90e5c1c8368803113bf0c9584fc495a58b86dc8a29edbf8fe877d21d9507e797"
+
+[[package]]
+name = "env_logger"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "85cdab6a89accf66733ad5a1693a4dcced6aeff64602b634530dd73c1f3ee9f0"
+dependencies = [
+ "humantime",
+ "is-terminal",
+ "log",
+ "regex",
+ "termcolor",
+]
 
 [[package]]
 name = "errno"
@@ -1326,6 +1349,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c4a1e36c821dbe04574f602848a19f742f4fb3c98d40449f11bcad18d6b17421"
 
 [[package]]
+name = "humantime"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9a3a5bfb195931eeb336b2a7b4d761daec841b97f947d34394601737a7bba5e4"
+
+[[package]]
 name = "hyper"
 version = "0.14.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1482,8 +1511,10 @@ name = "kaspa-core"
 version = "0.1.0"
 dependencies = [
  "ctrlc",
+ "env_logger",
  "futures-util",
  "intertrait",
+ "log",
  "tokio",
  "wasm-bindgen",
 ]
@@ -1520,6 +1551,7 @@ dependencies = [
  "futures-util",
  "hashes",
  "kaspa-core",
+ "log",
  "num-format",
  "rand 0.8.5",
  "rand_distr",
@@ -2311,6 +2343,8 @@ version = "1.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e076559ef8e241f2ae3479e36f97bd5741c0330689e217ad51ce2c76808b868a"
 dependencies = [
+ "aho-corasick",
+ "memchr",
  "regex-syntax",
 ]
 
@@ -2355,6 +2389,7 @@ dependencies = [
  "hashes",
  "kaspa-core",
  "kaspa-utils",
+ "log",
  "math",
  "rand 0.8.5",
  "serde",
@@ -2374,6 +2409,7 @@ dependencies = [
  "h2",
  "kaspa-core",
  "kaspa-utils",
+ "log",
  "prost",
  "rpc-core",
  "thiserror",
