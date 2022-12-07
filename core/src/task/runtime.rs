@@ -43,6 +43,8 @@ impl AsyncRuntime {
 
     /// Launch a tokio Runtime and run the top-level async objects
     #[tokio::main(worker_threads = 2)]
+    // TODO: increase the number of threads if needed
+    // TODO: build the runtime explicitly and dedicate a number of threads based on the host specs
     pub async fn worker(self: &Arc<AsyncRuntime>) {
         // Start all async services
         // All services futures are spawned as tokio tasks to enable parallelism

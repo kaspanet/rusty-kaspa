@@ -32,7 +32,7 @@ impl From<&Header> for RpcHeader {
 impl TryFrom<&RpcHeader> for Header {
     type Error = RpcError;
     fn try_from(item: &RpcHeader) -> RpcResult<Self> {
-        let mut header = Self::new(
+        let header = Self::new(
             item.version,
             item.parents.iter().map(|x| x.parent_hashes.clone()).collect(),
             item.hash_merkle_root,
@@ -46,7 +46,6 @@ impl TryFrom<&RpcHeader> for Header {
             item.blue_score,
             item.pruning_point,
         );
-        header.finalize();
         Ok(header)
     }
 }
