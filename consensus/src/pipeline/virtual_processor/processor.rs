@@ -198,18 +198,15 @@ impl VirtualStateProcessor {
     }
 
     fn resolve_virtual(self: &Arc<Self>) {
-        let prev_state = self.virtual_state_store.read().get().unwrap();
-        let virtual_parents = self.pick_virtual_parents();
-
         // TODO: check finality violation
         // TODO: handle disqualified chain loop
         // TODO: acceptance data format
         // TODO: refactor this methods into multiple methods
 
-        let virtual_ghostdag_data = self.ghostdag_manager.ghostdag(&virtual_parents);
-
+        let prev_state = self.virtual_state_store.read().get().unwrap();
+        let tips = self.body_tips_store.read().get().unwrap().iter().copied().collect_vec();
+        let new_selected = self.ghostdag_manager.find_selected_parent(&mut tips.iter().copied());
         let prev_selected = prev_state.ghostdag_data.selected_parent;
-        let new_selected = virtual_ghostdag_data.selected_parent;
 
         let mut split_point: Option<Hash> = None;
         let mut accumulated_diff = prev_state.utxo_diff.clone().to_reversed();
@@ -269,8 +266,13 @@ impl VirtualStateProcessor {
             }
         }
 
-        match self.statuses_store.read().get(new_selected).unwrap() {
+        let new_selected_status = self.statuses_store.read().get(new_selected).unwrap();
+        match new_selected_status {
             BlockStatus::StatusUTXOValid => {
+                let virtual_parents = self.pick_virtual_parents(new_selected, tips);
+                let virtual_ghostdag_data = self.ghostdag_manager.ghostdag(&virtual_parents);
+                assert_eq!(virtual_ghostdag_data.selected_parent, new_selected);
+
                 // Calc the new virtual UTXO diff
                 let selected_parent_multiset_hash = self.utxo_multisets_store.get(virtual_ghostdag_data.selected_parent).unwrap();
                 let selected_parent_utxo_view = self.virtual_utxo_store.as_ref().compose(&accumulated_diff);
@@ -336,16 +338,14 @@ impl VirtualStateProcessor {
         drop(write_guard);
     }
 
-    fn pick_virtual_parents(self: &Arc<Self>) -> Vec<Hash> {
+    fn pick_virtual_parents(self: &Arc<Self>, selected_parent: Hash, mut virtual_parents: Vec<Hash>) -> Vec<Hash> {
         // TODO: implement virtual parents selection rules
         // 1. Max parents
         // 2. Mergeset limit
         // 3. Bounded merge depth
 
-        let mut virtual_parents = self.body_tips_store.read().get().unwrap().iter().copied().collect_vec();
         if virtual_parents.len() > self.max_block_parents as usize {
             // TEMP
-            let selected_parent = self.ghostdag_manager.find_selected_parent(&mut virtual_parents.iter().copied());
             let index = virtual_parents.iter().position(|&h| h == selected_parent).unwrap();
             virtual_parents.swap_remove(index);
             let mut rng = rand::thread_rng();
