@@ -1,14 +1,11 @@
 use consensus::{
     consensus::test_consensus::{create_temp_db, TestConsensus},
     errors::RuleError,
-    model::stores::{
-        reachability::{DbReachabilityStore, StagingReachabilityStore},
-        statuses::BlockStatus,
-    },
+    model::stores::reachability::{DbReachabilityStore, StagingReachabilityStore},
     params::MAINNET_PARAMS,
     processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions},
 };
-use consensus_core::blockhash;
+use consensus_core::{blockhash, blockstatus::BlockStatus};
 use futures_util::future::join_all;
 use hashes::Hash;
 use parking_lot::RwLock;

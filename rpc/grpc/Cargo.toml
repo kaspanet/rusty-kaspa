@@ -13,6 +13,7 @@ kaspa-utils.workspace = true
 kaspa-core.workspace = true
 faster-hex.workspace = true
 async-std.workspace = true
+log.workspace = true
 async-trait = "0.1.57"
 futures = { version = "0.3" }
 tonic = { version = "0.8", features = ["gzip"] }

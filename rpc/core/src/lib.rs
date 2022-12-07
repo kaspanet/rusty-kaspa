@@ -11,6 +11,7 @@ pub mod stubs;
 
 pub mod prelude {
     pub use super::api::notifications::*;
+    pub use super::model::address::*;
     pub use super::model::block::*;
     pub use super::model::blue_work::*;
     pub use super::model::hash::*;
@@ -25,6 +26,7 @@ pub mod prelude {
 pub use api::notifications::*;
 pub use convert::*;
 pub use errors::*;
+pub use model::address::*;
 pub use model::block::*;
 pub use model::blue_work::*;
 pub use model::hash::*;

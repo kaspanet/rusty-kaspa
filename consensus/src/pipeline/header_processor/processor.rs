@@ -14,10 +14,7 @@ use crate::{
             pruning::{DbPruningStore, PruningPointInfo, PruningStore, PruningStoreReader},
             reachability::{DbReachabilityStore, StagingReachabilityStore},
             relations::{DbRelationsStore, RelationsStoreBatchExtensions},
-            statuses::{
-                BlockStatus::{self, StatusHeaderOnly, StatusInvalid},
-                DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader,
-            },
+            statuses::{DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader},
             DB,
         },
     },
@@ -37,6 +34,7 @@ use crate::{
 };
 use consensus_core::{
     blockhash::{BlockHashes, ORIGIN},
+    blockstatus::BlockStatus::{self, StatusHeaderOnly, StatusInvalid},
     header::Header,
     BlockHashSet,
 };

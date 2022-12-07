@@ -28,6 +28,7 @@ rand.workspace = true
 indexmap.workspace = true
 smallvec.workspace = true
 kaspa-utils.workspace = true
+log.workspace = true
 
 rocksdb = "0.19"
 parking_lot = "0.12"

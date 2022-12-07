@@ -6,15 +6,15 @@ use std::str::FromStr;
 // rpc_core to protowire
 // ----------------------------------------------------------------------------
 
-impl From<&rpc_core::RpcBlockHeader> for protowire::RpcBlockHeader {
-    fn from(item: &rpc_core::RpcBlockHeader) -> Self {
+impl From<&rpc_core::RpcHeader> for protowire::RpcBlockHeader {
+    fn from(item: &rpc_core::RpcHeader) -> Self {
         Self {
-            version: item.version,
+            version: item.version.into(),
             parents: item.parents.iter().map(protowire::RpcBlockLevelParents::from).collect(),
             hash_merkle_root: item.hash_merkle_root.to_string(),
             accepted_id_merkle_root: item.accepted_id_merkle_root.to_string(),
             utxo_commitment: item.utxo_commitment.to_string(),
-            timestamp: item.timestamp,
+            timestamp: item.timestamp.try_into().expect("timestamp is always convertible to i64"),
             bits: item.bits,
             nonce: item.nonce,
             daa_score: item.daa_score,
@@ -35,11 +35,14 @@ impl From<&rpc_core::RpcBlockLevelParents> for protowire::RpcBlockLevelParents {
 // protowire to rpc_core
 // ----------------------------------------------------------------------------
 
-impl TryFrom<&protowire::RpcBlockHeader> for rpc_core::RpcBlockHeader {
+impl TryFrom<&protowire::RpcBlockHeader> for rpc_core::RpcHeader {
     type Error = RpcError;
     fn try_from(item: &protowire::RpcBlockHeader) -> RpcResult<Self> {
+        // TODO: determine if we need to calculate the hash here.
+        // If so, do a rpc-core to consensus-core conversion to get the hash.
         Ok(Self {
-            version: item.version,
+            hash: Default::default(),
+            version: item.version.try_into()?,
             parents: item
                 .parents
                 .iter()
@@ -48,7 +51,7 @@ impl TryFrom<&protowire::RpcBlockHeader> for rpc_core::RpcBlockHeader {
             hash_merkle_root: RpcHash::from_str(&item.hash_merkle_root)?,
             accepted_id_merkle_root: RpcHash::from_str(&item.accepted_id_merkle_root)?,
             utxo_commitment: RpcHash::from_str(&item.utxo_commitment)?,
-            timestamp: item.timestamp,
+            timestamp: item.timestamp.try_into()?,
             bits: item.bits,
             nonce: item.nonce,
             daa_score: item.daa_score,

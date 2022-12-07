@@ -27,6 +27,12 @@ pub enum RpcError {
     #[error("Feature not supported")]
     UnsupportedFeature,
 
+    #[error("Primitive to enum conversion error")]
+    PrimitiveToEnumConversionError,
+
+    #[error(transparent)]
+    AddressError(#[from] addresses::AddressError),
+
     #[error("{0}")]
     General(String),
 }

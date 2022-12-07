@@ -11,7 +11,7 @@ impl From<&rpc_core::RpcBlock> for protowire::RpcBlock {
         Self {
             header: Some(protowire::RpcBlockHeader::from(&item.header)),
             transactions: item.transactions.iter().map(protowire::RpcTransaction::from).collect(),
-            verbose_data: Some(protowire::RpcBlockVerboseData::from(&item.verbose_data)),
+            verbose_data: item.verbose_data.as_ref().map(|x| x.into()),
         }
     }
 }
@@ -51,11 +51,7 @@ impl TryFrom<&protowire::RpcBlock> for rpc_core::RpcBlock {
                 .iter()
                 .map(rpc_core::RpcTransaction::try_from)
                 .collect::<RpcResult<Vec<rpc_core::RpcTransaction>>>()?,
-            verbose_data: item
-                .verbose_data
-                .as_ref()
-                .ok_or_else(|| RpcError::MissingRpcFieldError("RpcBlock".to_string(), "verbose_data".to_string()))?
-                .try_into()?,
+            verbose_data: item.verbose_data.as_ref().map(rpc_core::RpcBlockVerboseData::try_from).transpose()?,
         })
     }
 }

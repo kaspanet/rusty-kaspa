@@ -62,3 +62,4 @@ borsh = "0.9.3"
 clap = { version = "4.0.23", features = ["derive"] }
 async-std = { version = "1.12.0", features = ['attributes'] }
 derive_more = { version = "0.99" }
+log = "0.4"

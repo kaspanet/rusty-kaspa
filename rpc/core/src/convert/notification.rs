@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::{notify::collector::ArcConvert, BlockAddedNotification, Notification};
+use crate::{notify::collector::ArcConvert, BlockAddedNotification, NewBlockTemplateNotification, Notification};
 use consensus_core::notify as consensus_notify;
 
 // ----------------------------------------------------------------------------
@@ -11,6 +11,7 @@ impl From<&consensus_notify::Notification> for Notification {
     fn from(item: &consensus_notify::Notification) -> Self {
         match item {
             consensus_notify::Notification::BlockAdded(msg) => Notification::BlockAdded(msg.into()),
+            consensus_notify::Notification::NewBlockTemplate(msg) => Notification::NewBlockTemplate(msg.into()),
         }
     }
 }
@@ -18,6 +19,12 @@ impl From<&consensus_notify::Notification> for Notification {
 impl From<&consensus_notify::BlockAddedNotification> for BlockAddedNotification {
     fn from(item: &consensus_notify::BlockAddedNotification) -> Self {
         Self { block: (&item.block).into() }
+    }
+}
+
+impl From<&consensus_notify::NewBlockTemplateNotification> for NewBlockTemplateNotification {
+    fn from(_: &consensus_notify::NewBlockTemplateNotification) -> Self {
+        Self {}
     }
 }
 

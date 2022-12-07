@@ -21,7 +21,7 @@ use crate::{
             pruning::DbPruningStore,
             reachability::DbReachabilityStore,
             relations::DbRelationsStore,
-            statuses::{BlockStatus, DbStatusesStore, StatusesStoreReader},
+            statuses::{DbStatusesStore, StatusesStoreReader},
             tips::{DbTipsStore, TipsStoreReader},
             utxo_diffs::DbUtxoDiffsStore,
             utxo_multisets::DbUtxoMultisetsStore,
@@ -45,16 +45,19 @@ use crate::{
     },
 };
 use consensus_core::{
+    api::ConsensusApi,
     block::{Block, BlockTemplate},
+    blockstatus::BlockStatus,
     coinbase::MinerData,
     tx::Transaction,
     BlockHashSet,
 };
 use crossbeam_channel::{unbounded, Receiver, Sender};
+use futures_util::future::BoxFuture;
 use hashes::Hash;
 use kaspa_core::{core::Core, service::Service};
 use parking_lot::RwLock;
-use std::future::Future;
+use std::{future::Future, sync::atomic::Ordering};
 use std::{
     ops::DerefMut,
     sync::Arc,
@@ -392,10 +395,11 @@ impl Consensus {
     pub fn validate_and_insert_block(&self, block: Block) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
         let (tx, rx): (BlockResultSender, _) = oneshot::channel();
         self.block_sender.send(BlockTask::Process(block, vec![tx])).unwrap();
+        self.counters.blocks_submitted.fetch_add(1, Ordering::SeqCst);
         async { rx.await.unwrap() }
     }
 
-    pub fn build_block_template(self: &Arc<Self>, miner_data: MinerData, txs: Vec<Transaction>) -> BlockTemplate {
+    pub fn build_block_template(&self, miner_data: MinerData, txs: Vec<Transaction>) -> BlockTemplate {
         self.virtual_processor.build_block_template(miner_data, txs)
     }
 
@@ -405,6 +409,10 @@ impl Consensus {
 
     pub fn block_status(&self, hash: Hash) -> BlockStatus {
         self.statuses_store.read().get(hash).unwrap()
+    }
+
+    pub fn processing_counters(&self) -> &Arc<ProcessingCounters> {
+        &self.counters
     }
 
     pub fn signal_exit(&self) {
@@ -417,6 +425,21 @@ impl Consensus {
         for handle in wait_handles {
             handle.join().unwrap();
         }
+    }
+}
+
+impl ConsensusApi for Consensus {
+    fn build_block_template(self: Arc<Self>, miner_data: MinerData, txs: Vec<Transaction>) -> BlockTemplate {
+        self.as_ref().build_block_template(miner_data, txs)
+    }
+
+    fn validate_and_insert_block(
+        self: Arc<Self>,
+        block: Block,
+        _update_virtual: bool,
+    ) -> BoxFuture<'static, Result<BlockStatus, String>> {
+        let result = self.as_ref().validate_and_insert_block(block);
+        Box::pin(async move { result.await.map_err(|err| err.to_string()) })
     }
 }
 

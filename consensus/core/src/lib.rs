@@ -3,8 +3,10 @@ use std::hash::{BuildHasher, Hasher};
 
 use hashes::Hash;
 
+pub mod api;
 pub mod block;
 pub mod blockhash;
+pub mod blockstatus;
 pub mod coinbase;
 pub mod hashing;
 pub mod header;

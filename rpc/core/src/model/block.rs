@@ -1,14 +1,14 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
 
-use crate::prelude::{RpcBlockHeader, RpcHash, RpcTransaction};
+use crate::prelude::{RpcHash, RpcHeader, RpcTransaction};
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcBlock {
-    pub header: RpcBlockHeader,
+    pub header: RpcHeader,
     pub transactions: Vec<RpcTransaction>,
-    pub verbose_data: RpcBlockVerboseData,
+    pub verbose_data: Option<RpcBlockVerboseData>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]

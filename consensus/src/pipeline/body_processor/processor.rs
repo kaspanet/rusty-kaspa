@@ -9,10 +9,7 @@ use crate::{
             ghostdag::DbGhostdagStore,
             headers::DbHeadersStore,
             reachability::DbReachabilityStore,
-            statuses::{
-                BlockStatus::{self, StatusHeaderOnly, StatusInvalid},
-                DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader,
-            },
+            statuses::{DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader},
             tips::DbTipsStore,
             DB,
         },
@@ -23,7 +20,12 @@ use crate::{
         transaction_validator::TransactionValidator,
     },
 };
-use consensus_core::{block::Block, subnets::SUBNETWORK_ID_COINBASE, tx::Transaction};
+use consensus_core::{
+    block::Block,
+    blockstatus::BlockStatus::{self, StatusHeaderOnly, StatusInvalid},
+    subnets::SUBNETWORK_ID_COINBASE,
+    tx::Transaction,
+};
 use crossbeam_channel::{Receiver, Sender};
 use hashes::Hash;
 use parking_lot::RwLock;

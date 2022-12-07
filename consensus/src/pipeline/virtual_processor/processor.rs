@@ -15,10 +15,7 @@ use crate::{
             pruning::{DbPruningStore, PruningStore, PruningStoreReader},
             reachability::DbReachabilityStore,
             relations::DbRelationsStore,
-            statuses::{
-                BlockStatus::{self, StatusDisqualifiedFromChain, StatusUTXOPendingVerification, StatusUTXOValid},
-                DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader,
-            },
+            statuses::{DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader},
             tips::{DbTipsStore, TipsStoreReader},
             utxo_diffs::{DbUtxoDiffsStore, UtxoDiffsStoreReader},
             utxo_multisets::{DbUtxoMultisetsStore, UtxoMultisetsStoreReader},
@@ -37,6 +34,7 @@ use crate::{
 };
 use consensus_core::{
     block::{BlockTemplate, MutableBlock},
+    blockstatus::BlockStatus::{self, StatusDisqualifiedFromChain, StatusUTXOPendingVerification, StatusUTXOValid},
     coinbase::MinerData,
     header::Header,
     merkle::calc_hash_merkle_root,
@@ -462,6 +460,7 @@ impl VirtualStateProcessor {
                     Err(err) => panic!("unexpected store error {}", err),
                 }
             }
+            StatusUTXOValid => {}
             _ => panic!("unexpected genesis status {:?}", status),
         }
     }
