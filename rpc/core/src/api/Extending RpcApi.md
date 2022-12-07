@@ -23,7 +23,7 @@ As an illustration, let's pretend that we add a new `submit_block` method.
    Implement the first as a call to the second.
    (ie. `async fn submit_block(&self, block: RpcBlock, allow_non_daa_blocks: bool) -> RpcResult<SubmitBlockResponse>` and
    `async fn submit_block_call(&self, request: SubmitBlockRequest) -> RpcResult<SubmitBlockResponse>;`)
-6. Implement the function having a `_call` prefix into `rpc_core::server::service::RpcCoreService`.
+6. Implement the function having a `_call` suffix into `rpc_core::server::service::RpcCoreService`.
 
 ## rpc-grpc
 
@@ -38,6 +38,6 @@ As an illustration, let's pretend that we add a new `submit_block` method.
 7. In `rpc\grpc\src\convert\kaspad.rs`, add calls to `impl_into_kaspad_request!` and `impl_into_kaspad_response!`
    (ie. `impl_into_kaspad_request!(rpc_core::SubmitBlockRequest, SubmitBlockRequestMessage, SubmitBlockRequest);` and
    `impl_into_kaspad_response!(rpc_core::SubmitBlockResponse, SubmitBlockResponseMessage, SubmitBlockResponse);`).
-8. Implement the function having a `_call` prefix into `rpc_grpc::client::RpcApiGrpc`.
+8. Implement the function having a `_call` suffix into `rpc_grpc::client::RpcApiGrpc`.
 9. In `rpc_grpc::server::service::RpcService::message_stream`, requests handler, add an arm and implement
    a handler for the new method.
