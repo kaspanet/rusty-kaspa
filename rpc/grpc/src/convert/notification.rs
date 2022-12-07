@@ -1,6 +1,8 @@
 use rpc_core::{Notification, RpcError, RpcResult};
 
-use crate::protowire::{kaspad_response::Payload, BlockAddedNotificationMessage, KaspadResponse, RpcNotifyCommand};
+use crate::protowire::{
+    kaspad_response::Payload, BlockAddedNotificationMessage, KaspadResponse, NewBlockTemplateNotificationMessage, RpcNotifyCommand,
+};
 
 // ----------------------------------------------------------------------------
 // rpc_core to protowire
@@ -16,6 +18,7 @@ impl From<&rpc_core::Notification> for Payload {
     fn from(item: &rpc_core::Notification) -> Self {
         match item {
             Notification::BlockAdded(ref notif) => Payload::BlockAddedNotification(notif.into()),
+            Notification::NewBlockTemplate(ref notif) => Payload::NewBlockTemplateNotification(notif.into()),
             Notification::VirtualSelectedParentChainChanged(_) => todo!(),
             Notification::FinalityConflict(_) => todo!(),
             Notification::FinalityConflictResolved(_) => todo!(),
@@ -23,7 +26,6 @@ impl From<&rpc_core::Notification> for Payload {
             Notification::VirtualSelectedParentBlueScoreChanged(_) => todo!(),
             Notification::VirtualDaaScoreChanged(_) => todo!(),
             Notification::PruningPointUTXOSetOverride(_) => todo!(),
-            Notification::NewBlockTemplate(_) => todo!(),
         }
     }
 }
@@ -31,6 +33,12 @@ impl From<&rpc_core::Notification> for Payload {
 impl From<&rpc_core::BlockAddedNotification> for BlockAddedNotificationMessage {
     fn from(item: &rpc_core::BlockAddedNotification) -> Self {
         Self { block: Some((&item.block).into()) }
+    }
+}
+
+impl From<&rpc_core::NewBlockTemplateNotification> for NewBlockTemplateNotificationMessage {
+    fn from(_: &rpc_core::NewBlockTemplateNotification) -> Self {
+        Self {}
     }
 }
 
@@ -75,6 +83,13 @@ impl TryFrom<&BlockAddedNotificationMessage> for rpc_core::BlockAddedNotificatio
         } else {
             Err(RpcError::MissingRpcFieldError("BlockAddedNotificationMessage".to_string(), "block".to_string()))
         }
+    }
+}
+
+impl TryFrom<&NewBlockTemplateNotificationMessage> for rpc_core::NewBlockTemplateNotification {
+    type Error = RpcError;
+    fn try_from(_: &NewBlockTemplateNotificationMessage) -> RpcResult<Self> {
+        Ok(Self {})
     }
 }
 

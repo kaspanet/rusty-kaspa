@@ -1,26 +1,103 @@
 use crate::protowire::rpc_server::RpcServer;
-use kaspa_core::trace;
+use kaspa_core::{
+    task::service::{AsyncService, AsyncServiceFuture},
+    trace,
+};
+use kaspa_utils::triggers::DuplexTrigger;
 use rpc_core::server::service::RpcCoreService;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::task::JoinHandle;
-use tonic::codec::CompressionEncoding;
-use tonic::transport::{Error, Server};
+use tonic::{codec::CompressionEncoding, transport::Server};
 
 pub mod connection;
 pub mod service;
 
 pub type StatusResult<T> = Result<T, tonic::Status>;
 
-// TODO: use ctrl-c signaling infrastructure of kaspa-core
+const GRPC_SERVER: &str = "grpc-server";
 
-pub fn run_server(address: SocketAddr, core_service: Arc<RpcCoreService>) -> JoinHandle<Result<(), Error>> {
-    trace!("KaspadRPCServer listening on: {}", address);
+pub struct GrpcServer {
+    address: SocketAddr,
+    grpc_service: Arc<service::GrpcService>,
+    shutdown: DuplexTrigger,
+}
 
-    let grpc_service = service::RpcService::new(core_service);
-    grpc_service.start();
+impl GrpcServer {
+    pub fn new(address: SocketAddr, core_service: Arc<RpcCoreService>) -> Self {
+        let grpc_service = Arc::new(service::GrpcService::new(core_service));
+        Self { address, grpc_service, shutdown: DuplexTrigger::default() }
+    }
+}
 
-    let svc = RpcServer::new(grpc_service).send_compressed(CompressionEncoding::Gzip).accept_compressed(CompressionEncoding::Gzip);
+impl AsyncService for GrpcServer {
+    fn ident(self: Arc<Self>) -> &'static str {
+        GRPC_SERVER
+    }
 
-    tokio::spawn(async move { Server::builder().add_service(svc).serve(address).await })
+    fn start(self: Arc<Self>) -> AsyncServiceFuture {
+        trace!("{} starting", GRPC_SERVER);
+
+        let grpc_service = self.grpc_service.clone();
+        let address = self.address;
+
+        // Prepare a start shutdown signal receiver and a shutdown ended signal sender
+        let shutdown_signal = self.shutdown.request.listener.clone();
+        let shutdown_executed = self.shutdown.response.trigger.clone();
+
+        // Return a future launching the tonic server and waiting for it to shutdown
+        Box::pin(async move {
+            // Start the gRPC service
+            grpc_service.start();
+
+            // Create a protowire RPC server
+            let svc = RpcServer::new(self.grpc_service.clone())
+                .send_compressed(CompressionEncoding::Gzip)
+                .accept_compressed(CompressionEncoding::Gzip);
+
+            // Start the tonic gRPC server
+            trace!("gRPC server listening on: {}", address);
+            match Server::builder().add_service(svc).serve_with_shutdown(address, shutdown_signal).await {
+                Ok(_) => {
+                    trace!("gRPC server exited gracefully");
+                }
+                Err(err) => {
+                    trace!("gRPC server exited with error {0}", err);
+                }
+            }
+
+            // Send a signal telling the shutdown is done
+            shutdown_executed.trigger();
+        })
+    }
+
+    fn signal_exit(self: Arc<Self>) {
+        trace!("sending an exit signal to {}", GRPC_SERVER);
+        self.shutdown.request.trigger.trigger();
+    }
+
+    fn stop(self: Arc<Self>) -> AsyncServiceFuture {
+        trace!("{} stopping", GRPC_SERVER);
+        // Launch the shutdown process as a task
+        let shutdown_executed_signal = self.shutdown.response.listener.clone();
+        let grpc_service = self.grpc_service.clone();
+        Box::pin(async move {
+            // Wait for the tonic server to gracefully shutdown
+            shutdown_executed_signal.await;
+
+            // Stop the gRPC service gracefully
+            match grpc_service.stop().await {
+                Ok(_) => {}
+                Err(err) => {
+                    trace!("Error while stopping the gRPC service: {0}", err);
+                }
+            }
+            match grpc_service.finalize().await {
+                Ok(_) => {}
+                Err(err) => {
+                    trace!("Error while finalizing the gRPC service: {0}", err);
+                }
+            }
+            trace!("{} exiting", GRPC_SERVER);
+        })
+    }
 }

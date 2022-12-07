@@ -3,8 +3,9 @@ use crate::constants;
 use crate::errors::{BlockProcessResult, RuleError};
 use crate::model::services::reachability::ReachabilityService;
 use crate::model::stores::errors::StoreResultExtensions;
-use crate::model::stores::statuses::{BlockStatus::StatusInvalid, StatusesStoreReader};
+use crate::model::stores::statuses::StatusesStoreReader;
 use consensus_core::blockhash::BlockHashExtensions;
+use consensus_core::blockstatus::BlockStatus::StatusInvalid;
 use consensus_core::header::Header;
 use std::{
     sync::Arc,

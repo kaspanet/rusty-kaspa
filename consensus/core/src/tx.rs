@@ -1,3 +1,4 @@
+use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use std::fmt::Display;
@@ -62,7 +63,8 @@ impl UtxoEntry {
 pub type TransactionIndexType = u32;
 
 /// Represents a Kaspa transaction outpoint
-#[derive(Eq, Hash, PartialEq, Debug, Copy, Clone, Serialize, Deserialize)]
+#[derive(Eq, Hash, PartialEq, Debug, Copy, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct TransactionOutpoint {
     pub transaction_id: TransactionId,
     pub index: TransactionIndexType,

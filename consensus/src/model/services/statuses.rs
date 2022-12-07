@@ -1,4 +1,5 @@
-use crate::model::stores::statuses::{BlockStatus, StatusesStoreReader};
+use crate::model::stores::statuses::StatusesStoreReader;
+use consensus_core::blockstatus::BlockStatus;
 use hashes::Hash;
 use parking_lot::RwLock;
 use std::sync::Arc;

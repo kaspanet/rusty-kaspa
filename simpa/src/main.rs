@@ -8,12 +8,11 @@ use consensus::{
         ghostdag::{GhostdagStoreReader, KType},
         headers::HeaderStoreReader,
         relations::RelationsStoreReader,
-        statuses::BlockStatus,
     },
     params::{Params, DEVNET_PARAMS},
     processes::ghostdag::ordering::SortableBlock,
 };
-use consensus_core::{block::Block, header::Header, BlockHashSet, HashMapCustomHasher};
+use consensus_core::{block::Block, blockstatus::BlockStatus, header::Header, BlockHashSet, HashMapCustomHasher};
 use futures::{future::join_all, Future};
 use hashes::Hash;
 use itertools::Itertools;
@@ -63,6 +62,11 @@ struct Args {
     /// Defaults to the number of logical CPU cores.
     #[arg(short, long)]
     virtual_threads: Option<usize>,
+
+    /// Logging level for all subsystems {off, error, warn, info, debug, trace}
+    ///  -- You may also specify <subsystem>=<level>,<subsystem2>=<level>,... to set the log level for individual subsystems
+    #[arg(long = "loglevel", default_value = "info")]
+    log_level: String,
 }
 
 /// Calculates the k parameter of the GHOSTDAG protocol such that anticones lager than k will be created
@@ -86,7 +90,15 @@ fn calculate_ghostdag_k(x: f64, delta: f64) -> u64 {
 
 fn main() {
     let args = Args::parse();
+    kaspa_core::log::init_logger(&args.log_level);
     assert!(args.bps * args.delay < 250.0, "The delay times bps product is larger than 250");
+    if args.miners > 1 {
+        println!(
+            "Warning: number of miners was configured to {}. Currently each miner added doubles the simulation 
+        memory and runtime footprint, while a single miner is sufficient for most simulation purposes (delay is simulated anyway).",
+            args.miners
+        );
+    }
     let mut params = DEVNET_PARAMS.clone_with_skip_pow();
     let mut perf_params = PERF_PARAMS;
     adjust_consensus_params(&args, &mut params);
