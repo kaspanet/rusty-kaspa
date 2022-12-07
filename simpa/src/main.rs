@@ -92,6 +92,13 @@ fn main() {
     let args = Args::parse();
     kaspa_core::log::init_logger(&args.log_level);
     assert!(args.bps * args.delay < 250.0, "The delay times bps product is larger than 250");
+    if args.miners > 1 {
+        println!(
+            "Warning: number of miners was configured to {}. Currently each miner added doubles the simulation 
+        memory and runtime footprint, while a single miner is sufficient for most simulation purposes (delay is simulated anyway).",
+            args.miners
+        );
+    }
     let mut params = DEVNET_PARAMS.clone_with_skip_pow();
     let mut perf_params = PERF_PARAMS;
     adjust_consensus_params(&args, &mut params);
