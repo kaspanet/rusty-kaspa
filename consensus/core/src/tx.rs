@@ -19,6 +19,7 @@ pub use smallvec::smallvec as scriptvec;
 
 /// Represents a Kaspad ScriptPublicKey
 #[derive(Default, Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct ScriptPublicKey {
     version: u16,
     script: ScriptVec, // Kept private to preserve read-only semantics
@@ -42,11 +43,54 @@ impl ScriptPublicKey {
     }
 }
 
+/// Internal private structs for ScriptPublicKey Borsh support
+mod borsh_wrappers {
+    use super::*;
+
+    #[derive(BorshSerialize)]
+    pub(super) struct SerializableScriptPublicKey<'a> {
+        pub version: u16,
+        pub script: &'a [u8], // Optimize serialization by borrowing a slice ref
+    }
+
+    #[derive(BorshDeserialize, BorshSchema)]
+    pub(super) struct ScriptPublicKey {
+        pub version: u16,
+        pub script: Vec<u8>,
+    }
+}
+
+impl BorshSerialize for ScriptPublicKey {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        BorshSerialize::serialize(&borsh_wrappers::SerializableScriptPublicKey { version: self.version, script: &self.script }, writer)
+    }
+}
+
+impl BorshDeserialize for ScriptPublicKey {
+    fn deserialize(buf: &mut &[u8]) -> std::io::Result<Self> {
+        let b: borsh_wrappers::ScriptPublicKey = BorshDeserialize::deserialize(buf)?;
+        Ok(Self::from_vec(b.version, b.script))
+    }
+}
+
+impl BorshSchema for ScriptPublicKey {
+    fn add_definitions_recursively(
+        definitions: &mut std::collections::HashMap<borsh::schema::Declaration, borsh::schema::Definition>,
+    ) {
+        borsh_wrappers::ScriptPublicKey::add_definitions_recursively(definitions)
+    }
+
+    fn declaration() -> borsh::schema::Declaration {
+        borsh_wrappers::ScriptPublicKey::declaration()
+    }
+}
+
 /// Holds details about an individual transaction output in a utxo
 /// set such as whether or not it was contained in a coinbase tx, the daa
 /// score of the block that accepts the tx, its public key script, and how
 /// much it pays.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct UtxoEntry {
     pub amount: u64,
     pub script_public_key: ScriptPublicKey,
@@ -83,7 +127,8 @@ impl Display for TransactionOutpoint {
 }
 
 /// Represents a Kaspa transaction input
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct TransactionInput {
     pub previous_outpoint: TransactionOutpoint,
     pub signature_script: Vec<u8>, // TODO: Consider using SmallVec
@@ -98,7 +143,8 @@ impl TransactionInput {
 }
 
 /// Represents a Kaspad transaction output
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct TransactionOutput {
     pub value: u64,
     pub script_public_key: ScriptPublicKey,
@@ -112,6 +158,7 @@ impl TransactionOutput {
 
 /// Represents a Kaspa transaction
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Transaction {
     pub version: u16,
     pub inputs: Vec<TransactionInput>,
