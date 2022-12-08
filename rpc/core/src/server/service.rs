@@ -85,6 +85,12 @@ impl RpcApi for RpcCoreService {
             trace!("incoming SubmitBlockRequest with block conversion error: {}", err);
         }
         let block = try_block?;
+
+        // We recreate a RpcBlock for the BlockAdded notification.
+        // This guaranties that we have the right hash.
+        // TODO: remove it when consensus emit a BlockAdded notification.
+        let rpc_block: RpcBlock = (&block).into();
+
         trace!("incoming SubmitBlockRequest for block {}", block.header.hash);
 
         let result = match self.consensus.clone().validate_and_insert_block(block, true).await {
@@ -94,6 +100,10 @@ impl RpcApi for RpcCoreService {
                 Ok(SubmitBlockResponse { report: SubmitBlockReport::Reject(SubmitBlockRejectReason::BlockInvalid) })
             } // TODO: handle also the IsInIBD reject reason
         };
+
+        // Notify about new added block
+        // TODO: let consensus emit this notification through an event channel
+        self.notifier.clone().notify(Arc::new(Notification::BlockAdded(BlockAddedNotification { block: rpc_block }))).unwrap();
 
         // Emit a NewBlockTemplate notification
         self.notifier.clone().notify(Arc::new(Notification::NewBlockTemplate(NewBlockTemplateNotification {}))).unwrap();
