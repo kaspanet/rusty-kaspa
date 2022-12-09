@@ -18,7 +18,7 @@ impl From<&Header> for RpcHeader {
             bits: item.bits,
             nonce: item.nonce,
             daa_score: item.daa_score,
-            blue_work: item.blue_work.into(),
+            blue_work: item.blue_work,
             pruning_point: item.pruning_point,
             blue_score: item.blue_score,
         }
@@ -42,7 +42,7 @@ impl TryFrom<&RpcHeader> for Header {
             item.bits,
             item.nonce,
             item.daa_score,
-            item.blue_work.into(),
+            item.blue_work,
             item.blue_score,
             item.pruning_point,
         );

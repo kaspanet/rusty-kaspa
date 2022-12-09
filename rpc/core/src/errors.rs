@@ -1,3 +1,4 @@
+use crate::HexConversionError;
 use std::num::TryFromIntError;
 use thiserror::Error;
 
@@ -8,6 +9,9 @@ pub enum RpcError {
 
     #[error("Integer downsize conversion error {0}")]
     IntConversionError(#[from] TryFromIntError),
+
+    #[error("Hex parsing error: {0}")]
+    HexConversionError(#[from] HexConversionError),
 
     #[error("Hex parsing error: {0}")]
     HexParsingError(#[from] faster_hex::Error),

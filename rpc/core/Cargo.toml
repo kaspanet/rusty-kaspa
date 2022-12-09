@@ -20,6 +20,7 @@ thiserror.workspace = true
 borsh.workspace = true
 async-std.workspace = true
 log.workspace = true
+smallvec.workspace = true
 async-trait = "0.1.57"
 ahash = "0.8.0"
 futures = { version = "0.3" }

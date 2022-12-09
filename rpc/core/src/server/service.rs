@@ -9,7 +9,7 @@ use crate::{
         listener::{ListenerID, ListenerReceiverSide, ListenerUtxoNotificationFilterSetting},
         notifier::Notifier,
     },
-    Notification, NotificationType, RpcError, RpcResult,
+    HexConversion, Notification, NotificationType, RpcError, RpcResult,
 };
 use async_trait::async_trait;
 use consensus_core::{
@@ -201,7 +201,7 @@ fn create_dummy_rpc_block() -> RpcBlock {
             bits: 1,
             nonce: 1234,
             daa_score: 123456,
-            blue_work: RpcBlueWorkType::from_str("1234567890abcdef").unwrap(),
+            blue_work: RpcBlueWorkType::from_hex_str("1234567890abcdef").unwrap(),
             pruning_point: Hash::from_str("7190c08d42a0f7994b183b52e7ef2f99bac0b91ef9023511cadf4da3a2184b16").unwrap(),
             blue_score: 12345678901,
         },

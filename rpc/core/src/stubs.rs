@@ -1,8 +1,6 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
 
-use crate::RpcHexData;
-
 #[derive(Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub enum NetworkType {
     Mainnet,
@@ -14,7 +12,7 @@ pub enum NetworkType {
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct Address;
 
-pub type RpcUtxoAddress = RpcHexData;
+pub type RpcUtxoAddress = Vec<u8>;
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct UtxosChangedNotification {
