@@ -287,7 +287,7 @@ impl Consensus {
             past_median_time_manager.clone(),
             dag_traversal_manager.clone(),
             difficulty_manager.clone(),
-            depth_manager,
+            depth_manager.clone(),
             pruning_manager.clone(),
             parents_manager.clone(),
             counters.clone(),
@@ -340,6 +340,7 @@ impl Consensus {
             past_median_time_manager.clone(),
             pruning_manager.clone(),
             parents_manager,
+            depth_manager,
         ));
 
         Self {

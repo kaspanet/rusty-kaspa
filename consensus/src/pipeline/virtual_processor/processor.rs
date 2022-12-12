@@ -11,6 +11,7 @@ use crate::{
             block_transactions::{BlockTransactionsStoreReader, DbBlockTransactionsStore},
             block_window_cache::BlockWindowCacheStore,
             daa::DbDaaStore,
+            depth::DbDepthStore,
             errors::StoreError,
             ghostdag::{DbGhostdagStore, GhostdagStoreReader},
             headers::{DbHeadersStore, HeaderStoreReader},
@@ -30,9 +31,9 @@ use crate::{
     params::Params,
     pipeline::{deps_manager::BlockTask, virtual_processor::utxo_validation::UtxoProcessingContext},
     processes::{
-        coinbase::CoinbaseManager, difficulty::DifficultyManager, ghostdag::ordering::SortableBlock, parents_builder::ParentsManager,
-        past_median_time::PastMedianTimeManager, pruning::PruningManager, transaction_validator::TransactionValidator,
-        traversal_manager::DagTraversalManager,
+        block_depth::BlockDepthManager, coinbase::CoinbaseManager, difficulty::DifficultyManager, ghostdag::ordering::SortableBlock,
+        parents_builder::ParentsManager, past_median_time::PastMedianTimeManager, pruning::PruningManager,
+        transaction_validator::TransactionValidator, traversal_manager::DagTraversalManager,
     },
 };
 use consensus_core::{
@@ -109,6 +110,7 @@ pub struct VirtualStateProcessor {
     pub(super) past_median_time_manager: PastMedianTimeManager<DbHeadersStore, DbGhostdagStore, BlockWindowCacheStore>,
     pub(super) pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
     pub(super) parents_manager: ParentsManager<DbHeadersStore, DbReachabilityStore, DbRelationsStore>,
+    pub(super) depth_manager: BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>,
 }
 
 impl VirtualStateProcessor {
@@ -145,6 +147,7 @@ impl VirtualStateProcessor {
         past_median_time_manager: PastMedianTimeManager<DbHeadersStore, DbGhostdagStore, BlockWindowCacheStore>,
         pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
         parents_manager: ParentsManager<DbHeadersStore, DbReachabilityStore, DbRelationsStore>,
+        depth_manager: BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>,
     ) -> Self {
         Self {
             receiver,
@@ -181,6 +184,7 @@ impl VirtualStateProcessor {
             past_median_time_manager,
             pruning_manager,
             parents_manager,
+            depth_manager,
         }
     }
 
@@ -354,9 +358,6 @@ impl VirtualStateProcessor {
     /// Assumes `selected_parent` is a UTXO-valid block, and that `candidates` are an antichain
     /// containing `selected_parent` s.t. it is the block with highest blue work amongst them.  
     fn pick_virtual_parents(&self, selected_parent: Hash, mut candidates: Vec<Hash>) -> Vec<Hash> {
-        // TODO: complete all virtual parents selection rules
-        // 1. Bounded merge depth
-
         let max_block_parents = self.max_block_parents as usize;
 
         // Limit to max_block_parents*3 candidates, that way we don't go over thousands of tips when the network isn't healthy.
@@ -406,7 +407,7 @@ impl VirtualStateProcessor {
         }
         assert!(mergeset_size <= self.mergeset_size_limit);
         assert!(virtual_parents.len() <= max_block_parents);
-        virtual_parents
+        self.remove_bounded_merge_breaking_parents(virtual_parents)
     }
 
     fn mergeset_increase(&self, selected_parents: &[Hash], candidate: Hash, budget: u64) -> MergesetIncreaseResult {
@@ -423,7 +424,7 @@ impl VirtualStateProcessor {
 
         while let Some(current) = queue.pop_front() {
             if self.reachability_service.is_dag_ancestor_of_any(current, &mut selected_parents.iter().copied()) {
-                continue; // TODO: consider saving in a set
+                continue;
             }
             mergeset_increase += 1;
             if mergeset_increase > budget {
@@ -438,6 +439,40 @@ impl VirtualStateProcessor {
             }
         }
         MergesetIncreaseResult::Accepted { increase_size: mergeset_increase }
+    }
+
+    fn remove_bounded_merge_breaking_parents(&self, mut virtual_parents: Vec<Hash>) -> Vec<Hash> {
+        let ghostdag_data = self.ghostdag_manager.ghostdag(&virtual_parents);
+        let pruning_point =
+            self.pruning_manager.expected_header_pruning_point(ghostdag_data.to_compact(), self.pruning_store.read().get().unwrap());
+        let merge_depth_root = self.depth_manager.calc_merge_depth_root(&ghostdag_data, pruning_point);
+        let mut kosherizing_blues: Option<Vec<Hash>> = None;
+        let mut bad_reds = Vec::new();
+
+        //
+        // Note that the code below optimizes for the usual case where there are no merge bound violating blocks.
+        //
+
+        // Find red blocks violating the merge bound and which are not kosherized by any blue
+        for red in ghostdag_data.mergeset_reds.iter().copied() {
+            if self.reachability_service.is_dag_ancestor_of(merge_depth_root, red) {
+                continue;
+            }
+            // Lazy load the kosherizing blocks since this case is extremely rare
+            if kosherizing_blues.is_none() {
+                kosherizing_blues = Some(self.depth_manager.kosherizing_blues(&ghostdag_data, merge_depth_root).collect());
+            }
+            if !self.reachability_service.is_dag_ancestor_of_any(red, &mut kosherizing_blues.as_ref().unwrap().iter().copied()) {
+                bad_reds.push(red);
+            }
+        }
+
+        if !bad_reds.is_empty() {
+            // Remove all parents which lead to merging a bad red
+            virtual_parents.retain(|&h| !self.reachability_service.is_any_dag_ancestor(&mut bad_reds.iter().copied(), h));
+        }
+
+        virtual_parents
     }
 
     pub fn build_block_template(self: &Arc<Self>, miner_data: MinerData, mut txs: Vec<Transaction>) -> BlockTemplate {
