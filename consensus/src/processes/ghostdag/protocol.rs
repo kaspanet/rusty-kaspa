@@ -26,7 +26,7 @@ pub struct GhostdagManager<T: GhostdagStoreReader, S: RelationsStoreReader, U: R
     genesis_hash: Hash,
     pub(super) k: KType,
     pub(super) ghostdag_store: Arc<T>,
-    pub(super) relations_store: Arc<S>,
+    pub(super) relations_store: S,
     pub(super) headers_store: Arc<V>,
     pub(super) reachability_service: U,
 }
@@ -36,7 +36,7 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
         genesis_hash: Hash,
         k: KType,
         ghostdag_store: Arc<T>,
-        relations_store: Arc<S>,
+        relations_store: S,
         headers_store: Arc<V>,
         reachability_service: U,
     ) -> Self {

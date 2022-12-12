@@ -2,7 +2,10 @@ use crate::{
     consensus::DbGhostdagManager,
     constants::BLOCK_VERSION,
     model::{
-        services::reachability::{MTReachabilityService, ReachabilityService},
+        services::{
+            reachability::{MTReachabilityService, ReachabilityService},
+            relations::MTRelationsService,
+        },
         stores::{
             acceptance_data::{AcceptanceData, DbAcceptanceDataStore},
             block_transactions::{BlockTransactionsStoreReader, DbBlockTransactionsStore},
@@ -14,7 +17,7 @@ use crate::{
             past_pruning_points::{DbPastPruningPointsStore, PastPruningPointsStore, PastPruningPointsStoreReader},
             pruning::{DbPruningStore, PruningStore, PruningStoreReader},
             reachability::DbReachabilityStore,
-            relations::DbRelationsStore,
+            relations::{DbRelationsStore, RelationsStoreReader},
             statuses::{DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader},
             tips::{DbTipsStore, TipsStoreReader},
             utxo_diffs::{DbUtxoDiffsStore, UtxoDiffsStoreReader},
@@ -27,7 +30,7 @@ use crate::{
     params::Params,
     pipeline::{deps_manager::BlockTask, virtual_processor::utxo_validation::UtxoProcessingContext},
     processes::{
-        coinbase::CoinbaseManager, difficulty::DifficultyManager, parents_builder::ParentsManager,
+        coinbase::CoinbaseManager, difficulty::DifficultyManager, ghostdag::ordering::SortableBlock, parents_builder::ParentsManager,
         past_median_time::PastMedianTimeManager, pruning::PruningManager, transaction_validator::TransactionValidator,
         traversal_manager::DagTraversalManager,
     },
@@ -40,6 +43,7 @@ use consensus_core::{
     merkle::calc_hash_merkle_root,
     tx::Transaction,
     utxo::{utxo_diff::UtxoDiff, utxo_view::UtxoViewComposition},
+    BlockHashSet,
 };
 use hashes::Hash;
 use kaspa_core::{info, trace};
@@ -48,10 +52,15 @@ use muhash::MuHash;
 use crossbeam_channel::Receiver;
 use itertools::Itertools;
 use parking_lot::{RwLock, RwLockUpgradableReadGuard};
-use rand::seq::SliceRandom;
 use rayon::ThreadPool;
 use rocksdb::WriteBatch;
-use std::{ops::Deref, sync::Arc, time::SystemTime};
+use std::{
+    cmp::{min, Reverse},
+    collections::VecDeque,
+    ops::Deref,
+    sync::Arc,
+    time::SystemTime,
+};
 
 pub struct VirtualStateProcessor {
     // Channels
@@ -92,6 +101,7 @@ pub struct VirtualStateProcessor {
     // Managers and services
     pub(super) ghostdag_manager: DbGhostdagManager,
     pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
+    pub(super) relations_service: MTRelationsService<DbRelationsStore>,
     pub(super) dag_traversal_manager: DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore>,
     pub(super) difficulty_manager: DifficultyManager<DbHeadersStore>,
     pub(super) coinbase_manager: CoinbaseManager,
@@ -127,6 +137,7 @@ impl VirtualStateProcessor {
         // Managers
         ghostdag_manager: DbGhostdagManager,
         reachability_service: MTReachabilityService<DbReachabilityStore>,
+        relations_service: MTRelationsService<DbRelationsStore>,
         dag_traversal_manager: DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore>,
         difficulty_manager: DifficultyManager<DbHeadersStore>,
         coinbase_manager: CoinbaseManager,
@@ -162,6 +173,7 @@ impl VirtualStateProcessor {
             virtual_state_store,
             ghostdag_manager,
             reachability_service,
+            relations_service,
             dag_traversal_manager,
             difficulty_manager,
             coinbase_manager,
@@ -338,23 +350,94 @@ impl VirtualStateProcessor {
         drop(write_guard);
     }
 
-    fn pick_virtual_parents(self: &Arc<Self>, selected_parent: Hash, mut virtual_parents: Vec<Hash>) -> Vec<Hash> {
-        // TODO: implement virtual parents selection rules
-        // 1. Max parents
-        // 2. Mergeset limit
-        // 3. Bounded merge depth
+    /// Picks the virtual parents according to virtual parent selection pruning constrains.
+    /// Assumes `selected_parent` is a UTXO-valid block, and that `candidates` are an antichain
+    /// containing `selected_parent` s.t. it is the block with highest blue work amongst them.  
+    fn pick_virtual_parents(&self, selected_parent: Hash, mut candidates: Vec<Hash>) -> Vec<Hash> {
+        // TODO: complete all virtual parents selection rules
+        // 1. Bounded merge depth
 
-        if virtual_parents.len() > self.max_block_parents as usize {
-            // TEMP
-            let index = virtual_parents.iter().position(|&h| h == selected_parent).unwrap();
-            virtual_parents.swap_remove(index);
-            let mut rng = rand::thread_rng();
-            virtual_parents = std::iter::once(selected_parent)
-                .chain(virtual_parents.choose_multiple(&mut rng, self.max_block_parents as usize - 1).copied())
-                .collect();
+        let max_block_parents = self.max_block_parents as usize;
+
+        // Limit to max_block_parents*3 candidates, that way we don't go over thousands of tips when the network isn't healthy.
+        // There's no specific reason for a factor of 3, and its not a consensus rule, just an estimation saying we probably
+        // don't want to consider and calculate 3 times the amount of candidates for the set of parents.
+        let max_candidates = max_block_parents * 3;
+        candidates = candidates
+            .into_iter()
+            .map(|block| Reverse(SortableBlock { hash: block, blue_work: self.ghostdag_store.get_blue_work(block).unwrap() }))
+            .k_smallest(max_candidates) // Takes the k largest blocks by blue work
+            .map(|s| s.0.hash)
+            .collect();
+        // Prioritize half the blocks with highest blue work and half with lowest, so the network will merge splits faster.
+        if candidates.len() > max_block_parents {
+            for i in max_block_parents / 2 + 1..max_block_parents {
+                let j = candidates.len() - 1 - i;
+                candidates.swap(i, j);
+            }
         }
+        let mut candidates = candidates.into_iter().collect::<VecDeque<_>>();
+        let top_candidate = candidates.pop_front().unwrap();
+        assert_eq!(top_candidate, selected_parent);
 
+        let mut virtual_parents = Vec::with_capacity(min(max_block_parents, candidates.len() + 1));
+        virtual_parents.push(selected_parent);
+        let mut mergeset_size = 1; // Count the selected parent
+
+        while let Some(candidate) = candidates.pop_front() {
+            if mergeset_size >= self.mergeset_size_limit || virtual_parents.len() >= max_block_parents {
+                break;
+            }
+            match self.mergeset_increase(&virtual_parents, candidate, self.mergeset_size_limit - mergeset_size) {
+                MergesetIncreaseResult::Accepted { increase_size } => {
+                    mergeset_size += increase_size;
+                    virtual_parents.push(candidate);
+                }
+                MergesetIncreaseResult::Rejected { new_candidate } => {
+                    // If we already have a candidate in the past of new candidate then skip.
+                    if self.reachability_service.is_any_dag_ancestor(&mut candidates.iter().copied(), new_candidate) {
+                        continue; // TODO: not sure this test is needed if candidates invariant as antichain is kept
+                    }
+                    // Remove all candidates in future of new candidate
+                    candidates.retain(|&h| !self.reachability_service.is_dag_ancestor_of(new_candidate, h));
+                    candidates.push_back(new_candidate);
+                }
+            }
+        }
+        assert!(mergeset_size <= self.mergeset_size_limit);
+        assert!(virtual_parents.len() <= max_block_parents);
         virtual_parents
+    }
+
+    fn mergeset_increase(&self, selected_parents: &[Hash], candidate: Hash, budget: u64) -> MergesetIncreaseResult {
+        /*
+        Algo:
+            Traverse past(candidate) \setminus past(selected_parents) and make
+            sure the increase in mergeset size is within the available budget
+        */
+
+        let candidate_parents = self.relations_service.get_parents(candidate).unwrap();
+        let mut queue: VecDeque<_> = candidate_parents.iter().copied().collect();
+        let mut visited: BlockHashSet = queue.iter().copied().collect();
+        let mut mergeset_increase = 1u64; // Starts with 1 to count for the candidate itself
+
+        while let Some(current) = queue.pop_front() {
+            if self.reachability_service.is_dag_ancestor_of_any(current, &mut selected_parents.iter().copied()) {
+                continue; // TODO: consider saving in a set
+            }
+            mergeset_increase += 1;
+            if mergeset_increase > budget {
+                return MergesetIncreaseResult::Rejected { new_candidate: current };
+            }
+
+            let current_parents = self.relations_service.get_parents(current).unwrap();
+            for &parent in current_parents.iter() {
+                if visited.insert(parent) {
+                    queue.push_back(parent);
+                }
+            }
+        }
+        MergesetIncreaseResult::Accepted { increase_size: mergeset_increase }
     }
 
     pub fn build_block_template(self: &Arc<Self>, miner_data: MinerData, mut txs: Vec<Transaction>) -> BlockTemplate {
@@ -464,4 +547,9 @@ impl VirtualStateProcessor {
             _ => panic!("unexpected genesis status {:?}", status),
         }
     }
+}
+
+enum MergesetIncreaseResult {
+    Accepted { increase_size: u64 },
+    Rejected { new_candidate: Hash },
 }
