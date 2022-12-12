@@ -1,5 +1,5 @@
 use crate::protowire;
-use rpc_core::{HexConversion, RpcError, RpcHash, RpcResult};
+use rpc_core::{FromRpcHex, RpcError, RpcHash, RpcResult, ToRpcHex};
 use std::str::FromStr;
 
 // ----------------------------------------------------------------------------
@@ -18,7 +18,7 @@ impl From<&rpc_core::RpcHeader> for protowire::RpcBlockHeader {
             bits: item.bits,
             nonce: item.nonce,
             daa_score: item.daa_score,
-            blue_work: item.blue_work.to_hex_string(),
+            blue_work: item.blue_work.to_rpc_hex(),
             blue_score: item.blue_score,
             pruning_point: item.pruning_point.to_string(),
         }
@@ -48,7 +48,7 @@ impl TryFrom<&protowire::RpcBlockHeader> for rpc_core::RpcHeader {
             item.bits,
             item.nonce,
             item.daa_score,
-            rpc_core::RpcBlueWorkType::from_hex_str(&item.blue_work)?,
+            rpc_core::RpcBlueWorkType::from_rpc_hex(&item.blue_work)?,
             item.blue_score,
             RpcHash::from_str(&item.pruning_point)?,
         ))
