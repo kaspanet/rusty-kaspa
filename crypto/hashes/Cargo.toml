@@ -10,6 +10,7 @@ license.workspace = true
 no-asm = ["keccak"]
 
 [dependencies]
+borsh.workspace = true
 faster-hex.workspace = true
 serde.workspace = true
 blake2b_simd = "1"

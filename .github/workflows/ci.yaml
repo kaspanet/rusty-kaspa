@@ -10,6 +10,9 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v2
 
+      - name: Install protoc
+        run: sudo apt install -y protobuf-compiler
+
       - name: Install stable toolchain
         uses: actions-rs/toolchain@v1
         with:
@@ -49,6 +52,9 @@ jobs:
       - name: Fix CRLF on Windows
         if: runner.os == 'Windows'
         run: git config --global core.autocrlf false
+
+      - name: Install protoc
+        run: sudo apt install -y protobuf-compiler
 
       - name: Install stable toolchain
         uses: actions-rs/toolchain@v1
@@ -96,6 +102,9 @@ jobs:
   #       if: runner.os == 'Windows'
   #       run: git config --global core.autocrlf false
 
+  #     - name: Install protoc
+  #       run: sudo apt install -y protobuf-compiler
+
   #     - name: Install stable toolchain
   #       uses: actions-rs/toolchain@v1
   #       with:
@@ -132,6 +141,9 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
+
+      - name: Install protoc
+        run: sudo apt install -y protobuf-compiler
 
       - name: Install stable toolchain
         uses: actions-rs/toolchain@v1

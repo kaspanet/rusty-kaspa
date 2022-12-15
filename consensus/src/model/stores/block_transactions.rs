@@ -23,41 +23,40 @@ const STORE_PREFIX: &[u8] = b"block-transactions";
 /// A DB + cache implementation of `BlockTransactionsStore` trait, with concurrency support.
 #[derive(Clone)]
 pub struct DbBlockTransactionsStore {
-    raw_db: Arc<DB>,
-    // `CachedDbAccess` is shallow cloned so no need to wrap with Arc
-    cached_access: CachedDbAccess<Hash, Vec<Transaction>, BlockHasher>,
+    db: Arc<DB>,
+    access: CachedDbAccess<Hash, Arc<Vec<Transaction>>, BlockHasher>,
 }
 
 impl DbBlockTransactionsStore {
     pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
-        Self { raw_db: Arc::clone(&db), cached_access: CachedDbAccess::new(Arc::clone(&db), cache_size, STORE_PREFIX) }
+        Self { db: Arc::clone(&db), access: CachedDbAccess::new(Arc::clone(&db), cache_size, STORE_PREFIX) }
     }
 
     pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {
-        Self::new(Arc::clone(&self.raw_db), cache_size)
+        Self::new(Arc::clone(&self.db), cache_size)
     }
 
     pub fn insert_batch(&self, batch: &mut WriteBatch, hash: Hash, transactions: Arc<Vec<Transaction>>) -> Result<(), StoreError> {
-        if self.cached_access.has(hash)? {
+        if self.access.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
-        self.cached_access.write(BatchDbWriter::new(batch), hash, &transactions)?;
+        self.access.write(BatchDbWriter::new(batch), hash, transactions)?;
         Ok(())
     }
 }
 
 impl BlockTransactionsStoreReader for DbBlockTransactionsStore {
     fn get(&self, hash: Hash) -> Result<Arc<Vec<Transaction>>, StoreError> {
-        self.cached_access.read(hash)
+        self.access.read(hash)
     }
 }
 
 impl BlockTransactionsStore for DbBlockTransactionsStore {
     fn insert(&self, hash: Hash, transactions: Arc<Vec<Transaction>>) -> Result<(), StoreError> {
-        if self.cached_access.has(hash)? {
+        if self.access.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
-        self.cached_access.write(DirectDbWriter::new(&self.raw_db), hash, &transactions)?;
+        self.access.write(DirectDbWriter::new(&self.db), hash, transactions)?;
         Ok(())
     }
 }

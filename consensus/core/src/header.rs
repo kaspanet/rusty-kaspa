@@ -20,31 +20,35 @@ pub struct Header {
 }
 
 impl Header {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         version: u16,
-        parents: Vec<Hash>,
+        parents_by_level: Vec<Vec<Hash>>,
         hash_merkle_root: Hash,
+        accepted_id_merkle_root: Hash,
+        utxo_commitment: Hash,
         timestamp: u64,
         bits: u32,
         nonce: u64,
         daa_score: u64,
         blue_work: BlueWorkType,
         blue_score: u64,
+        pruning_point: Hash,
     ) -> Self {
         let mut header = Self {
             hash: Default::default(), // Temp init before the finalize below
             version,
-            parents_by_level: vec![parents], // TODO: Handle multi level parents properly
+            parents_by_level,
             hash_merkle_root,
-            accepted_id_merkle_root: Default::default(),
-            utxo_commitment: Default::default(),
+            accepted_id_merkle_root,
+            utxo_commitment,
             nonce,
             timestamp,
             daa_score,
             bits,
             blue_work,
             blue_score,
-            pruning_point: Default::default(),
+            pruning_point,
         };
         header.finalize();
         header

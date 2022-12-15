@@ -1,45 +1,14 @@
-use consensus_core::BlockHasher;
+use consensus_core::{blockstatus::BlockStatus, BlockHasher};
 use parking_lot::{RwLock, RwLockWriteGuard};
 use rocksdb::WriteBatch;
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use super::{
-    database::prelude::{BatchDbWriter, CachedDbAccessForCopy, DirectDbWriter},
+    database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter},
     errors::{StoreError, StoreResult},
     DB,
 };
 use hashes::Hash;
-
-#[derive(Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Debug)]
-pub enum BlockStatus {
-    /// StatusInvalid indicates that the block is invalid.
-    StatusInvalid,
-
-    /// StatusUTXOValid indicates the block is valid from any UTXO related aspects and has passed all the other validations as well.
-    StatusUTXOValid,
-
-    /// StatusUTXOPendingVerification indicates that the block is pending verification against its past UTXO-Set, either
-    /// because it was not yet verified since the block was never in the selected parent chain, or if the
-    /// block violates finality.
-    StatusUTXOPendingVerification,
-
-    /// StatusDisqualifiedFromChain indicates that the block is not eligible to be a selected parent.
-    StatusDisqualifiedFromChain,
-
-    /// StatusHeaderOnly indicates that the block transactions are not held (pruned or wasn't added yet)
-    StatusHeaderOnly,
-}
-
-impl BlockStatus {
-    pub fn has_block_body(self) -> bool {
-        matches!(self, Self::StatusUTXOValid | Self::StatusUTXOPendingVerification | Self::StatusDisqualifiedFromChain)
-    }
-
-    pub fn is_utxo_valid_or_pending(self) -> bool {
-        matches!(self, Self::StatusUTXOValid | Self::StatusUTXOPendingVerification)
-    }
-}
 
 /// Reader API for `StatusesStore`.
 pub trait StatusesStoreReader {
@@ -59,17 +28,17 @@ const STORE_PREFIX: &[u8] = b"block-statuses";
 /// A DB + cache implementation of `StatusesStore` trait, with concurrent readers support.
 #[derive(Clone)]
 pub struct DbStatusesStore {
-    raw_db: Arc<DB>,
-    cached_access: CachedDbAccessForCopy<Hash, BlockStatus, BlockHasher>,
+    db: Arc<DB>,
+    access: CachedDbAccess<Hash, BlockStatus, BlockHasher>,
 }
 
 impl DbStatusesStore {
     pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
-        Self { raw_db: Arc::clone(&db), cached_access: CachedDbAccessForCopy::new(db, cache_size, STORE_PREFIX) }
+        Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_size, STORE_PREFIX) }
     }
 
     pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {
-        Self::new(Arc::clone(&self.raw_db), cache_size)
+        Self::new(Arc::clone(&self.db), cache_size)
     }
 }
 
@@ -90,23 +59,23 @@ impl StatusesStoreBatchExtensions for Arc<RwLock<DbStatusesStore>> {
         status: BlockStatus,
     ) -> Result<RwLockWriteGuard<DbStatusesStore>, StoreError> {
         let write_guard = self.write();
-        write_guard.cached_access.write(BatchDbWriter::new(batch), hash, status)?;
+        write_guard.access.write(BatchDbWriter::new(batch), hash, status)?;
         Ok(write_guard)
     }
 }
 
 impl StatusesStoreReader for DbStatusesStore {
     fn get(&self, hash: Hash) -> StoreResult<BlockStatus> {
-        self.cached_access.read(hash)
+        self.access.read(hash)
     }
 
     fn has(&self, hash: Hash) -> StoreResult<bool> {
-        self.cached_access.has(hash)
+        self.access.has(hash)
     }
 }
 
 impl StatusesStore for DbStatusesStore {
     fn set(&mut self, hash: Hash, status: BlockStatus) -> StoreResult<()> {
-        self.cached_access.write(DirectDbWriter::new(&self.raw_db), hash, status)
+        self.access.write(DirectDbWriter::new(&self.db), hash, status)
     }
 }

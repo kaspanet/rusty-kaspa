@@ -15,14 +15,14 @@ impl BlockBodyProcessor {
         self.check_block_is_not_pruned(block)
     }
 
-    fn check_block_is_not_pruned(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {
+    fn check_block_is_not_pruned(self: &Arc<Self>, _block: &Block) -> BlockProcessResult<()> {
         // TODO: In kaspad code it checks that the block is not in the past of the current tips.
         // We should decide what's the best indication that a block was pruned.
         Ok(())
     }
 
     fn check_block_transactions_in_context(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {
-        let (pmt, _) = self.past_median_time_manager.calc_past_median_time(self.ghostdag_store.get_data(block.hash()).unwrap());
+        let (pmt, _) = self.past_median_time_manager.calc_past_median_time(&self.ghostdag_store.get_data(block.hash()).unwrap());
         for tx in block.transactions.iter() {
             if let Err(e) = self.transaction_validator.utxo_free_tx_validation(tx, block.header.daa_score, pmt) {
                 return Err(RuleError::TxInContextFailed(tx.id(), e));
@@ -58,7 +58,7 @@ impl BlockBodyProcessor {
     }
 
     fn check_coinbase_blue_score_and_subsidy(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {
-        match self.coinbase_manager.validate_coinbase_payload_in_isolation_and_extract_coinbase_data(&block.transactions[0]) {
+        match self.coinbase_manager.deserialize_coinbase_payload(&block.transactions[0].payload) {
             Ok(data) => {
                 if data.blue_score != block.header.blue_score {
                     return Err(RuleError::BadCoinbasePayloadBlueScore(data.blue_score, block.header.blue_score));
@@ -160,7 +160,7 @@ mod tests {
             check_for_lock_time_and_sequence(&consensus, valid_block_child.header.hash, 10.into(), tip_daa_score - 1, 0, true).await;
 
             let valid_block_child_gd = consensus.ghostdag_store().get_data(valid_block_child.header.hash).unwrap();
-            let (valid_block_child_gd_pmt, _) = consensus.past_median_time_manager().calc_past_median_time(valid_block_child_gd);
+            let (valid_block_child_gd_pmt, _) = consensus.past_median_time_manager().calc_past_median_time(&valid_block_child_gd);
             let past_median_time = valid_block_child_gd_pmt + 1;
 
             // Check that the same past median time as the block's or higher fails, but lower passes.

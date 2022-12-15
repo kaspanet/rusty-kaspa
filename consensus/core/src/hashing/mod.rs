@@ -2,6 +2,8 @@ use crate::BlueWorkType;
 use hashes::HasherBase;
 
 pub mod header;
+pub mod sighash;
+pub mod sighash_type;
 pub mod tx;
 
 pub(crate) trait HasherExtensions {
@@ -10,6 +12,18 @@ pub(crate) trait HasherExtensions {
 
     /// Writes the boolean as a u8  
     fn write_bool(&mut self, element: bool) -> &mut Self;
+
+    /// Writes a single u8  
+    fn write_u8(&mut self, element: u8) -> &mut Self;
+
+    /// Writes the u16 as a little endian u8 array  
+    fn write_u16(&mut self, element: u16) -> &mut Self;
+
+    /// Writes the u32 as a little endian u8 array  
+    fn write_u32(&mut self, element: u32) -> &mut Self;
+
+    /// Writes the u64 as a little endian u8 array  
+    fn write_u64(&mut self, element: u64) -> &mut Self;
 
     /// Writes blue work as big endian bytes w/o the leading zeros
     /// (emulates bigint.bytes() in the kaspad golang ref)
@@ -36,6 +50,24 @@ impl<T: HasherBase> HasherExtensions for T {
     #[inline(always)]
     fn write_bool(&mut self, element: bool) -> &mut Self {
         self.update(if element { [1u8] } else { [0u8] })
+    }
+
+    fn write_u8(&mut self, element: u8) -> &mut Self {
+        self.update(element.to_le_bytes())
+    }
+
+    fn write_u16(&mut self, element: u16) -> &mut Self {
+        self.update(element.to_le_bytes())
+    }
+
+    #[inline(always)]
+    fn write_u32(&mut self, element: u32) -> &mut Self {
+        self.update(element.to_le_bytes())
+    }
+
+    #[inline(always)]
+    fn write_u64(&mut self, element: u64) -> &mut Self {
+        self.update(element.to_le_bytes())
     }
 
     #[inline(always)]

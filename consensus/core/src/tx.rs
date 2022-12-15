@@ -1,3 +1,4 @@
+use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use std::fmt::Display;
@@ -25,7 +26,7 @@ pub struct ScriptPublicKey {
 
 impl ScriptPublicKey {
     pub fn new(version: u16, script: ScriptVec) -> Self {
-        Self { script, version }
+        Self { version, script }
     }
 
     pub fn from_vec(version: u16, script: Vec<u8>) -> Self {
@@ -62,7 +63,8 @@ impl UtxoEntry {
 pub type TransactionIndexType = u32;
 
 /// Represents a Kaspa transaction outpoint
-#[derive(Eq, Hash, PartialEq, Debug, Copy, Clone, Serialize, Deserialize)]
+#[derive(Eq, Hash, PartialEq, Debug, Copy, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct TransactionOutpoint {
     pub transaction_id: TransactionId,
     pub index: TransactionIndexType,
@@ -81,10 +83,10 @@ impl Display for TransactionOutpoint {
 }
 
 /// Represents a Kaspa transaction input
-#[derive(Debug, Serialize, Deserialize, Clone)] // TODO: Implement a custom serializer for input that drops utxo_entry
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TransactionInput {
     pub previous_outpoint: TransactionOutpoint,
-    pub signature_script: Vec<u8>,
+    pub signature_script: Vec<u8>, // TODO: Consider using SmallVec
     pub sequence: u64,
     pub sig_op_count: u8,
 }
@@ -180,6 +182,10 @@ impl<'a> PopulatedTransaction<'a> {
 
     pub fn populated_inputs(&self) -> impl ExactSizeIterator<Item = (&TransactionInput, &UtxoEntry)> {
         self.tx.inputs.iter().zip(self.entries.iter())
+    }
+
+    pub fn populated_input(&self, index: usize) -> (&TransactionInput, &UtxoEntry) {
+        (&self.tx.inputs[index], &self.entries[index])
     }
 
     pub fn outputs(&self) -> &[TransactionOutput] {

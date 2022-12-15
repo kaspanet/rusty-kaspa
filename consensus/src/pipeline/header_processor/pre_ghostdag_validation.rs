@@ -3,8 +3,9 @@ use crate::constants;
 use crate::errors::{BlockProcessResult, RuleError};
 use crate::model::services::reachability::ReachabilityService;
 use crate::model::stores::errors::StoreResultExtensions;
-use crate::model::stores::statuses::{BlockStatus::StatusInvalid, StatusesStoreReader};
+use crate::model::stores::statuses::StatusesStoreReader;
 use consensus_core::blockhash::BlockHashExtensions;
+use consensus_core::blockstatus::BlockStatus::StatusInvalid;
 use consensus_core::header::Header;
 use std::{
     sync::Arc,
@@ -23,7 +24,7 @@ impl HeaderProcessor {
 
         self.validate_header_in_isolation(header)?;
         self.check_parents_exist(header)?;
-        self.check_parents_incest(ctx, header)?;
+        self.check_parents_incest(ctx)?;
         Ok(())
     }
 
@@ -50,7 +51,7 @@ impl HeaderProcessor {
         let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64;
         let max_block_time = now + self.timestamp_deviation_tolerance * self.target_time_per_block;
         if header.timestamp > max_block_time {
-            return Err(RuleError::TimeTooFarIntoTheFuture(header.timestamp, now));
+            return Err(RuleError::TimeTooFarIntoTheFuture(header.timestamp, max_block_time));
         }
         Ok(())
     }
@@ -92,11 +93,7 @@ impl HeaderProcessor {
         Ok(())
     }
 
-    fn check_parents_incest(
-        self: &Arc<HeaderProcessor>,
-        ctx: &mut HeaderProcessingContext,
-        header: &Header,
-    ) -> BlockProcessResult<()> {
+    fn check_parents_incest(self: &Arc<HeaderProcessor>, ctx: &mut HeaderProcessingContext) -> BlockProcessResult<()> {
         let parents = ctx.get_non_pruned_parents();
         for parent_a in parents.iter() {
             for parent_b in parents.iter() {

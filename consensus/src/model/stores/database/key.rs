@@ -1,8 +1,11 @@
-use std::{fmt::Display, str};
+use std::{
+    fmt::{Debug, Display},
+    str,
+};
 
 const SEP: u8 = b'/';
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct DbKey {
     path: Vec<u8>,
     prefix_len: usize,
@@ -17,7 +20,7 @@ impl DbKey {
     }
 
     pub fn prefix_only(prefix: &[u8]) -> Self {
-        Self::new(prefix, &[])
+        Self::new(prefix, [])
     }
 }
 
@@ -40,6 +43,12 @@ impl Display for DbKey {
         }
         // We expect that key is usually more readable as hex
         f.write_str(&faster_hex::hex_string(key))
+    }
+}
+
+impl Debug for DbKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Display::fmt(&self, f)
     }
 }
 

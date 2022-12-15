@@ -1,7 +1,7 @@
 use std::{fmt::Display, sync::Arc};
 
 use super::{
-    database::prelude::{BatchDbWriter, CachedDbAccessForCopy, DirectDbWriter},
+    database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter},
     errors::{StoreError, StoreResult},
     DB,
 };
@@ -43,40 +43,40 @@ const STORE_PREFIX: &[u8] = b"past-pruning-points";
 /// A DB + cache implementation of `PastPruningPointsStore` trait, with concurrency support.
 #[derive(Clone)]
 pub struct DbPastPruningPointsStore {
-    raw_db: Arc<DB>,
-    cached_access: CachedDbAccessForCopy<Key, Hash>,
+    db: Arc<DB>,
+    access: CachedDbAccess<Key, Hash>,
 }
 
 impl DbPastPruningPointsStore {
     pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
-        Self { raw_db: Arc::clone(&db), cached_access: CachedDbAccessForCopy::new(Arc::clone(&db), cache_size, STORE_PREFIX) }
+        Self { db: Arc::clone(&db), access: CachedDbAccess::new(Arc::clone(&db), cache_size, STORE_PREFIX) }
     }
 
     pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {
-        Self::new(Arc::clone(&self.raw_db), cache_size)
+        Self::new(Arc::clone(&self.db), cache_size)
     }
 
     pub fn insert_batch(&self, batch: &mut WriteBatch, index: u64, pruning_point: Hash) -> Result<(), StoreError> {
-        if self.cached_access.has(index.into())? {
+        if self.access.has(index.into())? {
             return Err(StoreError::KeyAlreadyExists(index.to_string()));
         }
-        self.cached_access.write(BatchDbWriter::new(batch), index.into(), pruning_point)?;
+        self.access.write(BatchDbWriter::new(batch), index.into(), pruning_point)?;
         Ok(())
     }
 }
 
 impl PastPruningPointsStoreReader for DbPastPruningPointsStore {
     fn get(&self, index: u64) -> StoreResult<Hash> {
-        self.cached_access.read(index.into())
+        self.access.read(index.into())
     }
 }
 
 impl PastPruningPointsStore for DbPastPruningPointsStore {
     fn insert(&self, index: u64, pruning_point: Hash) -> StoreResult<()> {
-        if self.cached_access.has(index.into())? {
+        if self.access.has(index.into())? {
             return Err(StoreError::KeyAlreadyExists(index.to_string()));
         }
-        self.cached_access.write(DirectDbWriter::new(&self.raw_db), index.into(), pruning_point)?;
+        self.access.write(DirectDbWriter::new(&self.db), index.into(), pruning_point)?;
         Ok(())
     }
 }

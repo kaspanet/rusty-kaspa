@@ -5,13 +5,17 @@ use std::{
 };
 
 use consensus_core::{
-    block::{Block, MutableBlock},
+    api::ConsensusApi,
+    block::{Block, BlockTemplate, MutableBlock},
+    blockstatus::BlockStatus,
+    coinbase::MinerData,
     header::Header,
     merkle::calc_hash_merkle_root,
     subnets::SUBNETWORK_ID_COINBASE,
     tx::Transaction,
     BlockHashSet,
 };
+use futures_util::future::BoxFuture;
 use hashes::Hash;
 use kaspa_core::{core::Core, service::Service};
 use parking_lot::RwLock;
@@ -26,8 +30,6 @@ use crate::{
         headers::{DbHeadersStore, HeaderStoreReader},
         pruning::PruningStoreReader,
         reachability::DbReachabilityStore,
-        statuses::{BlockStatus, StatusesStoreReader},
-        tips::TipsStoreReader,
         DB,
     },
     params::Params,
@@ -39,19 +41,19 @@ use crate::{
 use super::{Consensus, DbGhostdagManager};
 
 pub struct TestConsensus {
-    consensus: Consensus,
+    consensus: Arc<Consensus>,
     pub params: Params,
     temp_db_lifetime: TempDbLifetime,
 }
 
 impl TestConsensus {
     pub fn new(db: Arc<DB>, params: &Params) -> Self {
-        Self { consensus: Consensus::new(db, params), params: params.clone(), temp_db_lifetime: Default::default() }
+        Self { consensus: Arc::new(Consensus::new(db, params)), params: params.clone(), temp_db_lifetime: Default::default() }
     }
 
     pub fn create_from_temp_db(params: &Params) -> Self {
         let (temp_db_lifetime, db) = create_temp_db();
-        Self { consensus: Consensus::new(db, params), params: params.clone(), temp_db_lifetime }
+        Self { consensus: Arc::new(Consensus::new(db, params)), params: params.clone(), temp_db_lifetime }
     }
 
     pub fn build_header_with_parents(&self, hash: Hash, parents: Vec<Hash>) -> Header {
@@ -61,14 +63,14 @@ impl TestConsensus {
             .consensus
             .pruning_manager
             .expected_header_pruning_point(ghostdag_data.to_compact(), self.consensus.pruning_store.read().get().unwrap());
-        let window = self.consensus.dag_traversal_manager.block_window(ghostdag_data.clone(), self.params.difficulty_window_size);
+        let window = self.consensus.dag_traversal_manager.block_window(&ghostdag_data, self.params.difficulty_window_size);
         let (daa_score, _) = self
             .consensus
             .difficulty_manager
-            .calc_daa_score_and_added_blocks(&mut window.iter().map(|item| item.0.hash), &ghostdag_data);
+            .calc_daa_score_and_non_daa_mergeset_blocks(&mut window.iter().map(|item| item.0.hash), &ghostdag_data);
         header.bits = self.consensus.difficulty_manager.calculate_difficulty_bits(&window);
         header.daa_score = daa_score;
-        header.timestamp = self.consensus.past_median_time_manager.calc_past_median_time(ghostdag_data.clone()).0 + 1;
+        header.timestamp = self.consensus.past_median_time_manager.calc_past_median_time(&ghostdag_data).0 + 1;
         header.blue_score = ghostdag_data.blue_score;
         header.blue_work = ghostdag_data.blue_work;
 
@@ -103,7 +105,7 @@ impl TestConsensus {
     }
 
     pub fn validate_and_insert_block(&self, block: Block) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
-        self.consensus.validate_and_insert_block(block)
+        self.consensus.as_ref().validate_and_insert_block(block)
     }
 
     pub fn init(&self) -> Vec<JoinHandle<()>> {
@@ -142,18 +144,30 @@ impl TestConsensus {
         &self.consensus.past_median_time_manager
     }
 
-    // TODO: add to consensus API
     pub fn body_tips(&self) -> Arc<BlockHashSet> {
-        self.consensus.body_tips_store.read().get().unwrap()
+        self.consensus.body_tips()
     }
 
-    // TODO: add to consensus API
     pub fn block_status(&self, hash: Hash) -> BlockStatus {
-        self.consensus.statuses_store.read().get(hash).unwrap()
+        self.consensus.block_status(hash)
     }
 
     pub fn ghostdag_manager(&self) -> &DbGhostdagManager {
         &self.consensus.ghostdag_manager
+    }
+}
+
+impl ConsensusApi for TestConsensus {
+    fn build_block_template(self: Arc<Self>, miner_data: MinerData, txs: Vec<Transaction>) -> BlockTemplate {
+        self.consensus.clone().build_block_template(miner_data, txs)
+    }
+
+    fn validate_and_insert_block(
+        self: Arc<Self>,
+        block: Block,
+        update_virtual: bool,
+    ) -> BoxFuture<'static, Result<BlockStatus, String>> {
+        self.consensus.clone().validate_and_insert_block(block, update_virtual)
     }
 }
 
@@ -162,7 +176,7 @@ impl Service for TestConsensus {
         "test-consensus"
     }
 
-    fn start(self: Arc<TestConsensus>, core: Arc<Core>) -> Vec<JoinHandle<()>> {
+    fn start(self: Arc<TestConsensus>, _core: Arc<Core>) -> Vec<JoinHandle<()>> {
         self.init()
     }
 

@@ -1,4 +1,4 @@
-use super::database::prelude::{BatchDbWriter, CachedDbAccess, CachedDbAccessForCopy, DbKey, DirectDbWriter};
+use super::database::prelude::{BatchDbWriter, CachedDbAccess, DbKey, DirectDbWriter};
 use super::{errors::StoreError, DB};
 use crate::processes::ghostdag::ordering::SortableBlock;
 use consensus_core::{blockhash::BlockHashes, BlueWorkType};
@@ -147,18 +147,13 @@ impl GhostdagData {
     pub fn to_compact(&self) -> CompactGhostdagData {
         CompactGhostdagData { blue_score: self.blue_score, blue_work: self.blue_work, selected_parent: self.selected_parent }
     }
-}
 
-impl GhostdagData {
-    pub fn add_blue(self: &mut Arc<Self>, block: Hash, blue_anticone_size: KType, block_blues_anticone_sizes: &BlockHashMap<KType>) {
-        // Extract mutable data
-        let data = Arc::make_mut(self);
-
+    pub fn add_blue(&mut self, block: Hash, blue_anticone_size: KType, block_blues_anticone_sizes: &BlockHashMap<KType>) {
         // Add the new blue block to mergeset blues
-        BlockHashes::make_mut(&mut data.mergeset_blues).push(block);
+        BlockHashes::make_mut(&mut self.mergeset_blues).push(block);
 
         // Get a mut ref to internal anticone size map
-        let blues_anticone_sizes = HashKTypeMap::make_mut(&mut data.blues_anticone_sizes);
+        let blues_anticone_sizes = HashKTypeMap::make_mut(&mut self.blues_anticone_sizes);
 
         // Insert the new blue block with its blue anticone size to the map
         blues_anticone_sizes.insert(block, blue_anticone_size);
@@ -169,18 +164,14 @@ impl GhostdagData {
         }
     }
 
-    pub fn add_red(self: &mut Arc<Self>, block: Hash) {
-        // Extract mutable data
-        let data = Arc::make_mut(self);
-
+    pub fn add_red(&mut self, block: Hash) {
         // Add the new red block to mergeset reds
-        BlockHashes::make_mut(&mut data.mergeset_reds).push(block);
+        BlockHashes::make_mut(&mut self.mergeset_reds).push(block);
     }
 
-    pub fn finalize_score_and_work(self: &mut Arc<Self>, blue_score: u64, blue_work: BlueWorkType) {
-        let data = Arc::make_mut(self);
-        data.blue_score = blue_score;
-        data.blue_work = blue_work;
+    pub fn finalize_score_and_work(&mut self, blue_score: u64, blue_work: BlueWorkType) {
+        self.blue_score = blue_score;
+        self.blue_work = blue_work;
     }
 }
 
@@ -215,31 +206,30 @@ const COMPACT_STORE_PREFIX: &[u8] = b"compact-block-ghostdag-data";
 /// A DB + cache implementation of `GhostdagStore` trait, with concurrency support.
 #[derive(Clone)]
 pub struct DbGhostdagStore {
-    raw_db: Arc<DB>,
-    // `CachedDbAccess` is shallow cloned so no need to wrap with Arc
-    cached_access: CachedDbAccess<Hash, GhostdagData, BlockHasher>,
-    compact_cached_access: CachedDbAccessForCopy<Hash, CompactGhostdagData, BlockHasher>,
+    db: Arc<DB>,
+    access: CachedDbAccess<Hash, Arc<GhostdagData>, BlockHasher>,
+    compact_access: CachedDbAccess<Hash, CompactGhostdagData, BlockHasher>,
 }
 
 impl DbGhostdagStore {
     pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
         Self {
-            raw_db: Arc::clone(&db),
-            cached_access: CachedDbAccess::new(db.clone(), cache_size, STORE_PREFIX),
-            compact_cached_access: CachedDbAccessForCopy::new(db, cache_size, COMPACT_STORE_PREFIX),
+            db: Arc::clone(&db),
+            access: CachedDbAccess::new(db.clone(), cache_size, STORE_PREFIX),
+            compact_access: CachedDbAccess::new(db, cache_size, COMPACT_STORE_PREFIX),
         }
     }
 
     pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {
-        Self::new(Arc::clone(&self.raw_db), cache_size)
+        Self::new(Arc::clone(&self.db), cache_size)
     }
 
     pub fn insert_batch(&self, batch: &mut WriteBatch, hash: Hash, data: &Arc<GhostdagData>) -> Result<(), StoreError> {
-        if self.cached_access.has(hash)? {
+        if self.access.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
-        self.cached_access.write(BatchDbWriter::new(batch), hash, data)?;
-        self.compact_cached_access.write(
+        self.access.write(BatchDbWriter::new(batch), hash, data.clone())?;
+        self.compact_access.write(
             BatchDbWriter::new(batch),
             hash,
             CompactGhostdagData { blue_score: data.blue_score, blue_work: data.blue_work, selected_parent: data.selected_parent },
@@ -250,53 +240,53 @@ impl DbGhostdagStore {
 
 impl GhostdagStoreReader for DbGhostdagStore {
     fn get_blue_score(&self, hash: Hash) -> Result<u64, StoreError> {
-        Ok(self.cached_access.read(hash)?.blue_score)
+        Ok(self.access.read(hash)?.blue_score)
     }
 
     fn get_blue_work(&self, hash: Hash) -> Result<BlueWorkType, StoreError> {
-        Ok(self.cached_access.read(hash)?.blue_work)
+        Ok(self.access.read(hash)?.blue_work)
     }
 
     fn get_selected_parent(&self, hash: Hash) -> Result<Hash, StoreError> {
-        Ok(self.cached_access.read(hash)?.selected_parent)
+        Ok(self.access.read(hash)?.selected_parent)
     }
 
     fn get_mergeset_blues(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
-        Ok(Arc::clone(&self.cached_access.read(hash)?.mergeset_blues))
+        Ok(Arc::clone(&self.access.read(hash)?.mergeset_blues))
     }
 
     fn get_mergeset_reds(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
-        Ok(Arc::clone(&self.cached_access.read(hash)?.mergeset_reds))
+        Ok(Arc::clone(&self.access.read(hash)?.mergeset_reds))
     }
 
     fn get_blues_anticone_sizes(&self, hash: Hash) -> Result<HashKTypeMap, StoreError> {
-        Ok(Arc::clone(&self.cached_access.read(hash)?.blues_anticone_sizes))
+        Ok(Arc::clone(&self.access.read(hash)?.blues_anticone_sizes))
     }
 
     fn get_data(&self, hash: Hash) -> Result<Arc<GhostdagData>, StoreError> {
-        self.cached_access.read(hash)
+        self.access.read(hash)
     }
 
     fn get_compact_data(&self, hash: Hash) -> Result<CompactGhostdagData, StoreError> {
-        self.compact_cached_access.read(hash)
+        self.compact_access.read(hash)
     }
 
     fn has(&self, hash: Hash) -> Result<bool, StoreError> {
-        self.cached_access.has(hash)
+        self.access.has(hash)
     }
 }
 
 impl GhostdagStore for DbGhostdagStore {
     fn insert(&self, hash: Hash, data: Arc<GhostdagData>) -> Result<(), StoreError> {
-        if self.cached_access.has(hash)? {
+        if self.access.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
-        self.cached_access.write(DirectDbWriter::new(&self.raw_db), hash, &data)?;
-        if self.compact_cached_access.has(hash)? {
+        self.access.write(DirectDbWriter::new(&self.db), hash, data.clone())?;
+        if self.compact_access.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
-        self.compact_cached_access.write(
-            DirectDbWriter::new(&self.raw_db),
+        self.compact_access.write(
+            DirectDbWriter::new(&self.db),
             hash,
             CompactGhostdagData { blue_score: data.blue_score, blue_work: data.blue_work, selected_parent: data.selected_parent },
         )?;
@@ -446,7 +436,7 @@ mod tests {
         store.insert(5.into(), factory(9)).unwrap();
         store.insert(6.into(), factory(11)).unwrap(); // Tie-breaking case
 
-        let mut data = Arc::new(GhostdagData::new_with_selected_parent(1.into(), 5));
+        let mut data = GhostdagData::new_with_selected_parent(1.into(), 5);
         data.add_blue(2.into(), Default::default(), &Default::default());
         data.add_blue(3.into(), Default::default(), &Default::default());
 

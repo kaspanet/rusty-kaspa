@@ -15,17 +15,13 @@ impl HeaderProcessor {
             return Ok(());
         }
 
-        self.check_pruning_violation(ctx, header)?;
+        self.check_pruning_violation(ctx)?;
         self.check_pow_and_calc_block_level(ctx, header)?;
         self.check_difficulty_and_daa_score(ctx, header)?;
         Ok(())
     }
 
-    fn check_pruning_violation(
-        self: &Arc<HeaderProcessor>,
-        ctx: &mut HeaderProcessingContext,
-        header: &Header,
-    ) -> BlockProcessResult<()> {
+    fn check_pruning_violation(self: &Arc<HeaderProcessor>, ctx: &mut HeaderProcessingContext) -> BlockProcessResult<()> {
         let non_pruned_parents = ctx.get_non_pruned_parents();
         if non_pruned_parents.is_empty() {
             return Ok(());
@@ -62,17 +58,17 @@ impl HeaderProcessor {
         header: &Header,
     ) -> BlockProcessResult<()> {
         let ghostdag_data = ctx.ghostdag_data.clone().unwrap();
-        let window = self.dag_traversal_manager.block_window(ghostdag_data, self.difficulty_window_size);
+        let window = self.dag_traversal_manager.block_window(&ghostdag_data, self.difficulty_window_size);
 
-        let (daa_score, daa_added_blocks) = self
+        let (daa_score, mergeset_non_daa) = self
             .difficulty_manager
-            .calc_daa_score_and_added_blocks(&mut window.iter().map(|item| item.0.hash), &ctx.ghostdag_data.clone().unwrap());
+            .calc_daa_score_and_non_daa_mergeset_blocks(&mut window.iter().map(|item| item.0.hash), &ghostdag_data);
 
         if daa_score != header.daa_score {
             return Err(RuleError::UnexpectedHeaderDaaScore(daa_score, header.daa_score));
         }
 
-        ctx.daa_added_blocks = Some(daa_added_blocks);
+        ctx.mergeset_non_daa = Some(mergeset_non_daa);
 
         let expected_bits = self.difficulty_manager.calculate_difficulty_bits(&window);
         if header.bits != expected_bits {
