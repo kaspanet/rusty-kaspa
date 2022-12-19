@@ -497,7 +497,7 @@ impl VirtualStateProcessor {
         txs.insert(0, coinbase.tx);
         let version = BLOCK_VERSION;
         let parents_by_level = self.parents_manager.calc_block_parents(pruning_point, &virtual_state.parents);
-        let hash_merkle_root = calc_hash_merkle_root(&mut txs.iter());
+        let hash_merkle_root = calc_hash_merkle_root(txs.iter());
         let accepted_id_merkle_root = merkle::calc_merkle_root(virtual_state.accepted_tx_ids.iter().copied());
         let utxo_commitment = virtual_state.multiset.clone().finalize();
         // Past median time is the exclusive lower bound for valid block time, so we increase by 1 to get the valid min
