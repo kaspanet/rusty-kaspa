@@ -13,7 +13,7 @@ use crate::{
             daa::DbDaaStore,
             depth::DbDepthStore,
             errors::StoreError,
-            ghostdag::{DbGhostdagStore, GhostdagStoreReader},
+            ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStoreReader},
             headers::{DbHeadersStore, HeaderStoreReader},
             past_pruning_points::{DbPastPruningPointsStore, PastPruningPointsStore, PastPruningPointsStoreReader},
             pruning::{DbPruningStore, PruningStore, PruningStoreReader},
@@ -285,8 +285,7 @@ impl VirtualStateProcessor {
         let new_selected_status = self.statuses_store.read().get(new_selected).unwrap();
         match new_selected_status {
             BlockStatus::StatusUTXOValid => {
-                let virtual_parents = self.pick_virtual_parents(new_selected, tips);
-                let virtual_ghostdag_data = self.ghostdag_manager.ghostdag(&virtual_parents);
+                let (virtual_parents, virtual_ghostdag_data) = self.pick_virtual_parents(new_selected, tips);
                 assert_eq!(virtual_ghostdag_data.selected_parent, new_selected);
 
                 // Calc the new virtual UTXO diff
@@ -357,7 +356,7 @@ impl VirtualStateProcessor {
     /// Picks the virtual parents according to virtual parent selection pruning constrains.
     /// Assumes `selected_parent` is a UTXO-valid block, and that `candidates` are an antichain
     /// containing `selected_parent` s.t. it is the block with highest blue work amongst them.  
-    fn pick_virtual_parents(&self, selected_parent: Hash, candidates: Vec<Hash>) -> Vec<Hash> {
+    fn pick_virtual_parents(&self, selected_parent: Hash, candidates: Vec<Hash>) -> (Vec<Hash>, GhostdagData) {
         let max_block_parents = self.max_block_parents as usize;
 
         // Limit to max_block_parents*3 candidates, that way we don't go over thousands of tips when the network isn't healthy.
@@ -385,6 +384,7 @@ impl VirtualStateProcessor {
         virtual_parents.push(selected_parent);
         let mut mergeset_size = 1; // Count the selected parent
 
+        // Try adding parents as long as mergeset size and number of parents limits are not reached
         while let Some(candidate) = candidates.pop_front() {
             if mergeset_size >= self.mergeset_size_limit || virtual_parents.len() >= max_block_parents {
                 break;
@@ -399,7 +399,7 @@ impl VirtualStateProcessor {
                     if self.reachability_service.is_any_dag_ancestor(&mut candidates.iter().copied(), new_candidate) {
                         continue; // TODO: not sure this test is needed if candidates invariant as antichain is kept
                     }
-                    // Remove all candidates in future of new candidate
+                    // Remove all candidates which are in the future of the new candidate
                     candidates.retain(|&h| !self.reachability_service.is_dag_ancestor_of(new_candidate, h));
                     candidates.push_back(new_candidate);
                 }
@@ -441,8 +441,8 @@ impl VirtualStateProcessor {
         MergesetIncreaseResult::Accepted { increase_size: mergeset_increase }
     }
 
-    fn remove_bounded_merge_breaking_parents(&self, mut virtual_parents: Vec<Hash>) -> Vec<Hash> {
-        let ghostdag_data = self.ghostdag_manager.ghostdag(&virtual_parents);
+    fn remove_bounded_merge_breaking_parents(&self, mut virtual_parents: Vec<Hash>) -> (Vec<Hash>, GhostdagData) {
+        let mut ghostdag_data = self.ghostdag_manager.ghostdag(&virtual_parents);
         let pruning_point =
             self.pruning_manager.expected_header_pruning_point(ghostdag_data.to_compact(), self.pruning_store.read().get().unwrap());
         let merge_depth_root = self.depth_manager.calc_merge_depth_root(&ghostdag_data, pruning_point);
@@ -470,9 +470,11 @@ impl VirtualStateProcessor {
         if !bad_reds.is_empty() {
             // Remove all parents which lead to merging a bad red
             virtual_parents.retain(|&h| !self.reachability_service.is_any_dag_ancestor(&mut bad_reds.iter().copied(), h));
+            // Recompute ghostdag data since parents changed
+            ghostdag_data = self.ghostdag_manager.ghostdag(&virtual_parents);
         }
 
-        virtual_parents
+        (virtual_parents, ghostdag_data)
     }
 
     pub fn build_block_template(self: &Arc<Self>, miner_data: MinerData, mut txs: Vec<Transaction>) -> BlockTemplate {
