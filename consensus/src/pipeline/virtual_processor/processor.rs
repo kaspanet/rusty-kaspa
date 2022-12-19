@@ -357,19 +357,19 @@ impl VirtualStateProcessor {
     /// Picks the virtual parents according to virtual parent selection pruning constrains.
     /// Assumes `selected_parent` is a UTXO-valid block, and that `candidates` are an antichain
     /// containing `selected_parent` s.t. it is the block with highest blue work amongst them.  
-    fn pick_virtual_parents(&self, selected_parent: Hash, mut candidates: Vec<Hash>) -> Vec<Hash> {
+    fn pick_virtual_parents(&self, selected_parent: Hash, candidates: Vec<Hash>) -> Vec<Hash> {
         let max_block_parents = self.max_block_parents as usize;
 
         // Limit to max_block_parents*3 candidates, that way we don't go over thousands of tips when the network isn't healthy.
         // There's no specific reason for a factor of 3, and its not a consensus rule, just an estimation saying we probably
         // don't want to consider and calculate 3 times the amount of candidates for the set of parents.
         let max_candidates = max_block_parents * 3;
-        candidates = candidates
+        let mut candidates = candidates
             .into_iter()
             .map(|block| Reverse(SortableBlock { hash: block, blue_work: self.ghostdag_store.get_blue_work(block).unwrap() }))
             .k_smallest(max_candidates) // Takes the k largest blocks by blue work
             .map(|s| s.0.hash)
-            .collect();
+            .collect::<VecDeque<_>>();
         // Prioritize half the blocks with highest blue work and half with lowest, so the network will merge splits faster.
         if candidates.len() > max_block_parents {
             for i in max_block_parents / 2 + 1..max_block_parents {
@@ -377,7 +377,7 @@ impl VirtualStateProcessor {
                 candidates.swap(i, j);
             }
         }
-        let mut candidates = candidates.into_iter().collect::<VecDeque<_>>();
+
         let top_candidate = candidates.pop_front().unwrap();
         assert_eq!(top_candidate, selected_parent);
 
