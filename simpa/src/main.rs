@@ -1,6 +1,9 @@
 use clap::Parser;
 use consensus::{
-    consensus::{test_consensus::create_temp_db, Consensus},
+    consensus::{
+        test_consensus::{create_temp_db, load_existing_db},
+        Consensus,
+    },
     constants::perf::{PerfParams, PERF_PARAMS},
     errors::{BlockProcessResult, RuleError},
     model::stores::{
@@ -67,10 +70,18 @@ struct Args {
     ///  -- You may also specify <subsystem>=<level>,<subsystem2>=<level>,... to set the log level for individual subsystems
     #[arg(long = "loglevel", default_value = "info")]
     log_level: String,
+
+    /// Output directory to save the simulation DB
+    #[arg(short, long)]
+    output_dir: Option<String>,
+
+    /// Input directory of a previous simulation DB (NOTE: simulation args must be compatible with the original run)
+    #[arg(short, long)]
+    input_dir: Option<String>,
 }
 
 /// Calculates the k parameter of the GHOSTDAG protocol such that anticones lager than k will be created
-/// with probability less than 'delta' (follows eq. 1 from section 4.2 of the PHANTOM paper)
+/// with probability less than `delta` (follows eq. 1 from section 4.2 of the PHANTOM paper)
 /// `x` is expected to be 2Dλ where D is the maximal network delay and λ is the block mining rate.
 /// `delta` is an upper bound for the probability of anticones larger than k.
 /// Returns the minimal k such that the above conditions hold.
@@ -103,10 +114,21 @@ fn main() {
     let mut perf_params = PERF_PARAMS;
     adjust_consensus_params(&args, &mut params);
     adjust_perf_params(&args, &params, &mut perf_params);
-    let until = if args.target_blocks.is_none() { args.sim_time * 1000 } else { u64::MAX }; // milliseconds
-    let mut sim = KaspaNetworkSimulator::new(args.delay, args.bps, args.target_blocks, &params, &perf_params);
-    let (consensus, handles, _lifetime) = sim.init(args.miners, args.tpb, !args.quiet).run(until);
-    consensus.shutdown(handles);
+
+    // Load an existing consensus or run the simulation
+    let (consensus, _lifetime) = if let Some(input_dir) = args.input_dir {
+        let (lifetime, db) = load_existing_db(input_dir);
+        let consensus = Arc::new(Consensus::with_perf_params(db, &params, &perf_params));
+        (consensus, lifetime)
+    } else {
+        let until = if args.target_blocks.is_none() { args.sim_time * 1000 } else { u64::MAX }; // milliseconds
+        let mut sim = KaspaNetworkSimulator::new(args.delay, args.bps, args.target_blocks, &params, &perf_params, args.output_dir);
+        let (consensus, handles, lifetime) = sim.init(args.miners, args.tpb, !args.quiet).run(until);
+        consensus.shutdown(handles);
+        (consensus, lifetime)
+    };
+
+    // Benchmark the DAG validation time
     let (_lifetime2, db2) = create_temp_db();
     let consensus2 = Arc::new(Consensus::with_perf_params(db2, &params, &perf_params));
     let handles2 = consensus2.init();

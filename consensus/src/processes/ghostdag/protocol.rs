@@ -26,7 +26,7 @@ pub struct GhostdagManager<T: GhostdagStoreReader, S: RelationsStoreReader, U: R
     genesis_hash: Hash,
     pub(super) k: KType,
     pub(super) ghostdag_store: Arc<T>,
-    pub(super) relations_store: Arc<S>,
+    pub(super) relations_store: S,
     pub(super) headers_store: Arc<V>,
     pub(super) reachability_service: U,
 }
@@ -36,22 +36,22 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
         genesis_hash: Hash,
         k: KType,
         ghostdag_store: Arc<T>,
-        relations_store: Arc<S>,
+        relations_store: S,
         headers_store: Arc<V>,
         reachability_service: U,
     ) -> Self {
         Self { genesis_hash, k, ghostdag_store, relations_store, reachability_service, headers_store }
     }
 
-    pub fn genesis_ghostdag_data(&self) -> Arc<GhostdagData> {
-        Arc::new(GhostdagData::new(
+    pub fn genesis_ghostdag_data(&self) -> GhostdagData {
+        GhostdagData::new(
             0,
             Default::default(), // TODO: take blue score and work from actual genesis
             blockhash::ORIGIN,
             BlockHashes::new(Vec::new()),
             BlockHashes::new(Vec::new()),
             HashKTypeMap::new(BlockHashMap::new()),
-        ))
+        )
     }
 
     pub fn find_selected_parent(&self, parents: &mut impl Iterator<Item = Hash>) -> Hash {
@@ -177,7 +177,6 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
             }
 
             current_blues_anticone_sizes = self.ghostdag_store.get_blues_anticone_sizes(current_selected_parent).unwrap();
-
             current_selected_parent = self.ghostdag_store.get_selected_parent(current_selected_parent).unwrap();
         }
     }
@@ -190,13 +189,11 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
         }
 
         let mut candidate_blues_anticone_sizes: BlockHashMap<KType> = BlockHashMap::with_capacity(self.k as usize);
-
         // Iterate over all blocks in the blue past of the new block that are not in the past
         // of blue_candidate, and check for each one of them if blue_candidate potentially
         // enlarges their blue anticone to be over K, or that they enlarge the blue anticone
         // of blue_candidate to be over K.
         let mut chain_block = ChainBlock { hash: None, data: new_block_data.into() };
-
         let mut candidate_blue_anticone_size: KType = 0;
 
         loop {

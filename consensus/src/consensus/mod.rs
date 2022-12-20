@@ -95,8 +95,8 @@ pub struct Consensus {
     pub ghostdag_store: Arc<DbGhostdagStore>,
 
     // Services and managers
-    statuses_service: Arc<MTStatusesService<DbStatusesStore>>,
-    relations_service: Arc<MTRelationsService<DbRelationsStore>>,
+    statuses_service: MTStatusesService<DbStatusesStore>,
+    relations_service: MTRelationsService<DbRelationsStore>,
     reachability_service: MTReachabilityService<DbReachabilityStore>,
     pub(super) difficulty_manager: DifficultyManager<DbHeadersStore>,
     pub(super) dag_traversal_manager: DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore>,
@@ -154,8 +154,8 @@ impl Consensus {
         // Services and managers
         //
 
-        let statuses_service = Arc::new(MTStatusesService::new(statuses_store.clone()));
-        let relations_service = Arc::new(MTRelationsService::new(relations_store.clone()));
+        let statuses_service = MTStatusesService::new(statuses_store.clone());
+        let relations_service = MTRelationsService::new(relations_store.clone());
         let reachability_service = MTReachabilityService::new(reachability_store.clone());
         let dag_traversal_manager = DagTraversalManager::new(
             params.genesis_hash,
@@ -287,7 +287,7 @@ impl Consensus {
             past_median_time_manager.clone(),
             dag_traversal_manager.clone(),
             difficulty_manager.clone(),
-            depth_manager,
+            depth_manager.clone(),
             pruning_manager.clone(),
             parents_manager.clone(),
             counters.clone(),
@@ -332,6 +332,7 @@ impl Consensus {
             virtual_state_store,
             ghostdag_manager.clone(),
             reachability_service.clone(),
+            relations_service.clone(),
             dag_traversal_manager.clone(),
             difficulty_manager.clone(),
             coinbase_manager.clone(),
@@ -339,6 +340,7 @@ impl Consensus {
             past_median_time_manager.clone(),
             pruning_manager.clone(),
             parents_manager,
+            depth_manager,
         ));
 
         Self {

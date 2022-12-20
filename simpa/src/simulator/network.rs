@@ -4,7 +4,7 @@ use std::thread::JoinHandle;
 use super::infra::Simulation;
 use super::miner::Miner;
 
-use consensus::consensus::test_consensus::{create_temp_db, TempDbLifetime};
+use consensus::consensus::test_consensus::{create_permanent_db, create_temp_db, TempDbLifetime};
 use consensus::consensus::Consensus;
 use consensus::constants::perf::PerfParams;
 use consensus::params::Params;
@@ -22,11 +22,19 @@ pub struct KaspaNetworkSimulator {
     params: Params,             // Consensus params
     perf_params: PerfParams,    // Performance params
     bps: f64,                   // Blocks per second
-    target_blocks: Option<u64>, // Target simulation blocs
+    target_blocks: Option<u64>, // Target simulation blocks
+    output_dir: Option<String>, // Possible permanent output directory
 }
 
 impl KaspaNetworkSimulator {
-    pub fn new(delay: f64, bps: f64, target_blocks: Option<u64>, params: &Params, perf_params: &PerfParams) -> Self {
+    pub fn new(
+        delay: f64,
+        bps: f64,
+        target_blocks: Option<u64>,
+        params: &Params,
+        perf_params: &PerfParams,
+        output_dir: Option<String>,
+    ) -> Self {
         Self {
             simulation: Simulation::new((delay * 1000.0) as u64),
             consensuses: Vec::new(),
@@ -34,6 +42,7 @@ impl KaspaNetworkSimulator {
             params: params.clone(),
             perf_params: perf_params.clone(),
             target_blocks,
+            output_dir,
         }
     }
 
@@ -41,7 +50,11 @@ impl KaspaNetworkSimulator {
         let secp = secp256k1::Secp256k1::new();
         let mut rng = rand::thread_rng();
         for i in 0..num_miners {
-            let (lifetime, db) = create_temp_db();
+            let (lifetime, db) = if i == 0 && self.output_dir.is_some() {
+                create_permanent_db(self.output_dir.clone().unwrap())
+            } else {
+                create_temp_db()
+            };
             let consensus = Arc::new(Consensus::with_perf_params(db, &self.params, &self.perf_params));
             let handles = consensus.init();
             let (sk, pk) = secp.generate_keypair(&mut rng);
