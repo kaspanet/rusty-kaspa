@@ -16,7 +16,7 @@ pub mod prelude {
     pub use super::model::blue_work::*;
     pub use super::model::hash::*;
     pub use super::model::header::*;
-    pub use super::model::hex_data::*;
+    pub use super::model::hex_cnv::*;
     pub use super::model::message::*;
     pub use super::model::script_class::*;
     pub use super::model::subnets::*;
@@ -31,7 +31,7 @@ pub use model::block::*;
 pub use model::blue_work::*;
 pub use model::hash::*;
 pub use model::header::*;
-pub use model::hex_data::*;
+pub use model::hex_cnv::*;
 pub use model::message::*;
 pub use model::script_class::*;
 pub use model::subnets::*;

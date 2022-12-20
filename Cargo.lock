@@ -2393,6 +2393,7 @@ dependencies = [
  "math",
  "rand 0.8.5",
  "serde",
+ "smallvec",
  "thiserror",
  "triggered",
  "workflow-core",
