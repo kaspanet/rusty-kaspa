@@ -5,6 +5,7 @@ use parking_lot::RwLock;
 use std::sync::Arc;
 
 /// Multi-threaded block-statuses service imp
+#[derive(Clone)]
 pub struct MTStatusesService<T: StatusesStoreReader> {
     store: Arc<RwLock<T>>,
 }

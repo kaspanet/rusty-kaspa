@@ -32,6 +32,7 @@ impl ReachabilityError {
 pub type Result<T> = std::result::Result<T, ReachabilityError>;
 
 pub trait ReachabilityResultExtensions<T> {
+    /// Unwraps the error into `None` if the internal error is `StoreError::KeyNotFound` or panics otherwise
     fn unwrap_option(self) -> Option<T>;
 }
 

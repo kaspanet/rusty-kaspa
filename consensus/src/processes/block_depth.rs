@@ -80,7 +80,9 @@ impl<S: DepthStoreReader, U: ReachabilityStoreReader, V: GhostdagStoreReader> Bl
         current
     }
 
-    pub fn non_bounded_merge_depth_violating_blues<'a>(
+    /// Returns the set of blues which are eligible for "kosherizing" merge bound violating blocks.
+    /// By prunality rules, these blocks must have `merge_depth_root` on their selected chain.  
+    pub fn kosherizing_blues<'a>(
         &'a self,
         ghostdag_data: &'a GhostdagData,
         merge_depth_root: Hash,
