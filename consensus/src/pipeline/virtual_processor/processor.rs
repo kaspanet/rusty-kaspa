@@ -282,6 +282,8 @@ impl VirtualStateProcessor {
             }
         }
 
+        // NOTE: inlining this within the match captures the statuses store lock and should be avoided.
+        // TODO: wrap statuses store lock within a service
         let new_selected_status = self.statuses_store.read().get(new_selected).unwrap();
         match new_selected_status {
             BlockStatus::StatusUTXOValid => {
@@ -357,6 +359,7 @@ impl VirtualStateProcessor {
     /// Assumes `selected_parent` is a UTXO-valid block, and that `candidates` are an antichain
     /// containing `selected_parent` s.t. it is the block with highest blue work amongst them.  
     fn pick_virtual_parents(&self, selected_parent: Hash, candidates: Vec<Hash>) -> (Vec<Hash>, GhostdagData) {
+        // TODO: tests
         let max_block_parents = self.max_block_parents as usize;
 
         // Limit to max_block_parents*3 candidates, that way we don't go over thousands of tips when the network isn't healthy.
@@ -365,20 +368,20 @@ impl VirtualStateProcessor {
         let max_candidates = max_block_parents * 3;
         let mut candidates = candidates
             .into_iter()
+            .filter(|&h| h != selected_parent) // Filter the selected parent since we already know it must be included
             .map(|block| Reverse(SortableBlock { hash: block, blue_work: self.ghostdag_store.get_blue_work(block).unwrap() }))
-            .k_smallest(max_candidates) // Takes the k largest blocks by blue work
+            .k_smallest(max_candidates) // Takes the k largest blocks by blue work in descending order
             .map(|s| s.0.hash)
             .collect::<VecDeque<_>>();
         // Prioritize half the blocks with highest blue work and half with lowest, so the network will merge splits faster.
-        if candidates.len() > max_block_parents {
-            for i in max_block_parents / 2 + 1..max_block_parents {
-                let j = candidates.len() - 1 - i;
+        if candidates.len() >= max_block_parents {
+            let max_additional_parents = max_block_parents - 1; // We already have the selected parent
+            let mut j = candidates.len() - 1;
+            for i in max_additional_parents / 2..max_additional_parents {
                 candidates.swap(i, j);
+                j -= 1;
             }
         }
-
-        let top_candidate = candidates.pop_front().unwrap();
-        assert_eq!(top_candidate, selected_parent);
 
         let mut virtual_parents = Vec::with_capacity(min(max_block_parents, candidates.len() + 1));
         virtual_parents.push(selected_parent);
