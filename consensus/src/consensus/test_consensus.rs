@@ -1,5 +1,6 @@
 use std::{
     env, fs,
+    path::PathBuf,
     sync::{Arc, Weak},
     thread::JoinHandle,
 };
@@ -195,6 +196,12 @@ impl TempDbLifetime {
     pub fn new(tempdir: tempfile::TempDir, weak_db_ref: Weak<DB>) -> Self {
         Self { tempdir: Some(tempdir), weak_db_ref }
     }
+
+    /// Tracks the DB reference and makes sure all strong refs are cleaned up
+    /// but does not remove the DB from disk when dropped.
+    pub fn without_destroy(weak_db_ref: Weak<DB>) -> Self {
+        Self { tempdir: None, weak_db_ref }
+    }
 }
 
 impl Drop for TempDbLifetime {
@@ -223,10 +230,25 @@ pub fn create_temp_db() -> (TempDbLifetime, Arc<DB>) {
     let global_tempdir = env::temp_dir();
     let kaspa_tempdir = global_tempdir.join("kaspa-rust");
     fs::create_dir_all(kaspa_tempdir.as_path()).unwrap();
-
     let db_tempdir = tempfile::tempdir_in(kaspa_tempdir.as_path()).unwrap();
     let db_path = db_tempdir.path().to_owned();
-
     let db = Arc::new(DB::open_default(db_path.to_str().unwrap()).unwrap());
     (TempDbLifetime::new(db_tempdir, Arc::downgrade(&db)), db)
+}
+
+/// Creates a DB within the provided directory path.
+/// Callers must keep the `TempDbLifetime` guard for as long as they wish the DB instance to exist.
+pub fn create_permanent_db(db_path: String) -> (TempDbLifetime, Arc<DB>) {
+    let db_dir = PathBuf::from(db_path);
+    fs::create_dir(db_dir.as_path()).unwrap();
+    let db = Arc::new(DB::open_default(db_dir.to_str().unwrap()).unwrap());
+    (TempDbLifetime::without_destroy(Arc::downgrade(&db)), db)
+}
+
+/// Loads an existing DB from the provided directory path.
+/// Callers must keep the `TempDbLifetime` guard for as long as they wish the DB instance to exist.
+pub fn load_existing_db(db_path: String) -> (TempDbLifetime, Arc<DB>) {
+    let db_dir = PathBuf::from(db_path);
+    let db = Arc::new(DB::open_default(db_dir.to_str().unwrap()).unwrap());
+    (TempDbLifetime::without_destroy(Arc::downgrade(&db)), db)
 }

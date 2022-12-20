@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
+use super::reachability::ReachabilityResultExtensions;
 use crate::model::{
     services::reachability::{MTReachabilityService, ReachabilityService},
     stores::{
-        errors::StoreError,
         ghostdag::{CompactGhostdagData, GhostdagStoreReader},
         headers::HeaderStoreReader,
         past_pruning_points::PastPruningPointsStoreReader,
@@ -12,8 +12,6 @@ use crate::model::{
     },
 };
 use hashes::Hash;
-
-use super::reachability::ReachabilityError;
 
 #[derive(Clone)]
 pub struct PruningManager<S: GhostdagStoreReader, T: ReachabilityStoreReader, U: HeaderStoreReader, V: PastPruningPointsStoreReader> {
@@ -121,23 +119,12 @@ impl<S: GhostdagStoreReader, T: ReachabilityStoreReader, U: HeaderStoreReader, V
         let next_or_current_pp = if has_pruning_point_in_its_selected_chain
             && min_required_blue_score_for_next_pruning_point + self.pruning_depth <= ghostdag_data.blue_score
         {
-            let suggested_low_hash = match self.reachability_service.is_dag_ancestor_of_result(current_pruning_point, sp_header_pp) {
-                Ok(is_in_future_of_current_pruning_point) => {
-                    if is_in_future_of_current_pruning_point {
-                        Some(sp_header_pp)
-                    } else {
-                        None
-                    }
-                }
-                Err(ReachabilityError::StoreError(e)) => {
-                    if let StoreError::KeyNotFound(_) = e {
-                        None
-                    } else {
-                        panic!("Unexpected store error: {:?}", e)
-                    }
-                }
-                Err(err) => panic!("Unexpected reachability error: {:?}", err),
-            };
+            // If the selected parent pruning point is in the future of current global pruning point, then provide it as a suggestion
+            let suggested_low_hash = self
+                .reachability_service
+                .is_dag_ancestor_of_result(current_pruning_point, sp_header_pp)
+                .unwrap_option()
+                .and_then(|b| if b { Some(sp_header_pp) } else { None });
             let (new_pruning_points, _) = self.next_pruning_points_and_candidate_by_ghostdag_data(
                 ghostdag_data,
                 suggested_low_hash,
