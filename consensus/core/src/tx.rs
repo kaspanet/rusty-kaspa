@@ -284,3 +284,22 @@ impl<'a> ValidatedTransaction<'a> {
         self.tx.id()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_spk_borsh() {
+        // Tests for ScriptPublicKey Borsh ser/deser since we manually implemented them
+        let spk = ScriptPublicKey::from_vec(12, vec![32; 20]);
+        let bin = spk.try_to_vec().unwrap();
+        let spk2: ScriptPublicKey = BorshDeserialize::try_from_slice(&bin).unwrap();
+        assert_eq!(spk, spk2);
+
+        let spk = ScriptPublicKey::from_vec(55455, vec![11; 200]);
+        let bin = spk.try_to_vec().unwrap();
+        let spk2: ScriptPublicKey = BorshDeserialize::try_from_slice(&bin).unwrap();
+        assert_eq!(spk, spk2);
+    }
+}
