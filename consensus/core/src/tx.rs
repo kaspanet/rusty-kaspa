@@ -43,33 +43,24 @@ impl ScriptPublicKey {
     }
 }
 
-/// Internal private structs for ScriptPublicKey Borsh support
-mod borsh_wrappers {
-    use super::*;
-
-    #[derive(BorshSerialize)]
-    pub(super) struct SerializableScriptPublicKey<'a> {
-        pub version: u16,
-        pub script: &'a [u8], // Optimize serialization by borrowing a slice ref
-    }
-
-    #[derive(BorshDeserialize, BorshSchema)]
-    pub(super) struct ScriptPublicKey {
-        pub version: u16,
-        pub script: Vec<u8>,
-    }
-}
+//
+// Borsh serializers need to be manually implemented for `ScriptPublicKey` since
+// smallvec does not currently support Borsh
+//
 
 impl BorshSerialize for ScriptPublicKey {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        BorshSerialize::serialize(&borsh_wrappers::SerializableScriptPublicKey { version: self.version, script: &self.script }, writer)
+        borsh::BorshSerialize::serialize(&self.version, writer)?;
+        // Vectors and slices are all serialized internally the same way
+        borsh::BorshSerialize::serialize(&self.script.as_slice(), writer)?;
+        Ok(())
     }
 }
 
 impl BorshDeserialize for ScriptPublicKey {
     fn deserialize(buf: &mut &[u8]) -> std::io::Result<Self> {
-        let b: borsh_wrappers::ScriptPublicKey = BorshDeserialize::deserialize(buf)?;
-        Ok(Self::from_vec(b.version, b.script))
+        // Deserialize into vec first since we have no custom smallvec support
+        Ok(Self::from_vec(borsh::BorshDeserialize::deserialize(buf)?, borsh::BorshDeserialize::deserialize(buf)?))
     }
 }
 
@@ -77,11 +68,19 @@ impl BorshSchema for ScriptPublicKey {
     fn add_definitions_recursively(
         definitions: &mut std::collections::HashMap<borsh::schema::Declaration, borsh::schema::Definition>,
     ) {
-        borsh_wrappers::ScriptPublicKey::add_definitions_recursively(definitions)
+        let fields = borsh::schema::Fields::NamedFields(std::vec![
+            ("version".to_string(), <u16>::declaration()),
+            ("script".to_string(), <Vec<u8>>::declaration())
+        ]);
+        let definition = borsh::schema::Definition::Struct { fields };
+        Self::add_definition(Self::declaration(), definition, definitions);
+        <u16>::add_definitions_recursively(definitions);
+        // `<Vec<u8>>` can be safely used as scheme definition for smallvec. See comments above.
+        <Vec<u8>>::add_definitions_recursively(definitions);
     }
 
     fn declaration() -> borsh::schema::Declaration {
-        borsh_wrappers::ScriptPublicKey::declaration()
+        "ScriptPublicKey".to_string()
     }
 }
 
