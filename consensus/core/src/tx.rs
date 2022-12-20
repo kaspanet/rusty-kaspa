@@ -19,6 +19,7 @@ pub use smallvec::smallvec as scriptvec;
 
 /// Represents a Kaspad ScriptPublicKey
 #[derive(Default, Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct ScriptPublicKey {
     version: u16,
     script: ScriptVec, // Kept private to preserve read-only semantics
@@ -42,11 +43,53 @@ impl ScriptPublicKey {
     }
 }
 
+//
+// Borsh serializers need to be manually implemented for `ScriptPublicKey` since
+// smallvec does not currently support Borsh
+//
+
+impl BorshSerialize for ScriptPublicKey {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        borsh::BorshSerialize::serialize(&self.version, writer)?;
+        // Vectors and slices are all serialized internally the same way
+        borsh::BorshSerialize::serialize(&self.script.as_slice(), writer)?;
+        Ok(())
+    }
+}
+
+impl BorshDeserialize for ScriptPublicKey {
+    fn deserialize(buf: &mut &[u8]) -> std::io::Result<Self> {
+        // Deserialize into vec first since we have no custom smallvec support
+        Ok(Self::from_vec(borsh::BorshDeserialize::deserialize(buf)?, borsh::BorshDeserialize::deserialize(buf)?))
+    }
+}
+
+impl BorshSchema for ScriptPublicKey {
+    fn add_definitions_recursively(
+        definitions: &mut std::collections::HashMap<borsh::schema::Declaration, borsh::schema::Definition>,
+    ) {
+        let fields = borsh::schema::Fields::NamedFields(std::vec![
+            ("version".to_string(), <u16>::declaration()),
+            ("script".to_string(), <Vec<u8>>::declaration())
+        ]);
+        let definition = borsh::schema::Definition::Struct { fields };
+        Self::add_definition(Self::declaration(), definition, definitions);
+        <u16>::add_definitions_recursively(definitions);
+        // `<Vec<u8>>` can be safely used as scheme definition for smallvec. See comments above.
+        <Vec<u8>>::add_definitions_recursively(definitions);
+    }
+
+    fn declaration() -> borsh::schema::Declaration {
+        "ScriptPublicKey".to_string()
+    }
+}
+
 /// Holds details about an individual transaction output in a utxo
 /// set such as whether or not it was contained in a coinbase tx, the daa
 /// score of the block that accepts the tx, its public key script, and how
 /// much it pays.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct UtxoEntry {
     pub amount: u64,
     pub script_public_key: ScriptPublicKey,
@@ -83,7 +126,8 @@ impl Display for TransactionOutpoint {
 }
 
 /// Represents a Kaspa transaction input
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct TransactionInput {
     pub previous_outpoint: TransactionOutpoint,
     pub signature_script: Vec<u8>, // TODO: Consider using SmallVec
@@ -98,7 +142,8 @@ impl TransactionInput {
 }
 
 /// Represents a Kaspad transaction output
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct TransactionOutput {
     pub value: u64,
     pub script_public_key: ScriptPublicKey,
@@ -112,6 +157,7 @@ impl TransactionOutput {
 
 /// Represents a Kaspa transaction
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Transaction {
     pub version: u16,
     pub inputs: Vec<TransactionInput>,
@@ -236,5 +282,24 @@ impl<'a> ValidatedTransaction<'a> {
 
     pub fn id(&self) -> TransactionId {
         self.tx.id()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_spk_borsh() {
+        // Tests for ScriptPublicKey Borsh ser/deser since we manually implemented them
+        let spk = ScriptPublicKey::from_vec(12, vec![32; 20]);
+        let bin = spk.try_to_vec().unwrap();
+        let spk2: ScriptPublicKey = BorshDeserialize::try_from_slice(&bin).unwrap();
+        assert_eq!(spk, spk2);
+
+        let spk = ScriptPublicKey::from_vec(55455, vec![11; 200]);
+        let bin = spk.try_to_vec().unwrap();
+        let spk2: ScriptPublicKey = BorshDeserialize::try_from_slice(&bin).unwrap();
+        assert_eq!(spk, spk2);
     }
 }
