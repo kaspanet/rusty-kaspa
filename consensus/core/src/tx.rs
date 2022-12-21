@@ -214,6 +214,11 @@ impl Transaction {
     }
 }
 
+pub trait SignableTransaction {
+    fn tx(&self) -> &Transaction;
+    fn populated_input(&self, index: usize) -> (&TransactionInput, &UtxoEntry);
+}
+
 /// Represents a transaction with populated UTXO entry data
 pub struct PopulatedTransaction<'a> {
     pub tx: &'a Transaction,
@@ -251,6 +256,16 @@ impl<'a> PopulatedTransaction<'a> {
     }
 }
 
+impl<'a> SignableTransaction for PopulatedTransaction<'a> {
+    fn tx(&self) -> &Transaction {
+        self.tx
+    }
+
+    fn populated_input(&self, index: usize) -> (&TransactionInput, &UtxoEntry) {
+        (&self.tx.inputs[index], &self.entries[index])
+    }
+}
+
 /// Represents a validated transaction with populated UTXO entry data and a calculated fee
 pub struct ValidatedTransaction<'a> {
     pub tx: &'a Transaction,
@@ -282,6 +297,49 @@ impl<'a> ValidatedTransaction<'a> {
 
     pub fn id(&self) -> TransactionId {
         self.tx.id()
+    }
+}
+
+pub struct MutableTransaction {
+    pub tx: Transaction,
+    pub entries: Vec<UtxoEntry>,
+    pub calculated_fee: Option<u64>,
+    pub calculated_mass: Option<u64>,
+}
+
+impl MutableTransaction {
+    pub fn new(tx: Transaction, entries: Vec<UtxoEntry>) -> Self {
+        Self { tx, entries, calculated_fee: None, calculated_mass: None }
+    }
+
+    pub fn populated_inputs(&self) -> impl ExactSizeIterator<Item = (&TransactionInput, &UtxoEntry)> {
+        self.tx.inputs.iter().zip(self.entries.iter())
+    }
+
+    pub fn populated_input(&self, index: usize) -> (&TransactionInput, &UtxoEntry) {
+        (&self.tx.inputs[index], &self.entries[index])
+    }
+
+    pub fn outputs(&self) -> &[TransactionOutput] {
+        &self.tx.outputs
+    }
+
+    pub fn is_coinbase(&self) -> bool {
+        self.tx.is_coinbase()
+    }
+
+    pub fn id(&self) -> TransactionId {
+        self.tx.id()
+    }
+}
+
+impl SignableTransaction for MutableTransaction {
+    fn tx(&self) -> &Transaction {
+        &self.tx
+    }
+
+    fn populated_input(&self, index: usize) -> (&TransactionInput, &UtxoEntry) {
+        (&self.tx.inputs[index], &self.entries[index])
     }
 }
 

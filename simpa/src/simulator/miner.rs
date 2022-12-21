@@ -9,7 +9,7 @@ use consensus_core::coinbase::MinerData;
 use consensus_core::sign::sign;
 use consensus_core::subnets::SUBNETWORK_ID_NATIVE;
 use consensus_core::tx::{
-    PopulatedTransaction, ScriptPublicKey, ScriptVec, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry,
+    MutableTransaction, ScriptPublicKey, ScriptVec, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry,
 };
 use consensus_core::utxo::utxo_view::UtxoView;
 use futures::future::join_all;
@@ -114,12 +114,12 @@ impl Miner {
             .filter_map(|&outpoint| {
                 let Some(entry) = self.get_spendable_entry(outpoint, virtual_state.daa_score) else { return None; };
                 let unsigned_tx = self.create_unsigned_tx(outpoint, entry.amount, multiple_outputs);
-                Some((unsigned_tx, entry))
+                Some(MutableTransaction::new(unsigned_tx, vec![entry]))
             })
             .take(self.target_txs_per_block as usize)
             .collect::<Vec<_>>()
             .into_par_iter()
-            .map(|(unsigned_tx, entry)| sign(&PopulatedTransaction::new(&unsigned_tx, vec![entry]), self.secret_key.secret_bytes()))
+            .map(|mutable_tx| sign(mutable_tx, self.secret_key.secret_bytes()).tx)
             .collect::<Vec<_>>();
 
         for outpoint in txs.iter().flat_map(|t| t.inputs.iter().map(|i| i.previous_outpoint)) {

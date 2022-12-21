@@ -2,7 +2,7 @@ use hashes::{Hash, Hasher, HasherBase, TransactionSigningHash, ZERO_HASH};
 
 use crate::{
     subnets::SUBNETWORK_ID_NATIVE,
-    tx::{PopulatedTransaction, ScriptPublicKey, Transaction, TransactionOutpoint, TransactionOutput},
+    tx::{ScriptPublicKey, SignableTransaction, Transaction, TransactionOutpoint, TransactionOutput},
 };
 
 use super::{sighash_type::SigHashType, HasherExtensions};
@@ -138,29 +138,30 @@ fn hash_script_public_key(hasher: &mut impl Hasher, script_public_key: &ScriptPu
 }
 
 pub fn calc_schnorr_signature_hash(
-    tx: &PopulatedTransaction,
+    signable_tx: &impl SignableTransaction,
     input_index: usize,
     hash_type: SigHashType,
     reused_values: &mut SigHashReusedValues,
 ) -> Hash {
-    let input = tx.populated_input(input_index);
+    let input = signable_tx.populated_input(input_index);
+    let tx = signable_tx.tx();
     let mut hasher = TransactionSigningHash::new();
     hasher
-        .write_u16(tx.tx.version)
-        .update(previous_outputs_hash(tx.tx, hash_type, reused_values))
-        .update(sequences_hash(tx.tx, hash_type, reused_values))
-        .update(sig_op_counts_hash(tx.tx, hash_type, reused_values));
+        .write_u16(tx.version)
+        .update(previous_outputs_hash(tx, hash_type, reused_values))
+        .update(sequences_hash(tx, hash_type, reused_values))
+        .update(sig_op_counts_hash(tx, hash_type, reused_values));
     hash_outpoint(&mut hasher, input.0.previous_outpoint);
     hash_script_public_key(&mut hasher, &input.1.script_public_key);
     hasher
         .write_u64(input.1.amount)
         .write_u64(input.0.sequence)
         .write_u8(input.0.sig_op_count)
-        .update(outputs_hash(tx.tx, hash_type, reused_values, input_index))
-        .write_u64(tx.tx.lock_time)
-        .update(&tx.tx.subnetwork_id)
-        .write_u64(tx.tx.gas)
-        .update(payload_hash(tx.tx))
+        .update(outputs_hash(tx, hash_type, reused_values, input_index))
+        .write_u64(tx.lock_time)
+        .update(&tx.subnetwork_id)
+        .write_u64(tx.gas)
+        .update(payload_hash(tx))
         .write_u8(hash_type.to_u8());
     hasher.finalize()
 }
@@ -174,7 +175,7 @@ mod tests {
     use crate::{
         hashing::sighash_type::{SIG_HASH_ALL, SIG_HASH_ANY_ONE_CAN_PAY, SIG_HASH_NONE, SIG_HASH_SINGLE},
         subnets::SubnetworkId,
-        tx::{Transaction, TransactionId, TransactionInput, UtxoEntry},
+        tx::{PopulatedTransaction, Transaction, TransactionId, TransactionInput, UtxoEntry},
     };
 
     use super::*;
