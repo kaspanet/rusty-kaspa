@@ -24,7 +24,7 @@ use kaspa_utils::refs::Refs;
 use muhash::MuHash;
 
 use rayon::prelude::*;
-use std::{iter::once, ops::Deref, sync::Arc};
+use std::{iter::once, ops::Deref};
 
 /// A context for processing the UTXO state of a block with respect to its selected parent.
 /// Note this can also be the virtual block.
@@ -56,7 +56,7 @@ impl<'a> UtxoProcessingContext<'a> {
 impl VirtualStateProcessor {
     /// Calculates UTXO state and transaction acceptance data relative to the selected parent state
     pub(super) fn calculate_utxo_state<V: UtxoView + Sync>(
-        self: &Arc<Self>,
+        &self,
         ctx: &mut UtxoProcessingContext,
         selected_parent_utxo_view: &V,
         pov_daa_score: u64,
@@ -109,7 +109,7 @@ impl VirtualStateProcessor {
     ///     3. The block coinbase transaction rewards the mergeset blocks correctly.
     ///     4. All non-coinbase block transactions are valid against its own UTXO view.
     pub(super) fn verify_expected_utxo_state<V: UtxoView + Sync>(
-        self: &Arc<Self>,
+        &self,
         ctx: &mut UtxoProcessingContext,
         selected_parent_utxo_view: &V,
         header: &Header,
@@ -150,7 +150,7 @@ impl VirtualStateProcessor {
     }
 
     fn verify_coinbase_transaction(
-        self: &Arc<Self>,
+        &self,
         coinbase: &Transaction,
         daa_score: u64,
         ghostdag_data: &GhostdagData,
@@ -174,7 +174,7 @@ impl VirtualStateProcessor {
     /// Validates transactions against the provided `utxo_view` and returns a vector with all transactions
     /// which passed the validation
     pub fn validate_transactions_in_parallel<'a, V: UtxoView + Sync>(
-        self: &Arc<Self>,
+        &self,
         txs: &'a Vec<Transaction>,
         utxo_view: &V,
         pov_daa_score: u64,
@@ -190,8 +190,8 @@ impl VirtualStateProcessor {
     }
 
     /// Attempts to populate the transaction with UTXO entries and performs all tx validations
-    fn validate_transaction_in_utxo_context<'a>(
-        self: &Arc<Self>,
+    pub(super) fn validate_transaction_in_utxo_context<'a>(
+        &self,
         transaction: &'a Transaction,
         utxo_view: &impl UtxoView,
         pov_daa_score: u64,

@@ -14,7 +14,7 @@ pub enum TxRuleError {
     #[error("transaction has non zero gas value")]
     TxHasGas,
 
-    #[error("a non coinbase transaction has a paylaod")]
+    #[error("a non coinbase transaction has a payload")]
     NonCoinbaseTxHasPayload,
 
     #[error("transaction version {0} is unknown")]

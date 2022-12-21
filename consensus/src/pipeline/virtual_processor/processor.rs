@@ -1,6 +1,7 @@
 use crate::{
     consensus::DbGhostdagManager,
     constants::BLOCK_VERSION,
+    errors::RuleError,
     model::{
         services::{
             reachability::{MTReachabilityService, ReachabilityService},
@@ -42,7 +43,7 @@ use consensus_core::{
     coinbase::MinerData,
     header::Header,
     merkle::calc_hash_merkle_root,
-    tx::Transaction,
+    tx::{MutableTransaction, Transaction},
     utxo::{utxo_diff::UtxoDiff, utxo_view::UtxoViewComposition},
     BlockHashSet,
 };
@@ -478,6 +479,21 @@ impl VirtualStateProcessor {
         }
 
         (virtual_parents, ghostdag_data)
+    }
+
+    pub fn validate_transaction_and_populate(&self, mutable_tx: &mut MutableTransaction) -> Result<(), RuleError> {
+        let virtual_utxo_view = self.virtual_utxo_store.as_ref(); // TODO: manage lock with virtual state lock
+        let virtual_state = self.virtual_state_store.read().get().unwrap(); // TODO: lock
+        let virtual_daa_score = virtual_state.daa_score;
+        let virtual_past_median_time = self.past_median_time_manager.calc_past_median_time(&virtual_state.ghostdag_data).0; // TODO: save median time in virtual state
+
+        self.transaction_validator.validate_tx_in_isolation(&mutable_tx.tx).unwrap(); // TODO: return rule error
+        self.transaction_validator.utxo_free_tx_validation(&mutable_tx.tx, virtual_daa_score, virtual_past_median_time).unwrap(); // TODO: return rule error
+        let validated_tx = self.validate_transaction_in_utxo_context(&mutable_tx.tx, virtual_utxo_view, virtual_daa_score).unwrap(); // TODO: return rule error
+
+        mutable_tx.entries = validated_tx.entries;
+        mutable_tx.calculated_fee = Some(validated_tx.calculated_fee);
+        Ok(())
     }
 
     pub fn build_block_template(self: &Arc<Self>, miner_data: MinerData, mut txs: Vec<Transaction>) -> BlockTemplate {
