@@ -1,7 +1,7 @@
 #[macro_use]
 mod macros;
 
-use crate::{Stack, TxScriptEngine, TxScriptError};
+use crate::{MAX_OPS_PER_SCRIPT, ScriptSource, Stack, TxScriptEngine, TxScriptError, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK, LOCK_TIME_THRESHOLD, MAX_TX_IN_SEQUENCE_NUM, MAX_PUB_KEYS_PER_MUTLTISIG};
 use blake2b_simd::blake2b;
 use consensus_core::hashing::sighash_type::SigHashType;
 use core::cmp::{max, min};
@@ -75,7 +75,7 @@ impl DataStack for Stack {
     }
 
     #[inline]
-    fn pop_raw<const SIZE: usize>(&mut self) -> Result<[Vec<u8>; SIZE], TxScriptError> {
+    fn  pop_raw<const SIZE: usize>(&mut self) -> Result<[Vec<u8>; SIZE], TxScriptError> {
         if self.len() < SIZE {
             return Err(TxScriptError::EmptyStack);
         }
@@ -745,15 +745,15 @@ opcode_list! {
                 //TODO: check signature length (pair[0])
                 //TODO: check public key encoding (pair[1])
                 //TODO: calculate signature hash schnorr
-                let hash_type = SigHashType::from_u8(typ).map_err(|e| TxScriptError::InvalidState(e.into()))?;
-                match vm.check_signature(hash_type, key.as_slice(), sig.as_slice()) {
+                let hash_type = SigHashType::from_u8(typ).map_err(|e| TxScriptError::InvalidSigHashType(e.into()))?;
+                match vm.check_schnorr_signature(hash_type, key.as_slice(), sig.as_slice()) {
                     Ok(()) => {
                         vm.dstack.push_item(true);
                         Ok(())
                     },
                     Err(e) => {
                         vm.dstack.push_item(false);
-                        Err(e)
+                        Ok(())
                     }
                 }
             }
@@ -765,23 +765,179 @@ opcode_list! {
     }
 
     opcode OpCheckSigVerify<0xad, 1>(self, vm) {
-        todo!()
+        // TODO: when chaging impl to array based, change this too
+        OpCheckSig{data: self.data.clone()}.execute(vm)?;
+        let [valid]: [bool; 1] = vm.dstack.pop_item()?;
+        match valid {
+            true => Ok(()),
+            false => Err(TxScriptError::VerifyError)
+        }
     }
 
     opcode OpCheckMultiSig<0xae, 1>(self, vm) {
-        todo!()
+        let [num_keys]: [i32; 1] = vm.dstack.pop_item()?;
+        if num_keys < 0 {
+            return Err(TxScriptError::InvalidPubKeyCount(format!("number of pubkeys {} is negative", num_keys)));
+        } else if num_keys > MAX_PUB_KEYS_PER_MUTLTISIG {
+            return Err(TxScriptError::InvalidPubKeyCount(format!("too many pubkeys {} > {}", num_keys, MAX_PUB_KEYS_PER_MUTLTISIG)));
+        }
+        let num_keys_usize = num_keys as usize;
+
+        vm.num_ops += num_keys;
+        if vm.num_ops > MAX_OPS_PER_SCRIPT {
+            return Err(TxScriptError::TooManyOperations(MAX_OPS_PER_SCRIPT));
+        }
+
+        let mut pub_keys_vec = match vm.dstack.len() >= num_keys_usize {
+            true => vm.dstack.split_off(vm.dstack.len() - num_keys_usize),
+            false => return Err(TxScriptError::EmptyStack),
+        };
+        let mut pub_keys = pub_keys_vec.iter_mut();
+
+
+        let [num_sigs]: [i32; 1] = vm.dstack.pop_item()?;
+        if num_sigs < 0 {
+            return Err(TxScriptError::InvalidSignatureCount(format!("number of signatures {} is negative", num_sigs)));
+        } else if num_sigs > num_keys {
+            return Err(TxScriptError::InvalidSignatureCount(format!("more signatures than pubkeys {} > {}", num_sigs, num_keys)));
+        }
+        let num_sigs_usize = num_sigs as usize;
+
+        let mut  signatures_vec = match vm.dstack.len() >= num_sigs_usize {
+            true => vm.dstack.split_off(vm.dstack.len() - num_sigs_usize),
+            false => return Err(TxScriptError::EmptyStack),
+        };
+        let signatures = signatures_vec.iter_mut();
+
+        let mut empty_sigs = 0usize;
+        for (sig_idx, signature) in signatures.enumerate() {
+            match signature.pop() {
+                None => {
+                    if empty_sigs != sig_idx {
+                        return Err(TxScriptError::NullFail)
+                    }
+                    empty_sigs+=1;
+                },
+                Some(typ) => {
+                    if empty_sigs == 0 {
+                        // Every check consumes the public key
+                        //TODO: check signature length (pair[0])
+                        //TODO: check public key encoding (pair[1])
+                        //TODO: calculate signature hash schnorr
+                        let hash_type = SigHashType::from_u8(typ).map_err(|e| TxScriptError::InvalidSigHashType(e.into()))?;
+                        while pub_keys.len() > num_sigs_usize - sig_idx && vm.check_schnorr_signature(hash_type, pub_keys.next().expect("Checked larger than 0").as_slice(), signature.as_slice()).is_err() {}
+                    }
+                    if empty_sigs > 0 || pub_keys.len() > num_sigs_usize - sig_idx {
+                        return Err(TxScriptError::NullFail)
+                    }
+                }
+            }
+        }
+        vm.dstack.push_item(empty_sigs == 0);
+        Ok(())
     }
 
     opcode OpCheckMultiSigVerify<0xaf, 1>(self, vm) {
-        todo!()
+        // TODO: when chaging impl to array based, change this too
+        OpCheckMultiSig{data: self.data.clone()}.execute(vm)?;
+        let [valid]: [bool; 1] = vm.dstack.pop_item()?;
+        match valid {
+            true => Ok(()),
+            false => Err(TxScriptError::VerifyError)
+        }
     }
 
     opcode OpCheckLockTimeVerify<0xb0, 1>(self, vm) {
-        todo!()
+        match vm.script_source {
+            ScriptSource::TxInput {input, tx, ..} => {
+                let [mut lock_time_bytes] = vm.dstack.pop_raw()?;
+
+                // Make sure lockTimeBytes is exactly 8 bytes.
+	            // If more - return ErrNumberTooBig
+	            // If less - pad with 0's
+                if lock_time_bytes.len() > 8 {
+                    return Err(TxScriptError::NumberTooBig(format!("lockTime value represented as {:x?} is longer then 8 bytes", lock_time_bytes)))
+                }
+                lock_time_bytes.resize(8, 0);
+                let stack_lock_time = u64::from_le_bytes(lock_time_bytes.try_into().expect("checked vector size"));
+
+                // The lock time field of a transaction is either a DAA score at
+	            // which the transaction is finalized or a timestamp depending on if the
+	            // value is before the constants.LockTimeThreshold. When it is under the
+	            // threshold it is a DAA score.
+                if !(
+                    (tx.tx.lock_time < LOCK_TIME_THRESHOLD && stack_lock_time < LOCK_TIME_THRESHOLD) ||
+                    (tx.tx.lock_time >= LOCK_TIME_THRESHOLD && stack_lock_time >= LOCK_TIME_THRESHOLD)
+                ){
+                    return Err(TxScriptError::UnsatisfiedLockTime(format!("mismatched locktime types -- tx locktime {}, stack locktime {}", tx.tx.lock_time, stack_lock_time)))
+                }
+
+                if stack_lock_time > tx.tx.lock_time {
+                    return Err(TxScriptError::UnsatisfiedLockTime(format!("locktime requirement not satisfied -- locktime is greater than the transaction locktime: {} > {}", stack_lock_time, tx.tx.lock_time)))
+                }
+
+                // The lock time feature can also be disabled, thereby bypassing
+                // OP_CHECKLOCKTIMEVERIFY, if every transaction input has been finalized by
+                // setting its sequence to the maximum value (constants.MaxTxInSequenceNum). This
+                // condition would result in the transaction being allowed into the blockDAG
+                // making the opcode ineffective.
+                //
+                // This condition is prevented by enforcing that the input being used by
+                // the opcode is unlocked (its sequence number is less than the max
+                // value). This is sufficient to prove correctness without having to
+                // check every input.
+                //
+                // NOTE: This implies that even if the transaction is not finalized due to
+                // another input being unlocked, the opcode execution will still fail when the
+                // input being used by the opcode is locked.
+                if input.sequence == MAX_TX_IN_SEQUENCE_NUM {
+                    return Err(TxScriptError::UnsatisfiedLockTime("transaction input is finalized".to_string()));
+                }
+                Ok(())
+            }
+            _ => Err(TxScriptError::InvalidSource("LockTimeVerify only applies to transaction inputs".to_string()))
+        }
     }
 
     opcode OpCheckSequenceVerify<0xb1, 1>(self, vm) {
-        todo!()
+        match vm.script_source {
+            ScriptSource::TxInput {input, tx, ..} => {
+                let [mut sequence_bytes] = vm.dstack.pop_raw()?;
+
+                // Make sure sequenceBytes is exactly 8 bytes.
+	            // If more - return ErrNumberTooBig
+	            // If less - pad with 0's
+                if sequence_bytes.len() > 8 {
+                    return Err(TxScriptError::NumberTooBig(format!("lockTime value represented as {:x?} is longer then 8 bytes", sequence_bytes)))
+                }
+                // Don't use makeScriptNum here, since sequence is not an actual number, minimal encoding rules don't apply to it,
+	            // and is more convenient to be represented as an unsigned int.
+                sequence_bytes.resize(8, 0);
+                let stack_sequence = u64::from_le_bytes(sequence_bytes.try_into().expect("ensured size checks"));
+
+                // To provide for future soft-fork extensibility, if the
+                // operand has the disabled lock-time flag set,
+                // CHECKSEQUENCEVERIFY behaves as a NOP.
+                if stack_sequence & SEQUENCE_LOCK_TIME_DISABLED != 0 {
+                    return Ok(());
+                }
+
+                // Sequence numbers with their most significant bit set are not
+                // consensus constrained. Testing that the transaction's sequence
+                // number does not have this bit set prevents using this property
+                // to get around a CHECKSEQUENCEVERIFY check.
+                if input.sequence & SEQUENCE_LOCK_TIME_DISABLED != 0 {
+                    return Err(TxScriptError::UnsatisfiedLockTime(format!("transaction sequence has sequence locktime disabled bit set: {:#x}", input.sequence)));
+                }
+
+                // Mask off non-consensus bits before doing comparisons.
+                if (stack_sequence & SEQUENCE_LOCK_TIME_MASK) > (input.sequence & SEQUENCE_LOCK_TIME_MASK) {
+                    return Err(TxScriptError::UnsatisfiedLockTime(format!("locktime requirement not satisfied -- locktime is greater than the transaction locktime: {} > {}", stack_sequence & SEQUENCE_LOCK_TIME_MASK, input.sequence & SEQUENCE_LOCK_TIME_MASK)))
+                }
+                Ok(())
+            }
+            _ => Err(TxScriptError::InvalidSource("LockTimeVerify only applies to transaction inputs".to_string()))
+        }
     }
 
     // Undefined opcodes.

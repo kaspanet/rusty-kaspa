@@ -6,7 +6,7 @@ macro_rules! opcode_serde {
             [length.to_le_bytes().as_slice(), self.data.as_slice()].concat()
         }
 
-        fn deserialize<'i, I: Iterator<Item = &'i u8>>(it: &mut I) -> Result<Self, TxScriptError> {
+        fn deserialize<'i, I: Iterator<Item = &'i u8>>(it: &mut I) -> Result<Box<dyn OpCodeImplementation>, TxScriptError> {
             match it.take(size_of::<$type>()).copied().collect::<Vec<u8>>().try_into() {
                 Ok(bytes) => {
                     let length = <$type>::from_le_bytes(bytes) as usize;
@@ -15,7 +15,7 @@ macro_rules! opcode_serde {
                         // TODO: real error
                         todo!();
                     }
-                    Ok(Self { data })
+                    Ok(Box::new(Self { data }))
                 }
                 Err(_) => {
                     todo!()
@@ -29,14 +29,14 @@ macro_rules! opcode_serde {
             self.data.clone()
         }
 
-        fn deserialize<'i, I: Iterator<Item = &'i u8>>(it: &mut I) -> Result<Self, TxScriptError> {
+        fn deserialize<'i, I: Iterator<Item = &'i u8>>(it: &mut I) -> Result<Box<dyn OpCodeImplementation>, TxScriptError> {
             // Static length includes the opcode itself
             let data: Vec<u8> = it.take($length - 1).copied().collect();
             if data.len() != $length - 1 {
                 // TODO: real error
                 todo!();
             }
-            Ok(Self { data })
+            Ok(Box::new(Self { data }))
         }
     };
 }
@@ -138,7 +138,7 @@ macro_rules! opcode_list {
         pub fn deserialize<'i, I: Iterator<Item = &'i u8>>(opcode_num: u8, it: &mut I) -> Result<Box<dyn OpCodeImplementation>, TxScriptError> {
             match opcode_num {
                 $(
-                    $num => Ok(Box::new($name::deserialize(it)?)),
+                    $num => $name::deserialize(it),
                 )*
                 // TODO: real error! (opcode not implemented)
                 // In case programmer didn't implement all opcodes

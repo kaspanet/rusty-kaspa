@@ -18,6 +18,12 @@ pub const MAX_STACK_SIZE: usize = 244;
 pub const MAX_SCRIPTS_SIZE: usize = 10000;
 pub const MAX_SCRIPT_ELEMENT_SIZE: usize = 520;
 pub const MAX_OPS_PER_SCRIPT: i32 = 201;
+pub const MAX_TX_IN_SEQUENCE_NUM: u64 = u64::MAX;
+pub const SEQUENCE_LOCK_TIME_DISABLED: u64 = 1 << 63;
+pub const SEQUENCE_LOCK_TIME_MASK: u64 = 0x00000000ffffffff;
+pub const LOCK_TIME_THRESHOLD: u64 = 500_000_000_000;
+pub const MAX_PUB_KEYS_PER_MUTLTISIG: i32 = 20;
+
 // The last opcode that does not count toward operations.
 // Note that this includes OP_RESERVED which counts as a push operation.
 pub const NO_COST_OPCODE: u8 = 16;
@@ -41,6 +47,13 @@ pub enum TxScriptError {
     NotATransactionInput,
     ElementTooBig(usize),
     NotMinimalData(String),
+    InvalidSource(String),
+    UnsatisfiedLockTime(String),
+    NumberTooBig(String),
+    NullFail,
+    InvalidSignatureCount(String),
+    InvalidPubKeyCount(String),
+    InvalidSigHashType(String),
 }
 
 // TODO: Make it pub(crate)
@@ -73,6 +86,13 @@ impl Display for TxScriptError {
                 Self::InvalidIndex(id, tx_len) => format!("transaction input index {} >= {}", id, tx_len),
                 Self::ElementTooBig(size) => format!("element size {} exceeds max allowed size {}", size, MAX_SCRIPT_ELEMENT_SIZE),
                 Self::NotMinimalData(s) => format!("push encoding is not minimal: {}", s),
+                Self::InvalidSource(s) => format!("opcode not supported on current source: {}", s),
+                Self::UnsatisfiedLockTime(s) => format!("Unsatisfied lock time: {}", s),
+                Self::NumberTooBig(s) => format!("Number too big: {}", s),
+                Self::NullFail => "not all signatures empty on failed checkmultisig".to_string(),
+                Self::InvalidSignatureCount(s) => format!("invalid signature count: {}", s),
+                Self::InvalidPubKeyCount(s) => format!("invalid pubkey count: {}", s),
+                Self::InvalidSigHashType(s) => format!("what's here {}", s),
             }
         )
     }
@@ -226,7 +246,7 @@ impl<'a> TxScriptEngine<'a> {
     }
 
     #[inline]
-    fn check_signature(&mut self, hash_type: SigHashType, key: &[u8], sig: &[u8]) -> Result<(), TxScriptError> {
+    fn check_schnorr_signature(&mut self, hash_type: SigHashType, key: &[u8], sig: &[u8]) -> Result<(), TxScriptError> {
         match self.script_source {
             ScriptSource::TxInput { tx, id, .. } => {
                 // TODO: will crash the node. We need to replace it with a proper script engine once it's ready.
