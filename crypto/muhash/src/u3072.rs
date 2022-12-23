@@ -147,7 +147,10 @@ impl U3072 {
             a.full_reduce();
         }
         // The only value that doesn't have a multiplicative inverse is 0, and 0/x is 0.
-        let inv = Self { limbs: Uint3072(a.limbs).mod_inverse(Self::UINT_PRIME).unwrap_or_default().0 };
+        if a == Self::zero() {
+            return a;
+        }
+        let inv = Self { limbs: Uint3072(a.limbs).mod_inverse(Self::UINT_PRIME).expect("Cannot fail, 0 < a < prime").0 };
         if cfg!(debug_assertions) {
             let mut one = inv;
             one *= a;
