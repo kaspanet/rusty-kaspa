@@ -1,7 +1,5 @@
 #[doc(hidden)]
-pub use faster_hex;
-#[doc(hidden)]
-pub use serde;
+pub use {faster_hex, malachite_base, malachite_nz, serde};
 
 #[macro_export]
 macro_rules! construct_uint {
@@ -282,26 +280,22 @@ macro_rules! construct_uint {
                 (Self(ret), sub_copy)
             }
 
+            /// Assumes self < prime
             #[inline]
             pub fn mod_inverse(self, prime: Self) -> Option<Self> {
-                use $crate::int::SignedInteger;
-                let mut t = SignedInteger::from(Self::ZERO);
-                let mut newt = SignedInteger::positive_u64(1u64);
-                let mut r = SignedInteger::from(prime);
-                let mut newr = SignedInteger::from(self);
+                use $crate::uint::malachite_nz::natural::Natural;
+                use $crate::uint::malachite_base::num::arithmetic::traits::ModInverse;
 
-                while !newr.abs().is_zero() {
-                    let quotient = r / newr;
-                    (t, newt) = (newt, t - quotient * newt);
-                    (r, newr) = (newr, r - quotient * newr);
-                }
-                if !r.negative() && r.abs() != 1u64 {
-                    None
-                } else if t.negative() {
-                    Some(prime - t.abs())
-                } else {
-                    Some(t.abs())
-                }
+                let x = Natural::from_limbs_asc(&self.0);
+                let p = Natural::from_limbs_asc(&prime.0);
+                let mod_inv = x.mod_inverse(p);
+
+                mod_inv.map(|n| {
+                    let mut res = [0u64; Self::LIMBS];
+                    let limbs = n.into_limbs_asc();
+                    res[..limbs.len()].copy_from_slice(&limbs);
+                    Self(res)
+                })
             }
 
             #[inline]
