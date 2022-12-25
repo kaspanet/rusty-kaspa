@@ -8,12 +8,16 @@ use muhash::MuHash;
 
 fn bench_muhash(c: &mut Criterion) {
     let mut rng = ChaCha8Rng::from_seed([42u8; 32]);
+    let mut rand_set = MuHash::new();
 
     let mut data = [0u8; 100];
+    // Set the numerator and denominators.
     rng.fill_bytes(&mut data);
-    let mut rand_set_serialized = [0u8; 384];
-    rng.fill_bytes(&mut rand_set_serialized);
-    let mut rand_set = MuHash::deserialize(rand_set_serialized).unwrap();
+    rand_set.add_element(&data);
+    rng.fill_bytes(&mut data);
+    rand_set.remove_element(&data);
+
+    rng.fill_bytes(&mut data);
 
     c.bench_function("MuHash::add_element", |b| {
         let mut muhash = MuHash::new();
@@ -62,14 +66,10 @@ fn bench_muhash(c: &mut Criterion) {
         b.iter(|| black_box(muhash.clone()).serialize())
     });
 
-    c.bench_function("MuHash::serialize rand", |b| {
-        let muhash = MuHash::deserialize(rand_set_serialized).unwrap();
-        b.iter(|| black_box(muhash.clone()).serialize())
-    });
+    c.bench_function("MuHash::serialize rand", |b| b.iter(|| black_box(rand_set.clone()).serialize()));
 
     c.bench_function("MuHash::finalize", |b| {
-        let muhash = MuHash::deserialize(rand_set_serialized).unwrap();
-        b.iter(|| black_box(muhash.clone()).finalize());
+        b.iter(|| black_box(rand_set.clone()).finalize());
     });
 }
 
