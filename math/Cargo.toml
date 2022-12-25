@@ -11,6 +11,8 @@ license.workspace = true
 serde.workspace = true
 faster-hex.workspace = true
 borsh.workspace = true
+malachite-nz = "0.3"
+malachite-base = "0.3"
 
 [dev-dependencies]
 rand_chacha.workspace = true
