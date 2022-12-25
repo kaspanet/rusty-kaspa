@@ -70,6 +70,9 @@ pub enum TxRuleError {
 
     #[error("one of the transaction sequence locks conditions was not met")]
     SequenceLockConditionsAreNotMet,
+
+    #[error("one or more of the transaction inputs outpoint is not present in utxo context")]
+    MissingTxOutpoints(Vec<TransactionOutpoint>),
 }
 
 pub type TxResult<T> = std::result::Result<T, TxRuleError>;

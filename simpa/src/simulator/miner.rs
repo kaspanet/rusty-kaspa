@@ -114,7 +114,7 @@ impl Miner {
             .filter_map(|&outpoint| {
                 let Some(entry) = self.get_spendable_entry(outpoint, virtual_state.daa_score) else { return None; };
                 let unsigned_tx = self.create_unsigned_tx(outpoint, entry.amount, multiple_outputs);
-                Some(MutableTransaction::new(unsigned_tx, vec![entry]))
+                Some(MutableTransaction::with_entries(unsigned_tx, vec![entry]))
             })
             .take(self.target_txs_per_block as usize)
             .collect::<Vec<_>>()

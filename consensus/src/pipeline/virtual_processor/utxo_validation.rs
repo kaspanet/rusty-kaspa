@@ -5,13 +5,14 @@ use crate::{
         RuleError::{BadAcceptedIDMerkleRoot, BadCoinbaseTransaction, BadUTXOCommitment, InvalidTransactionsInUtxoContext},
     },
     model::stores::{block_transactions::BlockTransactionsStoreReader, daa::DaaStoreReader, ghostdag::GhostdagData},
+    processes::transaction_validator::errors::TxRuleError,
 };
 use consensus_core::{
     coinbase::*,
     hashing,
     header::Header,
     muhash::MuHashExtensions,
-    tx::{PopulatedTransaction, Transaction, TransactionId, ValidatedTransaction},
+    tx::{MutableTransaction, PopulatedTransaction, Transaction, TransactionId, ValidatedTransaction, VerifiableTransaction},
     utxo::{
         utxo_diff::UtxoDiff,
         utxo_view::{UtxoView, UtxoViewComposition},
@@ -189,7 +190,7 @@ impl VirtualStateProcessor {
         })
     }
 
-    /// Attempts to populate the transaction with UTXO entries and performs all tx validations
+    /// Attempts to populate the transaction with UTXO entries and performs all utxo-related tx validations
     pub(super) fn validate_transaction_in_utxo_context<'a>(
         &self,
         transaction: &'a Transaction,
@@ -213,5 +214,31 @@ impl VirtualStateProcessor {
                 None
             }
         }
+    }
+
+    /// TODO: doc
+    pub(super) fn validate_mempool_transaction_in_utxo_context(
+        &self,
+        mutable_tx: &mut MutableTransaction,
+        utxo_view: &impl UtxoView,
+        pov_daa_score: u64,
+    ) -> Result<(), TxRuleError> {
+        let mut missing_outpoints = Vec::new();
+        for i in 0..mutable_tx.inputs().len() {
+            if mutable_tx.entries[i].is_some() {
+                continue;
+            }
+            if let Some(entry) = utxo_view.get(&mutable_tx.inputs()[i].previous_outpoint) {
+                mutable_tx.entries[i] = Some(entry);
+            } else {
+                missing_outpoints.push(mutable_tx.inputs()[i].previous_outpoint);
+            }
+        }
+        if !missing_outpoints.is_empty() {
+            return Err(TxRuleError::MissingTxOutpoints(missing_outpoints));
+        }
+        mutable_tx.calculated_fee =
+            Some(self.transaction_validator.validate_populated_transaction_and_get_fee(mutable_tx, pov_daa_score)?);
+        Ok(())
     }
 }

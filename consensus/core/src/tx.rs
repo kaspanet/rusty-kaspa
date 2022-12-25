@@ -204,6 +204,7 @@ impl Transaction {
         self.subnetwork_id == subnets::SUBNETWORK_ID_COINBASE
     }
 
+    /// Recompute and finalize the tx id based on updated tx fields
     pub fn finalize(&mut self) {
         self.id = hashing::tx::id(self);
     }
@@ -214,12 +215,50 @@ impl Transaction {
     }
 }
 
-pub trait SignableTransaction {
-    fn tx(&self) -> &Transaction;
-    fn populated_input(&self, index: usize) -> (&TransactionInput, &UtxoEntry);
+pub struct PopulatedInputsIterator<'a, T: VerifiableTransaction> {
+    tx: &'a T,
+    i: usize,
 }
 
-/// Represents a transaction with populated UTXO entry data
+impl<'a, T: VerifiableTransaction> Iterator for PopulatedInputsIterator<'a, T> {
+    type Item = (&'a TransactionInput, &'a UtxoEntry);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let i = self.i;
+        if i < self.tx.tx().inputs.len() {
+            self.i += 1;
+            Some(self.tx.populated_input(i))
+        } else {
+            None
+        }
+    }
+}
+
+/// Represents a transaction which has populated UTXO entry data and can be verified/signed etc
+pub trait VerifiableTransaction {
+    fn tx(&self) -> &Transaction;
+    fn populated_input(&self, index: usize) -> (&TransactionInput, &UtxoEntry);
+    fn populated_inputs(&self) -> PopulatedInputsIterator<'_, Self>
+    where
+        Self: Sized,
+    {
+        PopulatedInputsIterator { tx: self, i: 0 }
+    }
+    fn inputs(&self) -> &[TransactionInput] {
+        &self.tx().inputs
+    }
+    fn outputs(&self) -> &[TransactionOutput] {
+        &self.tx().outputs
+    }
+    fn is_coinbase(&self) -> bool {
+        self.tx().is_coinbase()
+    }
+    fn id(&self) -> TransactionId {
+        self.tx().id()
+    }
+}
+
+/// Represents a read-only referenced transaction which is fully populated with UTXO entry data
 pub struct PopulatedTransaction<'a> {
     pub tx: &'a Transaction,
     pub entries: Vec<UtxoEntry>,
@@ -231,32 +270,12 @@ impl<'a> PopulatedTransaction<'a> {
         Self { tx, entries }
     }
 
-    pub fn populated_inputs(&self) -> impl ExactSizeIterator<Item = (&TransactionInput, &UtxoEntry)> {
-        self.tx.inputs.iter().zip(self.entries.iter())
-    }
-
-    pub fn populated_input(&self, index: usize) -> (&TransactionInput, &UtxoEntry) {
-        (&self.tx.inputs[index], &self.entries[index])
-    }
-
-    pub fn outputs(&self) -> &[TransactionOutput] {
-        &self.tx.outputs
-    }
-
-    pub fn is_coinbase(&self) -> bool {
-        self.tx.is_coinbase()
-    }
-
-    pub fn id(&self) -> TransactionId {
-        self.tx.id()
-    }
-
     pub fn to_validated(self, calculated_fee: u64) -> ValidatedTransaction<'a> {
         ValidatedTransaction::new(self, calculated_fee)
     }
 }
 
-impl<'a> SignableTransaction for PopulatedTransaction<'a> {
+impl<'a> VerifiableTransaction for PopulatedTransaction<'a> {
     fn tx(&self) -> &Transaction {
         self.tx
     }
@@ -282,64 +301,46 @@ impl<'a> ValidatedTransaction<'a> {
         assert!(tx.is_coinbase());
         Self { tx, entries: Vec::new(), calculated_fee: 0 }
     }
+}
 
-    pub fn populated_inputs(&self) -> impl ExactSizeIterator<Item = (&TransactionInput, &UtxoEntry)> {
-        self.tx.inputs.iter().zip(self.entries.iter())
+impl<'a> VerifiableTransaction for ValidatedTransaction<'a> {
+    fn tx(&self) -> &Transaction {
+        self.tx
     }
 
-    pub fn outputs(&self) -> &[TransactionOutput] {
-        &self.tx.outputs
-    }
-
-    pub fn is_coinbase(&self) -> bool {
-        self.tx.is_coinbase()
-    }
-
-    pub fn id(&self) -> TransactionId {
-        self.tx.id()
+    fn populated_input(&self, index: usize) -> (&TransactionInput, &UtxoEntry) {
+        (&self.tx.inputs[index], &self.entries[index])
     }
 }
 
+/// Represents a mutable owned transaction with partially filled UTXO entry data and optional fee and mass
 pub struct MutableTransaction {
+    /// The inner transaction
     pub tx: Transaction,
-    pub entries: Vec<UtxoEntry>,
+    pub entries: Vec<Option<UtxoEntry>>,
     pub calculated_fee: Option<u64>,
     pub calculated_mass: Option<u64>,
 }
 
 impl MutableTransaction {
-    pub fn new(tx: Transaction, entries: Vec<UtxoEntry>) -> Self {
-        Self { tx, entries, calculated_fee: None, calculated_mass: None }
+    pub fn new(tx: Transaction) -> Self {
+        let num_inputs = tx.inputs.len();
+        Self { tx, entries: vec![None; num_inputs], calculated_fee: None, calculated_mass: None }
     }
 
-    pub fn populated_inputs(&self) -> impl ExactSizeIterator<Item = (&TransactionInput, &UtxoEntry)> {
-        self.tx.inputs.iter().zip(self.entries.iter())
-    }
-
-    pub fn populated_input(&self, index: usize) -> (&TransactionInput, &UtxoEntry) {
-        (&self.tx.inputs[index], &self.entries[index])
-    }
-
-    pub fn outputs(&self) -> &[TransactionOutput] {
-        &self.tx.outputs
-    }
-
-    pub fn is_coinbase(&self) -> bool {
-        self.tx.is_coinbase()
-    }
-
-    pub fn id(&self) -> TransactionId {
-        self.tx.id()
+    pub fn with_entries(tx: Transaction, entries: Vec<UtxoEntry>) -> Self {
+        assert_eq!(tx.inputs.len(), entries.len());
+        Self { tx, entries: entries.into_iter().map(Some).collect(), calculated_fee: None, calculated_mass: None }
     }
 }
 
-impl SignableTransaction for MutableTransaction {
+impl VerifiableTransaction for MutableTransaction {
     fn tx(&self) -> &Transaction {
         &self.tx
     }
 
     fn populated_input(&self, index: usize) -> (&TransactionInput, &UtxoEntry) {
-        (&self.tx.inputs[index], &self.entries[index])
+        (&self.tx.inputs[index], self.entries[index].as_ref().expect("expected to be called only post population"))
     }
 }
 

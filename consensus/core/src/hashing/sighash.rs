@@ -2,7 +2,7 @@ use hashes::{Hash, Hasher, HasherBase, TransactionSigningHash, ZERO_HASH};
 
 use crate::{
     subnets::SUBNETWORK_ID_NATIVE,
-    tx::{ScriptPublicKey, SignableTransaction, Transaction, TransactionOutpoint, TransactionOutput},
+    tx::{ScriptPublicKey, Transaction, TransactionOutpoint, TransactionOutput, VerifiableTransaction},
 };
 
 use super::{sighash_type::SigHashType, HasherExtensions};
@@ -138,7 +138,7 @@ fn hash_script_public_key(hasher: &mut impl Hasher, script_public_key: &ScriptPu
 }
 
 pub fn calc_schnorr_signature_hash(
-    signable_tx: &impl SignableTransaction,
+    signable_tx: &impl VerifiableTransaction,
     input_index: usize,
     hash_type: SigHashType,
     reused_values: &mut SigHashReusedValues,

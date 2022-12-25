@@ -240,7 +240,7 @@ pub fn create_temp_db() -> (TempDbLifetime, Arc<DB>) {
 /// Callers must keep the `TempDbLifetime` guard for as long as they wish the DB instance to exist.
 pub fn create_permanent_db(db_path: String) -> (TempDbLifetime, Arc<DB>) {
     let db_dir = PathBuf::from(db_path);
-    fs::create_dir(db_dir.as_path()).unwrap();
+    fs::create_dir(db_dir.as_path()).expect("The provided DB directory already exists");
     let db = Arc::new(DB::open_default(db_dir.to_str().unwrap()).unwrap());
     (TempDbLifetime::without_destroy(Arc::downgrade(&db)), db)
 }
@@ -249,6 +249,7 @@ pub fn create_permanent_db(db_path: String) -> (TempDbLifetime, Arc<DB>) {
 /// Callers must keep the `TempDbLifetime` guard for as long as they wish the DB instance to exist.
 pub fn load_existing_db(db_path: String) -> (TempDbLifetime, Arc<DB>) {
     let db_dir = PathBuf::from(db_path);
+    assert!(db_dir.is_dir(), "DB directory {:?} is expected to exist", db_dir);
     let db = Arc::new(DB::open_default(db_dir.to_str().unwrap()).unwrap());
     (TempDbLifetime::without_destroy(Arc::downgrade(&db)), db)
 }

@@ -6,7 +6,7 @@ use crate::{
     tx::MutableTransaction,
 };
 
-/// Temp function for schnorr signing
+/// Sign a transaction using schnorr
 pub fn sign(mut mutable_tx: MutableTransaction, privkey: [u8; 32]) -> MutableTransaction {
     let schnorr_key = secp256k1::KeyPair::from_seckey_slice(secp256k1::SECP256K1, &privkey).unwrap();
     let mut reused_values = SigHashReusedValues::new();
@@ -28,7 +28,7 @@ mod tests {
     use secp256k1::{rand, Secp256k1};
     use std::str::FromStr;
 
-    fn verify(tx: &PopulatedTransaction) -> Result<(), secp256k1::Error> {
+    fn verify(tx: &impl VerifiableTransaction) -> Result<(), secp256k1::Error> {
         let mut reused_values = SigHashReusedValues::new();
         for (i, (input, entry)) in tx.populated_inputs().enumerate() {
             let pk = &entry.script_public_key.script()[1..33];
@@ -101,7 +101,7 @@ mod tests {
                 is_coinbase: false,
             },
         ];
-        let mutable_tx = sign(MutableTransaction::new(unsigned_tx, entries), secret_key.secret_bytes());
-        assert!(verify(&PopulatedTransaction::new(&mutable_tx.tx, mutable_tx.entries)).is_ok());
+        let signed_tx = sign(MutableTransaction::with_entries(unsigned_tx, entries), secret_key.secret_bytes());
+        assert!(verify(&signed_tx).is_ok());
     }
 }
