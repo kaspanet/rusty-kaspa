@@ -106,13 +106,15 @@ impl Miner {
     }
 
     fn build_txs(&mut self) -> Vec<Transaction> {
-        let virtual_state = self.consensus.virtual_processor.virtual_state_store.read().get().unwrap();
+        let virtual_read = self.consensus.virtual_processor.virtual_stores.read();
+        let virtual_state = virtual_read.state.get().unwrap();
+        let virtual_utxo_view = &virtual_read.utxo_set;
         let multiple_outputs = self.possible_unspent_outpoints.len() < 10_000;
         let txs = self
             .possible_unspent_outpoints
             .iter()
             .filter_map(|&outpoint| {
-                let Some(entry) = self.get_spendable_entry(outpoint, virtual_state.daa_score) else { return None; };
+                let Some(entry) = self.get_spendable_entry(virtual_utxo_view, outpoint, virtual_state.daa_score) else { return None; };
                 let unsigned_tx = self.create_unsigned_tx(outpoint, entry.amount, multiple_outputs);
                 Some(MutableTransaction::with_entries(unsigned_tx, vec![entry]))
             })
@@ -128,8 +130,13 @@ impl Miner {
         txs
     }
 
-    fn get_spendable_entry(&self, outpoint: TransactionOutpoint, virtual_daa_score: u64) -> Option<UtxoEntry> {
-        let Some(entry) = self.consensus.virtual_processor.virtual_utxo_store.get(&outpoint) else { return None; };
+    fn get_spendable_entry(
+        &self,
+        utxo_view: &impl UtxoView,
+        outpoint: TransactionOutpoint,
+        virtual_daa_score: u64,
+    ) -> Option<UtxoEntry> {
+        let Some(entry) = utxo_view.get(&outpoint) else { return None; };
         if entry.amount < 2
             || (entry.is_coinbase && (virtual_daa_score as i64 - entry.block_daa_score as i64) <= self.params.coinbase_maturity as i64)
         {

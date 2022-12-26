@@ -68,6 +68,18 @@ use tokio::sync::oneshot;
 pub type DbGhostdagManager =
     GhostdagManager<DbGhostdagStore, MTRelationsService<DbRelationsStore>, MTReachabilityService<DbReachabilityStore>, DbHeadersStore>;
 
+/// Used in order to group virtual related stores under a single lock
+pub struct VirtualStores {
+    pub state: DbVirtualStateStore,
+    pub utxo_set: DbUtxoSetStore,
+}
+
+impl VirtualStores {
+    pub fn new(state: DbVirtualStateStore, utxo_set: DbUtxoSetStore) -> Self {
+        Self { state, utxo_set }
+    }
+}
+
 pub struct Consensus {
     // DB
     db: Arc<DB>,
@@ -145,10 +157,11 @@ impl Consensus {
         // Block windows
         let block_window_cache_for_difficulty = Arc::new(BlockWindowCacheStore::new(perf_params.block_window_cache_size));
         let block_window_cache_for_past_median_time = Arc::new(BlockWindowCacheStore::new(perf_params.block_window_cache_size));
-        // Virtual (TODO: decide about locking semantics of virtual utxo set)
-        let virtual_utxo_store =
-            Arc::new(DbUtxoSetStore::new(db.clone(), perf_params.utxo_set_cache_size, store_names::VIRTUAL_UTXO_SET));
-        let virtual_state_store = Arc::new(RwLock::new(DbVirtualStateStore::new(db.clone())));
+        // Virtual stores
+        let virtual_stores = Arc::new(RwLock::new(VirtualStores::new(
+            DbVirtualStateStore::new(db.clone()),
+            DbUtxoSetStore::new(db.clone(), perf_params.utxo_set_cache_size, store_names::VIRTUAL_UTXO_SET),
+        )));
 
         //
         // Services and managers
@@ -328,8 +341,7 @@ impl Consensus {
             utxo_diffs_store,
             utxo_multisets_store,
             acceptance_data_store,
-            virtual_utxo_store,
-            virtual_state_store,
+            virtual_stores,
             ghostdag_manager.clone(),
             reachability_service.clone(),
             relations_service.clone(),

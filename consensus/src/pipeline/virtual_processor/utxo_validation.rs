@@ -5,7 +5,7 @@ use crate::{
         RuleError::{BadAcceptedIDMerkleRoot, BadCoinbaseTransaction, BadUTXOCommitment, InvalidTransactionsInUtxoContext},
     },
     model::stores::{block_transactions::BlockTransactionsStoreReader, daa::DaaStoreReader, ghostdag::GhostdagData},
-    processes::transaction_validator::errors::TxRuleError,
+    processes::transaction_validator::errors::{TxResult, TxRuleError},
 };
 use consensus_core::{
     coinbase::*,
@@ -208,7 +208,7 @@ impl VirtualStateProcessor {
         let populated_tx = PopulatedTransaction::new(transaction, entries);
         let res = self.transaction_validator.validate_populated_transaction_and_get_fee(&populated_tx, pov_daa_score);
         match res {
-            Ok(calculated_fee) => Some(populated_tx.to_validated(calculated_fee)),
+            Ok(calculated_fee) => Some(ValidatedTransaction::new(populated_tx, calculated_fee)),
             Err(tx_rule_error) => {
                 info!("tx rule error {} for tx {}", tx_rule_error, transaction.id());
                 None
@@ -216,13 +216,13 @@ impl VirtualStateProcessor {
         }
     }
 
-    /// TODO: doc
+    /// Populates the mempool transaction with maximally found UTXO entry data and proceeds to validation if all found
     pub(super) fn validate_mempool_transaction_in_utxo_context(
         &self,
         mutable_tx: &mut MutableTransaction,
         utxo_view: &impl UtxoView,
         pov_daa_score: u64,
-    ) -> Result<(), TxRuleError> {
+    ) -> TxResult<()> {
         let mut missing_outpoints = Vec::new();
         for i in 0..mutable_tx.inputs().len() {
             if mutable_tx.entries[i].is_some() {
@@ -237,6 +237,7 @@ impl VirtualStateProcessor {
         if !missing_outpoints.is_empty() {
             return Err(TxRuleError::MissingTxOutpoints(missing_outpoints));
         }
+        // At this point we know all UTXO entries are populated, so we can safely pass the tx for validation
         mutable_tx.calculated_fee =
             Some(self.transaction_validator.validate_populated_transaction_and_get_fee(mutable_tx, pov_daa_score)?);
         Ok(())

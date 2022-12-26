@@ -20,7 +20,7 @@ pub trait UtxoSetStoreReader {
 }
 
 pub trait UtxoSetStore: UtxoSetStoreReader {
-    fn write_diff(&self, utxo_diff: &UtxoDiff) -> Result<(), StoreError>;
+    fn write_diff(&mut self, utxo_diff: &UtxoDiff) -> Result<(), StoreError>;
 }
 
 pub const UTXO_KEY_SIZE: usize = hashes::HASH_SIZE + std::mem::size_of::<TransactionIndexType>();
@@ -76,7 +76,7 @@ impl DbUtxoSetStore {
         Self::new(Arc::clone(&self.db), cache_size, self.prefix)
     }
 
-    pub fn write_diff_batch(&self, batch: &mut WriteBatch, utxo_diff: &impl ImmutableUtxoDiff) -> Result<(), StoreError> {
+    pub fn write_diff_batch(&mut self, batch: &mut WriteBatch, utxo_diff: &impl ImmutableUtxoDiff) -> Result<(), StoreError> {
         let mut writer = BatchDbWriter::new(batch);
         self.access.delete_many(&mut writer, &mut utxo_diff.removed().keys().map(|o| (*o).into()))?;
         self.access.write_many(&mut writer, &mut utxo_diff.added().iter().map(|(o, e)| ((*o).into(), Arc::new(e.clone()))))?;
@@ -97,7 +97,7 @@ impl UtxoSetStoreReader for DbUtxoSetStore {
 }
 
 impl UtxoSetStore for DbUtxoSetStore {
-    fn write_diff(&self, utxo_diff: &UtxoDiff) -> Result<(), StoreError> {
+    fn write_diff(&mut self, utxo_diff: &UtxoDiff) -> Result<(), StoreError> {
         let mut writer = DirectDbWriter::new(&self.db);
         self.access.delete_many(&mut writer, &mut utxo_diff.removed().keys().map(|o| (*o).into()))?;
         self.access.write_many(&mut writer, &mut utxo_diff.added().iter().map(|(o, e)| ((*o).into(), Arc::new(e.clone()))))?;

@@ -247,7 +247,7 @@ pub trait VerifiableTransaction {
     }
 }
 
-/// A custom iterator written only so that `populated_inputs` has a known return type
+/// A custom iterator written only so that `populated_inputs` has a known return type and can de defined on the trait level
 pub struct PopulatedInputIterator<'a, T: VerifiableTransaction> {
     tx: &'a T,
     r: Range<usize>,
@@ -283,10 +283,6 @@ impl<'a> PopulatedTransaction<'a> {
     pub fn new(tx: &'a Transaction, entries: Vec<UtxoEntry>) -> Self {
         assert_eq!(tx.inputs.len(), entries.len());
         Self { tx, entries }
-    }
-
-    pub fn to_validated(self, calculated_fee: u64) -> ValidatedTransaction<'a> {
-        ValidatedTransaction::new(self, calculated_fee)
     }
 }
 
