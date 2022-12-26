@@ -1,7 +1,7 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
-use std::fmt::Display;
+use std::{fmt::Display, ops::Range};
 
 use crate::{
     hashing,
@@ -215,50 +215,65 @@ impl Transaction {
     }
 }
 
-pub struct PopulatedInputsIterator<'a, T: VerifiableTransaction> {
-    tx: &'a T,
-    i: usize,
-}
-
-impl<'a, T: VerifiableTransaction> Iterator for PopulatedInputsIterator<'a, T> {
-    type Item = (&'a TransactionInput, &'a UtxoEntry);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let i = self.i;
-        if i < self.tx.tx().inputs.len() {
-            self.i += 1;
-            Some(self.tx.populated_input(i))
-        } else {
-            None
-        }
-    }
-}
-
-/// Represents a transaction which has populated UTXO entry data and can be verified/signed etc
+/// Represents any kind of transaction which has populated UTXO entry data and can be verified/signed etc
 pub trait VerifiableTransaction {
     fn tx(&self) -> &Transaction;
+
+    /// Returns the `i`'th populated input
     fn populated_input(&self, index: usize) -> (&TransactionInput, &UtxoEntry);
-    fn populated_inputs(&self) -> PopulatedInputsIterator<'_, Self>
+
+    /// Returns an iterator over populated `(input, entry)` pairs
+    fn populated_inputs(&self) -> PopulatedInputIterator<'_, Self>
     where
         Self: Sized,
     {
-        PopulatedInputsIterator { tx: self, i: 0 }
+        PopulatedInputIterator::new(self)
     }
+
     fn inputs(&self) -> &[TransactionInput] {
         &self.tx().inputs
     }
+
     fn outputs(&self) -> &[TransactionOutput] {
         &self.tx().outputs
     }
+
     fn is_coinbase(&self) -> bool {
         self.tx().is_coinbase()
     }
+
     fn id(&self) -> TransactionId {
         self.tx().id()
     }
 }
 
-/// Represents a read-only referenced transaction which is fully populated with UTXO entry data
+/// A custom iterator written only so that `populated_inputs` has a known return type
+pub struct PopulatedInputIterator<'a, T: VerifiableTransaction> {
+    tx: &'a T,
+    r: Range<usize>,
+}
+
+impl<'a, T: VerifiableTransaction> PopulatedInputIterator<'a, T> {
+    pub fn new(tx: &'a T) -> Self {
+        Self { tx, r: (0..tx.inputs().len()) }
+    }
+}
+
+impl<'a, T: VerifiableTransaction> Iterator for PopulatedInputIterator<'a, T> {
+    type Item = (&'a TransactionInput, &'a UtxoEntry);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.r.next().map(|i| self.tx.populated_input(i))
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.r.size_hint()
+    }
+}
+
+impl<'a, T: VerifiableTransaction> ExactSizeIterator for PopulatedInputIterator<'a, T> {}
+
+/// Represents a read-only referenced transaction along with fully populated UTXO entry data
 pub struct PopulatedTransaction<'a> {
     pub tx: &'a Transaction,
     pub entries: Vec<UtxoEntry>,
@@ -313,12 +328,15 @@ impl<'a> VerifiableTransaction for ValidatedTransaction<'a> {
     }
 }
 
-/// Represents a mutable owned transaction with partially filled UTXO entry data and optional fee and mass
+/// Represents a mutable owned transaction along with partially filled UTXO entry data and optional fee and mass
 pub struct MutableTransaction {
     /// The inner transaction
     pub tx: Transaction,
+    /// Partially filled UTXO entry data
     pub entries: Vec<Option<UtxoEntry>>,
+    /// Populated fee
     pub calculated_fee: Option<u64>,
+    /// Populated mass
     pub calculated_mass: Option<u64>,
 }
 
@@ -340,7 +358,7 @@ impl VerifiableTransaction for MutableTransaction {
     }
 
     fn populated_input(&self, index: usize) -> (&TransactionInput, &UtxoEntry) {
-        (&self.tx.inputs[index], self.entries[index].as_ref().expect("expected to be called only post population"))
+        (&self.tx.inputs[index], self.entries[index].as_ref().expect("expected to be used only following successful UTXO population"))
     }
 }
 
