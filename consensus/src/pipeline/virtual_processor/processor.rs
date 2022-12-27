@@ -81,6 +81,7 @@ pub struct VirtualStateProcessor {
     // Config
     pub(super) genesis_hash: Hash,
     pub(super) genesis_bits: u32,
+    pub(super) genesis_timestamp: u64,
     pub(super) max_block_parents: u8,
     pub(super) difficulty_window_size: usize,
     pub(super) mergeset_size_limit: u64,
@@ -158,6 +159,7 @@ impl VirtualStateProcessor {
 
             genesis_hash: params.genesis_hash,
             genesis_bits: params.genesis_bits,
+            genesis_timestamp: params.genesis_timestamp,
             max_block_parents: params.max_block_parents,
             difficulty_window_size: params.difficulty_window_size,
             mergeset_size_limit: params.mergeset_size_limit,
@@ -298,12 +300,15 @@ impl VirtualStateProcessor {
                 let selected_parent_utxo_view = (&virtual_read.utxo_set).compose(&accumulated_diff);
                 let mut ctx = UtxoProcessingContext::new((&virtual_ghostdag_data).into(), selected_parent_multiset_hash);
 
-                // Calc virtual DAA score
+                // Calc virtual DAA score, difficulty bits and past median time
                 let window = self.dag_traversal_manager.block_window(&virtual_ghostdag_data, self.difficulty_window_size);
                 let (virtual_daa_score, mergeset_non_daa) = self
                     .difficulty_manager
                     .calc_daa_score_and_non_daa_mergeset_blocks(&mut window.iter().map(|item| item.0.hash), &virtual_ghostdag_data);
                 let virtual_bits = self.difficulty_manager.calculate_difficulty_bits(&window);
+                let virtual_past_median_time = self.past_median_time_manager.calc_past_median_time(&virtual_ghostdag_data).0;
+
+                // Calc virtual UTXO state relative to selected parent
                 self.calculate_utxo_state(&mut ctx, &selected_parent_utxo_view, virtual_daa_score);
 
                 // Update the accumulated diff
@@ -314,6 +319,7 @@ impl VirtualStateProcessor {
                     virtual_parents,
                     virtual_daa_score,
                     virtual_bits,
+                    virtual_past_median_time,
                     ctx.multiset_hash,
                     ctx.mergeset_diff,
                     ctx.accepted_tx_ids,
@@ -488,7 +494,7 @@ impl VirtualStateProcessor {
         let virtual_state = virtual_read.state.get().unwrap();
         let virtual_utxo_view = &virtual_read.utxo_set;
         let virtual_daa_score = virtual_state.daa_score;
-        let virtual_past_median_time = self.past_median_time_manager.calc_past_median_time(&virtual_state.ghostdag_data).0; // TODO: save median time in virtual state
+        let virtual_past_median_time = virtual_state.past_median_time;
 
         self.transaction_validator.validate_tx_in_isolation(&mutable_tx.tx)?;
         self.transaction_validator.utxo_free_tx_validation(&mutable_tx.tx, virtual_daa_score, virtual_past_median_time)?;
@@ -521,7 +527,7 @@ impl VirtualStateProcessor {
         let accepted_id_merkle_root = merkle::calc_merkle_root(virtual_state.accepted_tx_ids.iter().copied());
         let utxo_commitment = virtual_state.multiset.clone().finalize();
         // Past median time is the exclusive lower bound for valid block time, so we increase by 1 to get the valid min
-        let min_block_time = self.past_median_time_manager.calc_past_median_time(&virtual_state.ghostdag_data).0 + 1;
+        let min_block_time = virtual_state.past_median_time + 1;
         let now = SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64;
         let header = Header::new(
             version,
@@ -584,6 +590,7 @@ impl VirtualStateProcessor {
                     .set(VirtualState::from_genesis(
                         self.genesis_hash,
                         self.genesis_bits,
+                        self.genesis_timestamp,
                         vec![txs[0].id()],
                         self.ghostdag_manager.ghostdag(&[self.genesis_hash]),
                     ))
