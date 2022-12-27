@@ -45,7 +45,7 @@ use crate::{
     },
 };
 use consensus_core::{
-    api::ConsensusApi,
+    api::{error::ConsensusError, ConsensusApi},
     block::{Block, BlockTemplate},
     blockstatus::BlockStatus,
     coinbase::MinerData,
@@ -451,9 +451,9 @@ impl ConsensusApi for Consensus {
         self: Arc<Self>,
         block: Block,
         _update_virtual: bool,
-    ) -> BoxFuture<'static, Result<BlockStatus, String>> {
+    ) -> BoxFuture<'static, Result<BlockStatus, ConsensusError>> {
         let result = self.as_ref().validate_and_insert_block(block);
-        Box::pin(async move { result.await.map_err(|err| err.to_string()) })
+        Box::pin(async move { result.await.map_err(|err| err.into()) })
     }
 }
 

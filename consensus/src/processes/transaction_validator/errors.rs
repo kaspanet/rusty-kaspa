@@ -1,4 +1,4 @@
-use consensus_core::tx::TransactionOutpoint;
+use consensus_core::{api::error::ConsensusError, tx::TransactionOutpoint};
 use thiserror::Error;
 
 use crate::constants::MAX_SOMPI;
@@ -73,6 +73,15 @@ pub enum TxRuleError {
 
     #[error("one or more of the transaction inputs outpoint is not present in utxo context")]
     MissingTxOutpoints(Vec<TransactionOutpoint>),
+}
+
+impl From<TxRuleError> for ConsensusError {
+    fn from(tx_err: TxRuleError) -> Self {
+        match tx_err {
+            TxRuleError::MissingTxOutpoints(v) => ConsensusError::TxMissingOutpoints(v),
+            _ => ConsensusError::General(tx_err.to_string()),
+        }
+    }
 }
 
 pub type TxResult<T> = std::result::Result<T, TxRuleError>;

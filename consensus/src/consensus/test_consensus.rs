@@ -6,7 +6,7 @@ use std::{
 };
 
 use consensus_core::{
-    api::ConsensusApi,
+    api::{error::ConsensusError, ConsensusApi},
     block::{Block, BlockTemplate, MutableBlock},
     blockstatus::BlockStatus,
     coinbase::MinerData,
@@ -167,7 +167,7 @@ impl ConsensusApi for TestConsensus {
         self: Arc<Self>,
         block: Block,
         update_virtual: bool,
-    ) -> BoxFuture<'static, Result<BlockStatus, String>> {
+    ) -> BoxFuture<'static, Result<BlockStatus, ConsensusError>> {
         self.consensus.clone().validate_and_insert_block(block, update_virtual)
     }
 }

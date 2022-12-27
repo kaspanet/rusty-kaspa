@@ -5,6 +5,7 @@ use crate::{
     processes::{coinbase::CoinbaseError, transaction_validator::errors::TxRuleError},
 };
 use consensus_core::{
+    api::error::ConsensusError,
     tx::{TransactionId, TransactionOutpoint},
     BlueWorkType,
 };
@@ -140,6 +141,15 @@ pub enum RuleError {
 
     #[error("{0} non-coinbase transactions (out of {1}) are invalid in UTXO context")]
     InvalidTransactionsInUtxoContext(usize, usize),
+}
+
+impl From<RuleError> for ConsensusError {
+    fn from(rule_err: RuleError) -> Self {
+        match rule_err {
+            RuleError::MissingParents(v) => ConsensusError::BlockMissingParents(v),
+            _ => ConsensusError::General(rule_err.to_string()),
+        }
+    }
 }
 
 pub type BlockProcessResult<T> = std::result::Result<T, RuleError>;

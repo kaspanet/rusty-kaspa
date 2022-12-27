@@ -8,6 +8,10 @@ use crate::{
     tx::Transaction,
 };
 
+use self::error::ConsensusError;
+
+pub mod error;
+
 /// Abstracts the consensus external API
 pub trait ConsensusApi: Send + Sync {
     fn build_block_template(self: Arc<Self>, miner_data: MinerData, txs: Vec<Transaction>) -> BlockTemplate;
@@ -16,7 +20,7 @@ pub trait ConsensusApi: Send + Sync {
         self: Arc<Self>,
         block: Block,
         update_virtual: bool,
-    ) -> BoxFuture<'static, Result<BlockStatus, String>>;
+    ) -> BoxFuture<'static, Result<BlockStatus, ConsensusError>>;
 }
 
 pub type DynConsensus = Arc<dyn ConsensusApi>;
