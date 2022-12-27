@@ -25,7 +25,6 @@ use kaspa_utils::refs::Refs;
 use muhash::MuHash;
 
 use rayon::prelude::*;
-use smallvec::{smallvec, SmallVec};
 use std::{iter::once, ops::Deref};
 
 /// A context for processing the UTXO state of a block with respect to its selected parent.
@@ -203,8 +202,8 @@ impl VirtualStateProcessor {
             if let Some(entry) = utxo_view.get(&input.previous_outpoint) {
                 entries.push(entry);
             } else {
-                // Missing at least one input. For perf considerations, we report only the first missing and avoid collecting all possible misses.
-                return Err(TxRuleError::MissingTxOutpoints(smallvec![input.previous_outpoint]));
+                // Missing at least one input. For perf considerations, we report once a single miss is detected and avoid collecting all possible misses.
+                return Err(TxRuleError::MissingTxOutpoints);
             }
         }
         let populated_tx = PopulatedTransaction::new(transaction, entries);
@@ -225,19 +224,21 @@ impl VirtualStateProcessor {
         utxo_view: &impl UtxoView,
         pov_daa_score: u64,
     ) -> TxResult<()> {
-        let mut missing_outpoints = SmallVec::new();
+        let mut has_missing_outpoints = false;
         for i in 0..mutable_tx.inputs().len() {
             if mutable_tx.entries[i].is_some() {
+                // We prefer a previously populated entry if such exists
                 continue;
             }
             if let Some(entry) = utxo_view.get(&mutable_tx.inputs()[i].previous_outpoint) {
                 mutable_tx.entries[i] = Some(entry);
             } else {
-                missing_outpoints.push(mutable_tx.inputs()[i].previous_outpoint);
+                // We attempt to fill as much as possible UTXO entries, hence we do not break in this case but rather continue looping
+                has_missing_outpoints = true;
             }
         }
-        if !missing_outpoints.is_empty() {
-            return Err(TxRuleError::MissingTxOutpoints(missing_outpoints));
+        if has_missing_outpoints {
+            return Err(TxRuleError::MissingTxOutpoints);
         }
         // At this point we know all UTXO entries are populated, so we can safely pass the tx for validation
         mutable_tx.calculated_fee =

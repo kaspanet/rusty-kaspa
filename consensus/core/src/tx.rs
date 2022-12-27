@@ -346,6 +346,23 @@ impl MutableTransaction {
         assert_eq!(tx.inputs.len(), entries.len());
         Self { tx, entries: entries.into_iter().map(Some).collect(), calculated_fee: None, calculated_mass: None }
     }
+
+    pub fn is_verifiable(&self) -> bool {
+        debug_assert_eq!(self.entries.len(), self.tx.inputs.len());
+        self.entries.iter().all(|e| e.is_some())
+    }
+
+    pub fn is_fully_populated(&self) -> bool {
+        self.is_verifiable() && self.calculated_fee.is_some() && self.calculated_mass.is_some()
+    }
+
+    pub fn missing_outpoints(&self) -> impl Iterator<Item = TransactionOutpoint> + '_ {
+        debug_assert_eq!(self.entries.len(), self.tx.inputs.len());
+        self.entries
+            .iter()
+            .enumerate()
+            .filter_map(|(i, entry)| if entry.is_none() { Some(self.tx.inputs[i].previous_outpoint) } else { None })
+    }
 }
 
 impl VerifiableTransaction for MutableTransaction {

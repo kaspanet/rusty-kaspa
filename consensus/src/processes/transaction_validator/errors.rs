@@ -1,5 +1,4 @@
 use consensus_core::{api::error::ConsensusError, tx::TransactionOutpoint};
-use smallvec::SmallVec;
 use thiserror::Error;
 
 use crate::constants::MAX_SOMPI;
@@ -75,14 +74,14 @@ pub enum TxRuleError {
     #[error("one of the transaction sequence locks conditions was not met")]
     SequenceLockConditionsAreNotMet,
 
-    #[error("one or more of the transaction inputs outpoint is not present in utxo context")]
-    MissingTxOutpoints(SmallVec<[TransactionOutpoint; 1]>),
+    #[error("outpoints corresponding to some transaction inputs are missing from current utxo context")]
+    MissingTxOutpoints,
 }
 
 impl From<TxRuleError> for ConsensusError {
     fn from(tx_err: TxRuleError) -> Self {
         match tx_err {
-            TxRuleError::MissingTxOutpoints(v) => ConsensusError::TxMissingOutpoints(v),
+            TxRuleError::MissingTxOutpoints => ConsensusError::TxMissingOutpoints,
             TxRuleError::ImmatureCoinbaseSpend(i, o, s1, s2, m) => ConsensusError::TxImmatureCoinbaseSpend(i, o, s1, s2, m),
             _ => ConsensusError::General(tx_err.to_string()),
         }

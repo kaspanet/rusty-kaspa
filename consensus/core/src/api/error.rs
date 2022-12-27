@@ -1,5 +1,4 @@
 use hashes::Hash;
-use smallvec::SmallVec;
 use thiserror::Error;
 
 use crate::tx::{TransactionId, TransactionOutpoint};
@@ -12,8 +11,8 @@ pub enum ConsensusError {
     #[error("invalid transactions in new block template")]
     InvalidTransactionsInNewBlock(Vec<(TransactionId, ConsensusError)>),
 
-    #[error("one or more of the transaction inputs outpoint is not present in utxo context")]
-    TxMissingOutpoints(SmallVec<[TransactionOutpoint; 1]>),
+    #[error("outpoints corresponding to some transaction inputs are missing from current utxo context")]
+    TxMissingOutpoints,
 
     #[error(
         "transaction input #{0} tried to spend coinbase outpoint {1} with daa score of {2} 

@@ -22,6 +22,8 @@ pub trait ConsensusApi: Send + Sync {
         update_virtual: bool,
     ) -> BoxFuture<'static, Result<BlockStatus, ConsensusError>>;
 
+    /// Populates the mempool transaction with maximally found UTXO entry data and proceeds to full transaction
+    /// validation if all are found. If validation is successful, also [`calculated_fee`] is expected to be populated
     fn validate_mempool_transaction_and_populate(self: Arc<Self>, transaction: &mut MutableTransaction) -> Result<(), ConsensusError>;
 
     fn calculate_transaction_mass(self: Arc<Self>, transaction: &Transaction) -> u64;
