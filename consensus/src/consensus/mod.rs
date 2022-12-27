@@ -26,7 +26,7 @@ use crate::{
             utxo_diffs::DbUtxoDiffsStore,
             utxo_multisets::DbUtxoMultisetsStore,
             utxo_set::DbUtxoSetStore,
-            virtual_state::DbVirtualStateStore,
+            virtual_state::{DbVirtualStateStore, VirtualStateStoreReader},
             DB,
         },
     },
@@ -463,6 +463,10 @@ impl ConsensusApi for Consensus {
 
     fn calculate_transaction_mass(self: Arc<Self>, transaction: &Transaction) -> u64 {
         self.body_processor.mass_calculator.calc_tx_mass(transaction)
+    }
+
+    fn get_virtual_daa_score(self: Arc<Self>) -> u64 {
+        self.virtual_processor.virtual_stores.read().state.get().unwrap().daa_score
     }
 }
 

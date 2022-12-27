@@ -178,6 +178,10 @@ impl ConsensusApi for TestConsensus {
     fn calculate_transaction_mass(self: Arc<Self>, transaction: &Transaction) -> u64 {
         self.consensus.clone().calculate_transaction_mass(transaction)
     }
+
+    fn get_virtual_daa_score(self: Arc<Self>) -> u64 {
+        self.consensus.clone().get_virtual_daa_score()
+    }
 }
 
 impl Service for TestConsensus {
