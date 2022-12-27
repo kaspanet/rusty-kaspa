@@ -5,7 +5,7 @@ use crate::{
         perf::{PerfParams, PERF_PARAMS},
         store_names,
     },
-    errors::BlockProcessResult,
+    errors::{BlockProcessResult, RuleError},
     model::{
         services::{reachability::MTReachabilityService, relations::MTRelationsService, statuses::MTStatusesService},
         stores::{
@@ -413,7 +413,7 @@ impl Consensus {
         async { rx.await.unwrap() }
     }
 
-    pub fn build_block_template(&self, miner_data: MinerData, txs: Vec<Transaction>) -> BlockTemplate {
+    pub fn build_block_template(&self, miner_data: MinerData, txs: Vec<Transaction>) -> Result<BlockTemplate, RuleError> {
         self.virtual_processor.build_block_template(miner_data, txs)
     }
 
@@ -443,8 +443,8 @@ impl Consensus {
 }
 
 impl ConsensusApi for Consensus {
-    fn build_block_template(self: Arc<Self>, miner_data: MinerData, txs: Vec<Transaction>) -> BlockTemplate {
-        self.as_ref().build_block_template(miner_data, txs)
+    fn build_block_template(self: Arc<Self>, miner_data: MinerData, txs: Vec<Transaction>) -> Result<BlockTemplate, ConsensusError> {
+        self.as_ref().build_block_template(miner_data, txs).map_err(|e| e.into())
     }
 
     fn validate_and_insert_block(

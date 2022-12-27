@@ -159,7 +159,7 @@ impl TestConsensus {
 }
 
 impl ConsensusApi for TestConsensus {
-    fn build_block_template(self: Arc<Self>, miner_data: MinerData, txs: Vec<Transaction>) -> BlockTemplate {
+    fn build_block_template(self: Arc<Self>, miner_data: MinerData, txs: Vec<Transaction>) -> Result<BlockTemplate, ConsensusError> {
         self.consensus.clone().build_block_template(miner_data, txs)
     }
 

@@ -1,15 +1,19 @@
 use hashes::Hash;
+use smallvec::SmallVec;
 use thiserror::Error;
 
-use crate::tx::TransactionOutpoint;
+use crate::tx::{TransactionId, TransactionOutpoint};
 
-#[derive(Error, Debug, Eq, PartialEq)]
+#[derive(Error, Debug)]
 pub enum ConsensusError {
     #[error("block has missing parents: {0:?}")]
     BlockMissingParents(Vec<Hash>),
 
+    #[error("invalid transactions in new block template")]
+    InvalidTransactionsInNewBlock(Vec<(TransactionId, ConsensusError)>),
+
     #[error("one or more of the transaction inputs outpoint is not present in utxo context")]
-    TxMissingOutpoints(Vec<TransactionOutpoint>),
+    TxMissingOutpoints(SmallVec<[TransactionOutpoint; 1]>),
 
     #[error(
         "transaction input #{0} tried to spend coinbase outpoint {1} with daa score of {2} 
@@ -17,11 +21,6 @@ pub enum ConsensusError {
     )]
     TxImmatureCoinbaseSpend(usize, TransactionOutpoint, u64, u64, u64),
 
-    // #[error("{0}")]
-    // BlockPermanentlyInvalid(String),
-
-    // #[error("{0}")]
-    // BlockCurrentlyRejected(String),
     #[error("{0}")]
     General(String),
 }

@@ -1,6 +1,7 @@
 use crate::{
     consensus::{DbGhostdagManager, VirtualStores},
     constants::BLOCK_VERSION,
+    errors::RuleError,
     model::{
         services::{
             reachability::{MTReachabilityService, ReachabilityService},
@@ -48,7 +49,10 @@ use consensus_core::{
     header::Header,
     merkle::calc_hash_merkle_root,
     tx::{MutableTransaction, Transaction},
-    utxo::{utxo_diff::UtxoDiff, utxo_view::UtxoViewComposition},
+    utxo::{
+        utxo_diff::UtxoDiff,
+        utxo_view::{UtxoView, UtxoViewComposition},
+    },
     BlockHashSet,
 };
 use hashes::Hash;
@@ -503,10 +507,39 @@ impl VirtualStateProcessor {
         Ok(())
     }
 
-    pub fn build_block_template(self: &Arc<Self>, miner_data: MinerData, mut txs: Vec<Transaction>) -> BlockTemplate {
+    fn validate_block_template_transaction(
+        &self,
+        tx: &Transaction,
+        virtual_state: &VirtualState,
+        utxo_view: &impl UtxoView,
+    ) -> TxResult<()> {
+        // No need to validate the transaction in isolation since we rely on the mining manager to submit transactions
+        // which were previously validated through `validate_mempool_transaction_and_populate`, hence we only perform
+        // in-context validations
+        self.transaction_validator.utxo_free_tx_validation(tx, virtual_state.daa_score, virtual_state.past_median_time)?;
+        self.validate_transaction_in_utxo_context(tx, utxo_view, virtual_state.daa_score)?;
+        Ok(())
+    }
+
+    pub fn build_block_template(&self, miner_data: MinerData, mut txs: Vec<Transaction>) -> Result<BlockTemplate, RuleError> {
         // TODO: tests
-        // TODO: validate transactions in utxo context
-        let virtual_state = self.virtual_stores.read().state.get().unwrap();
+        let virtual_read = self.virtual_stores.read();
+        let virtual_state = virtual_read.state.get().unwrap();
+        let virtual_utxo_view = &virtual_read.utxo_set;
+
+        // Search for invalid transactions. This can happen since the mining manager calling this function is not atomically in sync with virtual state
+        let mut invalid_transactions = Vec::new();
+        for tx in txs.iter() {
+            if let Err(e) = self.validate_block_template_transaction(tx, &virtual_state, virtual_utxo_view) {
+                invalid_transactions.push((tx.id(), e))
+            }
+        }
+        if !invalid_transactions.is_empty() {
+            return Err(RuleError::InvalidTransactionsInNewBlock(invalid_transactions));
+        }
+        // At this point we can safely drop the read lock
+        drop(virtual_read);
+
         let pruning_point = self
             .pruning_manager
             .expected_header_pruning_point(virtual_state.ghostdag_data.to_compact(), self.pruning_store.read().get().unwrap());
@@ -544,7 +577,7 @@ impl VirtualStateProcessor {
             pruning_point,
         );
         let selected_parent_timestamp = self.headers_store.get_timestamp(virtual_state.ghostdag_data.selected_parent).unwrap();
-        BlockTemplate::new(MutableBlock::new(header, txs), miner_data, coinbase.has_red_reward, selected_parent_timestamp)
+        Ok(BlockTemplate::new(MutableBlock::new(header, txs), miner_data, coinbase.has_red_reward, selected_parent_timestamp))
     }
 
     fn advance_pruning_point_and_candidate_if_possible(self: &Arc<Self>) {

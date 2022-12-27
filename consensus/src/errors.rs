@@ -141,12 +141,18 @@ pub enum RuleError {
 
     #[error("{0} non-coinbase transactions (out of {1}) are invalid in UTXO context")]
     InvalidTransactionsInUtxoContext(usize, usize),
+
+    #[error("invalid transactions in new block template")]
+    InvalidTransactionsInNewBlock(Vec<(TransactionId, TxRuleError)>),
 }
 
 impl From<RuleError> for ConsensusError {
     fn from(rule_err: RuleError) -> Self {
         match rule_err {
             RuleError::MissingParents(v) => ConsensusError::BlockMissingParents(v),
+            RuleError::InvalidTransactionsInNewBlock(v) => {
+                ConsensusError::InvalidTransactionsInNewBlock(v.into_iter().map(|(id, e)| (id, e.into())).collect())
+            }
             _ => ConsensusError::General(rule_err.to_string()),
         }
     }

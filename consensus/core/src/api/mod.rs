@@ -14,7 +14,7 @@ pub mod error;
 
 /// Abstracts the consensus external API
 pub trait ConsensusApi: Send + Sync {
-    fn build_block_template(self: Arc<Self>, miner_data: MinerData, txs: Vec<Transaction>) -> BlockTemplate;
+    fn build_block_template(self: Arc<Self>, miner_data: MinerData, txs: Vec<Transaction>) -> Result<BlockTemplate, ConsensusError>;
 
     fn validate_and_insert_block(
         self: Arc<Self>,

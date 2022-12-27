@@ -25,6 +25,7 @@ use kaspa_utils::refs::Refs;
 use muhash::MuHash;
 
 use rayon::prelude::*;
+use smallvec::{smallvec, SmallVec};
 use std::{iter::once, ops::Deref};
 
 /// A context for processing the UTXO state of a block with respect to its selected parent.
@@ -185,7 +186,7 @@ impl VirtualStateProcessor {
                 .par_iter() // We can do this in parallel without complications since block body validation already ensured
                             // that all txs within each block are independent
                 .skip(1) // Skip the coinbase tx.
-                .filter_map(|tx| self.validate_transaction_in_utxo_context(tx, &utxo_view, pov_daa_score))
+                .filter_map(|tx| self.validate_transaction_in_utxo_context(tx, &utxo_view, pov_daa_score).ok())
                 .collect()
         })
     }
@@ -196,22 +197,23 @@ impl VirtualStateProcessor {
         transaction: &'a Transaction,
         utxo_view: &impl UtxoView,
         pov_daa_score: u64,
-    ) -> Option<ValidatedTransaction<'a>> {
+    ) -> TxResult<ValidatedTransaction<'a>> {
         let mut entries = Vec::with_capacity(transaction.inputs.len());
         for input in transaction.inputs.iter() {
             if let Some(entry) = utxo_view.get(&input.previous_outpoint) {
                 entries.push(entry);
             } else {
-                return None; // Missing inputs
+                // Missing at least one input. For perf considerations, we report only the first missing and avoid collecting all possible misses.
+                return Err(TxRuleError::MissingTxOutpoints(smallvec![input.previous_outpoint]));
             }
         }
         let populated_tx = PopulatedTransaction::new(transaction, entries);
         let res = self.transaction_validator.validate_populated_transaction_and_get_fee(&populated_tx, pov_daa_score);
         match res {
-            Ok(calculated_fee) => Some(ValidatedTransaction::new(populated_tx, calculated_fee)),
+            Ok(calculated_fee) => Ok(ValidatedTransaction::new(populated_tx, calculated_fee)),
             Err(tx_rule_error) => {
                 info!("tx rule error {} for tx {}", tx_rule_error, transaction.id());
-                None
+                Err(tx_rule_error)
             }
         }
     }
@@ -223,7 +225,7 @@ impl VirtualStateProcessor {
         utxo_view: &impl UtxoView,
         pov_daa_score: u64,
     ) -> TxResult<()> {
-        let mut missing_outpoints = Vec::new();
+        let mut missing_outpoints = SmallVec::new();
         for i in 0..mutable_tx.inputs().len() {
             if mutable_tx.entries[i].is_some() {
                 continue;
