@@ -174,6 +174,10 @@ impl ConsensusApi for TestConsensus {
     fn validate_mempool_transaction_and_populate(self: Arc<Self>, transaction: &mut MutableTransaction) -> Result<(), ConsensusError> {
         self.consensus.clone().validate_mempool_transaction_and_populate(transaction)
     }
+
+    fn calculate_transaction_mss(self: Arc<Self>, transaction: &Transaction) -> u64 {
+        self.consensus.clone().calculate_transaction_mss(transaction)
+    }
 }
 
 impl Service for TestConsensus {

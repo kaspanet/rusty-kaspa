@@ -460,6 +460,10 @@ impl ConsensusApi for Consensus {
         self.virtual_processor.validate_mempool_transaction_and_populate(transaction)?;
         Ok(())
     }
+
+    fn calculate_transaction_mss(self: Arc<Self>, transaction: &Transaction) -> u64 {
+        self.body_processor.mass_calculator.calc_tx_mass(transaction)
+    }
 }
 
 impl Service for Consensus {
