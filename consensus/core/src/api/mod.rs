@@ -5,7 +5,7 @@ use crate::{
     block::{Block, BlockTemplate},
     blockstatus::BlockStatus,
     coinbase::MinerData,
-    tx::Transaction,
+    tx::{MutableTransaction, Transaction},
 };
 
 use self::error::ConsensusError;
@@ -21,6 +21,8 @@ pub trait ConsensusApi: Send + Sync {
         block: Block,
         update_virtual: bool,
     ) -> BoxFuture<'static, Result<BlockStatus, ConsensusError>>;
+
+    fn validate_mempool_transaction_and_populate(self: Arc<Self>, transaction: &mut MutableTransaction) -> Result<(), ConsensusError>;
 }
 
 pub type DynConsensus = Arc<dyn ConsensusApi>;

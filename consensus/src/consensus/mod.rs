@@ -49,7 +49,7 @@ use consensus_core::{
     block::{Block, BlockTemplate},
     blockstatus::BlockStatus,
     coinbase::MinerData,
-    tx::Transaction,
+    tx::{MutableTransaction, Transaction},
     BlockHashSet,
 };
 use crossbeam_channel::{unbounded, Receiver, Sender};
@@ -454,6 +454,11 @@ impl ConsensusApi for Consensus {
     ) -> BoxFuture<'static, Result<BlockStatus, ConsensusError>> {
         let result = self.as_ref().validate_and_insert_block(block);
         Box::pin(async move { result.await.map_err(|err| err.into()) })
+    }
+
+    fn validate_mempool_transaction_and_populate(self: Arc<Self>, transaction: &mut MutableTransaction) -> Result<(), ConsensusError> {
+        self.virtual_processor.validate_mempool_transaction_and_populate(transaction)?;
+        Ok(())
     }
 }
 

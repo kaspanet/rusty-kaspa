@@ -44,7 +44,10 @@ pub enum TxRuleError {
     #[error("script public key of coinbase output #{0} is too long")]
     CoinbaseScriptPublicKeyTooLong(usize),
 
-    #[error("transaction input #{0} tried to spend coinbase outpoint {1} with daa score of {2} while the merging block daa score is {3} and the coinbase maturity period of {4} hasn't passed yet")]
+    #[error(
+        "transaction input #{0} tried to spend coinbase outpoint {1} with daa score of {2} 
+    while the merging block daa score is {3} and the coinbase maturity period of {4} hasn't passed yet"
+    )]
     ImmatureCoinbaseSpend(usize, TransactionOutpoint, u64, u64, u64),
 
     #[error("transaction total inputs spending amount overflowed u64")]
@@ -79,6 +82,7 @@ impl From<TxRuleError> for ConsensusError {
     fn from(tx_err: TxRuleError) -> Self {
         match tx_err {
             TxRuleError::MissingTxOutpoints(v) => ConsensusError::TxMissingOutpoints(v),
+            TxRuleError::ImmatureCoinbaseSpend(i, o, s1, s2, m) => ConsensusError::TxImmatureCoinbaseSpend(i, o, s1, s2, m),
             _ => ConsensusError::General(tx_err.to_string()),
         }
     }

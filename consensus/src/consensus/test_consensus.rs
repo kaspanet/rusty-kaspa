@@ -13,7 +13,7 @@ use consensus_core::{
     header::Header,
     merkle::calc_hash_merkle_root,
     subnets::SUBNETWORK_ID_COINBASE,
-    tx::Transaction,
+    tx::{MutableTransaction, Transaction},
     BlockHashSet,
 };
 use futures_util::future::BoxFuture;
@@ -169,6 +169,10 @@ impl ConsensusApi for TestConsensus {
         update_virtual: bool,
     ) -> BoxFuture<'static, Result<BlockStatus, ConsensusError>> {
         self.consensus.clone().validate_and_insert_block(block, update_virtual)
+    }
+
+    fn validate_mempool_transaction_and_populate(self: Arc<Self>, transaction: &mut MutableTransaction) -> Result<(), ConsensusError> {
+        self.consensus.clone().validate_mempool_transaction_and_populate(transaction)
     }
 }
 
