@@ -24,7 +24,7 @@ pub trait ConsensusApi: Send + Sync {
 
     fn validate_mempool_transaction_and_populate(self: Arc<Self>, transaction: &mut MutableTransaction) -> Result<(), ConsensusError>;
 
-    fn calculate_transaction_mss(self: Arc<Self>, transaction: &Transaction) -> u64;
+    fn calculate_transaction_mass(self: Arc<Self>, transaction: &Transaction) -> u64;
 }
 
 pub type DynConsensus = Arc<dyn ConsensusApi>;

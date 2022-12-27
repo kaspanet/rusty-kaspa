@@ -461,7 +461,7 @@ impl ConsensusApi for Consensus {
         Ok(())
     }
 
-    fn calculate_transaction_mss(self: Arc<Self>, transaction: &Transaction) -> u64 {
+    fn calculate_transaction_mass(self: Arc<Self>, transaction: &Transaction) -> u64 {
         self.body_processor.mass_calculator.calc_tx_mass(transaction)
     }
 }

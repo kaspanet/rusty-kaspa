@@ -175,8 +175,8 @@ impl ConsensusApi for TestConsensus {
         self.consensus.clone().validate_mempool_transaction_and_populate(transaction)
     }
 
-    fn calculate_transaction_mss(self: Arc<Self>, transaction: &Transaction) -> u64 {
-        self.consensus.clone().calculate_transaction_mss(transaction)
+    fn calculate_transaction_mass(self: Arc<Self>, transaction: &Transaction) -> u64 {
+        self.consensus.clone().calculate_transaction_mass(transaction)
     }
 }
 
