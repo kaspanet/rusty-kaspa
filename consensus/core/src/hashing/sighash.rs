@@ -138,13 +138,13 @@ fn hash_script_public_key(hasher: &mut impl Hasher, script_public_key: &ScriptPu
 }
 
 pub fn calc_schnorr_signature_hash(
-    signable_tx: &impl VerifiableTransaction,
+    verifiable_tx: &impl VerifiableTransaction,
     input_index: usize,
     hash_type: SigHashType,
     reused_values: &mut SigHashReusedValues,
 ) -> Hash {
-    let input = signable_tx.populated_input(input_index);
-    let tx = signable_tx.tx();
+    let input = verifiable_tx.populated_input(input_index);
+    let tx = verifiable_tx.tx();
     let mut hasher = TransactionSigningHash::new();
     hasher
         .write_u16(tx.version)
