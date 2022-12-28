@@ -3,8 +3,6 @@
 //!
 
 use consensus::consensus::test_consensus::{create_temp_db, TestConsensus};
-use consensus::constants::BLOCK_VERSION;
-use consensus::errors::{BlockProcessResult, RuleError};
 use consensus::model::stores::ghostdag::{GhostdagStoreReader, KType as GhostdagKType};
 use consensus::model::stores::headers::HeaderStoreReader;
 use consensus::model::stores::reachability::DbReachabilityStore;
@@ -13,6 +11,8 @@ use consensus::processes::reachability::tests::{DagBlock, DagBuilder, StoreValid
 use consensus_core::block::Block;
 use consensus_core::blockhash::new_unique;
 use consensus_core::blockstatus::BlockStatus;
+use consensus_core::constants::BLOCK_VERSION;
+use consensus_core::errors::block::{BlockProcessResult, RuleError};
 use consensus_core::header::Header;
 use consensus_core::subnets::SubnetworkId;
 use consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};

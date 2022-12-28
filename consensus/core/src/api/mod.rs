@@ -5,26 +5,26 @@ use crate::{
     block::{Block, BlockTemplate},
     blockstatus::BlockStatus,
     coinbase::MinerData,
+    errors::{
+        block::{BlockProcessResult, RuleError},
+        tx::TxResult,
+    },
     tx::{MutableTransaction, Transaction},
 };
 
-use self::error::ConsensusError;
-
-pub mod error;
-
 /// Abstracts the consensus external API
 pub trait ConsensusApi: Send + Sync {
-    fn build_block_template(self: Arc<Self>, miner_data: MinerData, txs: Vec<Transaction>) -> Result<BlockTemplate, ConsensusError>;
+    fn build_block_template(self: Arc<Self>, miner_data: MinerData, txs: Vec<Transaction>) -> Result<BlockTemplate, RuleError>;
 
     fn validate_and_insert_block(
         self: Arc<Self>,
         block: Block,
         update_virtual: bool,
-    ) -> BoxFuture<'static, Result<BlockStatus, ConsensusError>>;
+    ) -> BoxFuture<'static, BlockProcessResult<BlockStatus>>;
 
     /// Populates the mempool transaction with maximally found UTXO entry data and proceeds to full transaction
     /// validation if all are found. If validation is successful, also [`calculated_fee`] is expected to be populated
-    fn validate_mempool_transaction_and_populate(self: Arc<Self>, transaction: &mut MutableTransaction) -> Result<(), ConsensusError>;
+    fn validate_mempool_transaction_and_populate(self: Arc<Self>, transaction: &mut MutableTransaction) -> TxResult<()>;
 
     fn calculate_transaction_mass(self: Arc<Self>, transaction: &Transaction) -> u64;
 

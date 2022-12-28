@@ -5,7 +5,6 @@ use consensus::{
         Consensus,
     },
     constants::perf::{PerfParams, PERF_PARAMS},
-    errors::{BlockProcessResult, RuleError},
     model::stores::{
         block_transactions::BlockTransactionsStoreReader,
         ghostdag::{GhostdagStoreReader, KType},
@@ -15,7 +14,13 @@ use consensus::{
     params::{Params, DEVNET_PARAMS},
     processes::ghostdag::ordering::SortableBlock,
 };
-use consensus_core::{block::Block, blockstatus::BlockStatus, header::Header, BlockHashSet, HashMapCustomHasher};
+use consensus_core::{
+    block::Block,
+    blockstatus::BlockStatus,
+    errors::block::{BlockProcessResult, RuleError},
+    header::Header,
+    BlockHashSet, HashMapCustomHasher,
+};
 use futures::{future::join_all, Future};
 use hashes::Hash;
 use itertools::Itertools;

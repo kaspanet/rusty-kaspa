@@ -45,10 +45,11 @@ use crate::{
     },
 };
 use consensus_core::{
-    api::{error::ConsensusError, ConsensusApi},
+    api::ConsensusApi,
     block::{Block, BlockTemplate},
     blockstatus::BlockStatus,
     coinbase::MinerData,
+    errors::tx::TxResult,
     tx::{MutableTransaction, Transaction},
     BlockHashSet,
 };
@@ -443,20 +444,19 @@ impl Consensus {
 }
 
 impl ConsensusApi for Consensus {
-    fn build_block_template(self: Arc<Self>, miner_data: MinerData, txs: Vec<Transaction>) -> Result<BlockTemplate, ConsensusError> {
-        self.as_ref().build_block_template(miner_data, txs).map_err(|e| e.into())
+    fn build_block_template(self: Arc<Self>, miner_data: MinerData, txs: Vec<Transaction>) -> Result<BlockTemplate, RuleError> {
+        self.as_ref().build_block_template(miner_data, txs)
     }
 
     fn validate_and_insert_block(
         self: Arc<Self>,
         block: Block,
         _update_virtual: bool,
-    ) -> BoxFuture<'static, Result<BlockStatus, ConsensusError>> {
-        let result = self.as_ref().validate_and_insert_block(block);
-        Box::pin(async move { result.await.map_err(|err| err.into()) })
+    ) -> BoxFuture<'static, BlockProcessResult<BlockStatus>> {
+        Box::pin(self.as_ref().validate_and_insert_block(block))
     }
 
-    fn validate_mempool_transaction_and_populate(self: Arc<Self>, transaction: &mut MutableTransaction) -> Result<(), ConsensusError> {
+    fn validate_mempool_transaction_and_populate(self: Arc<Self>, transaction: &mut MutableTransaction) -> TxResult<()> {
         self.virtual_processor.validate_mempool_transaction_and_populate(transaction)?;
         Ok(())
     }

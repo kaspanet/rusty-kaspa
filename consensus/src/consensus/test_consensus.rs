@@ -6,10 +6,11 @@ use std::{
 };
 
 use consensus_core::{
-    api::{error::ConsensusError, ConsensusApi},
+    api::ConsensusApi,
     block::{Block, BlockTemplate, MutableBlock},
     blockstatus::BlockStatus,
     coinbase::MinerData,
+    errors::{block::RuleError, tx::TxResult},
     header::Header,
     merkle::calc_hash_merkle_root,
     subnets::SUBNETWORK_ID_COINBASE,
@@ -159,7 +160,7 @@ impl TestConsensus {
 }
 
 impl ConsensusApi for TestConsensus {
-    fn build_block_template(self: Arc<Self>, miner_data: MinerData, txs: Vec<Transaction>) -> Result<BlockTemplate, ConsensusError> {
+    fn build_block_template(self: Arc<Self>, miner_data: MinerData, txs: Vec<Transaction>) -> Result<BlockTemplate, RuleError> {
         self.consensus.clone().build_block_template(miner_data, txs)
     }
 
@@ -167,11 +168,11 @@ impl ConsensusApi for TestConsensus {
         self: Arc<Self>,
         block: Block,
         update_virtual: bool,
-    ) -> BoxFuture<'static, Result<BlockStatus, ConsensusError>> {
+    ) -> BoxFuture<'static, BlockProcessResult<BlockStatus>> {
         self.consensus.clone().validate_and_insert_block(block, update_virtual)
     }
 
-    fn validate_mempool_transaction_and_populate(self: Arc<Self>, transaction: &mut MutableTransaction) -> Result<(), ConsensusError> {
+    fn validate_mempool_transaction_and_populate(self: Arc<Self>, transaction: &mut MutableTransaction) -> TxResult<()> {
         self.consensus.clone().validate_mempool_transaction_and_populate(transaction)
     }
 
