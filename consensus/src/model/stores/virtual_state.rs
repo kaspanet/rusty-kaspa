@@ -20,6 +20,7 @@ pub struct VirtualState {
     pub ghostdag_data: GhostdagData,
     pub daa_score: u64,
     pub bits: u32,
+    pub past_median_time: u64,
     pub multiset: MuHash,
     pub utxo_diff: UtxoDiff,
     pub accepted_tx_ids: Vec<TransactionId>, // TODO: consider saving `accepted_id_merkle_root` directly
@@ -32,6 +33,7 @@ impl VirtualState {
         parents: Vec<Hash>,
         daa_score: u64,
         bits: u32,
+        past_median_time: u64,
         multiset: MuHash,
         utxo_diff: UtxoDiff,
         accepted_tx_ids: Vec<TransactionId>,
@@ -39,12 +41,24 @@ impl VirtualState {
         mergeset_non_daa: BlockHashSet,
         ghostdag_data: GhostdagData,
     ) -> Self {
-        Self { parents, ghostdag_data, daa_score, bits, multiset, utxo_diff, accepted_tx_ids, mergeset_rewards, mergeset_non_daa }
+        Self {
+            parents,
+            ghostdag_data,
+            daa_score,
+            bits,
+            past_median_time,
+            multiset,
+            utxo_diff,
+            accepted_tx_ids,
+            mergeset_rewards,
+            mergeset_non_daa,
+        }
     }
 
     pub fn from_genesis(
         genesis_hash: Hash,
         genesis_bits: u32,
+        past_median_time: u64,
         accepted_tx_ids: Vec<TransactionId>,
         initial_ghostdag_data: GhostdagData,
     ) -> Self {
@@ -53,6 +67,7 @@ impl VirtualState {
             ghostdag_data: initial_ghostdag_data,
             daa_score: 0,
             bits: genesis_bits,
+            past_median_time,
             multiset: MuHash::new(),
             utxo_diff: UtxoDiff::default(), // Virtual diff is initially empty since genesis receives no reward
             accepted_tx_ids,

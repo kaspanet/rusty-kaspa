@@ -1,6 +1,7 @@
 use crate::{
-    consensus::DbGhostdagManager,
+    consensus::{DbGhostdagManager, VirtualStores},
     constants::BLOCK_VERSION,
+    errors::RuleError,
     model::{
         services::{
             reachability::{MTReachabilityService, ReachabilityService},
@@ -23,17 +24,22 @@ use crate::{
             tips::{DbTipsStore, TipsStoreReader},
             utxo_diffs::{DbUtxoDiffsStore, UtxoDiffsStoreReader},
             utxo_multisets::{DbUtxoMultisetsStore, UtxoMultisetsStoreReader},
-            utxo_set::DbUtxoSetStore,
-            virtual_state::{DbVirtualStateStore, VirtualState, VirtualStateStore, VirtualStateStoreReader},
+            virtual_state::{VirtualState, VirtualStateStore, VirtualStateStoreReader},
             DB,
         },
     },
     params::Params,
     pipeline::{deps_manager::BlockTask, virtual_processor::utxo_validation::UtxoProcessingContext},
     processes::{
-        block_depth::BlockDepthManager, coinbase::CoinbaseManager, difficulty::DifficultyManager, ghostdag::ordering::SortableBlock,
-        parents_builder::ParentsManager, past_median_time::PastMedianTimeManager, pruning::PruningManager,
-        transaction_validator::TransactionValidator, traversal_manager::DagTraversalManager,
+        block_depth::BlockDepthManager,
+        coinbase::CoinbaseManager,
+        difficulty::DifficultyManager,
+        ghostdag::ordering::SortableBlock,
+        parents_builder::ParentsManager,
+        past_median_time::PastMedianTimeManager,
+        pruning::PruningManager,
+        transaction_validator::{errors::TxResult, TransactionValidator},
+        traversal_manager::DagTraversalManager,
     },
 };
 use consensus_core::{
@@ -42,8 +48,11 @@ use consensus_core::{
     coinbase::MinerData,
     header::Header,
     merkle::calc_hash_merkle_root,
-    tx::Transaction,
-    utxo::{utxo_diff::UtxoDiff, utxo_view::UtxoViewComposition},
+    tx::{MutableTransaction, Transaction},
+    utxo::{
+        utxo_diff::UtxoDiff,
+        utxo_view::{UtxoView, UtxoViewComposition},
+    },
     BlockHashSet,
 };
 use hashes::Hash;
@@ -76,6 +85,7 @@ pub struct VirtualStateProcessor {
     // Config
     pub(super) genesis_hash: Hash,
     pub(super) genesis_bits: u32,
+    pub(super) genesis_timestamp: u64,
     pub(super) max_block_parents: u8,
     pub(super) difficulty_window_size: usize,
     pub(super) mergeset_size_limit: u64,
@@ -95,8 +105,7 @@ pub struct VirtualStateProcessor {
     pub(super) utxo_diffs_store: Arc<DbUtxoDiffsStore>,
     pub(super) utxo_multisets_store: Arc<DbUtxoMultisetsStore>,
     pub(super) acceptance_data_store: Arc<DbAcceptanceDataStore>,
-    pub virtual_utxo_store: Arc<DbUtxoSetStore>,
-    pub virtual_state_store: Arc<RwLock<DbVirtualStateStore>>,
+    pub virtual_stores: Arc<RwLock<VirtualStores>>,
     // TODO: remove all pub from stores when StoreManager is implemented
 
     // Managers and services
@@ -134,8 +143,7 @@ impl VirtualStateProcessor {
         utxo_multisets_store: Arc<DbUtxoMultisetsStore>,
         acceptance_data_store: Arc<DbAcceptanceDataStore>,
         // Virtual-related stores
-        virtual_utxo_store: Arc<DbUtxoSetStore>,
-        virtual_state_store: Arc<RwLock<DbVirtualStateStore>>,
+        virtual_stores: Arc<RwLock<VirtualStores>>,
         // Managers
         ghostdag_manager: DbGhostdagManager,
         reachability_service: MTReachabilityService<DbReachabilityStore>,
@@ -155,6 +163,7 @@ impl VirtualStateProcessor {
 
             genesis_hash: params.genesis_hash,
             genesis_bits: params.genesis_bits,
+            genesis_timestamp: params.genesis_timestamp,
             max_block_parents: params.max_block_parents,
             difficulty_window_size: params.difficulty_window_size,
             mergeset_size_limit: params.mergeset_size_limit,
@@ -172,8 +181,7 @@ impl VirtualStateProcessor {
             utxo_diffs_store,
             utxo_multisets_store,
             acceptance_data_store,
-            virtual_utxo_store,
-            virtual_state_store,
+            virtual_stores,
             ghostdag_manager,
             reachability_service,
             relations_service,
@@ -219,7 +227,8 @@ impl VirtualStateProcessor {
         // TODO: acceptance data format
         // TODO: refactor this methods into multiple methods
 
-        let prev_state = self.virtual_state_store.read().get().unwrap();
+        let virtual_read = self.virtual_stores.upgradable_read();
+        let prev_state = virtual_read.state.get().unwrap();
         let tips = self.body_tips_store.read().get().unwrap().iter().copied().collect_vec();
         let new_selected = self.ghostdag_manager.find_selected_parent(&mut tips.iter().copied());
         let prev_selected = prev_state.ghostdag_data.selected_parent;
@@ -260,7 +269,7 @@ impl VirtualStateProcessor {
                     let pov_daa_score = header.daa_score;
 
                     let selected_parent_multiset_hash = self.utxo_multisets_store.get(selected_parent).unwrap();
-                    let selected_parent_utxo_view = self.virtual_utxo_store.as_ref().compose(&accumulated_diff);
+                    let selected_parent_utxo_view = (&virtual_read.utxo_set).compose(&accumulated_diff);
 
                     let mut ctx = UtxoProcessingContext::new(mergeset_data.into(), selected_parent_multiset_hash);
 
@@ -292,15 +301,18 @@ impl VirtualStateProcessor {
 
                 // Calc the new virtual UTXO diff
                 let selected_parent_multiset_hash = self.utxo_multisets_store.get(virtual_ghostdag_data.selected_parent).unwrap();
-                let selected_parent_utxo_view = self.virtual_utxo_store.as_ref().compose(&accumulated_diff);
+                let selected_parent_utxo_view = (&virtual_read.utxo_set).compose(&accumulated_diff);
                 let mut ctx = UtxoProcessingContext::new((&virtual_ghostdag_data).into(), selected_parent_multiset_hash);
 
-                // Calc virtual DAA score
+                // Calc virtual DAA score, difficulty bits and past median time
                 let window = self.dag_traversal_manager.block_window(&virtual_ghostdag_data, self.difficulty_window_size);
                 let (virtual_daa_score, mergeset_non_daa) = self
                     .difficulty_manager
                     .calc_daa_score_and_non_daa_mergeset_blocks(&mut window.iter().map(|item| item.0.hash), &virtual_ghostdag_data);
                 let virtual_bits = self.difficulty_manager.calculate_difficulty_bits(&window);
+                let virtual_past_median_time = self.past_median_time_manager.calc_past_median_time(&virtual_ghostdag_data).0;
+
+                // Calc virtual UTXO state relative to selected parent
                 self.calculate_utxo_state(&mut ctx, &selected_parent_utxo_view, virtual_daa_score);
 
                 // Update the accumulated diff
@@ -311,6 +323,7 @@ impl VirtualStateProcessor {
                     virtual_parents,
                     virtual_daa_score,
                     virtual_bits,
+                    virtual_past_median_time,
                     ctx.multiset_hash,
                     ctx.mergeset_diff,
                     ctx.accepted_tx_ids,
@@ -320,19 +333,19 @@ impl VirtualStateProcessor {
                 );
 
                 let mut batch = WriteBatch::default();
+                let mut virtual_write = RwLockUpgradableReadGuard::upgrade(virtual_read);
 
                 // Apply the accumulated diff to the virtual UTXO set
-                self.virtual_utxo_store.write_diff_batch(&mut batch, &accumulated_diff).unwrap();
+                virtual_write.utxo_set.write_diff_batch(&mut batch, &accumulated_diff).unwrap();
 
                 // Update virtual state
-                let mut write_guard = self.virtual_state_store.write();
-                write_guard.set_batch(&mut batch, new_virtual_state).unwrap();
+                virtual_write.state.set_batch(&mut batch, new_virtual_state).unwrap();
 
                 // Flush the batch changes
                 self.db.write(batch).unwrap();
 
                 // Calling the drops explicitly after the batch is written in order to avoid possible errors.
-                drop(write_guard);
+                drop(virtual_write);
             }
             BlockStatus::StatusDisqualifiedFromChain => {
                 // TODO: this means another chain needs to be checked
@@ -480,10 +493,54 @@ impl VirtualStateProcessor {
         (virtual_parents, ghostdag_data)
     }
 
-    pub fn build_block_template(self: &Arc<Self>, miner_data: MinerData, mut txs: Vec<Transaction>) -> BlockTemplate {
+    pub fn validate_mempool_transaction_and_populate(&self, mutable_tx: &mut MutableTransaction) -> TxResult<()> {
+        self.transaction_validator.validate_tx_in_isolation(&mutable_tx.tx)?;
+
+        let virtual_read = self.virtual_stores.read();
+        let virtual_state = virtual_read.state.get().unwrap();
+        let virtual_utxo_view = &virtual_read.utxo_set;
+        let virtual_daa_score = virtual_state.daa_score;
+        let virtual_past_median_time = virtual_state.past_median_time;
+
+        self.transaction_validator.utxo_free_tx_validation(&mutable_tx.tx, virtual_daa_score, virtual_past_median_time)?;
+        self.validate_mempool_transaction_in_utxo_context(mutable_tx, virtual_utxo_view, virtual_daa_score)?;
+
+        Ok(())
+    }
+
+    fn validate_block_template_transaction(
+        &self,
+        tx: &Transaction,
+        virtual_state: &VirtualState,
+        utxo_view: &impl UtxoView,
+    ) -> TxResult<()> {
+        // No need to validate the transaction in isolation since we rely on the mining manager to submit transactions
+        // which were previously validated through `validate_mempool_transaction_and_populate`, hence we only perform
+        // in-context validations
+        self.transaction_validator.utxo_free_tx_validation(tx, virtual_state.daa_score, virtual_state.past_median_time)?;
+        self.validate_transaction_in_utxo_context(tx, utxo_view, virtual_state.daa_score)?;
+        Ok(())
+    }
+
+    pub fn build_block_template(&self, miner_data: MinerData, mut txs: Vec<Transaction>) -> Result<BlockTemplate, RuleError> {
         // TODO: tests
-        // TODO: validate transactions in utxo context
-        let virtual_state = self.virtual_state_store.read().get().unwrap();
+        let virtual_read = self.virtual_stores.read();
+        let virtual_state = virtual_read.state.get().unwrap();
+        let virtual_utxo_view = &virtual_read.utxo_set;
+
+        // Search for invalid transactions. This can happen since the mining manager calling this function is not atomically in sync with virtual state
+        let mut invalid_transactions = Vec::new();
+        for tx in txs.iter() {
+            if let Err(e) = self.validate_block_template_transaction(tx, &virtual_state, virtual_utxo_view) {
+                invalid_transactions.push((tx.id(), e))
+            }
+        }
+        if !invalid_transactions.is_empty() {
+            return Err(RuleError::InvalidTransactionsInNewBlock(invalid_transactions));
+        }
+        // At this point we can safely drop the read lock
+        drop(virtual_read);
+
         let pruning_point = self
             .pruning_manager
             .expected_header_pruning_point(virtual_state.ghostdag_data.to_compact(), self.pruning_store.read().get().unwrap());
@@ -504,7 +561,7 @@ impl VirtualStateProcessor {
         let accepted_id_merkle_root = merkle::calc_merkle_root(virtual_state.accepted_tx_ids.iter().copied());
         let utxo_commitment = virtual_state.multiset.clone().finalize();
         // Past median time is the exclusive lower bound for valid block time, so we increase by 1 to get the valid min
-        let min_block_time = self.past_median_time_manager.calc_past_median_time(&virtual_state.ghostdag_data).0 + 1;
+        let min_block_time = virtual_state.past_median_time + 1;
         let now = SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64;
         let header = Header::new(
             version,
@@ -521,11 +578,11 @@ impl VirtualStateProcessor {
             pruning_point,
         );
         let selected_parent_timestamp = self.headers_store.get_timestamp(virtual_state.ghostdag_data.selected_parent).unwrap();
-        BlockTemplate::new(MutableBlock::new(header, txs), miner_data, coinbase.has_red_reward, selected_parent_timestamp)
+        Ok(BlockTemplate::new(MutableBlock::new(header, txs), miner_data, coinbase.has_red_reward, selected_parent_timestamp))
     }
 
     fn advance_pruning_point_and_candidate_if_possible(self: &Arc<Self>) {
-        let virtual_sp = self.virtual_state_store.read().get().unwrap().ghostdag_data.selected_parent;
+        let virtual_sp = self.virtual_stores.read().state.get().unwrap().ghostdag_data.selected_parent;
         if virtual_sp == self.genesis_hash {
             return;
         }
@@ -561,11 +618,13 @@ impl VirtualStateProcessor {
         match status {
             StatusUTXOPendingVerification => {
                 let txs = self.block_transactions_store.get(self.genesis_hash).unwrap();
-                self.virtual_state_store
+                self.virtual_stores
                     .write()
+                    .state
                     .set(VirtualState::from_genesis(
                         self.genesis_hash,
                         self.genesis_bits,
+                        self.genesis_timestamp,
                         vec![txs[0].id()],
                         self.ghostdag_manager.ghostdag(&[self.genesis_hash]),
                     ))

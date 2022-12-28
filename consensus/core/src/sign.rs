@@ -3,23 +3,22 @@ use crate::{
         sighash::{calc_schnorr_signature_hash, SigHashReusedValues},
         sighash_type::SIG_HASH_ALL,
     },
-    tx::{PopulatedTransaction, Transaction},
+    tx::MutableTransaction,
 };
 
-pub fn sign(tx: &PopulatedTransaction, privkey: [u8; 32]) -> Transaction {
-    // TODO: restructure PopulatedTransaction so that it can be mutated in place
+/// Sign a transaction using schnorr
+pub fn sign(mut mutable_tx: MutableTransaction, privkey: [u8; 32]) -> MutableTransaction {
     let schnorr_key = secp256k1::KeyPair::from_seckey_slice(secp256k1::SECP256K1, &privkey).unwrap();
     let mut reused_values = SigHashReusedValues::new();
-    let mut return_tx = tx.tx.clone();
-    for (i, input) in return_tx.inputs.iter_mut().enumerate() {
-        let sig_hash = calc_schnorr_signature_hash(tx, i, SIG_HASH_ALL, &mut reused_values);
+    for i in 0..mutable_tx.tx.inputs.len() {
+        let sig_hash = calc_schnorr_signature_hash(&mutable_tx.as_verifiable(), i, SIG_HASH_ALL, &mut reused_values);
         let msg = secp256k1::Message::from_slice(sig_hash.as_bytes().as_slice()).unwrap();
         let sig: [u8; 64] = *schnorr_key.sign_schnorr(msg).as_ref();
         // This represents OP_DATA_65 <SIGNATURE+SIGHASH_TYPE> (since signature length is 64 bytes and SIGHASH_TYPE is one byte)
-        input.signature_script = std::iter::once(65u8).chain(sig).chain([SIG_HASH_ALL.to_u8()]).collect();
+        mutable_tx.tx.inputs[i].signature_script = std::iter::once(65u8).chain(sig).chain([SIG_HASH_ALL.to_u8()]).collect();
+        // TODO: update sig_op_counts
     }
-    return_tx.finalize();
-    return_tx
+    mutable_tx
 }
 
 #[cfg(test)]
@@ -29,7 +28,7 @@ mod tests {
     use secp256k1::{rand, Secp256k1};
     use std::str::FromStr;
 
-    fn verify(tx: &PopulatedTransaction) -> Result<(), secp256k1::Error> {
+    fn verify(tx: &impl VerifiableTransaction) -> Result<(), secp256k1::Error> {
         let mut reused_values = SigHashReusedValues::new();
         for (i, (input, entry)) in tx.populated_inputs().enumerate() {
             let pk = &entry.script_public_key.script()[1..33];
@@ -102,7 +101,7 @@ mod tests {
                 is_coinbase: false,
             },
         ];
-        let signed_tx = sign(&PopulatedTransaction::new(&unsigned_tx, entries.clone()), secret_key.secret_bytes());
-        assert!(verify(&PopulatedTransaction::new(&signed_tx, entries)).is_ok());
+        let signed_tx = sign(MutableTransaction::with_entries(unsigned_tx, entries), secret_key.secret_bytes());
+        assert!(verify(&signed_tx.as_verifiable()).is_ok());
     }
 }

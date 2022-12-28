@@ -2,7 +2,7 @@ use super::{
     utxo_collection::*,
     utxo_error::{UtxoAlgebraError, UtxoResult},
 };
-use crate::tx::{TransactionOutpoint, UtxoEntry, ValidatedTransaction};
+use crate::tx::{TransactionOutpoint, UtxoEntry, VerifiableTransaction};
 use serde::{Deserialize, Serialize};
 use std::collections::hash_map::Entry::Vacant;
 
@@ -214,7 +214,7 @@ impl UtxoDiff {
         Ok(result)
     }
 
-    pub fn add_transaction(&mut self, transaction: &ValidatedTransaction, block_daa_score: u64) -> UtxoResult<()> {
+    pub fn add_transaction(&mut self, transaction: &impl VerifiableTransaction, block_daa_score: u64) -> UtxoResult<()> {
         for (input, entry) in transaction.populated_inputs() {
             self.remove_entry(&input.previous_outpoint, entry)?;
         }
