@@ -1,4 +1,4 @@
-use async_std::channel::{Receiver, Sender};
+use async_channel::{Receiver, Sender};
 use async_trait::async_trait;
 use core::fmt::Debug;
 use kaspa_core::trace;

@@ -1,5 +1,5 @@
 use crate::notify::collector::CollectorFrom;
-use async_std::channel::{Receiver, Sender};
+use async_channel::{Receiver, Sender};
 use consensus_core::notify::Notification as ConsensusNotification;
 use kaspa_utils::channel::Channel;
 use std::sync::Arc;

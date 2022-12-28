@@ -1572,7 +1572,7 @@ dependencies = [
 name = "kaspa-utils"
 version = "0.1.0"
 dependencies = [
- "async-std",
+ "async-channel",
  "triggered",
 ]
 
@@ -2512,7 +2512,7 @@ version = "0.1.0"
 dependencies = [
  "addresses",
  "ahash 0.8.2",
- "async-std",
+ "async-channel",
  "async-trait",
  "borsh",
  "cfg-if",
@@ -2520,6 +2520,7 @@ dependencies = [
  "derive_more",
  "faster-hex",
  "futures",
+ "futures-util",
  "hashes",
  "kaspa-core",
  "kaspa-utils",
@@ -2537,7 +2538,7 @@ dependencies = [
 name = "rpc-grpc"
 version = "0.1.0"
 dependencies = [
- "async-std",
+ "async-channel",
  "async-trait",
  "faster-hex",
  "futures",
