@@ -1,15 +1,15 @@
 use super::infra::{Environment, Process, Resumption, Suspension};
 use consensus::consensus::Consensus;
-use consensus::errors::{BlockProcessResult, RuleError};
 use consensus::model::stores::virtual_state::VirtualStateStoreReader;
 use consensus::params::Params;
 use consensus_core::block::Block;
 use consensus_core::blockstatus::BlockStatus;
 use consensus_core::coinbase::MinerData;
+use consensus_core::errors::block::{BlockProcessResult, RuleError};
 use consensus_core::sign::sign;
 use consensus_core::subnets::SUBNETWORK_ID_NATIVE;
 use consensus_core::tx::{
-    PopulatedTransaction, ScriptPublicKey, ScriptVec, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry,
+    MutableTransaction, ScriptPublicKey, ScriptVec, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry,
 };
 use consensus_core::utxo::utxo_view::UtxoView;
 use futures::future::join_all;
@@ -98,7 +98,11 @@ impl Miner {
 
         let txs = self.build_txs();
         let nonce = self.id;
-        let mut block_template = self.consensus.as_ref().build_block_template(self.miner_data.clone(), txs);
+        let mut block_template = self
+            .consensus
+            .as_ref()
+            .build_block_template(self.miner_data.clone(), txs)
+            .expect("simulation txs are selected in sync with virtual state and are expected to be valid");
         block_template.block.header.timestamp = timestamp; // Use simulation time rather than real time
         block_template.block.header.nonce = nonce;
         block_template.block.header.finalize();
@@ -106,20 +110,22 @@ impl Miner {
     }
 
     fn build_txs(&mut self) -> Vec<Transaction> {
-        let virtual_state = self.consensus.virtual_processor.virtual_state_store.read().get().unwrap();
+        let virtual_read = self.consensus.virtual_processor.virtual_stores.read();
+        let virtual_state = virtual_read.state.get().unwrap();
+        let virtual_utxo_view = &virtual_read.utxo_set;
         let multiple_outputs = self.possible_unspent_outpoints.len() < 10_000;
         let txs = self
             .possible_unspent_outpoints
             .iter()
             .filter_map(|&outpoint| {
-                let Some(entry) = self.get_spendable_entry(outpoint, virtual_state.daa_score) else { return None; };
+                let Some(entry) = self.get_spendable_entry(virtual_utxo_view, outpoint, virtual_state.daa_score) else { return None; };
                 let unsigned_tx = self.create_unsigned_tx(outpoint, entry.amount, multiple_outputs);
-                Some((unsigned_tx, entry))
+                Some(MutableTransaction::with_entries(unsigned_tx, vec![entry]))
             })
             .take(self.target_txs_per_block as usize)
             .collect::<Vec<_>>()
             .into_par_iter()
-            .map(|(unsigned_tx, entry)| sign(&PopulatedTransaction::new(&unsigned_tx, vec![entry]), self.secret_key.secret_bytes()))
+            .map(|mutable_tx| sign(mutable_tx, self.secret_key.secret_bytes()).tx)
             .collect::<Vec<_>>();
 
         for outpoint in txs.iter().flat_map(|t| t.inputs.iter().map(|i| i.previous_outpoint)) {
@@ -128,8 +134,13 @@ impl Miner {
         txs
     }
 
-    fn get_spendable_entry(&self, outpoint: TransactionOutpoint, virtual_daa_score: u64) -> Option<UtxoEntry> {
-        let Some(entry) = self.consensus.virtual_processor.virtual_utxo_store.get(&outpoint) else { return None; };
+    fn get_spendable_entry(
+        &self,
+        utxo_view: &impl UtxoView,
+        outpoint: TransactionOutpoint,
+        virtual_daa_score: u64,
+    ) -> Option<UtxoEntry> {
+        let Some(entry) = utxo_view.get(&outpoint) else { return None; };
         if entry.amount < 2
             || (entry.is_coinbase && (virtual_daa_score as i64 - entry.block_daa_score as i64) <= self.params.coinbase_maturity as i64)
         {

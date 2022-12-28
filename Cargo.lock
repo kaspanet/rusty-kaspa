@@ -694,6 +694,7 @@ dependencies = [
  "faster-hex",
  "futures-util",
  "hashes",
+ "itertools 0.10.5",
  "math",
  "merkle",
  "muhash",

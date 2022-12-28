@@ -18,3 +18,4 @@ smallvec.workspace = true
 borsh.workspace = true
 secp256k1 = { version = "0.24", features = ["global-context", "rand-std"] }
 futures-util.workspace = true
+itertools.workspace = true

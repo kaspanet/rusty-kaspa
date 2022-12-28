@@ -10,10 +10,11 @@ use consensus_core::{
     block::{Block, BlockTemplate, MutableBlock},
     blockstatus::BlockStatus,
     coinbase::MinerData,
+    errors::{block::RuleError, tx::TxResult},
     header::Header,
     merkle::calc_hash_merkle_root,
     subnets::SUBNETWORK_ID_COINBASE,
-    tx::Transaction,
+    tx::{MutableTransaction, Transaction},
     BlockHashSet,
 };
 use futures_util::future::BoxFuture;
@@ -159,7 +160,7 @@ impl TestConsensus {
 }
 
 impl ConsensusApi for TestConsensus {
-    fn build_block_template(self: Arc<Self>, miner_data: MinerData, txs: Vec<Transaction>) -> BlockTemplate {
+    fn build_block_template(self: Arc<Self>, miner_data: MinerData, txs: Vec<Transaction>) -> Result<BlockTemplate, RuleError> {
         self.consensus.clone().build_block_template(miner_data, txs)
     }
 
@@ -167,8 +168,20 @@ impl ConsensusApi for TestConsensus {
         self: Arc<Self>,
         block: Block,
         update_virtual: bool,
-    ) -> BoxFuture<'static, Result<BlockStatus, String>> {
+    ) -> BoxFuture<'static, BlockProcessResult<BlockStatus>> {
         self.consensus.clone().validate_and_insert_block(block, update_virtual)
+    }
+
+    fn validate_mempool_transaction_and_populate(self: Arc<Self>, transaction: &mut MutableTransaction) -> TxResult<()> {
+        self.consensus.clone().validate_mempool_transaction_and_populate(transaction)
+    }
+
+    fn calculate_transaction_mass(self: Arc<Self>, transaction: &Transaction) -> u64 {
+        self.consensus.clone().calculate_transaction_mass(transaction)
+    }
+
+    fn get_virtual_daa_score(self: Arc<Self>) -> u64 {
+        self.consensus.clone().get_virtual_daa_score()
     }
 }
 
@@ -240,7 +253,12 @@ pub fn create_temp_db() -> (TempDbLifetime, Arc<DB>) {
 /// Callers must keep the `TempDbLifetime` guard for as long as they wish the DB instance to exist.
 pub fn create_permanent_db(db_path: String) -> (TempDbLifetime, Arc<DB>) {
     let db_dir = PathBuf::from(db_path);
-    fs::create_dir(db_dir.as_path()).unwrap();
+    if let Err(e) = fs::create_dir(db_dir.as_path()) {
+        match e.kind() {
+            std::io::ErrorKind::AlreadyExists => panic!("The directory {:?} already exists", db_dir),
+            _ => panic!("{}", e),
+        }
+    }
     let db = Arc::new(DB::open_default(db_dir.to_str().unwrap()).unwrap());
     (TempDbLifetime::without_destroy(Arc::downgrade(&db)), db)
 }
@@ -249,6 +267,7 @@ pub fn create_permanent_db(db_path: String) -> (TempDbLifetime, Arc<DB>) {
 /// Callers must keep the `TempDbLifetime` guard for as long as they wish the DB instance to exist.
 pub fn load_existing_db(db_path: String) -> (TempDbLifetime, Arc<DB>) {
     let db_dir = PathBuf::from(db_path);
+    assert!(db_dir.is_dir(), "DB directory {:?} is expected to exist", db_dir);
     let db = Arc::new(DB::open_default(db_dir.to_str().unwrap()).unwrap());
     (TempDbLifetime::without_destroy(Arc::downgrade(&db)), db)
 }
