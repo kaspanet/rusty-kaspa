@@ -348,14 +348,14 @@ impl MutableTransaction {
     }
 
     /// Returns the tx wrapped as a [`VerifiableTransaction`]. Note that this function
-    /// must be called only once all UTXO entries are populated, or else it can lead to future panics.
+    /// must be called only once all UTXO entries are populated, otherwise it panics.
     pub fn as_verifiable(&self) -> impl VerifiableTransaction + '_ {
-        debug_assert!(self.is_verifiable());
+        assert!(self.is_verifiable());
         MutableTransactionVerifiableWrapper { inner: self }
     }
 
     pub fn is_verifiable(&self) -> bool {
-        debug_assert_eq!(self.entries.len(), self.tx.inputs.len());
+        assert_eq!(self.entries.len(), self.tx.inputs.len());
         self.entries.iter().all(|e| e.is_some())
     }
 
@@ -364,7 +364,7 @@ impl MutableTransaction {
     }
 
     pub fn missing_outpoints(&self) -> impl Iterator<Item = TransactionOutpoint> + '_ {
-        debug_assert_eq!(self.entries.len(), self.tx.inputs.len());
+        assert_eq!(self.entries.len(), self.tx.inputs.len());
         self.entries
             .iter()
             .enumerate()
@@ -385,9 +385,7 @@ impl VerifiableTransaction for MutableTransactionVerifiableWrapper<'_> {
     fn populated_input(&self, index: usize) -> (&TransactionInput, &UtxoEntry) {
         (
             &self.inner.tx.inputs[index],
-            self.inner.entries[index]
-                .as_ref()
-                .expect("MutableTransaction::as_verifiable was expected to be called only following full UTXO population"),
+            self.inner.entries[index].as_ref().expect("expected to be called only following full UTXO population"),
         )
     }
 }
