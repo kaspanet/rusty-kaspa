@@ -347,6 +347,8 @@ impl MutableTransaction {
         Self { tx, entries: entries.into_iter().map(Some).collect(), calculated_fee: None, calculated_mass: None }
     }
 
+    /// Returns the tx wrapped as a [`VerifiableTransaction`]. Note that this function
+    /// must be called only once all UTXO entries are populated, or else it can lead to future panics.
     pub fn as_verifiable(&self) -> impl VerifiableTransaction + '_ {
         debug_assert!(self.is_verifiable());
         MutableTransactionVerifiableWrapper { inner: self }
@@ -383,7 +385,9 @@ impl VerifiableTransaction for MutableTransactionVerifiableWrapper<'_> {
     fn populated_input(&self, index: usize) -> (&TransactionInput, &UtxoEntry) {
         (
             &self.inner.tx.inputs[index],
-            self.inner.entries[index].as_ref().expect("expected to be used only following successful UTXO population"),
+            self.inner.entries[index]
+                .as_ref()
+                .expect("MutableTransaction::as_verifiable was expected to be called only following full UTXO population"),
         )
     }
 }

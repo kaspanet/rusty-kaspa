@@ -228,6 +228,7 @@ impl VirtualStateProcessor {
         for i in 0..mutable_tx.tx.inputs.len() {
             if mutable_tx.entries[i].is_some() {
                 // We prefer a previously populated entry if such exists
+                // TODO: consider re-checking the utxo view to get the most up-to-date entry (since DAA score can change)
                 continue;
             }
             if let Some(entry) = utxo_view.get(&mutable_tx.tx.inputs[i].previous_outpoint) {
