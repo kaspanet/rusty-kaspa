@@ -11,7 +11,7 @@ pub fn sign(mut mutable_tx: MutableTransaction, privkey: [u8; 32]) -> MutableTra
     let schnorr_key = secp256k1::KeyPair::from_seckey_slice(secp256k1::SECP256K1, &privkey).unwrap();
     let mut reused_values = SigHashReusedValues::new();
     for i in 0..mutable_tx.tx.inputs.len() {
-        let sig_hash = calc_schnorr_signature_hash(&mutable_tx, i, SIG_HASH_ALL, &mut reused_values);
+        let sig_hash = calc_schnorr_signature_hash(&mutable_tx.as_verifiable(), i, SIG_HASH_ALL, &mut reused_values);
         let msg = secp256k1::Message::from_slice(sig_hash.as_bytes().as_slice()).unwrap();
         let sig: [u8; 64] = *schnorr_key.sign_schnorr(msg).as_ref();
         // This represents OP_DATA_65 <SIGNATURE+SIGHASH_TYPE> (since signature length is 64 bytes and SIGHASH_TYPE is one byte)
@@ -102,6 +102,6 @@ mod tests {
             },
         ];
         let signed_tx = sign(MutableTransaction::with_entries(unsigned_tx, entries), secret_key.secret_bytes());
-        assert!(verify(&signed_tx).is_ok());
+        assert!(verify(&signed_tx.as_verifiable()).is_ok());
     }
 }

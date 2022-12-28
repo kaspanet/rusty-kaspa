@@ -225,12 +225,12 @@ impl VirtualStateProcessor {
         pov_daa_score: u64,
     ) -> TxResult<()> {
         let mut has_missing_outpoints = false;
-        for i in 0..mutable_tx.inputs().len() {
+        for i in 0..mutable_tx.tx.inputs.len() {
             if mutable_tx.entries[i].is_some() {
                 // We prefer a previously populated entry if such exists
                 continue;
             }
-            if let Some(entry) = utxo_view.get(&mutable_tx.inputs()[i].previous_outpoint) {
+            if let Some(entry) = utxo_view.get(&mutable_tx.tx.inputs[i].previous_outpoint) {
                 mutable_tx.entries[i] = Some(entry);
             } else {
                 // We attempt to fill as much as possible UTXO entries, hence we do not break in this case but rather continue looping
@@ -240,9 +240,10 @@ impl VirtualStateProcessor {
         if has_missing_outpoints {
             return Err(TxRuleError::MissingTxOutpoints);
         }
-        // At this point we know all UTXO entries are populated, so we can safely pass the tx for validation
-        mutable_tx.calculated_fee =
-            Some(self.transaction_validator.validate_populated_transaction_and_get_fee(mutable_tx, pov_daa_score)?);
+        // At this point we know all UTXO entries are populated, so we can safely pass the tx as verifiable
+        let calculated_fee =
+            self.transaction_validator.validate_populated_transaction_and_get_fee(&mutable_tx.as_verifiable(), pov_daa_score)?;
+        mutable_tx.calculated_fee = Some(calculated_fee);
         Ok(())
     }
 }

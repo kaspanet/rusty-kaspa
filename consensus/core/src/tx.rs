@@ -347,6 +347,11 @@ impl MutableTransaction {
         Self { tx, entries: entries.into_iter().map(Some).collect(), calculated_fee: None, calculated_mass: None }
     }
 
+    pub fn as_verifiable(&self) -> impl VerifiableTransaction + '_ {
+        debug_assert!(self.is_verifiable());
+        MutableTransactionVerifiableWrapper { inner: self }
+    }
+
     pub fn is_verifiable(&self) -> bool {
         debug_assert_eq!(self.entries.len(), self.tx.inputs.len());
         self.entries.iter().all(|e| e.is_some())
@@ -365,13 +370,21 @@ impl MutableTransaction {
     }
 }
 
-impl VerifiableTransaction for MutableTransaction {
+/// Private struct used to wrap a [`MutableTransaction`] as a [`VerifiableTransaction`]
+struct MutableTransactionVerifiableWrapper<'a> {
+    inner: &'a MutableTransaction,
+}
+
+impl VerifiableTransaction for MutableTransactionVerifiableWrapper<'_> {
     fn tx(&self) -> &Transaction {
-        &self.tx
+        &self.inner.tx
     }
 
     fn populated_input(&self, index: usize) -> (&TransactionInput, &UtxoEntry) {
-        (&self.tx.inputs[index], self.entries[index].as_ref().expect("expected to be used only following successful UTXO population"))
+        (
+            &self.inner.tx.inputs[index],
+            self.inner.entries[index].as_ref().expect("expected to be used only following successful UTXO population"),
+        )
     }
 }
 
