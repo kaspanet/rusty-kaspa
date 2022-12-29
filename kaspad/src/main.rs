@@ -66,7 +66,11 @@ pub fn main() {
     // Initialize the logger
     kaspa_core::log::init_logger(&args.log_level);
 
+    // Print package name and version
     info!("{} v{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+
+    // Configure the panic behavior
+    kaspa_core::panic::configure_panic();
 
     // TODO: Refactor all this quick-and-dirty code
     let app_dir = args
