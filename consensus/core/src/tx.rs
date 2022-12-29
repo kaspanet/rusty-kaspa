@@ -325,6 +325,7 @@ impl<'a> VerifiableTransaction for ValidatedTransaction<'a> {
 }
 
 /// Represents a mutable owned transaction along with partially filled UTXO entry data and optional fee and mass
+#[derive(Clone, Debug)]
 pub struct MutableTransaction {
     /// The inner transaction
     pub tx: Transaction,
@@ -340,6 +341,10 @@ impl MutableTransaction {
     pub fn new(tx: Transaction) -> Self {
         let num_inputs = tx.inputs.len();
         Self { tx, entries: vec![None; num_inputs], calculated_fee: None, calculated_mass: None }
+    }
+
+    pub fn id(&self) -> TransactionId {
+        self.tx.id()
     }
 
     pub fn with_entries(tx: Transaction, entries: Vec<UtxoEntry>) -> Self {
