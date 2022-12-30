@@ -375,6 +375,12 @@ impl MutableTransaction {
             .enumerate()
             .filter_map(|(i, entry)| if entry.is_none() { Some(self.tx.inputs[i].previous_outpoint) } else { None })
     }
+
+    pub fn clear_entries(&mut self) {
+        for entry in self.entries.iter_mut() {
+            *entry = None;
+        }
+    }
 }
 
 /// Private struct used to wrap a [`MutableTransaction`] as a [`VerifiableTransaction`]

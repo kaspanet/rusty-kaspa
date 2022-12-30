@@ -1,0 +1,17 @@
+[package]
+name = "mining"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
+
+[dependencies]
+consensus-core.workspace = true
+kaspa-core.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+log.workspace = true
+
+ahash = "0.8.0"
+parking_lot = "0.12"
