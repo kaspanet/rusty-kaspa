@@ -1,8 +1,10 @@
 use crate::{hashing, BlueWorkType};
+use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use hashes::Hash;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct Header {
     pub hash: Hash, // Cached hash
     pub version: u16,

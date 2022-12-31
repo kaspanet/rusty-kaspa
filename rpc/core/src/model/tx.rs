@@ -1,41 +1,15 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
-use consensus_core::tx::{TransactionId, TransactionOutpoint};
+use consensus_core::tx::{ScriptPublicKey, ScriptVec, TransactionId, TransactionOutpoint, UtxoEntry};
 use serde::{Deserialize, Serialize};
 
-use crate::prelude::{RpcHash, RpcHexData, RpcScriptClass, RpcSubnetworkId};
+use crate::prelude::{RpcHash, RpcScriptClass, RpcSubnetworkId};
 
 /// Represents the ID of a Kaspa transaction
 pub type RpcTransactionId = TransactionId;
 
-pub type RpcScriptVec = RpcHexData;
-
-/// Represents a Kaspad ScriptPublicKey
-///
-/// This should be an alias of [`consensus_core::tx::ScriptPublicKey`] but
-/// is not because its script field of type [`consensus_core::tx::ScriptVec`]
-/// is a `smallvec::SmallVec` which does not implement the borsh traits.
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct RpcScriptPublicKey {
-    pub version: u16,
-    pub script_public_key: RpcHexData,
-}
-
-/// Holds details about an individual transaction output in a utxo
-/// set such as whether or not it was contained in a coinbase tx, the daa
-/// score of the block that accepts the tx, its public key script, and how
-/// much it pays.
-///
-/// This should be an alias of [`consensus_core::tx::UtxoEntry`] but is not
-///  because of the indirectuse of a `smallvec::SmallVec` by `script_public_key`.
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct RpcUtxoEntry {
-    pub amount: u64,
-    pub script_public_key: RpcScriptPublicKey,
-    pub block_daa_score: u64,
-    pub is_coinbase: bool,
-}
+pub type RpcScriptVec = ScriptVec;
+pub type RpcScriptPublicKey = ScriptPublicKey;
+pub type RpcUtxoEntry = UtxoEntry;
 
 /// Represents a Kaspa transaction outpoint
 pub type RpcTransactionOutpoint = TransactionOutpoint;
@@ -45,7 +19,7 @@ pub type RpcTransactionOutpoint = TransactionOutpoint;
 #[serde(rename_all = "camelCase")]
 pub struct RpcTransactionInput {
     pub previous_outpoint: RpcTransactionOutpoint,
-    pub signature_script: RpcHexData,
+    pub signature_script: Vec<u8>,
     pub sequence: u64,
     pub sig_op_count: u8,
     pub verbose_data: Option<RpcTransactionInputVerboseData>,
@@ -85,7 +59,7 @@ pub struct RpcTransaction {
     pub lock_time: u64,
     pub subnetwork_id: RpcSubnetworkId,
     pub gas: u64,
-    pub payload: RpcHexData,
+    pub payload: Vec<u8>,
     pub verbose_data: Option<RpcTransactionVerboseData>,
 }
 

@@ -5,7 +5,7 @@ use crate::{
         perf::{PerfParams, PERF_PARAMS},
         store_names,
     },
-    errors::BlockProcessResult,
+    errors::{BlockProcessResult, RuleError},
     model::{
         services::{reachability::MTReachabilityService, relations::MTRelationsService, statuses::MTStatusesService},
         stores::{
@@ -26,7 +26,7 @@ use crate::{
             utxo_diffs::DbUtxoDiffsStore,
             utxo_multisets::DbUtxoMultisetsStore,
             utxo_set::DbUtxoSetStore,
-            virtual_state::DbVirtualStateStore,
+            virtual_state::{DbVirtualStateStore, VirtualStateStoreReader},
             DB,
         },
     },
@@ -49,7 +49,8 @@ use consensus_core::{
     block::{Block, BlockTemplate},
     blockstatus::BlockStatus,
     coinbase::MinerData,
-    tx::Transaction,
+    errors::tx::TxResult,
+    tx::{MutableTransaction, Transaction},
     BlockHashSet,
 };
 use crossbeam_channel::{unbounded, Receiver, Sender};
@@ -67,6 +68,18 @@ use tokio::sync::oneshot;
 
 pub type DbGhostdagManager =
     GhostdagManager<DbGhostdagStore, MTRelationsService<DbRelationsStore>, MTReachabilityService<DbReachabilityStore>, DbHeadersStore>;
+
+/// Used in order to group virtual related stores under a single lock
+pub struct VirtualStores {
+    pub state: DbVirtualStateStore,
+    pub utxo_set: DbUtxoSetStore,
+}
+
+impl VirtualStores {
+    pub fn new(state: DbVirtualStateStore, utxo_set: DbUtxoSetStore) -> Self {
+        Self { state, utxo_set }
+    }
+}
 
 pub struct Consensus {
     // DB
@@ -95,8 +108,8 @@ pub struct Consensus {
     pub ghostdag_store: Arc<DbGhostdagStore>,
 
     // Services and managers
-    statuses_service: Arc<MTStatusesService<DbStatusesStore>>,
-    relations_service: Arc<MTRelationsService<DbRelationsStore>>,
+    statuses_service: MTStatusesService<DbStatusesStore>,
+    relations_service: MTRelationsService<DbRelationsStore>,
     reachability_service: MTReachabilityService<DbReachabilityStore>,
     pub(super) difficulty_manager: DifficultyManager<DbHeadersStore>,
     pub(super) dag_traversal_manager: DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore>,
@@ -145,17 +158,18 @@ impl Consensus {
         // Block windows
         let block_window_cache_for_difficulty = Arc::new(BlockWindowCacheStore::new(perf_params.block_window_cache_size));
         let block_window_cache_for_past_median_time = Arc::new(BlockWindowCacheStore::new(perf_params.block_window_cache_size));
-        // Virtual (TODO: decide about locking semantics of virtual utxo set)
-        let virtual_utxo_store =
-            Arc::new(DbUtxoSetStore::new(db.clone(), perf_params.utxo_set_cache_size, store_names::VIRTUAL_UTXO_SET));
-        let virtual_state_store = Arc::new(RwLock::new(DbVirtualStateStore::new(db.clone())));
+        // Virtual stores
+        let virtual_stores = Arc::new(RwLock::new(VirtualStores::new(
+            DbVirtualStateStore::new(db.clone()),
+            DbUtxoSetStore::new(db.clone(), perf_params.utxo_set_cache_size, store_names::VIRTUAL_UTXO_SET),
+        )));
 
         //
         // Services and managers
         //
 
-        let statuses_service = Arc::new(MTStatusesService::new(statuses_store.clone()));
-        let relations_service = Arc::new(MTRelationsService::new(relations_store.clone()));
+        let statuses_service = MTStatusesService::new(statuses_store.clone());
+        let relations_service = MTRelationsService::new(relations_store.clone());
         let reachability_service = MTReachabilityService::new(reachability_store.clone());
         let dag_traversal_manager = DagTraversalManager::new(
             params.genesis_hash,
@@ -287,7 +301,7 @@ impl Consensus {
             past_median_time_manager.clone(),
             dag_traversal_manager.clone(),
             difficulty_manager.clone(),
-            depth_manager,
+            depth_manager.clone(),
             pruning_manager.clone(),
             parents_manager.clone(),
             counters.clone(),
@@ -328,10 +342,10 @@ impl Consensus {
             utxo_diffs_store,
             utxo_multisets_store,
             acceptance_data_store,
-            virtual_utxo_store,
-            virtual_state_store,
+            virtual_stores,
             ghostdag_manager.clone(),
             reachability_service.clone(),
+            relations_service.clone(),
             dag_traversal_manager.clone(),
             difficulty_manager.clone(),
             coinbase_manager.clone(),
@@ -339,6 +353,7 @@ impl Consensus {
             past_median_time_manager.clone(),
             pruning_manager.clone(),
             parents_manager,
+            depth_manager,
         ));
 
         Self {
@@ -399,7 +414,7 @@ impl Consensus {
         async { rx.await.unwrap() }
     }
 
-    pub fn build_block_template(&self, miner_data: MinerData, txs: Vec<Transaction>) -> BlockTemplate {
+    pub fn build_block_template(&self, miner_data: MinerData, txs: Vec<Transaction>) -> Result<BlockTemplate, RuleError> {
         self.virtual_processor.build_block_template(miner_data, txs)
     }
 
@@ -429,7 +444,7 @@ impl Consensus {
 }
 
 impl ConsensusApi for Consensus {
-    fn build_block_template(self: Arc<Self>, miner_data: MinerData, txs: Vec<Transaction>) -> BlockTemplate {
+    fn build_block_template(self: Arc<Self>, miner_data: MinerData, txs: Vec<Transaction>) -> Result<BlockTemplate, RuleError> {
         self.as_ref().build_block_template(miner_data, txs)
     }
 
@@ -437,9 +452,21 @@ impl ConsensusApi for Consensus {
         self: Arc<Self>,
         block: Block,
         _update_virtual: bool,
-    ) -> BoxFuture<'static, Result<BlockStatus, String>> {
-        let result = self.as_ref().validate_and_insert_block(block);
-        Box::pin(async move { result.await.map_err(|err| err.to_string()) })
+    ) -> BoxFuture<'static, BlockProcessResult<BlockStatus>> {
+        Box::pin(self.as_ref().validate_and_insert_block(block))
+    }
+
+    fn validate_mempool_transaction_and_populate(self: Arc<Self>, transaction: &mut MutableTransaction) -> TxResult<()> {
+        self.virtual_processor.validate_mempool_transaction_and_populate(transaction)?;
+        Ok(())
+    }
+
+    fn calculate_transaction_mass(self: Arc<Self>, transaction: &Transaction) -> u64 {
+        self.body_processor.mass_calculator.calc_tx_mass(transaction)
+    }
+
+    fn get_virtual_daa_score(self: Arc<Self>) -> u64 {
+        self.virtual_processor.virtual_stores.read().state.get().unwrap().daa_score
     }
 }
 

@@ -58,7 +58,7 @@ pub struct BlockBodyProcessor {
     // Managers and services
     pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
     pub(super) coinbase_manager: CoinbaseManager,
-    pub(super) mass_calculator: MassCalculator,
+    pub(crate) mass_calculator: MassCalculator,
     pub(super) transaction_validator: TransactionValidator,
     pub(super) past_median_time_manager: PastMedianTimeManager<DbHeadersStore, DbGhostdagStore, BlockWindowCacheStore>,
 

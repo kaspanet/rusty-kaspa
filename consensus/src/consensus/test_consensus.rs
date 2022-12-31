@@ -1,5 +1,6 @@
 use std::{
     env, fs,
+    path::PathBuf,
     sync::{Arc, Weak},
     thread::JoinHandle,
 };
@@ -9,10 +10,11 @@ use consensus_core::{
     block::{Block, BlockTemplate, MutableBlock},
     blockstatus::BlockStatus,
     coinbase::MinerData,
+    errors::{block::RuleError, tx::TxResult},
     header::Header,
     merkle::calc_hash_merkle_root,
     subnets::SUBNETWORK_ID_COINBASE,
-    tx::Transaction,
+    tx::{MutableTransaction, Transaction},
     BlockHashSet,
 };
 use futures_util::future::BoxFuture;
@@ -158,7 +160,7 @@ impl TestConsensus {
 }
 
 impl ConsensusApi for TestConsensus {
-    fn build_block_template(self: Arc<Self>, miner_data: MinerData, txs: Vec<Transaction>) -> BlockTemplate {
+    fn build_block_template(self: Arc<Self>, miner_data: MinerData, txs: Vec<Transaction>) -> Result<BlockTemplate, RuleError> {
         self.consensus.clone().build_block_template(miner_data, txs)
     }
 
@@ -166,8 +168,20 @@ impl ConsensusApi for TestConsensus {
         self: Arc<Self>,
         block: Block,
         update_virtual: bool,
-    ) -> BoxFuture<'static, Result<BlockStatus, String>> {
+    ) -> BoxFuture<'static, BlockProcessResult<BlockStatus>> {
         self.consensus.clone().validate_and_insert_block(block, update_virtual)
+    }
+
+    fn validate_mempool_transaction_and_populate(self: Arc<Self>, transaction: &mut MutableTransaction) -> TxResult<()> {
+        self.consensus.clone().validate_mempool_transaction_and_populate(transaction)
+    }
+
+    fn calculate_transaction_mass(self: Arc<Self>, transaction: &Transaction) -> u64 {
+        self.consensus.clone().calculate_transaction_mass(transaction)
+    }
+
+    fn get_virtual_daa_score(self: Arc<Self>) -> u64 {
+        self.consensus.clone().get_virtual_daa_score()
     }
 }
 
@@ -194,6 +208,12 @@ pub struct TempDbLifetime {
 impl TempDbLifetime {
     pub fn new(tempdir: tempfile::TempDir, weak_db_ref: Weak<DB>) -> Self {
         Self { tempdir: Some(tempdir), weak_db_ref }
+    }
+
+    /// Tracks the DB reference and makes sure all strong refs are cleaned up
+    /// but does not remove the DB from disk when dropped.
+    pub fn without_destroy(weak_db_ref: Weak<DB>) -> Self {
+        Self { tempdir: None, weak_db_ref }
     }
 }
 
@@ -223,10 +243,31 @@ pub fn create_temp_db() -> (TempDbLifetime, Arc<DB>) {
     let global_tempdir = env::temp_dir();
     let kaspa_tempdir = global_tempdir.join("kaspa-rust");
     fs::create_dir_all(kaspa_tempdir.as_path()).unwrap();
-
     let db_tempdir = tempfile::tempdir_in(kaspa_tempdir.as_path()).unwrap();
     let db_path = db_tempdir.path().to_owned();
-
     let db = Arc::new(DB::open_default(db_path.to_str().unwrap()).unwrap());
     (TempDbLifetime::new(db_tempdir, Arc::downgrade(&db)), db)
+}
+
+/// Creates a DB within the provided directory path.
+/// Callers must keep the `TempDbLifetime` guard for as long as they wish the DB instance to exist.
+pub fn create_permanent_db(db_path: String) -> (TempDbLifetime, Arc<DB>) {
+    let db_dir = PathBuf::from(db_path);
+    if let Err(e) = fs::create_dir(db_dir.as_path()) {
+        match e.kind() {
+            std::io::ErrorKind::AlreadyExists => panic!("The directory {:?} already exists", db_dir),
+            _ => panic!("{}", e),
+        }
+    }
+    let db = Arc::new(DB::open_default(db_dir.to_str().unwrap()).unwrap());
+    (TempDbLifetime::without_destroy(Arc::downgrade(&db)), db)
+}
+
+/// Loads an existing DB from the provided directory path.
+/// Callers must keep the `TempDbLifetime` guard for as long as they wish the DB instance to exist.
+pub fn load_existing_db(db_path: String) -> (TempDbLifetime, Arc<DB>) {
+    let db_dir = PathBuf::from(db_path);
+    assert!(db_dir.is_dir(), "DB directory {:?} is expected to exist", db_dir);
+    let db = Arc::new(DB::open_default(db_dir.to_str().unwrap()).unwrap());
+    (TempDbLifetime::without_destroy(Arc::downgrade(&db)), db)
 }

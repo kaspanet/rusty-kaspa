@@ -1,11 +1,11 @@
 use consensus_core::{
     coinbase::*,
+    errors::coinbase::{CoinbaseError, CoinbaseResult},
     subnets,
     tx::{ScriptPublicKey, ScriptVec, Transaction, TransactionOutput},
     BlockHashMap, BlockHashSet,
 };
 use std::{convert::TryInto, mem::size_of};
-use thiserror::Error;
 
 use crate::{constants, model::stores::ghostdag::GhostdagData};
 
@@ -16,23 +16,6 @@ const LENGTH_OF_SCRIPT_PUB_KEY_LENGTH: usize = size_of::<u8>();
 
 const MIN_PAYLOAD_LENGTH: usize =
     LENGTH_OF_BLUE_SCORE + LENGTH_OF_SUBSIDY + LENGTH_OF_SCRIPT_PUB_KEY_VERSION + LENGTH_OF_SCRIPT_PUB_KEY_LENGTH;
-
-#[derive(Error, Debug, Clone)]
-pub enum CoinbaseError {
-    #[error("coinbase payload length is {0} while the minimum allowed length is {1}")]
-    PayloadLenBelowMin(usize, usize),
-
-    #[error("coinbase payload length is {0} while the maximum allowed length is {1}")]
-    PayloadLenAboveMax(usize, usize),
-
-    #[error("coinbase payload script public key length is {0} while the maximum allowed length is {1}")]
-    PayloadScriptPublicKeyLenAboveMax(usize, u8),
-
-    #[error("coinbase payload length is {0} bytes but it needs to be at least {1} bytes long in order to accommodate the script public key")]
-    PayloadCantContainScriptPublicKey(usize, usize),
-}
-
-pub type CoinbaseResult<T> = std::result::Result<T, CoinbaseError>;
 
 #[derive(Clone)]
 pub struct CoinbaseManager {
