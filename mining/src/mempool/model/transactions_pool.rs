@@ -187,7 +187,7 @@ impl TransactionsPool {
     /// Returns the exceeding low-priority transactions having the lowest fee rates.
     /// An error is returned if the mempool is filled with high priority transactions.
     pub(crate) fn limit_transaction_count(&self) -> RuleResult<Vec<TransactionId>> {
-        // TODO: return a vector of transactions to be removed that the caller has to remove actually
+        // Return a vector of transactions to be removed that the caller has to remove actually.
         // The caller is golang validateAndInsertTransaction equivalent.
         // This behavior differs from golang impl.
         let mut transactions_to_remove = Vec::new();
