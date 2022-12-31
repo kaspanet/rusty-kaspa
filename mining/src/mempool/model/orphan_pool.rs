@@ -9,12 +9,11 @@ use crate::mempool::{
 use ahash::AHashMap;
 use consensus_core::{
     api::DynConsensus,
-    constants::UNACCEPTED_DAA_SCORE,
     tx::MutableTransaction,
-    tx::{Transaction, TransactionId, TransactionOutpoint, UtxoEntry},
+    tx::{TransactionId, TransactionOutpoint},
 };
-use kaspa_core::{info, warn};
-use std::{collections::VecDeque, rc::Rc};
+use kaspa_core::warn;
+use std::rc::Rc;
 
 use super::{map::IdToTransactionMap, pool::Pool};
 
@@ -22,6 +21,19 @@ type IdToOrphanMap = AHashMap<TransactionId, OrphanTransaction>;
 
 /// Pool of orphan transactions depending on some missing utxo entries
 ///
+/// ### Rust rewrite notes
+///
+/// The 2 main design decisions are that [TransactionPool] and [OrphanPool] are
+/// both storing [MempoolTransaction]s instead of having distinct structures
+/// and these object are owned respectively by all_transactions and all_orphans
+/// fields without any other external reference so no smart pointer is needed.
+///
+/// This has following consequences:
+///
+/// - orphansByPreviousOutpoint maps an id instead of a transaction reference
+///   introducing a indirection stage when the matching object is required.
+/// - "un-orphaning" a transaction induces a move of the object from orphan
+///   to transactions pool with no reconstruction nor cloning.
 pub(crate) struct OrphanPool {
     consensus: DynConsensus,
     config: Rc<Config>,
@@ -137,63 +149,6 @@ impl OrphanPool {
         }
         self.all_orphans.insert(transaction.id(), transaction);
         Ok(())
-    }
-
-    pub(crate) fn process_orphans_after_accepted_transaction(
-        &mut self,
-        accepted_transaction: &Transaction,
-    ) -> RuleResult<Vec<MempoolTransaction>> {
-        let mut accepted_orphans = Vec::new();
-        // TODO: remove this queue since it only ever contains one transaction
-        let mut process_queue = VecDeque::new();
-        process_queue.push_back(accepted_transaction);
-        while !process_queue.is_empty() {
-            let current_tx = process_queue.pop_front().unwrap();
-            let current_id = current_tx.id();
-            let mut outpoint = TransactionOutpoint { transaction_id: current_id, index: 0 };
-            for (i, output) in current_tx.outputs.iter().enumerate() {
-                outpoint.index = i as u32;
-                let mut orphan_id = None;
-                if let Some(orphan) = self.outpoint_orphan_mut(&outpoint) {
-                    for (i, input) in orphan.mtx.tx.inputs.iter().enumerate() {
-                        if input.previous_outpoint == outpoint {
-                            if orphan.mtx.entries[i].is_none() {
-                                let entry =
-                                    UtxoEntry::new(output.value, output.script_public_key.clone(), UNACCEPTED_DAA_SCORE, false);
-                                orphan.mtx.entries[i] = Some(entry);
-                                if orphan.mtx.is_verifiable() {
-                                    orphan_id = Some(orphan.id());
-                                }
-                            }
-                            break;
-                        }
-                    }
-                } else {
-                    continue;
-                }
-                match self.unorphan_transaction(&orphan_id.unwrap()) {
-                    Ok(accepted_tx) => {
-                        accepted_orphans.push(accepted_tx);
-                    }
-                    Err(err) => {
-                        info!("Failed to unorphan transaction {0} due to rule error: {1}", orphan_id.unwrap(), err.to_string());
-                    }
-                }
-            }
-        }
-        Ok(accepted_orphans)
-    }
-
-    fn unorphan_transaction(&mut self, transaction_id: &TransactionId) -> RuleResult<MempoolTransaction> {
-        // Rust rewrite: instead of adding the validated transaction to mempool transaction pool,
-        // we return it.
-        let mut transactions = self.remove_orphan(transaction_id, false)?;
-        let mut transaction = transactions.remove(0);
-
-        self.consensus().validate_mempool_transaction_and_populate(&mut transaction.mtx)?;
-        // TODO: mempool.validateTransactionInContext
-        transaction.added_at_daa_score = self.consensus.clone().get_virtual_daa_score();
-        Ok(transaction)
     }
 
     pub(crate) fn remove_orphan(
