@@ -1407,6 +1407,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "indexes"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "consensus-core",
+ "crossbeam-channel",
+ "faster-hex",
+ "futures-util",
+ "hashes",
+ "indexmap",
+ "itertools",
+ "kaspa-core",
+ "kaspa-utils",
+ "log",
+ "math",
+ "merkle",
+ "muhash",
+ "parking_lot",
+ "pow",
+ "rand 0.8.5",
+ "rayon",
+ "rocksdb",
+ "secp256k1",
+ "serde",
+ "smallvec",
+ "tempfile",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
 name = "indexmap"
 version = "1.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
