@@ -15,6 +15,10 @@ pub const SOMPI_PER_KASPA: u64 = 100_000_000;
 /// MaxSompi is the maximum transaction amount allowed in sompi.
 pub const MAX_SOMPI: u64 = 29_000_000_000 * SOMPI_PER_KASPA;
 
+// MAX_TX_IN_SEQUENCE_NUM is the maximum sequence number the sequence field
+// of a transaction input can be.
+pub const MAX_TX_IN_SEQUENCE_NUM: u64 = u64::MAX;
+
 // SEQUENCE_LOCK_TIME_MASK is a mask that extracts the relative lock time
 // when masked against the transaction input sequence number.
 pub const SEQUENCE_LOCK_TIME_MASK: u64 = 0x00000000ffffffff;

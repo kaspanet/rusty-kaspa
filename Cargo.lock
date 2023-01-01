@@ -1865,12 +1865,16 @@ checksum = "68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a"
 name = "mining"
 version = "0.1.0"
 dependencies = [
+ "addresses",
  "ahash 0.8.2",
  "consensus-core",
+ "futures-util",
+ "hashes",
  "kaspa-core",
  "log",
  "parking_lot",
  "serde",
+ "smallvec",
  "thiserror",
 ]
 

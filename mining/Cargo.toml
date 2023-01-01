@@ -7,11 +7,15 @@ include.workspace = true
 license.workspace = true
 
 [dependencies]
+addresses.workspace = true
+hashes.workspace = true
 consensus-core.workspace = true
 kaspa-core.workspace = true
 thiserror.workspace = true
 serde.workspace = true
 log.workspace = true
+futures-util.workspace = true
+smallvec.workspace = true
 
 ahash = "0.8.0"
 parking_lot = "0.12"

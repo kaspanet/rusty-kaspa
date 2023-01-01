@@ -92,9 +92,10 @@ impl Mempool {
                 return Err(NonStandardError::RejectScriptPublicKeyVersion(transaction_id, i));
             }
 
-            // TODO: call script engine when available
-            // script_class = txscript.get_script_class(output.script_public_key.script())
-            let script_class = ScriptClass::PubKey;
+            // TODO: call script engine when available instead of this sanity check test
+            // let script_class = txscript.get_script_class(output.script_public_key.script())
+            let script_class =
+                if output.script_public_key.script().len() < 34 { ScriptClass::NonStandard } else { ScriptClass::PubKey };
             if script_class == ScriptClass::NonStandard {
                 return Err(NonStandardError::RejectOutputScriptClass(transaction_id, i));
             }
@@ -123,7 +124,10 @@ impl Mempool {
         // if txscript.is_unspendable(transaction_output.script_public_key.script()) {
         //     return true
         // }
-        //
+        // TODO: Remove this code when script engine is available
+        if transaction_output.script_public_key.script().len() < 33 {
+            return true;
+        }
 
         // The total serialized size consists of the output and the associated
         // input script to redeem it. Since there is no input script
@@ -156,7 +160,8 @@ impl Mempool {
         //
         // The following is equivalent to (value/total_serialized_size) * (1/3) * 1000
         // without needing to do floating point math.
-        transaction_output.value * 1000 / (3 * total_serialized_size) < self.config.minimum_relay_transaction_fee
+        transaction_output.value as u128 * 1000 / (3 * total_serialized_size as u128)
+            < self.config.minimum_relay_transaction_fee as u128
     }
 
     /// check_transaction_standard_in_context performs a series of checks on a transaction's
@@ -225,5 +230,387 @@ impl Mempool {
         minimum_fee = minimum_fee.min(MAX_SOMPI);
 
         minimum_fee
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mempool::config::{Config, DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE};
+    use addresses::{Address, Prefix};
+    use consensus_core::{
+        api::ConsensusApi,
+        block::{Block, BlockTemplate},
+        blockstatus::BlockStatus,
+        coinbase::MinerData,
+        constants::{MAX_TX_IN_SEQUENCE_NUM, SOMPI_PER_KASPA, TX_VERSION},
+        errors::{
+            block::{BlockProcessResult, RuleError},
+            tx::{TxResult, TxRuleError},
+        },
+        subnets::SUBNETWORK_ID_NATIVE,
+        tx::{ScriptPublicKey, ScriptVec, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput},
+    };
+    use futures_util::future::BoxFuture;
+    use smallvec::smallvec;
+    use std::sync::Arc;
+
+    struct ConsensusMock {}
+
+    impl ConsensusApi for ConsensusMock {
+        fn build_block_template(self: Arc<Self>, _miner_data: MinerData, _txs: Vec<Transaction>) -> Result<BlockTemplate, RuleError> {
+            Err(RuleError::InvalidPoW)
+        }
+
+        fn validate_and_insert_block(
+            self: Arc<Self>,
+            _block: Block,
+            _update_virtual: bool,
+        ) -> BoxFuture<'static, BlockProcessResult<BlockStatus>> {
+            todo!()
+        }
+
+        fn validate_mempool_transaction_and_populate(self: Arc<Self>, _transaction: &mut MutableTransaction) -> TxResult<()> {
+            Err(TxRuleError::TxHasGas)
+        }
+
+        fn calculate_transaction_mass(self: Arc<Self>, _transaction: &Transaction) -> u64 {
+            0
+        }
+
+        fn get_virtual_daa_score(self: Arc<Self>) -> u64 {
+            0
+        }
+    }
+
+    #[test]
+    fn test_calc_min_required_tx_relay_fee() {
+        struct TestScenario {
+            name: &'static str,
+            size: u64,
+            minimum_relay_transaction_fee: u64,
+            want: u64,
+        }
+
+        let tests = vec![
+            TestScenario {
+                // Ensure combination of size and fee that are less than 1000
+                // produce a non-zero fee.
+                name: "250 bytes with relay fee of 3",
+                size: 250,
+                minimum_relay_transaction_fee: 3,
+                want: 3,
+            },
+            TestScenario {
+                name: "100 bytes with default minimum relay fee",
+                size: 100,
+                minimum_relay_transaction_fee: DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE,
+                want: 100,
+            },
+            TestScenario {
+                name: "max standard tx size with default minimum relay fee",
+                size: MAXIMUM_STANDARD_TRANSACTION_MASS,
+                minimum_relay_transaction_fee: DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE,
+                want: 100000,
+            },
+            TestScenario { name: "1500 bytes with 5000 relay fee", size: 1500, minimum_relay_transaction_fee: 5000, want: 7500 },
+            TestScenario { name: "1500 bytes with 3000 relay fee", size: 1500, minimum_relay_transaction_fee: 3000, want: 4500 },
+            TestScenario { name: "782 bytes with 5000 relay fee", size: 782, minimum_relay_transaction_fee: 5000, want: 3910 },
+            TestScenario { name: "782 bytes with 3000 relay fee", size: 782, minimum_relay_transaction_fee: 3000, want: 2346 },
+            TestScenario { name: "782 bytes with 2550 relay fee", size: 782, minimum_relay_transaction_fee: 2550, want: 1994 },
+        ];
+
+        for test in tests.iter() {
+            // TODO: test all nets params
+            let consensus = Arc::new(ConsensusMock {});
+            let mut config = Config::build_default(1000, false, 500_000);
+            config.minimum_relay_transaction_fee = test.minimum_relay_transaction_fee;
+            let mempool = Mempool::with_config(consensus, config);
+
+            let got = mempool.minimum_required_transaction_relay_fee(test.size);
+            if got != test.want {
+                println!("test_calc_min_required_tx_relay_fee test '{}' failed: got {}, want {}", test.name, got, test.want);
+            }
+            assert_eq!(test.want, got);
+        }
+    }
+
+    #[test]
+    fn test_is_transaction_output_dust() {
+        let script_public_key = ScriptPublicKey::new(
+            0,
+            smallvec![
+                0x76, 0xa9, 0x21, 0x03, 0x2f, 0x7e, 0x43, 0x0a, 0xa4, 0xc9, 0xd1, 0x59, 0x43, 0x7e, 0x84, 0xb9, 0x75, 0xdc, 0x76,
+                0xd9, 0x00, 0x3b, 0xf0, 0x92, 0x2c, 0xf3, 0xaa, 0x45, 0x28, 0x46, 0x4b, 0xab, 0x78, 0x0d, 0xba, 0x5e
+            ],
+        );
+        let invalid_script_public_key = ScriptPublicKey::new(0, smallvec![0x01]);
+
+        struct TestScenario {
+            name: &'static str,
+            tx_out: TransactionOutput,
+            minimum_relay_transaction_fee: u64,
+            is_dust: bool,
+        }
+
+        let tests = vec![
+            // Any value is allowed with a zero relay fee.
+            TestScenario {
+                name: "zero value with zero relay fee",
+                tx_out: TransactionOutput::new(0, script_public_key.clone()),
+                minimum_relay_transaction_fee: 0,
+                is_dust: false,
+            },
+            // Zero value is dust with any relay fee"
+            TestScenario {
+                name: "zero value with very small tx fee",
+                tx_out: TransactionOutput::new(0, script_public_key.clone()),
+                minimum_relay_transaction_fee: 1,
+                is_dust: true,
+            },
+            TestScenario {
+                name: "36 byte public key script with value 605",
+                tx_out: TransactionOutput::new(605, script_public_key.clone()),
+                minimum_relay_transaction_fee: 1000,
+                is_dust: true,
+            },
+            TestScenario {
+                name: "36 byte public key script with value 606",
+                tx_out: TransactionOutput::new(606, script_public_key.clone()),
+                minimum_relay_transaction_fee: 1000,
+                is_dust: false,
+            },
+            // Maximum allowed value is never dust.
+            TestScenario {
+                name: "max sompi amount is never dust",
+                tx_out: TransactionOutput::new(MAX_SOMPI, script_public_key.clone()),
+                minimum_relay_transaction_fee: 1000,
+                is_dust: false,
+            },
+            // Maximum uint64 value causes no overflow.
+            // Rust rewrite: this differs from golang version
+            TestScenario {
+                name: "maximum uint64 value",
+                tx_out: TransactionOutput::new(u64::MAX, script_public_key),
+                minimum_relay_transaction_fee: u64::MAX,
+                is_dust: false,
+            },
+            // Unspendable script_public_key due to an invalid public key script.
+            TestScenario {
+                name: "unspendable script_public_key",
+                tx_out: TransactionOutput::new(5000, invalid_script_public_key),
+                minimum_relay_transaction_fee: 0,
+                is_dust: true,
+            },
+        ];
+        for test in tests {
+            // TODO: test all nets params
+            let consensus = Arc::new(ConsensusMock {});
+            let mut config = Config::build_default(1000, false, 500_000);
+            config.minimum_relay_transaction_fee = test.minimum_relay_transaction_fee;
+            let mempool = Mempool::with_config(consensus, config);
+
+            println!("test_is_transaction_output_dust test '{}' ", test.name);
+            let res = mempool.is_transaction_output_dust(&test.tx_out);
+            if res != test.is_dust {
+                println!("test_is_transaction_output_dust test '{}' failed: got {}, want {}", test.name, res, test.is_dust);
+            }
+            assert_eq!(test.is_dust, res);
+        }
+    }
+
+    #[test]
+    fn test_check_transaction_standard_in_isolation() {
+        // Create some dummy, but otherwise standard, data for transactions.
+        let dummy_prev_out = TransactionOutpoint::new(hashes::Hash::from_u64_word(1), 1);
+        let dummy_sig_script = vec![0u8; 65];
+        let dummy_tx_input = TransactionInput::new(dummy_prev_out, dummy_sig_script, MAX_TX_IN_SEQUENCE_NUM, 1);
+        let addr_hash = vec![1u8; 32];
+
+        // TODO: call a constructor here when available
+        let addr = Address { prefix: Prefix::Testnet, payload: addr_hash, version: 0u8 };
+
+        // TODO: Replace this hack by a call to build the script (some txscript.PayToAddrScript(addr) equivalent).
+        const ADDRESS_PUBLIC_KEY_SCRIPT_PUBLIC_KEY_VERSION: u16 = 0;
+        const OP_CHECK_SIG: u8 = 172;
+        let mut pay_to_pub_key_script = Vec::with_capacity(34);
+        pay_to_pub_key_script.push(u8::try_from(addr.payload.len()).unwrap());
+        pay_to_pub_key_script.extend(addr.payload);
+        pay_to_pub_key_script.push(OP_CHECK_SIG);
+        let script = ScriptVec::from_vec(pay_to_pub_key_script);
+        let dummy_script_public_key = ScriptPublicKey::new(ADDRESS_PUBLIC_KEY_SCRIPT_PUBLIC_KEY_VERSION, script);
+
+        let dummy_tx_out = TransactionOutput::new(SOMPI_PER_KASPA, dummy_script_public_key);
+
+        struct TestScenario {
+            name: &'static str,
+            mtx: MutableTransaction,
+            is_standard: bool,
+        }
+
+        fn new_mtx(tx: Transaction, mass: u64) -> MutableTransaction {
+            let mut mtx = MutableTransaction::new(tx);
+            mtx.calculated_mass = Some(mass);
+            mtx
+        }
+
+        let tests = vec![
+            TestScenario {
+                name: "Typical pay-to-pubkey transaction",
+                mtx: new_mtx(
+                    Transaction::new(
+                        TX_VERSION,
+                        vec![dummy_tx_input.clone()],
+                        vec![dummy_tx_out.clone()],
+                        0,
+                        SUBNETWORK_ID_NATIVE,
+                        0,
+                        vec![],
+                    ),
+                    1000,
+                ),
+                is_standard: true,
+            },
+            TestScenario {
+                name: "Transaction version too high",
+                mtx: new_mtx(
+                    Transaction::new(
+                        TX_VERSION + 1,
+                        vec![dummy_tx_input.clone()],
+                        vec![dummy_tx_out.clone()],
+                        0,
+                        SUBNETWORK_ID_NATIVE,
+                        0,
+                        vec![],
+                    ),
+                    1000,
+                ),
+                is_standard: false,
+            },
+            TestScenario {
+                name: "Transaction size is too large",
+                mtx: new_mtx(
+                    Transaction::new(
+                        TX_VERSION,
+                        vec![dummy_tx_input.clone()],
+                        vec![TransactionOutput::new(
+                            0u64,
+                            ScriptPublicKey::new(
+                                ADDRESS_PUBLIC_KEY_SCRIPT_PUBLIC_KEY_VERSION,
+                                ScriptVec::from_vec(vec![0u8; MAXIMUM_STANDARD_TRANSACTION_MASS as usize + 1]),
+                            ),
+                        )],
+                        0,
+                        SUBNETWORK_ID_NATIVE,
+                        0,
+                        vec![],
+                    ),
+                    1000,
+                ),
+                is_standard: false,
+            },
+            TestScenario {
+                name: "Signature script size is too large",
+                mtx: new_mtx(
+                    Transaction::new(
+                        TX_VERSION + 1,
+                        vec![TransactionInput::new(
+                            dummy_prev_out,
+                            vec![0u8; MAXIMUM_STANDARD_SIGNATURE_SCRIPT_SIZE as usize + 1],
+                            MAX_TX_IN_SEQUENCE_NUM,
+                            1,
+                        )],
+                        vec![dummy_tx_out.clone()],
+                        0,
+                        SUBNETWORK_ID_NATIVE,
+                        0,
+                        vec![],
+                    ),
+                    1000,
+                ),
+                is_standard: false,
+            },
+            TestScenario {
+                name: "Valid but non standard public key script",
+                mtx: new_mtx(
+                    Transaction::new(
+                        TX_VERSION,
+                        vec![dummy_tx_input.clone()],
+                        vec![TransactionOutput::new(
+                            SOMPI_PER_KASPA,
+                            // TODO: build an invalid script ie. externalapi.ScriptPublicKey{[]byte{txscript.OpTrue}, 0}
+                            // when txscript is available
+                            ScriptPublicKey::new(ADDRESS_PUBLIC_KEY_SCRIPT_PUBLIC_KEY_VERSION, ScriptVec::from_vec(vec![81u8; 1])),
+                        )],
+                        0,
+                        SUBNETWORK_ID_NATIVE,
+                        0,
+                        vec![],
+                    ),
+                    1000,
+                ),
+                is_standard: false,
+            },
+            TestScenario {
+                name: "Dust output",
+                mtx: new_mtx(
+                    Transaction::new(
+                        TX_VERSION,
+                        vec![dummy_tx_input.clone()],
+                        vec![TransactionOutput::new(0, dummy_tx_out.script_public_key)],
+                        0,
+                        SUBNETWORK_ID_NATIVE,
+                        0,
+                        vec![],
+                    ),
+                    1000,
+                ),
+                is_standard: false,
+            },
+            TestScenario {
+                name: "Null-data transaction",
+                mtx: new_mtx(
+                    Transaction::new(
+                        TX_VERSION,
+                        vec![dummy_tx_input],
+                        vec![TransactionOutput::new(
+                            SOMPI_PER_KASPA,
+                            // TODO: build an invalid script ie. externalapi.ScriptPublicKey{[]byte{txscript.OpReturn}, 0}
+                            // when txscript is available
+                            ScriptPublicKey::new(ADDRESS_PUBLIC_KEY_SCRIPT_PUBLIC_KEY_VERSION, ScriptVec::from_vec(vec![106u8; 1])),
+                        )],
+                        0,
+                        SUBNETWORK_ID_NATIVE,
+                        0,
+                        vec![],
+                    ),
+                    1000,
+                ),
+                is_standard: false,
+            },
+        ];
+
+        for test in tests {
+            // TODO: test all nets params
+            let consensus = Arc::new(ConsensusMock {});
+            let config = Config::build_default(1000, false, 500_000);
+            let mempool = Mempool::with_config(consensus, config);
+
+            // Ensure standard-ness is as expected.
+            println!("test_check_transaction_standard_in_isolation test '{}' ", test.name);
+            let res = mempool.check_transaction_standard_in_isolation(&test.mtx);
+            if res.is_ok() && test.is_standard {
+                // Test passes since function returned standard for a
+                // transaction which is intended to be standard.
+                continue;
+            }
+            if res.is_ok() && !test.is_standard {
+                println!("test_check_transaction_standard_in_isolation ({}): standard when it should not be", test.name);
+            }
+            if res.is_err() && test.is_standard {
+                println!("test_check_transaction_standard_in_isolation ({}): nonstandard when it should not be: {:?}", test.name, res);
+            }
+            assert_eq!(res.is_ok(), test.is_standard);
+        }
     }
 }

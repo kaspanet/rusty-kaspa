@@ -33,7 +33,12 @@ impl Mempool {
         relay_non_std_transactions: bool,
         max_block_mass: u64,
     ) -> Self {
-        let config = Rc::new(Config::build_default(target_time_per_block, relay_non_std_transactions, max_block_mass));
+        let config = Config::build_default(target_time_per_block, relay_non_std_transactions, max_block_mass);
+        Self::with_config(consensus, config)
+    }
+
+    pub(crate) fn with_config(consensus: DynConsensus, config: Config) -> Self {
+        let config = Rc::new(config);
         let mempool_utxo_set = MempoolUtxoSet::new();
         let transaction_pool = TransactionsPool::new(consensus.clone(), config.clone());
         let orphan_pool = OrphanPool::new(consensus.clone(), config.clone());
