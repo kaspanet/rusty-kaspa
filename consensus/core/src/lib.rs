@@ -12,6 +12,7 @@ pub mod constants;
 pub mod errors;
 pub mod hashing;
 pub mod header;
+pub mod mass;
 pub mod merkle;
 pub mod muhash;
 pub mod notify;

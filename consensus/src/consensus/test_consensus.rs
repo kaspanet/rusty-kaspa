@@ -180,13 +180,6 @@ impl ConsensusApi for TestConsensus {
         self.consensus.clone().calculate_transaction_mass(transaction)
     }
 
-    fn calculate_transaction_output_estimated_serialized_size(
-        self: Arc<Self>,
-        transaction_output: &consensus_core::tx::TransactionOutput,
-    ) -> u64 {
-        self.consensus.clone().calculate_transaction_output_estimated_serialized_size(transaction_output)
-    }
-
     fn get_virtual_daa_score(self: Arc<Self>) -> u64 {
         self.consensus.clone().get_virtual_daa_score()
     }

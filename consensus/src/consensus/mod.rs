@@ -465,13 +465,6 @@ impl ConsensusApi for Consensus {
         self.body_processor.mass_calculator.calc_tx_mass(transaction)
     }
 
-    fn calculate_transaction_output_estimated_serialized_size(
-        self: Arc<Self>,
-        transaction_output: &consensus_core::tx::TransactionOutput,
-    ) -> u64 {
-        crate::processes::mass::transaction_output_estimated_serialized_size(transaction_output)
-    }
-
     fn get_virtual_daa_score(self: Arc<Self>) -> u64 {
         self.virtual_processor.virtual_stores.read().state.get().unwrap().daa_score
     }

@@ -6,6 +6,7 @@ use super::{
 };
 use consensus_core::{
     constants::{MAX_SCRIPT_PUBLIC_KEY_VERSION, MAX_SOMPI},
+    mass,
     tx::{MutableTransaction, TransactionOutput},
 };
 
@@ -141,7 +142,7 @@ impl Mempool {
         // The most common scripts are pay-to-pubkey, and as per the above
         // breakdown, the minimum size of a p2pk input script is 148 bytes. So
         // that figure is used.
-        let total_serialized_size = self.consensus().calculate_transaction_output_estimated_serialized_size(transaction_output) + 148;
+        let total_serialized_size = mass::transaction_output_estimated_serialized_size(transaction_output) + 148;
 
         // The output is considered dust if the cost to the network to spend the
         // coins is more than 1/3 of the minimum free transaction relay fee.
