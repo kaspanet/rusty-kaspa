@@ -3,7 +3,7 @@
 //!
 
 use consensus::consensus::test_consensus::{create_temp_db, TestConsensus};
-use consensus::model::stores::ghostdag::{GhostdagStoreReader, KType as GhostdagKType};
+use consensus::model::stores::ghostdag::{GhostdagData, GhostdagStoreReader, HashKTypeMap, KType as GhostdagKType};
 use consensus::model::stores::headers::HeaderStoreReader;
 use consensus::model::stores::reachability::DbReachabilityStore;
 use consensus::params::{Params, DEVNET_PARAMS, MAINNET_PARAMS};
@@ -15,21 +15,24 @@ use consensus_core::constants::BLOCK_VERSION;
 use consensus_core::errors::block::{BlockProcessResult, RuleError};
 use consensus_core::header::Header;
 use consensus_core::subnets::SubnetworkId;
-use consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
-use consensus_core::{blockhash, hashing, BlueWorkType};
+use consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry};
+use consensus_core::{blockhash, hashing, BlockHashMap, BlueWorkType, HashMapCustomHasher};
 use hashes::Hash;
 
 use flate2::read::GzDecoder;
 use futures_util::future::join_all;
 use itertools::Itertools;
 use math::Uint256;
+use muhash::MuHash;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
+use std::path::Path;
+use std::sync::Arc;
 use std::{
     collections::HashMap,
     fs::File,
     future::Future,
-    io::{self, BufRead, BufReader},
+    io::{BufRead, BufReader},
     str::{from_utf8, FromStr},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -62,7 +65,7 @@ fn reachability_stretch_test(use_attack_json: bool) {
         if use_attack_json { "" } else { "no" },
         NUM_BLOCKS_EXPONENT
     );
-    let file = common::open_file(&path_str);
+    let file = common::open_file(Path::new(&path_str));
     let decoder = GzDecoder::new(file);
     let json_blocks: Vec<JsonBlock> = serde_json::from_reader(decoder).unwrap();
 
@@ -150,7 +153,7 @@ fn test_noattack_json() {
 async fn consensus_sanity_test() {
     let genesis_child: Hash = 2.into();
 
-    let consensus = TestConsensus::create_from_temp_db(&MAINNET_PARAMS.clone_with_skip_pow());
+    let consensus = TestConsensus::create_from_temp_db(&MAINNET_PARAMS.clone_with_skip_pow(), true);
     let wait_handles = consensus.init();
 
     consensus
@@ -210,7 +213,7 @@ async fn ghostdag_test() {
         params.genesis_hash = string_to_hash(&test.genesis_id);
         params.ghostdag_k = test.k;
 
-        let consensus = TestConsensus::create_from_temp_db(&params);
+        let consensus = TestConsensus::create_from_temp_db(&params, true);
         let wait_handles = consensus.init();
 
         for block in test.blocks.iter() {
@@ -282,7 +285,7 @@ async fn block_window_test() {
     params.genesis_hash = string_to_hash("A");
     params.ghostdag_k = 1;
 
-    let consensus = TestConsensus::new(db, &params);
+    let consensus = TestConsensus::new(db, &params, true);
     let wait_handles = consensus.init();
 
     struct TestBlock {
@@ -340,7 +343,7 @@ async fn block_window_test() {
 #[tokio::test]
 async fn header_in_isolation_validation_test() {
     let params = &MAINNET_PARAMS;
-    let consensus = TestConsensus::create_from_temp_db(params);
+    let consensus = TestConsensus::create_from_temp_db(params, true);
     let wait_handles = consensus.init();
     let block = consensus.build_block_with_parents(1.into(), vec![params.genesis_hash]);
 
@@ -408,7 +411,7 @@ async fn header_in_isolation_validation_test() {
 #[tokio::test]
 async fn incest_test() {
     let params = MAINNET_PARAMS.clone_with_skip_pow();
-    let consensus = TestConsensus::create_from_temp_db(&params);
+    let consensus = TestConsensus::create_from_temp_db(&params, true);
     let wait_handles = consensus.init();
     let block = consensus.build_block_with_parents(1.into(), vec![params.genesis_hash]);
     consensus.validate_and_insert_block(block.to_immutable()).await.unwrap();
@@ -431,7 +434,7 @@ async fn incest_test() {
 #[tokio::test]
 async fn missing_parents_test() {
     let params = MAINNET_PARAMS.clone_with_skip_pow();
-    let consensus = TestConsensus::create_from_temp_db(&params);
+    let consensus = TestConsensus::create_from_temp_db(&params, true);
     let wait_handles = consensus.init();
     let mut block = consensus.build_block_with_parents(1.into(), vec![params.genesis_hash]);
     block.header.parents_by_level[0] = vec![0.into()];
@@ -452,7 +455,7 @@ async fn missing_parents_test() {
 #[tokio::test]
 async fn known_invalid_test() {
     let params = MAINNET_PARAMS.clone_with_skip_pow();
-    let consensus = TestConsensus::create_from_temp_db(&params);
+    let consensus = TestConsensus::create_from_temp_db(&params, true);
     let wait_handles = consensus.init();
     let mut block = consensus.build_block_with_parents(1.into(), vec![params.genesis_hash]);
     block.header.timestamp -= 1;
@@ -477,7 +480,7 @@ async fn known_invalid_test() {
 #[tokio::test]
 async fn median_time_test() {
     let params = MAINNET_PARAMS.clone_with_skip_pow();
-    let consensus = TestConsensus::create_from_temp_db(&params);
+    let consensus = TestConsensus::create_from_temp_db(&params, true);
     let wait_handles = consensus.init();
 
     let num_blocks = 2 * params.timestamp_deviation_tolerance - 1;
@@ -519,7 +522,7 @@ async fn median_time_test() {
 #[tokio::test]
 async fn mergeset_size_limit_test() {
     let params = MAINNET_PARAMS.clone_with_skip_pow();
-    let consensus = TestConsensus::create_from_temp_db(&params);
+    let consensus = TestConsensus::create_from_temp_db(&params, true);
     let wait_handles = consensus.init();
 
     let num_blocks_per_chain = params.mergeset_size_limit + 1;
@@ -633,6 +636,47 @@ struct RPCBlockVerboseData {
 
 #[allow(non_snake_case)]
 #[derive(Deserialize, Debug)]
+struct JsonBlockWithTrustedData {
+    Block: RPCBlock,
+    GHOSTDAG: JsonGHOSTDAGData,
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Debug)]
+struct JsonGHOSTDAGData {
+    BlueScore: u64,
+    BlueWork: String,
+    SelectedParent: String,
+    MergeSetBlues: Vec<String>,
+    MergeSetReds: Vec<String>,
+    BluesAnticoneSizes: Vec<JsonBluesAnticoneSizes>,
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Debug)]
+struct JsonBluesAnticoneSizes {
+    BlueHash: String,
+    AnticoneSize: GhostdagKType,
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Debug)]
+struct JsonOutpointUTXOEntryPair {
+    Outpoint: RPCOutpoint,
+    UTXOEntry: RPCUTXOEntry,
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Debug)]
+struct RPCUTXOEntry {
+    Amount: u64,
+    ScriptPublicKey: RPCScriptPublicKey,
+    BlockDAAScore: u64,
+    IsCoinbase: bool,
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Debug)]
 struct KaspadGoParams {
     K: GhostdagKType,
     TimestampDeviationTolerance: u64,
@@ -656,17 +700,17 @@ struct KaspadGoParams {
 }
 
 impl KaspadGoParams {
-    fn into_params(self, genesis_header: &Header) -> Params {
+    fn into_params(self) -> Params {
         let finality_depth = self.FinalityDuration / self.TargetTimePerBlock;
         Params {
-            genesis_hash: genesis_header.hash,
+            genesis_hash: MAINNET_PARAMS.genesis_hash,
             ghostdag_k: self.K,
             timestamp_deviation_tolerance: self.TimestampDeviationTolerance,
             target_time_per_block: self.TargetTimePerBlock / 1_000_000,
             max_block_parents: self.MaxBlockParents,
             difficulty_window_size: self.DifficultyAdjustmentWindowSize,
-            genesis_timestamp: genesis_header.timestamp,
-            genesis_bits: genesis_header.bits,
+            genesis_timestamp: MAINNET_PARAMS.genesis_timestamp,
+            genesis_bits: MAINNET_PARAMS.genesis_bits,
             mergeset_size_limit: self.MergeSetSizeLimit,
             merge_depth: self.MergeDepth,
             finality_depth,
@@ -693,53 +737,74 @@ impl KaspadGoParams {
 
 #[tokio::test]
 async fn goref_custom_pruning_depth() {
-    json_test("tests/testdata/goref_custom_pruning_depth.json.gz").await
+    json_test("tests/testdata/dags_for_json_tests/goref_custom_pruning_depth").await
 }
 
 #[tokio::test]
 async fn goref_notx_test() {
-    json_test("tests/testdata/goref-notx-5000-blocks.json.gz").await
+    json_test("tests/testdata/dags_for_json_tests/goref-notx-5000-blocks").await
 }
 
 #[tokio::test]
 async fn goref_notx_concurrent_test() {
-    json_concurrency_test("tests/testdata/goref-notx-5000-blocks.json.gz").await
+    json_concurrency_test("tests/testdata/dags_for_json_tests/goref-notx-5000-blocks").await
 }
 
 #[tokio::test]
 async fn goref_tx_small_test() {
-    json_test("tests/testdata/goref-905-tx-265-blocks.json.gz").await
+    json_test("tests/testdata/dags_for_json_tests/goref-905-tx-265-blocks").await
 }
 
 #[tokio::test]
 async fn goref_tx_small_concurrent_test() {
-    json_concurrency_test("tests/testdata/goref-905-tx-265-blocks.json.gz").await
+    json_concurrency_test("tests/testdata/dags_for_json_tests/goref-905-tx-265-blocks").await
 }
 
 #[ignore]
 #[tokio::test]
 async fn goref_tx_big_test() {
-    // TODO: add this file to a data repo and fetch dynamically
-    json_test("tests/testdata/goref-1.6M-tx-10K-blocks.json.gz").await
+    // TODO: add this directory to a data repo and fetch dynamically
+    json_test("tests/testdata/dags_for_json_tests/goref-1.6M-tx-10K").await
 }
 
 #[ignore]
 #[tokio::test]
 async fn goref_tx_big_concurrent_test() {
     // TODO: add this file to a data repo and fetch dynamically
-    json_concurrency_test("tests/testdata/goref-1.6M-tx-10K-blocks.json.gz").await
+    json_concurrency_test("tests/testdata/goref-1.6M-tx-10K-blocks").await
+}
+
+#[tokio::test]
+#[ignore = "long"]
+async fn goref_mainnet_test() {
+    // TODO: add this directory to a data repo and fetch dynamically
+    json_test("tests/testdata/dags_for_json_tests/goref-mainnet").await
+}
+
+fn gzip_file_lines(path: &Path) -> impl Iterator<Item = String> {
+    let file = common::open_file(path);
+    let decoder = GzDecoder::new(file);
+    BufReader::new(decoder).lines().map(|line| line.unwrap())
 }
 
 async fn json_test(file_path: &str) {
-    let file = common::open_file(file_path);
-    let decoder = GzDecoder::new(file);
-    let mut lines = BufReader::new(decoder).lines();
-    let first_line = lines.next().unwrap().unwrap();
+    kaspa_core::log::init_logger("INFO");
+    let main_path = Path::new(file_path);
+    let proof_exists = common::file_exists(&main_path.join("proof.json.gz"));
+
+    let mut lines = gzip_file_lines(&main_path.join("blocks.json.gz"));
+    let first_line = lines.next().unwrap();
     let go_params_res: Result<KaspadGoParams, _> = serde_json::from_str(&first_line);
     let params = if let Ok(go_params) = go_params_res {
-        let second_line = lines.next().unwrap().unwrap();
-        let genesis = json_line_to_block(second_line);
-        go_params.into_params(&genesis.header)
+        let mut params = go_params.into_params();
+        if !proof_exists {
+            let second_line = lines.next().unwrap();
+            let genesis = json_line_to_block(second_line);
+            params.genesis_bits = genesis.header.bits;
+            params.genesis_hash = genesis.header.hash;
+            params.genesis_timestamp = genesis.header.timestamp;
+        }
+        params
     } else {
         let genesis = json_line_to_block(first_line);
         let mut params = DEVNET_PARAMS;
@@ -749,8 +814,45 @@ async fn json_test(file_path: &str) {
         params
     };
 
-    let consensus = TestConsensus::create_from_temp_db(&params);
+    let consensus = TestConsensus::create_from_temp_db(&params, !proof_exists);
     let wait_handles = consensus.init();
+
+    let pruning_point = if proof_exists {
+        let proof_lines = gzip_file_lines(&main_path.join("proof.json.gz"));
+        let proof = proof_lines
+            .map(|line| {
+                let rpc_headers: Vec<RPCBlockHeader> = serde_json::from_str(&line).unwrap();
+                rpc_headers.iter().map(json_header_to_header).collect_vec()
+            })
+            .collect_vec();
+
+        // TODO: Add consensus validation that the pruning point is one of the trusted blocks.
+        let trusted_blocks = gzip_file_lines(&main_path.join("trusted.json.gz")).map(json_trusted_line_to_block_and_gd).collect_vec();
+        consensus.consensus.apply_proof(proof, &trusted_blocks);
+
+        let past_pruning_points =
+            gzip_file_lines(&main_path.join("past-pps.json.gz")).map(|line| json_line_to_block(line).header).collect_vec();
+        let pruning_point = past_pruning_points.last().unwrap().hash;
+
+        consensus.consensus.import_pruning_points(past_pruning_points);
+
+        let mut last_time = SystemTime::now();
+        let mut last_index: usize = 0;
+        for (i, (block, gd)) in trusted_blocks.into_iter().enumerate() {
+            let now = SystemTime::now();
+            let passed = now.duration_since(last_time).unwrap();
+            if passed > Duration::new(1, 0) {
+                println!("Processed {} trusted blocks in the last {} seconds (total {})", i - last_index, passed.as_secs(), i);
+                last_time = now;
+                last_index = i;
+            }
+            consensus.consensus.validate_and_insert_trusted_block(block, Arc::new(gd)).await.unwrap();
+        }
+        println!("Done processing trusted blocks");
+        Some(pruning_point)
+    } else {
+        None
+    };
 
     let mut last_time = SystemTime::now();
     let mut last_index: usize = 0;
@@ -758,16 +860,31 @@ async fn json_test(file_path: &str) {
         let now = SystemTime::now();
         let passed = now.duration_since(last_time).unwrap();
         if passed > Duration::new(10, 0) {
-            println!("Processed {} blocks in the last {} seconds", i - last_index, passed.as_secs());
+            println!("Processed {} blocks in the last {} seconds (total {})", i - last_index, passed.as_secs(), i);
             last_time = now;
             last_index = i;
         }
-        let block = json_line_to_block(line.unwrap());
+        let block = json_line_to_block(line);
         let hash = block.header.hash;
         // Test our hashing implementation vs the hash accepted from the json source
         assert_eq!(hashing::header::hash(&block.header), hash, "header hashing for block {i} {hash} failed");
-        let status = consensus.validate_and_insert_block(block).await.unwrap_or_else(|e| panic!("block {i} {hash} failed: {e}"));
+        let status = consensus
+            .consensus
+            .validate_and_insert_block(block, !proof_exists)
+            .await
+            .unwrap_or_else(|e| panic!("block {} {} failed: {}", i, hash, e));
         assert!(status.is_utxo_valid_or_pending());
+    }
+
+    if proof_exists {
+        let mut multiset = MuHash::new();
+        for outpoint_utxo_pairs in gzip_file_lines(&main_path.join("pp-utxo.json.gz")).map(json_line_to_utxo_pairs) {
+            consensus.consensus.append_imported_pruning_point_utxos(&outpoint_utxo_pairs, &mut multiset);
+        }
+
+        consensus.consensus.import_pruning_point_utxo_set(pruning_point.unwrap(), &mut multiset).unwrap();
+        consensus.consensus.resolve_virtual();
+        // TODO: Add consensus validation that the pruning point is actually the right block according to the rules (in pruning depth etc).
     }
 
     // Assert that at least one body tip was resolved with valid UTXO
@@ -777,18 +894,70 @@ async fn json_test(file_path: &str) {
 }
 
 async fn json_concurrency_test(file_path: &str) {
-    let file = common::open_file(file_path);
-    let decoder = GzDecoder::new(file);
-    let mut lines = io::BufReader::new(decoder).lines();
-    let first_line = lines.next().unwrap();
-    let genesis = json_line_to_block(first_line.unwrap());
-    let mut params = DEVNET_PARAMS;
-    params.genesis_bits = genesis.header.bits;
-    params.genesis_hash = genesis.header.hash;
-    params.genesis_timestamp = genesis.header.timestamp;
+    kaspa_core::log::init_logger("INFO");
+    let main_path = Path::new(file_path);
+    let proof_exists = main_path.join("proof.json.gz").exists();
 
-    let consensus = TestConsensus::create_from_temp_db(&params);
+    let mut lines = gzip_file_lines(&main_path.join("blocks.json.gz"));
+    let first_line = lines.next().unwrap();
+    let go_params_res: Result<KaspadGoParams, _> = serde_json::from_str(&first_line);
+    let params = if let Ok(go_params) = go_params_res {
+        let mut params = go_params.into_params();
+        if !proof_exists {
+            let second_line = lines.next().unwrap();
+            let genesis = json_line_to_block(second_line);
+            params.genesis_bits = genesis.header.bits;
+            params.genesis_hash = genesis.header.hash;
+            params.genesis_timestamp = genesis.header.timestamp;
+        }
+        params
+    } else {
+        let genesis = json_line_to_block(first_line);
+        let mut params = DEVNET_PARAMS;
+        params.genesis_bits = genesis.header.bits;
+        params.genesis_hash = genesis.header.hash;
+        params.genesis_timestamp = genesis.header.timestamp;
+        params
+    };
+
+    let consensus = TestConsensus::create_from_temp_db(&params, !proof_exists);
     let wait_handles = consensus.init();
+
+    let pruning_point = if proof_exists {
+        let proof_lines = gzip_file_lines(&main_path.join("proof.json.gz"));
+        let proof = proof_lines
+            .map(|line| {
+                let rpc_headers: Vec<RPCBlockHeader> = serde_json::from_str(&line).unwrap();
+                rpc_headers.iter().map(json_header_to_header).collect_vec()
+            })
+            .collect_vec();
+
+        let trusted_blocks = gzip_file_lines(&main_path.join("trusted.json.gz")).map(json_trusted_line_to_block_and_gd).collect_vec();
+        consensus.consensus.apply_proof(proof, &trusted_blocks);
+
+        let past_pruning_points =
+            gzip_file_lines(&main_path.join("past-pps.json.gz")).map(|line| json_line_to_block(line).header).collect_vec();
+        let pruning_point = past_pruning_points.last().unwrap().hash;
+
+        consensus.consensus.import_pruning_points(past_pruning_points);
+
+        let mut last_time = SystemTime::now();
+        let mut last_index: usize = 0;
+        for (i, (block, gd)) in trusted_blocks.into_iter().enumerate() {
+            let now = SystemTime::now();
+            let passed = now.duration_since(last_time).unwrap();
+            if passed > Duration::new(1, 0) {
+                println!("Processed {} trusted blocks in the last {} seconds (total {})", i - last_index, passed.as_secs(), i);
+                last_time = now;
+                last_index = i;
+            }
+            consensus.consensus.validate_and_insert_trusted_block(block, Arc::new(gd)).await.unwrap();
+        }
+        println!("Done processing trusted blocks");
+        Some(pruning_point)
+    } else {
+        None
+    };
 
     let chunks = lines.into_iter().chunks(1000);
     let mut iter = chunks.into_iter();
@@ -805,6 +974,16 @@ async fn json_concurrency_test(file_path: &str) {
     let statuses = join_all(prev_joins).await.into_iter().collect::<Result<Vec<BlockStatus>, RuleError>>().unwrap();
     assert!(statuses.iter().all(|s| s.is_utxo_valid_or_pending()));
 
+    if proof_exists {
+        let mut multiset = MuHash::new();
+        for outpoint_utxo_pairs in gzip_file_lines(&main_path.join("pp-utxo.json.gz")).map(json_line_to_utxo_pairs) {
+            consensus.consensus.append_imported_pruning_point_utxos(&outpoint_utxo_pairs, &mut multiset);
+        }
+
+        consensus.consensus.import_pruning_point_utxo_set(pruning_point.unwrap(), &mut multiset).unwrap();
+        consensus.consensus.resolve_virtual();
+    }
+
     // Assert that at least one body tip was resolved with valid UTXO
     assert!(consensus.body_tips().iter().copied().any(|h| consensus.block_status(h) == BlockStatus::StatusUTXOValid));
 
@@ -813,18 +992,96 @@ async fn json_concurrency_test(file_path: &str) {
 
 fn submit_chunk(
     consensus: &TestConsensus,
-    chunk: &mut impl Iterator<Item = std::io::Result<String>>,
+    chunk: &mut impl Iterator<Item = String>,
 ) -> Vec<impl Future<Output = BlockProcessResult<BlockStatus>>> {
     let mut futures = Vec::new();
     for line in chunk {
-        let f = consensus.validate_and_insert_block(json_line_to_block(line.unwrap()));
+        let f = consensus.validate_and_insert_block(json_line_to_block(line));
         futures.push(f);
     }
     futures
 }
 
+fn json_header_to_header(rpc_header: &RPCBlockHeader) -> Arc<Header> {
+    let mut header = Header {
+        hash: 0.into(),
+        version: rpc_header.Version,
+        parents_by_level: rpc_header
+            .Parents
+            .iter()
+            .map(|item| item.ParentHashes.iter().map(|parent| Hash::from_str(parent).unwrap()).collect())
+            .collect(),
+        hash_merkle_root: Hash::from_str(&rpc_header.HashMerkleRoot).unwrap(),
+        accepted_id_merkle_root: Hash::from_str(&rpc_header.AcceptedIDMerkleRoot).unwrap(),
+        utxo_commitment: Hash::from_str(&rpc_header.UTXOCommitment).unwrap(),
+        timestamp: rpc_header.Timestamp,
+        bits: rpc_header.Bits,
+        nonce: rpc_header.Nonce,
+        daa_score: rpc_header.DAAScore,
+        // TODO: use Uint192::from_hex when implemented
+        blue_work: BlueWorkType::from_u128(u128::from_str_radix(&rpc_header.BlueWork, 16).unwrap()),
+        blue_score: rpc_header.BlueScore,
+        pruning_point: Hash::from_str(&rpc_header.PruningPoint).unwrap(),
+    };
+    header.finalize();
+    Arc::new(header)
+}
+
+fn json_trusted_line_to_block_and_gd(line: String) -> (Block, GhostdagData) {
+    let json_block_with_trusted: JsonBlockWithTrustedData = serde_json::from_str(&line).unwrap();
+    let block = rpc_block_to_block(json_block_with_trusted.Block);
+
+    let mut blues_anticone_sizes = BlockHashMap::with_capacity(json_block_with_trusted.GHOSTDAG.BluesAnticoneSizes.len());
+    for entry in json_block_with_trusted.GHOSTDAG.BluesAnticoneSizes {
+        blues_anticone_sizes.insert(Hash::from_str(&entry.BlueHash).unwrap(), entry.AnticoneSize);
+    }
+
+    let gd = GhostdagData {
+        blue_score: json_block_with_trusted.GHOSTDAG.BlueScore,
+        blue_work: BlueWorkType::from_hex(&json_block_with_trusted.GHOSTDAG.BlueWork).unwrap(),
+        selected_parent: Hash::from_str(&json_block_with_trusted.GHOSTDAG.SelectedParent).unwrap(),
+        mergeset_blues: Arc::new(
+            json_block_with_trusted.GHOSTDAG.MergeSetBlues.iter().map(|hex| Hash::from_str(hex).unwrap()).collect_vec(),
+        ),
+        mergeset_reds: Arc::new(
+            json_block_with_trusted.GHOSTDAG.MergeSetReds.iter().map(|hex| Hash::from_str(hex).unwrap()).collect_vec(),
+        ),
+        blues_anticone_sizes: HashKTypeMap::new(blues_anticone_sizes),
+    };
+
+    (block, gd)
+}
+
+fn json_line_to_utxo_pairs(line: String) -> Vec<(TransactionOutpoint, UtxoEntry)> {
+    let json_pairs: Vec<JsonOutpointUTXOEntryPair> = serde_json::from_str(&line).unwrap();
+    json_pairs
+        .iter()
+        .map(|json_pair| {
+            (
+                TransactionOutpoint {
+                    transaction_id: Hash::from_str(&json_pair.Outpoint.TransactionID).unwrap(),
+                    index: json_pair.Outpoint.Index,
+                },
+                UtxoEntry {
+                    amount: json_pair.UTXOEntry.Amount,
+                    script_public_key: ScriptPublicKey::from_vec(
+                        json_pair.UTXOEntry.ScriptPublicKey.Version,
+                        hex_decode(&json_pair.UTXOEntry.ScriptPublicKey.Script),
+                    ),
+                    block_daa_score: json_pair.UTXOEntry.BlockDAAScore,
+                    is_coinbase: json_pair.UTXOEntry.IsCoinbase,
+                },
+            )
+        })
+        .collect_vec()
+}
+
 fn json_line_to_block(line: String) -> Block {
     let rpc_block: RPCBlock = serde_json::from_str(&line).unwrap();
+    rpc_block_to_block(rpc_block)
+}
+
+fn rpc_block_to_block(rpc_block: RPCBlock) -> Block {
     Block::new(
         Header {
             hash: Hash::from_str(&rpc_block.VerboseData.Hash).unwrap(),
@@ -901,7 +1158,7 @@ async fn bounded_merge_depth_test() {
 
     assert!((params.ghostdag_k as u64) < params.merge_depth, "K must be smaller than merge depth for this test to run");
 
-    let consensus = TestConsensus::create_from_temp_db(&params);
+    let consensus = TestConsensus::create_from_temp_db(&params, true);
     let wait_handles = consensus.init();
 
     let mut selected_chain = vec![params.genesis_hash];
@@ -995,7 +1252,7 @@ async fn difficulty_test() {
     params.ghostdag_k = 1;
     params.difficulty_window_size = 140;
 
-    let consensus = TestConsensus::create_from_temp_db(&params);
+    let consensus = TestConsensus::create_from_temp_db(&params, true);
     let wait_handles = consensus.init();
 
     let fake_genesis = Header {

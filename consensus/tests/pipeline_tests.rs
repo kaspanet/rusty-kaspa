@@ -84,7 +84,7 @@ async fn test_concurrent_pipeline() {
     let mut params = MAINNET_PARAMS.clone_with_skip_pow();
     params.genesis_hash = 1.into();
 
-    let consensus = TestConsensus::new(db, &params);
+    let consensus = TestConsensus::new(db, &params, true);
     let wait_handles = consensus.init();
 
     let blocks = vec![
@@ -157,7 +157,7 @@ async fn test_concurrent_pipeline_random() {
     let mut params = MAINNET_PARAMS.clone_with_skip_pow();
     params.genesis_hash = genesis;
 
-    let consensus = TestConsensus::new(db, &params);
+    let consensus = TestConsensus::new(db, &params, true);
     let wait_handles = consensus.init();
 
     let mut tips = vec![genesis];

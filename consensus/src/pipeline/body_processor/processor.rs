@@ -86,6 +86,7 @@ impl BlockBodyProcessor {
         past_median_time_manager: PastMedianTimeManager<DbHeadersStore, DbGhostdagStore, BlockWindowCacheStore>,
         max_block_mass: u64,
         genesis_hash: Hash,
+        process_genesis: bool,
     ) -> Self {
         Self {
             receiver,
@@ -104,7 +105,7 @@ impl BlockBodyProcessor {
             past_median_time_manager,
             max_block_mass,
             genesis_hash,
-            process_genesis: false, // TODO: pass as param
+            process_genesis,
             task_manager: BlockTaskDependencyManager::new(),
         }
     }
@@ -134,7 +135,7 @@ impl BlockBodyProcessor {
 
     fn queue_block(self: &Arc<BlockBodyProcessor>, hash: Hash) {
         if let Some(block) = self.task_manager.try_begin(hash) {
-            let res = self.process_block_body(&block.block);
+            let res = self.process_block_body(&block.block, block.ghostdag_data.is_some());
 
             let dependent_tasks = self.task_manager.end(hash, |block, result_transmitters| {
                 if res.is_err() {
@@ -154,7 +155,7 @@ impl BlockBodyProcessor {
         }
     }
 
-    fn process_block_body(self: &Arc<BlockBodyProcessor>, block: &Block) -> BlockProcessResult<BlockStatus> {
+    fn process_block_body(self: &Arc<BlockBodyProcessor>, block: &Block, is_trusted: bool) -> BlockProcessResult<BlockStatus> {
         let status = self.statuses_store.read().get(block.hash()).unwrap();
         match status {
             StatusInvalid => return Err(RuleError::KnownInvalid),
@@ -163,7 +164,7 @@ impl BlockBodyProcessor {
             _ => panic!("unexpected block status {status:?}"),
         }
 
-        if let Err(e) = self.validate_body(block) {
+        if let Err(e) = self.validate_body(block, is_trusted) {
             // We mark invalid blocks with status StatusInvalid except in the
             // case of the following errors:
             // MissingParents - If we got MissingParents the block shouldn't be
@@ -185,9 +186,13 @@ impl BlockBodyProcessor {
         Ok(BlockStatus::StatusUTXOPendingVerification)
     }
 
-    fn validate_body(self: &Arc<BlockBodyProcessor>, block: &Block) -> BlockProcessResult<()> {
+    fn validate_body(self: &Arc<BlockBodyProcessor>, block: &Block, is_trusted: bool) -> BlockProcessResult<()> {
         self.validate_body_in_isolation(block)?;
-        self.validate_body_in_context(block)
+        if !is_trusted {
+            // TODO: Check that it's safe to skip this check if the block is trusted.
+            return self.validate_body_in_context(block);
+        }
+        Ok(())
     }
 
     fn commit_body(self: &Arc<BlockBodyProcessor>, hash: Hash, parents: &[Hash], transactions: Arc<Vec<Transaction>>) {

@@ -119,7 +119,7 @@ mod tests {
     #[test]
     fn validate_body_in_isolation_test() {
         let params = &MAINNET_PARAMS;
-        let consensus = TestConsensus::create_from_temp_db(params);
+        let consensus = TestConsensus::create_from_temp_db(params, true);
         let wait_handles = consensus.init();
 
         let body_processor = consensus.block_body_processor();
@@ -431,7 +431,7 @@ mod tests {
     #[tokio::test]
     async fn merkle_root_missing_parents_known_invalid_test() {
         let params = MAINNET_PARAMS.clone_with_skip_pow();
-        let consensus = TestConsensus::create_from_temp_db(&params);
+        let consensus = TestConsensus::create_from_temp_db(&params, true);
         let wait_handles = consensus.init();
 
         let mut block = consensus.build_block_with_parents_and_transactions(1.into(), vec![params.genesis_hash], vec![]);

@@ -86,7 +86,7 @@ pub fn main() {
 
     let params = DEVNET_PARAMS;
     let db = Arc::new(DB::open_default(db_dir.to_str().unwrap()).unwrap());
-    let consensus = Arc::new(Consensus::new(db, &params));
+    let consensus = Arc::new(Consensus::new(db, &params, true));
     let monitor = Arc::new(ConsensusMonitor::new(consensus.processing_counters().clone()));
 
     let notification_channel = ConsensusNotificationChannel::default();

@@ -123,7 +123,7 @@ fn main() {
     // Load an existing consensus or run the simulation
     let (consensus, _lifetime) = if let Some(input_dir) = args.input_dir {
         let (lifetime, db) = load_existing_db(input_dir);
-        let consensus = Arc::new(Consensus::with_perf_params(db, &params, &perf_params));
+        let consensus = Arc::new(Consensus::with_perf_params(db, &params, &perf_params, true));
         (consensus, lifetime)
     } else {
         let until = if args.target_blocks.is_none() { args.sim_time * 1000 } else { u64::MAX }; // milliseconds
@@ -135,7 +135,7 @@ fn main() {
 
     // Benchmark the DAG validation time
     let (_lifetime2, db2) = create_temp_db();
-    let consensus2 = Arc::new(Consensus::with_perf_params(db2, &params, &perf_params));
+    let consensus2 = Arc::new(Consensus::with_perf_params(db2, &params, &perf_params, false));
     let handles2 = consensus2.init();
     validate(&consensus, &consensus2, &params, args.delay, args.bps);
     consensus2.shutdown(handles2);
@@ -230,7 +230,7 @@ fn submit_chunk(
             src_consensus.headers_store.get_header(hash).unwrap(),
             src_consensus.block_transactions_store.get(hash).unwrap(),
         );
-        let f = dst_consensus.validate_and_insert_block(block);
+        let f = dst_consensus.validate_and_insert_block(block, true);
         futures.push(f);
     }
     futures

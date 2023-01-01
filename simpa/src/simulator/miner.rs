@@ -192,7 +192,7 @@ impl Miner {
         if self.report_progress(env) {
             Suspension::Halt
         } else {
-            self.futures.push(Box::pin(self.consensus.validate_and_insert_block(block)));
+            self.futures.push(Box::pin(self.consensus.validate_and_insert_block(block, true)));
             Suspension::Idle
         }
     }

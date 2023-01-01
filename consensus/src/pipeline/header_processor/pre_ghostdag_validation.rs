@@ -19,14 +19,18 @@ impl HeaderProcessor {
         self: &Arc<HeaderProcessor>,
         ctx: &mut HeaderProcessingContext,
         header: &Header,
+        is_trusted: bool,
     ) -> BlockProcessResult<()> {
         if header.hash == self.genesis_hash {
             return Ok(());
         }
 
         self.validate_header_in_isolation(ctx)?;
-        self.check_parents_exist(header)?;
-        self.check_parents_incest(ctx)?;
+        if !is_trusted {
+            self.check_parents_exist(header)?;
+            self.check_parents_incest(ctx)?;
+        }
+
         Ok(())
     }
 
@@ -114,7 +118,7 @@ impl HeaderProcessor {
     }
 
     fn check_pow_and_calc_block_level(self: &Arc<HeaderProcessor>, ctx: &mut HeaderProcessingContext) -> BlockProcessResult<()> {
-        let state = pow::State::new(&ctx.header);
+        let state = pow::State::new(ctx.header);
         let (passed, pow) = state.check_pow(ctx.header.nonce);
         if passed || self.skip_proof_of_work {
             let signed_block_level = self.max_block_level as i64 - pow.bits() as i64;

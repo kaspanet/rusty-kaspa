@@ -39,7 +39,7 @@ impl HeaderProcessor {
         ctx: &mut HeaderProcessingContext,
         header: &Header,
     ) -> BlockProcessResult<()> {
-        let ghostdag_data = ctx.get_ghostdag_data().clone().unwrap();
+        let ghostdag_data = ctx.get_ghostdag_data().unwrap();
         let window = self.dag_traversal_manager.block_window(&ghostdag_data, self.difficulty_window_size);
 
         let (daa_score, mergeset_non_daa) = self

@@ -49,18 +49,23 @@ pub struct TestConsensus {
 }
 
 impl TestConsensus {
-    pub fn new(db: Arc<DB>, params: &Params) -> Self {
-        Self { consensus: Arc::new(Consensus::new(db, params)), params: params.clone(), temp_db_lifetime: Default::default() }
+    pub fn new(db: Arc<DB>, params: &Params, process_genesis: bool) -> Self {
+        Self {
+            consensus: Arc::new(Consensus::new(db, params, process_genesis)),
+            params: params.clone(),
+            temp_db_lifetime: Default::default(),
+        }
     }
 
     pub fn consensus(&self) -> Arc<Consensus> {
         self.consensus.clone()
     }
 
-    pub fn create_from_temp_db(params: &Params) -> Self {
+    pub fn create_from_temp_db(params: &Params, process_genesis: bool) -> Self {
         let (temp_db_lifetime, db) = create_temp_db();
-        Self { consensus: Arc::new(Consensus::new(db, params)), params: params.clone(), temp_db_lifetime }
+        Self { consensus: Arc::new(Consensus::new(db, params, process_genesis)), params: params.clone(), temp_db_lifetime }
     }
+
 
     pub fn build_header_with_parents(&self, hash: Hash, parents: Vec<Hash>) -> Header {
         let mut header = header_from_precomputed_hash(hash, parents);
@@ -111,7 +116,7 @@ impl TestConsensus {
     }
 
     pub fn validate_and_insert_block(&self, block: Block) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
-        self.consensus.as_ref().validate_and_insert_block(block)
+        self.consensus.as_ref().validate_and_insert_block(block, true)
     }
 
     pub fn init(&self) -> Vec<JoinHandle<()>> {

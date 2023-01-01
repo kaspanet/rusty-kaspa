@@ -1,7 +1,8 @@
 use super::prelude::{Cache, DbKey, DbWriter};
 use crate::model::stores::{errors::StoreError, DB};
+use rocksdb::{Direction, IteratorMode, ReadOptions};
 use serde::{de::DeserializeOwned, Serialize};
-use std::{collections::hash_map::RandomState, hash::BuildHasher, sync::Arc};
+use std::{collections::hash_map::RandomState, error::Error, hash::BuildHasher, sync::Arc};
 
 /// A concurrent DB store access with typed caching.
 #[derive(Clone)]
@@ -60,6 +61,23 @@ where
                 Err(StoreError::KeyNotFound(db_key))
             }
         }
+    }
+
+    pub fn iterator(&self) -> impl Iterator<Item = Result<(Box<[u8]>, TData), Box<dyn Error>>> + '_
+    where
+        TKey: Copy + AsRef<[u8]> + ToString,
+        TData: DeserializeOwned, // We need `DeserializeOwned` since the slice coming from `db.get_pinned` has short lifetime
+    {
+        let db_key = DbKey::prefix_only(&self.prefix);
+        let mut read_opts = ReadOptions::default();
+        read_opts.set_iterate_range(rocksdb::PrefixRange(db_key.as_ref()));
+        self.db.iterator_opt(IteratorMode::From(db_key.as_ref(), Direction::Forward), read_opts).map(|iter_result| match iter_result {
+            Ok((key, data_bytes)) => match bincode::deserialize(&data_bytes) {
+                Ok(data) => Ok((key[self.prefix.len() + 1..].into(), data)),
+                Err(e) => Err(e.into()),
+            },
+            Err(e) => Err(e.into()),
+        })
     }
 
     pub fn write(&self, mut writer: impl DbWriter, key: TKey, data: TData) -> Result<(), StoreError>

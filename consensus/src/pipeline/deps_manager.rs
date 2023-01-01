@@ -16,6 +16,7 @@ pub enum BlockTask {
 pub struct MaybeTrustedBlock {
     pub block: Block,
     pub ghostdag_data: Option<Arc<GhostdagData>>,
+    pub update_virtual: bool,
 }
 
 /// An internal struct used to manage a block processing task

@@ -26,8 +26,7 @@ impl HeaderProcessor {
         ctx: &mut HeaderProcessingContext,
         header: &Header,
     ) -> BlockProcessResult<()> {
-        let (past_median_time, window) =
-            self.past_median_time_manager.calc_past_median_time(&ctx.get_ghostdag_data().clone().unwrap());
+        let (past_median_time, window) = self.past_median_time_manager.calc_past_median_time(&ctx.get_ghostdag_data().unwrap());
         ctx.block_window_for_past_median_time = Some(window);
 
         if header.timestamp <= past_median_time {

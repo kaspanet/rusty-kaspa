@@ -55,7 +55,7 @@ impl KaspaNetworkSimulator {
             } else {
                 create_temp_db()
             };
-            let consensus = Arc::new(Consensus::with_perf_params(db, &self.params, &self.perf_params));
+            let consensus = Arc::new(Consensus::with_perf_params(db, &self.params, &self.perf_params, true));
             let handles = consensus.init();
             let (sk, pk) = secp.generate_keypair(&mut rng);
             let miner_process = Box::new(Miner::new(

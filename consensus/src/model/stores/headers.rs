@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use super::{
     database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter},
-    errors::StoreError,
+    errors::{StoreError, StoreResult},
     DB,
 };
 use consensus_core::{header::Header, BlockHasher, BlockLevel};
@@ -61,6 +61,10 @@ impl DbHeadersStore {
 
     pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {
         Self::new(Arc::clone(&self.db), cache_size)
+    }
+
+    pub fn has(&self, hash: Hash) -> StoreResult<bool> {
+        self.headers_access.has(hash)
     }
 
     pub fn insert_batch(

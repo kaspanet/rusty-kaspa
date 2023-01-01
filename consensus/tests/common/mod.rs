@@ -5,7 +5,7 @@ use std::{
 };
 
 #[allow(dead_code)] // Usage by integration tests is ignored by the compiler for some reason
-pub fn open_file(file_path: &str) -> File {
+pub fn open_file(file_path: &Path) -> File {
     let file_res = File::open(file_path);
     match file_res {
         Ok(file) => file,
@@ -18,6 +18,15 @@ pub fn open_file(file_path: &str) -> File {
             _ => panic!("{}", e),
         },
     }
+}
+
+#[allow(dead_code)] // Usage by integration tests is ignored by the compiler for some reason
+pub fn file_exists(file_path: &Path) -> bool {
+    if !file_path.exists() {
+        // In debug mode the working directory is often the top-level workspace folder
+        return Path::new("consensus").join(file_path).exists();
+    }
+    true
 }
 
 #[allow(dead_code)] // Usage by integration tests is ignored by the compiler

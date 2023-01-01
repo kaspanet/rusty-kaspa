@@ -249,7 +249,7 @@ impl GhostdagStoreReader for DbGhostdagStore {
     }
 
     fn get_blue_work(&self, hash: Hash) -> Result<BlueWorkType, StoreError> {
-        Ok(self.access.read(hash).expect(&format!("blaaa {} {}", self.level, hash)).blue_work)
+        Ok(self.access.read(hash)?.blue_work)
     }
 
     fn get_selected_parent(&self, hash: Hash) -> Result<Hash, StoreError> {

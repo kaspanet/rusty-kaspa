@@ -12,11 +12,10 @@ use consensus_core::{
 };
 use hashes::Hash;
 use rocksdb::WriteBatch;
-use std::{fmt::Display, sync::Arc};
+use std::{error::Error, fmt::Display, sync::Arc};
 
 pub trait UtxoSetStoreReader {
     fn get(&self, outpoint: &TransactionOutpoint) -> Result<Arc<UtxoEntry>, StoreError>;
-    // TODO: UTXO entry iterator
 }
 
 pub trait UtxoSetStore: UtxoSetStoreReader {
@@ -24,6 +23,7 @@ pub trait UtxoSetStore: UtxoSetStoreReader {
     /// Note we define `self` as `mut` in order to require write access even though the compiler does not require it.
     /// This is because concurrent readers can interfere with cache consistency.  
     fn write_diff(&mut self, utxo_diff: &UtxoDiff) -> Result<(), StoreError>;
+    fn write_many(&self, utxos: &[(TransactionOutpoint, UtxoEntry)]) -> Result<(), StoreError>;
 }
 
 pub const UTXO_KEY_SIZE: usize = hashes::HASH_SIZE + std::mem::size_of::<TransactionIndexType>();
@@ -86,6 +86,20 @@ impl DbUtxoSetStore {
         self.access.write_many(&mut writer, &mut utxo_diff.added().iter().map(|(o, e)| ((*o).into(), Arc::new(e.clone()))))?;
         Ok(())
     }
+
+    pub fn iterator(&self) -> impl Iterator<Item = Result<(TransactionOutpoint, Arc<UtxoEntry>), Box<dyn Error>>> + '_ {
+        self.access.iterator().map(|iter_result| match iter_result {
+            Ok((key_bytes, utxo_entry)) => match <[u8; UTXO_KEY_SIZE]>::try_from(&key_bytes[..]) {
+                Ok(utxo_key_slice) => {
+                    let utxo_key = UtxoKey(utxo_key_slice);
+                    let outpoint: TransactionOutpoint = utxo_key.into();
+                    Ok((outpoint, utxo_entry))
+                }
+                Err(e) => Err(e.into()),
+            },
+            Err(e) => Err(e),
+        })
+    }
 }
 
 impl UtxoView for DbUtxoSetStore {
@@ -105,6 +119,12 @@ impl UtxoSetStore for DbUtxoSetStore {
         let mut writer = DirectDbWriter::new(&self.db);
         self.access.delete_many(&mut writer, &mut utxo_diff.removed().keys().map(|o| (*o).into()))?;
         self.access.write_many(&mut writer, &mut utxo_diff.added().iter().map(|(o, e)| ((*o).into(), Arc::new(e.clone()))))?;
+        Ok(())
+    }
+
+    fn write_many(&self, utxos: &[(TransactionOutpoint, UtxoEntry)]) -> Result<(), StoreError> {
+        let mut writer = DirectDbWriter::new(&self.db);
+        self.access.write_many(&mut writer, &mut utxos.iter().map(|(o, e)| ((*o).into(), Arc::new(e.clone()))))?;
         Ok(())
     }
 }

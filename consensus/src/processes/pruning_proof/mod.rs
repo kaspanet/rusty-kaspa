@@ -5,6 +5,7 @@ use std::{
 };
 
 use consensus_core::{
+    block::Block,
     blockhash::{BlockHashes, ORIGIN},
     header::Header,
     pruning::PruningPointProof,
@@ -12,22 +13,28 @@ use consensus_core::{
 };
 use hashes::Hash;
 use itertools::Itertools;
-use kaspa_core::trace;
+use kaspa_core::{info, trace};
 use parking_lot::RwLock;
 use rocksdb::WriteBatch;
 
 use crate::{
-    consensus::DbGhostdagManager,
+    consensus::{DbGhostdagManager, VirtualStores},
     model::{
         services::{
             reachability::{MTReachabilityService, ReachabilityService},
             relations::MTRelationsService,
         },
         stores::{
+            depth::DbDepthStore,
             ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStore, GhostdagStoreReader},
             headers::{DbHeadersStore, HeaderStore, HeaderStoreReader},
-            reachability::{DbReachabilityStore, ReachabilityStoreReader, StagingReachabilityStore},
+            headers_selected_tip::{DbHeadersSelectedTipStore, HeadersSelectedTipStore},
+            past_pruning_points::{DbPastPruningPointsStore, PastPruningPointsStore},
+            pruning::{DbPruningStore, PruningStore},
+            reachability::{DbReachabilityStore, StagingReachabilityStore},
             relations::{DbRelationsStore, MemoryRelationsStore, RelationsStore},
+            tips::DbTipsStore,
+            virtual_state::{VirtualState, VirtualStateStore},
             DB,
         },
     },
@@ -46,6 +53,13 @@ pub struct PruningProofManager {
     reachability_service: MTReachabilityService<DbReachabilityStore>,
     ghostdag_stores: Vec<Arc<DbGhostdagStore>>,
     relations_stores: Vec<Arc<RwLock<DbRelationsStore>>>,
+    pruning_store: Arc<RwLock<DbPruningStore>>,
+    past_pruning_points_store: Arc<DbPastPruningPointsStore>,
+    virtual_stores: Arc<RwLock<VirtualStores>>,
+    body_tips_store: Arc<RwLock<DbTipsStore>>,
+    headers_selected_tip_store: Arc<RwLock<DbHeadersSelectedTipStore>>,
+    depth_store: Arc<DbDepthStore>,
+
     ghostdag_managers: Vec<DbGhostdagManager>,
 
     max_block_level: BlockLevel,
@@ -141,6 +155,7 @@ impl GhostdagStoreReader for GhostdagStoreMock {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 impl PruningProofManager {
     pub fn new(
         db: Arc<DB>,
@@ -150,6 +165,12 @@ impl PruningProofManager {
         reachability_service: MTReachabilityService<DbReachabilityStore>,
         ghostdag_stores: Vec<Arc<DbGhostdagStore>>,
         relations_stores: Vec<Arc<RwLock<DbRelationsStore>>>,
+        pruning_store: Arc<RwLock<DbPruningStore>>,
+        past_pruning_points_store: Arc<DbPastPruningPointsStore>,
+        virtual_stores: Arc<RwLock<VirtualStores>>,
+        body_tips_store: Arc<RwLock<DbTipsStore>>,
+        headers_selected_tip_store: Arc<RwLock<DbHeadersSelectedTipStore>>,
+        depth_store: Arc<DbDepthStore>,
         ghostdag_managers: Vec<DbGhostdagManager>,
         max_block_level: BlockLevel,
         genesis_hash: Hash,
@@ -162,18 +183,56 @@ impl PruningProofManager {
             reachability_service,
             ghostdag_stores,
             relations_stores,
+            pruning_store,
+            past_pruning_points_store,
+            virtual_stores,
+            body_tips_store,
+            headers_selected_tip_store,
+            depth_store,
             ghostdag_managers,
             max_block_level,
             genesis_hash,
         }
     }
 
-    pub fn apply_proof(&self, proof: PruningPointProof) {
+    pub fn import_pruning_points(&self, pruning_points: &[Arc<Header>]) {
+        // TODO: Also write validate_pruning_points
+        for (i, header) in pruning_points.iter().enumerate() {
+            self.past_pruning_points_store.insert(i as u64, header.hash).unwrap();
+
+            if self.headers_store.has(header.hash).unwrap() {
+                continue;
+            }
+
+            let state = pow::State::new(header);
+            let (_, pow) = state.check_pow(header.nonce);
+            let signed_block_level = self.max_block_level as i64 - pow.bits() as i64;
+            let block_level = max(signed_block_level, 0) as BlockLevel;
+            self.headers_store.insert(header.hash, header.clone(), block_level).unwrap();
+        }
+        let current_pp = pruning_points.last().unwrap().hash;
+        info!("Setting {current_pp} as the current pruning point");
+        self.pruning_store.write().set(current_pp, current_pp, (pruning_points.len() - 1) as u64).unwrap();
+    }
+
+    pub fn apply_proof(&self, mut proof: PruningPointProof, trusted_blocks: &[(Block, GhostdagData)]) {
+        let proof_zero_set = BlockHashSet::from_iter(proof[0].iter().map(|header| header.hash));
+        let mut trusted_gd_map = BlockHashMap::new();
+        for (block, gd) in trusted_blocks.iter() {
+            trusted_gd_map.insert(block.hash(), gd.clone());
+            if proof_zero_set.contains(&block.header.hash) {
+                continue;
+            }
+
+            proof[0].push(block.header.clone());
+        }
+
+        proof[0].sort_by(|a, b| a.blue_work.cmp(&b.blue_work));
         self.populate_reachability(&proof);
         for (level, headers) in proof.iter().enumerate() {
             trace!("Applying level {} in pruning point proof", level);
             self.ghostdag_stores[level].insert(ORIGIN, self.ghostdag_managers[level].origin_ghostdag_data()).unwrap();
-            for (i, header) in headers.iter().enumerate() {
+            for header in headers.iter() {
                 let parents = self
                     .parents_manager
                     .parents_at_level(header, level as BlockLevel)
@@ -182,41 +241,67 @@ impl PruningProofManager {
                     .filter(|parent| self.ghostdag_stores[level].has(*parent).unwrap())
                     .collect_vec();
 
-                let parents = Arc::new(if parents.is_empty() {
-                    if i != 0 {
-                        panic!("the header {} is expected to have at least one parent at level {}", header.hash, level);
-                    }
-                    vec![ORIGIN]
-                } else {
-                    parents
-                });
+                let parents = Arc::new(if parents.is_empty() { vec![ORIGIN] } else { parents });
 
                 self.relations_stores[level].write().insert(header.hash, parents.clone()).unwrap();
-                let mut gd = if header.hash == self.genesis_hash {
+                let gd = if header.hash == self.genesis_hash {
                     self.ghostdag_managers[level].genesis_ghostdag_data()
+                } else if level == 0 {
+                    if let Some(gd) = trusted_gd_map.get(&header.hash) {
+                        gd.clone()
+                    } else {
+                        let calculated_gd = self.ghostdag_managers[level].ghostdag(&parents);
+                        // Override the ghostdag data with the real blue score and blue work
+                        GhostdagData {
+                            blue_score: header.blue_score,
+                            blue_work: header.blue_work,
+                            selected_parent: calculated_gd.selected_parent,
+                            mergeset_blues: calculated_gd.mergeset_blues.clone(),
+                            mergeset_reds: calculated_gd.mergeset_reds.clone(),
+                            blues_anticone_sizes: calculated_gd.blues_anticone_sizes.clone(),
+                        }
+                    }
                 } else {
                     self.ghostdag_managers[level].ghostdag(&parents)
                 };
-                if level == 0 {
-                    // Override the ghostdag data with the real blue score and blue work
-                    gd = GhostdagData {
-                        blue_score: header.blue_score,
-                        blue_work: header.blue_work,
-                        selected_parent: gd.selected_parent,
-                        mergeset_blues: gd.mergeset_blues.clone(),
-                        mergeset_reds: gd.mergeset_reds.clone(),
-                        blues_anticone_sizes: gd.blues_anticone_sizes.clone(),
-                    };
-                }
                 self.ghostdag_stores[level].insert(header.hash, Arc::new(gd)).unwrap();
             }
         }
+
+        let pruning_point_header = proof[0].last().unwrap();
+        let pruning_point = pruning_point_header.hash;
+        let virtual_parents = vec![pruning_point];
+        let virtual_gd = self.ghostdag_managers[0].ghostdag(&virtual_parents);
+
+        let virtual_state = VirtualState {
+            // TODO: Use real values when possible
+            parents: virtual_parents.clone(),
+            ghostdag_data: virtual_gd,
+            daa_score: 0,
+            bits: 0,
+            multiset: Default::default(),
+            utxo_diff: Default::default(),
+            accepted_tx_ids: vec![],
+            mergeset_rewards: Default::default(),
+            mergeset_non_daa: Default::default(),
+            past_median_time: 0,
+        };
+        self.virtual_stores.write().state.set(virtual_state).unwrap();
+
+        let mut batch = WriteBatch::default();
+        self.body_tips_store.write().init_batch(&mut batch, &virtual_parents).unwrap();
+        self.headers_selected_tip_store
+            .write()
+            .set(SortableBlock { hash: pruning_point, blue_work: pruning_point_header.blue_work })
+            .unwrap();
+        // self.depth_store.insert_batch(&mut batch, pruning_point, pruning_point, pruning_point).unwrap();
+        self.db.write(batch).unwrap();
     }
 
     pub fn populate_reachability(&self, proof: &PruningPointProof) {
         let mut dag = BlockHashMap::new(); // TODO: Consider making a capacity estimation here
         let mut up_heap = BinaryHeap::new();
-        for header in proof.iter().cloned().flatten() {
+        for header in proof.iter().flatten().cloned() {
             if let Vacant(e) = dag.entry(header.hash) {
                 let state = pow::State::new(&header);
                 let (_, pow) = state.check_pow(header.nonce); // TODO: Check if pow passes
