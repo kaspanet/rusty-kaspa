@@ -723,7 +723,66 @@ opcode_list! {
     }
 
     opcode OpCheckMultiSigECDSA<0xa9, 1>(self, vm) {
-        todo!()
+        let [num_keys]: [i32; 1] = vm.dstack.pop_item()?;
+        if num_keys < 0 {
+            return Err(TxScriptError::InvalidPubKeyCount(format!("number of pubkeys {} is negative", num_keys)));
+        } else if num_keys > MAX_PUB_KEYS_PER_MUTLTISIG {
+            return Err(TxScriptError::InvalidPubKeyCount(format!("too many pubkeys {} > {}", num_keys, MAX_PUB_KEYS_PER_MUTLTISIG)));
+        }
+        let num_keys_usize = num_keys as usize;
+
+        vm.num_ops += num_keys;
+        if vm.num_ops > MAX_OPS_PER_SCRIPT {
+            return Err(TxScriptError::TooManyOperations(MAX_OPS_PER_SCRIPT));
+        }
+
+        let mut pub_keys_vec = match vm.dstack.len() >= num_keys_usize {
+            true => vm.dstack.split_off(vm.dstack.len() - num_keys_usize),
+            false => return Err(TxScriptError::EmptyStack),
+        };
+        let mut pub_keys = pub_keys_vec.iter_mut();
+
+
+        let [num_sigs]: [i32; 1] = vm.dstack.pop_item()?;
+        if num_sigs < 0 {
+            return Err(TxScriptError::InvalidSignatureCount(format!("number of signatures {} is negative", num_sigs)));
+        } else if num_sigs > num_keys {
+            return Err(TxScriptError::InvalidSignatureCount(format!("more signatures than pubkeys {} > {}", num_sigs, num_keys)));
+        }
+        let num_sigs_usize = num_sigs as usize;
+
+        let mut  signatures_vec = match vm.dstack.len() >= num_sigs_usize {
+            true => vm.dstack.split_off(vm.dstack.len() - num_sigs_usize),
+            false => return Err(TxScriptError::EmptyStack),
+        };
+        let signatures = signatures_vec.iter_mut();
+
+        let mut empty_sigs = 0usize;
+        for (sig_idx, signature) in signatures.enumerate() {
+            match signature.pop() {
+                None => {
+                    if empty_sigs != sig_idx {
+                        return Err(TxScriptError::NullFail)
+                    }
+                    empty_sigs+=1;
+                },
+                Some(typ) => {
+                    if empty_sigs == 0 {
+                        // Every check consumes the public key
+                        //TODO: check signature length (pair[0])
+                        //TODO: check public key encoding (pair[1])
+                        //TODO: calculate signature hash schnorr
+                        let hash_type = SigHashType::from_u8(typ).map_err(|e| TxScriptError::InvalidSigHashType(e.into()))?;
+                        while pub_keys.len() > num_sigs_usize - sig_idx && vm.check_ecdsa_signature(hash_type, pub_keys.next().expect("Checked larger than 0").as_slice(), signature.as_slice()).is_err() {}
+                    }
+                    if empty_sigs > 0 || pub_keys.len() > num_sigs_usize - sig_idx {
+                        return Err(TxScriptError::NullFail)
+                    }
+                }
+            }
+        }
+        vm.dstack.push_item(empty_sigs == 0);
+        Ok(())
     }
 
     opcode OpBlake2b<0xaa, 1>(self, vm) {
@@ -734,7 +793,31 @@ opcode_list! {
     }
 
     opcode OpCheckSigECDSA<0xab, 1>(self, vm) {
-        todo!()
+        let [mut sig, key] = vm.dstack.pop_raw()?;
+        // Hash type
+        match sig.pop() {
+            Some(typ) => {
+                //TODO: check signature length (pair[0])
+                //TODO: check public key encoding (pair[1])
+                //TODO: calculate signature hash schnorr
+                let hash_type = SigHashType::from_u8(typ).map_err(|e| TxScriptError::InvalidSigHashType(e.into()))?;
+                match vm.check_ecdsa_signature(hash_type, key.as_slice(), sig.as_slice()) {
+                    Ok(()) => {
+                        vm.dstack.push_item(true);
+                        Ok(())
+                    },
+                    Err(e) => {
+                        // TODO: when do we return error?
+                        vm.dstack.push_item(false);
+                        Ok(())
+                    }
+                }
+            }
+            None => {
+                vm.dstack.push_item(false);
+                Ok(())
+            }
+        }
     }
 
     opcode OpCheckSig<0xac, 1>(self, vm) {

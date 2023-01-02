@@ -1,4 +1,4 @@
-use hashes::{Hash, Hasher, HasherBase, TransactionSigningHash, ZERO_HASH};
+use hashes::{Hash, Hasher, HasherBase, TransactionSigningHash, TransactionSigningHashECDSA, ZERO_HASH};
 
 use crate::{
     subnets::SUBNETWORK_ID_NATIVE,
@@ -167,6 +167,18 @@ pub fn calc_schnorr_signature_hash(
         .write_u64(tx.tx.gas)
         .update(payload_hash(tx))
         .write_u8(hash_type.to_u8());
+    hasher.finalize()
+}
+
+pub fn calc_ecdsa_signature_hash(
+    tx: &PopulatedTransaction,
+    input_index: usize,
+    hash_type: SigHashType,
+    reused_values: &mut SigHashReusedValues,
+) -> Hash {
+    let hash = calc_schnorr_signature_hash(tx, input_index, hash_type, reused_values);
+    let mut hasher = TransactionSigningHashECDSA::new();
+    hasher.update(hash);
     hasher.finalize()
 }
 

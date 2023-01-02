@@ -6,7 +6,7 @@ mod opcodes;
 
 use crate::caches::Cache;
 use crate::opcodes::{deserialize, OpCodeImplementation};
-use consensus_core::hashing::sighash::{calc_schnorr_signature_hash, SigHashReusedValues};
+use consensus_core::hashing::sighash::{calc_ecdsa_signature_hash, calc_schnorr_signature_hash, SigHashReusedValues};
 use consensus_core::hashing::sighash_type::SigHashType;
 use consensus_core::tx::{PopulatedTransaction, TransactionInput, UtxoEntry};
 use core::fmt::{Display, Formatter};
@@ -56,11 +56,23 @@ pub enum TxScriptError {
     InvalidSigHashType(String),
 }
 
+#[derive(Clone, Hash, PartialEq, Eq)]
+enum Signature {
+    Secp256k1(secp256k1::schnorr::Signature),
+    ECDSA(secp256k1::ecdsa::Signature),
+}
+
+#[derive(Clone, Hash, PartialEq, Eq)]
+enum PublicKey {
+    Secp256k1(secp256k1::XOnlyPublicKey),
+    ECDSA(secp256k1::PublicKey),
+}
+
 // TODO: Make it pub(crate)
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub struct SigCacheKey {
-    signature: secp256k1::schnorr::Signature,
-    pub_key: secp256k1::XOnlyPublicKey,
+    signature: Signature,
+    pub_key: PublicKey,
     message: secp256k1::Message,
 }
 
@@ -101,7 +113,7 @@ impl Display for TxScriptError {
 type Stack = Vec<Vec<u8>>;
 
 enum ScriptSource<'a> {
-    TxInput { tx: &'a PopulatedTransaction<'a>, input: &'a TransactionInput, id: usize, utxo_entry: &'a UtxoEntry },
+    TxInput { tx: &'a PopulatedTransaction<'a>, input: &'a TransactionInput, id: usize, utxo_entry: &'a UtxoEntry, is_p2sh: bool },
     StandAloneScripts(Vec<&'a [u8]>),
 }
 
@@ -130,11 +142,19 @@ impl<'a> TxScriptEngine<'a> {
         reused_values: &'a mut SigHashReusedValues,
         sig_cache: &'a Cache<SigCacheKey, Result<(), secp256k1::Error>>,
     ) -> Result<Self, TxScriptError> {
+        let pubkey_script = utxo_entry.script_public_key.script();
+        // The pubkey in P2SH is just validating the hash on the OpMultiSig script
+        // the user provides
+        let is_p2sh =
+            (pubkey_script.len() == 36) &
+                (pubkey_script[0] == opcodes::codes::OpBlake2b) &
+                (pubkey_script[1] == opcodes::codes::OpData32) &
+                (pubkey_script[pubkey_script.len() -1] == opcodes::codes::OpEqual);
         match id < tx.tx.inputs.len() {
             true => Ok(Self {
                 dstack: Default::default(),
                 astack: Default::default(),
-                script_source: ScriptSource::TxInput { tx, input, id, utxo_entry },
+                script_source: ScriptSource::TxInput { tx, input, id, utxo_entry, is_p2sh },
                 reused_values,
                 sig_cache,
                 cond_stack: Default::default(),
@@ -211,23 +231,20 @@ impl<'a> TxScriptEngine<'a> {
         // Alt stack doesn't persist
         self.astack.clear();
         self.num_ops = 0; // number of ops is per script.
-                          // TODO: some checks for p2sh
 
         script_result
     }
 
     pub fn execute(&mut self) -> Result<(), TxScriptError> {
-        let scripts = match &self.script_source {
-            ScriptSource::TxInput { input, utxo_entry, .. } => {
+        let (scripts, is_p2sh) = match &self.script_source {
+            ScriptSource::TxInput { input, utxo_entry, is_p2sh, .. } => {
                 if utxo_entry.script_public_key.version() > MAX_SCRIPT_PUBLIC_KEY_VERSION {
                     warn!("The version of the scriptPublicKey is higher than the known version - the Execute function returns true.");
                     return Ok(());
                 }
-                // TODO: check parsed prv script is push only
-                // TODO: isScriptHash(script_pubkey.script)
-                vec![input.signature_script.as_slice(), utxo_entry.script_public_key.script()]
+                (vec![input.signature_script.as_slice(), utxo_entry.script_public_key.script()], *is_p2sh)
             }
-            ScriptSource::StandAloneScripts(scripts) => scripts.clone(),
+            ScriptSource::StandAloneScripts(scripts) => (scripts.clone(), false),
         };
 
         // TODO: run all in same iterator?
@@ -242,7 +259,23 @@ impl<'a> TxScriptEngine<'a> {
             return Err(TxScriptError::FalseStackEntry);
         }
 
-        scripts.iter().filter(|s| !s.is_empty()).try_for_each(|s| self.execute_script(s))
+        let mut saved_stack: Option<Vec::<Vec<u8>>> = None;
+        scripts.iter().enumerate().filter(|(_, s) | !s.is_empty()).try_for_each(
+            |(idx, s)| {
+                // Save script in p2sh
+                if is_p2sh && idx == 1 {
+                    saved_stack = Some(self.dstack.clone());
+                }
+                self.execute_script(s)
+            })?;
+
+        if is_p2sh {
+            self.dstack = saved_stack.ok_or(TxScriptError::EmptyStack)?;
+            let script = self.dstack.pop().ok_or(TxScriptError::EmptyStack)?;
+            self.execute_script(script.as_slice())?
+        }
+        // TODO: validate exit conditions
+        Ok(())
     }
 
     #[inline]
@@ -254,7 +287,39 @@ impl<'a> TxScriptEngine<'a> {
                 let sig = secp256k1::schnorr::Signature::from_slice(sig).map_err(TxScriptError::InvalidSignature)?;
                 let sig_hash = calc_schnorr_signature_hash(tx, id, hash_type, self.reused_values);
                 let msg = secp256k1::Message::from_slice(sig_hash.as_bytes().as_slice()).unwrap();
-                let sig_cache_key = SigCacheKey { signature: sig, pub_key: pk, message: msg };
+                let sig_cache_key = SigCacheKey { signature: Signature::Secp256k1(sig), pub_key: PublicKey::Secp256k1(pk), message: msg };
+
+                match self.sig_cache.get(&sig_cache_key) {
+                    Some(valid) => valid.map_err(TxScriptError::InvalidSignature),
+                    None => {
+                        // TODO: Find a way to parallelize this part. This will be less trivial
+                        // once this code is inside the script engine.
+                        match sig.verify(&msg, &pk) {
+                            Ok(()) => {
+                                self.sig_cache.insert(sig_cache_key, Ok(()));
+                                Ok(())
+                            }
+                            Err(e) => {
+                                self.sig_cache.insert(sig_cache_key, Err(e));
+                                Err(TxScriptError::InvalidSignature(e))
+                            }
+                        }
+                    }
+                }
+            }
+            _ => Err(TxScriptError::NotATransactionInput),
+        }
+    }
+
+    fn check_ecdsa_signature(&mut self, hash_type: SigHashType, key: &[u8], sig: &[u8]) -> Result<(), TxScriptError> {
+        match self.script_source {
+            ScriptSource::TxInput { tx, id, .. } => {
+                // TODO: will crash the node. We need to replace it with a proper script engine once it's ready.
+                let pk = secp256k1::PublicKey::from_slice(key).map_err(TxScriptError::InvalidSignature)?;
+                let sig = secp256k1::ecdsa::Signature::from_compact(sig).map_err(TxScriptError::InvalidSignature)?;
+                let sig_hash = calc_ecdsa_signature_hash(tx, id, hash_type, self.reused_values);
+                let msg = secp256k1::Message::from_slice(sig_hash.as_bytes().as_slice()).unwrap();
+                let sig_cache_key = SigCacheKey { signature: Signature::ECDSA(sig), pub_key: PublicKey::ECDSA(pk), message: msg };
 
                 match self.sig_cache.get(&sig_cache_key) {
                     Some(valid) => valid.map_err(TxScriptError::InvalidSignature),
