@@ -239,4 +239,8 @@ impl Pool for OrphanPool {
     fn all(&self) -> &IdToTransactionMap {
         &self.all_orphans
     }
+
+    fn all_mut(&mut self) -> &mut IdToTransactionMap {
+        &mut self.all_orphans
+    }
 }

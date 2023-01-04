@@ -1,9 +1,6 @@
 use super::tx::MempoolTransaction;
 use consensus_core::tx::{TransactionId, TransactionOutpoint};
-use std::collections::{HashMap, HashSet};
-
-/// A set of unique transaction ids
-pub(crate) type TransactionIdSet = HashSet<TransactionId>;
+use std::collections::HashMap;
 
 /// IdToTransactionMap maps a transaction id to a mempool transaction
 pub(crate) type IdToTransactionMap = HashMap<TransactionId, MempoolTransaction>;

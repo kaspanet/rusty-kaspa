@@ -3,6 +3,7 @@ use crate::{
     cache::BlockTemplateCache,
     errors::MiningManagerResult,
     mempool::{errors::RuleResult, Mempool},
+    model::owner_txs::{OwnerSetTransactions, ScriptPublicKeySet},
 };
 use consensus_core::{
     api::DynConsensus,
@@ -124,6 +125,19 @@ impl MiningManager {
         include_orphan_pool: bool,
     ) -> (Vec<MutableTransaction>, Vec<MutableTransaction>) {
         self.mempool.read().get_all_transactions(include_transaction_pool, include_orphan_pool)
+    }
+
+    /// get_transactions_by_addresses returns the sending and receiving transactions for
+    /// a set of addresses.
+    ///
+    /// Note: a transaction is an orphan if tx.is_fully_populated() returns false.
+    pub fn get_transactions_by_addresses(
+        &self,
+        script_public_keys: &ScriptPublicKeySet,
+        include_transaction_pool: bool,
+        include_orphan_pool: bool,
+    ) -> OwnerSetTransactions {
+        self.mempool.read().get_transactions_by_addresses(script_public_keys, include_transaction_pool, include_orphan_pool)
     }
 
     pub fn transaction_count(&self, include_transaction_pool: bool, include_orphan_pool: bool) -> usize {

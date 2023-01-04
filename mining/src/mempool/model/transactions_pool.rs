@@ -1,12 +1,11 @@
-use super::{
-    super::{
+use crate::{
+    mempool::{
         config::Config,
         errors::{RuleError, RuleResult},
         model::{map::IdToTransactionMap, tx::MempoolTransaction},
+        model::{pool::Pool, utxo_set::MempoolUtxoSet},
     },
-    map::TransactionIdSet,
-    pool::Pool,
-    utxo_set::MempoolUtxoSet,
+    model::TransactionIdSet,
 };
 use consensus_core::{api::DynConsensus, tx::MutableTransaction, tx::TransactionId};
 use kaspa_core::{debug, warn};
@@ -233,5 +232,9 @@ impl TransactionsPool {
 impl Pool for TransactionsPool {
     fn all(&self) -> &IdToTransactionMap {
         &self.all_transactions
+    }
+
+    fn all_mut(&mut self) -> &mut IdToTransactionMap {
+        &mut self.all_transactions
     }
 }

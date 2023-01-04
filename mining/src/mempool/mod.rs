@@ -1,3 +1,5 @@
+use crate::model::owner_txs::{OwnerSetTransactions, ScriptPublicKeySet};
+
 use self::{
     config::Config,
     model::{orphan_pool::OrphanPool, pool::Pool, transactions_pool::TransactionsPool, utxo_set::MempoolUtxoSet},
@@ -65,7 +67,7 @@ impl Mempool {
         transaction.map(|x| x.mtx.clone())
     }
 
-    pub fn get_all_transactions(
+    pub(crate) fn get_all_transactions(
         &self,
         include_transaction_pool: bool,
         include_orphan_pool: bool,
@@ -81,7 +83,23 @@ impl Mempool {
         (transactions, orphans)
     }
 
-    pub fn transaction_count(&self, include_transaction_pool: bool, include_orphan_pool: bool) -> usize {
+    pub(crate) fn get_transactions_by_addresses(
+        &self,
+        script_public_keys: &ScriptPublicKeySet,
+        include_transaction_pool: bool,
+        include_orphan_pool: bool,
+    ) -> OwnerSetTransactions {
+        let mut owner_set = OwnerSetTransactions::default();
+        if include_transaction_pool {
+            self.transaction_pool.fill_owner_set_transactions(script_public_keys, &mut owner_set);
+        }
+        if include_orphan_pool {
+            self.orphan_pool.fill_owner_set_transactions(script_public_keys, &mut owner_set);
+        }
+        owner_set
+    }
+
+    pub(crate) fn transaction_count(&self, include_transaction_pool: bool, include_orphan_pool: bool) -> usize {
         let mut count = 0;
         if include_transaction_pool {
             count += self.transaction_pool.len()
@@ -92,7 +110,7 @@ impl Mempool {
         count
     }
 
-    pub fn block_candidate_transactions(&self) -> Vec<MutableTransaction> {
+    pub(crate) fn block_candidate_transactions(&self) -> Vec<MutableTransaction> {
         self.transaction_pool.get_all_transactions()
     }
 }
