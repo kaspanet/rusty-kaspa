@@ -91,4 +91,8 @@ impl Mempool {
         }
         count
     }
+
+    pub fn block_candidate_transactions(&self) -> Vec<MutableTransaction> {
+        self.transaction_pool.get_all_transactions()
+    }
 }

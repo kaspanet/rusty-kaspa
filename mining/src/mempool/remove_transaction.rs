@@ -1,11 +1,7 @@
 use super::{errors::RuleResult, model::pool::Pool, Mempool};
-use consensus_core::{tx::MutableTransaction, tx::TransactionId};
+use consensus_core::tx::TransactionId;
 
 impl Mempool {
-    pub(crate) fn _remove_transactions(&mut self, transactions: &[MutableTransaction], remove_redeemers: bool) -> RuleResult<()> {
-        transactions.iter().try_for_each(|x| self.remove_transaction(&x.id(), remove_redeemers))
-    }
-
     pub(crate) fn remove_transaction(&mut self, transaction_id: &TransactionId, remove_redeemers: bool) -> RuleResult<()> {
         if self.orphan_pool.has(transaction_id) {
             return self.orphan_pool.remove_orphan(transaction_id, true).map(|_| ());

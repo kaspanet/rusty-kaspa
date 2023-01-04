@@ -1,15 +1,22 @@
 use crate::{
-    block_template::builder::BlockTemplateBuilder,
+    block_template::{builder::BlockTemplateBuilder, errors::BuilderError},
+    cache::BlockTemplateCache,
+    errors::MiningManagerResult,
     mempool::{errors::RuleResult, Mempool},
 };
 use consensus_core::{
     api::DynConsensus,
+    block::BlockTemplate,
+    coinbase::MinerData,
+    errors::block::RuleError,
     tx::{MutableTransaction, Transaction, TransactionId, TransactionOutput},
 };
-use parking_lot::RwLock;
+use kaspa_core::error;
+use parking_lot::{RwLock, RwLockUpgradableReadGuard};
 
 pub struct MiningManager {
-    _block_template_builder: BlockTemplateBuilder,
+    block_template_builder: BlockTemplateBuilder,
+    block_template_cache: RwLock<BlockTemplateCache>,
     mempool: RwLock<Mempool>,
 }
 
@@ -20,13 +27,69 @@ impl MiningManager {
         relay_non_std_transactions: bool,
         max_block_mass: u64,
     ) -> MiningManager {
-        let block_template_builder = BlockTemplateBuilder::new();
+        let block_template_builder = BlockTemplateBuilder::new(consensus.clone(), max_block_mass);
         let mempool = RwLock::new(Mempool::new(consensus, target_time_per_block, relay_non_std_transactions, max_block_mass));
-        Self { _block_template_builder: block_template_builder, mempool }
+        let block_template_cache = RwLock::new(BlockTemplateCache::new());
+        Self { block_template_builder, block_template_cache, mempool }
+    }
+
+    pub fn get_block_template(&self, miner_data: &MinerData) -> MiningManagerResult<BlockTemplate> {
+        let cache_read = self.block_template_cache.upgradable_read();
+        let immutable_template = cache_read.get_immutable_cached_template();
+
+        // We first try and use a cached template if not expired
+        if let Some(immutable_template) = immutable_template {
+            drop(cache_read);
+            if immutable_template.miner_data == *miner_data {
+                return Ok(immutable_template.as_ref().clone());
+            }
+            // Miner data is new -- make the minimum changes required
+            // Note the call returns a modified clone of the cached block template
+            let block_template = self.block_template_builder.modify_block_template(miner_data, immutable_template)?;
+
+            // No point in updating cache since we have no reason to believe this coinbase will be used more
+            // than the previous one, and we want to maintain the original template caching time
+            return Ok(block_template);
+        }
+
+        // Rust rewrite:
+        // We avoid passing a mempool ref to blockTemplateBuilder by calling
+        // mempool.BlockCandidateTransactions and mempool.RemoveTransactions here.
+        // We remove recursion seen in blockTemplateBuilder.BuildBlockTemplate here.
+        let mut cache_write = RwLockUpgradableReadGuard::upgrade(cache_read);
+        loop {
+            let transactions = self.mempool.read().block_candidate_transactions();
+            match self.block_template_builder.build_block_template(miner_data, transactions) {
+                Ok(block_template) => {
+                    let block_template = cache_write.set_immutable_cached_template(block_template);
+                    return Ok(block_template.as_ref().clone());
+                }
+                Err(BuilderError::ConsensusError(RuleError::InvalidTransactionsInNewBlock(invalid_transactions))) => {
+                    let mut mempool_write = self.mempool.write();
+                    let removal_result = invalid_transactions.iter().try_for_each(|(x, _)| mempool_write.remove_transaction(x, true));
+                    drop(mempool_write);
+                    if let Err(err) = removal_result {
+                        // Original golang comment:
+                        // mempool.remove_transactions might return errors in situations that are perfectly fine in this context.
+                        // TODO: Once the mempool invariants are clear, this might return an error:
+                        // https://github.com/kaspanet/kaspad/issues/1553
+                        error!("Error from mempool.remove_transactions: {:?}", err);
+                    }
+                }
+                Err(err) => {
+                    return Err(err)?;
+                }
+            }
+        }
+    }
+
+    /// Clears the block template cache, forcing the next call to get_block_template to build a new block template.
+    pub fn clear_block_template(&self) {
+        self.block_template_cache.write().clear();
     }
 
     pub(crate) fn _block_template_builder(&self) -> &BlockTemplateBuilder {
-        &self._block_template_builder
+        &self.block_template_builder
     }
 
     /// validate_and_insert_transaction validates the given transaction, and
@@ -39,8 +102,8 @@ impl MiningManager {
         transaction: MutableTransaction,
         is_high_priority: bool,
         allow_orphan: bool,
-    ) -> RuleResult<Vec<MutableTransaction>> {
-        self.mempool.write().validate_and_insert_transaction(transaction, is_high_priority, allow_orphan)
+    ) -> MiningManagerResult<Vec<MutableTransaction>> {
+        Ok(self.mempool.write().validate_and_insert_transaction(transaction, is_high_priority, allow_orphan)?)
     }
 
     /// Try to return a mempool transaction by its id.
@@ -67,8 +130,8 @@ impl MiningManager {
         self.mempool.read().transaction_count(include_transaction_pool, include_orphan_pool)
     }
 
-    pub fn handle_new_block_transactions(&self, block_transactions: &[Transaction]) -> RuleResult<Vec<MutableTransaction>> {
-        self.mempool.write().handle_new_block_transactions(block_transactions)
+    pub fn handle_new_block_transactions(&self, block_transactions: &[Transaction]) -> MiningManagerResult<Vec<MutableTransaction>> {
+        Ok(self.mempool.write().handle_new_block_transactions(block_transactions)?)
     }
 
     pub fn revalidate_high_priority_transactions(&self) -> RuleResult<Vec<MutableTransaction>> {

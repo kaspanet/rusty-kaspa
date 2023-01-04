@@ -8,6 +8,9 @@ use crate::{
     subnets::{self, SubnetworkId},
 };
 
+/// COINBASE_TRANSACTION_INDEX is the index of the coinbase transaction in every block
+pub const COINBASE_TRANSACTION_INDEX: usize = 0;
+
 /// Represents the ID of a Kaspa transaction
 pub type TransactionId = hashes::Hash;
 
