@@ -1,5 +1,6 @@
+use std::collections::HashSet;
+
 use super::{errors::RuleResult, Mempool};
-use ahash::AHashSet;
 use consensus_core::{tx::MutableTransaction, tx::Transaction};
 
 impl Mempool {
@@ -19,7 +20,7 @@ impl Mempool {
     }
 
     fn remove_double_spends(&mut self, transaction: &Transaction) -> RuleResult<()> {
-        let mut transactions_to_remove = AHashSet::new();
+        let mut transactions_to_remove = HashSet::new();
         for input in transaction.inputs.iter() {
             if let Some(redeemer_id) = self.mempool_utxo_set.get_outpoint_owner_id(&input.previous_outpoint) {
                 transactions_to_remove.insert(*redeemer_id);

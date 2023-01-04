@@ -1866,7 +1866,6 @@ name = "mining"
 version = "0.1.0"
 dependencies = [
  "addresses",
- "ahash 0.8.2",
  "consensus-core",
  "futures-util",
  "hashes",

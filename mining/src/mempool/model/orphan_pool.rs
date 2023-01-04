@@ -2,22 +2,20 @@ use crate::mempool::{
     config::Config,
     errors::{RuleError, RuleResult},
     model::{
-        map::OutpointToIdMap,
+        map::{IdToTransactionMap, OutpointToIdMap},
+        pool::Pool,
         tx::{MempoolTransaction, OrphanTransaction},
     },
 };
-use ahash::AHashMap;
 use consensus_core::{
     api::DynConsensus,
     tx::MutableTransaction,
     tx::{TransactionId, TransactionOutpoint},
 };
 use kaspa_core::warn;
-use std::rc::Rc;
+use std::{collections::HashMap, rc::Rc};
 
-use super::{map::IdToTransactionMap, pool::Pool};
-
-type IdToOrphanMap = AHashMap<TransactionId, OrphanTransaction>;
+type IdToOrphanMap = HashMap<TransactionId, OrphanTransaction>;
 
 /// Pool of orphan transactions depending on some missing utxo entries
 ///

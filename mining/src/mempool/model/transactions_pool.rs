@@ -1,5 +1,3 @@
-use std::{rc::Rc, time::SystemTime};
-
 use super::{
     super::{
         config::Config,
@@ -10,12 +8,16 @@ use super::{
     pool::Pool,
     utxo_set::MempoolUtxoSet,
 };
-use ahash::{AHashMap, AHashSet};
 use consensus_core::{api::DynConsensus, tx::MutableTransaction, tx::TransactionId};
 use kaspa_core::{debug, warn};
+use std::{
+    collections::{HashMap, HashSet},
+    rc::Rc,
+    time::SystemTime,
+};
 
-type ParentTransactionIdsInPool = AHashMap<TransactionId, TransactionIdSet>;
-type ChainedTransactionIdsByParentId = AHashMap<TransactionId, TransactionIdSet>;
+type ParentTransactionIdsInPool = HashMap<TransactionId, TransactionIdSet>;
+type ChainedTransactionIdsByParentId = HashMap<TransactionId, TransactionIdSet>;
 
 /// Pool of transactions to be included in a block template
 ///
@@ -148,7 +150,7 @@ impl TransactionsPool {
 
     /// Is the mempool transaction identified by [transaction_id] ready for being inserted in a block template?
     pub(crate) fn _is_transaction_ready(&self, transaction_id: &TransactionId) -> bool {
-        self.parent_transaction_ids_in_pool[transaction_id].len() == 0
+        self.parent_transaction_ids_in_pool[transaction_id].is_empty()
     }
 
     pub(crate) fn _all_ready_transactions(&self) -> Vec<MutableTransaction> {
@@ -157,7 +159,7 @@ impl TransactionsPool {
     }
 
     pub(crate) fn get_parent_transaction_ids_in_pool(&self, transaction: &MutableTransaction) -> TransactionIdSet {
-        let mut parent_transaction_ids = AHashSet::with_capacity(transaction.tx.inputs.len());
+        let mut parent_transaction_ids = HashSet::with_capacity(transaction.tx.inputs.len());
         for input in transaction.tx.inputs.iter() {
             if self.has(&input.previous_outpoint.transaction_id) {
                 parent_transaction_ids.insert(input.previous_outpoint.transaction_id);

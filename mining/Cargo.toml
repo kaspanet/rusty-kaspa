@@ -18,5 +18,4 @@ futures-util.workspace = true
 smallvec.workspace = true
 rand.workspace = true
 
-ahash = "0.8.0"
 parking_lot = "0.12"

@@ -2,23 +2,24 @@ use consensus_core::{
     constants::UNACCEPTED_DAA_SCORE,
     tx::{MutableTransaction, TransactionId, VerifiableTransaction},
     tx::{TransactionOutpoint, UtxoEntry},
+    utxo::utxo_collection::UtxoCollection,
 };
 
 use crate::mempool::{
     errors::{RuleError, RuleResult},
-    model::map::{OutpointToIdMap, OutpointToUtxoEntryMap},
+    model::map::OutpointToIdMap,
 };
 
 use super::{pool::Pool, transactions_pool::TransactionsPool};
 
 pub(crate) struct MempoolUtxoSet {
-    pool_unspent_outputs: OutpointToUtxoEntryMap,
+    pool_unspent_outputs: UtxoCollection,
     outpoint_owner_id: OutpointToIdMap,
 }
 
 impl MempoolUtxoSet {
     pub(crate) fn new() -> Self {
-        Self { pool_unspent_outputs: OutpointToUtxoEntryMap::default(), outpoint_owner_id: OutpointToIdMap::default() }
+        Self { pool_unspent_outputs: UtxoCollection::default(), outpoint_owner_id: OutpointToIdMap::default() }
     }
 
     pub(crate) fn add_transaction(&mut self, transaction: &MutableTransaction) {
