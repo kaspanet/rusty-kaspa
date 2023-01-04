@@ -49,7 +49,7 @@ use consensus_core::{
     block::{Block, BlockTemplate},
     blockstatus::BlockStatus,
     coinbase::MinerData,
-    errors::tx::TxResult,
+    errors::{coinbase::CoinbaseResult, tx::TxResult},
     tx::{MutableTransaction, Transaction},
     BlockHashSet,
 };
@@ -467,6 +467,10 @@ impl ConsensusApi for Consensus {
 
     fn get_virtual_daa_score(self: Arc<Self>) -> u64 {
         self.virtual_processor.virtual_stores.read().state.get().unwrap().daa_score
+    }
+
+    fn modify_coinbase_payload(self: Arc<Self>, payload: Vec<u8>, miner_data: &MinerData) -> CoinbaseResult<Vec<u8>> {
+        self.coinbase_manager.modify_coinbase_payload(payload, miner_data)
     }
 }
 

@@ -10,7 +10,7 @@ use consensus_core::{
     block::{Block, BlockTemplate, MutableBlock},
     blockstatus::BlockStatus,
     coinbase::MinerData,
-    errors::{block::RuleError, tx::TxResult},
+    errors::{block::RuleError, coinbase::CoinbaseResult, tx::TxResult},
     header::Header,
     merkle::calc_hash_merkle_root,
     subnets::SUBNETWORK_ID_COINBASE,
@@ -51,6 +51,10 @@ pub struct TestConsensus {
 impl TestConsensus {
     pub fn new(db: Arc<DB>, params: &Params) -> Self {
         Self { consensus: Arc::new(Consensus::new(db, params)), params: params.clone(), temp_db_lifetime: Default::default() }
+    }
+
+    pub fn consensus(&self) -> Arc<Consensus> {
+        self.consensus.clone()
     }
 
     pub fn create_from_temp_db(params: &Params) -> Self {
@@ -161,7 +165,7 @@ impl TestConsensus {
 
 impl ConsensusApi for TestConsensus {
     fn build_block_template(self: Arc<Self>, miner_data: MinerData, txs: Vec<Transaction>) -> Result<BlockTemplate, RuleError> {
-        self.consensus.clone().build_block_template(miner_data, txs)
+        self.consensus().build_block_template(miner_data, txs)
     }
 
     fn validate_and_insert_block(
@@ -169,19 +173,23 @@ impl ConsensusApi for TestConsensus {
         block: Block,
         update_virtual: bool,
     ) -> BoxFuture<'static, BlockProcessResult<BlockStatus>> {
-        self.consensus.clone().validate_and_insert_block(block, update_virtual)
+        self.consensus().validate_and_insert_block(block, update_virtual)
     }
 
     fn validate_mempool_transaction_and_populate(self: Arc<Self>, transaction: &mut MutableTransaction) -> TxResult<()> {
-        self.consensus.clone().validate_mempool_transaction_and_populate(transaction)
+        self.consensus().validate_mempool_transaction_and_populate(transaction)
     }
 
     fn calculate_transaction_mass(self: Arc<Self>, transaction: &Transaction) -> u64 {
-        self.consensus.clone().calculate_transaction_mass(transaction)
+        self.consensus().calculate_transaction_mass(transaction)
     }
 
     fn get_virtual_daa_score(self: Arc<Self>) -> u64 {
-        self.consensus.clone().get_virtual_daa_score()
+        self.consensus().get_virtual_daa_score()
+    }
+
+    fn modify_coinbase_payload(self: Arc<Self>, payload: Vec<u8>, miner_data: &MinerData) -> CoinbaseResult<Vec<u8>> {
+        self.consensus().modify_coinbase_payload(payload, miner_data)
     }
 }
 

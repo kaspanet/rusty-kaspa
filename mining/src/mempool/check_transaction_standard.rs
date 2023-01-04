@@ -246,7 +246,8 @@ mod tests {
         constants::{MAX_TX_IN_SEQUENCE_NUM, SOMPI_PER_KASPA, TX_VERSION},
         errors::{
             block::{BlockProcessResult, RuleError},
-            tx::{TxResult, TxRuleError},
+            coinbase::CoinbaseResult,
+            tx::TxResult,
         },
         subnets::SUBNETWORK_ID_NATIVE,
         tx::{ScriptPublicKey, ScriptVec, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput},
@@ -259,7 +260,7 @@ mod tests {
 
     impl ConsensusApi for ConsensusMock {
         fn build_block_template(self: Arc<Self>, _miner_data: MinerData, _txs: Vec<Transaction>) -> Result<BlockTemplate, RuleError> {
-            Err(RuleError::InvalidPoW)
+            todo!()
         }
 
         fn validate_and_insert_block(
@@ -270,16 +271,20 @@ mod tests {
             todo!()
         }
 
-        fn validate_mempool_transaction_and_populate(self: Arc<Self>, _transaction: &mut MutableTransaction) -> TxResult<()> {
-            Err(TxRuleError::TxHasGas)
+        fn validate_mempool_transaction_and_populate(self: Arc<Self>, _: &mut MutableTransaction) -> TxResult<()> {
+            todo!()
         }
 
-        fn calculate_transaction_mass(self: Arc<Self>, _transaction: &Transaction) -> u64 {
+        fn calculate_transaction_mass(self: Arc<Self>, _: &Transaction) -> u64 {
             0
         }
 
         fn get_virtual_daa_score(self: Arc<Self>) -> u64 {
             0
+        }
+
+        fn modify_coinbase_payload(self: Arc<Self>, _: Vec<u8>, _: &MinerData) -> CoinbaseResult<Vec<u8>> {
+            todo!()
         }
     }
 
