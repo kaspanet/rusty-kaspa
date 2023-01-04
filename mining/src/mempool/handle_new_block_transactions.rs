@@ -1,7 +1,6 @@
-use std::collections::HashSet;
-
-use super::{errors::RuleResult, Mempool};
+use crate::mempool::{errors::RuleResult, Mempool};
 use consensus_core::{tx::MutableTransaction, tx::Transaction};
+use std::collections::HashSet;
 
 impl Mempool {
     pub(crate) fn handle_new_block_transactions(&mut self, block_transactions: &[Transaction]) -> RuleResult<Vec<MutableTransaction>> {

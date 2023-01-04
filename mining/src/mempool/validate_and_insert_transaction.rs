@@ -1,4 +1,4 @@
-use super::{
+use crate::mempool::{
     errors::{RuleError, RuleResult},
     model::{pool::Pool, tx::MempoolTransaction},
     Mempool,

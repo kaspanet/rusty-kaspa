@@ -1,16 +1,13 @@
+use crate::mempool::{
+    errors::{RuleError, RuleResult},
+    model::{map::OutpointToIdMap, pool::Pool, transactions_pool::TransactionsPool},
+};
 use consensus_core::{
     constants::UNACCEPTED_DAA_SCORE,
     tx::{MutableTransaction, TransactionId, VerifiableTransaction},
     tx::{TransactionOutpoint, UtxoEntry},
     utxo::utxo_collection::UtxoCollection,
 };
-
-use crate::mempool::{
-    errors::{RuleError, RuleResult},
-    model::map::OutpointToIdMap,
-};
-
-use super::{pool::Pool, transactions_pool::TransactionsPool};
 
 pub(crate) struct MempoolUtxoSet {
     pool_unspent_outputs: UtxoCollection,

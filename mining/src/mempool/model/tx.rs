@@ -1,13 +1,8 @@
-use std::cmp::Ordering;
-
 use consensus_core::{tx::MutableTransaction, tx::TransactionId};
+use std::cmp::Ordering;
 
 pub(crate) struct MempoolTransaction {
     pub(crate) mtx: MutableTransaction,
-
-    // Replaced by IdToParentTransactionsInPool
-    // pub(crate) parent_transactions_in_pool: IDToTransactionMap,
-    //
     pub(crate) is_high_priority: bool,
     pub(crate) added_at_daa_score: u64,
 }

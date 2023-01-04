@@ -1,6 +1,5 @@
-use consensus_core::tx::{MutableTransaction, TransactionId};
-
 use super::{map::IdToTransactionMap, tx::MempoolTransaction};
+use consensus_core::tx::{MutableTransaction, TransactionId};
 
 pub(crate) trait Pool {
     fn all(&self) -> &IdToTransactionMap;

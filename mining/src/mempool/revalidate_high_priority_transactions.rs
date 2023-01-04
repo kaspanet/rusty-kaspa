@@ -1,4 +1,4 @@
-use super::{
+use crate::mempool::{
     errors::{RuleError, RuleResult},
     model::pool::Pool,
     Mempool,
@@ -39,7 +39,7 @@ impl Mempool {
         // The clones are revalidated and, depending on result, are either re-injected into or
         // removed from the mempool.
         //
-        // This code is for benchmarking only. It it not supposed to be use in production.
+        // This code is for benchmarking only. It it not supposed to be used in production.
         let high_priority_transactions: Vec<MutableTransaction> =
             self.transaction_pool.all().values().filter_map(|x| if x.is_high_priority { Some(x.mtx.clone()) } else { None }).collect();
         for mut transaction in high_priority_transactions {

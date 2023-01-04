@@ -1,9 +1,8 @@
-use crate::stubs::ScriptClass;
-
-use super::{
+use crate::mempool::{
     errors::{NonStandardError, NonStandardResult},
     Mempool,
 };
+use crate::stubs::ScriptClass;
 use consensus_core::{
     constants::{MAX_SCRIPT_PUBLIC_KEY_VERSION, MAX_SOMPI},
     mass,

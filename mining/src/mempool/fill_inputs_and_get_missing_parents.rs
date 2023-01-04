@@ -1,4 +1,4 @@
-use super::{errors::RuleResult, model::pool::Pool, Mempool};
+use crate::mempool::{errors::RuleResult, model::pool::Pool, Mempool};
 use consensus_core::{constants::UNACCEPTED_DAA_SCORE, tx::MutableTransaction, tx::UtxoEntry};
 
 impl Mempool {
