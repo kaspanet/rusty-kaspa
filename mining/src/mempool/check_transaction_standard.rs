@@ -159,8 +159,16 @@ impl Mempool {
         //
         // The following is equivalent to (value/total_serialized_size) * (1/3) * 1000
         // without needing to do floating point math.
-        transaction_output.value as u128 * 1000 / (3 * total_serialized_size as u128)
-            < self.config.minimum_relay_transaction_fee as u128
+        //
+        // Since the multiplication may overflow a u64, 2 separate calculation paths
+        // are considered to avoid overflowing.
+        match transaction_output.value.checked_mul(1000) {
+            Some(value_1000) => value_1000 / (3 * total_serialized_size) < self.config.minimum_relay_transaction_fee,
+            None => {
+                (transaction_output.value as u128 * 1000 / (3 * total_serialized_size as u128))
+                    < self.config.minimum_relay_transaction_fee as u128
+            }
+        }
     }
 
     /// check_transaction_standard_in_context performs a series of checks on a transaction's
@@ -289,7 +297,7 @@ mod tests {
 
     #[test]
     fn test_calc_min_required_tx_relay_fee() {
-        struct TestScenario {
+        struct Test {
             name: &'static str,
             size: u64,
             minimum_relay_transaction_fee: u64,
@@ -297,7 +305,7 @@ mod tests {
         }
 
         let tests = vec![
-            TestScenario {
+            Test {
                 // Ensure combination of size and fee that are less than 1000
                 // produce a non-zero fee.
                 name: "250 bytes with relay fee of 3",
@@ -305,23 +313,23 @@ mod tests {
                 minimum_relay_transaction_fee: 3,
                 want: 3,
             },
-            TestScenario {
+            Test {
                 name: "100 bytes with default minimum relay fee",
                 size: 100,
                 minimum_relay_transaction_fee: DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE,
                 want: 100,
             },
-            TestScenario {
+            Test {
                 name: "max standard tx size with default minimum relay fee",
                 size: MAXIMUM_STANDARD_TRANSACTION_MASS,
                 minimum_relay_transaction_fee: DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE,
                 want: 100000,
             },
-            TestScenario { name: "1500 bytes with 5000 relay fee", size: 1500, minimum_relay_transaction_fee: 5000, want: 7500 },
-            TestScenario { name: "1500 bytes with 3000 relay fee", size: 1500, minimum_relay_transaction_fee: 3000, want: 4500 },
-            TestScenario { name: "782 bytes with 5000 relay fee", size: 782, minimum_relay_transaction_fee: 5000, want: 3910 },
-            TestScenario { name: "782 bytes with 3000 relay fee", size: 782, minimum_relay_transaction_fee: 3000, want: 2346 },
-            TestScenario { name: "782 bytes with 2550 relay fee", size: 782, minimum_relay_transaction_fee: 2550, want: 1994 },
+            Test { name: "1500 bytes with 5000 relay fee", size: 1500, minimum_relay_transaction_fee: 5000, want: 7500 },
+            Test { name: "1500 bytes with 3000 relay fee", size: 1500, minimum_relay_transaction_fee: 3000, want: 4500 },
+            Test { name: "782 bytes with 5000 relay fee", size: 782, minimum_relay_transaction_fee: 5000, want: 3910 },
+            Test { name: "782 bytes with 3000 relay fee", size: 782, minimum_relay_transaction_fee: 3000, want: 2346 },
+            Test { name: "782 bytes with 2550 relay fee", size: 782, minimum_relay_transaction_fee: 2550, want: 1994 },
         ];
 
         for test in tests.iter() {
@@ -350,7 +358,7 @@ mod tests {
         );
         let invalid_script_public_key = ScriptPublicKey::new(0, smallvec![0x01]);
 
-        struct TestScenario {
+        struct Test {
             name: &'static str,
             tx_out: TransactionOutput,
             minimum_relay_transaction_fee: u64,
@@ -359,48 +367,48 @@ mod tests {
 
         let tests = vec![
             // Any value is allowed with a zero relay fee.
-            TestScenario {
+            Test {
                 name: "zero value with zero relay fee",
                 tx_out: TransactionOutput::new(0, script_public_key.clone()),
                 minimum_relay_transaction_fee: 0,
                 is_dust: false,
             },
             // Zero value is dust with any relay fee"
-            TestScenario {
+            Test {
                 name: "zero value with very small tx fee",
                 tx_out: TransactionOutput::new(0, script_public_key.clone()),
                 minimum_relay_transaction_fee: 1,
                 is_dust: true,
             },
-            TestScenario {
+            Test {
                 name: "36 byte public key script with value 605",
                 tx_out: TransactionOutput::new(605, script_public_key.clone()),
                 minimum_relay_transaction_fee: 1000,
                 is_dust: true,
             },
-            TestScenario {
+            Test {
                 name: "36 byte public key script with value 606",
                 tx_out: TransactionOutput::new(606, script_public_key.clone()),
                 minimum_relay_transaction_fee: 1000,
                 is_dust: false,
             },
             // Maximum allowed value is never dust.
-            TestScenario {
+            Test {
                 name: "max sompi amount is never dust",
                 tx_out: TransactionOutput::new(MAX_SOMPI, script_public_key.clone()),
                 minimum_relay_transaction_fee: 1000,
                 is_dust: false,
             },
-            // Maximum uint64 value causes no overflow.
-            // Rust rewrite: this differs from golang version
-            TestScenario {
+            // Maximum uint64 value causes NO overflow.
+            // Rust rewrite: caution, this differs from the golang version
+            Test {
                 name: "maximum uint64 value",
                 tx_out: TransactionOutput::new(u64::MAX, script_public_key),
                 minimum_relay_transaction_fee: u64::MAX,
                 is_dust: false,
             },
             // Unspendable script_public_key due to an invalid public key script.
-            TestScenario {
+            Test {
                 name: "unspendable script_public_key",
                 tx_out: TransactionOutput::new(5000, invalid_script_public_key),
                 minimum_relay_transaction_fee: 0,
@@ -446,7 +454,7 @@ mod tests {
 
         let dummy_tx_out = TransactionOutput::new(SOMPI_PER_KASPA, dummy_script_public_key);
 
-        struct TestScenario {
+        struct Test {
             name: &'static str,
             mtx: MutableTransaction,
             is_standard: bool,
@@ -459,7 +467,7 @@ mod tests {
         }
 
         let tests = vec![
-            TestScenario {
+            Test {
                 name: "Typical pay-to-pubkey transaction",
                 mtx: new_mtx(
                     Transaction::new(
@@ -475,7 +483,7 @@ mod tests {
                 ),
                 is_standard: true,
             },
-            TestScenario {
+            Test {
                 name: "Transaction version too high",
                 mtx: new_mtx(
                     Transaction::new(
@@ -491,7 +499,7 @@ mod tests {
                 ),
                 is_standard: false,
             },
-            TestScenario {
+            Test {
                 name: "Transaction size is too large",
                 mtx: new_mtx(
                     Transaction::new(
@@ -513,7 +521,7 @@ mod tests {
                 ),
                 is_standard: false,
             },
-            TestScenario {
+            Test {
                 name: "Signature script size is too large",
                 mtx: new_mtx(
                     Transaction::new(
@@ -534,7 +542,7 @@ mod tests {
                 ),
                 is_standard: false,
             },
-            TestScenario {
+            Test {
                 name: "Valid but non standard public key script",
                 mtx: new_mtx(
                     Transaction::new(
@@ -555,7 +563,7 @@ mod tests {
                 ),
                 is_standard: false,
             },
-            TestScenario {
+            Test {
                 name: "Dust output",
                 mtx: new_mtx(
                     Transaction::new(
@@ -571,7 +579,7 @@ mod tests {
                 ),
                 is_standard: false,
             },
-            TestScenario {
+            Test {
                 name: "Null-data transaction",
                 mtx: new_mtx(
                     Transaction::new(
@@ -614,7 +622,7 @@ mod tests {
             if res.is_err() && test.is_standard {
                 println!("test_check_transaction_standard_in_isolation ({}): nonstandard when it should not be: {:?}", test.name, res);
             }
-            assert_eq!(res.is_ok(), test.is_standard);
+            assert_eq!(res.is_ok(), test.is_standard, "ensuring transaction standard-ness is as expected");
         }
     }
 }
