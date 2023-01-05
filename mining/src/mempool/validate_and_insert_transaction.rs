@@ -27,7 +27,7 @@ impl Mempool {
                 if !allow_orphan {
                     return Err(RuleError::RejectDisallowedOrphan(transaction.id()));
                 }
-                self.orphan_pool.maybe_add_orphan(transaction, is_high_priority)?;
+                self.orphan_pool.try_add_orphan(transaction, is_high_priority)?;
                 return Ok(vec![]);
             }
             Err(err) => {
@@ -73,6 +73,8 @@ impl Mempool {
         &mut self,
         accepted_transaction: &Transaction,
     ) -> RuleResult<Vec<MutableTransaction>> {
+        // Rust rewrite:
+        // - The function is relocated from OrphanPool into Mempool
         let mut added_transactions = Vec::new();
         let mut unorphaned_transactions = self.get_unorphaned_transactions_after_accepted_transaction(accepted_transaction)?;
         while !unorphaned_transactions.is_empty() {
@@ -129,15 +131,17 @@ impl Mempool {
 
     fn unorphan_transaction(&mut self, transaction_id: &TransactionId) -> RuleResult<MempoolTransaction> {
         // Rust rewrite:
-        // instead of adding the validated transaction to mempool transaction pool,
-        // we return it.
+        // - Instead of adding the validated transaction to mempool transaction pool,
+        //   we return it.
+        // - The function is relocated from OrphanPool into Mempool
 
         // Remove the transaction identified by transaction_id from the orphan pool.
         let mut transactions = self.orphan_pool.remove_orphan(transaction_id, false)?;
 
         // At this point, transactions contains exactly one transaction.
-        // The one we just removed from orphan pool.
-        let mut transaction = transactions.remove(0);
+        // The one we just removed from the orphan pool.
+        assert_eq!(transactions.len(), 1);
+        let mut transaction = transactions.pop().unwrap();
 
         self.consensus().validate_mempool_transaction_and_populate(&mut transaction.mtx)?;
         self.validate_transaction_in_context(&transaction.mtx)?;

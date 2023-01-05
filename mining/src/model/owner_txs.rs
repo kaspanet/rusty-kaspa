@@ -24,5 +24,3 @@ pub struct OwnerSetTransactions {
     pub transactions: HashMap<TransactionId, MutableTransaction>,
     pub owners: HashMap<ScriptPublicKey, OwnerTransactions>,
 }
-
-impl OwnerSetTransactions {}

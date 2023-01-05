@@ -1,11 +1,11 @@
-use super::{map::IdToTransactionMap, tx::MempoolTransaction};
+use super::{map::MempoolTransactionCollection, tx::MempoolTransaction};
 use crate::model::owner_txs::{OwnerSetTransactions, ScriptPublicKeySet};
 use consensus_core::tx::{MutableTransaction, TransactionId};
 
 pub(crate) trait Pool {
-    fn all(&self) -> &IdToTransactionMap;
+    fn all(&self) -> &MempoolTransactionCollection;
 
-    fn all_mut(&mut self) -> &mut IdToTransactionMap;
+    fn all_mut(&mut self) -> &mut MempoolTransactionCollection;
 
     fn has(&self, transaction_id: &TransactionId) -> bool {
         self.all().contains_key(transaction_id)
@@ -25,6 +25,7 @@ pub(crate) trait Pool {
         self.all().values().map(|x| x.mtx.clone()).collect()
     }
 
+    /// Fills owner transactions for a set of script public keys.
     fn fill_owner_set_transactions(&self, script_public_keys: &ScriptPublicKeySet, owner_set: &mut OwnerSetTransactions) {
         script_public_keys.iter().for_each(|script_public_key| {
             let owner = owner_set.owners.entry(script_public_key.clone()).or_default();

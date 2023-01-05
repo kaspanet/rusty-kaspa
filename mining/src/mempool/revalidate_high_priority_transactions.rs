@@ -29,7 +29,7 @@ impl Mempool {
                 }
             }
         }
-        // The mempool remaining valid high priority mutable transactions are cloned
+        // The remaining valid high priority mutable transactions in the mempool are cloned
         // (because they leave the mempool) and returned.
         Ok(self.transaction_pool.all().values().filter_map(|x| if x.is_high_priority { Some(x.mtx.clone()) } else { None }).collect())
     }
@@ -40,6 +40,7 @@ impl Mempool {
         // removed from the mempool.
         //
         // This code is for benchmarking only. It it not supposed to be used in production.
+        // TODO: Remove the less efficient function.
         let high_priority_transactions: Vec<MutableTransaction> =
             self.transaction_pool.all().values().filter_map(|x| if x.is_high_priority { Some(x.mtx.clone()) } else { None }).collect();
         for mut transaction in high_priority_transactions {

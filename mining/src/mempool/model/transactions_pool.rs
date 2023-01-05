@@ -2,8 +2,7 @@ use crate::{
     mempool::{
         config::Config,
         errors::{RuleError, RuleResult},
-        model::{map::IdToTransactionMap, tx::MempoolTransaction},
-        model::{pool::Pool, utxo_set::MempoolUtxoSet},
+        model::{map::MempoolTransactionCollection, pool::Pool, tx::MempoolTransaction, utxo_set::MempoolUtxoSet},
     },
     model::TransactionIdSet,
 };
@@ -38,11 +37,11 @@ type ChainedTransactionIdsByParentId = HashMap<TransactionId, TransactionIdSet>;
 /// - transactionsOrderedByFeeRate is dropped and replaced by an in-place vector
 ///   of low-priority transactions sorted by fee rates. This design might eventually
 ///   prove to be sub-optimal, in which case an index should be implemented, probably
-///   requiring smart pointers eventually.
+///   requiring smart pointers eventually or an indirection stage too.
 pub(crate) struct TransactionsPool {
     consensus: DynConsensus,
     config: Rc<Config>,
-    all_transactions: IdToTransactionMap,
+    all_transactions: MempoolTransactionCollection,
     parent_transaction_ids_in_pool: ParentTransactionIdsInPool,
     chained_transaction_ids_by_parent_id: ChainedTransactionIdsByParentId,
     last_expire_scan_daa_score: u64,
@@ -55,7 +54,7 @@ impl TransactionsPool {
         Self {
             consensus,
             config,
-            all_transactions: IdToTransactionMap::default(),
+            all_transactions: MempoolTransactionCollection::default(),
             parent_transaction_ids_in_pool: ParentTransactionIdsInPool::default(),
             chained_transaction_ids_by_parent_id: ChainedTransactionIdsByParentId::default(),
             last_expire_scan_daa_score: 0,
@@ -148,13 +147,18 @@ impl TransactionsPool {
     }
 
     /// Is the mempool transaction identified by [transaction_id] ready for being inserted in a block template?
-    pub(crate) fn _is_transaction_ready(&self, transaction_id: &TransactionId) -> bool {
+    pub(crate) fn is_transaction_ready(&self, transaction_id: &TransactionId) -> bool {
         self.parent_transaction_ids_in_pool[transaction_id].is_empty()
     }
 
-    pub(crate) fn _all_ready_transactions(&self) -> Vec<MutableTransaction> {
+    /// all_ready_transactions returns all fully populated mempool transactions having no parents in the mempool.
+    /// These transactions are ready for being inserted in a block template.
+    pub(crate) fn all_ready_transactions(&self) -> Vec<MutableTransaction> {
         // The returned transactions are leaving the mempool so they are cloned
-        self.all_transactions.values().filter(|x| self._is_transaction_ready(&x.id())).map(|x| x.mtx.clone()).collect()
+        self.all_transactions
+            .values()
+            .filter_map(|x| if self.is_transaction_ready(&x.id()) { Some(x.mtx.clone()) } else { None })
+            .collect()
     }
 
     pub(crate) fn get_parent_transaction_ids_in_pool(&self, transaction: &MutableTransaction) -> TransactionIdSet {
@@ -192,7 +196,7 @@ impl TransactionsPool {
         // The caller is golang validateAndInsertTransaction equivalent.
         // This behavior differs from golang impl.
         let mut transactions_to_remove = Vec::new();
-        if self.len() as u64 > self.config.maximum_transaction_count {
+        if self.len() > self.config.maximum_transaction_count as usize {
             // TODO: consider introducing an index on all_transactions low-priority items instead.
             //
             // Sorting this vector here may be sub-optimal compared with maintaining a sorted
@@ -220,21 +224,17 @@ impl TransactionsPool {
         Ok(transactions_to_remove.iter().map(|x| x.id()).collect())
     }
 
-    // pub(crate) fn get_transactions_by_addresses(&self) -> RuleResult<IOScriptToTransaction> {
-    //     todo!()
-    // }
-
     pub(crate) fn get_all_transactions(&self) -> Vec<MutableTransaction> {
         self.all().values().map(|x| x.mtx.clone()).collect()
     }
 }
 
 impl Pool for TransactionsPool {
-    fn all(&self) -> &IdToTransactionMap {
+    fn all(&self) -> &MempoolTransactionCollection {
         &self.all_transactions
     }
 
-    fn all_mut(&mut self) -> &mut IdToTransactionMap {
+    fn all_mut(&mut self) -> &mut MempoolTransactionCollection {
         &mut self.all_transactions
     }
 }

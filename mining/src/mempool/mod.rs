@@ -111,6 +111,6 @@ impl Mempool {
     }
 
     pub(crate) fn block_candidate_transactions(&self) -> Vec<MutableTransaction> {
-        self.transaction_pool.get_all_transactions()
+        self.transaction_pool.all_ready_transactions()
     }
 }

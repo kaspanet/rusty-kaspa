@@ -41,5 +41,3 @@ impl PartialEq for MempoolTransaction {
         self.fee_rate() == other.fee_rate()
     }
 }
-
-pub(crate) type OrphanTransaction = MempoolTransaction;

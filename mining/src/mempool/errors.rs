@@ -6,14 +6,15 @@ use thiserror::Error;
 
 #[derive(Error, Debug, Clone)]
 pub enum RuleError {
-    #[error("")]
-    RejectInvalid,
-
     /// A consensus transaction rule error
+    ///
+    /// Note that following variants are converted:
+    ///
+    /// - TxRuleError::ImmatureCoinbaseSpend => RuleError::RejectImmatureSpend
+    /// - TxRuleError::MissingTxOutpoints => RuleError::RejectMissingOutpoint
     #[error(transparent)]
     RejectTxRule(TxRuleError),
 
-    /// Should never be displayed since intercepted by validate_and_insert_transaction and turned into a call to maybe_orphan
     #[error("at least one outpoint of transaction is lacking a matching UTXO entry")]
     RejectMissingOutpoint,
 

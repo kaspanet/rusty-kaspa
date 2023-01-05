@@ -1,11 +1,14 @@
-use crate::mempool::{
-    config::Config,
-    errors::{RuleError, RuleResult},
-    model::{
-        map::{IdToTransactionMap, OutpointToIdMap},
-        pool::Pool,
-        tx::{MempoolTransaction, OrphanTransaction},
+use crate::{
+    mempool::{
+        config::Config,
+        errors::{RuleError, RuleResult},
+        model::{
+            map::{MempoolTransactionCollection, OutpointIndex},
+            pool::Pool,
+            tx::MempoolTransaction,
+        },
     },
+    model::TransactionIdSet,
 };
 use consensus_core::{
     api::DynConsensus,
@@ -13,9 +16,7 @@ use consensus_core::{
     tx::{TransactionId, TransactionOutpoint},
 };
 use kaspa_core::warn;
-use std::{collections::HashMap, rc::Rc};
-
-type IdToOrphanMap = HashMap<TransactionId, OrphanTransaction>;
+use std::rc::Rc;
 
 /// Pool of orphan transactions depending on some missing utxo entries
 ///
@@ -35,8 +36,8 @@ type IdToOrphanMap = HashMap<TransactionId, OrphanTransaction>;
 pub(crate) struct OrphanPool {
     consensus: DynConsensus,
     config: Rc<Config>,
-    all_orphans: IdToOrphanMap,
-    orphan_ids_by_previous_outpoint: OutpointToIdMap,
+    all_orphans: MempoolTransactionCollection,
+    orphan_ids_by_previous_outpoint: OutpointIndex,
     last_expire_scan: u64,
 }
 
@@ -45,8 +46,8 @@ impl OrphanPool {
         Self {
             consensus,
             config,
-            all_orphans: IdToOrphanMap::new(),
-            orphan_ids_by_previous_outpoint: OutpointToIdMap::new(),
+            all_orphans: MempoolTransactionCollection::new(),
+            orphan_ids_by_previous_outpoint: OutpointIndex::new(),
             last_expire_scan: 0,
         }
     }
@@ -55,16 +56,19 @@ impl OrphanPool {
         self.consensus.clone()
     }
 
-    pub(crate) fn outpoint_orphan(&self, outpoint: &TransactionOutpoint) -> Option<&OrphanTransaction> {
+    pub(crate) fn outpoint_orphan(&self, outpoint: &TransactionOutpoint) -> Option<&MempoolTransaction> {
         self.orphan_ids_by_previous_outpoint.get(outpoint).and_then(|id| self.all_orphans.get(id))
     }
 
-    pub(crate) fn outpoint_orphan_mut(&mut self, outpoint: &TransactionOutpoint) -> Option<&mut OrphanTransaction> {
+    pub(crate) fn outpoint_orphan_mut(&mut self, outpoint: &TransactionOutpoint) -> Option<&mut MempoolTransaction> {
         self.orphan_ids_by_previous_outpoint.get(outpoint).and_then(|id| self.all_orphans.get_mut(id))
     }
 
-    pub(crate) fn get_redeemer_ids(&self, transaction_id: &TransactionId) -> Vec<TransactionId> {
-        let mut redeemers = Vec::new();
+    pub(crate) fn get_redeemer_ids(&self, transaction_id: &TransactionId) -> TransactionIdSet {
+        // Rust rewrite:
+        // Recursion seen in removeOrphan -> removeRedeemersOf -> removeOrphan is solved
+        // here by establishing and returning the set of all direct and indirect redeemers.
+        let mut redeemers = TransactionIdSet::new();
         if let Some(transaction) = self.all_orphans.get(transaction_id) {
             let mut stack = vec![transaction];
             while !stack.is_empty() {
@@ -73,8 +77,12 @@ impl OrphanPool {
                 for i in 0..transaction.mtx.tx.outputs.len() {
                     outpoint.index = i as u32;
                     if let Some(orphan) = self.outpoint_orphan(&outpoint) {
-                        stack.push(orphan);
-                        redeemers.push(orphan.id());
+                        let orphan_id = orphan.id();
+                        // Do no revisit transactions
+                        if !redeemers.contains(&orphan_id) {
+                            stack.push(orphan);
+                            redeemers.insert(orphan_id);
+                        }
                     }
                 }
             }
@@ -82,7 +90,8 @@ impl OrphanPool {
         redeemers
     }
 
-    pub(crate) fn maybe_add_orphan(&mut self, transaction: MutableTransaction, is_high_priority: bool) -> RuleResult<()> {
+    pub(crate) fn try_add_orphan(&mut self, transaction: MutableTransaction, is_high_priority: bool) -> RuleResult<()> {
+        // Rust rewrite: original name is maybeAddOrphan
         if self.config.maximum_orphan_transaction_count == 0 {
             // TODO: determine how/why this may happen
             return Ok(());
@@ -154,9 +163,13 @@ impl OrphanPool {
         transaction_id: &TransactionId,
         remove_redeemers: bool,
     ) -> RuleResult<Vec<MempoolTransaction>> {
+        // Rust rewrite:
+        // - the call cycle removeOrphan -> removeRedeemersOf -> removeOrphan is replaced by
+        //   the sequence get_redeemer_ids, remove_single_orphan
+        // - recursion is removed (see get_redeemer_ids)
         let mut transaction_ids_to_remove = vec![*transaction_id];
         if remove_redeemers {
-            transaction_ids_to_remove.append(&mut self.get_redeemer_ids(transaction_id));
+            transaction_ids_to_remove.extend(self.get_redeemer_ids(transaction_id));
         }
         transaction_ids_to_remove.iter().map(|x| self.remove_single_orphan(x)).collect()
     }
@@ -189,8 +202,13 @@ impl OrphanPool {
         let expired_low_priority_transactions: Vec<TransactionId> = self
             .all_orphans
             .values()
-            .filter(|x| !x.is_high_priority && virtual_daa_score - x.added_at_daa_score > self.config.orphan_expire_interval_daa_score)
-            .map(|x| x.id())
+            .filter_map(|x| {
+                if !x.is_high_priority && virtual_daa_score - x.added_at_daa_score > self.config.orphan_expire_interval_daa_score {
+                    Some(x.id())
+                } else {
+                    None
+                }
+            })
             .collect();
 
         for transaction_id in expired_low_priority_transactions.iter() {
@@ -226,21 +244,17 @@ impl OrphanPool {
         Ok(())
     }
 
-    fn get_random_non_high_priority_orphan(&self) -> Option<&OrphanTransaction> {
+    fn get_random_non_high_priority_orphan(&self) -> Option<&MempoolTransaction> {
         self.all_orphans.values().find(|x| !x.is_high_priority)
     }
-
-    // pub(crate) fn get_orphan_transactions_by_addresses(&self) -> RuleResult<IOScriptToTransaction> {
-    //     todo!()
-    // }
 }
 
 impl Pool for OrphanPool {
-    fn all(&self) -> &IdToTransactionMap {
+    fn all(&self) -> &MempoolTransactionCollection {
         &self.all_orphans
     }
 
-    fn all_mut(&mut self) -> &mut IdToTransactionMap {
+    fn all_mut(&mut self) -> &mut MempoolTransactionCollection {
         &mut self.all_orphans
     }
 }
