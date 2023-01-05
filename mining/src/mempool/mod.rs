@@ -59,7 +59,7 @@ impl Mempool {
     ) -> Option<MutableTransaction> {
         let mut transaction = None;
         if include_transaction_pool {
-            transaction = self.transaction_pool.all_transactions.get(transaction_id);
+            transaction = self.transaction_pool.all().get(transaction_id);
         }
         if transaction.is_none() && include_orphan_pool {
             transaction = self.orphan_pool.get(transaction_id);

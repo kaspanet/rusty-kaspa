@@ -42,7 +42,7 @@ type ChainedTransactionIdsByParentId = HashMap<TransactionId, TransactionIdSet>;
 pub(crate) struct TransactionsPool {
     consensus: DynConsensus,
     config: Rc<Config>,
-    pub(crate) all_transactions: IdToTransactionMap,
+    all_transactions: IdToTransactionMap,
     parent_transaction_ids_in_pool: ParentTransactionIdsInPool,
     chained_transaction_ids_by_parent_id: ChainedTransactionIdsByParentId,
     last_expire_scan_daa_score: u64,

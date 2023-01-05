@@ -18,10 +18,10 @@ impl Mempool {
         for transaction_id in ids.iter() {
             // Try to take the transaction out of the storage map so we can mutate it with some self functions.
             // The redeemers of removed transactions are removed too so the the following call may return a None.
-            if let Some(mut transaction) = self.transaction_pool.all_transactions.remove(transaction_id) {
+            if let Some(mut transaction) = self.transaction_pool.all_mut().remove(transaction_id) {
                 let is_valid = self.revalidate_transaction(&mut transaction.mtx)?;
                 // Then put the updated transaction back into the storage map.
-                self.transaction_pool.all_transactions.insert(*transaction_id, transaction);
+                self.transaction_pool.all_mut().insert(*transaction_id, transaction);
                 if !is_valid {
                     debug!("Removing transaction {0}, it failed revalidation", transaction_id);
                     // This call cleanly removes the invalid transaction and its redeemers.
@@ -46,7 +46,7 @@ impl Mempool {
             let transaction_id = transaction.id();
             if self.transaction_pool.has(&transaction_id) {
                 if self.revalidate_transaction(&mut transaction)? {
-                    if let Some(mempool_transaction) = self.transaction_pool.all_transactions.get_mut(&transaction_id) {
+                    if let Some(mempool_transaction) = self.transaction_pool.all_mut().get_mut(&transaction_id) {
                         mempool_transaction.mtx = transaction;
                     }
                 } else {
