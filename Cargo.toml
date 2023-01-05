@@ -14,9 +14,6 @@ members = [
     "crypto/addresses",
     "crypto/merkle",
     "indexes",
-    "indexes/txindex",
-    "indexes/utxoindex",
-    "indexes/addrindex",
     "rpc/core",
     "rpc/grpc",
 ]

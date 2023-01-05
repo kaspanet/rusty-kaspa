@@ -18,7 +18,7 @@ pub type ScriptVec = SmallVec<[u8; 36]>;
 pub use smallvec::smallvec as scriptvec;
 
 /// Represents a Kaspad ScriptPublicKey
-#[derive(Default, Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]
+#[derive(Default, Debug, PartialEq, Eq, Serialize, Deserialize, Clone, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct ScriptPublicKey {
     version: u16,
