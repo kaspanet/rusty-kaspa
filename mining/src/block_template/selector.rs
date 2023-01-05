@@ -107,22 +107,22 @@ impl TransactionsSelector {
             }
             let selected_tx = &self.transactions[selected_candidate.index];
 
-            // Enforce maximum transaction mass per block. Also check
-            // for overflow.
-            let next_total_mass = self.total_mass + selected_tx.calculated_mass.unwrap();
-            if next_total_mass < self.total_mass || next_total_mass > self.policy.max_block_mass {
+            // Enforce maximum transaction mass per block.
+            // Also check for overflow.
+            let next_total_mass = self.total_mass.checked_add(selected_tx.calculated_mass.unwrap());
+            if next_total_mass.is_none() || next_total_mass.unwrap() > self.policy.max_block_mass {
                 trace!("Tx {0} would exceed the max block mass. As such, stopping.", selected_tx.id());
                 break;
             }
 
-            // Enforce maximum gas per subnetwork per block. Also check
-            // for overflow.
+            // Enforce maximum gas per subnetwork per block.
+            // Also check for overflow.
             if !selected_tx.tx.subnetwork_id.is_builtin_or_native() {
                 let subnetwork_id = selected_tx.tx.subnetwork_id.clone();
                 let gas_usage = gas_usage_map.entry(subnetwork_id.clone()).or_insert(0);
                 let tx_gas = selected_tx.tx.gas;
-                let next_gas_usage = *gas_usage + tx_gas;
-                if next_gas_usage < *gas_usage || next_gas_usage > self.selectable_txs[selected_candidate.index].gas_limit {
+                let next_gas_usage = (*gas_usage).checked_add(tx_gas);
+                if next_gas_usage.is_none() || next_gas_usage.unwrap() > self.selectable_txs[selected_candidate.index].gas_limit {
                     trace!(
                         "Tx {0} would exceed the gas limit in subnetwork {1}. Removing all remaining txs from this subnetwork.",
                         selected_tx.id(),
@@ -144,7 +144,8 @@ impl TransactionsSelector {
                     }
                     continue;
                 }
-                *gas_usage = next_gas_usage;
+                // Here we know that next_gas_usage is some (since no overflow occurred) so we can safely unwrap.
+                *gas_usage = next_gas_usage.unwrap();
             }
 
             // Add the transaction to the result, increment counters, and
