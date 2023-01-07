@@ -16,12 +16,13 @@ use consensus_core::errors::block::{BlockProcessResult, RuleError};
 use consensus_core::header::Header;
 use consensus_core::subnets::SubnetworkId;
 use consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry};
-use consensus_core::{blockhash, hashing, BlockHashMap, BlueWorkType, HashMapCustomHasher};
+use consensus_core::{blockhash, hashing, BlockHashMap, BlueWorkType};
 use hashes::Hash;
 
 use flate2::read::GzDecoder;
 use futures_util::future::join_all;
 use itertools::Itertools;
+use kaspa_core::info;
 use math::Uint256;
 use muhash::MuHash;
 use serde::{Deserialize, Serialize};
@@ -764,14 +765,14 @@ async fn goref_tx_small_concurrent_test() {
 #[tokio::test]
 async fn goref_tx_big_test() {
     // TODO: add this directory to a data repo and fetch dynamically
-    json_test("tests/testdata/dags_for_json_tests/goref-1.6M-tx-10K").await
+    json_test("tests/testdata/dags_for_json_tests/goref-1.6M-tx-10K-blocks").await
 }
 
 #[ignore]
 #[tokio::test]
 async fn goref_tx_big_concurrent_test() {
     // TODO: add this file to a data repo and fetch dynamically
-    json_concurrency_test("tests/testdata/goref-1.6M-tx-10K-blocks").await
+    json_concurrency_test("tests/testdata/dags_for_json_tests/goref-1.6M-tx-10K-blocks").await
 }
 
 #[tokio::test]
@@ -779,6 +780,13 @@ async fn goref_tx_big_concurrent_test() {
 async fn goref_mainnet_test() {
     // TODO: add this directory to a data repo and fetch dynamically
     json_test("tests/testdata/dags_for_json_tests/goref-mainnet").await
+}
+
+#[tokio::test]
+#[ignore = "long"]
+async fn goref_mainnet_concurrent_test() {
+    // TODO: add this directory to a data repo and fetch dynamically
+    json_concurrency_test("tests/testdata/dags_for_json_tests/goref-mainnet").await
 }
 
 fn gzip_file_lines(path: &Path) -> impl Iterator<Item = String> {
@@ -822,7 +830,7 @@ async fn json_test(file_path: &str) {
         let proof = proof_lines
             .map(|line| {
                 let rpc_headers: Vec<RPCBlockHeader> = serde_json::from_str(&line).unwrap();
-                rpc_headers.iter().map(json_header_to_header).collect_vec()
+                rpc_headers.iter().map(|rh| Arc::new(rpc_header_to_header(rh))).collect_vec()
             })
             .collect_vec();
 
@@ -928,7 +936,7 @@ async fn json_concurrency_test(file_path: &str) {
         let proof = proof_lines
             .map(|line| {
                 let rpc_headers: Vec<RPCBlockHeader> = serde_json::from_str(&line).unwrap();
-                rpc_headers.iter().map(json_header_to_header).collect_vec()
+                rpc_headers.iter().map(|rh| Arc::new(rpc_header_to_header(rh))).collect_vec()
             })
             .collect_vec();
 
@@ -962,13 +970,14 @@ async fn json_concurrency_test(file_path: &str) {
     let chunks = lines.into_iter().chunks(1000);
     let mut iter = chunks.into_iter();
     let mut chunk = iter.next().unwrap();
-    let mut prev_joins = submit_chunk(&consensus, &mut chunk);
+    let mut prev_joins = submit_chunk(&consensus, &mut chunk, proof_exists);
 
-    for mut chunk in iter {
-        let current_joins = submit_chunk(&consensus, &mut chunk);
+    for (i, mut chunk) in iter.enumerate() {
+        let current_joins = submit_chunk(&consensus, &mut chunk, proof_exists);
         let statuses = join_all(prev_joins).await.into_iter().collect::<Result<Vec<BlockStatus>, RuleError>>().unwrap();
         assert!(statuses.iter().all(|s| s.is_utxo_valid_or_pending()));
         prev_joins = current_joins;
+        info!("Processed 1000 blocks ({} overall)", (i + 1) * 1000);
     }
 
     let statuses = join_all(prev_joins).await.into_iter().collect::<Result<Vec<BlockStatus>, RuleError>>().unwrap();
@@ -993,60 +1002,58 @@ async fn json_concurrency_test(file_path: &str) {
 fn submit_chunk(
     consensus: &TestConsensus,
     chunk: &mut impl Iterator<Item = String>,
+    proof_exists: bool,
 ) -> Vec<impl Future<Output = BlockProcessResult<BlockStatus>>> {
     let mut futures = Vec::new();
     for line in chunk {
-        let f = consensus.validate_and_insert_block(json_line_to_block(line));
+        let f = consensus.consensus.validate_and_insert_block(json_line_to_block(line), !proof_exists);
         futures.push(f);
     }
     futures
 }
 
-fn json_header_to_header(rpc_header: &RPCBlockHeader) -> Arc<Header> {
-    let mut header = Header {
-        hash: 0.into(),
-        version: rpc_header.Version,
-        parents_by_level: rpc_header
+fn rpc_header_to_header(rpc_header: &RPCBlockHeader) -> Header {
+    Header::new(
+        rpc_header.Version,
+        rpc_header
             .Parents
             .iter()
             .map(|item| item.ParentHashes.iter().map(|parent| Hash::from_str(parent).unwrap()).collect())
             .collect(),
-        hash_merkle_root: Hash::from_str(&rpc_header.HashMerkleRoot).unwrap(),
-        accepted_id_merkle_root: Hash::from_str(&rpc_header.AcceptedIDMerkleRoot).unwrap(),
-        utxo_commitment: Hash::from_str(&rpc_header.UTXOCommitment).unwrap(),
-        timestamp: rpc_header.Timestamp,
-        bits: rpc_header.Bits,
-        nonce: rpc_header.Nonce,
-        daa_score: rpc_header.DAAScore,
-        // TODO: use Uint192::from_hex when implemented
-        blue_work: BlueWorkType::from_u128(u128::from_str_radix(&rpc_header.BlueWork, 16).unwrap()),
-        blue_score: rpc_header.BlueScore,
-        pruning_point: Hash::from_str(&rpc_header.PruningPoint).unwrap(),
-    };
-    header.finalize();
-    Arc::new(header)
+        Hash::from_str(&rpc_header.HashMerkleRoot).unwrap(),
+        Hash::from_str(&rpc_header.AcceptedIDMerkleRoot).unwrap(),
+        Hash::from_str(&rpc_header.UTXOCommitment).unwrap(),
+        rpc_header.Timestamp,
+        rpc_header.Bits,
+        rpc_header.Nonce,
+        rpc_header.DAAScore,
+        BlueWorkType::from_hex(&rpc_header.BlueWork).unwrap(),
+        rpc_header.BlueScore,
+        Hash::from_str(&rpc_header.PruningPoint).unwrap(),
+    )
 }
 
 fn json_trusted_line_to_block_and_gd(line: String) -> (Block, GhostdagData) {
     let json_block_with_trusted: JsonBlockWithTrustedData = serde_json::from_str(&line).unwrap();
     let block = rpc_block_to_block(json_block_with_trusted.Block);
 
-    let mut blues_anticone_sizes = BlockHashMap::with_capacity(json_block_with_trusted.GHOSTDAG.BluesAnticoneSizes.len());
-    for entry in json_block_with_trusted.GHOSTDAG.BluesAnticoneSizes {
-        blues_anticone_sizes.insert(Hash::from_str(&entry.BlueHash).unwrap(), entry.AnticoneSize);
-    }
-
     let gd = GhostdagData {
         blue_score: json_block_with_trusted.GHOSTDAG.BlueScore,
         blue_work: BlueWorkType::from_hex(&json_block_with_trusted.GHOSTDAG.BlueWork).unwrap(),
         selected_parent: Hash::from_str(&json_block_with_trusted.GHOSTDAG.SelectedParent).unwrap(),
         mergeset_blues: Arc::new(
-            json_block_with_trusted.GHOSTDAG.MergeSetBlues.iter().map(|hex| Hash::from_str(hex).unwrap()).collect_vec(),
+            json_block_with_trusted.GHOSTDAG.MergeSetBlues.into_iter().map(|hex| Hash::from_str(&hex).unwrap()).collect_vec(),
         ),
         mergeset_reds: Arc::new(
-            json_block_with_trusted.GHOSTDAG.MergeSetReds.iter().map(|hex| Hash::from_str(hex).unwrap()).collect_vec(),
+            json_block_with_trusted.GHOSTDAG.MergeSetReds.into_iter().map(|hex| Hash::from_str(&hex).unwrap()).collect_vec(),
         ),
-        blues_anticone_sizes: HashKTypeMap::new(blues_anticone_sizes),
+        blues_anticone_sizes: HashKTypeMap::new(BlockHashMap::from_iter(
+            json_block_with_trusted
+                .GHOSTDAG
+                .BluesAnticoneSizes
+                .into_iter()
+                .map(|e| (Hash::from_str(&e.BlueHash).unwrap(), e.AnticoneSize)),
+        )),
     };
 
     (block, gd)
@@ -1082,27 +1089,10 @@ fn json_line_to_block(line: String) -> Block {
 }
 
 fn rpc_block_to_block(rpc_block: RPCBlock) -> Block {
+    let header = rpc_header_to_header(&rpc_block.Header);
+    assert_eq!(header.hash, Hash::from_str(&rpc_block.VerboseData.Hash).unwrap());
     Block::new(
-        Header {
-            hash: Hash::from_str(&rpc_block.VerboseData.Hash).unwrap(),
-            version: rpc_block.Header.Version,
-            parents_by_level: rpc_block
-                .Header
-                .Parents
-                .iter()
-                .map(|item| item.ParentHashes.iter().map(|parent| Hash::from_str(parent).unwrap()).collect())
-                .collect(),
-            hash_merkle_root: Hash::from_str(&rpc_block.Header.HashMerkleRoot).unwrap(),
-            accepted_id_merkle_root: Hash::from_str(&rpc_block.Header.AcceptedIDMerkleRoot).unwrap(),
-            utxo_commitment: Hash::from_str(&rpc_block.Header.UTXOCommitment).unwrap(),
-            timestamp: rpc_block.Header.Timestamp,
-            bits: rpc_block.Header.Bits,
-            nonce: rpc_block.Header.Nonce,
-            daa_score: rpc_block.Header.DAAScore,
-            blue_work: BlueWorkType::from_hex(&rpc_block.Header.BlueWork).unwrap(),
-            blue_score: rpc_block.Header.BlueScore,
-            pruning_point: Hash::from_str(&rpc_block.Header.PruningPoint).unwrap(),
-        },
+        header,
         rpc_block
             .Transactions
             .iter()
