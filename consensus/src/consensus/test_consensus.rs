@@ -250,6 +250,15 @@ impl Drop for TempDbLifetime {
     }
 }
 
+fn create_db_with_custom_options(db_path: PathBuf, create_if_missing: bool) -> Arc<DB> {
+    let mut opts = rocksdb::Options::default();
+    // Set parallelism to 3 as an heuristic for header/block/virtual processing
+    opts.increase_parallelism(3);
+    opts.create_if_missing(create_if_missing);
+    let db = Arc::new(DB::open(&opts, db_path.to_str().unwrap()).unwrap());
+    db
+}
+
 /// Creates a DB within a temp directory under `<OS SPECIFIC TEMP DIR>/kaspa-rust`
 /// Callers must keep the `TempDbLifetime` guard for as long as they wish the DB to exist.
 pub fn create_temp_db() -> (TempDbLifetime, Arc<DB>) {
@@ -258,7 +267,7 @@ pub fn create_temp_db() -> (TempDbLifetime, Arc<DB>) {
     fs::create_dir_all(kaspa_tempdir.as_path()).unwrap();
     let db_tempdir = tempfile::tempdir_in(kaspa_tempdir.as_path()).unwrap();
     let db_path = db_tempdir.path().to_owned();
-    let db = Arc::new(DB::open_default(db_path.to_str().unwrap()).unwrap());
+    let db = create_db_with_custom_options(db_path, true);
     (TempDbLifetime::new(db_tempdir, Arc::downgrade(&db)), db)
 }
 
@@ -272,7 +281,7 @@ pub fn create_permanent_db(db_path: String) -> (TempDbLifetime, Arc<DB>) {
             _ => panic!("{e}"),
         }
     }
-    let db = Arc::new(DB::open_default(db_dir.to_str().unwrap()).unwrap());
+    let db = create_db_with_custom_options(db_dir, true);
     (TempDbLifetime::without_destroy(Arc::downgrade(&db)), db)
 }
 
@@ -280,7 +289,6 @@ pub fn create_permanent_db(db_path: String) -> (TempDbLifetime, Arc<DB>) {
 /// Callers must keep the `TempDbLifetime` guard for as long as they wish the DB instance to exist.
 pub fn load_existing_db(db_path: String) -> (TempDbLifetime, Arc<DB>) {
     let db_dir = PathBuf::from(db_path);
-    assert!(db_dir.is_dir(), "DB directory {db_dir:?} is expected to exist");
-    let db = Arc::new(DB::open_default(db_dir.to_str().unwrap()).unwrap());
+    let db = create_db_with_custom_options(db_dir, false);
     (TempDbLifetime::without_destroy(Arc::downgrade(&db)), db)
 }
