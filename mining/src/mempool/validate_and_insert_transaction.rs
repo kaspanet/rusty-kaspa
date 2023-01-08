@@ -21,7 +21,7 @@ impl Mempool {
 
         self.validate_transaction_pre_utxo_entry(&transaction)?;
 
-        match self.fill_inputs_and_get_missing_parents(&mut transaction) {
+        match self.populate_entries_and_try_validate(&mut transaction) {
             Ok(_) => {}
             Err(RuleError::RejectMissingOutpoint) => {
                 if !allow_orphan {
@@ -37,7 +37,8 @@ impl Mempool {
 
         self.validate_transaction_in_context(&transaction)?;
 
-        // TODO: find a way to avoid the clone
+        // Here the accepted transaction is cloned in order to prevent having self borrowed immutably for the
+        // transaction reference and mutably for the call to process_orphans_after_accepted_transaction
         let accepted_transaction =
             self.transaction_pool.add_transaction(&mut self.mempool_utxo_set, transaction, is_high_priority)?.mtx.tx.clone();
 

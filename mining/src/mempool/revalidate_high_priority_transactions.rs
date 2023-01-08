@@ -63,7 +63,7 @@ impl Mempool {
 
     fn revalidate_transaction(&self, transaction: &mut MutableTransaction) -> RuleResult<bool> {
         transaction.clear_entries();
-        match self.fill_inputs_and_get_missing_parents(transaction) {
+        match self.populate_entries_and_try_validate(transaction) {
             Ok(_) => Ok(true),
             Err(RuleError::RejectMissingOutpoint) => Ok(false),
             Err(err) => Err(err),
