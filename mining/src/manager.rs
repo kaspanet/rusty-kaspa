@@ -148,7 +148,7 @@ impl MiningManager {
         Ok(self.mempool.write().handle_new_block_transactions(block_transactions)?)
     }
 
-    pub fn revalidate_high_priority_transactions(&self) -> RuleResult<Vec<MutableTransaction>> {
+    pub fn revalidate_high_priority_transactions(&self) -> RuleResult<Vec<TransactionId>> {
         self.mempool.write().revalidate_high_priority_transactions()
     }
 
