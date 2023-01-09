@@ -2,7 +2,7 @@ use crate::model::owner_txs::{OwnerSetTransactions, ScriptPublicKeySet};
 
 use self::{
     config::Config,
-    model::{orphan_pool::OrphanPool, pool::Pool, transactions_pool::TransactionsPool, utxo_set::MempoolUtxoSet},
+    model::{orphan_pool::OrphanPool, pool::Pool, transactions_pool::TransactionsPool},
 };
 use consensus_core::{
     api::DynConsensus,
@@ -37,11 +37,10 @@ pub(crate) mod validate_and_insert_transaction;
 /// - Transactions received through P2P have **low-priority**. They expire after
 ///   60 seconds and are removed if not inserted in a block for mining.
 pub(crate) struct Mempool {
-    pub(crate) config: Rc<Config>,
-    pub(crate) consensus: DynConsensus,
-    pub(crate) mempool_utxo_set: MempoolUtxoSet,
-    pub(crate) transaction_pool: TransactionsPool,
-    pub(crate) orphan_pool: OrphanPool,
+    config: Rc<Config>,
+    consensus: DynConsensus,
+    transaction_pool: TransactionsPool,
+    orphan_pool: OrphanPool,
 }
 
 impl Mempool {
@@ -57,10 +56,9 @@ impl Mempool {
 
     pub(crate) fn with_config(consensus: DynConsensus, config: Config) -> Self {
         let config = Rc::new(config);
-        let mempool_utxo_set = MempoolUtxoSet::new();
         let transaction_pool = TransactionsPool::new(consensus.clone(), config.clone());
         let orphan_pool = OrphanPool::new(consensus.clone(), config.clone());
-        Self { config, consensus, mempool_utxo_set, transaction_pool, orphan_pool }
+        Self { config, consensus, transaction_pool, orphan_pool }
     }
 
     pub(crate) fn consensus(&self) -> DynConsensus {

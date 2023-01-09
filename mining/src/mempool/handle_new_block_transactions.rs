@@ -21,7 +21,7 @@ impl Mempool {
     fn remove_double_spends(&mut self, transaction: &Transaction) -> RuleResult<()> {
         let mut transactions_to_remove = HashSet::new();
         for input in transaction.inputs.iter() {
-            if let Some(redeemer_id) = self.mempool_utxo_set.get_outpoint_owner_id(&input.previous_outpoint) {
+            if let Some(redeemer_id) = self.transaction_pool.get_outpoint_owner_id(&input.previous_outpoint) {
                 transactions_to_remove.insert(*redeemer_id);
             }
         }

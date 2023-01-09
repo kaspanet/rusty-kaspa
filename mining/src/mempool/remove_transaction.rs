@@ -28,7 +28,7 @@ impl Mempool {
 
     fn remove_transaction_from_sets(&mut self, transaction_id: &TransactionId, remove_redeemers: bool) -> RuleResult<()> {
         let removed_transaction = self.transaction_pool.remove_transaction(transaction_id)?;
-        self.mempool_utxo_set.remove_transaction(&self.transaction_pool, &removed_transaction.mtx);
+        self.transaction_pool.remove_transaction_utxos(&removed_transaction.mtx);
         self.orphan_pool.update_orphans_after_transaction_removed(&removed_transaction, remove_redeemers)
     }
 }

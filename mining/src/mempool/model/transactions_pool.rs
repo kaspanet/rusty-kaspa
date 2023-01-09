@@ -6,7 +6,11 @@ use crate::{
     },
     model::topological_index::TopologicalIndex,
 };
-use consensus_core::{api::DynConsensus, tx::MutableTransaction, tx::TransactionId};
+use consensus_core::{
+    api::DynConsensus,
+    tx::TransactionId,
+    tx::{MutableTransaction, TransactionOutpoint},
+};
 use kaspa_core::{debug, warn};
 use std::{
     collections::{hash_map::Keys, hash_set::Iter},
@@ -40,14 +44,20 @@ use super::pool::TransactionsEdges;
 pub(crate) struct TransactionsPool {
     consensus: DynConsensus,
     config: Rc<Config>,
+
+    /// Store of transactions
     all_transactions: MempoolTransactionCollection,
     /// Transactions dependencies formed by inputs present in pool - ancestor relations.
     parent_transactions: TransactionsEdges,
     /// Transactions dependencies formed by outputs present in pool - successor relations.
     chained_transactions: TransactionsEdges,
+
     last_expire_scan_daa_score: u64,
     /// last expire scan time in milliseconds
     last_expire_scan_time: u64,
+
+    /// Store of UTXOs
+    utxo_set: MempoolUtxoSet,
 }
 
 impl TransactionsPool {
@@ -60,6 +70,7 @@ impl TransactionsPool {
             chained_transactions: TransactionsEdges::default(),
             last_expire_scan_daa_score: 0,
             last_expire_scan_time: SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64,
+            utxo_set: MempoolUtxoSet::new(),
         }
     }
 
@@ -70,23 +81,18 @@ impl TransactionsPool {
     /// Add a mutable transaction to the pool
     pub(crate) fn add_transaction(
         &mut self,
-        mempool_utxo_set: &mut MempoolUtxoSet,
         transaction: MutableTransaction,
         is_high_priority: bool,
     ) -> RuleResult<&MempoolTransaction> {
         let virtual_daa_score = self.consensus().get_virtual_daa_score();
         let transaction = MempoolTransaction::new(transaction, is_high_priority, virtual_daa_score);
         let id = transaction.id();
-        self.add_mempool_transaction(mempool_utxo_set, transaction)?;
+        self.add_mempool_transaction(transaction)?;
         Ok(self.get(&id).unwrap())
     }
 
     /// Add a mempool transaction to the pool
-    pub(crate) fn add_mempool_transaction(
-        &mut self,
-        mempool_utxo_set: &mut MempoolUtxoSet,
-        transaction: MempoolTransaction,
-    ) -> RuleResult<()> {
+    pub(crate) fn add_mempool_transaction(&mut self, transaction: MempoolTransaction) -> RuleResult<()> {
         let id = transaction.id();
 
         assert!(!self.all_transactions.contains_key(&id), "transaction {} to be added already exists in the transactions pool", id);
@@ -108,7 +114,7 @@ impl TransactionsPool {
             }
         }
 
-        mempool_utxo_set.add_transaction(&transaction.mtx);
+        self.utxo_set.add_transaction(&transaction.mtx);
         self.all_transactions.insert(id, transaction);
         Ok(())
     }
@@ -249,6 +255,19 @@ impl TransactionsPool {
 
     pub(crate) fn get_all_transactions(&self) -> Vec<MutableTransaction> {
         self.all().values().map(|x| x.mtx.clone()).collect()
+    }
+
+    pub(crate) fn get_outpoint_owner_id(&self, outpoint: &TransactionOutpoint) -> Option<&TransactionId> {
+        self.utxo_set.get_outpoint_owner_id(outpoint)
+    }
+
+    pub(crate) fn check_double_spends(&self, transaction: &MutableTransaction) -> RuleResult<()> {
+        self.utxo_set.check_double_spends(transaction)
+    }
+
+    pub(crate) fn remove_transaction_utxos(&mut self, transaction: &MutableTransaction) {
+        let parent_ids = self.get_parent_transaction_ids_in_pool(transaction);
+        self.utxo_set.remove_transaction(transaction, &parent_ids)
     }
 }
 

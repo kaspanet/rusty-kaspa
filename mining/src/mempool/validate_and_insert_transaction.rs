@@ -39,8 +39,7 @@ impl Mempool {
 
         // Here the accepted transaction is cloned in order to prevent having self borrowed immutably for the
         // transaction reference and mutably for the call to process_orphans_after_accepted_transaction
-        let accepted_transaction =
-            self.transaction_pool.add_transaction(&mut self.mempool_utxo_set, transaction, is_high_priority)?.mtx.tx.clone();
+        let accepted_transaction = self.transaction_pool.add_transaction(transaction, is_high_priority)?.mtx.tx.clone();
 
         let accepted_orphans = self.process_orphans_after_accepted_transaction(&accepted_transaction)?;
         self.transaction_pool.limit_transaction_count()?.iter().try_for_each(|x| self.remove_transaction(x, true))?;
@@ -49,7 +48,7 @@ impl Mempool {
 
     fn validate_transaction_pre_utxo_entry(&self, transaction: &MutableTransaction) -> RuleResult<()> {
         self.validate_transaction_in_isolation(transaction)?;
-        self.mempool_utxo_set.check_double_spends(transaction)
+        self.transaction_pool.check_double_spends(transaction)
     }
 
     fn validate_transaction_in_isolation(&self, transaction: &MutableTransaction) -> RuleResult<()> {
@@ -89,7 +88,7 @@ impl Mempool {
             // the transaction pool so we clone.
             added_transactions.push(transaction.mtx.clone());
 
-            self.transaction_pool.add_mempool_transaction(&mut self.mempool_utxo_set, transaction)?;
+            self.transaction_pool.add_mempool_transaction(transaction)?;
         }
         Ok(added_transactions)
     }

@@ -1,6 +1,9 @@
-use crate::mempool::{
-    errors::{RuleError, RuleResult},
-    model::{map::OutpointIndex, pool::Pool, transactions_pool::TransactionsPool},
+use crate::{
+    mempool::{
+        errors::{RuleError, RuleResult},
+        model::map::OutpointIndex,
+    },
+    model::TransactionIdSet,
 };
 use consensus_core::{
     constants::UNACCEPTED_DAA_SCORE,
@@ -40,11 +43,11 @@ impl MempoolUtxoSet {
         }
     }
 
-    pub(crate) fn remove_transaction(&mut self, transaction_pool: &TransactionsPool, transaction: &MutableTransaction) {
+    pub(crate) fn remove_transaction(&mut self, transaction: &MutableTransaction, parent_ids_in_pool: &TransactionIdSet) {
         let transaction_id = transaction.id();
         for (input, entry) in transaction.as_verifiable().populated_inputs() {
             // If the transaction creating the output spent by this input is in the mempool - restore it's UTXO
-            if transaction_pool.get(&input.previous_outpoint.transaction_id).is_some() {
+            if parent_ids_in_pool.contains(&input.previous_outpoint.transaction_id) {
                 self.pool_unspent_outputs.insert(input.previous_outpoint, entry.clone());
             }
             self.outpoint_owner_id.remove(&input.previous_outpoint);
