@@ -4,6 +4,8 @@ use consensus_core::{
 };
 use thiserror::Error;
 
+use crate::model::topological_index::TopologicalIndexError;
+
 #[derive(Error, Debug, Clone)]
 pub enum RuleError {
     /// A consensus transaction rule error
@@ -55,6 +57,9 @@ pub enum RuleError {
 
     #[error("transaction {0} doesn't exist in orphan pool")]
     RejectMissingOrphanTransaction(TransactionId),
+
+    #[error("transactions in mempool form a cycle")]
+    RejectCycleInMempoolTransactions,
 }
 
 impl From<NonStandardError> for RuleError {
@@ -70,6 +75,12 @@ impl From<TxRuleError> for RuleError {
             TxRuleError::MissingTxOutpoints => RuleError::RejectMissingOutpoint,
             _ => RuleError::RejectTxRule(item),
         }
+    }
+}
+
+impl From<TopologicalIndexError> for RuleError {
+    fn from(_: TopologicalIndexError) -> Self {
+        RuleError::RejectCycleInMempoolTransactions
     }
 }
 

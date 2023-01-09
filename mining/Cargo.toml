@@ -19,3 +19,10 @@ smallvec.workspace = true
 rand.workspace = true
 
 parking_lot = "0.12"
+
+[dev-dependencies]
+criterion.workspace = true
+
+[[bench]]
+name = "bench"
+harness = false

@@ -4,18 +4,17 @@ use crate::{
         errors::{RuleError, RuleResult},
         model::{map::MempoolTransactionCollection, pool::Pool, tx::MempoolTransaction, utxo_set::MempoolUtxoSet},
     },
-    model::TransactionIdSet,
+    model::{topological_index::TopologicalIndex, TransactionIdSet},
 };
 use consensus_core::{api::DynConsensus, tx::MutableTransaction, tx::TransactionId};
 use kaspa_core::{debug, warn};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{hash_map::Keys, hash_set::Iter, HashMap, HashSet},
     rc::Rc,
     time::SystemTime,
 };
 
-type ParentTransactionIdsInPool = HashMap<TransactionId, TransactionIdSet>;
-type ChainedTransactionIdsByParentId = HashMap<TransactionId, TransactionIdSet>;
+type TransactionsEdges = HashMap<TransactionId, TransactionIdSet>;
 
 /// Pool of transactions to be included in a block template
 ///
@@ -42,8 +41,10 @@ pub(crate) struct TransactionsPool {
     consensus: DynConsensus,
     config: Rc<Config>,
     all_transactions: MempoolTransactionCollection,
-    parent_transaction_ids_in_pool: ParentTransactionIdsInPool,
-    chained_transaction_ids_by_parent_id: ChainedTransactionIdsByParentId,
+    /// Transactions dependencies formed by inputs present in pool
+    parent_transactions: TransactionsEdges,
+    /// Transactions dependencies formed by outputs present in pool
+    chained_transactions: TransactionsEdges,
     last_expire_scan_daa_score: u64,
     /// last expire scan time in milliseconds
     last_expire_scan_time: u64,
@@ -55,8 +56,8 @@ impl TransactionsPool {
             consensus,
             config,
             all_transactions: MempoolTransactionCollection::default(),
-            parent_transaction_ids_in_pool: ParentTransactionIdsInPool::default(),
-            chained_transaction_ids_by_parent_id: ChainedTransactionIdsByParentId::default(),
+            parent_transactions: TransactionsEdges::default(),
+            chained_transactions: TransactionsEdges::default(),
             last_expire_scan_daa_score: 0,
             last_expire_scan_time: SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64,
         }
@@ -88,9 +89,13 @@ impl TransactionsPool {
         // validateAndInsertTransaction has the collection but process_orphans_after_accepted_transaction has not.
         // So we build the collection in-place here.
         let id = transaction.id();
-        self.parent_transaction_ids_in_pool.insert(id, self.get_parent_transaction_ids_in_pool(&transaction.mtx));
-        for parent_transaction_id in self.parent_transaction_ids_in_pool.get(&id).unwrap() {
-            self.chained_transaction_ids_by_parent_id.entry(*parent_transaction_id).or_default().insert(id);
+        assert!(!self.all_transactions.contains_key(&id));
+        self.parent_transactions.insert(id, self.get_parent_transaction_ids_in_pool(&transaction.mtx));
+        for parent_id in self.parent_transactions.get(&id).unwrap() {
+            let entry = self.chained_transactions.entry(*parent_id).or_default();
+            if !entry.contains(&id) {
+                entry.insert(id);
+            }
         }
         mempool_utxo_set.add_transaction(&transaction.mtx);
         self.all_transactions.insert(id, transaction);
@@ -98,12 +103,12 @@ impl TransactionsPool {
     }
 
     pub(crate) fn remove_parent_transaction_id_in_pool(&mut self, transaction_id: &TransactionId, parent_id: &TransactionId) -> bool {
-        self.parent_transaction_ids_in_pool.get_mut(transaction_id).unwrap().remove(parent_id)
+        self.parent_transactions.get_mut(transaction_id).unwrap().remove(parent_id)
     }
 
     pub(crate) fn remove_transaction(&mut self, transaction_id: &TransactionId) -> RuleResult<MempoolTransaction> {
-        self.parent_transaction_ids_in_pool.remove(transaction_id);
-        self.chained_transaction_ids_by_parent_id.remove(transaction_id);
+        self.parent_transactions.remove(transaction_id);
+        self.chained_transactions.remove(transaction_id);
         self.all_transactions.remove(transaction_id).ok_or(RuleError::RejectMissingTransaction(*transaction_id))
     }
 
@@ -148,7 +153,7 @@ impl TransactionsPool {
 
     /// Is the mempool transaction identified by [transaction_id] ready for being inserted in a block template?
     pub(crate) fn is_transaction_ready(&self, transaction_id: &TransactionId) -> bool {
-        self.parent_transaction_ids_in_pool[transaction_id].is_empty()
+        self.parent_transactions[transaction_id].is_empty()
     }
 
     /// all_ready_transactions returns all fully populated mempool transactions having no parents in the mempool.
@@ -177,7 +182,7 @@ impl TransactionsPool {
             let mut stack = vec![transaction];
             while !stack.is_empty() {
                 let transaction = stack.pop().unwrap();
-                for redeemer_id in self.chained_transaction_ids_by_parent_id.get(&transaction.id()).unwrap() {
+                for redeemer_id in self.chained_transactions.get(&transaction.id()).unwrap() {
                     if let Some(redeemer) = self.get(redeemer_id) {
                         if redeemers.insert(*redeemer_id) {
                             stack.push(redeemer);
@@ -226,6 +231,19 @@ impl TransactionsPool {
 
     pub(crate) fn get_all_transactions(&self) -> Vec<MutableTransaction> {
         self.all().values().map(|x| x.mtx.clone()).collect()
+    }
+}
+
+type IterTxId<'a> = Iter<'a, TransactionId>;
+type KeysTxId<'a> = Keys<'a, TransactionId, MempoolTransaction>;
+
+impl<'a> TopologicalIndex<'a, KeysTxId<'a>, IterTxId<'a>, TransactionId> for TransactionsPool {
+    fn topology_nodes(&'a self) -> KeysTxId<'a> {
+        self.all_transactions.keys()
+    }
+
+    fn topology_node_edges(&'a self, key: &TransactionId) -> Option<IterTxId<'a>> {
+        self.chained_transactions.get(key).map(|x| x.iter())
     }
 }
 
