@@ -20,6 +20,22 @@ pub(crate) mod remove_transaction;
 pub(crate) mod revalidate_high_priority_transactions;
 pub(crate) mod validate_and_insert_transaction;
 
+/// Mempool contains transactions intended to be inserted into a block and mined.
+///
+/// Some important properties to consider:
+///
+/// - Transactions can be chained, so a transaction can have parents and chained
+///   dependencies in the mempool.
+/// - A transaction can have some of its outpoints refer to missing outputs when
+///   added to the mempool. In this case it is considered orphan.
+/// - An orphan transaction is unorphaned when all its UTXO entries have been
+///   built or found.
+/// - There are transaction priorities: high and low.
+/// - Transactions submitted to the mempool by a RPC call have **high priority**.
+///   They are owned by the node, they never expire in the mempool and the node
+///   rebroadcasts them once in a while.
+/// - Transactions received through P2P have **low-priority**. They expire after
+///   60 seconds and are removed if not inserted in a block for mining.
 pub(crate) struct Mempool {
     pub(crate) config: Rc<Config>,
     pub(crate) consensus: DynConsensus,

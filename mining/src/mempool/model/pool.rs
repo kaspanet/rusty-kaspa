@@ -1,11 +1,20 @@
+use std::collections::{HashMap, HashSet};
+
 use super::{map::MempoolTransactionCollection, tx::MempoolTransaction};
-use crate::model::owner_txs::{OwnerSetTransactions, ScriptPublicKeySet};
+use crate::model::{
+    owner_txs::{OwnerSetTransactions, ScriptPublicKeySet},
+    TransactionIdSet,
+};
 use consensus_core::tx::{MutableTransaction, TransactionId};
+
+pub(crate) type TransactionsEdges = HashMap<TransactionId, TransactionIdSet>;
 
 pub(crate) trait Pool {
     fn all(&self) -> &MempoolTransactionCollection;
-
     fn all_mut(&mut self) -> &mut MempoolTransactionCollection;
+
+    fn chained(&self) -> &TransactionsEdges;
+    fn chained_mut(&mut self) -> &mut TransactionsEdges;
 
     fn has(&self, transaction_id: &TransactionId) -> bool {
         self.all().contains_key(transaction_id)
@@ -18,6 +27,40 @@ pub(crate) trait Pool {
     /// Returns the number of transactions in the pool
     fn len(&self) -> usize {
         self.all().len()
+    }
+
+    /// Returns the ids of all transactions being parents of `transaction` and existing in the pool.
+    fn get_parent_transaction_ids_in_pool(&self, transaction: &MutableTransaction) -> TransactionIdSet {
+        let mut parents = HashSet::with_capacity(transaction.tx.inputs.len());
+        for input in transaction.tx.inputs.iter() {
+            if self.has(&input.previous_outpoint.transaction_id) {
+                parents.insert(input.previous_outpoint.transaction_id);
+            }
+        }
+        parents
+    }
+
+    /// Returns the ids of all transactions being directly and indirectly chained to `transaction_id`
+    /// and existing in the pool.
+    fn get_redeemer_ids_in_pool(&self, transaction_id: &TransactionId) -> TransactionIdSet {
+        let mut redeemers = TransactionIdSet::new();
+        if let Some(transaction) = self.get(transaction_id) {
+            let mut stack = vec![transaction];
+            while !stack.is_empty() {
+                let transaction = stack.pop().unwrap();
+                if let Some(chains) = self.chained().get(&transaction.id()) {
+                    for redeemer_id in chains {
+                        if let Some(redeemer) = self.get(redeemer_id) {
+                            // Do no revisit transactions
+                            if redeemers.insert(*redeemer_id) {
+                                stack.push(redeemer);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        redeemers
     }
 
     /// Returns a vector with clones of all the transactions in the pool.

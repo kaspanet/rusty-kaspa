@@ -8,12 +8,12 @@ impl Mempool {
         }
 
         let mut transactions_to_remove = vec![*transaction_id];
-        let redeemers = self.transaction_pool.get_redeemer_ids(transaction_id);
+        let redeemers = self.transaction_pool.get_redeemer_ids_in_pool(transaction_id);
         if remove_redeemers {
             transactions_to_remove.extend(redeemers);
         } else {
             redeemers.iter().for_each(|x| {
-                self.transaction_pool.remove_parent_transaction_id_in_pool(x, transaction_id);
+                self.transaction_pool.remove_parent_chained_relation_in_pool(x, transaction_id);
             });
         }
 

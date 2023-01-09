@@ -70,6 +70,10 @@ impl Mempool {
         Ok(())
     }
 
+    /// Finds all transactions that can be unorphaned after a some transaction
+    /// has been accepted. Unorphan and add those to the transaction pool.
+    ///
+    /// Returns the list of all successfully processed transactions.
     pub(crate) fn process_orphans_after_accepted_transaction(
         &mut self,
         accepted_transaction: &Transaction,
@@ -90,13 +94,15 @@ impl Mempool {
         Ok(added_transactions)
     }
 
+    /// Returns a list with all successfully unorphaned transactions after some
+    /// transaction has been accepted.
     fn get_unorphaned_transactions_after_accepted_transaction(
         &mut self,
         transaction: &Transaction,
     ) -> RuleResult<Vec<MempoolTransaction>> {
         let mut accepted_orphans = Vec::new();
         let transaction_id = transaction.id();
-        let mut outpoint = TransactionOutpoint { transaction_id, index: 0 };
+        let mut outpoint = TransactionOutpoint::new(transaction_id, 0);
         for (i, output) in transaction.outputs.iter().enumerate() {
             outpoint.index = i as u32;
             let mut orphan_id = None;
@@ -122,6 +128,8 @@ impl Mempool {
                         accepted_orphans.push(accepted_tx);
                     }
                     Err(err) => {
+                        // In case of validation error, we log the problem and drop the
+                        // erroneous transaction.
                         info!("Failed to unorphan transaction {0} due to rule error: {1}", orphan_id, err.to_string());
                     }
                 }
@@ -139,14 +147,14 @@ impl Mempool {
         // Remove the transaction identified by transaction_id from the orphan pool.
         let mut transactions = self.orphan_pool.remove_orphan(transaction_id, false)?;
 
-        // At this point, transactions contains exactly one transaction.
+        // At this point, `transactions` contain exactly one transaction.
         // The one we just removed from the orphan pool.
-        assert_eq!(transactions.len(), 1);
+        assert_eq!(transactions.len(), 1, "the list returned by remove_orphan is expected to contain exactly one transaction");
         let mut transaction = transactions.pop().unwrap();
 
         self.consensus().validate_mempool_transaction_and_populate(&mut transaction.mtx)?;
         self.validate_transaction_in_context(&transaction.mtx)?;
-        transaction.added_at_daa_score = self.consensus.clone().get_virtual_daa_score();
+        transaction.added_at_daa_score = self.consensus().get_virtual_daa_score();
         Ok(transaction)
     }
 }

@@ -4,17 +4,17 @@ use crate::{
         errors::{RuleError, RuleResult},
         model::{map::MempoolTransactionCollection, pool::Pool, tx::MempoolTransaction, utxo_set::MempoolUtxoSet},
     },
-    model::{topological_index::TopologicalIndex, TransactionIdSet},
+    model::topological_index::TopologicalIndex,
 };
 use consensus_core::{api::DynConsensus, tx::MutableTransaction, tx::TransactionId};
 use kaspa_core::{debug, warn};
 use std::{
-    collections::{hash_map::Keys, hash_set::Iter, HashMap, HashSet},
+    collections::{hash_map::Keys, hash_set::Iter},
     rc::Rc,
     time::SystemTime,
 };
 
-type TransactionsEdges = HashMap<TransactionId, TransactionIdSet>;
+use super::pool::TransactionsEdges;
 
 /// Pool of transactions to be included in a block template
 ///
@@ -41,9 +41,9 @@ pub(crate) struct TransactionsPool {
     consensus: DynConsensus,
     config: Rc<Config>,
     all_transactions: MempoolTransactionCollection,
-    /// Transactions dependencies formed by inputs present in pool
+    /// Transactions dependencies formed by inputs present in pool - ancestor relations.
     parent_transactions: TransactionsEdges,
-    /// Transactions dependencies formed by outputs present in pool
+    /// Transactions dependencies formed by outputs present in pool - successor relations.
     chained_transactions: TransactionsEdges,
     last_expire_scan_daa_score: u64,
     /// last expire scan time in milliseconds
@@ -63,33 +63,43 @@ impl TransactionsPool {
         }
     }
 
-    pub(crate) fn _consensus(&self) -> DynConsensus {
+    pub(crate) fn consensus(&self) -> DynConsensus {
         self.consensus.clone()
     }
 
+    /// Add a mutable transaction to the pool
     pub(crate) fn add_transaction(
         &mut self,
         mempool_utxo_set: &mut MempoolUtxoSet,
         transaction: MutableTransaction,
         is_high_priority: bool,
     ) -> RuleResult<&MempoolTransaction> {
-        let virtual_daa_score = self.consensus.clone().get_virtual_daa_score();
+        let virtual_daa_score = self.consensus().get_virtual_daa_score();
         let transaction = MempoolTransaction::new(transaction, is_high_priority, virtual_daa_score);
         let id = transaction.id();
         self.add_mempool_transaction(mempool_utxo_set, transaction)?;
         Ok(self.get(&id).unwrap())
     }
 
+    /// Add a mempool transaction to the pool
     pub(crate) fn add_mempool_transaction(
         &mut self,
         mempool_utxo_set: &mut MempoolUtxoSet,
         transaction: MempoolTransaction,
     ) -> RuleResult<()> {
-        // The call to get_parent_transaction_ids_in_pool is a tradeoff:
-        // validateAndInsertTransaction has the collection but process_orphans_after_accepted_transaction has not.
-        // So we build the collection in-place here.
         let id = transaction.id();
-        assert!(!self.all_transactions.contains_key(&id));
+
+        assert!(!self.all_transactions.contains_key(&id), "transaction {} to be added already exists in the transactions pool", id);
+        assert!(
+            transaction.mtx.is_fully_populated(),
+            "transaction {} to be added in the transactions pool is not fully populated",
+            id
+        );
+
+        // Create the bijective parent/chained relations.
+        // This concerns only the parents of the added transaction.
+        // The transactions chained to the added transaction cannot be stored
+        // here yet since, by definition, they would have been orphans.
         self.parent_transactions.insert(id, self.get_parent_transaction_ids_in_pool(&transaction.mtx));
         for parent_id in self.parent_transactions.get(&id).unwrap() {
             let entry = self.chained_transactions.entry(*parent_id).or_default();
@@ -97,23 +107,53 @@ impl TransactionsPool {
                 entry.insert(id);
             }
         }
+
         mempool_utxo_set.add_transaction(&transaction.mtx);
         self.all_transactions.insert(id, transaction);
         Ok(())
     }
 
-    pub(crate) fn remove_parent_transaction_id_in_pool(&mut self, transaction_id: &TransactionId, parent_id: &TransactionId) -> bool {
-        self.parent_transactions.get_mut(transaction_id).unwrap().remove(parent_id)
+    pub(crate) fn remove_parent_chained_relation_in_pool(
+        &mut self,
+        transaction_id: &TransactionId,
+        parent_id: &TransactionId,
+    ) -> bool {
+        let mut found = false;
+        // Remove the bijective parent/chained relation
+        if let Some(parents) = self.parent_transactions.get_mut(transaction_id) {
+            found = parents.remove(parent_id);
+        }
+        if let Some(chains) = self.chained_transactions.get_mut(parent_id) {
+            found = chains.remove(transaction_id) || found;
+        }
+        found
     }
 
     pub(crate) fn remove_transaction(&mut self, transaction_id: &TransactionId) -> RuleResult<MempoolTransaction> {
+        // Remove all bijective parent/chained relations
+        if let Some(parents) = self.parent_transactions.get(transaction_id) {
+            for parent in parents.iter() {
+                if let Some(chains) = self.chained_transactions.get_mut(parent) {
+                    chains.remove(transaction_id);
+                }
+            }
+        }
+        if let Some(chains) = self.chained_transactions.get(transaction_id) {
+            for chain in chains.iter() {
+                if let Some(parents) = self.parent_transactions.get_mut(chain) {
+                    parents.remove(transaction_id);
+                }
+            }
+        }
         self.parent_transactions.remove(transaction_id);
         self.chained_transactions.remove(transaction_id);
+
+        // Remove the transaction itself
         self.all_transactions.remove(transaction_id).ok_or(RuleError::RejectMissingTransaction(*transaction_id))
     }
 
-    pub(crate) fn expire_old_transactions(&mut self) -> RuleResult<()> {
-        let virtual_daa_score = self._consensus().get_virtual_daa_score();
+    pub(crate) fn expire_low_priority_transactions(&mut self) -> RuleResult<()> {
+        let virtual_daa_score = self.consensus().get_virtual_daa_score();
         let now = SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64;
         if virtual_daa_score - self.last_expire_scan_daa_score < self.config.transaction_expire_scan_interval_daa_score
             || now - self.last_expire_scan_time < self.config.transaction_expire_scan_interval_milliseconds
@@ -122,7 +162,7 @@ impl TransactionsPool {
         }
 
         // Never expire high priority transactions
-        // Remove all transactions whose addedAtDAAScore is older then TransactionExpireIntervalDAAScore
+        // Remove all transactions whose added_at_daa_score is older then transaction_expire_interval_daa_score
         let expired_low_priority_transactions: Vec<TransactionId> = self
             .all_transactions
             .values()
@@ -151,9 +191,15 @@ impl TransactionsPool {
         Ok(())
     }
 
-    /// Is the mempool transaction identified by [transaction_id] ready for being inserted in a block template?
+    /// Is the mempool transaction identified by `transaction_id` ready for being inserted into a block template?
     pub(crate) fn is_transaction_ready(&self, transaction_id: &TransactionId) -> bool {
-        self.parent_transactions[transaction_id].is_empty()
+        if self.all_transactions.contains_key(transaction_id) {
+            if let Some(parents) = self.parent_transactions.get(transaction_id) {
+                return parents.is_empty();
+            }
+            return true;
+        }
+        false
     }
 
     /// all_ready_transactions returns all fully populated mempool transactions having no parents in the mempool.
@@ -166,38 +212,10 @@ impl TransactionsPool {
             .collect()
     }
 
-    pub(crate) fn get_parent_transaction_ids_in_pool(&self, transaction: &MutableTransaction) -> TransactionIdSet {
-        let mut parent_transaction_ids = HashSet::with_capacity(transaction.tx.inputs.len());
-        for input in transaction.tx.inputs.iter() {
-            if self.has(&input.previous_outpoint.transaction_id) {
-                parent_transaction_ids.insert(input.previous_outpoint.transaction_id);
-            }
-        }
-        parent_transaction_ids
-    }
-
-    pub(crate) fn get_redeemer_ids(&self, transaction_id: &TransactionId) -> TransactionIdSet {
-        let mut redeemers = TransactionIdSet::new();
-        if let Some(transaction) = self.get(transaction_id) {
-            let mut stack = vec![transaction];
-            while !stack.is_empty() {
-                let transaction = stack.pop().unwrap();
-                for redeemer_id in self.chained_transactions.get(&transaction.id()).unwrap() {
-                    if let Some(redeemer) = self.get(redeemer_id) {
-                        if redeemers.insert(*redeemer_id) {
-                            stack.push(redeemer);
-                        }
-                    }
-                }
-            }
-        }
-        redeemers
-    }
-
     /// Returns the exceeding low-priority transactions having the lowest fee rates.
     /// An error is returned if the mempool is filled with high priority transactions.
     pub(crate) fn limit_transaction_count(&self) -> RuleResult<Vec<TransactionId>> {
-        // Return a vector of transactions to be removed that the caller has to remove actually.
+        // Returns a vector of transactions to be removed that the caller has to remove actually.
         // The caller is golang validateAndInsertTransaction equivalent.
         // This behavior differs from golang impl.
         let mut transactions_to_remove = Vec::new();
@@ -248,11 +266,23 @@ impl<'a> TopologicalIndex<'a, KeysTxId<'a>, IterTxId<'a>, TransactionId> for Tra
 }
 
 impl Pool for TransactionsPool {
+    #[inline]
     fn all(&self) -> &MempoolTransactionCollection {
         &self.all_transactions
     }
 
+    #[inline]
     fn all_mut(&mut self) -> &mut MempoolTransactionCollection {
         &mut self.all_transactions
+    }
+
+    #[inline]
+    fn chained(&self) -> &TransactionsEdges {
+        &self.chained_transactions
+    }
+
+    #[inline]
+    fn chained_mut(&mut self) -> &mut TransactionsEdges {
+        &mut self.chained_transactions
     }
 }

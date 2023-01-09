@@ -13,8 +13,8 @@ impl Mempool {
             let mut unorphaned_transactions = self.process_orphans_after_accepted_transaction(transaction)?;
             accepted_orphans.append(&mut unorphaned_transactions);
         }
-        self.orphan_pool.expire_orphan_transactions()?;
-        self.transaction_pool.expire_old_transactions()?;
+        self.orphan_pool.expire_low_priority_transactions()?;
+        self.transaction_pool.expire_low_priority_transactions()?;
         Ok(accepted_orphans)
     }
 
