@@ -4,8 +4,13 @@ Work in progress to implement the Kaspa full-node and related libraries in the R
 
 ## Getting started
 
-- Install the [rust toolchain](https://rustup.rs/).
-
+- Install Protobuf (required for grpc)
+  - Linux: `sudo apt install protobuf-compiler libprotobuf-dev`
+  - Windows: [protoc-21.10-win64.zip](https://github.com/protocolbuffers/protobuf/releases/download/v21.10/protoc-21.10-win64.zip) and add `bin` dir to `Path`
+- Install the [clang toolchain](https://clang.llvm.org/) (required for RocksDB)
+  - Linux: `sudo apt intall clang`
+  - Windows: [LLVM-15.0.6-win64.exe](https://github.com/llvm/llvm-project/releases/download/llvmorg-15.0.6/LLVM-15.0.6-win64.exe) and set `LIBCLANG_PATH` env var pointing to the `bin` dir of the llvm installation
+- Install the [rust toolchain](https://rustup.rs/)
 - Run the following commands:
 
 ```bash
