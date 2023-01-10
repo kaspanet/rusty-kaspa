@@ -75,22 +75,23 @@ impl OrphanPool {
         self.check_orphan_duplicate(&transaction)?;
         self.check_orphan_mass(&transaction)?;
         self.check_orphan_double_spend(&transaction)?;
+        // Make sure there is room in the pool for the new transaction
+        self.limit_orphan_pool_size(1)?;
         self.add_orphan(transaction, is_high_priority)?;
-        self.limit_orphan_pool_size()?;
         Ok(())
     }
 
-    fn limit_orphan_pool_size(&mut self) -> RuleResult<()> {
-        while self.all_orphans.len() as u64 > self.config.maximum_orphan_transaction_count {
+    /// Make room in the pool for at least `free_slots` new transactions.
+    ///
+    /// An error is returned if the pool is filled with high priority transactions.
+    fn limit_orphan_pool_size(&mut self, free_slots: usize) -> RuleResult<()> {
+        while self.all_orphans.len() + free_slots > self.config.maximum_orphan_transaction_count as usize {
             let orphan_to_remove = self.get_random_low_priority_orphan();
             if orphan_to_remove.is_none() {
-                // this means all orphans are high priority
-                warn!(
-                    "Number of high-priority transactions in orphanPool ({0}) is higher than maximum allowed ({1})",
-                    self.all_orphans.len(),
-                    self.config.maximum_orphan_transaction_count
-                );
-                break;
+                // this means all orphans are high priority so return an error
+                let err = RuleError::RejectOrphanPoolIsFull(self.all_orphans.len(), self.config.maximum_orphan_transaction_count);
+                warn!("{}", err.to_string());
+                return Err(err);
             }
             // Don't remove redeemers in the case of a random eviction since the evicted transaction is
             // not invalid, therefore it's redeemers are as good as any orphan that just arrived.
@@ -174,11 +175,18 @@ impl OrphanPool {
 
     fn remove_single_orphan(&mut self, transaction_id: &TransactionId) -> RuleResult<MempoolTransaction> {
         if let Some(transaction) = self.all_orphans.remove(transaction_id) {
-            // Remove all chained_transaction relations
+            // Remove all chained_transaction relations...
+            // ... incoming
             let parents = self.get_parent_transaction_ids_in_pool(&transaction.mtx);
             parents.iter().for_each(|parent_id| {
-                self.chained_mut().remove(parent_id);
+                if let Some(entry) = self.chained_mut().get_mut(parent_id) {
+                    entry.remove(transaction_id);
+                    if entry.is_empty() {
+                        self.chained_mut().remove(parent_id);
+                    }
+                }
             });
+            // ... outgoing
             self.chained_mut().remove(transaction_id);
 
             // Remove all entries in outpoint_owner_id

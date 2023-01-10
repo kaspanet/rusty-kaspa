@@ -106,9 +106,10 @@ impl TransactionsPool {
         // This concerns only the parents of the added transaction.
         // The transactions chained to the added transaction cannot be stored
         // here yet since, by definition, they would have been orphans.
-        self.parent_transactions.insert(id, self.get_parent_transaction_ids_in_pool(&transaction.mtx));
-        for parent_id in self.parent_transactions.get(&id).unwrap() {
-            let entry = self.chained_transactions.entry(*parent_id).or_default();
+        let parents = self.get_parent_transaction_ids_in_pool(&transaction.mtx);
+        self.parent_transactions.insert(id, parents.clone());
+        for parent_id in parents {
+            let entry = self.chained_mut().entry(parent_id).or_default();
             if !entry.contains(&id) {
                 entry.insert(id);
             }
@@ -218,14 +219,16 @@ impl TransactionsPool {
             .collect()
     }
 
-    /// Returns the exceeding low-priority transactions having the lowest fee rates.
+    /// Returns the exceeding low-priority transactions having the lowest fee rates in order
+    /// to have room for at least `free_slots` new transactions.
+    ///
     /// An error is returned if the mempool is filled with high priority transactions.
-    pub(crate) fn limit_transaction_count(&self) -> RuleResult<Vec<TransactionId>> {
+    pub(crate) fn limit_transaction_count(&self, free_slots: usize) -> RuleResult<Vec<TransactionId>> {
         // Returns a vector of transactions to be removed that the caller has to remove actually.
         // The caller is golang validateAndInsertTransaction equivalent.
         // This behavior differs from golang impl.
         let mut transactions_to_remove = Vec::new();
-        if self.len() > self.config.maximum_transaction_count as usize {
+        if self.len() + free_slots > self.config.maximum_transaction_count as usize {
             // TODO: consider introducing an index on all_transactions low-priority items instead.
             //
             // Sorting this vector here may be sub-optimal compared with maintaining a sorted
@@ -236,16 +239,18 @@ impl TransactionsPool {
             if !low_priority_txs.is_empty() {
                 low_priority_txs.sort_by(|a, b| a.fee_rate().partial_cmp(&b.fee_rate()).unwrap());
                 transactions_to_remove.extend_from_slice(
-                    &low_priority_txs
-                        [0..usize::min(self.len() - self.config.maximum_transaction_count as usize, low_priority_txs.len())],
+                    &low_priority_txs[0..usize::min(
+                        self.len() + free_slots - self.config.maximum_transaction_count as usize,
+                        low_priority_txs.len(),
+                    )],
                 );
             }
         }
 
         // An error is returned if the mempool is filled with high priority transactions.
-        let tx_count = self.len() - transactions_to_remove.len();
+        let tx_count = self.len() + free_slots - transactions_to_remove.len();
         if tx_count as u64 > self.config.maximum_transaction_count {
-            let err = RuleError::RejectMempoolIsFull(tx_count, self.config.maximum_transaction_count);
+            let err = RuleError::RejectMempoolIsFull(tx_count - free_slots, self.config.maximum_transaction_count);
             warn!("{}", err.to_string());
             return Err(err);
         }

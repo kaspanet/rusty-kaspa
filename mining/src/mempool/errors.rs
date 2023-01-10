@@ -27,7 +27,7 @@ pub enum RuleError {
     RejectDoubleSpendInMempool(TransactionOutpoint, TransactionId),
 
     /// New behavior: a transaction is rejected if the mempool is full
-    #[error("number of high-priority transactions in mempool ({0}) is higher than maximum allowed ({1})")]
+    #[error("number of high-priority transactions in mempool ({0}) has reached the maximum allowed ({1})")]
     RejectMempoolIsFull(usize, u64),
 
     /// An error emitted by mining\src\mempool\check_transaction_standard.rs
@@ -57,6 +57,10 @@ pub enum RuleError {
 
     #[error("transaction {0} doesn't exist in orphan pool")]
     RejectMissingOrphanTransaction(TransactionId),
+
+    /// New behavior: a transaction is rejected if the orphan pool is full
+    #[error("number of high-priority transactions in orphan pool ({0}) has reached the maximum allowed ({1})")]
+    RejectOrphanPoolIsFull(usize, u64),
 
     #[error("transactions in mempool form a cycle")]
     RejectCycleInMempoolTransactions,

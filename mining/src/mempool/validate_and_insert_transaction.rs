@@ -37,12 +37,13 @@ impl Mempool {
 
         self.validate_transaction_in_context(&transaction)?;
 
+        // Before adding the transaction, check if there is room in the pool
+        self.transaction_pool.limit_transaction_count(1)?.iter().try_for_each(|x| self.remove_transaction(x, true))?;
+
         // Here the accepted transaction is cloned in order to prevent having self borrowed immutably for the
         // transaction reference and mutably for the call to process_orphans_after_accepted_transaction
         let accepted_transaction = self.transaction_pool.add_transaction(transaction, is_high_priority)?.mtx.tx.clone();
-
         let accepted_orphans = self.process_orphans_after_accepted_transaction(&accepted_transaction)?;
-        self.transaction_pool.limit_transaction_count()?.iter().try_for_each(|x| self.remove_transaction(x, true))?;
         Ok(accepted_orphans)
     }
 
