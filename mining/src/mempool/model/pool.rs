@@ -1,8 +1,9 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{hash_set::Iter, HashMap, HashSet};
 
 use super::{map::MempoolTransactionCollection, tx::MempoolTransaction};
 use crate::model::{
     owner_txs::{OwnerSetTransactions, ScriptPublicKeySet},
+    topological_index::TopologicalIndex,
     TransactionIdSet,
 };
 use consensus_core::tx::{MutableTransaction, TransactionId};
@@ -27,6 +28,22 @@ pub(crate) trait Pool {
     /// Returns the number of transactions in the pool
     fn len(&self) -> usize {
         self.all().len()
+    }
+
+    /// Returns an index over either high or low priority transaction ids which can
+    /// in turn be topologically ordered.
+    fn index(&self, is_high_priority: bool) -> PoolIndex {
+        let transactions: TransactionIdSet =
+            self.all().iter().filter_map(|(id, tx)| if tx.is_high_priority == is_high_priority { Some(*id) } else { None }).collect();
+        let chained_transactions = transactions
+            .iter()
+            .filter_map(|id| {
+                self.chained()
+                    .get(id)
+                    .map(|chains| (*id, chains.iter().filter_map(|chain| transactions.get(chain).copied()).collect()))
+            })
+            .collect();
+        PoolIndex::new(transactions, chained_transactions)
     }
 
     /// Returns the ids of all transactions being parents of `transaction` and existing in the pool.
@@ -95,5 +112,28 @@ pub(crate) trait Pool {
                 }
             });
         });
+    }
+}
+
+pub(crate) struct PoolIndex {
+    transactions: TransactionIdSet,
+    chained_transactions: TransactionsEdges,
+}
+
+impl PoolIndex {
+    pub(crate) fn new(transactions: TransactionIdSet, chained_transactions: TransactionsEdges) -> Self {
+        Self { transactions, chained_transactions }
+    }
+}
+
+type IterTxId<'a> = Iter<'a, TransactionId>;
+
+impl<'a> TopologicalIndex<'a, IterTxId<'a>, IterTxId<'a>, TransactionId> for PoolIndex {
+    fn topology_nodes(&'a self) -> IterTxId<'a> {
+        self.transactions.iter()
+    }
+
+    fn topology_node_edges(&'a self, key: &TransactionId) -> Option<IterTxId<'a>> {
+        self.chained_transactions.get(key).map(|x| x.iter())
     }
 }
