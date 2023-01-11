@@ -13,12 +13,16 @@ pub mod errors;
 pub mod hashing;
 pub mod header;
 pub mod merkle;
-pub mod muhash;
 pub mod notify;
 pub mod sign;
 pub mod subnets;
 pub mod tx;
 pub mod utxo;
+cfg_if::cfg_if! {
+    if #[cfg(not(target_arch = "wasm32"))] {
+        pub mod muhash;
+    }
+}
 
 /// Integer type for accumulated PoW of blue blocks. We expect no more than
 /// 2^128 work in a single block (btc has ~2^80), and no more than 2^64

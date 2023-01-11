@@ -12,7 +12,6 @@ pow.workspace = true
 math.workspace = true
 hashes.workspace = true
 merkle.workspace = true
-muhash.workspace = true
 kaspa-core.workspace = true
 consensus-core.workspace = true
 faster-hex.workspace = true
@@ -34,6 +33,9 @@ rocksdb = "0.19"
 parking_lot = "0.12"
 crossbeam-channel = "0.5"
 secp256k1 = { version = "0.24", features = ["global-context", "rand-std"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+muhash.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true

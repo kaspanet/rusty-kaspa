@@ -691,6 +691,7 @@ name = "consensus-core"
 version = "0.1.0"
 dependencies = [
  "borsh",
+ "cfg-if",
  "faster-hex",
  "futures-util",
  "hashes",
@@ -2434,6 +2435,7 @@ dependencies = [
  "async-std",
  "async-trait",
  "borsh",
+ "cfg-if",
  "consensus-core",
  "derive_more",
  "faster-hex",
