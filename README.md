@@ -53,11 +53,18 @@ $ cargo run --bin kaspad -- --loglevel info,rpc_core=trace,rpc_grpc=trace,consen
 
 ## Building WASM
 
-To build WASM on MacOS you need to install `llvm` from homebrew (at the time of writing MacOS version is 13.0.1)
+### Building on MacOS
+
+The default XCode installation of `llvm` does not support WASM build targets.
+To build WASM on MacOS you need to install `llvm` from homebrew (at the time of writing MacOS version is 13.0.1).
 
 ```bash
 brew install llvm
 ```
+NOTE: depending on your setup, the installation location may be different.
+To determine the installation location you can type `which llvm` or `which clang`
+and then modify the paths below accordingly.
+
 Add the following to you `~/.zshrc` file:
 ```bash
 export PATH="/opt/homebrew/opt/llvm/bin:$PATH"
