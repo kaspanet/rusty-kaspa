@@ -7,9 +7,11 @@ Work in progress to implement the Kaspa full-node and related libraries in the R
 - Install Protobuf (required for grpc)
   - Linux: `sudo apt install protobuf-compiler libprotobuf-dev`
   - Windows: [protoc-21.10-win64.zip](https://github.com/protocolbuffers/protobuf/releases/download/v21.10/protoc-21.10-win64.zip) and add `bin` dir to `Path`
+  - MacOS - `brew install protobuf`
 - Install the [clang toolchain](https://clang.llvm.org/) (required for RocksDB)
   - Linux: `sudo apt intall clang`
   - Windows: [LLVM-15.0.6-win64.exe](https://github.com/llvm/llvm-project/releases/download/llvmorg-15.0.6/LLVM-15.0.6-win64.exe) and set `LIBCLANG_PATH` env var pointing to the `bin` dir of the llvm installation
+  - MacOS: Please see [Installing clang toolchain on MacOS](#installing-clang-toolchain-on-macos)
 - Install the [rust toolchain](https://rustup.rs/)
 - Run the following commands:
 
@@ -56,9 +58,37 @@ Logging in `kaspad` and `simpa` can be [filtered](https://docs.rs/env_logger/0.1
 $ cargo run --bin kaspad -- --loglevel info,rpc_core=trace,rpc_grpc=trace,consensus=trace,kaspa_core=trace
 ```
 
+
+
+## Tests & Benchmarks
+
+- To run all current tests use:
+
+```bash
+$ cd rusty-kaspa
+$ cargo test --release
+// or install nextest and run
+$ cargo nextest run --release
+```
+
+- To run current benchmarks:
+
+```bash
+$ cd rusty-kaspa
+$ cargo bench
+```
+
 ## Building WASM
 
-### Building on MacOS
+To build rusty-kaspa wasm library, do the following:
+
+```bash
+cd wasm
+./build-web
+```
+This will produce a wasm library in `/web-root` directory
+
+## Installing clang toolchain on MacOS
 
 The default XCode installation of `llvm` does not support WASM build targets.
 To build WASM on MacOS you need to install `llvm` from homebrew (at the time of writing MacOS version is 13.0.1).
@@ -80,28 +110,4 @@ export AR=/opt/homebrew/opt/llvm/bin/llvm-ar
 Reload the `~/.zshrc` file
 ```bash
 source ~/.zshrc
-```
-
-## Additional dependencies
-
-Protocol Buffers - https://github.com/protocolbuffers/protobuf/releases/
-- MacOS - `brew install protobuf`
-- Linux - `sudo apt install protobuf-compiler`
-
-## Tests & Benchmarks
-
-- To run all current tests use:
-
-```bash
-$ cd rusty-kaspa
-$ cargo test --release
-// or install nextest and run
-$ cargo nextest run --release
-```
-
-- To run current benchmarks:
-
-```bash
-$ cd rusty-kaspa
-$ cargo bench
 ```
