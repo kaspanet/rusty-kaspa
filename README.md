@@ -51,6 +51,25 @@ Logging in `kaspad` and `simpa` can be [filtered](https://docs.rs/env_logger/0.1
 $ cargo run --bin kaspad -- --loglevel info,rpc_core=trace,rpc_grpc=trace,consensus=trace,kaspa_core=trace
 ```
 
+## Building WASM
+
+To build WASM on MacOS you need to install `llvm` from homebrew (at the time of writing MacOS version is 13.0.1)
+
+```bash
+brew install llvm
+```
+Add the following to you `~/.zshrc` file:
+```bash
+export PATH="/opt/homebrew/opt/llvm/bin:$PATH"
+export LDFLAGS="-L/opt/homebrew/opt/llvm/lib"
+export CPPFLAGS="-I/opt/homebrew/opt/llvm/include"
+export AR=/opt/homebrew/opt/llvm/bin/llvm-ar
+```
+Reload the `~/.zshrc` file
+```bash
+source ~/.zshrc
+```
+
 ## Tests & Benchmarks
 
 - To run all current tests use:
