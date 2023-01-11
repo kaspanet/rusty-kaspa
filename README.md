@@ -70,6 +70,12 @@ Reload the `~/.zshrc` file
 source ~/.zshrc
 ```
 
+## Additional dependencies
+
+Protocol Buffers - https://github.com/protocolbuffers/protobuf/releases/
+- MacOS - `brew install protobuf`
+- Linux - `sudo apt install protobuf-compiler`
+
 ## Tests & Benchmarks
 
 - To run all current tests use:
