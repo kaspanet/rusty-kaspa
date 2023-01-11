@@ -36,7 +36,7 @@ pub fn init_logger(filters: &str) {
 #[macro_export]
 macro_rules! trace {
     ($($t:tt)*) => {
-        if kaspa_core::log::log_level_enabled(Level::Trace) {
+        if kaspa_core::log::log_level_enabled(log::Level::Trace) {
             kaspa_core::console::log(&format_args!($($t)*).to_string());
         }
     };
@@ -50,11 +50,12 @@ macro_rules! trace {
     };
 }
 
+
 #[cfg(target_arch = "wasm32")]
 #[macro_export]
 macro_rules! debug {
     ($($t:tt)*) => (
-        if kaspa_core::log::log_level_enabled(Level::Debug) {
+        if kaspa_core::log::log_level_enabled(log::Level::Debug) {
             kaspa_core::console::log(&format_args!($($t)*).to_string());
         }
     )
@@ -72,7 +73,7 @@ macro_rules! debug {
 #[macro_export]
 macro_rules! info {
     ($($t:tt)*) => (
-        if kaspa_core::log::log_level_enabled(Level::Info) {
+        if kaspa_core::log::log_level_enabled(log::Level::Info) {
             kaspa_core::console::log(&format_args!($($t)*).to_string());
         }
     )
@@ -90,7 +91,7 @@ macro_rules! info {
 #[macro_export]
 macro_rules! warn {
     ($($t:tt)*) => (
-        if kaspa_core::log::log_level_enabled(Level::Warn) {
+        if kaspa_core::log::log_level_enabled(log::Level::Warn) {
             kaspa_core::console::warn(&format_args!($($t)*).to_string());
         }
     )
@@ -108,7 +109,7 @@ macro_rules! warn {
 #[macro_export]
 macro_rules! error {
     ($($t:tt)*) => (
-        if kaspa_core::log::log_level_enabled(Level::Error) {
+        if kaspa_core::log::log_level_enabled(log::Level::Error) {
             kaspa_core::console::error(&format_args!($($t)*).to_string());
         }
     )
