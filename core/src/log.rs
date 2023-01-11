@@ -4,16 +4,16 @@
 //! crate log (ie. `log.workspace = true`) when target architecture is not wasm32.
 
 #[allow(unused_imports)]
-use log::{Level,LevelFilter};
+use log::{Level, LevelFilter};
 
 cfg_if::cfg_if! {
     if #[cfg(target_arch = "wasm32")] {
         static mut LEVEL_FILTER : LevelFilter = LevelFilter::Trace;
         #[inline(always)]
-        pub fn log_level_enabled(level: Level) -> bool { 
-            unsafe { LEVEL_FILTER >= level } 
+        pub fn log_level_enabled(level: Level) -> bool {
+            unsafe { LEVEL_FILTER >= level }
         }
-        pub fn set_log_level(level: LevelFilter) { 
+        pub fn set_log_level(level: LevelFilter) {
             unsafe { LEVEL_FILTER = level };
         }
     }
@@ -49,7 +49,6 @@ macro_rules! trace {
         log::trace!($($t)*);
     };
 }
-
 
 #[cfg(target_arch = "wasm32")]
 #[macro_export]
