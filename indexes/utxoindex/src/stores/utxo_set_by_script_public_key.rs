@@ -139,7 +139,7 @@ impl UtxoSetByScriptPublicKeyStoreReader for DbUtxoSetByScriptPublicKeyStore {
         for script_public_key in script_public_keys{
             let utxos_by_script_public_keys_inner = &mut CompactUtxoCollection::new();
             utxos_by_script_public_keys_inner.extend(
-                self.access.iter_bucket(script_public_key.into()).map(
+                self.access.iter_bucket::<TransactionOutpoint, CompactUtxoEntry>(script_public_key.into()).map(
                     move |value| -> (TransactionOutpoint, CompactUtxoEntry) {
                         let (key, value) = value?;
                         (key as TransactionOutpoint, value as CompactUtxoEntry)

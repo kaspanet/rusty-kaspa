@@ -1,11 +1,10 @@
-use super::prelude::{Cache, DbKey, DbWriter};
+use super::{prelude::{Cache, DbKey, DbWriter}, key::DbBucket};
 use crate::model::stores::{errors::StoreError, DB};
 use rocksdb::{IteratorMode, ReadOptions, Direction};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{collections::hash_map::RandomState, hash::BuildHasher, sync::Arc};
 
 /// A concurrent DB store access with typed caching.
-#[derive(Clone)]
 pub struct CachedDbAccess<TKey, TData, S = RandomState>
 where
     TKey: Clone + std::hash::Hash + Eq + Send + Sync,
@@ -113,22 +112,29 @@ where
         Ok(())
     }
 
-    pub fn iter_bucket(&self, key: TKey) -> impl Iterator<Item = Result<(Box<[u8]>, Box<[u8]>), StoreError>>
+    pub fn iter_bucket<Key, Value>(&self,  bucket: DbBucket) -> impl Iterator<Item = Result<(Key, Value), StoreError>> 
     where
-        TKey: Copy + AsRef<[u8]>,
-        {
-            let bucket = DbKey::new(self.prefix, key);
-            let mut read_opts = ReadOptions::default();
-            read_opts.set_iterate_range(rocksdb::PrefixRange(bucket.as_ref()));
-            self.db.iterator_opt(IteratorMode::From(bucket.as_ref(), Direction::Forward), read_opts).map(move |res| {
-            let (full_key, val) = res?;
-            Ok(
-                (
-                    // deserialize on store side, for maximum flexibility
-                    full_key[bucket.prefix_len()..], 
-                    val,
-                )
-            )
+        Key: Copy + AsRef<[u8]> + DeserializeOwned,
+        Value: Copy + AsRef<[u8]> + DeserializeOwned,
+    {
+            self.db.prefix_iterator(bucket.as_ref()).map(move |res| -> Result<(Key, Value), StoreError> {
+            let item = match res {
+                Ok(res) => {
+                    let key: Key;
+                    let value: Value;
+                    match bincode::deserialize(&res.0[bucket.prefix_len()..]) {
+                        Ok(deserialized_key) => key = deserialized_key,
+                        Err(err) => Err(StoreError::DeserializationError(err))
+                    };
+                    match bincode::deserialize(&res.1) {
+                        Ok(deserialized_value) => value = deserialized_value,
+                        Err(err) => Err(StoreError::DeserializationError(err))
+                    };
+                    Ok((key, value))
+                }
+                Err(err) => Err(StoreError::DbError(err))
+            }
+            item
         });
-        }
-    } 
+    }
+} 
