@@ -2,15 +2,18 @@ use crate::ELEMENT_BYTE_SIZE;
 use math::Uint3072;
 use serde::{Deserialize, Serialize};
 use std::ops::{DivAssign, MulAssign};
-#[cfg(target_pointer_width = "64")]
+
+// TODO: Add u32 support for optimization on 32 bit machines.
+
+//#[cfg(target_pointer_width = "64")]
 pub(crate) type Limb = u64;
-#[cfg(target_pointer_width = "64")]
+//#[cfg(target_pointer_width = "64")]
 pub(crate) type DoubleLimb = u128;
 
-#[cfg(target_pointer_width = "32")]
-pub(crate) type Limb = u32;
-#[cfg(target_pointer_width = "32")]
-pub(crate) type DoubleLimb = u64;
+//#[cfg(target_pointer_width = "32")]
+//pub(crate) type Limb = u32;
+//#[cfg(target_pointer_width = "32")]
+//pub(crate) type DoubleLimb = u64;
 
 const LIMB_SIZE_BYTES: usize = std::mem::size_of::<Limb>();
 const LIMB_SIZE: usize = std::mem::size_of::<Limb>() * 8;
