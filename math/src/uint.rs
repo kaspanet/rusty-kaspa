@@ -1,6 +1,8 @@
 #[doc(hidden)]
 pub use {faster_hex, malachite_base, malachite_nz, serde};
 
+// TODO: Add u32 support for optimization on 32 bit machines.
+
 #[macro_export]
 macro_rules! construct_uint {
     ($name:ident, $n_words:literal $(, $derive_trait:ty)*) => {
