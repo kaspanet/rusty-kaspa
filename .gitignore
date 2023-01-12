@@ -5,3 +5,4 @@ web-root
 /.vscode/
 **/db-*
 /consensus/tests/testdata/goref-1.6M-tx-10K-blocks.json.gz
+analyzer-target
