@@ -7,7 +7,7 @@ Work in progress to implement the Kaspa full-node and related libraries in the R
 - Install Protobuf (required for grpc)
   - Linux: `sudo apt install protobuf-compiler libprotobuf-dev`
   - Windows: [protoc-21.10-win64.zip](https://github.com/protocolbuffers/protobuf/releases/download/v21.10/protoc-21.10-win64.zip) and add `bin` dir to `Path`
-  - MacOS - `brew install protobuf`
+  - MacOS: `brew install protobuf`
 - Install the [clang toolchain](https://clang.llvm.org/) (required for RocksDB)
   - Linux: `sudo apt intall clang`
   - Windows: [LLVM-15.0.6-win64.exe](https://github.com/llvm/llvm-project/releases/download/llvmorg-15.0.6/LLVM-15.0.6-win64.exe) and set `LIBCLANG_PATH` env var pointing to the `bin` dir of the llvm installation
@@ -100,7 +100,7 @@ NOTE: depending on your setup, the installation location may be different.
 To determine the installation location you can type `which llvm` or `which clang`
 and then modify the paths below accordingly.
 
-Add the following to you `~/.zshrc` file:
+Add the following to your `~/.zshrc` file:
 ```bash
 export PATH="/opt/homebrew/opt/llvm/bin:$PATH"
 export LDFLAGS="-L/opt/homebrew/opt/llvm/lib"
