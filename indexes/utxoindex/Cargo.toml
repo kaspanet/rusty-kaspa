@@ -1,5 +1,5 @@
 [package]
-name = "indexes"
+name = "utxoindex"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -24,6 +24,8 @@ bincode.workspace = true
 
 rocksdb = "0.19"
 async-trait = "0.1.57"
+crossbeam = "0.8.2"
+atomic_enum = "0.2.0"
 futures = { version = "0.3" }
 tonic = { version = "0.8", features = ["gzip"] }
 prost = { version = "0.11" }

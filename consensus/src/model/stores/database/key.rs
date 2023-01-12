@@ -2,8 +2,10 @@ use std::{
     fmt::{Debug, Display},
     str,
 };
+use std::mem::size_of_val;
 
 const SEP: u8 = b'/';
+pub const SEP_SIZE: usize = size_of_val(&SEP);
 
 #[derive(Clone)]
 pub struct DbKey {
@@ -15,14 +17,19 @@ impl DbKey {
     pub fn new<TKey: Copy + AsRef<[u8]>>(prefix: &[u8], key: TKey) -> Self {
         Self {
             path: prefix.iter().chain(std::iter::once(&SEP)).chain(key.as_ref().iter()).copied().collect(),
-            prefix_len: prefix.len() + 1, // Include `SEP` as part of the prefix
+            prefix_len: prefix.len() + SEP_SIZE, // Include `SEP` as part of the prefix
         }
     }
 
     pub fn prefix_only(prefix: &[u8]) -> Self {
         Self::new(prefix, [])
     }
+
+    pub fn prefix_len(&self) -> usize {
+        self.prefix_len
+    }
 }
+
 
 impl AsRef<[u8]> for DbKey {
     fn as_ref(&self) -> &[u8] {

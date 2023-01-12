@@ -1,18 +1,23 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
-use std::{fmt::Display, ops::Range};
+use std::{fmt::Display, ops::Range, collections::HashSet};
 
 use crate::{
     hashing,
     subnets::{self, SubnetworkId},
 };
 
+pub type ScriptPublicKeys = HashSet<ScriptPublicKey>;
+
 /// Represents the ID of a Kaspa transaction
 pub type TransactionId = hashes::Hash;
 
 /// Used as the underlying type for script public key data, optimized for the common p2pk script size (34).
 pub type ScriptVec = SmallVec<[u8; 36]>;
+
+/// Represents the ScriptPublicKey Version 
+pub type VersionType = u16;
 
 /// Alias the `smallvec!` macro to ease maintenance
 pub use smallvec::smallvec as scriptvec;
@@ -21,20 +26,20 @@ pub use smallvec::smallvec as scriptvec;
 #[derive(Default, Debug, PartialEq, Eq, Serialize, Deserialize, Clone, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct ScriptPublicKey {
-    version: u16,
+    version: VersionType,
     script: ScriptVec, // Kept private to preserve read-only semantics
 }
 
 impl ScriptPublicKey {
-    pub fn new(version: u16, script: ScriptVec) -> Self {
+    pub fn new(version: VersionType, script: ScriptVec) -> Self {
         Self { version, script }
     }
 
-    pub fn from_vec(version: u16, script: Vec<u8>) -> Self {
+    pub fn from_vec(version: VersionType, script: Vec<u8>) -> Self {
         Self { version, script: ScriptVec::from_vec(script) }
     }
 
-    pub fn version(&self) -> u16 {
+    pub fn version(&self) -> VersionType {
         self.version
     }
 

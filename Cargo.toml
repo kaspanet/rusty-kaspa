@@ -13,7 +13,7 @@ members = [
     "crypto/muhash",
     "crypto/addresses",
     "crypto/merkle",
-    "indexes",
+    "indexes/utxoindex",
     "rpc/core",
     "rpc/grpc",
 ]
@@ -38,7 +38,7 @@ muhash = { path = "crypto/muhash" }
 addresses = { path = "crypto/addresses" }
 merkle = { path = "crypto/merkle" }
 pow = { path = "consensus/pow" }
-indexes = {path = "indexes"}
+utxoindex = { path = "indexes/utxoindex" }
 kaspa-utils = { path = "utils" }
 rpc-core = { path = "rpc/core" }
 rpc-grpc = { path = "rpc/grpc" }

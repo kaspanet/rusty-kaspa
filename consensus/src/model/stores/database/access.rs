@@ -1,5 +1,6 @@
 use super::prelude::{Cache, DbKey, DbWriter};
 use crate::model::stores::{errors::StoreError, DB};
+use rocksdb::{IteratorMode, ReadOptions, Direction};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{collections::hash_map::RandomState, hash::BuildHasher, sync::Arc};
 
@@ -111,4 +112,23 @@ where
         }
         Ok(())
     }
-}
+
+    pub fn iter_bucket(&self, key: TKey) -> impl Iterator<Item = Result<(Box<[u8]>, Box<[u8]>), StoreError>>
+    where
+        TKey: Copy + AsRef<[u8]>,
+        {
+            let bucket = DbKey::new(self.prefix, key);
+            let mut read_opts = ReadOptions::default();
+            read_opts.set_iterate_range(rocksdb::PrefixRange(bucket.as_ref()));
+            self.db.iterator_opt(IteratorMode::From(bucket.as_ref(), Direction::Forward), read_opts).map(move |res| {
+            let (full_key, val) = res?;
+            Ok(
+                (
+                    // deserialize on store side, for maximum flexibility
+                    full_key[bucket.prefix_len()..], 
+                    val,
+                )
+            )
+        });
+        }
+    } 
