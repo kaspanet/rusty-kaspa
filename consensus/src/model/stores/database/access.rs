@@ -1,7 +1,7 @@
 use super::{prelude::{Cache, DbKey, DbWriter}, key::DbBucket};
 use crate::model::stores::{errors::StoreError, DB};
 use rocksdb::{IteratorMode, ReadOptions, Direction};
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{de::DeserializeOwned, Serialize, Deserialize};
 use std::{collections::hash_map::RandomState, hash::BuildHasher, sync::Arc};
 
 /// A concurrent DB store access with typed caching.
@@ -112,29 +112,22 @@ where
         Ok(())
     }
 
-    pub fn iter_bucket<Key, Value>(&self,  bucket: DbBucket) -> impl Iterator<Item = Result<(Key, Value), StoreError>> 
+    pub fn iter_bucket<Key, Value>(&self, bucket: DbBucket) -> impl Iterator<Item = Result<(Key, Value), StoreError>> + '_
     where
         Key: Copy + AsRef<[u8]> + DeserializeOwned,
         Value: Copy + AsRef<[u8]> + DeserializeOwned,
     {
-            self.db.prefix_iterator(bucket.as_ref()).map(move |res| -> Result<(Key, Value), StoreError> {
+            let iter = self.db.prefix_iterator(bucket.as_ref()).map(move |res| -> Result<(Key, Value), StoreError> {
             let item = match res {
                 Ok(res) => {
-                    let key: Key;
-                    let value: Value;
-                    match bincode::deserialize(&res.0[bucket.prefix_len()..]) {
-                        Ok(deserialized_key) => key = deserialized_key,
-                        Err(err) => Err(StoreError::DeserializationError(err))
-                    };
-                    match bincode::deserialize(&res.1) {
-                        Ok(deserialized_value) => value = deserialized_value,
-                        Err(err) => Err(StoreError::DeserializationError(err))
-                    };
-                    Ok((key, value))
-                }
-                Err(err) => Err(StoreError::DbError(err))
-            }
+                    let key: Key = bincode::deserialize(&res.0[bucket.prefix_len()..])?;
+                    let value: Value = bincode::deserialize(&res.1)?;
+                    Ok((key.to_owned(), value.to_owned()))
+                },
+                Err(err) => Err(StoreError::DbError(err)),
+            };
             item
         });
+        iter
     }
 } 

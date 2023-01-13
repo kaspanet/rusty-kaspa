@@ -68,21 +68,21 @@ impl UtxoIndex {
     pub async fn run(&self) {
         loop {
             match self.state.load(Ordering::SeqCst) {
-                UtxoIndexState::ProcessConsensusEvents => {
+                ProcessConsensusEvents => {
                     while self.state.load(Ordering::SeqCst) == UtxoIndexState::ProcessingConsesnsusEvents{ // event-driven processing state
                         let consensus_event = self.consensus_recv.recv().await.unwrap(); //TODO: handle consensus channel drop.
                         self.process_consensus_event(consensus_event).await;
                     }
                 }
-                UtxoIndexState::SyncFromDatabase => {
+                SyncFromDatabase => {
                     self.sync_from_scratch();
                 }
-                UtxoIndexState::SyncFromDatabaseAndProcessConsensusEvents => {
+                SyncFromDatabaseAndProcessConsensusEvents => {
                     self.sync_from_scratch();
                     self.state.store(UtxoIndexState::ProcessConsensusEvents,  Ordering::SeqCst);
                 }
-                UtxoIndexState::ShutDown => break, //break out of loop to exit
-                UtxoIndexState::Wait => self.signal_chan[1].recv().await //wait for a signal. 
+                ShutDown => break, //break out of loop to exit
+                Wait => self.signal_chan[1].recv().await //wait for a signal. 
             }
         }
     }
