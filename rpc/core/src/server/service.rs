@@ -159,6 +159,127 @@ impl RpcApi for RpcCoreService {
     }
 
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    // UNIMPLEMENTED METHODS
+
+    async fn get_current_network_call(&self, _request: GetCurrentNetworkRequest) -> RpcResult<GetCurrentNetworkResponse> {
+        unimplemented!();
+    }
+
+    async fn get_peer_addresses_call(&self, _request: GetPeerAddressesRequest) -> RpcResult<GetPeerAddressesResponse> {
+        unimplemented!();
+    }
+
+    async fn get_selected_tip_hash_call(&self, _request: GetSelectedTipHashRequest) -> RpcResult<GetSelectedTipHashResponse> {
+        unimplemented!();
+    }
+
+    async fn get_mempool_entry_call(&self, _request: GetMempoolEntryRequest) -> RpcResult<GetMempoolEntryResponse> {
+        unimplemented!();
+    }
+
+    async fn get_mempool_entries_call(&self, _request: GetMempoolEntriesRequest) -> RpcResult<GetMempoolEntriesResponse> {
+        unimplemented!();
+    }
+
+    async fn get_connected_peer_info_call(&self, _request: GetConnectedPeerInfoRequest) -> RpcResult<GetConnectedPeerInfoResponse> {
+        unimplemented!();
+    }
+
+    async fn add_peer_call(&self, _request: AddPeerRequest) -> RpcResult<AddPeerResponse> {
+        unimplemented!();
+    }
+
+    async fn submit_transaction_call(&self, _request: SubmitTransactionRequest) -> RpcResult<SubmitTransactionResponse> {
+        unimplemented!();
+    }
+
+    async fn get_subnetwork_call(&self, _request: GetSubnetworkRequest) -> RpcResult<GetSubnetworkResponse> {
+        unimplemented!();
+    }
+
+    async fn get_virtual_selected_parent_chain_from_block_call(
+        &self,
+        _request: GetVirtualSelectedParentChainFromBlockRequest,
+    ) -> RpcResult<GetVirtualSelectedParentChainFromBlockResponse> {
+        unimplemented!();
+    }
+
+    async fn get_blocks_call(&self, _request: GetBlocksRequest) -> RpcResult<GetBlocksResponse> {
+        unimplemented!();
+    }
+
+    async fn get_block_count_call(&self, _request: GetBlockCountRequest) -> RpcResult<GetBlockCountResponse> {
+        unimplemented!();
+    }
+
+    async fn get_block_dag_info_call(&self, _request: GetBlockDagInfoRequest) -> RpcResult<GetBlockDagInfoResponse> {
+        unimplemented!();
+    }
+
+    async fn resolve_finality_conflict_call(
+        &self,
+        _request: ResolveFinalityConflictRequest,
+    ) -> RpcResult<ResolveFinalityConflictResponse> {
+        unimplemented!();
+    }
+
+    async fn shutdown_call(&self, _request: ShutdownRequest) -> RpcResult<ShutdownResponse> {
+        unimplemented!();
+    }
+
+    async fn get_headers_call(&self, _request: GetHeadersRequest) -> RpcResult<GetHeadersResponse> {
+        unimplemented!();
+    }
+
+    async fn get_balance_by_address_call(&self, _request: GetBalanceByAddressRequest) -> RpcResult<GetBalanceByAddressResponse> {
+        unimplemented!();
+    }
+
+    async fn get_balances_by_addresses_call(
+        &self,
+        _addresses: GetBalancesByAddressesRequest,
+    ) -> RpcResult<GetBalancesByAddressesResponse> {
+        unimplemented!();
+    }
+
+    async fn get_utxos_by_addresses_call(&self, _addresses: GetUtxosByAddressesRequest) -> RpcResult<GetUtxosByAddressesResponse> {
+        unimplemented!();
+    }
+
+    async fn get_virtual_selected_parent_blue_score_call(
+        &self,
+        _request: GetVirtualSelectedParentBlueScoreRequest,
+    ) -> RpcResult<GetVirtualSelectedParentBlueScoreResponse> {
+        unimplemented!();
+    }
+
+    async fn ban_call(&self, _request: BanRequest) -> RpcResult<BanResponse> {
+        unimplemented!();
+    }
+
+    async fn unban_call(&self, _request: UnbanRequest) -> RpcResult<UnbanResponse> {
+        unimplemented!();
+    }
+
+    async fn estimate_network_hashes_per_second_call(
+        &self,
+        _request: EstimateNetworkHashesPerSecondRequest,
+    ) -> RpcResult<EstimateNetworkHashesPerSecondResponse> {
+        unimplemented!();
+    }
+
+    async fn get_mempool_entries_by_addresses_call(
+        &self,
+        _request: GetMempoolEntriesByAddressesRequest,
+    ) -> RpcResult<GetMempoolEntriesByAddressesResponse> {
+        unimplemented!();
+    }
+
+    async fn get_coin_supply_call(&self, _request: GetCoinSupplyRequest) -> RpcResult<GetCoinSupplyResponse> {
+        unimplemented!();
+    }
+
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API
 
     /// Register a new listener and returns an id and a channel receiver.

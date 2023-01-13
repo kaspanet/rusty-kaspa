@@ -452,11 +452,11 @@ message FinalityConflictResolvedNotificationMessage{
   string finalityBlockHash = 1;
 }
 
-// ShutDownRequestMessage shuts down this kaspad.
-message ShutDownRequestMessage{
+// ShutdownRequestMessage shuts down this kaspad.
+message ShutdownRequestMessage{
 }
 
-message ShutDownResponseMessage{
+message ShutdownResponseMessage{
   RPCError error = 1000;
 }
 

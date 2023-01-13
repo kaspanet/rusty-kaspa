@@ -33,6 +33,9 @@ pub enum RpcError {
     #[error(transparent)]
     AddressError(#[from] addresses::AddressError),
 
+    #[error(transparent)]
+    NetworkTypeError(#[from] consensus_core::networktype::NetworkTypeError),
+
     #[error("{0}")]
     General(String),
 }
@@ -48,5 +51,3 @@ impl From<&str> for RpcError {
         RpcError::General(value.to_string())
     }
 }
-
-pub type RpcResult<T> = std::result::Result<T, crate::RpcError>;

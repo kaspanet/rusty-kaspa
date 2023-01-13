@@ -31,14 +31,50 @@ impl Matcher<&kaspad_response::Payload> for GetBlockRequestMessage {
 
 impl Matcher<&kaspad_response::Payload> for kaspad_request::Payload {
     fn is_matching(&self, response: &kaspad_response::Payload) -> bool {
+        use kaspad_request::Payload;
         match self {
-            kaspad_request::Payload::SubmitBlockRequest(_) => true,
-            kaspad_request::Payload::GetBlockTemplateRequest(_) => true,
-            kaspad_request::Payload::GetBlockRequest(ref request) => request.is_matching(response),
-            kaspad_request::Payload::GetCurrentNetworkRequest(_) => true,
-            kaspad_request::Payload::NotifyBlockAddedRequest(_) => true,
-            kaspad_request::Payload::GetInfoRequest(_) => true,
-            kaspad_request::Payload::NotifyNewBlockTemplateRequest(_) => true,
+            // FIXME - handle is_matching!
+            Payload::GetPeerAddressesRequest(_) => todo!(),
+            Payload::GetSelectedTipHashRequest(_) => todo!(),
+            Payload::GetMempoolEntryRequest(_) => todo!(),
+            Payload::GetMempoolEntriesByAddressesRequest(_) => todo!(),
+            Payload::GetConnectedPeerInfoRequest(_) => todo!(),
+            Payload::AddPeerRequest(_) => todo!(),
+            Payload::SubmitTransactionRequest(_) => todo!(),
+            Payload::NotifyVirtualSelectedParentChainChangedRequest(_) => todo!(),
+            Payload::GetSubnetworkRequest(_) => todo!(),
+            Payload::GetVirtualSelectedParentChainFromBlockRequest(_) => todo!(),
+            Payload::GetVirtualSelectedParentBlueScoreRequest(_) => todo!(),
+            Payload::GetBlocksRequest(_) => todo!(),
+            Payload::GetBlockCountRequest(_) => todo!(),
+            Payload::GetBlockDagInfoRequest(_) => todo!(),
+            Payload::ResolveFinalityConflictRequest(_) => todo!(),
+            Payload::NotifyFinalityConflictsRequest(_) => todo!(),
+            Payload::GetMempoolEntriesRequest(_) => todo!(),
+            Payload::ShutdownRequest(_) => todo!(),
+            Payload::GetHeadersRequest(_) => todo!(),
+            Payload::NotifyUtxosChangedRequest(_) => todo!(),
+            Payload::GetUtxosByAddressesRequest(_) => todo!(),
+            Payload::NotifyVirtualSelectedParentBlueScoreChangedRequest(_) => todo!(),
+            Payload::BanRequest(_) => todo!(),
+            Payload::UnbanRequest(_) => todo!(),
+            Payload::NotifyPruningPointUtxoSetOverrideRequest(_) => todo!(),
+            Payload::EstimateNetworkHashesPerSecondRequest(_) => todo!(),
+            Payload::NotifyVirtualDaaScoreChangedRequest(_) => todo!(),
+            Payload::GetBalanceByAddressRequest(_) => todo!(),
+            Payload::GetBalancesByAddressesRequest(_) => todo!(),
+            Payload::GetCoinSupplyRequest(_) => todo!(),
+            // Payload::(_) => true,
+
+            // original entries:
+            Payload::SubmitBlockRequest(_) => true,
+            Payload::GetBlockTemplateRequest(_) => true,
+            Payload::GetBlockRequest(ref request) => request.is_matching(response),
+            Payload::GetCurrentNetworkRequest(_) => true,
+            Payload::NotifyBlockAddedRequest(_) => true,
+            Payload::GetInfoRequest(_) => true,
+            Payload::NotifyNewBlockTemplateRequest(_) => true,
+            // _ => panic!("MATCHER PAYLOAD NO MATCH"),
         }
     }
 }

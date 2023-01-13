@@ -1,9 +1,6 @@
 use super::connection::{GrpcConnectionManager, GrpcSender};
 use crate::protowire::NotifyNewBlockTemplateResponseMessage;
-use crate::protowire::{
-    kaspad_request::Payload, rpc_server::Rpc, GetBlockResponseMessage, GetBlockTemplateResponseMessage, GetInfoResponseMessage,
-    KaspadRequest, KaspadResponse, NotifyBlockAddedResponseMessage, SubmitBlockResponseMessage,
-};
+use crate::protowire::{kaspad_request::Payload, rpc_server::Rpc, *};
 use crate::server::StatusResult;
 use futures::Stream;
 use kaspa_core::trace;
@@ -155,39 +152,155 @@ impl Rpc for Arc<GrpcService> {
                 match request_stream.message().await {
                     Ok(Some(request)) => {
                         //trace!("Incoming {:?}", request);
-                        let response: KaspadResponse = match request.payload {
-                            Some(Payload::SubmitBlockRequest(ref request)) => match request.try_into() {
-                                Ok(request) => core_service.submit_block_call(request).await.into(),
-                                Err(err) => SubmitBlockResponseMessage::from(err).into(),
-                            },
+                        let response: KaspadResponse = if let Some(payload) = request.payload {
+                            match payload {
+                                Payload::GetCoinSupplyRequest(ref request) => match request.try_into() {
+                                    Ok(request) => core_service.get_coin_supply_call(request).await.into(),
+                                    Err(err) => GetCoinSupplyResponseMessage::from(err).into(),
+                                },
+                                Payload::GetMempoolEntriesByAddressesRequest(ref request) => match request.try_into() {
+                                    Ok(request) => core_service.get_mempool_entries_by_addresses_call(request).await.into(),
+                                    Err(err) => GetMempoolEntriesByAddressesResponseMessage::from(err).into(),
+                                },
+                                Payload::GetBalancesByAddressesRequest(ref request) => match request.try_into() {
+                                    Ok(request) => core_service.get_balances_by_addresses_call(request).await.into(),
+                                    Err(err) => GetBalancesByAddressesResponseMessage::from(err).into(),
+                                },
+                                Payload::GetBalanceByAddressRequest(ref request) => match request.try_into() {
+                                    Ok(request) => core_service.get_balance_by_address_call(request).await.into(),
+                                    Err(err) => GetBalanceByAddressResponseMessage::from(err).into(),
+                                },
+                                Payload::EstimateNetworkHashesPerSecondRequest(ref request) => match request.try_into() {
+                                    Ok(request) => core_service.estimate_network_hashes_per_second_call(request).await.into(),
+                                    Err(err) => EstimateNetworkHashesPerSecondResponseMessage::from(err).into(),
+                                },
+                                Payload::UnbanRequest(ref request) => match request.try_into() {
+                                    Ok(request) => core_service.unban_call(request).await.into(),
+                                    Err(err) => UnbanResponseMessage::from(err).into(),
+                                },
+                                Payload::BanRequest(ref request) => match request.try_into() {
+                                    Ok(request) => core_service.ban_call(request).await.into(),
+                                    Err(err) => BanResponseMessage::from(err).into(),
+                                },
+                                Payload::GetVirtualSelectedParentBlueScoreRequest(ref request) => match request.try_into() {
+                                    Ok(request) => core_service.get_virtual_selected_parent_blue_score_call(request).await.into(),
+                                    Err(err) => GetVirtualSelectedParentBlueScoreResponseMessage::from(err).into(),
+                                },
+                                Payload::GetUtxosByAddressesRequest(ref request) => match request.try_into() {
+                                    Ok(request) => core_service.get_utxos_by_addresses_call(request).await.into(),
+                                    Err(err) => GetUtxosByAddressesResponseMessage::from(err).into(),
+                                },
+                                Payload::GetHeadersRequest(ref request) => match request.try_into() {
+                                    Ok(request) => core_service.get_headers_call(request).await.into(),
+                                    Err(err) => ShutdownResponseMessage::from(err).into(),
+                                },
+                                Payload::ShutdownRequest(ref request) => match request.try_into() {
+                                    Ok(request) => core_service.shutdown_call(request).await.into(),
+                                    Err(err) => ShutdownResponseMessage::from(err).into(),
+                                },
+                                Payload::GetMempoolEntriesRequest(ref request) => match request.try_into() {
+                                    Ok(request) => core_service.get_mempool_entries_call(request).await.into(),
+                                    Err(err) => GetMempoolEntriesResponseMessage::from(err).into(),
+                                },
+                                Payload::ResolveFinalityConflictRequest(ref request) => match request.try_into() {
+                                    Ok(request) => core_service.resolve_finality_conflict_call(request).await.into(),
+                                    Err(err) => ResolveFinalityConflictResponseMessage::from(err).into(),
+                                },
+                                Payload::GetBlockDagInfoRequest(ref request) => match request.try_into() {
+                                    Ok(request) => core_service.get_block_dag_info_call(request).await.into(),
+                                    Err(err) => GetBlockDagInfoResponseMessage::from(err).into(),
+                                },
+                                Payload::GetBlockCountRequest(ref request) => match request.try_into() {
+                                    Ok(request) => core_service.get_block_count_call(request).await.into(),
+                                    Err(err) => GetBlockCountResponseMessage::from(err).into(),
+                                },
+                                Payload::GetBlocksRequest(ref request) => match request.try_into() {
+                                    Ok(request) => core_service.get_blocks_call(request).await.into(),
+                                    Err(err) => GetBlocksResponseMessage::from(err).into(),
+                                },
+                                Payload::GetVirtualSelectedParentChainFromBlockRequest(ref request) => match request.try_into() {
+                                    Ok(request) => {
+                                        core_service.get_virtual_selected_parent_chain_from_block_call(request).await.into()
+                                    }
+                                    Err(err) => GetVirtualSelectedParentChainFromBlockResponseMessage::from(err).into(),
+                                },
+                                Payload::GetSubnetworkRequest(ref request) => match request.try_into() {
+                                    Ok(request) => core_service.get_subnetwork_call(request).await.into(),
+                                    Err(err) => GetSubnetworkResponseMessage::from(err).into(),
+                                },
+                                Payload::SubmitTransactionRequest(ref request) => match request.try_into() {
+                                    Ok(request) => core_service.submit_transaction_call(request).await.into(),
+                                    Err(err) => SubmitTransactionResponseMessage::from(err).into(),
+                                },
+                                Payload::AddPeerRequest(ref request) => match request.try_into() {
+                                    Ok(request) => core_service.add_peer_call(request).await.into(),
+                                    Err(err) => AddPeerResponseMessage::from(err).into(),
+                                },
+                                Payload::GetConnectedPeerInfoRequest(ref request) => match request.try_into() {
+                                    Ok(request) => core_service.get_connected_peer_info_call(request).await.into(),
+                                    Err(err) => GetConnectedPeerInfoResponseMessage::from(err).into(),
+                                },
+                                Payload::GetMempoolEntryRequest(ref request) => match request.try_into() {
+                                    Ok(request) => core_service.get_mempool_entry_call(request).await.into(),
+                                    Err(err) => GetMempoolEntryResponseMessage::from(err).into(),
+                                },
+                                Payload::GetSelectedTipHashRequest(ref request) => match request.try_into() {
+                                    Ok(request) => core_service.get_selected_tip_hash_call(request).await.into(),
+                                    Err(err) => GetSelectedTipHashResponseMessage::from(err).into(),
+                                },
+                                Payload::GetPeerAddressesRequest(ref request) => match request.try_into() {
+                                    Ok(request) => core_service.get_peer_addresses_call(request).await.into(),
+                                    Err(err) => GetPeerAddressesResponseMessage::from(err).into(),
+                                },
+                                Payload::GetCurrentNetworkRequest(ref request) => match request.try_into() {
+                                    Ok(request) => core_service.get_current_network_call(request).await.into(),
+                                    Err(err) => GetCurrentNetworkResponseMessage::from(err).into(),
+                                },
+                                Payload::SubmitBlockRequest(ref request) => match request.try_into() {
+                                    Ok(request) => core_service.submit_block_call(request).await.into(),
+                                    Err(err) => SubmitBlockResponseMessage::from(err).into(),
+                                },
+                                Payload::GetBlockTemplateRequest(ref request) => match request.try_into() {
+                                    Ok(request) => core_service.get_block_template_call(request).await.into(),
+                                    Err(err) => GetBlockTemplateResponseMessage::from(err).into(),
+                                },
 
-                            Some(Payload::GetBlockTemplateRequest(ref request)) => match request.try_into() {
-                                Ok(request) => core_service.get_block_template_call(request).await.into(),
-                                Err(err) => GetBlockTemplateResponseMessage::from(err).into(),
-                            },
+                                Payload::GetBlockRequest(ref request) => match request.try_into() {
+                                    Ok(request) => core_service.get_block_call(request).await.into(),
+                                    Err(err) => GetBlockResponseMessage::from(err).into(),
+                                },
 
-                            Some(Payload::GetBlockRequest(ref request)) => match request.try_into() {
-                                Ok(request) => core_service.get_block_call(request).await.into(),
-                                Err(err) => GetBlockResponseMessage::from(err).into(),
-                            },
+                                Payload::GetInfoRequest(ref request) => match request.try_into() {
+                                    Ok(request) => core_service.get_info_call(request).await.into(),
+                                    Err(err) => GetInfoResponseMessage::from(err).into(),
+                                },
 
-                            Some(Payload::GetInfoRequest(ref request)) => match request.try_into() {
-                                Ok(request) => core_service.get_info_call(request).await.into(),
-                                Err(err) => GetInfoResponseMessage::from(err).into(),
-                            },
+                                Payload::NotifyVirtualDaaScoreChangedRequest(_) => todo!(),
+                                Payload::NotifyPruningPointUtxoSetOverrideRequest(_) => todo!(),
+                                Payload::NotifyVirtualSelectedParentBlueScoreChangedRequest(_) => todo!(),
+                                Payload::NotifyUtxosChangedRequest(_) => todo!(),
+                                Payload::NotifyFinalityConflictsRequest(_) => todo!(),
+                                Payload::NotifyVirtualSelectedParentChainChangedRequest(_) => todo!(),
+                                // Payload::NotifyVirtualSelectedParentChainChangedRequest(ref request) => NotifyVirtualSelectedParentChainChangedResponseMessage::from({
+                                //     let request = rpc_core::NotifyVirtualSelectedParentChainChangedRequest::try_from(request).unwrap();
+                                //     notifier.clone().execute_subscribe_command(
+                                //         listener_id,
+                                //         rpc_core::NotificationType::VirtualSelectedParentChainChanged,
+                                //         request.command,
+                                //     )
+                                // })
+                                // .into(),
+                                Payload::NotifyBlockAddedRequest(ref request) => NotifyBlockAddedResponseMessage::from({
+                                    let request = rpc_core::NotifyBlockAddedRequest::try_from(request).unwrap();
+                                    notifier.clone().execute_subscribe_command(
+                                        listener_id,
+                                        rpc_core::NotificationType::BlockAdded,
+                                        request.command,
+                                    )
+                                })
+                                .into(),
 
-                            Some(Payload::NotifyBlockAddedRequest(ref request)) => NotifyBlockAddedResponseMessage::from({
-                                let request = rpc_core::NotifyBlockAddedRequest::try_from(request).unwrap();
-                                notifier.clone().execute_subscribe_command(
-                                    listener_id,
-                                    rpc_core::NotificationType::BlockAdded,
-                                    request.command,
-                                )
-                            })
-                            .into(),
-
-                            Some(Payload::NotifyNewBlockTemplateRequest(ref request)) => {
-                                NotifyNewBlockTemplateResponseMessage::from({
+                                Payload::NotifyNewBlockTemplateRequest(ref request) => NotifyNewBlockTemplateResponseMessage::from({
                                     let request = rpc_core::NotifyNewBlockTemplateRequest::try_from(request).unwrap();
                                     notifier.clone().execute_subscribe_command(
                                         listener_id,
@@ -195,14 +308,17 @@ impl Rpc for Arc<GrpcService> {
                                         request.command,
                                     )
                                 })
-                                .into()
+                                .into(),
                             }
 
                             // TODO: This must be replaced by actual handling of all request variants
-                            _ => GetBlockResponseMessage::from(rpc_core::RpcError::General(
-                                "Server-side API Not implemented".to_string(),
-                            ))
-                            .into(),
+                            // _ => GetBlockResponseMessage::from(rpc_core::RpcError::General(
+                            //     "Server-side API Not implemented".to_string(),
+                            // ))
+                            // .into(),
+                        } else {
+                            // GetBlockResponseMessage::from(rpc_core::RpcError::General("Server-side API Not implemented".to_string()))
+                            GetBlockResponseMessage::from(rpc_core::RpcError::General("Missing request payload".to_string())).into()
                         };
                         //trace!("Outgoing {:?}", response);
 

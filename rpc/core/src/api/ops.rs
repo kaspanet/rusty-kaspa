@@ -39,6 +39,27 @@ pub enum RpcApiOps {
     NotifyBlockAdded,
     NotifyNewBlockTemplate,
 
+    NotifyUtxosChanged,
+    StopNotifyingUtxosChanged,
+
+    NotifyPruningPointUtxoSetOverride,
+    StopNotifyingPruningPointUtxoSetOverride,
+
+    NotifyVirtualDaaScoreChanged,
+    NotifyVirtualSelectedParentChainChanged,
+    NotifyVirtualSelectedParentBlueScoreChanged,
+    NotifyFinalityConflicts,
+
+    // gRPC v1 notification messages
+    // TODO @tiram - review handling
+    // FinalityConflictNotification,
+    // FinalityConflictResolvedNotification,
+    // UtxosChangedNotification,
+    // VirtualSelectedParentBlueScoreChangedNotification,
+    // PruningPointUtxoSetOverrideNotification,
+    // VirtualDaaScoreChangedNotification,
+    // VirtualSelectedParentChainChangedNotification,
+
     // Server to client notification
     Notification,
 }
