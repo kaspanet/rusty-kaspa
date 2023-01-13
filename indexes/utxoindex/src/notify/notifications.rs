@@ -1,6 +1,6 @@
 use consensus_core::BlockHashSet;
 
-use super::super::model::utxo_set_diff_by_script_public_key::UtxoSetDiffByScriptPublicKey;
+use super::super::model::utxo_index_changes::UtxoSetDiffByScriptPublicKey;
 
 pub type UtxoIndexNotificationTypes = Vec<UtxoIndexNotificationType>;
 

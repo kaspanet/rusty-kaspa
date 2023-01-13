@@ -1,5 +1,5 @@
 use super::{
-    database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter},
+    database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter, DbKey},
     errors::{StoreError, StoreResultExtensions},
     DB,
 };
@@ -17,6 +17,7 @@ use std::{fmt::Display, sync::Arc};
 pub trait UtxoSetStoreReader {
     fn get(&self, outpoint: &TransactionOutpoint) -> Result<Arc<UtxoEntry>, StoreError>;
     // TODO: UTXO entry iterator
+    fn iter_all(&self) -> impl Iterator<Item = Result<(TransactionOutpoint, UtxoEntry), StoreError>>;
 }
 
 pub trait UtxoSetStore: UtxoSetStoreReader {
@@ -97,6 +98,10 @@ impl UtxoView for DbUtxoSetStore {
 impl UtxoSetStoreReader for DbUtxoSetStore {
     fn get(&self, outpoint: &TransactionOutpoint) -> Result<Arc<UtxoEntry>, StoreError> {
         self.access.read((*outpoint).into())
+    }
+
+    fn iter_all(&self) -> impl Iterator<Item = Result<(TransactionOutpoint, UtxoEntry), StoreError>> {
+        self.access.iter_prefix::<TransactionOutpoint, UtxoEntry>(DbKey::prefix_only(self.prefix))
     }
 }
 

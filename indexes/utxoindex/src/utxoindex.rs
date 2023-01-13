@@ -1,15 +1,20 @@
 use std::sync::{Arc, atomic::Ordering};
 
-use consensus_core::api::DynConsensus;
+use consensus_core::{api::DynConsensus, utxo::utxo_collection::UtxoCollection};
 use rocksdb::DB;
 use tokio::{sync::mpsc::{Receiver, channel}, task::JoinHandle};
+use crate::notify::UtxoIndexNotifier;
+
 use super::{
     processes::process_handler::{AtomicUtxoIndexState, UtxoIndexState},
     stores::{circulating_supply::DbCirculatingSupplyStore, utxoindex_tips::DbUtxoIndexTipsStore, utxo_set_by_script_public_key::DbUtxoSetByScriptPublicKeyStore},
 };
 use consensus::model::stores::virtual_state::VirtualState;
 
+use consensus::model::stores::utxo_set::UtxoSetStoreReader;
+
 use super::notify::UtxoIndexNotification;
+use super::model::*;
 use parking_lot::Mutex;
 use tokio::sync::mpsc::{Sender};
 
@@ -18,9 +23,9 @@ pub enum WakeUpSignal{}
 #[atomic_enum(AtomicUtxoIndexState)]
 #[derive(PartialEq)]
 pub enum UtxoIndexState {
-    SyncFromDatabase,
-    ProcessConsensusEvents,
-    SyncFromDatabaseAndProcessConsensusEvents,
+    SyncFromScratch,
+    ProcessVirtualChanges,
+    SyncFromScratchAndProcessVirtualChanges,
     ShutDown,
     Wait,
 }
@@ -68,36 +73,55 @@ impl UtxoIndex {
     pub async fn run(&self) {
         loop {
             match self.state.load(Ordering::SeqCst) {
-                ProcessConsensusEvents => {
-                    while self.state.load(Ordering::SeqCst) == UtxoIndexState::ProcessingConsesnsusEvents{ // event-driven processing state
+                UtxoIndexState::ProcessVirtualChanges => {
+                    while self.state.load(Ordering::SeqCst) == UtxoIndexState::ProcessVirtualChanges{ // event-driven processing state
                         let consensus_event = self.consensus_recv.recv().await.unwrap(); //TODO: handle consensus channel drop.
-                        self.process_consensus_event(consensus_event).await;
+                        self.process_virtual_state_change(consensus_event).await;
                     }
                 }
-                SyncFromDatabase => {
+                UtxoIndexState::SyncFromScratch => {
                     self.sync_from_scratch();
+                    self.state.store(UtxoIndexState::Wait,  Ordering::SeqCst);
                 }
-                SyncFromDatabaseAndProcessConsensusEvents => {
+                UtxoIndexState::SyncFromScratchAndProcessVirtualChanges => {
                     self.sync_from_scratch();
-                    self.state.store(UtxoIndexState::ProcessConsensusEvents,  Ordering::SeqCst);
+                    self.state.store(UtxoIndexState::ProcessVirtualChanges,  Ordering::SeqCst);
                 }
-                ShutDown => break, //break out of loop to exit
-                Wait => self.signal_chan[1].recv().await //wait for a signal. 
+                UtxoIndexState::ShutDown => break, //break out of loop to exit
+                UtxoIndexState::Wait => self.signal_chan[1].recv().await //wait for a signal. 
             }
         }
     }
 
-    pub fn signal_process_consensus_events(&self) {
+    async fn process_virtual_state_change(&self, virtual_state: VirtualState) {
+        let utxoindex_changes: UtxoIndexChanges = virtual_state.into();
+        self.utxos_by_script_public_key_store.write_diff(utxoindex_changes.utxo_diff).await;
+        self.notify_new_utxo_diff_by_script_public_key(utxoindex_changes.utxo_diff).await;
+        let circulating_supply = self.circulating_suppy_store.update(utxoindex_changes.circulating_supply_diff).await;
+        self.notify_new_circulating_supply(circulating_suppy as u64).await;
+        self.utxoindex_tips_store.update(utxoindex_changes.tips).await;
+        self.notify_new_tips(utxoindex_changes.tips).await;
+        }
+
+    fn sync_from_scratch(&self) { //TODO: chunking
+        let dummy_consenus_store: UtxoSetStoreReader; //TODO: exchange with proper store reference when ready.
+        let utxo_index_changes =  UtxoIndexChanges::new();
+        utxo_index_changes.add_utxo_collection(
+        UtxoCollection::from_iter(dummy_consenus_store.iter_all().map(|res| res.expect("did not expect db error")))
+        )
+    }
+
+    pub fn signal_process_virtual_state_change(&self) {
         let former_state = self.state.swap(UtxoIndexState::ProcessConsensusEvents, Ordering::SeqCst);
         if former_state == UtxoIndexState::Wait { self.signal_chan[0].send(WakeUpSignal)}
     }
 
-    pub fn signal_resync_and_process_consensus_events(&self) {
+    pub fn signal_sync_from_scratch_and_process_virtual_state_change(&self) {
         let former_state = self.state.swap(UtxoIndexState::SyncFromDatabaseAndProcessConsensusEvents, Ordering::SeqCst);
         if former_state == UtxoIndexState::Wait { self.signal_chan[0].send(WakeUpSignal)}
     }
 
-    pub fn signal_resync(&self) {
+    pub fn signal_sync_from_scratch(&self) {
         let former_state = self.state.swap(UtxoIndexState::SyncFromDatabase,  Ordering::SeqCst);
         if former_state == UtxoIndexState::Wait { self.signal_chan[0].send(WakeUpSignal)}
     }
@@ -106,7 +130,6 @@ impl UtxoIndex {
         let former_state = self.state.swap(UtxoIndexState::ShutDown,  Ordering::SeqCst);
         if former_state == UtxoIndexState::Wait { self.signal_chan[0].send(WakeUpSignal)}
     }
-
 
     pub fn signal_wait(&self) {
         self.state.store(UtxoIndexState::Wait,  Ordering::SeqCst);

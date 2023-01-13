@@ -7,9 +7,7 @@ use std::mem::size_of_val;
 const SEP: u8 = b'/';
 pub const SEP_SIZE: usize = size_of_val(&SEP);
 
-pub type DbBucket = DbKey;
-
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub struct DbKey {
     path: Vec<u8>,
     prefix_len: usize,

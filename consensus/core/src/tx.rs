@@ -1,7 +1,7 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
-use std::{fmt::Display, ops::Range, collections::HashSet};
+use std::{fmt::Display, ops::Range, collections::HashSet, marker::Copy};
 
 use crate::{
     hashing,
@@ -13,8 +13,11 @@ pub type ScriptPublicKeys = HashSet<ScriptPublicKey>;
 /// Represents the ID of a Kaspa transaction
 pub type TransactionId = hashes::Hash;
 
+/// Size of the underlying script vector of a script. 
+pub const SCRIPT_VECTOR_SIZE: usize = 36;
+
 /// Used as the underlying type for script public key data, optimized for the common p2pk script size (34).
-pub type ScriptVec = SmallVec<[u8; 36]>;
+pub type ScriptVec = SmallVec<[u8; SCRIPT_VECTOR_SIZE]>;
 
 /// Represents the ScriptPublicKey Version 
 pub type VersionType = u16;
@@ -23,7 +26,7 @@ pub type VersionType = u16;
 pub use smallvec::smallvec as scriptvec;
 
 /// Represents a Kaspad ScriptPublicKey
-#[derive(Default, Debug, PartialEq, Eq, Serialize, Deserialize, Clone, Hash)]
+#[derive(Default, Debug, Copy, PartialEq, Eq, Serialize, Deserialize, Clone, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct ScriptPublicKey {
     version: VersionType,
@@ -93,7 +96,7 @@ impl BorshSchema for ScriptPublicKey {
 /// set such as whether or not it was contained in a coinbase tx, the daa
 /// score of the block that accepts the tx, its public key script, and how
 /// much it pays.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct UtxoEntry {
     pub amount: u64,

@@ -1,7 +1,7 @@
 use super::{prelude::{Cache, DbKey, DbWriter}, key::DbBucket};
 use crate::model::stores::{errors::StoreError, DB};
 use rocksdb::{IteratorMode, ReadOptions, Direction};
-use serde::{de::DeserializeOwned, Serialize, Deserialize};
+use serde::{de::DeserializeOwned, Serialize};
 use std::{collections::hash_map::RandomState, hash::BuildHasher, sync::Arc};
 
 /// A concurrent DB store access with typed caching.
@@ -112,15 +112,15 @@ where
         Ok(())
     }
 
-    pub fn iter_bucket<Key, Value>(&self, bucket: DbBucket) -> impl Iterator<Item = Result<(Key, Value), StoreError>> + '_
+    pub fn iter_prefix<Key, Value>(&self, prefix: DbKey) -> impl Iterator<Item = Result<(Key, Value), StoreError>> + '_
     where
-        Key: Copy + AsRef<[u8]> + DeserializeOwned,
-        Value: Copy + AsRef<[u8]> + DeserializeOwned,
+        Key: Copy + DeserializeOwned,
+        Value: Copy + DeserializeOwned,
     {
-            let iter = self.db.prefix_iterator(bucket.as_ref()).map(move |res| -> Result<(Key, Value), StoreError> {
+            let iter = self.db.prefix_iterator(prefix.as_ref()).map(move |res| -> Result<(Key, Value), StoreError> {
             let item = match res {
                 Ok(res) => {
-                    let key: Key = bincode::deserialize(&res.0[bucket.prefix_len()..])?;
+                    let key: Key = bincode::deserialize(&res.0[prefix.prefix_len()..])?;
                     let value: Value = bincode::deserialize(&res.1)?;
                     Ok((key.to_owned(), value.to_owned()))
                 },

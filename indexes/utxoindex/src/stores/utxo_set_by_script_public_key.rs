@@ -133,13 +133,13 @@ impl DbUtxoSetByScriptPublicKeyStore {
 }
 
 impl UtxoSetByScriptPublicKeyStoreReader for DbUtxoSetByScriptPublicKeyStore {
-    fn get_utxos_from_script_public_keys(&self, script_public_keys: ScriptPublicKeys) -> Result<Arc<UtxoByScriptPublicKey>, StoreError> 
+    fn get_utxos_from_script_public_keys(&self, script_public_keys: ScriptPublicKeys) -> Result<Arc<UtxoByScriptPublicKey>, StoreError> //TODO: chunking
     {
         let mut utxos_by_script_public_keys =Arc::new( &mut UtxoSetByScriptPublicKey::new());
         for script_public_key in script_public_keys{
             let utxos_by_script_public_keys_inner = &mut CompactUtxoCollection::new();
             utxos_by_script_public_keys_inner.extend(
-                self.access.iter_bucket::<TransactionOutpoint, CompactUtxoEntry>(script_public_key.into()).map(
+                self.access.iter_prefix::<TransactionOutpoint, CompactUtxoEntry>(script_public_key.into()).map(
                     move |value| -> (TransactionOutpoint, CompactUtxoEntry) {
                         let (key, value) = value?;
                         (key as TransactionOutpoint, value as CompactUtxoEntry)
