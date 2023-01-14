@@ -1,0 +1,11 @@
+<html>
+    <head>
+        <script type="module">
+            import * as workflow from './kaspa-wallet/kaspa-wallet.js';
+            (async () => {
+                const wasm = await workflow.default('./kaspa-wallet/kaspa-wallet_bg.wasm');
+            })();
+        </script>
+    </head>
+    <body></body>
+</html>

@@ -1,0 +1,21 @@
+[package]
+name = "kaspa-wallet-cli-wasm"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+kaspa-wallet-cli.workspace = true
+
+# cli = { path = "../cli" }
+workflow-terminal = "0.1.0"
+workflow-log = "0.1.0"
+# workflow-terminal = {path = "../../../workflow-terminal"}
+# workflow-log = { path = "../../../workflow-log" }
+async-trait = "0.1.57"
+wasm-bindgen-futures="0.4.33"
+js-sys = "0.3.56"
+wasm-bindgen = "0.2.79"
+console_error_panic_hook = "0.1.7"

@@ -1,0 +1,18 @@
+[package]
+name = "kaspa-wallet-core"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+workflow-log = "0.1.0"
+workflow-rpc = "0.1.2"
+# workflow-log = { path = "../../../workflow-log" }
+thiserror = "1.0.32"
+# kaspa-rpc-core = { path = "../../rpc/core" }
+# kaspa-workflow-rpc-client = { path = "../../rpc/workflow/client" }
+kaspa-wrpc-client.workspace = true
+# wallet-core.workspace = true
+rpc-core.workspace = true

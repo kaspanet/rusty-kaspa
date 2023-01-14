@@ -1,0 +1,23 @@
+[package]
+name = "kaspa-wallet-cli"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+workflow-core = "0.1.0"
+workflow-log = "0.1.0"
+workflow-terminal = "0.1.0"
+# workflow-core = { path = "../../../workflow-core" }
+# workflow-log = { path = "../../../workflow-log" }
+# workflow-terminal = {path = "../../../workflow-terminal"}
+# kaspa-workflow-rpc-client = { path = "../../rpc/workflow/client" }
+kaspa-wrpc-client.workspace = true
+kaspa-wallet-core.workspace = true
+# kaspa-wallet-core = { path = "../core/" }
+async-trait = "0.1.57"
+pad = "0.1.6"
+convert_case = "0.5.0"
+thiserror = "1.0.32"

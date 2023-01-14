@@ -1,0 +1,15 @@
+[package]
+name = "kaspa-wallet-cli-native"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# cli = { path = "../cli" }
+kaspa-wallet-cli.workspace = true
+workflow-terminal = "0.1.0"
+workflow-log = "0.1.0"
+# workflow-terminal = {path = "../../../workflow-terminal"}
+# workflow-log = { path = "../../../workflow-log" }
+async-std = { version = "1.12.0", features = ['attributes'] }
+async-trait = "0.1.57"
+tokio = { version = "1.20.1", default-features = false, features = ['rt-multi-thread'] }
