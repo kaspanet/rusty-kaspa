@@ -278,6 +278,14 @@ impl RpcApi for RpcCoreService {
     async fn get_coin_supply_call(&self, _request: GetCoinSupplyRequest) -> RpcResult<GetCoinSupplyResponse> {
         unimplemented!();
     }
+    
+    async fn ping_call(&self, _request: PingRequest) -> RpcResult<PingResponse> {
+        Ok(PingResponse{})
+    }
+    
+    async fn get_process_metrics_call(&self, _request: GetProcessMetricsRequest) -> RpcResult<GetProcessMetricsResponse> {
+        unimplemented!();
+    }
 
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API

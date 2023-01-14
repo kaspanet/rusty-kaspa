@@ -7,6 +7,7 @@ u32_try_from!{
     #[repr(u32)]
     pub enum RpcApiOps {
         Ping = 0,
+        GetProcessMetrics,
         GetCurrentNetwork,
         SubmitBlock,
         GetBlockTemplate,

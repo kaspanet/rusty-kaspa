@@ -742,3 +742,25 @@ message GetCoinSupplyResponseMessage{
 
         RPCError error = 1000;
 }
+
+
+message PingRequestMessage{
+}
+
+message PingResponseMessage{
+        RPCError error = 1000;
+}
+
+
+message GetProcessMetricsRequestMessage{
+}
+
+message GetProcessMetricsResponseMessage{
+        uint64 uptime = 1;
+        repeated uint64 memoryUsed = 2;
+        repeated uint64 storageUsed = 3;
+        repeated uint64 grpcConnections = 4;
+        repeated uint64 wrpcConnections = 5;
+        RPCError error = 1000;
+}
+

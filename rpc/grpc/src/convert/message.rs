@@ -448,6 +448,24 @@ from!(_item: RpcResult<&rpc_core::GetCoinSupplyResponse>, protowire::GetCoinSupp
     unimplemented!();
 });
 
+
+from!(_item: &rpc_core::PingRequest, protowire::PingRequestMessage, {
+    unimplemented!();
+});
+
+from!(_item: RpcResult<&rpc_core::PingResponse>, protowire::PingResponseMessage, {
+    unimplemented!();
+});
+
+
+from!(_item: &rpc_core::GetProcessMetricsRequest, protowire::GetProcessMetricsRequestMessage, {
+    unimplemented!();
+});
+
+from!(_item: RpcResult<&rpc_core::GetProcessMetricsResponse>, protowire::GetProcessMetricsResponseMessage, {
+    unimplemented!();
+});
+
 // ----------------------------------------------------------------------------
 // protowire to rpc_core
 // ----------------------------------------------------------------------------
@@ -884,6 +902,27 @@ try_from!(_item: &protowire::GetCoinSupplyRequestMessage, rpc_core::GetCoinSuppl
 });
 
 try_from!(_item: &protowire::GetCoinSupplyResponseMessage, rpc_core::GetCoinSupplyResponse, {
+    //
+    unimplemented!()
+});
+
+
+try_from!(_item: &protowire::PingRequestMessage, rpc_core::PingRequest, {
+    //
+    unimplemented!()
+});
+
+try_from!(_item: &protowire::PingResponseMessage, rpc_core::PingResponse, {
+    //
+    unimplemented!()
+});
+
+try_from!(_item: &protowire::GetProcessMetricsRequestMessage, rpc_core::GetProcessMetricsRequest, {
+    //
+    unimplemented!()
+});
+
+try_from!(_item: &protowire::GetProcessMetricsResponseMessage, rpc_core::GetProcessMetricsResponse, {
     //
     unimplemented!()
 });

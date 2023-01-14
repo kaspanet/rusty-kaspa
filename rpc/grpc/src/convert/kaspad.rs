@@ -35,6 +35,8 @@ impl From<&kaspad_request::Payload> for RpcApiOps {
             Payload::EstimateNetworkHashesPerSecondRequest(_) => RpcApiOps::EstimateNetworkHashesPerSecond,
             Payload::GetMempoolEntriesByAddressesRequest(_) => RpcApiOps::GetMempoolEntriesByAddresses,
             Payload::GetCoinSupplyRequest(_) => RpcApiOps::GetCoinSupply,
+            Payload::PingRequest(_) => RpcApiOps::Ping,
+            Payload::GetProcessMetricsRequest(_) => RpcApiOps::GetProcessMetrics,
 
             // Subscription commands for starting/stopping notifications
             Payload::NotifyBlockAddedRequest(_) => RpcApiOps::NotifyBlockAdded,
@@ -85,6 +87,8 @@ impl From<&kaspad_response::Payload> for RpcApiOps {
             Payload::EstimateNetworkHashesPerSecondResponse(_) => RpcApiOps::EstimateNetworkHashesPerSecond,
             Payload::GetMempoolEntriesByAddressesResponse(_) => RpcApiOps::GetMempoolEntriesByAddresses,
             Payload::GetCoinSupplyResponse(_) => RpcApiOps::GetCoinSupply,
+            Payload::PingResponse(_) => RpcApiOps::Ping,
+            Payload::GetProcessMetricsResponse(_) => RpcApiOps::GetProcessMetrics,
 
             // Subscription commands for starting/stopping notifications
             Payload::NotifyBlockAddedResponse(_) => RpcApiOps::NotifyBlockAdded,
@@ -179,6 +183,8 @@ pub mod kaspad_request_convert {
     impl_into_kaspad_request!(EstimateNetworkHashesPerSecond);
     impl_into_kaspad_request!(GetMempoolEntriesByAddresses);
     impl_into_kaspad_request!(GetCoinSupply);
+    impl_into_kaspad_request!(Ping);
+    impl_into_kaspad_request!(GetProcessMetrics);
 
     // impl_into_kaspad_request!(StopNotifyingUtxosChanged);
     // impl_into_kaspad_request!(StopNotifyingPruningPointUtxoSetOverride);
@@ -305,6 +311,8 @@ pub mod kaspad_response_convert {
     impl_into_kaspad_response!(EstimateNetworkHashesPerSecond);
     impl_into_kaspad_response!(GetMempoolEntriesByAddresses);
     impl_into_kaspad_response!(GetCoinSupply);
+    impl_into_kaspad_response!(Ping);
+    impl_into_kaspad_response!(GetProcessMetrics);
 
     impl_into_kaspad_response!(NotifyBlockAdded);
     impl_into_kaspad_notify_response!(rpc_core::NotifyBlockAddedResponse, NotifyBlockAddedResponseMessage, NotifyBlockAddedResponse);

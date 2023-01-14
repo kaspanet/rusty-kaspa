@@ -68,6 +68,8 @@ impl RpcApi for RpcApiGrpc {
     //     self.inner.clone().call(RpcApiOps::SubmitBlock, request).await?.as_ref().try_into()
     // }
 
+    route!(ping_call, Ping);
+    route!(get_process_metrics_call, GetProcessMetrics);
     route!(submit_block_call, SubmitBlock);
     route!(get_block_template_call, GetBlockTemplate);
     route!(get_block_call, GetBlock);

@@ -64,6 +64,8 @@ impl Matcher<&kaspad_response::Payload> for kaspad_request::Payload {
             Payload::GetBalanceByAddressRequest(_) => todo!(),
             Payload::GetBalancesByAddressesRequest(_) => todo!(),
             Payload::GetCoinSupplyRequest(_) => todo!(),
+            Payload::PingRequest(_) => todo!(),
+            Payload::GetProcessMetricsRequest(_) => todo!(),
             // Payload::(_) => true,
 
             // original entries:

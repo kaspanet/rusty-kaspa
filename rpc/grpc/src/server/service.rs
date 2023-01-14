@@ -154,6 +154,14 @@ impl Rpc for Arc<GrpcService> {
                         //trace!("Incoming {:?}", request);
                         let response: KaspadResponse = if let Some(payload) = request.payload {
                             match payload {
+                                Payload::GetProcessMetricsRequest(ref request) => match request.try_into() {
+                                    Ok(request) => core_service.get_process_metrics_call(request).await.into(),
+                                    Err(err) => GetProcessMetricsResponseMessage::from(err).into(),
+                                },
+                                Payload::PingRequest(ref request) => match request.try_into() {
+                                    Ok(request) => core_service.ping_call(request).await.into(),
+                                    Err(err) => PingResponseMessage::from(err).into(),
+                                },
                                 Payload::GetCoinSupplyRequest(ref request) => match request.try_into() {
                                     Ok(request) => core_service.get_coin_supply_call(request).await.into(),
                                     Err(err) => GetCoinSupplyResponseMessage::from(err).into(),
