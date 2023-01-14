@@ -2,8 +2,11 @@ use async_trait::async_trait;
 use borsh::*;
 use rpc_core::api::ops::RpcApiOps;
 use rpc_core::api::rpc::RpcApi;
+#[allow(unused_imports)]
 use rpc_core::errors::RpcResult;
+#[allow(unused_imports)]
 use rpc_core::notify::channel::*;
+#[allow(unused_imports)]
 use rpc_core::notify::listener::*;
 use rpc_core::prelude::*;
 use std::sync::Arc;
