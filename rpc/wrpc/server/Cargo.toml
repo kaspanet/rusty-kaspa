@@ -1,0 +1,28 @@
+[package]
+name = "kaspa-wrpc-server"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+tokio = { version = "1.20.1", features = ['io-util','time'] }
+thiserror = "1.0.32"
+async-trait = "0.1.57"
+
+workflow-core = "0.1.0"
+workflow-websocket = "0.1.2"
+workflow-rpc = "0.1.2"
+workflow-log = "0.1.0"
+# workflow-core = { path = "../../../../workflow-core" }
+# workflow-websocket = { path = "../../../../workflow-websocket" }
+# workflow-rpc = { path = "../../../../workflow-rpc" }
+# workflow-log = { path = "../../../../workflow-log" }
+
+# kaspa-rpc-core = { path = "../../core" }
+rpc-core.workspace = true
+
+serde = { version = "1.0.144" , features = ["derive"] }
+borsh = "0.9.3"
+paste = "1.0.11"

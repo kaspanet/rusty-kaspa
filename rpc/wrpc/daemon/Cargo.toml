@@ -1,0 +1,8 @@
+[package]
+name = "kaspa-wrpc-daemon"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1.20.1", features = ["rt-multi-thread"] }
+kaspa-workflow-rpc-server = { path = "../server" }
