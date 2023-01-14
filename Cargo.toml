@@ -1,7 +1,10 @@
 [workspace]
 members = [
     "core",
-    "wallet",
+    "wallet/core",
+    "wallet/cli",
+    "wallet/native",
+    "wallet/wasm",
     "consensus",
     "consensus/core",
     "consensus/pow",
@@ -15,6 +18,8 @@ members = [
     "crypto/merkle",
     "rpc/core",
     "rpc/grpc",
+    "rpc/wrpc/client",
+    "rpc/wrpc/server",
 ]
 
 [workspace.package]
@@ -26,11 +31,10 @@ include = ["src/**/*.rs", "Cargo.toml"]
 
 [workspace.dependencies]
 kaspa-core = { path = "core" }
-kaspa-wallet = { path = "wallet" }
+# kaspa-wallet = { path = "wallet" }
 consensus = { path = "consensus" }
 consensus-core = { path = "consensus/core" }
 kaspad = { path = "kaspad" }
-wasm = { path = "wasm" }
 math = { path = "math" }
 hashes = { path = "crypto/hashes" }
 muhash = { path = "crypto/muhash" }
@@ -40,6 +44,13 @@ pow = { path = "consensus/pow" }
 kaspa-utils = { path = "utils" }
 rpc-core = { path = "rpc/core" }
 rpc-grpc = { path = "rpc/grpc" }
+kaspa-wrpc-client = { path = "rpc/wrpc/client" }
+kaspa-wrpc-server = { path = "rpc/wrpc/server" }
+kaspa-wallet-core = { path = "wallet/core" }
+kaspa-wallet-cli = { path = "wallet/cli" }
+kaspa-wallet-cli-native = { path = "wallet/native" }
+kaspa-wallet-cli-wasm = { path = "wallet/wasm" }
+kaspa-wasm = { path = "wasm" }
 
 thiserror = "1"
 faster-hex = "0.6"
