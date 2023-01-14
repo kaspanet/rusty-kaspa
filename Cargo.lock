@@ -691,6 +691,7 @@ name = "consensus-core"
 version = "0.1.0"
 dependencies = [
  "borsh",
+ "cfg-if",
  "faster-hex",
  "futures-util",
  "hashes",
@@ -1532,6 +1533,7 @@ dependencies = [
 name = "kaspa-core"
 version = "0.1.0"
 dependencies = [
+ "cfg-if",
  "ctrlc",
  "env_logger",
  "futures-util",
@@ -1557,8 +1559,11 @@ version = "0.1.0"
 name = "kaspa-wasm"
 version = "0.1.0"
 dependencies = [
+ "addresses",
  "kaspa-core",
+ "kaspa-utils",
  "kaspa-wallet",
+ "rpc-core",
  "wasm-bindgen",
 ]
 
@@ -2449,6 +2454,7 @@ dependencies = [
  "async-std",
  "async-trait",
  "borsh",
+ "cfg-if",
  "consensus-core",
  "derive_more",
  "faster-hex",

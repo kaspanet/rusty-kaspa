@@ -5,7 +5,9 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 include.workspace = true
-license.workspace = true
+# wasm-pack requires this value to be a string
+# (it can not be derived from the workspace)
+license = "MIT/Apache-2.0"
 
 [lib]
 crate-type = ["cdylib"]
@@ -14,3 +16,6 @@ crate-type = ["cdylib"]
 kaspa-core.workspace = true
 kaspa-wallet.workspace = true
 wasm-bindgen.workspace = true
+addresses.workspace = true
+rpc-core.workspace = true
+kaspa-utils.workspace = true
