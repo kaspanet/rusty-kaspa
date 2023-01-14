@@ -2,7 +2,7 @@ use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use workflow_core::enums::u32_try_from;
 
-u32_try_from!{
+u32_try_from! {
     #[derive(Clone, Debug, PartialEq, Eq)]
     #[repr(u32)]
     pub enum RpcApiOps {

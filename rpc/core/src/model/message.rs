@@ -851,7 +851,6 @@ pub struct NotifyVirtualSelectedParentBlueScoreChangedRequest {
 #[serde(rename_all = "camelCase")]
 pub struct NotifyVirtualSelectedParentBlueScoreChangedResponse {}
 
-
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PingRequest {}
@@ -860,7 +859,6 @@ pub struct PingRequest {}
 #[serde(rename_all = "camelCase")]
 pub struct PingResponse {}
 
-
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GetProcessMetricsRequest {}
@@ -868,14 +866,13 @@ pub struct GetProcessMetricsRequest {}
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GetProcessMetricsResponse {
-    pub uptime : u64,
-    pub memory_used : Vec<u64>,
-    pub storage_used : Vec<u64>,
-    pub grpc_connections : Vec<u32>,
-    pub wrpc_connections : Vec<u32>,
+    pub uptime: u64,
+    pub memory_used: Vec<u64>,
+    pub storage_used: Vec<u64>,
+    pub grpc_connections: Vec<u32>,
+    pub wrpc_connections: Vec<u32>,
     // TBD:
     //  - approx bandwidth consumption
     //  - other connection metrics
     //  - cpu usage
 }
-

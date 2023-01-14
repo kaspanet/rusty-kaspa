@@ -448,7 +448,6 @@ from!(_item: RpcResult<&rpc_core::GetCoinSupplyResponse>, protowire::GetCoinSupp
     unimplemented!();
 });
 
-
 from!(_item: &rpc_core::PingRequest, protowire::PingRequestMessage, {
     unimplemented!();
 });
@@ -456,7 +455,6 @@ from!(_item: &rpc_core::PingRequest, protowire::PingRequestMessage, {
 from!(_item: RpcResult<&rpc_core::PingResponse>, protowire::PingResponseMessage, {
     unimplemented!();
 });
-
 
 from!(_item: &rpc_core::GetProcessMetricsRequest, protowire::GetProcessMetricsRequestMessage, {
     unimplemented!();
@@ -905,7 +903,6 @@ try_from!(_item: &protowire::GetCoinSupplyResponseMessage, rpc_core::GetCoinSupp
     //
     unimplemented!()
 });
-
 
 try_from!(_item: &protowire::PingRequestMessage, rpc_core::PingRequest, {
     //
