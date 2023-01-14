@@ -2,7 +2,7 @@ use crate::constants::MAX_SOMPI;
 use crate::tx::TransactionOutpoint;
 use thiserror::Error;
 
-#[derive(Error, Debug, Clone)]
+#[derive(Error, Debug, Clone, PartialEq, Eq)]
 pub enum TxRuleError {
     #[error("transaction has no inputs")]
     NoTxInputs,

@@ -129,7 +129,7 @@ impl Display for TransactionOutpoint {
 }
 
 /// Represents a Kaspa transaction input
-#[derive(Debug, Serialize, Deserialize, Clone, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TransactionInput {
     pub previous_outpoint: TransactionOutpoint,
@@ -145,7 +145,7 @@ impl TransactionInput {
 }
 
 /// Represents a Kaspad transaction output
-#[derive(Debug, Serialize, Deserialize, Clone, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TransactionOutput {
     pub value: u64,
@@ -159,7 +159,7 @@ impl TransactionOutput {
 }
 
 /// Represents a Kaspa transaction
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Transaction {
     pub version: u16,
@@ -328,7 +328,7 @@ impl<'a> VerifiableTransaction for ValidatedTransaction<'a> {
 }
 
 /// Represents a mutable owned transaction along with partially filled UTXO entry data and optional fee and mass
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MutableTransaction {
     /// The inner transaction
     pub tx: Transaction,

@@ -22,6 +22,7 @@ parking_lot = "0.12"
 
 [dev-dependencies]
 criterion.workspace = true
+secp256k1 = { version = "0.24", features = ["global-context", "rand-std"] }
 
 [[bench]]
 name = "bench"

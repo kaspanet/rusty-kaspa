@@ -7,6 +7,10 @@ impl Mempool {
             return self.orphan_pool.remove_orphan(transaction_id, true).map(|_| ());
         }
 
+        if !self.transaction_pool.has(transaction_id) {
+            return Ok(());
+        }
+
         let mut transactions_to_remove = vec![*transaction_id];
         let redeemers = self.transaction_pool.get_redeemer_ids_in_pool(transaction_id);
         if remove_redeemers {

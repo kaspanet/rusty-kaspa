@@ -2,7 +2,7 @@ use crate::{
     block_template::{builder::BlockTemplateBuilder, errors::BuilderError},
     cache::BlockTemplateCache,
     errors::MiningManagerResult,
-    mempool::{errors::RuleResult, Mempool},
+    mempool::{config::Config, errors::RuleResult, Mempool},
     model::owner_txs::{OwnerSetTransactions, ScriptPublicKeySet},
 };
 use consensus_core::{
@@ -28,8 +28,13 @@ impl MiningManager {
         relay_non_std_transactions: bool,
         max_block_mass: u64,
     ) -> MiningManager {
-        let block_template_builder = BlockTemplateBuilder::new(consensus.clone(), max_block_mass);
-        let mempool = RwLock::new(Mempool::new(consensus, target_time_per_block, relay_non_std_transactions, max_block_mass));
+        let config = Config::build_default(target_time_per_block, relay_non_std_transactions, max_block_mass);
+        Self::with_config(consensus, config)
+    }
+
+    pub(crate) fn with_config(consensus: DynConsensus, config: Config) -> Self {
+        let block_template_builder = BlockTemplateBuilder::new(consensus.clone(), config.maximum_mass_per_block);
+        let mempool = RwLock::new(Mempool::new(consensus, config));
         let block_template_cache = RwLock::new(BlockTemplateCache::new());
         Self { block_template_builder, block_template_cache, mempool }
     }
@@ -59,7 +64,7 @@ impl MiningManager {
         // We remove recursion seen in blockTemplateBuilder.BuildBlockTemplate here.
         let mut cache_write = RwLockUpgradableReadGuard::upgrade(cache_read);
         loop {
-            let transactions = self.mempool.read().block_candidate_transactions();
+            let transactions = self.block_candidate_transactions();
             match self.block_template_builder.build_block_template(miner_data, transactions) {
                 Ok(block_template) => {
                     let block_template = cache_write.set_immutable_cached_template(block_template);
@@ -84,12 +89,17 @@ impl MiningManager {
         }
     }
 
+    pub(crate) fn block_candidate_transactions(&self) -> Vec<MutableTransaction> {
+        self.mempool.read().block_candidate_transactions()
+    }
+
     /// Clears the block template cache, forcing the next call to get_block_template to build a new block template.
     pub fn clear_block_template(&self) {
         self.block_template_cache.write().clear();
     }
 
-    pub(crate) fn _block_template_builder(&self) -> &BlockTemplateBuilder {
+    #[cfg(test)]
+    pub(crate) fn block_template_builder(&self) -> &BlockTemplateBuilder {
         &self.block_template_builder
     }
 

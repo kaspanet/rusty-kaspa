@@ -244,56 +244,15 @@ impl Mempool {
 mod tests {
     use super::*;
     use crate::mempool::config::{Config, DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE};
+    use crate::testutils::consensus_mock::ConsensusMock;
     use addresses::{Address, Prefix};
     use consensus_core::{
-        api::ConsensusApi,
-        block::{Block, BlockTemplate},
-        blockstatus::BlockStatus,
-        coinbase::MinerData,
         constants::{MAX_TX_IN_SEQUENCE_NUM, SOMPI_PER_KASPA, TX_VERSION},
-        errors::{
-            block::{BlockProcessResult, RuleError},
-            coinbase::CoinbaseResult,
-            tx::TxResult,
-        },
         subnets::SUBNETWORK_ID_NATIVE,
         tx::{ScriptPublicKey, ScriptVec, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput},
     };
-    use futures_util::future::BoxFuture;
     use smallvec::smallvec;
     use std::sync::Arc;
-
-    struct ConsensusMock {}
-
-    impl ConsensusApi for ConsensusMock {
-        fn build_block_template(self: Arc<Self>, _miner_data: MinerData, _txs: Vec<Transaction>) -> Result<BlockTemplate, RuleError> {
-            todo!()
-        }
-
-        fn validate_and_insert_block(
-            self: Arc<Self>,
-            _block: Block,
-            _update_virtual: bool,
-        ) -> BoxFuture<'static, BlockProcessResult<BlockStatus>> {
-            todo!()
-        }
-
-        fn validate_mempool_transaction_and_populate(self: Arc<Self>, _: &mut MutableTransaction) -> TxResult<()> {
-            todo!()
-        }
-
-        fn calculate_transaction_mass(self: Arc<Self>, _: &Transaction) -> u64 {
-            0
-        }
-
-        fn get_virtual_daa_score(self: Arc<Self>) -> u64 {
-            0
-        }
-
-        fn modify_coinbase_payload(self: Arc<Self>, _: Vec<u8>, _: &MinerData) -> CoinbaseResult<Vec<u8>> {
-            todo!()
-        }
-    }
 
     #[test]
     fn test_calc_min_required_tx_relay_fee() {
@@ -334,10 +293,10 @@ mod tests {
 
         for test in tests.iter() {
             // TODO: test all nets params
-            let consensus = Arc::new(ConsensusMock {});
+            let consensus = Arc::new(ConsensusMock::new());
             let mut config = Config::build_default(1000, false, 500_000);
             config.minimum_relay_transaction_fee = test.minimum_relay_transaction_fee;
-            let mempool = Mempool::with_config(consensus, config);
+            let mempool = Mempool::new(consensus, config);
 
             let got = mempool.minimum_required_transaction_relay_fee(test.size);
             if got != test.want {
@@ -417,10 +376,10 @@ mod tests {
         ];
         for test in tests {
             // TODO: test all nets params
-            let consensus = Arc::new(ConsensusMock {});
+            let consensus = Arc::new(ConsensusMock::new());
             let mut config = Config::build_default(1000, false, 500_000);
             config.minimum_relay_transaction_fee = test.minimum_relay_transaction_fee;
-            let mempool = Mempool::with_config(consensus, config);
+            let mempool = Mempool::new(consensus, config);
 
             println!("test_is_transaction_output_dust test '{}' ", test.name);
             let res = mempool.is_transaction_output_dust(&test.tx_out);
@@ -604,9 +563,9 @@ mod tests {
 
         for test in tests {
             // TODO: test all nets params
-            let consensus = Arc::new(ConsensusMock {});
+            let consensus = Arc::new(ConsensusMock::new());
             let config = Config::build_default(1000, false, 500_000);
-            let mempool = Mempool::with_config(consensus, config);
+            let mempool = Mempool::new(consensus, config);
 
             // Ensure standard-ness is as expected.
             println!("test_check_transaction_standard_in_isolation test '{}' ", test.name);

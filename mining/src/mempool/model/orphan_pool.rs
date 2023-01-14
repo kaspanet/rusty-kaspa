@@ -166,6 +166,11 @@ impl OrphanPool {
         // - the call cycle removeOrphan -> removeRedeemersOf -> removeOrphan is replaced by
         //   the sequence get_redeemer_ids_in_pool, remove_single_orphan
         // - recursion is removed (see get_redeemer_ids_in_pool)
+
+        if !self.has(transaction_id) {
+            return Ok(vec![]);
+        }
+
         let mut transaction_ids_to_remove = vec![*transaction_id];
         if remove_redeemers {
             transaction_ids_to_remove.extend(self.get_redeemer_ids_in_pool(transaction_id));

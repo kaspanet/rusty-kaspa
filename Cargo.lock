@@ -1874,6 +1874,7 @@ dependencies = [
  "log",
  "parking_lot",
  "rand 0.8.5",
+ "secp256k1",
  "serde",
  "smallvec",
  "thiserror",

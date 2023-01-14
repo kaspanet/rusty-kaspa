@@ -23,6 +23,7 @@ pub(crate) const DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE: u64 = 1000;
 pub(crate) const DEFAULT_MINIMUM_STANDARD_TRANSACTION_VERSION: u16 = TX_VERSION;
 pub(crate) const DEFAULT_MAXIMUM_STANDARD_TRANSACTION_VERSION: u16 = TX_VERSION;
 
+#[derive(Clone, Debug)]
 pub struct Config {
     pub maximum_transaction_count: u64,
     pub transaction_expire_interval_daa_score: u64,
