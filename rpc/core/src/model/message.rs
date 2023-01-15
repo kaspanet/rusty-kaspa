@@ -198,10 +198,6 @@ pub struct NotifyNewBlockTemplateResponse {}
 #[serde(rename_all = "camelCase")]
 pub struct NewBlockTemplateNotification {}
 
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GetCurrentNetworkRequest {}
@@ -223,6 +219,12 @@ pub struct GetPeerAddressesResponse {
     pub banned_addresses: Vec<RpcAddress>,
 }
 
+impl GetPeerAddressesResponse {
+    pub fn new(known_addresses: Vec<RpcAddress>, banned_addresses: Vec<RpcAddress>) -> Self {
+        Self { known_addresses, banned_addresses }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GetSelectedTipHashRequest {}
@@ -233,6 +235,12 @@ pub struct GetSelectedTipHashResponse {
     pub selected_tip_hash: RpcHash,
 }
 
+impl GetSelectedTipHashResponse {
+    pub fn new(selected_tip_hash: RpcHash) -> Self {
+        Self { selected_tip_hash }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GetMempoolEntryRequest {
@@ -241,24 +249,22 @@ pub struct GetMempoolEntryRequest {
     pub filter_transaction_pool: bool,
 }
 
-// impl GetMempoolEntryRequest {
-//     pub fn new(
-//         tx_id: RpcTransactionId,
-//         include_orphan_pool: bool,
-//         filter_transaction_pool: bool
-//     ) -> Self {
-//         Self {
-//             tx_id,
-//             include_orphan_pool,
-//             filter_transaction_pool
-//         }
-//     }
-// }
+impl GetMempoolEntryRequest {
+    pub fn new(tx_id: RpcTransactionId, include_orphan_pool: bool, filter_transaction_pool: bool) -> Self {
+        Self { tx_id, include_orphan_pool, filter_transaction_pool }
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GetMempoolEntryResponse {
     pub mempool_entry: RpcMempoolEntry,
+}
+
+impl GetMempoolEntryResponse {
+    pub fn new(mempool_entry: RpcMempoolEntry) -> Self {
+        Self { mempool_entry }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
@@ -268,17 +274,11 @@ pub struct GetMempoolEntriesRequest {
     pub filter_transaction_pool: bool,
 }
 
-// impl GetMempoolEntriesRequest {
-//     pub fn new(
-//         include_orphan_pool: bool,
-//         filter_transaction_pool: bool
-//     ) -> Self {
-//         Self {
-//             include_orphan_pool,
-//             filter_transaction_pool
-//         }
-//     }
-// }
+impl GetMempoolEntriesRequest {
+    pub fn new(include_orphan_pool: bool, filter_transaction_pool: bool) -> Self {
+        Self { include_orphan_pool, filter_transaction_pool }
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
@@ -286,13 +286,11 @@ pub struct GetMempoolEntriesResponse {
     pub mempool_entries: Vec<RpcMempoolEntry>,
 }
 
-// impl GetMempoolEntriesResponse {
-//     pub fn new(mempool_entries : Vec<RpcMempoolEntry>) -> Self {
-//         Self {
-//             mempool_entries
-//         }
-//     }
-// }
+impl GetMempoolEntriesResponse {
+    pub fn new(mempool_entries: Vec<RpcMempoolEntry>) -> Self {
+        Self { mempool_entries }
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
@@ -304,11 +302,11 @@ pub struct GetConnectedPeerInfoResponse {
     pub peer_info: Vec<RpcPeerInfo>,
 }
 
-// impl GetConnectedPeerInfoResponse {
-//     pub fn new(peer_info : Vec<RpcPeerInfo>) -> Self {
-//         Self { peer_info }
-//     }
-// }
+impl GetConnectedPeerInfoResponse {
+    pub fn new(peer_info: Vec<RpcPeerInfo>) -> Self {
+        Self { peer_info }
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
@@ -318,17 +316,11 @@ pub struct AddPeerRequest {
     pub is_permanent: bool,
 }
 
-// impl AddPeerRequest {
-//     pub fn new(
-//         peer_address: RpcPeerAddress,
-//         is_permanent : bool,
-//     ) -> Self {
-//         Self {
-//             peer_address,
-//             is_permanent
-//         }
-//     }
-// }
+impl AddPeerRequest {
+    pub fn new(peer_address: RpcPeerAddress, is_permanent: bool) -> Self {
+        Self { peer_address, is_permanent }
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
@@ -347,17 +339,11 @@ pub struct SubmitTransactionRequest {
     pub allow_orphan: bool,
 }
 
-// impl SubmitTransactionRequest {
-//     pub fn new(
-//         transaction: RpcTransaction,
-//         allow_orphan: bool,
-//     ) -> Self {
-//         Self {
-//             transaction,
-//             allow_orphan
-//         }
-//     }
-// }
+impl SubmitTransactionRequest {
+    pub fn new(transaction: RpcTransaction, allow_orphan: bool) -> Self {
+        Self { transaction, allow_orphan }
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
@@ -365,11 +351,11 @@ pub struct SubmitTransactionResponse {
     pub transaction_id: RpcTransactionId,
 }
 
-// impl SubmitTransactionResponse {
-//     pub fn new(transaction_id : RpcTransactionId) -> Self {
-//         Self { transaction_id }
-//     }
-// }
+impl SubmitTransactionResponse {
+    pub fn new(transaction_id: RpcTransactionId) -> Self {
+        Self { transaction_id }
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
@@ -378,11 +364,11 @@ pub struct GetSubnetworkRequest {
     pub subnetwork_id: String,
 }
 
-// impl GetSubnetworkRequest {
-//     pub fn new() -> Self {
-//         Self { }
-//     }
-// }
+impl GetSubnetworkRequest {
+    pub fn new(subnetwork_id: String) -> Self {
+        Self { subnetwork_id }
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
@@ -390,11 +376,11 @@ pub struct GetSubnetworkResponse {
     pub gas_limit: u64,
 }
 
-// impl GetSubnetworkResponse {
-//     pub fn new(gas_limit : u64) -> Self {
-//         Self { gas_limit }
-//     }
-// }
+impl GetSubnetworkResponse {
+    pub fn new(gas_limit: u64) -> Self {
+        Self { gas_limit }
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
@@ -404,17 +390,11 @@ pub struct GetVirtualSelectedParentChainFromBlockRequest {
     pub include_accepted_transaction_ids: bool,
 }
 
-// impl GetVirtualSelectedParentChainFromBlockRequest {
-//     pub fn new(
-//         start_hash : RpcHash,
-//         include_accepted_transaction_ids : bool,
-//     ) -> Self {
-//         Self {
-//             start_hash,
-//             include_accepted_transaction_ids
-//         }
-//     }
-// }
+impl GetVirtualSelectedParentChainFromBlockRequest {
+    pub fn new(start_hash: RpcHash, include_accepted_transaction_ids: bool) -> Self {
+        Self { start_hash, include_accepted_transaction_ids }
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
@@ -424,19 +404,15 @@ pub struct GetVirtualSelectedParentChainFromBlockResponse {
     pub accepted_transaction_ids: Vec<RpcAcceptedTransactionIds>,
 }
 
-// impl GetVirtualSelectedParentChainFromBlockResponse {
-//     pub fn new(
-//         removed_chain_block_hashes : Vec<RpcHash>,
-//         added_chain_block_hashes : Vec<RpcHash>,
-//         accepted_transaction_ids : Vec<RpcAcceptedTransactionIds>,
-//     ) -> Self {
-//         Self {
-//             removed_chain_block_hashes,
-//             added_chain_block_hashes,
-//             accepted_transaction_ids
-//         }
-//     }
-// }
+impl GetVirtualSelectedParentChainFromBlockResponse {
+    pub fn new(
+        removed_chain_block_hashes: Vec<RpcHash>,
+        added_chain_block_hashes: Vec<RpcHash>,
+        accepted_transaction_ids: Vec<RpcAcceptedTransactionIds>,
+    ) -> Self {
+        Self { removed_chain_block_hashes, added_chain_block_hashes, accepted_transaction_ids }
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
@@ -446,19 +422,11 @@ pub struct GetBlocksRequest {
     pub include_transactions: bool,
 }
 
-// impl GetBlocksRequest {
-//     pub fn new(
-//         low_hash : RpcHash,
-//         include_blocks : bool,
-//         include_transactions : bool,
-//     ) -> Self {
-//         Self {
-//             low_hash,
-//             include_blocks,
-//             include_transactions
-//         }
-//     }
-// }
+impl GetBlocksRequest {
+    pub fn new(low_hash: RpcHash, include_blocks: bool, include_transactions: bool) -> Self {
+        Self { low_hash, include_blocks, include_transactions }
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
@@ -467,17 +435,11 @@ pub struct GetBlocksResponse {
     pub blocks: Option<Vec<RpcBlock>>,
 }
 
-// impl GetBlocksResponse {
-//     pub fn new(
-//         block_hashes : Option<Vec<RpcHash>>,
-//         blocks : Option<Vec<RpcBlock>>,
-//     ) -> Self {
-//         Self {
-//             block_hashes,
-//             blocks
-//         }
-//     }
-// }
+impl GetBlocksResponse {
+    pub fn new(block_hashes: Option<Vec<RpcHash>>, blocks: Option<Vec<RpcBlock>>) -> Self {
+        Self { block_hashes, blocks }
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
@@ -490,27 +452,15 @@ pub struct GetBlockCountResponse {
     pub header_count: u64,
 }
 
-// impl GetBlockCountResponse {
-//     pub fn new(
-//         block_count : u64,
-//         header_count : u64,
-//     ) -> Self {
-//         Self {
-//             block_count,
-//             header_count
-//         }
-//     }
-// }
+impl GetBlockCountResponse {
+    pub fn new(block_count: u64, header_count: u64) -> Self {
+        Self { block_count, header_count }
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GetBlockDagInfoRequest {}
-
-// impl GetBlockDagInfoRequest {
-//     pub fn new() -> Self {
-//         Self { }
-//     }
-// }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
@@ -527,11 +477,31 @@ pub struct GetBlockDagInfoResponse {
     pub virtual_daa_score: u64,
 }
 
-// impl GetBlockDagInfoResponse {
-//     pub fn new() -> Self {
-//         Self { }
-//     }
-// }
+impl GetBlockDagInfoResponse {
+    pub fn new(
+        network_type: RpcNetworkType,
+        block_count: u64,
+        header_count: u64,
+        tip_hashes: Vec<RpcHash>,
+        difficulty: f64,
+        past_median_time: u64,
+        virtual_parent_hashes: Vec<RpcHash>,
+        pruning_point_hash: RpcHash,
+        virtual_daa_score: u64,
+    ) -> Self {
+        Self {
+            network_type,
+            block_count,
+            header_count,
+            tip_hashes,
+            difficulty,
+            past_median_time,
+            virtual_parent_hashes,
+            pruning_point_hash,
+            virtual_daa_score,
+        }
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
@@ -539,25 +509,15 @@ pub struct ResolveFinalityConflictRequest {
     pub finality_block_hash: RpcHash,
 }
 
-// impl ResolveFinalityConflictRequest {
-//     pub fn new(
-//         finality_block_hash : RpcHash,
-//     ) -> Self {
-//         Self {
-//             finality_block_hash,
-//         }
-//     }
-// }
+impl ResolveFinalityConflictRequest {
+    pub fn new(finality_block_hash: RpcHash) -> Self {
+        Self { finality_block_hash }
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ResolveFinalityConflictResponse {}
-
-// impl ResolveFinalityConflictResponse {
-//     pub fn new() -> Self {
-//         Self { }
-//     }
-// }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
@@ -575,19 +535,11 @@ pub struct GetHeadersRequest {
     pub is_ascending: bool,
 }
 
-// impl GetHeadersRequest {
-//     pub fn new(
-//         start_hash : RpcHash,
-//         limit : u64,
-//         is_ascending : bool,
-//     ) -> Self {
-//         Self {
-//             start_hash,
-//             limit,
-//             is_ascending,
-//         }
-//     }
-// }
+impl GetHeadersRequest {
+    pub fn new(start_hash: RpcHash, limit: u64, is_ascending: bool) -> Self {
+        Self { start_hash, limit, is_ascending }
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
@@ -595,20 +547,22 @@ pub struct GetHeadersResponse {
     pub headers: Vec<RpcHeader>,
 }
 
-// impl GetHeadersResponse {
-//     pub fn new(
-//         headers : Vec<RpcHeader>,
-//     ) -> Self {
-//         Self {
-//             headers
-//         }
-//     }
-// }
+impl GetHeadersResponse {
+    pub fn new(headers: Vec<RpcHeader>) -> Self {
+        Self { headers }
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GetBalanceByAddressRequest {
     pub address: RpcAddress,
+}
+
+impl GetBalanceByAddressRequest {
+    pub fn new(address: RpcAddress) -> Self {
+        Self { address }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
@@ -617,16 +571,34 @@ pub struct GetBalanceByAddressResponse {
     pub balance: u64,
 }
 
+impl GetBalanceByAddressResponse {
+    pub fn new(balance: u64) -> Self {
+        Self { balance }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GetBalancesByAddressesRequest {
     pub addresses: Vec<RpcAddress>,
 }
 
+impl GetBalancesByAddressesRequest {
+    pub fn new(addresses: Vec<RpcAddress>) -> Self {
+        Self { addresses }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GetBalancesByAddressesResponse {
     pub balances: Vec<(RpcAddress, u64)>,
+}
+
+impl GetBalancesByAddressesResponse {
+    pub fn new(balances: Vec<(RpcAddress, u64)>) -> Self {
+        Self { balances }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
@@ -639,10 +611,22 @@ pub struct GetVirtualSelectedParentBlueScoreResponse {
     pub blue_score: u64,
 }
 
+impl GetVirtualSelectedParentBlueScoreResponse {
+    pub fn new(blue_score: u64) -> Self {
+        Self { blue_score }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GetUtxosByAddressesRequest {
     pub addresses: Vec<RpcAddress>,
+}
+
+impl GetUtxosByAddressesRequest {
+    pub fn new(addresses: Vec<RpcAddress>) -> Self {
+        Self { addresses }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
@@ -651,15 +635,11 @@ pub struct GetUtxosByAddressesResponse {
     pub entries: Vec<RpcUtxosByAddressesEntry>,
 }
 
-// impl GetUtxosByAddressesResponse {
-//     pub fn new(
-//         entries : Vec<RpcUtxosByAddressesEntry>,
-//     ) -> Self {
-//         Self {
-//             entries
-//         }
-//     }
-// }
+impl GetUtxosByAddressesResponse {
+    pub fn new(entries: Vec<RpcUtxosByAddressesEntry>) -> Self {
+        Self { entries }
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
@@ -668,25 +648,21 @@ pub struct BanRequest {
     pub address: RpcPeerAddress,
 }
 
-// impl BanRequest {
-//     pub fn new(
-//         address: RpcPeerAddress,
-//     ) -> Self {
-//         Self {
-//             address,
-//         }
-//     }
-// }
+impl BanRequest {
+    pub fn new(address: RpcPeerAddress) -> Self {
+        Self { address }
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct BanResponse {}
 
-// impl BanResponse {
-//     pub fn new() -> Self {
-//         Self { }
-//     }
-// }
+impl BanResponse {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
@@ -694,25 +670,21 @@ pub struct UnbanRequest {
     pub address: RpcPeerAddress,
 }
 
-// impl UnbanRequest {
-//     pub fn new(
-//         address: RpcPeerAddress,
-//     ) -> Self {
-//         Self {
-//             address
-//         }
-//     }
-// }
+impl UnbanRequest {
+    pub fn new(address: RpcPeerAddress) -> Self {
+        Self { address }
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct UnbanResponse {}
 
-// impl UnbanResponse {
-//     pub fn new() -> Self {
-//         Self { }
-//     }
-// }
+impl UnbanResponse {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
@@ -721,17 +693,11 @@ pub struct EstimateNetworkHashesPerSecondRequest {
     pub start_hash: RpcHash,
 }
 
-// impl EstimateNetworkHashesPerSecondRequest {
-//     pub fn new(
-//         window_size : u32,
-//         start_hash : RpcHash,
-//     ) -> Self {
-//         Self {
-//             window_size,
-//             start_hash,
-//         }
-//     }
-// }
+impl EstimateNetworkHashesPerSecondRequest {
+    pub fn new(window_size: u32, start_hash: RpcHash) -> Self {
+        Self { window_size, start_hash }
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
@@ -739,15 +705,11 @@ pub struct EstimateNetworkHashesPerSecondResponse {
     pub network_hashes_per_second: u64,
 }
 
-// impl EstimateNetworkHashesPerSecondResponse {
-//     pub fn new(
-//         network_hashes_per_second : u64,
-//     ) -> Self {
-//         Self {
-//             network_hashes_per_second,
-//         }
-//     }
-// }
+impl EstimateNetworkHashesPerSecondResponse {
+    pub fn new(network_hashes_per_second: u64) -> Self {
+        Self { network_hashes_per_second }
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
@@ -757,19 +719,11 @@ pub struct GetMempoolEntriesByAddressesRequest {
     pub filter_transaction_pool: bool,
 }
 
-// impl GetMempoolEntriesByAddressesRequest {
-//     pub fn new(
-//         addresses: Vec<RpcAddress>,
-//         include_orphan_pool: bool,
-//         filter_transaction_pool: bool,
-//     ) -> Self {
-//         Self {
-//             addresses,
-//             include_orphan_pool,
-//             filter_transaction_pool,
-//         }
-//     }
-// }
+impl GetMempoolEntriesByAddressesRequest {
+    pub fn new(addresses: Vec<RpcAddress>, include_orphan_pool: bool, filter_transaction_pool: bool) -> Self {
+        Self { addresses, include_orphan_pool, filter_transaction_pool }
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
@@ -777,15 +731,11 @@ pub struct GetMempoolEntriesByAddressesResponse {
     pub entries: Vec<RpcMempoolEntryByAddress>,
 }
 
-// impl GetMempoolEntriesByAddressesResponse {
-//     pub fn new(
-//         entries: Vec<RpcMempoolEntryByAddress>,
-//     ) -> Self {
-//         Self {
-//             entries
-//         }
-//     }
-// }
+impl GetMempoolEntriesByAddressesResponse {
+    pub fn new(entries: Vec<RpcMempoolEntryByAddress>) -> Self {
+        Self { entries }
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
@@ -798,23 +748,23 @@ pub struct GetCoinSupplyResponse {
     pub circulating_sompi: u64,
 }
 
-// impl GetCoinSupplyResponse {
-//     pub fn new(
-//         max_sompi : u64,
-//         circulating_sompi : u64,
-//     ) -> Self {
-//         Self {
-//             max_sompi,
-//             circulating_sompi,
-//         }
-//     }
-// }
+impl GetCoinSupplyResponse {
+    pub fn new(max_sompi: u64, circulating_sompi: u64) -> Self {
+        Self { max_sompi, circulating_sompi }
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct NotifyVirtualSelectedParentChainChangedRequest {
     pub include_accepted_transaction_ids: bool,
     pub command: SubscribeCommand,
+}
+
+impl NotifyVirtualSelectedParentChainChangedRequest {
+    pub fn new(include_accepted_transaction_ids: bool, command: SubscribeCommand) -> Self {
+        Self { include_accepted_transaction_ids, command }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
@@ -827,6 +777,12 @@ pub struct NotifyFinalityConflictsRequest {
     pub command: SubscribeCommand,
 }
 
+impl NotifyFinalityConflictsRequest {
+    pub fn new(command: SubscribeCommand) -> Self {
+        Self { command }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct NotifyFinalityConflictsResponse {}
@@ -837,6 +793,12 @@ pub struct NotifyUtxosChangedRequest {
     pub command: SubscribeCommand,
 }
 
+impl NotifyUtxosChangedRequest {
+    pub fn new(command: SubscribeCommand) -> Self {
+        Self { command }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct NotifyUtxosChangedResponse {}
@@ -845,6 +807,12 @@ pub struct NotifyUtxosChangedResponse {}
 #[serde(rename_all = "camelCase")]
 pub struct NotifyVirtualSelectedParentBlueScoreChangedRequest {
     pub command: SubscribeCommand,
+}
+
+impl NotifyVirtualSelectedParentBlueScoreChangedRequest {
+    pub fn new(command: SubscribeCommand) -> Self {
+        Self { command }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
@@ -875,4 +843,16 @@ pub struct GetProcessMetricsResponse {
     //  - approx bandwidth consumption
     //  - other connection metrics
     //  - cpu usage
+}
+
+impl GetProcessMetricsResponse {
+    pub fn new(
+        uptime: u64,
+        memory_used: Vec<u64>,
+        storage_used: Vec<u64>,
+        grpc_connections: Vec<u32>,
+        wrpc_connections: Vec<u32>,
+    ) -> Self {
+        Self { uptime, memory_used, storage_used, grpc_connections, wrpc_connections }
+    }
 }
