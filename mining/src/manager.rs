@@ -29,15 +29,16 @@ impl MiningManager {
         target_time_per_block: u64,
         relay_non_std_transactions: bool,
         max_block_mass: u64,
+        cache_lifetime: Option<u64>,
     ) -> MiningManager {
         let config = Config::build_default(target_time_per_block, relay_non_std_transactions, max_block_mass);
-        Self::with_config(consensus, config)
+        Self::with_config(consensus, config, cache_lifetime)
     }
 
-    pub(crate) fn with_config(consensus: DynConsensus, config: Config) -> Self {
+    pub(crate) fn with_config(consensus: DynConsensus, config: Config, cache_lifetime: Option<u64>) -> Self {
         let block_template_builder = BlockTemplateBuilder::new(consensus.clone(), config.maximum_mass_per_block);
         let mempool = RwLock::new(Mempool::new(consensus, config));
-        let block_template_cache = RwLock::new(BlockTemplateCache::new());
+        let block_template_cache = RwLock::new(BlockTemplateCache::new(cache_lifetime));
         Self { block_template_builder, block_template_cache, mempool }
     }
 
