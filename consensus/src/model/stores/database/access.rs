@@ -1,10 +1,10 @@
-use super::{prelude::{Cache, DbKey, DbWriter}, key::DbBucket};
+use super::prelude::{Cache, DbKey, DbWriter};
 use crate::model::stores::{errors::StoreError, DB};
-use rocksdb::{IteratorMode, ReadOptions, Direction};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{collections::hash_map::RandomState, hash::BuildHasher, sync::Arc};
 
 /// A concurrent DB store access with typed caching.
+#[derive(Clone)]
 pub struct CachedDbAccess<TKey, TData, S = RandomState>
 where
     TKey: Clone + std::hash::Hash + Eq + Send + Sync,
@@ -26,7 +26,7 @@ where
     S: BuildHasher + Default,
 {
     pub fn new(db: Arc<DB>, cache_size: u64, prefix: &'static [u8]) -> Self {
-        Self { db, cache: Cache::new(cache_size), prefix }
+        Self { db: db, cache: Cache::new(cache_size), prefix }
     }
 
     pub fn read_from_cache(&self, key: TKey) -> Option<TData>
@@ -112,10 +112,10 @@ where
         Ok(())
     }
 
-    pub fn iter_prefix<Key, Value>(&self, prefix: DbKey) -> impl Iterator<Item = Result<(Key, Value), StoreError>> + '_
+    pub fn iter_prefix< Key, Value>(&self, prefix: DbKey) -> Arc<dyn Iterator<Item = Result<(Key, Value), StoreError>> + '_>
     where
-        Key: Copy + DeserializeOwned,
-        Value: Copy + DeserializeOwned,
+        Key: Clone + DeserializeOwned,
+        Value: Clone + DeserializeOwned,
     {
             let iter = self.db.prefix_iterator(prefix.as_ref()).map(move |res| -> Result<(Key, Value), StoreError> {
             let item = match res {
@@ -128,6 +128,6 @@ where
             };
             item
         });
-        iter
+        Arc::new(iter)
     }
 } 

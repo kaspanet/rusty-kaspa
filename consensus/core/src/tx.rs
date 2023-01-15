@@ -26,7 +26,7 @@ pub type VersionType = u16;
 pub use smallvec::smallvec as scriptvec;
 
 /// Represents a Kaspad ScriptPublicKey
-#[derive(Default, Debug, Copy, PartialEq, Eq, Serialize, Deserialize, Clone, Hash)]
+#[derive(Default, Debug, PartialEq, Eq, Serialize, Deserialize, Clone, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct ScriptPublicKey {
     version: VersionType,
@@ -96,7 +96,7 @@ impl BorshSchema for ScriptPublicKey {
 /// set such as whether or not it was contained in a coinbase tx, the daa
 /// score of the block that accepts the tx, its public key script, and how
 /// much it pays.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct UtxoEntry {
     pub amount: u64,

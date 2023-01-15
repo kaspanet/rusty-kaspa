@@ -1,3 +1,3 @@
-pub mod utxoindex_tips;
-pub mod circulating_supply;
-pub mod utxo_set_by_script_public_key;
+pub mod tips_store;
+pub mod circulating_supply_store;
+pub mod utxo_set_store;

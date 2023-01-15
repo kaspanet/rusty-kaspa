@@ -1,11 +1,14 @@
+use std::sync::Arc;
+
 use consensus::model::stores::errors::StoreResult;
-use consensus_core::tx::ScriptPublicKeys;
+use consensus_core::{tx::ScriptPublicKeys, BlockHashSet};
 use tokio::sync::mpsc::{Receiver, Sender, channel};
 use crate::{
     notify::{UtxoIndexNotificationTypes, UtxoIndexNotification, UtxoIndexNotificationType}, 
-    stores::{utxoindex_tips::UtxoIndexTipsStoreReader, circulating_supply::CirculatingSupplyStoreReader, utxo_set_by_script_public_key::UtxoSetByScriptPublicKeyStoreReader}};
+    stores::{tips_store::UtxoIndexTipsStoreReader, circulating_supply_store::CirculatingSupplyStoreReader, utxo_set_store::UtxoSetByScriptPublicKeyStoreReader}, utxoindex::UtxoIndexState};
 
-use super::super::{notify::*, utxoindex::UtxoIndex};
+use super::{utxoindex::UtxoIndex};
+use super::model::*;
 
 trait UtxoIndexApi: Send + Sync{
 
@@ -15,7 +18,7 @@ trait UtxoIndexApi: Send + Sync{
 
     fn get_utxos_by_script_public_keys(&self, script_public_keys: ScriptPublicKeys) -> StoreResult<Arc<UtxoSetByScriptPublicKey>>;
 
-    fn is_synced(&self) -> bool; 
+    fn is_synced(&self); 
 
     fn utxoindex_state(&self) -> UtxoIndexState;
 
@@ -37,20 +40,14 @@ impl UtxoIndexApi for UtxoIndex {
         self.utxos_by_script_public_key_store.get_utxos_from_script_public_keys(script_public_keys)
     }
 
-    fn is_synced(&self) -> StoreResult<Bool> {
+    fn is_synced(&self) {
         //TODO: after access to consensus stores / mature consensus api. 
         //compare utxoindexed tips with consensus db tips
         todo!()
     }
 
-    //for debugging, perhaps useful for rpc warn messages. 
-    fn query_utxoindex_state(&self) -> UtxoIndexState {
-        self.state.load()
-    }
-
-
     fn register_to_utxoindex_notifictations(&self, utxo_index_notification_types: UtxoIndexNotificationTypes) -> Receiver<UtxoIndexNotification> {
-        let (r, s) = channel::<UtxoIndexNotification>(usize::MAX); //TODO: think about what the buffer size should be.
+        let (s, r) = channel::<UtxoIndexNotification>(usize::MAX); //TODO: think about what the buffer size should be.
         for utxo_index_notification_type in utxo_index_notification_types.into_iter() {
             match utxo_index_notification_type {
                 UtxoIndexNotificationType::UtxoByScriptPublicKeyDiffNotificationType => self.utxo_diff_by_script_public_key_send.lock().push(s),
@@ -64,6 +61,10 @@ impl UtxoIndexApi for UtxoIndex {
             }
         }
         return r
+    }
+
+    fn utxoindex_state(&self) -> UtxoIndexState {
+        todo!()
     }
 
 }

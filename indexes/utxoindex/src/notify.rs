@@ -1,12 +1,22 @@
-use std::sync::Arc;
-use std::time::Duration;
-
-use super::super::model::UtxoSetDiffByScriptPublicKey;
-use super::super::utxoindex::UtxoIndex;
-use super::notifications::UtxoIndexNotification;
+use super::model::UtxoSetDiffByScriptPublicKey;
+use super::utxoindex::UtxoIndex;
 use async_trait::async_trait;
 use consensus_core::BlockHashSet;
 use tokio::sync::mpsc::error::TrySendError;
+
+pub type UtxoIndexNotificationTypes = Vec<UtxoIndexNotificationType>;
+
+pub enum UtxoIndexNotificationType {
+    UtxoByScriptPublicKeyDiffNotificationType,
+    CirculatingSupplyUpdateNotificationType,
+    TipsUpdateNotificationType,
+    All, //for ease of registering / unregistering
+}
+pub enum UtxoIndexNotification {
+    UtxoByScriptPublicKeyDiffNotification(UtxoSetDiffByScriptPublicKey),
+    CirculatingSupplyUpdateNotification(u64),
+    TipsUpdateEvent(BlockHashSet),
+}
 
 #[async_trait]
 pub trait UtxoIndexNotifier: Send + Sync {

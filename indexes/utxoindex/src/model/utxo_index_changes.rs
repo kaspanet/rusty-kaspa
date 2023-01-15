@@ -1,18 +1,21 @@
-use consensus::model::stores::virtual_state::{self, VirtualState};
-use consensus_core::tx::UtxoEntry;
-use consensus_core::{tx::TransactionOutpoint, utxo::utxo_collection::UtxoCollection};
-use std::collections::hash_map::Iter;
+use consensus::model::stores::virtual_state::{VirtualState};
+use consensus_core::BlockHashSet;
+use consensus_core::tx::{UtxoEntry, TransactionOutpoint};
+use consensus_core::{utxo::utxo_collection::UtxoCollection};
 use std::collections::{HashMap, HashSet};
-use std::iter::Chain;
+use std::sync::Arc;
+use std::collections::hash_map::Entry;
 use hashes::Hash;
 
-use super::*;
+use crate::model::CompactUtxoEntry;
+
+use super::UtxoSetDiffByScriptPublicKey;
 
 /// A struct holding all changes to the utxo index.
 pub struct UtxoIndexChanges {
     pub utxo_diff: UtxoSetDiffByScriptPublicKey,
     pub circulating_supply_diff: i64,
-    pub tips: HashSet<Hash>
+    pub tips: BlockHashSet
 }
 
 impl UtxoIndexChanges {
@@ -20,96 +23,72 @@ impl UtxoIndexChanges {
         Self { 
             utxo_diff: UtxoSetDiffByScriptPublicKey::new(),
             circulating_supply_diff: 0, 
-            tips: HashSet::new()
+            tips: BlockHashSet::new(),
         }
     }
 
-    pub fn add_utxo_collection(&mut self, utxo_collection: UtxoCollection) -> bool {
-        for (transaction_output, utxo) in utxo_collection.into_iter() {
+    pub fn add_utxo_collection(&mut self, utxo_collection: UtxoCollection) {
+        for (transaction_output, utxo_entry) in utxo_collection.into_iter() {
             
-            let script_pub_key = utxo.script_public_key;
-            
-            let compact_utxo = CompactUtxoEntry::from(utxo);
-            
-            self.circulating_supply_diff += compact_utxo.amount as i64;
-            //For Future: check if https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.try_insert can be utilized
-            let compact_collection = CompactUtxoCollection::new();
-            
-            match self.utxo_diff.removed.get_mut(&script_pub_key) { //Try and remove from self.remove, and continue if removed from self.remove. 
-                Some(val) => match val.remove(&transaction_output) {
-                    Some(val) => continue,
-                    None => (),
-                }
-                None => (),
+            match self.utxo_diff.removed.entry(utxo_entry.script_public_key) {
+                Entry::Occupied(entry) => { 
+                    entry.remove_entry();
+                    continue;
+                },
+                Entry::Vacant(entry) => {},
             }
-
-            compact_collection.insert(transaction_output, putxo).unwrap(); //TODO: error handle
-            match self.utxo_diff.added.insert(script_pub_key, compact_collection) {
-                Some(compact_collection) => {
-                    compact_collection.insert(transaction_output, compact_utxo).unwrap();
-                }
-                _ => (),
+                        
+            self.circulating_supply_diff += utxo_entry.amount as i64;
+            
+            match self.utxo_diff.added.entry(utxo_entry.script_pub_key) {
+                Entry::Occupied(entry) => { 
+                    entry.get_mut().insert(transaction_output, utxo_entry.into()).expect("expected no duplicate utxo entries")
+                },
+                Entry::Vacant(entry) => {
+                    let inner_entry = HashMap::new::<TransactionOutpoint, CompactUtxoEntry>();
+                    entry.insert_entry(inner_entry.insert(transaction_output, utxo_entry.into()).expect("expected no duplicate utxo entries"));
+                },
             }
         }
     }
 
-    pub fn remove_utxo_collection(&mut self, utxo_collection: UtxoCollection) -> bool {
-        for (transaction_output, utxo) in utxo_collection.into_iter() {
+    pub fn remove_utxo_collection(&mut self, utxo_collection: UtxoCollection) {
+        for (transaction_output, utxo_entry) in utxo_collection.into_iter() {
             
-            let script_pub_key = utxo.script_public_key;
-            
-            let compact_utxo = CompactUtxoEntry::from(utxo);
-            
-            self.circulating_supply_diff -= compact_utxo.amount as i64;
-            //For Future: check if https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.try_insert can be utilized
-            let compact_collection = CompactUtxoCollection::new();
+            self.circulating_supply_diff -= utxo_entry.amount as i64;
 
-            compact_collection.insert(transaction_output, putxo).unwrap(); //TODO: error handle
-            match self.utxo_diff.removed.insert(script_pub_key, compact_collection) {
-                Some(compact_collection) => {
-                    compact_collection.insert(transaction_output, compact_utxo).unwrap();
-                }
-                _ => (),
-            }
+            match self.utxo_diff.removed.entry(utxo_entry.script_pub_key) {
+                Entry::Occupied(entry) => { 
+                    entry.get_mut().insert(transaction_output, utxo_entry.into()).expect("expected no duplicate utxo entries");
+                },
+                Entry::Vacant(entry) => {
+                    let inner_entry = HashMap::new::<TransactionOutpoint, CompactUtxoEntry>();
+                    entry.insert_entry(inner_entry.insert(transaction_output, utxo_entry.into()).expect("expected no duplicate utxo entries"));
+                },
+            };
         }
+    }
+
+    //used when resetting, since we don't access a collection.
+    pub fn add_utxo(&mut self, tx_out: TransactionOutpoint, utxo_entry: UtxoEntry) {
+        self.circulating_supply_diff += utxo_entry.amount;
+        match self.utxo_diff.added.entry(utxo_entry.script_public_key) {
+            Entry::Occupied(entry) => { 
+                entry.get_mut().insert(tx_out, utxo_entry.into()).expect("expected no duplicate utxo entries"); 
+            },
+            Entry::Vacant(entry) => {
+                let inner_entry = HashMap::new::<TransactionOutpoint, CompactUtxoEntry>();
+                entry.insert_entry(inner_entry.insert(tx_out, utxo_entry.into()).expect("expected no duplicate utxo entries"));
+                }
+        }
+    }
 
     pub fn add_tips(&mut self, tips: Vec<Hash>) -> bool {
-        self.tips = HashMap::from_iter(tips);
-    }
-
-    pub fn add_utxo(&mut self, utxo_collection: UtxoEntry) -> bool {
-        for (transaction_output, utxo) in utxo_collection.into_iter() {
-            
-            let script_pub_key = utxo.script_public_key;
-            
-            let compact_utxo = CompactUtxoEntry::from(utxo);
-            
-            self.circulating_supply_diff += compact_utxo.amount as i64;
-            //For Future: check if https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.try_insert can be utilized
-            let compact_collection = CompactUtxoCollection::new();
-            
-            match self.utxo_diff.removed.get_mut(&script_pub_key) { //Try and remove from self.remove, and continue if removed from self.remove. 
-                Some(val) => match val.remove(&transaction_output) {
-                    Some(val) => continue,
-                    None => (),
-                }
-                None => (),
-            }
-
-            compact_collection.insert(transaction_output, putxo).unwrap(); //TODO: error handle
-            match self.utxo_diff.added.insert(script_pub_key, compact_collection) {
-                Some(compact_collection) => {
-                    compact_collection.insert(transaction_output, compact_utxo).unwrap();
-                }
-                _ => (),
-            }
-        }
+        self.tips = BlockHashSet::from_iter(tips);
     }
 }
-}
 
-
-impl From<VirtualState> for UtxoSetDiffByScriptPublicKey {
+impl From<VirtualState> for UtxoIndexChanges {
     fn from(virtual_state: VirtualState) -> Self {
         let mut sel = Self::new();
         sel.remove_utxo_collection(virtual_state.utxo_diff.remove);

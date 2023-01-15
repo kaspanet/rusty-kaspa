@@ -2,10 +2,9 @@ use std::{
     fmt::{Debug, Display},
     str,
 };
-use std::mem::size_of_val;
 
-const SEP: u8 = b'/';
-pub const SEP_SIZE: usize = size_of_val(&SEP);
+pub const SEP: u8 = b'/';
+pub const SEP_SIZE: usize = 1;
 
 #[derive(Clone, PartialEq)]
 pub struct DbKey {
@@ -29,7 +28,6 @@ impl DbKey {
         self.prefix_len
     }
 }
-
 
 impl AsRef<[u8]> for DbKey {
     fn as_ref(&self) -> &[u8] {
