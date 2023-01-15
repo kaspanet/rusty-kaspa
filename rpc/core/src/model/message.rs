@@ -658,12 +658,6 @@ impl BanRequest {
 #[serde(rename_all = "camelCase")]
 pub struct BanResponse {}
 
-impl BanResponse {
-    pub fn new() -> Self {
-        Self {}
-    }
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct UnbanRequest {
@@ -679,12 +673,6 @@ impl UnbanRequest {
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct UnbanResponse {}
-
-impl UnbanResponse {
-    pub fn new() -> Self {
-        Self {}
-    }
-}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
