@@ -122,7 +122,7 @@ where
                 Ok(res) => {
                     let key: Key = bincode::deserialize(&res.0[prefix.prefix_len()..])?;
                     let value: Value = bincode::deserialize(&res.1)?;
-                    Ok((key.to_owned(), value.to_owned()))
+                    Ok((key, value))
                 },
                 Err(err) => Err(StoreError::DbError(err)),
             };

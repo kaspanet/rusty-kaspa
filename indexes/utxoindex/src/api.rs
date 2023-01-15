@@ -2,10 +2,10 @@ use std::sync::Arc;
 
 use consensus::model::stores::errors::StoreResult;
 use consensus_core::{tx::ScriptPublicKeys, BlockHashSet};
-use tokio::sync::mpsc::{Receiver, Sender, channel};
+use tokio::sync::mpsc::{Receiver, channel};
 use crate::{
     notify::{UtxoIndexNotificationTypes, UtxoIndexNotification, UtxoIndexNotificationType}, 
-    stores::{tips_store::UtxoIndexTipsStoreReader, circulating_supply_store::CirculatingSupplyStoreReader, utxo_set_store::UtxoSetByScriptPublicKeyStoreReader}, utxoindex::UtxoIndexState};
+    stores::{tips_store::UtxoIndexTipsStoreReader, circulating_supply_store::CirculatingSupplyStoreReader, utxo_set_store::UtxoSetByScriptPublicKeyStoreReader}};
 
 use super::{utxoindex::UtxoIndex};
 use super::model::*;
@@ -19,8 +19,6 @@ trait UtxoIndexApi: Send + Sync{
     fn get_utxos_by_script_public_keys(&self, script_public_keys: ScriptPublicKeys) -> StoreResult<Arc<UtxoSetByScriptPublicKey>>;
 
     fn is_synced(&self); 
-
-    fn utxoindex_state(&self) -> UtxoIndexState;
 
     fn register_to_utxoindex_notifictations(&self, utxo_index_notification_types: UtxoIndexNotificationTypes) -> Receiver<UtxoIndexNotification>;
 
@@ -61,10 +59,6 @@ impl UtxoIndexApi for UtxoIndex {
             }
         }
         return r
-    }
-
-    fn utxoindex_state(&self) -> UtxoIndexState {
-        todo!()
     }
 
 }

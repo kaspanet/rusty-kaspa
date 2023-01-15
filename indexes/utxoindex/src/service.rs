@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use kaspa_core::{service::Service, core::Core};
 use std::thread::{JoinHandle, spawn};
-use crate::utxoindex::Signal;
+use crate::{utxoindex::Signal, processor::Processor};
 
 use super::utxoindex::UtxoIndex;
 
@@ -12,7 +12,7 @@ impl Service for UtxoIndex {
     }
 
     fn start(self: Arc<UtxoIndex>, _core: Arc<Core>) -> Vec<JoinHandle<()>> {
-        let jh = spawn( { self.run(); () }); //return None for join handle
+        let jh = spawn( move || { self.run(); () }); //return None for join handle
         vec![jh] //provide vector since that is what kaspa_core wants.
     }
 

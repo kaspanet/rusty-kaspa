@@ -1,13 +1,11 @@
 use consensus::model::stores::virtual_state::{VirtualState};
-use consensus_core::BlockHashSet;
+use consensus_core::{BlockHashSet, HashMapCustomHasher};
 use consensus_core::tx::{UtxoEntry, TransactionOutpoint};
 use consensus_core::{utxo::utxo_collection::UtxoCollection};
-use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
 use std::collections::hash_map::Entry;
 use hashes::Hash;
 
-use crate::model::CompactUtxoEntry;
+use crate::model::{CompactUtxoCollection};
 
 use super::UtxoSetDiffByScriptPublicKey;
 
@@ -35,18 +33,19 @@ impl UtxoIndexChanges {
                     entry.remove_entry();
                     continue;
                 },
-                Entry::Vacant(entry) => {},
-            }
+                Entry::Vacant(entry) => (),
+            };
                         
             self.circulating_supply_diff += utxo_entry.amount as i64;
             
-            match self.utxo_diff.added.entry(utxo_entry.script_pub_key) {
+            match self.utxo_diff.added.entry(utxo_entry.script_public_key) {
                 Entry::Occupied(entry) => { 
-                    entry.get_mut().insert(transaction_output, utxo_entry.into()).expect("expected no duplicate utxo entries")
+                    entry.get_mut().insert(transaction_output, utxo_entry.into()).expect("expected no duplicate utxo entries");
                 },
                 Entry::Vacant(entry) => {
-                    let inner_entry = HashMap::new::<TransactionOutpoint, CompactUtxoEntry>();
-                    entry.insert_entry(inner_entry.insert(transaction_output, utxo_entry.into()).expect("expected no duplicate utxo entries"));
+                    let value = CompactUtxoCollection::new();
+                    value.insert(transaction_output, utxo_entry.into()).expect("expected no duplicate utxo entries");
+                    entry.insert(value); //Future: `insert_entry`: https://doc.rust-lang.org/std/collections/hash_map/enum.Entry.html#method.insert_entry
                 },
             }
         }
@@ -57,33 +56,35 @@ impl UtxoIndexChanges {
             
             self.circulating_supply_diff -= utxo_entry.amount as i64;
 
-            match self.utxo_diff.removed.entry(utxo_entry.script_pub_key) {
+            match self.utxo_diff.removed.entry(utxo_entry.script_public_key) {
                 Entry::Occupied(entry) => { 
                     entry.get_mut().insert(transaction_output, utxo_entry.into()).expect("expected no duplicate utxo entries");
                 },
                 Entry::Vacant(entry) => {
-                    let inner_entry = HashMap::new::<TransactionOutpoint, CompactUtxoEntry>();
-                    entry.insert_entry(inner_entry.insert(transaction_output, utxo_entry.into()).expect("expected no duplicate utxo entries"));
+                    let value = CompactUtxoCollection::new();
+                    value.insert(transaction_output, utxo_entry.into()).expect("expected no duplicate utxo entries");
+                    entry.insert(value); //Future: `insert_entry`: https://doc.rust-lang.org/std/collections/hash_map/enum.Entry.html#method.insert_entry
                 },
             };
         }
     }
 
     //used when resetting, since we don't access a collection.
-    pub fn add_utxo(&mut self, tx_out: TransactionOutpoint, utxo_entry: UtxoEntry) {
-        self.circulating_supply_diff += utxo_entry.amount;
+    pub fn add_utxo(&self, transaction_output: TransactionOutpoint, utxo_entry: UtxoEntry) {
+        self.circulating_supply_diff += utxo_entry.amount as i64;
         match self.utxo_diff.added.entry(utxo_entry.script_public_key) {
             Entry::Occupied(entry) => { 
-                entry.get_mut().insert(tx_out, utxo_entry.into()).expect("expected no duplicate utxo entries"); 
+                entry.get_mut().insert(transaction_output, utxo_entry.into()).expect("expected no duplicate utxo entries");
             },
             Entry::Vacant(entry) => {
-                let inner_entry = HashMap::new::<TransactionOutpoint, CompactUtxoEntry>();
-                entry.insert_entry(inner_entry.insert(tx_out, utxo_entry.into()).expect("expected no duplicate utxo entries"));
-                }
-        }
+                let value = CompactUtxoCollection::new();
+                value.insert(transaction_output, utxo_entry.into()).expect("expected no duplicate utxo entries");
+                entry.insert(value); //Future: `insert_entry`: https://doc.rust-lang.org/std/collections/hash_map/enum.Entry.html#method.insert_entry
+            },
+        };
     }
 
-    pub fn add_tips(&mut self, tips: Vec<Hash>) -> bool {
+    pub fn add_tips(&mut self, tips: Vec<Hash>) {
         self.tips = BlockHashSet::from_iter(tips);
     }
 }

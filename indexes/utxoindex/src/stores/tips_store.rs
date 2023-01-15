@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use consensus::model::stores::{
     database::prelude::{CachedDbItem, DirectDbWriter},
-    errors::StoreResult,
+    errors::{StoreResult, StoreError},
     DB,
 };
 use consensus_core::BlockHashSet;
@@ -13,7 +13,7 @@ pub trait UtxoIndexTipsStoreReader {
 }
 
 pub trait UtxoIndexTipsStore: UtxoIndexTipsStoreReader {
-    fn add_tips(&mut self, new_tips: BlockHashSet) -> StoreResult<Arc<BlockHashSet>>;
+    fn add_tips(&mut self, new_tips: BlockHashSet) -> StoreResult<()>;
 }
 
 pub const UTXO_INDEXED_TIPS_STORE_NAME: &[u8] = b"utxo-indexed-tips";
@@ -42,7 +42,7 @@ impl UtxoIndexTipsStoreReader for DbUtxoIndexTipsStore {
 }
 
 impl UtxoIndexTipsStore for DbUtxoIndexTipsStore {
-    fn add_tips(&mut self, new_tips: BlockHashSet) -> StoreResult<Arc<BlockHashSet>> {
+    fn add_tips(&mut self, new_tips: BlockHashSet) -> Result<(), StoreError> {
         self.access.write(DirectDbWriter::new(&self.db), &Arc::new(new_tips) )
     }
 }

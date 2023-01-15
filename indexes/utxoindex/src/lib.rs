@@ -5,4 +5,5 @@ pub mod errors;
 pub mod model;
 pub mod utxoindex;
 pub mod service;
+pub mod processor;
 pub mod stores;
