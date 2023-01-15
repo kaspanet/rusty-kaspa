@@ -198,3 +198,8 @@ impl TransactionsSelector {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    // TODO: add unit-tests for select_transactions
+}
