@@ -2,6 +2,7 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use mining::model::topological_index::TopologicalIndex;
 use std::collections::{hash_set::Iter, HashMap, HashSet};
 
+#[derive(Default)]
 pub struct Dag<T>
 where
     T: Clone + std::fmt::Debug + std::hash::Hash + Eq,
@@ -14,10 +15,6 @@ impl<T> Dag<T>
 where
     T: Clone + std::fmt::Debug + std::hash::Hash + Eq,
 {
-    pub fn new() -> Self {
-        Self { nodes: HashSet::default(), edges: HashMap::default() }
-    }
-
     pub fn add_node(&mut self, key: T) {
         self.nodes.insert(key);
     }
@@ -45,7 +42,7 @@ where
 type Key = &'static str;
 
 fn build_dag() -> Dag<Key> {
-    let mut dag: Dag<Key> = Dag::new();
+    let mut dag: Dag<Key> = Dag::default();
     dag.add_edge("socks", "shoes");
     dag.add_edge("boxer", "shoes");
     dag.add_edge("boxer", "pants");
