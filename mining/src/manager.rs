@@ -1,3 +1,5 @@
+// TODO: add integration tests
+
 use crate::{
     block_template::{builder::BlockTemplateBuilder, errors::BuilderError},
     cache::BlockTemplateCache,
