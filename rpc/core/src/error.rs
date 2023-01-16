@@ -33,6 +33,9 @@ pub enum RpcError {
     #[error(transparent)]
     AddressError(#[from] addresses::AddressError),
 
+    #[error(transparent)]
+    NetworkTypeError(#[from] consensus_core::networktype::NetworkTypeError),
+
     #[error("{0}")]
     General(String),
 }

@@ -7,7 +7,7 @@ use std::sync::{
     Arc, Mutex,
 };
 extern crate derive_more;
-use super::{errors::Error, listener::ListenerID, message::SubscribeMessage, result::Result};
+use super::{error::Error, listener::ListenerID, message::SubscribeMessage, result::Result};
 use crate::{api::ops::SubscribeCommand, NotificationType, RpcResult};
 use kaspa_utils::channel::Channel;
 

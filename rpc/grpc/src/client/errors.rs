@@ -19,7 +19,7 @@ pub enum Error {
     EndpointConnectionError(#[from] tonic::transport::Error),
 
     #[error("Notify error: {0}")]
-    NotifyError(#[from] rpc_core::notify::errors::Error),
+    NotifyError(#[from] rpc_core::notify::error::Error),
 
     #[error("RPC: channel receive error")]
     ChannelRecvError,
