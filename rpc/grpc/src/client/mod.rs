@@ -13,7 +13,7 @@ use rpc_core::{
         notifier::Notifier,
         subscriber::Subscriber,
     },
-    result::RpcResult,
+    error::RpcResult,
     NotificationType,
 };
 use std::sync::Arc;

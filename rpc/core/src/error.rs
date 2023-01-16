@@ -51,3 +51,6 @@ impl From<&str> for RpcError {
         RpcError::General(value.to_string())
     }
 }
+
+
+pub type RpcResult<T> = std::result::Result<T, crate::RpcError>;
