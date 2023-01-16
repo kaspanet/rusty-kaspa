@@ -21,11 +21,6 @@ use async_trait::async_trait;
 /// For each RPC call a matching readily implemented function taking detailed parameters is also provided.
 #[async_trait]
 pub trait RpcApi: Sync + Send {
-    // async fn ping(
-    //     &self,
-    //     msg : String
-    // ) -> RpcResult<String>;
-
     ///
     async fn ping(&self) -> RpcResult<PingResponse> {
         Ok(self.ping_call(PingRequest {}).await?)
