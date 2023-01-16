@@ -5,6 +5,7 @@ use rpc_core::{
     api::ops::RpcApiOps,
     api::rpc::RpcApi,
     error::RpcError,
+    error::RpcResult,
     model::message::*,
     notify::{
         channel::NotificationChannel,
@@ -13,7 +14,6 @@ use rpc_core::{
         notifier::Notifier,
         subscriber::Subscriber,
     },
-    error::RpcResult,
     NotificationType,
 };
 use std::sync::Arc;
