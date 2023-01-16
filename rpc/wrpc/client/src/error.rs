@@ -7,8 +7,8 @@ pub enum Error {
     RpcError(#[from] RpcError),
 }
 
-impl Into<rpc_core::errors::RpcError> for Error {
-    fn into(self) -> rpc_core::errors::RpcError {
-        self.to_string().into()
+impl From<Error> for rpc_core::error::RpcError {
+    fn from(err: Error) -> Self {
+        err.to_string().into()
     }
 }
