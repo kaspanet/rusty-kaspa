@@ -1,0 +1,14 @@
+[package]
+name = "kaspa-wrpc-proxy"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+consensus-core.workspace = true
+kaspa-wrpc-server.workspace = true
+tokio.workspace = true
+rpc-grpc.workspace = true
+thiserror.workspace = true
+rpc-core.workspace = true
+# workflow_core.workspace = true
+workflow-core = { path = "../../../../../workflow-rs/workflow-core" }

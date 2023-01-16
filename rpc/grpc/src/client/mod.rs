@@ -18,7 +18,7 @@ use rpc_core::{
 };
 use std::sync::Arc;
 
-mod errors;
+pub mod errors;
 mod resolver;
 mod result;
 #[macro_use]

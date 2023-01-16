@@ -20,6 +20,7 @@ members = [
     "rpc/grpc",
     "rpc/wrpc/client",
     "rpc/wrpc/server",
+    "rpc/wrpc/proxy",
 ]
 
 [workspace.package]
@@ -46,6 +47,7 @@ rpc-core = { path = "rpc/core" }
 rpc-grpc = { path = "rpc/grpc" }
 kaspa-wrpc-client = { path = "rpc/wrpc/client" }
 kaspa-wrpc-server = { path = "rpc/wrpc/server" }
+kaspa-wrpc-proxy = { path = "rpc/wrpc/proxy" }
 kaspa-wallet-core = { path = "wallet/core" }
 kaspa-wallet-cli = { path = "wallet/cli" }
 kaspa-wallet-cli-native = { path = "wallet/native" }
