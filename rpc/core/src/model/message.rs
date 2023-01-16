@@ -1,9 +1,7 @@
-// use std::fmt::{Display, Formatter};
-
+use crate::{api::ops::SubscribeCommand, model::*};
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
-
-use crate::{api::ops::SubscribeCommand, model::*};
+use std::fmt::{Display, Formatter};
 
 pub type RpcExtraData = Vec<u8>;
 
@@ -27,34 +25,21 @@ impl SubmitBlockRequest {
 #[derive(Eq, PartialEq, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum SubmitBlockRejectReason {
-    // None = 0,
     BlockInvalid = 1,
     IsInIBD = 2,
 }
-// impl SubmitBlockRejectReason {
-//     fn as_str(&self) -> &'static str {
-//         // see app\appmessage\rpc_submit_block.go, line 35
-//         match self {
-//             SubmitBlockRejectReason::BlockInvalid => "Block is invalid",
-//             SubmitBlockRejectReason::IsInIBD => "Node is in IBD",
-//         }
-//     }
-// }
-// impl Display for SubmitBlockRejectReason {
-//     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-//         f.write_str(self.as_str())
-//     }
-// }
-
-// @tiram - wondering if this could be "leaner"
-// albeit unlike Display this is not directly usable in format!()
-impl ToString for SubmitBlockRejectReason {
-    fn to_string(&self) -> String {
+impl SubmitBlockRejectReason {
+    fn as_str(&self) -> &'static str {
+        // see app\appmessage\rpc_submit_block.go, line 35
         match self {
             SubmitBlockRejectReason::BlockInvalid => "Block is invalid",
             SubmitBlockRejectReason::IsInIBD => "Node is in IBD",
         }
-        .to_string()
+    }
+}
+impl Display for SubmitBlockRejectReason {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
     }
 }
 
@@ -124,8 +109,6 @@ impl GetBlockRequest {
 #[serde(rename_all = "camelCase")]
 pub struct GetBlockResponse {
     pub block: RpcBlock,
-    // According to app\rpc\rpchandlers\get_block.go
-    // block and error as mutually exclusive
 }
 
 /// NotifyBlockAddedRequest registers this connection for blockAdded notifications.
@@ -166,7 +149,7 @@ pub struct GetInfoRequest {}
 pub struct GetInfoResponse {
     pub p2p_id: String,
     pub mempool_size: u64,
-    pub server_version: String, // FIXME ?
+    pub server_version: String,
     pub is_utxo_indexed: bool,
     pub is_synced: bool,
     pub has_notify_command: bool,
@@ -244,14 +227,14 @@ impl GetSelectedTipHashResponse {
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GetMempoolEntryRequest {
-    pub tx_id: RpcTransactionId,
+    pub transaction_id: RpcTransactionId,
     pub include_orphan_pool: bool,
     pub filter_transaction_pool: bool,
 }
 
 impl GetMempoolEntryRequest {
-    pub fn new(tx_id: RpcTransactionId, include_orphan_pool: bool, filter_transaction_pool: bool) -> Self {
-        Self { tx_id, include_orphan_pool, filter_transaction_pool }
+    pub fn new(transaction_id: RpcTransactionId, include_orphan_pool: bool, filter_transaction_pool: bool) -> Self {
+        Self { transaction_id, include_orphan_pool, filter_transaction_pool }
     }
 }
 
@@ -311,7 +294,6 @@ impl GetConnectedPeerInfoResponse {
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AddPeerRequest {
-    // FIXME check type
     pub peer_address: RpcPeerAddress,
     pub is_permanent: bool,
 }
@@ -325,12 +307,6 @@ impl AddPeerRequest {
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AddPeerResponse {}
-
-// impl AddPeerResponse {
-//     pub fn new() -> Self {
-//         Self { }
-//     }
-// }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
@@ -360,12 +336,11 @@ impl SubmitTransactionResponse {
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GetSubnetworkRequest {
-    // FIXME type
-    pub subnetwork_id: String,
+    pub subnetwork_id: RpcSubnetworkId,
 }
 
 impl GetSubnetworkRequest {
-    pub fn new(subnetwork_id: String) -> Self {
+    pub fn new(subnetwork_id: RpcSubnetworkId) -> Self {
         Self { subnetwork_id }
     }
 }
@@ -385,7 +360,6 @@ impl GetSubnetworkResponse {
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GetVirtualSelectedParentChainFromBlockRequest {
-    // FIXME check type
     pub start_hash: RpcHash,
     pub include_accepted_transaction_ids: bool,
 }
@@ -470,8 +444,7 @@ pub struct GetBlockDagInfoResponse {
     pub header_count: u64,
     pub tip_hashes: Vec<RpcHash>,
     pub difficulty: f64,
-    // FIXME check type - i64 in gRPC proto
-    pub past_median_time: u64,
+    pub past_median_time: u64, // NOTE: i64 in gRPC protowire
     pub virtual_parent_hashes: Vec<RpcHash>,
     pub pruning_point_hash: RpcHash,
     pub virtual_daa_score: u64,
@@ -644,7 +617,6 @@ impl GetUtxosByAddressesResponse {
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct BanRequest {
-    // FIXME check type
     pub address: RpcPeerAddress,
 }
 
