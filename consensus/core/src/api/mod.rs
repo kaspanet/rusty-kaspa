@@ -1,5 +1,6 @@
 use futures_util::future::BoxFuture;
-use std::sync::Arc;
+use std::{sync::Arc, any::Any};
+use std::error::Error;
 
 use crate::{
     block::{Block, BlockTemplate},
@@ -9,9 +10,10 @@ use crate::{
         block::{BlockProcessResult, RuleError},
         tx::TxResult,
     },
-    tx::{MutableTransaction, Transaction},
+    tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
+    BlockHashSet,
 };
-
+type StoreError = dyn Error;
 /// Abstracts the consensus external API
 pub trait ConsensusApi: Send + Sync {
     fn build_block_template(self: Arc<Self>, miner_data: MinerData, txs: Vec<Transaction>) -> Result<BlockTemplate, RuleError>;
@@ -29,6 +31,12 @@ pub trait ConsensusApi: Send + Sync {
     fn calculate_transaction_mass(self: Arc<Self>, transaction: &Transaction) -> u64;
 
     fn get_virtual_daa_score(self: Arc<Self>) -> u64;
+
+    fn get_tips(self: Arc<Self>) -> Arc<BlockHashSet>;
+
+    fn get_virtual_utxo_iterator(
+        self: Arc<Self>,
+    ) -> Box<dyn Iterator<Item = Result<(TransactionOutpoint, UtxoEntry), StoreError>>  + 'static>; //TODO: perhaps find a way to bring store errors into scope, would get rid of clumsy generic 
 }
 
 pub type DynConsensus = Arc<dyn ConsensusApi>;

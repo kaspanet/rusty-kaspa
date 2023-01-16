@@ -5,6 +5,7 @@ use consensus_core::tx::ScriptPublicKey;
 
 pub type UtxoSetByScriptPublicKey = HashMap<ScriptPublicKey, CompactUtxoCollection>;
 
+#[derive(Clone)]
 pub struct UtxoSetDiffByScriptPublicKey {
     pub added: UtxoSetByScriptPublicKey,
     pub removed: UtxoSetByScriptPublicKey,
@@ -12,9 +13,6 @@ pub struct UtxoSetDiffByScriptPublicKey {
 
 impl UtxoSetDiffByScriptPublicKey {
     pub fn new() -> Self {
-        Self {
-            added: UtxoSetByScriptPublicKey::new(),
-            removed: UtxoSetByScriptPublicKey::new(),
-        }
+        Self { added: UtxoSetByScriptPublicKey::new(), removed: UtxoSetByScriptPublicKey::new() }
     }
 }

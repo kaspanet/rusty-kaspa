@@ -1,31 +1,25 @@
-use crate::utxoindex::Signal;
+use std::{io, sync::mpsc::SendError};
+
 use consensus::model::stores::errors::StoreError;
+
 use thiserror::Error;
-use tokio::sync::mpsc::Receiver;
-use tokio::sync::mpsc::error::RecvError::
+
+use crate::notifier::UtxoIndexNotification;
 
 #[derive(Error, Debug)]
 pub enum UtxoIndexError {
-    #[error("signal reciever error: {0}")]
-    SignalRecieverDisconnecet(#[from] RecvError),
+    #[error("utxoindex error: consensus reciever is unreachable")]
+    ConsensusRecieverUnreachableError,
 
-    #[error("consensus reciever error: {0}")]
-    ConsensusReciverError(#[from] RecvError),
+    #[error("utxoindex error: shutdown reciever is unreachable")]
+    ShutDownRecieverUnreachableError,
 
-    #[error("utxoindex store error: {0}")]
-    StoreError(#[from] StoreError),
-}
+    #[error("utxoindex error: {0}")]
+    StoreAccessError(#[from] StoreError),
 
-pub trait StoreResultExtensions<T> {
-    fn unwrap_option(self) -> Option<T>;
-}
+    #[error("utxoindex error: {0}")]
+    DBResetError(#[from] io::Error),
 
-impl<T> StoreResultExtensions<T> for StoreResult<T> {
-    fn unwrap_option(self) -> Option<T> {
-        match self {
-            Ok(value) => Some(value),
-            Err(StoreError::KeyNotFound(_)) => None,
-            Err(err) => panic!("Unexpected store error: {:?}", err),
-        }
-    }
+    #[error("utxoindex error: {0}")]
+    SendError(#[from] SendError<UtxoIndexNotification>),
 }

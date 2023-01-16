@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use consensus::model::stores::{
     database::prelude::{CachedDbItem, DirectDbWriter},
-    errors::{StoreResult, StoreError},
+    errors::{StoreError, StoreResult},
     DB,
 };
 
@@ -13,7 +13,7 @@ pub trait CirculatingSupplyStoreReader {
 
 pub trait CirculatingSupplyStore: CirculatingSupplyStoreReader {
     fn add_circulating_supply_diff(&mut self, circulating_supply_diff: i64) -> StoreResult<u64>;
-    
+
     fn insert(&mut self, circulating_supply: u64) -> StoreResult<()>;
 }
 
@@ -43,17 +43,18 @@ impl CirculatingSupplyStoreReader for DbCirculatingSupplyStore {
 }
 
 impl CirculatingSupplyStore for DbCirculatingSupplyStore {
-    fn add_circulating_supply_diff(&mut self, circulating_supply_diff: i64) -> Result<u64, StoreError>
-    {
-        let circulating_supply = self.access.update(DirectDbWriter::new(&self.db), move | circulating_supply |  {
-            if circulating_supply_diff > 0 { 
-               circulating_supply + (circulating_supply_diff as u64)
-            } else { circulating_supply }
+    fn add_circulating_supply_diff(&mut self, circulating_supply_diff: i64) -> Result<u64, StoreError> {
+        let circulating_supply = self.access.update(DirectDbWriter::new(&self.db), move |circulating_supply| {
+            if circulating_supply_diff > 0 {
+                circulating_supply + (circulating_supply_diff as u64)
+            } else {
+                circulating_supply
+            }
         }); //force monotonic
         circulating_supply
     }
 
     fn insert(&mut self, circulating_supply: u64) -> Result<(), StoreError> {
-        self.access.write(DirectDbWriter::new(&self.db), &circulating_supply)  
+        self.access.write(DirectDbWriter::new(&self.db), &circulating_supply)
     }
 }

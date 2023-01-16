@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use consensus::model::stores::{
     database::prelude::{CachedDbItem, DirectDbWriter},
-    errors::{StoreResult, StoreError},
+    errors::{StoreError, StoreResult},
     DB,
 };
 use consensus_core::BlockHashSet;
@@ -43,6 +43,6 @@ impl UtxoIndexTipsStoreReader for DbUtxoIndexTipsStore {
 
 impl UtxoIndexTipsStore for DbUtxoIndexTipsStore {
     fn add_tips(&mut self, new_tips: BlockHashSet) -> Result<(), StoreError> {
-        self.access.write(DirectDbWriter::new(&self.db), &Arc::new(new_tips) )
+        self.access.write(DirectDbWriter::new(&self.db), &Arc::new(new_tips))
     }
 }

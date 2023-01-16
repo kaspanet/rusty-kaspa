@@ -1,7 +1,7 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
-use std::{fmt::Display, ops::Range, collections::HashSet, marker::Copy};
+use std::{collections::HashSet, marker::Copy, ops::Range, fmt::Display};
 
 use crate::{
     hashing,
@@ -13,13 +13,13 @@ pub type ScriptPublicKeys = HashSet<ScriptPublicKey>;
 /// Represents the ID of a Kaspa transaction
 pub type TransactionId = hashes::Hash;
 
-/// Size of the underlying script vector of a script. 
+/// Size of the underlying script vector of a script.
 pub const SCRIPT_VECTOR_SIZE: usize = 36;
 
 /// Used as the underlying type for script public key data, optimized for the common p2pk script size (34).
 pub type ScriptVec = SmallVec<[u8; SCRIPT_VECTOR_SIZE]>;
 
-/// Represents the ScriptPublicKey Version 
+/// Represents the ScriptPublicKey Version
 pub type VersionType = u16;
 
 /// Alias the `smallvec!` macro to ease maintenance

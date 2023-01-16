@@ -25,9 +25,9 @@ use crate::{
             tips::{DbTipsStore, TipsStoreReader},
             utxo_diffs::DbUtxoDiffsStore,
             utxo_multisets::DbUtxoMultisetsStore,
-            utxo_set::DbUtxoSetStore,
+            utxo_set::{DbUtxoSetStore, UtxoSetStoreReader},
             virtual_state::{DbVirtualStateStore, VirtualStateStoreReader},
-            DB,
+            DB, errors::StoreError,
         },
     },
     params::Params,
@@ -50,7 +50,7 @@ use consensus_core::{
     blockstatus::BlockStatus,
     coinbase::MinerData,
     errors::tx::TxResult,
-    tx::{MutableTransaction, Transaction},
+    tx::{MutableTransaction, Transaction, UtxoEntry, TransactionOutpoint},
     BlockHashSet,
 };
 use crossbeam_channel::{unbounded, Receiver, Sender};
@@ -102,6 +102,7 @@ pub struct Consensus {
     body_tips_store: Arc<RwLock<DbTipsStore>>,
     pub headers_store: Arc<DbHeadersStore>,
     pub block_transactions_store: Arc<DbBlockTransactionsStore>,
+    pub virtual_stores: Arc<RwLock<VirtualStores>>,
     // TODO: remove all pub from stores and processors when StoreManager is implemented
 
     // Append-only stores
@@ -383,6 +384,7 @@ impl Consensus {
             pruning_manager,
 
             counters,
+            virtual_stores,
         }
     }
 
@@ -420,6 +422,10 @@ impl Consensus {
 
     pub fn body_tips(&self) -> Arc<BlockHashSet> {
         self.body_tips_store.read().get().unwrap()
+    }
+
+    pub fn virtual_utxo_set_iterator(&self) -> Box<dyn Iterator<Item = Result<(TransactionOutpoint, UtxoEntry), StoreError>> + '_> {
+        self.virtual_stores.read().utxo_set.iter_all()
     }
 
     pub fn block_status(&self, hash: Hash) -> BlockStatus {
@@ -468,6 +474,17 @@ impl ConsensusApi for Consensus {
     fn get_virtual_daa_score(self: Arc<Self>) -> u64 {
         self.virtual_processor.virtual_stores.read().state.get().unwrap().daa_score
     }
+
+    fn get_tips(self: Arc<Self>) -> Arc<BlockHashSet> {
+        self.consensus.clone().body_tips()
+    }
+
+    fn get_virtual_utxo_iterator(
+        self: Arc<Self>,
+    ) -> Box<dyn Iterator<Item = Result<(TransactionOutpoint, UtxoEntry), StoreError>> + 'static> {
+        self.consensus.clone().virtual_utxo_set_iterator()
+    }
+
 }
 
 impl Service for Consensus {

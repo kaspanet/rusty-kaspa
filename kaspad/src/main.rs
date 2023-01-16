@@ -82,8 +82,8 @@ pub fn main() {
     assert!(!db_dir.to_str().unwrap().is_empty());
     info!("Application directory: {}", app_dir.as_display());
     info!("Data directory: {}", db_dir.as_display());
-    info!("Consensus {}"). consensus_store.as_display();
-    info!("Utxoindex {}"). utxoindex_store.as_display();
+    info!("Consensus {}").consensus_store.as_display();
+    info!("Utxoindex {}").utxoindex_store.as_display();
     fs::create_dir_all(consensus_store.as_path()).unwrap();
     fs::create_dir_all(utxoindex_store.as_path()).unwrap();
     let grpc_server_addr = args.rpc_listen.unwrap_or_else(|| "127.0.0.1:16610".to_string()).parse().unwrap();
@@ -93,10 +93,10 @@ pub fn main() {
     // ---
 
     let params = DEVNET_PARAMS;
-    
+
     let consensus_db = Arc::new(DB::open_default(consensus_store.to_str().unwrap()).unwrap());
     let consensus = Arc::new(Consensus::new(consensus_db, &params));
-    
+
     let monitor = Arc::new(ConsensusMonitor::new(consensus.processing_counters().clone()));
 
     let utxoindex_db = Arc::new(DB::open_default(utxoindex_store.to_str().unwrap()).unwrap());
@@ -111,7 +111,6 @@ pub fn main() {
     async_runtime.register(rpc_core_server);
     async_runtime.register(grpc_server);
     async_runtime.register(utxoindex);
-
 
     // Bind the keyboard signal to the core
     Arc::new(Signals::new(&core)).init();

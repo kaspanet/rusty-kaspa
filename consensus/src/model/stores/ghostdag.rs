@@ -2,7 +2,9 @@ use super::database::prelude::{BatchDbWriter, CachedDbAccess, DbKey, DirectDbWri
 use super::{errors::StoreError, DB};
 use crate::processes::ghostdag::ordering::SortableBlock;
 use consensus_core::{blockhash::BlockHashes, BlueWorkType};
-use consensus_core::{BlockHashMap, BlockHasher, HashMapCustomHasher};
+use consensus_core::{
+    BlockHashMap, BlockHasher, HashMapCustomHasher,
+};
 use hashes::Hash;
 
 use itertools::EitherOrBoth::{Both, Left, Right};
@@ -174,7 +176,6 @@ impl GhostdagData {
         self.blue_work = blue_work;
     }
 }
-
 pub trait GhostdagStoreReader {
     fn get_blue_score(&self, hash: Hash) -> Result<u64, StoreError>;
     fn get_blue_work(&self, hash: Hash) -> Result<BlueWorkType, StoreError>;

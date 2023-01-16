@@ -12,6 +12,7 @@ impl From<&consensus_notify::Notification> for Notification {
         match item {
             consensus_notify::Notification::BlockAdded(msg) => Notification::BlockAdded(msg.into()),
             consensus_notify::Notification::NewBlockTemplate(msg) => Notification::NewBlockTemplate(msg.into()),
+            _ => todo!("match missing notifications"), //TODO: fill missing notifications
         }
     }
 }

@@ -2,6 +2,7 @@ use super::prelude::{Cache, DbKey, DbWriter};
 use crate::model::stores::{errors::StoreError, DB};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{collections::hash_map::RandomState, hash::BuildHasher, sync::Arc};
+use std::error::Error;
 
 /// A concurrent DB store access with typed caching.
 #[derive(Clone)]
@@ -26,7 +27,7 @@ where
     S: BuildHasher + Default,
 {
     pub fn new(db: Arc<DB>, cache_size: u64, prefix: &'static [u8]) -> Self {
-        Self { db: db, cache: Cache::new(cache_size), prefix }
+        Self { db, cache: Cache::new(cache_size), prefix }
     }
 
     pub fn read_from_cache(&self, key: TKey) -> Option<TData>
@@ -112,22 +113,22 @@ where
         Ok(())
     }
 
-    pub fn iter_prefix< Key, Value>(&self, prefix: DbKey) -> Arc<dyn Iterator<Item = Result<(Key, Value), StoreError>> + '_>
+    pub fn iter_prefix<Key, Value>(&self, prefix: DbKey) -> Box<dyn Iterator<Item = Result<(Key, Value), StoreError>> + '_>
     where
         Key: Clone + DeserializeOwned,
         Value: Clone + DeserializeOwned,
     {
-            let iter = self.db.prefix_iterator(prefix.as_ref()).map(move |res| -> Result<(Key, Value), StoreError> {
+        let iter = self.db.prefix_iterator(prefix.as_ref()).map(move |res| -> Result<(Key, Value), StoreError> {
             let item = match res {
                 Ok(res) => {
                     let key: Key = bincode::deserialize(&res.0[prefix.prefix_len()..])?;
                     let value: Value = bincode::deserialize(&res.1)?;
-                    Ok((key, value))
-                },
+                    Ok((key.clone(), value.clone()))
+                }
                 Err(err) => Err(StoreError::DbError(err)),
             };
             item
         });
-        Arc::new(iter)
+        Box::new(iter)
     }
-} 
+}

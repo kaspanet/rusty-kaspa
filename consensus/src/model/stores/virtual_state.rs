@@ -3,11 +3,11 @@ use std::sync::Arc;
 use super::{
     database::prelude::{BatchDbWriter, CachedDbItem, DirectDbWriter},
     errors::StoreResult,
-    ghostdag::GhostdagData,
-    DB,
+    DB, ghostdag::GhostdagData,
 };
 use consensus_core::{
     coinbase::BlockRewardData, tx::TransactionId, utxo::utxo_diff::UtxoDiff, BlockHashMap, BlockHashSet, HashMapCustomHasher,
+
 };
 use hashes::Hash;
 use muhash::MuHash;

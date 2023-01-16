@@ -14,7 +14,7 @@ use consensus_core::{
     header::Header,
     merkle::calc_hash_merkle_root,
     subnets::SUBNETWORK_ID_COINBASE,
-    tx::{MutableTransaction, Transaction},
+    tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     BlockHashSet,
 };
 use futures_util::future::BoxFuture;
@@ -32,7 +32,8 @@ use crate::{
         headers::{DbHeadersStore, HeaderStoreReader},
         pruning::PruningStoreReader,
         reachability::DbReachabilityStore,
-        DB,
+        utxo_set::UtxoSetStoreReader,
+        DB, errors::StoreError,
     },
     params::Params,
     pipeline::{body_processor::BlockBodyProcessor, ProcessingCounters},
@@ -157,6 +158,7 @@ impl TestConsensus {
     pub fn ghostdag_manager(&self) -> &DbGhostdagManager {
         &self.consensus.ghostdag_manager
     }
+
 }
 
 impl ConsensusApi for TestConsensus {
@@ -182,6 +184,16 @@ impl ConsensusApi for TestConsensus {
 
     fn get_virtual_daa_score(self: Arc<Self>) -> u64 {
         self.consensus.clone().get_virtual_daa_score()
+    }
+
+    fn get_tips(self: Arc<Self>) -> Arc<BlockHashSet> {
+        self.consensus.clone().body_tips()
+    }
+
+    fn get_virtual_utxo_iterator(
+        self: Arc<Self>,
+    ) -> Box<dyn Iterator<Item = Result<(TransactionOutpoint, UtxoEntry), StoreError>> + '_> {
+        self.consensus.clone().virtual_utxo_set_iterator()
     }
 }
 
