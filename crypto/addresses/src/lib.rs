@@ -33,6 +33,7 @@ impl std::error::Error for AddressError {}
 pub enum Prefix {
     Mainnet,
     Testnet,
+    Simnet,
     Devnet,
     #[cfg(test)]
     A,
@@ -45,6 +46,7 @@ impl Prefix {
         match self {
             Prefix::Mainnet => "kaspa",
             Prefix::Testnet => "kaspatest",
+            Prefix::Simnet => "kaspasim",
             Prefix::Devnet => "kaspadev",
             #[cfg(test)]
             Prefix::A => "a",
@@ -67,6 +69,7 @@ impl TryFrom<&str> for Prefix {
         match prefix {
             "kaspa" => Ok(Prefix::Mainnet),
             "kaspatest" => Ok(Prefix::Testnet),
+            "kaspasim" => Ok(Prefix::Simnet),
             "kaspadev" => Ok(Prefix::Devnet),
             #[cfg(test)]
             "a" => Ok(Prefix::A),

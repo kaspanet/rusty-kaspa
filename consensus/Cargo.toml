@@ -12,7 +12,6 @@ pow.workspace = true
 math.workspace = true
 hashes.workspace = true
 merkle.workspace = true
-muhash.workspace = true
 kaspa-core.workspace = true
 consensus-core.workspace = true
 faster-hex.workspace = true
@@ -29,6 +28,7 @@ indexmap.workspace = true
 smallvec.workspace = true
 kaspa-utils.workspace = true
 log.workspace = true
+muhash.workspace = true
 
 rocksdb = "0.19"
 parking_lot = "0.12"

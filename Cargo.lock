@@ -690,7 +690,9 @@ dependencies = [
 name = "consensus-core"
 version = "0.1.0"
 dependencies = [
+ "addresses",
  "borsh",
+ "cfg-if",
  "faster-hex",
  "futures-util",
  "hashes",
@@ -1532,6 +1534,7 @@ dependencies = [
 name = "kaspa-core"
 version = "0.1.0"
 dependencies = [
+ "cfg-if",
  "ctrlc",
  "env_logger",
  "futures-util",
@@ -1557,8 +1560,11 @@ version = "0.1.0"
 name = "kaspa-wasm"
 version = "0.1.0"
 dependencies = [
+ "addresses",
  "kaspa-core",
+ "kaspa-utils",
  "kaspa-wallet",
+ "rpc-core",
  "wasm-bindgen",
 ]
 
@@ -2038,6 +2044,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "paste"
+version = "1.0.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d01a5bd0424d00070b0098dd17ebca6f961a959dead1dbcbbbc1d1cd8d3deeba"
+
+[[package]]
 name = "pbkdf2"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2430,6 +2442,7 @@ dependencies = [
  "async-std",
  "async-trait",
  "borsh",
+ "cfg-if",
  "consensus-core",
  "derive_more",
  "faster-hex",
@@ -2459,6 +2472,7 @@ dependencies = [
  "kaspa-core",
  "kaspa-utils",
  "log",
+ "paste",
  "prost",
  "rpc-core",
  "thiserror",
