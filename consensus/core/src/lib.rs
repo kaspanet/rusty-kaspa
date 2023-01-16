@@ -14,6 +14,7 @@ pub mod hashing;
 pub mod header;
 pub mod merkle;
 pub mod muhash;
+pub mod networktype;
 pub mod notify;
 pub mod sign;
 pub mod subnets;

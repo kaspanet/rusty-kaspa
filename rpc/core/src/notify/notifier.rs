@@ -1,7 +1,7 @@
 use super::{
     channel::NotificationChannel,
     collector::DynCollector,
-    errors::Error,
+    error::Error,
     events::{EventArray, EventType, EVENT_TYPE_ARRAY},
     listener::{Listener, ListenerID, ListenerReceiverSide, ListenerSenderSide, ListenerUtxoNotificationFilterSetting},
     message::{DispatchMessage, SubscribeMessage},
