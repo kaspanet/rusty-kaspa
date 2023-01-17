@@ -318,14 +318,7 @@ impl Rpc for Arc<GrpcService> {
                                 })
                                 .into(),
                             }
-
-                            // TODO: This must be replaced by actual handling of all request variants
-                            // _ => GetBlockResponseMessage::from(rpc_core::RpcError::General(
-                            //     "Server-side API Not implemented".to_string(),
-                            // ))
-                            // .into(),
                         } else {
-                            // GetBlockResponseMessage::from(rpc_core::RpcError::General("Server-side API Not implemented".to_string()))
                             GetBlockResponseMessage::from(rpc_core::RpcError::General("Missing request payload".to_string())).into()
                         };
                         //trace!("Outgoing {:?}", response);

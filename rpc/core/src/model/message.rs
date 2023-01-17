@@ -229,6 +229,7 @@ impl GetSelectedTipHashResponse {
 pub struct GetMempoolEntryRequest {
     pub transaction_id: RpcTransactionId,
     pub include_orphan_pool: bool,
+    // TODO: replace with `include_transaction_pool`
     pub filter_transaction_pool: bool,
 }
 
@@ -254,6 +255,7 @@ impl GetMempoolEntryResponse {
 #[serde(rename_all = "camelCase")]
 pub struct GetMempoolEntriesRequest {
     pub include_orphan_pool: bool,
+    // TODO: replace with `include_transaction_pool`
     pub filter_transaction_pool: bool,
 }
 
@@ -676,6 +678,7 @@ impl EstimateNetworkHashesPerSecondResponse {
 pub struct GetMempoolEntriesByAddressesRequest {
     pub addresses: Vec<RpcAddress>,
     pub include_orphan_pool: bool,
+    // TODO: replace with `include_transaction_pool`
     pub filter_transaction_pool: bool,
 }
 
