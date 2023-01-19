@@ -7,19 +7,15 @@ edition = "2021"
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-# kaspa-rpc-core = { path = "../../core" }
 rpc-core.workspace = true
-# workflow-rpc = "0.1.2"
-workflow-log = "0.1.0"
-workflow-core = "0.1.0"
-workflow-rpc = { path = "../../../../../workflow-rs/workflow-rpc" }
-# workflow-log = { path = "../../../../workflow-log" }
-# workflow-core = { path = "../../../../workflow-core" }
-
-regex = "1.6.0"
-thiserror = "1.0.32"
-async-trait = "0.1.57"
-serde = { version = "1.0.144" , features = ["derive"] }
-borsh = "0.9.3"
-async-std = { version = "1.12.0", features = ['attributes'] }
-paste = "1.0.11"
+workflow-core.workspace = true
+workflow-websocket.workspace = true
+workflow-rpc.workspace = true
+workflow-log.workspace = true
+regex.workspace = true
+thiserror.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+borsh.workspace = true
+async-std.workspace = true
+paste.workspace = true

@@ -77,3 +77,11 @@ async-std = { version = "1.12.0", features = ['attributes'] }
 derive_more = { version = "0.99" }
 log = "0.4"
 cfg-if = "1.0.0"
+
+workflow-core = { path = "../../workflow-rs/workflow-core" }
+workflow-websocket = { path = "../../workflow-rs/workflow-websocket" }
+workflow-rpc = { path = "../../workflow-rs/workflow-rpc" }
+workflow-log = { path = "../../workflow-rs/workflow-log" }
+async-trait = "0.1.57"
+paste = "1.0.11"
+regex = "1.6.0"

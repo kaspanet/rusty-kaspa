@@ -1683,15 +1683,18 @@ dependencies = [
  "rpc-core",
  "serde",
  "thiserror",
- "workflow-core 0.1.0",
- "workflow-log 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "workflow-core 0.2.0",
+ "workflow-log 0.1.0",
  "workflow-rpc 0.1.2",
+ "workflow-websocket 0.1.2",
 ]
 
 [[package]]
 name = "kaspa-wrpc-proxy"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
+ "clap 4.0.29",
  "consensus-core",
  "kaspa-wrpc-server",
  "rpc-core",
@@ -1699,6 +1702,9 @@ dependencies = [
  "thiserror",
  "tokio",
  "workflow-core 0.2.0",
+ "workflow-log 0.1.0",
+ "workflow-rpc 0.1.2",
+ "workflow-websocket 0.1.2",
 ]
 
 [[package]]
@@ -1709,13 +1715,11 @@ dependencies = [
  "borsh",
  "paste",
  "rpc-core",
- "serde",
  "thiserror",
  "tokio",
- "workflow-core 0.1.0",
- "workflow-log 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "workflow-rpc 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "workflow-websocket 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "workflow-log 0.1.0",
+ "workflow-rpc 0.1.2",
+ "workflow-websocket 0.1.2",
 ]
 
 [[package]]
@@ -3808,6 +3812,7 @@ version = "0.1.0"
 dependencies = [
  "convert_case 0.5.0",
  "parse-variants",
+ "proc-macro-error",
  "proc-macro2",
  "quote",
  "sha2 0.10.6",
@@ -3908,7 +3913,7 @@ dependencies = [
  "futures-util",
  "getrandom 0.2.8",
  "manual_future",
- "rand 0.7.3",
+ "rand 0.8.5",
  "serde",
  "serde_json",
  "thiserror",

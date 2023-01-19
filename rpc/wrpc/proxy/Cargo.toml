@@ -11,4 +11,9 @@ rpc-grpc.workspace = true
 thiserror.workspace = true
 rpc-core.workspace = true
 # workflow_core.workspace = true
-workflow-core = { path = "../../../../../workflow-rs/workflow-core" }
+clap.workspace = true
+workflow-core.workspace = true
+workflow-websocket.workspace = true
+workflow-rpc.workspace = true
+workflow-log.workspace = true
+async-trait.workspace = true
