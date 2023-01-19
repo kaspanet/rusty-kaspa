@@ -152,7 +152,7 @@ impl Rpc for Arc<GrpcService> {
                 match request_stream.message().await {
                     Ok(Some(request)) => {
                         //trace!("Incoming {:?}", request);
-                        let response: KaspadResponse = if let Some(payload) = request.payload {
+                        let mut response: KaspadResponse = if let Some(payload) = request.payload {
                             match payload {
                                 Payload::GetProcessMetricsRequest(ref request) => match request.try_into() {
                                     Ok(request) => core_service.get_process_metrics_call(request).await.into(),
@@ -417,6 +417,7 @@ impl Rpc for Arc<GrpcService> {
                                             Err(err) => NotifyUtxosChangedResponseMessage::from(err).into(),
                                         };
                                     KaspadResponse {
+                                        id: 0,
                                         payload: Some(kaspad_response::Payload::StopNotifyingUtxosChangedResponse(response)),
                                     }
                                 }
@@ -436,6 +437,7 @@ impl Rpc for Arc<GrpcService> {
                                             Err(err) => NotifyPruningPointUtxoSetOverrideResponseMessage::from(err).into(),
                                         };
                                     KaspadResponse {
+                                        id: 0,
                                         payload: Some(kaspad_response::Payload::StopNotifyingPruningPointUtxoSetOverrideResponse(
                                             response,
                                         )),
@@ -445,6 +447,7 @@ impl Rpc for Arc<GrpcService> {
                         } else {
                             GetBlockResponseMessage::from(rpc_core::RpcError::General("Missing request payload".to_string())).into()
                         };
+                        response.id = request.id;
                         //trace!("Outgoing {:?}", response);
 
                         match send_channel.send(Ok(response)).await {

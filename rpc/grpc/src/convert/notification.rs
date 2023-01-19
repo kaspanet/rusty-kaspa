@@ -19,7 +19,7 @@ use rpc_core::{Notification, RpcError, RpcHash};
 // rpc_core to protowire
 // ----------------------------------------------------------------------------
 
-from!(item: &rpc_core::Notification, KaspadResponse, { Self { payload: Some(item.into()) } });
+from!(item: &rpc_core::Notification, KaspadResponse, { Self { id: 0, payload: Some(item.into()) } });
 
 from!(item: &rpc_core::Notification, Payload, {
     match item {

@@ -120,7 +120,7 @@ impl From<&kaspad_response::Payload> for RpcApiOps {
 
 impl From<kaspad_request::Payload> for KaspadRequest {
     fn from(item: kaspad_request::Payload) -> Self {
-        KaspadRequest { payload: Some(item) }
+        KaspadRequest { id: 0, payload: Some(item) }
     }
 }
 
@@ -207,7 +207,7 @@ pub mod kaspad_request_convert {
 
             impl From<&$core_struct> for KaspadRequest {
                 fn from(item: &$core_struct) -> Self {
-                    Self { payload: Some(item.into()) }
+                    Self { id: 0, payload: Some(item.into()) }
                 }
             }
 
@@ -219,7 +219,7 @@ pub mod kaspad_request_convert {
 
             impl From<$core_struct> for KaspadRequest {
                 fn from(item: $core_struct) -> Self {
-                    Self { payload: Some((&item).into()) }
+                    Self { id: 0, payload: Some((&item).into()) }
                 }
             }
 
@@ -250,7 +250,7 @@ pub mod kaspad_request_convert {
 
             impl From<$protowire_struct> for KaspadRequest {
                 fn from(item: $protowire_struct) -> Self {
-                    Self { payload: Some(kaspad_request::Payload::$variant(item)) }
+                    Self { id: 0, payload: Some(kaspad_request::Payload::$variant(item)) }
                 }
             }
 
@@ -333,7 +333,7 @@ pub mod kaspad_response_convert {
 
             impl From<RpcResult<&$core_struct>> for KaspadResponse {
                 fn from(item: RpcResult<&$core_struct>) -> Self {
-                    Self { payload: Some(item.into()) }
+                    Self { id: 0, payload: Some(item.into()) }
                 }
             }
 
@@ -345,7 +345,7 @@ pub mod kaspad_response_convert {
 
             impl From<RpcResult<$core_struct>> for KaspadResponse {
                 fn from(item: RpcResult<$core_struct>) -> Self {
-                    Self { payload: Some(item.into()) }
+                    Self { id: 0, payload: Some(item.into()) }
                 }
             }
 
@@ -370,7 +370,7 @@ pub mod kaspad_response_convert {
 
             impl From<$protowire_struct> for KaspadResponse {
                 fn from(item: $protowire_struct) -> Self {
-                    Self { payload: Some(kaspad_response::Payload::$variant(item)) }
+                    Self { id: 0, payload: Some(kaspad_response::Payload::$variant(item)) }
                 }
             }
 

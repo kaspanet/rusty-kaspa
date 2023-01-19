@@ -8,6 +8,7 @@ use futures::{
 };
 use kaspa_core::trace;
 use kaspa_utils::triggers::DuplexTrigger;
+use matcher::*;
 use rpc_core::{
     api::ops::{RpcApiOps, SubscribeCommand},
     notify::{events::EventType, listener::ListenerID, subscriber::SubscriptionManager},
@@ -29,13 +30,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use tonic::Streaming;
 use tonic::{codec::CompressionEncoding, transport::Endpoint};
 
-use matcher::*;
 mod matcher;
-
-pub const CONNECT_TIMEOUT_DURATION: u64 = 20_000;
-pub const KEEP_ALIVE_DURATION: u64 = 5_000;
-pub const REQUEST_TIMEOUT_DURATION: u64 = 5_000;
-pub const TIMEOUT_MONITORING_INTERVAL: u64 = 1_000;
 
 pub type SenderResponse = tokio::sync::oneshot::Sender<Result<KaspadResponse>>;
 
@@ -56,6 +51,11 @@ impl Pending {
         self.op == response_op && self.request.is_matching(response)
     }
 }
+
+pub const CONNECT_TIMEOUT_DURATION: u64 = 20_000;
+pub const KEEP_ALIVE_DURATION: u64 = 5_000;
+pub const REQUEST_TIMEOUT_DURATION: u64 = 5_000;
+pub const TIMEOUT_MONITORING_INTERVAL: u64 = 1_000;
 
 /// A struct to handle messages flowing to (requests) and from (responses) a protowire server.
 /// Incoming responses are associated to pending requests based on their matching operation
@@ -93,6 +93,7 @@ impl Pending {
 #[derive(Debug)]
 pub(super) struct Resolver {
     handle_stop_notify: bool,
+    _handle_message_id: bool,
 
     // Pushing incoming notifications forward
     notify_send: NotificationSender,
@@ -113,9 +114,15 @@ pub(super) struct Resolver {
 }
 
 impl Resolver {
-    pub(super) fn new(handle_stop_notify: bool, notify_send: NotificationSender, request_send: Sender<KaspadRequest>) -> Self {
+    pub(super) fn new(
+        handle_stop_notify: bool,
+        handle_message_id: bool,
+        notify_send: NotificationSender,
+        request_send: Sender<KaspadRequest>,
+    ) -> Self {
         Self {
             handle_stop_notify,
+            _handle_message_id: handle_message_id,
             notify_send,
             request_send,
             pending_calls: Arc::new(Mutex::new(VecDeque::new())),
@@ -151,12 +158,14 @@ impl Resolver {
 
         // Collect server capabilities as stated in GetInfoResponse
         let mut handle_stop_notify = false;
+        let mut handle_message_id = false;
         match stream.message().await? {
             Some(ref msg) => {
                 trace!("GetInfo got response {:?}", msg);
                 let response: RpcResult<GetInfoResponse> = msg.try_into();
                 if let Ok(response) = response {
                     handle_stop_notify = response.has_notify_command;
+                    handle_message_id = response.has_message_id;
                 }
             }
             None => {
@@ -165,7 +174,7 @@ impl Resolver {
         }
 
         // create the resolver
-        let resolver = Arc::new(Resolver::new(handle_stop_notify, notify_send, request_send));
+        let resolver = Arc::new(Resolver::new(handle_stop_notify, handle_message_id, notify_send, request_send));
 
         // Start the request timeout cleaner
         resolver.clone().spawn_request_timeout_monitor();
@@ -181,7 +190,10 @@ impl Resolver {
     }
 
     pub(crate) async fn call(&self, op: RpcApiOps, request: impl Into<KaspadRequest>) -> Result<KaspadResponse> {
-        let request: KaspadRequest = request.into();
+        let id = u64::from_le_bytes(rand::random::<[u8; 8]>());
+        let mut request: KaspadRequest = request.into();
+        request.id = id;
+
         trace!("resolver call: {:?}", request);
         if request.payload.is_some() {
             let (sender, receiver) = oneshot::channel::<Result<KaspadResponse>>();
@@ -280,7 +292,7 @@ impl Resolver {
                                         // This event makes the whole object unable to work anymore.
                                         // This should be reported to the owner of this Resolver.
                                         //
-                                        // Some automatical reconnection mecanism could also be investigated.
+                                        // Some automatic reconnection mechanism could also be investigated.
                                         break;
                                     }
                                 }
@@ -316,7 +328,7 @@ impl Resolver {
                     }
                 }
                 Err(err) => {
-                    trace!("[Resolver] handle_response error converting reponse into notification: {:?}", err);
+                    trace!("[Resolver] handle_response error converting response into notification: {:?}", err);
                 }
             }
         } else if response.payload.is_some() {

@@ -2474,6 +2474,7 @@ dependencies = [
  "log",
  "paste",
  "prost",
+ "rand 0.8.5",
  "rpc-core",
  "thiserror",
  "tokio",

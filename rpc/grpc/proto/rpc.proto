@@ -232,8 +232,8 @@ message GetMempoolEntryResponseMessage{
 // GetMempoolEntriesRequestMessage requests information about all the transactions
 // currently in the mempool.
 message GetMempoolEntriesRequestMessage{
-        bool includeOrphanPool = 1;
-        bool filterTransactionPool = 2;
+  bool includeOrphanPool = 1;
+  bool filterTransactionPool = 2;
 }
 
 message GetMempoolEntriesResponseMessage{
@@ -551,7 +551,7 @@ message GetBalancesByAddressesRequestMessage {
   repeated string addresses = 1;
 }
 
-message BalancesByAddressEntry{
+message RpcBalancesByAddressesEntry{
   string address = 1;
   uint64 balance = 2;
 
@@ -559,7 +559,7 @@ message BalancesByAddressEntry{
 }
 
 message GetBalancesByAddressesResponseMessage {
-  repeated BalancesByAddressEntry entries = 1;
+  repeated RpcBalancesByAddressesEntry entries = 1;
 
   RPCError error = 1000;
 }
@@ -681,10 +681,9 @@ message GetInfoResponseMessage{
   string serverVersion = 3;
   bool isUtxoIndexed = 4;
   bool isSynced = 5;
-  bool hasNotifyCommand = 101;
+  bool hasNotifyCommand = 11;
+  bool hasMessageId = 12;
   RPCError error = 1000;
-
-  //bool hasRequestResponseId = 102;
 }
 
 message EstimateNetworkHashesPerSecondRequestMessage{

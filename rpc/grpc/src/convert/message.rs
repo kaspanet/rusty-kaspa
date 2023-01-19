@@ -143,6 +143,7 @@ from!(item: RpcResult<&rpc_core::GetInfoResponse>, protowire::GetInfoResponseMes
         is_utxo_indexed: item.is_utxo_indexed,
         is_synced: item.is_synced,
         has_notify_command: item.has_notify_command,
+        has_message_id: item.has_message_id,
         error: None,
     }
 });
@@ -448,6 +449,7 @@ try_from!(item: &protowire::GetInfoResponseMessage, RpcResult<rpc_core::GetInfoR
         is_utxo_indexed: item.is_utxo_indexed,
         is_synced: item.is_synced,
         has_notify_command: item.has_notify_command,
+        has_message_id: item.has_message_id,
     }
 });
 

@@ -125,6 +125,7 @@ pub struct GetInfoResponse {
     pub is_utxo_indexed: bool,
     pub is_synced: bool,
     pub has_notify_command: bool,
+    pub has_message_id: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]

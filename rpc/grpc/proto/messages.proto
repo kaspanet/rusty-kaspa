@@ -4,6 +4,7 @@ package protowire;
 import "rpc.proto";
 
 message KaspadRequest {
+  uint64 id = 101;
   oneof payload {
     GetCurrentNetworkRequestMessage getCurrentNetworkRequest = 1001;
     SubmitBlockRequestMessage submitBlockRequest = 1003;
@@ -55,11 +56,11 @@ message KaspadRequest {
     GetCoinSupplyRequestMessage getCoinSupplyRequest = 1086;
     PingRequestMessage pingRequest = 1088;
     GetProcessMetricsRequestMessage getProcessMetricsRequest = 1090;
-
   }
 }
 
 message KaspadResponse {
+  uint64 id = 101;
   oneof payload {
     GetCurrentNetworkResponseMessage getCurrentNetworkResponse = 1002;
     SubmitBlockResponseMessage submitBlockResponse = 1004;
