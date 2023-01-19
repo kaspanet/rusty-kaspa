@@ -1,6 +1,8 @@
 use addresses::Prefix;
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
+use std::fmt::{Debug, Display, Formatter};
+use std::str::FromStr;
 
 #[derive(thiserror::Error, PartialEq, Eq, Debug, Clone)]
 pub enum NetworkTypeError {
@@ -9,7 +11,7 @@ pub enum NetworkTypeError {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "lowercase")]
 pub enum NetworkType {
     Mainnet,
     Testnet,
@@ -43,9 +45,9 @@ impl TryFrom<Prefix> for NetworkType {
     }
 }
 
-impl TryFrom<&str> for NetworkType {
-    type Error = NetworkTypeError;
-    fn try_from(network_type: &str) -> Result<Self, Self::Error> {
+impl FromStr for NetworkType {
+    type Err = NetworkTypeError;
+    fn from_str(network_type: &str) -> Result<Self, Self::Err> {
         match network_type {
             "mainnet" => Ok(NetworkType::Mainnet),
             "testnet" => Ok(NetworkType::Testnet),
@@ -53,5 +55,18 @@ impl TryFrom<&str> for NetworkType {
             "devnet" => Ok(NetworkType::Devnet),
             _ => Err(NetworkTypeError::InvalidNetworkType(network_type.to_string())),
         }
+    }
+}
+
+impl Display for NetworkType {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            NetworkType::Mainnet => "mainnet",
+            NetworkType::Testnet => "testnet",
+            NetworkType::Simnet => "simnet",
+            NetworkType::Devnet => "devnet",
+        };
+        f.write_str(s)
     }
 }
