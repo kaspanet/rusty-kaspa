@@ -21,7 +21,7 @@ pub struct KaspaRpcClient {
 
 impl KaspaRpcClient {
     pub fn new(url: &str) -> Result<KaspaRpcClient> {
-        let re = Regex::new(r"^rpc").unwrap();
+        let re = Regex::new(r"^wrpc").unwrap();
         let url = re.replace(url, "ws");
         log_trace!("Kaspa RPC client url: {}", url);
         let client = KaspaRpcClient { rpc: Arc::new(RpcClient::new(&url)?) };

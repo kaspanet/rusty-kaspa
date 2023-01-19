@@ -8,4 +8,7 @@ pub enum Error {
 
     #[error(transparent)]
     Wrpc(#[from] kaspa_wrpc_server::error::Error),
+
+    #[error(transparent)]
+    WebSocket(#[from] workflow_websocket::server::error::Error),
 }
