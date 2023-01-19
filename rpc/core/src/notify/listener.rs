@@ -1,14 +1,14 @@
+use crate::{
+    notify::{
+        channel::NotificationChannel,
+        events::{EventArray, EventType},
+        result::Result,
+        utxo_address_set::RpcUtxoAddressSet,
+    },
+    Notification, NotificationReceiver, NotificationSender, NotificationType, RpcAddress,
+};
 use std::fmt::Debug;
 use std::sync::Arc;
-
-use crate::notify::{
-    channel::NotificationChannel,
-    events::{EventArray, EventType},
-    result::Result,
-    utxo_address_set::RpcUtxoAddressSet,
-};
-use crate::stubs::RpcUtxoAddress;
-use crate::{Notification, NotificationReceiver, NotificationSender, NotificationType};
 
 pub type ListenerID = u64;
 
@@ -26,7 +26,7 @@ pub enum ListenerUtxoNotificationFilterSetting {
 /// ### Implementation details
 ///
 /// This struct is not async protected against mutations.
-/// It is the responsability of code using a [Listener] to guard memory
+/// It is the responsibility of code using a [Listener] to guard memory
 /// before calling toggle.
 ///
 /// Any ListenerSenderSide derived from a [Listener] should also be rebuilt
@@ -54,7 +54,7 @@ impl Listener {
         self.active_event[event]
     }
 
-    fn toggle_utxo_addresses(&mut self, utxo_addresses: &[RpcUtxoAddress]) -> bool {
+    fn toggle_utxo_addresses(&mut self, utxo_addresses: &[RpcAddress]) -> bool {
         let utxo_addresses = RpcUtxoAddressSet::from_iter(utxo_addresses.iter().cloned());
         if utxo_addresses != self.utxo_addresses {
             self.utxo_addresses = utxo_addresses;
@@ -64,7 +64,7 @@ impl Listener {
     }
 
     /// Toggle registration for [`NotificationType`] notifications.
-    /// Return true if any change occured in the registration state.
+    /// Return true if any change occurred in the registration state.
     pub(crate) fn toggle(&mut self, notification_type: NotificationType, active: bool) -> bool {
         let mut changed = false;
         let event: EventType = (&notification_type).into();
@@ -168,7 +168,10 @@ struct FilterUtxoAddress {
 impl InnerFilter for FilterUtxoAddress {
     fn matches(&self, notification: Arc<Notification>) -> bool {
         if let Notification::UtxosChanged(ref notification) = *notification {
-            return self.utxos_addresses.contains(&notification.utxo_address);
+            // TODO: redesign the filter
+            // We want to limit the notification contents to the watched addresses only.
+            return notification.added.iter().any(|x| self.utxos_addresses.contains(&x.address))
+                || notification.removed.iter().any(|x| self.utxos_addresses.contains(&x.address));
         }
         false
     }

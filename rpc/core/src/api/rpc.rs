@@ -5,6 +5,7 @@
 //! No data submitted by the client to the server can be trusted
 
 use crate::{
+    api::ops::SubscribeCommand,
     model::*,
     notify::{
         channel::NotificationChannel,
@@ -293,4 +294,18 @@ pub trait RpcApi: Sync + Send {
 
     /// Stop sending notifications of some type to a listener.
     async fn stop_notify(&self, id: ListenerID, notification_type: NotificationType) -> RpcResult<()>;
+
+    /// Execute a subscription command leading to either start or stop sending notifications
+    /// of some type to a listener.
+    async fn execute_subscribe_command(
+        &self,
+        id: ListenerID,
+        notification_type: NotificationType,
+        command: SubscribeCommand,
+    ) -> RpcResult<()> {
+        match command {
+            SubscribeCommand::Start => self.start_notify(id, notification_type).await,
+            SubscribeCommand::Stop => self.stop_notify(id, notification_type).await,
+        }
+    }
 }

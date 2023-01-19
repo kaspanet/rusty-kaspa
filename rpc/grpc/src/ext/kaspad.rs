@@ -26,7 +26,7 @@ impl kaspad_request::Payload {
                 kaspad_request::Payload::NotifyBlockAddedRequest(NotifyBlockAddedRequestMessage { command: command.into() })
             }
             // NotificationType::VirtualSelectedParentChainChanged => todo!(),
-            // NotificationType::FinalityConflicts => todo!(),
+            // NotificationType::FinalityConflict => todo!(),
             // NotificationType::FinalityConflictResolved => todo!(),
             // NotificationType::UtxosChanged(_) => todo!(),
             // NotificationType::VirtualSelectedParentBlueScoreChanged => todo!(),

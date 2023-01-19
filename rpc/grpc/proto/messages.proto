@@ -25,7 +25,7 @@ message KaspadRequest {
     GetBlockCountRequestMessage getBlockCountRequest = 1033;
     GetBlockDagInfoRequestMessage getBlockDagInfoRequest = 1035;
     ResolveFinalityConflictRequestMessage resolveFinalityConflictRequest = 1037;
-    NotifyFinalityConflictsRequestMessage notifyFinalityConflictsRequest = 1039;
+    NotifyFinalityConflictRequestMessage notifyFinalityConflictRequest = 1039;
     // FinalityConflictNotificationMessage finalityConflictNotification = 1041;
     // FinalityConflictResolvedNotificationMessage finalityConflictResolvedNotification = 1042;
     GetMempoolEntriesRequestMessage getMempoolEntriesRequest = 1043;
@@ -40,10 +40,10 @@ message KaspadRequest {
     BanRequestMessage banRequest = 1059;
     UnbanRequestMessage unbanRequest = 1061;
     GetInfoRequestMessage getInfoRequest = 1063;
-    //??? StopNotifyingUtxosChangedRequestMessage stopNotifyingUtxosChangedRequest = 1065;
-    NotifyPruningPointUTXOSetOverrideRequestMessage notifyPruningPointUTXOSetOverrideRequest = 1067;
-    // PruningPointUTXOSetOverrideNotificationMessage pruningPointUTXOSetOverrideNotification = 1069;
-    //??? StopNotifyingPruningPointUTXOSetOverrideRequestMessage stopNotifyingPruningPointUTXOSetOverrideRequest = 1070;
+    StopNotifyingUtxosChangedRequestMessage stopNotifyingUtxosChangedRequest = 1065;
+    NotifyPruningPointUtxoSetOverrideRequestMessage notifyPruningPointUtxoSetOverrideRequest = 1067;
+    // PruningPointUtxoSetOverrideNotificationMessage pruningPointUtxoSetOverrideNotification = 1069;
+    StopNotifyingPruningPointUtxoSetOverrideRequestMessage stopNotifyingPruningPointUtxoSetOverrideRequest = 1070;
     EstimateNetworkHashesPerSecondRequestMessage estimateNetworkHashesPerSecondRequest = 1072;
     NotifyVirtualDaaScoreChangedRequestMessage notifyVirtualDaaScoreChangedRequest = 1074;
     // VirtualDaaScoreChangedNotificationMessage virtualDaaScoreChangedNotification = 1076;
@@ -81,7 +81,7 @@ message KaspadResponse {
     GetBlockCountResponseMessage getBlockCountResponse = 1034;
     GetBlockDagInfoResponseMessage getBlockDagInfoResponse = 1036;
     ResolveFinalityConflictResponseMessage resolveFinalityConflictResponse = 1038;
-    NotifyFinalityConflictsResponseMessage notifyFinalityConflictsResponse = 1040;
+    NotifyFinalityConflictResponseMessage notifyFinalityConflictResponse = 1040;
     FinalityConflictNotificationMessage finalityConflictNotification = 1041;
     FinalityConflictResolvedNotificationMessage finalityConflictResolvedNotification = 1042;
     GetMempoolEntriesResponseMessage getMempoolEntriesResponse = 1044;
@@ -97,9 +97,9 @@ message KaspadResponse {
     UnbanResponseMessage unbanResponse = 1062;
     GetInfoResponseMessage getInfoResponse = 1064;
     StopNotifyingUtxosChangedResponseMessage stopNotifyingUtxosChangedResponse = 1066;
-    NotifyPruningPointUTXOSetOverrideResponseMessage notifyPruningPointUTXOSetOverrideResponse = 1068;
-    PruningPointUTXOSetOverrideNotificationMessage pruningPointUTXOSetOverrideNotification = 1069;
-    StopNotifyingPruningPointUTXOSetOverrideResponseMessage stopNotifyingPruningPointUTXOSetOverrideResponse = 1071;
+    NotifyPruningPointUtxoSetOverrideResponseMessage notifyPruningPointUtxoSetOverrideResponse = 1068;
+    PruningPointUtxoSetOverrideNotificationMessage pruningPointUtxoSetOverrideNotification = 1069;
+    StopNotifyingPruningPointUtxoSetOverrideResponseMessage stopNotifyingPruningPointUtxoSetOverrideResponse = 1071;
     EstimateNetworkHashesPerSecondResponseMessage estimateNetworkHashesPerSecondResponse = 1073;
     NotifyVirtualDaaScoreChangedResponseMessage notifyVirtualDaaScoreChangedResponse = 1075;
     VirtualDaaScoreChangedNotificationMessage virtualDaaScoreChangedNotification = 1076;

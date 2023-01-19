@@ -88,6 +88,6 @@ pub struct RpcAcceptedTransactionIds {
 #[serde(rename_all = "camelCase")]
 pub struct RpcUtxosByAddressesEntry {
     pub address: RpcAddress,
-    pub transaction_outpoint: RpcTransactionOutpoint,
+    pub outpoint: RpcTransactionOutpoint,
     pub utxo_entry: RpcUtxoEntry,
 }

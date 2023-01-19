@@ -189,9 +189,11 @@ from!(_item: RpcResult<&rpc_core::AddPeerResponse>, protowire::AddPeerResponseMe
     unimplemented!();
 });
 
-from!(_item: &rpc_core::SubmitTransactionRequest, protowire::SubmitTransactionRequestMessage, { unimplemented!() });
-from!(_item: RpcResult<&rpc_core::SubmitTransactionResponse>, protowire::SubmitTransactionResponseMessage, {
-    unimplemented!();
+from!(item: &rpc_core::SubmitTransactionRequest, protowire::SubmitTransactionRequestMessage, {
+    Self { transaction: Some((&item.transaction).into()), allow_orphan: item.allow_orphan }
+});
+from!(item: RpcResult<&rpc_core::SubmitTransactionResponse>, protowire::SubmitTransactionResponseMessage, {
+    Self { transaction_id: item.transaction_id.to_string(), error: None }
 });
 
 from!(_item: &rpc_core::GetSubnetworkRequest, protowire::GetSubnetworkRequestMessage, { unimplemented!() });
@@ -216,11 +218,15 @@ from!(
     }
 );
 
-from!(_item: &rpc_core::GetBlocksRequest, protowire::GetBlocksRequestMessage, {
-    unimplemented!();
+from!(item: &rpc_core::GetBlocksRequest, protowire::GetBlocksRequestMessage, {
+    Self { low_hash: item.low_hash.to_string(), include_blocks: item.include_blocks, include_transactions: item.include_transactions }
 });
-from!(_item: RpcResult<&rpc_core::GetBlocksResponse>, protowire::GetBlocksResponseMessage, {
-    unimplemented!();
+from!(item: RpcResult<&rpc_core::GetBlocksResponse>, protowire::GetBlocksResponseMessage, {
+    Self {
+        block_hashes: item.block_hashes.iter().map(|x| x.to_string()).collect::<Vec<_>>(),
+        blocks: item.blocks.iter().map(|x| x.into()).collect::<Vec<_>>(),
+        error: None,
+    }
 });
 
 from!(_item: &rpc_core::GetBlockCountRequest, protowire::GetBlockCountRequestMessage, {
@@ -254,11 +260,11 @@ from!(_item: RpcResult<&rpc_core::GetHeadersResponse>, protowire::GetHeadersResp
     unimplemented!();
 });
 
-from!(_item: &rpc_core::GetUtxosByAddressesRequest, protowire::GetUtxosByAddressesRequestMessage, {
-    unimplemented!();
+from!(item: &rpc_core::GetUtxosByAddressesRequest, protowire::GetUtxosByAddressesRequestMessage, {
+    Self { addresses: item.addresses.iter().map(|x| x.into()).collect() }
 });
-from!(_item: RpcResult<&rpc_core::GetUtxosByAddressesResponse>, protowire::GetUtxosByAddressesResponseMessage, {
-    unimplemented!();
+from!(item: RpcResult<&rpc_core::GetUtxosByAddressesResponse>, protowire::GetUtxosByAddressesResponseMessage, {
+    Self { entries: item.entries.iter().map(|x| x.into()).collect(), error: None }
 });
 
 from!(_item: &rpc_core::GetBalanceByAddressRequest, protowire::GetBalanceByAddressRequestMessage, {
@@ -275,15 +281,11 @@ from!(_item: RpcResult<&rpc_core::GetBalancesByAddressesResponse>, protowire::Ge
     unimplemented!();
 });
 
-from!(_item: &rpc_core::GetVirtualSelectedParentBlueScoreRequest, protowire::GetVirtualSelectedParentBlueScoreRequestMessage, {
-    unimplemented!();
-});
+from!(&rpc_core::GetVirtualSelectedParentBlueScoreRequest, protowire::GetVirtualSelectedParentBlueScoreRequestMessage);
 from!(
-    _item: RpcResult<&rpc_core::GetVirtualSelectedParentBlueScoreResponse>,
+    item: RpcResult<&rpc_core::GetVirtualSelectedParentBlueScoreResponse>,
     protowire::GetVirtualSelectedParentBlueScoreResponseMessage,
-    {
-        unimplemented!();
-    }
+    { Self { blue_score: item.blue_score, error: None } }
 );
 
 from!(_item: &rpc_core::BanRequest, protowire::BanRequestMessage, {
@@ -338,6 +340,46 @@ from!(_item: &rpc_core::GetProcessMetricsRequest, protowire::GetProcessMetricsRe
 from!(_item: RpcResult<&rpc_core::GetProcessMetricsResponse>, protowire::GetProcessMetricsResponseMessage, {
     unimplemented!();
 });
+
+from!(item: &rpc_core::NotifyUtxosChangedRequest, protowire::NotifyUtxosChangedRequestMessage, {
+    Self { addresses: item.addresses.iter().map(|x| x.into()).collect(), command: item.command.into() }
+});
+from!(RpcResult<&rpc_core::NotifyUtxosChangedResponse>, protowire::NotifyUtxosChangedResponseMessage);
+
+from!(item: &rpc_core::NotifyPruningPointUtxoSetOverrideRequest, protowire::NotifyPruningPointUtxoSetOverrideRequestMessage, {
+    Self { command: item.command.into() }
+});
+from!(RpcResult<&rpc_core::NotifyPruningPointUtxoSetOverrideResponse>, protowire::NotifyPruningPointUtxoSetOverrideResponseMessage);
+
+from!(item: &rpc_core::NotifyFinalityConflictRequest, protowire::NotifyFinalityConflictRequestMessage, {
+    Self { command: item.command.into() }
+});
+from!(RpcResult<&rpc_core::NotifyFinalityConflictResponse>, protowire::NotifyFinalityConflictResponseMessage);
+
+from!(item: &rpc_core::NotifyVirtualDaaScoreChangedRequest, protowire::NotifyVirtualDaaScoreChangedRequestMessage, {
+    Self { command: item.command.into() }
+});
+from!(RpcResult<&rpc_core::NotifyVirtualDaaScoreChangedResponse>, protowire::NotifyVirtualDaaScoreChangedResponseMessage);
+
+from!(
+    item: &rpc_core::NotifyVirtualSelectedParentChainChangedRequest,
+    protowire::NotifyVirtualSelectedParentChainChangedRequestMessage,
+    { Self { include_accepted_transaction_ids: item.include_accepted_transaction_ids, command: item.command.into() } }
+);
+from!(
+    RpcResult<&rpc_core::NotifyVirtualSelectedParentChainChangedResponse>,
+    protowire::NotifyVirtualSelectedParentChainChangedResponseMessage
+);
+
+from!(
+    item: &rpc_core::NotifyVirtualSelectedParentBlueScoreChangedRequest,
+    protowire::NotifyVirtualSelectedParentBlueScoreChangedRequestMessage,
+    { Self { command: item.command.into() } }
+);
+from!(
+    RpcResult<&rpc_core::NotifyVirtualSelectedParentBlueScoreChangedResponse>,
+    protowire::NotifyVirtualSelectedParentBlueScoreChangedResponseMessage
+);
 
 // ----------------------------------------------------------------------------
 // protowire to rpc_core
@@ -468,15 +510,20 @@ try_from!(_item: &protowire::AddPeerRequestMessage, rpc_core::AddPeerRequest, {
     //
     unimplemented!()
 });
-try_from!(_item: &protowire::AddPeerResponseMessage, RpcResult<rpc_core::AddPeerResponse>, { unimplemented!() });
+try_from!(item: &protowire::AddPeerResponseMessage, RpcResult<rpc_core::AddPeerResponse>, { unimplemented!() });
 
-try_from!(_item: &protowire::SubmitTransactionRequestMessage, rpc_core::SubmitTransactionRequest, {
-    //
-    unimplemented!()
+try_from!(item: &protowire::SubmitTransactionRequestMessage, rpc_core::SubmitTransactionRequest, {
+    Self {
+        transaction: item
+            .transaction
+            .as_ref()
+            .ok_or_else(|| RpcError::MissingRpcFieldError("SubmitTransactionRequestMessage".to_string(), "transaction".to_string()))?
+            .try_into()?,
+        allow_orphan: item.allow_orphan,
+    }
 });
-try_from!(_item: &protowire::SubmitTransactionResponseMessage, RpcResult<rpc_core::SubmitTransactionResponse>, {
-    //
-    unimplemented!()
+try_from!(item: &protowire::SubmitTransactionResponseMessage, RpcResult<rpc_core::SubmitTransactionResponse>, {
+    Self { transaction_id: RpcHash::from_str(&item.transaction_id)? }
 });
 
 try_from!(_item: &protowire::GetSubnetworkRequestMessage, rpc_core::GetSubnetworkRequest, {
@@ -499,13 +546,18 @@ try_from!(
     { unimplemented!() }
 );
 
-try_from!(_item: &protowire::GetBlocksRequestMessage, rpc_core::GetBlocksRequest, {
-    //
-    unimplemented!()
+try_from!(item: &protowire::GetBlocksRequestMessage, rpc_core::GetBlocksRequest, {
+    Self {
+        low_hash: RpcHash::from_str(&item.low_hash)?,
+        include_blocks: item.include_blocks,
+        include_transactions: item.include_transactions,
+    }
 });
-try_from!(_item: &protowire::GetBlocksResponseMessage, RpcResult<rpc_core::GetBlocksResponse>, {
-    //
-    unimplemented!()
+try_from!(item: &protowire::GetBlocksResponseMessage, RpcResult<rpc_core::GetBlocksResponse>, {
+    Self {
+        block_hashes: item.block_hashes.iter().map(|x| RpcHash::from_str(x)).collect::<Result<Vec<_>, _>>()?,
+        blocks: item.blocks.iter().map(|x| x.try_into()).collect::<Result<Vec<_>, _>>()?,
+    }
 });
 
 try_from!(_item: &protowire::GetBlockCountRequestMessage, rpc_core::GetBlockCountRequest, {
@@ -539,9 +591,11 @@ try_from!(&protowire::ShutdownResponseMessage, RpcResult<rpc_core::ShutdownRespo
 try_from!(_item: &protowire::GetHeadersRequestMessage, rpc_core::GetHeadersRequest, { unimplemented!() });
 try_from!(_item: &protowire::GetHeadersResponseMessage, RpcResult<rpc_core::GetHeadersResponse>, { unimplemented!() });
 
-try_from!(_item: &protowire::GetUtxosByAddressesRequestMessage, rpc_core::GetUtxosByAddressesRequest, { unimplemented!() });
-try_from!(_item: &protowire::GetUtxosByAddressesResponseMessage, RpcResult<rpc_core::GetUtxosByAddressesResponse>, {
-    unimplemented!()
+try_from!(item: &protowire::GetUtxosByAddressesRequestMessage, rpc_core::GetUtxosByAddressesRequest, {
+    Self { addresses: item.addresses.iter().map(|x| x.as_str().try_into()).collect::<Result<Vec<_>, _>>()? }
+});
+try_from!(item: &protowire::GetUtxosByAddressesResponseMessage, RpcResult<rpc_core::GetUtxosByAddressesResponse>, {
+    Self { entries: item.entries.iter().map(|x| x.try_into()).collect::<Result<Vec<_>, _>>()? }
 });
 
 try_from!(_item: &protowire::GetBalanceByAddressRequestMessage, rpc_core::GetBalanceByAddressRequest, { unimplemented!() });
@@ -554,13 +608,11 @@ try_from!(_item: &protowire::GetBalancesByAddressesResponseMessage, RpcResult<rp
     unimplemented!()
 });
 
-try_from!(_item: &protowire::GetVirtualSelectedParentBlueScoreRequestMessage, rpc_core::GetVirtualSelectedParentBlueScoreRequest, {
-    unimplemented!()
-});
+try_from!(&protowire::GetVirtualSelectedParentBlueScoreRequestMessage, rpc_core::GetVirtualSelectedParentBlueScoreRequest);
 try_from!(
-    _item: &protowire::GetVirtualSelectedParentBlueScoreResponseMessage,
+    item: &protowire::GetVirtualSelectedParentBlueScoreResponseMessage,
     RpcResult<rpc_core::GetVirtualSelectedParentBlueScoreResponse>,
-    { unimplemented!() }
+    { Self { blue_score: item.blue_score } }
 );
 
 try_from!(_item: &protowire::BanRequestMessage, rpc_core::BanRequest, {
@@ -625,6 +677,52 @@ try_from!(_item: &protowire::GetProcessMetricsResponseMessage, RpcResult<rpc_cor
     //
     unimplemented!()
 });
+
+try_from!(item: &protowire::NotifyUtxosChangedRequestMessage, rpc_core::NotifyUtxosChangedRequest, {
+    Self {
+        addresses: item.addresses.iter().map(|x| x.as_str().try_into()).collect::<Result<Vec<_>, _>>()?,
+        command: item.command.into(),
+    }
+});
+try_from!(&protowire::NotifyUtxosChangedResponseMessage, RpcResult<rpc_core::NotifyUtxosChangedResponse>);
+
+try_from!(item: &protowire::NotifyPruningPointUtxoSetOverrideRequestMessage, rpc_core::NotifyPruningPointUtxoSetOverrideRequest, {
+    Self { command: item.command.into() }
+});
+try_from!(
+    &protowire::NotifyPruningPointUtxoSetOverrideResponseMessage,
+    RpcResult<rpc_core::NotifyPruningPointUtxoSetOverrideResponse>
+);
+
+try_from!(item: &protowire::NotifyFinalityConflictRequestMessage, rpc_core::NotifyFinalityConflictRequest, {
+    Self { command: item.command.into() }
+});
+try_from!(&protowire::NotifyFinalityConflictResponseMessage, RpcResult<rpc_core::NotifyFinalityConflictResponse>);
+
+try_from!(item: &protowire::NotifyVirtualDaaScoreChangedRequestMessage, rpc_core::NotifyVirtualDaaScoreChangedRequest, {
+    Self { command: item.command.into() }
+});
+try_from!(&protowire::NotifyVirtualDaaScoreChangedResponseMessage, RpcResult<rpc_core::NotifyVirtualDaaScoreChangedResponse>);
+
+try_from!(
+    item: &protowire::NotifyVirtualSelectedParentChainChangedRequestMessage,
+    rpc_core::NotifyVirtualSelectedParentChainChangedRequest,
+    { Self { include_accepted_transaction_ids: item.include_accepted_transaction_ids, command: item.command.into() } }
+);
+try_from!(
+    &protowire::NotifyVirtualSelectedParentChainChangedResponseMessage,
+    RpcResult<rpc_core::NotifyVirtualSelectedParentChainChangedResponse>
+);
+
+try_from!(
+    item: &protowire::NotifyVirtualSelectedParentBlueScoreChangedRequestMessage,
+    rpc_core::NotifyVirtualSelectedParentBlueScoreChangedRequest,
+    { Self { command: item.command.into() } }
+);
+try_from!(
+    &protowire::NotifyVirtualSelectedParentBlueScoreChangedResponseMessage,
+    RpcResult<rpc_core::NotifyVirtualSelectedParentBlueScoreChangedResponse>
+);
 
 // ----------------------------------------------------------------------------
 // Unit tests

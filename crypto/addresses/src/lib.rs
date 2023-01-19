@@ -29,7 +29,7 @@ impl Display for AddressError {
 
 impl std::error::Error for AddressError {}
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub enum Prefix {
     Mainnet,
     Testnet,
@@ -80,7 +80,7 @@ impl TryFrom<&str> for Prefix {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct Address {
     pub prefix: Prefix,
     pub payload: Vec<u8>,
@@ -103,6 +103,17 @@ impl TryFrom<String> for Address {
     type Error = AddressError;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
+        match value.split_once(':') {
+            Some((prefix, payload)) => Self::decode_payload(prefix.try_into()?, payload),
+            None => Err(AddressError::MissingPrefix),
+        }
+    }
+}
+
+impl TryFrom<&str> for Address {
+    type Error = AddressError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
         match value.split_once(':') {
             Some((prefix, payload)) => Self::decode_payload(prefix.try_into()?, payload),
             None => Err(AddressError::MissingPrefix),

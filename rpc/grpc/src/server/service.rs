@@ -283,40 +283,164 @@ impl Rpc for Arc<GrpcService> {
                                     Err(err) => GetInfoResponseMessage::from(err).into(),
                                 },
 
-                                Payload::NotifyVirtualDaaScoreChangedRequest(_) => todo!(),
-                                Payload::NotifyPruningPointUtxoSetOverrideRequest(_) => todo!(),
-                                Payload::NotifyVirtualSelectedParentBlueScoreChangedRequest(_) => todo!(),
-                                Payload::NotifyUtxosChangedRequest(_) => todo!(),
-                                Payload::NotifyFinalityConflictsRequest(_) => todo!(),
-                                Payload::NotifyVirtualSelectedParentChainChangedRequest(_) => todo!(),
-                                // Payload::NotifyVirtualSelectedParentChainChangedRequest(ref request) => NotifyVirtualSelectedParentChainChangedResponseMessage::from({
-                                //     let request = rpc_core::NotifyVirtualSelectedParentChainChangedRequest::try_from(request).unwrap();
-                                //     notifier.clone().execute_subscribe_command(
-                                //         listener_id,
-                                //         rpc_core::NotificationType::VirtualSelectedParentChainChanged,
-                                //         request.command,
-                                //     )
-                                // })
-                                // .into(),
-                                Payload::NotifyBlockAddedRequest(ref request) => NotifyBlockAddedResponseMessage::from({
-                                    let request = rpc_core::NotifyBlockAddedRequest::try_from(request).unwrap();
-                                    notifier.clone().execute_subscribe_command(
-                                        listener_id,
-                                        rpc_core::NotificationType::BlockAdded,
-                                        request.command,
-                                    )
-                                })
-                                .into(),
+                                Payload::NotifyBlockAddedRequest(ref request) => {
+                                    match rpc_core::NotifyBlockAddedRequest::try_from(request) {
+                                        Ok(request) => {
+                                            let result = notifier.clone().execute_subscribe_command(
+                                                listener_id,
+                                                rpc_core::NotificationType::BlockAdded,
+                                                request.command,
+                                            );
+                                            NotifyBlockAddedResponseMessage::from(result).into()
+                                        }
+                                        Err(err) => NotifyBlockAddedResponseMessage::from(err).into(),
+                                    }
+                                }
 
-                                Payload::NotifyNewBlockTemplateRequest(ref request) => NotifyNewBlockTemplateResponseMessage::from({
-                                    let request = rpc_core::NotifyNewBlockTemplateRequest::try_from(request).unwrap();
-                                    notifier.clone().execute_subscribe_command(
-                                        listener_id,
-                                        rpc_core::NotificationType::NewBlockTemplate,
-                                        request.command,
-                                    )
-                                })
-                                .into(),
+                                Payload::NotifyVirtualSelectedParentChainChangedRequest(ref request) => {
+                                    match rpc_core::NotifyVirtualSelectedParentChainChangedRequest::try_from(request) {
+                                        Ok(request) => {
+                                            let result = notifier.clone().execute_subscribe_command(
+                                                listener_id,
+                                                rpc_core::NotificationType::VirtualSelectedParentChainChanged,
+                                                request.command,
+                                            );
+                                            NotifyVirtualSelectedParentChainChangedResponseMessage::from(result).into()
+                                        }
+                                        Err(err) => NotifyVirtualSelectedParentChainChangedResponseMessage::from(err).into(),
+                                    }
+                                }
+
+                                Payload::NotifyFinalityConflictRequest(ref request) => {
+                                    match rpc_core::NotifyFinalityConflictRequest::try_from(request) {
+                                        Ok(request) => {
+                                            let result = notifier
+                                                .clone()
+                                                .execute_subscribe_command(
+                                                    listener_id,
+                                                    rpc_core::NotificationType::FinalityConflict,
+                                                    request.command,
+                                                )
+                                                .and(notifier.clone().execute_subscribe_command(
+                                                    listener_id,
+                                                    rpc_core::NotificationType::FinalityConflictResolved,
+                                                    request.command,
+                                                ));
+                                            NotifyFinalityConflictResponseMessage::from(result).into()
+                                        }
+                                        Err(err) => NotifyFinalityConflictResponseMessage::from(err).into(),
+                                    }
+                                }
+
+                                Payload::NotifyUtxosChangedRequest(ref request) => {
+                                    match rpc_core::NotifyUtxosChangedRequest::try_from(request) {
+                                        Ok(request) => {
+                                            let result = notifier.clone().execute_subscribe_command(
+                                                listener_id,
+                                                rpc_core::NotificationType::UtxosChanged(request.addresses),
+                                                request.command,
+                                            );
+                                            NotifyUtxosChangedResponseMessage::from(result).into()
+                                        }
+                                        Err(err) => NotifyUtxosChangedResponseMessage::from(err).into(),
+                                    }
+                                }
+
+                                Payload::NotifyVirtualSelectedParentBlueScoreChangedRequest(ref request) => {
+                                    match rpc_core::NotifyVirtualSelectedParentBlueScoreChangedRequest::try_from(request) {
+                                        Ok(request) => {
+                                            let result = notifier.clone().execute_subscribe_command(
+                                                listener_id,
+                                                rpc_core::NotificationType::VirtualSelectedParentBlueScoreChanged,
+                                                request.command,
+                                            );
+                                            NotifyVirtualSelectedParentBlueScoreChangedResponseMessage::from(result).into()
+                                        }
+                                        Err(err) => NotifyVirtualSelectedParentBlueScoreChangedResponseMessage::from(err).into(),
+                                    }
+                                }
+
+                                Payload::NotifyVirtualDaaScoreChangedRequest(ref request) => {
+                                    match rpc_core::NotifyVirtualDaaScoreChangedRequest::try_from(request) {
+                                        Ok(request) => {
+                                            let result = notifier.clone().execute_subscribe_command(
+                                                listener_id,
+                                                rpc_core::NotificationType::VirtualDaaScoreChanged,
+                                                request.command,
+                                            );
+                                            NotifyVirtualDaaScoreChangedResponseMessage::from(result).into()
+                                        }
+                                        Err(err) => NotifyVirtualDaaScoreChangedResponseMessage::from(err).into(),
+                                    }
+                                }
+
+                                Payload::NotifyPruningPointUtxoSetOverrideRequest(ref request) => {
+                                    match rpc_core::NotifyPruningPointUtxoSetOverrideRequest::try_from(request) {
+                                        Ok(request) => {
+                                            let result = notifier.clone().execute_subscribe_command(
+                                                listener_id,
+                                                rpc_core::NotificationType::PruningPointUtxoSetOverride,
+                                                request.command,
+                                            );
+                                            NotifyPruningPointUtxoSetOverrideResponseMessage::from(result).into()
+                                        }
+                                        Err(err) => NotifyPruningPointUtxoSetOverrideResponseMessage::from(err).into(),
+                                    }
+                                }
+
+                                Payload::NotifyNewBlockTemplateRequest(ref request) => {
+                                    match rpc_core::NotifyNewBlockTemplateRequest::try_from(request) {
+                                        Ok(request) => {
+                                            let result = notifier.clone().execute_subscribe_command(
+                                                listener_id,
+                                                rpc_core::NotificationType::NewBlockTemplate,
+                                                request.command,
+                                            );
+                                            NotifyNewBlockTemplateResponseMessage::from(result).into()
+                                        }
+                                        Err(err) => NotifyNewBlockTemplateResponseMessage::from(err).into(),
+                                    }
+                                }
+
+                                Payload::StopNotifyingUtxosChangedRequest(ref request) => {
+                                    let notify_request = NotifyUtxosChangedRequestMessage::from(request);
+                                    let response: StopNotifyingUtxosChangedResponseMessage =
+                                        match rpc_core::NotifyUtxosChangedRequest::try_from(&notify_request) {
+                                            Ok(request) => {
+                                                let result = notifier.clone().execute_subscribe_command(
+                                                    listener_id,
+                                                    rpc_core::NotificationType::UtxosChanged(request.addresses),
+                                                    request.command,
+                                                );
+                                                NotifyUtxosChangedResponseMessage::from(result).into()
+                                            }
+                                            Err(err) => NotifyUtxosChangedResponseMessage::from(err).into(),
+                                        };
+                                    KaspadResponse {
+                                        payload: Some(kaspad_response::Payload::StopNotifyingUtxosChangedResponse(response)),
+                                    }
+                                }
+
+                                Payload::StopNotifyingPruningPointUtxoSetOverrideRequest(ref request) => {
+                                    let notify_request = NotifyPruningPointUtxoSetOverrideRequestMessage::from(request);
+                                    let response: StopNotifyingPruningPointUtxoSetOverrideResponseMessage =
+                                        match rpc_core::NotifyPruningPointUtxoSetOverrideRequest::try_from(&notify_request) {
+                                            Ok(request) => {
+                                                let result = notifier.clone().execute_subscribe_command(
+                                                    listener_id,
+                                                    rpc_core::NotificationType::PruningPointUtxoSetOverride,
+                                                    request.command,
+                                                );
+                                                NotifyPruningPointUtxoSetOverrideResponseMessage::from(result).into()
+                                            }
+                                            Err(err) => NotifyPruningPointUtxoSetOverrideResponseMessage::from(err).into(),
+                                        };
+                                    KaspadResponse {
+                                        payload: Some(kaspad_response::Payload::StopNotifyingPruningPointUtxoSetOverrideResponse(
+                                            response,
+                                        )),
+                                    }
+                                }
                             }
                         } else {
                             GetBlockResponseMessage::from(rpc_core::RpcError::General("Missing request payload".to_string())).into()

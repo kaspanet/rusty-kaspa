@@ -49,7 +49,7 @@ impl Matcher<&kaspad_response::Payload> for kaspad_request::Payload {
             Payload::GetBlockCountRequest(_) => true,
             Payload::GetBlockDagInfoRequest(_) => true,
             Payload::ResolveFinalityConflictRequest(_) => true,
-            Payload::NotifyFinalityConflictsRequest(_) => true,
+            Payload::NotifyFinalityConflictRequest(_) => true,
             Payload::GetMempoolEntriesRequest(_) => true,
             Payload::ShutdownRequest(_) => true,
             Payload::GetHeadersRequest(_) => true,
@@ -75,6 +75,9 @@ impl Matcher<&kaspad_response::Payload> for kaspad_request::Payload {
             Payload::NotifyBlockAddedRequest(_) => true,
             Payload::GetInfoRequest(_) => true,
             Payload::NotifyNewBlockTemplateRequest(_) => true,
+
+            Payload::StopNotifyingUtxosChangedRequest(_) => true,
+            Payload::StopNotifyingPruningPointUtxoSetOverrideRequest(_) => true,
         }
     }
 }
