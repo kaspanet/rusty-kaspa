@@ -86,24 +86,26 @@ struct Args {
     /// network
     #[clap(name = "network", default_value = "mainnet")]
     network_type: NetworkType,
+    #[clap(long, name = "port", default_value = "9292")]
+    proxy_port: u16,
     #[clap(short, long)]
     verbose: bool,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let Args { network_type, verbose } = Args::parse();
+    let Args { network_type, verbose, proxy_port } = Args::parse();
 
-    let target_port = network_type.port();
+    // workflow_log::set_log_level()
+    let kaspad_port = network_type.port();
     log_info!("");
-    log_info!("Proxy routing to `{}` GRPC on port {}", network_type, target_port);
+    log_info!("Proxy routing to `{}` gRPC on port {}", network_type, kaspad_port);
     let handler = Arc::new(KaspaRpcProxy::try_new(network_type, verbose)?);
     handler.init().await?;
     let server = RpcServer::new(handler);
 
-    let port = 12888;
-    let addr = format!("0.0.0.0:{port}");
-    log_info!("Kaspa WRPC server is listening on {}", addr);
+    let addr = format!("0.0.0.0:{proxy_port}");
+    log_info!("Kaspa wRPC server is listening on {}", addr);
     server.listen(&addr).await?;
 
     Ok(())

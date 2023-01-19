@@ -1,6 +1,7 @@
 use crate::result::Result;
 // use rpc_core::client::prelude::*;
 use kaspa_wrpc_client::KaspaRpcClient;
+use rpc_core::api::rpc::RpcApi;
 use std::sync::Arc;
 // use kaspa_rpc_core::client::prelude::*;
 // use workflow_log::*;
@@ -12,7 +13,7 @@ pub struct Wallet {
 
 impl Wallet {
     pub fn try_new() -> Result<Wallet> {
-        let wallet = Wallet { rpc: Arc::new(KaspaRpcClient::new("rpc://localhost:9292")?) };
+        let wallet = Wallet { rpc: Arc::new(KaspaRpcClient::new("wrpc://localhost:9292")?) };
 
         Ok(wallet)
     }
@@ -34,6 +35,15 @@ impl Wallet {
     }
 
     // ~~~
+
+    pub async fn info(&self) -> Result<String> {
+        // let rpc: Arc<dyn ClientInterface> = self.rpc.clone();
+        let v = self.rpc.get_info().await?;
+        Ok(format!("{:#?}", v).replace('\n', "\r\n"))
+        // let resp = self.rpc.ping(msg).await?;
+        // Ok(resp)
+        // Ok("not implemented".to_string())
+    }
 
     pub async fn ping(&self, _msg: String) -> Result<String> {
         // let rpc: Arc<dyn ClientInterface> = self.rpc.clone();

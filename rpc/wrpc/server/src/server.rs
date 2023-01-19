@@ -51,6 +51,15 @@ impl RpcHandler<RpcApiOps> for KaspaRpcHandler {
         })
     }
 
+    async fn handshake(
+        self: Arc<Self>,
+        ctx: &mut Self::Context,
+        sender: &mut WebSocketSender,
+        receiver: &mut WebSocketReceiver,
+    ) -> WebSocketResult<()> {
+        Ok(())
+    }
+
     async fn handle_request(self: Arc<Self>, _ctx: &mut Self::Context, op: RpcApiOps, data: &[u8]) -> Response {
         self.router.route(op, data).await
         // Ok(().try_to_vec()?)
