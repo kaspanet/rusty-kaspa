@@ -194,8 +194,8 @@ pub trait RpcApi: Sync + Send {
     async fn get_balance_by_address_call(&self, request: GetBalanceByAddressRequest) -> RpcResult<GetBalanceByAddressResponse>;
 
     ///
-    async fn get_balances_by_addresses(&self, addresses: Vec<RpcAddress>) -> RpcResult<Vec<(RpcAddress, u64)>> {
-        Ok(self.get_balances_by_addresses_call(GetBalancesByAddressesRequest::new(addresses)).await?.balances)
+    async fn get_balances_by_addresses(&self, addresses: Vec<RpcAddress>) -> RpcResult<Vec<RpcBalancesByAddressesEntry>> {
+        Ok(self.get_balances_by_addresses_call(GetBalancesByAddressesRequest::new(addresses)).await?.entries)
     }
     async fn get_balances_by_addresses_call(
         &self,

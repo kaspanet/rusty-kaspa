@@ -513,12 +513,12 @@ impl GetBalancesByAddressesRequest {
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GetBalancesByAddressesResponse {
-    pub balances: Vec<(RpcAddress, u64)>,
+    pub entries: Vec<RpcBalancesByAddressesEntry>,
 }
 
 impl GetBalancesByAddressesResponse {
-    pub fn new(balances: Vec<(RpcAddress, u64)>) -> Self {
-        Self { balances }
+    pub fn new(entries: Vec<RpcBalancesByAddressesEntry>) -> Self {
+        Self { entries }
     }
 }
 
