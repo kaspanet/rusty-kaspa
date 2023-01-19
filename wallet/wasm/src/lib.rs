@@ -4,7 +4,7 @@ use workflow_terminal::Result;
 
 #[wasm_bindgen(start)]
 pub async fn load_kaspa_wallet_cli() -> Result<()> {
-    console_error_panic_hook::set_once();
+    workflow_wasm::panic::init_console_panic_hook();
     kaspa_wallet_cli().await?;
     Ok(())
 }

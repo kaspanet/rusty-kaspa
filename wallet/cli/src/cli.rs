@@ -16,7 +16,7 @@ struct WalletCli {
 }
 
 impl workflow_log::Sink for WalletCli {
-    fn write(&self, _level: Level, args: &std::fmt::Arguments<'_>) -> bool {
+    fn write(&self, _target: Option<&str>, _level: Level, args: &std::fmt::Arguments<'_>) -> bool {
         if let Some(term) = self.term() {
             term.writeln(args.to_string());
             true

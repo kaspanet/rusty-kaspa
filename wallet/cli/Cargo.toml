@@ -7,17 +7,12 @@ edition = "2021"
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-workflow-core = "0.1.0"
-workflow-log = "0.1.0"
-workflow-terminal = "0.1.0"
-# workflow-core = { path = "../../../workflow-core" }
-# workflow-log = { path = "../../../workflow-log" }
-# workflow-terminal = {path = "../../../workflow-terminal"}
-# kaspa-workflow-rpc-client = { path = "../../rpc/workflow/client" }
+workflow-core.workspace = true
+workflow-log.workspace = true
+workflow-terminal.workspace = true
 kaspa-wrpc-client.workspace = true
 kaspa-wallet-core.workspace = true
-# kaspa-wallet-core = { path = "../core/" }
-async-trait = "0.1.57"
-pad = "0.1.6"
-convert_case = "0.5.0"
-thiserror = "1.0.32"
+async-trait.workspace = true
+pad.workspace = true
+convert_case.workspace = true
+thiserror.workspace = true

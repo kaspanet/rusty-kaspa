@@ -66,7 +66,7 @@ futures-util = { version = "0.3", default-features = false, features = [
     "alloc",
 ] }
 bincode = { version = "1", default-features = false }
-tokio = { version = "1", features = ["sync"] }
+tokio = { version = "1", features = ["sync","rt-multi-thread"] }
 wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
 criterion = { version = "0.4", default-features = false }
 indexmap = "1.9.1"
@@ -82,6 +82,12 @@ workflow-core = { path = "../../workflow-rs/workflow-core" }
 workflow-websocket = { path = "../../workflow-rs/workflow-websocket" }
 workflow-rpc = { path = "../../workflow-rs/workflow-rpc" }
 workflow-log = { path = "../../workflow-rs/workflow-log" }
+workflow-terminal = { path = "../../workflow-rs/workflow-terminal" }
+workflow-wasm = { path = "../../workflow-rs/workflow-wasm" }
 async-trait = "0.1.57"
 paste = "1.0.11"
 regex = "1.6.0"
+pad = "0.1.6"
+convert_case = "0.5.0"
+wasm-bindgen-futures="0.4.33"
+js-sys = "0.3.56"

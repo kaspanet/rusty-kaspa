@@ -1,4 +1,4 @@
-use rpc_core::errors::RpcError as KaspaRpcError;
+use rpc_core::RpcError as KaspaRpcError;
 // use rpc_core::client::error::Error as KaspaRpcClientError;
 use kaspa_wrpc_client::error::Error as KaspaWorkflowRpcError;
 use workflow_rpc::asynchronous::client::error::Error as RpcError;

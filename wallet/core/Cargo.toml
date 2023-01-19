@@ -7,12 +7,8 @@ edition = "2021"
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-workflow-log = "0.1.0"
-workflow-rpc = "0.1.2"
-# workflow-log = { path = "../../../workflow-log" }
-thiserror = "1.0.32"
-# kaspa-rpc-core = { path = "../../rpc/core" }
-# kaspa-workflow-rpc-client = { path = "../../rpc/workflow/client" }
+workflow-log.workspace = true
+workflow-rpc.workspace = true
+thiserror.workspace = true
 kaspa-wrpc-client.workspace = true
-# wallet-core.workspace = true
 rpc-core.workspace = true
