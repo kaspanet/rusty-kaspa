@@ -1,4 +1,5 @@
-use futures_util::future::join_all;
+use crate::{signals::Shutdown, task::service::AsyncServiceResult};
+use futures_util::future::{join_all, select_all};
 use kaspa_core::core::Core;
 use kaspa_core::service::Service;
 use kaspa_core::task::service::AsyncService;
@@ -33,32 +34,57 @@ impl AsyncRuntime {
     where
         T: AsyncService,
     {
+        // self.services.lock().unwrap().push(AsyncServiceContainer::new(service));
         self.services.lock().unwrap().push(service);
     }
 
-    pub fn init(self: Arc<AsyncRuntime>) -> Vec<ThreadJoinHandle<()>> {
+    pub fn init(self: Arc<AsyncRuntime>, core: Arc<Core>) -> Vec<ThreadJoinHandle<()>> {
         trace!("initializing async-runtime service");
-        vec![thread::Builder::new().name(ASYNC_RUNTIME.to_string()).spawn(move || self.worker()).unwrap()]
+        vec![thread::Builder::new().name(ASYNC_RUNTIME.to_string()).spawn(move || self.worker(core)).unwrap()]
     }
 
     /// Launch a tokio Runtime and run the top-level async objects
     #[tokio::main(worker_threads = 2)]
     // TODO: increase the number of threads if needed
     // TODO: build the runtime explicitly and dedicate a number of threads based on the host specs
-    pub async fn worker(self: &Arc<AsyncRuntime>) {
+    pub async fn worker(self: &Arc<AsyncRuntime>, core: Arc<Core>) {
         // Start all async services
         // All services futures are spawned as tokio tasks to enable parallelism
         trace!("async-runtime worker starting");
-        let futures =
-            self.services.lock().unwrap().iter().map(|x| tokio::spawn(x.clone().start())).collect::<Vec<TaskJoinHandle<()>>>();
-        join_all(futures).await.into_iter().collect::<Result<Vec<()>, JoinError>>().unwrap();
+        let futures = self
+            .services
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|x| tokio::spawn(x.clone().start()))
+            .collect::<Vec<TaskJoinHandle<AsyncServiceResult<()>>>>();
+
+        // wait for at least one service to return
+        let (result, _idx, remaining_futures) = select_all(futures).await;
+        // if at least one service yields an error, initiate global shutdown
+        // this will cause signal_exit() to be executed externally (by Core invoking `stop()`)
+        match result {
+            Ok(Err(_)) | Err(_) => {
+                trace!("shutting down core due to async-runtime error");
+                core.shutdown()
+            }
+            _ => {}
+        }
+
+        // wait for remaining services to finish
+        join_all(remaining_futures).await.into_iter().collect::<Result<Vec<AsyncServiceResult<()>>, JoinError>>().unwrap();
 
         // Stop all async services
         // All services futures are spawned as tokio tasks to enable parallelism
         trace!("async-runtime worker stopping");
-        let futures =
-            self.services.lock().unwrap().iter().map(|x| tokio::spawn(x.clone().stop())).collect::<Vec<TaskJoinHandle<()>>>();
-        join_all(futures).await.into_iter().collect::<Result<Vec<()>, JoinError>>().unwrap();
+        let futures = self
+            .services
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|x| tokio::spawn(x.clone().stop()))
+            .collect::<Vec<TaskJoinHandle<AsyncServiceResult<()>>>>();
+        join_all(futures).await.into_iter().collect::<Result<Vec<AsyncServiceResult<()>>, JoinError>>().unwrap();
 
         trace!("async-runtime worker exiting");
     }
@@ -76,8 +102,8 @@ impl Service for AsyncRuntime {
         ASYNC_RUNTIME
     }
 
-    fn start(self: Arc<AsyncRuntime>, _core: Arc<Core>) -> Vec<ThreadJoinHandle<()>> {
-        self.init()
+    fn start(self: Arc<AsyncRuntime>, core: Arc<Core>) -> Vec<ThreadJoinHandle<()>> {
+        self.init(core)
     }
 
     fn stop(self: Arc<AsyncRuntime>) {

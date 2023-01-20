@@ -34,9 +34,13 @@ struct Args {
     #[arg(short = 'b', long = "appdir")]
     app_dir: Option<String>,
 
-    /// Interface/port to listen for RPC connections (default port: 16110, testnet: 16210)
+    /// Interface/port to listen for gRPC connections (default port: 16110, testnet: 16210)
     #[arg(long = "rpclisten")]
-    rpc_listen: Option<String>,
+    grpc_listen: Option<String>,
+
+    /// Interface/port to listen for wRPC connections (default port: 8080)
+    #[arg(long = "wrpclisten")]
+    wrpc_listen: Option<String>,
 
     /// Logging level for all subsystems {off, error, warn, info, debug, trace}
     ///  -- You may also specify <subsystem>=<level>,<subsystem2>=<level>,... to set the log level for individual subsystems
@@ -78,7 +82,8 @@ pub fn main() {
     info!("Application directory: {}", app_dir.as_display());
     info!("Data directory: {}", db_dir.as_display());
     fs::create_dir_all(db_dir.as_path()).unwrap();
-    let grpc_server_addr = args.rpc_listen.unwrap_or_else(|| "127.0.0.1:16610".to_string()).parse().unwrap();
+    let grpc_server_addr = args.grpc_listen.unwrap_or_else(|| "127.0.0.1:16610".to_string()).parse().unwrap();
+    let _wrpc_server_addr = args.wrpc_listen.unwrap_or_else(|| "127.0.0.1:8080".to_string());
 
     let core = Arc::new(Core::new());
 

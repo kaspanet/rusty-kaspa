@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use consensus_core::api::DynConsensus;
 use kaspa_core::{
-    task::service::{AsyncService, AsyncServiceFuture},
+    task::service::{AsyncService, AsyncServiceError, AsyncServiceFuture},
     trace,
 };
 use kaspa_utils::triggers::DuplexTrigger;
@@ -49,9 +49,11 @@ impl AsyncService for RpcCoreServer {
 
         // Launch the service and wait for a shutdown signal
         Box::pin(async move {
+            // TODO - check error handling
             service.start();
             shutdown_signal.await;
             shutdown_executed.trigger();
+            Ok(())
         })
     }
 
@@ -68,14 +70,12 @@ impl AsyncService for RpcCoreServer {
             // Wait for the service start task to exit
             shutdown_executed_signal.await;
 
-            // Stop the service
-            match service.stop().await {
-                Ok(_) => {}
-                Err(err) => {
-                    trace!("Error while stopping {}: {}", RPC_CORE_SERVICE, err);
-                }
-            }
             trace!("{} exiting", RPC_CORE_SERVICE);
+            // Stop the service
+            service
+                .stop()
+                .await
+                .map_err(|err| AsyncServiceError::Service(format!("Error while stopping {}: `{}`", RPC_CORE_SERVICE, err)))
         })
     }
 }
