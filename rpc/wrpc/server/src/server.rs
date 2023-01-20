@@ -1,7 +1,6 @@
 use async_trait::async_trait;
 use kaspa_core::{
     task::service::{AsyncService, AsyncServiceError, AsyncServiceFuture},
-    trace,
 };
 use rpc_core::api::ops::RpcApiOps;
 use rpc_core::api::rpc::RpcApi;
@@ -15,8 +14,6 @@ use std::{sync::Arc, time::Duration};
 use workflow_log::*;
 use workflow_rpc::asynchronous::result::RpcResult as Response;
 use workflow_rpc::asynchronous::server::*;
-
-use crate::placeholder::KaspaInterfacePlaceholder;
 use crate::result::Result;
 use crate::router::Router;
 
@@ -58,22 +55,13 @@ impl RpcHandler<RpcApiOps> for KaspaRpcHandler {
             Duration::from_millis(3000),
             sender,
             receiver,
-            Box::pin(|msg| {
-                msg != "kaspa"
-                // if msg != "kaspa" {
-                //     Err(WebSocketError::NegotiationFailure)
-                // } else {
-                //     Ok(())
-                // }
-            }),
+            Box::pin(|msg| if msg != "kaspa" { Err(WebSocketError::NegotiationFailure) } else { Ok(()) }),
         )
         .await
-        // Ok(())
     }
 
     async fn handle_request(self: Arc<Self>, _ctx: &mut Self::Context, op: RpcApiOps, data: &[u8]) -> Response {
         self.router.route(op, data).await
-        // Ok(().try_to_vec()?)
     }
 }
 
@@ -84,8 +72,7 @@ pub struct WrpcServer {
 
 impl WrpcServer {
     pub fn new(options: Options, rpc_api_iface: Arc<dyn RpcApi>) -> Self {
-        let iface: Arc<dyn RpcApi> = Arc::new(KaspaInterfacePlaceholder {});
-        let router = Router::new(iface, options.verbose);
+        let router = Router::new(rpc_api_iface, options.verbose);
         let handler = Arc::new(KaspaRpcHandler::new(router));
         let server = RpcServer::new(handler);
 
@@ -94,8 +81,8 @@ impl WrpcServer {
 
     async fn run(self: Arc<Self>) -> Result<()> {
         let addr = &self.options.addr;
-        log_info!("Kaspa workflow RPC server is listening on {}", addr);
-        self.server.listen(&addr).await?;
+        log_info!("wRPC server is listening on {}", addr);
+        self.server.listen(addr).await?;
         Ok(())
     }
 }
@@ -112,14 +99,12 @@ impl AsyncService for WrpcServer {
     }
 
     fn signal_exit(self: Arc<Self>) {
-        self.server.stop();
-        // self.shutdown.request.trigger.trigger();
+        self.server.stop().unwrap_or_else(|err| log_trace!("wRPC unable to signal shutdown: `{}`", err));
     }
 
     fn stop(self: Arc<Self>) -> AsyncServiceFuture {
         Box::pin(async move {
-            self.server.join().await.map_err(|err|AsyncServiceError::Service(format!("wRPC error: `{}`", err)));
-            // self.server.shutdown().await.unwrap_or_else(|err| log_trace!("wRPC shutdown error: `{}`", err));
+            self.server.join().await.map_err(|err| AsyncServiceError::Service(format!("wRPC error: `{}`", err)))?;
             Ok(())
         })
     }
