@@ -1,7 +1,7 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
-use std::{fmt::Display, ops::Range, io::Read};
+use std::{fmt::Display, io::Read, ops::Range};
 
 use crate::{
     hashing,

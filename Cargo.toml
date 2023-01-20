@@ -65,6 +65,7 @@ serde = { version = "1", features = ["derive", "rc"] }
 futures-util = { version = "0.3", default-features = false, features = [
     "alloc",
 ] }
+futures = { version = "0.3" }
 bincode = { version = "1", default-features = false }
 tokio = { version = "1", features = ["sync","rt-multi-thread"] }
 wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }

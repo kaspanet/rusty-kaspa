@@ -1639,6 +1639,7 @@ dependencies = [
  "futures-util",
  "intertrait",
  "log",
+ "thiserror",
  "tokio",
  "wasm-bindgen",
 ]
@@ -1758,7 +1759,9 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "borsh 0.10.0",
+ "futures",
  "kaspa-core",
+ "kaspa-utils",
  "paste",
  "rpc-core",
  "thiserror",
@@ -4008,6 +4011,7 @@ dependencies = [
  "async-std",
  "async-trait",
  "cfg-if",
+ "futures",
  "futures-util",
  "js-sys",
  "manual_future",

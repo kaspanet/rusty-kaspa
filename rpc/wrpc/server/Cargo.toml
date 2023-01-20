@@ -18,3 +18,5 @@ rpc-core.workspace = true
 borsh.workspace = true
 paste.workspace = true
 kaspa-core.workspace = true
+kaspa-utils.workspace = true
+futures.workspace = true
