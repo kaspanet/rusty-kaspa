@@ -27,7 +27,7 @@ use crate::{
             utxo_multisets::DbUtxoMultisetsStore,
             utxo_set::{DbUtxoSetStore, UtxoSetStoreReader},
             virtual_state::{DbVirtualStateStore, VirtualStateStoreReader},
-            DB, errors::StoreError,
+            DB,
         },
     },
     params::Params,
@@ -58,7 +58,7 @@ use futures_util::future::BoxFuture;
 use hashes::Hash;
 use kaspa_core::{core::Core, service::Service};
 use parking_lot::RwLock;
-use std::{future::Future, sync::atomic::Ordering};
+use std::{future::Future, sync::atomic::Ordering,};
 use std::{
     ops::DerefMut,
     sync::Arc,
@@ -102,7 +102,6 @@ pub struct Consensus {
     body_tips_store: Arc<RwLock<DbTipsStore>>,
     pub headers_store: Arc<DbHeadersStore>,
     pub block_transactions_store: Arc<DbBlockTransactionsStore>,
-    pub virtual_stores: Arc<RwLock<VirtualStores>>,
     // TODO: remove all pub from stores and processors when StoreManager is implemented
 
     // Append-only stores
@@ -384,7 +383,6 @@ impl Consensus {
             pruning_manager,
 
             counters,
-            virtual_stores,
         }
     }
 
@@ -422,10 +420,6 @@ impl Consensus {
 
     pub fn body_tips(&self) -> Arc<BlockHashSet> {
         self.body_tips_store.read().get().unwrap()
-    }
-
-    pub fn virtual_utxo_set_iterator(&self) -> Box<dyn Iterator<Item = Result<(TransactionOutpoint, UtxoEntry), StoreError>> + '_> {
-        self.virtual_stores.read().utxo_set.iter_all()
     }
 
     pub fn block_status(&self, hash: Hash) -> BlockStatus {
@@ -475,16 +469,19 @@ impl ConsensusApi for Consensus {
         self.virtual_processor.virtual_stores.read().state.get().unwrap().daa_score
     }
 
-    fn get_tips(self: Arc<Self>) -> Arc<BlockHashSet> {
-        self.consensus.clone().body_tips()
+    fn get_virtual_state_tips(self: Arc<Self>) -> Vec<Hash> {
+        self.virtual_processor.virtual_stores.read().state.get().unwrap().parents.clone()
     }
 
-    fn get_virtual_utxo_iterator(
+    fn get_virtual_utxos(
         self: Arc<Self>,
-    ) -> Box<dyn Iterator<Item = Result<(TransactionOutpoint, UtxoEntry), StoreError>> + 'static> {
-        self.consensus.clone().virtual_utxo_set_iterator()
+        from_outpoint: TransactionOutpoint,
+        chunk_size: usize,
+    ) -> Vec<(TransactionOutpoint, UtxoEntry)> //consider using collect_into to allow for dynamic collection types. 
+    {
+        let iter = self.virtual_processor.virtual_stores.read().utxo_set.iterator(from_outpoint);
+        iter.take(chunk_size).map(|item| item.unwrap()).collect_vec()
     }
-
 }
 
 impl Service for Consensus {

@@ -61,6 +61,7 @@ impl From<&Notification> for EventType {
             Notification::VirtualDaaScoreChanged(_) => EventType::VirtualDaaScoreChanged,
             Notification::PruningPointUTXOSetOverride(_) => EventType::PruningPointUTXOSetOverride,
             Notification::NewBlockTemplate(_) => EventType::NewBlockTemplate,
+            _ => trace!("this notification is not an event!!!")
         }
     }
 }

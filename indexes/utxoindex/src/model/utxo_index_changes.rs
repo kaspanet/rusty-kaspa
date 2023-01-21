@@ -7,7 +7,7 @@ use std::collections::hash_map::Entry;
 
 use crate::model::CompactUtxoCollection;
 
-use super::{CompactUtxoEntry, UtxoSetDiffByScriptPublicKey};
+use super::{CompactUtxoEntry, UtxoSetDiffByScriptPublicKey, UtxoSetByScriptPublicKey};
 
 /// A struct holding all changes to the utxo index.
 pub struct UtxoIndexChanges {
@@ -114,6 +114,15 @@ impl UtxoIndexChanges {
     pub fn add_tips(&mut self, tips: Vec<Hash>) {
         self.tips = BlockHashSet::from_iter(tips);
     }
+
+    pub fn clear(&mut self) -> Self {
+        Self { 
+            utxo_diff: UtxoSetDiffByScriptPublicKey::new(), 
+            circulating_supply_diff: 0, 
+            tips: BlockHashSet::new() 
+        }
+    }
+
 }
 
 impl From<VirtualState> for UtxoIndexChanges {
@@ -123,5 +132,16 @@ impl From<VirtualState> for UtxoIndexChanges {
         sel.add_utxo_collection(virtual_state.utxo_diff.add);
         sel.add_tips(virtual_state.parents);
         sel
+    }
+}
+
+pub struct UtxoIndexResetChanges {
+    pub circulating_supply: u64,
+    pub to_add_utxos: UtxoSetByScriptPublicKey,
+}
+
+impl UtxoIndexResetChanges{
+    fn new() -> Self {
+
     }
 }

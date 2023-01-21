@@ -32,8 +32,7 @@ use crate::{
         headers::{DbHeadersStore, HeaderStoreReader},
         pruning::PruningStoreReader,
         reachability::DbReachabilityStore,
-        utxo_set::UtxoSetStoreReader,
-        DB, errors::StoreError,
+        DB,
     },
     params::Params,
     pipeline::{body_processor::BlockBodyProcessor, ProcessingCounters},
@@ -186,15 +185,18 @@ impl ConsensusApi for TestConsensus {
         self.consensus.clone().get_virtual_daa_score()
     }
 
-    fn get_tips(self: Arc<Self>) -> Arc<BlockHashSet> {
-        self.consensus.clone().body_tips()
+    fn get_virtual_state_tips(self: Arc<Self>) -> Vec<Hash> {
+        self.consensus.clone().get_virtual_state_tips()
     }
 
-    fn get_virtual_utxo_iterator(
+    fn get_virtual_utxos(
         self: Arc<Self>,
-    ) -> Box<dyn Iterator<Item = Result<(TransactionOutpoint, UtxoEntry), StoreError>> + '_> {
-        self.consensus.clone().virtual_utxo_set_iterator()
+        from_outpoint: TransactionOutpoint,
+        chunk_size: usize,
+    ) -> Vec<(TransactionOutpoint, UtxoEntry)> {
+        self.consensus.clone().get_virtual_utxos(from_outpoint, chunk_size)
     }
+
 }
 
 impl Service for TestConsensus {

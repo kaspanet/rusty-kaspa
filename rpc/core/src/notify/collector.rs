@@ -61,6 +61,8 @@ where
     /// Has this collector been started?
     is_started: Arc<AtomicBool>,
 
+    utxoindex: DynUtxoindex,
+
     collect_shutdown: Arc<DuplexTrigger>,
 }
 
@@ -69,8 +71,8 @@ where
     T: Send + Sync + 'static + Sized + Debug,
     ArcConvert<T>: Into<Arc<Notification>>,
 {
-    pub fn new(recv_channel: CollectorNotificationReceiver<T>) -> Self {
-        Self { recv_channel, collect_shutdown: Arc::new(DuplexTrigger::new()), is_started: Arc::new(AtomicBool::new(false)) }
+    pub fn new(recv_channel: CollectorNotificationReceiver<T>, utxoindex: DynUtxoindex) -> Self {
+        Self { recv_channel, collect_shutdown: Arc::new(DuplexTrigger::new()), is_started: Arc::new(AtomicBool::new(false)), utxoindex }
     }
 
     fn spawn_collecting_task(self: Arc<Self>, notifier: Arc<Notifier>) {
@@ -97,13 +99,29 @@ where
                         match notification {
                             Some(msg) => {
                                 let rpc_notification: Arc<Notification> = ArcConvert::from(msg.clone()).into();
-                                match notifier.clone().notify(rpc_notification) {
+                                
+                                match rpc_notification {
+                                    Notification::PruningPointUTXOSetOverride(pruning_point_utxo_set_override) => {
+                                        utxoindex.reset().await,
+                                    }
+                                    Notification::VirtualStateChange(virtual_state) => {
+                                        let utxo_index_updates = utxoindex.update(virtual_state).await;
+                                        for utxo_index_update in utxo_index_updates.into_iter() {
+                                            match notifier.clone().notify(rpc_notification) { 
+                                                Ok(_) => break,
+                                                Err(err) => {
+                                                    trace!("[Collector] notification sender error: {:?}", err);
+                                                },
+                                        }
+                                    }
+                                    _ = > match notifier.clone().notify(rpc_notification) {
                                     Ok(_) => (),
                                     Err(err) => {
                                         trace!("[Collector] notification sender error: {:?}", err);
-                                    },
-                                }
-                            },
+                                        },
+                                    }
+                                },
+                            }
                             None => {
                                 trace!("[Collector] notifications returned None. This should never happen");
                             }
@@ -111,10 +129,11 @@ where
                     }
                 }
             }
-            collect_shutdown.response.trigger.trigger();
-            trace!("[Collector] collecting_task end");
-        });
+        collect_shutdown.response.trigger.trigger();
+        trace!("[Collector] collecting_task end");
+        }
     }
+}
 
     async fn stop_collecting_task(self: Arc<Self>) -> Result<()> {
         if self.is_started.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_err() {

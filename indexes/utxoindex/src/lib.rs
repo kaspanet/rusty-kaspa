@@ -2,8 +2,8 @@
 pub mod api;
 pub mod errors;
 pub mod model;
-pub mod notifier;
 pub mod service;
 pub mod store_manager;
 pub mod stores;
 pub mod utxoindex;
+pub mod test_utils;

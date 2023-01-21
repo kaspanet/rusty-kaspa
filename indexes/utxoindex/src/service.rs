@@ -18,7 +18,7 @@ impl AsyncService for UtxoIndex {
         let shutdown_sender = self.shutdown_sender.clone();
         runner = self.run();
         Box::Pin(async move {
-            self.run().await;
+            self.shutdown_listener.wait()
         })
     }
 
@@ -30,7 +30,8 @@ impl AsyncService for UtxoIndex {
     fn stop(self: Arc<UtxoIndex>) -> AsyncServiceFuture {
         trace!("stopping {0}", UTXOINDEX);
         Box::pin(async move {
-            self.shutdown_listener.await; //this should be fast, unless untxoindex is resetting.
+            self.shutdown_trigger.trigger();
+            self.shutdown_listener.wait();
         })
     }
 }

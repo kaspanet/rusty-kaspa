@@ -46,11 +46,12 @@ use std::{
 /// Subscriber.
 pub struct RpcCoreService {
     consensus: DynConsensus,
+    utxoindex: DynUtxoindex,
     notifier: Arc<Notifier>,
 }
 
 impl RpcCoreService {
-    pub fn new(consensus: DynConsensus, consensus_recv: ConsensusNotificationReceiver) -> Self {
+    pub fn new(consensus: DynConsensus, utxoindex: DynUtxoindex, consensus_recv: ConsensusNotificationReceiver) -> Self {
         // TODO: instead of getting directly a DynConsensus, rely on some Context equivalent
         //       See app\rpc\rpccontext\context.go
         // TODO: the channel receiver should be obtained by registering to a consensus notification service
@@ -60,7 +61,7 @@ impl RpcCoreService {
         // TODO: Some consensus-compatible subscriber could be provided here
         let notifier = Arc::new(Notifier::new(Some(collector), None, ListenerUtxoNotificationFilterSetting::All));
 
-        Self { consensus, notifier }
+        Self { consensus, utxoindex, notifier }
     }
 
     pub fn start(&self) {

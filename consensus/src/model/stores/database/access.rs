@@ -1,8 +1,8 @@
 use super::prelude::{Cache, DbKey, DbWriter};
 use crate::model::stores::{errors::StoreError, DB};
-use serde::{de::DeserializeOwned, Serialize};
-use std::{collections::hash_map::RandomState, hash::BuildHasher, sync::Arc};
-use std::error::Error;
+use rocksdb::{IteratorMode, Direction, ReadOptions};
+use serde::{de::{DeserializeOwned}, Serialize, Deserialize};
+use std::{collections::hash_map::RandomState, hash::BuildHasher, sync::Arc, error::Error};
 
 /// A concurrent DB store access with typed caching.
 #[derive(Clone)]
@@ -113,22 +113,24 @@ where
         Ok(())
     }
 
-    pub fn iter_prefix<Key, Value>(&self, prefix: DbKey) -> Box<dyn Iterator<Item = Result<(Key, Value), StoreError>> + '_>
+    pub fn iterator<Key, Value>(&self, seek_key: TKey) -> impl Iterator<Item = Result<(Key, Value), Box<dyn Error>>> + '_
     where
-        Key: Clone + DeserializeOwned,
-        Value: Clone + DeserializeOwned,
+        TKey: Copy + AsRef<[u8]> + ToString,
+        Key: DeserializeOwned,
+        Value: DeserializeOwned
     {
-        let iter = self.db.prefix_iterator(prefix.as_ref()).map(move |res| -> Result<(Key, Value), StoreError> {
-            let item = match res {
-                Ok(res) => {
-                    let key: Key = bincode::deserialize(&res.0[prefix.prefix_len()..])?;
-                    let value: Value = bincode::deserialize(&res.1)?;
-                    Ok((key.clone(), value.clone()))
-                }
-                Err(err) => Err(StoreError::DbError(err)),
-            };
-            item
-        });
-        Box::new(iter)
+        let db_key = DbKey::prefix_only(&self.prefix);
+        let mut read_opts = ReadOptions::default();
+        read_opts.set_iterate_range(rocksdb::PrefixRange(db_key.as_ref()));
+        self.db.iterator_opt(IteratorMode::From(seek_key.as_ref(), Direction::Forward), read_opts).map(move |item| match item {
+            Ok((key_bytes, value_bytes)) => match bincode::deserialize::<Key>(key_bytes[db_key.prefix_len()..].as_ref()) {
+                    Ok(key) => match bincode::deserialize::<Value>(value_bytes.as_ref()) {
+                            Ok(value) => Ok((key, value)),
+                            Err(err) => Err(err.into()), 
+                        }
+                    Err(err) => Err(err.into()),
+            }
+            Err(err) => Err(err.into()),
+        })
     }
 }

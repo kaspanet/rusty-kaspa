@@ -13,6 +13,7 @@ pub enum NotificationType {
     FinalityConflicts,
     FinalityConflictResolved,
     UtxosChanged(Vec<RpcUtxoAddress>),
+    VirtualStateChange,
     VirtualSelectedParentBlueScoreChanged,
     VirtualDaaScoreChanged,
     PruningPointUTXOSetOverride,
@@ -31,6 +32,7 @@ impl From<&Notification> for NotificationType {
             Notification::VirtualDaaScoreChanged(_) => NotificationType::VirtualDaaScoreChanged,
             Notification::PruningPointUTXOSetOverride(_) => NotificationType::PruningPointUTXOSetOverride,
             Notification::NewBlockTemplate(_) => NotificationType::NewBlockTemplate,
+            Notification::VirtualStateChange(_) => NotificationType::VirtualStateChange,
         }
     }
 }
@@ -45,6 +47,7 @@ pub enum Notification {
     UtxosChanged(UtxosChangedNotification),
     VirtualSelectedParentBlueScoreChanged(VirtualSelectedParentBlueScoreChangedNotification),
     VirtualDaaScoreChanged(VirtualDaaScoreChangedNotification),
+    VirtualStateChange(VirtualStateChangeNotification),
     PruningPointUTXOSetOverride(PruningPointUTXOSetOverrideNotification),
     NewBlockTemplate(NewBlockTemplateNotification),
 }
@@ -58,6 +61,12 @@ impl Display for Notification {
             Notification::NewBlockTemplate(_) => {
                 write!(f, "NewBlockTemplate notification")
             }
+            Notification::VirtualStateChange(ref notification) => {
+                write!(f, "VirtualStateChange notification, with tips: {}" notification.parents)
+            }
+            Notification::PruningPointUTXOSetOverride(_) => {
+                write!(f, "PruningPointUTXOSetOverride notification")
+            }
             _ => write!(f, "Notification type not implemented yet"),
             // Notification::VirtualSelectedParentChainChanged(_) => todo!(),
             // Notification::FinalityConflict(_) => todo!(),
@@ -65,7 +74,6 @@ impl Display for Notification {
             // Notification::UtxosChanged(_) => todo!(),
             // Notification::VirtualSelectedParentBlueScoreChanged(_) => todo!(),
             // Notification::VirtualDaaScoreChanged(_) => todo!(),
-            // Notification::PruningPointUTXOSetOverride(_) => todo!(),
         }
     }
 }

@@ -6,7 +6,8 @@ use super::{
     DB, ghostdag::GhostdagData,
 };
 use consensus_core::{
-    coinbase::BlockRewardData, tx::TransactionId, utxo::utxo_diff::UtxoDiff, BlockHashMap, BlockHashSet, HashMapCustomHasher,
+    coinbase::BlockRewardData, tx::TransactionId, utxo::utxo_diff::UtxoDiff, BlockHashMap, BlockHashSet, HashMapCustomHasher, 
+    notify::{VirtualStateChangeSetNotification, GhostDagData},
 
 };
 use hashes::Hash;
