@@ -22,8 +22,17 @@ pub struct RpcConnectionCtx {
 }
 
 pub struct Options {
-    addr: String,
-    verbose: bool,
+    pub listen_address: String,
+    pub verbose: bool,
+}
+
+impl Default for Options {
+    fn default() -> Self {
+        Options {
+            listen_address: "127.0.0.1:8080".to_owned(),
+            verbose: false,
+        }
+    }
 }
 
 pub struct KaspaRpcHandler {
@@ -80,7 +89,7 @@ impl WrpcServer {
     }
 
     async fn run(self: Arc<Self>) -> Result<()> {
-        let addr = &self.options.addr;
+        let addr = &self.options.listen_address;
         log_info!("wRPC server is listening on {}", addr);
         self.server.listen(addr).await?;
         Ok(())

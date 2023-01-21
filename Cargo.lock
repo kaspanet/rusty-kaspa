@@ -1783,6 +1783,7 @@ dependencies = [
  "futures-util",
  "hashes",
  "kaspa-core",
+ "kaspa-wrpc-server",
  "log",
  "num-format",
  "rand 0.8.5",
