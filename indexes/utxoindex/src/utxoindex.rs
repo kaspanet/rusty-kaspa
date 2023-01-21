@@ -2,7 +2,7 @@ use std::{fs, sync::Arc};
 
 use consensus_core::{
     api::DynConsensus,
-    notify::VirtualStateChangeNotification,
+    notify::VirtualChangeSetNotification,
     tx::{TransactionOutpoint, UtxoEntry},
     BlockHashSet,
 };
@@ -85,13 +85,13 @@ impl UtxoIndex {
     /// Updates the [UtxoIndex] via the virtual state supplied:
     /// 1) Saves utxo differences, virtul parent hashes and circulating supply differences to the database.
     /// 2) Notifies all utxo index changes to any potential listeners.
-    async fn update(&self, virtual_state: VirtualStateChangeNotification) -> Result<(Vec<UtxoIndexNotification>), UtxoIndexError> {
+    async fn update(&self, virtual_change_set: VirtualChangeSetNotification) -> Result<(Vec<UtxoIndexNotification>), UtxoIndexError> {
         trace!("updating utxoindex with virtual state changes");
-        trace!("to remove: {} utxos", virtual_state.utxo_diff.remove.len());
-        trace!("to add: {} utxos", virtual_state.utxo_diff.add.len());
+        trace!("to remove: {} utxos", virtual_change_set.virtual_utxo_diff.remove.len());
+        trace!("to add: {} utxos", virtual_change_set.virtual_utxo_diff.add.len());
 
         // `impl From<VirtualState> for UtxoIndexChanges` handles conversion see: `utxoindex::model::utxo_index_changes`.
-        let utxoindex_changes: UtxoIndexChanges = virtual_state.into(); //`impl From<VirtualState> for UtxoIndexChanges` handles conversion see: `utxoindex::model::utxo_index_changes`.
+        let utxoindex_changes: UtxoIndexChanges = virtual_change_set.into(); //`impl From<VirtualState> for UtxoIndexChanges` handles conversion see: `utxoindex::model::utxo_index_changes`.
         let notifications = Vec::new::<UtxoIndexNotification>();
         self.stores.update_utxo_state(utxoindex_changes.utxos);
         notifications.push(UtxoIndexNotification::UtxosChanged(utxoindex_changes.utxos.into()));

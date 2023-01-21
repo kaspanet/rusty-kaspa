@@ -61,7 +61,7 @@ impl From<&Notification> for EventType {
             Notification::VirtualDaaScoreChanged(_) => EventType::VirtualDaaScoreChanged,
             Notification::PruningPointUTXOSetOverride(_) => EventType::PruningPointUTXOSetOverride,
             Notification::NewBlockTemplate(_) => EventType::NewBlockTemplate,
-            Notification::VirtualStateChangeSet => panic!("VirtualStateChangeSet notification is not an event"),
+            Notification::VirtualChangeSet => panic!("VirtualStateChangeSet notification is not an event"),
         }
     }
 }
@@ -79,7 +79,7 @@ impl From<&NotificationType> for EventType {
             NotificationType::VirtualDaaScoreChanged => EventType::VirtualDaaScoreChanged,
             NotificationType::PruningPointUTXOSetOverride => EventType::PruningPointUTXOSetOverride,
             NotificationType::NewBlockTemplate => EventType::NewBlockTemplate,
-            NotificationType::VirtualStateChangeSet => panic!("VirtualStateChangeSet notification is not an event"),
+            NotificationType::VirtualChangeSet => panic!("VirtualStateChangeSet notification is not an event"),
         }
     }
 }

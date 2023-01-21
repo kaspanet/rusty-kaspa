@@ -1,16 +1,19 @@
-use crate::{block::Block};
+use crate::block::Block;
 
 #[derive(Debug, Clone)]
 pub enum ConsensusNotification {
     BlockAdded(BlockAddedNotification),
     NewBlockTemplate(NewBlockTemplateNotification),
-    VirtualStateChangeSet(VirtualStateChangeSetNotification),
+    VirtualChangeSet(VirtualChangeSetNotification),
     PruningPointUTXOSetOverride(PruningPointUTXOSetOverrideNotification),
 }
 
 #[derive(Debug, Clone)]
-pub struct VirtualStateChangeSetNotification {
-    //TODO
+pub struct VirtualChangeSetNotification {
+        pub virtual_utxo_diff:  UtxoDiff,
+        pub virtual_parents: Vec<Hash>,
+        pub virtual_selected_parent_blue_score: u64,
+        pub virtual_daa_score: u64,
 }
 
 #[derive(Debug, Clone)]

@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
-use crate::{notify::collector::ArcConvert, api::notifications::*, BlockAddedNotification, NewBlockTemplateNotification, ConsensusNotification, stubs::UtxosChangedNotification};
+use crate::{
+    api::notifications::*, notify::collector::ArcConvert, stubs::UtxosChangedNotification, BlockAddedNotification,
+    ConsensusNotification, NewBlockTemplateNotification,
+};
 use consensus_core::notify as consensus_notify;
 use utxoindex::notify as utxoindex_notify;
 
@@ -13,8 +16,10 @@ impl From<&consensus_notify::ConsensusNotification> for Notification {
         match item {
             consensus_notify::ConsensusNotification::BlockAdded(msg) => Notification::BlockAdded(msg.into()),
             consensus_notify::ConsensusNotification::NewBlockTemplate(msg) => Notification::NewBlockTemplate(msg.into()),
-            consensus_notify::ConsensusNotification::VirtualStateChangeSet(msg) => Notification::VirtualStateChangeSet(msg.into()),
-            consensus_notify::ConsensusNotification::PruningPointUTXOSetOverride(msg) => Notification::PruningPointUTXOSetOverride(msg.into()),
+            consensus_notify::ConsensusNotification::VirtualChangeSet(msg) => Notification::VirtualChangeSet(msg.into()),
+            consensus_notify::ConsensusNotification::PruningPointUTXOSetOverride(msg) => {
+                Notification::PruningPointUTXOSetOverride(msg.into())
+            }
             _ => todo!("match missing notifications"), //TODO: fill missing notifications
         }
     }

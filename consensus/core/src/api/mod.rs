@@ -1,6 +1,7 @@
 use futures_util::future::BoxFuture;
 use std::sync::Arc;
 use std::error::Error;
+use async_std::channel::Receiver;
 
 use crate::{
     block::{Block, BlockTemplate},
@@ -10,11 +11,10 @@ use crate::{
         block::{BlockProcessResult, RuleError},
         tx::TxResult,
     },
+    notify::ConsensusNotification,
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
 };
 use hashes::Hash;
-
-type StoreError = dyn Error;
 /// Abstracts the consensus external API
 pub trait ConsensusApi: Send + Sync {
     fn build_block_template(self: Arc<Self>, miner_data: MinerData, txs: Vec<Transaction>) -> Result<BlockTemplate, RuleError>;

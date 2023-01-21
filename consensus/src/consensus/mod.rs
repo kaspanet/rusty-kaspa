@@ -51,9 +51,10 @@ use consensus_core::{
     coinbase::MinerData,
     errors::tx::TxResult,
     tx::{MutableTransaction, Transaction, UtxoEntry, TransactionOutpoint},
-    BlockHashSet,
+    BlockHashSet, notify::ConsensusNotification,
 };
-use crossbeam_channel::{unbounded, Receiver, Sender};
+use crossbeam_channel::{unbounded as unbounded_crossbeam, Receiver as CrossbeamReceiver, Sender as CrossbeamSender};
+use async_std::channel::{unbounded as unbounded_async_std, Receiver as AsyncStdReceiver, Sender as AsyncStdSender};
 use futures_util::future::BoxFuture;
 use hashes::Hash;
 use kaspa_core::{core::Core, service::Service};
@@ -86,7 +87,9 @@ pub struct Consensus {
     db: Arc<DB>,
 
     // Channels
-    block_sender: Sender<BlockTask>,
+    block_sender: CrossbeamSender<BlockTask>,
+    rpc_sender: AsyncStdSender<Arc<ConsensusNotification>>,
+    pub rpc_receiver: AsyncStdReceiver<Arc<ConsensusNotification>>,
 
     // Processors
     header_processor: Arc<HeaderProcessor>,
@@ -246,10 +249,11 @@ impl Consensus {
             relations_store.clone(),
         );
 
-        let (sender, receiver): (Sender<BlockTask>, Receiver<BlockTask>) = unbounded();
-        let (body_sender, body_receiver): (Sender<BlockTask>, Receiver<BlockTask>) = unbounded();
-        let (virtual_sender, virtual_receiver): (Sender<BlockTask>, Receiver<BlockTask>) = unbounded();
-
+        let (sender, receiver): (CrossbeamSender<BlockTask>, CrossbeamReceiver<BlockTask>) = unbounded_crossbeam();
+        let (body_sender, body_receiver): (CrossbeamSender<BlockTask>, CrossbeamReceiver<BlockTask>) = unbounded_crossbeam();
+        let (virtual_sender, virtual_receiver): (CrossbeamSender<BlockTask>, CrossbeamReceiver<BlockTask>) = unbounded_crossbeam();
+        let (rpc_sender, rpc_reciver): (AsyncStdSender<Arc<ConsensusNotification>>, AsyncStdReceiver<Arc<ConsensusNotification>>) = unbounded_async_std();
+ 
         let counters = Arc::new(ProcessingCounters::default());
 
         //
@@ -328,6 +332,7 @@ impl Consensus {
 
         let virtual_processor = Arc::new(VirtualStateProcessor::new(
             virtual_receiver,
+            rpc_sender,
             virtual_pool,
             params,
             db.clone(),
@@ -383,6 +388,8 @@ impl Consensus {
             pruning_manager,
 
             counters,
+            rpc_sender: todo!(),
+            rpc_receiver: todo!(),
         }
     }
 
@@ -482,6 +489,7 @@ impl ConsensusApi for Consensus {
         let iter = self.virtual_processor.virtual_stores.read().utxo_set.iterator(from_outpoint);
         iter.take(chunk_size).map(|item| item.unwrap()).collect_vec()
     }
+    
 }
 
 impl Service for Consensus {

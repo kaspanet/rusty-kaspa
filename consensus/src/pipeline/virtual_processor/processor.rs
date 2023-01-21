@@ -48,6 +48,7 @@ use consensus_core::{
     coinbase::MinerData,
     header::Header,
     merkle::calc_hash_merkle_root,
+    notify::ConsensusNotification,
     tx::{MutableTransaction, Transaction},
     utxo::{
         utxo_diff::UtxoDiff,
@@ -59,7 +60,8 @@ use hashes::Hash;
 use kaspa_core::{info, trace};
 use muhash::MuHash;
 
-use crossbeam_channel::Receiver;
+use async_std::channel::Sender as AsyncStdReceiver;
+use crossbeam_channel::Receiver as CrossbeamReceiver;
 use itertools::Itertools;
 use parking_lot::{RwLock, RwLockUpgradableReadGuard};
 use rayon::ThreadPool;
@@ -74,7 +76,8 @@ use std::{
 
 pub struct VirtualStateProcessor {
     // Channels
-    receiver: Receiver<BlockTask>,
+    receiver: CrossbeamReceiver<BlockTask>,
+    rpc_sender: AsyncStdReceiver<Arc<ConsensusNotification>>,
 
     // Thread pool
     pub(super) thread_pool: Arc<ThreadPool>,
@@ -126,6 +129,7 @@ impl VirtualStateProcessor {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         receiver: Receiver<BlockTask>,
+        rpc_sender: Sender<ConsensusNotification>,
         thread_pool: Arc<ThreadPool>,
         params: &Params,
         db: Arc<DB>,
@@ -193,6 +197,7 @@ impl VirtualStateProcessor {
             pruning_manager,
             parents_manager,
             depth_manager,
+            rpc_sender,
         }
     }
 
@@ -343,9 +348,12 @@ impl VirtualStateProcessor {
 
                 // Flush the batch changes
                 self.db.write(batch).unwrap();
-
                 // Calling the drops explicitly after the batch is written in order to avoid possible errors.
                 drop(virtual_write);
+
+                // we try_send to rpc receiver since this is sync without blocking.
+                // Keeping rpc receiver-side in-bounds, and open, is responsibilty of rpc-core.
+                self.rpc_sender.try_send(ConsensusNotification::VirtualChangeSet(Arc::new(new_virtual_state.into())));
             }
             BlockStatus::StatusDisqualifiedFromChain => {
                 // TODO: this means another chain needs to be checked

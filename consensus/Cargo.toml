@@ -28,6 +28,7 @@ rand.workspace = true
 indexmap.workspace = true
 smallvec.workspace = true
 kaspa-utils.workspace = true
+async-std.workspace = true
 log.workspace = true
 
 rocksdb = "0.19"

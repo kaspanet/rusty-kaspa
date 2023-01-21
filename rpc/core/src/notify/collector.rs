@@ -104,8 +104,8 @@ where
                                     Notification::PruningPointUTXOSetOverride(pruning_point_utxo_set_override) => {
                                         utxoindex.reset().await,
                                     }
-                                    Notification::VirtualStateChange(virtual_state) => {
-                                        let utxo_index_updates = utxoindex.update(virtual_state).await;
+                                    Notification::VirtualChangeSet(virtual_change_set) => {
+                                        let utxo_index_updates = utxoindex.update(virtual_change_set).await;
                                         for utxo_index_update in utxo_index_updates.into_iter() {
                                             match notifier.clone().notify(rpc_notification) { 
                                                 Ok(_) => break,

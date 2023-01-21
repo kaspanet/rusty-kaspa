@@ -2,6 +2,7 @@ use consensus::model::stores::virtual_state::VirtualState;
 use consensus_core::tx::{TransactionOutpoint, UtxoEntry};
 use consensus_core::utxo::utxo_collection::UtxoCollection;
 use consensus_core::{BlockHashSet, HashMapCustomHasher};
+use consensus_core::notify::VirtualChangeSetNotification;
 use hashes::Hash;
 use std::collections::hash_map::Entry;
 
@@ -169,12 +170,12 @@ impl UtxoIndexChanges {
     }
 }
 
-impl From<VirtualState> for UtxoIndexChanges {
-    fn from(virtual_state: VirtualState) -> Self {
+impl From<VirtualChangeSetNotification> for UtxoIndexChanges {
+    fn from(virtual_change_set: VirtualChangeSetNotification) -> Self {
         let mut sel = Self::new();
-        sel.remove_utxo_collection(virtual_state.utxo_diff.remove);
-        sel.add_utxo_collection(virtual_state.utxo_diff.add);
-        sel.add_tips(virtual_state.parents);
+        sel.remove_utxo_collection(virtual_change_set.virtual_utxo_diff.remove);
+        sel.add_utxo_collection(virtual_change_set.virtual_utxo_diff.add);
+        sel.add_tips(virtual_change_set.virtual_parents);
         sel
     }
 }

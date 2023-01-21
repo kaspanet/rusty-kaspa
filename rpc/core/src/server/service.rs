@@ -56,7 +56,7 @@ impl RpcCoreService {
         //       See app\rpc\rpccontext\context.go
         // TODO: the channel receiver should be obtained by registering to a consensus notification service
 
-        let collector = Arc::new(ConsensusCollector::new(consensus_recv));
+        let collector = Arc::new(ConsensusCollector::new(consensus_recv, utxoindex));
 
         // TODO: Some consensus-compatible subscriber could be provided here
         let notifier = Arc::new(Notifier::new(Some(collector), None, ListenerUtxoNotificationFilterSetting::All));

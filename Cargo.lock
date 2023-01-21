@@ -655,6 +655,7 @@ dependencies = [
 name = "consensus"
 version = "0.1.0"
 dependencies = [
+ "async-std",
  "bincode",
  "consensus-core",
  "criterion",
@@ -690,6 +691,7 @@ dependencies = [
 name = "consensus-core"
 version = "0.1.0"
 dependencies = [
+ "async-std",
  "borsh",
  "faster-hex",
  "futures-util",

@@ -3,12 +3,15 @@ use std::sync::Arc;
 use super::{
     database::prelude::{BatchDbWriter, CachedDbItem, DirectDbWriter},
     errors::StoreResult,
-    DB, ghostdag::GhostdagData,
+    ghostdag::GhostdagData,
+    DB,
 };
 use consensus_core::{
-    coinbase::BlockRewardData, tx::TransactionId, utxo::utxo_diff::UtxoDiff, BlockHashMap, BlockHashSet, HashMapCustomHasher, 
-    notify::{VirtualStateChangeSetNotification, GhostDagData},
-
+    coinbase::BlockRewardData,
+    notify::{GhostDagData, VirtualChangeSetNotification},
+    tx::TransactionId,
+    utxo::utxo_diff::UtxoDiff,
+    BlockHashMap, BlockHashSet, HashMapCustomHasher,
 };
 use hashes::Hash;
 use muhash::MuHash;
@@ -74,6 +77,17 @@ impl VirtualState {
             accepted_tx_ids,
             mergeset_rewards: BlockHashMap::new(),
             mergeset_non_daa: BlockHashSet::from_iter(std::iter::once(genesis_hash)),
+        }
+    }
+}
+
+impl From<VirtualState> for VirtualChangeSetNotification{
+    fn from(virtual_state: VirtualState) {
+        Self {
+            virtual_utxo_diff: virtual_state.utxo_diff,
+            virtual_parents: virtual_state.parents,
+            virtual_selected_parent_blue_score: virtual_state.ghostdag_data.blue_score,
+            virtual_daa_score: virtual_state.daa_score,
         }
     }
 }

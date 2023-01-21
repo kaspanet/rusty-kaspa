@@ -13,7 +13,7 @@ pub enum NotificationType {
     FinalityConflicts,
     FinalityConflictResolved,
     UtxosChanged(Vec<RpcUtxoAddress>),
-    VirtualStateChangeSet,
+    VirtualChangeSet,
     VirtualSelectedParentBlueScoreChanged,
     VirtualDaaScoreChanged,
     PruningPointUTXOSetOverride,
@@ -32,7 +32,7 @@ impl From<&Notification> for NotificationType {
             Notification::VirtualDaaScoreChanged(_) => NotificationType::VirtualDaaScoreChanged,
             Notification::PruningPointUTXOSetOverride(_) => NotificationType::PruningPointUTXOSetOverride,
             Notification::NewBlockTemplate(_) => NotificationType::NewBlockTemplate,
-            Notification::VirtualStateChangeSet(_) => NotificationType::VirtualStateChangeSet,
+            Notification::VirtualChangeSet(_) => NotificationType::VirtualChangeSet,
         }
     }
 }
@@ -47,7 +47,7 @@ pub enum Notification {
     UtxosChanged(UtxosChangedNotification),
     VirtualSelectedParentBlueScoreChanged(VirtualSelectedParentBlueScoreChangedNotification),
     VirtualDaaScoreChanged(VirtualDaaScoreChangedNotification),
-    VirtualStateChangeSet(VirtualStateChangeNotification),
+    VirtualChangeSet(VirtualStateChangeNotification),
     PruningPointUTXOSetOverride(PruningPointUTXOSetOverrideNotification),
     NewBlockTemplate(NewBlockTemplateNotification),
 }
@@ -61,7 +61,7 @@ impl Display for Notification {
             Notification::NewBlockTemplate(_) => {
                 write!(f, "NewBlockTemplate notification")
             }
-            Notification::VirtualStateChangeSet(ref notification) => {
+            Notification::VirtualChangeSet(ref notification) => {
                 write!(f, "VirtualStateChange notification, with tips: {}" notification.parents)
             }
             Notification::PruningPointUTXOSetOverride(_) => {
