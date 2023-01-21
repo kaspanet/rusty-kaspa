@@ -1,5 +1,6 @@
-mod compact_utxos;
+mod utxos;
 mod utxo_index_changes;
-mod utxos_by_script_public_keys;
+mod script_public_key_utxos;
+mod supply;
 
-pub use {compact_utxos::*, utxo_index_changes::*, utxos_by_script_public_keys::*};
+pub use {utxos::*, utxo_index_changes::*, script_public_key_utxos::*, supply::*};

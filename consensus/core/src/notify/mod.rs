@@ -1,19 +1,10 @@
-use std::collections::HashSet;
-
-use muhash::MuHash;
-
-use crate::{
-    block::Block, coinbase::BlockRewardData, tx::TransactionId, utxo::utxo_diff::UtxoDiff, BlockHashMap,
-    BlockHashSet,
-};
-
-use hashes::Hash;
+use crate::{block::Block};
 
 #[derive(Debug, Clone)]
 pub enum ConsensusNotification {
     BlockAdded(BlockAddedNotification),
     NewBlockTemplate(NewBlockTemplateNotification),
-    VirtualStateChange(VirtualStateChangeSetNotification),
+    VirtualStateChangeSet(VirtualStateChangeSetNotification),
     PruningPointUTXOSetOverride(PruningPointUTXOSetOverrideNotification),
 }
 

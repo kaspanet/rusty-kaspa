@@ -132,7 +132,7 @@ where
         collect_shutdown.response.trigger.trigger();
         trace!("[Collector] collecting_task end");
         }
-    }
+    })
 }
 
     async fn stop_collecting_task(self: Arc<Self>) -> Result<()> {

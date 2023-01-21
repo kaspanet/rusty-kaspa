@@ -1,8 +1,6 @@
-use kaspa_core::signals::Signals;
 use kaspa_core::task::service::{AsyncService, AsyncServiceFuture};
 use kaspa_core::{core::Core, service::Service};
 use std::sync::Arc;
-use std::thread::{spawn, JoinHandle};
 
 use super::utxoindex::UtxoIndex;
 

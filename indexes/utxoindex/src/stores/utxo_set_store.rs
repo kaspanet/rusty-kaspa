@@ -1,33 +1,33 @@
-use crate::model::{CompactUtxoCollection, CompactUtxoEntry, UtxoSetByScriptPublicKey, UtxoSetDiffByScriptPublicKey};
+use crate::model::{CompactUtxoCollection, CompactUtxoEntry, UTXOChanges, UtxoSetByScriptPublicKey};
 
 use consensus::model::stores::{
     database::prelude::{BatchDbWriter, CachedDbAccess, DbKey, DirectDbWriter, SEP, SEP_SIZE},
     errors::StoreError,
     DB,
 };
-use consensus_core::tx::{ScriptPublicKey, ScriptPublicKeys, ScriptVec, TransactionIndexType, TransactionOutpoint, VersionType, UtxoEntry};
+use consensus_core::tx::{
+    ScriptPublicKey, ScriptPublicKeys, ScriptVec, TransactionIndexType, TransactionOutpoint, UtxoEntry, VersionType,
+};
 use hashes::Hash;
 use rocksdb::WriteBatch;
 use std::mem::size_of;
 use std::sync::Arc;
 
-
-// ## Prefixes: 
+// ## Prefixes:
 
 ///prefixes the [ScriptPublicKey] indexed utxo set.
 pub const UTXO_SET_PREFIX: &[u8] = b"utxoindex:utxo-set";
 ///prefix for the last sync'd [VirtualParents] (i.e. blockdag tips)
-pub const VIRTUAL_PARENTS_PREFIX: &[u8] = b"utxoindex:virtual-parents"; 
+pub const VIRTUAL_PARENTS_PREFIX: &[u8] = b"utxoindex:virtual-parents";
 ///Prefixes the [CirculatingSupply]
 pub const CIRCULATING_SUPPLY_PREFIX: &[u8] = b"utxoindex:circulating-supply";
-
 
 // ## Buckets:
 
 ///Size of the [ScriptPublicKeyBucket] in bytes.
 pub const SCRIPT_PUBLIC_KEY_BUCKET_SIZE: usize = size_of::<VersionType>() + size_of::<ScriptVec>();
 
-///[ScriptPublicKey] bucket. 
+///[ScriptPublicKey] bucket.
 ///Consists of 2 bytes of little endian [VersionType] bytes, followed by 36 bytes of [ScriptVec].
 #[derive(Eq, Hash, PartialEq, Debug, Copy, Clone)]
 struct ScriptPublicKeyBucket([u8; SCRIPT_PUBLIC_KEY_BUCKET_SIZE]);
@@ -65,7 +65,6 @@ impl AsRef<[u8]> for ScriptPublicKeyBucket {
 ///Size of the [TransactionOutpointKey] in bytes.
 pub const TRANSACTION_OUTPOINT_KEY_SIZE: usize = hashes::HASH_SIZE + size_of::<TransactionIndexType>();
 
-
 ///[TransactionOutpoint] key which references the [CompactUtxoEntry] within a [ScriptPublicKeyBucket]
 ///Consists of 32 bytes of [TransactionId], followed by 4 bytes of little endian [TransactionIndexType]
 #[derive(Eq, Hash, PartialEq, Debug, Copy, Clone)]
@@ -98,8 +97,8 @@ impl AsRef<[u8]> for TransactionOutpointKey {
 
 ///Size of the [UtxoEntryFullAccessKey] in bytes.
 pub const UTXO_ENTRY_FULL_ACCESS_KEY_SIZE: usize = SCRIPT_PUBLIC_KEY_BUCKET_SIZE + SEP_SIZE + TRANSACTION_OUTPOINT_KEY_SIZE;
-///Full [CompactUtxoEntry] access key. 
-///Consists of  38 bytes of [ScriptPublicKeyBucket], one byte of [SEP], and 36 bytes of [TransactionOutpointKey] 
+///Full [CompactUtxoEntry] access key.
+///Consists of  38 bytes of [ScriptPublicKeyBucket], one byte of [SEP], and 36 bytes of [TransactionOutpointKey]
 #[derive(Eq, Hash, PartialEq, Debug, Copy, Clone)]
 struct UtxoEntryFullAccessKey([u8; UTXO_ENTRY_FULL_ACCESS_KEY_SIZE]);
 
@@ -132,7 +131,7 @@ pub trait UtxoSetByScriptPublicKeyStore: UtxoSetByScriptPublicKeyStoreReader {
     /// Updates the store according to the UTXO diff via script public key changes-- adding and deleting entries correspondingly.
     /// Note we define `self` as `mut` in order to require write access even though the compiler does not require it.
     /// This is because concurrent readers can interfere with cache consistency.  
-    fn write_diff(&mut self, utxo_diff_by_script_public_key: UtxoSetDiffByScriptPublicKey) -> Result<(), StoreError>;
+    fn write_diff(&mut self, utxo_diff_by_script_public_key: UTXOChanges) -> Result<(), StoreError>;
 
     /// Insert a [UtxoSetByScriptPublicKey] into the [UtxoSetByScriptPublicKeyStore].
     fn insert_utxo_entries(&mut self, utxo_entries: UtxoSetByScriptPublicKey) -> Result<(), StoreError>;
@@ -147,23 +146,14 @@ pub struct DbUtxoSetByScriptPublicKeyStore {
 
 impl DbUtxoSetByScriptPublicKeyStore {
     pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
-        Self {
-            db: Arc::clone(&db),
-            access: CachedDbAccess::new(db, cache_size, UTXO_SET_PREFIX),
-            prefix: UTXO_SET_PREFIX,
-        }
+        Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_size, UTXO_SET_PREFIX), prefix: UTXO_SET_PREFIX }
     }
-
 
     pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {
         Self::new(Arc::clone(&self.db), cache_size)
     }
 
-    pub fn write_diff_batch(
-        &mut self,
-        batch: &mut WriteBatch,
-        utxo_diff_by_script_public_key: UtxoSetDiffByScriptPublicKey,
-    ) -> Result<(), StoreError> {
+    pub fn write_diff_batch(&mut self, batch: &mut WriteBatch, utxo_diff_by_script_public_key: UTXOChanges) -> Result<(), StoreError> {
         let mut writer = BatchDbWriter::new(batch);
 
         let mut remove_iter_keys =
@@ -221,7 +211,7 @@ impl UtxoSetByScriptPublicKeyStoreReader for DbUtxoSetByScriptPublicKeyStore {
 }
 
 impl UtxoSetByScriptPublicKeyStore for DbUtxoSetByScriptPublicKeyStore {
-    fn write_diff(&mut self, utxo_diff_by_script_public_key: UtxoSetDiffByScriptPublicKey) -> Result<(), StoreError> {
+    fn write_diff(&mut self, utxo_diff_by_script_public_key: UTXOChanges) -> Result<(), StoreError> {
         let mut writer = DirectDbWriter::new(&self.db);
 
         let mut remove_iter_keys =
@@ -235,8 +225,7 @@ impl UtxoSetByScriptPublicKeyStore for DbUtxoSetByScriptPublicKeyStore {
 
         let mut added_iter_items =
             utxo_diff_by_script_public_key.added.iter().map(move |(script_public_key, compact_utxo_collection)| {
-                let (transaction_outpoint, compact_utxo) =
-                    compact_utxo_collection.iter().next()?;
+                let (transaction_outpoint, compact_utxo) = compact_utxo_collection.iter().next()?;
                 (
                     UtxoEntryFullAccessKey::new(
                         ScriptPublicKeyBucket::from(script_public_key.clone()),
@@ -252,24 +241,22 @@ impl UtxoSetByScriptPublicKeyStore for DbUtxoSetByScriptPublicKeyStore {
         Ok(())
     }
 
-    fn insert_utxo_entries(&mut self, utxo_entries: UtxoSetByScriptPublicKey) -> Result<(), StoreError>{
+    fn insert_utxo_entries(&mut self, utxo_entries: UtxoSetByScriptPublicKey) -> Result<(), StoreError> {
         let mut writer = DirectDbWriter::new(&self.db);
 
-        let mut utxo_entry_iterator =
-            utxo_entries.iter().map(move |(script_public_key, compact_utxo_collection)| {
-                let (transaction_outpoint, compact_utxo) =
-                    compact_utxo_collection.iter().next()?;
-                (
-                    UtxoEntryFullAccessKey::new(
-                        ScriptPublicKeyBucket::from(script_public_key.clone()),
-                        TransactionOutpointKey::from(*transaction_outpoint),
-                    ),
-                    *compact_utxo,
-                )
-            });
+        let mut utxo_entry_iterator = utxo_entries.iter().map(move |(script_public_key, compact_utxo_collection)| {
+            let (transaction_outpoint, compact_utxo) = compact_utxo_collection.iter().next()?;
+            (
+                UtxoEntryFullAccessKey::new(
+                    ScriptPublicKeyBucket::from(script_public_key.clone()),
+                    TransactionOutpointKey::from(*transaction_outpoint),
+                ),
+                *compact_utxo,
+            )
+        });
 
         self.access.write_many(&mut writer, &mut utxo_entry_iterator)?;
-        
+
         Ok(())
     }
 }

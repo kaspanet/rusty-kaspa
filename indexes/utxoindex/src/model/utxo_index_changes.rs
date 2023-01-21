@@ -7,23 +7,68 @@ use std::collections::hash_map::Entry;
 
 use crate::model::CompactUtxoCollection;
 
-use super::{CompactUtxoEntry, UtxoSetDiffByScriptPublicKey, UtxoSetByScriptPublicKey};
+use super::{CompactUtxoEntry, UTXOChanges, UtxoSetByScriptPublicKey, CirculatingSupplyDiff};
+
+///A struct holding UTXO changes to the utxoindex. 
+#[derive(Debug, Clone)]
+pub struct UTXOChanges {
+    pub added: UtxoSetByScriptPublicKey,
+    pub removed: UtxoSetByScriptPublicKey,
+}
+
+impl UTXOChanges {
+    pub fn new(added: UtxoSetByScriptPublicKey, removed: UtxoSetByScriptPublicKey) -> Self {
+        Self {
+            added,
+            removed,
+        }
+    }
+}
+
+/// A struct holding Supply changes (when positive) to the utxoindex. 
+#[derive(Debug, Clone)]
+pub struct SupplyChanges {
+    pub circulating_supply_diff: CirculatingSupplyDiff,
+}
+
+impl SupplyChanges {
+    pub fn new(circulating_supply_diff: CirculatingSupplyDiff) -> Self {
+       Self { circulating_supply_diff }
+    }
+}
+
+///A struct holding Virtual Parents to be included in the utxoindex. 
+#[derive(Debug, Clone)]
+
+pub struct VirtualParents {
+    pub parents: Vec<Hash>,
+}
+
+impl VirtualParentChanges {
+    pub fn new(parents: Vec<Hash>) -> Self {
+    }
+}
 
 /// A struct holding all changes to the utxo index.
+// Note this is new compared to go-kaspad, and allows all extrac
 pub struct UtxoIndexChanges {
-    pub utxo_diff: UtxoSetDiffByScriptPublicKey,
-    pub circulating_supply_diff: i64,
+    pub utxos: UTXOChanges,
+    pub supply: CirculationSupplyDiff,
     pub tips: BlockHashSet,
 }
 
 impl UtxoIndexChanges {
     pub fn new() -> Self {
-        Self { utxo_diff: UtxoSetDiffByScriptPublicKey::new(), circulating_supply_diff: 0, tips: BlockHashSet::new() }
+        Self { 
+            utxos: UTXOChanges::new(UtxoSetByScriptPublicKey::new(), UtxoSetByScriptPublicKey::new()),
+            supply: 0, 
+            tips: BlockHashSet::new() 
+        }
     }
 
     pub fn add_utxo_collection(&mut self, utxo_collection: UtxoCollection) {
         for (transaction_output, utxo_entry) in utxo_collection.into_iter() {
-            match self.utxo_diff.removed.entry(utxo_entry.script_public_key.clone()) {
+            match self.utxos.removed.entry(utxo_entry.script_public_key.clone()) {
                 Entry::Occupied(entry) => {
                     entry.remove_entry();
                     continue;
@@ -31,9 +76,9 @@ impl UtxoIndexChanges {
                 Entry::Vacant(entry) => (),
             };
 
-            self.circulating_supply_diff += utxo_entry.amount as i64;
+            self.supply += utxo_entry.amount as i64; // TODO: Using `virtual_state.mergeset_rewards` might be a better way to extract this.
 
-            match self.utxo_diff.added.entry(utxo_entry.script_public_key) {
+            match self.utxos.added.entry(utxo_entry.script_public_key) {
                 Entry::Occupied(mut entry) => {
                     entry
                         .get_mut()
@@ -59,9 +104,9 @@ impl UtxoIndexChanges {
 
     pub fn remove_utxo_collection(&mut self, utxo_collection: UtxoCollection) {
         for (transaction_output, utxo_entry) in utxo_collection.into_iter() {
-            self.circulating_supply_diff -= utxo_entry.amount as i64;
+            self.supply -= utxo_entry.amount as i64; // TODO: Using `virtual_state.mergeset_rewards` might be a better way to extract this.
 
-            match self.utxo_diff.removed.entry(utxo_entry.script_public_key.clone()) {
+            match self.utxos.removed.entry(utxo_entry.script_public_key.clone()) {
                 Entry::Occupied(mut entry) => {
                     entry
                         .get_mut()
@@ -87,8 +132,8 @@ impl UtxoIndexChanges {
 
     //used when resetting, since we don't access a collection.
     pub fn add_utxo(&mut self, transaction_output: TransactionOutpoint, utxo_entry: UtxoEntry) {
-        self.circulating_supply_diff += utxo_entry.amount as i64;
-        match self.utxo_diff.added.entry(utxo_entry.script_public_key) {
+        self.supply += utxo_entry.amount as i64;
+        match self.utxos.added.entry(utxo_entry.script_public_key) {
             Entry::Occupied(mut entry) => {
                 entry
                     .get_mut()
@@ -117,12 +162,11 @@ impl UtxoIndexChanges {
 
     pub fn clear(&mut self) -> Self {
         Self { 
-            utxo_diff: UtxoSetDiffByScriptPublicKey::new(), 
-            circulating_supply_diff: 0, 
+            utxos: UTXOChanges::new(UtxoSetByScriptPublicKey::new(), UtxoSetByScriptPublicKey::new()), 
+            supply: 0, 
             tips: BlockHashSet::new() 
         }
     }
-
 }
 
 impl From<VirtualState> for UtxoIndexChanges {
@@ -132,16 +176,5 @@ impl From<VirtualState> for UtxoIndexChanges {
         sel.add_utxo_collection(virtual_state.utxo_diff.add);
         sel.add_tips(virtual_state.parents);
         sel
-    }
-}
-
-pub struct UtxoIndexResetChanges {
-    pub circulating_supply: u64,
-    pub to_add_utxos: UtxoSetByScriptPublicKey,
-}
-
-impl UtxoIndexResetChanges{
-    fn new() -> Self {
-
     }
 }

@@ -1,8 +1,32 @@
-pub enum UtxoIndexNotifications {
-    UtxosChangedNotification(UtxoChanged)
+use super::model::{UTXOChanges, UtxoSetByScriptPublicKey};
+
+#[derive(Debug, Clone)]
+pub enum UtxoIndexNotification {
+    UtxosChanged(UtxosChangedNotification),
+    //TODO: circulating supply update notifications in rpc -> uncomment below when done.
+    //CirculatingSupply(CirulatingSupply),
 }
 
+struct UtxosChangedNotification {
+    added: UtxoSetByScriptPublicKey,
+    removed: UtxoSetByScriptPublicKey,
+}
 
-struct UtxosChanged {
+//TODO: circulating supply update notifications in rpc -> uncomment below when done.
+/*
+struct CirculatingSupplyNotification {
+    circulating_supply: UtxoSetByScriptPublicKey,
+}
 
+impl CirculatingSupplyNotification {
+    fn new(circulating_supply: CirulatingSupply) -> Self {
+        Self { circulating_supply, }
+    }
+}
+*/
+
+impl From<UTXOChanges> for UtxosChangeNotification {
+    fn from(utxo_changes: UTXOChanges) -> Self {
+        Self { added: utxo_changes.added, removed: utxo_changes.removed }
+    }
 }

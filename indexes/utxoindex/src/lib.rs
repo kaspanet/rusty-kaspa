@@ -6,4 +6,4 @@ pub mod service;
 pub mod store_manager;
 pub mod stores;
 pub mod utxoindex;
-pub mod test_utils;
+pub mod notify;
