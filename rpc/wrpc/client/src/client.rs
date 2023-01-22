@@ -12,7 +12,7 @@ use std::sync::Arc;
 use workflow_core::trigger::Listener;
 use workflow_log::*;
 use workflow_rpc::asynchronous::client::result::Result as Response;
-use workflow_rpc::asynchronous::client::RpcClient;
+use workflow_rpc::asynchronous::client::{RpcClient,Options as RpcClientOptions};
 
 #[derive(Clone)]
 pub struct KaspaRpcClient {
@@ -22,9 +22,13 @@ pub struct KaspaRpcClient {
 impl KaspaRpcClient {
     pub fn new(url: &str) -> Result<KaspaRpcClient> {
         let re = Regex::new(r"^wrpc").unwrap();
-        let url = re.replace(url, "ws");
+        let url = re.replace(url, "ws").to_string();
         log_trace!("Kaspa RPC client url: {}", url);
-        let client = KaspaRpcClient { rpc: Arc::new(RpcClient::new(&url)?) };
+        let options = RpcClientOptions {
+            url : &url,
+            ..RpcClientOptions::default()
+        };
+        let client = KaspaRpcClient { rpc: Arc::new(RpcClient::new(options)?) };
 
         Ok(client)
     }
