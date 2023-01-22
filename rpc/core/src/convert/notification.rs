@@ -27,21 +27,13 @@ impl From<&consensus_notify::ConsensusNotification> for Notification {
 
 impl From<&utxoindex_notify::UtxoIndexNotification> for UtxosChangedNotification {
     fn from(item: &consensus_notify::Notification) -> Self {
-        match item {
-            utxoindex_notify::UtxoIndexNotification::UtxosChanged(msg) => Notification::UtxosChanged(msg.into()),
-        }
+        self {}
     }
 }
 
 impl From<&consensus_notify::BlockAddedNotification> for BlockAddedNotification {
     fn from(item: &consensus_notify::BlockAddedNotification) -> Self {
         Self { block: (&item.block).into() }
-    }
-}
-
-impl From<&consensus_notify::NewBlockTemplateNotification> for NewBlockTemplateNotification {
-    fn from(_: &consensus_notify::NewBlockTemplateNotification) -> Self {
-        Self {}
     }
 }
 

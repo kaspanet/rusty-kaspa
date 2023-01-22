@@ -1,16 +1,15 @@
-use consensus::model::stores::virtual_state::VirtualState;
+use consensus_core::notify::VirtualChangeSetNotification;
 use consensus_core::tx::{TransactionOutpoint, UtxoEntry};
 use consensus_core::utxo::utxo_collection::UtxoCollection;
 use consensus_core::{BlockHashSet, HashMapCustomHasher};
-use consensus_core::notify::VirtualChangeSetNotification;
 use hashes::Hash;
 use std::collections::hash_map::Entry;
 
 use crate::model::CompactUtxoCollection;
 
-use super::{CompactUtxoEntry, UTXOChanges, UtxoSetByScriptPublicKey, CirculatingSupplyDiff};
+use super::{CirculatingSupplyDiff, CompactUtxoEntry, UtxoSetByScriptPublicKey};
 
-///A struct holding UTXO changes to the utxoindex. 
+///A struct holding UTXO changes to the utxoindex.
 #[derive(Debug, Clone)]
 pub struct UTXOChanges {
     pub added: UtxoSetByScriptPublicKey,
@@ -19,14 +18,11 @@ pub struct UTXOChanges {
 
 impl UTXOChanges {
     pub fn new(added: UtxoSetByScriptPublicKey, removed: UtxoSetByScriptPublicKey) -> Self {
-        Self {
-            added,
-            removed,
-        }
+        Self { added, removed }
     }
 }
 
-/// A struct holding Supply changes (when positive) to the utxoindex. 
+/// A struct holding Supply changes (when positive) to the utxoindex.
 #[derive(Debug, Clone)]
 pub struct SupplyChanges {
     pub circulating_supply_diff: CirculatingSupplyDiff,
@@ -34,19 +30,20 @@ pub struct SupplyChanges {
 
 impl SupplyChanges {
     pub fn new(circulating_supply_diff: CirculatingSupplyDiff) -> Self {
-       Self { circulating_supply_diff }
+        Self { circulating_supply_diff }
     }
 }
 
-///A struct holding Virtual Parents to be included in the utxoindex. 
+///A struct holding Virtual Parents to be included in the utxoindex.
 #[derive(Debug, Clone)]
 
 pub struct VirtualParents {
     pub parents: Vec<Hash>,
 }
 
-impl VirtualParentChanges {
+impl VirtualParents {
     pub fn new(parents: Vec<Hash>) -> Self {
+        Self { parents }
     }
 }
 
@@ -54,16 +51,16 @@ impl VirtualParentChanges {
 // Note this is new compared to go-kaspad, and allows all extrac
 pub struct UtxoIndexChanges {
     pub utxos: UTXOChanges,
-    pub supply: CirculationSupplyDiff,
+    pub supply: CirculatingSupplyDiff,
     pub tips: BlockHashSet,
 }
 
 impl UtxoIndexChanges {
     pub fn new() -> Self {
-        Self { 
+        Self {
             utxos: UTXOChanges::new(UtxoSetByScriptPublicKey::new(), UtxoSetByScriptPublicKey::new()),
-            supply: 0, 
-            tips: BlockHashSet::new() 
+            supply: 0,
+            tips: BlockHashSet::new(),
         }
     }
 
@@ -132,14 +129,14 @@ impl UtxoIndexChanges {
     }
 
     //used when resetting, since we don't access a collection.
-    pub fn add_utxo(&mut self, transaction_output: TransactionOutpoint, utxo_entry: UtxoEntry) {
+    pub fn add_utxo(&mut self, transaction_output: &TransactionOutpoint, utxo_entry: &UtxoEntry) {
         self.supply += utxo_entry.amount as i64;
-        match self.utxos.added.entry(utxo_entry.script_public_key) {
+        match self.utxos.added.entry(utxo_entry.script_public_key.clone()) {
             Entry::Occupied(mut entry) => {
                 entry
                     .get_mut()
                     .insert(
-                        transaction_output,
+                        *transaction_output,
                         CompactUtxoEntry::new(utxo_entry.amount, utxo_entry.block_daa_score, utxo_entry.is_coinbase),
                     )
                     .expect("expected no duplicate utxo entries");
@@ -148,7 +145,7 @@ impl UtxoIndexChanges {
                 let mut value = CompactUtxoCollection::new();
                 value
                     .insert(
-                        transaction_output,
+                        *transaction_output,
                         CompactUtxoEntry::new(utxo_entry.amount, utxo_entry.block_daa_score, utxo_entry.is_coinbase),
                     )
                     .expect("expected no duplicate utxo entries");
@@ -162,10 +159,10 @@ impl UtxoIndexChanges {
     }
 
     pub fn clear(&mut self) -> Self {
-        Self { 
-            utxos: UTXOChanges::new(UtxoSetByScriptPublicKey::new(), UtxoSetByScriptPublicKey::new()), 
-            supply: 0, 
-            tips: BlockHashSet::new() 
+        Self {
+            utxos: UTXOChanges::new(UtxoSetByScriptPublicKey::new(), UtxoSetByScriptPublicKey::new()),
+            supply: 0,
+            tips: BlockHashSet::new(),
         }
     }
 }

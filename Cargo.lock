@@ -3205,9 +3205,11 @@ dependencies = [
  "consensus",
  "consensus-core",
  "hashes",
+ "kaspa-core",
  "log",
  "parking_lot",
  "rocksdb",
+ "serde",
  "thiserror",
  "triggered",
 ]

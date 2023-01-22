@@ -77,7 +77,7 @@ use std::{
 pub struct VirtualStateProcessor {
     // Channels
     receiver: CrossbeamReceiver<BlockTask>,
-    rpc_sender: AsyncStdReceiver<Arc<ConsensusNotification>>,
+    rpc_sender: AsyncStdReceiver<ConsensusNotification>,
 
     // Thread pool
     pub(super) thread_pool: Arc<ThreadPool>,
@@ -128,8 +128,8 @@ pub struct VirtualStateProcessor {
 impl VirtualStateProcessor {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        receiver: Receiver<BlockTask>,
-        rpc_sender: Sender<ConsensusNotification>,
+        receiver: CrossbeamReceiver<BlockTask>,
+        rpc_sender: AsyncStdReceiver<ConsensusNotification>,
         thread_pool: Arc<ThreadPool>,
         params: &Params,
         db: Arc<DB>,
@@ -344,7 +344,7 @@ impl VirtualStateProcessor {
                 virtual_write.utxo_set.write_diff_batch(&mut batch, &accumulated_diff).unwrap();
 
                 // Update virtual state
-                virtual_write.state.set_batch(&mut batch, new_virtual_state).unwrap();
+                virtual_write.state.set_batch(&mut batch, new_virtual_state.clone()).unwrap();
 
                 // Flush the batch changes
                 self.db.write(batch).unwrap();
@@ -352,8 +352,10 @@ impl VirtualStateProcessor {
                 drop(virtual_write);
 
                 // we try_send to rpc receiver since this is sync without blocking.
-                // Keeping rpc receiver-side in-bounds, and open, is responsibilty of rpc-core.
-                self.rpc_sender.try_send(ConsensusNotification::VirtualChangeSet(Arc::new(new_virtual_state.into())));
+                match self.rpc_sender.try_send(ConsensusNotification::VirtualChangeSet(new_virtual_state.into())) {
+                    Ok(_) => (),
+                    Err(_) => panic!("rpc receiver unreachable"), //TODO: Perhaps just ignore, if consensus does not care about rpc and other services runing.
+                }
             }
             BlockStatus::StatusDisqualifiedFromChain => {
                 // TODO: this means another chain needs to be checked

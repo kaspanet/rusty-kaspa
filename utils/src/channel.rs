@@ -1,8 +1,8 @@
-use async_std::channel::{unbounded, Receiver, Sender}; //according to ´´ the multi-consumer part is misleading, as the consumers are merely workstealing. i.e.  
+use async_std::channel::{unbounded, Receiver, Sender}; //according to ´´ the multi-consumer part is misleading, as the consumers are merely workstealing. i.e.
 
 /// Multiple producers multiple consumers channel
-// Note: The multi-consumer part is misleading, as the consumers are merely workstealing. 
-// i.e. having multiple consumers recieving from the channel will cause not all messages to be read by all consumers. 
+// Note: The multi-consumer part is misleading, as the consumers are merely workstealing.
+// i.e. having multiple consumers recieving from the channel will cause not all messages to be read by all consumers.
 #[derive(Clone, Debug)]
 pub struct Channel<T> {
     sender: Sender<T>,

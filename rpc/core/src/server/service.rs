@@ -11,6 +11,7 @@ use crate::{
     },
     FromRpcHex, Notification, NotificationType, RpcError, RpcResult,
 };
+
 use async_trait::async_trait;
 use consensus_core::{
     api::DynConsensus,
@@ -18,6 +19,7 @@ use consensus_core::{
     coinbase::MinerData,
     tx::{ScriptPublicKey, ScriptVec},
 };
+
 use hashes::Hash;
 use kaspa_core::trace;
 use std::{
@@ -26,6 +28,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
     vec,
 };
+use utxoindex::api::DynUtxoindex;
 
 /// A service implementing the Rpc API at rpc_core level.
 ///
@@ -53,10 +56,10 @@ pub struct RpcCoreService {
 impl RpcCoreService {
     pub fn new(consensus: DynConsensus, utxoindex: DynUtxoindex, consensus_recv: ConsensusNotificationReceiver) -> Self {
         // TODO: instead of getting directly a DynConsensus, rely on some Context equivalent
-        //       See app\rpc\rpccontext\context.go
+        //       See app\rpc\rpccontext\context.go, same with utxoindex
         // TODO: the channel receiver should be obtained by registering to a consensus notification service
 
-        let collector = Arc::new(ConsensusCollector::new(consensus_recv, utxoindex));
+        let collector = Arc::new(ConsensusCollector::new(consensus_recv, utxoindex)); //TODO: pass context of components to allow subcribers to utilize their methods.
 
         // TODO: Some consensus-compatible subscriber could be provided here
         let notifier = Arc::new(Notifier::new(Some(collector), None, ListenerUtxoNotificationFilterSetting::All));

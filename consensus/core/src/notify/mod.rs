@@ -1,4 +1,5 @@
-use crate::block::Block;
+use crate::{block::Block, utxo::utxo_diff::UtxoDiff};
+use hashes::Hash;
 
 #[derive(Debug, Clone)]
 pub enum ConsensusNotification {
@@ -10,10 +11,10 @@ pub enum ConsensusNotification {
 
 #[derive(Debug, Clone)]
 pub struct VirtualChangeSetNotification {
-        pub virtual_utxo_diff:  UtxoDiff,
-        pub virtual_parents: Vec<Hash>,
-        pub virtual_selected_parent_blue_score: u64,
-        pub virtual_daa_score: u64,
+    pub virtual_utxo_diff: UtxoDiff,
+    pub virtual_parents: Vec<Hash>,
+    pub virtual_selected_parent_blue_score: u64,
+    pub virtual_daa_score: u64,
 }
 
 #[derive(Debug, Clone)]

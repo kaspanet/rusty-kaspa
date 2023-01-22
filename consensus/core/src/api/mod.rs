@@ -1,7 +1,5 @@
 use futures_util::future::BoxFuture;
 use std::sync::Arc;
-use std::error::Error;
-use async_std::channel::Receiver;
 
 use crate::{
     block::{Block, BlockTemplate},
@@ -11,7 +9,6 @@ use crate::{
         block::{BlockProcessResult, RuleError},
         tx::TxResult,
     },
-    notify::ConsensusNotification,
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
 };
 use hashes::Hash;
@@ -37,10 +34,9 @@ pub trait ConsensusApi: Send + Sync {
 
     fn get_virtual_utxos(
         self: Arc<Self>,
-        from_outpoint: TransactionOutpoint,
+        from_outpoint: Option<TransactionOutpoint>,
         chunk_size: usize,
-    ) -> Vec<(TransactionOutpoint, UtxoEntry)>;
-
+    ) -> Arc<Vec<(TransactionOutpoint, UtxoEntry)>>;
 }
 
 pub type DynConsensus = Arc<dyn ConsensusApi>;

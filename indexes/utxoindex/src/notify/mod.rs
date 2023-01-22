@@ -7,7 +7,8 @@ pub enum UtxoIndexNotification {
     //CirculatingSupply(CirulatingSupply),
 }
 
-struct UtxosChangedNotification {
+#[derive(Debug, Clone)]
+pub struct UtxosChangedNotification {
     added: UtxoSetByScriptPublicKey,
     removed: UtxoSetByScriptPublicKey,
 }
@@ -25,7 +26,7 @@ impl CirculatingSupplyNotification {
 }
 */
 
-impl From<UTXOChanges> for UtxosChangeNotification {
+impl From<UTXOChanges> for UtxosChangedNotification {
     fn from(utxo_changes: UTXOChanges) -> Self {
         Self { added: utxo_changes.added, removed: utxo_changes.removed }
     }

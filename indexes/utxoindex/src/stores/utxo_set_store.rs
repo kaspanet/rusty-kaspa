@@ -1,13 +1,11 @@
 use crate::model::{CompactUtxoCollection, CompactUtxoEntry, UTXOChanges, UtxoSetByScriptPublicKey};
 
 use consensus::model::stores::{
-    database::prelude::{BatchDbWriter, CachedDbAccess, DbKey, DirectDbWriter, SEP, SEP_SIZE},
+    database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter, SEP, SEP_SIZE},
     errors::StoreError,
     DB,
 };
-use consensus_core::tx::{
-    ScriptPublicKey, ScriptPublicKeys, ScriptVec, TransactionIndexType, TransactionOutpoint, UtxoEntry, VersionType,
-};
+use consensus_core::tx::{ScriptPublicKey, ScriptPublicKeys, ScriptVec, TransactionIndexType, TransactionOutpoint, VersionType};
 use hashes::Hash;
 use rocksdb::WriteBatch;
 use std::mem::size_of;
@@ -197,11 +195,11 @@ impl UtxoSetByScriptPublicKeyStoreReader for DbUtxoSetByScriptPublicKeyStore {
             let script_public_key_bucket: ScriptPublicKeyBucket = script_public_key.clone().into();
             utxos_by_script_public_keys_inner.extend(
                 self.access
-                    .iter_prefix::<TransactionOutpoint, CompactUtxoEntry>(DbKey::new(self.prefix, script_public_key_bucket))
+                    .seek_iterator::<TransactionOutpoint, CompactUtxoEntry>(Some(vec![script_public_key_bucket.as_ref()]), None)
                     .into_iter()
                     .map(move |value| {
-                        let (k, V) = value.expect("expected key: TransactionOutpoint, value: CompactUtxoEntry pair");
-                        (k, V)
+                        let (k, v) = value.expect("expected key: TransactionOutpoint, value: CompactUtxoEntry pair");
+                        (k, v)
                     }),
             );
             utxos_by_script_public_keys.insert(script_public_key, utxos_by_script_public_keys_inner);
@@ -216,7 +214,7 @@ impl UtxoSetByScriptPublicKeyStore for DbUtxoSetByScriptPublicKeyStore {
 
         let mut remove_iter_keys =
             utxo_diff_by_script_public_key.removed.iter().map(move |(script_public_key, compact_utxo_collection)| {
-                let transaction_outpoint = compact_utxo_collection.keys().next()?;
+                let transaction_outpoint = compact_utxo_collection.keys().next().expect("expected transaction outpoint");
                 UtxoEntryFullAccessKey::new(
                     ScriptPublicKeyBucket::from(script_public_key.clone()),
                     TransactionOutpointKey::from(*transaction_outpoint),
@@ -225,7 +223,7 @@ impl UtxoSetByScriptPublicKeyStore for DbUtxoSetByScriptPublicKeyStore {
 
         let mut added_iter_items =
             utxo_diff_by_script_public_key.added.iter().map(move |(script_public_key, compact_utxo_collection)| {
-                let (transaction_outpoint, compact_utxo) = compact_utxo_collection.iter().next()?;
+                let (transaction_outpoint, compact_utxo) = compact_utxo_collection.iter().next().expect("expected utxo entry");
                 (
                     UtxoEntryFullAccessKey::new(
                         ScriptPublicKeyBucket::from(script_public_key.clone()),
@@ -245,7 +243,7 @@ impl UtxoSetByScriptPublicKeyStore for DbUtxoSetByScriptPublicKeyStore {
         let mut writer = DirectDbWriter::new(&self.db);
 
         let mut utxo_entry_iterator = utxo_entries.iter().map(move |(script_public_key, compact_utxo_collection)| {
-            let (transaction_outpoint, compact_utxo) = compact_utxo_collection.iter().next()?;
+            let (transaction_outpoint, compact_utxo) = compact_utxo_collection.iter().next().expect("expected utxo entry");
             (
                 UtxoEntryFullAccessKey::new(
                     ScriptPublicKeyBucket::from(script_public_key.clone()),

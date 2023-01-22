@@ -1,5 +1,5 @@
 use super::{
-    database::prelude::{BatchDbWriter, CachedDbAccess, DbKey, DirectDbWriter},
+    database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter},
     errors::{StoreError, StoreResultExtensions},
     DB,
 };
@@ -12,12 +12,15 @@ use consensus_core::{
 };
 use hashes::Hash;
 use rocksdb::WriteBatch;
-use std::{fmt::{Display}, error::Error, sync::Arc};
+use std::{error::Error, fmt::Display, sync::Arc};
 
 pub trait UtxoSetStoreReader {
     fn get(&self, outpoint: &TransactionOutpoint) -> Result<Arc<UtxoEntry>, StoreError>;
-    // TODO: UTXO entry iterator
-    fn iterator(&self, from_outpoint: TransactionOutpoint) -> Box<dyn Iterator<Item = Result<(TransactionOutpoint, UtxoEntry), Box<dyn Error>>> + '_ >;
+
+    fn from_iterator(
+        &self,
+        from_outpoint: Option<TransactionOutpoint>,
+    ) -> Box<dyn Iterator<Item = Result<(TransactionOutpoint, UtxoEntry), Box<dyn Error>>> + '_>;
 }
 
 pub trait UtxoSetStore: UtxoSetStoreReader {
@@ -100,8 +103,12 @@ impl UtxoSetStoreReader for DbUtxoSetStore {
         self.access.read((*outpoint).into())
     }
 
-    fn iterator(&self, from_outpoint: TransactionOutpoint) -> Box<dyn Iterator<Item = Result<(TransactionOutpoint, UtxoEntry), Box<dyn Error>>> + '_ > {
-        Box::new(self.access.iterator::<TransactionOutpoint, UtxoEntry>(from_outpoint.into()))
+    fn from_iterator(
+        &self,
+        from_outpoint: Option<TransactionOutpoint>,
+    ) -> Box<dyn Iterator<Item = Result<(TransactionOutpoint, UtxoEntry), Box<dyn Error>>> + '_> {
+        let seek_key = from_outpoint.map_or(None, move |outpoint| Some(UtxoKey::from(outpoint)));
+        Box::new(self.access.seek_iterator::<TransactionOutpoint, UtxoEntry>(None, seek_key))
     }
 }
 

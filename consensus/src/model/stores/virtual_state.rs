@@ -7,11 +7,8 @@ use super::{
     DB,
 };
 use consensus_core::{
-    coinbase::BlockRewardData,
-    notify::{GhostDagData, VirtualChangeSetNotification},
-    tx::TransactionId,
-    utxo::utxo_diff::UtxoDiff,
-    BlockHashMap, BlockHashSet, HashMapCustomHasher,
+    coinbase::BlockRewardData, notify::VirtualChangeSetNotification, tx::TransactionId, utxo::utxo_diff::UtxoDiff, BlockHashMap,
+    BlockHashSet, HashMapCustomHasher,
 };
 use hashes::Hash;
 use muhash::MuHash;
@@ -81,8 +78,8 @@ impl VirtualState {
     }
 }
 
-impl From<VirtualState> for VirtualChangeSetNotification{
-    fn from(virtual_state: VirtualState) {
+impl From<VirtualState> for VirtualChangeSetNotification {
+    fn from(virtual_state: VirtualState) -> Self {
         Self {
             virtual_utxo_diff: virtual_state.utxo_diff,
             virtual_parents: virtual_state.parents,

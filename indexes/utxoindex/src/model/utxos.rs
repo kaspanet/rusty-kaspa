@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 //Note: memory optimizaion compared to go-lang kaspad:
 //unlike `consensus_core::tx::UtxoEntry` the utxoindex utilizes a comapacted utxo form, where `script_public_key` field is removed.
 //this utxo structure can be utilized since utxos are implicitly key'd via its script public key (and outpoint) at all times.
-#[derive(Clone, Deserialize, Serialize, Copy)]
+#[derive(Clone, Copy, Deserialize, Serialize, Debug)]
 pub struct CompactUtxoEntry {
     pub amount: u64,
     pub block_daa_score: u64,

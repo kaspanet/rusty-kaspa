@@ -157,7 +157,6 @@ impl TestConsensus {
     pub fn ghostdag_manager(&self) -> &DbGhostdagManager {
         &self.consensus.ghostdag_manager
     }
-
 }
 
 impl ConsensusApi for TestConsensus {
@@ -191,12 +190,11 @@ impl ConsensusApi for TestConsensus {
 
     fn get_virtual_utxos(
         self: Arc<Self>,
-        from_outpoint: TransactionOutpoint,
+        from_outpoint: Option<TransactionOutpoint>,
         chunk_size: usize,
-    ) -> Vec<(TransactionOutpoint, UtxoEntry)> {
+    ) -> Arc<Vec<(TransactionOutpoint, UtxoEntry)>> {
         self.consensus.clone().get_virtual_utxos(from_outpoint, chunk_size)
     }
-
 }
 
 impl Service for TestConsensus {

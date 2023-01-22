@@ -1,7 +1,7 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
-use std::{collections::HashSet, marker::Copy, ops::Range, fmt::Display};
+use std::{collections::HashSet, fmt::Display, marker::Copy, ops::Range};
 
 use crate::{
     hashing,
@@ -26,7 +26,7 @@ pub type VersionType = u16;
 pub use smallvec::smallvec as scriptvec;
 
 /// Represents a Kaspad ScriptPublicKey
-#[derive(Default, Debug, PartialEq, Eq, Serialize, Deserialize, Clone, Hash)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct ScriptPublicKey {
     version: VersionType,
@@ -48,6 +48,13 @@ impl ScriptPublicKey {
 
     pub fn script(&self) -> &[u8] {
         &self.script
+    }
+}
+
+///Create an empty zero'd [`ScriptPublicKey`]
+impl Default for ScriptPublicKey {
+    fn default() -> Self {
+        Self { version: 0, script: SmallVec::from_slice(&[0; SCRIPT_VECTOR_SIZE]) }
     }
 }
 
@@ -130,6 +137,13 @@ impl TransactionOutpoint {
 impl Display for TransactionOutpoint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "({}, {})", self.transaction_id, self.index)
+    }
+}
+
+///create an empty zero'd [`TransactionOutpoint`].
+impl Default for TransactionOutpoint {
+    fn default() -> Self {
+        Self { transaction_id: hashes::ZERO_HASH, index: 0 }
     }
 }
 

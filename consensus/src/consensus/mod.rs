@@ -44,25 +44,28 @@ use crate::{
         reachability::inquirer as reachability, transaction_validator::TransactionValidator, traversal_manager::DagTraversalManager,
     },
 };
+use async_std::channel::{unbounded as unbounded_async_std, Receiver as AsyncStdReceiver, Sender as AsyncStdSender};
 use consensus_core::{
     api::ConsensusApi,
     block::{Block, BlockTemplate},
     blockstatus::BlockStatus,
     coinbase::MinerData,
     errors::tx::TxResult,
-    tx::{MutableTransaction, Transaction, UtxoEntry, TransactionOutpoint},
-    BlockHashSet, notify::ConsensusNotification,
+    notify::ConsensusNotification,
+    tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
+    BlockHashSet,
 };
 use crossbeam_channel::{unbounded as unbounded_crossbeam, Receiver as CrossbeamReceiver, Sender as CrossbeamSender};
-use async_std::channel::{unbounded as unbounded_async_std, Receiver as AsyncStdReceiver, Sender as AsyncStdSender};
 use futures_util::future::BoxFuture;
 use hashes::Hash;
 use kaspa_core::{core::Core, service::Service};
 use parking_lot::RwLock;
-use std::{future::Future, sync::atomic::Ordering,};
+use std::{
+    future::Future,
+    sync::{atomic::Ordering, Arc},
+};
 use std::{
     ops::DerefMut,
-    sync::Arc,
     thread::{self, JoinHandle},
 };
 use tokio::sync::oneshot;
@@ -88,8 +91,8 @@ pub struct Consensus {
 
     // Channels
     block_sender: CrossbeamSender<BlockTask>,
-    rpc_sender: AsyncStdSender<Arc<ConsensusNotification>>,
-    pub rpc_receiver: AsyncStdReceiver<Arc<ConsensusNotification>>,
+    rpc_sender: AsyncStdSender<ConsensusNotification>,
+    pub rpc_receiver: AsyncStdReceiver<ConsensusNotification>,
 
     // Processors
     header_processor: Arc<HeaderProcessor>,
@@ -252,8 +255,9 @@ impl Consensus {
         let (sender, receiver): (CrossbeamSender<BlockTask>, CrossbeamReceiver<BlockTask>) = unbounded_crossbeam();
         let (body_sender, body_receiver): (CrossbeamSender<BlockTask>, CrossbeamReceiver<BlockTask>) = unbounded_crossbeam();
         let (virtual_sender, virtual_receiver): (CrossbeamSender<BlockTask>, CrossbeamReceiver<BlockTask>) = unbounded_crossbeam();
-        let (rpc_sender, rpc_reciver): (AsyncStdSender<Arc<ConsensusNotification>>, AsyncStdReceiver<Arc<ConsensusNotification>>) = unbounded_async_std();
- 
+        let (rpc_sender, rpc_receiver): (AsyncStdSender<ConsensusNotification>, AsyncStdReceiver<ConsensusNotification>) =
+            unbounded_async_std();
+
         let counters = Arc::new(ProcessingCounters::default());
 
         //
@@ -332,7 +336,7 @@ impl Consensus {
 
         let virtual_processor = Arc::new(VirtualStateProcessor::new(
             virtual_receiver,
-            rpc_sender,
+            rpc_sender.clone(),
             virtual_pool,
             params,
             db.clone(),
@@ -388,8 +392,8 @@ impl Consensus {
             pruning_manager,
 
             counters,
-            rpc_sender: todo!(),
-            rpc_receiver: todo!(),
+            rpc_sender,
+            rpc_receiver,
         }
     }
 
@@ -482,14 +486,14 @@ impl ConsensusApi for Consensus {
 
     fn get_virtual_utxos(
         self: Arc<Self>,
-        from_outpoint: TransactionOutpoint,
+        from_outpoint: Option<TransactionOutpoint>,
         chunk_size: usize,
-    ) -> Vec<(TransactionOutpoint, UtxoEntry)> //consider using collect_into to allow for dynamic collection types. 
+    ) -> Arc<Vec<(TransactionOutpoint, UtxoEntry)>> //consider using collect_into to allow for dynamic collection types.
     {
-        let iter = self.virtual_processor.virtual_stores.read().utxo_set.iterator(from_outpoint);
-        iter.take(chunk_size).map(|item| item.unwrap()).collect_vec()
+        let virtual_stores = self.virtual_processor.virtual_stores.read();
+        let iter = virtual_stores.utxo_set.from_iterator(from_outpoint);
+        Arc::new(iter.take(chunk_size).map(|item| item.unwrap()).collect())
     }
-    
 }
 
 impl Service for Consensus {

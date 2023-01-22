@@ -1,5 +1,5 @@
 use kaspa_core::task::service::{AsyncService, AsyncServiceFuture};
-use kaspa_core::{core::Core, service::Service};
+use log::trace;
 use std::sync::Arc;
 
 use super::utxoindex::UtxoIndex;
@@ -13,16 +13,16 @@ impl AsyncService for UtxoIndex {
 
     fn start(self: Arc<UtxoIndex>) -> AsyncServiceFuture {
         trace!("starting {}", UTXOINDEX);
-        let shutdown_sender = self.shutdown_sender.clone();
-        runner = self.run();
-        Box::Pin(async move {
-            self.shutdown_listener.wait()
+        let shutdown_listener = self.shutdown_listener.clone();
+        Box::pin(async move {
+            self.run().await.expect("expected utxo start");
+            shutdown_listener.wait();
         })
     }
 
     fn signal_exit(self: Arc<Self>) {
         trace!("signaling {} exit", UTXOINDEX);
-        self.shutdown_sender.send(());
+        self.shutdown_trigger.trigger();
     }
 
     fn stop(self: Arc<UtxoIndex>) -> AsyncServiceFuture {
