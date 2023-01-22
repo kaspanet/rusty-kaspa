@@ -11,8 +11,8 @@ use rpc_core::prelude::*;
 use std::sync::Arc;
 use workflow_core::trigger::Listener;
 use workflow_log::*;
-use workflow_rpc::asynchronous::client::result::Result as Response;
-use workflow_rpc::asynchronous::client::{RpcClient,Options as RpcClientOptions};
+use workflow_rpc::client::result::Result as Response;
+use workflow_rpc::client::{RpcClient,Options as RpcClientOptions};
 
 #[derive(Clone)]
 pub struct KaspaRpcClient {

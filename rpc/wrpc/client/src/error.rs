@@ -1,5 +1,5 @@
 use thiserror::Error;
-use workflow_rpc::asynchronous::client::error::Error as RpcError;
+use workflow_rpc::client::error::Error as RpcError;
 
 #[derive(Debug, Error)]
 pub enum Error {

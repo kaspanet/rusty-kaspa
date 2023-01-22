@@ -1,5 +1,5 @@
 use thiserror::Error;
-use workflow_rpc::asynchronous::server::error::Error as RpcError;
+use workflow_rpc::server::error::Error as RpcError;
 use workflow_websocket::server::Error as WebSocketError;
 
 #[derive(Debug, Error)]

@@ -12,8 +12,8 @@ use rpc_core::notify::channel::*;
 use rpc_core::notify::listener::*;
 use std::{sync::Arc, time::Duration};
 use workflow_log::*;
-use workflow_rpc::asynchronous::result::RpcResult as Response;
-use workflow_rpc::asynchronous::server::*;
+use workflow_rpc::result::RpcResult as Response;
+use workflow_rpc::server::*;
 use crate::result::Result;
 use crate::router::Router;
 

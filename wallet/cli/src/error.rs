@@ -1,4 +1,3 @@
-// use workflow_rpc::asynchronous::client::error::Error as RpcError;
 use kaspa_wallet_core::error::Error as WalletError;
 use workflow_terminal::error::Error as TerminalError;
 

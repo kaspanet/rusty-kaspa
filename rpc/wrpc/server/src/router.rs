@@ -10,13 +10,8 @@ use rpc_core::notify::channel::*;
 use rpc_core::notify::listener::*;
 use rpc_core::prelude::*;
 use std::sync::Arc;
-// use workflow_log::*;
-use workflow_rpc::asynchronous::error::RpcResponseError as ResponseError;
-use workflow_rpc::asynchronous::result::RpcResult as Response;
-// use workflow_rpc::asynchronous::server::*;
-
-// use crate::placeholder::KaspaInterfacePlaceholder;
-// use crate::result::Result;
+use workflow_rpc::error::RpcResponseError as ResponseError;
+use workflow_rpc::result::RpcResult as Response;
 
 pub struct Router {
     iface: Arc<dyn RpcApi>,
