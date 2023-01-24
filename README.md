@@ -4,8 +4,15 @@ Work in progress to implement the Kaspa full-node and related libraries in the R
 
 ## Getting started
 
-- Install the [rust toolchain](https://rustup.rs/).
-
+- Install Protobuf (required for grpc)
+  - Linux: `sudo apt install protobuf-compiler libprotobuf-dev`
+  - Windows: [protoc-21.10-win64.zip](https://github.com/protocolbuffers/protobuf/releases/download/v21.10/protoc-21.10-win64.zip) and add `bin` dir to `Path`
+  - MacOS: `brew install protobuf`
+- Install the [clang toolchain](https://clang.llvm.org/) (required for RocksDB)
+  - Linux: `sudo apt intall clang`
+  - Windows: [LLVM-15.0.6-win64.exe](https://github.com/llvm/llvm-project/releases/download/llvmorg-15.0.6/LLVM-15.0.6-win64.exe) and set `LIBCLANG_PATH` env var pointing to the `bin` dir of the llvm installation
+  - MacOS: Please see [Installing clang toolchain on MacOS](#installing-clang-toolchain-on-macos)
+- Install the [rust toolchain](https://rustup.rs/)
 - Run the following commands:
 
 ```bash
@@ -51,6 +58,8 @@ Logging in `kaspad` and `simpa` can be [filtered](https://docs.rs/env_logger/0.1
 $ cargo run --bin kaspad -- --loglevel info,rpc_core=trace,rpc_grpc=trace,consensus=trace,kaspa_core=trace
 ```
 
+
+
 ## Tests & Benchmarks
 
 - To run all current tests use:
@@ -67,4 +76,38 @@ $ cargo nextest run --release
 ```bash
 $ cd rusty-kaspa
 $ cargo bench
+```
+
+## Building WASM
+
+To build rusty-kaspa wasm library, do the following:
+
+```bash
+cd wasm
+./build-web
+```
+This will produce a wasm library in `/web-root` directory
+
+## Installing clang toolchain on MacOS
+
+The default XCode installation of `llvm` does not support WASM build targets.
+To build WASM on MacOS you need to install `llvm` from homebrew (at the time of writing MacOS version is 13.0.1).
+
+```bash
+brew install llvm
+```
+NOTE: depending on your setup, the installation location may be different.
+To determine the installation location you can type `which llvm` or `which clang`
+and then modify the paths below accordingly.
+
+Add the following to your `~/.zshrc` file:
+```bash
+export PATH="/opt/homebrew/opt/llvm/bin:$PATH"
+export LDFLAGS="-L/opt/homebrew/opt/llvm/lib"
+export CPPFLAGS="-I/opt/homebrew/opt/llvm/include"
+export AR=/opt/homebrew/opt/llvm/bin/llvm-ar
+```
+Reload the `~/.zshrc` file
+```bash
+source ~/.zshrc
 ```

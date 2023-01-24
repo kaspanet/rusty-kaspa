@@ -2,7 +2,7 @@ use hashes::{Hash, Hasher, HasherBase, TransactionSigningHash, ZERO_HASH};
 
 use crate::{
     subnets::SUBNETWORK_ID_NATIVE,
-    tx::{PopulatedTransaction, ScriptPublicKey, TransactionOutpoint, TransactionOutput},
+    tx::{ScriptPublicKey, Transaction, TransactionOutpoint, TransactionOutput, VerifiableTransaction},
 };
 
 use super::{sighash_type::SigHashType, HasherExtensions};
@@ -24,7 +24,7 @@ impl SigHashReusedValues {
     }
 }
 
-fn previous_outputs_hash(tx: &PopulatedTransaction, hash_type: SigHashType, reused_values: &mut SigHashReusedValues) -> Hash {
+fn previous_outputs_hash(tx: &Transaction, hash_type: SigHashType, reused_values: &mut SigHashReusedValues) -> Hash {
     if hash_type.is_sighash_anyone_can_pay() {
         return ZERO_HASH;
     }
@@ -33,7 +33,7 @@ fn previous_outputs_hash(tx: &PopulatedTransaction, hash_type: SigHashType, reus
         previous_outputs_hash
     } else {
         let mut hasher = TransactionSigningHash::new();
-        for input in tx.tx.inputs.iter() {
+        for input in tx.inputs.iter() {
             hasher.update(input.previous_outpoint.transaction_id.as_bytes());
             hasher.write_u32(input.previous_outpoint.index);
         }
@@ -43,7 +43,7 @@ fn previous_outputs_hash(tx: &PopulatedTransaction, hash_type: SigHashType, reus
     }
 }
 
-fn sequences_hash(tx: &PopulatedTransaction, hash_type: SigHashType, reused_values: &mut SigHashReusedValues) -> Hash {
+fn sequences_hash(tx: &Transaction, hash_type: SigHashType, reused_values: &mut SigHashReusedValues) -> Hash {
     if hash_type.is_sighash_single() || hash_type.is_sighash_anyone_can_pay() || hash_type.is_sighash_none() {
         return ZERO_HASH;
     }
@@ -52,7 +52,7 @@ fn sequences_hash(tx: &PopulatedTransaction, hash_type: SigHashType, reused_valu
         sequences_hash
     } else {
         let mut hasher = TransactionSigningHash::new();
-        for input in tx.tx.inputs.iter() {
+        for input in tx.inputs.iter() {
             hasher.write_u64(input.sequence);
         }
         let sequence_hash = hasher.finalize();
@@ -61,7 +61,7 @@ fn sequences_hash(tx: &PopulatedTransaction, hash_type: SigHashType, reused_valu
     }
 }
 
-fn sig_op_counts_hash(tx: &PopulatedTransaction, hash_type: SigHashType, reused_values: &mut SigHashReusedValues) -> Hash {
+fn sig_op_counts_hash(tx: &Transaction, hash_type: SigHashType, reused_values: &mut SigHashReusedValues) -> Hash {
     if hash_type.is_sighash_anyone_can_pay() {
         return ZERO_HASH;
     }
@@ -70,7 +70,7 @@ fn sig_op_counts_hash(tx: &PopulatedTransaction, hash_type: SigHashType, reused_
         sig_op_counts_hash
     } else {
         let mut hasher = TransactionSigningHash::new();
-        for input in tx.tx.inputs.iter() {
+        for input in tx.inputs.iter() {
             hasher.write_u8(input.sig_op_count);
         }
         let sig_op_counts_hash = hasher.finalize();
@@ -79,8 +79,8 @@ fn sig_op_counts_hash(tx: &PopulatedTransaction, hash_type: SigHashType, reused_
     }
 }
 
-fn payload_hash(tx: &PopulatedTransaction) -> Hash {
-    if tx.tx.subnetwork_id == SUBNETWORK_ID_NATIVE {
+fn payload_hash(tx: &Transaction) -> Hash {
+    if tx.subnetwork_id == SUBNETWORK_ID_NATIVE {
         return ZERO_HASH;
     }
 
@@ -88,28 +88,23 @@ fn payload_hash(tx: &PopulatedTransaction) -> Hash {
     // for all non coinbase transactions. Once payload is enabled, the payload hash
     // should be cached to make it cost O(1) instead of O(tx.inputs.len()).
     let mut hasher = TransactionSigningHash::new();
-    hasher.write_var_bytes(&tx.tx.payload);
+    hasher.write_var_bytes(&tx.payload);
     hasher.finalize()
 }
 
-fn outputs_hash(
-    tx: &PopulatedTransaction,
-    hash_type: SigHashType,
-    reused_values: &mut SigHashReusedValues,
-    input_index: usize,
-) -> Hash {
+fn outputs_hash(tx: &Transaction, hash_type: SigHashType, reused_values: &mut SigHashReusedValues, input_index: usize) -> Hash {
     if hash_type.is_sighash_none() {
         return ZERO_HASH;
     }
 
     if hash_type.is_sighash_single() {
         // If the relevant output exists - return its hash, otherwise return zero-hash
-        if input_index >= tx.outputs().len() {
+        if input_index >= tx.outputs.len() {
             return ZERO_HASH;
         }
 
         let mut hasher = TransactionSigningHash::new();
-        hash_output(&mut hasher, &tx.outputs()[input_index]);
+        hash_output(&mut hasher, &tx.outputs[input_index]);
         return hasher.finalize();
     }
 
@@ -118,7 +113,7 @@ fn outputs_hash(
         outputs_hash
     } else {
         let mut hasher = TransactionSigningHash::new();
-        for output in tx.tx.outputs.iter() {
+        for output in tx.outputs.iter() {
             hash_output(&mut hasher, output);
         }
         let outputs_hash = hasher.finalize();
@@ -143,15 +138,16 @@ fn hash_script_public_key(hasher: &mut impl Hasher, script_public_key: &ScriptPu
 }
 
 pub fn calc_schnorr_signature_hash(
-    tx: &PopulatedTransaction,
+    verifiable_tx: &impl VerifiableTransaction,
     input_index: usize,
     hash_type: SigHashType,
     reused_values: &mut SigHashReusedValues,
 ) -> Hash {
-    let input = tx.populated_input(input_index);
+    let input = verifiable_tx.populated_input(input_index);
+    let tx = verifiable_tx.tx();
     let mut hasher = TransactionSigningHash::new();
     hasher
-        .write_u16(tx.tx.version)
+        .write_u16(tx.version)
         .update(previous_outputs_hash(tx, hash_type, reused_values))
         .update(sequences_hash(tx, hash_type, reused_values))
         .update(sig_op_counts_hash(tx, hash_type, reused_values));
@@ -162,9 +158,9 @@ pub fn calc_schnorr_signature_hash(
         .write_u64(input.0.sequence)
         .write_u8(input.0.sig_op_count)
         .update(outputs_hash(tx, hash_type, reused_values, input_index))
-        .write_u64(tx.tx.lock_time)
-        .update(&tx.tx.subnetwork_id)
-        .write_u64(tx.tx.gas)
+        .write_u64(tx.lock_time)
+        .update(&tx.subnetwork_id)
+        .write_u64(tx.gas)
         .update(payload_hash(tx))
         .write_u8(hash_type.to_u8());
     hasher.finalize()
@@ -179,7 +175,7 @@ mod tests {
     use crate::{
         hashing::sighash_type::{SIG_HASH_ALL, SIG_HASH_ANY_ONE_CAN_PAY, SIG_HASH_NONE, SIG_HASH_SINGLE},
         subnets::SubnetworkId,
-        tx::{Transaction, TransactionId, TransactionInput, UtxoEntry},
+        tx::{PopulatedTransaction, Transaction, TransactionId, TransactionInput, UtxoEntry},
     };
 
     use super::*;

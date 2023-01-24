@@ -11,7 +11,7 @@ use kaspa_core::trace;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 extern crate derive_more;
-use crate::notify::{collector, errors::Error, notifier::Notifier, result::Result};
+use crate::notify::{collector, error::Error, notifier::Notifier, result::Result};
 use crate::Notification;
 use derive_more::Deref;
 use kaspa_utils::channel::Channel;

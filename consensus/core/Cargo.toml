@@ -8,8 +8,8 @@ license.workspace = true
 
 [dependencies]
 hashes.workspace = true
-merkle.workspace = true
 muhash.workspace = true
+merkle.workspace = true
 math.workspace = true
 thiserror.workspace = true
 serde.workspace = true
@@ -18,3 +18,6 @@ smallvec.workspace = true
 borsh.workspace = true
 secp256k1 = { version = "0.24", features = ["global-context", "rand-std"] }
 futures-util.workspace = true
+itertools.workspace = true
+cfg-if.workspace = true
+addresses.workspace = true

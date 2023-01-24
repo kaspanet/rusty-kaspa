@@ -9,7 +9,7 @@ use crate::{
         listener::{ListenerID, ListenerReceiverSide, ListenerUtxoNotificationFilterSetting},
         notifier::Notifier,
     },
-    Notification, NotificationType, RpcError, RpcResult,
+    FromRpcHex, Notification, NotificationType, RpcError, RpcResult,
 };
 use async_trait::async_trait;
 use consensus_core::{
@@ -85,6 +85,12 @@ impl RpcApi for RpcCoreService {
             trace!("incoming SubmitBlockRequest with block conversion error: {}", err);
         }
         let block = try_block?;
+
+        // We recreate a RpcBlock for the BlockAdded notification.
+        // This guaranties that we have the right hash.
+        // TODO: remove it when consensus emit a BlockAdded notification.
+        let rpc_block: RpcBlock = (&block).into();
+
         trace!("incoming SubmitBlockRequest for block {}", block.header.hash);
 
         let result = match self.consensus.clone().validate_and_insert_block(block, true).await {
@@ -94,6 +100,10 @@ impl RpcApi for RpcCoreService {
                 Ok(SubmitBlockResponse { report: SubmitBlockReport::Reject(SubmitBlockRejectReason::BlockInvalid) })
             } // TODO: handle also the IsInIBD reject reason
         };
+
+        // Notify about new added block
+        // TODO: let consensus emit this notification through an event channel
+        self.notifier.clone().notify(Arc::new(Notification::BlockAdded(BlockAddedNotification { block: rpc_block }))).unwrap();
 
         // Emit a NewBlockTemplate notification
         self.notifier.clone().notify(Arc::new(Notification::NewBlockTemplate(NewBlockTemplateNotification {}))).unwrap();
@@ -118,7 +128,8 @@ impl RpcApi for RpcCoreService {
 
         let script_public_key = ScriptPublicKey::new(ADDRESS_PUBLIC_KEY_SCRIPT_PUBLIC_KEY_VERSION, script);
         let miner_data: MinerData = MinerData::new(script_public_key, request.extra_data);
-        let block_template = self.consensus.clone().build_block_template(miner_data, vec![]);
+        // TODO: handle error properly when managed through mining manager
+        let block_template = self.consensus.clone().build_block_template(miner_data, vec![]).unwrap();
 
         Ok((&block_template).into())
     }
@@ -145,6 +156,135 @@ impl RpcApi for RpcCoreService {
             is_synced: false,
             has_notify_command: true,
         })
+    }
+
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    // UNIMPLEMENTED METHODS
+
+    async fn get_current_network_call(&self, _request: GetCurrentNetworkRequest) -> RpcResult<GetCurrentNetworkResponse> {
+        unimplemented!();
+    }
+
+    async fn get_peer_addresses_call(&self, _request: GetPeerAddressesRequest) -> RpcResult<GetPeerAddressesResponse> {
+        unimplemented!();
+    }
+
+    async fn get_selected_tip_hash_call(&self, _request: GetSelectedTipHashRequest) -> RpcResult<GetSelectedTipHashResponse> {
+        unimplemented!();
+    }
+
+    async fn get_mempool_entry_call(&self, _request: GetMempoolEntryRequest) -> RpcResult<GetMempoolEntryResponse> {
+        unimplemented!();
+    }
+
+    async fn get_mempool_entries_call(&self, _request: GetMempoolEntriesRequest) -> RpcResult<GetMempoolEntriesResponse> {
+        unimplemented!();
+    }
+
+    async fn get_connected_peer_info_call(&self, _request: GetConnectedPeerInfoRequest) -> RpcResult<GetConnectedPeerInfoResponse> {
+        unimplemented!();
+    }
+
+    async fn add_peer_call(&self, _request: AddPeerRequest) -> RpcResult<AddPeerResponse> {
+        unimplemented!();
+    }
+
+    async fn submit_transaction_call(&self, _request: SubmitTransactionRequest) -> RpcResult<SubmitTransactionResponse> {
+        unimplemented!();
+    }
+
+    async fn get_subnetwork_call(&self, _request: GetSubnetworkRequest) -> RpcResult<GetSubnetworkResponse> {
+        unimplemented!();
+    }
+
+    async fn get_virtual_selected_parent_chain_from_block_call(
+        &self,
+        _request: GetVirtualSelectedParentChainFromBlockRequest,
+    ) -> RpcResult<GetVirtualSelectedParentChainFromBlockResponse> {
+        unimplemented!();
+    }
+
+    async fn get_blocks_call(&self, _request: GetBlocksRequest) -> RpcResult<GetBlocksResponse> {
+        unimplemented!();
+    }
+
+    async fn get_block_count_call(&self, _request: GetBlockCountRequest) -> RpcResult<GetBlockCountResponse> {
+        unimplemented!();
+    }
+
+    async fn get_block_dag_info_call(&self, _request: GetBlockDagInfoRequest) -> RpcResult<GetBlockDagInfoResponse> {
+        unimplemented!();
+    }
+
+    async fn resolve_finality_conflict_call(
+        &self,
+        _request: ResolveFinalityConflictRequest,
+    ) -> RpcResult<ResolveFinalityConflictResponse> {
+        unimplemented!();
+    }
+
+    async fn shutdown_call(&self, _request: ShutdownRequest) -> RpcResult<ShutdownResponse> {
+        unimplemented!();
+    }
+
+    async fn get_headers_call(&self, _request: GetHeadersRequest) -> RpcResult<GetHeadersResponse> {
+        unimplemented!();
+    }
+
+    async fn get_balance_by_address_call(&self, _request: GetBalanceByAddressRequest) -> RpcResult<GetBalanceByAddressResponse> {
+        unimplemented!();
+    }
+
+    async fn get_balances_by_addresses_call(
+        &self,
+        _addresses: GetBalancesByAddressesRequest,
+    ) -> RpcResult<GetBalancesByAddressesResponse> {
+        unimplemented!();
+    }
+
+    async fn get_utxos_by_addresses_call(&self, _addresses: GetUtxosByAddressesRequest) -> RpcResult<GetUtxosByAddressesResponse> {
+        unimplemented!();
+    }
+
+    async fn get_virtual_selected_parent_blue_score_call(
+        &self,
+        _request: GetVirtualSelectedParentBlueScoreRequest,
+    ) -> RpcResult<GetVirtualSelectedParentBlueScoreResponse> {
+        unimplemented!();
+    }
+
+    async fn ban_call(&self, _request: BanRequest) -> RpcResult<BanResponse> {
+        unimplemented!();
+    }
+
+    async fn unban_call(&self, _request: UnbanRequest) -> RpcResult<UnbanResponse> {
+        unimplemented!();
+    }
+
+    async fn estimate_network_hashes_per_second_call(
+        &self,
+        _request: EstimateNetworkHashesPerSecondRequest,
+    ) -> RpcResult<EstimateNetworkHashesPerSecondResponse> {
+        unimplemented!();
+    }
+
+    async fn get_mempool_entries_by_addresses_call(
+        &self,
+        _request: GetMempoolEntriesByAddressesRequest,
+    ) -> RpcResult<GetMempoolEntriesByAddressesResponse> {
+        unimplemented!();
+    }
+
+    async fn get_coin_supply_call(&self, _request: GetCoinSupplyRequest) -> RpcResult<GetCoinSupplyResponse> {
+        unimplemented!();
+    }
+
+    async fn ping_call(&self, _request: PingRequest) -> RpcResult<PingResponse> {
+        Ok(PingResponse {})
+    }
+
+    async fn get_process_metrics_call(&self, _request: GetProcessMetricsRequest) -> RpcResult<GetProcessMetricsResponse> {
+        unimplemented!();
     }
 
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -183,7 +323,7 @@ fn create_dummy_rpc_block() -> RpcBlock {
         header: RpcHeader {
             hash: Hash::from_str("8270e63a0295d7257785b9c9b76c9a2efb7fb8d6ac0473a1bff1571c5030e995").unwrap(),
             version: 1,
-            parents: vec![],
+            parents_by_level: vec![],
             hash_merkle_root: Hash::from_str("4b5a041951c4668ecc190c6961f66e54c1ce10866bef1cf1308e46d66adab270").unwrap(),
             accepted_id_merkle_root: Hash::from_str("1a1310d49d20eab15bf62c106714bdc81e946d761701e81fabf7f35e8c47b479").unwrap(),
             utxo_commitment: Hash::from_str("e7cdeaa3a8966f3fff04e967ed2481615c76b7240917c5d372ee4ed353a5cc15").unwrap(),
@@ -191,7 +331,7 @@ fn create_dummy_rpc_block() -> RpcBlock {
             bits: 1,
             nonce: 1234,
             daa_score: 123456,
-            blue_work: RpcBlueWorkType::from_str("1234567890abcdef").unwrap(),
+            blue_work: RpcBlueWorkType::from_rpc_hex("1234567890abcdef").unwrap(),
             pruning_point: Hash::from_str("7190c08d42a0f7994b183b52e7ef2f99bac0b91ef9023511cadf4da3a2184b16").unwrap(),
             blue_score: 12345678901,
         },

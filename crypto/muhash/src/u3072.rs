@@ -2,15 +2,18 @@ use crate::ELEMENT_BYTE_SIZE;
 use math::Uint3072;
 use serde::{Deserialize, Serialize};
 use std::ops::{DivAssign, MulAssign};
-#[cfg(target_pointer_width = "64")]
+
+// TODO: Add u32 support for optimization on 32 bit machines.
+
+//#[cfg(target_pointer_width = "64")]
 pub(crate) type Limb = u64;
-#[cfg(target_pointer_width = "64")]
+//#[cfg(target_pointer_width = "64")]
 pub(crate) type DoubleLimb = u128;
 
-#[cfg(target_pointer_width = "32")]
-pub(crate) type Limb = u32;
-#[cfg(target_pointer_width = "32")]
-pub(crate) type DoubleLimb = u64;
+//#[cfg(target_pointer_width = "32")]
+//pub(crate) type Limb = u32;
+//#[cfg(target_pointer_width = "32")]
+//pub(crate) type DoubleLimb = u64;
 
 const LIMB_SIZE_BYTES: usize = std::mem::size_of::<Limb>();
 const LIMB_SIZE: usize = std::mem::size_of::<Limb>() * 8;
@@ -147,8 +150,16 @@ impl U3072 {
             a.full_reduce();
         }
         // The only value that doesn't have a multiplicative inverse is 0, and 0/x is 0.
-        let inv = Uint3072(a.limbs).mod_inverse(Self::UINT_PRIME).unwrap_or_default();
-        Self { limbs: inv.0 }
+        if a == Self::zero() {
+            return a;
+        }
+        let inv = Self { limbs: Uint3072(a.limbs).mod_inverse(Self::UINT_PRIME).expect("Cannot fail, 0 < a < prime").0 };
+        if cfg!(debug_assertions) {
+            let mut one = inv;
+            one *= a;
+            assert_eq!(one, Self::one());
+        }
+        inv
     }
 
     fn div(&mut self, other: &Self) {
