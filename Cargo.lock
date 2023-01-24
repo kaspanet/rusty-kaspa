@@ -655,6 +655,7 @@ dependencies = [
 name = "consensus"
 version = "0.1.0"
 dependencies = [
+ "async-std",
  "bincode",
  "consensus-core",
  "criterion",
@@ -691,6 +692,7 @@ name = "consensus-core"
 version = "0.1.0"
 dependencies = [
  "addresses",
+ "async-std",
  "borsh",
  "cfg-if",
  "faster-hex",
@@ -1589,6 +1591,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
+ "utxoindex",
 ]
 
 [[package]]
@@ -3207,6 +3210,22 @@ name = "unicode-xid"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f962df74c8c05a667b5ee8bcf162993134c104e96440b663c8daa176dc772d8c"
+
+[[package]]
+name = "utxoindex"
+version = "0.1.0"
+dependencies = [
+ "consensus",
+ "consensus-core",
+ "hashes",
+ "kaspa-core",
+ "log",
+ "parking_lot",
+ "rocksdb",
+ "serde",
+ "thiserror",
+ "triggered",
+]
 
 [[package]]
 name = "uuid"

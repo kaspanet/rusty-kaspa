@@ -1,7 +1,8 @@
 use super::prelude::{Cache, DbKey, DbWriter};
 use crate::model::stores::{errors::StoreError, DB};
+use rocksdb::{Direction, IteratorMode, ReadOptions};
 use serde::{de::DeserializeOwned, Serialize};
-use std::{collections::hash_map::RandomState, hash::BuildHasher, sync::Arc};
+use std::{collections::hash_map::RandomState, error::Error, hash::BuildHasher, sync::Arc};
 
 /// A concurrent DB store access with typed caching.
 #[derive(Clone)]
@@ -110,5 +111,46 @@ where
             writer.delete(DbKey::new(self.prefix, key))?;
         }
         Ok(())
+    }
+
+    /// A dynamic iterator that can iterate through a specifc prefix / bucket, or from a certain start point.
+    ///
+    //TODO: loop and chain iterators for multi-prefix / bucket iterator.
+    pub fn seek_iterator<Key, Value>(
+        &self,
+        buckets: Option<Vec<&[u8]>>,
+        seek_from: Option<TKey>,
+    ) -> impl Iterator<Item = Result<(Key, Value), Box<dyn Error>>> + '_
+    where
+        TKey: Copy + AsRef<[u8]>,
+        Key: DeserializeOwned,
+        Value: DeserializeOwned,
+    {
+        let db_key = buckets.map_or(DbKey::prefix_only(&self.prefix), move |buckets| {
+            let mut key = DbKey::prefix_only(&self.prefix);
+            for bucket in buckets.into_iter() {
+                key.add_bucket(bucket);
+            }
+            key
+        });
+
+        let mut read_opts = ReadOptions::default();
+        read_opts.set_iterate_range(rocksdb::PrefixRange(db_key.as_ref()));
+
+        let db_iterator = match seek_from {
+            Some(seek_key) => self.db.iterator_opt(IteratorMode::From(seek_key.as_ref(), Direction::Forward), read_opts),
+            None => self.db.iterator_opt(IteratorMode::Start, read_opts),
+        };
+
+        db_iterator.map(move |item| match item {
+            Ok((key_bytes, value_bytes)) => match bincode::deserialize::<Key>(key_bytes[db_key.prefix_len()..].as_ref()) {
+                Ok(key) => match bincode::deserialize::<Value>(value_bytes.as_ref()) {
+                    Ok(value) => Ok((key, value)),
+                    Err(err) => Err(err.into()),
+                },
+                Err(err) => Err(err.into()),
+            },
+            Err(err) => Err(err.into()),
+        })
     }
 }

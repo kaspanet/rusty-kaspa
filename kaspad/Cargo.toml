@@ -14,6 +14,7 @@ consensus-core.workspace = true
 consensus.workspace = true
 rpc-core.workspace = true
 rpc-grpc.workspace = true
+utxoindex.workspace = true
 
 thiserror.workspace = true
 futures-util.workspace = true

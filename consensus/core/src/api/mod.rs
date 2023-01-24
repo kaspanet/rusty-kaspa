@@ -9,9 +9,9 @@ use crate::{
         block::{BlockProcessResult, RuleError},
         tx::TxResult,
     },
-    tx::{MutableTransaction, Transaction},
+    tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
 };
-
+use hashes::Hash;
 /// Abstracts the consensus external API
 pub trait ConsensusApi: Send + Sync {
     fn build_block_template(self: Arc<Self>, miner_data: MinerData, txs: Vec<Transaction>) -> Result<BlockTemplate, RuleError>;
@@ -29,6 +29,14 @@ pub trait ConsensusApi: Send + Sync {
     fn calculate_transaction_mass(self: Arc<Self>, transaction: &Transaction) -> u64;
 
     fn get_virtual_daa_score(self: Arc<Self>) -> u64;
+
+    fn get_virtual_state_tips(self: Arc<Self>) -> Vec<Hash>;
+
+    fn get_virtual_utxos(
+        self: Arc<Self>,
+        from_outpoint: Option<TransactionOutpoint>,
+        chunk_size: usize,
+    ) -> Arc<Vec<(TransactionOutpoint, UtxoEntry)>>;
 }
 
 pub type DynConsensus = Arc<dyn ConsensusApi>;

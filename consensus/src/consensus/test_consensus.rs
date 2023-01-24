@@ -14,7 +14,7 @@ use consensus_core::{
     header::Header,
     merkle::calc_hash_merkle_root,
     subnets::SUBNETWORK_ID_COINBASE,
-    tx::{MutableTransaction, Transaction},
+    tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     BlockHashSet,
 };
 use futures_util::future::BoxFuture;
@@ -182,6 +182,18 @@ impl ConsensusApi for TestConsensus {
 
     fn get_virtual_daa_score(self: Arc<Self>) -> u64 {
         self.consensus.clone().get_virtual_daa_score()
+    }
+
+    fn get_virtual_state_tips(self: Arc<Self>) -> Vec<Hash> {
+        self.consensus.clone().get_virtual_state_tips()
+    }
+
+    fn get_virtual_utxos(
+        self: Arc<Self>,
+        from_outpoint: Option<TransactionOutpoint>,
+        chunk_size: usize,
+    ) -> Arc<Vec<(TransactionOutpoint, UtxoEntry)>> {
+        self.consensus.clone().get_virtual_utxos(from_outpoint, chunk_size)
     }
 }
 

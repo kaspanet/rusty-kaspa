@@ -48,6 +48,7 @@ use consensus_core::{
     coinbase::MinerData,
     header::Header,
     merkle::calc_hash_merkle_root,
+    notify::ConsensusNotification,
     tx::{MutableTransaction, Transaction},
     utxo::{
         utxo_diff::UtxoDiff,
@@ -59,7 +60,8 @@ use hashes::Hash;
 use kaspa_core::{info, trace};
 use muhash::MuHash;
 
-use crossbeam_channel::Receiver;
+use async_std::channel::Sender as AsyncStdReceiver;
+use crossbeam_channel::Receiver as CrossbeamReceiver;
 use itertools::Itertools;
 use parking_lot::{RwLock, RwLockUpgradableReadGuard};
 use rayon::ThreadPool;
@@ -74,7 +76,8 @@ use std::{
 
 pub struct VirtualStateProcessor {
     // Channels
-    receiver: Receiver<BlockTask>,
+    receiver: CrossbeamReceiver<BlockTask>,
+    rpc_sender: AsyncStdReceiver<ConsensusNotification>,
 
     // Thread pool
     pub(super) thread_pool: Arc<ThreadPool>,
@@ -125,7 +128,8 @@ pub struct VirtualStateProcessor {
 impl VirtualStateProcessor {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        receiver: Receiver<BlockTask>,
+        receiver: CrossbeamReceiver<BlockTask>,
+        rpc_sender: AsyncStdReceiver<ConsensusNotification>,
         thread_pool: Arc<ThreadPool>,
         params: &Params,
         db: Arc<DB>,
@@ -193,6 +197,7 @@ impl VirtualStateProcessor {
             pruning_manager,
             parents_manager,
             depth_manager,
+            rpc_sender,
         }
     }
 
@@ -339,13 +344,18 @@ impl VirtualStateProcessor {
                 virtual_write.utxo_set.write_diff_batch(&mut batch, &accumulated_diff).unwrap();
 
                 // Update virtual state
-                virtual_write.state.set_batch(&mut batch, new_virtual_state).unwrap();
+                virtual_write.state.set_batch(&mut batch, new_virtual_state.clone()).unwrap();
 
                 // Flush the batch changes
                 self.db.write(batch).unwrap();
-
                 // Calling the drops explicitly after the batch is written in order to avoid possible errors.
                 drop(virtual_write);
+
+                // we try_send to rpc receiver since this is sync without blocking.
+                match self.rpc_sender.try_send(ConsensusNotification::VirtualChangeSet(new_virtual_state.into())) {
+                    Ok(_) => (),
+                    Err(_) => panic!("rpc receiver unreachable"), //TODO: Perhaps just ignore, if consensus does not care about rpc and other services runing.
+                }
             }
             BlockStatus::StatusDisqualifiedFromChain => {
                 // TODO: this means another chain needs to be checked

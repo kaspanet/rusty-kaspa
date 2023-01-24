@@ -1,45 +1,60 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
-use std::{fmt::Display, ops::Range};
+use std::{collections::HashSet, fmt::Display, marker::Copy, ops::Range};
 
 use crate::{
     hashing,
     subnets::{self, SubnetworkId},
 };
 
+pub type ScriptPublicKeys = HashSet<ScriptPublicKey>;
+
 /// Represents the ID of a Kaspa transaction
 pub type TransactionId = hashes::Hash;
 
+/// Size of the underlying script vector of a script.
+pub const SCRIPT_VECTOR_SIZE: usize = 36;
+
 /// Used as the underlying type for script public key data, optimized for the common p2pk script size (34).
-pub type ScriptVec = SmallVec<[u8; 36]>;
+pub type ScriptVec = SmallVec<[u8; SCRIPT_VECTOR_SIZE]>;
+
+/// Represents the ScriptPublicKey Version
+pub type VersionType = u16;
 
 /// Alias the `smallvec!` macro to ease maintenance
 pub use smallvec::smallvec as scriptvec;
 
 /// Represents a Kaspad ScriptPublicKey
-#[derive(Default, Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct ScriptPublicKey {
-    version: u16,
+    version: VersionType,
     script: ScriptVec, // Kept private to preserve read-only semantics
 }
 
 impl ScriptPublicKey {
-    pub fn new(version: u16, script: ScriptVec) -> Self {
+    pub fn new(version: VersionType, script: ScriptVec) -> Self {
         Self { version, script }
     }
 
-    pub fn from_vec(version: u16, script: Vec<u8>) -> Self {
+    pub fn from_vec(version: VersionType, script: Vec<u8>) -> Self {
         Self { version, script: ScriptVec::from_vec(script) }
     }
 
-    pub fn version(&self) -> u16 {
+    pub fn version(&self) -> VersionType {
         self.version
     }
 
     pub fn script(&self) -> &[u8] {
         &self.script
+    }
+}
+
+///Create an empty zero'd [`ScriptPublicKey`]
+impl Default for ScriptPublicKey {
+    fn default() -> Self {
+        Self { version: 0, script: SmallVec::from_slice(&[0; SCRIPT_VECTOR_SIZE]) }
     }
 }
 
@@ -122,6 +137,13 @@ impl TransactionOutpoint {
 impl Display for TransactionOutpoint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "({}, {})", self.transaction_id, self.index)
+    }
+}
+
+///create an empty zero'd [`TransactionOutpoint`].
+impl Default for TransactionOutpoint {
+    fn default() -> Self {
+        Self { transaction_id: hashes::ZERO_HASH, index: 0 }
     }
 }
 

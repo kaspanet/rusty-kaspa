@@ -4,6 +4,7 @@ extern crate hashes;
 
 use clap::Parser;
 use consensus::model::stores::DB;
+use consensus_core::api::ConsensusApi;
 use kaspa_core::{core::Core, signals::Signals, task::runtime::AsyncRuntime};
 use std::fs;
 use std::path::PathBuf;
@@ -13,6 +14,8 @@ use thiserror::__private::PathAsDisplay;
 use crate::monitor::ConsensusMonitor;
 use consensus::consensus::Consensus;
 use consensus::params::DEVNET_PARAMS;
+use utxoindex::utxoindex::UtxoIndex;
+
 use kaspa_core::{info, trace};
 use rpc_core::server::collector::ConsensusNotificationChannel;
 use rpc_core::server::RpcCoreServer;
@@ -21,7 +24,8 @@ use rpc_grpc::server::GrpcServer;
 mod monitor;
 
 const DEFAULT_DATA_DIR: &str = "datadir";
-
+const CONSENSUS_DB: &str = "consensus-db";
+const UTXOINDEX_DB: &str = "utxoindex-db";
 // TODO: add a Config
 // TODO: apply Args to Config
 // TODO: log to file
@@ -74,10 +78,15 @@ pub fn main() {
         .replace('~', get_home_dir().as_path().to_str().unwrap());
     let app_dir = if app_dir.is_empty() { get_app_dir() } else { PathBuf::from(app_dir) };
     let db_dir = app_dir.join(DEFAULT_DATA_DIR);
+    let consensus_store = app_dir.join(CONSENSUS_DB);
+    let utxoindex_store = app_dir.join(UTXOINDEX_DB);
     assert!(!db_dir.to_str().unwrap().is_empty());
     info!("Application directory: {}", app_dir.as_display());
     info!("Data directory: {}", db_dir.as_display());
-    fs::create_dir_all(db_dir.as_path()).unwrap();
+    info!("Consensus {}").consensus_store.as_display();
+    info!("Utxoindex {}").utxoindex_store.as_display();
+    fs::create_dir_all(consensus_store.as_path()).unwrap();
+    fs::create_dir_all(utxoindex_store.as_path()).unwrap();
     let grpc_server_addr = args.rpc_listen.unwrap_or_else(|| "127.0.0.1:16610".to_string()).parse().unwrap();
 
     let core = Arc::new(Core::new());
@@ -85,18 +94,23 @@ pub fn main() {
     // ---
 
     let params = DEVNET_PARAMS;
-    let db = Arc::new(DB::open_default(db_dir.to_str().unwrap()).unwrap());
-    let consensus = Arc::new(Consensus::new(db, &params));
+
+    let consensus_db = Arc::new(DB::open_default(consensus_store.to_str().unwrap()).unwrap());
+    let consensus = Arc::new(Consensus::new(consensus_db, &params));
+
     let monitor = Arc::new(ConsensusMonitor::new(consensus.processing_counters().clone()));
 
-    let notification_channel = ConsensusNotificationChannel::default();
-    let rpc_core_server = Arc::new(RpcCoreServer::new(consensus.clone(), notification_channel.receiver()));
+    let utxoindex_db = Arc::new(DB::open_default(utxoindex_store.to_str().unwrap()).unwrap());
+    let utxoindex = Arc::new(utxoindex::utxoindex::UtxoIndex::new(utxoindex_db, utxoindex_db));
+
+    let rpc_core_server = Arc::new(RpcCoreServer::new(consensus.clone(), utxoindex.clone(), consensus.rpc_receiver.clone()));
     let grpc_server = Arc::new(GrpcServer::new(grpc_server_addr, rpc_core_server.service()));
 
     // Create an async runtime and register the top-level async services
     let async_runtime = Arc::new(AsyncRuntime::new());
     async_runtime.register(rpc_core_server);
     async_runtime.register(grpc_server);
+    async_runtime.register(utxoindex);
 
     // Bind the keyboard signal to the core
     Arc::new(Signals::new(&core)).init();
