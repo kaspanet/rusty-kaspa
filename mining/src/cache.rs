@@ -7,6 +7,11 @@ use std::{
 /// CACHE_LIFETIME indicates the default duration in milliseconds after which the cached data expires.
 const DEFAULT_CACHE_LIFETIME: u64 = 1_000;
 
+#[inline]
+fn unix_now() -> u64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64
+}
+
 pub(crate) struct BlockTemplateCache {
     /// Time, in milliseconds, when the cache was last updated
     last_update_time: u64,
@@ -23,14 +28,15 @@ impl BlockTemplateCache {
     }
 
     pub(crate) fn clear(&mut self) {
-        // This differs from golang implementation.
         // The cache timer is reset to 0 so its lifetime is expired.
         self.last_update_time = 0;
         self.block_template = None;
     }
 
     pub(crate) fn get_immutable_cached_template(&self) -> Option<Arc<BlockTemplate>> {
-        if SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64 - self.last_update_time > self.cache_lifetime {
+        let now = unix_now();
+        // We verify that `now > last update` in order to avoid theoretic clock change bugs
+        if now < self.last_update_time || now - self.last_update_time > self.cache_lifetime {
             None
         } else {
             Some(self.block_template.as_ref().unwrap().clone())
@@ -38,7 +44,7 @@ impl BlockTemplateCache {
     }
 
     pub(crate) fn set_immutable_cached_template(&mut self, block_template: BlockTemplate) -> Arc<BlockTemplate> {
-        self.last_update_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64;
+        self.last_update_time = unix_now();
         self.block_template = Some(Arc::new(block_template));
         self.block_template.as_ref().unwrap().clone()
     }
