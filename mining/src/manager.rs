@@ -15,11 +15,11 @@ use consensus_core::{
     tx::{MutableTransaction, Transaction, TransactionId, TransactionOutput},
 };
 use kaspa_core::error;
-use parking_lot::{RwLock, RwLockUpgradableReadGuard};
+use parking_lot::{Mutex, RwLock};
 
 pub struct MiningManager {
     block_template_builder: BlockTemplateBuilder,
-    block_template_cache: RwLock<BlockTemplateCache>,
+    block_template_cache: Mutex<BlockTemplateCache>,
     mempool: RwLock<Mempool>,
 }
 
@@ -38,17 +38,17 @@ impl MiningManager {
     pub(crate) fn with_config(consensus: DynConsensus, config: Config, cache_lifetime: Option<u64>) -> Self {
         let block_template_builder = BlockTemplateBuilder::new(consensus.clone(), config.maximum_mass_per_block);
         let mempool = RwLock::new(Mempool::new(consensus, config));
-        let block_template_cache = RwLock::new(BlockTemplateCache::new(cache_lifetime));
+        let block_template_cache = Mutex::new(BlockTemplateCache::new(cache_lifetime));
         Self { block_template_builder, block_template_cache, mempool }
     }
 
     pub fn get_block_template(&self, miner_data: &MinerData) -> MiningManagerResult<BlockTemplate> {
-        let cache_read = self.block_template_cache.upgradable_read();
-        let immutable_template = cache_read.get_immutable_cached_template();
+        let mut cache_lock = self.block_template_cache.lock();
+        let immutable_template = cache_lock.get_immutable_cached_template();
 
         // We first try and use a cached template if not expired
         if let Some(immutable_template) = immutable_template {
-            drop(cache_read);
+            drop(cache_lock);
             if immutable_template.miner_data == *miner_data {
                 return Ok(immutable_template.as_ref().clone());
             }
@@ -65,25 +65,26 @@ impl MiningManager {
         // We avoid passing a mempool ref to blockTemplateBuilder by calling
         // mempool.BlockCandidateTransactions and mempool.RemoveTransactions here.
         // We remove recursion seen in blockTemplateBuilder.BuildBlockTemplate here.
-        let mut cache_write = RwLockUpgradableReadGuard::upgrade(cache_read);
         loop {
             let transactions = self.block_candidate_transactions();
             match self.block_template_builder.build_block_template(miner_data, transactions) {
                 Ok(block_template) => {
-                    let block_template = cache_write.set_immutable_cached_template(block_template);
+                    let block_template = cache_lock.set_immutable_cached_template(block_template);
                     return Ok(block_template.as_ref().clone());
                 }
                 Err(BuilderError::ConsensusError(RuleError::InvalidTransactionsInNewBlock(invalid_transactions))) => {
                     let mut mempool_write = self.mempool.write();
-                    let removal_result = invalid_transactions.iter().try_for_each(|(x, _)| mempool_write.remove_transaction(x, true));
-                    drop(mempool_write);
-                    if let Err(err) = removal_result {
-                        // Original golang comment:
-                        // mempool.remove_transactions might return errors in situations that are perfectly fine in this context.
-                        // TODO: Once the mempool invariants are clear, this might return an error:
-                        // https://github.com/kaspanet/kaspad/issues/1553
-                        error!("Error from mempool.remove_transactions: {:?}", err);
-                    }
+                    invalid_transactions.iter().for_each(|(x, _)| {
+                        let removal_result = mempool_write.remove_transaction(x, true);
+                        if let Err(err) = removal_result {
+                            // Original golang comment:
+                            // mempool.remove_transactions might return errors in situations that are perfectly fine in this context.
+                            // TODO: Once the mempool invariants are clear, this might return an error:
+                            // https://github.com/kaspanet/kaspad/issues/1553
+                            // NOTE: unlike golang, here we continue removing also if an error was found
+                            error!("Error from mempool.remove_transactions: {:?}", err);
+                        }
+                    });
                 }
                 Err(err) => {
                     return Err(err)?;
@@ -98,7 +99,7 @@ impl MiningManager {
 
     /// Clears the block template cache, forcing the next call to get_block_template to build a new block template.
     pub fn clear_block_template(&self) {
-        self.block_template_cache.write().clear();
+        self.block_template_cache.lock().clear();
     }
 
     #[cfg(test)]
