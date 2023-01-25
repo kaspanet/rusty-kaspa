@@ -15,8 +15,9 @@ use crate::{
     },
 };
 
+#[derive(Clone)]
 pub struct StoreManager {
-    db: Arc<DB>,
+    db: Arc<RwLock<Arc<DB>>>,
 
     utxoindex_tips_store: Arc<RwLock<DbUtxoIndexTipsStore>>,
     circulating_suppy_store: Arc<RwLock<DbCirculatingSupplyStore>>,
@@ -26,7 +27,7 @@ pub struct StoreManager {
 impl StoreManager {
     pub fn new(db: Arc<DB>) -> Self {
         Self {
-            db: db.clone(),
+            db: Arc::new(RwLock::new(db.clone())),
 
             utxoindex_tips_store: Arc::new(RwLock::new(DbUtxoIndexTipsStore::new(db.clone()))),
             circulating_suppy_store: Arc::new(RwLock::new(DbCirculatingSupplyStore::new(db.clone()))),
@@ -84,19 +85,19 @@ impl StoreManager {
     /// 3) populates the new db with associated prefixes.
     pub fn delete_all(&self) -> Result<(), UtxoIndexError> {
         trace!("creating new utxoindex database, deleting the old one");
+        let db_unlocked = self.db.write();
         //hold all individual store locks in-place
         let mut circulating_suppy_store = self.circulating_suppy_store.write();
         let mut utxos_by_script_public_key_store = self.utxos_by_script_public_key_store.write();
         let mut utxoindex_tips_store = self.utxoindex_tips_store.write();
-
         //remove old database path, and recreate a new one
-        let db_path = self.db.path(); //extract the path
+        let db_path = db_unlocked.path(); //extract the path
         fs::remove_dir_all(db_path)?; //remove directory
         fs::create_dir_all(db_path)?; //recreate directory
 
         //create new database and swap
         let new_db = DB::open_default(db_path).unwrap(); //create new db
-        let old_db = new_db; //swap out databases
+        let db_unlocked = new_db; //swap out databases
 
         //recreate individual stores (i.e. create a new access with the given store prefixes)
         *circulating_suppy_store = circulating_suppy_store.clone_with_new_cache();

@@ -1,6 +1,6 @@
-use std::{io, sync::mpsc::SendError};
-
+use async_std::channel::SendError;
 use consensus::model::stores::errors::StoreError;
+use std::io;
 
 use thiserror::Error;
 

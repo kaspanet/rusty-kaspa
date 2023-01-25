@@ -86,7 +86,7 @@ impl UtxoIndexChanges {
                         )
                         .expect("expected no duplicate utxo entries");
                 }
-                Entry::Vacant(mut entry) => {
+                Entry::Vacant(entry) => {
                     let mut value = CompactUtxoCollection::new();
                     value
                         .insert(

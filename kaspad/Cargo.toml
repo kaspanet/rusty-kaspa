@@ -15,6 +15,8 @@ consensus.workspace = true
 rpc-core.workspace = true
 rpc-grpc.workspace = true
 utxoindex.workspace = true
+async-std.workspace = true
+kaspa-utils.workspace = true
 
 thiserror.workspace = true
 futures-util.workspace = true

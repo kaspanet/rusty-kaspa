@@ -59,8 +59,8 @@ use consensus_core::{
 use hashes::Hash;
 use kaspa_core::{info, trace};
 use muhash::MuHash;
+use async_std::channel::Sender as AsyncStdSender;
 
-use async_std::channel::Sender as AsyncStdReceiver;
 use crossbeam_channel::Receiver as CrossbeamReceiver;
 use itertools::Itertools;
 use parking_lot::{RwLock, RwLockUpgradableReadGuard};
@@ -77,7 +77,7 @@ use std::{
 pub struct VirtualStateProcessor {
     // Channels
     receiver: CrossbeamReceiver<BlockTask>,
-    rpc_sender: AsyncStdReceiver<ConsensusNotification>,
+    utxoindex_sender: AsyncStdSender<ConsensusNotification>,
 
     // Thread pool
     pub(super) thread_pool: Arc<ThreadPool>,
@@ -129,7 +129,7 @@ impl VirtualStateProcessor {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         receiver: CrossbeamReceiver<BlockTask>,
-        rpc_sender: AsyncStdReceiver<ConsensusNotification>,
+        utxoindex_sender: AsyncStdSender<ConsensusNotification>,
         thread_pool: Arc<ThreadPool>,
         params: &Params,
         db: Arc<DB>,
@@ -197,7 +197,7 @@ impl VirtualStateProcessor {
             pruning_manager,
             parents_manager,
             depth_manager,
-            rpc_sender,
+            utxoindex_sender,
         }
     }
 
@@ -352,9 +352,9 @@ impl VirtualStateProcessor {
                 drop(virtual_write);
 
                 // we try_send to rpc receiver since this is sync without blocking.
-                match self.rpc_sender.try_send(ConsensusNotification::VirtualChangeSet(new_virtual_state.into())) {
+                match self.utxoindex_sender.try_send(ConsensusNotification::VirtualChangeSet(new_virtual_state.into())) {
                     Ok(_) => (),
-                    Err(_) => panic!("rpc receiver unreachable"), //TODO: Perhaps just ignore, if consensus does not care about rpc and other services runing.
+                    Err(_) => panic!("rpc receiver unreachable"), //TODO: Perhaps just ignore, if consensus does not care about utxoindex and other services runing.
                 }
             }
             BlockStatus::StatusDisqualifiedFromChain => {

@@ -195,6 +195,7 @@ impl ConsensusApi for TestConsensus {
     ) -> Arc<Vec<(TransactionOutpoint, UtxoEntry)>> {
         self.consensus.clone().get_virtual_utxos(from_outpoint, chunk_size)
     }
+
 }
 
 impl Service for TestConsensus {

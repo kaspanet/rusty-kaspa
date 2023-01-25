@@ -7,11 +7,12 @@ use consensus_core::notify as consensus_notify;
 // consensus_core to rpc_core
 // ----------------------------------------------------------------------------
 
-impl From<&consensus_notify::Notification> for Notification {
-    fn from(item: &consensus_notify::Notification) -> Self {
+impl From<&consensus_notify::ConsensusNotification> for Notification {
+    fn from(item: &consensus_notify::ConsensusNotification) -> Self {
         match item {
-            consensus_notify::Notification::BlockAdded(msg) => Notification::BlockAdded(msg.into()),
-            consensus_notify::Notification::NewBlockTemplate(msg) => Notification::NewBlockTemplate(msg.into()),
+            consensus_notify::ConsensusNotification::BlockAdded(msg) => Notification::BlockAdded(msg.into()),
+            consensus_notify::ConsensusNotification::NewBlockTemplate(msg) => Notification::NewBlockTemplate(msg.into()),
+            _ => todo!(),
         }
     }
 }
@@ -36,8 +37,8 @@ impl From<ArcConvert<Notification>> for Arc<Notification> {
     }
 }
 
-impl From<ArcConvert<consensus_notify::Notification>> for Arc<Notification> {
-    fn from(item: ArcConvert<consensus_notify::Notification>) -> Self {
+impl From<ArcConvert<consensus_notify::ConsensusNotification>> for Arc<Notification> {
+    fn from(item: ArcConvert<consensus_notify::ConsensusNotification>) -> Self {
         Arc::new((&**item).into())
     }
 }

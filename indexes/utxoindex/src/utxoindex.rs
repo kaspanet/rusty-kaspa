@@ -1,37 +1,57 @@
 use std::sync::Arc;
 
+use consensus_core::notify::ConsensusNotification;
 use consensus_core::{api::DynConsensus, notify::VirtualChangeSetNotification, BlockHashSet};
 use kaspa_core::trace;
 use triggered::{Listener, Trigger};
 
-use crate::model::UtxoSetByScriptPublicKey;
-
 use super::{errors::UtxoIndexError, model::UtxoIndexChanges, notify::UtxoIndexNotification, store_manager::StoreManager};
-
+use crate::model::UtxoSetByScriptPublicKey;
+use async_std::channel::{unbounded as unbounded_async_std, Receiver as AsyncStdReceiver, Sender as AsyncStdSender};
+//use tokio::{sync::mpsc::UnboundedReceiver as TokioUnboundedReceiver, task::JoinError};
 use consensus::model::stores::errors::StoreError;
 use consensus::model::stores::DB;
+use tokio::select;
+
 
 const RESYNC_CHUNK_SIZE: usize = 1000;
 
 //utxoindex needs to be created after consensus, because it get consensus as a new argument.
 //but needs to reset before consensus starts.
+#[derive(Clone)]
 pub struct UtxoIndex {
     pub consensus: DynConsensus,
+    consensus_recv: AsyncStdReceiver<ConsensusNotification>,
+    rpc_sender: AsyncStdSender<UtxoIndexNotification>,
 
-    pub shutdown_trigger: Arc<Trigger>,
-    pub shutdown_listener: Arc<Listener>,
+    pub rpc_receiver: AsyncStdReceiver<UtxoIndexNotification>,
 
-    pub stores: Arc<StoreManager>,
+    pub shutdown_trigger: Trigger,
+    pub shutdown_listener: Listener,
+    pub shutdown_finalized_trigger: Trigger,
+    pub shutdown_finalized_listener: Listener,
+
+    pub stores: StoreManager,
 }
 
 impl UtxoIndex {
-    pub fn new(consensus: DynConsensus, db: Arc<DB>) -> Self {
+
+    ///creates a new utxoindex
+    pub fn new(consensus: DynConsensus, db: Arc<DB>, consensus_recv: AsyncStdReceiver<ConsensusNotification>) -> Self {
         let (shutdown_trigger, shutdown_listener) = triggered::trigger();
+        let (shutdown_finalized_trigger, shutdown_finalized_listener) = triggered::trigger();
+        let (rpc_sender, rpc_receiver): (AsyncStdSender<UtxoIndexNotification>, AsyncStdReceiver<UtxoIndexNotification>) =
+            unbounded_async_std::<UtxoIndexNotification>();
         Self {
             consensus,
-            stores: Arc::new(StoreManager::new(db)),
-            shutdown_listener: Arc::new(shutdown_listener),
-            shutdown_trigger: Arc::new(shutdown_trigger),
+            consensus_recv,
+            stores: StoreManager::new(db),
+            shutdown_listener,
+            shutdown_trigger,
+            rpc_sender,
+            rpc_receiver,
+            shutdown_finalized_trigger,
+            shutdown_finalized_listener,
         }
     }
 
@@ -101,24 +121,23 @@ impl UtxoIndex {
     /// Updates the [UtxoIndex] via the virtual state supplied:
     /// 1) Saves utxo differences, virtul parent hashes and circulating supply differences to the database.
     /// 2) Notifies all utxo index changes to any potential listeners.
-    async fn update(&self, virtual_change_set: VirtualChangeSetNotification) -> Result<Vec<UtxoIndexNotification>, UtxoIndexError> {
+    async fn update(&self, virtual_change_set: VirtualChangeSetNotification) -> Result<(), UtxoIndexError> {
         trace!("updating utxoindex with virtual state changes");
         trace!("to remove: {} utxos", virtual_change_set.virtual_utxo_diff.remove.len());
         trace!("to add: {} utxos", virtual_change_set.virtual_utxo_diff.add.len());
 
         // `impl From<VirtualState> for UtxoIndexChanges` handles conversion see: `utxoindex::model::utxo_index_changes`.
         let utxoindex_changes: UtxoIndexChanges = virtual_change_set.into(); //`impl From<VirtualState> for UtxoIndexChanges` handles conversion see: `utxoindex::model::utxo_index_changes`.
-        let mut notifications = Vec::new();
         self.stores.update_utxo_state(utxoindex_changes.utxos.clone())?;
-        notifications.push(UtxoIndexNotification::UtxosChanged(utxoindex_changes.utxos.into()));
+        self.rpc_sender.send(UtxoIndexNotification::UtxosChanged(utxoindex_changes.utxos.into())).await?;
         if utxoindex_changes.supply > 0 {
             //force monotonic circulating supply here.
-            let circulating_supply = self.stores.update_circulating_supply(utxoindex_changes.supply)?;
+            let _circulating_supply = self.stores.update_circulating_supply(utxoindex_changes.supply)?;
             //TODO: circulating supply update notifications in rpc -> uncomment line below when done.
-            //notifications.push(UtxoIndexNotification::CirculatingSupplyNotification(CirculatingSupplyNotification::new(circulating_supply)));
+            //self.rpc_sender.send(UtxoIndexNotification::CirculatingSupplyNotification(CirculatingSupplyNotification::new(circulating_supply))).await;
         }
         self.stores.insert_tips(utxoindex_changes.tips)?; //we expect new tips with every virtual.
-        Ok(notifications)
+        Ok(())
     }
 
     /// Checks to see if the [UtxoIndex] is sync'd. this is done via comparing the utxoindex commited [VirtualParent] hashes with that of the database.
@@ -145,9 +164,8 @@ impl UtxoIndex {
         }
     }
 
-    /// syncs the database, if unsynced, and listens to consensus events or a shut-down signal and handles / processes those events.
-    pub async fn run(&self) -> Result<(), UtxoIndexError> {
-        // ensure utxoindex is sync'd before running perpetually
+    ///checks if the db is synced, if not resyncs the the database
+    pub fn maybe_reset(&self) -> Result<(), UtxoIndexError> {
         match self.is_synced() {
             Ok(_) => match self.reset() {
                 Ok(_) => Ok(()),
@@ -162,5 +180,39 @@ impl UtxoIndex {
                 return Err(err);
             }
         }
+    }
+
+    ///triggers the shutdown which breaks the async event processing loop
+    pub fn signal_shutdown(&self) {
+        self.shutdown_trigger.trigger();
+    }
+
+    ///resyncs the utxoindex database, if not synced and processes events.
+    pub fn run(&self) {
+        self.maybe_reset().expect("expected maybe_reset not to err");
+        self.process_events();
+    }
+
+    /// syncs the database, if unsynced, and listens to consensus events or a shut-down signal and handles / processes those events.
+    pub fn process_events(&self) {
+        let mut _self = self.clone();
+        tokio::spawn( async move { loop {
+            select! {
+                _shutdown_signal = async { _self.shutdown_listener.wait() } => break,
+
+                consensus_notification = _self.consensus_recv.recv() => {
+                    match consensus_notification {
+                        Ok(ref msg) => match msg {
+                            ConsensusNotification::VirtualChangeSet(virtual_change_set) => _self.update(virtual_change_set.clone()).await.expect("expected update"),
+                            ConsensusNotification::PruningPointUTXOSetOverride(_) => _self.reset().expect("expected reset"),
+                            _ => panic!("unexpected consensus notification {:?}", consensus_notification),
+                        }
+                        Err(err) => panic!("{}", err),
+                        }
+                    }
+                };
+            }
+            _self.shutdown_finalized_trigger.trigger();
+        });
     }
 }

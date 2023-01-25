@@ -13,23 +13,24 @@ impl AsyncService for UtxoIndex {
 
     fn start(self: Arc<UtxoIndex>) -> AsyncServiceFuture {
         trace!("starting {}", UTXOINDEX);
-        let shutdown_listener = self.shutdown_listener.clone();
+        let shutdown_finalized_listener = self.shutdown_finalized_listener.clone();
         Box::pin(async move {
-            self.run().await.expect("expected utxo start");
-            shutdown_listener.wait();
+            self.run();
+            shutdown_finalized_listener.wait();
         })
     }
 
     fn signal_exit(self: Arc<Self>) {
         trace!("signaling {} exit", UTXOINDEX);
-        self.shutdown_trigger.trigger();
+        self.signal_shutdown();
     }
 
     fn stop(self: Arc<UtxoIndex>) -> AsyncServiceFuture {
         trace!("stopping {0}", UTXOINDEX);
+        let shutdown_finalized_listener = self.shutdown_finalized_listener.clone();
         Box::pin(async move {
-            self.shutdown_trigger.trigger();
-            self.shutdown_listener.wait();
+            self.signal_shutdown();
+            shutdown_finalized_listener.wait();
         })
     }
 }

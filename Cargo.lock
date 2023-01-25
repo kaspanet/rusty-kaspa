@@ -1574,6 +1574,7 @@ dependencies = [
 name = "kaspad"
 version = "0.1.0"
 dependencies = [
+ "async-std",
  "clap 4.0.29",
  "consensus",
  "consensus-core",
@@ -1581,6 +1582,7 @@ dependencies = [
  "futures-util",
  "hashes",
  "kaspa-core",
+ "kaspa-utils",
  "log",
  "num-format",
  "rand 0.8.5",
@@ -2569,9 +2571,9 @@ checksum = "e25dfac463d778e353db5be2449d1cce89bd6fd23c9f1ea21310ce6e5a1b29c4"
 
 [[package]]
 name = "serde"
-version = "1.0.148"
+version = "1.0.152"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e53f64bb4ba0191d6d0676e1b141ca55047d83b74f5607e6d8eb88126c52c2dc"
+checksum = "bb7d1f0d3021d347a83e556fc4683dea2ea09d87bccdf88ff5c12545d89d5efb"
 dependencies = [
  "serde_derive",
 ]
@@ -2587,9 +2589,9 @@ dependencies = [
 
 [[package]]
 name = "serde_derive"
-version = "1.0.148"
+version = "1.0.152"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a55492425aa53521babf6137309e7d34c20bbfbbfcfe2c7f3a047fd1f6b92c0c"
+checksum = "af487d118eecd09402d70a5d72551860e788df87b464af30e5ea6a38c75c541e"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3215,15 +3217,17 @@ checksum = "f962df74c8c05a667b5ee8bcf162993134c104e96440b663c8daa176dc772d8c"
 name = "utxoindex"
 version = "0.1.0"
 dependencies = [
+ "async-std",
  "consensus",
  "consensus-core",
  "hashes",
  "kaspa-core",
  "log",
  "parking_lot",
+ "rand 0.8.5",
  "rocksdb",
- "serde",
  "thiserror",
+ "tokio",
  "triggered",
 ]
 

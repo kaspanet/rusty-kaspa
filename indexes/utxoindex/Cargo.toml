@@ -1,5 +1,6 @@
 [package]
 name = "utxoindex"
+description = "utxoindex for rusty-kaspa"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -11,12 +12,14 @@ hashes.workspace = true
 thiserror.workspace = true
 consensus-core.workspace = true
 consensus.workspace = true
+tokio.workspace = true
 kaspa-core.workspace = true
+async-std.workspace = true
 log.workspace = true
+rand.workspace = true
 
 rocksdb = "0.19"
 triggered = "0.1"
 parking_lot = "0.12"
-serde = { version = "1.0", features = ["derive"] }
-#[build-dependencies]
-#tonic-build = { version = "0.8" }
+#serde = { version = "1.0.152", features = ["derive"] }
+#tokio = { workspace = true, features = ["mpsc", "macros"] }

@@ -4,7 +4,6 @@ extern crate hashes;
 
 use clap::Parser;
 use consensus::model::stores::DB;
-use consensus_core::api::ConsensusApi;
 use kaspa_core::{core::Core, signals::Signals, task::runtime::AsyncRuntime};
 use std::fs;
 use std::path::PathBuf;
@@ -83,8 +82,8 @@ pub fn main() {
     assert!(!db_dir.to_str().unwrap().is_empty());
     info!("Application directory: {}", app_dir.as_display());
     info!("Data directory: {}", db_dir.as_display());
-    info!("Consensus {}").consensus_store.as_display();
-    info!("Utxoindex {}").utxoindex_store.as_display();
+    info!("Consensus {}", consensus_store.as_display());
+    info!("Utxoindex {}", utxoindex_store.as_display());
     fs::create_dir_all(consensus_store.as_path()).unwrap();
     fs::create_dir_all(utxoindex_store.as_path()).unwrap();
     let grpc_server_addr = args.rpc_listen.unwrap_or_else(|| "127.0.0.1:16610".to_string()).parse().unwrap();
@@ -101,9 +100,11 @@ pub fn main() {
     let monitor = Arc::new(ConsensusMonitor::new(consensus.processing_counters().clone()));
 
     let utxoindex_db = Arc::new(DB::open_default(utxoindex_store.to_str().unwrap()).unwrap());
-    let utxoindex = Arc::new(utxoindex::utxoindex::UtxoIndex::new(utxoindex_db, utxoindex_db));
+    let utxoindex = Arc::new(UtxoIndex::new(consensus.clone(), utxoindex_db, consensus.utxoindex_receiver.clone()));
 
-    let rpc_core_server = Arc::new(RpcCoreServer::new(consensus.clone(), utxoindex.clone(), consensus.rpc_receiver.clone()));
+    let notification_channel = ConsensusNotificationChannel::default();
+
+    let rpc_core_server = Arc::new(RpcCoreServer::new(consensus.clone(), notification_channel.receiver()));
     let grpc_server = Arc::new(GrpcServer::new(grpc_server_addr, rpc_core_server.service()));
 
     // Create an async runtime and register the top-level async services
