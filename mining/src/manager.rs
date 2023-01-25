@@ -5,7 +5,7 @@ use crate::{
     cache::BlockTemplateCache,
     errors::MiningManagerResult,
     mempool::{config::Config, errors::RuleResult, Mempool},
-    model::owner_txs::{OwnerSetTransactions, ScriptPublicKeySet},
+    model::owner_txs::{GroupedOwnerTransactions, ScriptPublicKeySet},
 };
 use consensus_core::{
     api::DynConsensus,
@@ -149,7 +149,7 @@ impl MiningManager {
         script_public_keys: &ScriptPublicKeySet,
         include_transaction_pool: bool,
         include_orphan_pool: bool,
-    ) -> OwnerSetTransactions {
+    ) -> GroupedOwnerTransactions {
         self.mempool.read().get_transactions_by_addresses(script_public_keys, include_transaction_pool, include_orphan_pool)
     }
 
@@ -158,6 +158,7 @@ impl MiningManager {
     }
 
     pub fn handle_new_block_transactions(&self, block_transactions: &[Transaction]) -> MiningManagerResult<Vec<MutableTransaction>> {
+        // TODO: should use tx acceptance data to verify that new block txs are actually accepted into virtual state.
         Ok(self.mempool.write().handle_new_block_transactions(block_transactions)?)
     }
 

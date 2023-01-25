@@ -24,12 +24,15 @@ impl Mempool {
             // The redeemers of removed transactions are removed too so the following call may return a None.
             if let Some(mut transaction) = self.transaction_pool.all_mut().remove(transaction_id) {
                 let is_valid = self.revalidate_transaction(&mut transaction.mtx)?;
-                // Then put the transaction back into the storage map.
+                // After mutating we can now put the transaction back into the storage map.
+                // The alternative would be to wrap transactions in the pools with a RefCell.
                 self.transaction_pool.all_mut().insert(*transaction_id, transaction);
                 if is_valid {
                     // A following transaction should not remove this one from the pool since we process
                     // in topological order
-                    // TODO: consider the scenario of two high priority txs sandwiching a low one
+                    // TODO: consider the scenario of two high priority txs sandwiching a low one, where
+                    // in this case topology order is not guaranteed since we topologically sorted only
+                    // high-priority transactions
                     valid_ids.push(*transaction_id);
                 } else {
                     debug!("Removing transaction {0}, it failed revalidation", transaction_id);

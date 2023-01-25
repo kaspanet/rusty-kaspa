@@ -1,4 +1,4 @@
-use crate::model::owner_txs::{OwnerSetTransactions, ScriptPublicKeySet};
+use crate::model::owner_txs::{GroupedOwnerTransactions, ScriptPublicKeySet};
 
 use self::{
     config::Config,
@@ -92,8 +92,8 @@ impl Mempool {
         script_public_keys: &ScriptPublicKeySet,
         include_transaction_pool: bool,
         include_orphan_pool: bool,
-    ) -> OwnerSetTransactions {
-        let mut owner_set = OwnerSetTransactions::default();
+    ) -> GroupedOwnerTransactions {
+        let mut owner_set = GroupedOwnerTransactions::default();
         if include_transaction_pool {
             self.transaction_pool.fill_owner_set_transactions(script_public_keys, &mut owner_set);
         }

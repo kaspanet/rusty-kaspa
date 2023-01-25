@@ -19,8 +19,9 @@ impl OwnerTransactions {
     }
 }
 
+/// Transactions grouped by owning addresses
 #[derive(Default)]
-pub struct OwnerSetTransactions {
+pub struct GroupedOwnerTransactions {
     pub transactions: HashMap<TransactionId, MutableTransaction>,
     pub owners: HashMap<ScriptPublicKey, OwnerTransactions>,
 }

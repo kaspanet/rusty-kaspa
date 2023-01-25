@@ -2,7 +2,7 @@ use std::collections::{hash_set::Iter, HashMap, HashSet};
 
 use super::{map::MempoolTransactionCollection, tx::MempoolTransaction};
 use crate::model::{
-    owner_txs::{OwnerSetTransactions, ScriptPublicKeySet},
+    owner_txs::{GroupedOwnerTransactions, ScriptPublicKeySet},
     topological_index::TopologicalIndex,
     TransactionIdSet,
 };
@@ -86,7 +86,7 @@ pub(crate) trait Pool {
     }
 
     /// Fills owner transactions for a set of script public keys.
-    fn fill_owner_set_transactions(&self, script_public_keys: &ScriptPublicKeySet, owner_set: &mut OwnerSetTransactions) {
+    fn fill_owner_set_transactions(&self, script_public_keys: &ScriptPublicKeySet, owner_set: &mut GroupedOwnerTransactions) {
         script_public_keys.iter().for_each(|script_public_key| {
             let owner = owner_set.owners.entry(script_public_key.clone()).or_default();
 
