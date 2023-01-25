@@ -8,7 +8,7 @@ use consensus_core::{
     api::DynConsensus,
     tx::{MutableTransaction, TransactionId},
 };
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub(crate) mod check_transaction_standard;
 pub mod config;
@@ -37,7 +37,7 @@ pub(crate) mod validate_and_insert_transaction;
 /// - Transactions received through P2P have **low-priority**. They expire after
 ///   60 seconds and are removed if not inserted in a block for mining.
 pub(crate) struct Mempool {
-    config: Rc<Config>,
+    config: Arc<Config>,
     consensus: DynConsensus,
     transaction_pool: TransactionsPool,
     orphan_pool: OrphanPool,
@@ -45,7 +45,7 @@ pub(crate) struct Mempool {
 
 impl Mempool {
     pub(crate) fn new(consensus: DynConsensus, config: Config) -> Self {
-        let config = Rc::new(config);
+        let config = Arc::new(config);
         let transaction_pool = TransactionsPool::new(consensus.clone(), config.clone());
         let orphan_pool = OrphanPool::new(consensus.clone(), config.clone());
         Self { config, consensus, transaction_pool, orphan_pool }

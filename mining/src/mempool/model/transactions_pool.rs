@@ -14,7 +14,7 @@ use consensus_core::{
 use kaspa_core::{debug, warn};
 use std::{
     collections::{hash_map::Keys, hash_set::Iter},
-    rc::Rc,
+    sync::Arc,
     time::SystemTime,
 };
 
@@ -43,7 +43,7 @@ use super::pool::TransactionsEdges;
 ///   requiring smart pointers eventually or an indirection stage too.
 pub(crate) struct TransactionsPool {
     consensus: DynConsensus,
-    config: Rc<Config>,
+    config: Arc<Config>,
 
     /// Store of transactions
     all_transactions: MempoolTransactionCollection,
@@ -61,7 +61,7 @@ pub(crate) struct TransactionsPool {
 }
 
 impl TransactionsPool {
-    pub(crate) fn new(consensus: DynConsensus, config: Rc<Config>) -> Self {
+    pub(crate) fn new(consensus: DynConsensus, config: Arc<Config>) -> Self {
         Self {
             consensus,
             config,

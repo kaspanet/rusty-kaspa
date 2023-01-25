@@ -13,7 +13,7 @@ use consensus_core::{
     tx::{TransactionId, TransactionOutpoint},
 };
 use kaspa_core::warn;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use super::pool::TransactionsEdges;
 
@@ -34,7 +34,7 @@ use super::pool::TransactionsEdges;
 ///   to transactions pool with no reconstruction nor cloning.
 pub(crate) struct OrphanPool {
     consensus: DynConsensus,
-    config: Rc<Config>,
+    config: Arc<Config>,
     all_orphans: MempoolTransactionCollection,
     /// Transactions dependencies formed by outputs present in pool - successor relations.
     chained_orphans: TransactionsEdges,
@@ -43,7 +43,7 @@ pub(crate) struct OrphanPool {
 }
 
 impl OrphanPool {
-    pub(crate) fn new(consensus: DynConsensus, config: Rc<Config>) -> Self {
+    pub(crate) fn new(consensus: DynConsensus, config: Arc<Config>) -> Self {
         Self {
             consensus,
             config,

@@ -1,7 +1,4 @@
-use std::{
-    rc::Rc,
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::block_template::selector::TransactionsSelector;
 
@@ -110,9 +107,9 @@ impl BlockTemplateBuilder {
     pub(crate) fn modify_block_template(
         &self,
         new_miner_data: &MinerData,
-        block_template_to_modify: Rc<BlockTemplate>,
+        block_template_to_modify: &BlockTemplate,
     ) -> BuilderResult<BlockTemplate> {
-        let mut block_template = block_template_to_modify.as_ref().clone();
+        let mut block_template = block_template_to_modify.clone();
 
         // The first transaction is always the coinbase transaction
         let coinbase_tx = &mut block_template.block.transactions[COINBASE_TRANSACTION_INDEX];

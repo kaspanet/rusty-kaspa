@@ -54,7 +54,7 @@ impl MiningManager {
             }
             // Miner data is new -- make the minimum changes required
             // Note the call returns a modified clone of the cached block template
-            let block_template = self.block_template_builder.modify_block_template(miner_data, immutable_template)?;
+            let block_template = self.block_template_builder.modify_block_template(miner_data, &immutable_template)?;
 
             // No point in updating cache since we have no reason to believe this coinbase will be used more
             // than the previous one, and we want to maintain the original template caching time
@@ -112,7 +112,7 @@ impl MiningManager {
     ///
     /// The returned transactions are clones of objects owned by the mempool.
     pub fn validate_and_insert_transaction(
-        &mut self,
+        &self,
         transaction: MutableTransaction,
         is_high_priority: bool,
         allow_orphan: bool,
