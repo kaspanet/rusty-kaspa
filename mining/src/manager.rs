@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use crate::{
-    block_template::{builder::BlockTemplateBuilder, errors::BuilderError},
+    block_template::{builder::BlockTemplateBuilder, errors::BuilderError, selector::SelectorSourceTransaction},
     cache::BlockTemplateCache,
     errors::MiningManagerResult,
     mempool::{config::Config, errors::RuleResult, Mempool},
@@ -95,7 +95,7 @@ impl MiningManager {
         }
     }
 
-    pub(crate) fn block_candidate_transactions(&self) -> Vec<MutableTransaction> {
+    pub(crate) fn block_candidate_transactions(&self) -> Vec<SelectorSourceTransaction> {
         self.mempool.read().block_candidate_transactions()
     }
 

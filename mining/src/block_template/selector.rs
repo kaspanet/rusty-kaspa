@@ -1,6 +1,6 @@
 use kaspa_core::trace;
 use rand::Rng;
-use std::{collections::HashMap, vec};
+use std::{collections::HashMap, sync::Arc, vec};
 
 use super::{
     model::tx::{CandidateList, SelectableTransaction, SelectableTransactions, TransactionIndex},
@@ -25,10 +25,30 @@ const ALPHA: i32 = 3;
 /// if REBALANCE_THRESHOLD is 0.95, there's a 1-in-20 chance of collision.
 const REBALANCE_THRESHOLD: f64 = 0.95;
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct SelectorSourceTransaction {
+    /// The actual transaction
+    pub tx: Arc<Transaction>,
+    /// Populated fee
+    pub calculated_fee: u64,
+    /// Populated mass
+    pub calculated_mass: u64,
+}
+
+impl SelectorSourceTransaction {
+    pub(crate) fn from_mutable(tx: &MutableTransaction) -> Self {
+        Self {
+            tx: tx.tx.clone(),
+            calculated_fee: tx.calculated_fee.expect("fee is expected to be populated"),
+            calculated_mass: tx.calculated_mass.expect("mass is expected to be populated"),
+        }
+    }
+}
+
 pub(crate) struct TransactionsSelector {
     policy: Policy,
     /// Transaction store
-    transactions: Vec<MutableTransaction>,
+    transactions: Vec<SelectorSourceTransaction>,
     /// Selectable transactions store
     selectable_txs: SelectableTransactions,
 
@@ -39,7 +59,7 @@ pub(crate) struct TransactionsSelector {
 }
 
 impl TransactionsSelector {
-    pub(crate) fn new(policy: Policy, mut transactions: Vec<MutableTransaction>) -> Self {
+    pub(crate) fn new(policy: Policy, mut transactions: Vec<SelectorSourceTransaction>) -> Self {
         // Sort the transactions by subnetwork_id.
         transactions.sort_by(|a, b| a.tx.subnetwork_id.cmp(&b.tx.subnetwork_id));
 
@@ -109,9 +129,9 @@ impl TransactionsSelector {
 
             // Enforce maximum transaction mass per block.
             // Also check for overflow.
-            let next_total_mass = self.total_mass.checked_add(selected_tx.calculated_mass.unwrap());
+            let next_total_mass = self.total_mass.checked_add(selected_tx.calculated_mass);
             if next_total_mass.is_none() || next_total_mass.unwrap() > self.policy.max_block_mass {
-                trace!("Tx {0} would exceed the max block mass. As such, stopping.", selected_tx.id());
+                trace!("Tx {0} would exceed the max block mass. As such, stopping.", selected_tx.tx.id());
                 break;
             }
 
@@ -125,7 +145,7 @@ impl TransactionsSelector {
                 if next_gas_usage.is_none() || next_gas_usage.unwrap() > self.selectable_txs[selected_candidate.index].gas_limit {
                     trace!(
                         "Tx {0} would exceed the gas limit in subnetwork {1}. Removing all remaining txs from this subnetwork.",
-                        selected_tx.id(),
+                        selected_tx.tx.id(),
                         subnetwork_id
                     );
                     for i in selected_candidate_idx..candidate_list.candidates.len() {
@@ -152,13 +172,13 @@ impl TransactionsSelector {
             // save the masses, fees, and signature operation counts to the
             // result.
             self.selected_txs.push(selected_candidate.index);
-            self.total_mass += selected_tx.calculated_mass.unwrap();
-            self.total_fees += selected_tx.calculated_fee.unwrap();
+            self.total_mass += selected_tx.calculated_mass;
+            self.total_fees += selected_tx.calculated_fee;
 
             trace!(
                 "Adding tx {0} (feePerMegaGram {1})",
-                selected_tx.id(),
-                selected_tx.calculated_fee.unwrap() * 1_000_000 / selected_tx.calculated_mass.unwrap()
+                selected_tx.tx.id(),
+                selected_tx.calculated_fee * 1_000_000 / selected_tx.calculated_mass
             );
 
             // Mark for deletion
@@ -185,10 +205,10 @@ impl TransactionsSelector {
     /// calc_tx_value calculates a value to be used in transaction selection.
     /// The higher the number the more likely it is that the transaction will be
     /// included in the block.
-    fn calc_tx_value(&self, transaction: &MutableTransaction) -> f64 {
+    fn calc_tx_value(&self, transaction: &SelectorSourceTransaction) -> f64 {
         let mass_limit = self.policy.max_block_mass as f64;
-        let mass = transaction.calculated_mass.unwrap() as f64;
-        let fee = transaction.calculated_fee.unwrap() as f64;
+        let mass = transaction.calculated_mass as f64;
+        let fee = transaction.calculated_fee as f64;
         if transaction.tx.subnetwork_id.is_builtin_or_native() {
             fee / mass / mass_limit
         } else {

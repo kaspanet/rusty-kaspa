@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use crate::{
-        block_template::builder::BlockTemplateBuilder,
+        block_template::{builder::BlockTemplateBuilder, selector::SelectorSourceTransaction},
         errors::{MiningManagerError, MiningManagerResult},
         manager::MiningManager,
         mempool::{
@@ -692,7 +692,7 @@ mod tests {
         );
         parent_txs.iter().for_each(|x| {
             assert!(
-                contained_by_mtxs(x.id(), &transactions),
+                transactions.iter().any(|tx| tx.tx.id() == x.id()),
                 "the parent transaction {} should be candidate for the next block template",
                 x.id()
             );
@@ -707,7 +707,7 @@ mod tests {
     fn sweep_compare_modified_template_to_built(
         address_prefix: Prefix,
         builder: &BlockTemplateBuilder,
-        transactions: Vec<MutableTransaction>,
+        transactions: Vec<SelectorSourceTransaction>,
     ) {
         for _ in 0..4 {
             // Run a few times to get more randomness
@@ -725,7 +725,7 @@ mod tests {
     fn compare_modified_template_to_built(
         address_prefix: Prefix,
         builder: &BlockTemplateBuilder,
-        transactions: Vec<MutableTransaction>,
+        transactions: Vec<SelectorSourceTransaction>,
         first_op: OpType,
         second_op: OpType,
     ) {

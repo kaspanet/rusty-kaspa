@@ -1,4 +1,5 @@
 use crate::{
+    block_template::selector::SelectorSourceTransaction,
     mempool::{
         config::Config,
         errors::{RuleError, RuleResult},
@@ -211,11 +212,13 @@ impl TransactionsPool {
 
     /// all_ready_transactions returns all fully populated mempool transactions having no parents in the mempool.
     /// These transactions are ready for being inserted in a block template.
-    pub(crate) fn all_ready_transactions(&self) -> Vec<MutableTransaction> {
+    pub(crate) fn all_ready_transactions(&self) -> Vec<SelectorSourceTransaction> {
         // The returned transactions are leaving the mempool so they are cloned
         self.all_transactions
             .values()
-            .filter_map(|x| if self.is_transaction_ready(&x.id()) { Some(x.mtx.clone()) } else { None })
+            .filter_map(
+                |x| if self.is_transaction_ready(&x.id()) { Some(SelectorSourceTransaction::from_mutable(&x.mtx)) } else { None },
+            )
             .collect()
     }
 
