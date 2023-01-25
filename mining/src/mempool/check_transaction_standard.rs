@@ -420,7 +420,7 @@ mod tests {
         }
 
         fn new_mtx(tx: Transaction, mass: u64) -> MutableTransaction {
-            let mut mtx = MutableTransaction::new(tx);
+            let mut mtx = MutableTransaction::from_tx(tx);
             mtx.calculated_mass = Some(mass);
             mtx
         }

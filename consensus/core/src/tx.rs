@@ -327,11 +327,18 @@ impl<'a> VerifiableTransaction for ValidatedTransaction<'a> {
     }
 }
 
-/// Represents a mutable owned transaction along with partially filled UTXO entry data and optional fee and mass
+impl AsRef<Transaction> for Transaction {
+    fn as_ref(&self) -> &Transaction {
+        self
+    }
+}
+
+/// Represents a generic mutable/readonly/pointer transaction type along
+/// with partially filled UTXO entry data and optional fee and mass
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct MutableTransaction {
+pub struct MutableTransaction<T: AsRef<Transaction> = std::sync::Arc<Transaction>> {
     /// The inner transaction
-    pub tx: Transaction,
+    pub tx: T,
     /// Partially filled UTXO entry data
     pub entries: Vec<Option<UtxoEntry>>,
     /// Populated fee
@@ -340,18 +347,18 @@ pub struct MutableTransaction {
     pub calculated_mass: Option<u64>,
 }
 
-impl MutableTransaction {
-    pub fn new(tx: Transaction) -> Self {
-        let num_inputs = tx.inputs.len();
+impl<T: AsRef<Transaction>> MutableTransaction<T> {
+    pub fn new(tx: T) -> Self {
+        let num_inputs = tx.as_ref().inputs.len();
         Self { tx, entries: vec![None; num_inputs], calculated_fee: None, calculated_mass: None }
     }
 
     pub fn id(&self) -> TransactionId {
-        self.tx.id()
+        self.tx.as_ref().id()
     }
 
-    pub fn with_entries(tx: Transaction, entries: Vec<UtxoEntry>) -> Self {
-        assert_eq!(tx.inputs.len(), entries.len());
+    pub fn with_entries(tx: T, entries: Vec<UtxoEntry>) -> Self {
+        assert_eq!(tx.as_ref().inputs.len(), entries.len());
         Self { tx, entries: entries.into_iter().map(Some).collect(), calculated_fee: None, calculated_mass: None }
     }
 
@@ -363,7 +370,7 @@ impl MutableTransaction {
     }
 
     pub fn is_verifiable(&self) -> bool {
-        assert_eq!(self.entries.len(), self.tx.inputs.len());
+        assert_eq!(self.entries.len(), self.tx.as_ref().inputs.len());
         self.entries.iter().all(|e| e.is_some())
     }
 
@@ -372,11 +379,14 @@ impl MutableTransaction {
     }
 
     pub fn missing_outpoints(&self) -> impl Iterator<Item = TransactionOutpoint> + '_ {
-        assert_eq!(self.entries.len(), self.tx.inputs.len());
-        self.entries
-            .iter()
-            .enumerate()
-            .filter_map(|(i, entry)| if entry.is_none() { Some(self.tx.inputs[i].previous_outpoint) } else { None })
+        assert_eq!(self.entries.len(), self.tx.as_ref().inputs.len());
+        self.entries.iter().enumerate().filter_map(|(i, entry)| {
+            if entry.is_none() {
+                Some(self.tx.as_ref().inputs[i].previous_outpoint)
+            } else {
+                None
+            }
+        })
     }
 
     pub fn clear_entries(&mut self) {
@@ -387,22 +397,33 @@ impl MutableTransaction {
 }
 
 /// Private struct used to wrap a [`MutableTransaction`] as a [`VerifiableTransaction`]
-struct MutableTransactionVerifiableWrapper<'a> {
-    inner: &'a MutableTransaction,
+struct MutableTransactionVerifiableWrapper<'a, T: AsRef<Transaction>> {
+    inner: &'a MutableTransaction<T>,
 }
 
-impl VerifiableTransaction for MutableTransactionVerifiableWrapper<'_> {
+impl<T: AsRef<Transaction>> VerifiableTransaction for MutableTransactionVerifiableWrapper<'_, T> {
     fn tx(&self) -> &Transaction {
-        &self.inner.tx
+        self.inner.tx.as_ref()
     }
 
     fn populated_input(&self, index: usize) -> (&TransactionInput, &UtxoEntry) {
         (
-            &self.inner.tx.inputs[index],
+            &self.inner.tx.as_ref().inputs[index],
             self.inner.entries[index].as_ref().expect("expected to be called only following full UTXO population"),
         )
     }
 }
+
+/// Specialized impl for `T=Arc<Transaction>`
+impl MutableTransaction {
+    pub fn from_tx(tx: Transaction) -> Self {
+        Self::new(std::sync::Arc::new(tx))
+    }
+}
+
+/// Alias for a fully mutable and owned transaction which can be populated with external data
+/// and can also be modified internally and signed etc.
+pub type SignableTransaction = MutableTransaction<Transaction>;
 
 #[cfg(test)]
 mod tests {

@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::mempool::{
     errors::{RuleError, RuleResult},
     model::{pool::Pool, tx::MempoolTransaction},
@@ -12,10 +14,19 @@ use kaspa_core::info;
 impl Mempool {
     pub(crate) fn validate_and_insert_transaction(
         &mut self,
+        transaction: Transaction,
+        is_high_priority: bool,
+        allow_orphan: bool,
+    ) -> RuleResult<Vec<Arc<Transaction>>> {
+        self.validate_and_insert_mutable_transaction(MutableTransaction::from_tx(transaction), is_high_priority, allow_orphan)
+    }
+
+    pub(crate) fn validate_and_insert_mutable_transaction(
+        &mut self,
         mut transaction: MutableTransaction,
         is_high_priority: bool,
         allow_orphan: bool,
-    ) -> RuleResult<Vec<MutableTransaction>> {
+    ) -> RuleResult<Vec<Arc<Transaction>>> {
         // Populate mass in the beginning, it will be used in multiple places throughout the validation and insertion.
         transaction.calculated_mass = Some(self.consensus().calculate_transaction_mass(&transaction.tx));
 
@@ -77,7 +88,7 @@ impl Mempool {
     pub(crate) fn process_orphans_after_accepted_transaction(
         &mut self,
         accepted_transaction: &Transaction,
-    ) -> RuleResult<Vec<MutableTransaction>> {
+    ) -> RuleResult<Vec<Arc<Transaction>>> {
         // Rust rewrite:
         // - The function is relocated from OrphanPool into Mempool
         let mut added_transactions = Vec::new();
@@ -87,7 +98,7 @@ impl Mempool {
 
             // The returned transactions are leaving the mempool but must also be added to
             // the transaction pool so we clone.
-            added_transactions.push(transaction.mtx.clone());
+            added_transactions.push(transaction.mtx.tx.clone());
 
             self.transaction_pool.add_mempool_transaction(transaction)?;
         }

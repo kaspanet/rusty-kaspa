@@ -1,5 +1,7 @@
 // TODO: add integration tests
 
+use std::sync::Arc;
+
 use crate::{
     block_template::{builder::BlockTemplateBuilder, errors::BuilderError},
     cache::BlockTemplateCache,
@@ -114,11 +116,22 @@ impl MiningManager {
     /// The returned transactions are clones of objects owned by the mempool.
     pub fn validate_and_insert_transaction(
         &self,
+        transaction: Transaction,
+        is_high_priority: bool,
+        allow_orphan: bool,
+    ) -> MiningManagerResult<Vec<Arc<Transaction>>> {
+        Ok(self.mempool.write().validate_and_insert_transaction(transaction, is_high_priority, allow_orphan)?)
+    }
+
+    /// Exposed only for tests. Ordinary users should let the mempool create the mutable tx internally
+    #[cfg(test)]
+    pub fn validate_and_insert_mutable_transaction(
+        &self,
         transaction: MutableTransaction,
         is_high_priority: bool,
         allow_orphan: bool,
-    ) -> MiningManagerResult<Vec<MutableTransaction>> {
-        Ok(self.mempool.write().validate_and_insert_transaction(transaction, is_high_priority, allow_orphan)?)
+    ) -> MiningManagerResult<Vec<Arc<Transaction>>> {
+        Ok(self.mempool.write().validate_and_insert_mutable_transaction(transaction, is_high_priority, allow_orphan)?)
     }
 
     /// Try to return a mempool transaction by its id.
@@ -158,7 +171,7 @@ impl MiningManager {
         self.mempool.read().transaction_count(include_transaction_pool, include_orphan_pool)
     }
 
-    pub fn handle_new_block_transactions(&self, block_transactions: &[Transaction]) -> MiningManagerResult<Vec<MutableTransaction>> {
+    pub fn handle_new_block_transactions(&self, block_transactions: &[Transaction]) -> MiningManagerResult<Vec<Arc<Transaction>>> {
         // TODO: should use tx acceptance data to verify that new block txs are actually accepted into virtual state.
         Ok(self.mempool.write().handle_new_block_transactions(block_transactions)?)
     }

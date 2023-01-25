@@ -174,7 +174,7 @@ impl TransactionsSelector {
 
     fn get_transactions(&self) -> Vec<Transaction> {
         // These transactions leave the selector so we clone
-        self.selected_txs.iter().map(|x| self.transactions[*x].tx.clone()).collect()
+        self.selected_txs.iter().map(|x| self.transactions[*x].tx.as_ref().clone()).collect()
     }
 
     fn reset(&mut self) {

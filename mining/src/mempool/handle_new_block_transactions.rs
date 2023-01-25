@@ -1,9 +1,9 @@
 use crate::mempool::{errors::RuleResult, Mempool};
-use consensus_core::{tx::MutableTransaction, tx::Transaction};
-use std::collections::HashSet;
+use consensus_core::tx::Transaction;
+use std::{collections::HashSet, sync::Arc};
 
 impl Mempool {
-    pub(crate) fn handle_new_block_transactions(&mut self, block_transactions: &[Transaction]) -> RuleResult<Vec<MutableTransaction>> {
+    pub(crate) fn handle_new_block_transactions(&mut self, block_transactions: &[Transaction]) -> RuleResult<Vec<Arc<Transaction>>> {
         let mut accepted_orphans = vec![];
         for transaction in block_transactions[1..].iter() {
             let transaction_id = transaction.id();

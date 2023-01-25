@@ -23,7 +23,7 @@ use std::{collections::HashMap, sync::Arc, time::SystemTime};
 use super::coinbase_mock::CoinbaseManagerMock;
 
 pub(crate) struct ConsensusMock {
-    transactions: RwLock<HashMap<TransactionId, Transaction>>,
+    transactions: RwLock<HashMap<TransactionId, Arc<Transaction>>>,
     statuses: RwLock<HashMap<TransactionId, TxResult<()>>>,
     utxos: RwLock<UtxoCollection>,
 }
@@ -41,7 +41,8 @@ impl ConsensusMock {
         self.statuses.write().insert(transaction_id, status);
     }
 
-    pub(crate) fn add_transaction(&self, transaction: MutableTransaction, block_daa_score: u64) {
+    pub(crate) fn add_transaction(&self, transaction: Transaction, block_daa_score: u64) {
+        let transaction = MutableTransaction::from_tx(transaction);
         let mut transactions = self.transactions.write();
         let mut utxos = self.utxos.write();
 

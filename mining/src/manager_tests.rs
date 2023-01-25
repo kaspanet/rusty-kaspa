@@ -40,7 +40,7 @@ mod tests {
         let mining_manager = MiningManager::new(consensus.clone(), TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS, None);
         let transactions_to_insert = (0..TX_COUNT).into_iter().map(|i| create_transaction_with_utxo_entry(i, 0)).collect::<Vec<_>>();
         for transaction in transactions_to_insert.iter() {
-            let result = mining_manager.validate_and_insert_transaction(transaction.clone(), false, true);
+            let result = mining_manager.validate_and_insert_mutable_transaction(transaction.clone(), false, true);
             assert!(result.is_ok(), "inserting a valid transaction failed");
         }
 
@@ -104,12 +104,12 @@ mod tests {
         // Build an invalid transaction with some gas and inform the consensus mock about the result it should return
         // when the mempool will submit this transaction for validation.
         let mut transaction = create_transaction_with_utxo_entry(0, 1);
-        transaction.tx.gas = 1000;
+        Arc::make_mut(&mut transaction.tx).gas = 1000;
         let status = Err(TxRuleError::TxHasGas);
         consensus.set_status(transaction.id(), status.clone());
 
         // Try validate and insert the transaction into the mempool
-        let result = into_status(mining_manager.validate_and_insert_transaction(transaction.clone(), false, true));
+        let result = into_status(mining_manager.validate_and_insert_transaction(transaction.tx.as_ref().clone(), false, true));
 
         assert_eq!(
             status, result,
@@ -130,11 +130,11 @@ mod tests {
         let transaction = create_transaction_with_utxo_entry(0, 0);
 
         // submit the transaction to the mempool
-        let result = mining_manager.validate_and_insert_transaction(transaction.clone(), false, true);
+        let result = mining_manager.validate_and_insert_mutable_transaction(transaction.clone(), false, true);
         assert!(result.is_ok(), "mempool should have accepted a valid transaction but did not");
 
         // submit the same transaction again to the mempool
-        let result = mining_manager.validate_and_insert_transaction(transaction.clone(), false, true);
+        let result = mining_manager.validate_and_insert_transaction(transaction.tx.as_ref().clone(), false, true);
         assert!(result.is_err(), "mempool should refuse a double submit of the same transaction but accepts it");
         if let Err(MiningManagerError::MempoolError(RuleError::RejectDuplicate(transaction_id))) = result {
             assert_eq!(
@@ -161,7 +161,7 @@ mod tests {
 
         let transaction = create_child_and_parent_txs_and_add_parent_to_consensus(&consensus);
         assert!(
-            consensus.can_finance_transaction(&transaction),
+            consensus.can_finance_transaction(&MutableTransaction::from_tx(transaction.clone())),
             "the consensus mock should have spendable UTXOs for the newly created transaction {}",
             transaction.id()
         );
@@ -170,8 +170,8 @@ mod tests {
         assert!(result.is_ok(), "the mempool should accept a valid transaction when it is able to populate its UTXO entries");
 
         let mut double_spending_transaction = transaction.clone();
-        double_spending_transaction.tx.outputs[0].value -= 1; // do some minor change so that txID is different
-        double_spending_transaction.tx.finalize();
+        double_spending_transaction.outputs[0].value -= 1; // do some minor change so that txID is different
+        double_spending_transaction.finalize();
         assert_ne!(
             transaction.id(),
             double_spending_transaction.id(),
@@ -204,15 +204,15 @@ mod tests {
         const TX_COUNT: u32 = 10;
         let transactions_to_insert = (0..TX_COUNT).into_iter().map(|i| create_transaction_with_utxo_entry(i, 0)).collect::<Vec<_>>();
         for transaction in transactions_to_insert.iter() {
-            let result = mining_manager.validate_and_insert_transaction(transaction.clone(), false, true);
+            let result = mining_manager.validate_and_insert_transaction(transaction.tx.as_ref().clone(), false, true);
             assert!(result.is_ok(), "the insertion of a new valid transaction in the mempool failed");
         }
 
         const PARTIAL_LEN: usize = 3;
         let (first_part, rest) = transactions_to_insert.split_at(PARTIAL_LEN);
 
-        let block_with_first_part = build_block_transactions(first_part);
-        let block_with_rest = build_block_transactions(rest);
+        let block_with_first_part = build_block_transactions(first_part.iter().map(|mtx| mtx.tx.as_ref()));
+        let block_with_rest = build_block_transactions(rest.iter().map(|mtx| mtx.tx.as_ref()));
 
         let result = mining_manager.handle_new_block_transactions(&block_with_first_part);
         assert!(
@@ -261,13 +261,13 @@ mod tests {
         let mining_manager = MiningManager::new(consensus, TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS, None);
 
         let transaction_in_the_mempool = create_transaction_with_utxo_entry(0, 0);
-        let result = mining_manager.validate_and_insert_transaction(transaction_in_the_mempool.clone(), false, true);
+        let result = mining_manager.validate_and_insert_transaction(transaction_in_the_mempool.tx.as_ref().clone(), false, true);
         assert!(result.is_ok());
 
         let mut double_spend_transaction_in_the_block = create_transaction_with_utxo_entry(0, 0);
-        double_spend_transaction_in_the_block.tx.inputs[0].previous_outpoint =
+        Arc::make_mut(&mut double_spend_transaction_in_the_block.tx).inputs[0].previous_outpoint =
             transaction_in_the_mempool.tx.inputs[0].previous_outpoint;
-        let block_transactions = build_block_transactions(&[double_spend_transaction_in_the_block]);
+        let block_transactions = build_block_transactions(std::iter::once(double_spend_transaction_in_the_block.tx.as_ref()));
 
         let result = mining_manager.handle_new_block_transactions(&block_transactions);
         assert!(result.is_ok());
@@ -299,7 +299,7 @@ mod tests {
         assert!(populated_txs.is_empty(), "the mempool should have no populated transaction since only orphans were submitted");
         for orphan in orphans.iter() {
             assert!(
-                contained_by_mtxs(orphan.id(), &child_txs),
+                contained_by_txs(orphan.id(), &child_txs),
                 "orphan transaction {} should exist in the child transactions",
                 orphan.id()
             );
@@ -317,7 +317,7 @@ mod tests {
         let template = result.unwrap();
         for block_tx in template.block.transactions.iter().skip(1) {
             assert!(
-                !contained_by_mtxs(block_tx.id(), &child_txs),
+                !contained_by_txs(block_tx.id(), &child_txs),
                 "transaction {} is an orphan and is found in a built block template",
                 block_tx.id()
             );
@@ -328,7 +328,7 @@ mod tests {
         mining_manager.clear_block_template();
         let added_parent_txs = parent_txs.iter().skip(SKIPPED_TXS).cloned().collect::<Vec<_>>();
         added_parent_txs.iter().for_each(|x| consensus.add_transaction(x.clone(), 1));
-        let result = mining_manager.handle_new_block_transactions(&build_block_transactions(&added_parent_txs));
+        let result = mining_manager.handle_new_block_transactions(&build_block_transactions(added_parent_txs.iter()));
         assert!(result.is_ok(), "mining manager should handle new block transactions successfully but returns {:?}", result);
         let unorphaned_txs = result.unwrap();
         let (populated_txs, orphans) = mining_manager.get_all_transactions(true, true);
@@ -344,19 +344,19 @@ mod tests {
         );
         for populated in populated_txs.iter() {
             assert!(
-                contained_by_mtxs(populated.id(), &unorphaned_txs),
+                contained_by_tx_arcs(populated.id(), &unorphaned_txs),
                 "mempool transaction {} should exist in the unorphaned transactions",
                 populated.id()
             );
             assert!(
-                contained_by_mtxs(populated.id(), &child_txs),
+                contained_by_txs(populated.id(), &child_txs),
                 "mempool transaction {} should exist in the child transactions",
                 populated.id()
             );
         }
         for child in child_txs.iter().skip(SKIPPED_TXS) {
             assert!(
-                contained_by_mtxs(child.id(), &unorphaned_txs),
+                contained_by_tx_arcs(child.id(), &unorphaned_txs),
                 "child transaction {} should exist in the unorphaned transactions",
                 child.id()
             );
@@ -369,7 +369,7 @@ mod tests {
         );
         for orphan in orphans.iter() {
             assert!(
-                contained_by_mtxs(orphan.id(), &child_txs),
+                contained_by_txs(orphan.id(), &child_txs),
                 "orphan transaction {} should exist in the child transactions",
                 orphan.id()
             );
@@ -395,14 +395,14 @@ mod tests {
         );
         for block_tx in template.block.transactions.iter().skip(1) {
             assert!(
-                contained_by_mtxs(block_tx.id(), &child_txs),
+                contained_by_txs(block_tx.id(), &child_txs),
                 "transaction {} in the built block template does not exist in ready child transactions",
                 block_tx.id()
             );
         }
         for child in child_txs.iter().skip(SKIPPED_TXS) {
             assert!(
-                contain_by_txs(child.id(), &template.block.transactions),
+                contained_by_txs(child.id(), &template.block.transactions),
                 "child transaction {} in the mempool was ready but is not found in the built block template",
                 child.id()
             )
@@ -412,7 +412,7 @@ mod tests {
         mining_manager.clear_block_template();
         let added_child_txs = child_txs.iter().skip(SKIPPED_TXS).cloned().collect::<Vec<_>>();
         added_child_txs.iter().for_each(|x| consensus.add_transaction(x.clone(), 2));
-        let result = mining_manager.handle_new_block_transactions(&build_block_transactions(&added_child_txs));
+        let result = mining_manager.handle_new_block_transactions(&build_block_transactions(added_child_txs.iter()));
         assert!(result.is_ok(), "mining manager should handle new block transactions successfully but returns {:?}", result);
 
         let unorphaned_txs = result.unwrap();
@@ -624,8 +624,8 @@ mod tests {
         consensus.add_transaction(parent_tx, 0);
 
         let mut child_tx_2 = child_tx_1.clone();
-        child_tx_2.tx.outputs[0].value -= 1; // decrement value to change id
-        child_tx_2.tx.finalize();
+        child_tx_2.outputs[0].value -= 1; // decrement value to change id
+        child_tx_2.finalize();
 
         // Simulate: Mine 1 block with confirming child_tx_1 and 2 blocks confirming child_tx_2, so that
         // child_tx_2 is accepted
@@ -811,7 +811,7 @@ mod tests {
         let output = TransactionOutput::new(SOMPI_PER_KASPA - DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE, script_public_key);
         let transaction = Transaction::new(TX_VERSION, vec![input], vec![output], 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
 
-        let mut mutable_tx = MutableTransaction::new(transaction);
+        let mut mutable_tx = MutableTransaction::from_tx(transaction);
         mutable_tx.calculated_fee = Some(DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE);
         // Please note: this is the ConsensusMock version of the calculated_mass which differs from Consensus
         mutable_tx.calculated_mass = Some(transaction_estimated_serialized_size(&mutable_tx.tx));
@@ -823,7 +823,7 @@ mod tests {
     fn create_arrays_of_parent_and_children_transactions(
         consensus: &Arc<ConsensusMock>,
         count: usize,
-    ) -> (Vec<MutableTransaction>, Vec<MutableTransaction>) {
+    ) -> (Vec<Transaction>, Vec<Transaction>) {
         // Make the funding amounts always different so that funding txs have different ids
         let parent_child_pairs = (0..count)
             .into_iter()
@@ -840,7 +840,7 @@ mod tests {
     fn create_parent_and_children_transactions(
         consensus: &Arc<ConsensusMock>,
         funding_amounts: Vec<u64>,
-    ) -> (MutableTransaction, MutableTransaction) {
+    ) -> (Transaction, Transaction) {
         let funding_tx = create_transaction_without_input(funding_amounts);
         let parent_tx = create_transaction(&funding_tx, DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE);
         let child_tx = create_transaction(&parent_tx, DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE);
@@ -849,28 +849,28 @@ mod tests {
         (parent_tx, child_tx)
     }
 
-    fn create_child_and_parent_txs_and_add_parent_to_consensus(consensus: &Arc<ConsensusMock>) -> MutableTransaction {
+    fn create_child_and_parent_txs_and_add_parent_to_consensus(consensus: &Arc<ConsensusMock>) -> Transaction {
         let parent_tx = create_transaction_without_input(vec![500 * SOMPI_PER_KASPA]);
         let child_tx = create_transaction(&parent_tx, 1000);
         consensus.add_transaction(parent_tx, 1);
-
         child_tx
     }
 
-    fn create_transaction_without_input(output_values: Vec<u64>) -> MutableTransaction {
+    fn create_transaction_without_input(output_values: Vec<u64>) -> Transaction {
         let (script_public_key, _) = op_true_script();
-
         let outputs = output_values.iter().map(|value| TransactionOutput::new(*value, script_public_key.clone())).collect();
-        let transaction = Transaction::new(TX_VERSION, vec![], outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
-
-        MutableTransaction::new(transaction)
+        Transaction::new(TX_VERSION, vec![], outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![])
     }
 
     fn contained_by_mtxs(transaction_id: TransactionId, transactions: &[MutableTransaction]) -> bool {
         transactions.iter().any(|x| x.id() == transaction_id)
     }
 
-    fn contain_by_txs(transaction_id: TransactionId, transactions: &[Transaction]) -> bool {
+    fn contained_by_txs(transaction_id: TransactionId, transactions: &[Transaction]) -> bool {
+        transactions.iter().any(|x| x.id() == transaction_id)
+    }
+
+    fn contained_by_tx_arcs(transaction_id: TransactionId, transactions: &[Arc<Transaction>]) -> bool {
         transactions.iter().any(|x| x.id() == transaction_id)
     }
 
@@ -882,15 +882,13 @@ mod tests {
         }
     }
 
-    fn get_dummy_coinbase_tx() -> MutableTransaction {
-        let transaction = Transaction::new(TX_VERSION, vec![], vec![], 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
-        MutableTransaction::new(transaction)
+    fn get_dummy_coinbase_tx() -> Transaction {
+        Transaction::new(TX_VERSION, vec![], vec![], 0, SUBNETWORK_ID_NATIVE, 0, vec![])
     }
 
-    fn build_block_transactions(transactions: &[MutableTransaction]) -> Vec<Transaction> {
-        let mut block_transactions = vec![get_dummy_coinbase_tx().tx];
-        block_transactions.extend(transactions.iter().map(|x| x.tx.clone()));
-
+    fn build_block_transactions<'a>(transactions: impl Iterator<Item = &'a Transaction>) -> Vec<Transaction> {
+        let mut block_transactions = vec![get_dummy_coinbase_tx()];
+        block_transactions.extend(transactions.cloned());
         block_transactions
     }
 
