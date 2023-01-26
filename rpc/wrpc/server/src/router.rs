@@ -10,8 +10,9 @@ use rpc_core::notify::channel::*;
 use rpc_core::notify::listener::*;
 use rpc_core::prelude::*;
 use std::sync::Arc;
-use workflow_rpc::error::RpcResponseError as ResponseError;
-use workflow_rpc::result::RpcResult as Response;
+use workflow_rpc::server::prelude::*;
+// use workflow_rpc::error::ServerError;
+// use workflow_rpc::result::ServerResult;
 
 pub struct Router {
     iface: Arc<dyn RpcApi>,
@@ -32,7 +33,7 @@ macro_rules! route {
                     .iface
                     .$fn(req)
                     .await
-                    .map_err(|e|ResponseError::Text(e.to_string()))?;
+                    .map_err(|e|ServerError::Text(e.to_string()))?;
 
                 if $self.verbose {
                     println!("{:#?}",resp);
@@ -49,7 +50,7 @@ impl Router {
         Router { iface, verbose }
     }
 
-    pub async fn route(&self, op: RpcApiOps, data: &[u8]) -> Response {
+    pub async fn route(&self, op: RpcApiOps, data: &[u8]) -> ServerResult {
         match op {
             RpcApiOps::Ping => {
                 route!(self, data, ping_call, Ping)

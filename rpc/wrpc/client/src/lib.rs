@@ -5,3 +5,4 @@ pub mod result;
 pub mod route;
 // pub use route;
 pub use client::KaspaRpcClient;
+pub use client::WrpcEncoding;
