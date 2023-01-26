@@ -5,7 +5,7 @@ use workflow_core::enums::Describe;
 use workflow_terminal::Terminal;
 
 #[derive(Describe)]
-enum Action {
+pub enum Action {
     #[describe("Display this help")]
     Help,
     #[describe("Ping server (testing)")]
