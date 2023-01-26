@@ -1,15 +1,14 @@
 use kaspa_core::trace;
 use rand::Rng;
-use std::{collections::HashMap, sync::Arc, vec};
+use std::{collections::HashMap, vec};
+
+use crate::model::candidate_tx::CandidateTransaction;
 
 use super::{
     model::tx::{CandidateList, SelectableTransaction, SelectableTransactions, TransactionIndex},
     policy::Policy,
 };
-use consensus_core::{
-    subnets::SubnetworkId,
-    tx::{MutableTransaction, Transaction},
-};
+use consensus_core::{subnets::SubnetworkId, tx::Transaction};
 
 /// ALPHA is a coefficient that defines how uniform the distribution of
 /// candidate transactions should be. A smaller alpha makes the distribution
@@ -25,30 +24,10 @@ const ALPHA: i32 = 3;
 /// if REBALANCE_THRESHOLD is 0.95, there's a 1-in-20 chance of collision.
 const REBALANCE_THRESHOLD: f64 = 0.95;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SelectorSourceTransaction {
-    /// The actual transaction
-    pub tx: Arc<Transaction>,
-    /// Populated fee
-    pub calculated_fee: u64,
-    /// Populated mass
-    pub calculated_mass: u64,
-}
-
-impl SelectorSourceTransaction {
-    pub(crate) fn from_mutable(tx: &MutableTransaction) -> Self {
-        Self {
-            tx: tx.tx.clone(),
-            calculated_fee: tx.calculated_fee.expect("fee is expected to be populated"),
-            calculated_mass: tx.calculated_mass.expect("mass is expected to be populated"),
-        }
-    }
-}
-
 pub(crate) struct TransactionsSelector {
     policy: Policy,
     /// Transaction store
-    transactions: Vec<SelectorSourceTransaction>,
+    transactions: Vec<CandidateTransaction>,
     /// Selectable transactions store
     selectable_txs: SelectableTransactions,
 
@@ -59,7 +38,7 @@ pub(crate) struct TransactionsSelector {
 }
 
 impl TransactionsSelector {
-    pub(crate) fn new(policy: Policy, mut transactions: Vec<SelectorSourceTransaction>) -> Self {
+    pub(crate) fn new(policy: Policy, mut transactions: Vec<CandidateTransaction>) -> Self {
         // Sort the transactions by subnetwork_id.
         transactions.sort_by(|a, b| a.tx.subnetwork_id.cmp(&b.tx.subnetwork_id));
 
@@ -205,7 +184,7 @@ impl TransactionsSelector {
     /// calc_tx_value calculates a value to be used in transaction selection.
     /// The higher the number the more likely it is that the transaction will be
     /// included in the block.
-    fn calc_tx_value(&self, transaction: &SelectorSourceTransaction) -> f64 {
+    fn calc_tx_value(&self, transaction: &CandidateTransaction) -> f64 {
         let mass_limit = self.policy.max_block_mass as f64;
         let mass = transaction.calculated_mass as f64;
         let fee = transaction.calculated_fee as f64;

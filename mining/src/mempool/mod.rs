@@ -1,6 +1,6 @@
-use crate::{
-    block_template::selector::SelectorSourceTransaction,
-    model::owner_txs::{GroupedOwnerTransactions, ScriptPublicKeySet},
+use crate::model::{
+    candidate_tx::CandidateTransaction,
+    owner_txs::{GroupedOwnerTransactions, ScriptPublicKeySet},
 };
 
 use self::{
@@ -117,7 +117,7 @@ impl Mempool {
         count
     }
 
-    pub(crate) fn block_candidate_transactions(&self) -> Vec<SelectorSourceTransaction> {
+    pub(crate) fn block_candidate_transactions(&self) -> Vec<CandidateTransaction> {
         self.transaction_pool.all_ready_transactions()
     }
 }

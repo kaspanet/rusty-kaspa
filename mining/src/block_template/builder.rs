@@ -1,8 +1,8 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::block_template::selector::TransactionsSelector;
+use crate::{block_template::selector::TransactionsSelector, model::candidate_tx::CandidateTransaction};
 
-use super::{errors::BuilderResult, policy::Policy, selector::SelectorSourceTransaction};
+use super::{errors::BuilderResult, policy::Policy};
 use consensus_core::{
     api::DynConsensus, block::BlockTemplate, coinbase::MinerData, merkle::calc_hash_merkle_root, tx::COINBASE_TRANSACTION_INDEX,
 };
@@ -89,7 +89,7 @@ impl BlockTemplateBuilder {
     pub(crate) fn build_block_template(
         &self,
         miner_data: &MinerData,
-        transactions: Vec<SelectorSourceTransaction>,
+        transactions: Vec<CandidateTransaction>,
     ) -> BuilderResult<BlockTemplate> {
         debug!("Considering {} transactions for inclusion to new block", transactions.len());
         let mut selector = TransactionsSelector::new(self.policy.clone(), transactions);

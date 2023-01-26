@@ -1,13 +1,14 @@
 #[cfg(test)]
 mod tests {
     use crate::{
-        block_template::{builder::BlockTemplateBuilder, selector::SelectorSourceTransaction},
+        block_template::builder::BlockTemplateBuilder,
         errors::{MiningManagerError, MiningManagerResult},
         manager::MiningManager,
         mempool::{
             config::{Config, DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE},
             errors::RuleError,
         },
+        model::candidate_tx::CandidateTransaction,
         testutils::consensus_mock::ConsensusMock,
     };
     use addresses::Prefix;
@@ -707,7 +708,7 @@ mod tests {
     fn sweep_compare_modified_template_to_built(
         address_prefix: Prefix,
         builder: &BlockTemplateBuilder,
-        transactions: Vec<SelectorSourceTransaction>,
+        transactions: Vec<CandidateTransaction>,
     ) {
         for _ in 0..4 {
             // Run a few times to get more randomness
@@ -725,7 +726,7 @@ mod tests {
     fn compare_modified_template_to_built(
         address_prefix: Prefix,
         builder: &BlockTemplateBuilder,
-        transactions: Vec<SelectorSourceTransaction>,
+        transactions: Vec<CandidateTransaction>,
         first_op: OpType,
         second_op: OpType,
     ) {

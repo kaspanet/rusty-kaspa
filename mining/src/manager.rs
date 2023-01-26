@@ -3,11 +3,14 @@
 use std::sync::Arc;
 
 use crate::{
-    block_template::{builder::BlockTemplateBuilder, errors::BuilderError, selector::SelectorSourceTransaction},
+    block_template::{builder::BlockTemplateBuilder, errors::BuilderError},
     cache::BlockTemplateCache,
     errors::MiningManagerResult,
     mempool::{config::Config, errors::RuleResult, Mempool},
-    model::owner_txs::{GroupedOwnerTransactions, ScriptPublicKeySet},
+    model::{
+        candidate_tx::CandidateTransaction,
+        owner_txs::{GroupedOwnerTransactions, ScriptPublicKeySet},
+    },
 };
 use consensus_core::{
     api::DynConsensus,
@@ -95,7 +98,7 @@ impl MiningManager {
         }
     }
 
-    pub(crate) fn block_candidate_transactions(&self) -> Vec<SelectorSourceTransaction> {
+    pub(crate) fn block_candidate_transactions(&self) -> Vec<CandidateTransaction> {
         self.mempool.read().block_candidate_transactions()
     }
 
