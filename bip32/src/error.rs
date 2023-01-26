@@ -77,14 +77,14 @@ impl From<hmac::digest::InvalidLength> for Error {
     }
 }
 
-impl From<secp256k1_ffi::Error> for Error {
-    fn from(_: secp256k1_ffi::Error) -> Error {
+impl From<secp256k1::Error> for Error {
+    fn from(_: secp256k1::Error) -> Error {
         Error::Crypto
     }
 }
 
-impl From<secp256k1_ffi::scalar::OutOfRangeError> for Error {
-    fn from(_: secp256k1_ffi::scalar::OutOfRangeError) -> Error {
+impl From<secp256k1::scalar::OutOfRangeError> for Error {
+    fn from(_: secp256k1::scalar::OutOfRangeError) -> Error {
         Error::ScalarOutOfRangeError
     }
 }

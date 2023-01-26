@@ -1,7 +1,7 @@
 use zeroize::Zeroizing;
 
-pub use secp256k1_ffi;
-pub use secp256k1_ffi::SecretKey;
+pub use secp256k1;
+pub use secp256k1::SecretKey;
 
 mod private_key;
 mod public_key;
@@ -31,13 +31,13 @@ pub use xprivate_key::ExtendedPrivateKey;
 pub use xpublic_key::ExtendedPublicKey;
 
 pub trait SecretKeyExt {
-    fn get_public_key(&self) -> secp256k1_ffi::PublicKey;
+    fn get_public_key(&self) -> secp256k1::PublicKey;
     fn as_str(&self, attrs: ExtendedKeyAttrs, prefix: Prefix) -> Zeroizing<String>;
 }
 
-impl SecretKeyExt for secp256k1_ffi::SecretKey {
-    fn get_public_key(&self) -> secp256k1_ffi::PublicKey {
-        secp256k1_ffi::PublicKey::from_secret_key_global(self)
+impl SecretKeyExt for secp256k1::SecretKey {
+    fn get_public_key(&self) -> secp256k1::PublicKey {
+        secp256k1::PublicKey::from_secret_key_global(self)
     }
     fn as_str(&self, attrs: ExtendedKeyAttrs, prefix: Prefix) -> Zeroizing<String> {
         // Add leading `0` byte

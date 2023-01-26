@@ -1,8 +1,8 @@
 use crate::types::*;
 use crate::PublicKey;
 use crate::Result;
-pub use secp256k1_ffi::SecretKey;
-use secp256k1_ffi::{scalar::Scalar, Secp256k1, SignOnly};
+pub use secp256k1::SecretKey;
+use secp256k1::{scalar::Scalar, Secp256k1, SignOnly};
 
 pub trait PrivateKey: Sized {
     /// Public key type which corresponds to this private key.
@@ -24,7 +24,7 @@ pub trait PrivateKey: Sized {
 }
 
 impl PrivateKey for SecretKey {
-    type PublicKey = secp256k1_ffi::PublicKey;
+    type PublicKey = secp256k1::PublicKey;
 
     fn from_bytes(bytes: &PrivateKeyBytes) -> Result<Self> {
         Ok(SecretKey::from_slice(bytes)?)
@@ -40,6 +40,6 @@ impl PrivateKey for SecretKey {
 
     fn public_key(&self) -> Self::PublicKey {
         let engine = Secp256k1::<SignOnly>::signing_only();
-        secp256k1_ffi::PublicKey::from_secret_key(&engine, self)
+        secp256k1::PublicKey::from_secret_key(&engine, self)
     }
 }

@@ -1,6 +1,6 @@
 use crate::types::*;
 use ripemd::{Digest, Ripemd160};
-use secp256k1_ffi::{scalar::Scalar, Secp256k1, VerifyOnly};
+use secp256k1::{scalar::Scalar, Secp256k1, VerifyOnly};
 use sha2::Sha256;
 
 /// Trait for key types which can be derived using BIP32.
@@ -23,9 +23,9 @@ pub trait PublicKey: Sized {
     }
 }
 
-impl PublicKey for secp256k1_ffi::PublicKey {
+impl PublicKey for secp256k1::PublicKey {
     fn from_bytes(bytes: PublicKeyBytes) -> Result<Self> {
-        Ok(secp256k1_ffi::PublicKey::from_slice(&bytes)?)
+        Ok(secp256k1::PublicKey::from_slice(&bytes)?)
     }
 
     fn to_bytes(&self) -> PublicKeyBytes {
