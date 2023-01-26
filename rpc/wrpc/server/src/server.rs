@@ -10,80 +10,148 @@ use rpc_core::error::RpcResult;
 use rpc_core::notify::channel::*;
 #[allow(unused_imports)]
 use rpc_core::notify::listener::*;
-use std::{sync::Arc, time::Duration};
+use std::{sync::{Arc, Mutex}, collections::HashMap};
 use workflow_log::*;
-use workflow_rpc::result::RpcResult as Response;
-use workflow_rpc::server::*;
+// use workflow_rpc::result::ServerResult;
+use workflow_rpc::server::prelude::*;
+pub use workflow_rpc::server::Encoding as WrpcEncoding;
 use crate::result::Result;
-use crate::router::Router;
+// use crate::router::Router;
 
-pub struct RpcConnectionCtx {
-    pub peer: SocketAddr,
-}
 
 pub struct Options {
     pub listen_address: String,
-    pub verbose: bool,
+    // pub verbose: bool,
+    pub encoding: Encoding,
 }
 
-impl Default for Options {
-    fn default() -> Self {
-        Options {
-            listen_address: "127.0.0.1:8080".to_owned(),
-            verbose: false,
+impl Options {
+    pub fn new(encoding: Encoding, listen_address: &str) -> Self {
+        Self {
+            listen_address: listen_address.to_string(),
+            encoding,
+        }
+    }
+}
+
+// impl Default for Options {
+//     fn default() -> Self {
+//         Options {
+//             listen_address: "127.0.0.1:8080".to_owned(),
+//             verbose: false,
+//         }
+//     }
+// }
+
+#[derive(Debug)]
+pub struct ConnectionContext {
+    pub peer: SocketAddr,
+    pub messenger: Arc<Messenger>,
+}
+
+impl ConnectionContext {
+    pub fn new(peer: &SocketAddr, messenger: Arc<Messenger>) -> Self {
+        ConnectionContext {
+            peer : peer.clone(),
+            messenger,
         }
     }
 }
 
 pub struct KaspaRpcHandler {
-    router: Router,
+    // router: Router,
+    // pub options: Options,
+    pub sockets: Mutex<HashMap<SocketAddr, Arc<ConnectionContext>>>,
+
 }
 
 impl KaspaRpcHandler {
-    pub fn new(router: Router) -> KaspaRpcHandler {
-        KaspaRpcHandler { router }
+    // pub fn new(router: Router) -> KaspaRpcHandler {
+    //     KaspaRpcHandler { router, sockets: Mutex::new(HashMap::new()) }
+    // }
+    pub fn new() -> KaspaRpcHandler {
+        KaspaRpcHandler { sockets: Mutex::new(HashMap::new()) }
     }
 }
 
 #[async_trait]
-impl RpcHandler<RpcApiOps> for KaspaRpcHandler {
-    type Context = RpcConnectionCtx;
+impl RpcHandler for KaspaRpcHandler {
+    type Context = ConnectionContext;
 
-    async fn connect(self: Arc<Self>, peer: SocketAddr) -> WebSocketResult<Self::Context> {
-        Ok(RpcConnectionCtx { peer })
+    async fn connect(self: Arc<Self>, _peer: &SocketAddr) -> WebSocketResult<()> {
+        Ok(())
     }
 
     async fn handshake(
         self: Arc<Self>,
-        _ctx: &mut Self::Context,
-        sender: &mut WebSocketSender,
-        receiver: &mut WebSocketReceiver,
-        _sink: &WebSocketSink,
-    ) -> WebSocketResult<()> {
-        handshake::greeting(
-            Duration::from_millis(3000),
-            sender,
-            receiver,
-            Box::pin(|msg| if msg != "kaspa" { Err(WebSocketError::NegotiationFailure) } else { Ok(()) }),
-        )
-        .await
+        peer: &SocketAddr,
+        _sender: &mut WebSocketSender,
+        _receiver: &mut WebSocketReceiver,
+        messenger: Arc<Messenger>,
+    ) -> WebSocketResult<Arc<Self::Context>> {
+
+        // handshake::greeting(
+        //     std::time::Duration::from_millis(3000),
+        //     sender,
+        //     receiver,
+        //     Box::pin(|msg| if msg != "kaspa" { Err(WebSocketError::NegotiationFailure) } else { Ok(()) }),
+        // )
+        // .await
+
+        let ctx = Arc::new(ConnectionContext::new(peer,messenger));
+        self.sockets.lock().unwrap().insert(peer.clone(), ctx.clone());
+        Ok(ctx)
     }
 
-    async fn handle_request(self: Arc<Self>, _ctx: &mut Self::Context, op: RpcApiOps, data: &[u8]) -> Response {
-        self.router.route(op, data).await
+    async fn disconnect(self: Arc<Self>, ctx: Arc<Self::Context>, _result: WebSocketResult<()>) {
+        self.sockets.lock().unwrap().remove(&ctx.peer);
     }
 }
+
+struct ServerContext;
 
 pub struct WrpcServer {
     options: Options,
-    server: RpcServer<RpcApiOps, RpcConnectionCtx>,
+    server: RpcServer,
 }
+
+
 
 impl WrpcServer {
     pub fn new(options: Options, rpc_api_iface: Arc<dyn RpcApi>) -> Self {
-        let router = Router::new(rpc_api_iface, options.verbose);
-        let handler = Arc::new(KaspaRpcHandler::new(router));
-        let server = RpcServer::new(handler);
+        // let router = Router::new(rpc_api_iface, options.verbose);
+        let handler = Arc::new(KaspaRpcHandler::new());
+        // let server_ctx = Arc::new(ServerContext);
+
+
+        let mut interface = Interface::<ConnectionContext, KaspaRpcHandler, RpcApiOps>::new(handler.clone());
+
+        // interface.method(
+        //     TestOps::EvenOdd,
+        //     method!(|_connection_ctx, _server_ctx, req: TestReq| async move {
+        //         if req.v & 1 == 0 {
+        //             Ok(TestResp::Even(req.v))
+        //         } else {
+        //             Ok(TestResp::Odd(req.v))
+        //         }
+        //     }),
+        // );
+    
+
+        // interface.notification(
+        //     TestOps::Notify,
+        //     notification!(
+        //         |_connection_ctx, _server_ctx, _req: TestNotify| async move {
+        //             // Ok(TestResp::Increase(req.v + 100))
+        //             Ok(())
+        //         }
+        //     ),
+        // );
+
+        let interface = Arc::new(interface);
+
+
+        let server = RpcServer::new_with_encoding::<ConnectionContext, KaspaRpcHandler, RpcApiOps, Id64>(options.encoding.clone(), handler, interface);
 
         WrpcServer { options, server }
     }

@@ -1,10 +1,10 @@
 use convert_case::{Case, Casing};
 use pad::PadStr;
 use std::sync::Arc;
-use workflow_core::describe_enum;
+use workflow_core::enums::Describe;
 use workflow_terminal::Terminal;
 
-#[describe_enum]
+#[derive(Describe)]
 enum Action {
     #[describe("Display this help")]
     Help,
