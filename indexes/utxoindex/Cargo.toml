@@ -1,6 +1,5 @@
 [package]
 name = "utxoindex"
-description = "utxoindex for rusty-kaspa"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -21,5 +20,5 @@ rand.workspace = true
 rocksdb = "0.19"
 triggered = "0.1"
 parking_lot = "0.12"
-#serde = { version = "1.0.152", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
 #tokio = { workspace = true, features = ["mpsc", "macros"] }

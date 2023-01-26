@@ -59,7 +59,7 @@ impl UtxoIndex {
     ///
     /// **Note:**
     /// 1) A failure of the call will result in a reset utxoindex database.
-    /// 2) There is an implcit expectation that the consensus store most have [VirtualParent] tips. i.e. consensus database most be intiated.
+    /// 2) There is an implicit expectation that the consensus store most have [VirtualParent] tips. i.e. consensus database most be intiated.
     pub fn reset(&self) -> Result<(), UtxoIndexError> {
         trace!("resetting the utxoindex");
         self.stores.delete_all()?;

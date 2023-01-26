@@ -3226,6 +3226,7 @@ dependencies = [
  "parking_lot",
  "rand 0.8.5",
  "rocksdb",
+ "serde",
  "thiserror",
  "tokio",
  "triggered",
