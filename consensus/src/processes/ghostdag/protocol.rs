@@ -173,7 +173,7 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
             }
 
             if current_selected_parent == self.genesis_hash || current_selected_parent == blockhash::ORIGIN {
-                panic!("block {} is not in blue set of the given context", block);
+                panic!("block {block} is not in blue set of the given context");
             }
 
             current_blues_anticone_sizes = self.ghostdag_store.get_blues_anticone_sizes(current_selected_parent).unwrap();

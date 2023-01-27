@@ -1868,6 +1868,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a"
 
 [[package]]
+name = "mining"
+version = "0.1.0"
+dependencies = [
+ "addresses",
+ "consensus-core",
+ "criterion",
+ "futures-util",
+ "hashes",
+ "kaspa-core",
+ "log",
+ "parking_lot",
+ "rand 0.8.5",
+ "secp256k1",
+ "serde",
+ "smallvec",
+ "thiserror",
+]
+
+[[package]]
 name = "miniz_oxide"
 version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"

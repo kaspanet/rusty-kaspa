@@ -18,10 +18,10 @@ impl Display for AddressError {
             f,
             "Address decoding failed: {}",
             match self {
-                Self::InvalidPrefix(prefix) => format!("Invalid prefix {}", prefix),
+                Self::InvalidPrefix(prefix) => format!("Invalid prefix {prefix}"),
                 Self::MissingPrefix => "Prefix is missing".to_string(),
                 Self::BadChecksum => "Checksum is invalid".to_string(),
-                Self::DecodingError(c) => format!("Invalid character {}", c),
+                Self::DecodingError(c) => format!("Invalid character {c}"),
             }
         )
     }
