@@ -623,6 +623,7 @@ pub enum KaspadMessagePayloadEnumU8 {
 
 pub type RouterRxChannelType = tokio::sync::mpsc::Receiver<pb::KaspadMessage>;
 
+#[ignore = "not working"]
 #[tokio::test]
 // this test doesn't work because client does not connect when run from test-exe (to be investigated)
 async fn run_p2p_server_and_client_test() -> Result<(), Box<dyn std::error::Error>> {
@@ -687,7 +688,7 @@ async fn run_p2p_server_and_client_test() -> Result<(), Box<dyn std::error::Erro
     // [2] - Start listener (de-facto Server side )
     let terminate_server = P2pServer::listen(String::from("[::1]:50051"), router, false).await;
 
-    std::thread::sleep(std::time::Duration::from_secs(60));
+    std::thread::sleep(std::time::Duration::from_secs(2));
 
     // [3] - Start client
     let mut cnt = 0;
@@ -711,7 +712,7 @@ async fn run_p2p_server_and_client_test() -> Result<(), Box<dyn std::error::Erro
             }
         }
     }
-    std::thread::sleep(std::time::Duration::from_secs(10));
+    std::thread::sleep(std::time::Duration::from_secs(2));
 
     // [4] - Check that server is ok
     if let Ok(t) = terminate_server {

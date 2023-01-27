@@ -1,10 +1,13 @@
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+
 use kaspa_core::{debug, error};
 use kaspa_p2p_lib::kaspa_flows;
 use kaspa_p2p_lib::kaspa_flows::Flow;
 use kaspa_p2p_lib::kaspa_grpc;
 use kaspa_p2p_lib::kaspa_grpc::RouterApi;
 use kaspa_p2p_lib::kaspa_p2p::P2pAdaptorApi;
-use signal_hook::{consts::SIGTERM, iterator::Signals};
+
 #[tokio::main]
 async fn main() {
     // [-] - init logger
@@ -43,20 +46,31 @@ async fn old_main_with_impl_details() {
     });
     // [2] - Start listener (de-facto Server side )
     let terminate_server = kaspa_grpc::P2pServer::listen(String::from("[::1]:50051"), router, true).await;
+    let terminate_signal = Arc::new(AtomicBool::new(false));
 
     // [3] - Check that server is ok & register termination signal ( as an example )
-    if terminate_server.is_ok() {
-        debug!("P2P, Server is running ... & we can terminate it with CTRL-C");
-        let mut signals = Signals::new([SIGTERM]).unwrap();
-        if let Some(sig) = signals.forever().next() {
-            debug!("P2P, Received termination signal {:?}", sig);
-            // terminate grpc service
-            terminate_server.unwrap().send(()).unwrap();
+    match terminate_server {
+        Ok(sender) => {
+            debug!("P2P, Server is running ... & we can terminate it with CTRL-C");
+            let terminate_clone = terminate_signal.clone();
+            ctrlc::set_handler(move || {
+                terminate_clone.store(true, Ordering::SeqCst);
+            })
+            .unwrap();
+            // [4] - sleep - just not to exit main function
+            debug!("P2P, Server-side, endless sleep....");
+            loop {
+                if terminate_signal.load(Ordering::SeqCst) {
+                    debug!("P2P, Received termination signal");
+                    // terminate grpc service
+                    sender.send(()).unwrap();
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_secs(1));
+            }
         }
-    } else {
-        error!("P2P, Server can't start, {:?}", terminate_server.err());
+        Err(err) => {
+            error!("P2P, Server can't start, {:?}", err);
+        }
     }
-    // [4] - sleep - just not to exist main function
-    debug!("P2P, Server-side, endless sleep....");
-    std::thread::sleep(std::time::Duration::from_secs(100000000000000));
 }
