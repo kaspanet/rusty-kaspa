@@ -16,7 +16,8 @@ struct RpcTable {
     // field: Expr,
     server_ctx_type: Expr,
     connection_ctx_type: Expr,
-    rpc_api_ops: ExprPath,
+    // rpc_api_ops: ExprPath,
+    rpc_api_ops: Expr,
     handlers: ExprArray,
 }
 

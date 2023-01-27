@@ -105,7 +105,7 @@ impl RpcHandler for KaspaRpcHandler {
     }
 }
 
-struct ServerContext;
+pub struct ServerContext;
 
 pub struct WrpcServer {
     options: Options,
