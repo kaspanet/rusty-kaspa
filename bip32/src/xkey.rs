@@ -101,18 +101,31 @@ impl Drop for ExtendedKey {
 }
 
 // TODO(tarcieri): consolidate test vectors
-#[cfg(all(test, feature = "alloc_"))]
+#[cfg(test)]
 mod tests {
     use super::ExtendedKey;
-    use alloc::string::ToString;
-    use hex_literal::hex;
+    use faster_hex::hex_decode_fallback;
+
+    macro_rules! hex {
+        ($str: literal) => {{
+            let len = $str.as_bytes().len() / 2;
+            let mut dst = vec![0; len];
+            dst.resize(len, 0);
+            hex_decode_fallback($str.as_bytes(), &mut dst);
+            dst
+        }
+        [..]};
+    }
 
     #[test]
     fn bip32_test_vector_1_xprv() {
+        //let xprv_base58 = "kprv5y2qurMHCsXYrNfU3GCihuwG3vMqFji7PZXajMEqyBkNh9UZUJgoHYBLTKu1eM4MvUtomcXPQ3Sw9HZ5ebbM4byoUciHo1zrPJBQfqpLorQ";
         let xprv_base58 = "xprv9s21ZrQH143K3QTDL4LXw2F7HEK3wJUD2nW2nRk4stbPy6cq3jPP\
              qjiChkVvvNKmPGJxWUtg6LnF5kejMRNNU3TGtRBeJgk33yuGBxrMPHi";
 
-        let xprv = xprv_base58.parse::<ExtendedKey>().unwrap();
+        let xprv = xprv_base58.parse::<ExtendedKey>();
+        assert!(xprv.is_ok(), "Could not parse key");
+        let xprv = xprv.unwrap();
         assert_eq!(xprv.prefix.as_str(), "xprv");
         assert_eq!(xprv.attrs.depth, 0);
         assert_eq!(xprv.attrs.parent_fingerprint, [0u8; 4]);
@@ -127,7 +140,9 @@ mod tests {
         let xpub_base58 = "xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhe\
              PY2gZ29ESFjqJoCu1Rupje8YtGqsefD265TMg7usUDFdp6W1EGMcet8";
 
-        let xpub = xpub_base58.parse::<ExtendedKey>().unwrap();
+        let xpub = xpub_base58.parse::<ExtendedKey>();
+        assert!(xpub.is_ok(), "Could not parse key");
+        let xpub = xpub.unwrap();
         assert_eq!(xpub.prefix.as_str(), "xpub");
         assert_eq!(xpub.attrs.depth, 0);
         assert_eq!(xpub.attrs.parent_fingerprint, [0u8; 4]);

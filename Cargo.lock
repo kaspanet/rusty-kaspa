@@ -1437,6 +1437,7 @@ name = "kaspa-bip32"
 version = "0.1.0"
 dependencies = [
  "bs58",
+ "faster-hex",
  "hmac",
  "once_cell",
  "pbkdf2",

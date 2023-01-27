@@ -46,65 +46,7 @@ where
             ]);
 
 
-// Recursive expansion of build_wrpc_interface! macro
-// ===================================================
-
-// {
-//     let mut interface = workflow_rpc::server::Interface::<ServerContext, ConnectionContext, RpcApiOps>::new(server_context);
-//     match RouterTarget::Server {
-//         RouterTarget::Server => {
-//             for op in RpcApiOps::list() {
-//                 match op {
-//                     RpcApiOps::GetInfo => {
-//                         interface.method(
-//                             RpcApiOps::GetInfo,
-//                             workflow_rpc::server::interface::Method::new(
-//                                 |server_ctx: ServerContext, connection_ctx: ConnectionContext, request: GetInfoRequest| {
-//                                     Box::pin(async move {
-//                                         let v: GetInfoResponse = server_ctx
-//                                             .get_rpc_api()
-//                                             .get_info_call(request)
-//                                             .await
-//                                             .map_err(|e| ServerError::Text(e.to_string()))?;
-//                                         Ok(v)
-//                                     })
-//                                 },
-//                             ),
-//                         );
-//                     }
-//                     _ => {},
-//                 }
-//             }
-//         }
-//         RouterTarget::Connection => {
-//             for op in RpcApiOps::list() {
-//                 match op {
-//                     RpcApiOps::GetInfo => {
-//                         interface.method(
-//                             RpcApiOps::GetInfo,
-//                             workflow_rpc::server::interface::Method::new(
-//                                 |server_ctx: ServerContext, connection_ctx: ConnectionContext, request: GetInfoRequest| {
-//                                     Box::pin(async move {
-//                                         let v: GetInfoResponse = connection_ctx
-//                                             .get_rpc_api()
-//                                             .get_info_call(request)
-//                                             .await
-//                                             .map_err(|e| ServerError::Text(e.to_string()))?;
-//                                         Ok(v)
-//                                     })
-//                                 },
-//                             ),
-//                         );
-//                     }
-//                     _ => {},
-//                 }
-//             }
-//         }
-//     }
-//     Arc::new(interface)
-// };
-
-
+            // build_wrpc_interface!(server_context, RouterTarget::Server, ServerContext, ConnectionContext, RpcApiOps, [GetInfo]);
 
         Router { interface, verbose }
     }

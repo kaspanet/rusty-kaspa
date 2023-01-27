@@ -35,11 +35,11 @@ pub struct ProxyConnection {
     // pub router: Router,
 }
 
-impl ProxyConnection {
-    fn get_rpc_api(&self) -> &Arc<RpcApiGrpc> {
-        &self.rpc_api
-    }
-}
+// impl ProxyConnection {
+//     fn get_rpc_api(&self) -> &Arc<RpcApiGrpc> {
+//         &self.rpc_api
+//     }
+// }
 
 pub struct KaspaRpcProxy {
     network_type: NetworkType,
@@ -109,7 +109,7 @@ struct Args {
     verbose: bool,
 }
 
-use kaspa_rpc_macros::build_wrpc_interface;
+// use kaspa_rpc_macros::build_wrpc_interface;
 
 // impl AsRef<Arc<dyn RpcApi>> for ProxyConnection {
 //     fn as_ref(&self) -> &Arc<dyn RpcApi> {

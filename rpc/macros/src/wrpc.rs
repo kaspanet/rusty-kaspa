@@ -144,7 +144,7 @@ impl ToTokens for RpcTable {
                         for op in #rpc_api_ops::list() {
                             match op {
                                 #(#server_targets)*
-                                // _ => todo!()
+                                _ => todo!()
                             }
                         }
                     },
@@ -152,7 +152,7 @@ impl ToTokens for RpcTable {
                         for op in #rpc_api_ops::list() {
                             match op {
                                 #(#connection_targets)*
-                                // _ => todo!()
+                                _ => todo!()
                             }
                         }
                     }
