@@ -95,12 +95,8 @@ impl TransactionsPool {
     pub(crate) fn add_mempool_transaction(&mut self, transaction: MempoolTransaction) -> RuleResult<()> {
         let id = transaction.id();
 
-        assert!(!self.all_transactions.contains_key(&id), "transaction {} to be added already exists in the transactions pool", id);
-        assert!(
-            transaction.mtx.is_fully_populated(),
-            "transaction {} to be added in the transactions pool is not fully populated",
-            id
-        );
+        assert!(!self.all_transactions.contains_key(&id), "transaction {id} to be added already exists in the transactions pool");
+        assert!(transaction.mtx.is_fully_populated(), "transaction {id} to be added in the transactions pool is not fully populated");
 
         // Create the bijective parent/chained relations.
         // This concerns only the parents of the added transaction.

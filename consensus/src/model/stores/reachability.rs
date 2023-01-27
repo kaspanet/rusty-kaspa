@@ -419,8 +419,8 @@ mod tests {
         let height = store.append_child(hash, 31.into()).unwrap();
         assert_eq!(height, 5);
         let children = store.get_children(hash).unwrap();
-        println!("{:?}", children);
+        println!("{children:?}");
         store.get_interval(7.into()).unwrap();
-        println!("{:?}", children);
+        println!("{children:?}");
     }
 }

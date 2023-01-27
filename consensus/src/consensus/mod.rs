@@ -260,7 +260,7 @@ impl Consensus {
         let block_processors_pool = Arc::new(
             rayon::ThreadPoolBuilder::new()
                 .num_threads(perf_params.block_processors_num_threads)
-                .thread_name(|i| format!("block-pool-{}", i))
+                .thread_name(|i| format!("block-pool-{i}"))
                 .build()
                 .unwrap(),
         );
@@ -270,7 +270,7 @@ impl Consensus {
         let virtual_pool = Arc::new(
             rayon::ThreadPoolBuilder::new()
                 .num_threads(perf_params.virtual_processor_num_threads)
-                .thread_name(|i| format!("virtual-pool-{}", i))
+                .thread_name(|i| format!("virtual-pool-{i}"))
                 .build()
                 .unwrap(),
         );

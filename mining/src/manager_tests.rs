@@ -114,8 +114,7 @@ mod tests {
 
         assert_eq!(
             status, result,
-            "Unexpected result when trying to insert an invalid transaction: expected: {:?}, got: {:?}",
-            status, result
+            "Unexpected result when trying to insert an invalid transaction: expected: {status:?}, got: {result:?}",
         );
         let pool_tx = mining_manager.get_transaction(&transaction.id(), true, true);
         assert!(pool_tx.is_none(), "Mempool contains a transaction that should have been rejected");
@@ -218,14 +217,12 @@ mod tests {
         let result = mining_manager.handle_new_block_transactions(&block_with_first_part);
         assert!(
             result.is_ok(),
-            "the handling by the mempool of the transactions of a block accepted by the consensus should succeed but returned {:?}",
-            result
+            "the handling by the mempool of the transactions of a block accepted by the consensus should succeed but returned {result:?}"
         );
         for handled_tx_id in first_part.iter().map(|x| x.id()) {
             assert!(
                 mining_manager.get_transaction(&handled_tx_id, true, true).is_none(),
-                "the transaction {} should not be in the mempool",
-                handled_tx_id
+                "the transaction {handled_tx_id} should not be in the mempool"
             );
         }
         // There are no chained/double-spends transactions, and hence it is expected that all the other
@@ -233,8 +230,7 @@ mod tests {
         for handled_tx_id in rest.iter().map(|x| x.id()) {
             assert!(
                 mining_manager.get_transaction(&handled_tx_id, true, true).is_some(),
-                "the transaction {} is lacking from the mempool",
-                handled_tx_id
+                "the transaction {handled_tx_id} is lacking from the mempool"
             );
         }
 
@@ -242,14 +238,12 @@ mod tests {
         let result = mining_manager.handle_new_block_transactions(&block_with_rest);
         assert!(
             result.is_ok(),
-            "the handling by the mempool of the transactions of a block accepted by the consensus should succeed but returned {:?}",
-            result
+            "the handling by the mempool of the transactions of a block accepted by the consensus should succeed but returned {result:?}"            
         );
         for handled_tx_id in rest.iter().map(|x| x.id()) {
             assert!(
                 mining_manager.get_transaction(&handled_tx_id, true, true).is_none(),
-                "the transaction {} should no longer be in the mempool",
-                handled_tx_id
+                "the transaction {handled_tx_id} should no longer be in the mempool"
             );
         }
     }
@@ -330,7 +324,7 @@ mod tests {
         let added_parent_txs = parent_txs.iter().skip(SKIPPED_TXS).cloned().collect::<Vec<_>>();
         added_parent_txs.iter().for_each(|x| consensus.add_transaction(x.clone(), 1));
         let result = mining_manager.handle_new_block_transactions(&build_block_transactions(added_parent_txs.iter()));
-        assert!(result.is_ok(), "mining manager should handle new block transactions successfully but returns {:?}", result);
+        assert!(result.is_ok(), "mining manager should handle new block transactions successfully but returns {result:?}");
         let unorphaned_txs = result.unwrap();
         let (populated_txs, orphans) = mining_manager.get_all_transactions(true, true);
         assert_eq!(
@@ -414,7 +408,7 @@ mod tests {
         let added_child_txs = child_txs.iter().skip(SKIPPED_TXS).cloned().collect::<Vec<_>>();
         added_child_txs.iter().for_each(|x| consensus.add_transaction(x.clone(), 2));
         let result = mining_manager.handle_new_block_transactions(&build_block_transactions(added_child_txs.iter()));
-        assert!(result.is_ok(), "mining manager should handle new block transactions successfully but returns {:?}", result);
+        assert!(result.is_ok(), "mining manager should handle new block transactions successfully but returns {result:?}");
 
         let unorphaned_txs = result.unwrap();
         let (populated_txs, orphans) = mining_manager.get_all_transactions(true, true);
@@ -776,9 +770,7 @@ mod tests {
         assert_eq!(
             expected_block.hash(),
             modified_block.hash(),
-            "built and modified block templates should have same hashes \n\n{:?}\n\n{:?}\n\n",
-            expected_block,
-            modified_block
+            "built and modified block templates should have same hashes \n\n{expected_block:?}\n\n{modified_block:?}\n\n"
         );
     }
 

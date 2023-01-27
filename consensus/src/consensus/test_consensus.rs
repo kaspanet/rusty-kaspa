@@ -263,8 +263,8 @@ pub fn create_permanent_db(db_path: String) -> (TempDbLifetime, Arc<DB>) {
     let db_dir = PathBuf::from(db_path);
     if let Err(e) = fs::create_dir(db_dir.as_path()) {
         match e.kind() {
-            std::io::ErrorKind::AlreadyExists => panic!("The directory {:?} already exists", db_dir),
-            _ => panic!("{}", e),
+            std::io::ErrorKind::AlreadyExists => panic!("The directory {db_dir:?} already exists"),
+            _ => panic!("{e}"),
         }
     }
     let db = Arc::new(DB::open_default(db_dir.to_str().unwrap()).unwrap());
@@ -275,7 +275,7 @@ pub fn create_permanent_db(db_path: String) -> (TempDbLifetime, Arc<DB>) {
 /// Callers must keep the `TempDbLifetime` guard for as long as they wish the DB instance to exist.
 pub fn load_existing_db(db_path: String) -> (TempDbLifetime, Arc<DB>) {
     let db_dir = PathBuf::from(db_path);
-    assert!(db_dir.is_dir(), "DB directory {:?} is expected to exist", db_dir);
+    assert!(db_dir.is_dir(), "DB directory {db_dir:?} is expected to exist");
     let db = Arc::new(DB::open_default(db_dir.to_str().unwrap()).unwrap());
     (TempDbLifetime::without_destroy(Arc::downgrade(&db)), db)
 }

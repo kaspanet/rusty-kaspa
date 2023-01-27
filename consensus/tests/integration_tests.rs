@@ -201,7 +201,7 @@ async fn ghostdag_test() {
     path_strings.sort();
 
     for path_str in path_strings.iter() {
-        println!("Running test {}", path_str);
+        println!("Running test {path_str}");
         let file = File::open(path_str).unwrap();
         let reader = BufReader::new(file);
         let test: GhostdagTestDag = serde_json::from_reader(reader).unwrap();
@@ -353,7 +353,7 @@ async fn header_in_isolation_validation_test() {
                 assert_eq!(wrong_version, block_version)
             }
             res => {
-                panic!("Unexpected result: {:?}", res)
+                panic!("Unexpected result: {res:?}")
             }
         }
     }
@@ -370,7 +370,7 @@ async fn header_in_isolation_validation_test() {
                 assert_eq!(ts, block_ts)
             }
             res => {
-                panic!("Unexpected result: {:?}", res)
+                panic!("Unexpected result: {res:?}")
             }
         }
     }
@@ -382,7 +382,7 @@ async fn header_in_isolation_validation_test() {
         match consensus.validate_and_insert_block(block.to_immutable()).await {
             Err(RuleError::NoParents) => {}
             res => {
-                panic!("Unexpected result: {:?}", res)
+                panic!("Unexpected result: {res:?}")
             }
         }
     }
@@ -397,7 +397,7 @@ async fn header_in_isolation_validation_test() {
                 assert_eq!(limit, params.max_block_parents as usize);
             }
             res => {
-                panic!("Unexpected result: {:?}", res)
+                panic!("Unexpected result: {res:?}")
             }
         }
     }
@@ -421,7 +421,7 @@ async fn incest_test() {
             assert_eq!(b, 1.into());
         }
         res => {
-            panic!("Unexpected result: {:?}", res)
+            panic!("Unexpected result: {res:?}")
         }
     }
 
@@ -440,7 +440,7 @@ async fn missing_parents_test() {
             assert_eq!(missing, vec![0.into()]);
         }
         res => {
-            panic!("Unexpected result: {:?}", res)
+            panic!("Unexpected result: {res:?}")
         }
     }
 
@@ -460,14 +460,14 @@ async fn known_invalid_test() {
     match consensus.validate_and_insert_block(block.clone().to_immutable()).await {
         Err(RuleError::TimeTooOld(_, _)) => {}
         res => {
-            panic!("Unexpected result: {:?}", res)
+            panic!("Unexpected result: {res:?}")
         }
     }
 
     match consensus.validate_and_insert_block(block.to_immutable()).await {
         Err(RuleError::KnownInvalid) => {}
         res => {
-            panic!("Unexpected result: {:?}", res)
+            panic!("Unexpected result: {res:?}")
         }
     }
 
@@ -494,7 +494,7 @@ async fn median_time_test() {
     match consensus.validate_and_insert_block(block.to_immutable()).await {
         Err(RuleError::TimeTooOld(_, _)) => {}
         res => {
-            panic!("Unexpected result: {:?}", res)
+            panic!("Unexpected result: {res:?}")
         }
     }
 
@@ -504,7 +504,7 @@ async fn median_time_test() {
     match consensus.validate_and_insert_block(block.to_immutable()).await {
         Err(RuleError::TimeTooOld(_, _)) => {}
         res => {
-            panic!("Unexpected result: {:?}", res)
+            panic!("Unexpected result: {res:?}")
         }
     }
 
@@ -545,7 +545,7 @@ async fn mergeset_size_limit_test() {
             assert_eq!(b, params.mergeset_size_limit);
         }
         res => {
-            panic!("Unexpected result: {:?}", res)
+            panic!("Unexpected result: {res:?}")
         }
     }
 
@@ -763,8 +763,8 @@ async fn json_test(file_path: &str) {
         let block = json_line_to_block(line.unwrap());
         let hash = block.header.hash;
         // Test our hashing implementation vs the hash accepted from the json source
-        assert_eq!(hashing::header::hash(&block.header), hash, "header hashing for block {} {} failed", i, hash);
-        let status = consensus.validate_and_insert_block(block).await.unwrap_or_else(|e| panic!("block {} {} failed: {}", i, hash, e));
+        assert_eq!(hashing::header::hash(&block.header), hash, "header hashing for block {i} {hash} failed");
+        let status = consensus.validate_and_insert_block(block).await.unwrap_or_else(|e| panic!("block {i} {hash} failed: {e}"));
         assert!(status.is_utxo_valid_or_pending());
     }
 
@@ -921,13 +921,13 @@ async fn bounded_merge_depth_test() {
     // past of any kosherizing block, so we expect the next block to be rejected.
     match consensus.add_block_with_parents(100.into(), vec![block_chain_2[1], *selected_chain.last().unwrap()]).await {
         Err(RuleError::ViolatingBoundedMergeDepth) => {}
-        res => panic!("Unexpected result: {:?}", res),
+        res => panic!("Unexpected result: {res:?}"),
     }
 
     // A block that points to tip of both chains will be rejected for similar reasons (since block_chain_2 tip is also red).
     match consensus.add_block_with_parents(101.into(), vec![*block_chain_2.last().unwrap(), *selected_chain.last().unwrap()]).await {
         Err(RuleError::ViolatingBoundedMergeDepth) => {}
-        res => panic!("Unexpected result: {:?}", res),
+        res => panic!("Unexpected result: {res:?}"),
     }
 
     let kosherizing_hash: Hash = 102.into();
@@ -957,7 +957,7 @@ async fn bounded_merge_depth_test() {
     // Since kosherizing_hash is now red, we expect this to fail.
     match consensus.add_block_with_parents(1100.into(), vec![kosherizing_hash, *selected_chain.last().unwrap()]).await {
         Err(RuleError::ViolatingBoundedMergeDepth) => {}
-        res => panic!("Unexpected result: {:?}", res),
+        res => panic!("Unexpected result: {res:?}"),
     }
 
     // point_at_blue_kosherizing is kosherizing kosherizing_hash, so this should pass.
