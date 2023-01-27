@@ -8,7 +8,9 @@ use serde::{Deserialize, Serialize};
 pub const SUBNETWORK_ID_SIZE: usize = 20;
 
 /// The domain representation of a Subnetwork ID
-#[derive(Debug, Clone, Default, Eq, PartialEq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(
+    Debug, Clone, Default, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema,
+)]
 pub struct SubnetworkId([u8; SUBNETWORK_ID_SIZE]);
 
 impl AsRef<[u8]> for SubnetworkId {

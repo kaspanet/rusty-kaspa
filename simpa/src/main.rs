@@ -191,7 +191,7 @@ async fn validate(src_consensus: &Consensus, dst_consensus: &Consensus, params: 
     let hashes = topologically_ordered_hashes(src_consensus, params.genesis_hash);
     let num_blocks = hashes.len();
     let num_txs = print_stats(src_consensus, &hashes, delay, bps, params.ghostdag_k);
-    println!("Validating {} blocks with {} transactions overall...", num_blocks, num_txs);
+    println!("Validating {num_blocks} blocks with {num_txs} transactions overall...");
     let start = std::time::Instant::now();
     let chunks = hashes.into_iter().chunks(1000);
     let mut iter = chunks.into_iter();
@@ -265,10 +265,7 @@ fn print_stats(src_consensus: &Consensus, hashes: &[Hash], delay: f64, bps: f64,
         / hashes.len() as f64;
     let num_txs = hashes.iter().map(|&h| src_consensus.block_transactions_store.get(h).unwrap().len()).sum::<usize>();
     let txs_mean = num_txs as f64 / hashes.len() as f64;
-    println!("[DELAY={}, BPS={}, GHOSTDAG K={}]", delay, bps, k);
-    println!(
-        "[Average stats of generated DAG] blues: {}, reds: {}, parents: {}, txs: {}",
-        blues_mean, reds_mean, parents_mean, txs_mean
-    );
+    println!("[DELAY={delay}, BPS={bps}, GHOSTDAG K={k}]");
+    println!("[Average stats of generated DAG] blues: {blues_mean}, reds: {reds_mean}, parents: {parents_mean}, txs: {txs_mean}");
     num_txs
 }
