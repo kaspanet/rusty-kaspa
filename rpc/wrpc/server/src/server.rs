@@ -16,6 +16,7 @@ use workflow_log::*;
 // use workflow_rpc::result::ServerResult;
 use crate::result::Result;
 use crate::router::Router;
+use crate::router::RpcApiContainer;
 use workflow_rpc::server::prelude::*;
 pub use workflow_rpc::server::Encoding as WrpcEncoding;
 
@@ -52,6 +53,19 @@ impl ConnectionContext {
     }
 }
 
+impl RpcApiContainer for ConnectionContext{
+    fn get_rpc_api(&self)-> &Arc<dyn RpcApi> {
+        panic!("RpcApi is missing")
+    }
+}
+
+impl RpcApiContainer for Arc<ConnectionContext>{
+    fn get_rpc_api(&self)-> &Arc<dyn RpcApi> {
+        panic!("RpcApi is missing")
+    }
+}
+
+
 pub struct KaspaRpcHandler {
     // router: Arc<Router<ConnectionContext>>,
     // pub options: Options,
@@ -67,8 +81,20 @@ impl KaspaRpcHandler {
         KaspaRpcHandler { rpc_api, sockets: Mutex::new(HashMap::new()) }
     }
 
-    fn get_rpc_api(&self) -> &Arc<dyn RpcApi> {
-        return &self.rpc_api;
+    fn get_rpc_api_impl(&self) -> &Arc<dyn RpcApi> {
+        &self.rpc_api
+    }
+}
+
+impl RpcApiContainer for KaspaRpcHandler{
+    fn get_rpc_api(&self)-> &Arc<dyn RpcApi> {
+        self.get_rpc_api_impl()
+    }
+}
+
+impl RpcApiContainer for Arc<KaspaRpcHandler>{
+    fn get_rpc_api(&self)-> &Arc<dyn RpcApi> {
+        self.get_rpc_api_impl()
     }
 }
 
@@ -116,7 +142,7 @@ impl WrpcServer {
     pub fn new(options: Options, rpc_api: Arc<dyn RpcApi>) -> Self {
         let handler = Arc::new(KaspaRpcHandler::new(rpc_api));
         let router = Arc::new(
-            Router::<Arc<KaspaRpcHandler>,Arc<ConnectionContext>>::new(handler, options.verbose)
+            Router::<Arc<KaspaRpcHandler>,Arc<ConnectionContext>>::new(handler.clone(), options.verbose)
         );
         // let handler = Arc::new(KaspaRpcHandler::new(router.clone()));
         // let server_ctx = Arc::new(ServerContext);
@@ -146,7 +172,7 @@ impl WrpcServer {
 
         // let interface = Arc::new(interface);
 
-        let server = RpcServer::new_with_encoding::<Arc<dyn RpcApi>, Arc<ConnectionContext>, RpcApiOps, Id64>(
+        let server = RpcServer::new_with_encoding::<Arc<KaspaRpcHandler>, Arc<ConnectionContext>, RpcApiOps, Id64>(
             options.encoding.clone(),
             handler,
             router.interface.clone(),

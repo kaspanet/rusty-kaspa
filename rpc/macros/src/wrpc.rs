@@ -112,7 +112,7 @@ impl ToTokens for RpcTable {
             server_targets.push(quote! {
                 #rpc_api_ops::#handler => {
                     interface.method(#rpc_api_ops::#handler, method!(|server_ctx: #server_ctx_type, connection_ctx: #connection_ctx_type, request: #request_type| async move {
-                        let v: #response_type = server_ctx.get_rpc_api().#fn_call(request)
+                        let v: #response_type = server_ctx.get_rpc_api().#fn_call(request).await
                             .map_err(|e|ServerError::Text(e.to_string()))?;
                         Ok(v)
                     }));
@@ -122,7 +122,7 @@ impl ToTokens for RpcTable {
             connection_targets.push(quote! {
                 #rpc_api_ops::#handler => {
                     interface.method(#rpc_api_ops::#handler, method!(|server_ctx: #server_ctx_type, connection_ctx: #connection_ctx_type, request: #request_type| async move {
-                        let v: #response_type = connection_ctx.get_rpc_api().#fn_call(request)
+                        let v: #response_type = connection_ctx.get_rpc_api().#fn_call(request).await
                         .map_err(|e|ServerError::Text(e.to_string()))?;
                         Ok(v)
                     }));
@@ -133,7 +133,7 @@ impl ToTokens for RpcTable {
         quote! {
 
             {
-                let mut interface = workflow_rpc::server::Interface<
+                let mut interface = workflow_rpc::server::Interface::<
                     #server_ctx_type,
                     #connection_ctx_type,
                     #rpc_api_ops
@@ -144,13 +144,15 @@ impl ToTokens for RpcTable {
                         for op in #rpc_api_ops::list() {
                             match op {
                                 #(#server_targets)*
+                                _ => todo!()
                             }
                         }
                     },
-                    RouterTarget::Client => {
+                    RouterTarget::Connection => {
                         for op in #rpc_api_ops::list() {
                             match op {
                                 #(#connection_targets)*
+                                _ => todo!()
                             }
                         }
                     }

@@ -62,7 +62,7 @@ impl AsyncService for GrpcServer {
                 .await
                 .map_err(|err| AsyncServiceError::Service(format!("gRPC server exited with error `{}`", err)));
 
-            if let Ok(_) = &result {
+            if result.is_ok() {
                 trace!("gRPC server exited gracefully");
             }
 

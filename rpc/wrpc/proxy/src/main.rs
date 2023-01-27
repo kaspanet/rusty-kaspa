@@ -36,8 +36,8 @@ pub struct ProxyConnection {
 }
 
 impl ProxyConnection {
-    fn get_rpc_api(&self) -> &Arc<dyn RpcApi> {
-        return &self.rpc_api;
+    fn get_rpc_api(&self) -> &Arc<RpcApiGrpc> {
+        &self.rpc_api
     }
 }
 
@@ -159,7 +159,7 @@ use kaspa_rpc_macros::build_wrpc_interface;
 #[tokio::main]
 async fn main() -> Result<()> {
     todo!();
-
+    /*
     let Args { network_type, verbose, proxy_port } = Args::parse();
 
     // workflow_log::set_log_level()
@@ -197,4 +197,5 @@ async fn main() -> Result<()> {
     server.listen(&addr).await?;
 
     Ok(())
+    */
 }
