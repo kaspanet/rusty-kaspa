@@ -57,7 +57,7 @@ where
         let depth = self.attrs.depth.checked_add(1).ok_or(Error::Depth)?;
 
         let mut hmac =
-            HmacSha512::new_from_slice(&self.attrs.chain_code).map_err(|_| Error::Crypto)?;
+            HmacSha512::new_from_slice(&self.attrs.chain_code).map_err(Error::Hmac)?;
 
         hmac.update(&self.public_key.to_bytes());
         hmac.update(&child_number.to_bytes());
@@ -139,7 +139,7 @@ where
                 attrs: extended_key.attrs.clone(),
             })
         } else {
-            Err(Error::Crypto)
+            Err(Error::Crypto(secp256k1::Error::InvalidPublicKey))
         }
     }
 }

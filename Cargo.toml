@@ -56,6 +56,7 @@ kaspa-wallet-cli = { path = "wallet/cli" }
 kaspa-wallet-cli-native = { path = "wallet/native" }
 kaspa-wallet-cli-wasm = { path = "wallet/wasm" }
 kaspa-wasm = { path = "wasm" }
+kaspa-bip32 = { path = "bip32" }
 
 thiserror = "1"
 faster-hex = "0.6"

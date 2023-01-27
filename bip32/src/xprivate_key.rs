@@ -66,7 +66,7 @@ where
         let depth = self.attrs.depth.checked_add(1).ok_or(Error::Depth)?;
 
         let mut hmac =
-            HmacSha512::new_from_slice(&self.attrs.chain_code).map_err(|_| Error::Crypto)?;
+            HmacSha512::new_from_slice(&self.attrs.chain_code).map_err(Error::Hmac)?;
 
         if child_number.is_hardened() {
             hmac.update(&[0]);
@@ -215,7 +215,7 @@ where
                 attrs: extended_key.attrs.clone(),
             })
         } else {
-            Err(Error::Crypto)
+            Err(Error::Crypto(secp256k1::Error::InvalidSecretKey))
         }
     }
 }

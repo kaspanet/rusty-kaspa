@@ -41,7 +41,7 @@ impl PublicKey for secp256k1::PublicKey {
         let child_key = child_key
             .add_exp_tweak(&engine, &other)
             //.add_exp_assign(&engine, &other)
-            .map_err(|_| Error::Crypto)?;
+            .map_err(Error::Crypto)?;
 
         Ok(child_key)
     }

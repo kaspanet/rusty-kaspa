@@ -51,7 +51,7 @@ impl ExtendedKey {
 
         //println!("base58_len: {base58_len}, hash {}", hex::encode(&buffer));
 
-        str::from_utf8(&buffer[..base58_len]).map_err(|_| Error::Base58)
+        str::from_utf8(&buffer[..base58_len]).map_err(Error::Utf8Error)
     }
 }
 
@@ -72,13 +72,15 @@ impl FromStr for ExtendedKey {
         let decoded_len = bs58::decode(base58).with_check(None).into(&mut bytes)?;
 
         if decoded_len != Self::BYTE_SIZE {
-            return Err(Error::Decode);
+            return Err(Error::DecodeLength(decoded_len, Self::BYTE_SIZE));
         }
 
-        let prefix = base58.get(..4).ok_or(Error::Decode).and_then(|chars| {
+        let prefix = base58.get(..4).ok_or(Error::DecodeIssue).and_then(|chars| {
             Prefix::validate_str(chars)?;
-            let version = Version::from_be_bytes(bytes[..4].try_into()?);
+            let b:[u8; 4] = bytes[..4].try_into()?;
+            let version = Version::from_be_bytes(b);
             Ok(Prefix::from_parts_unchecked(chars, version))
+            //Err(Error::DecodeIssue)
         })?;
 
         let depth = bytes[4];
