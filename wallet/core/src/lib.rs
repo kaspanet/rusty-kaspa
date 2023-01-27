@@ -4,8 +4,8 @@ pub mod wallet;
 mod wallets;
 mod wrapper;
 
-pub use result::Result;
-pub use wrapper::WalletWrapper;
 pub use addresses::Address;
-pub use wallets::dummy_address;
+pub use result::Result;
 pub use wallet::Wallet;
+pub use wallets::dummy_address;
+pub use wrapper::WalletWrapper;

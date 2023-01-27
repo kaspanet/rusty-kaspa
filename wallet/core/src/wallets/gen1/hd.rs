@@ -5,13 +5,13 @@ use sha2::{Digest, Sha256};
 use std::{
     fmt::Debug,
     str::FromStr,
-    sync::{Arc, Mutex}
+    sync::{Arc, Mutex},
 };
 use zeroize::Zeroizing;
 
 use kaspa_bip32::{
-    types::*, AddressType, ChildNumber, ExtendedKey, ExtendedKeyAttrs, ExtendedPrivateKey,
-    ExtendedPublicKey, Prefix, PrivateKey, PublicKey, SecretKey, SecretKeyExt,
+    types::*, AddressType, ChildNumber, ExtendedKey, ExtendedKeyAttrs, ExtendedPrivateKey, ExtendedPublicKey, Prefix, PrivateKey,
+    PublicKey, SecretKey, SecretKeyExt,
 };
 
 fn get_fingerprint<K>(private_key: &K) -> KeyFingerprint
@@ -37,25 +37,18 @@ pub struct HDWalletInner {
 
     hmac: HmacSha512,
 
-    index: Arc<Mutex<u32>>
+    index: Arc<Mutex<u32>>,
 }
 
 impl HDWalletInner {
-
     pub fn new(
         public_key: secp256k1::PublicKey,
         attrs: ExtendedKeyAttrs,
         fingerprint: KeyFingerprint,
         hmac: HmacSha512,
-        index: u32
-    )->Result<Self>{
-        let wallet = Self{
-            public_key,
-            attrs,
-            fingerprint,
-            hmac,
-            index: Arc::new(Mutex::new(index))
-        };
+        index: u32,
+    ) -> Result<Self> {
+        let wallet = Self { public_key, attrs, fingerprint, hmac, index: Arc::new(Mutex::new(index)) };
 
         Ok(wallet)
     }
@@ -65,11 +58,11 @@ impl HDWalletInner {
         self.current_address().await
     }
 
-    pub fn index(&self)->Result<u32>{
+    pub fn index(&self) -> Result<u32> {
         Ok(*self.index.lock()?)
     }
 
-    pub fn set_index(&self, index:u32)->Result<()>{
+    pub fn set_index(&self, index: u32) -> Result<()> {
         *self.index.lock()? = index;
         Ok(())
     }
@@ -81,15 +74,10 @@ impl HDWalletInner {
         Ok(address)
     }
     pub async fn derive_address(&self, index: u32) -> Result<Address> {
-        let (key, _chain_code) =
-            HDWalletGen1::derive_public_key_child(&self.public_key, index, self.hmac.clone())?;
+        let (key, _chain_code) = HDWalletGen1::derive_public_key_child(&self.public_key, index, self.hmac.clone())?;
 
         let pubkey = &key.to_bytes()[1..];
-        let address = Address {
-            prefix: AddressPrefix::Mainnet,
-            version: 0,
-            payload: pubkey.to_vec(),
-        };
+        let address = Address { prefix: AddressPrefix::Mainnet, version: 0, payload: pubkey.to_vec() };
 
         Ok(address)
     }
@@ -111,11 +99,7 @@ impl HDWalletInner {
     pub fn to_extended_key(&self, prefix: Prefix) -> ExtendedKey {
         let mut key_bytes = [0u8; KEY_SIZE + 1];
         key_bytes[..].copy_from_slice(&self.to_bytes());
-        ExtendedKey {
-            prefix,
-            attrs: self.attrs.clone(),
-            key_bytes,
-        }
+        ExtendedKey { prefix, attrs: self.attrs.clone(), key_bytes }
     }
 
     pub fn to_string(&self) -> Zeroizing<String> {
@@ -125,10 +109,7 @@ impl HDWalletInner {
 
 impl From<&HDWalletInner> for ExtendedPublicKey<secp256k1::PublicKey> {
     fn from(inner: &HDWalletInner) -> ExtendedPublicKey<secp256k1::PublicKey> {
-        ExtendedPublicKey {
-            public_key: inner.public_key,
-            attrs: inner.attrs().clone(),
-        }
+        ExtendedPublicKey { public_key: inner.public_key, attrs: inner.attrs().clone() }
     }
 }
 
@@ -146,26 +127,14 @@ pub struct HDWalletGen1 {
 
 impl HDWalletGen1 {
     /// build wallet from root/master private key
-    pub async fn from_master_xprv(
-        xprv: &str,
-        is_multisig: bool,
-        account_index: u64,
-    ) -> Result<Self> {
+    pub async fn from_master_xprv(xprv: &str, is_multisig: bool, account_index: u64) -> Result<Self> {
         let xprv_key = ExtendedPrivateKey::<SecretKey>::from_str(xprv)?;
         let attrs = xprv_key.attrs();
 
-        let (extended_private_key, attrs) = Self::create_extended_key(
-            *xprv_key.private_key(),
-            attrs.clone(),
-            is_multisig,
-            account_index,
-        )
-        .await?;
+        let (extended_private_key, attrs) =
+            Self::create_extended_key(*xprv_key.private_key(), attrs.clone(), is_multisig, account_index).await?;
 
-        let extended_public_key = ExtendedPublicKey {
-            public_key: extended_private_key.get_public_key(),
-            attrs,
-        };
+        let extended_public_key = ExtendedPublicKey { public_key: extended_private_key.get_public_key(), attrs };
 
         let wallet = Self::from_extended_public_key(extended_public_key).await?;
 
@@ -178,20 +147,12 @@ impl HDWalletGen1 {
         Ok(wallet)
     }
 
-    pub async fn from_extended_public_key(
-        extended_public_key: ExtendedPublicKey<secp256k1::PublicKey>,
-    ) -> Result<Self> {
-        let receive_wallet =
-            Self::derive_wallet(extended_public_key.clone(), AddressType::Receive).await?;
+    pub async fn from_extended_public_key(extended_public_key: ExtendedPublicKey<secp256k1::PublicKey>) -> Result<Self> {
+        let receive_wallet = Self::derive_wallet(extended_public_key.clone(), AddressType::Receive).await?;
 
-        let change_wallet =
-            Self::derive_wallet(extended_public_key.clone(), AddressType::Change).await?;
+        let change_wallet = Self::derive_wallet(extended_public_key.clone(), AddressType::Change).await?;
 
-        let wallet = Self {
-            extended_public_key,
-            receive_wallet,
-            change_wallet,
-        };
+        let wallet = Self { extended_public_key, receive_wallet, change_wallet };
 
         Ok(wallet)
     }
@@ -206,9 +167,7 @@ impl HDWalletGen1 {
         let address_path = format!("{}'/111111'/{}'", purpose, account_index);
         let children = address_path.split('/');
         for child in children {
-            (private_key, attrs) =
-                Self::derive_private_key(&private_key, &attrs, child.parse::<ChildNumber>()?)
-                    .await?;
+            (private_key, attrs) = Self::derive_private_key(&private_key, &attrs, child.parse::<ChildNumber>()?).await?;
         }
 
         Ok((private_key, attrs))
@@ -250,17 +209,10 @@ impl HDWalletGen1 {
     ) -> Result<HDWalletInner> {
         public_key = public_key.derive_child(ChildNumber::new(address_type.index(), false)?)?;
 
-        let mut hmac = HmacSha512::new_from_slice(&public_key.attrs().chain_code)
-            .map_err(Error::Hmac)?;
+        let mut hmac = HmacSha512::new_from_slice(&public_key.attrs().chain_code).map_err(Error::Hmac)?;
         hmac.update(&public_key.to_bytes());
 
-        HDWalletInner::new(
-            *public_key.public_key(),
-            public_key.attrs().clone(),
-            public_key.fingerprint(),
-            hmac,
-            0
-        )
+        HDWalletInner::new(*public_key.public_key(), public_key.attrs().clone(), public_key.fingerprint(), hmac, 0)
     }
 
     pub async fn derive_public_key(
@@ -277,12 +229,8 @@ impl HDWalletGen1 {
 
         let depth = attrs.depth.checked_add(1).ok_or(Error::Depth)?;
 
-        let attrs = ExtendedKeyAttrs {
-            parent_fingerprint: fingerprint,
-            child_number: ChildNumber::new(index, false)?,
-            chain_code,
-            depth,
-        };
+        let attrs =
+            ExtendedKeyAttrs { parent_fingerprint: fingerprint, child_number: ChildNumber::new(index, false)?, chain_code, depth };
 
         Ok((private_key, attrs))
     }
@@ -325,21 +273,12 @@ impl HDWalletGen1 {
 
         let depth = attrs.depth.checked_add(1).ok_or(Error::Depth)?;
 
-        let attrs = ExtendedKeyAttrs {
-            parent_fingerprint: fingerprint,
-            child_number,
-            chain_code,
-            depth,
-        };
+        let attrs = ExtendedKeyAttrs { parent_fingerprint: fingerprint, child_number, chain_code, depth };
 
         Ok((private_key, attrs))
     }
 
-    fn derive_key(
-        private_key: &SecretKey,
-        child_number: ChildNumber,
-        mut hmac: HmacSha512,
-    ) -> Result<(SecretKey, ChainCode)> {
+    fn derive_key(private_key: &SecretKey, child_number: ChildNumber, mut hmac: HmacSha512) -> Result<(SecretKey, ChainCode)> {
         hmac.update(&child_number.to_bytes());
 
         let result = hmac.finalize().into_bytes();
@@ -359,11 +298,7 @@ impl HDWalletGen1 {
         Ok((private_key, chain_code.try_into()?))
     }
 
-    pub fn create_hmac<K>(
-        private_key: &K,
-        attrs: &ExtendedKeyAttrs,
-        hardened: bool,
-    ) -> Result<HmacSha512>
+    pub fn create_hmac<K>(private_key: &K, attrs: &ExtendedKeyAttrs, hardened: bool) -> Result<HmacSha512>
     where
         K: PrivateKey<PublicKey = secp256k1::PublicKey>,
     {

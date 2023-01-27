@@ -1,9 +1,9 @@
 //! Error type.
 
 use core::fmt::{self, Display};
-use thiserror::Error;
 use core::str::Utf8Error;
 use std::sync::PoisonError;
+use thiserror::Error;
 
 /// Result type.
 pub type Result<T> = core::result::Result<T, Error>;
@@ -16,14 +16,14 @@ pub enum ErrorImpl {
     DecodeInvalidLength,
 
     /// validate_str: Invalid str
-    DecodeInvalidStr
+    DecodeInvalidStr,
 }
 
 impl Display for ErrorImpl {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ErrorImpl::DecodeInvalidStr => f.write_str("decoding error"),
-            ErrorImpl::DecodeInvalidLength => f.write_str("decoding error")
+            ErrorImpl::DecodeInvalidLength => f.write_str("decoding error"),
         }
     }
 }
@@ -36,11 +36,11 @@ pub enum Error {
 
     /// Base58 errors.
     #[error("Base58Encode error: {0}")]
-    Base58Encode(#[from] bs58::encode::Error),
+    Base58Encode(bs58::encode::Error),
 
     /// Base58 errors.
     #[error("Base58Decode error: {0}")]
-    Base58Decode(#[from] bs58::decode::Error),
+    Base58Decode(bs58::decode::Error),
 
     /// BIP39-related errors.
     #[error("Bip39 error")]
@@ -48,7 +48,7 @@ pub enum Error {
 
     /// Hmac-related errors.
     #[error("HMAC error: {0}")]
-    Hmac(#[from] hmac::digest::InvalidLength),
+    Hmac(hmac::digest::InvalidLength),
 
     /// Child number-related errors.
     #[error("Invalid child number")]
@@ -90,7 +90,6 @@ pub enum Error {
     PoisonError(String),
 }
 
-
 impl From<ErrorImpl> for Error {
     fn from(err: ErrorImpl) -> Error {
         Error::String(err.to_string())
@@ -103,47 +102,20 @@ impl<T> From<PoisonError<T>> for Error {
     }
 }
 
-//#[cfg(feature = "std")]
-//#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
-//impl std::error::Error for Error {}
-
-/*
-impl From<bs58::decode::Error> for Error {
-    fn from(_: bs58::decode::Error) -> Error {
-        Error::Base58
-    }
-}
-
 impl From<bs58::encode::Error> for Error {
-    fn from(_: bs58::encode::Error) -> Error {
-        Error::Base58
+    fn from(e: bs58::encode::Error) -> Error {
+        Error::Base58Encode(e)
     }
 }
 
-
-impl From<core::array::TryFromSliceError> for Error {
-    fn from(_: core::array::TryFromSliceError) -> Error {
-        Error::Decode
+impl From<bs58::decode::Error> for Error {
+    fn from(e: bs58::decode::Error) -> Error {
+        Error::Base58Decode(e)
     }
 }
-
 
 impl From<hmac::digest::InvalidLength> for Error {
     fn from(e: hmac::digest::InvalidLength) -> Error {
         Error::Hmac(e)
     }
 }
-
-impl From<secp256k1::Error> for Error {
-    fn from(_: secp256k1::Error) -> Error {
-        Error::Crypto
-    }
-}
-
-
-impl From<secp256k1::scalar::OutOfRangeError> for Error {
-    fn from(_: secp256k1::scalar::OutOfRangeError) -> Error {
-        Error::ScalarOutOfRangeError
-    }
-}
-*/

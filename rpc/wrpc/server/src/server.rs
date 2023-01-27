@@ -27,7 +27,7 @@ pub struct Options {
 }
 
 impl Options {
-    pub fn new(encoding: Encoding, listen_address: &str, verbose : bool) -> Self {
+    pub fn new(encoding: Encoding, listen_address: &str, verbose: bool) -> Self {
         Self { listen_address: listen_address.to_string(), encoding, verbose }
     }
 }
@@ -53,23 +53,22 @@ impl ConnectionContext {
     }
 }
 
-impl RpcApiContainer for ConnectionContext{
-    fn get_rpc_api(&self)-> &Arc<dyn RpcApi> {
+impl RpcApiContainer for ConnectionContext {
+    fn get_rpc_api(&self) -> &Arc<dyn RpcApi> {
         panic!("RpcApi is missing")
     }
 }
 
-impl RpcApiContainer for Arc<ConnectionContext>{
-    fn get_rpc_api(&self)-> &Arc<dyn RpcApi> {
+impl RpcApiContainer for Arc<ConnectionContext> {
+    fn get_rpc_api(&self) -> &Arc<dyn RpcApi> {
         panic!("RpcApi is missing")
     }
 }
-
 
 pub struct KaspaRpcHandler {
     // router: Arc<Router<ConnectionContext>>,
     // pub options: Options,
-    rpc_api : Arc<dyn RpcApi>,
+    rpc_api: Arc<dyn RpcApi>,
     pub sockets: Mutex<HashMap<SocketAddr, Arc<ConnectionContext>>>,
 }
 
@@ -77,7 +76,7 @@ impl KaspaRpcHandler {
     // pub fn new(router: Arc<Router<ConnectionContext>>) -> KaspaRpcHandler {
     //     KaspaRpcHandler { router, sockets: Mutex::new(HashMap::new()) }
     // }
-    pub fn new(rpc_api : Arc<dyn RpcApi>) -> KaspaRpcHandler {
+    pub fn new(rpc_api: Arc<dyn RpcApi>) -> KaspaRpcHandler {
         KaspaRpcHandler { rpc_api, sockets: Mutex::new(HashMap::new()) }
     }
 
@@ -86,14 +85,14 @@ impl KaspaRpcHandler {
     }
 }
 
-impl RpcApiContainer for KaspaRpcHandler{
-    fn get_rpc_api(&self)-> &Arc<dyn RpcApi> {
+impl RpcApiContainer for KaspaRpcHandler {
+    fn get_rpc_api(&self) -> &Arc<dyn RpcApi> {
         self.get_rpc_api_impl()
     }
 }
 
-impl RpcApiContainer for Arc<KaspaRpcHandler>{
-    fn get_rpc_api(&self)-> &Arc<dyn RpcApi> {
+impl RpcApiContainer for Arc<KaspaRpcHandler> {
+    fn get_rpc_api(&self) -> &Arc<dyn RpcApi> {
         self.get_rpc_api_impl()
     }
 }
@@ -141,9 +140,7 @@ pub struct WrpcServer {
 impl WrpcServer {
     pub fn new(options: Options, rpc_api: Arc<dyn RpcApi>) -> Self {
         let handler = Arc::new(KaspaRpcHandler::new(rpc_api));
-        let router = Arc::new(
-            Router::<Arc<KaspaRpcHandler>,Arc<ConnectionContext>>::new(handler.clone(), options.verbose)
-        );
+        let router = Arc::new(Router::<Arc<KaspaRpcHandler>, Arc<ConnectionContext>>::new(handler.clone(), options.verbose));
         // let handler = Arc::new(KaspaRpcHandler::new(router.clone()));
         // let server_ctx = Arc::new(ServerContext);
 

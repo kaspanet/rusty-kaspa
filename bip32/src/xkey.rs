@@ -58,9 +58,7 @@ impl ExtendedKey {
 impl Display for ExtendedKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut buf = [0u8; Self::MAX_BASE58_SIZE];
-        self.write_base58(&mut buf)
-            .map_err(|_| fmt::Error)
-            .and_then(|base58| f.write_str(base58))
+        self.write_base58(&mut buf).map_err(|_| fmt::Error).and_then(|base58| f.write_str(base58))
     }
 }
 
@@ -77,7 +75,7 @@ impl FromStr for ExtendedKey {
 
         let prefix = base58.get(..4).ok_or(Error::DecodeIssue).and_then(|chars| {
             Prefix::validate_str(chars)?;
-            let b:[u8; 4] = bytes[..4].try_into()?;
+            let b: [u8; 4] = bytes[..4].try_into()?;
             let version = Version::from_be_bytes(b);
             Ok(Prefix::from_parts_unchecked(chars, version))
             //Err(Error::DecodeIssue)
@@ -90,18 +88,9 @@ impl FromStr for ExtendedKey {
         let key_bytes = bytes[45..78].try_into()?;
         bytes.zeroize();
 
-        let attrs = ExtendedKeyAttrs {
-            depth,
-            parent_fingerprint,
-            child_number,
-            chain_code,
-        };
+        let attrs = ExtendedKeyAttrs { depth, parent_fingerprint, child_number, chain_code };
 
-        Ok(ExtendedKey {
-            prefix,
-            attrs,
-            key_bytes,
-        })
+        Ok(ExtendedKey { prefix, attrs, key_bytes })
     }
 }
 
@@ -112,30 +101,37 @@ impl Drop for ExtendedKey {
 }
 
 // TODO(tarcieri): consolidate test vectors
-#[cfg(all(test, feature = "alloc_"))]
+#[cfg(test)]
 mod tests {
     use super::ExtendedKey;
-    use alloc::string::ToString;
-    use hex_literal::hex;
+    use faster_hex::hex_decode_fallback;
+
+    macro_rules! hex {
+        ($str: literal) => {{
+            let len = $str.as_bytes().len() / 2;
+            let mut dst = vec![0; len];
+            dst.resize(len, 0);
+            hex_decode_fallback($str.as_bytes(), &mut dst);
+            dst
+        }
+        [..]};
+    }
 
     #[test]
     fn bip32_test_vector_1_xprv() {
+        //let xprv_base58 = "kprv5y2qurMHCsXYrNfU3GCihuwG3vMqFji7PZXajMEqyBkNh9UZUJgoHYBLTKu1eM4MvUtomcXPQ3Sw9HZ5ebbM4byoUciHo1zrPJBQfqpLorQ";
         let xprv_base58 = "xprv9s21ZrQH143K3QTDL4LXw2F7HEK3wJUD2nW2nRk4stbPy6cq3jPP\
              qjiChkVvvNKmPGJxWUtg6LnF5kejMRNNU3TGtRBeJgk33yuGBxrMPHi";
 
-        let xprv = xprv_base58.parse::<ExtendedKey>().unwrap();
+        let xprv = xprv_base58.parse::<ExtendedKey>();
+        assert!(xprv.is_ok(), "Could not parse key");
+        let xprv = xprv.unwrap();
         assert_eq!(xprv.prefix.as_str(), "xprv");
         assert_eq!(xprv.attrs.depth, 0);
         assert_eq!(xprv.attrs.parent_fingerprint, [0u8; 4]);
         assert_eq!(xprv.attrs.child_number.0, 0);
-        assert_eq!(
-            xprv.attrs.chain_code,
-            hex!("873DFF81C02F525623FD1FE5167EAC3A55A049DE3D314BB42EE227FFED37D508")
-        );
-        assert_eq!(
-            xprv.key_bytes,
-            hex!("00E8F32E723DECF4051AEFAC8E2C93C9C5B214313817CDB01A1494B917C8436B35")
-        );
+        assert_eq!(xprv.attrs.chain_code, hex!("873DFF81C02F525623FD1FE5167EAC3A55A049DE3D314BB42EE227FFED37D508"));
+        assert_eq!(xprv.key_bytes, hex!("00E8F32E723DECF4051AEFAC8E2C93C9C5B214313817CDB01A1494B917C8436B35"));
         assert_eq!(&xprv.to_string(), xprv_base58);
     }
 
@@ -144,19 +140,15 @@ mod tests {
         let xpub_base58 = "xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhe\
              PY2gZ29ESFjqJoCu1Rupje8YtGqsefD265TMg7usUDFdp6W1EGMcet8";
 
-        let xpub = xpub_base58.parse::<ExtendedKey>().unwrap();
+        let xpub = xpub_base58.parse::<ExtendedKey>();
+        assert!(xpub.is_ok(), "Could not parse key");
+        let xpub = xpub.unwrap();
         assert_eq!(xpub.prefix.as_str(), "xpub");
         assert_eq!(xpub.attrs.depth, 0);
         assert_eq!(xpub.attrs.parent_fingerprint, [0u8; 4]);
         assert_eq!(xpub.attrs.child_number.0, 0);
-        assert_eq!(
-            xpub.attrs.chain_code,
-            hex!("873DFF81C02F525623FD1FE5167EAC3A55A049DE3D314BB42EE227FFED37D508")
-        );
-        assert_eq!(
-            xpub.key_bytes,
-            hex!("0339A36013301597DAEF41FBE593A02CC513D0B55527EC2DF1050E2E8FF49C85C2")
-        );
+        assert_eq!(xpub.attrs.chain_code, hex!("873DFF81C02F525623FD1FE5167EAC3A55A049DE3D314BB42EE227FFED37D508"));
+        assert_eq!(xpub.key_bytes, hex!("0339A36013301597DAEF41FBE593A02CC513D0B55527EC2DF1050E2E8FF49C85C2"));
         assert_eq!(&xpub.to_string(), xpub_base58);
     }
 }

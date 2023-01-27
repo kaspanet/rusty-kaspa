@@ -14,8 +14,8 @@ use workflow_rpc::server::prelude::*;
 // use workflow_rpc::error::ServerError;
 // use workflow_rpc::result::ServerResult;
 
-pub trait RpcApiContainer : Send + Sync + 'static{
-    fn get_rpc_api(&self)-> &Arc<dyn RpcApi>;
+pub trait RpcApiContainer: Send + Sync + 'static {
+    fn get_rpc_api(&self) -> &Arc<dyn RpcApi>;
 }
 
 pub enum RouterTarget {
@@ -23,9 +23,9 @@ pub enum RouterTarget {
     Connection,
 }
 
-pub struct Router<ServerContext,ConnectionContext>
+pub struct Router<ServerContext, ConnectionContext>
 where
-    ServerContext: RpcApiContainer + Clone ,
+    ServerContext: RpcApiContainer + Clone,
     ConnectionContext: RpcApiContainer + Clone,
 {
     // iface: Arc<dyn RpcApi>,
@@ -73,10 +73,8 @@ where
     ConnectionContext: RpcApiContainer + Clone,
 {
     pub fn new(server_context: ServerContext, verbose: bool) -> Self {
-
-        let interface = build_wrpc_interface!(server_context, RouterTarget::Server, ServerContext, ConnectionContext, RpcApiOps,[
-            GetInfo
-        ]);
+        let interface =
+            build_wrpc_interface!(server_context, RouterTarget::Server, ServerContext, ConnectionContext, RpcApiOps, [GetInfo]);
 
         Router { interface, verbose }
     }

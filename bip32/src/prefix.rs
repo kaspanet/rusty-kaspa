@@ -153,10 +153,7 @@ impl AsRef<str> for Prefix {
 
 impl Debug for Prefix {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Prefix")
-            .field("chars", &self.as_str())
-            .field("version", &DebugVersion(self.version))
-            .finish()
+        f.debug_struct("Prefix").field("chars", &self.as_str()).field("version", &DebugVersion(self.version)).finish()
     }
 }
 

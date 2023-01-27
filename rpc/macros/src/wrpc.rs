@@ -77,7 +77,7 @@ impl Parse for RpcTable {
             }
         }
 
-        let handlers = RpcTable { 
+        let handlers = RpcTable {
             server_ctx,
             router_target,
             // field,

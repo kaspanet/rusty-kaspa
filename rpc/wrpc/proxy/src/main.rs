@@ -9,11 +9,11 @@ use consensus_core::networktype::NetworkType;
 use result::Result;
 // use rpc_core::api::rpc::RpcApi;
 use async_trait::async_trait;
-use rpc_core::api::rpc::RpcApi;
-use rpc_core::message::*;
 use rpc_core::api::ops::RpcApiOps;
+use rpc_core::api::rpc::RpcApi;
 #[allow(unused_imports)]
 use rpc_core::error::RpcResult;
+use rpc_core::message::*;
 #[allow(unused_imports)]
 use rpc_core::notify::channel::*;
 #[allow(unused_imports)]
@@ -93,9 +93,6 @@ impl RpcHandler for KaspaRpcProxy {
 //     rpc_api
 // }
 
-
-
-
 #[derive(Debug, Parser)] //clap::Args)]
 #[clap(name = "proxy")]
 #[clap(version)]
@@ -113,7 +110,6 @@ struct Args {
 }
 
 use kaspa_rpc_macros::build_wrpc_interface;
-
 
 // impl AsRef<Arc<dyn RpcApi>> for ProxyConnection {
 //     fn as_ref(&self) -> &Arc<dyn RpcApi> {
@@ -160,42 +156,42 @@ use kaspa_rpc_macros::build_wrpc_interface;
 async fn main() -> Result<()> {
     todo!();
     /*
-    let Args { network_type, verbose, proxy_port } = Args::parse();
+        let Args { network_type, verbose, proxy_port } = Args::parse();
 
-    // workflow_log::set_log_level()
-    let kaspad_port = network_type.port();
-    log_info!("");
-    log_info!("Proxy routing to `{}` gRPC on port {}", network_type, kaspad_port);
-    let handler = Arc::new(KaspaRpcProxy::try_new(network_type, verbose)?);
-    handler.init().await?;
+        // workflow_log::set_log_level()
+        let kaspad_port = network_type.port();
+        log_info!("");
+        log_info!("Proxy routing to `{}` gRPC on port {}", network_type, kaspad_port);
+        let handler = Arc::new(KaspaRpcProxy::try_new(network_type, verbose)?);
+        handler.init().await?;
 
-    // let router = Arc::new(Router::new(rpc_api_iface, options.verbose));
-//let list = RpcApiOps::list();  
+        // let router = Arc::new(Router::new(rpc_api_iface, options.verbose));
+    //let list = RpcApiOps::list();
 
-    let mut interface = Interface::< Arc<KaspaRpcProxy>, Arc<ProxyConnection>, RpcApiOps>::new(handler.clone());
+        let mut interface = Interface::< Arc<KaspaRpcProxy>, Arc<ProxyConnection>, RpcApiOps>::new(handler.clone());
 
-    interface.method(
-        RpcApiOps::GetInfo,
-        method!(|rpc_api : Arc<KaspaRpcProxy>, connection_ctx: Arc<ProxyConnection>, req: GetInfoRequest| async move { 
-            let res: GetInfoResponse = connection_ctx.rpc_api.get_info_call(req).await
-            // let res: GetInfoResponse = <Arc<ProxyConnection> as Into<Arc<dyn RpcApi>>>::into(connection_ctx).get_info_call(req).await
-            // let res: GetInfoResponse = (*connection_ctx).as_ref().get_info_call(req).await
-                .map_err(|e|ServerError::Text(e.to_string()))?;
-            Ok(res)
-        }),
-    );
+        interface.method(
+            RpcApiOps::GetInfo,
+            method!(|rpc_api : Arc<KaspaRpcProxy>, connection_ctx: Arc<ProxyConnection>, req: GetInfoRequest| async move {
+                let res: GetInfoResponse = connection_ctx.rpc_api.get_info_call(req).await
+                // let res: GetInfoResponse = <Arc<ProxyConnection> as Into<Arc<dyn RpcApi>>>::into(connection_ctx).get_info_call(req).await
+                // let res: GetInfoResponse = (*connection_ctx).as_ref().get_info_call(req).await
+                    .map_err(|e|ServerError::Text(e.to_string()))?;
+                Ok(res)
+            }),
+        );
 
 
-    let interface = Arc::new(interface);
+        let interface = Arc::new(interface);
 
-    let server = RpcServer::new_with_encoding::<Arc<KaspaRpcProxy>, Arc<ProxyConnection>, RpcApiOps, Id64>(Encoding::Borsh, handler, interface);
+        let server = RpcServer::new_with_encoding::<Arc<KaspaRpcProxy>, Arc<ProxyConnection>, RpcApiOps, Id64>(Encoding::Borsh, handler, interface);
 
-    // let server = RpcServer::new(handler);
+        // let server = RpcServer::new(handler);
 
-    let addr = format!("0.0.0.0:{proxy_port}");
-    log_info!("Kaspa wRPC server is listening on {}", addr);
-    server.listen(&addr).await?;
+        let addr = format!("0.0.0.0:{proxy_port}");
+        log_info!("Kaspa wRPC server is listening on {}", addr);
+        server.listen(&addr).await?;
 
-    Ok(())
-    */
+        Ok(())
+        */
 }

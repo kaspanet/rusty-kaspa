@@ -101,7 +101,7 @@ pub fn main() {
 
     let verbose = true;
     let wrpc_server_options =
-        WrpcServerOptions::new(WrpcEncoding::Borsh, &args.wrpc_listen.unwrap_or_else(|| "127.0.0.1:8080".to_string()),verbose);
+        WrpcServerOptions::new(WrpcEncoding::Borsh, &args.wrpc_listen.unwrap_or_else(|| "127.0.0.1:8080".to_string()), verbose);
 
     let wrpc_server = Arc::new(WrpcServer::new(wrpc_server_options, rpc_core_server.service()));
 

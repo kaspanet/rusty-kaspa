@@ -32,7 +32,7 @@ impl WalletCli {
     }
 
     fn term(&self) -> Option<Arc<Terminal>> {
-        self.term.lock().unwrap().as_ref().cloned()//map(|term| term.clone())
+        self.term.lock().unwrap().as_ref().cloned() //map(|term| term.clone())
     }
 
     async fn action(&self, action: Action, argv: Vec<String>, term: Arc<Terminal>) -> Result<()> {
