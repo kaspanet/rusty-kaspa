@@ -53,18 +53,23 @@ impl ConnectionContext {
 }
 
 pub struct KaspaRpcHandler {
-    router: Router<ConnectionContext>,
+    // router: Arc<Router<ConnectionContext>>,
     // pub options: Options,
+    rpc_api : Arc<dyn RpcApi>,
     pub sockets: Mutex<HashMap<SocketAddr, Arc<ConnectionContext>>>,
 }
 
 impl KaspaRpcHandler {
-    pub fn new(router: Router<ConnectionContext>) -> KaspaRpcHandler {
-        KaspaRpcHandler { router, sockets: Mutex::new(HashMap::new()) }
-    }
-    // pub fn new() -> KaspaRpcHandler {
-    //     KaspaRpcHandler { sockets: Mutex::new(HashMap::new()) }
+    // pub fn new(router: Arc<Router<ConnectionContext>>) -> KaspaRpcHandler {
+    //     KaspaRpcHandler { router, sockets: Mutex::new(HashMap::new()) }
     // }
+    pub fn new(rpc_api : Arc<dyn RpcApi>) -> KaspaRpcHandler {
+        KaspaRpcHandler { rpc_api, sockets: Mutex::new(HashMap::new()) }
+    }
+
+    fn get_rpc_api(&self) -> &Arc<dyn RpcApi> {
+        return &self.rpc_api;
+    }
 }
 
 #[async_trait]
@@ -108,9 +113,12 @@ pub struct WrpcServer {
 }
 
 impl WrpcServer {
-    pub fn new(options: Options, rpc_api_iface: Arc<dyn RpcApi>) -> Self {
-        let router = Router::new(rpc_api_iface, options.verbose);
-        let handler = Arc::new(KaspaRpcHandler::new(router));
+    pub fn new(options: Options, rpc_api: Arc<dyn RpcApi>) -> Self {
+        let handler = Arc::new(KaspaRpcHandler::new(rpc_api));
+        let router = Arc::new(
+            Router::<Arc<KaspaRpcHandler>,Arc<ConnectionContext>>::new(handler, options.verbose)
+        );
+        // let handler = Arc::new(KaspaRpcHandler::new(router.clone()));
         // let server_ctx = Arc::new(ServerContext);
 
         // let mut interface = Interface::< KaspaRpcHandler, ConnectionContext,RpcApiOps>::new(handler.clone());
@@ -141,7 +149,7 @@ impl WrpcServer {
         let server = RpcServer::new_with_encoding::<Arc<dyn RpcApi>, Arc<ConnectionContext>, RpcApiOps, Id64>(
             options.encoding.clone(),
             handler,
-            router.interface,
+            router.interface.clone(),
         );
 
         WrpcServer { options, server }

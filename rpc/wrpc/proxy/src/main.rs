@@ -9,6 +9,8 @@ use consensus_core::networktype::NetworkType;
 use result::Result;
 // use rpc_core::api::rpc::RpcApi;
 use async_trait::async_trait;
+use rpc_core::api::rpc::RpcApi;
+use rpc_core::message::*;
 use rpc_core::api::ops::RpcApiOps;
 #[allow(unused_imports)]
 use rpc_core::error::RpcResult;
@@ -27,8 +29,16 @@ use workflow_rpc::server::prelude::*;
 
 pub struct ProxyConnection {
     pub peer: SocketAddr,
-    pub grpc_server: Arc<RpcApiGrpc>,
+    pub messenger: Arc<Messenger>,
+    pub rpc_api: Arc<RpcApiGrpc>,
+    // pub grpc_client: Arc<dyn RpcApi>,
     // pub router: Router,
+}
+
+impl ProxyConnection {
+    fn get_rpc_api(&self) -> &Arc<dyn RpcApi> {
+        return &self.rpc_api;
+    }
 }
 
 pub struct KaspaRpcProxy {
@@ -48,7 +58,7 @@ impl KaspaRpcProxy {
 
 #[async_trait]
 impl RpcHandler for KaspaRpcProxy {
-    type Context = ProxyConnection;
+    type Context = Arc<ProxyConnection>;
 
     async fn handshake(
         self: Arc<Self>,
@@ -56,7 +66,7 @@ impl RpcHandler for KaspaRpcProxy {
         _sender: &mut WebSocketSender,
         _receiver: &mut WebSocketReceiver,
         messenger: Arc<Messenger>,
-    ) -> WebSocketResult<Arc<Self::Context>> {
+    ) -> WebSocketResult<Self::Context> {
         let port = self.network_type.port();
         let grpc_address = format!("grpc://127.0.0.1:{port}");
         println!("starting grpc client on {}", grpc_address);
@@ -64,10 +74,10 @@ impl RpcHandler for KaspaRpcProxy {
         grpc.start().await;
 
         // let grpc_server: Arc<dyn RpcApi> = Arc::new(grpc);
-        let grpc_server = Arc::new(grpc);
+        let rpc_api = Arc::new(grpc);
         // let router = Router::new(grpc_server.clone(), self.verbose);
 
-        Ok(Arc::new(ProxyConnection { peer: *peer, grpc_server }))
+        Ok(Arc::new(ProxyConnection { peer: *peer, messenger, rpc_api }))
     }
     async fn connect(self: Arc<Self>, _peer: &SocketAddr) -> WebSocketResult<()> {
         Ok(())
@@ -78,6 +88,13 @@ impl RpcHandler for KaspaRpcProxy {
     //     // Ok(().try_to_vec()?)
     // }
 }
+
+// struct Router {
+//     rpc_api
+// }
+
+
+
 
 #[derive(Debug, Parser)] //clap::Args)]
 #[clap(name = "proxy")]
@@ -97,6 +114,48 @@ struct Args {
 
 use kaspa_rpc_macros::build_wrpc_interface;
 
+
+// impl AsRef<Arc<dyn RpcApi>> for ProxyConnection {
+//     fn as_ref(&self) -> &Arc<dyn RpcApi> {
+//         &(self.grpc_client as Arc<dyn RpcApi>)
+//     }
+// }
+
+// impl Into<Arc<dyn RpcApi>> for ProxyConnection {
+//     fn into(self) -> Arc<dyn RpcApi> {
+//         self.grpc_client.clone()
+//     }
+// }
+
+// impl From<ProxyConnection> for Arc<dyn RpcApi> {
+//     fn from(proxy_connection: ProxyConnection) -> Self {
+//         proxy_connection.grpc_client.clone()
+//     }
+// }
+
+// impl AsRef<dyn RpcApi> for ProxyConnection {
+//     fn as_ref(&self) -> &dyn RpcApi {
+//         self.grpc_client.as_ref()
+//     }
+// }
+
+// fn accessor(ctx : &Arc<ProxyConnection>) -> Arc<dyn RpcApi> {
+//     ctx.grpc_client
+// }
+
+// type XRpcApi = Arc<dyn RpcApi>;
+// impl From<ProxyConnection> for XRpcApi {
+//     fn from(proxy: Arc<ProxyConnection>) -> Self {
+//         proxy.grpc_client.clone()
+//     }
+// }
+
+// impl Into<dyn RpcApi> for ProxyConnection {
+//     fn into(self) -> Arc<dyn RpcApi> {
+//         self.grpc_client
+//     }
+// }
+
 #[tokio::main]
 async fn main() -> Result<()> {
     todo!();
@@ -110,11 +169,26 @@ async fn main() -> Result<()> {
     let handler = Arc::new(KaspaRpcProxy::try_new(network_type, verbose)?);
     handler.init().await?;
 
-    let mut interface = Interface::<ProxyConnection, KaspaRpcProxy, RpcApiOps>::new(handler.clone());
+    // let router = Arc::new(Router::new(rpc_api_iface, options.verbose));
+//let list = RpcApiOps::list();  
+
+    let mut interface = Interface::< Arc<KaspaRpcProxy>, Arc<ProxyConnection>, RpcApiOps>::new(handler.clone());
+
+    interface.method(
+        RpcApiOps::GetInfo,
+        method!(|rpc_api : Arc<KaspaRpcProxy>, connection_ctx: Arc<ProxyConnection>, req: GetInfoRequest| async move { 
+            let res: GetInfoResponse = connection_ctx.rpc_api.get_info_call(req).await
+            // let res: GetInfoResponse = <Arc<ProxyConnection> as Into<Arc<dyn RpcApi>>>::into(connection_ctx).get_info_call(req).await
+            // let res: GetInfoResponse = (*connection_ctx).as_ref().get_info_call(req).await
+                .map_err(|e|ServerError::Text(e.to_string()))?;
+            Ok(res)
+        }),
+    );
+
 
     let interface = Arc::new(interface);
 
-    let server = RpcServer::new_with_encoding::<ProxyConnection, KaspaRpcProxy, RpcApiOps, Id64>(Encoding::Borsh, handler, interface);
+    let server = RpcServer::new_with_encoding::<Arc<KaspaRpcProxy>, Arc<ProxyConnection>, RpcApiOps, Id64>(Encoding::Borsh, handler, interface);
 
     // let server = RpcServer::new(handler);
 

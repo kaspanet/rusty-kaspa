@@ -1,10 +1,10 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
-use workflow_core::enums::u32_try_from;
+use workflow_core::enums::Describe;
 
-u32_try_from! {
-    #[derive(Clone, Debug, PartialEq, Eq, Hash, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
-    #[repr(u32)]
+// u32_try_from! {
+    #[derive(Describe, Clone, Debug, PartialEq, Eq, Hash, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+    // #[repr(u32)]
     pub enum RpcApiOps {
         Ping = 0,
         GetProcessMetrics,
@@ -66,7 +66,7 @@ u32_try_from! {
         // Server to client notification
         Notification,
     }
-}
+// }
 
 impl From<RpcApiOps> for u32 {
     fn from(item: RpcApiOps) -> Self {

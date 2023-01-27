@@ -14,12 +14,18 @@ use workflow_rpc::server::prelude::*;
 // use workflow_rpc::error::ServerError;
 // use workflow_rpc::result::ServerResult;
 
-pub struct Router<ConnectionContext>
+pub enum RouterTarget {
+    Server,
+    Connection,
+}
+
+pub struct Router<ServerContext,ConnectionContext>
 where
+    ServerContext: Clone + Send + Sync + 'static,
     ConnectionContext: Send + Sync + 'static,
 {
     // iface: Arc<dyn RpcApi>,
-    pub interface: Arc<Interface<Arc<dyn RpcApi>, Arc<ConnectionContext>, RpcApiOps>>,
+    pub interface: Arc<Interface<ServerContext, ConnectionContext, RpcApiOps>>,
     verbose: bool,
 }
 
@@ -49,21 +55,34 @@ where
 //     };
 // }
 
-impl<ConnectionContext> Router<ConnectionContext>
-where
-    ConnectionContext: Send + Sync + 'static,
-{
-    pub fn new(rpc_api: Arc<dyn RpcApi>, verbose: bool) -> Self {
-        let mut interface = Interface::<Arc<dyn RpcApi>, Arc<ConnectionContext>, RpcApiOps>::new(rpc_api.clone());
+// impl<ConnectionContext> AsRef<Arc<dyn RpcApi>> for (Arc<dyn RpcApi>, Arc<ConnectionContext>) {
+//     fn as_ref(&self) -> Arc<dyn RpcApi> {
+//         self.0
+//     }
+// }
 
-        interface.method(
-            RpcApiOps::GetInfo,
-            method!(|rpc_api : Arc<dyn RpcApi>, _connection_ctx, req: GetInfoRequest| async move { 
-                let res: GetInfoResponse = rpc_api.get_info_call(req).await
-                    .map_err(|e|ServerError::Text(e.to_string()))?;
-                Ok(res)
-            }),
-        );
+use kaspa_rpc_macros::build_wrpc_interface;
+
+impl<ServerContext, ConnectionContext> Router<ServerContext, ConnectionContext>
+where
+    ServerContext: Clone + Send + Sync + 'static,
+    ConnectionContext: Clone + Send + Sync + 'static,
+{
+    pub fn new(server_context: ServerContext, verbose: bool) -> Self {
+        // let mut interface = Interface::<ServerContext, ConnectionContext, RpcApiOps>::new(rpc_api.clone());
+
+        let interface = build_wrpc_interface!(server_context, RouterTarget::Server, ServerContext, ConnectionContext, RpcApiOps,[
+            GetInfo
+        ]);
+
+        // interface.method(
+        //     RpcApiOps::GetInfo,
+        //     method!(|rpc_api : Arc<dyn RpcApi>, _connection_ctx, req: GetInfoRequest| async move { 
+        //         let res: GetInfoResponse = rpc_api.get_info_call(req).await
+        //             .map_err(|e|ServerError::Text(e.to_string()))?;
+        //         Ok(res)
+        //     }),
+        // );
 
         Router { interface: Arc::new(interface), verbose }
     }

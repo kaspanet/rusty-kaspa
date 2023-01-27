@@ -15,6 +15,7 @@ workflow-log.workspace = true
 workflow-core.workspace = true
 async-trait.workspace = true
 rpc-core.workspace = true
+kaspa-rpc-macros.workspace = true
 borsh.workspace = true
 paste.workspace = true
 kaspa-core.workspace = true
