@@ -44,6 +44,7 @@ use crate::{
         reachability::inquirer as reachability, transaction_validator::TransactionValidator, traversal_manager::DagTraversalManager,
     },
 };
+use async_std::channel::{unbounded as unbounded_async_std, Receiver as AsyncStdReceiver, Sender as AsyncStdSender};
 use consensus_core::{
     api::ConsensusApi,
     block::{Block, BlockTemplate},
@@ -67,7 +68,6 @@ use std::{
     ops::DerefMut,
     thread::{self, JoinHandle},
 };
-use async_std::channel::{Receiver as AsyncStdReceiver, Sender as AsyncStdSender, unbounded as unbounded_async_std};
 use tokio::sync::oneshot;
 
 pub type DbGhostdagManager =
@@ -255,10 +255,8 @@ impl Consensus {
         let (sender, receiver): (CrossbeamSender<BlockTask>, CrossbeamReceiver<BlockTask>) = unbounded_crossbeam();
         let (body_sender, body_receiver): (CrossbeamSender<BlockTask>, CrossbeamReceiver<BlockTask>) = unbounded_crossbeam();
         let (virtual_sender, virtual_receiver): (CrossbeamSender<BlockTask>, CrossbeamReceiver<BlockTask>) = unbounded_crossbeam();
-        let (utxoindex_sender, utxoindex_receiver): (
-            AsyncStdSender<ConsensusNotification>,
-            AsyncStdReceiver<ConsensusNotification>,
-        ) = unbounded_async_std();
+        let (utxoindex_sender, utxoindex_receiver): (AsyncStdSender<ConsensusNotification>, AsyncStdReceiver<ConsensusNotification>) =
+            unbounded_async_std();
 
         let counters = Arc::new(ProcessingCounters::default());
 
@@ -495,7 +493,6 @@ impl ConsensusApi for Consensus {
         let virtual_stores = self.virtual_processor.virtual_stores.read();
         let iter = virtual_stores.utxo_set.from_iterator(from_outpoint);
         Arc::new(iter.take(chunk_size).map(|item| item.unwrap()).collect())
-
     }
 }
 

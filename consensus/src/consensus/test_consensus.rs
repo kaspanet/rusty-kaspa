@@ -43,7 +43,7 @@ use crate::{
 use super::{Consensus, DbGhostdagManager};
 
 pub struct TestConsensus {
-    consensus: Arc<Consensus>,
+    pub consensus: Arc<Consensus>, //TODO: remove public when simnet is established, it is only public for utxoindex testing purposes.
     pub params: Params,
     temp_db_lifetime: TempDbLifetime,
 }
@@ -195,7 +195,6 @@ impl ConsensusApi for TestConsensus {
     ) -> Arc<Vec<(TransactionOutpoint, UtxoEntry)>> {
         self.consensus.clone().get_virtual_utxos(from_outpoint, chunk_size)
     }
-
 }
 
 impl Service for TestConsensus {

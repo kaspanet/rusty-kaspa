@@ -88,12 +88,10 @@ impl UtxoIndexChanges {
                 }
                 Entry::Vacant(entry) => {
                     let mut value = CompactUtxoCollection::new();
-                    value
-                        .insert(
-                            transaction_output,
-                            CompactUtxoEntry::new(utxo_entry.amount, utxo_entry.block_daa_score, utxo_entry.is_coinbase),
-                        )
-                        .expect("expected no duplicate utxo entries");
+                    value.insert(
+                        transaction_output,
+                        CompactUtxoEntry::new(utxo_entry.amount, utxo_entry.block_daa_score, utxo_entry.is_coinbase),
+                    );
                     entry.insert(value); //Future: `insert_entry`: https://doc.rust-lang.org/std/collections/hash_map/enum.Entry.html#method.insert_entry
                 }
             }
@@ -116,12 +114,10 @@ impl UtxoIndexChanges {
                 }
                 Entry::Vacant(entry) => {
                     let mut value = CompactUtxoCollection::new();
-                    value
-                        .insert(
-                            transaction_output,
-                            CompactUtxoEntry::new(utxo_entry.amount, utxo_entry.block_daa_score, utxo_entry.is_coinbase),
-                        )
-                        .expect("expected no duplicate utxo entries");
+                    value.insert(
+                        transaction_output,
+                        CompactUtxoEntry::new(utxo_entry.amount, utxo_entry.block_daa_score, utxo_entry.is_coinbase),
+                    );
                     entry.insert(value); //Future: `insert_entry`: https://doc.rust-lang.org/std/collections/hash_map/enum.Entry.html#method.insert_entry
                 }
             };

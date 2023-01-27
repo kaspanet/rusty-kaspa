@@ -13,11 +13,13 @@ consensus-core.workspace = true
 consensus.workspace = true
 tokio.workspace = true
 kaspa-core.workspace = true
-async-std.workspace = true
+#async-std.workspace = true
 log.workspace = true
 rand.workspace = true
 
+futures = "0.3.25"
 rocksdb = "0.19"
+async-std = { version = "1", features = ["attributes", "tokio1"] }
 triggered = "0.1"
 parking_lot = "0.12"
 serde = { version = "1", features = ["derive"] }

@@ -42,6 +42,7 @@ use crate::{
         traversal_manager::DagTraversalManager,
     },
 };
+use async_std::channel::Sender as AsyncStdSender;
 use consensus_core::{
     block::{BlockTemplate, MutableBlock},
     blockstatus::BlockStatus::{self, StatusDisqualifiedFromChain, StatusUTXOPendingVerification, StatusUTXOValid},
@@ -59,7 +60,6 @@ use consensus_core::{
 use hashes::Hash;
 use kaspa_core::{info, trace};
 use muhash::MuHash;
-use async_std::channel::Sender as AsyncStdSender;
 
 use crossbeam_channel::Receiver as CrossbeamReceiver;
 use itertools::Itertools;

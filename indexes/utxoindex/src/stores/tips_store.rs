@@ -14,6 +14,8 @@ pub trait UtxoIndexTipsStoreReader {
 
 pub trait UtxoIndexTipsStore: UtxoIndexTipsStoreReader {
     fn add_tips(&mut self, new_tips: BlockHashSet) -> StoreResult<()>;
+
+    fn remove(&mut self) -> Result<(), StoreError>;
 }
 
 pub const UTXO_INDEXED_TIPS_STORE_NAME: &[u8] = b"utxo-indexed-tips";
@@ -44,5 +46,10 @@ impl UtxoIndexTipsStoreReader for DbUtxoIndexTipsStore {
 impl UtxoIndexTipsStore for DbUtxoIndexTipsStore {
     fn add_tips(&mut self, new_tips: BlockHashSet) -> Result<(), StoreError> {
         self.access.write(DirectDbWriter::new(&self.db), &Arc::new(new_tips))
+    }
+
+    fn remove(&mut self) -> Result<(), StoreError> {
+        let mut writer = DirectDbWriter::new(&self.db);
+        self.access.remove(writer)
     }
 }

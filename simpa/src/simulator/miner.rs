@@ -145,7 +145,7 @@ impl Miner {
     ) -> Option<UtxoEntry> {
         let entry = match utxo_view.get(&outpoint) {
             Some(entry) => entry,
-                None => return None,
+            None => return None,
         };
         if entry.amount < 2
             || (entry.is_coinbase && (virtual_daa_score as i64 - entry.block_daa_score as i64) <= self.params.coinbase_maturity as i64)

@@ -15,6 +15,8 @@ pub trait CirculatingSupplyStore: CirculatingSupplyStoreReader {
     fn add_circulating_supply_diff(&mut self, circulating_supply_diff: i64) -> StoreResult<u64>;
 
     fn insert(&mut self, circulating_supply: u64) -> StoreResult<()>;
+
+    fn remove(&mut self) -> Result<(), StoreError>;
 }
 
 pub const CIRCULATING_SUPPLY_STORE_PREFIX: &[u8] = b"utxoindex-circulating-supply";
@@ -52,5 +54,10 @@ impl CirculatingSupplyStore for DbCirculatingSupplyStore {
 
     fn insert(&mut self, circulating_supply: u64) -> Result<(), StoreError> {
         self.access.write(DirectDbWriter::new(&self.db), &circulating_supply)
+    }
+
+    fn remove(&mut self) -> Result<(), StoreError> {
+        let mut writer = DirectDbWriter::new(&self.db);
+        self.access.remove(writer)
     }
 }

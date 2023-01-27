@@ -15,7 +15,7 @@ impl AsyncService for UtxoIndex {
         trace!("starting {}", UTXOINDEX);
         let shutdown_finalized_listener = self.shutdown_finalized_listener.clone();
         Box::pin(async move {
-            self.run();
+            self.run().await;
             shutdown_finalized_listener.wait();
         })
     }

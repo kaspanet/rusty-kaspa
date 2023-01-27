@@ -1,5 +1,6 @@
 use async_std::channel::SendError;
 use consensus::model::stores::errors::StoreError;
+use rocksdb::Error as RDBError;
 use std::io;
 
 use thiserror::Error;
@@ -19,6 +20,9 @@ pub enum UtxoIndexError {
 
     #[error("utxoindex error: {0}")]
     DBResetError(#[from] io::Error),
+
+    #[error("utxoindex error: {0}")]
+    DBDestroyError(#[from] RDBError),
 
     #[error("utxoindex error: {0}")]
     SendError(#[from] SendError<UtxoIndexNotification>),

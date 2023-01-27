@@ -113,6 +113,15 @@ where
         Ok(())
     }
 
+    pub fn delete_all(&self, mut writer: impl DbWriter) -> Result<(), StoreError>
+    where
+        TKey: Copy + AsRef<[u8]>,
+    {
+        self.cache.remove_all();
+        writer.delete(DbKey::prefix_only(self.prefix))?;
+        Ok(())
+    }
+
     /// A dynamic iterator that can iterate through a specifc prefix / bucket, or from a certain start point.
     ///
     //TODO: loop and chain iterators for multi-prefix / bucket iterator.

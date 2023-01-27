@@ -5,7 +5,9 @@ use consensus::model::stores::{
     errors::StoreError,
     DB,
 };
-use consensus_core::tx::{ScriptPublicKey, ScriptPublicKeys, ScriptVec, TransactionIndexType, TransactionOutpoint, VersionType};
+use consensus_core::tx::{
+    ScriptPublicKey, ScriptPublicKeys, ScriptVec, TransactionIndexType, TransactionOutpoint, VersionType, SCRIPT_VECTOR_SIZE,
+};
 use hashes::Hash;
 use rocksdb::WriteBatch;
 use std::mem::size_of;
@@ -23,7 +25,7 @@ pub const CIRCULATING_SUPPLY_PREFIX: &[u8] = b"utxoindex:circulating-supply";
 // ## Buckets:
 
 ///Size of the [ScriptPublicKeyBucket] in bytes.
-pub const SCRIPT_PUBLIC_KEY_BUCKET_SIZE: usize = size_of::<VersionType>() + size_of::<ScriptVec>();
+pub const SCRIPT_PUBLIC_KEY_BUCKET_SIZE: usize = size_of::<VersionType>() + SCRIPT_VECTOR_SIZE;
 
 ///[ScriptPublicKey] bucket.
 ///Consists of 2 bytes of little endian [VersionType] bytes, followed by 36 bytes of [ScriptVec].
@@ -133,6 +135,8 @@ pub trait UtxoSetByScriptPublicKeyStore: UtxoSetByScriptPublicKeyStoreReader {
 
     /// Insert a [UtxoSetByScriptPublicKey] into the [UtxoSetByScriptPublicKeyStore].
     fn insert_utxo_entries(&mut self, utxo_entries: UtxoSetByScriptPublicKey) -> Result<(), StoreError>;
+
+    fn delete_all(&mut self) -> Result<(), StoreError>;
 }
 
 #[derive(Clone)]
@@ -180,6 +184,11 @@ impl DbUtxoSetByScriptPublicKeyStore {
         self.access.write_many(&mut writer, &mut added_iter_items)?;
 
         Ok(())
+    }
+
+    fn delete_all(&mut self, batch: &mut WriteBatch) -> Result<(), StoreError> {
+        let mut writer = BatchDbWriter::new(batch);
+        self.access.delete_all(&mut writer)
     }
 }
 
@@ -256,5 +265,10 @@ impl UtxoSetByScriptPublicKeyStore for DbUtxoSetByScriptPublicKeyStore {
         self.access.write_many(&mut writer, &mut utxo_entry_iterator)?;
 
         Ok(())
+    }
+
+    fn delete_all(&mut self) -> Result<(), StoreError> {
+        let mut writer = DirectDbWriter::new(&self.db);
+        self.access.delete_all(&mut writer)
     }
 }

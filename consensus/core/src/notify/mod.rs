@@ -9,14 +9,13 @@ pub enum ConsensusNotification {
     PruningPointUTXOSetOverride(PruningPointUTXOSetOverrideNotification),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct VirtualChangeSetNotification {
     pub virtual_utxo_diff: UtxoDiff,
     pub virtual_parents: Vec<Hash>,
     pub virtual_selected_parent_blue_score: u64,
     pub virtual_daa_score: u64,
 }
-
 #[derive(Debug, Clone)]
 pub struct BlockAddedNotification {
     pub block: Block,

@@ -121,6 +121,7 @@ dependencies = [
  "blocking",
  "futures-lite",
  "once_cell",
+ "tokio",
 ]
 
 [[package]]
@@ -3220,6 +3221,7 @@ dependencies = [
  "async-std",
  "consensus",
  "consensus-core",
+ "futures",
  "hashes",
  "kaspa-core",
  "log",

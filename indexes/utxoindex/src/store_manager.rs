@@ -1,9 +1,10 @@
-use std::{fs, sync::Arc};
+use std::{fs, ops::Deref, sync::Arc};
 
 use consensus::model::stores::{errors::StoreError, DB};
 use consensus_core::{tx::ScriptPublicKeys, BlockHashSet};
 use log::trace;
 use parking_lot::RwLock;
+use rocksdb::{DBAccess, Options};
 
 use crate::{
     errors::UtxoIndexError,
@@ -17,7 +18,7 @@ use crate::{
 
 #[derive(Clone)]
 pub struct StoreManager {
-    db: Arc<RwLock<Arc<DB>>>,
+    db: Arc<DB>,
 
     utxoindex_tips_store: Arc<RwLock<DbUtxoIndexTipsStore>>,
     circulating_suppy_store: Arc<RwLock<DbCirculatingSupplyStore>>,
@@ -27,11 +28,10 @@ pub struct StoreManager {
 impl StoreManager {
     pub fn new(db: Arc<DB>) -> Self {
         Self {
-            db: Arc::new(RwLock::new(db.clone())),
-
             utxoindex_tips_store: Arc::new(RwLock::new(DbUtxoIndexTipsStore::new(db.clone()))),
             circulating_suppy_store: Arc::new(RwLock::new(DbCirculatingSupplyStore::new(db.clone()))),
             utxos_by_script_public_key_store: Arc::new(RwLock::new(DbUtxoSetByScriptPublicKeyStore::new(db.clone(), 0))),
+            db: db.clone(),
         }
     }
 
@@ -85,24 +85,13 @@ impl StoreManager {
     /// 3) populates the new db with associated prefixes.
     pub fn delete_all(&self) -> Result<(), UtxoIndexError> {
         trace!("creating new utxoindex database, deleting the old one");
-        let db_unlocked = self.db.write();
         //hold all individual store locks in-place
+        let mut utxoindex_tips_store = self.utxoindex_tips_store.write();
         let mut circulating_suppy_store = self.circulating_suppy_store.write();
         let mut utxos_by_script_public_key_store = self.utxos_by_script_public_key_store.write();
-        let mut utxoindex_tips_store = self.utxoindex_tips_store.write();
-        //remove old database path, and recreate a new one
-        let db_path = db_unlocked.path(); //extract the path
-        fs::remove_dir_all(db_path)?; //remove directory
-        fs::create_dir_all(db_path)?; //recreate directory
-
-        //create new database and swap
-        let new_db = DB::open_default(db_path).unwrap(); //create new db
-        let db_unlocked = new_db; //swap out databases
-
-        //recreate individual stores (i.e. create a new access with the given store prefixes)
-        *circulating_suppy_store = circulating_suppy_store.clone_with_new_cache();
-        *utxos_by_script_public_key_store = utxos_by_script_public_key_store.clone_with_new_cache(0);
-        *utxoindex_tips_store = utxoindex_tips_store.clone_with_new_cache();
+        utxoindex_tips_store.remove()?;
+        circulating_suppy_store.remove()?;
+        utxos_by_script_public_key_store.delete_all()?;
 
         Ok(())
     }
