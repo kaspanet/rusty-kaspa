@@ -44,11 +44,7 @@ impl SecretKeyExt for secp256k1::SecretKey {
         let mut key_bytes = [0u8; KEY_SIZE + 1];
         key_bytes[1..].copy_from_slice(&self.to_bytes());
 
-        let key = ExtendedKey {
-            prefix,
-            attrs,
-            key_bytes,
-        };
+        let key = ExtendedKey { prefix, attrs, key_bytes };
 
         Zeroizing::new(key.to_string())
     }

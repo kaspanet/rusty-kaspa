@@ -39,9 +39,17 @@ struct Args {
     #[arg(long = "rpclisten")]
     grpc_listen: Option<String>,
 
-    /// Interface/port to listen for wRPC connections (default port: 8080)
-    #[arg(long = "wrpclisten")]
-    wrpc_listen: Option<String>,
+    /// Interface/port to listen for wRPC Borsh connections (default port: 8080)
+    #[arg(long = "rpclisten-borsh")]
+    wrpc_listen_borsh: Option<String>,
+
+    /// Interface/port to listen for wRPC JSON connections (default port: 9090)
+    #[arg(long = "rpclisten-json")]
+    wrpc_listen_json: Option<String>,
+
+    /// Enable verbose logging of wRPC data exchange
+    #[arg(long = "wrpc-verbose")]
+    wrpc_verbose: bool,
 
     /// Logging level for all subsystems {off, error, warn, info, debug, trace}
     ///  -- You may also specify <subsystem>=<level>,<subsystem2>=<level>,... to set the log level for individual subsystems
@@ -84,7 +92,6 @@ pub fn main() {
     info!("Data directory: {}", db_dir.as_display());
     fs::create_dir_all(db_dir.as_path()).unwrap();
     let grpc_server_addr = args.grpc_listen.unwrap_or_else(|| "127.0.0.1:16610".to_string()).parse().unwrap();
-    // let wrpc_server_addr = args.wrpc_listen.unwrap_or_else(|| "127.0.0.1:8080".to_string());
 
     let core = Arc::new(Core::new());
 
@@ -99,17 +106,28 @@ pub fn main() {
     let rpc_core_server = Arc::new(RpcCoreServer::new(consensus.clone(), notification_channel.receiver()));
     let grpc_server = Arc::new(GrpcServer::new(grpc_server_addr, rpc_core_server.service()));
 
-    let verbose = true;
-    let wrpc_server_options =
-        WrpcServerOptions::new(WrpcEncoding::Borsh, &args.wrpc_listen.unwrap_or_else(|| "127.0.0.1:8080".to_string()),verbose);
-
-    let wrpc_server = Arc::new(WrpcServer::new(wrpc_server_options, rpc_core_server.service()));
-
     // Create an async runtime and register the top-level async services
     let async_runtime = Arc::new(AsyncRuntime::new());
-    async_runtime.register(rpc_core_server);
+    async_runtime.register(rpc_core_server.clone());
     async_runtime.register(grpc_server);
-    async_runtime.register(wrpc_server);
+
+    // Register wRPC servers based on command line arguments
+    [(args.wrpc_listen_borsh, WrpcEncoding::Borsh), (args.wrpc_listen_json, WrpcEncoding::SerdeJson)]
+        .iter()
+        .filter_map(|(listen_address, encoding)| {
+            listen_address.as_ref().map(|listen_address| {
+                Arc::new(WrpcServer::new(
+                    rpc_core_server.service(),
+                    encoding,
+                    WrpcServerOptions {
+                        listen_address: listen_address.to_string(),
+                        verbose: args.wrpc_verbose,
+                        ..WrpcServerOptions::default()
+                    },
+                ))
+            })
+        })
+        .for_each(|server|async_runtime.register(server));
 
     // Bind the keyboard signal to the core
     Arc::new(Signals::new(&core)).init();

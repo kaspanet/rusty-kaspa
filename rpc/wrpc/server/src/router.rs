@@ -1,5 +1,3 @@
-// use async_trait::async_trait;
-// use borsh::*;
 use rpc_core::api::ops::RpcApiOps;
 use rpc_core::api::rpc::RpcApi;
 #[allow(unused_imports)]
@@ -11,11 +9,10 @@ use rpc_core::notify::listener::*;
 use rpc_core::prelude::*;
 use std::sync::Arc;
 use workflow_rpc::server::prelude::*;
-// use workflow_rpc::error::ServerError;
-// use workflow_rpc::result::ServerResult;
+use kaspa_rpc_macros::build_wrpc_interface;
 
-pub trait RpcApiContainer : Send + Sync + 'static{
-    fn get_rpc_api(&self)-> &Arc<dyn RpcApi>;
+pub trait RpcApiContainer: Send + Sync + 'static {
+    fn get_rpc_api(&self) -> &Arc<dyn RpcApi>;
 }
 
 pub enum RouterTarget {
@@ -23,9 +20,9 @@ pub enum RouterTarget {
     Connection,
 }
 
-pub struct Router<ServerContext,ConnectionContext>
+pub struct Router<ServerContext, ConnectionContext>
 where
-    ServerContext: RpcApiContainer + Clone ,
+    ServerContext: RpcApiContainer + Clone,
     ConnectionContext: RpcApiContainer + Clone,
 {
     // iface: Arc<dyn RpcApi>,
@@ -33,50 +30,81 @@ where
     verbose: bool,
 }
 
-// macro_rules! route {
-//     ($self: ident, $data: ident, $fn:ident, $name: ident) => {
-//         paste::paste! {
-//             {
-//                 let req = [<$name Request>]::try_from_slice($data)?;
-
-//                 if $self.verbose {
-//                     println!("{:#?}",req);
-//                 }
-
-//                 let resp : [<$name Response>] = $self
-//                     .iface
-//                     .$fn(req)
-//                     .await
-//                     .map_err(|e|ServerError::Text(e.to_string()))?;
-
-//                 if $self.verbose {
-//                     println!("{:#?}",resp);
-//                 }
-
-//                 Ok(resp.try_to_vec()?)
-//             }
-//         }
-//     };
-// }
-
-// impl<ConnectionContext> AsRef<Arc<dyn RpcApi>> for (Arc<dyn RpcApi>, Arc<ConnectionContext>) {
-//     fn as_ref(&self) -> Arc<dyn RpcApi> {
-//         self.0
-//     }
-// }
-
-use kaspa_rpc_macros::build_wrpc_interface;
 
 impl<ServerContext, ConnectionContext> Router<ServerContext, ConnectionContext>
 where
     ServerContext: RpcApiContainer + Clone,
+    // ConnectionContext: RpcApiContainer + Clone,
     ConnectionContext: RpcApiContainer + Clone,
 {
     pub fn new(server_context: ServerContext, verbose: bool) -> Self {
+        let interface =
+            build_wrpc_interface!(server_context, RouterTarget::Server, ServerContext, ConnectionContext, RpcApiOps, [
+                GetInfo
+                
+                
+            ]);
 
-        let interface = build_wrpc_interface!(server_context, RouterTarget::Server, ServerContext, ConnectionContext, RpcApiOps,[
-            GetInfo
-        ]);
+
+// Recursive expansion of build_wrpc_interface! macro
+// ===================================================
+
+// {
+//     let mut interface = workflow_rpc::server::Interface::<ServerContext, ConnectionContext, RpcApiOps>::new(server_context);
+//     match RouterTarget::Server {
+//         RouterTarget::Server => {
+//             for op in RpcApiOps::list() {
+//                 match op {
+//                     RpcApiOps::GetInfo => {
+//                         interface.method(
+//                             RpcApiOps::GetInfo,
+//                             workflow_rpc::server::interface::Method::new(
+//                                 |server_ctx: ServerContext, connection_ctx: ConnectionContext, request: GetInfoRequest| {
+//                                     Box::pin(async move {
+//                                         let v: GetInfoResponse = server_ctx
+//                                             .get_rpc_api()
+//                                             .get_info_call(request)
+//                                             .await
+//                                             .map_err(|e| ServerError::Text(e.to_string()))?;
+//                                         Ok(v)
+//                                     })
+//                                 },
+//                             ),
+//                         );
+//                     }
+//                     _ => {},
+//                 }
+//             }
+//         }
+//         RouterTarget::Connection => {
+//             for op in RpcApiOps::list() {
+//                 match op {
+//                     RpcApiOps::GetInfo => {
+//                         interface.method(
+//                             RpcApiOps::GetInfo,
+//                             workflow_rpc::server::interface::Method::new(
+//                                 |server_ctx: ServerContext, connection_ctx: ConnectionContext, request: GetInfoRequest| {
+//                                     Box::pin(async move {
+//                                         let v: GetInfoResponse = connection_ctx
+//                                             .get_rpc_api()
+//                                             .get_info_call(request)
+//                                             .await
+//                                             .map_err(|e| ServerError::Text(e.to_string()))?;
+//                                         Ok(v)
+//                                     })
+//                                 },
+//                             ),
+//                         );
+//                     }
+//                     _ => {},
+//                 }
+//             }
+//         }
+//     }
+//     Arc::new(interface)
+// };
+
+
 
         Router { interface, verbose }
     }

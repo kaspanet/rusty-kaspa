@@ -1,9 +1,9 @@
 //! Error type.
 
 use core::fmt::{self, Display};
-use thiserror::Error;
 use core::str::Utf8Error;
 use std::sync::PoisonError;
+use thiserror::Error;
 
 /// Result type.
 pub type Result<T> = core::result::Result<T, Error>;
@@ -16,14 +16,14 @@ pub enum ErrorImpl {
     DecodeInvalidLength,
 
     /// validate_str: Invalid str
-    DecodeInvalidStr
+    DecodeInvalidStr,
 }
 
 impl Display for ErrorImpl {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ErrorImpl::DecodeInvalidStr => f.write_str("decoding error"),
-            ErrorImpl::DecodeInvalidLength => f.write_str("decoding error")
+            ErrorImpl::DecodeInvalidLength => f.write_str("decoding error"),
         }
     }
 }
@@ -89,7 +89,6 @@ pub enum Error {
     #[error("PoisonError: {0:?}")]
     PoisonError(String),
 }
-
 
 impl From<ErrorImpl> for Error {
     fn from(err: ErrorImpl) -> Error {

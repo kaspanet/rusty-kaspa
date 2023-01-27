@@ -1445,6 +1445,7 @@ dependencies = [
  "secp256k1",
  "sha2 0.10.6",
  "subtle",
+ "thiserror",
  "zeroize",
 ]
 
@@ -1528,11 +1529,20 @@ dependencies = [
 name = "kaspa-wallet-core"
 version = "0.1.0"
 dependencies = [
+ "addresses",
+ "async-trait",
+ "faster-hex",
+ "hmac",
+ "kaspa-bip32",
  "kaspa-wrpc-client",
+ "ripemd",
  "rpc-core",
+ "secp256k1",
+ "sha2 0.10.6",
  "thiserror",
  "workflow-log",
  "workflow-rpc",
+ "zeroize",
 ]
 
 [[package]]

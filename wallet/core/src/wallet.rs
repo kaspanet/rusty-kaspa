@@ -1,22 +1,22 @@
 use crate::result::Result;
+use crate::wallets::HDWalletGen1;
 use kaspa_wrpc_client::{KaspaRpcClient, WrpcEncoding};
 use std::sync::Arc;
-use crate::wallets::HDWalletGen1;
 
 #[derive(Clone)]
 pub struct Wallet {
     rpc: Arc<KaspaRpcClient>,
-    hd_wallet: HDWalletGen1
+    hd_wallet: HDWalletGen1,
 }
 
 impl Wallet {
     pub async fn try_new() -> Result<Wallet> {
-
-        let master_xprv = "kprv5y2qurMHCsXYrNfU3GCihuwG3vMqFji7PZXajMEqyBkNh9UZUJgoHYBLTKu1eM4MvUtomcXPQ3Sw9HZ5ebbM4byoUciHo1zrPJBQfqpLorQ";
+        let master_xprv =
+            "kprv5y2qurMHCsXYrNfU3GCihuwG3vMqFji7PZXajMEqyBkNh9UZUJgoHYBLTKu1eM4MvUtomcXPQ3Sw9HZ5ebbM4byoUciHo1zrPJBQfqpLorQ";
 
         let wallet = Wallet {
             rpc: Arc::new(KaspaRpcClient::new(WrpcEncoding::Borsh, "wrpc://localhost:9292")?),
-            hd_wallet: HDWalletGen1::from_master_xprv(master_xprv, false, 0).await?
+            hd_wallet: HDWalletGen1::from_master_xprv(master_xprv, false, 0).await?,
         };
 
         Ok(wallet)

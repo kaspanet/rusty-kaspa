@@ -55,18 +55,9 @@ impl Mnemonic {
         //
         // Given the entropy is of correct size, this ought to give us the correct word
         // count.
-        let phrase = entropy
-            .iter()
-            .chain(Some(&checksum_byte))
-            .bits()
-            .map(|bits| wordlist.get_word(bits))
-            .join(" ");
+        let phrase = entropy.iter().chain(Some(&checksum_byte)).bits().map(|bits| wordlist.get_word(bits)).join(" ");
 
-        Self {
-            language,
-            entropy,
-            phrase,
-        }
+        Self { language, entropy, phrase }
     }
 
     /// Create a new BIP39 mnemonic phrase from the given string.
@@ -108,10 +99,7 @@ impl Mnemonic {
             return Err(Error::Bip39);
         }
 
-        Ok(Self::from_entropy(
-            entropy.as_slice().try_into().map_err(|_| Error::Bip39)?,
-            language,
-        ))
+        Ok(Self::from_entropy(entropy.as_slice().try_into().map_err(|_| Error::Bip39)?, language))
     }
 
     /// Get source entropy for this phrase.
@@ -135,12 +123,7 @@ impl Mnemonic {
     pub fn to_seed(&self, password: &str) -> Seed {
         let salt = Zeroizing::new(format!("mnemonic{}", password));
         let mut seed = [0u8; Seed::SIZE];
-        pbkdf2::pbkdf2::<Hmac<Sha512>>(
-            self.phrase.as_bytes(),
-            salt.as_bytes(),
-            PBKDF2_ROUNDS,
-            &mut seed,
-        );
+        pbkdf2::pbkdf2::<Hmac<Sha512>>(self.phrase.as_bytes(), salt.as_bytes(), PBKDF2_ROUNDS, &mut seed);
         Seed(seed)
     }
 }

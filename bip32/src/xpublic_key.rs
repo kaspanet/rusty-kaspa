@@ -1,8 +1,8 @@
 //! Extended public keys
 //!
 use crate::{
-    types::*, ChildNumber, Error, ExtendedKey, ExtendedKeyAttrs, ExtendedPrivateKey,
-    KeyFingerprint, Prefix, PrivateKey, PublicKey, PublicKeyBytes, Result, KEY_SIZE,
+    types::*, ChildNumber, Error, ExtendedKey, ExtendedKeyAttrs, ExtendedPrivateKey, KeyFingerprint, Prefix, PrivateKey, PublicKey,
+    PublicKeyBytes, Result, KEY_SIZE,
 };
 use core::str::FromStr;
 use hmac::Mac;
@@ -56,8 +56,7 @@ where
 
         let depth = self.attrs.depth.checked_add(1).ok_or(Error::Depth)?;
 
-        let mut hmac =
-            HmacSha512::new_from_slice(&self.attrs.chain_code).map_err(Error::Hmac)?;
+        let mut hmac = HmacSha512::new_from_slice(&self.attrs.chain_code).map_err(Error::Hmac)?;
 
         hmac.update(&self.public_key.to_bytes());
         hmac.update(&child_number.to_bytes());
@@ -83,11 +82,7 @@ where
 
     /// Serialize this key as an [`ExtendedKey`].
     pub fn to_extended_key(&self, prefix: Prefix) -> ExtendedKey {
-        ExtendedKey {
-            prefix,
-            attrs: self.attrs.clone(),
-            key_bytes: self.to_bytes(),
-        }
+        ExtendedKey { prefix, attrs: self.attrs.clone(), key_bytes: self.to_bytes() }
     }
 
     pub fn to_string(&self, prefix: Option<Prefix>) -> String {
@@ -96,10 +91,7 @@ where
     }
 
     pub fn from_public_key(public_key: K, attrs: &ExtendedKeyAttrs) -> Self {
-        ExtendedPublicKey {
-            public_key,
-            attrs: attrs.clone(),
-        }
+        ExtendedPublicKey { public_key, attrs: attrs.clone() }
     }
 }
 
@@ -108,10 +100,7 @@ where
     K: PrivateKey,
 {
     fn from(xprv: &ExtendedPrivateKey<K>) -> ExtendedPublicKey<K::PublicKey> {
-        ExtendedPublicKey {
-            public_key: xprv.private_key().public_key(),
-            attrs: xprv.attrs().clone(),
-        }
+        ExtendedPublicKey { public_key: xprv.private_key().public_key(), attrs: xprv.attrs().clone() }
     }
 }
 
@@ -134,10 +123,7 @@ where
 
     fn try_from(extended_key: ExtendedKey) -> Result<ExtendedPublicKey<K>> {
         if extended_key.prefix.is_public() {
-            Ok(ExtendedPublicKey {
-                public_key: PublicKey::from_bytes(extended_key.key_bytes)?,
-                attrs: extended_key.attrs.clone(),
-            })
+            Ok(ExtendedPublicKey { public_key: PublicKey::from_bytes(extended_key.key_bytes)?, attrs: extended_key.attrs.clone() })
         } else {
             Err(Error::Crypto(secp256k1::Error::InvalidPublicKey))
         }

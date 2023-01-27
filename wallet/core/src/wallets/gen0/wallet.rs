@@ -1,6 +1,6 @@
 use crate::*;
-use std::sync::Arc;
 use async_trait::async_trait;
+use std::sync::Arc;
 
 pub struct WalletGen0 {}
 
