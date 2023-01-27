@@ -1,0 +1,290 @@
+syntax = "proto3";
+package protowire;
+
+option go_package = "github.com/kaspanet/kaspad/protowire";
+
+message RequestAddressesMessage{
+  bool includeAllSubnetworks = 1;
+  SubnetworkId subnetworkId = 2;
+}
+
+message AddressesMessage{
+  repeated NetAddress addressList = 1;
+}
+
+message NetAddress{
+  int64 timestamp = 1;
+  bytes ip = 3;
+  uint32 port = 4;
+}
+
+message SubnetworkId{
+  bytes bytes = 1;
+}
+
+message TransactionMessage{
+  uint32 version = 1;
+  repeated TransactionInput inputs = 2;
+  repeated TransactionOutput outputs = 3;
+  uint64 lockTime = 4;
+  SubnetworkId subnetworkId = 5;
+  uint64 gas = 6;
+  bytes payload = 8;
+}
+
+message TransactionInput{
+  Outpoint previousOutpoint = 1;
+  bytes signatureScript = 2;
+  uint64 sequence = 3;
+  uint32 sigOpCount = 4;
+}
+
+message Outpoint{
+  TransactionId transactionId = 1;
+  uint32 index = 2;
+}
+
+message TransactionId{
+  bytes bytes = 1;
+}
+message ScriptPublicKey {
+  bytes script = 1;
+  uint32 version = 2;
+}
+
+message TransactionOutput{
+  uint64 value = 1;
+  ScriptPublicKey scriptPublicKey = 2;
+}
+
+message BlockMessage{
+  BlockHeader header = 1;
+  repeated TransactionMessage transactions = 2;
+}
+
+message BlockHeader{
+  uint32 version = 1;
+  repeated BlockLevelParents parents = 12;
+  Hash hashMerkleRoot = 3;
+  Hash acceptedIdMerkleRoot = 4;
+  Hash utxoCommitment = 5;
+  int64 timestamp = 6;
+  uint32 bits = 7;
+  uint64 nonce = 8;
+  uint64 daaScore = 9;
+  bytes blueWork = 10;
+  Hash pruningPoint = 14;
+  uint64 blueScore = 13;
+}
+
+message BlockLevelParents {
+  repeated Hash parentHashes = 1;
+}
+
+message Hash{
+  bytes bytes = 1;
+}
+
+message RequestBlockLocatorMessage{
+  Hash highHash = 1;
+  uint32 limit = 2;
+}
+
+message BlockLocatorMessage{
+  repeated Hash hashes = 1;
+}
+
+message RequestHeadersMessage{
+  Hash lowHash = 1;
+  Hash highHash = 2;
+}
+
+message RequestNextHeadersMessage{
+}
+
+message DoneHeadersMessage{
+}
+
+message RequestRelayBlocksMessage{
+  repeated Hash hashes = 1;
+}
+
+message RequestTransactionsMessage {
+  repeated TransactionId ids = 1;
+}
+
+message TransactionNotFoundMessage{
+  TransactionId id = 1;
+}
+
+message InvRelayBlockMessage{
+  Hash hash = 1;
+}
+
+message InvTransactionsMessage{
+  repeated TransactionId ids = 1;
+}
+
+message PingMessage{
+  uint64 nonce = 1;
+}
+
+message PongMessage{
+  uint64 nonce = 1;
+}
+
+message VerackMessage{
+}
+
+message VersionMessage{
+  uint32 protocolVersion = 1;
+  uint64 services = 2;
+  int64 timestamp = 3;
+  NetAddress address = 4;
+  bytes id = 5;
+  string userAgent = 6;
+  bool disableRelayTx = 8;
+  SubnetworkId subnetworkId = 9;
+  string network = 10;
+}
+
+message RejectMessage{
+  string reason = 1;
+}
+
+message RequestPruningPointUTXOSetMessage{
+  Hash pruningPointHash = 1;
+}
+
+message PruningPointUtxoSetChunkMessage{
+  repeated OutpointAndUtxoEntryPair outpointAndUtxoEntryPairs = 1;
+}
+
+message OutpointAndUtxoEntryPair{
+  Outpoint outpoint = 1;
+  UtxoEntry utxoEntry = 2;
+}
+
+message UtxoEntry {
+  uint64 amount = 1;
+  ScriptPublicKey scriptPublicKey = 2;
+  uint64 blockDaaScore = 3;
+  bool isCoinbase = 4;
+}
+
+message RequestNextPruningPointUtxoSetChunkMessage {
+}
+
+message DonePruningPointUtxoSetChunksMessage {
+}
+
+message RequestIBDBlocksMessage{
+  repeated Hash hashes = 1;
+}
+
+message UnexpectedPruningPointMessage{
+}
+
+message IbdBlockLocatorMessage {
+  Hash targetHash = 1;
+  repeated Hash blockLocatorHashes = 2;
+}
+
+message RequestIBDChainBlockLocatorMessage{
+  Hash lowHash = 1;
+  Hash highHash = 2;
+}
+
+message IbdChainBlockLocatorMessage {
+  repeated Hash blockLocatorHashes = 1;
+}
+
+message RequestAnticoneMessage{
+  Hash blockHash = 1;
+  Hash contextHash = 2;
+}
+
+message IbdBlockLocatorHighestHashMessage {
+  Hash highestHash = 1;
+}
+
+message IbdBlockLocatorHighestHashNotFoundMessage {
+}
+
+message BlockHeadersMessage {
+  repeated BlockHeader blockHeaders = 1;
+}
+
+message RequestPruningPointAndItsAnticoneMessage {
+}
+
+message RequestNextPruningPointAndItsAnticoneBlocksMessage{
+}
+
+message BlockWithTrustedDataMessage {
+  BlockMessage block = 1;
+  uint64 daaScore = 2;
+  repeated DaaBlock daaWindow = 3;
+  repeated BlockGhostdagDataHashPair ghostdagData = 4;
+}
+
+message DaaBlock {
+  BlockMessage block = 3;
+  GhostdagData ghostdagData = 2;
+}
+
+message DaaBlockV4 {
+  BlockHeader header = 1;
+  GhostdagData ghostdagData = 2;
+}
+
+message BlockGhostdagDataHashPair {
+  Hash hash = 1;
+  GhostdagData ghostdagData = 2;
+}
+
+message GhostdagData {
+  uint64 blueScore = 1;
+  bytes blueWork = 2;
+  Hash selectedParent = 3;
+  repeated Hash mergeSetBlues = 4;
+  repeated Hash mergeSetReds = 5;
+  repeated BluesAnticoneSizes bluesAnticoneSizes = 6;
+}
+
+message BluesAnticoneSizes {
+  Hash blueHash = 1;
+  uint32 anticoneSize = 2;
+}
+
+message DoneBlocksWithTrustedDataMessage {
+}
+
+message PruningPointsMessage {
+  repeated BlockHeader headers = 1;
+}
+
+message RequestPruningPointProofMessage {
+}
+
+message PruningPointProofMessage {
+  repeated PruningPointProofHeaderArray headers = 1;
+}
+
+message PruningPointProofHeaderArray {
+  repeated BlockHeader headers = 1;
+}
+
+message ReadyMessage {
+}
+
+message BlockWithTrustedDataV4Message {
+  BlockMessage block = 1;
+  repeated uint64 daaWindowIndices = 2;
+  repeated uint64 ghostdagDataIndices = 3;
+}
+
+message TrustedDataMessage {
+  repeated DaaBlockV4 daaWindow = 1;
+  repeated BlockGhostdagDataHashPair ghostdagData = 2;
+}

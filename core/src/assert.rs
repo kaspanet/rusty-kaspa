@@ -91,16 +91,14 @@ fn assert_failed_inner(kind: AssertKind, left: &dyn fmt::Debug, right: &dyn fmt:
 
     match args {
         Some(args) => panic!(
-            r#"assertion failed: `(left {} right)`
-  left: `{:?}`,
- right: `{:?}`: {}"#,
-            op, left, right, args
+            r#"assertion failed: `(left {op} right)`
+  left: `{left:?}`,
+ right: `{right:?}`: {args}"#
         ),
         None => panic!(
-            r#"assertion failed: `(left {} right)`
-  left: `{:?}`,
- right: `{:?}`"#,
-            op, left, right,
+            r#"assertion failed: `(left {op} right)`
+  left: `{left:?}`,
+ right: `{right:?}`"#,
         ),
     }
 }
