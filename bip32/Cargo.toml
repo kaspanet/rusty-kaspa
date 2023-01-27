@@ -14,3 +14,4 @@ ripemd.workspace = true
 subtle.workspace = true
 once_cell.workspace = true
 pbkdf2.workspace = true
+thiserror.workspace = true

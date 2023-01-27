@@ -1,6 +1,7 @@
 use kaspa_wrpc_client::error::Error as KaspaWorkflowRpcError;
 use rpc_core::RpcError as KaspaRpcError;
 use workflow_rpc::client::error::Error as RpcError;
+use kaspa_bip32::Error as BIP32Error;
 
 use thiserror::Error;
 
@@ -17,4 +18,7 @@ pub enum Error {
 
     #[error("RPC error: {0}")]
     KaspaWorkflowRpcError(#[from] KaspaWorkflowRpcError),
+
+    #[error("BIP32 error: {0}")]
+    BIP32Error(#[from] BIP32Error),
 }

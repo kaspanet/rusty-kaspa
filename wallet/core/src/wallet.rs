@@ -1,19 +1,23 @@
 use crate::result::Result;
-// use rpc_core::client::prelude::*;
 use kaspa_wrpc_client::{KaspaRpcClient, WrpcEncoding};
-use rpc_core::api::rpc::RpcApi;
 use std::sync::Arc;
-// use kaspa_rpc_core::client::prelude::*;
-// use workflow_log::*;
+use crate::wallets::HDWalletGen1;
 
 #[derive(Clone)]
 pub struct Wallet {
     rpc: Arc<KaspaRpcClient>,
+    hd_wallet: HDWalletGen1
 }
 
 impl Wallet {
-    pub fn try_new() -> Result<Wallet> {
-        let wallet = Wallet { rpc: Arc::new(KaspaRpcClient::new(WrpcEncoding::Borsh, "wrpc://localhost:9292")?) };
+    pub async fn try_new() -> Result<Wallet> {
+
+        let master_xprv = "kprv5y2qurMHCsXYrNfU3GCihuwG3vMqFji7PZXajMEqyBkNh9UZUJgoHYBLTKu1eM4MvUtomcXPQ3Sw9HZ5ebbM4byoUciHo1zrPJBQfqpLorQ";
+
+        let wallet = Wallet {
+            rpc: Arc::new(KaspaRpcClient::new(WrpcEncoding::Borsh, "wrpc://localhost:9292")?),
+            hd_wallet: HDWalletGen1::from_master_xprv(master_xprv, false, 0).await?
+        };
 
         Ok(wallet)
     }
@@ -50,6 +54,8 @@ impl Wallet {
         // let rpc: Arc<dyn ClientInterface> = self.rpc.clone();
         // let resp = self.rpc.ping(msg).await?;
         // Ok(resp)
+        //let address =self.hd_wallet.receive_wallet().derive_address(0).await?;
+        //Ok(address.into())
         Ok("not implemented".to_string())
     }
 
@@ -73,8 +79,10 @@ impl Wallet {
         Ok(())
     }
 
-    pub async fn new_address(self: &Arc<Self>) -> Result<()> {
-        Ok(())
+    pub async fn new_address(self: &Arc<Self>) -> Result<String> {
+        let address = self.hd_wallet.receive_wallet().new_address().await?;
+        Ok(address.into())
+        //Ok("new_address".to_string())
     }
 
     pub async fn parse(self: &Arc<Self>) -> Result<()> {

@@ -32,7 +32,7 @@ impl WalletCli {
     }
 
     fn term(&self) -> Option<Arc<Terminal>> {
-        self.term.lock().unwrap().as_ref().map(|term| term.clone())
+        self.term.lock().unwrap().as_ref().cloned()//map(|term| term.clone())
     }
 
     async fn action(&self, action: Action, argv: Vec<String>, term: Arc<Terminal>) -> Result<()> {
@@ -49,12 +49,12 @@ impl WalletCli {
                 log_trace!("testing 123");
                 // let msg = argv[1..].join(" ");
                 let response = self.wallet.info().await?;
-                term.writeln(&response);
+                term.writeln(response);
             }
             Action::Ping => {
                 let msg = argv[1..].join(" ");
                 let response = self.wallet.ping(msg).await?;
-                term.writeln(&response);
+                term.writeln(response);
             }
             Action::Balance => {
                 self.wallet.balance().await?;
@@ -72,7 +72,8 @@ impl WalletCli {
                 self.wallet.dump_unencrypted().await?;
             }
             Action::NewAddress => {
-                self.wallet.new_address().await?;
+                let response = self.wallet.new_address().await?;
+                term.writeln(response);
             }
             Action::Parse => {
                 self.wallet.parse().await?;
@@ -132,7 +133,7 @@ impl Cli for WalletCli {
 impl WalletCli {}
 
 pub async fn kaspa_wallet_cli() -> Result<()> {
-    let wallet = Arc::new(Wallet::try_new()?);
+    let wallet = Arc::new(Wallet::try_new().await?);
 
     let cli = Arc::new(WalletCli::new(wallet.clone()));
     let term = Arc::new(Terminal::try_new(cli.clone(), "$ ")?);
