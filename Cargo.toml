@@ -16,6 +16,7 @@ members = [
     "rpc/core",
     "rpc/grpc",
     "mining",
+    "p2p",
 ]
 
 [workspace.package]
