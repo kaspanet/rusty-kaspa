@@ -26,8 +26,6 @@ where
 
 #[derive(Clone)]
 pub struct HDWalletInner {
-    // Encrypted private key
-    //encrypted_private_key: Vec<u8>,
     /// Derived public key
     public_key: secp256k1::PublicKey,
 
@@ -35,7 +33,7 @@ pub struct HDWalletInner {
     attrs: ExtendedKeyAttrs,
 
     #[allow(dead_code)]
-    fingerprint: [u8; 4],
+    fingerprint: KeyFingerprint,
 
     hmac: HmacSha512,
 
@@ -47,7 +45,7 @@ impl HDWalletInner {
     pub fn new(
         public_key: secp256k1::PublicKey,
         attrs: ExtendedKeyAttrs,
-        fingerprint: [u8; 4],
+        fingerprint: KeyFingerprint,
         hmac: HmacSha512,
         index: u32
     )->Result<Self>{
@@ -86,20 +84,6 @@ impl HDWalletInner {
         let (key, _chain_code) =
             HDWalletGen1::derive_public_key_child(&self.public_key, index, self.hmac.clone())?;
 
-        //println!("derive_address key:{index} {}", key.to_string());
-
-        /*
-        let depth = self.attrs.depth.checked_add(1).ok_or(Error::Depth)?;
-
-        let attrs = ExtendedKeyAttrs {
-            parent_fingerprint: self.fingerprint,
-            child_number: ChildNumber::new(index, false)?,
-            _chain_code,
-            depth,
-        };
-
-        log_trace!("\nextendedKey: {}", private_key.as_str(attrs.clone(), Prefix::KPRV).as_str());
-        */
         let pubkey = &key.to_bytes()[1..];
         let address = Address {
             prefix: AddressPrefix::Mainnet,
@@ -113,10 +97,6 @@ impl HDWalletInner {
     pub fn public_key(&self) -> ExtendedPublicKey<secp256k1::PublicKey> {
         self.into()
     }
-
-    //pub fn private_key(&self) -> &Vec<u8> {
-    //    &self.encrypted_private_key
-    //}
 
     pub fn attrs(&self) -> &ExtendedKeyAttrs {
         &self.attrs
@@ -154,9 +134,6 @@ impl From<&HDWalletInner> for ExtendedPublicKey<secp256k1::PublicKey> {
 
 #[derive(Clone)]
 pub struct HDWalletGen1 {
-    /// Encrypted private key
-    //encrypted_private_key: Vec<u8>,
-
     /// extended public key derived upto `m/<Purpose>'/111111'/<Account Index>'`
     extended_public_key: ExtendedPublicKey<secp256k1::PublicKey>,
 
@@ -228,7 +205,6 @@ impl HDWalletGen1 {
         let purpose = if is_multisig { 45 } else { 44 };
         let address_path = format!("{}'/111111'/{}'", purpose, account_index);
         let children = address_path.split('/');
-        //let mut index = 0;
         for child in children {
             (private_key, attrs) =
                 Self::derive_private_key(&private_key, &attrs, child.parse::<ChildNumber>()?)
@@ -272,25 +248,7 @@ impl HDWalletGen1 {
         mut public_key: ExtendedPublicKey<secp256k1::PublicKey>,
         address_type: AddressType,
     ) -> Result<HDWalletInner> {
-        //let address_path = format!("44'/111111'/0'/{}", address_type.index());
-        //let children = address_path.split('/');
-        //let mut index = 0;
-        //for child in children {
         public_key = public_key.derive_child(ChildNumber::new(address_type.index(), false)?)?;
-
-        /*
-        if index == 2{
-            log_trace!("\nextendedKey: {}", private_key.as_str(attrs.clone(), Prefix::KPRV).as_str());
-            let pubkey = ExtendedPublicKey {
-                public_key: private_key.get_public_key(),
-                //public_key: inner.private_key().public_key(),
-                attrs: attrs.clone(),
-            };
-            log_trace!("extendedPubKey: {}\n", pubkey.to_string(Some(Prefix::KPUB)));
-        }
-        index += 1;
-        */
-        //}
 
         let mut hmac = HmacSha512::new_from_slice(&public_key.attrs().chain_code)
             .map_err(Error::Hmac)?;

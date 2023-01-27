@@ -2,13 +2,11 @@ use addresses::{Address, Prefix as AddressPrefix};
 use hmac::Mac;
 use ripemd::Ripemd160;
 use sha2::{Digest, Sha256};
-use std::fmt::Debug;
-use std::str::FromStr;
+use std::{
+    fmt::Debug,
+    str::FromStr
+};
 use zeroize::Zeroizing;
-//use secp256k1_ffi::SECP256K1;
-
-//use workflow_core::task::*;
-//use std::time::Duration;
 use kaspa_bip32::{
     types::*, AddressType, ChildNumber, ExtendedKey, ExtendedKeyAttrs, ExtendedPrivateKey,
     ExtendedPublicKey, Prefix, PrivateKey, PublicKey, SecretKey, SecretKeyExt,
@@ -23,51 +21,20 @@ pub struct HDWalletInner {
     attrs: ExtendedKeyAttrs,
 
     #[allow(dead_code)]
-    fingerprint: [u8; 4],
+    fingerprint: KeyFingerprint,
 
     hmac: HmacSha512,
 }
 
 impl HDWalletInner {
     pub async fn derive_address(&self, index: u32) -> Result<Address> {
-        //let child_number = ChildNumber::new(index, true)?;
-        //key = key.derive_child(c.clone())?;
-        //println!("\nc:    {c:?}");
-        //println!("key: {:#?}", key2);
-        /*
-        println!("key: {:?}",
-            //key.to_string(Prefix::XPRV).as_str(),
-            key2.to_string(Prefix::XPRV).as_str()
-        );
-        */
-        //key = key.derive_child(child_number).await?;
-        /*
-        let (private_key, _attrs) = HDWalletGen0::derive_child_with_fingerprint(
-            &self.private_key,
-            &self.attrs,
-            child_number,
-            self.fingerprint,
-            self.hmac.clone()
-        ).await?;
-        */
-
         let (private_key, _) = HDWalletGen0::derive_private_key(
             &self.private_key,
             ChildNumber::new(index, true)?,
             self.hmac.clone(),
         )?;
-        //sleep(Duration::from_secs(0)).await;
-        //yield_now().await;
-
-        /*
-        let key = ExtendedPublicKey {
-            public_key: private_key.public_key(),
-            attrs
-        };
-        */
 
         let pubkey = &private_key.get_public_key().to_bytes()[1..];
-        //let pubkey = &private_key.public_key().to_bytes()[1..];
         let address = Address {
             prefix: AddressPrefix::Mainnet,
             version: 0,
@@ -95,7 +62,6 @@ impl From<&HDWalletInner> for ExtendedPublicKey<<SecretKey as PrivateKey>::Publi
     fn from(inner: &HDWalletInner) -> ExtendedPublicKey<<SecretKey as PrivateKey>::PublicKey> {
         ExtendedPublicKey {
             public_key: inner.private_key().get_public_key(),
-            //public_key: inner.private_key().public_key(),
             attrs: inner.attrs().clone(),
         }
     }
@@ -171,18 +137,7 @@ impl HDWalletGen0 {
         let children = address_path.split('/');
         for child in children {
             let c = child.parse::<ChildNumber>()?;
-            //key = key.derive_child(c.clone())?;
-            //println!("\nc:    {c:?}");
-            //println!("key: {:#?}", key2);
-            /*
-            println!("key: {:?}",
-                //key.to_string(Prefix::XPRV).as_str(),
-                key2.to_string(Prefix::XPRV).as_str()
-            );
-            */
             (private_key, attrs) = Self::derive_child(&private_key, &attrs, c).await?;
-            //sleep(Duration::from_secs(0)).await;
-            //yield_now().await
         }
 
         let public_key_bytes = &private_key.get_public_key().to_bytes()[1..];
@@ -208,7 +163,6 @@ impl HDWalletGen0 {
         let public_key_bytes = &private_key.get_public_key().to_bytes()[1..];
 
         let digest = Ripemd160::digest(Sha256::digest(public_key_bytes));
-        //let digest = Ripemd160::digest(&Sha256::digest(&private_key.public_key().to_bytes()[1..]));
         let fingerprint = digest[..4].try_into().expect("digest truncated");
 
         let hmac = Self::create_hmac(private_key, attrs, child_number.is_hardened())?;
@@ -234,12 +188,9 @@ impl HDWalletGen0 {
         if hardened {
             hmac.update(&[0]);
             hmac.update(&private_key.to_bytes());
-            //println!("data: {}{}", hex::encode(self.private_key.to_bytes()), hex::encode(child_number.to_bytes()));
         } else {
             let public_key_bytes = &private_key.get_public_key().to_bytes()[1..];
             hmac.update(public_key_bytes);
-            //hmac.update(&private_key.public_key().to_bytes()[1..]);
-            //println!("data: {}{}", hex::encode(&self.private_key.public_key().to_bytes()[1..]), hex::encode(child_number.to_bytes()));
         }
 
         Ok(hmac)
@@ -265,18 +216,6 @@ impl HDWalletGen0 {
 
         let derived = (private_key, attrs);
 
-        /*
-        derived.log(Prefix::XPRV);
-
-        println!("index:{}\nderived.childIndex:{}\nderived.xprivkey:{}",
-            child_number,
-            derived.attrs.child_number,
-            derived.to_string(Prefix::XPRV).as_str()
-        );
-
-        println!("==================\n");
-        */
-
         Ok(derived)
     }
 
@@ -285,23 +224,9 @@ impl HDWalletGen0 {
         child_number: ChildNumber,
         mut hmac: HmacSha512,
     ) -> Result<(SecretKey, ChainCode)> {
-        /*
-        println!("\n private_key: {}", hex::encode(private_key.to_bytes()));
-
-        println!("\n_deriveWithNumber {}, {}, {}, fingerprint:{}",
-            child_number,
-            child_number.is_hardened(),
-            hex::encode(private_key.get_public_key().to_bytes()),
-            hex::encode(&fingerprint)
-        );
-        */
-
         hmac.update(&child_number.to_bytes());
 
         let result = hmac.finalize().into_bytes();
-        //println!("chainCode: {}", hex::encode(self.attrs.chain_code));
-        //println!("hash: {}", hex::encode(&result));
-
         let (child_key, chain_code) = result.split_at(KEY_SIZE);
 
         // We should technically loop here if a `secret_key` is zero or overflows
@@ -340,18 +265,8 @@ impl HDWalletGen0 {
     pub fn to_string(&self) -> Zeroizing<String> {
         let key = self.to_extended_key(Prefix::XPRV);
 
-        //println!("str: {str}");
         Zeroizing::new(key.to_string())
     }
-
-    /*
-    pub fn log(&self, prefix: Prefix){
-        let key = self.to_extended_key(prefix);
-        let mut buf = [0u8; ExtendedKey::MAX_BASE58_SIZE];
-        let _str = write_base58(&key, &mut buf)
-            .map_err(|_| std::fmt::Error).unwrap();
-    }
-    */
 
     pub fn public_key(&self) -> ExtendedPublicKey<<SecretKey as PrivateKey>::PublicKey> {
         self.into()
@@ -369,7 +284,6 @@ impl From<&HDWalletGen0> for ExtendedPublicKey<<SecretKey as PrivateKey>::Public
     fn from(hd_wallet: &HDWalletGen0) -> ExtendedPublicKey<<SecretKey as PrivateKey>::PublicKey> {
         ExtendedPublicKey {
             public_key: hd_wallet.private_key().get_public_key(),
-            //public_key: hd_wallet.private_key().public_key(),
             attrs: hd_wallet.attrs().clone(),
         }
     }

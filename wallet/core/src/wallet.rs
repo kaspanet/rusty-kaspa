@@ -1,11 +1,7 @@
 use crate::result::Result;
-// use rpc_core::client::prelude::*;
 use kaspa_wrpc_client::{KaspaRpcClient, WrpcEncoding};
-use rpc_core::api::rpc::RpcApi;
 use std::sync::Arc;
 use crate::wallets::HDWalletGen1;
-// use kaspa_rpc_core::client::prelude::*;
-// use workflow_log::*;
 
 #[derive(Clone)]
 pub struct Wallet {
