@@ -1,13 +1,13 @@
-use super::route::route;
+//use super::route::route;
 use crate::result::Result;
-use async_trait::async_trait;
+//use async_trait::async_trait;
 use regex::Regex;
 use rpc_core::api::ops::RpcApiOps;
-use rpc_core::api::rpc::RpcApi;
-use rpc_core::error::RpcResult;
-use rpc_core::notify::channel::*;
-use rpc_core::notify::listener::*;
-use rpc_core::prelude::*;
+//use rpc_core::api::rpc::RpcApi;
+//use rpc_core::error::RpcResult;
+//use rpc_core::notify::channel::*;
+//use rpc_core::notify::listener::*;
+//use rpc_core::prelude::*;
 use std::sync::Arc;
 use workflow_core::trigger::Listener;
 use workflow_log::*;
@@ -27,7 +27,7 @@ impl KaspaRpcClient {
         log_trace!("Kaspa wRPC::{encoding} client url: {url}");
         let options = RpcClientOptions { url: &url, ..RpcClientOptions::default() };
 
-        let mut interface = Interface::<RpcApiOps>::new();
+        let interface = Interface::<RpcApiOps>::new();
         // interface.notification(
         //     TestOps::Notify,
         //     notification!(|msg: TestNotify| async move {

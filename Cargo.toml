@@ -22,6 +22,7 @@ members = [
     "rpc/wrpc/client",
     "rpc/wrpc/server",
     "rpc/wrpc/proxy",
+    "bip32",
 ]
 
 [workspace.package]
@@ -87,6 +88,17 @@ pad = "0.1.6"
 convert_case = "0.5.0"
 wasm-bindgen-futures="0.4.33"
 js-sys = "0.3.56"
+
+rand_core = { version = "0.6", features = ["std"] }
+bs58 = { version = "0.4", features = ["check"], default-features = false}
+hmac = {version = "0.12", default-features = false}
+secp256k1 = { version = "0.24", features = ["global-context", "rand-std"] }
+sha2 = {version = "0.10", default-features = false}
+zeroize = {version = "1", default-features = false, features=["alloc"]}
+ripemd = {version = "0.1", default-features = false}
+subtle = {version = "2", default-features = false}
+once_cell = {version = "1"}
+pbkdf2 = {version = "0.11", default-features = false}
 
 workflow-core = { path = "../workflow-rs/core" }
 workflow-websocket = { path = "../workflow-rs/websocket" }

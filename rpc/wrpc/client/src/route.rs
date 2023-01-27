@@ -1,3 +1,4 @@
+// #[macro_export]
 macro_rules! route {
     ($fn:ident, $name:tt) => {
         paste::paste! {
