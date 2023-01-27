@@ -1,0 +1,23 @@
+[package]
+name = "kaspa-rpc-macros"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+keywords = ["rpc"]
+categories = []
+exclude = ["/.*", "/test"]
+description = """
+Macros for the Kaspa RPC infrastructure
+"""
+
+[lib]
+proc-macro = true
+
+[dependencies]
+parse-variants = "0.1"
+proc-macro-error = { version = "1", default-features = false }
+proc-macro2 = { version = "1.0.43" }
+quote = "1.0.21"
+syn = {version="1.0.99",features=["full","fold","extra-traits","parsing","proc-macro"]}
+convert_case = "0.5.0"

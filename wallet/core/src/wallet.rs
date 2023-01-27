@@ -1,6 +1,6 @@
 use crate::result::Result;
 // use rpc_core::client::prelude::*;
-use kaspa_wrpc_client::{KaspaRpcClient,WrpcEncoding};
+use kaspa_wrpc_client::{KaspaRpcClient, WrpcEncoding};
 use rpc_core::api::rpc::RpcApi;
 use std::sync::Arc;
 // use kaspa_rpc_core::client::prelude::*;
@@ -13,7 +13,7 @@ pub struct Wallet {
 
 impl Wallet {
     pub fn try_new() -> Result<Wallet> {
-        let wallet = Wallet { rpc: Arc::new(KaspaRpcClient::new(WrpcEncoding::Borsh,"wrpc://localhost:9292")?) };
+        let wallet = Wallet { rpc: Arc::new(KaspaRpcClient::new(WrpcEncoding::Borsh, "wrpc://localhost:9292")?) };
 
         Ok(wallet)
     }

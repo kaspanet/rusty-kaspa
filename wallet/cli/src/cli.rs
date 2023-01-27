@@ -32,11 +32,7 @@ impl WalletCli {
     }
 
     fn term(&self) -> Option<Arc<Terminal>> {
-        if let Some(term) = self.term.lock().unwrap().as_ref() {
-            Some(term.clone())
-        } else {
-            None
-        }
+        self.term.lock().unwrap().as_ref().map(|term| term.clone())
     }
 
     async fn action(&self, action: Action, argv: Vec<String>, term: Arc<Terminal>) -> Result<()> {
@@ -113,21 +109,23 @@ impl Cli for WalletCli {
         Ok(())
     }
 
-    async fn complete(&self, _term: Arc<Terminal>, cmd: String) -> TerminalResult<Vec<String>> {
-        let argv = parse(&cmd);
-        if argv.len() == 1 {
-            // let part = argv.first().unwrap().as_str();
-            // let mut list = vec![];
-            // for (cmd,_) in HELP.iter() {
-            //     if cmd.starts_with(part) {
-            //         list.push(cmd.to_string());
-            //     }
-            // };
-            // Ok(list)
-            Ok(vec![])
-        } else {
-            Ok(vec![])
-        }
+    async fn complete(&self, _term: Arc<Terminal>, _cmd: String) -> TerminalResult<Vec<String>> {
+        // TODO
+        // let argv = parse(&cmd);
+        Ok(vec![])
+        // if argv.len() == 1 {
+        //     // let part = argv.first().unwrap().as_str();
+        //     // let mut list = vec![];
+        //     // for (cmd,_) in HELP.iter() {
+        //     //     if cmd.starts_with(part) {
+        //     //         list.push(cmd.to_string());
+        //     //     }
+        //     // };
+        //     // Ok(list)
+        //     Ok(vec![])
+        // } else {
+        //     Ok(vec![])
+        // }
     }
 }
 

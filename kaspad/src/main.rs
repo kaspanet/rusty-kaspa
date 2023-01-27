@@ -14,10 +14,10 @@ use crate::monitor::ConsensusMonitor;
 use consensus::consensus::Consensus;
 use consensus::params::DEVNET_PARAMS;
 use kaspa_core::{info, trace};
+use kaspa_wrpc_server::server::{Options as WrpcServerOptions, WrpcEncoding, WrpcServer};
 use rpc_core::server::collector::ConsensusNotificationChannel;
 use rpc_core::server::RpcCoreServer;
 use rpc_grpc::server::GrpcServer;
-use kaspa_wrpc_server::server::{WrpcServer,Options as WrpcServerOptions, WrpcEncoding};
 
 mod monitor;
 
@@ -99,7 +99,8 @@ pub fn main() {
     let rpc_core_server = Arc::new(RpcCoreServer::new(consensus.clone(), notification_channel.receiver()));
     let grpc_server = Arc::new(GrpcServer::new(grpc_server_addr, rpc_core_server.service()));
 
-    let wrpc_server_options = WrpcServerOptions::new(WrpcEncoding::Borsh, &args.wrpc_listen.unwrap_or_else(|| "127.0.0.1:8080".to_string()));
+    let wrpc_server_options =
+        WrpcServerOptions::new(WrpcEncoding::Borsh, &args.wrpc_listen.unwrap_or_else(|| "127.0.0.1:8080".to_string()));
 
     let wrpc_server = Arc::new(WrpcServer::new(wrpc_server_options, rpc_core_server.service()));
 

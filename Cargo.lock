@@ -1023,6 +1023,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1435fa1053d8b2fbbe9be7e97eca7f33d37b28409959813daefc1446a14247f1"
 
 [[package]]
+name = "downcast-rs"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9ea835d29036a4087793836fa931b08837ad5e957da9e23886b29586fb9b6650"
+
+[[package]]
 name = "either"
 version = "1.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1645,6 +1651,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "kaspa-rpc-macros"
+version = "0.1.0"
+dependencies = [
+ "convert_case 0.5.0",
+ "parse-variants",
+ "proc-macro-error",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "kaspa-utils"
 version = "0.1.0"
 dependencies = [
@@ -1662,7 +1680,7 @@ dependencies = [
  "kaspa-wrpc-client",
  "pad",
  "thiserror",
- "workflow-core 0.2.0",
+ "workflow-core 0.3.0",
  "workflow-log",
  "workflow-terminal",
 ]
@@ -1729,7 +1747,7 @@ dependencies = [
  "rpc-core",
  "serde",
  "thiserror",
- "workflow-core 0.2.0",
+ "workflow-core 0.3.0",
  "workflow-log",
  "workflow-rpc",
  "workflow-websocket",
@@ -1742,12 +1760,13 @@ dependencies = [
  "async-trait",
  "clap 4.0.29",
  "consensus-core",
+ "kaspa-rpc-macros",
  "kaspa-wrpc-server",
  "rpc-core",
  "rpc-grpc",
  "thiserror",
  "tokio",
- "workflow-core 0.2.0",
+ "workflow-core 0.3.0",
  "workflow-log",
  "workflow-rpc",
  "workflow-websocket",
@@ -1766,7 +1785,7 @@ dependencies = [
  "rpc-core",
  "thiserror",
  "tokio",
- "workflow-core 0.2.0",
+ "workflow-core 0.3.0",
  "workflow-log",
  "workflow-rpc",
  "workflow-websocket",
@@ -3801,15 +3820,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f40009d85759725a34da6d89a94e63d7bdc50a862acf0dbc7c8e488f1edcb6f5"
 
 [[package]]
-name = "workflow-async-trait"
-version = "0.1.58"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
 name = "workflow-core"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3829,14 +3839,13 @@ dependencies = [
  "tokio",
  "triggered",
  "wasm-bindgen",
- "workflow-core-macros 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "workflow-core-macros 0.1.0",
 ]
 
 [[package]]
 name = "workflow-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
- "async-channel",
  "async-std",
  "borsh 0.10.0",
  "bs58",
@@ -3845,7 +3854,6 @@ dependencies = [
  "getrandom 0.2.8",
  "instant",
  "js-sys",
- "manual_future",
  "rand 0.8.5",
  "serde",
  "thiserror",
@@ -3853,22 +3861,7 @@ dependencies = [
  "triggered",
  "wasm-bindgen",
  "wasm-bindgen-futures",
- "workflow-async-trait",
- "workflow-core-macros 0.1.0",
-]
-
-[[package]]
-name = "workflow-core-macros"
-version = "0.1.0"
-dependencies = [
- "convert_case 0.5.0",
- "parse-variants",
- "proc-macro-error",
- "proc-macro2",
- "quote",
- "sha2 0.10.6",
- "syn",
- "workflow-macro-tools",
+ "workflow-core-macros 0.3.0",
 ]
 
 [[package]]
@@ -3883,12 +3876,26 @@ dependencies = [
  "quote",
  "sha2 0.10.6",
  "syn",
- "workflow-macro-tools",
+ "workflow-macro-tools 0.1.0",
+]
+
+[[package]]
+name = "workflow-core-macros"
+version = "0.3.0"
+dependencies = [
+ "convert_case 0.5.0",
+ "parse-variants",
+ "proc-macro-error",
+ "proc-macro2",
+ "quote",
+ "sha2 0.10.6",
+ "syn",
+ "workflow-macro-tools 0.3.0",
 ]
 
 [[package]]
 name = "workflow-dom"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "futures",
  "js-sys",
@@ -3896,14 +3903,14 @@ dependencies = [
  "thiserror",
  "wasm-bindgen",
  "web-sys",
- "workflow-core 0.2.0",
+ "workflow-core 0.3.0",
  "workflow-log",
  "workflow-wasm",
 ]
 
 [[package]]
 name = "workflow-log"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "cfg-if",
  "console",
@@ -3929,8 +3936,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "workflow-macro-tools"
+version = "0.3.0"
+dependencies = [
+ "convert_case 0.5.0",
+ "parse-variants",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "workflow-panic-hook"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "cfg-if",
  "wasm-bindgen",
@@ -3939,12 +3957,13 @@ dependencies = [
 
 [[package]]
 name = "workflow-rpc"
-version = "0.1.2"
+version = "0.3.0"
 dependencies = [
  "ahash 0.8.2",
  "async-std",
  "async-trait",
  "borsh 0.10.0",
+ "downcast-rs",
  "futures",
  "futures-util",
  "getrandom 0.2.8",
@@ -3956,14 +3975,26 @@ dependencies = [
  "tokio",
  "tungstenite",
  "wasm-bindgen",
- "workflow-core 0.2.0",
+ "workflow-core 0.3.0",
  "workflow-log",
+ "workflow-rpc-macros",
  "workflow-websocket",
 ]
 
 [[package]]
+name = "workflow-rpc-macros"
+version = "0.3.0"
+dependencies = [
+ "parse-variants",
+ "proc-macro-error",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "workflow-terminal"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "async-std",
  "async-trait",
@@ -3976,7 +4007,7 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
- "workflow-core 0.2.0",
+ "workflow-core 0.3.0",
  "workflow-dom",
  "workflow-log",
  "workflow-wasm",
@@ -3984,12 +4015,12 @@ dependencies = [
 
 [[package]]
 name = "workflow-wasm"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "js-sys",
  "thiserror",
  "wasm-bindgen",
- "workflow-core 0.2.0",
+ "workflow-core 0.3.0",
  "workflow-panic-hook",
  "workflow-wasm-macros",
 ]
@@ -4006,16 +4037,16 @@ dependencies = [
 
 [[package]]
 name = "workflow-websocket"
-version = "0.1.2"
+version = "0.3.0"
 dependencies = [
  "ahash 0.8.2",
  "async-std",
  "async-trait",
  "cfg-if",
+ "downcast-rs",
  "futures",
  "futures-util",
  "js-sys",
- "manual_future",
  "thiserror",
  "tokio",
  "tokio-tungstenite",
@@ -4024,7 +4055,7 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
- "workflow-core 0.2.0",
+ "workflow-core 0.3.0",
  "workflow-log",
  "workflow-wasm",
 ]

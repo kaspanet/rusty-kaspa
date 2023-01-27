@@ -8,9 +8,6 @@ use consensus_core::networktype::NetworkType;
 // use error::Error;
 use result::Result;
 // use rpc_core::api::rpc::RpcApi;
-use rpc_grpc::client::RpcApiGrpc;
-use std::net::SocketAddr;
-use std::sync::Arc;
 use async_trait::async_trait;
 use rpc_core::api::ops::RpcApiOps;
 #[allow(unused_imports)]
@@ -19,6 +16,9 @@ use rpc_core::error::RpcResult;
 use rpc_core::notify::channel::*;
 #[allow(unused_imports)]
 use rpc_core::notify::listener::*;
+use rpc_grpc::client::RpcApiGrpc;
+use std::net::SocketAddr;
+use std::sync::Arc;
 use workflow_log::*;
 // use workflow_rpc::result::RpcResult as Response;
 use workflow_rpc::server::prelude::*;
@@ -50,7 +50,6 @@ impl KaspaRpcProxy {
 impl RpcHandler for KaspaRpcProxy {
     type Context = ProxyConnection;
 
-
     async fn handshake(
         self: Arc<Self>,
         peer: &SocketAddr,
@@ -63,13 +62,12 @@ impl RpcHandler for KaspaRpcProxy {
         println!("starting grpc client on {}", grpc_address);
         let grpc = RpcApiGrpc::connect(grpc_address).await.map_err(|e| WebSocketError::Other(e.to_string()))?;
         grpc.start().await;
-    
+
         // let grpc_server: Arc<dyn RpcApi> = Arc::new(grpc);
         let grpc_server = Arc::new(grpc);
         // let router = Router::new(grpc_server.clone(), self.verbose);
-    
-        Ok(Arc::new(ProxyConnection { peer : peer.clone(), grpc_server }))
 
+        Ok(Arc::new(ProxyConnection { peer: *peer, grpc_server }))
     }
     async fn connect(self: Arc<Self>, _peer: &SocketAddr) -> WebSocketResult<()> {
         Ok(())
@@ -97,10 +95,12 @@ struct Args {
     verbose: bool,
 }
 
-
+use kaspa_rpc_macros::build_wrpc_interface;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    todo!();
+
     let Args { network_type, verbose, proxy_port } = Args::parse();
 
     // workflow_log::set_log_level()
@@ -113,7 +113,6 @@ async fn main() -> Result<()> {
     let mut interface = Interface::<ProxyConnection, KaspaRpcProxy, RpcApiOps>::new(handler.clone());
 
     let interface = Arc::new(interface);
-
 
     let server = RpcServer::new_with_encoding::<ProxyConnection, KaspaRpcProxy, RpcApiOps, Id64>(Encoding::Borsh, handler, interface);
 

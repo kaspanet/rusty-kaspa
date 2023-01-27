@@ -18,6 +18,7 @@ members = [
     "crypto/merkle",
     "rpc/core",
     "rpc/grpc",
+    "rpc/macros",
     "rpc/wrpc/client",
     "rpc/wrpc/server",
     "rpc/wrpc/proxy",
@@ -45,6 +46,7 @@ pow = { path = "consensus/pow" }
 kaspa-utils = { path = "utils" }
 rpc-core = { path = "rpc/core" }
 rpc-grpc = { path = "rpc/grpc" }
+kaspa-rpc-macros = { path = "rpc/macros" }
 kaspa-wrpc-client = { path = "rpc/wrpc/client" }
 kaspa-wrpc-server = { path = "rpc/wrpc/server" }
 kaspa-wrpc-proxy = { path = "rpc/wrpc/proxy" }

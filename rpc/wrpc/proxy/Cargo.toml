@@ -17,3 +17,4 @@ workflow-websocket.workspace = true
 workflow-rpc.workspace = true
 workflow-log.workspace = true
 async-trait.workspace = true
+kaspa-rpc-macros.workspace = true
