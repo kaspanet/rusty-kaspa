@@ -1,71 +1,70 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
-use workflow_core::enums::Describe;
+use workflow_core::{enums::Describe};
 
-// u32_try_from! {
+// seal!{1,
 #[derive(Describe, Clone, Debug, PartialEq, Eq, Hash, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
-// #[repr(u32)]
-pub enum RpcApiOps {
-    Ping,
-    GetProcessMetrics,
-    GetCurrentNetwork,
-    SubmitBlock,
-    GetBlockTemplate,
-    GetPeerAddresses,
-    GetSelectedTipHash,
-    GetMempoolEntry,
-    GetMempoolEntries,
-    GetConnectedPeerInfo,
-    AddPeer,
-    SubmitTransaction,
-    GetBlock,
-    GetSubnetwork,
-    GetVirtualSelectedParentChainFromBlock,
-    GetBlocks,
-    GetBlockCount,
-    GetBlockDagInfo,
-    ResolveFinalityConflict,
-    Shutdown,
-    GetHeaders,
-    GetUtxosByAddresses,
-    GetBalanceByAddress,
-    GetBalancesByAddresses,
-    GetVirtualSelectedParentBlueScore,
-    Ban,
-    Unban,
-    GetInfo,
-    EstimateNetworkHashesPerSecond,
-    GetMempoolEntriesByAddresses,
-    GetCoinSupply,
+    pub enum RpcApiOps {
+        Ping,
+        GetProcessMetrics,
+        GetCurrentNetwork,
+        SubmitBlock,
+        GetBlockTemplate,
+        GetPeerAddresses,
+        GetSelectedTipHash,
+        GetMempoolEntry,
+        GetMempoolEntries,
+        GetConnectedPeerInfo,
+        AddPeer,
+        SubmitTransaction,
+        GetBlock,
+        GetSubnetwork,
+        GetVirtualSelectedParentChainFromBlock,
+        GetBlocks,
+        GetBlockCount,
+        GetBlockDagInfo,
+        ResolveFinalityConflict,
+        Shutdown,
+        GetHeaders,
+        GetUtxosByAddresses,
+        GetBalanceByAddress,
+        GetBalancesByAddresses,
+        GetVirtualSelectedParentBlueScore,
+        Ban,
+        Unban,
+        GetInfo,
+        EstimateNetworkHashesPerSecond,
+        GetMempoolEntriesByAddresses,
+        GetCoinSupply,
 
-    // Subscription commands for starting/stopping notifications
-    NotifyBlockAdded,
-    NotifyNewBlockTemplate,
+        // Subscription commands for starting/stopping notifications
+        NotifyBlockAdded,
+        NotifyNewBlockTemplate,
 
-    NotifyUtxosChanged,
-    StopNotifyingUtxosChanged,
+        NotifyUtxosChanged,
+        StopNotifyingUtxosChanged,
 
-    NotifyPruningPointUtxoSetOverride,
-    StopNotifyingPruningPointUtxoSetOverride,
+        NotifyPruningPointUtxoSetOverride,
+        StopNotifyingPruningPointUtxoSetOverride,
 
-    NotifyVirtualDaaScoreChanged,
-    NotifyVirtualSelectedParentChainChanged,
-    NotifyVirtualSelectedParentBlueScoreChanged,
-    NotifyFinalityConflicts,
+        NotifyVirtualDaaScoreChanged,
+        NotifyVirtualSelectedParentChainChanged,
+        NotifyVirtualSelectedParentBlueScoreChanged,
+        NotifyFinalityConflicts,
 
-    // gRPC v1 notification messages
-    // TODO @tiram - review handling
-    // FinalityConflictNotification,
-    // FinalityConflictResolvedNotification,
-    // UtxosChangedNotification,
-    // VirtualSelectedParentBlueScoreChangedNotification,
-    // PruningPointUtxoSetOverrideNotification,
-    // VirtualDaaScoreChangedNotification,
-    // VirtualSelectedParentChainChangedNotification,
+        // gRPC v1 notification messages
+        // TODO @tiram - review handling
+        // FinalityConflictNotification,
+        // FinalityConflictResolvedNotification,
+        // UtxosChangedNotification,
+        // VirtualSelectedParentBlueScoreChangedNotification,
+        // PruningPointUtxoSetOverrideNotification,
+        // VirtualDaaScoreChangedNotification,
+        // VirtualSelectedParentChainChangedNotification,
 
-    // Server to client notification
-    Notification,
-}
+        // Server to client notification
+        Notification,
+    }
 // }
 
 impl From<RpcApiOps> for u32 {

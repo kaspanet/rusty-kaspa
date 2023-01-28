@@ -112,19 +112,25 @@ impl ToTokens for RpcTable {
             server_targets.push(quote! {
                 #rpc_api_ops::#handler => {
                     interface.method(#rpc_api_ops::#handler, method!(|server_ctx: #server_ctx_type, _connection_ctx: #connection_ctx_type, request: #request_type| async move {
-                        let v: #response_type = server_ctx.get_rpc_api().#fn_call(request).await
+                        let verbose = server_ctx.verbose();
+                        if verbose { workflow_log::log_info!("rpc request: {:?}",request); }
+                        let response: #response_type = server_ctx.get_rpc_api().#fn_call(request).await
                             .map_err(|e|ServerError::Text(e.to_string()))?;
-                        Ok(v)
+                        if verbose { workflow_log::log_info!("rpc response: {:?}",response); }
+                        Ok(response)
                     }));
                 }
             });
 
             connection_targets.push(quote! {
                 #rpc_api_ops::#handler => {
-                    interface.method(#rpc_api_ops::#handler, method!(|_server_ctx: #server_ctx_type, connection_ctx: #connection_ctx_type, request: #request_type| async move {
-                        let v: #response_type = connection_ctx.get_rpc_api().#fn_call(request).await
-                        .map_err(|e|ServerError::Text(e.to_string()))?;
-                        Ok(v)
+                    interface.method(#rpc_api_ops::#handler, method!(|server_ctx: #server_ctx_type, connection_ctx: #connection_ctx_type, request: #request_type| async move {
+                        let verbose = server_ctx.verbose();
+                        if verbose { workflow_log::log_info!("rpc request: {:?}",request); }
+                        let response: #response_type = connection_ctx.get_rpc_api().#fn_call(request).await
+                            .map_err(|e|ServerError::Text(e.to_string()))?;
+                        if verbose { workflow_log::log_info!("rpc response: {:?}",response); }
+                        Ok(response)
                     }));
                 }
             });

@@ -22,12 +22,12 @@ pub use workflow_rpc::server::Encoding as WrpcEncoding;
 
 pub struct Options {
     pub listen_address: String,
-    pub verbose: bool,
+    pub verbose : bool
 }
 
 impl Default for Options {
     fn default() -> Self {
-        Options { listen_address: "127.0.0.1:8080".to_owned(), verbose: false }
+        Options { listen_address: "127.0.0.1:8080".to_owned(), verbose : false }
     }
 }
 
@@ -45,27 +45,30 @@ impl ConnectionContext {
 type ConnectionContextReference = Arc<ConnectionContext>;
 
 impl RpcApiContainer for ConnectionContextReference {
-    fn get_rpc_api(&self) -> &Arc<dyn RpcApi> {
-        panic!("Incorrect use: `server::ConnectionContext` does not carry API references")
+    fn get_rpc_api(&self) -> Arc<dyn RpcApi> {
+        panic!("Incorrect use: `server::ConnectionContext` does not carry RpcApi references")
     }
 }
 
 pub struct KaspaRpcHandler {
     pub rpc_api: Arc<dyn RpcApi>,
     pub sockets: Mutex<HashMap<SocketAddr, Arc<ConnectionContext>>>,
+    pub options : Arc<Options>
 }
 type KaspaRpcHandlerReference = Arc<KaspaRpcHandler>;
 
 impl KaspaRpcHandler {
-    pub fn new(rpc_api: Arc<dyn RpcApi>) -> KaspaRpcHandler {
-        KaspaRpcHandler { rpc_api, sockets: Mutex::new(HashMap::new()) }
+    pub fn new(rpc_api: Arc<dyn RpcApi>, options : Arc<Options>) -> KaspaRpcHandler {
+        KaspaRpcHandler { rpc_api, sockets: Mutex::new(HashMap::new()), options }
     }
 }
 
 impl RpcApiContainer for KaspaRpcHandlerReference {
-    fn get_rpc_api(&self) -> &Arc<dyn RpcApi> {
-        &self.rpc_api
+    fn get_rpc_api(&self) -> Arc<dyn RpcApi> {
+        self.rpc_api.clone()
     }
+
+    fn verbose(&self) -> bool { self.options.verbose }
 }
 
 #[async_trait]
@@ -106,14 +109,15 @@ impl RpcHandler for KaspaRpcHandler {
 pub struct ServerContext;
 
 pub struct WrpcServer {
-    options: Options,
+    options: Arc<Options>,
     server: RpcServer,
 }
 
 impl WrpcServer {
     pub fn new(rpc_api: Arc<dyn RpcApi>, encoding: &Encoding, options: Options) -> Self {
-        let rpc_handler = Arc::new(KaspaRpcHandler::new(rpc_api));
-        let router = Arc::new(Router::<KaspaRpcHandlerReference, ConnectionContextReference>::new(rpc_handler.clone(), options.verbose));
+        let options = Arc::new(options);
+        let rpc_handler = Arc::new(KaspaRpcHandler::new(rpc_api, options.clone() ));
+        let router = Arc::new(Router::<KaspaRpcHandlerReference, ConnectionContextReference>::new(rpc_handler.clone()));
         let server = RpcServer::new_with_encoding::<KaspaRpcHandlerReference, ConnectionContextReference, RpcApiOps, Id64>(
             *encoding,
             rpc_handler,
