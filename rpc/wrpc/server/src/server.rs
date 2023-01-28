@@ -26,7 +26,7 @@ pub struct Options {
 
 impl Default for Options {
     fn default() -> Self {
-        Options { listen_address: "127.0.0.1:8080".to_owned(), verbose: false }
+        Options { listen_address: "127.0.0.1:17110".to_owned(), verbose: false }
     }
 }
 

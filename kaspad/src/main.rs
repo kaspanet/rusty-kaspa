@@ -2,13 +2,19 @@ extern crate consensus;
 extern crate core;
 extern crate hashes;
 
-use clap::Parser;
 use consensus::model::stores::DB;
 use kaspa_core::{core::Core, signals::Signals, task::runtime::AsyncRuntime};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
-use thiserror::__private::PathAsDisplay;
+
+// ~~~
+// TODO - discuss handling
+use args::Args;
+// use clap::Parser;
+// any specific reason this was used?  changed as_display() to display() below
+// use thiserror::__private::PathAsDisplay;
+// ~~~
 
 use crate::monitor::ConsensusMonitor;
 use consensus::consensus::Consensus;
@@ -19,6 +25,7 @@ use rpc_core::server::collector::ConsensusNotificationChannel;
 use rpc_core::server::RpcCoreServer;
 use rpc_grpc::server::GrpcServer;
 
+mod args;
 mod monitor;
 
 const DEFAULT_DATA_DIR: &str = "datadir";
@@ -26,7 +33,7 @@ const DEFAULT_DATA_DIR: &str = "datadir";
 // TODO: add a Config
 // TODO: apply Args to Config
 // TODO: log to file
-
+/*
 /// Kaspa Node launch arguments
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -39,11 +46,12 @@ struct Args {
     #[arg(long = "rpclisten")]
     grpc_listen: Option<String>,
 
-    /// Interface/port to listen for wRPC Borsh connections (default port: 8080)
-    #[arg(long = "rpclisten-borsh")]
+    /// Interface/port to listen for wRPC Borsh connections (default: 127.0.0.1:17110)
+    #[clap(long = "rpclisten-borsh", default_missing_value="abc")]
+    // #[arg()]
     wrpc_listen_borsh: Option<String>,
 
-    /// Interface/port to listen for wRPC JSON connections (default port: 9090)
+    /// Interface/port to listen for wRPC JSON connections (default: 127.0.0.1:18110)
     #[arg(long = "rpclisten-json")]
     wrpc_listen_json: Option<String>,
 
@@ -56,6 +64,7 @@ struct Args {
     #[arg(short = 'd', long = "loglevel", default_value = "info")]
     log_level: String,
 }
+*/
 
 fn get_home_dir() -> PathBuf {
     #[cfg(target_os = "windows")]
@@ -72,9 +81,7 @@ fn get_app_dir() -> PathBuf {
 }
 
 pub fn main() {
-    // Get CLI arguments
     let args = Args::parse();
-
     // Initialize the logger
     kaspa_core::log::init_logger(&args.log_level);
 
@@ -82,16 +89,16 @@ pub fn main() {
 
     // TODO: Refactor all this quick-and-dirty code
     let app_dir = args
-        .app_dir
+        .appdir
         .unwrap_or_else(|| get_app_dir().as_path().to_str().unwrap().to_string())
         .replace('~', get_home_dir().as_path().to_str().unwrap());
     let app_dir = if app_dir.is_empty() { get_app_dir() } else { PathBuf::from(app_dir) };
     let db_dir = app_dir.join(DEFAULT_DATA_DIR);
     assert!(!db_dir.to_str().unwrap().is_empty());
-    info!("Application directory: {}", app_dir.as_display());
-    info!("Data directory: {}", db_dir.as_display());
+    info!("Application directory: {}", app_dir.display());
+    info!("Data directory: {}", db_dir.display());
     fs::create_dir_all(db_dir.as_path()).unwrap();
-    let grpc_server_addr = args.grpc_listen.unwrap_or_else(|| "127.0.0.1:16610".to_string()).parse().unwrap();
+    let grpc_server_addr = args.rpclisten.unwrap_or_else(|| "127.0.0.1:16610".to_string()).parse().unwrap();
 
     let core = Arc::new(Core::new());
 
@@ -112,18 +119,14 @@ pub fn main() {
     async_runtime.register(grpc_server);
 
     // Register wRPC servers based on command line arguments
-    [(args.wrpc_listen_borsh, WrpcEncoding::Borsh), (args.wrpc_listen_json, WrpcEncoding::SerdeJson)]
+    [(args.rpclisten_borsh, WrpcEncoding::Borsh), (args.rpclisten_json, WrpcEncoding::SerdeJson)]
         .iter()
         .filter_map(|(listen_address, encoding)| {
             listen_address.as_ref().map(|listen_address| {
                 Arc::new(WrpcServer::new(
                     rpc_core_server.service(),
                     encoding,
-                    WrpcServerOptions {
-                        listen_address: listen_address.to_string(),
-                        verbose: args.wrpc_verbose,
-                        // ..WrpcServerOptions::default()
-                    },
+                    WrpcServerOptions { listen_address: listen_address.to_string(), verbose: args.wrpc_verbose },
                 ))
             })
         })

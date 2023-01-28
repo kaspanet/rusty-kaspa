@@ -1,15 +1,12 @@
 mod error;
 mod result;
 
-// use clap::{Parser, Subcommand};
+use async_trait::async_trait;
 use clap::Parser;
 use consensus_core::networktype::NetworkType;
 use kaspa_wrpc_server::router::Router;
 use kaspa_wrpc_server::router::RpcApiContainer;
-// use error::Error;
 use result::Result;
-// use rpc_core::api::rpc::RpcApi;
-use async_trait::async_trait;
 use rpc_core::api::ops::RpcApiOps;
 use rpc_core::api::rpc::RpcApi;
 #[allow(unused_imports)]
