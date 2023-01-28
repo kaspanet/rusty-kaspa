@@ -1469,6 +1469,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "wasm-bindgen",
+ "workflow-log",
 ]
 
 [[package]]
@@ -1664,6 +1665,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
+ "workflow-log",
 ]
 
 [[package]]
