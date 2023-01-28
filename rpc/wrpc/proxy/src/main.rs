@@ -76,7 +76,7 @@ impl RpcHandler for KaspaRpcProxy {
     ) -> WebSocketResult<Self::Context> {
         let port = self.inner.network_type.port();
         let grpc_address = format!("grpc://127.0.0.1:{port}");
-        println!("starting grpc client on {}", grpc_address);
+        println!("starting grpc client on {grpc_address}");
         let grpc = RpcApiGrpc::connect(grpc_address).await.map_err(|e| WebSocketError::Other(e.to_string()))?;
         grpc.start().await;
         let grpc = Arc::new(grpc);

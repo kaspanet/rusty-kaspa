@@ -60,7 +60,7 @@ impl AsyncService for GrpcServer {
                 .add_service(svc)
                 .serve_with_shutdown(address, shutdown_signal)
                 .await
-                .map_err(|err| AsyncServiceError::Service(format!("gRPC server exited with error `{}`", err)));
+                .map_err(|err| AsyncServiceError::Service(format!("gRPC server exited with error `{err}`")));
 
             if result.is_ok() {
                 trace!("gRPC server exited gracefully");

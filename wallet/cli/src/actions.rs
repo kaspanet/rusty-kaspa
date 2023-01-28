@@ -45,7 +45,7 @@ impl TryInto<Action> for &str {
     fn try_into(self) -> std::result::Result<Action, Self::Error> {
         match Action::from_str(self.from_case(Case::Kebab).to_case(Case::UpperCamel).as_str()) {
             Some(action) => Ok(action),
-            None => Err(format!("command not found: {}", self)),
+            None => Err(format!("command not found: {self}")),
         }
     }
 }

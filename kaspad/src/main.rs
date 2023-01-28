@@ -122,7 +122,7 @@ pub fn main() {
                     WrpcServerOptions {
                         listen_address: listen_address.to_string(),
                         verbose: args.wrpc_verbose,
-                        ..WrpcServerOptions::default()
+                        // ..WrpcServerOptions::default()
                     },
                 ))
             })

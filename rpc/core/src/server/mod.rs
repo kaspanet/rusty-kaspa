@@ -72,10 +72,7 @@ impl AsyncService for RpcCoreServer {
 
             trace!("{} exiting", RPC_CORE_SERVICE);
             // Stop the service
-            service
-                .stop()
-                .await
-                .map_err(|err| AsyncServiceError::Service(format!("Error while stopping {}: `{}`", RPC_CORE_SERVICE, err)))
+            service.stop().await.map_err(|err| AsyncServiceError::Service(format!("Error while stopping {RPC_CORE_SERVICE}: `{err}`")))
         })
     }
 }

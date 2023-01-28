@@ -134,7 +134,7 @@ impl Prefix {
         let mut i = 0;
 
         while i < Self::LENGTH {
-            if matches!(s.as_bytes()[i], b'a'..=b'z' | b'A'..=b'Z') {
+            if s.as_bytes()[i].is_ascii_alphabetic() {
                 i += 1;
             } else {
                 return Err(crate::error::ErrorImpl::DecodeInvalidStr);

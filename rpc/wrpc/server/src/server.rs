@@ -143,16 +143,16 @@ impl AsyncService for WrpcServer {
     }
 
     fn start(self: Arc<Self>) -> AsyncServiceFuture {
-        Box::pin(async move { self.run().await.map_err(|err| AsyncServiceError::Service(format!("wRPC error: `{}`", err))) })
+        Box::pin(async move { self.run().await.map_err(|err| AsyncServiceError::Service(format!("wRPC error: `{err}`"))) })
     }
 
     fn signal_exit(self: Arc<Self>) {
-        self.server.stop().unwrap_or_else(|err| log_trace!("wRPC unable to signal shutdown: `{}`", err));
+        self.server.stop().unwrap_or_else(|err| log_trace!("wRPC unable to signal shutdown: `{err}`"));
     }
 
     fn stop(self: Arc<Self>) -> AsyncServiceFuture {
         Box::pin(async move {
-            self.server.join().await.map_err(|err| AsyncServiceError::Service(format!("wRPC error: `{}`", err)))?;
+            self.server.join().await.map_err(|err| AsyncServiceError::Service(format!("wRPC error: `{err}`")))?;
             Ok(())
         })
     }

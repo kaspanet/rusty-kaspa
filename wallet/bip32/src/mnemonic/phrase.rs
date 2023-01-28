@@ -121,7 +121,7 @@ impl Mnemonic {
     //#[cfg(feature = "bip39")]
     //#[cfg_attr(docsrs, doc(cfg(feature = "bip39")))]
     pub fn to_seed(&self, password: &str) -> Seed {
-        let salt = Zeroizing::new(format!("mnemonic{}", password));
+        let salt = Zeroizing::new(format!("mnemonic{password}"));
         let mut seed = [0u8; Seed::SIZE];
         pbkdf2::pbkdf2::<Hmac<Sha512>>(self.phrase.as_bytes(), salt.as_bytes(), PBKDF2_ROUNDS, &mut seed);
         Seed(seed)

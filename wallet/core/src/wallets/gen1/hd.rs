@@ -164,7 +164,7 @@ impl HDWalletGen1 {
         account_index: u64,
     ) -> Result<(SecretKey, ExtendedKeyAttrs)> {
         let purpose = if is_multisig { 45 } else { 44 };
-        let address_path = format!("{}'/111111'/{}'", purpose, account_index);
+        let address_path = format!("{purpose}'/111111'/{account_index}'");
         let children = address_path.split('/');
         for child in children {
             (private_key, attrs) = Self::derive_private_key(&private_key, &attrs, child.parse::<ChildNumber>()?).await?;

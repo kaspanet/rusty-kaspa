@@ -98,7 +98,7 @@ impl From<ErrorImpl> for Error {
 
 impl<T> From<PoisonError<T>> for Error {
     fn from(err: PoisonError<T>) -> Self {
-        Self::PoisonError(format!("{:?}", err))
+        Self::PoisonError(format!("{err:?}"))
     }
 }
 
