@@ -7,6 +7,7 @@ use crate::{
     coinbase::MinerData,
     errors::{
         block::{BlockProcessResult, RuleError},
+        coinbase::CoinbaseResult,
         tx::TxResult,
     },
     tx::{MutableTransaction, Transaction},
@@ -29,6 +30,8 @@ pub trait ConsensusApi: Send + Sync {
     fn calculate_transaction_mass(self: Arc<Self>, transaction: &Transaction) -> u64;
 
     fn get_virtual_daa_score(self: Arc<Self>) -> u64;
+
+    fn modify_coinbase_payload(self: Arc<Self>, payload: Vec<u8>, miner_data: &MinerData) -> CoinbaseResult<Vec<u8>>;
 }
 
 pub type DynConsensus = Arc<dyn ConsensusApi>;

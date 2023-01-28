@@ -27,7 +27,7 @@ impl<T> StoreResultExtensions<T> for StoreResult<T> {
         match self {
             Ok(value) => Some(value),
             Err(StoreError::KeyNotFound(_)) => None,
-            Err(err) => panic!("Unexpected store error: {:?}", err),
+            Err(err) => panic!("Unexpected store error: {err:?}"),
         }
     }
 }

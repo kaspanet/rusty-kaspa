@@ -158,7 +158,7 @@ impl BlockBodyProcessor {
             StatusInvalid => return Err(RuleError::KnownInvalid),
             StatusHeaderOnly => {} // Proceed to body processing
             _ if status.has_block_body() => return Ok(status),
-            _ => panic!("unexpected block status {:?}", status),
+            _ => panic!("unexpected block status {status:?}"),
         }
 
         if let Err(e) = self.validate_body(block) {
@@ -236,7 +236,7 @@ impl BlockBodyProcessor {
                 self.commit_body(self.genesis_hash, &[], Arc::new(vec![genesis_coinbase]))
             }
             _ if status.has_block_body() => (),
-            _ => panic!("unexpected genesis status {:?}", status),
+            _ => panic!("unexpected genesis status {status:?}"),
         }
     }
 }

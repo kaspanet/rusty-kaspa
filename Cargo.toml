@@ -23,6 +23,8 @@ members = [
     "rpc/wrpc/server",
     "rpc/wrpc/proxy",
     "bip32",
+    "mining",
+    "p2p",
 ]
 
 [workspace.package]
@@ -57,6 +59,7 @@ kaspa-wallet-cli-native = { path = "wallet/native" }
 kaspa-wallet-cli-wasm = { path = "wallet/wasm" }
 kaspa-wasm = { path = "wasm" }
 kaspa-bip32 = { path = "bip32" }
+mining = { path = "mining" }
 
 thiserror = "1"
 faster-hex = "0.6"

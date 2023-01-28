@@ -41,7 +41,7 @@ impl<T> ReachabilityResultExtensions<T> for Result<T> {
         match self {
             Ok(value) => Some(value),
             Err(err) if err.is_key_not_found() => None,
-            Err(err) => panic!("Unexpected reachability error: {:?}", err),
+            Err(err) => panic!("Unexpected reachability error: {err:?}"),
         }
     }
 }

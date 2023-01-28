@@ -10,5 +10,5 @@ fn main() {
         //.out_dir("./src")
 
         .compile(&[protowire_main_file], &["./proto/", "."])
-        .unwrap_or_else(|e| panic!("protobuf compile error: {}", e));
+        .unwrap_or_else(|e| panic!("protobuf compile error: {e}"));
 }

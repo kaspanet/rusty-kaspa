@@ -77,7 +77,7 @@ impl<A: smallvec::Array<Item = u8>> FromRpcHex for SmallVec<A> {
 /// Odd str lengths are valid.
 impl ToRpcHex for BlueWorkType {
     fn to_rpc_hex(&self) -> String {
-        format!("{0:x}", self)
+        format!("{self:x}")
     }
 }
 
@@ -149,7 +149,7 @@ mod tests {
                 let b = BlueWorkType::from_rpc_hex(&TEST_STR[0..i]).unwrap();
                 let u = u128::from_str_radix(&TEST_STR[0..i], 16).unwrap();
                 assert_eq!(b, BlueWorkType::from_u128(u));
-                assert_eq!(b.to_rpc_hex(), format!("{0:x}", u));
+                assert_eq!(b.to_rpc_hex(), format!("{u:x}"));
             }
         }
     }

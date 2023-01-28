@@ -155,7 +155,7 @@ mod tests {
             let mut hasher = hasher_new();
             // We do not reset the hasher each time on purpose, this also tests incremental hashing.
             for (data, expected) in input_data.iter().zip(expected) {
-                println!("data: {:?}", data);
+                println!("data: {data:?}");
                 let hash = hasher.update(data).clone().finalize();
                 assert_eq!(hash.to_string(), *expected, "Type: {}", std::any::type_name::<H>());
             }
