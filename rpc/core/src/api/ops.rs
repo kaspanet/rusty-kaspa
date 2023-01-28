@@ -2,7 +2,7 @@ use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use workflow_core::{enums::Describe, seal};
 
-seal!(0xf916, {
+seal!(0xbb8c, {
     // ^^^^^ NOTE: This enum is used for binary RPC data exchange, if you
     //             add any new variants to this enum, please inform the
     //             core development team to facilitate a protocol update.
@@ -53,7 +53,6 @@ seal!(0xf916, {
         NotifyVirtualDaaScoreChanged,
         NotifyVirtualSelectedParentBlueScoreChanged,
         NotifyVirtualSelectedParentChainChanged,
-
 
         // Server to client notification
         Notification,
