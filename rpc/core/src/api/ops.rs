@@ -1,8 +1,8 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
-use workflow_core::enums::Describe;
+use workflow_core::{seal, enums::Describe};
 
-// seal!{1,
+seal!(0x224e,{
 #[derive(Describe, Clone, Debug, PartialEq, Eq, Hash, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 pub enum RpcApiOps {
     Ping,
@@ -52,20 +52,10 @@ pub enum RpcApiOps {
     NotifyVirtualSelectedParentBlueScoreChanged,
     NotifyFinalityConflicts,
 
-    // gRPC v1 notification messages
-    // TODO @tiram - review handling
-    // FinalityConflictNotification,
-    // FinalityConflictResolvedNotification,
-    // UtxosChangedNotification,
-    // VirtualSelectedParentBlueScoreChangedNotification,
-    // PruningPointUtxoSetOverrideNotification,
-    // VirtualDaaScoreChangedNotification,
-    // VirtualSelectedParentChainChangedNotification,
-
-    // Server to client notification
     Notification,
 }
-// }
+}
+);
 
 impl From<RpcApiOps> for u32 {
     fn from(item: RpcApiOps) -> Self {
