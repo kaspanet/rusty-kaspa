@@ -23,7 +23,7 @@ impl Parse for RpcTable {
     fn parse(input: ParseStream) -> Result<Self> {
         let parsed = Punctuated::<Expr, Token![,]>::parse_terminated(input).unwrap();
         if parsed.len() != 6 {
-            return Err(Error::new_spanned(parsed, 
+            return Err(Error::new_spanned(parsed,
                 "usage: build_wrpc_server_interface!(server_instance,router_instance,ServerType,ConnectionType,RpcApiOps,[getInfo, ..])".to_string()));
         }
 
@@ -51,14 +51,7 @@ impl Parse for RpcTable {
             }
         }
 
-        let handlers = RpcTable {
-            server_ctx,
-            router_target,
-            server_ctx_type,
-            connection_ctx_type,
-            rpc_api_ops,
-            handlers,
-        };
+        let handlers = RpcTable { server_ctx, router_target, server_ctx_type, connection_ctx_type, rpc_api_ops, handlers };
         Ok(handlers)
     }
 }
