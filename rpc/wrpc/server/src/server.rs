@@ -83,7 +83,6 @@ impl RpcHandler for KaspaRpcHandler {
         _receiver: &mut WebSocketReceiver,
         messenger: Arc<Messenger>,
     ) -> WebSocketResult<Self::Context> {
-
         // TODO - discuss and implement greeting
         // handshake::greeting(
         //     std::time::Duration::from_millis(3000),
@@ -113,7 +112,8 @@ pub struct WrpcServer {
 impl WrpcServer {
     pub fn new(rpc_api: Arc<dyn RpcApi>, encoding: &Encoding, options: Options) -> Self {
         let rpc_handler = Arc::new(KaspaRpcHandler::new(rpc_api));
-        let router = Arc::new(Router::<KaspaRpcHandlerReference, ConnectionContextReference>::new(rpc_handler.clone(), options.verbose));
+        let router =
+            Arc::new(Router::<KaspaRpcHandlerReference, ConnectionContextReference>::new(rpc_handler.clone(), options.verbose));
         let server = RpcServer::new_with_encoding::<KaspaRpcHandlerReference, ConnectionContextReference, RpcApiOps, Id64>(
             *encoding,
             rpc_handler,

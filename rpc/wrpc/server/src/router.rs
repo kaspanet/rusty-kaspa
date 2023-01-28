@@ -1,3 +1,4 @@
+use kaspa_rpc_macros::build_wrpc_interface;
 use rpc_core::api::ops::RpcApiOps;
 use rpc_core::api::rpc::RpcApi;
 #[allow(unused_imports)]
@@ -9,7 +10,6 @@ use rpc_core::notify::listener::*;
 use rpc_core::prelude::*;
 use std::sync::Arc;
 use workflow_rpc::server::prelude::*;
-use kaspa_rpc_macros::build_wrpc_interface;
 
 pub trait RpcApiContainer: Send + Sync + 'static {
     fn get_rpc_api(&self) -> &Arc<dyn RpcApi>;
@@ -30,7 +30,6 @@ where
     verbose: bool,
 }
 
-
 impl<ServerContext, ConnectionContext> Router<ServerContext, ConnectionContext>
 where
     ServerContext: RpcApiContainer + Clone,
@@ -39,14 +38,9 @@ where
 {
     pub fn new(server_context: ServerContext, verbose: bool) -> Self {
         let interface =
-            build_wrpc_interface!(server_context, RouterTarget::Server, ServerContext, ConnectionContext, RpcApiOps, [
-                GetInfo
-                
-                
-            ]);
+            build_wrpc_interface!(server_context, RouterTarget::Server, ServerContext, ConnectionContext, RpcApiOps, [GetInfo]);
 
-
-            // build_wrpc_interface!(server_context, RouterTarget::Server, ServerContext, ConnectionContext, RpcApiOps, [GetInfo]);
+        // build_wrpc_interface!(server_context, RouterTarget::Server, ServerContext, ConnectionContext, RpcApiOps, [GetInfo]);
 
         Router { interface, verbose }
     }

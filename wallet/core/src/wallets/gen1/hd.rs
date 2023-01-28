@@ -371,7 +371,7 @@ mod tests {
         ]
     }
 
-    fn gen1_change_addresses()->Vec<String>{
+    fn gen1_change_addresses() -> Vec<String> {
         vec![
             "kaspa:qrqrnyzdwh9ec2q05guzy3vv33f86nvdyw52qwlmk0mewzx3dgdss3pmcd692".to_string(),
             "kaspa:qqx8jlz0hh0wun5ru4glt9za3v8wj3jn7v3w55a0lyud74ppetqfqny4yhw87".to_string(),
