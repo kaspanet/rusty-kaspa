@@ -6,9 +6,13 @@ use crate::actions::*;
 use crate::result::Result;
 use kaspa_wallet_core::Wallet;
 use workflow_log::*;
-use workflow_terminal::parse;
-use workflow_terminal::Cli;
-use workflow_terminal::Result as TerminalResult;
+pub use workflow_terminal::{
+    parse,
+    Cli,
+    Result as TerminalResult,
+    Options as TerminalOptions,
+    TargetElement as TerminalTarget,
+};
 
 struct WalletCli {
     term: Arc<Mutex<Option<Arc<Terminal>>>>,
@@ -132,14 +136,14 @@ impl Cli for WalletCli {
 
 impl WalletCli {}
 
-pub async fn kaspa_wallet_cli() -> Result<()> {
+pub async fn kaspa_wallet_cli(options: TerminalOptions) -> Result<()> {
     let wallet = Arc::new(Wallet::try_new().await?);
 
     let cli = Arc::new(WalletCli::new(wallet.clone()));
-    let term = Arc::new(Terminal::try_new(cli.clone(), "$ ")?);
+    let term = Arc::new(Terminal::try_new_with_options(cli.clone(), options)?);
     term.init().await?;
 
-    workflow_log::pipe(Some(cli.clone()));
+    //workflow_log::pipe(Some(cli.clone()));
 
     term.writeln("Kaspa Cli Wallet (type 'help' for list of commands)");
     wallet.start().await?;
