@@ -1,4 +1,5 @@
 use crate::protowire;
+use crate::{from, try_from};
 use rpc_core::{FromRpcHex, RpcError, RpcHash, RpcResult, ToRpcHex};
 use std::str::FromStr;
 
@@ -6,61 +7,49 @@ use std::str::FromStr;
 // rpc_core to protowire
 // ----------------------------------------------------------------------------
 
-impl From<&rpc_core::RpcHeader> for protowire::RpcBlockHeader {
-    fn from(item: &rpc_core::RpcHeader) -> Self {
-        Self {
-            version: item.version.into(),
-            parents: item.parents_by_level.iter().map(protowire::RpcBlockLevelParents::from).collect(),
-            hash_merkle_root: item.hash_merkle_root.to_string(),
-            accepted_id_merkle_root: item.accepted_id_merkle_root.to_string(),
-            utxo_commitment: item.utxo_commitment.to_string(),
-            timestamp: item.timestamp.try_into().expect("timestamp is always convertible to i64"),
-            bits: item.bits,
-            nonce: item.nonce,
-            daa_score: item.daa_score,
-            blue_work: item.blue_work.to_rpc_hex(),
-            blue_score: item.blue_score,
-            pruning_point: item.pruning_point.to_string(),
-        }
+from!(item: &rpc_core::RpcHeader, protowire::RpcBlockHeader, {
+    Self {
+        version: item.version.into(),
+        parents: item.parents_by_level.iter().map(protowire::RpcBlockLevelParents::from).collect(),
+        hash_merkle_root: item.hash_merkle_root.to_string(),
+        accepted_id_merkle_root: item.accepted_id_merkle_root.to_string(),
+        utxo_commitment: item.utxo_commitment.to_string(),
+        timestamp: item.timestamp.try_into().expect("timestamp is always convertible to i64"),
+        bits: item.bits,
+        nonce: item.nonce,
+        daa_score: item.daa_score,
+        blue_work: item.blue_work.to_rpc_hex(),
+        blue_score: item.blue_score,
+        pruning_point: item.pruning_point.to_string(),
     }
-}
+});
 
-impl From<&Vec<RpcHash>> for protowire::RpcBlockLevelParents {
-    fn from(item: &Vec<RpcHash>) -> Self {
-        Self { parent_hashes: item.iter().map(|x| x.to_string()).collect() }
-    }
-}
+from!(item: &Vec<RpcHash>, protowire::RpcBlockLevelParents, { Self { parent_hashes: item.iter().map(|x| x.to_string()).collect() } });
 
 // ----------------------------------------------------------------------------
 // protowire to rpc_core
 // ----------------------------------------------------------------------------
 
-impl TryFrom<&protowire::RpcBlockHeader> for rpc_core::RpcHeader {
-    type Error = RpcError;
-    fn try_from(item: &protowire::RpcBlockHeader) -> RpcResult<Self> {
-        Ok(Self::new(
-            item.version.try_into()?,
-            item.parents.iter().map(Vec::<RpcHash>::try_from).collect::<RpcResult<Vec<Vec<RpcHash>>>>()?,
-            RpcHash::from_str(&item.hash_merkle_root)?,
-            RpcHash::from_str(&item.accepted_id_merkle_root)?,
-            RpcHash::from_str(&item.utxo_commitment)?,
-            item.timestamp.try_into()?,
-            item.bits,
-            item.nonce,
-            item.daa_score,
-            rpc_core::RpcBlueWorkType::from_rpc_hex(&item.blue_work)?,
-            item.blue_score,
-            RpcHash::from_str(&item.pruning_point)?,
-        ))
-    }
-}
+try_from!(item: &protowire::RpcBlockHeader, rpc_core::RpcHeader, {
+    Self::new(
+        item.version.try_into()?,
+        item.parents.iter().map(Vec::<RpcHash>::try_from).collect::<RpcResult<Vec<Vec<RpcHash>>>>()?,
+        RpcHash::from_str(&item.hash_merkle_root)?,
+        RpcHash::from_str(&item.accepted_id_merkle_root)?,
+        RpcHash::from_str(&item.utxo_commitment)?,
+        item.timestamp.try_into()?,
+        item.bits,
+        item.nonce,
+        item.daa_score,
+        rpc_core::RpcBlueWorkType::from_rpc_hex(&item.blue_work)?,
+        item.blue_score,
+        RpcHash::from_str(&item.pruning_point)?,
+    )
+});
 
-impl TryFrom<&protowire::RpcBlockLevelParents> for Vec<RpcHash> {
-    type Error = RpcError;
-    fn try_from(item: &protowire::RpcBlockLevelParents) -> RpcResult<Self> {
-        Ok(item.parent_hashes.iter().map(|x| RpcHash::from_str(x)).collect::<Result<Vec<rpc_core::RpcHash>, faster_hex::Error>>()?)
-    }
-}
+try_from!(item: &protowire::RpcBlockLevelParents, Vec<RpcHash>, {
+    item.parent_hashes.iter().map(|x| RpcHash::from_str(x)).collect::<Result<Vec<_>, _>>()?
+});
 
 #[cfg(test)]
 mod tests {

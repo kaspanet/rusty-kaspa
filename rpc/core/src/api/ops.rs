@@ -45,19 +45,17 @@ seal!(0xf916, {
 
         // Subscription commands for starting/stopping notifications
         NotifyBlockAdded,
-        NotifyNewBlockTemplate,
-
-        NotifyUtxosChanged,
-        StopNotifyingUtxosChanged,
-
-        NotifyPruningPointUtxoSetOverride,
-        StopNotifyingPruningPointUtxoSetOverride,
-
-        NotifyVirtualDaaScoreChanged,
-        NotifyVirtualSelectedParentChainChanged,
-        NotifyVirtualSelectedParentBlueScoreChanged,
+        NotifyFinalityConflict,
         NotifyFinalityConflicts,
+        NotifyNewBlockTemplate,
+        NotifyPruningPointUtxoSetOverride,
+        NotifyUtxosChanged,
+        NotifyVirtualDaaScoreChanged,
+        NotifyVirtualSelectedParentBlueScoreChanged,
+        NotifyVirtualSelectedParentChainChanged,
 
+
+        // Server to client notification
         Notification,
     }
 });

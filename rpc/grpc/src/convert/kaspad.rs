@@ -41,14 +41,15 @@ impl From<&kaspad_request::Payload> for RpcApiOps {
             // Subscription commands for starting/stopping notifications
             Payload::NotifyBlockAddedRequest(_) => RpcApiOps::NotifyBlockAdded,
             Payload::NotifyNewBlockTemplateRequest(_) => RpcApiOps::NotifyNewBlockTemplate,
-
-            // ???
-            Payload::NotifyFinalityConflictsRequest(_) => RpcApiOps::NotifyFinalityConflicts,
+            Payload::NotifyFinalityConflictRequest(_) => RpcApiOps::NotifyFinalityConflict,
             Payload::NotifyUtxosChangedRequest(_) => RpcApiOps::NotifyUtxosChanged,
             Payload::NotifyVirtualSelectedParentBlueScoreChangedRequest(_) => RpcApiOps::NotifyVirtualSelectedParentBlueScoreChanged,
             Payload::NotifyPruningPointUtxoSetOverrideRequest(_) => RpcApiOps::NotifyPruningPointUtxoSetOverride,
             Payload::NotifyVirtualDaaScoreChangedRequest(_) => RpcApiOps::NotifyVirtualDaaScoreChanged,
             Payload::NotifyVirtualSelectedParentChainChangedRequest(_) => RpcApiOps::NotifyVirtualSelectedParentChainChanged,
+
+            Payload::StopNotifyingUtxosChangedRequest(_) => RpcApiOps::NotifyUtxosChanged,
+            Payload::StopNotifyingPruningPointUtxoSetOverrideRequest(_) => RpcApiOps::NotifyPruningPointUtxoSetOverride,
         }
     }
 }
@@ -93,16 +94,15 @@ impl From<&kaspad_response::Payload> for RpcApiOps {
             // Subscription commands for starting/stopping notifications
             Payload::NotifyBlockAddedResponse(_) => RpcApiOps::NotifyBlockAdded,
             Payload::NotifyNewBlockTemplateResponse(_) => RpcApiOps::NotifyNewBlockTemplate,
-
-            // ???
-            Payload::NotifyFinalityConflictsResponse(_) => RpcApiOps::NotifyFinalityConflicts,
+            Payload::NotifyFinalityConflictResponse(_) => RpcApiOps::NotifyFinalityConflict,
             Payload::NotifyUtxosChangedResponse(_) => RpcApiOps::NotifyUtxosChanged,
             Payload::NotifyVirtualSelectedParentBlueScoreChangedResponse(_) => RpcApiOps::NotifyVirtualSelectedParentBlueScoreChanged,
-            Payload::StopNotifyingPruningPointUtxoSetOverrideResponse(_) => RpcApiOps::StopNotifyingPruningPointUtxoSetOverride,
-            Payload::StopNotifyingUtxosChangedResponse(_) => RpcApiOps::StopNotifyingUtxosChanged,
             Payload::NotifyPruningPointUtxoSetOverrideResponse(_) => RpcApiOps::NotifyPruningPointUtxoSetOverride,
             Payload::NotifyVirtualDaaScoreChangedResponse(_) => RpcApiOps::NotifyVirtualDaaScoreChanged,
             Payload::NotifyVirtualSelectedParentChainChangedResponse(_) => RpcApiOps::NotifyVirtualSelectedParentChainChanged,
+
+            Payload::StopNotifyingPruningPointUtxoSetOverrideResponse(_) => RpcApiOps::NotifyPruningPointUtxoSetOverride,
+            Payload::StopNotifyingUtxosChangedResponse(_) => RpcApiOps::NotifyUtxosChanged,
 
             // Notifications
             Payload::BlockAddedNotification(_) => RpcApiOps::Notification,
@@ -120,7 +120,7 @@ impl From<&kaspad_response::Payload> for RpcApiOps {
 
 impl From<kaspad_request::Payload> for KaspadRequest {
     fn from(item: kaspad_request::Payload) -> Self {
-        KaspadRequest { payload: Some(item) }
+        KaspadRequest { id: 0, payload: Some(item) }
     }
 }
 
@@ -140,24 +140,11 @@ pub mod kaspad_request_convert {
     use crate::protowire::*;
     use rpc_core::{RpcError, RpcResult};
 
-    // impl_into_kaspad_request!(SubmitBlockRequest, SubmitBlockRequestMessage, SubmitBlockRequest);
-    // impl_into_kaspad_request!(GetBlockTemplateRequest, GetBlockTemplateRequestMessage, GetBlockTemplateRequest);
-    // impl_into_kaspad_request!(GetBlockRequest, GetBlockRequestMessage, GetBlockRequest);
-    // impl_into_kaspad_request!(NotifyBlockAddedRequest, NotifyBlockAddedRequestMessage, NotifyBlockAddedRequest);
-    // impl_into_kaspad_request!(GetInfoRequest, GetInfoRequestMessage, GetInfoRequest);
-    // impl_into_kaspad_request!(
-    //     NotifyNewBlockTemplateRequest,
-    //     NotifyNewBlockTemplateRequestMessage,
-    //     NotifyNewBlockTemplateRequest
-    // );
-
     impl_into_kaspad_request!(Shutdown);
     impl_into_kaspad_request!(SubmitBlock);
     impl_into_kaspad_request!(GetBlockTemplate);
     impl_into_kaspad_request!(GetBlock);
-    impl_into_kaspad_request!(NotifyBlockAdded);
     impl_into_kaspad_request!(GetInfo);
-    impl_into_kaspad_request!(NotifyNewBlockTemplate);
 
     impl_into_kaspad_request!(GetCurrentNetwork);
     impl_into_kaspad_request!(GetPeerAddresses);
@@ -186,14 +173,14 @@ pub mod kaspad_request_convert {
     impl_into_kaspad_request!(Ping);
     impl_into_kaspad_request!(GetProcessMetrics);
 
-    // impl_into_kaspad_request!(StopNotifyingUtxosChanged);
-    // impl_into_kaspad_request!(StopNotifyingPruningPointUtxoSetOverride);
-    // impl_into_kaspad_request!(NotifyFinalityConflicts);
-    // impl_into_kaspad_request!(NotifyUtxosChanged);
-    // impl_into_kaspad_request!(NotifyVirtualSelectedParentBlueScoreChanged);
-    // impl_into_kaspad_request!(NotifyPruningPointUtxoSetOverrideRequest);
-    // impl_into_kaspad_request!(NotifyVirtualDaaScoreChangedRequest);
-    // impl_into_kaspad_request!(NotifyVirtualSelectedParentChainChangedRequest);
+    impl_into_kaspad_request!(NotifyBlockAdded);
+    impl_into_kaspad_request!(NotifyNewBlockTemplate);
+    impl_into_kaspad_request!(NotifyUtxosChanged);
+    impl_into_kaspad_request!(NotifyPruningPointUtxoSetOverride);
+    impl_into_kaspad_request!(NotifyFinalityConflict);
+    impl_into_kaspad_request!(NotifyVirtualDaaScoreChanged);
+    impl_into_kaspad_request!(NotifyVirtualSelectedParentChainChanged);
+    impl_into_kaspad_request!(NotifyVirtualSelectedParentBlueScoreChanged);
 
     macro_rules! impl_into_kaspad_request {
         ($name:tt) => {
@@ -220,7 +207,7 @@ pub mod kaspad_request_convert {
 
             impl From<&$core_struct> for KaspadRequest {
                 fn from(item: &$core_struct) -> Self {
-                    Self { payload: Some(item.into()) }
+                    Self { id: 0, payload: Some(item.into()) }
                 }
             }
 
@@ -232,7 +219,7 @@ pub mod kaspad_request_convert {
 
             impl From<$core_struct> for KaspadRequest {
                 fn from(item: $core_struct) -> Self {
-                    Self { payload: Some((&item).into()) }
+                    Self { id: 0, payload: Some((&item).into()) }
                 }
             }
 
@@ -263,7 +250,7 @@ pub mod kaspad_request_convert {
 
             impl From<$protowire_struct> for KaspadRequest {
                 fn from(item: $protowire_struct) -> Self {
-                    Self { payload: Some(kaspad_request::Payload::$variant(item)) }
+                    Self { id: 0, payload: Some(kaspad_request::Payload::$variant(item)) }
                 }
             }
 
@@ -314,14 +301,14 @@ pub mod kaspad_response_convert {
     impl_into_kaspad_response!(Ping);
     impl_into_kaspad_response!(GetProcessMetrics);
 
-    impl_into_kaspad_response!(NotifyBlockAdded);
-    impl_into_kaspad_notify_response!(rpc_core::NotifyBlockAddedResponse, NotifyBlockAddedResponseMessage, NotifyBlockAddedResponse);
-    impl_into_kaspad_response!(NotifyNewBlockTemplate);
-    impl_into_kaspad_notify_response!(
-        rpc_core::NotifyNewBlockTemplateResponse,
-        NotifyNewBlockTemplateResponseMessage,
-        NotifyNewBlockTemplateResponse
-    );
+    impl_into_kaspad_notify_response!(NotifyBlockAdded);
+    impl_into_kaspad_notify_response!(NotifyNewBlockTemplate);
+    impl_into_kaspad_notify_response!(NotifyUtxosChanged);
+    impl_into_kaspad_notify_response!(NotifyPruningPointUtxoSetOverride);
+    impl_into_kaspad_notify_response!(NotifyFinalityConflict);
+    impl_into_kaspad_notify_response!(NotifyVirtualDaaScoreChanged);
+    impl_into_kaspad_notify_response!(NotifyVirtualSelectedParentChainChanged);
+    impl_into_kaspad_notify_response!(NotifyVirtualSelectedParentBlueScoreChanged);
 
     macro_rules! impl_into_kaspad_response {
         ($name:tt) => {
@@ -330,7 +317,6 @@ pub mod kaspad_response_convert {
             }
         };
     }
-
     use impl_into_kaspad_response;
 
     macro_rules! impl_into_kaspad_response_ex {
@@ -347,7 +333,7 @@ pub mod kaspad_response_convert {
 
             impl From<RpcResult<&$core_struct>> for KaspadResponse {
                 fn from(item: RpcResult<&$core_struct>) -> Self {
-                    Self { payload: Some(item.into()) }
+                    Self { id: 0, payload: Some(item.into()) }
                 }
             }
 
@@ -359,7 +345,7 @@ pub mod kaspad_response_convert {
 
             impl From<RpcResult<$core_struct>> for KaspadResponse {
                 fn from(item: RpcResult<$core_struct>) -> Self {
-                    Self { payload: Some(item.into()) }
+                    Self { id: 0, payload: Some(item.into()) }
                 }
             }
 
@@ -384,7 +370,7 @@ pub mod kaspad_response_convert {
 
             impl From<$protowire_struct> for KaspadResponse {
                 fn from(item: $protowire_struct) -> Self {
-                    Self { payload: Some(kaspad_response::Payload::$variant(item)) }
+                    Self { id: 0, payload: Some(kaspad_response::Payload::$variant(item)) }
                 }
             }
 
@@ -417,13 +403,23 @@ pub mod kaspad_response_convert {
     use impl_into_kaspad_response_ex;
 
     macro_rules! impl_into_kaspad_notify_response {
-        ($($core_struct:ident)::+, $($protowire_struct:ident)::+, $($variant:ident)::+) => {
+        ($name:tt) => {
+            impl_into_kaspad_response!($name);
 
+            paste::paste! {
+                impl_into_kaspad_notify_response_ex!(rpc_core::[<$name Response>],[<$name ResponseMessage>]);
+            }
+        };
+    }
+    use impl_into_kaspad_notify_response;
+
+    macro_rules! impl_into_kaspad_notify_response_ex {
+        ($($core_struct:ident)::+, $protowire_struct:ident) => {
             // ----------------------------------------------------------------------------
             // rpc_core to protowire
             // ----------------------------------------------------------------------------
 
-            impl<T> From<Result<(), T>> for $($protowire_struct)::+
+            impl<T> From<Result<(), T>> for $protowire_struct
             where
                 T: Into<RpcError>,
             {
@@ -436,6 +432,5 @@ pub mod kaspad_response_convert {
 
         };
     }
-
-    use impl_into_kaspad_notify_response;
+    use impl_into_kaspad_notify_response_ex;
 }

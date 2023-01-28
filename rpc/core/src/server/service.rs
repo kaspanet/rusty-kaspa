@@ -155,6 +155,7 @@ impl RpcApi for RpcCoreService {
             is_utxo_indexed: false,
             is_synced: false,
             has_notify_command: true,
+            has_message_id: true,
         })
     }
 

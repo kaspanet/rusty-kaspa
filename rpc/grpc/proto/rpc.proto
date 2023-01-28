@@ -224,7 +224,7 @@ message GetMempoolEntryRequestMessage{
 }
 
 message GetMempoolEntryResponseMessage{
-  MempoolEntry entry = 1;
+  RpcMempoolEntry entry = 1;
 
   RPCError error = 1000;
 }
@@ -232,17 +232,17 @@ message GetMempoolEntryResponseMessage{
 // GetMempoolEntriesRequestMessage requests information about all the transactions
 // currently in the mempool.
 message GetMempoolEntriesRequestMessage{
-        bool includeOrphanPool = 1;
-        bool filterTransactionPool = 2;
+  bool includeOrphanPool = 1;
+  bool filterTransactionPool = 2;
 }
 
 message GetMempoolEntriesResponseMessage{
-  repeated MempoolEntry entries = 1;
+  repeated RpcMempoolEntry entries = 1;
 
   RPCError error = 1000;
 }
 
-message MempoolEntry{
+message RpcMempoolEntry{
   uint64 fee = 1;
   RpcTransaction transaction = 3;
   bool isOrphan = 4;
@@ -330,7 +330,7 @@ message VirtualSelectedParentChainChangedNotificationMessage{
   repeated string addedChainBlockHashes = 3;
 
   // Will be filled only if `includeAcceptedTransactionIds = true` in the notify request.
-  repeated AcceptedTransactionIds acceptedTransactionIds = 2;
+  repeated RpcAcceptedTransactionIds acceptedTransactionIds = 2;
 }
 
 // GetBlockRequestMessage requests information about a specific block
@@ -366,7 +366,7 @@ message GetVirtualSelectedParentChainFromBlockRequestMessage{
   bool includeAcceptedTransactionIds = 2;
 }
 
-message AcceptedTransactionIds{
+message RpcAcceptedTransactionIds{
   string acceptingBlockHash = 1;
   repeated string acceptedTransactionIds = 2;
 }
@@ -380,7 +380,7 @@ message GetVirtualSelectedParentChainFromBlockResponseMessage{
 
   // The transactions accepted by each block in addedChainBlockHashes.
   // Will be filled only if `includeAcceptedTransactionIds = true` in the request.
-  repeated AcceptedTransactionIds acceptedTransactionIds = 2;
+  repeated RpcAcceptedTransactionIds acceptedTransactionIds = 2;
 
   RPCError error = 1000;
 }
@@ -436,11 +436,11 @@ message ResolveFinalityConflictResponseMessage{
   RPCError error = 1000;
 }
 
-message NotifyFinalityConflictsRequestMessage{
+message NotifyFinalityConflictRequestMessage{
   RpcNotifyCommand command = 101;
 }
 
-message NotifyFinalityConflictsResponseMessage{
+message NotifyFinalityConflictResponseMessage{
   RPCError error = 1000;
 }
 
@@ -494,11 +494,11 @@ message NotifyUtxosChangedResponseMessage {
 //
 // See: NotifyUtxosChangedRequestMessage
 message UtxosChangedNotificationMessage {
-  repeated UtxosByAddressesEntry added = 1;
-  repeated UtxosByAddressesEntry removed = 2;
+  repeated RpcUtxosByAddressesEntry added = 1;
+  repeated RpcUtxosByAddressesEntry removed = 2;
 }
 
-message UtxosByAddressesEntry {
+message RpcUtxosByAddressesEntry {
   string address = 1;
   RpcOutpoint outpoint = 2;
   RpcUtxoEntry utxoEntry = 3;
@@ -529,7 +529,7 @@ message GetUtxosByAddressesRequestMessage {
 }
 
 message GetUtxosByAddressesResponseMessage {
-  repeated UtxosByAddressesEntry entries = 1;
+  repeated RpcUtxosByAddressesEntry entries = 1;
 
   RPCError error = 1000;
 }
@@ -551,7 +551,7 @@ message GetBalancesByAddressesRequestMessage {
   repeated string addresses = 1;
 }
 
-message BalancesByAddressEntry{
+message RpcBalancesByAddressesEntry{
   string address = 1;
   uint64 balance = 2;
 
@@ -559,7 +559,7 @@ message BalancesByAddressEntry{
 }
 
 message GetBalancesByAddressesResponseMessage {
-  repeated BalancesByAddressEntry entries = 1;
+  repeated RpcBalancesByAddressesEntry entries = 1;
 
   RPCError error = 1000;
 }
@@ -580,6 +580,7 @@ message GetVirtualSelectedParentBlueScoreResponseMessage {
 //
 // See: VirtualSelectedParentBlueScoreChangedNotificationMessage
 message NotifyVirtualSelectedParentBlueScoreChangedRequestMessage {
+  RpcNotifyCommand command = 101;
 }
 
 message NotifyVirtualSelectedParentBlueScoreChangedResponseMessage {
@@ -614,41 +615,41 @@ message VirtualDaaScoreChangedNotificationMessage {
   uint64 virtualDaaScore = 1;
 }
 
-// NotifyPruningPointUTXOSetOverrideRequestMessage registers this connection for
+// NotifyPruningPointUtxoSetOverrideRequestMessage registers this connection for
 // pruning point UTXO set override notifications.
 //
 // This call is only available when this kaspad was started with `--utxoindex`
 //
-// See: NotifyPruningPointUTXOSetOverrideResponseMessage
-message NotifyPruningPointUTXOSetOverrideRequestMessage {
+// See: NotifyPruningPointUtxoSetOverrideResponseMessage
+message NotifyPruningPointUtxoSetOverrideRequestMessage {
   RpcNotifyCommand command = 101;
 }
 
 
-message NotifyPruningPointUTXOSetOverrideResponseMessage {
+message NotifyPruningPointUtxoSetOverrideResponseMessage {
   RPCError error = 1000;
 }
 
-// PruningPointUTXOSetOverrideNotificationMessage is sent whenever the UTXO index
+// PruningPointUtxoSetOverrideNotificationMessage is sent whenever the UTXO index
 // resets due to pruning point change via IBD.
 //
-// See NotifyPruningPointUTXOSetOverrideRequestMessage
-message PruningPointUTXOSetOverrideNotificationMessage {
+// See NotifyPruningPointUtxoSetOverrideRequestMessage
+message PruningPointUtxoSetOverrideNotificationMessage {
 }
 
-// StopNotifyingPruningPointUTXOSetOverrideRequestMessage unregisters this connection for
+// StopNotifyingPruningPointUtxoSetOverrideRequestMessage unregisters this connection for
 // pruning point UTXO set override notifications.
 //
 // This call is only available when this kaspad was started with `--utxoindex`
 //
-// See: PruningPointUTXOSetOverrideNotificationMessage
+// See: PruningPointUtxoSetOverrideNotificationMessage
 //
 // This message only exists for backward compatibility reason with kaspad and is deprecated.
-// Use instead NotifyPruningPointUTXOSetOverrideRequestMessage with command = NOTIFY_STOP.
-message StopNotifyingPruningPointUTXOSetOverrideRequestMessage {
+// Use instead NotifyPruningPointUtxoSetOverrideRequestMessage with command = NOTIFY_STOP.
+message StopNotifyingPruningPointUtxoSetOverrideRequestMessage {
 }
 
-message StopNotifyingPruningPointUTXOSetOverrideResponseMessage {
+message StopNotifyingPruningPointUtxoSetOverrideResponseMessage {
   RPCError error = 1000;
 }
 
@@ -680,10 +681,9 @@ message GetInfoResponseMessage{
   string serverVersion = 3;
   bool isUtxoIndexed = 4;
   bool isSynced = 5;
-  bool hasNotifyCommand = 101;
+  bool hasNotifyCommand = 11;
+  bool hasMessageId = 12;
   RPCError error = 1000;
-
-  //bool hasRequestResponseId = 102;
 }
 
 message EstimateNetworkHashesPerSecondRequestMessage{
@@ -715,10 +715,10 @@ message NotifyNewBlockTemplateResponseMessage {
 message NewBlockTemplateNotificationMessage {
 }
 
-message MempoolEntryByAddress{
+message RpcMempoolEntryByAddress{
   string address = 1;
-  repeated MempoolEntry sending = 2;
-  repeated MempoolEntry receiving = 3;
+  repeated RpcMempoolEntry sending = 2;
+  repeated RpcMempoolEntry receiving = 3;
 }
 
 message GetMempoolEntriesByAddressesRequestMessage{
@@ -728,7 +728,7 @@ message GetMempoolEntriesByAddressesRequestMessage{
 }
 
 message  GetMempoolEntriesByAddressesResponseMessage{
-  repeated MempoolEntryByAddress entries = 1;
+  repeated RpcMempoolEntryByAddress entries = 1;
 
   RPCError error = 1000;
 }
@@ -763,4 +763,3 @@ message GetProcessMetricsResponseMessage{
         repeated uint64 wrpcConnections = 5;
         RPCError error = 1000;
 }
-
