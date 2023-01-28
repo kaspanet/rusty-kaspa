@@ -1,61 +1,60 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
-use workflow_core::{seal, enums::Describe};
+use workflow_core::{enums::Describe, seal};
 
-seal!(0x224e,{
-#[derive(Describe, Clone, Debug, PartialEq, Eq, Hash, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
-pub enum RpcApiOps {
-    Ping,
-    GetProcessMetrics,
-    GetCurrentNetwork,
-    SubmitBlock,
-    GetBlockTemplate,
-    GetPeerAddresses,
-    GetSelectedTipHash,
-    GetMempoolEntry,
-    GetMempoolEntries,
-    GetConnectedPeerInfo,
-    AddPeer,
-    SubmitTransaction,
-    GetBlock,
-    GetSubnetwork,
-    GetVirtualSelectedParentChainFromBlock,
-    GetBlocks,
-    GetBlockCount,
-    GetBlockDagInfo,
-    ResolveFinalityConflict,
-    Shutdown,
-    GetHeaders,
-    GetUtxosByAddresses,
-    GetBalanceByAddress,
-    GetBalancesByAddresses,
-    GetVirtualSelectedParentBlueScore,
-    Ban,
-    Unban,
-    GetInfo,
-    EstimateNetworkHashesPerSecond,
-    GetMempoolEntriesByAddresses,
-    GetCoinSupply,
+seal!(0x224e, {
+    #[derive(Describe, Clone, Debug, PartialEq, Eq, Hash, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+    pub enum RpcApiOps {
+        Ping,
+        GetProcessMetrics,
+        GetCurrentNetwork,
+        SubmitBlock,
+        GetBlockTemplate,
+        GetPeerAddresses,
+        GetSelectedTipHash,
+        GetMempoolEntry,
+        GetMempoolEntries,
+        GetConnectedPeerInfo,
+        AddPeer,
+        SubmitTransaction,
+        GetBlock,
+        GetSubnetwork,
+        GetVirtualSelectedParentChainFromBlock,
+        GetBlocks,
+        GetBlockCount,
+        GetBlockDagInfo,
+        ResolveFinalityConflict,
+        Shutdown,
+        GetHeaders,
+        GetUtxosByAddresses,
+        GetBalanceByAddress,
+        GetBalancesByAddresses,
+        GetVirtualSelectedParentBlueScore,
+        Ban,
+        Unban,
+        GetInfo,
+        EstimateNetworkHashesPerSecond,
+        GetMempoolEntriesByAddresses,
+        GetCoinSupply,
 
-    // Subscription commands for starting/stopping notifications
-    NotifyBlockAdded,
-    NotifyNewBlockTemplate,
+        // Subscription commands for starting/stopping notifications
+        NotifyBlockAdded,
+        NotifyNewBlockTemplate,
 
-    NotifyUtxosChanged,
-    StopNotifyingUtxosChanged,
+        NotifyUtxosChanged,
+        StopNotifyingUtxosChanged,
 
-    NotifyPruningPointUtxoSetOverride,
-    StopNotifyingPruningPointUtxoSetOverride,
+        NotifyPruningPointUtxoSetOverride,
+        StopNotifyingPruningPointUtxoSetOverride,
 
-    NotifyVirtualDaaScoreChanged,
-    NotifyVirtualSelectedParentChainChanged,
-    NotifyVirtualSelectedParentBlueScoreChanged,
-    NotifyFinalityConflicts,
+        NotifyVirtualDaaScoreChanged,
+        NotifyVirtualSelectedParentChainChanged,
+        NotifyVirtualSelectedParentBlueScoreChanged,
+        NotifyFinalityConflicts,
 
-    Notification,
-}
-}
-);
+        Notification,
+    }
+});
 
 impl From<RpcApiOps> for u32 {
     fn from(item: RpcApiOps) -> Self {
