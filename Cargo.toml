@@ -5,6 +5,7 @@ members = [
     "wallet/cli",
     "wallet/native",
     "wallet/wasm",
+    "wallet/bip32",
     "consensus",
     "consensus/core",
     "consensus/pow",
@@ -22,7 +23,6 @@ members = [
     "rpc/wrpc/client",
     "rpc/wrpc/server",
     "rpc/wrpc/proxy",
-    "bip32",
     "mining",
     "p2p",
 ]
@@ -58,7 +58,7 @@ kaspa-wallet-cli = { path = "wallet/cli" }
 kaspa-wallet-cli-native = { path = "wallet/native" }
 kaspa-wallet-cli-wasm = { path = "wallet/wasm" }
 kaspa-wasm = { path = "wasm" }
-kaspa-bip32 = { path = "bip32" }
+kaspa-bip32 = { path = "wallet/bip32" }
 mining = { path = "mining" }
 
 thiserror = "1"
@@ -93,6 +93,14 @@ convert_case = "0.5.0"
 wasm-bindgen-futures="0.4.33"
 js-sys = "0.3.56"
 
+workflow-core = { path = "../workflow-rs/core" }
+workflow-websocket = { path = "../workflow-rs/websocket" }
+workflow-rpc = { path = "../workflow-rs/rpc" }
+workflow-log = { path = "../workflow-rs/log" }
+workflow-terminal = { path = "../workflow-rs/terminal" }
+workflow-wasm = { path = "../workflow-rs/wasm" }
+
+# bip32 dependencies
 rand_core = { version = "0.6", features = ["std"] }
 bs58 = { version = "0.4", features = ["check"], default-features = false}
 hmac = {version = "0.12", default-features = false}
@@ -103,10 +111,3 @@ ripemd = {version = "0.1", default-features = false}
 subtle = {version = "2", default-features = false}
 once_cell = {version = "1"}
 pbkdf2 = {version = "0.11", default-features = false}
-
-workflow-core = { path = "../workflow-rs/core" }
-workflow-websocket = { path = "../workflow-rs/websocket" }
-workflow-rpc = { path = "../workflow-rs/rpc" }
-workflow-log = { path = "../workflow-rs/log" }
-workflow-terminal = { path = "../workflow-rs/terminal" }
-workflow-wasm = { path = "../workflow-rs/wasm" }

@@ -1,3 +1,4 @@
+use kaspa_rpc_macros::build_wrpc_interface;
 use rpc_core::api::ops::RpcApiOps;
 use rpc_core::api::rpc::RpcApi;
 #[allow(unused_imports)]
@@ -9,7 +10,6 @@ use rpc_core::notify::listener::*;
 use rpc_core::prelude::*;
 use std::sync::Arc;
 use workflow_rpc::server::prelude::*;
-use kaspa_rpc_macros::build_wrpc_interface;
 
 pub trait RpcApiContainer: Send + Sync + 'static {
     fn get_rpc_api(&self) -> Arc<dyn RpcApi>;
@@ -29,7 +29,6 @@ where
     // iface: Arc<dyn RpcApi>,
     pub interface: Arc<Interface<ServerContext, ConnectionContext, RpcApiOps>>,
 }
-
 
 impl<ServerContext, ConnectionContext> Router<ServerContext, ConnectionContext>
 where

@@ -21,3 +21,6 @@ zeroize.workspace = true
 async-trait.workspace = true
 secp256k1.workspace = true
 faster-hex.workspace = true
+
+[dev-dependencies]
+tokio = "*"

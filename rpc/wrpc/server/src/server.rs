@@ -86,7 +86,6 @@ impl RpcHandler for KaspaRpcHandler {
         _receiver: &mut WebSocketReceiver,
         messenger: Arc<Messenger>,
     ) -> WebSocketResult<Self::Context> {
-
         // TODO - discuss and implement greeting
         // handshake::greeting(
         //     std::time::Duration::from_millis(3000),

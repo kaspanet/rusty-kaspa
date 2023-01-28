@@ -127,7 +127,7 @@ pub fn main() {
                 ))
             })
         })
-        .for_each(|server|async_runtime.register(server));
+        .for_each(|server| async_runtime.register(server));
 
     // Bind the keyboard signal to the core
     Arc::new(Signals::new(&core)).init();
