@@ -13,7 +13,9 @@ use workflow_rpc::server::prelude::*;
 
 pub trait RpcApiContainer: Send + Sync + 'static {
     fn get_rpc_api(&self) -> Arc<dyn RpcApi>;
-    fn verbose(&self) -> bool { false }
+    fn verbose(&self) -> bool {
+        false
+    }
 }
 
 pub enum RouterTarget {
@@ -36,10 +38,14 @@ where
     ConnectionContext: RpcApiContainer + Clone,
 {
     pub fn new(server_context: ServerContext) -> Self {
-
         #[allow(unreachable_patterns)]
-        let interface =
-            build_wrpc_interface!(server_context, RouterTarget::Server, ServerContext, ConnectionContext, RpcApiOps, [
+        let interface = build_wrpc_interface!(
+            server_context,
+            RouterTarget::Server,
+            ServerContext,
+            ConnectionContext,
+            RpcApiOps,
+            [
                 GetInfo,
                 Ping,
                 GetProcessMetrics,
@@ -72,9 +78,9 @@ where
                 EstimateNetworkHashesPerSecond,
                 GetMempoolEntriesByAddresses,
                 GetCoinSupply,
-            ]);
+            ]
+        );
 
         Router { interface }
     }
-
 }

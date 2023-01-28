@@ -22,12 +22,12 @@ pub use workflow_rpc::server::Encoding as WrpcEncoding;
 
 pub struct Options {
     pub listen_address: String,
-    pub verbose : bool
+    pub verbose: bool,
 }
 
 impl Default for Options {
     fn default() -> Self {
-        Options { listen_address: "127.0.0.1:8080".to_owned(), verbose : false }
+        Options { listen_address: "127.0.0.1:8080".to_owned(), verbose: false }
     }
 }
 
@@ -53,12 +53,12 @@ impl RpcApiContainer for ConnectionContextReference {
 pub struct KaspaRpcHandler {
     pub rpc_api: Arc<dyn RpcApi>,
     pub sockets: Mutex<HashMap<SocketAddr, Arc<ConnectionContext>>>,
-    pub options : Arc<Options>
+    pub options: Arc<Options>,
 }
 type KaspaRpcHandlerReference = Arc<KaspaRpcHandler>;
 
 impl KaspaRpcHandler {
-    pub fn new(rpc_api: Arc<dyn RpcApi>, options : Arc<Options>) -> KaspaRpcHandler {
+    pub fn new(rpc_api: Arc<dyn RpcApi>, options: Arc<Options>) -> KaspaRpcHandler {
         KaspaRpcHandler { rpc_api, sockets: Mutex::new(HashMap::new()), options }
     }
 }
@@ -68,7 +68,9 @@ impl RpcApiContainer for KaspaRpcHandlerReference {
         self.rpc_api.clone()
     }
 
-    fn verbose(&self) -> bool { self.options.verbose }
+    fn verbose(&self) -> bool {
+        self.options.verbose
+    }
 }
 
 #[async_trait]
@@ -115,7 +117,7 @@ pub struct WrpcServer {
 impl WrpcServer {
     pub fn new(rpc_api: Arc<dyn RpcApi>, encoding: &Encoding, options: Options) -> Self {
         let options = Arc::new(options);
-        let rpc_handler = Arc::new(KaspaRpcHandler::new(rpc_api, options.clone() ));
+        let rpc_handler = Arc::new(KaspaRpcHandler::new(rpc_api, options.clone()));
         let router = Arc::new(Router::<KaspaRpcHandlerReference, ConnectionContextReference>::new(rpc_handler.clone()));
         let server = RpcServer::new_with_encoding::<KaspaRpcHandlerReference, ConnectionContextReference, RpcApiOps, Id64>(
             *encoding,

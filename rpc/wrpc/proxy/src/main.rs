@@ -37,19 +37,13 @@ pub struct ProxyConnectionInner {
 
 #[derive(Clone)]
 pub struct ProxyConnection {
-    inner : Arc<ProxyConnectionInner>
+    inner: Arc<ProxyConnectionInner>,
 }
 
 impl ProxyConnection {
     // pub fn new(peer: SocketAddr, messenger: Arc<Messenger>, rpc_api : Arc<dyn RpcApi>) -> ProxyConnection {
-    pub fn new(peer: SocketAddr, messenger: Arc<Messenger>, grpc_api : Arc<RpcApiGrpc>) -> ProxyConnection {
-        ProxyConnection {
-            inner : Arc::new(ProxyConnectionInner {
-                peer,
-                messenger,
-                grpc_api
-            })
-        }
+    pub fn new(peer: SocketAddr, messenger: Arc<Messenger>, grpc_api: Arc<RpcApiGrpc>) -> ProxyConnection {
+        ProxyConnection { inner: Arc::new(ProxyConnectionInner { peer, messenger, grpc_api }) }
     }
 }
 
@@ -66,18 +60,13 @@ pub struct KaspaRpcProxyInner {
 
 #[derive(Clone)]
 pub struct KaspaRpcProxy {
-    inner : Arc<KaspaRpcProxyInner>,
+    inner: Arc<KaspaRpcProxyInner>,
 }
 
 impl KaspaRpcProxy {
     pub fn new(network_type: NetworkType, verbose: bool) -> KaspaRpcProxy {
-        KaspaRpcProxy { inner : Arc::new(KaspaRpcProxyInner {
-                network_type,
-                verbose
-            })
-        }
+        KaspaRpcProxy { inner: Arc::new(KaspaRpcProxyInner { network_type, verbose }) }
     }
-
 }
 
 #[async_trait]
@@ -99,7 +88,7 @@ impl RpcHandler for KaspaRpcProxy {
         let grpc = Arc::new(grpc);
         // let rpc_api: Arc<dyn RpcApi> = grpc_rpc_api.clone();
         // let rpc_api: Arc<dyn RpcApi> = Arc::new(grpc);
-        Ok(ProxyConnection::new(*peer,messenger,grpc))
+        Ok(ProxyConnection::new(*peer, messenger, grpc))
         // { peer: *peer, messenger, rpc_api }))
     }
     async fn connect(self: Arc<Self>, _peer: &SocketAddr) -> WebSocketResult<()> {
@@ -128,23 +117,22 @@ struct Args {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    
-        let Args { network_type, verbose, proxy_port } = Args::parse();
+    let Args { network_type, verbose, proxy_port } = Args::parse();
 
-        let kaspad_port = network_type.port();
-        log_info!("");
-        log_info!("Proxy routing to `{}` gRPC on port {}", network_type, kaspad_port);
-        let rpc_handler = KaspaRpcProxy::new(network_type, verbose);
-        let router = Arc::new(Router::<KaspaRpcProxy, ProxyConnection>::new(rpc_handler.clone()));
-        let server = RpcServer::new_with_encoding::<KaspaRpcProxy, ProxyConnection, RpcApiOps, Id64>(Encoding::Borsh, 
-            Arc::new(rpc_handler), 
-            router.interface.clone()
-        );
+    let kaspad_port = network_type.port();
+    log_info!("");
+    log_info!("Proxy routing to `{}` gRPC on port {}", network_type, kaspad_port);
+    let rpc_handler = KaspaRpcProxy::new(network_type, verbose);
+    let router = Arc::new(Router::<KaspaRpcProxy, ProxyConnection>::new(rpc_handler.clone()));
+    let server = RpcServer::new_with_encoding::<KaspaRpcProxy, ProxyConnection, RpcApiOps, Id64>(
+        Encoding::Borsh,
+        Arc::new(rpc_handler),
+        router.interface.clone(),
+    );
 
-        let addr = format!("0.0.0.0:{proxy_port}");
-        log_info!("Kaspa wRPC server is listening on {}", addr);
-        server.listen(&addr).await?;
+    let addr = format!("0.0.0.0:{proxy_port}");
+    log_info!("Kaspa wRPC server is listening on {}", addr);
+    server.listen(&addr).await?;
 
-        Ok(())
-        
+    Ok(())
 }
