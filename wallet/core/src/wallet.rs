@@ -1,6 +1,7 @@
 use crate::result::Result;
 use crate::wallets::HDWalletGen1;
 use kaspa_wrpc_client::{KaspaRpcClient, WrpcEncoding};
+use rpc_core::api::rpc::RpcApi;
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -15,7 +16,7 @@ impl Wallet {
             "kprv5y2qurMHCsXYrNfU3GCihuwG3vMqFji7PZXajMEqyBkNh9UZUJgoHYBLTKu1eM4MvUtomcXPQ3Sw9HZ5ebbM4byoUciHo1zrPJBQfqpLorQ";
 
         let wallet = Wallet {
-            rpc: Arc::new(KaspaRpcClient::new(WrpcEncoding::Borsh, "wrpc://localhost:9292")?),
+            rpc: Arc::new(KaspaRpcClient::new(WrpcEncoding::Borsh, "wrpc://localhost:17110")?),
             hd_wallet: HDWalletGen1::from_master_xprv(master_xprv, false, 0).await?,
         };
 
@@ -41,13 +42,8 @@ impl Wallet {
     // ~~~
 
     pub async fn info(&self) -> Result<String> {
-        todo!()
-        // let rpc: Arc<dyn ClientInterface> = self.rpc.clone();
-        // let v = self.rpc.get_info().await?;
-        // Ok(format!("{:#?}", v).replace('\n', "\r\n"))
-        // let resp = self.rpc.ping(msg).await?;
-        // Ok(resp)
-        // Ok("not implemented".to_string())
+        let v = self.rpc.get_info().await?;
+        Ok(format!("{v:#?}").replace('\n', "\r\n"))
     }
 
     pub async fn ping(&self, _msg: String) -> Result<String> {

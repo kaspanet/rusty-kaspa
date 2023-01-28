@@ -4,8 +4,11 @@ mod result;
 use async_trait::async_trait;
 use clap::Parser;
 use consensus_core::networktype::NetworkType;
-use kaspa_wrpc_server::router::Router;
-use kaspa_wrpc_server::router::RpcApiContainer;
+use kaspa_wrpc_server::router::{
+    Router,
+    RouterTarget,
+    RpcApiContainer
+};
 use result::Result;
 use rpc_core::api::ops::RpcApiOps;
 use rpc_core::api::rpc::RpcApi;
@@ -123,7 +126,7 @@ async fn main() -> Result<()> {
     log_info!("");
     log_info!("Proxy routing to `{}` gRPC on port {}", network_type, kaspad_port);
     let rpc_handler = KaspaRpcProxy::new(network_type, verbose);
-    let router = Arc::new(Router::<KaspaRpcProxy, ProxyConnection>::new(rpc_handler.clone()));
+    let router = Arc::new(Router::<KaspaRpcProxy, ProxyConnection>::new(rpc_handler.clone(), RouterTarget::Connection));
     let server = RpcServer::new_with_encoding::<KaspaRpcProxy, ProxyConnection, RpcApiOps, Id64>(
         Encoding::Borsh,
         Arc::new(rpc_handler),

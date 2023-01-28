@@ -50,7 +50,7 @@ where
     ServerContext: RpcApiContainer + Clone,
     ConnectionContext: RpcApiContainer + Clone,
 {
-    pub fn new(server_context: ServerContext) -> Self {
+    pub fn new(server_context: ServerContext, router_target: RouterTarget) -> Self {
 
         // The following macro iterates the supplied enum variants taking the variant
         // name and creating an RPC handler using that name. For example, receiving
@@ -61,7 +61,7 @@ where
         #[allow(unreachable_patterns)]
         let interface = build_wrpc_server_interface!(
             server_context,
-            RouterTarget::Server,
+            router_target,
             ServerContext,
             ConnectionContext,
             RpcApiOps,

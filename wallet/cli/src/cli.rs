@@ -46,7 +46,7 @@ impl WalletCli {
                 term.exit();
             }
             Action::GetInfo => {
-                log_trace!("testing 123");
+                //log_trace!("testing 123");
                 // let msg = argv[1..].join(" ");
                 let response = self.wallet.info().await?;
                 term.writeln(response);

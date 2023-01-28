@@ -1,6 +1,9 @@
 use crate::result::Result;
-use crate::router::Router;
-use crate::router::RpcApiContainer;
+use crate::router::{
+    Router,
+    RpcApiContainer,
+    RouterTarget
+};
 use async_trait::async_trait;
 use kaspa_core::task::service::{AsyncService, AsyncServiceError, AsyncServiceFuture};
 use rpc_core::api::ops::RpcApiOps;
@@ -148,7 +151,7 @@ impl WrpcServer {
         // Create handle to manage connections
         let rpc_handler = Arc::new(KaspaRpcHandler::new(rpc_api, options.clone()));
         // Create router (initializes Interface registering RPC method and notification handlers)
-        let router = Arc::new(Router::<KaspaRpcHandlerReference, ConnectionContextReference>::new(rpc_handler.clone()));
+        let router = Arc::new(Router::<KaspaRpcHandlerReference, ConnectionContextReference>::new(rpc_handler.clone(), RouterTarget::Server));
         // Create a server
         let server = RpcServer::new_with_encoding::<KaspaRpcHandlerReference, ConnectionContextReference, RpcApiOps, Id64>(
             *encoding,
