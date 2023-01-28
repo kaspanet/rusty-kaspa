@@ -19,6 +19,8 @@ use workflow_log::*;
 use workflow_rpc::server::prelude::*;
 pub use workflow_rpc::server::Encoding as WrpcEncoding;
 
+
+/// Options for configuring the wRPC server
 pub struct Options {
     pub listen_address: String,
     pub verbose: bool,
@@ -30,6 +32,11 @@ impl Default for Options {
     }
 }
 
+/// ConnectionContext represents a currently connected WebSocket RPC channel.
+/// This struct owns a [`Messenger`] that has [`Messenger::notify`]
+/// function that can be used to post notifications to the connection.
+/// [`Messenger::close`] function can be used to terminate the connection
+/// asynchronously.
 #[derive(Debug)]
 pub struct ConnectionContext {
     pub peer: SocketAddr,
@@ -49,6 +56,21 @@ impl RpcApiContainer for ConnectionContextReference {
     }
 }
 
+/// ### KaspaRpcHandler
+/// 
+/// [`KaspaRpcHandler`] is a handler struct that implements the [`RpcHandler`] trait
+/// allowing it to receive [`connect()`](RpcHandler::connect),
+/// [`disconnect()`](RpcHandler::disconnect) and [`handshake()`](RpcHandler::handshake)
+/// calls invoked by the [`RpcServer`]. 
+/// 
+/// [`RpcHandler::handshake`] is called by the [`RpcServer`] supplying the [`Messenger`]
+/// and expecting user to return a `ServerContext` struct (or an `Arc` of) where
+/// this struct will be supplied to each RPC method call.  Each RPC method call receives
+/// 3 arguments - `ServerContext`, `ConnectionContext` and `Request`. Upon completion
+/// the method should return a `Result`.
+/// 
+/// RPC method handling is implemented in the [`Router`].
+/// 
 pub struct KaspaRpcHandler {
     pub rpc_api: Arc<dyn RpcApi>,
     pub sockets: Mutex<HashMap<SocketAddr, Arc<ConnectionContext>>>,
@@ -96,28 +118,38 @@ impl RpcHandler for KaspaRpcHandler {
         // )
         // .await
 
+        // Create and return `ConnectionContext` owning a `Messenger` instance.
         let ctx = Arc::new(ConnectionContext::new(peer, messenger));
         self.sockets.lock().unwrap().insert(*peer, ctx.clone());
         Ok(ctx)
     }
 
+    // Disconnect the websocket. Receives `ConnectionContext` (a.k.a `Self::Context`)
+    // before dropping it. This is the last chance to cleanup and resources owned by
+    // this connection.
     async fn disconnect(self: Arc<Self>, ctx: Self::Context, _result: WebSocketResult<()>) {
         self.sockets.lock().unwrap().remove(&ctx.peer);
     }
 }
 
-pub struct ServerContext;
-
+///
+///  wRPC Server - A wrapper around and an initializer of the RpcServer
+/// 
 pub struct WrpcServer {
     options: Arc<Options>,
     server: RpcServer,
 }
 
 impl WrpcServer {
+
+    /// Create and initialize RpcServer
     pub fn new(rpc_api: Arc<dyn RpcApi>, encoding: &Encoding, options: Options) -> Self {
         let options = Arc::new(options);
+        // Create handle to manage connections
         let rpc_handler = Arc::new(KaspaRpcHandler::new(rpc_api, options.clone()));
+        // Create router (initializes Interface registering RPC method and notification handlers)
         let router = Arc::new(Router::<KaspaRpcHandlerReference, ConnectionContextReference>::new(rpc_handler.clone()));
+        // Create a server
         let server = RpcServer::new_with_encoding::<KaspaRpcHandlerReference, ConnectionContextReference, RpcApiOps, Id64>(
             *encoding,
             rpc_handler,
@@ -127,6 +159,7 @@ impl WrpcServer {
         WrpcServer { options, server }
     }
 
+    /// Start listening on the configured address (will yield an error if the the socket listen() fails)
     async fn run(self: Arc<Self>) -> Result<()> {
         let addr = &self.options.listen_address;
         log_info!("wRPC server is listening on {}", addr);
