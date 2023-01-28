@@ -1,8 +1,8 @@
 pub mod error;
 pub mod result;
 pub mod wallet;
-mod wallets;
-mod wrapper;
+pub mod wallets;
+pub mod wrapper;
 
 pub use addresses::Address;
 pub use result::Result;
