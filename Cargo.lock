@@ -1565,6 +1565,7 @@ dependencies = [
  "secp256k1",
  "sha2 0.10.6",
  "thiserror",
+ "tokio",
  "workflow-log",
  "workflow-rpc",
  "zeroize",
