@@ -2,40 +2,46 @@ use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use workflow_core::{enums::Describe, seal};
 
-seal!(0x224e, {
+seal!(0xf916, {
+    // ^^^^^ NOTE: This enum is used for binary RPC data exchange, if you 
+    //             add any new variants to this enum, please inform the
+    //             core development team to facilitate a protocol update.
+    //             If making any changes to this code block, please update
+    //             to the new seal value reported by the compiler.
+    //                    
     #[derive(Describe, Clone, Debug, PartialEq, Eq, Hash, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
     pub enum RpcApiOps {
-        Ping,
-        GetProcessMetrics,
-        GetCurrentNetwork,
-        SubmitBlock,
-        GetBlockTemplate,
-        GetPeerAddresses,
-        GetSelectedTipHash,
-        GetMempoolEntry,
-        GetMempoolEntries,
-        GetConnectedPeerInfo,
         AddPeer,
-        SubmitTransaction,
-        GetBlock,
-        GetSubnetwork,
-        GetVirtualSelectedParentChainFromBlock,
-        GetBlocks,
-        GetBlockCount,
-        GetBlockDagInfo,
-        ResolveFinalityConflict,
-        Shutdown,
-        GetHeaders,
-        GetUtxosByAddresses,
+        Ban,
+        EstimateNetworkHashesPerSecond,
         GetBalanceByAddress,
         GetBalancesByAddresses,
-        GetVirtualSelectedParentBlueScore,
-        Ban,
-        Unban,
-        GetInfo,
-        EstimateNetworkHashesPerSecond,
-        GetMempoolEntriesByAddresses,
+        GetBlock,
+        GetBlockCount,
+        GetBlockDagInfo,
+        GetBlocks,
+        GetBlockTemplate,
         GetCoinSupply,
+        GetConnectedPeerInfo,
+        GetCurrentNetwork,
+        GetHeaders,
+        GetInfo,
+        GetMempoolEntries,
+        GetMempoolEntriesByAddresses,
+        GetMempoolEntry,
+        GetPeerAddresses,
+        GetProcessMetrics,
+        GetSelectedTipHash,
+        GetSubnetwork,
+        GetUtxosByAddresses,
+        GetVirtualSelectedParentBlueScore,
+        GetVirtualSelectedParentChainFromBlock,
+        Ping,
+        ResolveFinalityConflict,
+        Shutdown,
+        SubmitBlock,
+        SubmitTransaction,
+        Unban,
 
         // Subscription commands for starting/stopping notifications
         NotifyBlockAdded,
