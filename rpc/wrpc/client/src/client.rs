@@ -14,6 +14,10 @@ use workflow_core::trigger::Listener;
 use workflow_log::*;
 pub use workflow_rpc::client::prelude::Encoding as WrpcEncoding;
 use workflow_rpc::client::prelude::*;
+
+
+/// [`KaspaRpcClient`] allows connection to the Kaspa wRPC Server via 
+/// binary Borsh or JSON protocols.
 #[derive(Clone)]
 pub struct KaspaRpcClient {
     rpc: Arc<RpcClient<RpcApiOps>>,
@@ -26,6 +30,9 @@ impl KaspaRpcClient {
         log_trace!("Kaspa wRPC::{encoding} client url: {url}");
         let options = RpcClientOptions { url: &url, ..RpcClientOptions::default() };
 
+        // The `Interface` struct can be used to register for server-side
+        // notifications. All notification methods have to be created at
+        // this stage.
         let interface = Interface::<RpcApiOps>::new();
         // interface.notification(
         //     TestOps::Notify,
@@ -40,10 +47,16 @@ impl KaspaRpcClient {
         Ok(client)
     }
 
+    /// Starts a background async connection task connecting
+    /// to the wRPC server.  If the supplied `block` call is `true`
+    /// this function will block until the first successful
+    /// connection.
     pub async fn connect(&self, block: bool) -> Result<Option<Listener>> {
         Ok(self.rpc.connect(block).await?)
     }
 
+    /// A helper function that is not `async`, allowing connection
+    /// process to be initiated from non-async contexts.
     pub fn connect_as_task(self: &Arc<Self>) -> Result<()> {
         let self_ = self.clone();
         workflow_core::task::spawn(async move {
@@ -56,7 +69,8 @@ impl KaspaRpcClient {
 #[async_trait]
 impl RpcApi for KaspaRpcClient {
     //
-    // The following proc-macro generates functions as follows:
+    // The following proc-macro iterates over the array of enum variants 
+    // generating a function for each variant as follows:
     //
     // async fn ping_call(&self, request : PingRequest) -> RpcResult<PingResponse> {
     //     let response: ClientResult<PingResponse> = self.rpc.call(RpcApiOps::Ping, request).await;

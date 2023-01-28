@@ -27,6 +27,9 @@ pub struct ProxyConnectionInner {
     pub grpc_api: Arc<RpcApiGrpc>,
 }
 
+/// GRPC Proxy Connection.  Owns [`ProxyConnectionInner`] that owns:
+/// - [`RpcGrpcApi`] representing 1:1 GRPC connection
+/// - [`Messenger`] representing client wRPC connection
 #[derive(Clone)]
 pub struct ProxyConnection {
     inner: Arc<ProxyConnectionInner>,
@@ -49,6 +52,8 @@ pub struct KaspaRpcProxyInner {
     verbose: bool,
 }
 
+/// A handler struct for the [`RpcHandler`].  Receives connection events
+/// and a handshake, used to create a `ProxyConnection`
 #[derive(Clone)]
 pub struct KaspaRpcProxy {
     inner: Arc<KaspaRpcProxyInner>,
@@ -64,6 +69,10 @@ impl KaspaRpcProxy {
 impl RpcHandler for KaspaRpcProxy {
     type Context = ProxyConnection;
 
+    /// Called on incoming wRPC connection. Creates a [`ProxyConnection`]
+    /// representing the client connection bound to the `RpcApiGrpc` instance.
+    /// The supplied [`Messenger`] represents the connection allowing 
+    /// to relay notifications to the wRPC client.
     async fn handshake(
         self: Arc<Self>,
         peer: &SocketAddr,
@@ -100,7 +109,7 @@ struct Args {
     /// network
     #[clap(name = "network", default_value = "mainnet")]
     network_type: NetworkType,
-    #[clap(long, name = "port", default_value = "9292")]
+    #[clap(long, name = "port", default_value = "17110")]
     proxy_port: u16,
     #[clap(short, long)]
     verbose: bool,
