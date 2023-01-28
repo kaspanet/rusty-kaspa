@@ -14,7 +14,6 @@ use rpc_core::api::ops::RpcApiOps;
 use rpc_core::api::rpc::RpcApi;
 #[allow(unused_imports)]
 use rpc_core::error::RpcResult;
-use rpc_core::message::*;
 #[allow(unused_imports)]
 use rpc_core::notify::channel::*;
 #[allow(unused_imports)]
@@ -23,16 +22,12 @@ use rpc_grpc::client::RpcApiGrpc;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use workflow_log::*;
-// use workflow_rpc::result::RpcResult as Response;
 use workflow_rpc::server::prelude::*;
-
-// use crate::placeholder::KaspaInterfacePlaceholder;
 
 pub struct ProxyConnectionInner {
     pub peer: SocketAddr,
     pub messenger: Arc<Messenger>,
     pub grpc_api: Arc<RpcApiGrpc>,
-    // pub rpc_api: Arc<dyn RpcApi>,
 }
 
 #[derive(Clone)]
@@ -41,7 +36,6 @@ pub struct ProxyConnection {
 }
 
 impl ProxyConnection {
-    // pub fn new(peer: SocketAddr, messenger: Arc<Messenger>, rpc_api : Arc<dyn RpcApi>) -> ProxyConnection {
     pub fn new(peer: SocketAddr, messenger: Arc<Messenger>, grpc_api: Arc<RpcApiGrpc>) -> ProxyConnection {
         ProxyConnection { inner: Arc::new(ProxyConnectionInner { peer, messenger, grpc_api }) }
     }
@@ -86,10 +80,7 @@ impl RpcHandler for KaspaRpcProxy {
         let grpc = RpcApiGrpc::connect(grpc_address).await.map_err(|e| WebSocketError::Other(e.to_string()))?;
         grpc.start().await;
         let grpc = Arc::new(grpc);
-        // let rpc_api: Arc<dyn RpcApi> = grpc_rpc_api.clone();
-        // let rpc_api: Arc<dyn RpcApi> = Arc::new(grpc);
         Ok(ProxyConnection::new(*peer, messenger, grpc))
-        // { peer: *peer, messenger, rpc_api }))
     }
     async fn connect(self: Arc<Self>, _peer: &SocketAddr) -> WebSocketResult<()> {
         Ok(())
@@ -99,6 +90,9 @@ impl RpcHandler for KaspaRpcProxy {
 impl RpcApiContainer for KaspaRpcProxy {
     fn get_rpc_api(&self) -> Arc<dyn RpcApi> {
         panic!("Incorrect use: `proxy::KaspaRpcProxy` does not carry RpcApi reference")
+    }
+    fn verbose(&self) -> bool {
+        self.inner.verbose
     }
 }
 

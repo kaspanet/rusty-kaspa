@@ -1,3 +1,6 @@
+use crate::result::Result;
+use crate::router::Router;
+use crate::router::RpcApiContainer;
 use async_trait::async_trait;
 use kaspa_core::task::service::{AsyncService, AsyncServiceError, AsyncServiceFuture};
 use rpc_core::api::ops::RpcApiOps;
@@ -13,10 +16,6 @@ use std::{
     sync::{Arc, Mutex},
 };
 use workflow_log::*;
-// use workflow_rpc::result::ServerResult;
-use crate::result::Result;
-use crate::router::Router;
-use crate::router::RpcApiContainer;
 use workflow_rpc::server::prelude::*;
 pub use workflow_rpc::server::Encoding as WrpcEncoding;
 
@@ -88,7 +87,7 @@ impl RpcHandler for KaspaRpcHandler {
         _receiver: &mut WebSocketReceiver,
         messenger: Arc<Messenger>,
     ) -> WebSocketResult<Self::Context> {
-        // TODO - discuss and implement greeting
+        // TODO - discuss and implement handshake
         // handshake::greeting(
         //     std::time::Duration::from_millis(3000),
         //     sender,

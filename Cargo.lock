@@ -1591,6 +1591,7 @@ dependencies = [
  "async-std",
  "async-trait",
  "borsh",
+ "kaspa-rpc-macros",
  "paste",
  "regex",
  "rpc-core",

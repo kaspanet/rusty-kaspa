@@ -1,4 +1,4 @@
-use kaspa_rpc_macros::build_wrpc_interface;
+use kaspa_rpc_macros::build_wrpc_server_interface;
 use rpc_core::api::ops::RpcApiOps;
 use rpc_core::api::rpc::RpcApi;
 #[allow(unused_imports)]
@@ -28,7 +28,6 @@ where
     ServerContext: RpcApiContainer + Clone,
     ConnectionContext: RpcApiContainer + Clone,
 {
-    // iface: Arc<dyn RpcApi>,
     pub interface: Arc<Interface<ServerContext, ConnectionContext, RpcApiOps>>,
 }
 
@@ -39,7 +38,7 @@ where
 {
     pub fn new(server_context: ServerContext) -> Self {
         #[allow(unreachable_patterns)]
-        let interface = build_wrpc_interface!(
+        let interface = build_wrpc_server_interface!(
             server_context,
             RouterTarget::Server,
             ServerContext,

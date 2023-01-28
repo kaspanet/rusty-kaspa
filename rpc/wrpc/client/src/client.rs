@@ -1,17 +1,18 @@
 //use super::route::route;
+use kaspa_rpc_macros::build_wrpc_client_interface;
 use crate::result::Result;
-//use async_trait::async_trait;
+use async_trait::async_trait;
 use regex::Regex;
 use rpc_core::api::ops::RpcApiOps;
-//use rpc_core::api::rpc::RpcApi;
-//use rpc_core::error::RpcResult;
-//use rpc_core::notify::channel::*;
-//use rpc_core::notify::listener::*;
-//use rpc_core::prelude::*;
+use rpc_core::api::rpc::RpcApi;
+use rpc_core::error::RpcResult;
+use rpc_core::notify::channel::*;
+use rpc_core::notify::listener::*;
+use rpc_core::prelude::*;
 use std::sync::Arc;
 use workflow_core::trigger::Listener;
 use workflow_log::*;
-// use workflow_rpc::client::result::Result as Response;
+// use workflow_rpc::client::result::Result as ClientResult;
 // use workflow_rpc::client::{RpcClient,Options as RpcClientOptions};
 pub use workflow_rpc::client::prelude::Encoding as WrpcEncoding;
 use workflow_rpc::client::prelude::*;
@@ -54,8 +55,48 @@ impl KaspaRpcClient {
     }
 }
 
-// #[async_trait]
-// impl RpcApi for KaspaRpcClient {
+#[async_trait]
+impl RpcApi for KaspaRpcClient {
+
+
+    // async fn ping_call(&self, request : PingRequest) -> RpcResult<PingResponse> {
+    //     let response: ClientResult<PingResponse> = self.rpc.call(RpcApiOps::Ping, request).await;
+    //     Ok(response.map_err(|e| e.to_string())?)
+    // }
+
+    build_wrpc_client_interface!(RpcApiOps, [
+        Ping,
+        GetProcessMetrics,
+        GetCurrentNetwork,
+        SubmitBlock,
+        GetBlockTemplate,
+        GetPeerAddresses,
+        GetSelectedTipHash,
+        GetMempoolEntry,
+        GetMempoolEntries,
+        GetConnectedPeerInfo,
+        AddPeer,
+        SubmitTransaction,
+        GetBlock,
+        GetSubnetwork,
+        GetVirtualSelectedParentChainFromBlock,
+        GetBlocks,
+        GetBlockCount,
+        GetBlockDagInfo,
+        ResolveFinalityConflict,
+        Shutdown,
+        GetHeaders,
+        GetUtxosByAddresses,
+        GetBalanceByAddress,
+        GetBalancesByAddresses,
+        GetVirtualSelectedParentBlueScore,
+        Ban,
+        Unban,
+        GetInfo,
+        EstimateNetworkHashesPerSecond,
+        GetMempoolEntriesByAddresses,
+        GetCoinSupply,
+    ]);
 // route!(ping_call, Ping);
 // route!(get_process_metrics_call, GetProcessMetrics);
 // route!(get_current_network_call, GetCurrentNetwork);
@@ -91,36 +132,36 @@ impl KaspaRpcClient {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 // Notification API
 
-//     /// Register a new listener and returns an id and a channel receiver.
-//     fn register_new_listener(&self, _channel: Option<NotificationChannel>) -> ListenerReceiverSide {
-//         todo!()
-//         // self.notifier.register_new_listener(channel)
-//     }
+    /// Register a new listener and returns an id and a channel receiver.
+    fn register_new_listener(&self, _channel: Option<NotificationChannel>) -> ListenerReceiverSide {
+        todo!()
+        // self.notifier.register_new_listener(channel)
+    }
 
-//     /// Unregister an existing listener.
-//     ///
-//     /// Stop all notifications for this listener and drop its channel.
-//     async fn unregister_listener(&self, _id: ListenerID) -> RpcResult<()> {
-//         todo!()
-//         // self.notifier.unregister_listener(id)?;
-//         // Ok(())
-//     }
+    /// Unregister an existing listener.
+    ///
+    /// Stop all notifications for this listener and drop its channel.
+    async fn unregister_listener(&self, _id: ListenerID) -> RpcResult<()> {
+        todo!()
+        // self.notifier.unregister_listener(id)?;
+        // Ok(())
+    }
 
-//     /// Start sending notifications of some type to a listener.
-//     async fn start_notify(&self, _id: ListenerID, _notification_type: NotificationType) -> RpcResult<()> {
-//         todo!()
-//         // self.notifier.start_notify(id, notification_type)?;
-//         // Ok(())
-//     }
+    /// Start sending notifications of some type to a listener.
+    async fn start_notify(&self, _id: ListenerID, _notification_type: NotificationType) -> RpcResult<()> {
+        todo!()
+        // self.notifier.start_notify(id, notification_type)?;
+        // Ok(())
+    }
 
-//     /// Stop sending notifications of some type to a listener.
-//     async fn stop_notify(&self, _id: ListenerID, _notification_type: NotificationType) -> RpcResult<()> {
-//         todo!()
-//         // if self.handle_stop_notify() {
-//         //     self.notifier.stop_notify(id, notification_type)?;
-//         //     Ok(())
-//         // } else {
-//         //     Err(RpcError::UnsupportedFeature)
-//         // }
-//     }
-// }
+    /// Stop sending notifications of some type to a listener.
+    async fn stop_notify(&self, _id: ListenerID, _notification_type: NotificationType) -> RpcResult<()> {
+        todo!()
+        // if self.handle_stop_notify() {
+        //     self.notifier.stop_notify(id, notification_type)?;
+        //     Ok(())
+        // } else {
+        //     Err(RpcError::UnsupportedFeature)
+        // }
+    }
+}

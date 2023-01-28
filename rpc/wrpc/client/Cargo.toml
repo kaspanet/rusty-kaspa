@@ -19,3 +19,4 @@ serde.workspace = true
 borsh.workspace = true
 async-std.workspace = true
 paste.workspace = true
+kaspa-rpc-macros.workspace = true
