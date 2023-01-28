@@ -19,7 +19,7 @@ pub struct Args {
 
 pub fn cli() -> Command {
     Command::new("kaspad")
-        .about(&format!("{} (rusty-kaspa) v{}", env!("CARGO_PKG_DESCRIPTION"), env!("CARGO_PKG_VERSION")))
+        .about(format!("{} (rusty-kaspa) v{}", env!("CARGO_PKG_DESCRIPTION"), env!("CARGO_PKG_VERSION")))
         .version(env!("CARGO_PKG_VERSION"))
         .arg(arg!(-b --appdir <DATA_DIR> "Directory to store data."))
         .arg(
@@ -48,7 +48,7 @@ pub fn cli() -> Command {
                 .num_args(0..=1)
                 .require_equals(true)
                 .default_missing_value(DEFAULT_LISTEN_WRPC_BORSH)
-                .help(&format!(
+                .help(format!(
                     "Interface:port to listen for wRPC Borsh connections (interop only; default: `{DEFAULT_LISTEN_WRPC_BORSH}`)."
                 )),
         )
@@ -59,7 +59,7 @@ pub fn cli() -> Command {
                 .num_args(0..=1)
                 .require_equals(true)
                 .default_missing_value(DEFAULT_LISTEN_WRPC_JSON)
-                .help(&format!("Interface:port to listen for wRPC JSON connections (default: {DEFAULT_LISTEN_WRPC_JSON}).")),
+                .help(format!("Interface:port to listen for wRPC JSON connections (default: {DEFAULT_LISTEN_WRPC_JSON}).")),
         )
 }
 
