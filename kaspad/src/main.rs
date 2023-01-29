@@ -3,6 +3,7 @@ extern crate core;
 extern crate hashes;
 
 use clap::Parser;
+use consensus::config::Config;
 use consensus::model::stores::DB;
 use kaspa_core::{core::Core, signals::Signals, task::runtime::AsyncRuntime};
 use std::fs;
@@ -84,9 +85,9 @@ pub fn main() {
 
     // ---
 
-    let params = DEVNET_PARAMS;
+    let config = Config::new(DEVNET_PARAMS); // TODO: network type
     let db = Arc::new(DB::open_default(db_dir.to_str().unwrap()).unwrap());
-    let consensus = Arc::new(Consensus::new(db, &params, true));
+    let consensus = Arc::new(Consensus::new(db, &config));
     let monitor = Arc::new(ConsensusMonitor::new(consensus.processing_counters().clone()));
 
     let notification_channel = ConsensusNotificationChannel::default();

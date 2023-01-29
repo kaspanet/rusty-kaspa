@@ -2,6 +2,7 @@
 //! Integration tests
 //!
 
+use consensus::config::{Config, ConfigBuilder};
 use consensus::consensus::test_consensus::{create_temp_db, TestConsensus};
 use consensus::model::stores::ghostdag::{GhostdagData, GhostdagStoreReader, HashKTypeMap, KType as GhostdagKType};
 use consensus::model::stores::headers::HeaderStoreReader;
@@ -153,8 +154,8 @@ fn test_noattack_json() {
 #[tokio::test]
 async fn consensus_sanity_test() {
     let genesis_child: Hash = 2.into();
-
-    let consensus = TestConsensus::create_from_temp_db(&MAINNET_PARAMS.clone_with_skip_pow(), true);
+    let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().build();
+    let consensus = TestConsensus::create_from_temp_db(&config);
     let wait_handles = consensus.init();
 
     consensus
@@ -210,11 +211,14 @@ async fn ghostdag_test() {
         let reader = BufReader::new(file);
         let test: GhostdagTestDag = serde_json::from_reader(reader).unwrap();
 
-        let mut params = MAINNET_PARAMS.clone_with_skip_pow();
-        params.genesis_hash = string_to_hash(&test.genesis_id);
-        params.ghostdag_k = test.k;
-
-        let consensus = TestConsensus::create_from_temp_db(&params, true);
+        let config = ConfigBuilder::new(MAINNET_PARAMS)
+            .skip_proof_of_work()
+            .edit_consensus_params(|p| {
+                p.genesis_hash = string_to_hash(&test.genesis_id);
+                p.ghostdag_k = test.k;
+            })
+            .build();
+        let consensus = TestConsensus::create_from_temp_db(&config);
         let wait_handles = consensus.init();
 
         for block in test.blocks.iter() {
@@ -280,13 +284,15 @@ fn strings_to_hashes(strings: &Vec<String>) -> Vec<Hash> {
 
 #[tokio::test]
 async fn block_window_test() {
+    let config = ConfigBuilder::new(MAINNET_PARAMS)
+        .skip_proof_of_work()
+        .edit_consensus_params(|p| {
+            p.genesis_hash = string_to_hash("A");
+            p.ghostdag_k = 1;
+        })
+        .build();
     let (_temp_db_lifetime, db) = create_temp_db();
-
-    let mut params = MAINNET_PARAMS.clone_with_skip_pow();
-    params.genesis_hash = string_to_hash("A");
-    params.ghostdag_k = 1;
-
-    let consensus = TestConsensus::new(db, &params, true);
+    let consensus = TestConsensus::new(db, &config);
     let wait_handles = consensus.init();
 
     struct TestBlock {
@@ -343,10 +349,10 @@ async fn block_window_test() {
 
 #[tokio::test]
 async fn header_in_isolation_validation_test() {
-    let params = &MAINNET_PARAMS;
-    let consensus = TestConsensus::create_from_temp_db(params, true);
+    let config = Config::new(MAINNET_PARAMS);
+    let consensus = TestConsensus::create_from_temp_db(&config);
     let wait_handles = consensus.init();
-    let block = consensus.build_block_with_parents(1.into(), vec![params.genesis_hash]);
+    let block = consensus.build_block_with_parents(1.into(), vec![config.genesis_hash]);
 
     {
         let mut block = block.clone();
@@ -367,7 +373,7 @@ async fn header_in_isolation_validation_test() {
         block.header.hash = 2.into();
 
         let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64;
-        let block_ts = now + params.timestamp_deviation_tolerance * params.target_time_per_block + 2000;
+        let block_ts = now + config.timestamp_deviation_tolerance * config.target_time_per_block + 2000;
         block.header.timestamp = block_ts;
         match consensus.validate_and_insert_block(block.to_immutable()).await {
             Err(RuleError::TimeTooFarIntoTheFuture(ts, _)) => {
@@ -394,11 +400,11 @@ async fn header_in_isolation_validation_test() {
     {
         let mut block = block.clone();
         block.header.hash = 4.into();
-        block.header.parents_by_level[0] = (5..(params.max_block_parents + 6)).map(|x| (x as u64).into()).collect();
+        block.header.parents_by_level[0] = (5..(config.max_block_parents + 6)).map(|x| (x as u64).into()).collect();
         match consensus.validate_and_insert_block(block.to_immutable()).await {
             Err(RuleError::TooManyParents(num_parents, limit)) => {
-                assert_eq!((params.max_block_parents + 1) as usize, num_parents);
-                assert_eq!(limit, params.max_block_parents as usize);
+                assert_eq!((config.max_block_parents + 1) as usize, num_parents);
+                assert_eq!(limit, config.max_block_parents as usize);
             }
             res => {
                 panic!("Unexpected result: {res:?}")
@@ -411,17 +417,17 @@ async fn header_in_isolation_validation_test() {
 
 #[tokio::test]
 async fn incest_test() {
-    let params = MAINNET_PARAMS.clone_with_skip_pow();
-    let consensus = TestConsensus::create_from_temp_db(&params, true);
+    let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().build();
+    let consensus = TestConsensus::create_from_temp_db(&config);
     let wait_handles = consensus.init();
-    let block = consensus.build_block_with_parents(1.into(), vec![params.genesis_hash]);
+    let block = consensus.build_block_with_parents(1.into(), vec![config.genesis_hash]);
     consensus.validate_and_insert_block(block.to_immutable()).await.unwrap();
 
-    let mut block = consensus.build_block_with_parents(2.into(), vec![params.genesis_hash]);
-    block.header.parents_by_level[0] = vec![1.into(), params.genesis_hash];
+    let mut block = consensus.build_block_with_parents(2.into(), vec![config.genesis_hash]);
+    block.header.parents_by_level[0] = vec![1.into(), config.genesis_hash];
     match consensus.validate_and_insert_block(block.to_immutable()).await {
         Err(RuleError::InvalidParentsRelation(a, b)) => {
-            assert_eq!(a, params.genesis_hash);
+            assert_eq!(a, config.genesis_hash);
             assert_eq!(b, 1.into());
         }
         res => {
@@ -434,10 +440,10 @@ async fn incest_test() {
 
 #[tokio::test]
 async fn missing_parents_test() {
-    let params = MAINNET_PARAMS.clone_with_skip_pow();
-    let consensus = TestConsensus::create_from_temp_db(&params, true);
+    let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().build();
+    let consensus = TestConsensus::create_from_temp_db(&config);
     let wait_handles = consensus.init();
-    let mut block = consensus.build_block_with_parents(1.into(), vec![params.genesis_hash]);
+    let mut block = consensus.build_block_with_parents(1.into(), vec![config.genesis_hash]);
     block.header.parents_by_level[0] = vec![0.into()];
     match consensus.validate_and_insert_block(block.to_immutable()).await {
         Err(RuleError::MissingParents(missing)) => {
@@ -455,10 +461,10 @@ async fn missing_parents_test() {
 // as a known invalid.
 #[tokio::test]
 async fn known_invalid_test() {
-    let params = MAINNET_PARAMS.clone_with_skip_pow();
-    let consensus = TestConsensus::create_from_temp_db(&params, true);
+    let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().build();
+    let consensus = TestConsensus::create_from_temp_db(&config);
     let wait_handles = consensus.init();
-    let mut block = consensus.build_block_with_parents(1.into(), vec![params.genesis_hash]);
+    let mut block = consensus.build_block_with_parents(1.into(), vec![config.genesis_hash]);
     block.header.timestamp -= 1;
 
     match consensus.validate_and_insert_block(block.clone().to_immutable()).await {
@@ -480,21 +486,21 @@ async fn known_invalid_test() {
 
 #[tokio::test]
 async fn median_time_test() {
-    let params = MAINNET_PARAMS.clone_with_skip_pow();
-    let consensus = TestConsensus::create_from_temp_db(&params, true);
+    let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().build();
+    let consensus = TestConsensus::create_from_temp_db(&config);
     let wait_handles = consensus.init();
 
-    let num_blocks = 2 * params.timestamp_deviation_tolerance - 1;
+    let num_blocks = 2 * config.timestamp_deviation_tolerance - 1;
     for i in 1..(num_blocks + 1) {
-        let parent = if i == 1 { params.genesis_hash } else { (i - 1).into() };
+        let parent = if i == 1 { config.genesis_hash } else { (i - 1).into() };
         let mut block = consensus.build_block_with_parents(i.into(), vec![parent]);
-        block.header.timestamp = params.genesis_timestamp + i;
+        block.header.timestamp = config.genesis_timestamp + i;
         consensus.validate_and_insert_block(block.to_immutable()).await.unwrap();
     }
 
     let mut block = consensus.build_block_with_parents((num_blocks + 2).into(), vec![num_blocks.into()]);
     // We set the timestamp to be less than the median time and expect the block to be rejected
-    block.header.timestamp = params.genesis_timestamp + num_blocks - params.timestamp_deviation_tolerance - 1;
+    block.header.timestamp = config.genesis_timestamp + num_blocks - config.timestamp_deviation_tolerance - 1;
     match consensus.validate_and_insert_block(block.to_immutable()).await {
         Err(RuleError::TimeTooOld(_, _)) => {}
         res => {
@@ -504,7 +510,7 @@ async fn median_time_test() {
 
     let mut block = consensus.build_block_with_parents((num_blocks + 3).into(), vec![num_blocks.into()]);
     // We set the timestamp to be the exact median time and expect the block to be rejected
-    block.header.timestamp = params.genesis_timestamp + num_blocks - params.timestamp_deviation_tolerance;
+    block.header.timestamp = config.genesis_timestamp + num_blocks - config.timestamp_deviation_tolerance;
     match consensus.validate_and_insert_block(block.to_immutable()).await {
         Err(RuleError::TimeTooOld(_, _)) => {}
         res => {
@@ -514,7 +520,7 @@ async fn median_time_test() {
 
     let mut block = consensus.build_block_with_parents((num_blocks + 4).into(), vec![(num_blocks).into()]);
     // We set the timestamp to be bigger than the median time and expect the block to be inserted successfully.
-    block.header.timestamp = params.genesis_timestamp + params.timestamp_deviation_tolerance + 1;
+    block.header.timestamp = config.genesis_timestamp + config.timestamp_deviation_tolerance + 1;
     consensus.validate_and_insert_block(block.to_immutable()).await.unwrap();
 
     consensus.shutdown(wait_handles);
@@ -522,20 +528,20 @@ async fn median_time_test() {
 
 #[tokio::test]
 async fn mergeset_size_limit_test() {
-    let params = MAINNET_PARAMS.clone_with_skip_pow();
-    let consensus = TestConsensus::create_from_temp_db(&params, true);
+    let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().build();
+    let consensus = TestConsensus::create_from_temp_db(&config);
     let wait_handles = consensus.init();
 
-    let num_blocks_per_chain = params.mergeset_size_limit + 1;
+    let num_blocks_per_chain = config.mergeset_size_limit + 1;
 
-    let mut tip1_hash = params.genesis_hash;
+    let mut tip1_hash = config.genesis_hash;
     for i in 1..(num_blocks_per_chain + 1) {
         let block = consensus.build_block_with_parents(i.into(), vec![tip1_hash]);
         tip1_hash = block.header.hash;
         consensus.validate_and_insert_block(block.to_immutable()).await.unwrap();
     }
 
-    let mut tip2_hash = params.genesis_hash;
+    let mut tip2_hash = config.genesis_hash;
     for i in (num_blocks_per_chain + 2)..(2 * num_blocks_per_chain + 1) {
         let block = consensus.build_block_with_parents(i.into(), vec![tip2_hash]);
         tip2_hash = block.header.hash;
@@ -545,8 +551,8 @@ async fn mergeset_size_limit_test() {
     let block = consensus.build_block_with_parents((3 * num_blocks_per_chain + 1).into(), vec![tip1_hash, tip2_hash]);
     match consensus.validate_and_insert_block(block.to_immutable()).await {
         Err(RuleError::MergeSetTooBig(a, b)) => {
-            assert_eq!(a, params.mergeset_size_limit + 1);
-            assert_eq!(b, params.mergeset_size_limit);
+            assert_eq!(a, config.mergeset_size_limit + 1);
+            assert_eq!(b, config.mergeset_size_limit);
         }
         res => {
             panic!("Unexpected result: {res:?}")
@@ -822,7 +828,11 @@ async fn json_test(file_path: &str) {
         params
     };
 
-    let consensus = TestConsensus::create_from_temp_db(&params, !proof_exists);
+    let mut config = Config::new(params);
+    if proof_exists {
+        config.process_genesis = false;
+    }
+    let consensus = TestConsensus::create_from_temp_db(&config);
     let wait_handles = consensus.init();
 
     let pruning_point = if proof_exists {
@@ -928,7 +938,11 @@ async fn json_concurrency_test(file_path: &str) {
         params
     };
 
-    let consensus = TestConsensus::create_from_temp_db(&params, !proof_exists);
+    let mut config = Config::new(params);
+    if proof_exists {
+        config.process_genesis = false;
+    }
+    let consensus = TestConsensus::create_from_temp_db(&config);
     let wait_handles = consensus.init();
 
     let pruning_point = if proof_exists {
@@ -1142,26 +1156,30 @@ fn hex_decode(src: &str) -> Vec<u8> {
 
 #[tokio::test]
 async fn bounded_merge_depth_test() {
-    let mut params = MAINNET_PARAMS.clone_with_skip_pow();
-    params.ghostdag_k = 5;
-    params.merge_depth = 7;
+    let config = ConfigBuilder::new(MAINNET_PARAMS)
+        .skip_proof_of_work()
+        .edit_consensus_params(|p| {
+            p.ghostdag_k = 5;
+            p.merge_depth = 7;
+        })
+        .build();
 
-    assert!((params.ghostdag_k as u64) < params.merge_depth, "K must be smaller than merge depth for this test to run");
+    assert!((config.ghostdag_k as u64) < config.merge_depth, "K must be smaller than merge depth for this test to run");
 
-    let consensus = TestConsensus::create_from_temp_db(&params, true);
+    let consensus = TestConsensus::create_from_temp_db(&config);
     let wait_handles = consensus.init();
 
-    let mut selected_chain = vec![params.genesis_hash];
-    for i in 1..(params.merge_depth + 3) {
+    let mut selected_chain = vec![config.genesis_hash];
+    for i in 1..(config.merge_depth + 3) {
         let hash: Hash = (i + 1).into();
         consensus.add_block_with_parents(hash, vec![*selected_chain.last().unwrap()]).await.unwrap();
         selected_chain.push(hash);
     }
 
     // The length of block_chain_2 is shorter by one than selected_chain, so selected_chain will remain the selected chain.
-    let mut block_chain_2 = vec![params.genesis_hash];
-    for i in 1..(params.merge_depth + 2) {
-        let hash: Hash = (i + params.merge_depth + 3).into();
+    let mut block_chain_2 = vec![config.genesis_hash];
+    for i in 1..(config.merge_depth + 2) {
+        let hash: Hash = (i + config.merge_depth + 3).into();
         consensus.add_block_with_parents(hash, vec![*block_chain_2.last().unwrap()]).await.unwrap();
         block_chain_2.push(hash);
     }
@@ -1197,7 +1215,7 @@ async fn bounded_merge_depth_test() {
         .unwrap();
 
     // We extend the selected chain until kosherizing_hash will be red from the virtual POV.
-    for i in 0..params.ghostdag_k {
+    for i in 0..config.ghostdag_k {
         let hash = Hash::from_u64_word(i as u64 * 1000);
         consensus.add_block_with_parents(hash, vec![*selected_chain.last().unwrap()]).await.unwrap();
         selected_chain.push(hash);
@@ -1238,15 +1256,18 @@ async fn difficulty_test() {
         Uint256::from_compact_target_bits(a).cmp(&Uint256::from_compact_target_bits(b))
     }
 
-    let mut params = MAINNET_PARAMS.clone_with_skip_pow();
-    params.ghostdag_k = 1;
-    params.difficulty_window_size = 140;
-
-    let consensus = TestConsensus::create_from_temp_db(&params, true);
+    let config = ConfigBuilder::new(MAINNET_PARAMS)
+        .skip_proof_of_work()
+        .edit_consensus_params(|p| {
+            p.ghostdag_k = 1;
+            p.difficulty_window_size = 140;
+        })
+        .build();
+    let consensus = TestConsensus::create_from_temp_db(&config);
     let wait_handles = consensus.init();
 
     let fake_genesis = Header {
-        hash: params.genesis_hash,
+        hash: config.genesis_hash,
         version: 0,
         parents_by_level: vec![],
         hash_merkle_root: 0.into(),
@@ -1262,19 +1283,19 @@ async fn difficulty_test() {
     };
 
     let mut tip = fake_genesis;
-    for _ in 0..params.difficulty_window_size {
+    for _ in 0..config.difficulty_window_size {
         tip = add_block(&consensus, None, vec![tip.hash]).await;
-        assert_eq!(tip.bits, params.genesis_bits, "until first DAA window is created difficulty should remains unchanged");
+        assert_eq!(tip.bits, config.genesis_bits, "until first DAA window is created difficulty should remains unchanged");
     }
 
-    for _ in 0..params.difficulty_window_size + 10 {
+    for _ in 0..config.difficulty_window_size + 10 {
         tip = add_block(&consensus, None, vec![tip.hash]).await;
-        assert_eq!(tip.bits, params.genesis_bits, "block rate wasn't changed so difficulty is not expected to change");
+        assert_eq!(tip.bits, config.genesis_bits, "block rate wasn't changed so difficulty is not expected to change");
     }
 
     let block_in_the_past = add_block_with_min_time(&consensus, vec![tip.hash]).await;
     assert_eq!(
-        block_in_the_past.bits, params.genesis_bits,
+        block_in_the_past.bits, config.genesis_bits,
         "block_in_the_past shouldn't affect its own difficulty, but only its future"
     );
     tip = block_in_the_past;
@@ -1282,7 +1303,7 @@ async fn difficulty_test() {
     assert_eq!(tip.bits, 0x1d02c50f); // TODO: Check that it makes sense
 
     // Increase block rate to increase difficulty
-    for _ in 0..params.difficulty_window_size {
+    for _ in 0..config.difficulty_window_size {
         let prev_bits = tip.bits;
         tip = add_block_with_min_time(&consensus, vec![tip.hash]).await;
         assert!(
@@ -1293,7 +1314,7 @@ async fn difficulty_test() {
 
     // Add blocks until difficulty stabilizes
     let mut same_bits_count = 0;
-    while same_bits_count < params.difficulty_window_size + 1 {
+    while same_bits_count < config.difficulty_window_size + 1 {
         let prev_bits = tip.bits;
         tip = add_block(&consensus, None, vec![tip.hash]).await;
         if tip.bits == prev_bits {
@@ -1303,7 +1324,7 @@ async fn difficulty_test() {
         }
     }
 
-    let slow_block_time = tip.timestamp + params.target_time_per_block + 1000;
+    let slow_block_time = tip.timestamp + config.target_time_per_block + 1000;
     let slow_block = add_block(&consensus, Some(slow_block_time), vec![tip.hash]).await;
     let slow_block_bits = slow_block.bits;
     assert_eq!(slow_block.bits, tip.bits, "The difficulty should change only when slow_block is in the past");
@@ -1323,7 +1344,7 @@ async fn difficulty_test() {
     // blocks in its past and one without.
     let split_hash = tip.hash;
     let mut blue_tip_hash = split_hash;
-    for _ in 0..params.difficulty_window_size {
+    for _ in 0..config.difficulty_window_size {
         blue_tip_hash = add_block(&consensus, None, vec![blue_tip_hash]).await.hash;
     }
 
@@ -1346,7 +1367,7 @@ async fn difficulty_test() {
     // out the red blocks from the window, and check that the red blocks don't
     // affect the difficulty.
     blue_tip_hash = split_hash;
-    for _ in 0..params.difficulty_window_size + RED_CHAIN_LEN + 1 {
+    for _ in 0..config.difficulty_window_size + RED_CHAIN_LEN + 1 {
         blue_tip_hash = add_block(&consensus, None, vec![blue_tip_hash]).await.hash;
     }
 

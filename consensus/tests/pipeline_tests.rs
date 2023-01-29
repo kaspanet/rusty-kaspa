@@ -1,4 +1,5 @@
 use consensus::{
+    config::ConfigBuilder,
     consensus::test_consensus::{create_temp_db, TestConsensus},
     model::stores::reachability::{DbReachabilityStore, StagingReachabilityStore},
     params::MAINNET_PARAMS,
@@ -80,11 +81,8 @@ fn test_reachability_staging() {
 #[tokio::test]
 async fn test_concurrent_pipeline() {
     let (_temp_db_lifetime, db) = create_temp_db();
-
-    let mut params = MAINNET_PARAMS.clone_with_skip_pow();
-    params.genesis_hash = 1.into();
-
-    let consensus = TestConsensus::new(db, &params, true);
+    let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().edit_consensus_params(|p| p.genesis_hash = 1.into()).build();
+    let consensus = TestConsensus::new(db, &config);
     let wait_handles = consensus.init();
 
     let blocks = vec![
@@ -153,17 +151,14 @@ async fn test_concurrent_pipeline_random() {
     let mut thread_rng = rand::thread_rng();
 
     let (_temp_db_lifetime, db) = create_temp_db();
-
-    let mut params = MAINNET_PARAMS.clone_with_skip_pow();
-    params.genesis_hash = genesis;
-
-    let consensus = TestConsensus::new(db, &params, true);
+    let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().edit_consensus_params(|p| p.genesis_hash = genesis).build();
+    let consensus = TestConsensus::new(db, &config);
     let wait_handles = consensus.init();
 
     let mut tips = vec![genesis];
     let mut total = 1000i64;
     while total > 0 {
-        let v = min(params.max_block_parents as i64, poi.sample(&mut thread_rng) as i64);
+        let v = min(config.max_block_parents as i64, poi.sample(&mut thread_rng) as i64);
         if v == 0 {
             continue;
         }

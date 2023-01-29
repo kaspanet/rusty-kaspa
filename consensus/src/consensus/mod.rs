@@ -1,10 +1,8 @@
 pub mod test_consensus;
 
 use crate::{
-    constants::{
-        perf::{PerfParams, PERF_PARAMS},
-        store_names,
-    },
+    config::Config,
+    constants::store_names,
     errors::{BlockProcessResult, RuleError},
     model::{
         services::{reachability::MTReachabilityService, relations::MTRelationsService, statuses::MTStatusesService},
@@ -30,7 +28,6 @@ use crate::{
             DB,
         },
     },
-    params::Params,
     pipeline::{
         body_processor::BlockBodyProcessor,
         deps_manager::{BlockResultSender, BlockTask, MaybeTrustedBlock},
@@ -134,11 +131,9 @@ pub struct Consensus {
 }
 
 impl Consensus {
-    pub fn new(db: Arc<DB>, params: &Params, process_genesis: bool) -> Self {
-        Self::with_perf_params(db, params, &PERF_PARAMS, process_genesis)
-    }
-
-    pub fn with_perf_params(db: Arc<DB>, params: &Params, perf_params: &PerfParams, process_genesis: bool) -> Self {
+    pub fn new(db: Arc<DB>, config: &Config) -> Self {
+        let params = &config.params;
+        let perf_params = &config.perf;
         //
         // Stores
         //
@@ -322,7 +317,7 @@ impl Consensus {
             body_sender,
             block_processors_pool.clone(),
             params,
-            process_genesis,
+            config.process_genesis,
             db.clone(),
             relations_stores.clone(),
             reachability_store.clone(),
@@ -363,14 +358,14 @@ impl Consensus {
             past_median_time_manager.clone(),
             params.max_block_mass,
             params.genesis_hash,
-            process_genesis,
+            config.process_genesis,
         ));
 
         let virtual_processor = Arc::new(VirtualStateProcessor::new(
             virtual_receiver,
             virtual_pool,
             params,
-            process_genesis,
+            config.process_genesis,
             db.clone(),
             statuses_store.clone(),
             ghostdag_store.clone(),

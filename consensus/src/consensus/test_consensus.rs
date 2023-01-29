@@ -24,6 +24,7 @@ use parking_lot::RwLock;
 use std::future::Future;
 
 use crate::{
+    config::Config,
     constants::TX_VERSION,
     errors::BlockProcessResult,
     model::stores::{
@@ -49,21 +50,17 @@ pub struct TestConsensus {
 }
 
 impl TestConsensus {
-    pub fn new(db: Arc<DB>, params: &Params, process_genesis: bool) -> Self {
-        Self {
-            consensus: Arc::new(Consensus::new(db, params, process_genesis)),
-            params: params.clone(),
-            temp_db_lifetime: Default::default(),
-        }
+    pub fn new(db: Arc<DB>, config: &Config) -> Self {
+        Self { consensus: Arc::new(Consensus::new(db, config)), params: config.params.clone(), temp_db_lifetime: Default::default() }
     }
 
     pub fn consensus(&self) -> Arc<Consensus> {
         self.consensus.clone()
     }
 
-    pub fn create_from_temp_db(params: &Params, process_genesis: bool) -> Self {
+    pub fn create_from_temp_db(config: &Config) -> Self {
         let (temp_db_lifetime, db) = create_temp_db();
-        Self { consensus: Arc::new(Consensus::new(db, params, process_genesis)), params: params.clone(), temp_db_lifetime }
+        Self { consensus: Arc::new(Consensus::new(db, config)), params: config.params.clone(), temp_db_lifetime }
     }
 
     pub fn build_header_with_parents(&self, hash: Hash, parents: Vec<Hash>) -> Header {
