@@ -6,8 +6,10 @@ use consensus_core::tx::ScriptPublicKeys;
 use crate::model::UtxoSetByScriptPublicKey;
 
 pub trait UtxoIndexApi: Send + Sync {
+    // /retrieve circulating supply.
     fn get_circulating_supply(&self) -> StoreResult<u64>;
 
+    /// retrieve utxos by scipt public keys.
     fn get_utxos_by_script_public_keys(&self, script_public_keys: ScriptPublicKeys) -> StoreResult<UtxoSetByScriptPublicKey>;
 
     /// this is new compared to go-kaspad, and retives all utxos saved in the utxoindex.

@@ -7,6 +7,7 @@ use consensus::model::stores::errors::StoreError;
 
 use crate::notify::UtxoIndexNotification;
 
+///Errors originating from the [`UtxoIndex`].
 #[derive(Error, Debug)]
 pub enum UtxoIndexError {
     #[error("utxoindex error: {0}")]
