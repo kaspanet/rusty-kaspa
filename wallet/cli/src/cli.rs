@@ -95,8 +95,17 @@ impl WalletCli {
                 self.wallet.sweep().await?;
             }
             Action::SubscribeDaaScore => {
-                let response = self.wallet.subscribe_daa_score().await?;
-                term.writeln(response);
+                let listener = self.wallet.subscribe_daa_score().await?;
+                workflow_core::task::spawn(async move{
+                    let term = term;
+                    let channel = listener.recv_channel;
+                    while let Ok(notification) = channel.recv().await{
+                        log_trace!("DAA notification: {:?}", notification);
+                        //sender.send(notification)
+                        term.writeln(format!("{notification:#?}").replace("\n", "\n\r"));
+                    }
+                });
+                
             }
         }
 
@@ -147,6 +156,7 @@ pub async fn kaspa_wallet_cli(options: TerminalOptions) -> Result<()> {
     let term = Arc::new(Terminal::try_new_with_options(cli.clone(), options)?);
     term.init().await?;
 
+    #[cfg(not(target_arch="wasm32"))]
     workflow_log::pipe(Some(cli.clone()));
 
     term.writeln("Kaspa Cli Wallet (type 'help' for list of commands)");

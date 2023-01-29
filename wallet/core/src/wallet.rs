@@ -6,9 +6,10 @@ use rpc_core::{
         rpc::RpcApi,
         ops::SubscribeCommand
     },
+    notify::listener::ListenerReceiverSide,
     NotificationType
 };
-use workflow_log::log_trace;
+//use workflow_log::log_trace;
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -53,7 +54,8 @@ impl Wallet {
         Ok(format!("{v:#?}").replace('\n', "\r\n"))
     }
 
-    pub async fn subscribe_daa_score(&self) -> Result<String> {
+    pub async fn subscribe_daa_score(&self) -> Result<ListenerReceiverSide> {
+        //let channel = NotificationChannel::default();
         let listener = self.rpc.register_new_listener(None);
 
         self.rpc.execute_subscribe_command(
@@ -62,14 +64,10 @@ impl Wallet {
             SubscribeCommand::Start
         ).await?;
 
-        workflow_core::task::spawn(async move{
-            let channel = listener.recv_channel;
-            while let Ok(notification) = channel.recv().await{
-                log_trace!("DAA notification: {:?}", notification);
-            }
-        });
+        //let receiver = channel.receiver();
+        //let sender = channel.sender();
 
-        Ok("subscribe-daa-score".to_string())
+        Ok(listener)
     }
 
     pub async fn ping(&self, _msg: String) -> Result<String> {
