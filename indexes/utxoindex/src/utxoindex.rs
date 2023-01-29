@@ -163,7 +163,7 @@ impl UtxoIndex {
         let utxoindex_tips = self.stores.get_tips();
         match utxoindex_tips {
             Ok(utxoindex_tips) => {
-                let consensus_tips = BlockHashSet::from_iter(self.cons.clone().get_virtual_state_tips()); //TODO: when querying consensus stores is possible
+                let consensus_tips = BlockHashSet::from_iter(self.cons.clone().get_virtual_state_tips());
                 let res = *utxoindex_tips == consensus_tips;
                 trace!("utxoindex sync status is {}", res);
                 Ok(res)
