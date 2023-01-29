@@ -6,7 +6,7 @@ use consensus::model::stores::{
     DB,
 };
 
-use crate::external::model::{CirculatingSupply, CirculatingSupplyDiff};
+use crate::model::{CirculatingSupply, CirculatingSupplyDiff};
 
 /// Reader API for `UtxoIndexTipsStore`.
 pub trait CirculatingSupplyStoreReader {

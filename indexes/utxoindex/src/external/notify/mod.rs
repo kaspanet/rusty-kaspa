@@ -1,4 +1,4 @@
-use super::model::UtxoSetByScriptPublicKey;
+use crate::model::UtxoSetByScriptPublicKey;
 
 #[derive(Debug, Clone)]
 ///Notifications emitted by the UtxoIndex

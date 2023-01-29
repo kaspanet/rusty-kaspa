@@ -1,26 +1,18 @@
-use consensus_core::notify::VirtualChangeSetNotification;
-use consensus_core::tx::{TransactionOutpoint, UtxoEntry};
-use consensus_core::utxo::utxo_collection::UtxoCollection;
-use consensus_core::{BlockHashSet, HashMapCustomHasher};
+use consensus_core::{
+    notify::VirtualChangeSetNotification,
+    tx::{TransactionOutpoint, UtxoEntry},
+    utxo::utxo_collection::UtxoCollection,
+    BlockHashSet, HashMapCustomHasher,
+};
 use hashes::Hash;
 use std::collections::hash_map::Entry;
 
-use crate::external::model::{CirculatingSupplyDiff, CompactUtxoCollection, CompactUtxoEntry, UtxoSetByScriptPublicKey};
-use crate::external::notify::UtxosChangedNotification;
-use crate::model::CirculatingSupply;
-
-///A struct holding UTXO changes to the utxoindex.
-#[derive(Debug, Clone)]
-pub struct UTXOChanges {
-    pub added: UtxoSetByScriptPublicKey,
-    pub removed: UtxoSetByScriptPublicKey,
-}
-
-impl UTXOChanges {
-    pub fn new(added: UtxoSetByScriptPublicKey, removed: UtxoSetByScriptPublicKey) -> Self {
-        Self { added, removed }
-    }
-}
+use crate::{
+    model::{
+        CirculatingSupply, CirculatingSupplyDiff, CompactUtxoCollection, CompactUtxoEntry, UTXOChanges, UtxoSetByScriptPublicKey,
+    },
+    notify::UtxosChangedNotification,
+};
 
 /// A struct holding all changes to the utxoindex.
 /// changes are computed as entries are inserted or conversion from virtual changed set happens.

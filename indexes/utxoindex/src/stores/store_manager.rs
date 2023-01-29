@@ -1,18 +1,18 @@
+use parking_lot::RwLock;
 use std::sync::Arc;
 
 use consensus::model::stores::{errors::StoreError, DB};
 use consensus_core::{tx::ScriptPublicKeys, BlockHashSet};
-use log::trace;
-use parking_lot::RwLock;
+use kaspa_core::trace;
 
 use crate::{
-    external::{errors::UtxoIndexError, model::UtxoSetByScriptPublicKey},
+    errors::UtxoIndexError,
+    model::{UTXOChanges, UtxoSetByScriptPublicKey},
     stores::{
         indexed_utxos::{DbUtxoSetByScriptPublicKeyStore, UtxoSetByScriptPublicKeyStore, UtxoSetByScriptPublicKeyStoreReader},
         supply::{CirculatingSupplyStore, CirculatingSupplyStoreReader, DbCirculatingSupplyStore},
         tips::{DbUtxoIndexTipsStore, UtxoIndexTipsStore, UtxoIndexTipsStoreReader},
     },
-    update_container::UTXOChanges,
 };
 
 #[derive(Clone)]

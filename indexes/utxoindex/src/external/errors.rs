@@ -1,11 +1,11 @@
 use async_std::channel::{RecvError, SendError};
-use consensus::model::stores::errors::StoreError;
-use rocksdb::Error as RDBError;
+use rocksdb::Error as DBError;
 use std::io;
-
 use thiserror::Error;
 
-use super::notify::UtxoIndexNotification;
+use consensus::model::stores::errors::StoreError;
+
+use crate::notify::UtxoIndexNotification;
 
 #[derive(Error, Debug)]
 pub enum UtxoIndexError {
@@ -19,7 +19,7 @@ pub enum UtxoIndexError {
     DBResetError(#[from] io::Error),
 
     #[error("utxoindex error: {0}")]
-    DBDestroyError(#[from] RDBError),
+    DBDestroyError(#[from] DBError),
 
     #[error("utxoindex error: {0}")]
     SendError(#[from] SendError<UtxoIndexNotification>),

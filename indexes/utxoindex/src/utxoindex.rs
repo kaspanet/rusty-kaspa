@@ -1,22 +1,29 @@
-use consensus::model::stores::errors::StoreResult;
-use consensus::model::stores::{errors::StoreError, DB};
-use consensus_core::tx::{ScriptPublicKeys, TransactionOutpoint};
+use async_std::channel::{unbounded, Receiver, Sender};
+use futures::{select, FutureExt};
 use std::sync::Arc;
-
-use consensus_core::notify::ConsensusNotification;
-use consensus_core::{api::DynConsensus, notify::VirtualChangeSetNotification, BlockHashSet};
-use kaspa_core::trace;
 use triggered::{Listener, Trigger};
 
-use crate::external::api::UtxoIndexApi;
-use crate::external::errors::UtxoIndexError;
-use crate::external::model::{CirculatingSupply, UtxoSetByScriptPublicKey};
-use crate::external::notify::UtxoIndexNotification;
-use crate::stores::store_manager::StoreManager;
-use crate::update_container::UtxoIndexChanges;
-use async_std::channel::{unbounded as unbounded_async_std, Receiver as AsyncStdReceiver, Sender as AsyncStdSender};
-//use tokio::{sync::mpsc::UnboundedReceiver as TokioUnboundedReceiver, task::JoinError};
-use futures::{select, FutureExt};
+use consensus::model::stores::{
+    errors::{StoreError, StoreResult},
+    DB,
+};
+use consensus_core::{
+    api::DynConsensus,
+    notify::ConsensusNotification,
+    notify::VirtualChangeSetNotification,
+    tx::{ScriptPublicKeys, TransactionOutpoint},
+    BlockHashSet,
+};
+use kaspa_core::trace;
+
+use crate::{
+    api::UtxoIndexApi,
+    errors::UtxoIndexError,
+    model::{CirculatingSupply, UtxoSetByScriptPublicKey},
+    notify::UtxoIndexNotification,
+    stores::store_manager::StoreManager,
+    update_container::UtxoIndexChanges,
+};
 
 const RESYNC_CHUNK_SIZE: usize = 1_000;
 
@@ -24,10 +31,10 @@ const RESYNC_CHUNK_SIZE: usize = 1_000;
 #[derive(Clone)]
 pub struct UtxoIndex {
     cons: DynConsensus,
-    consensus_recv: AsyncStdReceiver<ConsensusNotification>,
-    rpc_sender: AsyncStdSender<UtxoIndexNotification>,
+    consensus_recv: Receiver<ConsensusNotification>,
+    rpc_sender: Sender<UtxoIndexNotification>,
 
-    pub rpc_receiver: AsyncStdReceiver<UtxoIndexNotification>,
+    pub rpc_receiver: Receiver<UtxoIndexNotification>,
 
     shutdown_trigger: Trigger,
     pub shutdown_listener: Listener,
@@ -40,11 +47,11 @@ pub struct UtxoIndex {
 
 impl UtxoIndex {
     /// creates a new [`UtxoIndex`] listening to the passed consensus, and consensus receiver.
-    pub fn new(cons: DynConsensus, db: Arc<DB>, consensus_recv: AsyncStdReceiver<ConsensusNotification>) -> Self {
+    pub fn new(cons: DynConsensus, db: Arc<DB>, consensus_recv: Receiver<ConsensusNotification>) -> Self {
         let (shutdown_trigger, shutdown_listener) = triggered::trigger();
         let (shutdown_finalized_trigger, shutdown_finalized_listener) = triggered::trigger();
-        let (rpc_sender, rpc_receiver): (AsyncStdSender<UtxoIndexNotification>, AsyncStdReceiver<UtxoIndexNotification>) =
-            unbounded_async_std::<UtxoIndexNotification>();
+        let (rpc_sender, rpc_receiver): (Sender<UtxoIndexNotification>, Receiver<UtxoIndexNotification>) =
+            unbounded::<UtxoIndexNotification>();
         Self {
             cons,
             consensus_recv,

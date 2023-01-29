@@ -1,6 +1,9 @@
-use kaspa_core::task::service::{AsyncService, AsyncServiceFuture};
-use log::trace;
 use std::sync::Arc;
+
+use kaspa_core::{
+    task::service::{AsyncService, AsyncServiceFuture},
+    trace,
+};
 
 use crate::UtxoIndex;
 

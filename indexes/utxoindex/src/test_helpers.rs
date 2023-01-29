@@ -1,15 +1,15 @@
 use async_std::channel::{unbounded, Receiver, Sender};
+use hashes::{Hash, HASH_SIZE};
+use rand::{seq::SliceRandom, Rng};
+
 use consensus_core::{
     notify::{ConsensusNotification, PruningPointUTXOSetOverrideNotification, VirtualChangeSetNotification},
     tx::{ScriptPublicKey, ScriptVec, TransactionOutpoint, UtxoEntry},
     utxo::utxo_collection::UtxoCollection,
     BlockHashSet, HashMapCustomHasher,
 };
-use hashes::{Hash, HASH_SIZE};
-use rand::seq::SliceRandom;
-use rand::Rng;
 
-use crate::external::model::{CirculatingSupply, CirculatingSupplyDiff};
+use crate::model::{CirculatingSupply, CirculatingSupplyDiff};
 
 // TODO: this is an ineffecient, Ad-hoc testing helper / platform which emulates virtual changes with random bytes,
 // remove all this, and rework testing when proper simulation is possible with test / sim consensus.

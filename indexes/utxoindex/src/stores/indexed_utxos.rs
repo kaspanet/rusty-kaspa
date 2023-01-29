@@ -1,7 +1,4 @@
-use crate::{
-    external::model::{CompactUtxoCollection, CompactUtxoEntry, UtxoSetByScriptPublicKey},
-    update_container::UTXOChanges,
-};
+use crate::external::model::{CompactUtxoCollection, CompactUtxoEntry, UTXOChanges, UtxoSetByScriptPublicKey};
 
 use consensus::model::stores::{
     database::prelude::{CachedDbAccess, DirectDbWriter},

@@ -1,24 +1,26 @@
-use consensus::consensus::test_consensus::{create_temp_db, TestConsensus};
-use consensus::model::stores::utxo_set::UtxoSetStore;
-use consensus::model::stores::virtual_state::VirtualState;
-use consensus::model::stores::virtual_state::VirtualStateStore;
-use consensus::params::DEVNET_PARAMS;
-use consensus_core::api::ConsensusApi;
-use consensus_core::utxo::utxo_collection::UtxoCollection;
-use consensus_core::utxo::utxo_diff::UtxoDiff;
-use consensus_core::BlockHashSet;
 use rand::Rng;
-use std::collections::HashSet;
-use std::sync::Arc;
-use std::time::Instant;
+use std::{collections::HashSet, sync::Arc, time::Instant};
 use tokio::{
     test,
     time::{sleep, Duration},
 };
-use utxoindex::api::UtxoIndexApi;
-use utxoindex::model::CirculatingSupply;
-use utxoindex::notify::UtxoIndexNotification;
-use utxoindex::{UtxoIndex, VirtualChangeEmulator};
+
+use consensus::{
+    consensus::test_consensus::{create_temp_db, TestConsensus},
+    model::stores::{
+        utxo_set::UtxoSetStore,
+        virtual_state::{VirtualState, VirtualStateStore},
+    },
+    params::DEVNET_PARAMS,
+};
+
+use consensus_core::{
+    api::ConsensusApi,
+    utxo::{utxo_collection::UtxoCollection, utxo_diff::UtxoDiff},
+    BlockHashSet,
+};
+
+use utxoindex::{api::UtxoIndexApi, model::CirculatingSupply, notify::UtxoIndexNotification, UtxoIndex, VirtualChangeEmulator};
 
 /// This test uses an ad hoc, ineffecient anda preliminary testing platform, utilizing a custom virtual change emulator.
 /// TODO: use proper simnet when implemented.

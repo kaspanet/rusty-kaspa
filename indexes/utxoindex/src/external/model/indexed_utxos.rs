@@ -1,11 +1,7 @@
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use consensus_core::tx::TransactionOutpoint;
-
-use consensus_core::tx::ScriptPublicKey;
-
-use consensus_core::tx::UtxoEntry;
-use serde::{Deserialize, Serialize};
+use consensus_core::tx::{ScriptPublicKey, TransactionOutpoint, UtxoEntry};
 
 //TODO: explore potential optimization via custom TransactionOutpoint hasher for below,
 //One possible implementation: u64 of transaction id xored with 4 bytes of transaction index.
@@ -30,5 +26,18 @@ impl CompactUtxoEntry {
 impl From<UtxoEntry> for CompactUtxoEntry {
     fn from(utxo_entry: UtxoEntry) -> Self {
         Self { amount: utxo_entry.amount, block_daa_score: utxo_entry.block_daa_score, is_coinbase: utxo_entry.is_coinbase }
+    }
+}
+
+///A struct holding UTXO changes to the utxoindex.
+#[derive(Debug, Clone)]
+pub struct UTXOChanges {
+    pub added: UtxoSetByScriptPublicKey,
+    pub removed: UtxoSetByScriptPublicKey,
+}
+
+impl UTXOChanges {
+    pub fn new(added: UtxoSetByScriptPublicKey, removed: UtxoSetByScriptPublicKey) -> Self {
+        Self { added, removed }
     }
 }
