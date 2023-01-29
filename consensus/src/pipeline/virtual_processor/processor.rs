@@ -292,7 +292,7 @@ impl VirtualStateProcessor {
                         // TODO: AcceptanceData
                     }
                 }
-                Err(err) => panic!("unexpected error {}", err),
+                Err(err) => panic!("unexpected error {err}"),
             }
         }
 
@@ -360,7 +360,7 @@ impl VirtualStateProcessor {
             BlockStatus::StatusDisqualifiedFromChain => {
                 // TODO: this means another chain needs to be checked
             }
-            _ => panic!("expected utxo valid or disqualified {}", new_selected),
+            _ => panic!("expected utxo valid or disqualified {new_selected}"),
         }
 
         // TODO: Make a separate pruning processor and send to its channel here
@@ -646,14 +646,14 @@ impl VirtualStateProcessor {
                         // If already exists, make sure the store was initialized correctly
                         match self.past_pruning_points_store.get(0) {
                             Ok(hash) => assert_eq!(hash, self.genesis_hash, "first pruning point is not genesis"),
-                            Err(err) => panic!("unexpected error {}", err),
+                            Err(err) => panic!("unexpected error {err}"),
                         }
                     }
-                    Err(err) => panic!("unexpected store error {}", err),
+                    Err(err) => panic!("unexpected store error {err}"),
                 }
             }
             StatusUTXOValid => {}
-            _ => panic!("unexpected genesis status {:?}", status),
+            _ => panic!("unexpected genesis status {status:?}"),
         }
     }
 }

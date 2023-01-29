@@ -7,6 +7,7 @@ use crate::{
     coinbase::MinerData,
     errors::{
         block::{BlockProcessResult, RuleError},
+        coinbase::CoinbaseResult,
         tx::TxResult,
     },
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
@@ -37,6 +38,8 @@ pub trait ConsensusApi: Send + Sync {
         from_outpoint: Option<TransactionOutpoint>,
         chunk_size: usize,
     ) -> Vec<(TransactionOutpoint, UtxoEntry)>;
+    
+    fn modify_coinbase_payload(self: Arc<Self>, payload: Vec<u8>, miner_data: &MinerData) -> CoinbaseResult<Vec<u8>>;
 }
 
 pub type DynConsensus = Arc<dyn ConsensusApi>;

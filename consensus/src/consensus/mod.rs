@@ -53,6 +53,8 @@ use consensus_core::{
     errors::tx::TxResult,
     notify::ConsensusNotification,
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
+    errors::{coinbase::CoinbaseResult, tx::TxResult},
+    tx::{MutableTransaction, Transaction},
     BlockHashSet,
 };
 use crossbeam_channel::{unbounded as unbounded_crossbeam, Receiver as CrossbeamReceiver, Sender as CrossbeamSender};
@@ -268,7 +270,7 @@ impl Consensus {
         let block_processors_pool = Arc::new(
             rayon::ThreadPoolBuilder::new()
                 .num_threads(perf_params.block_processors_num_threads)
-                .thread_name(|i| format!("block-pool-{}", i))
+                .thread_name(|i| format!("block-pool-{i}"))
                 .build()
                 .unwrap(),
         );
@@ -278,7 +280,7 @@ impl Consensus {
         let virtual_pool = Arc::new(
             rayon::ThreadPoolBuilder::new()
                 .num_threads(perf_params.virtual_processor_num_threads)
-                .thread_name(|i| format!("virtual-pool-{}", i))
+                .thread_name(|i| format!("virtual-pool-{i}"))
                 .build()
                 .unwrap(),
         );
@@ -492,6 +494,10 @@ impl ConsensusApi for Consensus {
         let virtual_stores = self.virtual_processor.virtual_stores.read();
         let iter = virtual_stores.utxo_set.from_iterator(from_outpoint, chunk_size);
         iter.map(|item| item.unwrap()).collect()
+    }
+    
+    fn modify_coinbase_payload(self: Arc<Self>, payload: Vec<u8>, miner_data: &MinerData) -> CoinbaseResult<Vec<u8>> {
+        self.coinbase_manager.modify_coinbase_payload(payload, miner_data)
     }
 }
 

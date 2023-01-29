@@ -16,6 +16,8 @@ members = [
     "indexes/utxoindex",
     "rpc/core",
     "rpc/grpc",
+    "mining",
+    "p2p",
 ]
 
 [workspace.package]
@@ -42,6 +44,7 @@ utxoindex = { path = "indexes/utxoindex" }
 kaspa-utils = { path = "utils" }
 rpc-core = { path = "rpc/core" }
 rpc-grpc = { path = "rpc/grpc" }
+mining = { path = "mining" }
 
 thiserror = "1"
 faster-hex = "0.6"

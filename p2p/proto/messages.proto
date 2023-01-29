@@ -1,0 +1,151 @@
+syntax = "proto3";
+package protowire;
+
+option go_package = "github.com/kaspanet/kaspad/protowire";
+
+import "p2p.proto";
+import "rpc.proto";
+
+message KaspadMessage {
+  oneof payload {
+    AddressesMessage addresses = 1;
+    BlockMessage block = 2;
+    TransactionMessage transaction = 3;
+    BlockLocatorMessage blockLocator = 5;
+    RequestAddressesMessage requestAddresses = 6;
+    RequestRelayBlocksMessage requestRelayBlocks = 10;
+    RequestTransactionsMessage requestTransactions = 12;
+    BlockMessage ibdBlock = 13;
+    InvRelayBlockMessage invRelayBlock = 14;
+    InvTransactionsMessage invTransactions = 15;
+    PingMessage ping = 16;
+    PongMessage pong = 17;
+    VerackMessage verack = 19;
+    VersionMessage version = 20;
+    TransactionNotFoundMessage transactionNotFound = 21;
+    RejectMessage reject = 22;
+    PruningPointUtxoSetChunkMessage pruningPointUtxoSetChunk = 25;
+    RequestIBDBlocksMessage requestIBDBlocks = 26;
+    UnexpectedPruningPointMessage unexpectedPruningPoint = 27;
+    IbdBlockLocatorMessage ibdBlockLocator = 30;
+    IbdBlockLocatorHighestHashMessage ibdBlockLocatorHighestHash = 31;
+    RequestNextPruningPointUtxoSetChunkMessage requestNextPruningPointUtxoSetChunk = 33;
+    DonePruningPointUtxoSetChunksMessage donePruningPointUtxoSetChunks = 34;
+    IbdBlockLocatorHighestHashNotFoundMessage ibdBlockLocatorHighestHashNotFound = 35;
+    BlockWithTrustedDataMessage blockWithTrustedData = 36;
+    DoneBlocksWithTrustedDataMessage doneBlocksWithTrustedData = 37;
+    RequestPruningPointAndItsAnticoneMessage requestPruningPointAndItsAnticone = 40;
+    BlockHeadersMessage blockHeaders = 41;
+    RequestNextHeadersMessage requestNextHeaders = 42;
+    DoneHeadersMessage DoneHeaders = 43;
+    RequestPruningPointUTXOSetMessage requestPruningPointUTXOSet = 44;
+    RequestHeadersMessage requestHeaders = 45;
+    RequestBlockLocatorMessage requestBlockLocator = 46;
+    PruningPointsMessage pruningPoints = 47;
+    RequestPruningPointProofMessage requestPruningPointProof = 48;
+    PruningPointProofMessage pruningPointProof = 49;
+    ReadyMessage ready = 50;
+    BlockWithTrustedDataV4Message blockWithTrustedDataV4 = 51;
+    TrustedDataMessage trustedData = 52;
+    RequestIBDChainBlockLocatorMessage requestIBDChainBlockLocator = 53;
+    IbdChainBlockLocatorMessage ibdChainBlockLocator = 54;
+    RequestAnticoneMessage requestAnticone = 55;
+    RequestNextPruningPointAndItsAnticoneBlocksMessage requestNextPruningPointAndItsAnticoneBlocks = 56;
+
+    GetCurrentNetworkRequestMessage getCurrentNetworkRequest = 1001;
+    GetCurrentNetworkResponseMessage getCurrentNetworkResponse = 1002;
+    SubmitBlockRequestMessage submitBlockRequest = 1003;
+    SubmitBlockResponseMessage submitBlockResponse = 1004;
+    GetBlockTemplateRequestMessage getBlockTemplateRequest = 1005;
+    GetBlockTemplateResponseMessage getBlockTemplateResponse = 1006;
+    NotifyBlockAddedRequestMessage notifyBlockAddedRequest = 1007;
+    NotifyBlockAddedResponseMessage notifyBlockAddedResponse = 1008;
+    BlockAddedNotificationMessage blockAddedNotification = 1009;
+    GetPeerAddressesRequestMessage getPeerAddressesRequest = 1010;
+    GetPeerAddressesResponseMessage getPeerAddressesResponse = 1011;
+    GetSelectedTipHashRequestMessage getSelectedTipHashRequest = 1012;
+    GetSelectedTipHashResponseMessage getSelectedTipHashResponse = 1013;
+    GetMempoolEntryRequestMessage getMempoolEntryRequest = 1014;
+    GetMempoolEntryResponseMessage getMempoolEntryResponse = 1015;
+    GetConnectedPeerInfoRequestMessage getConnectedPeerInfoRequest = 1016;
+    GetConnectedPeerInfoResponseMessage getConnectedPeerInfoResponse = 1017;
+    AddPeerRequestMessage addPeerRequest = 1018;
+    AddPeerResponseMessage addPeerResponse = 1019;
+    SubmitTransactionRequestMessage submitTransactionRequest = 1020;
+    SubmitTransactionResponseMessage submitTransactionResponse = 1021;
+    NotifyVirtualSelectedParentChainChangedRequestMessage notifyVirtualSelectedParentChainChangedRequest = 1022;
+    NotifyVirtualSelectedParentChainChangedResponseMessage notifyVirtualSelectedParentChainChangedResponse = 1023;
+    VirtualSelectedParentChainChangedNotificationMessage virtualSelectedParentChainChangedNotification = 1024;
+    GetBlockRequestMessage getBlockRequest = 1025;
+    GetBlockResponseMessage getBlockResponse = 1026;
+    GetSubnetworkRequestMessage getSubnetworkRequest = 1027;
+    GetSubnetworkResponseMessage getSubnetworkResponse = 1028;
+    GetVirtualSelectedParentChainFromBlockRequestMessage getVirtualSelectedParentChainFromBlockRequest = 1029;
+    GetVirtualSelectedParentChainFromBlockResponseMessage getVirtualSelectedParentChainFromBlockResponse = 1030;
+    GetBlocksRequestMessage getBlocksRequest = 1031;
+    GetBlocksResponseMessage getBlocksResponse = 1032;
+    GetBlockCountRequestMessage getBlockCountRequest = 1033;
+    GetBlockCountResponseMessage getBlockCountResponse = 1034;
+    GetBlockDagInfoRequestMessage getBlockDagInfoRequest = 1035;
+    GetBlockDagInfoResponseMessage getBlockDagInfoResponse = 1036;
+    ResolveFinalityConflictRequestMessage resolveFinalityConflictRequest = 1037;
+    ResolveFinalityConflictResponseMessage resolveFinalityConflictResponse = 1038;
+    NotifyFinalityConflictsRequestMessage notifyFinalityConflictsRequest = 1039;
+    NotifyFinalityConflictsResponseMessage notifyFinalityConflictsResponse = 1040;
+    FinalityConflictNotificationMessage finalityConflictNotification = 1041;
+    FinalityConflictResolvedNotificationMessage finalityConflictResolvedNotification = 1042;
+    GetMempoolEntriesRequestMessage getMempoolEntriesRequest = 1043;
+    GetMempoolEntriesResponseMessage getMempoolEntriesResponse = 1044;
+    ShutDownRequestMessage shutDownRequest = 1045;
+    ShutDownResponseMessage shutDownResponse = 1046;
+    GetHeadersRequestMessage getHeadersRequest = 1047;
+    GetHeadersResponseMessage getHeadersResponse = 1048;
+    NotifyUtxosChangedRequestMessage notifyUtxosChangedRequest = 1049;
+    NotifyUtxosChangedResponseMessage notifyUtxosChangedResponse = 1050;
+    UtxosChangedNotificationMessage utxosChangedNotification = 1051;
+    GetUtxosByAddressesRequestMessage getUtxosByAddressesRequest = 1052;
+    GetUtxosByAddressesResponseMessage getUtxosByAddressesResponse = 1053;
+    GetVirtualSelectedParentBlueScoreRequestMessage getVirtualSelectedParentBlueScoreRequest = 1054;
+    GetVirtualSelectedParentBlueScoreResponseMessage getVirtualSelectedParentBlueScoreResponse = 1055;
+    NotifyVirtualSelectedParentBlueScoreChangedRequestMessage notifyVirtualSelectedParentBlueScoreChangedRequest = 1056;
+    NotifyVirtualSelectedParentBlueScoreChangedResponseMessage notifyVirtualSelectedParentBlueScoreChangedResponse = 1057;
+    VirtualSelectedParentBlueScoreChangedNotificationMessage virtualSelectedParentBlueScoreChangedNotification = 1058;
+    BanRequestMessage banRequest = 1059;
+    BanResponseMessage banResponse = 1060;
+    UnbanRequestMessage unbanRequest = 1061;
+    UnbanResponseMessage unbanResponse = 1062;
+    GetInfoRequestMessage getInfoRequest = 1063;
+    GetInfoResponseMessage getInfoResponse = 1064;
+    StopNotifyingUtxosChangedRequestMessage stopNotifyingUtxosChangedRequest = 1065;
+    StopNotifyingUtxosChangedResponseMessage stopNotifyingUtxosChangedResponse = 1066;
+    NotifyPruningPointUTXOSetOverrideRequestMessage notifyPruningPointUTXOSetOverrideRequest = 1067;
+    NotifyPruningPointUTXOSetOverrideResponseMessage notifyPruningPointUTXOSetOverrideResponse = 1068;
+    PruningPointUTXOSetOverrideNotificationMessage pruningPointUTXOSetOverrideNotification = 1069;
+    StopNotifyingPruningPointUTXOSetOverrideRequestMessage stopNotifyingPruningPointUTXOSetOverrideRequest = 1070;
+    StopNotifyingPruningPointUTXOSetOverrideResponseMessage stopNotifyingPruningPointUTXOSetOverrideResponse = 1071;
+    EstimateNetworkHashesPerSecondRequestMessage estimateNetworkHashesPerSecondRequest = 1072;
+    EstimateNetworkHashesPerSecondResponseMessage estimateNetworkHashesPerSecondResponse = 1073;
+    NotifyVirtualDaaScoreChangedRequestMessage notifyVirtualDaaScoreChangedRequest = 1074;
+    NotifyVirtualDaaScoreChangedResponseMessage notifyVirtualDaaScoreChangedResponse = 1075;
+    VirtualDaaScoreChangedNotificationMessage virtualDaaScoreChangedNotification = 1076;
+    GetBalanceByAddressRequestMessage getBalanceByAddressRequest = 1077;
+    GetBalanceByAddressResponseMessage getBalanceByAddressResponse = 1078;
+    GetBalancesByAddressesRequestMessage getBalancesByAddressesRequest = 1079;
+    GetBalancesByAddressesResponseMessage getBalancesByAddressesResponse = 1080;
+    NotifyNewBlockTemplateRequestMessage notifyNewBlockTemplateRequest = 1081;
+    NotifyNewBlockTemplateResponseMessage notifyNewBlockTemplateResponse = 1082;
+    NewBlockTemplateNotificationMessage newBlockTemplateNotification = 1083;
+    GetMempoolEntriesByAddressesRequestMessage getMempoolEntriesByAddressesRequest = 1084;
+    GetMempoolEntriesByAddressesResponseMessage getMempoolEntriesByAddressesResponse = 1085;
+    GetCoinSupplyRequestMessage getCoinSupplyRequest = 1086;
+    GetCoinSupplyResponseMessage getCoinSupplyResponse= 1087;
+  }
+}
+
+service P2P {
+  rpc MessageStream (stream KaspadMessage) returns (stream KaspadMessage) {}
+}
+
+service RPC {
+  rpc MessageStream (stream KaspadMessage) returns (stream KaspadMessage) {}
+}

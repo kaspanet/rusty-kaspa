@@ -1,0 +1,29 @@
+[package]
+name = "mining"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
+
+[dependencies]
+addresses.workspace = true
+hashes.workspace = true
+consensus-core.workspace = true
+kaspa-core.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+log.workspace = true
+futures-util.workspace = true
+smallvec.workspace = true
+rand.workspace = true
+
+parking_lot = "0.12"
+
+[dev-dependencies]
+criterion.workspace = true
+secp256k1 = { version = "0.24", features = ["global-context", "rand-std"] }
+
+[[bench]]
+name = "bench"
+harness = false
