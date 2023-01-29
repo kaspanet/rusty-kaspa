@@ -176,7 +176,11 @@ impl ConsensusApi for ConsensusMock {
         unimplemented!()
     } //Needed for compiler
 
-    fn get_virtual_utxos(self: Arc<Self>, _from_outpoint: Option<TransactionOutpoint>, _limit: usize)  -> Vec<(TransactionOutpoint, UtxoEntry)>{
+    fn get_virtual_utxos(
+        self: Arc<Self>,
+        _from_outpoint: Option<TransactionOutpoint>,
+        _limit: usize,
+    ) -> Vec<(TransactionOutpoint, UtxoEntry)> {
         unimplemented!()
     } //Needed for compiler
 }

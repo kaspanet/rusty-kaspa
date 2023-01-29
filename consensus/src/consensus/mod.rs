@@ -50,9 +50,9 @@ use consensus_core::{
     block::{Block, BlockTemplate},
     blockstatus::BlockStatus,
     coinbase::MinerData,
+    errors::{coinbase::CoinbaseResult, tx::TxResult},
     notify::ConsensusNotification,
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
-    errors::{coinbase::CoinbaseResult, tx::TxResult},
     BlockHashSet,
 };
 use crossbeam_channel::{unbounded as unbounded_crossbeam, Receiver as CrossbeamReceiver, Sender as CrossbeamSender};
