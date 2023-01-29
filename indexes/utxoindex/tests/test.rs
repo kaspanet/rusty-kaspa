@@ -59,7 +59,7 @@ async fn test_utxoindex() {
     //sync index from scratch.
     let now = Instant::now();
     utxoindex.maybe_reset().expect("expected reset");
-    println!("resyncing 10_000, took {} ms", now.elapsed().as_millis());
+    println!("resyncing 10_000, took {} ms", now.elapsed().as_millis()); //ad-hoc benchmark
 
     //test sync from scratch from consensus db.
     let consensus_utxos = test_consensus.clone().get_virtual_utxos(None, usize::MAX); // `usize::MAX` to ensure to get all.
