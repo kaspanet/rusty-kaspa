@@ -50,11 +50,9 @@ use consensus_core::{
     block::{Block, BlockTemplate},
     blockstatus::BlockStatus,
     coinbase::MinerData,
-    errors::tx::TxResult,
     notify::ConsensusNotification,
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     errors::{coinbase::CoinbaseResult, tx::TxResult},
-    tx::{MutableTransaction, Transaction},
     BlockHashSet,
 };
 use crossbeam_channel::{unbounded as unbounded_crossbeam, Receiver as CrossbeamReceiver, Sender as CrossbeamSender};
@@ -495,7 +493,7 @@ impl ConsensusApi for Consensus {
         let iter = virtual_stores.utxo_set.from_iterator(from_outpoint, chunk_size);
         iter.map(|item| item.unwrap()).collect()
     }
-    
+
     fn modify_coinbase_payload(self: Arc<Self>, payload: Vec<u8>, miner_data: &MinerData) -> CoinbaseResult<Vec<u8>> {
         self.coinbase_manager.modify_coinbase_payload(payload, miner_data)
     }
