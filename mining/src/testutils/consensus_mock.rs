@@ -18,7 +18,7 @@ use consensus_core::{
 use futures_util::future::BoxFuture;
 use hashes::ZERO_HASH;
 use parking_lot::RwLock;
-use std::{collections::HashMap, sync::Arc, time::SystemTime};
+use std::{collections::HashMap, sync::Arc, time::SystemTime, unimplemented};
 
 use super::coinbase_mock::CoinbaseManagerMock;
 
@@ -171,4 +171,12 @@ impl ConsensusApi for ConsensusMock {
         let coinbase_manager = CoinbaseManagerMock::new();
         Ok(coinbase_manager.modify_coinbase_payload(payload, miner_data))
     }
+
+    fn get_virtual_state_tips(self: Arc<Self>) -> Vec<hashes::Hash> {
+        unimplemented!()
+    } //Needed for compiler
+
+    fn get_virtual_utxos(self: Arc<Self>, _from_outpoint: Option<TransactionOutpoint>, _limit: usize)  -> Vec<(TransactionOutpoint, UtxoEntry)>{
+        unimplemented!()
+    } //Needed for compiler
 }

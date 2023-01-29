@@ -44,6 +44,13 @@ impl<T> CachedDbItem<T> {
         Ok(())
     }
 
+    pub fn remove(&mut self, mut writer: impl DbWriter) -> Result<(), StoreError>
+where {
+        *self.cached_item.write() = None;
+        writer.delete(self.key)?;
+        Ok(())
+    }
+
     pub fn update<F>(&mut self, mut writer: impl DbWriter, op: F) -> Result<T, StoreError>
     where
         T: Clone + Serialize + DeserializeOwned,

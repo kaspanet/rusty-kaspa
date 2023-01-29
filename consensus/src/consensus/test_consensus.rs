@@ -14,7 +14,7 @@ use consensus_core::{
     header::Header,
     merkle::calc_hash_merkle_root,
     subnets::SUBNETWORK_ID_COINBASE,
-    tx::{MutableTransaction, Transaction},
+    tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     BlockHashSet,
 };
 use futures_util::future::BoxFuture;
@@ -43,7 +43,7 @@ use crate::{
 use super::{Consensus, DbGhostdagManager};
 
 pub struct TestConsensus {
-    consensus: Arc<Consensus>,
+    pub consensus: Arc<Consensus>, //TODO: remove public when simnet is established, it is only public for utxoindex testing purposes.
     pub params: Params,
     temp_db_lifetime: TempDbLifetime,
 }
@@ -190,6 +190,18 @@ impl ConsensusApi for TestConsensus {
 
     fn modify_coinbase_payload(self: Arc<Self>, payload: Vec<u8>, miner_data: &MinerData) -> CoinbaseResult<Vec<u8>> {
         self.consensus().modify_coinbase_payload(payload, miner_data)
+    }
+
+    fn get_virtual_state_tips(self: Arc<Self>) -> Vec<Hash> {
+        self.consensus.clone().get_virtual_state_tips()
+    }
+
+    fn get_virtual_utxos(
+        self: Arc<Self>,
+        from_outpoint: Option<TransactionOutpoint>,
+        chunk_size: usize,
+    ) -> Vec<(TransactionOutpoint, UtxoEntry)> {
+        self.consensus.clone().get_virtual_utxos(from_outpoint, chunk_size)
     }
 }
 

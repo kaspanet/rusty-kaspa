@@ -10,9 +10,9 @@ use crate::{
         coinbase::CoinbaseResult,
         tx::TxResult,
     },
-    tx::{MutableTransaction, Transaction},
+    tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
 };
-
+use hashes::Hash;
 /// Abstracts the consensus external API
 pub trait ConsensusApi: Send + Sync {
     fn build_block_template(self: Arc<Self>, miner_data: MinerData, txs: Vec<Transaction>) -> Result<BlockTemplate, RuleError>;
@@ -31,6 +31,14 @@ pub trait ConsensusApi: Send + Sync {
 
     fn get_virtual_daa_score(self: Arc<Self>) -> u64;
 
+    fn get_virtual_state_tips(self: Arc<Self>) -> Vec<Hash>;
+
+    fn get_virtual_utxos(
+        self: Arc<Self>,
+        from_outpoint: Option<TransactionOutpoint>,
+        chunk_size: usize,
+    ) -> Vec<(TransactionOutpoint, UtxoEntry)>;
+    
     fn modify_coinbase_payload(self: Arc<Self>, payload: Vec<u8>, miner_data: &MinerData) -> CoinbaseResult<Vec<u8>>;
 }
 

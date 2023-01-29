@@ -25,7 +25,7 @@ use crate::{
             tips::{DbTipsStore, TipsStoreReader},
             utxo_diffs::DbUtxoDiffsStore,
             utxo_multisets::DbUtxoMultisetsStore,
-            utxo_set::DbUtxoSetStore,
+            utxo_set::{DbUtxoSetStore, UtxoSetStoreReader},
             virtual_state::{DbVirtualStateStore, VirtualStateStoreReader},
             DB,
         },
@@ -44,24 +44,28 @@ use crate::{
         reachability::inquirer as reachability, transaction_validator::TransactionValidator, traversal_manager::DagTraversalManager,
     },
 };
+use async_std::channel::{unbounded as unbounded_async_std, Receiver as AsyncStdReceiver, Sender as AsyncStdSender};
 use consensus_core::{
     api::ConsensusApi,
     block::{Block, BlockTemplate},
     blockstatus::BlockStatus,
     coinbase::MinerData,
+    notify::ConsensusNotification,
+    tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     errors::{coinbase::CoinbaseResult, tx::TxResult},
-    tx::{MutableTransaction, Transaction},
     BlockHashSet,
 };
-use crossbeam_channel::{unbounded, Receiver, Sender};
+use crossbeam_channel::{unbounded as unbounded_crossbeam, Receiver as CrossbeamReceiver, Sender as CrossbeamSender};
 use futures_util::future::BoxFuture;
 use hashes::Hash;
 use kaspa_core::{core::Core, service::Service};
 use parking_lot::RwLock;
-use std::{future::Future, sync::atomic::Ordering};
+use std::{
+    future::Future,
+    sync::{atomic::Ordering, Arc},
+};
 use std::{
     ops::DerefMut,
-    sync::Arc,
     thread::{self, JoinHandle},
 };
 use tokio::sync::oneshot;
@@ -86,7 +90,9 @@ pub struct Consensus {
     db: Arc<DB>,
 
     // Channels
-    block_sender: Sender<BlockTask>,
+    block_sender: CrossbeamSender<BlockTask>,
+    utxoindex_sender: AsyncStdSender<ConsensusNotification>,
+    pub utxoindex_receiver: AsyncStdReceiver<ConsensusNotification>,
 
     // Processors
     header_processor: Arc<HeaderProcessor>,
@@ -246,9 +252,11 @@ impl Consensus {
             relations_store.clone(),
         );
 
-        let (sender, receiver): (Sender<BlockTask>, Receiver<BlockTask>) = unbounded();
-        let (body_sender, body_receiver): (Sender<BlockTask>, Receiver<BlockTask>) = unbounded();
-        let (virtual_sender, virtual_receiver): (Sender<BlockTask>, Receiver<BlockTask>) = unbounded();
+        let (sender, receiver): (CrossbeamSender<BlockTask>, CrossbeamReceiver<BlockTask>) = unbounded_crossbeam();
+        let (body_sender, body_receiver): (CrossbeamSender<BlockTask>, CrossbeamReceiver<BlockTask>) = unbounded_crossbeam();
+        let (virtual_sender, virtual_receiver): (CrossbeamSender<BlockTask>, CrossbeamReceiver<BlockTask>) = unbounded_crossbeam();
+        let (utxoindex_sender, utxoindex_receiver): (AsyncStdSender<ConsensusNotification>, AsyncStdReceiver<ConsensusNotification>) =
+            unbounded_async_std();
 
         let counters = Arc::new(ProcessingCounters::default());
 
@@ -328,6 +336,7 @@ impl Consensus {
 
         let virtual_processor = Arc::new(VirtualStateProcessor::new(
             virtual_receiver,
+            utxoindex_sender.clone(),
             virtual_pool,
             params,
             db.clone(),
@@ -383,6 +392,8 @@ impl Consensus {
             pruning_manager,
 
             counters,
+            utxoindex_sender,
+            utxoindex_receiver,
         }
     }
 
@@ -467,6 +478,20 @@ impl ConsensusApi for Consensus {
 
     fn get_virtual_daa_score(self: Arc<Self>) -> u64 {
         self.virtual_processor.virtual_stores.read().state.get().unwrap().daa_score
+    }
+
+    fn get_virtual_state_tips(self: Arc<Self>) -> Vec<Hash> {
+        self.virtual_processor.virtual_stores.read().state.get().unwrap().parents.clone()
+    }
+
+    fn get_virtual_utxos(
+        self: Arc<Self>,
+        from_outpoint: Option<TransactionOutpoint>,
+        chunk_size: usize,
+    ) -> Vec<(TransactionOutpoint, UtxoEntry)> {
+        let virtual_stores = self.virtual_processor.virtual_stores.read();
+        let iter = virtual_stores.utxo_set.from_iterator(from_outpoint, chunk_size);
+        iter.map(|item| item.unwrap()).collect()
     }
 
     fn modify_coinbase_payload(self: Arc<Self>, payload: Vec<u8>, miner_data: &MinerData) -> CoinbaseResult<Vec<u8>> {

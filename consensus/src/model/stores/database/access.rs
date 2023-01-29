@@ -1,7 +1,8 @@
 use super::prelude::{Cache, DbKey, DbWriter};
 use crate::model::stores::{errors::StoreError, DB};
+use rocksdb::{Direction, IteratorMode, ReadOptions};
 use serde::{de::DeserializeOwned, Serialize};
-use std::{collections::hash_map::RandomState, hash::BuildHasher, sync::Arc};
+use std::{collections::hash_map::RandomState, error::Error, fmt::Debug, hash::BuildHasher, sync::Arc};
 
 /// A concurrent DB store access with typed caching.
 #[derive(Clone)]
@@ -110,5 +111,56 @@ where
             writer.delete(DbKey::new(self.prefix, key))?;
         }
         Ok(())
+    }
+
+    pub fn delete_all(&self, mut writer: impl DbWriter) -> Result<(), StoreError>
+    where
+        TKey: Copy + AsRef<[u8]>,
+    {
+        self.cache.remove_all();
+        writer.delete(DbKey::prefix_only(self.prefix))?;
+        Ok(())
+    }
+
+    /// A dynamic iterator that can iterate through a specifc prefix / bucket, or from a certain start point.
+    ///
+    //TODO: loop and chain iterators for multi-prefix / bucket iterator.
+    pub fn seek_iterator<Key, Value>(
+        &self,
+        bucket: Option<&[u8]>,   //iter self.prefix if None, else append bytes to self.prefix.
+        seek_from: Option<TKey>, //iter whole range if None
+        limit: usize,            //amount to take. use
+    ) -> impl Iterator<Item = Result<(Key, Value), Box<dyn Error>>> + '_
+    where
+        TKey: Copy + AsRef<[u8]>,
+        Key: DeserializeOwned + Debug,
+        Value: DeserializeOwned + Debug,
+    {
+        let db_key = bucket.map_or(DbKey::prefix_only(&self.prefix), move |bucket| {
+            let mut key = DbKey::prefix_only(&self.prefix);
+            key.add_bucket(bucket);
+            key
+        });
+
+        let mut read_opts = ReadOptions::default();
+        read_opts.set_iterate_range(rocksdb::PrefixRange(db_key.as_ref()));
+
+        let db_iterator = match seek_from {
+            Some(seek_key) => {
+                self.db.iterator_opt(IteratorMode::From(DbKey::new(self.prefix, seek_key).as_ref(), Direction::Forward), read_opts)
+            }
+            None => self.db.iterator_opt(IteratorMode::Start, read_opts),
+        };
+
+        db_iterator.take(limit).map(move |item| match item {
+            Ok((key_bytes, value_bytes)) => match bincode::deserialize::<Key>(key_bytes[db_key.prefix_len()..].as_ref()) {
+                Ok(key) => match bincode::deserialize::<Value>(value_bytes.as_ref()) {
+                    Ok(value) => Ok((key, value)),
+                    Err(err) => Err(err.into()),
+                },
+                Err(err) => Err(err.into()),
+            },
+            Err(err) => Err(err.into()),
+        })
     }
 }
