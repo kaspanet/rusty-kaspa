@@ -105,3 +105,16 @@ impl AsRef<Notification> for Notification {
         self
     }
 }
+
+
+#[cfg(test)]
+mod test{
+    use super::*;
+
+    #[test]
+    fn test_notification_from_bytes(){
+        let bytes = &vec![6, 169, 167, 75, 2, 0, 0, 0, 0][..];
+        let notification = Notification::try_from_slice(bytes);
+        println!("notification: {notification:?}");
+    }
+}

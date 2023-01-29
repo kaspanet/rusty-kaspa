@@ -9,6 +9,7 @@ crate-type = ["cdylib", "lib"]
 [dependencies]
 workflow-log.workspace = true
 workflow-rpc.workspace = true
+workflow-core.workspace = true
 thiserror.workspace = true
 kaspa-wrpc-client.workspace = true
 rpc-core.workspace = true

@@ -1567,6 +1567,7 @@ dependencies = [
  "sha2 0.10.6",
  "thiserror",
  "tokio",
+ "workflow-core",
  "workflow-log",
  "workflow-rpc",
  "zeroize",

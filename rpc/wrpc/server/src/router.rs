@@ -1,5 +1,5 @@
 use kaspa_rpc_macros::build_wrpc_server_interface;
-use rpc_core::api::ops::RpcApiOps;
+use rpc_core::api::ops::{SubscribeCommand, RpcApiOps};
 use rpc_core::api::rpc::RpcApi;
 #[allow(unused_imports)]
 use rpc_core::error::RpcResult;
@@ -18,6 +18,10 @@ pub trait RpcApiContainer: Send + Sync + 'static {
     fn verbose(&self) -> bool {
         false
     }
+}
+
+pub trait MessengerContainer: Send + Sync + 'static {
+    fn get_messenger(&self) -> Arc<Messenger>;
 }
 
 /// [`RouterTarget`] is used during the method and notification
@@ -48,7 +52,7 @@ where
 impl<ServerContext, ConnectionContext> Router<ServerContext, ConnectionContext>
 where
     ServerContext: RpcApiContainer + Clone,
-    ConnectionContext: RpcApiContainer + Clone,
+    ConnectionContext: RpcApiContainer + MessengerContainer + Clone,
 {
     pub fn new(server_context: ServerContext, router_target: RouterTarget) -> Self {
 
@@ -59,7 +63,7 @@ where
         // it will create the RPC method handler.
         // ... `GetInfo` yields: get_info_call() + GetInfoRequest + GetInfoResponse
         #[allow(unreachable_patterns)]
-        let interface = build_wrpc_server_interface!(
+        let mut interface = build_wrpc_server_interface!(
             server_context,
             router_target,
             ServerContext,
@@ -101,6 +105,47 @@ where
             ]
         );
 
-        Router { interface }
+        interface.notification(
+            RpcApiOps::NotifyVirtualDaaScoreChanged,
+            workflow_rpc::server::Notification::new(
+                |
+                _server_context: ServerContext,
+                connection_ctx: ConnectionContext,
+                request: NotifyVirtualDaaScoreChangedRequest| {
+                Box::pin(async move {
+                    workflow_log::log_trace!("notification request {:?}", request);
+
+                    let api = connection_ctx.get_rpc_api();
+                        
+                    let listener = api.register_new_listener(None);
+                    
+                    let _result = api.execute_subscribe_command(
+                        listener.id,
+                        NotificationType::VirtualDaaScoreChanged,
+                        SubscribeCommand::Start
+                    ).await;
+
+                    let messenger = connection_ctx.get_messenger();
+            
+                    workflow_core::task::spawn(async move{
+                        let channel = listener.recv_channel;
+                        while let Ok(notification) = channel.recv().await{
+                            let msg = (*notification).clone();//.try_to_vec().unwrap()[..];
+                            workflow_log::log_trace!("ROUTER: DAA notification: {:?}, msg:{msg:?}", notification);
+                            let res = messenger.notify(
+                                RpcApiOps::NotifyVirtualDaaScoreChanged,
+                                msg
+                            ).await;
+                            workflow_log::log_trace!("ROUTER->Client: result: {:?}", res);
+                        }
+                    });
+                        
+                    
+                    Ok(())
+                })
+            })
+        );
+
+        Router { interface: Arc::new(interface) }
     }
 }

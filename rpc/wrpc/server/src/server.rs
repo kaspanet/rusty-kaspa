@@ -21,6 +21,7 @@ use std::{
 use workflow_log::*;
 use workflow_rpc::server::prelude::*;
 pub use workflow_rpc::server::Encoding as WrpcEncoding;
+use crate::router::MessengerContainer;
 
 
 /// Options for configuring the wRPC server
@@ -56,6 +57,13 @@ type ConnectionContextReference = Arc<ConnectionContext>;
 impl RpcApiContainer for ConnectionContextReference {
     fn get_rpc_api(&self) -> Arc<dyn RpcApi> {
         panic!("Incorrect use: `server::ConnectionContext` does not carry RpcApi references")
+    }
+}
+
+impl MessengerContainer for ConnectionContextReference {
+    fn get_messenger(&self) -> Arc<Messenger> {
+        //panic!("Incorrect use: `server::ConnectionContext` does not carry RpcApi references")
+        self.messenger.clone()
     }
 }
 

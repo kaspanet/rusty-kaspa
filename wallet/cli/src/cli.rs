@@ -94,6 +94,10 @@ impl WalletCli {
             Action::Sweep => {
                 self.wallet.sweep().await?;
             }
+            Action::SubscribeDaaScore => {
+                let response = self.wallet.subscribe_daa_score().await?;
+                term.writeln(response);
+            }
         }
 
         Ok(())
@@ -143,7 +147,7 @@ pub async fn kaspa_wallet_cli(options: TerminalOptions) -> Result<()> {
     let term = Arc::new(Terminal::try_new_with_options(cli.clone(), options)?);
     term.init().await?;
 
-    //workflow_log::pipe(Some(cli.clone()));
+    workflow_log::pipe(Some(cli.clone()));
 
     term.writeln("Kaspa Cli Wallet (type 'help' for list of commands)");
     wallet.start().await?;

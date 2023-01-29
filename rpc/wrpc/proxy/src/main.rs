@@ -4,11 +4,7 @@ mod result;
 use async_trait::async_trait;
 use clap::Parser;
 use consensus_core::networktype::NetworkType;
-use kaspa_wrpc_server::router::{
-    Router,
-    RouterTarget,
-    RpcApiContainer
-};
+use kaspa_wrpc_server::router::{MessengerContainer, Router, RouterTarget, RpcApiContainer};
 use result::Result;
 use rpc_core::api::ops::RpcApiOps;
 use rpc_core::api::rpc::RpcApi;
@@ -50,6 +46,12 @@ impl RpcApiContainer for ProxyConnection {
     }
 }
 
+impl MessengerContainer for ProxyConnection {
+    fn get_messenger(&self) -> Arc<Messenger> {
+        self.inner.messenger.clone()
+    }
+}
+
 pub struct KaspaRpcProxyInner {
     network_type: NetworkType,
     verbose: bool,
@@ -74,7 +76,7 @@ impl RpcHandler for KaspaRpcProxy {
 
     /// Called on incoming wRPC connection. Creates a [`ProxyConnection`]
     /// representing the client connection bound to the `RpcApiGrpc` instance.
-    /// The supplied [`Messenger`] represents the connection allowing 
+    /// The supplied [`Messenger`] represents the connection allowing
     /// to relay notifications to the wRPC client.
     async fn handshake(
         self: Arc<Self>,

@@ -36,6 +36,11 @@ pub enum Action {
     // StartDaemon,
     // #[describe("Sends all funds associated with the given schnorr private key to a new address of the current wallet")]
     Sweep,
+
+    // Notifications
+    #[describe("Subscribe DAA score")]
+    SubscribeDaaScore,
+
     #[describe("Exit the wallet shell")]
     Exit,
 }

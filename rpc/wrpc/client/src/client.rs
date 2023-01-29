@@ -3,12 +3,19 @@ use crate::result::Result;
 use async_trait::async_trait;
 use kaspa_rpc_macros::build_wrpc_client_interface;
 use regex::Regex;
-use rpc_core::api::ops::RpcApiOps;
-use rpc_core::api::rpc::RpcApi;
-use rpc_core::error::RpcResult;
-use rpc_core::notify::channel::*;
-use rpc_core::notify::listener::*;
-use rpc_core::prelude::*;
+use rpc_core::{
+    api::{
+        ops::{SubscribeCommand, RpcApiOps},
+        rpc::RpcApi,
+    },
+    error::RpcResult,
+    notify::{
+        channel::*,
+        listener::*,
+        notifier::Notifier
+    },
+    prelude::*
+};
 use std::sync::Arc;
 use workflow_core::trigger::Listener;
 use workflow_log::*;
@@ -21,6 +28,7 @@ use workflow_rpc::client::prelude::*;
 #[derive(Clone)]
 pub struct KaspaRpcClient {
     rpc: Arc<RpcClient<RpcApiOps>>,
+    notifier: Arc<Notifier>,
 }
 
 impl KaspaRpcClient {
@@ -30,19 +38,33 @@ impl KaspaRpcClient {
         log_trace!("Kaspa wRPC::{encoding} client url: {url}");
         let options = RpcClientOptions { url: &url, ..RpcClientOptions::default() };
 
+        let notifier =
+            Arc::new(Notifier::new(None, None, ListenerUtxoNotificationFilterSetting::FilteredByAddress));
+
         // The `Interface` struct can be used to register for server-side
         // notifications. All notification methods have to be created at
         // this stage.
-        let interface = Interface::<RpcApiOps>::new();
-        // interface.notification(
-        //     TestOps::Notify,
-        //     notification!(|msg: TestNotify| async move {
-        //         log_info!("received notification: {:?}", msg);
-        //         Ok(())
-        //     }),
-        // );
+        let mut interface = Interface::<RpcApiOps>::new();
+        
+        let _notifier = notifier.clone();
+        interface.notification(
+            RpcApiOps::NotifyVirtualDaaScoreChanged,
+            workflow_rpc::client::Notification::new(move |notification: rpc_core::Notification | {
+                let notifier = _notifier.clone();
+                Box::pin(async move {
+                    log_trace!("notification {:?}", notification);
+                    let res = notifier.notify(notification.into());
+                    log_trace!("notifier.notify: result {:?}", res);
+                    Ok(())
+                })
+            })
+            
+        );
 
-        let client = KaspaRpcClient { rpc: Arc::new(RpcClient::new_with_encoding(encoding, interface.into(), options)?) };
+        let client = KaspaRpcClient {
+            rpc: Arc::new(RpcClient::new_with_encoding(encoding, interface.into(), options)?),
+            notifier
+        };
 
         Ok(client)
     }
@@ -118,35 +140,44 @@ impl RpcApi for KaspaRpcClient {
     // Notification API
 
     /// Register a new listener and returns an id and a channel receiver.
-    fn register_new_listener(&self, _channel: Option<NotificationChannel>) -> ListenerReceiverSide {
-        todo!()
-        // self.notifier.register_new_listener(channel)
+    fn register_new_listener(&self, channel: Option<NotificationChannel>) -> ListenerReceiverSide {
+        self.notifier.register_new_listener(channel)
     }
 
     /// Unregister an existing listener.
     ///
     /// Stop all notifications for this listener and drop its channel.
-    async fn unregister_listener(&self, _id: ListenerID) -> RpcResult<()> {
-        todo!()
-        // self.notifier.unregister_listener(id)?;
-        // Ok(())
+    async fn unregister_listener(&self, id: ListenerID) -> RpcResult<()> {
+        self.notifier.unregister_listener(id)?;
+        Ok(())
     }
 
     /// Start sending notifications of some type to a listener.
-    async fn start_notify(&self, _id: ListenerID, _notification_type: NotificationType) -> RpcResult<()> {
-        todo!()
-        // self.notifier.start_notify(id, notification_type)?;
-        // Ok(())
+    async fn start_notify(&self, id: ListenerID, notification_type: NotificationType) -> RpcResult<()> {
+        self.notifier.clone().start_notify(id, notification_type.clone())?;
+        self.notifier.clone().start();
+        match notification_type{
+            NotificationType::VirtualDaaScoreChanged=>{
+                let req = NotifyVirtualDaaScoreChangedRequest::new(
+                    SubscribeCommand::Start
+                );
+                let result = self.rpc.notify(RpcApiOps::NotifyVirtualDaaScoreChanged, req).await;
+                log_trace!("start_notify: {result:?}");
+            }
+            _=>{
+                
+            }
+        }
+        Ok(())
     }
 
     /// Stop sending notifications of some type to a listener.
-    async fn stop_notify(&self, _id: ListenerID, _notification_type: NotificationType) -> RpcResult<()> {
-        todo!()
-        // if self.handle_stop_notify() {
-        //     self.notifier.stop_notify(id, notification_type)?;
-        //     Ok(())
-        // } else {
-        //     Err(RpcError::UnsupportedFeature)
-        // }
+    async fn stop_notify(&self, id: ListenerID, notification_type: NotificationType) -> RpcResult<()> {
+        //if self.rpc.handle_stop_notify() {
+            self.notifier.stop_notify(id, notification_type)?;
+            Ok(())
+        //} else {
+        //    Err(RpcError::UnsupportedFeature)
+        //}
     }
 }

@@ -1,7 +1,14 @@
 use crate::result::Result;
 use crate::wallets::HDWalletGen1;
 use kaspa_wrpc_client::{KaspaRpcClient, WrpcEncoding};
-use rpc_core::api::rpc::RpcApi;
+use rpc_core::{
+    api::{
+        rpc::RpcApi,
+        ops::SubscribeCommand
+    },
+    NotificationType
+};
+use workflow_log::log_trace;
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -44,6 +51,25 @@ impl Wallet {
     pub async fn info(&self) -> Result<String> {
         let v = self.rpc.get_info().await?;
         Ok(format!("{v:#?}").replace('\n', "\r\n"))
+    }
+
+    pub async fn subscribe_daa_score(&self) -> Result<String> {
+        let listener = self.rpc.register_new_listener(None);
+
+        self.rpc.execute_subscribe_command(
+            listener.id,
+            NotificationType::VirtualDaaScoreChanged,
+            SubscribeCommand::Start
+        ).await?;
+
+        workflow_core::task::spawn(async move{
+            let channel = listener.recv_channel;
+            while let Ok(notification) = channel.recv().await{
+                log_trace!("DAA notification: {:?}", notification);
+            }
+        });
+
+        Ok("subscribe-daa-score".to_string())
     }
 
     pub async fn ping(&self, _msg: String) -> Result<String> {

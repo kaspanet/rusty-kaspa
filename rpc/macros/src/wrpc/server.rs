@@ -127,7 +127,7 @@ impl ToTokens for RpcTable {
                     }
                 }
 
-                Arc::new(interface)
+                interface
             }
         }
         .to_tokens(tokens);
