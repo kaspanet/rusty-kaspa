@@ -32,8 +32,8 @@ impl DbKey {
     where
         TBucket: Copy + AsRef<[u8]>,
     {
-        self.path.extend(std::iter::once(&SEP).chain(bucket.as_ref().iter()));
-        self.prefix_len = bucket.as_ref().len() + SEP_SIZE;
+        self.path.extend(bucket.as_ref().iter().chain(std::iter::once(&SEP)));
+        self.prefix_len += bucket.as_ref().len() + SEP_SIZE;
     }
 
     /// add a key to the DBkey, this does not add to the prefix length

@@ -2,7 +2,7 @@ use super::prelude::{Cache, DbKey, DbWriter};
 use crate::model::stores::{errors::StoreError, DB};
 use rocksdb::{Direction, IteratorMode, ReadOptions};
 use serde::{de::DeserializeOwned, Serialize};
-use std::{collections::hash_map::RandomState, error::Error, hash::BuildHasher, sync::Arc};
+use std::{collections::hash_map::RandomState, error::Error, fmt::Debug, hash::BuildHasher, sync::Arc};
 
 /// A concurrent DB store access with typed caching.
 #[derive(Clone)]
@@ -127,13 +127,13 @@ where
     //TODO: loop and chain iterators for multi-prefix / bucket iterator.
     pub fn seek_iterator<Key, Value>(
         &self,
-        buckets: Option<Vec<&[u8]>>,
-        seek_from: Option<TKey>,
+        buckets: Option<Vec<&[u8]>>, //iter self.prefix if None, else append vector bytes (in order), to prefix.
+        seek_from: Option<TKey>,     //iter whole range if None
     ) -> impl Iterator<Item = Result<(Key, Value), Box<dyn Error>>> + '_
     where
         TKey: Copy + AsRef<[u8]>,
-        Key: DeserializeOwned,
-        Value: DeserializeOwned,
+        Key: DeserializeOwned + Debug,
+        Value: DeserializeOwned + Debug,
     {
         let db_key = buckets.map_or(DbKey::prefix_only(&self.prefix), move |buckets| {
             let mut key = DbKey::prefix_only(&self.prefix);
@@ -147,7 +147,9 @@ where
         read_opts.set_iterate_range(rocksdb::PrefixRange(db_key.as_ref()));
 
         let db_iterator = match seek_from {
-            Some(seek_key) => self.db.iterator_opt(IteratorMode::From(seek_key.as_ref(), Direction::Forward), read_opts),
+            Some(seek_key) => {
+                self.db.iterator_opt(IteratorMode::From(DbKey::new(self.prefix, seek_key).as_ref(), Direction::Forward), read_opts)
+            }
             None => self.db.iterator_opt(IteratorMode::Start, read_opts),
         };
 

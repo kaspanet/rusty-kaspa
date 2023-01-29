@@ -1,19 +1,18 @@
-use std::{fs, ops::Deref, sync::Arc};
+use std::sync::Arc;
 
 use consensus::model::stores::{errors::StoreError, DB};
 use consensus_core::{tx::ScriptPublicKeys, BlockHashSet};
 use log::trace;
 use parking_lot::RwLock;
-use rocksdb::{DBAccess, Options};
 
 use crate::{
-    errors::UtxoIndexError,
-    model::{UTXOChanges, UtxoSetByScriptPublicKey},
+    core::{errors::UtxoIndexError, UtxoSetByScriptPublicKey},
     stores::{
-        circulating_supply_store::{CirculatingSupplyStore, CirculatingSupplyStoreReader, DbCirculatingSupplyStore},
-        tips_store::{DbUtxoIndexTipsStore, UtxoIndexTipsStore, UtxoIndexTipsStoreReader},
-        utxo_set_store::{DbUtxoSetByScriptPublicKeyStore, UtxoSetByScriptPublicKeyStore, UtxoSetByScriptPublicKeyStoreReader},
+        indexed_utxos::{DbUtxoSetByScriptPublicKeyStore, UtxoSetByScriptPublicKeyStore, UtxoSetByScriptPublicKeyStoreReader},
+        supply::{CirculatingSupplyStore, CirculatingSupplyStoreReader, DbCirculatingSupplyStore},
+        tips::{DbUtxoIndexTipsStore, UtxoIndexTipsStore, UtxoIndexTipsStoreReader},
     },
+    update_container::UTXOChanges,
 };
 
 #[derive(Clone)]
@@ -38,9 +37,14 @@ impl StoreManager {
     pub fn get_utxos_by_script_public_key(
         &self,
         script_public_keys: ScriptPublicKeys,
-    ) -> Result<Arc<UtxoSetByScriptPublicKey>, StoreError> {
+    ) -> Result<UtxoSetByScriptPublicKey, StoreError> {
         let reader = self.utxos_by_script_public_key_store.read();
         reader.get_utxos_from_script_public_keys(script_public_keys)
+    }
+
+    pub fn get_all_utxos(&self) -> Result<UtxoSetByScriptPublicKey, StoreError> {
+        let reader = self.utxos_by_script_public_key_store.read();
+        reader.get_all_utxos()
     }
 
     pub fn update_utxo_state(&self, utxo_diff_by_script_public_key: UTXOChanges) -> Result<(), StoreError> {
@@ -48,9 +52,9 @@ impl StoreManager {
         writer.write_diff(utxo_diff_by_script_public_key)
     }
 
-    pub fn insert_utxo_entries(&self, utxo_set_by_script_public_key: UtxoSetByScriptPublicKey) -> Result<(), StoreError> {
+    pub fn add_utxo_entries(&self, utxo_set_by_script_public_key: UtxoSetByScriptPublicKey) -> Result<(), StoreError> {
         let mut writer = self.utxos_by_script_public_key_store.write();
-        writer.insert_utxo_entries(utxo_set_by_script_public_key)
+        writer.add_utxo_entries(utxo_set_by_script_public_key)
     }
 
     pub fn get_circulating_supply(&self) -> Result<u64, StoreError> {

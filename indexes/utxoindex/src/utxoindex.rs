@@ -1,4 +1,6 @@
+use consensus::model::stores::errors::StoreResult;
 use consensus::model::stores::{errors::StoreError, DB};
+use consensus_core::tx::{ScriptPublicKeys, TransactionOutpoint, UtxoEntry};
 use std::sync::Arc;
 
 use consensus_core::notify::ConsensusNotification;
@@ -6,8 +8,12 @@ use consensus_core::{api::DynConsensus, notify::VirtualChangeSetNotification, Bl
 use kaspa_core::trace;
 use triggered::{Listener, Trigger};
 
-use super::{errors::UtxoIndexError, model::UtxoIndexChanges, notify::UtxoIndexNotification, store_manager::StoreManager};
-use crate::model::UtxoSetByScriptPublicKey;
+use crate::core::api::UtxoIndexApi;
+use crate::core::errors::UtxoIndexError;
+use crate::core::notify::UtxoIndexNotification;
+use crate::core::{CirculatingSupply, UtxoSetByScriptPublicKey};
+use crate::stores::store_manager::StoreManager;
+use crate::update_container::UtxoIndexChanges;
 use async_std::channel::{unbounded as unbounded_async_std, Receiver as AsyncStdReceiver, Sender as AsyncStdSender};
 //use tokio::{sync::mpsc::UnboundedReceiver as TokioUnboundedReceiver, task::JoinError};
 use futures::{select, FutureExt};
@@ -62,47 +68,49 @@ impl UtxoIndex {
         println!("resetting the utxoindex");
         self.stores.delete_all()?;
         let consensus_tips = self.cons.clone().get_virtual_state_tips();
+        let mut circulating_supply: CirculatingSupply = 0;
         let mut utxoindex_changes = UtxoIndexChanges::new();
-        let start_outpoint = None;
-        let circulating_supply: i64 = 0;
+        let mut from_outpoint = None;
+        let mut total_amount = 0;
         loop {
             // potential TODO: iterating virtual utxos into an [UtxoIndexChanges] struct is a bit of overhead,
             // but some form of pre-iteration is needed to extract and commit circulating supply seperatly.
             // alternative is to merge all individual stores, or handle this logic within the utxoindex store_manager.
-            let mut batch_processed: usize = 0;
-            for (transaction_outpoint, utxo_entry) in self.cons.clone().get_virtual_utxos(start_outpoint, RESYNC_CHUNK_SIZE).iter() {
-                utxoindex_changes.add_utxo(transaction_outpoint, utxo_entry);
-                batch_processed += 1;
-                if batch_processed == RESYNC_CHUNK_SIZE {
-                    let start_outpoint = Some(transaction_outpoint);
-                }
-            }
-            if utxoindex_changes.utxos.added.len() < RESYNC_CHUNK_SIZE {
-                match self.stores.insert_utxo_entries(utxoindex_changes.utxos.added) {
+            let virtual_utxo_batch = self.cons.clone().get_virtual_utxos(from_outpoint, RESYNC_CHUNK_SIZE);
+            total_amount += virtual_utxo_batch.len();
+            println!("got {} utxos", total_amount);
+            from_outpoint = Some(virtual_utxo_batch.last().expect("expected a none-empty vector").0); //TODO: consider incrementing from_outpoint bytes by one, as to not re-retrive with next iteration.
+            if virtual_utxo_batch.len() == RESYNC_CHUNK_SIZE {
+                utxoindex_changes.add_utxo_vector(virtual_utxo_batch);
+                circulating_supply += utxoindex_changes.supply as CirculatingSupply;
+                match self.stores.add_utxo_entries(utxoindex_changes.utxos.added.clone()) {
                     Ok(_) => (),
                     Err(err) => {
                         self.stores.delete_all()?;
                         return Err(UtxoIndexError::StoreAccessError(err));
                     }
-                }
-                match self.stores.insert_circulating_supply(circulating_supply as u64) {
-                    Ok(_) => (),
-                    Err(err) => {
-                        self.stores.delete_all()?;
-                        return Err(UtxoIndexError::StoreAccessError(err));
-                    }
-                }
+                };
+                utxoindex_changes.clear();
+                continue;
+            } else {
                 break;
-            };
-            match self.stores.insert_utxo_entries(utxoindex_changes.utxos.added) {
-                Ok(_) => (),
-                Err(err) => {
-                    self.stores.delete_all()?;
-                    return Err(UtxoIndexError::StoreAccessError(err));
-                }
             }
-            utxoindex_changes.utxos.added = UtxoSetByScriptPublicKey::new();
         }
+        match self.stores.add_utxo_entries(utxoindex_changes.utxos.added) {
+            Ok(_) => (),
+            Err(err) => {
+                self.stores.delete_all()?;
+                return Err(UtxoIndexError::StoreAccessError(err));
+            }
+        };
+
+        match self.stores.insert_circulating_supply(circulating_supply) {
+            Ok(_) => (),
+            Err(err) => {
+                self.stores.delete_all()?;
+                return Err(UtxoIndexError::StoreAccessError(err));
+            }
+        };
 
         match self.stores.insert_tips(BlockHashSet::from_iter(consensus_tips)) {
             Ok(_) => (),
@@ -187,13 +195,6 @@ impl UtxoIndex {
         self.shutdown_trigger.trigger();
     }
 
-    ///resyncs the utxoindex database, if not synced and processes events.
-    pub async fn run(&self) {
-        println!("in run");
-        self.maybe_reset().expect("expected maybe_reset not to err");
-        self.process_events().await;
-    }
-
     /// listens to consensus events or a shut-down processes those events.
     pub async fn process_events(&self) {
         loop {
@@ -204,7 +205,6 @@ impl UtxoIndex {
             consensus_notification = self.consensus_recv.recv().fuse() => {
                 match consensus_notification {
                     Ok(ref msg) => {
-                        println!("{:?}", msg);
                         match msg {
                         ConsensusNotification::VirtualChangeSet(virtual_change_set) => {
                             println!("got msg");
@@ -215,7 +215,6 @@ impl UtxoIndex {
                     }
                     }
                     Err(err) => {
-                        println!("{:?}", err);
                         panic!("{}", err);
                     }
                     }
@@ -224,5 +223,20 @@ impl UtxoIndex {
         }
         println!("exiting---");
         self.shutdown_finalized_trigger.trigger();
+    }
+}
+
+impl UtxoIndexApi for UtxoIndex {
+    fn get_circulating_supply(&self) -> StoreResult<u64> {
+        self.stores.get_circulating_supply()
+    }
+
+    fn get_utxos_by_script_public_keys(&self, script_public_keys: ScriptPublicKeys) -> StoreResult<UtxoSetByScriptPublicKey> {
+        //TODO: chunking
+        self.stores.get_utxos_by_script_public_key(script_public_keys)
+    }
+
+    fn get_all_utxos(&self) -> StoreResult<UtxoSetByScriptPublicKey> {
+        self.stores.get_all_utxos()
     }
 }

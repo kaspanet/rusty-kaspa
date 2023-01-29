@@ -10,6 +10,7 @@ use crate::{
         tx::TxResult,
     },
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
+    utxo::utxo_collection::UtxoCollection,
 };
 use hashes::Hash;
 /// Abstracts the consensus external API
@@ -36,7 +37,7 @@ pub trait ConsensusApi: Send + Sync {
         self: Arc<Self>,
         from_outpoint: Option<TransactionOutpoint>,
         chunk_size: usize,
-    ) -> Arc<Vec<(TransactionOutpoint, UtxoEntry)>>;
+    ) -> Vec<(TransactionOutpoint, UtxoEntry)>;
 }
 
 pub type DynConsensus = Arc<dyn ConsensusApi>;

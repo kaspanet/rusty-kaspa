@@ -1,4 +1,7 @@
-use crate::model::{CompactUtxoCollection, CompactUtxoEntry, UTXOChanges, UtxoSetByScriptPublicKey};
+use crate::{
+    core::{CompactUtxoCollection, CompactUtxoEntry, UtxoSetByScriptPublicKey},
+    update_container::UTXOChanges,
+};
 
 use consensus::model::stores::{
     database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter, SEP, SEP_SIZE},
@@ -10,6 +13,7 @@ use consensus_core::tx::{
 };
 use hashes::Hash;
 use rocksdb::WriteBatch;
+use std::collections::hash_map::Entry;
 use std::mem::size_of;
 use std::sync::Arc;
 
@@ -121,10 +125,9 @@ impl AsRef<[u8]> for UtxoEntryFullAccessKey {
 
 pub trait UtxoSetByScriptPublicKeyStoreReader {
     ///Get [UtxoSetByScriptPublicKey] set by queried [ScriptPublicKeys],
-    fn get_utxos_from_script_public_keys(
-        &self,
-        script_public_keys: ScriptPublicKeys,
-    ) -> Result<Arc<UtxoSetByScriptPublicKey>, StoreError>;
+    fn get_utxos_from_script_public_keys(&self, script_public_keys: ScriptPublicKeys) -> Result<UtxoSetByScriptPublicKey, StoreError>;
+
+    fn get_all_utxos(&self) -> Result<UtxoSetByScriptPublicKey, StoreError>;
 }
 
 pub trait UtxoSetByScriptPublicKeyStore: UtxoSetByScriptPublicKeyStoreReader {
@@ -133,8 +136,8 @@ pub trait UtxoSetByScriptPublicKeyStore: UtxoSetByScriptPublicKeyStoreReader {
     /// This is because concurrent readers can interfere with cache consistency.  
     fn write_diff(&mut self, utxo_diff_by_script_public_key: UTXOChanges) -> Result<(), StoreError>;
 
-    /// Insert a [UtxoSetByScriptPublicKey] into the [UtxoSetByScriptPublicKeyStore].
-    fn insert_utxo_entries(&mut self, utxo_entries: UtxoSetByScriptPublicKey) -> Result<(), StoreError>;
+    /// add [UtxoSetByScriptPublicKey] into the [UtxoSetByScriptPublicKeyStore].
+    fn add_utxo_entries(&mut self, utxo_entries: UtxoSetByScriptPublicKey) -> Result<(), StoreError>;
 
     fn delete_all(&mut self) -> Result<(), StoreError>;
 }
@@ -193,27 +196,39 @@ impl DbUtxoSetByScriptPublicKeyStore {
 }
 
 impl UtxoSetByScriptPublicKeyStoreReader for DbUtxoSetByScriptPublicKeyStore {
-    fn get_utxos_from_script_public_keys(
-        &self,
-        script_public_keys: ScriptPublicKeys,
-    ) -> Result<Arc<UtxoSetByScriptPublicKey>, StoreError> //TODO: chunking
-    {
+    // compared to go-kaspad this gets transaction outpoints from multiple script public keys at once.
+    // TODO: probably ideal way to retrive is to return a chained iterator which can be used to chunk results and propegate utxo entries
+    // to the rpc via pagnation, this would alliviate the memory footprint of script public keys with large amount of utxos.
+    fn get_utxos_from_script_public_keys(&self, script_public_keys: ScriptPublicKeys) -> Result<UtxoSetByScriptPublicKey, StoreError> {
         let mut utxos_by_script_public_keys = UtxoSetByScriptPublicKey::new();
-        for script_public_key in script_public_keys {
-            let mut utxos_by_script_public_keys_inner = CompactUtxoCollection::new();
-            let script_public_key_bucket: ScriptPublicKeyBucket = script_public_key.clone().into();
-            utxos_by_script_public_keys_inner.extend(
+        for script_public_key in script_public_keys.into_iter() {
+            let script_public_key_bucket = ScriptPublicKeyBucket::from(script_public_key.clone());
+            let utxos_by_script_public_keys_inner = CompactUtxoCollection::from_iter(
                 self.access
                     .seek_iterator::<TransactionOutpoint, CompactUtxoEntry>(Some(vec![script_public_key_bucket.as_ref()]), None)
                     .into_iter()
                     .map(move |value| {
-                        let (k, v) = value.expect("expected key: TransactionOutpoint, value: CompactUtxoEntry pair");
+                        let (k, v) = value.expect("expected `key: TransactionOutpoint`, `value: CompactUtxoEntry`");
                         (k, v)
                     }),
             );
             utxos_by_script_public_keys.insert(script_public_key, utxos_by_script_public_keys_inner);
         }
-        Ok(Arc::new(utxos_by_script_public_keys))
+        Ok(utxos_by_script_public_keys)
+    }
+
+    fn get_all_utxos(&self) -> Result<UtxoSetByScriptPublicKey, StoreError> {
+        let mut utxos_by_script_public_keys = UtxoSetByScriptPublicKey::new();
+        for res in self.access.seek_iterator::<ScriptPublicKey, CompactUtxoCollection>(None, None).into_iter() {
+            let (k, v) = res.expect("expected `key: TransactionOutpoint`, `value: CompactUtxoEntry`");
+            match utxos_by_script_public_keys.entry(k) {
+                Entry::Occupied(mut entry) => entry.get_mut().extend(v), //ForFuture: `entry.extend_one`
+                Entry::Vacant(entry) => {
+                    entry.insert(v);
+                }
+            };
+        }
+        Ok((utxos_by_script_public_keys))
     }
 }
 
@@ -221,18 +236,18 @@ impl UtxoSetByScriptPublicKeyStore for DbUtxoSetByScriptPublicKeyStore {
     fn write_diff(&mut self, utxo_diff_by_script_public_key: UTXOChanges) -> Result<(), StoreError> {
         let mut writer = DirectDbWriter::new(&self.db);
 
-        let mut remove_iter_keys =
-            utxo_diff_by_script_public_key.removed.iter().map(move |(script_public_key, compact_utxo_collection)| {
-                let transaction_outpoint = compact_utxo_collection.keys().next().expect("expected transaction outpoint");
-                UtxoEntryFullAccessKey::new(
-                    ScriptPublicKeyBucket::from(script_public_key.clone()),
-                    TransactionOutpointKey::from(*transaction_outpoint),
-                )
+        let mut to_remove =
+            utxo_diff_by_script_public_key.removed.iter().flat_map(move |(script_public_key, compact_utxo_collection)| {
+                compact_utxo_collection.into_iter().map(move |(transaction_outpoint, _)| {
+                    UtxoEntryFullAccessKey::new(
+                        ScriptPublicKeyBucket::from(script_public_key.clone()),
+                        TransactionOutpointKey::from(*transaction_outpoint),
+                    )
+                })
             });
 
-        let mut added_iter_items =
-            utxo_diff_by_script_public_key.added.iter().map(move |(script_public_key, compact_utxo_collection)| {
-                let (transaction_outpoint, compact_utxo) = compact_utxo_collection.iter().next().expect("expected utxo entry");
+        let mut to_add = utxo_diff_by_script_public_key.added.iter().flat_map(move |(script_public_key, compact_utxo_collection)| {
+            compact_utxo_collection.into_iter().map(move |(transaction_outpoint, compact_utxo)| {
                 (
                     UtxoEntryFullAccessKey::new(
                         ScriptPublicKeyBucket::from(script_public_key.clone()),
@@ -240,29 +255,31 @@ impl UtxoSetByScriptPublicKeyStore for DbUtxoSetByScriptPublicKeyStore {
                     ),
                     *compact_utxo,
                 )
-            });
+            })
+        });
 
-        self.access.delete_many(&mut writer, &mut remove_iter_keys)?;
-        self.access.write_many(&mut writer, &mut added_iter_items)?;
+        self.access.delete_many(&mut writer, &mut to_remove)?;
+        self.access.write_many(&mut writer, &mut to_add)?;
 
         Ok(())
     }
 
-    fn insert_utxo_entries(&mut self, utxo_entries: UtxoSetByScriptPublicKey) -> Result<(), StoreError> {
+    fn add_utxo_entries(&mut self, utxo_entries: UtxoSetByScriptPublicKey) -> Result<(), StoreError> {
         let mut writer = DirectDbWriter::new(&self.db);
 
-        let mut utxo_entry_iterator = utxo_entries.iter().map(move |(script_public_key, compact_utxo_collection)| {
-            let (transaction_outpoint, compact_utxo) = compact_utxo_collection.iter().next().expect("expected utxo entry");
-            (
-                UtxoEntryFullAccessKey::new(
-                    ScriptPublicKeyBucket::from(script_public_key.clone()),
-                    TransactionOutpointKey::from(*transaction_outpoint),
-                ),
-                *compact_utxo,
-            )
+        let mut to_add = utxo_entries.iter().flat_map(move |(script_public_key, compact_utxo_collection)| {
+            compact_utxo_collection.into_iter().map(move |(transaction_outpoint, compact_utxo)| {
+                (
+                    UtxoEntryFullAccessKey::new(
+                        ScriptPublicKeyBucket::from(script_public_key.clone()),
+                        TransactionOutpointKey::from(*transaction_outpoint),
+                    ),
+                    *compact_utxo,
+                )
+            })
         });
 
-        self.access.write_many(&mut writer, &mut utxo_entry_iterator)?;
+        self.access.write_many(&mut writer, &mut to_add)?;
 
         Ok(())
     }

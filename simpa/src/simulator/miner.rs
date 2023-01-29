@@ -121,7 +121,7 @@ impl Miner {
                 let entry = match self.get_spendable_entry(virtual_utxo_view, outpoint, virtual_state.daa_score) {
                     Some(entry) => entry,
                     None => return None,
-                };
+                }; //This was changed from `let .. Some()` due to `use of unstable...` compiler errors.
                 let unsigned_tx = self.create_unsigned_tx(outpoint, entry.amount, multiple_outputs);
                 Some(MutableTransaction::with_entries(unsigned_tx, vec![entry]))
             })
@@ -146,7 +146,7 @@ impl Miner {
         let entry = match utxo_view.get(&outpoint) {
             Some(entry) => entry,
             None => return None,
-        };
+        }; //This was changed from `let .. Some()` due to `use of unstable...` compiler errors.
         if entry.amount < 2
             || (entry.is_coinbase && (virtual_daa_score as i64 - entry.block_daa_score as i64) <= self.params.coinbase_maturity as i64)
         {

@@ -1,12 +1,17 @@
 use std::collections::HashMap;
 
 use consensus_core::tx::TransactionOutpoint;
+
+use consensus_core::tx::ScriptPublicKey;
+
+use consensus_core::tx::UtxoEntry;
+use serde::{Deserialize, Serialize};
+
 //TODO: explore potential optimization via custom TransactionOutpoint hasher for below,
 //One possible implementation: u64 of transaction id xored with 4 bytes of transaction index.
 pub type CompactUtxoCollection = HashMap<TransactionOutpoint, CompactUtxoEntry>;
 
-use consensus_core::tx::UtxoEntry;
-use serde::{Deserialize, Serialize};
+pub type UtxoSetByScriptPublicKey = HashMap<ScriptPublicKey, CompactUtxoCollection>;
 
 //Note: memory optimizaion compared to go-lang kaspad:
 //unlike `consensus_core::tx::UtxoEntry` the utxoindex utilizes a comapacted utxo form, where `script_public_key` field is removed.

@@ -53,6 +53,7 @@ use consensus_core::{
     errors::tx::TxResult,
     notify::ConsensusNotification,
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
+    utxo::utxo_collection::UtxoCollection,
     BlockHashSet,
 };
 use crossbeam_channel::{unbounded as unbounded_crossbeam, Receiver as CrossbeamReceiver, Sender as CrossbeamSender};
@@ -488,11 +489,10 @@ impl ConsensusApi for Consensus {
         self: Arc<Self>,
         from_outpoint: Option<TransactionOutpoint>,
         chunk_size: usize,
-    ) -> Arc<Vec<(TransactionOutpoint, UtxoEntry)>> //consider using collect_into to allow for dynamic collection types.
-    {
+    ) -> Vec<(TransactionOutpoint, UtxoEntry)> {
         let virtual_stores = self.virtual_processor.virtual_stores.read();
         let iter = virtual_stores.utxo_set.from_iterator(from_outpoint);
-        Arc::new(iter.take(chunk_size).map(|item| item.unwrap()).collect())
+        iter.take(chunk_size).map(|item| item.unwrap()).collect()
     }
 }
 

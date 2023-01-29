@@ -6,6 +6,8 @@ use consensus::model::stores::{
     DB,
 };
 
+use crate::core::{CirculatingSupply, CirculatingSupplyDiff};
+
 /// Reader API for `UtxoIndexTipsStore`.
 pub trait CirculatingSupplyStoreReader {
     fn get(&self) -> StoreResult<u64>;
@@ -45,14 +47,14 @@ impl CirculatingSupplyStoreReader for DbCirculatingSupplyStore {
 }
 
 impl CirculatingSupplyStore for DbCirculatingSupplyStore {
-    fn add_circulating_supply_diff(&mut self, circulating_supply_diff: i64) -> Result<u64, StoreError> {
-        let circulating_supply = self
-            .access
-            .update(DirectDbWriter::new(&self.db), move |circulating_supply| circulating_supply + (circulating_supply_diff as u64)); //force monotonic
+    fn add_circulating_supply_diff(&mut self, circulating_supply_diff: CirculatingSupplyDiff) -> Result<u64, StoreError> {
+        let circulating_supply = self.access.update(DirectDbWriter::new(&self.db), move |circulating_supply| {
+            circulating_supply + (circulating_supply_diff as CirculatingSupply)
+        }); //force monotonic
         circulating_supply
     }
 
-    fn insert(&mut self, circulating_supply: u64) -> Result<(), StoreError> {
+    fn insert(&mut self, circulating_supply: CirculatingSupply) -> Result<(), StoreError> {
         self.access.write(DirectDbWriter::new(&self.db), &circulating_supply)
     }
 

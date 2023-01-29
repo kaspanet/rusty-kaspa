@@ -15,6 +15,7 @@ use consensus_core::{
     merkle::calc_hash_merkle_root,
     subnets::SUBNETWORK_ID_COINBASE,
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
+    utxo::utxo_collection::UtxoCollection,
     BlockHashSet,
 };
 use futures_util::future::BoxFuture;
@@ -192,7 +193,7 @@ impl ConsensusApi for TestConsensus {
         self: Arc<Self>,
         from_outpoint: Option<TransactionOutpoint>,
         chunk_size: usize,
-    ) -> Arc<Vec<(TransactionOutpoint, UtxoEntry)>> {
+    ) -> Vec<(TransactionOutpoint, UtxoEntry)> {
         self.consensus.clone().get_virtual_utxos(from_outpoint, chunk_size)
     }
 }

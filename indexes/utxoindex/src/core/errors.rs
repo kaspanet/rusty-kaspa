@@ -5,7 +5,7 @@ use std::io;
 
 use thiserror::Error;
 
-use crate::notify::UtxoIndexNotification;
+use super::notify::UtxoIndexNotification;
 
 #[derive(Error, Debug)]
 pub enum UtxoIndexError {
