@@ -15,12 +15,12 @@ impl AsyncService for UtxoIndex {
     }
 
     fn start(self: Arc<UtxoIndex>) -> AsyncServiceFuture {
-        trace!("starting {}", UTXOINDEX);
+        trace!("starting {UTXOINDEX}");
         let shutdown_finalized_listener = self.shutdown_finalized_listener.clone();
         Box::pin(async move {
             match self.maybe_reset() {
                 Ok(_) => (),
-                Err(err) => panic!("could not start utxoindex {}", err),
+                Err(err) => panic!("could not start utxoindex: {err}"),
             }
             self.process_events().await;
             shutdown_finalized_listener.await;

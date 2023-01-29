@@ -172,7 +172,7 @@ impl UtxoIndex {
             Ok(utxoindex_tips) => {
                 let consensus_tips = BlockHashSet::from_iter(self.cons.clone().get_virtual_state_tips());
                 let res = *utxoindex_tips == consensus_tips;
-                trace!("utxoindex sync status is {}", res);
+                trace!("utxoindex sync status is {res}");
                 Ok(res)
             }
             Err(error) => match error {
@@ -229,7 +229,7 @@ impl UtxoIndex {
                         ConsensusNotification::PruningPointUTXOSetOverride(_) => {
                             self.reset().expect("expected reset");
                         }
-                        _ => panic!("unexpected consensus notification {:?}", consensus_notification),
+                        _ => panic!("unexpected consensus notification {consensus_notification:?}")
                     }
                     }
                     Err(err) => {
