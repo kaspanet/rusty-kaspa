@@ -20,6 +20,7 @@ pub trait UtxoSetStoreReader {
     fn from_iterator(
         &self,
         from_outpoint: Option<TransactionOutpoint>,
+        limit: usize,
     ) -> Box<dyn Iterator<Item = Result<(TransactionOutpoint, UtxoEntry), Box<dyn Error>>> + '_>;
 }
 
@@ -106,9 +107,10 @@ impl UtxoSetStoreReader for DbUtxoSetStore {
     fn from_iterator(
         &self,
         from_outpoint: Option<TransactionOutpoint>,
+        limit: usize,
     ) -> Box<dyn Iterator<Item = Result<(TransactionOutpoint, UtxoEntry), Box<dyn Error>>> + '_> {
         let seek_key = from_outpoint.map_or(None, move |outpoint| Some(UtxoKey::from(outpoint)));
-        Box::new(self.access.seek_iterator::<TransactionOutpoint, UtxoEntry>(None, seek_key))
+        Box::new(self.access.seek_iterator::<TransactionOutpoint, UtxoEntry>(None, seek_key, limit))
     }
 }
 

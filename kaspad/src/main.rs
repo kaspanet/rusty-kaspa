@@ -13,7 +13,7 @@ use thiserror::__private::PathAsDisplay;
 use crate::monitor::ConsensusMonitor;
 use consensus::consensus::Consensus;
 use consensus::params::DEVNET_PARAMS;
-use utxoindex::utxoindex::UtxoIndex;
+use utxoindex::UtxoIndex;
 
 use kaspa_core::{info, trace};
 use rpc_core::server::collector::ConsensusNotificationChannel;

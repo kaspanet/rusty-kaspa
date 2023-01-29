@@ -26,3 +26,9 @@ pub struct NewBlockTemplateNotification {}
 
 #[derive(Debug, Clone)]
 pub struct PruningPointUTXOSetOverrideNotification {}
+
+impl PruningPointUTXOSetOverrideNotification {
+    pub fn new() -> Self {
+        Self {}
+    }
+}

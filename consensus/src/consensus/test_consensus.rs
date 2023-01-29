@@ -15,7 +15,6 @@ use consensus_core::{
     merkle::calc_hash_merkle_root,
     subnets::SUBNETWORK_ID_COINBASE,
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
-    utxo::utxo_collection::UtxoCollection,
     BlockHashSet,
 };
 use futures_util::future::BoxFuture;

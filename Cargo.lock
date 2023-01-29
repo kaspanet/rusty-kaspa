@@ -1552,6 +1552,7 @@ name = "kaspa-utils"
 version = "0.1.0"
 dependencies = [
  "async-std",
+ "serde",
  "triggered",
 ]
 
@@ -2964,9 +2965,9 @@ checksum = "cda74da7e1a664f795bb1f8a87ec406fb89a02522cf6e50620d016add6dbbf5c"
 
 [[package]]
 name = "tokio"
-version = "1.22.0"
+version = "1.24.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d76ce4a75fb488c605c54bf610f221cea8b0dafb53333c1a67e8ee199dcd2ae3"
+checksum = "597a12a59981d9e3c38d216785b0c37399f6e415e8d0712047620f189371b0bb"
 dependencies = [
  "autocfg",
  "bytes",
@@ -2977,7 +2978,7 @@ dependencies = [
  "pin-project-lite",
  "socket2",
  "tokio-macros",
- "winapi",
+ "windows-sys",
 ]
 
 [[package]]
@@ -3224,6 +3225,7 @@ dependencies = [
  "futures",
  "hashes",
  "kaspa-core",
+ "kaspa-utils",
  "log",
  "parking_lot",
  "rand 0.8.5",

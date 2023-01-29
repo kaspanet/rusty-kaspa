@@ -1,6 +1,6 @@
 use consensus::model::stores::errors::StoreResult;
 use consensus::model::stores::{errors::StoreError, DB};
-use consensus_core::tx::{ScriptPublicKeys, TransactionOutpoint, UtxoEntry};
+use consensus_core::tx::{ScriptPublicKeys, TransactionOutpoint};
 use std::sync::Arc;
 
 use consensus_core::notify::ConsensusNotification;
@@ -8,30 +8,30 @@ use consensus_core::{api::DynConsensus, notify::VirtualChangeSetNotification, Bl
 use kaspa_core::trace;
 use triggered::{Listener, Trigger};
 
-use crate::core::api::UtxoIndexApi;
-use crate::core::errors::UtxoIndexError;
-use crate::core::notify::UtxoIndexNotification;
-use crate::core::{CirculatingSupply, UtxoSetByScriptPublicKey};
+use crate::external::api::UtxoIndexApi;
+use crate::external::errors::UtxoIndexError;
+use crate::external::model::{CirculatingSupply, UtxoSetByScriptPublicKey};
+use crate::external::notify::UtxoIndexNotification;
 use crate::stores::store_manager::StoreManager;
 use crate::update_container::UtxoIndexChanges;
 use async_std::channel::{unbounded as unbounded_async_std, Receiver as AsyncStdReceiver, Sender as AsyncStdSender};
 //use tokio::{sync::mpsc::UnboundedReceiver as TokioUnboundedReceiver, task::JoinError};
 use futures::{select, FutureExt};
 
-const RESYNC_CHUNK_SIZE: usize = 1000;
+const RESYNC_CHUNK_SIZE: usize = 1_000;
 
-//utxoindex needs to be created after consensus, because it get consensus as a new argument.
-//but needs to reset before consensus starts.
+/// UtxoIndex indexes [`CompactUtxoEntryCollections`] by [`ScriptPublicKey`], commits them to its ownstore, and notifies changes.
 #[derive(Clone)]
 pub struct UtxoIndex {
-    pub cons: DynConsensus,
+    cons: DynConsensus,
     consensus_recv: AsyncStdReceiver<ConsensusNotification>,
     rpc_sender: AsyncStdSender<UtxoIndexNotification>,
 
     pub rpc_receiver: AsyncStdReceiver<UtxoIndexNotification>,
 
-    pub shutdown_trigger: Trigger,
+    shutdown_trigger: Trigger,
     pub shutdown_listener: Listener,
+
     pub shutdown_finalized_trigger: Trigger,
     pub shutdown_finalized_listener: Listener,
 
@@ -39,7 +39,7 @@ pub struct UtxoIndex {
 }
 
 impl UtxoIndex {
-    ///creates a new utxoindex
+    /// creates a new [`UtxoIndex`] listening to the passed consensus, and consensus receiver.
     pub fn new(cons: DynConsensus, db: Arc<DB>, consensus_recv: AsyncStdReceiver<ConsensusNotification>) -> Self {
         let (shutdown_trigger, shutdown_listener) = triggered::trigger();
         let (shutdown_finalized_trigger, shutdown_finalized_listener) = triggered::trigger();
@@ -49,10 +49,13 @@ impl UtxoIndex {
             cons,
             consensus_recv,
             stores: StoreManager::new(db),
+
             shutdown_listener,
             shutdown_trigger,
+
             rpc_sender,
             rpc_receiver,
+
             shutdown_finalized_trigger,
             shutdown_finalized_listener,
         }
@@ -63,46 +66,56 @@ impl UtxoIndex {
     /// **Note:**
     /// 1) A failure of the call will result in a reset utxoindex database.
     /// 2) There is an implicit expectation that the consensus store most have [VirtualParent] tips. i.e. consensus database most be intiated.
-    pub fn reset(&self) -> Result<(), UtxoIndexError> {
+    /// 3) reseting while consensus notifies virtual state changes may result in undefined behaviour.
+    fn reset(&self) -> Result<(), UtxoIndexError> {
         trace!("resetting the utxoindex");
-        println!("resetting the utxoindex");
         self.stores.delete_all()?;
         let consensus_tips = self.cons.clone().get_virtual_state_tips();
         let mut circulating_supply: CirculatingSupply = 0;
-        let mut utxoindex_changes = UtxoIndexChanges::new();
         let mut from_outpoint = None;
-        let mut total_amount = 0;
         loop {
             // potential TODO: iterating virtual utxos into an [UtxoIndexChanges] struct is a bit of overhead,
             // but some form of pre-iteration is needed to extract and commit circulating supply seperatly.
             // alternative is to merge all individual stores, or handle this logic within the utxoindex store_manager.
             let virtual_utxo_batch = self.cons.clone().get_virtual_utxos(from_outpoint, RESYNC_CHUNK_SIZE);
-            total_amount += virtual_utxo_batch.len();
-            println!("got {} utxos", total_amount);
-            from_outpoint = Some(virtual_utxo_batch.last().expect("expected a none-empty vector").0); //TODO: consider incrementing from_outpoint bytes by one, as to not re-retrive with next iteration.
+
+            let mut utxoindex_changes = UtxoIndexChanges::new();
+
             if virtual_utxo_batch.len() == RESYNC_CHUNK_SIZE {
+                //commit batch, remain in the loop.
+
+                let last_outpoint = virtual_utxo_batch.last().expect("expected a none-empty vector").0;
+                from_outpoint = Some(TransactionOutpoint::new(last_outpoint.transaction_id, last_outpoint.index + 1)); // Increment index by one, as to not re-retrive with next iteration.
+
                 utxoindex_changes.add_utxo_vector(virtual_utxo_batch);
+
                 circulating_supply += utxoindex_changes.supply as CirculatingSupply;
-                match self.stores.add_utxo_entries(utxoindex_changes.utxos.added.clone()) {
-                    Ok(_) => (),
+
+                match self.stores.add_utxo_entries(utxoindex_changes.utxos.added) {
+                    Ok(_) => continue, //stay in loop, keep retriving
                     Err(err) => {
                         self.stores.delete_all()?;
                         return Err(UtxoIndexError::StoreAccessError(err));
                     }
                 };
-                utxoindex_changes.clear();
-                continue;
             } else {
-                break;
+                //commit remaining utxos and break out of retrival loop
+
+                utxoindex_changes.add_utxo_vector(virtual_utxo_batch);
+
+                circulating_supply += utxoindex_changes.supply as CirculatingSupply;
+
+                match self.stores.add_utxo_entries(utxoindex_changes.utxos.added) {
+                    Ok(_) => break, //break out of loop, commit other changes
+                    Err(err) => {
+                        self.stores.delete_all()?;
+                        return Err(UtxoIndexError::StoreAccessError(err));
+                    }
+                };
             }
         }
-        match self.stores.add_utxo_entries(utxoindex_changes.utxos.added) {
-            Ok(_) => (),
-            Err(err) => {
-                self.stores.delete_all()?;
-                return Err(UtxoIndexError::StoreAccessError(err));
-            }
-        };
+
+        //commit to the the remaining stores.
 
         match self.stores.insert_circulating_supply(circulating_supply) {
             Ok(_) => (),
@@ -119,6 +132,7 @@ impl UtxoIndex {
                 return Err(UtxoIndexError::StoreAccessError(err));
             }
         };
+
         Ok(())
     }
 
@@ -135,10 +149,8 @@ impl UtxoIndex {
         self.stores.update_utxo_state(utxoindex_changes.utxos.clone())?;
         self.rpc_sender.send(UtxoIndexNotification::UtxosChanged(utxoindex_changes.utxos.into())).await?;
         if utxoindex_changes.supply > 0 {
-            //force monotonic circulating supply here.
+            //force monotonic
             let _circulating_supply = self.stores.update_circulating_supply(utxoindex_changes.supply)?;
-            //TODO: circulating supply update notifications in rpc -> uncomment line below when done.
-            //self.rpc_sender.send(UtxoIndexNotification::CirculatingSupplyNotification(CirculatingSupplyNotification::new(circulating_supply))).await;
         }
         self.stores.insert_tips(utxoindex_changes.tips)?; //we expect new tips with every virtual.
         Ok(())
@@ -153,14 +165,14 @@ impl UtxoIndex {
             Ok(utxoindex_tips) => {
                 let consensus_tips = BlockHashSet::from_iter(self.cons.clone().get_virtual_state_tips()); //TODO: when querying consensus stores is possible
                 let res = *utxoindex_tips == consensus_tips;
-                trace!("sync status is {}", res);
+                trace!("utxoindex sync status is {}", res);
                 Ok(res)
             }
             Err(error) => match error {
                 StoreError::KeyNotFound(_) => {
-                    trace!("utxoindex status is {}", false);
+                    trace!("utxoindex sync status is {}", false);
                     Ok(false)
-                } //simply means utxoindex tips database is empty //TODO: handle this case, since we try to sync without it actually being possible.
+                } //Means utxoindex tips database is empty i.e. not sync'd.
                 StoreError::KeyAlreadyExists(err) => Err(UtxoIndexError::StoreAccessError(StoreError::KeyAlreadyExists(err))),
                 StoreError::DbError(err) => Err(UtxoIndexError::StoreAccessError(StoreError::DbError(err))),
                 StoreError::DeserializationError(err) => Err(UtxoIndexError::StoreAccessError(StoreError::DeserializationError(err))),
@@ -168,13 +180,12 @@ impl UtxoIndex {
         }
     }
 
-    ///checks if the db is synced, if not resyncs the the database
+    /// Checks if the db is synced, if not, resyncs the database from consensus.
     pub fn maybe_reset(&self) -> Result<(), UtxoIndexError> {
-        println!("in maybe reset");
         match self.is_synced() {
             Ok(_) => match self.reset() {
                 Ok(_) => {
-                    println!("reset went well");
+                    trace!("utxoindex reset");
                     Ok(())
                 }
                 Err(err) => {
@@ -190,15 +201,14 @@ impl UtxoIndex {
         }
     }
 
-    ///triggers the shutdown which breaks the async event processing loop
+    ///triggers the shutdown, which breaks the async event processing loop, stopping the processing.
     pub fn signal_shutdown(&self) {
         self.shutdown_trigger.trigger();
     }
 
-    /// listens to consensus events or a shut-down processes those events.
+    /// listens to consensus events or a shutdown trigger, and processes those events.
     pub async fn process_events(&self) {
         loop {
-            println!("in loop");
             select! {
             _shutdown_signal = self.shutdown_listener.clone().fuse() => break,
 
@@ -207,15 +217,16 @@ impl UtxoIndex {
                     Ok(ref msg) => {
                         match msg {
                         ConsensusNotification::VirtualChangeSet(virtual_change_set) => {
-                            println!("got msg");
                             self.update(virtual_change_set.clone()).await.expect("expected update");
                         },
-                        ConsensusNotification::PruningPointUTXOSetOverride(_) => self.reset().expect("expected reset"),
+                        ConsensusNotification::PruningPointUTXOSetOverride(_) => {
+                            self.reset().expect("expected reset");
+                        }
                         _ => panic!("unexpected consensus notification {:?}", consensus_notification),
                     }
                     }
                     Err(err) => {
-                        panic!("{}", err);
+                        UtxoIndexError::ConsensusRecieverUnreachableError(err);
                     }
                     }
                 }

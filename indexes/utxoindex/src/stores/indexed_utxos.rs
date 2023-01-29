@@ -1,10 +1,10 @@
 use crate::{
-    core::{CompactUtxoCollection, CompactUtxoEntry, UtxoSetByScriptPublicKey},
+    external::model::{CompactUtxoCollection, CompactUtxoEntry, UtxoSetByScriptPublicKey},
     update_container::UTXOChanges,
 };
 
 use consensus::model::stores::{
-    database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter, SEP, SEP_SIZE},
+    database::prelude::{CachedDbAccess, DirectDbWriter},
     errors::StoreError,
     DB,
 };
@@ -12,7 +12,8 @@ use consensus_core::tx::{
     ScriptPublicKey, ScriptPublicKeys, ScriptVec, TransactionIndexType, TransactionOutpoint, VersionType, SCRIPT_VECTOR_SIZE,
 };
 use hashes::Hash;
-use rocksdb::WriteBatch;
+use kaspa_utils::serde_big_array::BigArray;
+use serde::Deserialize;
 use std::collections::hash_map::Entry;
 use std::mem::size_of;
 use std::sync::Arc;
@@ -20,11 +21,7 @@ use std::sync::Arc;
 // ## Prefixes:
 
 ///prefixes the [ScriptPublicKey] indexed utxo set.
-pub const UTXO_SET_PREFIX: &[u8] = b"utxoindex:utxo-set";
-///prefix for the last sync'd [VirtualParents] (i.e. blockdag tips)
-pub const VIRTUAL_PARENTS_PREFIX: &[u8] = b"utxoindex:virtual-parents";
-///Prefixes the [CirculatingSupply]
-pub const CIRCULATING_SUPPLY_PREFIX: &[u8] = b"utxoindex:circulating-supply";
+pub const UTXO_SET_PREFIX: &[u8] = b"utxo-set";
 
 // ## Buckets:
 
@@ -100,20 +97,27 @@ impl AsRef<[u8]> for TransactionOutpointKey {
 }
 
 ///Size of the [UtxoEntryFullAccessKey] in bytes.
-pub const UTXO_ENTRY_FULL_ACCESS_KEY_SIZE: usize = SCRIPT_PUBLIC_KEY_BUCKET_SIZE + SEP_SIZE + TRANSACTION_OUTPOINT_KEY_SIZE;
+pub const UTXO_ENTRY_FULL_ACCESS_KEY_SIZE: usize = SCRIPT_PUBLIC_KEY_BUCKET_SIZE + TRANSACTION_OUTPOINT_KEY_SIZE;
 ///Full [CompactUtxoEntry] access key.
 ///Consists of  38 bytes of [ScriptPublicKeyBucket], one byte of [SEP], and 36 bytes of [TransactionOutpointKey]
-#[derive(Eq, Hash, PartialEq, Debug, Copy, Clone)]
-struct UtxoEntryFullAccessKey([u8; UTXO_ENTRY_FULL_ACCESS_KEY_SIZE]);
+#[derive(Eq, Hash, PartialEq, Debug, Copy, Clone, Deserialize)]
+struct UtxoEntryFullAccessKey(#[serde(with = "BigArray")] [u8; UTXO_ENTRY_FULL_ACCESS_KEY_SIZE]);
 
 impl UtxoEntryFullAccessKey {
     ///creates a new [UtxoEntryFullAccessKey] from a [ScriptPublicKeyBucket] and [TransactionOutpointKey].
     pub fn new(script_public_key_bucket: ScriptPublicKeyBucket, transaction_outpoint_key: TransactionOutpointKey) -> Self {
         let mut bytes = [0; UTXO_ENTRY_FULL_ACCESS_KEY_SIZE];
         bytes[..SCRIPT_PUBLIC_KEY_BUCKET_SIZE].copy_from_slice(script_public_key_bucket.as_ref());
-        bytes[SCRIPT_PUBLIC_KEY_BUCKET_SIZE] = SEP;
-        bytes[SCRIPT_PUBLIC_KEY_BUCKET_SIZE + SEP_SIZE..].copy_from_slice(transaction_outpoint_key.as_ref());
+        bytes[SCRIPT_PUBLIC_KEY_BUCKET_SIZE..].copy_from_slice(transaction_outpoint_key.as_ref());
         Self(bytes)
+    }
+
+    pub fn extract_script_public_key(&self) -> ScriptPublicKey {
+        ScriptPublicKey::from(ScriptPublicKeyBucket(self.0[..SCRIPT_PUBLIC_KEY_BUCKET_SIZE].try_into().expect("expected array")))
+    }
+
+    pub fn extract_transaction_outpoint(&self) -> TransactionOutpoint {
+        TransactionOutpoint::from(TransactionOutpointKey(self.0[SCRIPT_PUBLIC_KEY_BUCKET_SIZE..].try_into().expect("expected array")))
     }
 }
 
@@ -142,56 +146,14 @@ pub trait UtxoSetByScriptPublicKeyStore: UtxoSetByScriptPublicKeyStoreReader {
     fn delete_all(&mut self) -> Result<(), StoreError>;
 }
 
-#[derive(Clone)]
 pub struct DbUtxoSetByScriptPublicKeyStore {
     db: Arc<DB>,
-    prefix: &'static [u8],
     access: CachedDbAccess<UtxoEntryFullAccessKey, CompactUtxoEntry>,
 }
 
 impl DbUtxoSetByScriptPublicKeyStore {
     pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
-        Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_size, UTXO_SET_PREFIX), prefix: UTXO_SET_PREFIX }
-    }
-
-    pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {
-        Self::new(Arc::clone(&self.db), cache_size)
-    }
-
-    pub fn write_diff_batch(&mut self, batch: &mut WriteBatch, utxo_diff_by_script_public_key: UTXOChanges) -> Result<(), StoreError> {
-        let mut writer = BatchDbWriter::new(batch);
-
-        let mut remove_iter_keys =
-            utxo_diff_by_script_public_key.removed.iter().map(move |(script_public_key, compact_utxo_collection)| {
-                let transaction_outpoint = compact_utxo_collection.keys().next().expect("expected tx outpoint");
-                UtxoEntryFullAccessKey::new(
-                    ScriptPublicKeyBucket::from(script_public_key.clone()),
-                    TransactionOutpointKey::from(*transaction_outpoint),
-                )
-            });
-
-        let mut added_iter_items =
-            utxo_diff_by_script_public_key.added.iter().map(move |(script_public_key, compact_utxo_collection)| {
-                let (transaction_outpoint, compact_utxo) =
-                    compact_utxo_collection.iter().next().expect("expected tx outpoint / utxo entry");
-                (
-                    UtxoEntryFullAccessKey::new(
-                        ScriptPublicKeyBucket::from(script_public_key.clone()), //TODO: change ScriptVec to own struct to implement copy.
-                        TransactionOutpointKey::from(*transaction_outpoint),
-                    ),
-                    *compact_utxo,
-                )
-            });
-
-        self.access.delete_many(&mut writer, &mut remove_iter_keys)?;
-        self.access.write_many(&mut writer, &mut added_iter_items)?;
-
-        Ok(())
-    }
-
-    fn delete_all(&mut self, batch: &mut WriteBatch) -> Result<(), StoreError> {
-        let mut writer = BatchDbWriter::new(batch);
-        self.access.delete_all(&mut writer)
+        Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_size, UTXO_SET_PREFIX) }
     }
 }
 
@@ -205,7 +167,7 @@ impl UtxoSetByScriptPublicKeyStoreReader for DbUtxoSetByScriptPublicKeyStore {
             let script_public_key_bucket = ScriptPublicKeyBucket::from(script_public_key.clone());
             let utxos_by_script_public_keys_inner = CompactUtxoCollection::from_iter(
                 self.access
-                    .seek_iterator::<TransactionOutpoint, CompactUtxoEntry>(Some(vec![script_public_key_bucket.as_ref()]), None)
+                    .seek_iterator::<TransactionOutpoint, CompactUtxoEntry>(Some(script_public_key_bucket.as_ref()), None, usize::MAX)
                     .into_iter()
                     .map(move |value| {
                         let (k, v) = value.expect("expected `key: TransactionOutpoint`, `value: CompactUtxoEntry`");
@@ -219,16 +181,20 @@ impl UtxoSetByScriptPublicKeyStoreReader for DbUtxoSetByScriptPublicKeyStore {
 
     fn get_all_utxos(&self) -> Result<UtxoSetByScriptPublicKey, StoreError> {
         let mut utxos_by_script_public_keys = UtxoSetByScriptPublicKey::new();
-        for res in self.access.seek_iterator::<ScriptPublicKey, CompactUtxoCollection>(None, None).into_iter() {
-            let (k, v) = res.expect("expected `key: TransactionOutpoint`, `value: CompactUtxoEntry`");
-            match utxos_by_script_public_keys.entry(k) {
-                Entry::Occupied(mut entry) => entry.get_mut().extend(v), //ForFuture: `entry.extend_one`
+        for res in self.access.seek_iterator::<UtxoEntryFullAccessKey, CompactUtxoEntry>(None, None, usize::MAX).into_iter() {
+            let (k, v) = res.expect("expected `key: UtxoEntryFullAccessKey`, `value: CompactUtxoEntry`");
+            match utxos_by_script_public_keys.entry(k.extract_script_public_key()) {
+                Entry::Occupied(mut entry) => {
+                    entry.get_mut().insert(k.extract_transaction_outpoint(), v);
+                }
                 Entry::Vacant(entry) => {
-                    entry.insert(v);
+                    let mut value = CompactUtxoCollection::new();
+                    value.insert(k.extract_transaction_outpoint(), CompactUtxoEntry::new(v.amount, v.block_daa_score, v.is_coinbase));
+                    entry.insert(value);
                 }
             };
         }
-        Ok((utxos_by_script_public_keys))
+        Ok(utxos_by_script_public_keys)
     }
 }
 

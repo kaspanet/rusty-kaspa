@@ -18,7 +18,7 @@ pub trait UtxoIndexTipsStore: UtxoIndexTipsStoreReader {
     fn remove(&mut self) -> Result<(), StoreError>;
 }
 
-pub const UTXO_INDEXED_TIPS_STORE_NAME: &[u8] = b"utxo-indexed-tips";
+pub const TIPS_STORE_PREFIX: &[u8] = b"tips";
 
 /// A DB + cache implementation of `UtxoIndexTipsStore` trait
 #[derive(Clone)]
@@ -29,11 +29,7 @@ pub struct DbUtxoIndexTipsStore {
 
 impl DbUtxoIndexTipsStore {
     pub fn new(db: Arc<DB>) -> Self {
-        Self { db: Arc::clone(&db), access: CachedDbItem::new(db.clone(), UTXO_INDEXED_TIPS_STORE_NAME) }
-    }
-
-    pub fn clone_with_new_cache(&self) -> Self {
-        Self::new(Arc::clone(&self.db))
+        Self { db: Arc::clone(&db), access: CachedDbItem::new(db.clone(), TIPS_STORE_PREFIX) }
     }
 }
 
@@ -49,7 +45,6 @@ impl UtxoIndexTipsStore for DbUtxoIndexTipsStore {
     }
 
     fn remove(&mut self) -> Result<(), StoreError> {
-        let mut writer = DirectDbWriter::new(&self.db);
-        self.access.remove(writer)
+        self.access.remove(DirectDbWriter::new(&self.db))
     }
 }

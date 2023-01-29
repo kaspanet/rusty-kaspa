@@ -3,7 +3,7 @@ use std::sync::Arc;
 use consensus::model::stores::errors::StoreResult;
 use consensus_core::tx::ScriptPublicKeys;
 
-use super::UtxoSetByScriptPublicKey;
+use super::model::UtxoSetByScriptPublicKey;
 
 pub trait UtxoIndexApi: Send + Sync {
     fn get_circulating_supply(&self) -> StoreResult<u64>;

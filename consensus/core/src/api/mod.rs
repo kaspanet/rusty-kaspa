@@ -10,7 +10,6 @@ use crate::{
         tx::TxResult,
     },
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
-    utxo::utxo_collection::UtxoCollection,
 };
 use hashes::Hash;
 /// Abstracts the consensus external API

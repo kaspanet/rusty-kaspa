@@ -127,19 +127,18 @@ where
     //TODO: loop and chain iterators for multi-prefix / bucket iterator.
     pub fn seek_iterator<Key, Value>(
         &self,
-        buckets: Option<Vec<&[u8]>>, //iter self.prefix if None, else append vector bytes (in order), to prefix.
-        seek_from: Option<TKey>,     //iter whole range if None
+        bucket: Option<&[u8]>,   //iter self.prefix if None, else append bytes to self.prefix.
+        seek_from: Option<TKey>, //iter whole range if None
+        limit: usize,            //amount to take. use
     ) -> impl Iterator<Item = Result<(Key, Value), Box<dyn Error>>> + '_
     where
         TKey: Copy + AsRef<[u8]>,
         Key: DeserializeOwned + Debug,
         Value: DeserializeOwned + Debug,
     {
-        let db_key = buckets.map_or(DbKey::prefix_only(&self.prefix), move |buckets| {
+        let db_key = bucket.map_or(DbKey::prefix_only(&self.prefix), move |bucket| {
             let mut key = DbKey::prefix_only(&self.prefix);
-            for bucket in buckets.into_iter() {
-                key.add_bucket(bucket);
-            }
+            key.add_bucket(bucket);
             key
         });
 
@@ -153,7 +152,7 @@ where
             None => self.db.iterator_opt(IteratorMode::Start, read_opts),
         };
 
-        db_iterator.map(move |item| match item {
+        db_iterator.take(limit).map(move |item| match item {
             Ok((key_bytes, value_bytes)) => match bincode::deserialize::<Key>(key_bytes[db_key.prefix_len()..].as_ref()) {
                 Ok(key) => match bincode::deserialize::<Value>(value_bytes.as_ref()) {
                     Ok(value) => Ok((key, value)),

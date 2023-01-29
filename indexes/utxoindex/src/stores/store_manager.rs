@@ -6,7 +6,7 @@ use log::trace;
 use parking_lot::RwLock;
 
 use crate::{
-    core::{errors::UtxoIndexError, UtxoSetByScriptPublicKey},
+    external::{errors::UtxoIndexError, model::UtxoSetByScriptPublicKey},
     stores::{
         indexed_utxos::{DbUtxoSetByScriptPublicKeyStore, UtxoSetByScriptPublicKeyStore, UtxoSetByScriptPublicKeyStoreReader},
         supply::{CirculatingSupplyStore, CirculatingSupplyStoreReader, DbCirculatingSupplyStore},
@@ -17,8 +17,6 @@ use crate::{
 
 #[derive(Clone)]
 pub struct StoreManager {
-    db: Arc<DB>,
-
     utxoindex_tips_store: Arc<RwLock<DbUtxoIndexTipsStore>>,
     circulating_suppy_store: Arc<RwLock<DbCirculatingSupplyStore>>,
     utxos_by_script_public_key_store: Arc<RwLock<DbUtxoSetByScriptPublicKeyStore>>,
@@ -30,7 +28,6 @@ impl StoreManager {
             utxoindex_tips_store: Arc::new(RwLock::new(DbUtxoIndexTipsStore::new(db.clone()))),
             circulating_suppy_store: Arc::new(RwLock::new(DbCirculatingSupplyStore::new(db.clone()))),
             utxos_by_script_public_key_store: Arc::new(RwLock::new(DbUtxoSetByScriptPublicKeyStore::new(db.clone(), 0))),
-            db: db.clone(),
         }
     }
 
@@ -83,10 +80,6 @@ impl StoreManager {
     }
 
     /// Resets the utxoindex database:
-    ///
-    /// 1) Removes the entire utxoindex database,
-    /// 2) Creates a new one in its place,
-    /// 3) populates the new db with associated prefixes.
     pub fn delete_all(&self) -> Result<(), UtxoIndexError> {
         trace!("creating new utxoindex database, deleting the old one");
         //hold all individual store locks in-place

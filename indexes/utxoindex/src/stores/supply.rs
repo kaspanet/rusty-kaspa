@@ -6,7 +6,7 @@ use consensus::model::stores::{
     DB,
 };
 
-use crate::core::{CirculatingSupply, CirculatingSupplyDiff};
+use crate::external::model::{CirculatingSupply, CirculatingSupplyDiff};
 
 /// Reader API for `UtxoIndexTipsStore`.
 pub trait CirculatingSupplyStoreReader {
@@ -21,7 +21,7 @@ pub trait CirculatingSupplyStore: CirculatingSupplyStoreReader {
     fn remove(&mut self) -> Result<(), StoreError>;
 }
 
-pub const CIRCULATING_SUPPLY_STORE_PREFIX: &[u8] = b"utxoindex-circulating-supply";
+pub const CIRCULATING_SUPPLY_STORE_PREFIX: &[u8] = b"circulating-supply";
 
 /// A DB + cache implementation of `UtxoIndexTipsStore` trait
 #[derive(Clone)]
@@ -33,10 +33,6 @@ pub struct DbCirculatingSupplyStore {
 impl DbCirculatingSupplyStore {
     pub fn new(db: Arc<DB>) -> Self {
         Self { db: Arc::clone(&db), access: CachedDbItem::new(db, CIRCULATING_SUPPLY_STORE_PREFIX) }
-    }
-
-    pub fn clone_with_new_cache(&self) -> Self {
-        Self::new(Arc::clone(&self.db))
     }
 }
 
@@ -59,7 +55,6 @@ impl CirculatingSupplyStore for DbCirculatingSupplyStore {
     }
 
     fn remove(&mut self) -> Result<(), StoreError> {
-        let mut writer = DirectDbWriter::new(&self.db);
-        self.access.remove(writer)
+        self.access.remove(DirectDbWriter::new(&self.db))
     }
 }

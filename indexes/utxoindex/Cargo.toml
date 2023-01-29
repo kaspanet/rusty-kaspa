@@ -11,16 +11,15 @@ hashes.workspace = true
 thiserror.workspace = true
 consensus-core.workspace = true
 consensus.workspace = true
-tokio.workspace = true
 kaspa-core.workspace = true
-#async-std.workspace = true
+kaspa-utils.workspace = true
 log.workspace = true
 rand.workspace = true
 
 futures = "0.3.25"
+tokio = { version = "1.24.2", features = ["time"] }
 rocksdb = "0.19"
 async-std = { version = "1", features = ["attributes", "tokio1"] }
 triggered = "0.1"
 parking_lot = "0.12"
 serde = { version = "1", features = ["derive"] }
-#tokio = { workspace = true, features = ["mpsc", "macros"] }
