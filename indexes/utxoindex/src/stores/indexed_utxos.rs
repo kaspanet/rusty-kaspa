@@ -191,7 +191,7 @@ impl UtxoSetByScriptPublicKeyStoreReader for DbUtxoSetByScriptPublicKeyStore {
     /// **WARN**: this should only be used for testing purposes.
     fn get_all_utxos(&self) -> Result<UtxoSetByScriptPublicKey, StoreError> {
         let mut utxos_by_script_public_keys = UtxoSetByScriptPublicKey::new();
-        for res in self.access.seek_iterator::<UtxoEntryFullAccessKey, CompactUtxoEntry>(None, None, usize::MAX).into_iter() {
+        for res in self.access.seek_iterator::<UtxoEntryFullAccessKey, CompactUtxoEntry>(None, None, usize::MAX) {
             let (k, v) = res.expect("expected `key: UtxoEntryFullAccessKey`, `value: CompactUtxoEntry`");
             match utxos_by_script_public_keys.entry(k.extract_script_public_key()) {
                 Entry::Occupied(mut entry) => {
@@ -214,7 +214,7 @@ impl UtxoSetByScriptPublicKeyStore for DbUtxoSetByScriptPublicKeyStore {
 
         let mut to_remove =
             utxo_diff_by_script_public_key.removed.iter().flat_map(move |(script_public_key, compact_utxo_collection)| {
-                compact_utxo_collection.into_iter().map(move |(transaction_outpoint, _)| {
+                compact_utxo_collection.iter().map(move |(transaction_outpoint, _)| {
                     UtxoEntryFullAccessKey::new(
                         ScriptPublicKeyBucket::from(script_public_key.clone()),
                         TransactionOutpointKey::from(*transaction_outpoint),
@@ -223,7 +223,7 @@ impl UtxoSetByScriptPublicKeyStore for DbUtxoSetByScriptPublicKeyStore {
             });
 
         let mut to_add = utxo_diff_by_script_public_key.added.iter().flat_map(move |(script_public_key, compact_utxo_collection)| {
-            compact_utxo_collection.into_iter().map(move |(transaction_outpoint, compact_utxo)| {
+            compact_utxo_collection.iter().map(move |(transaction_outpoint, compact_utxo)| {
                 (
                     UtxoEntryFullAccessKey::new(
                         ScriptPublicKeyBucket::from(script_public_key.clone()),
@@ -244,7 +244,7 @@ impl UtxoSetByScriptPublicKeyStore for DbUtxoSetByScriptPublicKeyStore {
         let mut writer = DirectDbWriter::new(&self.db);
 
         let mut to_add = utxo_entries.iter().flat_map(move |(script_public_key, compact_utxo_collection)| {
-            compact_utxo_collection.into_iter().map(move |(transaction_outpoint, compact_utxo)| {
+            compact_utxo_collection.iter().map(move |(transaction_outpoint, compact_utxo)| {
                 (
                     UtxoEntryFullAccessKey::new(
                         ScriptPublicKeyBucket::from(script_public_key.clone()),

@@ -203,7 +203,7 @@ impl UtxoIndex {
             Err(err) => {
                 trace!("utxoindex is not synced");
                 self.shutdown_trigger.trigger();
-                return Err(err);
+                Err(err)
             }
         }
     }
@@ -233,7 +233,7 @@ impl UtxoIndex {
                     }
                     }
                     Err(err) => {
-                        UtxoIndexError::ConsensusRecieverUnreachableError(err);
+                        panic!("{}", UtxoIndexError::ConsensusRecieverUnreachableError(err))
                     }
                     }
                 }

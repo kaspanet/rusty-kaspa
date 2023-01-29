@@ -37,24 +37,32 @@ async fn test_utxoindex() {
     let utxoindex = UtxoIndex::new(test_consensus.clone(), utxoindex_db.1, virtual_change_emulator.receiver.clone());
 
     //fill intial utxo collectection in emulator
-    virtual_change_emulator.fill_utxo_collection(10_000, 100); //10_000 utxos belonging to 200 script public keys
+    virtual_change_emulator.fill_utxo_collection(10_000, 100); //10_000 utxos belonging to 100 script public keys
 
     //create a virtual state for test consensus from emulator variables
-    let mut test_consensus_virtual_state = VirtualState::default();
-    test_consensus_virtual_state.daa_score = 0;
-    test_consensus_virtual_state.parents = Vec::from_iter(virtual_change_emulator.tips.clone());
-    test_consensus_virtual_state.utxo_diff = UtxoDiff::new(virtual_change_emulator.utxo_collection.clone(), UtxoCollection::new());
-    test_consensus_virtual_state.ghostdag_data.blue_score = 0;
-
+    let test_consensus_virtual_state = VirtualState {
+        daa_score: 0,
+        parents: Vec::from_iter(virtual_change_emulator.tips.clone()),
+        utxo_diff: UtxoDiff::new(virtual_change_emulator.utxo_collection.clone(), UtxoCollection::new()),
+        ..Default::default()
+    };
     //write virtual state from emulator to test_consensus db.
-    let test_consensus_virtual_store = test_consensus.consensus.virtual_processor.virtual_stores.write();
-    let _ = test_consensus_virtual_store
+    test_consensus
+        .consensus
+        .virtual_processor
+        .virtual_stores
+        .write()
         .utxo_set
-        .clone()
         .write_diff(&test_consensus_virtual_state.utxo_diff)
         .expect("expected write diff");
-    let _ = test_consensus_virtual_store.state.clone().set(test_consensus_virtual_state).expect("setting of state");
-    drop(test_consensus_virtual_store);
+    test_consensus
+        .consensus
+        .virtual_processor
+        .virtual_stores
+        .write()
+        .state
+        .set(test_consensus_virtual_state)
+        .expect("setting of state");
 
     //sync index from scratch.
     let now = Instant::now();

@@ -24,7 +24,7 @@ pub struct BlockAddedNotification {
 #[derive(Debug, Clone)]
 pub struct NewBlockTemplateNotification {}
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct PruningPointUTXOSetOverrideNotification {}
 
 impl PruningPointUTXOSetOverrideNotification {

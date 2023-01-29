@@ -50,7 +50,7 @@ fn generate_random_utxo(script_public_key_pool: Vec<ScriptPublicKey>) -> UtxoEnt
 ///Note: generated structs are generally filled with random bytes ad do not represent fully valid consensus utxos.
 fn generate_random_script_public_key() -> ScriptPublicKey {
     let script: ScriptVec = (0..36).map(|_| rand::random::<u8>()).collect();
-    ScriptPublicKey::new(0 as u16, script)
+    ScriptPublicKey::new(0_u16, script)
 }
 
 ///Note: generated structs are generally filled with random bytes ad do not represent fully valid consensus utxos.
@@ -148,5 +148,11 @@ impl VirtualChangeEmulator {
         self.virtual_state.virtual_parents = Vec::new();
         self.virtual_state.virtual_selected_parent_blue_score = 0;
         self.virtual_state.virtual_daa_score = 0;
+    }
+}
+
+impl Default for VirtualChangeEmulator {
+    fn default() -> Self {
+        Self::new()
     }
 }

@@ -490,7 +490,7 @@ impl ConsensusApi for Consensus {
         chunk_size: usize,
     ) -> Vec<(TransactionOutpoint, UtxoEntry)> {
         let virtual_stores = self.virtual_processor.virtual_stores.read();
-        let iter = virtual_stores.utxo_set.from_iterator(from_outpoint, chunk_size);
+        let iter = virtual_stores.utxo_set.seek_iterator(from_outpoint, chunk_size);
         iter.map(|item| item.unwrap()).collect()
     }
 

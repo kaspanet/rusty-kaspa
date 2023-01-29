@@ -136,8 +136,8 @@ where
         Key: DeserializeOwned + Debug,
         Value: DeserializeOwned + Debug,
     {
-        let db_key = bucket.map_or(DbKey::prefix_only(&self.prefix), move |bucket| {
-            let mut key = DbKey::prefix_only(&self.prefix);
+        let db_key = bucket.map_or(DbKey::prefix_only(self.prefix), move |bucket| {
+            let mut key = DbKey::prefix_only(self.prefix);
             key.add_bucket(bucket);
             key
         });

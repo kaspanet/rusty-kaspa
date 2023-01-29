@@ -27,7 +27,7 @@ impl StoreManager {
         Self {
             utxoindex_tips_store: Arc::new(RwLock::new(DbUtxoIndexTipsStore::new(db.clone()))),
             circulating_suppy_store: Arc::new(RwLock::new(DbCirculatingSupplyStore::new(db.clone()))),
-            utxos_by_script_public_key_store: Arc::new(RwLock::new(DbUtxoSetByScriptPublicKeyStore::new(db.clone(), 0))),
+            utxos_by_script_public_key_store: Arc::new(RwLock::new(DbUtxoSetByScriptPublicKeyStore::new(db, 0))),
         }
     }
 
@@ -71,7 +71,7 @@ impl StoreManager {
 
     pub fn get_tips(&self) -> Result<Arc<BlockHashSet>, StoreError> {
         let reader = self.utxoindex_tips_store.read();
-        Ok(reader.get()?)
+        reader.get()
     }
 
     pub fn insert_tips(&self, tips: BlockHashSet) -> Result<(), StoreError> {
