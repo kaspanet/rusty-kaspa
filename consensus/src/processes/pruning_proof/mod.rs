@@ -52,7 +52,7 @@ pub struct PruningProofManager {
     parents_manager: ParentsManager<DbHeadersStore, DbReachabilityStore, DbRelationsStore>,
     reachability_service: MTReachabilityService<DbReachabilityStore>,
     ghostdag_stores: Vec<Arc<DbGhostdagStore>>,
-    relations_stores: Vec<Arc<RwLock<DbRelationsStore>>>,
+    relations_stores: Arc<RwLock<Vec<DbRelationsStore>>>,
     pruning_store: Arc<RwLock<DbPruningStore>>,
     past_pruning_points_store: Arc<DbPastPruningPointsStore>,
     virtual_stores: Arc<RwLock<VirtualStores>>,
@@ -164,7 +164,7 @@ impl PruningProofManager {
         parents_manager: ParentsManager<DbHeadersStore, DbReachabilityStore, DbRelationsStore>,
         reachability_service: MTReachabilityService<DbReachabilityStore>,
         ghostdag_stores: Vec<Arc<DbGhostdagStore>>,
-        relations_stores: Vec<Arc<RwLock<DbRelationsStore>>>,
+        relations_stores: Arc<RwLock<Vec<DbRelationsStore>>>,
         pruning_store: Arc<RwLock<DbPruningStore>>,
         past_pruning_points_store: Arc<DbPastPruningPointsStore>,
         virtual_stores: Arc<RwLock<VirtualStores>>,
@@ -243,7 +243,7 @@ impl PruningProofManager {
 
                 let parents = Arc::new(if parents.is_empty() { vec![ORIGIN] } else { parents });
 
-                self.relations_stores[level].write().insert(header.hash, parents.clone()).unwrap();
+                self.relations_stores.write()[level].insert(header.hash, parents.clone()).unwrap();
                 let gd = if header.hash == self.genesis_hash {
                     self.ghostdag_managers[level].genesis_ghostdag_data()
                 } else if level == 0 {
@@ -326,9 +326,9 @@ impl PruningProofManager {
             }
         }
 
-        let relations_store = Arc::new(RwLock::new(MemoryRelationsStore::new()));
-        relations_store.write().insert(ORIGIN, Arc::new(vec![])).unwrap();
-        let relations_service = MTRelationsService::new(relations_store.clone());
+        let relations_store = Arc::new(RwLock::new(vec![MemoryRelationsStore::new()]));
+        relations_store.write()[0].insert(ORIGIN, Arc::new(vec![])).unwrap();
+        let relations_service = MTRelationsService::new(relations_store.clone(), 0);
         let gm = GhostdagManager::new(
             0.into(),
             0,
@@ -372,7 +372,7 @@ impl PruningProofManager {
 
             let selected_parent = fake_direct_parents.iter().max().map(|parent| parent.hash).unwrap_or(ORIGIN);
 
-            relations_store.write().insert(hash, fake_direct_parents_hashes.clone()).unwrap();
+            relations_store.write()[0].insert(hash, fake_direct_parents_hashes.clone()).unwrap();
             let mergeset = gm.unordered_mergeset_without_selected_parent(selected_parent, &fake_direct_parents_hashes);
             let mut staging = StagingReachabilityStore::new(self.reachability_store.upgradable_read());
             reachability::inquirer::add_block(&mut staging, hash, selected_parent, &mut mergeset.iter().cloned()).unwrap();

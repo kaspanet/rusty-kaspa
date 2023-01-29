@@ -101,7 +101,7 @@ pub struct Consensus {
 
     // Stores
     statuses_store: Arc<RwLock<DbStatusesStore>>,
-    pub relations_store: Arc<RwLock<DbRelationsStore>>,
+    pub relations_stores: Arc<RwLock<Vec<DbRelationsStore>>>,
     reachability_store: Arc<RwLock<DbReachabilityStore>>,
     pruning_store: Arc<RwLock<DbPruningStore>>,
     headers_selected_tip_store: Arc<RwLock<DbHeadersSelectedTipStore>>,
@@ -143,14 +143,15 @@ impl Consensus {
 
         // Headers
         let statuses_store = Arc::new(RwLock::new(DbStatusesStore::new(db.clone(), pruning_plus_finality_size_for_caches)));
-        let relations_stores = (0..=params.max_block_level)
-            .map(|level| {
-                let cache_size =
-                    max(pruning_plus_finality_size_for_caches.checked_shr(level as u32).unwrap_or(0), 2 * params.pruning_proof_m);
-                Arc::new(RwLock::new(DbRelationsStore::new(db.clone(), level, cache_size)))
-            })
-            .collect_vec();
-        let relations_store = relations_stores[0].clone();
+        let relations_stores = Arc::new(RwLock::new(
+            (0..=params.max_block_level)
+                .map(|level| {
+                    let cache_size =
+                        max(pruning_plus_finality_size_for_caches.checked_shr(level as u32).unwrap_or(0), 2 * params.pruning_proof_m);
+                    DbRelationsStore::new(db.clone(), level, cache_size)
+                })
+                .collect_vec(),
+        ));
         let reachability_store = Arc::new(RwLock::new(DbReachabilityStore::new(db.clone(), pruning_plus_finality_size_for_caches)));
         let ghostdag_stores = (0..=params.max_block_level)
             .map(|level| {
@@ -193,7 +194,7 @@ impl Consensus {
 
         let statuses_service = MTStatusesService::new(statuses_store.clone());
         let relations_services =
-            relations_stores.iter().map(|relations_store| MTRelationsService::new(relations_store.clone())).collect_vec();
+            (0..=params.max_block_level).map(|level| MTRelationsService::new(relations_stores.clone(), level)).collect_vec();
         let relations_service = relations_services[0].clone();
         let reachability_service = MTReachabilityService::new(reachability_store.clone());
         let dag_traversal_manager = DagTraversalManager::new(
@@ -276,7 +277,7 @@ impl Consensus {
             params.genesis_hash,
             headers_store.clone(),
             reachability_service.clone(),
-            relations_store.clone(),
+            relations_service.clone(),
         );
 
         let (sender, receiver): (Sender<BlockTask>, Receiver<BlockTask>) = unbounded();
@@ -400,7 +401,7 @@ impl Consensus {
             parents_manager,
             reachability_service.clone(),
             ghostdag_stores,
-            relations_stores,
+            relations_stores.clone(),
             pruning_store.clone(),
             past_pruning_points_store,
             virtual_stores,
@@ -419,7 +420,7 @@ impl Consensus {
             body_processor,
             virtual_processor,
             statuses_store,
-            relations_store,
+            relations_stores,
             reachability_store,
             ghostdag_store,
             pruning_store,

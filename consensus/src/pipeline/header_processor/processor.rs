@@ -13,7 +13,7 @@ use crate::{
             past_pruning_points::DbPastPruningPointsStore,
             pruning::{DbPruningStore, PruningPointInfo, PruningStore, PruningStoreReader},
             reachability::{DbReachabilityStore, ReachabilityStoreReader, StagingReachabilityStore},
-            relations::{DbRelationsStore, RelationsStoreBatchExtensions, RelationsStoreReader},
+            relations::{DbRelationsStore, RelationsStoreReader},
             statuses::{DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader},
             DB,
         },
@@ -119,7 +119,7 @@ pub struct HeaderProcessor {
     db: Arc<DB>,
 
     // Stores
-    relations_stores: Vec<Arc<RwLock<DbRelationsStore>>>,
+    relations_stores: Arc<RwLock<Vec<DbRelationsStore>>>,
     reachability_store: Arc<RwLock<DbReachabilityStore>>,
     ghostdag_stores: Vec<Arc<DbGhostdagStore>>,
     pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
@@ -164,7 +164,7 @@ impl HeaderProcessor {
         params: &Params,
         process_genesis: bool,
         db: Arc<DB>,
-        relations_stores: Vec<Arc<RwLock<DbRelationsStore>>>,
+        relations_stores: Arc<RwLock<Vec<DbRelationsStore>>>,
         reachability_store: Arc<RwLock<DbReachabilityStore>>,
         ghostdag_stores: Vec<Arc<DbGhostdagStore>>,
         headers_store: Arc<DbHeadersStore>,
@@ -298,6 +298,7 @@ impl HeaderProcessor {
         // Create processing context
         let is_genesis = header.direct_parents().is_empty();
         let pruning_point = self.pruning_store.read().get().unwrap();
+        let relations_read = self.relations_stores.read();
         let non_pruned_parents = (0..=self.max_block_level)
             .map(|level| {
                 Arc::new(if is_genesis {
@@ -310,7 +311,7 @@ impl HeaderProcessor {
                         .copied()
                         .filter(|parent| {
                             // self.ghostdag_stores[level as usize].has(*parent).unwrap()
-                            self.relations_stores[level as usize].read().has(*parent).unwrap()
+                            relations_read[level as usize].has(*parent).unwrap()
                         })
                         .collect_vec();
                     if filtered.is_empty() {
@@ -321,6 +322,7 @@ impl HeaderProcessor {
                 })
             })
             .collect_vec();
+        drop(relations_read);
         let mut ctx = HeaderProcessingContext::new(header.hash, header, pruning_point, non_pruned_parents);
         if is_trusted {
             ctx.mergeset_non_daa = Some(Default::default()); // TODO: Check that it's fine for coinbase calculations.
@@ -441,17 +443,13 @@ impl HeaderProcessor {
             })
         });
 
-        let relations_write_guards = parents
-            .enumerate()
-            .filter_map(|(level, parent_by_level)| {
-                // TODO: Maybe use upgradable lock here?
-                if self.relations_stores[level].read().has(header.hash).unwrap() {
-                    None
-                } else {
-                    Some(self.relations_stores[level].insert_batch(&mut batch, header.hash, parent_by_level).unwrap())
-                }
-            })
-            .collect_vec();
+        let mut relations_write_guard = self.relations_stores.write();
+        parents.enumerate().for_each(|(level, parent_by_level)| {
+            if !relations_write_guard[level].has(header.hash).unwrap() {
+                relations_write_guard[level].insert_batch(&mut batch, header.hash, parent_by_level).unwrap();
+            }
+        });
+
         let statuses_write_guard = self.statuses_store.set_batch(&mut batch, ctx.hash, StatusHeaderOnly).unwrap();
 
         // Write reachability data. Only at this brief moment the reachability store is locked for reads.
@@ -465,7 +463,7 @@ impl HeaderProcessor {
         // Calling the drops explicitly after the batch is written in order to avoid possible errors.
         drop(reachability_write_guard);
         drop(statuses_write_guard);
-        drop(relations_write_guards);
+        drop(relations_write_guard);
         drop(hst_write_guard);
     }
 
@@ -504,18 +502,19 @@ impl HeaderProcessor {
     }
 
     pub fn process_origin_if_needed(self: &Arc<HeaderProcessor>) {
-        if self.relations_stores[0].read().has(ORIGIN).unwrap() {
+        if self.relations_stores.read()[0].has(ORIGIN).unwrap() {
             return;
         }
 
         let mut batch = WriteBatch::default();
-        let relations_write_guards = (0..=self.max_block_level)
-            .map(|level| self.relations_stores[level as usize].insert_batch(&mut batch, ORIGIN, BlockHashes::new(vec![])).unwrap())
-            .collect_vec();
+        let mut relations_write_guard = self.relations_stores.write();
+        (0..=self.max_block_level).for_each(|level| {
+            relations_write_guard[level as usize].insert_batch(&mut batch, ORIGIN, BlockHashes::new(vec![])).unwrap()
+        });
         let mut hst_write_guard = self.headers_selected_tip_store.write();
         hst_write_guard.set_batch(&mut batch, SortableBlock::new(ORIGIN, 0.into())).unwrap();
         self.db.write(batch).unwrap();
         drop(hst_write_guard);
-        drop(relations_write_guards);
+        drop(relations_write_guard);
     }
 }

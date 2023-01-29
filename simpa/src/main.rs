@@ -242,9 +242,9 @@ fn topologically_ordered_hashes(src_consensus: &Consensus, genesis_hash: Hash) -
     let mut queue: VecDeque<Hash> = std::iter::once(genesis_hash).collect();
     let mut visited = BlockHashSet::new();
     let mut vec = Vec::new();
-    let relations = src_consensus.relations_store.read();
+    let relations = src_consensus.relations_stores.read();
     while let Some(current) = queue.pop_front() {
-        for child in relations.get_children(current).unwrap().iter() {
+        for child in relations[0].get_children(current).unwrap().iter() {
             if visited.insert(*child) {
                 queue.push_back(*child);
                 vec.push(*child);

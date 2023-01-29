@@ -6,7 +6,6 @@ use super::{
 use consensus_core::{blockhash::BlockHashes, BlockHashMap, BlockHasher, BlockLevel, HashMapCustomHasher};
 use hashes::Hash;
 use itertools::Itertools;
-use parking_lot::{RwLock, RwLockWriteGuard};
 use rocksdb::WriteBatch;
 use std::{collections::hash_map::Entry::Vacant, sync::Arc};
 
@@ -54,8 +53,7 @@ impl DbRelationsStore {
         Self::new(Arc::clone(&self.db), self.level, cache_size)
     }
 
-    // Should be kept private and used only through `RelationsStoreBatchExtensions.insert_batch`
-    fn insert_batch(&mut self, batch: &mut WriteBatch, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
+    pub fn insert_batch(&mut self, batch: &mut WriteBatch, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
         if self.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
@@ -74,28 +72,6 @@ impl DbRelationsStore {
         }
 
         Ok(())
-    }
-}
-
-pub trait RelationsStoreBatchExtensions {
-    fn insert_batch(
-        &self,
-        batch: &mut WriteBatch,
-        hash: Hash,
-        parents: BlockHashes,
-    ) -> Result<RwLockWriteGuard<DbRelationsStore>, StoreError>;
-}
-
-impl RelationsStoreBatchExtensions for Arc<RwLock<DbRelationsStore>> {
-    fn insert_batch(
-        &self,
-        batch: &mut WriteBatch,
-        hash: Hash,
-        parents: BlockHashes,
-    ) -> Result<RwLockWriteGuard<DbRelationsStore>, StoreError> {
-        let mut write_guard = self.write();
-        write_guard.insert_batch(batch, hash, parents)?;
-        Ok(write_guard)
     }
 }
 
