@@ -880,7 +880,7 @@ async fn json_test(file_path: &str) {
             .consensus
             .validate_and_insert_block(block, !proof_exists)
             .await
-            .unwrap_or_else(|e| panic!("block {} {} failed: {}", i, hash, e));
+            .unwrap_or_else(|e| panic!("block {i} {hash} failed: {e}"));
         assert!(status.is_utxo_valid_or_pending());
     }
 

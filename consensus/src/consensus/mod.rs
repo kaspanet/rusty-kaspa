@@ -55,7 +55,7 @@ use consensus_core::{
         block::{Block, BlockTemplate},
         blockstatus::BlockStatus,
         coinbase::MinerData,
-    errors::{coinbase::CoinbaseResult, tx::TxResult},
+        errors::{coinbase::CoinbaseResult, tx::TxResult},
         tx::{MutableTransaction, Transaction},
         BlockHashSet,
     },

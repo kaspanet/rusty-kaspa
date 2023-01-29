@@ -19,7 +19,7 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
         while let Some(current) = queue.pop_front() {
             let current_parents = self.relations_store.get_parents(current).unwrap_or_else(|err| {
                 println!("WUT");
-                panic!("{:?}", err);
+                panic!("{err:?}");
             });
 
             // For each parent of the current block we check whether it is in the past of the selected parent. If not,

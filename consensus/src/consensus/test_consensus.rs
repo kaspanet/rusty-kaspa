@@ -66,7 +66,6 @@ impl TestConsensus {
         Self { consensus: Arc::new(Consensus::new(db, params, process_genesis)), params: params.clone(), temp_db_lifetime }
     }
 
-
     pub fn build_header_with_parents(&self, hash: Hash, parents: Vec<Hash>) -> Header {
         let mut header = header_from_precomputed_hash(hash, parents);
         let ghostdag_data = self.consensus.ghostdag_manager.ghostdag(header.direct_parents());
