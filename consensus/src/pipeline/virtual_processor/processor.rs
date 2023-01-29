@@ -30,7 +30,7 @@ use crate::{
         },
     },
     params::Params,
-    pipeline::{deps_manager::BlockTask, virtual_processor::utxo_validation::UtxoProcessingContext},
+    pipeline::{deps_manager::BlockProcessingMessage, virtual_processor::utxo_validation::UtxoProcessingContext},
     processes::{
         block_depth::BlockDepthManager,
         coinbase::CoinbaseManager,
@@ -81,7 +81,7 @@ use super::errors::{VirtualProcessorError, VirtualProcessorResult};
 
 pub struct VirtualStateProcessor {
     // Channels
-    receiver: Receiver<BlockTask>,
+    receiver: Receiver<BlockProcessingMessage>,
 
     // Thread pool
     pub(super) thread_pool: Arc<ThreadPool>,
@@ -134,7 +134,7 @@ pub struct VirtualStateProcessor {
 impl VirtualStateProcessor {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        receiver: Receiver<BlockTask>,
+        receiver: Receiver<BlockProcessingMessage>,
         thread_pool: Arc<ThreadPool>,
         params: &Params,
         process_genesis: bool,
@@ -210,27 +210,28 @@ impl VirtualStateProcessor {
     }
 
     pub fn worker(self: &Arc<Self>) {
-        'outer: while let Ok(first_task) = self.receiver.recv() {
+        'outer: while let Ok(first_msg) = self.receiver.recv() {
             // Once a task arrived, collect all pending tasks from the channel.
             // This is done since virtual processing is not a per-block
             // operation, so it benefits from max available info
 
-            let update_virtual = if let BlockTask::Process(ref block, _) = first_task { block.update_virtual } else { false };
-            let tasks: Vec<BlockTask> = std::iter::once(first_task).chain(self.receiver.try_iter()).collect();
-            trace!("virtual processor received {} tasks", tasks.len());
+            let update_virtual =
+                if let BlockProcessingMessage::Process(ref task, _) = first_msg { task.update_virtual } else { false };
+            let messages: Vec<BlockProcessingMessage> = std::iter::once(first_msg).chain(self.receiver.try_iter()).collect();
+            trace!("virtual processor received {} tasks", messages.len());
 
             if update_virtual {
                 self.resolve_virtual();
             }
 
             let statuses_read = self.statuses_store.read();
-            for task in tasks {
-                match task {
-                    BlockTask::Exit => break 'outer,
-                    BlockTask::Process(block, result_transmitters) => {
+            for msg in messages {
+                match msg {
+                    BlockProcessingMessage::Exit => break 'outer,
+                    BlockProcessingMessage::Process(task, result_transmitters) => {
                         for transmitter in result_transmitters {
                             // We don't care if receivers were dropped
-                            let _ = transmitter.send(Ok(statuses_read.get(block.block.hash()).unwrap()));
+                            let _ = transmitter.send(Ok(statuses_read.get(task.block.hash()).unwrap()));
                         }
                     }
                 };

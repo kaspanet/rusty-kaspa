@@ -19,7 +19,7 @@ use crate::{
         },
     },
     params::Params,
-    pipeline::deps_manager::{BlockTask, BlockTaskDependencyManager},
+    pipeline::deps_manager::{BlockProcessingMessage, BlockTaskDependencyManager},
     processes::{
         block_depth::BlockDepthManager,
         difficulty::DifficultyManager,
@@ -96,8 +96,8 @@ impl<'a> HeaderProcessingContext<'a> {
 
 pub struct HeaderProcessor {
     // Channels
-    receiver: Receiver<BlockTask>,
-    body_sender: Sender<BlockTask>,
+    receiver: Receiver<BlockProcessingMessage>,
+    body_sender: Sender<BlockProcessingMessage>,
 
     // Thread pool
     pub(super) thread_pool: Arc<ThreadPool>,
@@ -158,8 +158,8 @@ pub struct HeaderProcessor {
 impl HeaderProcessor {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        receiver: Receiver<BlockTask>,
-        body_sender: Sender<BlockTask>,
+        receiver: Receiver<BlockProcessingMessage>,
+        body_sender: Sender<BlockProcessingMessage>,
         thread_pool: Arc<ThreadPool>,
         params: &Params,
         process_genesis: bool,
@@ -233,12 +233,12 @@ impl HeaderProcessor {
     }
 
     pub fn worker(self: &Arc<HeaderProcessor>) {
-        while let Ok(task) = self.receiver.recv() {
-            match task {
-                BlockTask::Exit => break,
-                BlockTask::Process(block, result_transmitters) => {
-                    let hash = block.block.header.hash;
-                    if self.task_manager.register(block, result_transmitters) {
+        while let Ok(msg) = self.receiver.recv() {
+            match msg {
+                BlockProcessingMessage::Exit => break,
+                BlockProcessingMessage::Process(task, result_transmitters) => {
+                    let hash = task.block.header.hash;
+                    if self.task_manager.register(task, result_transmitters) {
                         let processor = self.clone();
                         self.thread_pool.spawn(move || {
                             processor.queue_block(hash);
@@ -252,21 +252,21 @@ impl HeaderProcessor {
         self.task_manager.wait_for_idle();
 
         // Pass the exit signal on to the following processor
-        self.body_sender.send(BlockTask::Exit).unwrap();
+        self.body_sender.send(BlockProcessingMessage::Exit).unwrap();
     }
 
     fn queue_block(self: &Arc<HeaderProcessor>, hash: Hash) {
-        if let Some(block) = self.task_manager.try_begin(hash) {
-            let res = self.process_header(&block.block.header, block.ghostdag_data);
+        if let Some(task) = self.task_manager.try_begin(hash) {
+            let res = self.process_header(&task.block.header, task.trusted_ghostdag_data);
 
-            let dependent_tasks = self.task_manager.end(hash, |block, result_transmitters| {
-                if res.is_err() || block.block.is_header_only() {
+            let dependent_tasks = self.task_manager.end(hash, |task, result_transmitters| {
+                if res.is_err() || task.block.is_header_only() {
                     for transmitter in result_transmitters {
                         // We don't care if receivers were dropped
                         let _ = transmitter.send(res.clone());
                     }
                 } else {
-                    self.body_sender.send(BlockTask::Process(block, result_transmitters)).unwrap();
+                    self.body_sender.send(BlockProcessingMessage::Process(task, result_transmitters)).unwrap();
                 }
             });
 
@@ -284,9 +284,9 @@ impl HeaderProcessor {
     fn process_header(
         self: &Arc<HeaderProcessor>,
         header: &Arc<Header>,
-        ghostdag_data_option: Option<Arc<GhostdagData>>,
+        optional_trusted_ghostdag_data: Option<Arc<GhostdagData>>,
     ) -> BlockProcessResult<BlockStatus> {
-        let is_trusted = ghostdag_data_option.is_some();
+        let is_trusted = optional_trusted_ghostdag_data.is_some();
         let status_option = self.statuses_store.read().get(header.hash).unwrap_option();
 
         match status_option {

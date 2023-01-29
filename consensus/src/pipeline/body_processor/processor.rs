@@ -14,7 +14,7 @@ use crate::{
             DB,
         },
     },
-    pipeline::deps_manager::{BlockTask, BlockTaskDependencyManager},
+    pipeline::deps_manager::{BlockProcessingMessage, BlockTaskDependencyManager},
     processes::{
         coinbase::CoinbaseManager, mass::MassCalculator, past_median_time::PastMedianTimeManager,
         transaction_validator::TransactionValidator,
@@ -35,8 +35,8 @@ use std::sync::Arc;
 
 pub struct BlockBodyProcessor {
     // Channels
-    receiver: Receiver<BlockTask>,
-    sender: Sender<BlockTask>,
+    receiver: Receiver<BlockProcessingMessage>,
+    sender: Sender<BlockProcessingMessage>,
 
     // Thread pool
     pub(super) thread_pool: Arc<ThreadPool>,
@@ -70,8 +70,8 @@ pub struct BlockBodyProcessor {
 impl BlockBodyProcessor {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        receiver: Receiver<BlockTask>,
-        sender: Sender<BlockTask>,
+        receiver: Receiver<BlockProcessingMessage>,
+        sender: Sender<BlockProcessingMessage>,
         thread_pool: Arc<ThreadPool>,
         db: Arc<DB>,
         statuses_store: Arc<RwLock<DbStatusesStore>>,
@@ -111,12 +111,12 @@ impl BlockBodyProcessor {
     }
 
     pub fn worker(self: &Arc<BlockBodyProcessor>) {
-        while let Ok(task) = self.receiver.recv() {
-            match task {
-                BlockTask::Exit => break,
-                BlockTask::Process(block, result_transmitters) => {
-                    let hash = block.block.header.hash;
-                    if self.task_manager.register(block, result_transmitters) {
+        while let Ok(msg) = self.receiver.recv() {
+            match msg {
+                BlockProcessingMessage::Exit => break,
+                BlockProcessingMessage::Process(task, result_transmitters) => {
+                    let hash = task.block.header.hash;
+                    if self.task_manager.register(task, result_transmitters) {
                         let processor = self.clone();
                         self.thread_pool.spawn(move || {
                             processor.queue_block(hash);
@@ -130,21 +130,21 @@ impl BlockBodyProcessor {
         self.task_manager.wait_for_idle();
 
         // Pass the exit signal on to the following processor
-        self.sender.send(BlockTask::Exit).unwrap();
+        self.sender.send(BlockProcessingMessage::Exit).unwrap();
     }
 
     fn queue_block(self: &Arc<BlockBodyProcessor>, hash: Hash) {
-        if let Some(block) = self.task_manager.try_begin(hash) {
-            let res = self.process_block_body(&block.block, block.ghostdag_data.is_some());
+        if let Some(task) = self.task_manager.try_begin(hash) {
+            let res = self.process_block_body(&task.block, task.trusted_ghostdag_data.is_some());
 
-            let dependent_tasks = self.task_manager.end(hash, |block, result_transmitters| {
+            let dependent_tasks = self.task_manager.end(hash, |task, result_transmitters| {
                 if res.is_err() {
                     for transmitter in result_transmitters {
                         // We don't care if receivers were dropped
                         let _ = transmitter.send(res.clone());
                     }
                 } else {
-                    self.sender.send(BlockTask::Process(block, result_transmitters)).unwrap();
+                    self.sender.send(BlockProcessingMessage::Process(task, result_transmitters)).unwrap();
                 }
             });
 
