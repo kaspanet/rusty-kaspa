@@ -25,7 +25,7 @@ use crate::{
     update_container::UtxoIndexChanges,
 };
 
-const RESYNC_CHUNK_SIZE: usize = 1_000;
+const RESYNC_CHUNK_SIZE: usize = 2048; //this seems like a sweet spot, and speeds up sync times nearly x2 compared to 1k. (even higher does little).
 
 /// UtxoIndex indexes [`CompactUtxoEntryCollections`] by [`ScriptPublicKey`], commits them to its ownstore, and notifies changes.
 #[derive(Clone)]
