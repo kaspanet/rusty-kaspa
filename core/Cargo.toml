@@ -19,3 +19,4 @@ workflow-log.workspace = true
 tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread"] }
 ctrlc = "3.2"
 intertrait = "0.2"
+num_cpus.workspace = true

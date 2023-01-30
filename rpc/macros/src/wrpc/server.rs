@@ -12,7 +12,6 @@ use syn::{
 #[derive(Debug)]
 struct RpcTable {
     server_ctx: Expr,
-    router_target: Expr,
     server_ctx_type: Expr,
     connection_ctx_type: Expr,
     rpc_api_ops: Expr,
@@ -22,14 +21,14 @@ struct RpcTable {
 impl Parse for RpcTable {
     fn parse(input: ParseStream) -> Result<Self> {
         let parsed = Punctuated::<Expr, Token![,]>::parse_terminated(input).unwrap();
-        if parsed.len() != 6 {
+        if parsed.len() != 5 {
             return Err(Error::new_spanned(parsed,
                 "usage: build_wrpc_server_interface!(server_instance,router_instance,ServerType,ConnectionType,RpcApiOps,[getInfo, ..])".to_string()));
         }
 
         let mut iter = parsed.iter();
         let server_ctx = iter.next().unwrap().clone();
-        let router_target = iter.next().unwrap().clone();
+        // let router_target = iter.next().unwrap().clone();
         let server_ctx_type = iter.next().unwrap().clone();
         let connection_ctx_type = iter.next().unwrap().clone();
         let rpc_api_ops = iter.next().unwrap().clone();
@@ -51,17 +50,15 @@ impl Parse for RpcTable {
             }
         }
 
-        let handlers = RpcTable { server_ctx, router_target, server_ctx_type, connection_ctx_type, rpc_api_ops, handlers };
+        let handlers = RpcTable { server_ctx, server_ctx_type, connection_ctx_type, rpc_api_ops, handlers };
         Ok(handlers)
     }
 }
 
 impl ToTokens for RpcTable {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let mut server_targets = Vec::new();
-        let mut connection_targets = Vec::new();
+        let mut targets = Vec::new();
         let server_ctx = &self.server_ctx;
-        let router_target = &self.router_target;
         let server_ctx_type = &self.server_ctx_type;
         let connection_ctx_type = &self.connection_ctx_type;
         let rpc_api_ops = &self.rpc_api_ops;
@@ -72,25 +69,12 @@ impl ToTokens for RpcTable {
             let request_type = Ident::new(&format!("{name}Request"), Span::call_site());
             let response_type = Ident::new(&format!("{name}Response"), Span::call_site());
 
-            server_targets.push(quote! {
-                #rpc_api_ops::#handler => {
-                    interface.method(#rpc_api_ops::#handler, method!(|server_ctx: #server_ctx_type, _connection_ctx: #connection_ctx_type, request: #request_type| async move {
-                        let verbose = server_ctx.verbose();
-                        if verbose { workflow_log::log_info!("rpc request: {:?}",request); }
-                        let response: #response_type = server_ctx.get_rpc_api().#fn_call(request).await
-                            .map_err(|e|ServerError::Text(e.to_string()))?;
-                        if verbose { workflow_log::log_info!("rpc response: {:?}",response); }
-                        Ok(response)
-                    }));
-                }
-            });
-
-            connection_targets.push(quote! {
+            targets.push(quote! {
                 #rpc_api_ops::#handler => {
                     interface.method(#rpc_api_ops::#handler, method!(|server_ctx: #server_ctx_type, connection_ctx: #connection_ctx_type, request: #request_type| async move {
                         let verbose = server_ctx.verbose();
                         if verbose { workflow_log::log_info!("rpc request: {:?}",request); }
-                        let response: #response_type = connection_ctx.get_rpc_api().#fn_call(request).await
+                        let response: #response_type = server_ctx.get_rpc_api(&connection_ctx).#fn_call(request).await
                             .map_err(|e|ServerError::Text(e.to_string()))?;
                         if verbose { workflow_log::log_info!("rpc response: {:?}",response); }
                         Ok(response)
@@ -108,22 +92,10 @@ impl ToTokens for RpcTable {
                     #rpc_api_ops
                 >::new(#server_ctx);
 
-                match #router_target {
-                    RouterTarget::Server => {
-                        for op in #rpc_api_ops::list() {
-                            match op {
-                                #(#server_targets)*
-                                _ => { }
-                            }
-                        }
-                    },
-                    RouterTarget::Connection => {
-                        for op in #rpc_api_ops::list() {
-                            match op {
-                                #(#connection_targets)*
-                                _ => { }
-                            }
-                        }
+                for op in #rpc_api_ops::list() {
+                    match op {
+                        #(#targets)*
+                        _ => { }
                     }
                 }
 

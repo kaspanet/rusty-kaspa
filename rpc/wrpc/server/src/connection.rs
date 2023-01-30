@@ -1,6 +1,7 @@
 use crate::notifications::*;
 use rpc_core::api::rpc::RpcApi;
 use rpc_grpc::client::RpcApiGrpc;
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::Mutex;
 use workflow_rpc::server::prelude::*;
@@ -12,6 +13,7 @@ pub struct ConnectionInner {
     pub grpc_api: Option<Arc<RpcApiGrpc>>,
     // not using an atomic in case an Id will change type in the future...
     pub listener_id: Mutex<Option<ListenerId>>,
+    pub subscriptions: Mutex<HashSet<ListenerId>>,
 }
 
 impl ConnectionInner {}
@@ -28,7 +30,15 @@ pub struct Connection {
 
 impl Connection {
     pub fn new(id: u64, _peer: &SocketAddr, messenger: Arc<Messenger>, grpc_api: Option<Arc<RpcApiGrpc>>) -> Connection {
-        Connection { inner: Arc::new(ConnectionInner { id, messenger, grpc_api, listener_id: Mutex::new(None) }) }
+        Connection {
+            inner: Arc::new(ConnectionInner {
+                id,
+                messenger,
+                grpc_api,
+                listener_id: Mutex::new(None),
+                subscriptions: Mutex::new(HashSet::new()),
+            }),
+        }
     }
     pub fn id(&self) -> u64 {
         self.inner.id
@@ -52,6 +62,18 @@ impl Connection {
 
     pub fn register_notification_listener(&self, id: ListenerId) {
         self.inner.listener_id.lock().unwrap().replace(id);
+    }
+
+    pub fn subscriptions(&self) -> &Mutex<HashSet<ListenerId>> {
+        &self.inner.subscriptions
+    }
+
+    pub fn drain_subscriptions(&self) -> Vec<ListenerId> {
+        self.inner.subscriptions.lock().unwrap().drain().collect()
+    }
+
+    pub fn has_listener_id(&self, id: &u64) -> bool {
+        self.inner.subscriptions.lock().unwrap().get(id).is_some()
     }
 }
 

@@ -1466,6 +1466,7 @@ dependencies = [
  "futures-util",
  "intertrait",
  "log",
+ "num_cpus",
  "thiserror",
  "tokio",
  "wasm-bindgen",
@@ -1516,6 +1517,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "convert_case 0.5.0",
+ "futures",
  "kaspa-wallet-core",
  "kaspa-wrpc-client",
  "pad",
@@ -1614,6 +1616,7 @@ dependencies = [
  "consensus-core",
  "kaspa-rpc-macros",
  "kaspa-wrpc-server",
+ "num_cpus",
  "rpc-core",
  "rpc-grpc",
  "thiserror",
@@ -1635,6 +1638,7 @@ dependencies = [
  "kaspa-core",
  "kaspa-rpc-macros",
  "kaspa-utils",
+ "num_cpus",
  "paste",
  "rpc-core",
  "rpc-grpc",
@@ -1662,6 +1666,7 @@ dependencies = [
  "kaspa-wrpc-server",
  "log",
  "num-format",
+ "num_cpus",
  "rand 0.8.5",
  "rand_distr",
  "rayon",
@@ -1995,11 +2000,11 @@ dependencies = [
 
 [[package]]
 name = "num_cpus"
-version = "1.14.0"
+version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f6058e64324c71e02bc2b150e4f3bc8286db6c83092132ffa3f6b1eab0f9def5"
+checksum = "0fac9e2da13b5eb447a6ce3d392f23a29d8694bff781bf03a16cd9ac8697593b"
 dependencies = [
- "hermit-abi 0.1.19",
+ "hermit-abi 0.2.6",
  "libc",
 ]
 
@@ -3578,6 +3583,7 @@ checksum = "f40009d85759725a34da6d89a94e63d7bdc50a862acf0dbc7c8e488f1edcb6f5"
 name = "workflow-core"
 version = "0.3.0"
 dependencies = [
+ "async-channel",
  "async-std",
  "borsh",
  "bs58",
@@ -3728,6 +3734,7 @@ dependencies = [
  "async-std",
  "async-trait",
  "cfg-if",
+ "futures",
  "js-sys",
  "numtoa 0.2.4",
  "regex",

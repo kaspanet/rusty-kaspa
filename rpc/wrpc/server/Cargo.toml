@@ -25,3 +25,4 @@ workflow-log.workspace = true
 workflow-rpc.workspace = true
 workflow-task.workspace = true
 workflow-websocket.workspace = true
+num_cpus.workspace = true

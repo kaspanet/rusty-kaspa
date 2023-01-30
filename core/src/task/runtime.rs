@@ -15,19 +15,21 @@ const ASYNC_RUNTIME: &str = "async-runtime";
 /// AsyncRuntime registers async services and provides
 /// a tokio Runtime to run them.
 pub struct AsyncRuntime {
+    threads: usize,
     services: Mutex<Vec<Arc<dyn AsyncService>>>,
 }
 
 impl Default for AsyncRuntime {
     fn default() -> Self {
-        Self::new()
+        // TODO
+        Self::new(std::cmp::max(num_cpus::get() / 3, 2))
     }
 }
 
 impl AsyncRuntime {
-    pub fn new() -> Self {
+    pub fn new(threads: usize) -> Self {
         trace!("Creating the async-runtime service");
-        Self { services: Mutex::new(Vec::new()) }
+        Self { threads, services: Mutex::new(Vec::new()) }
     }
 
     pub fn register<T>(&self, service: Arc<T>)
@@ -44,10 +46,20 @@ impl AsyncRuntime {
     }
 
     /// Launch a tokio Runtime and run the top-level async objects
-    #[tokio::main(worker_threads = 2)]
+
+    pub fn worker(self: &Arc<AsyncRuntime>, core: Arc<Core>) {
+        return tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(self.threads)
+            .enable_all()
+            .build()
+            .expect("Failed building the Runtime")
+            .block_on(async { self.worker_impl(core).await });
+    }
+
+    // #[tokio::main(worker_threads = 2)]
     // TODO: increase the number of threads if needed
     // TODO: build the runtime explicitly and dedicate a number of threads based on the host specs
-    pub async fn worker(self: &Arc<AsyncRuntime>, core: Arc<Core>) {
+    pub async fn worker_impl(self: &Arc<AsyncRuntime>, core: Arc<Core>) {
         // Start all async services
         // All services futures are spawned as tokio tasks to enable parallelism
         trace!("async-runtime worker starting");

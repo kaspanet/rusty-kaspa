@@ -979,3 +979,25 @@ pub struct NotifyNewBlockTemplateResponse {}
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct NewBlockTemplateNotification {}
+
+/// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/// wRPC response for RpcApiOps::Subscribe request
+/// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SubscribeResponse {
+    id: u64,
+}
+
+impl SubscribeResponse {
+    pub fn new(id: u64) -> Self {
+        Self { id }
+    }
+}
+
+/// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/// wRPC response for RpcApiOps::Subscribe request
+/// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct UnsubscribeResponse {}

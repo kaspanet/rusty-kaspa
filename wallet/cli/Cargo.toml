@@ -16,3 +16,4 @@ async-trait.workspace = true
 pad.workspace = true
 convert_case.workspace = true
 thiserror.workspace = true
+futures.workspace = true

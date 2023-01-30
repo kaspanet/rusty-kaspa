@@ -1,13 +1,9 @@
-//use super::route::route;
 use crate::result::Result;
 use async_trait::async_trait;
 use kaspa_rpc_macros::build_wrpc_client_interface;
 use regex::Regex;
 use rpc_core::{
-    api::{
-        ops::{RpcApiOps, SubscribeCommand},
-        rpc::RpcApi,
-    },
+    api::{ops::RpcApiOps, rpc::RpcApi},
     error::RpcResult,
     prelude::*,
 };
@@ -41,7 +37,7 @@ impl KaspaRpcClient {
 
         let _notifier = notifier.clone();
         interface.notification(
-            RpcApiOps::NotifyVirtualDaaScoreChanged,
+            RpcApiOps::Notification,
             workflow_rpc::client::Notification::new(move |notification: rpc_core::Notification| {
                 let notifier = _notifier.clone();
                 Box::pin(async move {
@@ -55,7 +51,21 @@ impl KaspaRpcClient {
 
         let client = KaspaRpcClient { rpc: Arc::new(RpcClient::new_with_encoding(encoding, interface.into(), options)?), notifier };
 
+        client.notifier.clone().start();
+
         Ok(client)
+    }
+
+    pub fn start(self: &Arc<Self>) -> Result<()> {
+        self.notifier.clone().start();
+        self.connect_as_task()?;
+        Ok(())
+    }
+
+    // TODO - not currently used
+    pub async fn stop(&self) -> Result<()> {
+        self.notifier.clone().stop().await?;
+        Ok(())
     }
 
     /// Starts a background async connection task connecting
@@ -144,17 +154,18 @@ impl RpcApi for KaspaRpcClient {
     /// Start sending notifications of some type to a listener.
     async fn start_notify(&self, id: ListenerID, notification_type: NotificationType) -> RpcResult<()> {
         self.notifier.clone().start_notify(id, notification_type.clone())?;
-        self.notifier.clone().start();
-        match notification_type {
-            NotificationType::VirtualDaaScoreChanged => {
-                let req = NotifyVirtualDaaScoreChangedRequest::new(SubscribeCommand::Start);
-                // let result = self.rpc.call(RpcApiOps::NotifyVirtualDaaScoreChanged, req).await?;
-                let result: NotifyVirtualDaaScoreChangedResponse =
-                    self.rpc.call(RpcApiOps::NotifyVirtualDaaScoreChanged, req).await.map_err(|err| err.to_string())?;
-                log_trace!("start_notify: {result:?}");
-            }
-            _ => {}
-        }
+        // self.notifier.clone().start();
+
+        let _response: SubscribeResponse =
+            self.rpc.call(RpcApiOps::Subscribe, notification_type).await.map_err(|err| err.to_string())?;
+        // match notification_type {
+        //     NotificationType::VirtualDaaScoreChanged => {
+        //         let req = NotifyVirtualDaaScoreChangedRequest::new(SubscribeCommand::Start);
+        //         // let result = self.rpc.call(RpcApiOps::NotifyVirtualDaaScoreChanged, req).await?;
+        //         log_trace!("start_notify: {result:?}");
+        //     }
+        //     _ => {}
+        // }
         Ok(())
     }
 

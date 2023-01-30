@@ -1,10 +1,27 @@
 #[allow(unused)]
 use clap::{arg, command, Arg, Command};
 
-// const DEFAULT_DATA_DIR: &str = "datadir";
-const DEFAULT_LISTEN_GRPC: &str = "127.0.0.1:16110";
-const DEFAULT_LISTEN_WRPC_BORSH: &str = "127.0.0.1:17110";
-const DEFAULT_LISTEN_WRPC_JSON: &str = "127.0.0.1:18110";
+pub struct Defaults {
+    pub appdir: &'static str,
+    pub rpclisten: &'static str,
+    pub rpclisten_borsh: &'static str,
+    pub rpclisten_json: &'static str,
+    pub async_threads: usize,
+    pub wrpc_serializer_tasks: usize,
+}
+
+impl Default for Defaults {
+    fn default() -> Self {
+        Defaults {
+            appdir: "datadir",
+            rpclisten: "127.0.0.1:16110",
+            rpclisten_borsh: "127.0.0.1:17110",
+            rpclisten_json: "127.0.0.1:18110",
+            async_threads: num_cpus::get() / 2,
+            wrpc_serializer_tasks: num_cpus::get() / 2,
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct Args {
@@ -15,13 +32,23 @@ pub struct Args {
     pub rpclisten_json: Option<String>,
     pub wrpc_verbose: bool,
     pub log_level: String,
+    pub async_threads: usize,
 }
 
-pub fn cli() -> Command {
+pub fn cli(defaults: &Defaults) -> Command {
     Command::new("kaspad")
         .about(format!("{} (rusty-kaspa) v{}", env!("CARGO_PKG_DESCRIPTION"), env!("CARGO_PKG_VERSION")))
         .version(env!("CARGO_PKG_VERSION"))
         .arg(arg!(-b --appdir <DATA_DIR> "Directory to store data."))
+        .arg(
+            Arg::new("async_threads")
+                .short('t')
+                .long("async-threads")
+                .value_name("async_threads")
+                .num_args(0..=1)
+                .require_equals(true)
+                .help(format!("Specify number of async threads (default: {}).", defaults.async_threads)),
+        )
         .arg(
             Arg::new("log_level")
                 .short('d')
@@ -36,7 +63,8 @@ pub fn cli() -> Command {
             Arg::new("rpclisten")
                 .long("rpclisten")
                 .value_name("rpclisten")
-                .default_value(DEFAULT_LISTEN_GRPC)
+                // .default_value(DEFAULT_LISTEN_GRPC)
+                .default_value(defaults.rpclisten)
                 .num_args(0..=1)
                 .require_equals(true)
                 .help("Interface:port to listen for gRPC connections (default port: 16110, testnet: 16210)."),
@@ -47,9 +75,10 @@ pub fn cli() -> Command {
                 .value_name("rpclisten-borsh")
                 .num_args(0..=1)
                 .require_equals(true)
-                .default_missing_value(DEFAULT_LISTEN_WRPC_BORSH)
+                .default_missing_value(defaults.rpclisten_borsh)
                 .help(format!(
-                    "Interface:port to listen for wRPC Borsh connections (interop only; default: `{DEFAULT_LISTEN_WRPC_BORSH}`)."
+                    "Interface:port to listen for wRPC Borsh connections (interop only; default: `{}`).",
+                    defaults.rpclisten_borsh
                 )),
         )
         .arg(
@@ -58,14 +87,14 @@ pub fn cli() -> Command {
                 .value_name("rpclisten-json")
                 .num_args(0..=1)
                 .require_equals(true)
-                .default_missing_value(DEFAULT_LISTEN_WRPC_JSON)
-                .help(format!("Interface:port to listen for wRPC JSON connections (default: {DEFAULT_LISTEN_WRPC_JSON}).")),
+                .default_missing_value(defaults.rpclisten_json)
+                .help(format!("Interface:port to listen for wRPC JSON connections (default: {}).", defaults.rpclisten_json)),
         )
 }
 
 impl Args {
-    pub fn parse() -> Args {
-        let m = cli().get_matches();
+    pub fn parse(defaults: &Defaults) -> Args {
+        let m = cli(defaults).get_matches();
         Args {
             appdir: m.get_one::<String>("appdir").cloned(),
             rpclisten: m.get_one::<String>("rpclisten").cloned(),
@@ -73,6 +102,7 @@ impl Args {
             rpclisten_json: m.get_one::<String>("rpclisten-json").cloned(),
             wrpc_verbose: false,
             log_level: m.get_one::<String>("log_level").cloned().unwrap(),
+            async_threads: m.get_one::<usize>("async_threads").cloned().unwrap_or(defaults.async_threads),
         }
     }
 }

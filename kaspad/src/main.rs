@@ -2,7 +2,6 @@ extern crate consensus;
 extern crate core;
 extern crate hashes;
 
-use clap::Parser;
 use consensus::config::Config;
 use consensus::model::stores::DB;
 use kaspa_core::{core::Core, signals::Signals, task::runtime::AsyncRuntime};
@@ -12,7 +11,7 @@ use std::sync::Arc;
 
 // ~~~
 // TODO - discuss handling
-use args::Args;
+use args::{Args, Defaults};
 // use clap::Parser;
 // any specific reason this was used?  changed as_display() to display() below
 // use thiserror::__private::PathAsDisplay;
@@ -22,7 +21,7 @@ use crate::monitor::ConsensusMonitor;
 use consensus::consensus::Consensus;
 use consensus::params::DEVNET_PARAMS;
 use kaspa_core::{info, trace};
-use kaspa_wrpc_server::server::{Options as WrpcServerOptions, WrpcEncoding, WrpcServer};
+use kaspa_wrpc_server::service::{Options as WrpcServerOptions, WrpcEncoding, WrpcService};
 use rpc_core::server::collector::ConsensusNotificationChannel;
 use rpc_core::server::RpcCoreServer;
 use rpc_grpc::server::GrpcServer;
@@ -83,7 +82,14 @@ fn get_app_dir() -> PathBuf {
 }
 
 pub fn main() {
-    let args = Args::parse();
+    let defaults = Defaults {
+        // --async-threads N
+        async_threads: num_cpus::get() / 2,
+        ..Defaults::default()
+    };
+
+    let args = Args::parse(&defaults);
+
     // Initialize the logger
     kaspa_core::log::init_logger(&args.log_level);
 
@@ -120,16 +126,18 @@ pub fn main() {
     let grpc_server = Arc::new(GrpcServer::new(grpc_server_addr, rpc_core_server.service()));
 
     // Create an async runtime and register the top-level async services
-    let async_runtime = Arc::new(AsyncRuntime::new());
+    let async_runtime = Arc::new(AsyncRuntime::new(args.async_threads));
     async_runtime.register(rpc_core_server.clone());
     async_runtime.register(grpc_server);
 
-    // Register wRPC servers based on command line arguments
+    let wrpc_service_tasks: usize = 2; // num_cpus::get() / 2;
+                                       // Register wRPC servers based on command line arguments
     [(args.rpclisten_borsh, WrpcEncoding::Borsh), (args.rpclisten_json, WrpcEncoding::SerdeJson)]
         .iter()
         .filter_map(|(listen_address, encoding)| {
             listen_address.as_ref().map(|listen_address| {
-                Arc::new(WrpcServer::new(
+                Arc::new(WrpcService::new(
+                    wrpc_service_tasks,
                     rpc_core_server.service(),
                     encoding,
                     WrpcServerOptions { listen_address: listen_address.to_string(), verbose: args.wrpc_verbose },

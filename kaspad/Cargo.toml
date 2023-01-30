@@ -28,3 +28,4 @@ workflow-log.workspace = true
 rand_distr = "0.4"
 num-format = "0.4"
 dirs = "4.0"
+num_cpus.workspace = true

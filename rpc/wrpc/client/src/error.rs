@@ -5,6 +5,12 @@ use workflow_rpc::client::error::Error as RpcError;
 pub enum Error {
     #[error("RPC error: {0}")]
     RpcError(#[from] RpcError),
+
+    #[error("RpcApi error: {0}")]
+    RpcApiError(#[from] rpc_core::error::RpcError),
+
+    #[error("Notification subsystem error: {0}")]
+    NotificationError(#[from] rpc_core::notify::error::Error),
 }
 
 impl From<Error> for rpc_core::error::RpcError {

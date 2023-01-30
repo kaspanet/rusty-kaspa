@@ -1,5 +1,5 @@
 use crate::connection::*;
-use crate::manager::*;
+use crate::server::*;
 use kaspa_rpc_macros::build_wrpc_server_interface;
 use rpc_core::api::ops::RpcApiOps;
 use rpc_core::api::rpc::RpcApi;
@@ -23,11 +23,11 @@ pub trait RpcApiContainer: Send + Sync + 'static {
 /// thus resides in the `ServerContext`, when using with GRPC
 /// Proxy, the RpcApi is represented by each forwarding connection
 /// and as such resides in the `ConnectionContext`
-#[derive(Clone)]
-pub enum RouterTarget {
-    Server,
-    Connection,
-}
+// #[derive(Clone)]
+// pub enum RouterTarget {
+//     Server,
+//     Connection,
+// }
 
 /// A wrapper that creates an [`Interface`] instance and initializes
 /// RPC methods and notifications agains this interface. The inteface
@@ -35,13 +35,13 @@ pub enum RouterTarget {
 /// a single initalization location for both the Kaspad Server and
 /// the GRPC Proxy.
 pub struct Router {
-    pub interface: Arc<Interface<ConnectionManager, Connection, RpcApiOps>>,
-    pub server_context: ConnectionManager,
+    pub interface: Arc<Interface<Server, Connection, RpcApiOps>>,
+    pub server_context: Server,
 }
 
 impl Router {
-    pub fn new(server_context: ConnectionManager, _router_target: RouterTarget) -> Self {
-        let router_target = server_context.router_target();
+    pub fn new(server_context: Server) -> Self {
+        // let router_target = server_context.router_target();
 
         // The following macro iterates the supplied enum variants taking the variant
         // name and creating an RPC handler using that name. For example, receiving
@@ -52,8 +52,7 @@ impl Router {
         #[allow(unreachable_patterns)]
         let mut interface = build_wrpc_server_interface!(
             server_context.clone(),
-            router_target,
-            ConnectionManager,
+            Server,
             Connection,
             RpcApiOps,
             [
@@ -92,66 +91,47 @@ impl Router {
             ]
         );
 
-        let router_target_ = router_target.clone();
         interface.method(
             RpcApiOps::Subscribe,
-            workflow_rpc::server::Method::new(
-                move |manager: ConnectionManager, connection: Connection, notification_type: NotificationType| {
-                    let router_target = router_target_.clone();
-                    Box::pin(async move {
-                        workflow_log::log_trace!("notification request {:?}", notification_type);
+            workflow_rpc::server::Method::new(move |manager: Server, connection: Connection, notification_type: NotificationType| {
+                Box::pin(async move {
+                    workflow_log::log_trace!("notification subscribe {:?}", notification_type);
 
-                        let api = match &router_target {
-                            RouterTarget::Server => manager.get_rpc_api(),
-                            RouterTarget::Connection => connection.get_rpc_api(),
-                        };
+                    let rpc_api = manager.get_rpc_api(&connection);
 
-                        let listener_id = if let Some(listener_id) = connection.listener_id() {
-                            listener_id
-                        } else {
-                            let id = api.register_new_listener(manager.notification_ingest());
-                            connection.register_notification_listener(id); //, connection.clone());
-                            manager.register_notification_listener(id, connection.clone());
-                            id
-                        };
+                    let id = if let Some(listener_id) = connection.listener_id() {
+                        listener_id
+                    } else {
+                        let id = rpc_api.register_new_listener(manager.notification_ingest());
+                        connection.register_notification_listener(id); //, connection.clone());
+                        manager.register_notification_listener(id, connection.clone());
+                        id
+                    };
 
-                        let _result = api.start_notify(listener_id, notification_type).await;
+                    rpc_api.start_notify(id, notification_type).await.map_err(|err| err.to_string())?;
 
-                        Ok(())
-                    })
-                },
-            ),
+                    Ok(SubscribeResponse::new(id))
+                })
+            }),
         );
 
-        let router_target_ = router_target.clone();
         interface.method(
             RpcApiOps::Unsubscribe,
-            workflow_rpc::server::Method::new(
-                move |manager: ConnectionManager, connection: Connection, notification_type: NotificationType| {
-                    let router_target = router_target_.clone();
-                    Box::pin(async move {
-                        workflow_log::log_trace!("notification request {:?}", notification_type);
+            workflow_rpc::server::Method::new(move |manager: Server, connection: Connection, notification_type: NotificationType| {
+                Box::pin(async move {
+                    workflow_log::log_trace!("notification unsubscribe {:?}", notification_type);
 
-                        let api = match router_target {
-                            RouterTarget::Server => manager.get_rpc_api(),
-                            RouterTarget::Connection => connection.get_rpc_api(),
-                        };
+                    let rpc_api = manager.get_rpc_api(&connection);
 
-                        let listener_id = if let Some(listener_id) = connection.listener_id() {
-                            listener_id
-                        } else {
-                            let id = api.register_new_listener(manager.notification_ingest());
-                            connection.register_notification_listener(id); //, connection.clone());
-                            manager.register_notification_listener(id, connection.clone());
-                            id
-                        };
+                    if let Some(listener_id) = connection.listener_id() {
+                        rpc_api.stop_notify(listener_id, notification_type).await.unwrap_or_else(|err| {
+                            format!("wRPC -> RpcApiOps::Unsubscribe error calling stop_notify(): {err}");
+                        });
+                    }
 
-                        let _result = api.start_notify(listener_id, notification_type).await;
-
-                        Ok(())
-                    })
-                },
-            ),
+                    Ok(UnsubscribeResponse {})
+                })
+            }),
         );
 
         Router { interface: Arc::new(interface), server_context }

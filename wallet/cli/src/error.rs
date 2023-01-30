@@ -1,4 +1,5 @@
 use kaspa_wallet_core::error::Error as WalletError;
+use workflow_core::channel::ChannelError;
 use workflow_terminal::error::Error as TerminalError;
 
 use thiserror::Error;
@@ -15,10 +16,20 @@ pub enum Error {
     TerminalError(#[from] TerminalError),
     // #[error("RPC error: {0}")]
     // RpcError(#[from] RpcError),
+    #[error("Channel error")]
+    ChannelError(String),
+    // #[error("Channel error")]
+    // ChannelError(String),
 }
 
 impl From<Error> for TerminalError {
     fn from(e: Error) -> TerminalError {
         TerminalError::String(e.to_string())
+    }
+}
+
+impl<T> From<ChannelError<T>> for Error {
+    fn from(e: ChannelError<T>) -> Error {
+        Error::ChannelError(e.to_string())
     }
 }

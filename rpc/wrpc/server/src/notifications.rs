@@ -2,6 +2,7 @@ use crate::connection::Connection;
 use futures::future::*;
 use futures::*;
 use rpc_core::api::ops::RpcApiOps;
+use rpc_core::api::rpc::RpcApi;
 use rpc_core::{notify::listener::*, NotificationMessage};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -19,9 +20,7 @@ pub struct NotificationManager {
 impl NotificationManager {
     pub fn new(tasks: usize) -> Self {
         let ingest = Channel::unbounded();
-
         let tasks = [0..tasks].iter().map(|_| Arc::new(NotificationTask::new(ingest.clone()))).collect::<Vec<_>>();
-
         NotificationManager { ingest, tasks }
     }
 
@@ -39,6 +38,24 @@ impl NotificationManager {
                 .try_send(Ctl::Unregister(id))
                 .unwrap_or_else(|err| log_error!("wRPC::NotificationManager::task.ctl.try_send(): {err}"));
         })
+    }
+
+    pub async fn disconnect(&self, rpc_api: Arc<dyn RpcApi>, connection: Connection) {
+        let subscriptions = connection.drain_subscriptions();
+        if !subscriptions.is_empty() {
+            for id in subscriptions.iter() {
+                rpc_api.unregister_listener(*id).await.unwrap_or_else(|err| {
+                    log_error!("wRPC::NotificationManager::rpc_api.unregister_listener() unable to unregister listener: `{err}`");
+                });
+                self.tasks.iter().for_each(|task| {
+                    task.ctl.try_send(Ctl::Unregister(*id)).unwrap_or_else(|err| {
+                        log_error!(
+                            "wRPC::NotificationManager::task.ctl.try_send() unable to unsubscribe on connection close: `{err}`"
+                        );
+                    });
+                });
+            }
+        }
     }
 }
 
@@ -84,15 +101,10 @@ impl NotificationTask {
                     },
 
                     msg = ingest.recv().fuse() => {
-                        match msg {
-                            Ok(msg) => {
-                                let NotificationMessage { id, payload } = &*msg;
-                                if let Some(connection) = listeners.get(id) {
-                                    connection.messenger().notify(RpcApiOps::Notification,payload.clone()).await.ok();
-                                }
-                            },
-                            Err(_) => {
-                                // TODO
+                        if let Ok(msg) = msg {
+                            let NotificationMessage { id, payload } = &*msg;
+                            if let Some(connection) = listeners.get(id) {
+                                connection.messenger().notify(RpcApiOps::Notification,payload.clone()).await.ok();
                             }
                         }
                     }

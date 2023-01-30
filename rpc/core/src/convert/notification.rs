@@ -38,7 +38,7 @@ impl From<ArcConvert<Notification>> for Arc<Notification> {
 
 impl From<ArcConvert<NotificationMessage>> for Arc<Notification> {
     fn from(item: ArcConvert<NotificationMessage>) -> Self {
-        (*item).payload.clone()
+        item.payload.clone()
     }
 }
 
