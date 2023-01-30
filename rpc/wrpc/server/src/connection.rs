@@ -39,9 +39,11 @@ impl Connection {
     }
 
     pub fn get_rpc_api(&self) -> Arc<dyn RpcApi> {
-        self.inner.grpc_api.as_ref().cloned().unwrap_or_else(||{
-            panic!("Incorrect use: `server::ConnectionContext` does not carry RpcApi references")
-        })
+        self.inner
+            .grpc_api
+            .as_ref()
+            .cloned()
+            .unwrap_or_else(|| panic!("Incorrect use: `server::ConnectionContext` does not carry RpcApi references"))
     }
 
     pub fn listener_id(&self) -> Option<ListenerId> {

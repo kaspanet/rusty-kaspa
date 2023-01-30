@@ -1,4 +1,4 @@
-use async_channel::{unbounded, Receiver, Sender};
+pub use async_channel::{unbounded, Receiver, Sender};
 /// Multiple producers multiple consumers channel
 #[derive(Clone, Debug)]
 pub struct Channel<T> {

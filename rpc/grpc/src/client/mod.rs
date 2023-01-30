@@ -10,7 +10,7 @@ use rpc_core::{
     notify::{
         channel::NotificationChannel,
         collector::RpcCoreCollector,
-        listener::{ListenerID, ListenerReceiverSide, ListenerUtxoNotificationFilterSetting},
+        listener::{ListenerID, ListenerUtxoNotificationFilterSetting},
         notifier::Notifier,
         subscriber::Subscriber,
     },

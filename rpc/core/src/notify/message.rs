@@ -1,6 +1,4 @@
-use super::{
-    listener::{ListenerID, ListenerSenderSide},
-};
+use super::listener::{ListenerID, ListenerSenderSide};
 use crate::{Notification, NotificationType};
 use std::{fmt::Display, sync::Arc};
 

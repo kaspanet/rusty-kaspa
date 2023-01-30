@@ -4,15 +4,7 @@
 //! All data provided by the RCP server can be trusted by the client
 //! No data submitted by the client to the server can be trusted
 
-use crate::{
-    api::ops::SubscribeCommand,
-    model::*,
-    notify::{
-        channel::NotificationChannel,
-        listener::{ListenerID, ListenerReceiverSide},
-    },
-    NotificationSender, NotificationType, RpcResult,
-};
+use crate::{api::ops::SubscribeCommand, model::*, notify::listener::ListenerID, NotificationSender, NotificationType, RpcResult};
 use async_trait::async_trait;
 
 /// Client RPC Api

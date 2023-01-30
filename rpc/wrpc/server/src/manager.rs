@@ -1,17 +1,17 @@
-use crate::router::RouterTarget;
-use rpc_core::NotificationMessage;
-use rpc_core::api::rpc::RpcApi;
-use rpc_grpc::client::RpcApiGrpc;
-use std::sync::Arc;
-use workflow_rpc::server::prelude::*;
 use crate::connection::Connection;
 use crate::notifications::{ListenerId, NotificationManager};
 use crate::result::Result;
+use crate::router::RouterTarget;
 use consensus_core::networktype::NetworkType;
+use rpc_core::api::rpc::RpcApi;
+use rpc_core::NotificationMessage;
+use rpc_grpc::client::RpcApiGrpc;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use std::sync::Mutex;
 use workflow_core::channel::*;
+use workflow_rpc::server::prelude::*;
 
 pub struct ConnectionManagerInner {
     pub id: AtomicU64,
@@ -86,7 +86,6 @@ impl ConnectionManager {
     pub fn register_notification_listener(&self, id: ListenerId, connection: Connection) {
         self.inner.notifications.register_notification_listener(id, connection)
     }
-
 }
 
 pub type ConnectionManagerReference = Arc<ConnectionManager>;

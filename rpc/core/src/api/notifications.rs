@@ -1,7 +1,5 @@
 use crate::NotificationMessage;
 use crate::{model::message::*, RpcAddress};
-use crate::model::message::*;
-use crate::stubs::*;
 use async_channel::{Receiver, Sender};
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};

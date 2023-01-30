@@ -1,3 +1,5 @@
+use crate::connection::*;
+use crate::manager::*;
 use crate::result::Result;
 use crate::router::*;
 use async_trait::async_trait;
@@ -14,8 +16,6 @@ use std::sync::Arc;
 use workflow_log::*;
 use workflow_rpc::server::prelude::*;
 pub use workflow_rpc::server::Encoding as WrpcEncoding;
-use crate::connection::*;
-use crate::manager::*;
 
 /// Options for configuring the wRPC server
 pub struct Options {
