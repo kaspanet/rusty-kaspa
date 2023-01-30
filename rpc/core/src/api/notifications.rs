@@ -1,6 +1,6 @@
 use crate::model::message::*;
 use crate::stubs::*;
-use async_std::channel::{Receiver, Sender};
+use async_channel::{Receiver, Sender};
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;

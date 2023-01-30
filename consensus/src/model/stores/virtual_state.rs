@@ -22,7 +22,7 @@ pub struct VirtualState {
     pub bits: u32,
     pub past_median_time: u64,
     pub multiset: MuHash,
-    pub utxo_diff: UtxoDiff,
+    pub utxo_diff: UtxoDiff, // This is the UTXO diff from the selected tip to the virtual. i.e., if this diff is applied on the past UTXO of the selected tip, we'll get the virtual UTXO set.
     pub accepted_tx_ids: Vec<TransactionId>, // TODO: consider saving `accepted_id_merkle_root` directly
     pub mergeset_rewards: BlockHashMap<BlockRewardData>,
     pub mergeset_non_daa: BlockHashSet,

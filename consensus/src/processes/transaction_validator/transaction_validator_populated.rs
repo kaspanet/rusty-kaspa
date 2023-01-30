@@ -6,6 +6,7 @@ use consensus_core::{
     },
     tx::VerifiableTransaction,
 };
+use kaspa_core::info;
 
 use super::{
     errors::{TxResult, TxRuleError},
@@ -107,21 +108,24 @@ impl TransactionValidator {
             // TODO: this is a temporary implementation and not ready for consensus since any invalid signature
             // will crash the node. We need to replace it with a proper script engine once it's ready.
             let pk = &entry.script_public_key.script()[1..33];
-            let pk = secp256k1::XOnlyPublicKey::from_slice(pk).unwrap();
-            let sig = secp256k1::schnorr::Signature::from_slice(&input.signature_script[1..65]).unwrap();
-            let sig_hash = calc_schnorr_signature_hash(tx, i, SIG_HASH_ALL, &mut reused_values);
-            let msg = secp256k1::Message::from_slice(sig_hash.as_bytes().as_slice()).unwrap();
-            let sig_cache_key = SigCacheKey { signature: sig, pub_key: pk, message: msg };
-            match self.sig_cache.get(&sig_cache_key) {
-                Some(valid) => {
-                    assert!(valid, "invalid signature in sig cache");
+            if let Ok(pk) = secp256k1::XOnlyPublicKey::from_slice(pk) {
+                let sig = secp256k1::schnorr::Signature::from_slice(&input.signature_script[1..65]).unwrap();
+                let sig_hash = calc_schnorr_signature_hash(tx, i, SIG_HASH_ALL, &mut reused_values);
+                let msg = secp256k1::Message::from_slice(sig_hash.as_bytes().as_slice()).unwrap();
+                let sig_cache_key = SigCacheKey { signature: sig, pub_key: pk, message: msg };
+                match self.sig_cache.get(&sig_cache_key) {
+                    Some(valid) => {
+                        assert!(valid, "invalid signature in sig cache");
+                    }
+                    None => {
+                        // TODO: Find a way to parallelize this part. This will be less trivial
+                        // once this code is inside the script engine.
+                        sig.verify(&msg, &pk).unwrap();
+                        self.sig_cache.insert(sig_cache_key, true);
+                    }
                 }
-                None => {
-                    // TODO: Find a way to parallelize this part. This will be less trivial
-                    // once this code is inside the script engine.
-                    sig.verify(&msg, &pk).unwrap();
-                    self.sig_cache.insert(sig_cache_key, true);
-                }
+            } else {
+                info!("Looks like this is not a p2pk script, so the current code can't handle it")
             }
         }
 
