@@ -129,9 +129,7 @@ impl RpcApi for KaspaRpcClient {
     // Notification API
 
     /// Register a new listener and returns an id and a channel receiver.
-    // fn register_new_listener(&self, channel: Option<NotificationChannel>) -> ListenerID { //ListenerReceiverSide {
     fn register_new_listener(&self, sender: NotificationSender) -> ListenerID {
-        //ListenerReceiverSide {
         self.notifier.register_new_listener(sender)
     }
 

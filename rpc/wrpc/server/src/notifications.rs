@@ -2,7 +2,6 @@ use rpc_core::api::ops::RpcApiOps;
 use rpc_core::{notify::listener::*, NotificationMessage};
 use std::sync::Arc;
 use workflow_core::channel::*;
-// use workflow_core::channel::Channel;
 use crate::connection::Connection;
 use futures::future::*;
 use futures::*;
@@ -89,12 +88,11 @@ impl NotificationTask {
                             Ok(msg) => {
                                 let NotificationMessage { id, payload } = &*msg;
                                 if let Some(connection) = listeners.get(id) {
-                                    // let payload = msg.payload.clone();
                                     connection.messenger().notify(RpcApiOps::Notification,payload.clone()).await.ok();
                                 }
                             },
                             Err(_) => {
-
+                                // TODO
                             }
                         }
                     }

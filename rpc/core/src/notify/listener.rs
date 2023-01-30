@@ -1,6 +1,5 @@
 use crate::{
     notify::{
-        channel::NotificationChannel,
         events::{EventArray, EventType},
         result::Result,
         utxo_address_set::RpcUtxoAddressSet,
