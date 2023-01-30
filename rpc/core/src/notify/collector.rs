@@ -1,5 +1,4 @@
-use async_std::channel::{Receiver, Sender};
-use async_std::stream::StreamExt;
+use async_channel::{Receiver, Sender};
 use async_trait::async_trait;
 use core::fmt::Debug;
 use futures::{
@@ -7,6 +6,7 @@ use futures::{
     pin_mut,
     select,
 };
+use futures_util::stream::StreamExt;
 use kaspa_core::trace;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;

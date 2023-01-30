@@ -17,6 +17,7 @@ pub mod merkle;
 pub mod muhash;
 pub mod networktype;
 pub mod notify;
+pub mod pruning;
 pub mod sign;
 pub mod subnets;
 pub mod tx;
@@ -100,6 +101,8 @@ impl BuildHasher for BlockHasher {
         Self(0)
     }
 }
+
+pub type BlockLevel = u8;
 
 #[cfg(test)]
 mod tests {

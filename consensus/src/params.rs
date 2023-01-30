@@ -1,7 +1,11 @@
+use consensus_core::BlockLevel;
 use hashes::{Hash, HASH_SIZE};
 
 use crate::model::stores::ghostdag::KType;
 
+/// Consensus parameters. Contains settings and configurations which are consensus-sensitive.
+/// Changing one of these on a network node would exclude and prevent it from reaching consensus
+/// with the other unmodified nodes.
 #[derive(Clone)]
 pub struct Params {
     pub genesis_hash: Hash,
@@ -30,22 +34,16 @@ pub struct Params {
     pub pre_deflationary_phase_base_subsidy: u64,
     pub coinbase_maturity: u64,
     pub skip_proof_of_work: bool,
-    pub max_block_level: u8,
-}
-
-impl Params {
-    /// Clones the params instance and sets `skip_proof_of_work = true`.
-    /// Should be used for testing purposes only.
-    pub fn clone_with_skip_pow(&self) -> Self {
-        let mut cloned_params = self.clone();
-        cloned_params.skip_proof_of_work = true;
-        cloned_params
-    }
+    pub max_block_level: BlockLevel,
+    pub pruning_proof_m: u64,
 }
 
 const DEFAULT_GHOSTDAG_K: KType = 18;
 pub const MAINNET_PARAMS: Params = Params {
-    genesis_hash: Hash::from_bytes([1u8; HASH_SIZE]), // TODO: Use real mainnet genesis here
+    genesis_hash: Hash::from_bytes([
+        0x58, 0xc2, 0xd4, 0x19, 0x9e, 0x21, 0xf9, 0x10, 0xd1, 0x57, 0x1d, 0x11, 0x49, 0x69, 0xce, 0xce, 0xf4, 0x8f, 0x9, 0xf9, 0x34,
+        0xd4, 0x2c, 0xcb, 0x6a, 0x28, 0x1a, 0x15, 0x86, 0x8f, 0x29, 0x99,
+    ]),
     ghostdag_k: DEFAULT_GHOSTDAG_K,
     timestamp_deviation_tolerance: 132,
     target_time_per_block: 1000,
@@ -61,7 +59,7 @@ pub const MAINNET_PARAMS: Params = Params {
     max_coinbase_payload_len: 204,
 
     // This is technically a soft fork from the Go implementation since kaspad's consensus doesn't
-    // check these rules, but in practice it's encorced by the network layer that limits the message
+    // check these rules, but in practice it's enforced by the network layer that limits the message
     // size to 1 GB.
     // These values should be lowered to more reasonable amounts on the next planned HF/SF.
     max_tx_inputs: 1_000_000_000,
@@ -85,10 +83,11 @@ pub const MAINNET_PARAMS: Params = Params {
     coinbase_maturity: 100,
     skip_proof_of_work: false,
     max_block_level: 225,
+    pruning_proof_m: 1000,
 };
 
 pub const DEVNET_PARAMS: Params = Params {
-    genesis_hash: Hash::from_bytes([1u8; HASH_SIZE]), // TODO: Use real mainnet genesis here
+    genesis_hash: Hash::from_bytes([1u8; HASH_SIZE]), // TODO: Use golang devnet genesis here
     ghostdag_k: DEFAULT_GHOSTDAG_K,
     timestamp_deviation_tolerance: 132,
     target_time_per_block: 1000,
@@ -104,7 +103,7 @@ pub const DEVNET_PARAMS: Params = Params {
     max_coinbase_payload_len: 204,
 
     // This is technically a soft fork from the Go implementation since kaspad's consensus doesn't
-    // check these rules, but in practice it's encorced by the network layer that limits the message
+    // check these rules, but in practice it's enforced by the network layer that limits the message
     // size to 1 GB.
     // These values should be lowered to more reasonable amounts on the next planned HF/SF.
     max_tx_inputs: 1_000_000_000,
@@ -128,4 +127,5 @@ pub const DEVNET_PARAMS: Params = Params {
     coinbase_maturity: 100,
     skip_proof_of_work: false,
     max_block_level: 250,
+    pruning_proof_m: 1000,
 };

@@ -7,6 +7,8 @@ use crate::model::stores::statuses::StatusesStoreReader;
 use consensus_core::blockhash::BlockHashExtensions;
 use consensus_core::blockstatus::BlockStatus::StatusInvalid;
 use consensus_core::header::Header;
+use consensus_core::BlockLevel;
+use std::cmp::max;
 use std::{
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
@@ -17,26 +19,31 @@ impl HeaderProcessor {
         self: &Arc<HeaderProcessor>,
         ctx: &mut HeaderProcessingContext,
         header: &Header,
+        is_trusted: bool,
     ) -> BlockProcessResult<()> {
         if header.hash == self.genesis_hash {
             return Ok(());
         }
 
-        self.validate_header_in_isolation(header)?;
-        self.check_parents_exist(header)?;
-        self.check_parents_incest(ctx)?;
+        self.validate_header_in_isolation(ctx)?;
+        if !is_trusted {
+            self.check_parents_exist(header)?;
+            self.check_parents_incest(ctx)?;
+        }
+
         Ok(())
     }
 
-    fn validate_header_in_isolation(self: &Arc<HeaderProcessor>, header: &Header) -> BlockProcessResult<()> {
-        if header.hash == self.genesis_hash {
+    fn validate_header_in_isolation(self: &Arc<HeaderProcessor>, ctx: &mut HeaderProcessingContext) -> BlockProcessResult<()> {
+        if ctx.header.hash == self.genesis_hash {
             return Ok(());
         }
 
-        self.check_header_version(header)?;
-        self.check_block_timestamp_in_isolation(header)?;
-        self.check_parents_limit(header)?;
-        Self::check_parents_not_origin(header)?;
+        self.check_header_version(ctx.header)?;
+        self.check_block_timestamp_in_isolation(ctx.header)?;
+        self.check_parents_limit(ctx.header)?;
+        Self::check_parents_not_origin(ctx.header)?;
+        self.check_pow_and_calc_block_level(ctx)?;
         Ok(())
     }
 
@@ -108,5 +115,17 @@ impl HeaderProcessor {
         }
 
         Ok(())
+    }
+
+    fn check_pow_and_calc_block_level(self: &Arc<HeaderProcessor>, ctx: &mut HeaderProcessingContext) -> BlockProcessResult<()> {
+        let state = pow::State::new(ctx.header);
+        let (passed, pow) = state.check_pow(ctx.header.nonce);
+        if passed || self.skip_proof_of_work {
+            let signed_block_level = self.max_block_level as i64 - pow.bits() as i64;
+            ctx.block_level = Some(max(signed_block_level, 0) as BlockLevel);
+            Ok(())
+        } else {
+            Err(RuleError::InvalidPoW)
+        }
     }
 }
