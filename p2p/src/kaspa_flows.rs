@@ -76,7 +76,7 @@ impl Flow for EchoFlow {
         // [1] - close default channel & reroute
         // in case we still didn't registered all flows, we will use reroute_to_flow() call
         // and only after all flows are registered, reroute_to_flow_and_close_default_route() must be used
-        trace!("EchoFlow, finilize subscription");
+        trace!("EchoFlow, finalize subscription");
         router.finalize().await;
         // [2] - terminate channel
         let (term_tx, term_rx) = tokio::sync::oneshot::channel();

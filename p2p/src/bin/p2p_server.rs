@@ -16,12 +16,12 @@ async fn main() {
     let ip_port = String::from("[::1]:50051");
     let p2p_adaptor = kaspa_p2p_lib::kaspa_p2p::P2pAdaptor::listen(ip_port.clone()).await.unwrap();
     // [1] - wait for 60 sec & terminate
-    std::thread::sleep(std::time::Duration::from_secs(128));
+    tokio::time::sleep(std::time::Duration::from_secs(128)).await;
     debug!("P2P, p2p_server::main - TERMINATE");
     p2p_adaptor.terminate_all_peers_and_flows().await;
     // [2] - drop & sleep 5 sec
     drop(p2p_adaptor);
-    std::thread::sleep(std::time::Duration::from_secs(5));
+    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
     debug!("P2P, p2p_server::main - FINISH");
 }
 #[allow(dead_code)]
@@ -39,7 +39,7 @@ async fn old_main_with_impl_details() {
             // as en example subscribe to all message-types, in reality different flows will subscribe to different message-types
             let flow_terminate = kaspa_flows::EchoFlow::new(new_router).await;
             // sleep for 30 sec
-            std::thread::sleep(std::time::Duration::from_secs(30));
+            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
             // terminate when needed (as an example) in general we need to save it somewhere in order to do graceful shutdown
             flow_terminate.send(()).unwrap();
         }
@@ -66,7 +66,7 @@ async fn old_main_with_impl_details() {
                     sender.send(()).unwrap();
                     break;
                 }
-                std::thread::sleep(std::time::Duration::from_secs(1));
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
             }
         }
         Err(err) => {

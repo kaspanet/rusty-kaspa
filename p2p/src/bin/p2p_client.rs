@@ -20,7 +20,7 @@ async fn main() {
         p2p_adaptor.send(peer_id.unwrap(), msg).await;
     }
     // [2] - wait for 60 sec and terminate
-    std::thread::sleep(std::time::Duration::from_secs(128));
+    tokio::time::sleep(std::time::Duration::from_secs(128)).await;
     debug!("P2P,p2p_client::main - TERMINATE");
     p2p_adaptor.terminate_all_peers_and_flows().await;
     debug!("P2P,p2p_client::main - FINISH");
@@ -40,7 +40,7 @@ async fn old_main_with_impl_details() {
             // as en example subscribe to all message-types, in reality different flows will subscribe to different message-types
             let flow_terminate = kaspa_flows::EchoFlow::new(new_router).await;
             // sleep for 30 sec
-            std::thread::sleep(std::time::Duration::from_secs(30));
+            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
             // terminate when needed
             flow_terminate.send(()).unwrap();
         }
@@ -56,7 +56,7 @@ async fn old_main_with_impl_details() {
                 panic!("Can't send message!!!");
             }
             // sleep for 30 sec
-            std::thread::sleep(std::time::Duration::from_secs(30));
+            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
             // [2.*] - close connection
             connected_client.router.as_ref().close().await;
         }
@@ -79,7 +79,7 @@ async fn old_main_with_impl_details() {
                 println!("Client connected failed - 16 retries ...");
                 break;
             } else {
-                std::thread::sleep(std::time::Duration::from_secs(2));
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
             }
         }
     }
