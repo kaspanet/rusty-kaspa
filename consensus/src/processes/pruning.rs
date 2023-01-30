@@ -70,6 +70,15 @@ impl<S: GhostdagStoreReader, T: ReachabilityStoreReader, U: HeaderStoreReader, V
         // If the pruning point is more out of date than that, an IBD with headers proof is needed anyway.
         let mut new_pruning_points = Vec::with_capacity((self.pruning_depth / self.finality_depth) as usize);
         let mut latest_pruning_point_bs = self.ghostdag_store.get_blue_score(current_pruning_point).unwrap();
+
+        if latest_pruning_point_bs + self.pruning_depth > ghostdag_data.blue_score {
+            // The pruning point is not in depth of self.pruning_depth, so there's
+            // no point in checking if it is required to update it. This can happen
+            // because the virtual is not updated after IBD, so the pruning point
+            // might be in depth less than self.pruning_depth.
+            return (vec![], current_candidate);
+        }
+
         let mut new_candidate = current_candidate;
 
         for selected_child in self.reachability_service.forward_chain_iterator(low_hash, ghostdag_data.selected_parent, true) {

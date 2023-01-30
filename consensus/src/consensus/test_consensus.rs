@@ -24,6 +24,7 @@ use parking_lot::RwLock;
 use std::future::Future;
 
 use crate::{
+    config::Config,
     constants::TX_VERSION,
     errors::BlockProcessResult,
     model::stores::{
@@ -43,23 +44,23 @@ use crate::{
 use super::{Consensus, DbGhostdagManager};
 
 pub struct TestConsensus {
-    consensus: Arc<Consensus>,
+    pub consensus: Arc<Consensus>,
     pub params: Params,
     temp_db_lifetime: TempDbLifetime,
 }
 
 impl TestConsensus {
-    pub fn new(db: Arc<DB>, params: &Params) -> Self {
-        Self { consensus: Arc::new(Consensus::new(db, params)), params: params.clone(), temp_db_lifetime: Default::default() }
+    pub fn new(db: Arc<DB>, config: &Config) -> Self {
+        Self { consensus: Arc::new(Consensus::new(db, config)), params: config.params.clone(), temp_db_lifetime: Default::default() }
     }
 
     pub fn consensus(&self) -> Arc<Consensus> {
         self.consensus.clone()
     }
 
-    pub fn create_from_temp_db(params: &Params) -> Self {
+    pub fn create_from_temp_db(config: &Config) -> Self {
         let (temp_db_lifetime, db) = create_temp_db();
-        Self { consensus: Arc::new(Consensus::new(db, params)), params: params.clone(), temp_db_lifetime }
+        Self { consensus: Arc::new(Consensus::new(db, config)), params: config.params.clone(), temp_db_lifetime }
     }
 
     pub fn build_header_with_parents(&self, hash: Hash, parents: Vec<Hash>) -> Header {
@@ -111,7 +112,7 @@ impl TestConsensus {
     }
 
     pub fn validate_and_insert_block(&self, block: Block) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
-        self.consensus.as_ref().validate_and_insert_block(block)
+        self.consensus.as_ref().validate_and_insert_block(block, true)
     }
 
     pub fn init(&self) -> Vec<JoinHandle<()>> {
@@ -245,6 +246,15 @@ impl Drop for TempDbLifetime {
     }
 }
 
+fn create_db_with_custom_options(db_path: PathBuf, create_if_missing: bool) -> Arc<DB> {
+    let mut opts = rocksdb::Options::default();
+    // Set parallelism to 3 as an heuristic for header/block/virtual processing
+    opts.increase_parallelism(3);
+    opts.create_if_missing(create_if_missing);
+    let db = Arc::new(DB::open(&opts, db_path.to_str().unwrap()).unwrap());
+    db
+}
+
 /// Creates a DB within a temp directory under `<OS SPECIFIC TEMP DIR>/kaspa-rust`
 /// Callers must keep the `TempDbLifetime` guard for as long as they wish the DB to exist.
 pub fn create_temp_db() -> (TempDbLifetime, Arc<DB>) {
@@ -253,7 +263,7 @@ pub fn create_temp_db() -> (TempDbLifetime, Arc<DB>) {
     fs::create_dir_all(kaspa_tempdir.as_path()).unwrap();
     let db_tempdir = tempfile::tempdir_in(kaspa_tempdir.as_path()).unwrap();
     let db_path = db_tempdir.path().to_owned();
-    let db = Arc::new(DB::open_default(db_path.to_str().unwrap()).unwrap());
+    let db = create_db_with_custom_options(db_path, true);
     (TempDbLifetime::new(db_tempdir, Arc::downgrade(&db)), db)
 }
 
@@ -267,7 +277,7 @@ pub fn create_permanent_db(db_path: String) -> (TempDbLifetime, Arc<DB>) {
             _ => panic!("{e}"),
         }
     }
-    let db = Arc::new(DB::open_default(db_dir.to_str().unwrap()).unwrap());
+    let db = create_db_with_custom_options(db_dir, true);
     (TempDbLifetime::without_destroy(Arc::downgrade(&db)), db)
 }
 
@@ -275,7 +285,6 @@ pub fn create_permanent_db(db_path: String) -> (TempDbLifetime, Arc<DB>) {
 /// Callers must keep the `TempDbLifetime` guard for as long as they wish the DB instance to exist.
 pub fn load_existing_db(db_path: String) -> (TempDbLifetime, Arc<DB>) {
     let db_dir = PathBuf::from(db_path);
-    assert!(db_dir.is_dir(), "DB directory {db_dir:?} is expected to exist");
-    let db = Arc::new(DB::open_default(db_dir.to_str().unwrap()).unwrap());
+    let db = create_db_with_custom_options(db_dir, false);
     (TempDbLifetime::without_destroy(Arc::downgrade(&db)), db)
 }
