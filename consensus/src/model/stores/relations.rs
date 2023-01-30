@@ -3,9 +3,9 @@ use super::{
     errors::StoreError,
     DB,
 };
-use consensus_core::{blockhash::BlockHashes, BlockHashMap, BlockHasher, HashMapCustomHasher};
+use consensus_core::{blockhash::BlockHashes, BlockHashMap, BlockHasher, BlockLevel, HashMapCustomHasher};
 use hashes::Hash;
-use parking_lot::{RwLock, RwLockWriteGuard};
+use itertools::Itertools;
 use rocksdb::WriteBatch;
 use std::{collections::hash_map::Entry::Vacant, sync::Arc};
 
@@ -31,25 +31,29 @@ const CHILDREN_PREFIX: &[u8] = b"block-children";
 #[derive(Clone)]
 pub struct DbRelationsStore {
     db: Arc<DB>,
+    level: BlockLevel,
     parents_access: CachedDbAccess<Hash, Arc<Vec<Hash>>, BlockHasher>,
     children_access: CachedDbAccess<Hash, Arc<Vec<Hash>>, BlockHasher>,
 }
 
 impl DbRelationsStore {
-    pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
+    pub fn new(db: Arc<DB>, level: BlockLevel, cache_size: u64) -> Self {
+        let lvl_bytes = level.to_le_bytes();
+        let parents_prefix = PARENTS_PREFIX.iter().copied().chain(lvl_bytes).collect_vec();
+        let children_prefix = CHILDREN_PREFIX.iter().copied().chain(lvl_bytes).collect_vec();
         Self {
             db: Arc::clone(&db),
-            parents_access: CachedDbAccess::new(Arc::clone(&db), cache_size, PARENTS_PREFIX),
-            children_access: CachedDbAccess::new(db, cache_size, CHILDREN_PREFIX),
+            level,
+            parents_access: CachedDbAccess::new(Arc::clone(&db), cache_size, parents_prefix),
+            children_access: CachedDbAccess::new(db, cache_size, children_prefix),
         }
     }
 
     pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {
-        Self::new(Arc::clone(&self.db), cache_size)
+        Self::new(Arc::clone(&self.db), self.level, cache_size)
     }
 
-    // Should be kept private and used only through `RelationsStoreBatchExtensions.insert_batch`
-    fn insert_batch(&mut self, batch: &mut WriteBatch, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
+    pub fn insert_batch(&mut self, batch: &mut WriteBatch, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
         if self.has(hash)? {
             return Err(StoreError::KeyAlreadyExists(hash.to_string()));
         }
@@ -68,28 +72,6 @@ impl DbRelationsStore {
         }
 
         Ok(())
-    }
-}
-
-pub trait RelationsStoreBatchExtensions {
-    fn insert_batch(
-        &self,
-        batch: &mut WriteBatch,
-        hash: Hash,
-        parents: BlockHashes,
-    ) -> Result<RwLockWriteGuard<DbRelationsStore>, StoreError>;
-}
-
-impl RelationsStoreBatchExtensions for Arc<RwLock<DbRelationsStore>> {
-    fn insert_batch(
-        &self,
-        batch: &mut WriteBatch,
-        hash: Hash,
-        parents: BlockHashes,
-    ) -> Result<RwLockWriteGuard<DbRelationsStore>, StoreError> {
-        let mut write_guard = self.write();
-        write_guard.insert_batch(batch, hash, parents)?;
-        Ok(write_guard)
     }
 }
 
@@ -209,7 +191,7 @@ mod tests {
     fn test_db_relations_store() {
         let db_tempdir = tempfile::tempdir().unwrap();
         let db = Arc::new(DB::open_default(db_tempdir.path().to_owned().to_str().unwrap()).unwrap());
-        test_relations_store(DbRelationsStore::new(db, 2));
+        test_relations_store(DbRelationsStore::new(db, 0, 2));
     }
 
     fn test_relations_store<T: RelationsStore>(mut store: T) {

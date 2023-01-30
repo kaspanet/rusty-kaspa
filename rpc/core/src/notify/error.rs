@@ -1,4 +1,5 @@
 use crate::RpcError;
+use async_channel::{RecvError, SendError, TrySendError};
 use thiserror::Error;
 
 pub type BoxedStdError = Box<(dyn std::error::Error + Sync + std::marker::Send + 'static)>;
@@ -30,20 +31,20 @@ impl From<BoxedStdError> for Error {
     }
 }
 
-impl<T> From<async_std::channel::SendError<T>> for Error {
-    fn from(_: async_std::channel::SendError<T>) -> Self {
+impl<T> From<SendError<T>> for Error {
+    fn from(_: SendError<T>) -> Self {
         Error::ChannelSendError
     }
 }
 
-impl<T> From<async_std::channel::TrySendError<T>> for Error {
-    fn from(_: async_std::channel::TrySendError<T>) -> Self {
+impl<T> From<TrySendError<T>> for Error {
+    fn from(_: TrySendError<T>) -> Self {
         Error::ChannelSendError
     }
 }
 
-impl From<async_std::channel::RecvError> for Error {
-    fn from(_: async_std::channel::RecvError) -> Self {
+impl From<RecvError> for Error {
+    fn from(_: RecvError) -> Self {
         Error::ChannelRecvError
     }
 }

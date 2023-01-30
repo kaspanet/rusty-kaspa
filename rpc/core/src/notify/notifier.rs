@@ -10,7 +10,7 @@ use super::{
 };
 use crate::{api::ops::SubscribeCommand, Notification, NotificationType, RpcResult};
 use ahash::AHashMap;
-use async_std::channel::{Receiver, Sender};
+use async_channel::{Receiver, Sender};
 use async_trait::async_trait;
 use kaspa_core::trace;
 use kaspa_utils::channel::Channel;

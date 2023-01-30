@@ -81,7 +81,7 @@ impl BlockBodyProcessor {
 mod tests {
 
     use crate::{
-        consensus::test_consensus::TestConsensus, constants::TX_VERSION, errors::RuleError,
+        config::ConfigBuilder, consensus::test_consensus::TestConsensus, constants::TX_VERSION, errors::RuleError,
         model::stores::ghostdag::GhostdagStoreReader, params::MAINNET_PARAMS, processes::transaction_validator::errors::TxRuleError,
     };
     use consensus_core::{
@@ -94,14 +94,15 @@ mod tests {
 
     #[tokio::test]
     async fn validate_body_in_context_test() {
-        let mut params = MAINNET_PARAMS.clone_with_skip_pow();
-        params.deflationary_phase_daa_score = 2;
-        let consensus = TestConsensus::create_from_temp_db(&params);
+        let config = ConfigBuilder::new(MAINNET_PARAMS)
+            .skip_proof_of_work()
+            .edit_consensus_params(|p| p.deflationary_phase_daa_score = 2)
+            .build();
+        let consensus = TestConsensus::create_from_temp_db(&config);
         let wait_handles = consensus.init();
-
         let body_processor = consensus.block_body_processor();
 
-        consensus.add_block_with_parents(1.into(), vec![params.genesis_hash]).await.unwrap();
+        consensus.add_block_with_parents(1.into(), vec![config.genesis_hash]).await.unwrap();
 
         {
             let block = consensus.build_block_with_parents_and_transactions(2.into(), vec![1.into()], vec![]);
@@ -109,7 +110,7 @@ mod tests {
             assert_match!(body_processor.validate_body_in_context(&block.to_immutable()), Err(RuleError::MissingParents(_)));
         }
 
-        let valid_block = consensus.build_block_with_parents_and_transactions(3.into(), vec![params.genesis_hash], vec![]);
+        let valid_block = consensus.build_block_with_parents_and_transactions(3.into(), vec![config.genesis_hash], vec![]);
         consensus.validate_and_insert_block(valid_block.to_immutable()).await.unwrap();
         {
             let mut block = consensus.build_block_with_parents_and_transactions(2.into(), vec![3.into()], vec![]);
@@ -216,7 +217,7 @@ mod tests {
             consensus.validate_and_insert_block(block.to_immutable()).await.unwrap();
         } else {
             assert_match!(
-                consensus.validate_and_insert_block(block.to_immutable()).await, 
+                consensus.validate_and_insert_block(block.to_immutable()).await,
                 Err(RuleError::TxInContextFailed(_, e)) if matches!(e, TxRuleError::NotFinalized(_)));
         }
     }
