@@ -1,5 +1,6 @@
 use clap::Parser;
 use consensus::{
+    config::ConfigBuilder,
     consensus::{
         test_consensus::{create_temp_db, load_existing_db},
         Consensus,
@@ -24,6 +25,7 @@ use consensus_core::{
 use futures::{future::join_all, Future};
 use hashes::Hash;
 use itertools::Itertools;
+use kaspa_core::{info, warn};
 use simulator::network::KaspaNetworkSimulator;
 use std::{collections::VecDeque, mem::size_of, sync::Arc};
 
@@ -57,10 +59,6 @@ struct Args {
     #[arg(short = 'n', long)]
     target_blocks: Option<u64>,
 
-    /// Avoid verbose simulation information
-    #[arg(short, long, default_value_t = false)]
-    quiet: bool,
-
     /// Number of pool-thread threads used by the header and body processors.
     /// Defaults to the number of logical CPU cores.
     #[arg(short, long)]
@@ -73,7 +71,7 @@ struct Args {
 
     /// Logging level for all subsystems {off, error, warn, info, debug, trace}
     ///  -- You may also specify <subsystem>=<level>,<subsystem2>=<level>,... to set the log level for individual subsystems
-    #[arg(long = "loglevel", default_value = "info")]
+    #[arg(long = "loglevel", default_value = format!("info,{}=trace", env!("CARGO_PKG_NAME")))]
     log_level: String,
 
     /// Output directory to save the simulation DB
@@ -105,39 +103,50 @@ fn calculate_ghostdag_k(x: f64, delta: f64) -> u64 {
 }
 
 fn main() {
+    // Get CLI arguments
     let args = Args::parse();
+
+    // Initialize the logger
     kaspa_core::log::init_logger(&args.log_level);
+
+    // Print package name and version
+    info!("{} v{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+
+    // Configure the panic behavior
+    kaspa_core::panic::configure_panic();
+
     assert!(args.bps * args.delay < 250.0, "The delay times bps product is larger than 250");
     if args.miners > 1 {
-        println!(
+        warn!(
             "Warning: number of miners was configured to {}. Currently each miner added doubles the simulation 
         memory and runtime footprint, while a single miner is sufficient for most simulation purposes (delay is simulated anyway).",
             args.miners
         );
     }
-    let mut params = DEVNET_PARAMS.clone_with_skip_pow();
+    let mut params = DEVNET_PARAMS;
     let mut perf_params = PERF_PARAMS;
     adjust_consensus_params(&args, &mut params);
     adjust_perf_params(&args, &params, &mut perf_params);
+    let config = ConfigBuilder::new(params).set_perf_params(perf_params).skip_proof_of_work().build();
 
     // Load an existing consensus or run the simulation
     let (consensus, _lifetime) = if let Some(input_dir) = args.input_dir {
         let (lifetime, db) = load_existing_db(input_dir);
-        let consensus = Arc::new(Consensus::with_perf_params(db, &params, &perf_params));
+        let consensus = Arc::new(Consensus::new(db, &config));
         (consensus, lifetime)
     } else {
         let until = if args.target_blocks.is_none() { args.sim_time * 1000 } else { u64::MAX }; // milliseconds
-        let mut sim = KaspaNetworkSimulator::new(args.delay, args.bps, args.target_blocks, &params, &perf_params, args.output_dir);
-        let (consensus, handles, lifetime) = sim.init(args.miners, args.tpb, !args.quiet).run(until);
+        let mut sim = KaspaNetworkSimulator::new(args.delay, args.bps, args.target_blocks, &config, args.output_dir);
+        let (consensus, handles, lifetime) = sim.init(args.miners, args.tpb).run(until);
         consensus.shutdown(handles);
         (consensus, lifetime)
     };
 
     // Benchmark the DAG validation time
     let (_lifetime2, db2) = create_temp_db();
-    let consensus2 = Arc::new(Consensus::with_perf_params(db2, &params, &perf_params));
+    let consensus2 = Arc::new(Consensus::new(db2, &config));
     let handles2 = consensus2.init();
-    validate(&consensus, &consensus2, &params, args.delay, args.bps);
+    validate(&consensus, &consensus2, &config, args.delay, args.bps);
     consensus2.shutdown(handles2);
     drop(consensus);
 }
@@ -154,7 +163,7 @@ fn adjust_consensus_params(args: &Args, params: &mut Params) {
         params.coinbase_maturity = (params.coinbase_maturity as f64 * f64::max(1.0, args.bps * args.delay * 0.25)) as u64;
         params.difficulty_window_size = (params.difficulty_window_size as f64 * args.bps) as usize; // Scale the DAA window linearly with BPS
 
-        println!(
+        info!(
             "The delay times bps product is larger than 2 (2Dλ={}), setting GHOSTDAG K={}, DAA window size={}",
             2.0 * args.delay * args.bps,
             k,
@@ -191,7 +200,7 @@ async fn validate(src_consensus: &Consensus, dst_consensus: &Consensus, params: 
     let hashes = topologically_ordered_hashes(src_consensus, params.genesis_hash);
     let num_blocks = hashes.len();
     let num_txs = print_stats(src_consensus, &hashes, delay, bps, params.ghostdag_k);
-    println!("Validating {num_blocks} blocks with {num_txs} transactions overall...");
+    info!("Validating {num_blocks} blocks with {num_txs} transactions overall...");
     let start = std::time::Instant::now();
     let chunks = hashes.into_iter().chunks(1000);
     let mut iter = chunks.into_iter();
@@ -211,7 +220,7 @@ async fn validate(src_consensus: &Consensus, dst_consensus: &Consensus, params: 
     // Assert that at least one body tip was resolved with valid UTXO
     assert!(dst_consensus.body_tips().iter().copied().any(|h| dst_consensus.block_status(h) == BlockStatus::StatusUTXOValid));
     let elapsed = start.elapsed();
-    println!(
+    info!(
         "Total validation time: {:?}, block processing rate: {:.2} (b/s), transaction processing rate: {:.2} (t/s)",
         elapsed,
         num_blocks as f64 / elapsed.as_secs_f64(),
@@ -230,7 +239,7 @@ fn submit_chunk(
             src_consensus.headers_store.get_header(hash).unwrap(),
             src_consensus.block_transactions_store.get(hash).unwrap(),
         );
-        let f = dst_consensus.validate_and_insert_block(block);
+        let f = dst_consensus.validate_and_insert_block(block, true);
         futures.push(f);
     }
     futures
@@ -240,9 +249,9 @@ fn topologically_ordered_hashes(src_consensus: &Consensus, genesis_hash: Hash) -
     let mut queue: VecDeque<Hash> = std::iter::once(genesis_hash).collect();
     let mut visited = BlockHashSet::new();
     let mut vec = Vec::new();
-    let relations = src_consensus.relations_store.read();
+    let relations = src_consensus.relations_stores.read();
     while let Some(current) = queue.pop_front() {
-        for child in relations.get_children(current).unwrap().iter() {
+        for child in relations[0].get_children(current).unwrap().iter() {
             if visited.insert(*child) {
                 queue.push_back(*child);
                 vec.push(*child);
@@ -265,7 +274,7 @@ fn print_stats(src_consensus: &Consensus, hashes: &[Hash], delay: f64, bps: f64,
         / hashes.len() as f64;
     let num_txs = hashes.iter().map(|&h| src_consensus.block_transactions_store.get(h).unwrap().len()).sum::<usize>();
     let txs_mean = num_txs as f64 / hashes.len() as f64;
-    println!("[DELAY={delay}, BPS={bps}, GHOSTDAG K={k}]");
-    println!("[Average stats of generated DAG] blues: {blues_mean}, reds: {reds_mean}, parents: {parents_mean}, txs: {txs_mean}");
+    info!("[DELAY={delay}, BPS={bps}, GHOSTDAG K={k}]");
+    info!("[Average stats of generated DAG] blues: {blues_mean}, reds: {reds_mean}, parents: {parents_mean}, txs: {txs_mean}");
     num_txs
 }

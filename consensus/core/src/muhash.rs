@@ -7,6 +7,7 @@ use muhash::MuHash;
 
 pub trait MuHashExtensions {
     fn add_transaction(&mut self, tx: &impl VerifiableTransaction, block_daa_score: u64);
+    fn add_utxo(&mut self, outpoint: &TransactionOutpoint, entry: &UtxoEntry);
 }
 
 impl MuHashExtensions for MuHash {
@@ -20,10 +21,14 @@ impl MuHashExtensions for MuHash {
         for (i, output) in tx.outputs().iter().enumerate() {
             let outpoint = TransactionOutpoint::new(tx_id, i as u32);
             let entry = UtxoEntry::new(output.value, output.script_public_key.clone(), block_daa_score, tx.is_coinbase());
-            let mut writer = self.add_element_builder();
-            write_utxo(&mut writer, &entry, &outpoint);
-            writer.finalize();
+            self.add_utxo(&outpoint, &entry);
         }
+    }
+
+    fn add_utxo(&mut self, outpoint: &TransactionOutpoint, entry: &UtxoEntry) {
+        let mut writer = self.add_element_builder();
+        write_utxo(&mut writer, entry, outpoint);
+        writer.finalize();
     }
 }
 

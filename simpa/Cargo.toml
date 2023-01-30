@@ -19,6 +19,7 @@ futures-util.workspace = true
 rayon.workspace = true
 clap.workspace = true
 indexmap.workspace = true
+log.workspace = true
 
 futures = "0.3"
 rand_distr = "0.4"

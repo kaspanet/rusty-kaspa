@@ -3,6 +3,7 @@ extern crate core;
 extern crate hashes;
 
 use clap::Parser;
+use consensus::config::Config;
 use consensus::model::stores::DB;
 use kaspa_core::{core::Core, signals::Signals, task::runtime::AsyncRuntime};
 use std::fs;
@@ -65,7 +66,11 @@ pub fn main() {
     // Initialize the logger
     kaspa_core::log::init_logger(&args.log_level);
 
+    // Print package name and version
     info!("{} v{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+
+    // Configure the panic behavior
+    kaspa_core::panic::configure_panic();
 
     // TODO: Refactor all this quick-and-dirty code
     let app_dir = args
@@ -84,9 +89,9 @@ pub fn main() {
 
     // ---
 
-    let params = DEVNET_PARAMS;
+    let config = Config::new(DEVNET_PARAMS); // TODO: network type
     let db = Arc::new(DB::open_default(db_dir.to_str().unwrap()).unwrap());
-    let consensus = Arc::new(Consensus::new(db, &params));
+    let consensus = Arc::new(Consensus::new(db, &config));
     let monitor = Arc::new(ConsensusMonitor::new(consensus.processing_counters().clone()));
 
     let notification_channel = ConsensusNotificationChannel::default();
