@@ -1,6 +1,6 @@
 use self::{
     errors::Error,
-    resolver::{queue::QueueResolver, DynResolver},
+    resolver::{id::IdResolver, queue::QueueResolver, DynResolver},
     result::Result,
 };
 use crate::protowire::{kaspad_request, rpc_client::RpcClient, GetInfoRequestMessage, KaspadRequest, KaspadResponse};
@@ -78,8 +78,12 @@ impl GrpcClient {
         Ok(())
     }
 
+    pub fn handle_message_id(&self) -> bool {
+        self.inner.clone().handle_message_id()
+    }
+
     pub fn handle_stop_notify(&self) -> bool {
-        self.inner.handle_stop_notify()
+        self.inner.clone().handle_stop_notify()
     }
 
     pub async fn shutdown(&mut self) -> Result<()> {
@@ -201,7 +205,7 @@ pub const TIMEOUT_MONITORING_INTERVAL: u64 = 1_000;
 #[derive(Debug)]
 pub(super) struct Inner {
     handle_stop_notify: bool,
-    _handle_message_id: bool,
+    handle_message_id: bool,
 
     // Pushing incoming notifications forward
     notify_sender: NotificationSender,
@@ -230,11 +234,13 @@ impl Inner {
         notify_send: NotificationSender,
         request_send: Sender<KaspadRequest>,
     ) -> Self {
-        // TODO: depending on handle_message_id create either a queue or an id resolver
-        let resolver = Arc::new(QueueResolver::new());
+        let resolver: DynResolver = match handle_message_id {
+            true => Arc::new(IdResolver::new()),
+            false => Arc::new(QueueResolver::new()),
+        };
         Self {
             handle_stop_notify,
-            _handle_message_id: handle_message_id,
+            handle_message_id,
             notify_sender: notify_send,
             request_sender: request_send,
             resolver,
@@ -297,10 +303,15 @@ impl Inner {
         Ok(resolver)
     }
 
+    pub(crate) fn handle_message_id(&self) -> bool {
+        self.handle_message_id
+    }
+
     pub(crate) fn handle_stop_notify(&self) -> bool {
         self.handle_stop_notify
     }
 
+    #[inline(always)]
     fn resolver(&self) -> DynResolver {
         self.resolver.clone()
     }

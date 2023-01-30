@@ -5,6 +5,7 @@ use rpc_core::api::ops::RpcApiOps;
 use std::{sync::Arc, time::Duration};
 use tokio::sync::oneshot;
 
+pub(crate) mod id;
 pub(crate) mod matcher;
 pub(crate) mod queue;
 
