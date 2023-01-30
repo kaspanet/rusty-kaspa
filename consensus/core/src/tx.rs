@@ -1,6 +1,7 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
+use std::hash::{Hash as StdHash, Hasher as StdHasher};
 use std::{fmt::Display, ops::Range};
 
 use crate::{
@@ -109,7 +110,7 @@ impl UtxoEntry {
 pub type TransactionIndexType = u32;
 
 /// Represents a Kaspa transaction outpoint
-#[derive(Eq, Hash, PartialEq, Debug, Copy, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Eq, PartialEq, Debug, Copy, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TransactionOutpoint {
     pub transaction_id: TransactionId,
@@ -125,6 +126,13 @@ impl TransactionOutpoint {
 impl Display for TransactionOutpoint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "({}, {})", self.transaction_id, self.index)
+    }
+}
+
+impl StdHash for TransactionOutpoint {
+    #[inline(always)]
+    fn hash<H: StdHasher>(&self, state: &mut H) {
+        self.transaction_id.iter_le_u64().chain(std::iter::once(self.index as u64)).for_each(|x| x.hash(state));
     }
 }
 

@@ -84,7 +84,7 @@ impl Hasher for BlockHasher {
     }
     #[inline(always)]
     fn write_u64(&mut self, v: u64) {
-        self.0 = v;
+        self.0 ^= v;
     }
     #[cold]
     fn write(&mut self, _: &[u8]) {
@@ -101,16 +101,65 @@ impl BuildHasher for BlockHasher {
     }
 }
 
+/// `TransactionOutpoint` consists of 4 u64s as well as 1 u32,
+/// as such we xor each u64 write and cast the last u32 index as u64 and xor it in as well.
+#[derive(Default, Clone, Copy)]
+pub struct OutpointHasher(u64);
+
+impl OutpointHasher {
+    #[inline(always)]
+    pub const fn new() -> Self {
+        Self(0)
+    }
+}
+
+impl Hasher for OutpointHasher {
+    #[inline(always)]
+    fn finish(&self) -> u64 {
+        self.0
+    }
+    #[inline(always)]
+    fn write_u64(&mut self, v: u64) {
+        self.0 ^= v;
+    }
+    #[cold]
+    fn write(&mut self, _: &[u8]) {
+        unimplemented!("use write_u64")
+    }
+}
+
+impl BuildHasher for OutpointHasher {
+    type Hasher = Self;
+
+    #[inline(always)]
+    fn build_hasher(&self) -> Self::Hasher {
+        Self(0)
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use crate::tx::{TransactionId, TransactionOutpoint};
+
     use super::BlockHasher;
+    use super::OutpointHasher;
     use hashes::Hash;
     use std::hash::{Hash as _, Hasher as _};
+
     #[test]
     fn test_block_hasher() {
         let hash = Hash::from_le_u64([1, 2, 3, 4]);
         let mut hasher = BlockHasher::default();
         hash.hash(&mut hasher);
         assert_eq!(hasher.finish(), 4);
+    }
+
+    #[test]
+    fn test_outpoint_hasher() {
+        let transaction_outpoint = TransactionOutpoint::new(TransactionId::from_le_u64([12345, 24567, 54321, 11111]), 5000);
+        let mut hasher = OutpointHasher::default();
+        transaction_outpoint.hash(&mut hasher);
+        let expected: u64 = (((12345_u64 ^ 24567_u64) ^ 54321_u64) ^ 11111_u64) ^ 5000_u64;
+        assert_eq!(hasher.finish(), expected);
     }
 }
