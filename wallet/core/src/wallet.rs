@@ -2,12 +2,9 @@ use crate::result::Result;
 use crate::wallets::HDWalletGen1;
 use kaspa_wrpc_client::{KaspaRpcClient, WrpcEncoding};
 use rpc_core::{
-    api::{
-        rpc::RpcApi,
-        ops::SubscribeCommand
-    },
+    api::{ops::SubscribeCommand, rpc::RpcApi},
     notify::listener::ListenerReceiverSide,
-    NotificationType
+    NotificationType,
 };
 //use workflow_log::log_trace;
 use std::sync::Arc;
@@ -58,11 +55,7 @@ impl Wallet {
         //let channel = NotificationChannel::default();
         let listener = self.rpc.register_new_listener(None);
 
-        self.rpc.execute_subscribe_command(
-            listener.id,
-            NotificationType::VirtualDaaScoreChanged,
-            SubscribeCommand::Start
-        ).await?;
+        self.rpc.execute_subscribe_command(listener.id, NotificationType::VirtualDaaScoreChanged, SubscribeCommand::Start).await?;
 
         //let receiver = channel.receiver();
         //let sender = channel.sender();

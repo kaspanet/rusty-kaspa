@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::{notify::collector::ArcConvert, BlockAddedNotification, NewBlockTemplateNotification, Notification};
+use crate::{notify::collector::ArcConvert, BlockAddedNotification, NewBlockTemplateNotification, Notification, NotificationMessage};
 use consensus_core::notify as consensus_notify;
 
 // ----------------------------------------------------------------------------
@@ -33,6 +33,12 @@ impl From<&consensus_notify::NewBlockTemplateNotification> for NewBlockTemplateN
 impl From<ArcConvert<Notification>> for Arc<Notification> {
     fn from(item: ArcConvert<Notification>) -> Self {
         (*item).clone()
+    }
+}
+
+impl From<ArcConvert<NotificationMessage>> for Arc<Notification> {
+    fn from(item: ArcConvert<NotificationMessage>) -> Self {
+        (*item).payload.clone()
     }
 }
 

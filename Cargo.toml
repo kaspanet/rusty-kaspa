@@ -79,7 +79,7 @@ wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
 criterion = { version = "0.4", default-features = false }
 indexmap = "1.9.1"
 smallvec = { version = "1.10.0", features = ["serde"] }
-borsh = "0.10.0"
+borsh = { version = "0.10.0", features = ["rc"] }
 clap = { version = "4.0.23", features = ["derive","cargo"] }
 async-std = { version = "1.12.0", features = ['attributes'] }
 derive_more = { version = "0.99" }
@@ -99,6 +99,7 @@ workflow-rpc = { path = "../workflow-rs/rpc" }
 workflow-log = { path = "../workflow-rs/log" }
 workflow-terminal = { path = "../workflow-rs/terminal" }
 workflow-wasm = { path = "../workflow-rs/wasm" }
+workflow-task = { path = "../workflow-rs/task" }
 
 # bip32 dependencies
 rand_core = { version = "0.6", features = ["std"] }

@@ -7,17 +7,21 @@ edition = "2021"
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-tokio.workspace = true
-thiserror.workspace = true
-workflow-websocket.workspace = true
-workflow-rpc.workspace = true
-workflow-log.workspace = true
-workflow-core.workspace = true
 async-trait.workspace = true
-rpc-core.workspace = true
-kaspa-rpc-macros.workspace = true
-borsh.workspace = true
-paste.workspace = true
-kaspa-core.workspace = true
-kaspa-utils.workspace = true
+borsh = { workspace = true, features = ["rc"] }
+consensus-core.workspace = true
 futures.workspace = true
+kaspa-core.workspace = true
+kaspa-rpc-macros.workspace = true
+kaspa-utils.workspace = true
+paste.workspace = true
+rpc-core.workspace = true
+rpc-grpc.workspace = true
+serde = { workspace = true, features = ["rc"] }
+thiserror.workspace = true
+tokio.workspace = true
+workflow-core.workspace = true
+workflow-log.workspace = true
+workflow-rpc.workspace = true
+workflow-task.workspace = true
+workflow-websocket.workspace = true

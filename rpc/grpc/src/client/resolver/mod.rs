@@ -12,7 +12,7 @@ use matcher::*;
 use rpc_core::{
     api::ops::{RpcApiOps, SubscribeCommand},
     notify::{events::EventType, listener::ListenerID, subscriber::SubscriptionManager},
-    GetInfoResponse, Notification, NotificationSender, NotificationType, RpcResult,
+    GetInfoResponse, Notification, NotificationMessage, NotificationSender, NotificationType, RpcResult,
 };
 use std::{
     collections::VecDeque,
@@ -320,7 +320,8 @@ impl Resolver {
                     trace!("[Resolver] handle_response received notification: {:?}", event);
 
                     // Here we ignore any returned error
-                    match self.notify_send.try_send(Arc::new(notification)) {
+                    // FIXME - NotificationMessage id is currently initialized to 0!
+                    match self.notify_send.try_send(Arc::new(NotificationMessage::new(0, Arc::new(notification)))) {
                         Ok(_) => {}
                         Err(err) => {
                             trace!("[Resolver] error while trying to send a notification to the notifier: {:?}", err);

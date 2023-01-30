@@ -5,7 +5,7 @@ use crate::{
         result::Result,
         utxo_address_set::RpcUtxoAddressSet,
     },
-    Notification, NotificationReceiver, NotificationSender, NotificationType, RpcAddress,
+    Notification, NotificationMessage, NotificationReceiver, NotificationSender, NotificationType, RpcAddress,
 };
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -34,15 +34,14 @@ pub enum ListenerUtxoNotificationFilterSetting {
 #[derive(Debug)]
 pub(crate) struct Listener {
     id: u64,
-    channel: NotificationChannel,
+    sender: NotificationSender,
     active_event: EventArray<bool>,
     utxo_addresses: RpcUtxoAddressSet,
 }
 
 impl Listener {
-    pub(crate) fn new(id: ListenerID, channel: Option<NotificationChannel>) -> Listener {
-        let channel = channel.unwrap_or_default();
-        Self { id, channel, active_event: EventArray::default(), utxo_addresses: RpcUtxoAddressSet::new() }
+    pub(crate) fn new(id: ListenerID, sender: NotificationSender) -> Listener {
+        Self { id, sender, active_event: EventArray::default(), utxo_addresses: RpcUtxoAddressSet::new() }
     }
 
     pub(crate) fn id(&self) -> ListenerID {
@@ -82,12 +81,12 @@ impl Listener {
 
     pub(crate) fn close(&mut self) {
         if !self.is_closed() {
-            self.channel.close();
+            self.sender.close();
         }
     }
 
     pub(crate) fn is_closed(&self) -> bool {
-        self.channel.is_closed()
+        self.sender.is_closed()
     }
 }
 
@@ -98,15 +97,29 @@ pub struct ListenerReceiverSide {
     pub recv_channel: NotificationReceiver,
 }
 
-impl From<&Listener> for ListenerReceiverSide {
-    fn from(item: &Listener) -> Self {
-        Self { id: item.id(), recv_channel: item.channel.receiver() }
+// impl From<(u64,NotificationReceiver)> for ListenerReceiverSide {
+//     fn from((id,recv_channel): (u64,NotificationReceiver)) -> ListenerReceiverSide {
+//         ListenerReceiverSide::new(id, recv_channel)
+//     }
+// }
+
+impl ListenerReceiverSide {
+    pub fn new(id: ListenerID, recv_channel: NotificationReceiver) -> ListenerReceiverSide {
+        ListenerReceiverSide { id, recv_channel }
     }
 }
+
+// impl From<&Listener> for ListenerReceiverSide {
+//     fn from(item: &Listener) -> Self {
+//         // Self { id: item.id(), recv_channel: item.sender.receiver() }
+//         Self { id: item.id(), recv_channel: item.sender.receiver() }
+//     }
+// }
 
 #[derive(Debug)]
 /// Contains the sender side of a listener
 pub(crate) struct ListenerSenderSide {
+    // id: ListenerID,
     send_channel: NotificationSender,
     filter: Box<dyn Filter + Send + Sync>,
 }
@@ -115,10 +128,10 @@ impl ListenerSenderSide {
     pub(crate) fn new(listener: &Listener, sending_changed_utxos: ListenerUtxoNotificationFilterSetting, event: EventType) -> Self {
         match event {
             EventType::UtxosChanged if sending_changed_utxos == ListenerUtxoNotificationFilterSetting::FilteredByAddress => Self {
-                send_channel: listener.channel.sender(),
+                send_channel: listener.sender.clone(), //.sender(),
                 filter: Box::new(FilterUtxoAddress { utxos_addresses: listener.utxo_addresses.clone() }),
             },
-            _ => Self { send_channel: listener.channel.sender(), filter: Box::new(Unfiltered {}) },
+            _ => Self { send_channel: listener.sender.clone(), filter: Box::new(Unfiltered {}) },
         }
     }
 
@@ -126,9 +139,9 @@ impl ListenerSenderSide {
     ///
     /// If the notification does not meet requirements (see [`Notification::UtxosChanged`]) returns `Ok(false)`,
     /// otherwise returns `Ok(true)`.
-    pub(crate) fn try_send(&self, notification: Arc<Notification>) -> Result<bool> {
+    pub(crate) fn try_send(&self, id: &ListenerID, notification: Arc<Notification>) -> Result<bool> {
         if self.filter.matches(notification.clone()) {
-            match self.send_channel.try_send(notification) {
+            match self.send_channel.try_send(Arc::new(NotificationMessage::new(*id, notification))) {
                 Ok(_) => {
                     return Ok(true);
                 }

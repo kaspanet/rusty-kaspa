@@ -1,3 +1,4 @@
+use crate::NotificationMessage;
 use crate::{model::message::*, RpcAddress};
 use async_std::channel::{Receiver, Sender};
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
@@ -5,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 use std::sync::Arc;
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Clone, Debug, Hash, Eq, PartialEq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub enum NotificationType {
     BlockAdded,
     VirtualSelectedParentChainChanged,
@@ -92,8 +93,8 @@ impl Display for Notification {
     }
 }
 
-pub type NotificationSender = Sender<Arc<Notification>>;
-pub type NotificationReceiver = Receiver<Arc<Notification>>;
+pub type NotificationSender = Sender<Arc<NotificationMessage>>;
+pub type NotificationReceiver = Receiver<Arc<NotificationMessage>>;
 
 pub enum NotificationHandle {
     Existing(u64),
@@ -106,13 +107,12 @@ impl AsRef<Notification> for Notification {
     }
 }
 
-
 #[cfg(test)]
-mod test{
+mod test {
     use super::*;
 
     #[test]
-    fn test_notification_from_bytes(){
+    fn test_notification_from_bytes() {
         let bytes = &vec![6, 169, 167, 75, 2, 0, 0, 0, 0][..];
         let notification = Notification::try_from_slice(bytes);
         println!("notification: {notification:?}");

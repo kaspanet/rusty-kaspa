@@ -1,4 +1,4 @@
-use async_std::channel::{unbounded, Receiver, Sender};
+pub use async_std::channel::{unbounded, Receiver, Sender};
 
 /// Multiple producers multiple consumers channel
 #[derive(Clone, Debug)]

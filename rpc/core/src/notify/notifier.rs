@@ -1,14 +1,13 @@
 use super::{
-    channel::NotificationChannel,
     collector::DynCollector,
     error::Error,
     events::{EventArray, EventType, EVENT_TYPE_ARRAY},
-    listener::{Listener, ListenerID, ListenerReceiverSide, ListenerSenderSide, ListenerUtxoNotificationFilterSetting},
+    listener::{Listener, ListenerID, ListenerSenderSide, ListenerUtxoNotificationFilterSetting},
     message::{DispatchMessage, SubscribeMessage},
     result::Result,
     subscriber::{Subscriber, SubscriptionManager},
 };
-use crate::{api::ops::SubscribeCommand, Notification, NotificationType, RpcResult};
+use crate::{api::ops::SubscribeCommand, Notification, NotificationSender, NotificationType, RpcResult};
 use ahash::AHashMap;
 use async_std::channel::{Receiver, Sender};
 use async_trait::async_trait;
@@ -41,8 +40,8 @@ impl Notifier {
         self.inner.clone().start(self.clone());
     }
 
-    pub fn register_new_listener(&self, channel: Option<NotificationChannel>) -> ListenerReceiverSide {
-        self.inner.clone().register_new_listener(channel)
+    pub fn register_new_listener(&self, sender: NotificationSender) -> ListenerID {
+        self.inner.clone().register_new_listener(sender)
     }
 
     pub fn unregister_listener(&self, id: ListenerID) -> Result<()> {
@@ -209,7 +208,7 @@ impl Inner {
 
                         // Broadcast the notification to all listeners
                         for (id, listener) in listeners.iter() {
-                            match listener.try_send(notification.clone()) {
+                            match listener.try_send(id, notification.clone()) {
                                 Ok(_) => {}
                                 Err(_) => {
                                     if listener.is_closed() {
@@ -253,17 +252,16 @@ impl Inner {
         });
     }
 
-    fn register_new_listener(self: Arc<Self>, channel: Option<NotificationChannel>) -> ListenerReceiverSide {
+    fn register_new_listener(self: Arc<Self>, sender: NotificationSender) -> ListenerID {
         let mut listeners = self.listeners.lock().unwrap();
         loop {
             let id = u64::from_le_bytes(rand::random::<[u8; 8]>());
 
             // This is very unlikely to happen but still, check for duplicates
             if !listeners.contains_key(&id) {
-                let listener = Listener::new(id, channel);
-                let registration: ListenerReceiverSide = (&listener).into();
+                let listener = Listener::new(id, sender);
                 listeners.insert(id, listener);
-                return registration;
+                return id;
             }
         }
     }

@@ -11,7 +11,7 @@ use crate::{
         channel::NotificationChannel,
         listener::{ListenerID, ListenerReceiverSide},
     },
-    NotificationType, RpcResult,
+    NotificationSender, NotificationType, RpcResult,
 };
 use async_trait::async_trait;
 
@@ -282,7 +282,7 @@ pub trait RpcApi: Sync + Send {
     // Notification API
 
     /// Register a new listener and returns an id and a channel receiver.
-    fn register_new_listener(&self, channel: Option<NotificationChannel>) -> ListenerReceiverSide;
+    fn register_new_listener(&self, sender: NotificationSender) -> ListenerID;
 
     /// Unregister an existing listener.
     ///

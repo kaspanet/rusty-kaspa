@@ -5,11 +5,10 @@ use crate::{
     api::rpc::RpcApi,
     model::*,
     notify::{
-        channel::NotificationChannel,
-        listener::{ListenerID, ListenerReceiverSide, ListenerUtxoNotificationFilterSetting},
+        listener::{ListenerID, ListenerUtxoNotificationFilterSetting},
         notifier::Notifier,
     },
-    FromRpcHex, Notification, NotificationType, RpcError, RpcResult,
+    FromRpcHex, Notification, NotificationSender, NotificationType, RpcError, RpcResult,
 };
 use async_trait::async_trait;
 use consensus_core::{
@@ -292,8 +291,8 @@ impl RpcApi for RpcCoreService {
     // Notification API
 
     /// Register a new listener and returns an id and a channel receiver.
-    fn register_new_listener(&self, channel: Option<NotificationChannel>) -> ListenerReceiverSide {
-        self.notifier.register_new_listener(channel)
+    fn register_new_listener(&self, sender: NotificationSender) -> ListenerID {
+        self.notifier.register_new_listener(sender)
     }
 
     /// Unregister an existing listener.

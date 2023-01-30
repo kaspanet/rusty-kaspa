@@ -1,7 +1,7 @@
 use crate::{protowire::KaspadResponse, server::StatusResult};
 use futures::pin_mut;
 use kaspa_core::trace;
-use kaspa_utils::triggers::DuplexTrigger;
+use kaspa_utils::{channel::Channel, triggers::DuplexTrigger};
 use rpc_core::notify::{
     listener::{ListenerID, ListenerReceiverSide},
     notifier::Notifier,
@@ -65,7 +65,7 @@ impl GrpcConnection {
                         match notification {
                             Ok(notification) => {
                                 trace!("sending {} to listener id {}", notification, listener_id);
-                                match sender.send(Ok((&*notification).into())).await {
+                                match sender.send(Ok((&*notification.payload).into())).await {
                                     Ok(_) => (),
                                     Err(err) => {
 
@@ -107,7 +107,9 @@ impl GrpcConnectionManager {
     }
 
     pub(crate) async fn register(&mut self, address: SocketAddr, sender: GrpcSender) -> ListenerID {
-        let notify_listener = self.notifier.clone().register_new_listener(None);
+        let channel = Channel::default();
+        let id = self.notifier.clone().register_new_listener(channel.sender());
+        let notify_listener = ListenerReceiverSide::new(id, channel.receiver());
         let connection = Arc::new(GrpcConnection::new(address, sender, notify_listener));
         trace!("registering a new gRPC connection from: {0} with listener id {1}", connection.address, connection.notify_listener.id);
 

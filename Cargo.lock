@@ -1630,17 +1630,21 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "borsh",
+ "consensus-core",
  "futures",
  "kaspa-core",
  "kaspa-rpc-macros",
  "kaspa-utils",
  "paste",
  "rpc-core",
+ "rpc-grpc",
+ "serde",
  "thiserror",
  "tokio",
  "workflow-core",
  "workflow-log",
  "workflow-rpc",
+ "workflow-task",
  "workflow-websocket",
 ]
 
@@ -3676,6 +3680,7 @@ dependencies = [
  "workflow-core",
  "workflow-log",
  "workflow-rpc-macros",
+ "workflow-task",
  "workflow-websocket",
 ]
 
@@ -3688,6 +3693,30 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "workflow-task"
+version = "0.3.0"
+dependencies = [
+ "futures",
+ "thiserror",
+ "workflow-core",
+ "workflow-task-macros",
+]
+
+[[package]]
+name = "workflow-task-macros"
+version = "0.3.0"
+dependencies = [
+ "convert_case 0.5.0",
+ "parse-variants",
+ "proc-macro-error",
+ "proc-macro2",
+ "quote",
+ "sha2 0.10.6",
+ "syn",
+ "workflow-macro-tools",
 ]
 
 [[package]]
@@ -3755,6 +3784,7 @@ dependencies = [
  "web-sys",
  "workflow-core",
  "workflow-log",
+ "workflow-task",
  "workflow-wasm",
 ]
 

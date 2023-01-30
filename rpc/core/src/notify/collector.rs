@@ -12,7 +12,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 extern crate derive_more;
 use crate::notify::{collector, error::Error, notifier::Notifier, result::Result};
-use crate::Notification;
+use crate::{Notification, NotificationMessage};
 use derive_more::Deref;
 use kaspa_utils::channel::Channel;
 use kaspa_utils::triggers::DuplexTrigger;
@@ -144,4 +144,4 @@ where
 /// A rpc_core notification collector providing a simple pass-through.
 /// No conversion occurs since both source and target data are of
 /// type [`Notification`].
-pub type RpcCoreCollector = CollectorFrom<Notification>;
+pub type RpcCoreCollector = CollectorFrom<NotificationMessage>;

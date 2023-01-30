@@ -60,12 +60,13 @@ impl GrpcService {
     pub fn new(core_service: Arc<RpcCoreService>) -> Self {
         // Prepare core objects
         let core_channel = NotificationChannel::default();
-        let core_listener = Arc::new(core_service.register_new_listener(Some(core_channel.clone())));
+        let core_listener_id = core_service.register_new_listener(core_channel.sender());
+        let core_listener = Arc::new(ListenerReceiverSide::new(core_listener_id, core_channel.receiver()));
 
         // Prepare internals
         let collector = Arc::new(RpcCoreCollector::new(core_channel.receiver()));
         let subscription_manager: DynSubscriptionManager = core_service.notifier();
-        let subscriber = Subscriber::new(subscription_manager, core_listener.id);
+        let subscriber = Subscriber::new(subscription_manager, core_listener_id);
         let notifier =
             Arc::new(Notifier::new(Some(collector), Some(subscriber), ListenerUtxoNotificationFilterSetting::FilteredByAddress));
         let connection_manager = Arc::new(RwLock::new(GrpcConnectionManager::new(notifier.clone())));

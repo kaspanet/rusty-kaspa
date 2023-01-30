@@ -1,12 +1,8 @@
+use crate::connection::*;
+use crate::manager::*;
 use kaspa_rpc_macros::build_wrpc_server_interface;
-use rpc_core::api::ops::{SubscribeCommand, RpcApiOps};
+use rpc_core::api::ops::RpcApiOps;
 use rpc_core::api::rpc::RpcApi;
-#[allow(unused_imports)]
-use rpc_core::error::RpcResult;
-#[allow(unused_imports)]
-use rpc_core::notify::channel::*;
-#[allow(unused_imports)]
-use rpc_core::notify::listener::*;
 use rpc_core::prelude::*;
 use std::sync::Arc;
 use workflow_rpc::server::prelude::*;
@@ -20,10 +16,6 @@ pub trait RpcApiContainer: Send + Sync + 'static {
     }
 }
 
-pub trait MessengerContainer: Send + Sync + 'static {
-    fn get_messenger(&self) -> Arc<Messenger>;
-}
-
 /// [`RouterTarget`] is used during the method and notification
 /// registration process to indicate whether the `dyn RpcApi`
 /// resides in the `ServerContext` or `ConnectionContext`.
@@ -31,6 +23,7 @@ pub trait MessengerContainer: Send + Sync + 'static {
 /// thus resides in the `ServerContext`, when using with GRPC
 /// Proxy, the RpcApi is represented by each forwarding connection
 /// and as such resides in the `ConnectionContext`
+#[derive(Clone)]
 pub enum RouterTarget {
     Server,
     Connection,
@@ -39,22 +32,16 @@ pub enum RouterTarget {
 /// A wrapper that creates an [`Interface`] instance and initializes
 /// RPC methods and notifications agains this interface. The inteface
 /// is later given to the RpcServer.  This wrapper exists to allow
-/// a single initalization location for both the Kaspad Server and 
+/// a single initalization location for both the Kaspad Server and
 /// the GRPC Proxy.
-pub struct Router<ServerContext, ConnectionContext>
-where
-    ServerContext: RpcApiContainer + Clone,
-    ConnectionContext: RpcApiContainer + Clone,
-{
-    pub interface: Arc<Interface<ServerContext, ConnectionContext, RpcApiOps>>,
+pub struct Router {
+    pub interface: Arc<Interface<ConnectionManager, Connection, RpcApiOps>>,
+    pub server_context: ConnectionManager,
 }
 
-impl<ServerContext, ConnectionContext> Router<ServerContext, ConnectionContext>
-where
-    ServerContext: RpcApiContainer + Clone,
-    ConnectionContext: RpcApiContainer + MessengerContainer + Clone,
-{
-    pub fn new(server_context: ServerContext, router_target: RouterTarget) -> Self {
+impl Router {
+    pub fn new(server_context: ConnectionManager, _router_target: RouterTarget) -> Self {
+        let router_target = server_context.router_target();
 
         // The following macro iterates the supplied enum variants taking the variant
         // name and creating an RPC handler using that name. For example, receiving
@@ -64,10 +51,10 @@ where
         // ... `GetInfo` yields: get_info_call() + GetInfoRequest + GetInfoResponse
         #[allow(unreachable_patterns)]
         let mut interface = build_wrpc_server_interface!(
-            server_context,
+            server_context.clone(),
             router_target,
-            ServerContext,
-            ConnectionContext,
+            ConnectionManager,
+            Connection,
             RpcApiOps,
             [
                 AddPeer,
@@ -105,47 +92,68 @@ where
             ]
         );
 
-        interface.notification(
-            RpcApiOps::NotifyVirtualDaaScoreChanged,
-            workflow_rpc::server::Notification::new(
-                |
-                _server_context: ServerContext,
-                connection_ctx: ConnectionContext,
-                request: NotifyVirtualDaaScoreChangedRequest| {
-                Box::pin(async move {
-                    workflow_log::log_trace!("notification request {:?}", request);
+        let router_target_ = router_target.clone();
+        interface.method(
+            RpcApiOps::Subscribe,
+            workflow_rpc::server::Method::new(
+                move |manager: ConnectionManager, connection: Connection, notification_type: NotificationType| {
+                    let router_target = router_target_.clone();
+                    Box::pin(async move {
+                        workflow_log::log_trace!("notification request {:?}", notification_type);
 
-                    let api = connection_ctx.get_rpc_api();
-                        
-                    let listener = api.register_new_listener(None);
-                    
-                    let _result = api.execute_subscribe_command(
-                        listener.id,
-                        NotificationType::VirtualDaaScoreChanged,
-                        SubscribeCommand::Start
-                    ).await;
+                        let api = match &router_target {
+                            RouterTarget::Server => manager.get_rpc_api(),
+                            RouterTarget::Connection => connection.get_rpc_api(),
+                        };
 
-                    let messenger = connection_ctx.get_messenger();
-            
-                    workflow_core::task::spawn(async move{
-                        let channel = listener.recv_channel;
-                        while let Ok(notification) = channel.recv().await{
-                            let msg = (*notification).clone();//.try_to_vec().unwrap()[..];
-                            workflow_log::log_trace!("ROUTER: DAA notification: {:?}, msg:{msg:?}", notification);
-                            let res = messenger.notify(
-                                RpcApiOps::NotifyVirtualDaaScoreChanged,
-                                msg
-                            ).await;
-                            workflow_log::log_trace!("ROUTER->Client: result: {:?}", res);
-                        }
-                    });
-                        
-                    
-                    Ok(())
-                })
-            })
+                        let listener_id = if let Some(listener_id) = connection.listener_id() {
+                            listener_id
+                        } else {
+                            let id = api.register_new_listener(manager.notification_ingest());
+                            connection.register_notification_listener(id); //, connection.clone());
+                            manager.register_notification_listener(id, connection.clone());
+                            id
+                        };
+
+                        let _result = api.start_notify(listener_id, notification_type).await;
+
+                        Ok(())
+                    })
+                },
+            ),
         );
 
-        Router { interface: Arc::new(interface) }
+        let router_target_ = router_target.clone();
+        interface.method(
+            RpcApiOps::Unsubscribe,
+            workflow_rpc::server::Method::new(
+                move |manager: ConnectionManager, connection: Connection, notification_type: NotificationType| {
+                    let router_target = router_target_.clone();
+                    Box::pin(async move {
+                        workflow_log::log_trace!("notification request {:?}", notification_type);
+
+                        let api = match router_target {
+                            RouterTarget::Server => manager.get_rpc_api(),
+                            RouterTarget::Connection => connection.get_rpc_api(),
+                        };
+
+                        let listener_id = if let Some(listener_id) = connection.listener_id() {
+                            listener_id
+                        } else {
+                            let id = api.register_new_listener(manager.notification_ingest());
+                            connection.register_notification_listener(id); //, connection.clone());
+                            manager.register_notification_listener(id, connection.clone());
+                            id
+                        };
+
+                        let _result = api.start_notify(listener_id, notification_type).await;
+
+                        Ok(())
+                    })
+                },
+            ),
+        );
+
+        Router { interface: Arc::new(interface), server_context }
     }
 }

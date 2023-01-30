@@ -6,13 +6,7 @@ use crate::actions::*;
 use crate::result::Result;
 use kaspa_wallet_core::Wallet;
 use workflow_log::*;
-pub use workflow_terminal::{
-    parse,
-    Cli,
-    Result as TerminalResult,
-    Options as TerminalOptions,
-    TargetElement as TerminalTarget,
-};
+pub use workflow_terminal::{parse, Cli, Options as TerminalOptions, Result as TerminalResult, TargetElement as TerminalTarget};
 
 struct WalletCli {
     term: Arc<Mutex<Option<Arc<Terminal>>>>,
@@ -96,16 +90,15 @@ impl WalletCli {
             }
             Action::SubscribeDaaScore => {
                 let listener = self.wallet.subscribe_daa_score().await?;
-                workflow_core::task::spawn(async move{
+                workflow_core::task::spawn(async move {
                     let term = term;
                     let channel = listener.recv_channel;
-                    while let Ok(notification) = channel.recv().await{
+                    while let Ok(notification) = channel.recv().await {
                         log_trace!("DAA notification: {:?}", notification);
                         //sender.send(notification)
                         term.writeln(format!("{notification:#?}").replace("\n", "\n\r"));
                     }
                 });
-                
             }
         }
 
@@ -156,7 +149,7 @@ pub async fn kaspa_wallet_cli(options: TerminalOptions) -> Result<()> {
     let term = Arc::new(Terminal::try_new_with_options(cli.clone(), options)?);
     term.init().await?;
 
-    #[cfg(not(target_arch="wasm32"))]
+    #[cfg(not(target_arch = "wasm32"))]
     workflow_log::pipe(Some(cli.clone()));
 
     term.writeln("Kaspa Cli Wallet (type 'help' for list of commands)");

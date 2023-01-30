@@ -5,16 +5,11 @@ use kaspa_rpc_macros::build_wrpc_client_interface;
 use regex::Regex;
 use rpc_core::{
     api::{
-        ops::{SubscribeCommand, RpcApiOps},
+        ops::{RpcApiOps, SubscribeCommand},
         rpc::RpcApi,
     },
     error::RpcResult,
-    notify::{
-        channel::*,
-        listener::*,
-        notifier::Notifier
-    },
-    prelude::*
+    prelude::*,
 };
 use std::sync::Arc;
 use workflow_core::trigger::Listener;
@@ -22,8 +17,7 @@ use workflow_log::*;
 pub use workflow_rpc::client::prelude::Encoding as WrpcEncoding;
 use workflow_rpc::client::prelude::*;
 
-
-/// [`KaspaRpcClient`] allows connection to the Kaspa wRPC Server via 
+/// [`KaspaRpcClient`] allows connection to the Kaspa wRPC Server via
 /// binary Borsh or JSON protocols.
 #[derive(Clone)]
 pub struct KaspaRpcClient {
@@ -38,18 +32,17 @@ impl KaspaRpcClient {
         log_trace!("Kaspa wRPC::{encoding} client url: {url}");
         let options = RpcClientOptions { url: &url, ..RpcClientOptions::default() };
 
-        let notifier =
-            Arc::new(Notifier::new(None, None, ListenerUtxoNotificationFilterSetting::FilteredByAddress));
+        let notifier = Arc::new(Notifier::new(None, None, ListenerUtxoNotificationFilterSetting::FilteredByAddress));
 
         // The `Interface` struct can be used to register for server-side
         // notifications. All notification methods have to be created at
         // this stage.
         let mut interface = Interface::<RpcApiOps>::new();
-        
+
         let _notifier = notifier.clone();
         interface.notification(
             RpcApiOps::NotifyVirtualDaaScoreChanged,
-            workflow_rpc::client::Notification::new(move |notification: rpc_core::Notification | {
+            workflow_rpc::client::Notification::new(move |notification: rpc_core::Notification| {
                 let notifier = _notifier.clone();
                 Box::pin(async move {
                     log_trace!("notification {:?}", notification);
@@ -57,14 +50,10 @@ impl KaspaRpcClient {
                     log_trace!("notifier.notify: result {:?}", res);
                     Ok(())
                 })
-            })
-            
+            }),
         );
 
-        let client = KaspaRpcClient {
-            rpc: Arc::new(RpcClient::new_with_encoding(encoding, interface.into(), options)?),
-            notifier
-        };
+        let client = KaspaRpcClient { rpc: Arc::new(RpcClient::new_with_encoding(encoding, interface.into(), options)?), notifier };
 
         Ok(client)
     }
@@ -91,7 +80,7 @@ impl KaspaRpcClient {
 #[async_trait]
 impl RpcApi for KaspaRpcClient {
     //
-    // The following proc-macro iterates over the array of enum variants 
+    // The following proc-macro iterates over the array of enum variants
     // generating a function for each variant as follows:
     //
     // async fn ping_call(&self, request : PingRequest) -> RpcResult<PingResponse> {
@@ -140,8 +129,10 @@ impl RpcApi for KaspaRpcClient {
     // Notification API
 
     /// Register a new listener and returns an id and a channel receiver.
-    fn register_new_listener(&self, channel: Option<NotificationChannel>) -> ListenerReceiverSide {
-        self.notifier.register_new_listener(channel)
+    // fn register_new_listener(&self, channel: Option<NotificationChannel>) -> ListenerID { //ListenerReceiverSide {
+    fn register_new_listener(&self, sender: NotificationSender) -> ListenerID {
+        //ListenerReceiverSide {
+        self.notifier.register_new_listener(sender)
     }
 
     /// Unregister an existing listener.
@@ -156,17 +147,15 @@ impl RpcApi for KaspaRpcClient {
     async fn start_notify(&self, id: ListenerID, notification_type: NotificationType) -> RpcResult<()> {
         self.notifier.clone().start_notify(id, notification_type.clone())?;
         self.notifier.clone().start();
-        match notification_type{
-            NotificationType::VirtualDaaScoreChanged=>{
-                let req = NotifyVirtualDaaScoreChangedRequest::new(
-                    SubscribeCommand::Start
-                );
-                let result = self.rpc.notify(RpcApiOps::NotifyVirtualDaaScoreChanged, req).await;
+        match notification_type {
+            NotificationType::VirtualDaaScoreChanged => {
+                let req = NotifyVirtualDaaScoreChangedRequest::new(SubscribeCommand::Start);
+                // let result = self.rpc.call(RpcApiOps::NotifyVirtualDaaScoreChanged, req).await?;
+                let result: NotifyVirtualDaaScoreChangedResponse =
+                    self.rpc.call(RpcApiOps::NotifyVirtualDaaScoreChanged, req).await.map_err(|err| err.to_string())?;
                 log_trace!("start_notify: {result:?}");
             }
-            _=>{
-                
-            }
+            _ => {}
         }
         Ok(())
     }
@@ -174,8 +163,8 @@ impl RpcApi for KaspaRpcClient {
     /// Stop sending notifications of some type to a listener.
     async fn stop_notify(&self, id: ListenerID, notification_type: NotificationType) -> RpcResult<()> {
         //if self.rpc.handle_stop_notify() {
-            self.notifier.stop_notify(id, notification_type)?;
-            Ok(())
+        self.notifier.stop_notify(id, notification_type)?;
+        Ok(())
         //} else {
         //    Err(RpcError::UnsupportedFeature)
         //}
