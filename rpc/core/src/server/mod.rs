@@ -12,7 +12,7 @@ use self::{collector::ConsensusNotificationReceiver, service::RpcCoreService};
 pub mod collector;
 pub mod service;
 
-const RPC_CORE_SERVICE: &str = "rpc-core-service";
+const RPC_CORE_SERVICE: &str = "kaspa-rpc-core-service";
 
 /// [`RpcCoreServer`] encapsulates and exposes a [`RpcCoreService`] as an [`AsyncService`].
 pub struct RpcCoreServer {

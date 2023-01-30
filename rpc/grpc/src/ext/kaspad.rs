@@ -1,4 +1,4 @@
-use rpc_core::{api::ops::SubscribeCommand, NotificationType};
+use kaspa_rpc_core::{api::ops::SubscribeCommand, NotificationType};
 
 use crate::protowire::{
     kaspad_request, kaspad_response, KaspadRequest, KaspadResponse, NotifyBlockAddedRequestMessage,

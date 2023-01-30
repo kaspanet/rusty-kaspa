@@ -25,7 +25,7 @@ macro_rules! try_from {
     ($name:ident : $from_type:ty, $to_type:ty, $ctor:block) => {
         impl TryFrom<$from_type> for $to_type {
             type Error = RpcError;
-            fn try_from($name: $from_type) -> rpc_core::RpcResult<Self> {
+            fn try_from($name: $from_type) -> kaspa_rpc_core::RpcResult<Self> {
                 // This attribute allows unimplemented!() to be used as $ctor
                 #[allow(unreachable_code)]
                 Ok($ctor)
@@ -37,7 +37,7 @@ macro_rules! try_from {
     ($from_type:ty, $to_type:ty) => {
         impl TryFrom<$from_type> for $to_type {
             type Error = RpcError;
-            fn try_from(_: $from_type) -> rpc_core::RpcResult<Self> {
+            fn try_from(_: $from_type) -> kaspa_rpc_core::RpcResult<Self> {
                 Ok(Self {})
             }
         }

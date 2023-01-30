@@ -11,8 +11,7 @@ use futures::{
     select,
 };
 use kaspa_core::trace;
-use kaspa_utils::triggers::DuplexTrigger;
-use rpc_core::{
+use kaspa_rpc_core::{
     api::ops::RpcApiOps,
     api::{ops::SubscribeCommand, rpc::RpcApi},
     error::RpcError,
@@ -28,6 +27,7 @@ use rpc_core::{
     },
     Notification, NotificationSender, NotificationType,
 };
+use kaspa_utils::triggers::DuplexTrigger;
 use std::{
     sync::{
         atomic::{AtomicBool, Ordering},

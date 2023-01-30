@@ -4,7 +4,7 @@ use crate::{
     protowire::{KaspadRequest, KaspadResponse},
 };
 use kaspa_core::trace;
-use rpc_core::api::ops::RpcApiOps;
+use kaspa_rpc_core::api::ops::RpcApiOps;
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},

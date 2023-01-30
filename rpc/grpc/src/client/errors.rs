@@ -1,4 +1,4 @@
-use rpc_core::RpcError;
+use kaspa_rpc_core::RpcError;
 use thiserror::Error;
 
 pub type BoxedStdError = Box<(dyn std::error::Error + Sync + std::marker::Send + 'static)>;
@@ -19,7 +19,7 @@ pub enum Error {
     EndpointConnectionError(#[from] tonic::transport::Error),
 
     #[error("Notify error: {0}")]
-    NotifyError(#[from] rpc_core::notify::error::Error),
+    NotifyError(#[from] kaspa_rpc_core::notify::error::Error),
 
     #[error("RPC: channel receive error")]
     ChannelRecvError,

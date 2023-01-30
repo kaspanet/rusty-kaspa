@@ -15,9 +15,9 @@ use crate::monitor::ConsensusMonitor;
 use consensus::consensus::Consensus;
 use consensus::params::DEVNET_PARAMS;
 use kaspa_core::{info, trace};
-use rpc_core::server::collector::ConsensusNotificationChannel;
-use rpc_core::server::RpcCoreServer;
-use rpc_grpc::server::GrpcServer;
+use kaspa_rpc_core::server::collector::ConsensusNotificationChannel;
+use kaspa_rpc_core::server::RpcCoreServer;
+use kaspa_rpc_grpc::server::GrpcServer;
 
 mod monitor;
 

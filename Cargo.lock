@@ -1569,6 +1569,58 @@ dependencies = [
 ]
 
 [[package]]
+name = "kaspa-rpc-core"
+version = "0.1.0"
+dependencies = [
+ "addresses",
+ "ahash 0.8.2",
+ "async-channel",
+ "async-trait",
+ "borsh",
+ "cfg-if",
+ "consensus-core",
+ "derive_more",
+ "faster-hex",
+ "futures",
+ "futures-util",
+ "hashes",
+ "kaspa-core",
+ "kaspa-utils",
+ "log",
+ "math",
+ "rand 0.8.5",
+ "serde",
+ "smallvec",
+ "thiserror",
+ "triggered",
+ "workflow-core",
+]
+
+[[package]]
+name = "kaspa-rpc-grpc"
+version = "0.1.0"
+dependencies = [
+ "async-channel",
+ "async-trait",
+ "faster-hex",
+ "futures",
+ "h2",
+ "kaspa-core",
+ "kaspa-rpc-core",
+ "kaspa-utils",
+ "log",
+ "paste",
+ "prost",
+ "rand 0.8.5",
+ "thiserror",
+ "tokio",
+ "tokio-stream",
+ "tonic",
+ "tonic-build",
+ "triggered",
+]
+
+[[package]]
 name = "kaspa-utils"
 version = "0.1.0"
 dependencies = [
@@ -1586,9 +1638,9 @@ version = "0.1.0"
 dependencies = [
  "addresses",
  "kaspa-core",
+ "kaspa-rpc-core",
  "kaspa-utils",
  "kaspa-wallet",
- "rpc-core",
  "wasm-bindgen",
 ]
 
@@ -1603,13 +1655,13 @@ dependencies = [
  "futures-util",
  "hashes",
  "kaspa-core",
+ "kaspa-rpc-core",
+ "kaspa-rpc-grpc",
  "log",
  "num-format",
  "rand 0.8.5",
  "rand_distr",
  "rayon",
- "rpc-core",
- "rpc-grpc",
  "tempfile",
  "thiserror",
  "tokio",
@@ -2504,58 +2556,6 @@ checksum = "7e9562ea1d70c0cc63a34a22d977753b50cca91cc6b6527750463bd5dd8697bc"
 dependencies = [
  "libc",
  "librocksdb-sys",
-]
-
-[[package]]
-name = "rpc-core"
-version = "0.1.0"
-dependencies = [
- "addresses",
- "ahash 0.8.2",
- "async-channel",
- "async-trait",
- "borsh",
- "cfg-if",
- "consensus-core",
- "derive_more",
- "faster-hex",
- "futures",
- "futures-util",
- "hashes",
- "kaspa-core",
- "kaspa-utils",
- "log",
- "math",
- "rand 0.8.5",
- "serde",
- "smallvec",
- "thiserror",
- "triggered",
- "workflow-core",
-]
-
-[[package]]
-name = "rpc-grpc"
-version = "0.1.0"
-dependencies = [
- "async-channel",
- "async-trait",
- "faster-hex",
- "futures",
- "h2",
- "kaspa-core",
- "kaspa-utils",
- "log",
- "paste",
- "prost",
- "rand 0.8.5",
- "rpc-core",
- "thiserror",
- "tokio",
- "tokio-stream",
- "tonic",
- "tonic-build",
- "triggered",
 ]
 
 [[package]]

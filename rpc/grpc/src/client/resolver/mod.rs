@@ -1,7 +1,7 @@
 use super::result::Result;
 use crate::protowire::{KaspadRequest, KaspadResponse};
 use core::fmt::Debug;
-use rpc_core::api::ops::RpcApiOps;
+use kaspa_rpc_core::api::ops::RpcApiOps;
 use std::{sync::Arc, time::Duration};
 use tokio::sync::oneshot;
 

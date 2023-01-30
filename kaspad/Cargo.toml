@@ -12,8 +12,8 @@ hashes.workspace = true
 kaspa-core.workspace = true
 consensus-core.workspace = true
 consensus.workspace = true
-rpc-core.workspace = true
-rpc-grpc.workspace = true
+kaspa-rpc-core.workspace = true
+kaspa-rpc-grpc.workspace = true
 
 thiserror.workspace = true
 futures-util.workspace = true

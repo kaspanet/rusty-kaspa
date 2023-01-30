@@ -1,11 +1,11 @@
 use crate::{protowire::KaspadResponse, server::StatusResult};
 use futures::pin_mut;
 use kaspa_core::trace;
-use kaspa_utils::triggers::DuplexTrigger;
-use rpc_core::notify::{
+use kaspa_rpc_core::notify::{
     listener::{ListenerID, ListenerReceiverSide},
     notifier::Notifier,
 };
+use kaspa_utils::triggers::DuplexTrigger;
 use std::{
     collections::HashMap,
     net::SocketAddr,

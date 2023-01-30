@@ -3,8 +3,8 @@ use kaspa_core::{
     task::service::{AsyncService, AsyncServiceFuture},
     trace,
 };
+use kaspa_rpc_core::server::service::RpcCoreService;
 use kaspa_utils::triggers::DuplexTrigger;
-use rpc_core::server::service::RpcCoreService;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tonic::{codec::CompressionEncoding, transport::Server};

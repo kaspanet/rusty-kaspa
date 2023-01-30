@@ -1,5 +1,5 @@
 [package]
-name = "rpc-grpc"
+name = "kaspa-rpc-grpc"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -8,7 +8,7 @@ license.workspace = true
 
 [dependencies]
 thiserror.workspace = true
-rpc-core.workspace = true
+kaspa-rpc-core.workspace = true
 kaspa-utils.workspace = true
 kaspa-core.workspace = true
 faster-hex.workspace = true

@@ -40,8 +40,8 @@ addresses = { path = "crypto/addresses" }
 merkle = { path = "crypto/merkle" }
 pow = { path = "consensus/pow" }
 kaspa-utils = { path = "utils" }
-rpc-core = { path = "rpc/core" }
-rpc-grpc = { path = "rpc/grpc" }
+kaspa-rpc-core = { path = "rpc/core" }
+kaspa-rpc-grpc = { path = "rpc/grpc" }
 mining = { path = "mining" }
 
 thiserror = "1"

@@ -1,13 +1,13 @@
 use crate::protowire;
 use crate::{from, try_from};
-use rpc_core::{FromRpcHex, RpcError, RpcHash, RpcResult, ToRpcHex};
+use kaspa_rpc_core::{FromRpcHex, RpcError, RpcHash, RpcResult, ToRpcHex};
 use std::str::FromStr;
 
 // ----------------------------------------------------------------------------
 // rpc_core to protowire
 // ----------------------------------------------------------------------------
 
-from!(item: &rpc_core::RpcHeader, protowire::RpcBlockHeader, {
+from!(item: &kaspa_rpc_core::RpcHeader, protowire::RpcBlockHeader, {
     Self {
         version: item.version.into(),
         parents: item.parents_by_level.iter().map(protowire::RpcBlockLevelParents::from).collect(),
@@ -30,7 +30,7 @@ from!(item: &Vec<RpcHash>, protowire::RpcBlockLevelParents, { Self { parent_hash
 // protowire to rpc_core
 // ----------------------------------------------------------------------------
 
-try_from!(item: &protowire::RpcBlockHeader, rpc_core::RpcHeader, {
+try_from!(item: &protowire::RpcBlockHeader, kaspa_rpc_core::RpcHeader, {
     Self::new(
         item.version.try_into()?,
         item.parents.iter().map(Vec::<RpcHash>::try_from).collect::<RpcResult<Vec<Vec<RpcHash>>>>()?,
@@ -41,7 +41,7 @@ try_from!(item: &protowire::RpcBlockHeader, rpc_core::RpcHeader, {
         item.bits,
         item.nonce,
         item.daa_score,
-        rpc_core::RpcBlueWorkType::from_rpc_hex(&item.blue_work)?,
+        kaspa_rpc_core::RpcBlueWorkType::from_rpc_hex(&item.blue_work)?,
         item.blue_score,
         RpcHash::from_str(&item.pruning_point)?,
     )
@@ -54,7 +54,7 @@ try_from!(item: &protowire::RpcBlockLevelParents, Vec<RpcHash>, {
 #[cfg(test)]
 mod tests {
     use crate::protowire;
-    use rpc_core::{RpcHash, RpcHeader};
+    use kaspa_rpc_core::{RpcHash, RpcHeader};
 
     fn new_unique() -> RpcHash {
         use std::sync::atomic::{AtomicU64, Ordering};

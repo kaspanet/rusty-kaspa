@@ -4,12 +4,12 @@ use crate::protowire::{kaspad_request::Payload, rpc_server::Rpc, *};
 use crate::server::StatusResult;
 use futures::Stream;
 use kaspa_core::trace;
-use rpc_core::notify::channel::NotificationChannel;
-use rpc_core::notify::listener::{ListenerID, ListenerReceiverSide, ListenerUtxoNotificationFilterSetting};
-use rpc_core::notify::subscriber::DynSubscriptionManager;
-use rpc_core::notify::subscriber::Subscriber;
-use rpc_core::RpcResult;
-use rpc_core::{
+use kaspa_rpc_core::notify::channel::NotificationChannel;
+use kaspa_rpc_core::notify::listener::{ListenerID, ListenerReceiverSide, ListenerUtxoNotificationFilterSetting};
+use kaspa_rpc_core::notify::subscriber::DynSubscriptionManager;
+use kaspa_rpc_core::notify::subscriber::Subscriber;
+use kaspa_rpc_core::RpcResult;
+use kaspa_rpc_core::{
     api::rpc::RpcApi,
     notify::{collector::RpcCoreCollector, events::EVENT_TYPE_ARRAY, notifier::Notifier},
     server::service::RpcCoreService,
@@ -284,11 +284,11 @@ impl Rpc for Arc<GrpcService> {
                                 },
 
                                 Payload::NotifyBlockAddedRequest(ref request) => {
-                                    match rpc_core::NotifyBlockAddedRequest::try_from(request) {
+                                    match kaspa_rpc_core::NotifyBlockAddedRequest::try_from(request) {
                                         Ok(request) => {
                                             let result = notifier.clone().execute_subscribe_command(
                                                 listener_id,
-                                                rpc_core::NotificationType::BlockAdded,
+                                                kaspa_rpc_core::NotificationType::BlockAdded,
                                                 request.command,
                                             );
                                             NotifyBlockAddedResponseMessage::from(result).into()
@@ -298,11 +298,11 @@ impl Rpc for Arc<GrpcService> {
                                 }
 
                                 Payload::NotifyVirtualSelectedParentChainChangedRequest(ref request) => {
-                                    match rpc_core::NotifyVirtualSelectedParentChainChangedRequest::try_from(request) {
+                                    match kaspa_rpc_core::NotifyVirtualSelectedParentChainChangedRequest::try_from(request) {
                                         Ok(request) => {
                                             let result = notifier.clone().execute_subscribe_command(
                                                 listener_id,
-                                                rpc_core::NotificationType::VirtualSelectedParentChainChanged,
+                                                kaspa_rpc_core::NotificationType::VirtualSelectedParentChainChanged,
                                                 request.command,
                                             );
                                             NotifyVirtualSelectedParentChainChangedResponseMessage::from(result).into()
@@ -312,18 +312,18 @@ impl Rpc for Arc<GrpcService> {
                                 }
 
                                 Payload::NotifyFinalityConflictRequest(ref request) => {
-                                    match rpc_core::NotifyFinalityConflictRequest::try_from(request) {
+                                    match kaspa_rpc_core::NotifyFinalityConflictRequest::try_from(request) {
                                         Ok(request) => {
                                             let result = notifier
                                                 .clone()
                                                 .execute_subscribe_command(
                                                     listener_id,
-                                                    rpc_core::NotificationType::FinalityConflict,
+                                                    kaspa_rpc_core::NotificationType::FinalityConflict,
                                                     request.command,
                                                 )
                                                 .and(notifier.clone().execute_subscribe_command(
                                                     listener_id,
-                                                    rpc_core::NotificationType::FinalityConflictResolved,
+                                                    kaspa_rpc_core::NotificationType::FinalityConflictResolved,
                                                     request.command,
                                                 ));
                                             NotifyFinalityConflictResponseMessage::from(result).into()
@@ -333,11 +333,11 @@ impl Rpc for Arc<GrpcService> {
                                 }
 
                                 Payload::NotifyUtxosChangedRequest(ref request) => {
-                                    match rpc_core::NotifyUtxosChangedRequest::try_from(request) {
+                                    match kaspa_rpc_core::NotifyUtxosChangedRequest::try_from(request) {
                                         Ok(request) => {
                                             let result = notifier.clone().execute_subscribe_command(
                                                 listener_id,
-                                                rpc_core::NotificationType::UtxosChanged(request.addresses),
+                                                kaspa_rpc_core::NotificationType::UtxosChanged(request.addresses),
                                                 request.command,
                                             );
                                             NotifyUtxosChangedResponseMessage::from(result).into()
@@ -347,11 +347,11 @@ impl Rpc for Arc<GrpcService> {
                                 }
 
                                 Payload::NotifyVirtualSelectedParentBlueScoreChangedRequest(ref request) => {
-                                    match rpc_core::NotifyVirtualSelectedParentBlueScoreChangedRequest::try_from(request) {
+                                    match kaspa_rpc_core::NotifyVirtualSelectedParentBlueScoreChangedRequest::try_from(request) {
                                         Ok(request) => {
                                             let result = notifier.clone().execute_subscribe_command(
                                                 listener_id,
-                                                rpc_core::NotificationType::VirtualSelectedParentBlueScoreChanged,
+                                                kaspa_rpc_core::NotificationType::VirtualSelectedParentBlueScoreChanged,
                                                 request.command,
                                             );
                                             NotifyVirtualSelectedParentBlueScoreChangedResponseMessage::from(result).into()
@@ -361,11 +361,11 @@ impl Rpc for Arc<GrpcService> {
                                 }
 
                                 Payload::NotifyVirtualDaaScoreChangedRequest(ref request) => {
-                                    match rpc_core::NotifyVirtualDaaScoreChangedRequest::try_from(request) {
+                                    match kaspa_rpc_core::NotifyVirtualDaaScoreChangedRequest::try_from(request) {
                                         Ok(request) => {
                                             let result = notifier.clone().execute_subscribe_command(
                                                 listener_id,
-                                                rpc_core::NotificationType::VirtualDaaScoreChanged,
+                                                kaspa_rpc_core::NotificationType::VirtualDaaScoreChanged,
                                                 request.command,
                                             );
                                             NotifyVirtualDaaScoreChangedResponseMessage::from(result).into()
@@ -375,11 +375,11 @@ impl Rpc for Arc<GrpcService> {
                                 }
 
                                 Payload::NotifyPruningPointUtxoSetOverrideRequest(ref request) => {
-                                    match rpc_core::NotifyPruningPointUtxoSetOverrideRequest::try_from(request) {
+                                    match kaspa_rpc_core::NotifyPruningPointUtxoSetOverrideRequest::try_from(request) {
                                         Ok(request) => {
                                             let result = notifier.clone().execute_subscribe_command(
                                                 listener_id,
-                                                rpc_core::NotificationType::PruningPointUtxoSetOverride,
+                                                kaspa_rpc_core::NotificationType::PruningPointUtxoSetOverride,
                                                 request.command,
                                             );
                                             NotifyPruningPointUtxoSetOverrideResponseMessage::from(result).into()
@@ -389,11 +389,11 @@ impl Rpc for Arc<GrpcService> {
                                 }
 
                                 Payload::NotifyNewBlockTemplateRequest(ref request) => {
-                                    match rpc_core::NotifyNewBlockTemplateRequest::try_from(request) {
+                                    match kaspa_rpc_core::NotifyNewBlockTemplateRequest::try_from(request) {
                                         Ok(request) => {
                                             let result = notifier.clone().execute_subscribe_command(
                                                 listener_id,
-                                                rpc_core::NotificationType::NewBlockTemplate,
+                                                kaspa_rpc_core::NotificationType::NewBlockTemplate,
                                                 request.command,
                                             );
                                             NotifyNewBlockTemplateResponseMessage::from(result).into()
@@ -405,11 +405,11 @@ impl Rpc for Arc<GrpcService> {
                                 Payload::StopNotifyingUtxosChangedRequest(ref request) => {
                                     let notify_request = NotifyUtxosChangedRequestMessage::from(request);
                                     let response: StopNotifyingUtxosChangedResponseMessage =
-                                        match rpc_core::NotifyUtxosChangedRequest::try_from(&notify_request) {
+                                        match kaspa_rpc_core::NotifyUtxosChangedRequest::try_from(&notify_request) {
                                             Ok(request) => {
                                                 let result = notifier.clone().execute_subscribe_command(
                                                     listener_id,
-                                                    rpc_core::NotificationType::UtxosChanged(request.addresses),
+                                                    kaspa_rpc_core::NotificationType::UtxosChanged(request.addresses),
                                                     request.command,
                                                 );
                                                 NotifyUtxosChangedResponseMessage::from(result).into()
@@ -425,11 +425,11 @@ impl Rpc for Arc<GrpcService> {
                                 Payload::StopNotifyingPruningPointUtxoSetOverrideRequest(ref request) => {
                                     let notify_request = NotifyPruningPointUtxoSetOverrideRequestMessage::from(request);
                                     let response: StopNotifyingPruningPointUtxoSetOverrideResponseMessage =
-                                        match rpc_core::NotifyPruningPointUtxoSetOverrideRequest::try_from(&notify_request) {
+                                        match kaspa_rpc_core::NotifyPruningPointUtxoSetOverrideRequest::try_from(&notify_request) {
                                             Ok(request) => {
                                                 let result = notifier.clone().execute_subscribe_command(
                                                     listener_id,
-                                                    rpc_core::NotificationType::PruningPointUtxoSetOverride,
+                                                    kaspa_rpc_core::NotificationType::PruningPointUtxoSetOverride,
                                                     request.command,
                                                 );
                                                 NotifyPruningPointUtxoSetOverrideResponseMessage::from(result).into()
@@ -445,7 +445,8 @@ impl Rpc for Arc<GrpcService> {
                                 }
                             }
                         } else {
-                            GetBlockResponseMessage::from(rpc_core::RpcError::General("Missing request payload".to_string())).into()
+                            GetBlockResponseMessage::from(kaspa_rpc_core::RpcError::General("Missing request payload".to_string()))
+                                .into()
                         };
                         response.id = request.id;
                         //trace!("Outgoing {:?}", response);
