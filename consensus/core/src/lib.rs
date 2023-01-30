@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::hash::{BuildHasher, Hasher};
 
 use hashes::Hash;
+use tx::TransactionOutpoint;
 
 pub mod api;
 pub mod block;
@@ -33,6 +34,10 @@ pub type BlueWorkType = math::Uint192;
 /// Should only be used for block hashes that have correct DAA,
 /// otherwise it is susceptible to DOS attacks via hash collisions.
 pub type BlockHashMap<V> = HashMap<Hash, V, BlockHasher>;
+
+/// This HashMap skips the hashing of the TransactionOuoint and uses the TransactionId and  TransactionIndex directly as the hash.
+/// TODO: some comment on when applicable / hash collistion properties.
+pub type TransactionOutpointHashMap<V> = HashMap<TransactionOutpoint, V, TransactionOutpointHasher>;
 
 /// Same as `BlockHashMap` but a `HashSet`.
 pub type BlockHashSet = HashSet<Hash, BlockHasher>;
@@ -66,6 +71,17 @@ impl HashMapCustomHasher for BlockHashSet {
     }
 }
 
+impl<V> HashMapCustomHasher for TransactionOutpointHashMap<V> {
+    #[inline(always)]
+    fn new() -> Self {
+        Self::with_hasher(TransactionOutpointHasher::new())
+    }
+    #[inline(always)]
+    fn with_capacity(cap: usize) -> Self {
+        Self::with_capacity_and_hasher(cap, TransactionOutpointHasher::new())
+    }
+}
+
 /// `hashes::Hash` writes 4 u64s so we just use the last one as the hash here
 #[derive(Default, Clone, Copy)]
 pub struct BlockHasher(u64);
@@ -84,7 +100,7 @@ impl Hasher for BlockHasher {
     }
     #[inline(always)]
     fn write_u64(&mut self, v: u64) {
-        self.0 ^= v;
+        self.0 = v;
     }
     #[cold]
     fn write(&mut self, _: &[u8]) {
@@ -101,34 +117,36 @@ impl BuildHasher for BlockHasher {
     }
 }
 
-/// `TransactionOutpoint` consists of 4 u64s as well as 1 u32,
-/// as such we xor each u64 write and cast the last u32 index as u64 and xor it in as well.
+/// `TransactionOutpoint` consists of 4 u64s of TransactionId as well as one u32 TransactionIndex,
+/// as such we xor all u64 of the TransactionId, and cast the last u32 index as u64 and xor it in as well.
 #[derive(Default, Clone, Copy)]
-pub struct OutpointHasher(u64);
+pub struct TransactionOutpointHasher(u64);
 
-impl OutpointHasher {
+impl TransactionOutpointHasher {
     #[inline(always)]
     pub const fn new() -> Self {
         Self(0)
     }
 }
 
-impl Hasher for OutpointHasher {
+impl Hasher for TransactionOutpointHasher {
     #[inline(always)]
     fn finish(&self) -> u64 {
         self.0
     }
+
     #[inline(always)]
     fn write_u64(&mut self, v: u64) {
         self.0 ^= v;
     }
+
     #[cold]
     fn write(&mut self, _: &[u8]) {
         unimplemented!("use write_u64")
     }
 }
 
-impl BuildHasher for OutpointHasher {
+impl BuildHasher for TransactionOutpointHasher {
     type Hasher = Self;
 
     #[inline(always)]
@@ -142,7 +160,7 @@ mod tests {
     use crate::tx::{TransactionId, TransactionOutpoint};
 
     use super::BlockHasher;
-    use super::OutpointHasher;
+    use super::TransactionOutpointHasher;
     use hashes::Hash;
     use std::hash::{Hash as _, Hasher as _};
 
@@ -157,7 +175,7 @@ mod tests {
     #[test]
     fn test_outpoint_hasher() {
         let transaction_outpoint = TransactionOutpoint::new(TransactionId::from_le_u64([12345, 24567, 54321, 11111]), 5000);
-        let mut hasher = OutpointHasher::default();
+        let mut hasher = TransactionOutpointHasher::default();
         transaction_outpoint.hash(&mut hasher);
         let expected: u64 = (((12345_u64 ^ 24567_u64) ^ 54321_u64) ^ 11111_u64) ^ 5000_u64;
         assert_eq!(hasher.finish(), expected);

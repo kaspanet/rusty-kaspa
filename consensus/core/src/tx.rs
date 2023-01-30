@@ -110,7 +110,7 @@ impl UtxoEntry {
 pub type TransactionIndexType = u32;
 
 /// Represents a Kaspa transaction outpoint
-#[derive(Eq, PartialEq, Debug, Copy, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Eq, Debug, Copy, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TransactionOutpoint {
     pub transaction_id: TransactionId,
@@ -133,6 +133,15 @@ impl StdHash for TransactionOutpoint {
     #[inline(always)]
     fn hash<H: StdHasher>(&self, state: &mut H) {
         self.transaction_id.iter_le_u64().chain(std::iter::once(self.index as u64)).for_each(|x| x.hash(state));
+    }
+}
+
+/// We only override PartialEq because clippy wants us to.
+/// This should always hold: PartialEq(x,y) => Hash(x) == Hash(y)
+impl PartialEq for TransactionOutpoint {
+    #[inline(always)]
+    fn eq(&self, other: &Self) -> bool {
+        self.transaction_id == other.transaction_id && self.index == other.index
     }
 }
 

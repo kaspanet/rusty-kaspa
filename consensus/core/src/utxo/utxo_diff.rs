@@ -2,7 +2,10 @@ use super::{
     utxo_collection::*,
     utxo_error::{UtxoAlgebraError, UtxoResult},
 };
-use crate::tx::{TransactionOutpoint, UtxoEntry, VerifiableTransaction};
+use crate::{
+    tx::{TransactionOutpoint, UtxoEntry, VerifiableTransaction},
+    HashMapCustomHasher,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::hash_map::Entry::Vacant;
 

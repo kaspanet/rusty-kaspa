@@ -1,8 +1,7 @@
 use super::utxo_view::UtxoView;
-use crate::tx::*;
-use std::collections::HashMap;
+use crate::{tx::*, TransactionOutpointHashMap};
 
-pub type UtxoCollection = HashMap<TransactionOutpoint, UtxoEntry>;
+pub type UtxoCollection = TransactionOutpointHashMap<UtxoEntry>;
 
 pub trait UtxoCollectionExtensions {
     /// Checks if the `outpoint` key exists with an entry that holds `entry.block_daa_score == daa_score`
