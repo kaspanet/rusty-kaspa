@@ -38,17 +38,10 @@ impl Wallet {
 
     // intended for starting async management tasks
     pub async fn start(self: &Arc<Self>) -> Result<()> {
-        // log_info!("Wallet starting...");
-
-        // self.rpc.connect(true).await;
         self.rpc.start()?;
-
+        // self.rpc.connect_as_task()?;
         let id = self.rpc.register_new_listener(self.notification_channel.sender.clone());
         *self.listener_id.lock().unwrap() = Some(id);
-        // self.rpc.connect_as_task()?;
-
-        // self.rpc.
-
         Ok(())
     }
 
