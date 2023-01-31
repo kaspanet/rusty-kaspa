@@ -82,7 +82,7 @@ impl RpcClient {
     fn notification_task(&self) -> JsResult<()> {
         let ctl_receiver = self.notification_ctl.request.receiver.clone();
         let ctl_sender = self.notification_ctl.response.sender.clone();
-        let notification_receiver = self.client.notification_receiver();
+        let notification_receiver = self.client.notification_channel_receiver();
         let notification_callback = self.notification_callback.clone();
 
         spawn(async move {

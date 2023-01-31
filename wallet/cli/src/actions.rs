@@ -40,9 +40,16 @@ pub enum Action {
     // Notifications
     #[describe("Subscribe DAA score")]
     SubscribeDaaScore,
+    #[describe("Unsubscribe DAA score")]
+    UnsubscribeDaaScore,
 
     #[describe("Exit the wallet shell")]
     Exit,
+
+    #[cfg(target_arch = "wasm32")]
+    #[describe("hidden")]
+    #[cfg(target_arch = "wasm32")]
+    Reload,
 }
 
 impl TryInto<Action> for &str {
@@ -63,7 +70,9 @@ pub fn display_help(term: &Arc<Terminal>) {
     let len = commands.iter().map(|(c, _)| c.len()).fold(0, |a, b| a.max(b));
 
     for (cmd, help) in commands.iter() {
-        term.writeln(format!("{:>4}{}{}", "", cmd.pad_to_width(len + 2), help).as_str());
+        if *help != "hidden" {
+            term.writeln(format!("{:>4}{}{}", "", cmd.pad_to_width(len + 2), help).as_str());
+        }
     }
     term.writeln("");
 }

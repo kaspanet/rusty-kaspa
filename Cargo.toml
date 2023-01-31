@@ -106,7 +106,8 @@ workflow-rpc = { path = "../workflow-rs/rpc" }
 workflow-log = { path = "../workflow-rs/log" }
 workflow-terminal = { path = "../workflow-rs/terminal" }
 workflow-wasm = { path = "../workflow-rs/wasm" }
-workflow-task = { path = "../workflow-rs/task" }
+workflow-dom = { path = "../workflow-rs/dom" }
+# workflow-task = { path = "../workflow-rs/task" }
 
 # bip32 dependencies
 rand_core = { version = "0.6", features = ["std"] }

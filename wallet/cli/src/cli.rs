@@ -1,13 +1,12 @@
-use async_trait::async_trait;
-use std::sync::{Arc, Mutex};
-use workflow_terminal::Terminal;
-// use workflow_terminal::Options;
 use crate::actions::*;
 use crate::result::Result;
+use async_trait::async_trait;
 use futures::*;
 use kaspa_wallet_core::Wallet;
+use std::sync::{Arc, Mutex};
 use workflow_core::channel::*;
 use workflow_log::*;
+use workflow_terminal::Terminal;
 pub use workflow_terminal::{parse, Cli, Options as TerminalOptions, Result as TerminalResult, TargetElement as TerminalTarget};
 struct WalletCli {
     term: Arc<Mutex<Option<Arc<Terminal>>>>,
@@ -43,7 +42,10 @@ impl WalletCli {
             }
             Action::Exit => {
                 term.writeln("bye!");
+                #[cfg(not(target_arch = "wasm32"))]
                 term.exit().await;
+                #[cfg(target_arch = "wasm32")]
+                workflow_dom::utils::window().location().reload().ok();
             }
             Action::GetInfo => {
                 //log_trace!("testing 123");
@@ -91,17 +93,14 @@ impl WalletCli {
                 self.wallet.sweep().await?;
             }
             Action::SubscribeDaaScore => {
-                // let listener =
                 self.wallet.subscribe_daa_score().await?;
-                // workflow_core::task::spawn(async move {
-                //     let term = term;
-                //     let channel = listener.recv_channel;
-                //     while let Ok(notification) = channel.recv().await {
-                //         log_trace!("DAA notification: {:?}", notification);
-                //         //sender.send(notification)
-                //         term.writeln(format!("{notification:#?}").replace("\n", "\n\r"));
-                //     }
-                // });
+            }
+            Action::UnsubscribeDaaScore => {
+                self.wallet.unsubscribe_daa_score().await?;
+            }
+            #[cfg(target_arch = "wasm32")]
+            Action::Reload => {
+                workflow_dom::utils::window().location().reload().ok();
             }
         }
 
@@ -119,9 +118,10 @@ impl WalletCli {
     }
 
     pub fn notification_pipe_task(self: &Arc<Self>) {
+        log_info!("### starting notification processor");
         let self_ = self.clone();
         let term = self.term().unwrap_or_else(|| panic!("WalletCli::notification_pipe_task(): `term` is not initialized"));
-        let notification_channel_receiver = self.wallet.notification_channel_receiver();
+        let notification_channel_receiver = self.wallet.rpc.notification_channel_receiver();
         workflow_core::task::spawn(async move {
             // term.writeln(args.to_string());
 
@@ -133,7 +133,7 @@ impl WalletCli {
                     },
                     msg = notification_channel_receiver.recv().fuse() => {
                         if let Ok(msg) = msg {
-                            let text = format!("{:#?}",msg.payload);
+                            let text = format!("{msg:#?}").replace('\n',"\r\n"); //.payload);
                             term.pipe_crlf.send(text).await.unwrap_or_else(|err|log_error!("WalletCli::notification_pipe_task() unable to route to term: `{err}`"));
                         }
                     }

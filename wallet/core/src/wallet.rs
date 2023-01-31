@@ -3,11 +3,12 @@ use crate::wallets::HDWalletGen1;
 use kaspa_wrpc_client::{KaspaRpcClient, NotificationMode, WrpcEncoding};
 use rpc_core::{api::rpc::RpcApi, prelude::ListenerID as ListenerId, NotificationMessage, NotificationType};
 use std::sync::{Arc, Mutex};
+#[allow(unused_imports)]
 use workflow_core::channel::{Channel, Receiver};
 
 #[derive(Clone)]
 pub struct Wallet {
-    rpc: Arc<KaspaRpcClient>,
+    pub rpc: Arc<KaspaRpcClient>,
     hd_wallet: HDWalletGen1,
     listener_id: Arc<Mutex<Option<ListenerId>>>,
     notification_channel: Channel<Arc<NotificationMessage>>,
@@ -35,9 +36,13 @@ impl Wallet {
         self.rpc.clone()
     }
 
-    pub fn notification_channel_receiver(&self) -> Receiver<Arc<NotificationMessage>> {
-        self.notification_channel.receiver.clone()
-    }
+    // pub fn notification_channel_receiver(&self) -> Receiver<Arc<NotificationMessage>> {
+    //     match self.notification_mode {
+    //         // NotificationMode::NotSynced => self.notification_channel.receiver.clone(),
+    //         NotificationMode::Direct => self.rpc.notification_channel_receiver(),
+    //     }
+    //     self.notification_channel.receiver.clone()
+    // }
 
     // intended for starting async management tasks
     pub async fn start(self: &Arc<Wallet>) -> Result<()> {
