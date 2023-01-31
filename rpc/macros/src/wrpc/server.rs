@@ -89,6 +89,6 @@ impl ToTokens for RpcTable {
 pub fn build_wrpc_server_interface(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let rpc_table = parse_macro_input!(input as RpcTable);
     let ts = rpc_table.to_token_stream();
-    // println!("ts====>: {:#?}", ts.to_string());
+    // println!("MACRO: {}", ts.to_string());
     ts.into()
 }

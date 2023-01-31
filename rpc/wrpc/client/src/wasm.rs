@@ -1,5 +1,5 @@
 use crate::imports::*;
-pub use kaspa_rpc_macros::build_wrpc_wasm_bindgen_interface;
+pub use kaspa_rpc_macros::{build_wrpc_wasm_bindgen_interface, build_wrpc_wasm_bindgen_subscriptions};
 pub use serde_wasm_bindgen::*;
 
 type JsResult<T> = std::result::Result<T, JsError>;
@@ -23,7 +23,6 @@ pub struct RpcClient {
 
 #[wasm_bindgen]
 impl RpcClient {
-
     /// Create a new RPC client with [`Encoding`] and a `url`.
     #[wasm_bindgen(constructor)]
     pub fn new(encoding: Encoding, url: &str) -> RpcClient {
@@ -53,7 +52,7 @@ impl RpcClient {
         self.client.shutdown().await?;
         Ok(())
     }
-    
+
     async fn stop_notification_task(&self) -> JsResult<()> {
         if self.notification_task.load(Ordering::SeqCst) {
             self.notification_task.store(false, Ordering::SeqCst);
@@ -77,26 +76,10 @@ impl RpcClient {
         }
         Ok(())
     }
-
-    /// Subscription to DAA Score (test)
-    #[wasm_bindgen(js_name = subscribeDaaScore)]
-    pub async fn subscribe_daa_score(&self) -> JsResult<()> {
-        self.client.start_notify(ListenerId::default(), NotificationType::VirtualDaaScoreChanged).await?;
-        Ok(())
-    }
-    
-    /// Unsubscribe from DAA Score (test)
-    #[wasm_bindgen(js_name = unsubscribeDaaScore)]
-    pub async fn unsubscribe_daa_score(&self) -> JsResult<()> {
-        self.client.stop_notify(ListenerId::default(), NotificationType::VirtualDaaScoreChanged).await?;
-        Ok(())
-    }
-
 }
 
 impl RpcClient {
     fn notification_task(&self) -> JsResult<()> {
-
         let ctl_receiver = self.notification_ctl.request.receiver.clone();
         let ctl_sender = self.notification_ctl.response.sender.clone();
         let notification_receiver = self.client.notification_receiver();
@@ -137,6 +120,38 @@ impl RpcClient {
         Ok(())
     }
 }
+
+#[wasm_bindgen]
+impl RpcClient {
+    // experimental/test functions
+
+    /// Subscription to DAA Score (test)
+    #[wasm_bindgen(js_name = subscribeDaaScore)]
+    pub async fn subscribe_daa_score(&self) -> JsResult<()> {
+        self.client.start_notify(ListenerId::default(), NotificationType::VirtualDaaScoreChanged).await?;
+        Ok(())
+    }
+
+    /// Unsubscribe from DAA Score (test)
+    #[wasm_bindgen(js_name = unsubscribeDaaScore)]
+    pub async fn unsubscribe_daa_score(&self) -> JsResult<()> {
+        self.client.stop_notify(ListenerId::default(), NotificationType::VirtualDaaScoreChanged).await?;
+        Ok(())
+    }
+}
+
+build_wrpc_wasm_bindgen_subscriptions!([
+    NotifyBlockAdded,
+    NotifyFinalityConflict,
+    NotifyFinalityConflictResolved, // TODO added to match NotificationType
+    // NotifyFinalityConflicts,        // TODO - missing in NotificationType
+    NotifyNewBlockTemplate,
+    NotifyPruningPointUtxoSetOverride,
+    // NotifyUtxosChanged,          // can't used this here due to non-C-style enum variant
+    NotifyVirtualDaaScoreChanged,
+    NotifyVirtualSelectedParentBlueScoreChanged,
+    NotifyVirtualSelectedParentChainChanged,
+]);
 
 build_wrpc_wasm_bindgen_interface!(
     [

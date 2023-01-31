@@ -20,3 +20,9 @@ pub fn build_wrpc_server_interface(input: TokenStream) -> TokenStream {
 pub fn build_wrpc_wasm_bindgen_interface(input: TokenStream) -> TokenStream {
     wrpc::wasm::build_wrpc_wasm_bindgen_interface(input)
 }
+
+#[proc_macro]
+#[proc_macro_error]
+pub fn build_wrpc_wasm_bindgen_subscriptions(input: TokenStream) -> TokenStream {
+    wrpc::wasm::build_wrpc_wasm_bindgen_subscriptions(input)
+}

@@ -1,6 +1,8 @@
 use crate::handler::*;
-use proc_macro2::TokenStream;
+use convert_case::{Case, Casing};
+use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, ToTokens};
+use regex::Regex;
 use std::convert::Into;
 use syn::{
     parse::{Parse, ParseStream},
@@ -10,12 +12,12 @@ use syn::{
 };
 
 #[derive(Debug)]
-struct RpcTable {
+struct RpcHandlers {
     handlers_no_args: ExprArray,
     handlers_with_args: ExprArray,
 }
 
-impl Parse for RpcTable {
+impl Parse for RpcHandlers {
     fn parse(input: ParseStream) -> Result<Self> {
         let parsed = Punctuated::<Expr, Token![,]>::parse_terminated(input).unwrap();
         if parsed.len() != 2 {
@@ -29,12 +31,12 @@ impl Parse for RpcTable {
         let handlers_no_args = get_handlers(iter.next().unwrap().clone())?;
         let handlers_with_args = get_handlers(iter.next().unwrap().clone())?;
 
-        let handlers = RpcTable { handlers_no_args, handlers_with_args };
+        let handlers = RpcHandlers { handlers_no_args, handlers_with_args };
         Ok(handlers)
     }
 }
 
-impl ToTokens for RpcTable {
+impl ToTokens for RpcHandlers {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let mut targets_no_args = Vec::new();
         let mut targets_with_args = Vec::new();
@@ -88,8 +90,82 @@ impl ToTokens for RpcTable {
 }
 
 pub fn build_wrpc_wasm_bindgen_interface(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let rpc_table = parse_macro_input!(input as RpcTable);
+    let rpc_table = parse_macro_input!(input as RpcHandlers);
     let ts = rpc_table.to_token_stream();
-    // println!("ts====>: {:#?}", ts.to_string());
+    // println!("MACRO: {}", ts.to_string());
+    ts.into()
+}
+
+// #####################################################################
+
+#[derive(Debug)]
+struct RpcSubscriptions {
+    handlers: ExprArray,
+}
+
+impl Parse for RpcSubscriptions {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let parsed = Punctuated::<Expr, Token![,]>::parse_terminated(input).unwrap();
+        if parsed.len() != 1 {
+            return Err(Error::new_spanned(
+                parsed,
+                "usage: build_wrpc_wasm_bindgen_interface!([fn no args, ..],[fn with args, ..])".to_string(),
+            ));
+        }
+
+        let mut iter = parsed.iter();
+        let handlers = get_handlers(iter.next().unwrap().clone())?;
+
+        Ok(RpcSubscriptions { handlers })
+    }
+}
+
+impl ToTokens for RpcSubscriptions {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let mut targets = Vec::new();
+
+        for handler in self.handlers.elems.iter() {
+            let name = handler.to_token_stream().to_string();
+            let regex = Regex::new(r"^Notify").unwrap();
+            let blank = regex.replace(&name, "");
+            let subscribe = regex.replace(&name, "Subscribe");
+            let unsubscribe = regex.replace(&name, "Unsubscribe");
+            let notify_type = Ident::new(&blank, Span::call_site());
+            let fn_subscribe_snake = Ident::new(&subscribe.to_case(Case::Snake), Span::call_site());
+            let fn_subscribe_camel = Ident::new(&subscribe.to_case(Case::Camel), Span::call_site());
+            let fn_unsubscribe_snake = Ident::new(&unsubscribe.to_case(Case::Snake), Span::call_site());
+            let fn_unsubscribe_camel = Ident::new(&unsubscribe.to_case(Case::Camel), Span::call_site());
+
+            targets.push(quote! {
+
+                #[wasm_bindgen(js_name = #fn_subscribe_camel)]
+                pub async fn #fn_subscribe_snake(&self) -> JsResult<()> {
+                    self.client.start_notify(ListenerId::default(), NotificationType:: #notify_type).await?;
+                    Ok(())
+                }
+
+                #[wasm_bindgen(js_name = #fn_unsubscribe_camel)]
+                pub async fn #fn_unsubscribe_snake(&self) -> JsResult<()> {
+                    self.client.stop_notify(ListenerId::default(), NotificationType:: #notify_type).await?;
+                    Ok(())
+                }
+
+            });
+        }
+
+        quote! {
+            #[wasm_bindgen]
+            impl RpcClient {
+                #(#targets)*
+            }
+        }
+        .to_tokens(tokens);
+    }
+}
+
+pub fn build_wrpc_wasm_bindgen_subscriptions(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let rpc_table = parse_macro_input!(input as RpcSubscriptions);
+    let ts = rpc_table.to_token_stream();
+    // println!("MACRO: {}", ts.to_string());
     ts.into()
 }

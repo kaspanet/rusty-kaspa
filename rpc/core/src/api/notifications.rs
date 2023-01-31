@@ -3,10 +3,10 @@ use crate::{api::ops::RpcApiOps, model::message::*, RpcAddress};
 use async_channel::{Receiver, Sender};
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
-use wasm_bindgen::JsValue;
+pub use serde_wasm_bindgen::*;
 use std::fmt::Display;
 use std::sync::Arc;
-pub use serde_wasm_bindgen::*;
+use wasm_bindgen::JsValue;
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub enum NotificationType {
@@ -68,7 +68,7 @@ pub enum Notification {
 }
 
 impl Notification {
-    pub fn to_value(&self) -> std::result::Result<JsValue,serde_wasm_bindgen::Error> {
+    pub fn to_value(&self) -> std::result::Result<JsValue, serde_wasm_bindgen::Error> {
         match self {
             Notification::BlockAdded(v) => to_value(&v),
             Notification::FinalityConflict(v) => to_value(&v),

@@ -22,7 +22,7 @@ impl NotificationManager {
         log_info!("notification manager tasks: {tasks}");
         let ingest = Channel::unbounded();
         let tasks = (0..tasks).into_iter().map(|_| Arc::new(NotificationTask::new(ingest.clone()))).collect::<Vec<_>>();
-        tasks.iter().for_each(|task|task.start());
+        tasks.iter().for_each(|task| task.start());
         NotificationManager { ingest, tasks }
     }
 
