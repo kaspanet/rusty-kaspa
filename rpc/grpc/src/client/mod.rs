@@ -335,7 +335,12 @@ impl Inner {
     /// waited longer than a predefined delay.
     fn spawn_request_timeout_monitor(self: Arc<Self>) {
         // Note: self is a cloned Arc here so that it can be used in the spawned task.
-        self.timeout_is_running.store(true, Ordering::SeqCst);
+
+        // The task can only be spawned once
+        if self.timeout_is_running.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
+            trace!("[GrpcClient] spawn request timeout monitor ignored since already spawned");
+            return;
+        }
 
         tokio::spawn(async move {
             let shutdown = self.timeout_shutdown.request.listener.clone().fuse();
@@ -365,7 +370,12 @@ impl Inner {
     /// Launch a task receiving and handling response messages sent by the server.
     fn spawn_response_receiver_task(self: Arc<Self>, mut stream: Streaming<KaspadResponse>) {
         // Note: self is a cloned Arc here so that it can be used in the spawned task.
-        self.receiver_is_running.store(true, Ordering::SeqCst);
+
+        // The task can only be spawned once
+        if self.receiver_is_running.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
+            trace!("[GrpcClient] spawn response receiver task ignored since already spawned");
+            return;
+        }
 
         tokio::spawn(async move {
             loop {
@@ -440,7 +450,7 @@ impl Inner {
     }
 
     async fn stop_response_receiver_task(&self) -> Result<()> {
-        if self.receiver_is_running.load(Ordering::SeqCst) {
+        if self.receiver_is_running.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
             self.receiver_shutdown.request.trigger.trigger();
             self.receiver_shutdown.response.listener.clone().await;
         }
@@ -448,7 +458,7 @@ impl Inner {
     }
 
     async fn stop_timeout_monitor(&self) -> Result<()> {
-        if self.timeout_is_running.load(Ordering::SeqCst) {
+        if self.timeout_is_running.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
             self.timeout_shutdown.request.trigger.trigger();
             self.timeout_shutdown.response.listener.clone().await;
         }

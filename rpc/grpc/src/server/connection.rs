@@ -46,12 +46,16 @@ impl GrpcConnection {
     }
 
     fn spawn_collecting_task(&self) {
+        // The task can only be spawned once
+        if self.collect_is_running.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
+            trace!("[GrpcConnection] spawn collecting task ignored since already spawned");
+            return;
+        }
         let listener_id = self.notify_listener.id;
         let sender = self.sender.clone();
         let collect_shutdown = self.collect_shutdown.clone();
         let collect_is_running = self.collect_is_running.clone();
         let recv_channel = self.notify_listener.recv_channel.clone();
-        collect_is_running.store(true, Ordering::SeqCst);
 
         tokio::task::spawn(async move {
             trace!("[GrpcConnection] collect_task listener id {0}: start", listener_id);
@@ -89,7 +93,7 @@ impl GrpcConnection {
     }
 
     async fn stop_collect(&self) {
-        if self.collect_is_running.load(Ordering::SeqCst) {
+        if self.collect_is_running.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
             self.collect_shutdown.request.trigger.trigger();
             self.collect_shutdown.response.listener.clone().await;
         }
