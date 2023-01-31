@@ -193,12 +193,15 @@ pub async fn kaspa_wallet_cli(options: TerminalOptions) -> Result<()> {
     let term = Arc::new(Terminal::try_new_with_options(cli.clone(), options)?);
     term.init().await?;
 
+    let encoding = wallet.rpc.encoding();
+
     #[cfg(not(target_arch = "wasm32"))]
     workflow_log::pipe(Some(cli.clone()));
 
     // cli starts notification->term trace pipe task
     cli.start().await?;
-
+    term.writeln(format!("Version: {}", env!("CARGO_PKG_VERSION")));
+    term.writeln(format!("Encoding: {}", encoding));
     term.writeln("Kaspa Cli Wallet (type 'help' for list of commands)");
 
     // wallet starts rpc and notifier
