@@ -160,7 +160,7 @@ pub struct DbUtxoSetByScriptPublicKeyStore {
 
 impl DbUtxoSetByScriptPublicKeyStore {
     pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
-        Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_size, UTXO_SET_PREFIX) }
+        Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_size, UTXO_SET_PREFIX.to_vec()) }
     }
 }
 

@@ -6,6 +6,7 @@ use tokio::{
 };
 
 use consensus::{
+    config::Config,
     consensus::test_consensus::{create_temp_db, TestConsensus},
     model::stores::{
         utxo_set::UtxoSetStore,
@@ -33,7 +34,7 @@ async fn test_utxoindex() {
     let mut virtual_change_emulator = VirtualChangeEmulator::new();
     let utxoindex_db = create_temp_db();
     let consensus_db = create_temp_db();
-    let test_consensus = Arc::new(TestConsensus::new(consensus_db.1, &DEVNET_PARAMS)); //this functions as a mock, simply to pass onto the utxoindex.
+    let test_consensus = Arc::new(TestConsensus::new(consensus_db.1, &Config::new(DEVNET_PARAMS))); //this functions as a mock, simply to pass onto the utxoindex.
     let utxoindex = UtxoIndex::new(test_consensus.clone(), utxoindex_db.1, virtual_change_emulator.receiver.clone());
 
     //fill intial utxo collectection in emulator

@@ -42,41 +42,32 @@ use crate::{
         traversal_manager::DagTraversalManager,
     },
 };
-use async_std::channel::{unbounded as unbounded_async_std, Receiver as AsyncStdReceiver, Sender as AsyncStdSender};
 use consensus_core::{
     api::ConsensusApi,
     block::{Block, BlockTemplate},
     blockstatus::BlockStatus,
     coinbase::MinerData,
     errors::{coinbase::CoinbaseResult, tx::TxResult},
-    notify::ConsensusNotification,
-    tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
-    BlockHashSet,
     header::Header,
     muhash::MuHashExtensions,
+    notify::ConsensusNotification,
     pruning::PruningPointProof,
-    tx::{TransactionOutpoint, UtxoEntry},
-    {
-        block::{Block, BlockTemplate},
-        blockstatus::BlockStatus,
-        coinbase::MinerData,
-        errors::{coinbase::CoinbaseResult, tx::TxResult},
-        tx::{MutableTransaction, Transaction},
-        BlockHashSet,
-    },
+    tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
+    BlockHashSet,
 };
 use crossbeam_channel::{unbounded as unbounded_crossbeam, Receiver as CrossbeamReceiver, Sender as CrossbeamSender};
 use futures_util::future::BoxFuture;
 use hashes::Hash;
 use itertools::Itertools;
 use kaspa_core::{core::Core, service::Service};
+use kaspa_utils::channel::Channel;
 use muhash::MuHash;
 use parking_lot::RwLock;
 use std::{
+    cmp::max,
     future::Future,
     sync::{atomic::Ordering, Arc},
 };
-use std::{cmp::max, future::Future, sync::atomic::Ordering};
 use std::{
     ops::DerefMut,
     thread::{self, JoinHandle},
@@ -103,9 +94,8 @@ pub struct Consensus {
     db: Arc<DB>,
 
     // Channels
-    block_sender: CrossbeamSender<BlockTask>,
-    utxoindex_sender: AsyncStdSender<ConsensusNotification>,
-    pub utxoindex_receiver: AsyncStdReceiver<ConsensusNotification>,
+    block_sender: CrossbeamSender<BlockProcessingMessage>,
+    pub rpc_channel: Channel<ConsensusNotification>,
 
     // Processors
     header_processor: Arc<HeaderProcessor>,
@@ -293,11 +283,13 @@ impl Consensus {
             relations_service.clone(),
         );
 
-        let (sender, receiver): (CrossbeamSender<BlockTask>, CrossbeamReceiver<BlockTask>) = unbounded_crossbeam();
-        let (body_sender, body_receiver): (CrossbeamSender<BlockTask>, CrossbeamReceiver<BlockTask>) = unbounded_crossbeam();
-        let (virtual_sender, virtual_receiver): (CrossbeamSender<BlockTask>, CrossbeamReceiver<BlockTask>) = unbounded_crossbeam();
-        let (utxoindex_sender, utxoindex_receiver): (AsyncStdSender<ConsensusNotification>, AsyncStdReceiver<ConsensusNotification>) =
-            unbounded_async_std();
+        let (sender, receiver): (CrossbeamSender<BlockProcessingMessage>, CrossbeamReceiver<BlockProcessingMessage>) =
+            unbounded_crossbeam();
+        let (body_sender, body_receiver): (CrossbeamSender<BlockProcessingMessage>, CrossbeamReceiver<BlockProcessingMessage>) =
+            unbounded_crossbeam();
+        let (virtual_sender, virtual_receiver): (CrossbeamSender<BlockProcessingMessage>, CrossbeamReceiver<BlockProcessingMessage>) =
+            unbounded_crossbeam();
+        let rpc_channel = Channel::<ConsensusNotification>::default();
 
         let counters = Arc::new(ProcessingCounters::default());
 
@@ -379,7 +371,7 @@ impl Consensus {
 
         let virtual_processor = Arc::new(VirtualStateProcessor::new(
             virtual_receiver,
-            utxoindex_sender.clone(),
+            rpc_channel.clone(),
             virtual_pool,
             params,
             config.process_genesis,
@@ -458,8 +450,7 @@ impl Consensus {
             pruning_proof_manager,
 
             counters,
-            utxoindex_sender,
-            utxoindex_receiver,
+            rpc_channel,
         }
     }
 

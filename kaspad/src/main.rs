@@ -105,7 +105,7 @@ pub fn main() {
     let monitor = Arc::new(ConsensusMonitor::new(consensus.processing_counters().clone()));
 
     let utxoindex_db = Arc::new(DB::open_default(utxoindex_db_dir.to_str().unwrap()).unwrap());
-    let utxoindex = Arc::new(UtxoIndex::new(consensus.clone(), utxoindex_db, consensus.utxoindex_receiver.clone()));
+    let utxoindex = Arc::new(UtxoIndex::new(consensus.clone(), utxoindex_db, consensus.rpc_channel.receiver.clone()));
 
     let notification_channel = ConsensusNotificationChannel::default();
 

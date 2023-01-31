@@ -1,10 +1,11 @@
+use async_channel::TrySendError;
 use async_channel::{unbounded, Receiver, Sender};
 
 /// Multiple producers multiple consumers channel
 #[derive(Clone, Debug)]
 pub struct Channel<T> {
-    sender: Sender<T>,
-    receiver: Receiver<T>,
+    pub sender: Sender<T>,
+    pub receiver: Receiver<T>,
 }
 
 impl<T> Channel<T> {
@@ -26,6 +27,10 @@ impl<T> Channel<T> {
 
     pub fn is_closed(&self) -> bool {
         self.receiver.is_closed()
+    }
+
+    pub fn try_send(&self, msg: T) -> Result<(), TrySendError<T>> {
+        self.sender.try_send(msg)
     }
 }
 

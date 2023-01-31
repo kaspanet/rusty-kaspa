@@ -43,19 +43,16 @@ use crate::{
         traversal_manager::DagTraversalManager,
     },
 };
-use async_std::channel::Sender as AsyncStdSender;
 use consensus_core::{
     block::{BlockTemplate, MutableBlock},
     blockstatus::BlockStatus::{self, StatusDisqualifiedFromChain, StatusUTXOPendingVerification, StatusUTXOValid},
     coinbase::{BlockRewardData, MinerData},
     header::Header,
     merkle::calc_hash_merkle_root,
+    muhash::MuHashExtensions,
     notify::ConsensusNotification,
     tx::{MutableTransaction, Transaction},
-    muhash::MuHashExtensions,
-    tx::{
-        PopulatedTransaction, Transaction, {MutableTransaction, TransactionOutpoint, UtxoEntry, ValidatedTransaction},
-    },
+    tx::{PopulatedTransaction, TransactionOutpoint, UtxoEntry, ValidatedTransaction},
     utxo::{
         utxo_diff::UtxoDiff,
         utxo_view::{UtxoView, UtxoViewComposition},
@@ -64,6 +61,7 @@ use consensus_core::{
 };
 use hashes::Hash;
 use kaspa_core::{debug, info, trace};
+use kaspa_utils::channel::Channel;
 use muhash::MuHash;
 
 use crossbeam_channel::Receiver as CrossbeamReceiver;
@@ -85,7 +83,7 @@ use super::errors::{VirtualProcessorError, VirtualProcessorResult};
 pub struct VirtualStateProcessor {
     // Channels
     receiver: CrossbeamReceiver<BlockProcessingMessage>,
-    utxoindex_sender: AsyncStdSender<ConsensusNotification>,
+    rpc_channel: Channel<ConsensusNotification>,
 
     // Thread pool
     pub(super) thread_pool: Arc<ThreadPool>,
@@ -139,7 +137,7 @@ impl VirtualStateProcessor {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         receiver: CrossbeamReceiver<BlockProcessingMessage>,
-        utxoindex_sender: AsyncStdSender<ConsensusNotification>,
+        rpc_channel: Channel<ConsensusNotification>,
         thread_pool: Arc<ThreadPool>,
         params: &Params,
         process_genesis: bool,
@@ -211,7 +209,7 @@ impl VirtualStateProcessor {
             pruning_manager,
             parents_manager,
             depth_manager,
-            utxoindex_sender,
+            rpc_channel,
         }
     }
 
@@ -385,7 +383,7 @@ impl VirtualStateProcessor {
                 drop(virtual_write);
 
                 // we try_send to rpc receiver since this is sync without blocking.
-                match self.utxoindex_sender.try_send(ConsensusNotification::VirtualChangeSet(new_virtual_state.into())) {
+                match self.rpc_channel.try_send(ConsensusNotification::VirtualChangeSet(new_virtual_state.into())) {
                     Ok(_) => (),
                     Err(_) => panic!("rpc receiver unreachable"), //TODO: Perhaps just ignore, if consensus does not care about utxoindex and other services runing.
                 }
