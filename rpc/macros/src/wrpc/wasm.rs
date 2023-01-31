@@ -1,4 +1,4 @@
-use crate::handler::Handler;
+use crate::handler::*;
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens};
 use std::convert::Into;
@@ -8,26 +8,6 @@ use syn::{
     punctuated::Punctuated,
     Error, Expr, ExprArray, Result, Token,
 };
-
-fn get_handlers(handlers: Expr) -> Result<ExprArray> {
-    let handlers = match handlers {
-        Expr::Array(array) => array,
-        _ => {
-            return Err(Error::new_spanned(handlers, "the argument must be an array of enum variants".to_string()));
-        }
-    };
-
-    for ph in handlers.elems.iter() {
-        match ph {
-            Expr::Path(_exp_path) => {}
-            _ => {
-                return Err(Error::new_spanned(ph, "handlers should contain enum variants".to_string()));
-            }
-        }
-    }
-
-    Ok(handlers)
-}
 
 #[derive(Debug)]
 struct RpcTable {

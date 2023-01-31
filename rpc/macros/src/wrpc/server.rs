@@ -1,5 +1,5 @@
-use convert_case::{Case, Casing};
-use proc_macro2::{Ident, Span, TokenStream};
+use crate::handler::*;
+use proc_macro2::TokenStream;
 use quote::{quote, ToTokens};
 use std::convert::Into;
 use syn::{
@@ -28,30 +28,12 @@ impl Parse for RpcTable {
 
         let mut iter = parsed.iter();
         let server_ctx = iter.next().unwrap().clone();
-        // let router_target = iter.next().unwrap().clone();
         let server_ctx_type = iter.next().unwrap().clone();
         let connection_ctx_type = iter.next().unwrap().clone();
         let rpc_api_ops = iter.next().unwrap().clone();
+        let handlers = get_handlers(iter.next().unwrap().clone())?;
 
-        let handlers_ = iter.next().unwrap().clone();
-        let mut handlers = match handlers_ {
-            Expr::Array(array) => array,
-            _ => {
-                return Err(Error::new_spanned(handlers_, "last argument must be an array of enum values".to_string()));
-            }
-        };
-
-        for ph in handlers.elems.iter_mut() {
-            match ph {
-                Expr::Path(_exp_path) => {}
-                _ => {
-                    return Err(Error::new_spanned(ph, "handlers should contain enum variants".to_string()));
-                }
-            }
-        }
-
-        let handlers = RpcTable { server_ctx, server_ctx_type, connection_ctx_type, rpc_api_ops, handlers };
-        Ok(handlers)
+        Ok(RpcTable { server_ctx, server_ctx_type, connection_ctx_type, rpc_api_ops, handlers })
     }
 }
 
@@ -64,10 +46,7 @@ impl ToTokens for RpcTable {
         let rpc_api_ops = &self.rpc_api_ops;
 
         for handler in self.handlers.elems.iter() {
-            let name = handler.to_token_stream().to_string();
-            let fn_call = Ident::new(&format!("{}_call", name.to_case(Case::Snake)), Span::call_site());
-            let request_type = Ident::new(&format!("{name}Request"), Span::call_site());
-            let response_type = Ident::new(&format!("{name}Response"), Span::call_site());
+            let Handler { fn_call, request_type, response_type, .. } = Handler::new(handler);
 
             targets.push(quote! {
                 #rpc_api_ops::#handler => {

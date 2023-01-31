@@ -1,9 +1,7 @@
 use convert_case::{Case, Casing};
-// use proc_macro::TokenStream;
 use proc_macro2::{Ident, Span};
-// use proc_macro_error::proc_macro_error;
 use quote::ToTokens;
-use syn::Expr;
+use syn::{Error, Expr, ExprArray, Result};
 
 pub struct Handler {
     pub name: String,
@@ -28,4 +26,24 @@ impl Handler {
         let response_type = Ident::new(&format!("{name}Response"), Span::call_site());
         Handler { name, fn_call, fn_with_suffix, fn_no_suffix, request_type, response_type }
     }
+}
+
+pub fn get_handlers(handlers: Expr) -> Result<ExprArray> {
+    let handlers = match handlers {
+        Expr::Array(array) => array,
+        _ => {
+            return Err(Error::new_spanned(handlers, "the argument must be an array of enum variants".to_string()));
+        }
+    };
+
+    for ph in handlers.elems.iter() {
+        match ph {
+            Expr::Path(_exp_path) => {}
+            _ => {
+                return Err(Error::new_spanned(ph, "handlers should contain enum variants".to_string()));
+            }
+        }
+    }
+
+    Ok(handlers)
 }
