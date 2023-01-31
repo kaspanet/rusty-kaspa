@@ -1,55 +1,105 @@
-use super::client::*;
-use kaspa_rpc_macros::build_wrpc_wasm_bindgen_interface;
-use rpc_core::{api::rpc::RpcApi, error::RpcResult, prelude::*};
-use serde_wasm_bindgen::*;
-use wasm_bindgen::prelude::*;
-use workflow_log::log_info;
-use workflow_rpc::client::prelude::Encoding;
+use crate::imports::*;
+pub use kaspa_rpc_macros::build_wrpc_wasm_bindgen_interface;
+pub use serde_wasm_bindgen::*;
+
 type JsResult<T> = std::result::Result<T, JsError>;
+
+struct NotificationSink(Function);
+unsafe impl Send for NotificationSink {}
+impl From<NotificationSink> for Function {
+    fn from(f: NotificationSink) -> Self {
+        f.0
+    }
+}
 
 #[wasm_bindgen]
 pub struct RpcClient {
     client: KaspaRpcClient,
+    notification_task: AtomicBool,
+    notification_ctl: DuplexChannel,
+    notification_callback: Arc<Mutex<Option<NotificationSink>>>,
 }
 
 #[wasm_bindgen]
 impl RpcClient {
     #[wasm_bindgen(constructor)]
     pub fn new(encoding: Encoding, url: &str) -> RpcClient {
-        RpcClient { client: KaspaRpcClient::new(encoding, url).unwrap_or_else(|err| panic!("{err}")) }
+        RpcClient {
+            client: KaspaRpcClient::new(encoding, url).unwrap_or_else(|err| panic!("{err}")),
+            notification_task: AtomicBool::new(false),
+            notification_ctl: DuplexChannel::oneshot(),
+            notification_callback: Arc::new(Mutex::new(None)),
+        }
     }
 
     pub async fn connect(&self) -> JsResult<()> {
+        self.notification_task()?;
         self.client.start().await?;
         self.client.connect(true).await?; //.unwrap();
         Ok(())
     }
 
     pub async fn disconnect(&self) -> JsResult<()> {
+        if self.notification_task.load(Ordering::SeqCst) {
+            self.notification_task.store(false, Ordering::SeqCst);
+            self.notification_ctl.signal(()).await.map_err(|err| JsError::new(&err.to_string()))?;
+        }
         self.client.stop().await?;
         self.client.shutdown().await?;
         Ok(())
     }
+
+    pub fn notify(&self, callback: Function) -> JsResult<()> {
+        self.notification_callback.lock().unwrap().replace(NotificationSink(callback));
+        Ok(())
+    }
 }
 
-// #[wasm_bindgen]
-// impl RpcClient {
-//     // pub async fn get_info(&self) -> JsResult<JsValue> {
-//     pub async fn get_info_ex(&self, value: JsValue) -> JsResult<JsValue> {
-//         let object: JsValue = if value.is_undefined() { Object::new().into() } else { value.into() };
-//         self.get_info_wasm(object).await
-//         // self.get_info_wasm(JsValue::default()).await
-//         // self.get_block_dag_info_wasm(object.into()).await
-//     }
+impl RpcClient {
+    fn notification_task(&self) -> JsResult<()> {
+        let ctl_receiver = self.notification_ctl.request.receiver.clone();
+        let ctl_sender = self.notification_ctl.response.sender.clone();
+        let notification_receiver = self.client.notification_receiver();
+        let notification_callback = self.notification_callback.clone();
 
-//     // pub async fn get_info(&self, request: JsValue) -> JsResult<JsValue> {
-//     //     self.get_info_wasm(request).await
-//     // }
-// }
+        spawn(async move {
+            loop {
+                select! {
+                    _ = ctl_receiver.recv().fuse() => {
+                        break;
+                    },
+                    msg = notification_receiver.recv().fuse() => {
+                        if let Ok(notification) = &msg {
+                            if let Some(callback) = notification_callback.lock().unwrap().as_ref() {
+                                let op: RpcApiOps = notification.into();
+                                let op_value = to_value(&op).map_err(|err|{
+                                    log_error!("Notification handler - unable to convert notification op: {}",err.to_string());
+                                }).ok();
+                                let op_payload = to_value(&notification).map_err(|err| {
+                                    log_error!("Notification handler - unable to convert notification payload: {}",err.to_string());
+                                }).ok();
+                                if op_value.is_none() || op_payload.is_none() {
+                                    continue;
+                                }
+                                if let Err(err) = callback.0.call2(&JsValue::undefined(), &op_value.unwrap(), &op_payload.unwrap()) {
+                                    log_error!("Error while executing notification callback: {:?}",err);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            ctl_sender.send(()).await.ok();
+        });
+
+        Ok(())
+    }
+}
 
 build_wrpc_wasm_bindgen_interface!(
     [
-        // list of functions with no arguments
+        // functions with no arguments
         GetBlockCount,
         GetBlockDagInfo,
         GetCoinSupply,
@@ -63,7 +113,7 @@ build_wrpc_wasm_bindgen_interface!(
         Shutdown,
     ],
     [
-        // list of functions with `request` argument
+        // functions with `request` argument
         AddPeer,
         Ban,
         EstimateNetworkHashesPerSecond,

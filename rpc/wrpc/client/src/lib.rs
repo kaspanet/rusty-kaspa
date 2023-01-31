@@ -1,5 +1,6 @@
 pub mod client;
 pub mod error;
+mod imports;
 pub mod result;
 pub mod wasm;
-pub use client::{KaspaRpcClient, NotificationMode, WrpcEncoding};
+pub use imports::{KaspaRpcClient, NotificationMode, WrpcEncoding};

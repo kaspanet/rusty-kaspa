@@ -1,7 +1,6 @@
 use thiserror::Error;
 use workflow_core::channel::ChannelError;
 use workflow_rpc::client::error::Error as RpcError;
-// use wasm_bindgen::prelude::*;
 
 #[derive(Debug, Error)]
 pub enum Error {
