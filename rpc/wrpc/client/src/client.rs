@@ -32,7 +32,7 @@ impl KaspaRpcClient {
     pub fn new_with_args(encoding: Encoding, notification_mode: NotificationMode, url: &str) -> Result<KaspaRpcClient> {
         let re = Regex::new(r"^wrpc").unwrap();
         let url = re.replace(url, "ws").to_string();
-        log_trace!("Kaspa wRPC::{encoding} client url: {url}");
+        // log_trace!("Kaspa wRPC::{encoding} connecting to: {url}");
         let options = RpcClientOptions { url: &url, ..RpcClientOptions::default() };
 
         let notifier = if matches!(notification_mode, NotificationMode::NotSynced) {

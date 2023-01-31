@@ -118,7 +118,7 @@ impl WalletCli {
     }
 
     pub fn notification_pipe_task(self: &Arc<Self>) {
-        log_info!("### starting notification processor");
+        // log_info!("### starting notification processor");
         let self_ = self.clone();
         let term = self.term().unwrap_or_else(|| panic!("WalletCli::notification_pipe_task(): `term` is not initialized"));
         let notification_channel_receiver = self.wallet.rpc.notification_channel_receiver();
@@ -198,7 +198,7 @@ pub async fn kaspa_wallet_cli(options: TerminalOptions) -> Result<()> {
 
     // cli starts notification->term trace pipe task
     cli.start().await?;
-    term.writeln(format!("Kaspa Cli Wallet {} (type 'help' for list of commands)", env!("CARGO_PKG_VERSION")));
+    term.writeln(format!("Kaspa Cli Wallet v{} (type 'help' for list of commands)", env!("CARGO_PKG_VERSION")));
 
     // wallet starts rpc and notifier
     wallet.start().await?;
