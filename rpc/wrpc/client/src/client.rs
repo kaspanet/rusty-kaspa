@@ -19,6 +19,7 @@ pub struct KaspaRpcClient {
     notification_mode: NotificationMode,
     // notification_ctl: DuplexChannel,
     notification_channel: Channel<Notification>,
+    encoding: Encoding,
 }
 
 // #[wasm_bindgen]
@@ -91,7 +92,7 @@ impl KaspaRpcClient {
             notifier,
             notification_mode,
             notification_channel,
-            // notification_ctl: DuplexChannel::oneshot(),
+            encoding, // notification_ctl: DuplexChannel::oneshot(),
         };
 
         // client.notifier.clone().map(|notifier|notifier.start());
@@ -149,6 +150,10 @@ impl KaspaRpcClient {
 
     pub fn notification_channel_receiver(&self) -> Receiver<Notification> {
         self.notification_channel.receiver.clone()
+    }
+
+    pub fn encoding(&self) -> Encoding {
+        self.encoding
     }
 
     // pub fn notification_relay_task(self: &Arc<Self>) -> Result<()> {
