@@ -32,6 +32,19 @@ pub fn init_logger(filters: &str) {
         .init();
 }
 
+/// Tries to init the global logger, but does not panic if it was already setup.
+/// Should be used for tests.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn try_init_logger(filters: &str) {
+    let _ = env_logger::Builder::new()
+        .format_target(false)
+        .format_timestamp_secs()
+        .filter_level(log::LevelFilter::Info)
+        .parse_default_env()
+        .parse_filters(filters)
+        .try_init();
+}
+
 #[cfg(target_arch = "wasm32")]
 #[macro_export]
 macro_rules! trace {

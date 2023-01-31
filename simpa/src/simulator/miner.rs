@@ -14,6 +14,7 @@ use consensus_core::tx::{
 use consensus_core::utxo::utxo_view::UtxoView;
 use futures::future::join_all;
 use indexmap::IndexSet;
+use kaspa_core::trace;
 use rand::rngs::ThreadRng;
 use rand::Rng;
 use rand_distr::{Distribution, Exp};
@@ -53,7 +54,6 @@ pub struct Miner {
     target_txs_per_block: u64,
     target_blocks: Option<u64>,
     max_cached_outpoints: usize,
-    verbose: bool,
 }
 
 impl Miner {
@@ -67,7 +67,6 @@ impl Miner {
         params: &Params,
         target_txs_per_block: u64,
         target_blocks: Option<u64>,
-        verbose: bool,
     ) -> Self {
         Self {
             id,
@@ -84,7 +83,6 @@ impl Miner {
             target_txs_per_block,
             target_blocks,
             max_cached_outpoints: 100_000,
-            verbose,
         }
     }
 
@@ -198,7 +196,7 @@ impl Miner {
         if self.report_progress(env) {
             Suspension::Halt
         } else {
-            self.futures.push(Box::pin(self.consensus.validate_and_insert_block(block)));
+            self.futures.push(Box::pin(self.consensus.validate_and_insert_block(block, true)));
             Suspension::Idle
         }
     }
@@ -210,11 +208,11 @@ impl Miner {
                 return true; // Exit
             }
         }
-        if !self.verbose {
+        if self.id != 0 {
             return false;
         }
         if self.num_blocks % 50 == 0 || self.sim_time / 5000 != env.now() / 5000 {
-            println!("Simulation time: {}.  \tGenerated {} blocks.", env.now() as f64 / 1000.0, self.num_blocks);
+            trace!("Simulation time: {}\tGenerated {} blocks", env.now() as f64 / 1000.0, self.num_blocks);
         }
         self.sim_time = env.now();
         false

@@ -105,7 +105,12 @@ impl BlockBodyProcessor {
 
 #[cfg(test)]
 mod tests {
-    use crate::{consensus::test_consensus::TestConsensus, errors::RuleError, params::MAINNET_PARAMS};
+    use crate::{
+        config::{Config, ConfigBuilder},
+        consensus::test_consensus::TestConsensus,
+        errors::RuleError,
+        params::MAINNET_PARAMS,
+    };
     use consensus_core::{
         block::MutableBlock,
         header::Header,
@@ -118,8 +123,7 @@ mod tests {
 
     #[test]
     fn validate_body_in_isolation_test() {
-        let params = &MAINNET_PARAMS;
-        let consensus = TestConsensus::create_from_temp_db(params);
+        let consensus = TestConsensus::create_from_temp_db(&Config::new(MAINNET_PARAMS));
         let wait_handles = consensus.init();
 
         let body_processor = consensus.block_body_processor();
@@ -430,11 +434,11 @@ mod tests {
 
     #[tokio::test]
     async fn merkle_root_missing_parents_known_invalid_test() {
-        let params = MAINNET_PARAMS.clone_with_skip_pow();
-        let consensus = TestConsensus::create_from_temp_db(&params);
+        let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().build();
+        let consensus = TestConsensus::create_from_temp_db(&config);
         let wait_handles = consensus.init();
 
-        let mut block = consensus.build_block_with_parents_and_transactions(1.into(), vec![params.genesis_hash], vec![]);
+        let mut block = consensus.build_block_with_parents_and_transactions(1.into(), vec![config.genesis_hash], vec![]);
         block.transactions[0].version += 1;
 
         assert_match!(consensus.validate_and_insert_block(block.clone().to_immutable()).await, Err(RuleError::BadMerkleRoot(_, _)));
@@ -442,7 +446,7 @@ mod tests {
         // BadMerkleRoot shouldn't mark the block as known invalid
         assert_match!(consensus.validate_and_insert_block(block.to_immutable()).await, Err(RuleError::BadMerkleRoot(_, _)));
 
-        let mut block = consensus.build_block_with_parents_and_transactions(1.into(), vec![params.genesis_hash], vec![]);
+        let mut block = consensus.build_block_with_parents_and_transactions(1.into(), vec![config.genesis_hash], vec![]);
         block.header.parents_by_level[0][0] = 0.into();
 
         assert_match!(consensus.validate_and_insert_block(block.clone().to_immutable()).await, Err(RuleError::MissingParents(_)));

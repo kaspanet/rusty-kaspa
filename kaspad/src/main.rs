@@ -3,6 +3,7 @@ extern crate core;
 extern crate hashes;
 
 use clap::Parser;
+use consensus::config::Config;
 use consensus::model::stores::DB;
 use kaspa_core::{core::Core, signals::Signals, task::runtime::AsyncRuntime};
 use std::fs;
@@ -68,7 +69,11 @@ pub fn main() {
     // Initialize the logger
     kaspa_core::log::init_logger(&args.log_level);
 
+    // Print package name and version
     info!("{} v{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+
+    // Configure the panic behavior
+    kaspa_core::panic::configure_panic();
 
     // TODO: Refactor all this quick-and-dirty code
     let app_dir = args
@@ -77,29 +82,29 @@ pub fn main() {
         .replace('~', get_home_dir().as_path().to_str().unwrap());
     let app_dir = if app_dir.is_empty() { get_app_dir() } else { PathBuf::from(app_dir) };
     let db_dir = app_dir.join(DEFAULT_DATA_DIR);
-    let consensus_store = app_dir.join(CONSENSUS_DB);
-    let utxoindex_store = app_dir.join(UTXOINDEX_DB);
+    let consensus_db_dir = app_dir.join(CONSENSUS_DB);
+    let utxoindex_db_dir = app_dir.join(UTXOINDEX_DB);
     assert!(!db_dir.to_str().unwrap().is_empty());
     info!("Application directory: {}", app_dir.as_display());
     info!("Data directory: {}", db_dir.as_display());
-    info!("Consensus {}", consensus_store.as_display());
-    info!("Utxoindex {}", utxoindex_store.as_display());
-    fs::create_dir_all(consensus_store.as_path()).unwrap();
-    fs::create_dir_all(utxoindex_store.as_path()).unwrap();
+    info!("Consensus Data directory {}", consensus_db_dir.as_display());
+    info!("Utxoindex Data directory {}", utxoindex_db_dir.as_display());
+    fs::create_dir_all(consensus_db_dir.as_path()).unwrap();
+    fs::create_dir_all(utxoindex_db_dir.as_path()).unwrap();
     let grpc_server_addr = args.rpc_listen.unwrap_or_else(|| "127.0.0.1:16610".to_string()).parse().unwrap();
 
     let core = Arc::new(Core::new());
 
     // ---
 
-    let params = DEVNET_PARAMS;
+    let config = Config::new(DEVNET_PARAMS); // TODO: network type
 
-    let consensus_db = Arc::new(DB::open_default(consensus_store.to_str().unwrap()).unwrap());
-    let consensus = Arc::new(Consensus::new(consensus_db, &params));
+    let consensus_db = Arc::new(DB::open_default(consensus_db_dir.to_str().unwrap()).unwrap());
+    let consensus = Arc::new(Consensus::new(consensus_db, &config));
 
     let monitor = Arc::new(ConsensusMonitor::new(consensus.processing_counters().clone()));
 
-    let utxoindex_db = Arc::new(DB::open_default(utxoindex_store.to_str().unwrap()).unwrap());
+    let utxoindex_db = Arc::new(DB::open_default(utxoindex_db_dir.to_str().unwrap()).unwrap());
     let utxoindex = Arc::new(UtxoIndex::new(consensus.clone(), utxoindex_db, consensus.utxoindex_receiver.clone()));
 
     let notification_channel = ConsensusNotificationChannel::default();

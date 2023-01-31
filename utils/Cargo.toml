@@ -7,6 +7,6 @@ include.workspace = true
 license.workspace = true
 
 [dependencies]
-async-std.workspace = true
+async-channel.workspace = true
 triggered = "0.1"
 serde = "1.0.152"

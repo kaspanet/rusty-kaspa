@@ -33,7 +33,7 @@ pub struct DbAcceptanceDataStore {
 
 impl DbAcceptanceDataStore {
     pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
-        Self { db: Arc::clone(&db), access: CachedDbAccess::new(Arc::clone(&db), cache_size, STORE_PREFIX) }
+        Self { db: Arc::clone(&db), access: CachedDbAccess::new(Arc::clone(&db), cache_size, STORE_PREFIX.to_vec()) }
     }
 
     pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {
