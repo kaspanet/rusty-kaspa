@@ -68,7 +68,7 @@ impl KaspaRpcClient {
                     let notifier = notifier_.clone();
                     let notification_sender = notification_sender_.clone();
                     Box::pin(async move {
-                        log_info!("notification receivers: {}", notification_sender.receiver_count());
+                        // log_info!("notification receivers: {}", notification_sender.receiver_count());
                         // log_trace!("notification {:?}", notification);
                         if let Some(notifier) = &notifier {
                             // log_info!("notification: posting to notifier");
