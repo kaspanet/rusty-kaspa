@@ -201,7 +201,7 @@ pub async fn kaspa_wallet_cli(options: TerminalOptions) -> Result<()> {
     // cli starts notification->term trace pipe task
     cli.start().await?;
     term.writeln(format!("Version: {}", env!("CARGO_PKG_VERSION")));
-    term.writeln(format!("Encoding: {}", encoding));
+    term.writeln(format!("Encoding: {encoding}"));
     term.writeln("Kaspa Cli Wallet (type 'help' for list of commands)");
 
     // wallet starts rpc and notifier
