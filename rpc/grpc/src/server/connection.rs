@@ -1,6 +1,6 @@
 use crate::{protowire::KaspadResponse, server::StatusResult};
 use futures::pin_mut;
-use kaspa_core::trace;
+use kaspa_core::{error, trace};
 use kaspa_rpc_core::notify::{
     listener::{ListenerID, ListenerReceiverSide},
     notifier::Notifier,
@@ -121,6 +121,9 @@ impl GrpcConnectionManager {
     pub(crate) async fn unregister(&mut self, address: SocketAddr) {
         if let Some(connection) = self.connections.remove(&address) {
             trace!("dismiss a gRPC connection from: {}", connection.address);
+            if let Err(err) = self.notifier.clone().unregister_listener(connection.notify_listener.id) {
+                error!("unregistering listener id {0} failed with {err:?}", connection.notify_listener.id);
+            }
             //connection.sender.closed().await;
             connection.stop().await;
         }
