@@ -9,6 +9,7 @@ use workflow_rpc::server::prelude::*;
 #[derive(Debug)]
 pub struct ConnectionInner {
     pub id: u64,
+    pub peer : SocketAddr,
     pub messenger: Arc<Messenger>,
     pub grpc_api: Option<Arc<RpcApiGrpc>>,
     // not using an atomic in case an Id will change type in the future...
@@ -29,10 +30,11 @@ pub struct Connection {
 }
 
 impl Connection {
-    pub fn new(id: u64, _peer: &SocketAddr, messenger: Arc<Messenger>, grpc_api: Option<Arc<RpcApiGrpc>>) -> Connection {
+    pub fn new(id: u64, peer: &SocketAddr, messenger: Arc<Messenger>, grpc_api: Option<Arc<RpcApiGrpc>>) -> Connection {
         Connection {
             inner: Arc::new(ConnectionInner {
                 id,
+                peer : *peer,
                 messenger,
                 grpc_api,
                 listener_id: Mutex::new(None),
@@ -74,6 +76,10 @@ impl Connection {
 
     pub fn has_listener_id(&self, id: &u64) -> bool {
         self.inner.subscriptions.lock().unwrap().get(id).is_some()
+    }
+
+    pub fn peer(&self) -> &SocketAddr {
+        &self.inner.peer
     }
 }
 

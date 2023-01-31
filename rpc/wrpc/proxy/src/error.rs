@@ -1,5 +1,8 @@
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
+    #[error("{0}")]
+    Other(String),
+
     #[error(transparent)]
     GrpcApi(#[from] rpc_core::error::RpcError),
 
@@ -11,4 +14,10 @@ pub enum Error {
 
     #[error(transparent)]
     WebSocket(#[from] workflow_websocket::server::error::Error),
+}
+
+impl From<String> for Error {
+    fn from(s: String) -> Self {
+        Error::Other(s)
+    }
 }
