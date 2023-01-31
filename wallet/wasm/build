@@ -1,1 +1,0 @@
-wasm-pack build --target web --out-name kaspa-wallet --out-dir root/kaspa-wallet

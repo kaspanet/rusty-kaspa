@@ -140,7 +140,11 @@ pub fn main() {
                     wrpc_service_tasks,
                     rpc_core_server.service(),
                     encoding,
-                    WrpcServerOptions { listen_address: listen_address.to_string(), verbose: args.wrpc_verbose },
+                    WrpcServerOptions {
+                        listen_address: listen_address.to_string(),
+                        verbose: args.wrpc_verbose,
+                        ..WrpcServerOptions::default()
+                    },
                 ))
             })
         })

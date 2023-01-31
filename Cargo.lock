@@ -645,6 +645,7 @@ dependencies = [
  "cfg-if",
  "faster-hex",
  "futures-util",
+ "getrandom 0.2.8",
  "hashes",
  "itertools 0.10.5",
  "math",
@@ -1444,6 +1445,7 @@ version = "0.1.0"
 dependencies = [
  "bs58",
  "faster-hex",
+ "getrandom 0.2.8",
  "hmac",
  "once_cell",
  "pbkdf2",
@@ -1569,6 +1571,7 @@ dependencies = [
  "sha2 0.10.6",
  "thiserror",
  "tokio",
+ "wasm-bindgen",
  "workflow-core",
  "workflow-log",
  "workflow-rpc",
@@ -1584,6 +1587,7 @@ dependencies = [
  "kaspa-utils",
  "kaspa-wallet-core",
  "kaspa-wrpc-client",
+ "kaspa-wrpc-wasm",
  "rpc-core",
  "wasm-bindgen",
 ]
@@ -1595,12 +1599,18 @@ dependencies = [
  "async-std",
  "async-trait",
  "borsh",
+ "futures",
+ "js-sys",
  "kaspa-rpc-macros",
  "paste",
  "regex",
  "rpc-core",
  "serde",
+ "serde-wasm-bindgen",
+ "serde_json",
  "thiserror",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
  "workflow-core",
  "workflow-log",
  "workflow-rpc",
@@ -1650,6 +1660,13 @@ dependencies = [
  "workflow-rpc",
  "workflow-task",
  "workflow-websocket",
+]
+
+[[package]]
+name = "kaspa-wrpc-wasm"
+version = "0.1.0"
+dependencies = [
+ "kaspa-wrpc-client",
 ]
 
 [[package]]
@@ -2565,6 +2582,7 @@ dependencies = [
  "paste",
  "prost",
  "rand 0.8.5",
+ "regex",
  "rpc-core",
  "thiserror",
  "tokio",
@@ -2693,6 +2711,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bb7d1f0d3021d347a83e556fc4683dea2ea09d87bccdf88ff5c12545d89d5efb"
 dependencies = [
  "serde_derive",
+]
+
+[[package]]
+name = "serde-wasm-bindgen"
+version = "0.4.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e3b4c031cd0d9014307d82b8abf653c0290fbdaeb4c02d00c63cf52f728628bf"
+dependencies = [
+ "js-sys",
+ "serde",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -3783,6 +3812,7 @@ dependencies = [
  "futures",
  "futures-util",
  "js-sys",
+ "regex",
  "thiserror",
  "tokio",
  "tokio-tungstenite",

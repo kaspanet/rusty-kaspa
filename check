@@ -1,0 +1,27 @@
+cargo fmt --all
+cargo clippy
+
+declare -a crates=(
+    "kaspa-core"
+    "consensus-core"
+    "addresses"
+    "hashes"
+    "math"
+    "rpc-core"
+    "kaspa-bip32"
+    "kaspa-wrpc-client"
+    "kaspa-wrpc-wasm"
+    "kaspa-wallet-core"
+    "kaspa-wallet-cli"
+    "kaspa-wallet-cli-wasm"
+    "kaspa-wasm"
+)
+
+for crate in "${crates[@]}"
+do
+    cargo clippy -p $crate --target wasm32-unknown-unknown
+    if [ $? -ne 0 ]; then
+        echo "\n--> $crate\n"
+        exit $code
+    fi
+done

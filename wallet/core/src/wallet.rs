@@ -1,6 +1,6 @@
 use crate::result::Result;
 use crate::wallets::HDWalletGen1;
-use kaspa_wrpc_client::{KaspaRpcClient, WrpcEncoding};
+use kaspa_wrpc_client::{KaspaRpcClient, NotificationMode, WrpcEncoding};
 use rpc_core::{api::rpc::RpcApi, prelude::ListenerID as ListenerId, NotificationMessage, NotificationType};
 use std::sync::{Arc, Mutex};
 use workflow_core::channel::{Channel, Receiver};
@@ -11,6 +11,7 @@ pub struct Wallet {
     hd_wallet: HDWalletGen1,
     listener_id: Arc<Mutex<Option<ListenerId>>>,
     notification_channel: Channel<Arc<NotificationMessage>>,
+    notification_mode: NotificationMode,
 }
 
 impl Wallet {
@@ -18,11 +19,13 @@ impl Wallet {
         let master_xprv =
             "kprv5y2qurMHCsXYrNfU3GCihuwG3vMqFji7PZXajMEqyBkNh9UZUJgoHYBLTKu1eM4MvUtomcXPQ3Sw9HZ5ebbM4byoUciHo1zrPJBQfqpLorQ";
 
+        let notification_mode = NotificationMode::Direct;
         let wallet = Wallet {
-            rpc: Arc::new(KaspaRpcClient::new(WrpcEncoding::Borsh, "wrpc://localhost:17110")?),
+            rpc: Arc::new(KaspaRpcClient::new_with_args(WrpcEncoding::Borsh, notification_mode.clone(), "wrpc://localhost:17110")?),
             hd_wallet: HDWalletGen1::from_master_xprv(master_xprv, false, 0).await?,
             notification_channel: Channel::unbounded(),
             listener_id: Arc::new(Mutex::new(None)),
+            notification_mode,
         };
 
         Ok(wallet)
@@ -37,22 +40,33 @@ impl Wallet {
     }
 
     // intended for starting async management tasks
-    pub async fn start(self: &Arc<Self>) -> Result<()> {
-        self.rpc.start()?;
-        // self.rpc.connect_as_task()?;
-        let id = self.rpc.register_new_listener(self.notification_channel.sender.clone());
-        *self.listener_id.lock().unwrap() = Some(id);
+    pub async fn start(self: &Arc<Wallet>) -> Result<()> {
+        self.rpc.start().await?;
+        self.rpc.connect_as_task()?;
+
+        // TODO - this won't work if implementing NotificationMode::Synced
+        if matches!(self.notification_mode, NotificationMode::NotSynced) {
+            let id = self.rpc.register_new_listener(self.notification_channel.sender.clone());
+            *self.listener_id.lock().unwrap() = Some(id);
+        }
         Ok(())
     }
 
     // intended for stopping async management task
-    pub async fn stop(self: &Arc<Self>) -> Result<()> {
+    pub async fn stop(self: &Arc<Wallet>) -> Result<()> {
         self.rpc.stop().await?;
         Ok(())
     }
 
     pub fn listener_id(&self) -> ListenerId {
-        self.listener_id.lock().unwrap().unwrap_or_else(|| panic!("Wallet is missing notification `listener_id`"))
+        match &self.notification_mode {
+            NotificationMode::NotSynced => self
+                .listener_id
+                .lock()
+                .unwrap()
+                .unwrap_or_else(|| panic!("Wallet::listener_id is not present for `NotificationMode::NotSynced`")),
+            NotificationMode::Direct => ListenerId::default(),
+        }
     }
 
     // ~~~
@@ -81,49 +95,49 @@ impl Wallet {
         Ok("not implemented".to_string())
     }
 
-    pub async fn balance(self: &Arc<Self>) -> Result<()> {
+    pub async fn balance(self: &Arc<Wallet>) -> Result<()> {
         Ok(())
     }
 
-    pub async fn broadcast(self: &Arc<Self>) -> Result<()> {
+    pub async fn broadcast(self: &Arc<Wallet>) -> Result<()> {
         Ok(())
     }
 
-    pub async fn create(self: &Arc<Self>) -> Result<()> {
+    pub async fn create(self: &Arc<Wallet>) -> Result<()> {
         Ok(())
     }
 
-    pub async fn create_unsigned_transaction(self: &Arc<Self>) -> Result<()> {
+    pub async fn create_unsigned_transaction(self: &Arc<Wallet>) -> Result<()> {
         Ok(())
     }
 
-    pub async fn dump_unencrypted(self: &Arc<Self>) -> Result<()> {
+    pub async fn dump_unencrypted(self: &Arc<Wallet>) -> Result<()> {
         Ok(())
     }
 
-    pub async fn new_address(self: &Arc<Self>) -> Result<String> {
+    pub async fn new_address(self: &Arc<Wallet>) -> Result<String> {
         let address = self.hd_wallet.receive_wallet().new_address().await?;
         Ok(address.into())
         //Ok("new_address".to_string())
     }
 
-    pub async fn parse(self: &Arc<Self>) -> Result<()> {
+    pub async fn parse(self: &Arc<Wallet>) -> Result<()> {
         Ok(())
     }
 
-    pub async fn send(self: &Arc<Self>) -> Result<()> {
+    pub async fn send(self: &Arc<Wallet>) -> Result<()> {
         Ok(())
     }
 
-    pub async fn show_address(self: &Arc<Self>) -> Result<()> {
+    pub async fn show_address(self: &Arc<Wallet>) -> Result<()> {
         Ok(())
     }
 
-    pub async fn sign(self: &Arc<Self>) -> Result<()> {
+    pub async fn sign(self: &Arc<Wallet>) -> Result<()> {
         Ok(())
     }
 
-    pub async fn sweep(self: &Arc<Self>) -> Result<()> {
+    pub async fn sweep(self: &Arc<Wallet>) -> Result<()> {
         Ok(())
     }
 }

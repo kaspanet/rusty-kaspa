@@ -1,5 +1,5 @@
 use crate::NotificationMessage;
-use crate::{model::message::*, RpcAddress};
+use crate::{api::ops::RpcApiOps, model::message::*, RpcAddress};
 use async_channel::{Receiver, Sender};
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
@@ -9,28 +9,44 @@ use std::sync::Arc;
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub enum NotificationType {
     BlockAdded,
-    VirtualSelectedParentChainChanged,
     FinalityConflict,
     FinalityConflictResolved,
-    UtxosChanged(Vec<RpcAddress>),
-    VirtualSelectedParentBlueScoreChanged,
-    VirtualDaaScoreChanged,
-    PruningPointUtxoSetOverride,
     NewBlockTemplate,
+    PruningPointUtxoSetOverride,
+    UtxosChanged(Vec<RpcAddress>),
+    VirtualDaaScoreChanged,
+    VirtualSelectedParentBlueScoreChanged,
+    VirtualSelectedParentChainChanged,
 }
 
 impl From<&Notification> for NotificationType {
     fn from(item: &Notification) -> Self {
         match item {
             Notification::BlockAdded(_) => NotificationType::BlockAdded,
-            Notification::VirtualSelectedParentChainChanged(_) => NotificationType::VirtualSelectedParentChainChanged,
             Notification::FinalityConflict(_) => NotificationType::FinalityConflict,
             Notification::FinalityConflictResolved(_) => NotificationType::FinalityConflictResolved,
-            Notification::UtxosChanged(_) => NotificationType::UtxosChanged(vec![]),
-            Notification::VirtualSelectedParentBlueScoreChanged(_) => NotificationType::VirtualSelectedParentBlueScoreChanged,
-            Notification::VirtualDaaScoreChanged(_) => NotificationType::VirtualDaaScoreChanged,
-            Notification::PruningPointUtxoSetOverride(_) => NotificationType::PruningPointUtxoSetOverride,
             Notification::NewBlockTemplate(_) => NotificationType::NewBlockTemplate,
+            Notification::PruningPointUtxoSetOverride(_) => NotificationType::PruningPointUtxoSetOverride,
+            Notification::UtxosChanged(_) => NotificationType::UtxosChanged(vec![]),
+            Notification::VirtualDaaScoreChanged(_) => NotificationType::VirtualDaaScoreChanged,
+            Notification::VirtualSelectedParentBlueScoreChanged(_) => NotificationType::VirtualSelectedParentBlueScoreChanged,
+            Notification::VirtualSelectedParentChainChanged(_) => NotificationType::VirtualSelectedParentChainChanged,
+        }
+    }
+}
+
+impl From<&Notification> for RpcApiOps {
+    fn from(item: &Notification) -> Self {
+        match item {
+            Notification::BlockAdded(_) => RpcApiOps::NotifyBlockAdded,
+            Notification::FinalityConflict(_) => RpcApiOps::NotifyFinalityConflict,
+            Notification::FinalityConflictResolved(_) => RpcApiOps::NotifyFinalityConflictResolved,
+            Notification::NewBlockTemplate(_) => RpcApiOps::NotifyNewBlockTemplate,
+            Notification::PruningPointUtxoSetOverride(_) => RpcApiOps::NotifyPruningPointUtxoSetOverride,
+            Notification::UtxosChanged(_) => RpcApiOps::NotifyUtxosChanged,
+            Notification::VirtualDaaScoreChanged(_) => RpcApiOps::NotifyVirtualDaaScoreChanged,
+            Notification::VirtualSelectedParentBlueScoreChanged(_) => RpcApiOps::NotifyVirtualSelectedParentBlueScoreChanged,
+            Notification::VirtualSelectedParentChainChanged(_) => RpcApiOps::NotifyVirtualSelectedParentChainChanged,
         }
     }
 }
@@ -39,14 +55,14 @@ impl From<&Notification> for NotificationType {
 #[allow(clippy::large_enum_variant)]
 pub enum Notification {
     BlockAdded(BlockAddedNotification),
-    VirtualSelectedParentChainChanged(VirtualSelectedParentChainChangedNotification),
     FinalityConflict(FinalityConflictNotification),
     FinalityConflictResolved(FinalityConflictResolvedNotification),
-    UtxosChanged(UtxosChangedNotification),
-    VirtualSelectedParentBlueScoreChanged(VirtualSelectedParentBlueScoreChangedNotification),
-    VirtualDaaScoreChanged(VirtualDaaScoreChangedNotification),
-    PruningPointUtxoSetOverride(PruningPointUtxoSetOverrideNotification),
     NewBlockTemplate(NewBlockTemplateNotification),
+    PruningPointUtxoSetOverride(PruningPointUtxoSetOverrideNotification),
+    UtxosChanged(UtxosChangedNotification),
+    VirtualDaaScoreChanged(VirtualDaaScoreChangedNotification),
+    VirtualSelectedParentBlueScoreChanged(VirtualSelectedParentBlueScoreChangedNotification),
+    VirtualSelectedParentChainChanged(VirtualSelectedParentChainChangedNotification),
 }
 
 impl Display for Notification {

@@ -22,6 +22,7 @@ zeroize.workspace = true
 async-trait.workspace = true
 secp256k1.workspace = true
 faster-hex.workspace = true
+wasm-bindgen.workspace = true
 
-[dev-dependencies]
-tokio = "*"
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+tokio.workspace = true

@@ -2,14 +2,19 @@ use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use workflow_core::{enums::Describe, seal};
 
-seal!(0x6887, {
+seal!(0x121c, {
     // ^^^^^ NOTE: This enum is used for binary RPC data exchange, if you
     //             add any new variants to this enum, please inform the
     //             core development team to facilitate a protocol update.
     //             If making any changes to this code block, please update
     //             to the new seal value reported by the compiler.
     //
+    //             Also note that this macro produces a const variable
+    //             named `SEAL`, that can be used during RPC protocol
+    //             handshake negotiation.
+    //
     #[derive(Describe, Clone, Debug, PartialEq, Eq, Hash, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
     pub enum RpcApiOps {
         AddPeer,
         Ban,
@@ -46,7 +51,8 @@ seal!(0x6887, {
         // Subscription commands for starting/stopping notifications
         NotifyBlockAdded,
         NotifyFinalityConflict,
-        NotifyFinalityConflicts,
+        NotifyFinalityConflictResolved, // TODO added to match NotificationType
+        NotifyFinalityConflicts,        // TODO - missing in NotificationType
         NotifyNewBlockTemplate,
         NotifyPruningPointUtxoSetOverride,
         NotifyUtxosChanged,

@@ -1,6 +1,8 @@
+use self::errors::Error;
 use self::resolver::Resolver;
 use self::result::Result;
 use async_trait::async_trait;
+use regex::Regex;
 use rpc_core::{
     api::ops::RpcApiOps,
     api::rpc::RpcApi,
@@ -32,6 +34,10 @@ pub struct RpcApiGrpc {
 
 impl RpcApiGrpc {
     pub async fn connect(address: String) -> Result<RpcApiGrpc> {
+        let schema = Regex::new(r"^grpc://").unwrap();
+        if !schema.is_match(&address) {
+            return Err(Error::GrpcAddressSchema(address));
+        }
         let notify_channel = NotificationChannel::default();
         let inner = Resolver::connect(address, notify_channel.sender()).await?;
         let collector = Arc::new(RpcCoreCollector::new(notify_channel.receiver()));

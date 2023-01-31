@@ -341,6 +341,7 @@ impl Debug for HDWalletGen1 {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[cfg(test)]
 mod tests {
     use super::HDWalletGen1;
@@ -395,6 +396,7 @@ mod tests {
             "kaspa:qrqg7r05nk7syxjh8rdz8wanzmyh8sdts9uexxnnwkq8fplrjammvcnrdggw0".to_string(),
         ]
     }
+
     #[tokio::test]
     async fn hd_wallet_gen1() {
         let master_xprv =

@@ -104,7 +104,8 @@ impl NotificationTask {
                         if let Ok(msg) = msg {
                             let NotificationMessage { id, payload } = &*msg;
                             if let Some(connection) = listeners.get(id) {
-                                connection.messenger().notify(RpcApiOps::Notification,payload.clone()).await.ok();
+                                let notification_op: RpcApiOps = (&**payload).into();
+                                connection.messenger().notify(notification_op,payload.clone()).await.ok();
                             }
                         }
                     }

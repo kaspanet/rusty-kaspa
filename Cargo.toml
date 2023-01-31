@@ -23,6 +23,7 @@ members = [
     "rpc/wrpc/client",
     "rpc/wrpc/server",
     "rpc/wrpc/proxy",
+    "rpc/wrpc/wasm",
     "mining",
     "p2p",
 ]
@@ -53,6 +54,7 @@ kaspa-rpc-macros = { path = "rpc/macros" }
 kaspa-wrpc-client = { path = "rpc/wrpc/client" }
 kaspa-wrpc-server = { path = "rpc/wrpc/server" }
 kaspa-wrpc-proxy = { path = "rpc/wrpc/proxy" }
+kaspa-wrpc-wasm = { path = "rpc/wrpc/wasm" }
 kaspa-wallet-core = { path = "wallet/core" }
 kaspa-wallet-cli = { path = "wallet/cli" }
 kaspa-wallet-cli-native = { path = "wallet/native" }
@@ -69,6 +71,8 @@ rand_chacha = "0.3"
 rayon = "1"
 tempfile = "3.3"
 serde = { version = "1", features = ["derive", "rc"] }
+serde_json = "1.0.91"
+serde-wasm-bindgen = "0.4.5"
 futures-util = { version = "0.3", default-features = false, features = [
     "alloc",
 ] }
@@ -94,6 +98,7 @@ convert_case = "0.5.0"
 wasm-bindgen-futures="0.4.33"
 js-sys = "0.3.56"
 num_cpus = "1.15.0"
+getrandom = { version = "0.2.8", features = ["js"] }
 
 workflow-core = { path = "../workflow-rs/core" }
 workflow-websocket = { path = "../workflow-rs/websocket" }

@@ -124,6 +124,7 @@ impl WalletCli {
         let notification_channel_receiver = self.wallet.notification_channel_receiver();
         workflow_core::task::spawn(async move {
             // term.writeln(args.to_string());
+
             loop {
                 select! {
 
@@ -188,7 +189,6 @@ impl WalletCli {}
 
 pub async fn kaspa_wallet_cli(options: TerminalOptions) -> Result<()> {
     let wallet = Arc::new(Wallet::try_new().await?);
-
     let cli = Arc::new(WalletCli::new(wallet.clone()));
     let term = Arc::new(Terminal::try_new_with_options(cli.clone(), options)?);
     term.init().await?;
@@ -196,12 +196,18 @@ pub async fn kaspa_wallet_cli(options: TerminalOptions) -> Result<()> {
     #[cfg(not(target_arch = "wasm32"))]
     workflow_log::pipe(Some(cli.clone()));
 
+    // cli starts notification->term trace pipe task
     cli.start().await?;
 
     term.writeln("Kaspa Cli Wallet (type 'help' for list of commands)");
+
+    // wallet starts rpc and notifier
     wallet.start().await?;
+    // terminal blocks async execution, delivering commands to the terminals
     term.run().await?;
+    // wallet stops the notifier
     wallet.stop().await?;
+    // cli stops notification->term trace pipe task
     cli.stop().await?;
     Ok(())
 }

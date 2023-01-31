@@ -6,12 +6,6 @@ use async_trait::async_trait;
 use kaspa_core::task::service::{AsyncService, AsyncServiceError, AsyncServiceFuture};
 use rpc_core::api::ops::RpcApiOps;
 use rpc_core::api::rpc::RpcApi;
-#[allow(unused_imports)]
-use rpc_core::error::RpcResult;
-#[allow(unused_imports)]
-use rpc_core::notify::channel::*;
-#[allow(unused_imports)]
-use rpc_core::notify::listener::*;
 use std::sync::Arc;
 use workflow_log::*;
 use workflow_rpc::server::prelude::*;
@@ -20,12 +14,13 @@ pub use workflow_rpc::server::Encoding as WrpcEncoding;
 /// Options for configuring the wRPC server
 pub struct Options {
     pub listen_address: String,
+    pub grpc_proxy_address: Option<String>,
     pub verbose: bool,
 }
 
 impl Default for Options {
     fn default() -> Self {
-        Options { listen_address: "127.0.0.1:17110".to_owned(), verbose: false }
+        Options { listen_address: "127.0.0.1:17110".to_owned(), verbose: false, grpc_proxy_address: None }
     }
 }
 
@@ -51,7 +46,10 @@ pub struct KaspaRpcHandler {
 
 impl KaspaRpcHandler {
     pub fn new(tasks: usize, rpc_api: Option<Arc<dyn RpcApi>>, options: Arc<Options>) -> KaspaRpcHandler {
-        KaspaRpcHandler { server: Server::new(tasks, rpc_api, None), options }
+        KaspaRpcHandler { server: Server::new(tasks, rpc_api, options.clone()), options }
+    }
+    pub fn proxy(tasks: usize, options: Arc<Options>) -> KaspaRpcHandler {
+        KaspaRpcHandler { server: Server::new(tasks, None, options.clone()), options }
     }
 }
 
