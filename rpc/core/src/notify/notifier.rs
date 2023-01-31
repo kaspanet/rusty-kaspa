@@ -37,41 +37,41 @@ impl Notifier {
         Self { inner: Arc::new(Inner::new(collector, subscriber, sending_changed_utxos)) }
     }
 
-    pub fn start(self: Arc<Self>) {
-        self.inner.clone().start(self.clone());
+    pub fn start(self: &Arc<Self>) {
+        self.inner.start(self);
     }
 
     pub fn register_new_listener(&self, channel: Option<NotificationChannel>) -> ListenerReceiverSide {
-        self.inner.clone().register_new_listener(channel)
+        self.inner.register_new_listener(channel)
     }
 
     pub fn unregister_listener(&self, id: ListenerID) -> Result<()> {
-        self.inner.clone().unregister_listener(id)
+        self.inner.unregister_listener(id)
     }
 
     pub fn execute_subscribe_command(
-        self: Arc<Self>,
+        &self,
         id: ListenerID,
         notification_type: NotificationType,
         command: SubscribeCommand,
     ) -> Result<()> {
-        self.inner.clone().execute_subscribe_command(id, notification_type, command)
+        self.inner.execute_subscribe_command(id, notification_type, command)
     }
 
     pub fn start_notify(&self, id: ListenerID, notification_type: NotificationType) -> Result<()> {
-        self.inner.clone().start_notify(id, notification_type)
+        self.inner.start_notify(id, notification_type)
     }
 
-    pub fn notify(self: Arc<Self>, notification: Arc<Notification>) -> Result<()> {
-        self.inner.clone().notify(notification)
+    pub fn notify(self: &Arc<Self>, notification: Arc<Notification>) -> Result<()> {
+        self.inner.notify(notification)
     }
 
     pub fn stop_notify(&self, id: ListenerID, notification_type: NotificationType) -> Result<()> {
-        self.inner.clone().stop_notify(id, notification_type)
+        self.inner.stop_notify(id, notification_type)
     }
 
     pub async fn stop(&self) -> Result<()> {
-        self.inner.clone().stop().await
+        self.inner.stop().await
     }
 }
 
@@ -79,13 +79,13 @@ impl Notifier {
 impl SubscriptionManager for Notifier {
     async fn start_notify(self: Arc<Self>, id: ListenerID, notification_type: NotificationType) -> RpcResult<()> {
         trace!("[Notifier] as subscription manager start sending to listener {0} notifications of type {1:?}", id, notification_type);
-        self.inner.clone().start_notify(id, notification_type)?;
+        self.inner.start_notify(id, notification_type)?;
         Ok(())
     }
 
     async fn stop_notify(self: Arc<Self>, id: ListenerID, notification_type: NotificationType) -> RpcResult<()> {
         trace!("[Notifier] as subscription manager stop sending to listener {0} notifications of type {1:?}", id, notification_type);
-        self.inner.clone().stop_notify(id, notification_type)?;
+        self.inner.stop_notify(id, notification_type)?;
         Ok(())
     }
 }
@@ -128,10 +128,10 @@ impl Inner {
         }
     }
 
-    fn start(self: Arc<Self>, notifier: Arc<Notifier>) {
+    fn start(self: &Arc<Self>, notifier: &Arc<Notifier>) {
         if self.is_started.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
             if let Some(ref subscriber) = self.subscriber.clone().as_ref() {
-                subscriber.clone().start();
+                subscriber.start();
             }
             for event in EVENT_TYPE_ARRAY.into_iter() {
                 let (shutdown_trigger, shutdown_listener) = triggered::trigger();
@@ -253,7 +253,7 @@ impl Inner {
         });
     }
 
-    fn register_new_listener(self: Arc<Self>, channel: Option<NotificationChannel>) -> ListenerReceiverSide {
+    fn register_new_listener(self: &Arc<Self>, channel: Option<NotificationChannel>) -> ListenerReceiverSide {
         let mut listeners = self.listeners.lock().unwrap();
         loop {
             let id = u64::from_le_bytes(rand::random::<[u8; 8]>());
@@ -268,13 +268,13 @@ impl Inner {
         }
     }
 
-    fn unregister_listener(self: Arc<Self>, id: ListenerID) -> Result<()> {
+    fn unregister_listener(self: &Arc<Self>, id: ListenerID) -> Result<()> {
         let mut listeners = self.listeners.lock().unwrap();
         if let Some(mut listener) = listeners.remove(&id) {
             drop(listeners);
             let active_events: Vec<EventType> = EVENT_TYPE_ARRAY.into_iter().filter(|event| listener.has(*event)).collect();
             for event in active_events.iter() {
-                self.clone().stop_notify(listener.id(), (*event).into())?;
+                self.stop_notify(listener.id(), (*event).into())?;
             }
             listener.close();
         }
@@ -282,18 +282,18 @@ impl Inner {
     }
 
     pub fn execute_subscribe_command(
-        self: Arc<Self>,
+        self: &Arc<Self>,
         id: ListenerID,
         notification_type: NotificationType,
         command: SubscribeCommand,
     ) -> Result<()> {
         match command {
-            SubscribeCommand::Start => self.start_notify(id, notification_type),
-            SubscribeCommand::Stop => self.stop_notify(id, notification_type),
+            SubscribeCommand::Start => self.clone().start_notify(id, notification_type),
+            SubscribeCommand::Stop => self.clone().stop_notify(id, notification_type),
         }
     }
 
-    fn start_notify(self: Arc<Self>, id: ListenerID, notification_type: NotificationType) -> Result<()> {
+    fn start_notify(self: &Arc<Self>, id: ListenerID, notification_type: NotificationType) -> Result<()> {
         let event: EventType = (&notification_type).into();
         let mut listeners = self.listeners.lock().unwrap();
         if let Some(listener) = listeners.get_mut(&id) {
@@ -305,41 +305,41 @@ impl Inner {
             if listener.toggle(notification_type, true) {
                 let listener_sender_side = ListenerSenderSide::new(listener, self.sending_changed_utxos, event);
                 let msg = DispatchMessage::AddListener(listener.id(), Arc::new(listener_sender_side));
-                self.clone().try_send_dispatch(event, msg)?;
+                self.try_send_dispatch(event, msg)?;
             }
         }
         Ok(())
     }
 
-    fn notify(self: Arc<Self>, notification: Arc<Notification>) -> Result<()> {
+    fn notify(self: &Arc<Self>, notification: Arc<Notification>) -> Result<()> {
         let event: EventType = notification.as_ref().into();
         let msg = DispatchMessage::Send(notification);
         self.try_send_dispatch(event, msg)?;
         Ok(())
     }
 
-    fn stop_notify(self: Arc<Self>, id: ListenerID, notification_type: NotificationType) -> Result<()> {
+    fn stop_notify(self: &Arc<Self>, id: ListenerID, notification_type: NotificationType) -> Result<()> {
         let event: EventType = (&notification_type).into();
         let mut listeners = self.listeners.lock().unwrap();
         if let Some(listener) = listeners.get_mut(&id) {
             if listener.toggle(notification_type.clone(), false) {
                 trace!("[Notifier] stop notifying to {0} about {1:?}", id, notification_type);
                 let msg = DispatchMessage::RemoveListener(listener.id());
-                self.clone().try_send_dispatch(event, msg)?;
+                self.try_send_dispatch(event, msg)?;
             }
         }
         Ok(())
     }
 
-    fn try_send_dispatch(self: Arc<Self>, event: EventType, msg: DispatchMessage) -> Result<()> {
+    fn try_send_dispatch(self: &Arc<Self>, event: EventType, msg: DispatchMessage) -> Result<()> {
         self.dispatcher_channel[event].sender().try_send(msg)?;
         Ok(())
     }
 
-    async fn stop_dispatcher_task(self: Arc<Self>) -> Result<()> {
+    async fn stop_dispatcher_task(self: &Arc<Self>) -> Result<()> {
         let mut result: Result<()> = Ok(());
         for event in EVENT_TYPE_ARRAY.into_iter() {
-            match self.clone().try_send_dispatch(event, DispatchMessage::Shutdown) {
+            match self.try_send_dispatch(event, DispatchMessage::Shutdown) {
                 Ok(_) => {
                     let shutdown_listener: triggered::Listener;
                     {
@@ -354,14 +354,14 @@ impl Inner {
         result
     }
 
-    async fn stop(self: Arc<Self>) -> Result<()> {
+    async fn stop(self: &Arc<Self>) -> Result<()> {
         if self.is_started.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
             if let Some(ref collector) = self.collector.clone().as_ref() {
                 collector.clone().stop().await?;
             }
-            self.clone().stop_dispatcher_task().await?;
+            self.stop_dispatcher_task().await?;
             if let Some(ref subscriber) = self.subscriber.clone().as_ref() {
-                subscriber.clone().stop().await?;
+                subscriber.stop().await?;
             }
         } else {
             trace!("[Notifier] stop ignored since already stopped");

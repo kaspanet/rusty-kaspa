@@ -70,24 +70,24 @@ impl GrpcClient {
     }
 
     pub async fn start(&self) {
-        self.notifier().start();
+        self.notifier.start();
     }
 
     pub async fn stop(&self) -> Result<()> {
-        self.notifier().stop().await?;
+        self.notifier.stop().await?;
         Ok(())
     }
 
     pub fn handle_message_id(&self) -> bool {
-        self.inner.clone().handle_message_id()
+        self.inner.handle_message_id()
     }
 
     pub fn handle_stop_notify(&self) -> bool {
-        self.inner.clone().handle_stop_notify()
+        self.inner.handle_stop_notify()
     }
 
     pub async fn shutdown(&mut self) -> Result<()> {
-        self.inner.clone().shutdown().await?;
+        self.inner.shutdown().await?;
         Ok(())
     }
 }
@@ -96,7 +96,7 @@ impl GrpcClient {
 impl RpcApi for GrpcClient {
     // this example illustrates the body of the function created by the route!() macro
     // async fn submit_block_call(&self, request: SubmitBlockRequest) -> RpcResult<SubmitBlockResponse> {
-    //     self.inner.clone().call(RpcApiOps::SubmitBlock, request).await?.as_ref().try_into()
+    //     self.inner.call(RpcApiOps::SubmitBlock, request).await?.as_ref().try_into()
     // }
 
     route!(ping_call, Ping);
@@ -136,14 +136,14 @@ impl RpcApi for GrpcClient {
 
     /// Register a new listener and returns an id and a channel receiver.
     fn register_new_listener(&self, channel: Option<NotificationChannel>) -> ListenerReceiverSide {
-        self.notifier().register_new_listener(channel)
+        self.notifier.register_new_listener(channel)
     }
 
     /// Unregister an existing listener.
     ///
     /// Stop all notifications for this listener and drop its channel.
     async fn unregister_listener(&self, id: ListenerID) -> RpcResult<()> {
-        self.notifier().unregister_listener(id)?;
+        self.notifier.unregister_listener(id)?;
         Ok(())
     }
 
@@ -291,16 +291,16 @@ impl Inner {
             }
         }
 
-        // create the resolver
-        let resolver = Arc::new(Inner::new(handle_stop_notify, handle_message_id, notify_send, request_send));
+        // create the inner object
+        let inner = Arc::new(Inner::new(handle_stop_notify, handle_message_id, notify_send, request_send));
 
         // Start the request timeout cleaner
-        resolver.clone().spawn_request_timeout_monitor();
+        inner.clone().spawn_request_timeout_monitor();
 
         // Start the response receiving task
-        resolver.clone().spawn_response_receiver_task(stream);
+        inner.clone().spawn_response_receiver_task(stream);
 
-        Ok(resolver)
+        Ok(inner)
     }
 
     pub(crate) fn handle_message_id(&self) -> bool {
@@ -334,6 +334,7 @@ impl Inner {
     /// Launch a task that periodically checks pending requests and deletes those that have
     /// waited longer than a predefined delay.
     fn spawn_request_timeout_monitor(self: Arc<Self>) {
+        // Note: self is a cloned Arc here so that it can be used in the spawned task.
         self.timeout_is_running.store(true, Ordering::SeqCst);
 
         tokio::spawn(async move {
@@ -363,6 +364,7 @@ impl Inner {
 
     /// Launch a task receiving and handling response messages sent by the server.
     fn spawn_response_receiver_task(self: Arc<Self>, mut stream: Streaming<KaspadResponse>) {
+        // Note: self is a cloned Arc here so that it can be used in the spawned task.
         self.receiver_is_running.store(true, Ordering::SeqCst);
 
         tokio::spawn(async move {

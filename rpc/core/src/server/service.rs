@@ -64,7 +64,7 @@ impl RpcCoreService {
     }
 
     pub fn start(&self) {
-        self.notifier.clone().start();
+        self.notifier.start();
     }
 
     pub async fn stop(&self) -> RpcResult<()> {
@@ -103,10 +103,10 @@ impl RpcApi for RpcCoreService {
 
         // Notify about new added block
         // TODO: let consensus emit this notification through an event channel
-        self.notifier.clone().notify(Arc::new(Notification::BlockAdded(BlockAddedNotification { block: rpc_block }))).unwrap();
+        self.notifier.notify(Arc::new(Notification::BlockAdded(BlockAddedNotification { block: rpc_block }))).unwrap();
 
         // Emit a NewBlockTemplate notification
-        self.notifier.clone().notify(Arc::new(Notification::NewBlockTemplate(NewBlockTemplateNotification {}))).unwrap();
+        self.notifier.notify(Arc::new(Notification::NewBlockTemplate(NewBlockTemplateNotification {}))).unwrap();
 
         result
     }

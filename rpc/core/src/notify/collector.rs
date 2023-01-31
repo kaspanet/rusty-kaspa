@@ -29,8 +29,8 @@ pub type CollectorNotificationReceiver<T> = Receiver<Arc<T>>;
 /// to `Collector::start`.
 #[async_trait]
 pub trait Collector: Send + Sync + Debug {
-    /// Start collecting notifications for `nofifier`
-    fn start(self: Arc<Self>, notifier: Arc<Notifier>);
+    /// Start collecting notifications for `notifier`
+    fn start(self: Arc<Self>, notifier: &Arc<Notifier>);
     /// Stop collecting notifications
     async fn stop(self: Arc<Self>) -> Result<()>;
 }
@@ -73,13 +73,14 @@ where
         Self { recv_channel, collect_shutdown: Arc::new(DuplexTrigger::new()), is_started: Arc::new(AtomicBool::new(false)) }
     }
 
-    fn spawn_collecting_task(self: Arc<Self>, notifier: Arc<Notifier>) {
+    fn spawn_collecting_task(self: &Arc<Self>, notifier: &Arc<Notifier>) {
         // The task can only be spawned once
         if self.is_started.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
             return;
         }
         let collect_shutdown = self.collect_shutdown.clone();
         let recv_channel = self.recv_channel.clone();
+        let notifier = notifier.clone();
 
         workflow_core::task::spawn(async move {
             trace!("[Collector] collecting_task start");
@@ -97,7 +98,7 @@ where
                         match notification {
                             Some(msg) => {
                                 let rpc_notification: Arc<Notification> = ArcConvert::from(msg.clone()).into();
-                                match notifier.clone().notify(rpc_notification) {
+                                match notifier.notify(rpc_notification) {
                                     Ok(_) => (),
                                     Err(err) => {
                                         trace!("[Collector] notification sender error: {:?}", err);
@@ -116,7 +117,7 @@ where
         });
     }
 
-    async fn stop_collecting_task(self: Arc<Self>) -> Result<()> {
+    async fn stop_collecting_task(self: &Arc<Self>) -> Result<()> {
         if self.is_started.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_err() {
             return Err(Error::AlreadyStoppedError);
         }
@@ -132,7 +133,7 @@ where
     T: Send + Sync + 'static + Sized + Debug,
     ArcConvert<T>: Into<Arc<Notification>>,
 {
-    fn start(self: Arc<Self>, notifier: Arc<Notifier>) {
+    fn start(self: Arc<Self>, notifier: &Arc<Notifier>) {
         self.spawn_collecting_task(notifier);
     }
 

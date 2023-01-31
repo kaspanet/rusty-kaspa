@@ -18,7 +18,7 @@ use tokio::sync::mpsc;
 
 pub type GrpcSender = mpsc::Sender<StatusResult<KaspadResponse>>;
 
-pub(crate) struct GrpcConnection {
+struct GrpcConnection {
     address: SocketAddr,
     sender: GrpcSender,
     notify_listener: ListenerReceiverSide,
@@ -27,7 +27,7 @@ pub(crate) struct GrpcConnection {
 }
 
 impl GrpcConnection {
-    pub(crate) fn new(address: SocketAddr, sender: GrpcSender, notify_listener: ListenerReceiverSide) -> Self {
+    fn new(address: SocketAddr, sender: GrpcSender, notify_listener: ListenerReceiverSide) -> Self {
         Self {
             address,
             sender,
@@ -37,11 +37,11 @@ impl GrpcConnection {
         }
     }
 
-    pub(crate) fn start(self: Arc<Self>) {
+    fn start(self: &Arc<Self>) {
         self.spawn_collecting_task();
     }
 
-    async fn stop(self: Arc<Self>) {
+    async fn stop(self: &Arc<Self>) {
         self.stop_collect().await
     }
 
@@ -114,7 +114,7 @@ impl GrpcConnectionManager {
         // A pre-existing connection with same address is ignored here
         // TODO: see if some close pattern can be applied to the replaced connection
         self.connections.insert(address, connection.clone());
-        connection.clone().start();
+        connection.start();
         connection.notify_listener.id
     }
 
