@@ -2561,9 +2561,11 @@ dependencies = [
  "math",
  "rand 0.8.5",
  "serde",
+ "serde-wasm-bindgen",
  "smallvec",
  "thiserror",
  "triggered",
+ "wasm-bindgen",
  "workflow-core",
 ]
 
@@ -3785,6 +3787,7 @@ dependencies = [
  "js-sys",
  "thiserror",
  "wasm-bindgen",
+ "wasm-bindgen-futures",
  "workflow-core",
  "workflow-panic-hook",
  "workflow-wasm-macros",

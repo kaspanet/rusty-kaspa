@@ -19,10 +19,20 @@ pub struct NotificationManager {
 
 impl NotificationManager {
     pub fn new(tasks: usize) -> Self {
+        log_info!("notification manager tasks: {tasks}");
         let ingest = Channel::unbounded();
-        let tasks = [0..tasks].iter().map(|_| Arc::new(NotificationTask::new(ingest.clone()))).collect::<Vec<_>>();
+        let tasks = (0..tasks).into_iter().map(|_| Arc::new(NotificationTask::new(ingest.clone()))).collect::<Vec<_>>();
+        tasks.iter().for_each(|task|task.start());
         NotificationManager { ingest, tasks }
     }
+
+    // TODO - possibly extend the startup sequence
+    // pub async fn start(&self) -> Result<()> {
+    //     for task in self.tasks.iter() {
+    //         task.start().await;
+    //     }
+    //     Ok(())
+    // }
 
     pub fn register_notification_listener(&self, id: ListenerId, connection: Connection) {
         self.tasks.iter().for_each(|task| {
@@ -73,10 +83,12 @@ pub struct NotificationTask {
 
 impl NotificationTask {
     pub fn new(ingest: Channel<Arc<NotificationMessage>>) -> Self {
+        log_info!("... creating notification task");
         Self { ctl: Channel::unbounded(), ingest, completion: Channel::oneshot() }
     }
 
-    pub async fn run(self: Arc<Self>) {
+    pub fn start(self: &Arc<Self>) {
+        log_trace!("Starting notification task");
         let ctl = self.ctl.receiver.clone();
         let ingest = self.ingest.receiver.clone();
         spawn(async move {

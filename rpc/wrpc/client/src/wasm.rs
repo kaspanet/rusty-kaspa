@@ -12,6 +12,7 @@ impl From<NotificationSink> for Function {
     }
 }
 
+/// Kaspa RPC client
 #[wasm_bindgen]
 pub struct RpcClient {
     client: KaspaRpcClient,
@@ -22,6 +23,8 @@ pub struct RpcClient {
 
 #[wasm_bindgen]
 impl RpcClient {
+
+    /// Create a new RPC client with [`Encoding`] and a `url`.
     #[wasm_bindgen(constructor)]
     pub fn new(encoding: Encoding, url: &str) -> RpcClient {
         RpcClient {
@@ -32,6 +35,9 @@ impl RpcClient {
         }
     }
 
+    /// Connect to the Kaspa RPC server. This function starts a background
+    /// task that connects and reconnects to the server if the connection
+    /// is terminated.  Use [`disconnect()`] to terminate the connection.
     pub async fn connect(&self) -> JsResult<()> {
         self.notification_task()?;
         self.client.start().await?;
@@ -39,24 +45,58 @@ impl RpcClient {
         Ok(())
     }
 
+    /// Disconnect from the Kaspa RPC server.
     pub async fn disconnect(&self) -> JsResult<()> {
-        if self.notification_task.load(Ordering::SeqCst) {
-            self.notification_task.store(false, Ordering::SeqCst);
-            self.notification_ctl.signal(()).await.map_err(|err| JsError::new(&err.to_string()))?;
-        }
+        self.clear_notification_callback();
+        self.stop_notification_task().await?;
         self.client.stop().await?;
         self.client.shutdown().await?;
         Ok(())
     }
-
-    pub fn notify(&self, callback: Function) -> JsResult<()> {
-        self.notification_callback.lock().unwrap().replace(NotificationSink(callback));
+    
+    async fn stop_notification_task(&self) -> JsResult<()> {
+        if self.notification_task.load(Ordering::SeqCst) {
+            self.notification_task.store(false, Ordering::SeqCst);
+            self.notification_ctl.signal(()).await.map_err(|err| JsError::new(&err.to_string()))?;
+        }
         Ok(())
     }
+
+    fn clear_notification_callback(&self) {
+        *self.notification_callback.lock().unwrap() = None;
+    }
+
+    /// Register a notification callback.
+    pub async fn notify(&self, callback: JsValue) -> JsResult<()> {
+        if callback.is_function() {
+            let fn_callback: Function = callback.into();
+            self.notification_callback.lock().unwrap().replace(NotificationSink(fn_callback));
+        } else {
+            self.stop_notification_task().await?;
+            self.clear_notification_callback();
+        }
+        Ok(())
+    }
+
+    /// Subscription to DAA Score (test)
+    #[wasm_bindgen(js_name = subscribeDaaScore)]
+    pub async fn subscribe_daa_score(&self) -> JsResult<()> {
+        self.client.start_notify(ListenerId::default(), NotificationType::VirtualDaaScoreChanged).await?;
+        Ok(())
+    }
+    
+    /// Unsubscribe from DAA Score (test)
+    #[wasm_bindgen(js_name = unsubscribeDaaScore)]
+    pub async fn unsubscribe_daa_score(&self) -> JsResult<()> {
+        self.client.stop_notify(ListenerId::default(), NotificationType::VirtualDaaScoreChanged).await?;
+        Ok(())
+    }
+
 }
 
 impl RpcClient {
     fn notification_task(&self) -> JsResult<()> {
+
         let ctl_receiver = self.notification_ctl.request.receiver.clone();
         let ctl_sender = self.notification_ctl.response.sender.clone();
         let notification_receiver = self.client.notification_receiver();
@@ -69,13 +109,14 @@ impl RpcClient {
                         break;
                     },
                     msg = notification_receiver.recv().fuse() => {
+                        // log_info!("notification: {:?}",msg);
                         if let Ok(notification) = &msg {
                             if let Some(callback) = notification_callback.lock().unwrap().as_ref() {
                                 let op: RpcApiOps = notification.into();
                                 let op_value = to_value(&op).map_err(|err|{
                                     log_error!("Notification handler - unable to convert notification op: {}",err.to_string());
                                 }).ok();
-                                let op_payload = to_value(&notification).map_err(|err| {
+                                let op_payload = notification.to_value().map_err(|err| {
                                     log_error!("Notification handler - unable to convert notification payload: {}",err.to_string());
                                 }).ok();
                                 if op_value.is_none() || op_payload.is_none() {

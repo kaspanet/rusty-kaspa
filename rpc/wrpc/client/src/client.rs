@@ -61,21 +61,24 @@ impl KaspaRpcClient {
         .into_iter()
         .for_each(|notification_op| {
             let notifier_ = notifier.clone();
-            let notification_channel_ = notification_channel.clone();
+            let notification_sender_ = notification_channel.sender.clone();
             interface.notification(
                 notification_op,
                 workflow_rpc::client::Notification::new(move |notification: rpc_core::Notification| {
                     let notifier = notifier_.clone();
-                    let notification_channel = notification_channel_.clone();
+                    let notification_sender = notification_sender_.clone();
                     Box::pin(async move {
-                        log_trace!("notification {:?}", notification);
+                        // log_info!("notification receivers: {}", notification_sender.receiver_count());
+                        // log_trace!("notification {:?}", notification);
                         if let Some(notifier) = &notifier {
-                            let res = notifier.clone().notify(notification.into());
-                            log_trace!("notifier.notify: result {:?}", res);
-                        } else if notification_channel.receiver_count() > 1 {
-                            notification_channel.send(notification).await?;
+                            // log_info!("notification: posting to notifier");
+                            let _res = notifier.clone().notify(notification.into());
+                            // log_trace!("notifier.notify: result {:?}", _res);
+                        } else if notification_sender.receiver_count() > 1 {
+                            // log_info!("notification: posting direct");
+                            notification_sender.send(notification).await?;
                         } else {
-                            log_warning!("WARNING: Kaspa RPC notification is not consumed: {:?}", notification);
+                            log_warning!("WARNING: Kaspa RPC notification is not consumed by user: {:?}", notification);
                         }
                         Ok(())
                     })
@@ -87,8 +90,8 @@ impl KaspaRpcClient {
             rpc: Arc::new(RpcClient::new_with_encoding(encoding, interface.into(), options)?),
             notifier,
             notification_mode,
+            notification_channel,
             // notification_ctl: DuplexChannel::oneshot(),
-            notification_channel: Channel::unbounded(),
         };
 
         // client.notifier.clone().map(|notifier|notifier.start());

@@ -40,19 +40,20 @@ impl ToTokens for RpcTable {
         let mut targets_with_args = Vec::new();
 
         for handler in self.handlers_no_args.elems.iter() {
-            let Handler { fn_call, fn_no_suffix, request_type, response_type, .. } = Handler::new(handler);
+            let Handler { fn_call, fn_camel, fn_no_suffix, request_type, response_type, .. } = Handler::new(handler);
 
             targets_no_args.push(quote! {
 
+                #[wasm_bindgen(js_name = #fn_camel)]
                 pub async fn #fn_no_suffix(&self) -> JsResult<JsValue> {
                     let value: JsValue = js_sys::Object::new().into();
                     let request: #request_type = from_value(value)?;
-                    log_info!("request: {:#?}",request);
+                    // log_info!("request: {:#?}",request);
                     let result: RpcResult<#response_type> = self.client.#fn_call(request).await;
-                    log_info!("result: {:#?}",result);
+                    // log_info!("result: {:#?}",result);
 
                     let response: #response_type = result.map_err(|err|wasm_bindgen::JsError::new(&err.to_string()))?;
-                    log_info!("response: {:#?}",response);
+                    // log_info!("response: {:#?}",response);
                     to_value(&response).map_err(|err|err.into())
                 }
 
@@ -60,10 +61,11 @@ impl ToTokens for RpcTable {
         }
 
         for handler in self.handlers_with_args.elems.iter() {
-            let Handler { fn_call, fn_no_suffix, request_type, response_type, .. } = Handler::new(handler);
+            let Handler { fn_call, fn_camel, fn_no_suffix, request_type, response_type, .. } = Handler::new(handler);
 
             targets_with_args.push(quote! {
 
+                #[wasm_bindgen(js_name = #fn_camel)]
                 pub async fn #fn_no_suffix(&self, request: JsValue) -> JsResult<JsValue> {
                     let request: #request_type = from_value(request)?;
                     let result: RpcResult<#response_type> = self.client.#fn_call(request).await;

@@ -23,6 +23,9 @@ log.workspace = true
 smallvec.workspace = true
 cfg-if.workspace = true
 futures-util.workspace = true
+serde-wasm-bindgen.workspace = true
+wasm-bindgen.workspace = true
+
 async-trait = "0.1.57"
 ahash = "0.8.0"
 futures = { version = "0.3" }

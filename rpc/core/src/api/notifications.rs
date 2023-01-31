@@ -3,8 +3,10 @@ use crate::{api::ops::RpcApiOps, model::message::*, RpcAddress};
 use async_channel::{Receiver, Sender};
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
+use wasm_bindgen::JsValue;
 use std::fmt::Display;
 use std::sync::Arc;
+pub use serde_wasm_bindgen::*;
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub enum NotificationType {
@@ -63,6 +65,22 @@ pub enum Notification {
     VirtualDaaScoreChanged(VirtualDaaScoreChangedNotification),
     VirtualSelectedParentBlueScoreChanged(VirtualSelectedParentBlueScoreChangedNotification),
     VirtualSelectedParentChainChanged(VirtualSelectedParentChainChangedNotification),
+}
+
+impl Notification {
+    pub fn to_value(&self) -> std::result::Result<JsValue,serde_wasm_bindgen::Error> {
+        match self {
+            Notification::BlockAdded(v) => to_value(&v),
+            Notification::FinalityConflict(v) => to_value(&v),
+            Notification::FinalityConflictResolved(v) => to_value(&v),
+            Notification::NewBlockTemplate(v) => to_value(&v),
+            Notification::PruningPointUtxoSetOverride(v) => to_value(&v),
+            Notification::UtxosChanged(v) => to_value(&v),
+            Notification::VirtualDaaScoreChanged(v) => to_value(&v),
+            Notification::VirtualSelectedParentBlueScoreChanged(v) => to_value(&v),
+            Notification::VirtualSelectedParentChainChanged(v) => to_value(&v),
+        }
+    }
 }
 
 impl Display for Notification {
