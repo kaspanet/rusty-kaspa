@@ -79,6 +79,8 @@ impl RpcClient {
 }
 
 impl RpcClient {
+    /// Notification task receives notifications and executes them on the
+    /// user-supplied callback function.
     fn notification_task(&self) -> JsResult<()> {
         let ctl_receiver = self.notification_ctl.request.receiver.clone();
         let ctl_sender = self.notification_ctl.response.sender.clone();
@@ -140,6 +142,7 @@ impl RpcClient {
     }
 }
 
+// Build subscribe functions
 build_wrpc_wasm_bindgen_subscriptions!([
     NotifyBlockAdded,
     NotifyFinalityConflict,
@@ -152,6 +155,11 @@ build_wrpc_wasm_bindgen_subscriptions!([
     NotifyVirtualSelectedParentBlueScoreChanged,
     NotifyVirtualSelectedParentChainChanged,
 ]);
+
+// Build RPC method invocation functions. This macro
+// takes two lists.  First list is for functions that
+// do not have arguments and the second one is for
+// functions that have single arguments (request).
 
 build_wrpc_wasm_bindgen_interface!(
     [

@@ -1,7 +1,7 @@
 use std::sync::PoisonError;
 use thiserror::Error;
 use workflow_rpc::server::error::Error as RpcError;
-use workflow_websocket::server::Error as WebSocketError;
+use workflow_rpc::server::WebSocketError;
 
 #[derive(Debug, Error)]
 pub enum Error {

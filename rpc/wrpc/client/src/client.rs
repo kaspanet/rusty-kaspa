@@ -1,34 +1,43 @@
 use crate::imports::*;
 pub use kaspa_rpc_macros::build_wrpc_client_interface;
 
+/// [`NotificationMoe`] controls notification delivery process
 #[wasm_bindgen]
 #[derive(Clone)]
 pub enum NotificationMode {
     // Synced,
+    /// Local notifier is used for notification processing
     NotSynced,
+    /// No notifier is present, notifications are relayed
+    /// directly through the internal channel.
     Direct,
 }
 
 /// [`KaspaRpcClient`] allows connection to the Kaspa wRPC Server via
 /// binary Borsh or JSON protocols.
-// #[wasm_bindgen]
+///
+/// RpcClient has two ways to interface with the underlying RPC subsystem:
+/// [`Interface`] that has a [`notification()`](Interface::notification)
+/// method to register closures that will be invoked on server-side
+/// notifications and the [`RpcClient::call`] method that allows async
+/// method invocation server-side.
+///
 #[derive(Clone)]
 pub struct KaspaRpcClient {
     rpc: Arc<RpcClient<RpcApiOps>>,
     notifier: Option<Arc<Notifier>>,
     notification_mode: NotificationMode,
-    // notification_ctl: DuplexChannel,
     notification_channel: Channel<Notification>,
     encoding: Encoding,
 }
 
-// #[wasm_bindgen]
 impl KaspaRpcClient {
-    // #[wasm_bindgen(constructor)]
+    /// Create a new `KaspaRpcClient` with the given Encoding and URL
     pub fn new(encoding: Encoding, url: &str) -> Result<KaspaRpcClient> {
         Self::new_with_args(encoding, NotificationMode::Direct, url)
     }
 
+    /// Extended constructor that accepts [`NotificationMode`] argument.
     pub fn new_with_args(encoding: Encoding, notification_mode: NotificationMode, url: &str) -> Result<KaspaRpcClient> {
         let re = Regex::new(r"^wrpc").unwrap();
         let url = re.replace(url, "ws").to_string();
@@ -92,15 +101,13 @@ impl KaspaRpcClient {
             notifier,
             notification_mode,
             notification_channel,
-            encoding, // notification_ctl: DuplexChannel::oneshot(),
+            encoding,
         };
-
-        // client.notifier.clone().map(|notifier|notifier.start());
 
         Ok(client)
     }
 
-    /// Starts background tasks.
+    /// Starts RPC services.
     pub async fn start(&self) -> Result<()> {
         match &self.notification_mode {
             NotificationMode::NotSynced => {
@@ -111,7 +118,7 @@ impl KaspaRpcClient {
         Ok(())
     }
 
-    /// Stops background tasks.
+    /// Stops background services.
     pub async fn stop(&self) -> Result<()> {
         match &self.notification_mode {
             NotificationMode::NotSynced => {
@@ -134,6 +141,8 @@ impl KaspaRpcClient {
         Ok(self.rpc.connect(block).await?)
     }
 
+    /// Stop and shutdown RPC disconnecting existing connections
+    /// and stopping reconnection process.
     pub async fn shutdown(&self) -> Result<()> {
         Ok(self.rpc.shutdown().await?)
     }
@@ -264,11 +273,11 @@ impl RpcApi for KaspaRpcClient {
         match self.notification_mode {
             NotificationMode::NotSynced => {
                 self.notifier.clone().unwrap().stop_notify(id, notification_type.clone())?;
-                let _response: SubscribeResponse =
+                let _response: UnsubscribeResponse =
                     self.rpc.call(RpcApiOps::Unsubscribe, notification_type).await.map_err(|err| err.to_string())?;
             }
             NotificationMode::Direct => {
-                let _response: SubscribeResponse =
+                let _response: UnsubscribeResponse =
                     self.rpc.call(RpcApiOps::Unsubscribe, notification_type).await.map_err(|err| err.to_string())?;
             }
         }

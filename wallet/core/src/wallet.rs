@@ -76,7 +76,7 @@ impl Wallet {
 
     // ~~~
 
-    pub async fn info(&self) -> Result<String> {
+    pub async fn get_info(&self) -> Result<String> {
         let v = self.rpc.get_info().await?;
         Ok(format!("{v:#?}").replace('\n', "\r\n"))
     }
@@ -91,13 +91,8 @@ impl Wallet {
         Ok(())
     }
 
-    pub async fn ping(&self, _msg: String) -> Result<String> {
-        // let rpc: Arc<dyn ClientInterface> = self.rpc.clone();
-        // let resp = self.rpc.ping(msg).await?;
-        // Ok(resp)
-        //let address =self.hd_wallet.receive_wallet().derive_address(0).await?;
-        //Ok(address.into())
-        Ok("not implemented".to_string())
+    pub async fn ping(&self) -> Result<()> {
+        Ok(self.rpc.ping().await?)
     }
 
     pub async fn balance(self: &Arc<Wallet>) -> Result<()> {

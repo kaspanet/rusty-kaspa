@@ -25,4 +25,3 @@ wasm-bindgen.workspace = true
 workflow-core.workspace = true
 workflow-log.workspace = true
 workflow-rpc.workspace = true
-workflow-websocket.workspace = true

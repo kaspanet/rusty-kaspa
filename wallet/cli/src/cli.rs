@@ -34,7 +34,7 @@ impl WalletCli {
         self.term.lock().unwrap().as_ref().cloned() //map(|term| term.clone())
     }
 
-    async fn action(&self, action: Action, argv: Vec<String>, term: Arc<Terminal>) -> Result<()> {
+    async fn action(&self, action: Action, _argv: Vec<String>, term: Arc<Terminal>) -> Result<()> {
         match action {
             Action::Help => {
                 term.writeln("\n\rCommands:\n\r");
@@ -48,15 +48,12 @@ impl WalletCli {
                 workflow_dom::utils::window().location().reload().ok();
             }
             Action::GetInfo => {
-                //log_trace!("testing 123");
-                // let msg = argv[1..].join(" ");
-                let response = self.wallet.info().await?;
+                let response = self.wallet.get_info().await?;
                 term.writeln(response);
             }
             Action::Ping => {
-                let msg = argv[1..].join(" ");
-                let response = self.wallet.ping(msg).await?;
-                term.writeln(response);
+                self.wallet.ping().await?;
+                term.writeln("ok");
             }
             Action::Balance => {
                 self.wallet.balance().await?;
@@ -124,7 +121,6 @@ impl WalletCli {
         let notification_channel_receiver = self.wallet.rpc.notification_channel_receiver();
         workflow_core::task::spawn(async move {
             // term.writeln(args.to_string());
-
             loop {
                 select! {
 
@@ -193,17 +189,18 @@ pub async fn kaspa_wallet_cli(options: TerminalOptions) -> Result<()> {
     let term = Arc::new(Terminal::try_new_with_options(cli.clone(), options)?);
     term.init().await?;
 
+    // redirect the global log output to terminal
     #[cfg(not(target_arch = "wasm32"))]
     workflow_log::pipe(Some(cli.clone()));
 
     // cli starts notification->term trace pipe task
     cli.start().await?;
     term.writeln(format!("Kaspa Cli Wallet v{} (type 'help' for list of commands)", env!("CARGO_PKG_VERSION")));
-
     // wallet starts rpc and notifier
     wallet.start().await?;
     // terminal blocks async execution, delivering commands to the terminals
     term.run().await?;
+
     // wallet stops the notifier
     wallet.stop().await?;
     // cli stops notification->term trace pipe task

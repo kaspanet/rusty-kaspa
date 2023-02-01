@@ -13,7 +13,7 @@ pub enum Error {
     Wrpc(#[from] kaspa_wrpc_server::error::Error),
 
     #[error(transparent)]
-    WebSocket(#[from] workflow_websocket::server::error::Error),
+    WebSocket(#[from] workflow_rpc::server::WebSocketError),
 }
 
 impl From<String> for Error {

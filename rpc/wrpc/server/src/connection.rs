@@ -19,7 +19,7 @@ pub struct ConnectionInner {
 
 impl ConnectionInner {}
 
-/// ConnectionContext represents a currently connected WebSocket RPC channel.
+/// [`Connection`] represents a currently connected WebSocket RPC channel.
 /// This struct owns a [`Messenger`] that has [`Messenger::notify`]
 /// function that can be used to post notifications to the connection.
 /// [`Messenger::close`] function can be used to terminate the connection
@@ -42,10 +42,13 @@ impl Connection {
             }),
         }
     }
+
+    /// Obtain the connection id
     pub fn id(&self) -> u64 {
         self.inner.id
     }
 
+    /// Get a reference to the connection [`Messenger`]
     pub fn messenger(&self) -> &Arc<Messenger> {
         &self.inner.messenger
     }

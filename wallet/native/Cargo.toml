@@ -4,12 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-# cli = { path = "../cli" }
 kaspa-wallet-cli.workspace = true
 workflow-terminal.workspace = true
 workflow-log.workspace = true
-# workflow-terminal = {path = "../../../workflow-terminal"}
-# workflow-log = { path = "../../../workflow-log" }
 async-std.workspace = true
 async-trait.workspace = true
 tokio.workspace = true

@@ -100,15 +100,6 @@ js-sys = "0.3.56"
 num_cpus = "1.15.0"
 getrandom = { version = "0.2.8", features = ["js"] }
 
-workflow-core = { path = "../workflow-rs/core" }
-workflow-websocket = { path = "../workflow-rs/websocket" }
-workflow-rpc = { path = "../workflow-rs/rpc" }
-workflow-log = { path = "../workflow-rs/log" }
-workflow-terminal = { path = "../workflow-rs/terminal" }
-workflow-wasm = { path = "../workflow-rs/wasm" }
-workflow-dom = { path = "../workflow-rs/dom" }
-# workflow-task = { path = "../workflow-rs/task" }
-
 # bip32 dependencies
 rand_core = { version = "0.6", features = ["std"] }
 bs58 = { version = "0.4", features = ["check"], default-features = false}
@@ -120,3 +111,19 @@ ripemd = {version = "0.1", default-features = false}
 subtle = {version = "2", default-features = false}
 once_cell = {version = "1"}
 pbkdf2 = {version = "0.11", default-features = false}
+
+# workflow dependencies
+workflow-log = { version = "0.3.2" }
+workflow-core = { version = "0.3.2" }
+workflow-wasm = { version = "0.3.2" }
+workflow-dom = { version = "0.3.2" }
+workflow-rpc = { version = "0.3.2" }
+workflow-terminal = { version = "0.3.5" }
+
+# workflow-log = { path = "../workflow-rs/log" }
+# workflow-core = { path = "../workflow-rs/core" }
+# workflow-wasm = { path = "../workflow-rs/wasm" }
+# workflow-dom = { path = "../workflow-rs/dom" }
+# workflow-rpc = { path = "../workflow-rs/rpc" }
+# workflow-terminal = { path = "../workflow-rs/terminal" }
+

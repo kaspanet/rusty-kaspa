@@ -4,35 +4,39 @@ use std::sync::Arc;
 use workflow_core::enums::Describe;
 use workflow_terminal::Terminal;
 
+/// Actions - list of supported user commands.
+/// If description starts with `!` it will be hidden from help output.
+/// If description starts with `?` it will be greyed-out.
+
 #[derive(Describe)]
 pub enum Action {
     #[describe("Display this help")]
     Help,
-    #[describe("Ping server (testing)")]
+    #[describe("?Ping server (testing)")]
     Ping,
     #[describe("Get Info (testing)")]
     GetInfo,
-    #[describe("Shows the balance of a public address")]
+    #[describe("?Shows the balance of a public address")]
     Balance,
-    #[describe("Broadcast the given transaction")]
+    #[describe("?Broadcast the given transaction")]
     Broadcast,
-    #[describe("Creates a new wallet")]
+    #[describe("?Creates a new wallet")]
     Create,
-    #[describe("Create an unsigned Kaspa transaction")]
+    #[describe("?Create an unsigned Kaspa transaction")]
     CreateUnsignedTx,
-    #[describe("Prints the unencrypted wallet data")]
+    #[describe("?Prints the unencrypted wallet data")]
     DumpUnencrypted,
     #[describe("Generates new public address of the current wallet and shows it")]
     NewAddress,
-    #[describe("Parse the given transaction and print its contents")]
+    #[describe("?Parse the given transaction and print its contents")]
     Parse,
-    #[describe("Sends a Kaspa transaction to a public address")]
+    #[describe("?Sends a Kaspa transaction to a public address")]
     Send,
-    #[describe("Shows all generated public addresses of the current wallet")]
+    #[describe("?Shows all generated public addresses of the current wallet")]
     ShowAddress,
-    #[describe("Sign the given partially signed transaction")]
+    #[describe("?Sign the given partially signed transaction")]
     Sign,
-    #[describe("Start the wallet daemon")]
+    #[describe("?Start the wallet daemon")]
     // StartDaemon,
     // #[describe("Sends all funds associated with the given schnorr private key to a new address of the current wallet")]
     Sweep,
@@ -47,7 +51,7 @@ pub enum Action {
     Exit,
 
     #[cfg(target_arch = "wasm32")]
-    #[describe("hidden")]
+    #[describe("!reload web interface (used for testing)")]
     #[cfg(target_arch = "wasm32")]
     Reload,
 }
@@ -63,14 +67,22 @@ impl TryInto<Action> for &str {
 }
 
 pub fn display_help(term: &Arc<Terminal>) {
-    let commands: Vec<(String, &str)> = Action::list()
+    let mut commands: Vec<(String, &str)> = Action::list()
         .iter()
         .map(|action| (action.as_str().from_case(Case::UpperCamel).to_case(Case::Kebab), action.describe()))
         .collect();
+    commands.sort_by(|a, b| a.1.cmp(b.1));
     let len = commands.iter().map(|(c, _)| c.len()).fold(0, |a, b| a.max(b));
-
     for (cmd, help) in commands.iter() {
-        if *help != "hidden" {
+        let cmd = cmd.pad_to_width(len + 2);
+        if !help.starts_with('!') {
+            let (cmd, help) = if let Some(help) = help.strip_prefix('?') {
+                let cmd = format!("\x1b[0;38;5;250m{cmd}\x1b[0m");
+                let help = format!("\x1b[0;38;5;250m{help}\x1b[0m");
+                (cmd, help)
+            } else {
+                (cmd, help.to_string())
+            };
             term.writeln(format!("{:>4}{}{}", "", cmd.pad_to_width(len + 2), help).as_str());
         }
     }
