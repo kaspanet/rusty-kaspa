@@ -93,7 +93,7 @@ pub const TIMEOUT_MONITORING_INTERVAL: u64 = 1_000;
 #[derive(Debug)]
 pub(super) struct Resolver {
     // temporary hack to override the handle_stop_notify flag
-    override_handle_stop_notify : bool,
+    override_handle_stop_notify: bool,
 
     handle_stop_notify: bool,
     _handle_message_id: bool,
@@ -141,7 +141,11 @@ impl Resolver {
     }
 
     // TODO - remove the override (discuss how to handle this in relation to the golang client)
-    pub(crate) async fn connect(override_handle_stop_notify: bool, address: String, notify_send: NotificationSender) -> Result<Arc<Self>> {
+    pub(crate) async fn connect(
+        override_handle_stop_notify: bool,
+        address: String,
+        notify_send: NotificationSender,
+    ) -> Result<Arc<Self>> {
         let channel = Endpoint::from_shared(address.clone())?
             .timeout(tokio::time::Duration::from_millis(REQUEST_TIMEOUT_DURATION))
             .connect_timeout(tokio::time::Duration::from_millis(CONNECT_TIMEOUT_DURATION))
@@ -180,7 +184,8 @@ impl Resolver {
         }
 
         // create the resolver
-        let resolver = Arc::new(Resolver::new(override_handle_stop_notify, handle_stop_notify, handle_message_id, notify_send, request_send));
+        let resolver =
+            Arc::new(Resolver::new(override_handle_stop_notify, handle_stop_notify, handle_message_id, notify_send, request_send));
 
         // Start the request timeout cleaner
         resolver.clone().spawn_request_timeout_monitor();
