@@ -468,12 +468,8 @@ impl Inner {
                                         self.handle_response(response);
                                     },
                                     None =>{
-                                        trace!("[GrpcClient] the incoming stream of the response receiver is closed");
-
-                                        // This event makes the whole object unable to work anymore.
-                                        // This should be reported to the owner of this Resolver.
-                                        //
-                                        // Some automatic reconnection mechanism could also be investigated.
+                                        trace!("[GrpcClient] the connection to the server is closed");
+                                        // A reconnection is needed
                                         break;
                                     }
                                 }
@@ -485,9 +481,11 @@ impl Inner {
                     }
                 }
             }
-
             trace!("[GrpcClient] terminating response receiver");
+
+            // Mark as not connected
             self.receiver_is_running.store(false, Ordering::SeqCst);
+
             if self.receiver_shutdown.request.listener.is_triggered() {
                 self.receiver_shutdown.response.trigger.trigger();
             }
