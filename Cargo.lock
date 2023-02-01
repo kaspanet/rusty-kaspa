@@ -1601,6 +1601,7 @@ name = "kaspa-rpc-grpc"
 version = "0.1.0"
 dependencies = [
  "async-channel",
+ "async-stream",
  "async-trait",
  "faster-hex",
  "futures",

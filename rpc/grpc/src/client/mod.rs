@@ -35,8 +35,6 @@ use std::{
     },
     time::Duration,
 };
-use tokio::sync::mpsc::{self, Sender};
-use tokio_stream::wrappers::ReceiverStream;
 use tonic::Streaming;
 use tonic::{codec::CompressionEncoding, transport::Endpoint};
 
@@ -168,6 +166,16 @@ pub const CONNECT_TIMEOUT_DURATION: u64 = 20_000;
 pub const KEEP_ALIVE_DURATION: u64 = 5_000;
 pub const REQUEST_TIMEOUT_DURATION: u64 = 5_000;
 pub const TIMEOUT_MONITORING_INTERVAL: u64 = 1_000;
+pub const RECONNECT_INTERVAL: u64 = 2_000;
+
+type KaspadRequestSender = async_channel::Sender<KaspadRequest>;
+type KaspadRequestReceiver = async_channel::Receiver<KaspadRequest>;
+
+#[derive(Debug, Default)]
+struct ServerFeatures {
+    pub handle_stop_notify: bool,
+    pub handle_message_id: bool,
+}
 
 /// A struct to handle messages flowing to (requests) and from (responses) a protowire server.
 /// Incoming responses are associated to pending requests based on their matching operation
@@ -203,15 +211,17 @@ pub const TIMEOUT_MONITORING_INTERVAL: u64 = 1_000;
 /// Is there a better way to handle the flow?
 ///
 #[derive(Debug)]
-pub(super) struct Inner {
-    handle_stop_notify: bool,
-    handle_message_id: bool,
+struct Inner {
+    address: String,
+
+    server_features: ServerFeatures,
 
     // Pushing incoming notifications forward
     notify_sender: NotificationSender,
 
     // Sending to server
-    request_sender: Sender<KaspadRequest>,
+    request_sender: KaspadRequestSender,
+    request_receiver: KaspadRequestReceiver,
 
     // Receiving from server
     receiver_is_running: AtomicBool,
@@ -225,24 +235,31 @@ pub(super) struct Inner {
     timeout_shutdown: DuplexTrigger,
     timeout_timer_interval: u64,
     timeout_duration: u64,
+
+    // Connection monitor allowing to reconnect automatically to the server
+    connector_is_running: AtomicBool,
+    connector_shutdown: DuplexTrigger,
+    connector_timer_interval: u64,
 }
 
 impl Inner {
-    pub(super) fn new(
-        handle_stop_notify: bool,
-        handle_message_id: bool,
-        notify_send: NotificationSender,
-        request_send: Sender<KaspadRequest>,
+    fn new(
+        address: String,
+        server_features: ServerFeatures,
+        notify_sender: NotificationSender,
+        request_sender: KaspadRequestSender,
+        request_receiver: KaspadRequestReceiver,
     ) -> Self {
-        let resolver: DynResolver = match handle_message_id {
+        let resolver: DynResolver = match server_features.handle_message_id {
             true => Arc::new(IdResolver::new()),
             false => Arc::new(QueueResolver::new()),
         };
         Self {
-            handle_stop_notify,
-            handle_message_id,
-            notify_sender: notify_send,
-            request_sender: request_send,
+            address,
+            server_features,
+            notify_sender,
+            request_sender,
+            request_receiver,
             resolver,
             receiver_is_running: AtomicBool::new(false),
             receiver_shutdown: DuplexTrigger::new(),
@@ -250,10 +267,40 @@ impl Inner {
             timeout_shutdown: DuplexTrigger::new(),
             timeout_duration: REQUEST_TIMEOUT_DURATION,
             timeout_timer_interval: TIMEOUT_MONITORING_INTERVAL,
+            connector_is_running: AtomicBool::new(false),
+            connector_shutdown: DuplexTrigger::new(),
+            connector_timer_interval: RECONNECT_INTERVAL,
         }
     }
 
-    pub(crate) async fn connect(address: String, notify_send: NotificationSender) -> Result<Arc<Self>> {
+    async fn connect(address: String, notify_sender: NotificationSender) -> Result<Arc<Self>> {
+        // Request channel
+        let (request_sender, request_receiver) = async_channel::unbounded();
+
+        // Try to connect to the server
+        let (stream, server_features) = Inner::try_connect(address.clone(), request_sender.clone(), request_receiver.clone()).await?;
+
+        // create the inner object
+        let inner = Arc::new(Inner::new(address, server_features, notify_sender, request_sender, request_receiver));
+
+        // Start the request timeout cleaner
+        inner.clone().spawn_request_timeout_monitor();
+
+        // Start the response receiving task
+        inner.clone().spawn_response_receiver_task(stream);
+
+        // Start the connection monitor
+        inner.clone().spawn_connection_monitor();
+
+        Ok(inner)
+    }
+
+    async fn try_connect(
+        address: String,
+        request_sender: KaspadRequestSender,
+        request_receiver: KaspadRequestReceiver,
+    ) -> Result<(Streaming<KaspadResponse>, ServerFeatures)> {
+        // gRPC endpoint
         let channel = Endpoint::from_shared(address.clone())?
             .timeout(tokio::time::Duration::from_millis(REQUEST_TIMEOUT_DURATION))
             .connect_timeout(tokio::time::Duration::from_millis(CONNECT_TIMEOUT_DURATION))
@@ -264,26 +311,30 @@ impl Inner {
         let mut client =
             RpcClient::new(channel).send_compressed(CompressionEncoding::Gzip).accept_compressed(CompressionEncoding::Gzip);
 
-        // External channel
-        let (request_send, request_recv) = mpsc::channel(16);
-
         // Force the opening of the stream when connected to a go kaspad server.
         // This is also needed for querying server capabilities.
-        request_send.send(GetInfoRequestMessage {}.into()).await?;
+        request_sender.send(GetInfoRequestMessage {}.into()).await?;
+
+        // Prepare a request receiver stream
+        let stream_receiver = request_receiver.clone();
+        let request_stream = async_stream::stream! {
+            while let Ok(item) = stream_receiver.recv().await {
+                yield item;
+            }
+        };
 
         // Actual KaspadRequest to KaspadResponse stream
-        let mut stream: Streaming<KaspadResponse> = client.message_stream(ReceiverStream::new(request_recv)).await?.into_inner();
+        let mut stream: Streaming<KaspadResponse> = client.message_stream(request_stream).await?.into_inner();
 
         // Collect server capabilities as stated in GetInfoResponse
-        let mut handle_stop_notify = false;
-        let mut handle_message_id = false;
+        let mut server_features = ServerFeatures::default();
         match stream.message().await? {
             Some(ref msg) => {
                 trace!("GetInfo got response {:?}", msg);
                 let response: RpcResult<GetInfoResponse> = msg.try_into();
                 if let Ok(response) = response {
-                    handle_stop_notify = response.has_notify_command;
-                    handle_message_id = response.has_message_id;
+                    server_features.handle_stop_notify = response.has_notify_command;
+                    server_features.handle_message_id = response.has_message_id;
                 }
             }
             None => {
@@ -291,24 +342,30 @@ impl Inner {
             }
         }
 
-        // create the inner object
-        let inner = Arc::new(Inner::new(handle_stop_notify, handle_message_id, notify_send, request_send));
+        Ok((stream, server_features))
+    }
 
-        // Start the request timeout cleaner
-        inner.clone().spawn_request_timeout_monitor();
+    async fn reconnect(self: Arc<Self>) -> Result<()> {
+        // TODO: verify if server feature have changed since first connection
+        // TODO: re-register to notifications
+
+        // Try to connect to the server
+        let (stream, _) = Inner::try_connect(self.address.clone(), self.request_sender.clone(), self.request_receiver.clone()).await?;
 
         // Start the response receiving task
-        inner.clone().spawn_response_receiver_task(stream);
+        self.spawn_response_receiver_task(stream);
 
-        Ok(inner)
+        Ok(())
     }
 
-    pub(crate) fn handle_message_id(&self) -> bool {
-        self.handle_message_id
+    #[inline(always)]
+    fn handle_message_id(&self) -> bool {
+        self.server_features.handle_message_id
     }
 
-    pub(crate) fn handle_stop_notify(&self) -> bool {
-        self.handle_stop_notify
+    #[inline(always)]
+    fn handle_stop_notify(&self) -> bool {
+        self.server_features.handle_stop_notify
     }
 
     #[inline(always)]
@@ -316,18 +373,23 @@ impl Inner {
         self.resolver.clone()
     }
 
-    pub(crate) async fn call(&self, op: RpcApiOps, request: impl Into<KaspadRequest>) -> Result<KaspadResponse> {
-        let id = u64::from_le_bytes(rand::random::<[u8; 8]>());
-        let mut request: KaspadRequest = request.into();
-        request.id = id;
+    async fn call(&self, op: RpcApiOps, request: impl Into<KaspadRequest>) -> Result<KaspadResponse> {
+        // Calls are only allowed if the client is connected to the server
+        if self.receiver_is_running.load(Ordering::SeqCst) {
+            let id = u64::from_le_bytes(rand::random::<[u8; 8]>());
+            let mut request: KaspadRequest = request.into();
+            request.id = id;
 
-        trace!("resolver call: {:?}", request);
-        if request.payload.is_some() {
-            let receiver = self.resolver().register_request(op, &request);
-            self.request_sender.send(request).await.map_err(|_| Error::ChannelRecvError)?;
-            receiver.await?
+            trace!("resolver call: {:?}", request);
+            if request.payload.is_some() {
+                let receiver = self.resolver().register_request(op, &request);
+                self.request_sender.send(request).await.map_err(|_| Error::ChannelRecvError)?;
+                receiver.await?
+            } else {
+                Err(Error::MissingRequestPayload)
+            }
         } else {
-            Err(Error::MissingRequestPayload)
+            Err(Error::NotConnected)
         }
     }
 
@@ -385,7 +447,9 @@ impl Inner {
                 pin_mut!(shutdown);
 
                 tokio::select! {
-                    _ = shutdown => { break; }
+                    _ = shutdown => {
+                        break;
+                    }
                     message = stream.message() => {
                         match message {
                             Ok(msg) => {
@@ -414,7 +478,50 @@ impl Inner {
 
             trace!("[GrpcClient] terminating response receiver");
             self.receiver_is_running.store(false, Ordering::SeqCst);
-            self.receiver_shutdown.response.trigger.trigger();
+            if self.receiver_shutdown.request.listener.is_triggered() {
+                self.receiver_shutdown.response.trigger.trigger();
+            }
+        });
+    }
+
+    /// Launch a task that periodically checks if the connection to the server is alive
+    /// and if not that tries to reconnect to the server.
+    fn spawn_connection_monitor(self: Arc<Self>) {
+        // Note: self is a cloned Arc here so that it can be used in the spawned task.
+
+        // The task can only be spawned once
+        if self.connector_is_running.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
+            trace!("[GrpcClient] spawn connection monitor ignored since already spawned");
+            return;
+        }
+
+        tokio::spawn(async move {
+            let shutdown = self.connector_shutdown.request.listener.clone().fuse();
+            pin_mut!(shutdown);
+            loop {
+                let connector_timer_interval = Duration::from_millis(self.connector_timer_interval);
+                let delay = tokio::time::sleep(connector_timer_interval).fuse();
+                pin_mut!(delay);
+                select! {
+                    _ = shutdown => { break; },
+                    _ = delay => {
+                        trace!("[GrpcClient] running connection monitor task");
+                        if !self.receiver_is_running.load(Ordering::SeqCst) {
+                            match self.clone().reconnect().await {
+                                Ok(_) => {
+                                    trace!("[GrpcClient] reconnection to server succeeded");
+                                },
+                                Err(err) => {
+                                    trace!("[GrpcClient] reconnection to server failed with error {err:?}");
+                                }
+                            }
+                        }
+                    },
+                }
+            }
+            trace!("[GrpcClient] terminating connection monitor");
+            self.connector_is_running.store(false, Ordering::SeqCst);
+            self.connector_shutdown.response.trigger.trigger();
         });
     }
 
@@ -443,9 +550,10 @@ impl Inner {
         }
     }
 
-    pub async fn shutdown(&self) -> Result<()> {
+    async fn shutdown(&self) -> Result<()> {
         self.stop_timeout_monitor().await?;
         self.stop_response_receiver_task().await?;
+        self.stop_connector_monitor().await?;
         Ok(())
     }
 
@@ -464,6 +572,14 @@ impl Inner {
         }
         Ok(())
     }
+
+    async fn stop_connector_monitor(&self) -> Result<()> {
+        if self.connector_is_running.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
+            self.connector_shutdown.request.trigger.trigger();
+            self.connector_shutdown.response.listener.clone().await;
+        }
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -476,7 +592,7 @@ impl SubscriptionManager for Inner {
     }
 
     async fn stop_notify(self: Arc<Self>, _: ListenerID, notification_type: NotificationType) -> RpcResult<()> {
-        if self.handle_stop_notify {
+        if self.handle_stop_notify() {
             trace!("[GrpcClient] stop_notify: {:?}", notification_type);
             let request = kaspad_request::Payload::from_notification_type(&notification_type, SubscribeCommand::Stop);
             self.clone().call((&request).into(), request).await?;

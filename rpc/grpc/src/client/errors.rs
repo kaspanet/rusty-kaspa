@@ -32,6 +32,9 @@ pub enum Error {
 
     #[error("Missing response payload")]
     MissingResponsePayload,
+
+    #[error("Not connected to server")]
+    NotConnected,
 }
 
 impl From<Error> for RpcError {
@@ -54,6 +57,24 @@ impl<T> From<tokio::sync::mpsc::error::SendError<T>> for Error {
 
 impl From<tokio::sync::oneshot::error::RecvError> for Error {
     fn from(_: tokio::sync::oneshot::error::RecvError) -> Self {
+        Error::ChannelRecvError
+    }
+}
+
+impl<T> From<async_channel::SendError<T>> for Error {
+    fn from(_: async_channel::SendError<T>) -> Self {
+        Error::ChannelSendError
+    }
+}
+
+impl<T> From<async_channel::TrySendError<T>> for Error {
+    fn from(_: async_channel::TrySendError<T>) -> Self {
+        Error::ChannelSendError
+    }
+}
+
+impl From<async_channel::RecvError> for Error {
+    fn from(_: async_channel::RecvError) -> Self {
         Error::ChannelRecvError
     }
 }
