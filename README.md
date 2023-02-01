@@ -127,7 +127,7 @@ the Kaspa WASM framework.
 
 ## Enabling wRPC
 
-wRPC is disabled by default and can be enabled via:
+wRPC subsystem is disabled by default in `kaspad` and can be enabled via:
 - `--rpclisten-json = <interface:port>` for JSON protocol
 - `--rpclisten-borsh = <interface:port>` for Borsh protocol
 
