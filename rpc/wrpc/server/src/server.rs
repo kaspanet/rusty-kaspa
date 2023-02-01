@@ -45,7 +45,7 @@ impl Server {
 
         if let Some(grpc_proxy_address) = &self.inner.options.grpc_proxy_address {
             log_info!("Routing wrpc://{peer} -> {grpc_proxy_address}");
-            let grpc = RpcApiGrpc::connect(grpc_proxy_address.to_owned()).await.map_err(|e| WebSocketError::Other(e.to_string()))?;
+            let grpc = RpcApiGrpc::connect(true, grpc_proxy_address.to_owned()).await.map_err(|e| WebSocketError::Other(e.to_string()))?;
             // log_trace!("starting gRPC");
             grpc.start().await;
             // log_trace!("gRPC started...");

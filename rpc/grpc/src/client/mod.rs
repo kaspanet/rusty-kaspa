@@ -33,13 +33,13 @@ pub struct RpcApiGrpc {
 }
 
 impl RpcApiGrpc {
-    pub async fn connect(address: String) -> Result<RpcApiGrpc> {
+    pub async fn connect(override_handle_stop_notify: bool, address: String) -> Result<RpcApiGrpc> {
         let schema = Regex::new(r"^grpc://").unwrap();
         if !schema.is_match(&address) {
             return Err(Error::GrpcAddressSchema(address));
         }
         let notify_channel = NotificationChannel::default();
-        let inner = Resolver::connect(address, notify_channel.sender()).await?;
+        let inner = Resolver::connect(override_handle_stop_notify, address, notify_channel.sender()).await?;
         let collector = Arc::new(RpcCoreCollector::new(notify_channel.receiver()));
         let subscriber = Subscriber::new(inner.clone(), 0);
 

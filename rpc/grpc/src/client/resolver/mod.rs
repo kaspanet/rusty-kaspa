@@ -92,6 +92,9 @@ pub const TIMEOUT_MONITORING_INTERVAL: u64 = 1_000;
 ///
 #[derive(Debug)]
 pub(super) struct Resolver {
+    // temporary hack to override the handle_stop_notify flag
+    override_handle_stop_notify : bool,
+
     handle_stop_notify: bool,
     _handle_message_id: bool,
 
@@ -115,12 +118,14 @@ pub(super) struct Resolver {
 
 impl Resolver {
     pub(super) fn new(
+        override_handle_stop_notify: bool,
         handle_stop_notify: bool,
         handle_message_id: bool,
         notify_send: NotificationSender,
         request_send: Sender<KaspadRequest>,
     ) -> Self {
         Self {
+            override_handle_stop_notify,
             handle_stop_notify,
             _handle_message_id: handle_message_id,
             notify_send,
@@ -135,7 +140,8 @@ impl Resolver {
         }
     }
 
-    pub(crate) async fn connect(address: String, notify_send: NotificationSender) -> Result<Arc<Self>> {
+    // TODO - remove the override (discuss how to handle this in relation to the golang client)
+    pub(crate) async fn connect(override_handle_stop_notify: bool, address: String, notify_send: NotificationSender) -> Result<Arc<Self>> {
         let channel = Endpoint::from_shared(address.clone())?
             .timeout(tokio::time::Duration::from_millis(REQUEST_TIMEOUT_DURATION))
             .connect_timeout(tokio::time::Duration::from_millis(CONNECT_TIMEOUT_DURATION))
@@ -174,7 +180,7 @@ impl Resolver {
         }
 
         // create the resolver
-        let resolver = Arc::new(Resolver::new(handle_stop_notify, handle_message_id, notify_send, request_send));
+        let resolver = Arc::new(Resolver::new(override_handle_stop_notify, handle_stop_notify, handle_message_id, notify_send, request_send));
 
         // Start the request timeout cleaner
         resolver.clone().spawn_request_timeout_monitor();
@@ -186,7 +192,12 @@ impl Resolver {
     }
 
     pub(crate) fn handle_stop_notify(&self) -> bool {
-        self.handle_stop_notify
+        // TODO - remove this
+        if self.override_handle_stop_notify {
+            true
+        } else {
+            self.handle_stop_notify
+        }
     }
 
     pub(crate) async fn call(&self, op: RpcApiOps, request: impl Into<KaspadRequest>) -> Result<KaspadResponse> {
