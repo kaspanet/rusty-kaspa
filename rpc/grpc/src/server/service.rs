@@ -137,6 +137,8 @@ impl Rpc for Arc<GrpcService> {
                         // If sending failed, then remove the connection from connection manager
                         trace!("[Remote] stream tx sending error. Remote {:?}", &remote_addr);
                         connection_manager.write().await.unregister(remote_addr).await;
+                        // and close the connection channel
+                        recv_channel.close();
                     }
                 }
             }
