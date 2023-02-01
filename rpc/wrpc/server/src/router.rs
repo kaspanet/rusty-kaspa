@@ -95,7 +95,6 @@ impl Router {
             RpcApiOps::Subscribe,
             workflow_rpc::server::Method::new(move |manager: Server, connection: Connection, notification_type: NotificationType| {
                 Box::pin(async move {
-                    workflow_log::log_trace!("notification subscribe {:?}", notification_type);
 
                     let rpc_api = manager.get_rpc_api(&connection);
 
@@ -108,6 +107,8 @@ impl Router {
                         id
                     };
 
+                    workflow_log::log_trace!("notification subscribe[0x{id:x}] {notification_type:?}");
+
                     rpc_api.start_notify(id, notification_type).await.map_err(|err| err.to_string())?;
 
                     Ok(SubscribeResponse::new(id))
@@ -119,7 +120,12 @@ impl Router {
             RpcApiOps::Unsubscribe,
             workflow_rpc::server::Method::new(move |manager: Server, connection: Connection, notification_type: NotificationType| {
                 Box::pin(async move {
-                    workflow_log::log_trace!("notification unsubscribe {:?}", notification_type);
+
+                    if let Some(listener_id) = connection.listener_id() {
+                        workflow_log::log_trace!("notification unsubscribe[0x{listener_id:x}] {notification_type:?}");
+                    } else {
+                        workflow_log::log_trace!("notification unsubscribe[N/A] {notification_type:?}");
+                    }
 
                     let rpc_api = manager.get_rpc_api(&connection);
 
