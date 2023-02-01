@@ -980,9 +980,9 @@ pub struct NotifyNewBlockTemplateResponse {}
 #[serde(rename_all = "camelCase")]
 pub struct NewBlockTemplateNotification {}
 
-/// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-/// wRPC response for RpcApiOps::Subscribe request
-/// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+///
+///  wRPC response for RpcApiOps::Subscribe request
+/// 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SubscribeResponse {
@@ -995,9 +995,9 @@ impl SubscribeResponse {
     }
 }
 
-/// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-/// wRPC response for RpcApiOps::Subscribe request
-/// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+///
+///  wRPC response for RpcApiOps::Subscribe request
+/// 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct UnsubscribeResponse {}

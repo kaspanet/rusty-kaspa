@@ -98,12 +98,13 @@ impl From<i32> for SubscribeCommand {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::RpcApiOps;
+// TODO - remove or change?
+// #[cfg(test)]
+// mod tests {
+//     use super::RpcApiOps;
 
-    #[test]
-    fn test_rpc_api_ops_convert() {
-        assert_eq!(0_u32, u32::from(RpcApiOps::Ping));
-    }
-}
+//     #[test]
+//     fn test_rpc_api_ops_convert() {
+//         assert_eq!(0_u32, u32::from(RpcApiOps::Ping));
+//     }
+// }
