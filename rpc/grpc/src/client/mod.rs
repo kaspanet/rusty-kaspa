@@ -50,9 +50,9 @@ pub struct GrpcClient {
 }
 
 impl GrpcClient {
-    pub async fn connect(address: String) -> Result<GrpcClient> {
+    pub async fn connect(address: String, reconnect: bool) -> Result<GrpcClient> {
         let notify_channel = NotificationChannel::default();
-        let inner = Inner::connect(address, notify_channel.sender()).await?;
+        let inner = Inner::connect(address, reconnect, notify_channel.sender()).await?;
         let collector = Arc::new(RpcCoreCollector::new(notify_channel.receiver()));
         let subscriber = Subscriber::new(inner.clone(), 0);
 
@@ -74,6 +74,10 @@ impl GrpcClient {
     pub async fn stop(&self) -> Result<()> {
         self.notifier.stop().await?;
         Ok(())
+    }
+
+    pub fn is_connected(&self) -> bool {
+        self.inner.is_connected()
     }
 
     pub fn handle_message_id(&self) -> bool {
@@ -273,7 +277,7 @@ impl Inner {
         }
     }
 
-    async fn connect(address: String, notify_sender: NotificationSender) -> Result<Arc<Self>> {
+    async fn connect(address: String, reconnect: bool, notify_sender: NotificationSender) -> Result<Arc<Self>> {
         // Request channel
         let (request_sender, request_receiver) = async_channel::unbounded();
 
@@ -289,8 +293,10 @@ impl Inner {
         // Start the response receiving task
         inner.clone().spawn_response_receiver_task(stream);
 
-        // Start the connection monitor
-        inner.clone().spawn_connection_monitor();
+        if reconnect {
+            // Start the connection monitor
+            inner.clone().spawn_connection_monitor();
+        }
 
         Ok(inner)
     }
@@ -358,6 +364,10 @@ impl Inner {
         Ok(())
     }
 
+    fn is_connected(&self) -> bool {
+        self.receiver_is_running.load(Ordering::SeqCst)
+    }
+
     #[inline(always)]
     fn handle_message_id(&self) -> bool {
         self.server_features.handle_message_id
@@ -375,7 +385,7 @@ impl Inner {
 
     async fn call(&self, op: RpcApiOps, request: impl Into<KaspadRequest>) -> Result<KaspadResponse> {
         // Calls are only allowed if the client is connected to the server
-        if self.receiver_is_running.load(Ordering::SeqCst) {
+        if self.is_connected() {
             let id = u64::from_le_bytes(rand::random::<[u8; 8]>());
             let mut request: KaspadRequest = request.into();
             request.id = id;
@@ -506,7 +516,7 @@ impl Inner {
                     _ = shutdown => { break; },
                     _ = delay => {
                         trace!("[GrpcClient] running connection monitor task");
-                        if !self.receiver_is_running.load(Ordering::SeqCst) {
+                        if !self.is_connected() {
                             match self.clone().reconnect().await {
                                 Ok(_) => {
                                     trace!("[GrpcClient] reconnection to server succeeded");
