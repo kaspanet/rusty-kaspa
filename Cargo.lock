@@ -2043,6 +2043,7 @@ dependencies = [
  "consensus-core",
  "futures",
  "kaspa-core",
+ "kaspa-utils",
  "log",
  "p2p-lib",
  "tokio",

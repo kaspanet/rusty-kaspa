@@ -10,6 +10,7 @@ edition = "2021"
 kaspa-core.workspace = true
 consensus-core.workspace = true
 p2p-lib.workspace = true
+kaspa-utils.workspace = true
 # project external deps
 log.workspace = true
 futures = { version = "0.3", default-features = false, features = ["alloc"] }

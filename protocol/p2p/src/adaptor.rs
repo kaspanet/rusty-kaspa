@@ -13,24 +13,32 @@ type P2pClientType = infra::P2pClient<infra::Router>;
 
 #[async_trait]
 pub trait P2pAdaptorApi {
-    // will be used only for client side connections (regular kaspa node will NOT use it)
+    /// Will be used only for client side connections (regular kaspa node will NOT use it)
     async fn init_only_client_side(flow_registry: Arc<dyn FlowRegistryApi>) -> Option<std::sync::Arc<Self>>;
-    // will start new grpc listener + all infra needed
-    // 1) start listener + grpc
-    // 2) start new flows registration loop
-    // 3) register flows terminate channels
+
+    /// Will start new grpc listener + all infra needed
+    /// 1) start listener + grpc
+    /// 2) start new flows registration loop
+    /// 3) register flows terminate channels
     async fn listen(ip_port: String, flow_registry: Arc<dyn FlowRegistryApi>) -> Option<std::sync::Arc<Self>>;
-    // will start new client connection
+
+    /// Will start a new client connection
     async fn connect_peer(&self, ip_port: String) -> Option<uuid::Uuid>;
-    // send message to peer - used for tests (regular kaspa node will NOT use it)
+
+    /// Send message to peer - used for tests (regular kaspa node will NOT use it)
     async fn send(&self, id: uuid::Uuid, msg: pb::KaspadMessage);
-    // async fn send2<T: ToPayload>(&self, id: uuid::Uuid, msg: T);
-    // will terminate everything, but p2p layer
-    // p2p layer will be terminated during drop(...)
+
+    /// Terminate a specific peer/flow
     async fn terminate(&self, id: uuid::Uuid);
+
+    /// Will terminate everything, but p2p layer
+    /// p2p layer will be terminated during drop(...)
     async fn terminate_all_peers_and_flows(&self);
-    // helper functions
+
+    /// Helper function to get all existing peer ids
     fn get_all_peer_ids(&self) -> std::vec::Vec<uuid::Uuid>;
+
+    /// Helper function to get all existing flow ids
     fn get_all_flow_ids(&self) -> std::vec::Vec<uuid::Uuid>;
 }
 
@@ -92,7 +100,8 @@ impl P2pAdaptorApi for P2pAdaptor {
         });
         Some(p2p_adaptor_clone)
     }
-    // regular kaspa node will use this call to have both server & client connections
+
+    /// Regular kaspa node will use this call to have both server & client connections
     async fn listen(ip_port: String, flow_registry: Arc<dyn FlowRegistryApi>) -> Option<std::sync::Arc<Self>> {
         // [0] - Create new router - first instance
         // upper_layer_rx will be used to dispatch notifications about new-connections, both for client & server
