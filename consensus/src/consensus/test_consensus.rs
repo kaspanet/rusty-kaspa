@@ -1,23 +1,30 @@
 use std::{
     env, fs,
+    path::PathBuf,
     sync::{Arc, Weak},
     thread::JoinHandle,
 };
 
 use consensus_core::{
-    block::{Block, MutableBlock},
+    api::ConsensusApi,
+    block::{Block, BlockTemplate, MutableBlock},
+    blockstatus::BlockStatus,
+    coinbase::MinerData,
+    errors::{block::RuleError, coinbase::CoinbaseResult, tx::TxResult},
     header::Header,
     merkle::calc_hash_merkle_root,
     subnets::SUBNETWORK_ID_COINBASE,
-    tx::Transaction,
+    tx::{MutableTransaction, Transaction},
     BlockHashSet,
 };
+use futures_util::future::BoxFuture;
 use hashes::Hash;
 use kaspa_core::{core::Core, service::Service};
 use parking_lot::RwLock;
 use std::future::Future;
 
 use crate::{
+    config::Config,
     constants::TX_VERSION,
     errors::BlockProcessResult,
     model::stores::{
@@ -26,8 +33,6 @@ use crate::{
         headers::{DbHeadersStore, HeaderStoreReader},
         pruning::PruningStoreReader,
         reachability::DbReachabilityStore,
-        statuses::{BlockStatus, StatusesStoreReader},
-        tips::TipsStoreReader,
         DB,
     },
     params::Params,
@@ -39,19 +44,23 @@ use crate::{
 use super::{Consensus, DbGhostdagManager};
 
 pub struct TestConsensus {
-    consensus: Consensus,
+    pub consensus: Arc<Consensus>,
     pub params: Params,
     temp_db_lifetime: TempDbLifetime,
 }
 
 impl TestConsensus {
-    pub fn new(db: Arc<DB>, params: &Params) -> Self {
-        Self { consensus: Consensus::new(db, params), params: params.clone(), temp_db_lifetime: Default::default() }
+    pub fn new(db: Arc<DB>, config: &Config) -> Self {
+        Self { consensus: Arc::new(Consensus::new(db, config)), params: config.params.clone(), temp_db_lifetime: Default::default() }
     }
 
-    pub fn create_from_temp_db(params: &Params) -> Self {
+    pub fn consensus(&self) -> Arc<Consensus> {
+        self.consensus.clone()
+    }
+
+    pub fn create_from_temp_db(config: &Config) -> Self {
         let (temp_db_lifetime, db) = create_temp_db();
-        Self { consensus: Consensus::new(db, params), params: params.clone(), temp_db_lifetime }
+        Self { consensus: Arc::new(Consensus::new(db, config)), params: config.params.clone(), temp_db_lifetime }
     }
 
     pub fn build_header_with_parents(&self, hash: Hash, parents: Vec<Hash>) -> Header {
@@ -61,14 +70,14 @@ impl TestConsensus {
             .consensus
             .pruning_manager
             .expected_header_pruning_point(ghostdag_data.to_compact(), self.consensus.pruning_store.read().get().unwrap());
-        let window = self.consensus.dag_traversal_manager.block_window(ghostdag_data.clone(), self.params.difficulty_window_size);
+        let window = self.consensus.dag_traversal_manager.block_window(&ghostdag_data, self.params.difficulty_window_size);
         let (daa_score, _) = self
             .consensus
             .difficulty_manager
             .calc_daa_score_and_non_daa_mergeset_blocks(&mut window.iter().map(|item| item.0.hash), &ghostdag_data);
         header.bits = self.consensus.difficulty_manager.calculate_difficulty_bits(&window);
         header.daa_score = daa_score;
-        header.timestamp = self.consensus.past_median_time_manager.calc_past_median_time(ghostdag_data.clone()).0 + 1;
+        header.timestamp = self.consensus.past_median_time_manager.calc_past_median_time(&ghostdag_data).0 + 1;
         header.blue_score = ghostdag_data.blue_score;
         header.blue_work = ghostdag_data.blue_work;
 
@@ -103,7 +112,7 @@ impl TestConsensus {
     }
 
     pub fn validate_and_insert_block(&self, block: Block) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
-        self.consensus.validate_and_insert_block(block)
+        self.consensus.as_ref().validate_and_insert_block(block, true)
     }
 
     pub fn init(&self) -> Vec<JoinHandle<()>> {
@@ -142,18 +151,46 @@ impl TestConsensus {
         &self.consensus.past_median_time_manager
     }
 
-    // TODO: add to consensus API
     pub fn body_tips(&self) -> Arc<BlockHashSet> {
-        self.consensus.body_tips_store.read().get().unwrap()
+        self.consensus.body_tips()
     }
 
-    // TODO: add to consensus API
     pub fn block_status(&self, hash: Hash) -> BlockStatus {
-        self.consensus.statuses_store.read().get(hash).unwrap()
+        self.consensus.block_status(hash)
     }
 
     pub fn ghostdag_manager(&self) -> &DbGhostdagManager {
         &self.consensus.ghostdag_manager
+    }
+}
+
+impl ConsensusApi for TestConsensus {
+    fn build_block_template(self: Arc<Self>, miner_data: MinerData, txs: Vec<Transaction>) -> Result<BlockTemplate, RuleError> {
+        self.consensus().build_block_template(miner_data, txs)
+    }
+
+    fn validate_and_insert_block(
+        self: Arc<Self>,
+        block: Block,
+        update_virtual: bool,
+    ) -> BoxFuture<'static, BlockProcessResult<BlockStatus>> {
+        self.consensus().validate_and_insert_block(block, update_virtual)
+    }
+
+    fn validate_mempool_transaction_and_populate(self: Arc<Self>, transaction: &mut MutableTransaction) -> TxResult<()> {
+        self.consensus().validate_mempool_transaction_and_populate(transaction)
+    }
+
+    fn calculate_transaction_mass(self: Arc<Self>, transaction: &Transaction) -> u64 {
+        self.consensus().calculate_transaction_mass(transaction)
+    }
+
+    fn get_virtual_daa_score(self: Arc<Self>) -> u64 {
+        self.consensus().get_virtual_daa_score()
+    }
+
+    fn modify_coinbase_payload(self: Arc<Self>, payload: Vec<u8>, miner_data: &MinerData) -> CoinbaseResult<Vec<u8>> {
+        self.consensus().modify_coinbase_payload(payload, miner_data)
     }
 }
 
@@ -181,6 +218,12 @@ impl TempDbLifetime {
     pub fn new(tempdir: tempfile::TempDir, weak_db_ref: Weak<DB>) -> Self {
         Self { tempdir: Some(tempdir), weak_db_ref }
     }
+
+    /// Tracks the DB reference and makes sure all strong refs are cleaned up
+    /// but does not remove the DB from disk when dropped.
+    pub fn without_destroy(weak_db_ref: Weak<DB>) -> Self {
+        Self { tempdir: None, weak_db_ref }
+    }
 }
 
 impl Drop for TempDbLifetime {
@@ -203,16 +246,45 @@ impl Drop for TempDbLifetime {
     }
 }
 
+fn create_db_with_custom_options(db_path: PathBuf, create_if_missing: bool) -> Arc<DB> {
+    let mut opts = rocksdb::Options::default();
+    // Set parallelism to 3 as an heuristic for header/block/virtual processing
+    opts.increase_parallelism(3);
+    opts.create_if_missing(create_if_missing);
+    let db = Arc::new(DB::open(&opts, db_path.to_str().unwrap()).unwrap());
+    db
+}
+
 /// Creates a DB within a temp directory under `<OS SPECIFIC TEMP DIR>/kaspa-rust`
 /// Callers must keep the `TempDbLifetime` guard for as long as they wish the DB to exist.
 pub fn create_temp_db() -> (TempDbLifetime, Arc<DB>) {
     let global_tempdir = env::temp_dir();
     let kaspa_tempdir = global_tempdir.join("kaspa-rust");
     fs::create_dir_all(kaspa_tempdir.as_path()).unwrap();
-
     let db_tempdir = tempfile::tempdir_in(kaspa_tempdir.as_path()).unwrap();
     let db_path = db_tempdir.path().to_owned();
-
-    let db = Arc::new(DB::open_default(db_path.to_str().unwrap()).unwrap());
+    let db = create_db_with_custom_options(db_path, true);
     (TempDbLifetime::new(db_tempdir, Arc::downgrade(&db)), db)
+}
+
+/// Creates a DB within the provided directory path.
+/// Callers must keep the `TempDbLifetime` guard for as long as they wish the DB instance to exist.
+pub fn create_permanent_db(db_path: String) -> (TempDbLifetime, Arc<DB>) {
+    let db_dir = PathBuf::from(db_path);
+    if let Err(e) = fs::create_dir(db_dir.as_path()) {
+        match e.kind() {
+            std::io::ErrorKind::AlreadyExists => panic!("The directory {db_dir:?} already exists"),
+            _ => panic!("{e}"),
+        }
+    }
+    let db = create_db_with_custom_options(db_dir, true);
+    (TempDbLifetime::without_destroy(Arc::downgrade(&db)), db)
+}
+
+/// Loads an existing DB from the provided directory path.
+/// Callers must keep the `TempDbLifetime` guard for as long as they wish the DB instance to exist.
+pub fn load_existing_db(db_path: String) -> (TempDbLifetime, Arc<DB>) {
+    let db_dir = PathBuf::from(db_path);
+    let db = create_db_with_custom_options(db_dir, false);
+    (TempDbLifetime::without_destroy(Arc::downgrade(&db)), db)
 }

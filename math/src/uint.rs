@@ -1,13 +1,13 @@
 #[doc(hidden)]
-pub use faster_hex;
-#[doc(hidden)]
-pub use serde;
+pub use {faster_hex, malachite_base, malachite_nz, serde};
+
+// TODO: Add u32 support for optimization on 32 bit machines.
 
 #[macro_export]
 macro_rules! construct_uint {
-    ($name:ident, $n_words:literal) => {
+    ($name:ident, $n_words:literal $(, $derive_trait:ty)*) => {
         /// Little-endian large integer type
-        #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
+        #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug$(, $derive_trait )*)]
         pub struct $name(pub [u64; $n_words]);
         #[allow(unused)]
         impl $name {
@@ -59,7 +59,7 @@ macro_rules! construct_uint {
             }
 
             #[inline]
-            pub fn overflowing_shl(self, mut s: u32) -> ($name, bool) {
+            pub fn overflowing_shl(self, mut s: u32) -> (Self, bool) {
                 let overflows = s >= Self::BITS;
                 s %= Self::BITS;
                 let mut ret = [0u64; $n_words];
@@ -79,12 +79,12 @@ macro_rules! construct_uint {
             }
 
             #[inline]
-            pub fn wrapping_shl(self, s: u32) -> $name {
+            pub fn wrapping_shl(self, s: u32) -> Self {
                 self.overflowing_shl(s).0
             }
 
             #[inline]
-            pub fn overflowing_shr(self, mut s: u32) -> ($name, bool) {
+            pub fn overflowing_shr(self, mut s: u32) -> (Self, bool) {
                 let overflows = s >= Self::BITS;
                 s %= Self::BITS;
                 let mut ret = [0u64; Self::LIMBS];
@@ -104,7 +104,7 @@ macro_rules! construct_uint {
             }
 
             #[inline]
-            pub fn overflowing_add(mut self, other: $name) -> ($name, bool) {
+            pub fn overflowing_add(mut self, other: Self) -> (Self, bool) {
                 // Replace with std once stabilized:https://github.com/rust-lang/rust/issues/85532
                 #[inline(always)]
                 pub const fn carrying_add_u64(lhs: u64, rhs: u64, carry: bool) -> (u64, bool) {
@@ -122,7 +122,7 @@ macro_rules! construct_uint {
             }
 
             #[inline]
-            pub fn overflowing_add_u64(mut self, other: u64) -> ($name, bool) {
+            pub fn overflowing_add_u64(mut self, other: u64) -> (Self, bool) {
                 let mut carry: bool;
                 (self.0[0], carry) = self.0[0].overflowing_add(other);
                 for i in 1..Self::LIMBS {
@@ -135,7 +135,7 @@ macro_rules! construct_uint {
             }
 
             #[inline]
-            pub fn overflowing_sub(mut self, other: $name) -> ($name, bool) {
+            pub fn overflowing_sub(mut self, other: Self) -> (Self, bool) {
                 // Replace with std once stabilized:https://github.com/rust-lang/rust/issues/85532
                 #[inline(always)]
                 pub const fn borrowing_sub_u64(lhs: u64, rhs: u64, borrow: bool) -> (u64, bool) {
@@ -155,13 +155,13 @@ macro_rules! construct_uint {
 
             /// Multiplication by u64
             #[inline]
-            pub fn overflowing_mul_u64(self, other: u64) -> ($name, bool) {
+            pub fn overflowing_mul_u64(self, other: u64) -> (Self, bool) {
                 let (this, carry) = self.carrying_mul_u64(other);
                 (this, carry != 0)
             }
 
             #[inline]
-            pub fn carrying_mul_u64(mut self, other: u64) -> ($name, u64) {
+            pub fn carrying_mul_u64(mut self, other: u64) -> (Self, u64) {
                 let mut carry: u128 = 0;
                 for i in 0..Self::LIMBS {
                     // TODO: Use `carrying_mul` when stabilized: https://github.com/rust-lang/rust/issues/85532
@@ -173,9 +173,9 @@ macro_rules! construct_uint {
             }
 
             #[inline]
-            pub fn overflowing_mul(self, other: $name) -> ($name, bool) {
+            pub fn overflowing_mul(self, other: Self) -> (Self, bool) {
                 // We should probably replace this with a Montgomery multiplication algorithm
-                let mut result = $name::ZERO;
+                let mut result = Self::ZERO;
                 let mut carry_out = false;
                 for j in 0..Self::LIMBS {
                     let mut carry = 0;
@@ -193,12 +193,24 @@ macro_rules! construct_uint {
             /// Creates big integer value from a byte slice using
             /// little-endian encoding
             #[inline(always)]
-            pub fn from_le_bytes(bytes: [u8; Self::BYTES]) -> $name {
+            pub fn from_le_bytes(bytes: [u8; Self::BYTES]) -> Self {
                 let mut out = [0u64; Self::LIMBS];
                 // This should optimize to basically a transmute.
                 out.iter_mut()
                     .zip(bytes.chunks_exact(8))
                     .for_each(|(word, bytes)| *word = u64::from_le_bytes(bytes.try_into().unwrap()));
+                Self(out)
+            }
+
+            /// Creates big integer value from a byte slice using
+            /// big-endian encoding
+            #[inline(always)]
+            pub fn from_be_bytes(bytes: [u8; Self::BYTES]) -> Self {
+                let mut out = [0u64; Self::LIMBS];
+                out.iter_mut()
+                    .rev()
+                    .zip(bytes.chunks_exact(8))
+                    .for_each(|(word, bytes)| *word = u64::from_be_bytes(bytes.try_into().unwrap()));
                 Self(out)
             }
 
@@ -270,26 +282,22 @@ macro_rules! construct_uint {
                 (Self(ret), sub_copy)
             }
 
+            /// Assumes self < prime
             #[inline]
             pub fn mod_inverse(self, prime: Self) -> Option<Self> {
-                use $crate::int::SignedInteger;
-                let mut t = SignedInteger::from(Self::ZERO);
-                let mut newt = SignedInteger::positive_u64(1u64);
-                let mut r = SignedInteger::from(prime);
-                let mut newr = SignedInteger::from(self);
+                use $crate::uint::malachite_nz::natural::Natural;
+                use $crate::uint::malachite_base::num::arithmetic::traits::ModInverse;
 
-                while !newr.abs().is_zero() {
-                    let quotient = r / newr;
-                    (t, newt) = (newt, t - quotient * newt);
-                    (r, newr) = (newr, r - quotient * newr);
-                }
-                if !r.negative() && r.abs() != 1u64 {
-                    None
-                } else if t.negative() {
-                    Some(prime - t.abs())
-                } else {
-                    Some(t.abs())
-                }
+                let x = Natural::from_limbs_asc(&self.0);
+                let p = Natural::from_limbs_asc(&prime.0);
+                let mod_inv = x.mod_inverse(p);
+
+                mod_inv.map(|n| {
+                    let mut res = [0u64; Self::LIMBS];
+                    let limbs = n.into_limbs_asc();
+                    res[..limbs.len()].copy_from_slice(&limbs);
+                    Self(res)
+                })
             }
 
             #[inline]
@@ -336,6 +344,20 @@ macro_rules! construct_uint {
                 impl core::iter::FusedIterator for BinaryIterator {}
 
                 BinaryIterator { array: self.0, bit: 0 }
+            }
+
+            /// Converts a Self::BYTES*2 hex string interperted as big endian, into a Uint
+            #[inline]
+            pub fn from_hex(hex: &str) -> Result<Self, $crate::uint::faster_hex::Error> {
+                if hex.len() > Self::BYTES * 2 {
+                    return Err($crate::uint::faster_hex::Error::InvalidLength(hex.len()));
+                }
+                let mut out = [0u8; Self::BYTES];
+                let mut input = [b'0'; Self::BYTES * 2];
+                let start = input.len() - hex.len();
+                input[start..].copy_from_slice(hex.as_bytes());
+                $crate::uint::faster_hex::hex_decode(&input, &mut out)?;
+                Ok(Self::from_be_bytes(out))
             }
         }
 
@@ -748,7 +770,7 @@ macro_rules! construct_uint {
 
             #[inline]
             fn deserialize_in_place<D: $crate::uint::serde::Deserializer<'de>>(
-                deserializer: D,
+                    deserializer: D,
                 place: &mut Self,
             ) -> Result<(), D::Error> {
                 use core::fmt;
@@ -833,10 +855,11 @@ mod tests {
             assert_equal_args(format_args!("{a:x}"), format_args!("{b:x}")); // Test LowerHex
             assert_equal_args(format_args!("{a:#x}"), format_args!("{b:#x}")); // Test LowerHex with prefix
                                                                                // Test LowerHex with padding
-            assert_equal_args(format_args!("{a:0256x}"), format_args!("{b:0256x}"));
+            assert_equal_args(format_args!("{a:032x}"), format_args!("{b:032x}"));
         };
         let mut rng = ChaCha8Rng::from_seed([0; 32]);
         let mut buf = [0u8; 16];
+        let mut str_buf = String::with_capacity(32);
         for i in 0..64_000 {
             // Checking all the fmt's is quite expensive.
             let check_fmt = i % 8 == 1;
@@ -895,6 +918,70 @@ mod tests {
                 assert_equal(mine_add.0, default_add.0, check_fmt);
                 assert_eq!(mine_add.1, default_add.1);
             }
+            // Roundtrip Little-Endian bytes conversion
+            {
+                let mine_le = mine.to_le_bytes();
+                let default_le = default.to_le_bytes();
+                assert_eq!(mine_le, default_le);
+                assert_eq!(mine, Uint128::from_le_bytes(mine_le));
+            }
+            // Roundtrip Big-Endian bytes conversion
+            {
+                let mine_le = mine.to_be_bytes();
+                let default_le = default.to_be_bytes();
+                assert_eq!(mine_le, default_le);
+                assert_eq!(mine, Uint128::from_be_bytes(mine_le));
+            }
+            // Roundtrip hex
+            if check_fmt {
+                str_buf.clear();
+                str_buf.write_fmt(format_args!("{mine:032x}")).unwrap();
+                assert_eq!(mine, Uint128::from_hex(&str_buf).unwrap());
+            }
+        }
+    }
+
+    #[test]
+    fn test_mod_inv() {
+        use core::cmp::Ordering;
+        let mut rng = ChaCha8Rng::from_seed([0; 32]);
+        let mut buf = [0u8; 16];
+        for _ in 0..50_000 {
+            rng.fill_bytes(&mut buf);
+            let uint1 = Uint128::from_le_bytes(buf);
+            rng.fill_bytes(&mut buf);
+            let uint2 = Uint128::from_le_bytes(buf);
+            let (bigger, smaller) = match uint1.cmp(&uint2) {
+                Ordering::Greater => (uint1, uint2),
+                Ordering::Less => (uint2, uint1),
+                Ordering::Equal => continue,
+            };
+            let inv = smaller.mod_inverse(bigger);
+            if let Some(inv) = inv {
+                assert_eq!(prod_bin(inv, smaller, bigger), 1u64);
+            }
+        }
+
+        fn sum(x: Uint128, y: Uint128, m: Uint128) -> Uint128 {
+            let res = x.overflowing_add(y).0;
+            if res < x || res >= m {
+                res.overflowing_sub(m).0
+            } else {
+                res
+            }
+        }
+        fn prod_bin(x: Uint128, y: Uint128, m: Uint128) -> Uint128 {
+            if y == 1u64 {
+                return x;
+            } else if y == 0u64 {
+                return Uint128::ZERO;
+            }
+            let mut res = prod_bin(x, y >> 1, m);
+            res = sum(res, res, m);
+            if (y.as_u64() & 1) == 1 {
+                res = sum(res, x, m);
+            }
+            res
         }
     }
 }

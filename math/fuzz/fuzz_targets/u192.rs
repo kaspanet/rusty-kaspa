@@ -133,10 +133,11 @@ fuzz_target!(|data: &[u8]| {
     // mod_inv
     {
         // the modular inverse of 1 in Z/1Z is weird, should it be 1 or 0?
+        // Also, 0 never has a mod_inverse
         let ((lib1, native1), (lib2, native2)) = loop {
             let (lib1, native1) = try_opt!(generate_ints(&mut data));
             let (lib2, native2) = try_opt!(generate_ints(&mut data));
-            if lib1 != 1u64 || lib2 != 1u64 {
+            if lib1 < lib2 && lib1 != 0u64 {
                 break ((lib1, native1), (lib2, native2));
             }
         };

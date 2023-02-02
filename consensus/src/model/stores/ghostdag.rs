@@ -2,7 +2,7 @@ use super::database::prelude::{BatchDbWriter, CachedDbAccess, DbKey, DirectDbWri
 use super::{errors::StoreError, DB};
 use crate::processes::ghostdag::ordering::SortableBlock;
 use consensus_core::{blockhash::BlockHashes, BlueWorkType};
-use consensus_core::{BlockHashMap, BlockHasher, HashMapCustomHasher};
+use consensus_core::{BlockHashMap, BlockHasher, BlockLevel, HashMapCustomHasher};
 use hashes::Hash;
 
 use itertools::EitherOrBoth::{Both, Left, Right};
@@ -147,18 +147,13 @@ impl GhostdagData {
     pub fn to_compact(&self) -> CompactGhostdagData {
         CompactGhostdagData { blue_score: self.blue_score, blue_work: self.blue_work, selected_parent: self.selected_parent }
     }
-}
 
-impl GhostdagData {
-    pub fn add_blue(self: &mut Arc<Self>, block: Hash, blue_anticone_size: KType, block_blues_anticone_sizes: &BlockHashMap<KType>) {
-        // Extract mutable data
-        let data = Arc::make_mut(self);
-
+    pub fn add_blue(&mut self, block: Hash, blue_anticone_size: KType, block_blues_anticone_sizes: &BlockHashMap<KType>) {
         // Add the new blue block to mergeset blues
-        BlockHashes::make_mut(&mut data.mergeset_blues).push(block);
+        BlockHashes::make_mut(&mut self.mergeset_blues).push(block);
 
         // Get a mut ref to internal anticone size map
-        let blues_anticone_sizes = HashKTypeMap::make_mut(&mut data.blues_anticone_sizes);
+        let blues_anticone_sizes = HashKTypeMap::make_mut(&mut self.blues_anticone_sizes);
 
         // Insert the new blue block with its blue anticone size to the map
         blues_anticone_sizes.insert(block, blue_anticone_size);
@@ -169,18 +164,14 @@ impl GhostdagData {
         }
     }
 
-    pub fn add_red(self: &mut Arc<Self>, block: Hash) {
-        // Extract mutable data
-        let data = Arc::make_mut(self);
-
+    pub fn add_red(&mut self, block: Hash) {
         // Add the new red block to mergeset reds
-        BlockHashes::make_mut(&mut data.mergeset_reds).push(block);
+        BlockHashes::make_mut(&mut self.mergeset_reds).push(block);
     }
 
-    pub fn finalize_score_and_work(self: &mut Arc<Self>, blue_score: u64, blue_work: BlueWorkType) {
-        let data = Arc::make_mut(self);
-        data.blue_score = blue_score;
-        data.blue_work = blue_work;
+    pub fn finalize_score_and_work(&mut self, blue_score: u64, blue_work: BlueWorkType) {
+        self.blue_score = blue_score;
+        self.blue_work = blue_work;
     }
 }
 
@@ -216,21 +207,26 @@ const COMPACT_STORE_PREFIX: &[u8] = b"compact-block-ghostdag-data";
 #[derive(Clone)]
 pub struct DbGhostdagStore {
     db: Arc<DB>,
+    level: BlockLevel,
     access: CachedDbAccess<Hash, Arc<GhostdagData>, BlockHasher>,
     compact_access: CachedDbAccess<Hash, CompactGhostdagData, BlockHasher>,
 }
 
 impl DbGhostdagStore {
-    pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
+    pub fn new(db: Arc<DB>, level: BlockLevel, cache_size: u64) -> Self {
+        let lvl_bytes = level.to_le_bytes();
+        let prefix = STORE_PREFIX.iter().copied().chain(lvl_bytes).collect_vec();
+        let compact_prefix = COMPACT_STORE_PREFIX.iter().copied().chain(lvl_bytes).collect_vec();
         Self {
             db: Arc::clone(&db),
-            access: CachedDbAccess::new(db.clone(), cache_size, STORE_PREFIX),
-            compact_access: CachedDbAccess::new(db, cache_size, COMPACT_STORE_PREFIX),
+            level,
+            access: CachedDbAccess::new(db.clone(), cache_size, prefix),
+            compact_access: CachedDbAccess::new(db, cache_size, compact_prefix),
         }
     }
 
     pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {
-        Self::new(Arc::clone(&self.db), cache_size)
+        Self::new(Arc::clone(&self.db), self.level, cache_size)
     }
 
     pub fn insert_batch(&self, batch: &mut WriteBatch, hash: Hash, data: &Arc<GhostdagData>) -> Result<(), StoreError> {
@@ -445,7 +441,7 @@ mod tests {
         store.insert(5.into(), factory(9)).unwrap();
         store.insert(6.into(), factory(11)).unwrap(); // Tie-breaking case
 
-        let mut data = Arc::new(GhostdagData::new_with_selected_parent(1.into(), 5));
+        let mut data = GhostdagData::new_with_selected_parent(1.into(), 5);
         data.add_blue(2.into(), Default::default(), &Default::default());
         data.add_blue(3.into(), Default::default(), &Default::default());
 

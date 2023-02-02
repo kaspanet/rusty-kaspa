@@ -6,13 +6,19 @@ members = [
     "consensus/core",
     "consensus/pow",
     "kaspad",
+    "simpa",
     "wasm",
     "math",
     "crypto/hashes",
     "crypto/muhash",
     "crypto/addresses",
     "crypto/merkle",
+    "rpc/core",
+    "rpc/grpc",
+    "mining",
+    "p2p",
     "crypto/txscript",
+    "crypto/txscript/errors",
 ]
 
 [workspace.package]
@@ -36,7 +42,11 @@ addresses = { path = "crypto/addresses" }
 merkle = { path = "crypto/merkle" }
 pow = { path = "consensus/pow" }
 kaspa-utils = { path = "utils" }
+rpc-core = { path = "rpc/core" }
+rpc-grpc = { path = "rpc/grpc" }
+mining = { path = "mining" }
 txscript = { path = "crypto/txscript" }
+txscript-errors = { path = "crypto/txscript/errors" }
 
 thiserror = "1"
 faster-hex = "0.6"
@@ -45,7 +55,6 @@ rand = "0.8"
 rand_chacha = "0.3"
 rayon = "1"
 tempfile = "3.3"
-log = "0.4.17"
 blake2b_simd = "1"
 sha2 = "0.10"
 serde = { version = "1", features = ["derive", "rc"] }
@@ -59,3 +68,9 @@ criterion = { version = "0.4", default-features = false }
 indexmap = "1.9.1"
 parking_lot = "0.12"
 smallvec = { version = "1.10.0", features = ["serde"] }
+borsh = "0.9.3"
+clap = { version = "4.0.23", features = ["derive", "string"] }
+async-channel = "1.8.0"
+derive_more = { version = "0.99" }
+log = "0.4"
+cfg-if = "1.0.0"

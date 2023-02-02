@@ -1,0 +1,37 @@
+[package]
+name = "kaspa-p2p"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
+
+[lib]
+name = "kaspa_p2p_lib"
+path = "./src/lib.rs"
+
+[[bin]]
+name = "kaspa_p2p_client"
+path = "./src/bin/p2p_client.rs"
+
+[[bin]]
+name = "kaspa_p2p_server"
+path = "./src/bin/p2p_server.rs"
+
+[dependencies]
+# project internal deps
+kaspa-core.workspace = true
+log.workspace = true
+# project external deps
+futures = { version = "0.3", default-features = false, features = ["alloc"] }
+prost = "0.11"
+ctrlc = "3.2"
+tokio = { version = "1.21.2", features = [ "rt-multi-thread", "macros", "signal" ]}
+tokio-stream = { version = "0.1.11", features = ["net"] }
+tonic = { version = "0.8.2", features = ["tls", "gzip"] }
+h2 = "0.3"
+lockfree = "0.5.1"
+uuid = { version = "1.2.2", features = ["v4","fast-rng"] }
+
+[build-dependencies]
+tonic-build = { version = "0.8.2", features = ["prost"] }

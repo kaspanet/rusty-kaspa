@@ -8,17 +8,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
+
+      - name: Install protoc
+        run: sudo apt install -y protobuf-compiler
 
       - name: Install stable toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: |
             ~/.cargo/bin/
@@ -29,10 +28,7 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Run cargo check
-        uses: actions-rs/cargo@v1
-        with:
-          command: check
-          args: --tests --workspace --benches
+        run: cargo check --tests --workspace --benches
 
   test:
     name: Test Suite
@@ -44,21 +40,20 @@ jobs:
       #   os: [ ubuntu-latest, macos-latest, windows-latest ]
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Fix CRLF on Windows
         if: runner.os == 'Windows'
         run: git config --global core.autocrlf false
 
+      - name: Install protoc
+        run: sudo apt install -y protobuf-compiler
+
       - name: Install stable toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: |
             ~/.cargo/bin/
@@ -69,15 +64,10 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Run cargo test regular features
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
+        run: cargo test --workspace
 
       - name: Run cargo test on hashes without asm
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: -p hashes --features=no-asm --benches
+        run: cargo test -p hashes --features=no-asm --benches
 
 
   # test-release:
@@ -96,6 +86,9 @@ jobs:
   #       if: runner.os == 'Windows'
   #       run: git config --global core.autocrlf false
 
+  #     - name: Install protoc
+  #       run: sudo apt install -y protobuf-compiler
+
   #     - name: Install stable toolchain
   #       uses: actions-rs/toolchain@v1
   #       with:
@@ -104,7 +97,7 @@ jobs:
   #         override: true
 
   #     - name: Cache
-  #       uses: actions/cache@v2
+  #       uses: actions/cache@v3
   #       with:
   #         path: |
   #           ~/.cargo/bin/
@@ -131,18 +124,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
+
+      - name: Install protoc
+        run: sudo apt install -y protobuf-compiler
 
       - name: Install stable toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
-          profile: minimal
-          toolchain: stable
-          override: true
           components: rustfmt, clippy
 
       - name: Cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: |
             ~/.cargo/bin/
@@ -152,15 +145,8 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-
       - name: Run cargo fmt
-        uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --all -- --check
+        run: cargo fmt --all -- --check
 
       - name: Run cargo clippy
-        uses: actions-rs/cargo@v1
-        with:
-          command: clippy
-          args: --tests --benches -- -D warnings
+        run: cargo clippy --workspace --tests --benches -- -D warnings

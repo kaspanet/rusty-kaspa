@@ -7,8 +7,13 @@ include.workspace = true
 license.workspace = true
 
 [dependencies]
+futures-util.workspace = true
 wasm-bindgen.workspace = true
-ctrlc = "3.2"
+log.workspace = true
+cfg-if.workspace = true
+env_logger = "0.10"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread"] }
+ctrlc = "3.2"
 intertrait = "0.2"

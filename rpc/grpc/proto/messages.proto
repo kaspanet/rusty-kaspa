@@ -1,0 +1,119 @@
+syntax = "proto3";
+package protowire;
+
+import "rpc.proto";
+
+message KaspadRequest {
+  oneof payload {
+    GetCurrentNetworkRequestMessage getCurrentNetworkRequest = 1001;
+    SubmitBlockRequestMessage submitBlockRequest = 1003;
+    GetBlockTemplateRequestMessage getBlockTemplateRequest = 1005;
+    NotifyBlockAddedRequestMessage notifyBlockAddedRequest = 1007;
+    // BlockAddedNotificationMessage blockAddedNotification = 1009;
+    GetPeerAddressesRequestMessage getPeerAddressesRequest = 1010;
+    GetSelectedTipHashRequestMessage getSelectedTipHashRequest = 1012;
+    GetMempoolEntryRequestMessage getMempoolEntryRequest = 1014;
+    GetConnectedPeerInfoRequestMessage getConnectedPeerInfoRequest = 1016;
+    AddPeerRequestMessage addPeerRequest = 1018;
+    SubmitTransactionRequestMessage submitTransactionRequest = 1020;
+    NotifyVirtualSelectedParentChainChangedRequestMessage notifyVirtualSelectedParentChainChangedRequest = 1022;
+    // VirtualSelectedParentChainChangedNotificationMessage virtualSelectedParentChainChangedNotification = 1024;
+    GetBlockRequestMessage getBlockRequest = 1025;
+    GetSubnetworkRequestMessage getSubnetworkRequest = 1027;
+    GetVirtualSelectedParentChainFromBlockRequestMessage getVirtualSelectedParentChainFromBlockRequest = 1029;
+    GetBlocksRequestMessage getBlocksRequest = 1031;
+    GetBlockCountRequestMessage getBlockCountRequest = 1033;
+    GetBlockDagInfoRequestMessage getBlockDagInfoRequest = 1035;
+    ResolveFinalityConflictRequestMessage resolveFinalityConflictRequest = 1037;
+    NotifyFinalityConflictsRequestMessage notifyFinalityConflictsRequest = 1039;
+    // FinalityConflictNotificationMessage finalityConflictNotification = 1041;
+    // FinalityConflictResolvedNotificationMessage finalityConflictResolvedNotification = 1042;
+    GetMempoolEntriesRequestMessage getMempoolEntriesRequest = 1043;
+    ShutdownRequestMessage shutdownRequest = 1045;
+    GetHeadersRequestMessage getHeadersRequest = 1047;
+    NotifyUtxosChangedRequestMessage notifyUtxosChangedRequest = 1049;
+    // UtxosChangedNotificationMessage utxosChangedNotification = 1051;
+    GetUtxosByAddressesRequestMessage getUtxosByAddressesRequest = 1052;
+    GetVirtualSelectedParentBlueScoreRequestMessage getVirtualSelectedParentBlueScoreRequest = 1054;
+    NotifyVirtualSelectedParentBlueScoreChangedRequestMessage notifyVirtualSelectedParentBlueScoreChangedRequest = 1056;
+    // VirtualSelectedParentBlueScoreChangedNotificationMessage virtualSelectedParentBlueScoreChangedNotification = 1058;
+    BanRequestMessage banRequest = 1059;
+    UnbanRequestMessage unbanRequest = 1061;
+    GetInfoRequestMessage getInfoRequest = 1063;
+    //??? StopNotifyingUtxosChangedRequestMessage stopNotifyingUtxosChangedRequest = 1065;
+    NotifyPruningPointUTXOSetOverrideRequestMessage notifyPruningPointUTXOSetOverrideRequest = 1067;
+    // PruningPointUTXOSetOverrideNotificationMessage pruningPointUTXOSetOverrideNotification = 1069;
+    //??? StopNotifyingPruningPointUTXOSetOverrideRequestMessage stopNotifyingPruningPointUTXOSetOverrideRequest = 1070;
+    EstimateNetworkHashesPerSecondRequestMessage estimateNetworkHashesPerSecondRequest = 1072;
+    NotifyVirtualDaaScoreChangedRequestMessage notifyVirtualDaaScoreChangedRequest = 1074;
+    // VirtualDaaScoreChangedNotificationMessage virtualDaaScoreChangedNotification = 1076;
+    GetBalanceByAddressRequestMessage getBalanceByAddressRequest = 1077;
+    GetBalancesByAddressesRequestMessage getBalancesByAddressesRequest = 1079;
+    NotifyNewBlockTemplateRequestMessage notifyNewBlockTemplateRequest = 1081;
+    // NewBlockTemplateNotificationMessage newBlockTemplateNotification = 1083;
+    GetMempoolEntriesByAddressesRequestMessage getMempoolEntriesByAddressesRequest = 1084;
+    GetCoinSupplyRequestMessage getCoinSupplyRequest = 1086;
+    PingRequestMessage pingRequest = 1088;
+    GetProcessMetricsRequestMessage getProcessMetricsRequest = 1090;
+
+  }
+}
+
+message KaspadResponse {
+  oneof payload {
+    GetCurrentNetworkResponseMessage getCurrentNetworkResponse = 1002;
+    SubmitBlockResponseMessage submitBlockResponse = 1004;
+    GetBlockTemplateResponseMessage getBlockTemplateResponse = 1006;
+    NotifyBlockAddedResponseMessage notifyBlockAddedResponse = 1008;
+    BlockAddedNotificationMessage blockAddedNotification = 1009;
+    GetPeerAddressesResponseMessage getPeerAddressesResponse = 1011;
+    GetSelectedTipHashResponseMessage getSelectedTipHashResponse = 1013;
+    GetMempoolEntryResponseMessage getMempoolEntryResponse = 1015;
+    GetConnectedPeerInfoResponseMessage getConnectedPeerInfoResponse = 1017;
+    AddPeerResponseMessage addPeerResponse = 1019;
+    SubmitTransactionResponseMessage submitTransactionResponse = 1021;
+    NotifyVirtualSelectedParentChainChangedResponseMessage notifyVirtualSelectedParentChainChangedResponse = 1023;
+    VirtualSelectedParentChainChangedNotificationMessage virtualSelectedParentChainChangedNotification = 1024;
+    GetBlockResponseMessage getBlockResponse = 1026;
+    GetSubnetworkResponseMessage getSubnetworkResponse = 1028;
+    GetVirtualSelectedParentChainFromBlockResponseMessage getVirtualSelectedParentChainFromBlockResponse = 1030;
+    GetBlocksResponseMessage getBlocksResponse = 1032;
+    GetBlockCountResponseMessage getBlockCountResponse = 1034;
+    GetBlockDagInfoResponseMessage getBlockDagInfoResponse = 1036;
+    ResolveFinalityConflictResponseMessage resolveFinalityConflictResponse = 1038;
+    NotifyFinalityConflictsResponseMessage notifyFinalityConflictsResponse = 1040;
+    FinalityConflictNotificationMessage finalityConflictNotification = 1041;
+    FinalityConflictResolvedNotificationMessage finalityConflictResolvedNotification = 1042;
+    GetMempoolEntriesResponseMessage getMempoolEntriesResponse = 1044;
+    ShutdownResponseMessage shutdownResponse = 1046;
+    GetHeadersResponseMessage getHeadersResponse = 1048;
+    NotifyUtxosChangedResponseMessage notifyUtxosChangedResponse = 1050;
+    UtxosChangedNotificationMessage utxosChangedNotification = 1051;
+    GetUtxosByAddressesResponseMessage getUtxosByAddressesResponse = 1053;
+    GetVirtualSelectedParentBlueScoreResponseMessage getVirtualSelectedParentBlueScoreResponse = 1055;
+    NotifyVirtualSelectedParentBlueScoreChangedResponseMessage notifyVirtualSelectedParentBlueScoreChangedResponse = 1057;
+    VirtualSelectedParentBlueScoreChangedNotificationMessage virtualSelectedParentBlueScoreChangedNotification = 1058;
+    BanResponseMessage banResponse = 1060;
+    UnbanResponseMessage unbanResponse = 1062;
+    GetInfoResponseMessage getInfoResponse = 1064;
+    StopNotifyingUtxosChangedResponseMessage stopNotifyingUtxosChangedResponse = 1066;
+    NotifyPruningPointUTXOSetOverrideResponseMessage notifyPruningPointUTXOSetOverrideResponse = 1068;
+    PruningPointUTXOSetOverrideNotificationMessage pruningPointUTXOSetOverrideNotification = 1069;
+    StopNotifyingPruningPointUTXOSetOverrideResponseMessage stopNotifyingPruningPointUTXOSetOverrideResponse = 1071;
+    EstimateNetworkHashesPerSecondResponseMessage estimateNetworkHashesPerSecondResponse = 1073;
+    NotifyVirtualDaaScoreChangedResponseMessage notifyVirtualDaaScoreChangedResponse = 1075;
+    VirtualDaaScoreChangedNotificationMessage virtualDaaScoreChangedNotification = 1076;
+    GetBalanceByAddressResponseMessage getBalanceByAddressResponse = 1078;
+    GetBalancesByAddressesResponseMessage getBalancesByAddressesResponse = 1080;
+    NotifyNewBlockTemplateResponseMessage notifyNewBlockTemplateResponse = 1082;
+    NewBlockTemplateNotificationMessage newBlockTemplateNotification = 1083;
+    GetMempoolEntriesByAddressesResponseMessage getMempoolEntriesByAddressesResponse = 1085;
+    GetCoinSupplyResponseMessage getCoinSupplyResponse= 1087;
+    PingResponseMessage pingResponse= 1089;
+    GetProcessMetricsResponseMessage getProcessMetricsResponse= 1091;
+  }
+}
+
+service RPC {
+  rpc MessageStream (stream KaspadRequest) returns (stream KaspadResponse) {}
+}

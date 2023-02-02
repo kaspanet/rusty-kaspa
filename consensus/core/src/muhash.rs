@@ -1,16 +1,17 @@
 use crate::{
     hashing::HasherExtensions,
-    tx::{TransactionOutpoint, UtxoEntry, ValidatedTransaction},
+    tx::{TransactionOutpoint, UtxoEntry, VerifiableTransaction},
 };
 use hashes::HasherBase;
 use muhash::MuHash;
 
 pub trait MuHashExtensions {
-    fn add_transaction(&mut self, tx: &ValidatedTransaction, block_daa_score: u64);
+    fn add_transaction(&mut self, tx: &impl VerifiableTransaction, block_daa_score: u64);
+    fn add_utxo(&mut self, outpoint: &TransactionOutpoint, entry: &UtxoEntry);
 }
 
 impl MuHashExtensions for MuHash {
-    fn add_transaction(&mut self, tx: &ValidatedTransaction, block_daa_score: u64) {
+    fn add_transaction(&mut self, tx: &impl VerifiableTransaction, block_daa_score: u64) {
         let tx_id = tx.id();
         for (input, entry) in tx.populated_inputs() {
             let mut writer = self.remove_element_builder();
@@ -20,10 +21,14 @@ impl MuHashExtensions for MuHash {
         for (i, output) in tx.outputs().iter().enumerate() {
             let outpoint = TransactionOutpoint::new(tx_id, i as u32);
             let entry = UtxoEntry::new(output.value, output.script_public_key.clone(), block_daa_score, tx.is_coinbase());
-            let mut writer = self.add_element_builder();
-            write_utxo(&mut writer, &entry, &outpoint);
-            writer.finalize();
+            self.add_utxo(&outpoint, &entry);
         }
+    }
+
+    fn add_utxo(&mut self, outpoint: &TransactionOutpoint, entry: &UtxoEntry) {
+        let mut writer = self.add_element_builder();
+        write_utxo(&mut writer, entry, outpoint);
+        writer.finalize();
     }
 }
 

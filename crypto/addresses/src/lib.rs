@@ -1,3 +1,5 @@
+use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
 mod bech32;
@@ -16,19 +18,22 @@ impl Display for AddressError {
             f,
             "Address decoding failed: {}",
             match self {
-                Self::InvalidPrefix(prefix) => format!("Invalid prefix {}", prefix),
+                Self::InvalidPrefix(prefix) => format!("Invalid prefix {prefix}"),
                 Self::MissingPrefix => "Prefix is missing".to_string(),
                 Self::BadChecksum => "Checksum is invalid".to_string(),
-                Self::DecodingError(c) => format!("Invalid character {}", c),
+                Self::DecodingError(c) => format!("Invalid character {c}"),
             }
         )
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Debug)]
+impl std::error::Error for AddressError {}
+
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub enum Prefix {
     Mainnet,
     Testnet,
+    Simnet,
     Devnet,
     #[cfg(test)]
     A,
@@ -41,6 +46,7 @@ impl Prefix {
         match self {
             Prefix::Mainnet => "kaspa",
             Prefix::Testnet => "kaspatest",
+            Prefix::Simnet => "kaspasim",
             Prefix::Devnet => "kaspadev",
             #[cfg(test)]
             Prefix::A => "a",
@@ -63,6 +69,7 @@ impl TryFrom<&str> for Prefix {
         match prefix {
             "kaspa" => Ok(Prefix::Mainnet),
             "kaspatest" => Ok(Prefix::Testnet),
+            "kaspasim" => Ok(Prefix::Simnet),
             "kaspadev" => Ok(Prefix::Devnet),
             #[cfg(test)]
             "a" => Ok(Prefix::A),
@@ -73,7 +80,7 @@ impl TryFrom<&str> for Prefix {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct Address {
     pub prefix: Prefix,
     pub payload: Vec<u8>,
@@ -82,6 +89,12 @@ pub struct Address {
 
 impl From<Address> for String {
     fn from(address: Address) -> Self {
+        (&address).into()
+    }
+}
+
+impl From<&Address> for String {
+    fn from(address: &Address) -> Self {
         format!("{}:{}", address.prefix, address.encode_payload())
     }
 }

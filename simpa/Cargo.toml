@@ -1,0 +1,27 @@
+[package]
+name = "simpa"
+description = "Kaspa Network Simulator"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
+
+[dependencies]
+hashes.workspace = true
+kaspa-core.workspace = true
+consensus-core.workspace = true
+consensus.workspace = true
+
+rand.workspace = true
+itertools.workspace = true
+futures-util.workspace = true
+rayon.workspace = true
+clap.workspace = true
+indexmap.workspace = true
+log.workspace = true
+
+futures = "0.3"
+rand_distr = "0.4"
+tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread"] }
+secp256k1 = { version = "0.24", features = ["global-context", "rand-std"] }

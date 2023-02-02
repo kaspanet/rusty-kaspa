@@ -1,4 +1,7 @@
-#[allow(unused_imports)]
+#![allow(unused_imports)]
+
+use addresses::*;
 use kaspa_core::*;
-#[allow(unused_imports)]
+use kaspa_utils::*;
 use kaspa_wallet::*;
+use rpc_core::*;

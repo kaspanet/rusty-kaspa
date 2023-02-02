@@ -9,21 +9,23 @@ use crate::{
             ghostdag::DbGhostdagStore,
             headers::DbHeadersStore,
             reachability::DbReachabilityStore,
-            statuses::{
-                BlockStatus::{self, StatusHeaderOnly, StatusInvalid},
-                DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader,
-            },
+            statuses::{DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader},
             tips::DbTipsStore,
             DB,
         },
     },
-    pipeline::deps_manager::{BlockTask, BlockTaskDependencyManager},
+    pipeline::deps_manager::{BlockProcessingMessage, BlockTaskDependencyManager},
     processes::{
         coinbase::CoinbaseManager, mass::MassCalculator, past_median_time::PastMedianTimeManager,
         transaction_validator::TransactionValidator,
     },
 };
-use consensus_core::{block::Block, subnets::SUBNETWORK_ID_COINBASE, tx::Transaction};
+use consensus_core::{
+    block::Block,
+    blockstatus::BlockStatus::{self, StatusHeaderOnly, StatusInvalid},
+    subnets::SUBNETWORK_ID_COINBASE,
+    tx::Transaction,
+};
 use crossbeam_channel::{Receiver, Sender};
 use hashes::Hash;
 use parking_lot::RwLock;
@@ -33,8 +35,8 @@ use std::sync::Arc;
 
 pub struct BlockBodyProcessor {
     // Channels
-    receiver: Receiver<BlockTask>,
-    sender: Sender<BlockTask>,
+    receiver: Receiver<BlockProcessingMessage>,
+    sender: Sender<BlockProcessingMessage>,
 
     // Thread pool
     pub(super) thread_pool: Arc<ThreadPool>,
@@ -45,6 +47,7 @@ pub struct BlockBodyProcessor {
     // Config
     pub(super) max_block_mass: u64,
     pub(super) genesis_hash: Hash,
+    process_genesis: bool,
 
     // Stores
     pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
@@ -56,7 +59,7 @@ pub struct BlockBodyProcessor {
     // Managers and services
     pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
     pub(super) coinbase_manager: CoinbaseManager,
-    pub(super) mass_calculator: MassCalculator,
+    pub(crate) mass_calculator: MassCalculator,
     pub(super) transaction_validator: TransactionValidator,
     pub(super) past_median_time_manager: PastMedianTimeManager<DbHeadersStore, DbGhostdagStore, BlockWindowCacheStore>,
 
@@ -67,8 +70,8 @@ pub struct BlockBodyProcessor {
 impl BlockBodyProcessor {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        receiver: Receiver<BlockTask>,
-        sender: Sender<BlockTask>,
+        receiver: Receiver<BlockProcessingMessage>,
+        sender: Sender<BlockProcessingMessage>,
         thread_pool: Arc<ThreadPool>,
         db: Arc<DB>,
         statuses_store: Arc<RwLock<DbStatusesStore>>,
@@ -83,6 +86,7 @@ impl BlockBodyProcessor {
         past_median_time_manager: PastMedianTimeManager<DbHeadersStore, DbGhostdagStore, BlockWindowCacheStore>,
         max_block_mass: u64,
         genesis_hash: Hash,
+        process_genesis: bool,
     ) -> Self {
         Self {
             receiver,
@@ -101,17 +105,18 @@ impl BlockBodyProcessor {
             past_median_time_manager,
             max_block_mass,
             genesis_hash,
+            process_genesis,
             task_manager: BlockTaskDependencyManager::new(),
         }
     }
 
     pub fn worker(self: &Arc<BlockBodyProcessor>) {
-        while let Ok(task) = self.receiver.recv() {
-            match task {
-                BlockTask::Exit => break,
-                BlockTask::Process(block, result_transmitters) => {
-                    let hash = block.header.hash;
-                    if self.task_manager.register(block, result_transmitters) {
+        while let Ok(msg) = self.receiver.recv() {
+            match msg {
+                BlockProcessingMessage::Exit => break,
+                BlockProcessingMessage::Process(task, result_transmitters) => {
+                    let hash = task.block.header.hash;
+                    if self.task_manager.register(task, result_transmitters) {
                         let processor = self.clone();
                         self.thread_pool.spawn(move || {
                             processor.queue_block(hash);
@@ -125,21 +130,21 @@ impl BlockBodyProcessor {
         self.task_manager.wait_for_idle();
 
         // Pass the exit signal on to the following processor
-        self.sender.send(BlockTask::Exit).unwrap();
+        self.sender.send(BlockProcessingMessage::Exit).unwrap();
     }
 
     fn queue_block(self: &Arc<BlockBodyProcessor>, hash: Hash) {
-        if let Some(block) = self.task_manager.try_begin(hash) {
-            let res = self.process_block_body(&block);
+        if let Some(task) = self.task_manager.try_begin(hash) {
+            let res = self.process_block_body(&task.block, task.trusted_ghostdag_data.is_some());
 
-            let dependent_tasks = self.task_manager.end(hash, |block, result_transmitters| {
+            let dependent_tasks = self.task_manager.end(hash, |task, result_transmitters| {
                 if res.is_err() {
                     for transmitter in result_transmitters {
                         // We don't care if receivers were dropped
                         let _ = transmitter.send(res.clone());
                     }
                 } else {
-                    self.sender.send(BlockTask::Process(block, result_transmitters)).unwrap();
+                    self.sender.send(BlockProcessingMessage::Process(task, result_transmitters)).unwrap();
                 }
             });
 
@@ -150,16 +155,16 @@ impl BlockBodyProcessor {
         }
     }
 
-    fn process_block_body(self: &Arc<BlockBodyProcessor>, block: &Block) -> BlockProcessResult<BlockStatus> {
+    fn process_block_body(self: &Arc<BlockBodyProcessor>, block: &Block, is_trusted: bool) -> BlockProcessResult<BlockStatus> {
         let status = self.statuses_store.read().get(block.hash()).unwrap();
         match status {
             StatusInvalid => return Err(RuleError::KnownInvalid),
             StatusHeaderOnly => {} // Proceed to body processing
             _ if status.has_block_body() => return Ok(status),
-            _ => panic!("unexpected block status {:?}", status),
+            _ => panic!("unexpected block status {status:?}"),
         }
 
-        if let Err(e) = self.validate_body(block) {
+        if let Err(e) = self.validate_body(block, is_trusted) {
             // We mark invalid blocks with status StatusInvalid except in the
             // case of the following errors:
             // MissingParents - If we got MissingParents the block shouldn't be
@@ -181,9 +186,13 @@ impl BlockBodyProcessor {
         Ok(BlockStatus::StatusUTXOPendingVerification)
     }
 
-    fn validate_body(self: &Arc<BlockBodyProcessor>, block: &Block) -> BlockProcessResult<()> {
+    fn validate_body(self: &Arc<BlockBodyProcessor>, block: &Block, is_trusted: bool) -> BlockProcessResult<()> {
         self.validate_body_in_isolation(block)?;
-        self.validate_body_in_context(block)
+        if !is_trusted {
+            // TODO: Check that it's safe to skip this check if the block is trusted.
+            return self.validate_body_in_context(block);
+        }
+        Ok(())
     }
 
     fn commit_body(self: &Arc<BlockBodyProcessor>, hash: Hash, parents: &[Hash], transactions: Arc<Vec<Transaction>>) {
@@ -205,6 +214,10 @@ impl BlockBodyProcessor {
     }
 
     pub fn process_genesis_if_needed(self: &Arc<BlockBodyProcessor>) {
+        if !self.process_genesis {
+            return;
+        }
+
         let status = self.statuses_store.read().get(self.genesis_hash).unwrap();
         match status {
             StatusHeaderOnly => {
@@ -234,7 +247,7 @@ impl BlockBodyProcessor {
                 self.commit_body(self.genesis_hash, &[], Arc::new(vec![genesis_coinbase]))
             }
             _ if status.has_block_body() => (),
-            _ => panic!("unexpected genesis status {:?}", status),
+            _ => panic!("unexpected genesis status {status:?}"),
         }
     }
 }

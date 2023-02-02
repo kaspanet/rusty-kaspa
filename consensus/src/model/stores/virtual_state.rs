@@ -6,9 +6,10 @@ use super::{
     ghostdag::GhostdagData,
     DB,
 };
-use consensus_core::utxo::utxo_diff::UtxoDiff;
+use consensus_core::{
+    coinbase::BlockRewardData, tx::TransactionId, utxo::utxo_diff::UtxoDiff, BlockHashMap, BlockHashSet, HashMapCustomHasher,
+};
 use hashes::Hash;
-use kaspa_utils::arc::ArcExtensions;
 use muhash::MuHash;
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
@@ -18,22 +19,60 @@ pub struct VirtualState {
     pub parents: Vec<Hash>,
     pub ghostdag_data: GhostdagData,
     pub daa_score: u64,
+    pub bits: u32,
+    pub past_median_time: u64,
     pub multiset: MuHash,
-    pub utxo_diff: UtxoDiff,
+    pub utxo_diff: UtxoDiff, // This is the UTXO diff from the selected tip to the virtual. i.e., if this diff is applied on the past UTXO of the selected tip, we'll get the virtual UTXO set.
+    pub accepted_tx_ids: Vec<TransactionId>, // TODO: consider saving `accepted_id_merkle_root` directly
+    pub mergeset_rewards: BlockHashMap<BlockRewardData>,
+    pub mergeset_non_daa: BlockHashSet,
 }
 
 impl VirtualState {
-    pub fn new(parents: Vec<Hash>, ghostdag_data: Arc<GhostdagData>, daa_score: u64, multiset: MuHash, utxo_diff: UtxoDiff) -> Self {
-        Self { parents, ghostdag_data: ArcExtensions::unwrap_or_clone(ghostdag_data), daa_score, multiset, utxo_diff }
+    pub fn new(
+        parents: Vec<Hash>,
+        daa_score: u64,
+        bits: u32,
+        past_median_time: u64,
+        multiset: MuHash,
+        utxo_diff: UtxoDiff,
+        accepted_tx_ids: Vec<TransactionId>,
+        mergeset_rewards: BlockHashMap<BlockRewardData>,
+        mergeset_non_daa: BlockHashSet,
+        ghostdag_data: GhostdagData,
+    ) -> Self {
+        Self {
+            parents,
+            ghostdag_data,
+            daa_score,
+            bits,
+            past_median_time,
+            multiset,
+            utxo_diff,
+            accepted_tx_ids,
+            mergeset_rewards,
+            mergeset_non_daa,
+        }
     }
 
-    pub fn from_genesis(genesis_hash: Hash, initial_ghostdag_data: GhostdagData) -> Self {
+    pub fn from_genesis(
+        genesis_hash: Hash,
+        genesis_bits: u32,
+        past_median_time: u64,
+        accepted_tx_ids: Vec<TransactionId>,
+        initial_ghostdag_data: GhostdagData,
+    ) -> Self {
         Self {
             parents: vec![genesis_hash],
             ghostdag_data: initial_ghostdag_data,
             daa_score: 0,
+            bits: genesis_bits,
+            past_median_time,
             multiset: MuHash::new(),
             utxo_diff: UtxoDiff::default(), // Virtual diff is initially empty since genesis receives no reward
+            accepted_tx_ids,
+            mergeset_rewards: BlockHashMap::new(),
+            mergeset_non_daa: BlockHashSet::from_iter(std::iter::once(genesis_hash)),
         }
     }
 }

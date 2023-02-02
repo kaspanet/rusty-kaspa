@@ -6,7 +6,7 @@ macro_rules! opcode_serde {
             [length.to_le_bytes().as_slice(), self.data.as_slice()].concat()
         }
 
-        fn deserialize<'i, I: Iterator<Item = &'i u8>>(it: &mut I) -> Result<Box<dyn OpCodeImplementation>, TxScriptError> {
+        fn deserialize<'i, I: Iterator<Item = &'i u8>, T: VerifiableTransaction>(it: &mut I) -> Result<Box<dyn OpCodeImplementation<T>>, TxScriptError> {
             match it.take(size_of::<$type>()).copied().collect::<Vec<u8>>().try_into() {
                 Ok(bytes) => {
                     let length = <$type>::from_le_bytes(bytes) as usize;
@@ -29,7 +29,7 @@ macro_rules! opcode_serde {
             self.data.clone()
         }
 
-        fn deserialize<'i, I: Iterator<Item = &'i u8>>(it: &mut I) -> Result<Box<dyn OpCodeImplementation>, TxScriptError> {
+        fn deserialize<'i, I: Iterator<Item = &'i u8>, T: VerifiableTransaction>(it: &mut I) -> Result<Box<dyn OpCodeImplementation<T>>, TxScriptError> {
             // Static length includes the opcode itself
             let data: Vec<u8> = it.take($length - 1).copied().collect();
             if data.len() != $length - 1 {
@@ -49,83 +49,22 @@ macro_rules! opcode_impl {
             opcode_serde!($length);
         }
 
-        impl OpCodeImplementation for $name {
-            fn empty() -> Box<dyn OpCodeImplementation> {
+        impl<T: VerifiableTransaction> OpCodeExecution<T> for $name {
+            fn empty() -> Box<dyn OpCodeImplementation<T>> {
                 return Box::new(Self{data: vec![]})
             }
 
-            fn new(data: Vec<u8>) -> Box<dyn OpCodeImplementation> {
+            fn new(data: Vec<u8>) -> Box<dyn OpCodeImplementation<T>> {
                 return Box::new(Self{data})
             }
 
             #[allow(unused_variables)]
-            fn execute(&$self, $vm: &mut TxScriptEngine) -> OpCodeResult {
+            fn execute(&$self, $vm: &mut TxScriptEngine<T>) -> OpCodeResult {
                 $code
             }
-
-            fn value(&self) -> u8 {
-                return $num;
-            }
-
-            fn len(&self) -> usize {
-                self.data.len()
-            }
-
-            // TODO: add it to opcode specification
-            fn is_conditional(&self) -> bool {
-                self.value() >= 0x63 && self.value() >= 0x68
-            }
-
-            fn check_minimal_data_push(&self) -> Result<(), TxScriptError> {
-                let data_len = self.len();
-                let opcode = self.value();
-
-                if data_len == 0 {
-                    if opcode != codes::OpFalse {
-                        return Err(TxScriptError::NotMinimalData(
-                            format!("zero length data push is encoded with \
-                                opcode {:?} instead of OpFalse", self)
-                        ));
-                    }
-                } else if data_len == 1 &&  self.data[0] >= 1 && self.data[0] <= 16 {
-                    if opcode != codes::OpTrue + self.data[0]-1 {
-                        return Err(TxScriptError::NotMinimalData(
-                            format!("zero length data push is encoded with \
-                                opcode {:?} instead of Op_{}", self, self.data[0])
-                        ));
-                    }
-                } else if data_len == 1 && self.data[0] == 0x81 {
-                    if opcode != codes::Op1Negate {
-                        return Err(TxScriptError::NotMinimalData(
-                            format!("data push of the value -1 encoded \
-				                with opcode {:?} instead of OP_1NEGATE", self)
-                        ));
-                    }
-                } else if data_len <= 75 {
-                    if opcode as usize != data_len {
-                        return Err(TxScriptError::NotMinimalData(
-                            format!("data push of {} bytes encoded \
-                                with opcode {:?} instead of OP_DATA_{}", data_len, self, data_len)
-                        ));
-                    }
-                } else if data_len <= 255 {
-                    if opcode != codes::OpPushData1 {
-                        return Err(TxScriptError::NotMinimalData(
-                            format!("data push of {} bytes encoded \
-				                with opcode {:?} instead of OP_PUSHDATA1", data_len, self)
-                        ));
-		            }
-                } else if data_len < 65535 {
-                    if opcode != codes::OpPushData2 {
-                        return Err(TxScriptError::NotMinimalData(
-                            format!("data push of {} bytes encoded \
-				                with opcode {:?} instead of OP_PUSHDATA2", data_len, self)
-                        ));
-		            }
-                }
-                Ok(())
-            }
         }
+
+        impl<T :VerifiableTransaction> OpCodeImplementation<T> for $name {}
     }
 }
 
@@ -143,7 +82,7 @@ macro_rules! opcode_list {
             opcode_impl!($name, $num, $length, $code, $self, $vm);
         )*
 
-        pub fn deserialize<'i, I: Iterator<Item = &'i u8>>(opcode_num: u8, it: &mut I) -> Result<Box<dyn OpCodeImplementation>, TxScriptError> {
+        pub fn deserialize<'i, I: Iterator<Item = &'i u8>, T: VerifiableTransaction>(opcode_num: u8, it: &mut I) -> Result<Box<dyn OpCodeImplementation<T>>, TxScriptError> {
             match opcode_num {
                 $(
                     $num => $name::deserialize(it),

@@ -1,5 +1,8 @@
 use crate::constants::{MAX_SOMPI, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK};
-use consensus_core::{hashing::sighash::SigHashReusedValues, tx::PopulatedTransaction};
+use consensus_core::{
+    hashing::sighash::SigHashReusedValues,
+    tx::VerifiableTransaction,
+};
 use txscript::TxScriptEngine;
 
 use super::{
@@ -8,7 +11,7 @@ use super::{
 };
 
 impl TransactionValidator {
-    pub fn validate_populated_transaction_and_get_fee(&self, tx: &PopulatedTransaction, pov_daa_score: u64) -> TxResult<u64> {
+    pub fn validate_populated_transaction_and_get_fee(&self, tx: &impl VerifiableTransaction, pov_daa_score: u64) -> TxResult<u64> {
         self.check_transaction_coinbase_maturity(tx, pov_daa_score)?;
         let total_in = self.check_transaction_input_amounts(tx)?;
         let total_out = Self::check_transaction_output_values(tx, total_in)?;
@@ -19,7 +22,7 @@ impl TransactionValidator {
         Ok(total_in - total_out)
     }
 
-    fn check_transaction_coinbase_maturity(&self, tx: &PopulatedTransaction, pov_daa_score: u64) -> TxResult<()> {
+    fn check_transaction_coinbase_maturity(&self, tx: &impl VerifiableTransaction, pov_daa_score: u64) -> TxResult<()> {
         if let Some((index, (input, entry))) = tx
             .populated_inputs()
             .enumerate()
@@ -37,9 +40,9 @@ impl TransactionValidator {
         Ok(())
     }
 
-    fn check_transaction_input_amounts(&self, tx: &PopulatedTransaction) -> TxResult<u64> {
+    fn check_transaction_input_amounts(&self, tx: &impl VerifiableTransaction) -> TxResult<u64> {
         let mut total: u64 = 0;
-        for entry in &tx.entries {
+        for (_, entry) in tx.populated_inputs() {
             if let Some(new_total) = total.checked_add(entry.amount) {
                 total = new_total
             } else {
@@ -54,7 +57,7 @@ impl TransactionValidator {
         Ok(total)
     }
 
-    fn check_transaction_output_values(tx: &PopulatedTransaction, total_in: u64) -> TxResult<u64> {
+    fn check_transaction_output_values(tx: &impl VerifiableTransaction, total_in: u64) -> TxResult<u64> {
         // There's no need to check for overflow here because it was already checked by check_transaction_output_value_ranges
         let total_out: u64 = tx.outputs().iter().map(|out| out.value).sum();
         if total_in < total_out {
@@ -64,7 +67,7 @@ impl TransactionValidator {
         Ok(total_out)
     }
 
-    fn check_sequence_lock(tx: &PopulatedTransaction, pov_daa_score: u64) -> TxResult<()> {
+    fn check_sequence_lock(tx: &impl VerifiableTransaction, pov_daa_score: u64) -> TxResult<()> {
         let pov_daa_score: i64 = pov_daa_score as i64;
         if tx.populated_inputs().filter(|(input, _)| input.sequence & SEQUENCE_LOCK_TIME_DISABLED != SEQUENCE_LOCK_TIME_DISABLED).any(
             |(input, entry)| {
@@ -91,12 +94,12 @@ impl TransactionValidator {
         Ok(())
     }
 
-    fn check_sig_op_counts(_tx: &PopulatedTransaction) -> TxResult<()> {
+    fn check_sig_op_counts(_tx: &impl VerifiableTransaction) -> TxResult<()> {
         // TODO: Implement this
         Ok(())
     }
 
-    fn check_scripts(&self, tx: &PopulatedTransaction) -> TxResult<()> {
+    fn check_scripts(&self, tx: &impl VerifiableTransaction) -> TxResult<()> {
         let mut reused_values = SigHashReusedValues::new();
         for (i, (input, entry)) in tx.populated_inputs().enumerate() {
             // TODO: this is a temporary implementation and not ready for consensus since any invalid signature
@@ -112,7 +115,7 @@ impl TransactionValidator {
 #[cfg(test)]
 mod tests {
     use consensus_core::subnets::SubnetworkId;
-    use consensus_core::tx::{PopulatedTransaction, TransactionId, UtxoEntry};
+    use consensus_core::tx::{TransactionId, UtxoEntry, PopulatedTransaction};
     use consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
     use core::str::FromStr;
     use smallvec::SmallVec;

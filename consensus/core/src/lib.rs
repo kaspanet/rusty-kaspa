@@ -3,15 +3,27 @@ use std::hash::{BuildHasher, Hasher};
 
 use hashes::Hash;
 
+pub mod api;
 pub mod block;
 pub mod blockhash;
+pub mod blockstatus;
+pub mod coinbase;
+pub mod constants;
+pub mod errors;
 pub mod hashing;
 pub mod header;
+pub mod mass;
 pub mod merkle;
 pub mod muhash;
+pub mod networktype;
+pub mod notify;
+pub mod pruning;
+pub mod sign;
 pub mod subnets;
 pub mod tx;
 pub mod utxo;
+
+pub mod testutils;
 
 /// Integer type for accumulated PoW of blue blocks. We expect no more than
 /// 2^128 work in a single block (btc has ~2^80), and no more than 2^64
@@ -89,6 +101,8 @@ impl BuildHasher for BlockHasher {
         Self(0)
     }
 }
+
+pub type BlockLevel = u8;
 
 #[cfg(test)]
 mod tests {

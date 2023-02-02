@@ -68,7 +68,7 @@ impl DbReachabilityStore {
     pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
         Self {
             db: Arc::clone(&db),
-            access: CachedDbAccess::new(Arc::clone(&db), cache_size, STORE_PREFIX),
+            access: CachedDbAccess::new(Arc::clone(&db), cache_size, STORE_PREFIX.to_vec()),
             reindex_root: CachedDbItem::new(db, REINDEX_ROOT_KEY),
         }
     }
@@ -419,8 +419,8 @@ mod tests {
         let height = store.append_child(hash, 31.into()).unwrap();
         assert_eq!(height, 5);
         let children = store.get_children(hash).unwrap();
-        println!("{:?}", children);
+        println!("{children:?}");
         store.get_interval(7.into()).unwrap();
-        println!("{:?}", children);
+        println!("{children:?}");
     }
 }

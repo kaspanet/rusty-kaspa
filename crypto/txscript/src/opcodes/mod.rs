@@ -10,6 +10,7 @@ use consensus_core::hashing::sighash_type::SigHashType;
 use core::cmp::{max, min};
 use sha2::{Digest, Sha256};
 use std::fmt::{Debug, Formatter};
+use consensus_core::tx::VerifiableTransaction;
 
 type OpCodeResult = Result<(), TxScriptError>;
 
@@ -23,11 +24,7 @@ impl<const CODE: u8> Debug for OpCode<CODE> {
     }
 }
 
-pub trait OpCodeImplementation: Debug {
-    fn empty() -> Box<dyn OpCodeImplementation> where Self: Sized;
-    fn new(data: Vec<u8>) -> Box<dyn OpCodeImplementation> where Self: Sized;
-
-    fn execute(&self, vm: &mut TxScriptEngine) -> OpCodeResult;
+pub trait OpCodeMetadata: Debug {
     // TODO: could be implemented as staticmethod for all opcodes at once. Maybe need its own trait?
     // Opcode number
     fn value(&self) -> u8;
@@ -39,79 +36,97 @@ pub trait OpCodeImplementation: Debug {
     fn check_minimal_data_push(&self) -> Result<(), TxScriptError>;
 }
 
+pub trait OpCodeExecution<T: VerifiableTransaction> {
+    fn empty() -> Box<dyn OpCodeImplementation<T>> where Self: Sized;
+    fn new(data: Vec<u8>) -> Box<dyn OpCodeImplementation<T>> where Self: Sized;
+
+    fn execute(&self, vm: &mut TxScriptEngine<T>) -> OpCodeResult;
+}
+
+
 pub trait OpcodeSerialization {
     fn serialize(&self) -> [&u8];
     fn deserialize<'i, I: Iterator<Item = &'i u8>>(it: &mut I) -> Result<Box<dyn OpcodeSerialization>, TxScriptError> where Self: Sized;
 }
 
+pub trait OpCodeImplementation<T: VerifiableTransaction>: OpCodeExecution<T> + OpCodeMetadata {}
+
+impl<const CODE: u8> OpCodeMetadata for OpCode<CODE> {
+    fn value(&self) -> u8 {
+        return CODE;
+    }
+
+    fn len(&self) -> usize {
+        self.data.len()
+    }
+
+    // TODO: add it to opcode specification
+    fn is_conditional(&self) -> bool {
+        self.value() >= 0x63 && self.value() >= 0x68
+    }
+
+    fn check_minimal_data_push(&self) -> Result<(), TxScriptError> {
+        let data_len = self.len();
+        let opcode = self.value();
+
+        if data_len == 0 {
+            if opcode != codes::OpFalse {
+                return Err(TxScriptError::NotMinimalData(
+                    format!("zero length data push is encoded with \
+                                    opcode {:?} instead of OpFalse", self)
+                ));
+            }
+        } else if data_len == 1 &&  self.data[0] >= 1 && self.data[0] <= 16 {
+            if opcode != codes::OpTrue + self.data[0]-1 {
+                return Err(TxScriptError::NotMinimalData(
+                    format!("zero length data push is encoded with \
+                                    opcode {:?} instead of Op_{}", self, self.data[0])
+                ));
+            }
+        } else if data_len == 1 && self.data[0] == 0x81 {
+            if opcode != codes::Op1Negate {
+                return Err(TxScriptError::NotMinimalData(
+                    format!("data push of the value -1 encoded \
+                                    with opcode {:?} instead of OP_1NEGATE", self)
+                ));
+            }
+        } else if data_len <= 75 {
+            if opcode as usize != data_len {
+                return Err(TxScriptError::NotMinimalData(
+                    format!("data push of {} bytes encoded \
+                                    with opcode {:?} instead of OP_DATA_{}", data_len, self, data_len)
+                ));
+            }
+        } else if data_len <= 255 {
+            if opcode != codes::OpPushData1 {
+                return Err(TxScriptError::NotMinimalData(
+                    format!("data push of {} bytes encoded \
+                                    with opcode {:?} instead of OP_PUSHDATA1", data_len, self)
+                ));
+            }
+        } else if data_len < 65535 {
+            if opcode != codes::OpPushData2 {
+                return Err(TxScriptError::NotMinimalData(
+                    format!("data push of {} bytes encoded \
+                                    with opcode {:?} instead of OP_PUSHDATA2", data_len, self)
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
 // Helpers for some opcodes with shared data
 #[inline]
-fn push_data(data: Vec<u8>, vm: &mut TxScriptEngine) -> OpCodeResult {
+fn push_data<T: VerifiableTransaction>(data: Vec<u8>, vm: &mut TxScriptEngine<T>) -> OpCodeResult {
     vm.dstack.push(data);
     Ok(())
 }
 
 #[inline]
-fn push_number(number: i64, vm: &mut TxScriptEngine) -> OpCodeResult {
+fn push_number<T: VerifiableTransaction>(number: i64, vm: &mut TxScriptEngine<T>) -> OpCodeResult {
     vm.dstack.push(number.to_le_bytes().to_vec());
     Ok(())
-}
-
-#[inline]
-fn drop_n<const N: usize>(vm: &mut TxScriptEngine) -> OpCodeResult {
-    match vm.dstack.len() >= N {
-        true => {
-            vm.dstack.truncate(vm.dstack.len() - N);
-            Ok(())
-        }
-        false => Err(TxScriptError::EmptyStack),
-    }
-}
-
-#[inline]
-fn dup_n<const N: usize>(vm: &mut TxScriptEngine) -> OpCodeResult {
-    match vm.dstack.len() >= N {
-        true => {
-            vm.dstack.extend_from_slice(vm.dstack.clone()[vm.dstack.len() - N..].iter().as_slice());
-            Ok(())
-        }
-        false => Err(TxScriptError::EmptyStack),
-    }
-}
-
-#[inline]
-fn over_n<const N: usize>(vm: &mut TxScriptEngine) -> OpCodeResult {
-    match vm.dstack.len() >= 2 * N {
-        true => {
-            vm.dstack.extend_from_slice(vm.dstack.clone()[vm.dstack.len() - 2 * N..vm.dstack.len() - N].iter().as_slice());
-            Ok(())
-        }
-        false => Err(TxScriptError::EmptyStack),
-    }
-}
-
-#[inline]
-fn rot_n<const N: usize>(vm: &mut TxScriptEngine) -> OpCodeResult {
-    match vm.dstack.len() >= 3 * N {
-        true => {
-            let drained = vm.dstack.drain(vm.dstack.len() - 3 * N..vm.dstack.len() - 2 * N).collect::<Vec<Vec<u8>>>();
-            vm.dstack.extend(drained);
-            Ok(())
-        }
-        false => Err(TxScriptError::EmptyStack),
-    }
-}
-
-#[inline]
-fn swap_n<const N: usize>(vm: &mut TxScriptEngine) -> OpCodeResult {
-    match vm.dstack.len() >= 2 * N {
-        true => {
-            let drained = vm.dstack.drain(vm.dstack.len() - 2 * N..vm.dstack.len() - N).collect::<Vec<Vec<u8>>>();
-            vm.dstack.extend(drained);
-            Ok(())
-        }
-        false => Err(TxScriptError::EmptyStack),
-    }
 }
 
 /*
@@ -338,12 +353,12 @@ opcode_list! {
         }
     }
 
-    opcode Op2Drop<0x6d, 1>(self, vm) drop_n::<2>(vm)
-    opcode Op2Dup<0x6e, 1>(self, vm) dup_n::<2>(vm)
-    opcode Op3Dup<0x6f, 1>(self, vm) dup_n::<3>(vm)
-    opcode Op2Over<0x70, 1>(self, vm) over_n::<2>(vm)
-    opcode Op2Rot<0x71, 1>(self, vm) rot_n::<2>(vm)
-    opcode Op2Swap<0x72, 1>(self, vm) swap_n::<2>(vm)
+    opcode Op2Drop<0x6d, 1>(self, vm) vm.dstack.drop_item::<2>()
+    opcode Op2Dup<0x6e, 1>(self, vm) vm.dstack.dup_item::<2>()
+    opcode Op3Dup<0x6f, 1>(self, vm) vm.dstack.dup_item::<3>()
+    opcode Op2Over<0x70, 1>(self, vm) vm.dstack.over_item::<2>()
+    opcode Op2Rot<0x71, 1>(self, vm) vm.dstack.rot_item::<2>()
+    opcode Op2Swap<0x72, 1>(self, vm) vm.dstack.swap_item::<2>()
 
     opcode OpIfDup<0x73, 1>(self, vm) {
         let [result] = vm.dstack.pop_raw()?;
@@ -355,8 +370,8 @@ opcode_list! {
 
     opcode OpDepth<0x74, 1>(self, vm) push_number(vm.dstack.len() as i64, vm)
 
-    opcode OpDrop<0x75, 1>(self, vm) drop_n::<1>(vm)
-    opcode OpDup<0x76, 1>(self, vm) dup_n::<1>(vm)
+    opcode OpDrop<0x75, 1>(self, vm) vm.dstack.drop_item::<1>()
+    opcode OpDup<0x76, 1>(self, vm) vm.dstack.dup_item::<1>()
 
     opcode OpNip<0x77, 1>(self, vm) {
         match vm.dstack.len() >= 2 {
@@ -368,7 +383,7 @@ opcode_list! {
         }
     }
 
-    opcode OpOver<0x78, 1>(self, vm) over_n::<1>(vm)
+    opcode OpOver<0x78, 1>(self, vm) vm.dstack.over_item::<1>()
 
     opcode OpPick<0x79, 1>(self, vm) {
         let [loc]: [i32; 1] = vm.dstack.pop_item()?;
@@ -393,8 +408,8 @@ opcode_list! {
         }
     }
 
-    opcode OpRot<0x7b, 1>(self, vm) rot_n::<1>(vm)
-    opcode OpSwap<0x7c, 1>(self, vm) swap_n::<1>(vm)
+    opcode OpRot<0x7b, 1>(self, vm) vm.dstack.rot_item::<1>()
+    opcode OpSwap<0x7c, 1>(self, vm) vm.dstack.swap_item::<1>()
 
     opcode OpTuck<0x7d, 1>(self, vm) {
         match vm.dstack.len() >= 2 {
@@ -823,14 +838,14 @@ opcode_list! {
 	            // value is before the constants.LockTimeThreshold. When it is under the
 	            // threshold it is a DAA score.
                 if !(
-                    (tx.tx.lock_time < LOCK_TIME_THRESHOLD && stack_lock_time < LOCK_TIME_THRESHOLD) ||
-                    (tx.tx.lock_time >= LOCK_TIME_THRESHOLD && stack_lock_time >= LOCK_TIME_THRESHOLD)
+                    (tx.tx().lock_time < LOCK_TIME_THRESHOLD && stack_lock_time < LOCK_TIME_THRESHOLD) ||
+                    (tx.tx().lock_time >= LOCK_TIME_THRESHOLD && stack_lock_time >= LOCK_TIME_THRESHOLD)
                 ){
-                    return Err(TxScriptError::UnsatisfiedLockTime(format!("mismatched locktime types -- tx locktime {}, stack locktime {}", tx.tx.lock_time, stack_lock_time)))
+                    return Err(TxScriptError::UnsatisfiedLockTime(format!("mismatched locktime types -- tx locktime {}, stack locktime {}", tx.tx().lock_time, stack_lock_time)))
                 }
 
-                if stack_lock_time > tx.tx.lock_time {
-                    return Err(TxScriptError::UnsatisfiedLockTime(format!("locktime requirement not satisfied -- locktime is greater than the transaction locktime: {} > {}", stack_lock_time, tx.tx.lock_time)))
+                if stack_lock_time > tx.tx().lock_time {
+                    return Err(TxScriptError::UnsatisfiedLockTime(format!("locktime requirement not satisfied -- locktime is greater than the transaction locktime: {} > {}", stack_lock_time, tx.tx().lock_time)))
                 }
 
                 // The lock time feature can also be disabled, thereby bypassing
@@ -982,13 +997,14 @@ opcode_list! {
 #[cfg(test)]
 mod test {
     use consensus_core::hashing::sighash::SigHashReusedValues;
-    use crate::opcodes::{OpCodeImplementation};
+    use consensus_core::tx::{PopulatedTransaction};
+    use crate::opcodes::{OpCodeImplementation, OpCodeExecution};
     use crate::{opcodes, TxScriptEngine, TxScriptError};
     use crate::caches::Cache;
 
     #[test]
     fn test_opcode_disabled() {
-        let tests: Vec<Box<dyn OpCodeImplementation>> = vec![
+        let tests: Vec<Box<dyn OpCodeImplementation<PopulatedTransaction>>> = vec![
             opcodes::OpCat::empty(), opcodes::OpSubStr::empty(), opcodes::OpLeft::empty(),
             opcodes::OpRight::empty(), opcodes::OpInvert::empty(), opcodes::OpAnd::empty(),
             opcodes::OpOr::empty(), opcodes::Op2Mul::empty(), opcodes::Op2Div::empty(),

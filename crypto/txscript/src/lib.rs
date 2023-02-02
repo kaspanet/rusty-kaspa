@@ -10,8 +10,8 @@ use crate::opcodes::{deserialize, OpCodeImplementation};
 use crate::data_stack::{DataStack, Stack};
 use consensus_core::hashing::sighash::{calc_ecdsa_signature_hash, calc_schnorr_signature_hash, SigHashReusedValues};
 use consensus_core::hashing::sighash_type::SigHashType;
-use consensus_core::tx::{PopulatedTransaction, TransactionInput, UtxoEntry};
-use core::fmt::{Display, Formatter};
+use consensus_core::tx::{TransactionInput, UtxoEntry, VerifiableTransaction};
+use txscript_errors::TxScriptError;
 use itertools::Itertools;
 use log::warn;
 
@@ -29,39 +29,6 @@ pub const MAX_PUB_KEYS_PER_MUTLTISIG: i32 = 20;
 // The last opcode that does not count toward operations.
 // Note that this includes OP_RESERVED which counts as a push operation.
 pub const NO_COST_OPCODE: u8 = 16;
-
-#[derive(PartialEq, Eq, Debug, Clone)]
-pub enum TxScriptError {
-    // We return error if stack entry is false
-    FalseStackEntry,
-    InvalidIndex(usize, usize),
-    StackSizeExceeded(usize),
-    InvalidOpcode(String),
-    OpcodeReserved(String),
-    OpcodeDisabled(String),
-    EmptyStack,
-    CleanStack(usize),
-    EvalFalse,
-    EarlyReturn,
-    VerifyError,
-    InvalidState(String),
-    InvalidSignature(secp256k1::Error),
-    SigcacheSignatureInvalid,
-    TooManyOperations(i32),
-    NotATransactionInput,
-    ElementTooBig(usize),
-    NotMinimalData(String),
-    InvalidSource(String),
-    UnsatisfiedLockTime(String),
-    NumberTooBig(String),
-    NullFail,
-    InvalidSignatureCount(String),
-    InvalidPubKeyCount(String),
-    InvalidSigHashType(String),
-    PubKeyFormat,
-    SigLength(usize),
-    NoScripts,
-}
 
 #[derive(Clone, Hash, PartialEq, Eq)]
 enum Signature {
@@ -83,55 +50,16 @@ pub struct SigCacheKey {
     message: secp256k1::Message,
 }
 
-impl Display for TxScriptError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        write!(
-            f,
-            "Address decoding failed: {}",
-            match self {
-                Self::FalseStackEntry => "false stack entry at end of script execution".to_string(),
-                Self::StackSizeExceeded(size) => format!("combined stack size {} > max allowed {}", size, MAX_STACK_SIZE),
-                Self::InvalidOpcode(name) => format!("attempt to execute invalid opcode {}", name),
-                Self::OpcodeReserved(name) => format!("attempt to execute reserved opcode {}", name),
-                Self::OpcodeDisabled(name) => format!("attempt to execute disabled opcode {}", name),
-                Self::EmptyStack => "attempt to read from empty stack".to_string(),
-                Self::EarlyReturn => "script returned early".to_string(),
-                Self::VerifyError => "script ran, but verification failed".to_string(),
-                Self::InvalidState(s) => format!("encountered invalid state while running script: {}", s),
-                Self::TooManyOperations(limit) => format!("exceeded max operation limit of {}", limit),
-                Self::NotATransactionInput => "Engine is not running on a transaction input".to_string(),
-                Self::InvalidSignature(e) => format!("signature invalid: {}", e),
-                Self::SigcacheSignatureInvalid => "invalid signature in sig cache".to_string(),
-                Self::InvalidIndex(id, tx_len) => format!("transaction input index {} >= {}", id, tx_len),
-                Self::ElementTooBig(size) => format!("element size {} exceeds max allowed size {}", size, MAX_SCRIPT_ELEMENT_SIZE),
-                Self::NotMinimalData(s) => format!("push encoding is not minimal: {}", s),
-                Self::InvalidSource(s) => format!("opcode not supported on current source: {}", s),
-                Self::UnsatisfiedLockTime(s) => format!("Unsatisfied lock time: {}", s),
-                Self::NumberTooBig(s) => format!("Number too big: {}", s),
-                Self::NullFail => "not all signatures empty on failed checkmultisig".to_string(),
-                Self::InvalidSignatureCount(s) => format!("invalid signature count: {}", s),
-                Self::InvalidPubKeyCount(s) => format!("invalid pubkey count: {}", s),
-                Self::InvalidSigHashType(s) => format!("what's here {}", s),
-                Self::CleanStack(n) => format!("stack contains {} unexpected items", n),
-                Self::EvalFalse => "false stack entry at end of script execution".to_string(),
-                Self::PubKeyFormat => "unsupported public key type".to_string(),
-                Self::SigLength(n) => format!("invalid signature length {}", n),
-                Self::NoScripts => "no scripts to run".to_string(),
-            }
-        )
-    }
-}
-
-enum ScriptSource<'a> {
-    TxInput { tx: &'a PopulatedTransaction<'a>, input: &'a TransactionInput, id: usize, utxo_entry: &'a UtxoEntry, is_p2sh: bool },
+enum ScriptSource<'a, T: VerifiableTransaction> {
+    TxInput { tx: &'a T, input: &'a TransactionInput, id: usize, utxo_entry: &'a UtxoEntry, is_p2sh: bool },
     StandAloneScripts(Vec<&'a [u8]>),
 }
 
-pub struct TxScriptEngine<'a> {
+pub struct TxScriptEngine<'a, T: VerifiableTransaction> {
     dstack: Stack,
     astack: Stack,
 
-    script_source: ScriptSource<'a>,
+    script_source: ScriptSource<'a, T>,
 
     // Outer caches for quicker calculation
     // TODO:: make it compatible with threading
@@ -143,7 +71,7 @@ pub struct TxScriptEngine<'a> {
     num_ops: i32,
 }
 
-impl<'a> TxScriptEngine<'a> {
+impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
     pub fn new_empty(
         reused_values: &'a mut SigHashReusedValues,
         sig_cache: &'a Cache<SigCacheKey, Result<(), secp256k1::Error>>,
@@ -160,7 +88,7 @@ impl<'a> TxScriptEngine<'a> {
     }
 
     pub fn from_transaction_input(
-        tx: &'a PopulatedTransaction<'a>,
+        tx: &'a T,
         input: &'a TransactionInput,
         id: usize,
         utxo_entry: &'a UtxoEntry,
@@ -175,17 +103,17 @@ impl<'a> TxScriptEngine<'a> {
                 (pubkey_script[0] == opcodes::codes::OpBlake2b) &&
                 (pubkey_script[1] == opcodes::codes::OpData32) &&
                 (pubkey_script[pubkey_script.len() -1] == opcodes::codes::OpEqual);
-        match id < tx.tx.inputs.len() {
+        match id < tx.tx().inputs.len() {
             true => Ok(Self {
                 dstack: Default::default(),
                 astack: Default::default(),
-                script_source: ScriptSource::TxInput { tx, input, id, utxo_entry, is_p2sh },
+                script_source: ScriptSource::TxInput {tx, input, id, utxo_entry, is_p2sh },
                 reused_values,
                 sig_cache,
                 cond_stack: Default::default(),
                 num_ops: 0,
             }),
-            false => Err(TxScriptError::InvalidIndex(id, tx.tx.inputs.len())),
+            false => Err(TxScriptError::InvalidIndex(id, tx.tx().inputs.len())),
         }
     }
 
@@ -211,7 +139,7 @@ impl<'a> TxScriptEngine<'a> {
         return self.cond_stack.is_empty() || *self.cond_stack.first().expect("Checked not empty") != 1;
     }
 
-    fn execute_opcode(&mut self, opcode: Box<dyn OpCodeImplementation>) -> Result<(), TxScriptError> {
+    fn execute_opcode(&mut self, opcode: Box<dyn OpCodeImplementation<T>>) -> Result<(), TxScriptError> {
         // Different from kaspad: Illegal and disabled opcode are checked on execute instead
 
         // Note that this includes OP_RESERVED which counts as a push operation.
@@ -221,7 +149,7 @@ impl<'a> TxScriptEngine<'a> {
                 return Err(TxScriptError::TooManyOperations(MAX_OPS_PER_SCRIPT));
             }
         } else if opcode.len() > MAX_SCRIPT_ELEMENT_SIZE {
-            return Err(TxScriptError::ElementTooBig(opcode.len()));
+            return Err(TxScriptError::ElementTooBig(opcode.len(), MAX_SCRIPT_ELEMENT_SIZE));
         }
 
         if self.is_executing() || opcode.is_conditional() {
@@ -246,7 +174,7 @@ impl<'a> TxScriptEngine<'a> {
 
                 let combined_size = self.astack.len() + self.dstack.len();
                 if combined_size > MAX_STACK_SIZE {
-                    return Err(TxScriptError::StackSizeExceeded(combined_size));
+                    return Err(TxScriptError::StackSizeExceeded(combined_size, MAX_STACK_SIZE));
                 }
                 Ok(())
             });
@@ -427,7 +355,7 @@ impl<'a> TxScriptEngine<'a> {
 
 #[cfg(test)]
 mod tests {
-    use consensus_core::tx::{ScriptPublicKey, Transaction, TransactionId, TransactionOutpoint, TransactionOutput};
+    use consensus_core::tx::{PopulatedTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionOutpoint, TransactionOutput};
     use super::*;
 
     struct ScriptTestCase {
@@ -565,7 +493,7 @@ mod tests {
         ];
 
         for test in test_cases {
-            let check = TxScriptEngine::check_pub_key_encoding(test.key);
+            let check = TxScriptEngine::<PopulatedTransaction>::check_pub_key_encoding(test.key);
             if test.is_valid {
                 assert_eq!(check, Ok(()), "checkSignatureLength test '{}' failed when it should have succeeded: {:?}", test.name, check)
             } else {

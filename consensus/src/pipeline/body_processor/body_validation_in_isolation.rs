@@ -105,7 +105,12 @@ impl BlockBodyProcessor {
 
 #[cfg(test)]
 mod tests {
-    use crate::{consensus::test_consensus::TestConsensus, errors::RuleError, params::MAINNET_PARAMS};
+    use crate::{
+        config::{Config, ConfigBuilder},
+        consensus::test_consensus::TestConsensus,
+        errors::RuleError,
+        params::MAINNET_PARAMS,
+    };
     use consensus_core::{
         block::MutableBlock,
         header::Header,
@@ -118,15 +123,14 @@ mod tests {
 
     #[test]
     fn validate_body_in_isolation_test() {
-        let params = &MAINNET_PARAMS;
-        let consensus = TestConsensus::create_from_temp_db(params);
+        let consensus = TestConsensus::create_from_temp_db(&Config::new(MAINNET_PARAMS));
         let wait_handles = consensus.init();
 
         let body_processor = consensus.block_body_processor();
         let example_block = MutableBlock::new(
             Header::new(
                 0,
-                vec![
+                vec![vec![
                     Hash::from_slice(&[
                         0x16, 0x5e, 0x38, 0xe8, 0xb3, 0x91, 0x45, 0x95, 0xd9, 0xc6, 0x41, 0xf3, 0xb8, 0xee, 0xc2, 0xf3, 0x46, 0x11,
                         0x89, 0x6b, 0x82, 0x1a, 0x68, 0x3b, 0x7a, 0x4e, 0xde, 0xfe, 0x2c, 0x00, 0x00, 0x00,
@@ -135,17 +139,20 @@ mod tests {
                         0x4b, 0xb0, 0x75, 0x35, 0xdf, 0xd5, 0x8e, 0x0b, 0x3c, 0xd6, 0x4f, 0xd7, 0x15, 0x52, 0x80, 0x87, 0x2a, 0x04,
                         0x71, 0xbc, 0xf8, 0x30, 0x95, 0x52, 0x6a, 0xce, 0x0e, 0x38, 0xc6, 0x00, 0x00, 0x00,
                     ]),
-                ],
+                ]],
                 Hash::from_slice(&[
                     0x46, 0xec, 0xf4, 0x5b, 0xe3, 0xba, 0xca, 0x34, 0x9d, 0xfe, 0x8a, 0x78, 0xde, 0xaf, 0x05, 0x3b, 0x0a, 0xa6, 0xd5,
                     0x38, 0x97, 0x4d, 0xa5, 0x0f, 0xd6, 0xef, 0xb4, 0xd2, 0x66, 0xbc, 0x8d, 0x21,
                 ]),
+                Default::default(),
+                Default::default(),
                 0x17305aa654a,
                 0x207fffff,
                 1,
                 0,
                 0.into(),
                 9,
+                Default::default(),
             ),
             vec![
                 Transaction::new(
@@ -427,11 +434,11 @@ mod tests {
 
     #[tokio::test]
     async fn merkle_root_missing_parents_known_invalid_test() {
-        let params = MAINNET_PARAMS.clone_with_skip_pow();
-        let consensus = TestConsensus::create_from_temp_db(&params);
+        let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().build();
+        let consensus = TestConsensus::create_from_temp_db(&config);
         let wait_handles = consensus.init();
 
-        let mut block = consensus.build_block_with_parents_and_transactions(1.into(), vec![params.genesis_hash], vec![]);
+        let mut block = consensus.build_block_with_parents_and_transactions(1.into(), vec![config.genesis_hash], vec![]);
         block.transactions[0].version += 1;
 
         assert_match!(consensus.validate_and_insert_block(block.clone().to_immutable()).await, Err(RuleError::BadMerkleRoot(_, _)));
@@ -439,7 +446,7 @@ mod tests {
         // BadMerkleRoot shouldn't mark the block as known invalid
         assert_match!(consensus.validate_and_insert_block(block.to_immutable()).await, Err(RuleError::BadMerkleRoot(_, _)));
 
-        let mut block = consensus.build_block_with_parents_and_transactions(1.into(), vec![params.genesis_hash], vec![]);
+        let mut block = consensus.build_block_with_parents_and_transactions(1.into(), vec![config.genesis_hash], vec![]);
         block.header.parents_by_level[0][0] = 0.into();
 
         assert_match!(consensus.validate_and_insert_block(block.clone().to_immutable()).await, Err(RuleError::MissingParents(_)));

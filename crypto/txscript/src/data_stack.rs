@@ -17,6 +17,11 @@ pub(crate) trait DataStack {
     fn push_item<T: Debug>(&mut self, item: T)
         where
             Vec<u8>: OpcodeData<T>;
+    fn drop_item<const SIZE: usize>(&mut self) -> Result<(), TxScriptError>;
+    fn dup_item<const SIZE: usize>(&mut self) -> Result<(), TxScriptError>;
+    fn over_item<const SIZE: usize>(&mut self) -> Result<(), TxScriptError>;
+    fn rot_item<const SIZE: usize>(&mut self) -> Result<(), TxScriptError>;
+    fn swap_item<const SIZE: usize>(&mut self) -> Result<(), TxScriptError>;
 }
 
 pub(crate) trait OpcodeData<T> {
@@ -131,8 +136,60 @@ impl DataStack for Stack {
         Vec::push(self, OpcodeData::serialize(&item));
     }
 
-    /*#[inline]
-    fn push(&mut self, item: Vec<u8>) {
-        Vec::push(self, item);
-    }*/
+    #[inline]
+    fn drop_item<const SIZE: usize>(&mut self) -> Result<(), TxScriptError> {
+        match self.len() >= SIZE {
+            true => {
+                self.truncate(self.len() - SIZE);
+                Ok(())
+            }
+            false => Err(TxScriptError::EmptyStack),
+        }
+    }
+
+    #[inline]
+    fn dup_item<const SIZE: usize>(&mut self) -> Result<(), TxScriptError> {
+        match self.len() >= SIZE {
+            true => {
+                self.extend_from_slice(self.clone()[self.len() - SIZE..].iter().as_slice());
+                Ok(())
+            }
+            false => Err(TxScriptError::EmptyStack),
+        }
+    }
+
+    #[inline]
+    fn over_item<const SIZE: usize>(&mut self) -> Result<(), TxScriptError> {
+        match self.len() >= 2 * SIZE {
+            true => {
+                self.extend_from_slice(self.clone()[self.len() - 2 * SIZE..self.len() - SIZE].iter().as_slice());
+                Ok(())
+            }
+            false => Err(TxScriptError::EmptyStack),
+        }
+    }
+
+    #[inline]
+    fn rot_item<const SIZE: usize>(&mut self) -> Result<(), TxScriptError> {
+        match self.len() >= 3 * SIZE {
+            true => {
+                let drained = self.drain(self.len() - 3 * SIZE..self.len() - 2 * SIZE).collect::<Vec<Vec<u8>>>();
+                self.extend(drained);
+                Ok(())
+            }
+            false => Err(TxScriptError::EmptyStack),
+        }
+    }
+
+    #[inline]
+    fn swap_item<const SIZE: usize>(&mut self) -> Result<(), TxScriptError> {
+        match self.len() >= 2 * SIZE {
+            true => {
+                let drained = self.drain(self.len() - 2 * SIZE..self.len() - SIZE).collect::<Vec<Vec<u8>>>();
+                self.extend(drained);
+                Ok(())
+            }
+            false => Err(TxScriptError::EmptyStack),
+        }
+    }
 }

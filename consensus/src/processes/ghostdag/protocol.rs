@@ -1,10 +1,11 @@
 use std::sync::Arc;
 
 use consensus_core::{
-    blockhash::{self, BlockHashes},
+    blockhash::{self, BlockHashExtensions, BlockHashes},
     BlockHashMap, BlueWorkType, HashMapCustomHasher,
 };
 use hashes::Hash;
+use kaspa_utils::refs::Refs;
 
 use crate::{
     model::{
@@ -25,7 +26,7 @@ pub struct GhostdagManager<T: GhostdagStoreReader, S: RelationsStoreReader, U: R
     genesis_hash: Hash,
     pub(super) k: KType,
     pub(super) ghostdag_store: Arc<T>,
-    pub(super) relations_store: Arc<S>,
+    pub(super) relations_store: S,
     pub(super) headers_store: Arc<V>,
     pub(super) reachability_service: U,
 }
@@ -35,18 +36,29 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
         genesis_hash: Hash,
         k: KType,
         ghostdag_store: Arc<T>,
-        relations_store: Arc<S>,
+        relations_store: S,
         headers_store: Arc<V>,
         reachability_service: U,
     ) -> Self {
         Self { genesis_hash, k, ghostdag_store, relations_store, reachability_service, headers_store }
     }
 
-    pub fn genesis_ghostdag_data(&self) -> Arc<GhostdagData> {
-        Arc::new(GhostdagData::new(
+    pub fn genesis_ghostdag_data(&self) -> GhostdagData {
+        GhostdagData::new(
             0,
             Default::default(), // TODO: take blue score and work from actual genesis
             blockhash::ORIGIN,
+            BlockHashes::new(Vec::new()),
+            BlockHashes::new(Vec::new()),
+            HashKTypeMap::new(BlockHashMap::new()),
+        )
+    }
+
+    pub fn origin_ghostdag_data(&self) -> Arc<GhostdagData> {
+        Arc::new(GhostdagData::new(
+            0,
+            Default::default(),
+            0.into(),
             BlockHashes::new(Vec::new()),
             BlockHashes::new(Vec::new()),
             HashKTypeMap::new(BlockHashMap::new()),
@@ -79,13 +91,13 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
     ///    blues_anticone_sizes.
     ///
     /// For further details see the article https://eprint.iacr.org/2018/104.pdf
-    pub fn ghostdag(&self, parents: &[Hash]) -> Arc<GhostdagData> {
+    pub fn ghostdag(&self, parents: &[Hash]) -> GhostdagData {
         assert!(!parents.is_empty(), "genesis must be added via a call to init");
 
         // Run the GHOSTDAG parent selection algorithm
         let selected_parent = self.find_selected_parent(&mut parents.iter().copied());
         // Initialize new GHOSTDAG block data with the selected parent
-        let mut new_block_data = Arc::new(GhostdagData::new_with_selected_parent(selected_parent, self.k));
+        let mut new_block_data = GhostdagData::new_with_selected_parent(selected_parent, self.k);
         // Get the mergeset in consensus-agreed topological order (topological here means forward in time from blocks to children)
         let ordered_mergeset = self.ordered_mergeset_without_selected_parent(selected_parent, parents);
 
@@ -102,12 +114,16 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
 
         let blue_score = self.ghostdag_store.get_blue_score(selected_parent).unwrap() + new_block_data.mergeset_blues.len() as u64;
 
-        let added_blue_work: BlueWorkType =
-            new_block_data.mergeset_blues.iter().cloned().map(|hash| calc_work(self.headers_store.get_bits(hash).unwrap())).sum();
+        let added_blue_work: BlueWorkType = new_block_data
+            .mergeset_blues
+            .iter()
+            .cloned()
+            .map(|hash| if hash.is_origin() { 0.into() } else { calc_work(self.headers_store.get_bits(hash).unwrap()) })
+            .sum();
 
         let blue_work = self.ghostdag_store.get_blue_work(selected_parent).unwrap() + added_blue_work;
-
         new_block_data.finalize_score_and_work(blue_score, blue_work);
+
         new_block_data
     }
 
@@ -174,16 +190,15 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
             }
 
             if current_selected_parent == self.genesis_hash || current_selected_parent == blockhash::ORIGIN {
-                panic!("block {} is not in blue set of the given context", block);
+                panic!("block {block} is not in blue set of the given context");
             }
 
             current_blues_anticone_sizes = self.ghostdag_store.get_blues_anticone_sizes(current_selected_parent).unwrap();
-
             current_selected_parent = self.ghostdag_store.get_selected_parent(current_selected_parent).unwrap();
         }
     }
 
-    fn check_blue_candidate(&self, new_block_data: &Arc<GhostdagData>, blue_candidate: Hash) -> ColoringOutput {
+    fn check_blue_candidate(&self, new_block_data: &GhostdagData, blue_candidate: Hash) -> ColoringOutput {
         // The maximum length of new_block_data.mergeset_blues can be K+1 because
         // it contains the selected parent.
         if new_block_data.mergeset_blues.len() as KType == self.k + 1 {
@@ -191,13 +206,11 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
         }
 
         let mut candidate_blues_anticone_sizes: BlockHashMap<KType> = BlockHashMap::with_capacity(self.k as usize);
-
         // Iterate over all blocks in the blue past of the new block that are not in the past
         // of blue_candidate, and check for each one of them if blue_candidate potentially
         // enlarges their blue anticone to be over K, or that they enlarge the blue anticone
         // of blue_candidate to be over K.
-        let mut chain_block = ChainBlock { hash: None, data: Arc::clone(new_block_data) };
-
+        let mut chain_block = ChainBlock { hash: None, data: new_block_data.into() };
         let mut candidate_blue_anticone_size: KType = 0;
 
         loop {
@@ -217,16 +230,16 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
 
             chain_block = ChainBlock {
                 hash: Some(chain_block.data.selected_parent),
-                data: self.ghostdag_store.get_data(chain_block.data.selected_parent).unwrap(),
+                data: self.ghostdag_store.get_data(chain_block.data.selected_parent).unwrap().into(),
             }
         }
     }
 }
 
 /// Chain block with attached ghostdag data
-struct ChainBlock {
+struct ChainBlock<'a> {
     hash: Option<Hash>, // if set to `None`, signals being the new block
-    data: Arc<GhostdagData>,
+    data: Refs<'a, GhostdagData>,
 }
 
 /// Represents the intermediate GHOSTDAG coloring state for the current candidate

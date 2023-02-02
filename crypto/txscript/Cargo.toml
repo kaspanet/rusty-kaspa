@@ -19,6 +19,7 @@ indexmap.workspace = true
 secp256k1 ={version="0.24", features=["global-context", "rand-std"]}
 num = "0.4.0"
 parking_lot = "0.12"
+txscript-errors.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true

@@ -1,8 +1,9 @@
 pub mod test_consensus;
 
 use crate::{
-    constants::perf::{CACHE_SIZE, LARGE_DATA_CACHE_SIZE},
-    errors::BlockProcessResult,
+    config::Config,
+    constants::store_names,
+    errors::{BlockProcessResult, RuleError},
     model::{
         services::{reachability::MTReachabilityService, relations::MTRelationsService, statuses::MTStatusesService},
         stores::{
@@ -11,39 +12,59 @@ use crate::{
             block_window_cache::BlockWindowCacheStore,
             daa::DbDaaStore,
             depth::DbDepthStore,
-            ghostdag::DbGhostdagStore,
+            ghostdag::{DbGhostdagStore, GhostdagData},
             headers::DbHeadersStore,
             headers_selected_tip::DbHeadersSelectedTipStore,
             past_pruning_points::DbPastPruningPointsStore,
             pruning::DbPruningStore,
             reachability::DbReachabilityStore,
             relations::DbRelationsStore,
-            statuses::{BlockStatus, DbStatusesStore},
-            tips::DbTipsStore,
+            statuses::{DbStatusesStore, StatusesStoreReader},
+            tips::{DbTipsStore, TipsStoreReader},
             utxo_diffs::DbUtxoDiffsStore,
             utxo_multisets::DbUtxoMultisetsStore,
+            utxo_set::{DbUtxoSetStore, UtxoSetStore},
+            virtual_state::{DbVirtualStateStore, VirtualStateStoreReader},
             DB,
         },
     },
-    params::Params,
     pipeline::{
         body_processor::BlockBodyProcessor,
-        deps_manager::{BlockResultSender, BlockTask},
+        deps_manager::{BlockProcessingMessage, BlockResultSender, BlockTask},
         header_processor::HeaderProcessor,
-        virtual_processor::VirtualStateProcessor,
+        virtual_processor::{errors::VirtualProcessorResult, VirtualStateProcessor},
         ProcessingCounters,
     },
     processes::{
         block_depth::BlockDepthManager, coinbase::CoinbaseManager, difficulty::DifficultyManager, ghostdag::protocol::GhostdagManager,
         mass::MassCalculator, parents_builder::ParentsManager, past_median_time::PastMedianTimeManager, pruning::PruningManager,
-        reachability::inquirer as reachability, transaction_validator::TransactionValidator, traversal_manager::DagTraversalManager,
+        pruning_proof::PruningProofManager, reachability::inquirer as reachability, transaction_validator::TransactionValidator,
+        traversal_manager::DagTraversalManager,
     },
 };
-use consensus_core::block::Block;
+use consensus_core::{
+    api::ConsensusApi,
+    header::Header,
+    muhash::MuHashExtensions,
+    pruning::PruningPointProof,
+    tx::{TransactionOutpoint, UtxoEntry},
+    {
+        block::{Block, BlockTemplate},
+        blockstatus::BlockStatus,
+        coinbase::MinerData,
+        errors::{coinbase::CoinbaseResult, tx::TxResult},
+        tx::{MutableTransaction, Transaction},
+        BlockHashSet,
+    },
+};
 use crossbeam_channel::{unbounded, Receiver, Sender};
+use futures_util::future::BoxFuture;
+use hashes::Hash;
+use itertools::Itertools;
 use kaspa_core::{core::Core, service::Service};
+use muhash::MuHash;
 use parking_lot::RwLock;
-use std::future::Future;
+use std::{cmp::max, future::Future, sync::atomic::Ordering};
 use std::{
     ops::DerefMut,
     sync::Arc,
@@ -54,33 +75,48 @@ use tokio::sync::oneshot;
 pub type DbGhostdagManager =
     GhostdagManager<DbGhostdagStore, MTRelationsService<DbRelationsStore>, MTReachabilityService<DbReachabilityStore>, DbHeadersStore>;
 
+/// Used in order to group virtual related stores under a single lock
+pub struct VirtualStores {
+    pub state: DbVirtualStateStore,
+    pub utxo_set: DbUtxoSetStore,
+}
+
+impl VirtualStores {
+    pub fn new(state: DbVirtualStateStore, utxo_set: DbUtxoSetStore) -> Self {
+        Self { state, utxo_set }
+    }
+}
+
 pub struct Consensus {
     // DB
     db: Arc<DB>,
 
     // Channels
-    block_sender: Sender<BlockTask>,
+    block_sender: Sender<BlockProcessingMessage>,
 
     // Processors
     header_processor: Arc<HeaderProcessor>,
     pub(super) body_processor: Arc<BlockBodyProcessor>,
-    virtual_processor: Arc<VirtualStateProcessor>,
+    pub virtual_processor: Arc<VirtualStateProcessor>,
 
     // Stores
     statuses_store: Arc<RwLock<DbStatusesStore>>,
-    relations_store: Arc<RwLock<DbRelationsStore>>,
+    pub relations_stores: Arc<RwLock<Vec<DbRelationsStore>>>,
     reachability_store: Arc<RwLock<DbReachabilityStore>>,
     pruning_store: Arc<RwLock<DbPruningStore>>,
     headers_selected_tip_store: Arc<RwLock<DbHeadersSelectedTipStore>>,
     body_tips_store: Arc<RwLock<DbTipsStore>>,
-    pub(super) headers_store: Arc<DbHeadersStore>,
+    pub headers_store: Arc<DbHeadersStore>,
+    pub block_transactions_store: Arc<DbBlockTransactionsStore>,
+    pruning_point_utxo_set_store: Arc<DbUtxoSetStore>,
+    // TODO: remove all pub from stores and processors when StoreManager is implemented
 
     // Append-only stores
-    pub(super) ghostdag_store: Arc<DbGhostdagStore>,
+    pub ghostdag_store: Arc<DbGhostdagStore>,
 
     // Services and managers
-    statuses_service: Arc<MTStatusesService<DbStatusesStore>>,
-    relations_service: Arc<MTRelationsService<DbRelationsStore>>,
+    statuses_service: MTStatusesService<DbStatusesStore>,
+    relations_service: MTRelationsService<DbRelationsStore>,
     reachability_service: MTReachabilityService<DbReachabilityStore>,
     pub(super) difficulty_manager: DifficultyManager<DbHeadersStore>,
     pub(super) dag_traversal_manager: DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore>,
@@ -88,34 +124,78 @@ pub struct Consensus {
     pub(super) past_median_time_manager: PastMedianTimeManager<DbHeadersStore, DbGhostdagStore, BlockWindowCacheStore>,
     pub(super) coinbase_manager: CoinbaseManager,
     pub(super) pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
+    pub(super) pruning_proof_manager: PruningProofManager,
 
     // Counters
     pub counters: Arc<ProcessingCounters>,
 }
 
 impl Consensus {
-    pub fn new(db: Arc<DB>, params: &Params) -> Self {
-        let statuses_store = Arc::new(RwLock::new(DbStatusesStore::new(db.clone(), CACHE_SIZE)));
-        let relations_store = Arc::new(RwLock::new(DbRelationsStore::new(db.clone(), CACHE_SIZE)));
-        let reachability_store = Arc::new(RwLock::new(DbReachabilityStore::new(db.clone(), CACHE_SIZE)));
+    pub fn new(db: Arc<DB>, config: &Config) -> Self {
+        let params = &config.params;
+        let perf_params = &config.perf;
+        //
+        // Stores
+        //
+
+        let pruning_size_for_caches = params.pruning_depth;
+        let pruning_plus_finality_size_for_caches = params.pruning_depth + params.finality_depth;
+
+        // Headers
+        let statuses_store = Arc::new(RwLock::new(DbStatusesStore::new(db.clone(), pruning_plus_finality_size_for_caches)));
+        let relations_stores = Arc::new(RwLock::new(
+            (0..=params.max_block_level)
+                .map(|level| {
+                    let cache_size =
+                        max(pruning_plus_finality_size_for_caches.checked_shr(level as u32).unwrap_or(0), 2 * params.pruning_proof_m);
+                    DbRelationsStore::new(db.clone(), level, cache_size)
+                })
+                .collect_vec(),
+        ));
+        let reachability_store = Arc::new(RwLock::new(DbReachabilityStore::new(db.clone(), pruning_plus_finality_size_for_caches)));
+        let ghostdag_stores = (0..=params.max_block_level)
+            .map(|level| {
+                let cache_size =
+                    max(pruning_plus_finality_size_for_caches.checked_shr(level as u32).unwrap_or(0), 2 * params.pruning_proof_m);
+                Arc::new(DbGhostdagStore::new(db.clone(), level, cache_size))
+            })
+            .collect_vec();
+        let ghostdag_store = ghostdag_stores[0].clone();
+        let daa_excluded_store = Arc::new(DbDaaStore::new(db.clone(), pruning_size_for_caches));
+        let headers_store = Arc::new(DbHeadersStore::new(db.clone(), perf_params.header_data_cache_size));
+        let depth_store = Arc::new(DbDepthStore::new(db.clone(), perf_params.header_data_cache_size));
+        // Pruning
         let pruning_store = Arc::new(RwLock::new(DbPruningStore::new(db.clone())));
-        let ghostdag_store = Arc::new(DbGhostdagStore::new(db.clone(), CACHE_SIZE));
-        let daa_store = Arc::new(DbDaaStore::new(db.clone(), CACHE_SIZE));
-        let headers_store = Arc::new(DbHeadersStore::new(db.clone(), CACHE_SIZE));
-        let depth_store = Arc::new(DbDepthStore::new(db.clone(), CACHE_SIZE));
-        let block_transactions_store = Arc::new(DbBlockTransactionsStore::new(db.clone(), CACHE_SIZE));
-        let past_pruning_points_store = Arc::new(DbPastPruningPointsStore::new(db.clone(), CACHE_SIZE));
-        let utxo_diffs_store = Arc::new(DbUtxoDiffsStore::new(db.clone(), CACHE_SIZE));
-        let utxo_multisets_store = Arc::new(DbUtxoMultisetsStore::new(db.clone(), CACHE_SIZE));
-        let acceptance_data_store = Arc::new(DbAcceptanceDataStore::new(db.clone(), CACHE_SIZE));
+        let past_pruning_points_store = Arc::new(DbPastPruningPointsStore::new(db.clone(), 4));
+        let pruning_point_utxo_set_store =
+            Arc::new(DbUtxoSetStore::new(db.clone(), perf_params.utxo_set_cache_size, store_names::PRUNING_UTXO_SET));
+
+        // Block data
+
+        let block_transactions_store = Arc::new(DbBlockTransactionsStore::new(db.clone(), perf_params.block_data_cache_size));
+        let utxo_diffs_store = Arc::new(DbUtxoDiffsStore::new(db.clone(), perf_params.block_data_cache_size));
+        let utxo_multisets_store = Arc::new(DbUtxoMultisetsStore::new(db.clone(), perf_params.block_data_cache_size));
+        let acceptance_data_store = Arc::new(DbAcceptanceDataStore::new(db.clone(), perf_params.block_data_cache_size));
+        // Tips
         let headers_selected_tip_store = Arc::new(RwLock::new(DbHeadersSelectedTipStore::new(db.clone())));
         let body_tips_store = Arc::new(RwLock::new(DbTipsStore::new(db.clone())));
+        // Block windows
+        let block_window_cache_for_difficulty = Arc::new(BlockWindowCacheStore::new(perf_params.block_window_cache_size));
+        let block_window_cache_for_past_median_time = Arc::new(BlockWindowCacheStore::new(perf_params.block_window_cache_size));
+        // Virtual stores
+        let virtual_stores = Arc::new(RwLock::new(VirtualStores::new(
+            DbVirtualStateStore::new(db.clone()),
+            DbUtxoSetStore::new(db.clone(), perf_params.utxo_set_cache_size, store_names::VIRTUAL_UTXO_SET),
+        )));
 
-        let block_window_cache_for_difficulty = Arc::new(BlockWindowCacheStore::new(LARGE_DATA_CACHE_SIZE));
-        let block_window_cache_for_past_median_time = Arc::new(BlockWindowCacheStore::new(LARGE_DATA_CACHE_SIZE));
+        //
+        // Services and managers
+        //
 
-        let statuses_service = Arc::new(MTStatusesService::new(statuses_store.clone()));
-        let relations_service = Arc::new(MTRelationsService::new(relations_store.clone()));
+        let statuses_service = MTStatusesService::new(statuses_store.clone());
+        let relations_services =
+            (0..=params.max_block_level).map(|level| MTRelationsService::new(relations_stores.clone(), level)).collect_vec();
+        let relations_service = relations_services[0].clone();
         let reachability_service = MTReachabilityService::new(reachability_store.clone());
         let dag_traversal_manager = DagTraversalManager::new(
             params.genesis_hash,
@@ -123,7 +203,7 @@ impl Consensus {
             block_window_cache_for_difficulty.clone(),
             block_window_cache_for_past_median_time.clone(),
             params.difficulty_window_size,
-            (2 * params.timestamp_deviation_tolerance - 1) as usize,
+            (2 * params.timestamp_deviation_tolerance - 1) as usize, // TODO: incorporate target_time_per_block to this calculation
         );
         let past_median_time_manager = PastMedianTimeManager::new(
             headers_store.clone(),
@@ -145,14 +225,22 @@ impl Consensus {
             reachability_service.clone(),
             ghostdag_store.clone(),
         );
-        let ghostdag_manager = GhostdagManager::new(
-            params.genesis_hash,
-            params.ghostdag_k,
-            ghostdag_store.clone(),
-            relations_service.clone(),
-            headers_store.clone(),
-            reachability_service.clone(),
-        );
+        let ghostdag_managers = ghostdag_stores
+            .iter()
+            .cloned()
+            .enumerate()
+            .map(|(level, ghostdag_store)| {
+                GhostdagManager::new(
+                    params.genesis_hash,
+                    params.ghostdag_k,
+                    ghostdag_store,
+                    relations_services[level].clone(),
+                    headers_store.clone(),
+                    reachability_service.clone(),
+                )
+            })
+            .collect_vec();
+        let ghostdag_manager = ghostdag_managers[0].clone();
 
         let coinbase_manager = CoinbaseManager::new(
             params.coinbase_payload_script_public_key_max_len,
@@ -189,57 +277,68 @@ impl Consensus {
             params.genesis_hash,
             headers_store.clone(),
             reachability_service.clone(),
-            relations_store.clone(),
+            relations_service.clone(),
         );
 
-        let (sender, receiver): (Sender<BlockTask>, Receiver<BlockTask>) = unbounded();
-        let (body_sender, body_receiver): (Sender<BlockTask>, Receiver<BlockTask>) = unbounded();
-        let (virtual_sender, virtual_receiver): (Sender<BlockTask>, Receiver<BlockTask>) = unbounded();
+        let (sender, receiver): (Sender<BlockProcessingMessage>, Receiver<BlockProcessingMessage>) = unbounded();
+        let (body_sender, body_receiver): (Sender<BlockProcessingMessage>, Receiver<BlockProcessingMessage>) = unbounded();
+        let (virtual_sender, virtual_receiver): (Sender<BlockProcessingMessage>, Receiver<BlockProcessingMessage>) = unbounded();
 
         let counters = Arc::new(ProcessingCounters::default());
 
+        //
+        // Thread-pools
+        //
+
         // Pool for header and body processors
-        let block_processors_pool =
-            Arc::new(rayon::ThreadPoolBuilder::new()
-            .num_threads(0) // For now use the default (TODO: cmd flag?)
-            .thread_name(|i| format!("block-pool-{}", i))
-            .build()
-            .unwrap());
+        let block_processors_pool = Arc::new(
+            rayon::ThreadPoolBuilder::new()
+                .num_threads(perf_params.block_processors_num_threads)
+                .thread_name(|i| format!("block-pool-{i}"))
+                .build()
+                .unwrap(),
+        );
         // We need a dedicated thread-pool for the virtual processor to avoid possible deadlocks probably caused by the
         // combined usage of `par_iter` (in virtual processor) and `rayon::spawn` (in header/body processors).
         // See for instance https://github.com/rayon-rs/rayon/issues/690
-        let virtual_pool =
-            Arc::new(rayon::ThreadPoolBuilder::new()
-            .num_threads(0) // For now use the default (TODO: cmd flag?)
-            .thread_name(|i| format!("virtual-pool-{}", i))
-            .build()
-            .unwrap());
+        let virtual_pool = Arc::new(
+            rayon::ThreadPoolBuilder::new()
+                .num_threads(perf_params.virtual_processor_num_threads)
+                .thread_name(|i| format!("virtual-pool-{i}"))
+                .build()
+                .unwrap(),
+        );
+
+        //
+        // Pipeline processors
+        //
 
         let header_processor = Arc::new(HeaderProcessor::new(
             receiver,
             body_sender,
             block_processors_pool.clone(),
             params,
+            config.process_genesis,
             db.clone(),
-            relations_store.clone(),
+            relations_stores.clone(),
             reachability_store.clone(),
-            ghostdag_store.clone(),
+            ghostdag_stores.clone(),
             headers_store.clone(),
-            daa_store.clone(),
+            daa_excluded_store.clone(),
             statuses_store.clone(),
             pruning_store.clone(),
-            depth_store,
+            depth_store.clone(),
             headers_selected_tip_store.clone(),
             block_window_cache_for_difficulty,
             block_window_cache_for_past_median_time,
             reachability_service.clone(),
-            relations_service.clone(),
             past_median_time_manager.clone(),
             dag_traversal_manager.clone(),
             difficulty_manager.clone(),
-            depth_manager,
+            depth_manager.clone(),
             pruning_manager.clone(),
-            parents_manager,
+            parents_manager.clone(),
+            ghostdag_managers.clone(),
             counters.clone(),
         ));
 
@@ -260,32 +359,59 @@ impl Consensus {
             past_median_time_manager.clone(),
             params.max_block_mass,
             params.genesis_hash,
+            config.process_genesis,
         ));
 
         let virtual_processor = Arc::new(VirtualStateProcessor::new(
             virtual_receiver,
             virtual_pool,
             params,
+            config.process_genesis,
             db.clone(),
             statuses_store.clone(),
             ghostdag_store.clone(),
             headers_store.clone(),
-            daa_store,
-            block_transactions_store,
+            daa_excluded_store,
+            block_transactions_store.clone(),
             pruning_store.clone(),
-            past_pruning_points_store,
+            past_pruning_points_store.clone(),
             body_tips_store.clone(),
             utxo_diffs_store,
             utxo_multisets_store,
             acceptance_data_store,
+            virtual_stores.clone(),
+            pruning_point_utxo_set_store.clone(),
             ghostdag_manager.clone(),
             reachability_service.clone(),
+            relations_service.clone(),
             dag_traversal_manager.clone(),
             difficulty_manager.clone(),
             coinbase_manager.clone(),
             transaction_validator,
+            past_median_time_manager.clone(),
             pruning_manager.clone(),
+            parents_manager.clone(),
+            depth_manager,
         ));
+
+        let pruning_proof_manager = PruningProofManager::new(
+            db.clone(),
+            headers_store.clone(),
+            reachability_store.clone(),
+            parents_manager,
+            reachability_service.clone(),
+            ghostdag_stores,
+            relations_stores.clone(),
+            pruning_store.clone(),
+            past_pruning_points_store,
+            virtual_stores,
+            body_tips_store.clone(),
+            headers_selected_tip_store.clone(),
+            depth_store,
+            ghostdag_managers,
+            params.max_block_level,
+            params.genesis_hash,
+        );
 
         Self {
             db,
@@ -294,13 +420,15 @@ impl Consensus {
             body_processor,
             virtual_processor,
             statuses_store,
-            relations_store,
+            relations_stores,
             reachability_store,
             ghostdag_store,
             pruning_store,
             headers_selected_tip_store,
             body_tips_store,
             headers_store,
+            block_transactions_store,
+            pruning_point_utxo_set_store,
 
             statuses_service,
             relations_service,
@@ -311,6 +439,7 @@ impl Consensus {
             past_median_time_manager,
             coinbase_manager,
             pruning_manager,
+            pruning_proof_manager,
 
             counters,
         }
@@ -321,6 +450,7 @@ impl Consensus {
         reachability::init(self.reachability_store.write().deref_mut()).unwrap();
 
         // Ensure that genesis was processed
+        self.header_processor.process_origin_if_needed();
         self.header_processor.process_genesis_if_needed();
         self.body_processor.process_genesis_if_needed();
         self.virtual_processor.process_genesis_if_needed();
@@ -337,14 +467,87 @@ impl Consensus {
         ]
     }
 
-    pub fn validate_and_insert_block(&self, block: Block) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
+    pub fn validate_and_insert_block(
+        &self,
+        block: Block,
+        update_virtual: bool,
+    ) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
         let (tx, rx): (BlockResultSender, _) = oneshot::channel();
-        self.block_sender.send(BlockTask::Process(block, vec![tx])).unwrap();
+        self.block_sender
+            .send(BlockProcessingMessage::Process(BlockTask { block, trusted_ghostdag_data: None, update_virtual }, vec![tx]))
+            .unwrap();
+        self.counters.blocks_submitted.fetch_add(1, Ordering::SeqCst);
         async { rx.await.unwrap() }
     }
 
+    pub fn validate_and_insert_trusted_block(
+        &self,
+        block: Block,
+        ghostdag_data: Arc<GhostdagData>,
+    ) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
+        let (tx, rx): (BlockResultSender, _) = oneshot::channel();
+        self.block_sender
+            .send(BlockProcessingMessage::Process(
+                BlockTask { block, trusted_ghostdag_data: Some(ghostdag_data), update_virtual: false },
+                vec![tx],
+            ))
+            .unwrap();
+        self.counters.blocks_submitted.fetch_add(1, Ordering::SeqCst);
+        async { rx.await.unwrap() }
+    }
+
+    pub fn apply_proof(&self, proof: PruningPointProof, trusted_blocks: &[(Block, GhostdagData)]) {
+        self.pruning_proof_manager.apply_proof(proof, trusted_blocks)
+    }
+
+    pub fn import_pruning_points(&self, pruning_points: Vec<Arc<Header>>) {
+        self.pruning_proof_manager.import_pruning_points(&pruning_points)
+    }
+
+    pub fn append_imported_pruning_point_utxos(
+        &self,
+        outpoint_utxo_pairs: &[(TransactionOutpoint, UtxoEntry)],
+        current_multiset: &mut MuHash,
+    ) {
+        // TODO: Check if a db tx is needed. We probably need some kind of a flag that is set on this function to true, and then
+        // is set to false on the end of import_pruning_point_utxo_set. On any failure on any of those functions (and also if the
+        // node starts when the flag is true) the related data will be deleted and the flag will be set to false.
+        self.pruning_point_utxo_set_store.write_many(outpoint_utxo_pairs).unwrap();
+        for (outpoint, entry) in outpoint_utxo_pairs {
+            current_multiset.add_utxo(outpoint, entry);
+        }
+    }
+
+    pub fn import_pruning_point_utxo_set(
+        &self,
+        new_pruning_point: Hash,
+        imported_utxo_multiset: &mut MuHash,
+    ) -> VirtualProcessorResult<()> {
+        self.virtual_processor.import_pruning_point_utxo_set(new_pruning_point, imported_utxo_multiset)
+    }
+
+    pub fn resolve_virtual(&self) {
+        self.virtual_processor.resolve_virtual()
+    }
+
+    pub fn build_block_template(&self, miner_data: MinerData, txs: Vec<Transaction>) -> Result<BlockTemplate, RuleError> {
+        self.virtual_processor.build_block_template(miner_data, txs)
+    }
+
+    pub fn body_tips(&self) -> Arc<BlockHashSet> {
+        self.body_tips_store.read().get().unwrap()
+    }
+
+    pub fn block_status(&self, hash: Hash) -> BlockStatus {
+        self.statuses_store.read().get(hash).unwrap()
+    }
+
+    pub fn processing_counters(&self) -> &Arc<ProcessingCounters> {
+        &self.counters
+    }
+
     pub fn signal_exit(&self) {
-        self.block_sender.send(BlockTask::Exit).unwrap();
+        self.block_sender.send(BlockProcessingMessage::Exit).unwrap();
     }
 
     pub fn shutdown(&self, wait_handles: Vec<JoinHandle<()>>) {
@@ -353,6 +556,38 @@ impl Consensus {
         for handle in wait_handles {
             handle.join().unwrap();
         }
+    }
+}
+
+impl ConsensusApi for Consensus {
+    fn build_block_template(self: Arc<Self>, miner_data: MinerData, txs: Vec<Transaction>) -> Result<BlockTemplate, RuleError> {
+        self.as_ref().build_block_template(miner_data, txs)
+    }
+
+    fn validate_and_insert_block(
+        self: Arc<Self>,
+        block: Block,
+        update_virtual: bool,
+    ) -> BoxFuture<'static, BlockProcessResult<BlockStatus>> {
+        let result = self.as_ref().validate_and_insert_block(block, update_virtual);
+        Box::pin(async move { result.await })
+    }
+
+    fn validate_mempool_transaction_and_populate(self: Arc<Self>, transaction: &mut MutableTransaction) -> TxResult<()> {
+        self.virtual_processor.validate_mempool_transaction_and_populate(transaction)?;
+        Ok(())
+    }
+
+    fn calculate_transaction_mass(self: Arc<Self>, transaction: &Transaction) -> u64 {
+        self.body_processor.mass_calculator.calc_tx_mass(transaction)
+    }
+
+    fn get_virtual_daa_score(self: Arc<Self>) -> u64 {
+        self.virtual_processor.virtual_stores.read().state.get().unwrap().daa_score
+    }
+
+    fn modify_coinbase_payload(self: Arc<Self>, payload: Vec<u8>, miner_data: &MinerData) -> CoinbaseResult<Vec<u8>> {
+        self.coinbase_manager.modify_coinbase_payload(payload, miner_data)
     }
 }
 

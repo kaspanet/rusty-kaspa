@@ -2,7 +2,6 @@ use super::*;
 use crate::errors::{BlockProcessResult, RuleError};
 use crate::model::services::reachability::ReachabilityService;
 use consensus_core::header::Header;
-use std::cmp::max;
 use std::sync::Arc;
 
 impl HeaderProcessor {
@@ -16,7 +15,6 @@ impl HeaderProcessor {
         }
 
         self.check_pruning_violation(ctx)?;
-        self.check_pow_and_calc_block_level(ctx, header)?;
         self.check_difficulty_and_daa_score(ctx, header)?;
         Ok(())
     }
@@ -36,29 +34,13 @@ impl HeaderProcessor {
         Ok(())
     }
 
-    fn check_pow_and_calc_block_level(
-        self: &Arc<HeaderProcessor>,
-        ctx: &mut HeaderProcessingContext,
-        header: &Header,
-    ) -> BlockProcessResult<()> {
-        let state = pow::State::new(header);
-        let (passed, pow) = state.check_pow(header.nonce);
-        if passed || self.skip_proof_of_work {
-            let signed_block_level = self.max_block_level as i64 - pow.bits() as i64;
-            ctx.block_level = Some(max(signed_block_level, 0) as u8);
-            Ok(())
-        } else {
-            Err(RuleError::InvalidPoW)
-        }
-    }
-
     fn check_difficulty_and_daa_score(
         self: &Arc<HeaderProcessor>,
         ctx: &mut HeaderProcessingContext,
         header: &Header,
     ) -> BlockProcessResult<()> {
-        let ghostdag_data = ctx.ghostdag_data.clone().unwrap();
-        let window = self.dag_traversal_manager.block_window(ghostdag_data.clone(), self.difficulty_window_size);
+        let ghostdag_data = ctx.get_ghostdag_data().unwrap();
+        let window = self.dag_traversal_manager.block_window(&ghostdag_data, self.difficulty_window_size);
 
         let (daa_score, mergeset_non_daa) = self
             .difficulty_manager
