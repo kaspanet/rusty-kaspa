@@ -52,8 +52,10 @@ pub trait RouterApi: Send + Sync + 'static {
     async fn broadcast(&self, msg: pb::KaspadMessage) -> bool;
     async fn reroute_to_flow(&self);
     async fn finalize(&self);
+    // TODO: rename to `incoming_network_channel_size`
     #[allow(clippy::wrong_self_convention)]
     fn from_network_buffer_size(&self) -> usize;
+    // TODO: rename to `outgoing_network_channel_size`
     fn to_network_buffer_size(&self) -> usize;
     // mapping function
     fn grpc_payload_to_internal_u8_enum(payload: &pb::kaspad_message::Payload) -> u8;
@@ -244,7 +246,7 @@ impl<T: RouterApi> P2pClient<T> {
                     warn!("P2P, Client connection re-try #{} - all failed", cnt);
                     return None;
                 } else {
-                    std::thread::sleep(std::time::Duration::from_secs(2));
+                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
                 }
                 cnt += 1;
             }
@@ -688,7 +690,7 @@ async fn run_p2p_server_and_client_test() -> Result<(), Box<dyn std::error::Erro
     // [2] - Start listener (de-facto Server side )
     let terminate_server = P2pServer::listen(String::from("[::1]:50051"), router, false).await;
 
-    std::thread::sleep(std::time::Duration::from_secs(2));
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
     // [3] - Start client
     let mut cnt = 0;
@@ -708,11 +710,11 @@ async fn run_p2p_server_and_client_test() -> Result<(), Box<dyn std::error::Erro
                 println!("Client connected failed - 16 retries ...");
                 break;
             } else {
-                std::thread::sleep(std::time::Duration::from_secs(2));
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
             }
         }
     }
-    std::thread::sleep(std::time::Duration::from_secs(2));
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
     // [4] - Check that server is ok
     if let Ok(t) = terminate_server {
