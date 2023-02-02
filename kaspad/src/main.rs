@@ -16,12 +16,17 @@ use args::{Args, Defaults};
 // any specific reason this was used?  changed as_display() to display() below
 // use thiserror::__private::PathAsDisplay;
 // ~~~
+//use clap::Parser;
 
 use crate::monitor::ConsensusMonitor;
+use consensus::config::Config;
 use consensus::consensus::Consensus;
+use consensus::model::stores::DB;
 use consensus::params::DEVNET_PARAMS;
+use kaspa_core::{core::Core, signals::Signals, task::runtime::AsyncRuntime};
 use kaspa_core::{info, trace};
 use kaspa_wrpc_server::service::{Options as WrpcServerOptions, WrpcEncoding, WrpcService};
+use p2p_flows::service::P2pService;
 use rpc_core::server::collector::ConsensusNotificationChannel;
 use rpc_core::server::RpcCoreServer;
 use rpc_grpc::server::GrpcServer;
@@ -124,11 +129,13 @@ pub fn main() {
     let notification_channel = ConsensusNotificationChannel::default();
     let rpc_core_server = Arc::new(RpcCoreServer::new(consensus.clone(), notification_channel.receiver()));
     let grpc_server = Arc::new(GrpcServer::new(grpc_server_addr, rpc_core_server.service()));
+    let p2p_service = Arc::new(P2pService::new(consensus.clone()));
 
     // Create an async runtime and register the top-level async services
     let async_runtime = Arc::new(AsyncRuntime::new(args.async_threads));
     async_runtime.register(rpc_core_server.clone());
     async_runtime.register(grpc_server);
+    async_runtime.register(p2p_service);
 
     let wrpc_service_tasks: usize = 2; // num_cpus::get() / 2;
                                        // Register wRPC servers based on command line arguments

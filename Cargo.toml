@@ -25,7 +25,8 @@ members = [
     "rpc/wrpc/proxy",
     "rpc/wrpc/wasm",
     "mining",
-    "p2p",
+    "protocol/p2p",
+    "protocol/flows"
 ]
 
 [workspace.package]
@@ -61,6 +62,8 @@ kaspa-wallet-cli-native = { path = "wallet/native" }
 kaspa-wallet-cli-wasm = { path = "wallet/wasm" }
 kaspa-wasm = { path = "wasm" }
 kaspa-bip32 = { path = "wallet/bip32" }
+p2p-lib = { path = "protocol/p2p" }
+p2p-flows = { path = "protocol/flows" }
 mining = { path = "mining" }
 
 thiserror = "1"

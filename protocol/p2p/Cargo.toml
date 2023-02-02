@@ -1,5 +1,5 @@
 [package]
-name = "kaspa-p2p"
+name = "p2p-lib"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -7,7 +7,6 @@ include.workspace = true
 license.workspace = true
 
 [lib]
-name = "kaspa_p2p_lib"
 path = "./src/lib.rs"
 
 [[bin]]
