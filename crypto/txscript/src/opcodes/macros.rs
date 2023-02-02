@@ -41,7 +41,7 @@ macro_rules! opcode_serde {
     };
 }
 
-macro_rules! opcode {
+macro_rules! opcode_impl {
     ($name: ident, $num: literal, $length: tt, $code: expr, $self:ident, $vm:ident ) => {
         type $name = OpCode<$num>;
 
@@ -50,6 +50,14 @@ macro_rules! opcode {
         }
 
         impl OpCodeImplementation for $name {
+            fn empty() -> Box<dyn OpCodeImplementation> {
+                return Box::new(Self{data: vec![]})
+            }
+
+            fn new(data: Vec<u8>) -> Box<dyn OpCodeImplementation> {
+                return Box::new(Self{data})
+            }
+
             #[allow(unused_variables)]
             fn execute(&$self, $vm: &mut TxScriptEngine) -> OpCodeResult {
                 $code
@@ -132,7 +140,7 @@ macro_rules! opcode_list {
         }
 
         $(
-            opcode!($name, $num, $length, $code, $self, $vm);
+            opcode_impl!($name, $num, $length, $code, $self, $vm);
         )*
 
         pub fn deserialize<'i, I: Iterator<Item = &'i u8>>(opcode_num: u8, it: &mut I) -> Result<Box<dyn OpCodeImplementation>, TxScriptError> {

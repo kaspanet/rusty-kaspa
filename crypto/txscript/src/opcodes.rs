@@ -1,12 +1,13 @@
+use core::mem::size_of;
+
 #[macro_use]
 mod macros;
 
-use crate::{MAX_OPS_PER_SCRIPT, ScriptSource, Stack, TxScriptEngine, TxScriptError, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK, LOCK_TIME_THRESHOLD, MAX_TX_IN_SEQUENCE_NUM, MAX_PUB_KEYS_PER_MUTLTISIG};
+use crate::{MAX_OPS_PER_SCRIPT, ScriptSource, TxScriptEngine, TxScriptError, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK, LOCK_TIME_THRESHOLD, MAX_TX_IN_SEQUENCE_NUM, MAX_PUB_KEYS_PER_MUTLTISIG};
+use crate::data_stack::{OpcodeData,DataStack};
 use blake2b_simd::blake2b;
 use consensus_core::hashing::sighash_type::SigHashType;
 use core::cmp::{max, min};
-use core::iter;
-use core::mem::size_of;
 use sha2::{Digest, Sha256};
 use std::fmt::{Debug, Formatter};
 
@@ -23,6 +24,9 @@ impl<const CODE: u8> Debug for OpCode<CODE> {
 }
 
 pub trait OpCodeImplementation: Debug {
+    fn empty() -> Box<dyn OpCodeImplementation> where Self: Sized;
+    fn new(data: Vec<u8>) -> Box<dyn OpCodeImplementation> where Self: Sized;
+
     fn execute(&self, vm: &mut TxScriptEngine) -> OpCodeResult;
     // TODO: could be implemented as staticmethod for all opcodes at once. Maybe need its own trait?
     // Opcode number
@@ -35,131 +39,9 @@ pub trait OpCodeImplementation: Debug {
     fn check_minimal_data_push(&self) -> Result<(), TxScriptError>;
 }
 
-trait DataStack {
-    fn pop_item<const SIZE: usize, T: Debug>(&mut self) -> Result<[T; SIZE], TxScriptError>
-    where
-        Vec<u8>: OpcodeData<T>;
-    fn last_item<const SIZE: usize, T: Debug>(&self) -> Result<[T; SIZE], TxScriptError>
-    where
-        Vec<u8>: OpcodeData<T>;
-    fn pop_raw<const SIZE: usize>(&mut self) -> Result<[Vec<u8>; SIZE], TxScriptError>;
-    fn last_raw<const SIZE: usize>(&self) -> Result<[Vec<u8>; SIZE], TxScriptError>;
-    fn push_item<T: Debug>(&mut self, item: T)
-    where
-        Vec<u8>: OpcodeData<T>;
-}
-
-impl DataStack for Stack {
-    #[inline]
-    fn pop_item<const SIZE: usize, T: Debug>(&mut self) -> Result<[T; SIZE], TxScriptError>
-    where
-        Vec<u8>: OpcodeData<T>,
-    {
-        if self.len() < SIZE {
-            return Err(TxScriptError::EmptyStack);
-        }
-        Ok(<[T; SIZE]>::try_from(self.split_off(self.len() - SIZE).iter().map(|v| v.deserialize()).collect::<Result<Vec<T>, _>>()?)
-            .expect("Already exact item"))
-    }
-
-    #[inline]
-    fn last_item<const SIZE: usize, T: Debug>(&self) -> Result<[T; SIZE], TxScriptError>
-    where
-        Vec<u8>: OpcodeData<T>,
-    {
-        if self.len() < SIZE {
-            return Err(TxScriptError::EmptyStack);
-        }
-        Ok(<[T; SIZE]>::try_from(self[self.len() - SIZE..].iter().map(|v| v.deserialize()).collect::<Result<Vec<T>, _>>()?)
-            .expect("Already exact item"))
-    }
-
-    #[inline]
-    fn  pop_raw<const SIZE: usize>(&mut self) -> Result<[Vec<u8>; SIZE], TxScriptError> {
-        if self.len() < SIZE {
-            return Err(TxScriptError::EmptyStack);
-        }
-        Ok(<[Vec<u8>; SIZE]>::try_from(self.split_off(self.len() - SIZE)).expect("Already exact item"))
-    }
-
-    #[inline]
-    fn last_raw<const SIZE: usize>(&self) -> Result<[Vec<u8>; SIZE], TxScriptError> {
-        if self.len() < SIZE {
-            return Err(TxScriptError::EmptyStack);
-        }
-        Ok(<[Vec<u8>; SIZE]>::try_from(self[self.len() - SIZE..].to_vec()).expect("Already exact item"))
-    }
-
-    #[inline]
-    fn push_item<T: Debug>(&mut self, item: T)
-    where
-        Vec<u8>: OpcodeData<T>,
-    {
-        Vec::push(self, OpcodeData::serialize(&item));
-    }
-
-    /*#[inline]
-    fn push(&mut self, item: Vec<u8>) {
-        Vec::push(self, item);
-    }*/
-}
-
-trait OpcodeData<T> {
-    fn deserialize(&self) -> Result<T, TxScriptError>;
-    fn serialize(from: &T) -> Self;
-}
-
-impl OpcodeData<i32> for Vec<u8> {
-    #[inline]
-    fn deserialize(&self) -> Result<i32, TxScriptError> {
-        match self.len() {
-            l if l > size_of::<i32>() => Err(TxScriptError::InvalidState("data is too big for `i32`".to_string())),
-            l if l == 0 => Ok(0),
-            _ => {
-                let msb = self[self.len() - 1];
-                let first_byte = ((msb & 0x7f) as i32) * (2 * ((msb >> 7) as i32) - 1);
-                Ok(self.iter().rev().map(|v| *v as i32).fold(first_byte, |accum, item| (accum << size_of::<u8>()) + item))
-            }
-        }
-    }
-
-    #[inline]
-    fn serialize(from: &i32) -> Self {
-        let sign = from.signum();
-        let mut positive = from.abs();
-        let mut last_saturated = false;
-        iter::from_fn(move || {
-            if positive == 0 {
-                if sign == 1 && last_saturated {
-                    last_saturated = false;
-                    Some(0)
-                } else {
-                    None
-                }
-            } else {
-                let value = positive & 0xff;
-                last_saturated = (value & 0x80) != 0;
-                positive >>= 8;
-                Some(value as u8)
-            }
-        })
-        .collect()
-    }
-}
-
-impl OpcodeData<bool> for Vec<u8> {
-    #[inline]
-    fn deserialize(&self) -> Result<bool, TxScriptError> {
-        Ok(self[self.len() - 1] & 0x7f != 0x0 || self[..self.len() - 1].iter().any(|&b| b != 0x0))
-    }
-
-    #[inline]
-    fn serialize(from: &bool) -> Self {
-        match from {
-            true => vec![1],
-            false => vec![],
-        }
-    }
+pub trait OpcodeSerialization {
+    fn serialize(&self) -> [&u8];
+    fn deserialize<'i, I: Iterator<Item = &'i u8>>(it: &mut I) -> Result<Box<dyn OpcodeSerialization>, TxScriptError> where Self: Sized;
 }
 
 // Helpers for some opcodes with shared data
@@ -249,7 +131,7 @@ opcode OpCodeName<id, length>(self, vm) statement
 
 Length specification is either a number (for fixed length) or a unsigned integer type
 (for var length).
-The execution code is implementing OpCodeImplementation. You can access the engime using the `vm`
+The execution code is implementing OpCodeImplementation. You can access the engine using the `vm`
 variable.
 
 Implementation details in `opcodes/macros.rs`.
@@ -769,9 +651,6 @@ opcode_list! {
                 Some(typ) => {
                     if empty_sigs == 0 {
                         // Every check consumes the public key
-                        //TODO: check signature length (pair[0])
-                        //TODO: check public key encoding (pair[1])
-                        //TODO: calculate signature hash schnorr
                         let hash_type = SigHashType::from_u8(typ).map_err(|e| TxScriptError::InvalidSigHashType(e.into()))?;
                         while pub_keys.len() > num_sigs_usize - sig_idx && vm.check_ecdsa_signature(hash_type, pub_keys.next().expect("Checked larger than 0").as_slice(), signature.as_slice()).is_err() {}
                     }
@@ -797,9 +676,6 @@ opcode_list! {
         // Hash type
         match sig.pop() {
             Some(typ) => {
-                //TODO: check signature length (pair[0])
-                //TODO: check public key encoding (pair[1])
-                //TODO: calculate signature hash schnorr
                 let hash_type = SigHashType::from_u8(typ).map_err(|e| TxScriptError::InvalidSigHashType(e.into()))?;
                 match vm.check_ecdsa_signature(hash_type, key.as_slice(), sig.as_slice()) {
                     Ok(()) => {
@@ -827,7 +703,6 @@ opcode_list! {
             Some(typ) => {
                 //TODO: check signature length (pair[0])
                 //TODO: check public key encoding (pair[1])
-                //TODO: calculate signature hash schnorr
                 let hash_type = SigHashType::from_u8(typ).map_err(|e| TxScriptError::InvalidSigHashType(e.into()))?;
                 match vm.check_schnorr_signature(hash_type, key.as_slice(), sig.as_slice()) {
                     Ok(()) => {
@@ -906,7 +781,6 @@ opcode_list! {
                         // Every check consumes the public key
                         //TODO: check signature length (pair[0])
                         //TODO: check public key encoding (pair[1])
-                        //TODO: calculate signature hash schnorr
                         let hash_type = SigHashType::from_u8(typ).map_err(|e| TxScriptError::InvalidSigHashType(e.into()))?;
                         while pub_keys.len() > num_sigs_usize - sig_idx && vm.check_schnorr_signature(hash_type, pub_keys.next().expect("Checked larger than 0").as_slice(), signature.as_slice()).is_err() {}
                     }
@@ -1103,4 +977,34 @@ opcode_list! {
     opcode OpPubKeyHash<0xfd, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
     opcode OpPubKey<0xfe, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
     opcode OpInvalidOpCode<0xff, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
+}
+
+#[cfg(test)]
+mod test {
+    use consensus_core::hashing::sighash::SigHashReusedValues;
+    use crate::opcodes::{OpCodeImplementation};
+    use crate::{opcodes, TxScriptEngine, TxScriptError};
+    use crate::caches::Cache;
+
+    #[test]
+    fn test_opcode_disabled() {
+        let tests: Vec<Box<dyn OpCodeImplementation>> = vec![
+            opcodes::OpCat::empty(), opcodes::OpSubStr::empty(), opcodes::OpLeft::empty(),
+            opcodes::OpRight::empty(), opcodes::OpInvert::empty(), opcodes::OpAnd::empty(),
+            opcodes::OpOr::empty(), opcodes::Op2Mul::empty(), opcodes::Op2Div::empty(),
+            opcodes::OpMul::empty(), opcodes::OpDiv::empty(), opcodes::OpMod::empty(),
+            opcodes::OpLShift::empty(), opcodes::OpRShift::empty(),
+        ];
+
+        let cache = Cache::new(10_000);
+        let mut reused_values = SigHashReusedValues::new();
+        let mut vm = TxScriptEngine::new_empty(&mut reused_values, & cache);
+
+        for pop in tests {
+            match pop.execute(&mut vm) {
+                Err(TxScriptError::OpcodeDisabled(_)) => {},
+                _ => panic!("Opcode {:?} should be disabled", pop)
+            }
+        }
+    }
 }
