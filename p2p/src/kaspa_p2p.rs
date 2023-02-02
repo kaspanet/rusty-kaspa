@@ -14,12 +14,12 @@ type P2pClientType = kaspa_grpc::P2pClient<kaspa_grpc::Router>;
 #[async_trait]
 pub trait P2pAdaptorApi {
     // will be used only for client side connections (regular kaspa node will NOT use it)
-    async fn init_only_client_side() -> Option<std::sync::Arc<Self>>;
+    async fn init_only_client_side(flow_registry: Arc<dyn FlowRegistryApi>) -> Option<std::sync::Arc<Self>>;
     // will start new grpc listener + all infra needed
     // 1) start listener + grpc
     // 2) start new flows registration loop
     // 3) register flows terminate channels
-    async fn listen(ip_port: String) -> Option<std::sync::Arc<Self>>;
+    async fn listen(ip_port: String, flow_registry: Arc<dyn FlowRegistryApi>) -> Option<std::sync::Arc<Self>>;
     // will start new client connection
     async fn connect_peer(&self, ip_port: String) -> Option<uuid::Uuid>;
     // send message to peer - used for tests (regular kaspa node will NOT use it)
@@ -61,7 +61,7 @@ to_payload! { VerackMessage, Verack }
 */
 #[async_trait]
 impl P2pAdaptorApi for P2pAdaptor {
-    async fn init_only_client_side() -> Option<Arc<Self>> {
+    async fn init_only_client_side(flow_registry: Arc<dyn FlowRegistryApi>) -> Option<Arc<Self>> {
         // [0] - Create new router - first instance
         // upper_layer_rx will be used to dispatch notifications about new-connections, both for client & server
         let (master_router, mut upper_layer_rx) = kaspa_grpc::Router::new().await;
@@ -78,22 +78,22 @@ impl P2pAdaptorApi for P2pAdaptor {
             // loop will exit when all sender channels will be dropped
             // --> when all routers will be dropped & grpc-service will be stopped
             while let Some(new_router) = upper_layer_rx.recv().await {
-                // as en example subscribe to all message-types, in reality different flows will subscribe to different message-types
-                let new_router_id = new_router.identity();
-                let flow_terminate = kaspa_flows::FlowRegistry::initialize_flow(new_router).await;
-                let result = p2p_adaptor.flow_termination.insert(new_router_id, flow_terminate);
-                if result.is_some() {
-                    panic!(
-                        "At flow initialization, insertion into the map - got existing value, flow-key = router-id: {:?}",
-                        result.unwrap().key()
-                    );
+                let flow_terminates = flow_registry.initialize_flows(new_router).await;
+                for (flow_id, flow_terminate) in flow_terminates {
+                    let result = p2p_adaptor.flow_termination.insert(flow_id, flow_terminate);
+                    if result.is_some() {
+                        panic!(
+                            "At flow initialization, insertion into the map - got existing value, flow-key = router-id: {:?}",
+                            result.unwrap().key()
+                        );
+                    }
                 }
             }
         });
         Some(p2p_adaptor_clone)
     }
     // regular kaspa node will use this call to have both server & client connections
-    async fn listen(ip_port: String) -> Option<std::sync::Arc<Self>> {
+    async fn listen(ip_port: String, flow_registry: Arc<dyn FlowRegistryApi>) -> Option<std::sync::Arc<Self>> {
         // [0] - Create new router - first instance
         // upper_layer_rx will be used to dispatch notifications about new-connections, both for client & server
         let (master_router, mut upper_layer_rx) = kaspa_grpc::Router::new().await;
@@ -114,15 +114,15 @@ impl P2pAdaptorApi for P2pAdaptor {
                 // loop will exit when all sender channels will be dropped
                 // --> when all routers will be dropped & grpc-service will be stopped
                 while let Some(new_router) = upper_layer_rx.recv().await {
-                    // as en example subscribe to all message-types, in reality different flows will subscribe to different message-types
-                    let new_router_id = new_router.identity();
-                    let flow_terminate = kaspa_flows::FlowRegistry::initialize_flow(new_router).await;
-                    let result = p2p_adaptor.flow_termination.insert(new_router_id, flow_terminate);
-                    if result.is_some() {
-                        panic!(
-                            "At flow initialization, insertion into the map - got existing value, flow-key = router-id: {:?}",
-                            result.unwrap().key()
-                        );
+                    let flow_terminates = flow_registry.initialize_flows(new_router).await;
+                    for (flow_id, flow_terminate) in flow_terminates {
+                        let result = p2p_adaptor.flow_termination.insert(flow_id, flow_terminate);
+                        if result.is_some() {
+                            panic!(
+                                "At flow initialization, insertion into the map - got existing value, flow-key = router-id: {:?}",
+                                result.unwrap().key()
+                            );
+                        }
                     }
                 }
             });

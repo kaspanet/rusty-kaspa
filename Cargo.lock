@@ -1603,8 +1603,10 @@ dependencies = [
  "futures-util",
  "hashes",
  "kaspa-core",
+ "kaspa-p2p",
  "log",
  "num-format",
+ "p2p-flows",
  "rand 0.8.5",
  "rand_distr",
  "rayon",
@@ -2051,6 +2053,21 @@ name = "owned-alloc"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "30fceb411f9a12ff9222c5f824026be368ff15dc2f13468d850c7d3f502205d6"
+
+[[package]]
+name = "p2p-flows"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "consensus-core",
+ "futures",
+ "kaspa-core",
+ "kaspa-p2p",
+ "log",
+ "tokio",
+ "tokio-stream",
+ "uuid 1.2.2",
+]
 
 [[package]]
 name = "parking"

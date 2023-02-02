@@ -1,5 +1,7 @@
+use std::sync::Arc;
+
 use kaspa_core::debug;
-use kaspa_p2p_lib::kaspa_flows::Flow;
+use kaspa_p2p_lib::kaspa_flows::{EchoFlowRegistry, Flow};
 use kaspa_p2p_lib::kaspa_grpc;
 use kaspa_p2p_lib::kaspa_grpc::RouterApi;
 use kaspa_p2p_lib::kaspa_p2p::P2pAdaptorApi;
@@ -8,16 +10,17 @@ use kaspa_p2p_lib::{kaspa_flows, pb};
 #[tokio::main]
 async fn main() {
     // [-] - init logger
-    kaspa_core::log::init_logger("trace");
+    kaspa_core::log::init_logger("info");
     // [0] - init p2p-adaptor
-    let p2p_adaptor = kaspa_p2p_lib::kaspa_p2p::P2pAdaptor::init_only_client_side().await.unwrap();
+    let registry = Arc::new(EchoFlowRegistry::new());
+    let p2p_adaptor = kaspa_p2p_lib::kaspa_p2p::P2pAdaptor::init_only_client_side(registry).await.unwrap();
     // [1] - connect 128 peers + flows
     let ip_port = String::from("http://[::1]:50051");
-    for i in 0..1024 {
+    for i in 0..1 {
         debug!("P2P, p2p_client::main - starting peer:{}", i);
-        let peer_id = p2p_adaptor.connect_peer(ip_port.clone()).await;
-        let msg = pb::KaspadMessage { payload: Some(pb::kaspad_message::Payload::Verack(pb::VerackMessage {})) };
-        p2p_adaptor.send(peer_id.unwrap(), msg).await;
+        let _peer_id = p2p_adaptor.connect_peer(ip_port.clone()).await;
+        // let msg = pb::KaspadMessage { payload: Some(pb::kaspad_message::Payload::Verack(pb::VerackMessage {})) };
+        // p2p_adaptor.send(peer_id.unwrap(), msg).await;
     }
     // [2] - wait for 60 sec and terminate
     tokio::time::sleep(std::time::Duration::from_secs(128)).await;
@@ -37,8 +40,7 @@ async fn old_main_with_impl_details() {
         // --> when all routers will be dropped & grpc-service will be stopped
         while let Some(new_router) = upper_layer_rx.recv().await {
             // as en example subscribe to all message-types, in reality different flows will subscribe to different message-types
-            // as en example subscribe to all message-types, in reality different flows will subscribe to different message-types
-            let flow_terminate = kaspa_flows::EchoFlow::new(new_router).await;
+            let (_flow_id, flow_terminate) = kaspa_flows::EchoFlow::new(new_router).await;
             // sleep for 30 sec
             tokio::time::sleep(std::time::Duration::from_secs(30)).await;
             // terminate when needed

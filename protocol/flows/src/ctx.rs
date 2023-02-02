@@ -1,15 +1,32 @@
-use crate::kaspa_grpc;
-use crate::kaspa_grpc::{KaspadMessagePayloadEnumU8, Router, RouterApi};
-use crate::pb::{self, KaspadMessage};
+use async_trait::async_trait;
+use consensus_core::api::DynConsensus;
 use kaspa_core::{info, warn};
+use kaspa_p2p_lib::kaspa_flows::FlowRegistryApi;
+use kaspa_p2p_lib::kaspa_grpc;
+use kaspa_p2p_lib::kaspa_grpc::{KaspadMessagePayloadEnumU8, Router, RouterApi};
+use kaspa_p2p_lib::pb::{self, KaspadMessage};
 use log::{debug, trace};
 use std::sync::Arc;
 use tokio::sync::mpsc::Receiver;
-use tonic::async_trait;
 use uuid::Uuid;
 
 pub type FlowTxTerminateChannelType = tokio::sync::oneshot::Sender<()>;
 pub type FlowRxTerminateChannelType = tokio::sync::oneshot::Receiver<()>;
+
+pub struct FlowContext {
+    /// For now, directly hold consensus
+    pub consensus: DynConsensus,
+}
+
+impl FlowContext {
+    pub fn new(consensus: DynConsensus) -> Self {
+        Self { consensus }
+    }
+
+    pub fn get_consensus(&self) -> DynConsensus {
+        self.consensus.clone()
+    }
+}
 
 #[async_trait]
 pub trait Flow {
@@ -18,7 +35,6 @@ pub trait Flow {
     async fn call(&self, msg: pb::KaspadMessage) -> bool;
 }
 
-/// An example flow, echoing all messages back to the network
 #[allow(dead_code)]
 pub struct EchoFlow {
     receiver: kaspa_grpc::RouterRxChannelType,
@@ -44,7 +60,6 @@ impl Flow for EchoFlow {
             KaspadMessagePayloadEnumU8::InvTransactions,
             KaspadMessagePayloadEnumU8::Ping,
             KaspadMessagePayloadEnumU8::Pong,
-            // The below message types are registered during handshake
             // KaspadMessagePayloadEnumU8::Verack,
             // KaspadMessagePayloadEnumU8::Version,
             // KaspadMessagePayloadEnumU8::Ready,
@@ -126,25 +141,12 @@ impl Flow for EchoFlow {
     }
 }
 
-#[async_trait]
-pub trait FlowRegistryApi: Sync + Send {
-    async fn initialize_flows(&self, router: Arc<kaspa_grpc::Router>) -> Vec<(Uuid, FlowTxTerminateChannelType)>;
-}
-
-/// An example registry, performing handshake and registering a simple echo flow
-#[derive(Default)]
-pub struct EchoFlowRegistry {}
-
 #[inline]
 fn unix_now() -> i64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64
 }
 
-impl EchoFlowRegistry {
-    pub fn new() -> Self {
-        EchoFlowRegistry {}
-    }
-
+impl FlowContext {
     async fn receive_version_flow(&self, router: &Arc<Router>, mut receiver: Receiver<KaspadMessage>) {
         info!("starting receive version flow");
         if let Some(msg) = receiver.recv().await {
@@ -211,12 +213,8 @@ impl EchoFlowRegistry {
 }
 
 #[async_trait]
-impl FlowRegistryApi for EchoFlowRegistry {
+impl FlowRegistryApi for FlowContext {
     async fn initialize_flows(&self, router: Arc<Router>) -> Vec<(Uuid, FlowTxTerminateChannelType)> {
-        //
-        // Example code to illustrate kaspa P2P handshaking
-        //
-
         // Subscribe to handshake messages
         let version_receiver = router.subscribe_to(vec![KaspadMessagePayloadEnumU8::Version]);
         let verack_receiver = router.subscribe_to(vec![KaspadMessagePayloadEnumU8::Verack]);

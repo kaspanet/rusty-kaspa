@@ -52,8 +52,10 @@ pub trait RouterApi: Send + Sync + 'static {
     async fn broadcast(&self, msg: pb::KaspadMessage) -> bool;
     async fn reroute_to_flow(&self);
     async fn finalize(&self);
+    // TODO: rename to `incoming_network_channel_size`
     #[allow(clippy::wrong_self_convention)]
     fn from_network_buffer_size(&self) -> usize;
+    // TODO: rename to `outgoing_network_channel_size`
     fn to_network_buffer_size(&self) -> usize;
     // mapping function
     fn grpc_payload_to_internal_u8_enum(payload: &pb::kaspad_message::Payload) -> u8;
