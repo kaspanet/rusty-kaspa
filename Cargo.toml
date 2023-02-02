@@ -43,7 +43,7 @@ pow = { path = "consensus/pow" }
 kaspa-utils = { path = "utils" }
 rpc-core = { path = "rpc/core" }
 rpc-grpc = { path = "rpc/grpc" }
-kaspa-p2p = { path = "protocol/p2p" }
+p2p-lib = { path = "protocol/p2p" }
 p2p-flows = { path = "protocol/flows" }
 mining = { path = "mining" }
 

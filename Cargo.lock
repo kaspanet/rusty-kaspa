@@ -1551,24 +1551,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-p2p"
-version = "0.1.0"
-dependencies = [
- "ctrlc",
- "futures",
- "h2",
- "kaspa-core",
- "lockfree",
- "log",
- "prost",
- "tokio",
- "tokio-stream",
- "tonic",
- "tonic-build",
- "uuid 1.2.2",
-]
-
-[[package]]
 name = "kaspa-utils"
 version = "0.1.0"
 dependencies = [
@@ -1603,7 +1585,6 @@ dependencies = [
  "futures-util",
  "hashes",
  "kaspa-core",
- "kaspa-p2p",
  "log",
  "num-format",
  "p2p-flows",
@@ -2062,10 +2043,28 @@ dependencies = [
  "consensus-core",
  "futures",
  "kaspa-core",
- "kaspa-p2p",
  "log",
+ "p2p-lib",
  "tokio",
  "tokio-stream",
+ "uuid 1.2.2",
+]
+
+[[package]]
+name = "p2p-lib"
+version = "0.1.0"
+dependencies = [
+ "ctrlc",
+ "futures",
+ "h2",
+ "kaspa-core",
+ "lockfree",
+ "log",
+ "prost",
+ "tokio",
+ "tokio-stream",
+ "tonic",
+ "tonic-build",
  "uuid 1.2.2",
 ]
 

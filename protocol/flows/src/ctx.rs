@@ -1,11 +1,11 @@
 use async_trait::async_trait;
 use consensus_core::api::DynConsensus;
 use kaspa_core::{info, warn};
-use kaspa_p2p_lib::kaspa_flows::FlowRegistryApi;
-use kaspa_p2p_lib::kaspa_grpc;
-use kaspa_p2p_lib::kaspa_grpc::{KaspadMessagePayloadEnumU8, Router, RouterApi};
-use kaspa_p2p_lib::pb::{self, KaspadMessage};
 use log::{debug, trace};
+use p2p_lib::infra;
+use p2p_lib::infra::{KaspadMessagePayloadEnumU8, Router, RouterApi};
+use p2p_lib::pb::{self, KaspadMessage};
+use p2p_lib::registry::FlowRegistryApi;
 use std::sync::Arc;
 use tokio::sync::mpsc::Receiver;
 use uuid::Uuid;
@@ -31,14 +31,14 @@ impl FlowContext {
 #[async_trait]
 pub trait Flow {
     #[allow(clippy::new_ret_no_self)]
-    async fn new(router: Arc<kaspa_grpc::Router>) -> (Uuid, FlowTxTerminateChannelType);
+    async fn new(router: Arc<infra::Router>) -> (Uuid, FlowTxTerminateChannelType);
     async fn call(&self, msg: pb::KaspadMessage) -> bool;
 }
 
 #[allow(dead_code)]
 pub struct EchoFlow {
-    receiver: kaspa_grpc::RouterRxChannelType,
-    router: Arc<kaspa_grpc::Router>,
+    receiver: infra::RouterRxChannelType,
+    router: Arc<infra::Router>,
     terminate: FlowRxTerminateChannelType,
 }
 

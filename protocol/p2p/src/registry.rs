@@ -1,5 +1,5 @@
-use crate::kaspa_grpc;
-use crate::kaspa_grpc::{KaspadMessagePayloadEnumU8, Router, RouterApi};
+use crate::infra;
+use crate::infra::{KaspadMessagePayloadEnumU8, Router, RouterApi};
 use crate::pb::{self, KaspadMessage};
 use kaspa_core::{info, warn};
 use log::{debug, trace};
@@ -11,18 +11,26 @@ use uuid::Uuid;
 pub type FlowTxTerminateChannelType = tokio::sync::oneshot::Sender<()>;
 pub type FlowRxTerminateChannelType = tokio::sync::oneshot::Receiver<()>;
 
+/// The main entrypoint for external usage of the P2P library. An impl of this trait is expected on
+/// P2P server initialization and will be called on each new P2P connection with a corresponding dedicated router
+#[async_trait]
+pub trait FlowRegistryApi: Sync + Send {
+    async fn initialize_flows(&self, router: Arc<infra::Router>) -> Vec<(Uuid, FlowTxTerminateChannelType)>;
+}
+
+/// An example Flow trait. Registry implementors can deviate from this structure.
 #[async_trait]
 pub trait Flow {
     #[allow(clippy::new_ret_no_self)]
-    async fn new(router: Arc<kaspa_grpc::Router>) -> (Uuid, FlowTxTerminateChannelType);
+    async fn new(router: Arc<infra::Router>) -> (Uuid, FlowTxTerminateChannelType);
     async fn call(&self, msg: pb::KaspadMessage) -> bool;
 }
 
 /// An example flow, echoing all messages back to the network
 #[allow(dead_code)]
 pub struct EchoFlow {
-    receiver: kaspa_grpc::RouterRxChannelType,
-    router: Arc<kaspa_grpc::Router>,
+    receiver: infra::RouterRxChannelType,
+    router: Arc<infra::Router>,
     terminate: FlowRxTerminateChannelType,
 }
 
@@ -124,11 +132,6 @@ impl Flow for EchoFlow {
         trace!("EchoFlow, got message:{:?}", msg);
         self.router.route_to_network(msg).await
     }
-}
-
-#[async_trait]
-pub trait FlowRegistryApi: Sync + Send {
-    async fn initialize_flows(&self, router: Arc<kaspa_grpc::Router>) -> Vec<(Uuid, FlowTxTerminateChannelType)>;
 }
 
 /// An example registry, performing handshake and registering a simple echo flow

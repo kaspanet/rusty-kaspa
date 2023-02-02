@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
 use kaspa_core::debug;
-use kaspa_p2p_lib::kaspa_flows::{EchoFlowRegistry, Flow};
-use kaspa_p2p_lib::kaspa_grpc;
-use kaspa_p2p_lib::kaspa_grpc::RouterApi;
-use kaspa_p2p_lib::kaspa_p2p::P2pAdaptorApi;
-use kaspa_p2p_lib::{kaspa_flows, pb};
+use p2p_lib::adaptor::P2pAdaptorApi;
+use p2p_lib::infra;
+use p2p_lib::infra::RouterApi;
+use p2p_lib::registry::{EchoFlowRegistry, Flow};
+use p2p_lib::{pb, registry};
 
 #[tokio::main]
 async fn main() {
@@ -13,7 +13,7 @@ async fn main() {
     kaspa_core::log::init_logger("info");
     // [0] - init p2p-adaptor
     let registry = Arc::new(EchoFlowRegistry::new());
-    let p2p_adaptor = kaspa_p2p_lib::kaspa_p2p::P2pAdaptor::init_only_client_side(registry).await.unwrap();
+    let p2p_adaptor = p2p_lib::adaptor::P2pAdaptor::init_only_client_side(registry).await.unwrap();
     // [1] - connect 128 peers + flows
     let ip_port = String::from("http://[::1]:50051");
     for i in 0..1 {
@@ -28,19 +28,20 @@ async fn main() {
     p2p_adaptor.terminate_all_peers_and_flows().await;
     debug!("P2P,p2p_client::main - FINISH");
 }
+
 #[allow(dead_code)]
 async fn old_main_with_impl_details() {
     // [-] - init logger
     kaspa_core::log::init_logger("trace");
     // [0] - register first instance of router & channel to get new-routers when new connection established
-    let (router, mut upper_layer_rx) = kaspa_grpc::Router::new().await;
+    let (router, mut upper_layer_rx) = infra::Router::new().await;
     // [1] - Start service layer to listen when new connection is coming ( Server side )
     tokio::spawn(async move {
         // loop will exit when all sender channels will be dropped
         // --> when all routers will be dropped & grpc-service will be stopped
         while let Some(new_router) = upper_layer_rx.recv().await {
             // as en example subscribe to all message-types, in reality different flows will subscribe to different message-types
-            let (_flow_id, flow_terminate) = kaspa_flows::EchoFlow::new(new_router).await;
+            let (_flow_id, flow_terminate) = registry::EchoFlow::new(new_router).await;
             // sleep for 30 sec
             tokio::time::sleep(std::time::Duration::from_secs(30)).await;
             // terminate when needed
@@ -48,7 +49,7 @@ async fn old_main_with_impl_details() {
         }
     });
     // [2] - Start client + re-connect loop
-    let client = kaspa_grpc::P2pClient::connect_with_retry(String::from("http://[::1]:50051"), router.clone(), false, 16).await;
+    let client = infra::P2pClient::connect_with_retry(String::from("http://[::1]:50051"), router.clone(), false, 16).await;
     match client {
         Some(connected_client) => {
             // [2.*] - send message

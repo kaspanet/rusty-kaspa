@@ -1,15 +1,15 @@
-use crate::kaspa_flows;
-use crate::kaspa_flows::FlowRegistryApi;
-use crate::kaspa_grpc;
-use crate::kaspa_grpc::RouterApi;
+use crate::infra;
+use crate::infra::RouterApi;
 use crate::pb;
+use crate::registry;
+use crate::registry::FlowRegistryApi;
 use kaspa_core::{debug, error};
 use log::warn;
 use std::sync::Arc;
 use tonic::async_trait;
 
 #[allow(dead_code)]
-type P2pClientType = kaspa_grpc::P2pClient<kaspa_grpc::Router>;
+type P2pClientType = infra::P2pClient<infra::Router>;
 
 #[async_trait]
 pub trait P2pAdaptorApi {
@@ -36,10 +36,10 @@ pub trait P2pAdaptorApi {
 
 #[allow(dead_code)]
 pub struct P2pAdaptor {
-    master_router: std::sync::Arc<kaspa_grpc::Router>,
-    flow_termination: lockfree::map::Map<uuid::Uuid, kaspa_flows::FlowTxTerminateChannelType>,
+    master_router: std::sync::Arc<infra::Router>,
+    flow_termination: lockfree::map::Map<uuid::Uuid, registry::FlowTxTerminateChannelType>,
     p2p_termination: Option<tokio::sync::oneshot::Sender<()>>,
-    peers: lockfree::map::Map<uuid::Uuid, kaspa_grpc::P2pClient<kaspa_grpc::Router>>,
+    peers: lockfree::map::Map<uuid::Uuid, infra::P2pClient<infra::Router>>,
 }
 
 /*
@@ -64,7 +64,7 @@ impl P2pAdaptorApi for P2pAdaptor {
     async fn init_only_client_side(flow_registry: Arc<dyn FlowRegistryApi>) -> Option<Arc<Self>> {
         // [0] - Create new router - first instance
         // upper_layer_rx will be used to dispatch notifications about new-connections, both for client & server
-        let (master_router, mut upper_layer_rx) = kaspa_grpc::Router::new().await;
+        let (master_router, mut upper_layer_rx) = infra::Router::new().await;
         // [1] - Create adaptor
         let p2p_adaptor = std::sync::Arc::new(P2pAdaptor {
             master_router,
@@ -96,9 +96,9 @@ impl P2pAdaptorApi for P2pAdaptor {
     async fn listen(ip_port: String, flow_registry: Arc<dyn FlowRegistryApi>) -> Option<std::sync::Arc<Self>> {
         // [0] - Create new router - first instance
         // upper_layer_rx will be used to dispatch notifications about new-connections, both for client & server
-        let (master_router, mut upper_layer_rx) = kaspa_grpc::Router::new().await;
+        let (master_router, mut upper_layer_rx) = infra::Router::new().await;
         // [1] - Start listener (de-facto Server side )
-        let terminate_server = kaspa_grpc::P2pServer::listen(ip_port, master_router.clone(), true).await;
+        let terminate_server = infra::P2pServer::listen(ip_port, master_router.clone(), true).await;
         // [2] - Check that server is ok & register termination signal ( as an example )
         if let Ok(t) = terminate_server {
             debug!("P2P, Server is running ...");
@@ -135,7 +135,7 @@ impl P2pAdaptorApi for P2pAdaptor {
 
     async fn connect_peer(&self, ip_port: String) -> Option<uuid::Uuid> {
         // [0] - Start client + re-connect loop
-        let client = kaspa_grpc::P2pClient::connect_with_retry(ip_port, self.master_router.clone(), false, 16).await;
+        let client = infra::P2pClient::connect_with_retry(ip_port, self.master_router.clone(), false, 16).await;
         match client {
             Some(connected_client) => {
                 let peer_id = connected_client.router.identity();

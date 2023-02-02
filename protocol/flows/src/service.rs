@@ -3,7 +3,7 @@ use kaspa_core::{
     debug,
     task::service::{AsyncService, AsyncServiceFuture},
 };
-use kaspa_p2p_lib::kaspa_p2p::P2pAdaptorApi;
+use p2p_lib::adaptor::{P2pAdaptor, P2pAdaptorApi};
 use std::sync::Arc;
 
 use crate::ctx::FlowContext;
@@ -39,7 +39,7 @@ impl AsyncService for P2pService {
 
             let ip_port = String::from("[::1]:50051");
             let ctx = Arc::new(FlowContext::new(self.consensus.clone()));
-            let p2p_adaptor = kaspa_p2p_lib::kaspa_p2p::P2pAdaptor::listen(ip_port.clone(), ctx).await.unwrap();
+            let p2p_adaptor = P2pAdaptor::listen(ip_port.clone(), ctx).await.unwrap();
 
             let other_ip_port = String::from("http://[::1]:16111");
             debug!("P2P, p2p::main - starting peer:{other_ip_port}");
