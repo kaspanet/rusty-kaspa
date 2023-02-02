@@ -47,6 +47,7 @@ impl AsyncService for P2pService {
             // Keep the P2P server running until an app shutdown signal is triggered
             shutdown_signal.await;
             p2p_adaptor.terminate_all_peers_and_flows().await;
+            Ok(())
         })
     }
 
@@ -59,6 +60,7 @@ impl AsyncService for P2pService {
         trace!("{} stopping", P2P_CORE_SERVICE);
         Box::pin(async move {
             trace!("{} exiting", P2P_CORE_SERVICE);
+            Ok(())
         })
     }
 }
