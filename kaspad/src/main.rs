@@ -19,11 +19,8 @@ use args::{Args, Defaults};
 //use clap::Parser;
 
 use crate::monitor::ConsensusMonitor;
-use consensus::config::Config;
 use consensus::consensus::Consensus;
-use consensus::model::stores::DB;
 use consensus::params::DEVNET_PARAMS;
-use kaspa_core::{core::Core, signals::Signals, task::runtime::AsyncRuntime};
 use kaspa_core::{info, trace};
 use kaspa_wrpc_server::service::{Options as WrpcServerOptions, WrpcEncoding, WrpcService};
 use p2p_flows::service::P2pService;
