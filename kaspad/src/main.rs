@@ -3,18 +3,18 @@ extern crate core;
 extern crate hashes;
 
 use clap::Parser;
-use consensus::config::Config;
-use consensus::model::stores::DB;
-use kaspa_core::{core::Core, signals::Signals, task::runtime::AsyncRuntime};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
-use thiserror::__private::PathAsDisplay;
 
 use crate::monitor::ConsensusMonitor;
+use consensus::config::Config;
 use consensus::consensus::Consensus;
+use consensus::model::stores::DB;
 use consensus::params::DEVNET_PARAMS;
+use kaspa_core::{core::Core, signals::Signals, task::runtime::AsyncRuntime};
 use kaspa_core::{info, trace};
+use p2p_flows::service::P2pService;
 use rpc_core::server::collector::ConsensusNotificationChannel;
 use rpc_core::server::RpcCoreServer;
 use rpc_grpc::server::GrpcServer;
@@ -80,8 +80,8 @@ pub fn main() {
     let app_dir = if app_dir.is_empty() { get_app_dir() } else { PathBuf::from(app_dir) };
     let db_dir = app_dir.join(DEFAULT_DATA_DIR);
     assert!(!db_dir.to_str().unwrap().is_empty());
-    info!("Application directory: {}", app_dir.as_display());
-    info!("Data directory: {}", db_dir.as_display());
+    info!("Application directory: {}", app_dir.display());
+    info!("Data directory: {}", db_dir.display());
     fs::create_dir_all(db_dir.as_path()).unwrap();
     let grpc_server_addr = args.rpc_listen.unwrap_or_else(|| "127.0.0.1:16610".to_string()).parse().unwrap();
 
@@ -97,11 +97,13 @@ pub fn main() {
     let notification_channel = ConsensusNotificationChannel::default();
     let rpc_core_server = Arc::new(RpcCoreServer::new(consensus.clone(), notification_channel.receiver()));
     let grpc_server = Arc::new(GrpcServer::new(grpc_server_addr, rpc_core_server.service()));
+    let p2p_service = Arc::new(P2pService::new(consensus.clone()));
 
     // Create an async runtime and register the top-level async services
     let async_runtime = Arc::new(AsyncRuntime::new());
     async_runtime.register(rpc_core_server);
     async_runtime.register(grpc_server);
+    async_runtime.register(p2p_service);
 
     // Bind the keyboard signal to the core
     Arc::new(Signals::new(&core)).init();
