@@ -1,7 +1,7 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
-use std::{fmt::Display, io::Read, ops::Range};
+use std::{fmt::Display, ops::Range};
 
 use crate::{
     hashing,
@@ -64,11 +64,6 @@ impl BorshDeserialize for ScriptPublicKey {
     fn deserialize(buf: &mut &[u8]) -> std::io::Result<Self> {
         // Deserialize into vec first since we have no custom smallvec support
         Ok(Self::from_vec(borsh::BorshDeserialize::deserialize(buf)?, borsh::BorshDeserialize::deserialize(buf)?))
-    }
-
-    fn deserialize_reader<R: Read>(_reader: &mut R) -> std::io::Result<Self> {
-        // @aspect
-        todo!()
     }
 }
 

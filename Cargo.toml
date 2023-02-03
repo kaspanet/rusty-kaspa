@@ -86,7 +86,7 @@ wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
 criterion = { version = "0.4", default-features = false }
 indexmap = "1.9.1"
 smallvec = { version = "1.10.0", features = ["serde"] }
-borsh = { version = "0.10.0", features = ["rc"] }
+borsh = { version = "0.9.1", features = ["rc"] } # please keep this fixed
 async-std = { version = "1.12.0", features = ['attributes'] }
 async-channel = "1.8.0"
 clap = { version = "4.0.23", features = ["derive", "string","cargo"] }
@@ -116,12 +116,12 @@ once_cell = {version = "1"}
 pbkdf2 = {version = "0.11", default-features = false}
 
 # workflow dependencies
-workflow-log = { version = "0.3.6" }
-workflow-core = { version = "0.3.6" }
-workflow-wasm = { version = "0.3.6" }
-workflow-dom = { version = "0.3.6" }
-workflow-rpc = { version = "0.3.6" }
-workflow-terminal = { version = "0.3.6" }
+workflow-log = { version = "0.3.7" }
+workflow-core = { version = "0.3.7" }
+workflow-wasm = { version = "0.3.7" }
+workflow-dom = { version = "0.3.7" }
+workflow-rpc = { version = "0.3.7" }
+workflow-terminal = { version = "0.3.8" }
 
 # workflow-log = { path = "../workflow-rs/log" }
 # workflow-core = { path = "../workflow-rs/core" }
