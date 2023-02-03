@@ -16,7 +16,8 @@ members = [
     "rpc/core",
     "rpc/grpc",
     "mining",
-    "p2p",
+    "protocol/p2p",
+    "protocol/flows"
 ]
 
 [workspace.package]
@@ -42,6 +43,8 @@ pow = { path = "consensus/pow" }
 kaspa-utils = { path = "utils" }
 kaspa-rpc-core = { path = "rpc/core" }
 kaspa-rpc-grpc = { path = "rpc/grpc" }
+p2p-lib = { path = "protocol/p2p" }
+p2p-flows = { path = "protocol/flows" }
 mining = { path = "mining" }
 
 thiserror = "1"
