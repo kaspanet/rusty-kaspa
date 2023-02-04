@@ -666,7 +666,7 @@ opcode_list! {
                 Some(typ) => {
                     if empty_sigs == 0 {
                         // Every check consumes the public key
-                        let hash_type = SigHashType::from_u8(typ).map_err(|e| TxScriptError::InvalidSigHashType(e.into()))?;
+                        let hash_type = SigHashType::from_u8(typ).map_err(|e| TxScriptError::InvalidSigHashType(typ))?;
                         while pub_keys.len() > num_sigs_usize - sig_idx && vm.check_ecdsa_signature(hash_type, pub_keys.next().expect("Checked larger than 0").as_slice(), signature.as_slice()).is_err() {}
                     }
                     if empty_sigs > 0 || pub_keys.len() > num_sigs_usize - sig_idx {
@@ -691,7 +691,7 @@ opcode_list! {
         // Hash type
         match sig.pop() {
             Some(typ) => {
-                let hash_type = SigHashType::from_u8(typ).map_err(|e| TxScriptError::InvalidSigHashType(e.into()))?;
+                let hash_type = SigHashType::from_u8(typ).map_err(|e| TxScriptError::InvalidSigHashType(typ))?;
                 match vm.check_ecdsa_signature(hash_type, key.as_slice(), sig.as_slice()) {
                     Ok(()) => {
                         vm.dstack.push_item(true);
@@ -718,7 +718,7 @@ opcode_list! {
             Some(typ) => {
                 //TODO: check signature length (pair[0])
                 //TODO: check public key encoding (pair[1])
-                let hash_type = SigHashType::from_u8(typ).map_err(|e| TxScriptError::InvalidSigHashType(e.into()))?;
+                let hash_type = SigHashType::from_u8(typ).map_err(|e| TxScriptError::InvalidSigHashType(typ))?;
                 match vm.check_schnorr_signature(hash_type, key.as_slice(), sig.as_slice()) {
                     Ok(()) => {
                         vm.dstack.push_item(true);
@@ -796,7 +796,7 @@ opcode_list! {
                         // Every check consumes the public key
                         //TODO: check signature length (pair[0])
                         //TODO: check public key encoding (pair[1])
-                        let hash_type = SigHashType::from_u8(typ).map_err(|e| TxScriptError::InvalidSigHashType(e.into()))?;
+                        let hash_type = SigHashType::from_u8(typ).map_err(|e| TxScriptError::InvalidSigHashType(typ))?;
                         while pub_keys.len() > num_sigs_usize - sig_idx && vm.check_schnorr_signature(hash_type, pub_keys.next().expect("Checked larger than 0").as_slice(), signature.as_slice()).is_err() {}
                     }
                     if empty_sigs > 0 || pub_keys.len() > num_sigs_usize - sig_idx {

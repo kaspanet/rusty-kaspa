@@ -102,7 +102,6 @@ impl TransactionValidator {
     fn check_scripts(&self, tx: &impl VerifiableTransaction) -> TxResult<()> {
         let mut reused_values = SigHashReusedValues::new();
         for (i, (input, entry)) in tx.populated_inputs().enumerate() {
-            // TODO: this is a temporary implementation and not ready for consensus since any invalid signature
             let mut engine = TxScriptEngine::from_transaction_input(tx, input, i, entry, &mut reused_values, &self.sig_cache)
                 .map_err(TxRuleError::SignatureInvalid)?;
             engine.execute().map_err(TxRuleError::SignatureInvalid)?;
