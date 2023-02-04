@@ -99,7 +99,7 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
         // The pubkey in P2SH is just validating the hash on the OpMultiSig script
         // the user provides
         let is_p2sh =
-            (pubkey_script.len() == 36) &&
+            (pubkey_script.len() == 35) && // 3 opcodes number + 32 data
                 (pubkey_script[0] == opcodes::codes::OpBlake2b) &&
                 (pubkey_script[1] == opcodes::codes::OpData32) &&
                 (pubkey_script[pubkey_script.len() -1] == opcodes::codes::OpEqual);
@@ -141,7 +141,6 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
 
     fn execute_opcode(&mut self, opcode: Box<dyn OpCodeImplementation<T>>) -> Result<(), TxScriptError> {
         // Different from kaspad: Illegal and disabled opcode are checked on execute instead
-
         // Note that this includes OP_RESERVED which counts as a push operation.
         if opcode.value() > NO_COST_OPCODE {
             self.num_ops += 1;

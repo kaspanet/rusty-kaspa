@@ -5,7 +5,7 @@ mod macros;
 
 use crate::{MAX_OPS_PER_SCRIPT, ScriptSource, TxScriptEngine, TxScriptError, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK, LOCK_TIME_THRESHOLD, MAX_TX_IN_SEQUENCE_NUM, MAX_PUB_KEYS_PER_MUTLTISIG};
 use crate::data_stack::{OpcodeData,DataStack};
-use blake2b_simd::blake2b;
+use blake2b_simd::Params;
 use consensus_core::hashing::sighash_type::SigHashType;
 use core::cmp::{max, min};
 use sha2::{Digest, Sha256};
@@ -125,7 +125,7 @@ fn push_data<T: VerifiableTransaction>(data: Vec<u8>, vm: &mut TxScriptEngine<T>
 
 #[inline]
 fn push_number<T: VerifiableTransaction>(number: i64, vm: &mut TxScriptEngine<T>) -> OpCodeResult {
-    vm.dstack.push(number.to_le_bytes().to_vec());
+    vm.dstack.push_item(number);
     Ok(())
 }
 
@@ -430,8 +430,7 @@ opcode_list! {
     opcode OpSize<0x82, 1>(self, vm) {
         match vm.dstack.last() {
             Some(last) => {
-                //TODO: resolve the conflict between 32 bit and 64 bits
-                vm.dstack.push_item(last.len() as i32);
+                vm.dstack.push_item(i64::try_from(last.len()).map_err(|e| TxScriptError::NumberTooBig(e.to_string()))?);
                 Ok(())
             },
             None => Err(TxScriptError::EmptyStack)
@@ -476,13 +475,13 @@ opcode_list! {
 
     // Numeric related opcodes.
     opcode Op1Add<0x8b, 1>(self, vm) {
-        let [value]: [i32; 1] = vm.dstack.pop_item()?;
+        let [value]: [i64; 1] = vm.dstack.pop_item()?;
         vm.dstack.push_item(value + 1);
         Ok(())
     }
 
     opcode Op1Sub<0x8c, 1>(self, vm) {
-        let [value]: [i32; 1] = vm.dstack.pop_item()?;
+        let [value]: [i64; 1] = vm.dstack.pop_item()?;
         vm.dstack.push_item(value - 1);
         Ok(())
     }
@@ -491,37 +490,37 @@ opcode_list! {
     opcode Op2Div<0x8e, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{:?}", self)))
 
     opcode OpNegate<0x8f, 1>(self, vm) {
-        let [value]: [i32; 1] = vm.dstack.pop_item()?;
+        let [value]: [i64; 1] = vm.dstack.pop_item()?;
         vm.dstack.push_item(-value);
         Ok(())
     }
 
     opcode OpAbs<0x90, 1>(self, vm) {
-        let [m]: [i32; 1] = vm.dstack.pop_item()?;
+        let [m]: [i64; 1] = vm.dstack.pop_item()?;
         vm.dstack.push_item(m.abs());
         Ok(())
     }
 
     opcode OpNot<0x91, 1>(self, vm) {
-        let [m]: [i32; 1] = vm.dstack.pop_item()?;
-        vm.dstack.push_item((m == 0) as i32);
+        let [m]: [i64; 1] = vm.dstack.pop_item()?;
+        vm.dstack.push_item((m == 0) as i64);
         Ok(())
     }
 
     opcode Op0NotEqual<0x92, 1>(self, vm) {
-        let [m]: [i32; 1] = vm.dstack.pop_item()?;
-        vm.dstack.push_item((m != 0) as i32);
+        let [m]: [i64; 1] = vm.dstack.pop_item()?;
+        vm.dstack.push_item((m != 0) as i64 );
         Ok(())
     }
 
     opcode OpAdd<0x93, 1>(self, vm) {
-        let [a,b]: [i32; 2] = vm.dstack.pop_item()?;
+        let [a,b]: [i64; 2] = vm.dstack.pop_item()?;
         vm.dstack.push_item(a+b);
         Ok(())
     }
 
     opcode OpSub<0x94, 1>(self, vm) {
-        let [a,b]: [i32; 2] = vm.dstack.pop_item()?;
+        let [a,b]: [i64; 2] = vm.dstack.pop_item()?;
         vm.dstack.push_item(a-b);
         Ok(())
     }
@@ -533,25 +532,25 @@ opcode_list! {
     opcode OpRShift<0x99, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{:?}", self)))
 
     opcode OpBoolAnd<0x9a, 1>(self, vm) {
-        let [a,b]: [i32; 2] = vm.dstack.pop_item()?;
-        vm.dstack.push_item(((a != 0) && (b != 0)) as i32);
+        let [a,b]: [i64; 2] = vm.dstack.pop_item()?;
+        vm.dstack.push_item(((a != 0) && (b != 0)) as i64);
         Ok(())
     }
 
     opcode OpBoolOr<0x9b, 1>(self, vm) {
-        let [a,b]: [i32; 2] = vm.dstack.pop_item()?;
-        vm.dstack.push_item(((a != 0) || (b != 0)) as i32);
+        let [a,b]: [i64; 2] = vm.dstack.pop_item()?;
+        vm.dstack.push_item(((a != 0) || (b != 0)) as i64);
         Ok(())
     }
 
     opcode OpNumEqual<0x9c, 1>(self, vm) {
-        let [a,b]: [i32; 2] = vm.dstack.pop_item()?;
-        vm.dstack.push_item((a == b) as i32);
+        let [a,b]: [i64; 2] = vm.dstack.pop_item()?;
+        vm.dstack.push_item((a == b) as i64);
         Ok(())
     }
 
     opcode OpNumEqualVerify<0x9d, 1>(self, vm) {
-        let [a,b]: [i32; 2] = vm.dstack.pop_item()?;
+        let [a,b]: [i64; 2] = vm.dstack.pop_item()?;
         match a == b {
             true => Ok(()),
             false => Err(TxScriptError::VerifyError)
@@ -559,50 +558,50 @@ opcode_list! {
     }
 
     opcode OpNumNotEqual<0x9e, 1>(self, vm) {
-        let [a,b]: [i32; 2] = vm.dstack.pop_item()?;
-        vm.dstack.push_item((a != b) as i32);
+        let [a,b]: [i64; 2] = vm.dstack.pop_item()?;
+        vm.dstack.push_item((a != b) as i64);
         Ok(())
     }
 
     opcode OpLessThan<0x9f, 1>(self, vm) {
-        let [a,b]: [i32; 2] = vm.dstack.pop_item()?;
-        vm.dstack.push_item((a < b) as i32);
+        let [a,b]: [i64; 2] = vm.dstack.pop_item()?;
+        vm.dstack.push_item((a < b) as i64);
         Ok(())
     }
 
     opcode OpGreaterThan<0xa0, 1>(self, vm) {
-        let [a,b]: [i32; 2] = vm.dstack.pop_item()?;
-        vm.dstack.push_item((a > b) as i32);
+        let [a,b]: [i64; 2] = vm.dstack.pop_item()?;
+        vm.dstack.push_item((a > b) as i64);
         Ok(())
     }
 
     opcode OpLessThanOrEqual<0xa1, 1>(self, vm) {
-        let [a,b]: [i32; 2] = vm.dstack.pop_item()?;
-        vm.dstack.push_item((a <= b) as i32);
+        let [a,b]: [i64; 2] = vm.dstack.pop_item()?;
+        vm.dstack.push_item((a <= b) as i64);
         Ok(())
     }
 
     opcode OpGreaterThanOrEqual<0xa2, 1>(self, vm) {
-        let [a,b]: [i32; 2] = vm.dstack.pop_item()?;
-        vm.dstack.push_item((a >= b) as i32);
+        let [a,b]: [i64; 2] = vm.dstack.pop_item()?;
+        vm.dstack.push_item((a >= b) as i64);
         Ok(())
     }
 
     opcode OpMin<0xa3, 1>(self, vm) {
-        let [a,b]: [i32; 2] = vm.dstack.pop_item()?;
+        let [a,b]: [i64; 2] = vm.dstack.pop_item()?;
         vm.dstack.push_item(min(a,b));
         Ok(())
     }
 
     opcode OpMax<0xa4, 1>(self, vm) {
-        let [a,b]: [i32; 2] = vm.dstack.pop_item()?;
+        let [a,b]: [i64; 2] = vm.dstack.pop_item()?;
         vm.dstack.push_item(max(a,b));
         Ok(())
     }
 
     opcode OpWithin<0xa5, 1>(self, vm) {
-        let [x,l,u]: [i32; 3] = vm.dstack.pop_item()?;
-        vm.dstack.push_item((x >= l && x < u) as i32);
+        let [x,l,u]: [i64; 3] = vm.dstack.pop_item()?;
+        vm.dstack.push_item((x >= l && x < u) as i64);
         Ok(())
     }
 
@@ -637,7 +636,7 @@ opcode_list! {
             true => vm.dstack.split_off(vm.dstack.len() - num_keys_usize),
             false => return Err(TxScriptError::EmptyStack),
         };
-        let mut pub_keys = pub_keys_vec.iter_mut();
+        let mut pub_keys = pub_keys_vec.iter_mut().enumerate();
 
 
         let [num_sigs]: [i32; 1] = vm.dstack.pop_item()?;
@@ -667,9 +666,19 @@ opcode_list! {
                     if empty_sigs == 0 {
                         // Every check consumes the public key
                         let hash_type = SigHashType::from_u8(typ).map_err(|e| TxScriptError::InvalidSigHashType(typ))?;
-                        while pub_keys.len() > num_sigs_usize - sig_idx && vm.check_ecdsa_signature(hash_type, pub_keys.next().expect("Checked larger than 0").as_slice(), signature.as_slice()).is_err() {}
+                        if pub_keys.try_for_each(|(key_idx, pub_key)| {
+                            if num_keys_usize - key_idx  < num_sigs_usize - sig_idx {
+                                return Err(false)
+                            }
+                            match vm.check_ecdsa_signature(hash_type, pub_key.as_slice(), signature.as_slice()) {
+                                Ok(()) => Err(true),
+                                Err(_) => Ok(())
+                            }
+                        }) != Err(true) {
+                            return Err(TxScriptError::NullFail)
+                        }
                     }
-                    if empty_sigs > 0 || pub_keys.len() > num_sigs_usize - sig_idx {
+                    if empty_sigs > 0 {
                         return Err(TxScriptError::NullFail)
                     }
                 }
@@ -681,7 +690,8 @@ opcode_list! {
 
     opcode OpBlake2b<0xaa, 1>(self, vm) {
         let [last] = vm.dstack.pop_raw()?;
-        let hash = blake2b(last.as_slice());
+        //let hash = blake2b(last.as_slice());
+        let hash = Params::new().hash_length(32).to_state().update(&last).finalize();
         vm.dstack.push(hash.as_bytes().to_vec());
         Ok(())
     }
@@ -716,8 +726,6 @@ opcode_list! {
         // Hash type
         match sig.pop() {
             Some(typ) => {
-                //TODO: check signature length (pair[0])
-                //TODO: check public key encoding (pair[1])
                 let hash_type = SigHashType::from_u8(typ).map_err(|e| TxScriptError::InvalidSigHashType(typ))?;
                 match vm.check_schnorr_signature(hash_type, key.as_slice(), sig.as_slice()) {
                     Ok(()) => {
@@ -765,7 +773,7 @@ opcode_list! {
             true => vm.dstack.split_off(vm.dstack.len() - num_keys_usize),
             false => return Err(TxScriptError::EmptyStack),
         };
-        let mut pub_keys = pub_keys_vec.iter_mut();
+        let mut pub_keys = pub_keys_vec.iter_mut().enumerate();
 
 
         let [num_sigs]: [i32; 1] = vm.dstack.pop_item()?;
@@ -794,12 +802,20 @@ opcode_list! {
                 Some(typ) => {
                     if empty_sigs == 0 {
                         // Every check consumes the public key
-                        //TODO: check signature length (pair[0])
-                        //TODO: check public key encoding (pair[1])
                         let hash_type = SigHashType::from_u8(typ).map_err(|e| TxScriptError::InvalidSigHashType(typ))?;
-                        while pub_keys.len() > num_sigs_usize - sig_idx && vm.check_schnorr_signature(hash_type, pub_keys.next().expect("Checked larger than 0").as_slice(), signature.as_slice()).is_err() {}
+                        if pub_keys.try_for_each(|(key_idx, pub_key)| {
+                            if num_keys_usize - key_idx  < num_sigs_usize - sig_idx {
+                                return Err(false)
+                            }
+                            match vm.check_schnorr_signature(hash_type, pub_key.as_slice(), signature.as_slice()) {
+                                Ok(()) => Err(true),
+                                Err(_) => Ok(())
+                            }
+                        }) != Err(true) {
+                            return Err(TxScriptError::NullFail)
+                        }
                     }
-                    if empty_sigs > 0 || pub_keys.len() > num_sigs_usize - sig_idx {
+                    if empty_sigs > 0 {
                         return Err(TxScriptError::NullFail)
                     }
                 }

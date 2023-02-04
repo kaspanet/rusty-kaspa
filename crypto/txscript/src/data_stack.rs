@@ -29,22 +29,23 @@ pub(crate) trait OpcodeData<T> {
     fn serialize(from: &T) -> Self;
 }
 
-impl OpcodeData<i32> for Vec<u8> {
+impl OpcodeData<i64> for Vec<u8> {
     #[inline]
-    fn deserialize(&self) -> Result<i32, TxScriptError> {
+    fn deserialize(&self) -> Result<i64, TxScriptError> {
         match self.len() {
-            l if l > size_of::<i32>() => Err(TxScriptError::InvalidState("data is too big for `i32`".to_string())),
+            l if l > size_of::<i64>() => Err(TxScriptError::InvalidState("data is too big for `i64`".to_string())),
             l if l == 0 => Ok(0),
             _ => {
                 let msb = self[self.len() - 1];
-                let first_byte = ((msb & 0x7f) as i32) * (2 * ((msb >> 7) as i32) - 1);
-                Ok(self.iter().rev().map(|v| *v as i32).fold(first_byte, |accum, item| (accum << size_of::<u8>()) + item))
+                let first_byte = ((msb & 0x7f) as i64) * (1 - 2 * ((msb >> 7) as i64));
+                Ok(self[..self.len() - 1].iter().rev().map(|v| *v as i64)
+                    .fold(first_byte, |accum, item| (accum << 8) + item))
             }
         }
     }
 
     #[inline]
-    fn serialize(from: &i32) -> Self {
+    fn serialize(from: &i64) -> Self {
         let sign = from.signum();
         let mut positive = from.abs();
         let mut last_saturated = false;
@@ -64,6 +65,20 @@ impl OpcodeData<i32> for Vec<u8> {
             }
         })
             .collect()
+    }
+}
+
+
+impl OpcodeData<i32> for Vec<u8> {
+    #[inline]
+    fn deserialize(&self) -> Result<i32, TxScriptError> {
+        let res = OpcodeData::<i64>::deserialize(self)?;
+        i32::try_from(res.clamp(i32::MIN as i64, i32::MAX as i64)).map_err(|e| TxScriptError::InvalidState(format!("data is too big for `i32`: {}", e)))
+    }
+
+    #[inline]
+    fn serialize(from: &i32) -> Self {
+        OpcodeData::<i64>::serialize(&(*from as i64))
     }
 }
 
