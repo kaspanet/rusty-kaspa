@@ -3,8 +3,8 @@ use crate::infra::RouterApi;
 use crate::pb;
 use crate::registry;
 use crate::registry::FlowRegistryApi;
+use kaspa_core::warn;
 use kaspa_core::{debug, error};
-use log::warn;
 use std::sync::Arc;
 use tonic::async_trait;
 

@@ -1,8 +1,7 @@
 use crate::infra;
 use crate::infra::{KaspadMessagePayloadEnumU8, Router, RouterApi};
 use crate::pb::{self, KaspadMessage};
-use kaspa_core::{info, warn};
-use log::{debug, trace};
+use kaspa_core::{debug, info, trace, warn};
 use std::sync::Arc;
 use tokio::sync::mpsc::Receiver;
 use tonic::async_trait;

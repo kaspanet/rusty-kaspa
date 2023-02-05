@@ -50,7 +50,7 @@ pub trait RouterApi: Send + Sync + 'static {
     async fn route_to_flow(&self, msg: pb::KaspadMessage) -> bool;
     async fn route_to_network(&self, msg: pb::KaspadMessage) -> bool;
     async fn broadcast(&self, msg: pb::KaspadMessage) -> bool;
-    async fn reroute_to_flow(&self);
+    async fn reroute_to_flows(&self);
     async fn finalize(&self);
     // TODO: rename to `incoming_network_channel_size`
     #[allow(clippy::wrong_self_convention)]
@@ -287,6 +287,27 @@ pub struct Router {
     broadcast_sender: tokio::sync::broadcast::Sender<pb::KaspadMessage>,
 }
 
+impl Router {
+    async fn route_to_flow_impl(&self, msg: pb::KaspadMessage, fallback_to_default_route: bool) -> bool {
+        // [0] - try to router
+        let key = Router::grpc_payload_to_internal_u8_enum(msg.payload.as_ref().unwrap());
+        match self.routing_map.get(&key) {
+            // [1] - regular route
+            Some(send_channel) => send_channel.val().send(msg).await.is_ok(),
+            None => {
+                // [2] - try default route if not closed yet
+                if fallback_to_default_route && self.default_route.1.load(std::sync::atomic::Ordering::Relaxed) {
+                    self.default_route.0.as_ref().unwrap().push(msg);
+                    true
+                } else {
+                    warn!("P2P, Router::route_to_flow - no route for message-type: {:?} exist", key);
+                    false
+                }
+            }
+        }
+    }
+}
+
 #[async_trait]
 impl RouterApi for Router {
     async fn new() -> (std::sync::Arc<Self>, mpsc::Receiver<std::sync::Arc<Self>>) {
@@ -384,22 +405,7 @@ impl RouterApi for Router {
     }
 
     async fn route_to_flow(&self, msg: pb::KaspadMessage) -> bool {
-        // [0] - try to router
-        let key = Router::grpc_payload_to_internal_u8_enum(msg.payload.as_ref().unwrap());
-        match self.routing_map.get(&key) {
-            // [1] - regular route
-            Some(send_channel) => send_channel.val().send(msg).await.is_ok(),
-            None => {
-                // [2] - try default route if not closed yet
-                if self.default_route.1.load(std::sync::atomic::Ordering::Relaxed) {
-                    self.default_route.0.as_ref().unwrap().push(msg);
-                    true
-                } else {
-                    warn!("P2P, Router::route_to_flow - no route for message-type: {:?} exist", key);
-                    false
-                }
-            }
-        }
+        self.route_to_flow_impl(msg, true).await
     }
 
     async fn route_to_network(&self, msg: pb::KaspadMessage) -> bool {
@@ -436,16 +442,17 @@ impl RouterApi for Router {
         }
     }
 
-    async fn reroute_to_flow(&self) {
+    async fn reroute_to_flows(&self) {
         while let Some(msg) = self.default_route.0.as_ref().unwrap().pop() {
-            // this should never failed
-            let _res = self.route_to_flow(msg).await;
+            // This should never fail
+            // NOTE: it is critical that `fallback_to_default_route=false` here since otherwise this might become an infinite loop
+            let _res = self.route_to_flow_impl(msg, false).await;
         }
     }
 
     async fn finalize(&self) {
         self.default_route.1.store(false, std::sync::atomic::Ordering::Relaxed);
-        self.reroute_to_flow().await;
+        self.reroute_to_flows().await;
         debug!("P2P, Router::finalize - done, router-id: {:?}", self.identity);
     }
 

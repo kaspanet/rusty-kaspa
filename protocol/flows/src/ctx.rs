@@ -104,15 +104,20 @@ impl FlowRegistryApi for FlowContext {
         let verack_receiver = router.subscribe_to(vec![KaspadMessagePayloadEnumU8::Verack]);
         let ready_receiver = router.subscribe_to(vec![KaspadMessagePayloadEnumU8::Ready]);
 
+        // Make sure handshake messages are rerouted to the newly registered flows
+        router.reroute_to_flows().await;
+        // Perform the initial handshake.
+        // TODO: error handling.
+        self.handshake(&router, version_receiver, verack_receiver, ready_receiver).await;
+
         // Subscribe to remaining messages and finalize (finalize will reroute all messages into flows)
         // TODO: register to all kaspa P2P flows here
         let echo_terminate = EchoFlow::new(router.clone()).await;
         trace!("finalizing flow subscriptions");
         router.finalize().await;
 
-        // Perform the initial handshake.
-        // TODO: error handling.
-        self.handshake(&router, version_receiver, verack_receiver, ready_receiver).await;
+        // TODO: run ready flow only after full registration
+        // TODO: unregister handshake and ready flows
 
         vec![echo_terminate]
     }
