@@ -25,7 +25,6 @@ impl<const CODE: u8> Debug for OpCode<CODE> {
 }
 
 pub trait OpCodeMetadata: Debug {
-    // TODO: could be implemented as staticmethod for all opcodes at once. Maybe need its own trait?
     // Opcode number
     fn value(&self) -> u8;
     // length of data

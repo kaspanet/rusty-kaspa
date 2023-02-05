@@ -12,13 +12,12 @@ macro_rules! opcode_serde {
                     let length = <$type>::from_le_bytes(bytes) as usize;
                     let data: Vec<u8> = it.take(length).copied().collect();
                     if data.len() != length {
-                        // TODO: real error
-                        todo!();
+                        return Err(TxScriptError::MalformedPush(length, data.len()));
                     }
                     Ok(Box::new(Self { data }))
                 }
-                Err(_) => {
-                    todo!()
+                Err(vec) => {
+                    return Err(TxScriptError::MalformedPushSize(vec));
                 }
             }
         }
@@ -33,8 +32,7 @@ macro_rules! opcode_serde {
             // Static length includes the opcode itself
             let data: Vec<u8> = it.take($length - 1).copied().collect();
             if data.len() != $length - 1 {
-                // TODO: real error
-                todo!();
+                return Err(TxScriptError::MalformedPush($length-1, data.len()));
             }
             Ok(Box::new(Self { data }))
         }
@@ -87,10 +85,6 @@ macro_rules! opcode_list {
                 $(
                     $num => $name::deserialize(it),
                 )*
-                // TODO: real error! (opcode not implemented)
-                // In case programmer didn't implement all opcodes
-                #[allow(unreachable_patterns)]
-                _ => todo!(),
             }
         }
     };

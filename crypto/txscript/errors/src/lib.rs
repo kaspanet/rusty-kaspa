@@ -2,6 +2,10 @@ use thiserror::Error;
 
 #[derive(Error, PartialEq, Eq, Debug, Clone)]
 pub enum TxScriptError {
+    #[error("invalid opcode length: {0:02x?}")]
+    MalformedPushSize(Vec<u8>),
+    #[error("opcode requires {0} bytes, but script only has {1} remaining")]
+    MalformedPush(usize, usize),
     // We return error if stack entry is false
     #[error("false stack entry at end of script execution")]
     FalseStackEntry,
