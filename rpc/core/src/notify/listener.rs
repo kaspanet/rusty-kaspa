@@ -1,11 +1,11 @@
 use crate::{
     notify::{
-        channel::NotificationChannel,
+        connection::Connection,
         events::{EventArray, EventType},
         result::Result,
         utxo_address_set::RpcUtxoAddressSet,
     },
-    Notification, NotificationReceiver, NotificationSender, NotificationType, RpcAddress,
+    Notification, NotificationType, RpcAddress,
 };
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -32,17 +32,22 @@ pub enum ListenerUtxoNotificationFilterSetting {
 /// Any ListenerSenderSide derived from a [Listener] should also be rebuilt
 /// upon relevant mutation by a call to toggle.
 #[derive(Debug)]
-pub(crate) struct Listener {
+pub(crate) struct Listener<T>
+where
+    T: Connection,
+{
     id: u64,
-    channel: NotificationChannel,
+    connection: T,
     active_event: EventArray<bool>,
     utxo_addresses: RpcUtxoAddressSet,
 }
 
-impl Listener {
-    pub(crate) fn new(id: ListenerID, channel: Option<NotificationChannel>) -> Listener {
-        let channel = channel.unwrap_or_default();
-        Self { id, channel, active_event: EventArray::default(), utxo_addresses: RpcUtxoAddressSet::new() }
+impl<T> Listener<T>
+where
+    T: Connection,
+{
+    pub(crate) fn new(id: ListenerID, connection: T) -> Self {
+        Self { id, connection, active_event: EventArray::default(), utxo_addresses: RpcUtxoAddressSet::new() }
     }
 
     pub(crate) fn id(&self) -> ListenerID {
@@ -80,45 +85,46 @@ impl Listener {
         changed
     }
 
-    pub(crate) fn close(&mut self) {
+    pub(crate) fn close(&self) {
         if !self.is_closed() {
-            self.channel.close();
+            self.connection.close();
         }
     }
 
     pub(crate) fn is_closed(&self) -> bool {
-        self.channel.is_closed()
-    }
-}
-
-/// Contains the receiver side of a listener
-#[derive(Debug)]
-pub struct ListenerReceiverSide {
-    pub id: ListenerID,
-    pub recv_channel: NotificationReceiver,
-}
-
-impl From<&Listener> for ListenerReceiverSide {
-    fn from(item: &Listener) -> Self {
-        Self { id: item.id(), recv_channel: item.channel.receiver() }
+        self.connection.is_closed()
     }
 }
 
 #[derive(Debug)]
 /// Contains the sender side of a listener
-pub(crate) struct ListenerSenderSide {
-    send_channel: NotificationSender,
+pub(crate) struct ListenerSenderSide<T>
+where
+    T: Connection,
+{
+    connection: T,
     filter: Box<dyn Filter + Send + Sync>,
 }
 
-impl ListenerSenderSide {
-    pub(crate) fn new(listener: &Listener, sending_changed_utxos: ListenerUtxoNotificationFilterSetting, event: EventType) -> Self {
+impl<T> ListenerSenderSide<T>
+where
+    T: Connection,
+{
+    pub(crate) fn new(listener: &Listener<T>, sending_changed_utxos: ListenerUtxoNotificationFilterSetting, event: EventType) -> Self {
         match event {
             EventType::UtxosChanged if sending_changed_utxos == ListenerUtxoNotificationFilterSetting::FilteredByAddress => Self {
-                send_channel: listener.channel.sender(),
+                connection: listener.connection.clone(),
                 filter: Box::new(FilterUtxoAddress { utxos_addresses: listener.utxo_addresses.clone() }),
             },
-            _ => Self { send_channel: listener.channel.sender(), filter: Box::new(Unfiltered {}) },
+            _ => Self { connection: listener.connection.clone(), filter: Box::new(Unfiltered {}) },
+        }
+    }
+
+    pub(crate) fn build_utxos_changed_notification(&self, notification: &Arc<Notification>) -> Option<Arc<Notification>> {
+        // FIXME: actually build a filtered Notification::UtxosChanged
+        match self.filter.matches(notification.clone()) {
+            true => Some(notification.clone()),
+            false => None,
         }
     }
 
@@ -126,22 +132,19 @@ impl ListenerSenderSide {
     ///
     /// If the notification does not meet requirements (see [`Notification::UtxosChanged`]) returns `Ok(false)`,
     /// otherwise returns `Ok(true)`.
-    pub(crate) fn try_send(&self, notification: Arc<Notification>) -> Result<bool> {
-        if self.filter.matches(notification.clone()) {
-            match self.send_channel.try_send(notification) {
-                Ok(_) => {
-                    return Ok(true);
-                }
-                Err(err) => {
-                    return Err(err.into());
-                }
-            }
+    pub(crate) fn try_send(&self, message: T::Message) -> Result<bool> {
+        // FIXME: externalize the logic of building a filtered Notification::UtxosChanged
+        //if self.filter.matches(notification.clone()) {
+        match self.connection.send(message) {
+            Ok(_) => Ok(true),
+            Err(err) => Err(err.into()),
         }
-        Ok(false)
+        //}
+        //Ok(false)
     }
 
     pub(crate) fn is_closed(&self) -> bool {
-        self.send_channel.is_closed()
+        self.connection.is_closed()
     }
 }
 

@@ -9,7 +9,9 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use tonic::{codec::CompressionEncoding, transport::Server};
 
+pub mod collector;
 pub mod connection;
+pub mod error;
 pub mod service;
 
 pub type StatusResult<T> = Result<T, tonic::Status>;

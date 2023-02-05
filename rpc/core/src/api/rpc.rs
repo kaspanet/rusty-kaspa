@@ -7,10 +7,7 @@
 use crate::{
     api::ops::SubscribeCommand,
     model::*,
-    notify::{
-        channel::NotificationChannel,
-        listener::{ListenerID, ListenerReceiverSide},
-    },
+    notify::{connection::Connection, listener::ListenerID},
     NotificationType, RpcResult,
 };
 use async_trait::async_trait;
@@ -21,7 +18,10 @@ use async_trait::async_trait;
 ///
 /// For each RPC call a matching readily implemented function taking detailed parameters is also provided.
 #[async_trait]
-pub trait RpcApi: Sync + Send {
+pub trait RpcApi<T>: Sync + Send
+where
+    T: Connection,
+{
     ///
     async fn ping(&self) -> RpcResult<()> {
         self.ping_call(PingRequest {}).await?;
@@ -282,7 +282,7 @@ pub trait RpcApi: Sync + Send {
     // Notification API
 
     /// Register a new listener and returns an id and a channel receiver.
-    fn register_new_listener(&self, channel: Option<NotificationChannel>) -> ListenerReceiverSide;
+    fn register_new_listener(&self, connection: T) -> ListenerID;
 
     /// Unregister an existing listener.
     ///

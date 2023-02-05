@@ -20,8 +20,9 @@ use kaspa_rpc_core::{
     notify::{
         channel::NotificationChannel,
         collector::RpcCoreCollector,
+        connection::ChannelConnection,
         events::EventType,
-        listener::{ListenerID, ListenerReceiverSide, ListenerUtxoNotificationFilterSetting},
+        listener::{ListenerID, ListenerUtxoNotificationFilterSetting},
         notifier::Notifier,
         subscriber::{Subscriber, SubscriptionManager},
     },
@@ -46,7 +47,7 @@ mod route;
 
 pub struct GrpcClient {
     inner: Arc<Inner>,
-    notifier: Arc<Notifier>,
+    notifier: Arc<Notifier<ChannelConnection>>,
 }
 
 impl GrpcClient {
@@ -63,16 +64,16 @@ impl GrpcClient {
     }
 
     #[inline(always)]
-    fn notifier(&self) -> Arc<Notifier> {
+    fn notifier(&self) -> Arc<Notifier<ChannelConnection>> {
         self.notifier.clone()
     }
 
     pub async fn start(&self) {
-        self.notifier.start();
+        self.notifier().start();
     }
 
     pub async fn stop(&self) -> Result<()> {
-        self.notifier.stop().await?;
+        self.notifier().stop().await?;
         Ok(())
     }
 
@@ -95,7 +96,7 @@ impl GrpcClient {
 }
 
 #[async_trait]
-impl RpcApi for GrpcClient {
+impl RpcApi<ChannelConnection> for GrpcClient {
     // this example illustrates the body of the function created by the route!() macro
     // async fn submit_block_call(&self, request: SubmitBlockRequest) -> RpcResult<SubmitBlockResponse> {
     //     self.inner.call(RpcApiOps::SubmitBlock, request).await?.as_ref().try_into()
@@ -137,8 +138,8 @@ impl RpcApi for GrpcClient {
     // Notification API
 
     /// Register a new listener and returns an id and a channel receiver.
-    fn register_new_listener(&self, channel: Option<NotificationChannel>) -> ListenerReceiverSide {
-        self.notifier.register_new_listener(channel)
+    fn register_new_listener(&self, connection: ChannelConnection) -> ListenerID {
+        self.notifier.register_new_listener(connection)
     }
 
     /// Unregister an existing listener.

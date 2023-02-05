@@ -1,11 +1,6 @@
 use crate::{protowire::KaspadResponse, server::StatusResult};
-use futures::pin_mut;
-use kaspa_core::{error, trace};
-use kaspa_rpc_core::notify::{
-    listener::{ListenerID, ListenerReceiverSide},
-    notifier::Notifier,
-};
-use kaspa_utils::triggers::DuplexTrigger;
+use kaspa_core::trace;
+use kaspa_rpc_core::notify::{connection::Connection, error::Error as NotificationError, listener::ListenerID, notifier::Notifier};
 use std::{
     collections::HashMap,
     net::SocketAddr,
@@ -14,122 +9,79 @@ use std::{
         Arc,
     },
 };
-use tokio::sync::mpsc;
+use tokio::sync::mpsc::Sender;
 
-pub type GrpcSender = mpsc::Sender<StatusResult<KaspadResponse>>;
+pub type GrpcSender = Sender<StatusResult<KaspadResponse>>;
 
-struct GrpcConnection {
-    address: SocketAddr,
-    sender: GrpcSender,
-    notify_listener: ListenerReceiverSide,
-    collect_shutdown: Arc<DuplexTrigger>,
-    collect_is_running: Arc<AtomicBool>,
+#[derive(Debug)]
+struct Inner {
+    pub address: SocketAddr,
+    pub sender: GrpcSender,
+    pub closed: AtomicBool,
+}
+
+#[derive(Clone, Debug)]
+pub struct GrpcConnection {
+    inner: Arc<Inner>,
 }
 
 impl GrpcConnection {
-    fn new(address: SocketAddr, sender: GrpcSender, notify_listener: ListenerReceiverSide) -> Self {
-        Self {
-            address,
-            sender,
-            notify_listener,
-            collect_shutdown: Arc::new(DuplexTrigger::new()),
-            collect_is_running: Arc::new(AtomicBool::new(false)),
+    pub fn new(address: SocketAddr, sender: GrpcSender) -> Self {
+        Self { inner: Arc::new(Inner { address, sender, closed: AtomicBool::new(false) }) }
+    }
+}
+
+impl Connection for GrpcConnection {
+    type Message = Arc<StatusResult<KaspadResponse>>;
+    type Error = super::error::Error;
+
+    fn into_message(notification: &Arc<kaspa_rpc_core::Notification>) -> Self::Message {
+        Arc::new(Ok((&**notification).into()))
+    }
+
+    fn send(&self, message: Self::Message) -> Result<(), Self::Error> {
+        match !self.is_closed() {
+            true => Ok(self.inner.sender.try_send((*message).clone())?),
+            false => Err(NotificationError::ConnectionClosed.into()),
         }
     }
 
-    fn start(self: &Arc<Self>) {
-        self.spawn_collecting_task();
+    fn close(&self) -> bool {
+        // FIXME: actually close sender
+        self.inner.closed.store(true, Ordering::SeqCst);
+        true
     }
 
-    async fn stop(self: &Arc<Self>) {
-        self.stop_collect().await
-    }
-
-    fn spawn_collecting_task(&self) {
-        // The task can only be spawned once
-        if self.collect_is_running.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
-            trace!("[GrpcConnection] spawn collecting task ignored since already spawned");
-            return;
-        }
-        let listener_id = self.notify_listener.id;
-        let sender = self.sender.clone();
-        let collect_shutdown = self.collect_shutdown.clone();
-        let collect_is_running = self.collect_is_running.clone();
-        let recv_channel = self.notify_listener.recv_channel.clone();
-
-        tokio::task::spawn(async move {
-            trace!("[GrpcConnection] collect_task listener id {0}: start", listener_id);
-            loop {
-                let shutdown = collect_shutdown.request.listener.clone();
-                pin_mut!(shutdown);
-
-                tokio::select! {
-                    _ = shutdown => { break; }
-                    notification = recv_channel.recv() => {
-                        match notification {
-                            Ok(notification) => {
-                                trace!("sending {} to listener id {}", notification, listener_id);
-                                match sender.send(Ok((&*notification).into())).await {
-                                    Ok(_) => (),
-                                    Err(err) => {
-
-                                        // TODO: we need to decide here if we close connection immediately, or wait for TTL to close it
-
-                                        trace!("[Connection] notification sender error: {:?}", err);
-                                    },
-                                }
-                            },
-                            Err(err) => {
-                                trace!("[Connection] notification receiver error: {:?}", err);
-                            }
-                        }
-                    }
-                }
-            }
-            collect_is_running.store(false, Ordering::SeqCst);
-            collect_shutdown.response.trigger.trigger();
-            trace!("[GrpcConnection] collect_task listener id {0}: stop", listener_id);
-        });
-    }
-
-    async fn stop_collect(&self) {
-        if self.collect_is_running.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
-            self.collect_shutdown.request.trigger.trigger();
-            self.collect_shutdown.response.listener.clone().await;
-        }
+    fn is_closed(&self) -> bool {
+        self.inner.sender.is_closed() || self.inner.closed.load(Ordering::SeqCst)
     }
 }
 
 pub(crate) struct GrpcConnectionManager {
-    connections: HashMap<SocketAddr, Arc<GrpcConnection>>,
-    notifier: Arc<Notifier>,
+    connections: HashMap<SocketAddr, GrpcConnection>,
+    notifier: Arc<Notifier<GrpcConnection>>,
 }
 
 impl GrpcConnectionManager {
-    pub fn new(notifier: Arc<Notifier>) -> Self {
+    pub fn new(notifier: Arc<Notifier<GrpcConnection>>) -> Self {
         Self { connections: HashMap::new(), notifier }
     }
 
-    pub(crate) async fn register(&mut self, address: SocketAddr, sender: GrpcSender) -> ListenerID {
-        let notify_listener = self.notifier.clone().register_new_listener(None);
-        let connection = Arc::new(GrpcConnection::new(address, sender, notify_listener));
-        trace!("registering a new gRPC connection from: {0} with listener id {1}", connection.address, connection.notify_listener.id);
+    pub fn register(&mut self, address: SocketAddr, sender: GrpcSender) -> ListenerID {
+        let connection = GrpcConnection::new(address, sender);
+        let id = self.notifier.clone().register_new_listener(connection.clone());
+        trace!("registering a new gRPC connection from: {address} with listener id {id}");
 
         // A pre-existing connection with same address is ignored here
         // TODO: see if some close pattern can be applied to the replaced connection
-        self.connections.insert(address, connection.clone());
-        connection.start();
-        connection.notify_listener.id
+        self.connections.insert(address, connection);
+        id
     }
 
-    pub(crate) async fn unregister(&mut self, address: SocketAddr) {
+    pub fn unregister(&mut self, address: SocketAddr) {
         if let Some(connection) = self.connections.remove(&address) {
-            trace!("dismiss a gRPC connection from: {}", connection.address);
-            if let Err(err) = self.notifier.clone().unregister_listener(connection.notify_listener.id) {
-                error!("unregistering listener id {0} failed with {err:?}", connection.notify_listener.id);
-            }
-            //connection.sender.closed().await;
-            connection.stop().await;
+            trace!("dismiss a gRPC connection from: {}", connection.inner.address);
+            connection.close();
         }
     }
 }

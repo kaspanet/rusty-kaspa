@@ -5,8 +5,8 @@ use crate::{
     api::rpc::RpcApi,
     model::*,
     notify::{
-        channel::NotificationChannel,
-        listener::{ListenerID, ListenerReceiverSide, ListenerUtxoNotificationFilterSetting},
+        connection::ChannelConnection,
+        listener::{ListenerID, ListenerUtxoNotificationFilterSetting},
         notifier::Notifier,
     },
     FromRpcHex, Notification, NotificationType, RpcError, RpcResult,
@@ -46,7 +46,7 @@ use std::{
 /// Subscriber.
 pub struct RpcCoreService {
     consensus: DynConsensus,
-    notifier: Arc<Notifier>,
+    notifier: Arc<Notifier<ChannelConnection>>,
 }
 
 impl RpcCoreService {
@@ -64,21 +64,22 @@ impl RpcCoreService {
     }
 
     pub fn start(&self) {
-        self.notifier.start();
+        self.notifier().start();
     }
 
     pub async fn stop(&self) -> RpcResult<()> {
-        self.notifier.clone().stop().await?;
+        self.notifier().stop().await?;
         Ok(())
     }
 
-    pub fn notifier(&self) -> Arc<Notifier> {
+    #[inline(always)]
+    pub fn notifier(&self) -> Arc<Notifier<ChannelConnection>> {
         self.notifier.clone()
     }
 }
 
 #[async_trait]
-impl RpcApi for RpcCoreService {
+impl RpcApi<ChannelConnection> for RpcCoreService {
     async fn submit_block_call(&self, request: SubmitBlockRequest) -> RpcResult<SubmitBlockResponse> {
         let try_block: RpcResult<Block> = (&request.block).try_into();
         if let Err(ref err) = try_block {
@@ -103,10 +104,10 @@ impl RpcApi for RpcCoreService {
 
         // Notify about new added block
         // TODO: let consensus emit this notification through an event channel
-        self.notifier.notify(Arc::new(Notification::BlockAdded(BlockAddedNotification { block: rpc_block }))).unwrap();
+        self.notifier.clone().notify(Arc::new(Notification::BlockAdded(BlockAddedNotification { block: rpc_block }))).unwrap();
 
         // Emit a NewBlockTemplate notification
-        self.notifier.notify(Arc::new(Notification::NewBlockTemplate(NewBlockTemplateNotification {}))).unwrap();
+        self.notifier.clone().notify(Arc::new(Notification::NewBlockTemplate(NewBlockTemplateNotification {}))).unwrap();
 
         result
     }
@@ -292,8 +293,8 @@ impl RpcApi for RpcCoreService {
     // Notification API
 
     /// Register a new listener and returns an id and a channel receiver.
-    fn register_new_listener(&self, channel: Option<NotificationChannel>) -> ListenerReceiverSide {
-        self.notifier.register_new_listener(channel)
+    fn register_new_listener(&self, connection: ChannelConnection) -> ListenerID {
+        self.notifier.register_new_listener(connection)
     }
 
     /// Unregister an existing listener.
