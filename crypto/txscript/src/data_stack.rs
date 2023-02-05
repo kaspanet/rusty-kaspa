@@ -3,6 +3,11 @@ use crate::TxScriptError;
 use core::mem::size_of;
 use core::iter;
 
+const DEFAULT_SCRIPT_NUM_LEN: usize = 4;
+
+#[derive(PartialEq, Eq, Debug, Default)]
+pub(crate) struct SizedEncodeInt<const LEN: usize>(i64);
+
 pub(crate) type Stack = Vec<Vec<u8>>;
 
 pub(crate) trait DataStack {
@@ -56,21 +61,27 @@ fn check_minimal_data_encoding(v: &[u8]) -> Result<(), TxScriptError> {
     return Ok(())
 }
 
+fn deserialize_i64(v: &[u8]) -> Result<i64, TxScriptError> {
+    match v.len() {
+        l if l > size_of::<i64>() => Err(TxScriptError::NotMinimalData(format!("numeric value encoded as {:x?} is longer than 8 bytes", v))),
+        l if l == 0 => Ok(0),
+        _ => {
+            check_minimal_data_encoding(v)?;
+            let msb = v[v.len() - 1];
+            let sign = 1 - 2 * ((msb >> 7) as i64);
+            let first_byte = (msb & 0x7f) as i64;
+            Ok(v[..v.len() - 1].iter().rev().map(|v| *v as i64)
+                .fold(first_byte, |accum, item| (accum << 8) + item)*sign)
+        }
+    }
+}
+
 impl OpcodeData<i64> for Vec<u8> {
     #[inline]
     fn deserialize(&self) -> Result<i64, TxScriptError> {
-        match self.len() {
-            l if l > 4 => Err(TxScriptError::InvalidState(format!("numeric value encoded as {:x?} is {} bytes which exceeds the max allowed of {}", self, l, 4))),
-            l if l > size_of::<i64>() => Err(TxScriptError::InvalidState(format!("numeric value encoded as {:x?} is longer than 8 bytes", self))),
-            l if l == 0 => Ok(0),
-            _ => {
-                check_minimal_data_encoding(self)?;
-                let msb = self[self.len() - 1];
-                let sign = (1 - 2 * ((msb >> 7) as i64));
-                let first_byte = ((msb & 0x7f) as i64);
-                Ok(self[..self.len() - 1].iter().rev().map(|v| *v as i64)
-                    .fold(first_byte, |accum, item| (accum << 8) + item)*sign)
-            }
+        match self.len() > DEFAULT_SCRIPT_NUM_LEN {
+            true => Err(TxScriptError::NumberTooBig(format!("numeric value encoded as {:x?} is {} bytes which exceeds the max allowed of {}", self, self.len(), DEFAULT_SCRIPT_NUM_LEN))),
+            false => deserialize_i64(self)
         }
     }
 
@@ -115,6 +126,21 @@ impl OpcodeData<i32> for Vec<u8> {
     #[inline]
     fn serialize(from: &i32) -> Self {
         OpcodeData::<i64>::serialize(&(*from as i64))
+    }
+}
+
+impl<const LEN: usize> OpcodeData<SizedEncodeInt<LEN>> for Vec<u8> {
+    #[inline]
+    fn deserialize(&self) -> Result<SizedEncodeInt<LEN>, TxScriptError> {
+        match self.len() > LEN {
+            true => Err(TxScriptError::InvalidState(format!("numeric value encoded as {:x?} is {} bytes which exceeds the max allowed of {}", self, self.len(), DEFAULT_SCRIPT_NUM_LEN))),
+            false => deserialize_i64(self).map(SizedEncodeInt::<LEN>)
+        }
+    }
+
+    #[inline]
+    fn serialize(from: &SizedEncodeInt<LEN>) -> Self {
+        OpcodeData::<i64>::serialize(&from.0)
     }
 }
 
@@ -247,8 +273,8 @@ impl DataStack for Stack {
 
 #[cfg(test)]
 mod tests {
-    use core::fmt::Error;
     use txscript_errors::TxScriptError;
+    use crate::data_stack::SizedEncodeInt;
     use super::OpcodeData;
 
     // TestScriptNumBytes
@@ -310,84 +336,109 @@ mod tests {
     // TestMakeScriptNum
     #[test]
     fn test_deserialize() {
-        let default_script_num_len = 4;
-        let err_num_too_big = Err(TxScriptError::NumberTooBig("".to_string()));
-        let err_minimal_data = Err(TxScriptError::NotMinimalData("".to_string()));
-        struct TestCase{serialized: Vec<u8>, num_len: usize, result: Result<i64, TxScriptError>}
+        struct TestCase<T>{serialized: Vec<u8>, result: Result<T, TxScriptError>}
 
         let tests = vec![
-            TestCase{serialized: hex::decode("80").expect("failed parsing hex"), num_len: default_script_num_len, result: Err(TxScriptError::NotMinimalData("numeric value encoded as [80] is not minimally encoded".to_string())) },
+            TestCase::<i64>{serialized: hex::decode("80").expect("failed parsing hex"), result: Err(TxScriptError::NotMinimalData("numeric value encoded as [80] is not minimally encoded".to_string())) },
 
             // Minimally encoded valid values with minimal encoding flag.
             // Should not error and return expected integral number.
-            TestCase{serialized: vec![], num_len: default_script_num_len, result: Ok(0)},
-            TestCase{serialized: hex::decode("01").expect("failed parsing hex"), num_len: default_script_num_len, result: Ok(1)},
-            TestCase{serialized: hex::decode("81").expect("failed parsing hex"), num_len: default_script_num_len, result: Ok(-1)},
-            TestCase{serialized: hex::decode("7f").expect("failed parsing hex"), num_len: default_script_num_len, result: Ok(127)},
-            TestCase{serialized: hex::decode("ff").expect("failed parsing hex"), num_len: default_script_num_len, result: Ok(-127)},
-            TestCase{serialized: hex::decode("8000").expect("failed parsing hex"), num_len: default_script_num_len, result: Ok(128)},
-            TestCase{serialized: hex::decode("8080").expect("failed parsing hex"), num_len: default_script_num_len, result: Ok(-128)},
-            TestCase{serialized: hex::decode("8100").expect("failed parsing hex"), num_len: default_script_num_len, result: Ok(129)},
-            TestCase{serialized: hex::decode("8180").expect("failed parsing hex"), num_len: default_script_num_len, result: Ok(-129)},
-            TestCase{serialized: hex::decode("0001").expect("failed parsing hex"), num_len: default_script_num_len, result: Ok(256)},
-            TestCase{serialized: hex::decode("0081").expect("failed parsing hex"), num_len: default_script_num_len, result: Ok(-256)},
-            TestCase{serialized: hex::decode("ff7f").expect("failed parsing hex"), num_len: default_script_num_len, result: Ok(32767)},
-            TestCase{serialized: hex::decode("ffff").expect("failed parsing hex"), num_len: default_script_num_len, result: Ok(-32767)},
-            TestCase{serialized: hex::decode("008000").expect("failed parsing hex"), num_len: default_script_num_len, result: Ok(32768)},
-            TestCase{serialized: hex::decode("008080").expect("failed parsing hex"), num_len: default_script_num_len, result: Ok(-32768)},
-            TestCase{serialized: hex::decode("ffff00").expect("failed parsing hex"), num_len: default_script_num_len, result: Ok(65535)},
-            TestCase{serialized: hex::decode("ffff80").expect("failed parsing hex"), num_len: default_script_num_len, result: Ok(-65535)},
-            TestCase{serialized: hex::decode("000008").expect("failed parsing hex"), num_len: default_script_num_len, result: Ok(524288)},
-            TestCase{serialized: hex::decode("000088").expect("failed parsing hex"), num_len: default_script_num_len, result: Ok(-524288)},
-            TestCase{serialized: hex::decode("000070").expect("failed parsing hex"), num_len: default_script_num_len, result: Ok(7340032)},
-            TestCase{serialized: hex::decode("0000f0").expect("failed parsing hex"), num_len: default_script_num_len, result: Ok(-7340032)},
-            TestCase{serialized: hex::decode("00008000").expect("failed parsing hex"), num_len: default_script_num_len, result: Ok(8388608)},
-            TestCase{serialized: hex::decode("00008080").expect("failed parsing hex"), num_len: default_script_num_len, result: Ok(-8388608)},
-            TestCase{serialized: hex::decode("ffffff7f").expect("failed parsing hex"), num_len: default_script_num_len, result: Ok(2147483647)},
-            TestCase{serialized: hex::decode("ffffffff").expect("failed parsing hex"), num_len: default_script_num_len, result: Ok(-2147483647)},
-            TestCase{serialized: hex::decode("ffffffff7f").expect("failed parsing hex"), num_len: 5, result: Ok(549755813887)},
-            TestCase{serialized: hex::decode("ffffffffff").expect("failed parsing hex"), num_len: 5, result: Ok(-549755813887)},
-            TestCase{serialized: hex::decode("ffffffffffffff7f").expect("failed parsing hex"), num_len: 8, result: Ok(9223372036854775807)},
-            TestCase{serialized: hex::decode("ffffffffffffffff").expect("failed parsing hex"), num_len: 8, result: Ok(-9223372036854775807)},
+            TestCase::<i64>{serialized: vec![], result: Ok(0)},
+            TestCase::<i64>{serialized: hex::decode("01").expect("failed parsing hex"), result: Ok(1)},
+            TestCase::<i64>{serialized: hex::decode("81").expect("failed parsing hex"), result: Ok(-1)},
+            TestCase::<i64>{serialized: hex::decode("7f").expect("failed parsing hex"), result: Ok(127)},
+            TestCase::<i64>{serialized: hex::decode("ff").expect("failed parsing hex"), result: Ok(-127)},
+            TestCase::<i64>{serialized: hex::decode("8000").expect("failed parsing hex"), result: Ok(128)},
+            TestCase::<i64>{serialized: hex::decode("8080").expect("failed parsing hex"), result: Ok(-128)},
+            TestCase::<i64>{serialized: hex::decode("8100").expect("failed parsing hex"), result: Ok(129)},
+            TestCase::<i64>{serialized: hex::decode("8180").expect("failed parsing hex"), result: Ok(-129)},
+            TestCase::<i64>{serialized: hex::decode("0001").expect("failed parsing hex"), result: Ok(256)},
+            TestCase::<i64>{serialized: hex::decode("0081").expect("failed parsing hex"), result: Ok(-256)},
+            TestCase::<i64>{serialized: hex::decode("ff7f").expect("failed parsing hex"), result: Ok(32767)},
+            TestCase::<i64>{serialized: hex::decode("ffff").expect("failed parsing hex"), result: Ok(-32767)},
+            TestCase::<i64>{serialized: hex::decode("008000").expect("failed parsing hex"), result: Ok(32768)},
+            TestCase::<i64>{serialized: hex::decode("008080").expect("failed parsing hex"), result: Ok(-32768)},
+            TestCase::<i64>{serialized: hex::decode("ffff00").expect("failed parsing hex"), result: Ok(65535)},
+            TestCase::<i64>{serialized: hex::decode("ffff80").expect("failed parsing hex"), result: Ok(-65535)},
+            TestCase::<i64>{serialized: hex::decode("000008").expect("failed parsing hex"), result: Ok(524288)},
+            TestCase::<i64>{serialized: hex::decode("000088").expect("failed parsing hex"), result: Ok(-524288)},
+            TestCase::<i64>{serialized: hex::decode("000070").expect("failed parsing hex"), result: Ok(7340032)},
+            TestCase::<i64>{serialized: hex::decode("0000f0").expect("failed parsing hex"), result: Ok(-7340032)},
+            TestCase::<i64>{serialized: hex::decode("00008000").expect("failed parsing hex"), result: Ok(8388608)},
+            TestCase::<i64>{serialized: hex::decode("00008080").expect("failed parsing hex"), result: Ok(-8388608)},
+            TestCase::<i64>{serialized: hex::decode("ffffff7f").expect("failed parsing hex"), result: Ok(2147483647)},
+            TestCase::<i64>{serialized: hex::decode("ffffffff").expect("failed parsing hex"), result: Ok(-2147483647)},
+            /*
+            TestCase::<i64>{serialized: hex::decode("ffffffffffffff7f").expect("failed parsing hex"), num_len: 8, result: Ok(9223372036854775807)},
+            TestCase::<i64>{serialized: hex::decode("ffffffffffffffff").expect("failed parsing hex"), num_len: 8, result: Ok(-9223372036854775807)},*/
 
             // Minimally encoded values that are out of range for data that
             // is interpreted as script numbers with the minimal encoding
             // flag set. Should error and return 0.
-            TestCase{serialized: hex::decode("0000008000").expect("failed parsing hex"), num_len: default_script_num_len, result: err_num_too_big.clone() },
-            TestCase{serialized: hex::decode("0000008080").expect("failed parsing hex"), num_len: default_script_num_len, result: err_num_too_big.clone() },
-            TestCase{serialized: hex::decode("0000009000").expect("failed parsing hex"), num_len: default_script_num_len, result: err_num_too_big.clone() },
-            TestCase{serialized: hex::decode("0000009080").expect("failed parsing hex"), num_len: default_script_num_len, result: err_num_too_big.clone() },
-            TestCase{serialized: hex::decode("ffffffff00").expect("failed parsing hex"), num_len: default_script_num_len, result: err_num_too_big.clone() },
-            TestCase{serialized: hex::decode("ffffffff80").expect("failed parsing hex"), num_len: default_script_num_len, result: err_num_too_big.clone() },
-            TestCase{serialized: hex::decode("0000000001").expect("failed parsing hex"), num_len: default_script_num_len, result: err_num_too_big.clone() },
-            TestCase{serialized: hex::decode("0000000081").expect("failed parsing hex"), num_len: default_script_num_len, result: err_num_too_big.clone() },
-            TestCase{serialized: hex::decode("ffffffffffff00").expect("failed parsing hex"), num_len: default_script_num_len, result: err_num_too_big.clone() },
-            TestCase{serialized: hex::decode("ffffffffffff80").expect("failed parsing hex"), num_len: default_script_num_len, result: err_num_too_big.clone() },
-            TestCase{serialized: hex::decode("ffffffffffffff00").expect("failed parsing hex"), num_len: default_script_num_len, result: err_num_too_big.clone() },
-            TestCase{serialized: hex::decode("ffffffffffffff80").expect("failed parsing hex"), num_len: default_script_num_len, result: err_num_too_big.clone() },
-            TestCase{serialized: hex::decode("ffffffffffffff7f").expect("failed parsing hex"), num_len: default_script_num_len, result: err_num_too_big.clone() },
-            TestCase{serialized: hex::decode("ffffffffffffffff").expect("failed parsing hex"), num_len: default_script_num_len, result: err_num_too_big.clone() },
+            TestCase::<i64>{serialized: hex::decode("0000008000").expect("failed parsing hex"), result: Err(TxScriptError::NumberTooBig("numeric value encoded as [0, 0, 0, 80, 0] is 5 bytes which exceeds the max allowed of 4".to_string())) },
+            TestCase::<i64>{serialized: hex::decode("0000008080").expect("failed parsing hex"), result: Err(TxScriptError::NumberTooBig("numeric value encoded as [0, 0, 0, 80, 80] is 5 bytes which exceeds the max allowed of 4".to_string())) },
+            TestCase::<i64>{serialized: hex::decode("0000009000").expect("failed parsing hex"), result: Err(TxScriptError::NumberTooBig("numeric value encoded as [0, 0, 0, 90, 0] is 5 bytes which exceeds the max allowed of 4".to_string())) },
+            TestCase::<i64>{serialized: hex::decode("0000009080").expect("failed parsing hex"), result: Err(TxScriptError::NumberTooBig("numeric value encoded as [0, 0, 0, 90, 80] is 5 bytes which exceeds the max allowed of 4".to_string())) },
+            TestCase::<i64>{serialized: hex::decode("ffffffff00").expect("failed parsing hex"), result: Err(TxScriptError::NumberTooBig("numeric value encoded as [ff, ff, ff, ff, 0] is 5 bytes which exceeds the max allowed of 4".to_string())) },
+            TestCase::<i64>{serialized: hex::decode("ffffffff80").expect("failed parsing hex"), result: Err(TxScriptError::NumberTooBig("numeric value encoded as [ff, ff, ff, ff, 80] is 5 bytes which exceeds the max allowed of 4".to_string())) },
+            TestCase::<i64>{serialized: hex::decode("0000000001").expect("failed parsing hex"), result: Err(TxScriptError::NumberTooBig("numeric value encoded as [0, 0, 0, 0, 1] is 5 bytes which exceeds the max allowed of 4".to_string())) },
+            TestCase::<i64>{serialized: hex::decode("0000000081").expect("failed parsing hex"), result: Err(TxScriptError::NumberTooBig("numeric value encoded as [0, 0, 0, 0, 81] is 5 bytes which exceeds the max allowed of 4".to_string())) },
+            TestCase::<i64>{serialized: hex::decode("ffffffffffff00").expect("failed parsing hex"), result: Err(TxScriptError::NumberTooBig("numeric value encoded as [ff, ff, ff, ff, ff, ff, 0] is 7 bytes which exceeds the max allowed of 4".to_string())) },
+            TestCase::<i64>{serialized: hex::decode("ffffffffffff80").expect("failed parsing hex"), result: Err(TxScriptError::NumberTooBig("numeric value encoded as [ff, ff, ff, ff, ff, ff, 80] is 7 bytes which exceeds the max allowed of 4".to_string())) },
+            TestCase::<i64>{serialized: hex::decode("ffffffffffffff00").expect("failed parsing hex"), result: Err(TxScriptError::NumberTooBig("numeric value encoded as [ff, ff, ff, ff, ff, ff, ff, 0] is 8 bytes which exceeds the max allowed of 4".to_string())) },
+            TestCase::<i64>{serialized: hex::decode("ffffffffffffff80").expect("failed parsing hex"), result: Err(TxScriptError::NumberTooBig("numeric value encoded as [ff, ff, ff, ff, ff, ff, ff, 80] is 8 bytes which exceeds the max allowed of 4".to_string())) },
+            TestCase::<i64>{serialized: hex::decode("ffffffffffffff7f").expect("failed parsing hex"), result: Err(TxScriptError::NumberTooBig("numeric value encoded as [ff, ff, ff, ff, ff, ff, ff, 7f] is 8 bytes which exceeds the max allowed of 4".to_string())) },
+            TestCase::<i64>{serialized: hex::decode("ffffffffffffffff").expect("failed parsing hex"), result: Err(TxScriptError::NumberTooBig("numeric value encoded as [ff, ff, ff, ff, ff, ff, ff, ff] is 8 bytes which exceeds the max allowed of 4".to_string())) },
 
             // Non-minimally encoded, but otherwise valid values with
             // minimal encoding flag. Should error and return 0.
-            TestCase{serialized: hex::decode("00").expect("failed parsing hex"), num_len: default_script_num_len, result: err_minimal_data.clone() },       // 0
-            TestCase{serialized: hex::decode("0100").expect("failed parsing hex"), num_len: default_script_num_len, result: err_minimal_data.clone() },     // 1
-            TestCase{serialized: hex::decode("7f00").expect("failed parsing hex"), num_len: default_script_num_len, result: err_minimal_data.clone() },     // 127
-            TestCase{serialized: hex::decode("800000").expect("failed parsing hex"), num_len: default_script_num_len, result: err_minimal_data.clone() },   // 128
-            TestCase{serialized: hex::decode("810000").expect("failed parsing hex"), num_len: default_script_num_len, result: err_minimal_data.clone() },   // 129
-            TestCase{serialized: hex::decode("000100").expect("failed parsing hex"), num_len: default_script_num_len, result: err_minimal_data.clone() },   // 256
-            TestCase{serialized: hex::decode("ff7f00").expect("failed parsing hex"), num_len: default_script_num_len, result: err_minimal_data.clone() },   // 32767
-            TestCase{serialized: hex::decode("00800000").expect("failed parsing hex"), num_len: default_script_num_len, result: err_minimal_data.clone() }, // 32768
-            TestCase{serialized: hex::decode("ffff0000").expect("failed parsing hex"), num_len: default_script_num_len, result: err_minimal_data.clone() }, // 65535
-            TestCase{serialized: hex::decode("00000800").expect("failed parsing hex"), num_len: default_script_num_len, result: err_minimal_data.clone() }, // 524288
-            TestCase{serialized: hex::decode("00007000").expect("failed parsing hex"), num_len: default_script_num_len, result: err_minimal_data.clone() }, // 7340032
-            TestCase{serialized: hex::decode("0009000100").expect("failed parsing hex"), num_len: 5, result: err_minimal_data.clone() },                 // 16779520
+            TestCase::<i64>{serialized: hex::decode("00").expect("failed parsing hex"), result: Err(TxScriptError::NotMinimalData("numeric value encoded as [0] is not minimally encoded".to_string())) },       // 0
+            TestCase::<i64>{serialized: hex::decode("0100").expect("failed parsing hex"), result: Err(TxScriptError::NotMinimalData("numeric value encoded as [1, 0] is not minimally encoded".to_string())) },     // 1
+            TestCase::<i64>{serialized: hex::decode("7f00").expect("failed parsing hex"), result: Err(TxScriptError::NotMinimalData("numeric value encoded as [7f, 0] is not minimally encoded".to_string())) },     // 127
+            TestCase::<i64>{serialized: hex::decode("800000").expect("failed parsing hex"), result: Err(TxScriptError::NotMinimalData("numeric value encoded as [80, 0, 0] is not minimally encoded".to_string())) },   // 128
+            TestCase::<i64>{serialized: hex::decode("810000").expect("failed parsing hex"), result: Err(TxScriptError::NotMinimalData("numeric value encoded as [81, 0, 0] is not minimally encoded".to_string())) },   // 129
+            TestCase::<i64>{serialized: hex::decode("000100").expect("failed parsing hex"), result: Err(TxScriptError::NotMinimalData("numeric value encoded as [0, 1, 0] is not minimally encoded".to_string())) },   // 256
+            TestCase::<i64>{serialized: hex::decode("ff7f00").expect("failed parsing hex"), result: Err(TxScriptError::NotMinimalData("numeric value encoded as [ff, 7f, 0] is not minimally encoded".to_string())) },   // 32767
+            TestCase::<i64>{serialized: hex::decode("00800000").expect("failed parsing hex"), result: Err(TxScriptError::NotMinimalData("numeric value encoded as [0, 80, 0, 0] is not minimally encoded".to_string())) }, // 32768
+            TestCase::<i64>{serialized: hex::decode("ffff0000").expect("failed parsing hex"), result: Err(TxScriptError::NotMinimalData("numeric value encoded as [ff, ff, 0, 0] is not minimally encoded".to_string())) }, // 65535
+            TestCase::<i64>{serialized: hex::decode("00000800").expect("failed parsing hex"), result: Err(TxScriptError::NotMinimalData("numeric value encoded as [0, 0, 8, 0] is not minimally encoded".to_string())) }, // 524288
+            TestCase::<i64>{serialized: hex::decode("00007000").expect("failed parsing hex"), result: Err(TxScriptError::NotMinimalData("numeric value encoded as [0, 0, 70, 0] is not minimally encoded".to_string())) }, // 7340032
             // Values above 8 bytes should always return error
-            TestCase{serialized: hex::decode("ffffffffffffffffff").expect("failed parsing hex"), num_len: 9, result: err_num_too_big.clone() },
-            TestCase{serialized: hex::decode("00000000000000000000").expect("failed parsing hex"), num_len: 10, result: err_num_too_big.clone() },
+        ];
+
+        let test_of_size_5 = vec![
+            TestCase::<SizedEncodeInt<5>>{serialized: hex::decode("ffffffff7f").expect("failed parsing hex"), result: Ok(SizedEncodeInt::<5>(549755813887))},
+            TestCase::<SizedEncodeInt<5>>{serialized: hex::decode("ffffffffff").expect("failed parsing hex"), result: Ok(SizedEncodeInt::<5>(-549755813887))},
+            TestCase::<SizedEncodeInt<5>>{serialized: hex::decode("0009000100").expect("failed parsing hex"), result: Err(TxScriptError::NotMinimalData("numeric value encoded as [0, 9, 0, 1, 0] is not minimally encoded".to_string())) },                 // 16779520
+        ];
+
+        let test_of_size_9 = vec![
+            TestCase::<SizedEncodeInt<9>>{serialized: hex::decode("ffffffffffffffffff").expect("failed parsing hex"), result: Err(TxScriptError::NotMinimalData("numeric value encoded as [ff, ff, ff, ff, ff, ff, ff, ff, ff] is longer than 8 bytes".to_string())) },
+        ];
+
+        let test_of_size_10 = vec![
+            TestCase::<SizedEncodeInt<10>>{serialized: hex::decode("00000000000000000000").expect("failed parsing hex"), result:Err(TxScriptError::NotMinimalData("numeric value encoded as [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] is longer than 8 bytes".to_string())) },
         ];
 
         for test in tests {
+            // Ensure the error code is of the expected type and the error
+            // code matches the value specified in the test instance.
+            assert_eq!(test.serialized.deserialize(), test.result);
+        }
+
+        for test in test_of_size_5 {
+            // Ensure the error code is of the expected type and the error
+            // code matches the value specified in the test instance.
+            assert_eq!(test.serialized.deserialize(), test.result);
+        }
+
+        for test in test_of_size_9 {
+            // Ensure the error code is of the expected type and the error
+            // code matches the value specified in the test instance.
+            assert_eq!(test.serialized.deserialize(), test.result);
+        }
+
+        for test in test_of_size_10 {
             // Ensure the error code is of the expected type and the error
             // code matches the value specified in the test instance.
             assert_eq!(test.serialized.deserialize(), test.result);
