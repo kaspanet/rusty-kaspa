@@ -3,14 +3,17 @@ use core::mem::size_of;
 #[macro_use]
 mod macros;
 
-use crate::{MAX_OPS_PER_SCRIPT, ScriptSource, TxScriptEngine, TxScriptError, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK, LOCK_TIME_THRESHOLD, MAX_TX_IN_SEQUENCE_NUM, MAX_PUB_KEYS_PER_MUTLTISIG};
-use crate::data_stack::{OpcodeData,DataStack};
+use crate::data_stack::{DataStack, OpcodeData};
+use crate::{
+    ScriptSource, TxScriptEngine, TxScriptError, LOCK_TIME_THRESHOLD, MAX_OPS_PER_SCRIPT, MAX_PUB_KEYS_PER_MUTLTISIG,
+    MAX_TX_IN_SEQUENCE_NUM, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK,
+};
 use blake2b_simd::Params;
 use consensus_core::hashing::sighash_type::SigHashType;
+use consensus_core::tx::VerifiableTransaction;
 use core::cmp::{max, min};
 use sha2::{Digest, Sha256};
 use std::fmt::{Debug, Formatter};
-use consensus_core::tx::VerifiableTransaction;
 
 type OpCodeResult = Result<(), TxScriptError>;
 
@@ -36,23 +39,29 @@ pub trait OpCodeMetadata: Debug {
 }
 
 pub trait OpCodeExecution<T: VerifiableTransaction> {
-    fn empty() -> Box<dyn OpCodeImplementation<T>> where Self: Sized;
-    fn new(data: Vec<u8>) -> Box<dyn OpCodeImplementation<T>> where Self: Sized;
+    fn empty() -> Box<dyn OpCodeImplementation<T>>
+    where
+        Self: Sized;
+    #[allow(clippy::new_ret_no_self)]
+    fn new(data: Vec<u8>) -> Box<dyn OpCodeImplementation<T>>
+    where
+        Self: Sized;
 
     fn execute(&self, vm: &mut TxScriptEngine<T>) -> OpCodeResult;
 }
 
-
 pub trait OpcodeSerialization {
     fn serialize(&self) -> [&u8];
-    fn deserialize<'i, I: Iterator<Item = &'i u8>>(it: &mut I) -> Result<Box<dyn OpcodeSerialization>, TxScriptError> where Self: Sized;
+    fn deserialize<'i, I: Iterator<Item = &'i u8>>(it: &mut I) -> Result<Box<dyn OpcodeSerialization>, TxScriptError>
+    where
+        Self: Sized;
 }
 
 pub trait OpCodeImplementation<T: VerifiableTransaction>: OpCodeExecution<T> + OpCodeMetadata {}
 
 impl<const CODE: u8> OpCodeMetadata for OpCode<CODE> {
     fn value(&self) -> u8 {
-        return CODE;
+        CODE
     }
 
     fn len(&self) -> usize {
@@ -70,46 +79,43 @@ impl<const CODE: u8> OpCodeMetadata for OpCode<CODE> {
 
         if data_len == 0 {
             if opcode != codes::OpFalse {
-                return Err(TxScriptError::NotMinimalData(
-                    format!("zero length data push is encoded with \
-                                    opcode {:?} instead of OpFalse", self)
-                ));
+                return Err(TxScriptError::NotMinimalData(format!(
+                    "zero length data push is encoded with opcode {self:?} instead of OpFalse"
+                )));
             }
-        } else if data_len == 1 &&  self.data[0] >= 1 && self.data[0] <= 16 {
-            if opcode != codes::OpTrue + self.data[0]-1 {
-                return Err(TxScriptError::NotMinimalData(
-                    format!("zero length data push is encoded with \
-                                    opcode {:?} instead of Op_{}", self, self.data[0])
-                ));
+        } else if data_len == 1 && self.data[0] >= 1 && self.data[0] <= 16 {
+            if opcode != codes::OpTrue + self.data[0] - 1 {
+                return Err(TxScriptError::NotMinimalData(format!(
+                    "zero length data push is encoded with opcode {:?} instead of Op_{}",
+                    self, self.data[0]
+                )));
             }
         } else if data_len == 1 && self.data[0] == 0x81 {
             if opcode != codes::Op1Negate {
-                return Err(TxScriptError::NotMinimalData(
-                    format!("data push of the value -1 encoded \
-                                    with opcode {:?} instead of OP_1NEGATE", self)
-                ));
+                return Err(TxScriptError::NotMinimalData(format!(
+                    "data push of the value -1 encoded \
+                                    with opcode {self:?} instead of OP_1NEGATE"
+                )));
             }
         } else if data_len <= 75 {
             if opcode as usize != data_len {
-                return Err(TxScriptError::NotMinimalData(
-                    format!("data push of {} bytes encoded \
-                                    with opcode {:?} instead of OP_DATA_{}", data_len, self, data_len)
-                ));
+                return Err(TxScriptError::NotMinimalData(format!(
+                    "data push of {data_len} bytes encoded \
+                                    with opcode {self:?} instead of OP_DATA_{data_len}"
+                )));
             }
         } else if data_len <= 255 {
             if opcode != codes::OpPushData1 {
-                return Err(TxScriptError::NotMinimalData(
-                    format!("data push of {} bytes encoded \
-                                    with opcode {:?} instead of OP_PUSHDATA1", data_len, self)
-                ));
+                return Err(TxScriptError::NotMinimalData(format!(
+                    "data push of {data_len} bytes encoded \
+                                    with opcode {self:?} instead of OP_PUSHDATA1"
+                )));
             }
-        } else if data_len < 65535 {
-            if opcode != codes::OpPushData2 {
-                return Err(TxScriptError::NotMinimalData(
-                    format!("data push of {} bytes encoded \
-                                    with opcode {:?} instead of OP_PUSHDATA2", data_len, self)
-                ));
-            }
+        } else if data_len < 65535 && opcode != codes::OpPushData2 {
+            return Err(TxScriptError::NotMinimalData(format!(
+                "data push of {data_len} bytes encoded \
+                                with opcode {self:?} instead of OP_PUSHDATA2"
+            )));
         }
         Ok(())
     }
@@ -130,7 +136,7 @@ fn push_number<T: VerifiableTransaction>(number: i64, vm: &mut TxScriptEngine<T>
 
 /*
 The following is the implementation and metadata of all opcodes. Each opcode has unique
-number (and templating system makes it impossible to use two opcodes), length specification,
+number (and template system makes it impossible to use two opcodes), length specification,
 and execution code.
 
 The syntax is as follows:
@@ -239,7 +245,7 @@ opcode_list! {
 
     opcode Op1Negate<0x4f, 1>(self, vm) push_number(-1, vm)
 
-    opcode OpReserved<0x50, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{:?}", self)))
+    opcode OpReserved<0x50, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
 
     opcode OpTrue<0x51, 1>(self, vm) push_number(1, vm)
     opcode Op2<0x52, 1>(self, vm) push_number(2, vm)
@@ -260,7 +266,7 @@ opcode_list! {
 
     // Control opcodes.
     opcode OpNop<0x61, 1>(self, vm) Ok(())
-    opcode OpVer<0x62, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{:?}", self)))
+    opcode OpVer<0x62, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
 
     opcode OpIf<0x63, 1>(self, vm) {
         let mut cond = 0;
@@ -306,8 +312,8 @@ opcode_list! {
         Ok(())
     }
 
-    opcode OpVerIf<0x65, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{:?}", self)))
-    opcode OpVerNotIf<0x66, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{:?}", self)))
+    opcode OpVerIf<0x65, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
+    opcode OpVerNotIf<0x66, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
 
     opcode OpElse<0x67, 1>(self, vm) {
         if let Some(cond) = vm.cond_stack.last_mut() {
@@ -421,10 +427,10 @@ opcode_list! {
     }
 
     // Splice opcodes.
-    opcode OpCat<0x7e, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{:?}", self)))
-    opcode OpSubStr<0x7f, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{:?}", self)))
-    opcode OpLeft<0x80, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{:?}", self)))
-    opcode OpRight<0x81, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{:?}", self)))
+    opcode OpCat<0x7e, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
+    opcode OpSubStr<0x7f, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
+    opcode OpLeft<0x80, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
+    opcode OpRight<0x81, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
 
     opcode OpSize<0x82, 1>(self, vm) {
         match vm.dstack.last() {
@@ -437,10 +443,10 @@ opcode_list! {
     }
 
     // Bitwise logic opcodes.
-    opcode OpInvert<0x83, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{:?}", self)))
-    opcode OpAnd<0x84, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{:?}", self)))
-    opcode OpOr<0x85, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{:?}", self)))
-    opcode OpXor<0x86, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{:?}", self)))
+    opcode OpInvert<0x83, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
+    opcode OpAnd<0x84, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
+    opcode OpOr<0x85, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
+    opcode OpXor<0x86, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
 
     opcode OpEqual<0x87, 1>(self, vm) {
         match vm.dstack.len() >= 2 {
@@ -469,8 +475,8 @@ opcode_list! {
         }
     }
 
-    opcode OpReserved1<0x89, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{:?}", self)))
-    opcode OpReserved2<0x8a, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{:?}", self)))
+    opcode OpReserved1<0x89, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
+    opcode OpReserved2<0x8a, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
 
     // Numeric related opcodes.
     opcode Op1Add<0x8b, 1>(self, vm) {
@@ -485,8 +491,8 @@ opcode_list! {
         Ok(())
     }
 
-    opcode Op2Mul<0x8d, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{:?}", self)))
-    opcode Op2Div<0x8e, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{:?}", self)))
+    opcode Op2Mul<0x8d, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
+    opcode Op2Div<0x8e, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
 
     opcode OpNegate<0x8f, 1>(self, vm) {
         let [value]: [i64; 1] = vm.dstack.pop_item()?;
@@ -524,11 +530,11 @@ opcode_list! {
         Ok(())
     }
 
-    opcode OpMul<0x95, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{:?}", self)))
-    opcode OpDiv<0x96, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{:?}", self)))
-    opcode OpMod<0x97, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{:?}", self)))
-    opcode OpLShift<0x98, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{:?}", self)))
-    opcode OpRShift<0x99, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{:?}", self)))
+    opcode OpMul<0x95, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
+    opcode OpDiv<0x96, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
+    opcode OpMod<0x97, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
+    opcode OpLShift<0x98, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
+    opcode OpRShift<0x99, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
 
     opcode OpBoolAnd<0x9a, 1>(self, vm) {
         let [a,b]: [i64; 2] = vm.dstack.pop_item()?;
@@ -605,8 +611,8 @@ opcode_list! {
     }
 
     // Undefined opcodes.
-    opcode OpUnknown166<0xa6, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown167<0xa7, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
+    opcode OpUnknown166<0xa6, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown167<0xa7, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
 
     // Crypto opcodes.
     opcode OpSHA256<0xa8, 1>(self, vm) {
@@ -620,9 +626,9 @@ opcode_list! {
     opcode OpCheckMultiSigECDSA<0xa9, 1>(self, vm) {
         let [num_keys]: [i32; 1] = vm.dstack.pop_item()?;
         if num_keys < 0 {
-            return Err(TxScriptError::InvalidPubKeyCount(format!("number of pubkeys {} is negative", num_keys)));
+            return Err(TxScriptError::InvalidPubKeyCount(format!("number of pubkeys {num_keys} is negative")));
         } else if num_keys > MAX_PUB_KEYS_PER_MUTLTISIG {
-            return Err(TxScriptError::InvalidPubKeyCount(format!("too many pubkeys {} > {}", num_keys, MAX_PUB_KEYS_PER_MUTLTISIG)));
+            return Err(TxScriptError::InvalidPubKeyCount(format!("too many pubkeys {num_keys} > {MAX_PUB_KEYS_PER_MUTLTISIG}")));
         }
         let num_keys_usize = num_keys as usize;
 
@@ -640,9 +646,9 @@ opcode_list! {
 
         let [num_sigs]: [i32; 1] = vm.dstack.pop_item()?;
         if num_sigs < 0 {
-            return Err(TxScriptError::InvalidSignatureCount(format!("number of signatures {} is negative", num_sigs)));
+            return Err(TxScriptError::InvalidSignatureCount(format!("number of signatures {num_sigs} is negative")));
         } else if num_sigs > num_keys {
-            return Err(TxScriptError::InvalidSignatureCount(format!("more signatures than pubkeys {} > {}", num_sigs, num_keys)));
+            return Err(TxScriptError::InvalidSignatureCount(format!("more signatures than pubkeys {num_sigs} > {num_keys}")));
         }
         let num_sigs_usize = num_sigs as usize;
 
@@ -745,7 +751,7 @@ opcode_list! {
     }
 
     opcode OpCheckSigVerify<0xad, 1>(self, vm) {
-        // TODO: when chaging impl to array based, change this too
+        // TODO: when changing impl to array based, change this too
         OpCheckSig{data: self.data.clone()}.execute(vm)?;
         let [valid]: [bool; 1] = vm.dstack.pop_item()?;
         match valid {
@@ -757,9 +763,9 @@ opcode_list! {
     opcode OpCheckMultiSig<0xae, 1>(self, vm) {
         let [num_keys]: [i32; 1] = vm.dstack.pop_item()?;
         if num_keys < 0 {
-            return Err(TxScriptError::InvalidPubKeyCount(format!("number of pubkeys {} is negative", num_keys)));
+            return Err(TxScriptError::InvalidPubKeyCount(format!("number of pubkeys {num_keys} is negative")));
         } else if num_keys > MAX_PUB_KEYS_PER_MUTLTISIG {
-            return Err(TxScriptError::InvalidPubKeyCount(format!("too many pubkeys {} > {}", num_keys, MAX_PUB_KEYS_PER_MUTLTISIG)));
+            return Err(TxScriptError::InvalidPubKeyCount(format!("too many pubkeys {num_keys} > {MAX_PUB_KEYS_PER_MUTLTISIG}")));
         }
         let num_keys_usize = num_keys as usize;
 
@@ -777,9 +783,9 @@ opcode_list! {
 
         let [num_sigs]: [i32; 1] = vm.dstack.pop_item()?;
         if num_sigs < 0 {
-            return Err(TxScriptError::InvalidSignatureCount(format!("number of signatures {} is negative", num_sigs)));
+            return Err(TxScriptError::InvalidSignatureCount(format!("number of signatures {num_sigs} is negative")));
         } else if num_sigs > num_keys {
-            return Err(TxScriptError::InvalidSignatureCount(format!("more signatures than pubkeys {} > {}", num_sigs, num_keys)));
+            return Err(TxScriptError::InvalidSignatureCount(format!("more signatures than pubkeys {num_sigs} > {num_keys}")));
         }
         let num_sigs_usize = num_sigs as usize;
 
@@ -825,7 +831,7 @@ opcode_list! {
     }
 
     opcode OpCheckMultiSigVerify<0xaf, 1>(self, vm) {
-        // TODO: when chaging impl to array based, change this too
+        // TODO: when changing impl to array based, change this too
         OpCheckMultiSig{data: self.data.clone()}.execute(vm)?;
         let [valid]: [bool; 1] = vm.dstack.pop_item()?;
         match valid {
@@ -840,18 +846,18 @@ opcode_list! {
                 let [mut lock_time_bytes] = vm.dstack.pop_raw()?;
 
                 // Make sure lockTimeBytes is exactly 8 bytes.
-	            // If more - return ErrNumberTooBig
-	            // If less - pad with 0's
+                // If more - return ErrNumberTooBig
+                // If less - pad with 0's
                 if lock_time_bytes.len() > 8 {
-                    return Err(TxScriptError::NumberTooBig(format!("lockTime value represented as {:x?} is longer then 8 bytes", lock_time_bytes)))
+                    return Err(TxScriptError::NumberTooBig(format!("lockTime value represented as {lock_time_bytes:x?} is longer then 8 bytes")))
                 }
                 lock_time_bytes.resize(8, 0);
                 let stack_lock_time = u64::from_le_bytes(lock_time_bytes.try_into().expect("checked vector size"));
 
                 // The lock time field of a transaction is either a DAA score at
-	            // which the transaction is finalized or a timestamp depending on if the
-	            // value is before the constants.LockTimeThreshold. When it is under the
-	            // threshold it is a DAA score.
+                // which the transaction is finalized or a timestamp depending on if the
+                // value is before the constants.LockTimeThreshold. When it is under the
+                // threshold it is a DAA score.
                 if !(
                     (tx.tx().lock_time < LOCK_TIME_THRESHOLD && stack_lock_time < LOCK_TIME_THRESHOLD) ||
                     (tx.tx().lock_time >= LOCK_TIME_THRESHOLD && stack_lock_time >= LOCK_TIME_THRESHOLD)
@@ -892,13 +898,13 @@ opcode_list! {
                 let [mut sequence_bytes] = vm.dstack.pop_raw()?;
 
                 // Make sure sequenceBytes is exactly 8 bytes.
-	            // If more - return ErrNumberTooBig
-	            // If less - pad with 0's
+                // If more - return ErrNumberTooBig
+                // If less - pad with 0's
                 if sequence_bytes.len() > 8 {
-                    return Err(TxScriptError::NumberTooBig(format!("lockTime value represented as {:x?} is longer then 8 bytes", sequence_bytes)))
+                    return Err(TxScriptError::NumberTooBig(format!("lockTime value represented as {sequence_bytes:x?} is longer then 8 bytes")))
                 }
                 // Don't use makeScriptNum here, since sequence is not an actual number, minimal encoding rules don't apply to it,
-	            // and is more convenient to be represented as an unsigned int.
+                // and is more convenient to be represented as an unsigned int.
                 sequence_bytes.resize(8, 0);
                 let stack_sequence = u64::from_le_bytes(sequence_bytes.try_into().expect("ensured size checks"));
 
@@ -928,113 +934,122 @@ opcode_list! {
     }
 
     // Undefined opcodes.
-    opcode OpUnknown178<0xb2, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown179<0xb3, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown180<0xb4, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown181<0xb5, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown182<0xb6, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown183<0xb7, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown184<0xb8, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown185<0xb9, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown186<0xba, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown187<0xbb, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown188<0xbc, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown189<0xbd, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown190<0xbe, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown191<0xbf, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown192<0xc0, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown193<0xc1, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown194<0xc2, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown195<0xc3, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown196<0xc4, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown197<0xc5, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown198<0xc6, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown199<0xc7, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown200<0xc8, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown201<0xc9, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown202<0xca, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown203<0xcb, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown204<0xcc, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown205<0xcd, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown206<0xce, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown207<0xcf, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown208<0xd0, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown209<0xd1, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown210<0xd2, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown211<0xd3, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown212<0xd4, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown213<0xd5, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown214<0xd6, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown215<0xd7, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown216<0xd8, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown217<0xd9, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown218<0xda, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown219<0xdb, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown220<0xdc, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown221<0xdd, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown222<0xde, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown223<0xdf, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown224<0xe0, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown225<0xe1, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown226<0xe2, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown227<0xe3, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown228<0xe4, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown229<0xe5, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown230<0xe6, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown231<0xe7, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown232<0xe8, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown233<0xe9, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown234<0xea, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown235<0xeb, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown236<0xec, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown237<0xed, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown238<0xee, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown239<0xef, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown240<0xf0, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown241<0xf1, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown242<0xf2, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown243<0xf3, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown244<0xf4, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown245<0xf5, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown246<0xf6, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown247<0xf7, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown248<0xf8, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown249<0xf9, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
+    opcode OpUnknown178<0xb2, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown179<0xb3, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown180<0xb4, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown181<0xb5, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown182<0xb6, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown183<0xb7, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown184<0xb8, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown185<0xb9, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown186<0xba, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown187<0xbb, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown188<0xbc, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown189<0xbd, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown190<0xbe, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown191<0xbf, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown192<0xc0, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown193<0xc1, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown194<0xc2, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown195<0xc3, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown196<0xc4, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown197<0xc5, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown198<0xc6, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown199<0xc7, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown200<0xc8, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown201<0xc9, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown202<0xca, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown203<0xcb, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown204<0xcc, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown205<0xcd, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown206<0xce, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown207<0xcf, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown208<0xd0, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown209<0xd1, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown210<0xd2, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown211<0xd3, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown212<0xd4, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown213<0xd5, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown214<0xd6, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown215<0xd7, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown216<0xd8, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown217<0xd9, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown218<0xda, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown219<0xdb, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown220<0xdc, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown221<0xdd, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown222<0xde, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown223<0xdf, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown224<0xe0, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown225<0xe1, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown226<0xe2, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown227<0xe3, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown228<0xe4, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown229<0xe5, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown230<0xe6, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown231<0xe7, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown232<0xe8, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown233<0xe9, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown234<0xea, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown235<0xeb, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown236<0xec, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown237<0xed, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown238<0xee, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown239<0xef, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown240<0xf0, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown241<0xf1, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown242<0xf2, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown243<0xf3, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown244<0xf4, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown245<0xf5, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown246<0xf6, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown247<0xf7, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown248<0xf8, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown249<0xf9, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
 
-    opcode OpSmallInteger<0xfa, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpPubKeys<0xfb, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpUnknown252<0xfc, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpPubKeyHash<0xfd, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpPubKey<0xfe, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
-    opcode OpInvalidOpCode<0xff, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{:?}", self)))
+    opcode OpSmallInteger<0xfa, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpPubKeys<0xfb, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpUnknown252<0xfc, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpPubKeyHash<0xfd, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpPubKey<0xfe, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpInvalidOpCode<0xff, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
 }
 
 #[cfg(test)]
 mod test {
-    use consensus_core::hashing::sighash::SigHashReusedValues;
-    use consensus_core::tx::{PopulatedTransaction};
-    use crate::opcodes::{OpCodeImplementation, OpCodeExecution};
-    use crate::{opcodes, TxScriptEngine, TxScriptError};
     use crate::caches::Cache;
+    use crate::opcodes::{OpCodeExecution, OpCodeImplementation};
+    use crate::{opcodes, TxScriptEngine, TxScriptError};
+    use consensus_core::hashing::sighash::SigHashReusedValues;
+    use consensus_core::tx::PopulatedTransaction;
 
     #[test]
     fn test_opcode_disabled() {
         let tests: Vec<Box<dyn OpCodeImplementation<PopulatedTransaction>>> = vec![
-            opcodes::OpCat::empty(), opcodes::OpSubStr::empty(), opcodes::OpLeft::empty(),
-            opcodes::OpRight::empty(), opcodes::OpInvert::empty(), opcodes::OpAnd::empty(),
-            opcodes::OpOr::empty(), opcodes::Op2Mul::empty(), opcodes::Op2Div::empty(),
-            opcodes::OpMul::empty(), opcodes::OpDiv::empty(), opcodes::OpMod::empty(),
-            opcodes::OpLShift::empty(), opcodes::OpRShift::empty(),
+            opcodes::OpCat::empty(),
+            opcodes::OpSubStr::empty(),
+            opcodes::OpLeft::empty(),
+            opcodes::OpRight::empty(),
+            opcodes::OpInvert::empty(),
+            opcodes::OpAnd::empty(),
+            opcodes::OpOr::empty(),
+            opcodes::Op2Mul::empty(),
+            opcodes::Op2Div::empty(),
+            opcodes::OpMul::empty(),
+            opcodes::OpDiv::empty(),
+            opcodes::OpMod::empty(),
+            opcodes::OpLShift::empty(),
+            opcodes::OpRShift::empty(),
         ];
 
         let cache = Cache::new(10_000);
         let mut reused_values = SigHashReusedValues::new();
-        let mut vm = TxScriptEngine::new_empty(&mut reused_values, & cache);
+        let mut vm = TxScriptEngine::new_empty(&mut reused_values, &cache);
 
         for pop in tests {
             match pop.execute(&mut vm) {
-                Err(TxScriptError::OpcodeDisabled(_)) => {},
-                _ => panic!("Opcode {:?} should be disabled", pop)
+                Err(TxScriptError::OpcodeDisabled(_)) => {}
+                _ => panic!("Opcode {pop:?} should be disabled"),
             }
         }
     }
