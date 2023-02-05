@@ -16,7 +16,8 @@ members = [
     "rpc/core",
     "rpc/grpc",
     "mining",
-    "p2p",
+    "protocol/p2p",
+    "protocol/flows",
     "crypto/txscript",
     "crypto/txscript/errors",
 ]
@@ -44,6 +45,8 @@ pow = { path = "consensus/pow" }
 kaspa-utils = { path = "utils" }
 rpc-core = { path = "rpc/core" }
 rpc-grpc = { path = "rpc/grpc" }
+p2p-lib = { path = "protocol/p2p" }
+p2p-flows = { path = "protocol/flows" }
 mining = { path = "mining" }
 txscript = { path = "crypto/txscript" }
 txscript-errors = { path = "crypto/txscript/errors" }

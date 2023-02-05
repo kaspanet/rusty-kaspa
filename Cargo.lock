@@ -1560,24 +1560,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-p2p"
-version = "0.1.0"
-dependencies = [
- "ctrlc",
- "futures",
- "h2",
- "kaspa-core",
- "lockfree",
- "log",
- "prost",
- "tokio",
- "tokio-stream",
- "tonic",
- "tonic-build",
- "uuid 1.2.2",
-]
-
-[[package]]
 name = "kaspa-utils"
 version = "0.1.0"
 dependencies = [
@@ -1614,6 +1596,7 @@ dependencies = [
  "kaspa-core",
  "log",
  "num-format",
+ "p2p-flows",
  "rand 0.8.5",
  "rand_distr",
  "rayon",
@@ -2127,6 +2110,40 @@ name = "owned-alloc"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "30fceb411f9a12ff9222c5f824026be368ff15dc2f13468d850c7d3f502205d6"
+
+[[package]]
+name = "p2p-flows"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "consensus-core",
+ "futures",
+ "kaspa-core",
+ "kaspa-utils",
+ "log",
+ "p2p-lib",
+ "tokio",
+ "tokio-stream",
+ "uuid 1.2.2",
+]
+
+[[package]]
+name = "p2p-lib"
+version = "0.1.0"
+dependencies = [
+ "ctrlc",
+ "futures",
+ "h2",
+ "kaspa-core",
+ "lockfree",
+ "log",
+ "prost",
+ "tokio",
+ "tokio-stream",
+ "tonic",
+ "tonic-build",
+ "uuid 1.2.2",
+]
 
 [[package]]
 name = "parking"
