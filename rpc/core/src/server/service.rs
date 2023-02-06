@@ -49,6 +49,8 @@ pub struct RpcCoreService {
     notifier: Arc<Notifier<ChannelConnection>>,
 }
 
+const RPC_CORE: &str = "rpc-core";
+
 impl RpcCoreService {
     pub fn new(consensus: DynConsensus, consensus_recv: ConsensusNotificationReceiver) -> Self {
         // TODO: instead of getting directly a DynConsensus, rely on some Context equivalent
@@ -58,7 +60,7 @@ impl RpcCoreService {
         let collector = Arc::new(ConsensusCollector::new(consensus_recv));
 
         // TODO: Some consensus-compatible subscriber could be provided here
-        let notifier = Arc::new(Notifier::new(Some(collector), None, ListenerUtxoNotificationFilterSetting::All));
+        let notifier = Arc::new(Notifier::new(Some(collector), None, ListenerUtxoNotificationFilterSetting::All, RPC_CORE));
 
         Self { consensus, notifier }
     }

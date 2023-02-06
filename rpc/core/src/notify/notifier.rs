@@ -39,8 +39,9 @@ where
         collector: Option<DynCollector<T>>,
         subscriber: Option<Subscriber>,
         sending_changed_utxos: ListenerUtxoNotificationFilterSetting,
+        name: &'static str,
     ) -> Self {
-        Self { inner: Arc::new(Inner::new(collector, subscriber, sending_changed_utxos)) }
+        Self { inner: Arc::new(Inner::new(collector, subscriber, sending_changed_utxos, name)) }
     }
 
     pub fn start(self: Arc<Self>) {
@@ -87,13 +88,23 @@ where
     T: Connection,
 {
     async fn start_notify(self: Arc<Self>, id: ListenerID, notification_type: NotificationType) -> RpcResult<()> {
-        trace!("[Notifier] as subscription manager start sending to listener {0} notifications of type {1:?}", id, notification_type);
+        trace!(
+            "[Notifier-{}] as subscription manager start sending to listener {} notifications of type {:?}",
+            self.inner.name,
+            id,
+            notification_type
+        );
         self.inner.clone().start_notify(id, notification_type)?;
         Ok(())
     }
 
     async fn stop_notify(self: Arc<Self>, id: ListenerID, notification_type: NotificationType) -> RpcResult<()> {
-        trace!("[Notifier] as subscription manager stop sending to listener {0} notifications of type {1:?}", id, notification_type);
+        trace!(
+            "[Notifier-{}] as subscription manager stop sending to listener {} notifications of type {:?}",
+            self.inner.name,
+            id,
+            notification_type
+        );
         self.inner.clone().stop_notify(id, notification_type)?;
         Ok(())
     }
@@ -120,6 +131,9 @@ where
 
     /// How to handle UtxoChanged notifications
     sending_changed_utxos: ListenerUtxoNotificationFilterSetting,
+
+    /// Name of the notifier
+    pub name: &'static str,
 }
 
 impl<T> Inner<T>
@@ -130,6 +144,7 @@ where
         collector: Option<DynCollector<T>>,
         subscriber: Option<Subscriber>,
         sending_changed_utxos: ListenerUtxoNotificationFilterSetting,
+        name: &'static str,
     ) -> Self {
         let subscriber = subscriber.map(Arc::new);
         Self {
@@ -140,6 +155,7 @@ where
             collector: Arc::new(collector),
             subscriber: Arc::new(subscriber),
             sending_changed_utxos,
+            name,
         }
     }
 
@@ -157,9 +173,9 @@ where
             if let Some(ref collector) = self.collector.clone().as_ref() {
                 collector.clone().start(notifier);
             }
-            trace!("[Notifier] started");
+            trace!("[Notifier-{}] started", self.name);
         } else {
-            trace!("[Notifier] start ignored since already started");
+            trace!("[Notifier-{}] start ignored since already started", self.name);
         }
     }
 
@@ -183,16 +199,17 @@ where
         let has_subscriber = self.subscriber.clone().as_ref().is_some();
 
         let sending_changed_utxos = self.sending_changed_utxos;
+        let name: &'static str = self.name;
 
         workflow_core::task::spawn(async move {
-            trace!("[Notifier] dispatcher_task starting for notification type {:?}", event);
+            trace!("[Notifier-{}] dispatcher_task starting for notification type {:?}", name, event);
 
-            fn send_subscribe_message(send_subscriber: Sender<SubscribeMessage>, message: SubscribeMessage) {
-                trace!("[Notifier] dispatcher_task send subscribe message: {:?}", message);
+            fn send_subscribe_message(send_subscriber: Sender<SubscribeMessage>, message: SubscribeMessage, name: &'static str) {
+                trace!("[Notifier-{name}] dispatcher_task send subscribe message: {:?}", message);
                 match send_subscriber.try_send(message) {
                     Ok(_) => {}
                     Err(err) => {
-                        trace!("[Notifier] sending subscribe message error: {:?}", err);
+                        trace!("[Notifier-{name}] sending subscribe message error: {:?}", err);
                     }
                 }
             }
@@ -215,9 +232,17 @@ where
                     if listeners.len() > 0 {
                         // TODO: handle actual utxo address set
 
-                        send_subscribe_message(send_subscriber.as_ref().unwrap().clone(), SubscribeMessage::StartEvent(event.into()));
+                        send_subscribe_message(
+                            send_subscriber.as_ref().unwrap().clone(),
+                            SubscribeMessage::StartEvent(event.into()),
+                            name,
+                        );
                     } else {
-                        send_subscribe_message(send_subscriber.as_ref().unwrap().clone(), SubscribeMessage::StopEvent(event.into()));
+                        send_subscribe_message(
+                            send_subscriber.as_ref().unwrap().clone(),
+                            SubscribeMessage::StopEvent(event.into()),
+                            name,
+                        );
                     }
                 }
                 let dispatch = dispatch_rx.recv().await.unwrap();
@@ -236,9 +261,12 @@ where
                                         if let Some(listener_notification) = listener.build_utxos_changed_notification(notification) {
                                             let message = T::into_message(&listener_notification, variant);
                                             match listener.try_send(message) {
-                                                Ok(_) => {}
+                                                Ok(_) => {
+                                                    trace!("[Notifier-{name}] dispatcher_task sent notification {notification} to listener {id}");
+                                                }
                                                 Err(_) => {
                                                     if listener.is_closed() {
+                                                        trace!("[Notifier-{name}] dispatcher_task could not send a notification to listener {id} because it is closed - removing it");
                                                         purge.push(*id);
                                                     }
                                                 }
@@ -253,9 +281,12 @@ where
                                     let message = T::into_message(notification, variant);
                                     for (id, listener) in listener_set.iter() {
                                         match listener.try_send(message.clone()) {
-                                            Ok(_) => {}
+                                            Ok(_) => {
+                                                trace!("[Notifier-{name}] dispatcher_task sent notification {notification} to listener {id}");
+                                            }
                                             Err(_) => {
                                                 if listener.is_closed() {
+                                                    trace!("[Notifier-{name}] dispatcher_task could not send a notification to listener {id} because it is closed - removing it");
                                                     purge.push(*id);
                                                 }
                                             }
@@ -295,7 +326,7 @@ where
                 }
             }
             shutdown_trigger.trigger();
-            trace!("[Notifier] dispatcher_task exiting for notification type {:?}", event);
+            trace!("[Notifier-{name}] dispatcher_task exiting for notification type {:?}", event);
         });
     }
 
@@ -342,7 +373,7 @@ where
         let event: EventType = (&notification_type).into();
         let mut listeners = self.listeners.lock().unwrap();
         if let Some(listener) = listeners.get_mut(&id) {
-            trace!("[Notifier] start notifying to {0} about {1:?}", id, notification_type);
+            trace!("[Notifier-{}] start notifying to {id} about {:?}", self.name, notification_type);
 
             // Any mutation in the listener will trigger a dispatch of a brand new ListenerSenderSide
             // eventually creating or replacing this listener in the matching dispatcher.
@@ -368,7 +399,7 @@ where
         let mut listeners = self.listeners.lock().unwrap();
         if let Some(listener) = listeners.get_mut(&id) {
             if listener.toggle(notification_type.clone(), false) {
-                trace!("[Notifier] stop notifying to {0} about {1:?}", id, notification_type);
+                trace!("[Notifier-{}] stop notifying to {id} about {:?}", self.name, notification_type);
                 let msg = DispatchMessage::RemoveListener(listener.id());
                 self.clone().try_send_dispatch(event, msg)?;
             }
@@ -409,10 +440,10 @@ where
                 subscriber.clone().stop().await?;
             }
         } else {
-            trace!("[Notifier] stop ignored since already stopped");
+            trace!("[Notifier-{}] stop ignored since already stopped", self.name);
             return Err(Error::AlreadyStoppedError);
         }
-        trace!("[Notifier] stopped");
+        trace!("[Notifier-{}] stopped", self.name);
         Ok(())
     }
 }

@@ -61,6 +61,8 @@ pub struct GrpcService {
     notifier: Arc<Notifier<GrpcConnection>>,
 }
 
+const GRPC_SERVER: &str = "grpc-server";
+
 impl GrpcService {
     pub fn new(core_service: Arc<RpcCoreService>) -> Self {
         // Prepare core objects
@@ -72,8 +74,12 @@ impl GrpcService {
         let collector = Arc::new(GrpcServiceCollector::new(core_channel.receiver()));
         let subscription_manager: DynSubscriptionManager = core_service.notifier();
         let subscriber = Subscriber::new(subscription_manager, core_listener_id);
-        let notifier: Arc<Notifier<GrpcConnection>> =
-            Arc::new(Notifier::new(Some(collector), Some(subscriber), ListenerUtxoNotificationFilterSetting::FilteredByAddress));
+        let notifier: Arc<Notifier<GrpcConnection>> = Arc::new(Notifier::new(
+            Some(collector),
+            Some(subscriber),
+            ListenerUtxoNotificationFilterSetting::FilteredByAddress,
+            GRPC_SERVER,
+        ));
         let connection_manager = Arc::new(RwLock::new(GrpcConnectionManager::new(notifier.clone())));
 
         Self { core_service, core_channel, core_listener_id, connection_manager, notifier }

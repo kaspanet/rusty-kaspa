@@ -50,6 +50,8 @@ pub struct GrpcClient {
     notifier: Arc<Notifier<ChannelConnection>>,
 }
 
+const GRPC_CLIENT: &str = "grpc-client";
+
 impl GrpcClient {
     pub async fn connect(address: String, reconnect: bool) -> Result<GrpcClient> {
         let notify_channel = NotificationChannel::default();
@@ -57,8 +59,12 @@ impl GrpcClient {
         let collector = Arc::new(RpcCoreCollector::new(notify_channel.receiver()));
         let subscriber = Subscriber::new(inner.clone(), 0);
 
-        let notifier =
-            Arc::new(Notifier::new(Some(collector), Some(subscriber), ListenerUtxoNotificationFilterSetting::FilteredByAddress));
+        let notifier = Arc::new(Notifier::new(
+            Some(collector),
+            Some(subscriber),
+            ListenerUtxoNotificationFilterSetting::FilteredByAddress,
+            GRPC_CLIENT,
+        ));
 
         Ok(Self { inner, notifier })
     }
