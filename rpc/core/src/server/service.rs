@@ -2,10 +2,11 @@
 
 use super::collector::{ConsensusCollector, ConsensusNotificationReceiver};
 use crate::{
-    api::rpc::RpcApi,
+    api::rpc::{RpcApi, RpcNotfiyApi},
     model::*,
     notify::{
         channel::NotificationChannel,
+        collector::consensus_collector::ConsensusCollectorNotify,
         listener::{ListenerID, ListenerReceiverSide, ListenerUtxoNotificationFilterSetting},
         notifier::Notifier,
     },
@@ -16,6 +17,10 @@ use consensus_core::{
     api::DynConsensus,
     block::Block,
     coinbase::MinerData,
+    notify::{
+        FinalityConflictResolvedNotification, FinalityConflictsNotification, PruningPointUTXOSetOverrideNotification,
+        VirtualChangeSetNotification,
+    },
     tx::{ScriptPublicKey, ScriptVec},
 };
 use hashes::Hash;
@@ -26,6 +31,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
     vec,
 };
+use utxoindex::api::DynUtxoIndex;
 
 /// A service implementing the Rpc API at rpc_core level.
 ///
@@ -46,21 +52,23 @@ use std::{
 /// Subscriber.
 pub struct RpcCoreService {
     consensus: DynConsensus,
+    utxoindex: DynUtxoIndex,
     notifier: Arc<Notifier>,
+    core_collector: ConsensusCollector,
 }
 
 impl RpcCoreService {
-    pub fn new(consensus: DynConsensus, consensus_recv: ConsensusNotificationReceiver) -> Self {
+    pub fn new(consensus: DynConsensus, consensus_recv: ConsensusNotificationReceiver, utxoindex: DynUtxoIndex) -> Self {
         // TODO: instead of getting directly a DynConsensus, rely on some Context equivalent
         //       See app\rpc\rpccontext\context.go
         // TODO: the channel receiver should be obtained by registering to a consensus notification service
 
-        let collector = Arc::new(ConsensusCollector::new(consensus_recv));
+        let core_collector = Arc::new(ConsensusCollector::new(consensus_recv, utxoindex));
 
         // TODO: Some consensus-compatible subscriber could be provided here
-        let notifier = Arc::new(Notifier::new(Some(collector), None, ListenerUtxoNotificationFilterSetting::All));
+        let notifier = Arc::new(Notifier::new(Some(core_collector), None, ListenerUtxoNotificationFilterSetting::All));
 
-        Self { consensus, notifier }
+        Self { consensus, notifier, utxoindex, core_collector }
     }
 
     pub fn start(&self) {
@@ -313,6 +321,71 @@ impl RpcApi for RpcCoreService {
     async fn stop_notify(&self, id: ListenerID, notification_type: NotificationType) -> RpcResult<()> {
         self.notifier.stop_notify(id, notification_type)?;
         Ok(())
+    }
+}
+
+impl RpcNotfiyApi for RpcCoreService {
+    fn notify_block_added_to_dag(&self, block_added: BlockAddedNotification) -> RpcResult<()> {
+        match self.core_collector.notify_block_added_to_dag(block_added, self.notifier) {
+            Ok(_) => Ok(()),
+            Err(err) => {
+                trace!("[ConsensusCollector] notification notify api error: {:?} for {:?}", err, block_added);
+                return Err(err);
+            }
+        }
+    }
+
+    fn notify_virtual_change(&self, virtual_change_set: VirtualChangeSetNotification) -> RpcResult<()> {
+        match self.core_collector.notify_virtual_change(virtual_change_set, self.notifier, addresses::Prefix::Devnet) {
+            Ok(_) => Ok(()),
+            Err(err) => {
+                trace!("[ConsensusCollector] notification notify api error: {:?} for {:?}", err, virtual_change_set);
+                return Err(err);
+            }
+        } //TODO get prefix from consensus / context.
+    }
+
+    fn notify_new_block_template(&self, new_block_template: NewBlockTemplateNotification) -> RpcResult<()> {
+        match self.core_collector.notify_new_block_template(new_block_template, self.notifier) {
+            Ok(_) => Ok(()),
+            Err(err) => {
+                trace!("[ConsensusCollector] notification notify api error: {:?} for {:?}", err, new_block_template);
+                return Err(err);
+            }
+        }
+    }
+
+    fn notify_finality_conflicts(&self, finality_conflicts: FinalityConflictsNotification) -> RpcResult<()> {
+        match self.core_collector.notify_finality_conflict(finality_conflict, self.notifier) {
+            Ok(_) => Ok(()),
+            Err(err) => {
+                trace!("[ConsensusCollector] notification notify api error: {:?} for {:?}", err, finality_conflicts);
+                return Err(err);
+            }
+        }
+    }
+
+    fn notify_finality_conflict_resolved(&self, finality_conflict_resolved: FinalityConflictResolvedNotification) -> RpcResult<()> {
+        match self.core_collector.notify_finality_conflict_resolved(finality_conflict_resolved, self.notifier) {
+            Ok(_) => Ok(()),
+            Err(err) => {
+                trace!("[ConsensusCollector] notification notify api error: {:?} for {:?}", err, finality_conflict_resolved);
+                return Err(err);
+            }
+        }
+    }
+
+    fn notify_pruning_point_utxo_set_override(
+        &self,
+        pruning_point_override: PruningPointUTXOSetOverrideNotification,
+    ) -> RpcResult<()> {
+        match self.core_collector.notify_pruning_point_utxo_set_override(pruning_point_override, self.notifier) {
+            Ok(_) => Ok(()),
+            Err(err) => {
+                trace!("[ConsensusCollector] notification notify api error: {:?} for {:?}", err, pruning_point_override);
+                return Err(err);
+            }
+        }
     }
 }
 

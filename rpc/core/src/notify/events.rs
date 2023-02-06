@@ -1,6 +1,9 @@
 use std::ops::{Index, IndexMut};
 
-use crate::{Notification, NotificationType};
+use addresses::Address;
+use ahash::{AHashMap, AHashSet};
+
+use crate::{Notification, NotificationType, RpcAddress};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum EventType {
@@ -39,7 +42,7 @@ impl From<EventType> for NotificationType {
             EventType::VirtualSelectedParentChainChanged => NotificationType::VirtualSelectedParentChainChanged,
             EventType::FinalityConflicts => NotificationType::FinalityConflicts,
             EventType::FinalityConflictResolved => NotificationType::FinalityConflictResolved,
-            EventType::UtxosChanged => NotificationType::UtxosChanged(vec![]),
+            EventType::UtxosChanged => NotificationType::UtxosChanged(_),
             EventType::VirtualSelectedParentBlueScoreChanged => NotificationType::VirtualSelectedParentBlueScoreChanged,
             EventType::VirtualDaaScoreChanged => NotificationType::VirtualDaaScoreChanged,
             EventType::PruningPointUTXOSetOverride => NotificationType::PruningPointUTXOSetOverride,
@@ -73,11 +76,12 @@ impl From<&NotificationType> for EventType {
             NotificationType::VirtualSelectedParentChainChanged => EventType::VirtualSelectedParentChainChanged,
             NotificationType::FinalityConflicts => EventType::FinalityConflicts,
             NotificationType::FinalityConflictResolved => EventType::FinalityConflictResolved,
-            NotificationType::UtxosChanged(_) => EventType::UtxosChanged,
+            NotificationType::UtxosChanged() => EventType::UtxosChanged,
             NotificationType::VirtualSelectedParentBlueScoreChanged => EventType::VirtualSelectedParentBlueScoreChanged,
             NotificationType::VirtualDaaScoreChanged => EventType::VirtualDaaScoreChanged,
             NotificationType::PruningPointUTXOSetOverride => EventType::PruningPointUTXOSetOverride,
             NotificationType::NewBlockTemplate => EventType::NewBlockTemplate,
+            _ => panic!("NotificationType: {:?} is not an EventType", item),
         }
     }
 }

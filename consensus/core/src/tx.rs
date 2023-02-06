@@ -1,7 +1,8 @@
+use addresses::{Address, Prefix};
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
-use std::{collections::HashSet, fmt::Display, marker::Copy, ops::Range};
+use std::{collections::HashSet, fmt::Display, ops::Range};
 
 use crate::{
     hashing,

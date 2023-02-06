@@ -7,4 +7,4 @@ pub mod message;
 pub mod notifier;
 pub mod result;
 pub mod subscriber;
-pub mod utxo_address_set;
+pub mod compounded_states;
