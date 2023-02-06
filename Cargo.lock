@@ -1920,6 +1920,7 @@ dependencies = [
  "kaspa-utils",
  "log",
  "p2p-lib",
+ "thiserror",
  "tokio",
  "tokio-stream",
  "uuid 1.2.2",
