@@ -14,7 +14,7 @@ pub trait CirculatingSupplyStoreReader {
 }
 
 pub trait CirculatingSupplyStore: CirculatingSupplyStoreReader {
-    fn update_circulating_supply(&mut self, circulating_supply_diff: i64) -> StoreResult<u64>;
+    fn add_circulating_supply_diff(&mut self, circulating_supply_diff: i64) -> StoreResult<u64>;
 
     fn insert(&mut self, circulating_supply: u64) -> StoreResult<()>;
 
@@ -43,10 +43,10 @@ impl CirculatingSupplyStoreReader for DbCirculatingSupplyStore {
 }
 
 impl CirculatingSupplyStore for DbCirculatingSupplyStore {
-    fn update_circulating_supply(&mut self, circulating_supply_diff: CirculatingSupplyDiff) -> Result<u64, StoreError> {
+    fn add_circulating_supply_diff(&mut self, circulating_supply_diff: CirculatingSupplyDiff) -> Result<u64, StoreError> {
         let circulating_supply = self.access.update(DirectDbWriter::new(&self.db), move |circulating_supply| {
             circulating_supply + (circulating_supply_diff as CirculatingSupply)
-        });
+        }); //force monotonic
         circulating_supply
     }
 

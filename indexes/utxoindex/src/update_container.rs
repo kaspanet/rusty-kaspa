@@ -5,13 +5,13 @@ use consensus_core::{
     BlockHashSet, HashMapCustomHasher,
 };
 use hashes::Hash;
-use std::{collections::hash_map::Entry, sync::Arc};
+use std::collections::hash_map::Entry;
 
 use crate::{
     model::{
         CirculatingSupply, CirculatingSupplyDiff, CompactUtxoCollection, CompactUtxoEntry, UTXOChanges, UtxoSetByScriptPublicKey,
     },
-    notify::UtxoChangesNotification,
+    notify::UtxosChangedNotification,
 };
 
 /// A struct holding all changes to the utxoindex.
@@ -120,12 +120,18 @@ impl UtxoIndexChanges {
     }
 }
 
-impl From<Arc<VirtualChangeSetNotification>> for UtxoIndexChanges {
-    fn from(virtual_change_set: Arc<VirtualChangeSetNotification>) -> Self {
+impl From<VirtualChangeSetNotification> for UtxoIndexChanges {
+    fn from(virtual_change_set: VirtualChangeSetNotification) -> Self {
         let mut _self = Self::new();
-        _self.remove_utxo_collection(virtual_change_set.virtual_utxo_diff.remove.clone());
-        _self.add_utxo_collection(virtual_change_set.virtual_utxo_diff.add.clone());
-        _self.add_tips(virtual_change_set.virtual_parents.clone());
+        _self.remove_utxo_collection(virtual_change_set.virtual_utxo_diff.remove);
+        _self.add_utxo_collection(virtual_change_set.virtual_utxo_diff.add);
+        _self.add_tips(virtual_change_set.virtual_parents);
         _self
+    }
+}
+
+impl From<UTXOChanges> for UtxosChangedNotification {
+    fn from(utxo_changes: UTXOChanges) -> Self {
+        Self { added: utxo_changes.added, removed: utxo_changes.removed }
     }
 }

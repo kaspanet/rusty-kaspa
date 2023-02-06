@@ -21,8 +21,8 @@ pub struct RpcCoreServer {
 }
 
 impl RpcCoreServer {
-    pub fn new(consensus: DynConsensus, consensus_recv: ConsensusNotificationReceiver, utxoindex: DynConsensus) -> Self {
-        let service = Arc::new(RpcCoreService::new(consensus, consensus_recv, utxoindex));
+    pub fn new(consensus: DynConsensus, consensus_recv: ConsensusNotificationReceiver) -> Self {
+        let service = Arc::new(RpcCoreService::new(consensus, consensus_recv));
         Self { service, shutdown: DuplexTrigger::default() }
     }
 

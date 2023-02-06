@@ -46,9 +46,6 @@ struct Args {
     ///  -- You may also specify <subsystem>=<level>,<subsystem2>=<level>,... to set the log level for individual subsystems
     #[arg(short = 'd', long = "loglevel", default_value = "info")]
     log_level: String,
-
-    #[arg(long = "utxoindex")]
-    utxoindex: Option<Sting>,
 }
 
 fn get_home_dir() -> PathBuf {
@@ -108,7 +105,7 @@ pub fn main() {
     let monitor = Arc::new(ConsensusMonitor::new(consensus.processing_counters().clone()));
 
     let utxoindex_db = Arc::new(DB::open_default(utxoindex_db_dir.to_str().unwrap()).unwrap());
-    let utxoindex = Arc::new(UtxoIndex::new(consensus.clone(), utxoindex_db));
+    let utxoindex = Arc::new(UtxoIndex::new(consensus.clone(), utxoindex_db, consensus.rpc_channel.receiver.clone()));
 
     let notification_channel = ConsensusNotificationChannel::default();
 
@@ -119,6 +116,7 @@ pub fn main() {
     let async_runtime = Arc::new(AsyncRuntime::new());
     async_runtime.register(rpc_core_server);
     async_runtime.register(grpc_server);
+    async_runtime.register(utxoindex);
 
     // Bind the keyboard signal to the core
     Arc::new(Signals::new(&core)).init();

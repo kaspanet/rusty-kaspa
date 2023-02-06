@@ -606,11 +606,6 @@ try_from!(item: &protowire::GetBlockResponseMessage, rpc_core::GetBlockResponse,
 //     }
 // }
 
-try_from!(item: &protowire::NotifyUtxosChangedRequestMessage, rpc_core::NotifyUtxosChangedRequest, {
-    Ok(Self { addresses: item.addresses.into() command: item.command.into() })
-
-});
-
 try_from!(item: &protowire::NotifyBlockAddedRequestMessage, rpc_core::NotifyBlockAddedRequest, {
     Ok(Self { command: item.command.into() })
 });

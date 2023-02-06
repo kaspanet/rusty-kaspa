@@ -19,7 +19,6 @@ derive_more.workspace = true
 thiserror.workspace = true
 borsh.workspace = true
 async-channel.workspace = true
-utxoindex.workspace = true
 log.workspace = true
 smallvec.workspace = true
 cfg-if.workspace = true
@@ -29,5 +28,4 @@ ahash = "0.8.0"
 futures = { version = "0.3" }
 rand = "0.8"
 triggered = "0.1"
-workflow-core = "0.3.2"
-derivative = "2.1.0"
+workflow-core = "0.1.0"

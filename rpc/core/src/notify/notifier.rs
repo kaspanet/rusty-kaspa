@@ -9,52 +9,20 @@ use super::{
     subscriber::{Subscriber, SubscriptionManager},
 };
 use crate::{api::ops::SubscribeCommand, Notification, NotificationType, RpcResult};
-use ahash::{AHashMap, AHashSet};
+use ahash::AHashMap;
 use async_channel::{Receiver, Sender};
 use async_trait::async_trait;
 use kaspa_core::trace;
-use kaspa_utils::{channel::Channel, counter::AHashCounter};
+use kaspa_utils::channel::Channel;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex,
 };
-use super::settings::NotifierUtxoChangedInfo;
-use super::utxo_addres_set::RpcAddressSet;
-
-/// [`UtxosChangedCounter`] holds count of the notifier's listeners compounded policy regarding the [`UtxosChangedNotification`]. 
-#[derive(Default, Clone, Debug)]
-pub struct UtxosChangedCounter {
-    all_addresses_listeners: usize,
-    selected_addresses_listeners: AHashCounter<RpcAddress>
-}
-
-impl UtxosChangedCounter {
-    pub fn new (all_addresses_listeners: usize, selected_addresses_listeners: RpcAddressSet ) -> Self {
-        Self { all_addresses_listeners, selected_addresses_listeners }
-    }
-    pub fn add_selected_addresses(&self, address_set: RpcAddressSet) -> RpcAddressSet {
-        self.selected_addresses_listeners.add(address_set)
-    }
-
-    pub fn subtract_selected_addresses(&self, address_set: RpcAddressSet) -> RpcAddressSet {
-        self.selected_addresses_listeners.remove(address_set)
-    }
-
-    pub fn increment_all_addresses(&mut self) -> usize {
-        self.all_addresses_listeners += 1;
-        self.all_addresses_listeners
-    }
-
-    pub fn decrement_all_addresses(&mut self) -> usize {
-        self.all_addresses_listeners -= 1;
-        self.all_addresses_listeners
-    }
-}
 
 /// A notification sender
 ///
 /// Manages a collection of [`Listener`] and, for each one, a set of events to be notified.
-/// Actually notify the listeners of incoming events
+/// Actually notify the listeners of incoming events.
 #[derive(Debug)]
 pub struct Notifier {
     inner: Arc<Inner>,
@@ -64,8 +32,9 @@ impl Notifier {
     pub fn new(
         collector: Option<DynCollector>,
         subscriber: Option<Subscriber>,
+        sending_changed_utxos: ListenerUtxoNotificationFilterSetting,
     ) -> Self {
-        Self { inner: Arc::new(Inner::new(collector, subscriber)) }
+        Self { inner: Arc::new(Inner::new(collector, subscriber, sending_changed_utxos)) }
     }
 
     pub fn start(self: Arc<Self>) {
@@ -136,12 +105,16 @@ struct Inner {
     // Collector & Subscriber
     collector: Arc<Option<DynCollector>>,
     subscriber: Arc<Option<Arc<Subscriber>>>,
+
+    /// How to handle UtxoChanged notifications
+    sending_changed_utxos: ListenerUtxoNotificationFilterSetting,
 }
 
 impl Inner {
     fn new(
         collector: Option<DynCollector>,
         subscriber: Option<Subscriber>,
+        sending_changed_utxos: ListenerUtxoNotificationFilterSetting,
     ) -> Self {
         let subscriber = subscriber.map(Arc::new);
         Self {
@@ -151,6 +124,7 @@ impl Inner {
             dispatcher_shutdown_listener: Arc::new(Mutex::new(EventArray::default())),
             collector: Arc::new(collector),
             subscriber: Arc::new(subscriber),
+            sending_changed_utxos,
         }
     }
 
@@ -188,15 +162,13 @@ impl Inner {
         let send_subscriber = self.subscriber.clone().as_ref().as_ref().map(|x| x.sender());
         let has_subscriber = self.subscriber.clone().as_ref().is_some();
 
-        let utxos_changed_counter: Option<UtxosChangedCounter> = None;
+        let sending_changed_utxos = self.sending_changed_utxos;
 
         // This holds the map of all active listeners for the event type
         let mut listeners: AHashMap<ListenerID, Arc<ListenerSenderSide>> = AHashMap::new();
 
         // TODO: feed the listeners map with pre-existing self.listeners having event active
         // This is necessary for the correct handling of repeating start/stop cycles.
-
-        // TODO: intiate utxos_changed_counter via self.listeners in above case as well. 
 
         workflow_core::task::spawn(async move {
             trace!("[Notifier] dispatcher_task starting for notification type {:?}", event);
@@ -222,14 +194,6 @@ impl Inner {
                 if need_subscribe && has_subscriber {
                     if listeners.len() > 0 {
                         // TODO: handle actual utxo address set
-                        match event {
-                            EventType::UtxosChanged => {
-
-                                let msg = NotificationType::UtxosChanged(todo!())
-                                send_subscribe_message(send_subscriber.as_ref().unwrap().clone(), SubscribeMessage::StartEvent(msg));
-                            }
-                            default => (),
-                        }
 
                         send_subscribe_message(send_subscriber.as_ref().unwrap().clone(), SubscribeMessage::StartEvent(event.into()));
                     } else {
@@ -242,8 +206,6 @@ impl Inner {
                     DispatchMessage::Send(ref notification) => {
                         // Create a store for closed listeners to be removed from the map
                         let mut purge: Vec<ListenerID> = Vec::new();
-
-                        //TODO: preprocess UtxosChanged.
 
                         // Broadcast the notification to all listeners
                         for (id, listener) in listeners.iter() {
@@ -261,20 +223,8 @@ impl Inner {
                         need_subscribe = (!purge.is_empty() && (purge.len() == listeners.len())) || report_all_changes;
 
                         // Remove closed listeners
-                        match event {
-                            EventType::UtxosChanged => { //we update or utxo address listener counter via removed listeners. 
-                                let removed_addresses = 
-                                for id in purge.into_iter() {
-                                    let listener = listeners.remove(&id).unwrap();
-                                    match listener.settings().utxo_changed_filter_settings {
-                                        ListenerUtxosChangedFilterSettings::AllowAll => {
-                                            utxo_changed_info.
-                                        }
-                                        ListenerUtxosChangedFilterSettings::AllowSelection(_) => todo!(),
-                                    }
-                                }
-                            }
-                            default => purge.into_iter().for_each(move |id| listeners.remove(&id)),
+                        for id in purge {
+                            listeners.remove(&id);
                         }
                     }
 

@@ -36,9 +36,6 @@ pub enum RpcError {
     #[error(transparent)]
     NetworkTypeError(#[from] consensus_core::networktype::NetworkTypeError),
 
-    #[error("utxoindex error: {0}")]
-    UtxoIndexError(#[from] utxoindex::errors::UtxoIndexError),
-
     #[error("{0}")]
     General(String),
 }

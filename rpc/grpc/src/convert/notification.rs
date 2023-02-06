@@ -2,7 +2,6 @@ use rpc_core::{Notification, RpcError, RpcResult};
 
 use crate::protowire::{
     kaspad_response::Payload, BlockAddedNotificationMessage, KaspadResponse, NewBlockTemplateNotificationMessage, RpcNotifyCommand,
-    UtxosChangedNotificationMessage,
 };
 
 // ----------------------------------------------------------------------------
@@ -23,12 +22,10 @@ impl From<&rpc_core::Notification> for Payload {
             Notification::VirtualSelectedParentChainChanged(_) => todo!(),
             Notification::FinalityConflict(_) => todo!(),
             Notification::FinalityConflictResolved(_) => todo!(),
-            Notification::UtxosChanged(ref notif) => Payload::UtxosChangedNotification(notif.into()),
+            Notification::UtxosChanged(_) => todo!(),
             Notification::VirtualSelectedParentBlueScoreChanged(_) => todo!(),
             Notification::VirtualDaaScoreChanged(_) => todo!(),
             Notification::PruningPointUTXOSetOverride(_) => todo!(),
-            Notification::UtxoChanges(_) => unimplemented!(),
-            Notification::VirtualChangeSet(_) => unimplemented!(),
         }
     }
 }
@@ -36,12 +33,6 @@ impl From<&rpc_core::Notification> for Payload {
 impl From<&rpc_core::BlockAddedNotification> for BlockAddedNotificationMessage {
     fn from(item: &rpc_core::BlockAddedNotification) -> Self {
         Self { block: Some((&item.block).into()) }
-    }
-}
-
-impl From<&rpc_core::UtxosChangedNotification> for UtxosChangedNotificationMessage {
-    fn from(item: &rpc_core::UtxosChangedNotification) -> Self {
-        Self { added: item.added.into(), removed: item.removed.into() }
     }
 }
 

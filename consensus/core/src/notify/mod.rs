@@ -1,15 +1,12 @@
 use crate::{block::Block, utxo::utxo_diff::UtxoDiff};
 use hashes::Hash;
 
-//TODO: eventual clean-up, probably not all of these Notifications are actually emitted by consensus? some being from p2p, but for now placeholded here.
 #[derive(Debug, Clone)]
 pub enum ConsensusNotification {
     BlockAdded(BlockAddedNotification),
     NewBlockTemplate(NewBlockTemplateNotification),
     VirtualChangeSet(VirtualChangeSetNotification),
     PruningPointUTXOSetOverride(PruningPointUTXOSetOverrideNotification),
-    FinalityConflictResolved(FinalityConflictResolvedNotification),
-    FinalityConflicts(FinalityConflictsNotification),
 }
 
 #[derive(Debug, Clone, Default)]
@@ -35,9 +32,3 @@ impl PruningPointUTXOSetOverrideNotification {
         Self {}
     }
 }
-
-#[derive(Debug, Clone)]
-pub struct FinalityConflictResolvedNotification {}
-
-#[derive(Debug, Clone)]
-pub struct FinalityConflictsNotification {}

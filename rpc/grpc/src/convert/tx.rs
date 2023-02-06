@@ -1,5 +1,4 @@
 use crate::protowire;
-use address::Address;
 use rpc_core::{FromRpcHex, RpcError, RpcHash, RpcResult, RpcScriptVec, ToRpcHex};
 use std::str::FromStr;
 
@@ -94,11 +93,6 @@ impl From<&rpc_core::RpcTransactionOutputVerboseData> for protowire::RpcTransact
     }
 }
 
-impl From<&rpc_core::RpcUtxosByAddressesEntry> for protowire::UtxosByAddressesEntry {
-    fn from(item: &rpc_core::RpcUtxosByAddressesEntry) -> Self {
-        Self { address: item.address, outpoint: Some(item.transaction_outpoint.into()), utxo_entry: Some(item.utxo_entry.into()) }
-    }
-}
 // ----------------------------------------------------------------------------
 // protowire to rpc_core
 // ----------------------------------------------------------------------------
@@ -215,16 +209,6 @@ impl TryFrom<&protowire::RpcTransactionOutputVerboseData> for rpc_core::RpcTrans
         Ok(Self {
             script_public_key_type: item.script_public_key_type.as_str().try_into()?,
             script_public_key_address: item.script_public_key_address.clone(),
-        })
-    }
-}
-
-impl TryFrom<&protowire::UtxosByAddressesEntry> for rpc_core::RpcUtxosByAddressesEntry {
-    fn try_from(item: &protowire::UtxosByAddressesEntry) -> RpcResult<Self> {
-        Ok(Self {
-            address: item.address.try_into()?,
-            transaction_outpoint: item.outpoint.try_into()?,
-            utxo_entry: item.utxo_entry.try_into()?,
         })
     }
 }

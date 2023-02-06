@@ -11,7 +11,7 @@ use kaspa_core::trace;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 extern crate derive_more;
-use crate::notify::{error::Error, notifier::Notifier, result::Result};
+use crate::notify::{collector, error::Error, notifier::Notifier, result::Result};
 use crate::Notification;
 use derive_more::Deref;
 use kaspa_utils::channel::Channel;
@@ -48,7 +48,7 @@ impl<T> From<Arc<T>> for ArcConvert<T> {
     }
 }
 
-/// A genirc notification [`Collector`] that receives [`T`] from a channel,
+/// A notification [`Collector`] that receives [`T`] from a channel,
 /// converts it into a [`Notification`] and sends it to a its
 /// [`Notifier`].
 #[derive(Debug)]
@@ -127,7 +127,7 @@ where
 }
 
 #[async_trait]
-impl<T> Collector for CollectorFrom<T>
+impl<T> collector::Collector for CollectorFrom<T>
 where
     T: Send + Sync + 'static + Sized + Debug,
     ArcConvert<T>: Into<Arc<Notification>>,

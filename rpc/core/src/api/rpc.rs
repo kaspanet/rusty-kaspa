@@ -13,10 +13,6 @@ use crate::{
     NotificationType, RpcResult,
 };
 use async_trait::async_trait;
-use consensus_core::notify::{
-    FinalityConflictResolvedNotification, FinalityConflictsNotification, PruningPointUTXOSetOverrideNotification,
-    VirtualChangeSetNotification,
-};
 
 /// Client RPC Api
 ///
@@ -202,21 +198,4 @@ pub trait RpcApi: Sync + Send {
 
     /// Stop sending notifications of some type to a listener.
     async fn stop_notify(&self, id: ListenerID, notification_type: NotificationType) -> RpcResult<()>;
-}
-
-/// This is an abstraction over the inner [`ConsensusCollectorNotify`] trait, for the [`RpcCoreService`] without the need of passing a [`Notifier`],
-/// This Trait can be used for call-back based insertions of notifications directly into the Core Notifier system, without the need of a channel. 
-pub trait RpcNotfiyApi: Sync + Send {
-    fn notify_block_added_to_dag(&self, block_added: BlockAddedNotification) -> RpcResult<()>;
-
-    fn notify_virtual_change(&self, virtual_change_set: VirtualChangeSetNotification) -> RpcResult<()>;
-
-    fn notify_new_block_template(&self, new_block_template: NewBlockTemplateNotification) -> RpcResult<()>;
-
-    fn notify_finality_conflict(&self, finality_conflict: FinalityConflictsNotification) -> RpcResult<()>;
-
-    fn notify_finality_conflict_resolved(&self, finality_conflict_resolved: FinalityConflictResolvedNotification) -> RpcResult<()>;
-
-    fn notify_pruning_point_utxo_set_override(&self, pruning_point_override: PruningPointUTXOSetOverrideNotification)
-        -> RpcResult<()>;
 }

@@ -21,27 +21,20 @@ use std::sync::Arc;
 pub const UTXO_SET_PREFIX: &[u8] = b"utxo-set";
 
 // Buckets:
+
 ///Size of the [ScriptPublicKeyBucket] in bytes.
-pub const VERSION_TYPE_SIZE: usize = size_of::<VersionType>();
-pub const SCRIPT_PUBLIC_KEY_BUCKET_SIZE: usize = VERSION_TYPE_SIZE + SCRIPT_VECTOR_SIZE + 1; //plus one to encode length
+pub const SCRIPT_PUBLIC_KEY_BUCKET_SIZE: usize = size_of::<VersionType>() + SCRIPT_VECTOR_SIZE;
 
 ///[ScriptPublicKey] bucket.
-///Consists of 1 byte u8 encoded length of the script, 2 bytes of little endian [VersionType] bytes, followed by 36 bytes of [ScriptVec] (with right padded 0 bytes if script vec < 36 bytes).
-///the length is encoded separatly at the first index, as script public can keys have variable byte sizes, this can be used for quick deserialization of none-standard scripts in retrival contexts without specified script public keys.  
+///Consists of 2 bytes of little endian [VersionType] bytes, followed by 36 bytes of [ScriptVec].
 #[derive(Eq, Hash, PartialEq, Debug, Copy, Clone)]
 struct ScriptPublicKeyBucket([u8; SCRIPT_PUBLIC_KEY_BUCKET_SIZE]);
 
 impl From<ScriptPublicKey> for ScriptPublicKeyBucket {
     fn from(script_public_key: ScriptPublicKey) -> Self {
         let mut bytes = [0; SCRIPT_PUBLIC_KEY_BUCKET_SIZE];
-
-        let length = script_public_key.script().len();
-        bytes[0] = length as u8;
-
-        let off_set = VERSION_TYPE_SIZE + 1;
-        bytes[1..off_set].copy_from_slice(&script_public_key.version().to_le_bytes());
-        
-        bytes[off_set..length + off_set].copy_from_slice(script_public_key.script()); //note: this pads all shorter scripts with 0x00 bytes;
+        bytes[..size_of::<VersionType>()].copy_from_slice(&script_public_key.version().to_le_bytes());
+        bytes[size_of::<VersionType>()..].copy_from_slice(script_public_key.script());
 
         Self(bytes)
     }
@@ -49,16 +42,11 @@ impl From<ScriptPublicKey> for ScriptPublicKeyBucket {
 
 impl From<ScriptPublicKeyBucket> for ScriptPublicKey {
     fn from(bucket: ScriptPublicKeyBucket) -> Self {
-        
-        let off_set = VERSION_TYPE_SIZE + 1;
         let version = VersionType::from_le_bytes(
-            <[u8; VERSION_TYPE_SIZE]>::try_from(&bucket.0[1..off_set])
+            <[u8; std::mem::size_of::<VersionType>()]>::try_from(&bucket.0[..size_of::<VersionType>()])
                 .expect("expected version size"),
         );
-
-        let script_length = bucket.0[0] as usize;
-        let script = ScriptVec::from_slice(&bucket.0[off_set..script_length + off_set]);
-        
+        let script = ScriptVec::from_slice(&bucket.0[size_of::<VersionType>()..]);
         Self::new(version, script)
     }
 }
@@ -108,7 +96,7 @@ impl AsRef<[u8]> for TransactionOutpointKey {
 ///Size of the [UtxoEntryFullAccessKey] in bytes.
 pub const UTXO_ENTRY_FULL_ACCESS_KEY_SIZE: usize = SCRIPT_PUBLIC_KEY_BUCKET_SIZE + TRANSACTION_OUTPOINT_KEY_SIZE;
 ///Full [CompactUtxoEntry] access key.
-///Consists of 39 bytes of [ScriptPublicKeyBucket], and 36 bytes of [TransactionOutpointKey]
+///Consists of  38 bytes of [ScriptPublicKeyBucket], and 36 bytes of [TransactionOutpointKey]
 #[derive(Eq, Hash, PartialEq, Debug, Copy, Clone, Deserialize)]
 struct UtxoEntryFullAccessKey(#[serde(with = "BigArray")] [u8; UTXO_ENTRY_FULL_ACCESS_KEY_SIZE]);
 

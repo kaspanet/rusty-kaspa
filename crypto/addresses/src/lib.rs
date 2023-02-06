@@ -29,8 +29,7 @@ impl Display for AddressError {
 
 impl std::error::Error for AddressError {}
 
-//TODO: A simple custom hasher with enum number.
-#[derive(PartialEq, Eq, Hash, Clone, Copy, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub enum Prefix {
     Mainnet,
     Testnet,
@@ -81,7 +80,7 @@ impl TryFrom<&str> for Prefix {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct Address {
     pub prefix: Prefix,
     pub payload: Vec<u8>,

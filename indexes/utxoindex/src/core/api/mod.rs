@@ -1,13 +1,12 @@
 use std::sync::Arc;
 
 use consensus::model::stores::errors::StoreResult;
-use consensus_core::{notify::VirtualChangeSetNotification, tx::ScriptPublicKeys, utxo::utxo_diff::UtxoDiff};
+use consensus_core::tx::ScriptPublicKeys;
 
-use crate::{errors::UtxoIndexError, model::UtxoSetByScriptPublicKey, notify::UtxoIndexNotification};
-use hashes::Hash;
+use crate::model::UtxoSetByScriptPublicKey;
 
 pub trait UtxoIndexApi: Send + Sync {
-    /// retrieve circulating supply.
+    // /retrieve circulating supply.
     fn get_circulating_supply(&self) -> StoreResult<u64>;
 
     /// retrieve utxos by scipt public keys.
@@ -19,16 +18,6 @@ pub trait UtxoIndexApi: Send + Sync {
     ///
     /// this is used only for testing purposes, retriving a full utxo set, in a live setting, is probably never a good idea.
     fn get_all_utxos(&self) -> StoreResult<UtxoSetByScriptPublicKey>;
-
-    /// reset the db
-    fn reset(&self) -> Result<(), UtxoIndexError>;
-
-    /// update the database via a virtual change set.
-    fn update(
-        &self,
-        utxo_set: UtxoDiff,
-        tips: Vec<Hash>,
-    ) -> Result<Box<dyn Iterator<Item = Arc<UtxoIndexNotification>>>, UtxoIndexError>;
 }
 
 pub type DynUtxoIndex = Arc<dyn UtxoIndexApi>;

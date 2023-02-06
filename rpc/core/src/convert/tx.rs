@@ -1,9 +1,5 @@
-use crate::{
-    RpcError, RpcResult, RpcScriptPublicKey, RpcTransaction, RpcTransactionInput, RpcTransactionOutput, RpcUtxoEntry,
-    RpcUtxosByAddressesEntry,
-};
+use crate::{RpcError, RpcResult, RpcTransaction, RpcTransactionInput, RpcTransactionOutput};
 use consensus_core::tx::{Transaction, TransactionInput, TransactionOutput};
-use utxoindex::model::UtxoSetByScriptPublicKey;
 
 // ----------------------------------------------------------------------------
 // consensus_core to rpc_core

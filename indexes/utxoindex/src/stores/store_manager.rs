@@ -61,7 +61,7 @@ impl StoreManager {
 
     pub fn update_circulating_supply(&self, circulating_supply_diff: i64) -> Result<u64, StoreError> {
         let mut writer = self.circulating_suppy_store.write();
-        writer.update_circulating_supply(circulating_supply_diff)
+        writer.add_circulating_supply_diff(circulating_supply_diff)
     }
 
     pub fn insert_circulating_supply(&self, circulating_supply: u64) -> Result<(), StoreError> {
