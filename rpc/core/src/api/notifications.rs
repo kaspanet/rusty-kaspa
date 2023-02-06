@@ -1,22 +1,27 @@
 use crate::model::message::*;
-use crate::stubs::*;
+use crate::{stubs::*, RpcAddress};
+use addresses::Address;
 use async_channel::{Receiver, Sender};
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+use consensus_core::notify::ConsensusNotification;
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
+use ahash::AHashSet;
 use std::sync::Arc;
+use into_variant::VariantFrom;
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema, VariantFrom)]
 pub enum NotificationType {
     BlockAdded,
     VirtualSelectedParentChainChanged,
     FinalityConflicts,
     FinalityConflictResolved,
-    UtxosChanged(Vec<RpcUtxoAddress>),
+    UtxosChanged(UtxoChangedNotificationTypeModification),
     VirtualSelectedParentBlueScoreChanged,
     VirtualDaaScoreChanged,
     PruningPointUTXOSetOverride,
     NewBlockTemplate,
+    VirtualChangeSet,
 }
 
 impl From<&Notification> for NotificationType {
@@ -26,16 +31,18 @@ impl From<&Notification> for NotificationType {
             Notification::VirtualSelectedParentChainChanged(_) => NotificationType::VirtualSelectedParentChainChanged,
             Notification::FinalityConflict(_) => NotificationType::FinalityConflicts,
             Notification::FinalityConflictResolved(_) => NotificationType::FinalityConflictResolved,
-            Notification::UtxosChanged(_) => NotificationType::UtxosChanged(vec![]),
+            Notification::UtxosChanged(_) => NotificationType::UtxosChanged(UtxosChangedNotificationTypeModification::default()),
             Notification::VirtualSelectedParentBlueScoreChanged(_) => NotificationType::VirtualSelectedParentBlueScoreChanged,
             Notification::VirtualDaaScoreChanged(_) => NotificationType::VirtualDaaScoreChanged,
             Notification::PruningPointUTXOSetOverride(_) => NotificationType::PruningPointUTXOSetOverride,
             Notification::NewBlockTemplate(_) => NotificationType::NewBlockTemplate,
+            Notification::VirtualChangeSet(_) => NotificationType::VirtualChangeSet,
+            _ => panic!("Notification: {:?}, is not a notificationType", item),
         }
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema, VariantFrom)]
 #[allow(clippy::large_enum_variant)]
 pub enum Notification {
     BlockAdded(BlockAddedNotification),

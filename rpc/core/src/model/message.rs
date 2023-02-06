@@ -1,7 +1,10 @@
 // use std::fmt::{Display, Formatter};
 
+use std::sync::Arc;
+
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
+use utxoindex::model::UtxoSetByScriptPublicKey;
 
 use crate::{api::ops::SubscribeCommand, model::*};
 
@@ -197,6 +200,13 @@ pub struct NotifyNewBlockTemplateResponse {}
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct NewBlockTemplateNotification {}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct UtxosChangedNotification {
+    pub added: Vec<Arc<RpcUtxosByAddressesEntry>>,
+    pub removed: Vec<Arc<RpcUtxosByAddressesEntry>>,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
@@ -766,7 +776,7 @@ pub struct NotifyFinalityConflictsRequest {
 }
 
 impl NotifyFinalityConflictsRequest {
-    pub fn new(command: SubscribeCommand) -> Self {
+    pub fn new(command: SubscribeCommand, addresses: Vec<RpcAddress>) -> Self {
         Self { command }
     }
 }
@@ -778,12 +788,13 @@ pub struct NotifyFinalityConflictsResponse {}
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct NotifyUtxosChangedRequest {
+    pub addresses: Vec<RpcAddress>,
     pub command: SubscribeCommand,
 }
 
 impl NotifyUtxosChangedRequest {
-    pub fn new(command: SubscribeCommand) -> Self {
-        Self { command }
+    pub fn new(addresses: Vec<RpcAddress>, command: SubscribeCommand) -> Self {
+        Self { addresses, command }
     }
 }
 

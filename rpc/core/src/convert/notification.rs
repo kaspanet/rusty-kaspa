@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
-use crate::{notify::collector::ArcConvert, BlockAddedNotification, NewBlockTemplateNotification, Notification};
+use crate::{notify::collector::rpc_collector::ArcConvert, BlockAddedNotification, NewBlockTemplateNotification, Notification};
 use consensus_core::notify as consensus_notify;
+use utxoindex::notify as utxoindex_notify;
 
 // ----------------------------------------------------------------------------
 // consensus_core to rpc_core
@@ -12,6 +13,7 @@ impl From<&consensus_notify::ConsensusNotification> for Notification {
         match item {
             consensus_notify::ConsensusNotification::BlockAdded(msg) => Notification::BlockAdded(msg.into()),
             consensus_notify::ConsensusNotification::NewBlockTemplate(msg) => Notification::NewBlockTemplate(msg.into()),
+            consensus_notify::ConsensusNotification::VirtualChangeSet(msg) => Notification::VirtualChangeSet(msg.into()),
             _ => todo!(),
         }
     }
@@ -46,3 +48,20 @@ impl From<ArcConvert<consensus_notify::ConsensusNotification>> for Arc<Notificat
 // ----------------------------------------------------------------------------
 // rpc_core to consensus_core
 // ----------------------------------------------------------------------------
+
+// ----------------------------------------------------------------------------
+// rpc_core to rpc_core
+// ----------------------------------------------------------------------------
+
+// ----------------------------------------------------------------------------
+// utxoindex_core to rpc_core
+// ----------------------------------------------------------------------------
+
+impl TryFrom<&utxoindex_notify::UtxoIndexNotification> for Notification {
+    fn try_from(item: &utxoindex_notify::UtxoIndexNotification) -> Self {
+        match item {
+            utxoindex_notify::UtxoIndexNotification::UtxoChanges(msg) => Notification::UtxosChanged(msg.try_into()?),
+            _ => todo!(),
+        }
+    }
+}

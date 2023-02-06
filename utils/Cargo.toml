@@ -8,5 +8,6 @@ license.workspace = true
 
 [dependencies]
 async-channel.workspace = true
+ahash = "0.8.3"
 triggered = "0.1"
 serde = "1.0.152"

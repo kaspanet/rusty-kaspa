@@ -12,7 +12,7 @@ pub(crate) enum DispatchMessage {
 
 #[derive(Clone, Debug)]
 pub(crate) enum SubscribeMessage {
-    StartEvent(NotificationType),
+    StartEvent(NotificationType, Option<NotificationChanges>),
     StopEvent(NotificationType),
     Shutdown,
 }

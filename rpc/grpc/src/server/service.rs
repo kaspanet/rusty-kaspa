@@ -286,7 +286,15 @@ impl Rpc for Arc<GrpcService> {
                                 Payload::NotifyVirtualDaaScoreChangedRequest(_) => todo!(),
                                 Payload::NotifyPruningPointUtxoSetOverrideRequest(_) => todo!(),
                                 Payload::NotifyVirtualSelectedParentBlueScoreChangedRequest(_) => todo!(),
-                                Payload::NotifyUtxosChangedRequest(_) => todo!(),
+                                Payload::NotifyUtxosChangedRequest(ref request) => NotifyUtxosChangedResponseMessage::from({
+                                    let request = rpc_core::NotifyUtxosChangedRequest::try_from(request).unwrap();
+                                    notifier.clone().execute_subscribe_command(
+                                        listener_id,
+                                        rpc_core::NotificationType::UtxosChanged(_),
+                                        request.command,
+                                    )
+                                })
+                                .into(),
                                 Payload::NotifyFinalityConflictsRequest(_) => todo!(),
                                 Payload::NotifyVirtualSelectedParentChainChangedRequest(_) => todo!(),
                                 // Payload::NotifyVirtualSelectedParentChainChangedRequest(ref request) => NotifyVirtualSelectedParentChainChangedResponseMessage::from({
