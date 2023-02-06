@@ -3,7 +3,6 @@ use self::{
     resolver::{id::IdResolver, queue::QueueResolver, DynResolver},
     result::Result,
 };
-use crate::protowire::{kaspad_request, rpc_client::RpcClient, GetInfoRequestMessage, KaspadRequest, KaspadResponse};
 use async_trait::async_trait;
 use futures::{
     future::FutureExt, // for `.fuse()`
@@ -11,6 +10,7 @@ use futures::{
     select,
 };
 use kaspa_core::trace;
+use kaspa_grpc_core::protowire::{kaspad_request, rpc_client::RpcClient, GetInfoRequestMessage, KaspadRequest, KaspadResponse};
 use kaspa_rpc_core::{
     api::ops::RpcApiOps,
     api::{ops::SubscribeCommand, rpc::RpcApi},

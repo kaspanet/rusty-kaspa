@@ -1,8 +1,8 @@
-use crate::protowire::rpc_server::RpcServer;
 use kaspa_core::{
     task::service::{AsyncService, AsyncServiceFuture},
     trace,
 };
+use kaspa_grpc_core::protowire::rpc_server::RpcServer;
 use kaspa_rpc_core::server::service::RpcCoreService;
 use kaspa_utils::triggers::DuplexTrigger;
 use std::net::SocketAddr;
@@ -52,7 +52,7 @@ impl AsyncService for GrpcServer {
             grpc_service.start();
 
             // Create a protowire RPC server
-            let svc = RpcServer::new(self.grpc_service.clone())
+            let svc = RpcServer::from_arc(self.grpc_service.clone())
                 .send_compressed(CompressionEncoding::Gzip)
                 .accept_compressed(CompressionEncoding::Gzip);
 

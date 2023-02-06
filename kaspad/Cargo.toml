@@ -13,7 +13,7 @@ kaspa-core.workspace = true
 consensus-core.workspace = true
 consensus.workspace = true
 kaspa-rpc-core.workspace = true
-kaspa-rpc-grpc.workspace = true
+kaspa-grpc-server.workspace = true
 p2p-flows.workspace = true
 
 thiserror.workspace = true

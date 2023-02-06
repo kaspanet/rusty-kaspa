@@ -1,9 +1,9 @@
-use super::{KaspadResponseReceiver, KaspadResponseSender, Resolver};
 use crate::{
-    client::{errors::Error, result::Result},
-    protowire::{KaspadRequest, KaspadResponse},
+    resolver::{KaspadResponseReceiver, KaspadResponseSender, Resolver},
+    {errors::Error, result::Result},
 };
 use kaspa_core::trace;
+use kaspa_grpc_core::protowire::{KaspadRequest, KaspadResponse};
 use kaspa_rpc_core::api::ops::RpcApiOps;
 use std::{
     collections::HashMap,

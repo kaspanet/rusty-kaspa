@@ -1,13 +1,11 @@
 use crate::{
-    protowire::{kaspad_request::Payload, rpc_server::Rpc, NotifyNewBlockTemplateResponseMessage, *},
-    server::{
-        collector::GrpcServiceCollector,
-        connection::{GrpcConnection, GrpcConnectionManager, GrpcSender},
-        StatusResult,
-    },
+    collector::GrpcServiceCollector,
+    connection::{GrpcConnection, GrpcConnectionManager, GrpcSender},
+    StatusResult,
 };
 use futures::Stream;
 use kaspa_core::trace;
+use kaspa_grpc_core::protowire::{kaspad_request::Payload, rpc_server::Rpc, NotifyNewBlockTemplateResponseMessage, *};
 use kaspa_rpc_core::{
     api::rpc::RpcApi,
     notify::{
@@ -120,7 +118,7 @@ impl GrpcService {
 }
 
 #[tonic::async_trait]
-impl Rpc for Arc<GrpcService> {
+impl Rpc for GrpcService {
     type MessageStreamStream = Pin<Box<dyn Stream<Item = Result<KaspadResponse, tonic::Status>> + Send + Sync + 'static>>;
 
     async fn message_stream(

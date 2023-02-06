@@ -1,5 +1,6 @@
-use crate::{protowire::KaspadResponse, server::StatusResult};
+use crate::StatusResult;
 use kaspa_core::trace;
+use kaspa_grpc_core::protowire::KaspadResponse;
 use kaspa_rpc_core::notify::{
     connection::{Connection, Invariant},
     error::Error as NotificationError,
@@ -42,7 +43,7 @@ impl Connection for GrpcConnection {
     type Error = super::error::Error;
 
     fn variant(&self) -> Self::Variant {
-        todo!()
+        Invariant::Default
     }
 
     fn into_message(notification: &Arc<kaspa_rpc_core::Notification>, _: &Self::Variant) -> Self::Message {

@@ -1383,6 +1383,81 @@ dependencies = [
 ]
 
 [[package]]
+name = "kaspa-grpc-client"
+version = "0.1.0"
+dependencies = [
+ "async-channel",
+ "async-stream",
+ "async-trait",
+ "faster-hex",
+ "futures",
+ "h2",
+ "kaspa-core",
+ "kaspa-grpc-core",
+ "kaspa-rpc-core",
+ "kaspa-utils",
+ "log",
+ "paste",
+ "prost",
+ "rand 0.8.5",
+ "thiserror",
+ "tokio",
+ "tokio-stream",
+ "tonic",
+ "triggered",
+]
+
+[[package]]
+name = "kaspa-grpc-core"
+version = "0.1.0"
+dependencies = [
+ "async-channel",
+ "async-stream",
+ "async-trait",
+ "faster-hex",
+ "futures",
+ "h2",
+ "kaspa-core",
+ "kaspa-rpc-core",
+ "kaspa-utils",
+ "log",
+ "paste",
+ "prost",
+ "rand 0.8.5",
+ "thiserror",
+ "tokio",
+ "tokio-stream",
+ "tonic",
+ "tonic-build",
+ "triggered",
+]
+
+[[package]]
+name = "kaspa-grpc-server"
+version = "0.1.0"
+dependencies = [
+ "async-channel",
+ "async-stream",
+ "async-trait",
+ "faster-hex",
+ "futures",
+ "h2",
+ "kaspa-core",
+ "kaspa-grpc-core",
+ "kaspa-rpc-core",
+ "kaspa-utils",
+ "log",
+ "paste",
+ "prost",
+ "rand 0.8.5",
+ "thiserror",
+ "tokio",
+ "tokio-stream",
+ "tonic",
+ "triggered",
+]
+
+[[package]]
 name = "kaspa-rpc-core"
 version = "0.1.0"
 dependencies = [
@@ -1408,31 +1483,6 @@ dependencies = [
  "thiserror",
  "triggered",
  "workflow-core",
-]
-
-[[package]]
-name = "kaspa-rpc-grpc"
-version = "0.1.0"
-dependencies = [
- "async-channel",
- "async-stream",
- "async-trait",
- "faster-hex",
- "futures",
- "h2",
- "kaspa-core",
- "kaspa-rpc-core",
- "kaspa-utils",
- "log",
- "paste",
- "prost",
- "rand 0.8.5",
- "thiserror",
- "tokio",
- "tokio-stream",
- "tonic",
- "tonic-build",
- "triggered",
 ]
 
 [[package]]
@@ -1470,8 +1520,8 @@ dependencies = [
  "futures-util",
  "hashes",
  "kaspa-core",
+ "kaspa-grpc-server",
  "kaspa-rpc-core",
- "kaspa-rpc-grpc",
  "log",
  "num-format",
  "p2p-flows",
