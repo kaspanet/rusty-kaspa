@@ -1,5 +1,5 @@
 use self::{
-    errors::Error,
+    error::Error,
     resolver::{id::IdResolver, queue::QueueResolver, DynResolver},
     result::Result,
 };
@@ -39,7 +39,7 @@ use std::{
 use tonic::Streaming;
 use tonic::{codec::CompressionEncoding, transport::Endpoint};
 
-mod errors;
+mod error;
 mod resolver;
 mod result;
 #[macro_use]
