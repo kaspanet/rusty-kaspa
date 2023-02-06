@@ -3,6 +3,7 @@ use crate::infra::RouterApi;
 use crate::pb;
 use crate::registry;
 use crate::registry::FlowRegistryApi;
+use crate::registry::P2pConnection;
 use kaspa_core::warn;
 use kaspa_core::{debug, error};
 use std::sync::Arc;
@@ -50,23 +51,6 @@ pub struct P2pAdaptor {
     peers: lockfree::map::Map<uuid::Uuid, infra::P2pClient<infra::Router>>,
 }
 
-/*
-pub trait ToPayload {
-    fn to_payload(self) -> pb::kaspad_message::Payload;
-}
-#[macro_export]
-macro_rules! to_payload {
-    ($message:ident, $payload:ident) => {
-        impl ToPayload for $message {
-            fn to_payload(self) -> pb::kaspad_message::Payload {
-                pb::kaspad_message::Payload::$payload(pb::$message)
-            }
-        }
-    };
-}
-
-to_payload! { VerackMessage, Verack }
-*/
 #[async_trait]
 impl P2pAdaptorApi for P2pAdaptor {
     async fn init_only_client_side(flow_registry: Arc<dyn FlowRegistryApi>) -> Option<Arc<Self>> {
@@ -86,14 +70,16 @@ impl P2pAdaptorApi for P2pAdaptor {
             // loop will exit when all sender channels will be dropped
             // --> when all routers will be dropped & grpc-service will be stopped
             while let Some(new_router) = upper_layer_rx.recv().await {
-                let flow_terminates = flow_registry.initialize_flows(new_router).await;
-                for (flow_id, flow_terminate) in flow_terminates {
-                    let result = p2p_adaptor.flow_termination.insert(flow_id, flow_terminate);
-                    if result.is_some() {
-                        panic!(
-                            "At flow initialization, insertion into the map - got existing value, flow-key = router-id: {:?}",
-                            result.unwrap().key()
-                        );
+                if let Ok(flow_terminates) = flow_registry.initialize_flows(P2pConnection::new(new_router, p2p_adaptor.clone())).await
+                {
+                    for (flow_id, flow_terminate) in flow_terminates {
+                        let result = p2p_adaptor.flow_termination.insert(flow_id, flow_terminate);
+                        if result.is_some() {
+                            panic!(
+                                "At flow initialization, insertion into the map - got existing value, flow-key = router-id: {:?}",
+                                result.unwrap().key()
+                            );
+                        }
                     }
                 }
             }
@@ -123,14 +109,17 @@ impl P2pAdaptorApi for P2pAdaptor {
                 // loop will exit when all sender channels will be dropped
                 // --> when all routers will be dropped & grpc-service will be stopped
                 while let Some(new_router) = upper_layer_rx.recv().await {
-                    let flow_terminates = flow_registry.initialize_flows(new_router).await;
-                    for (flow_id, flow_terminate) in flow_terminates {
-                        let result = p2p_adaptor.flow_termination.insert(flow_id, flow_terminate);
-                        if result.is_some() {
-                            panic!(
-                                "At flow initialization, insertion into the map - got existing value, flow-key = router-id: {:?}",
-                                result.unwrap().key()
-                            );
+                    if let Ok(flow_terminates) =
+                        flow_registry.initialize_flows(P2pConnection::new(new_router, p2p_adaptor.clone())).await
+                    {
+                        for (flow_id, flow_terminate) in flow_terminates {
+                            let result = p2p_adaptor.flow_termination.insert(flow_id, flow_terminate);
+                            if result.is_some() {
+                                panic!(
+                                    "At flow initialization, insertion into the map - got existing value, flow-key = router-id: {:?}",
+                                    result.unwrap().key()
+                                );
+                            }
                         }
                     }
                 }

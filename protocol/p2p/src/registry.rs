@@ -1,8 +1,10 @@
+use crate::adaptor::{P2pAdaptor, P2pAdaptorApi};
 use crate::infra;
 use crate::infra::{KaspadMessagePayloadEnumU8, Router, RouterApi};
 use crate::pb::{self, KaspadMessage};
 use kaspa_core::{debug, info, trace, warn};
 use std::sync::Arc;
+use thiserror::Error;
 use tokio::sync::mpsc::Receiver;
 use tonic::async_trait;
 use uuid::Uuid;
@@ -10,11 +12,38 @@ use uuid::Uuid;
 pub type FlowTxTerminateChannelType = tokio::sync::oneshot::Sender<()>;
 pub type FlowRxTerminateChannelType = tokio::sync::oneshot::Receiver<()>;
 
-/// The main entrypoint for external usage of the P2P library. An impl of this trait is expected on
-/// P2P server initialization and will be called on each new P2P connection with a corresponding dedicated router
+#[derive(Error, Debug, Clone)]
+pub enum P2pError {
+    #[error("p2p protocol error: {0}")]
+    ProtocolError(String),
+
+    #[error("channel is closed")]
+    ChannelClosed,
+}
+
+#[derive(Clone)]
+pub struct P2pConnection {
+    // TODO: add more connection info
+    pub router: Arc<Router>,
+    adaptor: Arc<P2pAdaptor>, // Keep private to avoid misuse
+}
+
+impl P2pConnection {
+    pub fn new(router: Arc<Router>, adaptor: Arc<P2pAdaptor>) -> Self {
+        Self { router, adaptor }
+    }
+
+    pub async fn handle_error(&self, err: P2pError) {
+        warn!("p2p connection error -- {err}");
+        self.adaptor.terminate(self.router.identity()).await;
+    }
+}
+
+/// The main entrypoint for external usage of the P2P library. An impl of this trait is expected on P2P server
+/// initialization and will be called on each new P2P connection with a corresponding dedicated connection object
 #[async_trait]
 pub trait FlowRegistryApi: Sync + Send {
-    async fn initialize_flows(&self, router: Arc<infra::Router>) -> Vec<(Uuid, FlowTxTerminateChannelType)>;
+    async fn initialize_flows(&self, connection: P2pConnection) -> Result<Vec<(Uuid, FlowTxTerminateChannelType)>, ()>;
 }
 
 /// An example Flow trait. Registry implementors can deviate from this structure.
@@ -214,10 +243,12 @@ impl EchoFlowRegistry {
 
 #[async_trait]
 impl FlowRegistryApi for EchoFlowRegistry {
-    async fn initialize_flows(&self, router: Arc<Router>) -> Vec<(Uuid, FlowTxTerminateChannelType)> {
+    async fn initialize_flows(&self, connection: P2pConnection) -> Result<Vec<(Uuid, FlowTxTerminateChannelType)>, ()> {
         //
         // Example code to illustrate kaspa P2P handshaking
         //
+
+        let router = connection.router;
 
         // Subscribe to handshake messages
         let version_receiver = router.subscribe_to(vec![KaspadMessagePayloadEnumU8::Version]);
@@ -230,6 +261,6 @@ impl FlowRegistryApi for EchoFlowRegistry {
         // Perform the handshake
         self.handshake(&router, version_receiver, verack_receiver, ready_receiver).await;
 
-        vec![echo_terminate]
+        Ok(vec![echo_terminate])
     }
 }

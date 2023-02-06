@@ -20,8 +20,9 @@ path = "./src/bin/p2p_server.rs"
 [dependencies]
 # project internal deps
 kaspa-core.workspace = true
-log.workspace = true
 # project external deps
+log.workspace = true
+thiserror.workspace = true
 futures = { version = "0.3", default-features = false, features = ["alloc"] }
 prost = "0.11"
 ctrlc = "3.2"

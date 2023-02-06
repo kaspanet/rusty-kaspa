@@ -1,3 +1,4 @@
+use p2p_lib::registry::P2pError;
 use std::time::Duration;
 use thiserror::Error;
 
@@ -14,6 +15,15 @@ pub enum FlowError {
 
     #[error("channel is closed")]
     ChannelClosed,
+}
+
+impl From<FlowError> for P2pError {
+    fn from(fe: FlowError) -> Self {
+        match fe {
+            FlowError::ChannelClosed => P2pError::ChannelClosed,
+            err => P2pError::ProtocolError(err.to_string()),
+        }
+    }
 }
 
 /// Macro to extract a specific payload type from an `Option<pb::KaspadMessage>`.

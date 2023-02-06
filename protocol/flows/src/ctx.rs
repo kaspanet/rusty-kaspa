@@ -4,7 +4,7 @@ use kaspa_core::{info, trace};
 use p2p_lib::infra::{KaspadMessagePayloadEnumU8, Router, RouterApi};
 use p2p_lib::pb::VersionMessage;
 use p2p_lib::pb::{self, kaspad_message::Payload, KaspadMessage};
-use p2p_lib::registry::{Flow, FlowRegistryApi, FlowTxTerminateChannelType};
+use p2p_lib::registry::{Flow, FlowRegistryApi, FlowTxTerminateChannelType, P2pConnection};
 use std::sync::Arc;
 use tokio::sync::mpsc::Receiver;
 use uuid::Uuid;
@@ -93,7 +93,8 @@ impl FlowContext {
 
 #[async_trait]
 impl FlowRegistryApi for FlowContext {
-    async fn initialize_flows(&self, router: Arc<Router>) -> Vec<(Uuid, FlowTxTerminateChannelType)> {
+    async fn initialize_flows(&self, connection: P2pConnection) -> Result<Vec<(Uuid, FlowTxTerminateChannelType)>, ()> {
+        let router = connection.router.clone();
         // Subscribe to handshake messages
         let version_receiver = router.subscribe_to(vec![KaspadMessagePayloadEnumU8::Version]);
         let verack_receiver = router.subscribe_to(vec![KaspadMessagePayloadEnumU8::Verack]);
@@ -102,7 +103,14 @@ impl FlowRegistryApi for FlowContext {
         // Make sure possibly pending handshake messages are rerouted to the newly registered flows
         router.reroute_to_flows().await;
         // Perform the initial handshake
-        self.handshake(&router, version_receiver, verack_receiver).await.unwrap(); // TODO: error handling.
+        let version_message = match self.handshake(&router, version_receiver, verack_receiver).await {
+            Ok(version_message) => version_message,
+            Err(err) => {
+                connection.handle_error(err.into()).await;
+                return Err(());
+            }
+        };
+        info!("peer protocol version: {}", version_message.protocol_version);
 
         // Subscribe to remaining messages and finalize (finalize will reroute all messages into flows)
         // TODO: register to all kaspa P2P flows here
@@ -110,11 +118,14 @@ impl FlowRegistryApi for FlowContext {
         trace!("finalizing flow subscriptions");
         router.finalize().await;
 
-        self.ready_flow(&router, ready_receiver).await.unwrap(); // TODO: error handling.
+        if let Err(err) = self.ready_flow(&router, ready_receiver).await {
+            connection.handle_error(err.into()).await;
+            return Err(());
+        }
 
         // Note: at this point receivers for handshake subscriptions
         // are dropped, thus effectively unsubscribing
 
-        vec![echo_terminate]
+        Ok(vec![echo_terminate])
     }
 }
