@@ -1,13 +1,14 @@
 use crate::{Notification, NotificationSender};
 use std::fmt::Debug;
-use std::sync::Arc;
+use std::{hash::Hash, sync::Arc};
 
 pub trait Connection: Clone + Debug + Send + Sync + 'static {
     type Message: Clone;
+    type Variant: Hash + Clone + Eq + PartialEq + Send;
     type Error: Into<crate::notify::error::Error>;
 
-    fn into_message(notification: &Arc<Notification>) -> Self::Message;
-
+    fn variant(&self) -> Self::Variant;
+    fn into_message(notification: &Arc<Notification>, variant: &Self::Variant) -> Self::Message;
     fn send(&self, message: Self::Message) -> Result<(), Self::Error>;
     fn close(&self) -> bool;
     fn is_closed(&self) -> bool;
@@ -24,11 +25,22 @@ impl ChannelConnection {
     }
 }
 
+#[derive(Clone, Debug, Hash, Eq, PartialEq, Default)]
+pub enum Invariant {
+    #[default]
+    Default = 0,
+}
+
 impl Connection for ChannelConnection {
     type Message = Arc<Notification>;
+    type Variant = Invariant;
     type Error = super::error::Error;
 
-    fn into_message(notification: &Arc<Notification>) -> Self::Message {
+    fn variant(&self) -> Self::Variant {
+        Invariant::Default
+    }
+
+    fn into_message(notification: &Arc<Notification>, _: &Self::Variant) -> Self::Message {
         notification.clone()
     }
 

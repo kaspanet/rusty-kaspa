@@ -3,7 +3,7 @@ use super::{
     connection::Connection,
     error::Error,
     events::{EventArray, EventType, EVENT_TYPE_ARRAY},
-    listener::{Listener, ListenerID, ListenerSenderSide, ListenerUtxoNotificationFilterSetting},
+    listener::{Listener, ListenerID, ListenerSenderSide, ListenerUtxoNotificationFilterSetting, ListenerVariantSet},
     message::{DispatchMessage, SubscribeMessage},
     result::Result,
     subscriber::{Subscriber, SubscriptionManager},
@@ -184,12 +184,6 @@ where
 
         let sending_changed_utxos = self.sending_changed_utxos;
 
-        // This holds the map of all active listeners for the event type
-        let mut listeners: AHashMap<ListenerID, Arc<ListenerSenderSide<T>>> = AHashMap::new();
-
-        // TODO: feed the listeners map with pre-existing self.listeners having event active
-        // This is necessary for the correct handling of repeating start/stop cycles.
-
         workflow_core::task::spawn(async move {
             trace!("[Notifier] dispatcher_task starting for notification type {:?}", event);
 
@@ -202,6 +196,12 @@ where
                     }
                 }
             }
+
+            // This holds the map of all active listeners by message variant for the event type
+            let mut listeners: ListenerVariantSet<T> = ListenerVariantSet::new();
+
+            // TODO: feed the listeners map with pre-existing self.listeners having event active
+            // This is necessary for the correct handling of repeating start/stop cycles.
 
             // We will send subscribe messages for all dispatch messages if event is a filtered UtxosChanged.
             // Otherwise, subscribe message is only sent when needed by the execution of the dispatch message.
@@ -231,14 +231,16 @@ where
                         match event {
                             // For UtxosChanged notifications, build a filtered notification for every listener
                             EventType::UtxosChanged => {
-                                for (id, listener) in listeners.iter() {
-                                    if let Some(listener_notification) = listener.build_utxos_changed_notification(notification) {
-                                        let message = T::into_message(&listener_notification);
-                                        match listener.try_send(message) {
-                                            Ok(_) => {}
-                                            Err(_) => {
-                                                if listener.is_closed() {
-                                                    purge.push(*id);
+                                for (variant, listener_set) in listeners.iter() {
+                                    for (id, listener) in listener_set.iter() {
+                                        if let Some(listener_notification) = listener.build_utxos_changed_notification(notification) {
+                                            let message = T::into_message(&listener_notification, variant);
+                                            match listener.try_send(message) {
+                                                Ok(_) => {}
+                                                Err(_) => {
+                                                    if listener.is_closed() {
+                                                        purge.push(*id);
+                                                    }
                                                 }
                                             }
                                         }
@@ -247,13 +249,15 @@ where
                             }
                             // For all other notifications, broadcast the same message to all listeners
                             _ => {
-                                let message = T::into_message(notification);
-                                for (id, listener) in listeners.iter() {
-                                    match listener.try_send(message.clone()) {
-                                        Ok(_) => {}
-                                        Err(_) => {
-                                            if listener.is_closed() {
-                                                purge.push(*id);
+                                for (variant, listener_set) in listeners.iter() {
+                                    let message = T::into_message(notification, variant);
+                                    for (id, listener) in listener_set.iter() {
+                                        match listener.try_send(message.clone()) {
+                                            Ok(_) => {}
+                                            Err(_) => {
+                                                if listener.is_closed() {
+                                                    purge.push(*id);
+                                                }
                                             }
                                         }
                                     }
@@ -275,7 +279,7 @@ where
                         need_subscribe = listeners.len() == 0 || report_all_changes;
 
                         // We don't care whether this is an insertion or a replacement
-                        listeners.insert(id, listener.clone());
+                        listeners.insert(listener.variant(), id, listener.clone());
                     }
 
                     DispatchMessage::RemoveListener(id) => {

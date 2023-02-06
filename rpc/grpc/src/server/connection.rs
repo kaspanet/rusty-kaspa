@@ -1,6 +1,11 @@
 use crate::{protowire::KaspadResponse, server::StatusResult};
 use kaspa_core::trace;
-use kaspa_rpc_core::notify::{connection::Connection, error::Error as NotificationError, listener::ListenerID, notifier::Notifier};
+use kaspa_rpc_core::notify::{
+    connection::{Connection, Invariant},
+    error::Error as NotificationError,
+    listener::ListenerID,
+    notifier::Notifier,
+};
 use std::{
     collections::HashMap,
     net::SocketAddr,
@@ -33,9 +38,14 @@ impl GrpcConnection {
 
 impl Connection for GrpcConnection {
     type Message = Arc<StatusResult<KaspadResponse>>;
+    type Variant = Invariant;
     type Error = super::error::Error;
 
-    fn into_message(notification: &Arc<kaspa_rpc_core::Notification>) -> Self::Message {
+    fn variant(&self) -> Self::Variant {
+        todo!()
+    }
+
+    fn into_message(notification: &Arc<kaspa_rpc_core::Notification>, _: &Self::Variant) -> Self::Message {
         Arc::new(Ok((&**notification).into()))
     }
 

@@ -7,8 +7,10 @@ use crate::{
     },
     Notification, NotificationType, RpcAddress,
 };
-use std::fmt::Debug;
 use std::sync::Arc;
+use std::{collections::HashMap, fmt::Debug};
+extern crate derive_more;
+use derive_more::Deref;
 
 pub type ListenerID = u64;
 
@@ -110,7 +112,7 @@ impl<T> ListenerSenderSide<T>
 where
     T: Connection,
 {
-    pub(crate) fn new(listener: &Listener<T>, sending_changed_utxos: ListenerUtxoNotificationFilterSetting, event: EventType) -> Self {
+    pub fn new(listener: &Listener<T>, sending_changed_utxos: ListenerUtxoNotificationFilterSetting, event: EventType) -> Self {
         match event {
             EventType::UtxosChanged if sending_changed_utxos == ListenerUtxoNotificationFilterSetting::FilteredByAddress => Self {
                 connection: listener.connection.clone(),
@@ -120,8 +122,8 @@ where
         }
     }
 
-    pub(crate) fn build_utxos_changed_notification(&self, notification: &Arc<Notification>) -> Option<Arc<Notification>> {
-        // FIXME: actually build a filtered Notification::UtxosChanged
+    pub fn build_utxos_changed_notification(&self, notification: &Arc<Notification>) -> Option<Arc<Notification>> {
+        // TODO: actually build a filtered Notification::UtxosChanged
         match self.filter.matches(notification.clone()) {
             true => Some(notification.clone()),
             false => None,
@@ -132,7 +134,7 @@ where
     ///
     /// If the notification does not meet requirements (see [`Notification::UtxosChanged`]) returns `Ok(false)`,
     /// otherwise returns `Ok(true)`.
-    pub(crate) fn try_send(&self, message: T::Message) -> Result<bool> {
+    pub fn try_send(&self, message: T::Message) -> Result<bool> {
         // FIXME: externalize the logic of building a filtered Notification::UtxosChanged
         //if self.filter.matches(notification.clone()) {
         match self.connection.send(message) {
@@ -143,8 +145,12 @@ where
         //Ok(false)
     }
 
-    pub(crate) fn is_closed(&self) -> bool {
+    pub fn is_closed(&self) -> bool {
         self.connection.is_closed()
+    }
+
+    pub fn variant(&self) -> T::Variant {
+        self.connection.variant()
     }
 }
 
@@ -180,3 +186,44 @@ impl InnerFilter for FilterUtxoAddress {
     }
 }
 impl Filter for FilterUtxoAddress {}
+
+pub(crate) type ListenerSet<T> = HashMap<ListenerID, Arc<ListenerSenderSide<T>>>;
+
+#[derive(Deref)]
+pub(crate) struct ListenerVariantSet<T: Connection>(HashMap<T::Variant, ListenerSet<T>>);
+
+impl<T: Connection> ListenerVariantSet<T> {
+    pub fn new() -> Self {
+        Self(HashMap::default())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.values().map(|x| x.len()).sum()
+    }
+
+    pub fn insert(
+        &mut self,
+        variant: T::Variant,
+        id: ListenerID,
+        listener: Arc<ListenerSenderSide<T>>,
+    ) -> Option<Arc<ListenerSenderSide<T>>> {
+        // Make sure only one instance of ìd` is registered in the whole object
+        let result = self.remove(&id);
+
+        if !self.0.contains_key(&variant) {
+            self.0.insert(variant.clone(), HashMap::default());
+        }
+        self.0.get_mut(&variant).unwrap().insert(id, listener);
+
+        result
+    }
+
+    pub fn remove(&mut self, id: &ListenerID) -> Option<Arc<ListenerSenderSide<T>>> {
+        for (_, listener_set) in self.0.iter_mut() {
+            if let Some(listener) = listener_set.remove(id) {
+                return Some(listener);
+            }
+        }
+        None
+    }
+}
