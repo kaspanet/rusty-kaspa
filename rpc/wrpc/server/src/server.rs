@@ -9,12 +9,15 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::sync::Mutex;
-use workflow_core::channel::*;
+use workflow_core::channel::Sender;
 use workflow_log::*;
 use workflow_rpc::server::prelude::*;
+use workflow_rpc::server::result::Result as WrpcResult;
+use workflow_rpc::types::*;
 
 pub struct ConnectionManagerInner {
     pub id: AtomicU64,
+    pub encoding: Encoding,
     pub sockets: Mutex<HashMap<u64, Connection>>,
     pub rpc_api: Option<Arc<dyn RpcApi>>,
     pub notifications: NotificationManager,
@@ -27,10 +30,11 @@ pub struct Server {
 }
 
 impl Server {
-    pub fn new(tasks: usize, rpc_api: Option<Arc<dyn RpcApi>>, options: Arc<Options>) -> Self {
+    pub fn new(tasks: usize, encoding: Encoding, rpc_api: Option<Arc<dyn RpcApi>>, options: Arc<Options>) -> Self {
         Server {
             inner: Arc::new(ConnectionManagerInner {
                 id: AtomicU64::new(0),
+                encoding,
                 sockets: Mutex::new(HashMap::new()),
                 rpc_api,
                 options,
@@ -87,6 +91,19 @@ impl Server {
 
     pub fn register_notification_listener(&self, id: ListenerId, connection: Connection) {
         self.inner.notifications.register_notification_listener(id, connection)
+    }
+
+    /// Creates a WebSocket [`Message`] that can be posted to the connection ([`Messenger`]) sink
+    /// directly.
+    pub fn create_serialiaed_notification_message<Ops, Msg>(&self, op: Ops, msg: Msg) -> WrpcResult<Message>
+    where
+        Ops: OpsT,
+        Msg: MsgT,
+    {
+        match self.inner.encoding {
+            Encoding::Borsh => workflow_rpc::server::protocol::borsh::create_serialized_notification_message(op, msg),
+            Encoding::SerdeJson => workflow_rpc::server::protocol::borsh::create_serialized_notification_message(op, msg),
+        }
     }
 }
 

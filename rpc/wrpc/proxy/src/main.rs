@@ -53,7 +53,7 @@ async fn main() -> Result<()> {
     log_info!("Proxy routing to `{}` on {}", network_type, options.grpc_proxy_address.as_ref().unwrap());
 
     let tasks = threads.unwrap_or_else(num_cpus::get);
-    let rpc_handler = Arc::new(KaspaRpcHandler::proxy(tasks, options.clone()));
+    let rpc_handler = Arc::new(KaspaRpcHandler::proxy(tasks, encoding, options.clone()));
 
     let router = Arc::new(Router::new(rpc_handler.server.clone()));
     let server = RpcServer::new_with_encoding::<Server, Connection, RpcApiOps, Id64>(encoding, rpc_handler, router.interface.clone());

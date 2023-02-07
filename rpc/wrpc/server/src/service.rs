@@ -45,11 +45,11 @@ pub struct KaspaRpcHandler {
 }
 
 impl KaspaRpcHandler {
-    pub fn new(tasks: usize, rpc_api: Option<Arc<dyn RpcApi>>, options: Arc<Options>) -> KaspaRpcHandler {
-        KaspaRpcHandler { server: Server::new(tasks, rpc_api, options.clone()), options }
+    pub fn new(tasks: usize, encoding: WrpcEncoding, rpc_api: Option<Arc<dyn RpcApi>>, options: Arc<Options>) -> KaspaRpcHandler {
+        KaspaRpcHandler { server: Server::new(tasks, encoding, rpc_api, options.clone()), options }
     }
-    pub fn proxy(tasks: usize, options: Arc<Options>) -> KaspaRpcHandler {
-        KaspaRpcHandler { server: Server::new(tasks, None, options.clone()), options }
+    pub fn proxy(tasks: usize, encoding: WrpcEncoding, options: Arc<Options>) -> KaspaRpcHandler {
+        KaspaRpcHandler { server: Server::new(tasks, encoding, None, options.clone()), options }
     }
 }
 
@@ -102,7 +102,7 @@ impl WrpcService {
     pub fn new(tasks: usize, rpc_api: Arc<dyn RpcApi>, encoding: &Encoding, options: Options) -> Self {
         let options = Arc::new(options);
         // Create handle to manage connections
-        let rpc_handler = Arc::new(KaspaRpcHandler::new(tasks, Some(rpc_api), options.clone()));
+        let rpc_handler = Arc::new(KaspaRpcHandler::new(tasks, *encoding, Some(rpc_api), options.clone()));
         // Create router (initializes Interface registering RPC method and notification handlers)
         let router = Arc::new(Router::new(rpc_handler.server.clone()));
         // Create a server
