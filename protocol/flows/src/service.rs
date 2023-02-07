@@ -35,16 +35,17 @@ impl AsyncService for P2pService {
 
         // Launch the service and wait for a shutdown signal
         Box::pin(async move {
-            let ip_port = String::from("[::1]:50051");
+            let address = String::from("[::1]:50051");
             let ctx = Arc::new(FlowContext::new(self.consensus.clone()));
-            let p2p_adaptor = P2pAdaptor::listen(ip_port.clone(), ctx).await.unwrap();
+            let p2p_adaptor = P2pAdaptor::listen(address.clone(), ctx).await.unwrap();
 
             // For now, attempt to connect to a running golang node
-            let golang_ip_port = String::from("http://[::1]:16111");
-            trace!("P2P, p2p::main - starting peer:{golang_ip_port}");
-            let _peer_id = p2p_adaptor.connect_peer(golang_ip_port.clone()).await;
+            // TODO: remove this
+            let peer_address = String::from("http://[::1]:16111");
+            trace!("P2P, p2p::main - starting peer:{peer_address}");
+            let _peer_id = p2p_adaptor.connect_peer(peer_address.clone()).await;
 
-            // Keep the P2P server running until an app shutdown signal is triggered
+            // Keep the P2P server running until a service shutdown signal is received
             shutdown_signal.await;
             p2p_adaptor.terminate_all_peers_and_flows().await;
         })

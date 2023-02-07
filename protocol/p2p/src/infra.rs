@@ -154,13 +154,13 @@ impl P2pServer {
     }
 }
 
+#[derive(Debug)]
 pub struct P2pClient<T: RouterApi> {
     grpc_client: Option<pb::p2p_client::P2pClient<tonic::transport::Channel>>,
     pub router: std::sync::Arc<T>,
 }
 
 impl<T: RouterApi> P2pClient<T> {
-    #[allow(dead_code)]
     pub async fn connect(
         address: String,
         router: std::sync::Arc<T>,
@@ -632,9 +632,7 @@ pub enum KaspadMessagePayloadEnumU8 {
 
 pub type RouterRxChannelType = tokio::sync::mpsc::Receiver<pb::KaspadMessage>;
 
-#[ignore = "not working"]
 #[tokio::test]
-// this test doesn't work because client does not connect when run from test-exe (to be investigated)
 async fn run_p2p_server_and_client_test() -> Result<(), Box<dyn std::error::Error>> {
     // [0] - Create new router - first instance
     // upper_layer_rx will be used to dispatch notifications about new-connections, both for client & server
@@ -697,31 +695,27 @@ async fn run_p2p_server_and_client_test() -> Result<(), Box<dyn std::error::Erro
     // [2] - Start listener (de-facto Server side )
     let terminate_server = P2pServer::listen(String::from("[::1]:50051"), router, false).await;
 
-    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-
     // [3] - Start client
     let mut cnt = 0;
     loop {
         let client = P2pClient::connect(String::from("http://[::1]:50051"), cloned_router_arc.clone(), false).await;
         if client.is_ok() {
-            // client is running, we can register flows
-            // router.subscribe_to(...) , but in this example spawn @ [1] will do it for every new router
-
-            // terminate client
+            // Terminate client
             println!("Client connected ... we can terminate ...");
             client.unwrap().router.as_ref().close().await;
+            break;
         } else {
-            println!("{:?}", client.err());
             cnt += 1;
-            if cnt > 16 {
-                println!("Client connected failed - 16 retries ...");
-                break;
+            if cnt > 8 {
+                println!("Client connect failed - 8 retries ...");
+                let err: Box<dyn Error> = Box::new(client.unwrap_err());
+                return Err(err);
             } else {
+                println!("{:?}", client.err());
                 tokio::time::sleep(std::time::Duration::from_secs(2)).await;
             }
         }
     }
-    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
     // [4] - Check that server is ok
     if let Ok(t) = terminate_server {

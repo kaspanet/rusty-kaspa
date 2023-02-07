@@ -9,9 +9,6 @@ use kaspa_core::{debug, error};
 use std::sync::Arc;
 use tonic::async_trait;
 
-#[allow(dead_code)]
-type P2pClientType = infra::P2pClient<infra::Router>;
-
 #[async_trait]
 pub trait P2pAdaptorApi {
     /// Will be used only for client side connections (regular kaspa node will NOT use it)
@@ -133,7 +130,7 @@ impl P2pAdaptorApi for P2pAdaptor {
 
     async fn connect_peer(&self, ip_port: String) -> Option<uuid::Uuid> {
         // [0] - Start client + re-connect loop
-        let client = infra::P2pClient::connect_with_retry(ip_port, self.master_router.clone(), false, 16).await;
+        let client = infra::P2pClient::connect_with_retry(ip_port, self.master_router.clone(), true, 16).await;
         match client {
             Some(connected_client) => {
                 let peer_id = connected_client.router.identity();

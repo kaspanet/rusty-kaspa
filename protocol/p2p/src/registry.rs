@@ -55,7 +55,6 @@ pub trait Flow {
 }
 
 /// An example flow, echoing all messages back to the network
-#[allow(dead_code)]
 pub struct EchoFlow {
     receiver: infra::RouterRxChannelType,
     router: Arc<infra::Router>,

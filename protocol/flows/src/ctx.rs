@@ -129,3 +129,80 @@ impl FlowRegistryApi for FlowContext {
         Ok(vec![echo_terminate])
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use consensus_core::api::ConsensusApi;
+    use p2p_lib::adaptor::{P2pAdaptor, P2pAdaptorApi};
+
+    struct ConsensusMock;
+
+    // TODO: use mockall?
+    impl ConsensusApi for ConsensusMock {
+        fn build_block_template(
+            self: std::sync::Arc<Self>,
+            _miner_data: consensus_core::coinbase::MinerData,
+            _txs: Vec<consensus_core::tx::Transaction>,
+        ) -> Result<consensus_core::block::BlockTemplate, consensus_core::errors::block::RuleError> {
+            todo!()
+        }
+
+        fn validate_and_insert_block(
+            self: std::sync::Arc<Self>,
+            _block: consensus_core::block::Block,
+            _update_virtual: bool,
+        ) -> futures::future::BoxFuture<
+            'static,
+            consensus_core::errors::block::BlockProcessResult<consensus_core::blockstatus::BlockStatus>,
+        > {
+            todo!()
+        }
+
+        fn validate_mempool_transaction_and_populate(
+            self: std::sync::Arc<Self>,
+            _transaction: &mut consensus_core::tx::MutableTransaction,
+        ) -> consensus_core::errors::tx::TxResult<()> {
+            todo!()
+        }
+
+        fn calculate_transaction_mass(self: std::sync::Arc<Self>, _transaction: &consensus_core::tx::Transaction) -> u64 {
+            todo!()
+        }
+
+        fn get_virtual_daa_score(self: std::sync::Arc<Self>) -> u64 {
+            todo!()
+        }
+
+        fn modify_coinbase_payload(
+            self: std::sync::Arc<Self>,
+            _payload: Vec<u8>,
+            _miner_data: &consensus_core::coinbase::MinerData,
+        ) -> consensus_core::errors::coinbase::CoinbaseResult<Vec<u8>> {
+            todo!()
+        }
+    }
+
+    #[tokio::test]
+    async fn test_p2p_handshake() {
+        kaspa_core::log::try_init_logger("info");
+
+        let address1 = String::from("[::1]:50053");
+        let adaptor1 = P2pAdaptor::listen(address1.clone(), Arc::new(FlowContext::new(Arc::new(ConsensusMock {})))).await.unwrap();
+
+        let address2 = String::from("[::1]:50054");
+        let _adaptor2 = P2pAdaptor::listen(address2.clone(), Arc::new(FlowContext::new(Arc::new(ConsensusMock {})))).await.unwrap();
+
+        // Initiate the connection from `adaptor1` (outbound) to `adaptor2` (inbound)
+        // NOTE: a minimal scheme prefix `"://"` must be added for the client-side connect logic
+        adaptor1.connect_peer(String::from("://[::1]:50054")).await;
+
+        // TODO: find a better mechanism to sync on handshake completion
+        tokio::time::sleep(std::time::Duration::from_secs(4)).await;
+
+        // For now assert the handshake by checking the peer exists (since peer is removed on handshake error)
+        assert_eq!(adaptor1.get_all_peer_ids().len(), 1, "handshake failed -- outbound peer is missing");
+        // TODO: uncomment when fixing the issue that inbound peers are not registered in the peers list
+        // assert_eq!(adaptor2.get_all_peer_ids().len(), 1, "handshake failed -- inbound peer is missing");
+    }
+}
