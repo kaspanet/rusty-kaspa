@@ -191,7 +191,6 @@ mod tests {
         model::{
             services::reachability::MTReachabilityService,
             stores::{
-                errors::StoreError,
                 headers::{HeaderStoreReader, HeaderWithBlockLevel},
                 reachability::MemoryReachabilityStore,
                 relations::RelationsStoreReader,
@@ -206,6 +205,7 @@ mod tests {
         header::Header,
         BlockHashSet, HashMapCustomHasher,
     };
+    use database::errors::StoreError;
     use hashes::Hash;
     use itertools::Itertools;
     use parking_lot::RwLock;

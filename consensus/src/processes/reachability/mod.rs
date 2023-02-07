@@ -5,7 +5,7 @@ mod reindex;
 pub mod tests;
 mod tree;
 
-use crate::model::stores::errors::StoreError;
+use database::errors::StoreError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]

@@ -1,5 +1,6 @@
 use crate::model::stores::statuses::StatusesStoreReader;
 use consensus_core::blockstatus::BlockStatus;
+use database::errors::StoreError;
 use hashes::Hash;
 use parking_lot::RwLock;
 use std::sync::Arc;
@@ -17,11 +18,11 @@ impl<T: StatusesStoreReader> MTStatusesService<T> {
 }
 
 impl<T: StatusesStoreReader> StatusesStoreReader for MTStatusesService<T> {
-    fn get(&self, hash: Hash) -> Result<BlockStatus, crate::model::stores::errors::StoreError> {
+    fn get(&self, hash: Hash) -> Result<BlockStatus, StoreError> {
         self.store.read().get(hash)
     }
 
-    fn has(&self, hash: Hash) -> Result<bool, crate::model::stores::errors::StoreError> {
+    fn has(&self, hash: Hash) -> Result<bool, StoreError> {
         self.store.read().has(hash)
     }
 }

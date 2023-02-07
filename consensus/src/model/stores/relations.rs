@@ -1,9 +1,7 @@
-use super::{
-    database::prelude::{BatchDbWriter, CachedDbAccess, DbKey, DirectDbWriter},
-    errors::StoreError,
-    DB,
-};
 use consensus_core::{blockhash::BlockHashes, BlockHashMap, BlockHasher, BlockLevel, HashMapCustomHasher};
+use database::db::DB;
+use database::errors::StoreError;
+use database::prelude::{BatchDbWriter, CachedDbAccess, DbKey, DirectDbWriter};
 use hashes::Hash;
 use itertools::Itertools;
 use rocksdb::WriteBatch;

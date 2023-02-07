@@ -1,8 +1,3 @@
-use super::{
-    database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter},
-    errors::{StoreError, StoreResultExtensions},
-    DB,
-};
 use consensus_core::{
     tx::{TransactionIndexType, TransactionOutpoint, UtxoEntry},
     utxo::{
@@ -10,6 +5,10 @@ use consensus_core::{
         utxo_view::UtxoView,
     },
 };
+use database::db::DB;
+use database::errors::StoreError;
+use database::errors::StoreResultExtensions;
+use database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
 use hashes::Hash;
 use rocksdb::WriteBatch;
 use std::{error::Error, fmt::Display, sync::Arc};

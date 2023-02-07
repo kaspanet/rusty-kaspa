@@ -1,8 +1,9 @@
-use super::database::prelude::{BatchDbWriter, CachedDbAccess, DbKey, DirectDbWriter};
-use super::{errors::StoreError, DB};
 use crate::processes::ghostdag::ordering::SortableBlock;
 use consensus_core::{blockhash::BlockHashes, BlueWorkType};
 use consensus_core::{BlockHashMap, BlockHasher, BlockLevel, HashMapCustomHasher};
+use database::db::DB;
+use database::errors::StoreError;
+use database::prelude::{BatchDbWriter, CachedDbAccess, DbKey, DirectDbWriter};
 use hashes::Hash;
 
 use itertools::EitherOrBoth::{Both, Left, Right};

@@ -13,7 +13,6 @@ use crate::{
             block_window_cache::BlockWindowCacheStore,
             daa::DbDaaStore,
             depth::DbDepthStore,
-            errors::StoreError,
             ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStoreReader},
             headers::{DbHeadersStore, HeaderStoreReader},
             past_pruning_points::{DbPastPruningPointsStore, PastPruningPointsStore, PastPruningPointsStoreReader},
@@ -59,6 +58,7 @@ use consensus_core::{
     },
     BlockHashMap, BlockHashSet, HashMapCustomHasher,
 };
+use database::errors::StoreError;
 use hashes::Hash;
 use kaspa_core::{debug, info, trace};
 use muhash::MuHash;

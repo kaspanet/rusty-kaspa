@@ -1,10 +1,8 @@
 use std::{fmt::Display, sync::Arc};
 
-use super::{
-    database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter},
-    errors::{StoreError, StoreResult},
-    DB,
-};
+use database::db::DB;
+use database::errors::{StoreError, StoreResult};
+use database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
 use hashes::Hash;
 use rocksdb::WriteBatch;
 

@@ -1,0 +1,18 @@
+[package]
+name = "database"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
+
+[dependencies]
+rocksdb.workspace = true
+serde.workspace = true
+bincode.workspace = true
+indexmap.workspace = true
+parking_lot.workspace = true
+thiserror.workspace = true
+rand.workspace = true
+faster-hex.workspace = true
+hashes.workspace = true

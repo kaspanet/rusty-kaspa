@@ -1,0 +1,16 @@
+[package]
+name = "kaspa-address-manager"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
+
+[dependencies]
+rocksdb.workspace = true
+consensus-core.workspace = true
+database.workspace = true
+serde.workspace = true
+itertools.workspace = true
+rand.workspace = true
+parking_lot.workspace = true

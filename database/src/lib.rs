@@ -1,5 +1,7 @@
 mod access;
 mod cache;
+pub mod db;
+pub mod errors;
 mod item;
 mod key;
 mod writer;

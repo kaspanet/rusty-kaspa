@@ -1,5 +1,6 @@
-use crate::model::stores::DB;
 use rocksdb::WriteBatch;
+
+use crate::db::DB;
 
 /// Abstraction over direct/batched DB writing
 pub trait DbWriter {
