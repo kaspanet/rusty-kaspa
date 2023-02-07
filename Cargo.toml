@@ -120,7 +120,7 @@ workflow-log = { version = "0.3.10" }
 workflow-core = { version = "0.3.10" }
 workflow-wasm = { version = "0.3.10" }
 workflow-dom = { version = "0.3.10" }
-workflow-rpc = { version = "0.3.10" }
+workflow-rpc = { version = "0.3.11" }
 workflow-terminal = { version = "0.3.10" }
 
 # workflow-log = { path = "../workflow-rs/log" }
