@@ -24,7 +24,6 @@ smallvec.workspace = true
 cfg-if.workspace = true
 futures-util.workspace = true
 async-trait = "0.1.57"
-ahash = "0.8.0"
 futures = { version = "0.3" }
 rand = "0.8"
 triggered = "0.1"

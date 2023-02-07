@@ -1,4 +1,4 @@
 use crate::RpcAddress;
-use ahash::AHashSet;
+use std::collections::HashSet;
 
-pub type RpcUtxoAddressSet = AHashSet<RpcAddress>;
+pub type RpcUtxoAddressSet = HashSet<RpcAddress>;

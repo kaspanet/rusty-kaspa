@@ -9,14 +9,16 @@ use super::{
     subscriber::{Subscriber, SubscriptionManager},
 };
 use crate::{api::ops::SubscribeCommand, Notification, NotificationType, RpcResult};
-use ahash::AHashMap;
 use async_channel::{Receiver, Sender};
 use async_trait::async_trait;
 use kaspa_core::trace;
 use kaspa_utils::channel::Channel;
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc, Mutex,
+use std::{
+    collections::{hash_map::Entry, HashMap},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
 };
 
 /// A notification sender
@@ -116,7 +118,7 @@ where
     T: Connection,
 {
     /// Map of registered listeners
-    listeners: Arc<Mutex<AHashMap<ListenerID, Listener<T>>>>,
+    listeners: Arc<Mutex<HashMap<ListenerID, Listener<T>>>>,
 
     /// Has this notifier been started?
     is_started: Arc<AtomicBool>,
@@ -148,7 +150,7 @@ where
     ) -> Self {
         let subscriber = subscriber.map(Arc::new);
         Self {
-            listeners: Arc::new(Mutex::new(AHashMap::new())),
+            listeners: Arc::new(Mutex::new(HashMap::new())),
             is_started: Arc::new(AtomicBool::new(false)),
             dispatcher_channel: EventArray::default(),
             dispatcher_shutdown_listener: Arc::new(Mutex::new(EventArray::default())),
@@ -336,9 +338,9 @@ where
             let id = u64::from_le_bytes(rand::random::<[u8; 8]>());
 
             // This is very unlikely to happen but still, check for duplicates
-            if !listeners.contains_key(&id) {
+            if let Entry::Vacant(e) = listeners.entry(id) {
                 let listener = Listener::new(id, connection);
-                listeners.insert(id, listener);
+                e.insert(listener);
                 return id;
             }
         }
