@@ -1,9 +1,7 @@
-use super::{
-    database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter},
-    errors::StoreError,
-    DB,
-};
 use consensus_core::BlockHasher;
+use database::prelude::StoreError;
+use database::prelude::DB;
+use database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
 use hashes::Hash;
 use math::Uint3072;
 use muhash::MuHash;

@@ -1,9 +1,7 @@
-use super::{
-    database::prelude::{BatchDbWriter, CachedDbItem, DirectDbWriter},
-    errors::StoreResult,
-    DB,
-};
 use crate::processes::ghostdag::ordering::SortableBlock;
+use database::prelude::StoreResult;
+use database::prelude::DB;
+use database::prelude::{BatchDbWriter, CachedDbItem, DirectDbWriter};
 use rocksdb::WriteBatch;
 use std::sync::Arc;
 

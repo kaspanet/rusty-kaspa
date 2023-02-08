@@ -19,7 +19,9 @@ members = [
     "rpc/grpc/server",
     "mining",
     "protocol/p2p",
-    "protocol/flows"
+    "protocol/flows",
+    "components/addressmanager",
+    "database",
 ]
 
 [workspace.package]
@@ -50,6 +52,8 @@ kaspa-grpc-server = { path = "rpc/grpc/server" }
 p2p-lib = { path = "protocol/p2p" }
 p2p-flows = { path = "protocol/flows" }
 mining = { path = "mining" }
+addressmanager = { path = "components/addressmanager" }
+database = { path = "database" }
 
 thiserror = "1"
 faster-hex = "0.6"
@@ -74,3 +78,5 @@ async-channel = "1.8.0"
 derive_more = { version = "0.99" }
 log = "0.4"
 cfg-if = "1.0.0"
+rocksdb = "0.19"
+parking_lot = "0.12"
