@@ -3,36 +3,41 @@ use std::sync::Arc;
 
 use kaspa_core::{debug, error};
 use p2p_lib::adaptor::P2pAdaptorApi;
-use p2p_lib::infra;
 use p2p_lib::infra::RouterApi;
+use p2p_lib::infra::{self, P2pEvent};
 use p2p_lib::registry;
 use p2p_lib::registry::{EchoFlowRegistry, Flow};
 
 #[tokio::main]
 async fn main() {
     // [-] - init logger
-    kaspa_core::log::init_logger("info");
+    kaspa_core::log::init_logger("debug");
     // [0] - init p2p-adaptor - server side
     let ip_port = String::from("[::1]:50051");
     let registry = Arc::new(EchoFlowRegistry::new());
     let p2p_adaptor = p2p_lib::adaptor::P2pAdaptor::listen(ip_port.clone(), registry).await.unwrap();
 
-    let other_ip_port = String::from("http://[::1]:16111");
+    let other_ip_port = String::from("://[::1]:16111");
     for i in 0..1 {
         debug!("P2P, p2p::main - starting peer:{}", i);
         let _peer_id = p2p_adaptor.connect_peer(other_ip_port.clone()).await;
-        // let msg = pb::KaspadMessage { payload: Some(pb::kaspad_message::Payload::Verack(pb::VerackMessage {})) };
-        // p2p_adaptor.send(peer_id.unwrap(), msg).await;
     }
 
     // [1] - wait for a few sec & terminate
-    tokio::time::sleep(std::time::Duration::from_secs(64)).await;
-    debug!("P2P, p2p_server::main - TERMINATE");
-    p2p_adaptor.terminate_all_peers_and_flows().await;
-    // [2] - drop & sleep 5 sec
-    drop(p2p_adaptor);
+    // tokio::time::sleep(std::time::Duration::from_secs(64)).await;
+    // debug!("P2P, p2p_server::main - TERMINATE");
+    // p2p_adaptor.terminate_all_peers_and_flows().await;
+    // // [2] - drop & sleep 5 sec
+    // drop(p2p_adaptor);
+    // tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+    // debug!("P2P, p2p_server::main - FINISH");
+
     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-    debug!("P2P, p2p_server::main - FINISH");
+    debug!("P2P,p2p_server::main - TERMINATE");
+    p2p_adaptor.terminate_all_peers_and_flows().await;
+    debug!("P2P,p2p_server::main - FINISH");
+    tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+    debug!("P2P,p2p_server::main - EXIT");
 }
 
 #[allow(dead_code)]
@@ -46,13 +51,15 @@ async fn old_main_with_impl_details() {
     tokio::spawn(async move {
         // loop will exit when all sender channels will be dropped
         // --> when all routers will be dropped & grpc-service will be stopped
-        while let Some(new_router) = upper_layer_rx.recv().await {
-            // as en example subscribe to all message-types, in reality different flows will subscribe to different message-types
-            let (_flow_id, flow_terminate) = registry::EchoFlow::new(new_router).await;
-            // sleep for 30 sec
-            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
-            // terminate when needed (as an example) in general we need to save it somewhere in order to do graceful shutdown
-            flow_terminate.send(()).unwrap();
+        while let Some(new_event) = upper_layer_rx.recv().await {
+            if let P2pEvent::NewRouter(new_router) = new_event {
+                // as en example subscribe to all message-types, in reality different flows will subscribe to different message-types
+                let (_flow_id, flow_terminate) = registry::EchoFlow::new(new_router).await;
+                // sleep for 30 sec
+                tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+                // terminate when needed (as an example) in general we need to save it somewhere in order to do graceful shutdown
+                flow_terminate.send(()).unwrap();
+            }
         }
     });
     // [2] - Start listener (de-facto Server side )

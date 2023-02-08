@@ -5,12 +5,13 @@ use futures::FutureExt;
 use kaspa_core::{debug, error, info, trace, warn};
 use lockfree;
 use std::fmt;
+use std::sync::Arc;
 use std::{error::Error, net::ToSocketAddrs, pin::Pin, result::Result};
 use tokio::sync::mpsc;
 use tokio_stream::{wrappers::ReceiverStream, StreamExt};
 use tonic::codec::CompressionEncoding;
 use tonic::{async_trait, transport::Server, Status};
-use uuid;
+use uuid::{self, Uuid};
 
 #[allow(dead_code)]
 fn match_for_io_error(err_status: &Status) -> Option<&std::io::Error> {
@@ -39,7 +40,7 @@ fn match_for_io_error(err_status: &Status) -> Option<&std::io::Error> {
 #[async_trait]
 pub trait RouterApi: Send + Sync + 'static {
     // expected to be called once
-    async fn new() -> (std::sync::Arc<Self>, mpsc::Receiver<std::sync::Arc<Self>>);
+    async fn new() -> (std::sync::Arc<Self>, mpsc::Receiver<P2pEvent<Self>>);
     // expected to be called from grpc service (server & client)
     async fn clone(
         &self,
@@ -92,10 +93,10 @@ impl<T: RouterApi> pb::p2p_server::P2p for GrpcConnection<T> {
             while let Some(result) = input_from_network_grpc_stream.next().await {
                 match result {
                     Ok(msg) => {
-                        trace!("P2P, Server - got message: {:?}, router-id: {}", msg, router.identity());
+                        debug!("P2P, Server - got message: {:?}, router-id: {}", 0, router.identity());
                         // if it is false -> no route for message exists or channel is closed / dropped
                         if !(router.route_to_flow(msg).await) {
-                            trace!(
+                            debug!(
                                 "P2P, Server - no route exist for this message, going to close connection, router-id: {}",
                                 router.identity()
                             );
@@ -137,14 +138,10 @@ impl P2pServer {
             };
 
             Server::builder()
-                    //.add_service(pb::p2p_server::P2pServer::new(GrpcConnection { router }))
                     .add_service(grpc_server)
                     .serve_with_shutdown(
                         ip_port.to_socket_addrs().unwrap().next().unwrap(),
                         rx.map(drop),
-                        //async {
-                        //let _ = tokio::spawn(tokio::signal::ctrl_c()).await.unwrap();
-                        //}
                     )
                     .await
                     .unwrap();
@@ -161,6 +158,10 @@ pub struct P2pClient<T: RouterApi> {
 }
 
 impl<T: RouterApi> P2pClient<T> {
+    pub fn identity(&self) -> Uuid {
+        self.router.identity()
+    }
+
     pub async fn connect(
         address: String,
         router: std::sync::Arc<T>,
@@ -196,7 +197,8 @@ impl<T: RouterApi> P2pClient<T> {
         };
         // [3] - Read messages from server & route to flows
         let mut input_from_network_grpc_stream =
-            p2p_client.grpc_client.as_mut().unwrap().message_stream(ReceiverStream::new(rx)).await.unwrap().into_inner();
+            p2p_client.grpc_client.as_mut().unwrap().message_stream(ReceiverStream::new(rx).map(|msg| msg)).await.unwrap().into_inner();
+        // input_from_network_grpc_stream.
         let router_to_move = p2p_client.router.clone();
         tokio::spawn(async move {
             trace!("P2P, P2pClient::connect - receiving loop started");
@@ -255,16 +257,23 @@ impl<T: RouterApi> P2pClient<T> {
 
     #[inline]
     fn communication_timeout() -> u64 {
-        10_000
+        1_000
     }
     #[inline]
     fn keep_alive() -> u64 {
-        10_000
+        1_000
     }
     #[inline]
     fn connect_timeout() -> u64 {
-        10_000
+        1_000
     }
+}
+
+/// An enum used to signify router events from the lower layer to upper layers
+#[derive(Debug)]
+pub enum P2pEvent<T: RouterApi + ?Sized> {
+    NewRouter(Arc<T>),
+    RouterClosing(Uuid),
 }
 
 #[derive(Debug)]
@@ -276,7 +285,7 @@ pub struct Router {
     server_sender: Option<mpsc::Sender<Result<pb::KaspadMessage, Status>>>,
     client_sender: Option<mpsc::Sender<pb::KaspadMessage>>,
     // upper layer notification channel
-    upper_layer_notification: Option<mpsc::Sender<std::sync::Arc<Router>>>,
+    upper_layer_notification: Option<mpsc::Sender<P2pEvent<Self>>>,
     // default routing channels till registration of routes is finished
     default_route: (Option<lockfree::queue::Queue<pb::KaspadMessage>>, std::sync::atomic::AtomicBool),
     // identity - used for debug
@@ -290,6 +299,10 @@ pub struct Router {
 impl Router {
     async fn route_to_flow_impl(&self, msg: pb::KaspadMessage, fallback_to_default_route: bool) -> bool {
         // [0] - try to router
+        if msg.payload.is_none() {
+            warn!("P2P, Router::route_to_flow - received empty payload");
+            return false;
+        }
         let key = Router::grpc_payload_to_internal_u8_enum(msg.payload.as_ref().unwrap());
         match self.routing_map.get(&key) {
             // [1] - regular route
@@ -310,7 +323,7 @@ impl Router {
 
 #[async_trait]
 impl RouterApi for Router {
-    async fn new() -> (std::sync::Arc<Self>, mpsc::Receiver<std::sync::Arc<Self>>) {
+    async fn new() -> (std::sync::Arc<Self>, mpsc::Receiver<P2pEvent<Self>>) {
         // [0] - ctor + channels
         debug!("P2P, Router::new - master router creation");
         // [1] - broadcast tx,rx - new rx created only once for master router
@@ -377,29 +390,30 @@ impl RouterApi for Router {
         // route_to_network can fail cause:
         // 1) disconnection
         // 2) router.close() since tx-channel will be downgraded
-        let same_new_router = router.clone();
-        let mut b_rx = self.broadcast_sender.subscribe();
-        tokio::spawn(async move {
-            trace!("P2P, router broadcast loop starting, router-id: {}", same_new_router.identity());
-            loop {
-                let result = b_rx.recv().await;
-                match result {
-                    Ok(msg) => {
-                        if !(same_new_router.route_to_network(msg).await) {
-                            // it is ok not to warn/error here
-                            trace!("P2P, router broadcast to network loop, unable to route message to network, router-id: {}, will exit broadcast loop",same_new_router.identity());
-                            break;
-                        }
-                    }
-                    Err(_err) => {
-                        trace!("P2P, router broadcast loop shutting down");
-                        break;
-                    }
-                }
-            }
-        });
-        // [2] - notify upper layer about new connection (TODO: what is upper layer drops all TXs ?? )
-        router.upper_layer_notification.as_ref().unwrap().send(router.clone()).await.unwrap();
+        // TODO: RRRRRRRRRRRRRRRRRRRRRRR
+        // let same_new_router = router.clone();
+        // let mut b_rx = self.broadcast_sender.subscribe();
+        // tokio::spawn(async move {
+        //     trace!("P2P, router broadcast loop starting, router-id: {}", same_new_router.identity());
+        //     loop {
+        //         let result = b_rx.recv().await;
+        //         match result {
+        //             Ok(msg) => {
+        //                 if !(same_new_router.route_to_network(msg).await) {
+        //                     // it is ok not to warn/error here
+        //                     trace!("P2P, router broadcast to network loop, unable to route message to network, router-id: {}, will exit broadcast loop",same_new_router.identity());
+        //                     break;
+        //                 }
+        //             }
+        //             Err(_err) => {
+        //                 trace!("P2P, router broadcast loop shutting down");
+        //                 break;
+        //             }
+        //         }
+        //     }
+        // });
+        // [2] - notify upper layer about new connection (TODO: what if upper layer drops all TXs ?? )
+        router.upper_layer_notification.as_ref().unwrap().send(P2pEvent::NewRouter(router.clone())).await.unwrap();
         // [3] - return shared_ptr
         router
     }
@@ -567,10 +581,14 @@ impl RouterApi for Router {
                 }
             }
         }
-        // [2] - should we notify upper-layer about closing ? TODO: what if we call `close` twice
+        // [2] - notify upper-layer about closing
+        self.upper_layer_notification.as_ref().unwrap().send(P2pEvent::RouterClosing(self.identity)).await.unwrap();
         self.upper_layer_notification.as_ref().unwrap().downgrade();
-        // [3] - TODO: how to close broadcast
+
+        // TODO: what if we call `close` twice
+        // TODO: how to close broadcast
         // self.broadcast_sender.drop();
+
         // [3] - debug log
         debug!("P2P, Router::close - connection finished, router-id: {:?}", self.identity);
     }
@@ -642,54 +660,56 @@ async fn run_p2p_server_and_client_test() -> Result<(), Box<dyn std::error::Erro
     tokio::spawn(async move {
         // loop will exit when all sender channels will be dropped
         // --> when all routers will be dropped & grpc-service will be stopped
-        while let Some(new_router) = upper_layer_rx.recv().await {
-            // as en example subscribe to all message-types, in reality different flows will subscribe to different message-types
-            // this channel will be owned by specific flow
-            let _rx_channel = new_router.subscribe_to(vec![
-                KaspadMessagePayloadEnumU8::Addresses,
-                KaspadMessagePayloadEnumU8::Block,
-                KaspadMessagePayloadEnumU8::Transaction,
-                KaspadMessagePayloadEnumU8::BlockLocator,
-                KaspadMessagePayloadEnumU8::RequestAddresses,
-                KaspadMessagePayloadEnumU8::RequestRelayBlocks,
-                KaspadMessagePayloadEnumU8::RequestTransactions,
-                KaspadMessagePayloadEnumU8::IbdBlock,
-                KaspadMessagePayloadEnumU8::InvRelayBlock,
-                KaspadMessagePayloadEnumU8::InvTransactions,
-                KaspadMessagePayloadEnumU8::Ping,
-                KaspadMessagePayloadEnumU8::Pong,
-                KaspadMessagePayloadEnumU8::Verack,
-                KaspadMessagePayloadEnumU8::Version,
-                KaspadMessagePayloadEnumU8::TransactionNotFound,
-                KaspadMessagePayloadEnumU8::Reject,
-                KaspadMessagePayloadEnumU8::PruningPointUtxoSetChunk,
-                KaspadMessagePayloadEnumU8::RequestIbdBlocks,
-                KaspadMessagePayloadEnumU8::UnexpectedPruningPoint,
-                KaspadMessagePayloadEnumU8::IbdBlockLocator,
-                KaspadMessagePayloadEnumU8::IbdBlockLocatorHighestHash,
-                KaspadMessagePayloadEnumU8::RequestNextPruningPointUtxoSetChunk,
-                KaspadMessagePayloadEnumU8::DonePruningPointUtxoSetChunks,
-                KaspadMessagePayloadEnumU8::IbdBlockLocatorHighestHashNotFound,
-                KaspadMessagePayloadEnumU8::BlockWithTrustedData,
-                KaspadMessagePayloadEnumU8::DoneBlocksWithTrustedData,
-                KaspadMessagePayloadEnumU8::RequestPruningPointAndItsAnticone,
-                KaspadMessagePayloadEnumU8::BlockHeaders,
-                KaspadMessagePayloadEnumU8::RequestNextHeaders,
-                KaspadMessagePayloadEnumU8::DoneHeaders,
-                KaspadMessagePayloadEnumU8::RequestPruningPointUtxoSet,
-                KaspadMessagePayloadEnumU8::RequestHeaders,
-                KaspadMessagePayloadEnumU8::RequestBlockLocator,
-                KaspadMessagePayloadEnumU8::PruningPoints,
-                KaspadMessagePayloadEnumU8::RequestPruningPointProof,
-                KaspadMessagePayloadEnumU8::PruningPointProof,
-                KaspadMessagePayloadEnumU8::Ready,
-                KaspadMessagePayloadEnumU8::BlockWithTrustedDataV4,
-                KaspadMessagePayloadEnumU8::TrustedData,
-                KaspadMessagePayloadEnumU8::RequestIbdChainBlockLocator,
-                KaspadMessagePayloadEnumU8::IbdChainBlockLocator,
-                KaspadMessagePayloadEnumU8::RequestAnticone,
-                KaspadMessagePayloadEnumU8::RequestNextPruningPointAndItsAnticoneBlocks,
-            ]);
+        while let Some(new_event) = upper_layer_rx.recv().await {
+            if let P2pEvent::NewRouter(new_router) = new_event {
+                // as en example subscribe to all message-types, in reality different flows will subscribe to different message-types
+                // this channel will be owned by specific flow
+                let _rx_channel = new_router.subscribe_to(vec![
+                    KaspadMessagePayloadEnumU8::Addresses,
+                    KaspadMessagePayloadEnumU8::Block,
+                    KaspadMessagePayloadEnumU8::Transaction,
+                    KaspadMessagePayloadEnumU8::BlockLocator,
+                    KaspadMessagePayloadEnumU8::RequestAddresses,
+                    KaspadMessagePayloadEnumU8::RequestRelayBlocks,
+                    KaspadMessagePayloadEnumU8::RequestTransactions,
+                    KaspadMessagePayloadEnumU8::IbdBlock,
+                    KaspadMessagePayloadEnumU8::InvRelayBlock,
+                    KaspadMessagePayloadEnumU8::InvTransactions,
+                    KaspadMessagePayloadEnumU8::Ping,
+                    KaspadMessagePayloadEnumU8::Pong,
+                    KaspadMessagePayloadEnumU8::Verack,
+                    KaspadMessagePayloadEnumU8::Version,
+                    KaspadMessagePayloadEnumU8::TransactionNotFound,
+                    KaspadMessagePayloadEnumU8::Reject,
+                    KaspadMessagePayloadEnumU8::PruningPointUtxoSetChunk,
+                    KaspadMessagePayloadEnumU8::RequestIbdBlocks,
+                    KaspadMessagePayloadEnumU8::UnexpectedPruningPoint,
+                    KaspadMessagePayloadEnumU8::IbdBlockLocator,
+                    KaspadMessagePayloadEnumU8::IbdBlockLocatorHighestHash,
+                    KaspadMessagePayloadEnumU8::RequestNextPruningPointUtxoSetChunk,
+                    KaspadMessagePayloadEnumU8::DonePruningPointUtxoSetChunks,
+                    KaspadMessagePayloadEnumU8::IbdBlockLocatorHighestHashNotFound,
+                    KaspadMessagePayloadEnumU8::BlockWithTrustedData,
+                    KaspadMessagePayloadEnumU8::DoneBlocksWithTrustedData,
+                    KaspadMessagePayloadEnumU8::RequestPruningPointAndItsAnticone,
+                    KaspadMessagePayloadEnumU8::BlockHeaders,
+                    KaspadMessagePayloadEnumU8::RequestNextHeaders,
+                    KaspadMessagePayloadEnumU8::DoneHeaders,
+                    KaspadMessagePayloadEnumU8::RequestPruningPointUtxoSet,
+                    KaspadMessagePayloadEnumU8::RequestHeaders,
+                    KaspadMessagePayloadEnumU8::RequestBlockLocator,
+                    KaspadMessagePayloadEnumU8::PruningPoints,
+                    KaspadMessagePayloadEnumU8::RequestPruningPointProof,
+                    KaspadMessagePayloadEnumU8::PruningPointProof,
+                    KaspadMessagePayloadEnumU8::Ready,
+                    KaspadMessagePayloadEnumU8::BlockWithTrustedDataV4,
+                    KaspadMessagePayloadEnumU8::TrustedData,
+                    KaspadMessagePayloadEnumU8::RequestIbdChainBlockLocator,
+                    KaspadMessagePayloadEnumU8::IbdChainBlockLocator,
+                    KaspadMessagePayloadEnumU8::RequestAnticone,
+                    KaspadMessagePayloadEnumU8::RequestNextPruningPointAndItsAnticoneBlocks,
+                ]);
+            }
         }
     });
     // [2] - Start listener (de-facto Server side )
@@ -698,7 +718,7 @@ async fn run_p2p_server_and_client_test() -> Result<(), Box<dyn std::error::Erro
     // [3] - Start client
     let mut cnt = 0;
     loop {
-        let client = P2pClient::connect(String::from("http://[::1]:50051"), cloned_router_arc.clone(), false).await;
+        let client = P2pClient::connect(String::from("://[::1]:50051"), cloned_router_arc.clone(), false).await;
         if client.is_ok() {
             // Terminate client
             println!("Client connected ... we can terminate ...");
