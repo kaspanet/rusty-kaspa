@@ -1,6 +1,6 @@
 use consensus_core::BlockHasher;
-use database::db::DB;
-use database::errors::StoreError;
+use database::prelude::StoreError;
+use database::prelude::DB;
 use database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
 use hashes::Hash;
 use rocksdb::WriteBatch;

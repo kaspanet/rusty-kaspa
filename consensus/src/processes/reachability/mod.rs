@@ -5,7 +5,7 @@ mod reindex;
 pub mod tests;
 mod tree;
 
-use database::errors::StoreError;
+use database::prelude::StoreError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]

@@ -4,7 +4,7 @@ use crate::{
     model::stores::{ghostdag::GhostdagStoreReader, statuses::StatusesStoreReader},
 };
 use consensus_core::block::Block;
-use database::errors::StoreResultExtensions;
+use database::prelude::StoreResultExtensions;
 use hashes::Hash;
 use std::sync::Arc;
 

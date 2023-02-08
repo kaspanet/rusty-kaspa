@@ -3,8 +3,8 @@ use std::sync::Arc;
 use consensus_core::{
     coinbase::BlockRewardData, tx::TransactionId, utxo::utxo_diff::UtxoDiff, BlockHashMap, BlockHashSet, HashMapCustomHasher,
 };
-use database::db::DB;
-use database::errors::StoreResult;
+use database::prelude::StoreResult;
+use database::prelude::DB;
 use database::prelude::{BatchDbWriter, CachedDbItem, DirectDbWriter};
 use hashes::Hash;
 use muhash::MuHash;

@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use consensus_core::BlockHashSet;
-use database::db::DB;
-use database::errors::StoreResult;
+use database::prelude::StoreResult;
+use database::prelude::DB;
 use database::prelude::{BatchDbWriter, CachedDbItem, DirectDbWriter};
 use hashes::Hash;
 use rocksdb::WriteBatch;

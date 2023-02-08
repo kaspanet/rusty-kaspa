@@ -58,7 +58,7 @@ use consensus_core::{
     },
     BlockHashMap, BlockHashSet, HashMapCustomHasher,
 };
-use database::errors::StoreError;
+use database::prelude::StoreError;
 use hashes::Hash;
 use kaspa_core::{debug, info, trace};
 use muhash::MuHash;

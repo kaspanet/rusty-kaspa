@@ -7,7 +7,7 @@ use crate::{
     processes::reachability::interval::Interval,
 };
 use consensus_core::{blockhash::BlockHashExtensions, BlockHashMap, BlockHashSet, HashMapCustomHasher};
-use database::errors::StoreError;
+use database::prelude::StoreError;
 use hashes::Hash;
 use std::collections::VecDeque;
 use thiserror::Error;

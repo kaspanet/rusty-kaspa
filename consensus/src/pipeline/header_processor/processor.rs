@@ -38,7 +38,7 @@ use consensus_core::{
     BlockHashSet, BlockLevel,
 };
 use crossbeam_channel::{Receiver, Sender};
-use database::errors::StoreResultExtensions;
+use database::prelude::StoreResultExtensions;
 use hashes::Hash;
 use itertools::Itertools;
 use parking_lot::RwLock;

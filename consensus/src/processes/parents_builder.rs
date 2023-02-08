@@ -205,7 +205,7 @@ mod tests {
         header::Header,
         BlockHashSet, HashMapCustomHasher,
     };
-    use database::errors::StoreError;
+    use database::prelude::StoreError;
     use hashes::Hash;
     use itertools::Itertools;
     use parking_lot::RwLock;

@@ -1,5 +1,5 @@
 use crate::model::stores::relations::RelationsStoreReader;
-use database::errors::StoreError;
+use database::prelude::StoreError;
 use hashes::Hash;
 use parking_lot::RwLock;
 use std::sync::Arc;

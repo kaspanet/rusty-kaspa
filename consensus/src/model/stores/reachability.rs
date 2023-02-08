@@ -3,8 +3,7 @@ use consensus_core::{
     blockhash::{self, BlockHashes},
     BlockHashMap, BlockHasher, HashMapCustomHasher,
 };
-use database::prelude::{BatchDbWriter, CachedDbAccess, CachedDbItem, DbKey, DirectDbWriter};
-use database::{db::DB, errors::StoreError};
+use database::prelude::{BatchDbWriter, CachedDbAccess, CachedDbItem, DbKey, DirectDbWriter, StoreError, DB};
 use hashes::Hash;
 
 use parking_lot::{RwLockUpgradableReadGuard, RwLockWriteGuard};

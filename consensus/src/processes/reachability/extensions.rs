@@ -1,6 +1,6 @@
 use super::interval::Interval;
 use crate::model::stores::reachability::ReachabilityStoreReader;
-use database::errors::StoreResult;
+use database::prelude::StoreResult;
 use hashes::Hash;
 
 pub(super) trait ReachabilityStoreIntervalExtensions {

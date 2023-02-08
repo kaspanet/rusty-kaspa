@@ -7,7 +7,7 @@ use consensus_core::blockhash::BlockHashExtensions;
 use consensus_core::blockstatus::BlockStatus::StatusInvalid;
 use consensus_core::header::Header;
 use consensus_core::BlockLevel;
-use database::errors::StoreResultExtensions;
+use database::prelude::StoreResultExtensions;
 use std::cmp::max;
 use std::{
     sync::Arc,

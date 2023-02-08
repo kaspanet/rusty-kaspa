@@ -9,14 +9,12 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use database::errors::StoreResultExtensions;
+use database::prelude::{StoreResultExtensions, DB};
 use parking_lot::Mutex;
-use rocksdb::{DBWithThreadMode, MultiThreaded};
 use stores::banned_address_store::{BannedAddressesStore, BannedAddressesStoreReader, DbBannedAddressesStore};
 
 const MAX_ADDRESSES: usize = 4096;
 const MAX_CONNECTION_FAILED_COUNT: u64 = 3;
-pub type DB = DBWithThreadMode<MultiThreaded>;
 
 pub struct AddressManager {
     banned_address_store: DbBannedAddressesStore,
@@ -108,12 +106,12 @@ mod not_banned_address_store_with_cache {
         sync::Arc,
     };
 
-    use database::db::DB;
+    use database::prelude::DB;
     use itertools::Itertools;
     use rand::{distributions::WeightedIndex, prelude::Distribution};
 
     use crate::{
-        stores::not_banned_address_store::{DbNotBannedAddressesStore, NotBannedAddressesStore, NotBannedAddressesStoreReader},
+        stores::not_banned_address_store::{DbNotBannedAddressesStore, NotBannedAddressesStore},
         NetAddress, MAX_ADDRESSES, MAX_CONNECTION_FAILED_COUNT,
     };
 
@@ -149,10 +147,11 @@ mod not_banned_address_store_with_cache {
         }
 
         pub fn get(&self, address: NetAddress) -> u64 {
-            self.db_store.get(address.ip, address.port).unwrap()
+            *self.addresses.get(&address).unwrap()
         }
 
         pub fn remove(&mut self, address: NetAddress) {
+            self.addresses.remove(&address);
             self.db_store.remove(address.ip, address.port).unwrap()
         }
 

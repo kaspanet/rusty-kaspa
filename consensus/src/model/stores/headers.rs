@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use consensus_core::{header::Header, BlockHasher, BlockLevel};
-use database::db::DB;
-use database::errors::{StoreError, StoreResult};
+use database::prelude::DB;
 use database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
+use database::prelude::{StoreError, StoreResult};
 use hashes::Hash;
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};

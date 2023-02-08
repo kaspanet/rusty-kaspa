@@ -11,7 +11,7 @@ use consensus_core::{
     pruning::PruningPointProof,
     BlockHashMap, BlockHashSet, BlockLevel, HashMapCustomHasher,
 };
-use database::errors::StoreError;
+use database::prelude::StoreError;
 use hashes::Hash;
 use itertools::Itertools;
 use kaspa_core::{info, trace};

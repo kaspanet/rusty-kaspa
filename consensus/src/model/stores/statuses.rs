@@ -3,9 +3,9 @@ use parking_lot::{RwLock, RwLockWriteGuard};
 use rocksdb::WriteBatch;
 use std::sync::Arc;
 
-use database::db::DB;
-use database::errors::{StoreError, StoreResult};
+use database::prelude::DB;
 use database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
+use database::prelude::{StoreError, StoreResult};
 use hashes::Hash;
 
 /// Reader API for `StatusesStore`.

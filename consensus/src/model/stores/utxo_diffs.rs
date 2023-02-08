@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use consensus_core::{utxo::utxo_diff::UtxoDiff, BlockHasher};
-use database::db::DB;
-use database::errors::StoreError;
+use database::prelude::StoreError;
+use database::prelude::DB;
 use database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
 use hashes::Hash;
 use rocksdb::WriteBatch;

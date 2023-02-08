@@ -1,6 +1,6 @@
 use consensus_core::{blockhash::BlockHashes, BlockHashMap, BlockHasher, BlockLevel, HashMapCustomHasher};
-use database::db::DB;
-use database::errors::StoreError;
+use database::prelude::StoreError;
+use database::prelude::DB;
 use database::prelude::{BatchDbWriter, CachedDbAccess, DbKey, DirectDbWriter};
 use hashes::Hash;
 use itertools::Itertools;

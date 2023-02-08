@@ -1,7 +1,7 @@
 use database::{
-    db::DB,
-    errors::{StoreError, StoreResult},
+    prelude::DB,
     prelude::{CachedDbAccess, DirectDbWriter},
+    prelude::{StoreError, StoreResult},
 };
 use std::net::Ipv6Addr;
 use std::{error::Error, fmt::Display, sync::Arc};

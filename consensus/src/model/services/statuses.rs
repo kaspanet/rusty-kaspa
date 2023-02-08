@@ -1,6 +1,6 @@
 use crate::model::stores::statuses::StatusesStoreReader;
 use consensus_core::blockstatus::BlockStatus;
-use database::errors::StoreError;
+use database::prelude::StoreError;
 use hashes::Hash;
 use parking_lot::RwLock;
 use std::sync::Arc;

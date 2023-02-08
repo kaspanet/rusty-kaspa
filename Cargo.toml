@@ -18,7 +18,7 @@ members = [
     "mining",
     "protocol/p2p",
     "protocol/flows",
-    "addressmanager",
+    "components/addressmanager",
     "database",
 ]
 
@@ -48,7 +48,7 @@ rpc-grpc = { path = "rpc/grpc" }
 p2p-lib = { path = "protocol/p2p" }
 p2p-flows = { path = "protocol/flows" }
 mining = { path = "mining" }
-addressmanager = { path = "addressmanager" }
+addressmanager = { path = "components/addressmanager" }
 database = { path = "database" }
 
 thiserror = "1"
