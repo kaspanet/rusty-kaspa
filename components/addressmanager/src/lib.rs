@@ -47,11 +47,19 @@ impl AddressManager {
     pub fn add_address(&mut self, address: NetAddress) {
         // TODO: Don't add non routable addresses
 
+        if self.not_banned_address_store.has(address) {
+            return;
+        }
+
         // We mark `connection_failed_count` as 0 only after first success
         self.not_banned_address_store.set(address, ConnectionFailureCount(1));
     }
 
     pub fn mark_connection_failure(&mut self, address: NetAddress) {
+        if !self.not_banned_address_store.has(address) {
+            return;
+        }
+
         let new_count = self.not_banned_address_store.get(address).0 + 1;
         if new_count > MAX_CONNECTION_FAILED_COUNT {
             self.not_banned_address_store.remove(address);
@@ -61,6 +69,10 @@ impl AddressManager {
     }
 
     pub fn mark_connection_success(&mut self, address: NetAddress) {
+        if !self.not_banned_address_store.has(address) {
+            return;
+        }
+
         self.not_banned_address_store.set(address, ConnectionFailureCount(0));
     }
 
@@ -136,6 +148,10 @@ mod not_banned_address_store_with_cache {
             Self { db_store, addresses }
         }
 
+        pub fn has(&mut self, address: NetAddress) -> bool {
+            self.addresses.contains_key(&address)
+        }
+
         pub fn set(&mut self, address: NetAddress, connection_failed_count: ConnectionFailureCount) {
             self.db_store.set(address.ip, address.port, connection_failed_count).unwrap();
             self.addresses.insert(NetAddress::new(address.ip, address.port), connection_failed_count);
@@ -145,7 +161,7 @@ mod not_banned_address_store_with_cache {
         fn keep_limit(&mut self) {
             while self.addresses.len() > MAX_ADDRESSES {
                 let to_remove = self.addresses.iter().max_by(|a, b| (a.1).0.cmp(&(b.1).0)).unwrap();
-                self.db_store.remove(to_remove.0.ip, to_remove.0.port).unwrap();
+                self.remove(*to_remove.0);
             }
         }
 
