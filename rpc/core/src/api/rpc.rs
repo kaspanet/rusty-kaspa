@@ -281,12 +281,12 @@ where
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API
 
-    /// Register a new listener and returns an id and a channel receiver.
+    /// Register a new listener and returns an id identifying it.
     fn register_new_listener(&self, connection: T) -> ListenerID;
 
     /// Unregister an existing listener.
     ///
-    /// Stop all notifications for this listener and drop its channel.
+    /// Stop all notifications for this listener, unregister the id and its associated connection.
     async fn unregister_listener(&self, id: ListenerID) -> RpcResult<()>;
 
     /// Start sending notifications of some type to a listener.
