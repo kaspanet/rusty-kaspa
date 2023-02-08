@@ -2,17 +2,21 @@ use database::{
     prelude::{CachedDbAccess, DirectDbWriter, DB},
     prelude::{StoreError, StoreResult},
 };
+use serde::{Deserialize, Serialize};
 use std::net::Ipv6Addr;
 use std::{fmt::Display, sync::Arc};
 
 const STORE_PREFIX: &[u8] = b"banned-addresses";
 
+#[derive(Clone, Copy, Serialize, Deserialize)]
+pub struct ConnectionBanTimestamp(pub u64);
+
 pub trait BannedAddressesStoreReader {
-    fn get(&self, address: Ipv6Addr) -> Result<u64, StoreError>;
+    fn get(&self, address: Ipv6Addr) -> Result<ConnectionBanTimestamp, StoreError>;
 }
 
 pub trait BannedAddressesStore: BannedAddressesStoreReader {
-    fn set(&mut self, ip: Ipv6Addr, timestamp: u64) -> StoreResult<()>;
+    fn set(&mut self, ip: Ipv6Addr, timestamp: ConnectionBanTimestamp) -> StoreResult<()>;
     fn remove(&mut self, ip: Ipv6Addr) -> StoreResult<()>;
 }
 
@@ -50,7 +54,7 @@ impl From<AddressKey> for Ipv6Addr {
 #[derive(Clone)]
 pub struct DbBannedAddressesStore {
     db: Arc<DB>,
-    access: CachedDbAccess<AddressKey, u64>,
+    access: CachedDbAccess<AddressKey, ConnectionBanTimestamp>,
 }
 
 impl DbBannedAddressesStore {
@@ -60,13 +64,13 @@ impl DbBannedAddressesStore {
 }
 
 impl BannedAddressesStoreReader for DbBannedAddressesStore {
-    fn get(&self, ip: Ipv6Addr) -> Result<u64, StoreError> {
+    fn get(&self, ip: Ipv6Addr) -> Result<ConnectionBanTimestamp, StoreError> {
         self.access.read(ip.into())
     }
 }
 
 impl BannedAddressesStore for DbBannedAddressesStore {
-    fn set(&mut self, ip: Ipv6Addr, timestamp: u64) -> StoreResult<()> {
+    fn set(&mut self, ip: Ipv6Addr, timestamp: ConnectionBanTimestamp) -> StoreResult<()> {
         self.access.write(DirectDbWriter::new(&self.db), ip.into(), timestamp)
     }
 

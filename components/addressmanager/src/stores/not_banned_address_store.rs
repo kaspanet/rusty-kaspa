@@ -3,17 +3,21 @@ use database::{
     prelude::{CachedDbAccess, DirectDbWriter},
     prelude::{StoreError, StoreResult},
 };
+use serde::{Deserialize, Serialize};
 use std::net::Ipv6Addr;
 use std::{error::Error, fmt::Display, sync::Arc};
 
 const STORE_PREFIX_CONNECTION_FAILED_COUNT: &[u8] = b"not-banned-addresses-connection-failed-count";
 
+#[derive(Clone, Copy, Serialize, Deserialize)]
+pub struct ConnectionFailureCount(pub u64);
+
 pub trait NotBannedAddressesStoreReader {
-    fn get(&self, address: Ipv6Addr, port: u16) -> Result<u64, StoreError>;
+    fn get(&self, address: Ipv6Addr, port: u16) -> Result<ConnectionFailureCount, StoreError>;
 }
 
 pub trait NotBannedAddressesStore: NotBannedAddressesStoreReader {
-    fn set(&mut self, ip: Ipv6Addr, port: u16, connection_failed_count: u64) -> StoreResult<()>;
+    fn set(&mut self, ip: Ipv6Addr, port: u16, connection_failed_count: ConnectionFailureCount) -> StoreResult<()>;
     fn remove(&mut self, ip: Ipv6Addr, port: u16) -> StoreResult<()>;
 }
 
@@ -59,7 +63,7 @@ impl From<AddressKey> for (Ipv6Addr, u16) {
 #[derive(Clone)]
 pub struct DbNotBannedAddressesStore {
     db: Arc<DB>,
-    access: CachedDbAccess<AddressKey, u64>,
+    access: CachedDbAccess<AddressKey, ConnectionFailureCount>,
 }
 
 impl DbNotBannedAddressesStore {
@@ -70,7 +74,7 @@ impl DbNotBannedAddressesStore {
         }
     }
 
-    pub fn iterator(&self) -> impl Iterator<Item = Result<((Ipv6Addr, u16), u64), Box<dyn Error>>> + '_ {
+    pub fn iterator(&self) -> impl Iterator<Item = Result<((Ipv6Addr, u16), ConnectionFailureCount), Box<dyn Error>>> + '_ {
         self.access.iterator().map(|iter_result| match iter_result {
             Ok((key_bytes, connection_failed_count)) => match <[u8; ADDRESS_KEY_SIZE]>::try_from(&key_bytes[..]) {
                 Ok(address_key_slice) => {
@@ -86,13 +90,13 @@ impl DbNotBannedAddressesStore {
 }
 
 impl NotBannedAddressesStoreReader for DbNotBannedAddressesStore {
-    fn get(&self, address: Ipv6Addr, port: u16) -> Result<u64, StoreError> {
+    fn get(&self, address: Ipv6Addr, port: u16) -> Result<ConnectionFailureCount, StoreError> {
         self.access.read((address, port).into())
     }
 }
 
 impl NotBannedAddressesStore for DbNotBannedAddressesStore {
-    fn set(&mut self, ip: Ipv6Addr, port: u16, connection_failed_count: u64) -> StoreResult<()> {
+    fn set(&mut self, ip: Ipv6Addr, port: u16, connection_failed_count: ConnectionFailureCount) -> StoreResult<()> {
         self.access.write(DirectDbWriter::new(&self.db), (ip, port).into(), connection_failed_count)
     }
 

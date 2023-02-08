@@ -11,7 +11,10 @@ use std::{
 
 use database::prelude::{StoreResultExtensions, DB};
 use parking_lot::Mutex;
-use stores::banned_address_store::{BannedAddressesStore, BannedAddressesStoreReader, DbBannedAddressesStore};
+use stores::{
+    banned_address_store::{BannedAddressesStore, BannedAddressesStoreReader, ConnectionBanTimestamp, DbBannedAddressesStore},
+    not_banned_address_store::ConnectionFailureCount,
+};
 
 const MAX_ADDRESSES: usize = 4096;
 const MAX_CONNECTION_FAILED_COUNT: u64 = 3;
@@ -45,20 +48,20 @@ impl AddressManager {
         // TODO: Don't add non routable addresses
 
         // We mark `connectionFailedCount` as 0 only after first success
-        self.not_banned_address_store.set(address, 1);
+        self.not_banned_address_store.set(address, ConnectionFailureCount(1));
     }
 
     pub fn mark_connection_failure(&mut self, address: NetAddress) {
-        let new_count = self.not_banned_address_store.get(address) + 1;
+        let new_count = self.not_banned_address_store.get(address).0 + 1;
         if new_count > MAX_CONNECTION_FAILED_COUNT {
             self.not_banned_address_store.remove(address);
         } else {
-            self.not_banned_address_store.set(address, new_count);
+            self.not_banned_address_store.set(address, ConnectionFailureCount(new_count));
         }
     }
 
     pub fn mark_connection_success(&mut self, address: NetAddress) {
-        self.not_banned_address_store.set(address, 0);
+        self.not_banned_address_store.set(address, ConnectionFailureCount(0));
     }
 
     pub fn get_all_addresses(&self) -> impl Iterator<Item = NetAddress> + '_ {
@@ -70,7 +73,7 @@ impl AddressManager {
     }
 
     pub fn ban(&mut self, ip: Ipv6Addr) {
-        self.banned_address_store.set(ip, unix_time()).unwrap();
+        self.banned_address_store.set(ip, ConnectionBanTimestamp(unix_time())).unwrap();
         self.not_banned_address_store.remove_by_ip(ip);
     }
 
@@ -82,7 +85,7 @@ impl AddressManager {
         const MAX_BANNED_TIME: u64 = 24 * 60 * 60 * 1000;
         match self.banned_address_store.get(ip).unwrap_option() {
             Some(timestamp) => {
-                if unix_time() - timestamp > MAX_BANNED_TIME {
+                if unix_time() - timestamp.0 > MAX_BANNED_TIME {
                     self.unban(ip);
                     false
                 } else {
@@ -111,13 +114,13 @@ mod not_banned_address_store_with_cache {
     use rand::{distributions::WeightedIndex, prelude::Distribution};
 
     use crate::{
-        stores::not_banned_address_store::{DbNotBannedAddressesStore, NotBannedAddressesStore},
+        stores::not_banned_address_store::{ConnectionFailureCount, DbNotBannedAddressesStore, NotBannedAddressesStore},
         NetAddress, MAX_ADDRESSES, MAX_CONNECTION_FAILED_COUNT,
     };
 
     pub struct Store {
         db_store: DbNotBannedAddressesStore,
-        addresses: HashMap<NetAddress, u64>,
+        addresses: HashMap<NetAddress, ConnectionFailureCount>,
     }
 
     impl Store {
@@ -131,22 +134,20 @@ mod not_banned_address_store_with_cache {
             Self { db_store, addresses }
         }
 
-        pub fn set(&mut self, address: NetAddress, connection_failed_count: u64) {
+        pub fn set(&mut self, address: NetAddress, connection_failed_count: ConnectionFailureCount) {
             self.db_store.set(address.ip, address.port, connection_failed_count).unwrap();
             self.addresses.insert(NetAddress::new(address.ip, address.port), connection_failed_count);
             self.keep_limit();
         }
 
         fn keep_limit(&mut self) {
-            if self.addresses.len() <= MAX_ADDRESSES {
-                return;
+            while self.addresses.len() > MAX_ADDRESSES {
+                let to_remove = self.addresses.iter().max_by(|a, b| (a.1).0.cmp(&(b.1).0)).unwrap();
+                self.db_store.remove(to_remove.0.ip, to_remove.0.port).unwrap();
             }
-
-            let to_remove = self.addresses.iter().max_by(|a, b| a.1.cmp(b.1)).unwrap();
-            self.db_store.remove(to_remove.0.ip, to_remove.0.port).unwrap();
         }
 
-        pub fn get(&self, address: NetAddress) -> u64 {
+        pub fn get(&self, address: NetAddress) -> ConnectionFailureCount {
             *self.addresses.get(&address).unwrap()
         }
 
@@ -169,7 +170,7 @@ mod not_banned_address_store_with_cache {
                         if exceptions.contains(addr) {
                             0f64
                         } else {
-                            64f64.powf((MAX_CONNECTION_FAILED_COUNT + 1 - *count) as f64)
+                            64f64.powf((MAX_CONNECTION_FAILED_COUNT + 1 - count.0) as f64)
                         }
                     },
                 )
