@@ -1,4 +1,5 @@
 use crate::model::stores::relations::RelationsStoreReader;
+use database::prelude::StoreError;
 use hashes::Hash;
 use parking_lot::RwLock;
 use std::sync::Arc;
@@ -17,15 +18,15 @@ impl<T: RelationsStoreReader> MTRelationsService<T> {
 }
 
 impl<T: RelationsStoreReader> RelationsStoreReader for MTRelationsService<T> {
-    fn get_parents(&self, hash: Hash) -> Result<consensus_core::blockhash::BlockHashes, crate::model::stores::errors::StoreError> {
+    fn get_parents(&self, hash: Hash) -> Result<consensus_core::blockhash::BlockHashes, StoreError> {
         self.store.read()[self.level].get_parents(hash)
     }
 
-    fn get_children(&self, hash: Hash) -> Result<consensus_core::blockhash::BlockHashes, crate::model::stores::errors::StoreError> {
+    fn get_children(&self, hash: Hash) -> Result<consensus_core::blockhash::BlockHashes, StoreError> {
         self.store.read()[self.level].get_children(hash)
     }
 
-    fn has(&self, hash: Hash) -> Result<bool, crate::model::stores::errors::StoreError> {
+    fn has(&self, hash: Hash) -> Result<bool, StoreError> {
         self.store.read()[self.level].has(hash)
     }
 }

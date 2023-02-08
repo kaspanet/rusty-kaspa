@@ -12,6 +12,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "addressmanager"
+version = "0.1.0"
+dependencies = [
+ "consensus-core",
+ "database",
+ "itertools 0.10.5",
+ "parking_lot",
+ "rand 0.8.5",
+ "rocksdb",
+ "serde",
+]
+
+[[package]]
 name = "adler"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -665,6 +678,7 @@ dependencies = [
  "consensus-core",
  "criterion",
  "crossbeam-channel",
+ "database",
  "faster-hex",
  "flate2",
  "futures-util",
@@ -909,6 +923,21 @@ dependencies = [
  "serde",
  "subtle",
  "zeroize",
+]
+
+[[package]]
+name = "database"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "faster-hex",
+ "hashes",
+ "indexmap",
+ "parking_lot",
+ "rand 0.8.5",
+ "rocksdb",
+ "serde",
+ "thiserror",
 ]
 
 [[package]]

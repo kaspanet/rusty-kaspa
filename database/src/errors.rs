@@ -1,5 +1,6 @@
-use super::database::prelude::DbKey;
 use thiserror::Error;
+
+use crate::prelude::DbKey;
 
 #[derive(Error, Debug)]
 pub enum StoreError {
