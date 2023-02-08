@@ -47,7 +47,7 @@ impl AddressManager {
     pub fn add_address(&mut self, address: NetAddress) {
         // TODO: Don't add non routable addresses
 
-        // We mark `connectionFailedCount` as 0 only after first success
+        // We mark `connection_failed_count` as 0 only after first success
         self.not_banned_address_store.set(address, ConnectionFailureCount(1));
     }
 
@@ -102,6 +102,8 @@ fn unix_time() -> u64 {
 }
 
 mod not_banned_address_store_with_cache {
+    // Since we need operations such as iterating all addresses, count, etc, we keep an easy to use copy of the database addresses.
+    // We don't expect it to be expensive since we limit the number of saved addresses.
     use std::{
         cmp::min,
         collections::{HashMap, HashSet},
@@ -161,20 +163,10 @@ mod not_banned_address_store_with_cache {
         }
 
         pub fn get_random_addresses(&self, count: usize, exceptions: HashSet<NetAddress>) -> Vec<NetAddress> {
-            let count = min(count, self.addresses.len());
-            let addresses = self.addresses.iter().collect_vec();
-            let mut weights = addresses
-                .iter()
-                .map(
-                    |(addr, count)| {
-                        if exceptions.contains(addr) {
-                            0f64
-                        } else {
-                            64f64.powf((MAX_CONNECTION_FAILED_COUNT + 1 - count.0) as f64)
-                        }
-                    },
-                )
-                .collect_vec();
+            let addresses = self.addresses.iter().filter(|(addr, _)| !exceptions.contains(addr)).collect_vec();
+            let count = min(count, addresses.len());
+            let mut weights =
+                addresses.iter().map(|(_, count)| 64f64.powf((MAX_CONNECTION_FAILED_COUNT + 1 - count.0) as f64)).collect_vec();
 
             (0..count)
                 .map(|_| {

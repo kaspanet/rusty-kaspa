@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::net::Ipv6Addr;
 use std::{error::Error, fmt::Display, sync::Arc};
 
-const STORE_PREFIX_CONNECTION_FAILED_COUNT: &[u8] = b"not-banned-addresses-connection-failed-count";
+const STORE_PREFIX_CONNECTION_FAILED_COUNT: &[u8] = b"not-banned-addresses-connection";
 
 #[derive(Clone, Copy, Serialize, Deserialize)]
 pub struct ConnectionFailureCount(pub u64);
@@ -25,6 +25,7 @@ const IPV6_LEN: usize = 16;
 const PORT_LEN: usize = 2;
 pub const ADDRESS_KEY_SIZE: usize = IPV6_LEN + PORT_LEN;
 
+// TODO: This pattern is used a lot. Think of some macro or any other way to generalize it.
 #[derive(Eq, Hash, PartialEq, Debug, Copy, Clone)]
 struct AddressKey([u8; ADDRESS_KEY_SIZE]);
 
