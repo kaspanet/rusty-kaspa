@@ -7,7 +7,7 @@ use super::{
     DB,
 };
 use consensus_core::{
-    coinbase::BlockRewardData, notify::VirtualChangeSetNotification, tx::TransactionId, utxo::utxo_diff::UtxoDiff, BlockHashMap,
+    coinbase::BlockRewardData, events::VirtualChangeSetEvent, tx::TransactionId, utxo::utxo_diff::UtxoDiff, BlockHashMap,
     BlockHashSet, HashMapCustomHasher,
 };
 use hashes::Hash;
@@ -78,13 +78,16 @@ impl VirtualState {
     }
 }
 
-impl From<VirtualState> for VirtualChangeSetNotification {
+impl From<VirtualState> for VirtualChangeSetEvent {
     fn from(virtual_state: VirtualState) -> Self {
         Self {
-            virtual_utxo_diff: virtual_state.utxo_diff,
-            virtual_parents: virtual_state.parents,
-            virtual_selected_parent_blue_score: virtual_state.ghostdag_data.blue_score,
-            virtual_daa_score: virtual_state.daa_score,
+            utxo_diff: Arc::new(virtual_state.utxo_diff),
+            parents: Arc::new(virtual_state.parents),
+            selected_parent_blue_score: virtual_state.ghostdag_data.blue_score,
+            daa_score: virtual_state.daa_score,
+            mergeset_blues: virtual_state.ghostdag_data.mergeset_blues,
+            mergeset_reds: virtual_state.ghostdag_data.mergeset_reds,
+            accepted_tx_ids: Arc::new(virtual_state.accepted_tx_ids),
         }
     }
 }

@@ -1,5 +1,4 @@
 use std::fmt::Debug;
-use std::sync::Arc;
 
 use crate::notify::{
     channel::NotificationChannel,
@@ -126,7 +125,7 @@ impl ListenerSenderSide {
     ///
     /// If the notification does not meet requirements (see [`Notification::UtxosChanged`]) returns `Ok(false)`,
     /// otherwise returns `Ok(true)`.
-    pub(crate) fn try_send(&self, notification: Arc<Notification>) -> Result<bool> {
+    pub(crate) fn try_send(&self, notification: Notification) -> Result<bool> {
         if self.filter.matches(notification.clone()) {
             match self.send_channel.try_send(notification) {
                 Ok(_) => {
@@ -146,7 +145,7 @@ impl ListenerSenderSide {
 }
 
 trait InnerFilter {
-    fn matches(&self, notification: Arc<Notification>) -> bool;
+    fn matches(&self, notification: Notification) -> bool;
 }
 
 trait Filter: InnerFilter + Debug {}
@@ -154,7 +153,7 @@ trait Filter: InnerFilter + Debug {}
 #[derive(Clone, Debug)]
 struct Unfiltered;
 impl InnerFilter for Unfiltered {
-    fn matches(&self, _: Arc<Notification>) -> bool {
+    fn matches(&self, _: Notification) -> bool {
         true
     }
 }
@@ -166,8 +165,8 @@ struct FilterUtxoAddress {
 }
 
 impl InnerFilter for FilterUtxoAddress {
-    fn matches(&self, notification: Arc<Notification>) -> bool {
-        if let Notification::UtxosChanged(ref notification) = *notification {
+    fn matches(&self, notification: Notification) -> bool {
+        if let Notification::UtxosChanged(ref notification) = notification {
             return self.utxos_addresses.contains(&notification.utxo_address);
         }
         false

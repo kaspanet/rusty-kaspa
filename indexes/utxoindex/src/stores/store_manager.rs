@@ -7,7 +7,7 @@ use kaspa_core::trace;
 
 use crate::{
     errors::UtxoIndexError,
-    model::{UTXOChanges, UtxoSetByScriptPublicKey},
+    model::{UtxoChanges, UtxoSetByScriptPublicKey},
     stores::{
         indexed_utxos::{DbUtxoSetByScriptPublicKeyStore, UtxoSetByScriptPublicKeyStore, UtxoSetByScriptPublicKeyStoreReader},
         supply::{CirculatingSupplyStore, CirculatingSupplyStoreReader, DbCirculatingSupplyStore},
@@ -44,7 +44,7 @@ impl StoreManager {
         reader.get_all_utxos()
     }
 
-    pub fn update_utxo_state(&self, utxo_diff_by_script_public_key: UTXOChanges) -> Result<(), StoreError> {
+    pub fn update_utxo_state(&self, utxo_diff_by_script_public_key: UtxoChanges) -> Result<(), StoreError> {
         let mut writer = self.utxos_by_script_public_key_store.write();
         writer.write_diff(utxo_diff_by_script_public_key)
     }
@@ -81,6 +81,7 @@ impl StoreManager {
 
     /// Resets the utxoindex database:
     pub fn delete_all(&self) -> Result<(), UtxoIndexError> {
+        //TODO: explore possibility of deleting and replacing whole db, currently it is an issue because of file lock + db being in an arc.
         trace!("creating new utxoindex database, deleting the old one");
         //hold all individual store locks in-place
         let mut utxoindex_tips_store = self.utxoindex_tips_store.write();

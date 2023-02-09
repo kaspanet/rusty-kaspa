@@ -8,7 +8,7 @@ use consensus::{
     test_helpers::*,
 };
 use consensus_core::{
-    events::{BlockAddedEvent, ConsensusEvent, VirtualChangeSetEvent},
+    events::{BlockAddedEvent, ConsensusEvent, NewBlockTemplateEvent, VirtualChangeSetEvent},
     utxo::{
         utxo_collection::{UtxoCollection, UtxoCollectionExtensions},
         utxo_diff::UtxoDiff,
@@ -25,6 +25,7 @@ use rand::Rng;
 use utxoindex::{api::DynUtxoIndexControlerApi, UtxoIndex};
 
 //TODO: rewrite with simnet, when possible.
+#[cfg(test)]
 #[tokio::test]
 async fn test_virtual_change_set_event() {
     let (test_send, consensus_recv) = unbounded::<ConsensusEvent>();
@@ -73,8 +74,7 @@ async fn test_virtual_change_set_event() {
     for _ in 0..3 {
         //We expect 3 notifications.
         match test_recv.recv().await.expect("expected recv") {
-            //TODO: testing with utxoindex requires at least genesis hash in db in virtual parents store, for utxoindex reset
-            //for now see utxoindex tests at `indexes::utxoindex::test`, testing with event processor is ommitted for now.
+            //for now see utxoindex tests at `indexes::utxoindex::test`, testing with event processor is ommitted.
             Notification::VirtualSelectedParentBlueScoreChanged(virtual_selected_parent_blue_score_notification) => {
                 assert_eq!(
                     test_event.selected_parent_blue_score,
@@ -135,6 +135,7 @@ async fn test_virtual_change_set_event() {
     assert_eq!(virtual_daa_score_changed, 1);
 }
 
+#[cfg(test)]
 #[tokio::test]
 async fn test_block_added_event() {
     let (test_send, consensus_recv) = unbounded::<ConsensusEvent>();
@@ -143,15 +144,15 @@ async fn test_block_added_event() {
 
     let rng = &mut rand::thread_rng();
 
-    let test_event = Arc::new(BlockAddedEvent { block: generate_random_block(&mut rng, 2, 2) });
+    let test_event = Arc::new(BlockAddedEvent { block: generate_random_block(&mut rng, 2, 2, 2, 2) });
 
     tokio::spawn(async move { event_processor.run().await }); //run processor
 
-    test_send.send(ConsensusEvent::VirtualChangeSet(test_event.clone())).await.expect("expected send");
+    test_send.send(ConsensusEvent::BlockAdded(test_event.clone())).await.expect("expected send");
 
     match test_recv.recv().await.expect("expected recv") {
         Notification::BlockAdded(block_added_notification) => {
-            //TODO: perhaps create assert_eq_<kaspa_sturct>! macros in `consensus::test_helpers`
+            //TODO: create `assert_eq_[kaspa_sturct]` helper macros in `consensus::test_helpers` to avoid this.
 
             assert_eq!(block_added_notification.block.header.hash, test_event.block.header.hash);
             assert_eq!(block_added_notification.block.header.version, test_event.block.header.version);
@@ -166,7 +167,7 @@ async fn test_block_added_event() {
                         block_added_notification.block.header.parents_by_level[i][i2],
                         test_event.block.header.parents_by_level[i][i2]
                     )
-                })
+                });
             });
             assert_eq!(block_added_notification.block.header.hash_merkle_root, test_event.block.header.hash_merkle_root);
             assert_eq!(block_added_notification.block.header.accepted_id_merkle_root, test_event.block.header.accepted_id_merkle_root);
@@ -196,20 +197,12 @@ async fn test_block_added_event() {
                 assert_eq!(block_added_notification.block.transactions[i].inputs.len(), test_event.block.transactions[i].inputs.len());
                 (0..block_added_notification.block.transactions[i].inputs.len()).for_each(|i2| {
                     assert_eq!(
-                        block_added_notification.block.transactions[i].inputs[i2].previous_outpoint.value,
-                        test_event.block.transactions[i].inputs[i2].previous_outpoint.value
+                        block_added_notification.block.transactions[i].inputs[i2].previous_outpoint.transaction_id,
+                        test_event.block.transactions[i].inputs[i2].previous_outpoint.transaction_id
                     );
                     assert_eq!(
-                        block_added_notification.block.transactions[i].inputs[i2].previous_outpoint.script_public_key.version,
-                        test_event.block.transactions[i].inputs[i2].previous_outpoint.script_public_key.version
-                    );
-                    assert_eq!(
-                        block_added_notification.block.transactions[i].inputs[i2]
-                            .previous_outpoint
-                            .script_public_key
-                            .script()
-                            .as_slice(),
-                        test_event.block.transactions[i].inputs[i2].previous_outpoint.script_public_key.script().as_slice()
+                        block_added_notification.block.transactions[i].inputs[i2].previous_outpoint.index,
+                        test_event.block.transactions[i].inputs[i2].previous_outpoint.index
                     );
                     assert_eq!(
                         block_added_notification.block.transactions[i].inputs[i2].signature_script.as_slice(),
@@ -234,31 +227,120 @@ async fn test_block_added_event() {
                         test_event.block.transactions[i].outputs[i2].value
                     );
                     assert_eq!(
-                        block_added_notification.block.transactions[i].outputs[i2].script_public_key.version,
-                        test_event.block.transactions[i].outputs[i2].script_public_key.version
+                        block_added_notification.block.transactions[i].outputs[i2].script_public_key.version(),
+                        test_event.block.transactions[i].outputs[i2].script_public_key.version()
                     );
                     assert_eq!(
-                        block_added_notification.block.transactions[i].outputs[i2].script_public_key.script().as_slice(),
-                        test_event.block.transactions[i].outputs[i2].script_public_key.script().as_slice()
+                        block_added_notification.block.transactions[i].outputs[i2].script_public_key.script(),
+                        test_event.block.transactions[i].outputs[i2].script_public_key.script()
                     );
                 });
-            })
+            });
         }
         unexpected_notification => panic!("Unexpected notification: {:?}", unexpected_notification),
     }
+
+    assert!(test_recv.is_empty()); //assert we have no extra messages pending
 }
 
+#[cfg(test)]
 #[tokio::test]
 async fn test_new_block_template_event() {
-    todo!()
+    let (test_send, consensus_recv) = unbounded::<ConsensusEvent>();
+    let (event_processor_send, test_recv) = unbounded::<Notification>();
+    let event_processor = EventProcessor::new(Arc::new(None), consensus_recv, event_processor_send);
+
+    let rng = &mut rand::thread_rng();
+
+    let test_event = Arc::new(NewBlockTemplateEvent {});
+
+    tokio::spawn(async move { event_processor.run().await }); //run processor
+
+    test_send.send(ConsensusEvent::NewBlockTemplate(test_event.clone())).await.expect("expected send");
+
+    match test_recv.recv().await.expect("expected recv") {
+        Notification::NewBlockTemplate(_) => (),
+        unexpected_notification => panic!("Unexpected notification: {:?}", unexpected_notification),
+    }
+
+    assert!(test_recv.is_empty());
 }
 
+#[cfg(test)]
 #[tokio::test]
 async fn test_finality_conflict_event() {
-    todo!()
+    let (test_send, consensus_recv) = unbounded::<ConsensusEvent>();
+    let (event_processor_send, test_recv) = unbounded::<Notification>();
+    let event_processor = EventProcessor::new(Arc::new(None), consensus_recv, event_processor_send);
+
+    let rng = &mut rand::thread_rng();
+    let test_event = Arc::new(NewBlockTemplateEvent {});
+
+    tokio::spawn(async move { event_processor.run().await }); //run processor
+
+    test_send.send(ConsensusEvent::FinalityConflict(test_event.clone())).await.expect("expected send");
+
+    match test_recv.recv().await.expect("expected recv") {
+        Notification::FinalityConflict(_) => (),
+        unexpected_notification => panic!("Unexpected notification: {:?}", unexpected_notification),
+    }
+
+    assert!(test_recv.is_empty());
 }
 
+#[cfg(test)]
 #[tokio::test]
 async fn test_finality_conflict_resolved_event() {
-    todo!()
+    let (test_send, consensus_recv) = unbounded::<ConsensusEvent>();
+    let (event_processor_send, test_recv) = unbounded::<Notification>();
+    let event_processor = EventProcessor::new(Arc::new(None), consensus_recv, event_processor_send);
+
+    let rng = &mut rand::thread_rng();
+
+    let test_event = Arc::new(NewBlockTemplateEvent {});
+
+    tokio::spawn(async move { event_processor.run().await }); //run processor
+
+    test_send.send(ConsensusEvent::FinalityConflictResolved(test_event.clone())).await.expect("expected send");
+
+    match test_recv.recv().await.expect("expected recv") {
+        Notification::FinalityConflictResolved(_) => (),
+        unexpected_notification => panic!("Unexpected notification: {:?}", unexpected_notification),
+    }
+
+    assert!(test_recv.is_empty());
+}
+
+#[cfg(test)]
+#[tokio::test]
+async fn test_pruning_point_utxo_set_override_event() {
+    let (test_send, consensus_recv) = unbounded::<ConsensusEvent>();
+    let (event_processor_send, test_recv) = unbounded::<Notification>();
+    let event_processor = EventProcessor::new(Arc::new(None), consensus_recv, event_processor_send);
+
+    //TODO: testing with utxoindex requires at least genesis hash virtual parents store, for intial utxoindex reset
+    /*
+    let dummy_consensus_db = create_temp_db();
+    let utxoindex_db = create_temp_db();
+
+    let config = Config::new(DEVNET_PARAMS);
+
+    let dummy_test_consensus = Arc::new(TestConsensus::new(dummy_consensus_db.1, &config, test_send.clone()));
+    let utxoindex: DynUtxoIndexControlerApi = Arc::new(Some(Box::new(UtxoIndex::new(dummy_test_consensus, utxoindex_db.1))));
+    */
+
+    let rng = &mut rand::thread_rng();
+
+    let test_event = Arc::new(NewBlockTemplateEvent {});
+
+    tokio::spawn(async move { event_processor.run().await }); //run processor
+
+    test_send.send(ConsensusEvent::PruningPointUTXOSetOverride(test_event.clone())).await.expect("expected send");
+
+    match test_recv.recv().await.expect("expected recv") {
+        Notification::PruningPointUTXOSetOverride(_) => (),
+        unexpected_notification => panic!("Unexpected notification: {:?}", unexpected_notification),
+    }
+
+    assert!(test_recv.is_empty());
 }

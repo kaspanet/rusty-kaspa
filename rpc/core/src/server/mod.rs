@@ -6,8 +6,9 @@ use kaspa_core::{
     trace,
 };
 use kaspa_utils::triggers::DuplexTrigger;
+use utxoindex::api::DynUtxoIndexRetrivalApi;
 
-use self::{collector::ConsensusNotificationReceiver, service::RpcCoreService};
+use self::{collector::EventNotificationReceiver, service::RpcCoreService};
 
 pub mod collector;
 pub mod service;
@@ -21,8 +22,12 @@ pub struct RpcCoreServer {
 }
 
 impl RpcCoreServer {
-    pub fn new(consensus: DynConsensus, consensus_recv: ConsensusNotificationReceiver) -> Self {
-        let service = Arc::new(RpcCoreService::new(consensus, consensus_recv));
+    pub fn new(
+        consensus: DynConsensus,
+        utxoindex: DynUtxoIndexRetrivalApi,
+        event_notification_recv: EventNotificationReceiver,
+    ) -> Self {
+        let service = Arc::new(RpcCoreService::new(consensus, utxoindex, event_notification_recv));
         Self { service, shutdown: DuplexTrigger::default() }
     }
 

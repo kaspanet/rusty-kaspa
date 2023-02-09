@@ -8,14 +8,14 @@ use crate::protowire::{
 // rpc_core to protowire
 // ----------------------------------------------------------------------------
 
-impl From<&rpc_core::Notification> for KaspadResponse {
-    fn from(item: &rpc_core::Notification) -> Self {
+impl From<rpc_core::Notification> for KaspadResponse {
+    fn from(item: rpc_core::Notification) -> Self {
         Self { payload: Some(item.into()) }
     }
 }
 
-impl From<&rpc_core::Notification> for Payload {
-    fn from(item: &rpc_core::Notification) -> Self {
+impl From<rpc_core::Notification> for Payload {
+    fn from(item: rpc_core::Notification) -> Self {
         match item {
             Notification::BlockAdded(ref notif) => Payload::BlockAddedNotification(notif.into()),
             Notification::NewBlockTemplate(ref notif) => Payload::NewBlockTemplateNotification(notif.into()),

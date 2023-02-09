@@ -5,6 +5,9 @@ extern crate hashes;
 use clap::Parser;
 use consensus::config::Config;
 use consensus::model::stores::DB;
+use consensus_core::events::ConsensusEvent;
+use event_processor::notify::Notification;
+
 use kaspa_core::{core::Core, signals::Signals, task::runtime::AsyncRuntime};
 use std::fs;
 use std::path::PathBuf;
@@ -14,10 +17,14 @@ use thiserror::__private::PathAsDisplay;
 use crate::monitor::ConsensusMonitor;
 use consensus::consensus::Consensus;
 use consensus::params::DEVNET_PARAMS;
-use utxoindex::UtxoIndex;
+use utxoindex::{
+    api::{DynUtxoIndexControlerApi, DynUtxoIndexRetrivalApi},
+    UtxoIndex,
+};
 
+use async_channel::unbounded;
+use event_processor::processor::EventProcessor;
 use kaspa_core::{info, trace};
-use rpc_core::server::collector::ConsensusNotificationChannel;
 use rpc_core::server::RpcCoreServer;
 use rpc_grpc::server::GrpcServer;
 
@@ -41,6 +48,10 @@ struct Args {
     /// Interface/port to listen for RPC connections (default port: 16110, testnet: 16210)
     #[arg(long = "rpclisten")]
     rpc_listen: Option<String>,
+
+    /// Should kaspad be run with the utxoindex.
+    #[arg(long = "utxoindex", default_value = None)]
+    utxoindex: Option<()>,
 
     /// Logging level for all subsystems {off, error, warn, info, debug, trace}
     ///  -- You may also specify <subsystem>=<level>,<subsystem2>=<level>,... to set the log level for individual subsystems
@@ -88,9 +99,12 @@ pub fn main() {
     info!("Application directory: {}", app_dir.as_display());
     info!("Data directory: {}", db_dir.as_display());
     info!("Consensus Data directory {}", consensus_db_dir.as_display());
-    info!("Utxoindex Data directory {}", utxoindex_db_dir.as_display());
     fs::create_dir_all(consensus_db_dir.as_path()).unwrap();
-    fs::create_dir_all(utxoindex_db_dir.as_path()).unwrap();
+    if args.utxoindex.is_some() {
+        info!("Utxoindex Data directory {}", utxoindex_db_dir.as_display());
+        fs::create_dir_all(utxoindex_db_dir.as_path()).unwrap();
+    }
+
     let grpc_server_addr = args.rpc_listen.unwrap_or_else(|| "127.0.0.1:16610".to_string()).parse().unwrap();
 
     let core = Arc::new(Core::new());
@@ -99,24 +113,32 @@ pub fn main() {
 
     let config = Config::new(DEVNET_PARAMS); // TODO: network type
 
+    let (consensus_send, consensus_recv) = unbounded::<ConsensusEvent>();
+    let (event_processor_send, event_processor_recv) = unbounded::<Notification>();
+
     let consensus_db = Arc::new(DB::open_default(consensus_db_dir.to_str().unwrap()).unwrap());
-    let consensus = Arc::new(Consensus::new(consensus_db, &config));
+    let consensus = Arc::new(Consensus::new(consensus_db, &config, consensus_send));
 
     let monitor = Arc::new(ConsensusMonitor::new(consensus.processing_counters().clone()));
 
-    let utxoindex_db = Arc::new(DB::open_default(utxoindex_db_dir.to_str().unwrap()).unwrap());
-    let utxoindex = Arc::new(UtxoIndex::new(consensus.clone(), utxoindex_db, consensus.rpc_channel.receiver.clone()));
+    let utxoindex = match args.utxoindex.is_some() {
+        true => {
+            let utxoindex_db = Arc::new(DB::open_default(utxoindex_db_dir.to_str().unwrap()).unwrap());
+            Arc::new(Some(Box::new(UtxoIndex::new(consensus.clone(), utxoindex_db))))
+        },
+        false => Arc::new(None),
+    };
 
-    let notification_channel = ConsensusNotificationChannel::default();
+    let event_processor = Arc::new(EventProcessor::new(utxoindex.clone(), consensus_recv, event_processor_send));
 
-    let rpc_core_server = Arc::new(RpcCoreServer::new(consensus.clone(), notification_channel.receiver()));
+    let rpc_core_server = Arc::new(RpcCoreServer::new(consensus.clone(), utxoindex.clone(), event_processor_recv));
     let grpc_server = Arc::new(GrpcServer::new(grpc_server_addr, rpc_core_server.service()));
 
     // Create an async runtime and register the top-level async services
     let async_runtime = Arc::new(AsyncRuntime::new());
+    async_runtime.register(event_processor);
     async_runtime.register(rpc_core_server);
     async_runtime.register(grpc_server);
-    async_runtime.register(utxoindex);
 
     // Bind the keyboard signal to the core
     Arc::new(Signals::new(&core)).init();

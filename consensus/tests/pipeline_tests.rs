@@ -1,3 +1,4 @@
+use async_channel::unbounded;
 use consensus::{
     config::ConfigBuilder,
     consensus::test_consensus::{create_temp_db, TestConsensus},
@@ -5,7 +6,7 @@ use consensus::{
     params::MAINNET_PARAMS,
     processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions},
 };
-use consensus_core::{blockhash, blockstatus::BlockStatus, errors::block::RuleError};
+use consensus_core::{blockhash, blockstatus::BlockStatus, errors::block::RuleError, events::ConsensusEvent};
 use futures_util::future::join_all;
 use hashes::Hash;
 use parking_lot::RwLock;
@@ -82,7 +83,8 @@ fn test_reachability_staging() {
 async fn test_concurrent_pipeline() {
     let (_temp_db_lifetime, db) = create_temp_db();
     let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().edit_consensus_params(|p| p.genesis_hash = 1.into()).build();
-    let consensus = TestConsensus::new(db, &config);
+    let (dummy_sender, _) = unbounded::<ConsensusEvent>();
+    let consensus = TestConsensus::new(db, &config, dummy_sender);
     let wait_handles = consensus.init();
 
     let blocks = vec![
@@ -152,7 +154,8 @@ async fn test_concurrent_pipeline_random() {
 
     let (_temp_db_lifetime, db) = create_temp_db();
     let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().edit_consensus_params(|p| p.genesis_hash = genesis).build();
-    let consensus = TestConsensus::new(db, &config);
+    let (dummy_sender, _) = unbounded::<ConsensusEvent>();
+    let consensus = TestConsensus::new(db, &config, dummy_sender);
     let wait_handles = consensus.init();
 
     let mut tips = vec![genesis];

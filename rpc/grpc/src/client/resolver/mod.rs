@@ -308,7 +308,7 @@ impl Resolver {
                     trace!("[Resolver] handle_response received notification: {:?}", event);
 
                     // Here we ignore any returned error
-                    match self.notify_send.try_send(Arc::new(notification)) {
+                    match self.notify_send.try_send(notification) {
                         Ok(_) => {}
                         Err(err) => {
                             trace!("[Resolver] error while trying to send a notification to the notifier: {:?}", err);

@@ -12,9 +12,11 @@ hashes.workspace = true
 kaspa-core.workspace = true
 consensus-core.workspace = true
 consensus.workspace = true
+event-processor.workspace = true
 utxoindex.workspace = true
 rpc-core.workspace = true
 rpc-grpc.workspace = true
+async-channel.workspace = true
 
 thiserror.workspace = true
 futures-util.workspace = true

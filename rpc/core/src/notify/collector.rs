@@ -13,13 +13,12 @@ use std::sync::Arc;
 extern crate derive_more;
 use crate::notify::{collector, error::Error, notifier::Notifier, result::Result};
 use crate::Notification;
-use derive_more::Deref;
 use kaspa_utils::channel::Channel;
 use kaspa_utils::triggers::DuplexTrigger;
 
-pub type CollectorNotificationChannel<T> = Channel<Arc<T>>;
-pub type CollectorNotificationSender<T> = Sender<Arc<T>>;
-pub type CollectorNotificationReceiver<T> = Receiver<Arc<T>>;
+pub type CollectorNotificationChannel<T> = Channel<T>;
+pub type CollectorNotificationSender<T> = Sender<T>;
+pub type CollectorNotificationReceiver<T> = Receiver<T>;
 
 /// A notification collector, acting as a notification source for a [`Notifier`].
 ///
@@ -37,24 +36,13 @@ pub trait Collector: Send + Sync + Debug {
 
 pub type DynCollector = Arc<dyn Collector>;
 
-/// A newtype allowing conversion from Arc<T> to Arc<Notification>.
-/// See [`super::collector::CollectorFrom`]
-#[derive(Clone, Debug, Deref)]
-pub struct ArcConvert<T>(Arc<T>);
-
-impl<T> From<Arc<T>> for ArcConvert<T> {
-    fn from(item: Arc<T>) -> Self {
-        ArcConvert(item)
-    }
-}
-
 /// A notification [`Collector`] that receives [`T`] from a channel,
 /// converts it into a [`Notification`] and sends it to a its
 /// [`Notifier`].
 #[derive(Debug)]
 pub struct CollectorFrom<T>
 where
-    T: Send + Sync + 'static + Sized,
+    T: Send + Sync + 'static + Clone + Into<Notification> + From<Notification>,
 {
     recv_channel: CollectorNotificationReceiver<T>,
 
@@ -66,8 +54,7 @@ where
 
 impl<T> CollectorFrom<T>
 where
-    T: Send + Sync + 'static + Sized + Debug,
-    ArcConvert<T>: Into<Arc<Notification>>,
+    T: Send + Sync + 'static + Debug + Clone + Into<Notification> + From<Notification>,
 {
     pub fn new(recv_channel: CollectorNotificationReceiver<T>) -> Self {
         Self { recv_channel, collect_shutdown: Arc::new(DuplexTrigger::new()), is_started: Arc::new(AtomicBool::new(false)) }
@@ -96,7 +83,7 @@ where
                     notification = notifications.next().fuse() => {
                         match notification {
                             Some(msg) => {
-                                let rpc_notification: Arc<Notification> = ArcConvert::from(msg.clone()).into();
+                                let rpc_notification = msg.into();
                                 match notifier.clone().notify(rpc_notification) {
                                     Ok(_) => (),
                                     Err(err) => {
@@ -129,8 +116,7 @@ where
 #[async_trait]
 impl<T> collector::Collector for CollectorFrom<T>
 where
-    T: Send + Sync + 'static + Sized + Debug,
-    ArcConvert<T>: Into<Arc<Notification>>,
+    T: Send + Sync + 'static + Debug + Clone + Into<Notification> + From<Notification>,
 {
     fn start(self: Arc<Self>, notifier: Arc<Notifier>) {
         self.spawn_collecting_task(notifier);

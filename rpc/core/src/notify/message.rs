@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 #[derive(Clone, Debug)]
 pub(crate) enum DispatchMessage {
-    Send(Arc<Notification>),
+    Send(Notification),
     AddListener(ListenerID, Arc<ListenerSenderSide>),
     RemoveListener(ListenerID),
     Shutdown,

@@ -1,10 +1,9 @@
+
+#[cfg(test)]
 use rand::Rng;
 use std::{collections::HashSet, sync::Arc, time::Instant};
-use tokio::{
-    test,
-    time::{sleep, Duration},
-};
-
+#[cfg(test)]
+use async_channel::unbounded;
 use consensus::{
     config::Config,
     consensus::test_consensus::{create_temp_db, TestConsensus},
@@ -21,11 +20,18 @@ use consensus_core::{
     BlockHashSet,
 };
 
-use utxoindex::{api::UtxoIndexApi, model::CirculatingSupply, notify::UtxoIndexNotification, UtxoIndex, VirtualChangeEmulator};
+#[cfg(test)]
+use utxoindex::{
+    api::{UtxoIndexControlApi, UtxoIndexRetrivalApi},
+    events::UtxoIndexEvent,
+    model::CirculatingSupply,
+    test_helpers::VirtualChangeEmulator,
+    UtxoIndex,
+};
 
 /// This test uses an ad hoc, ineffecient anda preliminary testing platform, utilizing a custom virtual change emulator.
 /// TODO: use proper simnet when implemented.
-#[test]
+#[tokio::test]
 async fn test_utxoindex() {
     //set-up random number generator
     let mut rng = rand::thread_rng();
@@ -34,11 +40,12 @@ async fn test_utxoindex() {
     let mut virtual_change_emulator = VirtualChangeEmulator::new();
     let utxoindex_db = create_temp_db();
     let consensus_db = create_temp_db();
-    let test_consensus = Arc::new(TestConsensus::new(consensus_db.1, &Config::new(DEVNET_PARAMS))); //this functions as a mock, simply to pass onto the utxoindex.
-    let utxoindex = UtxoIndex::new(test_consensus.clone(), utxoindex_db.1, virtual_change_emulator.receiver.clone());
+    let (dummy_sender, _) = unbounded();
+    let test_consensus = Arc::new(TestConsensus::new(consensus_db.1, &Config::new(DEVNET_PARAMS), dummy_sender)); //this functions as a mock, simply to pass onto the utxoindex.
+    let utxoindex = UtxoIndex::new(test_consensus.clone(), utxoindex_db.1);
 
     //fill intial utxo collectection in emulator
-    virtual_change_emulator.fill_utxo_collection(10_000, 100); //10_000 utxos belonging to 100 script public keys
+    virtual_change_emulator.fill_utxo_collection(10_000, 200); //10_000 utxos belonging to 100 script public keys
 
     //create a virtual state for test consensus from emulator variables
     let test_consensus_virtual_state = VirtualState {
@@ -66,9 +73,11 @@ async fn test_utxoindex() {
         .expect("setting of state");
 
     //sync index from scratch.
-    let now = Instant::now();
-    utxoindex.maybe_reset().expect("expected reset");
-    println!("resyncing 10_000, took {} ms", now.elapsed().as_millis()); //ad-hoc benchmark
+    assert!(!utxoindex.is_synced().expect("expected bool"));
+    //let now = Instant::now();
+    utxoindex.resync().expect("expected resync");
+    //println!("resyncing 10_000, took {} ms", now.elapsed().as_millis()); //ad-hoc benchmark (run with --release)
+    assert!(utxoindex.is_synced().expect("expected bool"));
 
     //test sync from scratch from consensus db.
     let consensus_utxos = test_consensus.clone().get_virtual_utxos(None, usize::MAX); // `usize::MAX` to ensure to get all.
@@ -97,23 +106,21 @@ async fn test_utxoindex() {
         BlockHashSet::from_iter(test_consensus.clone().get_virtual_state_tips())
     );
 
-    //start utxoindex processor
-    let processer = utxoindex.clone();
-    tokio::spawn(async move { processer.process_events().await });
-
     // test update: Change and signal new virtual state.
     virtual_change_emulator.clear_virtual_state();
-    virtual_change_emulator.change_virtual_state(rng.gen_range(120..=200), rng.gen_range(120..=200), rng.gen_range(1..3));
-    virtual_change_emulator.signal_virtual_state();
+    virtual_change_emulator.change_virtual_state(200, 200, 32);
 
-    let res = utxoindex.rpc_receiver.recv().await.expect("expected notification");
+    //let now = Instant::now();
+    let res = utxoindex.update(virtual_change_emulator.virtual_state.utxo_diff.clone(), virtual_change_emulator.virtual_state.parents).expect("expected utxoindex event");
+    //println!("updating 200, took {} ms", now.elapsed().as_millis()); ///ad-hoc benchmark (run with --release)
+
     match res {
-        UtxoIndexNotification::UtxosChanged(utxo_changed) => {
+        UtxoIndexEvent::UtxosChanged(utxo_changed) => {
             let mut i = 0;
             for (script_public_key, compact_utxo_collection) in utxo_changed.added.iter() {
                 for (tx_outpoint, compact_utxo_entry) in compact_utxo_collection.iter() {
                     let utxo_entry =
-                        virtual_change_emulator.virtual_state.virtual_utxo_diff.add.get(tx_outpoint).expect("expected utxo_entry");
+                        virtual_change_emulator.virtual_state.utxo_diff.add.get(tx_outpoint).expect("expected utxo_entry");
                     assert_eq!(*script_public_key, utxo_entry.script_public_key);
                     assert_eq!(compact_utxo_entry.amount, utxo_entry.amount);
                     assert_eq!(compact_utxo_entry.block_daa_score, utxo_entry.block_daa_score);
@@ -121,15 +128,15 @@ async fn test_utxoindex() {
                     i += 1;
                 }
             }
-            assert_eq!(i, virtual_change_emulator.virtual_state.virtual_utxo_diff.add.len());
+            assert_eq!(i, virtual_change_emulator.virtual_state.utxo_diff.add.len());
 
             i = 0;
 
             for (script_public_key, compact_utxo_collection) in utxo_changed.removed.iter() {
                 for (tx_outpoint, compact_utxo_entry) in compact_utxo_collection.iter() {
-                    assert!(virtual_change_emulator.virtual_state.virtual_utxo_diff.remove.contains_key(tx_outpoint));
+                    assert!(virtual_change_emulator.virtual_state.utxo_diff.remove.contains_key(tx_outpoint));
                     let utxo_entry =
-                        virtual_change_emulator.virtual_state.virtual_utxo_diff.remove.get(tx_outpoint).expect("expected utxo_entry");
+                        virtual_change_emulator.virtual_state.utxo_diff.remove.get(tx_outpoint).expect("expected utxo_entry");
                     assert_eq!(*script_public_key, utxo_entry.script_public_key);
                     assert_eq!(compact_utxo_entry.amount, utxo_entry.amount);
                     assert_eq!(compact_utxo_entry.block_daa_score, utxo_entry.block_daa_score);
@@ -137,7 +144,7 @@ async fn test_utxoindex() {
                     i += 1;
                 }
             }
-            assert_eq!(i, virtual_change_emulator.virtual_state.virtual_utxo_diff.remove.len());
+            assert_eq!(i, virtual_change_emulator.virtual_state.utxo_diff.remove.len());
         }
     }
 
@@ -162,10 +169,7 @@ async fn test_utxoindex() {
     assert_eq!(utxoindex.get_circulating_supply().expect("expected circulating supply"), virtual_change_emulator.circulating_supply);
     assert_eq!(*utxoindex.stores.get_tips().expect("expected circulating supply"), virtual_change_emulator.tips);
 
-    //test if pruning-point override resets db;
-    virtual_change_emulator.signal_utxoset_override();
-
-    sleep(Duration::new(10, 0)).await; //allow some time for processor to reset.
+    utxoindex.resync().expect("expected resync");
 
     //since we changed virtual state in emulator, but not in test-consensus db, we expect the reset to get the utxo-set from the test-consensus,
     //these utxos corropspond the the intial sync test.
@@ -192,12 +196,7 @@ async fn test_utxoindex() {
         BlockHashSet::from_iter(test_consensus.clone().get_virtual_state_tips())
     );
 
-    //test shut-down
-    utxoindex.signal_shutdown();
-    utxoindex.shutdown_finalized_listener.clone().await;
-
     //deconstruct
-    drop(virtual_change_emulator);
     drop(utxoindex);
     drop(test_consensus);
 }

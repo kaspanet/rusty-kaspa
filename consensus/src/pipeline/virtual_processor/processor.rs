@@ -47,10 +47,10 @@ use consensus_core::{
     block::{BlockTemplate, MutableBlock},
     blockstatus::BlockStatus::{self, StatusDisqualifiedFromChain, StatusUTXOPendingVerification, StatusUTXOValid},
     coinbase::{BlockRewardData, MinerData},
+    events::ConsensusEvent,
     header::Header,
     merkle::calc_hash_merkle_root,
     muhash::MuHashExtensions,
-    notify::ConsensusNotification,
     tx::{MutableTransaction, Transaction},
     tx::{PopulatedTransaction, TransactionOutpoint, UtxoEntry, ValidatedTransaction},
     utxo::{
@@ -61,10 +61,10 @@ use consensus_core::{
 };
 use hashes::Hash;
 use kaspa_core::{debug, info, trace};
-use kaspa_utils::channel::Channel;
 use muhash::MuHash;
 
-use crossbeam_channel::Receiver as CrossbeamReceiver;
+use async_channel::Sender as AsyncSender; // to avoid confusion with crossbeam
+use crossbeam_channel::Receiver as CrossbeamReceiver; // to aviod confusion with async_channel
 use itertools::Itertools;
 use parking_lot::{RwLock, RwLockUpgradableReadGuard};
 use rayon::ThreadPool;
@@ -83,7 +83,7 @@ use super::errors::{VirtualProcessorError, VirtualProcessorResult};
 pub struct VirtualStateProcessor {
     // Channels
     receiver: CrossbeamReceiver<BlockProcessingMessage>,
-    rpc_channel: Channel<ConsensusNotification>,
+    consensus_sender: AsyncSender<ConsensusEvent>,
 
     // Thread pool
     pub(super) thread_pool: Arc<ThreadPool>,
@@ -137,8 +137,8 @@ impl VirtualStateProcessor {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         receiver: CrossbeamReceiver<BlockProcessingMessage>,
-        rpc_channel: Channel<ConsensusNotification>,
         thread_pool: Arc<ThreadPool>,
+        consensus_sender: AsyncSender<ConsensusEvent>,
         params: &Params,
         process_genesis: bool,
         db: Arc<DB>,
@@ -175,6 +175,8 @@ impl VirtualStateProcessor {
             receiver,
             thread_pool,
 
+            consensus_sender,
+
             genesis_hash: params.genesis_hash,
             genesis_bits: params.genesis_bits,
             genesis_timestamp: params.genesis_timestamp,
@@ -209,7 +211,6 @@ impl VirtualStateProcessor {
             pruning_manager,
             parents_manager,
             depth_manager,
-            rpc_channel,
         }
     }
 
@@ -382,10 +383,14 @@ impl VirtualStateProcessor {
                 // Calling the drops explicitly after the batch is written in order to avoid possible errors.
                 drop(virtual_write);
 
-                // we try_send to rpc receiver since this is sync without blocking.
-                match self.rpc_channel.try_send(ConsensusNotification::VirtualChangeSet(new_virtual_state.into())) {
-                    Ok(_) => (),
-                    Err(_) => panic!("rpc receiver unreachable"), //TODO: Perhaps just ignore, if consensus does not care about utxoindex and other services runing.
+                // we try_send on consenus sender since this is without blocking.
+                if self.consensus_sender.receiver_count() > 0 {
+                    // idea here is to not send or panic when we have dropped receivers, i.e. when event processor is not required, (such as in testing cases).
+                    match self.consensus_sender.try_send(ConsensusEvent::VirtualChangeSet(Arc::new(new_virtual_state.into()))) {
+                        // see, `consensus::store::model::virtual_state` -> `impl From<VirtualState> for VirtualChangeSetConsensusEvent ` for conversion
+                        Ok(_) => (),
+                        Err(err) => panic!("event processor unreachable: {}", err),
+                    }
                 }
             }
             BlockStatus::StatusDisqualifiedFromChain => {

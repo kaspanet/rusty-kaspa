@@ -1,6 +1,5 @@
 //! Core server implementation for ClientAPI
 
-use super::collector::{ConsensusCollector, ConsensusNotificationReceiver};
 use crate::{
     api::rpc::RpcApi,
     model::*,
@@ -9,8 +8,10 @@ use crate::{
         listener::{ListenerID, ListenerReceiverSide, ListenerUtxoNotificationFilterSetting},
         notifier::Notifier,
     },
+    server::collector::{EventNotificationCollector, EventNotificationReceiver},
     FromRpcHex, Notification, NotificationType, RpcError, RpcResult,
 };
+
 use async_trait::async_trait;
 use consensus_core::{
     api::DynConsensus,
@@ -26,6 +27,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
     vec,
 };
+use utxoindex::{api::DynUtxoIndexRetrivalApi, UtxoIndex};
 
 /// A service implementing the Rpc API at rpc_core level.
 ///
@@ -46,21 +48,26 @@ use std::{
 /// Subscriber.
 pub struct RpcCoreService {
     consensus: DynConsensus,
+    utxoindex: DynUtxoIndexRetrivalApi,
     notifier: Arc<Notifier>,
 }
 
 impl RpcCoreService {
-    pub fn new(consensus: DynConsensus, consensus_recv: ConsensusNotificationReceiver) -> Self {
+    pub fn new(
+        consensus: DynConsensus,
+        utxoindex: DynUtxoIndexRetrivalApi,
+        event_notfication_recv: EventNotificationReceiver,
+    ) -> Self {
         // TODO: instead of getting directly a DynConsensus, rely on some Context equivalent
         //       See app\rpc\rpccontext\context.go
         // TODO: the channel receiver should be obtained by registering to a consensus notification service
 
-        let collector = Arc::new(ConsensusCollector::new(consensus_recv));
+        let collector = Arc::new(EventNotificationCollector::new(event_notfication_recv));
 
         // TODO: Some consensus-compatible subscriber could be provided here
         let notifier = Arc::new(Notifier::new(Some(collector), None, ListenerUtxoNotificationFilterSetting::All));
 
-        Self { consensus, notifier }
+        Self { consensus, utxoindex, notifier }
     }
 
     pub fn start(&self) {
@@ -103,10 +110,10 @@ impl RpcApi for RpcCoreService {
 
         // Notify about new added block
         // TODO: let consensus emit this notification through an event channel
-        self.notifier.clone().notify(Arc::new(Notification::BlockAdded(BlockAddedNotification { block: rpc_block }))).unwrap();
+        self.notifier.clone().notify(Notification::BlockAdded(BlockAddedNotification { block: rpc_block })).unwrap();
 
         // Emit a NewBlockTemplate notification
-        self.notifier.clone().notify(Arc::new(Notification::NewBlockTemplate(NewBlockTemplateNotification {}))).unwrap();
+        self.notifier.clone().notify(Notification::NewBlockTemplate(NewBlockTemplateNotification {})).unwrap();
 
         result
     }
@@ -232,6 +239,7 @@ impl RpcApi for RpcCoreService {
     }
 
     async fn get_balance_by_address_call(&self, _request: GetBalanceByAddressRequest) -> RpcResult<GetBalanceByAddressResponse> {
+        //TODO: use self.utxoindex for this
         unimplemented!();
     }
 
@@ -243,6 +251,7 @@ impl RpcApi for RpcCoreService {
     }
 
     async fn get_utxos_by_addresses_call(&self, _addresses: GetUtxosByAddressesRequest) -> RpcResult<GetUtxosByAddressesResponse> {
+        //TODO: use self.utxoindex for this
         unimplemented!();
     }
 

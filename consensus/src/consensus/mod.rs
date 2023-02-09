@@ -48,19 +48,20 @@ use consensus_core::{
     blockstatus::BlockStatus,
     coinbase::MinerData,
     errors::{coinbase::CoinbaseResult, tx::TxResult},
+    events::ConsensusEvent,
     header::Header,
     muhash::MuHashExtensions,
-    notify::ConsensusNotification,
     pruning::PruningPointProof,
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     BlockHashSet,
 };
-use crossbeam_channel::{unbounded as unbounded_crossbeam, Receiver as CrossbeamReceiver, Sender as CrossbeamSender};
+
+use async_channel::Sender as AsyncSender; // to aviod confusion with crossbeam
+use crossbeam_channel::{unbounded as unbounded_crossbeam, Receiver as CrossbeamReceiver, Sender as CrossbeamSender}; // to aviod confusion with async_channel
 use futures_util::future::BoxFuture;
 use hashes::Hash;
 use itertools::Itertools;
 use kaspa_core::{core::Core, service::Service};
-use kaspa_utils::channel::Channel;
 use muhash::MuHash;
 use parking_lot::RwLock;
 use std::{
@@ -95,7 +96,7 @@ pub struct Consensus {
 
     // Channels
     block_sender: CrossbeamSender<BlockProcessingMessage>,
-    pub rpc_channel: Channel<ConsensusNotification>,
+    pub consensus_sender: AsyncSender<ConsensusEvent>,
 
     // Processors
     header_processor: Arc<HeaderProcessor>,
@@ -134,7 +135,7 @@ pub struct Consensus {
 }
 
 impl Consensus {
-    pub fn new(db: Arc<DB>, config: &Config) -> Self {
+    pub fn new(db: Arc<DB>, config: &Config, consensus_sender: AsyncSender<ConsensusEvent>) -> Self {
         let params = &config.params;
         let perf_params = &config.perf;
         //
@@ -289,7 +290,6 @@ impl Consensus {
             unbounded_crossbeam();
         let (virtual_sender, virtual_receiver): (CrossbeamSender<BlockProcessingMessage>, CrossbeamReceiver<BlockProcessingMessage>) =
             unbounded_crossbeam();
-        let rpc_channel = Channel::<ConsensusNotification>::default();
 
         let counters = Arc::new(ProcessingCounters::default());
 
@@ -371,8 +371,8 @@ impl Consensus {
 
         let virtual_processor = Arc::new(VirtualStateProcessor::new(
             virtual_receiver,
-            rpc_channel.clone(),
             virtual_pool,
+            consensus_sender.clone(),
             params,
             config.process_genesis,
             db.clone(),
@@ -450,7 +450,7 @@ impl Consensus {
             pruning_proof_manager,
 
             counters,
-            rpc_channel,
+            consensus_sender,
         }
     }
 

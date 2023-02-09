@@ -5,12 +5,14 @@ use std::{
     thread::JoinHandle,
 };
 
+use async_channel::Sender;
 use consensus_core::{
     api::ConsensusApi,
     block::{Block, BlockTemplate, MutableBlock},
     blockstatus::BlockStatus,
     coinbase::MinerData,
     errors::{block::RuleError, coinbase::CoinbaseResult, tx::TxResult},
+    events::ConsensusEvent,
     header::Header,
     merkle::calc_hash_merkle_root,
     subnets::SUBNETWORK_ID_COINBASE,
@@ -50,17 +52,21 @@ pub struct TestConsensus {
 }
 
 impl TestConsensus {
-    pub fn new(db: Arc<DB>, config: &Config) -> Self {
-        Self { consensus: Arc::new(Consensus::new(db, config)), params: config.params.clone(), temp_db_lifetime: Default::default() }
+    pub fn new(db: Arc<DB>, config: &Config, consensus_sender: Sender<ConsensusEvent>) -> Self {
+        Self {
+            consensus: Arc::new(Consensus::new(db, config, consensus_sender)),
+            params: config.params.clone(),
+            temp_db_lifetime: Default::default(),
+        }
     }
 
     pub fn consensus(&self) -> Arc<Consensus> {
         self.consensus.clone()
     }
 
-    pub fn create_from_temp_db(config: &Config) -> Self {
+    pub fn create_from_temp_db(config: &Config, consensus_sender: Sender<ConsensusEvent>) -> Self {
         let (temp_db_lifetime, db) = create_temp_db();
-        Self { consensus: Arc::new(Consensus::new(db, config)), params: config.params.clone(), temp_db_lifetime }
+        Self { consensus: Arc::new(Consensus::new(db, config, consensus_sender)), params: config.params.clone(), temp_db_lifetime }
     }
 
     pub fn build_header_with_parents(&self, hash: Hash, parents: Vec<Hash>) -> Header {

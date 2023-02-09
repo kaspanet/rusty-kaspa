@@ -62,7 +62,7 @@ impl Notifier {
         self.inner.clone().start_notify(id, notification_type)
     }
 
-    pub fn notify(self: Arc<Self>, notification: Arc<Notification>) -> Result<()> {
+    pub fn notify(self: Arc<Self>, notification: Notification) -> Result<()> {
         self.inner.clone().notify(notification)
     }
 
@@ -311,7 +311,7 @@ impl Inner {
         Ok(())
     }
 
-    fn notify(self: Arc<Self>, notification: Arc<Notification>) -> Result<()> {
+    fn notify(self: Arc<Self>, notification: Notification) -> Result<()> {
         let event: EventType = notification.as_ref().into();
         let msg = DispatchMessage::Send(notification);
         self.try_send_dispatch(event, msg)?;

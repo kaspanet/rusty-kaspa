@@ -1,10 +1,13 @@
-mod core; //all things visable to the outside
+pub mod core; //all things visable to the outside
 mod index;
-mod service;
 mod stores;
-mod test_helpers;
-mod update_container;
+pub mod update_container;
+pub mod test_helpers;
 
 pub use crate::core::*; //Expose all things intended for external usage.
 pub use crate::index::UtxoIndex; //we expose this seperatly to intiate the index.
-pub use test_helpers::VirtualChangeEmulator; //we expose this for testing purposes.
+
+#[cfg(test)]
+pub use crate::test_helpers::VirtualChangeEmulator; //exposed for testing
+
+const IDENT: &str = "utxoindex";

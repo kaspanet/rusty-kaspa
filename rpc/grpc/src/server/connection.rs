@@ -65,7 +65,7 @@ impl GrpcConnection {
                         match notification {
                             Ok(notification) => {
                                 trace!("sending {} to listener id {}", notification, listener_id);
-                                match sender.send(Ok((&*notification).into())).await {
+                                match sender.send(Ok(notification.into())).await {
                                     Ok(_) => (),
                                     Err(err) => {
 
