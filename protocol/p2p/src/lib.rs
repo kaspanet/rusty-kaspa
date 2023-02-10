@@ -3,5 +3,6 @@ pub mod pb {
     tonic::include_proto!("protowire");
 }
 pub mod adaptor;
+pub mod core;
 pub mod infra;
 pub mod registry;

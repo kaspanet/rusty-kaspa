@@ -18,11 +18,11 @@ name = "kaspa_p2p_server"
 path = "./src/bin/p2p_server.rs"
 
 [dependencies]
-# project internal deps
 kaspa-core.workspace = true
-# project external deps
+
 log.workspace = true
 thiserror.workspace = true
+
 futures = { version = "0.3", default-features = false, features = ["alloc"] }
 prost = "0.11"
 ctrlc = "3.2"
@@ -32,6 +32,7 @@ tonic = { version = "0.8.2", features = ["tls", "gzip"] }
 h2 = "0.3"
 lockfree = "0.5.1"
 uuid = { version = "1.2.2", features = ["v4","fast-rng"] }
+async-stream = "0.3.3"
 
 [build-dependencies]
 tonic-build = { version = "0.8.2", features = ["prost"] }

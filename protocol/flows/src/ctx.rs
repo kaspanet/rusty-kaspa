@@ -1,10 +1,8 @@
 use async_trait::async_trait;
 use consensus_core::api::DynConsensus;
-use kaspa_core::{info, trace};
-use p2p_lib::infra::{KaspadMessagePayloadEnumU8, Router, RouterApi};
-use p2p_lib::pb::VersionMessage;
-use p2p_lib::pb::{self, kaspad_message::Payload, KaspadMessage};
-use p2p_lib::registry::{Flow, FlowRegistryApi, FlowTxTerminateChannelType, P2pConnection};
+use kaspa_core::info;
+use p2p_lib::core::{ConnectionInitializationError, ConnectionInitializer, KaspadMessagePayloadType, Router};
+use p2p_lib::pb::{self, kaspad_message::Payload, KaspadMessage, VersionMessage};
 use std::sync::Arc;
 use tokio::sync::mpsc::Receiver;
 use uuid::Uuid;
@@ -92,58 +90,47 @@ impl FlowContext {
 }
 
 #[async_trait]
-impl FlowRegistryApi for FlowContext {
-    async fn initialize_flows(&self, connection: P2pConnection) -> Result<Vec<(Uuid, FlowTxTerminateChannelType)>, ()> {
-        let router = connection.router.clone();
+impl ConnectionInitializer for FlowContext {
+    async fn initialize_connection(&self, router: Arc<Router>) -> Result<(), ConnectionInitializationError> {
         // Subscribe to handshake messages
-        let version_receiver = router.subscribe_to(vec![KaspadMessagePayloadEnumU8::Version]);
-        let verack_receiver = router.subscribe_to(vec![KaspadMessagePayloadEnumU8::Verack]);
-        let ready_receiver = router.subscribe_to(vec![KaspadMessagePayloadEnumU8::Ready]);
+        let version_receiver = router.subscribe(vec![KaspadMessagePayloadType::Version]).await;
+        let verack_receiver = router.subscribe(vec![KaspadMessagePayloadType::Verack]).await;
+        let ready_receiver = router.subscribe(vec![KaspadMessagePayloadType::Ready]).await;
 
-        // Make sure possibly pending handshake messages are rerouted to the newly registered flows
-        router.reroute_to_flows().await;
+        // We start the router receive loop only after we registered to handshake routes
+        router.start().await;
         // Perform the initial handshake
-        let version_message = match self.handshake(&router, version_receiver, verack_receiver).await {
-            Ok(version_message) => version_message,
-            Err(err) => {
-                connection.handle_error(err.into()).await;
-                return Err(());
-            }
-        };
+        let version_message = self.handshake(&router, version_receiver, verack_receiver).await?;
         info!("peer protocol version: {}", version_message.protocol_version);
 
-        // Subscribe to remaining messages and finalize (finalize will reroute all messages into flows)
+        // Subscribe to remaining messages
         // TODO: register to all kaspa P2P flows here
-        let echo_terminate = EchoFlow::new(router.clone()).await;
-        trace!("finalizing flow subscriptions");
-        router.finalize().await;
+        EchoFlow::register(router.clone()).await;
 
-        if let Err(err) = self.ready_flow(&router, ready_receiver).await {
-            connection.handle_error(err.into()).await;
-            return Err(());
-        }
+        // Send a ready signal
+        self.ready_flow(&router, ready_receiver).await?;
 
         // Note: at this point receivers for handshake subscriptions
         // are dropped, thus effectively unsubscribing
 
-        Ok(vec![echo_terminate])
+        Ok(())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use p2p_lib::adaptor::{P2pAdaptor, P2pAdaptorApi};
+    use p2p_lib::core::Hub;
 
     #[tokio::test]
     async fn test_p2p_handshake() {
         kaspa_core::log::try_init_logger("debug");
 
         let address1 = String::from("[::1]:50053");
-        let adaptor1 = P2pAdaptor::listen(address1.clone(), Arc::new(FlowContext::new(None))).await.unwrap();
+        let adaptor1 = Hub::duplex(address1.clone(), Arc::new(FlowContext::new(None))).unwrap();
 
         let address2 = String::from("[::1]:50054");
-        let adaptor2 = P2pAdaptor::listen(address2.clone(), Arc::new(FlowContext::new(None))).await.unwrap();
+        let adaptor2 = Hub::duplex(address2.clone(), Arc::new(FlowContext::new(None))).unwrap();
 
         // Initiate the connection from `adaptor1` (outbound) to `adaptor2` (inbound)
         // NOTE: a minimal scheme prefix `"://"` must be added for the client-side connect logic
@@ -153,21 +140,13 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_secs(4)).await;
 
         // For now assert the handshake by checking the peer exists (since peer is removed on handshake error)
-        assert_eq!(adaptor1.get_all_peer_ids().len(), 1, "handshake failed -- outbound peer is missing");
-        assert_eq!(adaptor2.get_all_peer_ids().len(), 1, "handshake failed -- inbound peer is missing");
+        assert_eq!(adaptor1.get_all_peer_ids().await.len(), 1, "handshake failed -- outbound peer is missing");
+        assert_eq!(adaptor2.get_all_peer_ids().await.len(), 1, "handshake failed -- inbound peer is missing");
 
         adaptor1.terminate(peer2_id).await;
         tokio::time::sleep(std::time::Duration::from_secs(4)).await;
 
-        assert_eq!(adaptor1.get_all_peer_ids().len(), 0, "peer termination failed -- outbound peer was not removed");
-        assert_eq!(adaptor1.get_outbound_peer_ids().len(), 0, "peer termination failed -- outbound client was not removed");
-
-        adaptor1.terminate_all_peers_and_flows().await;
-        drop(adaptor1);
-        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-        adaptor2.send(adaptor2.get_all_peer_ids()[0], pb::KaspadMessage { payload: None }).await;
-        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-
-        assert_eq!(adaptor2.get_all_peer_ids().len(), 0, "peer termination failed -- inbound peer was not removed");
+        assert_eq!(adaptor1.get_all_peer_ids().await.len(), 0, "peer termination failed -- outbound peer was not removed");
+        assert_eq!(adaptor2.get_all_peer_ids().await.len(), 0, "peer termination failed -- inbound peer was not removed");
     }
 }
