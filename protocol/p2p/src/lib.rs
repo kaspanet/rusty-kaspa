@@ -4,3 +4,7 @@ pub mod pb {
 }
 pub mod core;
 pub mod echo;
+
+mod payloadtype;
+
+pub use payloadtype::KaspadMessagePayloadType;

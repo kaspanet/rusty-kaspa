@@ -1,6 +1,7 @@
 use crate::{
-    core::{ConnectionError, ConnectionInitializer, KaspadMessagePayloadType, Router},
+    core::{ConnectionError, ConnectionInitializer, Router},
     pb::{self, KaspadMessage},
+    KaspadMessagePayloadType,
 };
 use kaspa_core::{debug, info, trace, warn};
 use std::sync::Arc;
