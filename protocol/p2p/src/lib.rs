@@ -2,9 +2,14 @@ pub mod pb {
     // this one includes messages.proto + p2p.proto + rcp.proto
     tonic::include_proto!("protowire");
 }
-pub mod core;
+
 pub mod echo;
 
-mod payloadtype;
+mod adaptor;
+mod connection;
+mod payload_type;
+mod router;
 
-pub use payloadtype::KaspadMessagePayloadType;
+pub use adaptor::{Adaptor, ConnectionError, ConnectionInitializer};
+pub use payload_type::KaspadMessagePayloadType;
+pub use router::Router;

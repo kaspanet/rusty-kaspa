@@ -1,9 +1,9 @@
 use async_trait::async_trait;
 use consensus_core::api::DynConsensus;
 use kaspa_core::info;
-use p2p_lib::core::{ConnectionError, ConnectionInitializer, Router};
 use p2p_lib::pb::{self, kaspad_message::Payload, KaspadMessage, VersionMessage};
 use p2p_lib::KaspadMessagePayloadType;
+use p2p_lib::{ConnectionError, ConnectionInitializer, Router};
 use std::sync::Arc;
 use tokio::sync::mpsc::Receiver;
 use uuid::Uuid;
@@ -121,7 +121,7 @@ impl ConnectionInitializer for FlowContext {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use p2p_lib::core::Adaptor;
+    use p2p_lib::Adaptor;
 
     #[tokio::test]
     async fn test_p2p_handshake() {

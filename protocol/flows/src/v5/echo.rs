@@ -1,8 +1,7 @@
 use kaspa_core::{debug, trace, warn};
 use p2p_lib::{
-    core::Router,
     pb::{self, KaspadMessage},
-    KaspadMessagePayloadType,
+    KaspadMessagePayloadType, Router,
 };
 use std::sync::Arc;
 use tokio::sync::mpsc::Receiver as MpscReceiver;

@@ -8,7 +8,7 @@ async fn main() {
     kaspa_core::log::init_logger("debug");
     // [0] - init p2p-adaptor
     let initializer = Arc::new(EchoFlowInitializer::new());
-    let adaptor = p2p_lib::core::Adaptor::client_connection_only(initializer);
+    let adaptor = p2p_lib::Adaptor::client_connection_only(initializer);
     // [1] - connect 128 peers + flows
     let ip_port = String::from("://[::1]:16111");
     for i in 0..1 {

@@ -1,4 +1,4 @@
-use p2p_lib::core::ConnectionError;
+use p2p_lib::ConnectionError;
 use std::time::Duration;
 use thiserror::Error;
 

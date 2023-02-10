@@ -4,7 +4,7 @@ use kaspa_core::{
     trace,
 };
 use kaspa_utils::triggers::SingleTrigger;
-use p2p_lib::core::Adaptor;
+use p2p_lib::Adaptor;
 use std::sync::Arc;
 
 use crate::ctx::FlowContext;

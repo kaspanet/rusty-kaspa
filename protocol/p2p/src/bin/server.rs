@@ -9,7 +9,7 @@ async fn main() {
     // [0] - init p2p-adaptor - server side
     let ip_port = String::from("[::1]:50051");
     let initializer = Arc::new(EchoFlowInitializer::new());
-    let adaptor = p2p_lib::core::Adaptor::bidirectional_connection(ip_port, initializer).unwrap();
+    let adaptor = p2p_lib::Adaptor::bidirectional_connection(ip_port, initializer).unwrap();
     // [1] - connect 128 peers + flows
     let ip_port = String::from("://[::1]:16111");
     for i in 0..1 {
