@@ -64,8 +64,6 @@ pub enum KaspadMessagePayloadType {
     IbdChainBlockLocator,
     RequestAnticone,
     RequestNextPruningPointAndItsAnticoneBlocks,
-    // Default Max Value
-    DefaultMaxValue = 0xFF,
 }
 
 #[derive(Debug)]
@@ -465,8 +463,6 @@ impl Router {
             KaspadMessagePayload::RequestNextPruningPointAndItsAnticoneBlocks(_) => {
                 KaspadMessagePayloadType::RequestNextPruningPointAndItsAnticoneBlocks
             }
-            // Default Mapping
-            _ => KaspadMessagePayloadType::DefaultMaxValue,
         };
         res as u8
     }
