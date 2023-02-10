@@ -11,11 +11,11 @@ path = "./src/lib.rs"
 
 [[bin]]
 name = "kaspa_p2p_client"
-path = "./src/bin/p2p_client.rs"
+path = "./src/bin/client.rs"
 
 [[bin]]
 name = "kaspa_p2p_server"
-path = "./src/bin/p2p_server.rs"
+path = "./src/bin/server.rs"
 
 [dependencies]
 kaspa-core.workspace = true

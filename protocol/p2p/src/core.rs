@@ -99,7 +99,7 @@ pub struct Adaptor {
     /// An object for managing new outbound connections as well as handling new connections coming from a server
     connection_manager: ConnectionManager,
 
-    /// TODO: consider lockfree options
+    /// Map of currently active peers
     active_peers: RwLock<HashMap<Uuid, Arc<Router>>>,
 }
 
@@ -340,10 +340,9 @@ struct RouterStateSignals {
 #[derive(Debug)]
 pub struct Router {
     /// Internal identity of this peer
-    identity: uuid::Uuid,
+    identity: Uuid,
 
-    /// A map for mapping messages to flows
-    /// TODO: consider lockfree options
+    /// Routing map for mapping messages to subscribed flows
     routing_map: RwLock<HashMap<u8, MpscSender<KaspadMessage>>>,
 
     /// The outgoing route for sending messages to this peer
@@ -364,6 +363,7 @@ impl Router {
     ) -> Arc<Self> {
         let (start_sender, start_receiver) = oneshot_channel();
         let (shutdown_sender, shutdown_receiver) = oneshot_channel();
+
         let router = Arc::new(Router {
             identity: Uuid::new_v4(),
             routing_map: RwLock::new(HashMap::new()),
@@ -495,7 +495,7 @@ impl Router {
             match map.insert(msg_id, sender.clone()) {
                 Some(_) => {
                     // Overrides an existing route -- panic
-                    error!("P2P, Router::subscribe overrides already existing value:{:?}, router-id: {}", msg_type, self.identity);
+                    error!("P2P, Router::subscribe overrides an existing value: {:?}, router-id: {}", msg_type, self.identity);
                     panic!("P2P, Tried to subscribe to an existing route");
                 }
                 None => {
@@ -535,7 +535,7 @@ impl Router {
         self.hub_sender.send(HubEvent::Broadcast(Box::new(msg))).await.is_ok()
     }
 
-    /// Closes the router, signal exit, and cleans up all resources so that underlying connections will be aborted
+    /// Closes the router, signals exit, and cleans up all resources so that underlying connections will be aborted correctly
     pub async fn close(&self) {
         // Acquire state mutex and send the shutdown signal
         // NOTE: Using a block to drop the lock asap
