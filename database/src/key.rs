@@ -6,7 +6,7 @@ use std::{
 pub const SEP: u8 = b'/';
 pub const SEP_SIZE: usize = 1;
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone)]
 pub struct DbKey {
     pub path: Vec<u8>,
     pub prefix_len: usize,

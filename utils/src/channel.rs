@@ -4,8 +4,8 @@ use async_channel::{unbounded, Receiver, Sender};
 /// Multiple producers multiple consumers channel
 #[derive(Clone, Debug)]
 pub struct Channel<T> {
-    pub sender: Sender<T>,
-    pub receiver: Receiver<T>,
+    sender: Sender<T>,
+    receiver: Receiver<T>,
 }
 
 impl<T> Channel<T> {

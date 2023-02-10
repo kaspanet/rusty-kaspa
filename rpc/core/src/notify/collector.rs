@@ -42,7 +42,7 @@ pub type DynCollector = Arc<dyn Collector>;
 #[derive(Debug)]
 pub struct CollectorFrom<T>
 where
-    T: Send + Sync + 'static + Clone + Into<Notification> + From<Notification>,
+    T: Send + Sync + 'static + Clone + Sized + Into<Notification> + From<Notification>,
 {
     recv_channel: CollectorNotificationReceiver<T>,
 
@@ -54,7 +54,7 @@ where
 
 impl<T> CollectorFrom<T>
 where
-    T: Send + Sync + 'static + Debug + Clone + Into<Notification> + From<Notification>,
+    T: Send + Sync + 'static + Debug + Clone + Sized + Into<Notification> + From<Notification>,
 {
     pub fn new(recv_channel: CollectorNotificationReceiver<T>) -> Self {
         Self { recv_channel, collect_shutdown: Arc::new(DuplexTrigger::new()), is_started: Arc::new(AtomicBool::new(false)) }

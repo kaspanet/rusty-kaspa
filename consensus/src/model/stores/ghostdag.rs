@@ -16,7 +16,7 @@ use std::{cell::RefCell, sync::Arc};
 pub type KType = u8; // This type must be increased to u16 if we ever set GHOSTDAG K > 255
 pub type HashKTypeMap = Arc<BlockHashMap<KType>>;
 
-#[derive(Clone, Serialize, Deserialize, Default)] //TODO: default is for utxoindex testing, remove when simnet testing is implemented
+#[derive(Clone, Serialize, Deserialize)]
 pub struct GhostdagData {
     pub blue_score: u64,
     pub blue_work: BlueWorkType,

@@ -50,8 +50,7 @@ use consensus_core::{
     header::Header,
     merkle::calc_hash_merkle_root,
     muhash::MuHashExtensions,
-    tx::{MutableTransaction, Transaction},
-    tx::{PopulatedTransaction, TransactionOutpoint, UtxoEntry, ValidatedTransaction},
+    tx::{MutableTransaction, PopulatedTransaction, Transaction, TransactionOutpoint, UtxoEntry, ValidatedTransaction},
     utxo::{
         utxo_diff::UtxoDiff,
         utxo_view::{UtxoView, UtxoViewComposition},
@@ -383,9 +382,9 @@ impl VirtualStateProcessor {
                 // Calling the drops explicitly after the batch is written in order to avoid possible errors.
                 drop(virtual_write);
 
-                // we try_send on consenus sender since this is without blocking.
+                // stops from sending and potentially panicing when we have dropped receivers, when event processor is not required, (such as in testing cases).
                 if self.consensus_sender.receiver_count() > 0 {
-                    // idea here is to not send or panic when we have dropped receivers, i.e. when event processor is not required, (such as in testing cases).
+                    // we try_send on consenus sender since this is without blocking.
                     match self.consensus_sender.try_send(ConsensusEvent::VirtualChangeSet(Arc::new(new_virtual_state.into()))) {
                         // see, `consensus::store::model::virtual_state` -> `impl From<VirtualState> for VirtualChangeSetConsensusEvent ` for conversion
                         Ok(_) => (),
