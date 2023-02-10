@@ -14,7 +14,6 @@ use serde::{Deserialize, Serialize};
 
 use super::ghostdag::GhostdagData;
 
-
 #[derive(Clone, Serialize, Deserialize, Default)] //TODO: default is for utxoindex testing, remove when simnet testing is implemented
 pub struct VirtualState {
     pub parents: Vec<Hash>,

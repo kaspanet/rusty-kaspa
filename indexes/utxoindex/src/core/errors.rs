@@ -2,7 +2,7 @@ use std::io;
 use thiserror::Error;
 
 use crate::IDENT;
-use consensus::model::stores::errors::StoreError;
+use database::prelude::StoreError;
 
 /// Errors originating from the [`UtxoIndex`].
 #[derive(Error, Debug)]

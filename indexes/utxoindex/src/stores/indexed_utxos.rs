@@ -1,13 +1,9 @@
 use crate::core::model::{CompactUtxoCollection, CompactUtxoEntry, UtxoChanges, UtxoSetByScriptPublicKey};
 
-use consensus::model::stores::{
-    database::prelude::{CachedDbAccess, DirectDbWriter},
-    errors::StoreError,
-    DB,
-};
 use consensus_core::tx::{
     ScriptPublicKey, ScriptPublicKeys, ScriptVec, TransactionIndexType, TransactionOutpoint, VersionType, SCRIPT_VECTOR_SIZE,
 };
+use database::prelude::{CachedDbAccess, DirectDbWriter, StoreError, DB};
 use hashes::Hash;
 use kaspa_utils::serde_big_array::BigArray;
 use serde::Deserialize;

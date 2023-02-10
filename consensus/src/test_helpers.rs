@@ -184,4 +184,4 @@ pub fn generate_random_transaction_outpoint(rng: &mut ThreadRng) -> TransactionO
     TransactionOutpoint::new(generate_random_hash(&mut rng.clone()), rng.gen())
 }
 
-//TODO: create `assert_eq_<kaspa_sturct>!()` helper macros in `consensus::test_helpers`
+//TODO: create `assert_eq_<kaspa-sturct>!()` helper macros in `consensus::test_helpers`

@@ -1,10 +1,6 @@
 use std::sync::Arc;
 
-use consensus::model::stores::{
-    database::prelude::{CachedDbItem, DirectDbWriter},
-    errors::{StoreError, StoreResult},
-    DB,
-};
+use database::prelude::{CachedDbItem, DirectDbWriter, StoreError, StoreResult, DB};
 
 use crate::model::{CirculatingSupply, CirculatingSupplyDiff};
 

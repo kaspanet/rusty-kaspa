@@ -3434,6 +3434,7 @@ dependencies = [
  "async-channel",
  "consensus",
  "consensus-core",
+ "database",
  "futures",
  "hashes",
  "kaspa-core",

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use consensus::model::stores::errors::StoreResult;
 use consensus_core::{tx::ScriptPublicKeys, utxo::utxo_diff::UtxoDiff, BlockHashSet};
+use database::prelude::StoreResult;
 use hashes::Hash;
 
 use crate::{errors::UtxoIndexResult, events::UtxoIndexEvent, model::UtxoSetByScriptPublicKey};

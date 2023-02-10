@@ -1,8 +1,8 @@
 use parking_lot::RwLock;
 use std::sync::Arc;
 
-use consensus::model::stores::{errors::StoreError, DB};
 use consensus_core::{tx::ScriptPublicKeys, BlockHashSet};
+use database::prelude::{StoreError, DB};
 use kaspa_core::trace;
 
 use crate::{

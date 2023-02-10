@@ -8,10 +8,8 @@ use crate::{
     IDENT,
 };
 
-use consensus::model::stores::{
-    errors::{StoreError, StoreResult},
-    DB,
-};
+use database::prelude::{StoreError, StoreResult, DB};
+
 use consensus_core::{
     api::DynConsensus,
     tx::{ScriptPublicKeys, TransactionOutpoint},
