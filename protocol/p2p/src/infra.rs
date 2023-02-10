@@ -138,13 +138,10 @@ impl P2pServer {
             };
 
             Server::builder()
-                    .add_service(grpc_server)
-                    .serve_with_shutdown(
-                        ip_port.to_socket_addrs().unwrap().next().unwrap(),
-                        rx.map(drop),
-                    )
-                    .await
-                    .unwrap();
+                .add_service(grpc_server)
+                .serve_with_shutdown(ip_port.to_socket_addrs().unwrap().next().unwrap(), rx.map(drop))
+                .await
+                .unwrap();
             debug!("P2P, Listener stopped, ip & port: {:?}", ip_port);
         });
         Ok(tx)
@@ -196,8 +193,14 @@ impl<T: RouterApi> P2pClient<T> {
             },
         };
         // [3] - Read messages from server & route to flows
-        let mut input_from_network_grpc_stream =
-            p2p_client.grpc_client.as_mut().unwrap().message_stream(ReceiverStream::new(rx).map(|msg| msg)).await.unwrap().into_inner();
+        let mut input_from_network_grpc_stream = p2p_client
+            .grpc_client
+            .as_mut()
+            .unwrap()
+            .message_stream(ReceiverStream::new(rx).map(|msg| msg))
+            .await
+            .unwrap()
+            .into_inner();
         // input_from_network_grpc_stream.
         let router_to_move = p2p_client.router.clone();
         tokio::spawn(async move {

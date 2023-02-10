@@ -6,15 +6,15 @@ use futures::FutureExt;
 use kaspa_core::{debug, error, info, trace, warn};
 use std::net::ToSocketAddrs;
 use std::pin::Pin;
+use std::time::Duration;
 use std::{collections::HashMap, sync::Arc};
 use thiserror::Error;
 use tokio::sync::mpsc::{channel as mpsc_channel, Receiver as MpscReceiver, Sender as MpscSender};
 use tokio::sync::oneshot::{channel as oneshot_channel, Sender as OneshotSender};
 use tokio::sync::{Mutex, RwLock};
-use tokio::time::Duration;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_stream::StreamExt;
-use tonic::transport::{Channel as TonicChannel, Error as TonicError, Server as TonicServer};
+use tonic::transport::{Error as TonicError, Server as TonicServer};
 use tonic::{Request, Response, Status as TonicStatus, Streaming};
 use uuid::Uuid;
 
@@ -76,7 +76,7 @@ pub(crate) enum HubEvent {
 }
 
 #[derive(Error, Debug, Clone)]
-pub enum ConnectionInitializationError {
+pub enum ConnectionError {
     #[error("p2p logical protocol error: {0}")]
     ProtocolError(String),
 
@@ -88,11 +88,12 @@ pub enum ConnectionInitializationError {
 /// initialization and will be called on each new (in/out) P2P connection with a corresponding dedicated new router
 #[tonic::async_trait]
 pub trait ConnectionInitializer: Sync + Send {
-    async fn initialize_connection(&self, new_router: Arc<Router>) -> Result<(), ConnectionInitializationError>;
+    async fn initialize_connection(&self, new_router: Arc<Router>) -> Result<(), ConnectionError>;
 }
 
-pub struct Hub {
-    /// If a server was started, it will get cleaned up when this drops
+/// The main object to create for managing a fully-fledged Kaspa P2P peer
+pub struct Adaptor {
+    /// If a server was started, it will get cleaned up when this sender is dropped or invoked
     _server_termination: Option<OneshotSender<()>>,
 
     /// An object for managing new outbound connections as well as handling new connections coming from a server
@@ -102,29 +103,36 @@ pub struct Hub {
     active_peers: RwLock<HashMap<Uuid, Arc<Router>>>,
 }
 
-impl Hub {
+impl Adaptor {
     pub(crate) fn new(server_termination: Option<OneshotSender<()>>, connection_manager: ConnectionManager) -> Self {
         Self { _server_termination: server_termination, connection_manager, active_peers: RwLock::new(HashMap::new()) }
     }
 
-    pub fn client_only(initializer: Arc<dyn ConnectionInitializer>) -> Arc<Self> {
+    /// Creates a P2P adaptor with only client-side support. Typical Kaspa nodes should use `Adaptor::bidirectional_connection`
+    pub fn client_connection_only(initializer: Arc<dyn ConnectionInitializer>) -> Arc<Self> {
         let (hub_sender, hub_receiver) = mpsc_channel(128);
         let connection_manager = ConnectionManager::new(hub_sender);
-        let hub = Arc::new(Hub::new(None, connection_manager));
-        hub.clone().start_event_loop(hub_receiver, initializer);
-        hub
+        let adaptor = Arc::new(Adaptor::new(None, connection_manager));
+        adaptor.clone().start_hub_event_loop(hub_receiver, initializer);
+        adaptor
     }
 
-    pub fn duplex(address: String, initializer: Arc<dyn ConnectionInitializer>) -> Result<Arc<Self>, TonicError> {
+    /// Creates a bidirectional P2P adaptor with both a server serving at `serve_address` and with client support
+    pub fn bidirectional_connection(
+        serve_address: String,
+        initializer: Arc<dyn ConnectionInitializer>,
+    ) -> Result<Arc<Self>, TonicError> {
         let (hub_sender, hub_receiver) = mpsc_channel(128);
         let connection_manager = ConnectionManager::new(hub_sender);
-        let server_termination = connection_manager.listen(address)?;
-        let hub = Arc::new(Hub::new(Some(server_termination), connection_manager));
-        hub.clone().start_event_loop(hub_receiver, initializer);
-        Ok(hub)
+        let server_termination = connection_manager.serve(serve_address)?;
+        let adaptor = Arc::new(Adaptor::new(Some(server_termination), connection_manager));
+        adaptor.clone().start_hub_event_loop(hub_receiver, initializer);
+        Ok(adaptor)
     }
 
-    fn start_event_loop(self: Arc<Self>, mut hub_receiver: MpscReceiver<HubEvent>, initializer: Arc<dyn ConnectionInitializer>) {
+    /// Starts a loop for receiving central hub events from all peer connections. This mechanism is used for
+    /// managing a collection of active peers and for supporting a broadcasting mechanism
+    fn start_hub_event_loop(self: Arc<Self>, mut hub_receiver: MpscReceiver<HubEvent>, initializer: Arc<dyn ConnectionInitializer>) {
         tokio::spawn(async move {
             while let Some(new_event) = hub_receiver.recv().await {
                 match new_event {
@@ -156,10 +164,12 @@ impl Hub {
         });
     }
 
-    pub async fn connect_peer(&self, address: String) -> Option<Uuid> {
-        self.connection_manager.connect_with_retry(address, 16).await.map(|r| r.identity())
+    /// Connect to a new peer
+    pub async fn connect_peer(&self, peer_address: String) -> Option<Uuid> {
+        self.connection_manager.connect_with_retry(peer_address, 16, Duration::from_secs(2)).await.map(|r| r.identity())
     }
 
+    /// Send a message to a specific peer
     pub async fn send(&self, peer_id: Uuid, msg: KaspadMessage) -> bool {
         if let Some(router) = self.active_peers.read().await.get(&peer_id).cloned() {
             router.route_to_network(msg).await
@@ -168,6 +178,7 @@ impl Hub {
         }
     }
 
+    /// Broadcast a message to all peers. Note that broadcast can also be called on a specific router and will lead to the same outcome
     pub async fn broadcast(&self, msg: KaspadMessage) {
         let peers = self.active_peers.read().await;
         for router in peers.values() {
@@ -175,12 +186,14 @@ impl Hub {
         }
     }
 
+    /// Terminate a specific peer
     pub async fn terminate(&self, peer_id: Uuid) {
         if let Some(router) = self.active_peers.read().await.get(&peer_id).cloned() {
             router.close().await;
         }
     }
 
+    /// Terminate all peers
     pub async fn terminate_all_peers(&self) {
         let mut peers = self.active_peers.write().await;
         for router in peers.values() {
@@ -189,13 +202,16 @@ impl Hub {
         peers.clear();
     }
 
-    pub async fn get_all_peer_ids(&self) -> Vec<Uuid> {
+    /// Returns a list of ids for all currently active peers
+    pub async fn get_active_peers(&self) -> Vec<Uuid> {
         self.active_peers.read().await.keys().copied().collect()
     }
 }
 
+/// Manages Router creation for both server and client-side new connections
 #[derive(Clone)]
 pub struct ConnectionManager {
+    /// Cloned on each new connection so that routers can communicate with a central hub
     hub_sender: MpscSender<HubEvent>,
 }
 
@@ -204,28 +220,32 @@ impl ConnectionManager {
         Self { hub_sender }
     }
 
-    pub(crate) fn listen(&self, address: String) -> Result<OneshotSender<()>, TonicError> {
-        info!("P2P, Start Listener, ip & port: {:?}", address);
+    /// Launches a P2P server listener loop
+    pub(crate) fn serve(&self, serve_address: String) -> Result<OneshotSender<()>, TonicError> {
+        info!("P2P, Start Listener, ip & port: {:?}", serve_address);
         let (termination_sender, termination_receiver) = oneshot_channel::<()>();
-        let connection_handler = self.clone();
+        let connection_manager = self.clone();
         tokio::spawn(async move {
-            debug!("P2P, Listener starting, ip & port: {:?}....", address);
-            let proto_server = ProtoP2pServer::new(connection_handler)
+            debug!("P2P, Listener starting, ip & port: {:?}....", serve_address);
+            let proto_server = ProtoP2pServer::new(connection_manager)
                 .accept_compressed(tonic::codec::CompressionEncoding::Gzip)
                 .send_compressed(tonic::codec::CompressionEncoding::Gzip);
 
-            TonicServer::builder()
+            let serve_result = TonicServer::builder()
                 .add_service(proto_server)
-                .serve_with_shutdown(address.to_socket_addrs().unwrap().next().unwrap(), termination_receiver.map(drop))
-                .await
-                .unwrap();
-            debug!("P2P, Listener stopped, ip & port: {:?}", address);
+                .serve_with_shutdown(serve_address.to_socket_addrs().unwrap().next().unwrap(), termination_receiver.map(drop))
+                .await;
+            match serve_result {
+                Ok(_) => debug!("P2P, Server stopped, ip & port: {:?}", serve_address),
+                Err(err) => panic!("P2P, Server stopped with error: {err:?}, ip & port: {serve_address:?}"),
+            }
         });
         Ok(termination_sender)
     }
 
-    pub(crate) async fn connect(&self, address: String) -> Result<Arc<Router>, TonicError> {
-        let channel = tonic::transport::Endpoint::new(address)?
+    /// Connect to a new peer
+    pub(crate) async fn connect(&self, peer_address: String) -> Result<Arc<Router>, TonicError> {
+        let channel = tonic::transport::Endpoint::new(peer_address)?
             .timeout(Duration::from_millis(Self::communication_timeout()))
             .connect_timeout(Duration::from_millis(Self::connect_timeout()))
             .tcp_keepalive(Some(Duration::from_millis(Self::keep_alive())))
@@ -239,23 +259,29 @@ impl ConnectionManager {
         let (outgoing_route, tonic_receiver) = mpsc_channel(Self::incoming_network_channel_size());
         let incoming_stream = client.message_stream(ReceiverStream::new(tonic_receiver)).await.unwrap().into_inner();
 
-        Ok(Router::new(self.hub_sender.clone(), incoming_stream, outgoing_route, Some(client)).await)
+        Ok(Router::new(self.hub_sender.clone(), incoming_stream, outgoing_route).await)
     }
 
-    pub(crate) async fn connect_with_retry(&self, address: String, retry_attempts: u8) -> Option<Arc<Router>> {
+    /// Connect to a new peer with `retry_attempts` retries and `retry_interval` duration between each attempt
+    pub(crate) async fn connect_with_retry(
+        &self,
+        address: String,
+        retry_attempts: u8,
+        retry_interval: Duration,
+    ) -> Option<Arc<Router>> {
         for counter in 0..retry_attempts {
             if let Ok(router) = self.connect(address.clone()).await {
                 debug!("P2P, Client connected, ip & port: {:?}", address);
                 return Some(router);
             } else {
-                // Sleep a bit before re-trying
-                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                // Asynchronously sleep `retry_interval` time before retrying
+                tokio::time::sleep(retry_interval).await;
                 if counter % 2 == 0 {
                     debug!("P2P, Client connect retry #{}, ip & port: {:?}", counter, address);
                 }
             }
         }
-        warn!("P2P, Client connection re-try #{} - all failed", retry_attempts);
+        warn!("P2P, Client connection retry #{} - all failed", retry_attempts);
         None
     }
 
@@ -284,7 +310,7 @@ impl ConnectionManager {
 impl ProtoP2p for ConnectionManager {
     type MessageStreamStream = Pin<Box<dyn futures::Stream<Item = Result<KaspadMessage, TonicStatus>> + Send + 'static>>;
 
-    /// Handle the new arriving connections
+    /// Handle the new arriving **server** connections
     async fn message_stream(
         &self,
         request: Request<Streaming<KaspadMessage>>,
@@ -295,7 +321,7 @@ impl ProtoP2p for ConnectionManager {
 
         // Build the router object
         // NOTE: No need to explicitly handle the returned router, it will internally be sent to the central Hub
-        let _router = Router::new(self.hub_sender.clone(), incoming_stream, outgoing_route, None).await;
+        let _router = Router::new(self.hub_sender.clone(), incoming_stream, outgoing_route).await;
 
         // Give tonic a receiver stream (messages sent to it will be forwarded to the network peer)
         Ok(Response::new(Box::pin(ReceiverStream::new(tonic_receiver).map(Ok)) as Self::MessageStreamStream))
@@ -303,7 +329,7 @@ impl ProtoP2p for ConnectionManager {
 }
 
 #[derive(Debug)]
-struct RouterStateManagement {
+struct RouterStateSignals {
     /// Used on router init to signal the router receive loop to start listening
     start_signal: Option<OneshotSender<()>>,
 
@@ -327,10 +353,7 @@ pub struct Router {
     hub_sender: MpscSender<HubEvent>,
 
     /// Used for managing router mutable state
-    state: Mutex<RouterStateManagement>,
-
-    /// Optional field for holding an outbound client object (will be `Some` only for outbound connections initiated by this node)
-    _outbound_client: Option<ProtoP2pClient<TonicChannel>>,
+    state: Mutex<RouterStateSignals>,
 }
 
 impl Router {
@@ -338,7 +361,6 @@ impl Router {
         hub_sender: MpscSender<HubEvent>,
         incoming_stream: Streaming<KaspadMessage>,
         outgoing_route: MpscSender<KaspadMessage>,
-        outbound_client: Option<ProtoP2pClient<TonicChannel>>,
     ) -> Arc<Self> {
         let (start_sender, start_receiver) = oneshot_channel();
         let (shutdown_sender, shutdown_receiver) = oneshot_channel();
@@ -347,11 +369,11 @@ impl Router {
             routing_map: RwLock::new(HashMap::new()),
             outgoing_route,
             hub_sender,
-            state: Mutex::new(RouterStateManagement { start_signal: Some(start_sender), shutdown_signal: Some(shutdown_sender) }),
-            _outbound_client: outbound_client,
+            state: Mutex::new(RouterStateSignals { start_signal: Some(start_sender), shutdown_signal: Some(shutdown_sender) }),
         });
 
         let router_clone = router.clone();
+        // Start the router receive loop
         tokio::spawn(async move {
             // Wait for a start signal before entering the receive loop
             let _ = start_receiver.await;
@@ -367,9 +389,9 @@ impl Router {
             while let Some(Some(res)) = merged_stream.next().await {
                 match res {
                     Ok(msg) => {
-                        // TODO: trace
+                        trace!("P2P, Router receive loop - got message: {:?}, router-id: {}", msg, router.identity);
                         if !(router.route_to_flow(msg).await) {
-                            // TODO: log
+                            debug!("P2P, Router receive loop - no route for message - exiting loop, router-id: {}", router.identity);
                             break;
                         }
                     }
@@ -453,16 +475,18 @@ impl Router {
         128
     }
 
+    /// Send a signal to start this router's receive loop
     pub async fn start(&self) {
         // Acquire state mutex and send the start signal
         let op = self.state.lock().await.start_signal.take();
         if let Some(signal) = op {
             let _ = signal.send(());
         } else {
-            // TODO: log
+            debug!("P2P, Router start was called more than once, router-id: {}", self.identity)
         }
     }
 
+    /// Subscribe to specific message types. This should be used by `ClientInitializer` instances to register application-specific flows
     pub async fn subscribe(&self, msg_types: Vec<KaspadMessagePayloadType>) -> MpscReceiver<KaspadMessage> {
         let (sender, receiver) = mpsc_channel(Self::incoming_flow_channel_size());
         let mut map = self.routing_map.write().await;
@@ -482,9 +506,10 @@ impl Router {
         receiver
     }
 
+    /// Routes a message coming from the network to the corresponding registered flow
     pub async fn route_to_flow(&self, msg: KaspadMessage) -> bool {
         if msg.payload.is_none() {
-            // TODO: log
+            debug!("P2P, Route to flow got empty payload, router-id: {}", self.identity);
             return false;
         }
         let key = Router::payload_to_u8(msg.payload.as_ref().unwrap());
@@ -496,18 +521,21 @@ impl Router {
         }
     }
 
+    /// Routes a locally-originated message to the network peer
     pub async fn route_to_network(&self, msg: KaspadMessage) -> bool {
-        // TODO: assert payload is some
+        assert!(msg.payload.is_some(), "Kaspad P2P message should always have a value");
         match self.outgoing_route.send(msg).await {
             Ok(_r) => true,
             Err(_e) => false,
         }
     }
 
+    /// Broadcast a locally-originated message to all active network peers
     pub async fn broadcast(&self, msg: KaspadMessage) -> bool {
         self.hub_sender.send(HubEvent::Broadcast(Box::new(msg))).await.is_ok()
     }
 
+    /// Closes the router, signal exit, and cleans up all resources so that underlying connections will be aborted
     pub async fn close(&self) {
         // Acquire state mutex and send the shutdown signal
         // NOTE: Using a block to drop the lock asap
@@ -517,6 +545,7 @@ impl Router {
                 let _ = signal.send(());
             } else {
                 // This means the router was already closed
+                debug!("P2P, Router close was called more than once, router-id: {}", self.identity);
                 return;
             }
         }

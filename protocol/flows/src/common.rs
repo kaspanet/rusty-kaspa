@@ -1,4 +1,4 @@
-use p2p_lib::core::ConnectionInitializationError;
+use p2p_lib::core::ConnectionError;
 use std::time::Duration;
 use thiserror::Error;
 
@@ -17,11 +17,11 @@ pub enum FlowError {
     ChannelClosed,
 }
 
-impl From<FlowError> for ConnectionInitializationError {
+impl From<FlowError> for ConnectionError {
     fn from(fe: FlowError) -> Self {
         match fe {
-            FlowError::ChannelClosed => ConnectionInitializationError::ChannelClosed,
-            err => ConnectionInitializationError::ProtocolError(err.to_string()),
+            FlowError::ChannelClosed => ConnectionError::ChannelClosed,
+            err => ConnectionError::ProtocolError(err.to_string()),
         }
     }
 }

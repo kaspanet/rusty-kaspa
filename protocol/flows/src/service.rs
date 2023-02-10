@@ -4,7 +4,7 @@ use kaspa_core::{
     trace,
 };
 use kaspa_utils::triggers::SingleTrigger;
-use p2p_lib::core::Hub;
+use p2p_lib::core::Adaptor;
 use std::sync::Arc;
 
 use crate::ctx::FlowContext;
@@ -37,7 +37,7 @@ impl AsyncService for P2pService {
         Box::pin(async move {
             let address = String::from("[::1]:50051");
             let ctx = Arc::new(FlowContext::new(Some(self.consensus.clone())));
-            let p2p_adaptor = Hub::duplex(address.clone(), ctx).unwrap();
+            let p2p_adaptor = Adaptor::bidirectional_connection(address.clone(), ctx).unwrap();
 
             // For now, attempt to connect to a running golang node
             // TODO: remove this

@@ -39,7 +39,7 @@ pub trait P2pAdaptorApi {
 
     /// Helper function to get all existing peer ids
     fn get_all_peer_ids(&self) -> std::vec::Vec<uuid::Uuid>;
-    
+
     /// Helper function to get all outbound peer ids
     fn get_outbound_peer_ids(&self) -> Vec<uuid::Uuid>;
 

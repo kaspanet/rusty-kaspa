@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use consensus_core::api::DynConsensus;
 use kaspa_core::info;
-use p2p_lib::core::{ConnectionInitializationError, ConnectionInitializer, KaspadMessagePayloadType, Router};
+use p2p_lib::core::{ConnectionError, ConnectionInitializer, KaspadMessagePayloadType, Router};
 use p2p_lib::pb::{self, kaspad_message::Payload, KaspadMessage, VersionMessage};
 use std::sync::Arc;
 use tokio::sync::mpsc::Receiver;
@@ -91,7 +91,7 @@ impl FlowContext {
 
 #[async_trait]
 impl ConnectionInitializer for FlowContext {
-    async fn initialize_connection(&self, router: Arc<Router>) -> Result<(), ConnectionInitializationError> {
+    async fn initialize_connection(&self, router: Arc<Router>) -> Result<(), ConnectionError> {
         // Subscribe to handshake messages
         let version_receiver = router.subscribe(vec![KaspadMessagePayloadType::Version]).await;
         let verack_receiver = router.subscribe(vec![KaspadMessagePayloadType::Verack]).await;
@@ -120,17 +120,17 @@ impl ConnectionInitializer for FlowContext {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use p2p_lib::core::Hub;
+    use p2p_lib::core::Adaptor;
 
     #[tokio::test]
     async fn test_p2p_handshake() {
         kaspa_core::log::try_init_logger("debug");
 
         let address1 = String::from("[::1]:50053");
-        let adaptor1 = Hub::duplex(address1.clone(), Arc::new(FlowContext::new(None))).unwrap();
+        let adaptor1 = Adaptor::bidirectional_connection(address1.clone(), Arc::new(FlowContext::new(None))).unwrap();
 
         let address2 = String::from("[::1]:50054");
-        let adaptor2 = Hub::duplex(address2.clone(), Arc::new(FlowContext::new(None))).unwrap();
+        let adaptor2 = Adaptor::bidirectional_connection(address2.clone(), Arc::new(FlowContext::new(None))).unwrap();
 
         // Initiate the connection from `adaptor1` (outbound) to `adaptor2` (inbound)
         // NOTE: a minimal scheme prefix `"://"` must be added for the client-side connect logic
@@ -140,13 +140,13 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_secs(4)).await;
 
         // For now assert the handshake by checking the peer exists (since peer is removed on handshake error)
-        assert_eq!(adaptor1.get_all_peer_ids().await.len(), 1, "handshake failed -- outbound peer is missing");
-        assert_eq!(adaptor2.get_all_peer_ids().await.len(), 1, "handshake failed -- inbound peer is missing");
+        assert_eq!(adaptor1.get_active_peers().await.len(), 1, "handshake failed -- outbound peer is missing");
+        assert_eq!(adaptor2.get_active_peers().await.len(), 1, "handshake failed -- inbound peer is missing");
 
         adaptor1.terminate(peer2_id).await;
         tokio::time::sleep(std::time::Duration::from_secs(4)).await;
 
-        assert_eq!(adaptor1.get_all_peer_ids().await.len(), 0, "peer termination failed -- outbound peer was not removed");
-        assert_eq!(adaptor2.get_all_peer_ids().await.len(), 0, "peer termination failed -- inbound peer was not removed");
+        assert_eq!(adaptor1.get_active_peers().await.len(), 0, "peer termination failed -- outbound peer was not removed");
+        assert_eq!(adaptor2.get_active_peers().await.len(), 0, "peer termination failed -- inbound peer was not removed");
     }
 }
