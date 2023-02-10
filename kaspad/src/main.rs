@@ -14,9 +14,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::monitor::ConsensusMonitor;
-use consensus::config::Config;
 use consensus::consensus::Consensus;
-use consensus::model::stores::DB;
 use consensus::params::DEVNET_PARAMS;
 use utxoindex::{
     api::{DynUtxoIndexControllerApi, DynUtxoIndexRetrievalApi},
@@ -25,10 +23,8 @@ use utxoindex::{
 
 use async_channel::unbounded;
 use event_processor::processor::EventProcessor;
-use kaspa_core::{core::Core, signals::Signals, task::runtime::AsyncRuntime};
 use kaspa_core::{info, trace};
 use p2p_flows::service::P2pService;
-use rpc_core::server::collector::ConsensusNotificationChannel;
 use rpc_core::server::RpcCoreServer;
 use rpc_grpc::server::GrpcServer;
 
@@ -102,10 +98,10 @@ pub fn main() {
     assert!(!db_dir.to_str().unwrap().is_empty());
     info!("Application directory: {}", app_dir.display());
     info!("Data directory: {}", db_dir.display());
-    info!("Consensus Data directory {}", consensus_db_dir.as_display());
+    info!("Consensus Data directory {}", consensus_db_dir.display());
     fs::create_dir_all(consensus_db_dir.as_path()).unwrap();
     if args.utxoindex.is_some() {
-        info!("Utxoindex Data directory {}", utxoindex_db_dir.as_display());
+        info!("Utxoindex Data directory {}", utxoindex_db_dir.display());
         fs::create_dir_all(utxoindex_db_dir.as_path()).unwrap();
     }
 
