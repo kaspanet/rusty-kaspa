@@ -13,7 +13,7 @@ impl<T: AsRef<[u8]>> MinerData<T> {
     }
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Debug)]
 pub struct CoinbaseData<T: AsRef<[u8]> = Vec<u8>> {
     pub blue_score: u64,
     pub subsidy: u64,

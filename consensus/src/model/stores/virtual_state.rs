@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 
 use super::ghostdag::GhostdagData;
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Default)]
 pub struct VirtualState {
     pub parents: Vec<Hash>,
     pub ghostdag_data: GhostdagData,
