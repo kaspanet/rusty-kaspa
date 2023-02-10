@@ -1,4 +1,4 @@
-/// type for circulating supply
+/// Type for circulating supply
 pub type CirculatingSupply = u64;
-/// type for circulating supply difference
-pub type CirculatingSupplyDiff = i64; //as i64 since circulating supply difff can go negative.
+/// Type for circulating supply difference
+pub type CirculatingSupplyDiff = i64; // As i64 since circulating supply diff can go negative.

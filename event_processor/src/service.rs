@@ -17,7 +17,7 @@ impl AsyncService for EventProcessor {
         Box::pin(async move {
             match self.run().await {
                 Ok(_) => shutdown_finalized_listener.await,
-                Err(err) => panic!("{0} panic! {1}", IDENT, err),
+                Err(err) => panic!("{IDENT} panic! {err}"),
             };
         })
     }

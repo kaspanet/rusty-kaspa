@@ -14,12 +14,14 @@ consensus.workspace = true
 kaspa-core.workspace = true
 kaspa-utils.workspace = true
 log.workspace = true
-tokio.workspace = true
-async-channel.workspace = true
-rand.workspace = true
 
 futures = "0.3.25"
 rocksdb = "0.19"
 parking_lot = "0.12"
 serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+async-channel = { workspace = true}
+tokio = { workspace = true}
+rand = { workspace = true}
 

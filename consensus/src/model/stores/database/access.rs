@@ -146,7 +146,7 @@ where
         &self,
         bucket: Option<&[u8]>,   //iter self.prefix if None, else append bytes to self.prefix.
         seek_from: Option<TKey>, //iter whole range if None
-        limit: usize,            //amount to take. use
+        limit: usize,            //amount to take.
     ) -> impl Iterator<Item = Result<(Key, Value), Box<dyn Error>>> + '_
     where
         TKey: Copy + AsRef<[u8]>,

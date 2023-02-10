@@ -389,7 +389,7 @@ impl VirtualStateProcessor {
                     match self.consensus_sender.try_send(ConsensusEvent::VirtualChangeSet(Arc::new(new_virtual_state.into()))) {
                         // see, `consensus::store::model::virtual_state` -> `impl From<VirtualState> for VirtualChangeSetConsensusEvent ` for conversion
                         Ok(_) => (),
-                        Err(err) => panic!("event processor unreachable: {}", err),
+                        Err(err) => panic!("event processor unreachable: {err}"),
                     }
                 }
             }

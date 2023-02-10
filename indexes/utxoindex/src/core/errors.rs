@@ -4,7 +4,7 @@ use thiserror::Error;
 use crate::IDENT;
 use consensus::model::stores::errors::StoreError;
 
-///Errors originating from the [`UtxoIndex`].
+/// Errors originating from the [`UtxoIndex`].
 #[derive(Error, Debug)]
 pub enum UtxoIndexError {
     #[error("[{IDENT}]: {0}")]
@@ -14,4 +14,5 @@ pub enum UtxoIndexError {
     DBResetError(#[from] io::Error),
 }
 
+/// Results originating from the [`UtxoIndex`].
 pub type UtxoIndexResult<T> = Result<T, UtxoIndexError>;

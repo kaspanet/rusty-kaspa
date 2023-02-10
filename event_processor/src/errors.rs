@@ -4,7 +4,7 @@ use async_channel::{RecvError, SendError};
 use thiserror::Error;
 use utxoindex::errors::UtxoIndexError;
 
-///Errors originating from the [`EventProcessor`].
+/// Errors originating from the [`EventProcessor`].
 #[derive(Error, Debug)]
 pub enum EventProcessorError {
     #[error("[{IDENT}]: {0}")]
@@ -17,4 +17,5 @@ pub enum EventProcessorError {
     NotificationSendError(#[from] SendError<Notification>),
 }
 
+/// Results originating from the [`EventProcessor`].
 pub type EventProcessorResult<T> = Result<T, EventProcessorError>;

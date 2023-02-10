@@ -5,18 +5,26 @@ use crate::{
         Notification, PruningPointUTXOSetOverrideNotification, UtxosChangedNotification, VirtualDaaScoreChangedNotification,
         VirtualSelectedParentBlueScoreChangedNotification, VirtualSelectedParentChainChangedNotification,
     },
+    IDENT,
 };
 use async_channel::{Receiver, Sender};
-use consensus_core::events::{BlockAddedEvent, ConsensusEvent, VirtualChangeSetEvent};
+use consensus_core::events::{
+    BlockAddedEvent, ConsensusEvent, FinalityConflictEvent, FinalityConflictResolvedEvent, NewBlockTemplateEvent,
+    PruningPointUTXOSetOverrideEvent, VirtualChangeSetEvent,
+};
 use futures::{select, FutureExt};
-use std::{sync::Arc, ops::Deref};
+use kaspa_core::trace;
+use std::sync::Arc;
 use triggered::{Listener, Trigger};
-use utxoindex::{api::DynUtxoIndexControlerApi, UtxoIndex};
+use utxoindex::api::DynUtxoIndexControllerApi;
 use utxoindex::events::UtxoIndexEvent;
 
+/// The [`EventProcessor`] takes in events from kaspad and processes these to [`Notification`]s,
+/// It also feeds and controls indexers, thereby extracting indexed events.
+/// [`Notification`]s are in a rpc-core friendly format.  
 #[derive(Clone)]
 pub struct EventProcessor {
-    utxoindex: DynUtxoIndexControlerApi,
+    utxoindex: DynUtxoIndexControllerApi,
 
     rpc_send: Sender<Notification>,
     consensus_recv: Receiver<ConsensusEvent>,
@@ -29,7 +37,11 @@ pub struct EventProcessor {
 }
 
 impl EventProcessor {
-    pub fn new(utxoindex: DynUtxoIndexControlerApi, consensus_recv: Receiver<ConsensusEvent>, rpc_send: Sender<Notification>) -> Self {
+    pub fn new(
+        utxoindex: DynUtxoIndexControllerApi,
+        consensus_recv: Receiver<ConsensusEvent>,
+        rpc_send: Sender<Notification>,
+    ) -> Self {
         let (shutdown_trigger, shutdown_listener) = triggered::trigger();
         let (shutdown_finalized_trigger, shutdown_finalized_listener) = triggered::trigger();
 
@@ -46,36 +58,45 @@ impl EventProcessor {
         }
     }
 
+    /// Processes the [`ConsensusEvent`] [`NewBlockTemplateEvent`] to the [`Notification`] [`NewBlockTemplateNotification`]
+    /// and sends this through the [`EventProcessor`] channel.
     async fn process_new_block_template_event(&self) -> EventProcessorResult<()> {
+        trace!("[{IDENT}]: processing {:?}", NewBlockTemplateEvent {});
         self.rpc_send.send(Notification::NewBlockTemplate(NewBlockTemplateNotification {})).await?;
         Ok(())
     }
 
+    /// Processes the [`ConsensusEvent`] [`Arc<BlockAddedEvent>`] to the [`Notification`] [`Arc<BlockAddedNotification>`]
+    /// and sends this through the [`EventProcessor`] channel.
     async fn process_block_added_event(&self, block_added_event: Arc<BlockAddedEvent>) -> EventProcessorResult<()> {
+        trace!("processing {:?}", block_added_event);
         self.rpc_send
             .send(Notification::BlockAdded(Arc::new(BlockAddedNotification { block: block_added_event.block.clone() })))
             .await?;
         Ok(())
     }
 
+    /// Processes the [`ConsensusEvent`] [`Arc<VirtualChangeSetEvent>`] to the [`Notification`]s:
+    /// [`VirtualSelectedParentBlueScoreChangedNotification`], [`VirtualDaaScoreChangedNotification`],
+    /// [`VirtualSelectedParentChainChangedNotification`] and potentially triggers an update on the [`UtxoIndex`]
+    /// with a resulting [`UtxosChangedNotification`] (if the utxoindex is active),
+    /// and sends these through the [`EventProcessor`] channel.
     async fn process_virtual_state_change_set_event(
         &self,
         virtual_change_set_event: Arc<VirtualChangeSetEvent>,
     ) -> EventProcessorResult<()> {
-        match self.utxoindex.as_deref() {
-            Some(utxoindex) => {
-                match utxoindex.update(virtual_change_set_event.utxo_diff.clone(), virtual_change_set_event.parents.clone())? {
-                    UtxoIndexEvent::UtxosChanged(utxo_changed_event) => {
-                        self.rpc_send
-                            .send(Notification::UtxosChanged(Arc::new(UtxosChangedNotification {
-                                added: utxo_changed_event.added.clone(),
-                                removed: utxo_changed_event.removed.clone(),
-                            })))
-                            .await?;
-                    }
+        trace!("[{IDENT}]: processing {:?}", virtual_change_set_event);
+        if let Some(utxoindex) = self.utxoindex.as_deref() {
+            match utxoindex.update(virtual_change_set_event.utxo_diff.clone(), virtual_change_set_event.parents.clone())? {
+                UtxoIndexEvent::UtxosChanged(utxo_changed_event) => {
+                    self.rpc_send
+                        .send(Notification::UtxosChanged(Arc::new(UtxosChangedNotification {
+                            added: utxo_changed_event.added.clone(),
+                            removed: utxo_changed_event.removed.clone(),
+                        })))
+                        .await?;
                 }
             }
-            None => (),
         };
 
         self.rpc_send
@@ -100,48 +121,51 @@ impl EventProcessor {
         Ok(())
     }
 
+    /// Processes the [`ConsensusEvent`] [`PruningPointUTXOSetOverrideEvent`] to the [`Notification`] [`PruningPointUTXOSetOverrideNotification`]
+    /// and potentially triggers a resync of the [`UtxoIndex`] (if the utxoindex is active).
+    /// and sends the notification through the [`EventProcessor`] channel.
     async fn process_pruning_point_override_event(&self) -> EventProcessorResult<()> {
-        match self.utxoindex.as_deref() {
-            Some(utxoindex) => match utxoindex.resync() {
-                Ok(_) => (),
-                Err(err) => panic!("[Event-processor]: {err}"),
-            },
-            None => (),
+        trace!("[{IDENT}]: processing {:?}", PruningPointUTXOSetOverrideEvent {});
+        if let Some(utxoindex) = self.utxoindex.as_deref() {
+            utxoindex.resync()?;
         };
 
         self.rpc_send.send(Notification::PruningPointUTXOSetOverride(PruningPointUTXOSetOverrideNotification {})).await?;
         Ok(())
     }
 
+    /// Processes the [`ConsensusEvent`] [`FinalityConflictEvent`] to the [`Notification`] [`FinalityConflictNotification`]
+    /// and sends this through the [`EventProcessor`] channel.
     async fn process_finality_conflict_event(&self) -> EventProcessorResult<()> {
+        trace!("[{IDENT}]: processing {:?}", FinalityConflictEvent {});
         self.rpc_send.send(Notification::FinalityConflict(FinalityConflictNotification {})).await?;
         Ok(())
     }
 
+    /// Processes the [`ConsensusEvent`] [`FinalityConflictResolvedEvent`] to the [`Notification`] [`FinalityConflictResolvedNotification`]
+    /// and sends this through the [`EventProcessor`] channel.
     async fn process_finality_conflict_resolved_event(&self) -> EventProcessorResult<()> {
+        trace!("[{IDENT}]: processing {:?}", FinalityConflictResolvedEvent {});
         self.rpc_send.send(Notification::FinalityConflictResolved(FinalityConflictResolvedNotification {})).await?;
         Ok(())
     }
 
+    /// Potentially resyncs the [`UtxoIndex`] (if it is unsynced, and active) and starts the event processing loop.
     pub async fn run(&self) -> EventProcessorResult<()> {
-        match self.utxoindex.as_deref() {
-            Some(utxoindex) => {
-                if !utxoindex.is_synced()? {
-                    utxoindex.resync()?;
-                }
+        trace!("[{IDENT}]: intializing run...");
+        if let Some(utxoindex) = self.utxoindex.as_deref() {
+            if !utxoindex.is_synced()? {
+                utxoindex.resync()?;
             }
-            None => (),
-        };
-        match self.process_events().await {
-            Ok(_) => {
-                self.shutdown_finalized_trigger.trigger();
-                Ok(())
-            }
-            Err(err) => Err(err),
         }
+        let res = self.process_events().await;
+        self.shutdown_finalized_trigger.trigger();
+        res
     }
-    /// listens to consensus events, and preprocesses them for rpc-core, as well as controls the indexers.
+    /// Listens to Events, and matches these to corrosponding processing methods,
+    /// until a shutdown is signalled.
     async fn process_events(&self) -> EventProcessorResult<()> {
+        trace!("[{IDENT}]: processing events...");
         let consensus_recv = self.consensus_recv.clone();
         let shutdown_listener = self.shutdown_listener.clone();
 
@@ -163,7 +187,7 @@ impl EventProcessor {
         Ok(())
     }
 
-    ///triggers the shutdown, which breaks the async event processing loop, stopping the processing.
+    /// Triggers the shutdown, which breaks the async event processing loop, stopping all processing.
     pub fn signal_shutdown(&self) {
         self.shutdown_trigger.trigger();
     }

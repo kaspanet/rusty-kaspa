@@ -1,37 +1,47 @@
 use std::sync::Arc;
 
 use consensus::model::stores::errors::StoreResult;
-use consensus_core::{tx::ScriptPublicKeys, utxo::utxo_diff::UtxoDiff};
+use consensus_core::{tx::ScriptPublicKeys, utxo::utxo_diff::UtxoDiff, BlockHashSet};
 use hashes::Hash;
 
 use crate::{errors::UtxoIndexResult, events::UtxoIndexEvent, model::UtxoSetByScriptPublicKey};
 
-pub trait UtxoIndexRetrivalApi: Send + Sync {
-    // /retrieve circulating supply.
+///Utxoindex API targeted at retrieval calls.
+pub trait UtxoIndexRetrievalApi: Send + Sync {
+    /// Retrieve circulating supply from the utxoindex db.
     fn get_circulating_supply(&self) -> StoreResult<u64>;
 
-    /// retrieve utxos by scipt public keys.
+    /// Retrieve utxos by script public keys supply from the utxoindex db.
     fn get_utxos_by_script_public_keys(&self, script_public_keys: ScriptPublicKeys) -> StoreResult<UtxoSetByScriptPublicKey>;
 
-    /// this is new compared to go-kaspad, and retives all utxos saved in the utxoindex.
+    /// This is new compared to go-kaspad, and retrieves all utxos saved in the utxoindex.
     ///
     /// **Warn:**
     ///
-    /// this is used only for testing purposes, retriving a full utxo set, in a live setting, is probably never a good idea.
+    /// this is used only for testing purposes, retrieving a full utxo set, in a live setting,it is probably never a good idea.
     fn get_all_utxos(&self) -> StoreResult<UtxoSetByScriptPublicKey>;
+
+    /// Retrieve the stored tips of the utxoindex (used for testing purposes).
+    fn get_utxo_index_tips(&self) -> StoreResult<Arc<BlockHashSet>>;
 }
 
+///Utxoindex API targeted at Controlling the utxoindex.
 pub trait UtxoIndexControlApi: Send + Sync {
-    /// updates the utxoindex with the given utxo_diff, and tips.
+    /// Update the utxoindex with the given utxo_diff, and tips.
     fn update(&self, utxo_diff: Arc<UtxoDiff>, tips: Arc<Vec<Hash>>) -> UtxoIndexResult<UtxoIndexEvent>;
 
-    /// Resyncs the utxoindex's db from the consensus db
+    /// Resync the utxoindex from the consensus db
     fn resync(&self) -> UtxoIndexResult<()>;
 
-    /// Checks if the utxoindex's db is synced, if not, resyncs the database from consensus.
+    /// Checks if the utxoindex's db is synced, if not, resync the database from consensus.
     fn is_synced(&self) -> UtxoIndexResult<bool>;
 }
 
-pub type DynUtxoIndexRetrivalApi = Arc<Option<Box<dyn UtxoIndexRetrivalApi>>>; //this is an option as utxoindex is not guranteed component!
+// Below are of the format `Arc<Option<Box<_>>>` because:
+// 1) the utxoindex is optional, a `None` in the Option signifies no utxoindex
+// 2) there is no need for an inner Arc since we hold an Arc on the Option,
+// but alas, we need Sized for the option, hence it is in a Box.
 
-pub type DynUtxoIndexControlerApi = Arc<Option<Box<dyn UtxoIndexControlApi>>>; //this is an option as utxoindex is not guranteed component!
+pub type DynUtxoIndexRetrievalApi = Arc<Option<Box<dyn UtxoIndexRetrievalApi>>>;
+
+pub type DynUtxoIndexControllerApi = Arc<Option<Box<dyn UtxoIndexControlApi>>>;

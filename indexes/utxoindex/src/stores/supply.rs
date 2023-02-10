@@ -45,8 +45,8 @@ impl CirculatingSupplyStoreReader for DbCirculatingSupplyStore {
 impl CirculatingSupplyStore for DbCirculatingSupplyStore {
     fn add_circulating_supply_diff(&mut self, circulating_supply_diff: CirculatingSupplyDiff) -> Result<u64, StoreError> {
         let circulating_supply = self.access.update(DirectDbWriter::new(&self.db), move |circulating_supply| {
-            circulating_supply + (circulating_supply_diff as CirculatingSupply)
-        }); //force monotonic
+            circulating_supply + (circulating_supply_diff as CirculatingSupply) //note: this only works because we force monotonic in `UtxoIndex::update`.
+        });
         circulating_supply
     }
 

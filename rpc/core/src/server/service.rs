@@ -27,7 +27,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
     vec,
 };
-use utxoindex::{api::DynUtxoIndexRetrivalApi, UtxoIndex};
+use utxoindex::api::DynUtxoIndexRetrievalApi;
 
 /// A service implementing the Rpc API at rpc_core level.
 ///
@@ -48,21 +48,22 @@ use utxoindex::{api::DynUtxoIndexRetrivalApi, UtxoIndex};
 /// Subscriber.
 pub struct RpcCoreService {
     consensus: DynConsensus,
-    utxoindex: DynUtxoIndexRetrivalApi,
+    #[allow(dead_code)] //will find usage
+    utxoindex: DynUtxoIndexRetrievalApi,
     notifier: Arc<Notifier>,
 }
 
 impl RpcCoreService {
     pub fn new(
         consensus: DynConsensus,
-        utxoindex: DynUtxoIndexRetrivalApi,
-        event_notfication_recv: EventNotificationReceiver,
+        utxoindex: DynUtxoIndexRetrievalApi,
+        event_notification_recv: EventNotificationReceiver,
     ) -> Self {
         // TODO: instead of getting directly a DynConsensus, rely on some Context equivalent
         //       See app\rpc\rpccontext\context.go
         // TODO: the channel receiver should be obtained by registering to a consensus notification service
 
-        let collector = Arc::new(EventNotificationCollector::new(event_notfication_recv));
+        let collector = Arc::new(EventNotificationCollector::new(event_notification_recv));
 
         // TODO: Some consensus-compatible subscriber could be provided here
         let notifier = Arc::new(Notifier::new(Some(collector), None, ListenerUtxoNotificationFilterSetting::All));

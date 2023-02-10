@@ -18,7 +18,7 @@ pub struct UtxoIndexChanges {
 }
 
 impl UtxoIndexChanges {
-    ///create a new [`UtxoIndexChanges`] struct
+    /// Create a new [`UtxoIndexChanges`] struct
     pub fn new() -> Self {
         Self {
             utxo_changes: UtxoChanges::new(UtxoSetByScriptPublicKey::new(), UtxoSetByScriptPublicKey::new()),
@@ -27,7 +27,9 @@ impl UtxoIndexChanges {
         }
     }
 
-    ///create a new [`UtxoIndexChanges`] struct
+    /// Add a [`UtxoCollection`] the the [`UtxoIndexChanges`] struct
+    ///
+    /// Note: Always remove before add.
     pub fn add_utxo_collection(&mut self, utxo_collection: UtxoCollection) {
         for (transaction_outpoint, utxo_entry) in utxo_collection.into_iter() {
             match self.utxo_changes.removed.entry(utxo_entry.script_public_key.clone()) {
@@ -61,6 +63,9 @@ impl UtxoIndexChanges {
         }
     }
 
+    /// Remove a [`UtxoCollection`] the the [`UtxoIndexChanges`] struct
+    ///
+    /// Note: Always remove before add
     pub fn remove_utxo_collection(&mut self, utxo_collection: UtxoCollection) {
         for (transaction_outpoint, utxo_entry) in utxo_collection.into_iter() {
             self.supply_change -= utxo_entry.amount as i64; // TODO: Using `virtual_state.mergeset_rewards` might be a better way to extract this.
@@ -84,6 +89,9 @@ impl UtxoIndexChanges {
         }
     }
 
+    /// Add a [`Vec<(TransactionOutpoint, UtxoEntry)>`] the the [`UtxoIndexChanges`] struct
+    ///
+    /// Note: This is meant to be used when resyncing.
     pub fn add_utxo_collection_vector(&mut self, utxo_vector: Vec<(TransactionOutpoint, UtxoEntry)>) {
         let mut circulating_supply: CirculatingSupply = 0;
 

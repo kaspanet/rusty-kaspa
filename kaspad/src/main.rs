@@ -18,7 +18,7 @@ use crate::monitor::ConsensusMonitor;
 use consensus::consensus::Consensus;
 use consensus::params::DEVNET_PARAMS;
 use utxoindex::{
-    api::{DynUtxoIndexControlerApi, DynUtxoIndexRetrivalApi},
+    api::{DynUtxoIndexControllerApi, DynUtxoIndexRetrievalApi},
     UtxoIndex,
 };
 
@@ -49,9 +49,9 @@ struct Args {
     #[arg(long = "rpclisten")]
     rpc_listen: Option<String>,
 
-    /// Should kaspad be run with the utxoindex.
-    #[arg(long = "utxoindex", default_value = None)]
-    utxoindex: Option<()>,
+    /// Activate the utxoindex
+    #[arg(long = "utxoindex")]
+    utxoindex: Option<String>,
 
     /// Logging level for all subsystems {off, error, warn, info, debug, trace}
     ///  -- You may also specify <subsystem>=<level>,<subsystem2>=<level>,... to set the log level for individual subsystems
@@ -121,17 +121,19 @@ pub fn main() {
 
     let monitor = Arc::new(ConsensusMonitor::new(consensus.processing_counters().clone()));
 
-    let utxoindex = match args.utxoindex.is_some() {
-        true => {
-            let utxoindex_db = Arc::new(DB::open_default(utxoindex_db_dir.to_str().unwrap()).unwrap());
-            Arc::new(Some(Box::new(UtxoIndex::new(consensus.clone(), utxoindex_db))))
-        },
-        false => Arc::new(None),
-    };
+    let (utxoindex_controller, utxoindex_retrieval_api): (DynUtxoIndexControllerApi, DynUtxoIndexRetrievalApi) =
+        match args.utxoindex.is_some() {
+            true => {
+                let utxoindex_db = Arc::new(DB::open_default(utxoindex_db_dir.to_str().unwrap()).unwrap());
+                let utxoindex = UtxoIndex::new(consensus.clone(), utxoindex_db);
+                (Arc::new(Some(Box::new(utxoindex.clone()))), Arc::new(Some(Box::new(utxoindex))))
+            }
+            false => (Arc::new(None), Arc::new(None)),
+        };
 
-    let event_processor = Arc::new(EventProcessor::new(utxoindex.clone(), consensus_recv, event_processor_send));
+    let event_processor = Arc::new(EventProcessor::new(utxoindex_controller, consensus_recv, event_processor_send));
 
-    let rpc_core_server = Arc::new(RpcCoreServer::new(consensus.clone(), utxoindex.clone(), event_processor_recv));
+    let rpc_core_server = Arc::new(RpcCoreServer::new(consensus.clone(), utxoindex_retrieval_api, event_processor_recv));
     let grpc_server = Arc::new(GrpcServer::new(grpc_server_addr, rpc_core_server.service()));
 
     // Create an async runtime and register the top-level async services

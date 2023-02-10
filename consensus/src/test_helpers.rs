@@ -2,8 +2,9 @@ use crate::constants::BLOCK_VERSION;
 use consensus_core::{
     block::Block,
     header::Header,
+    subnets::SubnetworkId,
     tx::{ScriptPublicKey, ScriptVec, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry},
-    utxo::utxo_collection::UtxoCollection, subnets::SubnetworkId,
+    utxo::utxo_collection::UtxoCollection,
 };
 use hashes::{Hash, HASH_SIZE};
 use rand::{rngs::ThreadRng, seq::SliceRandom, Rng};
@@ -96,7 +97,13 @@ pub fn generate_random_hashes(rng: &mut ThreadRng, amount: usize) -> Vec<Hash> {
 }
 
 ///Note: generate_random_block is filled with random data, it does not represent a consensus-valid block!
-pub fn generate_random_block(rng: &mut ThreadRng, parent_amount: usize, number_of_transactions: usize, input_amount: usize, output_amount: usize) -> Block {
+pub fn generate_random_block(
+    rng: &mut ThreadRng,
+    parent_amount: usize,
+    number_of_transactions: usize,
+    input_amount: usize,
+    output_amount: usize,
+) -> Block {
     Block::new(
         generate_random_header(&mut rng.clone(), parent_amount),
         generate_random_transactions(&mut rng.clone(), number_of_transactions, input_amount, output_amount),
@@ -135,7 +142,12 @@ pub fn generate_random_transaction(rng: &mut ThreadRng, input_amount: usize, out
 }
 
 ///Note: generate_random_transactions is filled with random data, it does not represent consensus-valid  transactions!
-pub fn generate_random_transactions(rng: &mut ThreadRng, amount: usize, input_amount: usize, output_amount: usize) -> Vec<Transaction> {
+pub fn generate_random_transactions(
+    rng: &mut ThreadRng,
+    amount: usize,
+    input_amount: usize,
+    output_amount: usize,
+) -> Vec<Transaction> {
     Vec::from_iter((0..amount).map(move |_| generate_random_transaction(&mut rng.clone(), input_amount, output_amount)))
 }
 
@@ -169,7 +181,7 @@ pub fn generate_random_transaction_outputs(rng: &mut ThreadRng, amount: usize) -
 
 ///Note: generate_random_transactions is filled with random data, it does not represent consensus-valid  transaction output!
 pub fn generate_random_transaction_outpoint(rng: &mut ThreadRng) -> TransactionOutpoint {
-    TransactionOutpoint::new(generate_random_hash(&mut rng.clone()), rng.gen() )
+    TransactionOutpoint::new(generate_random_hash(&mut rng.clone()), rng.gen())
 }
 
 //TODO: create `assert_eq_<kaspa_sturct>!()` helper macros in `consensus::test_helpers`

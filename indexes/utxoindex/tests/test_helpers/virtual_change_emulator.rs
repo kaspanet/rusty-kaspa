@@ -1,5 +1,6 @@
-use std::sync::Arc;
+#[cfg(test)]
 use rand::Rng;
+use std::sync::Arc;
 
 use consensus::test_helpers::*;
 
@@ -10,7 +11,7 @@ use consensus_core::{
     BlockHashSet, HashMapCustomHasher,
 };
 
-use crate::model::{CirculatingSupply, CirculatingSupplyDiff};
+use utxoindex::model::{CirculatingSupply, CirculatingSupplyDiff};
 
 pub struct VirtualChangeEmulator {
     pub utxo_collection: UtxoCollection,
@@ -33,8 +34,10 @@ impl VirtualChangeEmulator {
 
     pub fn fill_utxo_collection(&mut self, amount: usize, script_public_key_pool_size: usize) {
         let rng = &mut rand::thread_rng();
-        self.script_public_key_pool.extend((0..script_public_key_pool_size).map( |_| generate_random_script_public_key(&mut rng.clone())));
-        self.utxo_collection = generate_random_utxos_from_script_public_key_pool(&mut rng.clone(), amount, self.script_public_key_pool.clone());
+        self.script_public_key_pool
+            .extend((0..script_public_key_pool_size).map(|_| generate_random_script_public_key(&mut rng.clone())));
+        self.utxo_collection =
+            generate_random_utxos_from_script_public_key_pool(&mut rng.clone(), amount, self.script_public_key_pool.clone());
         for (_, utxo_entry) in self.utxo_collection.clone() {
             self.circulating_supply += utxo_entry.amount;
         }
@@ -45,37 +48,31 @@ impl VirtualChangeEmulator {
         let rng = &mut rand::thread_rng();
 
         let mut new_circulating_supply_diff: CirculatingSupplyDiff = 0;
-        self.virtual_state.utxo_diff = Arc::new(
-            UtxoDiff::new(
-                UtxoCollection::from_iter(generate_random_utxos_from_script_public_key_pool(&mut rng.clone(), add_amount, self.script_public_key_pool.clone()).into_iter().map( |(k, v)| {
-                    new_circulating_supply_diff += v.amount as CirculatingSupplyDiff;
-                    (k, v)
-                })),
-                UtxoCollection::from_iter(self.utxo_collection.iter().take(remove_amount).map( |(k, v)| {
-                    new_circulating_supply_diff -= v.amount as CirculatingSupplyDiff;
-                    (*k, v.clone())
-                }
-                )),
-            )
-        );
-
-        self.utxo_collection.retain(|k, _| {
-            //new_circulating_supply_diff -= v.amount as CirculatingSupplyDiff;
-            !self.virtual_state.utxo_diff.remove.contains_key(k)
-        });
-        self.utxo_collection.extend(self.virtual_state.utxo_diff.add.iter().map(move |(k, v)| {
-            //new_circulating_supply_diff += v.amount as CirculatingSupplyDiff;
-            (k.clone(), v.clone())
-            }
+        self.virtual_state.utxo_diff = Arc::new(UtxoDiff::new(
+            UtxoCollection::from_iter(
+                generate_random_utxos_from_script_public_key_pool(&mut rng.clone(), add_amount, self.script_public_key_pool.clone())
+                    .into_iter()
+                    .map(|(k, v)| {
+                        new_circulating_supply_diff += v.amount as CirculatingSupplyDiff;
+                        (k, v)
+                    }),
+            ),
+            UtxoCollection::from_iter(self.utxo_collection.iter().take(remove_amount).map(|(k, v)| {
+                new_circulating_supply_diff -= v.amount as CirculatingSupplyDiff;
+                (*k, v.clone())
+            })),
         ));
+
+        self.utxo_collection.retain(|k, _| !self.virtual_state.utxo_diff.remove.contains_key(k));
+        self.utxo_collection.extend(self.virtual_state.utxo_diff.add.iter().map(move |(k, v)| (k.clone(), v.clone())));
 
         let new_tips = Arc::new(generate_random_hashes(&mut rng.clone(), tip_amount));
 
         self.virtual_state.parents = new_tips.clone();
         self.tips = BlockHashSet::from_iter(new_tips.iter().cloned());
 
+        // Force monotonic
         if new_circulating_supply_diff > 0 {
-            //force monotonic
             self.circulating_supply += new_circulating_supply_diff as CirculatingSupply;
         }
 
@@ -84,11 +81,8 @@ impl VirtualChangeEmulator {
     }
 
     pub fn clear_virtual_state(&mut self) {
-        self.virtual_state.utxo_diff = Arc::new(UtxoDiff::new(
-            UtxoCollection::new(),
-            UtxoCollection::new(),
-        ));
-        
+        self.virtual_state.utxo_diff = Arc::new(UtxoDiff::new(UtxoCollection::new(), UtxoCollection::new()));
+
         self.virtual_state.parents = Arc::new(Vec::new());
         self.virtual_state.selected_parent_blue_score = 0;
         self.virtual_state.daa_score = 0;

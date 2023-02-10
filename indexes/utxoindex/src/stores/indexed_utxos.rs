@@ -17,17 +17,19 @@ use std::sync::Arc;
 
 // Prefixes:
 
-///prefixes the [ScriptPublicKey] indexed utxo set.
+/// Prefixes the [ScriptPublicKey] indexed utxo set.
 pub const UTXO_SET_PREFIX: &[u8] = b"utxo-set";
 
 // Buckets:
-///Size of the [ScriptPublicKeyBucket] in bytes.
-pub const VERSION_TYPE_SIZE: usize = size_of::<VersionType>();
+
+pub const VERSION_TYPE_SIZE: usize = size_of::<VersionType>(); // Const since we need to re-use this a few times.
+
+/// Size of the [ScriptPublicKeyBucket] in bytes.
 pub const SCRIPT_PUBLIC_KEY_BUCKET_SIZE: usize = VERSION_TYPE_SIZE + SCRIPT_VECTOR_SIZE + 1; //plus one to encode length
 
-///[ScriptPublicKey] bucket.
-///Consists of 1 byte u8 encoded length of the script, 2 bytes of little endian [VersionType] bytes, followed by 36 bytes of [ScriptVec] (with right padded 0 bytes if script vec < 36 bytes).
-///the length is encoded separatly at the first index, as script public can keys have variable byte sizes, this can be used for quick deserialization of none-standard scripts in retrival contexts without specified script public keys.  
+/// [ScriptPublicKey] bucket.
+/// Consists of 1 byte u8 encoded length of the script, 2 bytes of little endian [VersionType] bytes, followed by 36 bytes of [ScriptVec] (with right padded 0 bytes if script vec < 36 bytes).
+/// the length is encoded separately at the first index, as script public key scripts can have variable byte sizes, this can be used for quick deserialization without needing to parse the script.  
 #[derive(Eq, Hash, PartialEq, Debug, Copy, Clone)]
 struct ScriptPublicKeyBucket([u8; SCRIPT_PUBLIC_KEY_BUCKET_SIZE]);
 
@@ -69,11 +71,11 @@ impl AsRef<[u8]> for ScriptPublicKeyBucket {
 // Keys:
 
 // TransactionOutpoint:
-///Size of the [TransactionOutpointKey] in bytes.
+/// Size of the [TransactionOutpointKey] in bytes.
 pub const TRANSACTION_OUTPOINT_KEY_SIZE: usize = hashes::HASH_SIZE + size_of::<TransactionIndexType>();
 
-///[TransactionOutpoint] key which references the [CompactUtxoEntry] within a [ScriptPublicKeyBucket]
-///Consists of 32 bytes of [TransactionId], followed by 4 bytes of little endian [TransactionIndexType]
+/// [TransactionOutpoint] key which references the [CompactUtxoEntry] within a [ScriptPublicKeyBucket]
+/// Consists of 32 bytes of [TransactionId], followed by 4 bytes of little endian [TransactionIndexType]
 #[derive(Eq, Hash, PartialEq, Debug, Copy, Clone)]
 struct TransactionOutpointKey([u8; TRANSACTION_OUTPOINT_KEY_SIZE]);
 
@@ -102,15 +104,16 @@ impl AsRef<[u8]> for TransactionOutpointKey {
     }
 }
 
-///Size of the [UtxoEntryFullAccessKey] in bytes.
+/// Size of the [UtxoEntryFullAccessKey] in bytes.
 pub const UTXO_ENTRY_FULL_ACCESS_KEY_SIZE: usize = SCRIPT_PUBLIC_KEY_BUCKET_SIZE + TRANSACTION_OUTPOINT_KEY_SIZE;
-///Full [CompactUtxoEntry] access key.
-///Consists of 39 bytes of [ScriptPublicKeyBucket], and 36 bytes of [TransactionOutpointKey]
+
+/// Full [CompactUtxoEntry] access key.
+/// Consists of 39 bytes of [ScriptPublicKeyBucket], and 36 bytes of [TransactionOutpointKey]
 #[derive(Eq, Hash, PartialEq, Debug, Copy, Clone, Deserialize)]
 struct UtxoEntryFullAccessKey(#[serde(with = "BigArray")] [u8; UTXO_ENTRY_FULL_ACCESS_KEY_SIZE]);
 
 impl UtxoEntryFullAccessKey {
-    ///creates a new [UtxoEntryFullAccessKey] from a [ScriptPublicKeyBucket] and [TransactionOutpointKey].
+    /// Creates a new [UtxoEntryFullAccessKey] from a [ScriptPublicKeyBucket] and [TransactionOutpointKey].
     pub fn new(script_public_key_bucket: ScriptPublicKeyBucket, transaction_outpoint_key: TransactionOutpointKey) -> Self {
         let mut bytes = [0; UTXO_ENTRY_FULL_ACCESS_KEY_SIZE];
         bytes[..SCRIPT_PUBLIC_KEY_BUCKET_SIZE].copy_from_slice(script_public_key_bucket.as_ref());
@@ -118,12 +121,12 @@ impl UtxoEntryFullAccessKey {
         Self(bytes)
     }
 
-    ///extracts a [`ScriptPublicKey`] of the  [`UtxoEntryFullAccessKey`]
+    /// Extracts a [`ScriptPublicKey`] of the  [`UtxoEntryFullAccessKey`]
     pub fn extract_script_public_key(&self) -> ScriptPublicKey {
         ScriptPublicKey::from(ScriptPublicKeyBucket(self.0[..SCRIPT_PUBLIC_KEY_BUCKET_SIZE].try_into().expect("expected array")))
     }
 
-    ///extracts a [`TransactionOutpoint`] of the  [`UtxoEntryFullAccessKey`]
+    /// Extracts a [`TransactionOutpoint`] of the  [`UtxoEntryFullAccessKey`]
     pub fn extract_transaction_outpoint(&self) -> TransactionOutpoint {
         TransactionOutpoint::from(TransactionOutpointKey(self.0[SCRIPT_PUBLIC_KEY_BUCKET_SIZE..].try_into().expect("expected array")))
     }
@@ -138,17 +141,17 @@ impl AsRef<[u8]> for UtxoEntryFullAccessKey {
 // Traits:
 
 pub trait UtxoSetByScriptPublicKeyStoreReader {
-    ///Get [UtxoSetByScriptPublicKey] set by queried [ScriptPublicKeys],
+    /// Get [UtxoSetByScriptPublicKey] set by queried [ScriptPublicKeys],
     fn get_utxos_from_script_public_keys(&self, script_public_keys: ScriptPublicKeys) -> Result<UtxoSetByScriptPublicKey, StoreError>;
 
-    ///Get the whole indexed [UtxoSetByScriptPublicKey],
+    /// Get the whole indexed [UtxoSetByScriptPublicKey],
     ///
     /// **WARN**: this should only be used for testing purposes.
     fn get_all_utxos(&self) -> Result<UtxoSetByScriptPublicKey, StoreError>;
 }
 
 pub trait UtxoSetByScriptPublicKeyStore: UtxoSetByScriptPublicKeyStoreReader {
-    /// Updates the store according to the [`UTXOChanges`] -- adding and deleting entries correspondingly.
+    /// Updates the store according to the [`UtxoChanges`] -- adding and deleting entries correspondingly.
     /// Note we define `self` as `mut` in order to require write access even though the compiler does not require it.
     /// This is because concurrent readers can interfere with cache consistency.  
     fn write_diff(&mut self, utxo_diff_by_script_public_key: UtxoChanges) -> Result<(), StoreError>;
@@ -175,8 +178,8 @@ impl DbUtxoSetByScriptPublicKeyStore {
 
 impl UtxoSetByScriptPublicKeyStoreReader for DbUtxoSetByScriptPublicKeyStore {
     // compared to go-kaspad this gets transaction outpoints from multiple script public keys at once.
-    // TODO: probably ideal way to retrive is to return a chained iterator which can be used to chunk results and propegate utxo entries
-    // to the rpc via pagnation, this would alliviate the memory footprint of script public keys with large amount of utxos.
+    // TODO: probably ideal way to retrieve is to return a chained iterator which can be used to chunk results and propagate utxo entries
+    // to the rpc via pagination, this would alleviate the memory footprint of script public keys with large amount of utxos.
     fn get_utxos_from_script_public_keys(&self, script_public_keys: ScriptPublicKeys) -> Result<UtxoSetByScriptPublicKey, StoreError> {
         let mut utxos_by_script_public_keys = UtxoSetByScriptPublicKey::new();
         for script_public_key in script_public_keys.into_iter() {
@@ -195,7 +198,7 @@ impl UtxoSetByScriptPublicKeyStoreReader for DbUtxoSetByScriptPublicKeyStore {
         Ok(utxos_by_script_public_keys)
     }
 
-    ///Get the whole indexed [UtxoSetByScriptPublicKey],
+    /// Get the whole indexed [UtxoSetByScriptPublicKey],
     ///
     /// **WARN**: this should only be used for testing purposes.
     fn get_all_utxos(&self) -> Result<UtxoSetByScriptPublicKey, StoreError> {
@@ -269,7 +272,7 @@ impl UtxoSetByScriptPublicKeyStore for DbUtxoSetByScriptPublicKeyStore {
         Ok(())
     }
 
-    /// removes all entries in the cache and db, besides prefixes themselves.
+    /// Removes all entries in the cache and db, besides prefixes themselves.
     fn delete_all(&mut self) -> Result<(), StoreError> {
         let mut writer = DirectDbWriter::new(&self.db);
         self.access.delete_all(&mut writer)

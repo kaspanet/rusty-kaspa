@@ -34,9 +34,8 @@ impl From<event_notify::NewBlockTemplateNotification> for NewBlockTemplateNotifi
 // ----------------------------------------------------------------------------
 
 impl From<Notification> for event_notify::Notification {
-    fn from(item: Notification) -> Self {
-        match item {
-            _ => todo!(),
-        }
+    //TODO
+    fn from(_: Notification) -> Self {
+        todo!();
     }
 }

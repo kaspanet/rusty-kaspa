@@ -81,12 +81,15 @@ impl StoreManager {
 
     /// Resets the utxoindex database:
     pub fn delete_all(&self) -> Result<(), UtxoIndexError> {
-        //TODO: explore possibility of deleting and replacing whole db, currently it is an issue because of file lock + db being in an arc.
-        trace!("creating new utxoindex database, deleting the old one");
-        //hold all individual store locks in-place
+        // TODO: explore possibility of deleting and replacing whole db, currently there is an issue because of file lock and db being in an arc.
+        trace!("clearing utxoindex database");
+
+        // Hold all individual store locks in-place
         let mut utxoindex_tips_store = self.utxoindex_tips_store.write();
         let mut circulating_suppy_store = self.circulating_suppy_store.write();
         let mut utxos_by_script_public_key_store = self.utxos_by_script_public_key_store.write();
+
+        // Clear all
         utxoindex_tips_store.remove()?;
         circulating_suppy_store.remove()?;
         utxos_by_script_public_key_store.delete_all()?;
