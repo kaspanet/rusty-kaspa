@@ -150,7 +150,7 @@ async fn test_virtual_change_set_event() {
                 virtual_daa_score_changed_count += 1;
             }
 
-            unexpected_notification => panic!("Unexpected notification: {:?}", unexpected_notification),
+            unexpected_notification => panic!("Unexpected notification: {unexpected_notification:?}"),
         }
     }
 
@@ -270,7 +270,7 @@ async fn test_block_added_event() {
                 });
             });
         }
-        unexpected_notification => panic!("Unexpected notification: {:?}", unexpected_notification),
+        unexpected_notification => panic!("Unexpected notification: {unexpected_notification:?}"),
     }
 
     assert!(test_recv.is_empty()); //assert we have no extra messages pending
@@ -296,7 +296,7 @@ async fn test_new_block_template_event() {
 
     match test_recv.recv().await.expect("expected recv") {
         Notification::NewBlockTemplate(_) => (),
-        unexpected_notification => panic!("Unexpected notification: {:?}", unexpected_notification),
+        unexpected_notification => panic!("Unexpected notification: {unexpected_notification:?}"),
     }
 
     assert!(test_recv.is_empty());
@@ -322,7 +322,7 @@ async fn test_finality_conflict_event() {
 
     match test_recv.recv().await.expect("expected recv") {
         Notification::FinalityConflict(_) => (),
-        unexpected_notification => panic!("Unexpected notification: {:?}", unexpected_notification),
+        unexpected_notification => panic!("Unexpected notification: {unexpected_notification:?}"),
     }
 
     assert!(test_recv.is_empty());
@@ -348,7 +348,7 @@ async fn test_finality_conflict_resolved_event() {
 
     match test_recv.recv().await.expect("expected recv") {
         Notification::FinalityConflictResolved(_) => (),
-        unexpected_notification => panic!("Unexpected notification: {:?}", unexpected_notification),
+        unexpected_notification => panic!("Unexpected notification: {unexpected_notification:?}"),
     }
 
     assert!(test_recv.is_empty());
@@ -381,7 +381,7 @@ async fn test_pruning_point_utxo_set_override_event() {
 
     match test_recv.recv().await.expect("expected recv") {
         Notification::PruningPointUTXOSetOverride(_) => (),
-        unexpected_notification => panic!("Unexpected notification: {:?}", unexpected_notification),
+        unexpected_notification => panic!("Unexpected notification: {unexpected_notification:?}"),
     }
 
     assert!(test_recv.is_empty());

@@ -64,7 +64,7 @@ impl VirtualChangeEmulator {
         ));
 
         self.utxo_collection.retain(|k, _| !self.virtual_state.utxo_diff.remove.contains_key(k));
-        self.utxo_collection.extend(self.virtual_state.utxo_diff.add.iter().map(move |(k, v)| (k.clone(), v.clone())));
+        self.utxo_collection.extend(self.virtual_state.utxo_diff.add.iter().map(move |(k, v)| (*k, v.clone())));
 
         let new_tips = Arc::new(generate_random_hashes(&mut rng.clone(), tip_amount));
 
