@@ -1,11 +1,9 @@
 use std::sync::Arc;
 
-use super::{
-    database::prelude::{BatchDbWriter, CachedDbItem, DirectDbWriter},
-    errors::StoreResult,
-    DB,
-};
 use consensus_core::BlockHashSet;
+use database::prelude::StoreResult;
+use database::prelude::DB;
+use database::prelude::{BatchDbWriter, CachedDbItem, DirectDbWriter};
 use hashes::Hash;
 use rocksdb::WriteBatch;
 

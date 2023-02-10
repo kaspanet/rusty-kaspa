@@ -1,5 +1,6 @@
+use crate::{db::DB, errors::StoreError};
+
 use super::prelude::{DbKey, DbWriter};
-use crate::model::stores::{errors::StoreError, DB};
 use parking_lot::RwLock;
 use serde::{de::DeserializeOwned, Serialize};
 use std::sync::Arc;

@@ -1,9 +1,10 @@
 use super::BlockBodyProcessor;
 use crate::{
     errors::{BlockProcessResult, RuleError},
-    model::stores::{errors::StoreResultExtensions, ghostdag::GhostdagStoreReader, statuses::StatusesStoreReader},
+    model::stores::{ghostdag::GhostdagStoreReader, statuses::StatusesStoreReader},
 };
 use consensus_core::block::Block;
+use database::prelude::StoreResultExtensions;
 use hashes::Hash;
 use std::sync::Arc;
 

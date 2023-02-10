@@ -1,6 +1,6 @@
-use super::database::prelude::Cache;
 use crate::processes::ghostdag::ordering::SortableBlock;
 use consensus_core::BlockHasher;
+use database::prelude::Cache;
 use hashes::Hash;
 use std::{cmp::Reverse, collections::BinaryHeap, sync::Arc};
 

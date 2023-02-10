@@ -1,5 +1,6 @@
+use crate::{db::DB, errors::StoreError};
+
 use super::prelude::{Cache, DbKey, DbWriter};
-use crate::model::stores::{errors::StoreError, DB};
 use rocksdb::{Direction, IteratorMode, ReadOptions};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{collections::hash_map::RandomState, error::Error, fmt::Debug, hash::BuildHasher, sync::Arc};

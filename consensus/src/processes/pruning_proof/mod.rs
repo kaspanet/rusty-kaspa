@@ -11,6 +11,7 @@ use consensus_core::{
     pruning::PruningPointProof,
     BlockHashMap, BlockHashSet, BlockLevel, HashMapCustomHasher,
 };
+use database::prelude::StoreError;
 use hashes::Hash;
 use itertools::Itertools;
 use kaspa_core::{info, trace};
@@ -70,37 +71,34 @@ struct HeaderStoreMock {}
 
 #[allow(unused_variables)]
 impl HeaderStoreReader for HeaderStoreMock {
-    fn get_daa_score(&self, hash: hashes::Hash) -> Result<u64, crate::model::stores::errors::StoreError> {
+    fn get_daa_score(&self, hash: hashes::Hash) -> Result<u64, StoreError> {
         todo!()
     }
 
-    fn get_blue_score(&self, hash: hashes::Hash) -> Result<u64, crate::model::stores::errors::StoreError> {
+    fn get_blue_score(&self, hash: hashes::Hash) -> Result<u64, StoreError> {
         todo!()
     }
 
-    fn get_timestamp(&self, hash: hashes::Hash) -> Result<u64, crate::model::stores::errors::StoreError> {
+    fn get_timestamp(&self, hash: hashes::Hash) -> Result<u64, StoreError> {
         todo!()
     }
 
-    fn get_bits(&self, hash: hashes::Hash) -> Result<u32, crate::model::stores::errors::StoreError> {
+    fn get_bits(&self, hash: hashes::Hash) -> Result<u32, StoreError> {
         todo!()
     }
 
-    fn get_header(&self, hash: hashes::Hash) -> Result<Arc<Header>, crate::model::stores::errors::StoreError> {
+    fn get_header(&self, hash: hashes::Hash) -> Result<Arc<Header>, StoreError> {
         todo!()
     }
 
     fn get_header_with_block_level(
         &self,
         hash: hashes::Hash,
-    ) -> Result<crate::model::stores::headers::HeaderWithBlockLevel, crate::model::stores::errors::StoreError> {
+    ) -> Result<crate::model::stores::headers::HeaderWithBlockLevel, StoreError> {
         todo!()
     }
 
-    fn get_compact_header_data(
-        &self,
-        hash: hashes::Hash,
-    ) -> Result<crate::model::stores::headers::CompactHeaderData, crate::model::stores::errors::StoreError> {
+    fn get_compact_header_data(&self, hash: hashes::Hash) -> Result<crate::model::stores::headers::CompactHeaderData, StoreError> {
         todo!()
     }
 }
@@ -109,48 +107,39 @@ struct GhostdagStoreMock {}
 
 #[allow(unused_variables)]
 impl GhostdagStoreReader for GhostdagStoreMock {
-    fn get_blue_score(&self, hash: hashes::Hash) -> Result<u64, crate::model::stores::errors::StoreError> {
+    fn get_blue_score(&self, hash: hashes::Hash) -> Result<u64, StoreError> {
         todo!()
     }
 
-    fn get_blue_work(&self, hash: hashes::Hash) -> Result<consensus_core::BlueWorkType, crate::model::stores::errors::StoreError> {
+    fn get_blue_work(&self, hash: hashes::Hash) -> Result<consensus_core::BlueWorkType, StoreError> {
         todo!()
     }
 
-    fn get_selected_parent(&self, hash: hashes::Hash) -> Result<hashes::Hash, crate::model::stores::errors::StoreError> {
+    fn get_selected_parent(&self, hash: hashes::Hash) -> Result<hashes::Hash, StoreError> {
         todo!()
     }
 
-    fn get_mergeset_blues(&self, hash: hashes::Hash) -> Result<BlockHashes, crate::model::stores::errors::StoreError> {
+    fn get_mergeset_blues(&self, hash: hashes::Hash) -> Result<BlockHashes, StoreError> {
         todo!()
     }
 
-    fn get_mergeset_reds(&self, hash: hashes::Hash) -> Result<BlockHashes, crate::model::stores::errors::StoreError> {
+    fn get_mergeset_reds(&self, hash: hashes::Hash) -> Result<BlockHashes, StoreError> {
         todo!()
     }
 
-    fn get_blues_anticone_sizes(
-        &self,
-        hash: hashes::Hash,
-    ) -> Result<crate::model::stores::ghostdag::HashKTypeMap, crate::model::stores::errors::StoreError> {
+    fn get_blues_anticone_sizes(&self, hash: hashes::Hash) -> Result<crate::model::stores::ghostdag::HashKTypeMap, StoreError> {
         todo!()
     }
 
-    fn get_data(
-        &self,
-        hash: hashes::Hash,
-    ) -> Result<Arc<crate::model::stores::ghostdag::GhostdagData>, crate::model::stores::errors::StoreError> {
+    fn get_data(&self, hash: hashes::Hash) -> Result<Arc<crate::model::stores::ghostdag::GhostdagData>, StoreError> {
         todo!()
     }
 
-    fn get_compact_data(
-        &self,
-        hash: hashes::Hash,
-    ) -> Result<crate::model::stores::ghostdag::CompactGhostdagData, crate::model::stores::errors::StoreError> {
+    fn get_compact_data(&self, hash: hashes::Hash) -> Result<crate::model::stores::ghostdag::CompactGhostdagData, StoreError> {
         todo!()
     }
 
-    fn has(&self, hash: hashes::Hash) -> Result<bool, crate::model::stores::errors::StoreError> {
+    fn has(&self, hash: hashes::Hash) -> Result<bool, StoreError> {
         todo!()
     }
 }
