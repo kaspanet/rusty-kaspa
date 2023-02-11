@@ -1,6 +1,6 @@
 use consensus_core::{
     tx::{TransactionOutpoint, UtxoEntry},
-    utxo::utxo_collection::UtxoCollection,
+    utxo::utxo_diff::UtxoDiff,
     BlockHashSet, HashMapCustomHasher,
 };
 use hashes::Hash;
@@ -30,19 +30,15 @@ impl UtxoIndexChanges {
     /// Add a [`UtxoCollection`] the the [`UtxoIndexChanges`] struct
     ///
     /// Note: Always remove before add.
-    pub fn add_utxo_collection(&mut self, utxo_collection: UtxoCollection) {
-        for (transaction_outpoint, utxo_entry) in utxo_collection.into_iter() {
-            match self.utxo_changes.removed.entry(utxo_entry.script_public_key.clone()) {
-                Entry::Occupied(mut entry) => match entry.get_mut().entry(transaction_outpoint) {
-                    Entry::Occupied(inner_entry) => {
-                        inner_entry.remove_entry();
-                    }
-                    Entry::Vacant(_) => (),
-                },
-                Entry::Vacant(_) => (),
-            };
+    pub fn add_utxo_diff(&mut self, utxo_diff: UtxoDiff) {
+        
+        let (to_add, mut to_remove) = (utxo_diff.add, utxo_diff.remove);
 
-            self.supply_change += utxo_entry.amount as i64; // TODO: Using `virtual_state.mergeset_rewards` might be a better way to extract this.
+        for (transaction_outpoint, utxo_entry) in to_add.into_iter() {
+            
+            to_remove.remove(&transaction_outpoint); // We try and remove from utxo_diff.remove.
+
+            self.supply_change += utxo_entry.amount as CirculatingSupplyDiff; // TODO: Using `virtual_state.mergeset_rewards` might be a better way to extract this.
 
             match self.utxo_changes.added.entry(utxo_entry.script_public_key) {
                 Entry::Occupied(mut entry) => {
@@ -61,14 +57,10 @@ impl UtxoIndexChanges {
                 }
             };
         }
-    }
 
-    /// Remove a [`UtxoCollection`] the the [`UtxoIndexChanges`] struct
-    ///
-    /// Note: Always remove before add
-    pub fn remove_utxo_collection(&mut self, utxo_collection: UtxoCollection) {
-        for (transaction_outpoint, utxo_entry) in utxo_collection.into_iter() {
-            self.supply_change -= utxo_entry.amount as i64; // TODO: Using `virtual_state.mergeset_rewards` might be a better way to extract this.
+        for (transaction_outpoint, utxo_entry) in to_remove.into_iter() {
+            
+            self.supply_change -= utxo_entry.amount as CirculatingSupplyDiff; // TODO: Using `virtual_state.mergeset_rewards` might be a better way to extract this.
 
             match self.utxo_changes.removed.entry(utxo_entry.script_public_key.clone()) {
                 Entry::Occupied(mut entry) => {

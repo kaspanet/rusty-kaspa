@@ -18,7 +18,7 @@ use consensus_core::{
 };
 use hashes::Hash;
 use kaspa_core::trace;
-use std::ops::Deref;
+use kaspa_utils::arc::ArcExtensions;
 use std::sync::Arc;
 
 const RESYNC_CHUNK_SIZE: usize = 2048; //Increased from 1k (used in go-kaspad), for quicker resets, while still having a low memory footprint.
@@ -75,9 +75,8 @@ impl UtxoIndexControlApi for UtxoIndex {
 
         // Initiate update container
         let mut utxoindex_changes = UtxoIndexChanges::new();
-        utxoindex_changes.remove_utxo_collection(utxo_diff.deref().remove.to_owned()); // always remove before add! (as the container filters added from removed).
-        utxoindex_changes.add_utxo_collection(utxo_diff.deref().add.to_owned());
-        utxoindex_changes.add_tips(tips.to_vec());
+        utxoindex_changes.add_utxo_diff(utxo_diff.unwrap_or_clone());
+        utxoindex_changes.add_tips(tips.unwrap_or_clone().to_vec());
 
         // Commit changed utxo state to db
         self.stores.update_utxo_state(utxoindex_changes.utxo_changes.clone())?;
