@@ -29,7 +29,9 @@ impl Display for AddressError {
 
 impl std::error::Error for AddressError {}
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(
+    PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema,
+)]
 pub enum Prefix {
     Mainnet,
     Testnet,
@@ -80,7 +82,9 @@ impl TryFrom<&str> for Prefix {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(
+    PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema,
+)]
 pub struct Address {
     pub prefix: Prefix,
     pub payload: Vec<u8>,

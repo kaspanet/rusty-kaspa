@@ -59,7 +59,7 @@ impl From<RpcApiOps> for u32 {
     }
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub enum SubscribeCommand {
     Start = 0,
     Stop = 1,

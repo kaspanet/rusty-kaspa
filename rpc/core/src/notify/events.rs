@@ -1,8 +1,9 @@
-use std::ops::{Index, IndexMut};
-
 use crate::{Notification, NotificationType};
+use std::ops::{Index, IndexMut};
+use workflow_core::enums::usize_try_from;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+usize_try_from! {
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub enum EventType {
     BlockAdded = 0,
     VirtualSelectedParentChainChanged,
@@ -13,6 +14,7 @@ pub enum EventType {
     VirtualDaaScoreChanged,
     PruningPointUTXOSetOverride,
     NewBlockTemplate,
+}
 }
 
 // TODO: write a macro or use an external crate to get this
@@ -36,7 +38,7 @@ impl From<EventType> for NotificationType {
     fn from(item: EventType) -> Self {
         match item {
             EventType::BlockAdded => NotificationType::BlockAdded,
-            EventType::VirtualSelectedParentChainChanged => NotificationType::VirtualSelectedParentChainChanged,
+            EventType::VirtualSelectedParentChainChanged => NotificationType::VirtualSelectedParentChainChanged(false),
             EventType::FinalityConflict => NotificationType::FinalityConflict,
             EventType::FinalityConflictResolved => NotificationType::FinalityConflictResolved,
             EventType::UtxosChanged => NotificationType::UtxosChanged(vec![]),
@@ -70,7 +72,7 @@ impl From<&NotificationType> for EventType {
     fn from(item: &NotificationType) -> Self {
         match item {
             NotificationType::BlockAdded => EventType::BlockAdded,
-            NotificationType::VirtualSelectedParentChainChanged => EventType::VirtualSelectedParentChainChanged,
+            NotificationType::VirtualSelectedParentChainChanged(_) => EventType::VirtualSelectedParentChainChanged,
             NotificationType::FinalityConflict => EventType::FinalityConflict,
             NotificationType::FinalityConflictResolved => EventType::FinalityConflictResolved,
             NotificationType::UtxosChanged(_) => EventType::UtxosChanged,
@@ -84,7 +86,17 @@ impl From<&NotificationType> for EventType {
 
 /// Generic array with [`EventType`] strongly-typed index
 #[derive(Default, Clone, Copy, Debug)]
-pub(crate) struct EventArray<T>([T; EVENT_COUNT]);
+pub struct EventArray<T>([T; EVENT_COUNT]);
+
+impl<T> EventArray<T> {
+    pub fn from_fn<F>(cb: F) -> Self
+    where
+        F: FnMut(usize) -> T,
+    {
+        let array: [T; EVENT_COUNT] = core::array::from_fn(cb);
+        Self(array)
+    }
+}
 
 impl<T> Index<EventType> for EventArray<T> {
     type Output = T;
