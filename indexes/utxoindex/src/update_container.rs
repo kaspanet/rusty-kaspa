@@ -27,16 +27,12 @@ impl UtxoIndexChanges {
         }
     }
 
-    /// Add a [`UtxoCollection`] the the [`UtxoIndexChanges`] struct
-    ///
-    /// Note: Always remove before add.
+    /// Add a [`UtxoDiff`] the the [`UtxoIndexChanges`] struct.
     pub fn add_utxo_diff(&mut self, utxo_diff: UtxoDiff) {
-        
         let (to_add, mut to_remove) = (utxo_diff.add, utxo_diff.remove);
 
         for (transaction_outpoint, utxo_entry) in to_add.into_iter() {
-            
-            to_remove.remove(&transaction_outpoint); // We try and remove from utxo_diff.remove.
+            to_remove.remove(&transaction_outpoint); // We try and remove from `utxo_diff.remove`.
 
             self.supply_change += utxo_entry.amount as CirculatingSupplyDiff; // TODO: Using `virtual_state.mergeset_rewards` might be a better way to extract this.
 
@@ -48,7 +44,7 @@ impl UtxoIndexChanges {
                     );
                 }
                 Entry::Vacant(entry) => {
-                    let mut value = CompactUtxoCollection::new();
+                    let mut value = CompactUtxoCollection::with_capacity(1);
                     value.insert(
                         transaction_outpoint,
                         CompactUtxoEntry::new(utxo_entry.amount, utxo_entry.block_daa_score, utxo_entry.is_coinbase),
@@ -59,10 +55,9 @@ impl UtxoIndexChanges {
         }
 
         for (transaction_outpoint, utxo_entry) in to_remove.into_iter() {
-            
             self.supply_change -= utxo_entry.amount as CirculatingSupplyDiff; // TODO: Using `virtual_state.mergeset_rewards` might be a better way to extract this.
 
-            match self.utxo_changes.removed.entry(utxo_entry.script_public_key.clone()) {
+            match self.utxo_changes.removed.entry(utxo_entry.script_public_key) {
                 Entry::Occupied(mut entry) => {
                     entry.get_mut().insert(
                         transaction_outpoint,
@@ -70,7 +65,7 @@ impl UtxoIndexChanges {
                     );
                 }
                 Entry::Vacant(entry) => {
-                    let mut value = CompactUtxoCollection::new();
+                    let mut value = CompactUtxoCollection::with_capacity(1);
                     value.insert(
                         transaction_outpoint,
                         CompactUtxoEntry::new(utxo_entry.amount, utxo_entry.block_daa_score, utxo_entry.is_coinbase),
@@ -98,12 +93,12 @@ impl UtxoIndexChanges {
                     );
                 }
                 Entry::Vacant(entry) => {
-                    let mut value = CompactUtxoCollection::new();
+                    let mut value = CompactUtxoCollection::with_capacity(1);
                     value.insert(
                         transaction_outpoint,
                         CompactUtxoEntry::new(utxo_entry.amount, utxo_entry.block_daa_score, utxo_entry.is_coinbase),
                     );
-                    entry.insert(value); //Future: `insert_entry`: https://doc.rust-lang.org/std/collections/hash_map/enum.Entry.html#method.insert_entry
+                    entry.insert(value);
                 }
             }
         }
