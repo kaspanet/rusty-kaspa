@@ -82,8 +82,8 @@ where
             changed = true;
         }
 
-        if let Scope::UtxosChanged(ref utxo_addresses) = notification_type {
-            changed = self.toggle_utxo_addresses(utxo_addresses);
+        if let Scope::UtxosChanged(ref scope) = notification_type {
+            changed = self.toggle_utxo_addresses(&scope.addresses);
         }
         changed
     }

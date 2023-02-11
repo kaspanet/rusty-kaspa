@@ -23,11 +23,11 @@ impl kaspad_request::Payload {
                 command: command.into(),
             }),
 
-            Scope::VirtualSelectedParentChainChanged(ref include_accepted_transaction_ids) => {
+            Scope::VirtualSelectedParentChainChanged(ref scope) => {
                 kaspad_request::Payload::NotifyVirtualSelectedParentChainChangedRequest(
                     NotifyVirtualSelectedParentChainChangedRequestMessage {
                         command: command.into(),
-                        include_accepted_transaction_ids: *include_accepted_transaction_ids,
+                        include_accepted_transaction_ids: scope.include_accepted_transaction_ids,
                     },
                 )
             }
@@ -39,12 +39,10 @@ impl kaspad_request::Payload {
                     command: command.into(),
                 })
             }
-            Scope::UtxosChanged(ref addresses) => {
-                kaspad_request::Payload::NotifyUtxosChangedRequest(NotifyUtxosChangedRequestMessage {
-                    addresses: addresses.iter().map(|x| x.into()).collect::<Vec<String>>(),
-                    command: command.into(),
-                })
-            }
+            Scope::UtxosChanged(ref scope) => kaspad_request::Payload::NotifyUtxosChangedRequest(NotifyUtxosChangedRequestMessage {
+                addresses: scope.addresses.iter().map(|x| x.into()).collect::<Vec<String>>(),
+                command: command.into(),
+            }),
             Scope::VirtualSelectedParentBlueScoreChanged => {
                 kaspad_request::Payload::NotifyVirtualSelectedParentBlueScoreChangedRequest(
                     NotifyVirtualSelectedParentBlueScoreChangedRequestMessage { command: command.into() },

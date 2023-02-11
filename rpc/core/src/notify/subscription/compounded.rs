@@ -1,5 +1,11 @@
 use super::{super::scope::Scope, Compounded, Mutation, Subscription};
-use crate::{api::ops::SubscribeCommand, notify::events::EventType};
+use crate::{
+    api::ops::SubscribeCommand,
+    notify::{
+        events::EventType,
+        scope::{UtxosChangedScope, VirtualSelectedParentChainChangedScope},
+    },
+};
 use addresses::Address;
 use std::collections::{HashMap, HashSet};
 
@@ -75,7 +81,8 @@ impl VirtualSelectedParentChainChangedSubscription {
 impl Compounded for VirtualSelectedParentChainChangedSubscription {
     fn compound(&mut self, mutation: Mutation) -> Option<Mutation> {
         assert_eq!(self.event_type(), mutation.event_type());
-        if let Scope::VirtualSelectedParentChainChanged(all) = mutation.scope {
+        if let Scope::VirtualSelectedParentChainChanged(ref scope) = mutation.scope {
+            let all = scope.include_accepted_transaction_ids;
             match mutation.command {
                 SubscribeCommand::Start => {
                     if all {
@@ -109,7 +116,7 @@ impl Compounded for VirtualSelectedParentChainChangedSubscription {
                                 if self.reduced() > 0 {
                                     return Some(Mutation::new(
                                         SubscribeCommand::Start,
-                                        Scope::VirtualSelectedParentChainChanged(false),
+                                        Scope::VirtualSelectedParentChainChanged(VirtualSelectedParentChainChangedScope::new(false)),
                                     ));
                                 } else {
                                     return Some(mutation);
@@ -140,20 +147,20 @@ pub struct UtxosChangedSubscription {
 impl Compounded for UtxosChangedSubscription {
     fn compound(&mut self, mutation: Mutation) -> Option<Mutation> {
         assert_eq!(self.event_type(), mutation.event_type());
-        if let Scope::UtxosChanged(mut addresses) = mutation.scope {
+        if let Scope::UtxosChanged(mut scope) = mutation.scope {
             match mutation.command {
                 SubscribeCommand::Start => {
-                    if addresses.is_empty() {
+                    if scope.addresses.is_empty() {
                         // Add All
                         self.all += 1;
                         if self.all == 1 {
-                            return Some(Mutation::new(SubscribeCommand::Start, Scope::UtxosChanged(vec![])));
+                            return Some(Mutation::new(SubscribeCommand::Start, Scope::UtxosChanged(UtxosChangedScope::default())));
                         }
                     } else {
                         // Add(A)
                         let mut added = vec![];
                         // Make sure no duplicate exists in addresses
-                        let addresses: HashSet<Address> = addresses.drain(0..).collect();
+                        let addresses: HashSet<Address> = scope.addresses.drain(0..).collect();
                         for address in addresses {
                             self.addresses.entry(address.clone()).and_modify(|counter| *counter += 1).or_insert_with(|| {
                                 added.push(address);
@@ -161,16 +168,16 @@ impl Compounded for UtxosChangedSubscription {
                             });
                         }
                         if !added.is_empty() && self.all == 0 {
-                            return Some(Mutation::new(SubscribeCommand::Start, Scope::UtxosChanged(added)));
+                            return Some(Mutation::new(SubscribeCommand::Start, Scope::UtxosChanged(UtxosChangedScope::new(added))));
                         }
                     }
                 }
                 SubscribeCommand::Stop => {
-                    if !addresses.is_empty() {
+                    if !scope.addresses.is_empty() {
                         // Remove Reduced
                         let mut removed = vec![];
                         // Make sure no duplicate exists in addresses
-                        let addresses: HashSet<Address> = addresses.drain(0..).collect();
+                        let addresses: HashSet<Address> = scope.addresses.drain(0..).collect();
                         for address in addresses {
                             self.addresses.entry(address.clone()).and_modify(|counter| {
                                 *counter -= 1;
@@ -184,7 +191,7 @@ impl Compounded for UtxosChangedSubscription {
                             self.addresses.remove(x);
                         });
                         if !removed.is_empty() && self.all == 0 {
-                            return Some(Mutation::new(SubscribeCommand::Stop, Scope::UtxosChanged(removed)));
+                            return Some(Mutation::new(SubscribeCommand::Stop, Scope::UtxosChanged(UtxosChangedScope::new(removed))));
                         }
                     } else {
                         // Remove All
@@ -194,10 +201,13 @@ impl Compounded for UtxosChangedSubscription {
                                 if !self.addresses.is_empty() {
                                     return Some(Mutation::new(
                                         SubscribeCommand::Start,
-                                        Scope::UtxosChanged(self.addresses.keys().cloned().collect()),
+                                        Scope::UtxosChanged(UtxosChangedScope::new(self.addresses.keys().cloned().collect())),
                                     ));
                                 } else {
-                                    return Some(Mutation::new(SubscribeCommand::Stop, Scope::UtxosChanged(vec![])));
+                                    return Some(Mutation::new(
+                                        SubscribeCommand::Stop,
+                                        Scope::UtxosChanged(UtxosChangedScope::default()),
+                                    ));
                                 }
                             }
                         }

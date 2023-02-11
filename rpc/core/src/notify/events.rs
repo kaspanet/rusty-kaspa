@@ -35,23 +35,6 @@ pub const EVENT_TYPE_ARRAY: [EventType; EVENT_COUNT] = [
 ];
 
 // TODO: write a macro to get this
-impl From<EventType> for Scope {
-    fn from(item: EventType) -> Self {
-        match item {
-            EventType::BlockAdded => Scope::BlockAdded,
-            EventType::VirtualSelectedParentChainChanged => Scope::VirtualSelectedParentChainChanged(false),
-            EventType::FinalityConflict => Scope::FinalityConflict,
-            EventType::FinalityConflictResolved => Scope::FinalityConflictResolved,
-            EventType::UtxosChanged => Scope::UtxosChanged(vec![]),
-            EventType::VirtualSelectedParentBlueScoreChanged => Scope::VirtualSelectedParentBlueScoreChanged,
-            EventType::VirtualDaaScoreChanged => Scope::VirtualDaaScoreChanged,
-            EventType::PruningPointUTXOSetOverride => Scope::PruningPointUtxoSetOverride,
-            EventType::NewBlockTemplate => Scope::NewBlockTemplate,
-        }
-    }
-}
-
-// TODO: write a macro to get this
 impl From<&Notification> for EventType {
     fn from(item: &Notification) -> Self {
         match item {

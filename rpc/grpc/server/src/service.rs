@@ -12,7 +12,7 @@ use kaspa_rpc_core::{
         channel::NotificationChannel,
         connection::ChannelConnection,
         listener::{ListenerID, ListenerUtxoNotificationFilterSetting},
-        scope::Scope,
+        scope::{Scope, UtxosChangedScope, VirtualSelectedParentChainChangedScope},
         subscriber::DynSubscriptionManager,
         subscriber::Subscriber,
     },
@@ -322,7 +322,9 @@ impl Rpc for GrpcService {
                                         Ok(request) => {
                                             let result = notifier.clone().execute_subscribe_command(
                                                 listener_id,
-                                                Scope::VirtualSelectedParentChainChanged(request.include_accepted_transaction_ids),
+                                                Scope::VirtualSelectedParentChainChanged(VirtualSelectedParentChainChangedScope::new(
+                                                    request.include_accepted_transaction_ids,
+                                                )),
                                                 request.command,
                                             );
                                             NotifyVirtualSelectedParentChainChangedResponseMessage::from(result).into()
@@ -353,7 +355,7 @@ impl Rpc for GrpcService {
                                         Ok(request) => {
                                             let result = notifier.clone().execute_subscribe_command(
                                                 listener_id,
-                                                Scope::UtxosChanged(request.addresses),
+                                                Scope::UtxosChanged(UtxosChangedScope::new(request.addresses)),
                                                 request.command,
                                             );
                                             NotifyUtxosChangedResponseMessage::from(result).into()
@@ -425,7 +427,7 @@ impl Rpc for GrpcService {
                                             Ok(request) => {
                                                 let result = notifier.clone().execute_subscribe_command(
                                                     listener_id,
-                                                    Scope::UtxosChanged(request.addresses),
+                                                    Scope::UtxosChanged(UtxosChangedScope::new(request.addresses)),
                                                     request.command,
                                                 );
                                                 NotifyUtxosChangedResponseMessage::from(result).into()

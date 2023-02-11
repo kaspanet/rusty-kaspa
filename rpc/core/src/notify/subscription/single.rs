@@ -1,5 +1,12 @@
 use super::{super::scope::Scope, Mutation, Single, Subscription};
-use crate::{api::ops::SubscribeCommand, notify::events::EventType, Notification, VirtualSelectedParentChainChangedNotification};
+use crate::{
+    api::ops::SubscribeCommand,
+    notify::{
+        events::EventType,
+        scope::{UtxosChangedScope, VirtualSelectedParentChainChangedScope},
+    },
+    Notification, VirtualSelectedParentChainChangedNotification,
+};
 use addresses::Address;
 use std::{
     collections::HashSet,
@@ -89,7 +96,7 @@ impl Single for VirtualSelectedParentChainChangedSubscription {
 
     fn mutate(&mut self, mutation: Mutation) -> Option<Vec<Mutation>> {
         assert_eq!(self.event_type(), mutation.event_type());
-        if let Scope::VirtualSelectedParentChainChanged(ref include_accepted_transaction_ids) = mutation.scope {
+        if let Scope::VirtualSelectedParentChainChanged(ref scope) = mutation.scope {
             // Here we want the code to (almost) match a double entry table structure
             // by subscription state and by mutation
             #[allow(clippy::collapsible_else_if)]
@@ -102,7 +109,7 @@ impl Single for VirtualSelectedParentChainChangedSubscription {
                     // Here is an exception to the aforementioned goal
                     // Mutations Reduced and All
                     self.active = true;
-                    self.include_accepted_transaction_ids = *include_accepted_transaction_ids;
+                    self.include_accepted_transaction_ids = scope.include_accepted_transaction_ids;
                     Some(vec![mutation])
                 }
             } else if !self.include_accepted_transaction_ids {
@@ -112,13 +119,19 @@ impl Single for VirtualSelectedParentChainChangedSubscription {
                     self.active = false;
                     self.include_accepted_transaction_ids = false;
                     Some(vec![mutation])
-                } else if !include_accepted_transaction_ids {
+                } else if !scope.include_accepted_transaction_ids {
                     // Mutation Reduced
                     None
                 } else {
                     // Mutation All
                     self.include_accepted_transaction_ids = true;
-                    Some(vec![Mutation::new(SubscribeCommand::Stop, Scope::VirtualSelectedParentChainChanged(false)), mutation])
+                    Some(vec![
+                        Mutation::new(
+                            SubscribeCommand::Stop,
+                            Scope::VirtualSelectedParentChainChanged(VirtualSelectedParentChainChangedScope::new(false)),
+                        ),
+                        mutation,
+                    ])
                 }
             } else {
                 // State All
@@ -127,10 +140,16 @@ impl Single for VirtualSelectedParentChainChangedSubscription {
                     self.active = false;
                     self.include_accepted_transaction_ids = false;
                     Some(vec![mutation])
-                } else if !include_accepted_transaction_ids {
+                } else if !scope.include_accepted_transaction_ids {
                     // Mutation Reduced
                     self.include_accepted_transaction_ids = false;
-                    Some(vec![mutation, Mutation::new(SubscribeCommand::Stop, Scope::VirtualSelectedParentChainChanged(true))])
+                    Some(vec![
+                        mutation,
+                        Mutation::new(
+                            SubscribeCommand::Stop,
+                            Scope::VirtualSelectedParentChainChanged(VirtualSelectedParentChainChangedScope::new(true)),
+                        ),
+                    ])
                 } else {
                     // Mutation All
                     None
@@ -188,7 +207,7 @@ impl Single for UtxosChangedSubscription {
     }
 
     fn mutate(&mut self, mutation: Mutation) -> Option<Vec<Mutation>> {
-        if let Scope::UtxosChanged(ref addresses) = mutation.scope {
+        if let Scope::UtxosChanged(ref scope) = mutation.scope {
             // Here we want the code to (almost) match a double entry table structure
             // by subscription state and by mutation
             #[allow(clippy::collapsible_else_if)]
@@ -202,54 +221,54 @@ impl Single for UtxosChangedSubscription {
                     // Here is an exception to the aforementioned goal
                     // Mutations Add(A) && All
                     self.active = true;
-                    self.addresses = addresses.iter().cloned().collect();
+                    self.addresses = scope.addresses.iter().cloned().collect();
                     Some(vec![mutation])
                 }
             } else if !self.addresses.is_empty() {
                 // State Selected(S)
                 if !mutation.active() {
-                    if addresses.is_empty() {
+                    if scope.addresses.is_empty() {
                         // Mutation None
                         self.active = false;
                         let removed = self.addresses.drain().collect();
-                        Some(vec![Mutation::new(SubscribeCommand::Stop, Scope::UtxosChanged(removed))])
+                        Some(vec![Mutation::new(SubscribeCommand::Stop, Scope::UtxosChanged(UtxosChangedScope::new(removed)))])
                     } else {
                         // Mutation Remove(R)
-                        let removed: Vec<Address> = addresses.iter().filter(|x| self.addresses.remove(x)).cloned().collect();
-                        Some(vec![Mutation::new(SubscribeCommand::Stop, Scope::UtxosChanged(removed))])
+                        let removed: Vec<Address> = scope.addresses.iter().filter(|x| self.addresses.remove(x)).cloned().collect();
+                        Some(vec![Mutation::new(SubscribeCommand::Stop, Scope::UtxosChanged(UtxosChangedScope::new(removed)))])
                     }
                 } else {
-                    if !addresses.is_empty() {
+                    if !scope.addresses.is_empty() {
                         // Mutation Add(A)
-                        let added = addresses.iter().filter(|x| self.addresses.insert((*x).clone())).cloned().collect();
-                        Some(vec![Mutation::new(SubscribeCommand::Start, Scope::UtxosChanged(added))])
+                        let added = scope.addresses.iter().filter(|x| self.addresses.insert((*x).clone())).cloned().collect();
+                        Some(vec![Mutation::new(SubscribeCommand::Start, Scope::UtxosChanged(UtxosChangedScope::new(added)))])
                     } else {
                         // Mutation All
                         let removed: Vec<Address> = self.addresses.drain().collect();
                         Some(vec![
-                            Mutation::new(SubscribeCommand::Stop, Scope::UtxosChanged(removed)),
-                            Mutation::new(SubscribeCommand::Start, Scope::UtxosChanged(vec![])),
+                            Mutation::new(SubscribeCommand::Stop, Scope::UtxosChanged(UtxosChangedScope::new(removed))),
+                            Mutation::new(SubscribeCommand::Start, Scope::UtxosChanged(UtxosChangedScope::default())),
                         ])
                     }
                 }
             } else {
                 // State All
                 if !mutation.active() {
-                    if addresses.is_empty() {
+                    if scope.addresses.is_empty() {
                         // Mutation None
                         self.active = false;
-                        Some(vec![Mutation::new(SubscribeCommand::Stop, Scope::UtxosChanged(vec![]))])
+                        Some(vec![Mutation::new(SubscribeCommand::Stop, Scope::UtxosChanged(UtxosChangedScope::default()))])
                     } else {
                         // Mutation Remove(R)
                         None
                     }
                 } else {
-                    if !addresses.is_empty() {
+                    if !scope.addresses.is_empty() {
                         // Mutation Add(A)
-                        addresses.iter().for_each(|x| {
+                        scope.addresses.iter().for_each(|x| {
                             self.addresses.insert((*x).clone());
                         });
-                        Some(vec![mutation, Mutation::new(SubscribeCommand::Stop, Scope::UtxosChanged(vec![]))])
+                        Some(vec![mutation, Mutation::new(SubscribeCommand::Stop, Scope::UtxosChanged(UtxosChangedScope::default()))])
                     } else {
                         // Mutation All
                         None

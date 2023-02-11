@@ -1,5 +1,5 @@
 use crate::model::message::*;
-use crate::notify::scope::Scope;
+use crate::notify::scope::{Scope, UtxosChangedScope, VirtualSelectedParentChainChangedScope};
 use async_channel::{Receiver, Sender};
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
@@ -74,10 +74,12 @@ impl From<&Notification> for Scope {
     fn from(item: &Notification) -> Self {
         match item {
             Notification::BlockAdded(_) => Scope::BlockAdded,
-            Notification::VirtualSelectedParentChainChanged(_) => Scope::VirtualSelectedParentChainChanged(false),
+            Notification::VirtualSelectedParentChainChanged(_) => {
+                Scope::VirtualSelectedParentChainChanged(VirtualSelectedParentChainChangedScope::default())
+            }
             Notification::FinalityConflict(_) => Scope::FinalityConflict,
             Notification::FinalityConflictResolved(_) => Scope::FinalityConflictResolved,
-            Notification::UtxosChanged(_) => Scope::UtxosChanged(vec![]),
+            Notification::UtxosChanged(_) => Scope::UtxosChanged(UtxosChangedScope::default()),
             Notification::VirtualSelectedParentBlueScoreChanged(_) => Scope::VirtualSelectedParentBlueScoreChanged,
             Notification::VirtualDaaScoreChanged(_) => Scope::VirtualDaaScoreChanged,
             Notification::PruningPointUtxoSetOverride(_) => Scope::PruningPointUtxoSetOverride,
