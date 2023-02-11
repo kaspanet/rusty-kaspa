@@ -7,6 +7,7 @@ pub mod echo;
 
 mod adaptor;
 mod connection;
+mod hub;
 mod payload_type;
 mod router;
 

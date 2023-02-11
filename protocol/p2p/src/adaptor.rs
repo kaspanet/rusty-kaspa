@@ -1,20 +1,13 @@
+use crate::hub::Hub;
 use crate::{connection::ConnectionHandler, pb::KaspadMessage, Router};
-use kaspa_core::{debug, error};
+use kaspa_core::error;
+use std::sync::Arc;
 use std::time::Duration;
-use std::{collections::HashMap, sync::Arc};
 use thiserror::Error;
-use tokio::sync::mpsc::{channel as mpsc_channel, Receiver as MpscReceiver};
+use tokio::sync::mpsc::channel as mpsc_channel;
 use tokio::sync::oneshot::Sender as OneshotSender;
-use tokio::sync::RwLock;
 use tonic::transport::Error as TonicError;
 use uuid::Uuid;
-
-#[derive(Debug)]
-pub(crate) enum HubEvent {
-    NewPeer(Arc<Router>),
-    PeerClosing(Uuid),
-    Broadcast(Box<KaspadMessage>),
-}
 
 #[derive(Error, Debug, Clone)]
 pub enum ConnectionError {
@@ -34,75 +27,47 @@ pub trait ConnectionInitializer: Sync + Send {
 
 /// The main object to create for managing a fully-fledged Kaspa P2P peer
 pub struct Adaptor {
+    //
+    // Internal design & resource management: management of active peers was extracted to the `Hub` object
+    // in order to decouple the memory usage from the `ConnectionHandler` and avoid indirect reference cycles.
+    // This way, when the adaptor drops, the following chain of events is triggered (assuming all peer routers were dropped already):
+    // - `self._server_termination` is dropped, making the server listener exit (`ConnectionHandler::serve`) thus releasing the handler -> `hub_sender`
+    // - `self.connection_handler` is dropped from the adaptor as well, cleaning the last `hub_sender`
+    // - Hub event loop (`Hub::start_event_loop`) exits because all senders were dropped
+    // - `self.hub` is dropped
+    //
     /// If a server was started, it will get cleaned up when this sender is dropped or invoked
     _server_termination: Option<OneshotSender<()>>,
 
-    /// An object for managing new outbound connections as well as handling new connections coming from a server
+    /// An object for creating new outbound connections as well as handling new connections coming from a server
     connection_handler: ConnectionHandler,
 
-    /// Map of currently active peers
-    active_peers: RwLock<HashMap<Uuid, Arc<Router>>>,
+    /// An object for managing a list of active routers (peers), and allowing them to indirectly interact
+    hub: Hub,
 }
 
 impl Adaptor {
     pub(crate) fn new(server_termination: Option<OneshotSender<()>>, connection_handler: ConnectionHandler) -> Self {
-        Self { _server_termination: server_termination, connection_handler, active_peers: RwLock::new(HashMap::new()) }
+        Self { _server_termination: server_termination, connection_handler, hub: Hub::new() }
     }
 
     /// Creates a P2P adaptor with only client-side support. Typical Kaspa nodes should use `Adaptor::bidirectional_connection`
-    pub fn client_connection_only(initializer: Arc<dyn ConnectionInitializer>) -> Arc<Self> {
+    pub fn client_only(initializer: Arc<dyn ConnectionInitializer>) -> Arc<Self> {
         let (hub_sender, hub_receiver) = mpsc_channel(128);
         let connection_handler = ConnectionHandler::new(hub_sender);
         let adaptor = Arc::new(Adaptor::new(None, connection_handler));
-        adaptor.clone().start_hub_event_loop(hub_receiver, initializer);
+        adaptor.hub.clone().start_event_loop(hub_receiver, initializer);
         adaptor
     }
 
-    /// Creates a bidirectional P2P adaptor with both a server serving at `serve_address` and with client support
-    pub fn bidirectional_connection(
-        serve_address: String,
-        initializer: Arc<dyn ConnectionInitializer>,
-    ) -> Result<Arc<Self>, TonicError> {
+    /// Creates a bidirectional P2P adaptor with a server serving at `serve_address` and with client support
+    pub fn bidirectional(serve_address: String, initializer: Arc<dyn ConnectionInitializer>) -> Result<Arc<Self>, TonicError> {
         let (hub_sender, hub_receiver) = mpsc_channel(128);
         let connection_handler = ConnectionHandler::new(hub_sender);
         let server_termination = connection_handler.serve(serve_address)?;
         let adaptor = Arc::new(Adaptor::new(Some(server_termination), connection_handler));
-        adaptor.clone().start_hub_event_loop(hub_receiver, initializer);
+        adaptor.hub.clone().start_event_loop(hub_receiver, initializer);
         Ok(adaptor)
-    }
-
-    /// Starts a loop for receiving central hub events from all peer connections. This mechanism is used for
-    /// managing a collection of active peers and for supporting a broadcasting mechanism
-    fn start_hub_event_loop(self: Arc<Self>, mut hub_receiver: MpscReceiver<HubEvent>, initializer: Arc<dyn ConnectionInitializer>) {
-        tokio::spawn(async move {
-            while let Some(new_event) = hub_receiver.recv().await {
-                match new_event {
-                    HubEvent::NewPeer(new_router) => {
-                        match initializer.initialize_connection(new_router.clone()).await {
-                            Ok(_) => {
-                                self.active_peers.write().await.insert(new_router.identity(), new_router);
-                            }
-                            Err(err) => {
-                                // Ignoring the router
-                                debug!("P2P, flow initialization for router-id {:?} failed: {}", new_router.identity(), err);
-                            }
-                        }
-                    }
-                    HubEvent::PeerClosing(peer_id) => {
-                        if let Some(router) = self.active_peers.write().await.remove(&peer_id) {
-                            debug!(
-                                "P2P, Hub event loop, removing peer, router-id: {}, {}",
-                                router.identity(),
-                                Arc::strong_count(&router)
-                            );
-                        }
-                    }
-                    HubEvent::Broadcast(msg) => {
-                        self.broadcast(*msg).await;
-                    }
-                }
-            }
-        });
     }
 
     /// Connect to a new peer
@@ -112,39 +77,31 @@ impl Adaptor {
 
     /// Send a message to a specific peer
     pub async fn send(&self, peer_id: Uuid, msg: KaspadMessage) -> bool {
-        if let Some(router) = self.active_peers.read().await.get(&peer_id).cloned() {
-            router.route_to_network(msg).await
-        } else {
-            false
-        }
+        self.hub.send(peer_id, msg).await
     }
 
     /// Broadcast a message to all peers. Note that broadcast can also be called on a specific router and will lead to the same outcome
     pub async fn broadcast(&self, msg: KaspadMessage) {
-        let peers = self.active_peers.read().await;
-        for router in peers.values() {
-            router.route_to_network(msg.clone()).await;
-        }
+        self.hub.broadcast(msg).await
     }
 
     /// Terminate a specific peer
     pub async fn terminate(&self, peer_id: Uuid) {
-        if let Some(router) = self.active_peers.read().await.get(&peer_id).cloned() {
-            router.close().await;
-        }
+        self.hub.terminate(peer_id).await
     }
 
     /// Terminate all peers
     pub async fn terminate_all_peers(&self) {
-        let mut peers = self.active_peers.write().await;
-        for router in peers.values() {
-            router.close().await;
-        }
-        peers.clear();
+        self.hub.terminate_all_peers().await
     }
 
     /// Returns a list of ids for all currently active peers
     pub async fn get_active_peers(&self) -> Vec<Uuid> {
-        self.active_peers.read().await.keys().copied().collect()
+        self.hub.get_active_peers().await
+    }
+
+    /// Terminates all peers and cleans up any additional async resources
+    pub async fn close(&self) {
+        self.terminate_all_peers().await;
     }
 }
