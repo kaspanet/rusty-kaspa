@@ -29,8 +29,8 @@ pub const SCRIPT_PUBLIC_KEY_BUCKET_SIZE: usize = VERSION_TYPE_SIZE + SCRIPT_VECT
 #[derive(Eq, Hash, PartialEq, Debug, Copy, Clone)]
 struct ScriptPublicKeyBucket([u8; SCRIPT_PUBLIC_KEY_BUCKET_SIZE]);
 
-impl From<ScriptPublicKey> for ScriptPublicKeyBucket {
-    fn from(script_public_key: ScriptPublicKey) -> Self {
+impl From<&ScriptPublicKey> for ScriptPublicKeyBucket {
+    fn from(script_public_key: &ScriptPublicKey) -> Self {
         let mut bytes = [0; SCRIPT_PUBLIC_KEY_BUCKET_SIZE];
 
         let length = script_public_key.script().len();
@@ -85,8 +85,8 @@ impl From<TransactionOutpointKey> for TransactionOutpoint {
     }
 }
 
-impl From<TransactionOutpoint> for TransactionOutpointKey {
-    fn from(outpoint: TransactionOutpoint) -> Self {
+impl From<&TransactionOutpoint> for TransactionOutpointKey {
+    fn from(outpoint: &TransactionOutpoint) -> Self {
         let mut bytes = [0; TRANSACTION_OUTPOINT_KEY_SIZE];
         bytes[..hashes::HASH_SIZE].copy_from_slice(&outpoint.transaction_id.as_bytes());
         bytes[hashes::HASH_SIZE..].copy_from_slice(&outpoint.index.to_le_bytes());
@@ -178,8 +178,8 @@ impl UtxoSetByScriptPublicKeyStoreReader for DbUtxoSetByScriptPublicKeyStore {
     // to the rpc via pagination, this would alleviate the memory footprint of script public keys with large amount of utxos.
     fn get_utxos_from_script_public_keys(&self, script_public_keys: ScriptPublicKeys) -> Result<UtxoSetByScriptPublicKey, StoreError> {
         let mut utxos_by_script_public_keys = UtxoSetByScriptPublicKey::new();
-        for script_public_key in script_public_keys.into_iter() {
-            let script_public_key_bucket = ScriptPublicKeyBucket::from(script_public_key.clone());
+        for script_public_key in script_public_keys.iter() {
+            let script_public_key_bucket = ScriptPublicKeyBucket::from(script_public_key);
             let utxos_by_script_public_keys_inner = CompactUtxoCollection::from_iter(
                 self.access
                     .seek_iterator::<TransactionOutpoint, CompactUtxoEntry>(Some(script_public_key_bucket.as_ref()), None, usize::MAX)
@@ -189,7 +189,7 @@ impl UtxoSetByScriptPublicKeyStoreReader for DbUtxoSetByScriptPublicKeyStore {
                         (k, v)
                     }),
             );
-            utxos_by_script_public_keys.insert(script_public_key, utxos_by_script_public_keys_inner);
+            utxos_by_script_public_keys.insert(ScriptPublicKey::from(script_public_key_bucket), utxos_by_script_public_keys_inner);
         }
         Ok(utxos_by_script_public_keys)
     }
@@ -206,7 +206,7 @@ impl UtxoSetByScriptPublicKeyStoreReader for DbUtxoSetByScriptPublicKeyStore {
                     entry.get_mut().insert(k.extract_transaction_outpoint(), v);
                 }
                 Entry::Vacant(entry) => {
-                    let mut value = CompactUtxoCollection::new();
+                    let mut value = CompactUtxoCollection::with_capacity(1);
                     value.insert(k.extract_transaction_outpoint(), CompactUtxoEntry::new(v.amount, v.block_daa_score, v.is_coinbase));
                     entry.insert(value);
                 }
@@ -224,8 +224,8 @@ impl UtxoSetByScriptPublicKeyStore for DbUtxoSetByScriptPublicKeyStore {
             utxo_diff_by_script_public_key.removed.iter().flat_map(move |(script_public_key, compact_utxo_collection)| {
                 compact_utxo_collection.iter().map(move |(transaction_outpoint, _)| {
                     UtxoEntryFullAccessKey::new(
-                        ScriptPublicKeyBucket::from(script_public_key.clone()),
-                        TransactionOutpointKey::from(*transaction_outpoint),
+                        ScriptPublicKeyBucket::from(script_public_key),
+                        TransactionOutpointKey::from(transaction_outpoint),
                     )
                 })
             });
@@ -234,8 +234,8 @@ impl UtxoSetByScriptPublicKeyStore for DbUtxoSetByScriptPublicKeyStore {
             compact_utxo_collection.iter().map(move |(transaction_outpoint, compact_utxo)| {
                 (
                     UtxoEntryFullAccessKey::new(
-                        ScriptPublicKeyBucket::from(script_public_key.clone()),
-                        TransactionOutpointKey::from(*transaction_outpoint),
+                        ScriptPublicKeyBucket::from(script_public_key),
+                        TransactionOutpointKey::from(transaction_outpoint),
                     ),
                     *compact_utxo,
                 )
@@ -255,8 +255,8 @@ impl UtxoSetByScriptPublicKeyStore for DbUtxoSetByScriptPublicKeyStore {
             compact_utxo_collection.iter().map(move |(transaction_outpoint, compact_utxo)| {
                 (
                     UtxoEntryFullAccessKey::new(
-                        ScriptPublicKeyBucket::from(script_public_key.clone()),
-                        TransactionOutpointKey::from(*transaction_outpoint),
+                        ScriptPublicKeyBucket::from(script_public_key),
+                        TransactionOutpointKey::from(transaction_outpoint),
                     ),
                     *compact_utxo,
                 )

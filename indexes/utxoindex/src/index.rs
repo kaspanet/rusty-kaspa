@@ -12,7 +12,7 @@ use database::prelude::{StoreError, StoreResult, DB};
 
 use consensus_core::{
     api::DynConsensus,
-    tx::{ScriptPublicKeys, TransactionOutpoint},
+    tx::{ScriptPublicKeys, TransactionIndexType, TransactionOutpoint},
     utxo::utxo_diff::UtxoDiff,
     BlockHashSet,
 };
@@ -148,8 +148,21 @@ impl UtxoIndexControlApi for UtxoIndex {
 
                 let last_outpoint = virtual_utxo_batch.last().expect("expected a none-empty vector").0;
 
-                // Increment index by one, as to not re-retrieve last with next iteration.
-                from_outpoint = Some(TransactionOutpoint::new(last_outpoint.transaction_id, last_outpoint.index + 1));
+                // Increment outpoint by one, as to not re-retrieve last with next iteration.
+                from_outpoint = match last_outpoint.index {
+                    TransactionIndexType::MAX => {
+                        //special case, increment the hash itself.
+                        let new_transaction_hash = last_outpoint.transaction_id;
+                        for (i, byte) in new_transaction_hash.as_bytes().iter().rev().enumerate() {
+                            if byte.le(&255) {
+                                new_transaction_hash.as_bytes()[new_transaction_hash.as_bytes().len() - i] = byte + 1;
+                                break;
+                            }
+                        }
+                        Some(TransactionOutpoint::new(new_transaction_hash, 0))
+                    }
+                    last_index => Some(TransactionOutpoint::new(last_outpoint.transaction_id, last_index + 1)),
+                };
 
                 utxoindex_changes.add_utxo_collection_vector(virtual_utxo_batch);
 

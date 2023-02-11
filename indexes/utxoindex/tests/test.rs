@@ -103,7 +103,13 @@ async fn test_utxoindex() {
             i += 1;
         }
     }
+
+    // Test that we don't have extra utxos.
+    let all_indexed_utxos = utxoindex.get_all_utxos().expect("expected all utxos");
+    let mut all_utxo_size = 0;
+    all_indexed_utxos.iter().for_each(|(_, compact_utxo_collection)| all_utxo_size += compact_utxo_collection.len());
     assert_eq!(i, consensus_utxo_set_size);
+    assert_eq!(all_utxo_size, consensus_utxo_set_size);
 
     assert_eq!(utxoindex.get_circulating_supply().expect("expected circulating supply"), consensus_supply);
     assert_eq!(
