@@ -33,7 +33,7 @@ impl StoreManager {
 
     pub fn get_utxos_by_script_public_key(
         &self,
-        script_public_keys: ScriptPublicKeys,
+        script_public_keys: &ScriptPublicKeys,
     ) -> Result<UtxoSetByScriptPublicKey, StoreError> {
         let reader = self.utxos_by_script_public_key_store.read();
         reader.get_utxos_from_script_public_keys(script_public_keys)
@@ -44,12 +44,12 @@ impl StoreManager {
         reader.get_all_utxos()
     }
 
-    pub fn update_utxo_state(&self, utxo_diff_by_script_public_key: UtxoChanges) -> Result<(), StoreError> {
+    pub fn update_utxo_state(&self, utxo_diff_by_script_public_key: &UtxoChanges) -> Result<(), StoreError> {
         let mut writer = self.utxos_by_script_public_key_store.write();
         writer.write_diff(utxo_diff_by_script_public_key)
     }
 
-    pub fn add_utxo_entries(&self, utxo_set_by_script_public_key: UtxoSetByScriptPublicKey) -> Result<(), StoreError> {
+    pub fn add_utxo_entries(&self, utxo_set_by_script_public_key: &UtxoSetByScriptPublicKey) -> Result<(), StoreError> {
         let mut writer = self.utxos_by_script_public_key_store.write();
         writer.add_utxo_entries(utxo_set_by_script_public_key)
     }

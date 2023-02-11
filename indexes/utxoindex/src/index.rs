@@ -47,7 +47,7 @@ impl UtxoIndexRetrievalApi for UtxoIndex {
     /// Retrieve utxos by script public keys supply from the utxoindex db.
     fn get_utxos_by_script_public_keys(&self, script_public_keys: ScriptPublicKeys) -> StoreResult<UtxoSetByScriptPublicKey> {
         trace!("[{0}] retrieving utxos by from {1} script public keys", IDENT, script_public_keys.len());
-        self.stores.get_utxos_by_script_public_key(script_public_keys)
+        self.stores.get_utxos_by_script_public_key(&script_public_keys)
     }
 
     /// This is used only for testing purposes, retrieving a full utxo set,
@@ -79,7 +79,7 @@ impl UtxoIndexControlApi for UtxoIndex {
         utxoindex_changes.add_tips(tips.unwrap_or_clone().to_vec());
 
         // Commit changed utxo state to db
-        self.stores.update_utxo_state(utxoindex_changes.utxo_changes.clone())?;
+        self.stores.update_utxo_state(&utxoindex_changes.utxo_changes)?;
 
         // Commit circulating supply change (if monotonic) to db.
         if utxoindex_changes.supply_change > 0 {
@@ -154,7 +154,7 @@ impl UtxoIndexControlApi for UtxoIndex {
                         //special case, increment the hash itself.
                         let new_transaction_hash = last_outpoint.transaction_id;
                         for (i, byte) in new_transaction_hash.as_bytes().iter().rev().enumerate() {
-                            if byte.le(&255) {
+                            if byte.lt(&255) {
                                 new_transaction_hash.as_bytes()[new_transaction_hash.as_bytes().len() - i] = byte + 1;
                                 break;
                             }
@@ -168,7 +168,7 @@ impl UtxoIndexControlApi for UtxoIndex {
 
                 circulating_supply += utxoindex_changes.supply_change as CirculatingSupply;
 
-                match self.stores.add_utxo_entries(utxoindex_changes.utxo_changes.added) {
+                match self.stores.add_utxo_entries(&utxoindex_changes.utxo_changes.added) {
                     Ok(_) => continue, // stay in loop, keep retrieving
                     Err(err) => {
                         trace!("[{0}] resyncing failed, clearing utxoindex db...", IDENT);
@@ -183,7 +183,7 @@ impl UtxoIndexControlApi for UtxoIndex {
 
                 circulating_supply += utxoindex_changes.supply_change as CirculatingSupply;
 
-                match self.stores.add_utxo_entries(utxoindex_changes.utxo_changes.added) {
+                match self.stores.add_utxo_entries(&utxoindex_changes.utxo_changes.added) {
                     Ok(_) => break, // break out of loop, commit other changes
                     Err(err) => {
                         trace!("[{0}] resyncing failed, clearing utxoindex db...", IDENT);
