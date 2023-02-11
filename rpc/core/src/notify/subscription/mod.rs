@@ -1,5 +1,5 @@
-use super::events::EventType;
-use crate::{api::ops::SubscribeCommand, Notification, NotificationType};
+use super::{events::EventType, scope::Scope};
+use crate::{api::ops::SubscribeCommand, Notification};
 use std::{
     any::Any,
     fmt::Debug,
@@ -15,11 +15,11 @@ pub mod single;
 /// a notification scope.
 pub struct Mutation {
     command: SubscribeCommand,
-    scope: NotificationType,
+    scope: Scope,
 }
 
 impl Mutation {
-    pub fn new(command: SubscribeCommand, scope: NotificationType) -> Self {
+    pub fn new(command: SubscribeCommand, scope: Scope) -> Self {
         Self { command, scope }
     }
 

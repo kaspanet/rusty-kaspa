@@ -8,8 +8,9 @@ use crate::{
         connection::ChannelConnection,
         listener::{ListenerID, ListenerUtxoNotificationFilterSetting},
         notifier::Notifier,
+        scope::Scope,
     },
-    FromRpcHex, Notification, NotificationType, RpcError, RpcResult,
+    FromRpcHex, Notification, RpcError, RpcResult,
 };
 use async_trait::async_trait;
 use consensus_core::{
@@ -308,13 +309,13 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
     }
 
     /// Start sending notifications of some type to a listener.
-    async fn start_notify(&self, id: ListenerID, notification_type: NotificationType) -> RpcResult<()> {
+    async fn start_notify(&self, id: ListenerID, notification_type: Scope) -> RpcResult<()> {
         self.notifier.start_notify(id, notification_type)?;
         Ok(())
     }
 
     /// Stop sending notifications of some type to a listener.
-    async fn stop_notify(&self, id: ListenerID, notification_type: NotificationType) -> RpcResult<()> {
+    async fn stop_notify(&self, id: ListenerID, notification_type: Scope) -> RpcResult<()> {
         self.notifier.stop_notify(id, notification_type)?;
         Ok(())
     }

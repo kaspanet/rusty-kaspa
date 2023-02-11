@@ -1,9 +1,7 @@
-use std::collections::{HashMap, HashSet};
-
+use super::{super::scope::Scope, Compounded, Mutation, Subscription};
+use crate::{api::ops::SubscribeCommand, notify::events::EventType};
 use addresses::Address;
-
-use super::{Compounded, Mutation, Subscription};
-use crate::{api::ops::SubscribeCommand, notify::events::EventType, NotificationType};
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug)]
 pub struct OverallSubscription {
@@ -77,7 +75,7 @@ impl VirtualSelectedParentChainChangedSubscription {
 impl Compounded for VirtualSelectedParentChainChangedSubscription {
     fn compound(&mut self, mutation: Mutation) -> Option<Mutation> {
         assert_eq!(self.event_type(), mutation.event_type());
-        if let NotificationType::VirtualSelectedParentChainChanged(all) = mutation.scope {
+        if let Scope::VirtualSelectedParentChainChanged(all) = mutation.scope {
             match mutation.command {
                 SubscribeCommand::Start => {
                     if all {
@@ -111,7 +109,7 @@ impl Compounded for VirtualSelectedParentChainChangedSubscription {
                                 if self.reduced() > 0 {
                                     return Some(Mutation::new(
                                         SubscribeCommand::Start,
-                                        NotificationType::VirtualSelectedParentChainChanged(false),
+                                        Scope::VirtualSelectedParentChainChanged(false),
                                     ));
                                 } else {
                                     return Some(mutation);
@@ -142,14 +140,14 @@ pub struct UtxosChangedSubscription {
 impl Compounded for UtxosChangedSubscription {
     fn compound(&mut self, mutation: Mutation) -> Option<Mutation> {
         assert_eq!(self.event_type(), mutation.event_type());
-        if let NotificationType::UtxosChanged(mut addresses) = mutation.scope {
+        if let Scope::UtxosChanged(mut addresses) = mutation.scope {
             match mutation.command {
                 SubscribeCommand::Start => {
                     if addresses.is_empty() {
                         // Add All
                         self.all += 1;
                         if self.all == 1 {
-                            return Some(Mutation::new(SubscribeCommand::Start, NotificationType::UtxosChanged(vec![])));
+                            return Some(Mutation::new(SubscribeCommand::Start, Scope::UtxosChanged(vec![])));
                         }
                     } else {
                         // Add(A)
@@ -163,7 +161,7 @@ impl Compounded for UtxosChangedSubscription {
                             });
                         }
                         if !added.is_empty() && self.all == 0 {
-                            return Some(Mutation::new(SubscribeCommand::Start, NotificationType::UtxosChanged(added)));
+                            return Some(Mutation::new(SubscribeCommand::Start, Scope::UtxosChanged(added)));
                         }
                     }
                 }
@@ -186,7 +184,7 @@ impl Compounded for UtxosChangedSubscription {
                             self.addresses.remove(x);
                         });
                         if !removed.is_empty() && self.all == 0 {
-                            return Some(Mutation::new(SubscribeCommand::Stop, NotificationType::UtxosChanged(removed)));
+                            return Some(Mutation::new(SubscribeCommand::Stop, Scope::UtxosChanged(removed)));
                         }
                     } else {
                         // Remove All
@@ -196,10 +194,10 @@ impl Compounded for UtxosChangedSubscription {
                                 if !self.addresses.is_empty() {
                                     return Some(Mutation::new(
                                         SubscribeCommand::Start,
-                                        NotificationType::UtxosChanged(self.addresses.keys().cloned().collect()),
+                                        Scope::UtxosChanged(self.addresses.keys().cloned().collect()),
                                     ));
                                 } else {
-                                    return Some(Mutation::new(SubscribeCommand::Stop, NotificationType::UtxosChanged(vec![])));
+                                    return Some(Mutation::new(SubscribeCommand::Stop, Scope::UtxosChanged(vec![])));
                                 }
                             }
                         }

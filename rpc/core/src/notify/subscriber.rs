@@ -7,20 +7,20 @@ use std::sync::{
     Arc, Mutex,
 };
 extern crate derive_more;
-use super::{error::Error, listener::ListenerID, message::SubscribeMessage, result::Result};
-use crate::{api::ops::SubscribeCommand, NotificationType, RpcResult};
+use super::{error::Error, listener::ListenerID, message::SubscribeMessage, result::Result, scope::Scope};
+use crate::{api::ops::SubscribeCommand, RpcResult};
 use kaspa_utils::channel::Channel;
 
 /// A manager of subscriptions to notifications for registered listeners
 #[async_trait]
 pub trait SubscriptionManager: Send + Sync + Debug {
-    async fn start_notify(self: Arc<Self>, id: ListenerID, notification_type: NotificationType) -> RpcResult<()>;
-    async fn stop_notify(self: Arc<Self>, id: ListenerID, notification_type: NotificationType) -> RpcResult<()>;
+    async fn start_notify(self: Arc<Self>, id: ListenerID, notification_type: Scope) -> RpcResult<()>;
+    async fn stop_notify(self: Arc<Self>, id: ListenerID, notification_type: Scope) -> RpcResult<()>;
 
     async fn execute_notify_command(
         self: Arc<Self>,
         id: ListenerID,
-        notification_type: NotificationType,
+        notification_type: Scope,
         command: SubscribeCommand,
     ) -> RpcResult<()> {
         match command {

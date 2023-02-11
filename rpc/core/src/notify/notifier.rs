@@ -6,9 +6,10 @@ use super::{
     listener::{Listener, ListenerID, ListenerSenderSide, ListenerUtxoNotificationFilterSetting, ListenerVariantSet},
     message::{DispatchMessage, SubscribeMessage},
     result::Result,
+    scope::Scope,
     subscriber::{Subscriber, SubscriptionManager},
 };
-use crate::{api::ops::SubscribeCommand, Notification, NotificationType, RpcResult};
+use crate::{api::ops::SubscribeCommand, Notification, RpcResult};
 use async_channel::{Receiver, Sender};
 use async_trait::async_trait;
 use kaspa_core::trace;
@@ -61,13 +62,13 @@ where
     pub fn execute_subscribe_command(
         self: Arc<Self>,
         id: ListenerID,
-        notification_type: NotificationType,
+        notification_type: Scope,
         command: SubscribeCommand,
     ) -> Result<()> {
         self.inner.clone().execute_subscribe_command(id, notification_type, command)
     }
 
-    pub fn start_notify(&self, id: ListenerID, notification_type: NotificationType) -> Result<()> {
+    pub fn start_notify(&self, id: ListenerID, notification_type: Scope) -> Result<()> {
         self.inner.clone().start_notify(id, notification_type)
     }
 
@@ -75,7 +76,7 @@ where
         self.inner.clone().notify(notification)
     }
 
-    pub fn stop_notify(&self, id: ListenerID, notification_type: NotificationType) -> Result<()> {
+    pub fn stop_notify(&self, id: ListenerID, notification_type: Scope) -> Result<()> {
         self.inner.clone().stop_notify(id, notification_type)
     }
 
@@ -89,7 +90,7 @@ impl<T> SubscriptionManager for Notifier<T>
 where
     T: Connection,
 {
-    async fn start_notify(self: Arc<Self>, id: ListenerID, notification_type: NotificationType) -> RpcResult<()> {
+    async fn start_notify(self: Arc<Self>, id: ListenerID, notification_type: Scope) -> RpcResult<()> {
         trace!(
             "[Notifier-{}] as subscription manager start sending to listener {} notifications of type {:?}",
             self.inner.name,
@@ -100,7 +101,7 @@ where
         Ok(())
     }
 
-    async fn stop_notify(self: Arc<Self>, id: ListenerID, notification_type: NotificationType) -> RpcResult<()> {
+    async fn stop_notify(self: Arc<Self>, id: ListenerID, notification_type: Scope) -> RpcResult<()> {
         trace!(
             "[Notifier-{}] as subscription manager stop sending to listener {} notifications of type {:?}",
             self.inner.name,
@@ -362,7 +363,7 @@ where
     pub fn execute_subscribe_command(
         self: Arc<Self>,
         id: ListenerID,
-        notification_type: NotificationType,
+        notification_type: Scope,
         command: SubscribeCommand,
     ) -> Result<()> {
         match command {
@@ -371,7 +372,7 @@ where
         }
     }
 
-    fn start_notify(self: Arc<Self>, id: ListenerID, notification_type: NotificationType) -> Result<()> {
+    fn start_notify(self: Arc<Self>, id: ListenerID, notification_type: Scope) -> Result<()> {
         let event: EventType = (&notification_type).into();
         let mut listeners = self.listeners.lock().unwrap();
         if let Some(listener) = listeners.get_mut(&id) {
@@ -396,7 +397,7 @@ where
         Ok(())
     }
 
-    fn stop_notify(self: Arc<Self>, id: ListenerID, notification_type: NotificationType) -> Result<()> {
+    fn stop_notify(self: Arc<Self>, id: ListenerID, notification_type: Scope) -> Result<()> {
         let event: EventType = (&notification_type).into();
         let mut listeners = self.listeners.lock().unwrap();
         if let Some(listener) = listeners.get_mut(&id) {

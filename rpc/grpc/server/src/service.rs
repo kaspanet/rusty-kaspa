@@ -12,6 +12,7 @@ use kaspa_rpc_core::{
         channel::NotificationChannel,
         connection::ChannelConnection,
         listener::{ListenerID, ListenerUtxoNotificationFilterSetting},
+        scope::Scope,
         subscriber::DynSubscriptionManager,
         subscriber::Subscriber,
     },
@@ -307,7 +308,7 @@ impl Rpc for GrpcService {
                                         Ok(request) => {
                                             let result = notifier.clone().execute_subscribe_command(
                                                 listener_id,
-                                                kaspa_rpc_core::NotificationType::BlockAdded,
+                                                Scope::BlockAdded,
                                                 request.command,
                                             );
                                             NotifyBlockAddedResponseMessage::from(result).into()
@@ -321,9 +322,7 @@ impl Rpc for GrpcService {
                                         Ok(request) => {
                                             let result = notifier.clone().execute_subscribe_command(
                                                 listener_id,
-                                                kaspa_rpc_core::NotificationType::VirtualSelectedParentChainChanged(
-                                                    request.include_accepted_transaction_ids,
-                                                ),
+                                                Scope::VirtualSelectedParentChainChanged(request.include_accepted_transaction_ids),
                                                 request.command,
                                             );
                                             NotifyVirtualSelectedParentChainChangedResponseMessage::from(result).into()
@@ -337,14 +336,10 @@ impl Rpc for GrpcService {
                                         Ok(request) => {
                                             let result = notifier
                                                 .clone()
-                                                .execute_subscribe_command(
-                                                    listener_id,
-                                                    kaspa_rpc_core::NotificationType::FinalityConflict,
-                                                    request.command,
-                                                )
+                                                .execute_subscribe_command(listener_id, Scope::FinalityConflict, request.command)
                                                 .and(notifier.clone().execute_subscribe_command(
                                                     listener_id,
-                                                    kaspa_rpc_core::NotificationType::FinalityConflictResolved,
+                                                    Scope::FinalityConflictResolved,
                                                     request.command,
                                                 ));
                                             NotifyFinalityConflictResponseMessage::from(result).into()
@@ -358,7 +353,7 @@ impl Rpc for GrpcService {
                                         Ok(request) => {
                                             let result = notifier.clone().execute_subscribe_command(
                                                 listener_id,
-                                                kaspa_rpc_core::NotificationType::UtxosChanged(request.addresses),
+                                                Scope::UtxosChanged(request.addresses),
                                                 request.command,
                                             );
                                             NotifyUtxosChangedResponseMessage::from(result).into()
@@ -372,7 +367,7 @@ impl Rpc for GrpcService {
                                         Ok(request) => {
                                             let result = notifier.clone().execute_subscribe_command(
                                                 listener_id,
-                                                kaspa_rpc_core::NotificationType::VirtualSelectedParentBlueScoreChanged,
+                                                Scope::VirtualSelectedParentBlueScoreChanged,
                                                 request.command,
                                             );
                                             NotifyVirtualSelectedParentBlueScoreChangedResponseMessage::from(result).into()
@@ -386,7 +381,7 @@ impl Rpc for GrpcService {
                                         Ok(request) => {
                                             let result = notifier.clone().execute_subscribe_command(
                                                 listener_id,
-                                                kaspa_rpc_core::NotificationType::VirtualDaaScoreChanged,
+                                                Scope::VirtualDaaScoreChanged,
                                                 request.command,
                                             );
                                             NotifyVirtualDaaScoreChangedResponseMessage::from(result).into()
@@ -400,7 +395,7 @@ impl Rpc for GrpcService {
                                         Ok(request) => {
                                             let result = notifier.clone().execute_subscribe_command(
                                                 listener_id,
-                                                kaspa_rpc_core::NotificationType::PruningPointUtxoSetOverride,
+                                                Scope::PruningPointUtxoSetOverride,
                                                 request.command,
                                             );
                                             NotifyPruningPointUtxoSetOverrideResponseMessage::from(result).into()
@@ -414,7 +409,7 @@ impl Rpc for GrpcService {
                                         Ok(request) => {
                                             let result = notifier.clone().execute_subscribe_command(
                                                 listener_id,
-                                                kaspa_rpc_core::NotificationType::NewBlockTemplate,
+                                                Scope::NewBlockTemplate,
                                                 request.command,
                                             );
                                             NotifyNewBlockTemplateResponseMessage::from(result).into()
@@ -430,7 +425,7 @@ impl Rpc for GrpcService {
                                             Ok(request) => {
                                                 let result = notifier.clone().execute_subscribe_command(
                                                     listener_id,
-                                                    kaspa_rpc_core::NotificationType::UtxosChanged(request.addresses),
+                                                    Scope::UtxosChanged(request.addresses),
                                                     request.command,
                                                 );
                                                 NotifyUtxosChangedResponseMessage::from(result).into()
@@ -450,7 +445,7 @@ impl Rpc for GrpcService {
                                             Ok(request) => {
                                                 let result = notifier.clone().execute_subscribe_command(
                                                     listener_id,
-                                                    kaspa_rpc_core::NotificationType::PruningPointUtxoSetOverride,
+                                                    Scope::PruningPointUtxoSetOverride,
                                                     request.command,
                                                 );
                                                 NotifyPruningPointUtxoSetOverrideResponseMessage::from(result).into()

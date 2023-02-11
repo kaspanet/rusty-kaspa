@@ -1,38 +1,10 @@
-use crate::{model::message::*, RpcAddress};
+use crate::model::message::*;
+use crate::notify::scope::Scope;
 use async_channel::{Receiver, Sender};
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 use std::sync::Arc;
-
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
-pub enum NotificationType {
-    BlockAdded,
-    VirtualSelectedParentChainChanged(bool),
-    FinalityConflict,
-    FinalityConflictResolved,
-    UtxosChanged(Vec<RpcAddress>),
-    VirtualSelectedParentBlueScoreChanged,
-    VirtualDaaScoreChanged,
-    PruningPointUtxoSetOverride,
-    NewBlockTemplate,
-}
-
-impl From<&Notification> for NotificationType {
-    fn from(item: &Notification) -> Self {
-        match item {
-            Notification::BlockAdded(_) => NotificationType::BlockAdded,
-            Notification::VirtualSelectedParentChainChanged(_) => NotificationType::VirtualSelectedParentChainChanged(false),
-            Notification::FinalityConflict(_) => NotificationType::FinalityConflict,
-            Notification::FinalityConflictResolved(_) => NotificationType::FinalityConflictResolved,
-            Notification::UtxosChanged(_) => NotificationType::UtxosChanged(vec![]),
-            Notification::VirtualSelectedParentBlueScoreChanged(_) => NotificationType::VirtualSelectedParentBlueScoreChanged,
-            Notification::VirtualDaaScoreChanged(_) => NotificationType::VirtualDaaScoreChanged,
-            Notification::PruningPointUtxoSetOverride(_) => NotificationType::PruningPointUtxoSetOverride,
-            Notification::NewBlockTemplate(_) => NotificationType::NewBlockTemplate,
-        }
-    }
-}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[allow(clippy::large_enum_variant)]
@@ -92,16 +64,32 @@ impl Display for Notification {
     }
 }
 
+impl AsRef<Notification> for Notification {
+    fn as_ref(&self) -> &Self {
+        self
+    }
+}
+
+impl From<&Notification> for Scope {
+    fn from(item: &Notification) -> Self {
+        match item {
+            Notification::BlockAdded(_) => Scope::BlockAdded,
+            Notification::VirtualSelectedParentChainChanged(_) => Scope::VirtualSelectedParentChainChanged(false),
+            Notification::FinalityConflict(_) => Scope::FinalityConflict,
+            Notification::FinalityConflictResolved(_) => Scope::FinalityConflictResolved,
+            Notification::UtxosChanged(_) => Scope::UtxosChanged(vec![]),
+            Notification::VirtualSelectedParentBlueScoreChanged(_) => Scope::VirtualSelectedParentBlueScoreChanged,
+            Notification::VirtualDaaScoreChanged(_) => Scope::VirtualDaaScoreChanged,
+            Notification::PruningPointUtxoSetOverride(_) => Scope::PruningPointUtxoSetOverride,
+            Notification::NewBlockTemplate(_) => Scope::NewBlockTemplate,
+        }
+    }
+}
+
 pub type NotificationSender = Sender<Arc<Notification>>;
 pub type NotificationReceiver = Receiver<Arc<Notification>>;
 
 pub enum NotificationHandle {
     Existing(u64),
     New(NotificationSender),
-}
-
-impl AsRef<Notification> for Notification {
-    fn as_ref(&self) -> &Self {
-        self
-    }
 }

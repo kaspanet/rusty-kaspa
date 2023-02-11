@@ -1,4 +1,5 @@
-use crate::{Notification, NotificationType};
+use super::scope::Scope;
+use crate::Notification;
 use std::ops::{Index, IndexMut};
 use workflow_core::enums::usize_try_from;
 
@@ -34,18 +35,18 @@ pub const EVENT_TYPE_ARRAY: [EventType; EVENT_COUNT] = [
 ];
 
 // TODO: write a macro to get this
-impl From<EventType> for NotificationType {
+impl From<EventType> for Scope {
     fn from(item: EventType) -> Self {
         match item {
-            EventType::BlockAdded => NotificationType::BlockAdded,
-            EventType::VirtualSelectedParentChainChanged => NotificationType::VirtualSelectedParentChainChanged(false),
-            EventType::FinalityConflict => NotificationType::FinalityConflict,
-            EventType::FinalityConflictResolved => NotificationType::FinalityConflictResolved,
-            EventType::UtxosChanged => NotificationType::UtxosChanged(vec![]),
-            EventType::VirtualSelectedParentBlueScoreChanged => NotificationType::VirtualSelectedParentBlueScoreChanged,
-            EventType::VirtualDaaScoreChanged => NotificationType::VirtualDaaScoreChanged,
-            EventType::PruningPointUTXOSetOverride => NotificationType::PruningPointUtxoSetOverride,
-            EventType::NewBlockTemplate => NotificationType::NewBlockTemplate,
+            EventType::BlockAdded => Scope::BlockAdded,
+            EventType::VirtualSelectedParentChainChanged => Scope::VirtualSelectedParentChainChanged(false),
+            EventType::FinalityConflict => Scope::FinalityConflict,
+            EventType::FinalityConflictResolved => Scope::FinalityConflictResolved,
+            EventType::UtxosChanged => Scope::UtxosChanged(vec![]),
+            EventType::VirtualSelectedParentBlueScoreChanged => Scope::VirtualSelectedParentBlueScoreChanged,
+            EventType::VirtualDaaScoreChanged => Scope::VirtualDaaScoreChanged,
+            EventType::PruningPointUTXOSetOverride => Scope::PruningPointUtxoSetOverride,
+            EventType::NewBlockTemplate => Scope::NewBlockTemplate,
         }
     }
 }
@@ -68,18 +69,18 @@ impl From<&Notification> for EventType {
 }
 
 // TODO: write a macro to get this
-impl From<&NotificationType> for EventType {
-    fn from(item: &NotificationType) -> Self {
+impl From<&Scope> for EventType {
+    fn from(item: &Scope) -> Self {
         match item {
-            NotificationType::BlockAdded => EventType::BlockAdded,
-            NotificationType::VirtualSelectedParentChainChanged(_) => EventType::VirtualSelectedParentChainChanged,
-            NotificationType::FinalityConflict => EventType::FinalityConflict,
-            NotificationType::FinalityConflictResolved => EventType::FinalityConflictResolved,
-            NotificationType::UtxosChanged(_) => EventType::UtxosChanged,
-            NotificationType::VirtualSelectedParentBlueScoreChanged => EventType::VirtualSelectedParentBlueScoreChanged,
-            NotificationType::VirtualDaaScoreChanged => EventType::VirtualDaaScoreChanged,
-            NotificationType::PruningPointUtxoSetOverride => EventType::PruningPointUTXOSetOverride,
-            NotificationType::NewBlockTemplate => EventType::NewBlockTemplate,
+            Scope::BlockAdded => EventType::BlockAdded,
+            Scope::VirtualSelectedParentChainChanged(_) => EventType::VirtualSelectedParentChainChanged,
+            Scope::FinalityConflict => EventType::FinalityConflict,
+            Scope::FinalityConflictResolved => EventType::FinalityConflictResolved,
+            Scope::UtxosChanged(_) => EventType::UtxosChanged,
+            Scope::VirtualSelectedParentBlueScoreChanged => EventType::VirtualSelectedParentBlueScoreChanged,
+            Scope::VirtualDaaScoreChanged => EventType::VirtualDaaScoreChanged,
+            Scope::PruningPointUtxoSetOverride => EventType::PruningPointUTXOSetOverride,
+            Scope::NewBlockTemplate => EventType::NewBlockTemplate,
         }
     }
 }

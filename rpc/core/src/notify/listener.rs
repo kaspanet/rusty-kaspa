@@ -3,9 +3,10 @@ use crate::{
         connection::Connection,
         events::{EventArray, EventType},
         result::Result,
+        scope::Scope,
         utxo_address_set::RpcUtxoAddressSet,
     },
-    Notification, NotificationType, RpcAddress,
+    Notification, RpcAddress,
 };
 use std::sync::Arc;
 use std::{collections::HashMap, fmt::Debug};
@@ -72,7 +73,7 @@ where
 
     /// Toggle registration for [`NotificationType`] notifications.
     /// Return true if any change occurred in the registration state.
-    pub(crate) fn toggle(&mut self, notification_type: NotificationType, active: bool) -> bool {
+    pub(crate) fn toggle(&mut self, notification_type: Scope, active: bool) -> bool {
         let mut changed = false;
         let event: EventType = (&notification_type).into();
 
@@ -81,7 +82,7 @@ where
             changed = true;
         }
 
-        if let NotificationType::UtxosChanged(ref utxo_addresses) = notification_type {
+        if let Scope::UtxosChanged(ref utxo_addresses) = notification_type {
             changed = self.toggle_utxo_addresses(utxo_addresses);
         }
         changed

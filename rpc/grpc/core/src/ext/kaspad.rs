@@ -1,4 +1,4 @@
-use kaspa_rpc_core::{api::ops::SubscribeCommand, NotificationType};
+use kaspa_rpc_core::{api::ops::SubscribeCommand, notify::scope::Scope};
 
 use crate::protowire::{
     kaspad_request, kaspad_response, KaspadRequest, KaspadResponse, NotifyBlockAddedRequestMessage,
@@ -8,24 +8,22 @@ use crate::protowire::{
 };
 
 impl KaspadRequest {
-    pub fn from_notification_type(notification_type: &NotificationType, command: SubscribeCommand) -> Self {
+    pub fn from_notification_type(notification_type: &Scope, command: SubscribeCommand) -> Self {
         KaspadRequest { id: 0, payload: Some(kaspad_request::Payload::from_notification_type(notification_type, command)) }
     }
 }
 
 impl kaspad_request::Payload {
-    pub fn from_notification_type(notification_type: &NotificationType, command: SubscribeCommand) -> Self {
+    pub fn from_notification_type(notification_type: &Scope, command: SubscribeCommand) -> Self {
         match notification_type {
-            NotificationType::BlockAdded => {
+            Scope::BlockAdded => {
                 kaspad_request::Payload::NotifyBlockAddedRequest(NotifyBlockAddedRequestMessage { command: command.into() })
             }
-            NotificationType::NewBlockTemplate => {
-                kaspad_request::Payload::NotifyNewBlockTemplateRequest(NotifyNewBlockTemplateRequestMessage {
-                    command: command.into(),
-                })
-            }
+            Scope::NewBlockTemplate => kaspad_request::Payload::NotifyNewBlockTemplateRequest(NotifyNewBlockTemplateRequestMessage {
+                command: command.into(),
+            }),
 
-            NotificationType::VirtualSelectedParentChainChanged(ref include_accepted_transaction_ids) => {
+            Scope::VirtualSelectedParentChainChanged(ref include_accepted_transaction_ids) => {
                 kaspad_request::Payload::NotifyVirtualSelectedParentChainChangedRequest(
                     NotifyVirtualSelectedParentChainChangedRequestMessage {
                         command: command.into(),
@@ -33,33 +31,31 @@ impl kaspad_request::Payload {
                     },
                 )
             }
-            NotificationType::FinalityConflict => {
+            Scope::FinalityConflict => kaspad_request::Payload::NotifyFinalityConflictRequest(NotifyFinalityConflictRequestMessage {
+                command: command.into(),
+            }),
+            Scope::FinalityConflictResolved => {
                 kaspad_request::Payload::NotifyFinalityConflictRequest(NotifyFinalityConflictRequestMessage {
                     command: command.into(),
                 })
             }
-            NotificationType::FinalityConflictResolved => {
-                kaspad_request::Payload::NotifyFinalityConflictRequest(NotifyFinalityConflictRequestMessage {
-                    command: command.into(),
-                })
-            }
-            NotificationType::UtxosChanged(ref addresses) => {
+            Scope::UtxosChanged(ref addresses) => {
                 kaspad_request::Payload::NotifyUtxosChangedRequest(NotifyUtxosChangedRequestMessage {
                     addresses: addresses.iter().map(|x| x.into()).collect::<Vec<String>>(),
                     command: command.into(),
                 })
             }
-            NotificationType::VirtualSelectedParentBlueScoreChanged => {
+            Scope::VirtualSelectedParentBlueScoreChanged => {
                 kaspad_request::Payload::NotifyVirtualSelectedParentBlueScoreChangedRequest(
                     NotifyVirtualSelectedParentBlueScoreChangedRequestMessage { command: command.into() },
                 )
             }
-            NotificationType::VirtualDaaScoreChanged => {
+            Scope::VirtualDaaScoreChanged => {
                 kaspad_request::Payload::NotifyVirtualDaaScoreChangedRequest(NotifyVirtualDaaScoreChangedRequestMessage {
                     command: command.into(),
                 })
             }
-            NotificationType::PruningPointUtxoSetOverride => {
+            Scope::PruningPointUtxoSetOverride => {
                 kaspad_request::Payload::NotifyPruningPointUtxoSetOverrideRequest(NotifyPruningPointUtxoSetOverrideRequestMessage {
                     command: command.into(),
                 })

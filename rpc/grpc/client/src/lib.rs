@@ -24,9 +24,10 @@ use kaspa_rpc_core::{
         events::EventType,
         listener::{ListenerID, ListenerUtxoNotificationFilterSetting},
         notifier::Notifier,
+        scope::Scope,
         subscriber::{Subscriber, SubscriptionManager},
     },
-    Notification, NotificationSender, NotificationType,
+    Notification, NotificationSender,
 };
 use kaspa_utils::triggers::DuplexTrigger;
 use std::{
@@ -157,13 +158,13 @@ impl RpcApi<ChannelConnection> for GrpcClient {
     }
 
     /// Start sending notifications of some type to a listener.
-    async fn start_notify(&self, id: ListenerID, notification_type: NotificationType) -> RpcResult<()> {
+    async fn start_notify(&self, id: ListenerID, notification_type: Scope) -> RpcResult<()> {
         self.notifier().start_notify(id, notification_type).await?;
         Ok(())
     }
 
     /// Stop sending notifications of some type to a listener.
-    async fn stop_notify(&self, id: ListenerID, notification_type: NotificationType) -> RpcResult<()> {
+    async fn stop_notify(&self, id: ListenerID, notification_type: Scope) -> RpcResult<()> {
         if self.handle_stop_notify() {
             self.notifier().stop_notify(id, notification_type).await?;
             Ok(())
@@ -599,14 +600,14 @@ impl Inner {
 
 #[async_trait]
 impl SubscriptionManager for Inner {
-    async fn start_notify(self: Arc<Self>, _: ListenerID, notification_type: NotificationType) -> RpcResult<()> {
+    async fn start_notify(self: Arc<Self>, _: ListenerID, notification_type: Scope) -> RpcResult<()> {
         trace!("[GrpcClient] start_notify: {:?}", notification_type);
         let request = kaspad_request::Payload::from_notification_type(&notification_type, SubscribeCommand::Start);
         self.clone().call((&request).into(), request).await?;
         Ok(())
     }
 
-    async fn stop_notify(self: Arc<Self>, _: ListenerID, notification_type: NotificationType) -> RpcResult<()> {
+    async fn stop_notify(self: Arc<Self>, _: ListenerID, notification_type: Scope) -> RpcResult<()> {
         if self.handle_stop_notify() {
             trace!("[GrpcClient] stop_notify: {:?}", notification_type);
             let request = kaspad_request::Payload::from_notification_type(&notification_type, SubscribeCommand::Stop);

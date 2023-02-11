@@ -7,6 +7,7 @@ pub mod listener;
 pub mod message;
 pub mod notifier;
 pub mod result;
+pub mod scope;
 pub mod subscriber;
 pub mod subscription;
 pub mod utxo_address_set;

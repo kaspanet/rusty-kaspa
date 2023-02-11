@@ -1,8 +1,9 @@
 use super::{
     connection::Connection,
     listener::{ListenerID, ListenerSenderSide},
+    scope::Scope,
 };
-use crate::{Notification, NotificationType};
+use crate::Notification;
 use std::sync::Arc;
 
 #[derive(Clone, Debug)]
@@ -18,7 +19,7 @@ where
 
 #[derive(Clone, Debug)]
 pub(crate) enum SubscribeMessage {
-    StartEvent(NotificationType),
-    StopEvent(NotificationType),
+    StartEvent(Scope),
+    StopEvent(Scope),
     Shutdown,
 }
