@@ -23,7 +23,7 @@ pub const VERSION_TYPE_SIZE: usize = size_of::<VersionType>(); // Const since we
 /// Size of the [ScriptPublicKeyBucket] in bytes.
 pub const SCRIPT_PUBLIC_KEY_BUCKET_SIZE: usize = VERSION_TYPE_SIZE + SCRIPT_VECTOR_SIZE + 1; //plus one to encode length
 
-/// [ScriptPublicKey] bucket.
+/// [`ScriptPublicKeyBucket`].
 /// Consists of 1 byte u8 encoded length of the script, 2 bytes of little endian [VersionType] bytes, followed by 36 bytes of [ScriptVec] (with right padded 0 bytes if script vec < 36 bytes).
 /// the length is encoded separately at the first index, as script public key scripts can have variable byte sizes, this can be used for quick deserialization without needing to parse the script.  
 #[derive(Eq, Hash, PartialEq, Debug, Copy, Clone)]

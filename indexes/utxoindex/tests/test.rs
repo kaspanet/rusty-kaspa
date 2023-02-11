@@ -219,3 +219,10 @@ async fn test_utxoindex() {
     drop(utxoindex);
     drop(test_consensus);
 }
+
+/// see comment at [`ScriptPublicKeyBucket`], if this triggers [`ScriptPublicKeyBucket`] needs to be reworked.  
+#[test]
+fn test_script_vector_size_for_script_public_key_bucket() {
+    use consensus_core::tx::SCRIPT_VECTOR_SIZE;
+    assert!(SCRIPT_VECTOR_SIZE <= (u8::MAX as usize));
+}
