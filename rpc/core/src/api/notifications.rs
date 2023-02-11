@@ -8,7 +8,7 @@ use std::sync::Arc;
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub enum NotificationType {
     BlockAdded,
-    VirtualSelectedParentChainChanged,
+    VirtualSelectedParentChainChanged(bool),
     FinalityConflict,
     FinalityConflictResolved,
     UtxosChanged(Vec<RpcAddress>),
@@ -22,7 +22,7 @@ impl From<&Notification> for NotificationType {
     fn from(item: &Notification) -> Self {
         match item {
             Notification::BlockAdded(_) => NotificationType::BlockAdded,
-            Notification::VirtualSelectedParentChainChanged(_) => NotificationType::VirtualSelectedParentChainChanged,
+            Notification::VirtualSelectedParentChainChanged(_) => NotificationType::VirtualSelectedParentChainChanged(false),
             Notification::FinalityConflict(_) => NotificationType::FinalityConflict,
             Notification::FinalityConflictResolved(_) => NotificationType::FinalityConflictResolved,
             Notification::UtxosChanged(_) => NotificationType::UtxosChanged(vec![]),

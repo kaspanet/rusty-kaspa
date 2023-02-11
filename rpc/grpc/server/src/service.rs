@@ -321,7 +321,9 @@ impl Rpc for GrpcService {
                                         Ok(request) => {
                                             let result = notifier.clone().execute_subscribe_command(
                                                 listener_id,
-                                                kaspa_rpc_core::NotificationType::VirtualSelectedParentChainChanged,
+                                                kaspa_rpc_core::NotificationType::VirtualSelectedParentChainChanged(
+                                                    request.include_accepted_transaction_ids,
+                                                ),
                                                 request.command,
                                             );
                                             NotifyVirtualSelectedParentChainChangedResponseMessage::from(result).into()

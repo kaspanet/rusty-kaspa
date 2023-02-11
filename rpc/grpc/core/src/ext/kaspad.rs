@@ -25,11 +25,11 @@ impl kaspad_request::Payload {
                 })
             }
 
-            NotificationType::VirtualSelectedParentChainChanged => {
+            NotificationType::VirtualSelectedParentChainChanged(ref include_accepted_transaction_ids) => {
                 kaspad_request::Payload::NotifyVirtualSelectedParentChainChangedRequest(
                     NotifyVirtualSelectedParentChainChangedRequestMessage {
                         command: command.into(),
-                        include_accepted_transaction_ids: false,
+                        include_accepted_transaction_ids: *include_accepted_transaction_ids,
                     },
                 )
             }
