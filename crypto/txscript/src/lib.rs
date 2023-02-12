@@ -87,7 +87,7 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
     pub fn from_transaction_input(
         tx: &'a T,
         input: &'a TransactionInput,
-        id: usize,
+        input_idx: usize,
         utxo_entry: &'a UtxoEntry,
         reused_values: &'a mut SigHashReusedValues,
         sig_cache: &'a Cache<SigCacheKey, Result<(), secp256k1::Error>>,
@@ -99,17 +99,17 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
                 (script_public_key[0] == opcodes::codes::OpBlake2b) &&
                 (script_public_key[1] == opcodes::codes::OpData32) &&
                 (script_public_key[script_public_key.len() -1] == opcodes::codes::OpEqual);
-        match id < tx.tx().inputs.len() {
+        match input_idx < tx.tx().inputs.len() {
             true => Ok(Self {
                 dstack: Default::default(),
                 astack: Default::default(),
-                script_source: ScriptSource::TxInput { tx, input, id, utxo_entry, is_p2sh },
+                script_source: ScriptSource::TxInput { tx, input, id: input_idx, utxo_entry, is_p2sh },
                 reused_values,
                 sig_cache,
                 cond_stack: Default::default(),
                 num_ops: 0,
             }),
-            false => Err(TxScriptError::InvalidIndex(id, tx.tx().inputs.len())),
+            false => Err(TxScriptError::InvalidIndex(input_idx, tx.tx().inputs.len())),
         }
     }
 
