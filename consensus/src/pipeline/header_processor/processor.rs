@@ -6,7 +6,6 @@ use crate::{
             block_window_cache::{BlockWindowCacheStore, BlockWindowHeap},
             daa::DbDaaStore,
             depth::DbDepthStore,
-            errors::StoreResultExtensions,
             ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStoreReader},
             headers::DbHeadersStore,
             headers_selected_tip::{DbHeadersSelectedTipStore, HeadersSelectedTipStoreReader},
@@ -39,6 +38,7 @@ use consensus_core::{
     BlockHashSet, BlockLevel,
 };
 use crossbeam_channel::{Receiver, Sender};
+use database::prelude::StoreResultExtensions;
 use hashes::Hash;
 use itertools::Itertools;
 use parking_lot::RwLock;

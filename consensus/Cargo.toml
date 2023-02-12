@@ -31,8 +31,9 @@ log.workspace = true
 muhash.workspace = true
 parking_lot.workspace = true
 txscript.workspace = true
+rocksdb.workspace = true
+database.workspace = true
 
-rocksdb = "0.19"
 crossbeam-channel = "0.5"
 secp256k1 = { version = "0.24", features = ["global-context", "rand-std"] }
 
