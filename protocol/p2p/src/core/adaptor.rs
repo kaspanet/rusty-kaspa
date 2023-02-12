@@ -12,10 +12,13 @@ use uuid::Uuid;
 #[derive(Error, Debug, Clone)]
 pub enum ConnectionError {
     #[error("p2p logical protocol error: {0}")]
-    ProtocolError(String),
+    ProtocolError(String), // TODO: not sure about this
 
     #[error("channel is closed")]
     ChannelClosed,
+
+    #[error("peer {0} is missing")]
+    MissingPeer(Uuid),
 }
 
 /// The main entrypoint for external usage of the P2P library. An impl of this trait is expected on P2P server
@@ -76,7 +79,7 @@ impl Adaptor {
     }
 
     /// Send a message to a specific peer
-    pub async fn send(&self, peer_id: Uuid, msg: KaspadMessage) -> bool {
+    pub async fn send(&self, peer_id: Uuid, msg: KaspadMessage) -> Result<(), ConnectionError> {
         self.hub.send(peer_id, msg).await
     }
 

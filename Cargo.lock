@@ -1905,6 +1905,7 @@ dependencies = [
  "kaspa-utils",
  "log",
  "p2p-lib",
+ "rand 0.8.5",
  "thiserror",
  "tokio",
  "tokio-stream",

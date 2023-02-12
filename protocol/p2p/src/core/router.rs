@@ -1,6 +1,6 @@
 use crate::core::hub::HubEvent;
 use crate::pb::KaspadMessage;
-use crate::KaspadMessagePayloadType;
+use crate::{ConnectionError, KaspadMessagePayloadType};
 use kaspa_core::{debug, error, trace, warn};
 use parking_lot::{Mutex, RwLock};
 use std::{collections::HashMap, sync::Arc};
@@ -148,11 +148,11 @@ impl Router {
     }
 
     /// Routes a locally-originated message to the network peer
-    pub async fn route_to_network(&self, msg: KaspadMessage) -> bool {
+    pub async fn route_to_network(&self, msg: KaspadMessage) -> Result<(), ConnectionError> {
         assert!(msg.payload.is_some(), "Kaspad P2P message should always have a value");
         match self.outgoing_route.send(msg).await {
-            Ok(_r) => true,
-            Err(_e) => false,
+            Ok(_r) => Ok(()),
+            Err(_e) => Err(ConnectionError::ChannelClosed),
         }
     }
 

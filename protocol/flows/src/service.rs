@@ -48,6 +48,8 @@ impl AsyncService for P2pService {
             // Keep the P2P server running until a service shutdown signal is received
             shutdown_signal.await;
             p2p_adaptor.terminate_all_peers().await;
+            // drop(p2p_adaptor);
+            // tokio::time::sleep(std::time::Duration::from_secs(1)).await;
         })
     }
 

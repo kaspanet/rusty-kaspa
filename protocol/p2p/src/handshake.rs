@@ -1,6 +1,6 @@
 use crate::common::FlowError;
+use crate::dequeue_with_timeout;
 use crate::pb::{self, kaspad_message::Payload, KaspadMessage, VersionMessage};
-use crate::recv_payload;
 use crate::Router;
 use kaspa_core::debug;
 use std::sync::Arc;
@@ -21,11 +21,11 @@ impl KaspadHandshake {
     ) -> Result<VersionMessage, FlowError> {
         debug!("starting receive version flow");
 
-        let version_message = recv_payload!(receiver, Payload::Version)?;
+        let version_message = dequeue_with_timeout!(receiver, Payload::Version)?;
         debug!("accepted version massage: {version_message:?}");
 
         let verack_message = pb::KaspadMessage { payload: Some(pb::kaspad_message::Payload::Verack(pb::VerackMessage {})) };
-        router.route_to_network(verack_message).await;
+        router.route_to_network(verack_message).await?;
 
         Ok(version_message)
     }
@@ -40,9 +40,9 @@ impl KaspadHandshake {
 
         debug!("sending version massage: {version_message:?}");
         let version_message = pb::KaspadMessage { payload: Some(pb::kaspad_message::Payload::Version(version_message)) };
-        router.route_to_network(version_message).await;
+        router.route_to_network(version_message).await?;
 
-        let verack_message = recv_payload!(receiver, Payload::Verack)?;
+        let verack_message = dequeue_with_timeout!(receiver, Payload::Verack)?;
         debug!("accepted verack_message: {verack_message:?}");
 
         Ok(())
@@ -52,9 +52,9 @@ impl KaspadHandshake {
         debug!("starting ready flow");
 
         let sent_ready_message = pb::KaspadMessage { payload: Some(pb::kaspad_message::Payload::Ready(pb::ReadyMessage {})) };
-        router.route_to_network(sent_ready_message).await;
+        router.route_to_network(sent_ready_message).await?;
 
-        let recv_ready_message = recv_payload!(receiver, Payload::Ready)?;
+        let recv_ready_message = dequeue_with_timeout!(receiver, Payload::Ready)?;
         debug!("accepted ready message: {recv_ready_message:?}");
 
         Ok(())

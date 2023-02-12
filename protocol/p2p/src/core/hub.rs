@@ -1,4 +1,4 @@
-use crate::{pb::KaspadMessage, ConnectionInitializer, Router};
+use crate::{pb::KaspadMessage, ConnectionError, ConnectionInitializer, Router};
 use kaspa_core::debug;
 use parking_lot::RwLock;
 use std::{collections::HashMap, sync::Arc};
@@ -43,11 +43,7 @@ impl Hub {
                     }
                     HubEvent::PeerClosing(peer_id) => {
                         if let Some(router) = self.active_peers.write().remove(&peer_id) {
-                            debug!(
-                                "P2P, Hub event loop, removing peer, router-id: {}, {}",
-                                router.identity(),
-                                Arc::strong_count(&router)
-                            );
+                            debug!("P2P, Hub event loop, removing peer, router-id: {}", router.identity());
                         }
                     }
                     HubEvent::Broadcast(msg) => {
@@ -60,12 +56,12 @@ impl Hub {
     }
 
     /// Send a message to a specific peer
-    pub async fn send(&self, peer_id: Uuid, msg: KaspadMessage) -> bool {
+    pub async fn send(&self, peer_id: Uuid, msg: KaspadMessage) -> Result<(), ConnectionError> {
         let op = self.active_peers.read().get(&peer_id).cloned();
         if let Some(router) = op {
             router.route_to_network(msg).await
         } else {
-            false
+            Err(ConnectionError::MissingPeer(peer_id))
         }
     }
 
@@ -73,7 +69,7 @@ impl Hub {
     pub async fn broadcast(&self, msg: KaspadMessage) {
         let peers = self.active_peers.read().values().cloned().collect::<Vec<_>>();
         for router in peers {
-            router.route_to_network(msg.clone()).await;
+            let _ = router.route_to_network(msg.clone()).await;
         }
     }
 

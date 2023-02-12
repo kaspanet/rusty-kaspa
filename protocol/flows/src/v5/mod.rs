@@ -1,10 +1,14 @@
-use self::ibd::IbdFlow;
+use self::{
+    ibd::IbdFlow,
+    ping::{ReceivePingsFlow, SendPingsFlow},
+};
 use crate::ctx::FlowContext;
 use kaspa_core::warn;
 use p2p_lib::{KaspadMessagePayloadType, Router};
 use std::sync::Arc;
 
 mod ibd;
+mod ping;
 
 pub fn register(ctx: FlowContext, router: Arc<Router>) {
     let ibd_incoming_route = router.subscribe(vec![
@@ -24,12 +28,34 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) {
         KaspadMessagePayloadType::DonePruningPointUtxoSetChunks,
     ]);
 
-    let ibd_flow = IbdFlow::new(ctx.clone(), router.clone(), ibd_incoming_route);
+    // TODO: generalize flow registration into a pattern
+    let mut ibd_flow = IbdFlow::new(ctx.clone(), router.clone(), ibd_incoming_route);
     tokio::spawn(async move {
         let res = ibd_flow.start().await;
         if let Err(err) = res {
             warn!("IBD flow error: {}, disconnecting from peer.", err); // TODO: imp complete error handler with net-connection peer info etc
             ibd_flow.router.close().await;
+        }
+    });
+
+    let mut receive_pings_flow =
+        ReceivePingsFlow::new(ctx.clone(), router.clone(), router.subscribe(vec![KaspadMessagePayloadType::Ping]));
+    tokio::spawn(async move {
+        let res = receive_pings_flow.start().await;
+        if let Err(err) = res {
+            warn!("Receive pings flow error: {}, disconnecting from peer.", err); // TODO: imp complete error handler with net-connection peer info etc
+            receive_pings_flow.router.close().await;
+        }
+    });
+
+    let mut send_pings_flow = SendPingsFlow::new(ctx, Arc::downgrade(&router), router.subscribe(vec![KaspadMessagePayloadType::Pong]));
+    tokio::spawn(async move {
+        let res = send_pings_flow.start().await;
+        if let Err(err) = res {
+            warn!("Send pings flow error: {}, disconnecting from peer.", err); // TODO: imp complete error handler with net-connection peer info etc
+            if let Some(router) = send_pings_flow.router.upgrade() {
+                router.close().await;
+            }
         }
     });
 
@@ -46,8 +72,8 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) {
         // KaspadMessagePayloadType::IbdBlock,
         KaspadMessagePayloadType::InvRelayBlock,
         KaspadMessagePayloadType::InvTransactions,
-        KaspadMessagePayloadType::Ping,
-        KaspadMessagePayloadType::Pong,
+        // KaspadMessagePayloadType::Ping,
+        // KaspadMessagePayloadType::Pong,
         // KaspadMessagePayloadType::Verack,
         // KaspadMessagePayloadType::Version,
         // KaspadMessagePayloadType::Ready,

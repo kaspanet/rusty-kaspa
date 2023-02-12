@@ -13,16 +13,25 @@ pub enum FlowError {
     #[error("expected {0} payload type but got {1:?}")]
     UnexpectedMessageType(&'static str, Box<Option<crate::pb::kaspad_message::Payload>>),
 
-    #[error("channel is closed")]
-    ChannelClosed,
+    #[error("{0}")]
+    ProtocolError(&'static str),
+
+    #[error("inner connection error: {0}")]
+    P2pConnectionError(ConnectionError),
 }
 
 impl From<FlowError> for ConnectionError {
     fn from(fe: FlowError) -> Self {
         match fe {
-            FlowError::ChannelClosed => ConnectionError::ChannelClosed,
+            FlowError::P2pConnectionError(err) => err,
             err => ConnectionError::ProtocolError(err.to_string()),
         }
+    }
+}
+
+impl From<ConnectionError> for FlowError {
+    fn from(err: ConnectionError) -> Self {
+        FlowError::P2pConnectionError(err)
     }
 }
 
@@ -41,7 +50,7 @@ macro_rules! extract_payload {
                 Err($crate::common::FlowError::UnexpectedMessageType(stringify!($pattern), Box::new(msg.payload)))
             }
         } else {
-            Err($crate::common::FlowError::ChannelClosed)
+            Err($crate::common::FlowError::P2pConnectionError($crate::ConnectionError::ChannelClosed))
         }
     }};
 }
@@ -49,12 +58,12 @@ macro_rules! extract_payload {
 /// Macro to await a channel `Receiver<pb::KaspadMessage>::recv` call with a specified/default timeout and expect a specific payload type.
 /// Usage:
 /// ```ignore
-/// let res = recv_payload!(receiver, Payload::Verack)
+/// let res = dequeue_with_timeout!(receiver, Payload::Verack) // Uses the default timeout
 /// // or:
-/// let res = recv_payload!(receiver, Payload::Verack, Duration::from_secs(30))
+/// let res = dequeue_with_timeout!(receiver, Payload::Verack, Duration::from_secs(30))
 /// ```
 #[macro_export]
-macro_rules! recv_payload {
+macro_rules! dequeue_with_timeout {
     ($receiver:expr, $pattern:path) => {{
         match tokio::time::timeout($crate::common::DEFAULT_TIMEOUT, $receiver.recv()).await {
             Ok(op) => {
@@ -70,5 +79,12 @@ macro_rules! recv_payload {
             }
             Err(_) => Err($crate::common::FlowError::Timeout($timeout_duration)),
         }
+    }};
+}
+
+#[macro_export]
+macro_rules! dequeue {
+    ($receiver:expr, $pattern:path) => {{
+        $crate::extract_payload!($receiver.recv().await, $pattern)
     }};
 }
