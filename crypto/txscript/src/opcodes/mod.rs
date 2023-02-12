@@ -5,8 +5,8 @@ mod macros;
 
 use crate::data_stack::{DataStack, OpcodeData};
 use crate::{
-    ScriptSource, TxScriptEngine, TxScriptError, LOCK_TIME_THRESHOLD, MAX_OPS_PER_SCRIPT, MAX_PUB_KEYS_PER_MUTLTISIG,
-    MAX_TX_IN_SEQUENCE_NUM, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK,
+    ScriptSource, TxScriptEngine, TxScriptError, LOCK_TIME_THRESHOLD, MAX_TX_IN_SEQUENCE_NUM, SEQUENCE_LOCK_TIME_DISABLED,
+    SEQUENCE_LOCK_TIME_MASK,
 };
 use blake2b_simd::Params;
 use consensus_core::hashing::sighash_type::SigHashType;
@@ -624,73 +624,7 @@ opcode_list! {
     }
 
     opcode OpCheckMultiSigECDSA<0xa9, 1>(self, vm) {
-        let [num_keys]: [i32; 1] = vm.dstack.pop_items()?;
-        if num_keys < 0 {
-            return Err(TxScriptError::InvalidPubKeyCount(format!("number of pubkeys {num_keys} is negative")));
-        } else if num_keys > MAX_PUB_KEYS_PER_MUTLTISIG {
-            return Err(TxScriptError::InvalidPubKeyCount(format!("too many pubkeys {num_keys} > {MAX_PUB_KEYS_PER_MUTLTISIG}")));
-        }
-        let num_keys_usize = num_keys as usize;
-
-        vm.num_ops += num_keys;
-        if vm.num_ops > MAX_OPS_PER_SCRIPT {
-            return Err(TxScriptError::TooManyOperations(MAX_OPS_PER_SCRIPT));
-        }
-
-        let mut pub_keys_vec = match vm.dstack.len() >= num_keys_usize {
-            true => vm.dstack.split_off(vm.dstack.len() - num_keys_usize),
-            false => return Err(TxScriptError::EmptyStack),
-        };
-        let mut pub_keys = pub_keys_vec.iter_mut().enumerate();
-
-
-        let [num_sigs]: [i32; 1] = vm.dstack.pop_items()?;
-        if num_sigs < 0 {
-            return Err(TxScriptError::InvalidSignatureCount(format!("number of signatures {num_sigs} is negative")));
-        } else if num_sigs > num_keys {
-            return Err(TxScriptError::InvalidSignatureCount(format!("more signatures than pubkeys {num_sigs} > {num_keys}")));
-        }
-        let num_sigs_usize = num_sigs as usize;
-
-        let mut  signatures_vec = match vm.dstack.len() >= num_sigs_usize {
-            true => vm.dstack.split_off(vm.dstack.len() - num_sigs_usize),
-            false => return Err(TxScriptError::EmptyStack),
-        };
-        let signatures = signatures_vec.iter_mut();
-
-        let mut empty_sigs = 0usize;
-        for (sig_idx, signature) in signatures.enumerate() {
-            match signature.pop() {
-                None => {
-                    if empty_sigs != sig_idx {
-                        return Err(TxScriptError::NullFail)
-                    }
-                    empty_sigs+=1;
-                },
-                Some(typ) => {
-                    if empty_sigs == 0 {
-                        // Every check consumes the public key
-                        let hash_type = SigHashType::from_u8(typ).map_err(|e| TxScriptError::InvalidSigHashType(typ))?;
-                        if pub_keys.try_for_each(|(key_idx, pub_key)| {
-                            if num_keys_usize - key_idx  < num_sigs_usize - sig_idx {
-                                return Err(false)
-                            }
-                            match vm.check_ecdsa_signature(hash_type, pub_key.as_slice(), signature.as_slice()) {
-                                Ok(()) => Err(true),
-                                Err(_) => Ok(())
-                            }
-                        }) != Err(true) {
-                            return Err(TxScriptError::NullFail)
-                        }
-                    }
-                    if empty_sigs > 0 {
-                        return Err(TxScriptError::NullFail)
-                    }
-                }
-            }
-        }
-        vm.dstack.push_item(empty_sigs == 0);
-        Ok(())
+        vm.op_check_multisig_schnorr_or_ecdsa(true)
     }
 
     opcode OpBlake2b<0xaa, 1>(self, vm) {
@@ -708,14 +642,12 @@ opcode_list! {
             Some(typ) => {
                 let hash_type = SigHashType::from_u8(typ).map_err(|e| TxScriptError::InvalidSigHashType(typ))?;
                 match vm.check_ecdsa_signature(hash_type, key.as_slice(), sig.as_slice()) {
-                    Ok(()) => {
-                        vm.dstack.push_item(true);
+                    Ok(valid) => {
+                        vm.dstack.push_item(valid);
                         Ok(())
                     },
                     Err(e) => {
-                        // TODO: when do we return error?
-                        vm.dstack.push_item(false);
-                        Ok(())
+                        Err(e)
                     }
                 }
             }
@@ -733,13 +665,12 @@ opcode_list! {
             Some(typ) => {
                 let hash_type = SigHashType::from_u8(typ).map_err(|e| TxScriptError::InvalidSigHashType(typ))?;
                 match vm.check_schnorr_signature(hash_type, key.as_slice(), sig.as_slice()) {
-                    Ok(()) => {
-                        vm.dstack.push_item(true);
+                    Ok(valid) => {
+                        vm.dstack.push_item(valid);
                         Ok(())
                     },
                     Err(e) => {
-                        vm.dstack.push_item(false);
-                        Ok(())
+                        Err(e)
                     }
                 }
             }
@@ -761,73 +692,7 @@ opcode_list! {
     }
 
     opcode OpCheckMultiSig<0xae, 1>(self, vm) {
-        let [num_keys]: [i32; 1] = vm.dstack.pop_items()?;
-        if num_keys < 0 {
-            return Err(TxScriptError::InvalidPubKeyCount(format!("number of pubkeys {num_keys} is negative")));
-        } else if num_keys > MAX_PUB_KEYS_PER_MUTLTISIG {
-            return Err(TxScriptError::InvalidPubKeyCount(format!("too many pubkeys {num_keys} > {MAX_PUB_KEYS_PER_MUTLTISIG}")));
-        }
-        let num_keys_usize = num_keys as usize;
-
-        vm.num_ops += num_keys;
-        if vm.num_ops > MAX_OPS_PER_SCRIPT {
-            return Err(TxScriptError::TooManyOperations(MAX_OPS_PER_SCRIPT));
-        }
-
-        let mut pub_keys_vec = match vm.dstack.len() >= num_keys_usize {
-            true => vm.dstack.split_off(vm.dstack.len() - num_keys_usize),
-            false => return Err(TxScriptError::EmptyStack),
-        };
-        let mut pub_keys = pub_keys_vec.iter_mut().enumerate();
-
-
-        let [num_sigs]: [i32; 1] = vm.dstack.pop_items()?;
-        if num_sigs < 0 {
-            return Err(TxScriptError::InvalidSignatureCount(format!("number of signatures {num_sigs} is negative")));
-        } else if num_sigs > num_keys {
-            return Err(TxScriptError::InvalidSignatureCount(format!("more signatures than pubkeys {num_sigs} > {num_keys}")));
-        }
-        let num_sigs_usize = num_sigs as usize;
-
-        let mut  signatures_vec = match vm.dstack.len() >= num_sigs_usize {
-            true => vm.dstack.split_off(vm.dstack.len() - num_sigs_usize),
-            false => return Err(TxScriptError::EmptyStack),
-        };
-        let signatures = signatures_vec.iter_mut();
-
-        let mut empty_sigs = 0usize;
-        for (sig_idx, signature) in signatures.enumerate() {
-            match signature.pop() {
-                None => {
-                    if empty_sigs != sig_idx {
-                        return Err(TxScriptError::NullFail)
-                    }
-                    empty_sigs+=1;
-                },
-                Some(typ) => {
-                    if empty_sigs == 0 {
-                        // Every check consumes the public key
-                        let hash_type = SigHashType::from_u8(typ).map_err(|e| TxScriptError::InvalidSigHashType(typ))?;
-                        if pub_keys.try_for_each(|(key_idx, pub_key)| {
-                            if num_keys_usize - key_idx  < num_sigs_usize - sig_idx {
-                                return Err(false)
-                            }
-                            match vm.check_schnorr_signature(hash_type, pub_key.as_slice(), signature.as_slice()) {
-                                Ok(()) => Err(true),
-                                Err(_) => Ok(())
-                            }
-                        }) != Err(true) {
-                            return Err(TxScriptError::NullFail)
-                        }
-                    }
-                    if empty_sigs > 0 {
-                        return Err(TxScriptError::NullFail)
-                    }
-                }
-            }
-        }
-        vm.dstack.push_item(empty_sigs == 0);
-        Ok(())
+        vm.op_check_multisig_schnorr_or_ecdsa(false)
     }
 
     opcode OpCheckMultiSigVerify<0xaf, 1>(self, vm) {

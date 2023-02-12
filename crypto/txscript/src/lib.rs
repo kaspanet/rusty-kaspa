@@ -38,7 +38,7 @@ enum Signature {
 
 #[derive(Clone, Hash, PartialEq, Eq)]
 enum PublicKey {
-    Secp256k1(secp256k1::XOnlyPublicKey),
+    Schnorr(secp256k1::XOnlyPublicKey),
     Ecdsa(secp256k1::PublicKey),
 }
 
@@ -64,7 +64,7 @@ pub struct TxScriptEngine<'a, T: VerifiableTransaction> {
     // Outer caches for quicker calculation
     // TODO:: make it compatible with threading
     reused_values: &'a mut SigHashReusedValues,
-    sig_cache: &'a Cache<SigCacheKey, Result<(), secp256k1::Error>>,
+    sig_cache: &'a Cache<SigCacheKey, bool>,
 
     cond_stack: Vec<i8>, // Following if stacks, and whether it is running
 
@@ -72,7 +72,7 @@ pub struct TxScriptEngine<'a, T: VerifiableTransaction> {
 }
 
 impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
-    pub fn new(reused_values: &'a mut SigHashReusedValues, sig_cache: &'a Cache<SigCacheKey, Result<(), secp256k1::Error>>) -> Self {
+    pub fn new(reused_values: &'a mut SigHashReusedValues, sig_cache: &'a Cache<SigCacheKey, bool>) -> Self {
         Self {
             dstack: vec![],
             astack: vec![],
@@ -90,7 +90,7 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
         input_idx: usize,
         utxo_entry: &'a UtxoEntry,
         reused_values: &'a mut SigHashReusedValues,
-        sig_cache: &'a Cache<SigCacheKey, Result<(), secp256k1::Error>>,
+        sig_cache: &'a Cache<SigCacheKey, bool>,
     ) -> Result<Self, TxScriptError> {
         let script_public_key = utxo_entry.script_public_key.script();
         // The script_public_key in P2SH is just validating the hash on the OpMultiSig script
@@ -113,11 +113,7 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
         }
     }
 
-    pub fn from_script(
-        script: &'a [u8],
-        reused_values: &'a mut SigHashReusedValues,
-        sig_cache: &'a Cache<SigCacheKey, Result<(), secp256k1::Error>>,
-    ) -> Self {
+    pub fn from_script(script: &'a [u8], reused_values: &'a mut SigHashReusedValues, sig_cache: &'a Cache<SigCacheKey, bool>) -> Self {
         Self {
             dstack: Default::default(),
             astack: Default::default(),
@@ -270,8 +266,99 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
         }
     }
 
+    fn op_check_multisig_schnorr_or_ecdsa(&mut self, ecdsa: bool) -> Result<(), TxScriptError> {
+        let [num_keys]: [i32; 1] = self.dstack.pop_items()?;
+        if num_keys < 0 {
+            return Err(TxScriptError::InvalidPubKeyCount(format!("number of pubkeys {num_keys} is negative")));
+        } else if num_keys > MAX_PUB_KEYS_PER_MUTLTISIG {
+            return Err(TxScriptError::InvalidPubKeyCount(format!("too many pubkeys {num_keys} > {MAX_PUB_KEYS_PER_MUTLTISIG}")));
+        }
+        let num_keys_usize = num_keys as usize;
+
+        self.num_ops += num_keys;
+        if self.num_ops > MAX_OPS_PER_SCRIPT {
+            return Err(TxScriptError::TooManyOperations(MAX_OPS_PER_SCRIPT));
+        }
+
+        let pub_keys = match self.dstack.len() >= num_keys_usize {
+            true => self.dstack.split_off(self.dstack.len() - num_keys_usize),
+            false => return Err(TxScriptError::EmptyStack),
+        };
+
+        let [num_sigs]: [i32; 1] = self.dstack.pop_items()?;
+        if num_sigs < 0 {
+            return Err(TxScriptError::InvalidSignatureCount(format!("number of signatures {num_sigs} is negative")));
+        } else if num_sigs > num_keys {
+            return Err(TxScriptError::InvalidSignatureCount(format!("more signatures than pubkeys {num_sigs} > {num_keys}")));
+        }
+        let num_sigs_usize = num_sigs as usize;
+
+        let signatures = match self.dstack.len() >= num_sigs_usize {
+            true => self.dstack.split_off(self.dstack.len() - num_sigs_usize),
+            false => return Err(TxScriptError::EmptyStack),
+        };
+
+        let mut failed = false;
+        let mut pub_key_idx: isize = -1;
+        for (sig_idx, signature) in signatures.iter().enumerate() {
+            if signature.is_empty() {
+                failed = true;
+                continue;
+            }
+
+            let typ = *signature.last().expect("checked that is not empty");
+            let signature = &signature[..signature.len() - 1];
+            // Every check consumes the public key
+            let hash_type = SigHashType::from_u8(typ).map_err(|_| TxScriptError::InvalidSigHashType(typ))?;
+            let mut found_signing_key = false;
+            pub_key_idx += 1;
+            while (pub_key_idx as usize) < pub_keys.len() {
+                let pub_key = &pub_keys[pub_key_idx as usize];
+                if num_keys_usize - (pub_key_idx as usize) < num_sigs_usize - sig_idx {
+                    // When there are more signatures than public keys remaining,
+                    // there is no way to succeed since too many signatures are
+                    // invalid, so exit early.
+                    failed = true;
+                    break;
+                }
+
+                let check_signature_result = if ecdsa {
+                    self.check_ecdsa_signature(hash_type, pub_key.as_slice(), signature)
+                } else {
+                    self.check_schnorr_signature(hash_type, pub_key.as_slice(), signature)
+                };
+
+                match check_signature_result {
+                    Ok(valid) => {
+                        if valid {
+                            found_signing_key = true;
+                            break;
+                        }
+                    }
+                    Err(e) => {
+                        return Err(e);
+                    }
+                }
+
+                pub_key_idx += 1;
+            }
+
+            if failed || !found_signing_key {
+                failed = true;
+                break;
+            }
+        }
+
+        if failed && signatures.iter().any(|sig| !sig.is_empty()) {
+            return Err(TxScriptError::NullFail);
+        }
+
+        self.dstack.push_item(!failed);
+        Ok(())
+    }
+
     #[inline]
-    fn check_schnorr_signature(&mut self, hash_type: SigHashType, key: &[u8], sig: &[u8]) -> Result<(), TxScriptError> {
+    fn check_schnorr_signature(&mut self, hash_type: SigHashType, key: &[u8], sig: &[u8]) -> Result<bool, TxScriptError> {
         match self.script_source {
             ScriptSource::TxInput { tx, id, .. } => {
                 if sig.len() != 64 {
@@ -283,20 +370,20 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
                 let sig_hash = calc_schnorr_signature_hash(tx, id, hash_type, self.reused_values);
                 let msg = secp256k1::Message::from_slice(sig_hash.as_bytes().as_slice()).unwrap();
                 let sig_cache_key =
-                    SigCacheKey { signature: Signature::Secp256k1(sig), pub_key: PublicKey::Secp256k1(pk), message: msg };
+                    SigCacheKey { signature: Signature::Secp256k1(sig), pub_key: PublicKey::Schnorr(pk), message: msg };
 
                 match self.sig_cache.get(&sig_cache_key) {
-                    Some(valid) => valid.map_err(TxScriptError::InvalidSignature),
+                    Some(valid) => Ok(valid),
                     None => {
                         // TODO: Find a way to parallelize this part.
                         match sig.verify(&msg, &pk) {
                             Ok(()) => {
-                                self.sig_cache.insert(sig_cache_key, Ok(()));
-                                Ok(())
+                                self.sig_cache.insert(sig_cache_key, true);
+                                Ok(true)
                             }
-                            Err(e) => {
-                                self.sig_cache.insert(sig_cache_key, Err(e));
-                                Err(TxScriptError::InvalidSignature(e))
+                            Err(_) => {
+                                self.sig_cache.insert(sig_cache_key, false);
+                                Ok(false)
                             }
                         }
                     }
@@ -306,7 +393,7 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
         }
     }
 
-    fn check_ecdsa_signature(&mut self, hash_type: SigHashType, key: &[u8], sig: &[u8]) -> Result<(), TxScriptError> {
+    fn check_ecdsa_signature(&mut self, hash_type: SigHashType, key: &[u8], sig: &[u8]) -> Result<bool, TxScriptError> {
         match self.script_source {
             ScriptSource::TxInput { tx, id, .. } => {
                 if sig.len() != 64 {
@@ -320,17 +407,17 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
                 let sig_cache_key = SigCacheKey { signature: Signature::Ecdsa(sig), pub_key: PublicKey::Ecdsa(pk), message: msg };
 
                 match self.sig_cache.get(&sig_cache_key) {
-                    Some(valid) => valid.map_err(TxScriptError::InvalidSignature),
+                    Some(valid) => Ok(valid),
                     None => {
                         // TODO: Find a way to parallelize this part.
                         match sig.verify(&msg, &pk) {
                             Ok(()) => {
-                                self.sig_cache.insert(sig_cache_key, Ok(()));
-                                Ok(())
+                                self.sig_cache.insert(sig_cache_key, true);
+                                Ok(true)
                             }
-                            Err(e) => {
-                                self.sig_cache.insert(sig_cache_key, Err(e));
-                                Err(TxScriptError::InvalidSignature(e))
+                            Err(_) => {
+                                self.sig_cache.insert(sig_cache_key, false);
+                                Ok(false)
                             }
                         }
                     }

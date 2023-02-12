@@ -365,7 +365,7 @@ mod tests {
     }
 
     #[test]
-    fn check_fist_sig_incorrect_multi_signature_test() {
+    fn check_first_sig_incorrect_multi_signature_test() {
         let mut params = MAINNET_PARAMS.clone();
         params.max_tx_inputs = 10;
         params.max_tx_outputs = 15;
