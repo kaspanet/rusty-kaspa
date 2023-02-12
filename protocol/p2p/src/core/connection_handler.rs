@@ -1,4 +1,4 @@
-use crate::hub::HubEvent;
+use crate::core::hub::HubEvent;
 use crate::pb::{
     p2p_client::P2pClient as ProtoP2pClient, p2p_server::P2p as ProtoP2p, p2p_server::P2pServer as ProtoP2pServer, KaspadMessage,
 };

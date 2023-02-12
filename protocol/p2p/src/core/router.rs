@@ -1,4 +1,4 @@
-use crate::hub::HubEvent;
+use crate::core::hub::HubEvent;
 use crate::pb::KaspadMessage;
 use crate::KaspadMessagePayloadType;
 use kaspa_core::{debug, error, trace, warn};

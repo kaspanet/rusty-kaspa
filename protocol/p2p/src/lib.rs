@@ -5,15 +5,11 @@ pub mod pb {
 
 pub mod echo;
 
-mod adaptor;
 mod common;
-mod connection_handler;
+mod core;
 mod handshake;
-mod hub;
-mod payload_type;
-mod router;
 
-pub use adaptor::{Adaptor, ConnectionError, ConnectionInitializer};
+pub use crate::core::adaptor::{Adaptor, ConnectionError, ConnectionInitializer};
+pub use crate::core::payload_type::KaspadMessagePayloadType;
+pub use crate::core::router::Router;
 pub use handshake::KaspadHandshake;
-pub use payload_type::KaspadMessagePayloadType;
-pub use router::Router;

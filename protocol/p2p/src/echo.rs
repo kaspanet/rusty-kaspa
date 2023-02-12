@@ -1,5 +1,5 @@
 use crate::{
-    adaptor::{ConnectionError, ConnectionInitializer},
+    core::adaptor::{ConnectionError, ConnectionInitializer},
     handshake::KaspadHandshake,
     pb::{self, KaspadMessage, VersionMessage},
     KaspadMessagePayloadType, Router,
@@ -151,5 +151,54 @@ impl ConnectionInitializer for EchoFlowInitializer {
         // are dropped, thus effectively unsubscribing
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Adaptor;
+    use kaspa_core::debug;
+
+    #[tokio::test]
+    async fn test_handshake() {
+        kaspa_core::log::try_init_logger("debug");
+
+        let address1 = String::from("[::1]:50053");
+        let adaptor1 = Adaptor::bidirectional(address1.clone(), Arc::new(EchoFlowInitializer::new())).unwrap();
+
+        let address2 = String::from("[::1]:50054");
+        let adaptor2 = Adaptor::bidirectional(address2.clone(), Arc::new(EchoFlowInitializer::new())).unwrap();
+
+        // Initiate the connection from `adaptor1` (outbound) to `adaptor2` (inbound)
+        // NOTE: a minimal scheme prefix `"://"` must be added for the client-side connect logic
+        let peer2_id = adaptor1.connect_peer(String::from("://[::1]:50054")).await.expect("peer connection failed");
+
+        // Wait for handshake completion
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+        // For now assert the handshake by checking the peer exists (since peer is removed on handshake error)
+        assert_eq!(adaptor1.get_active_peers().await.len(), 1, "handshake failed -- outbound peer is missing");
+        assert_eq!(adaptor2.get_active_peers().await.len(), 1, "handshake failed -- inbound peer is missing");
+
+        adaptor1.terminate(peer2_id).await;
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+        // Make sure the peers are cleaned-up on both sides
+        assert_eq!(adaptor1.get_active_peers().await.len(), 0, "peer termination failed -- outbound peer was not removed");
+        assert_eq!(adaptor2.get_active_peers().await.len(), 0, "peer termination failed -- inbound peer was not removed");
+
+        adaptor1.close().await;
+        adaptor2.close().await;
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+        // Make sure that all internal loops exit and adaptors are ready to be dropped
+        debug!("{} {}", Arc::strong_count(&adaptor1), Arc::strong_count(&adaptor2));
+        assert_eq!(Arc::strong_count(&adaptor1), 1, "some adaptor resources did not cleanup");
+        assert_eq!(Arc::strong_count(&adaptor2), 1, "some adaptor resources did not cleanup");
+
+        drop(adaptor1);
+        drop(adaptor2);
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
     }
 }
