@@ -31,7 +31,6 @@ tokio = { version = "1.21.2", features = [ "rt-multi-thread", "macros", "signal"
 tokio-stream = { version = "0.1.11", features = ["net"] }
 tonic = { version = "0.8.2", features = ["tls", "gzip"] }
 h2 = "0.3"
-lockfree = "0.5.1"
 uuid = { version = "1.2.2", features = ["v4","fast-rng"] }
 async-stream = "0.3.3"
 

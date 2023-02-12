@@ -1,8 +1,8 @@
 use crate::{pb::KaspadMessage, ConnectionInitializer, Router};
 use kaspa_core::debug;
+use parking_lot::RwLock;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::mpsc::Receiver as MpscReceiver;
-use tokio::sync::RwLock;
 use uuid::Uuid;
 
 #[derive(Debug)]
@@ -32,7 +32,7 @@ impl Hub {
                     HubEvent::NewPeer(new_router) => {
                         match initializer.initialize_connection(new_router.clone()).await {
                             Ok(_) => {
-                                self.active_peers.write().await.insert(new_router.identity(), new_router);
+                                self.active_peers.write().insert(new_router.identity(), new_router);
                             }
                             Err(err) => {
                                 // Ignoring the router
@@ -42,7 +42,7 @@ impl Hub {
                         }
                     }
                     HubEvent::PeerClosing(peer_id) => {
-                        if let Some(router) = self.active_peers.write().await.remove(&peer_id) {
+                        if let Some(router) = self.active_peers.write().remove(&peer_id) {
                             debug!(
                                 "P2P, Hub event loop, removing peer, router-id: {}, {}",
                                 router.identity(),
@@ -61,7 +61,8 @@ impl Hub {
 
     /// Send a message to a specific peer
     pub async fn send(&self, peer_id: Uuid, msg: KaspadMessage) -> bool {
-        if let Some(router) = self.active_peers.read().await.get(&peer_id).cloned() {
+        let op = self.active_peers.read().get(&peer_id).cloned();
+        if let Some(router) = op {
             router.route_to_network(msg).await
         } else {
             false
@@ -70,30 +71,30 @@ impl Hub {
 
     /// Broadcast a message to all peers. Note that broadcast can also be called on a specific router and will lead to the same outcome
     pub async fn broadcast(&self, msg: KaspadMessage) {
-        let peers = self.active_peers.read().await;
-        for router in peers.values() {
+        let peers = self.active_peers.read().values().cloned().collect::<Vec<_>>();
+        for router in peers {
             router.route_to_network(msg.clone()).await;
         }
     }
 
     /// Terminate a specific peer
     pub async fn terminate(&self, peer_id: Uuid) {
-        if let Some(router) = self.active_peers.read().await.get(&peer_id).cloned() {
+        let op = self.active_peers.read().get(&peer_id).cloned();
+        if let Some(router) = op {
             router.close().await;
         }
     }
 
     /// Terminate all peers
     pub async fn terminate_all_peers(&self) {
-        let mut peers = self.active_peers.write().await;
-        for router in peers.values() {
+        let peers = self.active_peers.write().drain().map(|(_, r)| r).collect::<Vec<_>>();
+        for router in peers {
             router.close().await;
         }
-        peers.clear();
     }
 
     /// Returns a list of ids for all currently active peers
     pub async fn get_active_peers(&self) -> Vec<Uuid> {
-        self.active_peers.read().await.keys().copied().collect()
+        self.active_peers.read().keys().cloned().collect()
     }
 }
