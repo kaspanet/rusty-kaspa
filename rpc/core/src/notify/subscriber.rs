@@ -14,18 +14,13 @@ use kaspa_utils::channel::Channel;
 /// A manager of subscriptions to notifications for registered listeners
 #[async_trait]
 pub trait SubscriptionManager: Send + Sync + Debug {
-    async fn start_notify(self: Arc<Self>, id: ListenerID, notification_type: Scope) -> RpcResult<()>;
-    async fn stop_notify(self: Arc<Self>, id: ListenerID, notification_type: Scope) -> RpcResult<()>;
+    async fn start_notify(self: Arc<Self>, id: ListenerID, scope: Scope) -> RpcResult<()>;
+    async fn stop_notify(self: Arc<Self>, id: ListenerID, scope: Scope) -> RpcResult<()>;
 
-    async fn execute_notify_command(
-        self: Arc<Self>,
-        id: ListenerID,
-        notification_type: Scope,
-        command: SubscribeCommand,
-    ) -> RpcResult<()> {
+    async fn execute_notify_command(self: Arc<Self>, id: ListenerID, scope: Scope, command: SubscribeCommand) -> RpcResult<()> {
         match command {
-            SubscribeCommand::Start => self.start_notify(id, notification_type).await,
-            SubscribeCommand::Stop => self.stop_notify(id, notification_type).await,
+            SubscribeCommand::Start => self.start_notify(id, scope).await,
+            SubscribeCommand::Stop => self.stop_notify(id, scope).await,
         }
     }
 }
@@ -83,8 +78,8 @@ impl Subscriber {
                 let subscribe = subscribe_rx.recv().await.unwrap();
 
                 match subscribe {
-                    SubscribeMessage::StartEvent(ref notification_type) => {
-                        match subscription_manager.clone().start_notify(listener_id, notification_type.clone()).await {
+                    SubscribeMessage::StartEvent(ref scope) => {
+                        match subscription_manager.clone().start_notify(listener_id, scope.clone()).await {
                             Ok(_) => (),
                             Err(err) => {
                                 trace!("[Reporter] start notify error: {:?}", err);
@@ -92,8 +87,8 @@ impl Subscriber {
                         }
                     }
 
-                    SubscribeMessage::StopEvent(ref notification_type) => {
-                        match subscription_manager.clone().stop_notify(listener_id, notification_type.clone()).await {
+                    SubscribeMessage::StopEvent(ref scope) => {
+                        match subscription_manager.clone().stop_notify(listener_id, scope.clone()).await {
                             Ok(_) => (),
                             Err(err) => {
                                 trace!("[Reporter] start notify error: {:?}", err);

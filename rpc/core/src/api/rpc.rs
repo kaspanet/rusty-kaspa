@@ -290,17 +290,17 @@ where
     async fn unregister_listener(&self, id: ListenerID) -> RpcResult<()>;
 
     /// Start sending notifications of some type to a listener.
-    async fn start_notify(&self, id: ListenerID, notification_type: Scope) -> RpcResult<()>;
+    async fn start_notify(&self, id: ListenerID, scope: Scope) -> RpcResult<()>;
 
     /// Stop sending notifications of some type to a listener.
-    async fn stop_notify(&self, id: ListenerID, notification_type: Scope) -> RpcResult<()>;
+    async fn stop_notify(&self, id: ListenerID, scope: Scope) -> RpcResult<()>;
 
     /// Execute a subscription command leading to either start or stop sending notifications
     /// of some type to a listener.
-    async fn execute_subscribe_command(&self, id: ListenerID, notification_type: Scope, command: SubscribeCommand) -> RpcResult<()> {
+    async fn execute_subscribe_command(&self, id: ListenerID, scope: Scope, command: SubscribeCommand) -> RpcResult<()> {
         match command {
-            SubscribeCommand::Start => self.start_notify(id, notification_type).await,
-            SubscribeCommand::Stop => self.stop_notify(id, notification_type).await,
+            SubscribeCommand::Start => self.start_notify(id, scope).await,
+            SubscribeCommand::Stop => self.stop_notify(id, scope).await,
         }
     }
 }

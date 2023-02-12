@@ -73,16 +73,16 @@ where
 
     /// Toggle registration for [`NotificationType`] notifications.
     /// Return true if any change occurred in the registration state.
-    pub(crate) fn toggle(&mut self, notification_type: Scope, active: bool) -> bool {
+    pub(crate) fn toggle(&mut self, scope: Scope, active: bool) -> bool {
         let mut changed = false;
-        let event: EventType = (&notification_type).into();
+        let event: EventType = (&scope).into();
 
         if self.active_event[event] != active {
             self.active_event[event] = active;
             changed = true;
         }
 
-        if let Scope::UtxosChanged(ref scope) = notification_type {
+        if let Scope::UtxosChanged(ref scope) = scope {
             changed = self.toggle_utxo_addresses(&scope.addresses);
         }
         changed

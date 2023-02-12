@@ -158,15 +158,15 @@ impl RpcApi<ChannelConnection> for GrpcClient {
     }
 
     /// Start sending notifications of some type to a listener.
-    async fn start_notify(&self, id: ListenerID, notification_type: Scope) -> RpcResult<()> {
-        self.notifier().start_notify(id, notification_type).await?;
+    async fn start_notify(&self, id: ListenerID, scope: Scope) -> RpcResult<()> {
+        self.notifier().start_notify(id, scope).await?;
         Ok(())
     }
 
     /// Stop sending notifications of some type to a listener.
-    async fn stop_notify(&self, id: ListenerID, notification_type: Scope) -> RpcResult<()> {
+    async fn stop_notify(&self, id: ListenerID, scope: Scope) -> RpcResult<()> {
         if self.handle_stop_notify() {
-            self.notifier().stop_notify(id, notification_type).await?;
+            self.notifier().stop_notify(id, scope).await?;
             Ok(())
         } else {
             Err(RpcError::UnsupportedFeature)
@@ -600,20 +600,20 @@ impl Inner {
 
 #[async_trait]
 impl SubscriptionManager for Inner {
-    async fn start_notify(self: Arc<Self>, _: ListenerID, notification_type: Scope) -> RpcResult<()> {
-        trace!("[GrpcClient] start_notify: {:?}", notification_type);
-        let request = kaspad_request::Payload::from_notification_type(&notification_type, SubscribeCommand::Start);
+    async fn start_notify(self: Arc<Self>, _: ListenerID, scope: Scope) -> RpcResult<()> {
+        trace!("[GrpcClient] start_notify: {:?}", scope);
+        let request = kaspad_request::Payload::from_notification_type(&scope, SubscribeCommand::Start);
         self.clone().call((&request).into(), request).await?;
         Ok(())
     }
 
-    async fn stop_notify(self: Arc<Self>, _: ListenerID, notification_type: Scope) -> RpcResult<()> {
+    async fn stop_notify(self: Arc<Self>, _: ListenerID, scope: Scope) -> RpcResult<()> {
         if self.handle_stop_notify() {
-            trace!("[GrpcClient] stop_notify: {:?}", notification_type);
-            let request = kaspad_request::Payload::from_notification_type(&notification_type, SubscribeCommand::Stop);
+            trace!("[GrpcClient] stop_notify: {:?}", scope);
+            let request = kaspad_request::Payload::from_notification_type(&scope, SubscribeCommand::Stop);
             self.clone().call((&request).into(), request).await?;
         } else {
-            trace!("[GrpcClient] stop_notify ignored because not supported by the server: {:?}", notification_type);
+            trace!("[GrpcClient] stop_notify ignored because not supported by the server: {:?}", scope);
         }
         Ok(())
     }

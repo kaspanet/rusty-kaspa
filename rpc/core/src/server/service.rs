@@ -309,14 +309,14 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
     }
 
     /// Start sending notifications of some type to a listener.
-    async fn start_notify(&self, id: ListenerID, notification_type: Scope) -> RpcResult<()> {
-        self.notifier.start_notify(id, notification_type)?;
+    async fn start_notify(&self, id: ListenerID, scope: Scope) -> RpcResult<()> {
+        self.notifier.start_notify(id, scope)?;
         Ok(())
     }
 
     /// Stop sending notifications of some type to a listener.
-    async fn stop_notify(&self, id: ListenerID, notification_type: Scope) -> RpcResult<()> {
-        self.notifier.stop_notify(id, notification_type)?;
+    async fn stop_notify(&self, id: ListenerID, scope: Scope) -> RpcResult<()> {
+        self.notifier.stop_notify(id, scope)?;
         Ok(())
     }
 }

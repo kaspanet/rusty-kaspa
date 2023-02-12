@@ -8,14 +8,14 @@ use crate::protowire::{
 };
 
 impl KaspadRequest {
-    pub fn from_notification_type(notification_type: &Scope, command: SubscribeCommand) -> Self {
-        KaspadRequest { id: 0, payload: Some(kaspad_request::Payload::from_notification_type(notification_type, command)) }
+    pub fn from_notification_type(scope: &Scope, command: SubscribeCommand) -> Self {
+        KaspadRequest { id: 0, payload: Some(kaspad_request::Payload::from_notification_type(scope, command)) }
     }
 }
 
 impl kaspad_request::Payload {
-    pub fn from_notification_type(notification_type: &Scope, command: SubscribeCommand) -> Self {
-        match notification_type {
+    pub fn from_notification_type(scope: &Scope, command: SubscribeCommand) -> Self {
+        match scope {
             Scope::BlockAdded => {
                 kaspad_request::Payload::NotifyBlockAddedRequest(NotifyBlockAddedRequestMessage { command: command.into() })
             }
