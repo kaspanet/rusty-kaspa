@@ -1,3 +1,5 @@
+use itertools::Itertools;
+
 use crate::TxScriptError;
 use core::fmt::Debug;
 use core::iter;
@@ -238,7 +240,7 @@ impl DataStack for Stack {
     fn dup_items<const SIZE: usize>(&mut self) -> Result<(), TxScriptError> {
         match self.len() >= SIZE {
             true => {
-                self.extend_from_slice(self.clone()[self.len() - SIZE..].iter().as_slice());
+                self.extend_from_slice(&self[self.len() - SIZE..].iter().cloned().collect_vec());
                 Ok(())
             }
             false => Err(TxScriptError::EmptyStack),
@@ -249,7 +251,7 @@ impl DataStack for Stack {
     fn over_items<const SIZE: usize>(&mut self) -> Result<(), TxScriptError> {
         match self.len() >= 2 * SIZE {
             true => {
-                self.extend_from_slice(self.clone()[self.len() - 2 * SIZE..self.len() - SIZE].iter().as_slice());
+                self.extend_from_slice(&self[self.len() - 2 * SIZE..self.len() - SIZE].iter().cloned().collect_vec());
                 Ok(())
             }
             false => Err(TxScriptError::EmptyStack),
