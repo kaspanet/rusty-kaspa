@@ -72,10 +72,7 @@ pub struct TxScriptEngine<'a, T: VerifiableTransaction> {
 }
 
 impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
-    pub fn new_empty(
-        reused_values: &'a mut SigHashReusedValues,
-        sig_cache: &'a Cache<SigCacheKey, Result<(), secp256k1::Error>>,
-    ) -> Self {
+    pub fn new(reused_values: &'a mut SigHashReusedValues, sig_cache: &'a Cache<SigCacheKey, Result<(), secp256k1::Error>>) -> Self {
         Self {
             dstack: vec![],
             astack: vec![],
