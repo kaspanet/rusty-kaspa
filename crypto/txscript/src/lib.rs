@@ -7,7 +7,7 @@ mod opcodes;
 
 use crate::caches::Cache;
 use crate::data_stack::{DataStack, Stack};
-use crate::opcodes::{deserialize, OpCodeImplementation};
+use crate::opcodes::{deserialize_opcode_data, OpCodeImplementation};
 use consensus_core::hashing::sighash::{calc_ecdsa_signature_hash, calc_schnorr_signature_hash, SigHashReusedValues};
 use consensus_core::hashing::sighash_type::SigHashType;
 use consensus_core::tx::{TransactionInput, UtxoEntry, VerifiableTransaction};
@@ -162,7 +162,7 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
             .iter()
             .batching(|it| {
                 // reads the opcode num item here and then match to opcode
-                it.next().map(|code| deserialize(*code, it))
+                it.next().map(|code| deserialize_opcode_data(*code, it))
             })
             .try_for_each(|opcode| {
                 self.execute_opcode(opcode?)?;

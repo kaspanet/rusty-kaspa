@@ -84,7 +84,7 @@ macro_rules! opcode_list {
             opcode_impl!($name, $num, $length, $code, $self, $vm);
         )*
 
-        pub fn deserialize<'i, I: Iterator<Item = &'i u8>, T: VerifiableTransaction>(opcode_num: u8, it: &mut I) -> Result<Box<dyn OpCodeImplementation<T>>, TxScriptError> {
+        pub fn deserialize_opcode_data<'i, I: Iterator<Item = &'i u8>, T: VerifiableTransaction>(opcode_num: u8, it: &mut I) -> Result<Box<dyn OpCodeImplementation<T>>, TxScriptError> {
             match opcode_num {
                 $(
                     $num => $name::deserialize(it),
