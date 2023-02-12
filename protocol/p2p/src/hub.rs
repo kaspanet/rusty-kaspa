@@ -81,6 +81,7 @@ impl Hub {
     pub async fn terminate(&self, peer_id: Uuid) {
         let op = self.active_peers.read().get(&peer_id).cloned();
         if let Some(router) = op {
+            // This will eventually lead to peer removal through the Hub event loop
             router.close().await;
         }
     }

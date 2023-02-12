@@ -6,7 +6,7 @@ pub mod pb {
 pub mod echo;
 
 mod adaptor;
-mod connection;
+mod connection_handler;
 mod hub;
 mod payload_type;
 mod router;

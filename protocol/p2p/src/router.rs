@@ -177,7 +177,7 @@ impl Router {
         // Drop all flow senders
         self.routing_map.write().clear();
 
-        // Send a close notification to the central Hub and downgrade
+        // Send a close notification to the central Hub
         self.hub_sender.send(HubEvent::PeerClosing(self.identity)).await.unwrap();
     }
 }

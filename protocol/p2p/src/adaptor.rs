@@ -1,5 +1,5 @@
 use crate::hub::Hub;
-use crate::{connection::ConnectionHandler, pb::KaspadMessage, Router};
+use crate::{connection_handler::ConnectionHandler, pb::KaspadMessage, Router};
 use kaspa_core::error;
 use std::sync::Arc;
 use std::time::Duration;
