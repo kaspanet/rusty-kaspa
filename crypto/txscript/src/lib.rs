@@ -288,8 +288,7 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
                 match self.sig_cache.get(&sig_cache_key) {
                     Some(valid) => valid.map_err(TxScriptError::InvalidSignature),
                     None => {
-                        // TODO: Find a way to parallelize this part. This will be less trivial
-                        // once this code is inside the script engine.
+                        // TODO: Find a way to parallelize this part.
                         match sig.verify(&msg, &pk) {
                             Ok(()) => {
                                 self.sig_cache.insert(sig_cache_key, Ok(()));
@@ -323,8 +322,7 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
                 match self.sig_cache.get(&sig_cache_key) {
                     Some(valid) => valid.map_err(TxScriptError::InvalidSignature),
                     None => {
-                        // TODO: Find a way to parallelize this part. This will be less trivial
-                        // once this code is inside the script engine.
+                        // TODO: Find a way to parallelize this part.
                         match sig.verify(&msg, &pk) {
                             Ok(()) => {
                                 self.sig_cache.insert(sig_cache_key, Ok(()));
