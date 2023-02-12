@@ -1,18 +1,17 @@
 use crate::{
     core::adaptor::{ConnectionError, ConnectionInitializer},
     handshake::KaspadHandshake,
-    pb::{self, KaspadMessage, VersionMessage},
-    KaspadMessagePayloadType, Router,
+    pb::{self, VersionMessage},
+    IncomingRoute, KaspadMessagePayloadType, Router,
 };
 use kaspa_core::{debug, trace, warn};
 use std::sync::Arc;
-use tokio::sync::mpsc::Receiver as MpscReceiver;
 use tonic::async_trait;
 use uuid::Uuid;
 
 /// An example flow, echoing all messages back to the network
 pub struct EchoFlow {
-    receiver: MpscReceiver<KaspadMessage>,
+    receiver: IncomingRoute,
     router: Arc<Router>,
 }
 

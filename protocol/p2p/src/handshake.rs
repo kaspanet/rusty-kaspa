@@ -34,11 +34,12 @@ impl KaspadHandshake {
         &self,
         router: &Arc<Router>,
         mut receiver: MpscReceiver<KaspadMessage>,
-        self_version_message: pb::VersionMessage,
+        version_message: pb::VersionMessage,
     ) -> Result<(), FlowError> {
         debug!("starting send version flow");
 
-        let version_message = pb::KaspadMessage { payload: Some(pb::kaspad_message::Payload::Version(self_version_message)) };
+        debug!("sending version massage: {version_message:?}");
+        let version_message = pb::KaspadMessage { payload: Some(pb::kaspad_message::Payload::Version(version_message)) };
         router.route_to_network(version_message).await;
 
         let verack_message = recv_payload!(receiver, Payload::Verack)?;

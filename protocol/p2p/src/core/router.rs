@@ -10,6 +10,8 @@ use tokio_stream::StreamExt;
 use tonic::Streaming;
 use uuid::Uuid;
 
+pub type IncomingRoute = MpscReceiver<KaspadMessage>;
+
 #[derive(Debug)]
 struct RouterMutableState {
     /// Used on router init to signal the router receive loop to start listening
@@ -112,7 +114,7 @@ impl Router {
     }
 
     /// Subscribe to specific message types. This should be used by `ClientInitializer` instances to register application-specific flows
-    pub fn subscribe(&self, msg_types: Vec<KaspadMessagePayloadType>) -> MpscReceiver<KaspadMessage> {
+    pub fn subscribe(&self, msg_types: Vec<KaspadMessagePayloadType>) -> IncomingRoute {
         let (sender, receiver) = mpsc_channel(Self::incoming_flow_channel_size());
         let mut map = self.routing_map.write();
         for msg_type in msg_types {

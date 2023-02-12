@@ -1,13 +1,14 @@
+use crate::v5;
 use async_trait::async_trait;
 use consensus_core::api::DynConsensus;
 use kaspa_core::debug;
-use p2p_lib::echo::EchoFlow;
 use p2p_lib::pb;
 use p2p_lib::{ConnectionError, ConnectionInitializer, Router};
 use p2p_lib::{KaspadHandshake, KaspadMessagePayloadType};
 use std::sync::Arc;
 use uuid::Uuid;
 
+#[derive(Clone)]
 pub struct FlowContext {
     /// For now, directly hold consensus
     pub consensus: Option<DynConsensus>,
@@ -58,16 +59,24 @@ impl ConnectionInitializer for FlowContext {
 
         // Perform the handshake
         let peer_version_message = handshake.handshake(&router, version_receiver, verack_receiver, self_version_message).await?;
+
+        // TODO: verify the versions are compatible
         debug!("protocol versions - self: {}, peer: {}", 5, peer_version_message.protocol_version);
 
-        // Subscribe to remaining messages. In this example we simply subscribe to all messages with a single echo flow
-        EchoFlow::register(router.clone()).await;
+        // Register all flows according to version
+        match peer_version_message.protocol_version {
+            5 => {
+                v5::register(self.clone(), router.clone());
+            }
+            _ => todo!(),
+        }
 
         // Send a ready signal
         handshake.ready_flow(&router, ready_receiver).await?;
 
         // Note: at this point receivers for handshake subscriptions
-        // are dropped, thus effectively unsubscribing
+        // are dropped, thus effectively unsubscribing from these messages, which means that if the peer re-sends them
+        // it is considered a protocol error and the connection will disconnect
 
         Ok(())
     }
