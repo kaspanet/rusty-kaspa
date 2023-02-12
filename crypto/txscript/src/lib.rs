@@ -92,13 +92,13 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
         reused_values: &'a mut SigHashReusedValues,
         sig_cache: &'a Cache<SigCacheKey, Result<(), secp256k1::Error>>,
     ) -> Result<Self, TxScriptError> {
-        let pubkey_script = utxo_entry.script_public_key.script();
-        // The pubkey in P2SH is just validating the hash on the OpMultiSig script
+        let script_public_key = utxo_entry.script_public_key.script();
+        // The script_public_key in P2SH is just validating the hash on the OpMultiSig script
         // the user provides
-        let is_p2sh = (pubkey_script.len() == 35) && // 3 opcodes number + 32 data
-                (pubkey_script[0] == opcodes::codes::OpBlake2b) &&
-                (pubkey_script[1] == opcodes::codes::OpData32) &&
-                (pubkey_script[pubkey_script.len() -1] == opcodes::codes::OpEqual);
+        let is_p2sh = (script_public_key.len() == 35) && // 3 opcodes number + 32 data
+                (script_public_key[0] == opcodes::codes::OpBlake2b) &&
+                (script_public_key[1] == opcodes::codes::OpData32) &&
+                (script_public_key[script_public_key.len() -1] == opcodes::codes::OpEqual);
         match id < tx.tx().inputs.len() {
             true => Ok(Self {
                 dstack: Default::default(),
