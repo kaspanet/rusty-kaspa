@@ -569,6 +569,18 @@ mod tests {
             )),
         }];
 
+        let test_bool = vec![
+            TestCase::<bool> { serialized: hex::decode("").expect("failed parsing hex"), result: Ok(false) },
+            TestCase::<bool> { serialized: hex::decode("00").expect("failed parsing hex"), result: Ok(false) },
+            TestCase::<bool> { serialized: hex::decode("0000").expect("failed parsing hex"), result: Ok(false) },
+            TestCase::<bool> { serialized: hex::decode("0011").expect("failed parsing hex"), result: Ok(true) },
+            TestCase::<bool> { serialized: hex::decode("80").expect("failed parsing hex"), result: Ok(false) }, // Negative zero
+            TestCase::<bool> { serialized: hex::decode("8011").expect("failed parsing hex"), result: Ok(true) }, // MSB by itself is negative zero, but the whole number isn't
+            TestCase::<bool> { serialized: hex::decode("8080").expect("failed parsing hex"), result: Ok(true) }, // All bytes are negative zeroes by themselves, but the whole number isn't
+            TestCase::<bool> { serialized: hex::decode("1234").expect("failed parsing hex"), result: Ok(true) },
+            TestCase::<bool> { serialized: hex::decode("ffffffff").expect("failed parsing hex"), result: Ok(true) },
+        ];
+
         for test in tests {
             // Ensure the error code is of the expected type and the error
             // code matches the value specified in the test instance.
@@ -588,6 +600,12 @@ mod tests {
         }
 
         for test in test_of_size_10 {
+            // Ensure the error code is of the expected type and the error
+            // code matches the value specified in the test instance.
+            assert_eq!(test.serialized.deserialize(), test.result);
+        }
+
+        for test in test_bool {
             // Ensure the error code is of the expected type and the error
             // code matches the value specified in the test instance.
             assert_eq!(test.serialized.deserialize(), test.result);
