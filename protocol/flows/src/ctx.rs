@@ -94,12 +94,12 @@ impl FlowContext {
 impl ConnectionInitializer for FlowContext {
     async fn initialize_connection(&self, router: Arc<Router>) -> Result<(), ConnectionError> {
         // Subscribe to handshake messages
-        let version_receiver = router.subscribe(vec![KaspadMessagePayloadType::Version]).await;
-        let verack_receiver = router.subscribe(vec![KaspadMessagePayloadType::Verack]).await;
-        let ready_receiver = router.subscribe(vec![KaspadMessagePayloadType::Ready]).await;
+        let version_receiver = router.subscribe(vec![KaspadMessagePayloadType::Version]);
+        let verack_receiver = router.subscribe(vec![KaspadMessagePayloadType::Verack]);
+        let ready_receiver = router.subscribe(vec![KaspadMessagePayloadType::Ready]);
 
         // We start the router receive loop only after we registered to handshake routes
-        router.start().await;
+        router.start();
         // Perform the initial handshake
         let version_message = self.handshake(&router, version_receiver, verack_receiver).await?;
         info!("peer protocol version: {}", version_message.protocol_version);

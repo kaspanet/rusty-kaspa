@@ -1937,6 +1937,7 @@ dependencies = [
  "kaspa-core",
  "lockfree",
  "log",
+ "parking_lot",
  "prost",
  "thiserror",
  "tokio",

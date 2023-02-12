@@ -22,6 +22,7 @@ kaspa-core.workspace = true
 
 log.workspace = true
 thiserror.workspace = true
+parking_lot.workspace = true
 
 futures = { version = "0.3", default-features = false, features = ["alloc"] }
 prost = "0.11"

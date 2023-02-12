@@ -2,16 +2,16 @@ use crate::hub::HubEvent;
 use crate::pb::KaspadMessage;
 use crate::KaspadMessagePayloadType;
 use kaspa_core::{debug, error, trace, warn};
+use parking_lot::{Mutex, RwLock};
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::mpsc::{channel as mpsc_channel, Receiver as MpscReceiver, Sender as MpscSender};
 use tokio::sync::oneshot::{channel as oneshot_channel, Sender as OneshotSender};
-use tokio::sync::{Mutex, RwLock};
 use tokio_stream::StreamExt;
 use tonic::Streaming;
 use uuid::Uuid;
 
 #[derive(Debug)]
-struct RouterStateSignals {
+struct RouterMutableState {
     /// Used on router init to signal the router receive loop to start listening
     start_signal: Option<OneshotSender<()>>,
 
@@ -34,7 +34,7 @@ pub struct Router {
     hub_sender: MpscSender<HubEvent>,
 
     /// Used for managing router mutable state
-    state: Mutex<RouterStateSignals>,
+    mutable_state: Mutex<RouterMutableState>,
 }
 
 impl Router {
@@ -51,7 +51,7 @@ impl Router {
             routing_map: RwLock::new(HashMap::new()),
             outgoing_route,
             hub_sender,
-            state: Mutex::new(RouterStateSignals { start_signal: Some(start_sender), shutdown_signal: Some(shutdown_sender) }),
+            mutable_state: Mutex::new(RouterMutableState { start_signal: Some(start_sender), shutdown_signal: Some(shutdown_sender) }),
         });
 
         let router_clone = router.clone();
@@ -101,9 +101,9 @@ impl Router {
     }
 
     /// Send a signal to start this router's receive loop
-    pub async fn start(&self) {
+    pub fn start(&self) {
         // Acquire state mutex and send the start signal
-        let op = self.state.lock().await.start_signal.take();
+        let op = self.mutable_state.lock().start_signal.take();
         if let Some(signal) = op {
             let _ = signal.send(());
         } else {
@@ -112,9 +112,9 @@ impl Router {
     }
 
     /// Subscribe to specific message types. This should be used by `ClientInitializer` instances to register application-specific flows
-    pub async fn subscribe(&self, msg_types: Vec<KaspadMessagePayloadType>) -> MpscReceiver<KaspadMessage> {
+    pub fn subscribe(&self, msg_types: Vec<KaspadMessagePayloadType>) -> MpscReceiver<KaspadMessage> {
         let (sender, receiver) = mpsc_channel(Self::incoming_flow_channel_size());
-        let mut map = self.routing_map.write().await;
+        let mut map = self.routing_map.write();
         for msg_type in msg_types {
             match map.insert(msg_type, sender.clone()) {
                 Some(_) => {
@@ -137,8 +137,8 @@ impl Router {
             return false;
         }
         let msg_type: KaspadMessagePayloadType = msg.payload.as_ref().unwrap().into();
-        let map = self.routing_map.read().await;
-        if let Some(sender) = map.get(&msg_type) {
+        let op = self.routing_map.read().get(&msg_type).cloned();
+        if let Some(sender) = op {
             sender.send(msg).await.is_ok()
         } else {
             false
@@ -164,7 +164,7 @@ impl Router {
         // Acquire state mutex and send the shutdown signal
         // NOTE: Using a block to drop the lock asap
         {
-            let op = self.state.lock().await.shutdown_signal.take();
+            let op = self.mutable_state.lock().shutdown_signal.take();
             if let Some(signal) = op {
                 let _ = signal.send(());
             } else {
@@ -175,13 +175,9 @@ impl Router {
         }
 
         // Drop all flow senders
-        self.routing_map.write().await.clear();
-
-        // Downgrade outgoing sender
-        self.outgoing_route.downgrade();
+        self.routing_map.write().clear();
 
         // Send a close notification to the central Hub and downgrade
         self.hub_sender.send(HubEvent::PeerClosing(self.identity)).await.unwrap();
-        self.hub_sender.downgrade();
     }
 }

@@ -36,6 +36,7 @@ impl Hub {
                             }
                             Err(err) => {
                                 // Ignoring the router
+                                new_router.close().await;
                                 debug!("P2P, flow initialization for router-id {:?} failed: {}", new_router.identity(), err);
                             }
                         }
