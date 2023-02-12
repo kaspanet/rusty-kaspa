@@ -1044,7 +1044,7 @@ mod test {
 
         let cache = Cache::new(10_000);
         let mut reused_values = SigHashReusedValues::new();
-        let mut vm = TxScriptEngine::new_empty(&mut reused_values, &cache);
+        let mut vm = TxScriptEngine::new(&mut reused_values, &cache);
 
         for pop in tests {
             match pop.execute(&mut vm) {

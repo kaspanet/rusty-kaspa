@@ -12,7 +12,7 @@ use consensus_core::hashing::sighash::{calc_ecdsa_signature_hash, calc_schnorr_s
 use consensus_core::hashing::sighash_type::SigHashType;
 use consensus_core::tx::{TransactionInput, UtxoEntry, VerifiableTransaction};
 use itertools::Itertools;
-use log::warn;
+use log::trace;
 use txscript_errors::TxScriptError;
 
 pub const MAX_SCRIPT_PUBLIC_KEY_VERSION: u16 = 0;
@@ -187,7 +187,7 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
         let (scripts, is_p2sh) = match &self.script_source {
             ScriptSource::TxInput { input, utxo_entry, is_p2sh, .. } => {
                 if utxo_entry.script_public_key.version() > MAX_SCRIPT_PUBLIC_KEY_VERSION {
-                    warn!("The version of the scriptPublicKey is higher than the known version - the Execute function returns true.");
+                    trace!("The version of the scriptPublicKey is higher than the known version - the Execute function returns true.");
                     return Ok(());
                 }
                 (vec![input.signature_script.as_slice(), utxo_entry.script_public_key.script()], *is_p2sh)
