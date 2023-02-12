@@ -332,7 +332,7 @@ opcode_list! {
     }
 
     opcode OpVerify<0x69, 1>(self, vm) {
-        let [result]: [bool; 1] = vm.dstack.pop_item()?;
+        let [result]: [bool; 1] = vm.dstack.pop_items()?;
         match result {
             true => Ok(()),
             false => Err(TxScriptError::VerifyError)
@@ -358,12 +358,12 @@ opcode_list! {
         }
     }
 
-    opcode Op2Drop<0x6d, 1>(self, vm) vm.dstack.drop_item::<2>()
-    opcode Op2Dup<0x6e, 1>(self, vm) vm.dstack.dup_item::<2>()
-    opcode Op3Dup<0x6f, 1>(self, vm) vm.dstack.dup_item::<3>()
-    opcode Op2Over<0x70, 1>(self, vm) vm.dstack.over_item::<2>()
-    opcode Op2Rot<0x71, 1>(self, vm) vm.dstack.rot_item::<2>()
-    opcode Op2Swap<0x72, 1>(self, vm) vm.dstack.swap_item::<2>()
+    opcode Op2Drop<0x6d, 1>(self, vm) vm.dstack.drop_items::<2>()
+    opcode Op2Dup<0x6e, 1>(self, vm) vm.dstack.dup_items::<2>()
+    opcode Op3Dup<0x6f, 1>(self, vm) vm.dstack.dup_items::<3>()
+    opcode Op2Over<0x70, 1>(self, vm) vm.dstack.over_items::<2>()
+    opcode Op2Rot<0x71, 1>(self, vm) vm.dstack.rot_items::<2>()
+    opcode Op2Swap<0x72, 1>(self, vm) vm.dstack.swap_items::<2>()
 
     opcode OpIfDup<0x73, 1>(self, vm) {
         let [result] = vm.dstack.pop_raw()?;
@@ -375,8 +375,8 @@ opcode_list! {
 
     opcode OpDepth<0x74, 1>(self, vm) push_number(vm.dstack.len() as i64, vm)
 
-    opcode OpDrop<0x75, 1>(self, vm) vm.dstack.drop_item::<1>()
-    opcode OpDup<0x76, 1>(self, vm) vm.dstack.dup_item::<1>()
+    opcode OpDrop<0x75, 1>(self, vm) vm.dstack.drop_items::<1>()
+    opcode OpDup<0x76, 1>(self, vm) vm.dstack.dup_items::<1>()
 
     opcode OpNip<0x77, 1>(self, vm) {
         match vm.dstack.len() >= 2 {
@@ -388,10 +388,10 @@ opcode_list! {
         }
     }
 
-    opcode OpOver<0x78, 1>(self, vm) vm.dstack.over_item::<1>()
+    opcode OpOver<0x78, 1>(self, vm) vm.dstack.over_items::<1>()
 
     opcode OpPick<0x79, 1>(self, vm) {
-        let [loc]: [i32; 1] = vm.dstack.pop_item()?;
+        let [loc]: [i32; 1] = vm.dstack.pop_items()?;
         match loc >= 0 {
             true => {
                 vm.dstack.push(vm.dstack[vm.dstack.len()-(loc as usize)-1].clone());
@@ -402,7 +402,7 @@ opcode_list! {
     }
 
     opcode OpRoll<0x7a, 1>(self, vm) {
-        let [loc]: [i32; 1] = vm.dstack.pop_item()?;
+        let [loc]: [i32; 1] = vm.dstack.pop_items()?;
         match loc >= 0 {
             true => {
                 let item = vm.dstack.remove(vm.dstack.len()-(loc as usize)-1);
@@ -413,8 +413,8 @@ opcode_list! {
         }
     }
 
-    opcode OpRot<0x7b, 1>(self, vm) vm.dstack.rot_item::<1>()
-    opcode OpSwap<0x7c, 1>(self, vm) vm.dstack.swap_item::<1>()
+    opcode OpRot<0x7b, 1>(self, vm) vm.dstack.rot_items::<1>()
+    opcode OpSwap<0x7c, 1>(self, vm) vm.dstack.swap_items::<1>()
 
     opcode OpTuck<0x7d, 1>(self, vm) {
         match vm.dstack.len() >= 2 {
@@ -480,13 +480,13 @@ opcode_list! {
 
     // Numeric related opcodes.
     opcode Op1Add<0x8b, 1>(self, vm) {
-        let [value]: [i64; 1] = vm.dstack.pop_item()?;
+        let [value]: [i64; 1] = vm.dstack.pop_items()?;
         vm.dstack.push_item(value + 1);
         Ok(())
     }
 
     opcode Op1Sub<0x8c, 1>(self, vm) {
-        let [value]: [i64; 1] = vm.dstack.pop_item()?;
+        let [value]: [i64; 1] = vm.dstack.pop_items()?;
         vm.dstack.push_item(value - 1);
         Ok(())
     }
@@ -495,37 +495,37 @@ opcode_list! {
     opcode Op2Div<0x8e, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
 
     opcode OpNegate<0x8f, 1>(self, vm) {
-        let [value]: [i64; 1] = vm.dstack.pop_item()?;
+        let [value]: [i64; 1] = vm.dstack.pop_items()?;
         vm.dstack.push_item(-value);
         Ok(())
     }
 
     opcode OpAbs<0x90, 1>(self, vm) {
-        let [m]: [i64; 1] = vm.dstack.pop_item()?;
+        let [m]: [i64; 1] = vm.dstack.pop_items()?;
         vm.dstack.push_item(m.abs());
         Ok(())
     }
 
     opcode OpNot<0x91, 1>(self, vm) {
-        let [m]: [i64; 1] = vm.dstack.pop_item()?;
+        let [m]: [i64; 1] = vm.dstack.pop_items()?;
         vm.dstack.push_item((m == 0) as i64);
         Ok(())
     }
 
     opcode Op0NotEqual<0x92, 1>(self, vm) {
-        let [m]: [i64; 1] = vm.dstack.pop_item()?;
+        let [m]: [i64; 1] = vm.dstack.pop_items()?;
         vm.dstack.push_item((m != 0) as i64 );
         Ok(())
     }
 
     opcode OpAdd<0x93, 1>(self, vm) {
-        let [a,b]: [i64; 2] = vm.dstack.pop_item()?;
+        let [a,b]: [i64; 2] = vm.dstack.pop_items()?;
         vm.dstack.push_item(a+b);
         Ok(())
     }
 
     opcode OpSub<0x94, 1>(self, vm) {
-        let [a,b]: [i64; 2] = vm.dstack.pop_item()?;
+        let [a,b]: [i64; 2] = vm.dstack.pop_items()?;
         vm.dstack.push_item(a-b);
         Ok(())
     }
@@ -537,25 +537,25 @@ opcode_list! {
     opcode OpRShift<0x99, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
 
     opcode OpBoolAnd<0x9a, 1>(self, vm) {
-        let [a,b]: [i64; 2] = vm.dstack.pop_item()?;
+        let [a,b]: [i64; 2] = vm.dstack.pop_items()?;
         vm.dstack.push_item(((a != 0) && (b != 0)) as i64);
         Ok(())
     }
 
     opcode OpBoolOr<0x9b, 1>(self, vm) {
-        let [a,b]: [i64; 2] = vm.dstack.pop_item()?;
+        let [a,b]: [i64; 2] = vm.dstack.pop_items()?;
         vm.dstack.push_item(((a != 0) || (b != 0)) as i64);
         Ok(())
     }
 
     opcode OpNumEqual<0x9c, 1>(self, vm) {
-        let [a,b]: [i64; 2] = vm.dstack.pop_item()?;
+        let [a,b]: [i64; 2] = vm.dstack.pop_items()?;
         vm.dstack.push_item((a == b) as i64);
         Ok(())
     }
 
     opcode OpNumEqualVerify<0x9d, 1>(self, vm) {
-        let [a,b]: [i64; 2] = vm.dstack.pop_item()?;
+        let [a,b]: [i64; 2] = vm.dstack.pop_items()?;
         match a == b {
             true => Ok(()),
             false => Err(TxScriptError::VerifyError)
@@ -563,49 +563,49 @@ opcode_list! {
     }
 
     opcode OpNumNotEqual<0x9e, 1>(self, vm) {
-        let [a,b]: [i64; 2] = vm.dstack.pop_item()?;
+        let [a,b]: [i64; 2] = vm.dstack.pop_items()?;
         vm.dstack.push_item((a != b) as i64);
         Ok(())
     }
 
     opcode OpLessThan<0x9f, 1>(self, vm) {
-        let [a,b]: [i64; 2] = vm.dstack.pop_item()?;
+        let [a,b]: [i64; 2] = vm.dstack.pop_items()?;
         vm.dstack.push_item((a < b) as i64);
         Ok(())
     }
 
     opcode OpGreaterThan<0xa0, 1>(self, vm) {
-        let [a,b]: [i64; 2] = vm.dstack.pop_item()?;
+        let [a,b]: [i64; 2] = vm.dstack.pop_items()?;
         vm.dstack.push_item((a > b) as i64);
         Ok(())
     }
 
     opcode OpLessThanOrEqual<0xa1, 1>(self, vm) {
-        let [a,b]: [i64; 2] = vm.dstack.pop_item()?;
+        let [a,b]: [i64; 2] = vm.dstack.pop_items()?;
         vm.dstack.push_item((a <= b) as i64);
         Ok(())
     }
 
     opcode OpGreaterThanOrEqual<0xa2, 1>(self, vm) {
-        let [a,b]: [i64; 2] = vm.dstack.pop_item()?;
+        let [a,b]: [i64; 2] = vm.dstack.pop_items()?;
         vm.dstack.push_item((a >= b) as i64);
         Ok(())
     }
 
     opcode OpMin<0xa3, 1>(self, vm) {
-        let [a,b]: [i64; 2] = vm.dstack.pop_item()?;
+        let [a,b]: [i64; 2] = vm.dstack.pop_items()?;
         vm.dstack.push_item(min(a,b));
         Ok(())
     }
 
     opcode OpMax<0xa4, 1>(self, vm) {
-        let [a,b]: [i64; 2] = vm.dstack.pop_item()?;
+        let [a,b]: [i64; 2] = vm.dstack.pop_items()?;
         vm.dstack.push_item(max(a,b));
         Ok(())
     }
 
     opcode OpWithin<0xa5, 1>(self, vm) {
-        let [x,l,u]: [i64; 3] = vm.dstack.pop_item()?;
+        let [x,l,u]: [i64; 3] = vm.dstack.pop_items()?;
         vm.dstack.push_item((x >= l && x < u) as i64);
         Ok(())
     }
@@ -624,7 +624,7 @@ opcode_list! {
     }
 
     opcode OpCheckMultiSigECDSA<0xa9, 1>(self, vm) {
-        let [num_keys]: [i32; 1] = vm.dstack.pop_item()?;
+        let [num_keys]: [i32; 1] = vm.dstack.pop_items()?;
         if num_keys < 0 {
             return Err(TxScriptError::InvalidPubKeyCount(format!("number of pubkeys {num_keys} is negative")));
         } else if num_keys > MAX_PUB_KEYS_PER_MUTLTISIG {
@@ -644,7 +644,7 @@ opcode_list! {
         let mut pub_keys = pub_keys_vec.iter_mut().enumerate();
 
 
-        let [num_sigs]: [i32; 1] = vm.dstack.pop_item()?;
+        let [num_sigs]: [i32; 1] = vm.dstack.pop_items()?;
         if num_sigs < 0 {
             return Err(TxScriptError::InvalidSignatureCount(format!("number of signatures {num_sigs} is negative")));
         } else if num_sigs > num_keys {
@@ -753,7 +753,7 @@ opcode_list! {
     opcode OpCheckSigVerify<0xad, 1>(self, vm) {
         // TODO: when changing impl to array based, change this too
         OpCheckSig{data: self.data.clone()}.execute(vm)?;
-        let [valid]: [bool; 1] = vm.dstack.pop_item()?;
+        let [valid]: [bool; 1] = vm.dstack.pop_items()?;
         match valid {
             true => Ok(()),
             false => Err(TxScriptError::VerifyError)
@@ -761,7 +761,7 @@ opcode_list! {
     }
 
     opcode OpCheckMultiSig<0xae, 1>(self, vm) {
-        let [num_keys]: [i32; 1] = vm.dstack.pop_item()?;
+        let [num_keys]: [i32; 1] = vm.dstack.pop_items()?;
         if num_keys < 0 {
             return Err(TxScriptError::InvalidPubKeyCount(format!("number of pubkeys {num_keys} is negative")));
         } else if num_keys > MAX_PUB_KEYS_PER_MUTLTISIG {
@@ -781,7 +781,7 @@ opcode_list! {
         let mut pub_keys = pub_keys_vec.iter_mut().enumerate();
 
 
-        let [num_sigs]: [i32; 1] = vm.dstack.pop_item()?;
+        let [num_sigs]: [i32; 1] = vm.dstack.pop_items()?;
         if num_sigs < 0 {
             return Err(TxScriptError::InvalidSignatureCount(format!("number of signatures {num_sigs} is negative")));
         } else if num_sigs > num_keys {
@@ -833,7 +833,7 @@ opcode_list! {
     opcode OpCheckMultiSigVerify<0xaf, 1>(self, vm) {
         // TODO: when changing impl to array based, change this too
         OpCheckMultiSig{data: self.data.clone()}.execute(vm)?;
-        let [valid]: [bool; 1] = vm.dstack.pop_item()?;
+        let [valid]: [bool; 1] = vm.dstack.pop_items()?;
         match valid {
             true => Ok(()),
             false => Err(TxScriptError::VerifyError)

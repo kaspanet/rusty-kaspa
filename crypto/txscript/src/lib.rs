@@ -250,7 +250,7 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
             }
         }
 
-        let [v]: [bool; 1] = self.dstack.pop_item()?;
+        let [v]: [bool; 1] = self.dstack.pop_items()?;
         match v {
             true => Ok(()),
             false => Err(TxScriptError::EvalFalse),
