@@ -1,16 +1,12 @@
 use async_trait::async_trait;
 use consensus_core::api::DynConsensus;
-use kaspa_core::info;
-use p2p_lib::pb::{self, kaspad_message::Payload, KaspadMessage, VersionMessage};
-use p2p_lib::KaspadMessagePayloadType;
+use kaspa_core::debug;
+use p2p_lib::echo::EchoFlow;
+use p2p_lib::pb;
 use p2p_lib::{ConnectionError, ConnectionInitializer, Router};
+use p2p_lib::{KaspadHandshake, KaspadMessagePayloadType};
 use std::sync::Arc;
-use tokio::sync::mpsc::Receiver;
 use uuid::Uuid;
-
-use crate::common::FlowError;
-use crate::recv_payload;
-use crate::v5::echo::EchoFlow;
 
 pub struct FlowContext {
     /// For now, directly hold consensus
@@ -32,64 +28,6 @@ fn unix_now() -> i64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64
 }
 
-impl FlowContext {
-    async fn receive_version_flow(
-        &self,
-        router: &Arc<Router>,
-        mut receiver: Receiver<KaspadMessage>,
-    ) -> Result<VersionMessage, FlowError> {
-        info!("starting receive version flow");
-        let version_message = recv_payload!(receiver, Payload::Version)?;
-        info!("accepted version massage: {version_message:?}");
-        let verack_message = pb::KaspadMessage { payload: Some(pb::kaspad_message::Payload::Verack(pb::VerackMessage {})) };
-        router.route_to_network(verack_message).await;
-        Ok(version_message)
-    }
-
-    async fn send_version_flow(&self, router: &Arc<Router>, mut receiver: Receiver<KaspadMessage>) -> Result<(), FlowError> {
-        info!("starting send version flow");
-        // TODO: full and accurate version info
-        let version_message = pb::VersionMessage {
-            protocol_version: 5, // TODO: make a const
-            services: 0,         // TODO: get number of live services
-            timestamp: unix_now(),
-            address: None,                          // TODO
-            id: Vec::from(Uuid::new_v4().as_ref()), // TODO
-            user_agent: String::new(),              // TODO
-            disable_relay_tx: false,                // TODO: config/cmd?
-            subnetwork_id: None,                    // Subnets are not currently supported
-            network: "kaspa-mainnet".to_string(),   // TODO: get network from config
-        };
-        let version_message = pb::KaspadMessage { payload: Some(pb::kaspad_message::Payload::Version(version_message)) };
-        router.route_to_network(version_message).await;
-        let verack_message = recv_payload!(receiver, Payload::Verack)?;
-        info!("accepted verack_message: {verack_message:?}");
-        Ok(())
-    }
-
-    async fn ready_flow(&self, router: &Arc<Router>, mut receiver: Receiver<KaspadMessage>) -> Result<(), FlowError> {
-        info!("starting ready flow");
-        let sent_ready_message = pb::KaspadMessage { payload: Some(pb::kaspad_message::Payload::Ready(pb::ReadyMessage {})) };
-        router.route_to_network(sent_ready_message).await;
-        let recv_ready_message = recv_payload!(receiver, Payload::Ready)?;
-        info!("accepted ready message: {recv_ready_message:?}");
-        Ok(())
-    }
-
-    async fn handshake(
-        &self,
-        router: &Arc<Router>,
-        version_receiver: Receiver<KaspadMessage>,
-        verack_receiver: Receiver<KaspadMessage>,
-    ) -> Result<VersionMessage, FlowError> {
-        // Run both send and receive flows concurrently -- this is critical in order to avoid a handshake deadlock
-        let (send_res, recv_res) =
-            tokio::join!(self.send_version_flow(router, verack_receiver), self.receive_version_flow(router, version_receiver));
-        send_res?;
-        recv_res
-    }
-}
-
 #[async_trait]
 impl ConnectionInitializer for FlowContext {
     async fn initialize_connection(&self, router: Arc<Router>) -> Result<(), ConnectionError> {
@@ -100,16 +38,33 @@ impl ConnectionInitializer for FlowContext {
 
         // We start the router receive loop only after we registered to handshake routes
         router.start();
-        // Perform the initial handshake
-        let version_message = self.handshake(&router, version_receiver, verack_receiver).await?;
-        info!("peer protocol version: {}", version_message.protocol_version);
 
-        // Subscribe to remaining messages
-        // TODO: register to all kaspa P2P flows here
+        // Build the local version message
+        // TODO: full and accurate version info
+        let self_version_message = pb::VersionMessage {
+            protocol_version: 5, // TODO: make a const
+            services: 0,         // TODO: get number of live services
+            timestamp: unix_now(),
+            address: None,                          // TODO
+            id: Vec::from(Uuid::new_v4().as_ref()), // TODO
+            user_agent: String::new(),              // TODO
+            disable_relay_tx: false,                // TODO: config/cmd?
+            subnetwork_id: None,                    // Subnets are not currently supported
+            network: "kaspa-mainnet".to_string(),   // TODO: get network from config
+        };
+
+        // Build the handshake object
+        let handshake = KaspadHandshake::new();
+
+        // Perform the handshake
+        let peer_version_message = handshake.handshake(&router, version_receiver, verack_receiver, self_version_message).await?;
+        debug!("protocol versions - self: {}, peer: {}", 5, peer_version_message.protocol_version);
+
+        // Subscribe to remaining messages. In this example we simply subscribe to all messages with a single echo flow
         EchoFlow::register(router.clone()).await;
 
         // Send a ready signal
-        self.ready_flow(&router, ready_receiver).await?;
+        handshake.ready_flow(&router, ready_receiver).await?;
 
         // Note: at this point receivers for handshake subscriptions
         // are dropped, thus effectively unsubscribing

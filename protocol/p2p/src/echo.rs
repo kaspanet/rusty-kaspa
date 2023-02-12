@@ -1,9 +1,10 @@
 use crate::{
     adaptor::{ConnectionError, ConnectionInitializer},
-    pb::{self, KaspadMessage},
+    handshake::KaspadHandshake,
+    pb::{self, KaspadMessage, VersionMessage},
     KaspadMessagePayloadType, Router,
 };
-use kaspa_core::{debug, info, trace, warn};
+use kaspa_core::{debug, trace, warn};
 use std::sync::Arc;
 use tokio::sync::mpsc::Receiver as MpscReceiver;
 use tonic::async_trait;
@@ -91,77 +92,27 @@ impl EchoFlow {
 #[derive(Default)]
 pub struct EchoFlowInitializer {}
 
-#[inline]
 fn unix_now() -> i64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64
+}
+
+fn build_dummy_version_message() -> VersionMessage {
+    pb::VersionMessage {
+        protocol_version: 5,
+        services: 0,
+        timestamp: unix_now(),
+        address: None,
+        id: Vec::from(Uuid::new_v4().as_ref()),
+        user_agent: String::new(),
+        disable_relay_tx: false,
+        subnetwork_id: None,
+        network: "kaspa-mainnet".to_string(),
+    }
 }
 
 impl EchoFlowInitializer {
     pub fn new() -> Self {
         EchoFlowInitializer {}
-    }
-
-    async fn receive_version_flow(&self, router: &Arc<Router>, mut receiver: MpscReceiver<KaspadMessage>) {
-        info!("starting receive version flow");
-        if let Some(msg) = receiver.recv().await {
-            if let pb::kaspad_message::Payload::Version(version_message) = msg.payload.unwrap() {
-                info!("accepted version massage: {version_message:?}");
-                let verack_message = pb::KaspadMessage { payload: Some(pb::kaspad_message::Payload::Verack(pb::VerackMessage {})) };
-                router.route_to_network(verack_message).await;
-                return;
-            }
-        }
-        panic!()
-    }
-
-    async fn send_version_flow(&self, router: &Arc<Router>, mut receiver: MpscReceiver<KaspadMessage>) {
-        info!("starting send version flow");
-        let version_message = pb::VersionMessage {
-            protocol_version: 5,
-            services: 0,
-            timestamp: unix_now(),
-            address: None,
-            id: Vec::from(Uuid::new_v4().as_ref()),
-            user_agent: String::new(),
-            disable_relay_tx: true,
-            subnetwork_id: None,
-            network: "kaspa-mainnet".to_string(),
-        };
-        let version_message = pb::KaspadMessage { payload: Some(pb::kaspad_message::Payload::Version(version_message)) };
-        router.route_to_network(version_message).await;
-
-        if let Some(msg) = receiver.recv().await {
-            if let pb::kaspad_message::Payload::Verack(verack_message) = msg.payload.unwrap() {
-                info!("accepted verack_message: {verack_message:?}");
-                return;
-            }
-        }
-        panic!()
-    }
-
-    async fn ready_flow(&self, router: &Arc<Router>, mut receiver: MpscReceiver<KaspadMessage>) {
-        info!("starting ready flow");
-        let ready_message = pb::KaspadMessage { payload: Some(pb::kaspad_message::Payload::Ready(pb::ReadyMessage {})) };
-        router.route_to_network(ready_message).await;
-        if let Some(msg) = receiver.recv().await {
-            if let pb::kaspad_message::Payload::Ready(ready_message) = msg.payload.unwrap() {
-                info!("accepted ready message: {ready_message:?}");
-                return;
-            }
-        }
-        panic!()
-    }
-
-    async fn handshake(
-        &self,
-        router: &Arc<Router>,
-        version_receiver: MpscReceiver<KaspadMessage>,
-        verack_receiver: MpscReceiver<KaspadMessage>,
-        ready_receiver: MpscReceiver<KaspadMessage>,
-    ) {
-        // Run both send and receive flows concurrently
-        tokio::join!(self.send_version_flow(router, verack_receiver), self.receive_version_flow(router, version_receiver));
-        self.ready_flow(router, ready_receiver).await;
     }
 }
 
@@ -177,13 +128,28 @@ impl ConnectionInitializer for EchoFlowInitializer {
         let verack_receiver = router.subscribe(vec![KaspadMessagePayloadType::Verack]);
         let ready_receiver = router.subscribe(vec![KaspadMessagePayloadType::Ready]);
 
-        // Start the router receive loop
+        // We start the router receive loop only after we registered to handshake routes
         router.start();
-        // Perform the handshake
-        self.handshake(&router, version_receiver, verack_receiver, ready_receiver).await;
 
-        // Subscribe to remaining messages
+        // Build the local version message
+        let self_version_message = build_dummy_version_message();
+
+        // Build the handshake object
+        let handshake = KaspadHandshake::new();
+
+        // Perform the handshake
+        let peer_version_message = handshake.handshake(&router, version_receiver, verack_receiver, self_version_message).await?;
+        debug!("protocol versions - self: {}, peer: {}", 5, peer_version_message.protocol_version);
+
+        // Subscribe to remaining messages. In this example we simply subscribe to all messages with a single echo flow
         EchoFlow::register(router.clone()).await;
+
+        // Send a ready signal
+        handshake.ready_flow(&router, ready_receiver).await?;
+
+        // Note: at this point receivers for handshake subscriptions
+        // are dropped, thus effectively unsubscribing
+
         Ok(())
     }
 }

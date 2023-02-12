@@ -1,4 +1,4 @@
-use p2p_lib::ConnectionError;
+use crate::ConnectionError;
 use std::time::Duration;
 use thiserror::Error;
 
@@ -11,7 +11,7 @@ pub enum FlowError {
     Timeout(Duration),
 
     #[error("expected {0} payload type but got {1:?}")]
-    UnexpectedMessageType(&'static str, Box<Option<p2p_lib::pb::kaspad_message::Payload>>),
+    UnexpectedMessageType(&'static str, Box<Option<crate::pb::kaspad_message::Payload>>),
 
     #[error("channel is closed")]
     ChannelClosed,

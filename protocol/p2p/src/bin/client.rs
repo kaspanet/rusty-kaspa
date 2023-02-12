@@ -10,7 +10,7 @@ async fn main() {
     let initializer = Arc::new(EchoFlowInitializer::new());
     let adaptor = p2p_lib::Adaptor::client_only(initializer);
     // [1] - connect 128 peers + flows
-    let ip_port = String::from("://[::1]:16111");
+    let ip_port = String::from("://[::1]:50051");
     for i in 0..1 {
         debug!("P2P, p2p_client::main - starting peer:{}", i);
         let _peer_id = adaptor.connect_peer(ip_port.clone()).await;

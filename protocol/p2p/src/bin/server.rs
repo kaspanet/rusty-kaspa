@@ -17,7 +17,7 @@ async fn main() {
         let _peer_id = adaptor.connect_peer(ip_port.clone()).await;
     }
     // [2] - wait for 60 sec and terminate
-    tokio::time::sleep(Duration::from_secs(5)).await;
+    tokio::time::sleep(Duration::from_secs(64)).await;
     debug!("P2P,p2p_client::main - TERMINATE");
     adaptor.terminate_all_peers().await;
     debug!("P2P,p2p_client::main - FINISH");
