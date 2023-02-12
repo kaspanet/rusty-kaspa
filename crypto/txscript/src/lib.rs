@@ -28,7 +28,7 @@ pub const MAX_PUB_KEYS_PER_MUTLTISIG: i32 = 20;
 
 // The last opcode that does not count toward operations.
 // Note that this includes OP_RESERVED which counts as a push operation.
-pub const NO_COST_OPCODE: u8 = 16;
+pub const NO_COST_OPCODE: u8 = 0x60;
 
 #[derive(Clone, Hash, PartialEq, Eq)]
 enum Signature {
