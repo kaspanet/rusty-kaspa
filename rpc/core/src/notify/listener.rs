@@ -1,8 +1,8 @@
 use crate::{
     notify::{
         connection::Connection,
+        error::Result,
         events::{EventArray, EventType},
-        result::Result,
         scope::Scope,
         utxo_address_set::RpcUtxoAddressSet,
     },

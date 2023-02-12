@@ -44,3 +44,5 @@ impl From<RecvError> for Error {
         Error::ChannelRecvError
     }
 }
+
+pub type Result<T> = std::result::Result<T, Error>;

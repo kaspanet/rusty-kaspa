@@ -1,11 +1,10 @@
 use super::{
     collector::DynCollector,
     connection::Connection,
-    error::Error,
+    error::{Error, Result},
     events::{EventArray, EventType, EVENT_TYPE_ARRAY},
     listener::{Listener, ListenerID, ListenerSenderSide, ListenerUtxoNotificationFilterSetting, ListenerVariantSet},
     message::{DispatchMessage, SubscribeMessage},
-    result::Result,
     scope::Scope,
     subscriber::{Subscriber, SubscriptionManager},
 };

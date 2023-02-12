@@ -15,9 +15,8 @@ use crate::{
     notify::{
         collector,
         connection::{ChannelConnection, Connection},
-        error::Error,
+        error::{Error, Result},
         notifier::Notifier,
-        result::Result,
     },
     Notification,
 };
