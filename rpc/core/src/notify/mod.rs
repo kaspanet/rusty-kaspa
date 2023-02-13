@@ -1,3 +1,4 @@
+pub mod broadcaster;
 pub mod channel;
 pub mod collector;
 pub mod connection;

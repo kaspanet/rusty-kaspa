@@ -42,9 +42,9 @@ pub trait Compounded: Subscription {
     fn compound(&mut self, mutation: Mutation) -> Option<Mutation>;
 }
 
-pub type DynCompoundedSubscription = Box<dyn Compounded>;
+pub type CompoundedSubscription = Box<dyn Compounded>;
 
-pub trait Single: Subscription + AsAny + DynHash + DynEq + Debug + Send + Sync {
+pub trait Single: Subscription + AsAny + DynHash + DynEq + SingleClone + Debug + Send + Sync {
     fn active(&self) -> bool;
     fn apply_to(&self, notification: Arc<Notification>) -> Arc<Notification>;
     fn mutate(&mut self, mutation: Mutation) -> Option<Vec<Mutation>>;
@@ -62,7 +62,8 @@ impl PartialEq for dyn Single {
 }
 impl Eq for dyn Single {}
 
-pub type DynSingleSubscription = Box<dyn Single>;
+pub type SingleSubscription = Box<dyn Single>;
+pub type DynSubscription = Arc<dyn Single>;
 
 pub trait AsAny {
     fn as_any(&self) -> &dyn Any;
@@ -92,5 +93,18 @@ impl<T: Eq + Any> DynEq for T {
         } else {
             false
         }
+    }
+}
+
+pub trait SingleClone {
+    fn clone_arc(&self) -> Arc<dyn Single>;
+}
+
+impl<T> SingleClone for T
+where
+    T: 'static + Single + Clone,
+{
+    fn clone_arc(&self) -> Arc<dyn Single> {
+        Arc::new(self.clone())
     }
 }

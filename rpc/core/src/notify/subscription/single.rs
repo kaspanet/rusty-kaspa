@@ -17,8 +17,8 @@ use std::{
 
 /// Subscription with a all or none scope.
 ///
-/// To be used by all notifications which [`NotificationType`] variant is fieldless.
-#[derive(Eq, PartialEq, Hash, Debug)]
+/// To be used by all notifications which [`Scope`] variant is fieldless.
+#[derive(Eq, PartialEq, Hash, Clone, Debug)]
 pub struct OverallSubscription {
     event_type: EventType,
     active: bool,
@@ -61,7 +61,7 @@ impl Subscription for OverallSubscription {
 }
 
 /// Subscription to VirtualSelectedParentChainChanged notifications
-#[derive(Eq, PartialEq, Hash, Debug, Default)]
+#[derive(Eq, PartialEq, Hash, Clone, Debug, Default)]
 pub struct VirtualSelectedParentChainChangedSubscription {
     active: bool,
     include_accepted_transaction_ids: bool,
@@ -168,7 +168,7 @@ impl Subscription for VirtualSelectedParentChainChangedSubscription {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct UtxosChangedSubscription {
     active: bool,
     addresses: HashSet<Address>,
@@ -287,72 +287,6 @@ impl Subscription for UtxosChangedSubscription {
     }
 }
 
-// #[derive(Debug)]
-// pub struct SubsetSubscription<T>
-// where
-//     T: Eq + Ord + Hash + Debug + Send + Sync,
-// {
-//     event_type: EventType,
-//     active: bool,
-//     items: HashSet<T>,
-// }
-
-// impl<T> PartialEq for SubsetSubscription<T>
-// where
-//     T: Eq + Ord + Hash + Debug + Send + Sync,
-// {
-//     fn eq(&self, other: &Self) -> bool {
-//         if self.active == other.active && self.items.len() == other.items.len() {
-//             // HashSets are equal if they contain the same elements
-//             return self.items.iter().all(|x| other.items.contains(x));
-//         }
-//         false
-//     }
-// }
-
-// impl<T> Eq for SubsetSubscription<T> where T: Eq + Ord + Hash + Debug + Send + Sync {}
-
-// impl<T> Hash for SubsetSubscription<T>
-// where
-//     T: Eq + Ord + Hash + Debug + Send + Sync,
-// {
-//     fn hash<H: Hasher>(&self, state: &mut H) {
-//         self.active.hash(state);
-
-//         // Since item order in hash set is undefined, build a sorted vector
-//         // so that hashing is determinist.
-//         let mut items: Vec<&T> = self.items.iter().collect::<Vec<_>>();
-//         items.sort();
-//         items.hash(state);
-//     }
-// }
-
-// impl<T> SingleSubscription for SubsetSubscription<T>
-// where
-//     T: Eq + Ord + Hash + Debug + Send + Sync + 'static,
-// {
-//     fn apply_to(&self, _notification: Arc<Notification>) -> Arc<Notification> {
-//         todo!()
-//     }
-
-//     fn active(&self) -> bool {
-//         self.active
-//     }
-
-//     fn mutate(&mut self, _mutation: Mutation) -> Option<Vec<Mutation>> {
-//         todo!()
-//     }
-// }
-
-// impl<T> Subscription for SubsetSubscription<T>
-// where
-//     T: Eq + Ord + Hash + Debug + Send + Sync + 'static,
-// {
-//     fn event_type(&self) -> EventType {
-//         self.event_type
-//     }
-// }
-
 #[cfg(test)]
 mod tests {
     use super::super::*;
@@ -370,65 +304,117 @@ mod tests {
 
     #[test]
     fn test_subscription_hash() {
-        let g1 = OverallSubscription::new(EventType::BlockAdded, false);
-        let g2 = OverallSubscription::new(EventType::BlockAdded, true);
-        let g3 = OverallSubscription::new(EventType::BlockAdded, true);
+        struct Comparison {
+            left: usize,
+            right: usize,
+            should_match: bool,
+        }
+        impl Comparison {
+            fn new(left: usize, right: usize, should_match: bool) -> Self {
+                Self { left, right, should_match }
+            }
+            fn compare(&self, name: &str, subscriptions: &[SingleSubscription]) {
+                let equal = if self.should_match { "be equal" } else { "not be equal" };
+                // Compare Box dyn Single
+                #[allow(clippy::op_ref)]
+                let cmp = &subscriptions[self.left] == &subscriptions[self.right];
+                assert_eq!(
+                    cmp, self.should_match,
+                    "{name}: subscriptions should {equal}, comparing {:?} with {:?}",
+                    &subscriptions[self.left], &subscriptions[self.right],
+                );
+                // Compare Box dyn Single hash
+                assert_eq!(
+                    get_hash(&subscriptions[self.left]) == get_hash(&subscriptions[self.right]),
+                    self.should_match,
+                    "{name}: subscription hashes should {equal}, comparing {:?} => {} with {:?} => {}",
+                    &subscriptions[self.left],
+                    get_hash(&subscriptions[self.left]),
+                    &subscriptions[self.right],
+                    get_hash(&subscriptions[self.right]),
+                );
+                // Compare Arc dyn Single
+                let left_arc = subscriptions[self.left].clone_arc();
+                let right_arc = subscriptions[self.right].clone_arc();
+                assert_eq!(
+                    *left_arc == *right_arc,
+                    self.should_match,
+                    "{name}: subscriptions should {equal}, comparing {left_arc:?} with {right_arc:?}",
+                );
+                // Compare Arc dyn Single hash
+                assert_eq!(
+                    get_hash(&left_arc) == get_hash(&right_arc),
+                    self.should_match,
+                    "{name}: subscription hashes should {equal}, comparing {:?} => {} with {:?} => {}",
+                    left_arc,
+                    get_hash(&left_arc),
+                    right_arc,
+                    get_hash(&right_arc),
+                );
+            }
+        }
 
-        assert_ne!(g1, g2);
-        assert_ne!(g1, g3);
-        assert_eq!(g2, g3);
+        struct Test {
+            name: &'static str,
+            subscriptions: Vec<SingleSubscription>,
+            comparisons: Vec<Comparison>,
+        }
 
-        assert_ne!(get_hash(&g1), get_hash(&g2));
-        assert_ne!(get_hash(&g1), get_hash(&g3));
-        assert_eq!(get_hash(&g2), get_hash(&g3));
+        let addresses = addresses();
+        let mut sorted_addresses = addresses.clone();
+        sorted_addresses.sort();
 
-        let s1: DynSingleSubscription = Box::new(g1);
-        let s2: DynSingleSubscription = Box::new(g2);
-        let s3: DynSingleSubscription = Box::new(g3);
+        let tests: Vec<Test> = vec![
+            Test {
+                name: "test basic overall subscription",
+                subscriptions: vec![
+                    Box::new(OverallSubscription::new(EventType::BlockAdded, false)),
+                    Box::new(OverallSubscription::new(EventType::BlockAdded, true)),
+                    Box::new(OverallSubscription::new(EventType::BlockAdded, true)),
+                ],
+                comparisons: vec![Comparison::new(0, 1, false), Comparison::new(0, 2, false), Comparison::new(1, 2, true)],
+            },
+            Test {
+                name: "test virtual selected parent chain changed subscription",
+                subscriptions: vec![
+                    Box::new(VirtualSelectedParentChainChangedSubscription::new(false, false)),
+                    Box::new(VirtualSelectedParentChainChangedSubscription::new(true, false)),
+                    Box::new(VirtualSelectedParentChainChangedSubscription::new(true, true)),
+                    Box::new(VirtualSelectedParentChainChangedSubscription::new(true, true)),
+                ],
+                comparisons: vec![
+                    Comparison::new(0, 1, false),
+                    Comparison::new(0, 2, false),
+                    Comparison::new(0, 3, false),
+                    Comparison::new(1, 2, false),
+                    Comparison::new(1, 3, false),
+                    Comparison::new(2, 3, true),
+                ],
+            },
+            Test {
+                name: "test utxos changed subscription",
+                subscriptions: vec![
+                    Box::new(UtxosChangedSubscription { active: false, addresses: HashSet::default() }),
+                    Box::new(UtxosChangedSubscription { active: true, addresses: addresses[0..2].iter().cloned().collect() }),
+                    Box::new(UtxosChangedSubscription { active: true, addresses: addresses[0..3].iter().cloned().collect() }),
+                    Box::new(UtxosChangedSubscription { active: true, addresses: sorted_addresses[0..3].iter().cloned().collect() }),
+                ],
+                comparisons: vec![
+                    Comparison::new(0, 1, false),
+                    Comparison::new(0, 2, false),
+                    Comparison::new(0, 3, false),
+                    Comparison::new(1, 2, false),
+                    Comparison::new(1, 3, false),
+                    Comparison::new(3, 3, true),
+                ],
+            },
+        ];
 
-        assert_ne!(*s1, *s2);
-        assert_ne!(*s1, *s3);
-        assert_eq!(*s2, *s3);
-
-        assert_ne!(get_hash(&s1), get_hash(&s2));
-        assert_ne!(get_hash(&s1), get_hash(&s3));
-        assert_eq!(get_hash(&s2), get_hash(&s3));
-
-        let h1: UtxosChangedSubscription = UtxosChangedSubscription { active: false, addresses: HashSet::default() };
-        let mut addresses = addresses();
-        let h2: UtxosChangedSubscription =
-            UtxosChangedSubscription { active: true, addresses: addresses[0..2].iter().cloned().collect() };
-        let h3: UtxosChangedSubscription =
-            UtxosChangedSubscription { active: true, addresses: addresses[0..3].iter().cloned().collect() };
-        addresses.sort();
-        let h4: UtxosChangedSubscription =
-            UtxosChangedSubscription { active: true, addresses: addresses[0..3].iter().cloned().collect() };
-
-        assert_ne!(h1, h2);
-        assert_ne!(h1, h3);
-        assert_ne!(h1, h4);
-        assert_ne!(h2, h3);
-        assert_ne!(h2, h4);
-        assert_eq!(h3, h4);
-
-        let s1: DynSingleSubscription = Box::new(h1);
-        let s2: DynSingleSubscription = Box::new(h2);
-        let s3: DynSingleSubscription = Box::new(h3);
-        let s4: DynSingleSubscription = Box::new(h4);
-
-        assert_ne!(*s1, *s2);
-        assert_ne!(*s1, *s3);
-        assert_ne!(*s1, *s4);
-        assert_ne!(*s2, *s3);
-        assert_ne!(*s2, *s4);
-        assert_eq!(*s3, *s4);
-
-        assert_ne!(get_hash(&s1), get_hash(&s2));
-        assert_ne!(get_hash(&s1), get_hash(&s3));
-        assert_ne!(get_hash(&s1), get_hash(&s4));
-        assert_ne!(get_hash(&s2), get_hash(&s3));
-        assert_ne!(get_hash(&s2), get_hash(&s4));
-        assert_eq!(get_hash(&s3), get_hash(&s4));
+        for test in tests.iter() {
+            for comparison in test.comparisons.iter() {
+                comparison.compare(test.name, &test.subscriptions);
+            }
+        }
     }
 
     fn get_hash<T: Hash>(item: &T) -> u64 {

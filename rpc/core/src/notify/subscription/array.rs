@@ -1,13 +1,13 @@
-use super::{compounded, single, DynCompoundedSubscription, DynSingleSubscription};
+use super::{compounded, single, CompoundedSubscription, SingleSubscription};
 use crate::notify::events::{EventArray, EventType};
 
 pub struct ArrayBuilder {}
 
 impl ArrayBuilder {
-    pub fn single() -> EventArray<DynSingleSubscription> {
-        let mut array: EventArray<DynSingleSubscription> = EventArray::from_fn(|i| {
+    pub fn single() -> EventArray<SingleSubscription> {
+        let mut array: EventArray<SingleSubscription> = EventArray::from_fn(|i| {
             let subscription = single::OverallSubscription::new(i.try_into().unwrap(), false);
-            let single: DynSingleSubscription = Box::new(subscription);
+            let single: SingleSubscription = Box::new(subscription);
             single
         });
         array[EventType::VirtualSelectedParentChainChanged] = Box::<single::VirtualSelectedParentChainChangedSubscription>::default();
@@ -15,10 +15,10 @@ impl ArrayBuilder {
         array
     }
 
-    pub fn compounded() -> EventArray<DynCompoundedSubscription> {
-        let mut array: EventArray<DynCompoundedSubscription> = EventArray::from_fn(|i| {
+    pub fn compounded() -> EventArray<CompoundedSubscription> {
+        let mut array: EventArray<CompoundedSubscription> = EventArray::from_fn(|i| {
             let subscription = compounded::OverallSubscription::new(i.try_into().unwrap());
-            let compounded: DynCompoundedSubscription = Box::new(subscription);
+            let compounded: CompoundedSubscription = Box::new(subscription);
             compounded
         });
         array[EventType::VirtualSelectedParentChainChanged] =
