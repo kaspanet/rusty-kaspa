@@ -38,7 +38,10 @@ pub const PING_INTERVAL: Duration = Duration::from_secs(120); // 2 minutes
 /// Flow for managing a loop sending pings and waiting for pongs
 pub struct SendPingsFlow {
     _ctx: FlowContext,
+
+    // We use a weak reference to avoid this flow from holding the router during timer waiting if the connection was closed
     pub router: Weak<Router>, // TODO: remove pub
+
     incoming_route: IncomingRoute,
 }
 
@@ -48,18 +51,16 @@ impl SendPingsFlow {
     }
 
     pub async fn start(&mut self) -> Result<(), FlowError> {
-        // let mut rng = rand::thread_rng();
         loop {
             // TODO: handle application shutdown signal
             // TODO: set peer ping state to pending/idle
 
-            // Wait `PING_INTERVAL` in between pings
+            // Wait `PING_INTERVAL` between pings
             tokio::time::sleep(PING_INTERVAL).await;
 
             // Create a fresh random nonce for each ping
             let nonce = rand::thread_rng().gen::<u64>();
             let ping = KaspadMessage { payload: Some(Payload::Ping(PingMessage { nonce })) };
-            // We use a weak reference to avoid this flow from holding the router in memory if the connection was closed
             if let Some(router) = self.router.upgrade() {
                 router.route_to_network(ping).await?;
             } else {

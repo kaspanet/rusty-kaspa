@@ -78,12 +78,18 @@ impl Adaptor {
         self.connection_handler.connect_with_retry(peer_address, 16, Duration::from_secs(2)).await.map(|r| r.identity())
     }
 
+    /// Connect to a new peer (with params controlling retry behavior)
+    pub async fn connect_peer_with_params(&self, peer_address: String, retry_attempts: u8, retry_interval: Duration) -> Option<Uuid> {
+        self.connection_handler.connect_with_retry(peer_address, retry_attempts, retry_interval).await.map(|r| r.identity())
+    }
+
     /// Send a message to a specific peer
     pub async fn send(&self, peer_id: Uuid, msg: KaspadMessage) -> Result<(), ConnectionError> {
         self.hub.send(peer_id, msg).await
     }
 
-    /// Broadcast a message to all peers. Note that broadcast can also be called on a specific router and will lead to the same outcome
+    /// Broadcast a message to all peers. Note that broadcast can also be called on a
+    /// specific router and will eventually lead to the same call (via the hub event loop)
     pub async fn broadcast(&self, msg: KaspadMessage) {
         self.hub.broadcast(msg).await
     }

@@ -43,6 +43,7 @@ impl ConnectionHandler {
                 .add_service(proto_server)
                 .serve_with_shutdown(serve_address.to_socket_addrs().unwrap().next().unwrap(), termination_receiver.map(drop))
                 .await;
+
             match serve_result {
                 Ok(_) => debug!("P2P, Server stopped, ip & port: {:?}", serve_address),
                 Err(err) => panic!("P2P, Server stopped with error: {err:?}, ip & port: {serve_address:?}"),
@@ -64,8 +65,8 @@ impl ConnectionHandler {
             .send_compressed(tonic::codec::CompressionEncoding::Gzip)
             .accept_compressed(tonic::codec::CompressionEncoding::Gzip);
 
-        let (outgoing_route, tonic_receiver) = mpsc_channel(Self::incoming_network_channel_size());
-        let incoming_stream = client.message_stream(ReceiverStream::new(tonic_receiver)).await.unwrap().into_inner();
+        let (outgoing_route, outgoing_receiver) = mpsc_channel(Self::outgoing_network_channel_size());
+        let incoming_stream = client.message_stream(ReceiverStream::new(outgoing_receiver)).await.unwrap().into_inner();
 
         Ok(Router::new(self.hub_sender.clone(), incoming_stream, outgoing_route).await)
     }
@@ -91,10 +92,6 @@ impl ConnectionHandler {
         }
         warn!("P2P, Client connection retry #{} - all failed", retry_attempts);
         None
-    }
-
-    fn incoming_network_channel_size() -> usize {
-        128
     }
 
     fn outgoing_network_channel_size() -> usize {
@@ -124,7 +121,7 @@ impl ProtoP2p for ConnectionHandler {
         request: Request<Streaming<KaspadMessage>>,
     ) -> Result<Response<Self::MessageStreamStream>, TonicStatus> {
         // Build the in/out pipes
-        let (outgoing_route, tonic_receiver) = mpsc_channel(Self::outgoing_network_channel_size());
+        let (outgoing_route, outgoing_receiver) = mpsc_channel(Self::outgoing_network_channel_size());
         let incoming_stream = request.into_inner();
 
         // Build the router object
@@ -132,6 +129,6 @@ impl ProtoP2p for ConnectionHandler {
         let _router = Router::new(self.hub_sender.clone(), incoming_stream, outgoing_route).await;
 
         // Give tonic a receiver stream (messages sent to it will be forwarded to the network peer)
-        Ok(Response::new(Box::pin(ReceiverStream::new(tonic_receiver).map(Ok)) as Self::MessageStreamStream))
+        Ok(Response::new(Box::pin(ReceiverStream::new(outgoing_receiver).map(Ok)) as Self::MessageStreamStream))
     }
 }

@@ -1,3 +1,4 @@
+use kaspa_core::info;
 use p2p_lib::{common::FlowError, IncomingRoute, Router};
 use std::sync::Arc;
 
@@ -16,8 +17,12 @@ impl IbdFlow {
     }
 
     pub async fn start(&mut self) -> Result<(), FlowError> {
-        // let consensus = self.ctx.consensus();
+        self.start_ibd_with_headers_proof().await?;
+        Ok(())
+    }
 
+    async fn start_ibd_with_headers_proof(&mut self) -> Result<(), FlowError> {
+        info!("Starting IBD with headers proof");
         Ok(())
     }
 }
