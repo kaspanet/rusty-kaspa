@@ -38,7 +38,7 @@ pub trait Subscription {
     fn event_type(&self) -> EventType;
 }
 
-pub trait Compounded: Subscription {
+pub trait Compounded: Subscription + Debug + Send + Sync {
     fn compound(&mut self, mutation: Mutation) -> Option<Mutation>;
 }
 
@@ -48,6 +48,7 @@ pub trait Single: Subscription + AsAny + DynHash + DynEq + SingleClone + Debug +
     fn active(&self) -> bool;
     fn apply_to(&self, notification: Arc<Notification>) -> Arc<Notification>;
     fn mutate(&mut self, mutation: Mutation) -> Option<Vec<Mutation>>;
+    fn scope(&self) -> Scope;
 }
 
 impl Hash for dyn Single {

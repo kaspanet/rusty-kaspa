@@ -51,6 +51,10 @@ impl Single for OverallSubscription {
             None
         }
     }
+
+    fn scope(&self) -> Scope {
+        self.event_type.into()
+    }
 }
 
 impl Subscription for OverallSubscription {
@@ -158,6 +162,10 @@ impl Single for VirtualSelectedParentChainChangedSubscription {
         } else {
             None
         }
+    }
+
+    fn scope(&self) -> Scope {
+        Scope::VirtualSelectedParentChainChanged(VirtualSelectedParentChainChangedScope::new(self.include_accepted_transaction_ids))
     }
 }
 
@@ -278,6 +286,10 @@ impl Single for UtxosChangedSubscription {
         } else {
             None
         }
+    }
+
+    fn scope(&self) -> Scope {
+        Scope::UtxosChanged(UtxosChangedScope::new(self.addresses.iter().cloned().collect()))
     }
 }
 
