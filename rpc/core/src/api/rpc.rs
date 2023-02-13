@@ -7,7 +7,7 @@
 use crate::{
     api::ops::SubscribeCommand,
     model::*,
-    notify::{connection::Connection, listener::ListenerID, scope::Scope},
+    notify::{connection::Connection, listener::ListenerId, scope::Scope},
     RpcResult,
 };
 use async_trait::async_trait;
@@ -282,22 +282,22 @@ where
     // Notification API
 
     /// Register a new listener and returns an id identifying it.
-    fn register_new_listener(&self, connection: T) -> ListenerID;
+    fn register_new_listener(&self, connection: T) -> ListenerId;
 
     /// Unregister an existing listener.
     ///
     /// Stop all notifications for this listener, unregister the id and its associated connection.
-    async fn unregister_listener(&self, id: ListenerID) -> RpcResult<()>;
+    async fn unregister_listener(&self, id: ListenerId) -> RpcResult<()>;
 
     /// Start sending notifications of some type to a listener.
-    async fn start_notify(&self, id: ListenerID, scope: Scope) -> RpcResult<()>;
+    async fn start_notify(&self, id: ListenerId, scope: Scope) -> RpcResult<()>;
 
     /// Stop sending notifications of some type to a listener.
-    async fn stop_notify(&self, id: ListenerID, scope: Scope) -> RpcResult<()>;
+    async fn stop_notify(&self, id: ListenerId, scope: Scope) -> RpcResult<()>;
 
     /// Execute a subscription command leading to either start or stop sending notifications
     /// of some type to a listener.
-    async fn execute_subscribe_command(&self, id: ListenerID, scope: Scope, command: SubscribeCommand) -> RpcResult<()> {
+    async fn execute_subscribe_command(&self, id: ListenerId, scope: Scope, command: SubscribeCommand) -> RpcResult<()> {
         match command {
             SubscribeCommand::Start => self.start_notify(id, scope).await,
             SubscribeCommand::Stop => self.stop_notify(id, scope).await,

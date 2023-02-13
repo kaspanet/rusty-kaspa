@@ -22,7 +22,7 @@ use kaspa_rpc_core::{
         collector::RpcCoreCollector,
         connection::ChannelConnection,
         events::EventType,
-        listener::{ListenerID, ListenerUtxoNotificationFilterSetting},
+        listener::{ListenerId, ListenerUtxoNotificationFilterSetting},
         notifier::Notifier,
         scope::Scope,
         subscriber::{Subscriber, SubscriptionManager},
@@ -145,26 +145,26 @@ impl RpcApi<ChannelConnection> for GrpcClient {
     // Notification API
 
     /// Register a new listener and returns an id identifying it.
-    fn register_new_listener(&self, connection: ChannelConnection) -> ListenerID {
+    fn register_new_listener(&self, connection: ChannelConnection) -> ListenerId {
         self.notifier.register_new_listener(connection)
     }
 
     /// Unregister an existing listener.
     ///
     /// Stop all notifications for this listener, unregister the id and its associated connection.
-    async fn unregister_listener(&self, id: ListenerID) -> RpcResult<()> {
+    async fn unregister_listener(&self, id: ListenerId) -> RpcResult<()> {
         self.notifier.unregister_listener(id)?;
         Ok(())
     }
 
     /// Start sending notifications of some type to a listener.
-    async fn start_notify(&self, id: ListenerID, scope: Scope) -> RpcResult<()> {
+    async fn start_notify(&self, id: ListenerId, scope: Scope) -> RpcResult<()> {
         self.notifier().start_notify(id, scope).await?;
         Ok(())
     }
 
     /// Stop sending notifications of some type to a listener.
-    async fn stop_notify(&self, id: ListenerID, scope: Scope) -> RpcResult<()> {
+    async fn stop_notify(&self, id: ListenerId, scope: Scope) -> RpcResult<()> {
         if self.handle_stop_notify() {
             self.notifier().stop_notify(id, scope).await?;
             Ok(())
@@ -600,14 +600,14 @@ impl Inner {
 
 #[async_trait]
 impl SubscriptionManager for Inner {
-    async fn start_notify(self: Arc<Self>, _: ListenerID, scope: Scope) -> RpcResult<()> {
+    async fn start_notify(self: Arc<Self>, _: ListenerId, scope: Scope) -> RpcResult<()> {
         trace!("[GrpcClient] start_notify: {:?}", scope);
         let request = kaspad_request::Payload::from_notification_type(&scope, SubscribeCommand::Start);
         self.clone().call((&request).into(), request).await?;
         Ok(())
     }
 
-    async fn stop_notify(self: Arc<Self>, _: ListenerID, scope: Scope) -> RpcResult<()> {
+    async fn stop_notify(self: Arc<Self>, _: ListenerId, scope: Scope) -> RpcResult<()> {
         if self.handle_stop_notify() {
             trace!("[GrpcClient] stop_notify: {:?}", scope);
             let request = kaspad_request::Payload::from_notification_type(&scope, SubscribeCommand::Stop);

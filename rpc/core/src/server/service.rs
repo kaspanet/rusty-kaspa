@@ -6,7 +6,7 @@ use crate::{
     model::*,
     notify::{
         connection::ChannelConnection,
-        listener::{ListenerID, ListenerUtxoNotificationFilterSetting},
+        listener::{ListenerId, ListenerUtxoNotificationFilterSetting},
         notifier::Notifier,
         scope::Scope,
     },
@@ -296,26 +296,26 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
     // Notification API
 
     /// Register a new listener and returns an id identifying it.
-    fn register_new_listener(&self, connection: ChannelConnection) -> ListenerID {
+    fn register_new_listener(&self, connection: ChannelConnection) -> ListenerId {
         self.notifier.register_new_listener(connection)
     }
 
     /// Unregister an existing listener.
     ///
     /// Stop all notifications for this listener, unregister the id and its associated connection.
-    async fn unregister_listener(&self, id: ListenerID) -> RpcResult<()> {
+    async fn unregister_listener(&self, id: ListenerId) -> RpcResult<()> {
         self.notifier.unregister_listener(id)?;
         Ok(())
     }
 
     /// Start sending notifications of some type to a listener.
-    async fn start_notify(&self, id: ListenerID, scope: Scope) -> RpcResult<()> {
+    async fn start_notify(&self, id: ListenerId, scope: Scope) -> RpcResult<()> {
         self.notifier.start_notify(id, scope)?;
         Ok(())
     }
 
     /// Stop sending notifications of some type to a listener.
-    async fn stop_notify(&self, id: ListenerID, scope: Scope) -> RpcResult<()> {
+    async fn stop_notify(&self, id: ListenerId, scope: Scope) -> RpcResult<()> {
         self.notifier.stop_notify(id, scope)?;
         Ok(())
     }

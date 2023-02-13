@@ -11,7 +11,7 @@ use kaspa_rpc_core::{
     notify::{
         channel::NotificationChannel,
         connection::ChannelConnection,
-        listener::{ListenerID, ListenerUtxoNotificationFilterSetting},
+        listener::{ListenerId, ListenerUtxoNotificationFilterSetting},
         scope::{Scope, UtxosChangedScope, VirtualSelectedParentChainChangedScope},
         subscriber::DynSubscriptionManager,
         subscriber::Subscriber,
@@ -57,7 +57,7 @@ use tonic::{Request, Response};
 pub struct GrpcService {
     core_service: Arc<RpcCoreService>,
     core_channel: NotificationChannel,
-    core_listener_id: ListenerID,
+    core_listener_id: ListenerId,
     connection_manager: Arc<RwLock<GrpcConnectionManager>>,
     notifier: Arc<Notifier<GrpcConnection>>,
 }
@@ -96,7 +96,7 @@ impl GrpcService {
         self.notifier().start();
     }
 
-    pub async fn register_connection(&self, address: SocketAddr, sender: GrpcSender) -> ListenerID {
+    pub async fn register_connection(&self, address: SocketAddr, sender: GrpcSender) -> ListenerId {
         self.connection_manager.write().await.register(address, sender)
     }
 

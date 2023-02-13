@@ -13,7 +13,7 @@ use std::{collections::HashMap, fmt::Debug};
 extern crate derive_more;
 use derive_more::Deref;
 
-pub type ListenerID = u64;
+pub type ListenerId = u64;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ListenerUtxoNotificationFilterSetting {
@@ -49,11 +49,11 @@ impl<T> Listener<T>
 where
     T: Connection,
 {
-    pub(crate) fn new(id: ListenerID, connection: T) -> Self {
+    pub(crate) fn new(id: ListenerId, connection: T) -> Self {
         Self { id, connection, active_event: EventArray::default(), utxo_addresses: RpcUtxoAddressSet::new() }
     }
 
-    pub(crate) fn id(&self) -> ListenerID {
+    pub(crate) fn id(&self) -> ListenerId {
         self.id
     }
 
@@ -188,7 +188,7 @@ impl InnerFilter for FilterUtxoAddress {
 }
 impl Filter for FilterUtxoAddress {}
 
-pub(crate) type ListenerSet<T> = HashMap<ListenerID, Arc<ListenerSenderSide<T>>>;
+pub(crate) type ListenerSet<T> = HashMap<ListenerId, Arc<ListenerSenderSide<T>>>;
 
 #[derive(Deref)]
 pub(crate) struct ListenerVariantSet<T: Connection>(HashMap<T::Variant, ListenerSet<T>>);
@@ -205,7 +205,7 @@ impl<T: Connection> ListenerVariantSet<T> {
     pub fn insert(
         &mut self,
         variant: T::Variant,
-        id: ListenerID,
+        id: ListenerId,
         listener: Arc<ListenerSenderSide<T>>,
     ) -> Option<Arc<ListenerSenderSide<T>>> {
         // Make sure only one instance of ìd` is registered in the whole object
@@ -219,7 +219,7 @@ impl<T: Connection> ListenerVariantSet<T> {
         result
     }
 
-    pub fn remove(&mut self, id: &ListenerID) -> Option<Arc<ListenerSenderSide<T>>> {
+    pub fn remove(&mut self, id: &ListenerId) -> Option<Arc<ListenerSenderSide<T>>> {
         for (_, listener_set) in self.0.iter_mut() {
             if let Some(listener) = listener_set.remove(id) {
                 return Some(listener);

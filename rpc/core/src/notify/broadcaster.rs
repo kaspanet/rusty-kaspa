@@ -3,7 +3,7 @@ use super::{
     connection::Connection,
     error::{Error, Result},
     events::{EventArray, EventType},
-    listener::ListenerID,
+    listener::ListenerId,
     subscription::DynSubscription,
 };
 use crate::Notification;
@@ -23,7 +23,7 @@ use std::{
 };
 use workflow_core::channel::Channel;
 
-type ConnectionSet<T> = HashMap<ListenerID, T>;
+type ConnectionSet<T> = HashMap<ListenerId, T>;
 
 /// Broadcast plan
 #[derive(Deref)]
@@ -33,7 +33,7 @@ impl<C> Plan<C>
 where
     C: Connection,
 {
-    fn insert(&mut self, subscription: DynSubscription, id: ListenerID, connection: C) -> Option<C> {
+    fn insert(&mut self, subscription: DynSubscription, id: ListenerId, connection: C) -> Option<C> {
         // Make sure only one instance of ìd` is registered in the whole object
         let result = self.remove(&id);
         let variant = connection.variant();
@@ -41,7 +41,7 @@ where
         result
     }
 
-    fn remove(&mut self, id: &ListenerID) -> Option<C> {
+    fn remove(&mut self, id: &ListenerId) -> Option<C> {
         let mut result = None;
         let mut found_subscription: Option<DynSubscription> = None;
         let mut found_variant: Option<C::Variant> = None;
@@ -82,8 +82,8 @@ enum Ctl<C>
 where
     C: Connection,
 {
-    Subscribe(DynSubscription, ListenerID, C),
-    Unsubscribe(EventType, ListenerID),
+    Subscribe(DynSubscription, ListenerId, C),
+    Unsubscribe(EventType, ListenerId),
     Shutdown,
 }
 
@@ -120,7 +120,7 @@ where
             // Broadcasting plan by event type
             let mut plan = EventArray::<Plan<C>>::default();
             // Create a store for closed connections to be removed from the plan
-            let mut purge: Vec<ListenerID> = Vec::new();
+            let mut purge: Vec<ListenerId> = Vec::new();
             loop {
                 select! {
                     ctl = self.ctl.recv().fuse() => {
@@ -176,12 +176,12 @@ where
         });
     }
 
-    pub fn subscribe(self: &Arc<Self>, subscription: DynSubscription, id: ListenerID, connection: C) -> Result<()> {
+    pub fn subscribe(self: &Arc<Self>, subscription: DynSubscription, id: ListenerId, connection: C) -> Result<()> {
         self.ctl.try_send(Ctl::Subscribe(subscription, id, connection))?;
         Ok(())
     }
 
-    pub fn unsubscribe(self: &Arc<Self>, event_type: EventType, id: ListenerID) -> Result<()> {
+    pub fn unsubscribe(self: &Arc<Self>, event_type: EventType, id: ListenerId) -> Result<()> {
         self.ctl.try_send(Ctl::Unsubscribe(event_type, id))?;
         Ok(())
     }

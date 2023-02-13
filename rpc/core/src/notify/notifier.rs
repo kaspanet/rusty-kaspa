@@ -3,7 +3,7 @@ use super::{
     connection::Connection,
     error::{Error, Result},
     events::{EventArray, EventType, EVENT_TYPE_ARRAY},
-    listener::{Listener, ListenerID, ListenerSenderSide, ListenerUtxoNotificationFilterSetting, ListenerVariantSet},
+    listener::{Listener, ListenerId, ListenerSenderSide, ListenerUtxoNotificationFilterSetting, ListenerVariantSet},
     message::{DispatchMessage, SubscribeMessage},
     scope::Scope,
     subscriber::{Subscriber, SubscriptionManager},
@@ -50,19 +50,19 @@ where
         self.inner.clone().start(self.clone());
     }
 
-    pub fn register_new_listener(&self, connection: T) -> ListenerID {
+    pub fn register_new_listener(&self, connection: T) -> ListenerId {
         self.inner.clone().register_new_listener(connection)
     }
 
-    pub fn unregister_listener(&self, id: ListenerID) -> Result<()> {
+    pub fn unregister_listener(&self, id: ListenerId) -> Result<()> {
         self.inner.clone().unregister_listener(id)
     }
 
-    pub fn execute_subscribe_command(self: Arc<Self>, id: ListenerID, scope: Scope, command: SubscribeCommand) -> Result<()> {
+    pub fn execute_subscribe_command(self: Arc<Self>, id: ListenerId, scope: Scope, command: SubscribeCommand) -> Result<()> {
         self.inner.clone().execute_subscribe_command(id, scope, command)
     }
 
-    pub fn start_notify(&self, id: ListenerID, scope: Scope) -> Result<()> {
+    pub fn start_notify(&self, id: ListenerId, scope: Scope) -> Result<()> {
         self.inner.clone().start_notify(id, scope)
     }
 
@@ -70,7 +70,7 @@ where
         self.inner.clone().notify(notification)
     }
 
-    pub fn stop_notify(&self, id: ListenerID, scope: Scope) -> Result<()> {
+    pub fn stop_notify(&self, id: ListenerId, scope: Scope) -> Result<()> {
         self.inner.clone().stop_notify(id, scope)
     }
 
@@ -84,7 +84,7 @@ impl<T> SubscriptionManager for Notifier<T>
 where
     T: Connection,
 {
-    async fn start_notify(self: Arc<Self>, id: ListenerID, scope: Scope) -> RpcResult<()> {
+    async fn start_notify(self: Arc<Self>, id: ListenerId, scope: Scope) -> RpcResult<()> {
         trace!(
             "[Notifier-{}] as subscription manager start sending to listener {} notifications of type {:?}",
             self.inner.name,
@@ -95,7 +95,7 @@ where
         Ok(())
     }
 
-    async fn stop_notify(self: Arc<Self>, id: ListenerID, scope: Scope) -> RpcResult<()> {
+    async fn stop_notify(self: Arc<Self>, id: ListenerId, scope: Scope) -> RpcResult<()> {
         trace!(
             "[Notifier-{}] as subscription manager stop sending to listener {} notifications of type {:?}",
             self.inner.name,
@@ -113,7 +113,7 @@ where
     T: Connection,
 {
     /// Map of registered listeners
-    listeners: Arc<Mutex<HashMap<ListenerID, Listener<T>>>>,
+    listeners: Arc<Mutex<HashMap<ListenerId, Listener<T>>>>,
 
     /// Has this notifier been started?
     is_started: Arc<AtomicBool>,
@@ -247,7 +247,7 @@ where
                 match dispatch {
                     DispatchMessage::Send(ref notification) => {
                         // Create a store for closed listeners to be removed from the map
-                        let mut purge: Vec<ListenerID> = Vec::new();
+                        let mut purge: Vec<ListenerId> = Vec::new();
 
                         // Broadcast the notification to all listeners
                         match event {
@@ -327,7 +327,7 @@ where
         });
     }
 
-    fn register_new_listener(self: Arc<Self>, connection: T) -> ListenerID {
+    fn register_new_listener(self: Arc<Self>, connection: T) -> ListenerId {
         let mut listeners = self.listeners.lock().unwrap();
         loop {
             let id = u64::from_le_bytes(rand::random::<[u8; 8]>());
@@ -341,7 +341,7 @@ where
         }
     }
 
-    fn unregister_listener(self: Arc<Self>, id: ListenerID) -> Result<()> {
+    fn unregister_listener(self: Arc<Self>, id: ListenerId) -> Result<()> {
         let mut listeners = self.listeners.lock().unwrap();
         if let Some(listener) = listeners.remove(&id) {
             drop(listeners);
@@ -354,14 +354,14 @@ where
         Ok(())
     }
 
-    pub fn execute_subscribe_command(self: Arc<Self>, id: ListenerID, scope: Scope, command: SubscribeCommand) -> Result<()> {
+    pub fn execute_subscribe_command(self: Arc<Self>, id: ListenerId, scope: Scope, command: SubscribeCommand) -> Result<()> {
         match command {
             SubscribeCommand::Start => self.start_notify(id, scope),
             SubscribeCommand::Stop => self.stop_notify(id, scope),
         }
     }
 
-    fn start_notify(self: Arc<Self>, id: ListenerID, scope: Scope) -> Result<()> {
+    fn start_notify(self: Arc<Self>, id: ListenerId, scope: Scope) -> Result<()> {
         let event: EventType = (&scope).into();
         let mut listeners = self.listeners.lock().unwrap();
         if let Some(listener) = listeners.get_mut(&id) {
@@ -386,7 +386,7 @@ where
         Ok(())
     }
 
-    fn stop_notify(self: Arc<Self>, id: ListenerID, scope: Scope) -> Result<()> {
+    fn stop_notify(self: Arc<Self>, id: ListenerId, scope: Scope) -> Result<()> {
         let event: EventType = (&scope).into();
         let mut listeners = self.listeners.lock().unwrap();
         if let Some(listener) = listeners.get_mut(&id) {

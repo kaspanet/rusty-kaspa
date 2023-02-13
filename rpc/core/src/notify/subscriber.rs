@@ -9,7 +9,7 @@ use std::sync::{
 extern crate derive_more;
 use super::{
     error::{Error, Result},
-    listener::ListenerID,
+    listener::ListenerId,
     message::SubscribeMessage,
     scope::Scope,
 };
@@ -19,10 +19,10 @@ use kaspa_utils::channel::Channel;
 /// A manager of subscriptions to notifications for registered listeners
 #[async_trait]
 pub trait SubscriptionManager: Send + Sync + Debug {
-    async fn start_notify(self: Arc<Self>, id: ListenerID, scope: Scope) -> RpcResult<()>;
-    async fn stop_notify(self: Arc<Self>, id: ListenerID, scope: Scope) -> RpcResult<()>;
+    async fn start_notify(self: Arc<Self>, id: ListenerId, scope: Scope) -> RpcResult<()>;
+    async fn stop_notify(self: Arc<Self>, id: ListenerId, scope: Scope) -> RpcResult<()>;
 
-    async fn execute_notify_command(self: Arc<Self>, id: ListenerID, scope: Scope, command: SubscribeCommand) -> RpcResult<()> {
+    async fn execute_notify_command(self: Arc<Self>, id: ListenerId, scope: Scope, command: SubscribeCommand) -> RpcResult<()> {
         match command {
             SubscribeCommand::Start => self.start_notify(id, scope).await,
             SubscribeCommand::Stop => self.stop_notify(id, scope).await,
@@ -37,7 +37,7 @@ pub type DynSubscriptionManager = Arc<dyn SubscriptionManager>;
 pub struct Subscriber {
     /// Subscription manager
     subscription_manager: DynSubscriptionManager,
-    listener_id: ListenerID,
+    listener_id: ListenerId,
 
     /// Has this subscriber been started?
     is_started: Arc<AtomicBool>,
@@ -48,7 +48,7 @@ pub struct Subscriber {
 }
 
 impl Subscriber {
-    pub fn new(subscription_manager: DynSubscriptionManager, listener_id: ListenerID) -> Self {
+    pub fn new(subscription_manager: DynSubscriptionManager, listener_id: ListenerId) -> Self {
         Self {
             subscription_manager,
             listener_id,

@@ -1,6 +1,6 @@
 use super::{
     connection::Connection,
-    listener::{ListenerID, ListenerSenderSide},
+    listener::{ListenerId, ListenerSenderSide},
     scope::Scope,
 };
 use crate::Notification;
@@ -12,8 +12,8 @@ where
     T: Connection,
 {
     Send(Arc<Notification>),
-    AddListener(ListenerID, Arc<ListenerSenderSide<T>>),
-    RemoveListener(ListenerID),
+    AddListener(ListenerId, Arc<ListenerSenderSide<T>>),
+    RemoveListener(ListenerId),
     Shutdown,
 }
 
