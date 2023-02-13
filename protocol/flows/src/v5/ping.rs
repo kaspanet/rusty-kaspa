@@ -1,8 +1,8 @@
 use crate::ctx::FlowContext;
 use p2p_lib::{
     common::FlowError,
-    dequeue, dequeue_with_timeout,
-    pb::{kaspad_message::Payload, KaspadMessage, PingMessage, PongMessage},
+    dequeue, dequeue_with_timeout, make_message,
+    pb::{kaspad_message::Payload, PingMessage, PongMessage},
     ConnectionError, IncomingRoute, Router,
 };
 use rand::Rng;
@@ -27,7 +27,7 @@ impl ReceivePingsFlow {
         loop {
             // We dequeue without a timeout in this case, responding to pings whenever they arrive
             let ping = dequeue!(self.incoming_route, Payload::Ping)?;
-            let pong = KaspadMessage { payload: Some(Payload::Pong(PongMessage { nonce: ping.nonce })) };
+            let pong = make_message!(Payload::Pong, PongMessage { nonce: ping.nonce });
             self.router.route_to_network(pong).await?;
         }
     }
@@ -60,7 +60,7 @@ impl SendPingsFlow {
 
             // Create a fresh random nonce for each ping
             let nonce = rand::thread_rng().gen::<u64>();
-            let ping = KaspadMessage { payload: Some(Payload::Ping(PingMessage { nonce })) };
+            let ping = make_message!(Payload::Ping, PingMessage { nonce });
             if let Some(router) = self.router.upgrade() {
                 router.route_to_network(ping).await?;
             } else {
