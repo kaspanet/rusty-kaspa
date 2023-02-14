@@ -69,6 +69,16 @@ impl TestConsensus {
         Self { consensus: Arc::new(Consensus::new(db, config, consensus_sender)), params: config.params.clone(), temp_db_lifetime }
     }
 
+    pub fn create_from_temp_db_and_dummy_sender(config: &Config) -> Self {
+        let (temp_db_lifetime, db) = create_temp_db();
+        let (dummy_consenus_sender, _) = async_channel::unbounded::<ConsensusEvent>();
+        Self {
+            consensus: Arc::new(Consensus::new(db, config, dummy_consenus_sender)),
+            params: config.params.clone(),
+            temp_db_lifetime,
+        }
+    }
+
     pub fn build_header_with_parents(&self, hash: Hash, parents: Vec<Hash>) -> Header {
         let mut header = header_from_precomputed_hash(hash, parents);
         let ghostdag_data = self.consensus.ghostdag_manager.ghostdag(header.direct_parents());
@@ -207,8 +217,9 @@ impl ConsensusApi for TestConsensus {
         self: Arc<Self>,
         from_outpoint: Option<TransactionOutpoint>,
         chunk_size: usize,
+        skip_first: bool,
     ) -> Vec<(TransactionOutpoint, UtxoEntry)> {
-        self.consensus.clone().get_virtual_utxos(from_outpoint, chunk_size)
+        self.consensus.clone().get_virtual_utxos(from_outpoint, chunk_size, skip_first)
     }
 }
 

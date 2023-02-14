@@ -8,5 +8,5 @@ license.workspace = true
 
 [dependencies]
 async-channel.workspace = true
+serde.workspace = true
 triggered = "0.1"
-serde = "1.0.152"

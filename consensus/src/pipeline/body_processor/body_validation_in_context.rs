@@ -86,7 +86,6 @@ mod tests {
         model::stores::ghostdag::GhostdagStoreReader, params::MAINNET_PARAMS, processes::transaction_validator::errors::TxRuleError,
     };
     use consensus_core::{
-        events::ConsensusEvent,
         merkle::calc_hash_merkle_root,
         subnets::SUBNETWORK_ID_NATIVE,
         tx::{Transaction, TransactionInput, TransactionOutpoint},
@@ -96,12 +95,11 @@ mod tests {
 
     #[tokio::test]
     async fn validate_body_in_context_test() {
-        let (dummy_sender, _) = async_channel::unbounded::<ConsensusEvent>();
         let config = ConfigBuilder::new(MAINNET_PARAMS)
             .skip_proof_of_work()
             .edit_consensus_params(|p| p.deflationary_phase_daa_score = 2)
             .build();
-        let consensus = TestConsensus::create_from_temp_db(&config, dummy_sender);
+        let consensus = TestConsensus::create_from_temp_db_and_dummy_sender(&config);
         let wait_handles = consensus.init();
         let body_processor = consensus.block_body_processor();
 

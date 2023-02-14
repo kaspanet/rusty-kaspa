@@ -35,7 +35,7 @@ impl VirtualChangeEmulator {
     pub fn fill_utxo_collection(&mut self, amount: usize, script_public_key_pool_size: usize) {
         let rng = &mut rand::thread_rng();
         self.script_public_key_pool
-            .extend((0..script_public_key_pool_size).map(|_| generate_random_script_public_key(&mut rng.clone())));
+            .extend((0..script_public_key_pool_size).map(|_| generate_random_p2pk_script_public_key(&mut rng.clone())));
         self.utxo_collection =
             generate_random_utxos_from_script_public_key_pool(&mut rng.clone(), amount, self.script_public_key_pool.clone());
         for (_, utxo_entry) in self.utxo_collection.clone() {
@@ -48,7 +48,7 @@ impl VirtualChangeEmulator {
         let rng = &mut rand::thread_rng();
 
         let mut new_circulating_supply_diff: CirculatingSupplyDiff = 0;
-        self.virtual_state.utxo_diff = Arc::new(UtxoDiff::new(
+        self.virtual_state.selected_parent_utxo_diff = Arc::new(UtxoDiff::new(
             UtxoCollection::from_iter(
                 generate_random_utxos_from_script_public_key_pool(&mut rng.clone(), add_amount, self.script_public_key_pool.clone())
                     .into_iter()
@@ -63,8 +63,8 @@ impl VirtualChangeEmulator {
             })),
         ));
 
-        self.utxo_collection.retain(|k, _| !self.virtual_state.utxo_diff.remove.contains_key(k));
-        self.utxo_collection.extend(self.virtual_state.utxo_diff.add.iter().map(move |(k, v)| (*k, v.clone())));
+        self.utxo_collection.retain(|k, _| !self.virtual_state.selected_parent_utxo_diff.remove.contains_key(k));
+        self.utxo_collection.extend(self.virtual_state.selected_parent_utxo_diff.add.iter().map(move |(k, v)| (*k, v.clone())));
 
         let new_tips = Arc::new(generate_random_hashes(&mut rng.clone(), tip_amount));
 
@@ -81,7 +81,7 @@ impl VirtualChangeEmulator {
     }
 
     pub fn clear_virtual_state(&mut self) {
-        self.virtual_state.utxo_diff = Arc::new(UtxoDiff::new(UtxoCollection::new(), UtxoCollection::new()));
+        self.virtual_state.selected_parent_utxo_diff = Arc::new(UtxoDiff::new(UtxoCollection::new(), UtxoCollection::new()));
 
         self.virtual_state.parents = Arc::new(Vec::new());
         self.virtual_state.selected_parent_blue_score = 0;

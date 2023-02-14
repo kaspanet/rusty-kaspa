@@ -603,9 +603,10 @@ impl ConsensusApi for Consensus {
         self: Arc<Self>,
         from_outpoint: Option<TransactionOutpoint>,
         chunk_size: usize,
+        skip_first: bool,
     ) -> Vec<(TransactionOutpoint, UtxoEntry)> {
         let virtual_stores = self.virtual_processor.virtual_stores.read();
-        let iter = virtual_stores.utxo_set.seek_iterator(from_outpoint, chunk_size);
+        let iter = virtual_stores.utxo_set.seek_iterator(from_outpoint, chunk_size, skip_first);
         iter.map(|item| item.unwrap()).collect()
     }
 

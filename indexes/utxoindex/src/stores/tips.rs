@@ -10,7 +10,7 @@ pub trait UtxoIndexTipsStoreReader {
 }
 
 pub trait UtxoIndexTipsStore: UtxoIndexTipsStoreReader {
-    fn add_tips(&mut self, new_tips: BlockHashSet) -> StoreResult<()>;
+    fn set_tips(&mut self, new_tips: BlockHashSet) -> StoreResult<()>;
 
     fn remove(&mut self) -> Result<(), StoreError>;
 }
@@ -37,7 +37,7 @@ impl UtxoIndexTipsStoreReader for DbUtxoIndexTipsStore {
 }
 
 impl UtxoIndexTipsStore for DbUtxoIndexTipsStore {
-    fn add_tips(&mut self, new_tips: BlockHashSet) -> Result<(), StoreError> {
+    fn set_tips(&mut self, new_tips: BlockHashSet) -> Result<(), StoreError> {
         self.access.write(DirectDbWriter::new(&self.db), &Arc::new(new_tips))
     }
 

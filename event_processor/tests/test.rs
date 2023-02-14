@@ -24,9 +24,7 @@ async fn test_virtual_change_set_event() {
     let (test_send, consensus_recv) = unbounded::<ConsensusEvent>();
     let (event_processor_send, test_recv) = unbounded::<Notification>();
     let utxoindex_db = create_temp_db();
-    let consensus_db = create_temp_db();
-    let (dummy_sender, _) = unbounded(); //this functions as a mock, simply to pass onto the utxoindex.
-    let test_consensus = Arc::new(TestConsensus::new(consensus_db.1, &Config::new(DEVNET_PARAMS), dummy_sender));
+    let test_consensus = Arc::new(TestConsensus::create_from_temp_db_and_dummy_sender(&Config::new(DEVNET_PARAMS)));
     test_consensus.init();
     let utxoindex_controller: DynUtxoIndexControllerApi = Arc::new(Some(Box::new(UtxoIndex::new(test_consensus, utxoindex_db.1))));
     let event_processor = EventProcessor::new(utxoindex_controller, consensus_recv, event_processor_send);
@@ -44,7 +42,7 @@ async fn test_virtual_change_set_event() {
     }
 
     let test_event = Arc::new(VirtualChangeSetEvent {
-        utxo_diff: Arc::new(UtxoDiff { add: to_add_collection, remove: to_remove_collection }),
+        selected_parent_utxo_diff: Arc::new(UtxoDiff { add: to_add_collection, remove: to_remove_collection }),
         parents: Arc::new(generate_random_hashes(&mut rng.clone(), 2)),
         selected_parent_blue_score: rng.gen(),
         daa_score: rng.gen(),
@@ -68,7 +66,7 @@ async fn test_virtual_change_set_event() {
                 for (script_public_key, compact_utxo_collection) in utxo_changed_notification.added.iter() {
                     for (transaction_outpoint, compact_utxo) in compact_utxo_collection.iter() {
                         let test_utxo = test_event
-                            .utxo_diff
+                            .selected_parent_utxo_diff
                             .add
                             .get(transaction_outpoint)
                             .expect("expected transaction outpoint to be in test event");
@@ -79,13 +77,13 @@ async fn test_virtual_change_set_event() {
                         notification_utxo_added_count += 1;
                     }
                 }
-                assert_eq!(test_event.utxo_diff.add.len(), notification_utxo_added_count);
+                assert_eq!(test_event.selected_parent_utxo_diff.add.len(), notification_utxo_added_count);
 
                 let mut notification_utxo_removed_count = 0;
                 for (script_public_key, compact_utxo_collection) in utxo_changed_notification.removed.iter() {
                     for (transaction_outpoint, compact_utxo) in compact_utxo_collection.iter() {
                         let test_utxo = test_event
-                            .utxo_diff
+                            .selected_parent_utxo_diff
                             .remove
                             .get(transaction_outpoint)
                             .expect("expected transaction outpoint to be in test event");
@@ -96,7 +94,7 @@ async fn test_virtual_change_set_event() {
                         notification_utxo_removed_count += 1;
                     }
                 }
-                assert_eq!(test_event.utxo_diff.remove.len(), notification_utxo_removed_count);
+                assert_eq!(test_event.selected_parent_utxo_diff.remove.len(), notification_utxo_removed_count);
 
                 utxo_changed_count += 1;
             }

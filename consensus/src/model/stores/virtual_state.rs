@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
 use consensus_core::{
-    coinbase::BlockRewardData, events::VirtualChangeSetEvent, tx::TransactionId, utxo::utxo_diff::UtxoDiff, BlockHashMap,
-    BlockHashSet, HashMapCustomHasher,
+    coinbase::BlockRewardData, tx::TransactionId, utxo::utxo_diff::UtxoDiff, BlockHashMap, BlockHashSet, HashMapCustomHasher,
 };
 use database::prelude::StoreResult;
 use database::prelude::DB;
@@ -73,20 +72,6 @@ impl VirtualState {
             accepted_tx_ids,
             mergeset_rewards: BlockHashMap::new(),
             mergeset_non_daa: BlockHashSet::from_iter(std::iter::once(genesis_hash)),
-        }
-    }
-}
-
-impl From<VirtualState> for VirtualChangeSetEvent {
-    fn from(virtual_state: VirtualState) -> Self {
-        Self {
-            utxo_diff: Arc::new(virtual_state.utxo_diff),
-            parents: Arc::new(virtual_state.parents),
-            selected_parent_blue_score: virtual_state.ghostdag_data.blue_score,
-            daa_score: virtual_state.daa_score,
-            mergeset_blues: virtual_state.ghostdag_data.mergeset_blues,
-            mergeset_reds: virtual_state.ghostdag_data.mergeset_reds,
-            accepted_tx_ids: Arc::new(virtual_state.accepted_tx_ids),
         }
     }
 }

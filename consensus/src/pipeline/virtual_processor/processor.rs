@@ -46,7 +46,7 @@ use consensus_core::{
     block::{BlockTemplate, MutableBlock},
     blockstatus::BlockStatus::{self, StatusDisqualifiedFromChain, StatusUTXOPendingVerification, StatusUTXOValid},
     coinbase::{BlockRewardData, MinerData},
-    events::ConsensusEvent,
+    events::{ConsensusEvent, VirtualChangeSetEvent},
     header::Header,
     merkle::calc_hash_merkle_root,
     muhash::MuHashExtensions,
@@ -382,15 +382,21 @@ impl VirtualStateProcessor {
                 // Calling the drops explicitly after the batch is written in order to avoid possible errors.
                 drop(virtual_write);
 
-                // stops from sending and potentially panicing when we have dropped receivers, when event processor is not required, (such as in testing cases).
+                // Stops consenus from sending into, and bloating an unread channel, in cases where event processor is not required, (such as in testing cases).
                 if self.consensus_sender.receiver_count() > 0 {
-                    // we try_send on consenus sender since this is without blocking.
-                    match self.consensus_sender.try_send(ConsensusEvent::VirtualChangeSet(Arc::new(new_virtual_state.into()))) {
-                        // see, `consensus::store::model::virtual_state` -> `impl From<VirtualState> for VirtualChangeSetConsensusEvent ` for conversion
-                        Ok(_) => (),
-                        Err(err) => panic!("event processor unreachable: {err}"),
-                    }
-                }
+                    // We use try_send on consenus sender since this is none-blocking.
+                    self.consensus_sender
+                        .try_send(ConsensusEvent::VirtualChangeSet(Arc::new(VirtualChangeSetEvent {
+                            selected_parent_utxo_diff: Arc::new(accumulated_diff),
+                            parents: Arc::new(new_virtual_state.parents),
+                            selected_parent_blue_score: new_virtual_state.ghostdag_data.blue_score,
+                            daa_score: new_virtual_state.daa_score,
+                            mergeset_blues: new_virtual_state.ghostdag_data.mergeset_blues,
+                            mergeset_reds: new_virtual_state.ghostdag_data.mergeset_reds,
+                            accepted_tx_ids: Arc::new(new_virtual_state.accepted_tx_ids),
+                        })))
+                        .expect("expected send");
+                };
             }
             BlockStatus::StatusDisqualifiedFromChain => {
                 // TODO: this means another chain needs to be checked

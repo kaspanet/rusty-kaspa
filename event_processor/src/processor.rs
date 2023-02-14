@@ -87,16 +87,14 @@ impl EventProcessor {
     ) -> EventProcessorResult<()> {
         trace!("[{IDENT}]: processing {:?}", virtual_change_set_event);
         if let Some(utxoindex) = self.utxoindex.as_deref() {
-            match utxoindex.update(virtual_change_set_event.utxo_diff.clone(), virtual_change_set_event.parents.clone())? {
-                UtxoIndexEvent::UtxosChanged(utxo_changed_event) => {
-                    self.rpc_send
-                        .send(Notification::UtxosChanged(Arc::new(UtxosChangedNotification {
-                            added: utxo_changed_event.added.clone(),
-                            removed: utxo_changed_event.removed.clone(),
-                        })))
-                        .await?;
-                }
-            }
+            let UtxoIndexEvent::UtxosChanged(utxo_changed_event) = utxoindex
+                .update(virtual_change_set_event.selected_parent_utxo_diff.clone(), virtual_change_set_event.parents.clone())?;
+            self.rpc_send
+                .send(Notification::UtxosChanged(Arc::new(UtxosChangedNotification {
+                    added: utxo_changed_event.added.clone(),
+                    removed: utxo_changed_event.removed.clone(),
+                })))
+                .await?;
         };
 
         self.rpc_send

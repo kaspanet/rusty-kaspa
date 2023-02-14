@@ -72,14 +72,14 @@ pub fn generate_random_utxo_from_script_public_key_pool(
 pub fn generate_random_utxo(rng: &mut ThreadRng) -> UtxoEntry {
     UtxoEntry::new(
         rng.gen_range(1..100_000), //we choose small amounts as to not overflow with large utxosets.
-        generate_random_script_public_key(&mut rng.clone()),
+        generate_random_p2pk_script_public_key(&mut rng.clone()),
         rng.gen(),
         rng.gen_bool(0.5),
     )
 }
 
 ///Note: this generates schnorr p2pk script public keys.
-pub fn generate_random_script_public_key(rng: &mut ThreadRng) -> ScriptPublicKey {
+pub fn generate_random_p2pk_script_public_key(rng: &mut ThreadRng) -> ScriptPublicKey {
     let mut script: ScriptVec = (0..32).map(|_| rng.gen()).collect();
     script.insert(0, 0x20);
     script.push(0xac);
@@ -87,13 +87,13 @@ pub fn generate_random_script_public_key(rng: &mut ThreadRng) -> ScriptPublicKey
 }
 
 pub fn generate_random_hashes(rng: &mut ThreadRng, amount: usize) -> Vec<Hash> {
-    let mut tips = Vec::with_capacity(amount);
+    let mut hashes = Vec::with_capacity(amount);
     let mut i = 0;
     while i < amount {
-        tips.push(generate_random_hash(&mut rng.clone()));
+        hashes.push(generate_random_hash(&mut rng.clone()));
         i += 1;
     }
-    tips
+    hashes
 }
 
 ///Note: generate_random_block is filled with random data, it does not represent a consensus-valid block!
@@ -170,7 +170,7 @@ pub fn generate_random_transaction_inputs(rng: &mut ThreadRng, amount: usize) ->
 pub fn generate_random_transaction_output(rng: &mut ThreadRng) -> TransactionOutput {
     TransactionOutput::new(
         rng.gen_range(1..100_000), //we choose small amounts as to not overflow with large utxosets.
-        generate_random_script_public_key(&mut rng.clone()),
+        generate_random_p2pk_script_public_key(&mut rng.clone()),
     )
 }
 

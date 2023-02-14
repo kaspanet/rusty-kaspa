@@ -32,10 +32,3 @@ impl From<event_notify::NewBlockTemplateNotification> for NewBlockTemplateNotifi
 // ----------------------------------------------------------------------------
 // rpc_core to consensus_core
 // ----------------------------------------------------------------------------
-
-impl From<Notification> for event_notify::Notification {
-    //TODO
-    fn from(_: Notification) -> Self {
-        todo!();
-    }
-}

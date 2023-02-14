@@ -21,7 +21,7 @@ pub type TransactionId = hashes::Hash;
 pub type ScriptVec = SmallVec<[u8; SCRIPT_VECTOR_SIZE]>;
 
 /// Represents the ScriptPublicKey Version
-pub type VersionType = u16;
+pub type ScriptPublicKeyVersion = u16;
 
 /// Alias the `smallvec!` macro to ease maintenance
 pub use smallvec::smallvec as scriptvec;
@@ -33,20 +33,20 @@ pub type ScriptPublicKeys = HashSet<ScriptPublicKey>;
 #[derive(Default, Debug, PartialEq, Eq, Serialize, Deserialize, Clone, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct ScriptPublicKey {
-    version: VersionType,
+    version: ScriptPublicKeyVersion,
     script: ScriptVec, // Kept private to preserve read-only semantics
 }
 
 impl ScriptPublicKey {
-    pub fn new(version: VersionType, script: ScriptVec) -> Self {
+    pub fn new(version: ScriptPublicKeyVersion, script: ScriptVec) -> Self {
         Self { version, script }
     }
 
-    pub fn from_vec(version: VersionType, script: Vec<u8>) -> Self {
+    pub fn from_vec(version: ScriptPublicKeyVersion, script: Vec<u8>) -> Self {
         Self { version, script: ScriptVec::from_vec(script) }
     }
 
-    pub fn version(&self) -> VersionType {
+    pub fn version(&self) -> ScriptPublicKeyVersion {
         self.version
     }
 

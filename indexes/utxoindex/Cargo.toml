@@ -15,14 +15,10 @@ kaspa-core.workspace = true
 kaspa-utils.workspace = true
 database.workspace = true
 log.workspace = true
-
-futures = "0.3.25"
-rocksdb = "0.19"
-parking_lot = "0.12"
-serde = { version = "1", features = ["derive"] }
+rocksdb.workspace = true
+parking_lot.workspace = true
+serde.workspace = true
 
 [dev-dependencies]
-async-channel = { workspace = true}
-tokio = { workspace = true}
-rand = { workspace = true}
+rand.workspace = true
 

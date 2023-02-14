@@ -10,12 +10,7 @@ use crate::{
 
 use database::prelude::{StoreError, StoreResult, DB};
 
-use consensus_core::{
-    api::DynConsensus,
-    tx::{ScriptPublicKeys, TransactionIndexType, TransactionOutpoint},
-    utxo::utxo_diff::UtxoDiff,
-    BlockHashSet,
-};
+use consensus_core::{api::DynConsensus, tx::ScriptPublicKeys, utxo::utxo_diff::UtxoDiff, BlockHashSet};
 use hashes::Hash;
 use kaspa_core::trace;
 use kaspa_utils::arc::ArcExtensions;
@@ -46,15 +41,8 @@ impl UtxoIndexRetrievalApi for UtxoIndex {
 
     /// Retrieve utxos by script public keys supply from the utxoindex db.
     fn get_utxos_by_script_public_keys(&self, script_public_keys: ScriptPublicKeys) -> StoreResult<UtxoSetByScriptPublicKey> {
-        trace!("[{0}] retrieving utxos by from {1} script public keys", IDENT, script_public_keys.len());
+        trace!("[{0}] retrieving utxos from {1} script public keys", IDENT, script_public_keys.len());
         self.stores.get_utxos_by_script_public_key(&script_public_keys)
-    }
-
-    /// This is used only for testing purposes, retrieving a full utxo set,
-    /// in a live setting, using this is probably never a good idea (unless chunking is enabled).
-    fn get_all_utxos(&self) -> StoreResult<UtxoSetByScriptPublicKey> {
-        trace!("[{0}] retrieving utxos", IDENT);
-        self.stores.get_all_utxos()
     }
 
     /// Retrieve the stored tips of the utxoindex (used for testing purposes).
@@ -75,8 +63,8 @@ impl UtxoIndexControlApi for UtxoIndex {
 
         // Initiate update container
         let mut utxoindex_changes = UtxoIndexChanges::new();
-        utxoindex_changes.add_utxo_diff(utxo_diff.unwrap_or_clone());
-        utxoindex_changes.add_tips(tips.unwrap_or_clone().to_vec());
+        utxoindex_changes.set_utxo_diff(utxo_diff.unwrap_or_clone());
+        utxoindex_changes.set_tips(tips.unwrap_or_clone().to_vec());
 
         // Commit changed utxo state to db
         self.stores.update_utxo_state(&utxoindex_changes.utxo_changes)?;
@@ -117,9 +105,7 @@ impl UtxoIndexControlApi for UtxoIndex {
                     trace!("[{0}] sync status is {1}", IDENT, false);
                     Ok(false)
                 }
-                StoreError::KeyAlreadyExists(err) => Err(UtxoIndexError::StoreAccessError(StoreError::KeyAlreadyExists(err))),
-                StoreError::DbError(err) => Err(UtxoIndexError::StoreAccessError(StoreError::DbError(err))),
-                StoreError::DeserializationError(err) => Err(UtxoIndexError::StoreAccessError(StoreError::DeserializationError(err))),
+                other_store_errors => Err(UtxoIndexError::StoreAccessError(other_store_errors)),
             },
         }
     }
@@ -133,68 +119,45 @@ impl UtxoIndexControlApi for UtxoIndex {
         self.stores.delete_all()?;
         let consensus_tips = self.consensus.clone().get_virtual_state_tips();
         let mut circulating_supply: CirculatingSupply = 0;
-        let mut from_outpoint = None;
-        loop {
+
+        //Intial batch is without specified seek and none-skipping.
+        let mut virtual_utxo_batch = self.consensus.clone().get_virtual_utxos(None, RESYNC_CHUNK_SIZE, false);
+        let mut current_chunk_size = virtual_utxo_batch.len();
+        while current_chunk_size > 0 {
             // Potential optimization TODO: iterating virtual utxos into an [UtxoIndexChanges] struct is a bit of overhead,
             // but some form of pre-iteration is needed to extract and commit circulating supply separately.
-            let virtual_utxo_batch = self.consensus.clone().get_virtual_utxos(from_outpoint, RESYNC_CHUNK_SIZE);
 
-            trace!("[{0}] resyncing with batch of {1} utxos from consensus db", IDENT, virtual_utxo_batch.len());
+            let mut utxoindex_changes = UtxoIndexChanges::new(); //reset changes.
 
-            let mut utxoindex_changes = UtxoIndexChanges::new();
+            let next_outpoint_from = Some(virtual_utxo_batch.last().expect("expected a last outpoint").0);
+            utxoindex_changes.add_utxos_from_vector(virtual_utxo_batch);
 
-            if virtual_utxo_batch.len() == RESYNC_CHUNK_SIZE {
-                // Commit batch, remain in the loop.
+            circulating_supply += utxoindex_changes.supply_change as CirculatingSupply;
 
-                let last_outpoint = virtual_utxo_batch.last().expect("expected a none-empty vector").0;
+            trace!("[{0}] resyncing with batch of {1} utxos from consensus db", IDENT, current_chunk_size);
 
-                // Increment outpoint by one, as to not re-retrieve last with next iteration.
-                from_outpoint = match last_outpoint.index {
-                    TransactionIndexType::MAX => {
-                        //special case, increment the hash itself.
-                        let new_transaction_hash = last_outpoint.transaction_id;
-                        for (i, byte) in new_transaction_hash.as_bytes().iter().rev().enumerate() {
-                            if byte.lt(&255) {
-                                new_transaction_hash.as_bytes()[new_transaction_hash.as_bytes().len() - i] = byte + 1;
-                                break;
-                            }
-                        }
-                        Some(TransactionOutpoint::new(new_transaction_hash, 0))
-                    }
-                    last_index => Some(TransactionOutpoint::new(last_outpoint.transaction_id, last_index + 1)),
-                };
+            match self.stores.add_utxo_entries(&utxoindex_changes.utxo_changes.added) {
+                Ok(_) => (),
+                Err(err) => {
+                    trace!("[{0}] resyncing failed, clearing utxoindex db...", IDENT);
+                    self.stores.delete_all()?;
+                    return Err(UtxoIndexError::StoreAccessError(err));
+                }
+            };
 
-                utxoindex_changes.add_utxo_collection_vector(virtual_utxo_batch);
-
-                circulating_supply += utxoindex_changes.supply_change as CirculatingSupply;
-
-                match self.stores.add_utxo_entries(&utxoindex_changes.utxo_changes.added) {
-                    Ok(_) => continue, // stay in loop, keep retrieving
-                    Err(err) => {
-                        trace!("[{0}] resyncing failed, clearing utxoindex db...", IDENT);
-                        self.stores.delete_all()?;
-                        return Err(UtxoIndexError::StoreAccessError(err));
-                    }
-                };
+            if current_chunk_size == RESYNC_CHUNK_SIZE {
+                // We expect more utxos.
+                virtual_utxo_batch = self.consensus.clone().get_virtual_utxos(next_outpoint_from, RESYNC_CHUNK_SIZE, true);
+                current_chunk_size = virtual_utxo_batch.len();
+                continue;
             } else {
-                // Commit remaining utxos to db, and break out of retrieval loop
-
-                utxoindex_changes.add_utxo_collection_vector(virtual_utxo_batch);
-
-                circulating_supply += utxoindex_changes.supply_change as CirculatingSupply;
-
-                match self.stores.add_utxo_entries(&utxoindex_changes.utxo_changes.added) {
-                    Ok(_) => break, // break out of loop, commit other changes
-                    Err(err) => {
-                        trace!("[{0}] resyncing failed, clearing utxoindex db...", IDENT);
-                        self.stores.delete_all()?;
-                        return Err(UtxoIndexError::StoreAccessError(err));
-                    }
-                };
+                //we are finished.
+                break;
             }
         }
 
         // Commit to the the remaining stores.
+
         trace!("[{0}] committing circulating supply {1} from consensus db", IDENT, circulating_supply);
         match self.stores.insert_circulating_supply(circulating_supply) {
             Ok(_) => (),

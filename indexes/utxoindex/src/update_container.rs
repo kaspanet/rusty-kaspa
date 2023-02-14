@@ -4,11 +4,9 @@ use consensus_core::{
     BlockHashSet, HashMapCustomHasher,
 };
 use hashes::Hash;
-use std::collections::hash_map::Entry;
+use kaspa_utils::hashmap::NestedHashMapExtensions;
 
-use crate::model::{
-    CirculatingSupply, CirculatingSupplyDiff, CompactUtxoCollection, CompactUtxoEntry, UtxoChanges, UtxoSetByScriptPublicKey,
-};
+use crate::model::{CirculatingSupplyDiff, CompactUtxoEntry, UtxoChanges, UtxoSetByScriptPublicKey};
 
 /// A struct holding all changes to the utxoindex with on-the-fly conversions and processing.
 pub struct UtxoIndexChanges {
@@ -28,7 +26,7 @@ impl UtxoIndexChanges {
     }
 
     /// Add a [`UtxoDiff`] the the [`UtxoIndexChanges`] struct.
-    pub fn add_utxo_diff(&mut self, utxo_diff: UtxoDiff) {
+    pub fn set_utxo_diff(&mut self, utxo_diff: UtxoDiff) {
         let (to_add, mut to_remove) = (utxo_diff.add, utxo_diff.remove);
 
         for (transaction_outpoint, utxo_entry) in to_add.into_iter() {
@@ -38,76 +36,40 @@ impl UtxoIndexChanges {
 
             self.supply_change += utxo_entry.amount as CirculatingSupplyDiff; // TODO: Using `virtual_state.mergeset_rewards` might be a better way to extract this.
 
-            match self.utxo_changes.added.entry(utxo_entry.script_public_key) {
-                Entry::Occupied(mut entry) => {
-                    entry.get_mut().insert(
-                        transaction_outpoint,
-                        CompactUtxoEntry::new(utxo_entry.amount, utxo_entry.block_daa_score, utxo_entry.is_coinbase),
-                    );
-                }
-                Entry::Vacant(entry) => {
-                    let mut value = CompactUtxoCollection::with_capacity(1);
-                    value.insert(
-                        transaction_outpoint,
-                        CompactUtxoEntry::new(utxo_entry.amount, utxo_entry.block_daa_score, utxo_entry.is_coinbase),
-                    );
-                    entry.insert(value);
-                }
-            };
+            self.utxo_changes.added.insert_into_nested(
+                utxo_entry.script_public_key,
+                transaction_outpoint,
+                CompactUtxoEntry::new(utxo_entry.amount, utxo_entry.block_daa_score, utxo_entry.is_coinbase),
+            );
         }
 
         for (transaction_outpoint, utxo_entry) in to_remove.into_iter() {
             self.supply_change -= utxo_entry.amount as CirculatingSupplyDiff; // TODO: Using `virtual_state.mergeset_rewards` might be a better way to extract this.
 
-            match self.utxo_changes.removed.entry(utxo_entry.script_public_key) {
-                Entry::Occupied(mut entry) => {
-                    entry.get_mut().insert(
-                        transaction_outpoint,
-                        CompactUtxoEntry::new(utxo_entry.amount, utxo_entry.block_daa_score, utxo_entry.is_coinbase),
-                    );
-                }
-                Entry::Vacant(entry) => {
-                    let mut value = CompactUtxoCollection::with_capacity(1);
-                    value.insert(
-                        transaction_outpoint,
-                        CompactUtxoEntry::new(utxo_entry.amount, utxo_entry.block_daa_score, utxo_entry.is_coinbase),
-                    );
-                    entry.insert(value);
-                }
-            };
+            self.utxo_changes.removed.insert_into_nested(
+                utxo_entry.script_public_key,
+                transaction_outpoint,
+                CompactUtxoEntry::new(utxo_entry.amount, utxo_entry.block_daa_score, utxo_entry.is_coinbase),
+            );
         }
     }
 
     /// Add a [`Vec<(TransactionOutpoint, UtxoEntry)>`] the the [`UtxoIndexChanges`] struct
     ///
     /// Note: This is meant to be used when resyncing.
-    pub fn add_utxo_collection_vector(&mut self, utxo_vector: Vec<(TransactionOutpoint, UtxoEntry)>) {
-        let mut circulating_supply: CirculatingSupply = 0;
-
+    pub fn add_utxos_from_vector(&mut self, utxo_vector: Vec<(TransactionOutpoint, UtxoEntry)>) {
         for (transaction_outpoint, utxo_entry) in utxo_vector.into_iter() {
-            circulating_supply += utxo_entry.amount;
+            self.supply_change += utxo_entry.amount as CirculatingSupplyDiff;
 
-            match self.utxo_changes.added.entry(utxo_entry.script_public_key) {
-                Entry::Occupied(mut entry) => {
-                    entry.get_mut().insert(
-                        transaction_outpoint,
-                        CompactUtxoEntry::new(utxo_entry.amount, utxo_entry.block_daa_score, utxo_entry.is_coinbase),
-                    );
-                }
-                Entry::Vacant(entry) => {
-                    let mut value = CompactUtxoCollection::with_capacity(1);
-                    value.insert(
-                        transaction_outpoint,
-                        CompactUtxoEntry::new(utxo_entry.amount, utxo_entry.block_daa_score, utxo_entry.is_coinbase),
-                    );
-                    entry.insert(value);
-                }
-            }
+            self.utxo_changes.added.insert_into_nested(
+                utxo_entry.script_public_key,
+                transaction_outpoint,
+                CompactUtxoEntry::new(utxo_entry.amount, utxo_entry.block_daa_score, utxo_entry.is_coinbase),
+            );
         }
-        self.supply_change = circulating_supply as CirculatingSupplyDiff;
     }
 
-    pub fn add_tips(&mut self, tips: Vec<Hash>) {
+    pub fn set_tips(&mut self, tips: Vec<Hash>) {
         self.tips = BlockHashSet::from_iter(tips);
     }
 }

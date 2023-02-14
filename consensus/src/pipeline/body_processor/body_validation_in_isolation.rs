@@ -113,7 +113,6 @@ mod tests {
     };
     use consensus_core::{
         block::MutableBlock,
-        events::ConsensusEvent,
         header::Header,
         merkle::calc_hash_merkle_root,
         subnets::{SUBNETWORK_ID_COINBASE, SUBNETWORK_ID_NATIVE},
@@ -124,8 +123,7 @@ mod tests {
 
     #[test]
     fn validate_body_in_isolation_test() {
-        let (dummy_sender, _) = async_channel::unbounded::<ConsensusEvent>();
-        let consensus = TestConsensus::create_from_temp_db(&Config::new(MAINNET_PARAMS), dummy_sender);
+        let consensus = TestConsensus::create_from_temp_db_and_dummy_sender(&Config::new(MAINNET_PARAMS));
         let wait_handles = consensus.init();
 
         let body_processor = consensus.block_body_processor();
@@ -436,9 +434,8 @@ mod tests {
 
     #[tokio::test]
     async fn merkle_root_missing_parents_known_invalid_test() {
-        let (dummy_sender, _) = async_channel::unbounded::<ConsensusEvent>();
         let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().build();
-        let consensus = TestConsensus::create_from_temp_db(&config, dummy_sender);
+        let consensus = TestConsensus::create_from_temp_db_and_dummy_sender(&config);
         let wait_handles = consensus.init();
 
         let mut block = consensus.build_block_with_parents_and_transactions(1.into(), vec![config.genesis_hash], vec![]);

@@ -40,20 +40,20 @@ where
 
     pub fn has(&self, key: TKey) -> Result<bool, StoreError>
     where
-        TKey: Copy + AsRef<[u8]>,
+        TKey: Clone + AsRef<[u8]>,
     {
         Ok(self.cache.contains_key(&key) || self.db.get_pinned(DbKey::new(&self.prefix, key))?.is_some())
     }
 
     pub fn read(&self, key: TKey) -> Result<TData, StoreError>
     where
-        TKey: Copy + AsRef<[u8]> + ToString,
+        TKey: Clone + AsRef<[u8]> + ToString,
         TData: DeserializeOwned, // We need `DeserializeOwned` since the slice coming from `db.get_pinned` has short lifetime
     {
         if let Some(data) = self.cache.get(&key) {
             Ok(data)
         } else {
-            let db_key = DbKey::new(&self.prefix, key);
+            let db_key = DbKey::new(&self.prefix, key.clone());
             if let Some(slice) = self.db.get_pinned(&db_key)? {
                 let data: TData = bincode::deserialize(&slice)?;
                 self.cache.insert(key, data.clone());
@@ -66,7 +66,7 @@ where
 
     pub fn iterator(&self) -> impl Iterator<Item = Result<(Box<[u8]>, TData), Box<dyn Error>>> + '_
     where
-        TKey: Copy + AsRef<[u8]> + ToString,
+        TKey: Clone + AsRef<[u8]> + ToString,
         TData: DeserializeOwned, // We need `DeserializeOwned` since the slice coming from `db.get_pinned` has short lifetime
     {
         let db_key = DbKey::prefix_only(&self.prefix);
@@ -83,11 +83,11 @@ where
 
     pub fn write(&self, mut writer: impl DbWriter, key: TKey, data: TData) -> Result<(), StoreError>
     where
-        TKey: Copy + AsRef<[u8]>,
+        TKey: Clone + AsRef<[u8]>,
         TData: Serialize,
     {
         let bin_data = bincode::serialize(&data)?;
-        self.cache.insert(key, data);
+        self.cache.insert(key.clone(), data);
         writer.put(DbKey::new(&self.prefix, key), bin_data)?;
         Ok(())
     }
@@ -98,21 +98,21 @@ where
         iter: &mut (impl Iterator<Item = (TKey, TData)> + Clone),
     ) -> Result<(), StoreError>
     where
-        TKey: Copy + AsRef<[u8]>,
+        TKey: Clone + AsRef<[u8]>,
         TData: Serialize,
     {
         let iter_clone = iter.clone();
         self.cache.insert_many(iter);
         for (key, data) in iter_clone {
             let bin_data = bincode::serialize(&data)?;
-            writer.put(DbKey::new(&self.prefix, key), bin_data)?;
+            writer.put(DbKey::new(&self.prefix, key.clone()), bin_data)?;
         }
         Ok(())
     }
 
     pub fn delete(&self, mut writer: impl DbWriter, key: TKey) -> Result<(), StoreError>
     where
-        TKey: Copy + AsRef<[u8]>,
+        TKey: Clone + AsRef<[u8]>,
     {
         self.cache.remove(&key);
         writer.delete(DbKey::new(&self.prefix, key))?;
@@ -121,36 +121,38 @@ where
 
     pub fn delete_many(&self, mut writer: impl DbWriter, key_iter: &mut (impl Iterator<Item = TKey> + Clone)) -> Result<(), StoreError>
     where
-        TKey: Copy + AsRef<[u8]>,
+        TKey: Clone + AsRef<[u8]>,
     {
         let key_iter_clone = key_iter.clone();
         self.cache.remove_many(key_iter);
         for key in key_iter_clone {
-            writer.delete(DbKey::new(&self.prefix, key))?;
+            writer.delete(DbKey::new(&self.prefix, key.clone()))?;
         }
         Ok(())
     }
 
     pub fn delete_all(&self, mut writer: impl DbWriter) -> Result<(), StoreError>
     where
-        TKey: Copy + AsRef<[u8]>,
+        TKey: Clone + AsRef<[u8]>,
     {
         self.cache.remove_all();
+        //TODO: Consider using column families to make it faster
         writer.delete(DbKey::prefix_only(&self.prefix))?;
         Ok(())
     }
 
     /// A dynamic iterator that can iterate through a specifc prefix / bucket, or from a certain start point.
-    ///
+    /// Extracted keys and values most be encoded with bincode.
     //TODO: loop and chain iterators for multi-prefix / bucket iterator.
     pub fn seek_iterator<Key, Value>(
         &self,
-        bucket: Option<&[u8]>,   //iter self.prefix if None, else append bytes to self.prefix.
-        seek_from: Option<TKey>, //iter whole range if None
-        limit: usize,            //amount to take.
+        bucket: Option<&[u8]>,   // iter self.prefix if None, else append bytes to self.prefix.
+        seek_from: Option<TKey>, // iter whole range if None
+        limit: usize,            // amount to take.
+        skip_first: bool,        // skips the first value, (useful in conjunction with the seek-key, as to not re-retrieve).
     ) -> impl Iterator<Item = Result<(Key, Value), Box<dyn Error>>> + '_
     where
-        TKey: Copy + AsRef<[u8]>,
+        TKey: Clone + AsRef<[u8]>,
         Key: DeserializeOwned + Debug,
         Value: DeserializeOwned + Debug,
     {
@@ -163,12 +165,16 @@ where
         let mut read_opts = ReadOptions::default();
         read_opts.set_iterate_range(rocksdb::PrefixRange(db_key.as_ref()));
 
-        let db_iterator = match seek_from {
-            Some(seek_key) => {
-                self.db.iterator_opt(IteratorMode::From(DbKey::new(&self.prefix, seek_key).as_ref(), Direction::Forward), read_opts)
-            }
+        let mut db_iterator = match seek_from {
+            Some(seek_key) => self
+                .db
+                .iterator_opt(IteratorMode::From(DbKey::new(&self.prefix, seek_key).as_ref(), Direction::Forward), read_opts),
             None => self.db.iterator_opt(IteratorMode::Start, read_opts),
         };
+
+        if skip_first {
+            db_iterator.next();
+        }
 
         db_iterator.take(limit).map(move |item| match item {
             Ok((key_bytes, value_bytes)) => match bincode::deserialize::<Key>(key_bytes[db_key.prefix_len()..].as_ref()) {

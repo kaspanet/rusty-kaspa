@@ -14,7 +14,7 @@ pub enum ConsensusEvent {
 
 #[derive(Debug, Clone, Default)]
 pub struct VirtualChangeSetEvent {
-    pub utxo_diff: Arc<UtxoDiff>,
+    pub selected_parent_utxo_diff: Arc<UtxoDiff>, //Note: this differs from the Consensus [`VirtualState`]'s [`UtxoDiff`] and represents the utxo-state of the selected parent.
     pub parents: Arc<Vec<Hash>>,
     pub selected_parent_blue_score: u64,
     pub daa_score: u64,

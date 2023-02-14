@@ -8,14 +8,14 @@ pub const SEP_SIZE: usize = 1;
 
 #[derive(Clone)]
 pub struct DbKey {
-    pub path: Vec<u8>,
-    pub prefix_len: usize,
+    path: Vec<u8>,
+    prefix_len: usize,
 }
 
 impl DbKey {
     pub fn new<TKey>(prefix: &[u8], key: TKey) -> Self
     where
-        TKey: Copy + AsRef<[u8]>,
+        TKey: Clone + AsRef<[u8]>,
     {
         Self {
             path: prefix.iter().chain(std::iter::once(&SEP)).chain(key.as_ref().iter()).copied().collect(),

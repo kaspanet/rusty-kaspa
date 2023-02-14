@@ -14,13 +14,6 @@ pub trait UtxoIndexRetrievalApi: Send + Sync {
     /// Retrieve utxos by script public keys supply from the utxoindex db.
     fn get_utxos_by_script_public_keys(&self, script_public_keys: ScriptPublicKeys) -> StoreResult<UtxoSetByScriptPublicKey>;
 
-    /// This is new compared to go-kaspad, and retrieves all utxos saved in the utxoindex.
-    ///
-    /// **Warn:**
-    ///
-    /// this is used only for testing purposes, retrieving a full utxo set, in a live setting,it is probably never a good idea.
-    fn get_all_utxos(&self) -> StoreResult<UtxoSetByScriptPublicKey>;
-
     /// Retrieve the stored tips of the utxoindex (used for testing purposes).
     fn get_utxo_index_tips(&self) -> StoreResult<Arc<BlockHashSet>>;
 }

@@ -48,7 +48,7 @@ use utxoindex::api::DynUtxoIndexRetrievalApi;
 /// Subscriber.
 pub struct RpcCoreService {
     consensus: DynConsensus,
-    #[allow(dead_code)] //will find usage
+    #[allow(dead_code)] //TODO: remove this line when utxoindex is connected to an RPC call.
     utxoindex: DynUtxoIndexRetrievalApi,
     notifier: Arc<Notifier>,
 }
