@@ -132,7 +132,6 @@ impl Rpc for GrpcService {
         request: Request<tonic::Streaming<KaspadRequest>>,
     ) -> Result<Response<Self::MessageStreamStream>, tonic::Status> {
         let remote_addr = request.remote_addr().ok_or_else(|| {
-            // Why do we care about this?
             // TODO: perhaps use Uuid for connection id and allow optional address
             tonic::Status::new(tonic::Code::InvalidArgument, "Incoming connection opening request has no remote address".to_string())
         })?;
@@ -152,6 +151,7 @@ impl Rpc for GrpcService {
         let mut request_stream: tonic::Streaming<KaspadRequest> = request.into_inner();
         tokio::spawn(async move {
             loop {
+                // TODO: add a select! and handle a shutdown signal
                 match request_stream.message().await {
                     Ok(Some(request)) => {
                         //trace!("Incoming {:?}", request);
@@ -483,6 +483,7 @@ impl Rpc for GrpcService {
                 }
             }
             trace!("Request handler {0} terminated", remote_addr);
+            // TODO: unregister connection from notifier
             connection_manager.write().await.unregister(remote_addr);
         });
 

@@ -14,9 +14,11 @@ use tokio::sync::mpsc::Sender;
 
 pub type GrpcSender = Sender<StatusResult<KaspadResponse>>;
 
+// TODO: identify a connection by a Uuid instead of an address
+// TODO: add a shutdown signal sender
 #[derive(Debug)]
 struct Inner {
-    pub address: SocketAddr,
+    pub address: SocketAddr,    // TODO: wrap into an option
     pub sender: GrpcSender,
     pub closed: AtomicBool,
 }
@@ -59,7 +61,7 @@ impl Connection for GrpcConnection {
     }
 
     fn close(&self) -> bool {
-        // FIXME: actually close sender
+        // TODO: actually close sender
         self.inner.closed.store(true, Ordering::SeqCst);
         true
     }
