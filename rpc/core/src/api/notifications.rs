@@ -18,22 +18,6 @@ pub enum NotificationType {
     NewBlockTemplate,
 }
 
-impl From<&Notification> for NotificationType {
-    fn from(item: &Notification) -> Self {
-        match item {
-            Notification::BlockAdded(_) => NotificationType::BlockAdded,
-            Notification::VirtualSelectedParentChainChanged(_) => NotificationType::VirtualSelectedParentChainChanged,
-            Notification::FinalityConflict(_) => NotificationType::FinalityConflict,
-            Notification::FinalityConflictResolved(_) => NotificationType::FinalityConflictResolved,
-            Notification::UtxosChanged(_) => NotificationType::UtxosChanged(vec![]),
-            Notification::VirtualSelectedParentBlueScoreChanged(_) => NotificationType::VirtualSelectedParentBlueScoreChanged,
-            Notification::VirtualDaaScoreChanged(_) => NotificationType::VirtualDaaScoreChanged,
-            Notification::PruningPointUtxoSetOverride(_) => NotificationType::PruningPointUtxoSetOverride,
-            Notification::NewBlockTemplate(_) => NotificationType::NewBlockTemplate,
-        }
-    }
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[allow(clippy::large_enum_variant)]
 pub enum Notification {
