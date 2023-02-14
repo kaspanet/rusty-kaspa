@@ -18,7 +18,7 @@ pub type GrpcSender = Sender<StatusResult<KaspadResponse>>;
 // TODO: add a shutdown signal sender
 #[derive(Debug)]
 struct Inner {
-    pub address: SocketAddr,    // TODO: wrap into an option
+    pub address: SocketAddr, // TODO: wrap into an option
     pub sender: GrpcSender,
     pub closed: AtomicBool,
 }
