@@ -4,6 +4,7 @@ use crate::{ConnectionError, KaspadMessagePayloadType};
 use kaspa_core::{debug, error, trace, warn};
 use parking_lot::{Mutex, RwLock};
 use std::{collections::HashMap, sync::Arc};
+use tokio::select;
 use tokio::sync::mpsc::{channel as mpsc_channel, Receiver as MpscReceiver, Sender as MpscSender};
 use tokio::sync::oneshot::{channel as oneshot_channel, Sender as OneshotSender};
 use tokio_stream::StreamExt;
@@ -42,11 +43,11 @@ pub struct Router {
 impl Router {
     pub(crate) async fn new(
         hub_sender: MpscSender<HubEvent>,
-        incoming_stream: Streaming<KaspadMessage>,
+        mut incoming_stream: Streaming<KaspadMessage>,
         outgoing_route: MpscSender<KaspadMessage>,
     ) -> Arc<Self> {
         let (start_sender, start_receiver) = oneshot_channel();
-        let (shutdown_sender, shutdown_receiver) = oneshot_channel();
+        let (shutdown_sender, mut shutdown_receiver) = oneshot_channel();
 
         let router = Arc::new(Router {
             identity: Uuid::new_v4(),
@@ -60,28 +61,31 @@ impl Router {
         // Start the router receive loop
         tokio::spawn(async move {
             // Wait for a start signal before entering the receive loop
-            let _ = start_receiver.await;
+            start_receiver.await.expect("start_receiver dropped before start signal was sent");
+            loop {
+                select! {
+                    biased; // We use biased polling so that the shutdown signal is always checked first
 
-            // Transform the shutdown signal receiver to a stream
-            let shutdown_stream = Box::pin(async_stream::stream! {
-                  let _ = shutdown_receiver.await;
-                  yield None;
-            });
-
-            // Merge the incoming stream with the shutdown stream so that they can be handled within the same loop
-            let mut merged_stream = incoming_stream.map(Some).merge(shutdown_stream);
-            while let Some(Some(res)) = merged_stream.next().await {
-                match res {
-                    Ok(msg) => {
-                        trace!("P2P, Router receive loop - got message: {:?}, router-id: {}", msg, router.identity);
-                        if !(router.route_to_flow(msg).await) {
-                            debug!("P2P, Router receive loop - no route for message - exiting loop, router-id: {}", router.identity);
+                    _ = &mut shutdown_receiver => {
+                        debug!("Shutdown signal received, exiting router receive loop");
+                        break;
+                    }
+                    res = incoming_stream.next() => match res {
+                        Some(Ok(msg)) => {
+                            trace!("P2P, Router receive loop - got message: {:?}, router-id: {}", msg, router.identity);
+                            if !(router.route_to_flow(msg).await) {
+                                debug!("P2P, Router receive loop - no route for message - exiting loop, router-id: {}", router.identity);
+                                break;
+                            }
+                        }
+                        Some(Err(err)) => {
+                            warn!("P2P, Router receive loop - network error: {:?}, router-id: {}", err, router.identity);
                             break;
                         }
-                    }
-                    Err(err) => {
-                        warn!("P2P, Router receive loop - network error: {:?}, router-id: {}", err, router.identity);
-                        break;
+                        None => {
+                            debug!("P2P, Router receive loop - incoming stream ended, router-id: {}", router.identity);
+                            break;
+                        }
                     }
                 }
             }
