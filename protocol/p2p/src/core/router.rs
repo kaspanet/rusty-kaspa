@@ -7,7 +7,6 @@ use std::{collections::HashMap, sync::Arc};
 use tokio::select;
 use tokio::sync::mpsc::{channel as mpsc_channel, Receiver as MpscReceiver, Sender as MpscSender};
 use tokio::sync::oneshot::{channel as oneshot_channel, Sender as OneshotSender};
-use tokio_stream::StreamExt;
 use tonic::Streaming;
 use uuid::Uuid;
 
@@ -61,7 +60,7 @@ impl Router {
         // Start the router receive loop
         tokio::spawn(async move {
             // Wait for a start signal before entering the receive loop
-            start_receiver.await.expect("start_receiver dropped before start signal was sent");
+            let _ = start_receiver.await;
             loop {
                 select! {
                     biased; // We use biased polling so that the shutdown signal is always checked first
@@ -70,19 +69,19 @@ impl Router {
                         debug!("Shutdown signal received, exiting router receive loop");
                         break;
                     }
-                    res = incoming_stream.next() => match res {
-                        Some(Ok(msg)) => {
+                    res = incoming_stream.message() => match res {
+                        Ok(Some(msg)) => {
                             trace!("P2P, Router receive loop - got message: {:?}, router-id: {}", msg, router.identity);
                             if !(router.route_to_flow(msg).await) {
                                 debug!("P2P, Router receive loop - no route for message - exiting loop, router-id: {}", router.identity);
                                 break;
                             }
                         }
-                        Some(Err(err)) => {
+                        Err(err) => {
                             warn!("P2P, Router receive loop - network error: {:?}, router-id: {}", err, router.identity);
                             break;
                         }
-                        None => {
+                        Ok(None) => {
                             debug!("P2P, Router receive loop - incoming stream ended, router-id: {}", router.identity);
                             break;
                         }
@@ -170,8 +169,14 @@ impl Router {
         // Acquire state mutex and send the shutdown signal
         // NOTE: Using a block to drop the lock asap
         {
-            let op = self.mutable_state.lock().shutdown_signal.take();
-            if let Some(signal) = op {
+            let mut state = self.mutable_state.lock();
+
+            // Make sure start signal was fired, just in case `self.start()` was never called
+            if let Some(signal) = state.start_signal.take() {
+                let _ = signal.send(());
+            }
+
+            if let Some(signal) = state.shutdown_signal.take() {
                 let _ = signal.send(());
             } else {
                 // This means the router was already closed
