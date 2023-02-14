@@ -22,7 +22,7 @@ use kaspa_rpc_core::{
         collector::RpcCoreCollector,
         connection::ChannelConnection,
         events::EventType,
-        listener::{ListenerId, ListenerUtxoNotificationFilterSetting},
+        listener::ListenerId,
         notifier::Notifier,
         scope::Scope,
         subscriber::{Subscriber, SubscriptionManager},
@@ -60,12 +60,7 @@ impl GrpcClient {
         let collector = Arc::new(RpcCoreCollector::new(notify_channel.receiver()));
         let subscriber = Subscriber::new(inner.clone(), 0);
 
-        let notifier = Arc::new(Notifier::new(
-            Some(collector),
-            Some(subscriber),
-            ListenerUtxoNotificationFilterSetting::FilteredByAddress,
-            GRPC_CLIENT,
-        ));
+        let notifier = Arc::new(Notifier::new(Some(collector), Some(subscriber), 10, GRPC_CLIENT));
 
         Ok(Self { inner, notifier })
     }

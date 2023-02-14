@@ -80,6 +80,10 @@ impl<T> EventArray<T> {
         let array: [T; EVENT_COUNT] = core::array::from_fn(cb);
         Self(array)
     }
+
+    pub fn iter(&self) -> EventArrayIterator<'_, T> {
+        EventArrayIterator::new(self)
+    }
 }
 
 impl<T> Index<EventType> for EventArray<T> {
@@ -95,5 +99,30 @@ impl<T> IndexMut<EventType> for EventArray<T> {
     fn index_mut(&mut self, index: EventType) -> &mut Self::Output {
         let idx = index as usize;
         &mut self.0[idx]
+    }
+}
+
+pub struct EventArrayIterator<'a, T> {
+    array: &'a EventArray<T>,
+    index: usize,
+}
+
+impl<'a, T> EventArrayIterator<'a, T> {
+    fn new(array: &'a EventArray<T>) -> Self {
+        Self { array, index: 0 }
+    }
+}
+
+impl<'a, T> Iterator for EventArrayIterator<'a, T> {
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.index < EVENT_TYPE_ARRAY.len() {
+            true => {
+                self.index += 1;
+                Some(&self.array[EVENT_TYPE_ARRAY[self.index - 1]])
+            }
+            false => None,
+        }
     }
 }

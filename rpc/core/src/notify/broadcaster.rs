@@ -2,7 +2,7 @@ extern crate derive_more;
 use super::{
     connection::Connection,
     error::{Error, Result},
-    events::{EventArray, EventType},
+    events::EventArray,
     listener::ListenerId,
     subscription::DynSubscription,
 };
@@ -82,11 +82,12 @@ enum Ctl<C>
 where
     C: Connection,
 {
-    Subscribe(DynSubscription, ListenerId, C),
-    Unsubscribe(EventType, ListenerId),
+    Register(DynSubscription, ListenerId, C),
+    Unregister(DynSubscription, ListenerId),
     Shutdown,
 }
 
+#[derive(Debug)]
 pub struct Broadcaster<C>
 where
     C: Connection,
@@ -126,11 +127,11 @@ where
                     ctl = self.ctl.recv().fuse() => {
                         if let Ok(ctl) = ctl {
                             match ctl {
-                                Ctl::Subscribe(subscription, id, connection) => {
+                                Ctl::Register(subscription, id, connection) => {
                                     plan[subscription.event_type()].insert(subscription, id, connection);
                                 },
-                                Ctl::Unsubscribe(event, id) => {
-                                    plan[event].remove(&id);
+                                Ctl::Unregister(subscription, id) => {
+                                    plan[subscription.event_type()].remove(&id);
                                 },
                                 Ctl::Shutdown => {
                                     let _ = self.shutdown.drain();
@@ -176,13 +177,12 @@ where
         });
     }
 
-    pub fn subscribe(self: &Arc<Self>, subscription: DynSubscription, id: ListenerId, connection: C) -> Result<()> {
-        self.ctl.try_send(Ctl::Subscribe(subscription, id, connection))?;
-        Ok(())
-    }
-
-    pub fn unsubscribe(self: &Arc<Self>, event_type: EventType, id: ListenerId) -> Result<()> {
-        self.ctl.try_send(Ctl::Unsubscribe(event_type, id))?;
+    pub fn register(self: &Arc<Self>, subscription: DynSubscription, id: ListenerId, connection: C) -> Result<()> {
+        if subscription.active() {
+            self.ctl.try_send(Ctl::Register(subscription, id, connection))?;
+        } else {
+            self.ctl.try_send(Ctl::Unregister(subscription, id))?;
+        }
         Ok(())
     }
 

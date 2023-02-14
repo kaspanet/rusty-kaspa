@@ -4,12 +4,7 @@ use super::collector::{ConsensusCollector, ConsensusNotificationReceiver};
 use crate::{
     api::rpc::RpcApi,
     model::*,
-    notify::{
-        connection::ChannelConnection,
-        listener::{ListenerId, ListenerUtxoNotificationFilterSetting},
-        notifier::Notifier,
-        scope::Scope,
-    },
+    notify::{connection::ChannelConnection, listener::ListenerId, notifier::Notifier, scope::Scope},
     FromRpcHex, Notification, RpcError, RpcResult,
 };
 use async_trait::async_trait;
@@ -61,7 +56,7 @@ impl RpcCoreService {
         let collector = Arc::new(ConsensusCollector::new(consensus_recv));
 
         // TODO: Some consensus-compatible subscriber could be provided here
-        let notifier = Arc::new(Notifier::new(Some(collector), None, ListenerUtxoNotificationFilterSetting::All, RPC_CORE));
+        let notifier = Arc::new(Notifier::new(Some(collector), None, 2, RPC_CORE));
 
         Self { consensus, notifier }
     }

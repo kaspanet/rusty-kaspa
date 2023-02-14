@@ -11,7 +11,7 @@ use kaspa_rpc_core::{
     notify::{
         channel::NotificationChannel,
         connection::ChannelConnection,
-        listener::{ListenerId, ListenerUtxoNotificationFilterSetting},
+        listener::ListenerId,
         scope::{Scope, UtxosChangedScope, VirtualSelectedParentChainChangedScope},
         subscriber::DynSubscriptionManager,
         subscriber::Subscriber,
@@ -75,12 +75,7 @@ impl GrpcService {
         let collector = Arc::new(GrpcServiceCollector::new(core_channel.receiver()));
         let subscription_manager: DynSubscriptionManager = core_service.notifier();
         let subscriber = Subscriber::new(subscription_manager, core_listener_id);
-        let notifier: Arc<Notifier<GrpcConnection>> = Arc::new(Notifier::new(
-            Some(collector),
-            Some(subscriber),
-            ListenerUtxoNotificationFilterSetting::FilteredByAddress,
-            GRPC_SERVER,
-        ));
+        let notifier: Arc<Notifier<GrpcConnection>> = Arc::new(Notifier::new(Some(collector), Some(subscriber), 10, GRPC_SERVER));
         let connection_manager = Arc::new(RwLock::new(GrpcConnectionManager::new(notifier.clone())));
 
         Self { core_service, core_channel, core_listener_id, connection_manager, notifier }

@@ -5,7 +5,6 @@ pub mod connection;
 pub mod error;
 pub mod events;
 pub mod listener;
-pub mod message;
 pub mod notifier;
 pub mod scope;
 pub mod subscriber;

@@ -1,5 +1,6 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
+use std::fmt::Display;
 use workflow_core::enums::u32_try_from;
 
 u32_try_from! {
@@ -63,6 +64,16 @@ impl From<RpcApiOps> for u32 {
 pub enum SubscribeCommand {
     Start = 0,
     Stop = 1,
+}
+
+impl Display for SubscribeCommand {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let label = match self {
+            SubscribeCommand::Start => "start",
+            SubscribeCommand::Stop => "stop",
+        };
+        write!(f, "{label}")
+    }
 }
 
 impl From<SubscribeCommand> for i32 {

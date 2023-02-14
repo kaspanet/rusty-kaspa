@@ -1,20 +1,23 @@
-use async_channel::{Receiver, Sender};
 use async_trait::async_trait;
 use core::fmt::Debug;
 use kaspa_core::trace;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
-    Arc, Mutex,
+    Arc,
 };
 extern crate derive_more;
 use super::{
     error::{Error, Result},
     listener::ListenerId,
-    message::SubscribeMessage,
     scope::Scope,
+    subscription::Mutation,
 };
 use crate::{api::ops::SubscribeCommand, RpcResult};
-use kaspa_utils::channel::Channel;
+use futures::{
+    future::FutureExt, // for `.fuse()`
+    select,
+};
+use workflow_core::channel::Channel;
 
 /// A manager of subscriptions to notifications for registered listeners
 #[async_trait]
@@ -22,7 +25,7 @@ pub trait SubscriptionManager: Send + Sync + Debug {
     async fn start_notify(self: Arc<Self>, id: ListenerId, scope: Scope) -> RpcResult<()>;
     async fn stop_notify(self: Arc<Self>, id: ListenerId, scope: Scope) -> RpcResult<()>;
 
-    async fn execute_notify_command(self: Arc<Self>, id: ListenerId, scope: Scope, command: SubscribeCommand) -> RpcResult<()> {
+    async fn execute_subscribe_command(self: Arc<Self>, id: ListenerId, scope: Scope, command: SubscribeCommand) -> RpcResult<()> {
         match command {
             SubscribeCommand::Start => self.start_notify(id, scope).await,
             SubscribeCommand::Stop => self.stop_notify(id, scope).await,
@@ -32,19 +35,26 @@ pub trait SubscriptionManager: Send + Sync + Debug {
 
 pub type DynSubscriptionManager = Arc<dyn SubscriptionManager>;
 
+#[derive(Clone, Debug)]
+enum Ctl {
+    Shutdown,
+}
+
 /// A subscriber handling subscription messages executing them into a [SubscriptionManager].
 #[derive(Debug)]
 pub struct Subscriber {
     /// Subscription manager
     subscription_manager: DynSubscriptionManager,
+
+    /// Listener ID
     listener_id: ListenerId,
 
     /// Has this subscriber been started?
-    is_started: Arc<AtomicBool>,
+    started: Arc<AtomicBool>,
 
-    /// Feedback channel
-    subscribe_channel: Channel<SubscribeMessage>,
-    subscribe_shutdown_listener: Arc<Mutex<Option<triggered::Listener>>>,
+    ctl: Channel<Ctl>,
+    incoming: Channel<Mutation>,
+    shutdown: Channel<()>,
 }
 
 impl Subscriber {
@@ -52,86 +62,63 @@ impl Subscriber {
         Self {
             subscription_manager,
             listener_id,
-            subscribe_channel: Channel::default(),
-            subscribe_shutdown_listener: Arc::new(Mutex::new(None)),
-            is_started: Arc::new(AtomicBool::default()),
+            started: Arc::new(AtomicBool::default()),
+            ctl: Channel::unbounded(),
+            incoming: Channel::unbounded(),
+            shutdown: Channel::oneshot(),
         }
-    }
-
-    pub(crate) fn sender(&self) -> Sender<SubscribeMessage> {
-        self.subscribe_channel.sender()
     }
 
     pub fn start(self: &Arc<Self>) {
-        let (shutdown_trigger, shutdown_listener) = triggered::trigger();
-        let mut subscribe_shutdown_listener = self.subscribe_shutdown_listener.lock().unwrap();
-        *subscribe_shutdown_listener = Some(shutdown_listener);
-        self.spawn_subscription_receiver_task(shutdown_trigger, self.subscribe_channel.receiver());
+        self.clone().spawn_subscription_receiver_task();
     }
 
     /// Launch the subscription receiver
-    fn spawn_subscription_receiver_task(&self, shutdown_trigger: triggered::Trigger, subscribe_rx: Receiver<SubscribeMessage>) {
+    fn spawn_subscription_receiver_task(self: Arc<Self>) {
         // The task can only be spawned once
-        if self.is_started.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
+        if self.started.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
             return;
         }
-        let subscription_manager = self.subscription_manager.clone();
-        let listener_id = self.listener_id;
-
+        trace!("Starting notification broadcasting task");
         workflow_core::task::spawn(async move {
             loop {
-                let subscribe = subscribe_rx.recv().await.unwrap();
-
-                match subscribe {
-                    SubscribeMessage::StartEvent(ref scope) => {
-                        match subscription_manager.clone().start_notify(listener_id, scope.clone()).await {
-                            Ok(_) => (),
-                            Err(err) => {
-                                trace!("[Reporter] start notify error: {:?}", err);
+                select! {
+                    ctl = self.ctl.recv().fuse() => {
+                        if let Ok(ctl) = ctl {
+                            match ctl {
+                                Ctl::Shutdown => {
+                                    let _ = self.shutdown.drain();
+                                    let _ = self.shutdown.try_send(());
+                                    break;
+                                }
                             }
                         }
-                    }
+                    },
 
-                    SubscribeMessage::StopEvent(ref scope) => {
-                        match subscription_manager.clone().stop_notify(listener_id, scope.clone()).await {
-                            Ok(_) => (),
-                            Err(err) => {
-                                trace!("[Reporter] start notify error: {:?}", err);
+                    mutation = self.incoming.recv().fuse() => {
+                        if let Ok(mutation) = mutation {
+                            if let Err(err) = self.subscription_manager.clone().execute_subscribe_command(self.listener_id, mutation.scope, mutation.command).await {
+                                trace!("[Subscriber] the subscription command returned an error: {:?}", err);
                             }
                         }
-                    }
-
-                    SubscribeMessage::Shutdown => {
-                        break;
                     }
                 }
             }
-            shutdown_trigger.trigger();
         });
     }
 
-    fn try_send_subscribe(self: &Arc<Self>, msg: SubscribeMessage) -> Result<()> {
-        self.subscribe_channel.sender().try_send(msg)?;
+    pub fn mutate(self: &Arc<Self>, mutation: Mutation) -> Result<()> {
+        self.incoming.try_send(mutation)?;
         Ok(())
     }
 
     async fn stop_subscription_receiver_task(self: &Arc<Self>) -> Result<()> {
-        if self.is_started.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_err() {
+        if self.started.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_err() {
             return Err(Error::AlreadyStoppedError);
         }
-        let mut result: Result<()> = Ok(());
-        match self.try_send_subscribe(SubscribeMessage::Shutdown) {
-            Ok(_) => {
-                let shutdown_listener: triggered::Listener;
-                {
-                    let mut subscribe_shutdown_listener = self.subscribe_shutdown_listener.lock().unwrap();
-                    shutdown_listener = subscribe_shutdown_listener.take().unwrap();
-                }
-                shutdown_listener.await;
-            }
-            Err(err) => result = Err(err),
-        }
-        result
+        self.ctl.try_send(Ctl::Shutdown)?;
+        self.shutdown.recv().await?;
+        Ok(())
     }
 
     pub async fn stop(self: &Arc<Self>) -> Result<()> {
