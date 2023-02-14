@@ -1916,11 +1916,14 @@ dependencies = [
 name = "p2p-lib"
 version = "0.1.0"
 dependencies = [
+ "consensus-core",
  "ctrlc",
  "futures",
  "h2",
+ "hashes",
  "kaspa-core",
  "log",
+ "math",
  "parking_lot",
  "prost",
  "thiserror",

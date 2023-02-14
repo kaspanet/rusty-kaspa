@@ -66,9 +66,10 @@ impl Router {
                     biased; // We use biased polling so that the shutdown signal is always checked first
 
                     _ = &mut shutdown_receiver => {
-                        debug!("Shutdown signal received, exiting router receive loop");
+                        debug!("P2P, Router receive loop - shutdown signal received, exiting router receive loop, router-id: {}", router.identity);
                         break;
                     }
+
                     res = incoming_stream.message() => match res {
                         Ok(Some(msg)) => {
                             trace!("P2P, Router receive loop - got message: {:?}, router-id: {}", msg, router.identity);
@@ -77,19 +78,19 @@ impl Router {
                                 break;
                             }
                         }
-                        Err(err) => {
-                            warn!("P2P, Router receive loop - network error: {:?}, router-id: {}", err, router.identity);
-                            break;
-                        }
                         Ok(None) => {
                             debug!("P2P, Router receive loop - incoming stream ended, router-id: {}", router.identity);
+                            break;
+                        }
+                        Err(err) => {
+                            warn!("P2P, Router receive loop - network error: {:?}, router-id: {}", err, router.identity);
                             break;
                         }
                     }
                 }
             }
             router.close().await;
-            debug!("P2P, Router receive loop - exited, router-id: {}, {}", router.identity, Arc::strong_count(&router));
+            debug!("P2P, Router receive loop - exited, router-id: {}, router refs: {}", router.identity, Arc::strong_count(&router));
         });
 
         // Notify the central Hub about the new peer
@@ -128,7 +129,7 @@ impl Router {
                     panic!("P2P, Tried to subscribe to an existing route");
                 }
                 None => {
-                    trace!("Router::subscribe - msg_type: {:?} route is registered, router-id:{:?}", msg_type, self.identity);
+                    trace!("P2P, Router::subscribe - msg_type: {:?} route is registered, router-id:{:?}", msg_type, self.identity);
                 }
             }
         }

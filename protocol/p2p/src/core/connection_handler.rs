@@ -120,6 +120,8 @@ impl ProtoP2p for ConnectionHandler {
         &self,
         request: Request<Streaming<KaspadMessage>>,
     ) -> Result<Response<Self::MessageStreamStream>, TonicStatus> {
+        // TODO: save sock address and manage outbound/inbound state
+
         // Build the in/out pipes
         let (outgoing_route, outgoing_receiver) = mpsc_channel(Self::outgoing_network_channel_size());
         let incoming_stream = request.into_inner();

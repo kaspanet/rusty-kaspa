@@ -4,6 +4,7 @@ pub mod pb {
 }
 
 pub mod common;
+pub mod convert;
 pub mod echo;
 
 mod core;
