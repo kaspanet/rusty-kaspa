@@ -216,7 +216,7 @@ where
                 }
             }
 
-            // This holds the map of all active listeners by message variant for the event type
+            // This holds the map of all active listeners by message encoding for the event type
             let mut listeners: ListenerVariantSet<T> = ListenerVariantSet::new();
 
             // TODO: feed the listeners map with pre-existing self.listeners having event active
@@ -258,10 +258,10 @@ where
                         match event {
                             // For UtxosChanged notifications, build a filtered notification for every listener
                             EventType::UtxosChanged => {
-                                for (variant, listener_set) in listeners.iter() {
+                                for (encoding, listener_set) in listeners.iter() {
                                     for (id, listener) in listener_set.iter() {
                                         if let Some(listener_notification) = listener.build_utxos_changed_notification(notification) {
-                                            let message = T::into_message(&listener_notification, variant);
+                                            let message = T::into_message(&listener_notification, encoding);
                                             match listener.try_send(message) {
                                                 Ok(_) => {
                                                     trace!("[Notifier-{name}] dispatcher_task sent notification {notification} to listener {id}");
@@ -279,8 +279,8 @@ where
                             }
                             // For all other notifications, broadcast the same message to all listeners
                             _ => {
-                                for (variant, listener_set) in listeners.iter() {
-                                    let message = T::into_message(notification, variant);
+                                for (encoding, listener_set) in listeners.iter() {
+                                    let message = T::into_message(notification, encoding);
                                     for (id, listener) in listener_set.iter() {
                                         match listener.try_send(message.clone()) {
                                             Ok(_) => {
@@ -312,7 +312,7 @@ where
                         need_subscribe = listeners.len() == 0 || report_all_changes;
 
                         // We don't care whether this is an insertion or a replacement
-                        listeners.insert(listener.variant(), id, listener.clone());
+                        listeners.insert(listener.encoding(), id, listener.clone());
                     }
 
                     DispatchMessage::RemoveListener(id) => {

@@ -149,8 +149,8 @@ where
         self.connection.is_closed()
     }
 
-    pub fn variant(&self) -> T::Variant {
-        self.connection.variant()
+    pub fn encoding(&self) -> T::Encoding {
+        self.connection.encoding()
     }
 }
 
@@ -190,7 +190,7 @@ impl Filter for FilterUtxoAddress {}
 pub(crate) type ListenerSet<T> = HashMap<ListenerID, Arc<ListenerSenderSide<T>>>;
 
 #[derive(Deref)]
-pub(crate) struct ListenerVariantSet<T: Connection>(HashMap<T::Variant, ListenerSet<T>>);
+pub(crate) struct ListenerVariantSet<T: Connection>(HashMap<T::Encoding, ListenerSet<T>>);
 
 impl<T: Connection> ListenerVariantSet<T> {
     pub fn new() -> Self {
@@ -203,17 +203,17 @@ impl<T: Connection> ListenerVariantSet<T> {
 
     pub fn insert(
         &mut self,
-        variant: T::Variant,
+        encoding: T::Encoding,
         id: ListenerID,
         listener: Arc<ListenerSenderSide<T>>,
     ) -> Option<Arc<ListenerSenderSide<T>>> {
         // Make sure only one instance of ìd` is registered in the whole object
         let result = self.remove(&id);
 
-        if !self.0.contains_key(&variant) {
-            self.0.insert(variant.clone(), HashMap::default());
+        if !self.0.contains_key(&encoding) {
+            self.0.insert(encoding.clone(), HashMap::default());
         }
-        self.0.get_mut(&variant).unwrap().insert(id, listener);
+        self.0.get_mut(&encoding).unwrap().insert(id, listener);
 
         result
     }
