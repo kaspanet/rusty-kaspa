@@ -5,8 +5,8 @@ use crate::{
     api::rpc::RpcApi,
     model::*,
     notify::{
-        channel::NotificationChannel,
-        listener::{ListenerID, ListenerReceiverSide, ListenerUtxoNotificationFilterSetting},
+        connection::ChannelConnection,
+        listener::{ListenerID, ListenerUtxoNotificationFilterSetting},
         notifier::Notifier,
     },
     FromRpcHex, Notification, NotificationType, RpcError, RpcResult,
@@ -46,8 +46,10 @@ use std::{
 /// Subscriber.
 pub struct RpcCoreService {
     consensus: DynConsensus,
-    notifier: Arc<Notifier>,
+    notifier: Arc<Notifier<ChannelConnection>>,
 }
+
+const RPC_CORE: &str = "rpc-core";
 
 impl RpcCoreService {
     pub fn new(consensus: DynConsensus, consensus_recv: ConsensusNotificationReceiver) -> Self {
@@ -58,27 +60,28 @@ impl RpcCoreService {
         let collector = Arc::new(ConsensusCollector::new(consensus_recv));
 
         // TODO: Some consensus-compatible subscriber could be provided here
-        let notifier = Arc::new(Notifier::new(Some(collector), None, ListenerUtxoNotificationFilterSetting::All));
+        let notifier = Arc::new(Notifier::new(Some(collector), None, ListenerUtxoNotificationFilterSetting::All, RPC_CORE));
 
         Self { consensus, notifier }
     }
 
     pub fn start(&self) {
-        self.notifier.clone().start();
+        self.notifier().start();
     }
 
     pub async fn stop(&self) -> RpcResult<()> {
-        self.notifier.clone().stop().await?;
+        self.notifier().stop().await?;
         Ok(())
     }
 
-    pub fn notifier(&self) -> Arc<Notifier> {
+    #[inline(always)]
+    pub fn notifier(&self) -> Arc<Notifier<ChannelConnection>> {
         self.notifier.clone()
     }
 }
 
 #[async_trait]
-impl RpcApi for RpcCoreService {
+impl RpcApi<ChannelConnection> for RpcCoreService {
     async fn submit_block_call(&self, request: SubmitBlockRequest) -> RpcResult<SubmitBlockResponse> {
         let try_block: RpcResult<Block> = (&request.block).try_into();
         if let Err(ref err) = try_block {
@@ -155,6 +158,7 @@ impl RpcApi for RpcCoreService {
             is_utxo_indexed: false,
             is_synced: false,
             has_notify_command: true,
+            has_message_id: true,
         })
     }
 
@@ -290,14 +294,14 @@ impl RpcApi for RpcCoreService {
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API
 
-    /// Register a new listener and returns an id and a channel receiver.
-    fn register_new_listener(&self, channel: Option<NotificationChannel>) -> ListenerReceiverSide {
-        self.notifier.register_new_listener(channel)
+    /// Register a new listener and returns an id identifying it.
+    fn register_new_listener(&self, connection: ChannelConnection) -> ListenerID {
+        self.notifier.register_new_listener(connection)
     }
 
     /// Unregister an existing listener.
     ///
-    /// Stop all notifications for this listener and drop its channel.
+    /// Stop all notifications for this listener, unregister the id and its associated connection.
     async fn unregister_listener(&self, id: ListenerID) -> RpcResult<()> {
         self.notifier.unregister_listener(id)?;
         Ok(())

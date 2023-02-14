@@ -17,5 +17,5 @@ kaspa-core.workspace = true
 kaspa-wallet.workspace = true
 wasm-bindgen.workspace = true
 addresses.workspace = true
-rpc-core.workspace = true
+kaspa-rpc-core.workspace = true
 kaspa-utils.workspace = true

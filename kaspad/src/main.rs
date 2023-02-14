@@ -14,10 +14,10 @@ use consensus::model::stores::DB;
 use consensus::params::DEVNET_PARAMS;
 use kaspa_core::{core::Core, signals::Signals, task::runtime::AsyncRuntime};
 use kaspa_core::{info, trace};
+use kaspa_grpc_server::GrpcServer;
+use kaspa_rpc_core::server::collector::ConsensusNotificationChannel;
+use kaspa_rpc_core::server::RpcCoreServer;
 use p2p_flows::service::P2pService;
-use rpc_core::server::collector::ConsensusNotificationChannel;
-use rpc_core::server::RpcCoreServer;
-use rpc_grpc::server::GrpcServer;
 
 mod monitor;
 

@@ -6,7 +6,7 @@ use crate::{Notification, NotificationType};
 pub enum EventType {
     BlockAdded = 0,
     VirtualSelectedParentChainChanged,
-    FinalityConflicts,
+    FinalityConflict,
     FinalityConflictResolved,
     UtxosChanged,
     VirtualSelectedParentBlueScoreChanged,
@@ -22,7 +22,7 @@ pub(crate) const EVENT_COUNT: usize = 9;
 pub const EVENT_TYPE_ARRAY: [EventType; EVENT_COUNT] = [
     EventType::BlockAdded,
     EventType::VirtualSelectedParentChainChanged,
-    EventType::FinalityConflicts,
+    EventType::FinalityConflict,
     EventType::FinalityConflictResolved,
     EventType::UtxosChanged,
     EventType::VirtualSelectedParentBlueScoreChanged,
@@ -37,12 +37,12 @@ impl From<EventType> for NotificationType {
         match item {
             EventType::BlockAdded => NotificationType::BlockAdded,
             EventType::VirtualSelectedParentChainChanged => NotificationType::VirtualSelectedParentChainChanged,
-            EventType::FinalityConflicts => NotificationType::FinalityConflicts,
+            EventType::FinalityConflict => NotificationType::FinalityConflict,
             EventType::FinalityConflictResolved => NotificationType::FinalityConflictResolved,
             EventType::UtxosChanged => NotificationType::UtxosChanged(vec![]),
             EventType::VirtualSelectedParentBlueScoreChanged => NotificationType::VirtualSelectedParentBlueScoreChanged,
             EventType::VirtualDaaScoreChanged => NotificationType::VirtualDaaScoreChanged,
-            EventType::PruningPointUTXOSetOverride => NotificationType::PruningPointUTXOSetOverride,
+            EventType::PruningPointUTXOSetOverride => NotificationType::PruningPointUtxoSetOverride,
             EventType::NewBlockTemplate => NotificationType::NewBlockTemplate,
         }
     }
@@ -54,12 +54,12 @@ impl From<&Notification> for EventType {
         match item {
             Notification::BlockAdded(_) => EventType::BlockAdded,
             Notification::VirtualSelectedParentChainChanged(_) => EventType::VirtualSelectedParentChainChanged,
-            Notification::FinalityConflict(_) => EventType::FinalityConflicts,
+            Notification::FinalityConflict(_) => EventType::FinalityConflict,
             Notification::FinalityConflictResolved(_) => EventType::FinalityConflictResolved,
             Notification::UtxosChanged(_) => EventType::UtxosChanged,
             Notification::VirtualSelectedParentBlueScoreChanged(_) => EventType::VirtualSelectedParentBlueScoreChanged,
             Notification::VirtualDaaScoreChanged(_) => EventType::VirtualDaaScoreChanged,
-            Notification::PruningPointUTXOSetOverride(_) => EventType::PruningPointUTXOSetOverride,
+            Notification::PruningPointUtxoSetOverride(_) => EventType::PruningPointUTXOSetOverride,
             Notification::NewBlockTemplate(_) => EventType::NewBlockTemplate,
         }
     }
@@ -71,12 +71,12 @@ impl From<&NotificationType> for EventType {
         match item {
             NotificationType::BlockAdded => EventType::BlockAdded,
             NotificationType::VirtualSelectedParentChainChanged => EventType::VirtualSelectedParentChainChanged,
-            NotificationType::FinalityConflicts => EventType::FinalityConflicts,
+            NotificationType::FinalityConflict => EventType::FinalityConflict,
             NotificationType::FinalityConflictResolved => EventType::FinalityConflictResolved,
             NotificationType::UtxosChanged(_) => EventType::UtxosChanged,
             NotificationType::VirtualSelectedParentBlueScoreChanged => EventType::VirtualSelectedParentBlueScoreChanged,
             NotificationType::VirtualDaaScoreChanged => EventType::VirtualDaaScoreChanged,
-            NotificationType::PruningPointUTXOSetOverride => EventType::PruningPointUTXOSetOverride,
+            NotificationType::PruningPointUtxoSetOverride => EventType::PruningPointUTXOSetOverride,
             NotificationType::NewBlockTemplate => EventType::NewBlockTemplate,
         }
     }

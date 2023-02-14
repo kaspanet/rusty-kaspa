@@ -1,14 +1,16 @@
-use std::fmt::Debug;
-use std::sync::Arc;
-
-use crate::notify::{
-    channel::NotificationChannel,
-    events::{EventArray, EventType},
-    result::Result,
-    utxo_address_set::RpcUtxoAddressSet,
+use crate::{
+    notify::{
+        connection::Connection,
+        events::{EventArray, EventType},
+        result::Result,
+        utxo_address_set::RpcUtxoAddressSet,
+    },
+    Notification, NotificationType, RpcAddress,
 };
-use crate::stubs::RpcUtxoAddress;
-use crate::{Notification, NotificationReceiver, NotificationSender, NotificationType};
+use std::sync::Arc;
+use std::{collections::HashMap, fmt::Debug};
+extern crate derive_more;
+use derive_more::Deref;
 
 pub type ListenerID = u64;
 
@@ -26,23 +28,28 @@ pub enum ListenerUtxoNotificationFilterSetting {
 /// ### Implementation details
 ///
 /// This struct is not async protected against mutations.
-/// It is the responsability of code using a [Listener] to guard memory
+/// It is the responsibility of code using a [Listener] to guard memory
 /// before calling toggle.
 ///
 /// Any ListenerSenderSide derived from a [Listener] should also be rebuilt
 /// upon relevant mutation by a call to toggle.
 #[derive(Debug)]
-pub(crate) struct Listener {
+pub(crate) struct Listener<T>
+where
+    T: Connection,
+{
     id: u64,
-    channel: NotificationChannel,
+    connection: T,
     active_event: EventArray<bool>,
     utxo_addresses: RpcUtxoAddressSet,
 }
 
-impl Listener {
-    pub(crate) fn new(id: ListenerID, channel: Option<NotificationChannel>) -> Listener {
-        let channel = channel.unwrap_or_default();
-        Self { id, channel, active_event: EventArray::default(), utxo_addresses: RpcUtxoAddressSet::new() }
+impl<T> Listener<T>
+where
+    T: Connection,
+{
+    pub(crate) fn new(id: ListenerID, connection: T) -> Self {
+        Self { id, connection, active_event: EventArray::default(), utxo_addresses: RpcUtxoAddressSet::new() }
     }
 
     pub(crate) fn id(&self) -> ListenerID {
@@ -54,7 +61,7 @@ impl Listener {
         self.active_event[event]
     }
 
-    fn toggle_utxo_addresses(&mut self, utxo_addresses: &[RpcUtxoAddress]) -> bool {
+    fn toggle_utxo_addresses(&mut self, utxo_addresses: &[RpcAddress]) -> bool {
         let utxo_addresses = RpcUtxoAddressSet::from_iter(utxo_addresses.iter().cloned());
         if utxo_addresses != self.utxo_addresses {
             self.utxo_addresses = utxo_addresses;
@@ -64,7 +71,7 @@ impl Listener {
     }
 
     /// Toggle registration for [`NotificationType`] notifications.
-    /// Return true if any change occured in the registration state.
+    /// Return true if any change occurred in the registration state.
     pub(crate) fn toggle(&mut self, notification_type: NotificationType, active: bool) -> bool {
         let mut changed = false;
         let event: EventType = (&notification_type).into();
@@ -80,45 +87,46 @@ impl Listener {
         changed
     }
 
-    pub(crate) fn close(&mut self) {
+    pub(crate) fn close(&self) {
         if !self.is_closed() {
-            self.channel.close();
+            self.connection.close();
         }
     }
 
     pub(crate) fn is_closed(&self) -> bool {
-        self.channel.is_closed()
-    }
-}
-
-/// Contains the receiver side of a listener
-#[derive(Debug)]
-pub struct ListenerReceiverSide {
-    pub id: ListenerID,
-    pub recv_channel: NotificationReceiver,
-}
-
-impl From<&Listener> for ListenerReceiverSide {
-    fn from(item: &Listener) -> Self {
-        Self { id: item.id(), recv_channel: item.channel.receiver() }
+        self.connection.is_closed()
     }
 }
 
 #[derive(Debug)]
 /// Contains the sender side of a listener
-pub(crate) struct ListenerSenderSide {
-    send_channel: NotificationSender,
+pub(crate) struct ListenerSenderSide<T>
+where
+    T: Connection,
+{
+    connection: T,
     filter: Box<dyn Filter + Send + Sync>,
 }
 
-impl ListenerSenderSide {
-    pub(crate) fn new(listener: &Listener, sending_changed_utxos: ListenerUtxoNotificationFilterSetting, event: EventType) -> Self {
+impl<T> ListenerSenderSide<T>
+where
+    T: Connection,
+{
+    pub fn new(listener: &Listener<T>, sending_changed_utxos: ListenerUtxoNotificationFilterSetting, event: EventType) -> Self {
         match event {
             EventType::UtxosChanged if sending_changed_utxos == ListenerUtxoNotificationFilterSetting::FilteredByAddress => Self {
-                send_channel: listener.channel.sender(),
+                connection: listener.connection.clone(),
                 filter: Box::new(FilterUtxoAddress { utxos_addresses: listener.utxo_addresses.clone() }),
             },
-            _ => Self { send_channel: listener.channel.sender(), filter: Box::new(Unfiltered {}) },
+            _ => Self { connection: listener.connection.clone(), filter: Box::new(Unfiltered {}) },
+        }
+    }
+
+    pub fn build_utxos_changed_notification(&self, notification: &Arc<Notification>) -> Option<Arc<Notification>> {
+        // TODO: actually build a filtered Notification::UtxosChanged
+        match self.filter.matches(notification.clone()) {
+            true => Some(notification.clone()),
+            false => None,
         }
     }
 
@@ -126,22 +134,23 @@ impl ListenerSenderSide {
     ///
     /// If the notification does not meet requirements (see [`Notification::UtxosChanged`]) returns `Ok(false)`,
     /// otherwise returns `Ok(true)`.
-    pub(crate) fn try_send(&self, notification: Arc<Notification>) -> Result<bool> {
-        if self.filter.matches(notification.clone()) {
-            match self.send_channel.try_send(notification) {
-                Ok(_) => {
-                    return Ok(true);
-                }
-                Err(err) => {
-                    return Err(err.into());
-                }
-            }
+    pub fn try_send(&self, message: T::Message) -> Result<bool> {
+        // FIXME: externalize the logic of building a filtered Notification::UtxosChanged
+        //if self.filter.matches(notification.clone()) {
+        match self.connection.send(message) {
+            Ok(_) => Ok(true),
+            Err(err) => Err(err.into()),
         }
-        Ok(false)
+        //}
+        //Ok(false)
     }
 
-    pub(crate) fn is_closed(&self) -> bool {
-        self.send_channel.is_closed()
+    pub fn is_closed(&self) -> bool {
+        self.connection.is_closed()
+    }
+
+    pub fn encoding(&self) -> T::Encoding {
+        self.connection.encoding()
     }
 }
 
@@ -168,9 +177,53 @@ struct FilterUtxoAddress {
 impl InnerFilter for FilterUtxoAddress {
     fn matches(&self, notification: Arc<Notification>) -> bool {
         if let Notification::UtxosChanged(ref notification) = *notification {
-            return self.utxos_addresses.contains(&notification.utxo_address);
+            // TODO: redesign the filter
+            // We want to limit the notification contents to the watched addresses only.
+            return notification.added.iter().any(|x| self.utxos_addresses.contains(&x.address))
+                || notification.removed.iter().any(|x| self.utxos_addresses.contains(&x.address));
         }
         false
     }
 }
 impl Filter for FilterUtxoAddress {}
+
+pub(crate) type ListenerSet<T> = HashMap<ListenerID, Arc<ListenerSenderSide<T>>>;
+
+#[derive(Deref)]
+pub(crate) struct ListenerVariantSet<T: Connection>(HashMap<T::Encoding, ListenerSet<T>>);
+
+impl<T: Connection> ListenerVariantSet<T> {
+    pub fn new() -> Self {
+        Self(HashMap::default())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.values().map(|x| x.len()).sum()
+    }
+
+    pub fn insert(
+        &mut self,
+        encoding: T::Encoding,
+        id: ListenerID,
+        listener: Arc<ListenerSenderSide<T>>,
+    ) -> Option<Arc<ListenerSenderSide<T>>> {
+        // Make sure only one instance of ìd` is registered in the whole object
+        let result = self.remove(&id);
+
+        if !self.0.contains_key(&encoding) {
+            self.0.insert(encoding.clone(), HashMap::default());
+        }
+        self.0.get_mut(&encoding).unwrap().insert(id, listener);
+
+        result
+    }
+
+    pub fn remove(&mut self, id: &ListenerID) -> Option<Arc<ListenerSenderSide<T>>> {
+        for (_, listener_set) in self.0.iter_mut() {
+            if let Some(listener) = listener_set.remove(id) {
+                return Some(listener);
+            }
+        }
+        None
+    }
+}

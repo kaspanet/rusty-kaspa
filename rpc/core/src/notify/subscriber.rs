@@ -62,7 +62,7 @@ impl Subscriber {
         self.subscribe_channel.sender()
     }
 
-    pub fn start(self: Arc<Self>) {
+    pub fn start(self: &Arc<Self>) {
         let (shutdown_trigger, shutdown_listener) = triggered::trigger();
         let mut subscribe_shutdown_listener = self.subscribe_shutdown_listener.lock().unwrap();
         *subscribe_shutdown_listener = Some(shutdown_listener);
@@ -110,17 +110,17 @@ impl Subscriber {
         });
     }
 
-    fn try_send_subscribe(self: Arc<Self>, msg: SubscribeMessage) -> Result<()> {
+    fn try_send_subscribe(self: &Arc<Self>, msg: SubscribeMessage) -> Result<()> {
         self.subscribe_channel.sender().try_send(msg)?;
         Ok(())
     }
 
-    async fn stop_subscription_receiver_task(self: Arc<Self>) -> Result<()> {
+    async fn stop_subscription_receiver_task(self: &Arc<Self>) -> Result<()> {
         if self.is_started.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_err() {
             return Err(Error::AlreadyStoppedError);
         }
         let mut result: Result<()> = Ok(());
-        match self.clone().try_send_subscribe(SubscribeMessage::Shutdown) {
+        match self.try_send_subscribe(SubscribeMessage::Shutdown) {
             Ok(_) => {
                 let shutdown_listener: triggered::Listener;
                 {
@@ -134,7 +134,7 @@ impl Subscriber {
         result
     }
 
-    pub async fn stop(self: Arc<Self>) -> Result<()> {
+    pub async fn stop(self: &Arc<Self>) -> Result<()> {
         self.stop_subscription_receiver_task().await
     }
 }
