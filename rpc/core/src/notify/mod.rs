@@ -1,5 +1,6 @@
 pub mod channel;
 pub mod collector;
+pub mod connection;
 pub mod error;
 pub mod events;
 pub mod listener;

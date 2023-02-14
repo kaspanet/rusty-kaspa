@@ -55,7 +55,7 @@ $ cargo run --release --bin simpa -- -t=200 -d=2 -b=8 -n=1000
 Logging in `kaspad` and `simpa` can be [filtered](https://docs.rs/env_logger/0.10.0/env_logger/#filtering-results) either by defining the environment variable `RUST_LOG` and/or by adding a `--loglevel` argument to the command, ie.:
 
 ```bash
-$ cargo run --bin kaspad -- --loglevel info,rpc_core=trace,rpc_grpc=trace,consensus=trace,kaspa_core=trace
+$ cargo run --bin kaspad -- --loglevel info,kaspa_rpc_core=trace,kaspa_grpc_core=trace,consensus=trace,kaspa_core=trace
 ```
 
 
