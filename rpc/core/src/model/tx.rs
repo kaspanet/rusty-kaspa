@@ -79,5 +79,5 @@ pub struct RpcTransactionVerboseData {
 #[serde(rename_all = "camelCase")]
 pub struct RpcAcceptedTransactionIds {
     pub accepting_block_hash: RpcHash,
-    pub accepted_transaction_ids: Vec<TransactionId>,
+    pub accepted_transaction_ids: Vec<RpcTransactionId>,
 }

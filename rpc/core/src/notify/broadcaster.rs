@@ -27,7 +27,7 @@ type ConnectionSet<T> = HashMap<ListenerId, T>;
 
 /// Broadcast plan
 #[derive(Deref)]
-struct Plan<C: Connection>(HashMap<DynSubscription, HashMap<C::Variant, ConnectionSet<C>>>);
+struct Plan<C: Connection>(HashMap<DynSubscription, HashMap<C::Encoding, ConnectionSet<C>>>);
 
 impl<C> Plan<C>
 where
@@ -36,21 +36,21 @@ where
     fn insert(&mut self, subscription: DynSubscription, id: ListenerId, connection: C) -> Option<C> {
         // Make sure only one instance of ìd` is registered in the whole object
         let result = self.remove(&id);
-        let variant = connection.variant();
-        self.0.entry(subscription).or_default().entry(variant).or_default().entry(id).or_insert(connection);
+        let encoding = connection.encoding();
+        self.0.entry(subscription).or_default().entry(encoding).or_default().entry(id).or_insert(connection);
         result
     }
 
     fn remove(&mut self, id: &ListenerId) -> Option<C> {
         let mut result = None;
         let mut found_subscription: Option<DynSubscription> = None;
-        let mut found_variant: Option<C::Variant> = None;
-        'outer: for (subscription, variant_set) in self.0.iter_mut() {
-            for (variant, connection_set) in variant_set.iter_mut() {
+        let mut found_encoding: Option<C::Encoding> = None;
+        'outer: for (subscription, encoding_set) in self.0.iter_mut() {
+            for (encoding, connection_set) in encoding_set.iter_mut() {
                 if let Some(connection) = connection_set.remove(id) {
                     result = Some(connection);
                     if connection_set.is_empty() {
-                        found_variant = Some(variant.clone());
+                        found_encoding = Some(encoding.clone());
                         found_subscription = Some((*subscription).clone());
                         //  The plan is guaranteed to contain no duplicate occurrence of every id
                         break 'outer;
@@ -60,8 +60,8 @@ where
         }
         // Cleaning empty entries
         if let Some(ref subscription) = found_subscription {
-            if let Some(ref variant) = found_variant {
-                self.0.get_mut(subscription).unwrap().remove(variant);
+            if let Some(ref encoding) = found_encoding {
+                self.0.get_mut(subscription).unwrap().remove(encoding);
                 if self.0.get(subscription).unwrap().is_empty() {
                     self.0.remove(subscription);
                 }
@@ -149,9 +149,9 @@ where
                             for (subscription, variant_set) in plan[event].iter() {
                                 // ... by subscription scope
                                 let applied_notification = subscription.apply_to(notification.clone());
-                                for (variant, connection_set) in variant_set.iter() {
-                                    // ... by message variant
-                                    let message = C::into_message(&applied_notification, variant);
+                                for (encoding, connection_set) in variant_set.iter() {
+                                    // ... by message encoding
+                                    let message = C::into_message(&applied_notification, encoding);
                                     for (id, connection) in connection_set.iter() {
                                         // ... to listeners connections
                                         match connection.send(message.clone()) {

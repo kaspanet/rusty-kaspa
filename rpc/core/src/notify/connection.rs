@@ -4,11 +4,11 @@ use std::{hash::Hash, sync::Arc};
 
 pub trait Connection: Clone + Debug + Send + Sync + 'static {
     type Message: Clone;
-    type Variant: Hash + Clone + Eq + PartialEq + Send;
+    type Encoding: Hash + Clone + Eq + PartialEq + Send;
     type Error: Into<crate::notify::error::Error>;
 
-    fn variant(&self) -> Self::Variant;
-    fn into_message(notification: &Arc<Notification>, variant: &Self::Variant) -> Self::Message;
+    fn encoding(&self) -> Self::Encoding;
+    fn into_message(notification: &Arc<Notification>, encoding: &Self::Encoding) -> Self::Message;
     fn send(&self, message: Self::Message) -> Result<(), Self::Error>;
     fn close(&self) -> bool;
     fn is_closed(&self) -> bool;
@@ -26,21 +26,21 @@ impl ChannelConnection {
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Default)]
-pub enum Invariant {
+pub enum Unchanged {
     #[default]
-    Default = 0,
+    Clone = 0,
 }
 
 impl Connection for ChannelConnection {
     type Message = Arc<Notification>;
-    type Variant = Invariant;
+    type Encoding = Unchanged;
     type Error = super::error::Error;
 
-    fn variant(&self) -> Self::Variant {
-        Invariant::Default
+    fn encoding(&self) -> Self::Encoding {
+        Unchanged::Clone
     }
 
-    fn into_message(notification: &Arc<Notification>, _: &Self::Variant) -> Self::Message {
+    fn into_message(notification: &Arc<Notification>, _: &Self::Encoding) -> Self::Message {
         notification.clone()
     }
 

@@ -1,12 +1,7 @@
 use crate::StatusResult;
 use kaspa_core::trace;
 use kaspa_grpc_core::protowire::KaspadResponse;
-use kaspa_rpc_core::notify::{
-    connection::{Connection, Invariant},
-    error::Error as NotificationError,
-    listener::ListenerId,
-    notifier::Notifier,
-};
+use kaspa_rpc_core::notify::{connection::Connection, error::Error as NotificationError, listener::ListenerId, notifier::Notifier};
 use std::{
     collections::HashMap,
     net::SocketAddr,
@@ -19,9 +14,11 @@ use tokio::sync::mpsc::Sender;
 
 pub type GrpcSender = Sender<StatusResult<KaspadResponse>>;
 
+// TODO: identify a connection by a Uuid instead of an address
+// TODO: add a shutdown signal sender
 #[derive(Debug)]
 struct Inner {
-    pub address: SocketAddr,
+    pub address: SocketAddr, // TODO: wrap into an option
     pub sender: GrpcSender,
     pub closed: AtomicBool,
 }
@@ -37,16 +34,22 @@ impl GrpcConnection {
     }
 }
 
+#[derive(Clone, Debug, Hash, Eq, PartialEq, Default)]
+pub enum GrpcEncoding {
+    #[default]
+    ProtowireResponse = 0,
+}
+
 impl Connection for GrpcConnection {
     type Message = Arc<StatusResult<KaspadResponse>>;
-    type Variant = Invariant;
+    type Encoding = GrpcEncoding;
     type Error = super::error::Error;
 
-    fn variant(&self) -> Self::Variant {
-        Invariant::Default
+    fn encoding(&self) -> Self::Encoding {
+        GrpcEncoding::ProtowireResponse
     }
 
-    fn into_message(notification: &Arc<kaspa_rpc_core::Notification>, _: &Self::Variant) -> Self::Message {
+    fn into_message(notification: &Arc<kaspa_rpc_core::Notification>, _: &Self::Encoding) -> Self::Message {
         Arc::new(Ok((&**notification).into()))
     }
 
@@ -58,7 +61,7 @@ impl Connection for GrpcConnection {
     }
 
     fn close(&self) -> bool {
-        // FIXME: actually close sender
+        // TODO: actually close sender
         self.inner.closed.store(true, Ordering::SeqCst);
         true
     }

@@ -128,34 +128,17 @@ impl Rpc for GrpcService {
         request: Request<tonic::Streaming<KaspadRequest>>,
     ) -> Result<Response<Self::MessageStreamStream>, tonic::Status> {
         let remote_addr = request.remote_addr().ok_or_else(|| {
+            // TODO: perhaps use Uuid for connection id and allow optional address
             tonic::Status::new(tonic::Code::InvalidArgument, "Incoming connection opening request has no remote address".to_string())
         })?;
+
+        // TODO: return err if number of inbound connections exceeded
 
         trace!("MessageStream from {:?}", remote_addr);
 
         // External sender and receiver
-        let (send_channel, mut recv_channel) = mpsc::channel::<StatusResult<KaspadResponse>>(128);
+        let (send_channel, recv_channel) = mpsc::channel::<StatusResult<KaspadResponse>>(128);
         let listener_id = self.register_connection(remote_addr, send_channel.clone()).await;
-
-        // Internal related sender and receiver
-        let (stream_tx, stream_rx) = mpsc::channel::<StatusResult<KaspadResponse>>(10);
-
-        // KaspadResponse forwarder
-        let connection_manager = self.connection_manager.clone();
-        tokio::spawn(async move {
-            while let Some(msg) = recv_channel.recv().await {
-                match stream_tx.send(msg).await {
-                    Ok(_) => {}
-                    Err(_) => {
-                        // If sending failed, then remove the connection from connection manager
-                        trace!("[Remote] stream tx sending error. Remote {:?}", &remote_addr);
-                        connection_manager.write().await.unregister(remote_addr);
-                        // and close the connection channel
-                        recv_channel.close();
-                    }
-                }
-            }
-        });
 
         // Request handler
         let core_service = self.core_service.clone();
@@ -164,9 +147,11 @@ impl Rpc for GrpcService {
         let mut request_stream: tonic::Streaming<KaspadRequest> = request.into_inner();
         tokio::spawn(async move {
             loop {
+                // TODO: add a select! and handle a shutdown signal
                 match request_stream.message().await {
                     Ok(Some(request)) => {
                         //trace!("Incoming {:?}", request);
+                        // TODO: extract response gen to a method
                         let mut response: KaspadResponse = if let Some(payload) = request.payload {
                             match payload {
                                 Payload::GetProcessMetricsRequest(ref request) => match request.try_into() {
@@ -458,6 +443,7 @@ impl Rpc for GrpcService {
                                 }
                             }
                         } else {
+                            // TODO: maybe add a dedicated proto message for this case
                             GetBlockResponseMessage::from(kaspa_rpc_core::RpcError::General("Missing request payload".to_string()))
                                 .into()
                         };
@@ -466,8 +452,10 @@ impl Rpc for GrpcService {
 
                         match send_channel.send(Ok(response)).await {
                             Ok(_) => {}
-                            Err(err) => {
-                                trace!("tx send error: {:?}", err);
+                            Err(_) => {
+                                // If sending failed, then remove the connection from connection manager
+                                trace!("[Remote] stream sending error. Remote {:?}", &remote_addr);
+                                break;
                             }
                         }
                     }
@@ -482,23 +470,19 @@ impl Rpc for GrpcService {
                                 // here you can handle special case when client
                                 // disconnected in unexpected way
                                 trace!("\tRequest handler stream {0} error: client disconnected, broken pipe", remote_addr);
-                                break;
                             }
                         }
-
-                        match send_channel.send(Err(err)).await {
-                            Ok(_) => (),
-                            Err(_err) => break, // response was dropped
-                        }
+                        break;
                     }
                 }
             }
             trace!("Request handler {0} terminated", remote_addr);
+            // TODO: unregister connection from notifier
             connection_manager.write().await.unregister(remote_addr);
         });
 
         // Return connection stream
-        let response_stream = ReceiverStream::new(stream_rx);
+        let response_stream = ReceiverStream::new(recv_channel);
         Ok(Response::new(Box::pin(response_stream)))
     }
 }
