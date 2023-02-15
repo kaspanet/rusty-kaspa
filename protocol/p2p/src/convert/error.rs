@@ -5,8 +5,8 @@ pub enum ConversionError {
     #[error("General p2p conversion error")]
     General,
 
-    #[error("Hash is None")]
-    NoneHash,
+    #[error("Optional field is None while expected")]
+    NoneValue,
 
     #[error("Bytes size mismatch error {0}")]
     ArrayBytesSizeError(#[from] std::array::TryFromSliceError),

@@ -486,7 +486,7 @@ impl Consensus {
         let (tx, rx): (BlockResultSender, _) = oneshot::channel();
         self.block_sender
             .send(BlockProcessingMessage::Process(
-                BlockTask { block: tb.block, trusted_ghostdag_data: Some(Arc::new(tb.ghostdag_data.into())), update_virtual: false },
+                BlockTask { block: tb.block, trusted_ghostdag_data: Some(Arc::new(tb.ghostdag.into())), update_virtual: false },
                 vec![tx],
             ))
             .unwrap();

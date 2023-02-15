@@ -3,7 +3,6 @@ use consensus_core::{api::DynConsensus, header::Header, pruning::PruningPointPro
 use kaspa_core::{debug, info};
 use p2p_lib::{
     common::FlowError,
-    convert::error::ConversionError,
     dequeue_with_timeout, make_message,
     pb::{
         kaspad_message::Payload, BlockWithTrustedDataV4Message, RequestNextPruningPointAndItsAnticoneBlocksMessage,
@@ -42,8 +41,7 @@ impl IbdFlow {
 
         // Pruning proof generation and communication might take several minutes, so we allow a long 10 minute timeout
         let msg = dequeue_with_timeout!(self.incoming_route, Payload::PruningPointProof, Duration::from_secs(10 * 60))?;
-
-        let proof = msg.headers.iter().map(|v| v.try_into()).collect::<Result<PruningPointProof, ConversionError>>()?;
+        let proof: PruningPointProof = msg.try_into()?;
         debug!("received proof with overall {} headers", proof.iter().map(|l| l.len()).sum::<usize>());
 
         // TODO: call validate_pruning_proof when implemented
@@ -58,8 +56,7 @@ impl IbdFlow {
             .await?;
 
         let msg = dequeue_with_timeout!(self.incoming_route, Payload::PruningPoints)?;
-        let _pruning_points =
-            msg.headers.iter().map(|x| x.try_into().map(Arc::new)).collect::<Result<Vec<Arc<Header>>, ConversionError>>()?;
+        let _pruning_points: Vec<Arc<Header>> = msg.try_into()?;
 
         // TODO: verify last pruning point header hashes to proof_pruning_point
         // TODO: import pruning points into consensus

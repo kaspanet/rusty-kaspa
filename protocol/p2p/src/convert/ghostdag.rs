@@ -1,7 +1,7 @@
-use super::{error::ConversionError, hash::try_from_hash_op};
+use super::{error::ConversionError, option::TryIntoOptionEx};
 use crate::pb::{self as protowire, BluesAnticoneSizes};
 use consensus_core::{
-    ghostdag::{ExternalGhostdagData, KType},
+    ghostdag::{ExternalGhostdagData, KType, TrustedHash, TrustedHeader},
     BlockHashMap, BlueWorkType, HashMapCustomHasher,
 };
 use hashes::Hash;
@@ -32,6 +32,13 @@ impl From<&ExternalGhostdagData> for protowire::GhostdagData {
 // protowire to consensus_core
 // ----------------------------------------------------------------------------
 
+impl TryFrom<&protowire::BluesAnticoneSizes> for (Hash, KType) {
+    type Error = ConversionError;
+    fn try_from(item: &protowire::BluesAnticoneSizes) -> Result<Self, Self::Error> {
+        Ok(((&item.blue_hash).try_into_ex()?, item.anticone_size.try_into()?))
+    }
+}
+
 impl TryFrom<&protowire::GhostdagData> for ExternalGhostdagData {
     type Error = ConversionError;
     fn try_from(item: &protowire::GhostdagData) -> Result<Self, Self::Error> {
@@ -43,7 +50,7 @@ impl TryFrom<&protowire::GhostdagData> for ExternalGhostdagData {
         Ok(Self {
             blue_score: item.blue_score,
             blue_work: BlueWorkType::from_be_bytes_var(&item.blue_work)?,
-            selected_parent: try_from_hash_op(&item.selected_parent)?,
+            selected_parent: (&item.selected_parent).try_into_ex()?,
             mergeset_blues: Arc::new(item.merge_set_blues.iter().map(Hash::try_from).collect::<Result<Vec<Hash>, ConversionError>>()?),
             mergeset_reds: Arc::new(item.merge_set_reds.iter().map(Hash::try_from).collect::<Result<Vec<Hash>, ConversionError>>()?),
             blues_anticone_sizes: Arc::new(blues_anticone_sizes),
@@ -51,9 +58,16 @@ impl TryFrom<&protowire::GhostdagData> for ExternalGhostdagData {
     }
 }
 
-impl TryFrom<&protowire::BluesAnticoneSizes> for (Hash, KType) {
+impl TryFrom<&protowire::BlockGhostdagDataHashPair> for TrustedHash {
     type Error = ConversionError;
-    fn try_from(item: &protowire::BluesAnticoneSizes) -> Result<Self, Self::Error> {
-        Ok((try_from_hash_op(&item.blue_hash)?, item.anticone_size.try_into()?))
+    fn try_from(pair: &protowire::BlockGhostdagDataHashPair) -> Result<Self, Self::Error> {
+        Ok(Self::new((&pair.hash).try_into_ex()?, (&pair.ghostdag_data).try_into_ex()?))
+    }
+}
+
+impl TryFrom<&protowire::DaaBlockV4> for TrustedHeader {
+    type Error = ConversionError;
+    fn try_from(b: &protowire::DaaBlockV4) -> Result<Self, Self::Error> {
+        Ok(Self::new((&b.header).try_into_ex().map(Arc::new)?, (&b.ghostdag_data).try_into_ex()?))
     }
 }

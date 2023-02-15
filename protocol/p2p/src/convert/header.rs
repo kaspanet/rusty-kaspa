@@ -2,7 +2,8 @@ use crate::pb as protowire;
 use consensus_core::{header::Header, BlueWorkType};
 use hashes::Hash;
 
-use super::{error::ConversionError, hash::try_from_hash_op};
+use super::error::ConversionError;
+use super::option::TryIntoOptionEx;
 
 // ----------------------------------------------------------------------------
 // consensus_core to protowire
@@ -44,9 +45,9 @@ impl TryFrom<&protowire::BlockHeader> for Header {
         Ok(Self::new(
             item.version.try_into()?,
             item.parents.iter().map(Vec::<Hash>::try_from).collect::<Result<Vec<Vec<Hash>>, ConversionError>>()?,
-            try_from_hash_op(&item.hash_merkle_root)?,
-            try_from_hash_op(&item.accepted_id_merkle_root)?,
-            try_from_hash_op(&item.utxo_commitment)?,
+            (&item.hash_merkle_root).try_into_ex()?,
+            (&item.accepted_id_merkle_root).try_into_ex()?,
+            (&item.utxo_commitment).try_into_ex()?,
             item.timestamp.try_into()?,
             item.bits,
             item.nonce,
@@ -54,7 +55,7 @@ impl TryFrom<&protowire::BlockHeader> for Header {
             // We follow the golang specification of variable big-endian here
             BlueWorkType::from_be_bytes_var(&item.blue_work)?,
             item.blue_score,
-            try_from_hash_op(&item.pruning_point)?,
+            (&item.pruning_point).try_into_ex()?,
         ))
     }
 }

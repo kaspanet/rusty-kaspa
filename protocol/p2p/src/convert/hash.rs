@@ -22,14 +22,6 @@ impl From<&Hash> for protowire::Hash {
 // protowire to consensus_core
 // ----------------------------------------------------------------------------
 
-pub fn try_from_hash_op(hash: &Option<protowire::Hash>) -> Result<Hash, ConversionError> {
-    if let Some(hash) = hash {
-        Ok(hash.try_into()?)
-    } else {
-        Err(ConversionError::NoneHash)
-    }
-}
-
 impl TryFrom<&protowire::Hash> for Hash {
     type Error = ConversionError;
 

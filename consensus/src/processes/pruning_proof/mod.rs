@@ -208,7 +208,7 @@ impl PruningProofManager {
         let proof_zero_set = BlockHashSet::from_iter(proof[0].iter().map(|header| header.hash));
         let mut trusted_gd_map: BlockHashMap<GhostdagData> = BlockHashMap::new();
         for tb in trusted_set.iter() {
-            trusted_gd_map.insert(tb.block.hash(), tb.ghostdag_data.clone().into());
+            trusted_gd_map.insert(tb.block.hash(), tb.ghostdag.clone().into());
             if proof_zero_set.contains(&tb.block.hash()) {
                 continue;
             }
