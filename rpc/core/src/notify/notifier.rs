@@ -22,10 +22,17 @@ use std::{
 };
 use workflow_core::channel::Channel;
 
-/// A notification sender
+/// A Notifier is a notification broadcaster that manages a collection of [`Listener`]s and, for each one,
+/// a set of subscriptions to notifications by event type.
 ///
-/// Manages a collection of [`Listener`] and, for each one, a set of events to be notified.
-/// Actually notify the listeners of incoming events.
+/// A Notifier may own some [`DynCollector`]s which collect incoming notifications and relay them
+/// to their owner. The notification sources of the collectors should be considered as the "parents" in
+/// the notification DAG.
+///
+/// A Notifier may own some [`Subscriber`]s which report the subscription needs of their owner's listeners
+/// to the "parents" in the notification DAG.
+///
+/// A notifier broadcasts its incoming notifications to its listeners.
 #[derive(Debug)]
 pub struct Notifier<C>
 where
@@ -38,8 +45,8 @@ impl<C> Notifier<C>
 where
     C: Connection,
 {
-    pub fn new(collector: Option<DynCollector<C>>, subscriber: Option<Subscriber>, broadcasters: usize, name: &'static str) -> Self {
-        Self { inner: Arc::new(Inner::new(collector, subscriber, broadcasters, name)) }
+    pub fn new(collectors: Vec<DynCollector<C>>, subscribers: Vec<Arc<Subscriber>>, broadcasters: usize, name: &'static str) -> Self {
+        Self { inner: Arc::new(Inner::new(collectors, subscribers, broadcasters, name)) }
     }
 
     pub fn start(self: Arc<Self>) {
@@ -123,11 +130,13 @@ where
     /// Array of notification broadcasters
     broadcasters: Vec<Arc<Broadcaster<C>>>,
 
-    // Collector & Subscriber
-    collector: Arc<Option<DynCollector<C>>>,
-    subscriber: Arc<Option<Arc<Subscriber>>>,
+    /// Collectors
+    collectors: Vec<DynCollector<C>>,
 
-    /// Name of the notifier
+    /// Subscribers
+    subscribers: Vec<Arc<Subscriber>>,
+
+    /// Name of the notifier, used in logs
     pub name: &'static str,
 }
 
@@ -135,9 +144,8 @@ impl<C> Inner<C>
 where
     C: Connection,
 {
-    fn new(collector: Option<DynCollector<C>>, subscriber: Option<Subscriber>, broadcasters: usize, name: &'static str) -> Self {
+    fn new(collectors: Vec<DynCollector<C>>, subscribers: Vec<Arc<Subscriber>>, broadcasters: usize, name: &'static str) -> Self {
         assert!(broadcasters > 0, "a notifier requires a minimum of one broadcaster");
-        let subscriber = subscriber.map(Arc::new);
         let notification_channel = Channel::unbounded();
         let broadcasters = (0..broadcasters)
             .into_iter()
@@ -149,21 +157,17 @@ where
             started: Arc::new(AtomicBool::new(false)),
             notification_channel,
             broadcasters,
-            collector: Arc::new(collector),
-            subscriber: Arc::new(subscriber),
+            collectors,
+            subscribers,
             name,
         }
     }
 
     fn start(self: Arc<Self>, notifier: Arc<Notifier<C>>) {
         if self.started.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
-            if let Some(ref subscriber) = self.subscriber.clone().as_ref() {
-                subscriber.start();
-            }
+            self.subscribers.iter().for_each(|x| x.start());
+            self.collectors.iter().for_each(|x| x.clone().start(notifier.clone()));
             self.broadcasters.iter().for_each(|x| x.start());
-            if let Some(ref collector) = self.collector.clone().as_ref() {
-                collector.clone().start(notifier);
-            }
             trace!("[Notifier-{}] started", self.name);
         } else {
             trace!("[Notifier-{}] start ignored since already started", self.name);
@@ -222,11 +226,11 @@ where
                 for mutation in mutations {
                     compound_result = subscriptions[event].compound(mutation);
                 }
-                // Report to the parent
+                // Report to the parents
                 if let Some(mutation) = compound_result {
-                    if let Some(ref subscriber) = self.subscriber.clone().as_ref() {
-                        let _ = subscriber.mutate(mutation);
-                    }
+                    self.subscribers.iter().for_each(|x| {
+                        let _ = x.mutate(mutation.clone());
+                    });
                 }
             }
         }
@@ -247,14 +251,12 @@ where
 
     async fn stop(self: Arc<Self>) -> Result<()> {
         if self.started.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
-            if let Some(ref collector) = self.collector.clone().as_ref() {
-                collector.clone().stop().await?;
-            }
-            let futures = self.broadcasters.iter().map(|x| x.stop());
-            join_all(futures).await.into_iter().collect::<std::result::Result<Vec<()>, _>>()?;
-            if let Some(ref subscriber) = self.subscriber.clone().as_ref() {
-                subscriber.clone().stop().await?;
-            }
+            join_all(self.collectors.iter().map(|x| x.clone().stop()))
+                .await
+                .into_iter()
+                .collect::<std::result::Result<Vec<()>, _>>()?;
+            join_all(self.broadcasters.iter().map(|x| x.stop())).await.into_iter().collect::<std::result::Result<Vec<()>, _>>()?;
+            join_all(self.subscribers.iter().map(|x| x.stop())).await.into_iter().collect::<std::result::Result<Vec<()>, _>>()?;
         } else {
             trace!("[Notifier-{}] stop ignored since already stopped", self.name);
             return Err(Error::AlreadyStoppedError);

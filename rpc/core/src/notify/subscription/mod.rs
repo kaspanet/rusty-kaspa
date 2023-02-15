@@ -13,7 +13,7 @@ pub mod single;
 
 /// A subscription mutation including a start/stop command and
 /// a notification scope.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Mutation {
     pub command: SubscribeCommand,
     pub scope: Scope,

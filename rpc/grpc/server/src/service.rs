@@ -13,7 +13,6 @@ use kaspa_rpc_core::{
         connection::ChannelConnection,
         listener::ListenerId,
         scope::{Scope, UtxosChangedScope, VirtualSelectedParentChainChangedScope},
-        subscriber::DynSubscriptionManager,
         subscriber::Subscriber,
     },
     notify::{events::EVENT_TYPE_ARRAY, notifier::Notifier},
@@ -68,14 +67,12 @@ impl GrpcService {
     pub fn new(core_service: Arc<RpcCoreService>) -> Self {
         // Prepare core objects
         let core_channel = NotificationChannel::default();
-        let channel_connection = ChannelConnection::new(core_channel.sender());
-        let core_listener_id = core_service.register_new_listener(channel_connection);
+        let core_listener_id = core_service.register_new_listener(ChannelConnection::new(core_channel.sender()));
 
         // Prepare internals
         let collector = Arc::new(GrpcServiceCollector::new(core_channel.receiver()));
-        let subscription_manager: DynSubscriptionManager = core_service.notifier();
-        let subscriber = Subscriber::new(subscription_manager, core_listener_id);
-        let notifier: Arc<Notifier<GrpcConnection>> = Arc::new(Notifier::new(Some(collector), Some(subscriber), 10, GRPC_SERVER));
+        let subscriber = Arc::new(Subscriber::new(core_service.notifier(), core_listener_id));
+        let notifier: Arc<Notifier<GrpcConnection>> = Arc::new(Notifier::new(vec![collector], vec![subscriber], 10, GRPC_SERVER));
         let connection_manager = Arc::new(RwLock::new(GrpcConnectionManager::new(notifier.clone())));
 
         Self { core_service, core_channel, core_listener_id, connection_manager, notifier }

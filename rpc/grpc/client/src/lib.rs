@@ -58,9 +58,9 @@ impl GrpcClient {
         let notify_channel = NotificationChannel::default();
         let inner = Inner::connect(address, reconnect, notify_channel.sender()).await?;
         let collector = Arc::new(RpcCoreCollector::new(notify_channel.receiver()));
-        let subscriber = Subscriber::new(inner.clone(), 0);
+        let subscriber = Arc::new(Subscriber::new(inner.clone(), 0));
 
-        let notifier = Arc::new(Notifier::new(Some(collector), Some(subscriber), 10, GRPC_CLIENT));
+        let notifier = Arc::new(Notifier::new(vec![collector], vec![subscriber], 10, GRPC_CLIENT));
 
         Ok(Self { inner, notifier })
     }

@@ -56,7 +56,7 @@ impl RpcCoreService {
         let collector = Arc::new(ConsensusCollector::new(consensus_recv));
 
         // TODO: Some consensus-compatible subscriber could be provided here
-        let notifier = Arc::new(Notifier::new(Some(collector), None, 2, RPC_CORE));
+        let notifier = Arc::new(Notifier::new(vec![collector], vec![], 2, RPC_CORE));
 
         Self { consensus, notifier }
     }
