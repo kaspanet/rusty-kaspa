@@ -307,7 +307,7 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
 
         let mut failed = false;
         let mut pub_key_iter = pub_keys.iter();
-        for (sig_idx, signature) in signatures.iter().enumerate() {
+        'outer: for (sig_idx, signature) in signatures.iter().enumerate() {
             if signature.is_empty() {
                 failed = true;
                 break;
@@ -315,9 +315,7 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
 
             let typ = *signature.last().expect("checked that is not empty");
             let signature = &signature[..signature.len() - 1];
-
             let hash_type = SigHashType::from_u8(typ).map_err(|_| TxScriptError::InvalidSigHashType(typ))?;
-            let mut found_signing_key = false;
 
             // Advance through the pub_keys iterator.
             // Note every check consumes the public key
@@ -327,7 +325,7 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
                     // there is no way to succeed since too many signatures are
                     // invalid, so exit early.
                     failed = true;
-                    break;
+                    break 'outer; // Break the outer signature loop
                 }
                 // SAFETY: we just checked the len
                 let pub_key = pub_key_iter.next().unwrap();
@@ -341,7 +339,7 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
                 match check_signature_result {
                     Ok(valid) => {
                         if valid {
-                            found_signing_key = true;
+                            // Current sig is valid, we can break the inner loop and continue to next sig
                             break;
                         }
                     }
@@ -349,11 +347,6 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
                         return Err(e);
                     }
                 }
-            }
-
-            if failed || !found_signing_key {
-                failed = true;
-                break;
             }
         }
 
