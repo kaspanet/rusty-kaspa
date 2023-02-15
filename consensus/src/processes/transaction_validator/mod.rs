@@ -16,7 +16,7 @@ pub struct TransactionValidator {
     ghostdag_k: ghostdag::KType,
     coinbase_payload_script_public_key_max_len: u8,
     coinbase_maturity: u64,
-    sig_cache: Cache<SigCacheKey, bool>, // TODO: Move sig_cache to the script engine once it's ready
+    sig_cache: Cache<SigCacheKey, bool>,
 }
 
 impl TransactionValidator {
