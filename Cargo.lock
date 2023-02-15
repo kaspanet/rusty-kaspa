@@ -2961,7 +2961,7 @@ dependencies = [
  "parking_lot",
  "rand 0.8.5",
  "secp256k1",
- "sha2 0.10.6",
+ "sha2",
  "txscript-errors",
 ]
 
