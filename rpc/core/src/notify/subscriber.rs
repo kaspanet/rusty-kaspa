@@ -12,7 +12,6 @@ use super::{
     scope::Scope,
     subscription::{Command, Mutation},
 };
-use crate::RpcResult;
 use futures::{
     future::FutureExt, // for `.fuse()`
     select,
@@ -22,10 +21,10 @@ use workflow_core::channel::Channel;
 /// A manager of subscriptions to notifications for registered listeners
 #[async_trait]
 pub trait SubscriptionManager: Send + Sync + Debug {
-    async fn start_notify(self: Arc<Self>, id: ListenerId, scope: Scope) -> RpcResult<()>;
-    async fn stop_notify(self: Arc<Self>, id: ListenerId, scope: Scope) -> RpcResult<()>;
+    async fn start_notify(&self, id: ListenerId, scope: Scope) -> Result<()>;
+    async fn stop_notify(&self, id: ListenerId, scope: Scope) -> Result<()>;
 
-    async fn execute_subscribe_command(self: Arc<Self>, id: ListenerId, scope: Scope, command: Command) -> RpcResult<()> {
+    async fn execute_subscribe_command(&self, id: ListenerId, scope: Scope, command: Command) -> Result<()> {
         match command {
             Command::Start => self.start_notify(id, scope).await,
             Command::Stop => self.stop_notify(id, scope).await,

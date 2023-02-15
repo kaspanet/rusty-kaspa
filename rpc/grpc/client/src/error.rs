@@ -1,3 +1,4 @@
+use kaspa_rpc_core::notify::error::Error as NotifyError;
 use kaspa_rpc_core::RpcError;
 use thiserror::Error;
 
@@ -78,3 +79,18 @@ impl From<async_channel::RecvError> for Error {
         Error::ChannelRecvError
     }
 }
+
+impl From<Error> for NotifyError {
+    fn from(err: Error) -> Self {
+        match err {
+            Error::String(message) => NotifyError::General(message),
+            Error::NotifyError(err) => err,
+            Error::ChannelRecvError => NotifyError::ChannelRecvError,
+            Error::ChannelSendError => NotifyError::ChannelSendError,
+            Error::TonicStatus(err) => NotifyError::General(format!("{err}")),
+            _ => NotifyError::General(format!("{err}")),
+        }
+    }
+}
+
+pub type Result<T> = std::result::Result<T, Error>;

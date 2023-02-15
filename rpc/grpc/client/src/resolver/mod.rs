@@ -1,4 +1,4 @@
-use super::result::Result;
+use super::error::Result;
 use core::fmt::Debug;
 use kaspa_grpc_core::protowire::{KaspadRequest, KaspadResponse};
 use kaspa_rpc_core::api::ops::RpcApiOps;

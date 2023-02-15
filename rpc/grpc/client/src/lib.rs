@@ -1,7 +1,6 @@
 use self::{
-    error::Error,
+    error::{Error, Result},
     resolver::{id::IdResolver, queue::QueueResolver, DynResolver},
-    result::Result,
 };
 use async_trait::async_trait;
 use futures::{
@@ -21,6 +20,7 @@ use kaspa_rpc_core::{
         channel::NotificationChannel,
         collector::RpcCoreCollector,
         connection::ChannelConnection,
+        error::Result as NotifyResult,
         events::EventType,
         listener::ListenerId,
         notifier::Notifier,
@@ -43,7 +43,6 @@ use tonic::{codec::CompressionEncoding, transport::Endpoint};
 
 mod error;
 mod resolver;
-mod result;
 #[macro_use]
 mod route;
 
@@ -596,18 +595,18 @@ impl Inner {
 
 #[async_trait]
 impl SubscriptionManager for Inner {
-    async fn start_notify(self: Arc<Self>, _: ListenerId, scope: Scope) -> RpcResult<()> {
+    async fn start_notify(&self, _: ListenerId, scope: Scope) -> NotifyResult<()> {
         trace!("[GrpcClient] start_notify: {:?}", scope);
         let request = kaspad_request::Payload::from_notification_type(&scope, Command::Start);
-        self.clone().call((&request).into(), request).await?;
+        self.call((&request).into(), request).await?;
         Ok(())
     }
 
-    async fn stop_notify(self: Arc<Self>, _: ListenerId, scope: Scope) -> RpcResult<()> {
+    async fn stop_notify(&self, _: ListenerId, scope: Scope) -> NotifyResult<()> {
         if self.handle_stop_notify() {
             trace!("[GrpcClient] stop_notify: {:?}", scope);
             let request = kaspad_request::Payload::from_notification_type(&scope, Command::Stop);
-            self.clone().call((&request).into(), request).await?;
+            self.call((&request).into(), request).await?;
         } else {
             trace!("[GrpcClient] stop_notify ignored because not supported by the server: {:?}", scope);
         }

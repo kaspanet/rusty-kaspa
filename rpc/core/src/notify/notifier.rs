@@ -9,7 +9,7 @@ use super::{
     subscriber::{Subscriber, SubscriptionManager},
     subscription::{array::ArrayBuilder, Command, CompoundedSubscription, Mutation},
 };
-use crate::{Notification, RpcResult};
+use crate::Notification;
 use async_trait::async_trait;
 use core::fmt::Debug;
 use futures::future::join_all;
@@ -85,13 +85,13 @@ impl<C> SubscriptionManager for Notifier<C>
 where
     C: Connection,
 {
-    async fn start_notify(self: Arc<Self>, id: ListenerId, scope: Scope) -> RpcResult<()> {
+    async fn start_notify(&self, id: ListenerId, scope: Scope) -> Result<()> {
         trace!("[Notifier-{}] start sending to listener {} notifications of scope {:?}", self.inner.name, id, scope);
         self.inner.start_notify(id, scope)?;
         Ok(())
     }
 
-    async fn stop_notify(self: Arc<Self>, id: ListenerId, scope: Scope) -> RpcResult<()> {
+    async fn stop_notify(&self, id: ListenerId, scope: Scope) -> Result<()> {
         trace!("[Notifier-{}] stop sending to listener {} notifications of scope {:?}", self.inner.name, id, scope);
         self.inner.stop_notify(id, scope)?;
         Ok(())
