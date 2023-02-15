@@ -111,11 +111,15 @@ impl TransactionValidator {
 #[cfg(test)]
 mod tests {
     use super::super::errors::TxRuleError;
+    use consensus_core::sign::sign;
     use consensus_core::subnets::SubnetworkId;
-    use consensus_core::tx::{PopulatedTransaction, TransactionId, UtxoEntry};
+    use consensus_core::tx::{MutableTransaction, PopulatedTransaction, ScriptVec, TransactionId, UtxoEntry};
     use consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
     use core::str::FromStr;
+    use itertools::Itertools;
+    use secp256k1::Secp256k1;
     use smallvec::SmallVec;
+    use std::iter::once;
     use txscript_errors::TxScriptError;
 
     use crate::{params::MAINNET_PARAMS, processes::transaction_validator::TransactionValidator};
@@ -541,5 +545,83 @@ mod tests {
 
         let result = tv.check_scripts(&populated_tx);
         assert!(result == Err(TxRuleError::SignatureInvalid(TxScriptError::SignatureScriptNotPushOnly)));
+    }
+
+    #[test]
+    fn test_sign() {
+        let params = MAINNET_PARAMS.clone();
+        let tv = TransactionValidator::new(
+            params.max_tx_inputs,
+            params.max_tx_outputs,
+            params.max_signature_script_len,
+            params.max_script_public_key_len,
+            params.ghostdag_k,
+            params.coinbase_payload_script_public_key_max_len,
+            params.coinbase_maturity,
+        );
+
+        let secp = Secp256k1::new();
+        let (secret_key, public_key) = secp.generate_keypair(&mut rand::thread_rng());
+        let (public_key, _) = public_key.x_only_public_key();
+        let script_pub_key = once(0x20).chain(public_key.serialize().into_iter()).chain(once(0xac)).collect_vec();
+        let script_pub_key = ScriptVec::from_slice(&script_pub_key);
+
+        let prev_tx_id = TransactionId::from_str("880eb9819a31821d9d2399e2f35e2433b72637e393d71ecc9b8d0250f49153c3").unwrap();
+        let unsigned_tx = Transaction::new(
+            0,
+            vec![
+                TransactionInput {
+                    previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 0 },
+                    signature_script: vec![],
+                    sequence: 0,
+                    sig_op_count: 0,
+                },
+                TransactionInput {
+                    previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 1 },
+                    signature_script: vec![],
+                    sequence: 1,
+                    sig_op_count: 0,
+                },
+                TransactionInput {
+                    previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 2 },
+                    signature_script: vec![],
+                    sequence: 2,
+                    sig_op_count: 0,
+                },
+            ],
+            vec![
+                TransactionOutput { value: 300, script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()) },
+                TransactionOutput { value: 300, script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()) },
+            ],
+            1615462089000,
+            SubnetworkId::from_bytes([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+            0,
+            vec![],
+        );
+
+        let entries = vec![
+            UtxoEntry {
+                amount: 100,
+                script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()),
+                block_daa_score: 0,
+                is_coinbase: false,
+            },
+            UtxoEntry {
+                amount: 200,
+                script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()),
+                block_daa_score: 0,
+                is_coinbase: false,
+            },
+            UtxoEntry {
+                amount: 300,
+                script_public_key: ScriptPublicKey::new(0, script_pub_key),
+                block_daa_score: 0,
+                is_coinbase: false,
+            },
+        ];
+        let signed_tx = sign(MutableTransaction::with_entries(unsigned_tx, entries), secret_key.secret_bytes());
+        let populated_tx = signed_tx.as_verifiable();
+        let result = tv.check_scripts(&populated_tx);
+        assert!(result.is_ok());
     }
 }
