@@ -134,7 +134,7 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
     fn execute_opcode(&mut self, opcode: Box<dyn OpCodeImplementation<T>>) -> Result<(), TxScriptError> {
         // Different from kaspad: Illegal and disabled opcode are checked on execute instead
         // Note that this includes OP_RESERVED which counts as a push operation.
-        if opcode.value() > NO_COST_OPCODE {
+        if !opcode.is_push_opcode() {
             self.num_ops += 1;
             if self.num_ops > MAX_OPS_PER_SCRIPT {
                 return Err(TxScriptError::TooManyOperations(MAX_OPS_PER_SCRIPT));
@@ -153,7 +153,7 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
         }
     }
 
-    fn execute_script(&mut self, script: &[u8]) -> Result<(), TxScriptError> {
+    fn execute_script(&mut self, script: &[u8], verify_only_push: bool) -> Result<(), TxScriptError> {
         let script_result = script
             .iter()
             .batching(|it| {
@@ -161,7 +161,12 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
                 it.next().map(|code| deserialize_opcode_data(*code, it))
             })
             .try_for_each(|opcode| {
-                self.execute_opcode(opcode?)?;
+                let opcode = opcode?;
+                if verify_only_push && !opcode.is_push_opcode() {
+                    return Err(TxScriptError::SignatureScriptNotPushOnly);
+                }
+
+                self.execute_opcode(opcode)?;
 
                 let combined_size = self.astack.len() + self.dstack.len();
                 if combined_size > MAX_STACK_SIZE {
@@ -211,18 +216,20 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
         // try_for_each quits only if an error occurred. So, we always run over all scripts if
         // each is successful
         scripts.iter().enumerate().filter(|(_, s)| !s.is_empty()).try_for_each(|(idx, s)| {
+            let verify_only_push =
+                idx == 0 && matches!(self.script_source, ScriptSource::TxInput { tx: _, input: _, id: _, utxo_entry: _, is_p2sh: _ });
             // Save script in p2sh
             if is_p2sh && idx == 1 {
                 saved_stack = Some(self.dstack.clone());
             }
-            self.execute_script(s)
+            self.execute_script(s, verify_only_push)
         })?;
 
         if is_p2sh {
             self.check_error_condition(false)?;
             self.dstack = saved_stack.ok_or(TxScriptError::EmptyStack)?;
             let script = self.dstack.pop().ok_or(TxScriptError::EmptyStack)?;
-            self.execute_script(script.as_slice())?
+            self.execute_script(script.as_slice(), false)?
         }
 
         self.check_error_condition(true)?;

@@ -1,5 +1,3 @@
-use itertools::Itertools;
-
 use crate::TxScriptError;
 use core::fmt::Debug;
 use core::iter;

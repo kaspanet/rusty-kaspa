@@ -488,4 +488,58 @@ mod tests {
         let result = tv.check_scripts(&populated_tx);
         assert!(result == Err(TxRuleError::SignatureInvalid(TxScriptError::EvalFalse)));
     }
+
+    #[test]
+    fn check_non_push_only_script_sig_test() {
+        // We test a situation where the script itself is valid, but the script signature is not push only
+        let params = MAINNET_PARAMS.clone();
+        let tv = TransactionValidator::new(
+            params.max_tx_inputs,
+            params.max_tx_outputs,
+            params.max_signature_script_len,
+            params.max_script_public_key_len,
+            params.ghostdag_k,
+            params.coinbase_payload_script_public_key_max_len,
+            params.coinbase_maturity,
+        );
+
+        let prev_tx_id = TransactionId::from_str("1111111111111111111111111111111111111111111111111111111111111111").unwrap();
+
+        let mut bytes = [0u8; 2];
+        faster_hex::hex_decode("5175".as_bytes(), &mut bytes).unwrap(); // OP_TRUE OP_DROP
+        let signature_script = bytes.to_vec();
+
+        let mut bytes = [0u8; 1];
+        faster_hex::hex_decode("51".as_bytes(), &mut bytes) // OP_TRUE
+            .unwrap();
+        let script_pub_key_1 = SmallVec::from(bytes.to_vec());
+
+        let tx = Transaction::new(
+            0,
+            vec![TransactionInput {
+                previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 0 },
+                signature_script,
+                sequence: 0,
+                sig_op_count: 4,
+            }],
+            vec![TransactionOutput { value: 2792999990000, script_public_key: ScriptPublicKey::new(0, script_pub_key_1.clone()) }],
+            0,
+            SubnetworkId::from_bytes([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+            0,
+            vec![],
+        );
+
+        let populated_tx = PopulatedTransaction::new(
+            &tx,
+            vec![UtxoEntry {
+                amount: 12793000000000,
+                script_public_key: ScriptPublicKey::new(0, script_pub_key_1),
+                block_daa_score: 36151168,
+                is_coinbase: false,
+            }],
+        );
+
+        let result = tv.check_scripts(&populated_tx);
+        assert!(result == Err(TxRuleError::SignatureInvalid(TxScriptError::SignatureScriptNotPushOnly)));
+    }
 }

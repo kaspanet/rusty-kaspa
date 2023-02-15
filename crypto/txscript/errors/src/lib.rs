@@ -63,4 +63,6 @@ pub enum TxScriptError {
     SigLength(usize),
     #[error("no scripts to run")]
     NoScripts,
+    #[error("signature script is not push only")]
+    SignatureScriptNotPushOnly,
 }

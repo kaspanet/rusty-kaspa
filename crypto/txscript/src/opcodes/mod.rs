@@ -5,8 +5,8 @@ mod macros;
 
 use crate::data_stack::{DataStack, OpcodeData};
 use crate::{
-    ScriptSource, TxScriptEngine, TxScriptError, LOCK_TIME_THRESHOLD, MAX_TX_IN_SEQUENCE_NUM, SEQUENCE_LOCK_TIME_DISABLED,
-    SEQUENCE_LOCK_TIME_MASK,
+    ScriptSource, TxScriptEngine, TxScriptError, LOCK_TIME_THRESHOLD, MAX_TX_IN_SEQUENCE_NUM, NO_COST_OPCODE,
+    SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK,
 };
 use blake2b_simd::Params;
 use consensus_core::hashing::sighash_type::SigHashType;
@@ -36,6 +36,8 @@ pub trait OpCodeMetadata: Debug {
     fn is_conditional(&self) -> bool;
     // For push data- check if we can use shorter encoding
     fn check_minimal_data_push(&self) -> Result<(), TxScriptError>;
+
+    fn is_push_opcode(&self) -> bool;
 }
 
 pub trait OpCodeExecution<T: VerifiableTransaction> {
@@ -62,6 +64,10 @@ pub trait OpCodeImplementation<T: VerifiableTransaction>: OpCodeExecution<T> + O
 impl<const CODE: u8> OpCodeMetadata for OpCode<CODE> {
     fn value(&self) -> u8 {
         CODE
+    }
+
+    fn is_push_opcode(&self) -> bool {
+        CODE <= NO_COST_OPCODE
     }
 
     fn len(&self) -> usize {
