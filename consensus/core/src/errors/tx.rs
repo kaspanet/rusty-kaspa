@@ -1,6 +1,7 @@
 use crate::constants::MAX_SOMPI;
 use crate::tx::TransactionOutpoint;
 use thiserror::Error;
+use txscript_errors::TxScriptError;
 
 #[derive(Error, Debug, Clone, PartialEq, Eq)]
 pub enum TxRuleError {
@@ -75,6 +76,9 @@ pub enum TxRuleError {
 
     #[error("outpoints corresponding to some transaction inputs are missing from current utxo context")]
     MissingTxOutpoints,
+
+    #[error("failed to verify the signature script: {0}")]
+    SignatureInvalid(TxScriptError),
 }
 
 pub type TxResult<T> = std::result::Result<T, TxRuleError>;

@@ -1,0 +1,29 @@
+[package]
+name = "txscript"
+description = "Kaspa txscript engine lib"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
+
+[dependencies]
+consensus-core.workspace = true
+log.workspace = true
+hashes.workspace = true
+blake2b_simd.workspace = true
+sha2.workspace = true
+itertools.workspace = true
+rand.workspace = true
+indexmap.workspace = true
+secp256k1 = { version = "0.24", features = ["global-context", "rand-std"] }
+parking_lot.workspace = true
+txscript-errors.workspace = true
+
+[dev-dependencies]
+criterion.workspace = true
+hex = "0.4"
+
+[[bench]]
+name = "bench"
+harness = false
