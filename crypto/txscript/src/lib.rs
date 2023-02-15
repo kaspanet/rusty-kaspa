@@ -298,36 +298,39 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
         } else if num_sigs > num_keys {
             return Err(TxScriptError::InvalidSignatureCount(format!("more signatures than pubkeys {num_sigs} > {num_keys}")));
         }
-        let num_sigs_usize = num_sigs as usize;
+        let num_sigs = num_sigs as usize;
 
-        let signatures = match self.dstack.len() >= num_sigs_usize {
-            true => self.dstack.split_off(self.dstack.len() - num_sigs_usize),
+        let signatures = match self.dstack.len() >= num_sigs {
+            true => self.dstack.split_off(self.dstack.len() - num_sigs),
             false => return Err(TxScriptError::EmptyStack),
         };
 
         let mut failed = false;
-        let mut pub_key_idx: isize = -1;
+        let mut pub_key_iter = pub_keys.iter();
         for (sig_idx, signature) in signatures.iter().enumerate() {
             if signature.is_empty() {
                 failed = true;
-                continue;
+                break;
             }
 
             let typ = *signature.last().expect("checked that is not empty");
             let signature = &signature[..signature.len() - 1];
-            // Every check consumes the public key
+
             let hash_type = SigHashType::from_u8(typ).map_err(|_| TxScriptError::InvalidSigHashType(typ))?;
             let mut found_signing_key = false;
-            pub_key_idx += 1;
-            while (pub_key_idx as usize) < pub_keys.len() {
-                let pub_key = &pub_keys[pub_key_idx as usize];
-                if num_keys_usize - (pub_key_idx as usize) < num_sigs_usize - sig_idx {
+
+            // Advance through the pub_keys iterator.
+            // Note every check consumes the public key
+            loop {
+                if pub_key_iter.len() < num_sigs - sig_idx {
                     // When there are more signatures than public keys remaining,
                     // there is no way to succeed since too many signatures are
                     // invalid, so exit early.
                     failed = true;
                     break;
                 }
+                // SAFETY: we just checked the len
+                let pub_key = pub_key_iter.next().unwrap();
 
                 let check_signature_result = if ecdsa {
                     self.check_ecdsa_signature(hash_type, pub_key.as_slice(), signature)
@@ -346,8 +349,6 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
                         return Err(e);
                     }
                 }
-
-                pub_key_idx += 1;
             }
 
             if failed || !found_signing_key {
