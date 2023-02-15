@@ -1,4 +1,3 @@
-use super::address::RpcAddress;
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use consensus_core::tx::{ScriptPublicKey, ScriptVec, TransactionId, TransactionOutpoint, UtxoEntry};
 use serde::{Deserialize, Serialize};
@@ -80,14 +79,5 @@ pub struct RpcTransactionVerboseData {
 #[serde(rename_all = "camelCase")]
 pub struct RpcAcceptedTransactionIds {
     pub accepting_block_hash: RpcHash,
-    pub accepted_transaction_ids: Vec<TransactionId>,
-}
-
-///
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct RpcUtxosByAddressesEntry {
-    pub address: RpcAddress,
-    pub transaction_outpoint: RpcTransactionOutpoint,
-    pub utxo_entry: RpcUtxoEntry,
+    pub accepted_transaction_ids: Vec<RpcTransactionId>,
 }

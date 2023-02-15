@@ -1,11 +1,17 @@
-use super::listener::{ListenerID, ListenerSenderSide};
+use super::{
+    connection::Connection,
+    listener::{ListenerID, ListenerSenderSide},
+};
 use crate::{Notification, NotificationType};
 use std::sync::Arc;
 
 #[derive(Clone, Debug)]
-pub(crate) enum DispatchMessage {
+pub(crate) enum DispatchMessage<T>
+where
+    T: Connection,
+{
     Send(Arc<Notification>),
-    AddListener(ListenerID, Arc<ListenerSenderSide>),
+    AddListener(ListenerID, Arc<ListenerSenderSide<T>>),
     RemoveListener(ListenerID),
     Shutdown,
 }

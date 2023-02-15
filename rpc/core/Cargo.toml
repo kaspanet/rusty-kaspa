@@ -1,5 +1,5 @@
 [package]
-name = "rpc-core"
+name = "kaspa-rpc-core"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -24,8 +24,7 @@ smallvec.workspace = true
 cfg-if.workspace = true
 futures-util.workspace = true
 async-trait = "0.1.57"
-ahash = "0.8.0"
 futures = { version = "0.3" }
 rand = "0.8"
 triggered = "0.1"
-workflow-core = "0.1.0"
+workflow-core = "0.3"
