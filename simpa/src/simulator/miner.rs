@@ -143,7 +143,7 @@ impl Miner {
         outpoint: TransactionOutpoint,
         virtual_daa_score: u64,
     ) -> Option<UtxoEntry> {
-        let Some(entry) = utxo_view.get(&outpoint) else { return None; }; //This was changed from `let .. Some()` due to `use of unstable...` compiler errors.
+        let Some(entry) = utxo_view.get(&outpoint) else { return None; };
         if entry.amount < 2
             || (entry.is_coinbase && (virtual_daa_score as i64 - entry.block_daa_score as i64) <= self.params.coinbase_maturity as i64)
         {

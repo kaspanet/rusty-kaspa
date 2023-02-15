@@ -20,7 +20,7 @@ where
             }
             Entry::Vacant(entry) => {
                 let mut inner = HashMap::with_capacity(1);
-                // We do not expected duplicate insert since we just created the hashmap.
+                // We do not expect duplicate insert since we just created the hashmap.
                 let _ = &inner.insert(inner_key, inner_value);
                 entry.insert(inner);
             }
