@@ -627,6 +627,8 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
+ "txscript",
+ "txscript-errors",
 ]
 
 [[package]]
@@ -647,6 +649,7 @@ dependencies = [
  "serde",
  "smallvec",
  "thiserror",
+ "txscript-errors",
 ]
 
 [[package]]
@@ -1193,6 +1196,12 @@ checksum = "ee512640fe35acbfb4bb779db6f0d80704c2cacfa2e39b601ef3e3f47d1ae4c7"
 dependencies = [
  "libc",
 ]
+
+[[package]]
+name = "hex"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
 name = "http"
@@ -2936,6 +2945,33 @@ name = "try-lock"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "59547bce71d9c38b83d9c0e92b6066c4253371f15005def0c30d9657f50c7642"
+
+[[package]]
+name = "txscript"
+version = "0.1.0"
+dependencies = [
+ "blake2b_simd",
+ "consensus-core",
+ "criterion",
+ "hashes",
+ "hex",
+ "indexmap",
+ "itertools 0.10.5",
+ "log",
+ "parking_lot",
+ "rand 0.8.5",
+ "secp256k1",
+ "sha2",
+ "txscript-errors",
+]
+
+[[package]]
+name = "txscript-errors"
+version = "0.1.0"
+dependencies = [
+ "secp256k1",
+ "thiserror",
+]
 
 [[package]]
 name = "typenum"
