@@ -13,6 +13,7 @@ use consensus_core::hashing::sighash_type::SigHashType;
 use consensus_core::tx::{TransactionInput, UtxoEntry, VerifiableTransaction};
 use itertools::Itertools;
 use log::trace;
+use opcodes::OpCond;
 use txscript_errors::TxScriptError;
 
 pub const MAX_SCRIPT_PUBLIC_KEY_VERSION: u16 = 0;
@@ -66,7 +67,7 @@ pub struct TxScriptEngine<'a, T: VerifiableTransaction> {
     reused_values: &'a mut SigHashReusedValues,
     sig_cache: &'a Cache<SigCacheKey, bool>,
 
-    cond_stack: Vec<i8>, // Following if stacks, and whether it is running
+    cond_stack: Vec<OpCond>, // Following if stacks, and whether it is running
 
     num_ops: i32,
 }
@@ -127,8 +128,7 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
 
     #[inline]
     pub fn is_executing(&self) -> bool {
-        // TODO: check values
-        return self.cond_stack.is_empty() || *self.cond_stack.first().expect("Checked not empty") != 1;
+        return self.cond_stack.is_empty() || *self.cond_stack.last().expect("Checked not empty") == OpCond::True;
     }
 
     fn execute_opcode(&mut self, opcode: Box<dyn OpCodeImplementation<T>>) -> Result<(), TxScriptError> {

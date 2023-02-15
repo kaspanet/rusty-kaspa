@@ -15,6 +15,23 @@ use core::cmp::{max, min};
 use sha2::{Digest, Sha256};
 use std::fmt::{Debug, Formatter};
 
+#[derive(PartialEq, Eq)]
+pub(crate) enum OpCond {
+    False,
+    True,
+    Skip,
+}
+
+impl OpCond {
+    pub fn negate(&self) -> OpCond {
+        match self {
+            OpCond::True => OpCond::False,
+            OpCond::False => OpCond::True,
+            OpCond::Skip => OpCond::Skip,
+        }
+    }
+}
+
 type OpCodeResult = Result<(), TxScriptError>;
 
 pub(crate) struct OpCode<const CODE: u8> {
@@ -275,7 +292,7 @@ opcode_list! {
     opcode OpVer<0x62, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
 
     opcode OpIf<0x63, 1>(self, vm) {
-        let mut cond = 0;
+        let mut cond = OpCond::Skip;
         if vm.is_executing() {
             if let Some(mut cond_buf) = vm.dstack.pop() {
                 if cond_buf.len() > 1 {
@@ -283,10 +300,10 @@ opcode_list! {
                 }
                 cond = match cond_buf.pop() {
                     Some(stack_cond) => match stack_cond {
-                        1 => 1,
+                        1 => OpCond::True,
                         _ => return Err(TxScriptError::InvalidState("expected boolean".to_string())),
                     }
-                    None => -1,
+                    None => OpCond::False,
                 }
             } else {
                 return Err(TxScriptError::EmptyStack);
@@ -297,7 +314,7 @@ opcode_list! {
     }
 
     opcode OpNotIf<0x64, 1>(self, vm) {
-        let mut cond = 0;
+        let mut cond = OpCond::Skip;
         if vm.is_executing() {
             if let Some(mut cond_buf) = vm.dstack.pop() {
                 if cond_buf.len() > 1 {
@@ -305,10 +322,10 @@ opcode_list! {
                 }
                 cond = match cond_buf.pop() {
                     Some(stack_cond) => match stack_cond {
-                        1 => -1,
+                        1 => OpCond::False,
                         _ => return Err(TxScriptError::InvalidState("expected boolean".to_string())),
                     }
-                    None => 1,
+                    None => OpCond::True,
                 }
             } else {
                 return Err(TxScriptError::EmptyStack);
@@ -323,7 +340,7 @@ opcode_list! {
 
     opcode OpElse<0x67, 1>(self, vm) {
         if let Some(cond) = vm.cond_stack.last_mut() {
-            *cond *= -1;
+            *cond = cond.negate();
             Ok(())
         } else {
             Err(TxScriptError::InvalidState("condition stack empty".to_string()))
