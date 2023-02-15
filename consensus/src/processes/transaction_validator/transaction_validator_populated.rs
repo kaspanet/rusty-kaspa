@@ -1,16 +1,10 @@
 use crate::constants::{MAX_SOMPI, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK};
-use consensus_core::{
-    hashing::{
-        sighash::{calc_schnorr_signature_hash, SigHashReusedValues},
-        sighash_type::SIG_HASH_ALL,
-    },
-    tx::VerifiableTransaction,
-};
-use kaspa_core::info;
+use consensus_core::{hashing::sighash::SigHashReusedValues, tx::VerifiableTransaction};
+use txscript::TxScriptEngine;
 
 use super::{
     errors::{TxResult, TxRuleError},
-    SigCacheKey, TransactionValidator,
+    TransactionValidator,
 };
 
 impl TransactionValidator {
@@ -105,30 +99,529 @@ impl TransactionValidator {
     fn check_scripts(&self, tx: &impl VerifiableTransaction) -> TxResult<()> {
         let mut reused_values = SigHashReusedValues::new();
         for (i, (input, entry)) in tx.populated_inputs().enumerate() {
-            // TODO: this is a temporary implementation and not ready for consensus since any invalid signature
-            // will crash the node. We need to replace it with a proper script engine once it's ready.
-            let pk = &entry.script_public_key.script()[1..33];
-            if let Ok(pk) = secp256k1::XOnlyPublicKey::from_slice(pk) {
-                let sig = secp256k1::schnorr::Signature::from_slice(&input.signature_script[1..65]).unwrap();
-                let sig_hash = calc_schnorr_signature_hash(tx, i, SIG_HASH_ALL, &mut reused_values);
-                let msg = secp256k1::Message::from_slice(sig_hash.as_bytes().as_slice()).unwrap();
-                let sig_cache_key = SigCacheKey { signature: sig, pub_key: pk, message: msg };
-                match self.sig_cache.get(&sig_cache_key) {
-                    Some(valid) => {
-                        assert!(valid, "invalid signature in sig cache");
-                    }
-                    None => {
-                        // TODO: Find a way to parallelize this part. This will be less trivial
-                        // once this code is inside the script engine.
-                        sig.verify(&msg, &pk).unwrap();
-                        self.sig_cache.insert(sig_cache_key, true);
-                    }
-                }
-            } else {
-                info!("Looks like this is not a p2pk script, so the current code can't handle it")
-            }
+            let mut engine = TxScriptEngine::from_transaction_input(tx, input, i, entry, &mut reused_values, &self.sig_cache)
+                .map_err(TxRuleError::SignatureInvalid)?;
+            engine.execute().map_err(TxRuleError::SignatureInvalid)?;
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::errors::TxRuleError;
+    use consensus_core::sign::sign;
+    use consensus_core::subnets::SubnetworkId;
+    use consensus_core::tx::{MutableTransaction, PopulatedTransaction, ScriptVec, TransactionId, UtxoEntry};
+    use consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
+    use core::str::FromStr;
+    use itertools::Itertools;
+    use secp256k1::Secp256k1;
+    use smallvec::SmallVec;
+    use std::iter::once;
+    use txscript_errors::TxScriptError;
+
+    use crate::{params::MAINNET_PARAMS, processes::transaction_validator::TransactionValidator};
+
+    #[test]
+    fn check_signature_test() {
+        let mut params = MAINNET_PARAMS.clone();
+        params.max_tx_inputs = 10;
+        params.max_tx_outputs = 15;
+        let tv = TransactionValidator::new(
+            params.max_tx_inputs,
+            params.max_tx_outputs,
+            params.max_signature_script_len,
+            params.max_script_public_key_len,
+            params.ghostdag_k,
+            params.coinbase_payload_script_public_key_max_len,
+            params.coinbase_maturity,
+        );
+
+        let prev_tx_id = TransactionId::from_str("746915c8dfc5e1550eacbe1d87625a105750cf1a65aaddd1baa60f8bcf7e953c").unwrap();
+
+        let mut bytes = [0u8; 66];
+        faster_hex::hex_decode("4176cf2ee56b3eed1e8da083851f41cae11532fc70a63ca1ca9f17bc9a4c2fd3dcdf60df1c1a57465f0d112995a6f289511c8e0a79c806fb79165544a439d11c0201".as_bytes(), &mut bytes).unwrap();
+        let signature_script = bytes.to_vec();
+
+        let mut bytes = [0u8; 34];
+        faster_hex::hex_decode("20e1d5835e09f3c3dad209debcb7b3bf3fb0e0d9642471f5db36c9ea58338b06beac".as_bytes(), &mut bytes).unwrap();
+        let script_pub_key_1 = SmallVec::from(bytes.to_vec());
+
+        let mut bytes = [0u8; 34];
+        faster_hex::hex_decode("200749c89953b463d1e186a16a941f9354fa3fff313c391149e47961b95dd4df28ac".as_bytes(), &mut bytes).unwrap();
+        let script_pub_key_2 = SmallVec::from(bytes.to_vec());
+
+        let tx = Transaction::new(
+            0,
+            vec![TransactionInput {
+                previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 1 },
+                signature_script,
+                sequence: 0,
+                sig_op_count: 1,
+            }],
+            vec![
+                TransactionOutput { value: 10360487799, script_public_key: ScriptPublicKey::new(0, script_pub_key_2) },
+                TransactionOutput { value: 10518958752, script_public_key: ScriptPublicKey::new(0, script_pub_key_1.clone()) },
+            ],
+            0,
+            SubnetworkId::from_bytes([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+            0,
+            vec![],
+        );
+
+        let populated_tx = PopulatedTransaction::new(
+            &tx,
+            vec![UtxoEntry {
+                amount: 20879456551,
+                script_public_key: ScriptPublicKey::new(0, script_pub_key_1),
+                block_daa_score: 32022768,
+                is_coinbase: false,
+            }],
+        );
+
+        tv.check_scripts(&populated_tx).expect("Signature check failed");
+    }
+
+    #[test]
+    fn check_incorrect_signature_test() {
+        let mut params = MAINNET_PARAMS.clone();
+        params.max_tx_inputs = 10;
+        params.max_tx_outputs = 15;
+        let tv = TransactionValidator::new(
+            params.max_tx_inputs,
+            params.max_tx_outputs,
+            params.max_signature_script_len,
+            params.max_script_public_key_len,
+            params.ghostdag_k,
+            params.coinbase_payload_script_public_key_max_len,
+            params.coinbase_maturity,
+        );
+
+        // Taken from: 3f582463d73c77d93f278b7bf649bd890e75fe9bb8a1edd7a6854df1a2a2bfc1
+        let prev_tx_id = TransactionId::from_str("746915c8dfc5e1550eacbe1d87625a105750cf1a65aaddd1baa60f8bcf7e953c").unwrap();
+
+        let mut bytes = [0u8; 66];
+        faster_hex::hex_decode("4176cf2ee56b3eed1e8da083851f41cae11532fc70a63ca1ca9f17bc9a4c2fd3dcdf60df1c1a57465f0d112995a6f289511c8e0a79c806fb79165544a439d11c0201".as_bytes(), &mut bytes).unwrap();
+        let signature_script = bytes.to_vec();
+
+        let mut bytes = [0u8; 34];
+        faster_hex::hex_decode("20e1d5835e09f3c3dad209debcb7b3bf3fb0e0d9642471f5db36c9ea58338b06beac".as_bytes(), &mut bytes).unwrap();
+        let script_pub_key_1 = SmallVec::from(bytes.to_vec());
+
+        let mut bytes = [0u8; 34];
+        faster_hex::hex_decode("200749c89953b463d1e186a16a941f9354fa3fff313c391149e47961b95dd4df28ac".as_bytes(), &mut bytes).unwrap();
+        let script_pub_key_2 = SmallVec::from(bytes.to_vec());
+
+        let tx = Transaction::new(
+            0,
+            vec![TransactionInput {
+                previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 1 },
+                signature_script,
+                sequence: 0,
+                sig_op_count: 1,
+            }],
+            vec![
+                TransactionOutput { value: 10360487799, script_public_key: ScriptPublicKey::new(0, script_pub_key_2.clone()) },
+                TransactionOutput { value: 10518958752, script_public_key: ScriptPublicKey::new(0, script_pub_key_1) },
+            ],
+            0,
+            SubnetworkId::from_bytes([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+            0,
+            vec![],
+        );
+
+        let populated_tx = PopulatedTransaction::new(
+            &tx,
+            vec![UtxoEntry {
+                amount: 20879456551,
+                script_public_key: ScriptPublicKey::new(0, script_pub_key_2),
+                block_daa_score: 32022768,
+                is_coinbase: false,
+            }],
+        );
+
+        assert!(tv.check_scripts(&populated_tx).is_err(), "Failing Signature Test Failed");
+    }
+
+    #[test]
+    fn check_multi_signature_test() {
+        let mut params = MAINNET_PARAMS.clone();
+        params.max_tx_inputs = 10;
+        params.max_tx_outputs = 15;
+        let tv = TransactionValidator::new(
+            params.max_tx_inputs,
+            params.max_tx_outputs,
+            params.max_signature_script_len,
+            params.max_script_public_key_len,
+            params.ghostdag_k,
+            params.coinbase_payload_script_public_key_max_len,
+            params.coinbase_maturity,
+        );
+
+        // Taken from: d839d29b549469d0f9a23e51febe68d4084967a6a477868b511a5a8d88c5ae06
+        let prev_tx_id = TransactionId::from_str("63020db736215f8b1105a9281f7bcbb6473d965ecc45bb2fb5da59bd35e6ff84").unwrap();
+
+        let mut bytes = [0u8; 269];
+        faster_hex::hex_decode("41ca6f8d104b47ca8ab133d98b3794b49f00ec5d2dce8253e78de035dfbc8f40a2fefa3086c3a181d9f1755a8f4ada4f8a4b8982b361853c8020009e1a752debce0141fdb58c2c25fcfe37d427967c34700f92e9eb1df0f2f9ff366444d92357ff35a270ee5445287031e4c0f72acda20876ccf918de1039a41e9b5f83b3737223f995014c875220ecdd9ec9f2c53ed8e5a170cc88354e133299022da55e1e8bd3c61d8b9dcbd7df2068f191b6aca3d9d8cfa2edb0c44a10fc87dc36b62e1d02228257ccdf979b1fce20b1503ef14aa6773ba3a1f012dbea2992e181766c35c5bc17465b5f57807540bf2006e161ced6b77c11b9a317080a899121a9c6df30a76490402f9a3b7e18bce97b54ae".as_bytes(), &mut bytes).unwrap();
+        let signature_script = bytes.to_vec();
+
+        let mut bytes = [0u8; 35];
+        faster_hex::hex_decode("aa2071b6c2c604a8830a1484ba469e845c37bb0af32f044bc8fd0c892c8878419e8587".as_bytes(), &mut bytes)
+            .unwrap();
+        let script_pub_key_1 = SmallVec::from(bytes.to_vec());
+
+        let mut bytes = [0u8; 34];
+        faster_hex::hex_decode("206c376f9da440494e18b283803698ed13249af93be3e99f58f42d7d82744d3d15ac".as_bytes(), &mut bytes).unwrap();
+        let script_pub_key_2 = SmallVec::from(bytes.to_vec());
+
+        let tx = Transaction::new(
+            0,
+            vec![TransactionInput {
+                previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 0 },
+                signature_script,
+                sequence: 0,
+                sig_op_count: 4,
+            }],
+            vec![
+                TransactionOutput { value: 10000000000000, script_public_key: ScriptPublicKey::new(0, script_pub_key_2) },
+                TransactionOutput { value: 2792999990000, script_public_key: ScriptPublicKey::new(0, script_pub_key_1.clone()) },
+            ],
+            0,
+            SubnetworkId::from_bytes([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+            0,
+            vec![],
+        );
+
+        let populated_tx = PopulatedTransaction::new(
+            &tx,
+            vec![UtxoEntry {
+                amount: 12793000000000,
+                script_public_key: ScriptPublicKey::new(0, script_pub_key_1),
+                block_daa_score: 36151168,
+                is_coinbase: false,
+            }],
+        );
+        tv.check_scripts(&populated_tx).expect("Signature check failed");
+    }
+
+    #[test]
+    fn check_last_sig_incorrect_multi_signature_test() {
+        let mut params = MAINNET_PARAMS.clone();
+        params.max_tx_inputs = 10;
+        params.max_tx_outputs = 15;
+        let tv = TransactionValidator::new(
+            params.max_tx_inputs,
+            params.max_tx_outputs,
+            params.max_signature_script_len,
+            params.max_script_public_key_len,
+            params.ghostdag_k,
+            params.coinbase_payload_script_public_key_max_len,
+            params.coinbase_maturity,
+        );
+
+        // Taken from: d839d29b549469d0f9a23e51febe68d4084967a6a477868b511a5a8d88c5ae06
+        let prev_tx_id = TransactionId::from_str("63020db736215f8b1105a9281f7bcbb6473d965ecc45bb2fb5da59bd35e6ff84").unwrap();
+
+        let mut bytes = [0u8; 269];
+        faster_hex::hex_decode("41ca6f8d104b47ca8ab133d98b3794b49f00ec5d2dce8253e78de035dfbc8f40a2fefa3086c3a181d9f1755a8f4ada4f8a4b8982b361853c8020009e1a752debce0141fdb58c2c25fcfe37d427967c34700f92e9eb1df0f2f9ff366444d92357ff3da270ee5445287031e4c0f72acda20876ccf918de1039a41e9b5f83b3737223f995014c875220ecdd9ec9f2c53ed8e5a170cc88354e133299022da55e1e8bd3c61d8b9dcbd7df2068f191b6aca3d9d8cfa2edb0c44a10fc87dc36b62e1d02228257ccdf979b1fce20b1503ef14aa6773ba3a1f012dbea2992e181766c35c5bc17465b5f57807540bf2006e161ced6b77c11b9a317080a899121a9c6df30a76490402f9a3b7e18bce97b54ae".as_bytes(), &mut bytes).unwrap();
+        let signature_script = bytes.to_vec();
+
+        let mut bytes = [0u8; 35];
+        faster_hex::hex_decode("aa2071b6c2c604a8830a1484ba469e845c37bb0af32f044bc8fd0c892c8878419e8587".as_bytes(), &mut bytes)
+            .unwrap();
+        let script_pub_key_1 = SmallVec::from(bytes.to_vec());
+
+        let mut bytes = [0u8; 34];
+        faster_hex::hex_decode("206c376f9da440494e18b283803698ed13249af93be3e99f58f42d7d82744d3d15ac".as_bytes(), &mut bytes).unwrap();
+        let script_pub_key_2 = SmallVec::from(bytes.to_vec());
+
+        let tx = Transaction::new(
+            0,
+            vec![TransactionInput {
+                previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 0 },
+                signature_script,
+                sequence: 0,
+                sig_op_count: 4,
+            }],
+            vec![
+                TransactionOutput { value: 10000000000000, script_public_key: ScriptPublicKey::new(0, script_pub_key_2) },
+                TransactionOutput { value: 2792999990000, script_public_key: ScriptPublicKey::new(0, script_pub_key_1.clone()) },
+            ],
+            0,
+            SubnetworkId::from_bytes([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+            0,
+            vec![],
+        );
+
+        let populated_tx = PopulatedTransaction::new(
+            &tx,
+            vec![UtxoEntry {
+                amount: 12793000000000,
+                script_public_key: ScriptPublicKey::new(0, script_pub_key_1),
+                block_daa_score: 36151168,
+                is_coinbase: false,
+            }],
+        );
+
+        assert!(tv.check_scripts(&populated_tx) == Err(TxRuleError::SignatureInvalid(TxScriptError::NullFail)));
+    }
+
+    #[test]
+    fn check_first_sig_incorrect_multi_signature_test() {
+        let mut params = MAINNET_PARAMS.clone();
+        params.max_tx_inputs = 10;
+        params.max_tx_outputs = 15;
+        let tv = TransactionValidator::new(
+            params.max_tx_inputs,
+            params.max_tx_outputs,
+            params.max_signature_script_len,
+            params.max_script_public_key_len,
+            params.ghostdag_k,
+            params.coinbase_payload_script_public_key_max_len,
+            params.coinbase_maturity,
+        );
+
+        // Taken from: d839d29b549469d0f9a23e51febe68d4084967a6a477868b511a5a8d88c5ae06
+        let prev_tx_id = TransactionId::from_str("63020db736215f8b1105a9281f7bcbb6473d965ecc45bb2fb5da59bd35e6ff84").unwrap();
+
+        let mut bytes = [0u8; 269];
+        faster_hex::hex_decode("41ca6f8d104b47ca8ab133d98b3794b49f00ec5d2dce8253e78de035dfbc8f41a2fefa3086c3a181d9f1755a8f4ada4f8a4b8982b361853c8020009e1a752debce0141fdb58c2c25fcfe37d427967c34700f92e9eb1df0f2f9ff366444d92357ff35a270ee5445287031e4c0f72acda20876ccf918de1039a41e9b5f83b3737223f995014c875220ecdd9ec9f2c53ed8e5a170cc88354e133299022da55e1e8bd3c61d8b9dcbd7df2068f191b6aca3d9d8cfa2edb0c44a10fc87dc36b62e1d02228257ccdf979b1fce20b1503ef14aa6773ba3a1f012dbea2992e181766c35c5bc17465b5f57807540bf2006e161ced6b77c11b9a317080a899121a9c6df30a76490402f9a3b7e18bce97b54ae".as_bytes(), &mut bytes).unwrap();
+        let signature_script = bytes.to_vec();
+
+        let mut bytes = [0u8; 35];
+        faster_hex::hex_decode("aa2071b6c2c604a8830a1484ba469e845c37bb0af32f044bc8fd0c892c8878419e8587".as_bytes(), &mut bytes)
+            .unwrap();
+        let script_pub_key_1 = SmallVec::from(bytes.to_vec());
+
+        let mut bytes = [0u8; 34];
+        faster_hex::hex_decode("206c376f9da440494e18b283803698ed13249af93be3e99f58f42d7d82744d3d15ac".as_bytes(), &mut bytes).unwrap();
+        let script_pub_key_2 = SmallVec::from(bytes.to_vec());
+
+        let tx = Transaction::new(
+            0,
+            vec![TransactionInput {
+                previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 0 },
+                signature_script,
+                sequence: 0,
+                sig_op_count: 4,
+            }],
+            vec![
+                TransactionOutput { value: 10000000000000, script_public_key: ScriptPublicKey::new(0, script_pub_key_2) },
+                TransactionOutput { value: 2792999990000, script_public_key: ScriptPublicKey::new(0, script_pub_key_1.clone()) },
+            ],
+            0,
+            SubnetworkId::from_bytes([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+            0,
+            vec![],
+        );
+
+        let populated_tx = PopulatedTransaction::new(
+            &tx,
+            vec![UtxoEntry {
+                amount: 12793000000000,
+                script_public_key: ScriptPublicKey::new(0, script_pub_key_1),
+                block_daa_score: 36151168,
+                is_coinbase: false,
+            }],
+        );
+
+        assert!(tv.check_scripts(&populated_tx) == Err(TxRuleError::SignatureInvalid(TxScriptError::NullFail)));
+    }
+
+    #[test]
+    fn check_empty_incorrect_multi_signature_test() {
+        let mut params = MAINNET_PARAMS.clone();
+        params.max_tx_inputs = 10;
+        params.max_tx_outputs = 15;
+        let tv = TransactionValidator::new(
+            params.max_tx_inputs,
+            params.max_tx_outputs,
+            params.max_signature_script_len,
+            params.max_script_public_key_len,
+            params.ghostdag_k,
+            params.coinbase_payload_script_public_key_max_len,
+            params.coinbase_maturity,
+        );
+
+        // Taken from: d839d29b549469d0f9a23e51febe68d4084967a6a477868b511a5a8d88c5ae06
+        let prev_tx_id = TransactionId::from_str("63020db736215f8b1105a9281f7bcbb6473d965ecc45bb2fb5da59bd35e6ff84").unwrap();
+
+        let mut bytes = [0u8; 139];
+        faster_hex::hex_decode("00004c875220ecdd9ec9f2c53ed8e5a170cc88354e133299022da55e1e8bd3c61d8b9dcbd7df2068f191b6aca3d9d8cfa2edb0c44a10fc87dc36b62e1d02228257ccdf979b1fce20b1503ef14aa6773ba3a1f012dbea2992e181766c35c5bc17465b5f57807540bf2006e161ced6b77c11b9a317080a899121a9c6df30a76490402f9a3b7e18bce97b54ae".as_bytes(), &mut bytes).unwrap();
+        let signature_script = bytes.to_vec();
+
+        let mut bytes = [0u8; 35];
+        faster_hex::hex_decode("aa2071b6c2c604a8830a1484ba469e845c37bb0af32f044bc8fd0c892c8878419e8587".as_bytes(), &mut bytes)
+            .unwrap();
+        let script_pub_key_1 = SmallVec::from(bytes.to_vec());
+
+        let mut bytes = [0u8; 34];
+        faster_hex::hex_decode("206c376f9da440494e18b283803698ed13249af93be3e99f58f42d7d82744d3d15ac".as_bytes(), &mut bytes).unwrap();
+        let script_pub_key_2 = SmallVec::from(bytes.to_vec());
+
+        let tx = Transaction::new(
+            0,
+            vec![TransactionInput {
+                previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 0 },
+                signature_script,
+                sequence: 0,
+                sig_op_count: 4,
+            }],
+            vec![
+                TransactionOutput { value: 10000000000000, script_public_key: ScriptPublicKey::new(0, script_pub_key_2) },
+                TransactionOutput { value: 2792999990000, script_public_key: ScriptPublicKey::new(0, script_pub_key_1.clone()) },
+            ],
+            0,
+            SubnetworkId::from_bytes([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+            0,
+            vec![],
+        );
+
+        let populated_tx = PopulatedTransaction::new(
+            &tx,
+            vec![UtxoEntry {
+                amount: 12793000000000,
+                script_public_key: ScriptPublicKey::new(0, script_pub_key_1),
+                block_daa_score: 36151168,
+                is_coinbase: false,
+            }],
+        );
+
+        let result = tv.check_scripts(&populated_tx);
+        assert!(result == Err(TxRuleError::SignatureInvalid(TxScriptError::EvalFalse)));
+    }
+
+    #[test]
+    fn check_non_push_only_script_sig_test() {
+        // We test a situation where the script itself is valid, but the script signature is not push only
+        let params = MAINNET_PARAMS.clone();
+        let tv = TransactionValidator::new(
+            params.max_tx_inputs,
+            params.max_tx_outputs,
+            params.max_signature_script_len,
+            params.max_script_public_key_len,
+            params.ghostdag_k,
+            params.coinbase_payload_script_public_key_max_len,
+            params.coinbase_maturity,
+        );
+
+        let prev_tx_id = TransactionId::from_str("1111111111111111111111111111111111111111111111111111111111111111").unwrap();
+
+        let mut bytes = [0u8; 2];
+        faster_hex::hex_decode("5175".as_bytes(), &mut bytes).unwrap(); // OP_TRUE OP_DROP
+        let signature_script = bytes.to_vec();
+
+        let mut bytes = [0u8; 1];
+        faster_hex::hex_decode("51".as_bytes(), &mut bytes) // OP_TRUE
+            .unwrap();
+        let script_pub_key_1 = SmallVec::from(bytes.to_vec());
+
+        let tx = Transaction::new(
+            0,
+            vec![TransactionInput {
+                previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 0 },
+                signature_script,
+                sequence: 0,
+                sig_op_count: 4,
+            }],
+            vec![TransactionOutput { value: 2792999990000, script_public_key: ScriptPublicKey::new(0, script_pub_key_1.clone()) }],
+            0,
+            SubnetworkId::from_bytes([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+            0,
+            vec![],
+        );
+
+        let populated_tx = PopulatedTransaction::new(
+            &tx,
+            vec![UtxoEntry {
+                amount: 12793000000000,
+                script_public_key: ScriptPublicKey::new(0, script_pub_key_1),
+                block_daa_score: 36151168,
+                is_coinbase: false,
+            }],
+        );
+
+        let result = tv.check_scripts(&populated_tx);
+        assert!(result == Err(TxRuleError::SignatureInvalid(TxScriptError::SignatureScriptNotPushOnly)));
+    }
+
+    #[test]
+    fn test_sign() {
+        let params = MAINNET_PARAMS.clone();
+        let tv = TransactionValidator::new(
+            params.max_tx_inputs,
+            params.max_tx_outputs,
+            params.max_signature_script_len,
+            params.max_script_public_key_len,
+            params.ghostdag_k,
+            params.coinbase_payload_script_public_key_max_len,
+            params.coinbase_maturity,
+        );
+
+        let secp = Secp256k1::new();
+        let (secret_key, public_key) = secp.generate_keypair(&mut rand::thread_rng());
+        let (public_key, _) = public_key.x_only_public_key();
+        let script_pub_key = once(0x20).chain(public_key.serialize().into_iter()).chain(once(0xac)).collect_vec();
+        let script_pub_key = ScriptVec::from_slice(&script_pub_key);
+
+        let prev_tx_id = TransactionId::from_str("880eb9819a31821d9d2399e2f35e2433b72637e393d71ecc9b8d0250f49153c3").unwrap();
+        let unsigned_tx = Transaction::new(
+            0,
+            vec![
+                TransactionInput {
+                    previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 0 },
+                    signature_script: vec![],
+                    sequence: 0,
+                    sig_op_count: 0,
+                },
+                TransactionInput {
+                    previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 1 },
+                    signature_script: vec![],
+                    sequence: 1,
+                    sig_op_count: 0,
+                },
+                TransactionInput {
+                    previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 2 },
+                    signature_script: vec![],
+                    sequence: 2,
+                    sig_op_count: 0,
+                },
+            ],
+            vec![
+                TransactionOutput { value: 300, script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()) },
+                TransactionOutput { value: 300, script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()) },
+            ],
+            1615462089000,
+            SubnetworkId::from_bytes([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+            0,
+            vec![],
+        );
+
+        let entries = vec![
+            UtxoEntry {
+                amount: 100,
+                script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()),
+                block_daa_score: 0,
+                is_coinbase: false,
+            },
+            UtxoEntry {
+                amount: 200,
+                script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()),
+                block_daa_score: 0,
+                is_coinbase: false,
+            },
+            UtxoEntry {
+                amount: 300,
+                script_public_key: ScriptPublicKey::new(0, script_pub_key),
+                block_daa_score: 0,
+                is_coinbase: false,
+            },
+        ];
+        let signed_tx = sign(MutableTransaction::with_entries(unsigned_tx, entries), secret_key.secret_bytes());
+        let populated_tx = signed_tx.as_verifiable();
+        let result = tv.check_scripts(&populated_tx);
+        assert!(result.is_ok());
     }
 }
