@@ -12,7 +12,7 @@ use crate::protowire::{
     VirtualSelectedParentBlueScoreChangedNotificationMessage, VirtualSelectedParentChainChangedNotificationMessage,
 };
 use crate::{from, try_from};
-use kaspa_rpc_core::api::ops::SubscribeCommand;
+use kaspa_rpc_core::notify::subscription::Command;
 use kaspa_rpc_core::{Notification, RpcError, RpcHash};
 
 // ----------------------------------------------------------------------------
@@ -80,19 +80,19 @@ from!(item: &kaspa_rpc_core::VirtualDaaScoreChangedNotification, VirtualDaaScore
 
 from!(&kaspa_rpc_core::PruningPointUtxoSetOverrideNotification, PruningPointUtxoSetOverrideNotificationMessage);
 
-from!(item: SubscribeCommand, RpcNotifyCommand, {
+from!(item: Command, RpcNotifyCommand, {
     match item {
-        SubscribeCommand::Start => RpcNotifyCommand::NotifyStart,
-        SubscribeCommand::Stop => RpcNotifyCommand::NotifyStop,
+        Command::Start => RpcNotifyCommand::NotifyStart,
+        Command::Stop => RpcNotifyCommand::NotifyStop,
     }
 });
 
 from!(item: &StopNotifyingUtxosChangedRequestMessage, NotifyUtxosChangedRequestMessage, {
-    Self { addresses: item.addresses.clone(), command: SubscribeCommand::Stop.into() }
+    Self { addresses: item.addresses.clone(), command: Command::Stop.into() }
 });
 
 from!(_item: &StopNotifyingPruningPointUtxoSetOverrideRequestMessage, NotifyPruningPointUtxoSetOverrideRequestMessage, {
-    Self { command: SubscribeCommand::Stop.into() }
+    Self { command: Command::Stop.into() }
 });
 
 // ----------------------------------------------------------------------------
@@ -190,10 +190,10 @@ try_from!(item: &VirtualDaaScoreChangedNotificationMessage, kaspa_rpc_core::Virt
 
 try_from!(&PruningPointUtxoSetOverrideNotificationMessage, kaspa_rpc_core::PruningPointUtxoSetOverrideNotification);
 
-from!(item: RpcNotifyCommand, SubscribeCommand, {
+from!(item: RpcNotifyCommand, Command, {
     match item {
-        RpcNotifyCommand::NotifyStart => SubscribeCommand::Start,
-        RpcNotifyCommand::NotifyStop => SubscribeCommand::Stop,
+        RpcNotifyCommand::NotifyStart => Command::Start,
+        RpcNotifyCommand::NotifyStop => Command::Stop,
     }
 });
 

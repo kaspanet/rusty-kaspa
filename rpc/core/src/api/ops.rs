@@ -1,6 +1,3 @@
-use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
-use serde::{Deserialize, Serialize};
-use std::fmt::Display;
 use workflow_core::enums::u32_try_from;
 
 u32_try_from! {
@@ -57,39 +54,6 @@ u32_try_from! {
 impl From<RpcApiOps> for u32 {
     fn from(item: RpcApiOps) -> Self {
         item as u32
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
-pub enum SubscribeCommand {
-    Start = 0,
-    Stop = 1,
-}
-
-impl Display for SubscribeCommand {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let label = match self {
-            SubscribeCommand::Start => "start",
-            SubscribeCommand::Stop => "stop",
-        };
-        write!(f, "{label}")
-    }
-}
-
-impl From<SubscribeCommand> for i32 {
-    fn from(item: SubscribeCommand) -> Self {
-        item as i32
-    }
-}
-
-impl From<i32> for SubscribeCommand {
-    // We make this conversion infallible by falling back to Start from any unexpected value.
-    fn from(item: i32) -> Self {
-        if item == 1 {
-            SubscribeCommand::Stop
-        } else {
-            SubscribeCommand::Start
-        }
     }
 }
 

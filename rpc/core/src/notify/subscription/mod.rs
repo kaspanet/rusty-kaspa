@@ -1,5 +1,8 @@
 use super::{events::EventType, scope::Scope};
-use crate::{api::ops::SubscribeCommand, Notification};
+use crate::Notification;
+use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+use serde::{Deserialize, Serialize};
+use std::fmt::Display;
 use std::{
     any::Any,
     fmt::Debug,
@@ -11,22 +14,55 @@ pub mod array;
 pub mod compounded;
 pub mod single;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+pub enum Command {
+    Start = 0,
+    Stop = 1,
+}
+
+impl Display for Command {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let label = match self {
+            Command::Start => "start",
+            Command::Stop => "stop",
+        };
+        write!(f, "{label}")
+    }
+}
+
+impl From<Command> for i32 {
+    fn from(item: Command) -> Self {
+        item as i32
+    }
+}
+
+impl From<i32> for Command {
+    // We make this conversion infallible by falling back to Start from any unexpected value.
+    fn from(item: i32) -> Self {
+        if item == 1 {
+            Command::Stop
+        } else {
+            Command::Start
+        }
+    }
+}
+
 /// A subscription mutation including a start/stop command and
 /// a notification scope.
 #[derive(Clone, Debug)]
 pub struct Mutation {
-    pub command: SubscribeCommand,
+    pub command: Command,
     pub scope: Scope,
 }
 
 impl Mutation {
-    pub fn new(command: SubscribeCommand, scope: Scope) -> Self {
+    pub fn new(command: Command, scope: Scope) -> Self {
         Self { command, scope }
     }
 
     #[inline(always)]
     pub fn active(&self) -> bool {
-        self.command == SubscribeCommand::Start
+        self.command == Command::Start
     }
 
     #[inline(always)]

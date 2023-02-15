@@ -11,6 +11,7 @@ use kaspa_core::trace;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 extern crate derive_more;
+use crate::notify::notifier::Notify;
 use crate::{
     notify::{
         collector,
@@ -29,24 +30,24 @@ pub type CollectorNotificationChannel<T> = Channel<Arc<T>>;
 pub type CollectorNotificationSender<T> = Sender<Arc<T>>;
 pub type CollectorNotificationReceiver<T> = Receiver<Arc<T>>;
 
-/// A notification collector, acting as a notification source for a [`Notifier`].
+/// A notification collector, relaying notifications to a [`Notifier`].
 ///
 /// A [`Collector`] is responsible for collecting notifications of
 /// a specific form from a specific source, convert them if necessary
 /// into [`Notification`]s and forward them to the [Notifier] provided
 /// to `Collector::start`.
 #[async_trait]
-pub trait Collector<T>: Send + Sync + Debug
+pub trait Collector<C>: Send + Sync + Debug
 where
-    T: Connection,
+    C: Connection,
 {
     /// Start collecting notifications for `notifier`
-    fn start(self: Arc<Self>, notifier: Arc<Notifier<T>>);
+    fn start(&self, notifier: Arc<Notifier<C>>);
     /// Stop collecting notifications
-    async fn stop(self: Arc<Self>) -> Result<()>;
+    async fn stop(&self) -> Result<()>;
 }
 
-pub type DynCollector<T> = Arc<dyn Collector<T>>;
+pub type DynCollector<C> = Arc<dyn Collector<C>>;
 
 /// A newtype allowing conversion from Arc<T> to Arc<Notification>.
 /// See [`super::collector::CollectorFrom`]
@@ -63,28 +64,28 @@ impl<T> From<Arc<T>> for ArcConvert<T> {
 /// converts it into a [`Notification`] and sends it to a its
 /// [`Notifier`].
 #[derive(Debug)]
-pub struct CollectorFrom<T, TCx>
+pub struct CollectorFrom<N, C>
 where
-    T: Send + Sync + 'static + Sized,
-    TCx: Connection,
+    N: Send + Sync + 'static + Sized,
+    C: Connection,
 {
-    recv_channel: CollectorNotificationReceiver<T>,
+    recv_channel: CollectorNotificationReceiver<N>,
 
     /// Has this collector been started?
     is_started: Arc<AtomicBool>,
 
     collect_shutdown: Arc<DuplexTrigger>,
 
-    connection: PhantomData<TCx>,
+    connection: PhantomData<C>,
 }
 
-impl<T, TCx> CollectorFrom<T, TCx>
+impl<N, C> CollectorFrom<N, C>
 where
-    T: Send + Sync + 'static + Sized + Debug,
-    ArcConvert<T>: Into<Arc<Notification>>,
-    TCx: Connection,
+    N: Send + Sync + 'static + Sized + Debug,
+    ArcConvert<N>: Into<Arc<Notification>>,
+    C: Connection,
 {
-    pub fn new(recv_channel: CollectorNotificationReceiver<T>) -> Self {
+    pub fn new(recv_channel: CollectorNotificationReceiver<N>) -> Self {
         Self {
             recv_channel,
             collect_shutdown: Arc::new(DuplexTrigger::new()),
@@ -93,7 +94,7 @@ where
         }
     }
 
-    fn spawn_collecting_task(self: Arc<Self>, notifier: Arc<Notifier<TCx>>) {
+    fn spawn_collecting_task(&self, notifier: Arc<Notifier<C>>) {
         // The task can only be spawned once
         if self.is_started.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
             return;
@@ -117,7 +118,7 @@ where
                         match notification {
                             Some(msg) => {
                                 let rpc_notification: Arc<Notification> = ArcConvert::from(msg.clone()).into();
-                                match notifier.clone().notify(rpc_notification) {
+                                match notifier.notify(rpc_notification) {
                                     Ok(_) => (),
                                     Err(err) => {
                                         trace!("[Collector] notification sender error: {:?}", err);
@@ -136,7 +137,7 @@ where
         });
     }
 
-    async fn stop_collecting_task(self: &Arc<Self>) -> Result<()> {
+    async fn stop_collecting_task(&self) -> Result<()> {
         if self.is_started.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_err() {
             return Err(Error::AlreadyStoppedError);
         }
@@ -147,17 +148,17 @@ where
 }
 
 #[async_trait]
-impl<T, TCx> collector::Collector<TCx> for CollectorFrom<T, TCx>
+impl<N, C> collector::Collector<C> for CollectorFrom<N, C>
 where
-    T: Send + Sync + 'static + Sized + Debug,
-    ArcConvert<T>: Into<Arc<Notification>>,
-    TCx: Connection,
+    N: Send + Sync + 'static + Sized + Debug,
+    ArcConvert<N>: Into<Arc<Notification>>,
+    C: Connection,
 {
-    fn start(self: Arc<Self>, notifier: Arc<Notifier<TCx>>) {
+    fn start(&self, notifier: Arc<Notifier<C>>) {
         self.spawn_collecting_task(notifier);
     }
 
-    async fn stop(self: Arc<Self>) -> Result<()> {
+    async fn stop(&self) -> Result<()> {
         self.stop_collecting_task().await
     }
 }

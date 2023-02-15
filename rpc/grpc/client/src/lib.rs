@@ -13,7 +13,7 @@ use kaspa_core::trace;
 use kaspa_grpc_core::protowire::{kaspad_request, rpc_client::RpcClient, GetInfoRequestMessage, KaspadRequest, KaspadResponse};
 use kaspa_rpc_core::{
     api::ops::RpcApiOps,
-    api::{ops::SubscribeCommand, rpc::RpcApi},
+    api::rpc::RpcApi,
     error::RpcError,
     error::RpcResult,
     model::message::*,
@@ -26,6 +26,7 @@ use kaspa_rpc_core::{
         notifier::Notifier,
         scope::Scope,
         subscriber::{Subscriber, SubscriptionManager},
+        subscription::Command,
     },
     Notification, NotificationSender,
 };
@@ -597,7 +598,7 @@ impl Inner {
 impl SubscriptionManager for Inner {
     async fn start_notify(self: Arc<Self>, _: ListenerId, scope: Scope) -> RpcResult<()> {
         trace!("[GrpcClient] start_notify: {:?}", scope);
-        let request = kaspad_request::Payload::from_notification_type(&scope, SubscribeCommand::Start);
+        let request = kaspad_request::Payload::from_notification_type(&scope, Command::Start);
         self.clone().call((&request).into(), request).await?;
         Ok(())
     }
@@ -605,7 +606,7 @@ impl SubscriptionManager for Inner {
     async fn stop_notify(self: Arc<Self>, _: ListenerId, scope: Scope) -> RpcResult<()> {
         if self.handle_stop_notify() {
             trace!("[GrpcClient] stop_notify: {:?}", scope);
-            let request = kaspad_request::Payload::from_notification_type(&scope, SubscribeCommand::Stop);
+            let request = kaspad_request::Payload::from_notification_type(&scope, Command::Stop);
             self.clone().call((&request).into(), request).await?;
         } else {
             trace!("[GrpcClient] stop_notify ignored because not supported by the server: {:?}", scope);

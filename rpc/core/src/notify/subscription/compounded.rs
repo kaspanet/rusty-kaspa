@@ -1,10 +1,8 @@
 use super::{super::scope::Scope, Compounded, Mutation, Subscription};
-use crate::{
-    api::ops::SubscribeCommand,
-    notify::{
-        events::EventType,
-        scope::{UtxosChangedScope, VirtualSelectedParentChainChangedScope},
-    },
+use crate::notify::{
+    events::EventType,
+    scope::{UtxosChangedScope, VirtualSelectedParentChainChangedScope},
+    subscription::Command,
 };
 use addresses::Address;
 use std::collections::{HashMap, HashSet};
@@ -25,13 +23,13 @@ impl Compounded for OverallSubscription {
     fn compound(&mut self, mutation: Mutation) -> Option<Mutation> {
         assert_eq!(self.event_type(), mutation.event_type());
         match mutation.command {
-            SubscribeCommand::Start => {
+            Command::Start => {
                 self.active += 1;
                 if self.active == 1 {
                     return Some(mutation);
                 }
             }
-            SubscribeCommand::Stop => {
+            Command::Stop => {
                 if self.active > 0 {
                     self.active -= 1;
                 }
@@ -84,7 +82,7 @@ impl Compounded for VirtualSelectedParentChainChangedSubscription {
         if let Scope::VirtualSelectedParentChainChanged(ref scope) = mutation.scope {
             let all = scope.include_accepted_transaction_ids;
             match mutation.command {
-                SubscribeCommand::Start => {
+                Command::Start => {
                     if all {
                         // Add All
                         *self.all_mut() += 1;
@@ -99,7 +97,7 @@ impl Compounded for VirtualSelectedParentChainChangedSubscription {
                         }
                     }
                 }
-                SubscribeCommand::Stop => {
+                Command::Stop => {
                     if !all {
                         // Remove Reduced
                         if self.reduced() > 0 {
@@ -115,7 +113,7 @@ impl Compounded for VirtualSelectedParentChainChangedSubscription {
                             if self.all() == 0 {
                                 if self.reduced() > 0 {
                                     return Some(Mutation::new(
-                                        SubscribeCommand::Start,
+                                        Command::Start,
                                         Scope::VirtualSelectedParentChainChanged(VirtualSelectedParentChainChangedScope::new(false)),
                                     ));
                                 } else {
@@ -149,12 +147,12 @@ impl Compounded for UtxosChangedSubscription {
         assert_eq!(self.event_type(), mutation.event_type());
         if let Scope::UtxosChanged(mut scope) = mutation.scope {
             match mutation.command {
-                SubscribeCommand::Start => {
+                Command::Start => {
                     if scope.addresses.is_empty() {
                         // Add All
                         self.all += 1;
                         if self.all == 1 {
-                            return Some(Mutation::new(SubscribeCommand::Start, Scope::UtxosChanged(UtxosChangedScope::default())));
+                            return Some(Mutation::new(Command::Start, Scope::UtxosChanged(UtxosChangedScope::default())));
                         }
                     } else {
                         // Add(A)
@@ -168,11 +166,11 @@ impl Compounded for UtxosChangedSubscription {
                             });
                         }
                         if !added.is_empty() && self.all == 0 {
-                            return Some(Mutation::new(SubscribeCommand::Start, Scope::UtxosChanged(UtxosChangedScope::new(added))));
+                            return Some(Mutation::new(Command::Start, Scope::UtxosChanged(UtxosChangedScope::new(added))));
                         }
                     }
                 }
-                SubscribeCommand::Stop => {
+                Command::Stop => {
                     if !scope.addresses.is_empty() {
                         // Remove Reduced
                         let mut removed = vec![];
@@ -191,7 +189,7 @@ impl Compounded for UtxosChangedSubscription {
                             self.addresses.remove(x);
                         });
                         if !removed.is_empty() && self.all == 0 {
-                            return Some(Mutation::new(SubscribeCommand::Stop, Scope::UtxosChanged(UtxosChangedScope::new(removed))));
+                            return Some(Mutation::new(Command::Stop, Scope::UtxosChanged(UtxosChangedScope::new(removed))));
                         }
                     } else {
                         // Remove All
@@ -200,14 +198,11 @@ impl Compounded for UtxosChangedSubscription {
                             if self.all == 0 {
                                 if !self.addresses.is_empty() {
                                     return Some(Mutation::new(
-                                        SubscribeCommand::Start,
+                                        Command::Start,
                                         Scope::UtxosChanged(UtxosChangedScope::new(self.addresses.keys().cloned().collect())),
                                     ));
                                 } else {
-                                    return Some(Mutation::new(
-                                        SubscribeCommand::Stop,
-                                        Scope::UtxosChanged(UtxosChangedScope::default()),
-                                    ));
+                                    return Some(Mutation::new(Command::Stop, Scope::UtxosChanged(UtxosChangedScope::default())));
                                 }
                             }
                         }

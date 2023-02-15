@@ -7,10 +7,11 @@ use super::{
     listener::{Listener, ListenerId},
     scope::Scope,
     subscriber::{Subscriber, SubscriptionManager},
-    subscription::{array::ArrayBuilder, CompoundedSubscription, Mutation},
+    subscription::{array::ArrayBuilder, Command, CompoundedSubscription, Mutation},
 };
-use crate::{api::ops::SubscribeCommand, Notification, RpcResult};
+use crate::{Notification, RpcResult};
 use async_trait::async_trait;
+use core::fmt::Debug;
 use futures::future::join_all;
 use kaspa_core::trace;
 use std::{
@@ -21,6 +22,10 @@ use std::{
     },
 };
 use workflow_core::channel::Channel;
+
+pub trait Notify: Send + Sync + 'static {
+    fn notify(self: &Arc<Self>, notification: Arc<Notification>) -> Result<()>;
+}
 
 /// A Notifier is a notification broadcaster that manages a collection of [`Listener`]s and, for each one,
 /// a set of subscriptions to notifications by event type.
@@ -61,24 +66,17 @@ where
         self.inner.unregister_listener(id)
     }
 
-    pub fn execute_subscribe_command(self: Arc<Self>, id: ListenerId, scope: Scope, command: SubscribeCommand) -> Result<()> {
-        self.inner.execute_subscribe_command(id, scope, command)
-    }
-
-    pub fn start_notify(&self, id: ListenerId, scope: Scope) -> Result<()> {
-        self.inner.clone().start_notify(id, scope)
-    }
-
-    pub fn notify(self: Arc<Self>, notification: Arc<Notification>) -> Result<()> {
-        self.inner.clone().notify(notification)
-    }
-
-    pub fn stop_notify(&self, id: ListenerId, scope: Scope) -> Result<()> {
-        self.inner.clone().stop_notify(id, scope)
-    }
-
     pub async fn stop(&self) -> Result<()> {
         self.inner.clone().stop().await
+    }
+}
+
+impl<C> Notify for Notifier<C>
+where
+    C: Connection,
+{
+    fn notify(self: &Arc<Self>, notification: Arc<Notification>) -> Result<()> {
+        self.inner.notify(notification)
     }
 }
 
@@ -88,24 +86,14 @@ where
     C: Connection,
 {
     async fn start_notify(self: Arc<Self>, id: ListenerId, scope: Scope) -> RpcResult<()> {
-        trace!(
-            "[Notifier-{}] as subscription manager start sending to listener {} notifications of type {:?}",
-            self.inner.name,
-            id,
-            scope
-        );
-        self.inner.clone().start_notify(id, scope)?;
+        trace!("[Notifier-{}] start sending to listener {} notifications of scope {:?}", self.inner.name, id, scope);
+        self.inner.start_notify(id, scope)?;
         Ok(())
     }
 
     async fn stop_notify(self: Arc<Self>, id: ListenerId, scope: Scope) -> RpcResult<()> {
-        trace!(
-            "[Notifier-{}] as subscription manager stop sending to listener {} notifications of type {:?}",
-            self.inner.name,
-            id,
-            scope
-        );
-        self.inner.clone().stop_notify(id, scope)?;
+        trace!("[Notifier-{}] stop sending to listener {} notifications of scope {:?}", self.inner.name, id, scope);
+        self.inner.stop_notify(id, scope)?;
         Ok(())
     }
 }
@@ -163,7 +151,7 @@ where
         }
     }
 
-    fn start(self: Arc<Self>, notifier: Arc<Notifier<C>>) {
+    fn start(&self, notifier: Arc<Notifier<C>>) {
         if self.started.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
             self.subscribers.iter().for_each(|x| x.start());
             self.collectors.iter().for_each(|x| x.clone().start(notifier.clone()));
@@ -209,7 +197,7 @@ where
         Ok(())
     }
 
-    pub fn execute_subscribe_command(self: &Arc<Self>, id: ListenerId, scope: Scope, command: SubscribeCommand) -> Result<()> {
+    pub fn execute_subscribe_command(&self, id: ListenerId, scope: Scope, command: Command) -> Result<()> {
         let event: EventType = (&scope).into();
         let mut listeners = self.listeners.lock().unwrap();
         if let Some(listener) = listeners.get_mut(&id) {
@@ -237,24 +225,21 @@ where
         Ok(())
     }
 
-    fn start_notify(self: Arc<Self>, id: ListenerId, scope: Scope) -> Result<()> {
-        self.execute_subscribe_command(id, scope, SubscribeCommand::Start)
+    fn start_notify(&self, id: ListenerId, scope: Scope) -> Result<()> {
+        self.execute_subscribe_command(id, scope, Command::Start)
     }
 
-    fn notify(self: Arc<Self>, notification: Arc<Notification>) -> Result<()> {
+    fn notify(&self, notification: Arc<Notification>) -> Result<()> {
         Ok(self.notification_channel.try_send(notification)?)
     }
 
-    fn stop_notify(self: Arc<Self>, id: ListenerId, scope: Scope) -> Result<()> {
-        self.execute_subscribe_command(id, scope, SubscribeCommand::Stop)
+    fn stop_notify(&self, id: ListenerId, scope: Scope) -> Result<()> {
+        self.execute_subscribe_command(id, scope, Command::Stop)
     }
 
     async fn stop(self: Arc<Self>) -> Result<()> {
         if self.started.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
-            join_all(self.collectors.iter().map(|x| x.clone().stop()))
-                .await
-                .into_iter()
-                .collect::<std::result::Result<Vec<()>, _>>()?;
+            join_all(self.collectors.iter().map(|x| x.stop())).await.into_iter().collect::<std::result::Result<Vec<()>, _>>()?;
             join_all(self.broadcasters.iter().map(|x| x.stop())).await.into_iter().collect::<std::result::Result<Vec<()>, _>>()?;
             join_all(self.subscribers.iter().map(|x| x.stop())).await.into_iter().collect::<std::result::Result<Vec<()>, _>>()?;
         } else {

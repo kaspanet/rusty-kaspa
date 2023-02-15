@@ -1,9 +1,9 @@
 use super::{super::scope::Scope, Mutation, Single, Subscription};
 use crate::{
-    api::ops::SubscribeCommand,
     notify::{
         events::EventType,
         scope::{UtxosChangedScope, VirtualSelectedParentChainChangedScope},
+        subscription::Command,
     },
     Notification, VirtualSelectedParentChainChangedNotification,
 };
@@ -131,7 +131,7 @@ impl Single for VirtualSelectedParentChainChangedSubscription {
                     self.include_accepted_transaction_ids = true;
                     Some(vec![
                         Mutation::new(
-                            SubscribeCommand::Stop,
+                            Command::Stop,
                             Scope::VirtualSelectedParentChainChanged(VirtualSelectedParentChainChangedScope::new(false)),
                         ),
                         mutation,
@@ -150,7 +150,7 @@ impl Single for VirtualSelectedParentChainChangedSubscription {
                     Some(vec![
                         mutation,
                         Mutation::new(
-                            SubscribeCommand::Stop,
+                            Command::Stop,
                             Scope::VirtualSelectedParentChainChanged(VirtualSelectedParentChainChangedScope::new(true)),
                         ),
                     ])
@@ -239,23 +239,23 @@ impl Single for UtxosChangedSubscription {
                         // Mutation None
                         self.active = false;
                         let removed = self.addresses.drain().collect();
-                        Some(vec![Mutation::new(SubscribeCommand::Stop, Scope::UtxosChanged(UtxosChangedScope::new(removed)))])
+                        Some(vec![Mutation::new(Command::Stop, Scope::UtxosChanged(UtxosChangedScope::new(removed)))])
                     } else {
                         // Mutation Remove(R)
                         let removed: Vec<Address> = scope.addresses.iter().filter(|x| self.addresses.remove(x)).cloned().collect();
-                        Some(vec![Mutation::new(SubscribeCommand::Stop, Scope::UtxosChanged(UtxosChangedScope::new(removed)))])
+                        Some(vec![Mutation::new(Command::Stop, Scope::UtxosChanged(UtxosChangedScope::new(removed)))])
                     }
                 } else {
                     if !scope.addresses.is_empty() {
                         // Mutation Add(A)
                         let added = scope.addresses.iter().filter(|x| self.addresses.insert((*x).clone())).cloned().collect();
-                        Some(vec![Mutation::new(SubscribeCommand::Start, Scope::UtxosChanged(UtxosChangedScope::new(added)))])
+                        Some(vec![Mutation::new(Command::Start, Scope::UtxosChanged(UtxosChangedScope::new(added)))])
                     } else {
                         // Mutation All
                         let removed: Vec<Address> = self.addresses.drain().collect();
                         Some(vec![
-                            Mutation::new(SubscribeCommand::Stop, Scope::UtxosChanged(UtxosChangedScope::new(removed))),
-                            Mutation::new(SubscribeCommand::Start, Scope::UtxosChanged(UtxosChangedScope::default())),
+                            Mutation::new(Command::Stop, Scope::UtxosChanged(UtxosChangedScope::new(removed))),
+                            Mutation::new(Command::Start, Scope::UtxosChanged(UtxosChangedScope::default())),
                         ])
                     }
                 }
@@ -265,7 +265,7 @@ impl Single for UtxosChangedSubscription {
                     if scope.addresses.is_empty() {
                         // Mutation None
                         self.active = false;
-                        Some(vec![Mutation::new(SubscribeCommand::Stop, Scope::UtxosChanged(UtxosChangedScope::default()))])
+                        Some(vec![Mutation::new(Command::Stop, Scope::UtxosChanged(UtxosChangedScope::default()))])
                     } else {
                         // Mutation Remove(R)
                         None
@@ -276,7 +276,7 @@ impl Single for UtxosChangedSubscription {
                         scope.addresses.iter().for_each(|x| {
                             self.addresses.insert((*x).clone());
                         });
-                        Some(vec![mutation, Mutation::new(SubscribeCommand::Stop, Scope::UtxosChanged(UtxosChangedScope::default()))])
+                        Some(vec![mutation, Mutation::new(Command::Stop, Scope::UtxosChanged(UtxosChangedScope::default()))])
                     } else {
                         // Mutation All
                         None

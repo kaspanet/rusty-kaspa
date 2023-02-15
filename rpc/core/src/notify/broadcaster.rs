@@ -177,7 +177,7 @@ where
         });
     }
 
-    pub fn register(self: &Arc<Self>, subscription: DynSubscription, id: ListenerId, connection: C) -> Result<()> {
+    pub fn register(&self, subscription: DynSubscription, id: ListenerId, connection: C) -> Result<()> {
         if subscription.active() {
             self.ctl.try_send(Ctl::Register(subscription, id, connection))?;
         } else {
@@ -186,7 +186,7 @@ where
         Ok(())
     }
 
-    async fn stop_notification_broadcasting_task(self: &Arc<Self>) -> Result<()> {
+    async fn stop_notification_broadcasting_task(&self) -> Result<()> {
         if self.started.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_err() {
             return Err(Error::AlreadyStoppedError);
         }
@@ -195,7 +195,7 @@ where
         Ok(())
     }
 
-    pub async fn stop(self: &Arc<Self>) -> Result<()> {
+    pub async fn stop(&self) -> Result<()> {
         self.stop_notification_broadcasting_task().await
     }
 }

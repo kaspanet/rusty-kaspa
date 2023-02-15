@@ -4,7 +4,13 @@ use super::collector::{ConsensusCollector, ConsensusNotificationReceiver};
 use crate::{
     api::rpc::RpcApi,
     model::*,
-    notify::{connection::ChannelConnection, listener::ListenerId, notifier::Notifier, scope::Scope},
+    notify::{
+        connection::ChannelConnection,
+        listener::ListenerId,
+        notifier::{Notifier, Notify},
+        scope::Scope,
+        subscriber::SubscriptionManager,
+    },
     FromRpcHex, Notification, RpcError, RpcResult,
 };
 use async_trait::async_trait;
@@ -102,10 +108,10 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
 
         // Notify about new added block
         // TODO: let consensus emit this notification through an event channel
-        self.notifier.clone().notify(Arc::new(Notification::BlockAdded(BlockAddedNotification { block: rpc_block }))).unwrap();
+        self.notifier.notify(Arc::new(Notification::BlockAdded(BlockAddedNotification { block: rpc_block }))).unwrap();
 
         // Emit a NewBlockTemplate notification
-        self.notifier.clone().notify(Arc::new(Notification::NewBlockTemplate(NewBlockTemplateNotification {}))).unwrap();
+        self.notifier.notify(Arc::new(Notification::NewBlockTemplate(NewBlockTemplateNotification {}))).unwrap();
 
         result
     }
@@ -305,13 +311,13 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
 
     /// Start sending notifications of some type to a listener.
     async fn start_notify(&self, id: ListenerId, scope: Scope) -> RpcResult<()> {
-        self.notifier.start_notify(id, scope)?;
+        self.notifier.clone().start_notify(id, scope).await?;
         Ok(())
     }
 
     /// Stop sending notifications of some type to a listener.
     async fn stop_notify(&self, id: ListenerId, scope: Scope) -> RpcResult<()> {
-        self.notifier.stop_notify(id, scope)?;
+        self.notifier.clone().stop_notify(id, scope).await?;
         Ok(())
     }
 }

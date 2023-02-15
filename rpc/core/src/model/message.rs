@@ -1,4 +1,4 @@
-use crate::{api::ops::SubscribeCommand, model::*};
+use crate::{model::*, notify::subscription::Command};
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
@@ -715,10 +715,10 @@ impl GetProcessMetricsResponse {
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct NotifyBlockAddedRequest {
-    pub command: SubscribeCommand,
+    pub command: Command,
 }
 impl NotifyBlockAddedRequest {
-    pub fn new(command: SubscribeCommand) -> Self {
+    pub fn new(command: Command) -> Self {
         Self { command }
     }
 }
@@ -748,11 +748,11 @@ pub struct BlockAddedNotification {
 #[serde(rename_all = "camelCase")]
 pub struct NotifyVirtualSelectedParentChainChangedRequest {
     pub include_accepted_transaction_ids: bool,
-    pub command: SubscribeCommand,
+    pub command: Command,
 }
 
 impl NotifyVirtualSelectedParentChainChangedRequest {
-    pub fn new(include_accepted_transaction_ids: bool, command: SubscribeCommand) -> Self {
+    pub fn new(include_accepted_transaction_ids: bool, command: Command) -> Self {
         Self { include_accepted_transaction_ids, command }
     }
 }
@@ -779,11 +779,11 @@ pub struct VirtualSelectedParentChainChangedNotification {
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct NotifyFinalityConflictRequest {
-    pub command: SubscribeCommand,
+    pub command: Command,
 }
 
 impl NotifyFinalityConflictRequest {
-    pub fn new(command: SubscribeCommand) -> Self {
+    pub fn new(command: Command) -> Self {
         Self { command }
     }
 }
@@ -804,11 +804,11 @@ pub struct FinalityConflictNotification {
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct NotifyFinalityConflictResolvedRequest {
-    pub command: SubscribeCommand,
+    pub command: Command,
 }
 
 impl NotifyFinalityConflictResolvedRequest {
-    pub fn new(command: SubscribeCommand) -> Self {
+    pub fn new(command: Command) -> Self {
         Self { command }
     }
 }
@@ -839,11 +839,11 @@ pub struct FinalityConflictResolvedNotification {
 #[serde(rename_all = "camelCase")]
 pub struct NotifyUtxosChangedRequest {
     pub addresses: Vec<RpcAddress>,
-    pub command: SubscribeCommand,
+    pub command: Command,
 }
 
 impl NotifyUtxosChangedRequest {
-    pub fn new(addresses: Vec<RpcAddress>, command: SubscribeCommand) -> Self {
+    pub fn new(addresses: Vec<RpcAddress>, command: Command) -> Self {
         Self { addresses, command }
     }
 }
@@ -872,11 +872,11 @@ pub struct UtxosChangedNotification {
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct NotifyVirtualSelectedParentBlueScoreChangedRequest {
-    pub command: SubscribeCommand,
+    pub command: Command,
 }
 
 impl NotifyVirtualSelectedParentBlueScoreChangedRequest {
-    pub fn new(command: SubscribeCommand) -> Self {
+    pub fn new(command: Command) -> Self {
         Self { command }
     }
 }
@@ -905,11 +905,11 @@ pub struct VirtualSelectedParentBlueScoreChangedNotification {
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct NotifyVirtualDaaScoreChangedRequest {
-    pub command: SubscribeCommand,
+    pub command: Command,
 }
 
 impl NotifyVirtualDaaScoreChangedRequest {
-    pub fn new(command: SubscribeCommand) -> Self {
+    pub fn new(command: Command) -> Self {
         Self { command }
     }
 }
@@ -934,11 +934,11 @@ pub struct VirtualDaaScoreChangedNotification {
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct NotifyPruningPointUtxoSetOverrideRequest {
-    pub command: SubscribeCommand,
+    pub command: Command,
 }
 
 impl NotifyPruningPointUtxoSetOverrideRequest {
-    pub fn new(command: SubscribeCommand) -> Self {
+    pub fn new(command: Command) -> Self {
         Self { command }
     }
 }
@@ -960,10 +960,10 @@ pub struct PruningPointUtxoSetOverrideNotification {}
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct NotifyNewBlockTemplateRequest {
-    pub command: SubscribeCommand,
+    pub command: Command,
 }
 impl NotifyNewBlockTemplateRequest {
-    pub fn new(command: SubscribeCommand) -> Self {
+    pub fn new(command: Command) -> Self {
         Self { command }
     }
 }

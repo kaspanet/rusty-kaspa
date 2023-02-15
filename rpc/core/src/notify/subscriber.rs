@@ -10,9 +10,9 @@ use super::{
     error::{Error, Result},
     listener::ListenerId,
     scope::Scope,
-    subscription::Mutation,
+    subscription::{Command, Mutation},
 };
-use crate::{api::ops::SubscribeCommand, RpcResult};
+use crate::RpcResult;
 use futures::{
     future::FutureExt, // for `.fuse()`
     select,
@@ -25,10 +25,10 @@ pub trait SubscriptionManager: Send + Sync + Debug {
     async fn start_notify(self: Arc<Self>, id: ListenerId, scope: Scope) -> RpcResult<()>;
     async fn stop_notify(self: Arc<Self>, id: ListenerId, scope: Scope) -> RpcResult<()>;
 
-    async fn execute_subscribe_command(self: Arc<Self>, id: ListenerId, scope: Scope, command: SubscribeCommand) -> RpcResult<()> {
+    async fn execute_subscribe_command(self: Arc<Self>, id: ListenerId, scope: Scope, command: Command) -> RpcResult<()> {
         match command {
-            SubscribeCommand::Start => self.start_notify(id, scope).await,
-            SubscribeCommand::Stop => self.stop_notify(id, scope).await,
+            Command::Start => self.start_notify(id, scope).await,
+            Command::Stop => self.stop_notify(id, scope).await,
         }
     }
 }

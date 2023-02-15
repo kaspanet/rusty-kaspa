@@ -5,9 +5,8 @@
 //! No data submitted by the client to the server can be trusted
 
 use crate::{
-    api::ops::SubscribeCommand,
     model::*,
-    notify::{connection::Connection, listener::ListenerId, scope::Scope},
+    notify::{connection::Connection, listener::ListenerId, scope::Scope, subscription::Command},
     RpcResult,
 };
 use async_trait::async_trait;
@@ -297,10 +296,10 @@ where
 
     /// Execute a subscription command leading to either start or stop sending notifications
     /// of some type to a listener.
-    async fn execute_subscribe_command(&self, id: ListenerId, scope: Scope, command: SubscribeCommand) -> RpcResult<()> {
+    async fn execute_subscribe_command(&self, id: ListenerId, scope: Scope, command: Command) -> RpcResult<()> {
         match command {
-            SubscribeCommand::Start => self.start_notify(id, scope).await,
-            SubscribeCommand::Stop => self.stop_notify(id, scope).await,
+            Command::Start => self.start_notify(id, scope).await,
+            Command::Stop => self.stop_notify(id, scope).await,
         }
     }
 }
