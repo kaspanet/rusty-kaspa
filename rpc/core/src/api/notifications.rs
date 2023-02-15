@@ -35,7 +35,7 @@ impl From<&Notification> for NotificationType {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
-#[allow(clippy::large_enum_variant)]
+#[allow(clippy::large_enum_variant)] //TODO: solution: use targeted Arcs on large inner notifications to reduce size
 pub enum Notification {
     BlockAdded(BlockAddedNotification),
     VirtualSelectedParentChainChanged(VirtualSelectedParentChainChangedNotification),

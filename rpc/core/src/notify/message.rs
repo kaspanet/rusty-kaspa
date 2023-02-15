@@ -3,8 +3,9 @@ use crate::{Notification, NotificationType};
 use std::sync::Arc;
 
 #[derive(Clone, Debug)]
+#[allow(clippy::large_enum_variant)] //TODO: solution: use targeted Arcs on large variants in `rpc-core::api::notifications::Notification` to reduce size
 pub(crate) enum DispatchMessage {
-    Send(Box<Notification>),
+    Send(Notification),
     AddListener(ListenerID, Arc<ListenerSenderSide>),
     RemoveListener(ListenerID),
     Shutdown,

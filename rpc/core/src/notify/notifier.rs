@@ -209,7 +209,7 @@ impl Inner {
 
                         // Broadcast the notification to all listeners
                         for (id, listener) in listeners.iter() {
-                            match listener.try_send(*notification.clone()) {
+                            match listener.try_send(notification.clone()) {
                                 Ok(_) => {}
                                 Err(_) => {
                                     if listener.is_closed() {
@@ -313,7 +313,7 @@ impl Inner {
 
     fn notify(self: Arc<Self>, notification: Notification) -> Result<()> {
         let event: EventType = notification.as_ref().into();
-        let msg = DispatchMessage::Send(Box::new(notification));
+        let msg = DispatchMessage::Send(notification);
         self.try_send_dispatch(event, msg)?;
         Ok(())
     }
