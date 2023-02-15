@@ -152,7 +152,7 @@ impl Router {
     }
 
     /// Routes a locally-originated message to the network peer
-    pub async fn route_to_network(&self, msg: KaspadMessage) -> Result<(), ConnectionError> {
+    pub async fn enqueue(&self, msg: KaspadMessage) -> Result<(), ConnectionError> {
         assert!(msg.payload.is_some(), "Kaspad P2P message should always have a value");
         match self.outgoing_route.send(msg).await {
             Ok(_r) => Ok(()),

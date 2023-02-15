@@ -1,4 +1,4 @@
-use crate::ConnectionError;
+use crate::{convert::error::ConversionError, ConnectionError};
 use std::time::Duration;
 use thiserror::Error;
 
@@ -15,6 +15,9 @@ pub enum FlowError {
 
     #[error("{0}")]
     ProtocolError(&'static str),
+
+    #[error("{0}")]
+    ConversionError(#[from] ConversionError),
 
     #[error("inner connection error: {0}")]
     P2pConnectionError(ConnectionError),

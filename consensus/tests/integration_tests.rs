@@ -4,16 +4,18 @@
 
 use consensus::config::{Config, ConfigBuilder};
 use consensus::consensus::test_consensus::{create_temp_db, TestConsensus};
-use consensus::model::stores::ghostdag::{GhostdagData, GhostdagStoreReader, HashKTypeMap, KType as GhostdagKType};
+use consensus::model::stores::ghostdag::{GhostdagStoreReader, HashKTypeMap, KType as GhostdagKType};
 use consensus::model::stores::headers::HeaderStoreReader;
 use consensus::model::stores::reachability::DbReachabilityStore;
 use consensus::params::{Params, DEVNET_PARAMS, MAINNET_PARAMS};
 use consensus::processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions};
+use consensus_core::api::ConsensusApi;
 use consensus_core::block::Block;
 use consensus_core::blockhash::new_unique;
 use consensus_core::blockstatus::BlockStatus;
 use consensus_core::constants::BLOCK_VERSION;
 use consensus_core::errors::block::{BlockProcessResult, RuleError};
+use consensus_core::ghostdag::{ExternalGhostdagData, TrustedBlock};
 use consensus_core::header::Header;
 use consensus_core::subnets::SubnetworkId;
 use consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry};
@@ -846,7 +848,7 @@ async fn json_test(file_path: &str) {
 
         // TODO: Add consensus validation that the pruning point is one of the trusted blocks.
         let trusted_blocks = gzip_file_lines(&main_path.join("trusted.json.gz")).map(json_trusted_line_to_block_and_gd).collect_vec();
-        consensus.consensus.apply_proof(proof, &trusted_blocks);
+        consensus.consensus().apply_pruning_proof(proof, &trusted_blocks);
 
         let past_pruning_points =
             gzip_file_lines(&main_path.join("past-pps.json.gz")).map(|line| json_line_to_block(line).header).collect_vec();
@@ -856,7 +858,7 @@ async fn json_test(file_path: &str) {
 
         let mut last_time = SystemTime::now();
         let mut last_index: usize = 0;
-        for (i, (block, gd)) in trusted_blocks.into_iter().enumerate() {
+        for (i, tb) in trusted_blocks.into_iter().enumerate() {
             let now = SystemTime::now();
             let passed = now.duration_since(last_time).unwrap();
             if passed > Duration::new(1, 0) {
@@ -864,7 +866,7 @@ async fn json_test(file_path: &str) {
                 last_time = now;
                 last_index = i;
             }
-            consensus.consensus.validate_and_insert_trusted_block(block, Arc::new(gd)).await.unwrap();
+            consensus.consensus.as_ref().validate_and_insert_trusted_block(tb).await.unwrap();
         }
         println!("Done processing trusted blocks");
         Some(pruning_point)
@@ -888,6 +890,7 @@ async fn json_test(file_path: &str) {
         assert_eq!(hashing::header::hash(&block.header), hash, "header hashing for block {i} {hash} failed");
         let status = consensus
             .consensus
+            .as_ref()
             .validate_and_insert_block(block, !proof_exists)
             .await
             .unwrap_or_else(|e| panic!("block {i} {hash} failed: {e}"));
@@ -955,7 +958,7 @@ async fn json_concurrency_test(file_path: &str) {
             .collect_vec();
 
         let trusted_blocks = gzip_file_lines(&main_path.join("trusted.json.gz")).map(json_trusted_line_to_block_and_gd).collect_vec();
-        consensus.consensus.apply_proof(proof, &trusted_blocks);
+        consensus.consensus().apply_pruning_proof(proof, &trusted_blocks);
 
         let past_pruning_points =
             gzip_file_lines(&main_path.join("past-pps.json.gz")).map(|line| json_line_to_block(line).header).collect_vec();
@@ -965,7 +968,7 @@ async fn json_concurrency_test(file_path: &str) {
 
         let mut last_time = SystemTime::now();
         let mut last_index: usize = 0;
-        for (i, (block, gd)) in trusted_blocks.into_iter().enumerate() {
+        for (i, tb) in trusted_blocks.into_iter().enumerate() {
             let now = SystemTime::now();
             let passed = now.duration_since(last_time).unwrap();
             if passed > Duration::new(1, 0) {
@@ -973,7 +976,7 @@ async fn json_concurrency_test(file_path: &str) {
                 last_time = now;
                 last_index = i;
             }
-            consensus.consensus.validate_and_insert_trusted_block(block, Arc::new(gd)).await.unwrap();
+            consensus.consensus.as_ref().validate_and_insert_trusted_block(tb).await.unwrap();
         }
         println!("Done processing trusted blocks");
         Some(pruning_point)
@@ -1020,7 +1023,7 @@ fn submit_chunk(
 ) -> Vec<impl Future<Output = BlockProcessResult<BlockStatus>>> {
     let mut futures = Vec::new();
     for line in chunk {
-        let f = consensus.consensus.validate_and_insert_block(json_line_to_block(line), !proof_exists);
+        let f = consensus.consensus.as_ref().validate_and_insert_block(json_line_to_block(line), !proof_exists);
         futures.push(f);
     }
     futures
@@ -1047,11 +1050,11 @@ fn rpc_header_to_header(rpc_header: &RPCBlockHeader) -> Header {
     )
 }
 
-fn json_trusted_line_to_block_and_gd(line: String) -> (Block, GhostdagData) {
+fn json_trusted_line_to_block_and_gd(line: String) -> TrustedBlock {
     let json_block_with_trusted: JsonBlockWithTrustedData = serde_json::from_str(&line).unwrap();
     let block = rpc_block_to_block(json_block_with_trusted.Block);
 
-    let gd = GhostdagData {
+    let gd = ExternalGhostdagData {
         blue_score: json_block_with_trusted.GHOSTDAG.BlueScore,
         blue_work: BlueWorkType::from_hex(&json_block_with_trusted.GHOSTDAG.BlueWork).unwrap(),
         selected_parent: Hash::from_str(&json_block_with_trusted.GHOSTDAG.SelectedParent).unwrap(),
@@ -1070,7 +1073,7 @@ fn json_trusted_line_to_block_and_gd(line: String) -> (Block, GhostdagData) {
         )),
     };
 
-    (block, gd)
+    TrustedBlock::new(block, gd)
 }
 
 fn json_line_to_utxo_pairs(line: String) -> Vec<(TransactionOutpoint, UtxoEntry)> {

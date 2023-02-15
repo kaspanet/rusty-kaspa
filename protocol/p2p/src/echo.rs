@@ -83,7 +83,7 @@ impl EchoFlow {
     async fn call(&self, msg: pb::KaspadMessage) -> bool {
         // echo
         trace!("EchoFlow, got message:{:?}", msg);
-        self.router.route_to_network(msg).await.is_ok()
+        self.router.enqueue(msg).await.is_ok()
     }
 }
 

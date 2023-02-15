@@ -59,7 +59,7 @@ impl Hub {
     pub async fn send(&self, peer_id: Uuid, msg: KaspadMessage) -> Result<(), ConnectionError> {
         let op = self.peers.read().get(&peer_id).cloned();
         if let Some(router) = op {
-            router.route_to_network(msg).await
+            router.enqueue(msg).await
         } else {
             Err(ConnectionError::MissingPeer(peer_id))
         }
@@ -69,7 +69,7 @@ impl Hub {
     pub async fn broadcast(&self, msg: KaspadMessage) {
         let peers = self.peers.read().values().cloned().collect::<Vec<_>>();
         for router in peers {
-            let _ = router.route_to_network(msg.clone()).await;
+            let _ = router.enqueue(msg.clone()).await;
         }
     }
 

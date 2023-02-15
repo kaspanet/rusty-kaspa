@@ -9,6 +9,7 @@ use consensus_core::{
         coinbase::CoinbaseResult,
         tx::{TxResult, TxRuleError},
     },
+    ghostdag::TrustedBlock,
     header::Header,
     mass::transaction_estimated_serialized_size,
     merkle::calc_hash_merkle_root,
@@ -123,6 +124,10 @@ impl ConsensusApi for ConsensusMock {
         unimplemented!()
     }
 
+    fn validate_and_insert_trusted_block(self: Arc<Self>, _tb: TrustedBlock) -> BoxFuture<'static, BlockProcessResult<BlockStatus>> {
+        unimplemented!()
+    }
+
     fn validate_mempool_transaction_and_populate(self: Arc<Self>, mutable_tx: &mut MutableTransaction) -> TxResult<()> {
         // If a predefined status was registered to simulate an error, return it right away
         if let Some(status) = self.statuses.read().get(&mutable_tx.id()) {
@@ -170,5 +175,16 @@ impl ConsensusApi for ConsensusMock {
     fn modify_coinbase_payload(self: Arc<Self>, payload: Vec<u8>, miner_data: &MinerData) -> CoinbaseResult<Vec<u8>> {
         let coinbase_manager = CoinbaseManagerMock::new();
         Ok(coinbase_manager.modify_coinbase_payload(payload, miner_data))
+    }
+
+    fn validate_pruning_proof(
+        self: Arc<Self>,
+        _proof: &consensus_core::pruning::PruningPointProof,
+    ) -> Result<(), consensus_core::errors::pruning::PruningError> {
+        unimplemented!()
+    }
+
+    fn apply_pruning_proof(self: Arc<Self>, _proof: consensus_core::pruning::PruningPointProof, _trusted_set: &[TrustedBlock]) {
+        unimplemented!()
     }
 }

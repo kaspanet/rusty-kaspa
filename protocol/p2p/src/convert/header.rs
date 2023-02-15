@@ -2,7 +2,7 @@ use crate::pb as protowire;
 use consensus_core::{header::Header, BlueWorkType};
 use hashes::Hash;
 
-use super::error::ConversionError;
+use super::{error::ConversionError, hash::try_from_hash_op};
 
 // ----------------------------------------------------------------------------
 // consensus_core to protowire
@@ -31,18 +31,6 @@ impl From<&Header> for protowire::BlockHeader {
 impl From<&Vec<Hash>> for protowire::BlockLevelParents {
     fn from(item: &Vec<Hash>) -> Self {
         Self { parent_hashes: item.iter().map(|h| h.into()).collect() }
-    }
-}
-
-impl From<Hash> for protowire::Hash {
-    fn from(hash: Hash) -> Self {
-        Self { bytes: Vec::from(hash.as_bytes()) }
-    }
-}
-
-impl From<&Hash> for protowire::Hash {
-    fn from(hash: &Hash) -> Self {
-        Self { bytes: Vec::from(hash.as_bytes()) }
     }
 }
 
@@ -75,21 +63,5 @@ impl TryFrom<&protowire::BlockLevelParents> for Vec<Hash> {
     type Error = ConversionError;
     fn try_from(item: &protowire::BlockLevelParents) -> Result<Self, Self::Error> {
         item.parent_hashes.iter().map(|x| x.try_into()).collect()
-    }
-}
-
-pub fn try_from_hash_op(hash: &Option<protowire::Hash>) -> Result<Hash, ConversionError> {
-    if let Some(hash) = hash {
-        Ok(hash.try_into()?)
-    } else {
-        Err(ConversionError::NoneHash)
-    }
-}
-
-impl TryFrom<&protowire::Hash> for Hash {
-    type Error = ConversionError;
-
-    fn try_from(hash: &protowire::Hash) -> Result<Self, Self::Error> {
-        Ok(Self::from_bytes(hash.bytes.as_slice().try_into()?))
     }
 }

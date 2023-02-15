@@ -20,7 +20,7 @@ impl KaspadHandshake {
         debug!("accepted version massage: {version_message:?}");
 
         let verack_message = make_message!(Payload::Verack, VerackMessage {});
-        router.route_to_network(verack_message).await?;
+        router.enqueue(verack_message).await?;
 
         Ok(version_message)
     }
@@ -35,7 +35,7 @@ impl KaspadHandshake {
 
         debug!("sending version massage: {version_message:?}");
         let version_message = make_message!(Payload::Version, version_message);
-        router.route_to_network(version_message).await?;
+        router.enqueue(version_message).await?;
 
         let verack_message = dequeue_with_timeout!(receiver, Payload::Verack)?;
         debug!("accepted verack_message: {verack_message:?}");
@@ -47,7 +47,7 @@ impl KaspadHandshake {
         debug!("starting ready flow");
 
         let sent_ready_message = make_message!(Payload::Ready, ReadyMessage {});
-        router.route_to_network(sent_ready_message).await?;
+        router.enqueue(sent_ready_message).await?;
 
         let recv_ready_message = dequeue_with_timeout!(receiver, Payload::Ready)?;
         debug!("accepted ready message: {recv_ready_message:?}");

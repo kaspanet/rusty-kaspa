@@ -10,9 +10,11 @@ use consensus_core::{
     block::{Block, BlockTemplate, MutableBlock},
     blockstatus::BlockStatus,
     coinbase::MinerData,
-    errors::{block::RuleError, coinbase::CoinbaseResult, tx::TxResult},
+    errors::{block::RuleError, coinbase::CoinbaseResult, pruning::PruningError, tx::TxResult},
+    ghostdag::TrustedBlock,
     header::Header,
     merkle::calc_hash_merkle_root,
+    pruning::PruningPointProof,
     subnets::SUBNETWORK_ID_COINBASE,
     tx::{MutableTransaction, Transaction},
     BlockHashSet,
@@ -177,6 +179,10 @@ impl ConsensusApi for TestConsensus {
         self.consensus().validate_and_insert_block(block, update_virtual)
     }
 
+    fn validate_and_insert_trusted_block(self: Arc<Self>, tb: TrustedBlock) -> BoxFuture<'static, BlockProcessResult<BlockStatus>> {
+        self.consensus().validate_and_insert_trusted_block(tb)
+    }
+
     fn validate_mempool_transaction_and_populate(self: Arc<Self>, transaction: &mut MutableTransaction) -> TxResult<()> {
         self.consensus().validate_mempool_transaction_and_populate(transaction)
     }
@@ -191,6 +197,14 @@ impl ConsensusApi for TestConsensus {
 
     fn modify_coinbase_payload(self: Arc<Self>, payload: Vec<u8>, miner_data: &MinerData) -> CoinbaseResult<Vec<u8>> {
         self.consensus().modify_coinbase_payload(payload, miner_data)
+    }
+
+    fn validate_pruning_proof(self: Arc<Self>, proof: &PruningPointProof) -> Result<(), PruningError> {
+        self.consensus().validate_pruning_proof(proof)
+    }
+
+    fn apply_pruning_proof(self: Arc<Self>, proof: PruningPointProof, trusted_set: &[TrustedBlock]) {
+        self.consensus().apply_pruning_proof(proof, trusted_set)
     }
 }
 

@@ -28,7 +28,7 @@ impl ReceivePingsFlow {
             // We dequeue without a timeout in this case, responding to pings whenever they arrive
             let ping = dequeue!(self.incoming_route, Payload::Ping)?;
             let pong = make_message!(Payload::Pong, PongMessage { nonce: ping.nonce });
-            self.router.route_to_network(pong).await?;
+            self.router.enqueue(pong).await?;
         }
     }
 }
@@ -62,7 +62,7 @@ impl SendPingsFlow {
             let nonce = rand::thread_rng().gen::<u64>();
             let ping = make_message!(Payload::Ping, PingMessage { nonce });
             if let Some(router) = self.router.upgrade() {
-                router.route_to_network(ping).await?;
+                router.enqueue(ping).await?;
             } else {
                 return Err(FlowError::P2pConnectionError(ConnectionError::ChannelClosed));
             }
