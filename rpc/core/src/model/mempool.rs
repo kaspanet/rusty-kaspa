@@ -5,9 +5,9 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct RpcMempoolEntry {
-    fee: u64,
-    transaction: RpcTransaction,
-    is_orphan: bool,
+    pub fee: u64,
+    pub transaction: RpcTransaction,
+    pub is_orphan: bool,
 }
 
 impl RpcMempoolEntry {

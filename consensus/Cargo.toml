@@ -29,9 +29,10 @@ smallvec.workspace = true
 kaspa-utils.workspace = true
 log.workspace = true
 muhash.workspace = true
+parking_lot.workspace = true
+txscript.workspace = true
 rocksdb.workspace = true
 database.workspace = true
-parking_lot.workspace = true
 
 crossbeam-channel = "0.5"
 async-channel = "1.8.0"
@@ -44,6 +45,7 @@ tokio = { workspace = true, features = ["rt", "macros"] }
 serde_json = "1.0"
 flate2 = "1"
 rand_distr = "0.4"
+txscript-errors.workspace = true
 
 [[bench]]
 name = "hash_benchmarks"

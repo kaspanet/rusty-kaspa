@@ -1,5 +1,4 @@
-use crate::model::message::*;
-use crate::stubs::*;
+use crate::{model::message::*, RpcAddress};
 use async_channel::{Receiver, Sender};
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
@@ -9,29 +8,13 @@ use std::fmt::Display;
 pub enum NotificationType {
     BlockAdded,
     VirtualSelectedParentChainChanged,
-    FinalityConflicts,
+    FinalityConflict,
     FinalityConflictResolved,
-    UtxosChanged(Vec<RpcUtxoAddress>),
+    UtxosChanged(Vec<RpcAddress>),
     VirtualSelectedParentBlueScoreChanged,
     VirtualDaaScoreChanged,
-    PruningPointUTXOSetOverride,
+    PruningPointUtxoSetOverride,
     NewBlockTemplate,
-}
-
-impl From<&Notification> for NotificationType {
-    fn from(item: &Notification) -> Self {
-        match item {
-            Notification::BlockAdded(_) => NotificationType::BlockAdded,
-            Notification::VirtualSelectedParentChainChanged(_) => NotificationType::VirtualSelectedParentChainChanged,
-            Notification::FinalityConflict(_) => NotificationType::FinalityConflicts,
-            Notification::FinalityConflictResolved(_) => NotificationType::FinalityConflictResolved,
-            Notification::UtxosChanged(_) => NotificationType::UtxosChanged(vec![]),
-            Notification::VirtualSelectedParentBlueScoreChanged(_) => NotificationType::VirtualSelectedParentBlueScoreChanged,
-            Notification::VirtualDaaScoreChanged(_) => NotificationType::VirtualDaaScoreChanged,
-            Notification::PruningPointUTXOSetOverride(_) => NotificationType::PruningPointUTXOSetOverride,
-            Notification::NewBlockTemplate(_) => NotificationType::NewBlockTemplate,
-        }
-    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
@@ -44,7 +27,7 @@ pub enum Notification {
     UtxosChanged(UtxosChangedNotification),
     VirtualSelectedParentBlueScoreChanged(VirtualSelectedParentBlueScoreChangedNotification),
     VirtualDaaScoreChanged(VirtualDaaScoreChangedNotification),
-    PruningPointUTXOSetOverride(PruningPointUTXOSetOverrideNotification),
+    PruningPointUtxoSetOverride(PruningPointUtxoSetOverrideNotification),
     NewBlockTemplate(NewBlockTemplateNotification),
 }
 
@@ -52,19 +35,42 @@ impl Display for Notification {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Notification::BlockAdded(ref notification) => {
-                write!(f, "BlockAdded notification with hash {}", notification.block.header.hash)
+                write!(f, "BlockAdded notification: block hash {}", notification.block.header.hash)
             }
             Notification::NewBlockTemplate(_) => {
                 write!(f, "NewBlockTemplate notification")
             }
-            _ => write!(f, "Notification type not implemented yet"),
-            // Notification::VirtualSelectedParentChainChanged(_) => todo!(),
-            // Notification::FinalityConflict(_) => todo!(),
-            // Notification::FinalityConflictResolved(_) => todo!(),
-            // Notification::UtxosChanged(_) => todo!(),
-            // Notification::VirtualSelectedParentBlueScoreChanged(_) => todo!(),
-            // Notification::VirtualDaaScoreChanged(_) => todo!(),
-            // Notification::PruningPointUTXOSetOverride(_) => todo!(),
+            Notification::VirtualSelectedParentChainChanged(ref notification) => {
+                write!(
+                    f,
+                    "VirtualSelectedParentChainChanged notification: {} removed blocks, {} added blocks, {} accepted transactions",
+                    notification.removed_chain_block_hashes.len(),
+                    notification.added_chain_block_hashes.len(),
+                    notification.accepted_transaction_ids.len()
+                )
+            }
+            Notification::FinalityConflict(ref notification) => {
+                write!(f, "FinalityConflict notification: violating block hash {}", notification.violating_block_hash)
+            }
+            Notification::FinalityConflictResolved(ref notification) => {
+                write!(f, "FinalityConflictResolved notification: finality block hash {}", notification.finality_block_hash)
+            }
+            Notification::UtxosChanged(ref notification) => {
+                write!(f, "UtxosChanged notification: {} removed, {} added", notification.removed.len(), notification.added.len())
+            }
+            Notification::VirtualSelectedParentBlueScoreChanged(ref notification) => {
+                write!(
+                    f,
+                    "VirtualSelectedParentBlueScoreChanged notification: virtual selected parent blue score {}",
+                    notification.virtual_selected_parent_blue_score
+                )
+            }
+            Notification::VirtualDaaScoreChanged(ref notification) => {
+                write!(f, "VirtualDaaScoreChanged notification: virtual DAA score {}", notification.virtual_daa_score)
+            }
+            Notification::PruningPointUtxoSetOverride(_) => {
+                write!(f, "PruningPointUtxoSetOverride notification")
+            }
         }
     }
 }

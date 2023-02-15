@@ -41,27 +41,12 @@ u32_try_from! {
         // Subscription commands for starting/stopping notifications
         NotifyBlockAdded,
         NotifyNewBlockTemplate,
-
         NotifyUtxosChanged,
-        StopNotifyingUtxosChanged,
-
         NotifyPruningPointUtxoSetOverride,
-        StopNotifyingPruningPointUtxoSetOverride,
-
+        NotifyFinalityConflict,
         NotifyVirtualDaaScoreChanged,
         NotifyVirtualSelectedParentChainChanged,
         NotifyVirtualSelectedParentBlueScoreChanged,
-        NotifyFinalityConflicts,
-
-        // gRPC v1 notification messages
-        // TODO @tiram - review handling
-        // FinalityConflictNotification,
-        // FinalityConflictResolvedNotification,
-        // UtxosChangedNotification,
-        // VirtualSelectedParentBlueScoreChangedNotification,
-        // PruningPointUtxoSetOverrideNotification,
-        // VirtualDaaScoreChangedNotification,
-        // VirtualSelectedParentChainChangedNotification,
 
         // Server to client notification
         Notification,

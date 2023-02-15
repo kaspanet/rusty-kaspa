@@ -1,4 +1,4 @@
-use crate::notify::collector::CollectorFrom;
+use crate::notify::{collector::CollectorFrom, connection::ChannelConnection};
 use async_channel::{Receiver, Sender};
 use event_processor::notify::Notification as EventNotification;
 use kaspa_utils::channel::Channel;

@@ -16,12 +16,16 @@ members = [
     "indexes/utxoindex",
     "event_processor",
     "rpc/core",
-    "rpc/grpc",
+    "rpc/grpc/core",
+    "rpc/grpc/client",
+    "rpc/grpc/server",
     "mining",
     "protocol/p2p",
     "protocol/flows",
     "components/addressmanager",
     "database",
+    "crypto/txscript",
+    "crypto/txscript/errors",
 ]
 
 [workspace.package]
@@ -47,11 +51,15 @@ pow = { path = "consensus/pow" }
 event-processor = {path = "event_processor" }
 utxoindex = { path = "indexes/utxoindex" }
 kaspa-utils = { path = "utils" }
-rpc-core = { path = "rpc/core" }
-rpc-grpc = { path = "rpc/grpc" }
+kaspa-rpc-core = { path = "rpc/core" }
+kaspa-grpc-core = { path = "rpc/grpc/core" }
+kaspa-grpc-client = { path = "rpc/grpc/client" }
+kaspa-grpc-server = { path = "rpc/grpc/server" }
 p2p-lib = { path = "protocol/p2p" }
 p2p-flows = { path = "protocol/flows" }
 mining = { path = "mining" }
+txscript = { path = "crypto/txscript" }
+txscript-errors = { path = "crypto/txscript/errors" }
 addressmanager = { path = "components/addressmanager" }
 database = { path = "database" }
 
@@ -62,6 +70,8 @@ rand = "0.8"
 rand_chacha = "0.3"
 rayon = "1"
 tempfile = "3.3"
+blake2b_simd = "1"
+sha2 = "0.10"
 serde = { version = "1", features = ["derive", "rc"] }
 futures-util = { version = "0.3", default-features = false, features = [
     "alloc",
@@ -71,6 +81,7 @@ tokio = { version = "1", features = ["sync"] }
 wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
 criterion = { version = "0.4", default-features = false }
 indexmap = "1.9.1"
+parking_lot = "0.12"
 smallvec = { version = "1.10.0", features = ["serde"] }
 borsh = "0.9.3"
 clap = { version = "4.0.23", features = ["derive", "string"] }
@@ -79,4 +90,3 @@ derive_more = { version = "0.99" }
 log = "0.4"
 cfg-if = "1.0.0"
 rocksdb = "0.19"
-parking_lot = "0.12"
