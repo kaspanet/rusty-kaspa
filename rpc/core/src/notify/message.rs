@@ -7,12 +7,12 @@ use std::sync::Arc;
 
 #[derive(Clone, Debug)]
 #[allow(clippy::large_enum_variant)] //TODO: solution: use targeted Arcs on large variants in `rpc-core::api::notifications::Notification` to reduce size
-pub(crate) enum DispatchMessage<T> 
+pub(crate) enum DispatchMessage<T>
 where
     T: Connection,
 {
     Send(Notification),
-    AddListener(ListenerID, Arc<ListenerSenderSide>),
+    AddListener(ListenerID, Arc<ListenerSenderSide<T>>),
     RemoveListener(ListenerID),
     Shutdown,
 }

@@ -46,7 +46,7 @@ where
     async fn stop(self: Arc<Self>) -> Result<()>;
 }
 
-pub type DynCollector = Arc<dyn Collector>;
+pub type DynCollector<T> = Arc<dyn Collector<T>>;
 
 /// A notification [`Collector`] that receives [`T`] from a channel,
 /// converts it into a [`Notification`] and sends it to a its
@@ -54,7 +54,7 @@ pub type DynCollector = Arc<dyn Collector>;
 #[derive(Debug)]
 pub struct CollectorFrom<T, TCx>
 where
-    T: Send + Sync + 'static + Clone + Sized + Into<Notification>,
+    T: Send + Sync + 'static + Sized + Into<Notification> + Debug,
     TCx: Connection,
 {
     recv_channel: CollectorNotificationReceiver<T>,
@@ -69,7 +69,7 @@ where
 
 impl<T, TCx> CollectorFrom<T, TCx>
 where
-    T: Send + Sync + 'static + Debug + Clone + Sized + Into<Notification>,
+    T: Send + Sync + 'static + Sized + Into<Notification> + Debug,
     TCx: Connection,
 {
     pub fn new(recv_channel: CollectorNotificationReceiver<T>) -> Self {
@@ -137,7 +137,7 @@ where
 #[async_trait]
 impl<T, TCx> collector::Collector<TCx> for CollectorFrom<T, TCx>
 where
-    T: Send + Sync + 'static + Debug + Clone + Into<Notification>,
+    T: Send + Sync + 'static + Into<Notification> + Debug,
     TCx: Connection,
 {
     fn start(self: Arc<Self>, notifier: Arc<Notifier<TCx>>) {

@@ -25,7 +25,6 @@ use async_channel::unbounded;
 use event_processor::processor::EventProcessor;
 use kaspa_core::{info, trace};
 use kaspa_grpc_server::GrpcServer;
-use kaspa_rpc_core::server::collector::ConsensusNotificationChannel;
 use kaspa_rpc_core::server::RpcCoreServer;
 use p2p_flows::service::P2pService;
 

@@ -3,7 +3,7 @@ use async_channel::{Receiver, Sender};
 use event_processor::notify::Notification as EventNotification;
 use kaspa_utils::channel::Channel;
 
-pub(crate) type EventNotificationCollector = CollectorFrom<EventNotification>;
+pub(crate) type EventNotificationCollector = CollectorFrom<EventNotification, ChannelConnection>;
 
 pub type EventNotificationChannel = Channel<EventNotification>;
 pub type EventNotificationSender = Sender<EventNotification>;

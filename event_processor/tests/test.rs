@@ -37,17 +37,17 @@ async fn test_virtual_change_set_event() {
     let mut to_add_collection = UtxoCollection::new();
     let mut to_remove_collection = UtxoCollection::new();
     for _ in 0..2 {
-        to_add_collection.insert(generate_random_outpoint(&mut rng.clone()), generate_random_utxo(&mut rng.clone()));
-        to_remove_collection.insert(generate_random_outpoint(&mut rng.clone()), generate_random_utxo(&mut rng.clone()));
+        to_add_collection.insert(generate_random_outpoint(rng), generate_random_utxo(rng));
+        to_remove_collection.insert(generate_random_outpoint(rng), generate_random_utxo(rng));
     }
 
     let test_event = Arc::new(VirtualChangeSetEvent {
         selected_parent_utxo_diff: Arc::new(UtxoDiff { add: to_add_collection, remove: to_remove_collection }),
-        parents: Arc::new(generate_random_hashes(&mut rng.clone(), 2)),
+        parents: Arc::new(generate_random_hashes(rng, 2)),
         selected_parent_blue_score: rng.gen(),
         daa_score: rng.gen(),
-        mergeset_blues: Arc::new(generate_random_hashes(&mut rng.clone(), 2)),
-        mergeset_reds: Arc::new(generate_random_hashes(&mut rng.clone(), 2)),
+        mergeset_blues: Arc::new(generate_random_hashes(rng, 2)),
+        mergeset_reds: Arc::new(generate_random_hashes(rng, 2)),
         accepted_tx_ids: Arc::new(generate_random_hashes(rng, 2)),
     });
 
@@ -174,7 +174,7 @@ async fn test_block_added_event() {
 
     let rng = &mut StdRng::seed_from_u64(42);
 
-    let test_event = Arc::new(BlockAddedEvent { block: generate_random_block(&mut rng.clone(), 2, 2, 2, 2) });
+    let test_event = Arc::new(BlockAddedEvent { block: generate_random_block(rng, 2, 2, 2, 2) });
 
     let worker = event_processor.clone();
     tokio::spawn(async move { worker.run().await.expect("expecting run") }); //run processor

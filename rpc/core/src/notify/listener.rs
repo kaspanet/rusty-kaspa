@@ -122,7 +122,7 @@ where
         }
     }
 
-    pub fn build_utxos_changed_notification(&self, notification: &Arc<Notification>) -> Option<Arc<Notification>> {
+    pub fn build_utxos_changed_notification(&self, notification: &Notification) -> Option<Notification> {
         // TODO: actually build a filtered Notification::UtxosChanged
         match self.filter.matches(notification.clone()) {
             true => Some(notification.clone()),
@@ -175,8 +175,8 @@ struct FilterUtxoAddress {
 }
 
 impl InnerFilter for FilterUtxoAddress {
-    fn matches(&self, notification: Arc<Notification>) -> bool {
-        if let Notification::UtxosChanged(ref notification) = *notification {
+    fn matches(&self, notification: Notification) -> bool {
+        if let Notification::UtxosChanged(ref notification) = notification {
             // TODO: redesign the filter
             // We want to limit the notification contents to the watched addresses only.
             return notification.added.iter().any(|x| self.utxos_addresses.contains(&x.address))
