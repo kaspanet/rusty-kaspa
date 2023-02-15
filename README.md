@@ -9,7 +9,7 @@ Work in progress to implement the Kaspa full-node and related libraries in the R
   - Windows: [protoc-21.10-win64.zip](https://github.com/protocolbuffers/protobuf/releases/download/v21.10/protoc-21.10-win64.zip) and add `bin` dir to `Path`
   - MacOS: `brew install protobuf`
 - Install the [clang toolchain](https://clang.llvm.org/) (required for RocksDB)
-  - Linux: `sudo apt intall clang`
+  - Linux: `sudo apt install clang`
   - Windows: [LLVM-15.0.6-win64.exe](https://github.com/llvm/llvm-project/releases/download/llvmorg-15.0.6/LLVM-15.0.6-win64.exe) and set `LIBCLANG_PATH` env var pointing to the `bin` dir of the llvm installation
   - MacOS: Please see [Installing clang toolchain on MacOS](#installing-clang-toolchain-on-macos)
 - Install the [rust toolchain](https://rustup.rs/)
