@@ -1,4 +1,3 @@
-use parking_lot::RwLock;
 use std::sync::Arc;
 
 use consensus_core::{tx::ScriptPublicKeys, BlockHashSet};
@@ -6,28 +5,28 @@ use database::prelude::{StoreError, DB};
 use kaspa_core::trace;
 
 use crate::{
-    errors::UtxoIndexError,
-    model::{UtxoChanges, UtxoSetByScriptPublicKey},
+    model::UtxoSetByScriptPublicKey,
     stores::{
         indexed_utxos::{DbUtxoSetByScriptPublicKeyStore, UtxoSetByScriptPublicKeyStore, UtxoSetByScriptPublicKeyStoreReader},
         supply::{CirculatingSupplyStore, CirculatingSupplyStoreReader, DbCirculatingSupplyStore},
         tips::{DbUtxoIndexTipsStore, UtxoIndexTipsStore, UtxoIndexTipsStoreReader},
     },
+    IDENT,
 };
 
 #[derive(Clone)]
-pub struct StoreManager {
-    utxoindex_tips_store: Arc<RwLock<DbUtxoIndexTipsStore>>,
-    circulating_supply_store: Arc<RwLock<DbCirculatingSupplyStore>>,
-    utxos_by_script_public_key_store: Arc<RwLock<DbUtxoSetByScriptPublicKeyStore>>,
+pub struct Store {
+    utxoindex_tips_store: DbUtxoIndexTipsStore,
+    circulating_supply_store: DbCirculatingSupplyStore,
+    utxos_by_script_public_key_store: DbUtxoSetByScriptPublicKeyStore,
 }
 
-impl StoreManager {
+impl Store {
     pub fn new(db: Arc<DB>) -> Self {
         Self {
-            utxoindex_tips_store: Arc::new(RwLock::new(DbUtxoIndexTipsStore::new(db.clone()))),
-            circulating_supply_store: Arc::new(RwLock::new(DbCirculatingSupplyStore::new(db.clone()))),
-            utxos_by_script_public_key_store: Arc::new(RwLock::new(DbUtxoSetByScriptPublicKeyStore::new(db, 0))),
+            utxoindex_tips_store: DbUtxoIndexTipsStore::new(db.clone()),
+            circulating_supply_store: DbCirculatingSupplyStore::new(db.clone()),
+            utxos_by_script_public_key_store: DbUtxoSetByScriptPublicKeyStore::new(db, 0),
         }
     }
 
@@ -35,59 +34,81 @@ impl StoreManager {
         &self,
         script_public_keys: &ScriptPublicKeys,
     ) -> Result<UtxoSetByScriptPublicKey, StoreError> {
-        let reader = self.utxos_by_script_public_key_store.read();
-        reader.get_utxos_from_script_public_keys(script_public_keys)
+        self.utxos_by_script_public_key_store.get_utxos_from_script_public_keys(script_public_keys)
     }
 
-    pub fn update_utxo_state(&self, utxo_diff_by_script_public_key: &UtxoChanges) -> Result<(), StoreError> {
-        let mut writer = self.utxos_by_script_public_key_store.write();
-        writer.write_diff(utxo_diff_by_script_public_key)
-    }
+    pub fn update_utxo_state(
+        &mut self,
+        to_add: Option<&UtxoSetByScriptPublicKey>,
+        to_remove: Option<&UtxoSetByScriptPublicKey>,
+        try_reset_on_err: bool,
+    ) -> Result<(), StoreError> {
+        let res = match to_remove {
+            Some(utxo_collection) => self.utxos_by_script_public_key_store.remove_utxo_entries(utxo_collection),
+            None => Ok(()),
+        };
 
-    pub fn add_utxo_entries(&self, utxo_set_by_script_public_key: &UtxoSetByScriptPublicKey) -> Result<(), StoreError> {
-        let mut writer = self.utxos_by_script_public_key_store.write();
-        writer.add_utxo_entries(utxo_set_by_script_public_key)
+        if res.is_err() {
+            if try_reset_on_err {
+                self.delete_all()?;
+            }
+            return res;
+        }
+
+        let res = match to_add {
+            Some(utxo_collection) => self.utxos_by_script_public_key_store.add_utxo_entries(utxo_collection),
+            None => Ok(()),
+        };
+
+        if try_reset_on_err && res.is_err() {
+            self.delete_all()?;
+        };
+        res
     }
 
     pub fn get_circulating_supply(&self) -> Result<u64, StoreError> {
-        let reader = self.circulating_supply_store.read();
-        reader.get()
+        self.circulating_supply_store.get()
     }
 
-    pub fn update_circulating_supply(&self, circulating_supply_diff: i64) -> Result<u64, StoreError> {
-        let mut writer = self.circulating_supply_store.write();
-        writer.add_circulating_supply_diff(circulating_supply_diff)
+    pub fn update_circulating_supply(&mut self, circulating_supply_diff: i64, try_reset_on_err: bool) -> Result<u64, StoreError> {
+        let res = self.circulating_supply_store.add_circulating_supply_diff(circulating_supply_diff);
+        if try_reset_on_err && res.is_err() {
+            self.delete_all()?;
+        }
+        res
     }
 
-    pub fn insert_circulating_supply(&self, circulating_supply: u64) -> Result<(), StoreError> {
-        let mut writer = self.circulating_supply_store.write();
-        writer.insert(circulating_supply)
+    pub fn insert_circulating_supply(&mut self, circulating_supply: u64, try_reset_on_err: bool) -> Result<(), StoreError> {
+        let res = self.circulating_supply_store.insert(circulating_supply);
+        if try_reset_on_err && res.is_err() {
+            self.delete_all()?;
+        }
+        res
     }
 
     pub fn get_tips(&self) -> Result<Arc<BlockHashSet>, StoreError> {
-        let reader = self.utxoindex_tips_store.read();
-        reader.get()
+        self.utxoindex_tips_store.get()
     }
 
-    pub fn insert_tips(&self, tips: BlockHashSet) -> Result<(), StoreError> {
-        let mut writer = self.utxoindex_tips_store.write();
-        writer.set_tips(tips)
+    pub fn set_tips(&mut self, tips: BlockHashSet, try_reset_on_err: bool) -> Result<(), StoreError> {
+        let res = self.utxoindex_tips_store.set_tips(tips);
+        if try_reset_on_err && res.is_err() {
+            self.delete_all()?;
+        }
+        res
     }
 
     /// Resets the utxoindex database:
-    pub fn delete_all(&self) -> Result<(), UtxoIndexError> {
+    pub fn delete_all(&mut self) -> Result<(), StoreError> {
         // TODO: explore possibility of deleting and replacing whole db, currently there is an issue because of file lock and db being in an arc.
-        trace!("clearing utxoindex database");
-
-        // Hold all individual store locks in-place
-        let mut utxoindex_tips_store = self.utxoindex_tips_store.write();
-        let mut circulating_suppy_store = self.circulating_supply_store.write();
-        let mut utxos_by_script_public_key_store = self.utxos_by_script_public_key_store.write();
+        trace!("[{0}] attempting to clear utxoindex database...", IDENT);
 
         // Clear all
-        utxoindex_tips_store.remove()?;
-        circulating_suppy_store.remove()?;
-        utxos_by_script_public_key_store.delete_all()?;
+        self.utxoindex_tips_store.remove()?;
+        self.circulating_supply_store.remove()?;
+        self.utxos_by_script_public_key_store.delete_all()?;
+
+        trace!("[{0}] clearing utxoindex database - success!", IDENT);
 
         Ok(())
     }

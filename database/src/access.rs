@@ -166,9 +166,9 @@ where
         read_opts.set_iterate_range(rocksdb::PrefixRange(db_key.as_ref()));
 
         let mut db_iterator = match seek_from {
-            Some(seek_key) => self
-                .db
-                .iterator_opt(IteratorMode::From(DbKey::new(&self.prefix, seek_key).as_ref(), Direction::Forward), read_opts),
+            Some(seek_key) => {
+                self.db.iterator_opt(IteratorMode::From(DbKey::new(&self.prefix, seek_key).as_ref(), Direction::Forward), read_opts)
+            }
             None => self.db.iterator_opt(IteratorMode::Start, read_opts),
         };
 

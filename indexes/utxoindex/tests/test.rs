@@ -24,17 +24,17 @@ use utxoindex::{
     UtxoIndex,
 };
 
-mod test_helpers;
-use test_helpers::virtual_change_emulator::VirtualChangeEmulator;
+mod testutils;
+use testutils::virtual_change_emulator::VirtualChangeEmulator;
 
 /// TODO: use proper Simnet when implemented.
 #[test]
 fn test_utxoindex() {
     kaspa_core::log::try_init_logger("INFO");
 
-    let resync_utxo_collection_size = 10_000;
-    let update_utxo_collection_size = 1_000;
-    let script_public_key_pool_size = 200;
+    let resync_utxo_collection_size = 3_000;
+    let update_utxo_collection_size = 300;
+    let script_public_key_pool_size = 50;
 
     // Initialize all components, and virtual change emulator proxy.
     let mut virtual_change_emulator = VirtualChangeEmulator::new();
@@ -169,8 +169,8 @@ fn test_utxoindex() {
     assert_eq!(utxoindex.get_circulating_supply().expect("expected circulating supply"), virtual_change_emulator.circulating_supply);
     assert_eq!(*utxoindex.get_utxo_index_tips().expect("expected circulating supply"), virtual_change_emulator.tips);
 
-    //test if resync clears db. 
-    
+    //test if resync clears db.
+
     utxoindex.resync().expect("expected resync");
 
     // Since we changed virtual state in the emulator, but not in test-consensus db,

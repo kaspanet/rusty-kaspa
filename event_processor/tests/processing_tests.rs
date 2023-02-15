@@ -1,5 +1,5 @@
 use async_channel::unbounded;
-use rand::Rng;
+use rand::{rngs::StdRng, Rng, SeedableRng};
 use std::sync::Arc;
 
 use consensus::{
@@ -32,7 +32,7 @@ async fn test_virtual_change_set_event() {
     let worker = event_processor.clone();
     tokio::spawn(async move { worker.run().await.expect("expecting run") }); //run processor
 
-    let rng = &mut rand::thread_rng();
+    let rng = &mut StdRng::seed_from_u64(42);
 
     let mut to_add_collection = UtxoCollection::new();
     let mut to_remove_collection = UtxoCollection::new();
@@ -172,7 +172,7 @@ async fn test_block_added_event() {
     let (event_processor_send, test_recv) = unbounded::<Notification>();
     let event_processor = EventProcessor::new(Arc::new(None), consensus_recv, event_processor_send);
 
-    let rng = &mut rand::thread_rng();
+    let rng = &mut StdRng::seed_from_u64(42);
 
     let test_event = Arc::new(BlockAddedEvent { block: generate_random_block(&mut rng.clone(), 2, 2, 2, 2) });
 

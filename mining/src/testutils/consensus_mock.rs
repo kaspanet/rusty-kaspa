@@ -180,6 +180,7 @@ impl ConsensusApi for ConsensusMock {
         self: Arc<Self>,
         _from_outpoint: Option<TransactionOutpoint>,
         _limit: usize,
+        _skip_first: bool,
     ) -> Vec<(TransactionOutpoint, UtxoEntry)> {
         unimplemented!()
     } //Needed for compiler

@@ -1,5 +1,6 @@
 #[cfg(test)]
 use rand::Rng;
+use rand::{rngs::StdRng, SeedableRng};
 use std::sync::Arc;
 
 use consensus::test_helpers::*;
@@ -33,7 +34,7 @@ impl VirtualChangeEmulator {
     }
 
     pub fn fill_utxo_collection(&mut self, amount: usize, script_public_key_pool_size: usize) {
-        let rng = &mut rand::thread_rng();
+        let rng = &mut StdRng::seed_from_u64(43);
         self.script_public_key_pool
             .extend((0..script_public_key_pool_size).map(|_| generate_random_p2pk_script_public_key(&mut rng.clone())));
         self.utxo_collection =
@@ -45,12 +46,12 @@ impl VirtualChangeEmulator {
     }
 
     pub fn change_virtual_state(&mut self, remove_amount: usize, add_amount: usize, tip_amount: usize) {
-        let rng = &mut rand::thread_rng();
+        let rng = &mut StdRng::seed_from_u64(42);
 
         let mut new_circulating_supply_diff: CirculatingSupplyDiff = 0;
         self.virtual_state.selected_parent_utxo_diff = Arc::new(UtxoDiff::new(
             UtxoCollection::from_iter(
-                generate_random_utxos_from_script_public_key_pool(&mut rng.clone(), add_amount, self.script_public_key_pool.clone())
+                generate_random_utxos_from_script_public_key_pool(rng, add_amount, self.script_public_key_pool.clone())
                     .into_iter()
                     .map(|(k, v)| {
                         new_circulating_supply_diff += v.amount as CirculatingSupplyDiff;
@@ -66,7 +67,7 @@ impl VirtualChangeEmulator {
         self.utxo_collection.retain(|k, _| !self.virtual_state.selected_parent_utxo_diff.remove.contains_key(k));
         self.utxo_collection.extend(self.virtual_state.selected_parent_utxo_diff.add.iter().map(move |(k, v)| (*k, v.clone())));
 
-        let new_tips = Arc::new(generate_random_hashes(&mut rng.clone(), tip_amount));
+        let new_tips = Arc::new(generate_random_hashes(rng, tip_amount));
 
         self.virtual_state.parents = new_tips.clone();
         self.tips = BlockHashSet::from_iter(new_tips.iter().cloned());
