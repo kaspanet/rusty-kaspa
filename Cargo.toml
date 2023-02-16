@@ -13,6 +13,7 @@ members = [
     "crypto/muhash",
     "crypto/addresses",
     "crypto/merkle",
+    "notify",
     "rpc/core",
     "rpc/grpc/core",
     "rpc/grpc/client",
@@ -47,6 +48,7 @@ addresses = { path = "crypto/addresses" }
 merkle = { path = "crypto/merkle" }
 pow = { path = "consensus/pow" }
 kaspa-utils = { path = "utils" }
+kaspa-notify = { path = "notify" }
 kaspa-rpc-core = { path = "rpc/core" }
 kaspa-grpc-core = { path = "rpc/grpc/core" }
 kaspa-grpc-client = { path = "rpc/grpc/client" }

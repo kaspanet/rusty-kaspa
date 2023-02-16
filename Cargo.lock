@@ -1484,6 +1484,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "kaspa-notify"
+version = "0.1.0"
+dependencies = [
+ "addresses",
+ "async-channel",
+ "async-trait",
+ "borsh",
+ "cfg-if",
+ "consensus-core",
+ "derive_more",
+ "faster-hex",
+ "futures",
+ "futures-util",
+ "hashes",
+ "kaspa-core",
+ "kaspa-utils",
+ "log",
+ "math",
+ "rand 0.8.5",
+ "serde",
+ "smallvec",
+ "thiserror",
+ "triggered",
+ "workflow-core",
+]
+
+[[package]]
 name = "kaspa-rpc-core"
 version = "0.1.0"
 dependencies = [
