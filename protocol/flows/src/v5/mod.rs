@@ -3,7 +3,7 @@ use self::{
     ping::{ReceivePingsFlow, SendPingsFlow},
 };
 use crate::ctx::FlowContext;
-use kaspa_core::{warn, debug};
+use kaspa_core::{debug, warn};
 use p2p_lib::{
     make_message,
     pb::{kaspad_message::Payload as KaspadMessagePayload, AddressesMessage},

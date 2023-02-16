@@ -854,7 +854,7 @@ async fn json_test(file_path: &str) {
             gzip_file_lines(&main_path.join("past-pps.json.gz")).map(|line| json_line_to_block(line).header).collect_vec();
         let pruning_point = past_pruning_points.last().unwrap().hash;
 
-        consensus.consensus.import_pruning_points(past_pruning_points);
+        consensus.consensus.as_ref().import_pruning_points(past_pruning_points);
 
         let mut last_time = SystemTime::now();
         let mut last_index: usize = 0;
@@ -964,7 +964,7 @@ async fn json_concurrency_test(file_path: &str) {
             gzip_file_lines(&main_path.join("past-pps.json.gz")).map(|line| json_line_to_block(line).header).collect_vec();
         let pruning_point = past_pruning_points.last().unwrap().hash;
 
-        consensus.consensus.import_pruning_points(past_pruning_points);
+        consensus.consensus.as_ref().import_pruning_points(past_pruning_points);
 
         let mut last_time = SystemTime::now();
         let mut last_index: usize = 0;

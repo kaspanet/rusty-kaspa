@@ -206,6 +206,10 @@ impl ConsensusApi for TestConsensus {
     fn apply_pruning_proof(self: Arc<Self>, proof: PruningPointProof, trusted_set: &[TrustedBlock]) {
         self.consensus().apply_pruning_proof(proof, trusted_set)
     }
+
+    fn import_pruning_points(self: Arc<Self>, pruning_points: consensus_core::pruning::PruningPointsList) {
+        self.consensus().import_pruning_points(pruning_points)
+    }
 }
 
 impl Service for TestConsensus {

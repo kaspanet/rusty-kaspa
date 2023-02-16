@@ -12,7 +12,7 @@ use crate::{
         tx::TxResult,
     },
     ghostdag::TrustedBlock,
-    pruning::PruningPointProof,
+    pruning::{PruningPointProof, PruningPointsList},
     tx::{MutableTransaction, Transaction},
 };
 
@@ -41,6 +41,8 @@ pub trait ConsensusApi: Send + Sync {
     fn validate_pruning_proof(self: Arc<Self>, proof: &PruningPointProof) -> Result<(), PruningError>;
 
     fn apply_pruning_proof(self: Arc<Self>, proof: PruningPointProof, trusted_set: &[TrustedBlock]);
+
+    fn import_pruning_points(self: Arc<Self>, pruning_points: PruningPointsList);
 }
 
 pub type DynConsensus = Arc<dyn ConsensusApi>;

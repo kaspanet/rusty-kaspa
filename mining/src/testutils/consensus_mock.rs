@@ -187,4 +187,8 @@ impl ConsensusApi for ConsensusMock {
     fn apply_pruning_proof(self: Arc<Self>, _proof: consensus_core::pruning::PruningPointProof, _trusted_set: &[TrustedBlock]) {
         unimplemented!()
     }
+
+    fn import_pruning_points(self: Arc<Self>, _pruning_points: consensus_core::pruning::PruningPointsList) {
+        unimplemented!()
+    }
 }

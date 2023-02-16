@@ -65,7 +65,7 @@ impl IbdFlow {
             .await?;
 
         let msg = dequeue_with_timeout!(self.incoming_route, Payload::PruningPoints)?;
-        let _pruning_points: PruningPointsList = msg.try_into()?;
+        let pruning_points: PruningPointsList = msg.try_into()?;
 
         // TODO: verify last pruning point header hashes to proof_pruning_point
         // TODO: import pruning points into consensus
@@ -86,6 +86,21 @@ impl IbdFlow {
 
         let trusted_set = build_trusted_set(pkg, entries)?;
         consensus.clone().apply_pruning_proof(proof, &trusted_set);
+        consensus.clone().import_pruning_points(pruning_points);
+
+        let mut last_time = std::time::SystemTime::now();
+        let mut last_index: usize = 0;
+        for (i, tb) in trusted_set.into_iter().enumerate() {
+            let now = std::time::SystemTime::now();
+            let passed = now.duration_since(last_time).unwrap();
+            if passed > Duration::new(1, 0) {
+                info!("Processed {} trusted blocks in the last {} seconds (total {})", i - last_index, passed.as_secs(), i);
+                last_time = now;
+                last_index = i;
+            }
+            consensus.clone().validate_and_insert_trusted_block(tb).await.unwrap();
+        }
+        info!("Done processing trusted blocks");
 
         Ok(())
     }

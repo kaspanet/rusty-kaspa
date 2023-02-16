@@ -46,9 +46,8 @@ use consensus_core::{
     api::ConsensusApi,
     errors::pruning::PruningError,
     ghostdag::TrustedBlock,
-    header::Header,
     muhash::MuHashExtensions,
-    pruning::PruningPointProof,
+    pruning::{PruningPointProof, PruningPointsList},
     tx::{TransactionOutpoint, UtxoEntry},
     {
         block::{Block, BlockTemplate},
@@ -494,7 +493,7 @@ impl Consensus {
         async { rx.await.unwrap() }
     }
 
-    pub fn import_pruning_points(&self, pruning_points: Vec<Arc<Header>>) {
+    pub fn import_pruning_points(&self, pruning_points: PruningPointsList) {
         self.pruning_proof_manager.import_pruning_points(&pruning_points)
     }
 
@@ -595,6 +594,10 @@ impl ConsensusApi for Consensus {
 
     fn apply_pruning_proof(self: Arc<Self>, proof: PruningPointProof, trusted_set: &[TrustedBlock]) {
         self.pruning_proof_manager.apply_proof(proof, trusted_set)
+    }
+
+    fn import_pruning_points(self: Arc<Self>, pruning_points: PruningPointsList) {
+        self.as_ref().import_pruning_points(pruning_points)
     }
 }
 
