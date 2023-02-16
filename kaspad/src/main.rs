@@ -3,15 +3,16 @@ extern crate core;
 extern crate hashes;
 
 use clap::Parser;
+use consensus::consensus::test_consensus::{create_or_load_existing_db, delete_db};
+use consensus_core::networktype::NetworkType;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::monitor::ConsensusMonitor;
-use consensus::config::Config;
+use consensus::config::ConfigBuilder;
 use consensus::consensus::Consensus;
-use consensus::model::stores::DB;
-use consensus::params::DEVNET_PARAMS;
+use consensus::params::{DEVNET_PARAMS, MAINNET_PARAMS};
 use kaspa_core::{core::Core, signals::Signals, task::runtime::AsyncRuntime};
 use kaspa_core::{info, trace};
 use kaspa_grpc_server::GrpcServer;
@@ -43,6 +44,21 @@ struct Args {
     ///  -- You may also specify <subsystem>=<level>,<subsystem2>=<level>,... to set the log level for individual subsystems
     #[arg(short = 'd', long = "loglevel", default_value = "info")]
     log_level: String,
+
+    #[arg(long = "connect")]
+    connect: Option<String>,
+
+    #[arg(long = "reset-db")]
+    reset_db: bool,
+
+    #[arg(long = "testnet")]
+    testnet: bool,
+
+    #[arg(long = "devnet")]
+    devnet: bool,
+
+    #[arg(long = "simnet")]
+    simnet: bool,
 }
 
 fn get_home_dir() -> PathBuf {
@@ -72,16 +88,29 @@ pub fn main() {
     // Configure the panic behavior
     kaspa_core::panic::configure_panic();
 
+    let network_type = match (args.testnet, args.devnet, args.simnet) {
+        (false, false, false) => NetworkType::Mainnet,
+        (true, false, false) => NetworkType::Testnet,
+        (false, true, false) => NetworkType::Devnet,
+        (false, false, true) => NetworkType::Simnet,
+        _ => panic!("only a single net should be activated"),
+    };
+
     // TODO: Refactor all this quick-and-dirty code
     let app_dir = args
         .app_dir
         .unwrap_or_else(|| get_app_dir().as_path().to_str().unwrap().to_string())
         .replace('~', get_home_dir().as_path().to_str().unwrap());
     let app_dir = if app_dir.is_empty() { get_app_dir() } else { PathBuf::from(app_dir) };
-    let db_dir = app_dir.join(DEFAULT_DATA_DIR);
+    let db_dir = app_dir.join(format!("kaspa-{}", network_type)).join(DEFAULT_DATA_DIR); // TODO: append testnet number
+
     assert!(!db_dir.to_str().unwrap().is_empty());
     info!("Application directory: {}", app_dir.display());
     info!("Data directory: {}", db_dir.display());
+
+    if args.reset_db {
+        delete_db(db_dir.clone());
+    }
     fs::create_dir_all(db_dir.as_path()).unwrap();
     let grpc_server_addr = args.rpc_listen.unwrap_or_else(|| "127.0.0.1:16610".to_string()).parse().unwrap();
 
@@ -89,15 +118,22 @@ pub fn main() {
 
     // ---
 
-    let config = Config::new(DEVNET_PARAMS); // TODO: network type
-    let db = Arc::new(DB::open_default(db_dir.to_str().unwrap()).unwrap());
+    let config = match network_type {
+        // TODO: TEMP, until staging consensus is managed, skip adding genesis on mainnet
+        NetworkType::Mainnet => ConfigBuilder::new(MAINNET_PARAMS).skip_adding_genesis().build(),
+        NetworkType::Testnet => unimplemented!("testnet params"),
+        NetworkType::Devnet => ConfigBuilder::new(DEVNET_PARAMS).build(),
+        NetworkType::Simnet => unimplemented!("simnet params"),
+    };
+
+    let db = create_or_load_existing_db(db_dir);
     let consensus = Arc::new(Consensus::new(db, &config));
     let monitor = Arc::new(ConsensusMonitor::new(consensus.processing_counters().clone()));
 
     let notification_channel = ConsensusNotificationChannel::default();
     let rpc_core_server = Arc::new(RpcCoreServer::new(consensus.clone(), notification_channel.receiver()));
     let grpc_server = Arc::new(GrpcServer::new(grpc_server_addr, rpc_core_server.service()));
-    let p2p_service = Arc::new(P2pService::new(consensus.clone()));
+    let p2p_service = Arc::new(P2pService::new(consensus.clone(), args.connect));
 
     // Create an async runtime and register the top-level async services
     let async_runtime = Arc::new(AsyncRuntime::new());

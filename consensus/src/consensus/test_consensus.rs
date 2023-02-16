@@ -306,3 +306,14 @@ pub fn load_existing_db(db_path: String) -> (TempDbLifetime, Arc<DB>) {
     let db = create_db_with_custom_options(db_dir, false);
     (TempDbLifetime::without_destroy(Arc::downgrade(&db)), db)
 }
+
+/// Creates or loads an existing DB from the provided directory path.
+pub fn create_or_load_existing_db(db_dir: PathBuf) -> Arc<DB> {
+    create_db_with_custom_options(db_dir, true)
+}
+
+pub fn delete_db(db_dir: PathBuf) {
+    let options = rocksdb::Options::default();
+    let path = db_dir.to_str().unwrap();
+    DB::destroy(&options, path).expect("DB is expected to be deletable");
+}

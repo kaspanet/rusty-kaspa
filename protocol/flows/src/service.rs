@@ -13,12 +13,13 @@ const P2P_CORE_SERVICE: &str = "p2p-service";
 
 pub struct P2pService {
     consensus: DynConsensus,
+    connect: Option<String>, // TEMP: optional connect peer
     shutdown: SingleTrigger,
 }
 
 impl P2pService {
-    pub fn new(consensus: DynConsensus) -> Self {
-        Self { consensus, shutdown: SingleTrigger::default() }
+    pub fn new(consensus: DynConsensus, connect: Option<String>) -> Self {
+        Self { consensus, connect, shutdown: SingleTrigger::default() }
     }
 }
 
@@ -40,10 +41,11 @@ impl AsyncService for P2pService {
             let p2p_adaptor = Adaptor::bidirectional(address.clone(), ctx).unwrap();
 
             // For now, attempt to connect to a running golang node
-            // TODO: remove this
-            let peer_address = String::from("http://[::1]:16111");
-            trace!("P2P, p2p::main - starting peer:{peer_address}");
-            let _peer_id = p2p_adaptor.connect_peer_with_retry_params(peer_address.clone(), 1, Duration::from_secs(1)).await;
+            if let Some(peer_address) = self.connect.as_ref() {
+                let peer_address = format!("://{}", peer_address); // Add scheme prefix
+                trace!("P2P, p2p::main - starting peer:{peer_address}");
+                let _peer_id = p2p_adaptor.connect_peer_with_retry_params(peer_address, 1, Duration::from_secs(1)).await;
+            }
 
             // Keep the P2P server running until a service shutdown signal is received
             shutdown_signal.await;

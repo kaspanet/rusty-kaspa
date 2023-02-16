@@ -208,7 +208,7 @@ async fn ghostdag_test() {
     path_strings.sort();
 
     for path_str in path_strings.iter() {
-        println!("Running test {path_str}");
+        info!("Running test {path_str}");
         let file = File::open(path_str).unwrap();
         let reader = BufReader::new(file);
         let test: GhostdagTestDag = serde_json::from_reader(reader).unwrap();
@@ -224,7 +224,7 @@ async fn ghostdag_test() {
         let wait_handles = consensus.init();
 
         for block in test.blocks.iter() {
-            println!("Processing block {}", block.id);
+            info!("Processing block {}", block.id);
             let block_id = string_to_hash(&block.id);
             let block_header = consensus.build_header_with_parents(block_id, strings_to_hashes(&block.parents));
 
@@ -237,7 +237,7 @@ async fn ghostdag_test() {
 
         // Assert GHOSTDAG output data
         for block in test.blocks {
-            println!("Asserting block {}", block.id);
+            info!("Asserting block {}", block.id);
             let block_id = string_to_hash(&block.id);
             let output_ghostdag_data = ghostdag_store.get_data(block_id).unwrap();
 
@@ -321,7 +321,7 @@ async fn block_window_test() {
     ];
 
     for test_block in test_blocks {
-        println!("Processing block {}", test_block.id);
+        info!("Processing block {}", test_block.id);
         let block_id = string_to_hash(test_block.id);
         let block = consensus.build_block_with_parents(
             block_id,
@@ -804,7 +804,7 @@ fn gzip_file_lines(path: &Path) -> impl Iterator<Item = String> {
 }
 
 async fn json_test(file_path: &str) {
-    kaspa_core::log::try_init_logger("INFO");
+    kaspa_core::log::try_init_logger("info");
     let main_path = Path::new(file_path);
     let proof_exists = common::file_exists(&main_path.join("proof.json.gz"));
 
@@ -856,19 +856,20 @@ async fn json_test(file_path: &str) {
 
         consensus.consensus.as_ref().import_pruning_points(past_pruning_points);
 
+        info!("Starting to process {} trusted blocks", trusted_blocks.len());
         let mut last_time = SystemTime::now();
         let mut last_index: usize = 0;
         for (i, tb) in trusted_blocks.into_iter().enumerate() {
             let now = SystemTime::now();
             let passed = now.duration_since(last_time).unwrap();
             if passed > Duration::new(1, 0) {
-                println!("Processed {} trusted blocks in the last {} seconds (total {})", i - last_index, passed.as_secs(), i);
+                info!("Processed {} trusted blocks in the last {} seconds (total {})", i - last_index, passed.as_secs(), i);
                 last_time = now;
                 last_index = i;
             }
             consensus.consensus.as_ref().validate_and_insert_trusted_block(tb).await.unwrap();
         }
-        println!("Done processing trusted blocks");
+        info!("Done processing trusted blocks");
         Some(pruning_point)
     } else {
         None
@@ -880,7 +881,7 @@ async fn json_test(file_path: &str) {
         let now = SystemTime::now();
         let passed = now.duration_since(last_time).unwrap();
         if passed > Duration::new(10, 0) {
-            println!("Processed {} blocks in the last {} seconds (total {})", i - last_index, passed.as_secs(), i);
+            info!("Processed {} blocks in the last {} seconds (total {})", i - last_index, passed.as_secs(), i);
             last_time = now;
             last_index = i;
         }
@@ -915,7 +916,7 @@ async fn json_test(file_path: &str) {
 }
 
 async fn json_concurrency_test(file_path: &str) {
-    kaspa_core::log::try_init_logger("INFO");
+    kaspa_core::log::try_init_logger("info");
     let main_path = Path::new(file_path);
     let proof_exists = main_path.join("proof.json.gz").exists();
 
@@ -966,19 +967,20 @@ async fn json_concurrency_test(file_path: &str) {
 
         consensus.consensus.as_ref().import_pruning_points(past_pruning_points);
 
+        info!("Starting to process {} trusted blocks", trusted_blocks.len());
         let mut last_time = SystemTime::now();
         let mut last_index: usize = 0;
         for (i, tb) in trusted_blocks.into_iter().enumerate() {
             let now = SystemTime::now();
             let passed = now.duration_since(last_time).unwrap();
             if passed > Duration::new(1, 0) {
-                println!("Processed {} trusted blocks in the last {} seconds (total {})", i - last_index, passed.as_secs(), i);
+                info!("Processed {} trusted blocks in the last {} seconds (total {})", i - last_index, passed.as_secs(), i);
                 last_time = now;
                 last_index = i;
             }
             consensus.consensus.as_ref().validate_and_insert_trusted_block(tb).await.unwrap();
         }
-        println!("Done processing trusted blocks");
+        info!("Done processing trusted blocks");
         Some(pruning_point)
     } else {
         None
