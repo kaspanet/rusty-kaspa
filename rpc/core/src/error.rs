@@ -1,4 +1,3 @@
-use crate::notify;
 use std::num::TryFromIntError;
 use thiserror::Error;
 
@@ -38,7 +37,7 @@ pub enum RpcError {
     NetworkTypeError(#[from] consensus_core::networktype::NetworkTypeError),
 
     #[error(transparent)]
-    NotificationError(#[from] notify::error::Error),
+    NotificationError(#[from] kaspa_notify::error::Error),
 
     #[error("{0}")]
     General(String),

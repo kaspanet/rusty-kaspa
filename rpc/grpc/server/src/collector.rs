@@ -1,4 +1,5 @@
 use super::connection::GrpcConnection;
-use kaspa_rpc_core::{notify::collector::CollectorFrom, Notification};
+use kaspa_notify::collector::CollectorFrom;
+use kaspa_rpc_core::Notification;
 
 pub type GrpcServiceCollector = CollectorFrom<Notification, Notification, GrpcConnection>;

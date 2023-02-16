@@ -13,23 +13,23 @@ use kaspa_grpc_core::{
     channel::NotificationChannel,
     protowire::{kaspad_request, rpc_client::RpcClient, GetInfoRequestMessage, KaspadRequest, KaspadResponse},
 };
+use kaspa_notify::{
+    error::Result as NotifyResult,
+    events::EventType,
+    listener::ListenerId,
+    notifier::Notifier,
+    scope::Scope,
+    subscriber::{Subscriber, SubscriptionManager},
+    subscription::Command,
+};
 use kaspa_rpc_core::{
     api::ops::RpcApiOps,
     api::rpc::RpcApi,
     error::RpcError,
     error::RpcResult,
     model::message::*,
-    notify::{
-        connection::ChannelConnection,
-        error::Result as NotifyResult,
-        events::EventType,
-        listener::ListenerId,
-        notifier::Notifier,
-        scope::Scope,
-        subscriber::{Subscriber, SubscriptionManager},
-        subscription::Command,
-    },
-    Notification, NotificationSender, RpcCoreCollector,
+    notify::{collector::RpcCoreCollector, connection::ChannelConnection},
+    Notification, NotificationSender,
 };
 use kaspa_utils::triggers::DuplexTrigger;
 use std::{

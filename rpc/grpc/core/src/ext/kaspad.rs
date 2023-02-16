@@ -1,4 +1,4 @@
-use kaspa_rpc_core::notify::{scope::Scope, subscription::Command};
+use kaspa_notify::{scope::Scope, subscription::Command};
 
 use crate::protowire::{
     kaspad_request, kaspad_response, KaspadRequest, KaspadResponse, NotifyBlockAddedRequestMessage,

@@ -1,10 +1,8 @@
 use crate::StatusResult;
 use kaspa_core::trace;
 use kaspa_grpc_core::protowire::KaspadResponse;
-use kaspa_rpc_core::{
-    notify::{connection::Connection, error::Error as NotificationError, listener::ListenerId, notifier::Notifier},
-    Notification,
-};
+use kaspa_notify::{connection::Connection, error::Error as NotificationError, listener::ListenerId, notifier::Notifier};
+use kaspa_rpc_core::Notification;
 use std::{
     collections::HashMap,
     net::SocketAddr,

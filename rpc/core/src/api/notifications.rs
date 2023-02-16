@@ -1,17 +1,15 @@
 use crate::model::message::*;
-use crate::notify::collector::CollectorFrom;
-use crate::notify::connection::ChannelConnection;
-use crate::notify::subscription::single::{
-    OverallSubscription, UtxosChangedSubscription, VirtualSelectedParentChainChangedSubscription,
-};
-use crate::notify::{
+use async_channel::{Receiver, Sender};
+use borsh::{BorshDeserialize, BorshSerialize};
+use kaspa_notify::{
     events::EventType,
     notification::Notification as NotificationTrait,
     scope::{Scope, UtxosChangedScope, VirtualSelectedParentChainChangedScope},
-    subscription::Single,
+    subscription::{
+        single::{OverallSubscription, UtxosChangedSubscription, VirtualSelectedParentChainChangedSubscription},
+        Single,
+    },
 };
-use async_channel::{Receiver, Sender};
-use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 use std::sync::Arc;
@@ -160,8 +158,3 @@ pub enum NotificationHandle {
     Existing(u64),
     New(NotificationSender),
 }
-
-/// A rpc_core notification collector providing a simple pass-through.
-/// No conversion occurs since both source and target data are of
-/// type [`Notification`].
-pub type RpcCoreCollector = CollectorFrom<Notification, Notification, ChannelConnection>;

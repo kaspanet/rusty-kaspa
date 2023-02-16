@@ -1,5 +1,5 @@
 use super::{compounded, single, CompoundedSubscription, SingleSubscription};
-use crate::notify::events::{EventArray, EventType};
+use crate::events::{EventArray, EventType};
 
 pub struct ArrayBuilder {}
 
@@ -36,7 +36,7 @@ impl ArrayBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::notify::events::EVENT_TYPE_ARRAY;
+    use crate::events::EVENT_TYPE_ARRAY;
 
     #[test]
     fn test_array_builder() {

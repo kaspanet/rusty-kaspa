@@ -10,7 +10,7 @@ use crate::protowire::{
     VirtualSelectedParentBlueScoreChangedNotificationMessage, VirtualSelectedParentChainChangedNotificationMessage,
 };
 use crate::{from, try_from};
-use kaspa_rpc_core::notify::subscription::Command;
+use kaspa_notify::subscription::Command;
 use kaspa_rpc_core::{Notification, RpcError, RpcHash};
 use std::str::FromStr;
 use std::sync::Arc;

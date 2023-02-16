@@ -4,12 +4,9 @@
 //! All data provided by the RCP server can be trusted by the client
 //! No data submitted by the client to the server can be trusted
 
-use crate::{
-    model::*,
-    notify::{connection::Connection, listener::ListenerId, scope::Scope, subscription::Command},
-    RpcResult,
-};
+use crate::{model::*, RpcResult};
 use async_trait::async_trait;
+use kaspa_notify::{connection::Connection, listener::ListenerId, scope::Scope, subscription::Command};
 
 /// Client RPC Api
 ///

@@ -1,4 +1,4 @@
-use kaspa_rpc_core::notify::error::Error as NotifyError;
+use kaspa_notify::error::Error as NotifyError;
 use kaspa_rpc_core::RpcError;
 use thiserror::Error;
 
@@ -20,7 +20,7 @@ pub enum Error {
     EndpointConnectionError(#[from] tonic::transport::Error),
 
     #[error("Notify error: {0}")]
-    NotifyError(#[from] kaspa_rpc_core::notify::error::Error),
+    NotifyError(#[from] kaspa_notify::error::Error),
 
     #[error("RPC: channel receive error")]
     ChannelRecvError,

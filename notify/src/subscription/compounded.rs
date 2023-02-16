@@ -1,7 +1,7 @@
-use super::{super::scope::Scope, Compounded, Mutation, Subscription};
-use crate::notify::{
+use super::{Compounded, Mutation, Subscription};
+use crate::{
     events::EventType,
-    scope::{UtxosChangedScope, VirtualSelectedParentChainChangedScope},
+    scope::{Scope, UtxosChangedScope, VirtualSelectedParentChainChangedScope},
     subscription::Command,
 };
 use addresses::Address;

@@ -1,5 +1,6 @@
-use crate::{model::*, notify::subscription::Command};
+use crate::model::*;
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+use kaspa_notify::subscription::Command;
 use serde::{Deserialize, Serialize};
 use std::{
     fmt::{Display, Formatter},

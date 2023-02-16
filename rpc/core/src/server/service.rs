@@ -1,18 +1,7 @@
 //! Core server implementation for ClientAPI
 
 use super::collector::{ConsensusCollector, ConsensusNotificationReceiver};
-use crate::{
-    api::rpc::RpcApi,
-    model::*,
-    notify::{
-        connection::ChannelConnection,
-        listener::ListenerId,
-        notifier::{Notifier, Notify},
-        scope::Scope,
-        subscriber::SubscriptionManager,
-    },
-    FromRpcHex, Notification, RpcError, RpcResult,
-};
+use crate::{api::rpc::RpcApi, model::*, notify::connection::ChannelConnection, FromRpcHex, Notification, RpcError, RpcResult};
 use async_trait::async_trait;
 use consensus_core::{
     api::DynConsensus,
@@ -22,6 +11,12 @@ use consensus_core::{
 };
 use hashes::Hash;
 use kaspa_core::trace;
+use kaspa_notify::{
+    listener::ListenerId,
+    notifier::{Notifier, Notify},
+    scope::Scope,
+    subscriber::SubscriptionManager,
+};
 use std::{
     str::FromStr,
     sync::Arc,

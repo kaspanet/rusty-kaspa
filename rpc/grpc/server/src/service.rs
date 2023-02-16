@@ -9,17 +9,15 @@ use kaspa_grpc_core::{
     channel::NotificationChannel,
     protowire::{kaspad_request::Payload, rpc_server::Rpc, NotifyNewBlockTemplateResponseMessage, *},
 };
+use kaspa_notify::{
+    events::EVENT_TYPE_ARRAY,
+    listener::ListenerId,
+    notifier::Notifier,
+    scope::{Scope, UtxosChangedScope, VirtualSelectedParentChainChangedScope},
+    subscriber::{Subscriber, SubscriptionManager},
+};
 use kaspa_rpc_core::{
-    api::rpc::RpcApi,
-    notify::{
-        connection::ChannelConnection,
-        listener::ListenerId,
-        scope::{Scope, UtxosChangedScope, VirtualSelectedParentChainChangedScope},
-        subscriber::{Subscriber, SubscriptionManager},
-    },
-    notify::{events::EVENT_TYPE_ARRAY, notifier::Notifier},
-    server::service::RpcCoreService,
-    Notification, RpcResult,
+    api::rpc::RpcApi, notify::connection::ChannelConnection, server::service::RpcCoreService, Notification, RpcResult,
 };
 use std::{io::ErrorKind, net::SocketAddr, pin::Pin, sync::Arc};
 use tokio::sync::{mpsc, RwLock};

@@ -1,5 +1,4 @@
-use super::notification::Notification;
-use super::{events::EventType, scope::Scope};
+use super::{events::EventType, notification::Notification, scope::Scope};
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
