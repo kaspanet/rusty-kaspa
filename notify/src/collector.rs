@@ -1,9 +1,8 @@
+use crate::notifier::DynNotify;
+
 use super::{
-    connection::Connection,
     error::{Error, Result},
-    events::EventType,
     notification::Notification,
-    notifier::{Notifier, Notify},
 };
 use async_channel::{Receiver, Sender};
 use async_trait::async_trait;
@@ -32,28 +31,26 @@ pub type CollectorNotificationReceiver<T> = Receiver<T>;
 /// into `N`s and forward them to the [Notifier] provided
 /// to `Collector::start`.
 #[async_trait]
-pub trait Collector<N, C>: Send + Sync + Debug
+pub trait Collector<N>: Send + Sync + Debug
 where
     N: Notification,
-    C: Connection<Notification = N>,
 {
     /// Start collecting notifications for `notifier`
-    fn start(&self, notifier: Arc<Notifier<N, C>>);
+    fn start(&self, notifier: DynNotify<N>);
     /// Stop collecting notifications
     async fn stop(&self) -> Result<()>;
 }
 
-pub type DynCollector<N, C> = Arc<dyn Collector<N, C>>;
+pub type DynCollector<N> = Arc<dyn Collector<N>>;
 
 /// A notification [`Collector`] that receives [`T`] from a channel,
 /// converts it into a `N` and sends it to a its
 /// [`Notifier`].
 #[derive(Debug)]
-pub struct CollectorFrom<I, N, C>
+pub struct CollectorFrom<I, N>
 where
     N: Notification,
     I: Send + Sync + 'static + Sized + Debug,
-    C: Connection,
 {
     recv_channel: CollectorNotificationReceiver<I>,
 
@@ -63,16 +60,13 @@ where
     collect_shutdown: Arc<DuplexTrigger>,
 
     _notification: PhantomData<N>,
-    _connection: PhantomData<C>,
 }
 
-impl<I, N, C> CollectorFrom<I, N, C>
+impl<I, N> CollectorFrom<I, N>
 where
     N: Notification,
     I: Send + Sync + 'static + Sized + Debug,
     I: Into<N>,
-    C: Connection<Notification = N>,
-    EventType: From<&'static N>,
 {
     pub fn new(recv_channel: CollectorNotificationReceiver<I>) -> Self {
         Self {
@@ -80,11 +74,10 @@ where
             collect_shutdown: Arc::new(DuplexTrigger::new()),
             is_started: Arc::new(AtomicBool::new(false)),
             _notification: PhantomData,
-            _connection: PhantomData,
         }
     }
 
-    fn spawn_collecting_task(&self, notifier: Arc<Notifier<N, C>>) {
+    fn spawn_collecting_task(&self, notifier: DynNotify<N>) {
         // The task can only be spawned once
         if self.is_started.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
             return;
@@ -137,15 +130,13 @@ where
 }
 
 #[async_trait]
-impl<I, N, C> Collector<N, C> for CollectorFrom<I, N, C>
+impl<I, N> Collector<N> for CollectorFrom<I, N>
 where
     N: Notification,
     I: Send + Sync + 'static + Sized + Debug,
     I: Into<N>,
-    C: Connection<Notification = N>,
-    EventType: From<&'static N>,
 {
-    fn start(&self, notifier: Arc<Notifier<N, C>>) {
+    fn start(&self, notifier: DynNotify<N>) {
         self.spawn_collecting_task(notifier);
     }
 

@@ -23,12 +23,14 @@ use std::{
 };
 use workflow_core::channel::Channel;
 
-pub trait Notify<N>
+pub trait Notify<N>: Send + Sync + Debug
 where
     N: Notification,
 {
     fn notify(&self, notification: N) -> Result<()>;
 }
+
+pub type DynNotify<N> = Arc<dyn Notify<N>>;
 
 /// A Notifier is a notification broadcaster that manages a collection of [`Listener`]s and, for each one,
 /// a set of subscriptions to notifications by event type.
@@ -54,14 +56,8 @@ impl<N, C> Notifier<N, C>
 where
     N: Notification,
     C: Connection<Notification = N>,
-    EventType: From<&'static N>,
 {
-    pub fn new(
-        collectors: Vec<DynCollector<N, C>>,
-        subscribers: Vec<Arc<Subscriber>>,
-        broadcasters: usize,
-        name: &'static str,
-    ) -> Self {
+    pub fn new(collectors: Vec<DynCollector<N>>, subscribers: Vec<Arc<Subscriber>>, broadcasters: usize, name: &'static str) -> Self {
         Self { inner: Arc::new(Inner::new(collectors, subscribers, broadcasters, name)) }
     }
 
@@ -86,7 +82,6 @@ impl<N, C> Notify<N> for Notifier<N, C>
 where
     N: Notification,
     C: Connection<Notification = N>,
-    EventType: From<&'static N>,
 {
     fn notify(&self, notification: N) -> Result<()> {
         self.inner.notify(notification)
@@ -98,7 +93,6 @@ impl<N, C> SubscriptionManager for Notifier<N, C>
 where
     N: Notification,
     C: Connection<Notification = N>,
-    EventType: From<&'static N>,
 {
     async fn start_notify(&self, id: ListenerId, scope: Scope) -> Result<()> {
         trace!("[Notifier-{}] start sending to listener {} notifications of scope {:?}", self.inner.name, id, scope);
@@ -135,7 +129,7 @@ where
     broadcasters: Vec<Arc<Broadcaster<N, C>>>,
 
     /// Collectors
-    collectors: Vec<DynCollector<N, C>>,
+    collectors: Vec<DynCollector<N>>,
 
     /// Subscribers
     subscribers: Vec<Arc<Subscriber>>,
@@ -148,9 +142,8 @@ impl<N, C> Inner<N, C>
 where
     N: Notification,
     C: Connection<Notification = N>,
-    EventType: From<&'static N>,
 {
-    fn new(collectors: Vec<DynCollector<N, C>>, subscribers: Vec<Arc<Subscriber>>, broadcasters: usize, name: &'static str) -> Self {
+    fn new(collectors: Vec<DynCollector<N>>, subscribers: Vec<Arc<Subscriber>>, broadcasters: usize, name: &'static str) -> Self {
         assert!(broadcasters > 0, "a notifier requires a minimum of one broadcaster");
         let notification_channel = Channel::unbounded();
         let broadcasters = (0..broadcasters)

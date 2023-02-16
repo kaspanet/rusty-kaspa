@@ -2,7 +2,7 @@ extern crate derive_more;
 use super::{
     connection::Connection,
     error::{Error, Result},
-    events::{EventArray, EventType},
+    events::EventArray,
     listener::ListenerId,
     notification::Notification,
     subscription::DynSubscription,
@@ -105,7 +105,6 @@ impl<N, C> Broadcaster<N, C>
 where
     N: Notification,
     C: Connection<Notification = N>,
-    EventType: From<&'static N>,
 {
     pub fn new(name: &'static str, incoming: Receiver<N>) -> Self {
         Self { name, started: Arc::new(AtomicBool::default()), ctl: Channel::unbounded(), incoming, shutdown: Channel::oneshot() }
