@@ -79,6 +79,9 @@ pub enum TxRuleError {
 
     #[error("failed to verify the signature script: {0}")]
     SignatureInvalid(TxScriptError),
+
+    #[error("one of the inputs has a wrong sig op count")]
+    WrongSigOpCount,
 }
 
 pub type TxResult<T> = std::result::Result<T, TxRuleError>;

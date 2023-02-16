@@ -1,6 +1,6 @@
 use crate::constants::{MAX_SOMPI, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK};
 use consensus_core::{hashing::sighash::SigHashReusedValues, tx::VerifiableTransaction};
-use txscript::TxScriptEngine;
+use txscript::{get_sig_op_count, TxScriptEngine};
 
 use super::{
     errors::{TxResult, TxRuleError},
@@ -91,8 +91,12 @@ impl TransactionValidator {
         Ok(())
     }
 
-    fn check_sig_op_counts(_tx: &impl VerifiableTransaction) -> TxResult<()> {
-        // TODO: Implement this
+    fn check_sig_op_counts<T: VerifiableTransaction>(tx: &T) -> TxResult<()> {
+        for (input, entry) in tx.populated_inputs() {
+            if get_sig_op_count::<T>(&input.signature_script, &entry.script_public_key) != input.sig_op_count as u64 {
+                return Err(TxRuleError::WrongSigOpCount);
+            }
+        }
         Ok(())
     }
 

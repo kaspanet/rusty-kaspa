@@ -10,10 +10,10 @@ use crate::data_stack::{DataStack, Stack};
 use crate::opcodes::{deserialize_opcode_data, OpCodeImplementation};
 use consensus_core::hashing::sighash::{calc_ecdsa_signature_hash, calc_schnorr_signature_hash, SigHashReusedValues};
 use consensus_core::hashing::sighash_type::SigHashType;
-use consensus_core::tx::{TransactionInput, UtxoEntry, VerifiableTransaction};
+use consensus_core::tx::{ScriptPublicKey, TransactionInput, UtxoEntry, VerifiableTransaction};
 use itertools::Itertools;
 use log::trace;
-use opcodes::OpCond;
+use opcodes::{codes, to_small_int, OpCond};
 use txscript_errors::TxScriptError;
 
 pub const MAX_SCRIPT_PUBLIC_KEY_VERSION: u16 = 0;
@@ -72,6 +72,66 @@ pub struct TxScriptEngine<'a, T: VerifiableTransaction> {
     num_ops: i32,
 }
 
+fn parse_script<T: VerifiableTransaction>(
+    script: &[u8],
+) -> impl Iterator<Item = Result<Box<dyn OpCodeImplementation<T>>, TxScriptError>> + '_ {
+    script.iter().batching(|it| {
+        // reads the opcode num item here and then match to opcode
+        it.next().map(|code| deserialize_opcode_data(*code, it))
+    })
+}
+
+pub fn get_sig_op_count<T: VerifiableTransaction>(signature_script: &[u8], prev_script_public_key: &ScriptPublicKey) -> u64 {
+    let is_p2sh = is_script_public_key_p2sh(prev_script_public_key.script());
+    let script_pub_key_ops = parse_script::<T>(prev_script_public_key.script()).collect_vec();
+    if !is_p2sh {
+        return get_sig_op_count_by_opcodes(&script_pub_key_ops);
+    }
+
+    let signature_script_ops = parse_script::<T>(signature_script).collect_vec();
+    if signature_script_ops.is_empty() || signature_script_ops.iter().any(|op| op.is_err() || !op.as_ref().unwrap().is_push_opcode()) {
+        return 0;
+    }
+
+    let p2sh_script = signature_script_ops.last().expect("checked if empty above").as_ref().expect("checked if err above").get_data();
+    let p2sh_ops = parse_script::<T>(p2sh_script).collect_vec();
+    get_sig_op_count_by_opcodes(&p2sh_ops)
+}
+
+fn get_sig_op_count_by_opcodes<T: VerifiableTransaction>(opcodes: &[Result<Box<dyn OpCodeImplementation<T>>, TxScriptError>]) -> u64 {
+    // TODO: Check for overflows
+    let mut num_sigs: u64 = 0;
+    for (i, op) in opcodes.iter().enumerate() {
+        match op {
+            Ok(op) => {
+                match op.value() {
+                    codes::OpCheckSig | codes::OpCheckSigVerify | codes::OpCheckSigECDSA => num_sigs += 1,
+                    codes::OpCheckMultiSig | codes::OpCheckMultiSigVerify | codes::OpCheckMultiSigECDSA => {
+                        if i > 0
+                            && opcodes[i - 1].as_ref().expect("they were checked before").value() >= codes::OpTrue
+                            && opcodes[i - 1].as_ref().unwrap().value() <= codes::Op16
+                        {
+                            num_sigs += to_small_int(opcodes[i - 1].as_ref().unwrap()) as u64;
+                        } else {
+                            num_sigs += MAX_PUB_KEYS_PER_MUTLTISIG as u64;
+                        }
+                    }
+                    _ => {} // If the opcode is not a sigop, no need to increase the count
+                }
+            }
+            Err(_) => return num_sigs,
+        }
+    }
+    num_sigs
+}
+
+fn is_script_public_key_p2sh(script_public_key: &[u8]) -> bool {
+    (script_public_key.len() == 35) && // 3 opcodes number + 32 data
+                (script_public_key[0] == opcodes::codes::OpBlake2b) &&
+                (script_public_key[1] == opcodes::codes::OpData32) &&
+                (script_public_key[script_public_key.len() -1] == opcodes::codes::OpEqual)
+}
+
 impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
     pub fn new(reused_values: &'a mut SigHashReusedValues, sig_cache: &'a Cache<SigCacheKey, bool>) -> Self {
         Self {
@@ -96,10 +156,7 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
         let script_public_key = utxo_entry.script_public_key.script();
         // The script_public_key in P2SH is just validating the hash on the OpMultiSig script
         // the user provides
-        let is_p2sh = (script_public_key.len() == 35) && // 3 opcodes number + 32 data
-                (script_public_key[0] == opcodes::codes::OpBlake2b) &&
-                (script_public_key[1] == opcodes::codes::OpData32) &&
-                (script_public_key[script_public_key.len() -1] == opcodes::codes::OpEqual);
+        let is_p2sh = is_script_public_key_p2sh(script_public_key);
         match input_idx < tx.tx().inputs.len() {
             true => Ok(Self {
                 dstack: Default::default(),
@@ -154,26 +211,20 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
     }
 
     fn execute_script(&mut self, script: &[u8], verify_only_push: bool) -> Result<(), TxScriptError> {
-        let script_result = script
-            .iter()
-            .batching(|it| {
-                // reads the opcode num item here and then match to opcode
-                it.next().map(|code| deserialize_opcode_data(*code, it))
-            })
-            .try_for_each(|opcode| {
-                let opcode = opcode?;
-                if verify_only_push && !opcode.is_push_opcode() {
-                    return Err(TxScriptError::SignatureScriptNotPushOnly);
-                }
+        let script_result = parse_script(script).try_for_each(|opcode| {
+            let opcode = opcode?;
+            if verify_only_push && !opcode.is_push_opcode() {
+                return Err(TxScriptError::SignatureScriptNotPushOnly);
+            }
 
-                self.execute_opcode(opcode)?;
+            self.execute_opcode(opcode)?;
 
-                let combined_size = self.astack.len() + self.dstack.len();
-                if combined_size > MAX_STACK_SIZE {
-                    return Err(TxScriptError::StackSizeExceeded(combined_size, MAX_STACK_SIZE));
-                }
-                Ok(())
-            });
+            let combined_size = self.astack.len() + self.dstack.len();
+            if combined_size > MAX_STACK_SIZE {
+                return Err(TxScriptError::StackSizeExceeded(combined_size, MAX_STACK_SIZE));
+            }
+            Ok(())
+        });
 
         // Moving between scripts
         // TODO: Check that we are not in if when moving between scripts
@@ -431,10 +482,15 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
 
 #[cfg(test)]
 mod tests {
+    use std::iter::once;
+
+    use crate::opcodes::codes::{OpBlake2b, OpCheckSig, OpData1, OpData2, OpData32, OpDup, OpEqual, OpPushData1, OpTrue};
+
     use super::*;
     use consensus_core::tx::{
         PopulatedTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionOutpoint, TransactionOutput,
     };
+    use smallvec::SmallVec;
 
     struct ScriptTestCase {
         script: &'static [u8],
@@ -567,6 +623,102 @@ mod tests {
                     check
                 )
             }
+        }
+    }
+
+    #[test]
+    fn test_get_sig_op_count() {
+        struct VerifiableTransactionMock {}
+
+        impl VerifiableTransaction for VerifiableTransactionMock {
+            fn tx(&self) -> &Transaction {
+                todo!()
+            }
+
+            fn populated_input(&self, _index: usize) -> (&TransactionInput, &UtxoEntry) {
+                todo!()
+            }
+        }
+
+        struct TestVector<'a> {
+            name: &'a str,
+            signature_script: &'a [u8],
+            expected_sig_ops: u64,
+            prev_script_public_key: ScriptPublicKey,
+        }
+
+        let script_hash = hex::decode("433ec2ac1ffa1b7b7d027f564529c57197f9ae88").unwrap();
+        let prev_script_pubkey_p2sh_script =
+            [OpBlake2b, OpData32].iter().copied().chain(script_hash.iter().copied()).chain(once(OpEqual));
+        let prev_script_pubkey_p2sh = ScriptPublicKey::new(0, SmallVec::from_iter(prev_script_pubkey_p2sh_script));
+
+        let tests = [
+            TestVector {
+                name: "scriptSig doesn't parse",
+                signature_script: &[OpPushData1, 0x02],
+                expected_sig_ops: 0,
+                prev_script_public_key: prev_script_pubkey_p2sh.clone(),
+            },
+            TestVector {
+                name: "scriptSig isn't push only",
+                signature_script: &[OpTrue, OpDup],
+                expected_sig_ops: 0,
+                prev_script_public_key: prev_script_pubkey_p2sh.clone(),
+            },
+            TestVector {
+                name: "scriptSig length 0",
+                signature_script: &[],
+                expected_sig_ops: 0,
+                prev_script_public_key: prev_script_pubkey_p2sh.clone(),
+            },
+            TestVector {
+                name: "No script at the end",
+                signature_script: &[OpTrue, OpTrue],
+                expected_sig_ops: 0,
+                prev_script_public_key: prev_script_pubkey_p2sh.clone(),
+            }, // No script at end but still push only.
+            TestVector {
+                name: "pushed script doesn't parse",
+                signature_script: &[OpData2, OpPushData1, 0x02],
+                expected_sig_ops: 0,
+                prev_script_public_key: prev_script_pubkey_p2sh,
+            },
+            TestVector {
+                name: "mainnet multisig transaction 487f94ffa63106f72644068765b9dc629bb63e481210f382667d4a93b69af412",
+                signature_script: &hex::decode("41eb577889fa28283709201ef5b056745c6cf0546dd31666cecd41c40a581b256e885d941b86b14d44efacec12d614e7fcabf7b341660f95bab16b71d766ab010501411c0eeef117ca485d34e4bc0cf6d5b578aa250c5d13ebff0882a7e2eeea1f31e8ecb6755696d194b1b0fcb853afab28b61f3f7cec487bd611df7e57252802f535014c875220ab64c7691713a32ea6dfced9155c5c26e8186426f0697af0db7a4b1340f992d12041ae738d66fe3d21105483e5851778ad73c5cddf0819c5e8fd8a589260d967e72065120722c36d3fac19646258481dd3661fa767da151304af514cb30af5cb5692203cd7690ecb67cbbe6cafad00a7c9133da535298ab164549e0cce2658f7b3032754ae").unwrap(),
+                prev_script_public_key: ScriptPublicKey::new(
+                    0,
+                    SmallVec::from_slice(&hex::decode("aa20f38031f61ca23d70844f63a477d07f0b2c2decab907c2e096e548b0e08721c7987").unwrap()),
+                ),
+                expected_sig_ops: 4,
+            },
+            TestVector {
+                name: "a partially parseable script public key",
+                signature_script: &[],
+                prev_script_public_key: ScriptPublicKey::new(
+                    0,
+                    SmallVec::from_slice(&[OpCheckSig,OpCheckSig, OpData1]),
+                ),
+                expected_sig_ops: 2,
+            },
+            TestVector {
+                name: "p2pk",
+                signature_script: &hex::decode("416db0c0ce824a6d076c8e73aae9987416933df768e07760829cb0685dc0a2bbb11e2c0ced0cab806e111a11cbda19784098fd25db176b6a9d7c93e5747674d32301").unwrap(),
+                prev_script_public_key: ScriptPublicKey::new(
+                    0,
+                    SmallVec::from_slice(&hex::decode("208a457ca74ade0492c44c440da1cab5b008d8449150fe2794f0d8f4cce7e8aa27ac").unwrap()),
+                ),
+                expected_sig_ops: 1,
+            },
+        ];
+
+        for test in tests {
+            assert_eq!(
+                get_sig_op_count::<VerifiableTransactionMock>(test.signature_script, &test.prev_script_public_key),
+                test.expected_sig_ops,
+                "failed for '{}'",
+                test.name
+            );
         }
     }
 }
