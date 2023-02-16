@@ -69,3 +69,16 @@ impl TrustedDataPackage {
         Self { daa_window, ghostdag_window }
     }
 }
+
+/// A block with DAA/Ghostdag indices corresponding to data location within a `TrustedDataPackage`
+pub struct TrustedDataEntry {
+    pub block: Block,
+    pub daa_window_indices: Vec<u64>,
+    pub ghostdag_window_indices: Vec<u64>,
+}
+
+impl TrustedDataEntry {
+    pub fn new(block: Block, daa_window_indices: Vec<u64>, ghostdag_window_indices: Vec<u64>) -> Self {
+        Self { block, daa_window_indices, ghostdag_window_indices }
+    }
+}

@@ -1,5 +1,5 @@
 use super::{error::ConversionError, option::TryIntoOptionEx};
-use crate::pb::{self as protowire, BluesAnticoneSizes};
+use crate::pb as protowire;
 use consensus_core::{
     ghostdag::{ExternalGhostdagData, KType, TrustedHash, TrustedHeader},
     BlockHashMap, BlueWorkType, HashMapCustomHasher,
@@ -22,7 +22,7 @@ impl From<&ExternalGhostdagData> for protowire::GhostdagData {
             blues_anticone_sizes: item
                 .blues_anticone_sizes
                 .iter()
-                .map(|(h, &s)| BluesAnticoneSizes { blue_hash: Some(h.into()), anticone_size: s.into() })
+                .map(|(h, &s)| protowire::BluesAnticoneSizes { blue_hash: Some(h.into()), anticone_size: s.into() })
                 .collect(),
         }
     }

@@ -1,6 +1,9 @@
+//!
+//! Traits to allow safe inline conversion over types such as Option
+//!
 use super::error::ConversionError;
 
-pub trait TryFromOptionEx<T>: Sized {
+pub(crate) trait TryFromOptionEx<T>: Sized {
     type Error;
     fn try_from_ex(value: T) -> Result<Self, Self::Error>;
 }
@@ -17,7 +20,7 @@ impl<'a, T: 'a, U: TryFrom<&'a T, Error = ConversionError>> TryFromOptionEx<&'a 
     }
 }
 
-pub trait TryIntoOptionEx<T>: Sized {
+pub(crate) trait TryIntoOptionEx<T>: Sized {
     type Error;
     fn try_into_ex(self) -> Result<T, Self::Error>;
 }
