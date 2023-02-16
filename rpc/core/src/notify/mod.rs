@@ -9,4 +9,3 @@ pub mod notifier;
 pub mod scope;
 pub mod subscriber;
 pub mod subscription;
-pub mod utxo_address_set;
