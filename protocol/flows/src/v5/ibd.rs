@@ -1,8 +1,10 @@
 use crate::ctx::FlowContext;
 use consensus_core::{
     api::DynConsensus,
-    ghostdag::{TrustedDataEntry, TrustedDataPackage},
+    block::Block,
+    ghostdag::{TrustedBlock, TrustedDataEntry, TrustedDataPackage},
     pruning::{PruningPointProof, PruningPointsList},
+    BlockHashMap, BlockHashSet, HashMapCustomHasher,
 };
 use kaspa_core::{debug, info};
 use p2p_lib::{
@@ -43,7 +45,7 @@ impl IbdFlow {
         Ok(())
     }
 
-    async fn sync_and_validate_pruning_proof(&mut self, _consensus: &DynConsensus) -> Result<(), FlowError> {
+    async fn sync_and_validate_pruning_proof(&mut self, consensus: &DynConsensus) -> Result<(), FlowError> {
         self.router.enqueue(make_message!(Payload::RequestPruningPointProof, RequestPruningPointProofMessage {})).await?;
 
         // Pruning proof generation and communication might take several minutes, so we allow a long 10 minute timeout
@@ -73,16 +75,56 @@ impl IbdFlow {
         debug!("received trusted data with {} daa entries and {} ghostdag entries", pkg.daa_window.len(), pkg.ghostdag_window.len());
 
         let mut entry_stream = TrustedEntryStream::new(&self.router, &mut self.incoming_route);
-        let Some(_pruning_point_entry) = entry_stream.next().await? else { return Err(FlowError::ProtocolError("got `done` message before receiving the pruning point")); };
+        let Some(pruning_point_entry) = entry_stream.next().await? else { return Err(FlowError::ProtocolError("got `done` message before receiving the pruning point")); };
 
         // TODO: verify trusted pruning point matches proof pruning point
 
-        while let Some(_entry) = entry_stream.next().await? {
-            // TODO: process blocks with trusted data
+        let mut entries = vec![pruning_point_entry];
+        while let Some(entry) = entry_stream.next().await? {
+            entries.push(entry);
         }
+
+        let trusted_set = build_trusted_set(pkg, entries)?;
+        consensus.clone().apply_pruning_proof(proof, &trusted_set);
 
         Ok(())
     }
+}
+
+fn build_trusted_set(pkg: TrustedDataPackage, entries: Vec<TrustedDataEntry>) -> Result<Vec<TrustedBlock>, FlowError> {
+    let mut blocks = Vec::with_capacity(entries.len());
+    let mut set = BlockHashSet::new();
+    let mut map = BlockHashMap::new();
+
+    for th in pkg.ghostdag_window.iter() {
+        map.insert(th.hash, th.ghostdag.clone());
+    }
+
+    for th in pkg.daa_window.iter() {
+        map.insert(th.header.hash, th.ghostdag.clone());
+    }
+
+    for entry in entries {
+        let block = entry.block;
+        if set.insert(block.hash()) {
+            if let Some(ghostdag) = map.get(&block.hash()) {
+                blocks.push(TrustedBlock::new(block, ghostdag.clone()));
+            } else {
+                return Err(FlowError::ProtocolError("missing ghostdag data for some trusted entries"));
+            }
+        }
+    }
+
+    for th in pkg.daa_window.iter() {
+        if set.insert(th.header.hash) {
+            blocks.push(TrustedBlock::new(Block::from_header_arc(th.header.clone()), th.ghostdag.clone()));
+        }
+    }
+
+    // Topological sort
+    blocks.sort_by(|a, b| a.block.header.blue_work.cmp(&b.block.header.blue_work));
+
+    Ok(blocks)
 }
 
 const IBD_BATCH_SIZE: usize = 99;
@@ -105,7 +147,7 @@ impl<'a, 'b> TrustedEntryStream<'a, 'b> {
                     match msg.payload {
                         Some(Payload::BlockWithTrustedDataV4(payload)) => Ok(Some(payload.try_into()?)),
                         Some(Payload::DoneBlocksWithTrustedData(_)) => {
-                            debug!("trusted blocks stream completed after {} items", self.i);
+                            debug!("trusted entry stream completed after {} items", self.i);
                             return Ok(None);
                         }
                         _ => Err(FlowError::UnexpectedMessageType(
@@ -121,6 +163,7 @@ impl<'a, 'b> TrustedEntryStream<'a, 'b> {
         };
 
         // Request the next batch
+        // TODO: test that batch counting is correct and follows golang imp
         self.i += 1;
         if self.i % IBD_BATCH_SIZE == 0 {
             info!("Downloaded {} blocks from the pruning point anticone", self.i - 1);
