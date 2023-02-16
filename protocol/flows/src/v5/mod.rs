@@ -3,8 +3,12 @@ use self::{
     ping::{ReceivePingsFlow, SendPingsFlow},
 };
 use crate::ctx::FlowContext;
-use kaspa_core::warn;
-use p2p_lib::{KaspadMessagePayloadType, Router};
+use kaspa_core::{warn, debug};
+use p2p_lib::{
+    make_message,
+    pb::{kaspad_message::Payload as KaspadMessagePayload, AddressesMessage},
+    KaspadMessagePayloadType, Router,
+};
 use std::sync::Arc;
 
 mod ibd;
@@ -109,7 +113,13 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) {
 
     tokio::spawn(async move {
         while let Some(msg) = unimplemented_messages_route.recv().await {
-            drop(msg);
+            // TEMP: responding to this request is required in order to keep the
+            // connection live until we implement the send addresses flow
+            if let Some(KaspadMessagePayload::RequestAddresses(_)) = msg.payload {
+                debug!("P2P Flows, got request addresses message");
+                let _ =
+                    router.enqueue(make_message!(KaspadMessagePayload::Addresses, AddressesMessage { address_list: vec![] })).await;
+            }
         }
     });
 }

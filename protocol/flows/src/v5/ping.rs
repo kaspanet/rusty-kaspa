@@ -1,4 +1,5 @@
 use crate::ctx::FlowContext;
+use kaspa_core::debug;
 use p2p_lib::{
     common::FlowError,
     dequeue, dequeue_with_timeout, make_message,
@@ -27,6 +28,7 @@ impl ReceivePingsFlow {
         loop {
             // We dequeue without a timeout in this case, responding to pings whenever they arrive
             let ping = dequeue!(self.incoming_route, Payload::Ping)?;
+            debug!("P2P Flows, got ping request with nonce {}", ping.nonce);
             let pong = make_message!(Payload::Pong, PongMessage { nonce: ping.nonce });
             self.router.enqueue(pong).await?;
         }

@@ -79,7 +79,12 @@ impl Adaptor {
     }
 
     /// Connect to a new peer (with params controlling retry behavior)
-    pub async fn connect_peer_with_params(&self, peer_address: String, retry_attempts: u8, retry_interval: Duration) -> Option<Uuid> {
+    pub async fn connect_peer_with_retry_params(
+        &self,
+        peer_address: String,
+        retry_attempts: u8,
+        retry_interval: Duration,
+    ) -> Option<Uuid> {
         self.connection_handler.connect_with_retry(peer_address, retry_attempts, retry_interval).await.map(|r| r.identity())
     }
 

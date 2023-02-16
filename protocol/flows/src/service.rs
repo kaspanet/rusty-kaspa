@@ -5,7 +5,7 @@ use kaspa_core::{
 };
 use kaspa_utils::triggers::SingleTrigger;
 use p2p_lib::Adaptor;
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use crate::ctx::FlowContext;
 
@@ -43,7 +43,7 @@ impl AsyncService for P2pService {
             // TODO: remove this
             let peer_address = String::from("http://[::1]:16111");
             trace!("P2P, p2p::main - starting peer:{peer_address}");
-            let _peer_id = p2p_adaptor.connect_peer(peer_address.clone()).await;
+            let _peer_id = p2p_adaptor.connect_peer_with_retry_params(peer_address.clone(), 1, Duration::from_secs(1)).await;
 
             // Keep the P2P server running until a service shutdown signal is received
             shutdown_signal.await;
