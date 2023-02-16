@@ -9,6 +9,7 @@ use consensus_core::events::ConsensusEvent;
 use event_processor::notify::Notification;
 
 use kaspa_core::{core::Core, signals::Signals, task::runtime::AsyncRuntime};
+use parking_lot::RwLock;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -16,10 +17,7 @@ use std::sync::Arc;
 use crate::monitor::ConsensusMonitor;
 use consensus::consensus::Consensus;
 use consensus::params::DEVNET_PARAMS;
-use utxoindex::{
-    api::{DynUtxoIndexControllerApi, DynUtxoIndexRetrievalApi},
-    UtxoIndex,
-};
+use utxoindex::{api::DynUtxoIndexApi, UtxoIndex};
 
 use async_channel::unbounded;
 use event_processor::processor::EventProcessor;
@@ -121,19 +119,17 @@ pub fn main() {
 
     let monitor = Arc::new(ConsensusMonitor::new(consensus.processing_counters().clone()));
 
-    let (utxoindex_controller, utxoindex_retrieval_api): (DynUtxoIndexControllerApi, DynUtxoIndexRetrievalApi) =
-        match args.utxoindex.is_some() {
-            true => {
-                let utxoindex_db = Arc::new(DB::open_default(utxoindex_db_dir.to_str().unwrap()).unwrap());
-                let utxoindex = UtxoIndex::new(consensus.clone(), utxoindex_db);
-                (Arc::new(Some(Box::new(utxoindex.clone()))), Arc::new(Some(Box::new(utxoindex))))
-            }
-            false => (Arc::new(None), Arc::new(None)),
-        };
+    let utxoindex: DynUtxoIndexApi = match args.utxoindex.is_some() {
+        true => {
+            let utxoindex_db = Arc::new(DB::open_default(utxoindex_db_dir.to_str().unwrap()).unwrap());
+            Arc::new(Some(Box::new(RwLock::new(UtxoIndex::new(consensus.clone(), utxoindex_db)))))
+        }
+        false => Arc::new(None),
+    };
 
-    let event_processor = Arc::new(EventProcessor::new(utxoindex_controller, consensus_recv, event_processor_send));
+    let event_processor = Arc::new(EventProcessor::new(utxoindex.clone(), consensus_recv, event_processor_send));
 
-    let rpc_core_server = Arc::new(RpcCoreServer::new(consensus.clone(), utxoindex_retrieval_api, event_processor_recv));
+    let rpc_core_server = Arc::new(RpcCoreServer::new(consensus.clone(), utxoindex, event_processor_recv));
     let grpc_server = Arc::new(GrpcServer::new(grpc_server_addr, rpc_core_server.service()));
     let p2p_service = Arc::new(P2pService::new(consensus.clone()));
 

@@ -86,9 +86,9 @@ impl AsRef<[u8]> for TransactionOutpointKey {
 }
 
 /// Full [CompactUtxoEntry] access key.
-/// Consists of 39 bytes of [ScriptPublicKeyBucket], and 36 bytes of [TransactionOutpointKey]
+/// Consists of varible amount of bytes of [ScriptPublicKeyBucket], and 36 bytes of [TransactionOutpointKey]
 #[derive(Eq, Hash, PartialEq, Debug, Clone)]
-struct UtxoEntryFullAccessKey(Vec<u8>);
+struct UtxoEntryFullAccessKey(Arc<Vec<u8>>);
 
 impl UtxoEntryFullAccessKey {
     /// Creates a new [UtxoEntryFullAccessKey] from a [ScriptPublicKeyBucket] and [TransactionOutpointKey].
@@ -96,7 +96,7 @@ impl UtxoEntryFullAccessKey {
         let mut bytes = Vec::with_capacity(TRANSACTION_OUTPOINT_KEY_SIZE + script_public_key_bucket.as_ref().len());
         bytes.extend_from_slice(script_public_key_bucket.as_ref());
         bytes.extend_from_slice(transaction_outpoint_key.as_ref());
-        Self(bytes)
+        Self(Arc::new(bytes))
     }
 }
 

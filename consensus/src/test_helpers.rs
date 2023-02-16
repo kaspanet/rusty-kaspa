@@ -7,7 +7,7 @@ use consensus_core::{
     utxo::utxo_collection::UtxoCollection,
 };
 use hashes::{Hash, HASH_SIZE};
-use rand::{rngs::StdRng, seq::SliceRandom, Rng};
+use rand::{rngs::SmallRng, seq::SliceRandom, Rng};
 
 pub fn header_from_precomputed_hash(hash: Hash, parents: Vec<Hash>) -> Header {
     Header {
@@ -32,32 +32,33 @@ pub fn block_from_precomputed_hash(hash: Hash, parents: Vec<Hash>) -> Block {
 }
 
 pub fn generate_random_utxos_from_script_public_key_pool(
-    rng: &mut StdRng,
+    rng: &mut SmallRng,
     amount: usize,
-    script_public_key_pool: Vec<ScriptPublicKey>,
+    script_public_key_pool: &Vec<ScriptPublicKey>,
 ) -> UtxoCollection {
     let mut i = 0;
     let mut collection = UtxoCollection::with_capacity(amount);
     while i < amount {
-        collection.insert(
-            generate_random_outpoint(rng),
-            generate_random_utxo_from_script_public_key_pool(rng, script_public_key_pool.clone()),
-        );
+        collection
+            .insert(generate_random_outpoint(rng), generate_random_utxo_from_script_public_key_pool(rng, script_public_key_pool));
         i += 1;
     }
     collection
 }
 
-pub fn generate_random_hash(rng: &mut StdRng) -> Hash {
+pub fn generate_random_hash(rng: &mut SmallRng) -> Hash {
     let random_bytes = rng.gen::<[u8; HASH_SIZE]>();
     Hash::from_bytes(random_bytes)
 }
 
-pub fn generate_random_outpoint(rng: &mut StdRng) -> TransactionOutpoint {
+pub fn generate_random_outpoint(rng: &mut SmallRng) -> TransactionOutpoint {
     TransactionOutpoint::new(generate_random_hash(rng), rng.gen::<u32>())
 }
 
-pub fn generate_random_utxo_from_script_public_key_pool(rng: &mut StdRng, script_public_key_pool: Vec<ScriptPublicKey>) -> UtxoEntry {
+pub fn generate_random_utxo_from_script_public_key_pool(
+    rng: &mut SmallRng,
+    script_public_key_pool: &Vec<ScriptPublicKey>,
+) -> UtxoEntry {
     UtxoEntry::new(
         rng.gen_range(1..100_000), //we choose small amounts as to not overflow with large utxosets.
         script_public_key_pool.choose(rng).expect("expected_script_public key").clone(),
@@ -66,24 +67,24 @@ pub fn generate_random_utxo_from_script_public_key_pool(rng: &mut StdRng, script
     )
 }
 
-pub fn generate_random_utxo(rng: &mut StdRng) -> UtxoEntry {
+pub fn generate_random_utxo(rng: &mut SmallRng) -> UtxoEntry {
     UtxoEntry::new(
         rng.gen_range(1..100_000), //we choose small amounts as to not overflow with large utxosets.
-        generate_random_p2pk_script_public_key(&mut rng.clone()),
+        generate_random_p2pk_script_public_key(rng),
         rng.gen(),
         rng.gen_bool(0.5),
     )
 }
 
 ///Note: this generates schnorr p2pk script public keys.
-pub fn generate_random_p2pk_script_public_key(rng: &mut StdRng) -> ScriptPublicKey {
+pub fn generate_random_p2pk_script_public_key(rng: &mut SmallRng) -> ScriptPublicKey {
     let mut script: ScriptVec = (0..32).map(|_| rng.gen()).collect();
     script.insert(0, 0x20);
     script.push(0xac);
     ScriptPublicKey::new(0_u16, script)
 }
 
-pub fn generate_random_hashes(rng: &mut StdRng, amount: usize) -> Vec<Hash> {
+pub fn generate_random_hashes(rng: &mut SmallRng, amount: usize) -> Vec<Hash> {
     let mut hashes = Vec::with_capacity(amount);
     let mut i = 0;
     while i < amount {
@@ -95,7 +96,7 @@ pub fn generate_random_hashes(rng: &mut StdRng, amount: usize) -> Vec<Hash> {
 
 ///Note: generate_random_block is filled with random data, it does not represent a consensus-valid block!
 pub fn generate_random_block(
-    rng: &mut StdRng,
+    rng: &mut SmallRng,
     parent_amount: usize,
     number_of_transactions: usize,
     input_amount: usize,
@@ -108,7 +109,7 @@ pub fn generate_random_block(
 }
 
 ///Note: generate_random_header is filled with random data, it does not represent a consensus-valid header!
-pub fn generate_random_header(rng: &mut StdRng, parent_amount: usize) -> Header {
+pub fn generate_random_header(rng: &mut SmallRng, parent_amount: usize) -> Header {
     Header::new(
         rng.gen(),
         vec![generate_random_hashes(rng, parent_amount)],
@@ -126,7 +127,7 @@ pub fn generate_random_header(rng: &mut StdRng, parent_amount: usize) -> Header 
 }
 
 ///Note: generate_random_transaction is filled with random data, it does not represent a consensus-valid transaction!
-pub fn generate_random_transaction(rng: &mut StdRng, input_amount: usize, output_amount: usize) -> Transaction {
+pub fn generate_random_transaction(rng: &mut SmallRng, input_amount: usize, output_amount: usize) -> Transaction {
     Transaction::new(
         rng.gen(),
         generate_random_transaction_inputs(rng, input_amount),
@@ -139,22 +140,22 @@ pub fn generate_random_transaction(rng: &mut StdRng, input_amount: usize, output
 }
 
 ///Note: generate_random_transactions is filled with random data, it does not represent consensus-valid  transactions!
-pub fn generate_random_transactions(rng: &mut StdRng, amount: usize, input_amount: usize, output_amount: usize) -> Vec<Transaction> {
+pub fn generate_random_transactions(rng: &mut SmallRng, amount: usize, input_amount: usize, output_amount: usize) -> Vec<Transaction> {
     Vec::from_iter((0..amount).map(move |_| generate_random_transaction(rng, input_amount, output_amount)))
 }
 
 ///Note: generate_random_transactions is filled with random data, it does not represent consensus-valid  transaction input!
-pub fn generate_random_transaction_input(rng: &mut StdRng) -> TransactionInput {
+pub fn generate_random_transaction_input(rng: &mut SmallRng) -> TransactionInput {
     TransactionInput::new(generate_random_transaction_outpoint(rng), (0..32).map(|_| rng.gen()).collect(), rng.gen(), rng.gen())
 }
 
 ///Note: generate_random_transactions is filled with random data, it does not represent consensus-valid  transaction output!
-pub fn generate_random_transaction_inputs(rng: &mut StdRng, amount: usize) -> Vec<TransactionInput> {
+pub fn generate_random_transaction_inputs(rng: &mut SmallRng, amount: usize) -> Vec<TransactionInput> {
     Vec::from_iter((0..amount).map(|_| generate_random_transaction_input(rng)))
 }
 
 ///Note: generate_random_transactions is filled with random data, it does not represent consensus-valid  transaction output!
-pub fn generate_random_transaction_output(rng: &mut StdRng) -> TransactionOutput {
+pub fn generate_random_transaction_output(rng: &mut SmallRng) -> TransactionOutput {
     TransactionOutput::new(
         rng.gen_range(1..100_000), //we choose small amounts as to not overflow with large utxosets.
         generate_random_p2pk_script_public_key(rng),
@@ -162,12 +163,12 @@ pub fn generate_random_transaction_output(rng: &mut StdRng) -> TransactionOutput
 }
 
 ///Note: generate_random_transactions is filled with random data, it does not represent consensus-valid  transaction output!
-pub fn generate_random_transaction_outputs(rng: &mut StdRng, amount: usize) -> Vec<TransactionOutput> {
+pub fn generate_random_transaction_outputs(rng: &mut SmallRng, amount: usize) -> Vec<TransactionOutput> {
     Vec::from_iter((0..amount).map(|_| generate_random_transaction_output(rng)))
 }
 
 ///Note: generate_random_transactions is filled with random data, it does not represent consensus-valid  transaction output!
-pub fn generate_random_transaction_outpoint(rng: &mut StdRng) -> TransactionOutpoint {
+pub fn generate_random_transaction_outpoint(rng: &mut SmallRng) -> TransactionOutpoint {
     TransactionOutpoint::new(generate_random_hash(rng), rng.gen())
 }
 

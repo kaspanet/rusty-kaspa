@@ -17,12 +17,7 @@ use consensus_core::{
 };
 
 use kaspa_core::info;
-use utxoindex::{
-    api::{UtxoIndexControlApi, UtxoIndexRetrievalApi},
-    events::UtxoIndexEvent,
-    model::CirculatingSupply,
-    UtxoIndex,
-};
+use utxoindex::{api::UtxoIndexApi, events::UtxoIndexEvent, model::CirculatingSupply, UtxoIndex};
 
 mod testutils;
 use testutils::virtual_change_emulator::VirtualChangeEmulator;
@@ -32,15 +27,15 @@ use testutils::virtual_change_emulator::VirtualChangeEmulator;
 fn test_utxoindex() {
     kaspa_core::log::try_init_logger("INFO");
 
-    let resync_utxo_collection_size = 3_000;
-    let update_utxo_collection_size = 300;
-    let script_public_key_pool_size = 50;
+    let resync_utxo_collection_size = 10_000;
+    let update_utxo_collection_size = 1_000;
+    let script_public_key_pool_size = 200;
 
     // Initialize all components, and virtual change emulator proxy.
     let mut virtual_change_emulator = VirtualChangeEmulator::new();
     let utxoindex_db = create_temp_db();
     let test_consensus = Arc::new(TestConsensus::create_from_temp_db_and_dummy_sender(&Config::new(DEVNET_PARAMS)));
-    let utxoindex = UtxoIndex::new(test_consensus.clone(), utxoindex_db.1);
+    let mut utxoindex = UtxoIndex::new(test_consensus.clone(), utxoindex_db.1);
 
     // Fill initial utxo collection in emulator.
     virtual_change_emulator.fill_utxo_collection(resync_utxo_collection_size, script_public_key_pool_size); //10_000 utxos belonging to 100 script public keys
@@ -115,7 +110,7 @@ fn test_utxoindex() {
 
     let now = Instant::now();
     let res = utxoindex
-        .update(virtual_change_emulator.virtual_state.selected_parent_utxo_diff.clone(), virtual_change_emulator.virtual_state.parents)
+        .update(virtual_change_emulator.virtual_state.accumulated_utxo_diff.clone(), virtual_change_emulator.virtual_state.parents)
         .expect("expected utxoindex event");
     let bench_time = now.elapsed().as_millis();
     // TODO: move over to proper benching eventually.
@@ -129,12 +124,8 @@ fn test_utxoindex() {
             let mut i = 0;
             for (script_public_key, compact_utxo_collection) in utxo_changed.added.iter() {
                 for (tx_outpoint, compact_utxo_entry) in compact_utxo_collection.iter() {
-                    let utxo_entry = virtual_change_emulator
-                        .virtual_state
-                        .selected_parent_utxo_diff
-                        .add
-                        .get(tx_outpoint)
-                        .expect("expected utxo_entry");
+                    let utxo_entry =
+                        virtual_change_emulator.virtual_state.accumulated_utxo_diff.add.get(tx_outpoint).expect("expected utxo_entry");
                     assert_eq!(*script_public_key, utxo_entry.script_public_key);
                     assert_eq!(compact_utxo_entry.amount, utxo_entry.amount);
                     assert_eq!(compact_utxo_entry.block_daa_score, utxo_entry.block_daa_score);
@@ -142,16 +133,16 @@ fn test_utxoindex() {
                     i += 1;
                 }
             }
-            assert_eq!(i, virtual_change_emulator.virtual_state.selected_parent_utxo_diff.add.len());
+            assert_eq!(i, virtual_change_emulator.virtual_state.accumulated_utxo_diff.add.len());
 
             i = 0;
 
             for (script_public_key, compact_utxo_collection) in utxo_changed.removed.iter() {
                 for (tx_outpoint, compact_utxo_entry) in compact_utxo_collection.iter() {
-                    assert!(virtual_change_emulator.virtual_state.selected_parent_utxo_diff.remove.contains_key(tx_outpoint));
+                    assert!(virtual_change_emulator.virtual_state.accumulated_utxo_diff.remove.contains_key(tx_outpoint));
                     let utxo_entry = virtual_change_emulator
                         .virtual_state
-                        .selected_parent_utxo_diff
+                        .accumulated_utxo_diff
                         .remove
                         .get(tx_outpoint)
                         .expect("expected utxo_entry");
@@ -162,7 +153,7 @@ fn test_utxoindex() {
                     i += 1;
                 }
             }
-            assert_eq!(i, virtual_change_emulator.virtual_state.selected_parent_utxo_diff.remove.len());
+            assert_eq!(i, virtual_change_emulator.virtual_state.accumulated_utxo_diff.remove.len());
         }
     }
 

@@ -16,7 +16,7 @@ use futures::{select, FutureExt};
 use kaspa_core::trace;
 use std::sync::Arc;
 use triggered::{Listener, Trigger};
-use utxoindex::api::DynUtxoIndexControllerApi;
+use utxoindex::api::DynUtxoIndexApi;
 use utxoindex::events::UtxoIndexEvent;
 
 /// The [`EventProcessor`] takes in events from kaspad and processes these to [`Notification`]s,
@@ -24,7 +24,7 @@ use utxoindex::events::UtxoIndexEvent;
 /// [`Notification`]s are in a rpc-core friendly format.  
 #[derive(Clone)]
 pub struct EventProcessor {
-    utxoindex: DynUtxoIndexControllerApi,
+    utxoindex: DynUtxoIndexApi,
 
     rpc_send: Sender<Notification>,
     consensus_recv: Receiver<ConsensusEvent>,
@@ -37,11 +37,7 @@ pub struct EventProcessor {
 }
 
 impl EventProcessor {
-    pub fn new(
-        utxoindex: DynUtxoIndexControllerApi,
-        consensus_recv: Receiver<ConsensusEvent>,
-        rpc_send: Sender<Notification>,
-    ) -> Self {
+    pub fn new(utxoindex: DynUtxoIndexApi, consensus_recv: Receiver<ConsensusEvent>, rpc_send: Sender<Notification>) -> Self {
         let (shutdown_trigger, shutdown_listener) = triggered::trigger();
         let (shutdown_finalized_trigger, shutdown_finalized_listener) = triggered::trigger();
 
@@ -88,7 +84,8 @@ impl EventProcessor {
         trace!("[{IDENT}]: processing {:?}", virtual_change_set_event);
         if let Some(utxoindex) = self.utxoindex.as_deref() {
             let UtxoIndexEvent::UtxosChanged(utxo_changed_event) = utxoindex
-                .update(virtual_change_set_event.selected_parent_utxo_diff.clone(), virtual_change_set_event.parents.clone())?;
+                .write()
+                .update(virtual_change_set_event.accumulated_utxo_diff.clone(), virtual_change_set_event.parents.clone())?;
             self.rpc_send
                 .send(Notification::UtxosChanged(Arc::new(UtxosChangedNotification {
                     added: utxo_changed_event.added.clone(),
@@ -125,7 +122,7 @@ impl EventProcessor {
     async fn process_pruning_point_override_event(&self) -> EventProcessorResult<()> {
         trace!("[{IDENT}]: processing {:?}", PruningPointUTXOSetOverrideEvent {});
         if let Some(utxoindex) = self.utxoindex.as_deref() {
-            utxoindex.resync()?;
+            utxoindex.write().resync()?;
         };
 
         self.rpc_send.send(Notification::PruningPointUTXOSetOverride(PruningPointUTXOSetOverrideNotification {})).await?;
@@ -152,8 +149,8 @@ impl EventProcessor {
     pub async fn run(&self) -> EventProcessorResult<()> {
         trace!("[{IDENT}]: intializing run...");
         if let Some(utxoindex) = self.utxoindex.as_deref() {
-            if !utxoindex.is_synced()? {
-                utxoindex.resync()?;
+            if !utxoindex.read().is_synced()? {
+                utxoindex.write().resync()?;
             }
         }
         let res = self.process_events().await;

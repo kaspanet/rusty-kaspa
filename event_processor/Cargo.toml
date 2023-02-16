@@ -20,5 +20,6 @@ futures = "0.3.25"
 triggered = "0.1"
 
 [dev-dependencies]
+parking_lot.workspace = true
 tokio = { workspace = true, features = ["rt", "macros"] }
-rand = { workspace = true}
+rand = {workspace = true,  features = [ "small_rng" ]}

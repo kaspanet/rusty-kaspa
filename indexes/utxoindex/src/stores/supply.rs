@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use database::prelude::{CachedDbItem, DirectDbWriter, StoreError, StoreResult, DB};
 
-use crate::model::{CirculatingSupply, CirculatingSupplyDiff};
+use crate::model::CirculatingSupply;
 
 /// Reader API for `UtxoIndexTipsStore`.
 pub trait CirculatingSupplyStoreReader {
@@ -10,7 +10,7 @@ pub trait CirculatingSupplyStoreReader {
 }
 
 pub trait CirculatingSupplyStore: CirculatingSupplyStoreReader {
-    fn add_circulating_supply_diff(&mut self, circulating_supply_diff: i64) -> StoreResult<u64>;
+    fn add_circulating_supply(&mut self, to_add: CirculatingSupply) -> Result<u64, StoreError>;
 
     fn insert(&mut self, circulating_supply: u64) -> StoreResult<()>;
 
@@ -39,9 +39,9 @@ impl CirculatingSupplyStoreReader for DbCirculatingSupplyStore {
 }
 
 impl CirculatingSupplyStore for DbCirculatingSupplyStore {
-    fn add_circulating_supply_diff(&mut self, circulating_supply_diff: CirculatingSupplyDiff) -> Result<u64, StoreError> {
+    fn add_circulating_supply(&mut self, to_add: CirculatingSupply) -> Result<u64, StoreError> {
         let circulating_supply = self.access.update(DirectDbWriter::new(&self.db), move |circulating_supply| {
-            circulating_supply + (circulating_supply_diff as CirculatingSupply) //note: this only works because we force monotonic in `UtxoIndex::update`.
+            circulating_supply + (to_add) //note: this only works because we force monotonic in `UtxoIndex::update`.
         });
         circulating_supply
     }

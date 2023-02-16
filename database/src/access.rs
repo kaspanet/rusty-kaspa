@@ -142,7 +142,7 @@ where
     }
 
     /// A dynamic iterator that can iterate through a specifc prefix / bucket, or from a certain start point.
-    /// Extracted keys and values most be encoded with bincode.
+    /// Extracted keys and values must be encoded with bincode.
     //TODO: loop and chain iterators for multi-prefix / bucket iterator.
     pub fn seek_iterator<Key, Value>(
         &self,

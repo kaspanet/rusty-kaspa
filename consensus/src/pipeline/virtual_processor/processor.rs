@@ -387,7 +387,7 @@ impl VirtualStateProcessor {
                     // We use try_send on consenus sender since this is none-blocking.
                     self.consensus_sender
                         .try_send(ConsensusEvent::VirtualChangeSet(Arc::new(VirtualChangeSetEvent {
-                            selected_parent_utxo_diff: Arc::new(accumulated_diff),
+                            accumulated_utxo_diff: Arc::new(accumulated_diff),
                             parents: Arc::new(new_virtual_state.parents),
                             selected_parent_blue_score: new_virtual_state.ghostdag_data.blue_score,
                             daa_score: new_virtual_state.daa_score,

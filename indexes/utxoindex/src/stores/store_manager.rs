@@ -39,13 +39,14 @@ impl Store {
 
     pub fn update_utxo_state(
         &mut self,
-        to_add: Option<&UtxoSetByScriptPublicKey>,
-        to_remove: Option<&UtxoSetByScriptPublicKey>,
+        to_add: &UtxoSetByScriptPublicKey,
+        to_remove: &UtxoSetByScriptPublicKey,
         try_reset_on_err: bool,
     ) -> Result<(), StoreError> {
-        let res = match to_remove {
-            Some(utxo_collection) => self.utxos_by_script_public_key_store.remove_utxo_entries(utxo_collection),
-            None => Ok(()),
+        let mut res = Ok(());
+
+        if !to_remove.is_empty() {
+            res = self.utxos_by_script_public_key_store.remove_utxo_entries(to_remove);
         };
 
         if res.is_err() {
@@ -55,9 +56,8 @@ impl Store {
             return res;
         }
 
-        let res = match to_add {
-            Some(utxo_collection) => self.utxos_by_script_public_key_store.add_utxo_entries(utxo_collection),
-            None => Ok(()),
+        if !to_add.is_empty() {
+            res = self.utxos_by_script_public_key_store.add_utxo_entries(to_add);
         };
 
         if try_reset_on_err && res.is_err() {
@@ -70,12 +70,15 @@ impl Store {
         self.circulating_supply_store.get()
     }
 
-    pub fn update_circulating_supply(&mut self, circulating_supply_diff: i64, try_reset_on_err: bool) -> Result<u64, StoreError> {
-        let res = self.circulating_supply_store.add_circulating_supply_diff(circulating_supply_diff);
-        if try_reset_on_err && res.is_err() {
-            self.delete_all()?;
+    pub fn add_circulating_supply(&mut self, circulating_supply_diff: u64, try_reset_on_err: bool) -> Result<u64, StoreError> {
+        if circulating_supply_diff != 0 {
+            let res = self.circulating_supply_store.add_circulating_supply(circulating_supply_diff);
+            if try_reset_on_err && res.is_err() {
+                self.delete_all()?;
+            }
+            return res;
         }
-        res
+        Ok(0u64)
     }
 
     pub fn insert_circulating_supply(&mut self, circulating_supply: u64, try_reset_on_err: bool) -> Result<(), StoreError> {
