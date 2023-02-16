@@ -1,7 +1,10 @@
 use crate::{model::*, notify::subscription::Command};
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
-use std::fmt::{Display, Formatter};
+use std::{
+    fmt::{Display, Formatter},
+    sync::Arc,
+};
 
 pub type RpcExtraData = Vec<u8>;
 
@@ -731,10 +734,10 @@ pub struct NotifyBlockAddedResponse {}
 /// into the DAG.
 ///
 /// See: NotifyBlockAddedRequest
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BlockAddedNotification {
-    pub block: RpcBlock,
+    pub block: Arc<RpcBlock>,
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -765,12 +768,12 @@ pub struct NotifyVirtualSelectedParentChainChangedResponse {}
 // chain had changed.
 //
 // See: NotifyVirtualSelectedParentChainChangedRequest
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VirtualSelectedParentChainChangedNotification {
-    pub removed_chain_block_hashes: Vec<RpcHash>,
-    pub added_chain_block_hashes: Vec<RpcHash>,
-    pub accepted_transaction_ids: Vec<RpcAcceptedTransactionIds>,
+    pub removed_chain_block_hashes: Arc<Vec<RpcHash>>,
+    pub added_chain_block_hashes: Arc<Vec<RpcHash>>,
+    pub accepted_transaction_ids: Arc<Vec<RpcAcceptedTransactionIds>>,
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -792,10 +795,10 @@ impl NotifyFinalityConflictRequest {
 #[serde(rename_all = "camelCase")]
 pub struct NotifyFinalityConflictResponse {}
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FinalityConflictNotification {
-    pub violating_block_hash: RpcHash,
+    pub violating_block_hash: Arc<RpcHash>,
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -817,10 +820,10 @@ impl NotifyFinalityConflictResolvedRequest {
 #[serde(rename_all = "camelCase")]
 pub struct NotifyFinalityConflictResolvedResponse {}
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FinalityConflictResolvedNotification {
-    pub finality_block_hash: RpcHash,
+    pub finality_block_hash: Arc<RpcHash>,
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -855,11 +858,11 @@ pub struct NotifyUtxosChangedResponse {}
 // UtxosChangedNotificationMessage is sent whenever the UTXO index had been updated.
 //
 // See: NotifyUtxosChangedRequest
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UtxosChangedNotification {
-    pub added: Vec<RpcUtxosByAddressesEntry>,
-    pub removed: Vec<RpcUtxosByAddressesEntry>,
+    pub added: Arc<Vec<RpcUtxosByAddressesEntry>>,
+    pub removed: Arc<Vec<RpcUtxosByAddressesEntry>>,
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

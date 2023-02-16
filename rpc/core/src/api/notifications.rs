@@ -1,12 +1,11 @@
 use crate::model::message::*;
 use crate::notify::scope::{Scope, UtxosChangedScope, VirtualSelectedParentChainChangedScope};
 use async_channel::{Receiver, Sender};
-use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
-use std::sync::Arc;
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[allow(clippy::large_enum_variant)]
 pub enum Notification {
     BlockAdded(BlockAddedNotification),
@@ -88,8 +87,8 @@ impl From<&Notification> for Scope {
     }
 }
 
-pub type NotificationSender = Sender<Arc<Notification>>;
-pub type NotificationReceiver = Receiver<Arc<Notification>>;
+pub type NotificationSender = Sender<Notification>;
+pub type NotificationReceiver = Receiver<Notification>;
 
 pub enum NotificationHandle {
     Existing(u64),

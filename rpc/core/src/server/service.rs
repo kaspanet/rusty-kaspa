@@ -108,10 +108,10 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
 
         // Notify about new added block
         // TODO: let consensus emit this notification through an event channel
-        self.notifier.notify(Arc::new(Notification::BlockAdded(BlockAddedNotification { block: rpc_block }))).unwrap();
+        self.notifier.notify(Notification::BlockAdded(BlockAddedNotification { block: Arc::new(rpc_block) })).unwrap();
 
         // Emit a NewBlockTemplate notification
-        self.notifier.notify(Arc::new(Notification::NewBlockTemplate(NewBlockTemplateNotification {}))).unwrap();
+        self.notifier.notify(Notification::NewBlockTemplate(NewBlockTemplateNotification {})).unwrap();
 
         result
     }

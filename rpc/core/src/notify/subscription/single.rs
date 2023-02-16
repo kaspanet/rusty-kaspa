@@ -31,10 +31,10 @@ impl OverallSubscription {
 }
 
 impl Single for OverallSubscription {
-    fn apply_to(&self, notification: Arc<Notification>) -> Arc<Notification> {
+    fn apply_to(&self, notification: &Notification) -> Notification {
         assert!(self.active);
-        assert_eq!(self.event_type, (&*notification).into());
-        notification
+        assert_eq!(self.event_type, notification.into());
+        notification.clone()
     }
 
     #[inline(always)]
@@ -78,19 +78,19 @@ impl VirtualSelectedParentChainChangedSubscription {
 }
 
 impl Single for VirtualSelectedParentChainChangedSubscription {
-    fn apply_to(&self, notification: Arc<Notification>) -> Arc<Notification> {
+    fn apply_to(&self, notification: &Notification) -> Notification {
         assert!(self.active);
-        assert_eq!(self.event_type(), (&*notification).into());
-        if let Notification::VirtualSelectedParentChainChanged(ref payload) = *notification {
+        assert_eq!(self.event_type(), notification.into());
+        if let Notification::VirtualSelectedParentChainChanged(ref payload) = notification {
             if !self.include_accepted_transaction_ids && !payload.accepted_transaction_ids.is_empty() {
-                return Arc::new(Notification::VirtualSelectedParentChainChanged(VirtualSelectedParentChainChangedNotification {
+                return Notification::VirtualSelectedParentChainChanged(VirtualSelectedParentChainChangedNotification {
                     removed_chain_block_hashes: payload.removed_chain_block_hashes.clone(),
                     added_chain_block_hashes: payload.added_chain_block_hashes.clone(),
-                    accepted_transaction_ids: vec![],
-                }));
+                    accepted_transaction_ids: Arc::new(vec![]),
+                });
             }
         }
-        notification
+        notification.clone()
     }
 
     #[inline(always)]
@@ -206,7 +206,7 @@ impl Hash for UtxosChangedSubscription {
 }
 
 impl Single for UtxosChangedSubscription {
-    fn apply_to(&self, _notification: Arc<Notification>) -> Arc<Notification> {
+    fn apply_to(&self, _notification: &Notification) -> Notification {
         todo!()
     }
 

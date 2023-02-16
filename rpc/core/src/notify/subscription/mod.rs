@@ -83,7 +83,7 @@ pub type CompoundedSubscription = Box<dyn Compounded>;
 
 pub trait Single: Subscription + AsAny + DynHash + DynEq + SingleClone + Debug + Send + Sync {
     fn active(&self) -> bool;
-    fn apply_to(&self, notification: Arc<Notification>) -> Arc<Notification>;
+    fn apply_to(&self, notification: &Notification) -> Notification;
     fn mutate(&mut self, mutation: Mutation) -> Option<Vec<Mutation>>;
     fn scope(&self) -> Scope;
 }

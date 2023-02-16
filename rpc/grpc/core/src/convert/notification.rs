@@ -1,5 +1,3 @@
-use std::str::FromStr;
-
 use crate::protowire::{
     kaspad_response::Payload, BlockAddedNotificationMessage, KaspadResponse, NewBlockTemplateNotificationMessage, RpcNotifyCommand,
 };
@@ -14,6 +12,8 @@ use crate::protowire::{
 use crate::{from, try_from};
 use kaspa_rpc_core::notify::subscription::Command;
 use kaspa_rpc_core::{Notification, RpcError, RpcHash};
+use std::str::FromStr;
+use std::sync::Arc;
 
 // ----------------------------------------------------------------------------
 // rpc_core to protowire
@@ -41,7 +41,7 @@ from!(item: &kaspa_rpc_core::Notification, Payload, {
     }
 });
 
-from!(item: &kaspa_rpc_core::BlockAddedNotification, BlockAddedNotificationMessage, { Self { block: Some((&item.block).into()) } });
+from!(item: &kaspa_rpc_core::BlockAddedNotification, BlockAddedNotificationMessage, { Self { block: Some((&*item.block).into()) } });
 
 from!(&kaspa_rpc_core::NewBlockTemplateNotification, NewBlockTemplateNotificationMessage);
 
@@ -133,11 +133,12 @@ try_from!(item: &Payload, kaspa_rpc_core::Notification, {
 
 try_from!(item: &BlockAddedNotificationMessage, kaspa_rpc_core::BlockAddedNotification, {
     Self {
-        block: item
-            .block
-            .as_ref()
-            .ok_or_else(|| RpcError::MissingRpcFieldError("BlockAddedNotificationMessage".to_string(), "block".to_string()))?
-            .try_into()?,
+        block: Arc::new(
+            item.block
+                .as_ref()
+                .ok_or_else(|| RpcError::MissingRpcFieldError("BlockAddedNotificationMessage".to_string(), "block".to_string()))?
+                .try_into()?,
+        ),
     }
 });
 
@@ -148,33 +149,31 @@ try_from!(
     kaspa_rpc_core::VirtualSelectedParentChainChangedNotification,
     {
         Self {
-            removed_chain_block_hashes: item
-                .removed_chain_block_hashes
-                .iter()
-                .map(|x| RpcHash::from_str(x))
-                .collect::<Result<Vec<_>, _>>()?,
-            added_chain_block_hashes: item
-                .added_chain_block_hashes
-                .iter()
-                .map(|x| RpcHash::from_str(x))
-                .collect::<Result<Vec<_>, _>>()?,
-            accepted_transaction_ids: item.accepted_transaction_ids.iter().map(|x| x.try_into()).collect::<Result<Vec<_>, _>>()?,
+            removed_chain_block_hashes: Arc::new(
+                item.removed_chain_block_hashes.iter().map(|x| RpcHash::from_str(x)).collect::<Result<Vec<_>, _>>()?,
+            ),
+            added_chain_block_hashes: Arc::new(
+                item.added_chain_block_hashes.iter().map(|x| RpcHash::from_str(x)).collect::<Result<Vec<_>, _>>()?,
+            ),
+            accepted_transaction_ids: Arc::new(
+                item.accepted_transaction_ids.iter().map(|x| x.try_into()).collect::<Result<Vec<_>, _>>()?,
+            ),
         }
     }
 );
 
 try_from!(item: &FinalityConflictNotificationMessage, kaspa_rpc_core::FinalityConflictNotification, {
-    Self { violating_block_hash: RpcHash::from_str(&item.violating_block_hash)? }
+    Self { violating_block_hash: Arc::new(RpcHash::from_str(&item.violating_block_hash)?) }
 });
 
 try_from!(item: &FinalityConflictResolvedNotificationMessage, kaspa_rpc_core::FinalityConflictResolvedNotification, {
-    Self { finality_block_hash: RpcHash::from_str(&item.finality_block_hash)? }
+    Self { finality_block_hash: Arc::new(RpcHash::from_str(&item.finality_block_hash)?) }
 });
 
 try_from!(item: &UtxosChangedNotificationMessage, kaspa_rpc_core::UtxosChangedNotification, {
     Self {
-        added: item.added.iter().map(|x| x.try_into()).collect::<Result<Vec<_>, _>>()?,
-        removed: item.removed.iter().map(|x| x.try_into()).collect::<Result<Vec<_>, _>>()?,
+        added: Arc::new(item.added.iter().map(|x| x.try_into()).collect::<Result<Vec<_>, _>>()?),
+        removed: Arc::new(item.removed.iter().map(|x| x.try_into()).collect::<Result<Vec<_>, _>>()?),
     }
 });
 

@@ -95,7 +95,7 @@ where
     name: &'static str,
     started: Arc<AtomicBool>,
     ctl: Channel<Ctl<C>>,
-    incoming: Receiver<Arc<Notification>>,
+    incoming: Receiver<Notification>,
     shutdown: Channel<()>,
 }
 
@@ -103,7 +103,7 @@ impl<C> Broadcaster<C>
 where
     C: Connection,
 {
-    pub fn new(name: &'static str, incoming: Receiver<Arc<Notification>>) -> Self {
+    pub fn new(name: &'static str, incoming: Receiver<Notification>) -> Self {
         Self { name, started: Arc::new(AtomicBool::default()), ctl: Channel::unbounded(), incoming, shutdown: Channel::oneshot() }
     }
 
@@ -145,10 +145,10 @@ where
                     notification = self.incoming.recv().fuse() => {
                         if let Ok(notification) = notification {
                             // Broadcast the notification...
-                            let event = (&*notification).into();
+                            let event = (&notification).into();
                             for (subscription, variant_set) in plan[event].iter() {
                                 // ... by subscription scope
-                                let applied_notification = subscription.apply_to(notification.clone());
+                                let applied_notification = subscription.apply_to(&notification);
                                 for (encoding, connection_set) in variant_set.iter() {
                                     // ... by message encoding
                                     let message = C::into_message(&applied_notification, encoding);

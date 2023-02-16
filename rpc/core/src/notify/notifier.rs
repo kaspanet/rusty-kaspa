@@ -24,7 +24,7 @@ use std::{
 use workflow_core::channel::Channel;
 
 pub trait Notify: Send + Sync + 'static {
-    fn notify(self: &Arc<Self>, notification: Arc<Notification>) -> Result<()>;
+    fn notify(self: &Arc<Self>, notification: Notification) -> Result<()>;
 }
 
 /// A Notifier is a notification broadcaster that manages a collection of [`Listener`]s and, for each one,
@@ -75,7 +75,7 @@ impl<C> Notify for Notifier<C>
 where
     C: Connection,
 {
-    fn notify(self: &Arc<Self>, notification: Arc<Notification>) -> Result<()> {
+    fn notify(self: &Arc<Self>, notification: Notification) -> Result<()> {
         self.inner.notify(notification)
     }
 }
@@ -113,7 +113,7 @@ where
     started: Arc<AtomicBool>,
 
     /// Channel used to send the notifications to the broadcasters
-    notification_channel: Channel<Arc<Notification>>,
+    notification_channel: Channel<Notification>,
 
     /// Array of notification broadcasters
     broadcasters: Vec<Arc<Broadcaster<C>>>,
@@ -229,7 +229,7 @@ where
         self.execute_subscribe_command(id, scope, Command::Start)
     }
 
-    fn notify(&self, notification: Arc<Notification>) -> Result<()> {
+    fn notify(&self, notification: Notification) -> Result<()> {
         Ok(self.notification_channel.try_send(notification)?)
     }
 

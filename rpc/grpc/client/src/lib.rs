@@ -545,7 +545,7 @@ impl Inner {
                     trace!("[GrpcClient] handle_response received notification: {:?}", event);
 
                     // Here we ignore any returned error
-                    match self.notify_sender.try_send(Arc::new(notification)) {
+                    match self.notify_sender.try_send(notification) {
                         Ok(_) => {}
                         Err(err) => {
                             trace!("[GrpcClient] error while trying to send a notification to the notifier: {:?}", err);

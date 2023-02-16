@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::{notify::collector::ArcConvert, BlockAddedNotification, NewBlockTemplateNotification, Notification};
+use crate::{BlockAddedNotification, NewBlockTemplateNotification, Notification};
 use consensus_core::notify as consensus_notify;
 
 // ----------------------------------------------------------------------------
@@ -18,7 +18,7 @@ impl From<&consensus_notify::Notification> for Notification {
 
 impl From<&consensus_notify::BlockAddedNotification> for BlockAddedNotification {
     fn from(item: &consensus_notify::BlockAddedNotification) -> Self {
-        Self { block: (&item.block).into() }
+        Self { block: Arc::new((&*item.block).into()) }
     }
 }
 
@@ -28,17 +28,9 @@ impl From<&consensus_notify::NewBlockTemplateNotification> for NewBlockTemplateN
     }
 }
 
-/// Pseudo conversion from Arc<Notification> to Arc<Notification>.
-/// This is basically a clone() op.
-impl From<ArcConvert<Notification>> for Arc<Notification> {
-    fn from(item: ArcConvert<Notification>) -> Self {
-        (*item).clone()
-    }
-}
-
-impl From<ArcConvert<consensus_notify::Notification>> for Arc<Notification> {
-    fn from(item: ArcConvert<consensus_notify::Notification>) -> Self {
-        Arc::new((&**item).into())
+impl From<consensus_notify::Notification> for Notification {
+    fn from(item: consensus_notify::Notification) -> Self {
+        (&item).into()
     }
 }
 

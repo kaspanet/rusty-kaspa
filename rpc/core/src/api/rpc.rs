@@ -17,9 +17,9 @@ use async_trait::async_trait;
 ///
 /// For each RPC call a matching readily implemented function taking detailed parameters is also provided.
 #[async_trait]
-pub trait RpcApi<T>: Sync + Send
+pub trait RpcApi<C>: Sync + Send
 where
-    T: Connection,
+    C: Connection,
 {
     ///
     async fn ping(&self) -> RpcResult<()> {
@@ -281,7 +281,7 @@ where
     // Notification API
 
     /// Register a new listener and returns an id identifying it.
-    fn register_new_listener(&self, connection: T) -> ListenerId;
+    fn register_new_listener(&self, connection: C) -> ListenerId;
 
     /// Unregister an existing listener.
     ///

@@ -1,6 +1,6 @@
 use crate::{Notification, NotificationSender};
 use std::fmt::Debug;
-use std::{hash::Hash, sync::Arc};
+use std::hash::Hash;
 
 pub trait Connection: Clone + Debug + Send + Sync + 'static {
     type Message: Clone;
@@ -8,7 +8,7 @@ pub trait Connection: Clone + Debug + Send + Sync + 'static {
     type Error: Into<crate::notify::error::Error>;
 
     fn encoding(&self) -> Self::Encoding;
-    fn into_message(notification: &Arc<Notification>, encoding: &Self::Encoding) -> Self::Message;
+    fn into_message(notification: &Notification, encoding: &Self::Encoding) -> Self::Message;
     fn send(&self, message: Self::Message) -> Result<(), Self::Error>;
     fn close(&self) -> bool;
     fn is_closed(&self) -> bool;
@@ -32,7 +32,7 @@ pub enum Unchanged {
 }
 
 impl Connection for ChannelConnection {
-    type Message = Arc<Notification>;
+    type Message = Notification;
     type Encoding = Unchanged;
     type Error = super::error::Error;
 
@@ -40,7 +40,7 @@ impl Connection for ChannelConnection {
         Unchanged::Clone
     }
 
-    fn into_message(notification: &Arc<Notification>, _: &Self::Encoding) -> Self::Message {
+    fn into_message(notification: &Notification, _: &Self::Encoding) -> Self::Message {
         notification.clone()
     }
 

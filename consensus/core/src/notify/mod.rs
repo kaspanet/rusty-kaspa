@@ -1,4 +1,5 @@
 use crate::block::Block;
+use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 pub enum Notification {
@@ -8,7 +9,7 @@ pub enum Notification {
 
 #[derive(Debug, Clone)]
 pub struct BlockAddedNotification {
-    pub block: Block,
+    pub block: Arc<Block>,
 }
 
 #[derive(Debug, Clone)]
