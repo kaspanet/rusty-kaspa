@@ -10,8 +10,9 @@ kaspa-core.workspace = true
 consensus-core.workspace = true
 p2p-lib.workspace = true
 kaspa-utils.workspace = true
-rand.workspace = true
+hashes.workspace = true
 
+rand.workspace = true
 thiserror.workspace = true
 log.workspace = true
 futures = { version = "0.3", default-features = false, features = ["alloc"] }

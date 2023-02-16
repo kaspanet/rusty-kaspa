@@ -1901,6 +1901,7 @@ dependencies = [
  "async-trait",
  "consensus-core",
  "futures",
+ "hashes",
  "kaspa-core",
  "kaspa-utils",
  "log",
