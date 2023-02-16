@@ -28,7 +28,7 @@ pub struct UtxoIndex {
 }
 
 impl UtxoIndex {
-    /// Creates a new [`UtxoIndex`] listening to the passed consensus.
+    /// Creates a new [`UtxoIndex`] within a [`RwLock`]
     pub fn new(consensus: DynConsensus, db: Arc<DB>) -> RwLock<Self> {
         RwLock::new(Self { consensus, store: Store::new(db) })
     }
