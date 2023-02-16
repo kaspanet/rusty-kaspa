@@ -1,18 +1,14 @@
 use super::{super::scope::Scope, Mutation, Single, Subscription};
-use crate::{
-    notify::{
-        events::EventType,
-        scope::{UtxosChangedScope, VirtualSelectedParentChainChangedScope},
-        subscription::Command,
-    },
-    Notification, VirtualSelectedParentChainChangedNotification,
+use crate::notify::{
+    events::EventType,
+    scope::{UtxosChangedScope, VirtualSelectedParentChainChangedScope},
+    subscription::Command,
 };
 use addresses::Address;
 use std::{
     collections::HashSet,
     fmt::Debug,
     hash::{Hash, Hasher},
-    sync::Arc,
 };
 
 /// Subscription with a all or none scope.
@@ -31,12 +27,6 @@ impl OverallSubscription {
 }
 
 impl Single for OverallSubscription {
-    fn apply_to(&self, notification: &Notification) -> Notification {
-        assert!(self.active);
-        assert_eq!(self.event_type, notification.into());
-        notification.clone()
-    }
-
     #[inline(always)]
     fn active(&self) -> bool {
         self.active
@@ -75,24 +65,12 @@ impl VirtualSelectedParentChainChangedSubscription {
     pub fn new(active: bool, include_accepted_transaction_ids: bool) -> Self {
         Self { active, include_accepted_transaction_ids }
     }
+    pub fn include_accepted_transaction_ids(&self) -> bool {
+        self.include_accepted_transaction_ids
+    }
 }
 
 impl Single for VirtualSelectedParentChainChangedSubscription {
-    fn apply_to(&self, notification: &Notification) -> Notification {
-        assert!(self.active);
-        assert_eq!(self.event_type(), notification.into());
-        if let Notification::VirtualSelectedParentChainChanged(ref payload) = notification {
-            if !self.include_accepted_transaction_ids && !payload.accepted_transaction_ids.is_empty() {
-                return Notification::VirtualSelectedParentChainChanged(VirtualSelectedParentChainChangedNotification {
-                    removed_chain_block_hashes: payload.removed_chain_block_hashes.clone(),
-                    added_chain_block_hashes: payload.added_chain_block_hashes.clone(),
-                    accepted_transaction_ids: Arc::new(vec![]),
-                });
-            }
-        }
-        notification.clone()
-    }
-
     #[inline(always)]
     fn active(&self) -> bool {
         self.active
@@ -206,10 +184,6 @@ impl Hash for UtxosChangedSubscription {
 }
 
 impl Single for UtxosChangedSubscription {
-    fn apply_to(&self, _notification: &Notification) -> Notification {
-        todo!()
-    }
-
     fn active(&self) -> bool {
         self.active
     }

@@ -48,7 +48,7 @@ use std::{
 /// Subscriber.
 pub struct RpcCoreService {
     consensus: DynConsensus,
-    notifier: Arc<Notifier<ChannelConnection>>,
+    notifier: Arc<Notifier<Notification, ChannelConnection>>,
 }
 
 const RPC_CORE: &str = "rpc-core";
@@ -77,7 +77,7 @@ impl RpcCoreService {
     }
 
     #[inline(always)]
-    pub fn notifier(&self) -> Arc<Notifier<ChannelConnection>> {
+    pub fn notifier(&self) -> Arc<Notifier<Notification, ChannelConnection>> {
         self.notifier.clone()
     }
 }

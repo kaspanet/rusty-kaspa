@@ -1,9 +1,20 @@
 use crate::model::message::*;
-use crate::notify::scope::{Scope, UtxosChangedScope, VirtualSelectedParentChainChangedScope};
+use crate::notify::collector::CollectorFrom;
+use crate::notify::connection::ChannelConnection;
+use crate::notify::subscription::single::{
+    OverallSubscription, UtxosChangedSubscription, VirtualSelectedParentChainChangedSubscription,
+};
+use crate::notify::{
+    events::EventType,
+    notification::Notification as NotificationTrait,
+    scope::{Scope, UtxosChangedScope, VirtualSelectedParentChainChangedScope},
+    subscription::Single,
+};
 use async_channel::{Receiver, Sender};
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
+use std::sync::Arc;
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[allow(clippy::large_enum_variant)]
@@ -69,6 +80,61 @@ impl AsRef<Notification> for Notification {
     }
 }
 
+impl NotificationTrait for Notification {
+    fn apply_overall_subscription(&self, subscription: &OverallSubscription) -> Option<Self> {
+        match subscription.active() {
+            true => Some(self.clone()),
+            false => None,
+        }
+    }
+
+    fn apply_virtual_selected_parent_chain_changed_subscription(
+        &self,
+        subscription: &VirtualSelectedParentChainChangedSubscription,
+    ) -> Option<Self> {
+        match subscription.active() {
+            true => {
+                if let Notification::VirtualSelectedParentChainChanged(ref payload) = self {
+                    if !subscription.include_accepted_transaction_ids() && !payload.accepted_transaction_ids.is_empty() {
+                        return Some(Notification::VirtualSelectedParentChainChanged(VirtualSelectedParentChainChangedNotification {
+                            removed_chain_block_hashes: payload.removed_chain_block_hashes.clone(),
+                            added_chain_block_hashes: payload.added_chain_block_hashes.clone(),
+                            accepted_transaction_ids: Arc::new(vec![]),
+                        }));
+                    }
+                }
+                Some(self.clone())
+            }
+            false => None,
+        }
+    }
+
+    fn apply_utxos_changed_subscription(&self, _subscription: &UtxosChangedSubscription) -> Option<Self> {
+        todo!()
+    }
+
+    fn event_type(&self) -> EventType {
+        self.into()
+    }
+}
+
+// TODO: write a macro to get this
+impl From<&Notification> for EventType {
+    fn from(item: &Notification) -> Self {
+        match item {
+            Notification::BlockAdded(_) => EventType::BlockAdded,
+            Notification::VirtualSelectedParentChainChanged(_) => EventType::VirtualSelectedParentChainChanged,
+            Notification::FinalityConflict(_) => EventType::FinalityConflict,
+            Notification::FinalityConflictResolved(_) => EventType::FinalityConflictResolved,
+            Notification::UtxosChanged(_) => EventType::UtxosChanged,
+            Notification::VirtualSelectedParentBlueScoreChanged(_) => EventType::VirtualSelectedParentBlueScoreChanged,
+            Notification::VirtualDaaScoreChanged(_) => EventType::VirtualDaaScoreChanged,
+            Notification::PruningPointUtxoSetOverride(_) => EventType::PruningPointUTXOSetOverride,
+            Notification::NewBlockTemplate(_) => EventType::NewBlockTemplate,
+        }
+    }
+}
+
 impl From<&Notification> for Scope {
     fn from(item: &Notification) -> Self {
         match item {
@@ -94,3 +160,8 @@ pub enum NotificationHandle {
     Existing(u64),
     New(NotificationSender),
 }
+
+/// A rpc_core notification collector providing a simple pass-through.
+/// No conversion occurs since both source and target data are of
+/// type [`Notification`].
+pub type RpcCoreCollector = CollectorFrom<Notification, Notification, ChannelConnection>;

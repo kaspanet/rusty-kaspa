@@ -9,7 +9,10 @@ use futures::{
     select,
 };
 use kaspa_core::trace;
-use kaspa_grpc_core::protowire::{kaspad_request, rpc_client::RpcClient, GetInfoRequestMessage, KaspadRequest, KaspadResponse};
+use kaspa_grpc_core::{
+    channel::NotificationChannel,
+    protowire::{kaspad_request, rpc_client::RpcClient, GetInfoRequestMessage, KaspadRequest, KaspadResponse},
+};
 use kaspa_rpc_core::{
     api::ops::RpcApiOps,
     api::rpc::RpcApi,
@@ -17,8 +20,6 @@ use kaspa_rpc_core::{
     error::RpcResult,
     model::message::*,
     notify::{
-        channel::NotificationChannel,
-        collector::RpcCoreCollector,
         connection::ChannelConnection,
         error::Result as NotifyResult,
         events::EventType,
@@ -28,7 +29,7 @@ use kaspa_rpc_core::{
         subscriber::{Subscriber, SubscriptionManager},
         subscription::Command,
     },
-    Notification, NotificationSender,
+    Notification, NotificationSender, RpcCoreCollector,
 };
 use kaspa_utils::triggers::DuplexTrigger;
 use std::{
@@ -48,7 +49,7 @@ mod route;
 
 pub struct GrpcClient {
     inner: Arc<Inner>,
-    notifier: Arc<Notifier<ChannelConnection>>,
+    notifier: Arc<Notifier<Notification, ChannelConnection>>,
 }
 
 const GRPC_CLIENT: &str = "grpc-client";
@@ -66,7 +67,7 @@ impl GrpcClient {
     }
 
     #[inline(always)]
-    fn notifier(&self) -> Arc<Notifier<ChannelConnection>> {
+    fn notifier(&self) -> Arc<Notifier<Notification, ChannelConnection>> {
         self.notifier.clone()
     }
 

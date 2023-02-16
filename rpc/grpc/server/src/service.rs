@@ -5,11 +5,13 @@ use crate::{
 };
 use futures::Stream;
 use kaspa_core::trace;
-use kaspa_grpc_core::protowire::{kaspad_request::Payload, rpc_server::Rpc, NotifyNewBlockTemplateResponseMessage, *};
+use kaspa_grpc_core::{
+    channel::NotificationChannel,
+    protowire::{kaspad_request::Payload, rpc_server::Rpc, NotifyNewBlockTemplateResponseMessage, *},
+};
 use kaspa_rpc_core::{
     api::rpc::RpcApi,
     notify::{
-        channel::NotificationChannel,
         connection::ChannelConnection,
         listener::ListenerId,
         scope::{Scope, UtxosChangedScope, VirtualSelectedParentChainChangedScope},
@@ -17,7 +19,7 @@ use kaspa_rpc_core::{
     },
     notify::{events::EVENT_TYPE_ARRAY, notifier::Notifier},
     server::service::RpcCoreService,
-    RpcResult,
+    Notification, RpcResult,
 };
 use std::{io::ErrorKind, net::SocketAddr, pin::Pin, sync::Arc};
 use tokio::sync::{mpsc, RwLock};
@@ -58,7 +60,7 @@ pub struct GrpcService {
     core_channel: NotificationChannel,
     core_listener_id: ListenerId,
     connection_manager: Arc<RwLock<GrpcConnectionManager>>,
-    notifier: Arc<Notifier<GrpcConnection>>,
+    notifier: Arc<Notifier<Notification, GrpcConnection>>,
 }
 
 const GRPC_SERVER: &str = "grpc-server";
@@ -72,14 +74,15 @@ impl GrpcService {
         // Prepare internals
         let collector = Arc::new(GrpcServiceCollector::new(core_channel.receiver()));
         let subscriber = Arc::new(Subscriber::new(core_service.notifier(), core_listener_id));
-        let notifier: Arc<Notifier<GrpcConnection>> = Arc::new(Notifier::new(vec![collector], vec![subscriber], 10, GRPC_SERVER));
+        let notifier: Arc<Notifier<Notification, GrpcConnection>> =
+            Arc::new(Notifier::new(vec![collector], vec![subscriber], 10, GRPC_SERVER));
         let connection_manager = Arc::new(RwLock::new(GrpcConnectionManager::new(notifier.clone())));
 
         Self { core_service, core_channel, core_listener_id, connection_manager, notifier }
     }
 
     #[inline(always)]
-    pub fn notifier(&self) -> Arc<Notifier<GrpcConnection>> {
+    pub fn notifier(&self) -> Arc<Notifier<Notification, GrpcConnection>> {
         self.notifier.clone()
     }
 

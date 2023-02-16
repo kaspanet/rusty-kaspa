@@ -1,5 +1,5 @@
+use super::notification::Notification;
 use super::{events::EventType, scope::Scope};
-use crate::Notification;
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
@@ -83,7 +83,6 @@ pub type CompoundedSubscription = Box<dyn Compounded>;
 
 pub trait Single: Subscription + AsAny + DynHash + DynEq + SingleClone + Debug + Send + Sync {
     fn active(&self) -> bool;
-    fn apply_to(&self, notification: &Notification) -> Notification;
     fn mutate(&mut self, mutation: Mutation) -> Option<Vec<Mutation>>;
     fn scope(&self) -> Scope;
 }
@@ -145,4 +144,8 @@ where
     fn clone_arc(&self) -> Arc<dyn Single> {
         Arc::new(self.clone())
     }
+}
+
+pub trait ApplyTo {
+    fn apply_to<N: Notification>(&self, notification: &N) -> Option<N>;
 }

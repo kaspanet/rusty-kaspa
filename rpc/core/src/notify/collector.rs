@@ -1,11 +1,9 @@
-use crate::notify::notifier::Notify;
-use crate::{
-    notify::{
-        connection::{ChannelConnection, Connection},
-        error::{Error, Result},
-        notifier::Notifier,
-    },
-    Notification,
+use super::{
+    connection::Connection,
+    error::{Error, Result},
+    events::EventType,
+    notification::Notification,
+    notifier::{Notifier, Notify},
 };
 use async_channel::{Receiver, Sender};
 use async_trait::async_trait;
@@ -31,56 +29,62 @@ pub type CollectorNotificationReceiver<T> = Receiver<T>;
 ///
 /// A [`Collector`] is responsible for collecting notifications of
 /// a specific form from a specific source, convert them if necessary
-/// into [`Notification`]s and forward them to the [Notifier] provided
+/// into `N`s and forward them to the [Notifier] provided
 /// to `Collector::start`.
 #[async_trait]
-pub trait Collector<C>: Send + Sync + Debug
+pub trait Collector<N, C>: Send + Sync + Debug
 where
-    C: Connection,
+    N: Notification,
+    C: Connection<Notification = N>,
 {
     /// Start collecting notifications for `notifier`
-    fn start(&self, notifier: Arc<Notifier<C>>);
+    fn start(&self, notifier: Arc<Notifier<N, C>>);
     /// Stop collecting notifications
     async fn stop(&self) -> Result<()>;
 }
 
-pub type DynCollector<C> = Arc<dyn Collector<C>>;
+pub type DynCollector<N, C> = Arc<dyn Collector<N, C>>;
 
 /// A notification [`Collector`] that receives [`T`] from a channel,
-/// converts it into a [`Notification`] and sends it to a its
+/// converts it into a `N` and sends it to a its
 /// [`Notifier`].
 #[derive(Debug)]
-pub struct CollectorFrom<N, C>
+pub struct CollectorFrom<I, N, C>
 where
-    N: Send + Sync + 'static + Sized,
+    N: Notification,
+    I: Send + Sync + 'static + Sized + Debug,
     C: Connection,
 {
-    recv_channel: CollectorNotificationReceiver<N>,
+    recv_channel: CollectorNotificationReceiver<I>,
 
     /// Has this collector been started?
     is_started: Arc<AtomicBool>,
 
     collect_shutdown: Arc<DuplexTrigger>,
 
-    connection: PhantomData<C>,
+    _notification: PhantomData<N>,
+    _connection: PhantomData<C>,
 }
 
-impl<N, C> CollectorFrom<N, C>
+impl<I, N, C> CollectorFrom<I, N, C>
 where
-    N: Send + Sync + 'static + Sized + Debug,
-    N: Into<Notification>,
-    C: Connection,
+    N: Notification,
+    I: Send + Sync + 'static + Sized + Debug,
+    I: Into<N>,
+    C: Connection<Notification = N>,
+    EventType: From<&'static N>,
 {
-    pub fn new(recv_channel: CollectorNotificationReceiver<N>) -> Self {
+    pub fn new(recv_channel: CollectorNotificationReceiver<I>) -> Self {
         Self {
             recv_channel,
             collect_shutdown: Arc::new(DuplexTrigger::new()),
             is_started: Arc::new(AtomicBool::new(false)),
-            connection: PhantomData,
+            _notification: PhantomData,
+            _connection: PhantomData,
         }
     }
 
-    fn spawn_collecting_task(&self, notifier: Arc<Notifier<C>>) {
+    fn spawn_collecting_task(&self, notifier: Arc<Notifier<N, C>>) {
         // The task can only be spawned once
         if self.is_started.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
             return;
@@ -133,13 +137,15 @@ where
 }
 
 #[async_trait]
-impl<N, C> Collector<C> for CollectorFrom<N, C>
+impl<I, N, C> Collector<N, C> for CollectorFrom<I, N, C>
 where
-    N: Send + Sync + 'static + Sized + Debug,
-    N: Into<Notification>,
-    C: Connection,
+    N: Notification,
+    I: Send + Sync + 'static + Sized + Debug,
+    I: Into<N>,
+    C: Connection<Notification = N>,
+    EventType: From<&'static N>,
 {
-    fn start(&self, notifier: Arc<Notifier<C>>) {
+    fn start(&self, notifier: Arc<Notifier<N, C>>) {
         self.spawn_collecting_task(notifier);
     }
 
@@ -147,8 +153,3 @@ where
         self.stop_collecting_task().await
     }
 }
-
-/// A rpc_core notification collector providing a simple pass-through.
-/// No conversion occurs since both source and target data are of
-/// type [`Notification`].
-pub type RpcCoreCollector = CollectorFrom<Notification, ChannelConnection>;

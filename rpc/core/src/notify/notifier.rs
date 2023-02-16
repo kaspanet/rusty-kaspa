@@ -5,11 +5,11 @@ use super::{
     error::{Error, Result},
     events::{EventArray, EventType},
     listener::{Listener, ListenerId},
+    notification::Notification,
     scope::Scope,
     subscriber::{Subscriber, SubscriptionManager},
     subscription::{array::ArrayBuilder, Command, CompoundedSubscription, Mutation},
 };
-use crate::Notification;
 use async_trait::async_trait;
 use core::fmt::Debug;
 use futures::future::join_all;
@@ -23,8 +23,11 @@ use std::{
 };
 use workflow_core::channel::Channel;
 
-pub trait Notify: Send + Sync + 'static {
-    fn notify(self: &Arc<Self>, notification: Notification) -> Result<()>;
+pub trait Notify<N>
+where
+    N: Notification,
+{
+    fn notify(&self, notification: N) -> Result<()>;
 }
 
 /// A Notifier is a notification broadcaster that manages a collection of [`Listener`]s and, for each one,
@@ -39,18 +42,26 @@ pub trait Notify: Send + Sync + 'static {
 ///
 /// A notifier broadcasts its incoming notifications to its listeners.
 #[derive(Debug)]
-pub struct Notifier<C>
+pub struct Notifier<N, C>
 where
-    C: Connection,
+    N: Notification,
+    C: Connection<Notification = N>,
 {
-    inner: Arc<Inner<C>>,
+    inner: Arc<Inner<N, C>>,
 }
 
-impl<C> Notifier<C>
+impl<N, C> Notifier<N, C>
 where
-    C: Connection,
+    N: Notification,
+    C: Connection<Notification = N>,
+    EventType: From<&'static N>,
 {
-    pub fn new(collectors: Vec<DynCollector<C>>, subscribers: Vec<Arc<Subscriber>>, broadcasters: usize, name: &'static str) -> Self {
+    pub fn new(
+        collectors: Vec<DynCollector<N, C>>,
+        subscribers: Vec<Arc<Subscriber>>,
+        broadcasters: usize,
+        name: &'static str,
+    ) -> Self {
         Self { inner: Arc::new(Inner::new(collectors, subscribers, broadcasters, name)) }
     }
 
@@ -71,19 +82,23 @@ where
     }
 }
 
-impl<C> Notify for Notifier<C>
+impl<N, C> Notify<N> for Notifier<N, C>
 where
-    C: Connection,
+    N: Notification,
+    C: Connection<Notification = N>,
+    EventType: From<&'static N>,
 {
-    fn notify(self: &Arc<Self>, notification: Notification) -> Result<()> {
+    fn notify(&self, notification: N) -> Result<()> {
         self.inner.notify(notification)
     }
 }
 
 #[async_trait]
-impl<C> SubscriptionManager for Notifier<C>
+impl<N, C> SubscriptionManager for Notifier<N, C>
 where
-    C: Connection,
+    N: Notification,
+    C: Connection<Notification = N>,
+    EventType: From<&'static N>,
 {
     async fn start_notify(&self, id: ListenerId, scope: Scope) -> Result<()> {
         trace!("[Notifier-{}] start sending to listener {} notifications of scope {:?}", self.inner.name, id, scope);
@@ -99,8 +114,9 @@ where
 }
 
 #[derive(Debug)]
-struct Inner<C>
+struct Inner<N, C>
 where
+    N: Notification,
     C: Connection,
 {
     /// Map of registered listeners
@@ -113,13 +129,13 @@ where
     started: Arc<AtomicBool>,
 
     /// Channel used to send the notifications to the broadcasters
-    notification_channel: Channel<Notification>,
+    notification_channel: Channel<N>,
 
     /// Array of notification broadcasters
-    broadcasters: Vec<Arc<Broadcaster<C>>>,
+    broadcasters: Vec<Arc<Broadcaster<N, C>>>,
 
     /// Collectors
-    collectors: Vec<DynCollector<C>>,
+    collectors: Vec<DynCollector<N, C>>,
 
     /// Subscribers
     subscribers: Vec<Arc<Subscriber>>,
@@ -128,11 +144,13 @@ where
     pub name: &'static str,
 }
 
-impl<C> Inner<C>
+impl<N, C> Inner<N, C>
 where
-    C: Connection,
+    N: Notification,
+    C: Connection<Notification = N>,
+    EventType: From<&'static N>,
 {
-    fn new(collectors: Vec<DynCollector<C>>, subscribers: Vec<Arc<Subscriber>>, broadcasters: usize, name: &'static str) -> Self {
+    fn new(collectors: Vec<DynCollector<N, C>>, subscribers: Vec<Arc<Subscriber>>, broadcasters: usize, name: &'static str) -> Self {
         assert!(broadcasters > 0, "a notifier requires a minimum of one broadcaster");
         let notification_channel = Channel::unbounded();
         let broadcasters = (0..broadcasters)
@@ -151,7 +169,7 @@ where
         }
     }
 
-    fn start(&self, notifier: Arc<Notifier<C>>) {
+    fn start(&self, notifier: Arc<Notifier<N, C>>) {
         if self.started.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
             self.subscribers.iter().for_each(|x| x.start());
             self.collectors.iter().for_each(|x| x.clone().start(notifier.clone()));
@@ -229,7 +247,7 @@ where
         self.execute_subscribe_command(id, scope, Command::Start)
     }
 
-    fn notify(&self, notification: Notification) -> Result<()> {
+    fn notify(&self, notification: N) -> Result<()> {
         Ok(self.notification_channel.try_send(notification)?)
     }
 

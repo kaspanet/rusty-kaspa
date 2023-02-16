@@ -1,7 +1,10 @@
 use crate::StatusResult;
 use kaspa_core::trace;
 use kaspa_grpc_core::protowire::KaspadResponse;
-use kaspa_rpc_core::notify::{connection::Connection, error::Error as NotificationError, listener::ListenerId, notifier::Notifier};
+use kaspa_rpc_core::{
+    notify::{connection::Connection, error::Error as NotificationError, listener::ListenerId, notifier::Notifier},
+    Notification,
+};
 use std::{
     collections::HashMap,
     net::SocketAddr,
@@ -41,6 +44,7 @@ pub enum GrpcEncoding {
 }
 
 impl Connection for GrpcConnection {
+    type Notification = Notification;
     type Message = Arc<StatusResult<KaspadResponse>>;
     type Encoding = GrpcEncoding;
     type Error = super::error::Error;
@@ -73,11 +77,11 @@ impl Connection for GrpcConnection {
 
 pub(crate) struct GrpcConnectionManager {
     connections: HashMap<SocketAddr, GrpcConnection>,
-    notifier: Arc<Notifier<GrpcConnection>>,
+    notifier: Arc<Notifier<Notification, GrpcConnection>>,
 }
 
 impl GrpcConnectionManager {
-    pub fn new(notifier: Arc<Notifier<GrpcConnection>>) -> Self {
+    pub fn new(notifier: Arc<Notifier<Notification, GrpcConnection>>) -> Self {
         Self { connections: HashMap::new(), notifier }
     }
 

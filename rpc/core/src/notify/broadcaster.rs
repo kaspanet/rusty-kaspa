@@ -2,12 +2,13 @@ extern crate derive_more;
 use super::{
     connection::Connection,
     error::{Error, Result},
-    events::EventArray,
+    events::{EventArray, EventType},
     listener::ListenerId,
+    notification::Notification,
     subscription::DynSubscription,
 };
-use crate::Notification;
 use async_channel::Receiver;
+use core::fmt::Debug;
 use derive_more::Deref;
 use futures::{
     future::FutureExt, // for `.fuse()`
@@ -88,22 +89,25 @@ where
 }
 
 #[derive(Debug)]
-pub struct Broadcaster<C>
+pub struct Broadcaster<N, C>
 where
+    N: Notification,
     C: Connection,
 {
     name: &'static str,
     started: Arc<AtomicBool>,
     ctl: Channel<Ctl<C>>,
-    incoming: Receiver<Notification>,
+    incoming: Receiver<N>,
     shutdown: Channel<()>,
 }
 
-impl<C> Broadcaster<C>
+impl<N, C> Broadcaster<N, C>
 where
-    C: Connection,
+    N: Notification,
+    C: Connection<Notification = N>,
+    EventType: From<&'static N>,
 {
-    pub fn new(name: &'static str, incoming: Receiver<Notification>) -> Self {
+    pub fn new(name: &'static str, incoming: Receiver<N>) -> Self {
         Self { name, started: Arc::new(AtomicBool::default()), ctl: Channel::unbounded(), incoming, shutdown: Channel::oneshot() }
     }
 
@@ -145,23 +149,24 @@ where
                     notification = self.incoming.recv().fuse() => {
                         if let Ok(notification) = notification {
                             // Broadcast the notification...
-                            let event = (&notification).into();
-                            for (subscription, variant_set) in plan[event].iter() {
+                            let event = notification.event_type();
+                            for (subscription, encoding_set) in plan[event].iter() {
                                 // ... by subscription scope
-                                let applied_notification = subscription.apply_to(&notification);
-                                for (encoding, connection_set) in variant_set.iter() {
-                                    // ... by message encoding
-                                    let message = C::into_message(&applied_notification, encoding);
-                                    for (id, connection) in connection_set.iter() {
-                                        // ... to listeners connections
-                                        match connection.send(message.clone()) {
-                                            Ok(_) => {
-                                                trace!("[Notifier-{}] broadcasting task sent notification {notification} to listener {id}", self.name);
-                                            },
-                                            Err(_) => {
-                                                if connection.is_closed() {
-                                                    trace!("[Notifier-{}] broadcasting task could not send a notification to listener {id} because its connection is closed - removing it", self.name);
-                                                    purge.push(*id);
+                                if let Some(applied_notification) = notification.apply_subscription(&**subscription) {
+                                    for (encoding, connection_set) in encoding_set.iter() {
+                                        // ... by message encoding
+                                        let message = C::into_message(&applied_notification, encoding);
+                                        for (id, connection) in connection_set.iter() {
+                                            // ... to listeners connections
+                                            match connection.send(message.clone()) {
+                                                Ok(_) => {
+                                                    trace!("[Notifier-{}] broadcasting task sent notification {notification} to listener {id}", self.name);
+                                                },
+                                                Err(_) => {
+                                                    if connection.is_closed() {
+                                                        trace!("[Notifier-{}] broadcasting task could not send a notification to listener {id} because its connection is closed - removing it", self.name);
+                                                        purge.push(*id);
+                                                    }
                                                 }
                                             }
                                         }

@@ -1,5 +1,4 @@
 use super::scope::Scope;
-use crate::Notification;
 use std::ops::{Index, IndexMut};
 use workflow_core::enums::usize_try_from;
 
@@ -33,23 +32,6 @@ pub const EVENT_TYPE_ARRAY: [EventType; EVENT_COUNT] = [
     EventType::PruningPointUTXOSetOverride,
     EventType::NewBlockTemplate,
 ];
-
-// TODO: write a macro to get this
-impl From<&Notification> for EventType {
-    fn from(item: &Notification) -> Self {
-        match item {
-            Notification::BlockAdded(_) => EventType::BlockAdded,
-            Notification::VirtualSelectedParentChainChanged(_) => EventType::VirtualSelectedParentChainChanged,
-            Notification::FinalityConflict(_) => EventType::FinalityConflict,
-            Notification::FinalityConflictResolved(_) => EventType::FinalityConflictResolved,
-            Notification::UtxosChanged(_) => EventType::UtxosChanged,
-            Notification::VirtualSelectedParentBlueScoreChanged(_) => EventType::VirtualSelectedParentBlueScoreChanged,
-            Notification::VirtualDaaScoreChanged(_) => EventType::VirtualDaaScoreChanged,
-            Notification::PruningPointUtxoSetOverride(_) => EventType::PruningPointUTXOSetOverride,
-            Notification::NewBlockTemplate(_) => EventType::NewBlockTemplate,
-        }
-    }
-}
 
 // TODO: write a macro to get this
 impl From<&Scope> for EventType {

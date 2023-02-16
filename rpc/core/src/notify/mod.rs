@@ -1,10 +1,10 @@
 pub mod broadcaster;
-pub mod channel;
 pub mod collector;
 pub mod connection;
 pub mod error;
 pub mod events;
 pub mod listener;
+pub mod notification;
 pub mod notifier;
 pub mod scope;
 pub mod subscriber;
