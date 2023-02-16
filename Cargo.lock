@@ -1582,7 +1582,6 @@ dependencies = [
  "log",
  "num-format",
  "p2p-flows",
- "parking_lot",
  "rand 0.8.5",
  "rand_distr",
  "rayon",

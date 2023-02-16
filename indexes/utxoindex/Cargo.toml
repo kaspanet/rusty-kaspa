@@ -16,8 +16,8 @@ kaspa-utils.workspace = true
 database.workspace = true
 log.workspace = true
 rocksdb.workspace = true
-parking_lot.workspace = true
 serde.workspace = true
+parking_lot.workspace = true
 
 [dev-dependencies]
 rand = {workspace = true,  features = [ "small_rng" ]}

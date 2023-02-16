@@ -19,7 +19,6 @@ kaspa-rpc-core.workspace = true
 kaspa-grpc-server.workspace = true
 p2p-flows.workspace = true
 
-parking_lot.workspace = true
 thiserror.workspace = true
 futures-util.workspace = true
 rand.workspace = true

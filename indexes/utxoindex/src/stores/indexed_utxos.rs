@@ -3,7 +3,7 @@ use crate::core::model::{CompactUtxoCollection, CompactUtxoEntry, UtxoSetByScrip
 use consensus_core::tx::{
     ScriptPublicKey, ScriptPublicKeyVersion, ScriptPublicKeys, ScriptVec, TransactionIndexType, TransactionOutpoint,
 };
-use database::prelude::{CachedDbAccess, DirectDbWriter, StoreError, DB};
+use database::prelude::{CachedDbAccess, DirectDbWriter, StoreResult, DB};
 use hashes::Hash;
 use std::mem::size_of;
 use std::sync::Arc;
@@ -12,8 +12,6 @@ use std::sync::Arc;
 
 /// Prefixes the [ScriptPublicKey] indexed utxo set.
 pub const UTXO_SET_PREFIX: &[u8] = b"utxo-set";
-
-// Buckets:
 
 pub const VERSION_TYPE_SIZE: usize = size_of::<ScriptPublicKeyVersion>(); // Const since we need to re-use this a few times.
 
@@ -86,7 +84,7 @@ impl AsRef<[u8]> for TransactionOutpointKey {
 }
 
 /// Full [CompactUtxoEntry] access key.
-/// Consists of varible amount of bytes of [ScriptPublicKeyBucket], and 36 bytes of [TransactionOutpointKey]
+/// Consists of variable amount of bytes of [ScriptPublicKeyBucket], and 36 bytes of [TransactionOutpointKey]
 #[derive(Eq, Hash, PartialEq, Debug, Clone)]
 struct UtxoEntryFullAccessKey(Arc<Vec<u8>>);
 
@@ -110,21 +108,18 @@ impl AsRef<[u8]> for UtxoEntryFullAccessKey {
 
 pub trait UtxoSetByScriptPublicKeyStoreReader {
     /// Get [UtxoSetByScriptPublicKey] set by queried [ScriptPublicKeys],
-    fn get_utxos_from_script_public_keys(&self, script_public_keys: &ScriptPublicKeys)
-        -> Result<UtxoSetByScriptPublicKey, StoreError>;
+    fn get_utxos_from_script_public_keys(&self, script_public_keys: &ScriptPublicKeys) -> StoreResult<UtxoSetByScriptPublicKey>;
 }
 
 pub trait UtxoSetByScriptPublicKeyStore: UtxoSetByScriptPublicKeyStoreReader {
-    /// Updates the store according to the [`UtxoChanges`] -- adding and deleting entries correspondingly.
-    /// Note we define `self` as `mut` in order to require write access even though the compiler does not require it.
-    /// This is because concurrent readers can interfere with cache consistency.  
-    fn remove_utxo_entries(&mut self, utxo_entries: &UtxoSetByScriptPublicKey) -> Result<(), StoreError>;
+    /// remove [UtxoSetByScriptPublicKey] from the [UtxoSetByScriptPublicKeyStore].
+    fn remove_utxo_entries(&mut self, utxo_entries: &UtxoSetByScriptPublicKey) -> StoreResult<()>;
 
     /// add [UtxoSetByScriptPublicKey] into the [UtxoSetByScriptPublicKeyStore].
-    fn add_utxo_entries(&mut self, utxo_entries: &UtxoSetByScriptPublicKey) -> Result<(), StoreError>;
+    fn add_utxo_entries(&mut self, utxo_entries: &UtxoSetByScriptPublicKey) -> StoreResult<()>;
 
     /// removes all entries in the cache and db, besides prefixes themselves.
-    fn delete_all(&mut self) -> Result<(), StoreError>;
+    fn delete_all(&mut self) -> StoreResult<()>;
 }
 
 // Implementations:
@@ -145,10 +140,7 @@ impl UtxoSetByScriptPublicKeyStoreReader for DbUtxoSetByScriptPublicKeyStore {
     // compared to go-kaspad this gets transaction outpoints from multiple script public keys at once.
     // TODO: probably ideal way to retrieve is to return a chained iterator which can be used to chunk results and propagate utxo entries
     // to the rpc via pagination, this would alleviate the memory footprint of script public keys with large amount of utxos.
-    fn get_utxos_from_script_public_keys(
-        &self,
-        script_public_keys: &ScriptPublicKeys,
-    ) -> Result<UtxoSetByScriptPublicKey, StoreError> {
+    fn get_utxos_from_script_public_keys(&self, script_public_keys: &ScriptPublicKeys) -> StoreResult<UtxoSetByScriptPublicKey> {
         let mut utxos_by_script_public_keys = UtxoSetByScriptPublicKey::new();
         for script_public_key in script_public_keys.iter() {
             let script_public_key_bucket = ScriptPublicKeyBucket::from(script_public_key);
@@ -172,7 +164,11 @@ impl UtxoSetByScriptPublicKeyStoreReader for DbUtxoSetByScriptPublicKeyStore {
 }
 
 impl UtxoSetByScriptPublicKeyStore for DbUtxoSetByScriptPublicKeyStore {
-    fn remove_utxo_entries(&mut self, utxo_entries: &UtxoSetByScriptPublicKey) -> Result<(), StoreError> {
+    fn remove_utxo_entries(&mut self, utxo_entries: &UtxoSetByScriptPublicKey) -> StoreResult<()> {
+        if utxo_entries.is_empty() {
+            return Ok(());
+        }
+
         let mut writer = DirectDbWriter::new(&self.db);
 
         let mut to_remove = utxo_entries.iter().flat_map(move |(script_public_key, compact_utxo_collection)| {
@@ -189,7 +185,11 @@ impl UtxoSetByScriptPublicKeyStore for DbUtxoSetByScriptPublicKeyStore {
         Ok(())
     }
 
-    fn add_utxo_entries(&mut self, utxo_entries: &UtxoSetByScriptPublicKey) -> Result<(), StoreError> {
+    fn add_utxo_entries(&mut self, utxo_entries: &UtxoSetByScriptPublicKey) -> StoreResult<()> {
+        if utxo_entries.is_empty() {
+            return Ok(());
+        }
+
         let mut writer = DirectDbWriter::new(&self.db);
 
         let mut to_add = utxo_entries.iter().flat_map(move |(script_public_key, compact_utxo_collection)| {
@@ -210,7 +210,7 @@ impl UtxoSetByScriptPublicKeyStore for DbUtxoSetByScriptPublicKeyStore {
     }
 
     /// Removes all entries in the cache and db, besides prefixes themselves.
-    fn delete_all(&mut self) -> Result<(), StoreError> {
+    fn delete_all(&mut self) -> StoreResult<()> {
         let mut writer = DirectDbWriter::new(&self.db);
         self.access.delete_all(&mut writer)
     }

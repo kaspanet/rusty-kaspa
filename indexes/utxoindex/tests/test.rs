@@ -35,7 +35,7 @@ fn test_utxoindex() {
     let mut virtual_change_emulator = VirtualChangeEmulator::new();
     let utxoindex_db = create_temp_db();
     let test_consensus = Arc::new(TestConsensus::create_from_temp_db_and_dummy_sender(&Config::new(DEVNET_PARAMS)));
-    let mut utxoindex = UtxoIndex::new(test_consensus.clone(), utxoindex_db.1);
+    let utxoindex = UtxoIndex::new(test_consensus.clone(), utxoindex_db.1);
 
     // Fill initial utxo collection in emulator.
     virtual_change_emulator.fill_utxo_collection(resync_utxo_collection_size, script_public_key_pool_size); //10_000 utxos belonging to 100 script public keys
@@ -66,15 +66,15 @@ fn test_utxoindex() {
         .expect("setting of state");
 
     // Sync utxoindex from scratch.
-    assert!(!utxoindex.is_synced().expect("expected bool"));
+    assert!(!utxoindex.read().is_synced().expect("expected bool"));
     let now = Instant::now(); // TODO: move over to proper benching eventually.
-    utxoindex.resync().expect("expected resync");
+    utxoindex.write().resync().expect("expected resync");
     let bench_time = now.elapsed().as_millis();
     info!(
         "resync'd {0} utxos from {1} script public keys in {2} ms, (note: run test with `--release` for accurate results)",
         resync_utxo_collection_size, script_public_key_pool_size, bench_time
     ); // Ad-hoc benchmark (run with --release)
-    assert!(utxoindex.is_synced().expect("expected bool"));
+    assert!(utxoindex.read().is_synced().expect("expected bool"));
 
     // Test the sync from scratch via consensus db.
     let consensus_utxos = test_consensus.clone().get_virtual_utxos(None, usize::MAX, false); // `usize::MAX` to ensure to get all.
@@ -84,6 +84,7 @@ fn test_utxoindex() {
     for (tx_outpoint, utxo_entry) in consensus_utxos.into_iter() {
         consensus_supply += utxo_entry.amount;
         let indexed_utxos = utxoindex
+            .read()
             .get_utxos_by_script_public_keys(HashSet::from_iter(vec![utxo_entry.script_public_key.clone()]))
             .expect("expected script public key to be in database");
         for (indexed_script_public_key, indexed_compact_utxo_collection) in indexed_utxos.into_iter() {
@@ -98,9 +99,9 @@ fn test_utxoindex() {
 
     assert_eq!(i, consensus_utxo_set_size);
 
-    assert_eq!(utxoindex.get_circulating_supply().expect("expected circulating supply"), consensus_supply);
+    assert_eq!(utxoindex.read().get_circulating_supply().expect("expected circulating supply"), consensus_supply);
     assert_eq!(
-        *utxoindex.get_utxo_index_tips().expect("expected circulating supply"),
+        *utxoindex.read().get_utxo_index_tips().expect("expected circulating supply"),
         BlockHashSet::from_iter(test_consensus.clone().get_virtual_state_tips())
     );
 
@@ -110,6 +111,7 @@ fn test_utxoindex() {
 
     let now = Instant::now();
     let res = utxoindex
+        .write()
         .update(virtual_change_emulator.virtual_state.accumulated_utxo_diff.clone(), virtual_change_emulator.virtual_state.parents)
         .expect("expected utxoindex event");
     let bench_time = now.elapsed().as_millis();
@@ -157,12 +159,15 @@ fn test_utxoindex() {
         }
     }
 
-    assert_eq!(utxoindex.get_circulating_supply().expect("expected circulating supply"), virtual_change_emulator.circulating_supply);
-    assert_eq!(*utxoindex.get_utxo_index_tips().expect("expected circulating supply"), virtual_change_emulator.tips);
+    assert_eq!(
+        utxoindex.read().get_circulating_supply().expect("expected circulating supply"),
+        virtual_change_emulator.circulating_supply
+    );
+    assert_eq!(*utxoindex.read().get_utxo_index_tips().expect("expected circulating supply"), virtual_change_emulator.tips);
 
     //test if resync clears db.
 
-    utxoindex.resync().expect("expected resync");
+    utxoindex.write().resync().expect("expected resync");
 
     // Since we changed virtual state in the emulator, but not in test-consensus db,
     // we expect the resync to get the utxo-set from the test-consensus,
@@ -172,6 +177,7 @@ fn test_utxoindex() {
     let consensus_utxo_set_size = consensus_utxos.len();
     for (tx_outpoint, utxo_entry) in consensus_utxos.into_iter() {
         let indexed_utxos = utxoindex
+            .read()
             .get_utxos_by_script_public_keys(HashSet::from_iter(vec![utxo_entry.script_public_key.clone()]))
             .expect("expected script public key to be in database");
         for (indexed_script_public_key, indexed_compact_utxo_collection) in indexed_utxos.into_iter() {
@@ -186,7 +192,7 @@ fn test_utxoindex() {
     assert_eq!(i, consensus_utxo_set_size);
 
     assert_eq!(
-        *utxoindex.get_utxo_index_tips().expect("expected circulating supply"),
+        *utxoindex.read().get_utxo_index_tips().expect("expected circulating supply"),
         BlockHashSet::from_iter(test_consensus.clone().get_virtual_state_tips())
     );
 

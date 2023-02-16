@@ -14,12 +14,14 @@ use consensus_core::{api::DynConsensus, tx::ScriptPublicKeys, utxo::utxo_diff::U
 use hashes::Hash;
 use kaspa_core::trace;
 use kaspa_utils::arc::ArcExtensions;
+use parking_lot::RwLock;
 use std::sync::Arc;
 
 const RESYNC_CHUNK_SIZE: usize = 2048; //Increased from 1k (used in go-kaspad), for quicker resets, while still having a low memory footprint.
 
 /// UtxoIndex indexes [`CompactUtxoEntryCollections`] by [`ScriptPublicKey`], commits them to its owns store, and emits changes.
-/// Note: The UtxoIndex struct by itself is not thread save, thread-safety is only guaranteed by using the dynamic types in `utxoindex::core::api` with the same RwLock applied to all used dyn traits.
+/// Note: The UtxoIndex struct by itself is not thread save, only correct usage of the supplied RwLock via `new` makes it so. 
+/// please follow guidelines found in the comments under `utxoindex::core::api::UtxoIndexApi` for proper thread safety. 
 pub struct UtxoIndex {
     consensus: DynConsensus,
     store: Store,
@@ -27,8 +29,8 @@ pub struct UtxoIndex {
 
 impl UtxoIndex {
     /// Creates a new [`UtxoIndex`] listening to the passed consensus.
-    pub fn new(consensus: DynConsensus, db: Arc<DB>) -> Self {
-        Self { consensus, store: Store::new(db) }
+    pub fn new(consensus: DynConsensus, db: Arc<DB>) -> RwLock<Self> {
+        RwLock::new(Self { consensus, store: Store::new(db) })
     }
 }
 impl UtxoIndexApi for UtxoIndex {
@@ -73,7 +75,7 @@ impl UtxoIndexApi for UtxoIndex {
         if utxoindex_changes.supply_change > 0 {
             //we force monotonic here
             let _circulating_supply =
-                self.store.add_circulating_supply(utxoindex_changes.supply_change as CirculatingSupply, false)?;
+                self.store.update_circulating_supply(utxoindex_changes.supply_change as CirculatingSupply, false)?;
         }
 
         // Commit new consensus virtual tips.

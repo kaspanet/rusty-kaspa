@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use database::prelude::{CachedDbItem, DirectDbWriter, StoreError, StoreResult, DB};
+use database::prelude::{CachedDbItem, DirectDbWriter, StoreResult, DB};
 
 use crate::model::CirculatingSupply;
 
@@ -10,11 +10,11 @@ pub trait CirculatingSupplyStoreReader {
 }
 
 pub trait CirculatingSupplyStore: CirculatingSupplyStoreReader {
-    fn add_circulating_supply(&mut self, to_add: CirculatingSupply) -> Result<u64, StoreError>;
+    fn update_circulating_supply(&mut self, to_add: CirculatingSupply) -> StoreResult<u64>;
 
     fn insert(&mut self, circulating_supply: u64) -> StoreResult<()>;
 
-    fn remove(&mut self) -> Result<(), StoreError>;
+    fn remove(&mut self) -> StoreResult<()>;
 }
 
 pub const CIRCULATING_SUPPLY_STORE_PREFIX: &[u8] = b"circulating-supply";
@@ -39,18 +39,23 @@ impl CirculatingSupplyStoreReader for DbCirculatingSupplyStore {
 }
 
 impl CirculatingSupplyStore for DbCirculatingSupplyStore {
-    fn add_circulating_supply(&mut self, to_add: CirculatingSupply) -> Result<u64, StoreError> {
+    fn update_circulating_supply(&mut self, to_add: CirculatingSupply) -> StoreResult<u64> {
+        if to_add == 0 {
+            return self.get();
+        }
+
         let circulating_supply = self.access.update(DirectDbWriter::new(&self.db), move |circulating_supply| {
             circulating_supply + (to_add) //note: this only works because we force monotonic in `UtxoIndex::update`.
         });
+
         circulating_supply
     }
 
-    fn insert(&mut self, circulating_supply: CirculatingSupply) -> Result<(), StoreError> {
+    fn insert(&mut self, circulating_supply: CirculatingSupply) -> StoreResult<()> {
         self.access.write(DirectDbWriter::new(&self.db), &circulating_supply)
     }
 
-    fn remove(&mut self) -> Result<(), StoreError> {
+    fn remove(&mut self) -> StoreResult<()> {
         self.access.remove(DirectDbWriter::new(&self.db))
     }
 }

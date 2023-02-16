@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use consensus_core::{tx::ScriptPublicKeys, BlockHashSet};
-use database::prelude::{StoreError, DB};
+use database::prelude::{StoreResult, DB};
 use kaspa_core::trace;
 
 use crate::{
@@ -30,10 +30,7 @@ impl Store {
         }
     }
 
-    pub fn get_utxos_by_script_public_key(
-        &self,
-        script_public_keys: &ScriptPublicKeys,
-    ) -> Result<UtxoSetByScriptPublicKey, StoreError> {
+    pub fn get_utxos_by_script_public_key(&self, script_public_keys: &ScriptPublicKeys) -> StoreResult<UtxoSetByScriptPublicKey> {
         self.utxos_by_script_public_key_store.get_utxos_from_script_public_keys(script_public_keys)
     }
 
@@ -42,12 +39,8 @@ impl Store {
         to_add: &UtxoSetByScriptPublicKey,
         to_remove: &UtxoSetByScriptPublicKey,
         try_reset_on_err: bool,
-    ) -> Result<(), StoreError> {
-        let mut res = Ok(());
-
-        if !to_remove.is_empty() {
-            res = self.utxos_by_script_public_key_store.remove_utxo_entries(to_remove);
-        };
+    ) -> StoreResult<()> {
+        let mut res = self.utxos_by_script_public_key_store.remove_utxo_entries(to_remove);
 
         if res.is_err() {
             if try_reset_on_err {
@@ -56,32 +49,28 @@ impl Store {
             return res;
         }
 
-        if !to_add.is_empty() {
-            res = self.utxos_by_script_public_key_store.add_utxo_entries(to_add);
-        };
+        res = self.utxos_by_script_public_key_store.add_utxo_entries(to_add);
 
         if try_reset_on_err && res.is_err() {
             self.delete_all()?;
         };
+
         res
     }
 
-    pub fn get_circulating_supply(&self) -> Result<u64, StoreError> {
+    pub fn get_circulating_supply(&self) -> StoreResult<u64> {
         self.circulating_supply_store.get()
     }
 
-    pub fn add_circulating_supply(&mut self, circulating_supply_diff: u64, try_reset_on_err: bool) -> Result<u64, StoreError> {
-        if circulating_supply_diff != 0 {
-            let res = self.circulating_supply_store.add_circulating_supply(circulating_supply_diff);
-            if try_reset_on_err && res.is_err() {
-                self.delete_all()?;
-            }
-            return res;
+    pub fn update_circulating_supply(&mut self, circulating_supply_diff: u64, try_reset_on_err: bool) -> StoreResult<u64> {
+        let res = self.circulating_supply_store.update_circulating_supply(circulating_supply_diff);
+        if try_reset_on_err && res.is_err() {
+            self.delete_all()?;
         }
-        Ok(0u64)
+        res
     }
 
-    pub fn insert_circulating_supply(&mut self, circulating_supply: u64, try_reset_on_err: bool) -> Result<(), StoreError> {
+    pub fn insert_circulating_supply(&mut self, circulating_supply: u64, try_reset_on_err: bool) -> StoreResult<()> {
         let res = self.circulating_supply_store.insert(circulating_supply);
         if try_reset_on_err && res.is_err() {
             self.delete_all()?;
@@ -89,11 +78,11 @@ impl Store {
         res
     }
 
-    pub fn get_tips(&self) -> Result<Arc<BlockHashSet>, StoreError> {
+    pub fn get_tips(&self) -> StoreResult<Arc<BlockHashSet>> {
         self.utxoindex_tips_store.get()
     }
 
-    pub fn set_tips(&mut self, tips: BlockHashSet, try_reset_on_err: bool) -> Result<(), StoreError> {
+    pub fn set_tips(&mut self, tips: BlockHashSet, try_reset_on_err: bool) -> StoreResult<()> {
         let res = self.utxoindex_tips_store.set_tips(tips);
         if try_reset_on_err && res.is_err() {
             self.delete_all()?;
@@ -102,7 +91,7 @@ impl Store {
     }
 
     /// Resets the utxoindex database:
-    pub fn delete_all(&mut self) -> Result<(), StoreError> {
+    pub fn delete_all(&mut self) -> StoreResult<()> {
         // TODO: explore possibility of deleting and replacing whole db, currently there is an issue because of file lock and db being in an arc.
         trace!("[{0}] attempting to clear utxoindex database...", IDENT);
 

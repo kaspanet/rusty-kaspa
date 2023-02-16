@@ -9,7 +9,6 @@ use consensus_core::events::ConsensusEvent;
 use event_processor::notify::Notification;
 
 use kaspa_core::{core::Core, signals::Signals, task::runtime::AsyncRuntime};
-use parking_lot::RwLock;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -122,7 +121,7 @@ pub fn main() {
     let utxoindex: DynUtxoIndexApi = match args.utxoindex.is_some() {
         true => {
             let utxoindex_db = Arc::new(DB::open_default(utxoindex_db_dir.to_str().unwrap()).unwrap());
-            Arc::new(Some(Box::new(RwLock::new(UtxoIndex::new(consensus.clone(), utxoindex_db)))))
+            Arc::new(Some(Box::new(UtxoIndex::new(consensus.clone(), utxoindex_db))))
         }
         false => Arc::new(None),
     };

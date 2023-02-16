@@ -1,5 +1,4 @@
 use async_channel::unbounded;
-use parking_lot::RwLock;
 use rand::{rngs::SmallRng, Rng, SeedableRng};
 use std::sync::Arc;
 
@@ -27,7 +26,7 @@ async fn test_virtual_change_set_event() {
     let utxoindex_db = create_temp_db();
     let test_consensus = Arc::new(TestConsensus::create_from_temp_db_and_dummy_sender(&Config::new(DEVNET_PARAMS)));
     test_consensus.init();
-    let utxoindex: DynUtxoIndexApi = Arc::new(Some(Box::new(RwLock::new(UtxoIndex::new(test_consensus, utxoindex_db.1)))));
+    let utxoindex: DynUtxoIndexApi = Arc::new(Some(Box::new(UtxoIndex::new(test_consensus, utxoindex_db.1))));
     let event_processor = EventProcessor::new(utxoindex, consensus_recv, event_processor_send);
 
     let worker = event_processor.clone();
@@ -366,7 +365,7 @@ async fn test_pruning_point_utxo_set_override_event() {
     let utxoindex_db = create_temp_db();
     let test_consensus = Arc::new(TestConsensus::create_from_temp_db_and_dummy_sender(&Config::new(DEVNET_PARAMS)));
     test_consensus.init();
-    let utxoindex: DynUtxoIndexApi = Arc::new(Some(Box::new(RwLock::new(UtxoIndex::new(test_consensus, utxoindex_db.1)))));
+    let utxoindex: DynUtxoIndexApi = Arc::new(Some(Box::new(UtxoIndex::new(test_consensus, utxoindex_db.1))));
     let event_processor = EventProcessor::new(utxoindex, consensus_recv, event_processor_send);
 
     let test_event = PruningPointUTXOSetOverrideEvent {};
