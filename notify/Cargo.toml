@@ -28,3 +28,6 @@ futures = { version = "0.3" }
 rand = "0.8"
 triggered = "0.1"
 workflow-core = "0.3"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "macros"] }

@@ -43,9 +43,8 @@ where
 
 pub type DynCollector<N> = Arc<dyn Collector<N>>;
 
-/// A notification [`Collector`] that receives [`T`] from a channel,
-/// converts it into a `N` and sends it to a its
-/// [`Notifier`].
+/// A notification [`Collector`] that receives `I` from a channel,
+/// converts it into a `N` and sends it to a [`DynNotify<N>`].
 #[derive(Debug)]
 pub struct CollectorFrom<I, N>
 where
@@ -142,5 +141,88 @@ where
 
     async fn stop(&self) -> Result<()> {
         self.stop_collecting_task().await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        events::EventType,
+        notifier::Notify,
+        subscription::single::{OverallSubscription, UtxosChangedSubscription, VirtualSelectedParentChainChangedSubscription},
+    };
+    use derive_more::Display;
+
+    use super::*;
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    enum TestMessage {
+        A,
+        B,
+    }
+
+    #[derive(Clone, Debug, Display, PartialEq, Eq)]
+    enum TestNotification {
+        NA,
+        NB,
+    }
+
+    impl From<TestMessage> for TestNotification {
+        fn from(value: TestMessage) -> Self {
+            match value {
+                TestMessage::A => TestNotification::NA,
+                TestMessage::B => TestNotification::NB,
+            }
+        }
+    }
+
+    impl crate::notification::Notification for TestNotification {
+        fn apply_overall_subscription(&self, _: &OverallSubscription) -> Option<Self> {
+            unimplemented!()
+        }
+
+        fn apply_virtual_selected_parent_chain_changed_subscription(
+            &self,
+            _: &VirtualSelectedParentChainChangedSubscription,
+        ) -> Option<Self> {
+            unimplemented!()
+        }
+
+        fn apply_utxos_changed_subscription(&self, _: &UtxosChangedSubscription) -> Option<Self> {
+            unimplemented!()
+        }
+
+        fn event_type(&self) -> EventType {
+            unimplemented!()
+        }
+    }
+
+    #[derive(Debug)]
+    struct Notifier<N: Notification> {
+        sender: Sender<N>,
+    }
+    impl<N: Notification> Notify<N> for Notifier<N> {
+        fn notify(&self, notification: N) -> Result<()> {
+            Ok(self.sender.try_send(notification)?)
+        }
+    }
+
+    #[tokio::test]
+    async fn test_collector_from() {
+        let incoming = Channel::default();
+        let collector: CollectorFrom<TestMessage, TestNotification> = CollectorFrom::new(incoming.receiver());
+        let outgoing = Channel::default();
+        let notifier = Arc::new(Notifier { sender: outgoing.sender() });
+        collector.start(notifier);
+
+        assert!(incoming.send(TestMessage::A).await.is_ok());
+        assert!(incoming.send(TestMessage::B).await.is_ok());
+        assert!(incoming.send(TestMessage::A).await.is_ok());
+
+        assert_eq!(outgoing.recv().await.unwrap(), TestNotification::NA);
+        assert_eq!(outgoing.recv().await.unwrap(), TestNotification::NB);
+        assert_eq!(outgoing.recv().await.unwrap(), TestNotification::NA);
+
+        assert!(collector.stop().await.is_ok());
     }
 }
