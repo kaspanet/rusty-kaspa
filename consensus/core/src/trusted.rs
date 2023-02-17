@@ -1,12 +1,9 @@
-use crate::{block::Block, blockhash::BlockHashes, header::Header, BlockHashMap, BlueWorkType};
+use crate::{block::Block, blockhash::BlockHashes, header::Header, BlueWorkType, HashKTypeMap};
 use hashes::Hash;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-pub type KType = u8; // This type must be increased to u16 if we ever set GHOSTDAG K > 255
-pub type HashKTypeMap = Arc<BlockHashMap<KType>>;
-
-/// Represent externally provided Ghostdag data (by a network peer)
+/// Represent semi-trusted externally provided Ghostdag data (by a network peer)
 #[derive(Clone, Serialize, Deserialize)]
 pub struct ExternalGhostdagData {
     pub blue_score: u64,

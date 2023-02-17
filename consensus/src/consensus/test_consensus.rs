@@ -11,11 +11,11 @@ use consensus_core::{
     blockstatus::BlockStatus,
     coinbase::MinerData,
     errors::{block::RuleError, coinbase::CoinbaseResult, pruning::PruningError, tx::TxResult},
-    ghostdag::TrustedBlock,
     header::Header,
     merkle::calc_hash_merkle_root,
     pruning::PruningPointProof,
     subnets::SUBNETWORK_ID_COINBASE,
+    trusted::TrustedBlock,
     tx::{MutableTransaction, Transaction},
     BlockHashSet,
 };

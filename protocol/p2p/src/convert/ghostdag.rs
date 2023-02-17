@@ -1,8 +1,8 @@
 use super::{error::ConversionError, option::TryIntoOptionEx};
 use crate::pb as protowire;
 use consensus_core::{
-    ghostdag::{ExternalGhostdagData, KType, TrustedHash, TrustedHeader},
-    BlockHashMap, BlueWorkType, HashMapCustomHasher,
+    trusted::{ExternalGhostdagData, TrustedHash, TrustedHeader},
+    BlockHashMap, BlueWorkType, HashMapCustomHasher, KType,
 };
 use hashes::Hash;
 use std::sync::Arc;

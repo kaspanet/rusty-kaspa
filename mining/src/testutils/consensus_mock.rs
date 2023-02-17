@@ -9,10 +9,10 @@ use consensus_core::{
         coinbase::CoinbaseResult,
         tx::{TxResult, TxRuleError},
     },
-    ghostdag::TrustedBlock,
     header::Header,
     mass::transaction_estimated_serialized_size,
     merkle::calc_hash_merkle_root,
+    trusted::TrustedBlock,
     tx::{MutableTransaction, Transaction, TransactionId, TransactionOutpoint, UtxoEntry},
     utxo::utxo_collection::UtxoCollection,
 };

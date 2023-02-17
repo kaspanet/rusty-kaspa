@@ -45,9 +45,9 @@ use crate::{
 use consensus_core::{
     api::ConsensusApi,
     errors::pruning::PruningError,
-    ghostdag::TrustedBlock,
     muhash::MuHashExtensions,
     pruning::{PruningPointProof, PruningPointsList},
+    trusted::TrustedBlock,
     tx::{TransactionOutpoint, UtxoEntry},
     {
         block::{Block, BlockTemplate},

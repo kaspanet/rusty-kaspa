@@ -5,7 +5,7 @@
 
 use consensus_core::{
     block::Block,
-    ghostdag::{TrustedBlock, TrustedHash, TrustedHeader},
+    trusted::{TrustedBlock, TrustedHash, TrustedHeader},
     BlockHashMap, BlockHashSet, HashMapCustomHasher,
 };
 

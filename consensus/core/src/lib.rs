@@ -10,7 +10,6 @@ pub mod blockstatus;
 pub mod coinbase;
 pub mod constants;
 pub mod errors;
-pub mod ghostdag;
 pub mod hashing;
 pub mod header;
 pub mod mass;
@@ -21,6 +20,7 @@ pub mod notify;
 pub mod pruning;
 pub mod sign;
 pub mod subnets;
+pub mod trusted;
 pub mod tx;
 pub mod utxo;
 
@@ -30,6 +30,12 @@ pub mod testutils;
 /// 2^128 work in a single block (btc has ~2^80), and no more than 2^64
 /// overall blocks, so 2^192 is definitely a justified upper-bound.
 pub type BlueWorkType = math::Uint192;
+
+/// The type used to represent the GHOSTDAG K parameter
+pub type KType = u8; // This type must be increased to u16 if we ever set GHOSTDAG K > 255
+
+/// Map from Block hash to K type
+pub type HashKTypeMap = std::sync::Arc<BlockHashMap<KType>>;
 
 /// This HashMap skips the hashing of the key and uses the key directly as the hash.
 /// Should only be used for block hashes that have correct DAA,

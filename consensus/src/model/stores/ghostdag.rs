@@ -1,5 +1,5 @@
 use crate::processes::ghostdag::ordering::SortableBlock;
-use consensus_core::ghostdag::ExternalGhostdagData;
+use consensus_core::trusted::ExternalGhostdagData;
 use consensus_core::{blockhash::BlockHashes, BlueWorkType};
 use consensus_core::{BlockHashMap, BlockHasher, BlockLevel, HashMapCustomHasher};
 use database::prelude::StoreError;
@@ -15,7 +15,7 @@ use std::iter::once;
 use std::{cell::RefCell, sync::Arc};
 
 /// Re-export for convenience
-pub use consensus_core::ghostdag::{HashKTypeMap, KType};
+pub use consensus_core::{HashKTypeMap, KType};
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct GhostdagData {

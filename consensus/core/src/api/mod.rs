@@ -11,8 +11,8 @@ use crate::{
         pruning::PruningError,
         tx::TxResult,
     },
-    ghostdag::TrustedBlock,
     pruning::{PruningPointProof, PruningPointsList},
+    trusted::TrustedBlock,
     tx::{MutableTransaction, Transaction},
 };
 

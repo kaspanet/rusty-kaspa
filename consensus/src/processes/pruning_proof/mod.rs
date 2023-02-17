@@ -6,9 +6,9 @@ use std::{
 
 use consensus_core::{
     blockhash::{BlockHashes, ORIGIN},
-    ghostdag::TrustedBlock,
     header::Header,
     pruning::PruningPointProof,
+    trusted::TrustedBlock,
     BlockHashMap, BlockHashSet, BlockLevel, HashMapCustomHasher,
 };
 use database::prelude::StoreError;
