@@ -1,6 +1,10 @@
+use super::HeadersChunk;
 use crate::{
     ctx::FlowContext,
-    v5::ibd::{HeadersChunkStream, TrustedEntryStream},
+    v5::{
+        ibd::{HeadersChunkStream, TrustedEntryStream},
+        Flow,
+    },
 };
 use consensus_core::{
     api::DynConsensus,
@@ -24,13 +28,26 @@ use p2p_lib::{
 };
 use std::{sync::Arc, time::Duration};
 
-use super::HeadersChunk;
-
 /// Flow for managing IBD - Initial Block Download
 pub struct IbdFlow {
     ctx: FlowContext,
-    pub router: Arc<Router>, // TODO: remove pub
+    router: Arc<Router>,
     incoming_route: IncomingRoute,
+}
+
+#[async_trait::async_trait]
+impl Flow for IbdFlow {
+    fn name(&self) -> &'static str {
+        "IBD"
+    }
+
+    fn router(&self) -> Option<Arc<Router>> {
+        Some(self.router.clone())
+    }
+
+    async fn start(&mut self) -> Result<(), FlowError> {
+        self.start_impl().await
+    }
 }
 
 impl IbdFlow {
@@ -38,11 +55,7 @@ impl IbdFlow {
         Self { ctx, router, incoming_route }
     }
 
-    pub async fn start(&mut self) -> Result<(), FlowError> {
-        // TEMP
-        // TODO: start flows only after ready flow runs
-        tokio::time::sleep(Duration::from_secs(1)).await;
-
+    async fn start_impl(&mut self) -> Result<(), FlowError> {
         // None hashes indicate that the full chain is queried.
         let block_locator = self.get_syncer_chain_block_locator(None, None).await?;
         if block_locator.is_empty() {
@@ -122,7 +135,8 @@ impl IbdFlow {
             entries.push(entry);
         }
 
-        let trusted_set = pkg.build_trusted_set(entries)?;
+        // TODO: logs
+        let trusted_set = pkg.build_trusted_subdag(entries)?;
         consensus.clone().apply_pruning_proof(proof, &trusted_set);
         consensus.clone().import_pruning_points(pruning_points);
 
@@ -165,15 +179,14 @@ impl IbdFlow {
         let Some(chunk) = chunk_stream.next().await? else { return Ok(()); };
         let mut prev_joins = submit_chunk(consensus, chunk);
 
+        // TODO: logs
         while let Some(chunk) = chunk_stream.next().await? {
             let current_joins = submit_chunk(consensus, chunk);
-            let statuses = join_all(prev_joins).await.into_iter().collect::<Result<Vec<BlockStatus>, RuleError>>()?;
-            assert!(statuses.iter().all(|s| s.is_valid())); // TODO
+            let _ = join_all(prev_joins).await.into_iter().collect::<Result<Vec<BlockStatus>, RuleError>>()?;
             prev_joins = current_joins;
         }
 
-        let statuses = join_all(prev_joins).await.into_iter().collect::<Result<Vec<BlockStatus>, RuleError>>()?;
-        assert!(statuses.iter().all(|s| s.is_valid())); // TODO
+        let _ = join_all(prev_joins).await.into_iter().collect::<Result<Vec<BlockStatus>, RuleError>>()?;
 
         Ok(())
     }

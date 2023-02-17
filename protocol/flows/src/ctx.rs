@@ -64,15 +64,18 @@ impl ConnectionInitializer for FlowContext {
         debug!("protocol versions - self: {}, peer: {}", 5, peer_version_message.protocol_version);
 
         // Register all flows according to version
-        match peer_version_message.protocol_version {
-            5 => {
-                v5::register(self.clone(), router.clone());
-            }
+        let flows = match peer_version_message.protocol_version {
+            5 => v5::register(self.clone(), router.clone()),
             _ => todo!(),
-        }
+        };
 
-        // Send a ready signal
+        // Send and receive the ready signal
         handshake.ready_flow(&router, ready_receiver).await?;
+
+        // Launch all flows. Note we launch only after the ready signal was exchanged
+        for flow in flows {
+            flow.launch();
+        }
 
         // Note: at this point receivers for handshake subscriptions
         // are dropped, thus effectively unsubscribing from these messages, which means that if the peer re-sends them

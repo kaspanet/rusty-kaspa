@@ -23,7 +23,10 @@ impl TrustedDataPackage {
         Self { daa_window, ghostdag_window }
     }
 
-    pub fn build_trusted_set(self, entries: Vec<TrustedDataEntry>) -> Result<Vec<TrustedBlock>, FlowError> {
+    /// Returns the trusted set -- a sub-DAG in the anti-future of the pruning point which contains
+    /// all the blocks and ghostdag data needed in order to validate the headers in the future of
+    /// the pruning point
+    pub fn build_trusted_subdag(self, entries: Vec<TrustedDataEntry>) -> Result<Vec<TrustedBlock>, FlowError> {
         let mut blocks = Vec::with_capacity(entries.len());
         let mut set = BlockHashSet::new();
         let mut map = BlockHashMap::new();
@@ -65,6 +68,11 @@ pub struct TrustedDataEntry {
     pub block: Block,
     pub daa_window_indices: Vec<u64>,
     pub ghostdag_window_indices: Vec<u64>,
+    //
+    // Rust rewrite note: the indices fields are no longer needed with the way the pruning point anti-future
+    // is marinated now. Meaning we simply build this sub-DAG in a way that the usual traversal operations will
+    // return the correct blocks/data without the need for explicitly provided indices.
+    //
 }
 
 impl TrustedDataEntry {

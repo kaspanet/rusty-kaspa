@@ -1,4 +1,4 @@
-use crate::ctx::FlowContext;
+use crate::{ctx::FlowContext, flow_trait::Flow};
 use kaspa_core::debug;
 use p2p_lib::{
     common::FlowError,
@@ -15,8 +15,23 @@ use std::{
 /// Flow for managing a loop receiving pings and responding with pongs
 pub struct ReceivePingsFlow {
     _ctx: FlowContext,
-    pub router: Arc<Router>, // TODO: remove pub
+    router: Arc<Router>,
     incoming_route: IncomingRoute,
+}
+
+#[async_trait::async_trait]
+impl Flow for ReceivePingsFlow {
+    fn name(&self) -> &'static str {
+        "Receive pings"
+    }
+
+    fn router(&self) -> Option<Arc<Router>> {
+        Some(self.router.clone())
+    }
+
+    async fn start(&mut self) -> Result<(), FlowError> {
+        self.start_impl().await
+    }
 }
 
 impl ReceivePingsFlow {
@@ -24,7 +39,7 @@ impl ReceivePingsFlow {
         Self { _ctx: ctx, router, incoming_route }
     }
 
-    pub async fn start(&mut self) -> Result<(), FlowError> {
+    async fn start_impl(&mut self) -> Result<(), FlowError> {
         loop {
             // We dequeue without a timeout in this case, responding to pings whenever they arrive
             let ping = dequeue!(self.incoming_route, Payload::Ping)?;
@@ -42,9 +57,23 @@ pub struct SendPingsFlow {
     _ctx: FlowContext,
 
     // We use a weak reference to avoid this flow from holding the router during timer waiting if the connection was closed
-    pub router: Weak<Router>, // TODO: remove pub
-
+    router: Weak<Router>,
     incoming_route: IncomingRoute,
+}
+
+#[async_trait::async_trait]
+impl Flow for SendPingsFlow {
+    fn name(&self) -> &'static str {
+        "Send pings"
+    }
+
+    fn router(&self) -> Option<Arc<Router>> {
+        self.router.upgrade()
+    }
+
+    async fn start(&mut self) -> Result<(), FlowError> {
+        self.start_impl().await
+    }
 }
 
 impl SendPingsFlow {
@@ -52,7 +81,7 @@ impl SendPingsFlow {
         Self { _ctx: ctx, router, incoming_route }
     }
 
-    pub async fn start(&mut self) -> Result<(), FlowError> {
+    async fn start_impl(&mut self) -> Result<(), FlowError> {
         loop {
             // TODO: handle application shutdown signal
             // TODO: set peer ping state to pending/idle
