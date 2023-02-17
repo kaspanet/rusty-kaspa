@@ -56,29 +56,3 @@ impl TrustedHash {
         Self { hash, ghostdag }
     }
 }
-
-/// A package of *semi-trusted data* used by a syncing node in order to build
-/// the sub-DAG in the anticone and in the recent past of the synced pruning point
-pub struct TrustedDataPackage {
-    pub daa_window: Vec<TrustedHeader>,
-    pub ghostdag_window: Vec<TrustedHash>,
-}
-
-impl TrustedDataPackage {
-    pub fn new(daa_window: Vec<TrustedHeader>, ghostdag_window: Vec<TrustedHash>) -> Self {
-        Self { daa_window, ghostdag_window }
-    }
-}
-
-/// A block with DAA/Ghostdag indices corresponding to data location within a `TrustedDataPackage`
-pub struct TrustedDataEntry {
-    pub block: Block,
-    pub daa_window_indices: Vec<u64>,
-    pub ghostdag_window_indices: Vec<u64>,
-}
-
-impl TrustedDataEntry {
-    pub fn new(block: Block, daa_window_indices: Vec<u64>, ghostdag_window_indices: Vec<u64>) -> Self {
-        Self { block, daa_window_indices, ghostdag_window_indices }
-    }
-}

@@ -32,6 +32,10 @@ impl ConsensusMonitor {
             }
 
             let snapshot = self.counters.snapshot();
+            if snapshot == last_snapshot {
+                // No update, avoid printing useless info
+                continue;
+            }
 
             let send_rate = (snapshot.blocks_submitted - last_snapshot.blocks_submitted) as f64 / snapshot_interval as f64;
             let header_rate = (snapshot.header_counts - last_snapshot.header_counts) as f64 / snapshot_interval as f64;

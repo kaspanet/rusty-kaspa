@@ -1,27 +1,30 @@
-use crate::ctx::FlowContext;
+use crate::{
+    ctx::FlowContext,
+    v5::ibd::{HeadersChunkStream, TrustedEntryStream},
+};
 use consensus_core::{
     api::DynConsensus,
     block::Block,
     blockstatus::BlockStatus,
     errors::block::{BlockProcessResult, RuleError},
-    ghostdag::{TrustedBlock, TrustedDataEntry, TrustedDataPackage},
-    header::Header,
     pruning::{PruningPointProof, PruningPointsList},
-    BlockHashMap, BlockHashSet, HashMapCustomHasher,
 };
 use futures::future::{join_all, BoxFuture};
 use hashes::Hash;
 use kaspa_core::{debug, info};
 use p2p_lib::{
     common::FlowError,
+    convert::model::trusted::TrustedDataPackage,
     dequeue_with_timeout, make_message,
     pb::{
-        kaspad_message::Payload, RequestHeadersMessage, RequestIbdChainBlockLocatorMessage, RequestNextHeadersMessage,
-        RequestNextPruningPointAndItsAnticoneBlocksMessage, RequestPruningPointAndItsAnticoneMessage, RequestPruningPointProofMessage,
+        kaspad_message::Payload, RequestHeadersMessage, RequestIbdChainBlockLocatorMessage, RequestPruningPointAndItsAnticoneMessage,
+        RequestPruningPointProofMessage,
     },
     IncomingRoute, Router,
 };
 use std::{sync::Arc, time::Duration};
+
+use super::HeadersChunk;
 
 /// Flow for managing IBD - Initial Block Download
 pub struct IbdFlow {
@@ -119,7 +122,7 @@ impl IbdFlow {
             entries.push(entry);
         }
 
-        let trusted_set = build_trusted_set(pkg, entries)?;
+        let trusted_set = pkg.build_trusted_set(entries)?;
         consensus.clone().apply_pruning_proof(proof, &trusted_set);
         consensus.clone().import_pruning_points(pruning_points);
 
@@ -183,142 +186,4 @@ fn submit_chunk(consensus: &DynConsensus, chunk: HeadersChunk) -> Vec<BoxFuture<
         futures.push(f);
     }
     futures
-}
-
-fn build_trusted_set(pkg: TrustedDataPackage, entries: Vec<TrustedDataEntry>) -> Result<Vec<TrustedBlock>, FlowError> {
-    let mut blocks = Vec::with_capacity(entries.len());
-    let mut set = BlockHashSet::new();
-    let mut map = BlockHashMap::new();
-
-    for th in pkg.ghostdag_window.iter() {
-        map.insert(th.hash, th.ghostdag.clone());
-    }
-
-    for th in pkg.daa_window.iter() {
-        map.insert(th.header.hash, th.ghostdag.clone());
-    }
-
-    for entry in entries {
-        let block = entry.block;
-        if set.insert(block.hash()) {
-            if let Some(ghostdag) = map.get(&block.hash()) {
-                blocks.push(TrustedBlock::new(block, ghostdag.clone()));
-            } else {
-                return Err(FlowError::ProtocolError("missing ghostdag data for some trusted entries"));
-            }
-        }
-    }
-
-    for th in pkg.daa_window.iter() {
-        if set.insert(th.header.hash) {
-            blocks.push(TrustedBlock::new(Block::from_header_arc(th.header.clone()), th.ghostdag.clone()));
-        }
-    }
-
-    // Topological sort
-    blocks.sort_by(|a, b| a.block.header.blue_work.cmp(&b.block.header.blue_work));
-
-    Ok(blocks)
-}
-
-const IBD_BATCH_SIZE: usize = 99;
-
-pub struct TrustedEntryStream<'a, 'b> {
-    router: &'a Router,
-    incoming_route: &'b mut IncomingRoute,
-    i: usize,
-}
-
-impl<'a, 'b> TrustedEntryStream<'a, 'b> {
-    pub fn new(router: &'a Router, incoming_route: &'b mut IncomingRoute) -> Self {
-        Self { router, incoming_route, i: 0 }
-    }
-
-    pub async fn next(&mut self) -> Result<Option<TrustedDataEntry>, FlowError> {
-        let msg = match tokio::time::timeout(p2p_lib::common::DEFAULT_TIMEOUT, self.incoming_route.recv()).await {
-            Ok(op) => {
-                if let Some(msg) = op {
-                    match msg.payload {
-                        Some(Payload::BlockWithTrustedDataV4(payload)) => Ok(Some(payload.try_into()?)),
-                        Some(Payload::DoneBlocksWithTrustedData(_)) => {
-                            debug!("trusted entry stream completed after {} items", self.i);
-                            return Ok(None);
-                        }
-                        _ => Err(FlowError::UnexpectedMessageType(
-                            stringify!(Payload::BlockWithTrustedDataV4 | Payload::DoneBlocksWithTrustedData),
-                            Box::new(msg.payload),
-                        )),
-                    }
-                } else {
-                    Err(FlowError::P2pConnectionError(p2p_lib::ConnectionError::ChannelClosed))
-                }
-            }
-            Err(_) => Err(FlowError::Timeout(p2p_lib::common::DEFAULT_TIMEOUT)),
-        };
-
-        // Request the next batch
-        // TODO: test that batch counting is correct and follows golang imp
-        self.i += 1;
-        if self.i % IBD_BATCH_SIZE == 0 {
-            info!("Downloaded {} blocks from the pruning point anticone", self.i - 1);
-            self.router
-                .enqueue(make_message!(
-                    Payload::RequestNextPruningPointAndItsAnticoneBlocks,
-                    RequestNextPruningPointAndItsAnticoneBlocksMessage {}
-                ))
-                .await?;
-        }
-
-        msg
-    }
-}
-
-/// A chunk of headers
-type HeadersChunk = Vec<Arc<Header>>;
-
-pub struct HeadersChunkStream<'a, 'b> {
-    router: &'a Router,
-    incoming_route: &'b mut IncomingRoute,
-    i: usize,
-}
-
-impl<'a, 'b> HeadersChunkStream<'a, 'b> {
-    pub fn new(router: &'a Router, incoming_route: &'b mut IncomingRoute) -> Self {
-        Self { router, incoming_route, i: 0 }
-    }
-
-    pub async fn next(&mut self) -> Result<Option<HeadersChunk>, FlowError> {
-        let msg = match tokio::time::timeout(p2p_lib::common::DEFAULT_TIMEOUT, self.incoming_route.recv()).await {
-            Ok(op) => {
-                if let Some(msg) = op {
-                    match msg.payload {
-                        Some(Payload::BlockHeaders(payload)) => {
-                            if payload.block_headers.is_empty() {
-                                // The syncer should have sent a done message if the search completed, and not an empty list
-                                return Err(FlowError::ProtocolError("Received an empty headers message"));
-                            }
-                            Ok(Some(payload.try_into()?))
-                        }
-                        Some(Payload::DoneHeaders(_)) => {
-                            debug!("headers chunk stream completed after {} chunks", self.i);
-                            return Ok(None);
-                        }
-                        _ => Err(FlowError::UnexpectedMessageType(
-                            stringify!(Payload::BlockHeaders | Payload::DoneHeaders),
-                            Box::new(msg.payload),
-                        )),
-                    }
-                } else {
-                    Err(FlowError::P2pConnectionError(p2p_lib::ConnectionError::ChannelClosed))
-                }
-            }
-            Err(_) => Err(FlowError::Timeout(p2p_lib::common::DEFAULT_TIMEOUT)),
-        };
-
-        // Request the next chunk
-        self.i += 1;
-        self.router.enqueue(make_message!(Payload::RequestNextHeaders, RequestNextHeadersMessage {})).await?;
-
-        msg
-    }
 }

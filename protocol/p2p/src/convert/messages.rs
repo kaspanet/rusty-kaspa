@@ -1,7 +1,10 @@
-use super::{error::ConversionError, option::TryIntoOptionEx};
+use super::{
+    error::ConversionError,
+    model::trusted::{TrustedDataEntry, TrustedDataPackage},
+    option::TryIntoOptionEx,
+};
 use crate::pb as protowire;
 use consensus_core::{
-    ghostdag::{TrustedDataEntry, TrustedDataPackage},
     header::Header,
     pruning::{PruningPointProof, PruningPointsList},
 };
