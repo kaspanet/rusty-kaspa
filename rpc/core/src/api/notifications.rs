@@ -3,7 +3,6 @@ use async_channel::{Receiver, Sender};
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
-use std::sync::Arc;
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub enum NotificationType {
@@ -19,7 +18,7 @@ pub enum NotificationType {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
-#[allow(clippy::large_enum_variant)]
+#[allow(clippy::large_enum_variant)] //TODO: solution: use Arcs on large inner notifications to reduce size
 pub enum Notification {
     BlockAdded(BlockAddedNotification),
     VirtualSelectedParentChainChanged(VirtualSelectedParentChainChangedNotification),
@@ -76,8 +75,8 @@ impl Display for Notification {
     }
 }
 
-pub type NotificationSender = Sender<Arc<Notification>>;
-pub type NotificationReceiver = Receiver<Arc<Notification>>;
+pub type NotificationSender = Sender<Notification>;
+pub type NotificationReceiver = Receiver<Notification>;
 
 pub enum NotificationHandle {
     Existing(u64),
