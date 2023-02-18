@@ -7,7 +7,7 @@ use kaspa_utils::triggers::SingleTrigger;
 use p2p_lib::Adaptor;
 use std::{sync::Arc, time::Duration};
 
-use crate::ctx::FlowContext;
+use crate::flow_context::FlowContext;
 
 const P2P_CORE_SERVICE: &str = "p2p-service";
 

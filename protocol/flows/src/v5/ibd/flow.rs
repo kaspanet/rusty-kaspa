@@ -1,6 +1,6 @@
 use super::HeadersChunk;
 use crate::{
-    ctx::FlowContext,
+    flow_context::FlowContext,
     v5::{
         ibd::{HeadersChunkStream, TrustedEntryStream},
         Flow,

@@ -2,7 +2,7 @@ use self::{
     ibd::IbdFlow,
     ping::{ReceivePingsFlow, SendPingsFlow},
 };
-use crate::{ctx::FlowContext, flow_trait::Flow};
+use crate::{flow_context::FlowContext, flow_trait::Flow};
 use kaspa_core::debug;
 use p2p_lib::{
     make_message,
