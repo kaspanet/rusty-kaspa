@@ -12,14 +12,15 @@ pub(crate) enum HubEvent {
     Broadcast(Box<KaspadMessage>),
 }
 
+/// Hub of active peers (represented as Router objects). Note that all public methods of this type are exposed through the Adaptor
 #[derive(Debug, Clone)]
-pub(crate) struct Hub {
+pub struct Hub {
     /// Map of currently active peers
     pub(crate) peers: Arc<RwLock<HashMap<Uuid, Arc<Router>>>>,
 }
 
 impl Hub {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self { peers: Arc::new(RwLock::new(HashMap::new())) }
     }
 
@@ -66,7 +67,8 @@ impl Hub {
         }
     }
 
-    /// Broadcast a message to all peers. Note that broadcast can also be called on a specific router and will lead to the same outcome
+    /// Broadcast a message to all peers. Note that broadcast can also be called on a
+    /// specific router and will eventually lead to the same call (via the hub event loop)
     pub async fn broadcast(&self, msg: KaspadMessage) {
         let peers = self.peers.read().values().cloned().collect::<Vec<_>>();
         for router in peers {
