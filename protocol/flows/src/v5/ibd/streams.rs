@@ -5,7 +5,7 @@
 use consensus_core::header::Header;
 use kaspa_core::{debug, info};
 use p2p_lib::{
-    common::FlowError,
+    common::ProtocolError,
     convert::model::trusted::TrustedDataEntry,
     make_message,
     pb::{kaspad_message::Payload, RequestNextHeadersMessage, RequestNextPruningPointAndItsAnticoneBlocksMessage},
@@ -26,7 +26,7 @@ impl<'a, 'b> TrustedEntryStream<'a, 'b> {
         Self { router, incoming_route, i: 0 }
     }
 
-    pub async fn next(&mut self) -> Result<Option<TrustedDataEntry>, FlowError> {
+    pub async fn next(&mut self) -> Result<Option<TrustedDataEntry>, ProtocolError> {
         let msg = match tokio::time::timeout(p2p_lib::common::DEFAULT_TIMEOUT, self.incoming_route.recv()).await {
             Ok(op) => {
                 if let Some(msg) = op {
@@ -36,16 +36,16 @@ impl<'a, 'b> TrustedEntryStream<'a, 'b> {
                             debug!("trusted entry stream completed after {} items", self.i);
                             return Ok(None);
                         }
-                        _ => Err(FlowError::UnexpectedMessageType(
+                        _ => Err(ProtocolError::UnexpectedMessage(
                             stringify!(Payload::BlockWithTrustedDataV4 | Payload::DoneBlocksWithTrustedData),
                             Box::new(msg.payload),
                         )),
                     }
                 } else {
-                    Err(FlowError::P2pConnectionError(p2p_lib::ConnectionError::ChannelClosed))
+                    Err(ProtocolError::ConnectionClosed)
                 }
             }
-            Err(_) => Err(FlowError::Timeout(p2p_lib::common::DEFAULT_TIMEOUT)),
+            Err(_) => Err(ProtocolError::Timeout(p2p_lib::common::DEFAULT_TIMEOUT)),
         };
 
         // Request the next batch
@@ -79,7 +79,7 @@ impl<'a, 'b> HeadersChunkStream<'a, 'b> {
         Self { router, incoming_route, i: 0 }
     }
 
-    pub async fn next(&mut self) -> Result<Option<HeadersChunk>, FlowError> {
+    pub async fn next(&mut self) -> Result<Option<HeadersChunk>, ProtocolError> {
         let msg = match tokio::time::timeout(p2p_lib::common::DEFAULT_TIMEOUT, self.incoming_route.recv()).await {
             Ok(op) => {
                 if let Some(msg) = op {
@@ -87,7 +87,7 @@ impl<'a, 'b> HeadersChunkStream<'a, 'b> {
                         Some(Payload::BlockHeaders(payload)) => {
                             if payload.block_headers.is_empty() {
                                 // The syncer should have sent a done message if the search completed, and not an empty list
-                                return Err(FlowError::ProtocolError("Received an empty headers message"));
+                                return Err(ProtocolError::Other("Received an empty headers message"));
                             }
                             Ok(Some(payload.try_into()?))
                         }
@@ -95,16 +95,16 @@ impl<'a, 'b> HeadersChunkStream<'a, 'b> {
                             debug!("headers chunk stream completed after {} chunks", self.i);
                             return Ok(None);
                         }
-                        _ => Err(FlowError::UnexpectedMessageType(
+                        _ => Err(ProtocolError::UnexpectedMessage(
                             stringify!(Payload::BlockHeaders | Payload::DoneHeaders),
                             Box::new(msg.payload),
                         )),
                     }
                 } else {
-                    Err(FlowError::P2pConnectionError(p2p_lib::ConnectionError::ChannelClosed))
+                    Err(ProtocolError::ConnectionClosed)
                 }
             }
-            Err(_) => Err(FlowError::Timeout(p2p_lib::common::DEFAULT_TIMEOUT)),
+            Err(_) => Err(ProtocolError::Timeout(p2p_lib::common::DEFAULT_TIMEOUT)),
         };
 
         // Request the next chunk

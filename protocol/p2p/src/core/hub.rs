@@ -1,4 +1,4 @@
-use crate::{pb::KaspadMessage, ConnectionError, ConnectionInitializer, Router};
+use crate::{common::ProtocolError, pb::KaspadMessage, ConnectionInitializer, Router};
 use kaspa_core::debug;
 use parking_lot::RwLock;
 use std::{collections::HashMap, sync::Arc};
@@ -57,7 +57,7 @@ impl Hub {
     }
 
     /// Send a message to a specific peer
-    pub async fn send(&self, peer_id: Uuid, msg: KaspadMessage) -> Result<bool, ConnectionError> {
+    pub async fn send(&self, peer_id: Uuid, msg: KaspadMessage) -> Result<bool, ProtocolError> {
         let op = self.peers.read().get(&peer_id).cloned();
         if let Some(router) = op {
             router.enqueue(msg).await?;

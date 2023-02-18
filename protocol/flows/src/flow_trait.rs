@@ -1,5 +1,5 @@
 use kaspa_core::warn;
-use p2p_lib::{common::FlowError, Router};
+use p2p_lib::{common::ProtocolError, Router};
 use std::sync::Arc;
 
 #[async_trait::async_trait]
@@ -10,7 +10,7 @@ where
     fn name(&self) -> &'static str;
     fn router(&self) -> Option<Arc<Router>>;
 
-    async fn start(&mut self) -> Result<(), FlowError>;
+    async fn start(&mut self) -> Result<(), ProtocolError>;
     fn launch(mut self: Box<Self>) {
         tokio::spawn(async move {
             let res = self.start().await;

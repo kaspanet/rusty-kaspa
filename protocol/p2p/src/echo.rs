@@ -1,5 +1,6 @@
 use crate::{
-    core::adaptor::{ConnectionError, ConnectionInitializer},
+    common::ProtocolError,
+    core::adaptor::ConnectionInitializer,
     handshake::KaspadHandshake,
     pb::{self, VersionMessage},
     IncomingRoute, KaspadMessagePayloadType, Router,
@@ -117,7 +118,7 @@ impl EchoFlowInitializer {
 
 #[async_trait]
 impl ConnectionInitializer for EchoFlowInitializer {
-    async fn initialize_connection(&self, router: Arc<Router>) -> Result<(), ConnectionError> {
+    async fn initialize_connection(&self, router: Arc<Router>) -> Result<(), ProtocolError> {
         //
         // Example code to illustrate kaspa P2P handshaking
         //

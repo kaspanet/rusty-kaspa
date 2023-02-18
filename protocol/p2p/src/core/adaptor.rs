@@ -1,29 +1,19 @@
+use crate::common::ProtocolError;
 use crate::core::hub::Hub;
 use crate::{core::connection_handler::ConnectionHandler, Router};
-use kaspa_core::error;
 use std::ops::Deref;
 use std::sync::Arc;
 use std::time::Duration;
-use thiserror::Error;
 use tokio::sync::mpsc::channel as mpsc_channel;
 use tokio::sync::oneshot::Sender as OneshotSender;
 use tonic::transport::Error as TonicError;
 use uuid::Uuid;
 
-#[derive(Error, Debug, Clone)]
-pub enum ConnectionError {
-    #[error("p2p logical protocol error: {0}")]
-    ProtocolError(String), // TODO: not sure about this
-
-    #[error("channel is closed")]
-    ChannelClosed,
-}
-
 /// The main entrypoint for external usage of the P2P library. An impl of this trait is expected on P2P server
 /// initialization and will be called on each new (in/out) P2P connection with a corresponding dedicated new router
 #[tonic::async_trait]
 pub trait ConnectionInitializer: Sync + Send {
-    async fn initialize_connection(&self, new_router: Arc<Router>) -> Result<(), ConnectionError>;
+    async fn initialize_connection(&self, new_router: Arc<Router>) -> Result<(), ProtocolError>;
 }
 
 /// The main object to create for managing a fully-fledged Kaspa P2P peer

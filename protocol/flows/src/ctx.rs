@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use consensus_core::api::DynConsensus;
 use kaspa_core::debug;
 use p2p_lib::pb;
-use p2p_lib::{ConnectionError, ConnectionInitializer, Router};
+use p2p_lib::{common::ProtocolError, ConnectionInitializer, Router};
 use p2p_lib::{KaspadHandshake, KaspadMessagePayloadType};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -31,7 +31,7 @@ fn unix_now() -> i64 {
 
 #[async_trait]
 impl ConnectionInitializer for FlowContext {
-    async fn initialize_connection(&self, router: Arc<Router>) -> Result<(), ConnectionError> {
+    async fn initialize_connection(&self, router: Arc<Router>) -> Result<(), ProtocolError> {
         // Subscribe to handshake messages
         let version_receiver = router.subscribe(vec![KaspadMessagePayloadType::Version]);
         let verack_receiver = router.subscribe(vec![KaspadMessagePayloadType::Verack]);

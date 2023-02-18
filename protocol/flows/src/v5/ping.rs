@@ -1,10 +1,10 @@
 use crate::{ctx::FlowContext, flow_trait::Flow};
 use kaspa_core::debug;
 use p2p_lib::{
-    common::FlowError,
+    common::ProtocolError,
     dequeue, dequeue_with_timeout, make_message,
     pb::{kaspad_message::Payload, PingMessage, PongMessage},
-    ConnectionError, IncomingRoute, Router,
+    IncomingRoute, Router,
 };
 use rand::Rng;
 use std::{
@@ -29,7 +29,7 @@ impl Flow for ReceivePingsFlow {
         Some(self.router.clone())
     }
 
-    async fn start(&mut self) -> Result<(), FlowError> {
+    async fn start(&mut self) -> Result<(), ProtocolError> {
         self.start_impl().await
     }
 }
@@ -39,7 +39,7 @@ impl ReceivePingsFlow {
         Self { _ctx: ctx, router, incoming_route }
     }
 
-    async fn start_impl(&mut self) -> Result<(), FlowError> {
+    async fn start_impl(&mut self) -> Result<(), ProtocolError> {
         loop {
             // We dequeue without a timeout in this case, responding to pings whenever they arrive
             let ping = dequeue!(self.incoming_route, Payload::Ping)?;
@@ -71,7 +71,7 @@ impl Flow for SendPingsFlow {
         self.router.upgrade()
     }
 
-    async fn start(&mut self) -> Result<(), FlowError> {
+    async fn start(&mut self) -> Result<(), ProtocolError> {
         self.start_impl().await
     }
 }
@@ -81,7 +81,7 @@ impl SendPingsFlow {
         Self { _ctx: ctx, router, incoming_route }
     }
 
-    async fn start_impl(&mut self) -> Result<(), FlowError> {
+    async fn start_impl(&mut self) -> Result<(), ProtocolError> {
         loop {
             // TODO: handle application shutdown signal
             // TODO: set peer ping state to pending/idle
@@ -95,11 +95,11 @@ impl SendPingsFlow {
             if let Some(router) = self.router.upgrade() {
                 router.enqueue(ping).await?;
             } else {
-                return Err(FlowError::P2pConnectionError(ConnectionError::ChannelClosed));
+                return Err(ProtocolError::ConnectionClosed);
             }
             let pong = dequeue_with_timeout!(self.incoming_route, Payload::Pong)?;
             if pong.nonce != nonce {
-                return Err(FlowError::ProtocolError("nonce mismatch between ping and pong"));
+                return Err(ProtocolError::Other("nonce mismatch between ping and pong"));
             }
         }
     }

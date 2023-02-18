@@ -1,4 +1,4 @@
-use crate::{convert::error::ConversionError, ConnectionError};
+use crate::{convert::error::ConversionError, pb::kaspad_message::Payload as KaspadMessagePayload};
 use consensus_core::errors::block::RuleError;
 use std::time::Duration;
 use thiserror::Error;
@@ -7,15 +7,12 @@ use thiserror::Error;
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(120); // 2 minutes
 
 #[derive(Error, Debug, Clone)]
-pub enum FlowError {
-    #[error("got timeout after {0:?}")]
+pub enum ProtocolError {
+    #[error("timeout expired {0:?}")]
     Timeout(Duration),
 
-    #[error("expected {0} payload type but got {1:?}")]
-    UnexpectedMessageType(&'static str, Box<Option<crate::pb::kaspad_message::Payload>>),
-
-    #[error("{0}")]
-    ProtocolError(&'static str),
+    #[error("expected message type {0} but got {1:?}")]
+    UnexpectedMessage(&'static str, Box<Option<KaspadMessagePayload>>),
 
     #[error("{0}")]
     ConversionError(#[from] ConversionError),
@@ -23,23 +20,11 @@ pub enum FlowError {
     #[error("{0}")]
     RuleError(#[from] RuleError),
 
-    #[error("inner connection error: {0}")]
-    P2pConnectionError(ConnectionError),
-}
+    #[error("{0}")]
+    Other(&'static str),
 
-impl From<FlowError> for ConnectionError {
-    fn from(fe: FlowError) -> Self {
-        match fe {
-            FlowError::P2pConnectionError(err) => err,
-            err => ConnectionError::ProtocolError(err.to_string()),
-        }
-    }
-}
-
-impl From<ConnectionError> for FlowError {
-    fn from(err: ConnectionError) -> Self {
-        FlowError::P2pConnectionError(err)
-    }
+    #[error("peer connection is closed")]
+    ConnectionClosed,
 }
 
 /// Wraps an inner payload message into a valid `KaspadMessage`.
@@ -66,10 +51,10 @@ macro_rules! unwrap_message {
             if let Some($pattern(inner_msg)) = msg.payload {
                 Ok(inner_msg)
             } else {
-                Err($crate::common::FlowError::UnexpectedMessageType(stringify!($pattern), Box::new(msg.payload)))
+                Err($crate::common::ProtocolError::UnexpectedMessage(stringify!($pattern), Box::new(msg.payload)))
             }
         } else {
-            Err($crate::common::FlowError::P2pConnectionError($crate::ConnectionError::ChannelClosed))
+            Err($crate::common::ProtocolError::ConnectionClosed)
         }
     }};
 }
@@ -88,7 +73,7 @@ macro_rules! dequeue_with_timeout {
             Ok(op) => {
                 $crate::unwrap_message!(op, $pattern)
             }
-            Err(_) => Err($crate::common::FlowError::Timeout($crate::common::DEFAULT_TIMEOUT)),
+            Err(_) => Err($crate::common::ProtocolError::Timeout($crate::common::DEFAULT_TIMEOUT)),
         }
     }};
     ($receiver:expr, $pattern:path, $timeout_duration:expr) => {{
@@ -96,7 +81,7 @@ macro_rules! dequeue_with_timeout {
             Ok(op) => {
                 $crate::unwrap_message!(op, $pattern)
             }
-            Err(_) => Err($crate::common::FlowError::Timeout($timeout_duration)),
+            Err(_) => Err($crate::common::ProtocolError::Timeout($timeout_duration)),
         }
     }};
 }

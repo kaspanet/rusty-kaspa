@@ -17,7 +17,7 @@ use futures::future::{join_all, BoxFuture};
 use hashes::Hash;
 use kaspa_core::{debug, info};
 use p2p_lib::{
-    common::FlowError,
+    common::ProtocolError,
     convert::model::trusted::TrustedDataPackage,
     dequeue_with_timeout, make_message,
     pb::{
@@ -45,7 +45,7 @@ impl Flow for IbdFlow {
         Some(self.router.clone())
     }
 
-    async fn start(&mut self) -> Result<(), FlowError> {
+    async fn start(&mut self) -> Result<(), ProtocolError> {
         self.start_impl().await
     }
 }
@@ -55,11 +55,11 @@ impl IbdFlow {
         Self { ctx, router, incoming_route }
     }
 
-    async fn start_impl(&mut self) -> Result<(), FlowError> {
+    async fn start_impl(&mut self) -> Result<(), ProtocolError> {
         // None hashes indicate that the full chain is queried.
         let block_locator = self.get_syncer_chain_block_locator(None, None).await?;
         if block_locator.is_empty() {
-            return Err(FlowError::ProtocolError("Expecting initial syncer chain block locator to contain at least one element"));
+            return Err(ProtocolError::Other("Expecting initial syncer chain block locator to contain at least one element"));
         }
         let syncer_header_selected_tip = *block_locator.first().expect("verified locator is not empty");
         self.start_ibd_with_headers_proof(syncer_header_selected_tip).await?;
@@ -70,7 +70,7 @@ impl IbdFlow {
         &mut self,
         low_hash: Option<Hash>,
         high_hash: Option<Hash>,
-    ) -> Result<Vec<Hash>, FlowError> {
+    ) -> Result<Vec<Hash>, ProtocolError> {
         // TODO: use low and high hashes when zooming in
         self.router
             .enqueue(make_message!(
@@ -80,7 +80,7 @@ impl IbdFlow {
             .await?;
         let msg = dequeue_with_timeout!(self.incoming_route, Payload::IbdChainBlockLocator)?;
         if msg.block_locator_hashes.len() > 64 {
-            return Err(FlowError::ProtocolError(
+            return Err(ProtocolError::Other(
                 "Got block locator of size > 64 while expecting
  locator to have size which is logarithmic in DAG size (which should never exceed 2^64)",
             ));
@@ -88,7 +88,7 @@ impl IbdFlow {
         Ok(msg.try_into()?)
     }
 
-    async fn start_ibd_with_headers_proof(&mut self, syncer_header_selected_tip: Hash) -> Result<(), FlowError> {
+    async fn start_ibd_with_headers_proof(&mut self, syncer_header_selected_tip: Hash) -> Result<(), ProtocolError> {
         info!("Starting IBD with headers proof");
         let consensus = self.ctx.consensus();
         let pruning_point = self.sync_and_validate_pruning_proof(&consensus).await?;
@@ -96,7 +96,7 @@ impl IbdFlow {
         Ok(())
     }
 
-    async fn sync_and_validate_pruning_proof(&mut self, consensus: &DynConsensus) -> Result<Hash, FlowError> {
+    async fn sync_and_validate_pruning_proof(&mut self, consensus: &DynConsensus) -> Result<Hash, ProtocolError> {
         self.router.enqueue(make_message!(Payload::RequestPruningPointProof, RequestPruningPointProofMessage {})).await?;
 
         // Pruning proof generation and communication might take several minutes, so we allow a long 10 minute timeout
@@ -126,7 +126,7 @@ impl IbdFlow {
         debug!("received trusted data with {} daa entries and {} ghostdag entries", pkg.daa_window.len(), pkg.ghostdag_window.len());
 
         let mut entry_stream = TrustedEntryStream::new(&self.router, &mut self.incoming_route);
-        let Some(pruning_point_entry) = entry_stream.next().await? else { return Err(FlowError::ProtocolError("got `done` message before receiving the pruning point")); };
+        let Some(pruning_point_entry) = entry_stream.next().await? else { return Err(ProtocolError::Other("got `done` message before receiving the pruning point")); };
 
         // TODO: verify trusted pruning point matches proof pruning point
 
@@ -162,7 +162,7 @@ impl IbdFlow {
         consensus: &DynConsensus,
         syncer_header_selected_tip: Hash,
         highest_known_syncer_chain_hash: Hash,
-    ) -> Result<(), FlowError> {
+    ) -> Result<(), ProtocolError> {
         // TODO: sync missing relay block past \cap anticone(syncer tip)
 
         self.router

@@ -1,6 +1,5 @@
-use crate::common::FlowError;
 use crate::pb::{kaspad_message::Payload, ReadyMessage, VerackMessage, VersionMessage};
-use crate::{dequeue_with_timeout, make_message};
+use crate::{common::ProtocolError, dequeue_with_timeout, make_message};
 use crate::{IncomingRoute, Router};
 use kaspa_core::debug;
 use std::sync::Arc;
@@ -13,7 +12,7 @@ impl KaspadHandshake {
         Self {}
     }
 
-    async fn receive_version_flow(&self, router: &Arc<Router>, mut receiver: IncomingRoute) -> Result<VersionMessage, FlowError> {
+    async fn receive_version_flow(&self, router: &Arc<Router>, mut receiver: IncomingRoute) -> Result<VersionMessage, ProtocolError> {
         debug!("starting receive version flow");
 
         let version_message = dequeue_with_timeout!(receiver, Payload::Version)?;
@@ -30,7 +29,7 @@ impl KaspadHandshake {
         router: &Arc<Router>,
         mut receiver: IncomingRoute,
         version_message: VersionMessage,
-    ) -> Result<(), FlowError> {
+    ) -> Result<(), ProtocolError> {
         debug!("starting send version flow");
 
         debug!("sending version massage: {version_message:?}");
@@ -43,7 +42,7 @@ impl KaspadHandshake {
         Ok(())
     }
 
-    pub async fn ready_flow(&self, router: &Arc<Router>, mut receiver: IncomingRoute) -> Result<(), FlowError> {
+    pub async fn ready_flow(&self, router: &Arc<Router>, mut receiver: IncomingRoute) -> Result<(), ProtocolError> {
         debug!("starting ready flow");
 
         let sent_ready_message = make_message!(Payload::Ready, ReadyMessage {});
@@ -62,7 +61,7 @@ impl KaspadHandshake {
         version_receiver: IncomingRoute,
         verack_receiver: IncomingRoute,
         self_version_message: VersionMessage,
-    ) -> Result<VersionMessage, FlowError> {
+    ) -> Result<VersionMessage, ProtocolError> {
         // Run both send and receive flows concurrently -- this is critical in order to avoid a handshake deadlock
         let (send_res, recv_res) = tokio::join!(
             self.send_version_flow(router, verack_receiver, self_version_message),

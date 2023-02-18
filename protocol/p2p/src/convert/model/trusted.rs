@@ -9,7 +9,7 @@ use consensus_core::{
     BlockHashMap, BlockHashSet, HashMapCustomHasher,
 };
 
-use crate::common::FlowError;
+use crate::common::ProtocolError;
 
 /// A package of *semi-trusted data* used by a syncing node in order to build
 /// the sub-DAG in the anticone and in the recent past of the synced pruning point
@@ -26,7 +26,7 @@ impl TrustedDataPackage {
     /// Returns the trusted set -- a sub-DAG in the anti-future of the pruning point which contains
     /// all the blocks and ghostdag data needed in order to validate the headers in the future of
     /// the pruning point
-    pub fn build_trusted_subdag(self, entries: Vec<TrustedDataEntry>) -> Result<Vec<TrustedBlock>, FlowError> {
+    pub fn build_trusted_subdag(self, entries: Vec<TrustedDataEntry>) -> Result<Vec<TrustedBlock>, ProtocolError> {
         let mut blocks = Vec::with_capacity(entries.len());
         let mut set = BlockHashSet::new();
         let mut map = BlockHashMap::new();
@@ -45,7 +45,7 @@ impl TrustedDataPackage {
                 if let Some(ghostdag) = map.get(&block.hash()) {
                     blocks.push(TrustedBlock::new(block, ghostdag.clone()));
                 } else {
-                    return Err(FlowError::ProtocolError("missing ghostdag data for some trusted entries"));
+                    return Err(ProtocolError::Other("missing ghostdag data for some trusted entries"));
                 }
             }
         }
