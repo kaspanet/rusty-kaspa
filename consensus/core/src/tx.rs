@@ -1,7 +1,7 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
-use std::{fmt::Display, ops::Range};
+use std::{collections::HashSet, fmt::Display, ops::Range};
 
 use crate::{
     hashing,
@@ -11,33 +11,42 @@ use crate::{
 /// COINBASE_TRANSACTION_INDEX is the index of the coinbase transaction in every block
 pub const COINBASE_TRANSACTION_INDEX: usize = 0;
 
+/// Size of the underlying script vector of a script.
+pub const SCRIPT_VECTOR_SIZE: usize = 36;
+
 /// Represents the ID of a Kaspa transaction
 pub type TransactionId = hashes::Hash;
 
 /// Used as the underlying type for script public key data, optimized for the common p2pk script size (34).
-pub type ScriptVec = SmallVec<[u8; 36]>;
+pub type ScriptVec = SmallVec<[u8; SCRIPT_VECTOR_SIZE]>;
+
+/// Represents the ScriptPublicKey Version
+pub type ScriptPublicKeyVersion = u16;
 
 /// Alias the `smallvec!` macro to ease maintenance
 pub use smallvec::smallvec as scriptvec;
+
+//Represents a Set of [`ScriptPublicKey`]s
+pub type ScriptPublicKeys = HashSet<ScriptPublicKey>;
 
 /// Represents a Kaspad ScriptPublicKey
 #[derive(Default, Debug, PartialEq, Eq, Serialize, Deserialize, Clone, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct ScriptPublicKey {
-    version: u16,
+    version: ScriptPublicKeyVersion,
     script: ScriptVec, // Kept private to preserve read-only semantics
 }
 
 impl ScriptPublicKey {
-    pub fn new(version: u16, script: ScriptVec) -> Self {
+    pub fn new(version: ScriptPublicKeyVersion, script: ScriptVec) -> Self {
         Self { version, script }
     }
 
-    pub fn from_vec(version: u16, script: Vec<u8>) -> Self {
+    pub fn from_vec(version: ScriptPublicKeyVersion, script: Vec<u8>) -> Self {
         Self { version, script: ScriptVec::from_vec(script) }
     }
 
-    pub fn version(&self) -> u16 {
+    pub fn version(&self) -> ScriptPublicKeyVersion {
         self.version
     }
 

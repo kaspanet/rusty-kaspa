@@ -3,7 +3,8 @@ use std::{
     str,
 };
 
-const SEP: u8 = b'/';
+pub const SEP: u8 = b'/';
+pub const SEP_SIZE: usize = 1;
 
 #[derive(Clone)]
 pub struct DbKey {
@@ -12,15 +13,31 @@ pub struct DbKey {
 }
 
 impl DbKey {
-    pub fn new<TKey: Copy + AsRef<[u8]>>(prefix: &[u8], key: TKey) -> Self {
+    pub fn new<TKey>(prefix: &[u8], key: TKey) -> Self
+    where
+        TKey: Clone + AsRef<[u8]>,
+    {
         Self {
             path: prefix.iter().chain(std::iter::once(&SEP)).chain(key.as_ref().iter()).copied().collect(),
-            prefix_len: prefix.len() + 1, // Include `SEP` as part of the prefix
+            prefix_len: prefix.len() + SEP_SIZE, // Include `SEP` as part of the prefix
         }
     }
 
     pub fn prefix_only(prefix: &[u8]) -> Self {
         Self::new(prefix, [])
+    }
+
+    /// add a bucket to the DBkey, this adds to the prefix length
+    pub fn add_bucket<TBucket>(&mut self, bucket: TBucket)
+    where
+        TBucket: Copy + AsRef<[u8]>,
+    {
+        self.path.extend(bucket.as_ref().iter());
+        self.prefix_len += bucket.as_ref().len();
+    }
+
+    pub fn prefix_len(&self) -> usize {
+        self.prefix_len
     }
 }
 
@@ -38,7 +55,7 @@ impl Display for DbKey {
             f.write_str(s)?;
         } else {
             // Otherwise we fallback to hex parsing
-            f.write_str(&faster_hex::hex_string(&prefix[..prefix.len() - 1]))?; // Drop `SEP`
+            f.write_str(&faster_hex::hex_string(&prefix[..prefix.len() - SEP_SIZE]))?; // Drop `SEP`
             f.write_str("/")?;
         }
         // We expect that key is usually more readable as hex

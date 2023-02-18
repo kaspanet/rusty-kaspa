@@ -155,7 +155,7 @@ fn test_noattack_json() {
 async fn consensus_sanity_test() {
     let genesis_child: Hash = 2.into();
     let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().build();
-    let consensus = TestConsensus::create_from_temp_db(&config);
+    let consensus = TestConsensus::create_from_temp_db_and_dummy_sender(&config);
     let wait_handles = consensus.init();
 
     consensus
@@ -218,7 +218,7 @@ async fn ghostdag_test() {
                 p.ghostdag_k = test.k;
             })
             .build();
-        let consensus = TestConsensus::create_from_temp_db(&config);
+        let consensus = TestConsensus::create_from_temp_db_and_dummy_sender(&config);
         let wait_handles = consensus.init();
 
         for block in test.blocks.iter() {
@@ -291,8 +291,7 @@ async fn block_window_test() {
             p.ghostdag_k = 1;
         })
         .build();
-    let (_temp_db_lifetime, db) = create_temp_db();
-    let consensus = TestConsensus::new(db, &config);
+    let consensus = TestConsensus::create_from_temp_db_and_dummy_sender(&config);
     let wait_handles = consensus.init();
 
     struct TestBlock {
@@ -350,7 +349,7 @@ async fn block_window_test() {
 #[tokio::test]
 async fn header_in_isolation_validation_test() {
     let config = Config::new(MAINNET_PARAMS);
-    let consensus = TestConsensus::create_from_temp_db(&config);
+    let consensus = TestConsensus::create_from_temp_db_and_dummy_sender(&config);
     let wait_handles = consensus.init();
     let block = consensus.build_block_with_parents(1.into(), vec![config.genesis_hash]);
 
@@ -418,7 +417,7 @@ async fn header_in_isolation_validation_test() {
 #[tokio::test]
 async fn incest_test() {
     let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().build();
-    let consensus = TestConsensus::create_from_temp_db(&config);
+    let consensus = TestConsensus::create_from_temp_db_and_dummy_sender(&config);
     let wait_handles = consensus.init();
     let block = consensus.build_block_with_parents(1.into(), vec![config.genesis_hash]);
     consensus.validate_and_insert_block(block.to_immutable()).await.unwrap();
@@ -441,7 +440,7 @@ async fn incest_test() {
 #[tokio::test]
 async fn missing_parents_test() {
     let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().build();
-    let consensus = TestConsensus::create_from_temp_db(&config);
+    let consensus = TestConsensus::create_from_temp_db_and_dummy_sender(&config);
     let wait_handles = consensus.init();
     let mut block = consensus.build_block_with_parents(1.into(), vec![config.genesis_hash]);
     block.header.parents_by_level[0] = vec![0.into()];
@@ -462,7 +461,7 @@ async fn missing_parents_test() {
 #[tokio::test]
 async fn known_invalid_test() {
     let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().build();
-    let consensus = TestConsensus::create_from_temp_db(&config);
+    let consensus = TestConsensus::create_from_temp_db_and_dummy_sender(&config);
     let wait_handles = consensus.init();
     let mut block = consensus.build_block_with_parents(1.into(), vec![config.genesis_hash]);
     block.header.timestamp -= 1;
@@ -487,7 +486,7 @@ async fn known_invalid_test() {
 #[tokio::test]
 async fn median_time_test() {
     let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().build();
-    let consensus = TestConsensus::create_from_temp_db(&config);
+    let consensus = TestConsensus::create_from_temp_db_and_dummy_sender(&config);
     let wait_handles = consensus.init();
 
     let num_blocks = 2 * config.timestamp_deviation_tolerance - 1;
@@ -529,7 +528,7 @@ async fn median_time_test() {
 #[tokio::test]
 async fn mergeset_size_limit_test() {
     let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().build();
-    let consensus = TestConsensus::create_from_temp_db(&config);
+    let consensus = TestConsensus::create_from_temp_db_and_dummy_sender(&config);
     let wait_handles = consensus.init();
 
     let num_blocks_per_chain = config.mergeset_size_limit + 1;
@@ -832,7 +831,7 @@ async fn json_test(file_path: &str) {
     if proof_exists {
         config.process_genesis = false;
     }
-    let consensus = TestConsensus::create_from_temp_db(&config);
+    let consensus = TestConsensus::create_from_temp_db_and_dummy_sender(&config);
     let wait_handles = consensus.init();
 
     let pruning_point = if proof_exists {
@@ -942,7 +941,7 @@ async fn json_concurrency_test(file_path: &str) {
     if proof_exists {
         config.process_genesis = false;
     }
-    let consensus = TestConsensus::create_from_temp_db(&config);
+    let consensus = TestConsensus::create_from_temp_db_and_dummy_sender(&config);
     let wait_handles = consensus.init();
 
     let pruning_point = if proof_exists {
@@ -1166,7 +1165,7 @@ async fn bounded_merge_depth_test() {
 
     assert!((config.ghostdag_k as u64) < config.merge_depth, "K must be smaller than merge depth for this test to run");
 
-    let consensus = TestConsensus::create_from_temp_db(&config);
+    let consensus = TestConsensus::create_from_temp_db_and_dummy_sender(&config);
     let wait_handles = consensus.init();
 
     let mut selected_chain = vec![config.genesis_hash];
@@ -1263,7 +1262,7 @@ async fn difficulty_test() {
             p.difficulty_window_size = 140;
         })
         .build();
-    let consensus = TestConsensus::create_from_temp_db(&config);
+    let consensus = TestConsensus::create_from_temp_db_and_dummy_sender(&config);
     let wait_handles = consensus.init();
 
     let fake_genesis = Header {

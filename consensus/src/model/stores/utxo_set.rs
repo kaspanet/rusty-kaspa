@@ -13,8 +13,12 @@ use hashes::Hash;
 use rocksdb::WriteBatch;
 use std::{error::Error, fmt::Display, sync::Arc};
 
+type UtxoCollectionIterator<'a> = Box<dyn Iterator<Item = Result<(TransactionOutpoint, UtxoEntry), Box<dyn Error>>> + 'a>;
+
 pub trait UtxoSetStoreReader {
     fn get(&self, outpoint: &TransactionOutpoint) -> Result<Arc<UtxoEntry>, StoreError>;
+
+    fn seek_iterator(&self, from_outpoint: Option<TransactionOutpoint>, limit: usize, skip_first: bool) -> UtxoCollectionIterator;
 }
 
 pub trait UtxoSetStore: UtxoSetStoreReader {
@@ -110,6 +114,11 @@ impl UtxoView for DbUtxoSetStore {
 impl UtxoSetStoreReader for DbUtxoSetStore {
     fn get(&self, outpoint: &TransactionOutpoint) -> Result<Arc<UtxoEntry>, StoreError> {
         self.access.read((*outpoint).into())
+    }
+
+    fn seek_iterator(&self, from_outpoint: Option<TransactionOutpoint>, limit: usize, skip_first: bool) -> UtxoCollectionIterator {
+        let seek_key = from_outpoint.map(UtxoKey::from);
+        Box::new(self.access.seek_iterator::<TransactionOutpoint, UtxoEntry>(None, seek_key, limit, skip_first))
     }
 }
 

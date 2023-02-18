@@ -99,7 +99,7 @@ mod tests {
             .skip_proof_of_work()
             .edit_consensus_params(|p| p.deflationary_phase_daa_score = 2)
             .build();
-        let consensus = TestConsensus::create_from_temp_db(&config);
+        let consensus = TestConsensus::create_from_temp_db_and_dummy_sender(&config);
         let wait_handles = consensus.init();
         let body_processor = consensus.block_body_processor();
 
