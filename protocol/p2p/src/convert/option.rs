@@ -1,5 +1,5 @@
 //!
-//! Traits to allow safe inline conversion over types such as Option
+//! Traits to allow safe inline conversion over types such as Option (which are not owned by this crate, so cannot impl ordinary `TryFrom`)
 //!
 use super::error::ConversionError;
 

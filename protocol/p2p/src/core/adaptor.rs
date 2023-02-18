@@ -16,9 +16,6 @@ pub enum ConnectionError {
 
     #[error("channel is closed")]
     ChannelClosed,
-
-    #[error("peer {0} is missing")]
-    MissingPeer(Uuid),
 }
 
 /// The main entrypoint for external usage of the P2P library. An impl of this trait is expected on P2P server
@@ -54,7 +51,7 @@ impl Adaptor {
         Self { _server_termination: server_termination, connection_handler, hub: Hub::new() }
     }
 
-    /// Creates a P2P adaptor with only client-side support. Typical Kaspa nodes should use `Adaptor::bidirectional_connection`
+    /// Creates a P2P adaptor with only client-side support. Typical Kaspa nodes should use `Adaptor::bidirectional`
     pub fn client_only(initializer: Arc<dyn ConnectionInitializer>) -> Arc<Self> {
         let (hub_sender, hub_receiver) = mpsc_channel(128);
         let connection_handler = ConnectionHandler::new(hub_sender);
@@ -89,7 +86,7 @@ impl Adaptor {
     }
 
     /// Send a message to a specific peer
-    pub async fn send(&self, peer_id: Uuid, msg: KaspadMessage) -> Result<(), ConnectionError> {
+    pub async fn send(&self, peer_id: Uuid, msg: KaspadMessage) -> Result<bool, ConnectionError> {
         self.hub.send(peer_id, msg).await
     }
 

@@ -117,7 +117,7 @@ impl Router {
         }
     }
 
-    /// Subscribe to specific message types. This should be used by `ClientInitializer` instances to register application-specific flows
+    /// Subscribe to specific message types. This should be used by `ConnectionInitializer` instances to register application-specific flows
     pub fn subscribe(&self, msg_types: Vec<KaspadMessagePayloadType>) -> IncomingRoute {
         let (sender, receiver) = mpsc_channel(Self::incoming_flow_channel_size());
         let mut map = self.routing_map.write();
@@ -151,7 +151,7 @@ impl Router {
         }
     }
 
-    /// Routes a locally-originated message to the network peer
+    /// Enqueues a locally-originated message to be sent to the network peer
     pub async fn enqueue(&self, msg: KaspadMessage) -> Result<(), ConnectionError> {
         assert!(msg.payload.is_some(), "Kaspad P2P message should always have a value");
         match self.outgoing_route.send(msg).await {

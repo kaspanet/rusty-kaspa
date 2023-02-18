@@ -56,12 +56,13 @@ impl Hub {
     }
 
     /// Send a message to a specific peer
-    pub async fn send(&self, peer_id: Uuid, msg: KaspadMessage) -> Result<(), ConnectionError> {
+    pub async fn send(&self, peer_id: Uuid, msg: KaspadMessage) -> Result<bool, ConnectionError> {
         let op = self.peers.read().get(&peer_id).cloned();
         if let Some(router) = op {
-            router.enqueue(msg).await
+            router.enqueue(msg).await?;
+            Ok(true)
         } else {
-            Err(ConnectionError::MissingPeer(peer_id))
+            Ok(false)
         }
     }
 

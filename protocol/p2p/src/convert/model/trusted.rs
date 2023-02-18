@@ -70,7 +70,7 @@ pub struct TrustedDataEntry {
     pub ghostdag_window_indices: Vec<u64>,
     //
     // Rust rewrite note: the indices fields are no longer needed with the way the pruning point anti-future
-    // is marinated now. Meaning we simply build this sub-DAG in a way that the usual traversal operations will
+    // is maintained now. Meaning we simply build this sub-DAG in a way that the usual traversal operations will
     // return the correct blocks/data without the need for explicitly provided indices.
     //
 }
