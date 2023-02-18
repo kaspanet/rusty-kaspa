@@ -10,7 +10,7 @@ use consensus_core::{
     api::DynConsensus,
     block::Block,
     blockstatus::BlockStatus,
-    errors::block::{BlockProcessResult, RuleError},
+    errors::block::BlockProcessResult,
     pruning::{PruningPointProof, PruningPointsList},
 };
 use futures::future::{join_all, BoxFuture};
@@ -140,19 +140,21 @@ impl IbdFlow {
         consensus.clone().apply_pruning_proof(proof, &trusted_set);
         consensus.clone().import_pruning_points(pruning_points);
 
+        info!("Starting to process {} semi-trusted blocks", trusted_set.len());
         let mut last_time = std::time::SystemTime::now();
         let mut last_index: usize = 0;
         for (i, tb) in trusted_set.into_iter().enumerate() {
             let now = std::time::SystemTime::now();
             let passed = now.duration_since(last_time).unwrap();
-            if passed > Duration::new(1, 0) {
-                info!("Processed {} trusted blocks in the last {} seconds (total {})", i - last_index, passed.as_secs(), i);
+            if passed > Duration::from_secs(1) {
+                info!("Processed {} semi-trusted blocks in the last {} seconds (total {})", i - last_index, passed.as_secs(), i);
                 last_time = now;
                 last_index = i;
             }
+            // TODO: queue all and join
             consensus.clone().validate_and_insert_trusted_block(tb).await?;
         }
-        info!("Done processing trusted blocks");
+        info!("Done processing semi-trusted blocks");
 
         Ok(proof_pruning_point)
     }
@@ -182,11 +184,12 @@ impl IbdFlow {
         // TODO: logs
         while let Some(chunk) = chunk_stream.next().await? {
             let current_joins = submit_chunk(consensus, chunk);
-            let _ = join_all(prev_joins).await.into_iter().collect::<Result<Vec<BlockStatus>, RuleError>>()?;
+            // Join the previous chunk so that we always concurrently process a chunk and receive another
+            join_all(prev_joins).await.into_iter().try_for_each(|x| x.map(drop))?;
             prev_joins = current_joins;
         }
 
-        let _ = join_all(prev_joins).await.into_iter().collect::<Result<Vec<BlockStatus>, RuleError>>()?;
+        join_all(prev_joins).await.into_iter().try_for_each(|x| x.map(drop))?;
 
         Ok(())
     }

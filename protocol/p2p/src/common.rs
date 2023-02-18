@@ -11,7 +11,7 @@ pub enum ProtocolError {
     #[error("timeout expired {0:?}")]
     Timeout(Duration),
 
-    #[error("expected message type {0} but got {1:?}")]
+    #[error("expected message type/s {0} but got {1:?}")]
     UnexpectedMessage(&'static str, Box<Option<KaspadMessagePayload>>),
 
     #[error("{0}")]
