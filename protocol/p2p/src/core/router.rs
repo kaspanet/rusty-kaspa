@@ -94,7 +94,11 @@ impl Router {
         });
 
         // Notify the central Hub about the new peer
-        router_clone.hub_sender.send(HubEvent::NewPeer(router_clone.clone())).await.unwrap();
+        router_clone
+            .hub_sender
+            .send(HubEvent::NewPeer(router_clone.clone()))
+            .await
+            .expect("hub receiver should never drop before senders");
         router_clone
     }
 
@@ -142,7 +146,7 @@ impl Router {
             debug!("P2P, Route to flow got empty payload, router-id: {}", self.identity);
             return false;
         }
-        let msg_type: KaspadMessagePayloadType = msg.payload.as_ref().unwrap().into();
+        let msg_type: KaspadMessagePayloadType = msg.payload.as_ref().expect("payload was just verified").into();
         let op = self.routing_map.read().get(&msg_type).cloned();
         if let Some(sender) = op {
             sender.send(msg).await.is_ok()
@@ -190,6 +194,6 @@ impl Router {
         self.routing_map.write().clear();
 
         // Send a close notification to the central Hub
-        self.hub_sender.send(HubEvent::PeerClosing(self.identity)).await.unwrap();
+        self.hub_sender.send(HubEvent::PeerClosing(self.identity)).await.expect("hub receiver should never drop before senders");
     }
 }

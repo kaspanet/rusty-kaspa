@@ -3,8 +3,7 @@ use async_trait::async_trait;
 use consensus_core::api::DynConsensus;
 use kaspa_core::debug;
 use p2p_lib::pb;
-use p2p_lib::{common::ProtocolError, ConnectionInitializer, Router};
-use p2p_lib::{KaspadHandshake, KaspadMessagePayloadType};
+use p2p_lib::{common::ProtocolError, ConnectionInitializer, KaspadHandshake, Router};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -32,10 +31,8 @@ fn unix_now() -> i64 {
 #[async_trait]
 impl ConnectionInitializer for FlowContext {
     async fn initialize_connection(&self, router: Arc<Router>) -> Result<(), ProtocolError> {
-        // Subscribe to handshake messages
-        let version_receiver = router.subscribe(vec![KaspadMessagePayloadType::Version]);
-        let verack_receiver = router.subscribe(vec![KaspadMessagePayloadType::Verack]);
-        let ready_receiver = router.subscribe(vec![KaspadMessagePayloadType::Ready]);
+        // Build the handshake object and subscribe to handshake messages
+        let mut handshake = KaspadHandshake::new(&router);
 
         // We start the router receive loop only after we registered to handshake routes
         router.start();
@@ -54,11 +51,8 @@ impl ConnectionInitializer for FlowContext {
             network: "kaspa-mainnet".to_string(),   // TODO: get network from config
         };
 
-        // Build the handshake object
-        let handshake = KaspadHandshake::new();
-
         // Perform the handshake
-        let peer_version_message = handshake.handshake(&router, version_receiver, verack_receiver, self_version_message).await?;
+        let peer_version_message = handshake.handshake(self_version_message).await?;
 
         // TODO: verify the versions are compatible
         debug!("protocol versions - self: {}, peer: {}", 5, peer_version_message.protocol_version);
@@ -70,7 +64,7 @@ impl ConnectionInitializer for FlowContext {
         };
 
         // Send and receive the ready signal
-        handshake.ready_flow(&router, ready_receiver).await?;
+        handshake.exchange_ready_messages().await?;
 
         // Launch all flows. Note we launch only after the ready signal was exchanged
         for flow in flows {

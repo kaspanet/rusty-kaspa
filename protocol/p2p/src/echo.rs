@@ -75,12 +75,10 @@ impl EchoFlow {
                     break;
                 }
             }
-            debug!("EchoFlow, existing message dispatch loop");
+            debug!("EchoFlow, exiting message dispatch loop");
         });
     }
 
-    /// This an example `call` to make a point that only inside this call the code starts to be
-    /// maybe not generic
     async fn call(&self, msg: pb::KaspadMessage) -> bool {
         // echo
         trace!("EchoFlow, got message:{:?}", msg);
@@ -123,10 +121,8 @@ impl ConnectionInitializer for EchoFlowInitializer {
         // Example code to illustrate kaspa P2P handshaking
         //
 
-        // Subscribe to handshake messages
-        let version_receiver = router.subscribe(vec![KaspadMessagePayloadType::Version]);
-        let verack_receiver = router.subscribe(vec![KaspadMessagePayloadType::Verack]);
-        let ready_receiver = router.subscribe(vec![KaspadMessagePayloadType::Ready]);
+        // Build the handshake object and subscribe to handshake messages
+        let mut handshake = KaspadHandshake::new(&router);
 
         // We start the router receive loop only after we registered to handshake routes
         router.start();
@@ -134,18 +130,15 @@ impl ConnectionInitializer for EchoFlowInitializer {
         // Build the local version message
         let self_version_message = build_dummy_version_message();
 
-        // Build the handshake object
-        let handshake = KaspadHandshake::new();
-
         // Perform the handshake
-        let peer_version_message = handshake.handshake(&router, version_receiver, verack_receiver, self_version_message).await?;
+        let peer_version_message = handshake.handshake(self_version_message).await?;
         debug!("protocol versions - self: {}, peer: {}", 5, peer_version_message.protocol_version);
 
         // Subscribe to remaining messages. In this example we simply subscribe to all messages with a single echo flow
         EchoFlow::register(router.clone()).await;
 
         // Send a ready signal
-        handshake.ready_flow(&router, ready_receiver).await?;
+        handshake.exchange_ready_messages().await?;
 
         // Note: at this point receivers for handshake subscriptions
         // are dropped, thus effectively unsubscribing

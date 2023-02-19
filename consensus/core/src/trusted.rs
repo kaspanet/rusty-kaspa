@@ -3,7 +3,7 @@ use hashes::Hash;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-/// Represent semi-trusted externally provided Ghostdag data (by a network peer)
+/// Represents semi-trusted externally provided Ghostdag data (by a network peer)
 #[derive(Clone, Serialize, Deserialize)]
 pub struct ExternalGhostdagData {
     pub blue_score: u64,
@@ -14,7 +14,7 @@ pub struct ExternalGhostdagData {
     pub blues_anticone_sizes: HashKTypeMap,
 }
 
-/// Represent an externally provided block with associated Ghostdag data which
+/// Represents an externally provided block with associated Ghostdag data which
 /// is only partially validated by the consensus layer. Note there is no actual trust
 /// but rather these blocks are indirectly validated through the PoW mined over them
 pub struct TrustedBlock {
@@ -28,7 +28,7 @@ impl TrustedBlock {
     }
 }
 
-/// Represent an externally provided header with associated Ghostdag data which
+/// Represents an externally provided header with associated Ghostdag data which
 /// is only partially validated by the consensus layer. Note there is no actual trust
 /// but rather these headers are indirectly validated through the PoW mined over them
 pub struct TrustedHeader {
@@ -42,7 +42,7 @@ impl TrustedHeader {
     }
 }
 
-/// Represent externally provided Ghostdag data associated with a block Hash
+/// Represents externally provided Ghostdag data associated with a block Hash
 pub struct TrustedHash {
     pub hash: Hash,
     pub ghostdag: ExternalGhostdagData,

@@ -1,21 +1,31 @@
 use crate::pb::{kaspad_message::Payload, ReadyMessage, VerackMessage, VersionMessage};
 use crate::{common::ProtocolError, dequeue_with_timeout, make_message};
-use crate::{IncomingRoute, Router};
+use crate::{IncomingRoute, KaspadMessagePayloadType, Router};
 use kaspa_core::debug;
-use std::sync::Arc;
 
-#[derive(Default)]
-pub struct KaspadHandshake {}
+/// Implements the Kaspa peer-to-peer handshake protocol
+pub struct KaspadHandshake<'a> {
+    router: &'a Router,
+    version_receiver: IncomingRoute,
+    verack_receiver: IncomingRoute,
+    ready_receiver: IncomingRoute,
+}
 
-impl KaspadHandshake {
-    pub fn new() -> Self {
-        Self {}
+impl<'a> KaspadHandshake<'a> {
+    /// Builds the handshake object and subscribes to handshake messages
+    pub fn new(router: &'a Router) -> Self {
+        Self {
+            router,
+            version_receiver: router.subscribe(vec![KaspadMessagePayloadType::Version]),
+            verack_receiver: router.subscribe(vec![KaspadMessagePayloadType::Verack]),
+            ready_receiver: router.subscribe(vec![KaspadMessagePayloadType::Ready]),
+        }
     }
 
-    async fn receive_version_flow(&self, router: &Arc<Router>, mut receiver: IncomingRoute) -> Result<VersionMessage, ProtocolError> {
+    async fn receive_version_flow(router: &Router, version_receiver: &mut IncomingRoute) -> Result<VersionMessage, ProtocolError> {
         debug!("starting receive version flow");
 
-        let version_message = dequeue_with_timeout!(receiver, Payload::Version)?;
+        let version_message = dequeue_with_timeout!(version_receiver, Payload::Version)?;
         debug!("accepted version massage: {version_message:?}");
 
         let verack_message = make_message!(Payload::Verack, VerackMessage {});
@@ -25,9 +35,8 @@ impl KaspadHandshake {
     }
 
     async fn send_version_flow(
-        &self,
-        router: &Arc<Router>,
-        mut receiver: IncomingRoute,
+        router: &Router,
+        verack_receiver: &mut IncomingRoute,
         version_message: VersionMessage,
     ) -> Result<(), ProtocolError> {
         debug!("starting send version flow");
@@ -36,36 +45,32 @@ impl KaspadHandshake {
         let version_message = make_message!(Payload::Version, version_message);
         router.enqueue(version_message).await?;
 
-        let verack_message = dequeue_with_timeout!(receiver, Payload::Verack)?;
+        let verack_message = dequeue_with_timeout!(verack_receiver, Payload::Verack)?;
         debug!("accepted verack_message: {verack_message:?}");
 
         Ok(())
     }
 
-    pub async fn ready_flow(&self, router: &Arc<Router>, mut receiver: IncomingRoute) -> Result<(), ProtocolError> {
+    /// Exchange `Ready` messages with the peer. This is the final step of the handshake protocol and should
+    /// only be called after all flows corresponding to the version exchange info are registered.
+    pub async fn exchange_ready_messages(&mut self) -> Result<(), ProtocolError> {
         debug!("starting ready flow");
 
         let sent_ready_message = make_message!(Payload::Ready, ReadyMessage {});
-        router.enqueue(sent_ready_message).await?;
+        self.router.enqueue(sent_ready_message).await?;
 
-        let recv_ready_message = dequeue_with_timeout!(receiver, Payload::Ready)?;
+        let recv_ready_message = dequeue_with_timeout!(self.ready_receiver, Payload::Ready)?;
         debug!("accepted ready message: {recv_ready_message:?}");
 
         Ok(())
     }
 
     /// Performs the handshake with the peer, essentially exchanging version messages
-    pub async fn handshake(
-        &self,
-        router: &Arc<Router>,
-        version_receiver: IncomingRoute,
-        verack_receiver: IncomingRoute,
-        self_version_message: VersionMessage,
-    ) -> Result<VersionMessage, ProtocolError> {
+    pub async fn handshake(&mut self, self_version_message: VersionMessage) -> Result<VersionMessage, ProtocolError> {
         // Run both send and receive flows concurrently -- this is critical in order to avoid a handshake deadlock
         let (send_res, recv_res) = tokio::join!(
-            self.send_version_flow(router, verack_receiver, self_version_message),
-            self.receive_version_flow(router, version_receiver)
+            Self::send_version_flow(self.router, &mut self.verack_receiver, self_version_message),
+            Self::receive_version_flow(self.router, &mut self.version_receiver)
         );
         send_res?;
         recv_res
