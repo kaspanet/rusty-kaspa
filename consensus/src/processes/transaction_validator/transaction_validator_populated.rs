@@ -92,9 +92,10 @@ impl TransactionValidator {
     }
 
     fn check_sig_op_counts<T: VerifiableTransaction>(tx: &T) -> TxResult<()> {
-        for (input, entry) in tx.populated_inputs() {
-            if get_sig_op_count::<T>(&input.signature_script, &entry.script_public_key) != input.sig_op_count as u64 {
-                return Err(TxRuleError::WrongSigOpCount);
+        for (i, (input, entry)) in tx.populated_inputs().enumerate() {
+            let calculated = get_sig_op_count::<T>(&input.signature_script, &entry.script_public_key);
+            if calculated != input.sig_op_count as u64 {
+                return Err(TxRuleError::WrongSigOpCount(i, input.sig_op_count as u64, calculated));
             }
         }
         Ok(())

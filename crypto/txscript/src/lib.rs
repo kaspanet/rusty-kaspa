@@ -107,11 +107,14 @@ fn get_sig_op_count_by_opcodes<T: VerifiableTransaction>(opcodes: &[Result<Box<d
                 match op.value() {
                     codes::OpCheckSig | codes::OpCheckSigVerify | codes::OpCheckSigECDSA => num_sigs += 1,
                     codes::OpCheckMultiSig | codes::OpCheckMultiSigVerify | codes::OpCheckMultiSigECDSA => {
-                        if i > 0
-                            && opcodes[i - 1].as_ref().expect("they were checked before").value() >= codes::OpTrue
-                            && opcodes[i - 1].as_ref().unwrap().value() <= codes::Op16
-                        {
-                            num_sigs += to_small_int(opcodes[i - 1].as_ref().unwrap()) as u64;
+                        if i == 0 {
+                            num_sigs += MAX_PUB_KEYS_PER_MUTLTISIG as u64;
+                            continue;
+                        }
+
+                        let prev_opcode = opcodes[i - 1].as_ref().expect("they were checked before");
+                        if prev_opcode.value() >= codes::OpTrue && prev_opcode.value() <= codes::Op16 {
+                            num_sigs += to_small_int(prev_opcode) as u64;
                         } else {
                             num_sigs += MAX_PUB_KEYS_PER_MUTLTISIG as u64;
                         }

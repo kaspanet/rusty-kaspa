@@ -912,7 +912,7 @@ opcode_list! {
 #[allow(clippy::borrowed_box)]
 pub fn to_small_int<T: VerifiableTransaction>(opcode: &Box<dyn OpCodeImplementation<T>>) -> u8 {
     let value = opcode.value();
-    if value == codes::OpTrue {
+    if value == codes::OpFalse {
         return 0;
     }
 
