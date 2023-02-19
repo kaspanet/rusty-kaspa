@@ -16,3 +16,4 @@ thiserror.workspace = true
 rand.workspace = true
 faster-hex.workspace = true
 hashes.workspace = true
+itertools.workspace = true

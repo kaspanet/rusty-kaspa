@@ -810,6 +810,7 @@ dependencies = [
  "faster-hex",
  "hashes",
  "indexmap",
+ "itertools 0.10.5",
  "parking_lot",
  "rand 0.8.5",
  "rocksdb",

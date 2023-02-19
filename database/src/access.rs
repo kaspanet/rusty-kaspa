@@ -1,6 +1,7 @@
 use crate::{db::DB, errors::StoreError};
 
 use super::prelude::{Cache, DbKey, DbWriter};
+use itertools::Itertools;
 use rocksdb::{Direction, IteratorMode, ReadOptions};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{collections::hash_map::RandomState, error::Error, fmt::Debug, hash::BuildHasher, sync::Arc};
@@ -66,7 +67,7 @@ where
 
     pub fn iterator(&self) -> impl Iterator<Item = Result<(Box<[u8]>, TData), Box<dyn Error>>> + '_
     where
-        TKey: Clone + AsRef<[u8]> + ToString,
+        TKey: Clone + AsRef<[u8]>,
         TData: DeserializeOwned, // We need `DeserializeOwned` since the slice coming from `db.get_pinned` has short lifetime
     {
         let db_key = DbKey::prefix_only(&self.prefix);
@@ -137,24 +138,35 @@ where
     {
         self.cache.remove_all();
         //TODO: Consider using column families to make it faster
-        writer.delete(DbKey::prefix_only(&self.prefix))?;
+        let db_key = DbKey::prefix_only(&self.prefix);
+        let mut read_opts = ReadOptions::default();
+        read_opts.set_iterate_range(rocksdb::PrefixRange(db_key.as_ref()));
+        let keys = self
+            .db
+            .iterator_opt(IteratorMode::From(db_key.as_ref(), Direction::Forward), read_opts)
+            .map(|iter_result| match iter_result {
+                Ok((key, _)) => Ok::<_, rocksdb::Error>(key),
+                Err(e) => Err(e.into()),
+            })
+            .collect_vec();
+        for key in keys {
+            writer.delete(key.unwrap())?;
+        }
         Ok(())
     }
 
     /// A dynamic iterator that can iterate through a specifc prefix / bucket, or from a certain start point.
-    /// Extracted keys and values must be encoded with bincode.
     //TODO: loop and chain iterators for multi-prefix / bucket iterator.
-    pub fn seek_iterator<Key, Value>(
+    pub fn seek_iterator(
         &self,
         bucket: Option<&[u8]>,   // iter self.prefix if None, else append bytes to self.prefix.
         seek_from: Option<TKey>, // iter whole range if None
         limit: usize,            // amount to take.
         skip_first: bool,        // skips the first value, (useful in conjunction with the seek-key, as to not re-retrieve).
-    ) -> impl Iterator<Item = Result<(Key, Value), Box<dyn Error>>> + '_
+    ) -> impl Iterator<Item = Result<(Box<[u8]>, TData), Box<dyn Error>>> + '_
     where
         TKey: Clone + AsRef<[u8]>,
-        Key: DeserializeOwned + Debug,
-        Value: DeserializeOwned + Debug,
+        TData: DeserializeOwned,
     {
         let db_key = bucket.map_or(DbKey::prefix_only(&self.prefix), move |bucket| {
             let mut key = DbKey::prefix_only(&self.prefix);
@@ -177,11 +189,8 @@ where
         }
 
         db_iterator.take(limit).map(move |item| match item {
-            Ok((key_bytes, value_bytes)) => match bincode::deserialize::<Key>(key_bytes[db_key.prefix_len()..].as_ref()) {
-                Ok(key) => match bincode::deserialize::<Value>(value_bytes.as_ref()) {
-                    Ok(value) => Ok((key, value)),
-                    Err(err) => Err(err.into()),
-                },
+            Ok((key_bytes, value_bytes)) => match bincode::deserialize::<TData>(value_bytes.as_ref()) {
+                Ok(value) => Ok((key_bytes[db_key.prefix_len()..].into(), value)),
                 Err(err) => Err(err.into()),
             },
             Err(err) => Err(err.into()),

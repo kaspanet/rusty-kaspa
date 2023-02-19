@@ -35,7 +35,7 @@ fn test_utxoindex() {
     let mut virtual_change_emulator = VirtualChangeEmulator::new();
     let utxoindex_db = create_temp_db();
     let test_consensus = Arc::new(TestConsensus::create_from_temp_db_and_dummy_sender(&Config::new(DEVNET_PARAMS)));
-    let utxoindex = UtxoIndex::new(test_consensus.clone(), utxoindex_db.1);
+    let utxoindex = UtxoIndex::new(test_consensus.clone(), utxoindex_db.1).unwrap();
 
     // Fill initial utxo collection in emulator.
     virtual_change_emulator.fill_utxo_collection(resync_utxo_collection_size, script_public_key_pool_size); //10_000 utxos belonging to 100 script public keys

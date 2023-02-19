@@ -29,8 +29,12 @@ pub struct UtxoIndex {
 
 impl UtxoIndex {
     /// Creates a new [`UtxoIndex`] within a [`RwLock`]
-    pub fn new(consensus: DynConsensus, db: Arc<DB>) -> Arc<RwLock<Self>> {
-        Arc::new(RwLock::new(Self { consensus, store: Store::new(db) }))
+    pub fn new(consensus: DynConsensus, db: Arc<DB>) -> UtxoIndexResult<Arc<RwLock<Self>>> {
+        let mut utxoindex = Self { consensus, store: Store::new(db) };
+        if !utxoindex.is_synced()? {
+            utxoindex.resync()?;
+        }
+        Ok(Arc::new(RwLock::new(utxoindex)))
     }
 }
 impl UtxoIndexApi for UtxoIndex {

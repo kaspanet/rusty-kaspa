@@ -20,7 +20,7 @@ use consensus_core::events::ConsensusEvent;
 use consensus_core::header::Header;
 use consensus_core::subnets::SubnetworkId;
 use consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry};
-use consensus_core::{blockhash, hashing, BlockHashMap, BlueWorkType};
+use consensus_core::{blockhash, hashing, utxo, BlockHashMap, BlueWorkType};
 use database::prelude::DB;
 use event_processor::notify::Notification;
 use event_processor::processor::EventProcessor;
@@ -851,12 +851,14 @@ async fn json_test(file_path: &str) {
     let consensus = Arc::new(TestConsensus::create_from_temp_db(&config, consensus_send));
     let wait_handles = consensus.init();
 
-    let utxoindex_db = Arc::new(DB::open_default("/tmp/utxoindex").unwrap());
-    let utxoindex: DynUtxoIndexApi = Some(Box::new(UtxoIndex::new(consensus.clone(), utxoindex_db)));
+    let (utxoindex_db_lifetime, utxoindex_db) = create_temp_db();
+    let utxoindex: DynUtxoIndexApi = Some(Box::new(UtxoIndex::new(consensus.clone(), utxoindex_db).unwrap()));
     let event_processor = Arc::new(EventProcessor::new(utxoindex.clone(), consensus_recv, event_processor_send));
     let async_runtime = Arc::new(AsyncRuntime::new());
     async_runtime.register(event_processor);
     async_runtime.start(Default::default());
+
+    let utxoindex = utxoindex.as_ref().unwrap();
 
     let pruning_point = if proof_exists {
         let proof_lines = gzip_file_lines(&main_path.join("proof.json.gz"));
@@ -898,10 +900,6 @@ async fn json_test(file_path: &str) {
     let mut last_time = SystemTime::now();
     let mut last_index: usize = 0;
     for (i, line) in lines.enumerate() {
-        if i == 200 {
-            break;
-        }
-
         let now = SystemTime::now();
         let passed = now.duration_since(last_time).unwrap();
         if passed > Duration::new(10, 0) {
@@ -929,15 +927,16 @@ async fn json_test(file_path: &str) {
 
         consensus.consensus.import_pruning_point_utxo_set(pruning_point.unwrap(), &mut multiset).unwrap();
         consensus.consensus.resolve_virtual();
+        utxoindex.write().resync().unwrap();
         // TODO: Add consensus validation that the pruning point is actually the right block according to the rules (in pruning depth etc).
     }
 
     // Assert that at least one body tip was resolved with valid UTXO
     assert!(consensus.body_tips().iter().copied().any(|h| consensus.block_status(h) == BlockStatus::StatusUTXOValid));
-    let utxoindex = utxoindex.as_ref().unwrap();
     let virtual_utxos: HashSet<TransactionOutpoint> =
         HashSet::from_iter(consensus.consensus().get_virtual_utxos(None, usize::MAX, false).into_iter().map(|(outpoint, _)| outpoint));
     let utxoindex_utxos = utxoindex.read().get_all_outpoints().unwrap();
+    assert_eq!(virtual_utxos.len(), utxoindex_utxos.len());
     assert!(virtual_utxos.is_subset(&utxoindex_utxos));
     assert!(utxoindex_utxos.is_subset(&virtual_utxos));
     // for (outpoint, entry) in consensus.virtual_stores().read().utxo_set.iterator().map(|res| res.unwrap()) {
@@ -951,6 +950,8 @@ async fn json_test(file_path: &str) {
     // }
 
     consensus.shutdown(wait_handles);
+    drop(event_processor_recv);
+    drop(utxoindex_db_lifetime);
 }
 
 async fn json_concurrency_test(file_path: &str) {

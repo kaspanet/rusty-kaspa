@@ -121,7 +121,7 @@ pub fn main() {
     let utxoindex: DynUtxoIndexApi = match args.utxoindex.is_some() {
         true => {
             let utxoindex_db = Arc::new(DB::open_default(utxoindex_db_dir.to_str().unwrap()).unwrap());
-            Some(Box::new(UtxoIndex::new(consensus.clone(), utxoindex_db)))
+            Some(Box::new(UtxoIndex::new(consensus.clone(), utxoindex_db).unwrap()))
         }
         false => None,
     };

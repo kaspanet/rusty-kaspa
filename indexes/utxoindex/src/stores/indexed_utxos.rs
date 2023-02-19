@@ -175,17 +175,11 @@ impl UtxoSetByScriptPublicKeyStoreReader for DbUtxoSetByScriptPublicKeyStore {
         for script_public_key in script_public_keys.iter() {
             let script_public_key_bucket = ScriptPublicKeyBucket::from(script_public_key);
             let utxos_by_script_public_keys_inner = CompactUtxoCollection::from_iter(
-                self.access
-                    .seek_iterator::<TransactionOutpoint, CompactUtxoEntry>(
-                        Some(script_public_key_bucket.as_ref()),
-                        None,
-                        usize::MAX,
-                        false,
-                    )
-                    .map(move |value| {
-                        let (k, v) = value.expect("expected `key: TransactionOutpoint`, `value: CompactUtxoEntry`");
-                        (k, v)
-                    }),
+                self.access.seek_iterator(Some(script_public_key_bucket.as_ref()), None, usize::MAX, false).map(|res| {
+                    let (key, entry) = res.unwrap();
+                    let (_, outpoint) = UtxoEntryFullAccessKey(Arc::new(key.to_vec())).extract_script_public_key_and_outpoint();
+                    (outpoint, entry)
+                }),
             );
             utxos_by_script_public_keys.insert(ScriptPublicKey::from(script_public_key_bucket), utxos_by_script_public_keys_inner);
         }
