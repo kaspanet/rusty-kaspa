@@ -36,13 +36,12 @@ impl AsyncService for P2pService {
 
         // Launch the service and wait for a shutdown signal
         Box::pin(async move {
-            let address = String::from("[::1]:50051");
+            let server_address = String::from("[::1]:50051");
             let ctx = Arc::new(FlowContext::new(Some(self.consensus.clone())));
-            let p2p_adaptor = Adaptor::bidirectional(address.clone(), ctx).unwrap();
+            let p2p_adaptor = Adaptor::bidirectional(server_address.clone(), ctx).unwrap();
 
             // For now, attempt to connect to a running golang node
-            if let Some(peer_address) = self.connect.as_ref() {
-                let peer_address = format!("://{}", peer_address); // Add scheme prefix
+            if let Some(peer_address) = self.connect.clone() {
                 trace!("P2P, p2p::main - starting peer:{peer_address}");
                 let _peer_id = p2p_adaptor.connect_peer_with_retry_params(peer_address, 1, Duration::from_secs(1)).await;
             }

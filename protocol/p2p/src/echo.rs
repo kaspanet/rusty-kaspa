@@ -164,8 +164,7 @@ mod tests {
         let adaptor2 = Adaptor::bidirectional(address2.clone(), Arc::new(EchoFlowInitializer::new())).unwrap();
 
         // Initiate the connection from `adaptor1` (outbound) to `adaptor2` (inbound)
-        // NOTE: a minimal scheme prefix `"://"` must be added for the client-side connect logic
-        let peer2_id = adaptor1.connect_peer(String::from("://[::1]:50054")).await.expect("peer connection failed");
+        let peer2_id = adaptor1.connect_peer(String::from("[::1]:50054")).await.expect("peer connection failed");
 
         // Wait for handshake completion
         tokio::time::sleep(std::time::Duration::from_secs(2)).await;

@@ -3,6 +3,7 @@ use crate::pb::KaspadMessage;
 use crate::{common::ProtocolError, KaspadMessagePayloadType};
 use kaspa_core::{debug, error, trace, warn};
 use parking_lot::{Mutex, RwLock};
+use std::net::SocketAddr;
 use std::{collections::HashMap, sync::Arc};
 use tokio::select;
 use tokio::sync::mpsc::{channel as mpsc_channel, Receiver as MpscReceiver, Sender as MpscSender};
@@ -21,10 +22,18 @@ struct RouterMutableState {
     shutdown_signal: Option<OneshotSender<()>>,
 }
 
+/// A router object for managing the communication to a network peer. It is named a router because it's responsible
+/// for internally routing messages to P2P flows based on registration and message types
 #[derive(Debug)]
 pub struct Router {
     /// Internal identity of this peer
     identity: Uuid,
+
+    /// The socket address of this peer
+    net_address: SocketAddr,
+
+    /// Indicates whether this connection is an outbound connection
+    is_outbound: bool,
 
     /// Routing map for mapping messages to subscribed flows
     routing_map: RwLock<HashMap<KaspadMessagePayloadType, MpscSender<KaspadMessage>>>,
@@ -41,6 +50,8 @@ pub struct Router {
 
 impl Router {
     pub(crate) async fn new(
+        net_address: SocketAddr,
+        is_outbound: bool,
         hub_sender: MpscSender<HubEvent>,
         mut incoming_stream: Streaming<KaspadMessage>,
         outgoing_route: MpscSender<KaspadMessage>,
@@ -50,6 +61,8 @@ impl Router {
 
         let router = Arc::new(Router {
             identity: Uuid::new_v4(),
+            net_address,
+            is_outbound,
             routing_map: RwLock::new(HashMap::new()),
             outgoing_route,
             hub_sender,
@@ -102,8 +115,19 @@ impl Router {
         router_clone
     }
 
+    /// Internal identity of this peer
     pub fn identity(&self) -> Uuid {
         self.identity
+    }
+
+    /// The socket address of this peer
+    pub fn net_address(&self) -> SocketAddr {
+        self.net_address
+    }
+
+    /// Indicates whether this connection is an outbound connection
+    pub fn is_outbound(&self) -> bool {
+        self.is_outbound
     }
 
     fn incoming_flow_channel_size() -> usize {

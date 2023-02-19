@@ -1,12 +1,12 @@
 use crate::common::ProtocolError;
 use crate::core::hub::Hub;
+use crate::ConnectionError;
 use crate::{core::connection_handler::ConnectionHandler, Router};
 use std::ops::Deref;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc::channel as mpsc_channel;
 use tokio::sync::oneshot::Sender as OneshotSender;
-use tonic::transport::Error as TonicError;
 use uuid::Uuid;
 
 /// The main entrypoint for external usage of the P2P library. An impl of this trait is expected on P2P server
@@ -52,7 +52,7 @@ impl Adaptor {
     }
 
     /// Creates a bidirectional P2P adaptor with a server serving at `serve_address` and with client support
-    pub fn bidirectional(serve_address: String, initializer: Arc<dyn ConnectionInitializer>) -> Result<Arc<Self>, TonicError> {
+    pub fn bidirectional(serve_address: String, initializer: Arc<dyn ConnectionInitializer>) -> Result<Arc<Self>, ConnectionError> {
         let (hub_sender, hub_receiver) = mpsc_channel(128);
         let connection_handler = ConnectionHandler::new(hub_sender);
         let server_termination = connection_handler.serve(serve_address)?;
