@@ -138,7 +138,7 @@ impl AsRef<[u8]> for UtxoEntryFullAccessKey {
 pub trait UtxoSetByScriptPublicKeyStoreReader {
     /// Get [UtxoSetByScriptPublicKey] set by queried [ScriptPublicKeys],
     fn get_utxos_from_script_public_keys(&self, script_public_keys: &ScriptPublicKeys) -> StoreResult<UtxoSetByScriptPublicKey>;
-    fn get_all_outpoints(&self) -> StoreResult<HashSet<TransactionOutpoint>>; // This has a big memory footprint, so it should be used only for tests.
+    fn get_all_outpoints(&self) -> StoreResult<HashSet<TransactionOutpoint>>; // This can have a big memory footprint, so it should be used only for tests.
 }
 
 pub trait UtxoSetByScriptPublicKeyStore: UtxoSetByScriptPublicKeyStoreReader {
@@ -186,18 +186,12 @@ impl UtxoSetByScriptPublicKeyStoreReader for DbUtxoSetByScriptPublicKeyStore {
         Ok(utxos_by_script_public_keys)
     }
 
+    // This can have a big memory footprint, so it should be used only for tests.
     fn get_all_outpoints(&self) -> StoreResult<HashSet<TransactionOutpoint>> {
         Ok(HashSet::from_iter(self.access.iterator().map(|res| {
             let (_, outpoint) = UtxoEntryFullAccessKey(Arc::new(res.unwrap().0.to_vec())).extract_script_public_key_and_outpoint();
             outpoint
         })))
-
-        // Ok(HashSet::from_iter(self.access.seek_iterator::<TransactionOutpoint, CompactUtxoEntry>(None, None, usize::MAX, false).map(
-        //     |value| {
-        //         let (outpoint, _) = value.expect("expected `key: TransactionOutpoint`, `value: CompactUtxoEntry`");
-        //         outpoint
-        //     },
-        // )))
     }
 }
 

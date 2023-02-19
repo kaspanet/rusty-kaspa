@@ -37,6 +37,7 @@ impl Store {
         self.utxos_by_script_public_key_store.get_utxos_from_script_public_keys(script_public_keys)
     }
 
+    // This can have a big memory footprint, so it should be used only for tests.
     pub fn get_all_outpoints(&self) -> StoreResult<HashSet<TransactionOutpoint>> {
         self.utxos_by_script_public_key_store.get_all_outpoints()
     }

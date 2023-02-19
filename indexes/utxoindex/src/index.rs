@@ -166,6 +166,7 @@ impl UtxoIndexApi for UtxoIndex {
         Ok(())
     }
 
+    // This can have a big memory footprint, so it should be used only for tests.
     fn get_all_outpoints(&self) -> StoreResult<std::collections::HashSet<consensus_core::tx::TransactionOutpoint>> {
         self.store.get_all_outpoints()
     }

@@ -23,6 +23,7 @@ pub trait UtxoIndexApi: Send + Sync {
     /// Note: Use a read lock when accessing this method
     fn get_utxos_by_script_public_keys(&self, script_public_keys: ScriptPublicKeys) -> StoreResult<UtxoSetByScriptPublicKey>;
 
+    // This can have a big memory footprint, so it should be used only for tests.
     fn get_all_outpoints(&self) -> StoreResult<HashSet<TransactionOutpoint>>;
 
     /// Retrieve the stored tips of the utxoindex (used for testing purposes).

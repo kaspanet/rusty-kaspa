@@ -939,15 +939,6 @@ async fn json_test(file_path: &str) {
     assert_eq!(virtual_utxos.len(), utxoindex_utxos.len());
     assert!(virtual_utxos.is_subset(&utxoindex_utxos));
     assert!(utxoindex_utxos.is_subset(&virtual_utxos));
-    // for (outpoint, entry) in consensus.virtual_stores().read().utxo_set.iterator().map(|res| res.unwrap()) {
-    //     assert!(utxoindex
-    //         .read()
-    //         .get_utxos_by_script_public_keys(HashSet::from_iter(once(entry.script_public_key.clone())))
-    //         .unwrap()
-    //         .get(&entry.script_public_key)
-    //         .unwrap()
-    //         .contains_key(&outpoint));
-    // }
 
     consensus.shutdown(wait_handles);
     drop(event_processor_recv);
@@ -1428,18 +1419,3 @@ async fn difficulty_test() {
 
     consensus.shutdown(wait_handles);
 }
-
-// #[tokio::test]
-// async fn test_utxoindex() {
-//     let (consensus_send, consensus_recv) = unbounded::<ConsensusEvent>();
-//     let (event_processor_send, event_processor_recv) = unbounded::<Notification>();
-//     let consensus = Arc::new(TestConsensus::create_from_temp_db(&Config::new(MAINNET_PARAMS), consensus_send));
-//     let wait_handles = consensus.init();
-
-//     let utxoindex_db = Arc::new(DB::open_default("/tmp/utxoindex").unwrap());
-//     let utxoindex: DynUtxoIndexApi = Arc::new(Some(Box::new(UtxoIndex::new(consensus.clone(), utxoindex_db))));
-//     let event_processor = Arc::new(EventProcessor::new(utxoindex.clone(), consensus_recv, event_processor_send));
-//     let async_runtime = Arc::new(AsyncRuntime::new());
-//     async_runtime.register(event_processor);
-//     consensus.shutdown(wait_handles);
-// }
