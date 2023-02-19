@@ -12,6 +12,7 @@ use consensus_core::{
 use hashes::Hash;
 use kaspa_core::trace;
 use kaspa_notify::{
+    events::EVENT_TYPE_ARRAY,
     listener::ListenerId,
     notifier::{Notifier, Notify},
     scope::Scope,
@@ -60,7 +61,7 @@ impl RpcCoreService {
         let collector = Arc::new(ConsensusCollector::new(event_notification_recv));
 
         // TODO: Some consensus-compatible subscriber could be provided here
-        let notifier = Arc::new(Notifier::new(vec![collector], vec![], 2, RPC_CORE));
+        let notifier = Arc::new(Notifier::new(EVENT_TYPE_ARRAY[..].into(), vec![collector], vec![], 2, RPC_CORE));
 
         Self { consensus, utxoindex, notifier }
     }

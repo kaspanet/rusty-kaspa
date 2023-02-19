@@ -15,7 +15,7 @@ use kaspa_grpc_core::{
 };
 use kaspa_notify::{
     error::Result as NotifyResult,
-    events::EventType,
+    events::{EventType, EVENT_TYPE_ARRAY},
     listener::ListenerId,
     notifier::Notifier,
     scope::Scope,
@@ -61,7 +61,7 @@ impl GrpcClient {
         let collector = Arc::new(RpcCoreCollector::new(notify_channel.receiver()));
         let subscriber = Arc::new(Subscriber::new(inner.clone(), 0));
 
-        let notifier = Arc::new(Notifier::new(vec![collector], vec![subscriber], 10, GRPC_CLIENT));
+        let notifier = Arc::new(Notifier::new(EVENT_TYPE_ARRAY[..].into(), vec![collector], vec![subscriber], 10, GRPC_CLIENT));
 
         Ok(Self { inner, notifier })
     }

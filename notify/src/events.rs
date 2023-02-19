@@ -108,3 +108,14 @@ impl<'a, T> Iterator for EventArrayIterator<'a, T> {
         }
     }
 }
+
+/// An event type array of on/off switches
+pub type EventSwitches = EventArray<bool>;
+
+impl From<&[EventType]> for EventSwitches {
+    fn from(events: &[EventType]) -> Self {
+        let mut switches = EventSwitches::default();
+        events.iter().for_each(|x| switches[*x] = true);
+        switches
+    }
+}

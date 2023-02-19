@@ -73,7 +73,7 @@ impl GrpcService {
         let collector = Arc::new(GrpcServiceCollector::new(core_channel.receiver()));
         let subscriber = Arc::new(Subscriber::new(core_service.notifier(), core_listener_id));
         let notifier: Arc<Notifier<Notification, GrpcConnection>> =
-            Arc::new(Notifier::new(vec![collector], vec![subscriber], 10, GRPC_SERVER));
+            Arc::new(Notifier::new(EVENT_TYPE_ARRAY[..].into(), vec![collector], vec![subscriber], 10, GRPC_SERVER));
         let connection_manager = Arc::new(RwLock::new(GrpcConnectionManager::new(notifier.clone())));
 
         Self { core_service, core_channel, core_listener_id, connection_manager, notifier }

@@ -3,7 +3,7 @@ use super::{
     collector::DynCollector,
     connection::Connection,
     error::{Error, Result},
-    events::{EventArray, EventType},
+    events::{EventArray, EventSwitches, EventType},
     listener::{Listener, ListenerId},
     notification::Notification,
     scope::Scope,
@@ -43,6 +43,11 @@ pub type DynNotify<N> = Arc<dyn Notify<N>>;
 /// to the "parents" in the notification DAG.
 ///
 /// A notifier broadcasts its incoming notifications to its listeners.
+///
+/// A notifier is build with a specific set of enabled event types (see `enabled_events`). All disabled
+/// event types are ignored by it. It is however possible to manually subscribe to a disabled scope and
+/// thus have a custom made collector of the notifier receive notifications of the disabled scope,
+/// allowing some handling of the notification into the collector before it gets dropped by the notifier.
 #[derive(Debug)]
 pub struct Notifier<N, C>
 where
@@ -57,8 +62,14 @@ where
     N: Notification,
     C: Connection<Notification = N>,
 {
-    pub fn new(collectors: Vec<DynCollector<N>>, subscribers: Vec<Arc<Subscriber>>, broadcasters: usize, name: &'static str) -> Self {
-        Self { inner: Arc::new(Inner::new(collectors, subscribers, broadcasters, name)) }
+    pub fn new(
+        enabled_events: EventSwitches,
+        collectors: Vec<DynCollector<N>>,
+        subscribers: Vec<Arc<Subscriber>>,
+        broadcasters: usize,
+        name: &'static str,
+    ) -> Self {
+        Self { inner: Arc::new(Inner::new(enabled_events, collectors, subscribers, broadcasters, name)) }
     }
 
     pub fn start(self: Arc<Self>) {
@@ -113,6 +124,9 @@ where
     N: Notification,
     C: Connection,
 {
+    /// Event types this notifier is configured to accept, broadcast and subscribe to
+    enabled_events: EventSwitches,
+
     /// Map of registered listeners
     listeners: Mutex<HashMap<ListenerId, Listener<C>>>,
 
@@ -143,7 +157,13 @@ where
     N: Notification,
     C: Connection<Notification = N>,
 {
-    fn new(collectors: Vec<DynCollector<N>>, subscribers: Vec<Arc<Subscriber>>, broadcasters: usize, name: &'static str) -> Self {
+    fn new(
+        enabled_events: EventSwitches,
+        collectors: Vec<DynCollector<N>>,
+        subscribers: Vec<Arc<Subscriber>>,
+        broadcasters: usize,
+        name: &'static str,
+    ) -> Self {
         assert!(broadcasters > 0, "a notifier requires a minimum of one broadcaster");
         let notification_channel = Channel::unbounded();
         let broadcasters = (0..broadcasters)
@@ -151,6 +171,7 @@ where
             .map(|_| Arc::new(Broadcaster::new(name, notification_channel.receiver.clone())))
             .collect::<Vec<_>>();
         Self {
+            enabled_events,
             listeners: Mutex::new(HashMap::new()),
             subscriptions: Mutex::new(ArrayBuilder::compounded()),
             started: Arc::new(AtomicBool::new(false)),
@@ -210,28 +231,32 @@ where
 
     pub fn execute_subscribe_command(&self, id: ListenerId, scope: Scope, command: Command) -> Result<()> {
         let event: EventType = (&scope).into();
-        let mut listeners = self.listeners.lock().unwrap();
-        if let Some(listener) = listeners.get_mut(&id) {
-            let mut subscriptions = self.subscriptions.lock().unwrap();
-            trace!("[Notifier-{}] {command} notifying to {id} about {scope:?}", self.name);
-            if let Some(mutations) = listener.mutate(Mutation::new(command, scope)) {
-                // Update broadcasters
-                let subscription = listener.subscriptions[event].clone_arc();
-                self.broadcasters.iter().for_each(|broadcaster| {
-                    let _ = broadcaster.register(subscription.clone(), id, listener.connection());
-                });
-                // Compound mutations
-                let mut compound_result = None;
-                for mutation in mutations {
-                    compound_result = subscriptions[event].compound(mutation);
-                }
-                // Report to the parents
-                if let Some(mutation) = compound_result {
-                    self.subscribers.iter().for_each(|x| {
-                        let _ = x.mutate(mutation.clone());
+        if self.enabled_events[event] {
+            let mut listeners = self.listeners.lock().unwrap();
+            if let Some(listener) = listeners.get_mut(&id) {
+                let mut subscriptions = self.subscriptions.lock().unwrap();
+                trace!("[Notifier-{}] {command} notifying to {id} about {scope:?}", self.name);
+                if let Some(mutations) = listener.mutate(Mutation::new(command, scope)) {
+                    // Update broadcasters
+                    let subscription = listener.subscriptions[event].clone_arc();
+                    self.broadcasters.iter().for_each(|broadcaster| {
+                        let _ = broadcaster.register(subscription.clone(), id, listener.connection());
                     });
+                    // Compound mutations
+                    let mut compound_result = None;
+                    for mutation in mutations {
+                        compound_result = subscriptions[event].compound(mutation);
+                    }
+                    // Report to the parents
+                    if let Some(mutation) = compound_result {
+                        self.subscribers.iter().for_each(|x| {
+                            let _ = x.mutate(mutation.clone());
+                        });
+                    }
                 }
             }
+        } else {
+            return Err(Error::EventTypeDisabled);
         }
         Ok(())
     }
@@ -241,7 +266,10 @@ where
     }
 
     fn notify(&self, notification: N) -> Result<()> {
-        Ok(self.notification_channel.try_send(notification)?)
+        if self.enabled_events[notification.event_type()] {
+            self.notification_channel.try_send(notification)?;
+        }
+        Ok(())
     }
 
     fn stop_notify(&self, id: ListenerId, scope: Scope) -> Result<()> {

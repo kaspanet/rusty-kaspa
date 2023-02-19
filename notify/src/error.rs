@@ -19,6 +19,9 @@ pub enum Error {
 
     #[error("connection closed")]
     ConnectionClosed,
+
+    #[error("event type disabled")]
+    EventTypeDisabled,
 }
 
 impl From<BoxedStdError> for Error {
