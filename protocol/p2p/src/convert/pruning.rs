@@ -17,10 +17,10 @@ impl From<&Vec<Arc<Header>>> for protowire::PruningPointProofHeaderArray {
 // protowire to consensus_core
 // ----------------------------------------------------------------------------
 
-impl TryFrom<&protowire::PruningPointProofHeaderArray> for Vec<Arc<Header>> {
+impl TryFrom<protowire::PruningPointProofHeaderArray> for Vec<Arc<Header>> {
     type Error = ConversionError;
 
-    fn try_from(v: &protowire::PruningPointProofHeaderArray) -> Result<Self, Self::Error> {
-        v.headers.iter().map(|x| x.try_into().map(Arc::new)).collect()
+    fn try_from(v: protowire::PruningPointProofHeaderArray) -> Result<Self, Self::Error> {
+        v.headers.into_iter().map(|x| x.try_into().map(Arc::new)).collect()
     }
 }

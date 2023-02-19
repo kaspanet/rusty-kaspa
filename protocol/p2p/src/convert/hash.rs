@@ -22,10 +22,10 @@ impl From<&Hash> for protowire::Hash {
 // protowire to consensus_core
 // ----------------------------------------------------------------------------
 
-impl TryFrom<&protowire::Hash> for Hash {
+impl TryFrom<protowire::Hash> for Hash {
     type Error = ConversionError;
 
-    fn try_from(hash: &protowire::Hash) -> Result<Self, Self::Error> {
+    fn try_from(hash: protowire::Hash) -> Result<Self, Self::Error> {
         Ok(Self::from_bytes(hash.bytes.as_slice().try_into()?))
     }
 }

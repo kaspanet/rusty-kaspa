@@ -39,15 +39,15 @@ impl From<&Vec<Hash>> for protowire::BlockLevelParents {
 // protowire to consensus_core
 // ----------------------------------------------------------------------------
 
-impl TryFrom<&protowire::BlockHeader> for Header {
+impl TryFrom<protowire::BlockHeader> for Header {
     type Error = ConversionError;
-    fn try_from(item: &protowire::BlockHeader) -> Result<Self, Self::Error> {
+    fn try_from(item: protowire::BlockHeader) -> Result<Self, Self::Error> {
         Ok(Self::new(
             item.version.try_into()?,
-            item.parents.iter().map(Vec::<Hash>::try_from).collect::<Result<Vec<Vec<Hash>>, ConversionError>>()?,
-            (&item.hash_merkle_root).try_into_ex()?,
-            (&item.accepted_id_merkle_root).try_into_ex()?,
-            (&item.utxo_commitment).try_into_ex()?,
+            item.parents.into_iter().map(Vec::<Hash>::try_from).collect::<Result<Vec<Vec<Hash>>, ConversionError>>()?,
+            item.hash_merkle_root.try_into_ex()?,
+            item.accepted_id_merkle_root.try_into_ex()?,
+            item.utxo_commitment.try_into_ex()?,
             item.timestamp.try_into()?,
             item.bits,
             item.nonce,
@@ -55,14 +55,14 @@ impl TryFrom<&protowire::BlockHeader> for Header {
             // We follow the golang specification of variable big-endian here
             BlueWorkType::from_be_bytes_var(&item.blue_work)?,
             item.blue_score,
-            (&item.pruning_point).try_into_ex()?,
+            item.pruning_point.try_into_ex()?,
         ))
     }
 }
 
-impl TryFrom<&protowire::BlockLevelParents> for Vec<Hash> {
+impl TryFrom<protowire::BlockLevelParents> for Vec<Hash> {
     type Error = ConversionError;
-    fn try_from(item: &protowire::BlockLevelParents) -> Result<Self, Self::Error> {
-        item.parent_hashes.iter().map(|x| x.try_into()).collect()
+    fn try_from(item: protowire::BlockLevelParents) -> Result<Self, Self::Error> {
+        item.parent_hashes.into_iter().map(|x| x.try_into()).collect()
     }
 }

@@ -17,10 +17,10 @@ impl From<&Block> for protowire::BlockMessage {
 // protowire to consensus_core
 // ----------------------------------------------------------------------------
 
-impl TryFrom<&protowire::BlockMessage> for Block {
+impl TryFrom<protowire::BlockMessage> for Block {
     type Error = ConversionError;
 
-    fn try_from(block: &protowire::BlockMessage) -> Result<Self, Self::Error> {
-        Ok(Self::new((&block.header).try_into_ex()?, vec![])) // TODO: txs
+    fn try_from(block: protowire::BlockMessage) -> Result<Self, Self::Error> {
+        Ok(Self::new(block.header.try_into_ex()?, vec![])) // TODO: txs
     }
 }
