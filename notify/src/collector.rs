@@ -146,14 +146,13 @@ where
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::{
         events::EventType,
         notifier::Notify,
         subscription::single::{OverallSubscription, UtxosChangedSubscription, VirtualSelectedParentChainChangedSubscription},
     };
     use derive_more::Display;
-
-    use super::*;
 
     #[derive(Clone, Debug, PartialEq, Eq)]
     enum TestMessage {

@@ -1,6 +1,6 @@
 use crate::Notification;
 use async_channel::{Receiver, Sender};
-use consensus_core::notify::Notification as ConsensusNotification;
+use event_processor::notify::Notification as ConsensusNotification;
 use kaspa_notify::collector::CollectorFrom;
 use kaspa_utils::channel::Channel;
 

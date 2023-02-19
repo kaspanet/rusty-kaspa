@@ -23,6 +23,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
     vec,
 };
+use utxoindex::api::DynUtxoIndexApi;
 
 /// A service implementing the Rpc API at rpc_core level.
 ///
@@ -44,22 +45,24 @@ use std::{
 pub struct RpcCoreService {
     consensus: DynConsensus,
     notifier: Arc<Notifier<Notification, ChannelConnection>>,
+    #[allow(dead_code)] //TODO: Remove this line when utxoindex is connected to an RPC call.
+    utxoindex: DynUtxoIndexApi,
 }
 
 const RPC_CORE: &str = "rpc-core";
 
 impl RpcCoreService {
-    pub fn new(consensus: DynConsensus, consensus_recv: ConsensusNotificationReceiver) -> Self {
+    pub fn new(consensus: DynConsensus, utxoindex: DynUtxoIndexApi, event_notification_recv: ConsensusNotificationReceiver) -> Self {
         // TODO: instead of getting directly a DynConsensus, rely on some Context equivalent
         //       See app\rpc\rpccontext\context.go
         // TODO: the channel receiver should be obtained by registering to a consensus notification service
 
-        let collector = Arc::new(ConsensusCollector::new(consensus_recv));
+        let collector = Arc::new(ConsensusCollector::new(event_notification_recv));
 
         // TODO: Some consensus-compatible subscriber could be provided here
         let notifier = Arc::new(Notifier::new(vec![collector], vec![], 2, RPC_CORE));
 
-        Self { consensus, notifier }
+        Self { consensus, utxoindex, notifier }
     }
 
     pub fn start(&self) {
@@ -233,6 +236,7 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
     }
 
     async fn get_balance_by_address_call(&self, _request: GetBalanceByAddressRequest) -> RpcResult<GetBalanceByAddressResponse> {
+        //TODO: use self.utxoindex for this
         unimplemented!();
     }
 
@@ -244,6 +248,7 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
     }
 
     async fn get_utxos_by_addresses_call(&self, _addresses: GetUtxosByAddressesRequest) -> RpcResult<GetUtxosByAddressesResponse> {
+        //TODO: use self.utxoindex for this
         unimplemented!();
     }
 
