@@ -8,6 +8,10 @@ use crate::{
 
 /// Sign a transaction using schnorr
 pub fn sign(mut signable_tx: SignableTransaction, privkey: [u8; 32]) -> SignableTransaction {
+    for i in 0..signable_tx.tx.inputs.len() {
+        signable_tx.tx.inputs[i].sig_op_count = 1;
+    }
+
     let schnorr_key = secp256k1::KeyPair::from_seckey_slice(secp256k1::SECP256K1, &privkey).unwrap();
     let mut reused_values = SigHashReusedValues::new();
     for i in 0..signable_tx.tx.inputs.len() {
@@ -16,7 +20,6 @@ pub fn sign(mut signable_tx: SignableTransaction, privkey: [u8; 32]) -> Signable
         let sig: [u8; 64] = *schnorr_key.sign_schnorr(msg).as_ref();
         // This represents OP_DATA_65 <SIGNATURE+SIGHASH_TYPE> (since signature length is 64 bytes and SIGHASH_TYPE is one byte)
         signable_tx.tx.inputs[i].signature_script = std::iter::once(65u8).chain(sig).chain([SIG_HASH_ALL.to_u8()]).collect();
-        // TODO: update sig_op_counts
     }
     signable_tx
 }
