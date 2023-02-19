@@ -17,6 +17,7 @@ pub mod mass;
 pub mod merkle;
 pub mod muhash;
 pub mod networktype;
+pub mod notification;
 pub mod pruning;
 pub mod sign;
 pub mod subnets;

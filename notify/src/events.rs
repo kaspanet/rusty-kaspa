@@ -12,7 +12,7 @@ pub enum EventType {
     UtxosChanged,
     VirtualSelectedParentBlueScoreChanged,
     VirtualDaaScoreChanged,
-    PruningPointUTXOSetOverride,
+    PruningPointUtxoSetOverride,
     NewBlockTemplate,
 }
 }
@@ -29,7 +29,7 @@ pub const EVENT_TYPE_ARRAY: [EventType; EVENT_COUNT] = [
     EventType::UtxosChanged,
     EventType::VirtualSelectedParentBlueScoreChanged,
     EventType::VirtualDaaScoreChanged,
-    EventType::PruningPointUTXOSetOverride,
+    EventType::PruningPointUtxoSetOverride,
     EventType::NewBlockTemplate,
 ];
 
@@ -44,7 +44,7 @@ impl From<&Scope> for EventType {
             Scope::UtxosChanged(_) => EventType::UtxosChanged,
             Scope::VirtualSelectedParentBlueScoreChanged => EventType::VirtualSelectedParentBlueScoreChanged,
             Scope::VirtualDaaScoreChanged => EventType::VirtualDaaScoreChanged,
-            Scope::PruningPointUtxoSetOverride => EventType::PruningPointUTXOSetOverride,
+            Scope::PruningPointUtxoSetOverride => EventType::PruningPointUtxoSetOverride,
             Scope::NewBlockTemplate => EventType::NewBlockTemplate,
         }
     }

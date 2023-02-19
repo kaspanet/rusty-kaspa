@@ -1,21 +1,19 @@
-use crate::model::message::*;
-use async_channel::{Receiver, Sender};
-use borsh::{BorshDeserialize, BorshSerialize};
+use crate::{block::Block, tx::TransactionId, utxo::utxo_diff::UtxoDiff};
+use hashes::Hash;
 use kaspa_notify::{
     events::EventType,
-    notification::{full_featured, Notification as NotificationTrait},
+    full_featured,
+    notification::Notification as NotificationTrait,
     scope::{Scope, UtxosChangedScope, VirtualSelectedParentChainChangedScope},
     subscription::{
         single::{OverallSubscription, UtxosChangedSubscription, VirtualSelectedParentChainChangedSubscription},
         Single,
     },
 };
-use serde::{Deserialize, Serialize};
-use std::fmt::Display;
-use std::sync::Arc;
+use std::{fmt::Display, sync::Arc};
 
 full_featured! {
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone)]
 pub enum Notification {
     BlockAdded(BlockAddedNotification),
     VirtualSelectedParentChainChanged(VirtualSelectedParentChainChangedNotification),
@@ -59,7 +57,7 @@ impl NotificationTrait for Notification {
     }
 
     fn apply_utxos_changed_subscription(&self, _subscription: &UtxosChangedSubscription) -> Option<Self> {
-        todo!()
+        Some(self.clone())
     }
 
     fn event_type(&self) -> EventType {
@@ -67,10 +65,46 @@ impl NotificationTrait for Notification {
     }
 }
 
-pub type NotificationSender = Sender<Notification>;
-pub type NotificationReceiver = Receiver<Notification>;
-
-pub enum NotificationHandle {
-    Existing(u64),
-    New(NotificationSender),
+#[derive(Debug, Clone)]
+pub struct BlockAddedNotification {
+    pub block: Arc<Block>,
 }
+
+#[derive(Debug, Clone)]
+pub struct VirtualSelectedParentChainChangedNotification {
+    pub added_chain_block_hashes: Arc<Vec<Hash>>,
+    pub removed_chain_block_hashes: Arc<Vec<Hash>>,
+    pub accepted_transaction_ids: Arc<Vec<TransactionId>>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct FinalityConflictNotification {
+    pub violating_block_hash: Arc<Hash>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct FinalityConflictResolvedNotification {
+    pub finality_block_hash: Arc<Hash>,
+}
+
+#[derive(Debug, Clone)]
+pub struct UtxosChangedNotification {
+    /// Accumulated UTXO diff between the last virtual state and the current virtual state
+    pub accumulated_utxo_diff: Arc<UtxoDiff>,
+}
+
+#[derive(Debug, Clone)]
+pub struct VirtualSelectedParentBlueScoreChangedNotification {
+    pub virtual_selected_parent_blue_score: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct VirtualDaaScoreChangedNotification {
+    pub virtual_daa_score: u64,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct PruningPointUtxoSetOverrideNotification {}
+
+#[derive(Debug, Clone)]
+pub struct NewBlockTemplateNotification {}

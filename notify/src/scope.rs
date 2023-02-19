@@ -29,7 +29,7 @@ impl From<EventType> for Scope {
             EventType::UtxosChanged => Scope::UtxosChanged(UtxosChangedScope::default()),
             EventType::VirtualSelectedParentBlueScoreChanged => Scope::VirtualSelectedParentBlueScoreChanged,
             EventType::VirtualDaaScoreChanged => Scope::VirtualDaaScoreChanged,
-            EventType::PruningPointUTXOSetOverride => Scope::PruningPointUtxoSetOverride,
+            EventType::PruningPointUtxoSetOverride => Scope::PruningPointUtxoSetOverride,
             EventType::NewBlockTemplate => Scope::NewBlockTemplate,
         }
     }

@@ -11,6 +11,7 @@ hashes.workspace = true
 muhash.workspace = true
 merkle.workspace = true
 math.workspace = true
+kaspa-notify.workspace = true
 thiserror.workspace = true
 serde.workspace = true
 faster-hex.workspace = true
