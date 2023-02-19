@@ -113,6 +113,7 @@ pub struct Consensus {
     pub headers_store: Arc<DbHeadersStore>,
     pub block_transactions_store: Arc<DbBlockTransactionsStore>,
     pruning_point_utxo_set_store: Arc<DbUtxoSetStore>,
+    pub(super) virtual_stores: Arc<RwLock<VirtualStores>>,
     // TODO: remove all pub from stores and processors when StoreManager is implemented
 
     // Append-only stores
@@ -412,7 +413,7 @@ impl Consensus {
             relations_stores.clone(),
             pruning_store.clone(),
             past_pruning_points_store,
-            virtual_stores,
+            virtual_stores.clone(),
             body_tips_store.clone(),
             headers_selected_tip_store.clone(),
             depth_store,
@@ -437,6 +438,7 @@ impl Consensus {
             headers_store,
             block_transactions_store,
             pruning_point_utxo_set_store,
+            virtual_stores,
 
             statuses_service,
             relations_service,

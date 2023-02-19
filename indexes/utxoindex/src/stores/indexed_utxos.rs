@@ -1,10 +1,13 @@
 use crate::core::model::{CompactUtxoCollection, CompactUtxoEntry, UtxoSetByScriptPublicKey};
 
 use consensus_core::tx::{
-    ScriptPublicKey, ScriptPublicKeyVersion, ScriptPublicKeys, ScriptVec, TransactionIndexType, TransactionOutpoint,
+    ScriptPublicKey, ScriptPublicKeyVersion, ScriptPublicKeys, ScriptVec, TransactionIndexType, TransactionOutpoint, UtxoEntry,
 };
 use database::prelude::{CachedDbAccess, DirectDbWriter, StoreResult, DB};
 use hashes::Hash;
+use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
+use std::fmt::Display;
 use std::mem::size_of;
 use std::sync::Arc;
 
@@ -24,6 +27,7 @@ impl From<&ScriptPublicKey> for ScriptPublicKeyBucket {
     fn from(script_public_key: &ScriptPublicKey) -> Self {
         let mut bytes: Vec<u8> = Vec::with_capacity(VERSION_TYPE_SIZE + script_public_key.script().len());
         bytes.extend_from_slice(&script_public_key.version().to_le_bytes());
+        bytes.extend_from_slice(&(script_public_key.script().len() as u64).to_le_bytes()); // TODO: Consider using a smaller integer
         bytes.extend_from_slice(script_public_key.script());
         Self(bytes)
     }
@@ -35,7 +39,10 @@ impl From<ScriptPublicKeyBucket> for ScriptPublicKey {
             <[u8; VERSION_TYPE_SIZE]>::try_from(&bucket.0[..VERSION_TYPE_SIZE]).expect("expected version size"),
         );
 
-        let script = ScriptVec::from_slice(&bucket.0[VERSION_TYPE_SIZE..]);
+        let script_size =
+            u64::from_le_bytes(bucket.0[VERSION_TYPE_SIZE..VERSION_TYPE_SIZE + size_of::<u64>()].try_into().unwrap()) as usize;
+        let script =
+            ScriptVec::from_slice(&bucket.0[VERSION_TYPE_SIZE + size_of::<u64>()..VERSION_TYPE_SIZE + size_of::<u64>() + script_size]);
 
         Self::new(version, script)
     }
@@ -85,8 +92,14 @@ impl AsRef<[u8]> for TransactionOutpointKey {
 
 /// Full [CompactUtxoEntry] access key.
 /// Consists of variable amount of bytes of [ScriptPublicKeyBucket], and 36 bytes of [TransactionOutpointKey]
-#[derive(Eq, Hash, PartialEq, Debug, Clone)]
+#[derive(Eq, Hash, PartialEq, Debug, Clone, Serialize, Deserialize)]
 struct UtxoEntryFullAccessKey(Arc<Vec<u8>>);
+
+impl Display for UtxoEntryFullAccessKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self) // TODO: Deserialize first
+    }
+}
 
 impl UtxoEntryFullAccessKey {
     /// Creates a new [UtxoEntryFullAccessKey] from a [ScriptPublicKeyBucket] and [TransactionOutpointKey].
@@ -95,6 +108,22 @@ impl UtxoEntryFullAccessKey {
         bytes.extend_from_slice(script_public_key_bucket.as_ref());
         bytes.extend_from_slice(transaction_outpoint_key.as_ref());
         Self(Arc::new(bytes))
+    }
+
+    /// Extracts a [`ScriptPublicKey`] and [`TransactionOutpoint`] of the  [`UtxoEntryFullAccessKey`]
+    pub fn extract_script_public_key_and_outpoint(&self) -> (ScriptPublicKey, TransactionOutpoint) {
+        let version = ScriptPublicKeyVersion::from_le_bytes(self.0[..VERSION_TYPE_SIZE].try_into().unwrap());
+        let script_size =
+            u64::from_le_bytes(self.0[VERSION_TYPE_SIZE..VERSION_TYPE_SIZE + size_of::<u64>()].try_into().unwrap()) as usize;
+        let script =
+            ScriptVec::from_slice(&self.0[VERSION_TYPE_SIZE + size_of::<u64>()..VERSION_TYPE_SIZE + size_of::<u64>() + script_size]);
+
+        let script_public_key = ScriptPublicKey::new(version, script);
+        let outpoint = TransactionOutpoint::from(TransactionOutpointKey(
+            self.0[VERSION_TYPE_SIZE + size_of::<u64>() + script_size..].try_into().unwrap(),
+        ));
+
+        (script_public_key, outpoint)
     }
 }
 
@@ -109,6 +138,7 @@ impl AsRef<[u8]> for UtxoEntryFullAccessKey {
 pub trait UtxoSetByScriptPublicKeyStoreReader {
     /// Get [UtxoSetByScriptPublicKey] set by queried [ScriptPublicKeys],
     fn get_utxos_from_script_public_keys(&self, script_public_keys: &ScriptPublicKeys) -> StoreResult<UtxoSetByScriptPublicKey>;
+    fn get_all_outpoints(&self) -> StoreResult<HashSet<TransactionOutpoint>>; // This has a big memory footprint, so it should be used only for tests.
 }
 
 pub trait UtxoSetByScriptPublicKeyStore: UtxoSetByScriptPublicKeyStoreReader {
@@ -160,6 +190,20 @@ impl UtxoSetByScriptPublicKeyStoreReader for DbUtxoSetByScriptPublicKeyStore {
             utxos_by_script_public_keys.insert(ScriptPublicKey::from(script_public_key_bucket), utxos_by_script_public_keys_inner);
         }
         Ok(utxos_by_script_public_keys)
+    }
+
+    fn get_all_outpoints(&self) -> StoreResult<HashSet<TransactionOutpoint>> {
+        Ok(HashSet::from_iter(self.access.iterator().map(|res| {
+            let (_, outpoint) = UtxoEntryFullAccessKey(Arc::new(res.unwrap().0.to_vec())).extract_script_public_key_and_outpoint();
+            outpoint
+        })))
+
+        // Ok(HashSet::from_iter(self.access.seek_iterator::<TransactionOutpoint, CompactUtxoEntry>(None, None, usize::MAX, false).map(
+        //     |value| {
+        //         let (outpoint, _) = value.expect("expected `key: TransactionOutpoint`, `value: CompactUtxoEntry`");
+        //         outpoint
+        //     },
+        // )))
     }
 }
 

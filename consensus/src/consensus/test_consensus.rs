@@ -43,7 +43,7 @@ use crate::{
     test_helpers::header_from_precomputed_hash,
 };
 
-use super::{Consensus, DbGhostdagManager};
+use super::{Consensus, DbGhostdagManager, VirtualStores};
 
 pub struct TestConsensus {
     pub consensus: Arc<Consensus>,
@@ -153,6 +153,10 @@ impl TestConsensus {
 
     pub fn headers_store(&self) -> Arc<impl HeaderStoreReader> {
         self.consensus.headers_store.clone()
+    }
+
+    pub fn virtual_stores(&self) -> Arc<RwLock<VirtualStores>> {
+        self.consensus.virtual_stores.clone()
     }
 
     pub fn processing_counters(&self) -> &Arc<ProcessingCounters> {

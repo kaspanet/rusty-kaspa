@@ -29,8 +29,8 @@ pub struct UtxoIndex {
 
 impl UtxoIndex {
     /// Creates a new [`UtxoIndex`] within a [`RwLock`]
-    pub fn new(consensus: DynConsensus, db: Arc<DB>) -> RwLock<Self> {
-        RwLock::new(Self { consensus, store: Store::new(db) })
+    pub fn new(consensus: DynConsensus, db: Arc<DB>) -> Arc<RwLock<Self>> {
+        Arc::new(RwLock::new(Self { consensus, store: Store::new(db) }))
     }
 }
 impl UtxoIndexApi for UtxoIndex {
@@ -160,5 +160,9 @@ impl UtxoIndexApi for UtxoIndex {
         self.store.set_tips(BlockHashSet::from_iter(consensus_tips), true)?;
 
         Ok(())
+    }
+
+    fn get_all_outpoints(&self) -> StoreResult<std::collections::HashSet<consensus_core::tx::TransactionOutpoint>> {
+        self.store.get_all_outpoints()
     }
 }

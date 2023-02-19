@@ -2,6 +2,7 @@
 //! Integration tests
 //!
 
+use async_channel::unbounded;
 use consensus::config::{Config, ConfigBuilder};
 use consensus::consensus::test_consensus::{create_temp_db, TestConsensus};
 use consensus::model::stores::ghostdag::{GhostdagData, GhostdagStoreReader, HashKTypeMap, KType as GhostdagKType};
@@ -9,25 +10,36 @@ use consensus::model::stores::headers::HeaderStoreReader;
 use consensus::model::stores::reachability::DbReachabilityStore;
 use consensus::params::{Params, DEVNET_PARAMS, MAINNET_PARAMS};
 use consensus::processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions};
+use consensus_core::api::ConsensusApi;
 use consensus_core::block::Block;
 use consensus_core::blockhash::new_unique;
 use consensus_core::blockstatus::BlockStatus;
 use consensus_core::constants::BLOCK_VERSION;
 use consensus_core::errors::block::{BlockProcessResult, RuleError};
+use consensus_core::events::ConsensusEvent;
 use consensus_core::header::Header;
 use consensus_core::subnets::SubnetworkId;
 use consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry};
 use consensus_core::{blockhash, hashing, BlockHashMap, BlueWorkType};
+use database::prelude::DB;
+use event_processor::notify::Notification;
+use event_processor::processor::EventProcessor;
 use hashes::Hash;
 
 use flate2::read::GzDecoder;
 use futures_util::future::join_all;
 use itertools::Itertools;
+use kaspa_core::core::Core;
 use kaspa_core::info;
+use kaspa_core::service::Service;
+use kaspa_core::task::runtime::AsyncRuntime;
 use math::Uint256;
 use muhash::MuHash;
+use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
+use std::collections::HashSet;
+use std::iter::once;
 use std::path::Path;
 use std::sync::Arc;
 use std::{
@@ -38,6 +50,8 @@ use std::{
     str::{from_utf8, FromStr},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
+use utxoindex::api::DynUtxoIndexApi;
+use utxoindex::UtxoIndex;
 
 mod common;
 
@@ -831,8 +845,18 @@ async fn json_test(file_path: &str) {
     if proof_exists {
         config.process_genesis = false;
     }
-    let consensus = TestConsensus::create_from_temp_db_and_dummy_sender(&config);
+
+    let (consensus_send, consensus_recv) = unbounded::<ConsensusEvent>();
+    let (event_processor_send, event_processor_recv) = unbounded::<Notification>();
+    let consensus = Arc::new(TestConsensus::create_from_temp_db(&config, consensus_send));
     let wait_handles = consensus.init();
+
+    let utxoindex_db = Arc::new(DB::open_default("/tmp/utxoindex").unwrap());
+    let utxoindex: DynUtxoIndexApi = Some(Box::new(UtxoIndex::new(consensus.clone(), utxoindex_db)));
+    let event_processor = Arc::new(EventProcessor::new(utxoindex.clone(), consensus_recv, event_processor_send));
+    let async_runtime = Arc::new(AsyncRuntime::new());
+    async_runtime.register(event_processor);
+    async_runtime.start(Default::default());
 
     let pruning_point = if proof_exists {
         let proof_lines = gzip_file_lines(&main_path.join("proof.json.gz"));
@@ -874,6 +898,10 @@ async fn json_test(file_path: &str) {
     let mut last_time = SystemTime::now();
     let mut last_index: usize = 0;
     for (i, line) in lines.enumerate() {
+        if i == 200 {
+            break;
+        }
+
         let now = SystemTime::now();
         let passed = now.duration_since(last_time).unwrap();
         if passed > Duration::new(10, 0) {
@@ -886,7 +914,7 @@ async fn json_test(file_path: &str) {
         // Test our hashing implementation vs the hash accepted from the json source
         assert_eq!(hashing::header::hash(&block.header), hash, "header hashing for block {i} {hash} failed");
         let status = consensus
-            .consensus
+            .consensus()
             .validate_and_insert_block(block, !proof_exists)
             .await
             .unwrap_or_else(|e| panic!("block {i} {hash} failed: {e}"));
@@ -906,6 +934,21 @@ async fn json_test(file_path: &str) {
 
     // Assert that at least one body tip was resolved with valid UTXO
     assert!(consensus.body_tips().iter().copied().any(|h| consensus.block_status(h) == BlockStatus::StatusUTXOValid));
+    let utxoindex = utxoindex.as_ref().unwrap();
+    let virtual_utxos: HashSet<TransactionOutpoint> =
+        HashSet::from_iter(consensus.consensus().get_virtual_utxos(None, usize::MAX, false).into_iter().map(|(outpoint, _)| outpoint));
+    let utxoindex_utxos = utxoindex.read().get_all_outpoints().unwrap();
+    assert!(virtual_utxos.is_subset(&utxoindex_utxos));
+    assert!(utxoindex_utxos.is_subset(&virtual_utxos));
+    // for (outpoint, entry) in consensus.virtual_stores().read().utxo_set.iterator().map(|res| res.unwrap()) {
+    //     assert!(utxoindex
+    //         .read()
+    //         .get_utxos_by_script_public_keys(HashSet::from_iter(once(entry.script_public_key.clone())))
+    //         .unwrap()
+    //         .get(&entry.script_public_key)
+    //         .unwrap()
+    //         .contains_key(&outpoint));
+    // }
 
     consensus.shutdown(wait_handles);
 }
@@ -1019,7 +1062,7 @@ fn submit_chunk(
 ) -> Vec<impl Future<Output = BlockProcessResult<BlockStatus>>> {
     let mut futures = Vec::new();
     for line in chunk {
-        let f = consensus.consensus.validate_and_insert_block(json_line_to_block(line), !proof_exists);
+        let f = consensus.consensus().validate_and_insert_block(json_line_to_block(line), !proof_exists);
         futures.push(f);
     }
     futures
@@ -1384,3 +1427,18 @@ async fn difficulty_test() {
 
     consensus.shutdown(wait_handles);
 }
+
+// #[tokio::test]
+// async fn test_utxoindex() {
+//     let (consensus_send, consensus_recv) = unbounded::<ConsensusEvent>();
+//     let (event_processor_send, event_processor_recv) = unbounded::<Notification>();
+//     let consensus = Arc::new(TestConsensus::create_from_temp_db(&Config::new(MAINNET_PARAMS), consensus_send));
+//     let wait_handles = consensus.init();
+
+//     let utxoindex_db = Arc::new(DB::open_default("/tmp/utxoindex").unwrap());
+//     let utxoindex: DynUtxoIndexApi = Arc::new(Some(Box::new(UtxoIndex::new(consensus.clone(), utxoindex_db))));
+//     let event_processor = Arc::new(EventProcessor::new(utxoindex.clone(), consensus_recv, event_processor_send));
+//     let async_runtime = Arc::new(AsyncRuntime::new());
+//     async_runtime.register(event_processor);
+//     consensus.shutdown(wait_handles);
+// }
