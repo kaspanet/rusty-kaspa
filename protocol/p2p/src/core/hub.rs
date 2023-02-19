@@ -1,4 +1,4 @@
-use crate::{common::ProtocolError, pb::KaspadMessage, ConnectionInitializer, Router};
+use crate::{common::ProtocolError, pb::KaspadMessage, ConnectionInitializer, Peer, Router};
 use kaspa_core::debug;
 use parking_lot::RwLock;
 use std::{collections::HashMap, sync::Arc};
@@ -93,8 +93,8 @@ impl Hub {
         }
     }
 
-    /// Returns a list of ids for all currently active peers
-    pub async fn get_active_peers(&self) -> Vec<Uuid> {
-        self.peers.read().keys().cloned().collect()
+    /// Returns a list of all currently active peers
+    pub fn active_peers(&self) -> Vec<Peer> {
+        self.peers.read().values().map(|r| r.as_ref().into()).collect()
     }
 }

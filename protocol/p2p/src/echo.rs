@@ -169,16 +169,22 @@ mod tests {
         // Wait for handshake completion
         tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
+        let adaptor1_initial_peers = adaptor1.active_peers();
+        let adaptor2_initial_peers = adaptor2.active_peers();
+
         // For now assert the handshake by checking the peer exists (since peer is removed on handshake error)
-        assert_eq!(adaptor1.get_active_peers().await.len(), 1, "handshake failed -- outbound peer is missing");
-        assert_eq!(adaptor2.get_active_peers().await.len(), 1, "handshake failed -- inbound peer is missing");
+        assert_eq!(adaptor1_initial_peers.len(), 1, "handshake failed -- outbound peer is missing");
+        assert_eq!(adaptor2_initial_peers.len(), 1, "handshake failed -- inbound peer is missing");
+
+        assert!(adaptor1_initial_peers[0].is_outbound());
+        assert!(!adaptor2_initial_peers[0].is_outbound());
 
         adaptor1.terminate(peer2_id).await;
         tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
         // Make sure the peers are cleaned-up on both sides
-        assert_eq!(adaptor1.get_active_peers().await.len(), 0, "peer termination failed -- outbound peer was not removed");
-        assert_eq!(adaptor2.get_active_peers().await.len(), 0, "peer termination failed -- inbound peer was not removed");
+        assert_eq!(adaptor1.active_peers().len(), 0, "peer termination failed -- outbound peer was not removed");
+        assert_eq!(adaptor2.active_peers().len(), 0, "peer termination failed -- inbound peer was not removed");
 
         adaptor1.close().await;
         adaptor2.close().await;
