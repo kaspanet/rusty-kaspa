@@ -12,6 +12,7 @@ hashes.workspace = true
 kaspa-core.workspace = true
 consensus-core.workspace = true
 consensus.workspace = true
+database.workspace = true
 event-processor.workspace = true
 utxoindex.workspace = true
 async-channel.workspace = true
@@ -27,6 +28,7 @@ tempfile.workspace = true
 tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread"] }
 clap.workspace = true
 log.workspace = true
+num_cpus.workspace = true
 rand_distr = "0.4"
 num-format = "0.4"
 dirs = "4.0"

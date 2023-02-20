@@ -1,4 +1,5 @@
 use crate::processes::ghostdag::ordering::SortableBlock;
+use consensus_core::trusted::ExternalGhostdagData;
 use consensus_core::{blockhash::BlockHashes, BlueWorkType};
 use consensus_core::{BlockHashMap, BlockHasher, BlockLevel, HashMapCustomHasher};
 use database::prelude::StoreError;
@@ -13,8 +14,8 @@ use serde::{Deserialize, Serialize};
 use std::iter::once;
 use std::{cell::RefCell, sync::Arc};
 
-pub type KType = u8; // This type must be increased to u16 if we ever set GHOSTDAG K > 255
-pub type HashKTypeMap = Arc<BlockHashMap<KType>>;
+/// Re-export for convenience
+pub use consensus_core::{HashKTypeMap, KType};
 
 #[derive(Clone, Serialize, Deserialize, Default)]
 pub struct GhostdagData {
@@ -31,6 +32,19 @@ pub struct CompactGhostdagData {
     pub blue_score: u64,
     pub blue_work: BlueWorkType,
     pub selected_parent: Hash,
+}
+
+impl From<ExternalGhostdagData> for GhostdagData {
+    fn from(value: ExternalGhostdagData) -> Self {
+        Self {
+            blue_score: value.blue_score,
+            blue_work: value.blue_work,
+            selected_parent: value.selected_parent,
+            mergeset_blues: value.mergeset_blues,
+            mergeset_reds: value.mergeset_reds,
+            blues_anticone_sizes: value.blues_anticone_sizes,
+        }
+    }
 }
 
 impl GhostdagData {

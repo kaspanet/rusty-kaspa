@@ -234,6 +234,13 @@ macro_rules! construct_uint {
                 out
             }
 
+            #[inline(always)]
+            pub fn to_be_bytes_var(self) -> Vec<u8> {
+                let bytes = self.to_be_bytes();
+                let start = bytes.iter().copied().position(|b| b != 0).unwrap_or(bytes.len());
+                Vec::from(&bytes[start..])
+            }
+
             #[inline]
             pub fn div_rem_u64(mut self, other: u64) -> (Self, u64) {
                 let mut rem = 0u64;
@@ -346,7 +353,7 @@ macro_rules! construct_uint {
                 BinaryIterator { array: self.0, bit: 0 }
             }
 
-            /// Converts a Self::BYTES*2 hex string interperted as big endian, into a Uint
+            /// Converts a Self::BYTES*2 hex string interpreted as big endian, into a Uint
             #[inline]
             pub fn from_hex(hex: &str) -> Result<Self, $crate::uint::faster_hex::Error> {
                 if hex.len() > Self::BYTES * 2 {
@@ -357,6 +364,17 @@ macro_rules! construct_uint {
                 let start = input.len() - hex.len();
                 input[start..].copy_from_slice(hex.as_bytes());
                 $crate::uint::faster_hex::hex_decode(&input, &mut out)?;
+                Ok(Self::from_be_bytes(out))
+            }
+
+            #[inline]
+            pub fn from_be_bytes_var(bytes: &[u8]) -> Result<Self, $crate::uint::TryFromSliceError> {
+                if bytes.len() > Self::BYTES {
+                    return Err($crate::uint::TryFromSliceError);
+                }
+                let mut out = [0u8; Self::BYTES];
+                let start = Self::BYTES - bytes.len();
+                out[start..].copy_from_slice(bytes);
                 Ok(Self::from_be_bytes(out))
             }
         }
@@ -816,6 +834,24 @@ impl core::fmt::Display for TryFromIntError {
 
 impl From<core::convert::Infallible> for TryFromIntError {
     fn from(x: core::convert::Infallible) -> TryFromIntError {
+        match x {}
+    }
+}
+
+/// The error type returned when a slice conversion fails.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct TryFromSliceError;
+
+impl std::error::Error for TryFromSliceError {}
+
+impl core::fmt::Display for TryFromSliceError {
+    fn fmt(&self, fmt: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        "conversion attempted from a slice too large".fmt(fmt)
+    }
+}
+
+impl From<core::convert::Infallible> for TryFromSliceError {
+    fn from(x: core::convert::Infallible) -> TryFromSliceError {
         match x {}
     }
 }

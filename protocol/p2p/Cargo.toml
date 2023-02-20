@@ -11,17 +11,22 @@ path = "./src/lib.rs"
 
 [[bin]]
 name = "kaspa_p2p_client"
-path = "./src/bin/p2p_client.rs"
+path = "./src/bin/client.rs"
 
 [[bin]]
 name = "kaspa_p2p_server"
-path = "./src/bin/p2p_server.rs"
+path = "./src/bin/server.rs"
 
 [dependencies]
-# project internal deps
 kaspa-core.workspace = true
+consensus-core.workspace = true
+hashes.workspace = true
+math.workspace = true
+
 log.workspace = true
-# project external deps
+thiserror.workspace = true
+parking_lot.workspace = true
+
 futures = { version = "0.3", default-features = false, features = ["alloc"] }
 prost = "0.11"
 ctrlc = "3.2"
@@ -29,7 +34,6 @@ tokio = { version = "1.21.2", features = [ "rt-multi-thread", "macros", "signal"
 tokio-stream = { version = "0.1.11", features = ["net"] }
 tonic = { version = "0.8.2", features = ["tls", "gzip"] }
 h2 = "0.3"
-lockfree = "0.5.1"
 uuid = { version = "1.2.2", features = ["v4","fast-rng"] }
 
 [build-dependencies]
