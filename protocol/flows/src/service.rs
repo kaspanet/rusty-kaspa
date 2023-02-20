@@ -4,21 +4,22 @@ use kaspa_core::{
     trace,
 };
 use kaspa_utils::triggers::SingleTrigger;
-use p2p_lib::adaptor::{P2pAdaptor, P2pAdaptorApi};
-use std::sync::Arc;
+use p2p_lib::Adaptor;
+use std::{sync::Arc, time::Duration};
 
-use crate::ctx::FlowContext;
+use crate::flow_context::FlowContext;
 
 const P2P_CORE_SERVICE: &str = "p2p-service";
 
 pub struct P2pService {
     consensus: DynConsensus,
+    connect: Option<String>, // TEMP: optional connect peer
     shutdown: SingleTrigger,
 }
 
 impl P2pService {
-    pub fn new(consensus: DynConsensus) -> Self {
-        Self { consensus, shutdown: SingleTrigger::default() }
+    pub fn new(consensus: DynConsensus, connect: Option<String>) -> Self {
+        Self { consensus, connect, shutdown: SingleTrigger::default() }
     }
 }
 
@@ -35,18 +36,21 @@ impl AsyncService for P2pService {
 
         // Launch the service and wait for a shutdown signal
         Box::pin(async move {
-            let ip_port = String::from("[::1]:50051");
+            let server_address = String::from("[::1]:50051");
             let ctx = Arc::new(FlowContext::new(self.consensus.clone()));
-            let p2p_adaptor = P2pAdaptor::listen(ip_port.clone(), ctx).await.unwrap();
+            let p2p_adaptor = Adaptor::bidirectional(server_address.clone(), ctx).unwrap();
 
             // For now, attempt to connect to a running golang node
-            let golang_ip_port = String::from("http://[::1]:16111");
-            trace!("P2P, p2p::main - starting peer:{golang_ip_port}");
-            let _peer_id = p2p_adaptor.connect_peer(golang_ip_port.clone()).await;
+            if let Some(peer_address) = self.connect.clone() {
+                trace!("P2P, p2p::main - starting peer:{peer_address}");
+                let _peer_id = p2p_adaptor.connect_peer_with_retry_params(peer_address, 1, Duration::from_secs(1)).await;
+            }
 
-            // Keep the P2P server running until an app shutdown signal is triggered
+            // Keep the P2P server running until a service shutdown signal is received
             shutdown_signal.await;
-            p2p_adaptor.terminate_all_peers_and_flows().await;
+            p2p_adaptor.terminate_all_peers().await;
+            // drop(p2p_adaptor);
+            // tokio::time::sleep(std::time::Duration::from_secs(1)).await;
         })
     }
 

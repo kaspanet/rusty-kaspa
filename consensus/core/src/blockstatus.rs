@@ -28,4 +28,8 @@ impl BlockStatus {
     pub fn is_utxo_valid_or_pending(self) -> bool {
         matches!(self, Self::StatusUTXOValid | Self::StatusUTXOPendingVerification)
     }
+
+    pub fn is_valid(self) -> bool {
+        self != BlockStatus::StatusInvalid
+    }
 }

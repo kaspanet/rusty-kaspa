@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use addresses::Prefix;
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
@@ -25,6 +27,18 @@ impl NetworkType {
             NetworkType::Simnet => 16510,
             NetworkType::Devnet => 16610,
         }
+    }
+}
+
+impl Display for NetworkType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            NetworkType::Mainnet => "mainnet",
+            NetworkType::Testnet => "testnet",
+            NetworkType::Devnet => "devnet",
+            NetworkType::Simnet => "simnet",
+        };
+        f.write_str(s)
     }
 }
 

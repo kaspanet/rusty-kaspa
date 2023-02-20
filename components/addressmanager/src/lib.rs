@@ -2,14 +2,10 @@ mod stores;
 
 extern crate self as address_manager;
 
-use std::{
-    collections::HashSet,
-    net::Ipv6Addr,
-    sync::Arc,
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::{collections::HashSet, net::Ipv6Addr, sync::Arc};
 
 use database::prelude::{StoreResultExtensions, DB};
+use kaspa_core::time::unix_now;
 use parking_lot::Mutex;
 use stores::{
     banned_address_store::{BannedAddressesStore, BannedAddressesStoreReader, ConnectionBanTimestamp, DbBannedAddressesStore},
@@ -85,7 +81,7 @@ impl AddressManager {
     }
 
     pub fn ban(&mut self, ip: Ipv6Addr) {
-        self.banned_address_store.set(ip, ConnectionBanTimestamp(unix_time())).unwrap();
+        self.banned_address_store.set(ip, ConnectionBanTimestamp(unix_now())).unwrap();
         self.not_banned_address_store.remove_by_ip(ip);
     }
 
@@ -97,7 +93,7 @@ impl AddressManager {
         const MAX_BANNED_TIME: u64 = 24 * 60 * 60 * 1000;
         match self.banned_address_store.get(ip).unwrap_option() {
             Some(timestamp) => {
-                if unix_time() - timestamp.0 > MAX_BANNED_TIME {
+                if unix_now() - timestamp.0 > MAX_BANNED_TIME {
                     self.unban(ip);
                     false
                 } else {
@@ -107,10 +103,6 @@ impl AddressManager {
             None => false,
         }
     }
-}
-
-fn unix_time() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64
 }
 
 mod not_banned_address_store_with_cache {
