@@ -10,7 +10,6 @@ license.workspace = true
 hashes.workspace = true
 thiserror.workspace = true
 consensus-core.workspace = true
-consensus.workspace = true
 kaspa-core.workspace = true
 kaspa-utils.workspace = true
 database.workspace = true
@@ -20,5 +19,5 @@ serde.workspace = true
 parking_lot.workspace = true
 
 [dev-dependencies]
-rand = {workspace = true,  features = [ "small_rng" ]}
-
+consensus.workspace = true
+rand = { workspace = true, features = ["small_rng"] }

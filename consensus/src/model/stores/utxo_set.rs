@@ -118,7 +118,11 @@ impl UtxoSetStoreReader for DbUtxoSetStore {
 
     fn seek_iterator(&self, from_outpoint: Option<TransactionOutpoint>, limit: usize, skip_first: bool) -> UtxoCollectionIterator {
         let seek_key = from_outpoint.map(UtxoKey::from);
-        Box::new(self.access.seek_iterator::<TransactionOutpoint, UtxoEntry>(None, seek_key, limit, skip_first))
+        Box::new(self.access.seek_iterator(None, seek_key, limit, skip_first).map(|res| {
+            let (key, entry) = res?;
+            let outpoint: TransactionOutpoint = UtxoKey(<[u8; UTXO_KEY_SIZE]>::try_from(&key[..]).unwrap()).into();
+            Ok((outpoint, UtxoEntry::clone(&entry)))
+        }))
     }
 }
 

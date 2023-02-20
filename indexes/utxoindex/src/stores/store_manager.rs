@@ -1,6 +1,9 @@
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 
-use consensus_core::{tx::ScriptPublicKeys, BlockHashSet};
+use consensus_core::{
+    tx::{ScriptPublicKeys, TransactionOutpoint},
+    BlockHashSet,
+};
 use database::prelude::{StoreResult, DB};
 use kaspa_core::trace;
 
@@ -32,6 +35,11 @@ impl Store {
 
     pub fn get_utxos_by_script_public_key(&self, script_public_keys: &ScriptPublicKeys) -> StoreResult<UtxoSetByScriptPublicKey> {
         self.utxos_by_script_public_key_store.get_utxos_from_script_public_keys(script_public_keys)
+    }
+
+    // This can have a big memory footprint, so it should be used only for tests.
+    pub fn get_all_outpoints(&self) -> StoreResult<HashSet<TransactionOutpoint>> {
+        self.utxos_by_script_public_key_store.get_all_outpoints()
     }
 
     pub fn update_utxo_state(
