@@ -4,6 +4,7 @@ members = [
     "wallet",
     "consensus",
     "consensus/core",
+    "consensus/notify",
     "consensus/pow",
     "kaspad",
     "simpa",
@@ -41,6 +42,7 @@ kaspa-core = { path = "core" }
 kaspa-wallet = { path = "wallet" }
 consensus = { path = "consensus" }
 consensus-core = { path = "consensus/core" }
+consensus-notify = { path = "consensus/notify" }
 kaspad = { path = "kaspad" }
 wasm = { path = "wasm" }
 math = { path = "math" }

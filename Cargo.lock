@@ -660,6 +660,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "consensus-notify"
+version = "0.1.0"
+dependencies = [
+ "async-channel",
+ "consensus-core",
+ "futures",
+ "hashes",
+ "kaspa-core",
+ "kaspa-notify",
+ "kaspa-utils",
+ "log",
+ "thiserror",
+ "triggered",
+]
+
+[[package]]
 name = "constant_time_eq"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1534,6 +1550,7 @@ dependencies = [
  "kaspa-core",
  "kaspa-utils",
  "log",
+ "parking_lot",
  "paste",
  "rand 0.8.5",
  "serde",
