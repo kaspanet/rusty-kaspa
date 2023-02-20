@@ -3,37 +3,43 @@ use addresses::Address;
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
 
+macro_rules! scope_enum {
+    ($(#[$meta:meta])* $vis:vis enum $name:ident {
+    $($(#[$variant_meta:meta])* $variant_name:ident,)*
+    }) => {
+        paste::paste! {
+            $(#[$meta])*
+            $vis enum $name {
+                $($(#[$variant_meta])* $variant_name([<$variant_name Scope>])),*
+            }
+            impl std::convert::From<EventType> for $name {
+                fn from(value: EventType) -> Self {
+                    match value {
+                        $(EventType::$variant_name => $name::$variant_name(kaspa_notify::scope::[<$variant_name Scope>]::default())),*
+                    }
+                }
+            }
+        }
+    }
+}
+
+scope_enum! {
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub enum Scope {
     BlockAdded,
-    VirtualSelectedParentChainChanged(VirtualSelectedParentChainChangedScope),
+    VirtualSelectedParentChainChanged,
     FinalityConflict,
     FinalityConflictResolved,
-    UtxosChanged(UtxosChangedScope),
+    UtxosChanged,
     VirtualSelectedParentBlueScoreChanged,
     VirtualDaaScoreChanged,
     PruningPointUtxoSetOverride,
     NewBlockTemplate,
 }
-
-// TODO: write a macro to get this
-impl From<EventType> for Scope {
-    fn from(item: EventType) -> Self {
-        match item {
-            EventType::BlockAdded => Scope::BlockAdded,
-            EventType::VirtualSelectedParentChainChanged => {
-                Scope::VirtualSelectedParentChainChanged(VirtualSelectedParentChainChangedScope::default())
-            }
-            EventType::FinalityConflict => Scope::FinalityConflict,
-            EventType::FinalityConflictResolved => Scope::FinalityConflictResolved,
-            EventType::UtxosChanged => Scope::UtxosChanged(UtxosChangedScope::default()),
-            EventType::VirtualSelectedParentBlueScoreChanged => Scope::VirtualSelectedParentBlueScoreChanged,
-            EventType::VirtualDaaScoreChanged => Scope::VirtualDaaScoreChanged,
-            EventType::PruningPointUtxoSetOverride => Scope::PruningPointUtxoSetOverride,
-            EventType::NewBlockTemplate => Scope::NewBlockTemplate,
-        }
-    }
 }
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+pub struct BlockAddedScope {}
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct VirtualSelectedParentChainChangedScope {
@@ -47,6 +53,12 @@ impl VirtualSelectedParentChainChangedScope {
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+pub struct FinalityConflictScope {}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+pub struct FinalityConflictResolvedScope {}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct UtxosChangedScope {
     pub addresses: Vec<Address>,
 }
@@ -56,3 +68,15 @@ impl UtxosChangedScope {
         Self { addresses }
     }
 }
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+pub struct VirtualSelectedParentBlueScoreChangedScope {}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+pub struct VirtualDaaScoreChangedScope {}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+pub struct PruningPointUtxoSetOverrideScope {}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+pub struct NewBlockTemplateScope {}

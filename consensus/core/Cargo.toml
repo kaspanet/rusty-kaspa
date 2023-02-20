@@ -23,3 +23,5 @@ itertools.workspace = true
 cfg-if.workspace = true
 addresses.workspace = true
 txscript-errors.workspace = true
+derive_more.workspace = true
+paste = "1.0.11"

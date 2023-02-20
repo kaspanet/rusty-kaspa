@@ -2,7 +2,29 @@ use super::scope::Scope;
 use std::ops::{Index, IndexMut};
 use workflow_core::enums::usize_try_from;
 
-usize_try_from! {
+macro_rules! event_type_enum {
+    ($(#[$meta:meta])* $vis:vis enum $name:ident {
+        $($(#[$variant_meta:meta])* $variant_name:ident $(= $val:expr)?,)*
+    }) => {
+        usize_try_from!{
+            $(#[$meta])* $vis enum $name {
+                $($(#[$variant_meta])* $variant_name $(= $val)?,)*
+            }
+        }
+        impl std::convert::From<&Scope> for $name {
+            fn from(value: &Scope) -> Self {
+                match value {
+                    $(Scope::$variant_name(_) => $name::$variant_name),*
+                }
+            }
+        }
+        pub const EVENT_TYPE_ARRAY: [EventType; EVENT_COUNT] = [
+            $($name::$variant_name),*
+        ];
+    }
+}
+
+event_type_enum! {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub enum EventType {
     BlockAdded = 0,
@@ -17,38 +39,7 @@ pub enum EventType {
 }
 }
 
-// TODO: write a macro or use an external crate to get this
-pub(crate) const EVENT_COUNT: usize = 9;
-
-// TODO: write a macro or use an external crate to get this
-pub const EVENT_TYPE_ARRAY: [EventType; EVENT_COUNT] = [
-    EventType::BlockAdded,
-    EventType::VirtualSelectedParentChainChanged,
-    EventType::FinalityConflict,
-    EventType::FinalityConflictResolved,
-    EventType::UtxosChanged,
-    EventType::VirtualSelectedParentBlueScoreChanged,
-    EventType::VirtualDaaScoreChanged,
-    EventType::PruningPointUtxoSetOverride,
-    EventType::NewBlockTemplate,
-];
-
-// TODO: write a macro to get this
-impl From<&Scope> for EventType {
-    fn from(item: &Scope) -> Self {
-        match item {
-            Scope::BlockAdded => EventType::BlockAdded,
-            Scope::VirtualSelectedParentChainChanged(_) => EventType::VirtualSelectedParentChainChanged,
-            Scope::FinalityConflict => EventType::FinalityConflict,
-            Scope::FinalityConflictResolved => EventType::FinalityConflictResolved,
-            Scope::UtxosChanged(_) => EventType::UtxosChanged,
-            Scope::VirtualSelectedParentBlueScoreChanged => EventType::VirtualSelectedParentBlueScoreChanged,
-            Scope::VirtualDaaScoreChanged => EventType::VirtualDaaScoreChanged,
-            Scope::PruningPointUtxoSetOverride => EventType::PruningPointUtxoSetOverride,
-            Scope::NewBlockTemplate => EventType::NewBlockTemplate,
-        }
-    }
-}
+pub const EVENT_COUNT: usize = 9;
 
 /// Generic array with [`EventType`] strongly-typed index
 #[derive(Default, Clone, Copy, Debug)]

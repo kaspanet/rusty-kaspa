@@ -1,30 +1,46 @@
 use crate::model::message::*;
 use async_channel::{Receiver, Sender};
 use borsh::{BorshDeserialize, BorshSerialize};
+use derive_more::Display;
 use kaspa_notify::{
     events::EventType,
     notification::{full_featured, Notification as NotificationTrait},
-    scope::{Scope, UtxosChangedScope, VirtualSelectedParentChainChangedScope},
     subscription::{
         single::{OverallSubscription, UtxosChangedSubscription, VirtualSelectedParentChainChangedSubscription},
         Single,
     },
 };
 use serde::{Deserialize, Serialize};
-use std::fmt::Display;
 use std::sync::Arc;
 
 full_featured! {
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Clone, Debug, Display, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub enum Notification {
+    #[display(fmt = "BlockAdded notification: block hash {}", "_0.block.header.hash")]
     BlockAdded(BlockAddedNotification),
+
+    #[display(fmt = "VirtualSelectedParentChainChanged notification: {} removed blocks, {} added blocks, {} accepted transactions", "_0.removed_chain_block_hashes.len()", "_0.added_chain_block_hashes.len()", "_0.accepted_transaction_ids.len()")]
     VirtualSelectedParentChainChanged(VirtualSelectedParentChainChangedNotification),
+
+    #[display(fmt = "FinalityConflict notification: violating block hash {}", "_0.violating_block_hash")]
     FinalityConflict(FinalityConflictNotification),
+
+    #[display(fmt = "FinalityConflict notification: violating block hash {}", "_0.finality_block_hash")]
     FinalityConflictResolved(FinalityConflictResolvedNotification),
+
+    #[display(fmt = "UtxosChanged notification: {} removed, {} added", "_0.removed.len()", "_0.added.len()")]
     UtxosChanged(UtxosChangedNotification),
+
+    #[display(fmt = "VirtualSelectedParentBlueScoreChanged notification: virtual selected parent blue score {}", "_0.virtual_selected_parent_blue_score")]
     VirtualSelectedParentBlueScoreChanged(VirtualSelectedParentBlueScoreChangedNotification),
+
+    #[display(fmt = "VirtualDaaScoreChanged notification: virtual DAA score {}", "_0.virtual_daa_score")]
     VirtualDaaScoreChanged(VirtualDaaScoreChangedNotification),
+
+    #[display(fmt = "PruningPointUtxoSetOverride notification")]
     PruningPointUtxoSetOverride(PruningPointUtxoSetOverrideNotification),
+
+    #[display(fmt = "NewBlockTemplate notification")]
     NewBlockTemplate(NewBlockTemplateNotification),
 }
 }

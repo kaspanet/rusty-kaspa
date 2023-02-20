@@ -16,12 +16,14 @@ impl KaspadRequest {
 impl kaspad_request::Payload {
     pub fn from_notification_type(scope: &Scope, command: Command) -> Self {
         match scope {
-            Scope::BlockAdded => {
+            Scope::BlockAdded(_) => {
                 kaspad_request::Payload::NotifyBlockAddedRequest(NotifyBlockAddedRequestMessage { command: command.into() })
             }
-            Scope::NewBlockTemplate => kaspad_request::Payload::NotifyNewBlockTemplateRequest(NotifyNewBlockTemplateRequestMessage {
-                command: command.into(),
-            }),
+            Scope::NewBlockTemplate(_) => {
+                kaspad_request::Payload::NotifyNewBlockTemplateRequest(NotifyNewBlockTemplateRequestMessage {
+                    command: command.into(),
+                })
+            }
 
             Scope::VirtualSelectedParentChainChanged(ref scope) => {
                 kaspad_request::Payload::NotifyVirtualSelectedParentChainChangedRequest(
@@ -31,10 +33,12 @@ impl kaspad_request::Payload {
                     },
                 )
             }
-            Scope::FinalityConflict => kaspad_request::Payload::NotifyFinalityConflictRequest(NotifyFinalityConflictRequestMessage {
-                command: command.into(),
-            }),
-            Scope::FinalityConflictResolved => {
+            Scope::FinalityConflict(_) => {
+                kaspad_request::Payload::NotifyFinalityConflictRequest(NotifyFinalityConflictRequestMessage {
+                    command: command.into(),
+                })
+            }
+            Scope::FinalityConflictResolved(_) => {
                 kaspad_request::Payload::NotifyFinalityConflictRequest(NotifyFinalityConflictRequestMessage {
                     command: command.into(),
                 })
@@ -43,17 +47,17 @@ impl kaspad_request::Payload {
                 addresses: scope.addresses.iter().map(|x| x.into()).collect::<Vec<String>>(),
                 command: command.into(),
             }),
-            Scope::VirtualSelectedParentBlueScoreChanged => {
+            Scope::VirtualSelectedParentBlueScoreChanged(_) => {
                 kaspad_request::Payload::NotifyVirtualSelectedParentBlueScoreChangedRequest(
                     NotifyVirtualSelectedParentBlueScoreChangedRequestMessage { command: command.into() },
                 )
             }
-            Scope::VirtualDaaScoreChanged => {
+            Scope::VirtualDaaScoreChanged(_) => {
                 kaspad_request::Payload::NotifyVirtualDaaScoreChangedRequest(NotifyVirtualDaaScoreChangedRequestMessage {
                     command: command.into(),
                 })
             }
-            Scope::PruningPointUtxoSetOverride => {
+            Scope::PruningPointUtxoSetOverride(_) => {
                 kaspad_request::Payload::NotifyPruningPointUtxoSetOverrideRequest(NotifyPruningPointUtxoSetOverrideRequestMessage {
                     command: command.into(),
                 })
