@@ -3,7 +3,6 @@ extern crate core;
 extern crate hashes;
 
 use clap::Parser;
-use consensus::consensus::test_consensus::{create_or_load_existing_db, delete_db};
 use consensus_core::{events::ConsensusEvent, networktype::NetworkType};
 use event_processor::notify::Notification;
 
@@ -124,8 +123,8 @@ pub fn main() {
     if args.reset_db {
         // TODO: add prompt that validates the choice (unless you pass -y)
         info!("Deleting databases {:?}, {:?}", consensus_db_dir, utxoindex_db_dir);
-        delete_db(consensus_db_dir.clone());
-        delete_db(utxoindex_db_dir.clone());
+        database::prelude::delete_db(consensus_db_dir.clone());
+        database::prelude::delete_db(utxoindex_db_dir.clone());
     }
 
     info!("Consensus Data directory {}", consensus_db_dir.display());
@@ -152,12 +151,14 @@ pub fn main() {
     let (consensus_send, consensus_recv) = unbounded::<ConsensusEvent>();
     let (event_processor_send, event_processor_recv) = unbounded::<Notification>();
 
-    let consensus_db = create_or_load_existing_db(consensus_db_dir);
+    // Use `num_cpus` background threads for the consensus database as recommended by rocksdb
+    let consensus_db = database::prelude::open_db(consensus_db_dir, true, num_cpus::get());
     let consensus = Arc::new(Consensus::new(consensus_db, &config, consensus_send));
     let monitor = Arc::new(ConsensusMonitor::new(consensus.processing_counters().clone()));
 
     let utxoindex: DynUtxoIndexApi = if args.utxoindex {
-        let utxoindex_db = create_or_load_existing_db(utxoindex_db_dir);
+        // Use only a single thread for none-consensus databases
+        let utxoindex_db = database::prelude::open_db(utxoindex_db_dir, true, 1);
         Some(UtxoIndex::new(consensus.clone(), utxoindex_db).unwrap())
     } else {
         None
