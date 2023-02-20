@@ -2,6 +2,7 @@
 //! Integration tests
 //!
 
+use async_channel::unbounded;
 use consensus::config::{Config, ConfigBuilder};
 use consensus::consensus::test_consensus::{create_temp_db, TestConsensus};
 use consensus::model::stores::ghostdag::{GhostdagData, GhostdagStoreReader, HashKTypeMap, KType as GhostdagKType};
@@ -9,25 +10,33 @@ use consensus::model::stores::headers::HeaderStoreReader;
 use consensus::model::stores::reachability::DbReachabilityStore;
 use consensus::params::{Params, DEVNET_PARAMS, MAINNET_PARAMS};
 use consensus::processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions};
+use consensus_core::api::ConsensusApi;
 use consensus_core::block::Block;
 use consensus_core::blockhash::new_unique;
 use consensus_core::blockstatus::BlockStatus;
 use consensus_core::constants::BLOCK_VERSION;
 use consensus_core::errors::block::{BlockProcessResult, RuleError};
+use consensus_core::events::ConsensusEvent;
 use consensus_core::header::Header;
 use consensus_core::subnets::SubnetworkId;
 use consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry};
 use consensus_core::{blockhash, hashing, BlockHashMap, BlueWorkType};
+use event_processor::notify::Notification;
+use event_processor::processor::EventProcessor;
 use hashes::Hash;
 
 use flate2::read::GzDecoder;
 use futures_util::future::join_all;
 use itertools::Itertools;
+use kaspa_core::core::Core;
 use kaspa_core::info;
+use kaspa_core::signals::Shutdown;
+use kaspa_core::task::runtime::AsyncRuntime;
 use math::Uint256;
 use muhash::MuHash;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
+use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
 use std::{
@@ -38,6 +47,8 @@ use std::{
     str::{from_utf8, FromStr},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
+use utxoindex::api::UtxoIndexApi;
+use utxoindex::UtxoIndex;
 
 mod common;
 
@@ -801,7 +812,7 @@ fn gzip_file_lines(path: &Path) -> impl Iterator<Item = String> {
 }
 
 async fn json_test(file_path: &str) {
-    kaspa_core::log::try_init_logger("INFO");
+    kaspa_core::log::try_init_logger("debug");
     let main_path = Path::new(file_path);
     let proof_exists = common::file_exists(&main_path.join("proof.json.gz"));
 
@@ -831,8 +842,21 @@ async fn json_test(file_path: &str) {
     if proof_exists {
         config.process_genesis = false;
     }
-    let consensus = TestConsensus::create_from_temp_db_and_dummy_sender(&config);
-    let wait_handles = consensus.init();
+
+    let (consensus_send, consensus_recv) = unbounded::<ConsensusEvent>();
+    let (event_processor_send, _event_processor_recv) = unbounded::<Notification>();
+    let consensus = Arc::new(TestConsensus::create_from_temp_db(&config, consensus_send));
+
+    let (_utxoindex_db_lifetime, utxoindex_db) = create_temp_db();
+    let utxoindex = UtxoIndex::new(consensus.clone(), utxoindex_db).unwrap();
+    let event_processor = Arc::new(EventProcessor::new(Some(utxoindex.clone()), consensus_recv, event_processor_send));
+    let async_runtime = Arc::new(AsyncRuntime::new());
+    async_runtime.register(event_processor.clone());
+
+    let core = Arc::new(Core::new());
+    core.bind(consensus.clone());
+    core.bind(async_runtime);
+    let joins = core.start();
 
     let pruning_point = if proof_exists {
         let proof_lines = gzip_file_lines(&main_path.join("proof.json.gz"));
@@ -886,7 +910,7 @@ async fn json_test(file_path: &str) {
         // Test our hashing implementation vs the hash accepted from the json source
         assert_eq!(hashing::header::hash(&block.header), hash, "header hashing for block {i} {hash} failed");
         let status = consensus
-            .consensus
+            .consensus()
             .validate_and_insert_block(block, !proof_exists)
             .await
             .unwrap_or_else(|e| panic!("block {i} {hash} failed: {e}"));
@@ -901,13 +925,21 @@ async fn json_test(file_path: &str) {
 
         consensus.consensus.import_pruning_point_utxo_set(pruning_point.unwrap(), &mut multiset).unwrap();
         consensus.consensus.resolve_virtual();
+        utxoindex.write().resync().unwrap();
         // TODO: Add consensus validation that the pruning point is actually the right block according to the rules (in pruning depth etc).
     }
 
     // Assert that at least one body tip was resolved with valid UTXO
     assert!(consensus.body_tips().iter().copied().any(|h| consensus.block_status(h) == BlockStatus::StatusUTXOValid));
+    let virtual_utxos: HashSet<TransactionOutpoint> =
+        HashSet::from_iter(consensus.consensus().get_virtual_utxos(None, usize::MAX, false).into_iter().map(|(outpoint, _)| outpoint));
+    let utxoindex_utxos = utxoindex.read().get_all_outpoints().unwrap();
+    assert_eq!(virtual_utxos.len(), utxoindex_utxos.len());
+    assert!(virtual_utxos.is_subset(&utxoindex_utxos));
+    assert!(utxoindex_utxos.is_subset(&virtual_utxos));
 
-    consensus.shutdown(wait_handles);
+    core.shutdown();
+    core.join(joins);
 }
 
 async fn json_concurrency_test(file_path: &str) {
@@ -1019,7 +1051,7 @@ fn submit_chunk(
 ) -> Vec<impl Future<Output = BlockProcessResult<BlockStatus>>> {
     let mut futures = Vec::new();
     for line in chunk {
-        let f = consensus.consensus.validate_and_insert_block(json_line_to_block(line), !proof_exists);
+        let f = consensus.consensus().validate_and_insert_block(json_line_to_block(line), !proof_exists);
         futures.push(f);
     }
     futures

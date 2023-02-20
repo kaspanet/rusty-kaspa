@@ -604,6 +604,7 @@ dependencies = [
  "criterion",
  "crossbeam-channel",
  "database",
+ "event-processor",
  "faster-hex",
  "flate2",
  "futures-util",
@@ -631,6 +632,7 @@ dependencies = [
  "tokio",
  "txscript",
  "txscript-errors",
+ "utxoindex",
 ]
 
 [[package]]
@@ -808,6 +810,7 @@ dependencies = [
  "faster-hex",
  "hashes",
  "indexmap",
+ "itertools 0.10.5",
  "parking_lot",
  "rand 0.8.5",
  "rocksdb",

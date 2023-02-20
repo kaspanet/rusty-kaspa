@@ -1,6 +1,10 @@
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 
-use consensus_core::{tx::ScriptPublicKeys, utxo::utxo_diff::UtxoDiff, BlockHashSet};
+use consensus_core::{
+    tx::{ScriptPublicKeys, TransactionOutpoint},
+    utxo::utxo_diff::UtxoDiff,
+    BlockHashSet,
+};
 use database::prelude::StoreResult;
 use hashes::Hash;
 use parking_lot::RwLock;
@@ -18,6 +22,9 @@ pub trait UtxoIndexApi: Send + Sync {
     ///
     /// Note: Use a read lock when accessing this method
     fn get_utxos_by_script_public_keys(&self, script_public_keys: ScriptPublicKeys) -> StoreResult<UtxoSetByScriptPublicKey>;
+
+    // This can have a big memory footprint, so it should be used only for tests.
+    fn get_all_outpoints(&self) -> StoreResult<HashSet<TransactionOutpoint>>;
 
     /// Retrieve the stored tips of the utxoindex (used for testing purposes).
     ///
@@ -47,4 +54,4 @@ pub trait UtxoIndexApi: Send + Sync {
 // 2) there is no need for an inner Arc since we hold an Arc on the Option,
 // but alas, we need Sized for the option, hence it is in a Box.
 
-pub type DynUtxoIndexApi = Arc<Option<Box<RwLock<dyn UtxoIndexApi>>>>;
+pub type DynUtxoIndexApi = Option<Arc<RwLock<dyn UtxoIndexApi>>>;

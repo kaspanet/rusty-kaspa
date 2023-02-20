@@ -26,7 +26,7 @@ async fn test_virtual_change_set_event() {
     let utxoindex_db = create_temp_db();
     let test_consensus = Arc::new(TestConsensus::create_from_temp_db_and_dummy_sender(&Config::new(DEVNET_PARAMS)));
     test_consensus.init();
-    let utxoindex: DynUtxoIndexApi = Arc::new(Some(Box::new(UtxoIndex::new(test_consensus, utxoindex_db.1))));
+    let utxoindex: DynUtxoIndexApi = Some(UtxoIndex::new(test_consensus, utxoindex_db.1).unwrap());
     let event_processor = EventProcessor::new(utxoindex, consensus_recv, event_processor_send);
 
     let worker = event_processor.clone();
@@ -170,7 +170,7 @@ async fn test_block_added_event() {
 
     let (test_send, consensus_recv) = unbounded::<ConsensusEvent>();
     let (event_processor_send, test_recv) = unbounded::<Notification>();
-    let event_processor = EventProcessor::new(Arc::new(None), consensus_recv, event_processor_send);
+    let event_processor = EventProcessor::new(None, consensus_recv, event_processor_send);
 
     let rng = &mut SmallRng::seed_from_u64(42);
 
@@ -283,7 +283,7 @@ async fn test_new_block_template_event() {
 
     let (test_send, consensus_recv) = unbounded::<ConsensusEvent>();
     let (event_processor_send, test_recv) = unbounded::<Notification>();
-    let event_processor = EventProcessor::new(Arc::new(None), consensus_recv, event_processor_send);
+    let event_processor = EventProcessor::new(None, consensus_recv, event_processor_send);
 
     let test_event = Arc::new(NewBlockTemplateEvent {});
 
@@ -309,7 +309,7 @@ async fn test_finality_conflict_event() {
 
     let (test_send, consensus_recv) = unbounded::<ConsensusEvent>();
     let (event_processor_send, test_recv) = unbounded::<Notification>();
-    let event_processor = EventProcessor::new(Arc::new(None), consensus_recv, event_processor_send);
+    let event_processor = EventProcessor::new(None, consensus_recv, event_processor_send);
 
     let test_event = FinalityConflictEvent {};
 
@@ -335,7 +335,7 @@ async fn test_finality_conflict_resolved_event() {
 
     let (test_send, consensus_recv) = unbounded::<ConsensusEvent>();
     let (event_processor_send, test_recv) = unbounded::<Notification>();
-    let event_processor = EventProcessor::new(Arc::new(None), consensus_recv, event_processor_send);
+    let event_processor = EventProcessor::new(None, consensus_recv, event_processor_send);
 
     let test_event = FinalityConflictResolvedEvent {};
 
@@ -365,7 +365,7 @@ async fn test_pruning_point_utxo_set_override_event() {
     let utxoindex_db = create_temp_db();
     let test_consensus = Arc::new(TestConsensus::create_from_temp_db_and_dummy_sender(&Config::new(DEVNET_PARAMS)));
     test_consensus.init();
-    let utxoindex: DynUtxoIndexApi = Arc::new(Some(Box::new(UtxoIndex::new(test_consensus, utxoindex_db.1))));
+    let utxoindex: DynUtxoIndexApi = Some(UtxoIndex::new(test_consensus, utxoindex_db.1).unwrap());
     let event_processor = EventProcessor::new(utxoindex, consensus_recv, event_processor_send);
 
     let test_event = PruningPointUTXOSetOverrideEvent {};
