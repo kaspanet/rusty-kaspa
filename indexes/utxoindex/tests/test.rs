@@ -71,7 +71,7 @@ fn test_utxoindex() {
     utxoindex.write().resync().expect("expected resync");
     let bench_time = now.elapsed().as_millis();
     info!(
-        "resync'd {0} utxos from {1} script public keys in {2} ms, (note: run test with `--release` for accurate results)",
+        "re-synced {0} utxos from {1} script public keys in {2} ms, (note: run test with `--release` for accurate results)",
         resync_utxo_collection_size, script_public_key_pool_size, bench_time
     ); // Ad-hoc benchmark (run with --release)
     assert!(utxoindex.read().is_synced().expect("expected bool"));

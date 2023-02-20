@@ -4,7 +4,7 @@ use super::prelude::{Cache, DbKey, DbWriter};
 use itertools::Itertools;
 use rocksdb::{Direction, IteratorMode, ReadOptions};
 use serde::{de::DeserializeOwned, Serialize};
-use std::{collections::hash_map::RandomState, error::Error, fmt::Debug, hash::BuildHasher, sync::Arc};
+use std::{collections::hash_map::RandomState, error::Error, hash::BuildHasher, sync::Arc};
 
 /// A concurrent DB store access with typed caching.
 #[derive(Clone)]
@@ -146,7 +146,7 @@ where
             .iterator_opt(IteratorMode::From(db_key.as_ref(), Direction::Forward), read_opts)
             .map(|iter_result| match iter_result {
                 Ok((key, _)) => Ok::<_, rocksdb::Error>(key),
-                Err(e) => Err(e.into()),
+                Err(e) => Err(e),
             })
             .collect_vec();
         for key in keys {
@@ -155,7 +155,7 @@ where
         Ok(())
     }
 
-    /// A dynamic iterator that can iterate through a specifc prefix / bucket, or from a certain start point.
+    /// A dynamic iterator that can iterate through a specific prefix / bucket, or from a certain start point.
     //TODO: loop and chain iterators for multi-prefix / bucket iterator.
     pub fn seek_iterator(
         &self,

@@ -147,7 +147,7 @@ impl EventProcessor {
 
     /// Potentially resyncs the [`UtxoIndex`] (if it is unsynced, and active) and starts the event processing loop.
     pub async fn run(&self) -> EventProcessorResult<()> {
-        trace!("[{IDENT}]: intializing run...");
+        trace!("[{IDENT}]: initializing run...");
         if let Some(utxoindex) = self.utxoindex.as_deref() {
             if !utxoindex.read().is_synced()? {
                 utxoindex.write().resync()?;
@@ -157,7 +157,7 @@ impl EventProcessor {
         self.shutdown_finalized_trigger.trigger();
         res
     }
-    /// Listens to Events, and matches these to corrosponding processing methods,
+    /// Listens to Events, and matches these to corresponding processing methods,
     /// until a shutdown is signalled.
     async fn process_events(&self) -> EventProcessorResult<()> {
         trace!("[{IDENT}]: processing events...");

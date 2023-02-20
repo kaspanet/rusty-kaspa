@@ -128,13 +128,13 @@ impl UtxoIndexApi for UtxoIndex {
         let consensus_tips = self.consensus.clone().get_virtual_state_tips();
         let mut circulating_supply: CirculatingSupply = 0;
 
-        //Intial batch is without specified seek and none-skipping.
+        //Initial batch is without specified seek and none-skipping.
         let mut virtual_utxo_batch = self.consensus.clone().get_virtual_utxos(None, RESYNC_CHUNK_SIZE, false);
         let mut current_chunk_size = virtual_utxo_batch.len();
         trace!("[{0}] resyncing with batch of {1} utxos from consensus db", IDENT, current_chunk_size);
-        // While loop stops resync attemps from an empty utxo db, and unneeded processing when the utxo state size happens to be a multiple of [`RESYNC_CHUNK_SIZE`]
+        // While loop stops resync attempts from an empty utxo db, and unneeded processing when the utxo state size happens to be a multiple of [`RESYNC_CHUNK_SIZE`]
         while current_chunk_size > 0 {
-            // Potential optimization TODO: iterating virtual utxos into an [UtxoIndexChanges] struct is a bit of overhead (i.e. a potentially uneeded loop),
+            // Potential optimization TODO: iterating virtual utxos into an [UtxoIndexChanges] struct is a bit of overhead (i.e. a potentially unneeded loop),
             // but some form of pre-iteration is done to extract and commit circulating supply separately.
 
             let mut utxoindex_changes = UtxoIndexChanges::new(); //reset changes.

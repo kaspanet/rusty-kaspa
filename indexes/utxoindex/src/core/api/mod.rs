@@ -54,4 +54,4 @@ pub trait UtxoIndexApi: Send + Sync {
 // 2) there is no need for an inner Arc since we hold an Arc on the Option,
 // but alas, we need Sized for the option, hence it is in a Box.
 
-pub type DynUtxoIndexApi = Option<Box<Arc<RwLock<dyn UtxoIndexApi>>>>;
+pub type DynUtxoIndexApi = Option<Arc<RwLock<dyn UtxoIndexApi>>>;

@@ -20,8 +20,7 @@ use consensus_core::events::ConsensusEvent;
 use consensus_core::header::Header;
 use consensus_core::subnets::SubnetworkId;
 use consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry};
-use consensus_core::{blockhash, hashing, utxo, BlockHashMap, BlueWorkType};
-use database::prelude::DB;
+use consensus_core::{blockhash, hashing, BlockHashMap, BlueWorkType};
 use event_processor::notify::Notification;
 use event_processor::processor::EventProcessor;
 use hashes::Hash;
@@ -31,15 +30,13 @@ use futures_util::future::join_all;
 use itertools::Itertools;
 use kaspa_core::core::Core;
 use kaspa_core::info;
-use kaspa_core::service::Service;
+use kaspa_core::signals::Shutdown;
 use kaspa_core::task::runtime::AsyncRuntime;
 use math::Uint256;
 use muhash::MuHash;
-use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::HashSet;
-use std::iter::once;
 use std::path::Path;
 use std::sync::Arc;
 use std::{
@@ -50,7 +47,7 @@ use std::{
     str::{from_utf8, FromStr},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
-use utxoindex::api::DynUtxoIndexApi;
+use utxoindex::api::UtxoIndexApi;
 use utxoindex::UtxoIndex;
 
 mod common;
@@ -815,7 +812,7 @@ fn gzip_file_lines(path: &Path) -> impl Iterator<Item = String> {
 }
 
 async fn json_test(file_path: &str) {
-    kaspa_core::log::try_init_logger("INFO");
+    kaspa_core::log::try_init_logger("debug");
     let main_path = Path::new(file_path);
     let proof_exists = common::file_exists(&main_path.join("proof.json.gz"));
 
@@ -847,18 +844,19 @@ async fn json_test(file_path: &str) {
     }
 
     let (consensus_send, consensus_recv) = unbounded::<ConsensusEvent>();
-    let (event_processor_send, event_processor_recv) = unbounded::<Notification>();
+    let (event_processor_send, _event_processor_recv) = unbounded::<Notification>();
     let consensus = Arc::new(TestConsensus::create_from_temp_db(&config, consensus_send));
-    let wait_handles = consensus.init();
 
-    let (utxoindex_db_lifetime, utxoindex_db) = create_temp_db();
-    let utxoindex: DynUtxoIndexApi = Some(Box::new(UtxoIndex::new(consensus.clone(), utxoindex_db).unwrap()));
-    let event_processor = Arc::new(EventProcessor::new(utxoindex.clone(), consensus_recv, event_processor_send));
+    let (_utxoindex_db_lifetime, utxoindex_db) = create_temp_db();
+    let utxoindex = UtxoIndex::new(consensus.clone(), utxoindex_db).unwrap();
+    let event_processor = Arc::new(EventProcessor::new(Some(utxoindex.clone()), consensus_recv, event_processor_send));
     let async_runtime = Arc::new(AsyncRuntime::new());
-    async_runtime.register(event_processor);
-    async_runtime.start(Default::default());
+    async_runtime.register(event_processor.clone());
 
-    let utxoindex = utxoindex.as_ref().unwrap();
+    let core = Arc::new(Core::new());
+    core.bind(consensus.clone());
+    core.bind(async_runtime);
+    let joins = core.start();
 
     let pruning_point = if proof_exists {
         let proof_lines = gzip_file_lines(&main_path.join("proof.json.gz"));
@@ -940,9 +938,8 @@ async fn json_test(file_path: &str) {
     assert!(virtual_utxos.is_subset(&utxoindex_utxos));
     assert!(utxoindex_utxos.is_subset(&virtual_utxos));
 
-    consensus.shutdown(wait_handles);
-    drop(event_processor_recv);
-    drop(utxoindex_db_lifetime);
+    core.shutdown();
+    core.join(joins);
 }
 
 async fn json_concurrency_test(file_path: &str) {

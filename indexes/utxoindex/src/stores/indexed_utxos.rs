@@ -1,7 +1,7 @@
 use crate::core::model::{CompactUtxoCollection, CompactUtxoEntry, UtxoSetByScriptPublicKey};
 
 use consensus_core::tx::{
-    ScriptPublicKey, ScriptPublicKeyVersion, ScriptPublicKeys, ScriptVec, TransactionIndexType, TransactionOutpoint, UtxoEntry,
+    ScriptPublicKey, ScriptPublicKeyVersion, ScriptPublicKeys, ScriptVec, TransactionIndexType, TransactionOutpoint,
 };
 use database::prelude::{CachedDbAccess, DirectDbWriter, StoreResult, DB};
 use hashes::Hash;
