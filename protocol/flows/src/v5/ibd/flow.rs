@@ -1,4 +1,3 @@
-use super::HeadersChunk;
 use crate::{
     flow_context::FlowContext,
     v5::{
@@ -7,13 +6,11 @@ use crate::{
     },
 };
 use consensus_core::{
-    api::DynConsensus,
+    api::{BlockValidationFuture, DynConsensus},
     block::Block,
-    blockstatus::BlockStatus,
-    errors::block::BlockProcessResult,
     pruning::{PruningPointProof, PruningPointsList},
 };
-use futures::future::{join_all, BoxFuture};
+use futures::future::join_all;
 use hashes::Hash;
 use kaspa_core::{debug, info};
 use p2p_lib::{
@@ -107,7 +104,7 @@ impl IbdFlow {
         // TODO: call validate_pruning_proof when implemented
         // consensus.clone().validate_pruning_proof(&proof);
 
-        let proof_pruning_point = proof[0].last().expect("was just insured by validation").hash;
+        let proof_pruning_point = proof[0].last().expect("was just ensured by validation").hash;
 
         // TODO: verify the proof pruning point is different than current consensus pruning point
 
@@ -156,6 +153,8 @@ impl IbdFlow {
         }
         info!("Done processing semi-trusted blocks");
 
+        // TODO: make sure that the proof pruning point is not genesis
+
         Ok(proof_pruning_point)
     }
 
@@ -179,11 +178,13 @@ impl IbdFlow {
         let mut chunk_stream = HeadersChunkStream::new(&self.router, &mut self.incoming_route);
 
         let Some(chunk) = chunk_stream.next().await? else { return Ok(()); };
-        let mut prev_joins = submit_chunk(consensus, chunk);
+        let mut prev_joins: Vec<BlockValidationFuture> =
+            chunk.into_iter().map(|h| consensus.clone().validate_and_insert_block(Block::from_header_arc(h), false)).collect();
 
         // TODO: logs
         while let Some(chunk) = chunk_stream.next().await? {
-            let current_joins = submit_chunk(consensus, chunk);
+            let current_joins =
+                chunk.into_iter().map(|h| consensus.clone().validate_and_insert_block(Block::from_header_arc(h), false)).collect();
             // Join the previous chunk so that we always concurrently process a chunk and receive another
             join_all(prev_joins).await.into_iter().try_for_each(|x| x.map(drop))?;
             prev_joins = current_joins;
@@ -193,13 +194,4 @@ impl IbdFlow {
 
         Ok(())
     }
-}
-
-fn submit_chunk(consensus: &DynConsensus, chunk: HeadersChunk) -> Vec<BoxFuture<'static, BlockProcessResult<BlockStatus>>> {
-    let mut futures = Vec::new();
-    for header in chunk {
-        let f = consensus.clone().validate_and_insert_block(Block::from_header_arc(header), false);
-        futures.push(f);
-    }
-    futures
 }

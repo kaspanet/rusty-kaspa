@@ -313,6 +313,9 @@ pub fn create_or_load_existing_db(db_dir: PathBuf) -> Arc<DB> {
 }
 
 pub fn delete_db(db_dir: PathBuf) {
+    if !db_dir.exists() {
+        return;
+    }
     let options = rocksdb::Options::default();
     let path = db_dir.to_str().unwrap();
     DB::destroy(&options, path).expect("DB is expected to be deletable");

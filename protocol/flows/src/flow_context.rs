@@ -2,6 +2,7 @@ use crate::v5;
 use async_trait::async_trait;
 use consensus_core::api::DynConsensus;
 use kaspa_core::debug;
+use kaspa_core::time::unix_now;
 use p2p_lib::pb;
 use p2p_lib::{common::ProtocolError, ConnectionInitializer, KaspadHandshake, Router};
 use std::sync::Arc;
@@ -9,23 +10,17 @@ use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct FlowContext {
-    /// For now, directly hold consensus
-    pub consensus: Option<DynConsensus>,
+    pub consensus: DynConsensus,
 }
 
 impl FlowContext {
-    pub fn new(consensus: Option<DynConsensus>) -> Self {
+    pub fn new(consensus: DynConsensus) -> Self {
         Self { consensus }
     }
 
     pub fn consensus(&self) -> DynConsensus {
-        self.consensus.clone().unwrap()
+        self.consensus.clone()
     }
-}
-
-#[inline]
-fn unix_now() -> i64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64
 }
 
 #[async_trait]
@@ -42,7 +37,7 @@ impl ConnectionInitializer for FlowContext {
         let self_version_message = pb::VersionMessage {
             protocol_version: 5, // TODO: make a const
             services: 0,         // TODO: get number of live services
-            timestamp: unix_now(),
+            timestamp: unix_now() as i64,
             address: None,                          // TODO
             id: Vec::from(Uuid::new_v4().as_ref()), // TODO
             user_agent: String::new(),              // TODO
@@ -71,8 +66,8 @@ impl ConnectionInitializer for FlowContext {
             flow.launch();
         }
 
-        // Note: at this point receivers for handshake subscriptions
-        // are dropped, thus effectively unsubscribing from these messages, which means that if the peer re-sends them
+        // Note: we deliberately do not hold the handshake in memory so at this point receivers for handshake subscriptions
+        // are dropped, hence effectively unsubscribing from these messages. This means that if the peer re-sends them
         // it is considered a protocol error and the connection will disconnect
 
         Ok(())

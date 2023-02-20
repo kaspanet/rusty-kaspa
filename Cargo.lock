@@ -18,6 +18,7 @@ dependencies = [
  "consensus-core",
  "database",
  "itertools 0.10.5",
+ "kaspa-core",
  "parking_lot",
  "rand 0.8.5",
  "rocksdb",

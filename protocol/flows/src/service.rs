@@ -37,7 +37,7 @@ impl AsyncService for P2pService {
         // Launch the service and wait for a shutdown signal
         Box::pin(async move {
             let server_address = String::from("[::1]:50051");
-            let ctx = Arc::new(FlowContext::new(Some(self.consensus.clone())));
+            let ctx = Arc::new(FlowContext::new(self.consensus.clone()));
             let p2p_adaptor = Adaptor::bidirectional(server_address.clone(), ctx).unwrap();
 
             // For now, attempt to connect to a running golang node

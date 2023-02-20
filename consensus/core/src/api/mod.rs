@@ -16,17 +16,15 @@ use crate::{
     tx::{MutableTransaction, Transaction},
 };
 
+pub type BlockValidationFuture = BoxFuture<'static, BlockProcessResult<BlockStatus>>;
+
 /// Abstracts the consensus external API
 pub trait ConsensusApi: Send + Sync {
     fn build_block_template(self: Arc<Self>, miner_data: MinerData, txs: Vec<Transaction>) -> Result<BlockTemplate, RuleError>;
 
-    fn validate_and_insert_block(
-        self: Arc<Self>,
-        block: Block,
-        update_virtual: bool,
-    ) -> BoxFuture<'static, BlockProcessResult<BlockStatus>>;
+    fn validate_and_insert_block(self: Arc<Self>, block: Block, update_virtual: bool) -> BlockValidationFuture;
 
-    fn validate_and_insert_trusted_block(self: Arc<Self>, tb: TrustedBlock) -> BoxFuture<'static, BlockProcessResult<BlockStatus>>;
+    fn validate_and_insert_trusted_block(self: Arc<Self>, tb: TrustedBlock) -> BlockValidationFuture;
 
     /// Populates the mempool transaction with maximally found UTXO entry data and proceeds to full transaction
     /// validation if all are found. If validation is successful, also [`calculated_fee`] is expected to be populated

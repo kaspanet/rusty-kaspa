@@ -5,7 +5,7 @@ use crate::{
     pb::{self, VersionMessage},
     IncomingRoute, KaspadMessagePayloadType, Router,
 };
-use kaspa_core::{debug, trace, warn};
+use kaspa_core::{debug, time::unix_now, trace, warn};
 use std::sync::Arc;
 use tonic::async_trait;
 use uuid::Uuid;
@@ -90,15 +90,11 @@ impl EchoFlow {
 #[derive(Default)]
 pub struct EchoFlowInitializer {}
 
-fn unix_now() -> i64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64
-}
-
 fn build_dummy_version_message() -> VersionMessage {
     pb::VersionMessage {
         protocol_version: 5,
         services: 0,
-        timestamp: unix_now(),
+        timestamp: unix_now() as i64,
         address: None,
         id: Vec::from(Uuid::new_v4().as_ref()),
         user_agent: String::new(),

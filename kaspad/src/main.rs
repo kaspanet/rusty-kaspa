@@ -109,6 +109,7 @@ pub fn main() {
     info!("Data directory: {}", db_dir.display());
 
     if args.reset_db {
+        // TODO: add prompt that validates the choice (unless you pass -y)
         delete_db(db_dir.clone());
     }
     fs::create_dir_all(db_dir.as_path()).unwrap();
