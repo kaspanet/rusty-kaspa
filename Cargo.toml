@@ -94,3 +94,4 @@ derive_more = { version = "0.99" }
 log = "0.4"
 cfg-if = "1.0.0"
 rocksdb = "0.19"
+num_cpus = "1.15.0"

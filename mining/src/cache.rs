@@ -1,16 +1,9 @@
 use consensus_core::block::BlockTemplate;
-use std::{
-    sync::Arc,
-    time::{SystemTime, UNIX_EPOCH},
-};
+use kaspa_core::time::unix_now;
+use std::sync::Arc;
 
 /// CACHE_LIFETIME indicates the default duration in milliseconds after which the cached data expires.
 const DEFAULT_CACHE_LIFETIME: u64 = 1_000;
-
-#[inline]
-fn unix_now() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64
-}
 
 pub(crate) struct BlockTemplateCache {
     /// Time, in milliseconds, when the cache was last updated

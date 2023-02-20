@@ -17,3 +17,4 @@ rand.workspace = true
 faster-hex.workspace = true
 hashes.workspace = true
 itertools.workspace = true
+num_cpus.workspace = true

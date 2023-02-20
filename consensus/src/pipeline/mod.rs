@@ -26,6 +26,7 @@ impl ProcessingCounters {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub struct ProcessingCountersSnapshot {
     pub blocks_submitted: u64,
     pub header_counts: u64,

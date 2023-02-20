@@ -382,9 +382,9 @@ impl VirtualStateProcessor {
                 // Calling the drops explicitly after the batch is written in order to avoid possible errors.
                 drop(virtual_write);
 
-                // Stops consenus from sending into, and bloating an unread channel, in cases where event processor is not required, (such as in testing cases).
+                // Stops consensus from sending into and bloating an unread channel in cases where event processor is not required (such as in testing cases).
                 if self.consensus_sender.receiver_count() > 0 {
-                    // We use try_send on consenus sender since this is none-blocking.
+                    // We use try_send on consensus sender since this is none-blocking.
                     self.consensus_sender
                         .try_send(ConsensusEvent::VirtualChangeSet(Arc::new(VirtualChangeSetEvent {
                             accumulated_utxo_diff: Arc::new(accumulated_diff),

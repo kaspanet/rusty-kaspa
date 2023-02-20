@@ -3,7 +3,7 @@ use clap::Parser;
 use consensus::{
     config::ConfigBuilder,
     consensus::{
-        test_consensus::{create_temp_db, load_existing_db},
+        test_consensus::{create_temp_db_with_parallelism, load_existing_db},
         Consensus,
     },
     constants::perf::{PerfParams, PERF_PARAMS},
@@ -133,7 +133,7 @@ fn main() {
 
     // Load an existing consensus or run the simulation
     let (consensus, _lifetime) = if let Some(input_dir) = args.input_dir {
-        let (lifetime, db) = load_existing_db(input_dir);
+        let (lifetime, db) = load_existing_db(input_dir, num_cpus::get());
         let (dummy_sender, _) = unbounded::<ConsensusEvent>();
         let consensus = Arc::new(Consensus::new(db, &config, dummy_sender));
         (consensus, lifetime)
@@ -146,7 +146,7 @@ fn main() {
     };
 
     // Benchmark the DAG validation time
-    let (_lifetime2, db2) = create_temp_db();
+    let (_lifetime2, db2) = create_temp_db_with_parallelism(num_cpus::get());
     let (dummy_sender, _) = unbounded::<ConsensusEvent>();
     let consensus2 = Arc::new(Consensus::new(db2, &config, dummy_sender));
     let handles2 = consensus2.init();

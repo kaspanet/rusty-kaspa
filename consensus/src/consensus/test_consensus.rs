@@ -11,11 +11,13 @@ use consensus_core::{
     block::{Block, BlockTemplate, MutableBlock},
     blockstatus::BlockStatus,
     coinbase::MinerData,
-    errors::{block::RuleError, coinbase::CoinbaseResult, tx::TxResult},
+    errors::{block::RuleError, coinbase::CoinbaseResult, pruning::PruningError, tx::TxResult},
     events::ConsensusEvent,
     header::Header,
     merkle::calc_hash_merkle_root,
+    pruning::PruningPointProof,
     subnets::SUBNETWORK_ID_COINBASE,
+    trusted::TrustedBlock,
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     BlockHashSet,
 };
@@ -197,6 +199,10 @@ impl ConsensusApi for TestConsensus {
         self.consensus().validate_and_insert_block(block, update_virtual)
     }
 
+    fn validate_and_insert_trusted_block(self: Arc<Self>, tb: TrustedBlock) -> BoxFuture<'static, BlockProcessResult<BlockStatus>> {
+        self.consensus().validate_and_insert_trusted_block(tb)
+    }
+
     fn validate_mempool_transaction_and_populate(self: Arc<Self>, transaction: &mut MutableTransaction) -> TxResult<()> {
         self.consensus().validate_mempool_transaction_and_populate(transaction)
     }
@@ -224,6 +230,18 @@ impl ConsensusApi for TestConsensus {
         skip_first: bool,
     ) -> Vec<(TransactionOutpoint, UtxoEntry)> {
         self.consensus.clone().get_virtual_utxos(from_outpoint, chunk_size, skip_first)
+    }
+
+    fn validate_pruning_proof(self: Arc<Self>, proof: &PruningPointProof) -> Result<(), PruningError> {
+        self.consensus().validate_pruning_proof(proof)
+    }
+
+    fn apply_pruning_proof(self: Arc<Self>, proof: PruningPointProof, trusted_set: &[TrustedBlock]) {
+        self.consensus().apply_pruning_proof(proof, trusted_set)
+    }
+
+    fn import_pruning_points(self: Arc<Self>, pruning_points: consensus_core::pruning::PruningPointsList) {
+        self.consensus().import_pruning_points(pruning_points)
     }
 }
 
@@ -279,30 +297,28 @@ impl Drop for TempDbLifetime {
     }
 }
 
-fn create_db_with_custom_options(db_path: PathBuf, create_if_missing: bool) -> Arc<DB> {
-    let mut opts = rocksdb::Options::default();
-    // Set parallelism to 3 as an heuristic for header/block/virtual processing
-    opts.increase_parallelism(3);
-    opts.create_if_missing(create_if_missing);
-    let db = Arc::new(DB::open(&opts, db_path.to_str().unwrap()).unwrap());
-    db
-}
-
 /// Creates a DB within a temp directory under `<OS SPECIFIC TEMP DIR>/kaspa-rust`
 /// Callers must keep the `TempDbLifetime` guard for as long as they wish the DB to exist.
-pub fn create_temp_db() -> (TempDbLifetime, Arc<DB>) {
+pub fn create_temp_db_with_parallelism(parallelism: usize) -> (TempDbLifetime, Arc<DB>) {
     let global_tempdir = env::temp_dir();
     let kaspa_tempdir = global_tempdir.join("kaspa-rust");
     fs::create_dir_all(kaspa_tempdir.as_path()).unwrap();
     let db_tempdir = tempfile::tempdir_in(kaspa_tempdir.as_path()).unwrap();
     let db_path = db_tempdir.path().to_owned();
-    let db = create_db_with_custom_options(db_path, true);
+    let db = database::prelude::open_db(db_path, true, parallelism);
     (TempDbLifetime::new(db_tempdir, Arc::downgrade(&db)), db)
+}
+
+/// Creates a DB within a temp directory under `<OS SPECIFIC TEMP DIR>/kaspa-rust`
+/// Callers must keep the `TempDbLifetime` guard for as long as they wish the DB to exist.
+pub fn create_temp_db() -> (TempDbLifetime, Arc<DB>) {
+    // Temp DB usually indicates test environments, so we default to a single thread
+    create_temp_db_with_parallelism(1)
 }
 
 /// Creates a DB within the provided directory path.
 /// Callers must keep the `TempDbLifetime` guard for as long as they wish the DB instance to exist.
-pub fn create_permanent_db(db_path: String) -> (TempDbLifetime, Arc<DB>) {
+pub fn create_permanent_db(db_path: String, parallelism: usize) -> (TempDbLifetime, Arc<DB>) {
     let db_dir = PathBuf::from(db_path);
     if let Err(e) = fs::create_dir(db_dir.as_path()) {
         match e.kind() {
@@ -310,14 +326,14 @@ pub fn create_permanent_db(db_path: String) -> (TempDbLifetime, Arc<DB>) {
             _ => panic!("{e}"),
         }
     }
-    let db = create_db_with_custom_options(db_dir, true);
+    let db = database::prelude::open_db(db_dir, true, parallelism);
     (TempDbLifetime::without_destroy(Arc::downgrade(&db)), db)
 }
 
 /// Loads an existing DB from the provided directory path.
 /// Callers must keep the `TempDbLifetime` guard for as long as they wish the DB instance to exist.
-pub fn load_existing_db(db_path: String) -> (TempDbLifetime, Arc<DB>) {
+pub fn load_existing_db(db_path: String, parallelism: usize) -> (TempDbLifetime, Arc<DB>) {
     let db_dir = PathBuf::from(db_path);
-    let db = create_db_with_custom_options(db_dir, false);
+    let db = database::prelude::open_db(db_dir, false, parallelism);
     (TempDbLifetime::without_destroy(Arc::downgrade(&db)), db)
 }

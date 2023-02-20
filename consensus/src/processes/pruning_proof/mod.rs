@@ -5,10 +5,10 @@ use std::{
 };
 
 use consensus_core::{
-    block::Block,
     blockhash::{BlockHashes, ORIGIN},
     header::Header,
     pruning::PruningPointProof,
+    trusted::TrustedBlock,
     BlockHashMap, BlockHashSet, BlockLevel, HashMapCustomHasher,
 };
 use database::prelude::StoreError;
@@ -204,16 +204,16 @@ impl PruningProofManager {
         self.pruning_store.write().set(current_pp, current_pp, (pruning_points.len() - 1) as u64).unwrap();
     }
 
-    pub fn apply_proof(&self, mut proof: PruningPointProof, trusted_blocks: &[(Block, GhostdagData)]) {
+    pub fn apply_proof(&self, mut proof: PruningPointProof, trusted_set: &[TrustedBlock]) {
         let proof_zero_set = BlockHashSet::from_iter(proof[0].iter().map(|header| header.hash));
-        let mut trusted_gd_map = BlockHashMap::new();
-        for (block, gd) in trusted_blocks.iter() {
-            trusted_gd_map.insert(block.hash(), gd.clone());
-            if proof_zero_set.contains(&block.header.hash) {
+        let mut trusted_gd_map: BlockHashMap<GhostdagData> = BlockHashMap::new();
+        for tb in trusted_set.iter() {
+            trusted_gd_map.insert(tb.block.hash(), tb.ghostdag.clone().into());
+            if proof_zero_set.contains(&tb.block.hash()) {
                 continue;
             }
 
-            proof[0].push(block.header.clone());
+            proof[0].push(tb.block.header.clone());
         }
 
         proof[0].sort_by(|a, b| a.blue_work.cmp(&b.blue_work));

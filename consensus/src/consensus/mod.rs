@@ -12,7 +12,7 @@ use crate::{
             block_window_cache::BlockWindowCacheStore,
             daa::DbDaaStore,
             depth::DbDepthStore,
-            ghostdag::{DbGhostdagStore, GhostdagData},
+            ghostdag::DbGhostdagStore,
             headers::DbHeadersStore,
             headers_selected_tip::DbHeadersSelectedTipStore,
             past_pruning_points::DbPastPruningPointsStore,
@@ -47,16 +47,17 @@ use consensus_core::{
     block::{Block, BlockTemplate},
     blockstatus::BlockStatus,
     coinbase::MinerData,
+    errors::pruning::PruningError,
     errors::{coinbase::CoinbaseResult, tx::TxResult},
     events::ConsensusEvent,
-    header::Header,
     muhash::MuHashExtensions,
-    pruning::PruningPointProof,
+    pruning::{PruningPointProof, PruningPointsList},
+    trusted::TrustedBlock,
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     BlockHashSet,
 };
 
-use async_channel::Sender as AsyncSender; // to aviod confusion with crossbeam
+use async_channel::Sender as AsyncSender; // to avoid confusion with crossbeam
 use crossbeam_channel::{unbounded as unbounded_crossbeam, Receiver as CrossbeamReceiver, Sender as CrossbeamSender}; // to aviod confusion with async_channel
 use futures_util::future::BoxFuture;
 use hashes::Hash;
@@ -491,15 +492,11 @@ impl Consensus {
         async { rx.await.unwrap() }
     }
 
-    pub fn validate_and_insert_trusted_block(
-        &self,
-        block: Block,
-        ghostdag_data: Arc<GhostdagData>,
-    ) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
+    pub fn validate_and_insert_trusted_block(&self, tb: TrustedBlock) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
         let (tx, rx): (BlockResultSender, _) = oneshot::channel();
         self.block_sender
             .send(BlockProcessingMessage::Process(
-                BlockTask { block, trusted_ghostdag_data: Some(ghostdag_data), update_virtual: false },
+                BlockTask { block: tb.block, trusted_ghostdag_data: Some(Arc::new(tb.ghostdag.into())), update_virtual: false },
                 vec![tx],
             ))
             .unwrap();
@@ -507,11 +504,7 @@ impl Consensus {
         async { rx.await.unwrap() }
     }
 
-    pub fn apply_proof(&self, proof: PruningPointProof, trusted_blocks: &[(Block, GhostdagData)]) {
-        self.pruning_proof_manager.apply_proof(proof, trusted_blocks)
-    }
-
-    pub fn import_pruning_points(&self, pruning_points: Vec<Arc<Header>>) {
+    pub fn import_pruning_points(&self, pruning_points: PruningPointsList) {
         self.pruning_proof_manager.import_pruning_points(&pruning_points)
     }
 
@@ -584,6 +577,11 @@ impl ConsensusApi for Consensus {
         Box::pin(async move { result.await })
     }
 
+    fn validate_and_insert_trusted_block(self: Arc<Self>, tb: TrustedBlock) -> BoxFuture<'static, BlockProcessResult<BlockStatus>> {
+        let result = self.as_ref().validate_and_insert_trusted_block(tb);
+        Box::pin(async move { result.await })
+    }
+
     fn validate_mempool_transaction_and_populate(self: Arc<Self>, transaction: &mut MutableTransaction) -> TxResult<()> {
         self.virtual_processor.validate_mempool_transaction_and_populate(transaction)?;
         Ok(())
@@ -614,6 +612,18 @@ impl ConsensusApi for Consensus {
 
     fn modify_coinbase_payload(self: Arc<Self>, payload: Vec<u8>, miner_data: &MinerData) -> CoinbaseResult<Vec<u8>> {
         self.coinbase_manager.modify_coinbase_payload(payload, miner_data)
+    }
+
+    fn validate_pruning_proof(self: Arc<Self>, _proof: &PruningPointProof) -> Result<(), PruningError> {
+        unimplemented!()
+    }
+
+    fn apply_pruning_proof(self: Arc<Self>, proof: PruningPointProof, trusted_set: &[TrustedBlock]) {
+        self.pruning_proof_manager.apply_proof(proof, trusted_set)
+    }
+
+    fn import_pruning_points(self: Arc<Self>, pruning_points: PruningPointsList) {
+        self.as_ref().import_pruning_points(pruning_points)
     }
 }
 

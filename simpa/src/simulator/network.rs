@@ -43,7 +43,7 @@ impl KaspaNetworkSimulator {
         let mut rng = rand::thread_rng();
         for i in 0..num_miners {
             let (lifetime, db) = if i == 0 && self.output_dir.is_some() {
-                create_permanent_db(self.output_dir.clone().unwrap())
+                create_permanent_db(self.output_dir.clone().unwrap(), num_cpus::get())
             } else {
                 create_temp_db()
             };

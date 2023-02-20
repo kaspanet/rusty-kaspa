@@ -42,6 +42,10 @@ impl Block {
         Self { header, transactions }
     }
 
+    pub fn from_header_arc(header: Arc<Header>) -> Self {
+        Self { header, transactions: Arc::new(Vec::new()) }
+    }
+
     pub fn from_header(header: Header) -> Self {
         Self { header: Arc::new(header), transactions: Arc::new(Vec::new()) }
     }
