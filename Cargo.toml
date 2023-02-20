@@ -13,6 +13,8 @@ members = [
     "crypto/muhash",
     "crypto/addresses",
     "crypto/merkle",
+    "indexes/utxoindex",
+    "event_processor",
     "rpc/core",
     "rpc/grpc/core",
     "rpc/grpc/client",
@@ -46,6 +48,8 @@ muhash = { path = "crypto/muhash" }
 addresses = { path = "crypto/addresses" }
 merkle = { path = "crypto/merkle" }
 pow = { path = "consensus/pow" }
+event-processor = {path = "event_processor" }
+utxoindex = { path = "indexes/utxoindex" }
 kaspa-utils = { path = "utils" }
 kaspa-rpc-core = { path = "rpc/core" }
 kaspa-grpc-core = { path = "rpc/grpc/core" }

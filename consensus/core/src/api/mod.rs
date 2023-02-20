@@ -13,9 +13,9 @@ use crate::{
     },
     pruning::{PruningPointProof, PruningPointsList},
     trusted::TrustedBlock,
-    tx::{MutableTransaction, Transaction},
+    tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
 };
-
+use hashes::Hash;
 pub type BlockValidationFuture = BoxFuture<'static, BlockProcessResult<BlockStatus>>;
 
 /// Abstracts the consensus external API
@@ -33,6 +33,15 @@ pub trait ConsensusApi: Send + Sync {
     fn calculate_transaction_mass(self: Arc<Self>, transaction: &Transaction) -> u64;
 
     fn get_virtual_daa_score(self: Arc<Self>) -> u64;
+
+    fn get_virtual_state_tips(self: Arc<Self>) -> Vec<Hash>;
+
+    fn get_virtual_utxos(
+        self: Arc<Self>,
+        from_outpoint: Option<TransactionOutpoint>,
+        chunk_size: usize,
+        skip_first: bool,
+    ) -> Vec<(TransactionOutpoint, UtxoEntry)>;
 
     fn modify_coinbase_payload(self: Arc<Self>, payload: Vec<u8>, miner_data: &MinerData) -> CoinbaseResult<Vec<u8>>;
 

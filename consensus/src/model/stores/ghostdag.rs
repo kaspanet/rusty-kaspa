@@ -17,7 +17,7 @@ use std::{cell::RefCell, sync::Arc};
 /// Re-export for convenience
 pub use consensus_core::{HashKTypeMap, KType};
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Default)]
 pub struct GhostdagData {
     pub blue_score: u64,
     pub blue_work: BlueWorkType,
@@ -189,7 +189,6 @@ impl GhostdagData {
         self.blue_work = blue_work;
     }
 }
-
 pub trait GhostdagStoreReader {
     fn get_blue_score(&self, hash: Hash) -> Result<u64, StoreError>;
     fn get_blue_work(&self, hash: Hash) -> Result<BlueWorkType, StoreError>;

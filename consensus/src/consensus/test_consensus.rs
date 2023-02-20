@@ -5,18 +5,20 @@ use std::{
     thread::JoinHandle,
 };
 
+use async_channel::Sender;
 use consensus_core::{
     api::ConsensusApi,
     block::{Block, BlockTemplate, MutableBlock},
     blockstatus::BlockStatus,
     coinbase::MinerData,
     errors::{block::RuleError, coinbase::CoinbaseResult, pruning::PruningError, tx::TxResult},
+    events::ConsensusEvent,
     header::Header,
     merkle::calc_hash_merkle_root,
     pruning::PruningPointProof,
     subnets::SUBNETWORK_ID_COINBASE,
     trusted::TrustedBlock,
-    tx::{MutableTransaction, Transaction},
+    tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     BlockHashSet,
 };
 use futures_util::future::BoxFuture;
@@ -43,7 +45,7 @@ use crate::{
     test_helpers::header_from_precomputed_hash,
 };
 
-use super::{Consensus, DbGhostdagManager};
+use super::{Consensus, DbGhostdagManager, VirtualStores};
 
 pub struct TestConsensus {
     pub consensus: Arc<Consensus>,
@@ -52,17 +54,31 @@ pub struct TestConsensus {
 }
 
 impl TestConsensus {
-    pub fn new(db: Arc<DB>, config: &Config) -> Self {
-        Self { consensus: Arc::new(Consensus::new(db, config)), params: config.params.clone(), temp_db_lifetime: Default::default() }
+    pub fn new(db: Arc<DB>, config: &Config, consensus_sender: Sender<ConsensusEvent>) -> Self {
+        Self {
+            consensus: Arc::new(Consensus::new(db, config, consensus_sender)),
+            params: config.params.clone(),
+            temp_db_lifetime: Default::default(),
+        }
     }
 
     pub fn consensus(&self) -> Arc<Consensus> {
         self.consensus.clone()
     }
 
-    pub fn create_from_temp_db(config: &Config) -> Self {
+    pub fn create_from_temp_db(config: &Config, consensus_sender: Sender<ConsensusEvent>) -> Self {
         let (temp_db_lifetime, db) = create_temp_db();
-        Self { consensus: Arc::new(Consensus::new(db, config)), params: config.params.clone(), temp_db_lifetime }
+        Self { consensus: Arc::new(Consensus::new(db, config, consensus_sender)), params: config.params.clone(), temp_db_lifetime }
+    }
+
+    pub fn create_from_temp_db_and_dummy_sender(config: &Config) -> Self {
+        let (temp_db_lifetime, db) = create_temp_db();
+        let (dummy_consenus_sender, _) = async_channel::unbounded::<ConsensusEvent>();
+        Self {
+            consensus: Arc::new(Consensus::new(db, config, dummy_consenus_sender)),
+            params: config.params.clone(),
+            temp_db_lifetime,
+        }
     }
 
     pub fn build_header_with_parents(&self, hash: Hash, parents: Vec<Hash>) -> Header {
@@ -141,6 +157,10 @@ impl TestConsensus {
         self.consensus.headers_store.clone()
     }
 
+    pub fn virtual_stores(&self) -> Arc<RwLock<VirtualStores>> {
+        self.consensus.virtual_stores.clone()
+    }
+
     pub fn processing_counters(&self) -> &Arc<ProcessingCounters> {
         &self.consensus.counters
     }
@@ -197,6 +217,19 @@ impl ConsensusApi for TestConsensus {
 
     fn modify_coinbase_payload(self: Arc<Self>, payload: Vec<u8>, miner_data: &MinerData) -> CoinbaseResult<Vec<u8>> {
         self.consensus().modify_coinbase_payload(payload, miner_data)
+    }
+
+    fn get_virtual_state_tips(self: Arc<Self>) -> Vec<Hash> {
+        self.consensus.clone().get_virtual_state_tips()
+    }
+
+    fn get_virtual_utxos(
+        self: Arc<Self>,
+        from_outpoint: Option<TransactionOutpoint>,
+        chunk_size: usize,
+        skip_first: bool,
+    ) -> Vec<(TransactionOutpoint, UtxoEntry)> {
+        self.consensus.clone().get_virtual_utxos(from_outpoint, chunk_size, skip_first)
     }
 
     fn validate_pruning_proof(self: Arc<Self>, proof: &PruningPointProof) -> Result<(), PruningError> {

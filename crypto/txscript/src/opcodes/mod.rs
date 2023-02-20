@@ -55,6 +55,7 @@ pub trait OpCodeMetadata: Debug {
     fn check_minimal_data_push(&self) -> Result<(), TxScriptError>;
 
     fn is_push_opcode(&self) -> bool;
+    fn get_data(&self) -> &[u8];
 }
 
 pub trait OpCodeExecution<T: VerifiableTransaction> {
@@ -141,6 +142,10 @@ impl<const CODE: u8> OpCodeMetadata for OpCode<CODE> {
             )));
         }
         Ok(())
+    }
+
+    fn get_data(&self) -> &[u8] {
+        &self.data
     }
 }
 
@@ -901,6 +906,18 @@ opcode_list! {
     opcode OpPubKeyHash<0xfd, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     opcode OpPubKey<0xfe, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     opcode OpInvalidOpCode<0xff, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+}
+
+// converts an opcode from the list of Op0 to Op16 to its associated value
+#[allow(clippy::borrowed_box)]
+pub fn to_small_int<T: VerifiableTransaction>(opcode: &Box<dyn OpCodeImplementation<T>>) -> u8 {
+    let value = opcode.value();
+    if value == codes::OpFalse {
+        return 0;
+    }
+
+    assert!((codes::OpTrue..codes::Op16).contains(&value), "expected op codes between from the list of Op0 to Op16");
+    value - (codes::OpTrue - 1)
 }
 
 #[cfg(test)]

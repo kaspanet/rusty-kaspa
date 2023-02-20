@@ -19,7 +19,7 @@ use consensus_core::{
 use futures_util::future::BoxFuture;
 use hashes::ZERO_HASH;
 use parking_lot::RwLock;
-use std::{collections::HashMap, sync::Arc, time::SystemTime};
+use std::{collections::HashMap, sync::Arc, time::SystemTime, unimplemented};
 
 use super::coinbase_mock::CoinbaseManagerMock;
 
@@ -191,4 +191,17 @@ impl ConsensusApi for ConsensusMock {
     fn import_pruning_points(self: Arc<Self>, _pruning_points: consensus_core::pruning::PruningPointsList) {
         unimplemented!()
     }
+
+    fn get_virtual_state_tips(self: Arc<Self>) -> Vec<hashes::Hash> {
+        unimplemented!()
+    } //Needed for compiler
+
+    fn get_virtual_utxos(
+        self: Arc<Self>,
+        _from_outpoint: Option<TransactionOutpoint>,
+        _limit: usize,
+        _skip_first: bool,
+    ) -> Vec<(TransactionOutpoint, UtxoEntry)> {
+        unimplemented!()
+    } //Needed for compiler
 }

@@ -4,7 +4,10 @@ extern crate hashes;
 
 use clap::Parser;
 use consensus::consensus::test_consensus::{create_or_load_existing_db, delete_db};
-use consensus_core::networktype::NetworkType;
+use consensus_core::{events::ConsensusEvent, networktype::NetworkType};
+use event_processor::notify::Notification;
+
+use kaspa_core::{core::Core, signals::Signals, task::runtime::AsyncRuntime};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -13,17 +16,20 @@ use crate::monitor::ConsensusMonitor;
 use consensus::config::ConfigBuilder;
 use consensus::consensus::Consensus;
 use consensus::params::{DEVNET_PARAMS, MAINNET_PARAMS};
-use kaspa_core::{core::Core, signals::Signals, task::runtime::AsyncRuntime};
+use utxoindex::{api::DynUtxoIndexApi, UtxoIndex};
+
+use async_channel::unbounded;
+use event_processor::processor::EventProcessor;
 use kaspa_core::{info, trace};
 use kaspa_grpc_server::GrpcServer;
-use kaspa_rpc_core::server::collector::ConsensusNotificationChannel;
 use kaspa_rpc_core::server::RpcCoreServer;
 use p2p_flows::service::P2pService;
 
 mod monitor;
 
 const DEFAULT_DATA_DIR: &str = "datadir";
-
+const CONSENSUS_DB: &str = "consensus";
+const UTXOINDEX_DB: &str = "utxoindex";
 // TODO: add a Config
 // TODO: apply Args to Config
 // TODO: log to file
@@ -39,6 +45,10 @@ struct Args {
     /// Interface/port to listen for RPC connections (default port: 16110, testnet: 16210)
     #[arg(long = "rpclisten")]
     rpc_listen: Option<String>,
+
+    /// Activate the utxoindex
+    #[arg(long = "utxoindex")]
+    utxoindex: bool,
 
     /// Logging level for all subsystems {off, error, warn, info, debug, trace}
     ///  -- You may also specify <subsystem>=<level>,<subsystem2>=<level>,... to set the log level for individual subsystems
@@ -108,11 +118,23 @@ pub fn main() {
     info!("Application directory: {}", app_dir.display());
     info!("Data directory: {}", db_dir.display());
 
+    let consensus_db_dir = db_dir.join(CONSENSUS_DB);
+    let utxoindex_db_dir = db_dir.join(UTXOINDEX_DB);
+
     if args.reset_db {
         // TODO: add prompt that validates the choice (unless you pass -y)
-        delete_db(db_dir.clone());
+        info!("Deleting databases {:?}, {:?}", consensus_db_dir, utxoindex_db_dir);
+        delete_db(consensus_db_dir.clone());
+        delete_db(utxoindex_db_dir.clone());
     }
-    fs::create_dir_all(db_dir.as_path()).unwrap();
+
+    info!("Consensus Data directory {}", consensus_db_dir.display());
+    fs::create_dir_all(consensus_db_dir.as_path()).unwrap();
+    if args.utxoindex {
+        info!("Utxoindex Data directory {}", utxoindex_db_dir.display());
+        fs::create_dir_all(utxoindex_db_dir.as_path()).unwrap();
+    }
+
     let grpc_server_addr = args.rpc_listen.unwrap_or_else(|| "127.0.0.1:16610".to_string()).parse().unwrap();
 
     let core = Arc::new(Core::new());
@@ -127,17 +149,29 @@ pub fn main() {
         NetworkType::Simnet => unimplemented!("simnet params"),
     };
 
-    let db = create_or_load_existing_db(db_dir);
-    let consensus = Arc::new(Consensus::new(db, &config));
+    let (consensus_send, consensus_recv) = unbounded::<ConsensusEvent>();
+    let (event_processor_send, event_processor_recv) = unbounded::<Notification>();
+
+    let consensus_db = create_or_load_existing_db(consensus_db_dir);
+    let consensus = Arc::new(Consensus::new(consensus_db, &config, consensus_send));
     let monitor = Arc::new(ConsensusMonitor::new(consensus.processing_counters().clone()));
 
-    let notification_channel = ConsensusNotificationChannel::default();
-    let rpc_core_server = Arc::new(RpcCoreServer::new(consensus.clone(), notification_channel.receiver()));
+    let utxoindex: DynUtxoIndexApi = if args.utxoindex {
+        let utxoindex_db = create_or_load_existing_db(utxoindex_db_dir);
+        Some(UtxoIndex::new(consensus.clone(), utxoindex_db).unwrap())
+    } else {
+        None
+    };
+
+    let event_processor = Arc::new(EventProcessor::new(utxoindex.clone(), consensus_recv, event_processor_send));
+
+    let rpc_core_server = Arc::new(RpcCoreServer::new(consensus.clone(), utxoindex, event_processor_recv));
     let grpc_server = Arc::new(GrpcServer::new(grpc_server_addr, rpc_core_server.service()));
     let p2p_service = Arc::new(P2pService::new(consensus.clone(), args.connect));
 
     // Create an async runtime and register the top-level async services
     let async_runtime = Arc::new(AsyncRuntime::new());
+    async_runtime.register(event_processor);
     async_runtime.register(rpc_core_server);
     async_runtime.register(grpc_server);
     async_runtime.register(p2p_service);

@@ -49,8 +49,8 @@ impl Connection for GrpcConnection {
         GrpcEncoding::ProtowireResponse
     }
 
-    fn into_message(notification: &Arc<kaspa_rpc_core::Notification>, _: &Self::Encoding) -> Self::Message {
-        Arc::new(Ok((&**notification).into()))
+    fn into_message(notification: &kaspa_rpc_core::Notification, _: &Self::Encoding) -> Self::Message {
+        Arc::new(Ok((notification).into()))
     }
 
     fn send(&self, message: Self::Message) -> Result<(), Self::Error> {

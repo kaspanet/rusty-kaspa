@@ -20,7 +20,7 @@ pub struct CoinbaseData<T: AsRef<[u8]> = Vec<u8>> {
     pub miner_data: MinerData<T>,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct BlockRewardData {
     pub subsidy: u64,
     pub total_fees: u64,
