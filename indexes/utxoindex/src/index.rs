@@ -29,8 +29,12 @@ pub struct UtxoIndex {
 
 impl UtxoIndex {
     /// Creates a new [`UtxoIndex`] within a [`RwLock`]
-    pub fn new(consensus: DynConsensus, db: Arc<DB>) -> RwLock<Self> {
-        RwLock::new(Self { consensus, store: Store::new(db) })
+    pub fn new(consensus: DynConsensus, db: Arc<DB>) -> UtxoIndexResult<Arc<RwLock<Self>>> {
+        let mut utxoindex = Self { consensus, store: Store::new(db) };
+        if !utxoindex.is_synced()? {
+            utxoindex.resync()?;
+        }
+        Ok(Arc::new(RwLock::new(utxoindex)))
     }
 }
 impl UtxoIndexApi for UtxoIndex {
@@ -124,13 +128,13 @@ impl UtxoIndexApi for UtxoIndex {
         let consensus_tips = self.consensus.clone().get_virtual_state_tips();
         let mut circulating_supply: CirculatingSupply = 0;
 
-        //Intial batch is without specified seek and none-skipping.
+        //Initial batch is without specified seek and none-skipping.
         let mut virtual_utxo_batch = self.consensus.clone().get_virtual_utxos(None, RESYNC_CHUNK_SIZE, false);
         let mut current_chunk_size = virtual_utxo_batch.len();
         trace!("[{0}] resyncing with batch of {1} utxos from consensus db", IDENT, current_chunk_size);
-        // While loop stops resync attemps from an empty utxo db, and unneeded processing when the utxo state size happens to be a multiple of [`RESYNC_CHUNK_SIZE`]
+        // While loop stops resync attempts from an empty utxo db, and unneeded processing when the utxo state size happens to be a multiple of [`RESYNC_CHUNK_SIZE`]
         while current_chunk_size > 0 {
-            // Potential optimization TODO: iterating virtual utxos into an [UtxoIndexChanges] struct is a bit of overhead (i.e. a potentially uneeded loop),
+            // Potential optimization TODO: iterating virtual utxos into an [UtxoIndexChanges] struct is a bit of overhead (i.e. a potentially unneeded loop),
             // but some form of pre-iteration is done to extract and commit circulating supply separately.
 
             let mut utxoindex_changes = UtxoIndexChanges::new(); //reset changes.
@@ -160,5 +164,10 @@ impl UtxoIndexApi for UtxoIndex {
         self.store.set_tips(BlockHashSet::from_iter(consensus_tips), true)?;
 
         Ok(())
+    }
+
+    // This can have a big memory footprint, so it should be used only for tests.
+    fn get_all_outpoints(&self) -> StoreResult<std::collections::HashSet<consensus_core::tx::TransactionOutpoint>> {
+        self.store.get_all_outpoints()
     }
 }

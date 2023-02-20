@@ -1,6 +1,6 @@
 use crate::constants::{MAX_SOMPI, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK};
 use consensus_core::{hashing::sighash::SigHashReusedValues, tx::VerifiableTransaction};
-use txscript::TxScriptEngine;
+use txscript::{get_sig_op_count, TxScriptEngine};
 
 use super::{
     errors::{TxResult, TxRuleError},
@@ -91,8 +91,13 @@ impl TransactionValidator {
         Ok(())
     }
 
-    fn check_sig_op_counts(_tx: &impl VerifiableTransaction) -> TxResult<()> {
-        // TODO: Implement this
+    fn check_sig_op_counts<T: VerifiableTransaction>(tx: &T) -> TxResult<()> {
+        for (i, (input, entry)) in tx.populated_inputs().enumerate() {
+            let calculated = get_sig_op_count::<T>(&input.signature_script, &entry.script_public_key);
+            if calculated != input.sig_op_count as u64 {
+                return Err(TxRuleError::WrongSigOpCount(i, input.sig_op_count as u64, calculated));
+            }
+        }
         Ok(())
     }
 
@@ -621,7 +626,7 @@ mod tests {
         ];
         let signed_tx = sign(MutableTransaction::with_entries(unsigned_tx, entries), secret_key.secret_bytes());
         let populated_tx = signed_tx.as_verifiable();
-        let result = tv.check_scripts(&populated_tx);
-        assert!(result.is_ok());
+        assert_eq!(tv.check_scripts(&populated_tx), Ok(()));
+        assert_eq!(TransactionValidator::check_sig_op_counts(&populated_tx), Ok(()));
     }
 }

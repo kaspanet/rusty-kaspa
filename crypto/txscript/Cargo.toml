@@ -22,6 +22,7 @@ txscript-errors.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
+smallvec.workspace = true
 hex = "0.4"
 
 [[bench]]
