@@ -148,11 +148,6 @@ impl EventProcessor {
     /// Potentially resyncs the [`UtxoIndex`] (if it is unsynced, and active) and starts the event processing loop.
     pub async fn run(&self) -> EventProcessorResult<()> {
         trace!("[{IDENT}]: initializing run...");
-        if let Some(utxoindex) = self.utxoindex.as_deref() {
-            if !utxoindex.read().is_synced()? {
-                utxoindex.write().resync()?;
-            }
-        }
         let res = self.process_events().await;
         self.shutdown_finalized_trigger.trigger();
         res
