@@ -849,7 +849,7 @@ async fn json_test(file_path: &str) {
     let consensus = Arc::new(TestConsensus::create_from_temp_db(&config, consensus_send));
 
     let (_utxoindex_db_lifetime, utxoindex_db) = create_temp_db();
-    let utxoindex = UtxoIndex::new(consensus.clone(), utxoindex_db).unwrap();
+    let utxoindex = UtxoIndex::new(consensus.consensus(), utxoindex_db).unwrap();
     let event_processor = Arc::new(EventProcessor::new(Some(utxoindex.clone()), consensus_recv, event_processor_send));
     let async_runtime = Arc::new(AsyncRuntime::new());
     async_runtime.register(event_processor.clone());

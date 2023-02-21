@@ -1,5 +1,5 @@
 use crate::{convert::error::ConversionError, pb::kaspad_message::Payload as KaspadMessagePayload};
-use consensus_core::errors::block::RuleError;
+use consensus_core::errors::{block::RuleError, pruning::PruningImportError};
 use std::time::Duration;
 use thiserror::Error;
 
@@ -19,6 +19,9 @@ pub enum ProtocolError {
 
     #[error("{0}")]
     RuleError(#[from] RuleError),
+
+    #[error("{0}")]
+    PruningImportError(#[from] PruningImportError),
 
     #[error("{0}")]
     Other(&'static str),

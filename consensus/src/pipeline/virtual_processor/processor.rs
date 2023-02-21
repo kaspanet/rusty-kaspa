@@ -77,7 +77,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use super::errors::{VirtualProcessorError, VirtualProcessorResult};
+use super::errors::{PruningImportError, PruningImportResult};
 
 pub struct VirtualStateProcessor {
     // Channels
@@ -718,12 +718,12 @@ impl VirtualStateProcessor {
         &self,
         new_pruning_point: Hash,
         imported_utxo_multiset: &mut MuHash,
-    ) -> VirtualProcessorResult<()> {
+    ) -> PruningImportResult<()> {
         info!("Importing the UTXO set of the pruning point {}", new_pruning_point);
         let new_pruning_point_header = self.headers_store.get_header(new_pruning_point).unwrap();
         let imported_utxo_multiset_hash = imported_utxo_multiset.finalize();
         if imported_utxo_multiset_hash != new_pruning_point_header.utxo_commitment {
-            return Err(VirtualProcessorError::ImportedMultisetHashMismatch(
+            return Err(PruningImportError::ImportedMultisetHashMismatch(
                 new_pruning_point_header.utxo_commitment,
                 imported_utxo_multiset_hash,
             ));
@@ -741,14 +741,14 @@ impl VirtualStateProcessor {
             .calc_daa_score_and_non_daa_mergeset_blocks(&mut window.iter().map(|item| item.0.hash), &virtual_gd);
 
         for tx in new_pruning_point_transactions.iter() {
-            let res: VirtualProcessorResult<Vec<_>> = tx
+            let res: PruningImportResult<Vec<_>> = tx
                 .inputs
                 .iter()
                 .map(|input| {
                     if let Some(entry) = self.pruning_point_utxo_set_store.get(&input.previous_outpoint) {
                         Ok(entry)
                     } else {
-                        Err(VirtualProcessorError::NewPruningPointTxMissingUTXOEntry(tx.id()))
+                        Err(PruningImportError::NewPruningPointTxMissingUTXOEntry(tx.id()))
                     }
                 })
                 .collect();
@@ -761,7 +761,7 @@ impl VirtualStateProcessor {
             };
 
             if let Err(e) = res {
-                return Err(VirtualProcessorError::NewPruningPointTxError(tx.id(), e));
+                return Err(PruningImportError::NewPruningPointTxError(tx.id(), e));
             } else {
                 let tx_fee = res.unwrap();
                 total_fee += tx_fee;
