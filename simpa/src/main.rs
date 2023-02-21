@@ -135,7 +135,8 @@ fn main() {
     let (consensus, _lifetime) = if let Some(input_dir) = args.input_dir {
         let (lifetime, db) = load_existing_db(input_dir, num_cpus::get());
         let (dummy_sender, _) = unbounded::<ConsensusEvent>();
-        let consensus = Arc::new(Consensus::new(db, &config, dummy_sender));
+        let (dummy_notification_sender, _) = unbounded();
+        let consensus = Arc::new(Consensus::new(db, &config, dummy_notification_sender, dummy_sender));
         (consensus, lifetime)
     } else {
         let until = if args.target_blocks.is_none() { args.sim_time * 1000 } else { u64::MAX }; // milliseconds
@@ -148,7 +149,8 @@ fn main() {
     // Benchmark the DAG validation time
     let (_lifetime2, db2) = create_temp_db_with_parallelism(num_cpus::get());
     let (dummy_sender, _) = unbounded::<ConsensusEvent>();
-    let consensus2 = Arc::new(Consensus::new(db2, &config, dummy_sender));
+    let (dummy_notification_sender, _) = unbounded();
+    let consensus2 = Arc::new(Consensus::new(db2, &config, dummy_notification_sender, dummy_sender));
     let handles2 = consensus2.init();
     validate(&consensus, &consensus2, &config, args.delay, args.bps);
     consensus2.shutdown(handles2);

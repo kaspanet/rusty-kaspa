@@ -844,9 +844,10 @@ async fn json_test(file_path: &str) {
         config.process_genesis = false;
     }
 
+    let (notification_send, _notification_recv) = unbounded();
     let (consensus_send, consensus_recv) = unbounded::<ConsensusEvent>();
     let (event_processor_send, _event_processor_recv) = unbounded::<Notification>();
-    let consensus = Arc::new(TestConsensus::create_from_temp_db(&config, consensus_send));
+    let consensus = Arc::new(TestConsensus::create_from_temp_db(&config, notification_send, consensus_send));
 
     let (_utxoindex_db_lifetime, utxoindex_db) = create_temp_db();
     let utxoindex = UtxoIndex::new(consensus.clone(), utxoindex_db).unwrap();

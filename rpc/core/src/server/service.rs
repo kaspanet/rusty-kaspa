@@ -1,14 +1,16 @@
 //! Core server implementation for ClientAPI
 
-use super::collector::{ConsensusCollector, ConsensusNotificationReceiver};
+use super::collector::{CollectorFromConsensus, CollectorFromEventProcessor, EventProcessorNotificationReceiver};
 use crate::{api::rpc::RpcApi, model::*, notify::connection::ChannelConnection, FromRpcHex, Notification, RpcError, RpcResult};
 use async_trait::async_trait;
 use consensus_core::{
     api::DynConsensus,
     block::Block,
     coinbase::MinerData,
+    notify::{connection::ConsensusChannelConnection, notification::Notification as ConsensusNotification},
     tx::{ScriptPublicKey, ScriptVec},
 };
+use consensus_notify::service::NotifyService;
 use hashes::Hash;
 use kaspa_core::trace;
 use kaspa_notify::{
@@ -16,8 +18,9 @@ use kaspa_notify::{
     listener::ListenerId,
     notifier::{Notifier, Notify},
     scope::Scope,
-    subscriber::SubscriptionManager,
+    subscriber::{Subscriber, SubscriptionManager},
 };
+use kaspa_utils::channel::Channel;
 use std::{
     str::FromStr,
     sync::Arc,
@@ -53,15 +56,34 @@ pub struct RpcCoreService {
 const RPC_CORE: &str = "rpc-core";
 
 impl RpcCoreService {
-    pub fn new(consensus: DynConsensus, utxoindex: DynUtxoIndexApi, event_notification_recv: ConsensusNotificationReceiver) -> Self {
+    pub fn new(
+        consensus: DynConsensus,
+        notify_service: Arc<NotifyService>,
+        utxoindex: DynUtxoIndexApi,
+        event_notification_recv: EventProcessorNotificationReceiver,
+    ) -> Self {
         // TODO: instead of getting directly a DynConsensus, rely on some Context equivalent
         //       See app\rpc\rpccontext\context.go
-        // TODO: the channel receiver should be obtained by registering to a consensus notification service
 
-        let collector = Arc::new(ConsensusCollector::new(event_notification_recv));
+        // Prepare consensus-notify objects
+        let consensus_notify_channel = Channel::<ConsensusNotification>::default();
+        let consensus_notify_listener_id =
+            notify_service.notifier().register_new_listener(ConsensusChannelConnection::new(consensus_notify_channel.sender()));
+
+        // Prepare the rpc-core notifier
+        let consensus_collector = Arc::new(CollectorFromConsensus::new(consensus_notify_channel.receiver()));
+        let event_processor_collector = Arc::new(CollectorFromEventProcessor::new(event_notification_recv));
+
+        let consensus_subscriber = Arc::new(Subscriber::new(notify_service.notifier(), consensus_notify_listener_id));
 
         // TODO: Some consensus-compatible subscriber could be provided here
-        let notifier = Arc::new(Notifier::new(EVENT_TYPE_ARRAY[..].into(), vec![collector], vec![], 2, RPC_CORE));
+        let notifier = Arc::new(Notifier::new(
+            EVENT_TYPE_ARRAY[..].into(),
+            vec![consensus_collector, event_processor_collector],
+            vec![consensus_subscriber],
+            1,
+            RPC_CORE,
+        ));
 
         Self { consensus, utxoindex, notifier }
     }

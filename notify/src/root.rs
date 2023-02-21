@@ -21,7 +21,7 @@ use std::sync::Arc;
 ///
 /// It is a [`SubscriptionManager`], so the notification scope can be dynamically configured
 /// according to the needs of the whole notification system.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Root<N>
 where
     N: Notification,

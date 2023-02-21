@@ -48,7 +48,8 @@ impl KaspaNetworkSimulator {
                 create_temp_db()
             };
             let (dummy_sender, _) = unbounded::<ConsensusEvent>();
-            let consensus = Arc::new(Consensus::new(db, &self.config, dummy_sender));
+            let (dummy_notification_sender, _) = unbounded();
+            let consensus = Arc::new(Consensus::new(db, &self.config, dummy_notification_sender, dummy_sender));
             let handles = consensus.init();
             let (sk, pk) = secp.generate_keypair(&mut rng);
             let miner_process = Box::new(Miner::new(

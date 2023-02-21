@@ -859,7 +859,7 @@ pub struct NotifyUtxosChangedResponse {}
 // UtxosChangedNotificationMessage is sent whenever the UTXO index had been updated.
 //
 // See: NotifyUtxosChangedRequest
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UtxosChangedNotification {
     pub added: Arc<Vec<RpcUtxosByAddressesEntry>>,

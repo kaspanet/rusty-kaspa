@@ -1,4 +1,5 @@
 use consensus_core::api::DynConsensus;
+use consensus_notify::service::NotifyService;
 use kaspa_core::{
     task::service::{AsyncService, AsyncServiceFuture},
     trace,
@@ -7,7 +8,7 @@ use kaspa_utils::triggers::DuplexTrigger;
 use std::sync::Arc;
 use utxoindex::api::DynUtxoIndexApi;
 
-use self::{collector::ConsensusNotificationReceiver, service::RpcCoreService};
+use self::{collector::EventProcessorNotificationReceiver, service::RpcCoreService};
 
 pub mod collector;
 pub mod service;
@@ -21,8 +22,13 @@ pub struct RpcCoreServer {
 }
 
 impl RpcCoreServer {
-    pub fn new(consensus: DynConsensus, utxoindex: DynUtxoIndexApi, event_notification_recv: ConsensusNotificationReceiver) -> Self {
-        let service = Arc::new(RpcCoreService::new(consensus, utxoindex, event_notification_recv));
+    pub fn new(
+        consensus: DynConsensus,
+        notify_service: Arc<NotifyService>,
+        utxoindex: DynUtxoIndexApi,
+        event_notification_recv: EventProcessorNotificationReceiver,
+    ) -> Self {
+        let service = Arc::new(RpcCoreService::new(consensus, notify_service, utxoindex, event_notification_recv));
         Self { service, shutdown: DuplexTrigger::default() }
     }
 

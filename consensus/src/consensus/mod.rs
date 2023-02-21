@@ -51,6 +51,7 @@ use consensus_core::{
     errors::{coinbase::CoinbaseResult, tx::TxResult},
     events::ConsensusEvent,
     muhash::MuHashExtensions,
+    notify::{notification::Notification, root::ConsensusNotificationRoot},
     pruning::{PruningPointProof, PruningPointsList},
     trusted::TrustedBlock,
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
@@ -132,12 +133,19 @@ pub struct Consensus {
     pub(super) pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
     pub(super) pruning_proof_manager: PruningProofManager,
 
+    notification_root: Arc<ConsensusNotificationRoot>,
+
     // Counters
     pub counters: Arc<ProcessingCounters>,
 }
 
 impl Consensus {
-    pub fn new(db: Arc<DB>, config: &Config, consensus_sender: AsyncSender<ConsensusEvent>) -> Self {
+    pub fn new(
+        db: Arc<DB>,
+        config: &Config,
+        notification_sender: AsyncSender<Notification>,
+        consensus_sender: AsyncSender<ConsensusEvent>,
+    ) -> Self {
         let params = &config.params;
         let perf_params = &config.perf;
         //
@@ -293,6 +301,8 @@ impl Consensus {
         let (virtual_sender, virtual_receiver): (CrossbeamSender<BlockProcessingMessage>, CrossbeamReceiver<BlockProcessingMessage>) =
             unbounded_crossbeam();
 
+        let notification_root = Arc::new(ConsensusNotificationRoot::new(notification_sender));
+
         let counters = Arc::new(ProcessingCounters::default());
 
         //
@@ -402,6 +412,7 @@ impl Consensus {
             pruning_manager.clone(),
             parents_manager.clone(),
             depth_manager,
+            notification_root.clone(),
         ));
 
         let pruning_proof_manager = PruningProofManager::new(
@@ -460,6 +471,7 @@ impl Consensus {
             coinbase_manager,
             pruning_manager,
             pruning_proof_manager,
+            notification_root,
 
             counters,
             consensus_sender,
@@ -544,6 +556,10 @@ impl Consensus {
 
     pub fn block_status(&self, hash: Hash) -> BlockStatus {
         self.statuses_store.read().get(hash).unwrap()
+    }
+
+    pub fn notification_root(&self) -> Arc<ConsensusNotificationRoot> {
+        self.notification_root.clone()
     }
 
     pub fn processing_counters(&self) -> &Arc<ProcessingCounters> {

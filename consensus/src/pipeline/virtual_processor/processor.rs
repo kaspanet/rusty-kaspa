@@ -50,6 +50,13 @@ use consensus_core::{
     header::Header,
     merkle::calc_hash_merkle_root,
     muhash::MuHashExtensions,
+    notify::{
+        notification::{
+            Notification, UtxosChangedNotification, VirtualDaaScoreChangedNotification,
+            VirtualSelectedParentBlueScoreChangedNotification, VirtualSelectedParentChainChangedNotification,
+        },
+        root::ConsensusNotificationRoot,
+    },
     tx::{MutableTransaction, PopulatedTransaction, Transaction, TransactionOutpoint, UtxoEntry, ValidatedTransaction},
     utxo::{
         utxo_diff::UtxoDiff,
@@ -60,6 +67,7 @@ use consensus_core::{
 use database::prelude::StoreError;
 use hashes::Hash;
 use kaspa_core::{debug, info, trace};
+use kaspa_notify::notifier::Notify;
 use muhash::MuHash;
 
 use async_channel::Sender as AsyncSender; // to avoid confusion with crossbeam
@@ -130,6 +138,8 @@ pub struct VirtualStateProcessor {
     pub(super) pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
     pub(super) parents_manager: ParentsManager<DbHeadersStore, DbReachabilityStore, DbRelationsStore>,
     pub(super) depth_manager: BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>,
+
+    pub(crate) notification_root: Arc<ConsensusNotificationRoot>,
 }
 
 impl VirtualStateProcessor {
@@ -169,6 +179,7 @@ impl VirtualStateProcessor {
         pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
         parents_manager: ParentsManager<DbHeadersStore, DbReachabilityStore, DbRelationsStore>,
         depth_manager: BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>,
+        notification_root: Arc<ConsensusNotificationRoot>,
     ) -> Self {
         Self {
             receiver,
@@ -210,7 +221,13 @@ impl VirtualStateProcessor {
             pruning_manager,
             parents_manager,
             depth_manager,
+            notification_root,
         }
+    }
+
+    #[inline(always)]
+    pub fn notification_root(self: &Arc<Self>) -> Arc<ConsensusNotificationRoot> {
+        self.notification_root.clone()
     }
 
     pub fn worker(self: &Arc<Self>) {
@@ -381,6 +398,24 @@ impl VirtualStateProcessor {
                 self.db.write(batch).unwrap();
                 // Calling the drops explicitly after the batch is written in order to avoid possible errors.
                 drop(virtual_write);
+
+                // Emit notifications
+                let _ = self
+                    .notification_root()
+                    .notify(Notification::UtxosChanged(UtxosChangedNotification::new(Arc::new(accumulated_diff.clone()))));
+                let _ = self.notification_root().notify(Notification::VirtualSelectedParentBlueScoreChanged(
+                    VirtualSelectedParentBlueScoreChangedNotification::new(new_virtual_state.ghostdag_data.blue_score),
+                ));
+                let _ = self.notification_root().notify(Notification::VirtualDaaScoreChanged(
+                    VirtualDaaScoreChangedNotification::new(new_virtual_state.daa_score),
+                ));
+                let _ = self.notification_root().notify(Notification::VirtualSelectedParentChainChanged(
+                    VirtualSelectedParentChainChangedNotification::new(
+                        new_virtual_state.ghostdag_data.mergeset_blues.clone(),
+                        new_virtual_state.ghostdag_data.mergeset_reds.clone(),
+                        Arc::new(new_virtual_state.accepted_tx_ids.clone()),
+                    ),
+                ));
 
                 // Stops consensus from sending into and bloating an unread channel in cases where event processor is not required (such as in testing cases).
                 if self.consensus_sender.receiver_count() > 0 {
