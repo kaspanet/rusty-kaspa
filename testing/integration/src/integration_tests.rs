@@ -51,7 +51,7 @@ use std::{
 use utxoindex::api::UtxoIndexApi;
 use utxoindex::UtxoIndex;
 
-mod common;
+use crate::common;
 
 #[derive(Serialize, Deserialize, Debug)]
 struct JsonBlock {
@@ -75,7 +75,7 @@ const NUM_BLOCKS_EXPONENT: i32 = 12;
 fn reachability_stretch_test(use_attack_json: bool) {
     // Arrange
     let path_str = format!(
-        "tests/testdata/reachability/{}attack-dag-blocks--2^{}-delay-factor--1-k--18.json.gz",
+        "testdata/reachability/{}attack-dag-blocks--2^{}-delay-factor--1-k--18.json.gz",
         if use_attack_json { "" } else { "no" },
         NUM_BLOCKS_EXPONENT
     );
@@ -214,7 +214,7 @@ struct GhostdagTestBlock {
 #[tokio::test]
 async fn ghostdag_test() {
     let mut path_strings: Vec<String> =
-        common::read_dir("tests/testdata/dags").map(|f| f.unwrap().path().to_str().unwrap().to_owned()).collect();
+        common::read_dir("testdata/dags").map(|f| f.unwrap().path().to_str().unwrap().to_owned()).collect();
     path_strings.sort();
 
     for path_str in path_strings.iter() {
@@ -755,55 +755,55 @@ impl KaspadGoParams {
 
 #[tokio::test]
 async fn goref_custom_pruning_depth() {
-    json_test("tests/testdata/dags_for_json_tests/goref_custom_pruning_depth").await
+    json_test("testdata/dags_for_json_tests/goref_custom_pruning_depth").await
 }
 
 #[tokio::test]
 async fn goref_notx_test() {
-    json_test("tests/testdata/dags_for_json_tests/goref-notx-5000-blocks").await
+    json_test("testdata/dags_for_json_tests/goref-notx-5000-blocks").await
 }
 
 #[tokio::test]
 async fn goref_notx_concurrent_test() {
-    json_concurrency_test("tests/testdata/dags_for_json_tests/goref-notx-5000-blocks").await
+    json_concurrency_test("testdata/dags_for_json_tests/goref-notx-5000-blocks").await
 }
 
 #[tokio::test]
 async fn goref_tx_small_test() {
-    json_test("tests/testdata/dags_for_json_tests/goref-905-tx-265-blocks").await
+    json_test("testdata/dags_for_json_tests/goref-905-tx-265-blocks").await
 }
 
 #[tokio::test]
 async fn goref_tx_small_concurrent_test() {
-    json_concurrency_test("tests/testdata/dags_for_json_tests/goref-905-tx-265-blocks").await
+    json_concurrency_test("testdata/dags_for_json_tests/goref-905-tx-265-blocks").await
 }
 
 #[ignore]
 #[tokio::test]
 async fn goref_tx_big_test() {
     // TODO: add this directory to a data repo and fetch dynamically
-    json_test("tests/testdata/dags_for_json_tests/goref-1.6M-tx-10K-blocks").await
+    json_test("testdata/dags_for_json_tests/goref-1.6M-tx-10K-blocks").await
 }
 
 #[ignore]
 #[tokio::test]
 async fn goref_tx_big_concurrent_test() {
     // TODO: add this file to a data repo and fetch dynamically
-    json_concurrency_test("tests/testdata/dags_for_json_tests/goref-1.6M-tx-10K-blocks").await
+    json_concurrency_test("testdata/dags_for_json_tests/goref-1.6M-tx-10K-blocks").await
 }
 
 #[tokio::test]
 #[ignore = "long"]
 async fn goref_mainnet_test() {
     // TODO: add this directory to a data repo and fetch dynamically
-    json_test("tests/testdata/dags_for_json_tests/goref-mainnet").await
+    json_test("testdata/dags_for_json_tests/goref-mainnet").await
 }
 
 #[tokio::test]
 #[ignore = "long"]
 async fn goref_mainnet_concurrent_test() {
     // TODO: add this directory to a data repo and fetch dynamically
-    json_concurrency_test("tests/testdata/dags_for_json_tests/goref-mainnet").await
+    json_concurrency_test("testdata/dags_for_json_tests/goref-mainnet").await
 }
 
 fn gzip_file_lines(path: &Path) -> impl Iterator<Item = String> {

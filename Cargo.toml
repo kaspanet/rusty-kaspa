@@ -28,6 +28,7 @@ members = [
     "database",
     "crypto/txscript",
     "crypto/txscript/errors",
+    "testing/integration",
 ]
 
 [workspace.package]
@@ -66,6 +67,7 @@ txscript = { path = "crypto/txscript" }
 txscript-errors = { path = "crypto/txscript/errors" }
 addressmanager = { path = "components/addressmanager" }
 database = { path = "database" }
+testing-integration = { path = "testing/integration" }
 
 thiserror = "1"
 faster-hex = "0.6"
