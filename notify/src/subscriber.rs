@@ -6,6 +6,8 @@ use std::sync::{
     Arc,
 };
 extern crate derive_more;
+use crate::events::EventSwitches;
+
 use super::{
     error::{Error, Result},
     listener::ListenerId,
@@ -42,6 +44,9 @@ enum Ctl {
 /// A subscriber handling subscription messages executing them into a [SubscriptionManager].
 #[derive(Debug)]
 pub struct Subscriber {
+    /// Event types this subscriber is configured to subscribe to
+    enabled_events: EventSwitches,
+
     /// Subscription manager
     subscription_manager: DynSubscriptionManager,
 
@@ -57,8 +62,9 @@ pub struct Subscriber {
 }
 
 impl Subscriber {
-    pub fn new(subscription_manager: DynSubscriptionManager, listener_id: ListenerId) -> Self {
+    pub fn new(enabled_events: EventSwitches, subscription_manager: DynSubscriptionManager, listener_id: ListenerId) -> Self {
         Self {
+            enabled_events,
             subscription_manager,
             listener_id,
             started: Arc::new(AtomicBool::default()),
@@ -96,8 +102,10 @@ impl Subscriber {
 
                     mutation = self.incoming.recv().fuse() => {
                         if let Ok(mutation) = mutation {
-                            if let Err(err) = self.subscription_manager.clone().execute_subscribe_command(self.listener_id, mutation.scope, mutation.command).await {
-                                trace!("[Subscriber] the subscription command returned an error: {:?}", err);
+                            if self.enabled_events[mutation.event_type()] {
+                                if let Err(err) = self.subscription_manager.clone().execute_subscribe_command(self.listener_id, mutation.scope, mutation.command).await {
+                                    trace!("[Subscriber] the subscription command returned an error: {:?}", err);
+                                }
                             }
                         }
                     }

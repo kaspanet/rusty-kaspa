@@ -5,7 +5,11 @@ use kaspa_core::{
     task::service::{AsyncService, AsyncServiceFuture},
     trace,
 };
-use kaspa_notify::{collector::CollectorFrom, events::EVENT_TYPE_ARRAY, subscriber::Subscriber};
+use kaspa_notify::{
+    collector::CollectorFrom,
+    events::{EventSwitches, EVENT_TYPE_ARRAY},
+    subscriber::Subscriber,
+};
 use kaspa_utils::triggers::SingleTrigger;
 use std::sync::Arc;
 
@@ -18,10 +22,10 @@ pub struct NotifyService {
 
 impl NotifyService {
     pub fn new(root: Arc<ConsensusNotificationRoot>, notification_receiver: Receiver<Notification>) -> Self {
+        let root_events: EventSwitches = EVENT_TYPE_ARRAY[..].into();
         let collector = Arc::new(CollectorFrom::<Notification, Notification>::new(notification_receiver));
-        let subscriber = Arc::new(Subscriber::new(root, 0));
-        let notifier =
-            Arc::new(ConsensusNotifier::new(EVENT_TYPE_ARRAY[..].into(), vec![collector], vec![subscriber], 1, NOTIFY_SERVICE));
+        let subscriber = Arc::new(Subscriber::new(root_events, root, 0));
+        let notifier = Arc::new(ConsensusNotifier::new(root_events, vec![collector], vec![subscriber], 1, NOTIFY_SERVICE));
         Self { notifier, shutdown: SingleTrigger::default() }
     }
 

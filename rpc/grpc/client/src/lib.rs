@@ -58,10 +58,11 @@ impl GrpcClient {
     pub async fn connect(address: String, reconnect: bool) -> Result<GrpcClient> {
         let notify_channel = NotificationChannel::default();
         let inner = Inner::connect(address, reconnect, notify_channel.sender()).await?;
+        let core_events = EVENT_TYPE_ARRAY[..].into();
         let collector = Arc::new(RpcCoreCollector::new(notify_channel.receiver()));
-        let subscriber = Arc::new(Subscriber::new(inner.clone(), 0));
+        let subscriber = Arc::new(Subscriber::new(core_events, inner.clone(), 0));
 
-        let notifier = Arc::new(Notifier::new(EVENT_TYPE_ARRAY[..].into(), vec![collector], vec![subscriber], 10, GRPC_CLIENT));
+        let notifier = Arc::new(Notifier::new(core_events, vec![collector], vec![subscriber], 10, GRPC_CLIENT));
 
         Ok(Self { inner, notifier })
     }

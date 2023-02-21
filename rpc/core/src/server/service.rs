@@ -14,7 +14,7 @@ use consensus_notify::service::NotifyService;
 use hashes::Hash;
 use kaspa_core::trace;
 use kaspa_notify::{
-    events::EVENT_TYPE_ARRAY,
+    events::{EventSwitches, EventType, EVENT_TYPE_ARRAY},
     listener::ListenerId,
     notifier::{Notifier, Notify},
     scope::Scope,
@@ -71,10 +71,14 @@ impl RpcCoreService {
             notify_service.notifier().register_new_listener(ConsensusChannelConnection::new(consensus_notify_channel.sender()));
 
         // Prepare the rpc-core notifier
+        let mut consensus_events: EventSwitches = EVENT_TYPE_ARRAY[..].into();
+        consensus_events[EventType::UtxosChanged] = false;
+        let _utxoindex_events: EventSwitches = [EventType::UtxosChanged].as_ref().into();
         let consensus_collector = Arc::new(CollectorFromConsensus::new(consensus_notify_channel.receiver()));
         let event_processor_collector = Arc::new(CollectorFromEventProcessor::new(event_notification_recv));
 
-        let consensus_subscriber = Arc::new(Subscriber::new(notify_service.notifier(), consensus_notify_listener_id));
+        let consensus_subscriber =
+            Arc::new(Subscriber::new(consensus_events, notify_service.notifier(), consensus_notify_listener_id));
 
         // TODO: Some consensus-compatible subscriber could be provided here
         let notifier = Arc::new(Notifier::new(
