@@ -813,7 +813,7 @@ fn gzip_file_lines(path: &Path) -> impl Iterator<Item = String> {
 }
 
 async fn json_test(file_path: &str) {
-    kaspa_core::log::try_init_logger("debug");
+    kaspa_core::log::try_init_logger("info");
     let main_path = Path::new(file_path);
     let proof_exists = common::file_exists(&main_path.join("proof.json.gz"));
 
@@ -928,10 +928,13 @@ async fn json_test(file_path: &str) {
         }
 
         consensus.consensus.import_pruning_point_utxo_set(pruning_point.unwrap(), &mut multiset).unwrap();
-        consensus.consensus.resolve_virtual();
         utxoindex.write().resync().unwrap();
+        consensus.consensus.resolve_virtual();
         // TODO: Add consensus validation that the pruning point is actually the right block according to the rules (in pruning depth etc).
     }
+
+    core.shutdown();
+    core.join(joins);
 
     // Assert that at least one body tip was resolved with valid UTXO
     assert!(consensus.body_tips().iter().copied().any(|h| consensus.block_status(h) == BlockStatus::StatusUTXOValid));
@@ -941,9 +944,6 @@ async fn json_test(file_path: &str) {
     assert_eq!(virtual_utxos.len(), utxoindex_utxos.len());
     assert!(virtual_utxos.is_subset(&utxoindex_utxos));
     assert!(utxoindex_utxos.is_subset(&virtual_utxos));
-
-    core.shutdown();
-    core.join(joins);
 }
 
 async fn json_concurrency_test(file_path: &str) {
