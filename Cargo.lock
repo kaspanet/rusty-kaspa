@@ -605,7 +605,6 @@ dependencies = [
  "criterion",
  "crossbeam-channel",
  "database",
- "event-processor",
  "faster-hex",
  "flate2",
  "futures-util",
@@ -633,7 +632,6 @@ dependencies = [
  "tokio",
  "txscript",
  "txscript-errors",
- "utxoindex",
 ]
 
 [[package]]
