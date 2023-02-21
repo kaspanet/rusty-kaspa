@@ -2711,6 +2711,48 @@ dependencies = [
 ]
 
 [[package]]
+name = "testing-integration"
+version = "0.1.0"
+dependencies = [
+ "async-channel",
+ "bincode",
+ "consensus",
+ "consensus-core",
+ "criterion",
+ "crossbeam-channel",
+ "database",
+ "event-processor",
+ "faster-hex",
+ "flate2",
+ "futures-util",
+ "hashes",
+ "indexmap",
+ "itertools 0.10.5",
+ "kaspa-core",
+ "kaspa-utils",
+ "log",
+ "math",
+ "merkle",
+ "muhash",
+ "parking_lot",
+ "pow",
+ "rand 0.8.5",
+ "rand_distr",
+ "rayon",
+ "rocksdb",
+ "secp256k1",
+ "serde",
+ "serde_json",
+ "smallvec",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "txscript",
+ "txscript-errors",
+ "utxoindex",
+]
+
+[[package]]
 name = "textwrap"
 version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
