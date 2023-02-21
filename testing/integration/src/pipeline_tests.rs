@@ -1,8 +1,9 @@
 use consensus::{
+    config::ConfigBuilder,
     consensus::test_consensus::{create_temp_db, TestConsensus},
     model::stores::reachability::{DbReachabilityStore, StagingReachabilityStore},
     params::MAINNET_PARAMS,
-    processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions}, config::ConfigBuilder,
+    processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions},
 };
 use consensus_core::{blockhash, blockstatus::BlockStatus, errors::block::RuleError};
 use futures_util::future::join_all;
