@@ -87,6 +87,12 @@ pub struct BlockAddedNotification {
     pub block: Arc<Block>,
 }
 
+impl BlockAddedNotification {
+    pub fn new(block: Arc<Block>) -> Self {
+        Self { block }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct VirtualSelectedParentChainChangedNotification {
     pub added_chain_block_hashes: Arc<Vec<Hash>>,
@@ -94,14 +100,36 @@ pub struct VirtualSelectedParentChainChangedNotification {
     pub accepted_transaction_ids: Arc<Vec<TransactionId>>,
 }
 
+impl VirtualSelectedParentChainChangedNotification {
+    pub fn new(
+        added_chain_block_hashes: Arc<Vec<Hash>>,
+        removed_chain_block_hashes: Arc<Vec<Hash>>,
+        accepted_transaction_ids: Arc<Vec<TransactionId>>,
+    ) -> Self {
+        Self { added_chain_block_hashes, removed_chain_block_hashes, accepted_transaction_ids }
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct FinalityConflictNotification {
     pub violating_block_hash: Arc<Hash>,
 }
 
+impl FinalityConflictNotification {
+    pub fn new(violating_block_hash: Arc<Hash>) -> Self {
+        Self { violating_block_hash }
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct FinalityConflictResolvedNotification {
     pub finality_block_hash: Arc<Hash>,
+}
+
+impl FinalityConflictResolvedNotification {
+    pub fn new(finality_block_hash: Arc<Hash>) -> Self {
+        Self { finality_block_hash }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -110,14 +138,32 @@ pub struct UtxosChangedNotification {
     pub accumulated_utxo_diff: Arc<UtxoDiff>,
 }
 
+impl UtxosChangedNotification {
+    pub fn new(accumulated_utxo_diff: Arc<UtxoDiff>) -> Self {
+        Self { accumulated_utxo_diff }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct VirtualSelectedParentBlueScoreChangedNotification {
     pub virtual_selected_parent_blue_score: u64,
 }
 
+impl VirtualSelectedParentBlueScoreChangedNotification {
+    pub fn new(virtual_selected_parent_blue_score: u64) -> Self {
+        Self { virtual_selected_parent_blue_score }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct VirtualDaaScoreChangedNotification {
     pub virtual_daa_score: u64,
+}
+
+impl VirtualDaaScoreChangedNotification {
+    pub fn new(virtual_daa_score: u64) -> Self {
+        Self { virtual_daa_score }
+    }
 }
 
 #[derive(Debug, Clone, Default)]
