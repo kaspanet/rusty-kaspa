@@ -1,9 +1,8 @@
 use consensus::{
-    config::ConfigBuilder,
     consensus::test_consensus::{create_temp_db, TestConsensus},
     model::stores::reachability::{DbReachabilityStore, StagingReachabilityStore},
     params::MAINNET_PARAMS,
-    processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions},
+    processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions}, config::ConfigBuilder,
 };
 use consensus_core::{blockhash, blockstatus::BlockStatus, errors::block::RuleError};
 use futures_util::future::join_all;
@@ -13,8 +12,6 @@ use rand_distr::{Distribution, Poisson};
 use rocksdb::WriteBatch;
 use std::cmp::min;
 use tokio::join;
-
-mod common;
 
 #[test]
 fn test_reachability_staging() {

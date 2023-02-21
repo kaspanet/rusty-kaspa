@@ -39,14 +39,14 @@ event-processor.workspace = true
 crossbeam-channel = "0.5"
 async-channel = "1.8.0"
 secp256k1 = { version = "0.24", features = ["global-context", "rand-std"] }
+flate2 = "1"
+rand_distr = "0.4"
+serde_json = "1.0"
 
 [dev-dependencies]
 criterion.workspace = true
 rand = { workspace = true, features = ["small_rng"] }
 tokio = { workspace = true, features = ["rt", "macros"] }
-serde_json = "1.0"
-flate2 = "1"
-rand_distr = "0.4"
 txscript-errors.workspace = true
 
 [features]
