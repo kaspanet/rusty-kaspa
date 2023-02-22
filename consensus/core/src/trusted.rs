@@ -1,4 +1,4 @@
-use crate::{block::Block, blockhash::BlockHashes, header::Header, BlueWorkType, HashKTypeMap};
+use crate::{block::Block, header::Header, BlockHashMap, BlueWorkType, KType};
 use hashes::Hash;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -9,9 +9,9 @@ pub struct ExternalGhostdagData {
     pub blue_score: u64,
     pub blue_work: BlueWorkType,
     pub selected_parent: Hash,
-    pub mergeset_blues: BlockHashes,
-    pub mergeset_reds: BlockHashes,
-    pub blues_anticone_sizes: HashKTypeMap,
+    pub mergeset_blues: Vec<Hash>,
+    pub mergeset_reds: Vec<Hash>,
+    pub blues_anticone_sizes: BlockHashMap<KType>,
 }
 
 /// Represents an externally provided block with associated Ghostdag data which

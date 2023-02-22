@@ -341,12 +341,19 @@ impl VirtualStateProcessor {
                 let mut ctx = UtxoProcessingContext::new((&virtual_ghostdag_data).into(), selected_parent_multiset_hash);
 
                 // Calc virtual DAA score, difficulty bits and past median time
-                let window = self.dag_traversal_manager.block_window(&virtual_ghostdag_data, self.difficulty_window_size);
+                let window = self
+                    .dag_traversal_manager
+                    .block_window(&virtual_ghostdag_data, self.difficulty_window_size)
+                    .expect("rule error for insufficient DAA window size is unexpected here");
                 let (virtual_daa_score, mergeset_non_daa) = self
                     .difficulty_manager
                     .calc_daa_score_and_non_daa_mergeset_blocks(&mut window.iter().map(|item| item.0.hash), &virtual_ghostdag_data);
                 let virtual_bits = self.difficulty_manager.calculate_difficulty_bits(&window);
-                let virtual_past_median_time = self.past_median_time_manager.calc_past_median_time(&virtual_ghostdag_data).0;
+                let virtual_past_median_time = self
+                    .past_median_time_manager
+                    .calc_past_median_time(&virtual_ghostdag_data)
+                    .expect("rule error for insufficient median window size is unexpected here")
+                    .0;
 
                 // Calc virtual UTXO state relative to selected parent
                 self.calculate_utxo_state(&mut ctx, &selected_parent_utxo_view, virtual_daa_score);
@@ -735,7 +742,7 @@ impl VirtualStateProcessor {
         let mut virtual_multiset = imported_utxo_multiset.clone();
         let virtual_parents = vec![new_pruning_point];
         let virtual_gd = self.ghostdag_manager.ghostdag(&virtual_parents);
-        let window = self.dag_traversal_manager.block_window(&virtual_gd, self.difficulty_window_size);
+        let window = self.dag_traversal_manager.block_window(&virtual_gd, self.difficulty_window_size)?;
         let (virtual_daa_score, mergeset_non_daa) = self
             .difficulty_manager
             .calc_daa_score_and_non_daa_mergeset_blocks(&mut window.iter().map(|item| item.0.hash), &virtual_gd);
@@ -816,7 +823,7 @@ impl VirtualStateProcessor {
             .collect_vec();
         self.virtual_stores.write().utxo_set.write_many(&new_pp_added_utxos).unwrap();
 
-        let virtual_past_median_time = self.past_median_time_manager.calc_past_median_time(&virtual_gd).0;
+        let virtual_past_median_time = self.past_median_time_manager.calc_past_median_time(&virtual_gd)?.0;
         let new_virtual_state = VirtualState {
             parents: virtual_parents,
             ghostdag_data: virtual_gd,

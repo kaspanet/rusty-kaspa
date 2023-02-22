@@ -56,6 +56,14 @@ impl TrustedDataPackage {
             }
         }
 
+        // Prune all missing ghostdag mergeset blocks. If due to this prune data becomes insufficient, future
+        // IBD blocks will not validate correctly which will lead to a rule error and peer disconnection
+        for tb in blocks.iter_mut() {
+            tb.ghostdag.mergeset_blues.retain(|h| set.contains(h));
+            tb.ghostdag.mergeset_reds.retain(|h| set.contains(h));
+            tb.ghostdag.blues_anticone_sizes.retain(|k, _| set.contains(k));
+        }
+
         // Topological sort
         blocks.sort_by(|a, b| a.block.header.blue_work.cmp(&b.block.header.blue_work));
 

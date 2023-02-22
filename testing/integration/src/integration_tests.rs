@@ -5,7 +5,7 @@
 use async_channel::unbounded;
 use consensus::config::{Config, ConfigBuilder};
 use consensus::consensus::test_consensus::{create_temp_db, TestConsensus};
-use consensus::model::stores::ghostdag::{GhostdagStoreReader, HashKTypeMap, KType as GhostdagKType};
+use consensus::model::stores::ghostdag::{GhostdagStoreReader, KType as GhostdagKType};
 use consensus::model::stores::headers::HeaderStoreReader;
 use consensus::model::stores::reachability::DbReachabilityStore;
 use consensus::params::{Params, DEVNET_PARAMS, MAINNET_PARAMS};
@@ -340,7 +340,8 @@ async fn block_window_test() {
         // Submit to consensus
         consensus.validate_and_insert_block(block.to_immutable()).await.unwrap();
 
-        let window = consensus.dag_traversal_manager().block_window(&consensus.ghostdag_store().get_data(block_id).unwrap(), 10);
+        let window =
+            consensus.dag_traversal_manager().block_window(&consensus.ghostdag_store().get_data(block_id).unwrap(), 10).unwrap();
 
         let window_hashes: Vec<String> = window
             .into_sorted_vec()
@@ -1090,19 +1091,27 @@ fn json_trusted_line_to_block_and_gd(line: String) -> TrustedBlock {
         blue_score: json_block_with_trusted.GHOSTDAG.BlueScore,
         blue_work: BlueWorkType::from_hex(&json_block_with_trusted.GHOSTDAG.BlueWork).unwrap(),
         selected_parent: Hash::from_str(&json_block_with_trusted.GHOSTDAG.SelectedParent).unwrap(),
-        mergeset_blues: Arc::new(
-            json_block_with_trusted.GHOSTDAG.MergeSetBlues.into_iter().map(|hex| Hash::from_str(&hex).unwrap()).collect_vec(),
-        ),
-        mergeset_reds: Arc::new(
-            json_block_with_trusted.GHOSTDAG.MergeSetReds.into_iter().map(|hex| Hash::from_str(&hex).unwrap()).collect_vec(),
-        ),
-        blues_anticone_sizes: HashKTypeMap::new(BlockHashMap::from_iter(
+        mergeset_blues: json_block_with_trusted
+            .GHOSTDAG
+            .MergeSetBlues
+            .into_iter()
+            .map(|hex| Hash::from_str(&hex).unwrap())
+            .collect_vec(),
+
+        mergeset_reds: json_block_with_trusted
+            .GHOSTDAG
+            .MergeSetReds
+            .into_iter()
+            .map(|hex| Hash::from_str(&hex).unwrap())
+            .collect_vec(),
+
+        blues_anticone_sizes: BlockHashMap::from_iter(
             json_block_with_trusted
                 .GHOSTDAG
                 .BluesAnticoneSizes
                 .into_iter()
                 .map(|e| (Hash::from_str(&e.BlueHash).unwrap(), e.AnticoneSize)),
-        )),
+        ),
     };
 
     TrustedBlock::new(block, gd)
@@ -1283,7 +1292,7 @@ async fn difficulty_test() {
 
     async fn add_block_with_min_time(consensus: &TestConsensus, parents: Vec<Hash>) -> Header {
         let ghostdag_data = consensus.ghostdag_manager().ghostdag(&parents[..]);
-        let (pmt, _) = consensus.past_median_time_manager().calc_past_median_time(&ghostdag_data);
+        let (pmt, _) = consensus.past_median_time_manager().calc_past_median_time(&ghostdag_data).unwrap();
         add_block(consensus, Some(pmt + 1), parents).await
     }
 

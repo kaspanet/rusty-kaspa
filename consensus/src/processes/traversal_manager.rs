@@ -7,7 +7,8 @@ use crate::{
     },
     processes::ghostdag::ordering::SortableBlock,
 };
-use consensus_core::{blockhash::BlockHashExtensions, BlueWorkType};
+use consensus_core::{blockhash::BlockHashExtensions, errors::block::RuleError, BlueWorkType};
+use database::prelude::StoreResultExtensions;
 use hashes::Hash;
 use kaspa_utils::refs::Refs;
 
@@ -39,9 +40,10 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader> DagTraversalManager<T, U
             past_median_time_window_size,
         }
     }
-    pub fn block_window(&self, high_ghostdag_data: &GhostdagData, window_size: usize) -> BlockWindowHeap {
+
+    pub fn block_window(&self, high_ghostdag_data: &GhostdagData, window_size: usize) -> Result<BlockWindowHeap, RuleError> {
         if window_size == 0 {
-            return BlockWindowHeap::new();
+            return Ok(BlockWindowHeap::new());
         }
 
         let cache = if window_size == self.difficulty_window_size {
@@ -63,7 +65,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader> DagTraversalManager<T, U
                     );
                 }
 
-                return window_heap.binary_heap;
+                return Ok(window_heap.binary_heap);
             }
         }
 
@@ -72,11 +74,26 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader> DagTraversalManager<T, U
 
         // Walk down the chain until we cross the window boundaries
         loop {
-            assert!(!current_ghostdag.selected_parent.is_origin(), "block window should never get to the origin block");
+            if current_ghostdag.selected_parent.is_origin() {
+                if window_heap.binary_heap.len() == window_heap.size {
+                    break;
+                } else {
+                    return Err(RuleError::InsufficientDaaWindowSize(window_heap.binary_heap.len()));
+                }
+            }
+
             if current_ghostdag.selected_parent == self.genesis_hash {
                 break;
             }
-            let parent_ghostdag = self.ghostdag_store.get_data(current_ghostdag.selected_parent).unwrap();
+
+            let Some(parent_ghostdag) = self.ghostdag_store.get_data(current_ghostdag.selected_parent).unwrap_option() else {
+                if window_heap.binary_heap.len() == window_heap.size {
+                    break;
+                } else {
+                    return Err(RuleError::InsufficientDaaWindowSize(window_heap.binary_heap.len()));
+                }
+            };
+
             let selected_parent_blue_work_too_low =
                 self.try_push_mergeset(&mut window_heap, &current_ghostdag, parent_ghostdag.blue_work);
             // No need to further iterate since past of selected parent has even lower blue work
@@ -86,7 +103,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader> DagTraversalManager<T, U
             current_ghostdag = parent_ghostdag.into();
         }
 
-        window_heap.binary_heap
+        Ok(window_heap.binary_heap)
     }
 
     fn try_push_mergeset(

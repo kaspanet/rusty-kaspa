@@ -23,7 +23,7 @@ impl BlockBodyProcessor {
     }
 
     fn check_block_transactions_in_context(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {
-        let (pmt, _) = self.past_median_time_manager.calc_past_median_time(&self.ghostdag_store.get_data(block.hash()).unwrap());
+        let (pmt, _) = self.past_median_time_manager.calc_past_median_time(&self.ghostdag_store.get_data(block.hash()).unwrap())?;
         for tx in block.transactions.iter() {
             if let Err(e) = self.transaction_validator.utxo_free_tx_validation(tx, block.header.daa_score, pmt) {
                 return Err(RuleError::TxInContextFailed(tx.id(), e));
@@ -162,7 +162,8 @@ mod tests {
             check_for_lock_time_and_sequence(&consensus, valid_block_child.header.hash, 10.into(), tip_daa_score - 1, 0, true).await;
 
             let valid_block_child_gd = consensus.ghostdag_store().get_data(valid_block_child.header.hash).unwrap();
-            let (valid_block_child_gd_pmt, _) = consensus.past_median_time_manager().calc_past_median_time(&valid_block_child_gd);
+            let (valid_block_child_gd_pmt, _) =
+                consensus.past_median_time_manager().calc_past_median_time(&valid_block_child_gd).unwrap();
             let past_median_time = valid_block_child_gd_pmt + 1;
 
             // Check that the same past median time as the block's or higher fails, but lower passes.

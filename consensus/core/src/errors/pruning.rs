@@ -1,4 +1,4 @@
-use super::tx::TxRuleError;
+use super::{block::RuleError, tx::TxRuleError};
 use hashes::Hash;
 use thiserror::Error;
 
@@ -15,6 +15,9 @@ pub enum PruningImportError {
 
     #[error("the imported multiset hash was expected to be {0} and was actually {1}")]
     ImportedMultisetHashMismatch(Hash, Hash),
+
+    #[error("pruning import data lead to validation rule error")]
+    PruningImportRuleError(#[from] RuleError),
 }
 
 pub type PruningImportResult<T> = std::result::Result<T, PruningImportError>;

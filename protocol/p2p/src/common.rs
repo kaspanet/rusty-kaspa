@@ -8,7 +8,7 @@ pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(120); // 2 minutes
 
 #[derive(Error, Debug, Clone)]
 pub enum ProtocolError {
-    #[error("timeout expired {0:?}")]
+    #[error("timeout expired after {0:?}")]
     Timeout(Duration),
 
     #[error("expected message type/s {0} but got {1:?}")]
