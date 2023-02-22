@@ -4,6 +4,6 @@ web-root
 /rust-toolchain
 /.vscode/
 **/db-*
-/consensus/tests/testdata/dags_for_json_tests/goref-mainnet
-/consensus/tests/testdata/dags_for_json_tests/goref-1.6M-tx-10K-blocks
+/testing/integration/testdata/dags_for_json_tests/goref-mainnet
+/testing/integration/testdata/dags_for_json_tests/goref-1.6M-tx-10K-blocks
 analyzer-target

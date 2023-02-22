@@ -4,7 +4,6 @@ use std::{
     path::Path,
 };
 
-#[allow(dead_code)] // Usage by integration tests is ignored by the compiler for some reason
 pub fn open_file(file_path: &Path) -> File {
     let file_res = File::open(file_path);
     match file_res {
@@ -12,7 +11,7 @@ pub fn open_file(file_path: &Path) -> File {
         Err(e) => match e.kind() {
             io::ErrorKind::NotFound => {
                 // In debug mode the working directory is often the top-level workspace folder
-                let path = Path::new("consensus");
+                let path = Path::new("testing/integration");
                 File::open(path.join(file_path)).unwrap()
             }
             _ => panic!("{}", e),
@@ -20,16 +19,14 @@ pub fn open_file(file_path: &Path) -> File {
     }
 }
 
-#[allow(dead_code)] // Usage by integration tests is ignored by the compiler for some reason
 pub fn file_exists(file_path: &Path) -> bool {
     if !file_path.exists() {
         // In debug mode the working directory is often the top-level workspace folder
-        return Path::new("consensus").join(file_path).exists();
+        return Path::new("testing/integration").join(file_path).exists();
     }
     true
 }
 
-#[allow(dead_code)] // Usage by integration tests is ignored by the compiler
 pub fn read_dir(dir_path: &str) -> ReadDir {
     let dir_res = fs::read_dir(dir_path);
     match dir_res {
@@ -37,7 +34,7 @@ pub fn read_dir(dir_path: &str) -> ReadDir {
         Err(e) => match e.kind() {
             io::ErrorKind::NotFound => {
                 // In debug mode the working directory is often the top-level workspace folder
-                let path = Path::new("consensus");
+                let path = Path::new("testing/integration");
                 fs::read_dir(path.join(dir_path)).unwrap()
             }
             _ => panic!("{}", e),

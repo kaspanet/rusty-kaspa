@@ -1,6 +1,5 @@
 [package]
-name = "consensus"
-description = "Kaspa consensus lib"
+name = "testing-integration"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -14,6 +13,7 @@ hashes.workspace = true
 merkle.workspace = true
 kaspa-core.workspace = true
 consensus-core.workspace = true
+consensus.workspace = true
 faster-hex.workspace = true
 thiserror.workspace = true
 serde.workspace = true
@@ -33,23 +33,21 @@ parking_lot.workspace = true
 txscript.workspace = true
 rocksdb.workspace = true
 database.workspace = true
+utxoindex.workspace = true
+event-processor.workspace = true
 
 crossbeam-channel = "0.5"
 async-channel = "1.8.0"
 secp256k1 = { version = "0.24", features = ["global-context", "rand-std"] }
+flate2 = "1"
+rand_distr = "0.4"
+serde_json = "1.0"
 
 [dev-dependencies]
 criterion.workspace = true
 rand = { workspace = true, features = ["small_rng"] }
 tokio = { workspace = true, features = ["rt", "macros"] }
-serde_json = "1.0"
-flate2 = "1"
-rand_distr = "0.4"
 txscript-errors.workspace = true
-
-[[bench]]
-name = "hash_benchmarks"
-harness = false
 
 [features]
 html_reports = []
