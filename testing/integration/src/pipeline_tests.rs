@@ -14,8 +14,6 @@ use rocksdb::WriteBatch;
 use std::cmp::min;
 use tokio::join;
 
-mod common;
-
 #[test]
 fn test_reachability_staging() {
     // Arrange
