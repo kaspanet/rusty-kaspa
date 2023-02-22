@@ -58,7 +58,6 @@ impl<'a, 'b> TrustedEntryStream<'a, 'b> {
         // Request the next batch only if the stream is still live
         if let Ok(Some(_)) = res {
             self.i += 1;
-            // TODO: test that batch counting is correct and follows golang imp
             if self.i % IBD_BATCH_SIZE == 0 {
                 info!("Downloaded {} blocks from the pruning point anticone", self.i - 1);
                 self.router
