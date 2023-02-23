@@ -5,6 +5,7 @@
 
 use consensus_core::{
     block::Block,
+    blockhash::ORIGIN,
     trusted::{TrustedBlock, TrustedHash, TrustedHeader},
     BlockHashMap, BlockHashSet, HashMapCustomHasher,
 };
@@ -53,6 +54,17 @@ impl TrustedDataPackage {
         for th in self.daa_window.iter() {
             if set.insert(th.header.hash) {
                 blocks.push(TrustedBlock::new(Block::from_header_arc(th.header.clone()), th.ghostdag.clone()));
+            }
+        }
+
+        // Prune all missing ghostdag mergeset blocks. If due to this prune data becomes insufficient, future
+        // IBD blocks will not validate correctly which will lead to a rule error and peer disconnection
+        for tb in blocks.iter_mut() {
+            tb.ghostdag.mergeset_blues.retain(|h| set.contains(h));
+            tb.ghostdag.mergeset_reds.retain(|h| set.contains(h));
+            tb.ghostdag.blues_anticone_sizes.retain(|k, _| set.contains(k));
+            if !set.contains(&tb.ghostdag.selected_parent) {
+                tb.ghostdag.selected_parent = ORIGIN;
             }
         }
 

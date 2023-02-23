@@ -32,7 +32,7 @@ use crate::{
         body_processor::BlockBodyProcessor,
         deps_manager::{BlockProcessingMessage, BlockResultSender, BlockTask},
         header_processor::HeaderProcessor,
-        virtual_processor::{errors::VirtualProcessorResult, VirtualStateProcessor},
+        virtual_processor::{errors::PruningImportResult, VirtualStateProcessor},
         ProcessingCounters,
     },
     processes::{
@@ -47,7 +47,7 @@ use consensus_core::{
     block::{Block, BlockTemplate},
     blockstatus::BlockStatus,
     coinbase::MinerData,
-    errors::pruning::PruningError,
+    errors::pruning::PruningImportError,
     errors::{coinbase::CoinbaseResult, tx::TxResult},
     events::ConsensusEvent,
     muhash::MuHashExtensions,
@@ -520,28 +520,6 @@ impl Consensus {
         self.pruning_proof_manager.import_pruning_points(&pruning_points)
     }
 
-    pub fn append_imported_pruning_point_utxos(
-        &self,
-        outpoint_utxo_pairs: &[(TransactionOutpoint, UtxoEntry)],
-        current_multiset: &mut MuHash,
-    ) {
-        // TODO: Check if a db tx is needed. We probably need some kind of a flag that is set on this function to true, and then
-        // is set to false on the end of import_pruning_point_utxo_set. On any failure on any of those functions (and also if the
-        // node starts when the flag is true) the related data will be deleted and the flag will be set to false.
-        self.pruning_point_utxo_set_store.write_many(outpoint_utxo_pairs).unwrap();
-        for (outpoint, entry) in outpoint_utxo_pairs {
-            current_multiset.add_utxo(outpoint, entry);
-        }
-    }
-
-    pub fn import_pruning_point_utxo_set(
-        &self,
-        new_pruning_point: Hash,
-        imported_utxo_multiset: &mut MuHash,
-    ) -> VirtualProcessorResult<()> {
-        self.virtual_processor.import_pruning_point_utxo_set(new_pruning_point, imported_utxo_multiset)
-    }
-
     pub fn resolve_virtual(&self) {
         self.virtual_processor.resolve_virtual()
     }
@@ -630,7 +608,7 @@ impl ConsensusApi for Consensus {
         self.coinbase_manager.modify_coinbase_payload(payload, miner_data)
     }
 
-    fn validate_pruning_proof(self: Arc<Self>, _proof: &PruningPointProof) -> Result<(), PruningError> {
+    fn validate_pruning_proof(self: Arc<Self>, _proof: &PruningPointProof) -> Result<(), PruningImportError> {
         unimplemented!()
     }
 
@@ -640,6 +618,20 @@ impl ConsensusApi for Consensus {
 
     fn import_pruning_points(self: Arc<Self>, pruning_points: PruningPointsList) {
         self.as_ref().import_pruning_points(pruning_points)
+    }
+
+    fn append_imported_pruning_point_utxos(&self, utxoset_chunk: &[(TransactionOutpoint, UtxoEntry)], current_multiset: &mut MuHash) {
+        // TODO: Check if a db tx is needed. We probably need some kind of a flag that is set on this function to true, and then
+        // is set to false on the end of import_pruning_point_utxo_set. On any failure on any of those functions (and also if the
+        // node starts when the flag is true) the related data will be deleted and the flag will be set to false.
+        self.pruning_point_utxo_set_store.write_many(utxoset_chunk).unwrap();
+        for (outpoint, entry) in utxoset_chunk {
+            current_multiset.add_utxo(outpoint, entry);
+        }
+    }
+
+    fn import_pruning_point_utxo_set(&self, new_pruning_point: Hash, imported_utxo_multiset: &mut MuHash) -> PruningImportResult<()> {
+        self.virtual_processor.import_pruning_point_utxo_set(new_pruning_point, imported_utxo_multiset)
     }
 }
 
