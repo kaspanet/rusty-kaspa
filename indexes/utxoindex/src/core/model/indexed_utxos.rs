@@ -1,9 +1,7 @@
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 use consensus_core::tx::{ScriptPublicKey, TransactionOutpoint, UtxoEntry};
-
-use crate::events::UtxosChangedEvent;
 
 // TODO: explore potential optimization via custom TransactionOutpoint hasher for below,
 // One possible implementation: u64 of transaction id xor'd with 4 bytes of transaction index.
@@ -45,11 +43,5 @@ impl UtxoChanges {
     /// Create a new [`UtxoChanges`] struct via supplied `added` and `removed` [`UtxoSetByScriptPublicKey`]'s
     pub fn new(added: UtxoSetByScriptPublicKey, removed: UtxoSetByScriptPublicKey) -> Self {
         Self { added, removed }
-    }
-}
-
-impl From<UtxoChanges> for UtxosChangedEvent {
-    fn from(utxo_changes: UtxoChanges) -> Self {
-        Self { added: Arc::new(utxo_changes.added), removed: Arc::new(utxo_changes.removed) }
     }
 }

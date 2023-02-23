@@ -1,7 +1,7 @@
 use derive_more::Display;
 use kaspa_notify::{full_featured, notification::Notification as NotificationTrait, subscription::Single};
 use std::sync::Arc;
-use utxoindex::model::UtxoSetByScriptPublicKey;
+use utxoindex::model::{UtxoChanges, UtxoSetByScriptPublicKey};
 
 full_featured! {
 #[derive(Clone, Debug, Display)]
@@ -49,4 +49,10 @@ pub struct PruningPointUtxoSetOverrideNotification {}
 pub struct UtxosChangedNotification {
     pub added: Arc<UtxoSetByScriptPublicKey>,
     pub removed: Arc<UtxoSetByScriptPublicKey>,
+}
+
+impl From<UtxoChanges> for UtxosChangedNotification {
+    fn from(item: UtxoChanges) -> Self {
+        Self { added: Arc::new(item.added), removed: Arc::new(item.removed) }
+    }
 }

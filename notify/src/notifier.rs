@@ -278,7 +278,10 @@ where
 
     async fn stop(self: Arc<Self>) -> Result<()> {
         if self.started.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
-            join_all(self.collectors.iter().map(|x| x.stop())).await.into_iter().collect::<std::result::Result<Vec<()>, _>>()?;
+            join_all(self.collectors.iter().map(|x| x.clone().stop()))
+                .await
+                .into_iter()
+                .collect::<std::result::Result<Vec<()>, _>>()?;
             join_all(self.broadcasters.iter().map(|x| x.stop())).await.into_iter().collect::<std::result::Result<Vec<()>, _>>()?;
             join_all(self.subscribers.iter().map(|x| x.stop())).await.into_iter().collect::<std::result::Result<Vec<()>, _>>()?;
         } else {

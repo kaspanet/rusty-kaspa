@@ -17,7 +17,6 @@ use kaspa_core::trace;
 use std::sync::Arc;
 use triggered::{Listener, Trigger};
 use utxoindex::api::DynUtxoIndexApi;
-use utxoindex::events::UtxoIndexEvent;
 
 /// The [`EventProcessor`] takes in events from kaspad and processes these to [`Notification`]s,
 /// It also feeds and controls indexers, thereby extracting indexed events.
@@ -83,13 +82,13 @@ impl EventProcessor {
     ) -> EventProcessorResult<()> {
         trace!("[{IDENT}]: processing {:?}", virtual_change_set_event);
         if let Some(utxoindex) = self.utxoindex.as_deref() {
-            let UtxoIndexEvent::UtxosChanged(utxo_changed_event) = utxoindex
+            let utxos_changes = utxoindex
                 .write()
                 .update(virtual_change_set_event.accumulated_utxo_diff.clone(), virtual_change_set_event.parents.clone())?;
             self.rpc_send
                 .send(Notification::UtxosChanged(Arc::new(UtxosChangedNotification {
-                    added: utxo_changed_event.added.clone(),
-                    removed: utxo_changed_event.removed.clone(),
+                    added: Arc::new(utxos_changes.added),
+                    removed: Arc::new(utxos_changes.removed),
                 })))
                 .await?;
         };

@@ -1,5 +1,3 @@
-use std::{collections::HashSet, sync::Arc};
-
 use consensus_core::{
     tx::{ScriptPublicKeys, TransactionOutpoint},
     utxo::utxo_diff::UtxoDiff,
@@ -8,11 +6,15 @@ use consensus_core::{
 use database::prelude::StoreResult;
 use hashes::Hash;
 use parking_lot::RwLock;
+use std::{collections::HashSet, fmt::Debug, sync::Arc};
 
-use crate::{errors::UtxoIndexResult, events::UtxoIndexEvent, model::UtxoSetByScriptPublicKey};
+use crate::{
+    errors::UtxoIndexResult,
+    model::{UtxoChanges, UtxoSetByScriptPublicKey},
+};
 
 ///Utxoindex API targeted at retrieval calls.
-pub trait UtxoIndexApi: Send + Sync {
+pub trait UtxoIndexApi: Send + Sync + Debug {
     /// Retrieve circulating supply from the utxoindex db.
     ///
     /// Note: Use a read lock when accessing this method
@@ -41,7 +43,7 @@ pub trait UtxoIndexApi: Send + Sync {
     /// Update the utxoindex with the given utxo_diff, and tips.
     ///
     /// Note: Use a write lock when accessing this method
-    fn update(&mut self, utxo_diff: Arc<UtxoDiff>, tips: Arc<Vec<Hash>>) -> UtxoIndexResult<UtxoIndexEvent>;
+    fn update(&mut self, utxo_diff: Arc<UtxoDiff>, tips: Arc<Vec<Hash>>) -> UtxoIndexResult<UtxoChanges>;
 
     /// Resync the utxoindex from the consensus db
     ///

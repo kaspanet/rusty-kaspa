@@ -17,7 +17,7 @@ use consensus_core::{
 };
 
 use kaspa_core::info;
-use utxoindex::{api::UtxoIndexApi, events::UtxoIndexEvent, model::CirculatingSupply, UtxoIndex};
+use utxoindex::{api::UtxoIndexApi, model::CirculatingSupply, UtxoIndex};
 
 mod testutils;
 use testutils::virtual_change_emulator::VirtualChangeEmulator;
@@ -110,10 +110,10 @@ fn test_utxoindex() {
     virtual_change_emulator.change_virtual_state(update_utxo_collection_size, update_utxo_collection_size, 1);
 
     let now = Instant::now();
-    let res = utxoindex
+    let utxo_changes = utxoindex
         .write()
         .update(virtual_change_emulator.virtual_state.accumulated_utxo_diff.clone(), virtual_change_emulator.virtual_state.parents)
-        .expect("expected utxoindex event");
+        .expect("expected utxoindex utxo changes");
     let bench_time = now.elapsed().as_millis();
     // TODO: move over to proper benching eventually.
     info!(
@@ -121,43 +121,35 @@ fn test_utxoindex() {
         update_utxo_collection_size, script_public_key_pool_size, bench_time
     ); //ad-hoc benchmark (run with --release)
 
-    match res {
-        UtxoIndexEvent::UtxosChanged(utxo_changed) => {
-            let mut i = 0;
-            for (script_public_key, compact_utxo_collection) in utxo_changed.added.iter() {
-                for (tx_outpoint, compact_utxo_entry) in compact_utxo_collection.iter() {
-                    let utxo_entry =
-                        virtual_change_emulator.virtual_state.accumulated_utxo_diff.add.get(tx_outpoint).expect("expected utxo_entry");
-                    assert_eq!(*script_public_key, utxo_entry.script_public_key);
-                    assert_eq!(compact_utxo_entry.amount, utxo_entry.amount);
-                    assert_eq!(compact_utxo_entry.block_daa_score, utxo_entry.block_daa_score);
-                    assert_eq!(compact_utxo_entry.is_coinbase, utxo_entry.is_coinbase);
-                    i += 1;
-                }
-            }
-            assert_eq!(i, virtual_change_emulator.virtual_state.accumulated_utxo_diff.add.len());
-
-            i = 0;
-
-            for (script_public_key, compact_utxo_collection) in utxo_changed.removed.iter() {
-                for (tx_outpoint, compact_utxo_entry) in compact_utxo_collection.iter() {
-                    assert!(virtual_change_emulator.virtual_state.accumulated_utxo_diff.remove.contains_key(tx_outpoint));
-                    let utxo_entry = virtual_change_emulator
-                        .virtual_state
-                        .accumulated_utxo_diff
-                        .remove
-                        .get(tx_outpoint)
-                        .expect("expected utxo_entry");
-                    assert_eq!(*script_public_key, utxo_entry.script_public_key);
-                    assert_eq!(compact_utxo_entry.amount, utxo_entry.amount);
-                    assert_eq!(compact_utxo_entry.block_daa_score, utxo_entry.block_daa_score);
-                    assert_eq!(compact_utxo_entry.is_coinbase, utxo_entry.is_coinbase);
-                    i += 1;
-                }
-            }
-            assert_eq!(i, virtual_change_emulator.virtual_state.accumulated_utxo_diff.remove.len());
+    let mut i = 0;
+    for (script_public_key, compact_utxo_collection) in utxo_changes.added.iter() {
+        for (tx_outpoint, compact_utxo_entry) in compact_utxo_collection.iter() {
+            let utxo_entry =
+                virtual_change_emulator.virtual_state.accumulated_utxo_diff.add.get(tx_outpoint).expect("expected utxo_entry");
+            assert_eq!(*script_public_key, utxo_entry.script_public_key);
+            assert_eq!(compact_utxo_entry.amount, utxo_entry.amount);
+            assert_eq!(compact_utxo_entry.block_daa_score, utxo_entry.block_daa_score);
+            assert_eq!(compact_utxo_entry.is_coinbase, utxo_entry.is_coinbase);
+            i += 1;
         }
     }
+    assert_eq!(i, virtual_change_emulator.virtual_state.accumulated_utxo_diff.add.len());
+
+    i = 0;
+
+    for (script_public_key, compact_utxo_collection) in utxo_changes.removed.iter() {
+        for (tx_outpoint, compact_utxo_entry) in compact_utxo_collection.iter() {
+            assert!(virtual_change_emulator.virtual_state.accumulated_utxo_diff.remove.contains_key(tx_outpoint));
+            let utxo_entry =
+                virtual_change_emulator.virtual_state.accumulated_utxo_diff.remove.get(tx_outpoint).expect("expected utxo_entry");
+            assert_eq!(*script_public_key, utxo_entry.script_public_key);
+            assert_eq!(compact_utxo_entry.amount, utxo_entry.amount);
+            assert_eq!(compact_utxo_entry.block_daa_score, utxo_entry.block_daa_score);
+            assert_eq!(compact_utxo_entry.is_coinbase, utxo_entry.is_coinbase);
+            i += 1;
+        }
+    }
+    assert_eq!(i, virtual_change_emulator.virtual_state.accumulated_utxo_diff.remove.len());
 
     assert_eq!(
         utxoindex.read().get_circulating_supply().expect("expected circulating supply"),

@@ -1542,8 +1542,10 @@ name = "kaspa-index-processor"
 version = "0.1.0"
 dependencies = [
  "async-channel",
+ "async-trait",
  "consensus",
  "consensus-core",
+ "consensus-notify",
  "derive_more",
  "futures",
  "hashes",

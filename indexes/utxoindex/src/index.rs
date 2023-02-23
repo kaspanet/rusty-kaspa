@@ -1,21 +1,18 @@
 use crate::{
     api::UtxoIndexApi,
     errors::{UtxoIndexError, UtxoIndexResult},
-    events::{UtxoIndexEvent, UtxosChangedEvent},
-    model::{CirculatingSupply, UtxoSetByScriptPublicKey},
+    model::{CirculatingSupply, UtxoChanges, UtxoSetByScriptPublicKey},
     stores::store_manager::Store,
     update_container::UtxoIndexChanges,
     IDENT,
 };
-
-use database::prelude::{StoreError, StoreResult, DB};
-
 use consensus_core::{api::DynConsensus, tx::ScriptPublicKeys, utxo::utxo_diff::UtxoDiff, BlockHashSet};
+use database::prelude::{StoreError, StoreResult, DB};
 use hashes::Hash;
 use kaspa_core::trace;
 use kaspa_utils::arc::ArcExtensions;
 use parking_lot::RwLock;
-use std::sync::Arc;
+use std::{fmt::Debug, sync::Arc};
 
 const RESYNC_CHUNK_SIZE: usize = 2048; //Increased from 1k (used in go-kaspad), for quicker resets, while still having a low memory footprint.
 
@@ -62,7 +59,7 @@ impl UtxoIndexApi for UtxoIndex {
     /// Updates the [UtxoIndex] via the virtual state supplied:
     /// 1) Saves updated utxo differences, virtual parent hashes and circulating supply to the database.
     /// 2) returns an event about utxoindex changes.
-    fn update(&mut self, utxo_diff: Arc<UtxoDiff>, tips: Arc<Vec<Hash>>) -> UtxoIndexResult<UtxoIndexEvent> {
+    fn update(&mut self, utxo_diff: Arc<UtxoDiff>, tips: Arc<Vec<Hash>>) -> UtxoIndexResult<UtxoChanges> {
         trace!("[{0}] updating...", IDENT);
         trace!("[{0}] adding {1} utxos", IDENT, utxo_diff.add.len());
         trace!("[{0}] removing {1} utxos", IDENT, utxo_diff.remove.len());
@@ -85,11 +82,8 @@ impl UtxoIndexApi for UtxoIndex {
         // Commit new consensus virtual tips.
         self.store.set_tips(utxoindex_changes.tips, false)?; //we expect new tips with every virtual!
 
-        // Return the resulting utxoindex event.
-        Ok(UtxoIndexEvent::UtxosChanged(Arc::new(UtxosChangedEvent {
-            added: Arc::new(utxoindex_changes.utxo_changes.added),
-            removed: Arc::new(utxoindex_changes.utxo_changes.removed),
-        })))
+        // Return the resulting changes in utxoindex.
+        Ok(utxoindex_changes.utxo_changes)
     }
 
     /// Checks to see if the [UtxoIndex] is sync'd. This is done via comparing the utxoindex committed `VirtualParent` hashes with those of the consensus database.
@@ -169,5 +163,11 @@ impl UtxoIndexApi for UtxoIndex {
     // This can have a big memory footprint, so it should be used only for tests.
     fn get_all_outpoints(&self) -> StoreResult<std::collections::HashSet<consensus_core::tx::TransactionOutpoint>> {
         self.store.get_all_outpoints()
+    }
+}
+
+impl Debug for UtxoIndex {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UtxoIndex").finish()
     }
 }

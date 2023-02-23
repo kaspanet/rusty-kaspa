@@ -36,9 +36,9 @@ where
     N: Notification,
 {
     /// Start collecting notifications for `notifier`
-    fn start(&self, notifier: DynNotify<N>);
+    fn start(self: Arc<Self>, notifier: DynNotify<N>);
     /// Stop collecting notifications
-    async fn stop(&self) -> Result<()>;
+    async fn stop(self: Arc<Self>) -> Result<()>;
 }
 
 pub type DynCollector<N> = Arc<dyn Collector<N>>;
@@ -76,7 +76,7 @@ where
         }
     }
 
-    fn spawn_collecting_task(&self, notifier: DynNotify<N>) {
+    fn spawn_collecting_task(self: Arc<Self>, notifier: DynNotify<N>) {
         // The task can only be spawned once
         if self.is_started.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
             return;
@@ -118,7 +118,7 @@ where
         });
     }
 
-    async fn stop_collecting_task(&self) -> Result<()> {
+    async fn stop_collecting_task(self: &Arc<Self>) -> Result<()> {
         if self.is_started.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_err() {
             return Err(Error::AlreadyStoppedError);
         }
@@ -135,11 +135,11 @@ where
     I: Send + Sync + 'static + Sized + Debug,
     I: Into<N>,
 {
-    fn start(&self, notifier: DynNotify<N>) {
+    fn start(self: Arc<Self>, notifier: DynNotify<N>) {
         self.spawn_collecting_task(notifier);
     }
 
-    async fn stop(&self) -> Result<()> {
+    async fn stop(self: Arc<Self>) -> Result<()> {
         self.stop_collecting_task().await
     }
 }
@@ -209,10 +209,10 @@ mod tests {
     #[tokio::test]
     async fn test_collector_from() {
         let incoming = Channel::default();
-        let collector: CollectorFrom<TestMessage, TestNotification> = CollectorFrom::new(incoming.receiver());
+        let collector: Arc<CollectorFrom<TestMessage, TestNotification>> = Arc::new(CollectorFrom::new(incoming.receiver()));
         let outgoing = Channel::default();
         let notifier = Arc::new(Notifier { sender: outgoing.sender() });
-        collector.start(notifier);
+        collector.clone().start(notifier);
 
         assert!(incoming.send(TestMessage::A).await.is_ok());
         assert!(incoming.send(TestMessage::B).await.is_ok());
