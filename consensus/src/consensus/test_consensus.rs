@@ -13,7 +13,6 @@ use consensus_core::{
     header::Header,
     merkle::calc_hash_merkle_root,
     notify::notification::Notification,
-    pruning::PruningPointProof,
     subnets::SUBNETWORK_ID_COINBASE,
     tx::Transaction,
     BlockHashSet,
