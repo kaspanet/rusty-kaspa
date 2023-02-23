@@ -51,12 +51,12 @@ use consensus_core::{
     errors::{coinbase::CoinbaseResult, tx::TxResult},
     events::ConsensusEvent,
     muhash::MuHashExtensions,
-    notify::{notification::Notification, root::ConsensusNotificationRoot},
     pruning::{PruningPointProof, PruningPointsList},
     trusted::TrustedBlock,
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     BlockHashSet,
 };
+use consensus_notify::{notification::Notification, root::ConsensusNotificationRoot};
 
 use async_channel::Sender as AsyncSender; // to avoid confusion with crossbeam
 use crossbeam_channel::{unbounded as unbounded_crossbeam, Receiver as CrossbeamReceiver, Sender as CrossbeamSender}; // to aviod confusion with async_channel

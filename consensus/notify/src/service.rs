@@ -1,6 +1,5 @@
-use crate::notifier::ConsensusNotifier;
+use crate::{notification::Notification, notifier::ConsensusNotifier, root::ConsensusNotificationRoot};
 use async_channel::Receiver;
-use consensus_core::notify::{notification::Notification, root::ConsensusNotificationRoot};
 use kaspa_core::{
     task::service::{AsyncService, AsyncServiceFuture},
     trace,

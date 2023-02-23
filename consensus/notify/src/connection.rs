@@ -1,3 +1,3 @@
-use crate::notify::notification::Notification;
+use crate::notification::Notification;
 
 pub type ConsensusChannelConnection = kaspa_notify::connection::ChannelConnection<Notification>;

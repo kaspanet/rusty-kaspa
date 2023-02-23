@@ -1,4 +1,4 @@
-use crate::{block::Block, tx::TransactionId, utxo::utxo_diff::UtxoDiff};
+use consensus_core::{block::Block, tx::TransactionId, utxo::utxo_diff::UtxoDiff};
 use derive_more::Display;
 use hashes::Hash;
 use kaspa_notify::{

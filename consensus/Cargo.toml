@@ -15,6 +15,7 @@ merkle.workspace = true
 kaspa-core.workspace = true
 kaspa-notify.workspace = true
 consensus-core.workspace = true
+consensus-notify.workspace = true
 faster-hex.workspace = true
 thiserror.workspace = true
 serde.workspace = true

@@ -4,7 +4,7 @@ use crate::{
     VirtualDaaScoreChangedNotification, VirtualSelectedParentBlueScoreChangedNotification,
     VirtualSelectedParentChainChangedNotification,
 };
-use consensus_core::notify::notification as consensus_notify;
+use consensus_notify::notification as consensus_notify;
 use event_processor::notify as event_processor_notify;
 use kaspa_index_processor::notify::notification as index_notify;
 use std::sync::Arc;

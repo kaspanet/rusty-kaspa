@@ -7,10 +7,12 @@ use consensus_core::{
     api::DynConsensus,
     block::Block,
     coinbase::MinerData,
-    notify::{connection::ConsensusChannelConnection, notification::Notification as ConsensusNotification},
     tx::{ScriptPublicKey, ScriptVec},
 };
-use consensus_notify::service::NotifyService;
+use consensus_notify::{
+    service::NotifyService,
+    {connection::ConsensusChannelConnection, notification::Notification as ConsensusNotification},
+};
 use hashes::Hash;
 use kaspa_core::trace;
 use kaspa_notify::{

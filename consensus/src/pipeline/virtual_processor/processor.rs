@@ -50,19 +50,19 @@ use consensus_core::{
     header::Header,
     merkle::calc_hash_merkle_root,
     muhash::MuHashExtensions,
-    notify::{
-        notification::{
-            Notification, UtxosChangedNotification, VirtualDaaScoreChangedNotification,
-            VirtualSelectedParentBlueScoreChangedNotification, VirtualSelectedParentChainChangedNotification,
-        },
-        root::ConsensusNotificationRoot,
-    },
     tx::{MutableTransaction, PopulatedTransaction, Transaction, TransactionOutpoint, UtxoEntry, ValidatedTransaction},
     utxo::{
         utxo_diff::UtxoDiff,
         utxo_view::{UtxoView, UtxoViewComposition},
     },
     BlockHashMap, BlockHashSet, HashMapCustomHasher,
+};
+use consensus_notify::{
+    notification::{
+        Notification, UtxosChangedNotification, VirtualDaaScoreChangedNotification, VirtualSelectedParentBlueScoreChangedNotification,
+        VirtualSelectedParentChainChangedNotification,
+    },
+    root::ConsensusNotificationRoot,
 };
 use database::prelude::StoreError;
 use hashes::Hash;

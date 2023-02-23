@@ -12,11 +12,11 @@ use consensus_core::{
     events::ConsensusEvent,
     header::Header,
     merkle::calc_hash_merkle_root,
-    notify::notification::Notification,
     subnets::SUBNETWORK_ID_COINBASE,
     tx::Transaction,
     BlockHashSet,
 };
+use consensus_notify::notification::Notification;
 use hashes::Hash;
 use kaspa_core::{core::Core, service::Service};
 use parking_lot::RwLock;
