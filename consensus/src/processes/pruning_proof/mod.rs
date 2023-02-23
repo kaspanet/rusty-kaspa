@@ -5,7 +5,7 @@ use std::{
 };
 
 use consensus_core::{
-    blockhash::{BlockHashes, ORIGIN},
+    blockhash::{BlockHashExtensions, BlockHashes, ORIGIN},
     header::Header,
     pruning::PruningPointProof,
     trusted::TrustedBlock,
@@ -26,14 +26,15 @@ use crate::{
             relations::MTRelationsService,
         },
         stores::{
+            block_window_cache::BlockWindowHeap,
             depth::DbDepthStore,
             ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStore, GhostdagStoreReader},
             headers::{DbHeadersStore, HeaderStore, HeaderStoreReader},
             headers_selected_tip::{DbHeadersSelectedTipStore, HeadersSelectedTipStore},
             past_pruning_points::{DbPastPruningPointsStore, PastPruningPointsStore},
-            pruning::{DbPruningStore, PruningStore},
+            pruning::{DbPruningStore, PruningStore, PruningStoreReader},
             reachability::{DbReachabilityStore, StagingReachabilityStore},
-            relations::{DbRelationsStore, MemoryRelationsStore, RelationsStore},
+            relations::{DbRelationsStore, MemoryRelationsStore, RelationsStore, RelationsStoreReader},
             tips::DbTipsStore,
             virtual_state::{VirtualState, VirtualStateStore},
             DB,
@@ -63,8 +64,11 @@ pub struct PruningProofManager {
 
     ghostdag_managers: Vec<DbGhostdagManager>,
 
+    cached_pruning_point_proof: RwLock<Option<(Hash, Arc<PruningPointProof>)>>,
+
     max_block_level: BlockLevel,
     genesis_hash: Hash,
+    pruning_proof_m: u64,
 }
 
 struct HeaderStoreMock {}
@@ -163,6 +167,7 @@ impl PruningProofManager {
         ghostdag_managers: Vec<DbGhostdagManager>,
         max_block_level: BlockLevel,
         genesis_hash: Hash,
+        pruning_proof_m: u64,
     ) -> Self {
         Self {
             db,
@@ -181,6 +186,8 @@ impl PruningProofManager {
             ghostdag_managers,
             max_block_level,
             genesis_hash,
+            cached_pruning_point_proof: RwLock::new(None),
+            pruning_proof_m,
         }
     }
 
@@ -369,6 +376,121 @@ impl PruningProofManager {
             drop(reachability_write_guard);
 
             selected_tip = max(selected_tip, reverse_sortable_block.0);
+        }
+    }
+
+    pub fn get_pruning_point_proof(&self) -> Arc<PruningPointProof> {
+        let pp = self.pruning_store.read().pruning_point().unwrap(); // TODO: Check for how much time we should hold this lock.
+        if let Some((cached_pp, proof)) = self.cached_pruning_point_proof.read().clone() {
+            if cached_pp == pp {
+                return proof;
+            }
+        }
+
+        let proof = Arc::new(self.build_pruning_point_proof(pp));
+        *self.cached_pruning_point_proof.write() = Some((pp, proof.clone()));
+        proof
+    }
+
+    fn build_pruning_point_proof(&self, pp: Hash) -> PruningPointProof {
+        if pp == self.genesis_hash {
+            return vec![];
+        }
+
+        let pp_header = self.headers_store.get_header_with_block_level(pp).unwrap();
+        let selected_tip_by_level = (0..self.max_block_level)
+            .map(|level| {
+                if level <= pp_header.block_level {
+                    pp
+                } else {
+                    self.ghostdag_managers[level as usize].find_selected_parent(
+                        &mut self
+                            .parents_manager
+                            .parents_at_level(&pp_header.header, level)
+                            .iter()
+                            .filter(|parent| self.ghostdag_stores[level as usize].has(**parent).unwrap())
+                            .cloned(),
+                    )
+                }
+            })
+            .collect_vec();
+
+        (0..self.max_block_level)
+            .map(|level| {
+                let level = level as usize;
+                let selected_tip = selected_tip_by_level[level];
+                let block_at_depth_2m = self.block_at_depth(&*self.ghostdag_stores[level], selected_tip, 2 * self.pruning_proof_m);
+
+                let root = if level != self.max_block_level as usize {
+                    let block_at_depth_m_at_next_level =
+                        self.block_at_depth(&*self.ghostdag_stores[level + 1], selected_tip_by_level[level + 1], self.pruning_proof_m);
+                    if self.reachability_service.is_chain_ancestor_of(block_at_depth_2m, block_at_depth_m_at_next_level) {
+                        block_at_depth_2m
+                    } else {
+                        self.find_common_ancestor_in_chain_of_a(
+                            &*self.ghostdag_stores[level],
+                            block_at_depth_m_at_next_level,
+                            block_at_depth_2m,
+                        )
+                    }
+                } else {
+                    block_at_depth_2m
+                };
+
+                let mut headers = Vec::with_capacity(2 * self.pruning_proof_m as usize);
+                let mut queue = BlockWindowHeap::new();
+                let mut visited = BlockHashSet::new();
+                queue.push(Reverse(SortableBlock::new(root, self.ghostdag_stores[level].get_blue_work(root).unwrap())));
+                while !queue.is_empty() {
+                    let current = queue.pop().expect("checked if empty").0.hash;
+                    if visited.contains(&current) {
+                        continue;
+                    }
+
+                    visited.insert(current);
+                    if !self.reachability_service.is_dag_ancestor_of(current, selected_tip) {
+                        continue;
+                    }
+
+                    let current_header = self.headers_store.get_header(current).unwrap();
+                    headers.push(current_header.clone());
+                    // TODO: Validate correct use of read lock
+                    for child in self.relations_stores.read()[level].get_children(current).unwrap().iter().copied() {
+                        queue.push(Reverse(SortableBlock::new(child, self.ghostdag_stores[level].get_blue_work(child).unwrap())));
+                    }
+                }
+
+                headers
+            })
+            .collect_vec()
+    }
+
+    fn block_at_depth(&self, ghostdag_store: &impl GhostdagStoreReader, high: Hash, depth: u64) -> Hash {
+        let high_gd = ghostdag_store.get_compact_data(high).unwrap();
+        let mut current_gd = high_gd;
+        let mut current = high;
+        while current_gd.blue_score + depth >= high_gd.blue_score {
+            if current_gd.selected_parent.is_origin() {
+                break;
+            }
+
+            current = current_gd.selected_parent;
+            current_gd = ghostdag_store.get_compact_data(current).unwrap();
+        }
+        current
+    }
+
+    fn find_common_ancestor_in_chain_of_a(&self, ghostdag_store: &impl GhostdagStoreReader, a: Hash, b: Hash) -> Hash {
+        let a_gd = ghostdag_store.get_compact_data(a).unwrap();
+        let mut current_gd = a_gd;
+        let mut current;
+        loop {
+            current = current_gd.selected_parent;
+            assert!(!current.is_origin());
+            if self.reachability_service.is_dag_ancestor_of(current, b) {
+                break current;
+            }
+            current_gd = ghostdag_store.get_compact_data(current).unwrap();
         }
     }
 }

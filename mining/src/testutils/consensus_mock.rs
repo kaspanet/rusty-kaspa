@@ -7,6 +7,7 @@ use consensus_core::{
     errors::{
         block::{BlockProcessResult, RuleError},
         coinbase::CoinbaseResult,
+        consensus::ConsensusError,
         pruning::PruningImportResult,
         tx::{TxResult, TxRuleError},
     },
@@ -204,6 +205,27 @@ impl ConsensusApi for ConsensusMock {
         unimplemented!()
     }
 
+    fn header_exists(self: Arc<Self>, _hash: hashes::Hash) -> bool {
+        unimplemented!()
+    }
+
+    fn is_chain_ancestor_of(self: Arc<Self>, _low: hashes::Hash, _high: hashes::Hash) -> Result<bool, ConsensusError> {
+        unimplemented!()
+    }
+
+    fn get_hashes_between(
+        self: Arc<Self>,
+        _low: hashes::Hash,
+        _high: hashes::Hash,
+        _max_blocks: usize,
+    ) -> consensus_core::errors::consensus::ConsensusResult<(Vec<hashes::Hash>, hashes::Hash)> {
+        unimplemented!()
+    }
+
+    fn get_header(self: Arc<Self>, _hash: hashes::Hash) -> consensus_core::errors::consensus::ConsensusResult<Arc<Header>> {
+        unimplemented!()
+    }
+
     fn append_imported_pruning_point_utxos(
         &self,
         _utxoset_chunk: &[(TransactionOutpoint, UtxoEntry)],
@@ -217,6 +239,10 @@ impl ConsensusApi for ConsensusMock {
         _new_pruning_point: hashes::Hash,
         _imported_utxo_multiset: &mut MuHash,
     ) -> PruningImportResult<()> {
+        unimplemented!()
+    }
+
+    fn get_pruning_point_proof(self: Arc<Self>) -> Arc<consensus_core::pruning::PruningPointProof> {
         unimplemented!()
     }
 }

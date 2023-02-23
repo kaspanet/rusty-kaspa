@@ -5,7 +5,11 @@ use crate::{
     constants::store_names,
     errors::{BlockProcessResult, RuleError},
     model::{
-        services::{reachability::MTReachabilityService, relations::MTRelationsService, statuses::MTStatusesService},
+        services::{
+            reachability::{MTReachabilityService, ReachabilityService},
+            relations::MTRelationsService,
+            statuses::MTStatusesService,
+        },
         stores::{
             acceptance_data::DbAcceptanceDataStore,
             block_transactions::DbBlockTransactionsStore,
@@ -13,7 +17,7 @@ use crate::{
             daa::DbDaaStore,
             depth::DbDepthStore,
             ghostdag::DbGhostdagStore,
-            headers::DbHeadersStore,
+            headers::{DbHeadersStore, HeaderStoreReader},
             headers_selected_tip::DbHeadersSelectedTipStore,
             past_pruning_points::DbPastPruningPointsStore,
             pruning::DbPruningStore,
@@ -38,8 +42,8 @@ use crate::{
     processes::{
         block_depth::BlockDepthManager, coinbase::CoinbaseManager, difficulty::DifficultyManager, ghostdag::protocol::GhostdagManager,
         mass::MassCalculator, parents_builder::ParentsManager, past_median_time::PastMedianTimeManager, pruning::PruningManager,
-        pruning_proof::PruningProofManager, reachability::inquirer as reachability, transaction_validator::TransactionValidator,
-        traversal_manager::DagTraversalManager,
+        pruning_proof::PruningProofManager, reachability::inquirer as reachability, sync::SyncManager,
+        transaction_validator::TransactionValidator, traversal_manager::DagTraversalManager,
     },
 };
 use consensus_core::{
@@ -48,8 +52,13 @@ use consensus_core::{
     blockstatus::BlockStatus,
     coinbase::MinerData,
     errors::pruning::PruningImportError,
-    errors::{coinbase::CoinbaseResult, tx::TxResult},
+    errors::{
+        coinbase::CoinbaseResult,
+        consensus::{ConsensusError, ConsensusResult},
+        tx::TxResult,
+    },
     events::ConsensusEvent,
+    header::Header,
     muhash::MuHashExtensions,
     pruning::{PruningPointProof, PruningPointsList},
     trusted::TrustedBlock,
@@ -58,7 +67,9 @@ use consensus_core::{
 };
 
 use async_channel::Sender as AsyncSender; // to avoid confusion with crossbeam
-use crossbeam_channel::{unbounded as unbounded_crossbeam, Receiver as CrossbeamReceiver, Sender as CrossbeamSender}; // to aviod confusion with async_channel
+use crossbeam_channel::{unbounded as unbounded_crossbeam, Receiver as CrossbeamReceiver, Sender as CrossbeamSender};
+use database::prelude::StoreResultExtensions;
+// to aviod confusion with async_channel
 use futures_util::future::BoxFuture;
 use hashes::Hash;
 use itertools::Itertools;
@@ -131,6 +142,7 @@ pub struct Consensus {
     pub(super) coinbase_manager: CoinbaseManager,
     pub(super) pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
     pub(super) pruning_proof_manager: PruningProofManager,
+    sync_manager: SyncManager<DbReachabilityStore, DbGhostdagStore>,
 
     // Counters
     pub counters: Arc<ProcessingCounters>,
@@ -421,7 +433,10 @@ impl Consensus {
             ghostdag_managers,
             params.max_block_level,
             params.genesis_hash,
+            params.pruning_proof_m,
         );
+
+        let sync_manager = SyncManager::new(params.mergeset_size_limit as usize, reachability_service.clone(), ghostdag_store.clone());
 
         // Ensure that reachability store is initialized
         reachability::init(reachability_store.write().deref_mut()).unwrap();
@@ -460,6 +475,7 @@ impl Consensus {
             coinbase_manager,
             pruning_manager,
             pruning_proof_manager,
+            sync_manager,
 
             counters,
             consensus_sender,
@@ -539,6 +555,17 @@ impl Consensus {
             handle.join().unwrap();
         }
     }
+
+    fn validate_block_exists(&self, hash: Hash) -> Result<(), ConsensusError> {
+        if match self.statuses_store.read().get(hash).unwrap_option() {
+            Some(status) => status.is_valid(),
+            None => false,
+        } {
+            Ok(())
+        } else {
+            Err(ConsensusError::BlockNotFound(hash))
+        }
+    }
 }
 
 impl ConsensusApi for Consensus {
@@ -616,6 +643,36 @@ impl ConsensusApi for Consensus {
 
     fn import_pruning_point_utxo_set(&self, new_pruning_point: Hash, imported_utxo_multiset: &mut MuHash) -> PruningImportResult<()> {
         self.virtual_processor.import_pruning_point_utxo_set(new_pruning_point, imported_utxo_multiset)
+    }
+
+    fn header_exists(self: Arc<Self>, hash: Hash) -> bool {
+        match self.statuses_store.read().get(hash).unwrap_option() {
+            Some(status) => status.has_block_header(),
+            None => false,
+        }
+    }
+
+    fn is_chain_ancestor_of(self: Arc<Self>, low: Hash, high: Hash) -> ConsensusResult<bool> {
+        self.validate_block_exists(low)?;
+        self.validate_block_exists(high)?;
+        Ok(self.reachability_service.is_chain_ancestor_of(low, high))
+    }
+
+    // max_blocks has to be greater than the merge set size limit
+    fn get_hashes_between(self: Arc<Self>, low: Hash, high: Hash, max_blocks: usize) -> ConsensusResult<(Vec<Hash>, Hash)> {
+        self.validate_block_exists(low)?;
+        self.validate_block_exists(high)?;
+
+        Ok(self.sync_manager.get_hashes_between(low, high, Some(max_blocks)))
+    }
+
+    fn get_header(self: Arc<Self>, hash: Hash) -> ConsensusResult<Arc<Header>> {
+        self.validate_block_exists(hash)?;
+        Ok(self.headers_store.get_header(hash).unwrap())
+    }
+
+    fn get_pruning_point_proof(self: Arc<Self>) -> Arc<PruningPointProof> {
+        self.pruning_proof_manager.get_pruning_point_proof()
     }
 }
 

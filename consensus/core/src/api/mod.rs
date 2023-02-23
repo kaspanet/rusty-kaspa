@@ -9,9 +9,11 @@ use crate::{
     errors::{
         block::{BlockProcessResult, RuleError},
         coinbase::CoinbaseResult,
+        consensus::ConsensusResult,
         pruning::PruningImportResult,
         tx::TxResult,
     },
+    header::Header,
     pruning::{PruningPointProof, PruningPointsList},
     trusted::TrustedBlock,
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
@@ -55,6 +57,16 @@ pub trait ConsensusApi: Send + Sync {
     fn append_imported_pruning_point_utxos(&self, utxoset_chunk: &[(TransactionOutpoint, UtxoEntry)], current_multiset: &mut MuHash);
 
     fn import_pruning_point_utxo_set(&self, new_pruning_point: Hash, imported_utxo_multiset: &mut MuHash) -> PruningImportResult<()>;
+
+    fn header_exists(self: Arc<Self>, hash: Hash) -> bool;
+
+    fn is_chain_ancestor_of(self: Arc<Self>, low: Hash, high: Hash) -> ConsensusResult<bool>;
+
+    fn get_hashes_between(self: Arc<Self>, low: Hash, high: Hash, max_blocks: usize) -> ConsensusResult<(Vec<Hash>, Hash)>;
+
+    fn get_header(self: Arc<Self>, hash: Hash) -> ConsensusResult<Arc<Header>>;
+
+    fn get_pruning_point_proof(self: Arc<Self>) -> Arc<PruningPointProof>;
 }
 
 pub type DynConsensus = Arc<dyn ConsensusApi>;

@@ -16,6 +16,13 @@ use std::sync::Arc;
 // protowire to consensus_core
 // ----------------------------------------------------------------------------
 
+impl TryFrom<protowire::RequestHeadersMessage> for (Hash, Hash) {
+    type Error = ConversionError;
+    fn try_from(msg: protowire::RequestHeadersMessage) -> Result<Self, Self::Error> {
+        Ok((msg.high_hash.try_into_ex()?, msg.low_hash.try_into_ex()?))
+    }
+}
+
 impl TryFrom<protowire::PruningPointProofMessage> for PruningPointProof {
     type Error = ConversionError;
     fn try_from(msg: protowire::PruningPointProofMessage) -> Result<Self, Self::Error> {

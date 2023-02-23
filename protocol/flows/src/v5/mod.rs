@@ -1,6 +1,8 @@
 use self::{
     ibd::IbdFlow,
     ping::{ReceivePingsFlow, SendPingsFlow},
+    request_headers::RequestHeadersFlow,
+    request_pp_proof::RequestPruningPointProofFlow,
 };
 use crate::{flow_context::FlowContext, flow_trait::Flow};
 use kaspa_core::debug;
@@ -13,6 +15,8 @@ use std::sync::Arc;
 
 mod ibd;
 mod ping;
+mod request_headers;
+mod request_pp_proof;
 
 pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
     let flows: Vec<Box<dyn Flow>> = vec![
@@ -37,7 +41,17 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
             ]),
         )),
         Box::new(ReceivePingsFlow::new(ctx.clone(), router.clone(), router.subscribe(vec![KaspadMessagePayloadType::Ping]))),
-        Box::new(SendPingsFlow::new(ctx, Arc::downgrade(&router), router.subscribe(vec![KaspadMessagePayloadType::Pong]))),
+        Box::new(SendPingsFlow::new(ctx.clone(), Arc::downgrade(&router), router.subscribe(vec![KaspadMessagePayloadType::Pong]))),
+        Box::new(RequestHeadersFlow::new(
+            ctx.clone(),
+            router.clone(),
+            router.subscribe(vec![KaspadMessagePayloadType::RequestHeaders, KaspadMessagePayloadType::RequestNextHeaders]),
+        )),
+        Box::new(RequestPruningPointProofFlow::new(
+            ctx,
+            router.clone(),
+            router.subscribe(vec![KaspadMessagePayloadType::RequestPruningPointProof]),
+        )),
     ];
 
     // TEMP: subscribe to remaining messages and ignore them
@@ -72,10 +86,10 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
         // KaspadMessagePayloadType::DoneBlocksWithTrustedData,
         KaspadMessagePayloadType::RequestPruningPointAndItsAnticone,
         // KaspadMessagePayloadType::BlockHeaders,
-        KaspadMessagePayloadType::RequestNextHeaders,
+        // KaspadMessagePayloadType::RequestNextHeaders,
         // KaspadMessagePayloadType::DoneHeaders,
         KaspadMessagePayloadType::RequestPruningPointUtxoSet,
-        KaspadMessagePayloadType::RequestHeaders,
+        // KaspadMessagePayloadType::RequestHeaders,
         KaspadMessagePayloadType::RequestBlockLocator,
         // KaspadMessagePayloadType::PruningPoints,
         KaspadMessagePayloadType::RequestPruningPointProof,
