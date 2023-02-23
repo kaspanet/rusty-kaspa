@@ -7,6 +7,7 @@ use crate::pb as protowire;
 use consensus_core::{
     header::Header,
     pruning::{PruningPointProof, PruningPointsList},
+    tx::{TransactionOutpoint, UtxoEntry},
 };
 use hashes::Hash;
 use std::sync::Arc;
@@ -57,5 +58,13 @@ impl TryFrom<protowire::BlockHeadersMessage> for Vec<Arc<Header>> {
     type Error = ConversionError;
     fn try_from(msg: protowire::BlockHeadersMessage) -> Result<Self, Self::Error> {
         msg.block_headers.into_iter().map(|v| v.try_into().map(Arc::new)).collect()
+    }
+}
+
+impl TryFrom<protowire::PruningPointUtxoSetChunkMessage> for Vec<(TransactionOutpoint, UtxoEntry)> {
+    type Error = ConversionError;
+
+    fn try_from(msg: protowire::PruningPointUtxoSetChunkMessage) -> Result<Self, Self::Error> {
+        msg.outpoint_and_utxo_entry_pairs.into_iter().map(|p| p.try_into()).collect()
     }
 }

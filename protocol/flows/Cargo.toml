@@ -11,6 +11,7 @@ consensus-core.workspace = true
 p2p-lib.workspace = true
 kaspa-utils.workspace = true
 hashes.workspace = true
+muhash.workspace = true
 
 rand.workspace = true
 thiserror.workspace = true

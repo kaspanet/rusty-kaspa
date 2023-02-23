@@ -40,9 +40,9 @@ impl From<ExternalGhostdagData> for GhostdagData {
             blue_score: value.blue_score,
             blue_work: value.blue_work,
             selected_parent: value.selected_parent,
-            mergeset_blues: value.mergeset_blues,
-            mergeset_reds: value.mergeset_reds,
-            blues_anticone_sizes: value.blues_anticone_sizes,
+            mergeset_blues: Arc::new(value.mergeset_blues),
+            mergeset_reds: Arc::new(value.mergeset_reds),
+            blues_anticone_sizes: Arc::new(value.blues_anticone_sizes),
         }
     }
 }

@@ -7,21 +7,15 @@ use std::{
 
 use async_channel::Sender;
 use consensus_core::{
-    api::ConsensusApi,
-    block::{Block, BlockTemplate, MutableBlock},
+    block::{Block, MutableBlock},
     blockstatus::BlockStatus,
-    coinbase::MinerData,
-    errors::{block::RuleError, coinbase::CoinbaseResult, pruning::PruningError, tx::TxResult},
     events::ConsensusEvent,
     header::Header,
     merkle::calc_hash_merkle_root,
-    pruning::PruningPointProof,
     subnets::SUBNETWORK_ID_COINBASE,
-    trusted::TrustedBlock,
-    tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
+    tx::Transaction,
     BlockHashSet,
 };
-use futures_util::future::BoxFuture;
 use hashes::Hash;
 use kaspa_core::{core::Core, service::Service};
 use parking_lot::RwLock;
@@ -73,9 +67,9 @@ impl TestConsensus {
 
     pub fn create_from_temp_db_and_dummy_sender(config: &Config) -> Self {
         let (temp_db_lifetime, db) = create_temp_db();
-        let (dummy_consenus_sender, _) = async_channel::unbounded::<ConsensusEvent>();
+        let (dummy_consensus_sender, _) = async_channel::unbounded::<ConsensusEvent>();
         Self {
-            consensus: Arc::new(Consensus::new(db, config, dummy_consenus_sender)),
+            consensus: Arc::new(Consensus::new(db, config, dummy_consensus_sender)),
             params: config.params.clone(),
             temp_db_lifetime,
         }
@@ -88,14 +82,14 @@ impl TestConsensus {
             .consensus
             .pruning_manager
             .expected_header_pruning_point(ghostdag_data.to_compact(), self.consensus.pruning_store.read().get().unwrap());
-        let window = self.consensus.dag_traversal_manager.block_window(&ghostdag_data, self.params.difficulty_window_size);
+        let window = self.consensus.dag_traversal_manager.block_window(&ghostdag_data, self.params.difficulty_window_size).unwrap();
         let (daa_score, _) = self
             .consensus
             .difficulty_manager
             .calc_daa_score_and_non_daa_mergeset_blocks(&mut window.iter().map(|item| item.0.hash), &ghostdag_data);
         header.bits = self.consensus.difficulty_manager.calculate_difficulty_bits(&window);
         header.daa_score = daa_score;
-        header.timestamp = self.consensus.past_median_time_manager.calc_past_median_time(&ghostdag_data).0 + 1;
+        header.timestamp = self.consensus.past_median_time_manager.calc_past_median_time(&ghostdag_data).unwrap().0 + 1;
         header.blue_score = ghostdag_data.blue_score;
         header.blue_work = ghostdag_data.blue_work;
 
@@ -186,62 +180,11 @@ impl TestConsensus {
     }
 }
 
-impl ConsensusApi for TestConsensus {
-    fn build_block_template(self: Arc<Self>, miner_data: MinerData, txs: Vec<Transaction>) -> Result<BlockTemplate, RuleError> {
-        self.consensus().build_block_template(miner_data, txs)
-    }
+impl std::ops::Deref for TestConsensus {
+    type Target = Arc<Consensus>;
 
-    fn validate_and_insert_block(
-        self: Arc<Self>,
-        block: Block,
-        update_virtual: bool,
-    ) -> BoxFuture<'static, BlockProcessResult<BlockStatus>> {
-        self.consensus().validate_and_insert_block(block, update_virtual)
-    }
-
-    fn validate_and_insert_trusted_block(self: Arc<Self>, tb: TrustedBlock) -> BoxFuture<'static, BlockProcessResult<BlockStatus>> {
-        self.consensus().validate_and_insert_trusted_block(tb)
-    }
-
-    fn validate_mempool_transaction_and_populate(self: Arc<Self>, transaction: &mut MutableTransaction) -> TxResult<()> {
-        self.consensus().validate_mempool_transaction_and_populate(transaction)
-    }
-
-    fn calculate_transaction_mass(self: Arc<Self>, transaction: &Transaction) -> u64 {
-        self.consensus().calculate_transaction_mass(transaction)
-    }
-
-    fn get_virtual_daa_score(self: Arc<Self>) -> u64 {
-        self.consensus().get_virtual_daa_score()
-    }
-
-    fn modify_coinbase_payload(self: Arc<Self>, payload: Vec<u8>, miner_data: &MinerData) -> CoinbaseResult<Vec<u8>> {
-        self.consensus().modify_coinbase_payload(payload, miner_data)
-    }
-
-    fn get_virtual_state_tips(self: Arc<Self>) -> Vec<Hash> {
-        self.consensus.clone().get_virtual_state_tips()
-    }
-
-    fn get_virtual_utxos(
-        self: Arc<Self>,
-        from_outpoint: Option<TransactionOutpoint>,
-        chunk_size: usize,
-        skip_first: bool,
-    ) -> Vec<(TransactionOutpoint, UtxoEntry)> {
-        self.consensus.clone().get_virtual_utxos(from_outpoint, chunk_size, skip_first)
-    }
-
-    fn validate_pruning_proof(self: Arc<Self>, proof: &PruningPointProof) -> Result<(), PruningError> {
-        self.consensus().validate_pruning_proof(proof)
-    }
-
-    fn apply_pruning_proof(self: Arc<Self>, proof: PruningPointProof, trusted_set: &[TrustedBlock]) {
-        self.consensus().apply_pruning_proof(proof, trusted_set)
-    }
-
-    fn import_pruning_points(self: Arc<Self>, pruning_points: consensus_core::pruning::PruningPointsList) {
-        self.consensus().import_pruning_points(pruning_points)
+    fn deref(&self) -> &Self::Target {
+        &self.consensus
     }
 }
 

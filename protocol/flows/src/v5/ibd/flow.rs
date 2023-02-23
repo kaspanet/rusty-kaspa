@@ -13,17 +13,20 @@ use consensus_core::{
 use futures::future::join_all;
 use hashes::Hash;
 use kaspa_core::{debug, info};
+use muhash::MuHash;
 use p2p_lib::{
     common::ProtocolError,
     convert::model::trusted::TrustedDataPackage,
     dequeue_with_timeout, make_message,
     pb::{
         kaspad_message::Payload, RequestHeadersMessage, RequestIbdChainBlockLocatorMessage, RequestPruningPointAndItsAnticoneMessage,
-        RequestPruningPointProofMessage,
+        RequestPruningPointProofMessage, RequestPruningPointUtxoSetMessage,
     },
     IncomingRoute, Router,
 };
 use std::{sync::Arc, time::Duration};
+
+use super::PruningPointUtxosetChunkStream;
 
 /// Flow for managing IBD - Initial Block Download
 pub struct IbdFlow {
@@ -90,6 +93,7 @@ impl IbdFlow {
         let consensus = self.ctx.consensus();
         let pruning_point = self.sync_and_validate_pruning_proof(&consensus).await?;
         self.sync_pruning_point_future_headers(&consensus, syncer_header_selected_tip, pruning_point).await?;
+        self.sync_pruning_point_utxoset(&consensus, pruning_point).await?;
         Ok(())
     }
 
@@ -192,6 +196,22 @@ impl IbdFlow {
 
         join_all(prev_joins).await.into_iter().try_for_each(|x| x.map(drop))?;
 
+        Ok(())
+    }
+
+    async fn sync_pruning_point_utxoset(&mut self, consensus: &DynConsensus, pruning_point: Hash) -> Result<(), ProtocolError> {
+        self.router
+            .enqueue(make_message!(
+                Payload::RequestPruningPointUtxoSet,
+                RequestPruningPointUtxoSetMessage { pruning_point_hash: Some(pruning_point.into()) }
+            ))
+            .await?;
+        let mut chunk_stream = PruningPointUtxosetChunkStream::new(&self.router, &mut self.incoming_route);
+        let mut multiset = MuHash::new();
+        while let Some(chunk) = chunk_stream.next().await? {
+            consensus.append_imported_pruning_point_utxos(&chunk, &mut multiset);
+        }
+        consensus.import_pruning_point_utxo_set(pruning_point, &mut multiset)?;
         Ok(())
     }
 }

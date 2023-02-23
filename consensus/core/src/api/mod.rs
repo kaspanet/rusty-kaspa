@@ -1,4 +1,5 @@
 use futures_util::future::BoxFuture;
+use muhash::MuHash;
 use std::sync::Arc;
 
 use crate::{
@@ -8,7 +9,7 @@ use crate::{
     errors::{
         block::{BlockProcessResult, RuleError},
         coinbase::CoinbaseResult,
-        pruning::PruningError,
+        pruning::PruningImportResult,
         tx::TxResult,
     },
     pruning::{PruningPointProof, PruningPointsList},
@@ -45,11 +46,15 @@ pub trait ConsensusApi: Send + Sync {
 
     fn modify_coinbase_payload(self: Arc<Self>, payload: Vec<u8>, miner_data: &MinerData) -> CoinbaseResult<Vec<u8>>;
 
-    fn validate_pruning_proof(self: Arc<Self>, proof: &PruningPointProof) -> Result<(), PruningError>;
+    fn validate_pruning_proof(self: Arc<Self>, proof: &PruningPointProof) -> PruningImportResult<()>;
 
     fn apply_pruning_proof(self: Arc<Self>, proof: PruningPointProof, trusted_set: &[TrustedBlock]);
 
     fn import_pruning_points(self: Arc<Self>, pruning_points: PruningPointsList);
+
+    fn append_imported_pruning_point_utxos(&self, utxoset_chunk: &[(TransactionOutpoint, UtxoEntry)], current_multiset: &mut MuHash);
+
+    fn import_pruning_point_utxo_set(&self, new_pruning_point: Hash, imported_utxo_multiset: &mut MuHash) -> PruningImportResult<()>;
 }
 
 pub type DynConsensus = Arc<dyn ConsensusApi>;

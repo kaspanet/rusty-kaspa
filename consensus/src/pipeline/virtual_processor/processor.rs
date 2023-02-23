@@ -77,7 +77,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use super::errors::{VirtualProcessorError, VirtualProcessorResult};
+use super::errors::{PruningImportError, PruningImportResult};
 
 pub struct VirtualStateProcessor {
     // Channels
@@ -341,12 +341,19 @@ impl VirtualStateProcessor {
                 let mut ctx = UtxoProcessingContext::new((&virtual_ghostdag_data).into(), selected_parent_multiset_hash);
 
                 // Calc virtual DAA score, difficulty bits and past median time
-                let window = self.dag_traversal_manager.block_window(&virtual_ghostdag_data, self.difficulty_window_size);
+                let window = self
+                    .dag_traversal_manager
+                    .block_window(&virtual_ghostdag_data, self.difficulty_window_size)
+                    .expect("rule error for insufficient DAA window size is unexpected here");
                 let (virtual_daa_score, mergeset_non_daa) = self
                     .difficulty_manager
                     .calc_daa_score_and_non_daa_mergeset_blocks(&mut window.iter().map(|item| item.0.hash), &virtual_ghostdag_data);
                 let virtual_bits = self.difficulty_manager.calculate_difficulty_bits(&window);
-                let virtual_past_median_time = self.past_median_time_manager.calc_past_median_time(&virtual_ghostdag_data).0;
+                let virtual_past_median_time = self
+                    .past_median_time_manager
+                    .calc_past_median_time(&virtual_ghostdag_data)
+                    .expect("rule error for insufficient median window size is unexpected here")
+                    .0;
 
                 // Calc virtual UTXO state relative to selected parent
                 self.calculate_utxo_state(&mut ctx, &selected_parent_utxo_view, virtual_daa_score);
@@ -718,12 +725,12 @@ impl VirtualStateProcessor {
         &self,
         new_pruning_point: Hash,
         imported_utxo_multiset: &mut MuHash,
-    ) -> VirtualProcessorResult<()> {
+    ) -> PruningImportResult<()> {
         info!("Importing the UTXO set of the pruning point {}", new_pruning_point);
         let new_pruning_point_header = self.headers_store.get_header(new_pruning_point).unwrap();
         let imported_utxo_multiset_hash = imported_utxo_multiset.finalize();
         if imported_utxo_multiset_hash != new_pruning_point_header.utxo_commitment {
-            return Err(VirtualProcessorError::ImportedMultisetHashMismatch(
+            return Err(PruningImportError::ImportedMultisetHashMismatch(
                 new_pruning_point_header.utxo_commitment,
                 imported_utxo_multiset_hash,
             ));
@@ -735,20 +742,20 @@ impl VirtualStateProcessor {
         let mut virtual_multiset = imported_utxo_multiset.clone();
         let virtual_parents = vec![new_pruning_point];
         let virtual_gd = self.ghostdag_manager.ghostdag(&virtual_parents);
-        let window = self.dag_traversal_manager.block_window(&virtual_gd, self.difficulty_window_size);
+        let window = self.dag_traversal_manager.block_window(&virtual_gd, self.difficulty_window_size)?;
         let (virtual_daa_score, mergeset_non_daa) = self
             .difficulty_manager
             .calc_daa_score_and_non_daa_mergeset_blocks(&mut window.iter().map(|item| item.0.hash), &virtual_gd);
 
         for tx in new_pruning_point_transactions.iter() {
-            let res: VirtualProcessorResult<Vec<_>> = tx
+            let res: PruningImportResult<Vec<_>> = tx
                 .inputs
                 .iter()
                 .map(|input| {
                     if let Some(entry) = self.pruning_point_utxo_set_store.get(&input.previous_outpoint) {
                         Ok(entry)
                     } else {
-                        Err(VirtualProcessorError::NewPruningPointTxMissingUTXOEntry(tx.id()))
+                        Err(PruningImportError::NewPruningPointTxMissingUTXOEntry(tx.id()))
                     }
                 })
                 .collect();
@@ -761,7 +768,7 @@ impl VirtualStateProcessor {
             };
 
             if let Err(e) = res {
-                return Err(VirtualProcessorError::NewPruningPointTxError(tx.id(), e));
+                return Err(PruningImportError::NewPruningPointTxError(tx.id(), e));
             } else {
                 let tx_fee = res.unwrap();
                 total_fee += tx_fee;
@@ -816,7 +823,7 @@ impl VirtualStateProcessor {
             .collect_vec();
         self.virtual_stores.write().utxo_set.write_many(&new_pp_added_utxos).unwrap();
 
-        let virtual_past_median_time = self.past_median_time_manager.calc_past_median_time(&virtual_gd).0;
+        let virtual_past_median_time = self.past_median_time_manager.calc_past_median_time(&virtual_gd)?.0;
         let new_virtual_state = VirtualState {
             parents: virtual_parents,
             ghostdag_data: virtual_gd,

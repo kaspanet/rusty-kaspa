@@ -7,6 +7,7 @@ use consensus_core::{
     errors::{
         block::{BlockProcessResult, RuleError},
         coinbase::CoinbaseResult,
+        pruning::PruningImportResult,
         tx::{TxResult, TxRuleError},
     },
     header::Header,
@@ -18,6 +19,7 @@ use consensus_core::{
 };
 use futures_util::future::BoxFuture;
 use hashes::ZERO_HASH;
+use muhash::MuHash;
 use parking_lot::RwLock;
 use std::{collections::HashMap, sync::Arc, time::SystemTime, unimplemented};
 
@@ -177,10 +179,7 @@ impl ConsensusApi for ConsensusMock {
         Ok(coinbase_manager.modify_coinbase_payload(payload, miner_data))
     }
 
-    fn validate_pruning_proof(
-        self: Arc<Self>,
-        _proof: &consensus_core::pruning::PruningPointProof,
-    ) -> Result<(), consensus_core::errors::pruning::PruningError> {
+    fn validate_pruning_proof(self: Arc<Self>, _proof: &consensus_core::pruning::PruningPointProof) -> PruningImportResult<()> {
         unimplemented!()
     }
 
@@ -194,7 +193,7 @@ impl ConsensusApi for ConsensusMock {
 
     fn get_virtual_state_tips(self: Arc<Self>) -> Vec<hashes::Hash> {
         unimplemented!()
-    } //Needed for compiler
+    }
 
     fn get_virtual_utxos(
         self: Arc<Self>,
@@ -203,5 +202,21 @@ impl ConsensusApi for ConsensusMock {
         _skip_first: bool,
     ) -> Vec<(TransactionOutpoint, UtxoEntry)> {
         unimplemented!()
-    } //Needed for compiler
+    }
+
+    fn append_imported_pruning_point_utxos(
+        &self,
+        _utxoset_chunk: &[(TransactionOutpoint, UtxoEntry)],
+        _current_multiset: &mut MuHash,
+    ) {
+        unimplemented!()
+    }
+
+    fn import_pruning_point_utxo_set(
+        &self,
+        _new_pruning_point: hashes::Hash,
+        _imported_utxo_multiset: &mut MuHash,
+    ) -> PruningImportResult<()> {
+        unimplemented!()
+    }
 }

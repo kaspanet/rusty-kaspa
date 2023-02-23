@@ -35,7 +35,7 @@ fn test_utxoindex() {
     let mut virtual_change_emulator = VirtualChangeEmulator::new();
     let utxoindex_db = create_temp_db();
     let test_consensus = Arc::new(TestConsensus::create_from_temp_db_and_dummy_sender(&Config::new(DEVNET_PARAMS)));
-    let utxoindex = UtxoIndex::new(test_consensus.clone(), utxoindex_db.1).unwrap();
+    let utxoindex = UtxoIndex::new(test_consensus.consensus(), utxoindex_db.1).unwrap();
 
     // Fill initial utxo collection in emulator.
     virtual_change_emulator.fill_utxo_collection(resync_utxo_collection_size, script_public_key_pool_size); //10_000 utxos belonging to 100 script public keys
@@ -77,7 +77,7 @@ fn test_utxoindex() {
     assert!(utxoindex.read().is_synced().expect("expected bool"));
 
     // Test the sync from scratch via consensus db.
-    let consensus_utxos = test_consensus.clone().get_virtual_utxos(None, usize::MAX, false); // `usize::MAX` to ensure to get all.
+    let consensus_utxos = test_consensus.consensus().get_virtual_utxos(None, usize::MAX, false); // `usize::MAX` to ensure to get all.
     let mut i = 0;
     let mut consensus_supply: CirculatingSupply = 0;
     let consensus_utxo_set_size = consensus_utxos.len();
@@ -102,7 +102,7 @@ fn test_utxoindex() {
     assert_eq!(utxoindex.read().get_circulating_supply().expect("expected circulating supply"), consensus_supply);
     assert_eq!(
         *utxoindex.read().get_utxo_index_tips().expect("expected circulating supply"),
-        BlockHashSet::from_iter(test_consensus.clone().get_virtual_state_tips())
+        BlockHashSet::from_iter(test_consensus.consensus().get_virtual_state_tips())
     );
 
     // Test update: Change and signal new virtual state.
@@ -172,7 +172,7 @@ fn test_utxoindex() {
     // Since we changed virtual state in the emulator, but not in test-consensus db,
     // we expect the resync to get the utxo-set from the test-consensus,
     // these utxos correspond the the initial sync test.
-    let consensus_utxos = test_consensus.clone().get_virtual_utxos(None, usize::MAX, false); // `usize::MAX` to ensure to get all.
+    let consensus_utxos = test_consensus.consensus().get_virtual_utxos(None, usize::MAX, false); // `usize::MAX` to ensure to get all.
     let mut i = 0;
     let consensus_utxo_set_size = consensus_utxos.len();
     for (tx_outpoint, utxo_entry) in consensus_utxos.into_iter() {
@@ -193,7 +193,7 @@ fn test_utxoindex() {
 
     assert_eq!(
         *utxoindex.read().get_utxo_index_tips().expect("expected circulating supply"),
-        BlockHashSet::from_iter(test_consensus.clone().get_virtual_state_tips())
+        BlockHashSet::from_iter(test_consensus.consensus().get_virtual_state_tips())
     );
 
     // Deconstruct
