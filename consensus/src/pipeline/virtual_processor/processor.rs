@@ -400,9 +400,12 @@ impl VirtualStateProcessor {
                 drop(virtual_write);
 
                 // Emit notifications
-                let _ = self
-                    .notification_root()
-                    .notify(Notification::UtxosChanged(UtxosChangedNotification::new(Arc::new(accumulated_diff.clone()))));
+                let accumulated_diff = Arc::new(accumulated_diff);
+                let virtual_parents = Arc::new(new_virtual_state.parents);
+                let _ = self.notification_root().notify(Notification::UtxosChanged(UtxosChangedNotification::new(
+                    accumulated_diff.clone(),
+                    virtual_parents.clone(),
+                )));
                 let _ = self.notification_root().notify(Notification::VirtualSelectedParentBlueScoreChanged(
                     VirtualSelectedParentBlueScoreChangedNotification::new(new_virtual_state.ghostdag_data.blue_score),
                 ));
@@ -422,8 +425,8 @@ impl VirtualStateProcessor {
                     // We use try_send on consensus sender since this is none-blocking.
                     self.consensus_sender
                         .try_send(ConsensusEvent::VirtualChangeSet(Arc::new(VirtualChangeSetEvent {
-                            accumulated_utxo_diff: Arc::new(accumulated_diff),
-                            parents: Arc::new(new_virtual_state.parents),
+                            accumulated_utxo_diff: accumulated_diff,
+                            parents: virtual_parents,
                             selected_parent_blue_score: new_virtual_state.ghostdag_data.blue_score,
                             daa_score: new_virtual_state.daa_score,
                             mergeset_blues: new_virtual_state.ghostdag_data.mergeset_blues,

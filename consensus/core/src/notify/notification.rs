@@ -136,11 +136,12 @@ impl FinalityConflictResolvedNotification {
 pub struct UtxosChangedNotification {
     /// Accumulated UTXO diff between the last virtual state and the current virtual state
     pub accumulated_utxo_diff: Arc<UtxoDiff>,
+    pub virtual_parents: Arc<Vec<Hash>>,
 }
 
 impl UtxosChangedNotification {
-    pub fn new(accumulated_utxo_diff: Arc<UtxoDiff>) -> Self {
-        Self { accumulated_utxo_diff }
+    pub fn new(accumulated_utxo_diff: Arc<UtxoDiff>, virtual_parents: Arc<Vec<Hash>>) -> Self {
+        Self { accumulated_utxo_diff, virtual_parents }
     }
 }
 
