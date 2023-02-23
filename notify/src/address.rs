@@ -19,8 +19,8 @@ impl UtxoAddress {
     }
 
     #[inline(always)]
-    pub fn script_public_key(&self) ->&ScriptPublicKey {
-        &&self.script_public_key
+    pub fn script_public_key(&self) -> &ScriptPublicKey {
+        &self.script_public_key
     }
 }
 
