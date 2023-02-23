@@ -51,13 +51,9 @@ impl TryFrom<protowire::GhostdagData> for ExternalGhostdagData {
             blue_score: item.blue_score,
             blue_work: BlueWorkType::from_be_bytes_var(&item.blue_work)?,
             selected_parent: item.selected_parent.try_into_ex()?,
-            mergeset_blues: Arc::new(
-                item.merge_set_blues.into_iter().map(Hash::try_from).collect::<Result<Vec<Hash>, ConversionError>>()?,
-            ),
-            mergeset_reds: Arc::new(
-                item.merge_set_reds.into_iter().map(Hash::try_from).collect::<Result<Vec<Hash>, ConversionError>>()?,
-            ),
-            blues_anticone_sizes: Arc::new(blues_anticone_sizes),
+            mergeset_blues: item.merge_set_blues.into_iter().map(Hash::try_from).collect::<Result<Vec<Hash>, ConversionError>>()?,
+            mergeset_reds: item.merge_set_reds.into_iter().map(Hash::try_from).collect::<Result<Vec<Hash>, ConversionError>>()?,
+            blues_anticone_sizes,
         })
     }
 }

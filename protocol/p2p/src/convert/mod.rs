@@ -7,3 +7,4 @@ pub mod messages;
 pub mod model;
 pub mod option;
 pub mod pruning;
+pub mod tx;

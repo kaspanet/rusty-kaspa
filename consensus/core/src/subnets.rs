@@ -45,6 +45,15 @@ impl SubnetworkId {
     }
 }
 
+impl TryFrom<&[u8]> for SubnetworkId {
+    type Error = std::array::TryFromSliceError;
+
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        let bytes = <[u8; SUBNETWORK_ID_SIZE]>::try_from(value)?;
+        Ok(Self(bytes))
+    }
+}
+
 impl Display for SubnetworkId {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {

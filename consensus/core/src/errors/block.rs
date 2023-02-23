@@ -141,6 +141,9 @@ pub enum RuleError {
 
     #[error("invalid transactions in new block template")]
     InvalidTransactionsInNewBlock(Vec<(TransactionId, TxRuleError)>),
+
+    #[error("DAA window data has only {0} entries")]
+    InsufficientDaaWindowSize(usize),
 }
 
 pub type BlockProcessResult<T> = std::result::Result<T, RuleError>;
