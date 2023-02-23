@@ -156,6 +156,8 @@ impl Subscription for VirtualSelectedParentChainChangedSubscription {
 
 #[derive(Clone, Debug, Default)]
 pub struct UtxosChangedSubscription {
+    // TODO: handle address/script_public_key pairs
+    //       this will be possible when txscript will have golang PayToAddrScript and ExtractScriptPubKeyAddress ported
     active: bool,
     addresses: HashSet<Address>,
 }

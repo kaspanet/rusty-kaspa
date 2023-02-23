@@ -1,10 +1,12 @@
 use crate::{
-    BlockAddedNotification, FinalityConflictNotification, FinalityConflictResolvedNotification, NewBlockTemplateNotification,
-    Notification, PruningPointUtxoSetOverrideNotification, UtxosChangedNotification, VirtualDaaScoreChangedNotification,
-    VirtualSelectedParentBlueScoreChangedNotification, VirtualSelectedParentChainChangedNotification,
+    utxo::utxo_set_into_rpc, BlockAddedNotification, FinalityConflictNotification, FinalityConflictResolvedNotification,
+    NewBlockTemplateNotification, Notification, PruningPointUtxoSetOverrideNotification, UtxosChangedNotification,
+    VirtualDaaScoreChangedNotification, VirtualSelectedParentBlueScoreChangedNotification,
+    VirtualSelectedParentChainChangedNotification,
 };
 use consensus_core::notify::notification as consensus_notify;
 use event_processor::notify as event_processor_notify;
+use kaspa_index_processor::notify::notification as index_notify;
 use std::sync::Arc;
 
 // ----------------------------------------------------------------------------
@@ -94,6 +96,37 @@ impl From<&consensus_notify::PruningPointUtxoSetOverrideNotification> for Prunin
 impl From<&consensus_notify::NewBlockTemplateNotification> for NewBlockTemplateNotification {
     fn from(_: &consensus_notify::NewBlockTemplateNotification) -> Self {
         Self {}
+    }
+}
+
+// ----------------------------------------------------------------------------
+// index to rpc_core
+// ----------------------------------------------------------------------------
+
+impl From<index_notify::Notification> for Notification {
+    fn from(item: index_notify::Notification) -> Self {
+        (&item).into()
+    }
+}
+
+impl From<&index_notify::Notification> for Notification {
+    fn from(item: &index_notify::Notification) -> Self {
+        match item {
+            index_notify::Notification::UtxosChanged(msg) => Notification::UtxosChanged(msg.into()),
+            index_notify::Notification::PruningPointUtxoSetOverride(msg) => Notification::PruningPointUtxoSetOverride(msg.into()),
+        }
+    }
+}
+
+impl From<&index_notify::PruningPointUtxoSetOverrideNotification> for PruningPointUtxoSetOverrideNotification {
+    fn from(_: &index_notify::PruningPointUtxoSetOverrideNotification) -> Self {
+        Self {}
+    }
+}
+
+impl From<&index_notify::UtxosChangedNotification> for UtxosChangedNotification {
+    fn from(item: &index_notify::UtxosChangedNotification) -> Self {
+        Self { added: Arc::new(utxo_set_into_rpc(&item.added)), removed: Arc::new(utxo_set_into_rpc(&item.removed)) }
     }
 }
 

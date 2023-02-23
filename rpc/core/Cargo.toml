@@ -15,6 +15,8 @@ math.workspace = true
 kaspa-core.workspace = true
 kaspa-utils.workspace = true
 kaspa-notify.workspace = true
+kaspa-index-processor.workspace = true
+utxoindex.workspace = true
 faster-hex.workspace = true
 serde.workspace = true
 derive_more.workspace = true
@@ -26,7 +28,6 @@ smallvec.workspace = true
 cfg-if.workspace = true
 futures-util.workspace = true
 event-processor.workspace = true
-utxoindex.workspace = true
 
 async-trait = "0.1.57"
 futures = { version = "0.3" }

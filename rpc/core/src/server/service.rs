@@ -73,7 +73,8 @@ impl RpcCoreService {
         // Prepare the rpc-core notifier
         let mut consensus_events: EventSwitches = EVENT_TYPE_ARRAY[..].into();
         consensus_events[EventType::UtxosChanged] = false;
-        let _utxoindex_events: EventSwitches = [EventType::UtxosChanged].as_ref().into();
+        consensus_events[EventType::PruningPointUtxoSetOverride] = utxoindex.is_none();
+        let _index_events: EventSwitches = [EventType::UtxosChanged, EventType::PruningPointUtxoSetOverride].as_ref().into();
         let consensus_collector = Arc::new(CollectorFromConsensus::new(consensus_notify_channel.receiver()));
         let event_processor_collector = Arc::new(CollectorFromEventProcessor::new(event_notification_recv));
 

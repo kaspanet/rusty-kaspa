@@ -1538,6 +1538,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "kaspa-index-processor"
+version = "0.1.0"
+dependencies = [
+ "async-channel",
+ "consensus",
+ "consensus-core",
+ "derive_more",
+ "futures",
+ "hashes",
+ "kaspa-core",
+ "kaspa-notify",
+ "kaspa-utils",
+ "log",
+ "parking_lot",
+ "paste",
+ "rand 0.8.5",
+ "thiserror",
+ "tokio",
+ "triggered",
+ "utxoindex",
+]
+
+[[package]]
 name = "kaspa-notify"
 version = "0.1.0"
 dependencies = [
@@ -1579,6 +1602,7 @@ dependencies = [
  "futures-util",
  "hashes",
  "kaspa-core",
+ "kaspa-index-processor",
  "kaspa-notify",
  "kaspa-utils",
  "log",
