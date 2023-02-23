@@ -5,6 +5,7 @@
 
 use consensus_core::{
     block::Block,
+    blockhash::ORIGIN,
     trusted::{TrustedBlock, TrustedHash, TrustedHeader},
     BlockHashMap, BlockHashSet, HashMapCustomHasher,
 };
@@ -62,6 +63,9 @@ impl TrustedDataPackage {
             tb.ghostdag.mergeset_blues.retain(|h| set.contains(h));
             tb.ghostdag.mergeset_reds.retain(|h| set.contains(h));
             tb.ghostdag.blues_anticone_sizes.retain(|k, _| set.contains(k));
+            if !set.contains(&tb.ghostdag.selected_parent) {
+                tb.ghostdag.selected_parent = ORIGIN;
+            }
         }
 
         // Topological sort

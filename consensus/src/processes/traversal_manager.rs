@@ -8,7 +8,6 @@ use crate::{
     processes::ghostdag::ordering::SortableBlock,
 };
 use consensus_core::{blockhash::BlockHashExtensions, errors::block::RuleError, BlueWorkType};
-use database::prelude::StoreResultExtensions;
 use hashes::Hash;
 use kaspa_utils::refs::Refs;
 
@@ -75,7 +74,10 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader> DagTraversalManager<T, U
         // Walk down the chain until we cross the window boundaries
         loop {
             if current_ghostdag.selected_parent.is_origin() {
-                if window_heap.binary_heap.len() == window_heap.size {
+                // Reaching origin means there's no more data, so we expect the window to already be full, otherwise we err.
+                // This error can happen only during an IBD from pruning proof when processing the first headers in the pruning point's
+                // future, and means that the syncer did not provide sufficient trusted information for proper validation
+                if window_heap.reached_size_bound() {
                     break;
                 } else {
                     return Err(RuleError::InsufficientDaaWindowSize(window_heap.binary_heap.len()));
@@ -86,14 +88,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader> DagTraversalManager<T, U
                 break;
             }
 
-            let Some(parent_ghostdag) = self.ghostdag_store.get_data(current_ghostdag.selected_parent).unwrap_option() else {
-                if window_heap.binary_heap.len() == window_heap.size {
-                    break;
-                } else {
-                    return Err(RuleError::InsufficientDaaWindowSize(window_heap.binary_heap.len()));
-                }
-            };
-
+            let parent_ghostdag = self.ghostdag_store.get_data(current_ghostdag.selected_parent).unwrap();
             let selected_parent_blue_work_too_low =
                 self.try_push_mergeset(&mut window_heap, &current_ghostdag, parent_ghostdag.blue_work);
             // No need to further iterate since past of selected parent has even lower blue work
@@ -129,21 +124,25 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader> DagTraversalManager<T, U
 
 struct BoundedSizeBlockHeap {
     binary_heap: BlockWindowHeap,
-    size: usize,
+    size_bound: usize,
 }
 
 impl BoundedSizeBlockHeap {
-    fn new(size: usize) -> Self {
-        Self::from_binary_heap(size, BinaryHeap::with_capacity(size))
+    fn new(size_bound: usize) -> Self {
+        Self::from_binary_heap(size_bound, BinaryHeap::with_capacity(size_bound))
     }
 
-    fn from_binary_heap(size: usize, binary_heap: BlockWindowHeap) -> Self {
-        Self { size, binary_heap }
+    fn from_binary_heap(size_bound: usize, binary_heap: BlockWindowHeap) -> Self {
+        Self { size_bound, binary_heap }
+    }
+
+    fn reached_size_bound(&self) -> bool {
+        self.binary_heap.len() == self.size_bound
     }
 
     fn try_push(&mut self, hash: Hash, blue_work: BlueWorkType) -> bool {
         let r_sortable_block = Reverse(SortableBlock { hash, blue_work });
-        if self.binary_heap.len() == self.size {
+        if self.reached_size_bound() {
             if let Some(max) = self.binary_heap.peek() {
                 if *max < r_sortable_block {
                     return false; // Heap is full and the suggested block is greater than the max
