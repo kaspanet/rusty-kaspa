@@ -80,6 +80,18 @@ where
         self.inner.clone().register_new_listener(connection)
     }
 
+    pub fn try_start_notify(&self, id: ListenerId, scope: Scope) -> Result<()> {
+        self.inner.clone().start_notify(id, scope)
+    }
+
+    pub fn try_execute_subscribe_command(&self, id: ListenerId, scope: Scope, command: Command) -> Result<()> {
+        self.inner.clone().execute_subscribe_command(id, scope, command)
+    }
+
+    pub fn try_stop_notify(&self, id: ListenerId, scope: Scope) -> Result<()> {
+        self.inner.clone().stop_notify(id, scope)
+    }
+
     pub fn unregister_listener(&self, id: ListenerId) -> Result<()> {
         self.inner.unregister_listener(id)
     }
@@ -290,5 +302,37 @@ where
         }
         trace!("[Notifier-{}] stopped", self.name);
         Ok(())
+    }
+}
+
+// #[cfg(test)]
+pub mod test_helpers {
+    use super::*;
+    use async_channel::Sender;
+
+    #[derive(Debug)]
+    pub struct NotifyMock<N>
+    where
+        N: Notification,
+    {
+        sender: Sender<N>,
+    }
+
+    impl<N> NotifyMock<N>
+    where
+        N: Notification,
+    {
+        pub fn new(sender: Sender<N>) -> Self {
+            Self { sender }
+        }
+    }
+
+    impl<N> Notify<N> for NotifyMock<N>
+    where
+        N: Notification,
+    {
+        fn notify(&self, notification: N) -> Result<()> {
+            Ok(self.sender.try_send(notification)?)
+        }
     }
 }

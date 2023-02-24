@@ -13,6 +13,7 @@ hashes.workspace = true
 merkle.workspace = true
 kaspa-core.workspace = true
 consensus-core.workspace = true
+consensus-notify.workspace = true
 consensus.workspace = true
 faster-hex.workspace = true
 thiserror.workspace = true
@@ -34,7 +35,7 @@ txscript.workspace = true
 rocksdb.workspace = true
 database.workspace = true
 utxoindex.workspace = true
-event-processor.workspace = true
+kaspa-index-processor.workspace = true
 
 crossbeam-channel = "0.5"
 async-channel = "1.8.0"

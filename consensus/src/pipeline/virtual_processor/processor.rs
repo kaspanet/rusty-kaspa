@@ -46,7 +46,6 @@ use consensus_core::{
     block::{BlockTemplate, MutableBlock},
     blockstatus::BlockStatus::{self, StatusDisqualifiedFromChain, StatusUTXOPendingVerification, StatusUTXOValid},
     coinbase::{BlockRewardData, MinerData},
-    events::{ConsensusEvent, VirtualChangeSetEvent},
     header::Header,
     merkle::calc_hash_merkle_root,
     muhash::MuHashExtensions,
@@ -70,7 +69,6 @@ use kaspa_core::{debug, info, trace};
 use kaspa_notify::notifier::Notify;
 use muhash::MuHash;
 
-use async_channel::Sender as AsyncSender; // to avoid confusion with crossbeam
 use crossbeam_channel::Receiver as CrossbeamReceiver; // to aviod confusion with async_channel
 use itertools::Itertools;
 use parking_lot::{RwLock, RwLockUpgradableReadGuard};
@@ -90,7 +88,6 @@ use super::errors::{PruningImportError, PruningImportResult};
 pub struct VirtualStateProcessor {
     // Channels
     receiver: CrossbeamReceiver<BlockProcessingMessage>,
-    consensus_sender: AsyncSender<ConsensusEvent>,
 
     // Thread pool
     pub(super) thread_pool: Arc<ThreadPool>,
@@ -147,7 +144,6 @@ impl VirtualStateProcessor {
     pub fn new(
         receiver: CrossbeamReceiver<BlockProcessingMessage>,
         thread_pool: Arc<ThreadPool>,
-        consensus_sender: AsyncSender<ConsensusEvent>,
         params: &Params,
         process_genesis: bool,
         db: Arc<DB>,
@@ -184,8 +180,6 @@ impl VirtualStateProcessor {
         Self {
             receiver,
             thread_pool,
-
-            consensus_sender,
 
             genesis_hash: params.genesis_hash,
             genesis_bits: params.genesis_bits,
@@ -409,10 +403,9 @@ impl VirtualStateProcessor {
                 // Emit notifications
                 let accumulated_diff = Arc::new(accumulated_diff);
                 let virtual_parents = Arc::new(new_virtual_state.parents);
-                let _ = self.notification_root().notify(Notification::UtxosChanged(UtxosChangedNotification::new(
-                    accumulated_diff.clone(),
-                    virtual_parents.clone(),
-                )));
+                let _ = self
+                    .notification_root()
+                    .notify(Notification::UtxosChanged(UtxosChangedNotification::new(accumulated_diff, virtual_parents)));
                 let _ = self.notification_root().notify(Notification::VirtualSelectedParentBlueScoreChanged(
                     VirtualSelectedParentBlueScoreChangedNotification::new(new_virtual_state.ghostdag_data.blue_score),
                 ));
@@ -423,25 +416,9 @@ impl VirtualStateProcessor {
                     VirtualSelectedParentChainChangedNotification::new(
                         new_virtual_state.ghostdag_data.mergeset_blues.clone(),
                         new_virtual_state.ghostdag_data.mergeset_reds.clone(),
-                        Arc::new(new_virtual_state.accepted_tx_ids.clone()),
+                        Arc::new(new_virtual_state.accepted_tx_ids),
                     ),
                 ));
-
-                // Stops consensus from sending into and bloating an unread channel in cases where event processor is not required (such as in testing cases).
-                if self.consensus_sender.receiver_count() > 0 {
-                    // We use try_send on consensus sender since this is none-blocking.
-                    self.consensus_sender
-                        .try_send(ConsensusEvent::VirtualChangeSet(Arc::new(VirtualChangeSetEvent {
-                            accumulated_utxo_diff: accumulated_diff,
-                            parents: virtual_parents,
-                            selected_parent_blue_score: new_virtual_state.ghostdag_data.blue_score,
-                            daa_score: new_virtual_state.daa_score,
-                            mergeset_blues: new_virtual_state.ghostdag_data.mergeset_blues,
-                            mergeset_reds: new_virtual_state.ghostdag_data.mergeset_reds,
-                            accepted_tx_ids: Arc::new(new_virtual_state.accepted_tx_ids),
-                        })))
-                        .expect("expected send");
-                };
             }
             BlockStatus::StatusDisqualifiedFromChain => {
                 // TODO: this means another chain needs to be checked

@@ -49,7 +49,6 @@ use consensus_core::{
     coinbase::MinerData,
     errors::pruning::PruningImportError,
     errors::{coinbase::CoinbaseResult, tx::TxResult},
-    events::ConsensusEvent,
     muhash::MuHashExtensions,
     pruning::{PruningPointProof, PruningPointsList},
     trusted::TrustedBlock,
@@ -98,7 +97,6 @@ pub struct Consensus {
 
     // Channels
     block_sender: CrossbeamSender<BlockProcessingMessage>,
-    pub consensus_sender: AsyncSender<ConsensusEvent>,
 
     // Processors
     header_processor: Arc<HeaderProcessor>,
@@ -140,12 +138,7 @@ pub struct Consensus {
 }
 
 impl Consensus {
-    pub fn new(
-        db: Arc<DB>,
-        config: &Config,
-        notification_sender: AsyncSender<Notification>,
-        consensus_sender: AsyncSender<ConsensusEvent>,
-    ) -> Self {
+    pub fn new(db: Arc<DB>, config: &Config, notification_sender: AsyncSender<Notification>) -> Self {
         let params = &config.params;
         let perf_params = &config.perf;
         //
@@ -384,7 +377,6 @@ impl Consensus {
         let virtual_processor = Arc::new(VirtualStateProcessor::new(
             virtual_receiver,
             virtual_pool,
-            consensus_sender.clone(),
             params,
             config.process_genesis,
             db.clone(),
@@ -474,7 +466,6 @@ impl Consensus {
             notification_root,
 
             counters,
-            consensus_sender,
         }
     }
 

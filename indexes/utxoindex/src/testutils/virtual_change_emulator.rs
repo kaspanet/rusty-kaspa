@@ -1,24 +1,24 @@
+use crate::model::{CirculatingSupply, CirculatingSupplyDiff};
+use consensus::test_helpers::*;
+use consensus_core::{
+    tx::ScriptPublicKey,
+    utxo::{utxo_collection::UtxoCollection, utxo_diff::UtxoDiff},
+    BlockHashSet, HashMapCustomHasher,
+};
+use hashes::Hash;
 #[cfg(test)]
 use rand::Rng;
 use rand::{rngs::SmallRng, SeedableRng};
 use std::sync::Arc;
 
-use consensus::test_helpers::*;
-
-use consensus_core::{
-    events::VirtualChangeSetEvent,
-    tx::ScriptPublicKey,
-    utxo::{utxo_collection::UtxoCollection, utxo_diff::UtxoDiff},
-    BlockHashSet, HashMapCustomHasher,
-};
-
-use utxoindex::model::{CirculatingSupply, CirculatingSupplyDiff};
-
 pub struct VirtualChangeEmulator {
     pub utxo_collection: UtxoCollection,
     pub tips: BlockHashSet,
     pub circulating_supply: u64,
-    pub virtual_state: VirtualChangeSetEvent,
+    pub accumulated_utxo_diff: Arc<UtxoDiff>,
+    pub virtual_parents: Arc<Vec<Hash>>,
+    pub selected_parent_blue_score: u64,
+    pub daa_score: u64,
     pub script_public_key_pool: Vec<ScriptPublicKey>,
 }
 
@@ -26,10 +26,13 @@ impl VirtualChangeEmulator {
     pub fn new() -> Self {
         Self {
             utxo_collection: UtxoCollection::new(),
-            virtual_state: VirtualChangeSetEvent::default(),
-            script_public_key_pool: Vec::new(),
             tips: BlockHashSet::new(),
             circulating_supply: 0,
+            accumulated_utxo_diff: Arc::new(UtxoDiff::default()),
+            virtual_parents: Arc::new(vec![]),
+            selected_parent_blue_score: 0,
+            daa_score: 0,
+            script_public_key_pool: vec![],
         }
     }
 
@@ -47,7 +50,7 @@ impl VirtualChangeEmulator {
         let rng = &mut SmallRng::seed_from_u64(42);
 
         let mut new_circulating_supply_diff: CirculatingSupplyDiff = 0;
-        self.virtual_state.accumulated_utxo_diff = Arc::new(UtxoDiff::new(
+        self.accumulated_utxo_diff = Arc::new(UtxoDiff::new(
             UtxoCollection::from_iter(
                 generate_random_utxos_from_script_public_key_pool(rng, add_amount, &self.script_public_key_pool).into_iter().map(
                     |(k, v)| {
@@ -62,12 +65,12 @@ impl VirtualChangeEmulator {
             })),
         ));
 
-        self.utxo_collection.retain(|k, _| !self.virtual_state.accumulated_utxo_diff.remove.contains_key(k));
-        self.utxo_collection.extend(self.virtual_state.accumulated_utxo_diff.add.iter().map(move |(k, v)| (*k, v.clone())));
+        self.utxo_collection.retain(|k, _| !self.accumulated_utxo_diff.remove.contains_key(k));
+        self.utxo_collection.extend(self.accumulated_utxo_diff.add.iter().map(move |(k, v)| (*k, v.clone())));
 
         let new_tips = Arc::new(generate_random_hashes(rng, tip_amount));
 
-        self.virtual_state.parents = new_tips.clone();
+        self.virtual_parents = new_tips.clone();
         self.tips = BlockHashSet::from_iter(new_tips.iter().cloned());
 
         // Force monotonic
@@ -75,16 +78,16 @@ impl VirtualChangeEmulator {
             self.circulating_supply += new_circulating_supply_diff as CirculatingSupply;
         }
 
-        self.virtual_state.selected_parent_blue_score = rng.gen();
-        self.virtual_state.daa_score = rng.gen();
+        self.selected_parent_blue_score = rng.gen();
+        self.daa_score = rng.gen();
     }
 
     pub fn clear_virtual_state(&mut self) {
-        self.virtual_state.accumulated_utxo_diff = Arc::new(UtxoDiff::new(UtxoCollection::new(), UtxoCollection::new()));
+        self.accumulated_utxo_diff = Arc::new(UtxoDiff::new(UtxoCollection::new(), UtxoCollection::new()));
 
-        self.virtual_state.parents = Arc::new(Vec::new());
-        self.virtual_state.selected_parent_blue_score = 0;
-        self.virtual_state.daa_score = 0;
+        self.virtual_parents = Arc::new(vec![]);
+        self.selected_parent_blue_score = 0;
+        self.daa_score = 0;
     }
 }
 

@@ -3,11 +3,11 @@ extern crate core;
 extern crate hashes;
 
 use clap::Parser;
-use consensus_core::{events::ConsensusEvent, networktype::NetworkType};
+use consensus_core::networktype::NetworkType;
 use consensus_notify::service::NotifyService;
-use event_processor::notify::Notification;
 
 use kaspa_core::{core::Core, signals::Signals, task::runtime::AsyncRuntime};
+use kaspa_index_processor::service::IndexService;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -19,7 +19,6 @@ use consensus::params::{DEVNET_PARAMS, MAINNET_PARAMS};
 use utxoindex::{api::DynUtxoIndexApi, UtxoIndex};
 
 use async_channel::unbounded;
-use event_processor::processor::EventProcessor;
 use kaspa_core::{info, trace};
 use kaspa_grpc_server::GrpcServer;
 use kaspa_rpc_core::server::RpcCoreServer;
@@ -150,34 +149,33 @@ pub fn main() {
     };
 
     let (notification_send, notification_recv) = unbounded();
-    let (consensus_send, consensus_recv) = unbounded::<ConsensusEvent>();
-    let (event_processor_send, event_processor_recv) = unbounded::<Notification>();
 
     // Use `num_cpus` background threads for the consensus database as recommended by rocksdb
     let consensus_db = database::prelude::open_db(consensus_db_dir, true, num_cpus::get());
-    let consensus = Arc::new(Consensus::new(consensus_db, &config, notification_send, consensus_send));
+    let consensus = Arc::new(Consensus::new(consensus_db, &config, notification_send));
     let monitor = Arc::new(ConsensusMonitor::new(consensus.processing_counters().clone()));
 
     let notify_service = Arc::new(NotifyService::new(consensus.notification_root(), notification_recv));
-    let _consensus_notifier = notify_service.notifier();
 
-    let utxoindex: DynUtxoIndexApi = if args.utxoindex {
+    let index_service: Option<Arc<IndexService>> = if args.utxoindex {
         // Use only a single thread for none-consensus databases
         let utxoindex_db = database::prelude::open_db(utxoindex_db_dir, true, 1);
-        Some(UtxoIndex::new(consensus.clone(), utxoindex_db).unwrap())
+        let utxoindex: DynUtxoIndexApi = Some(UtxoIndex::new(consensus.clone(), utxoindex_db).unwrap());
+        Some(Arc::new(IndexService::new(notify_service.clone(), utxoindex)))
     } else {
         None
     };
 
-    let event_processor = Arc::new(EventProcessor::new(utxoindex.clone(), consensus_recv, event_processor_send));
-
-    let rpc_core_server = Arc::new(RpcCoreServer::new(consensus.clone(), notify_service, utxoindex, event_processor_recv));
+    let rpc_core_server = Arc::new(RpcCoreServer::new(consensus.clone(), notify_service.clone(), index_service.clone()));
     let grpc_server = Arc::new(GrpcServer::new(grpc_server_addr, rpc_core_server.service()));
     let p2p_service = Arc::new(P2pService::new(consensus.clone(), args.connect));
 
     // Create an async runtime and register the top-level async services
     let async_runtime = Arc::new(AsyncRuntime::new());
-    async_runtime.register(event_processor);
+    async_runtime.register(notify_service);
+    if let Some(index_service) = index_service {
+        async_runtime.register(index_service)
+    };
     async_runtime.register(rpc_core_server);
     async_runtime.register(grpc_server);
     async_runtime.register(p2p_service);

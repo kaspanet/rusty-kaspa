@@ -9,7 +9,6 @@ use async_channel::Sender;
 use consensus_core::{
     block::{Block, MutableBlock},
     blockstatus::BlockStatus,
-    events::ConsensusEvent,
     header::Header,
     merkle::calc_hash_merkle_root,
     subnets::SUBNETWORK_ID_COINBASE,
@@ -49,14 +48,9 @@ pub struct TestConsensus {
 }
 
 impl TestConsensus {
-    pub fn new(
-        db: Arc<DB>,
-        config: &Config,
-        notification_sender: Sender<Notification>,
-        consensus_sender: Sender<ConsensusEvent>,
-    ) -> Self {
+    pub fn new(db: Arc<DB>, config: &Config, notification_sender: Sender<Notification>) -> Self {
         Self {
-            consensus: Arc::new(Consensus::new(db, config, notification_sender, consensus_sender)),
+            consensus: Arc::new(Consensus::new(db, config, notification_sender)),
             params: config.params.clone(),
             temp_db_lifetime: Default::default(),
         }
@@ -66,25 +60,16 @@ impl TestConsensus {
         self.consensus.clone()
     }
 
-    pub fn create_from_temp_db(
-        config: &Config,
-        notification_sender: Sender<Notification>,
-        consensus_sender: Sender<ConsensusEvent>,
-    ) -> Self {
+    pub fn create_from_temp_db(config: &Config, notification_sender: Sender<Notification>) -> Self {
         let (temp_db_lifetime, db) = create_temp_db();
-        Self {
-            consensus: Arc::new(Consensus::new(db, config, notification_sender, consensus_sender)),
-            params: config.params.clone(),
-            temp_db_lifetime,
-        }
+        Self { consensus: Arc::new(Consensus::new(db, config, notification_sender)), params: config.params.clone(), temp_db_lifetime }
     }
 
     pub fn create_from_temp_db_and_dummy_sender(config: &Config) -> Self {
         let (temp_db_lifetime, db) = create_temp_db();
-        let (dummy_consensus_sender, _) = async_channel::unbounded::<ConsensusEvent>();
         let (dummy_notification_sender, _) = async_channel::unbounded();
         Self {
-            consensus: Arc::new(Consensus::new(db, config, dummy_notification_sender, dummy_consensus_sender)),
+            consensus: Arc::new(Consensus::new(db, config, dummy_notification_sender)),
             params: config.params.clone(),
             temp_db_lifetime,
         }

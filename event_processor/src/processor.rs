@@ -20,7 +20,7 @@ use utxoindex::api::DynUtxoIndexApi;
 
 /// The [`EventProcessor`] takes in events from kaspad and processes these to [`Notification`]s,
 /// It also feeds and controls indexers, thereby extracting indexed events.
-/// [`Notification`]s are in a rpc-core friendly format.  
+/// [`Notification`]s are in a rpc-core friendly format.
 #[derive(Clone)]
 pub struct EventProcessor {
     utxoindex: DynUtxoIndexApi,
