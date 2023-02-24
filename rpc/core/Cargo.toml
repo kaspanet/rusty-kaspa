@@ -27,7 +27,6 @@ log.workspace = true
 smallvec.workspace = true
 cfg-if.workspace = true
 futures-util.workspace = true
-event-processor.workspace = true
 
 async-trait = "0.1.57"
 futures = { version = "0.3" }

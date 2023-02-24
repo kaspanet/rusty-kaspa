@@ -5,7 +5,6 @@ use crate::{
     VirtualSelectedParentChainChangedNotification,
 };
 use consensus_notify::notification as consensus_notify;
-use event_processor::notify as event_processor_notify;
 use kaspa_index_processor::notification as index_notify;
 use std::sync::Arc;
 
@@ -129,39 +128,3 @@ impl From<&index_notify::UtxosChangedNotification> for UtxosChangedNotification 
         Self { added: Arc::new(utxo_set_into_rpc(&item.added)), removed: Arc::new(utxo_set_into_rpc(&item.removed)) }
     }
 }
-
-// ----------------------------------------------------------------------------
-// event_processor to rpc_core
-// ----------------------------------------------------------------------------
-
-impl From<event_processor_notify::Notification> for Notification {
-    fn from(item: event_processor_notify::Notification) -> Self {
-        (&item).into()
-    }
-}
-
-impl From<&event_processor_notify::Notification> for Notification {
-    fn from(item: &event_processor_notify::Notification) -> Self {
-        match item {
-            event_processor_notify::Notification::BlockAdded(msg) => Notification::BlockAdded((&**msg).into()),
-            event_processor_notify::Notification::NewBlockTemplate(msg) => Notification::NewBlockTemplate(msg.into()),
-            _ => todo!(),
-        }
-    }
-}
-
-impl From<&event_processor_notify::BlockAddedNotification> for BlockAddedNotification {
-    fn from(item: &event_processor_notify::BlockAddedNotification) -> Self {
-        Self { block: Arc::new((&item.block).into()) }
-    }
-}
-
-impl From<&event_processor_notify::NewBlockTemplateNotification> for NewBlockTemplateNotification {
-    fn from(_: &event_processor_notify::NewBlockTemplateNotification) -> Self {
-        Self {}
-    }
-}
-
-// ----------------------------------------------------------------------------
-// rpc_core to consensus_core
-// ----------------------------------------------------------------------------

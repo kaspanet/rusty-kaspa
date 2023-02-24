@@ -15,7 +15,6 @@ consensus.workspace = true
 consensus-notify.workspace = true
 database.workspace = true
 kaspa-index-processor.workspace = true
-event-processor.workspace = true
 utxoindex.workspace = true
 async-channel.workspace = true
 kaspa-rpc-core.workspace = true
