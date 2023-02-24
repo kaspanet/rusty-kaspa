@@ -149,33 +149,33 @@ mod tests {
     use super::*;
     use crate::{
         events::EventType,
-        notifier::Notify,
+        notifier::test_helpers::NotifyMock,
         subscription::single::{OverallSubscription, UtxosChangedSubscription, VirtualSelectedParentChainChangedSubscription},
     };
     use derive_more::Display;
 
     #[derive(Clone, Debug, PartialEq, Eq)]
-    enum TestMessage {
+    enum IncomingNotification {
         A,
         B,
     }
 
     #[derive(Clone, Debug, Display, PartialEq, Eq)]
-    enum TestNotification {
-        NA,
-        NB,
+    enum OutgoingNotification {
+        A,
+        B,
     }
 
-    impl From<TestMessage> for TestNotification {
-        fn from(value: TestMessage) -> Self {
+    impl From<IncomingNotification> for OutgoingNotification {
+        fn from(value: IncomingNotification) -> Self {
             match value {
-                TestMessage::A => TestNotification::NA,
-                TestMessage::B => TestNotification::NB,
+                IncomingNotification::A => OutgoingNotification::A,
+                IncomingNotification::B => OutgoingNotification::B,
             }
         }
     }
 
-    impl crate::notification::Notification for TestNotification {
+    impl crate::notification::Notification for OutgoingNotification {
         fn apply_overall_subscription(&self, _: &OverallSubscription) -> Option<Self> {
             unimplemented!()
         }
@@ -196,31 +196,22 @@ mod tests {
         }
     }
 
-    #[derive(Debug)]
-    struct Notifier<N: Notification> {
-        sender: Sender<N>,
-    }
-    impl<N: Notification> Notify<N> for Notifier<N> {
-        fn notify(&self, notification: N) -> Result<()> {
-            Ok(self.sender.try_send(notification)?)
-        }
-    }
-
     #[tokio::test]
     async fn test_collector_from() {
         let incoming = Channel::default();
-        let collector: Arc<CollectorFrom<TestMessage, TestNotification>> = Arc::new(CollectorFrom::new(incoming.receiver()));
+        let collector: Arc<CollectorFrom<IncomingNotification, OutgoingNotification>> =
+            Arc::new(CollectorFrom::new(incoming.receiver()));
         let outgoing = Channel::default();
-        let notifier = Arc::new(Notifier { sender: outgoing.sender() });
+        let notifier = Arc::new(NotifyMock::new(outgoing.sender()));
         collector.clone().start(notifier);
 
-        assert!(incoming.send(TestMessage::A).await.is_ok());
-        assert!(incoming.send(TestMessage::B).await.is_ok());
-        assert!(incoming.send(TestMessage::A).await.is_ok());
+        assert!(incoming.send(IncomingNotification::A).await.is_ok());
+        assert!(incoming.send(IncomingNotification::B).await.is_ok());
+        assert!(incoming.send(IncomingNotification::A).await.is_ok());
 
-        assert_eq!(outgoing.recv().await.unwrap(), TestNotification::NA);
-        assert_eq!(outgoing.recv().await.unwrap(), TestNotification::NB);
-        assert_eq!(outgoing.recv().await.unwrap(), TestNotification::NA);
+        assert_eq!(outgoing.recv().await.unwrap(), OutgoingNotification::A);
+        assert_eq!(outgoing.recv().await.unwrap(), OutgoingNotification::B);
+        assert_eq!(outgoing.recv().await.unwrap(), OutgoingNotification::A);
 
         assert!(collector.stop().await.is_ok());
     }
