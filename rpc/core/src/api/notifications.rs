@@ -53,10 +53,7 @@ impl NotificationTrait for Notification {
         }
     }
 
-    fn apply_virtual_selected_parent_chain_changed_subscription(
-        &self,
-        subscription: &VirtualSelectedParentChainChangedSubscription,
-    ) -> Option<Self> {
+    fn apply_virtual_chain_changed_subscription(&self, subscription: &VirtualSelectedParentChainChangedSubscription) -> Option<Self> {
         match subscription.active() {
             true => {
                 if let Notification::VirtualSelectedParentChainChanged(ref payload) = self {

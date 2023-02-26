@@ -52,10 +52,7 @@ impl NotificationTrait for Notification {
         }
     }
 
-    fn apply_virtual_selected_parent_chain_changed_subscription(
-        &self,
-        subscription: &VirtualSelectedParentChainChangedSubscription,
-    ) -> Option<Self> {
+    fn apply_virtual_chain_changed_subscription(&self, subscription: &VirtualSelectedParentChainChangedSubscription) -> Option<Self> {
         match subscription.active() {
             true => {
                 if let Notification::VirtualSelectedParentChainChanged(ref payload) = self {
@@ -74,6 +71,8 @@ impl NotificationTrait for Notification {
     }
 
     fn apply_utxos_changed_subscription(&self, _subscription: &UtxosChangedSubscription) -> Option<Self> {
+        // No effort is made here to apply the subscription addresses.
+        // This will be achieved farther along the notification backbone.
         Some(self.clone())
     }
 

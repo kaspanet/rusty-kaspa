@@ -1,5 +1,13 @@
 use derive_more::Display;
-use kaspa_notify::{full_featured, notification::Notification as NotificationTrait, subscription::Single};
+use kaspa_notify::{
+    events::EventType,
+    full_featured,
+    notification::Notification as NotificationTrait,
+    subscription::{
+        single::{OverallSubscription, UtxosChangedSubscription, VirtualSelectedParentChainChangedSubscription},
+        Single,
+    },
+};
 use std::sync::Arc;
 use utxoindex::model::{UtxoChanges, UtxoSetByScriptPublicKey};
 
@@ -15,29 +23,23 @@ pub enum Notification {
 }
 
 impl NotificationTrait for Notification {
-    fn apply_overall_subscription(&self, subscription: &kaspa_notify::subscription::single::OverallSubscription) -> Option<Self> {
+    fn apply_overall_subscription(&self, subscription: &OverallSubscription) -> Option<Self> {
         match subscription.active() {
             true => Some(self.clone()),
             false => None,
         }
     }
 
-    fn apply_virtual_selected_parent_chain_changed_subscription(
-        &self,
-        _subscription: &kaspa_notify::subscription::single::VirtualSelectedParentChainChangedSubscription,
-    ) -> Option<Self> {
+    fn apply_virtual_chain_changed_subscription(&self, _subscription: &VirtualSelectedParentChainChangedSubscription) -> Option<Self> {
         Some(self.clone())
     }
 
-    fn apply_utxos_changed_subscription(
-        &self,
-        _subscription: &kaspa_notify::subscription::single::UtxosChangedSubscription,
-    ) -> Option<Self> {
+    fn apply_utxos_changed_subscription(&self, _subscription: &UtxosChangedSubscription) -> Option<Self> {
         // TODO: apply the subscription
         Some(self.clone())
     }
 
-    fn event_type(&self) -> kaspa_notify::events::EventType {
+    fn event_type(&self) -> EventType {
         self.into()
     }
 }

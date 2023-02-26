@@ -180,10 +180,7 @@ mod tests {
             unimplemented!()
         }
 
-        fn apply_virtual_selected_parent_chain_changed_subscription(
-            &self,
-            _: &VirtualSelectedParentChainChangedSubscription,
-        ) -> Option<Self> {
+        fn apply_virtual_chain_changed_subscription(&self, _: &VirtualSelectedParentChainChangedSubscription) -> Option<Self> {
             unimplemented!()
         }
 
