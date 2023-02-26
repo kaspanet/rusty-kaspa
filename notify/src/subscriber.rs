@@ -132,3 +132,41 @@ impl Subscriber {
         self.stop_subscription_receiver_task().await
     }
 }
+
+pub mod test_helpers {
+    use super::*;
+    use async_channel::Sender;
+
+    pub struct SubscriptionMessage {
+        pub listener_id: ListenerId,
+        pub mutation: Mutation,
+    }
+
+    impl SubscriptionMessage {
+        pub fn new(listener_id: ListenerId, command: Command, scope: Scope) -> Self {
+            Self { listener_id, mutation: Mutation::new(command, scope) }
+        }
+    }
+
+    #[derive(Debug)]
+    pub struct SubscriptionManagerMock {
+        sender: Sender<SubscriptionMessage>,
+    }
+
+    impl SubscriptionManagerMock {
+        pub fn new(sender: Sender<SubscriptionMessage>) -> Self {
+            Self { sender }
+        }
+    }
+
+    #[async_trait]
+    impl SubscriptionManager for SubscriptionManagerMock {
+        async fn start_notify(&self, id: ListenerId, scope: Scope) -> Result<()> {
+            Ok(self.sender.send(SubscriptionMessage::new(id, Command::Start, scope)).await?)
+        }
+
+        async fn stop_notify(&self, id: ListenerId, scope: Scope) -> Result<()> {
+            Ok(self.sender.send(SubscriptionMessage::new(id, Command::Stop, scope)).await?)
+        }
+    }
+}
