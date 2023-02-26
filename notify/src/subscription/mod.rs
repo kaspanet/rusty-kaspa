@@ -74,9 +74,16 @@ pub trait Subscription {
     fn event_type(&self) -> EventType;
 }
 
-pub trait Compounded: Subscription + Debug + Send + Sync {
+pub trait Compounded: Subscription + AsAny + DynEq + CompoundedClone + Debug + Send + Sync {
     fn compound(&mut self, mutation: Mutation) -> Option<Mutation>;
 }
+
+impl PartialEq for dyn Compounded {
+    fn eq(&self, other: &dyn Compounded) -> bool {
+        DynEq::dyn_eq(self, other.as_any())
+    }
+}
+impl Eq for dyn Compounded {}
 
 pub type CompoundedSubscription = Box<dyn Compounded>;
 
@@ -129,6 +136,24 @@ impl<T: Eq + Any> DynEq for T {
         } else {
             false
         }
+    }
+}
+
+pub trait CompoundedClone {
+    fn clone_arc(&self) -> Arc<dyn Compounded>;
+    fn clone_box(&self) -> Box<dyn Compounded>;
+}
+
+impl<T> CompoundedClone for T
+where
+    T: 'static + Compounded + Clone,
+{
+    fn clone_arc(&self) -> Arc<dyn Compounded> {
+        Arc::new(self.clone())
+    }
+
+    fn clone_box(&self) -> Box<dyn Compounded> {
+        Box::new(self.clone())
     }
 }
 
