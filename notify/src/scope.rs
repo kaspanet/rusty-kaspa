@@ -58,10 +58,18 @@ pub struct FinalityConflictScope {}
 #[derive(Clone, Debug, PartialEq, Eq, Default, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct FinalityConflictResolvedScope {}
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct UtxosChangedScope {
     pub addresses: Vec<Address>,
 }
+
+impl PartialEq for UtxosChangedScope {
+    fn eq(&self, other: &Self) -> bool {
+        self.addresses.len() == other.addresses.len() && self.addresses.iter().all(|x| other.addresses.contains(x))
+    }
+}
+
+impl Eq for UtxosChangedScope {}
 
 impl UtxosChangedScope {
     pub fn new(addresses: Vec<Address>) -> Self {
