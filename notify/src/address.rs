@@ -37,3 +37,20 @@ impl From<ScriptPublicKey> for UtxoAddress {
         todo!()
     }
 }
+
+pub mod test_helpers {
+    use super::*;
+    use addresses::Prefix;
+
+    pub fn get_3_addresses(sorted: bool) -> Vec<Address> {
+        let mut addresses = vec![
+            Address { prefix: Prefix::Mainnet, payload: vec![1u8; 32], version: 0 },
+            Address { prefix: Prefix::Mainnet, payload: vec![2u8; 32], version: 0 },
+            Address { prefix: Prefix::Mainnet, payload: vec![0u8; 32], version: 0 },
+        ];
+        if sorted {
+            addresses.sort()
+        }
+        addresses
+    }
+}

@@ -295,17 +295,8 @@ impl Subscription for UtxosChangedSubscription {
 mod tests {
     use super::super::*;
     use super::*;
-    use crate::scope::BlockAddedScope;
-    use addresses::Prefix;
+    use crate::{address::test_helpers::get_3_addresses, scope::BlockAddedScope};
     use std::collections::hash_map::DefaultHasher;
-
-    fn addresses() -> Vec<Address> {
-        vec![
-            Address { prefix: Prefix::Mainnet, payload: vec![1u8; 32], version: 0 },
-            Address { prefix: Prefix::Mainnet, payload: vec![2u8; 32], version: 0 },
-            Address { prefix: Prefix::Mainnet, payload: vec![0u8; 32], version: 0 },
-        ]
-    }
 
     #[test]
     fn test_subscription_hash() {
@@ -365,7 +356,7 @@ mod tests {
             comparisons: Vec<Comparison>,
         }
 
-        let addresses = addresses();
+        let addresses = get_3_addresses(false);
         let mut sorted_addresses = addresses.clone();
         sorted_addresses.sort();
 
@@ -429,6 +420,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::redundant_clone)]
     fn test_subscription_mutation() {
         struct Test {
             name: &'static str,
@@ -479,8 +471,7 @@ mod tests {
 
         // UtxosChangedSubscription
 
-        let mut addresses = addresses();
-        addresses.sort();
+        let addresses = get_3_addresses(true);
         let a0 = HashSet::from_iter(vec![addresses[0].clone()].into_iter());
         let a1 = HashSet::from_iter(vec![addresses[1].clone()].into_iter());
         let a2 = HashSet::from_iter(vec![addresses[2].clone()].into_iter());
