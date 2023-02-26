@@ -48,7 +48,7 @@ impl From<i32> for Command {
 
 /// A subscription mutation including a start/stop command and
 /// a notification scope.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Mutation {
     pub command: Command,
     pub scope: Scope,
@@ -134,6 +134,7 @@ impl<T: Eq + Any> DynEq for T {
 
 pub trait SingleClone {
     fn clone_arc(&self) -> Arc<dyn Single>;
+    fn clone_box(&self) -> Box<dyn Single>;
 }
 
 impl<T> SingleClone for T
@@ -142,6 +143,10 @@ where
 {
     fn clone_arc(&self) -> Arc<dyn Single> {
         Arc::new(self.clone())
+    }
+
+    fn clone_box(&self) -> Box<dyn Single> {
+        Box::new(self.clone())
     }
 }
 
