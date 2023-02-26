@@ -722,6 +722,7 @@ impl VirtualStateProcessor {
                     ))
                     .unwrap();
                 self.commit_utxo_state(self.genesis_hash, UtxoDiff::default(), MuHash::new(), AcceptanceData {});
+
                 match self.past_pruning_points_store.insert(0, self.genesis_hash) {
                     Ok(()) => {}
                     Err(StoreError::KeyAlreadyExists(_)) => {
@@ -733,6 +734,8 @@ impl VirtualStateProcessor {
                     }
                     Err(err) => panic!("unexpected store error {err}"),
                 }
+
+                self.pruning_store.write().set(self.genesis_hash, self.genesis_hash, 0).unwrap();
             }
             StatusUTXOValid => {}
             _ => panic!("unexpected genesis status {status:?}"),

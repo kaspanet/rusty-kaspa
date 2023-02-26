@@ -8,8 +8,7 @@ use consensus_core::{block::Block, tx::Transaction};
 
 impl From<&Block> for protowire::BlockMessage {
     fn from(block: &Block) -> Self {
-        // TODO: txs
-        Self { header: Some(block.header.as_ref().into()), transactions: vec![] }
+        Self { header: Some(block.header.as_ref().into()), transactions: block.transactions.iter().map(|tx| tx.into()).collect() }
     }
 }
 

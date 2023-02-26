@@ -57,6 +57,9 @@ struct Args {
     #[arg(long = "connect")]
     connect: Option<String>,
 
+    #[arg(long = "listen")]
+    listen: Option<String>,
+
     #[arg(long = "reset-db")]
     reset_db: bool,
 
@@ -168,7 +171,7 @@ pub fn main() {
 
     let rpc_core_server = Arc::new(RpcCoreServer::new(consensus.clone(), utxoindex, event_processor_recv));
     let grpc_server = Arc::new(GrpcServer::new(grpc_server_addr, rpc_core_server.service()));
-    let p2p_service = Arc::new(P2pService::new(consensus.clone(), args.connect));
+    let p2p_service = Arc::new(P2pService::new(consensus.clone(), args.connect, args.listen));
 
     // Create an async runtime and register the top-level async services
     let async_runtime = Arc::new(AsyncRuntime::new());
