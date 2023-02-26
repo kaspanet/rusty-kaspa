@@ -28,11 +28,11 @@ event_type_enum! {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub enum EventType {
     BlockAdded = 0,
-    VirtualSelectedParentChainChanged,
+    VirtualChainChanged,
     FinalityConflict,
     FinalityConflictResolved,
     UtxosChanged,
-    VirtualSelectedParentBlueScoreChanged,
+    SinkBlueScoreChanged,
     VirtualDaaScoreChanged,
     PruningPointUtxoSetOverride,
     NewBlockTemplate,

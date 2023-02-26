@@ -2,8 +2,8 @@ use crate::{
     errors::EventProcessorResult,
     notify::{
         BlockAddedNotification, FinalityConflictNotification, FinalityConflictResolvedNotification, NewBlockTemplateNotification,
-        Notification, PruningPointUTXOSetOverrideNotification, UtxosChangedNotification, VirtualDaaScoreChangedNotification,
-        VirtualSelectedParentBlueScoreChangedNotification, VirtualSelectedParentChainChangedNotification,
+        Notification, PruningPointUTXOSetOverrideNotification, SinkBlueScoreChangedNotification, UtxosChangedNotification,
+        VirtualChainChangedNotification, VirtualDaaScoreChangedNotification,
     },
     IDENT,
 };
@@ -72,8 +72,8 @@ impl EventProcessor {
     }
 
     /// Processes the [`ConsensusEvent`] [`Arc<VirtualChangeSetEvent>`] to the [`Notification`]s:
-    /// [`VirtualSelectedParentBlueScoreChangedNotification`], [`VirtualDaaScoreChangedNotification`],
-    /// [`VirtualSelectedParentChainChangedNotification`] and potentially triggers an update on the [`UtxoIndex`]
+    /// [`SinkBlueScoreChangedNotification`], [`VirtualDaaScoreChangedNotification`],
+    /// [`VirtualChainChangedNotification`] and potentially triggers an update on the [`UtxoIndex`]
     /// with a resulting [`UtxosChangedNotification`] (if the utxoindex is active),
     /// and sends these through the [`EventProcessor`] channel.
     async fn process_virtual_state_change_set_event(
@@ -94,8 +94,8 @@ impl EventProcessor {
         };
 
         self.rpc_send
-            .send(Notification::VirtualSelectedParentBlueScoreChanged(VirtualSelectedParentBlueScoreChangedNotification {
-                virtual_selected_parent_blue_score: virtual_change_set_event.selected_parent_blue_score,
+            .send(Notification::SinkBlueScoreChanged(SinkBlueScoreChangedNotification {
+                sink_blue_score: virtual_change_set_event.selected_parent_blue_score,
             }))
             .await?;
 
@@ -106,7 +106,7 @@ impl EventProcessor {
             .await?;
 
         self.rpc_send
-            .send(Notification::VirtualSelectedParentChainChanged(Arc::new(VirtualSelectedParentChainChangedNotification {
+            .send(Notification::VirtualChainChanged(Arc::new(VirtualChainChangedNotification {
                 added_chain_block_hashes: virtual_change_set_event.mergeset_blues.clone(),
                 removed_chain_block_hashes: virtual_change_set_event.mergeset_reds.clone(),
                 accepted_transaction_ids: virtual_change_set_event.accepted_tx_ids.clone(),

@@ -121,7 +121,7 @@ impl RpcApi<ChannelConnection> for GrpcClient {
     route!(add_peer_call, AddPeer);
     route!(submit_transaction_call, SubmitTransaction);
     route!(get_subnetwork_call, GetSubnetwork);
-    route!(get_virtual_selected_parent_chain_from_block_call, GetVirtualSelectedParentChainFromBlock);
+    route!(get_virtual_chain_from_block_call, GetVirtualChainFromBlock);
     route!(get_blocks_call, GetBlocks);
     route!(get_block_count_call, GetBlockCount);
     route!(get_block_dag_info_call, GetBlockDagInfo);
@@ -131,7 +131,7 @@ impl RpcApi<ChannelConnection> for GrpcClient {
     route!(get_utxos_by_addresses_call, GetUtxosByAddresses);
     route!(get_balance_by_address_call, GetBalanceByAddress);
     route!(get_balances_by_addresses_call, GetBalancesByAddresses);
-    route!(get_virtual_selected_parent_blue_score_call, GetVirtualSelectedParentBlueScore);
+    route!(get_sink_blue_score_call, GetVirtualSelectedParentBlueScore);
     route!(ban_call, Ban);
     route!(unban_call, Unban);
     route!(estimate_network_hashes_per_second_call, EstimateNetworkHashesPerSecond);

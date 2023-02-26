@@ -27,11 +27,11 @@ scope_enum! {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub enum Scope {
     BlockAdded,
-    VirtualSelectedParentChainChanged,
+    VirtualChainChanged,
     FinalityConflict,
     FinalityConflictResolved,
     UtxosChanged,
-    VirtualSelectedParentBlueScoreChanged,
+    SinkBlueScoreChanged,
     VirtualDaaScoreChanged,
     PruningPointUtxoSetOverride,
     NewBlockTemplate,
@@ -42,11 +42,11 @@ pub enum Scope {
 pub struct BlockAddedScope {}
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
-pub struct VirtualSelectedParentChainChangedScope {
+pub struct VirtualChainChangedScope {
     pub include_accepted_transaction_ids: bool,
 }
 
-impl VirtualSelectedParentChainChangedScope {
+impl VirtualChainChangedScope {
     pub fn new(include_accepted_transaction_ids: bool) -> Self {
         Self { include_accepted_transaction_ids }
     }
@@ -78,7 +78,7 @@ impl UtxosChangedScope {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
-pub struct VirtualSelectedParentBlueScoreChangedScope {}
+pub struct SinkBlueScoreChangedScope {}
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct VirtualDaaScoreChangedScope {}

@@ -122,21 +122,18 @@ where
     async fn get_subnetwork_call(&self, request: GetSubnetworkRequest) -> RpcResult<GetSubnetworkResponse>;
 
     /// Requests the virtual selected parent chain from some `start_hash` to this node's current virtual.
-    async fn get_virtual_selected_parent_chain_from_block(
+    async fn get_virtual_chain_from_block(
         &self,
         start_hash: RpcHash,
         include_accepted_transaction_ids: bool,
-    ) -> RpcResult<GetVirtualSelectedParentChainFromBlockResponse> {
-        self.get_virtual_selected_parent_chain_from_block_call(GetVirtualSelectedParentChainFromBlockRequest::new(
-            start_hash,
-            include_accepted_transaction_ids,
-        ))
-        .await
+    ) -> RpcResult<GetVirtualChainFromBlockResponse> {
+        self.get_virtual_chain_from_block_call(GetVirtualChainFromBlockRequest::new(start_hash, include_accepted_transaction_ids))
+            .await
     }
-    async fn get_virtual_selected_parent_chain_from_block_call(
+    async fn get_virtual_chain_from_block_call(
         &self,
-        request: GetVirtualSelectedParentChainFromBlockRequest,
-    ) -> RpcResult<GetVirtualSelectedParentChainFromBlockResponse>;
+        request: GetVirtualChainFromBlockRequest,
+    ) -> RpcResult<GetVirtualChainFromBlockResponse>;
 
     /// Requests blocks between a certain block `low_hash` up to this node's current virtual.
     async fn get_blocks(&self, low_hash: RpcHash, include_blocks: bool, include_transactions: bool) -> RpcResult<GetBlocksResponse> {
@@ -207,10 +204,10 @@ where
     async fn get_utxos_by_addresses_call(&self, request: GetUtxosByAddressesRequest) -> RpcResult<GetUtxosByAddressesResponse>;
 
     /// Requests the blue score of the current selected parent of the virtual block.
-    async fn get_virtual_selected_parent_blue_score(&self) -> RpcResult<u64> {
-        Ok(self.get_virtual_selected_parent_blue_score_call(GetVirtualSelectedParentBlueScoreRequest {}).await?.blue_score)
+    async fn get_sink_blue_score(&self) -> RpcResult<u64> {
+        Ok(self.get_sink_blue_score_call(GetVirtualSelectedParentBlueScoreRequest {}).await?.blue_score)
     }
-    async fn get_virtual_selected_parent_blue_score_call(
+    async fn get_sink_blue_score_call(
         &self,
         request: GetVirtualSelectedParentBlueScoreRequest,
     ) -> RpcResult<GetVirtualSelectedParentBlueScoreResponse>;

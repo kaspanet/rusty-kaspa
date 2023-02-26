@@ -18,7 +18,7 @@ u32_try_from! {
         SubmitTransaction,
         GetBlock,
         GetSubnetwork,
-        GetVirtualSelectedParentChainFromBlock,
+        GetVirtualChainFromBlock,
         GetBlocks,
         GetBlockCount,
         GetBlockDagInfo,
@@ -43,8 +43,8 @@ u32_try_from! {
         NotifyPruningPointUtxoSetOverride,
         NotifyFinalityConflict,
         NotifyVirtualDaaScoreChanged,
-        NotifyVirtualSelectedParentChainChanged,
-        NotifyVirtualSelectedParentBlueScoreChanged,
+        NotifyVirtualChainChanged,
+        NotifySinkBlueScoreChanged,
 
         // Server to client notification
         Notification,

@@ -15,8 +15,8 @@ use kaspa_notify::{
     notifier::Notifier,
     scope::{
         BlockAddedScope, FinalityConflictResolvedScope, FinalityConflictScope, NewBlockTemplateScope,
-        PruningPointUtxoSetOverrideScope, Scope, UtxosChangedScope, VirtualDaaScoreChangedScope,
-        VirtualSelectedParentBlueScoreChangedScope, VirtualSelectedParentChainChangedScope,
+        PruningPointUtxoSetOverrideScope, Scope, SinkBlueScoreChangedScope, UtxosChangedScope, VirtualChainChangedScope,
+        VirtualDaaScoreChangedScope,
     },
     subscriber::{Subscriber, SubscriptionManager},
 };
@@ -194,7 +194,7 @@ impl Rpc for GrpcService {
                                     Err(err) => BanResponseMessage::from(err).into(),
                                 },
                                 Payload::GetVirtualSelectedParentBlueScoreRequest(ref request) => match request.try_into() {
-                                    Ok(request) => core_service.get_virtual_selected_parent_blue_score_call(request).await.into(),
+                                    Ok(request) => core_service.get_sink_blue_score_call(request).await.into(),
                                     Err(err) => GetVirtualSelectedParentBlueScoreResponseMessage::from(err).into(),
                                 },
                                 Payload::GetUtxosByAddressesRequest(ref request) => match request.try_into() {
@@ -229,11 +229,9 @@ impl Rpc for GrpcService {
                                     Ok(request) => core_service.get_blocks_call(request).await.into(),
                                     Err(err) => GetBlocksResponseMessage::from(err).into(),
                                 },
-                                Payload::GetVirtualSelectedParentChainFromBlockRequest(ref request) => match request.try_into() {
-                                    Ok(request) => {
-                                        core_service.get_virtual_selected_parent_chain_from_block_call(request).await.into()
-                                    }
-                                    Err(err) => GetVirtualSelectedParentChainFromBlockResponseMessage::from(err).into(),
+                                Payload::GetVirtualChainFromBlockRequest(ref request) => match request.try_into() {
+                                    Ok(request) => core_service.get_virtual_chain_from_block_call(request).await.into(),
+                                    Err(err) => GetVirtualChainFromBlockResponseMessage::from(err).into(),
                                 },
                                 Payload::GetSubnetworkRequest(ref request) => match request.try_into() {
                                     Ok(request) => core_service.get_subnetwork_call(request).await.into(),
@@ -303,24 +301,22 @@ impl Rpc for GrpcService {
                                     }
                                 }
 
-                                Payload::NotifyVirtualSelectedParentChainChangedRequest(ref request) => {
-                                    match kaspa_rpc_core::NotifyVirtualSelectedParentChainChangedRequest::try_from(request) {
+                                Payload::NotifyVirtualChainChangedRequest(ref request) => {
+                                    match kaspa_rpc_core::NotifyVirtualChainChangedRequest::try_from(request) {
                                         Ok(request) => {
                                             let result = notifier
                                                 .clone()
                                                 .execute_subscribe_command(
                                                     listener_id,
-                                                    Scope::VirtualSelectedParentChainChanged(
-                                                        VirtualSelectedParentChainChangedScope::new(
-                                                            request.include_accepted_transaction_ids,
-                                                        ),
-                                                    ),
+                                                    Scope::VirtualChainChanged(VirtualChainChangedScope::new(
+                                                        request.include_accepted_transaction_ids,
+                                                    )),
                                                     request.command,
                                                 )
                                                 .await;
-                                            NotifyVirtualSelectedParentChainChangedResponseMessage::from(result).into()
+                                            NotifyVirtualChainChangedResponseMessage::from(result).into()
                                         }
-                                        Err(err) => NotifyVirtualSelectedParentChainChangedResponseMessage::from(err).into(),
+                                        Err(err) => NotifyVirtualChainChangedResponseMessage::from(err).into(),
                                     }
                                 }
 
@@ -368,22 +364,20 @@ impl Rpc for GrpcService {
                                     }
                                 }
 
-                                Payload::NotifyVirtualSelectedParentBlueScoreChangedRequest(ref request) => {
-                                    match kaspa_rpc_core::NotifyVirtualSelectedParentBlueScoreChangedRequest::try_from(request) {
+                                Payload::NotifySinkBlueScoreChangedRequest(ref request) => {
+                                    match kaspa_rpc_core::NotifySinkBlueScoreChangedRequest::try_from(request) {
                                         Ok(request) => {
                                             let result = notifier
                                                 .clone()
                                                 .execute_subscribe_command(
                                                     listener_id,
-                                                    Scope::VirtualSelectedParentBlueScoreChanged(
-                                                        VirtualSelectedParentBlueScoreChangedScope::default(),
-                                                    ),
+                                                    Scope::SinkBlueScoreChanged(SinkBlueScoreChangedScope::default()),
                                                     request.command,
                                                 )
                                                 .await;
-                                            NotifyVirtualSelectedParentBlueScoreChangedResponseMessage::from(result).into()
+                                            NotifySinkBlueScoreChangedResponseMessage::from(result).into()
                                         }
-                                        Err(err) => NotifyVirtualSelectedParentBlueScoreChangedResponseMessage::from(err).into(),
+                                        Err(err) => NotifySinkBlueScoreChangedResponseMessage::from(err).into(),
                                     }
                                 }
 

@@ -150,7 +150,7 @@ mod tests {
     use crate::{
         events::EventType,
         notifier::test_helpers::NotifyMock,
-        subscription::single::{OverallSubscription, UtxosChangedSubscription, VirtualSelectedParentChainChangedSubscription},
+        subscription::single::{OverallSubscription, UtxosChangedSubscription, VirtualChainChangedSubscription},
     };
     use derive_more::Display;
 
@@ -180,7 +180,7 @@ mod tests {
             unimplemented!()
         }
 
-        fn apply_virtual_chain_changed_subscription(&self, _: &VirtualSelectedParentChainChangedSubscription) -> Option<Self> {
+        fn apply_virtual_chain_changed_subscription(&self, _: &VirtualChainChangedSubscription) -> Option<Self> {
             unimplemented!()
         }
 

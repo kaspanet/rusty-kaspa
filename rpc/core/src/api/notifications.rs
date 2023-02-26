@@ -6,7 +6,7 @@ use kaspa_notify::{
     events::EventType,
     notification::{full_featured, Notification as NotificationTrait},
     subscription::{
-        single::{OverallSubscription, UtxosChangedSubscription, VirtualSelectedParentChainChangedSubscription},
+        single::{OverallSubscription, UtxosChangedSubscription, VirtualChainChangedSubscription},
         Single,
     },
 };
@@ -19,8 +19,8 @@ pub enum Notification {
     #[display(fmt = "BlockAdded notification: block hash {}", "_0.block.header.hash")]
     BlockAdded(BlockAddedNotification),
 
-    #[display(fmt = "VirtualSelectedParentChainChanged notification: {} removed blocks, {} added blocks, {} accepted transactions", "_0.removed_chain_block_hashes.len()", "_0.added_chain_block_hashes.len()", "_0.accepted_transaction_ids.len()")]
-    VirtualSelectedParentChainChanged(VirtualSelectedParentChainChangedNotification),
+    #[display(fmt = "VirtualChainChanged notification: {} removed blocks, {} added blocks, {} accepted transactions", "_0.removed_chain_block_hashes.len()", "_0.added_chain_block_hashes.len()", "_0.accepted_transaction_ids.len()")]
+    VirtualChainChanged(VirtualChainChangedNotification),
 
     #[display(fmt = "FinalityConflict notification: violating block hash {}", "_0.violating_block_hash")]
     FinalityConflict(FinalityConflictNotification),
@@ -31,8 +31,8 @@ pub enum Notification {
     #[display(fmt = "UtxosChanged notification: {} removed, {} added", "_0.removed.len()", "_0.added.len()")]
     UtxosChanged(UtxosChangedNotification),
 
-    #[display(fmt = "VirtualSelectedParentBlueScoreChanged notification: virtual selected parent blue score {}", "_0.virtual_selected_parent_blue_score")]
-    VirtualSelectedParentBlueScoreChanged(VirtualSelectedParentBlueScoreChangedNotification),
+    #[display(fmt = "SinkBlueScoreChanged notification: virtual selected parent blue score {}", "_0.sink_blue_score")]
+    SinkBlueScoreChanged(SinkBlueScoreChangedNotification),
 
     #[display(fmt = "VirtualDaaScoreChanged notification: virtual DAA score {}", "_0.virtual_daa_score")]
     VirtualDaaScoreChanged(VirtualDaaScoreChangedNotification),
@@ -53,12 +53,12 @@ impl NotificationTrait for Notification {
         }
     }
 
-    fn apply_virtual_chain_changed_subscription(&self, subscription: &VirtualSelectedParentChainChangedSubscription) -> Option<Self> {
+    fn apply_virtual_chain_changed_subscription(&self, subscription: &VirtualChainChangedSubscription) -> Option<Self> {
         match subscription.active() {
             true => {
-                if let Notification::VirtualSelectedParentChainChanged(ref payload) = self {
+                if let Notification::VirtualChainChanged(ref payload) = self {
                     if !subscription.include_accepted_transaction_ids() && !payload.accepted_transaction_ids.is_empty() {
-                        return Some(Notification::VirtualSelectedParentChainChanged(VirtualSelectedParentChainChangedNotification {
+                        return Some(Notification::VirtualChainChanged(VirtualChainChangedNotification {
                             removed_chain_block_hashes: payload.removed_chain_block_hashes.clone(),
                             added_chain_block_hashes: payload.added_chain_block_hashes.clone(),
                             accepted_transaction_ids: Arc::new(vec![]),

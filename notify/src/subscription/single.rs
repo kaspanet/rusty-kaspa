@@ -1,7 +1,7 @@
 use super::{Mutation, Single, Subscription};
 use crate::{
     events::EventType,
-    scope::{Scope, UtxosChangedScope, VirtualSelectedParentChainChangedScope},
+    scope::{Scope, UtxosChangedScope, VirtualChainChangedScope},
     subscription::Command,
 };
 use addresses::Address;
@@ -54,14 +54,14 @@ impl Subscription for OverallSubscription {
     }
 }
 
-/// Subscription to VirtualSelectedParentChainChanged notifications
+/// Subscription to VirtualChainChanged notifications
 #[derive(Eq, PartialEq, Hash, Clone, Debug, Default)]
-pub struct VirtualSelectedParentChainChangedSubscription {
+pub struct VirtualChainChangedSubscription {
     active: bool,
     include_accepted_transaction_ids: bool,
 }
 
-impl VirtualSelectedParentChainChangedSubscription {
+impl VirtualChainChangedSubscription {
     pub fn new(active: bool, include_accepted_transaction_ids: bool) -> Self {
         Self { active, include_accepted_transaction_ids }
     }
@@ -70,7 +70,7 @@ impl VirtualSelectedParentChainChangedSubscription {
     }
 }
 
-impl Single for VirtualSelectedParentChainChangedSubscription {
+impl Single for VirtualChainChangedSubscription {
     #[inline(always)]
     fn active(&self) -> bool {
         self.active
@@ -78,7 +78,7 @@ impl Single for VirtualSelectedParentChainChangedSubscription {
 
     fn mutate(&mut self, mutation: Mutation) -> Option<Vec<Mutation>> {
         assert_eq!(self.event_type(), mutation.event_type());
-        if let Scope::VirtualSelectedParentChainChanged(ref scope) = mutation.scope {
+        if let Scope::VirtualChainChanged(ref scope) = mutation.scope {
             // Here we want the code to (almost) match a double entry table structure
             // by subscription state and by mutation
             #[allow(clippy::collapsible_else_if)]
@@ -100,10 +100,7 @@ impl Single for VirtualSelectedParentChainChangedSubscription {
                     // Mutation None
                     self.active = false;
                     self.include_accepted_transaction_ids = false;
-                    Some(vec![Mutation::new(
-                        Command::Stop,
-                        Scope::VirtualSelectedParentChainChanged(VirtualSelectedParentChainChangedScope::new(false)),
-                    )])
+                    Some(vec![Mutation::new(Command::Stop, Scope::VirtualChainChanged(VirtualChainChangedScope::new(false)))])
                 } else if !scope.include_accepted_transaction_ids {
                     // Mutation Reduced
                     None
@@ -111,10 +108,7 @@ impl Single for VirtualSelectedParentChainChangedSubscription {
                     // Mutation All
                     self.include_accepted_transaction_ids = true;
                     Some(vec![
-                        Mutation::new(
-                            Command::Stop,
-                            Scope::VirtualSelectedParentChainChanged(VirtualSelectedParentChainChangedScope::new(false)),
-                        ),
+                        Mutation::new(Command::Stop, Scope::VirtualChainChanged(VirtualChainChangedScope::new(false))),
                         mutation,
                     ])
                 }
@@ -124,20 +118,11 @@ impl Single for VirtualSelectedParentChainChangedSubscription {
                     // Mutation None
                     self.active = false;
                     self.include_accepted_transaction_ids = false;
-                    Some(vec![Mutation::new(
-                        Command::Stop,
-                        Scope::VirtualSelectedParentChainChanged(VirtualSelectedParentChainChangedScope::new(true)),
-                    )])
+                    Some(vec![Mutation::new(Command::Stop, Scope::VirtualChainChanged(VirtualChainChangedScope::new(true)))])
                 } else if !scope.include_accepted_transaction_ids {
                     // Mutation Reduced
                     self.include_accepted_transaction_ids = false;
-                    Some(vec![
-                        mutation,
-                        Mutation::new(
-                            Command::Stop,
-                            Scope::VirtualSelectedParentChainChanged(VirtualSelectedParentChainChangedScope::new(true)),
-                        ),
-                    ])
+                    Some(vec![mutation, Mutation::new(Command::Stop, Scope::VirtualChainChanged(VirtualChainChangedScope::new(true)))])
                 } else {
                     // Mutation All
                     None
@@ -149,14 +134,14 @@ impl Single for VirtualSelectedParentChainChangedSubscription {
     }
 
     fn scope(&self) -> Scope {
-        Scope::VirtualSelectedParentChainChanged(VirtualSelectedParentChainChangedScope::new(self.include_accepted_transaction_ids))
+        Scope::VirtualChainChanged(VirtualChainChangedScope::new(self.include_accepted_transaction_ids))
     }
 }
 
-impl Subscription for VirtualSelectedParentChainChangedSubscription {
+impl Subscription for VirtualChainChangedSubscription {
     #[inline(always)]
     fn event_type(&self) -> EventType {
-        EventType::VirtualSelectedParentChainChanged
+        EventType::VirtualChainChanged
     }
 }
 
@@ -373,10 +358,10 @@ mod tests {
             Test {
                 name: "test virtual selected parent chain changed subscription",
                 subscriptions: vec![
-                    Box::new(VirtualSelectedParentChainChangedSubscription::new(false, false)),
-                    Box::new(VirtualSelectedParentChainChangedSubscription::new(true, false)),
-                    Box::new(VirtualSelectedParentChainChangedSubscription::new(true, true)),
-                    Box::new(VirtualSelectedParentChainChangedSubscription::new(true, true)),
+                    Box::new(VirtualChainChangedSubscription::new(false, false)),
+                    Box::new(VirtualChainChangedSubscription::new(true, false)),
+                    Box::new(VirtualChainChangedSubscription::new(true, true)),
+                    Box::new(VirtualChainChangedSubscription::new(true, true)),
                 ],
                 comparisons: vec![
                     Comparison::new(0, 1, false),
@@ -437,36 +422,26 @@ mod tests {
         let om_start_all = Mutation { command: Command::Start, scope: Scope::BlockAdded(BlockAddedScope {}) };
         let om_stop_all = Mutation { command: Command::Stop, scope: Scope::BlockAdded(BlockAddedScope {}) };
 
-        // VirtualSelectedParentChainChangedSubscription
+        // VirtualChainChangedSubscription
 
-        let vs_none =
-            Box::new(VirtualSelectedParentChainChangedSubscription { active: false, include_accepted_transaction_ids: false });
-        let vs_reduced =
-            Box::new(VirtualSelectedParentChainChangedSubscription { active: true, include_accepted_transaction_ids: false });
-        let vs_all = Box::new(VirtualSelectedParentChainChangedSubscription { active: true, include_accepted_transaction_ids: true });
+        let vs_none = Box::new(VirtualChainChangedSubscription { active: false, include_accepted_transaction_ids: false });
+        let vs_reduced = Box::new(VirtualChainChangedSubscription { active: true, include_accepted_transaction_ids: false });
+        let vs_all = Box::new(VirtualChainChangedSubscription { active: true, include_accepted_transaction_ids: true });
         let vm_start_all = Mutation {
             command: Command::Start,
-            scope: Scope::VirtualSelectedParentChainChanged(VirtualSelectedParentChainChangedScope {
-                include_accepted_transaction_ids: true,
-            }),
+            scope: Scope::VirtualChainChanged(VirtualChainChangedScope { include_accepted_transaction_ids: true }),
         };
         let vm_stop_all = Mutation {
             command: Command::Stop,
-            scope: Scope::VirtualSelectedParentChainChanged(VirtualSelectedParentChainChangedScope {
-                include_accepted_transaction_ids: true,
-            }),
+            scope: Scope::VirtualChainChanged(VirtualChainChangedScope { include_accepted_transaction_ids: true }),
         };
         let vm_start_reduced = Mutation {
             command: Command::Start,
-            scope: Scope::VirtualSelectedParentChainChanged(VirtualSelectedParentChainChangedScope {
-                include_accepted_transaction_ids: false,
-            }),
+            scope: Scope::VirtualChainChanged(VirtualChainChangedScope { include_accepted_transaction_ids: false }),
         };
         let vm_stop_reduced = Mutation {
             command: Command::Stop,
-            scope: Scope::VirtualSelectedParentChainChanged(VirtualSelectedParentChainChangedScope {
-                include_accepted_transaction_ids: false,
-            }),
+            scope: Scope::VirtualChainChanged(VirtualChainChangedScope { include_accepted_transaction_ids: false }),
         };
 
         // UtxosChangedSubscription
@@ -548,87 +523,87 @@ mod tests {
                 result: Some(vec![om_stop_all.clone()]),
             },
             //
-            // VirtualSelectedParentChainChangedSubscription
+            // VirtualChainChangedSubscription
             //
             Test {
-                name: "VirtualSelectedParentChainChangedSubscription None to All",
+                name: "VirtualChainChangedSubscription None to All",
                 state: vs_none.clone_box(),
                 mutation: vm_start_all.clone(),
                 new_state: vs_all.clone_box(),
                 result: Some(vec![vm_start_all.clone()]),
             },
             Test {
-                name: "VirtualSelectedParentChainChangedSubscription None to Reduced",
+                name: "VirtualChainChangedSubscription None to Reduced",
                 state: vs_none.clone_box(),
                 mutation: vm_start_reduced.clone(),
                 new_state: vs_reduced.clone_box(),
                 result: Some(vec![vm_start_reduced.clone()]),
             },
             Test {
-                name: "VirtualSelectedParentChainChangedSubscription None to None (stop reduced)",
+                name: "VirtualChainChangedSubscription None to None (stop reduced)",
                 state: vs_none.clone_box(),
                 mutation: vm_stop_reduced.clone(),
                 new_state: vs_none.clone_box(),
                 result: None,
             },
             Test {
-                name: "VirtualSelectedParentChainChangedSubscription None to None (stop all)",
+                name: "VirtualChainChangedSubscription None to None (stop all)",
                 state: vs_none.clone_box(),
                 mutation: vm_stop_all.clone(),
                 new_state: vs_none.clone_box(),
                 result: None,
             },
             Test {
-                name: "VirtualSelectedParentChainChangedSubscription Reduced to All",
+                name: "VirtualChainChangedSubscription Reduced to All",
                 state: vs_reduced.clone_box(),
                 mutation: vm_start_all.clone(),
                 new_state: vs_all.clone_box(),
                 result: Some(vec![vm_stop_reduced.clone(), vm_start_all.clone()]),
             },
             Test {
-                name: "VirtualSelectedParentChainChangedSubscription Reduced to Reduced",
+                name: "VirtualChainChangedSubscription Reduced to Reduced",
                 state: vs_reduced.clone_box(),
                 mutation: vm_start_reduced.clone(),
                 new_state: vs_reduced.clone_box(),
                 result: None,
             },
             Test {
-                name: "VirtualSelectedParentChainChangedSubscription Reduced to None (stop reduced)",
+                name: "VirtualChainChangedSubscription Reduced to None (stop reduced)",
                 state: vs_reduced.clone_box(),
                 mutation: vm_stop_reduced.clone(),
                 new_state: vs_none.clone_box(),
                 result: Some(vec![vm_stop_reduced.clone()]),
             },
             Test {
-                name: "VirtualSelectedParentChainChangedSubscription Reduced to None (stop all)",
+                name: "VirtualChainChangedSubscription Reduced to None (stop all)",
                 state: vs_reduced.clone_box(),
                 mutation: vm_stop_all.clone(),
                 new_state: vs_none.clone_box(),
                 result: Some(vec![vm_stop_reduced.clone()]),
             },
             Test {
-                name: "VirtualSelectedParentChainChangedSubscription All to All",
+                name: "VirtualChainChangedSubscription All to All",
                 state: vs_all.clone_box(),
                 mutation: vm_start_all.clone(),
                 new_state: vs_all.clone_box(),
                 result: None,
             },
             Test {
-                name: "VirtualSelectedParentChainChangedSubscription All to Reduced",
+                name: "VirtualChainChangedSubscription All to Reduced",
                 state: vs_all.clone_box(),
                 mutation: vm_start_reduced.clone(),
                 new_state: vs_reduced.clone_box(),
                 result: Some(vec![vm_start_reduced.clone(), vm_stop_all.clone()]),
             },
             Test {
-                name: "VirtualSelectedParentChainChangedSubscription All to None (stop reduced)",
+                name: "VirtualChainChangedSubscription All to None (stop reduced)",
                 state: vs_all.clone_box(),
                 mutation: vm_stop_reduced.clone(),
                 new_state: vs_none.clone_box(),
                 result: Some(vec![vm_stop_all.clone()]),
             },
             Test {
-                name: "VirtualSelectedParentChainChangedSubscription All to None (stop all)",
+                name: "VirtualChainChangedSubscription All to None (stop all)",
                 state: vs_all.clone_box(),
                 mutation: vm_stop_all.clone(),
                 new_state: vs_none.clone_box(),

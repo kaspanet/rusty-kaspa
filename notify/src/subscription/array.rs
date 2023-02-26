@@ -8,9 +8,7 @@ impl ArrayBuilder {
         EventArray::from_fn(|i| {
             let event_type = EventType::try_from(i).unwrap();
             let subscription: SingleSubscription = match event_type {
-                EventType::VirtualSelectedParentChainChanged => {
-                    Box::<single::VirtualSelectedParentChainChangedSubscription>::default()
-                }
+                EventType::VirtualChainChanged => Box::<single::VirtualChainChangedSubscription>::default(),
                 EventType::UtxosChanged => Box::<single::UtxosChangedSubscription>::default(),
                 _ => Box::new(single::OverallSubscription::new(event_type, false)),
             };
@@ -22,9 +20,7 @@ impl ArrayBuilder {
         EventArray::from_fn(|i| {
             let event_type = EventType::try_from(i).unwrap();
             let subscription: CompoundedSubscription = match event_type {
-                EventType::VirtualSelectedParentChainChanged => {
-                    Box::<compounded::VirtualSelectedParentChainChangedSubscription>::default()
-                }
+                EventType::VirtualChainChanged => Box::<compounded::VirtualChainChangedSubscription>::default(),
                 EventType::UtxosChanged => Box::<compounded::UtxosChangedSubscription>::default(),
                 _ => Box::new(compounded::OverallSubscription::new(event_type)),
             };

@@ -242,10 +242,10 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         unimplemented!();
     }
 
-    async fn get_virtual_selected_parent_chain_from_block_call(
+    async fn get_virtual_chain_from_block_call(
         &self,
-        _request: GetVirtualSelectedParentChainFromBlockRequest,
-    ) -> RpcResult<GetVirtualSelectedParentChainFromBlockResponse> {
+        _request: GetVirtualChainFromBlockRequest,
+    ) -> RpcResult<GetVirtualChainFromBlockResponse> {
         unimplemented!();
     }
 
@@ -293,7 +293,7 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         unimplemented!();
     }
 
-    async fn get_virtual_selected_parent_blue_score_call(
+    async fn get_sink_blue_score_call(
         &self,
         _request: GetVirtualSelectedParentBlueScoreRequest,
     ) -> RpcResult<GetVirtualSelectedParentBlueScoreResponse> {

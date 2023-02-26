@@ -21,7 +21,7 @@ impl From<&kaspad_request::Payload> for RpcApiOps {
             Payload::AddPeerRequest(_) => RpcApiOps::AddPeer,
             Payload::SubmitTransactionRequest(_) => RpcApiOps::SubmitTransaction,
             Payload::GetSubnetworkRequest(_) => RpcApiOps::GetSubnetwork,
-            Payload::GetVirtualSelectedParentChainFromBlockRequest(_) => RpcApiOps::GetVirtualSelectedParentChainFromBlock,
+            Payload::GetVirtualChainFromBlockRequest(_) => RpcApiOps::GetVirtualChainFromBlock,
             Payload::GetBlockCountRequest(_) => RpcApiOps::GetBlockCount,
             Payload::GetBlockDagInfoRequest(_) => RpcApiOps::GetBlockDagInfo,
             Payload::ResolveFinalityConflictRequest(_) => RpcApiOps::ResolveFinalityConflict,
@@ -43,10 +43,10 @@ impl From<&kaspad_request::Payload> for RpcApiOps {
             Payload::NotifyNewBlockTemplateRequest(_) => RpcApiOps::NotifyNewBlockTemplate,
             Payload::NotifyFinalityConflictRequest(_) => RpcApiOps::NotifyFinalityConflict,
             Payload::NotifyUtxosChangedRequest(_) => RpcApiOps::NotifyUtxosChanged,
-            Payload::NotifyVirtualSelectedParentBlueScoreChangedRequest(_) => RpcApiOps::NotifyVirtualSelectedParentBlueScoreChanged,
+            Payload::NotifySinkBlueScoreChangedRequest(_) => RpcApiOps::NotifySinkBlueScoreChanged,
             Payload::NotifyPruningPointUtxoSetOverrideRequest(_) => RpcApiOps::NotifyPruningPointUtxoSetOverride,
             Payload::NotifyVirtualDaaScoreChangedRequest(_) => RpcApiOps::NotifyVirtualDaaScoreChanged,
-            Payload::NotifyVirtualSelectedParentChainChangedRequest(_) => RpcApiOps::NotifyVirtualSelectedParentChainChanged,
+            Payload::NotifyVirtualChainChangedRequest(_) => RpcApiOps::NotifyVirtualChainChanged,
 
             Payload::StopNotifyingUtxosChangedRequest(_) => RpcApiOps::NotifyUtxosChanged,
             Payload::StopNotifyingPruningPointUtxoSetOverrideRequest(_) => RpcApiOps::NotifyPruningPointUtxoSetOverride,
@@ -74,7 +74,7 @@ impl From<&kaspad_response::Payload> for RpcApiOps {
             Payload::AddPeerResponse(_) => RpcApiOps::AddPeer,
             Payload::SubmitTransactionResponse(_) => RpcApiOps::SubmitTransaction,
             Payload::GetSubnetworkResponse(_) => RpcApiOps::GetSubnetwork,
-            Payload::GetVirtualSelectedParentChainFromBlockResponse(_) => RpcApiOps::GetVirtualSelectedParentChainFromBlock,
+            Payload::GetVirtualChainFromBlockResponse(_) => RpcApiOps::GetVirtualChainFromBlock,
             Payload::GetBlockCountResponse(_) => RpcApiOps::GetBlockCount,
             Payload::GetBlockDagInfoResponse(_) => RpcApiOps::GetBlockDagInfo,
             Payload::ResolveFinalityConflictResponse(_) => RpcApiOps::ResolveFinalityConflict,
@@ -96,10 +96,10 @@ impl From<&kaspad_response::Payload> for RpcApiOps {
             Payload::NotifyNewBlockTemplateResponse(_) => RpcApiOps::NotifyNewBlockTemplate,
             Payload::NotifyFinalityConflictResponse(_) => RpcApiOps::NotifyFinalityConflict,
             Payload::NotifyUtxosChangedResponse(_) => RpcApiOps::NotifyUtxosChanged,
-            Payload::NotifyVirtualSelectedParentBlueScoreChangedResponse(_) => RpcApiOps::NotifyVirtualSelectedParentBlueScoreChanged,
+            Payload::NotifySinkBlueScoreChangedResponse(_) => RpcApiOps::NotifySinkBlueScoreChanged,
             Payload::NotifyPruningPointUtxoSetOverrideResponse(_) => RpcApiOps::NotifyPruningPointUtxoSetOverride,
             Payload::NotifyVirtualDaaScoreChangedResponse(_) => RpcApiOps::NotifyVirtualDaaScoreChanged,
-            Payload::NotifyVirtualSelectedParentChainChangedResponse(_) => RpcApiOps::NotifyVirtualSelectedParentChainChanged,
+            Payload::NotifyVirtualChainChangedResponse(_) => RpcApiOps::NotifyVirtualChainChanged,
 
             Payload::StopNotifyingPruningPointUtxoSetOverrideResponse(_) => RpcApiOps::NotifyPruningPointUtxoSetOverride,
             Payload::StopNotifyingUtxosChangedResponse(_) => RpcApiOps::NotifyUtxosChanged,
@@ -110,10 +110,10 @@ impl From<&kaspad_response::Payload> for RpcApiOps {
             Payload::FinalityConflictNotification(_) => RpcApiOps::Notification,
             Payload::FinalityConflictResolvedNotification(_) => RpcApiOps::Notification,
             Payload::UtxosChangedNotification(_) => RpcApiOps::Notification,
-            Payload::VirtualSelectedParentBlueScoreChangedNotification(_) => RpcApiOps::Notification,
+            Payload::SinkBlueScoreChangedNotification(_) => RpcApiOps::Notification,
             Payload::PruningPointUtxoSetOverrideNotification(_) => RpcApiOps::Notification,
             Payload::VirtualDaaScoreChangedNotification(_) => RpcApiOps::Notification,
-            Payload::VirtualSelectedParentChainChangedNotification(_) => RpcApiOps::Notification,
+            Payload::VirtualChainChangedNotification(_) => RpcApiOps::Notification,
         }
     }
 }
@@ -155,7 +155,7 @@ pub mod kaspad_request_convert {
     impl_into_kaspad_request!(AddPeer);
     impl_into_kaspad_request!(SubmitTransaction);
     impl_into_kaspad_request!(GetSubnetwork);
-    impl_into_kaspad_request!(GetVirtualSelectedParentChainFromBlock);
+    impl_into_kaspad_request!(GetVirtualChainFromBlock);
     impl_into_kaspad_request!(GetBlocks);
     impl_into_kaspad_request!(GetBlockCount);
     impl_into_kaspad_request!(GetBlockDagInfo);
@@ -179,8 +179,8 @@ pub mod kaspad_request_convert {
     impl_into_kaspad_request!(NotifyPruningPointUtxoSetOverride);
     impl_into_kaspad_request!(NotifyFinalityConflict);
     impl_into_kaspad_request!(NotifyVirtualDaaScoreChanged);
-    impl_into_kaspad_request!(NotifyVirtualSelectedParentChainChanged);
-    impl_into_kaspad_request!(NotifyVirtualSelectedParentBlueScoreChanged);
+    impl_into_kaspad_request!(NotifyVirtualChainChanged);
+    impl_into_kaspad_request!(NotifySinkBlueScoreChanged);
 
     macro_rules! impl_into_kaspad_request {
         ($name:tt) => {
@@ -283,7 +283,7 @@ pub mod kaspad_response_convert {
     impl_into_kaspad_response!(AddPeer);
     impl_into_kaspad_response!(SubmitTransaction);
     impl_into_kaspad_response!(GetSubnetwork);
-    impl_into_kaspad_response!(GetVirtualSelectedParentChainFromBlock);
+    impl_into_kaspad_response!(GetVirtualChainFromBlock);
     impl_into_kaspad_response!(GetBlocks);
     impl_into_kaspad_response!(GetBlockCount);
     impl_into_kaspad_response!(GetBlockDagInfo);
@@ -307,8 +307,8 @@ pub mod kaspad_response_convert {
     impl_into_kaspad_notify_response!(NotifyPruningPointUtxoSetOverride);
     impl_into_kaspad_notify_response!(NotifyFinalityConflict);
     impl_into_kaspad_notify_response!(NotifyVirtualDaaScoreChanged);
-    impl_into_kaspad_notify_response!(NotifyVirtualSelectedParentChainChanged);
-    impl_into_kaspad_notify_response!(NotifyVirtualSelectedParentBlueScoreChanged);
+    impl_into_kaspad_notify_response!(NotifyVirtualChainChanged);
+    impl_into_kaspad_notify_response!(NotifySinkBlueScoreChanged);
 
     macro_rules! impl_into_kaspad_response {
         ($name:tt) => {

@@ -58,8 +58,8 @@ use consensus_core::{
 };
 use consensus_notify::{
     notification::{
-        Notification, UtxosChangedNotification, VirtualDaaScoreChangedNotification, VirtualSelectedParentBlueScoreChangedNotification,
-        VirtualSelectedParentChainChangedNotification,
+        Notification, SinkBlueScoreChangedNotification, UtxosChangedNotification, VirtualChainChangedNotification,
+        VirtualDaaScoreChangedNotification,
     },
     root::ConsensusNotificationRoot,
 };
@@ -406,19 +406,17 @@ impl VirtualStateProcessor {
                 let _ = self
                     .notification_root()
                     .notify(Notification::UtxosChanged(UtxosChangedNotification::new(accumulated_diff, virtual_parents)));
-                let _ = self.notification_root().notify(Notification::VirtualSelectedParentBlueScoreChanged(
-                    VirtualSelectedParentBlueScoreChangedNotification::new(new_virtual_state.ghostdag_data.blue_score),
-                ));
+                let _ = self.notification_root().notify(Notification::SinkBlueScoreChanged(SinkBlueScoreChangedNotification::new(
+                    new_virtual_state.ghostdag_data.blue_score,
+                )));
                 let _ = self.notification_root().notify(Notification::VirtualDaaScoreChanged(
                     VirtualDaaScoreChangedNotification::new(new_virtual_state.daa_score),
                 ));
-                let _ = self.notification_root().notify(Notification::VirtualSelectedParentChainChanged(
-                    VirtualSelectedParentChainChangedNotification::new(
-                        new_virtual_state.ghostdag_data.mergeset_blues.clone(),
-                        new_virtual_state.ghostdag_data.mergeset_reds.clone(),
-                        Arc::new(new_virtual_state.accepted_tx_ids),
-                    ),
-                ));
+                let _ = self.notification_root().notify(Notification::VirtualChainChanged(VirtualChainChangedNotification::new(
+                    new_virtual_state.ghostdag_data.mergeset_blues.clone(),
+                    new_virtual_state.ghostdag_data.mergeset_reds.clone(),
+                    Arc::new(new_virtual_state.accepted_tx_ids),
+                )));
             }
             BlockStatus::StatusDisqualifiedFromChain => {
                 // TODO: this means another chain needs to be checked

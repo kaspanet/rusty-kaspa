@@ -1,8 +1,7 @@
 use crate::{
     utxo::utxo_set_into_rpc, BlockAddedNotification, FinalityConflictNotification, FinalityConflictResolvedNotification,
-    NewBlockTemplateNotification, Notification, PruningPointUtxoSetOverrideNotification, UtxosChangedNotification,
-    VirtualDaaScoreChangedNotification, VirtualSelectedParentBlueScoreChangedNotification,
-    VirtualSelectedParentChainChangedNotification,
+    NewBlockTemplateNotification, Notification, PruningPointUtxoSetOverrideNotification, SinkBlueScoreChangedNotification,
+    UtxosChangedNotification, VirtualChainChangedNotification, VirtualDaaScoreChangedNotification,
 };
 use consensus_notify::notification as consensus_notify;
 use kaspa_index_processor::notification as index_notify;
@@ -22,15 +21,11 @@ impl From<&consensus_notify::Notification> for Notification {
     fn from(item: &consensus_notify::Notification) -> Self {
         match item {
             consensus_notify::Notification::BlockAdded(msg) => Notification::BlockAdded(msg.into()),
-            consensus_notify::Notification::VirtualSelectedParentChainChanged(msg) => {
-                Notification::VirtualSelectedParentChainChanged(msg.into())
-            }
+            consensus_notify::Notification::VirtualChainChanged(msg) => Notification::VirtualChainChanged(msg.into()),
             consensus_notify::Notification::FinalityConflict(msg) => Notification::FinalityConflict(msg.into()),
             consensus_notify::Notification::FinalityConflictResolved(msg) => Notification::FinalityConflictResolved(msg.into()),
             consensus_notify::Notification::UtxosChanged(msg) => Notification::UtxosChanged(msg.into()),
-            consensus_notify::Notification::VirtualSelectedParentBlueScoreChanged(msg) => {
-                Notification::VirtualSelectedParentBlueScoreChanged(msg.into())
-            }
+            consensus_notify::Notification::SinkBlueScoreChanged(msg) => Notification::SinkBlueScoreChanged(msg.into()),
             consensus_notify::Notification::VirtualDaaScoreChanged(msg) => Notification::VirtualDaaScoreChanged(msg.into()),
             consensus_notify::Notification::PruningPointUtxoSetOverride(msg) => Notification::PruningPointUtxoSetOverride(msg.into()),
             consensus_notify::Notification::NewBlockTemplate(msg) => Notification::NewBlockTemplate(msg.into()),
@@ -44,8 +39,8 @@ impl From<&consensus_notify::BlockAddedNotification> for BlockAddedNotification 
     }
 }
 
-impl From<&consensus_notify::VirtualSelectedParentChainChangedNotification> for VirtualSelectedParentChainChangedNotification {
-    fn from(item: &consensus_notify::VirtualSelectedParentChainChangedNotification) -> Self {
+impl From<&consensus_notify::VirtualChainChangedNotification> for VirtualChainChangedNotification {
+    fn from(item: &consensus_notify::VirtualChainChangedNotification) -> Self {
         // TODO: solve the format discrepancy of `accepted_transaction_ids`
         Self {
             removed_chain_block_hashes: item.removed_chain_block_hashes.clone(),
@@ -74,9 +69,9 @@ impl From<&consensus_notify::UtxosChangedNotification> for UtxosChangedNotificat
     }
 }
 
-impl From<&consensus_notify::VirtualSelectedParentBlueScoreChangedNotification> for VirtualSelectedParentBlueScoreChangedNotification {
-    fn from(item: &consensus_notify::VirtualSelectedParentBlueScoreChangedNotification) -> Self {
-        Self { virtual_selected_parent_blue_score: item.virtual_selected_parent_blue_score }
+impl From<&consensus_notify::SinkBlueScoreChangedNotification> for SinkBlueScoreChangedNotification {
+    fn from(item: &consensus_notify::SinkBlueScoreChangedNotification) -> Self {
+        Self { sink_blue_score: item.sink_blue_score }
     }
 }
 

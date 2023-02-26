@@ -53,8 +53,8 @@ async fn test_virtual_change_set_event() {
 
     test_send.send(ConsensusEvent::VirtualChangeSet(test_event.clone())).await.expect("expected send");
 
-    let mut virtual_selected_parent_blue_score_changed_count = 0;
-    let mut virtual_selected_parent_chain_changed_count = 0;
+    let mut sink_blue_score_changed_count = 0;
+    let mut virtual_chain_changed_count = 0;
     let mut virtual_daa_score_changed_count = 0;
     let mut utxo_changed_count = 0;
 
@@ -100,48 +100,27 @@ async fn test_virtual_change_set_event() {
             }
 
             //for now see utxoindex tests at `indexes::utxoindex::test`, testing with event processor is ommitted.
-            Notification::VirtualSelectedParentBlueScoreChanged(virtual_selected_parent_blue_score_notification) => {
-                assert_eq!(
-                    test_event.selected_parent_blue_score,
-                    virtual_selected_parent_blue_score_notification.virtual_selected_parent_blue_score
-                );
-                virtual_selected_parent_blue_score_changed_count += 1;
+            Notification::SinkBlueScoreChanged(sink_blue_score_notification) => {
+                assert_eq!(test_event.selected_parent_blue_score, sink_blue_score_notification.sink_blue_score);
+                sink_blue_score_changed_count += 1;
             }
-            Notification::VirtualSelectedParentChainChanged(virtual_selected_parent_chain_changed_notification) => {
-                assert_eq!(
-                    test_event.mergeset_blues.len(),
-                    virtual_selected_parent_chain_changed_notification.added_chain_block_hashes.len()
-                );
+            Notification::VirtualChainChanged(virtual_chain_changed_notification) => {
+                assert_eq!(test_event.mergeset_blues.len(), virtual_chain_changed_notification.added_chain_block_hashes.len());
                 (0..test_event.mergeset_blues.len()).for_each(|i| {
-                    assert_eq!(
-                        test_event.mergeset_blues[i],
-                        virtual_selected_parent_chain_changed_notification.added_chain_block_hashes[i]
-                    );
+                    assert_eq!(test_event.mergeset_blues[i], virtual_chain_changed_notification.added_chain_block_hashes[i]);
                 });
 
-                assert_eq!(
-                    test_event.mergeset_reds.len(),
-                    virtual_selected_parent_chain_changed_notification.removed_chain_block_hashes.len()
-                );
+                assert_eq!(test_event.mergeset_reds.len(), virtual_chain_changed_notification.removed_chain_block_hashes.len());
                 (0..test_event.mergeset_reds.len()).for_each(|i| {
-                    assert_eq!(
-                        test_event.mergeset_reds[i],
-                        virtual_selected_parent_chain_changed_notification.removed_chain_block_hashes[i]
-                    );
+                    assert_eq!(test_event.mergeset_reds[i], virtual_chain_changed_notification.removed_chain_block_hashes[i]);
                 });
 
-                assert_eq!(
-                    test_event.accepted_tx_ids.len(),
-                    virtual_selected_parent_chain_changed_notification.accepted_transaction_ids.len()
-                );
+                assert_eq!(test_event.accepted_tx_ids.len(), virtual_chain_changed_notification.accepted_transaction_ids.len());
                 (0..test_event.accepted_tx_ids.len()).for_each(|i| {
-                    assert_eq!(
-                        test_event.accepted_tx_ids[i],
-                        virtual_selected_parent_chain_changed_notification.accepted_transaction_ids[i]
-                    );
+                    assert_eq!(test_event.accepted_tx_ids[i], virtual_chain_changed_notification.accepted_transaction_ids[i]);
                 });
 
-                virtual_selected_parent_chain_changed_count += 1;
+                virtual_chain_changed_count += 1;
             }
             Notification::VirtualDaaScoreChanged(virtual_daa_score_changed_notification) => {
                 assert_eq!(test_event.daa_score, virtual_daa_score_changed_notification.virtual_daa_score);
@@ -155,8 +134,8 @@ async fn test_virtual_change_set_event() {
     assert!(test_recv.is_empty()); //assert we have no extra messages pending
 
     //assert we got no double notifications
-    assert_eq!(virtual_selected_parent_blue_score_changed_count, 1);
-    assert_eq!(virtual_selected_parent_chain_changed_count, 1);
+    assert_eq!(sink_blue_score_changed_count, 1);
+    assert_eq!(virtual_chain_changed_count, 1);
     assert_eq!(virtual_daa_score_changed_count, 1);
     assert_eq!(utxo_changed_count, 1);
 

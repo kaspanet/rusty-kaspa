@@ -9,8 +9,8 @@ pub enum Notification {
     BlockAdded(Arc<BlockAddedNotification>),
     NewBlockTemplate(NewBlockTemplateNotification),
     UtxosChanged(Arc<UtxosChangedNotification>),
-    VirtualSelectedParentBlueScoreChanged(VirtualSelectedParentBlueScoreChangedNotification),
-    VirtualSelectedParentChainChanged(Arc<VirtualSelectedParentChainChangedNotification>),
+    SinkBlueScoreChanged(SinkBlueScoreChangedNotification),
+    VirtualChainChanged(Arc<VirtualChainChangedNotification>),
     VirtualDaaScoreChanged(VirtualDaaScoreChangedNotification),
     PruningPointUTXOSetOverride(PruningPointUTXOSetOverrideNotification),
     FinalityConflict(FinalityConflictNotification),
@@ -18,7 +18,7 @@ pub enum Notification {
 }
 
 #[derive(Debug, Clone)]
-pub struct VirtualSelectedParentChainChangedNotification {
+pub struct VirtualChainChangedNotification {
     pub added_chain_block_hashes: Arc<Vec<Hash>>,
     pub removed_chain_block_hashes: Arc<Vec<Hash>>,
     pub accepted_transaction_ids: Arc<Vec<TransactionId>>,
@@ -30,8 +30,8 @@ pub struct VirtualDaaScoreChangedNotification {
 }
 
 #[derive(Debug, Clone)]
-pub struct VirtualSelectedParentBlueScoreChangedNotification {
-    pub virtual_selected_parent_blue_score: u64,
+pub struct SinkBlueScoreChangedNotification {
+    pub sink_blue_score: u64,
 }
 
 #[derive(Debug, Clone)]

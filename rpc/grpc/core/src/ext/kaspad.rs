@@ -3,8 +3,8 @@ use kaspa_notify::{scope::Scope, subscription::Command};
 use crate::protowire::{
     kaspad_request, kaspad_response, KaspadRequest, KaspadResponse, NotifyBlockAddedRequestMessage,
     NotifyFinalityConflictRequestMessage, NotifyNewBlockTemplateRequestMessage, NotifyPruningPointUtxoSetOverrideRequestMessage,
-    NotifyUtxosChangedRequestMessage, NotifyVirtualDaaScoreChangedRequestMessage,
-    NotifyVirtualSelectedParentBlueScoreChangedRequestMessage, NotifyVirtualSelectedParentChainChangedRequestMessage,
+    NotifySinkBlueScoreChangedRequestMessage, NotifyUtxosChangedRequestMessage, NotifyVirtualChainChangedRequestMessage,
+    NotifyVirtualDaaScoreChangedRequestMessage,
 };
 
 impl KaspadRequest {
@@ -25,13 +25,11 @@ impl kaspad_request::Payload {
                 })
             }
 
-            Scope::VirtualSelectedParentChainChanged(ref scope) => {
-                kaspad_request::Payload::NotifyVirtualSelectedParentChainChangedRequest(
-                    NotifyVirtualSelectedParentChainChangedRequestMessage {
-                        command: command.into(),
-                        include_accepted_transaction_ids: scope.include_accepted_transaction_ids,
-                    },
-                )
+            Scope::VirtualChainChanged(ref scope) => {
+                kaspad_request::Payload::NotifyVirtualChainChangedRequest(NotifyVirtualChainChangedRequestMessage {
+                    command: command.into(),
+                    include_accepted_transaction_ids: scope.include_accepted_transaction_ids,
+                })
             }
             Scope::FinalityConflict(_) => {
                 kaspad_request::Payload::NotifyFinalityConflictRequest(NotifyFinalityConflictRequestMessage {
@@ -47,10 +45,10 @@ impl kaspad_request::Payload {
                 addresses: scope.addresses.iter().map(|x| x.into()).collect::<Vec<String>>(),
                 command: command.into(),
             }),
-            Scope::VirtualSelectedParentBlueScoreChanged(_) => {
-                kaspad_request::Payload::NotifyVirtualSelectedParentBlueScoreChangedRequest(
-                    NotifyVirtualSelectedParentBlueScoreChangedRequestMessage { command: command.into() },
-                )
+            Scope::SinkBlueScoreChanged(_) => {
+                kaspad_request::Payload::NotifySinkBlueScoreChangedRequest(NotifySinkBlueScoreChangedRequestMessage {
+                    command: command.into(),
+                })
             }
             Scope::VirtualDaaScoreChanged(_) => {
                 kaspad_request::Payload::NotifyVirtualDaaScoreChangedRequest(NotifyVirtualDaaScoreChangedRequestMessage {
@@ -81,11 +79,11 @@ impl kaspad_response::Payload {
         use crate::protowire::kaspad_response::Payload;
         match self {
             Payload::BlockAddedNotification(_) => true,
-            Payload::VirtualSelectedParentChainChangedNotification(_) => true,
+            Payload::VirtualChainChangedNotification(_) => true,
             Payload::FinalityConflictNotification(_) => true,
             Payload::FinalityConflictResolvedNotification(_) => true,
             Payload::UtxosChangedNotification(_) => true,
-            Payload::VirtualSelectedParentBlueScoreChangedNotification(_) => true,
+            Payload::SinkBlueScoreChangedNotification(_) => true,
             Payload::VirtualDaaScoreChangedNotification(_) => true,
             Payload::PruningPointUtxoSetOverrideNotification(_) => true,
             Payload::NewBlockTemplateNotification(_) => true,

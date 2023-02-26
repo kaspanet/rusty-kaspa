@@ -1,7 +1,7 @@
 use super::{Compounded, Mutation, Subscription};
 use crate::{
     events::EventType,
-    scope::{Scope, UtxosChangedScope, VirtualSelectedParentChainChangedScope},
+    scope::{Scope, UtxosChangedScope, VirtualChainChangedScope},
     subscription::Command,
 };
 use addresses::Address;
@@ -49,11 +49,11 @@ impl Subscription for OverallSubscription {
 }
 
 #[derive(Clone, Default, Debug, PartialEq, Eq)]
-pub struct VirtualSelectedParentChainChangedSubscription {
+pub struct VirtualChainChangedSubscription {
     include_accepted_transaction_ids: [usize; 2],
 }
 
-impl VirtualSelectedParentChainChangedSubscription {
+impl VirtualChainChangedSubscription {
     #[inline(always)]
     fn all(&self) -> usize {
         self.include_accepted_transaction_ids[true as usize]
@@ -75,10 +75,10 @@ impl VirtualSelectedParentChainChangedSubscription {
     }
 }
 
-impl Compounded for VirtualSelectedParentChainChangedSubscription {
+impl Compounded for VirtualChainChangedSubscription {
     fn compound(&mut self, mutation: Mutation) -> Option<Mutation> {
         assert_eq!(self.event_type(), mutation.event_type());
-        if let Scope::VirtualSelectedParentChainChanged(ref scope) = mutation.scope {
+        if let Scope::VirtualChainChanged(ref scope) = mutation.scope {
             let all = scope.include_accepted_transaction_ids;
             match mutation.command {
                 Command::Start => {
@@ -112,7 +112,7 @@ impl Compounded for VirtualSelectedParentChainChangedSubscription {
                             if self.reduced() > 0 {
                                 return Some(Mutation::new(
                                     Command::Start,
-                                    Scope::VirtualSelectedParentChainChanged(VirtualSelectedParentChainChangedScope::new(false)),
+                                    Scope::VirtualChainChanged(VirtualChainChangedScope::new(false)),
                                 ));
                             } else {
                                 return Some(mutation);
@@ -126,10 +126,10 @@ impl Compounded for VirtualSelectedParentChainChangedSubscription {
     }
 }
 
-impl Subscription for VirtualSelectedParentChainChangedSubscription {
+impl Subscription for VirtualChainChangedSubscription {
     #[inline(always)]
     fn event_type(&self) -> EventType {
-        EventType::VirtualSelectedParentChainChanged
+        EventType::VirtualChainChanged
     }
 }
 
@@ -276,19 +276,13 @@ mod tests {
     #[test]
     #[allow(clippy::redundant_clone)]
     fn test_virtual_chain_changed_compounding() {
-        let none: Box<VirtualSelectedParentChainChangedSubscription> = Box::default();
-        let add_all =
-            Mutation::new(Command::Start, Scope::VirtualSelectedParentChainChanged(VirtualSelectedParentChainChangedScope::new(true)));
-        let add_reduced = Mutation::new(
-            Command::Start,
-            Scope::VirtualSelectedParentChainChanged(VirtualSelectedParentChainChangedScope::new(false)),
-        );
-        let remove_reduced =
-            Mutation::new(Command::Stop, Scope::VirtualSelectedParentChainChanged(VirtualSelectedParentChainChangedScope::new(false)));
-        let remove_all =
-            Mutation::new(Command::Stop, Scope::VirtualSelectedParentChainChanged(VirtualSelectedParentChainChangedScope::new(true)));
+        let none: Box<VirtualChainChangedSubscription> = Box::default();
+        let add_all = Mutation::new(Command::Start, Scope::VirtualChainChanged(VirtualChainChangedScope::new(true)));
+        let add_reduced = Mutation::new(Command::Start, Scope::VirtualChainChanged(VirtualChainChangedScope::new(false)));
+        let remove_reduced = Mutation::new(Command::Stop, Scope::VirtualChainChanged(VirtualChainChangedScope::new(false)));
+        let remove_all = Mutation::new(Command::Stop, Scope::VirtualChainChanged(VirtualChainChangedScope::new(true)));
         let test = Test {
-            name: "VirtualSelectedParentChainChanged",
+            name: "VirtualChainChanged",
             initial_state: none.clone_box(),
             steps: vec![
                 Step { name: "add all 1", mutation: add_all.clone(), result: Some(add_all.clone()) },
