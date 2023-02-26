@@ -92,3 +92,11 @@ impl TryFrom<protowire::PruningPointUtxoSetChunkMessage> for Vec<(TransactionOut
         msg.outpoint_and_utxo_entry_pairs.into_iter().map(|p| p.try_into()).collect()
     }
 }
+
+impl TryFrom<protowire::RequestPruningPointUtxoSetMessage> for Hash {
+    type Error = ConversionError;
+
+    fn try_from(msg: protowire::RequestPruningPointUtxoSetMessage) -> Result<Self, Self::Error> {
+        msg.pruning_point_hash.try_into_ex()
+    }
+}

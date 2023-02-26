@@ -640,6 +640,22 @@ impl ConsensusApi for Consensus {
         iter.map(|item| item.unwrap()).collect()
     }
 
+    fn get_pruning_point_utxos(
+        self: Arc<Self>,
+        expected_pruning_point: Hash,
+        from_outpoint: Option<TransactionOutpoint>,
+        chunk_size: usize,
+        skip_first: bool,
+    ) -> ConsensusResult<Vec<(TransactionOutpoint, UtxoEntry)>> {
+        let pp_read_guard = self.pruning_store.read();
+        let current_pp = pp_read_guard.pruning_point().unwrap();
+        if current_pp != expected_pruning_point {
+            return Err(ConsensusError::UnexpectedPruningPoint(expected_pruning_point, current_pp));
+        }
+        let iter = self.virtual_processor.pruning_point_utxo_set_store.seek_iterator(from_outpoint, chunk_size, skip_first);
+        Ok(iter.map(|item| item.unwrap()).collect())
+    }
+
     fn modify_coinbase_payload(self: Arc<Self>, payload: Vec<u8>, miner_data: &MinerData) -> CoinbaseResult<Vec<u8>> {
         self.coinbase_manager.modify_coinbase_payload(payload, miner_data)
     }

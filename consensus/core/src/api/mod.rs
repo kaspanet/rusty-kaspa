@@ -75,6 +75,14 @@ pub trait ConsensusApi: Send + Sync {
     fn get_pruning_point_anticone_and_trusted_data(&self) -> Arc<(Vec<Hash>, Vec<TrustedHeader>, Vec<TrustedGhostdagData>)>;
 
     fn get_block(&self, hash: Hash) -> ConsensusResult<Block>;
+
+    fn get_pruning_point_utxos(
+        self: Arc<Self>,
+        expected_pruning_point: Hash,
+        from_outpoint: Option<TransactionOutpoint>,
+        chunk_size: usize,
+        skip_first: bool,
+    ) -> ConsensusResult<Vec<(TransactionOutpoint, UtxoEntry)>>;
 }
 
 pub type DynConsensus = Arc<dyn ConsensusApi>;

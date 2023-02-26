@@ -9,3 +9,4 @@ pub mod option;
 pub mod pruning;
 pub mod tx;
 pub mod trusted;
+pub mod utxo;

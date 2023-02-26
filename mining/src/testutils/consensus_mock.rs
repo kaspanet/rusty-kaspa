@@ -267,4 +267,14 @@ impl ConsensusApi for ConsensusMock {
     ) -> consensus_core::errors::consensus::ConsensusResult<Vec<hashes::Hash>> {
         unimplemented!()
     }
+
+    fn get_pruning_point_utxos(
+        self: Arc<Self>,
+        _expected_pruning_point: hashes::Hash,
+        _from_outpoint: Option<TransactionOutpoint>,
+        _chunk_size: usize,
+        _skip_first: bool,
+    ) -> consensus_core::errors::consensus::ConsensusResult<Vec<(TransactionOutpoint, UtxoEntry)>> {
+        unimplemented!()
+    }
 }

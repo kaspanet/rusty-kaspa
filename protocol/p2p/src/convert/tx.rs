@@ -4,10 +4,35 @@ use consensus_core::{
     subnets::SubnetworkId,
     tx::{ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry},
 };
+use hashes::Hash;
 
 // ----------------------------------------------------------------------------
 // consensus_core to protowire
 // ----------------------------------------------------------------------------
+
+impl From<Hash> for protowire::TransactionId {
+    fn from(hash: Hash) -> Self {
+        Self { bytes: Vec::from(hash.as_bytes()) }
+    }
+}
+
+impl From<&Hash> for protowire::TransactionId {
+    fn from(hash: &Hash) -> Self {
+        Self { bytes: Vec::from(hash.as_bytes()) }
+    }
+}
+
+impl From<&TransactionOutpoint> for protowire::Outpoint {
+    fn from(outpoint: &TransactionOutpoint) -> Self {
+        Self { transaction_id: Some(outpoint.transaction_id.into()), index: outpoint.index }
+    }
+}
+
+impl From<&ScriptPublicKey> for protowire::ScriptPublicKey {
+    fn from(script_public_key: &ScriptPublicKey) -> Self {
+        Self { script: script_public_key.script().to_vec(), version: script_public_key.version() as u32 }
+    }
+}
 
 // ----------------------------------------------------------------------------
 // protowire to consensus_core

@@ -115,7 +115,7 @@ pub struct VirtualStateProcessor {
     pub(super) utxo_multisets_store: Arc<DbUtxoMultisetsStore>,
     pub(super) acceptance_data_store: Arc<DbAcceptanceDataStore>,
     pub virtual_stores: Arc<RwLock<VirtualStores>>,
-    pub(super) pruning_point_utxo_set_store: Arc<DbUtxoSetStore>,
+    pub pruning_point_utxo_set_store: Arc<DbUtxoSetStore>,
     // TODO: remove all pub from stores when StoreManager is implemented
 
     // Managers and services
