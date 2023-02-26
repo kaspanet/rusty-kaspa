@@ -47,6 +47,19 @@ impl From<ExternalGhostdagData> for GhostdagData {
     }
 }
 
+impl From<&GhostdagData> for ExternalGhostdagData {
+    fn from(value: &GhostdagData) -> Self {
+        Self {
+            blue_score: value.blue_score,
+            blue_work: value.blue_work,
+            selected_parent: value.selected_parent,
+            mergeset_blues: (*value.mergeset_blues).clone(),
+            mergeset_reds: (*value.mergeset_reds).clone(),
+            blues_anticone_sizes: (*value.blues_anticone_sizes).clone(),
+        }
+    }
+}
+
 impl GhostdagData {
     pub fn new(
         blue_score: u64,

@@ -23,6 +23,23 @@ impl TryFrom<protowire::RequestHeadersMessage> for (Hash, Hash) {
     }
 }
 
+impl TryFrom<protowire::RequestIbdChainBlockLocatorMessage> for (Option<Hash>, Option<Hash>) {
+    type Error = ConversionError;
+    fn try_from(msg: protowire::RequestIbdChainBlockLocatorMessage) -> Result<Self, Self::Error> {
+        let low = match msg.low_hash {
+            Some(low) => Some(low.try_into()?),
+            None => None,
+        };
+
+        let high = match msg.high_hash {
+            Some(high) => Some(high.try_into()?),
+            None => None,
+        };
+
+        Ok((low, high))
+    }
+}
+
 impl TryFrom<protowire::PruningPointProofMessage> for PruningPointProof {
     type Error = ConversionError;
     fn try_from(msg: protowire::PruningPointProofMessage) -> Result<Self, Self::Error> {

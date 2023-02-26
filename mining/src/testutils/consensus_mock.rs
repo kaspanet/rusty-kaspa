@@ -245,4 +245,26 @@ impl ConsensusApi for ConsensusMock {
     fn get_pruning_point_proof(self: Arc<Self>) -> Arc<consensus_core::pruning::PruningPointProof> {
         unimplemented!()
     }
+
+    fn pruning_point_headers(&self) -> Vec<Arc<Header>> {
+        unimplemented!()
+    }
+
+    fn get_pruning_point_anticone_and_trusted_data(
+        &self,
+    ) -> Arc<(Vec<hashes::Hash>, Vec<consensus_core::trusted::TrustedHeader>, Vec<consensus_core::trusted::TrustedGhostdagData>)> {
+        unimplemented!()
+    }
+
+    fn get_block(&self, _hash: hashes::Hash) -> consensus_core::errors::consensus::ConsensusResult<Block> {
+        unimplemented!()
+    }
+
+    fn create_headers_selected_chain_block_locator(
+        &self,
+        _low: Option<hashes::Hash>,
+        _high: Option<hashes::Hash>,
+    ) -> consensus_core::errors::consensus::ConsensusResult<Vec<hashes::Hash>> {
+        unimplemented!()
+    }
 }

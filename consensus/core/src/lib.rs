@@ -32,7 +32,7 @@ pub mod testutils;
 pub type BlueWorkType = math::Uint192;
 
 /// The type used to represent the GHOSTDAG K parameter
-pub type KType = u8; // This type must be increased to u16 if we ever set GHOSTDAG K > 255
+pub type KType = u16;
 
 /// Map from Block hash to K type
 pub type HashKTypeMap = std::sync::Arc<BlockHashMap<KType>>;
@@ -72,6 +72,11 @@ impl HashMapCustomHasher for BlockHashSet {
     fn with_capacity(cap: usize) -> Self {
         Self::with_capacity_and_hasher(cap, BlockHasher::new())
     }
+}
+
+pub struct ChainPath {
+    pub added: Vec<Hash>,
+    pub removed: Vec<Hash>,
 }
 
 /// `hashes::Hash` writes 4 u64s so we just use the last one as the hash here

@@ -1,4 +1,4 @@
-use std::{fmt::Display, sync::Arc};
+use std::sync::Arc;
 
 use database::prelude::DB;
 use database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
@@ -6,26 +6,7 @@ use database::prelude::{StoreError, StoreResult};
 use hashes::Hash;
 use rocksdb::WriteBatch;
 
-#[derive(PartialEq, Eq, Clone, Copy, Hash)]
-pub struct Key([u8; 8]);
-
-impl From<u64> for Key {
-    fn from(value: u64) -> Self {
-        Self(value.to_le_bytes()) // TODO: Consider using big-endian for future ordering.
-    }
-}
-
-impl AsRef<[u8]> for Key {
-    fn as_ref(&self) -> &[u8] {
-        &self.0
-    }
-}
-
-impl Display for Key {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", u64::from_le_bytes(self.0))
-    }
-}
+use super::U64Key;
 
 pub trait PastPruningPointsStoreReader {
     fn get(&self, index: u64) -> StoreResult<Hash>;
@@ -42,7 +23,7 @@ const STORE_PREFIX: &[u8] = b"past-pruning-points";
 #[derive(Clone)]
 pub struct DbPastPruningPointsStore {
     db: Arc<DB>,
-    access: CachedDbAccess<Key, Hash>,
+    access: CachedDbAccess<U64Key, Hash>,
 }
 
 impl DbPastPruningPointsStore {

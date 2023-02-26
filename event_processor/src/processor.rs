@@ -108,8 +108,8 @@ impl EventProcessor {
 
         self.rpc_send
             .send(Notification::VirtualSelectedParentChainChanged(Arc::new(VirtualSelectedParentChainChangedNotification {
-                added_chain_block_hashes: virtual_change_set_event.mergeset_blues.clone(),
-                removed_chain_block_hashes: virtual_change_set_event.mergeset_reds.clone(),
+                added_chain_block_hashes: Default::default(),   // TODO: Fill with real values
+                removed_chain_block_hashes: Default::default(), // TODO: Fill with real values
                 accepted_transaction_ids: virtual_change_set_event.accepted_tx_ids.clone(),
             })))
             .await?;

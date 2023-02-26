@@ -2,6 +2,7 @@ use self::{
     ibd::IbdFlow,
     ping::{ReceivePingsFlow, SendPingsFlow},
     request_headers::RequestHeadersFlow,
+    request_ibd_chain_block_locator::RequestIbdChainBlockLocatorFlow,
     request_pp_proof::RequestPruningPointProofFlow,
 };
 use crate::{flow_context::FlowContext, flow_trait::Flow};
@@ -16,7 +17,9 @@ use std::sync::Arc;
 mod ibd;
 mod ping;
 mod request_headers;
+mod request_ibd_chain_block_locator;
 mod request_pp_proof;
+mod pruning_point_and_its_anticone_requests;
 
 pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
     let flows: Vec<Box<dyn Flow>> = vec![
@@ -48,9 +51,14 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
             router.subscribe(vec![KaspadMessagePayloadType::RequestHeaders, KaspadMessagePayloadType::RequestNextHeaders]),
         )),
         Box::new(RequestPruningPointProofFlow::new(
-            ctx,
+            ctx.clone(),
             router.clone(),
             router.subscribe(vec![KaspadMessagePayloadType::RequestPruningPointProof]),
+        )),
+        Box::new(RequestIbdChainBlockLocatorFlow::new(
+            ctx,
+            router.clone(),
+            router.subscribe(vec![KaspadMessagePayloadType::RequestIbdChainBlockLocator]),
         )),
     ];
 

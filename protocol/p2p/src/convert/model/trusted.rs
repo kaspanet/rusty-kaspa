@@ -6,7 +6,7 @@
 use consensus_core::{
     block::Block,
     blockhash::ORIGIN,
-    trusted::{TrustedBlock, TrustedHash, TrustedHeader},
+    trusted::{TrustedBlock, TrustedGhostdagData, TrustedHeader},
     BlockHashMap, BlockHashSet, HashMapCustomHasher,
 };
 
@@ -16,11 +16,11 @@ use crate::common::ProtocolError;
 /// the sub-DAG in the anticone and in the recent past of the synced pruning point
 pub struct TrustedDataPackage {
     pub daa_window: Vec<TrustedHeader>,
-    pub ghostdag_window: Vec<TrustedHash>,
+    pub ghostdag_window: Vec<TrustedGhostdagData>,
 }
 
 impl TrustedDataPackage {
-    pub fn new(daa_window: Vec<TrustedHeader>, ghostdag_window: Vec<TrustedHash>) -> Self {
+    pub fn new(daa_window: Vec<TrustedHeader>, ghostdag_window: Vec<TrustedGhostdagData>) -> Self {
         Self { daa_window, ghostdag_window }
     }
 

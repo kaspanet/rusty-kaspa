@@ -15,7 +15,7 @@ use crate::{
     },
     header::Header,
     pruning::{PruningPointProof, PruningPointsList},
-    trusted::TrustedBlock,
+    trusted::{TrustedBlock, TrustedGhostdagData, TrustedHeader},
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
 };
 use hashes::Hash;
@@ -67,6 +67,14 @@ pub trait ConsensusApi: Send + Sync {
     fn get_header(self: Arc<Self>, hash: Hash) -> ConsensusResult<Arc<Header>>;
 
     fn get_pruning_point_proof(self: Arc<Self>) -> Arc<PruningPointProof>;
+
+    fn create_headers_selected_chain_block_locator(&self, low: Option<Hash>, high: Option<Hash>) -> ConsensusResult<Vec<Hash>>;
+
+    fn pruning_point_headers(&self) -> Vec<Arc<Header>>;
+
+    fn get_pruning_point_anticone_and_trusted_data(&self) -> Arc<(Vec<Hash>, Vec<TrustedHeader>, Vec<TrustedGhostdagData>)>;
+
+    fn get_block(&self, hash: Hash) -> ConsensusResult<Block>;
 }
 
 pub type DynConsensus = Arc<dyn ConsensusApi>;

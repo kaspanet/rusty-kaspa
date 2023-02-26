@@ -3,7 +3,7 @@ use std::sync::Arc;
 use log::debug;
 use p2p_lib::{
     common::ProtocolError,
-    dequeue_with_timeout, make_message,
+    dequeue, dequeue_with_timeout, make_message,
     pb::{self, kaspad_message::Payload, BlockHeadersMessage, DoneHeadersMessage},
     IncomingRoute, Router,
 };
@@ -38,7 +38,7 @@ impl RequestHeadersFlow {
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
         loop {
-            let msg = dequeue_with_timeout!(self.incoming_route, Payload::RequestHeaders)?;
+            let msg = dequeue!(self.incoming_route, Payload::RequestHeaders)?;
             let (high, mut low) = msg.try_into()?;
             match self.ctx.consensus().is_chain_ancestor_of(low, high) {
                 Ok(is_ancestor) => {

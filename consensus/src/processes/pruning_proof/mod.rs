@@ -8,8 +8,8 @@ use consensus_core::{
     blockhash::{BlockHashExtensions, BlockHashes, ORIGIN},
     header::Header,
     pruning::PruningPointProof,
-    trusted::TrustedBlock,
-    BlockHashMap, BlockHashSet, BlockLevel, HashMapCustomHasher,
+    trusted::{TrustedBlock, TrustedGhostdagData, TrustedHeader},
+    BlockHashMap, BlockHashSet, BlockLevel, HashMapCustomHasher, KType,
 };
 use database::prelude::StoreError;
 use hashes::Hash;
@@ -26,7 +26,7 @@ use crate::{
             relations::MTRelationsService,
         },
         stores::{
-            block_window_cache::BlockWindowHeap,
+            block_window_cache::{BlockWindowCacheStore, BlockWindowHeap},
             depth::DbDepthStore,
             ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStore, GhostdagStoreReader},
             headers::{DbHeadersStore, HeaderStore, HeaderStoreReader},
@@ -36,7 +36,7 @@ use crate::{
             reachability::{DbReachabilityStore, StagingReachabilityStore},
             relations::{DbRelationsStore, MemoryRelationsStore, RelationsStore, RelationsStoreReader},
             tips::DbTipsStore,
-            virtual_state::{VirtualState, VirtualStateStore},
+            virtual_state::{VirtualState, VirtualStateStore, VirtualStateStoreReader},
             DB,
         },
     },
@@ -44,14 +44,22 @@ use crate::{
 };
 use std::collections::hash_map::Entry::Vacant;
 
-use super::{ghostdag::protocol::GhostdagManager, parents_builder::ParentsManager, reachability};
+use super::{
+    ghostdag::protocol::GhostdagManager, parents_builder::ParentsManager, reachability, traversal_manager::DagTraversalManager,
+};
 use kaspa_utils::binary_heap::BinaryHeapExtensions;
+
+struct CachedData {
+    pruning_point: Hash,
+    proof: Arc<PruningPointProof>,
+    pruning_point_anticone_and_trusted_data: Arc<(Vec<Hash>, Vec<TrustedHeader>, Vec<TrustedGhostdagData>)>,
+}
 
 pub struct PruningProofManager {
     db: Arc<DB>,
     headers_store: Arc<DbHeadersStore>,
     reachability_store: Arc<RwLock<DbReachabilityStore>>,
-    parents_manager: ParentsManager<DbHeadersStore, DbReachabilityStore, DbRelationsStore>,
+    parents_manager: ParentsManager<DbHeadersStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
     reachability_service: MTReachabilityService<DbReachabilityStore>,
     ghostdag_stores: Vec<Arc<DbGhostdagStore>>,
     relations_stores: Arc<RwLock<Vec<DbRelationsStore>>>,
@@ -63,12 +71,16 @@ pub struct PruningProofManager {
     depth_store: Arc<DbDepthStore>,
 
     ghostdag_managers: Vec<DbGhostdagManager>,
+    traversal_manager:
+        DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
 
-    cached_pruning_point_proof: RwLock<Option<(Hash, Arc<PruningPointProof>)>>,
+    cached_pruning_point_proof_and_anticone: RwLock<Option<CachedData>>,
 
     max_block_level: BlockLevel,
     genesis_hash: Hash,
     pruning_proof_m: u64,
+    difficulty_adjustment_window_size: usize,
+    ghostdag_k: KType,
 }
 
 struct HeaderStoreMock {}
@@ -154,7 +166,7 @@ impl PruningProofManager {
         db: Arc<DB>,
         headers_store: Arc<DbHeadersStore>,
         reachability_store: Arc<RwLock<DbReachabilityStore>>,
-        parents_manager: ParentsManager<DbHeadersStore, DbReachabilityStore, DbRelationsStore>,
+        parents_manager: ParentsManager<DbHeadersStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
         reachability_service: MTReachabilityService<DbReachabilityStore>,
         ghostdag_stores: Vec<Arc<DbGhostdagStore>>,
         relations_stores: Arc<RwLock<Vec<DbRelationsStore>>>,
@@ -165,9 +177,17 @@ impl PruningProofManager {
         headers_selected_tip_store: Arc<RwLock<DbHeadersSelectedTipStore>>,
         depth_store: Arc<DbDepthStore>,
         ghostdag_managers: Vec<DbGhostdagManager>,
+        traversal_manager: DagTraversalManager<
+            DbGhostdagStore,
+            BlockWindowCacheStore,
+            DbReachabilityStore,
+            MTRelationsService<DbRelationsStore>,
+        >,
         max_block_level: BlockLevel,
         genesis_hash: Hash,
         pruning_proof_m: u64,
+        difficulty_adjustment_window_size: usize,
+        ghostdag_k: KType,
     ) -> Self {
         Self {
             db,
@@ -184,10 +204,13 @@ impl PruningProofManager {
             headers_selected_tip_store,
             depth_store,
             ghostdag_managers,
+            traversal_manager,
             max_block_level,
             genesis_hash,
-            cached_pruning_point_proof: RwLock::new(None),
+            cached_pruning_point_proof_and_anticone: RwLock::new(None),
             pruning_proof_m,
+            difficulty_adjustment_window_size,
+            ghostdag_k,
         }
     }
 
@@ -380,16 +403,8 @@ impl PruningProofManager {
     }
 
     pub fn get_pruning_point_proof(&self) -> Arc<PruningPointProof> {
-        let pp = self.pruning_store.read().pruning_point().unwrap(); // TODO: Check for how much time we should hold this lock.
-        if let Some((cached_pp, proof)) = self.cached_pruning_point_proof.read().clone() {
-            if cached_pp == pp {
-                return proof;
-            }
-        }
-
-        let proof = Arc::new(self.build_pruning_point_proof(pp));
-        *self.cached_pruning_point_proof.write() = Some((pp, proof.clone()));
-        proof
+        self.update_cache_if_needed();
+        self.cached_pruning_point_proof_and_anticone.read().as_ref().unwrap().proof.clone()
     }
 
     fn build_pruning_point_proof(&self, pp: Hash) -> PruningPointProof {
@@ -441,13 +456,12 @@ impl PruningProofManager {
                 let mut queue = BlockWindowHeap::new();
                 let mut visited = BlockHashSet::new();
                 queue.push(Reverse(SortableBlock::new(root, self.ghostdag_stores[level].get_blue_work(root).unwrap())));
-                while !queue.is_empty() {
-                    let current = queue.pop().expect("checked if empty").0.hash;
-                    if visited.contains(&current) {
+                while let Some(current) = queue.pop() {
+                    let current = current.0.hash;
+                    if !visited.insert(current) {
                         continue;
                     }
 
-                    visited.insert(current);
                     if !self.reachability_service.is_dag_ancestor_of(current, selected_tip) {
                         continue;
                     }
@@ -492,5 +506,74 @@ impl PruningProofManager {
             }
             current_gd = ghostdag_store.get_compact_data(current).unwrap();
         }
+    }
+
+    fn calculate_pruning_point_anticone_and_trusted_data(
+        &self,
+        pruning_point: Hash,
+    ) -> (Vec<Hash>, Vec<TrustedHeader>, Vec<TrustedGhostdagData>) {
+        let anticone = self
+            .traversal_manager
+            .anticone(pruning_point, self.virtual_stores.read().state.get().unwrap().parents.iter().copied(), None)
+            .expect("no error is expected when max_traversal_allowed is None");
+        let anticone = self.ghostdag_managers[0].sort_blocks(anticone);
+
+        let mut daa_window_blocks = BlockHashMap::new();
+        let mut ghostdag_blocks = BlockHashMap::new();
+
+        for anticone_block in anticone.iter().copied() {
+            let window = self
+                .traversal_manager
+                .block_window(&self.ghostdag_stores[0].get_data(anticone_block).unwrap(), self.difficulty_adjustment_window_size)
+                .unwrap();
+
+            for hash in window.into_iter().map(|block| block.0.hash) {
+                if daa_window_blocks.contains_key(&hash) {
+                    continue;
+                }
+
+                daa_window_blocks.insert(
+                    hash,
+                    TrustedHeader {
+                        header: self.headers_store.get_header(hash).unwrap(),
+                        ghostdag: (&*self.ghostdag_stores[0].get_data(hash).unwrap()).into(),
+                    },
+                );
+            }
+
+            for hash in self.reachability_service.default_backward_chain_iterator(anticone_block).take(self.ghostdag_k as usize) {
+                if ghostdag_blocks.contains_key(&hash) {
+                    continue;
+                }
+
+                ghostdag_blocks.insert(hash, (&*self.ghostdag_stores[0].get_data(hash).unwrap()).into());
+            }
+        }
+
+        (
+            anticone,
+            daa_window_blocks.into_values().collect_vec(),
+            ghostdag_blocks.into_iter().map(|(hash, ghostdag)| TrustedGhostdagData { hash, ghostdag }).collect_vec(),
+        )
+    }
+
+    fn update_cache_if_needed(&self) {
+        let pp = self.pruning_store.read().pruning_point().unwrap();
+        if let Some(cached_data) = self.cached_pruning_point_proof_and_anticone.read().as_ref() {
+            if cached_data.pruning_point == pp {
+                return;
+            }
+        }
+
+        *self.cached_pruning_point_proof_and_anticone.write() = Some(CachedData {
+            pruning_point: pp,
+            proof: Arc::new(self.build_pruning_point_proof(pp)),
+            pruning_point_anticone_and_trusted_data: Arc::new(self.calculate_pruning_point_anticone_and_trusted_data(pp)),
+        });
+    }
+
+    pub fn get_pruning_point_anticone_and_trusted_data(&self) -> Arc<(Vec<Hash>, Vec<TrustedHeader>, Vec<TrustedGhostdagData>)> {
+        self.update_cache_if_needed();
+        self.cached_pruning_point_proof_and_anticone.read().as_ref().unwrap().pruning_point_anticone_and_trusted_data.clone()
     }
 }

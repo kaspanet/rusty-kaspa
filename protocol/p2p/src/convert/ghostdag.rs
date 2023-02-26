@@ -1,7 +1,7 @@
 use super::{error::ConversionError, option::TryIntoOptionEx};
 use crate::pb as protowire;
 use consensus_core::{
-    trusted::{ExternalGhostdagData, TrustedHash, TrustedHeader},
+    trusted::{ExternalGhostdagData, TrustedGhostdagData, TrustedHeader},
     BlockHashMap, BlueWorkType, HashMapCustomHasher, KType,
 };
 use hashes::Hash;
@@ -58,7 +58,7 @@ impl TryFrom<protowire::GhostdagData> for ExternalGhostdagData {
     }
 }
 
-impl TryFrom<protowire::BlockGhostdagDataHashPair> for TrustedHash {
+impl TryFrom<protowire::BlockGhostdagDataHashPair> for TrustedGhostdagData {
     type Error = ConversionError;
     fn try_from(pair: protowire::BlockGhostdagDataHashPair) -> Result<Self, Self::Error> {
         Ok(Self::new(pair.hash.try_into_ex()?, pair.ghostdag_data.try_into_ex()?))
