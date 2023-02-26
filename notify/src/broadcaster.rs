@@ -89,7 +89,7 @@ where
 }
 
 #[derive(Debug)]
-pub struct Broadcaster<N, C>
+pub(crate) struct Broadcaster<N, C>
 where
     N: Notification,
     C: Connection,
@@ -203,3 +203,5 @@ where
         self.stop_notification_broadcasting_task().await
     }
 }
+
+// TODO: tests

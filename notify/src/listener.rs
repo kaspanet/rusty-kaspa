@@ -9,22 +9,13 @@ use super::{
 pub type ListenerId = u64;
 
 /// A listener of [`super::notifier::Notifier`] notifications.
-///
-/// ### Implementation details
-///
-/// This struct is not async protected against mutations.
-/// It is the responsibility of code using a [`Listener`] to guard memory
-/// before calling toggle.
-///
-/// Any ListenerSenderSide derived from a [`Listener`] should also be rebuilt
-/// upon relevant mutation by a call to toggle.
 #[derive(Debug)]
 pub(crate) struct Listener<C>
 where
     C: Connection,
 {
     connection: C,
-    pub subscriptions: EventArray<SingleSubscription>,
+    pub(crate) subscriptions: EventArray<SingleSubscription>,
 }
 
 impl<C> Listener<C>

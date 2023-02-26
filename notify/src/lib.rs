@@ -1,7 +1,7 @@
 extern crate self as kaspa_notify;
 
 pub mod address;
-pub mod broadcaster;
+pub(crate) mod broadcaster;
 pub mod collector;
 pub mod connection;
 pub mod error;
