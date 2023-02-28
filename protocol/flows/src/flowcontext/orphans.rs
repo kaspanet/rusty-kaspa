@@ -139,7 +139,7 @@ mod queue {
     use super::Hash;
     use std::collections::{HashSet, VecDeque};
 
-    /// A simple deque backed by a set for efficient duplication removal
+    /// A simple deque backed by a set for efficient duplication filtering
     pub struct ProcessQueue {
         deque: VecDeque<Hash>,
         set: HashSet<Hash>,

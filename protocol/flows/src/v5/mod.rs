@@ -16,6 +16,7 @@ use p2p_lib::{
 };
 use std::sync::Arc;
 
+mod blockrelay;
 mod ibd;
 mod ping;
 mod pruning_point_and_its_anticone_requests;
