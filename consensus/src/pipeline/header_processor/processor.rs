@@ -507,10 +507,14 @@ impl HeaderProcessor {
 
         {
             let mut batch = WriteBatch::default();
+            let mut sc_write_guard = self.selected_chain_store.write();
+            sc_write_guard.init_with_pruning_point(&mut batch, self.genesis_hash).unwrap();
+
             let mut hst_write_guard = self.headers_selected_tip_store.write();
             hst_write_guard.set_batch(&mut batch, SortableBlock::new(self.genesis_hash, 0.into())).unwrap(); // TODO: take blue work from genesis block
             self.db.write(batch).unwrap();
             drop(hst_write_guard);
+            drop(sc_write_guard);
         }
 
         self.pruning_store.write().set(self.genesis_hash, self.genesis_hash, 0).unwrap();

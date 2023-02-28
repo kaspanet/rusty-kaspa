@@ -1200,7 +1200,7 @@ fn hex_decode(src: &str) -> Vec<u8> {
 
 #[tokio::test]
 async fn bounded_merge_depth_test() {
-    let config = ConfigBuilder::new(MAINNET_PARAMS)
+    let config = ConfigBuilder::new(DEVNET_PARAMS)
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
             p.ghostdag_k = 5;
@@ -1260,19 +1260,19 @@ async fn bounded_merge_depth_test() {
 
     // We extend the selected chain until kosherizing_hash will be red from the virtual POV.
     for i in 0..config.ghostdag_k {
-        let hash = Hash::from_u64_word(i as u64 * 1000);
+        let hash = Hash::from_u64_word((i + 1) as u64 * 1000);
         consensus.add_block_with_parents(hash, vec![*selected_chain.last().unwrap()]).await.unwrap();
         selected_chain.push(hash);
     }
 
     // Since kosherizing_hash is now red, we expect this to fail.
-    match consensus.add_block_with_parents(1100.into(), vec![kosherizing_hash, *selected_chain.last().unwrap()]).await {
+    match consensus.add_block_with_parents(1200.into(), vec![kosherizing_hash, *selected_chain.last().unwrap()]).await {
         Err(RuleError::ViolatingBoundedMergeDepth) => {}
         res => panic!("Unexpected result: {res:?}"),
     }
 
     // point_at_blue_kosherizing is kosherizing kosherizing_hash, so this should pass.
-    consensus.add_block_with_parents(1101.into(), vec![point_at_blue_kosherizing, *selected_chain.last().unwrap()]).await.unwrap();
+    consensus.add_block_with_parents(1201.into(), vec![point_at_blue_kosherizing, *selected_chain.last().unwrap()]).await.unwrap();
 
     consensus.shutdown(wait_handles);
 }
