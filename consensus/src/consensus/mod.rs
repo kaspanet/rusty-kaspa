@@ -444,6 +444,7 @@ impl Consensus {
             body_tips_store.clone(),
             headers_selected_tip_store.clone(),
             depth_store,
+            selected_chain_store.clone(),
             ghostdag_managers,
             dag_traversal_manager.clone(),
             params.max_block_level,
@@ -469,6 +470,7 @@ impl Consensus {
         header_processor.process_origin_if_needed();
         header_processor.process_genesis_if_needed();
         body_processor.process_genesis_if_needed();
+        virtual_processor.init();
         virtual_processor.process_genesis_if_needed();
 
         Self {
@@ -744,7 +746,13 @@ impl ConsensusApi for Consensus {
     }
 
     fn get_block(&self, hash: Hash) -> ConsensusResult<Block> {
-        self.validate_block_exists(hash)?;
+        if match self.statuses_store.read().get(hash).unwrap_option() {
+            Some(status) => !status.has_block_body(),
+            None => true,
+        } {
+            return Err(ConsensusError::BlockNotFound(hash));
+        }
+
         Ok(Block {
             header: self.headers_store.get_header(hash).unwrap(),
             transactions: self.block_transactions_store.get(hash).unwrap(),

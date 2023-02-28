@@ -389,7 +389,8 @@ impl HeaderProcessor {
     }
 
     fn commit_header(self: &Arc<HeaderProcessor>, ctx: HeaderProcessingContext, header: &Arc<Header>) {
-        let ghostdag_data = ctx.ghostdag_data.unwrap();
+        let ghostdag_data = ctx.ghostdag_data.as_ref().unwrap();
+        let pp = ctx.pruning_point();
 
         // Create a DB batch writer
         let mut batch = WriteBatch::default();
@@ -446,13 +447,18 @@ impl HeaderProcessor {
         let mut hst_write_guard = self.headers_selected_tip_store.write();
         let mut sc_write_guard = self.selected_chain_store.write();
         let prev_hst = hst_write_guard.get().unwrap();
-        if SortableBlock::new(ctx.hash, header.blue_work) > prev_hst {
+        if SortableBlock::new(ctx.hash, header.blue_work) > prev_hst
+            && reachability::is_chain_ancestor_of(&staging, pp, ctx.hash).unwrap()
+        // We can't calculate chain path for blocks that do not have the pruning point in their chain, so we just skip them.
+        {
             // Hint reachability about the new tip.
             reachability::hint_virtual_selected_parent(&mut staging, ctx.hash).unwrap();
             hst_write_guard.set_batch(&mut batch, SortableBlock::new(ctx.hash, header.blue_work)).unwrap();
-            sc_write_guard
-                .apply_changes(&mut batch, self.dag_traversal_manager.calculate_chain_path(prev_hst.hash, ctx.hash))
-                .unwrap();
+            if ctx.hash != pp {
+                let mut chain_path = self.dag_traversal_manager.calculate_chain_path(prev_hst.hash, ghostdag_data[0].selected_parent);
+                chain_path.added.push(ctx.hash);
+                sc_write_guard.apply_changes(&mut batch, chain_path).unwrap();
+            }
         }
 
         let is_genesis = header.direct_parents().is_empty();

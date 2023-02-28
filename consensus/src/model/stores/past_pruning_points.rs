@@ -15,6 +15,7 @@ pub trait PastPruningPointsStoreReader {
 pub trait PastPruningPointsStore: PastPruningPointsStoreReader {
     // This is append only
     fn insert(&self, index: u64, pruning_point: Hash) -> StoreResult<()>;
+    fn set(&self, index: u64, pruning_point: Hash) -> StoreResult<()>;
 }
 
 const STORE_PREFIX: &[u8] = b"past-pruning-points";
@@ -55,6 +56,10 @@ impl PastPruningPointsStore for DbPastPruningPointsStore {
         if self.access.has(index.into())? {
             return Err(StoreError::KeyAlreadyExists(index.to_string()));
         }
+        self.set(index, pruning_point)
+    }
+
+    fn set(&self, index: u64, pruning_point: Hash) -> StoreResult<()> {
         self.access.write(DirectDbWriter::new(&self.db), index.into(), pruning_point)?;
         Ok(())
     }

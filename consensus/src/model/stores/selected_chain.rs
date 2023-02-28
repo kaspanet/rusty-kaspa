@@ -23,6 +23,7 @@ pub trait SelectedChainStoreReader {
 /// TODO: can be optimized to avoid the locking if needed.
 pub trait SelectedChainStore: SelectedChainStoreReader {
     fn apply_changes(&mut self, batch: &mut WriteBatch, changes: ChainPath) -> StoreResult<()>;
+    fn init_with_pruning_point(&mut self, batch: &mut WriteBatch, block: Hash) -> StoreResult<()>;
 }
 
 const STORE_PREFIX_HASH_BY_INDEX: &[u8] = b"selected-chain-hash-by-index";
@@ -68,25 +69,23 @@ impl SelectedChainStoreReader for DbSelectedChainStore {
     }
 
     fn get_by_index(&self, index: u64) -> StoreResult<Hash> {
-        Ok(self.access_index_by_hash.read(index.into())?.into())
+        self.access_hash_by_index.read(index.into())
     }
 }
 
 impl SelectedChainStore for DbSelectedChainStore {
     fn apply_changes(&mut self, batch: &mut WriteBatch, changes: ChainPath) -> StoreResult<()> {
         let added_len = changes.added.len() as u64;
-        let index_offset = match self.access_highest_index.read() {
-            Ok(highest_chain_block_index) => highest_chain_block_index - changes.removed.len() as u64 + 1,
-            Err(e) => match e {
-                StoreError::KeyNotFound(_) => 0,
-                _ => return Err(e),
-            },
-        };
+        let current_highest_index = self.access_highest_index.read().unwrap();
+        let index_offset = current_highest_index + 1;
+        let new_highest_index = added_len + index_offset - 1;
 
         for to_remove in changes.removed {
             let index = self.access_index_by_hash.read(to_remove).unwrap();
             self.access_index_by_hash.delete(BatchDbWriter::new(batch), to_remove).unwrap();
-            self.access_hash_by_index.delete(BatchDbWriter::new(batch), index.into()).unwrap();
+            if index > new_highest_index {
+                self.access_hash_by_index.delete(BatchDbWriter::new(batch), index.into()).unwrap();
+            }
         }
 
         for (i, to_add) in changes.added.into_iter().enumerate() {
@@ -94,7 +93,14 @@ impl SelectedChainStore for DbSelectedChainStore {
             self.access_hash_by_index.write(BatchDbWriter::new(batch), (i as u64 + index_offset).into(), to_add).unwrap();
         }
 
-        self.access_highest_index.write(BatchDbWriter::new(batch), &(added_len + index_offset)).unwrap();
+        self.access_highest_index.write(BatchDbWriter::new(batch), &new_highest_index).unwrap();
+        Ok(())
+    }
+
+    fn init_with_pruning_point(&mut self, batch: &mut WriteBatch, block: Hash) -> StoreResult<()> {
+        self.access_index_by_hash.write(BatchDbWriter::new(batch), block, 0)?;
+        self.access_hash_by_index.write(BatchDbWriter::new(batch), 0.into(), block)?;
+        self.access_highest_index.write(BatchDbWriter::new(batch), &0).unwrap();
         Ok(())
     }
 }

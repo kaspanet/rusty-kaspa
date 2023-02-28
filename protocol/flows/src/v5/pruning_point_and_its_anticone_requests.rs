@@ -1,14 +1,13 @@
 use std::sync::Arc;
 
-
-
 use itertools::Itertools;
 use log::debug;
 use p2p_lib::{
     common::ProtocolError,
     dequeue, make_message,
     pb::{
-        self, kaspad_message::Payload, BlockWithTrustedDataV4Message, DoneBlocksWithTrustedDataMessage, PruningPointsMessage, TrustedDataMessage,
+        self, kaspad_message::Payload, BlockWithTrustedDataV4Message, DoneBlocksWithTrustedDataMessage, PruningPointsMessage,
+        TrustedDataMessage,
     },
     IncomingRoute, Router,
 };

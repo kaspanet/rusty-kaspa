@@ -2,13 +2,10 @@ use std::sync::Arc;
 
 use consensus_core::errors::{consensus::ConsensusError, sync::SyncManagerError};
 
-
 use p2p_lib::{
     common::ProtocolError,
     dequeue, make_message,
-    pb::{
-        kaspad_message::Payload, IbdChainBlockLocatorMessage,
-    },
+    pb::{kaspad_message::Payload, IbdChainBlockLocatorMessage},
     IncomingRoute, Router,
 };
 
@@ -49,13 +46,8 @@ impl RequestIbdChainBlockLocatorFlow {
                 Ok(locator) => Ok(locator),
                 Err(e) => {
                     let orig = e.clone();
-                    if let ConsensusError::SyncManagerError(e) = e {
-                        if let SyncManagerError::BlockNotInSelectedParentChain(_) = e {
-                            // The chain has been modified, signal it by sending an empty locator
-                            Ok(vec![])
-                        } else {
-                            Err(orig)
-                        }
+                    if let ConsensusError::SyncManagerError(SyncManagerError::BlockNotInSelectedParentChain(_)) = e {
+                        Ok(vec![])
                     } else {
                         Err(orig)
                     }

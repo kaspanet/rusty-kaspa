@@ -1,7 +1,5 @@
-
 use crate::pb as protowire;
 use consensus_core::tx::{TransactionOutpoint, UtxoEntry};
-
 
 // ----------------------------------------------------------------------------
 // consensus_core to protowire

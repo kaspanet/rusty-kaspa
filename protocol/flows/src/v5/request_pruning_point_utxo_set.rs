@@ -5,10 +5,7 @@ use log::debug;
 use p2p_lib::{
     common::ProtocolError,
     dequeue, make_message,
-    pb::{
-        kaspad_message::Payload,
-        DonePruningPointUtxoSetChunksMessage, PruningPointUtxoSetChunkMessage,
-    },
+    pb::{kaspad_message::Payload, DonePruningPointUtxoSetChunksMessage, PruningPointUtxoSetChunkMessage},
     IncomingRoute, Router,
 };
 
@@ -57,7 +54,7 @@ impl RequestPruningPointUtxoSetFlow {
                         PruningPointUtxoSetChunkMessage {
                             outpoint_and_utxo_entry_pairs: pp_utxos
                                 .iter()
-                                .map(|(outpoint, entry)| { ((outpoint, entry)).into() })
+                                .map(|(outpoint, entry)| { (outpoint, entry).into() })
                                 .collect_vec()
                         }
                     ))

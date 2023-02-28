@@ -30,11 +30,12 @@ use crate::{
             depth::DbDepthStore,
             ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStore, GhostdagStoreReader},
             headers::{DbHeadersStore, HeaderStore, HeaderStoreReader},
-            headers_selected_tip::{DbHeadersSelectedTipStore, HeadersSelectedTipStore},
+            headers_selected_tip::DbHeadersSelectedTipStore,
             past_pruning_points::{DbPastPruningPointsStore, PastPruningPointsStore},
             pruning::{DbPruningStore, PruningStore, PruningStoreReader},
             reachability::{DbReachabilityStore, StagingReachabilityStore},
             relations::{DbRelationsStore, MemoryRelationsStore, RelationsStore, RelationsStoreReader},
+            selected_chain::{DbSelectedChainStore, SelectedChainStore},
             tips::DbTipsStore,
             virtual_state::{VirtualState, VirtualStateStore, VirtualStateStoreReader},
             DB,
@@ -69,6 +70,7 @@ pub struct PruningProofManager {
     body_tips_store: Arc<RwLock<DbTipsStore>>,
     headers_selected_tip_store: Arc<RwLock<DbHeadersSelectedTipStore>>,
     depth_store: Arc<DbDepthStore>,
+    selected_chain_store: Arc<RwLock<DbSelectedChainStore>>,
 
     ghostdag_managers: Vec<DbGhostdagManager>,
     traversal_manager:
@@ -176,6 +178,7 @@ impl PruningProofManager {
         body_tips_store: Arc<RwLock<DbTipsStore>>,
         headers_selected_tip_store: Arc<RwLock<DbHeadersSelectedTipStore>>,
         depth_store: Arc<DbDepthStore>,
+        selected_chain_store: Arc<RwLock<DbSelectedChainStore>>,
         ghostdag_managers: Vec<DbGhostdagManager>,
         traversal_manager: DagTraversalManager<
             DbGhostdagStore,
@@ -202,6 +205,7 @@ impl PruningProofManager {
             virtual_stores,
             body_tips_store,
             headers_selected_tip_store,
+            selected_chain_store,
             depth_store,
             ghostdag_managers,
             traversal_manager,
@@ -217,7 +221,7 @@ impl PruningProofManager {
     pub fn import_pruning_points(&self, pruning_points: &[Arc<Header>]) {
         // TODO: Also write validate_pruning_points
         for (i, header) in pruning_points.iter().enumerate() {
-            self.past_pruning_points_store.insert(i as u64, header.hash).unwrap();
+            self.past_pruning_points_store.set(i as u64, header.hash).unwrap();
 
             if self.headers_store.has(header.hash).unwrap() {
                 continue;
@@ -235,6 +239,9 @@ impl PruningProofManager {
     }
 
     pub fn apply_proof(&self, mut proof: PruningPointProof, trusted_set: &[TrustedBlock]) {
+        let pruning_point_header = proof[0].last().unwrap().clone();
+        let pruning_point = pruning_point_header.hash;
+
         let proof_zero_set = BlockHashSet::from_iter(proof[0].iter().map(|header| header.hash));
         let mut trusted_gd_map: BlockHashMap<GhostdagData> = BlockHashMap::new();
         for tb in trusted_set.iter() {
@@ -287,8 +294,6 @@ impl PruningProofManager {
             }
         }
 
-        let pruning_point_header = proof[0].last().unwrap();
-        let pruning_point = pruning_point_header.hash;
         let virtual_parents = vec![pruning_point];
         let virtual_gd = self.ghostdag_managers[0].ghostdag(&virtual_parents);
 
@@ -311,8 +316,9 @@ impl PruningProofManager {
         self.body_tips_store.write().init_batch(&mut batch, &virtual_parents).unwrap();
         self.headers_selected_tip_store
             .write()
-            .set(SortableBlock { hash: pruning_point, blue_work: pruning_point_header.blue_work })
+            .set_batch(&mut batch, SortableBlock { hash: pruning_point, blue_work: pruning_point_header.blue_work })
             .unwrap();
+        self.selected_chain_store.write().init_with_pruning_point(&mut batch, pruning_point).unwrap();
         // self.depth_store.insert_batch(&mut batch, pruning_point, pruning_point, pruning_point).unwrap();
         self.db.write(batch).unwrap();
     }
@@ -413,7 +419,7 @@ impl PruningProofManager {
         }
 
         let pp_header = self.headers_store.get_header_with_block_level(pp).unwrap();
-        let selected_tip_by_level = (0..self.max_block_level)
+        let selected_tip_by_level = (0..=self.max_block_level)
             .map(|level| {
                 if level <= pp_header.block_level {
                     pp
@@ -430,7 +436,7 @@ impl PruningProofManager {
             })
             .collect_vec();
 
-        (0..self.max_block_level)
+        (0..=self.max_block_level)
             .map(|level| {
                 let level = level as usize;
                 let selected_tip = selected_tip_by_level[level];
@@ -439,8 +445,8 @@ impl PruningProofManager {
                 let root = if level != self.max_block_level as usize {
                     let block_at_depth_m_at_next_level =
                         self.block_at_depth(&*self.ghostdag_stores[level + 1], selected_tip_by_level[level + 1], self.pruning_proof_m);
-                    if self.reachability_service.is_chain_ancestor_of(block_at_depth_2m, block_at_depth_m_at_next_level) {
-                        block_at_depth_2m
+                    if self.reachability_service.is_chain_ancestor_of(block_at_depth_m_at_next_level, block_at_depth_2m) {
+                        block_at_depth_m_at_next_level
                     } else {
                         self.find_common_ancestor_in_chain_of_a(
                             &*self.ghostdag_stores[level],

@@ -56,13 +56,17 @@ impl IbdFlow {
     }
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
+        info!("Started IBD");
         // None hashes indicate that the full chain is queried.
         let block_locator = self.get_syncer_chain_block_locator(None, None).await?;
         if block_locator.is_empty() {
-            return Err(ProtocolError::Other("Expecting initial syncer chain block locator to contain at least one element"));
+            info!("Can't IBD from this peer");
+            return Ok(()); // TODO: Consider uncommenting once IBD flow is finalized
+                           // return Err(ProtocolError::Other("Expecting initial syncer chain block locator to contain at least one element"));
         }
         let syncer_header_selected_tip = *block_locator.first().expect("verified locator is not empty");
         self.start_ibd_with_headers_proof(syncer_header_selected_tip).await?;
+        info!("Finished IBD");
         Ok(())
     }
 
@@ -119,8 +123,11 @@ impl IbdFlow {
         let msg = dequeue_with_timeout!(self.incoming_route, Payload::PruningPoints)?;
         let pruning_points: PruningPointsList = msg.try_into()?;
 
-        // TODO: verify last pruning point header hashes to proof_pruning_point
-        // TODO: import pruning points into consensus
+        if pruning_points.is_empty() || pruning_points.last().unwrap().hash != proof_pruning_point {
+            return Err(ProtocolError::Other("the proof pruning point is not equal to the last pruning point in the list"));
+        }
+
+        // TODO: validate pruning points before importing
 
         let msg = dequeue_with_timeout!(self.incoming_route, Payload::TrustedData)?;
         let pkg: TrustedDataPackage = msg.try_into()?;

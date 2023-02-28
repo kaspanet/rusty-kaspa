@@ -57,7 +57,7 @@ use consensus_core::{
     },
     BlockHashMap, BlockHashSet, HashMapCustomHasher,
 };
-use database::prelude::StoreError;
+use database::prelude::{StoreError, StoreResultExtensions};
 use hashes::Hash;
 use kaspa_core::{debug, info, trace};
 use muhash::MuHash;
@@ -698,6 +698,27 @@ impl VirtualStateProcessor {
         } else if new_candidate != current_pruning_info.candidate {
             let mut write_guard = RwLockUpgradableReadGuard::upgrade(pruning_read_guard);
             write_guard.set(current_pruning_info.pruning_point, new_candidate, current_pruning_info.index).unwrap();
+        }
+    }
+
+    pub fn init(self: &Arc<Self>) {
+        // TODO: Consider refactoring and removing code duplication with process_genesis_if_needed
+        // when staging consensus is implemented.
+        let pp_read_guard = self.pruning_store.upgradable_read();
+        if pp_read_guard.pruning_point().unwrap_option().is_none() {
+            match self.past_pruning_points_store.insert(0, self.genesis_hash) {
+                Ok(()) => {}
+                Err(StoreError::KeyAlreadyExists(_)) => {
+                    // If already exists, make sure the store was initialized correctly
+                    match self.past_pruning_points_store.get(0) {
+                        Ok(hash) => assert_eq!(hash, self.genesis_hash, "first pruning point is not genesis"),
+                        Err(err) => panic!("unexpected error {err}"),
+                    }
+                }
+                Err(err) => panic!("unexpected store error {err}"),
+            }
+
+            RwLockUpgradableReadGuard::upgrade(pp_read_guard).set(self.genesis_hash, self.genesis_hash, 0).unwrap();
         }
     }
 
