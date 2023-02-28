@@ -72,7 +72,8 @@ impl NotificationTrait for Notification {
     }
 
     fn apply_utxos_changed_subscription(&self, _subscription: &UtxosChangedSubscription) -> Option<Self> {
-        todo!()
+        // TODO: filter according to subscription
+        Some(self.clone())
     }
 
     fn event_type(&self) -> EventType {

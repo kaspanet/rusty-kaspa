@@ -153,6 +153,16 @@ pub struct UtxosChangedSubscription {
     addresses: HashSet<Address>,
 }
 
+impl UtxosChangedSubscription {
+    pub fn addresses(&self) -> &HashSet<Address> {
+        &self.addresses
+    }
+
+    pub fn to_all(&self) -> bool {
+        self.addresses.is_empty()
+    }
+}
+
 impl PartialEq for UtxosChangedSubscription {
     fn eq(&self, other: &Self) -> bool {
         if self.active == other.active && self.addresses.len() == other.addresses.len() {

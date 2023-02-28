@@ -7,7 +7,7 @@ use super::{
     notification::Notification,
     subscription::DynSubscription,
 };
-use async_channel::Receiver;
+use async_channel::{Receiver, Sender};
 use core::fmt::Debug;
 use derive_more::Deref;
 use futures::{
@@ -70,6 +70,10 @@ where
         }
         result
     }
+
+    // fn len(&self) -> usize {
+    //     self.0.values().map(|encodings| encodings.values().map(|connections| connections.len()).count()).count()
+    // }
 }
 
 impl<C: Connection> Default for Plan<C> {
@@ -99,6 +103,8 @@ where
     ctl: Channel<Ctl<C>>,
     incoming: Receiver<N>,
     shutdown: Channel<()>,
+    /// Sync channel, for handling of messages in predictable sequence; exclusively intended for tests.
+    _sync: Option<Sender<()>>,
 }
 
 impl<N, C> Broadcaster<N, C>
@@ -107,7 +113,26 @@ where
     C: Connection<Notification = N>,
 {
     pub fn new(name: &'static str, incoming: Receiver<N>) -> Self {
-        Self { name, started: Arc::new(AtomicBool::default()), ctl: Channel::unbounded(), incoming, shutdown: Channel::oneshot() }
+        Self {
+            name,
+            started: Arc::new(AtomicBool::default()),
+            ctl: Channel::unbounded(),
+            incoming,
+            _sync: None,
+            shutdown: Channel::oneshot(),
+        }
+    }
+
+    #[cfg(test)]
+    fn with_sync(name: &'static str, incoming: Receiver<N>, _sync: Option<Sender<()>>) -> Self {
+        Self {
+            name,
+            started: Arc::new(AtomicBool::default()),
+            ctl: Channel::unbounded(),
+            incoming,
+            _sync,
+            shutdown: Channel::oneshot(),
+        }
     }
 
     pub fn start(self: &Arc<Self>) {
@@ -159,11 +184,11 @@ where
                                             // ... to listeners connections
                                             match connection.send(message.clone()) {
                                                 Ok(_) => {
-                                                    trace!("[Notifier-{}] broadcasting task sent notification {notification} to listener {id}", self.name);
+                                                    trace!("[Broadcaster-{}] sent notification {notification} to listener {id}", self.name);
                                                 },
                                                 Err(_) => {
                                                     if connection.is_closed() {
-                                                        trace!("[Notifier-{}] broadcasting task could not send a notification to listener {id} because its connection is closed - removing it", self.name);
+                                                        trace!("[Broadcaster-{}] could not send a notification to listener {id} because its connection is closed - removing it", self.name);
                                                         purge.push(*id);
                                                     }
                                                 }
@@ -174,8 +199,16 @@ where
                             }
                             // Remove closed connections
                             purge.drain(..).for_each(|id| { plan[event].remove(&id); });
+
                         }
                     }
+                }
+
+                // In case we have a sync channel, report that the command was processed.
+                // This is for test only.
+                #[cfg(test)]
+                if let Some(ref sync) = self._sync {
+                    let _ = sync.try_send(());
                 }
             }
         });
@@ -205,3 +238,326 @@ where
 }
 
 // TODO: tests
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        address::test_helpers::get_3_addresses,
+        connection::ChannelConnection,
+        listener::Listener,
+        notification::test_helpers::*,
+        scope::{BlockAddedScope, Scope, UtxosChangedScope, VirtualChainChangedScope},
+        subscription::{Command, Mutation},
+    };
+    use async_channel::{unbounded, Sender};
+
+    type TestConnection = ChannelConnection<TestNotification>;
+    type TestBroadcaster = Broadcaster<TestNotification, ChannelConnection<TestNotification>>;
+
+    struct Step {
+        name: &'static str,
+        mutations: Vec<Option<Mutation>>,
+        notification: TestNotification,
+        expected: Vec<Option<TestNotification>>,
+    }
+
+    impl Step {
+        fn set_data(&mut self, data: u64) {
+            *self.notification.data_mut() = data;
+            self.expected.iter_mut().for_each(|x| {
+                if let Some(notification) = x.as_mut() {
+                    *notification.data_mut() = data;
+                }
+            });
+        }
+    }
+
+    struct Test {
+        name: &'static str,
+        broadcaster: Arc<TestBroadcaster>,
+        /// Listeners, vector index = ListenerId
+        listeners: Vec<Listener<TestConnection>>,
+        ctl_sender: Sender<Ctl<TestConnection>>,
+        sync_receiver: Receiver<()>,
+        notification_sender: Sender<TestNotification>,
+        notification_receivers: Vec<Receiver<TestNotification>>,
+        steps: Vec<Step>,
+    }
+
+    impl Test {
+        fn new(name: &'static str, listener_count: usize) -> Self {
+            let (sync_sender, sync_receiver) = unbounded();
+            let (notification_sender, notification_receiver) = unbounded();
+            let broadcaster = Arc::new(TestBroadcaster::with_sync("test", notification_receiver, Some(sync_sender)));
+            let mut listeners = Vec::with_capacity(listener_count);
+            let mut notification_receivers = Vec::with_capacity(listener_count);
+            for _ in 0..listener_count {
+                let (sender, receiver) = unbounded();
+                let connection = TestConnection::new(sender);
+                let listener = Listener::new(connection);
+                listeners.push(listener);
+                notification_receivers.push(receiver);
+            }
+            Self {
+                name,
+                broadcaster: broadcaster.clone(),
+                listeners,
+                ctl_sender: broadcaster.ctl.sender.clone(),
+                sync_receiver,
+                notification_sender,
+                notification_receivers,
+                steps: vec![],
+            }
+        }
+
+        async fn run(&mut self) {
+            self.broadcaster.start();
+
+            // Prepare the notification data markers for the test
+            for (idx, step) in self.steps.iter_mut().enumerate() {
+                step.set_data(idx as u64);
+            }
+            // Execute the test steps
+            for step in self.steps.iter() {
+                // Apply the subscription mutations and register the changes into the broadcaster
+                for (idx, mutation) in step.mutations.iter().enumerate() {
+                    if let Some(ref mutation) = mutation {
+                        let event = mutation.event_type();
+                        if self.listeners[idx].subscriptions[event].mutate(mutation.clone()).is_some() {
+                            let ctl = match mutation.active() {
+                                true => Ctl::Register(
+                                    self.listeners[idx].subscriptions[event].clone_arc(),
+                                    idx as u64,
+                                    self.listeners[idx].connection(),
+                                ),
+                                false => Ctl::Unregister(self.listeners[idx].subscriptions[event].clone_arc(), idx as u64),
+                            };
+                            assert!(
+                                self.ctl_sender.send(ctl).await.is_ok(),
+                                "{} - {}: sending a registration message failed",
+                                self.name,
+                                step.name
+                            );
+                            assert!(
+                                self.sync_receiver.recv().await.is_ok(),
+                                "{} - {}: receiving a sync message failed",
+                                self.name,
+                                step.name
+                            );
+                        }
+                    }
+                }
+
+                // Send the notification
+                assert!(
+                    self.notification_sender.send_blocking(step.notification.clone()).is_ok(),
+                    "{} - {}: sending the notification failed",
+                    self.name,
+                    step.name
+                );
+                assert!(self.sync_receiver.recv().await.is_ok(), "{} - {}: receiving a sync message failed", self.name, step.name);
+
+                // Check what the listeners do receive
+                for (idx, expected) in step.expected.iter().enumerate() {
+                    if let Some(ref expected) = expected {
+                        let notification = self.notification_receivers[idx].recv().await.unwrap();
+                        assert_eq!(*expected, notification, "{} - {}: listener[{}] got wrong notification", self.name, step.name, idx);
+                    } else {
+                        assert!(
+                            self.notification_receivers[idx].is_empty(),
+                            "{} - {}: listener[{}] has a notification in its channel but should not",
+                            self.name,
+                            step.name,
+                            idx
+                        );
+                    }
+                }
+            }
+            assert!(self.broadcaster.stop().await.is_ok(), "broadcaster failed to stop");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_overall() {
+        fn m(command: Option<Command>) -> Option<Mutation> {
+            command.map(|x| Mutation { command: x, scope: Scope::BlockAdded(BlockAddedScope {}) })
+        }
+        fn n(_: ()) -> TestNotification {
+            TestNotification::BlockAdded(BlockAddedNotification::default())
+        }
+        fn e(value: Option<()>) -> Option<TestNotification> {
+            value.map(|_| TestNotification::BlockAdded(BlockAddedNotification::default()))
+        }
+
+        kaspa_core::log::try_init_logger("trace,kaspa_notify=trace");
+        let mut test = Test::new("BlockAdded broadcast (OverallSubscription type)", 2);
+        test.steps = vec![
+            Step { name: "do nothing", mutations: vec![], notification: n(()), expected: vec![None, None] },
+            Step {
+                name: "L0 on",
+                mutations: vec![m(Some(Command::Start)), m(None)],
+                notification: n(()),
+                expected: vec![e(Some(())), None],
+            },
+            Step {
+                name: "L0 & L1 on",
+                mutations: vec![m(None), m(Some(Command::Start))],
+                notification: n(()),
+                expected: vec![e(Some(())), e(Some(()))],
+            },
+            Step {
+                name: "L1 on",
+                mutations: vec![m(Some(Command::Stop)), m(None)],
+                notification: n(()),
+                expected: vec![None, e(Some(()))],
+            },
+            Step {
+                name: "all off",
+                mutations: vec![m(None), m(Some(Command::Stop))],
+                notification: n(()),
+                expected: vec![None, None],
+            },
+        ];
+
+        test.run().await;
+    }
+
+    #[tokio::test]
+    async fn test_virtual_chain_changed() {
+        fn m(command: Option<(Command, bool)>) -> Option<Mutation> {
+            command.map(|(command, include_accepted_transaction_ids)| Mutation {
+                command,
+                scope: Scope::VirtualChainChanged(VirtualChainChangedScope::new(include_accepted_transaction_ids)),
+            })
+        }
+        fn n(accepted_transaction_ids: Option<u64>) -> TestNotification {
+            TestNotification::VirtualChainChanged(VirtualChainChangedNotification { data: 0, accepted_transaction_ids })
+        }
+        fn e(value: Option<Option<u64>>) -> Option<TestNotification> {
+            value.map(|x| {
+                TestNotification::VirtualChainChanged(VirtualChainChangedNotification { data: 0, accepted_transaction_ids: x })
+            })
+        }
+
+        kaspa_core::log::try_init_logger("trace,kaspa_notify=trace");
+        let mut test = Test::new("VirtualChainChanged broadcast", 2);
+        test.steps = vec![
+            Step { name: "do nothing", mutations: vec![], notification: n(None), expected: vec![None, None] },
+            Step {
+                name: "L0+ on",
+                mutations: vec![m(Some((Command::Start, true))), m(None)],
+                notification: n(Some(21)),
+                expected: vec![e(Some(Some(21))), None],
+            },
+            Step {
+                name: "L0+ & L1- on",
+                mutations: vec![m(None), m(Some((Command::Start, false)))],
+                notification: n(Some(42)),
+                expected: vec![e(Some(Some(42))), e(Some(None))],
+            },
+            Step {
+                name: "L0- & L1+ on",
+                mutations: vec![m(Some((Command::Start, false))), m(Some((Command::Start, true)))],
+                notification: n(Some(63)),
+                expected: vec![e(Some(None)), e(Some(Some(63)))],
+            },
+            Step {
+                name: "L1+ on",
+                mutations: vec![m(Some((Command::Stop, false))), m(None)],
+                notification: n(Some(84)),
+                expected: vec![e(None), e(Some(Some(84)))],
+            },
+            Step {
+                name: "all off",
+                mutations: vec![m(None), m(Some((Command::Stop, false)))],
+                notification: n(Some(21)),
+                expected: vec![None, None],
+            },
+        ];
+
+        test.run().await;
+    }
+
+    #[tokio::test]
+    async fn test_utxos_changed() {
+        let a_stock = get_3_addresses(true);
+
+        let a = |indexes: &[usize]| indexes.iter().map(|idx| (a_stock[*idx]).clone()).collect::<Vec<_>>();
+        let m = |command: Option<(Command, &[usize])>| {
+            if let Some((command, indexes)) = command {
+                return Some(Mutation { command, scope: Scope::UtxosChanged(UtxosChangedScope::new(a(indexes))) });
+            }
+            None
+        };
+        let n =
+            |indexes: &[usize]| TestNotification::UtxosChanged(UtxosChangedNotification { data: 0, addresses: Arc::new(a(indexes)) });
+        let e = |value: Option<&[usize]>| {
+            if let Some(indexes) = value {
+                return Some(TestNotification::UtxosChanged(UtxosChangedNotification { data: 0, addresses: Arc::new(a(indexes)) }));
+            }
+            None
+        };
+
+        kaspa_core::log::try_init_logger("trace,kaspa_notify=trace");
+        let mut test = Test::new("VirtualChainChanged broadcast", 3);
+        test.steps = vec![
+            Step { name: "do nothing", mutations: vec![], notification: n(&[]), expected: vec![None, None, None] },
+            Step {
+                name: "L0[0] <= N[0]",
+                mutations: vec![m(Some((Command::Start, &[0]))), m(None), m(None)],
+                notification: n(&[0]),
+                expected: vec![e(Some(&[0])), None, None],
+            },
+            Step {
+                name: "L0[0] <= N[0,1,2]",
+                mutations: vec![m(Some((Command::Start, &[0]))), m(None), m(None)],
+                notification: n(&[0, 1, 2]),
+                expected: vec![e(Some(&[0])), None, None],
+            },
+            Step {
+                name: "L0[0], L1[1] <= N[0,1,2]",
+                mutations: vec![m(None), m(Some((Command::Start, &[1]))), m(None)],
+                notification: n(&[0, 1, 2]),
+                expected: vec![e(Some(&[0])), e(Some(&[1])), None],
+            },
+            Step {
+                name: "L0[0], L1[1], L2[2] <= N[0,1,2]",
+                mutations: vec![m(None), m(None), m(Some((Command::Start, &[2])))],
+                notification: n(&[0, 1, 2]),
+                expected: vec![e(Some(&[0])), e(Some(&[1])), e(Some(&[2]))],
+            },
+            Step {
+                name: "L0[0, 2], L1[*], L2[1, 2] <= N[0,1,2]",
+                mutations: vec![m(Some((Command::Start, &[2]))), m(Some((Command::Start, &[]))), m(Some((Command::Start, &[1])))],
+                notification: n(&[0, 1, 2]),
+                expected: vec![e(Some(&[0, 2])), e(Some(&[0, 1, 2])), e(Some(&[1, 2]))],
+            },
+            Step {
+                name: "L0[0, 2], L1[*], L2[1, 2] <= N[0]",
+                mutations: vec![m(None), m(None), m(None)],
+                notification: n(&[0]),
+                expected: vec![e(Some(&[0])), e(Some(&[0])), e(None)],
+            },
+            Step {
+                name: "L0[2], L1[1], L2[*] <= N[0, 1]",
+                mutations: vec![m(Some((Command::Stop, &[0]))), m(Some((Command::Start, &[1]))), m(Some((Command::Start, &[])))],
+                notification: n(&[0, 1]),
+                expected: vec![e(None), e(Some(&[1])), e(Some(&[0, 1]))],
+            },
+            Step {
+                name: "L2[*] <= N[0, 1, 2]",
+                mutations: vec![m(Some((Command::Stop, &[]))), m(Some((Command::Stop, &[1]))), m(Some((Command::Stop, &[1])))],
+                notification: n(&[0, 1, 2]),
+                expected: vec![e(None), e(None), e(Some(&[0, 1, 2]))],
+            },
+            Step {
+                name: "all off",
+                mutations: vec![m(None), m(None), m(Some((Command::Stop, &[])))],
+                notification: n(&[0, 1, 2]),
+                expected: vec![e(None), e(None), e(None)],
+            },
+        ];
+
+        test.run().await;
+    }
+}
