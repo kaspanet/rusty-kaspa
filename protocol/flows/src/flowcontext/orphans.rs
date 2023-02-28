@@ -10,6 +10,8 @@ use kaspa_utils::option::OptionExtensions;
 use rand::Rng;
 use std::collections::{HashSet, VecDeque};
 
+use self::queue::ProcessQueue;
+
 /// The maximum amount of orphans allowed in the orphans pool. This number is an
 /// approximation of how many orphans there can possibly be on average. It is based on:
 /// 2^ORPHAN_RESOLUTION_RANGE * Ghostdag K.
@@ -95,8 +97,8 @@ impl<T: ConsensusProcessor> OrphanBlocksPool<T> {
 
     pub async fn unorphan_blocks(&mut self, root: Hash) -> Vec<Block> {
         let mut unorphaned_blocks = Vec::new();
-        let mut process_queue: VecDeque<Hash> = self.iterate_child_orphans(root).collect();
-        while let Some(orphan_hash) = process_queue.pop_front() {
+        let mut process_queue = ProcessQueue::from(self.iterate_child_orphans(root).collect());
+        while let Some(orphan_hash) = process_queue.pop() {
             // If the entry does not exist it means it was processed on a previous iteration
             if let Occupied(entry) = self.orphans.entry(orphan_hash) {
                 let processable = entry
@@ -130,6 +132,40 @@ impl<T: ConsensusProcessor> OrphanBlocksPool<T> {
             }
             None
         })
+    }
+}
+
+mod queue {
+    use super::Hash;
+    use std::collections::{HashSet, VecDeque};
+
+    /// A simple deque backed by a set for efficient duplication removal
+    pub struct ProcessQueue {
+        deque: VecDeque<Hash>,
+        set: HashSet<Hash>,
+    }
+
+    impl ProcessQueue {
+        pub fn from(set: HashSet<Hash>) -> Self {
+            Self { deque: set.iter().copied().collect(), set }
+        }
+
+        pub fn extend<I: IntoIterator<Item = Hash>>(&mut self, iter: I) {
+            for item in iter {
+                if self.set.insert(item) {
+                    self.deque.push_back(item);
+                }
+            }
+        }
+
+        pub fn pop(&mut self) -> Option<Hash> {
+            if let Some(item) = self.deque.pop_front() {
+                self.set.remove(&item);
+                Some(item)
+            } else {
+                None
+            }
+        }
     }
 }
 
