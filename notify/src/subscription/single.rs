@@ -414,334 +414,343 @@ mod tests {
         hasher.finish()
     }
 
+    struct MutationTest {
+        name: &'static str,
+        state: SingleSubscription,
+        mutation: Mutation,
+        new_state: SingleSubscription,
+        result: Option<Vec<Mutation>>,
+    }
+
+    struct MutationTests {
+        tests: Vec<MutationTest>,
+    }
+
+    impl MutationTests {
+        fn new(tests: Vec<MutationTest>) -> Self {
+            Self { tests }
+        }
+
+        fn run(&self) {
+            for test in self.tests.iter() {
+                let mut new_state = test.state.clone_box();
+                let result = new_state.mutate(test.mutation.clone());
+                assert_eq!(test.new_state.active(), new_state.active(), "Testing '{}': wrong new state activity", test.name);
+                assert_eq!(*test.new_state, *new_state, "Testing '{}': wrong new state", test.name);
+                assert_eq!(test.result, result, "Testing '{}': wrong result", test.name);
+            }
+        }
+    }
+
     #[test]
-    #[allow(clippy::redundant_clone)]
-    fn test_subscription_mutation() {
-        struct Test {
-            name: &'static str,
-            state: SingleSubscription,
-            mutation: Mutation,
-            new_state: SingleSubscription,
-            result: Option<Vec<Mutation>>,
+    fn test_overall_mutation() {
+        fn s(active: bool) -> SingleSubscription {
+            Box::new(OverallSubscription { event_type: EventType::BlockAdded, active })
+        }
+        fn m(command: Command) -> Mutation {
+            Mutation { command, scope: Scope::BlockAdded(BlockAddedScope {}) }
         }
 
-        // OverallSubscription
+        // Subscriptions
+        let none = || s(false);
+        let all = || s(true);
 
-        let os_none = Box::new(OverallSubscription { event_type: EventType::BlockAdded, active: false });
-        let os_all = Box::new(OverallSubscription { event_type: EventType::BlockAdded, active: true });
-        let om_start_all = Mutation { command: Command::Start, scope: Scope::BlockAdded(BlockAddedScope {}) };
-        let om_stop_all = Mutation { command: Command::Stop, scope: Scope::BlockAdded(BlockAddedScope {}) };
+        // Mutations
+        let start_all = || m(Command::Start);
+        let stop_all = || m(Command::Stop);
 
-        // VirtualChainChangedSubscription
-
-        let vs_none = Box::new(VirtualChainChangedSubscription { active: false, include_accepted_transaction_ids: false });
-        let vs_reduced = Box::new(VirtualChainChangedSubscription { active: true, include_accepted_transaction_ids: false });
-        let vs_all = Box::new(VirtualChainChangedSubscription { active: true, include_accepted_transaction_ids: true });
-        let vm_start_all = Mutation {
-            command: Command::Start,
-            scope: Scope::VirtualChainChanged(VirtualChainChangedScope { include_accepted_transaction_ids: true }),
-        };
-        let vm_stop_all = Mutation {
-            command: Command::Stop,
-            scope: Scope::VirtualChainChanged(VirtualChainChangedScope { include_accepted_transaction_ids: true }),
-        };
-        let vm_start_reduced = Mutation {
-            command: Command::Start,
-            scope: Scope::VirtualChainChanged(VirtualChainChangedScope { include_accepted_transaction_ids: false }),
-        };
-        let vm_stop_reduced = Mutation {
-            command: Command::Stop,
-            scope: Scope::VirtualChainChanged(VirtualChainChangedScope { include_accepted_transaction_ids: false }),
-        };
-
-        // UtxosChangedSubscription
-
-        let addresses = get_3_addresses(true);
-        let a0 = HashSet::from_iter(vec![addresses[0].clone()].into_iter());
-        let a1 = HashSet::from_iter(vec![addresses[1].clone()].into_iter());
-        let a2 = HashSet::from_iter(vec![addresses[2].clone()].into_iter());
-        let a01: HashSet<Address> = HashSet::from_iter(vec![addresses[0].clone(), addresses[1].clone()].into_iter());
-        let a02: HashSet<Address> = HashSet::from_iter(vec![addresses[0].clone(), addresses[2].clone()].into_iter());
-        let a012: HashSet<Address> = HashSet::from_iter(addresses.clone().into_iter());
-
-        let us_none = Box::new(UtxosChangedSubscription { active: false, addresses: HashSet::default() });
-        let us_selected_0 = Box::new(UtxosChangedSubscription { active: true, addresses: a0.clone() });
-        let us_selected_1 = Box::new(UtxosChangedSubscription { active: true, addresses: a1.clone() });
-        let us_selected_2 = Box::new(UtxosChangedSubscription { active: true, addresses: a2.clone() });
-        let us_selected_01 = Box::new(UtxosChangedSubscription { active: true, addresses: a01.clone() });
-        let us_selected_02 = Box::new(UtxosChangedSubscription { active: true, addresses: a02.clone() });
-        let us_selected_012 = Box::new(UtxosChangedSubscription { active: true, addresses: a012.clone() });
-        let us_all = Box::new(UtxosChangedSubscription { active: true, addresses: HashSet::default() });
-
-        let um_start_all = Mutation { command: Command::Start, scope: Scope::UtxosChanged(UtxosChangedScope { addresses: vec![] }) };
-        let um_stop_all = Mutation { command: Command::Stop, scope: Scope::UtxosChanged(UtxosChangedScope { addresses: vec![] }) };
-        let um_start_0 = Mutation {
-            command: Command::Start,
-            scope: Scope::UtxosChanged(UtxosChangedScope { addresses: a0.iter().cloned().collect() }),
-        };
-        let um_start_1 = Mutation {
-            command: Command::Start,
-            scope: Scope::UtxosChanged(UtxosChangedScope { addresses: a1.iter().cloned().collect() }),
-        };
-        let um_start_01 = Mutation {
-            command: Command::Start,
-            scope: Scope::UtxosChanged(UtxosChangedScope { addresses: a01.iter().cloned().collect() }),
-        };
-        let um_stop_0 = Mutation {
-            command: Command::Stop,
-            scope: Scope::UtxosChanged(UtxosChangedScope { addresses: a0.iter().cloned().collect() }),
-        };
-        let um_stop_1 = Mutation {
-            command: Command::Stop,
-            scope: Scope::UtxosChanged(UtxosChangedScope { addresses: a1.iter().cloned().collect() }),
-        };
-        let um_stop_01 = Mutation {
-            command: Command::Stop,
-            scope: Scope::UtxosChanged(UtxosChangedScope { addresses: a01.iter().cloned().collect() }),
-        };
-
-        let tests: Vec<Test> = vec![
-            //
-            // OverallSubscription
-            //
-            Test {
+        // Tests
+        let tests = MutationTests::new(vec![
+            MutationTest {
                 name: "OverallSubscription None to All",
-                state: os_none.clone_box(),
-                mutation: om_start_all.clone(),
-                new_state: os_all.clone_box(),
-                result: Some(vec![om_start_all.clone()]),
+                state: none(),
+                mutation: start_all(),
+                new_state: all(),
+                result: Some(vec![start_all()]),
             },
-            Test {
+            MutationTest {
                 name: "OverallSubscription None to None",
-                state: os_none.clone_box(),
-                mutation: om_stop_all.clone(),
-                new_state: os_none.clone_box(),
+                state: none(),
+                mutation: stop_all(),
+                new_state: none(),
                 result: None,
             },
-            Test {
+            MutationTest {
                 name: "OverallSubscription All to All",
-                state: os_all.clone_box(),
-                mutation: om_start_all.clone(),
-                new_state: os_all.clone_box(),
+                state: all(),
+                mutation: start_all(),
+                new_state: all(),
                 result: None,
             },
-            Test {
+            MutationTest {
                 name: "OverallSubscription All to None",
-                state: os_all.clone_box(),
-                mutation: om_stop_all.clone(),
-                new_state: os_none.clone_box(),
-                result: Some(vec![om_stop_all.clone()]),
+                state: all(),
+                mutation: stop_all(),
+                new_state: none(),
+                result: Some(vec![stop_all()]),
             },
-            //
-            // VirtualChainChangedSubscription
-            //
-            Test {
-                name: "VirtualChainChangedSubscription None to All",
-                state: vs_none.clone_box(),
-                mutation: vm_start_all.clone(),
-                new_state: vs_all.clone_box(),
-                result: Some(vec![vm_start_all.clone()]),
-            },
-            Test {
-                name: "VirtualChainChangedSubscription None to Reduced",
-                state: vs_none.clone_box(),
-                mutation: vm_start_reduced.clone(),
-                new_state: vs_reduced.clone_box(),
-                result: Some(vec![vm_start_reduced.clone()]),
-            },
-            Test {
-                name: "VirtualChainChangedSubscription None to None (stop reduced)",
-                state: vs_none.clone_box(),
-                mutation: vm_stop_reduced.clone(),
-                new_state: vs_none.clone_box(),
-                result: None,
-            },
-            Test {
-                name: "VirtualChainChangedSubscription None to None (stop all)",
-                state: vs_none.clone_box(),
-                mutation: vm_stop_all.clone(),
-                new_state: vs_none.clone_box(),
-                result: None,
-            },
-            Test {
-                name: "VirtualChainChangedSubscription Reduced to All",
-                state: vs_reduced.clone_box(),
-                mutation: vm_start_all.clone(),
-                new_state: vs_all.clone_box(),
-                result: Some(vec![vm_stop_reduced.clone(), vm_start_all.clone()]),
-            },
-            Test {
-                name: "VirtualChainChangedSubscription Reduced to Reduced",
-                state: vs_reduced.clone_box(),
-                mutation: vm_start_reduced.clone(),
-                new_state: vs_reduced.clone_box(),
-                result: None,
-            },
-            Test {
-                name: "VirtualChainChangedSubscription Reduced to None (stop reduced)",
-                state: vs_reduced.clone_box(),
-                mutation: vm_stop_reduced.clone(),
-                new_state: vs_none.clone_box(),
-                result: Some(vec![vm_stop_reduced.clone()]),
-            },
-            Test {
-                name: "VirtualChainChangedSubscription Reduced to None (stop all)",
-                state: vs_reduced.clone_box(),
-                mutation: vm_stop_all.clone(),
-                new_state: vs_none.clone_box(),
-                result: Some(vec![vm_stop_reduced.clone()]),
-            },
-            Test {
-                name: "VirtualChainChangedSubscription All to All",
-                state: vs_all.clone_box(),
-                mutation: vm_start_all.clone(),
-                new_state: vs_all.clone_box(),
-                result: None,
-            },
-            Test {
-                name: "VirtualChainChangedSubscription All to Reduced",
-                state: vs_all.clone_box(),
-                mutation: vm_start_reduced.clone(),
-                new_state: vs_reduced.clone_box(),
-                result: Some(vec![vm_start_reduced.clone(), vm_stop_all.clone()]),
-            },
-            Test {
-                name: "VirtualChainChangedSubscription All to None (stop reduced)",
-                state: vs_all.clone_box(),
-                mutation: vm_stop_reduced.clone(),
-                new_state: vs_none.clone_box(),
-                result: Some(vec![vm_stop_all.clone()]),
-            },
-            Test {
-                name: "VirtualChainChangedSubscription All to None (stop all)",
-                state: vs_all.clone_box(),
-                mutation: vm_stop_all.clone(),
-                new_state: vs_none.clone_box(),
-                result: Some(vec![vm_stop_all.clone()]),
-            },
-            //
-            // UtxosChangedSubscription
-            //
-            Test {
-                name: "UtxosChangedSubscription None to All (add all)",
-                state: us_none.clone_box(),
-                mutation: um_start_all.clone(),
-                new_state: us_all.clone_box(),
-                result: Some(vec![um_start_all.clone()]),
-            },
-            Test {
-                name: "UtxosChangedSubscription None to Selected 0 (add set)",
-                state: us_none.clone_box(),
-                mutation: um_start_0.clone(),
-                new_state: us_selected_0.clone_box(),
-                result: Some(vec![um_start_0.clone()]),
-            },
-            Test {
-                name: "UtxosChangedSubscription None to None (stop set)",
-                state: us_none.clone_box(),
-                mutation: um_stop_0.clone(),
-                new_state: us_none.clone_box(),
-                result: None,
-            },
-            Test {
-                name: "UtxosChangedSubscription None to None (stop all)",
-                state: us_none.clone_box(),
-                mutation: um_stop_all.clone(),
-                new_state: us_none.clone_box(),
-                result: None,
-            },
-            Test {
-                name: "UtxosChangedSubscription Selected 01 to All (add all)",
-                state: us_selected_01.clone_box(),
-                mutation: um_start_all.clone(),
-                new_state: us_all.clone_box(),
-                result: Some(vec![um_stop_01.clone(), um_start_all.clone()]),
-            },
-            Test {
-                name: "UtxosChangedSubscription Selected 01 to 01 (add set with total intersection)",
-                state: us_selected_01.clone_box(),
-                mutation: um_start_1.clone(),
-                new_state: us_selected_01.clone_box(),
-                result: None,
-            },
-            Test {
-                name: "UtxosChangedSubscription Selected 0 to 01 (add set with partial intersection)",
-                state: us_selected_0.clone_box(),
-                mutation: um_start_01.clone(),
-                new_state: us_selected_01.clone_box(),
-                result: Some(vec![um_start_1.clone()]),
-            },
-            Test {
-                name: "UtxosChangedSubscription Selected 2 to 012 (add set with no intersection)",
-                state: us_selected_2.clone_box(),
-                mutation: um_start_01.clone(),
-                new_state: us_selected_012.clone_box(),
-                result: Some(vec![um_start_01.clone()]),
-            },
-            Test {
-                name: "UtxosChangedSubscription Selected 01 to None (remove superset)",
-                state: us_selected_1.clone_box(),
-                mutation: um_stop_01.clone(),
-                new_state: us_none.clone_box(),
-                result: Some(vec![um_stop_1.clone()]),
-            },
-            Test {
-                name: "UtxosChangedSubscription Selected 01 to None (remove set with total intersection)",
-                state: us_selected_01.clone_box(),
-                mutation: um_stop_01.clone(),
-                new_state: us_none.clone_box(),
-                result: Some(vec![um_stop_01.clone()]),
-            },
-            Test {
-                name: "UtxosChangedSubscription Selected 02 to 2 (remove set with partial intersection)",
-                state: us_selected_02.clone_box(),
-                mutation: um_stop_01.clone(),
-                new_state: us_selected_2.clone_box(),
-                result: Some(vec![um_stop_0.clone()]),
-            },
-            Test {
-                name: "UtxosChangedSubscription Selected 02 to 02 (remove set with no intersection)",
-                state: us_selected_02.clone_box(),
-                mutation: um_stop_1.clone(),
-                new_state: us_selected_02.clone_box(),
-                result: None,
-            },
-            Test {
-                name: "UtxosChangedSubscription All to All (add all)",
-                state: us_all.clone_box(),
-                mutation: um_start_all.clone(),
-                new_state: us_all.clone_box(),
-                result: None,
-            },
-            Test {
-                name: "UtxosChangedSubscription All to Selected 01 (add set)",
-                state: us_all.clone_box(),
-                mutation: um_start_01.clone(),
-                new_state: us_selected_01.clone_box(),
-                result: Some(vec![um_start_01.clone(), um_stop_all.clone()]),
-            },
-            Test {
-                name: "UtxosChangedSubscription All to All (remove set)",
-                state: us_all.clone_box(),
-                mutation: um_stop_01.clone(),
-                new_state: us_all.clone_box(),
-                result: None,
-            },
-            Test {
-                name: "UtxosChangedSubscription All to None (remove all)",
-                state: us_all.clone_box(),
-                mutation: um_stop_all.clone(),
-                new_state: us_none.clone_box(),
-                result: Some(vec![um_stop_all.clone()]),
-            },
-        ];
+        ]);
+        tests.run()
+    }
 
-        for test in tests.iter() {
-            let mut new_state = test.state.clone_box();
-            let result = new_state.mutate(test.mutation.clone());
-            assert_eq!(test.new_state.active(), new_state.active(), "Testing '{}': wrong new state activity", test.name);
-            assert_eq!(*test.new_state, *new_state, "Testing '{}': wrong new state", test.name);
-            assert_eq!(test.result, result, "Testing '{}': wrong result", test.name);
+    #[test]
+    fn test_virtual_chain_changed_mutation() {
+        fn s(active: bool, include_accepted_transaction_ids: bool) -> SingleSubscription {
+            Box::new(VirtualChainChangedSubscription { active, include_accepted_transaction_ids })
         }
+        fn m(command: Command, include_accepted_transaction_ids: bool) -> Mutation {
+            Mutation { command, scope: Scope::VirtualChainChanged(VirtualChainChangedScope { include_accepted_transaction_ids }) }
+        }
+
+        // Subscriptions
+        let none = || s(false, false);
+        let reduced = || s(true, false);
+        let all = || s(true, true);
+
+        // Mutations
+        let start_all = || m(Command::Start, true);
+        let stop_all = || m(Command::Stop, true);
+        let start_reduced = || m(Command::Start, false);
+        let stop_reduced = || m(Command::Stop, false);
+
+        // Tests
+        let tests = MutationTests::new(vec![
+            MutationTest {
+                name: "VirtualChainChangedSubscription None to All",
+                state: none(),
+                mutation: start_all(),
+                new_state: all(),
+                result: Some(vec![start_all()]),
+            },
+            MutationTest {
+                name: "VirtualChainChangedSubscription None to Reduced",
+                state: none(),
+                mutation: start_reduced(),
+                new_state: reduced(),
+                result: Some(vec![start_reduced()]),
+            },
+            MutationTest {
+                name: "VirtualChainChangedSubscription None to None (stop reduced)",
+                state: none(),
+                mutation: stop_reduced(),
+                new_state: none(),
+                result: None,
+            },
+            MutationTest {
+                name: "VirtualChainChangedSubscription None to None (stop all)",
+                state: none(),
+                mutation: stop_all(),
+                new_state: none(),
+                result: None,
+            },
+            MutationTest {
+                name: "VirtualChainChangedSubscription Reduced to All",
+                state: reduced(),
+                mutation: start_all(),
+                new_state: all(),
+                result: Some(vec![stop_reduced(), start_all()]),
+            },
+            MutationTest {
+                name: "VirtualChainChangedSubscription Reduced to Reduced",
+                state: reduced(),
+                mutation: start_reduced(),
+                new_state: reduced(),
+                result: None,
+            },
+            MutationTest {
+                name: "VirtualChainChangedSubscription Reduced to None (stop reduced)",
+                state: reduced(),
+                mutation: stop_reduced(),
+                new_state: none(),
+                result: Some(vec![stop_reduced()]),
+            },
+            MutationTest {
+                name: "VirtualChainChangedSubscription Reduced to None (stop all)",
+                state: reduced(),
+                mutation: stop_all(),
+                new_state: none(),
+                result: Some(vec![stop_reduced()]),
+            },
+            MutationTest {
+                name: "VirtualChainChangedSubscription All to All",
+                state: all(),
+                mutation: start_all(),
+                new_state: all(),
+                result: None,
+            },
+            MutationTest {
+                name: "VirtualChainChangedSubscription All to Reduced",
+                state: all(),
+                mutation: start_reduced(),
+                new_state: reduced(),
+                result: Some(vec![start_reduced(), stop_all()]),
+            },
+            MutationTest {
+                name: "VirtualChainChangedSubscription All to None (stop reduced)",
+                state: all(),
+                mutation: stop_reduced(),
+                new_state: none(),
+                result: Some(vec![stop_all()]),
+            },
+            MutationTest {
+                name: "VirtualChainChangedSubscription All to None (stop all)",
+                state: all(),
+                mutation: stop_all(),
+                new_state: none(),
+                result: Some(vec![stop_all()]),
+            },
+        ]);
+        tests.run()
+    }
+
+    #[test]
+    fn test_utxos_changed_mutation() {
+        let a_stock = get_3_addresses(true);
+
+        let av = |indexes: &[usize]| indexes.iter().map(|idx| (a_stock[*idx]).clone()).collect::<Vec<_>>();
+        let ah = |indexes: &[usize]| indexes.iter().map(|idx| (a_stock[*idx]).clone()).collect::<HashSet<_>>();
+        let s = |active: bool, indexes: &[usize]| {
+            Box::new(UtxosChangedSubscription { active, addresses: ah(indexes) }) as SingleSubscription
+        };
+        let m = |command: Command, indexes: &[usize]| -> Mutation {
+            Mutation { command, scope: Scope::UtxosChanged(UtxosChangedScope { addresses: av(indexes) }) }
+        };
+
+        // Subscriptions
+        let none = || s(false, &[]);
+        let selected_0 = || s(true, &[0]);
+        let selected_1 = || s(true, &[1]);
+        let selected_2 = || s(true, &[2]);
+        let selected_01 = || s(true, &[0, 1]);
+        let selected_02 = || s(true, &[0, 2]);
+        let selected_012 = || s(true, &[0, 1, 2]);
+        let all = || s(true, &[]);
+
+        // Mutations
+        let start_all = || m(Command::Start, &[]);
+        let stop_all = || m(Command::Stop, &[]);
+        let start_0 = || m(Command::Start, &[0]);
+        let start_1 = || m(Command::Start, &[1]);
+        let start_01 = || m(Command::Start, &[0, 1]);
+        let stop_0 = || m(Command::Stop, &[0]);
+        let stop_1 = || m(Command::Stop, &[1]);
+        let stop_01 = || m(Command::Stop, &[0, 1]);
+
+        // Tests
+        let tests = MutationTests::new(vec![
+            MutationTest {
+                name: "UtxosChangedSubscription None to All (add all)",
+                state: none(),
+                mutation: start_all(),
+                new_state: all(),
+                result: Some(vec![start_all()]),
+            },
+            MutationTest {
+                name: "UtxosChangedSubscription None to Selected 0 (add set)",
+                state: none(),
+                mutation: start_0(),
+                new_state: selected_0(),
+                result: Some(vec![start_0()]),
+            },
+            MutationTest {
+                name: "UtxosChangedSubscription None to None (stop set)",
+                state: none(),
+                mutation: stop_0(),
+                new_state: none(),
+                result: None,
+            },
+            MutationTest {
+                name: "UtxosChangedSubscription None to None (stop all)",
+                state: none(),
+                mutation: stop_all(),
+                new_state: none(),
+                result: None,
+            },
+            MutationTest {
+                name: "UtxosChangedSubscription Selected 01 to All (add all)",
+                state: selected_01(),
+                mutation: start_all(),
+                new_state: all(),
+                result: Some(vec![stop_01(), start_all()]),
+            },
+            MutationTest {
+                name: "UtxosChangedSubscription Selected 01 to 01 (add set with total intersection)",
+                state: selected_01(),
+                mutation: start_1(),
+                new_state: selected_01(),
+                result: None,
+            },
+            MutationTest {
+                name: "UtxosChangedSubscription Selected 0 to 01 (add set with partial intersection)",
+                state: selected_0(),
+                mutation: start_01(),
+                new_state: selected_01(),
+                result: Some(vec![start_1()]),
+            },
+            MutationTest {
+                name: "UtxosChangedSubscription Selected 2 to 012 (add set with no intersection)",
+                state: selected_2(),
+                mutation: start_01(),
+                new_state: selected_012(),
+                result: Some(vec![start_01()]),
+            },
+            MutationTest {
+                name: "UtxosChangedSubscription Selected 01 to None (remove superset)",
+                state: selected_1(),
+                mutation: stop_01(),
+                new_state: none(),
+                result: Some(vec![stop_1()]),
+            },
+            MutationTest {
+                name: "UtxosChangedSubscription Selected 01 to None (remove set with total intersection)",
+                state: selected_01(),
+                mutation: stop_01(),
+                new_state: none(),
+                result: Some(vec![stop_01()]),
+            },
+            MutationTest {
+                name: "UtxosChangedSubscription Selected 02 to 2 (remove set with partial intersection)",
+                state: selected_02(),
+                mutation: stop_01(),
+                new_state: selected_2(),
+                result: Some(vec![stop_0()]),
+            },
+            MutationTest {
+                name: "UtxosChangedSubscription Selected 02 to 02 (remove set with no intersection)",
+                state: selected_02(),
+                mutation: stop_1(),
+                new_state: selected_02(),
+                result: None,
+            },
+            MutationTest {
+                name: "UtxosChangedSubscription All to All (add all)",
+                state: all(),
+                mutation: start_all(),
+                new_state: all(),
+                result: None,
+            },
+            MutationTest {
+                name: "UtxosChangedSubscription All to Selected 01 (add set)",
+                state: all(),
+                mutation: start_01(),
+                new_state: selected_01(),
+                result: Some(vec![start_01(), stop_all()]),
+            },
+            MutationTest {
+                name: "UtxosChangedSubscription All to All (remove set)",
+                state: all(),
+                mutation: stop_01(),
+                new_state: all(),
+                result: None,
+            },
+            MutationTest {
+                name: "UtxosChangedSubscription All to None (remove all)",
+                state: all(),
+                mutation: stop_all(),
+                new_state: none(),
+                result: Some(vec![stop_all()]),
+            },
+        ]);
+        tests.run()
     }
 }

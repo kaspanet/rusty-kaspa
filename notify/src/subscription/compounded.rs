@@ -253,129 +253,119 @@ mod tests {
     #[test]
     #[allow(clippy::redundant_clone)]
     fn test_overall_compounding() {
-        let add = Mutation::new(Command::Start, Scope::BlockAdded(BlockAddedScope {}));
-        let remove = Mutation::new(Command::Stop, Scope::BlockAdded(BlockAddedScope {}));
+        let none = || Box::new(OverallSubscription::new(EventType::BlockAdded));
+        let add = || Mutation::new(Command::Start, Scope::BlockAdded(BlockAddedScope {}));
+        let remove = || Mutation::new(Command::Stop, Scope::BlockAdded(BlockAddedScope {}));
         let test = Test {
             name: "OverallSubscription 0 to 2 to 0",
-            initial_state: Box::new(OverallSubscription::new(EventType::BlockAdded)),
+            initial_state: none(),
             steps: vec![
-                Step { name: "add 1", mutation: add.clone(), result: Some(add.clone()) },
-                Step { name: "add 2", mutation: add.clone(), result: None },
-                Step { name: "remove 2", mutation: remove.clone(), result: None },
-                Step { name: "remove 1", mutation: remove.clone(), result: Some(remove.clone()) },
+                Step { name: "add 1", mutation: add(), result: Some(add()) },
+                Step { name: "add 2", mutation: add(), result: None },
+                Step { name: "remove 2", mutation: remove(), result: None },
+                Step { name: "remove 1", mutation: remove(), result: Some(remove()) },
             ],
-            final_state: Box::new(OverallSubscription::new(EventType::BlockAdded)),
+            final_state: none(),
         };
         let mut state = test.run();
 
         // Removing once more must panic
-        let result = std::panic::catch_unwind(AssertUnwindSafe(|| state.compound(remove)));
+        let result = std::panic::catch_unwind(AssertUnwindSafe(|| state.compound(remove())));
         assert!(result.is_err(), "{}: trying to remove when counter is zero must panic", test.name);
     }
 
     #[test]
     #[allow(clippy::redundant_clone)]
     fn test_virtual_chain_changed_compounding() {
-        let none: Box<VirtualChainChangedSubscription> = Box::default();
-        let add_all = Mutation::new(Command::Start, Scope::VirtualChainChanged(VirtualChainChangedScope::new(true)));
-        let add_reduced = Mutation::new(Command::Start, Scope::VirtualChainChanged(VirtualChainChangedScope::new(false)));
-        let remove_reduced = Mutation::new(Command::Stop, Scope::VirtualChainChanged(VirtualChainChangedScope::new(false)));
-        let remove_all = Mutation::new(Command::Stop, Scope::VirtualChainChanged(VirtualChainChangedScope::new(true)));
+        fn m(command: Command, include_accepted_transaction_ids: bool) -> Mutation {
+            Mutation { command, scope: Scope::VirtualChainChanged(VirtualChainChangedScope { include_accepted_transaction_ids }) }
+        }
+        let none = Box::<VirtualChainChangedSubscription>::default;
+        let add_all = || m(Command::Start, true);
+        let add_reduced = || m(Command::Start, false);
+        let remove_reduced = || m(Command::Stop, false);
+        let remove_all = || m(Command::Stop, true);
         let test = Test {
             name: "VirtualChainChanged",
-            initial_state: none.clone_box(),
+            initial_state: none(),
             steps: vec![
-                Step { name: "add all 1", mutation: add_all.clone(), result: Some(add_all.clone()) },
-                Step { name: "add all 2", mutation: add_all.clone(), result: None },
-                Step { name: "remove all 2", mutation: remove_all.clone(), result: None },
-                Step { name: "remove all 1", mutation: remove_all.clone(), result: Some(remove_all.clone()) },
-                Step { name: "add reduced 1", mutation: add_reduced.clone(), result: Some(add_reduced.clone()) },
-                Step { name: "add reduced 2", mutation: add_reduced.clone(), result: None },
-                Step { name: "remove reduced 2", mutation: remove_reduced.clone(), result: None },
-                Step { name: "remove reduced 1", mutation: remove_reduced.clone(), result: Some(remove_reduced.clone()) },
+                Step { name: "add all 1", mutation: add_all(), result: Some(add_all()) },
+                Step { name: "add all 2", mutation: add_all(), result: None },
+                Step { name: "remove all 2", mutation: remove_all(), result: None },
+                Step { name: "remove all 1", mutation: remove_all(), result: Some(remove_all()) },
+                Step { name: "add reduced 1", mutation: add_reduced(), result: Some(add_reduced()) },
+                Step { name: "add reduced 2", mutation: add_reduced(), result: None },
+                Step { name: "remove reduced 2", mutation: remove_reduced(), result: None },
+                Step { name: "remove reduced 1", mutation: remove_reduced(), result: Some(remove_reduced()) },
                 // Interleaved all and reduced
-                Step { name: "add all 1", mutation: add_all.clone(), result: Some(add_all.clone()) },
-                Step { name: "add reduced 1, masked by all", mutation: add_reduced.clone(), result: None },
-                Step { name: "remove all 1, revealing reduced", mutation: remove_all.clone(), result: Some(add_reduced.clone()) },
-                Step { name: "add all 1, masking reduced", mutation: add_all.clone(), result: Some(add_all.clone()) },
-                Step { name: "remove reduced 1, masked by all", mutation: remove_reduced.clone(), result: None },
-                Step { name: "remove all 1", mutation: remove_all.clone(), result: Some(remove_all.clone()) },
+                Step { name: "add all 1", mutation: add_all(), result: Some(add_all()) },
+                Step { name: "add reduced 1, masked by all", mutation: add_reduced(), result: None },
+                Step { name: "remove all 1, revealing reduced", mutation: remove_all(), result: Some(add_reduced()) },
+                Step { name: "add all 1, masking reduced", mutation: add_all(), result: Some(add_all()) },
+                Step { name: "remove reduced 1, masked by all", mutation: remove_reduced(), result: None },
+                Step { name: "remove all 1", mutation: remove_all(), result: Some(remove_all()) },
             ],
-            final_state: none,
+            final_state: none(),
         };
         let mut state = test.run();
 
         // Removing once more must panic
-        let result = std::panic::catch_unwind(AssertUnwindSafe(|| state.compound(remove_all)));
+        let result = std::panic::catch_unwind(AssertUnwindSafe(|| state.compound(remove_all())));
         assert!(result.is_err(), "{}: trying to remove all when counter is zero must panic", test.name);
-        let result = std::panic::catch_unwind(AssertUnwindSafe(|| state.compound(remove_reduced)));
+        let result = std::panic::catch_unwind(AssertUnwindSafe(|| state.compound(remove_reduced())));
         assert!(result.is_err(), "{}: trying to remove reduced when counter is zero must panic", test.name);
     }
 
     #[test]
     #[allow(clippy::redundant_clone)]
     fn test_utxos_changed_compounding() {
-        let addresses = get_3_addresses(true);
-        let a0: HashSet<Address> = HashSet::from_iter(vec![addresses[0].clone()].into_iter());
-        let a1: HashSet<Address> = HashSet::from_iter(vec![addresses[1].clone()].into_iter());
-        let a01: HashSet<Address> = HashSet::from_iter(vec![addresses[0].clone(), addresses[1].clone()].into_iter());
+        let a_stock = get_3_addresses(true);
 
-        let none: Box<UtxosChangedSubscription> = Box::default();
+        let a = |indexes: &[usize]| indexes.iter().map(|idx| (a_stock[*idx]).clone()).collect::<Vec<_>>();
+        let m = |command: Command, indexes: &[usize]| -> Mutation {
+            Mutation { command, scope: Scope::UtxosChanged(UtxosChangedScope { addresses: a(indexes) }) }
+        };
+        let none = Box::<UtxosChangedSubscription>::default;
 
-        let add_all = Mutation { command: Command::Start, scope: Scope::UtxosChanged(UtxosChangedScope { addresses: vec![] }) };
-        let remove_all = Mutation { command: Command::Stop, scope: Scope::UtxosChanged(UtxosChangedScope { addresses: vec![] }) };
-        let add_0 = Mutation {
-            command: Command::Start,
-            scope: Scope::UtxosChanged(UtxosChangedScope { addresses: a0.iter().cloned().collect() }),
-        };
-        let add_1 = Mutation {
-            command: Command::Start,
-            scope: Scope::UtxosChanged(UtxosChangedScope { addresses: a1.iter().cloned().collect() }),
-        };
-        let add_01 = Mutation {
-            command: Command::Start,
-            scope: Scope::UtxosChanged(UtxosChangedScope { addresses: a01.iter().cloned().collect() }),
-        };
-        let remove_0 = Mutation {
-            command: Command::Stop,
-            scope: Scope::UtxosChanged(UtxosChangedScope { addresses: a0.iter().cloned().collect() }),
-        };
-        let remove_1 = Mutation {
-            command: Command::Stop,
-            scope: Scope::UtxosChanged(UtxosChangedScope { addresses: a1.iter().cloned().collect() }),
-        };
+        let add_all = || m(Command::Start, &[]);
+        let remove_all = || m(Command::Stop, &[]);
+        let add_0 = || m(Command::Start, &[0]);
+        let add_1 = || m(Command::Start, &[1]);
+        let add_01 = || m(Command::Start, &[0, 1]);
+        let remove_0 = || m(Command::Stop, &[0]);
+        let remove_1 = || m(Command::Stop, &[1]);
 
         let test = Test {
             name: "UtxosChanged",
-            initial_state: none.clone_box(),
+            initial_state: none(),
             steps: vec![
-                Step { name: "add all 1", mutation: add_all.clone(), result: Some(add_all.clone()) },
-                Step { name: "add all 2", mutation: add_all.clone(), result: None },
-                Step { name: "remove all 2", mutation: remove_all.clone(), result: None },
-                Step { name: "remove all 1", mutation: remove_all.clone(), result: Some(remove_all.clone()) },
-                Step { name: "add a0 1", mutation: add_0.clone(), result: Some(add_0.clone()) },
-                Step { name: "add a0 2", mutation: add_0.clone(), result: None },
-                Step { name: "add a1 1", mutation: add_1.clone(), result: Some(add_1.clone()) },
-                Step { name: "remove a0 2", mutation: remove_0.clone(), result: None },
-                Step { name: "remove a1 1", mutation: remove_1.clone(), result: Some(remove_1.clone()) },
-                Step { name: "remove a0 1", mutation: remove_0.clone(), result: Some(remove_0.clone()) },
+                Step { name: "add all 1", mutation: add_all(), result: Some(add_all()) },
+                Step { name: "add all 2", mutation: add_all(), result: None },
+                Step { name: "remove all 2", mutation: remove_all(), result: None },
+                Step { name: "remove all 1", mutation: remove_all(), result: Some(remove_all()) },
+                Step { name: "add a0 1", mutation: add_0(), result: Some(add_0()) },
+                Step { name: "add a0 2", mutation: add_0(), result: None },
+                Step { name: "add a1 1", mutation: add_1(), result: Some(add_1()) },
+                Step { name: "remove a0 2", mutation: remove_0(), result: None },
+                Step { name: "remove a1 1", mutation: remove_1(), result: Some(remove_1()) },
+                Step { name: "remove a0 1", mutation: remove_0(), result: Some(remove_0()) },
                 // Interleaved all and address set
-                Step { name: "add all 1", mutation: add_all.clone(), result: Some(add_all.clone()) },
-                Step { name: "add a0a1, masked by all", mutation: add_01.clone(), result: None },
-                Step { name: "remove all 1, revealing a0a1", mutation: remove_all.clone(), result: Some(add_01.clone()) },
-                Step { name: "add all 1, masking a0a1", mutation: add_all.clone(), result: Some(add_all.clone()) },
-                Step { name: "remove a1, masked by all", mutation: remove_1.clone(), result: None },
-                Step { name: "remove all 1, revealing a0", mutation: remove_all.clone(), result: Some(add_0.clone()) },
-                Step { name: "remove a0", mutation: remove_0.clone(), result: Some(remove_0.clone()) },
+                Step { name: "add all 1", mutation: add_all(), result: Some(add_all()) },
+                Step { name: "add a0a1, masked by all", mutation: add_01(), result: None },
+                Step { name: "remove all 1, revealing a0a1", mutation: remove_all(), result: Some(add_01()) },
+                Step { name: "add all 1, masking a0a1", mutation: add_all(), result: Some(add_all()) },
+                Step { name: "remove a1, masked by all", mutation: remove_1(), result: None },
+                Step { name: "remove all 1, revealing a0", mutation: remove_all(), result: Some(add_0()) },
+                Step { name: "remove a0", mutation: remove_0(), result: Some(remove_0()) },
             ],
-            final_state: none.clone_box(),
+            final_state: none(),
         };
         let mut state = test.run();
 
         // Removing once more must panic
-        let result = std::panic::catch_unwind(AssertUnwindSafe(|| state.compound(remove_all)));
+        let result = std::panic::catch_unwind(AssertUnwindSafe(|| state.compound(remove_all())));
         assert!(result.is_err(), "{}: trying to remove all when counter is zero must panic", test.name);
-        let result = std::panic::catch_unwind(AssertUnwindSafe(|| state.compound(remove_0)));
+        let result = std::panic::catch_unwind(AssertUnwindSafe(|| state.compound(remove_0())));
         assert!(result.is_err(), "{}: trying to remove an address when its counter is zero must panic", test.name);
     }
 }
