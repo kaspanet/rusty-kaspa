@@ -1,4 +1,5 @@
 use self::{
+    blockrelay::flow::HandleRelayInvsFlow,
     ibd::IbdFlow,
     ping::{ReceivePingsFlow, SendPingsFlow},
     pruning_point_and_its_anticone_requests::PruningPointAndItsAnticoneRequestsFlow,
@@ -46,6 +47,12 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
                 KaspadMessagePayloadType::PruningPointUtxoSetChunk,
                 KaspadMessagePayloadType::DonePruningPointUtxoSetChunks,
             ]),
+        )),
+        Box::new(HandleRelayInvsFlow::new(
+            ctx.clone(),
+            router.clone(),
+            router.subscribe(vec![KaspadMessagePayloadType::InvRelayBlock]),
+            router.subscribe(vec![KaspadMessagePayloadType::Block, KaspadMessagePayloadType::BlockLocator]),
         )),
         Box::new(ReceivePingsFlow::new(ctx.clone(), router.clone(), router.subscribe(vec![KaspadMessagePayloadType::Ping]))),
         Box::new(SendPingsFlow::new(ctx.clone(), Arc::downgrade(&router), router.subscribe(vec![KaspadMessagePayloadType::Pong]))),

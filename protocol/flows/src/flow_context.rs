@@ -1,25 +1,46 @@
+use crate::flowcontext::orphans::{OrphanBlocksPool, MAX_ORPHANS};
 use crate::v5;
 use async_trait::async_trait;
 use consensus_core::api::DynConsensus;
+use consensus_core::block::Block;
+use hashes::Hash;
 use kaspa_core::debug;
 use kaspa_core::time::unix_now;
 use p2p_lib::pb;
 use p2p_lib::{common::ProtocolError, ConnectionInitializer, KaspadHandshake, Router};
 use std::sync::Arc;
+use tokio::sync::RwLock;
 use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct FlowContext {
     pub consensus: DynConsensus,
+    orphans_pool: Arc<RwLock<OrphanBlocksPool<DynConsensus>>>,
 }
 
 impl FlowContext {
     pub fn new(consensus: DynConsensus) -> Self {
-        Self { consensus }
+        Self { consensus: consensus.clone(), orphans_pool: Arc::new(RwLock::new(OrphanBlocksPool::new(consensus, MAX_ORPHANS))) }
     }
 
     pub fn consensus(&self) -> DynConsensus {
         self.consensus.clone()
+    }
+
+    pub async fn add_orphan(&mut self, orphan_block: Block) {
+        self.orphans_pool.write().await.add_orphan(orphan_block)
+    }
+
+    pub async fn is_orphan(&self, hash: Hash) -> bool {
+        self.orphans_pool.read().await.is_orphan(hash)
+    }
+
+    pub async fn get_orphan_roots(&self, orphan: Hash) -> Option<Vec<Hash>> {
+        self.orphans_pool.read().await.get_orphan_roots(orphan)
+    }
+
+    pub async fn unorphan_blocks(&self, root: Hash) -> Vec<Block> {
+        self.orphans_pool.write().await.unorphan_blocks(root).await
     }
 }
 

@@ -98,7 +98,7 @@ impl<T: ConsensusProcessor> OrphanBlocksPool<T> {
     pub async fn unorphan_blocks(&mut self, root: Hash) -> Vec<Block> {
         let mut unorphaned_blocks = Vec::new();
         let mut process_queue = ProcessQueue::from(self.iterate_child_orphans(root).collect());
-        while let Some(orphan_hash) = process_queue.pop() {
+        while let Some(orphan_hash) = process_queue.dequeue() {
             // If the entry does not exist it means it was processed on a previous iteration
             if let Occupied(entry) = self.orphans.entry(orphan_hash) {
                 let processable = entry
@@ -113,7 +113,7 @@ impl<T: ConsensusProcessor> OrphanBlocksPool<T> {
                     match self.consensus.validate_and_insert_block(orphan_block.clone()).await {
                         Ok(_) => {
                             unorphaned_blocks.push(orphan_block);
-                            process_queue.extend(self.iterate_child_orphans(orphan_hash));
+                            process_queue.enqueue_chunk(self.iterate_child_orphans(orphan_hash));
                         }
                         Err(e) => warn!("Validation failed for orphan block {}: {}", orphan_hash, e),
                     }
@@ -150,7 +150,7 @@ mod queue {
             Self { deque: set.iter().copied().collect(), set }
         }
 
-        pub fn extend<I: IntoIterator<Item = Hash>>(&mut self, iter: I) {
+        pub fn enqueue_chunk<I: IntoIterator<Item = Hash>>(&mut self, iter: I) {
             for item in iter {
                 if self.set.insert(item) {
                     self.deque.push_back(item);
@@ -158,7 +158,7 @@ mod queue {
             }
         }
 
-        pub fn pop(&mut self) -> Option<Hash> {
+        pub fn dequeue(&mut self) -> Option<Hash> {
             if let Some(item) = self.deque.pop_front() {
                 self.set.remove(&item);
                 Some(item)
