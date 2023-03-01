@@ -113,7 +113,7 @@ pub struct Consensus {
     pub consensus_sender: AsyncSender<ConsensusEvent>,
 
     // Processors
-    header_processor: Arc<HeaderProcessor>,
+    pub header_processor: Arc<HeaderProcessor>,
     pub(super) body_processor: Arc<BlockBodyProcessor>,
     pub virtual_processor: Arc<VirtualStateProcessor>,
 

@@ -8,7 +8,6 @@ use std::{
 use async_channel::Sender;
 use consensus_core::{
     block::{Block, MutableBlock},
-    blockhash::{self, BlockHashExtensions},
     blockstatus::BlockStatus,
     events::ConsensusEvent,
     header::Header,

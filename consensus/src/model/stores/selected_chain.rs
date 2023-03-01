@@ -19,8 +19,7 @@ pub trait SelectedChainStoreReader {
 }
 
 /// Write API for `SelectedChainStore`. The set function is deliberately `mut`
-/// since status is not append-only and thus needs to be guarded.
-/// TODO: can be optimized to avoid the locking if needed.
+/// since chain index is not append-only and thus needs to be guarded.
 pub trait SelectedChainStore: SelectedChainStoreReader {
     fn apply_changes(&mut self, batch: &mut WriteBatch, changes: ChainPath) -> StoreResult<()>;
     fn init_with_pruning_point(&mut self, batch: &mut WriteBatch, block: Hash) -> StoreResult<()>;
@@ -77,20 +76,18 @@ impl SelectedChainStore for DbSelectedChainStore {
     fn apply_changes(&mut self, batch: &mut WriteBatch, changes: ChainPath) -> StoreResult<()> {
         let added_len = changes.added.len() as u64;
         let current_highest_index = self.access_highest_index.read().unwrap();
-        let index_offset = current_highest_index + 1;
-        let new_highest_index = added_len + index_offset - 1;
+        let split_index = current_highest_index - changes.removed.len() as u64;
+        let new_highest_index = added_len + split_index;
 
         for to_remove in changes.removed {
             let index = self.access_index_by_hash.read(to_remove).unwrap();
             self.access_index_by_hash.delete(BatchDbWriter::new(batch), to_remove).unwrap();
-            if index > new_highest_index {
-                self.access_hash_by_index.delete(BatchDbWriter::new(batch), index.into()).unwrap();
-            }
+            self.access_hash_by_index.delete(BatchDbWriter::new(batch), index.into()).unwrap();
         }
 
         for (i, to_add) in changes.added.into_iter().enumerate() {
-            self.access_index_by_hash.write(BatchDbWriter::new(batch), to_add, i as u64 + index_offset).unwrap();
-            self.access_hash_by_index.write(BatchDbWriter::new(batch), (i as u64 + index_offset).into(), to_add).unwrap();
+            self.access_index_by_hash.write(BatchDbWriter::new(batch), to_add, i as u64 + split_index + 1).unwrap();
+            self.access_hash_by_index.write(BatchDbWriter::new(batch), (i as u64 + split_index + 1).into(), to_add).unwrap();
         }
 
         self.access_highest_index.write(BatchDbWriter::new(batch), &new_highest_index).unwrap();

@@ -8,6 +8,7 @@ use consensus::consensus::test_consensus::{create_temp_db, TestConsensus};
 use consensus::model::stores::ghostdag::{GhostdagStoreReader, KType as GhostdagKType};
 use consensus::model::stores::headers::HeaderStoreReader;
 use consensus::model::stores::reachability::DbReachabilityStore;
+use consensus::model::stores::selected_chain::SelectedChainStoreReader;
 use consensus::params::{Params, DEVNET_PARAMS, MAINNET_PARAMS};
 use consensus::processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions};
 use consensus_core::api::ConsensusApi;
@@ -1426,6 +1427,51 @@ async fn difficulty_test() {
         tip_with_red_past.bits, tip_without_red_past.bits,
         "we expect the red blocks to not affect the difficulty of tip_with_red_past"
     );
+
+    consensus.shutdown(wait_handles);
+}
+
+#[tokio::test]
+async fn selected_chain_test() {
+    let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().build();
+    let consensus = TestConsensus::create_from_temp_db_and_dummy_sender(&config);
+    let wait_handles = consensus.init();
+
+    consensus.add_block_with_parents(1.into(), vec![config.genesis_hash]).await.unwrap();
+    for i in 2..7 {
+        let hash = i.into();
+        consensus.add_block_with_parents(hash, vec![(i - 1).into()]).await.unwrap();
+    }
+    consensus.add_block_with_parents(7.into(), vec![1.into()]).await.unwrap(); // Adding a non chain block shouldn't affect the selected chain store.
+
+    assert_eq!(consensus.header_processor.selected_chain_store.read().get_by_index(0).unwrap(), config.genesis_hash);
+    for i in 1..7 {
+        assert_eq!(consensus.header_processor.selected_chain_store.read().get_by_index(i).unwrap(), i.into());
+    }
+    assert!(consensus.header_processor.selected_chain_store.read().get_by_index(7).is_err());
+
+    consensus.add_block_with_parents(8.into(), vec![config.genesis_hash]).await.unwrap();
+    for i in 9..15 {
+        let hash = i.into();
+        consensus.add_block_with_parents(hash, vec![(i - 1).into()]).await.unwrap();
+    }
+
+    assert_eq!(consensus.header_processor.selected_chain_store.read().get_by_index(0).unwrap(), config.genesis_hash);
+    for i in 1..8 {
+        assert_eq!(consensus.header_processor.selected_chain_store.read().get_by_index(i).unwrap(), (i + 7).into());
+    }
+    assert!(consensus.header_processor.selected_chain_store.read().get_by_index(8).is_err());
+
+    // We now check a situation where there's a shorter selected chain (3 blocks) with more blue work
+    for i in 15..23 {
+        consensus.add_block_with_parents(i.into(), vec![config.genesis_hash]).await.unwrap();
+    }
+    consensus.add_block_with_parents(23.into(), (15..23).into_iter().map(|i| i.into()).collect_vec()).await.unwrap();
+
+    assert_eq!(consensus.header_processor.selected_chain_store.read().get_by_index(0).unwrap(), config.genesis_hash);
+    assert_eq!(consensus.header_processor.selected_chain_store.read().get_by_index(1).unwrap(), 22.into()); // We expect 23's selected parent to be 22 because of GHOSTDAG tie breaer rules.
+    assert_eq!(consensus.header_processor.selected_chain_store.read().get_by_index(2).unwrap(), 23.into());
+    assert!(consensus.header_processor.selected_chain_store.read().get_by_index(3).is_err());
 
     consensus.shutdown(wait_handles);
 }

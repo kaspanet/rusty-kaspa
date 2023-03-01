@@ -130,7 +130,7 @@ pub struct HeaderProcessor {
     pub(super) daa_store: Arc<DbDaaStore>,
     pub(super) headers_store: Arc<DbHeadersStore>,
     pub(super) headers_selected_tip_store: Arc<RwLock<DbHeadersSelectedTipStore>>,
-    pub(super) selected_chain_store: Arc<RwLock<DbSelectedChainStore>>,
+    pub selected_chain_store: Arc<RwLock<DbSelectedChainStore>>,
     depth_store: Arc<DbDepthStore>,
 
     // Managers and services
