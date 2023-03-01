@@ -4,10 +4,72 @@ use consensus_core::{
     subnets::SubnetworkId,
     tx::{ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry},
 };
+use hashes::Hash;
 
 // ----------------------------------------------------------------------------
 // consensus_core to protowire
 // ----------------------------------------------------------------------------
+
+impl From<Hash> for protowire::TransactionId {
+    fn from(hash: Hash) -> Self {
+        Self { bytes: Vec::from(hash.as_bytes()) }
+    }
+}
+
+impl From<&Hash> for protowire::TransactionId {
+    fn from(hash: &Hash) -> Self {
+        Self { bytes: Vec::from(hash.as_bytes()) }
+    }
+}
+
+impl From<&SubnetworkId> for protowire::SubnetworkId {
+    fn from(id: &SubnetworkId) -> Self {
+        Self { bytes: Vec::from(id.as_ref()) }
+    }
+}
+
+impl From<&TransactionOutpoint> for protowire::Outpoint {
+    fn from(outpoint: &TransactionOutpoint) -> Self {
+        Self { transaction_id: Some(outpoint.transaction_id.into()), index: outpoint.index }
+    }
+}
+
+impl From<&ScriptPublicKey> for protowire::ScriptPublicKey {
+    fn from(script_public_key: &ScriptPublicKey) -> Self {
+        Self { script: script_public_key.script().to_vec(), version: script_public_key.version() as u32 }
+    }
+}
+
+impl From<&TransactionInput> for protowire::TransactionInput {
+    fn from(input: &TransactionInput) -> Self {
+        Self {
+            previous_outpoint: Some((&input.previous_outpoint).into()),
+            signature_script: input.signature_script.clone(),
+            sequence: input.sequence,
+            sig_op_count: input.sig_op_count as u32,
+        }
+    }
+}
+
+impl From<&TransactionOutput> for protowire::TransactionOutput {
+    fn from(output: &TransactionOutput) -> Self {
+        Self { value: output.value, script_public_key: Some((&output.script_public_key).into()) }
+    }
+}
+
+impl From<&Transaction> for protowire::TransactionMessage {
+    fn from(tx: &Transaction) -> Self {
+        Self {
+            version: tx.version as u32,
+            inputs: tx.inputs.iter().map(|input| input.into()).collect(),
+            outputs: tx.outputs.iter().map(|output| output.into()).collect(),
+            lock_time: tx.lock_time,
+            subnetwork_id: Some((&tx.subnetwork_id).into()),
+            gas: tx.gas,
+            payload: tx.payload.clone(),
+        }
+    }
+}
 
 // ----------------------------------------------------------------------------
 // protowire to consensus_core

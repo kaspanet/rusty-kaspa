@@ -20,7 +20,7 @@ use p2p_lib::{
 use std::sync::Arc;
 use tokio::time::timeout;
 
-const IBD_BATCH_SIZE: usize = 99;
+pub const IBD_BATCH_SIZE: usize = 99;
 
 pub struct TrustedEntryStream<'a, 'b> {
     router: &'a Router,

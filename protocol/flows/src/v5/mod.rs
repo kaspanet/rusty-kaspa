@@ -1,6 +1,11 @@
 use self::{
     ibd::IbdFlow,
     ping::{ReceivePingsFlow, SendPingsFlow},
+    pruning_point_and_its_anticone_requests::PruningPointAndItsAnticoneRequestsFlow,
+    request_headers::RequestHeadersFlow,
+    request_ibd_chain_block_locator::RequestIbdChainBlockLocatorFlow,
+    request_pp_proof::RequestPruningPointProofFlow,
+    request_pruning_point_utxo_set::RequestPruningPointUtxoSetFlow,
 };
 use crate::{flow_context::FlowContext, flow_trait::Flow};
 use kaspa_core::debug;
@@ -13,6 +18,11 @@ use std::sync::Arc;
 
 mod ibd;
 mod ping;
+mod pruning_point_and_its_anticone_requests;
+mod request_headers;
+mod request_ibd_chain_block_locator;
+mod request_pp_proof;
+mod request_pruning_point_utxo_set;
 
 pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
     let flows: Vec<Box<dyn Flow>> = vec![
@@ -37,7 +47,35 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
             ]),
         )),
         Box::new(ReceivePingsFlow::new(ctx.clone(), router.clone(), router.subscribe(vec![KaspadMessagePayloadType::Ping]))),
-        Box::new(SendPingsFlow::new(ctx, Arc::downgrade(&router), router.subscribe(vec![KaspadMessagePayloadType::Pong]))),
+        Box::new(SendPingsFlow::new(ctx.clone(), Arc::downgrade(&router), router.subscribe(vec![KaspadMessagePayloadType::Pong]))),
+        Box::new(RequestHeadersFlow::new(
+            ctx.clone(),
+            router.clone(),
+            router.subscribe(vec![KaspadMessagePayloadType::RequestHeaders, KaspadMessagePayloadType::RequestNextHeaders]),
+        )),
+        Box::new(RequestPruningPointProofFlow::new(
+            ctx.clone(),
+            router.clone(),
+            router.subscribe(vec![KaspadMessagePayloadType::RequestPruningPointProof]),
+        )),
+        Box::new(RequestIbdChainBlockLocatorFlow::new(
+            ctx.clone(),
+            router.clone(),
+            router.subscribe(vec![KaspadMessagePayloadType::RequestIbdChainBlockLocator]),
+        )),
+        Box::new(PruningPointAndItsAnticoneRequestsFlow::new(
+            ctx.clone(),
+            router.clone(),
+            router.subscribe(vec![
+                KaspadMessagePayloadType::RequestPruningPointAndItsAnticone,
+                KaspadMessagePayloadType::RequestNextPruningPointAndItsAnticoneBlocks,
+            ]),
+        )),
+        Box::new(RequestPruningPointUtxoSetFlow::new(
+            ctx,
+            router.clone(),
+            router.subscribe(vec![KaspadMessagePayloadType::RequestPruningPointUtxoSet]),
+        )),
     ];
 
     // TEMP: subscribe to remaining messages and ignore them
@@ -65,27 +103,27 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
         // KaspadMessagePayloadType::UnexpectedPruningPoint,
         KaspadMessagePayloadType::IbdBlockLocator,
         // KaspadMessagePayloadType::IbdBlockLocatorHighestHash,
-        KaspadMessagePayloadType::RequestNextPruningPointUtxoSetChunk,
+        // KaspadMessagePayloadType::RequestNextPruningPointUtxoSetChunk,
         // KaspadMessagePayloadType::DonePruningPointUtxoSetChunks,
         // KaspadMessagePayloadType::IbdBlockLocatorHighestHashNotFound,
         KaspadMessagePayloadType::BlockWithTrustedData,
         // KaspadMessagePayloadType::DoneBlocksWithTrustedData,
-        KaspadMessagePayloadType::RequestPruningPointAndItsAnticone,
+        // KaspadMessagePayloadType::RequestPruningPointAndItsAnticone,
         // KaspadMessagePayloadType::BlockHeaders,
-        KaspadMessagePayloadType::RequestNextHeaders,
+        // KaspadMessagePayloadType::RequestNextHeaders,
         // KaspadMessagePayloadType::DoneHeaders,
-        KaspadMessagePayloadType::RequestPruningPointUtxoSet,
-        KaspadMessagePayloadType::RequestHeaders,
+        // KaspadMessagePayloadType::RequestPruningPointUtxoSet,
+        // KaspadMessagePayloadType::RequestHeaders,
         KaspadMessagePayloadType::RequestBlockLocator,
         // KaspadMessagePayloadType::PruningPoints,
-        KaspadMessagePayloadType::RequestPruningPointProof,
+        // KaspadMessagePayloadType::RequestPruningPointProof,
         // KaspadMessagePayloadType::PruningPointProof,
         // KaspadMessagePayloadType::BlockWithTrustedDataV4,
         // KaspadMessagePayloadType::TrustedData,
-        KaspadMessagePayloadType::RequestIbdChainBlockLocator,
+        // KaspadMessagePayloadType::RequestIbdChainBlockLocator,
         // KaspadMessagePayloadType::IbdChainBlockLocator,
         KaspadMessagePayloadType::RequestAnticone,
-        KaspadMessagePayloadType::RequestNextPruningPointAndItsAnticoneBlocks,
+        // KaspadMessagePayloadType::RequestNextPruningPointAndItsAnticoneBlocks,
     ]);
 
     tokio::spawn(async move {

@@ -9,11 +9,13 @@ use crate::{
     errors::{
         block::{BlockProcessResult, RuleError},
         coinbase::CoinbaseResult,
+        consensus::ConsensusResult,
         pruning::PruningImportResult,
         tx::TxResult,
     },
+    header::Header,
     pruning::{PruningPointProof, PruningPointsList},
-    trusted::TrustedBlock,
+    trusted::{TrustedBlock, TrustedGhostdagData, TrustedHeader},
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
 };
 use hashes::Hash;
@@ -55,6 +57,32 @@ pub trait ConsensusApi: Send + Sync {
     fn append_imported_pruning_point_utxos(&self, utxoset_chunk: &[(TransactionOutpoint, UtxoEntry)], current_multiset: &mut MuHash);
 
     fn import_pruning_point_utxo_set(&self, new_pruning_point: Hash, imported_utxo_multiset: &mut MuHash) -> PruningImportResult<()>;
+
+    fn header_exists(self: Arc<Self>, hash: Hash) -> bool;
+
+    fn is_chain_ancestor_of(self: Arc<Self>, low: Hash, high: Hash) -> ConsensusResult<bool>;
+
+    fn get_hashes_between(self: Arc<Self>, low: Hash, high: Hash, max_blocks: usize) -> ConsensusResult<(Vec<Hash>, Hash)>;
+
+    fn get_header(self: Arc<Self>, hash: Hash) -> ConsensusResult<Arc<Header>>;
+
+    fn get_pruning_point_proof(self: Arc<Self>) -> Arc<PruningPointProof>;
+
+    fn create_headers_selected_chain_block_locator(&self, low: Option<Hash>, high: Option<Hash>) -> ConsensusResult<Vec<Hash>>;
+
+    fn pruning_point_headers(&self) -> Vec<Arc<Header>>;
+
+    fn get_pruning_point_anticone_and_trusted_data(&self) -> Arc<(Vec<Hash>, Vec<TrustedHeader>, Vec<TrustedGhostdagData>)>;
+
+    fn get_block(&self, hash: Hash) -> ConsensusResult<Block>;
+
+    fn get_pruning_point_utxos(
+        self: Arc<Self>,
+        expected_pruning_point: Hash,
+        from_outpoint: Option<TransactionOutpoint>,
+        chunk_size: usize,
+        skip_first: bool,
+    ) -> ConsensusResult<Vec<(TransactionOutpoint, UtxoEntry)>>;
 }
 
 pub type DynConsensus = Arc<dyn ConsensusApi>;

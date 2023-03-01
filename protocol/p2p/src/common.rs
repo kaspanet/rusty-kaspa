@@ -1,5 +1,5 @@
 use crate::{convert::error::ConversionError, pb::kaspad_message::Payload as KaspadMessagePayload};
-use consensus_core::errors::{block::RuleError, pruning::PruningImportError};
+use consensus_core::errors::{block::RuleError, consensus::ConsensusError, pruning::PruningImportError};
 use std::time::Duration;
 use thiserror::Error;
 
@@ -24,7 +24,13 @@ pub enum ProtocolError {
     PruningImportError(#[from] PruningImportError),
 
     #[error("{0}")]
+    ConsensusError(#[from] ConsensusError),
+
+    #[error("{0}")]
     Other(&'static str),
+
+    #[error("{0}")]
+    OtherOwned(String),
 
     #[error("peer connection is closed")]
     ConnectionClosed,

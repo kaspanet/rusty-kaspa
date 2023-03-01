@@ -16,6 +16,30 @@ use std::sync::Arc;
 // protowire to consensus_core
 // ----------------------------------------------------------------------------
 
+impl TryFrom<protowire::RequestHeadersMessage> for (Hash, Hash) {
+    type Error = ConversionError;
+    fn try_from(msg: protowire::RequestHeadersMessage) -> Result<Self, Self::Error> {
+        Ok((msg.high_hash.try_into_ex()?, msg.low_hash.try_into_ex()?))
+    }
+}
+
+impl TryFrom<protowire::RequestIbdChainBlockLocatorMessage> for (Option<Hash>, Option<Hash>) {
+    type Error = ConversionError;
+    fn try_from(msg: protowire::RequestIbdChainBlockLocatorMessage) -> Result<Self, Self::Error> {
+        let low = match msg.low_hash {
+            Some(low) => Some(low.try_into()?),
+            None => None,
+        };
+
+        let high = match msg.high_hash {
+            Some(high) => Some(high.try_into()?),
+            None => None,
+        };
+
+        Ok((low, high))
+    }
+}
+
 impl TryFrom<protowire::PruningPointProofMessage> for PruningPointProof {
     type Error = ConversionError;
     fn try_from(msg: protowire::PruningPointProofMessage) -> Result<Self, Self::Error> {
@@ -66,5 +90,13 @@ impl TryFrom<protowire::PruningPointUtxoSetChunkMessage> for Vec<(TransactionOut
 
     fn try_from(msg: protowire::PruningPointUtxoSetChunkMessage) -> Result<Self, Self::Error> {
         msg.outpoint_and_utxo_entry_pairs.into_iter().map(|p| p.try_into()).collect()
+    }
+}
+
+impl TryFrom<protowire::RequestPruningPointUtxoSetMessage> for Hash {
+    type Error = ConversionError;
+
+    fn try_from(msg: protowire::RequestPruningPointUtxoSetMessage) -> Result<Self, Self::Error> {
+        msg.pruning_point_hash.try_into_ex()
     }
 }

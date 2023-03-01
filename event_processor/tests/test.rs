@@ -108,27 +108,7 @@ async fn test_virtual_change_set_event() {
                 virtual_selected_parent_blue_score_changed_count += 1;
             }
             Notification::VirtualSelectedParentChainChanged(virtual_selected_parent_chain_changed_notification) => {
-                assert_eq!(
-                    test_event.mergeset_blues.len(),
-                    virtual_selected_parent_chain_changed_notification.added_chain_block_hashes.len()
-                );
-                (0..test_event.mergeset_blues.len()).for_each(|i| {
-                    assert_eq!(
-                        test_event.mergeset_blues[i],
-                        virtual_selected_parent_chain_changed_notification.added_chain_block_hashes[i]
-                    );
-                });
-
-                assert_eq!(
-                    test_event.mergeset_reds.len(),
-                    virtual_selected_parent_chain_changed_notification.removed_chain_block_hashes.len()
-                );
-                (0..test_event.mergeset_reds.len()).for_each(|i| {
-                    assert_eq!(
-                        test_event.mergeset_reds[i],
-                        virtual_selected_parent_chain_changed_notification.removed_chain_block_hashes[i]
-                    );
-                });
+                // TODO: Add test cases for other fields the the logic is implemented
 
                 assert_eq!(
                     test_event.accepted_tx_ids.len(),

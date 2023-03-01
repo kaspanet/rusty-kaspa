@@ -2,13 +2,14 @@ use crate::{
     constants::TX_VERSION,
     errors::{BlockProcessResult, RuleError},
     model::{
-        services::reachability::MTReachabilityService,
+        services::{reachability::MTReachabilityService, relations::MTRelationsService},
         stores::{
             block_transactions::DbBlockTransactionsStore,
             block_window_cache::BlockWindowCacheStore,
             ghostdag::DbGhostdagStore,
             headers::DbHeadersStore,
             reachability::DbReachabilityStore,
+            relations::DbRelationsStore,
             statuses::{DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader},
             tips::DbTipsStore,
             DB,
@@ -61,7 +62,13 @@ pub struct BlockBodyProcessor {
     pub(super) coinbase_manager: CoinbaseManager,
     pub(crate) mass_calculator: MassCalculator,
     pub(super) transaction_validator: TransactionValidator,
-    pub(super) past_median_time_manager: PastMedianTimeManager<DbHeadersStore, DbGhostdagStore, BlockWindowCacheStore>,
+    pub(super) past_median_time_manager: PastMedianTimeManager<
+        DbHeadersStore,
+        DbGhostdagStore,
+        BlockWindowCacheStore,
+        DbReachabilityStore,
+        MTRelationsService<DbRelationsStore>,
+    >,
 
     // Dependency manager
     task_manager: BlockTaskDependencyManager,
@@ -83,7 +90,13 @@ impl BlockBodyProcessor {
         coinbase_manager: CoinbaseManager,
         mass_calculator: MassCalculator,
         transaction_validator: TransactionValidator,
-        past_median_time_manager: PastMedianTimeManager<DbHeadersStore, DbGhostdagStore, BlockWindowCacheStore>,
+        past_median_time_manager: PastMedianTimeManager<
+            DbHeadersStore,
+            DbGhostdagStore,
+            BlockWindowCacheStore,
+            DbReachabilityStore,
+            MTRelationsService<DbRelationsStore>,
+        >,
         max_block_mass: u64,
         genesis_hash: Hash,
         process_genesis: bool,
