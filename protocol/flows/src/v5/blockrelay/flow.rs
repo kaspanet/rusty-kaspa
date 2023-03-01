@@ -1,10 +1,12 @@
-use crate::{flow_context::FlowContext, flow_trait::Flow};
-use consensus_core::{block::Block, blockstatus::BlockStatus};
+use crate::{flow_context::FlowContext, flow_trait::Flow, flowcontext::orphans::ORPHAN_RESOLUTION_RANGE};
+use consensus_core::{block::Block, blockstatus::BlockStatus, errors::block::RuleError};
 use hashes::Hash;
+use kaspa_core::debug;
+use kaspa_utils::option::OptionExtensions;
 use p2p_lib::{
     common::ProtocolError,
     dequeue, dequeue_with_timeout, make_message,
-    pb::{kaspad_message::Payload, RequestRelayBlocksMessage},
+    pb::{kaspad_message::Payload, InvRelayBlockMessage, RequestBlockLocatorMessage, RequestRelayBlocksMessage},
     IncomingRoute, Router,
 };
 use std::{collections::VecDeque, sync::Arc};
@@ -71,8 +73,10 @@ impl HandleRelayInvsFlow {
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
         loop {
+            // Loop over incoming block inv messages
             let inv = self.invs_route.dequeue().await?;
             let consensus = self.ctx.consensus();
+
             match consensus.get_block_status(inv.hash) {
                 None | Some(BlockStatus::StatusHeaderOnly) => {} // Continue processing this missing inv
                 Some(BlockStatus::StatusInvalid) => {
@@ -82,7 +86,7 @@ impl HandleRelayInvsFlow {
                 _ => continue, // Block is already known, skip to next inv
             }
 
-            if self.ctx.is_orphan(inv.hash).await {
+            if self.ctx.is_known_orphan(inv.hash).await {
                 // TODO: check for config conditions
                 self.enqueue_orphan_roots(inv.hash).await;
                 continue;
@@ -107,7 +111,21 @@ impl HandleRelayInvsFlow {
                 // TODO: imp merge depth root heuristic
             }
 
-            // TODO: process the block
+            match consensus.validate_and_insert_block(block.clone(), true).await {
+                Ok(_) => {}
+                Err(RuleError::MissingParents(missing_parents)) => {
+                    debug!("Block {} is orphan and has missing parents: {:?}", block.hash(), missing_parents);
+                    self.process_orphan(block).await?;
+                    continue;
+                }
+                Err(rule_error) => return Err(rule_error.into()),
+            }
+
+            // TODO: broadcast all new blocks in past(virtual)
+            // TEMP:
+            self.router
+                .broadcast(make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(block.hash().into()) }))
+                .await;
         }
     }
 
@@ -119,17 +137,52 @@ impl HandleRelayInvsFlow {
         }
     }
 
-    async fn request_block(&mut self, request_hash: Hash) -> Result<Block, ProtocolError> {
+    async fn request_block(&mut self, requested_hash: Hash) -> Result<Block, ProtocolError> {
         // TODO: manage shared requests and return `exists` if it's already a pending request
         self.router
-            .enqueue(make_message!(Payload::RequestRelayBlocks, RequestRelayBlocksMessage { hashes: vec![request_hash.into()] }))
+            .enqueue(make_message!(Payload::RequestRelayBlocks, RequestRelayBlocksMessage { hashes: vec![requested_hash.into()] }))
             .await?;
         let msg = dequeue_with_timeout!(self.msg_route, Payload::Block)?;
         let block: Block = msg.try_into()?;
-        if block.hash() != request_hash {
-            Err(ProtocolError::OtherOwned(format!("requested block hash {} but got block {}", request_hash, block.hash())))
+        if block.hash() != requested_hash {
+            Err(ProtocolError::OtherOwned(format!("requested block hash {} but got block {}", requested_hash, block.hash())))
         } else {
             Ok(block)
         }
+    }
+
+    async fn process_orphan(&mut self, block: Block) -> Result<(), ProtocolError> {
+        // Return if the block has been orphaned from elsewhere already
+        if self.ctx.is_known_orphan(block.hash()).await {
+            return Ok(());
+        }
+
+        // Add the block to the orphan pool if it's within orphan resolution range
+        if self.check_orphan_resolution_range(block.hash()).await? {
+            // TODO: check for config conditions
+            let hash = block.hash();
+            self.ctx.add_orphan(block).await;
+            self.enqueue_orphan_roots(hash).await;
+        } else {
+            // TODO: start IBD
+        }
+        Ok(())
+    }
+
+    /// Finds out whether the given blockHash should be retrieved via the unorphaning
+    /// mechanism or via IBD. This method sends a BlockLocator request to the peer with
+    /// a limit of ORPHAN_RESOLUTION_RANGE. In the response, if we know none of the hashes,
+    /// we should retrieve the given blockHash via IBD. Otherwise, via unorphaning.
+    async fn check_orphan_resolution_range(&mut self, hash: Hash) -> Result<bool, ProtocolError> {
+        self.router
+            .enqueue(make_message!(
+                Payload::RequestBlockLocator,
+                RequestBlockLocatorMessage { high_hash: Some(hash.into()), limit: ORPHAN_RESOLUTION_RANGE }
+            ))
+            .await?;
+        let msg = dequeue_with_timeout!(self.msg_route, Payload::BlockLocator)?;
+        let locator_hashes: Vec<Hash> = msg.try_into()?;
+        let consensus = self.ctx.consensus(); // TODO: should we pass the consensus instance through the call chain?
+        Ok(locator_hashes.into_iter().any(|p| consensus.get_block_status(p).has_value_and(|&s| s != BlockStatus::StatusHeaderOnly)))
     }
 }

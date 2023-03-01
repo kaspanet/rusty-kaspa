@@ -31,8 +31,8 @@ impl FlowContext {
         self.orphans_pool.write().await.add_orphan(orphan_block)
     }
 
-    pub async fn is_orphan(&self, hash: Hash) -> bool {
-        self.orphans_pool.read().await.is_orphan(hash)
+    pub async fn is_known_orphan(&self, hash: Hash) -> bool {
+        self.orphans_pool.read().await.is_known_orphan(hash)
     }
 
     pub async fn get_orphan_roots(&self, orphan: Hash) -> Option<Vec<Hash>> {

@@ -12,6 +12,10 @@ use std::collections::{HashSet, VecDeque};
 
 use self::queue::ProcessQueue;
 
+/// The maximum amount of blockLocator hashes to search for known
+/// blocks. See check_orphan_resolution_range for further details
+pub const ORPHAN_RESOLUTION_RANGE: u32 = 5;
+
 /// The maximum amount of orphans allowed in the orphans pool. This number is an
 /// approximation of how many orphans there can possibly be on average. It is based on:
 /// 2^ORPHAN_RESOLUTION_RANGE * Ghostdag K.
@@ -63,7 +67,7 @@ impl<T: ConsensusProcessor> OrphanBlocksPool<T> {
     }
 
     /// Returns whether this block is in the orphan pool.
-    pub fn is_orphan(&self, hash: Hash) -> bool {
+    pub fn is_known_orphan(&self, hash: Hash) -> bool {
         self.orphans.contains_key(&hash)
     }
 
