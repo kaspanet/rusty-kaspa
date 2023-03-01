@@ -762,7 +762,7 @@ impl ConsensusApi for Consensus {
             transactions: self.block_transactions_store.get(hash).unwrap(),
         })
     }
-    
+
     fn get_block_status(&self, hash: Hash) -> Option<BlockStatus> {
         self.statuses_store.read().get(hash).unwrap_option()
     }
