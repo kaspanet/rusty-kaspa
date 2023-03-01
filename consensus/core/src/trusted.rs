@@ -43,12 +43,12 @@ impl TrustedHeader {
 }
 
 /// Represents externally provided Ghostdag data associated with a block Hash
-pub struct TrustedHash {
+pub struct TrustedGhostdagData {
     pub hash: Hash,
     pub ghostdag: ExternalGhostdagData,
 }
 
-impl TrustedHash {
+impl TrustedGhostdagData {
     pub fn new(hash: Hash, ghostdag: ExternalGhostdagData) -> Self {
         Self { hash, ghostdag }
     }

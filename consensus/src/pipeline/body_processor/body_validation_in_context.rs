@@ -83,7 +83,7 @@ mod tests {
 
     use crate::{
         config::ConfigBuilder, consensus::test_consensus::TestConsensus, constants::TX_VERSION, errors::RuleError,
-        model::stores::ghostdag::GhostdagStoreReader, params::MAINNET_PARAMS, processes::transaction_validator::errors::TxRuleError,
+        model::stores::ghostdag::GhostdagStoreReader, params::DEVNET_PARAMS, processes::transaction_validator::errors::TxRuleError,
     };
     use consensus_core::{
         merkle::calc_hash_merkle_root,
@@ -95,7 +95,7 @@ mod tests {
 
     #[tokio::test]
     async fn validate_body_in_context_test() {
-        let config = ConfigBuilder::new(MAINNET_PARAMS)
+        let config = ConfigBuilder::new(DEVNET_PARAMS)
             .skip_proof_of_work()
             .edit_consensus_params(|p| p.deflationary_phase_daa_score = 2)
             .build();

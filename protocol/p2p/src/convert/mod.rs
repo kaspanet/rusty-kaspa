@@ -7,4 +7,6 @@ pub mod messages;
 pub mod model;
 pub mod option;
 pub mod pruning;
+pub mod trusted;
 pub mod tx;
+pub mod utxo;

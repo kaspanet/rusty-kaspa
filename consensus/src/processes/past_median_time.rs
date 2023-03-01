@@ -6,22 +6,32 @@ use crate::model::stores::{
     block_window_cache::{BlockWindowCacheReader, BlockWindowHeap},
     ghostdag::{GhostdagData, GhostdagStoreReader},
     headers::HeaderStoreReader,
+    reachability::ReachabilityStoreReader,
+    relations::RelationsStoreReader,
 };
 
 use super::traversal_manager::DagTraversalManager;
 
 #[derive(Clone)]
-pub struct PastMedianTimeManager<T: HeaderStoreReader, U: GhostdagStoreReader, V: BlockWindowCacheReader> {
+pub struct PastMedianTimeManager<
+    T: HeaderStoreReader,
+    U: GhostdagStoreReader,
+    V: BlockWindowCacheReader,
+    W: ReachabilityStoreReader,
+    X: RelationsStoreReader,
+> {
     headers_store: Arc<T>,
-    dag_traversal_manager: DagTraversalManager<U, V>,
+    dag_traversal_manager: DagTraversalManager<U, V, W, X>,
     timestamp_deviation_tolerance: usize,
     genesis_timestamp: u64,
 }
 
-impl<T: HeaderStoreReader, U: GhostdagStoreReader, V: BlockWindowCacheReader> PastMedianTimeManager<T, U, V> {
+impl<T: HeaderStoreReader, U: GhostdagStoreReader, V: BlockWindowCacheReader, W: ReachabilityStoreReader, X: RelationsStoreReader>
+    PastMedianTimeManager<T, U, V, W, X>
+{
     pub fn new(
         headers_store: Arc<T>,
-        dag_traversal_manager: DagTraversalManager<U, V>,
+        dag_traversal_manager: DagTraversalManager<U, V, W, X>,
         timestamp_deviation_tolerance: usize,
         genesis_timestamp: u64,
     ) -> Self {

@@ -16,8 +16,13 @@ muhash.workspace = true
 rand.workspace = true
 thiserror.workspace = true
 log.workspace = true
+itertools.workspace = true
 futures = { version = "0.3", default-features = false, features = ["alloc"] }
-tokio = { version = "1.21.2", features = [ "rt-multi-thread", "macros", "signal" ]}
+tokio = { version = "1.21.2", features = [
+    "rt-multi-thread",
+    "macros",
+    "signal",
+] }
 tokio-stream = { version = "0.1.11", features = ["net"] }
-uuid = { version = "1.2.2", features = ["v4","fast-rng"] }
+uuid = { version = "1.2.2", features = ["v4", "fast-rng"] }
 async-trait = "0.1.57"

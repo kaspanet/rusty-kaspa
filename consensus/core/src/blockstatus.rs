@@ -21,6 +21,13 @@ pub enum BlockStatus {
 }
 
 impl BlockStatus {
+    pub fn has_block_header(self) -> bool {
+        matches!(
+            self,
+            Self::StatusHeaderOnly | Self::StatusUTXOValid | Self::StatusUTXOPendingVerification | Self::StatusDisqualifiedFromChain
+        )
+    }
+
     pub fn has_block_body(self) -> bool {
         matches!(self, Self::StatusUTXOValid | Self::StatusUTXOPendingVerification | Self::StatusDisqualifiedFromChain)
     }
