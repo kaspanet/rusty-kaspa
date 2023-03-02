@@ -8,6 +8,7 @@ use kaspa_core::debug;
 use kaspa_core::time::unix_now;
 use p2p_lib::pb;
 use p2p_lib::{common::ProtocolError, ConnectionInitializer, KaspadHandshake, Router};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use uuid::Uuid;
@@ -16,18 +17,45 @@ use uuid::Uuid;
 pub struct FlowContext {
     pub consensus: DynConsensus,
     orphans_pool: Arc<RwLock<OrphanBlocksPool<dyn ConsensusApi>>>,
+    is_ibd_running: Arc<AtomicBool>, // TODO: pass the context wrapped with Arc and avoid some of the internal ones
+}
+
+pub struct IbdRunningGuard {
+    indicator: Arc<AtomicBool>,
+}
+
+impl Drop for IbdRunningGuard {
+    fn drop(&mut self) {
+        assert!(self.indicator.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_ok())
+    }
 }
 
 impl FlowContext {
     pub fn new(consensus: DynConsensus) -> Self {
-        Self { consensus: consensus.clone(), orphans_pool: Arc::new(RwLock::new(OrphanBlocksPool::new(consensus, MAX_ORPHANS))) }
+        Self {
+            consensus: consensus.clone(),
+            orphans_pool: Arc::new(RwLock::new(OrphanBlocksPool::new(consensus, MAX_ORPHANS))),
+            is_ibd_running: Arc::new(AtomicBool::default()),
+        }
     }
 
     pub fn consensus(&self) -> DynConsensus {
         self.consensus.clone()
     }
 
-    pub async fn add_orphan(&mut self, orphan_block: Block) {
+    pub fn try_set_ibd_running(&self) -> Option<IbdRunningGuard> {
+        if self.is_ibd_running.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
+            Some(IbdRunningGuard { indicator: self.is_ibd_running.clone() })
+        } else {
+            None
+        }
+    }
+
+    pub fn is_ibd_running(&self) -> bool {
+        self.is_ibd_running.load(Ordering::SeqCst)
+    }
+
+    pub async fn add_orphan(&self, orphan_block: Block) {
         self.orphans_pool.write().await.add_orphan(orphan_block)
     }
 

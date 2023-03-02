@@ -37,6 +37,8 @@ pub trait ConsensusApi: Send + Sync {
 
     fn get_virtual_daa_score(&self) -> u64;
 
+    fn get_sink_timestamp(&self) -> u64;
+
     fn get_virtual_state_tips(&self) -> Vec<Hash>;
 
     fn get_virtual_utxos(

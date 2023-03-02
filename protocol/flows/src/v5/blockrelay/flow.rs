@@ -1,7 +1,7 @@
 use crate::{flow_context::FlowContext, flow_trait::Flow, flowcontext::orphans::ORPHAN_RESOLUTION_RANGE};
 use consensus_core::{block::Block, blockstatus::BlockStatus, errors::block::RuleError};
 use hashes::Hash;
-use kaspa_core::debug;
+use kaspa_core::{debug, time::unix_now};
 use kaspa_utils::option::OptionExtensions;
 use p2p_lib::{
     common::ProtocolError,
@@ -102,6 +102,13 @@ impl HandleRelayInvsFlow {
             }
 
             // TODO: check if IBD is running and node is not nearly synced
+            if self.ctx.is_ibd_running() {
+                let sink_timestamp = consensus.get_sink_timestamp();
+                // TODO: use config
+                if unix_now() > sink_timestamp + 2641 * 1000 {
+                    continue;
+                }
+            }
 
             let block = self.request_block(inv.hash).await?;
 

@@ -60,14 +60,16 @@ impl IbdFlow {
     }
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
-        while let Some(relay_block) = self.relay_receiver.recv().await {
-            info!("IBD started");
+        while let Some(_relay_block) = self.relay_receiver.recv().await {
+            if let Some(_guard) = self.ctx.try_set_ibd_running() {
+                info!("IBD started with peer {}", self.router);
 
-            let consensus = self.ctx.consensus();
-            let negotiation_output = self.negotiate_missing_syncer_chain_segment(&consensus).await?;
-            self.start_ibd_with_headers_proof(&consensus, negotiation_output.syncer_header_selected_tip).await?;
+                let consensus = self.ctx.consensus();
+                let negotiation_output = self.negotiate_missing_syncer_chain_segment(&consensus).await?;
+                self.start_ibd_with_headers_proof(&consensus, negotiation_output.syncer_header_selected_tip).await?;
 
-            info!("IBD finished");
+                info!("IBD with peer {} finished", self.router);
+            }
         }
 
         Ok(())

@@ -627,6 +627,11 @@ impl ConsensusApi for Consensus {
         self.virtual_processor.virtual_stores.read().state.get().unwrap().daa_score
     }
 
+    fn get_sink_timestamp(&self) -> u64 {
+        let sink = self.virtual_processor.virtual_stores.read().state.get().unwrap().ghostdag_data.selected_parent;
+        self.headers_store.get_timestamp(sink).unwrap()
+    }
+
     fn get_virtual_state_tips(&self) -> Vec<Hash> {
         self.virtual_processor.virtual_stores.read().state.get().unwrap().parents.clone()
     }
