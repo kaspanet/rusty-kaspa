@@ -103,9 +103,10 @@ impl HandleRelayInvsFlow {
 
             // TODO: check if IBD is running and node is not nearly synced
             if self.ctx.is_ibd_running() {
+                // TODO: fix consensus call to avoid Option
                 let sink_timestamp = consensus.get_sink_timestamp();
                 // TODO: use config
-                if unix_now() > sink_timestamp + 2641 * 1000 {
+                if sink_timestamp.is_none() || unix_now() > sink_timestamp.unwrap() + 2641 * 1000 {
                     continue;
                 }
             }
