@@ -263,7 +263,7 @@ impl IbdFlow {
         // TODO: progress reporter using DAA score from below headers
         let _low_header = consensus.get_header(*hashes.first().unwrap())?;
         let _high_header = consensus.get_header(*hashes.last().unwrap())?;
-        for chunk in hashes.chunks(IBD_BATCH_SIZE) {
+        for (i, chunk) in hashes.chunks(IBD_BATCH_SIZE).enumerate() {
             self.router
                 .enqueue(make_message!(
                     Payload::RequestIbdBlocks,
@@ -280,9 +280,14 @@ impl IbdFlow {
                     return Err(ProtocolError::OtherOwned(format!("sent header of {} where expected block with body", block.hash())));
                 }
                 // TODO: decide if we resolve virtual separately on long IBD
+                // TODO: collect futures and alternate bunches
                 consensus.validate_and_insert_block(block, true).await?;
 
                 // TODO: raise new block event or make sure consensus does
+            }
+
+            if i % 20 == 0 {
+                info!("Processed {} block bodies", i * IBD_BATCH_SIZE);
             }
         }
 
