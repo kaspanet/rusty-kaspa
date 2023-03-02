@@ -1,7 +1,7 @@
 use crate::flowcontext::orphans::{OrphanBlocksPool, MAX_ORPHANS};
 use crate::v5;
 use async_trait::async_trait;
-use consensus_core::api::DynConsensus;
+use consensus_core::api::{ConsensusApi, DynConsensus};
 use consensus_core::block::Block;
 use hashes::Hash;
 use kaspa_core::debug;
@@ -15,7 +15,7 @@ use uuid::Uuid;
 #[derive(Clone)]
 pub struct FlowContext {
     pub consensus: DynConsensus,
-    orphans_pool: Arc<RwLock<OrphanBlocksPool<DynConsensus>>>,
+    orphans_pool: Arc<RwLock<OrphanBlocksPool<dyn ConsensusApi>>>,
 }
 
 impl FlowContext {

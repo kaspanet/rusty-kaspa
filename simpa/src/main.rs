@@ -17,6 +17,7 @@ use consensus::{
     processes::ghostdag::ordering::SortableBlock,
 };
 use consensus_core::{
+    api::ConsensusApi,
     block::Block,
     blockstatus::BlockStatus,
     errors::block::{BlockProcessResult, RuleError},

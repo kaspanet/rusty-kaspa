@@ -150,4 +150,8 @@ impl<
 
         Ok(locator)
     }
+
+    pub fn get_missing_block_body_hashes(&self) -> SyncManagerResult<Vec<Hash>> {
+        todo!()
+    }
 }

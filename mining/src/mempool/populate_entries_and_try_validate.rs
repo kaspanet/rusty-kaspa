@@ -1,7 +1,10 @@
-use crate::mempool::{errors::RuleResult, model::pool::Pool, Mempool};
+use crate::{
+    consensus_context::ConsensusMiningContext,
+    mempool::{errors::RuleResult, model::pool::Pool, Mempool},
+};
 use consensus_core::{constants::UNACCEPTED_DAA_SCORE, tx::MutableTransaction, tx::UtxoEntry};
 
-impl Mempool {
+impl<T: ConsensusMiningContext + ?Sized> Mempool<T> {
     pub(crate) fn populate_entries_and_try_validate(&self, transaction: &mut MutableTransaction) -> RuleResult<()> {
         // Rust rewrite note:
         // Neither parentsInPool nor missingOutpoints are actually used or needed by the

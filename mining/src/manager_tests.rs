@@ -701,7 +701,7 @@ mod tests {
 
     fn sweep_compare_modified_template_to_built(
         address_prefix: Prefix,
-        builder: &BlockTemplateBuilder,
+        builder: &BlockTemplateBuilder<ConsensusMock>,
         transactions: Vec<CandidateTransaction>,
     ) {
         for _ in 0..4 {
@@ -719,7 +719,7 @@ mod tests {
 
     fn compare_modified_template_to_built(
         address_prefix: Prefix,
-        builder: &BlockTemplateBuilder,
+        builder: &BlockTemplateBuilder<ConsensusMock>,
         transactions: Vec<CandidateTransaction>,
         first_op: OpType,
         second_op: OpType,

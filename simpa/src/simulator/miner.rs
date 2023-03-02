@@ -2,6 +2,7 @@ use super::infra::{Environment, Process, Resumption, Suspension};
 use consensus::consensus::Consensus;
 use consensus::model::stores::virtual_state::VirtualStateStoreReader;
 use consensus::params::Params;
+use consensus_core::api::ConsensusApi;
 use consensus_core::block::Block;
 use consensus_core::blockstatus::BlockStatus;
 use consensus_core::coinbase::MinerData;
@@ -103,7 +104,6 @@ impl Miner {
         let nonce = self.id;
         let mut block_template = self
             .consensus
-            .as_ref()
             .build_block_template(self.miner_data.clone(), txs)
             .expect("simulation txs are selected in sync with virtual state and are expected to be valid");
         block_template.block.header.timestamp = timestamp; // Use simulation time rather than real time

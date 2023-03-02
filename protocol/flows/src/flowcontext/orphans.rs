@@ -1,5 +1,5 @@
 use consensus_core::{
-    api::{BlockValidationFuture, DynConsensus},
+    api::{BlockValidationFuture, ConsensusApi},
     block::Block,
     blockstatus::BlockStatus,
 };
@@ -8,7 +8,10 @@ use indexmap::{map::Entry::Occupied, IndexMap};
 use kaspa_core::{debug, info, warn};
 use kaspa_utils::option::OptionExtensions;
 use rand::Rng;
-use std::collections::{HashSet, VecDeque};
+use std::{
+    collections::{HashSet, VecDeque},
+    sync::Arc,
+};
 
 use self::queue::ProcessQueue;
 
@@ -23,23 +26,23 @@ pub const ORPHAN_RESOLUTION_RANGE: u32 = 5;
 pub const MAX_ORPHANS: usize = 600;
 
 /// Internal trait for abstracting the consensus dependency
-pub trait ConsensusProcessor {
+pub trait ConsensusBlockProcessor {
     fn validate_and_insert_block(&self, block: Block) -> BlockValidationFuture;
     fn get_block_status(&self, hash: Hash) -> Option<BlockStatus>;
 }
 
-impl ConsensusProcessor for DynConsensus {
+impl ConsensusBlockProcessor for dyn ConsensusApi {
     fn validate_and_insert_block(&self, block: Block) -> BlockValidationFuture {
-        self.clone().validate_and_insert_block(block, true)
+        self.validate_and_insert_block(block, true)
     }
 
     fn get_block_status(&self, hash: Hash) -> Option<BlockStatus> {
-        self.as_ref().get_block_status(hash)
+        self.get_block_status(hash)
     }
 }
 
-pub struct OrphanBlocksPool<T: ConsensusProcessor> {
-    consensus: T,
+pub struct OrphanBlocksPool<T: ConsensusBlockProcessor + ?Sized> {
+    consensus: Arc<T>,
     /// NOTES:
     /// 1. We use IndexMap for cheap random eviction
     /// 2. We avoid the custom block hasher since this pool is pre-validation storage
@@ -48,8 +51,8 @@ pub struct OrphanBlocksPool<T: ConsensusProcessor> {
     max_orphans: usize,
 }
 
-impl<T: ConsensusProcessor> OrphanBlocksPool<T> {
-    pub fn new(consensus: T, max_orphans: usize) -> Self {
+impl<T: ConsensusBlockProcessor + ?Sized> OrphanBlocksPool<T> {
+    pub fn new(consensus: Arc<T>, max_orphans: usize) -> Self {
         Self { consensus, orphans: IndexMap::with_capacity(max_orphans), max_orphans }
     }
 
@@ -188,7 +191,7 @@ mod tests {
         Ok(BlockStatus::StatusUTXOPendingVerification)
     }
 
-    impl ConsensusProcessor for MockProcessor {
+    impl ConsensusBlockProcessor for MockProcessor {
         fn validate_and_insert_block(&self, block: Block) -> BlockValidationFuture {
             self.processed.borrow_mut().insert(block.hash());
             Box::pin(block_process_mock())
@@ -202,7 +205,7 @@ mod tests {
     #[tokio::test]
     async fn test_orphan_pool_basics() {
         let max_orphans = 10;
-        let consensus = MockProcessor::default();
+        let consensus = Arc::new(MockProcessor::default());
         let mut pool = OrphanBlocksPool::new(consensus, max_orphans);
 
         let roots = vec![8.into(), 9.into()];

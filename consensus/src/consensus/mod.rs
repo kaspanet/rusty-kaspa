@@ -522,7 +522,7 @@ impl Consensus {
         ]
     }
 
-    pub fn validate_and_insert_block(
+    fn validate_and_insert_block_impl(
         &self,
         block: Block,
         update_virtual: bool,
@@ -535,7 +535,7 @@ impl Consensus {
         async { rx.await.unwrap() }
     }
 
-    pub fn validate_and_insert_trusted_block(&self, tb: TrustedBlock) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
+    fn validate_and_insert_trusted_block_impl(&self, tb: TrustedBlock) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
         let (tx, rx): (BlockResultSender, _) = oneshot::channel();
         self.block_sender
             .send(BlockProcessingMessage::Process(
@@ -547,16 +547,8 @@ impl Consensus {
         async { rx.await.unwrap() }
     }
 
-    pub fn import_pruning_points(&self, pruning_points: PruningPointsList) {
-        self.pruning_proof_manager.import_pruning_points(&pruning_points)
-    }
-
     pub fn resolve_virtual(&self) {
         self.virtual_processor.resolve_virtual()
-    }
-
-    pub fn build_block_template(&self, miner_data: MinerData, txs: Vec<Transaction>) -> Result<BlockTemplate, RuleError> {
-        self.virtual_processor.build_block_template(miner_data, txs)
     }
 
     pub fn body_tips(&self) -> Arc<BlockHashSet> {
@@ -600,43 +592,39 @@ impl Consensus {
 }
 
 impl ConsensusApi for Consensus {
-    fn build_block_template(self: Arc<Self>, miner_data: MinerData, txs: Vec<Transaction>) -> Result<BlockTemplate, RuleError> {
-        self.as_ref().build_block_template(miner_data, txs)
+    fn build_block_template(&self, miner_data: MinerData, txs: Vec<Transaction>) -> Result<BlockTemplate, RuleError> {
+        self.virtual_processor.build_block_template(miner_data, txs)
     }
 
-    fn validate_and_insert_block(
-        self: Arc<Self>,
-        block: Block,
-        update_virtual: bool,
-    ) -> BoxFuture<'static, BlockProcessResult<BlockStatus>> {
-        let result = self.as_ref().validate_and_insert_block(block, update_virtual);
+    fn validate_and_insert_block(&self, block: Block, update_virtual: bool) -> BoxFuture<'static, BlockProcessResult<BlockStatus>> {
+        let result = self.validate_and_insert_block_impl(block, update_virtual);
         Box::pin(async move { result.await })
     }
 
-    fn validate_and_insert_trusted_block(self: Arc<Self>, tb: TrustedBlock) -> BoxFuture<'static, BlockProcessResult<BlockStatus>> {
-        let result = self.as_ref().validate_and_insert_trusted_block(tb);
+    fn validate_and_insert_trusted_block(&self, tb: TrustedBlock) -> BoxFuture<'static, BlockProcessResult<BlockStatus>> {
+        let result = self.validate_and_insert_trusted_block_impl(tb);
         Box::pin(async move { result.await })
     }
 
-    fn validate_mempool_transaction_and_populate(self: Arc<Self>, transaction: &mut MutableTransaction) -> TxResult<()> {
+    fn validate_mempool_transaction_and_populate(&self, transaction: &mut MutableTransaction) -> TxResult<()> {
         self.virtual_processor.validate_mempool_transaction_and_populate(transaction)?;
         Ok(())
     }
 
-    fn calculate_transaction_mass(self: Arc<Self>, transaction: &Transaction) -> u64 {
+    fn calculate_transaction_mass(&self, transaction: &Transaction) -> u64 {
         self.body_processor.mass_calculator.calc_tx_mass(transaction)
     }
 
-    fn get_virtual_daa_score(self: Arc<Self>) -> u64 {
+    fn get_virtual_daa_score(&self) -> u64 {
         self.virtual_processor.virtual_stores.read().state.get().unwrap().daa_score
     }
 
-    fn get_virtual_state_tips(self: Arc<Self>) -> Vec<Hash> {
+    fn get_virtual_state_tips(&self) -> Vec<Hash> {
         self.virtual_processor.virtual_stores.read().state.get().unwrap().parents.clone()
     }
 
     fn get_virtual_utxos(
-        self: Arc<Self>,
+        &self,
         from_outpoint: Option<TransactionOutpoint>,
         chunk_size: usize,
         skip_first: bool,
@@ -647,7 +635,7 @@ impl ConsensusApi for Consensus {
     }
 
     fn get_pruning_point_utxos(
-        self: Arc<Self>,
+        &self,
         expected_pruning_point: Hash,
         from_outpoint: Option<TransactionOutpoint>,
         chunk_size: usize,
@@ -662,20 +650,20 @@ impl ConsensusApi for Consensus {
         Ok(iter.map(|item| item.unwrap()).collect())
     }
 
-    fn modify_coinbase_payload(self: Arc<Self>, payload: Vec<u8>, miner_data: &MinerData) -> CoinbaseResult<Vec<u8>> {
+    fn modify_coinbase_payload(&self, payload: Vec<u8>, miner_data: &MinerData) -> CoinbaseResult<Vec<u8>> {
         self.coinbase_manager.modify_coinbase_payload(payload, miner_data)
     }
 
-    fn validate_pruning_proof(self: Arc<Self>, _proof: &PruningPointProof) -> Result<(), PruningImportError> {
+    fn validate_pruning_proof(&self, _proof: &PruningPointProof) -> Result<(), PruningImportError> {
         unimplemented!()
     }
 
-    fn apply_pruning_proof(self: Arc<Self>, proof: PruningPointProof, trusted_set: &[TrustedBlock]) {
+    fn apply_pruning_proof(&self, proof: PruningPointProof, trusted_set: &[TrustedBlock]) {
         self.pruning_proof_manager.apply_proof(proof, trusted_set)
     }
 
-    fn import_pruning_points(self: Arc<Self>, pruning_points: PruningPointsList) {
-        self.as_ref().import_pruning_points(pruning_points)
+    fn import_pruning_points(&self, pruning_points: PruningPointsList) {
+        self.pruning_proof_manager.import_pruning_points(&pruning_points)
     }
 
     fn append_imported_pruning_point_utxos(&self, utxoset_chunk: &[(TransactionOutpoint, UtxoEntry)], current_multiset: &mut MuHash) {
@@ -692,33 +680,33 @@ impl ConsensusApi for Consensus {
         self.virtual_processor.import_pruning_point_utxo_set(new_pruning_point, imported_utxo_multiset)
     }
 
-    fn header_exists(self: Arc<Self>, hash: Hash) -> bool {
+    fn header_exists(&self, hash: Hash) -> bool {
         match self.statuses_store.read().get(hash).unwrap_option() {
             Some(status) => status.has_block_header(),
             None => false,
         }
     }
 
-    fn is_chain_ancestor_of(self: Arc<Self>, low: Hash, high: Hash) -> ConsensusResult<bool> {
+    fn is_chain_ancestor_of(&self, low: Hash, high: Hash) -> ConsensusResult<bool> {
         self.validate_block_exists(low)?;
         self.validate_block_exists(high)?;
         Ok(self.reachability_service.is_chain_ancestor_of(low, high))
     }
 
     // max_blocks has to be greater than the merge set size limit
-    fn get_hashes_between(self: Arc<Self>, low: Hash, high: Hash, max_blocks: usize) -> ConsensusResult<(Vec<Hash>, Hash)> {
+    fn get_hashes_between(&self, low: Hash, high: Hash, max_blocks: usize) -> ConsensusResult<(Vec<Hash>, Hash)> {
         self.validate_block_exists(low)?;
         self.validate_block_exists(high)?;
 
         Ok(self.sync_manager.get_hashes_between(low, high, Some(max_blocks)))
     }
 
-    fn get_header(self: Arc<Self>, hash: Hash) -> ConsensusResult<Arc<Header>> {
+    fn get_header(&self, hash: Hash) -> ConsensusResult<Arc<Header>> {
         self.validate_block_exists(hash)?;
         Ok(self.headers_store.get_header(hash).unwrap())
     }
 
-    fn get_pruning_point_proof(self: Arc<Self>) -> Arc<PruningPointProof> {
+    fn get_pruning_point_proof(&self) -> Arc<PruningPointProof> {
         self.pruning_proof_manager.get_pruning_point_proof()
     }
 
@@ -765,6 +753,10 @@ impl ConsensusApi for Consensus {
 
     fn get_block_status(&self, hash: Hash) -> Option<BlockStatus> {
         self.statuses_store.read().get(hash).unwrap_option()
+    }
+
+    fn get_missing_block_body_hashes(&self) -> ConsensusResult<Vec<Hash>> {
+        Ok(self.sync_manager.get_missing_block_body_hashes()?)
     }
 }
 

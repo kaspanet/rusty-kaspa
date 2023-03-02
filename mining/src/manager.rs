@@ -5,6 +5,7 @@ use std::sync::Arc;
 use crate::{
     block_template::{builder::BlockTemplateBuilder, errors::BuilderError},
     cache::BlockTemplateCache,
+    consensus_context::ConsensusMiningContext,
     errors::MiningManagerResult,
     mempool::{config::Config, errors::RuleResult, Mempool},
     model::{
@@ -13,7 +14,6 @@ use crate::{
     },
 };
 use consensus_core::{
-    api::DynConsensus,
     block::BlockTemplate,
     coinbase::MinerData,
     errors::block::RuleError,
@@ -22,25 +22,25 @@ use consensus_core::{
 use kaspa_core::error;
 use parking_lot::{Mutex, RwLock};
 
-pub struct MiningManager {
-    block_template_builder: BlockTemplateBuilder,
+pub struct MiningManager<T: ConsensusMiningContext + ?Sized> {
+    block_template_builder: BlockTemplateBuilder<T>,
     block_template_cache: Mutex<BlockTemplateCache>,
-    mempool: RwLock<Mempool>,
+    mempool: RwLock<Mempool<T>>,
 }
 
-impl MiningManager {
+impl<T: ConsensusMiningContext + ?Sized> MiningManager<T> {
     pub fn new(
-        consensus: DynConsensus,
+        consensus: Arc<T>,
         target_time_per_block: u64,
         relay_non_std_transactions: bool,
         max_block_mass: u64,
         cache_lifetime: Option<u64>,
-    ) -> MiningManager {
+    ) -> Self {
         let config = Config::build_default(target_time_per_block, relay_non_std_transactions, max_block_mass);
         Self::with_config(consensus, config, cache_lifetime)
     }
 
-    pub(crate) fn with_config(consensus: DynConsensus, config: Config, cache_lifetime: Option<u64>) -> Self {
+    pub(crate) fn with_config(consensus: Arc<T>, config: Config, cache_lifetime: Option<u64>) -> Self {
         let block_template_builder = BlockTemplateBuilder::new(consensus.clone(), config.maximum_mass_per_block);
         let mempool = RwLock::new(Mempool::new(consensus, config));
         let block_template_cache = Mutex::new(BlockTemplateCache::new(cache_lifetime));
@@ -108,7 +108,7 @@ impl MiningManager {
     }
 
     #[cfg(test)]
-    pub(crate) fn block_template_builder(&self) -> &BlockTemplateBuilder {
+    pub(crate) fn block_template_builder(&self) -> &BlockTemplateBuilder<T> {
         &self.block_template_builder
     }
 

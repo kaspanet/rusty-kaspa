@@ -9,6 +9,7 @@ use consensus_notify::service::NotifyService;
 
 use kaspa_core::{core::Core, signals::Signals, task::runtime::AsyncRuntime};
 use kaspa_index_processor::service::IndexService;
+use mining::manager::MiningManager;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -176,6 +177,10 @@ pub fn main() {
         Arc::new(RpcCoreServer::new(consensus.clone(), notify_service.notifier(), index_service.as_ref().map(|x| x.notifier())));
     let grpc_server = Arc::new(GrpcServer::new(grpc_server_addr, rpc_core_server.service()));
     let p2p_service = Arc::new(P2pService::new(consensus.clone(), args.connect, args.listen));
+
+    // TEMP: temp mining manager initialization just to make sure it complies with consensus
+    let _mining_manager =
+        MiningManager::new(consensus.clone() as DynConsensus, config.target_time_per_block, false, config.max_block_mass, None);
 
     // Create an async runtime and register the top-level async services
     let async_runtime = Arc::new(AsyncRuntime::new());
