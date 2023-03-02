@@ -19,8 +19,8 @@ use p2p_lib::{
     convert::model::trusted::TrustedDataPackage,
     dequeue_with_timeout, make_message,
     pb::{
-        kaspad_message::Payload, RequestHeadersMessage, RequestIbdBlocksMessage, RequestIbdChainBlockLocatorMessage,
-        RequestPruningPointAndItsAnticoneMessage, RequestPruningPointProofMessage, RequestPruningPointUtxoSetMessage,
+        kaspad_message::Payload, RequestHeadersMessage, RequestIbdBlocksMessage, RequestPruningPointAndItsAnticoneMessage,
+        RequestPruningPointProofMessage, RequestPruningPointUtxoSetMessage,
     },
     IncomingRoute, Router,
 };
@@ -30,9 +30,9 @@ use super::{PruningPointUtxosetChunkStream, IBD_BATCH_SIZE};
 
 /// Flow for managing IBD - Initial Block Download
 pub struct IbdFlow {
-    ctx: FlowContext,
-    router: Arc<Router>,
-    incoming_route: IncomingRoute,
+    pub(super) ctx: FlowContext,
+    pub(super) router: Arc<Router>,
+    pub(super) incoming_route: IncomingRoute,
 }
 
 #[async_trait::async_trait]
@@ -56,49 +56,26 @@ impl IbdFlow {
     }
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
-        info!("Started IBD");
-        // None hashes indicate that the full chain is queried.
-        let block_locator = self.get_syncer_chain_block_locator(None, None).await?;
-        if block_locator.is_empty() {
-            info!("Can't IBD from this peer");
-            return Ok(()); // TODO: Consider uncommenting once IBD flow is finalized
-                           // return Err(ProtocolError::Other("Expecting initial syncer chain block locator to contain at least one element"));
-        }
-        let syncer_header_selected_tip = *block_locator.first().expect("verified locator is not empty");
-        self.start_ibd_with_headers_proof(syncer_header_selected_tip).await?;
-        info!("Finished IBD");
+        info!("IBD started");
+
+        let consensus = self.ctx.consensus();
+        let negotiation_output = self.negotiate_missing_syncer_chain_segment(&consensus).await?;
+        self.start_ibd_with_headers_proof(&consensus, negotiation_output.syncer_header_selected_tip).await?;
+
+        info!("IBD finished");
         Ok(())
     }
 
-    async fn get_syncer_chain_block_locator(
+    async fn start_ibd_with_headers_proof(
         &mut self,
-        low_hash: Option<Hash>,
-        high_hash: Option<Hash>,
-    ) -> Result<Vec<Hash>, ProtocolError> {
-        // TODO: use low and high hashes when zooming in
-        self.router
-            .enqueue(make_message!(
-                Payload::RequestIbdChainBlockLocator,
-                RequestIbdChainBlockLocatorMessage { low_hash: low_hash.map(|h| h.into()), high_hash: high_hash.map(|h| h.into()) }
-            ))
-            .await?;
-        let msg = dequeue_with_timeout!(self.incoming_route, Payload::IbdChainBlockLocator)?;
-        if msg.block_locator_hashes.len() > 64 {
-            return Err(ProtocolError::Other(
-                "Got block locator of size > 64 while expecting
- locator to have size which is logarithmic in DAG size (which should never exceed 2^64)",
-            ));
-        }
-        Ok(msg.try_into()?)
-    }
-
-    async fn start_ibd_with_headers_proof(&mut self, syncer_header_selected_tip: Hash) -> Result<(), ProtocolError> {
+        consensus: &DynConsensus,
+        syncer_header_selected_tip: Hash,
+    ) -> Result<(), ProtocolError> {
         info!("Starting IBD with headers proof");
-        let consensus = self.ctx.consensus();
-        let pruning_point = self.sync_and_validate_pruning_proof(&consensus).await?;
-        self.sync_pruning_point_future_headers(&consensus, syncer_header_selected_tip, pruning_point).await?;
-        self.sync_pruning_point_utxoset(&consensus, pruning_point).await?;
-        self.sync_missing_block_bodies(&consensus, syncer_header_selected_tip).await?;
+        let pruning_point = self.sync_and_validate_pruning_proof(consensus).await?;
+        self.sync_pruning_point_future_headers(consensus, syncer_header_selected_tip, pruning_point).await?;
+        self.sync_pruning_point_utxoset(consensus, pruning_point).await?;
+        self.sync_missing_block_bodies(consensus, syncer_header_selected_tip).await?;
         Ok(())
     }
 

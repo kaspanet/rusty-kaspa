@@ -3,6 +3,7 @@ use crate::pb::KaspadMessage;
 use crate::{common::ProtocolError, KaspadMessagePayloadType};
 use kaspa_core::{debug, error, trace, warn};
 use parking_lot::{Mutex, RwLock};
+use std::fmt::Display;
 use std::net::SocketAddr;
 use std::{collections::HashMap, sync::Arc};
 use tokio::select;
@@ -46,6 +47,12 @@ pub struct Router {
 
     /// Used for managing router mutable state
     mutable_state: Mutex<RouterMutableState>,
+}
+
+impl Display for Router {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.net_address)
+    }
 }
 
 impl Router {
