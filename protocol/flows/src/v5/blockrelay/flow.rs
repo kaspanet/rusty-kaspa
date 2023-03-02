@@ -97,10 +97,7 @@ impl HandleRelayInvsFlow {
             let block = self.request_block(inv.hash).await?;
 
             if block.is_header_only() {
-                return Err(ProtocolError::OtherOwned(format!(
-                    "sent block header of {} where expected block with body",
-                    block.hash()
-                )));
+                return Err(ProtocolError::OtherOwned(format!("sent header of {} where expected block with body", block.hash())));
             }
 
             // TODO: check for config conditions
@@ -183,6 +180,6 @@ impl HandleRelayInvsFlow {
         let msg = dequeue_with_timeout!(self.msg_route, Payload::BlockLocator)?;
         let locator_hashes: Vec<Hash> = msg.try_into()?;
         let consensus = self.ctx.consensus(); // TODO: should we pass the consensus instance through the call chain?
-        Ok(locator_hashes.into_iter().any(|p| consensus.get_block_status(p).has_value_and(|&s| s != BlockStatus::StatusHeaderOnly)))
+        Ok(locator_hashes.into_iter().any(|p| consensus.get_block_status(p).has_value_and(|s| !s.is_header_only())))
     }
 }

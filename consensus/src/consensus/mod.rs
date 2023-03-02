@@ -150,7 +150,14 @@ pub struct Consensus {
     pub(super) coinbase_manager: CoinbaseManager,
     pub(super) pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
     pub(super) pruning_proof_manager: PruningProofManager,
-    sync_manager: SyncManager<DbReachabilityStore, DbGhostdagStore, DbSelectedChainStore, DbHeadersSelectedTipStore, DbPruningStore>,
+    sync_manager: SyncManager<
+        DbReachabilityStore,
+        DbGhostdagStore,
+        DbSelectedChainStore,
+        DbHeadersSelectedTipStore,
+        DbPruningStore,
+        DbStatusesStore,
+    >,
 
     notification_root: Arc<ConsensusNotificationRoot>,
 
@@ -461,6 +468,7 @@ impl Consensus {
             selected_chain_store,
             headers_selected_tip_store.clone(),
             pruning_store.clone(),
+            statuses_store.clone(),
         );
 
         // Ensure that reachability store is initialized
@@ -698,7 +706,7 @@ impl ConsensusApi for Consensus {
         self.validate_block_exists(low)?;
         self.validate_block_exists(high)?;
 
-        Ok(self.sync_manager.get_hashes_between(low, high, Some(max_blocks)))
+        Ok(self.sync_manager.antipast_hashes_between(low, high, Some(max_blocks)))
     }
 
     fn get_header(&self, hash: Hash) -> ConsensusResult<Arc<Header>> {
@@ -755,8 +763,9 @@ impl ConsensusApi for Consensus {
         self.statuses_store.read().get(hash).unwrap_option()
     }
 
-    fn get_missing_block_body_hashes(&self) -> ConsensusResult<Vec<Hash>> {
-        Ok(self.sync_manager.get_missing_block_body_hashes()?)
+    fn get_missing_block_body_hashes(&self, high: Hash) -> ConsensusResult<Vec<Hash>> {
+        self.validate_block_exists(high)?;
+        Ok(self.sync_manager.get_missing_block_body_hashes(high)?)
     }
 }
 

@@ -3,6 +3,7 @@ use std::{cmp::max, iter::once, sync::Arc};
 use consensus_core::errors::sync::{SyncManagerError, SyncManagerResult};
 use database::prelude::StoreResultExtensions;
 use hashes::Hash;
+use itertools::Itertools;
 use math::uint::malachite_base::num::arithmetic::traits::CeilingLogBase2;
 use parking_lot::RwLock;
 
@@ -10,7 +11,7 @@ use crate::model::{
     services::reachability::{MTReachabilityService, ReachabilityService},
     stores::{
         ghostdag::GhostdagStoreReader, headers_selected_tip::HeadersSelectedTipStoreReader, pruning::PruningStoreReader,
-        reachability::ReachabilityStoreReader, selected_chain::SelectedChainStoreReader,
+        reachability::ReachabilityStoreReader, selected_chain::SelectedChainStoreReader, statuses::StatusesStoreReader,
     },
 };
 
@@ -21,6 +22,7 @@ pub struct SyncManager<
     V: SelectedChainStoreReader,
     W: HeadersSelectedTipStoreReader,
     X: PruningStoreReader,
+    Y: StatusesStoreReader,
 > {
     mergeset_size_limit: usize,
     reachability_service: MTReachabilityService<T>,
@@ -28,6 +30,7 @@ pub struct SyncManager<
     selected_chain_store: Arc<RwLock<V>>,
     header_selected_tip_store: Arc<RwLock<W>>,
     pruning_store: Arc<RwLock<X>>,
+    statuses_store: Arc<RwLock<Y>>,
 }
 
 impl<
@@ -36,7 +39,8 @@ impl<
         V: SelectedChainStoreReader,
         W: HeadersSelectedTipStoreReader,
         X: PruningStoreReader,
-    > SyncManager<T, U, V, W, X>
+        Y: StatusesStoreReader,
+    > SyncManager<T, U, V, W, X, Y>
 {
     pub fn new(
         mergeset_size_limit: usize,
@@ -45,6 +49,7 @@ impl<
         selected_chain_store: Arc<RwLock<V>>,
         header_selected_tip_store: Arc<RwLock<W>>,
         pruning_store: Arc<RwLock<X>>,
+        statuses_store: Arc<RwLock<Y>>,
     ) -> Self {
         Self {
             mergeset_size_limit,
@@ -53,10 +58,14 @@ impl<
             selected_chain_store,
             header_selected_tip_store,
             pruning_store,
+            statuses_store,
         }
     }
 
-    pub fn get_hashes_between(&self, low: Hash, high: Hash, max_blocks: Option<usize>) -> (Vec<Hash>, Hash) {
+    /// Returns the hashes of the blocks between low's antipast and high's antipast, or up to `max_blocks`, if provided.
+    /// The result excludes low and includes high. If low == high, returns nothing. If max_blocks is some then it MUST be >= MergeSetSizeLimit + 1
+    /// because it returns blocks with MergeSet granularity, so if MergeSet > max_blocks, the function will return nothing which is undesired behavior.
+    pub fn antipast_hashes_between(&self, low: Hash, high: Hash, max_blocks: Option<usize>) -> (Vec<Hash>, Hash) {
         assert!(match max_blocks {
             Some(max_blocks) => max_blocks >= self.mergeset_size_limit,
             None => true,
@@ -69,7 +78,7 @@ impl<
         // If low is not in the chain of high - forward_chain_iterator will fail.
         // Therefore, we traverse down low's chain until we reach a block that is in
         // high's chain.
-        // We keep originalLow to filter out blocks in its past later down the road
+        // We keep original_low to filter out blocks in its past later down the road
         let original_low = low;
         let low = self.find_higher_common_chain_block(low, high);
         let mut highest = None;
@@ -93,7 +102,7 @@ impl<
             );
         }
 
-        // The process above doesn't return highHash, so include it explicitly, unless highHash == lowHash
+        // The process above doesn't return highest, so include it explicitly, unless highest == low
         let highest = highest.expect("`blocks` should have at least one block");
         if low != highest {
             blocks.push(highest);
@@ -151,7 +160,41 @@ impl<
         Ok(locator)
     }
 
-    pub fn get_missing_block_body_hashes(&self) -> SyncManagerResult<Vec<Hash>> {
-        todo!()
+    pub fn get_missing_block_body_hashes(&self, high: Hash) -> SyncManagerResult<Vec<Hash>> {
+        let pp = self.pruning_store.read().pruning_point().unwrap();
+        if !self.reachability_service.is_chain_ancestor_of(pp, high) {
+            return Err(SyncManagerError::PruningPointNotInChain(pp, high));
+        }
+
+        let mut lowest_missing_body = None;
+        let mut forward_iterator = self.reachability_service.forward_chain_iterator(pp, high, true);
+        let mut backward_iterator = self.reachability_service.backward_chain_iterator(high, pp, true).tuple_windows();
+        loop {
+            // We loop from both directions in parallel in order use the shorter path
+            let Some(current) = forward_iterator.next() else { break; };
+            let status = self.statuses_store.read().get(current).unwrap();
+            if status.is_header_only() {
+                // Going up, the first which is header-only is our target
+                lowest_missing_body = Some(current);
+                break;
+            }
+
+            let Some((current, parent)) = backward_iterator.next() else { break; };
+            let status = self.statuses_store.read().get(parent).unwrap();
+            if status.has_block_body() {
+                // Since this iterator is going down, current must be the last missing body
+                lowest_missing_body = Some(current);
+                break;
+            }
+        }
+
+        let Some(lowest_missing_body) = lowest_missing_body else {
+            return Ok(vec![]);
+        };
+
+        let (mut hashes_between, _) = self.antipast_hashes_between(lowest_missing_body, high, None);
+        let statuses = self.statuses_store.read();
+        hashes_between.retain(|&h| statuses.get(h).unwrap().is_header_only());
+        Ok(hashes_between)
     }
 }

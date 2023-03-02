@@ -19,14 +19,14 @@ use p2p_lib::{
     convert::model::trusted::TrustedDataPackage,
     dequeue_with_timeout, make_message,
     pb::{
-        kaspad_message::Payload, RequestHeadersMessage, RequestIbdChainBlockLocatorMessage, RequestPruningPointAndItsAnticoneMessage,
-        RequestPruningPointProofMessage, RequestPruningPointUtxoSetMessage,
+        kaspad_message::Payload, RequestHeadersMessage, RequestIbdBlocksMessage, RequestIbdChainBlockLocatorMessage,
+        RequestPruningPointAndItsAnticoneMessage, RequestPruningPointProofMessage, RequestPruningPointUtxoSetMessage,
     },
     IncomingRoute, Router,
 };
 use std::{sync::Arc, time::Duration};
 
-use super::PruningPointUtxosetChunkStream;
+use super::{PruningPointUtxosetChunkStream, IBD_BATCH_SIZE};
 
 /// Flow for managing IBD - Initial Block Download
 pub struct IbdFlow {
@@ -98,6 +98,7 @@ impl IbdFlow {
         let pruning_point = self.sync_and_validate_pruning_proof(&consensus).await?;
         self.sync_pruning_point_future_headers(&consensus, syncer_header_selected_tip, pruning_point).await?;
         self.sync_pruning_point_utxoset(&consensus, pruning_point).await?;
+        self.sync_missing_block_bodies(&consensus, syncer_header_selected_tip).await?;
         Ok(())
     }
 
@@ -219,6 +220,42 @@ impl IbdFlow {
             consensus.append_imported_pruning_point_utxos(&chunk, &mut multiset);
         }
         consensus.import_pruning_point_utxo_set(pruning_point, &mut multiset)?;
+        Ok(())
+    }
+
+    async fn sync_missing_block_bodies(&mut self, consensus: &DynConsensus, high: Hash) -> Result<(), ProtocolError> {
+        let hashes = consensus.get_missing_block_body_hashes(high)?;
+        if hashes.is_empty() {
+            return Ok(());
+        }
+        // TODO: progress reporter using DAA score from below headers
+        let _low_header = consensus.get_header(*hashes.first().unwrap())?;
+        let _high_header = consensus.get_header(*hashes.last().unwrap())?;
+        for chunk in hashes.chunks(IBD_BATCH_SIZE) {
+            self.router
+                .enqueue(make_message!(
+                    Payload::RequestIbdBlocks,
+                    RequestIbdBlocksMessage { hashes: chunk.iter().map(|h| h.into()).collect() }
+                ))
+                .await?;
+            for &expected_hash in chunk {
+                let msg = dequeue_with_timeout!(self.incoming_route, Payload::IbdBlock)?;
+                let block: Block = msg.try_into()?;
+                if block.hash() != expected_hash {
+                    return Err(ProtocolError::OtherOwned(format!("expected block {} but got {}", expected_hash, block.hash())));
+                }
+                if block.is_header_only() {
+                    return Err(ProtocolError::OtherOwned(format!("sent header of {} where expected block with body", block.hash())));
+                }
+                // TODO: decide if we resolve virtual separately on long IBD
+                consensus.validate_and_insert_block(block, true).await?;
+
+                // TODO: raise new block event or make sure consensus does
+            }
+        }
+
+        // TODO: raise new block template event
+
         Ok(())
     }
 }

@@ -93,7 +93,7 @@ impl<T: ConsensusBlockProcessor + ?Sized> OrphanBlocksPool<T> {
                 }
             } else {
                 let status = self.consensus.get_block_status(current);
-                if status.is_none_or(|&s| s == BlockStatus::StatusHeaderOnly) {
+                if status.is_none_or(|s| s.is_header_only()) {
                     // Block is not in the orphan pool nor does its body exist consensus-wise, so it is a root
                     roots.push(current);
                 }
@@ -114,7 +114,7 @@ impl<T: ConsensusBlockProcessor + ?Sized> OrphanBlocksPool<T> {
                     .direct_parents()
                     .iter()
                     .copied()
-                    .all(|p| self.consensus.get_block_status(p).has_value_and(|&s| s != BlockStatus::StatusHeaderOnly));
+                    .all(|p| self.consensus.get_block_status(p).has_value_and(|s| !s.is_header_only()));
                 if processable {
                     let orphan_block = entry.remove();
                     match self.consensus.validate_and_insert_block(orphan_block.clone()).await {

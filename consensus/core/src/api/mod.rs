@@ -86,7 +86,7 @@ pub trait ConsensusApi: Send + Sync {
 
     fn get_block_status(&self, hash: Hash) -> Option<BlockStatus>;
 
-    fn get_missing_block_body_hashes(&self) -> ConsensusResult<Vec<Hash>>;
+    fn get_missing_block_body_hashes(&self, high: Hash) -> ConsensusResult<Vec<Hash>>;
 }
 
 pub type DynConsensus = Arc<dyn ConsensusApi>;
