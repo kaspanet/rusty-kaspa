@@ -54,20 +54,43 @@ impl Flow for IbdFlow {
     }
 }
 
+pub enum IbdType {
+    #[allow(dead_code)]
+    None,
+    Sync(Hash),
+    DownloadHeadersProof,
+}
+
 impl IbdFlow {
     pub fn new(ctx: FlowContext, router: Arc<Router>, incoming_route: IncomingRoute, relay_receiver: Receiver<Block>) -> Self {
         Self { ctx, router, incoming_route, relay_receiver }
     }
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
-        while let Some(_relay_block) = self.relay_receiver.recv().await {
+        while let Some(relay_block) = self.relay_receiver.recv().await {
             if let Some(_guard) = self.ctx.try_set_ibd_running() {
                 info!("IBD started with peer {}", self.router);
 
                 let consensus = self.ctx.consensus();
                 let negotiation_output = self.negotiate_missing_syncer_chain_segment(&consensus).await?;
-                self.start_ibd_with_headers_proof(&consensus, negotiation_output.syncer_header_selected_tip).await?;
+                match self.decide_ibd_type(&consensus, &relay_block, negotiation_output.highest_known_syncer_chain_hash)? {
+                    IbdType::None => continue,
+                    IbdType::Sync(highest_known_syncer_chain_hash) => {
+                        // TODO: check config conditions
+                        self.sync_pruning_point_future_headers(
+                            &consensus,
+                            negotiation_output.syncer_header_selected_tip,
+                            highest_known_syncer_chain_hash,
+                        )
+                        .await?;
+                    }
+                    IbdType::DownloadHeadersProof => {
+                        self.perform_ibd_with_headers_proof(&consensus, negotiation_output.syncer_header_selected_tip).await?;
+                    }
+                }
+                self.sync_missing_block_bodies(&consensus, negotiation_output.syncer_header_selected_tip).await?;
 
+                // TODO: make sure a message is printed also on errors
                 info!("IBD with peer {} finished", self.router);
             }
         }
@@ -75,7 +98,31 @@ impl IbdFlow {
         Ok(())
     }
 
-    async fn start_ibd_with_headers_proof(
+    fn decide_ibd_type(
+        &self,
+        consensus: &DynConsensus,
+        _relay_block: &Block,
+        highest_known_syncer_chain_hash: Option<Hash>,
+    ) -> Result<IbdType, ProtocolError> {
+        let Some(pp) = consensus.pruning_point() else {
+            // TODO: fix when applying staging consensus
+            return Ok(IbdType::DownloadHeadersProof);
+        };
+
+        Ok(if let Some(highest_known_syncer_chain_hash) = highest_known_syncer_chain_hash {
+            if consensus.is_chain_ancestor_of(pp, highest_known_syncer_chain_hash)? {
+                IbdType::Sync(highest_known_syncer_chain_hash)
+            } else {
+                IbdType::DownloadHeadersProof
+            }
+        } else {
+            IbdType::DownloadHeadersProof
+        })
+
+        // TODO: full imp with blue work check
+    }
+
+    async fn perform_ibd_with_headers_proof(
         &mut self,
         consensus: &DynConsensus,
         syncer_header_selected_tip: Hash,
@@ -84,7 +131,6 @@ impl IbdFlow {
         let pruning_point = self.sync_and_validate_pruning_proof(consensus).await?;
         self.sync_pruning_point_future_headers(consensus, syncer_header_selected_tip, pruning_point).await?;
         self.sync_pruning_point_utxoset(consensus, pruning_point).await?;
-        self.sync_missing_block_bodies(consensus, syncer_header_selected_tip).await?;
         Ok(())
     }
 

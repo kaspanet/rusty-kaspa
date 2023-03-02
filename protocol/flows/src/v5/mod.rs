@@ -94,14 +94,14 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
     // NOTE: as flows are implemented, the below types should be all commented out
     let mut unimplemented_messages_route = router.subscribe(vec![
         KaspadMessagePayloadType::Addresses,
-        KaspadMessagePayloadType::Block,
+        // KaspadMessagePayloadType::Block,
         KaspadMessagePayloadType::Transaction,
-        KaspadMessagePayloadType::BlockLocator,
+        // KaspadMessagePayloadType::BlockLocator,
         KaspadMessagePayloadType::RequestAddresses,
         KaspadMessagePayloadType::RequestRelayBlocks,
         KaspadMessagePayloadType::RequestTransactions,
         // KaspadMessagePayloadType::IbdBlock,
-        KaspadMessagePayloadType::InvRelayBlock,
+        // KaspadMessagePayloadType::InvRelayBlock,
         KaspadMessagePayloadType::InvTransactions,
         // KaspadMessagePayloadType::Ping,
         // KaspadMessagePayloadType::Pong,

@@ -1,7 +1,7 @@
 use crate::{flow_context::FlowContext, flow_trait::Flow, flowcontext::orphans::ORPHAN_RESOLUTION_RANGE};
 use consensus_core::{block::Block, blockstatus::BlockStatus, errors::block::RuleError};
 use hashes::Hash;
-use kaspa_core::{debug, time::unix_now};
+use kaspa_core::{debug, info, time::unix_now};
 use kaspa_utils::option::OptionExtensions;
 use p2p_lib::{
     common::ProtocolError,
@@ -133,6 +133,8 @@ impl HandleRelayInvsFlow {
                 }
                 Err(rule_error) => return Err(rule_error.into()),
             }
+
+            info!("Accepted block {} via relay", inv.hash);
 
             // TODO: broadcast all new blocks in past(virtual)
             // TEMP:

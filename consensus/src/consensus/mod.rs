@@ -772,6 +772,10 @@ impl ConsensusApi for Consensus {
         self.validate_block_exists(high)?;
         Ok(self.sync_manager.get_missing_block_body_hashes(high)?)
     }
+
+    fn pruning_point(&self) -> Option<Hash> {
+        self.pruning_store.read().pruning_point().unwrap_option()
+    }
 }
 
 impl Service for Consensus {
