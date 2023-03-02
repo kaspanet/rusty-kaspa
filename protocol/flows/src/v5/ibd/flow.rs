@@ -25,6 +25,7 @@ use p2p_lib::{
     IncomingRoute, Router,
 };
 use std::{sync::Arc, time::Duration};
+use tokio::sync::mpsc::Receiver;
 
 use super::{PruningPointUtxosetChunkStream, IBD_BATCH_SIZE};
 
@@ -33,6 +34,9 @@ pub struct IbdFlow {
     pub(super) ctx: FlowContext,
     pub(super) router: Arc<Router>,
     pub(super) incoming_route: IncomingRoute,
+
+    // Receives relay blocks from relay flow which are out of orphan resolution range and hence trigger IBD
+    relay_receiver: Receiver<Block>,
 }
 
 #[async_trait::async_trait]
@@ -51,18 +55,21 @@ impl Flow for IbdFlow {
 }
 
 impl IbdFlow {
-    pub fn new(ctx: FlowContext, router: Arc<Router>, incoming_route: IncomingRoute) -> Self {
-        Self { ctx, router, incoming_route }
+    pub fn new(ctx: FlowContext, router: Arc<Router>, incoming_route: IncomingRoute, relay_receiver: Receiver<Block>) -> Self {
+        Self { ctx, router, incoming_route, relay_receiver }
     }
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
-        info!("IBD started");
+        while let Some(relay_block) = self.relay_receiver.recv().await {
+            info!("IBD started");
 
-        let consensus = self.ctx.consensus();
-        let negotiation_output = self.negotiate_missing_syncer_chain_segment(&consensus).await?;
-        self.start_ibd_with_headers_proof(&consensus, negotiation_output.syncer_header_selected_tip).await?;
+            let consensus = self.ctx.consensus();
+            let negotiation_output = self.negotiate_missing_syncer_chain_segment(&consensus).await?;
+            self.start_ibd_with_headers_proof(&consensus, negotiation_output.syncer_header_selected_tip).await?;
 
-        info!("IBD finished");
+            info!("IBD finished");
+        }
+
         Ok(())
     }
 

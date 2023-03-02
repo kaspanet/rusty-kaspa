@@ -10,6 +10,7 @@ use p2p_lib::{
     IncomingRoute, Router,
 };
 use std::{collections::VecDeque, sync::Arc};
+use tokio::sync::mpsc::{error::TrySendError, Sender};
 
 pub struct RelayInvMessage {
     hash: Hash,
@@ -49,6 +50,8 @@ pub struct HandleRelayInvsFlow {
     invs_route: TwoWayIncomingRoute,
     /// A route for other messages such as Block and BlockLocator
     msg_route: IncomingRoute,
+    /// A channel sender for sending blocks to be handled by the IBD flow (of this peer)
+    ibd_sender: Sender<Block>,
 }
 
 #[async_trait::async_trait]
@@ -67,8 +70,14 @@ impl Flow for HandleRelayInvsFlow {
 }
 
 impl HandleRelayInvsFlow {
-    pub fn new(ctx: FlowContext, router: Arc<Router>, invs_route: IncomingRoute, msg_route: IncomingRoute) -> Self {
-        Self { ctx, router, invs_route: TwoWayIncomingRoute::new(invs_route), msg_route }
+    pub fn new(
+        ctx: FlowContext,
+        router: Arc<Router>,
+        invs_route: IncomingRoute,
+        msg_route: IncomingRoute,
+        ibd_sender: Sender<Block>,
+    ) -> Self {
+        Self { ctx, router, invs_route: TwoWayIncomingRoute::new(invs_route), msg_route, ibd_sender }
     }
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
@@ -161,7 +170,13 @@ impl HandleRelayInvsFlow {
             self.ctx.add_orphan(block).await;
             self.enqueue_orphan_roots(hash).await;
         } else {
-            // TODO: start IBD
+            // Send the block to IBD flow via the dedicated channel.
+            // Note that this is a non-blocking send and we don't care about being rejected if channel is full,
+            // since if IBD is already running, there is no need to trigger it
+            match self.ibd_sender.try_send(block) {
+                Ok(_) | Err(TrySendError::Full(_)) => {}
+                Err(TrySendError::Closed(_)) => return Err(ProtocolError::ConnectionClosed), // This indicates that IBD flow has exited
+            }
         }
         Ok(())
     }
