@@ -1,4 +1,4 @@
-use std::{cmp::max, iter::once, sync::Arc};
+use std::{cmp::max, ops::Deref, sync::Arc};
 
 use consensus_core::errors::sync::{SyncManagerError, SyncManagerResult};
 use database::prelude::StoreResultExtensions;
@@ -165,35 +165,36 @@ impl<
             return Err(SyncManagerError::PruningPointNotInChain(pp, high));
         }
 
-        let mut lowest_missing_body = None;
-        let mut forward_iterator = self.reachability_service.forward_chain_iterator(pp, high, true);
-        let mut backward_iterator = self.reachability_service.backward_chain_iterator(high, pp, true).tuple_windows();
+        let mut highest_with_body = None;
+        let mut forward_iterator = self.reachability_service.forward_chain_iterator(pp, high, true).tuple_windows();
+        let mut backward_iterator = self.reachability_service.backward_chain_iterator(high, pp, true);
         loop {
             // We loop from both directions in parallel in order use the shorter path
-            let Some(current) = forward_iterator.next() else { break; };
+            let Some((parent, current)) = forward_iterator.next() else { break; };
             let status = self.statuses_store.read().get(current).unwrap();
             if status.is_header_only() {
-                // Going up, the first which is header-only is our target
-                lowest_missing_body = Some(current);
+                // Going up, the first parent which has a header-only child is our target
+                highest_with_body = Some(parent);
                 break;
             }
 
-            let Some((current, parent)) = backward_iterator.next() else { break; };
-            let status = self.statuses_store.read().get(parent).unwrap();
+            let Some(current) = backward_iterator.next() else { break; };
+            let status = self.statuses_store.read().get(current).unwrap();
             if status.has_block_body() {
-                // Since this iterator is going down, current must be the last missing body
-                lowest_missing_body = Some(current);
+                // Since this iterator is going down, current must be the highest with body
+                highest_with_body = Some(current);
                 break;
             }
         }
 
-        let Some(lowest_missing_body) = lowest_missing_body else {
+        if highest_with_body.is_none() {
             return Ok(vec![]);
         };
 
-        let (mut hashes_between, _) = self.antipast_hashes_between(lowest_missing_body, high, None);
+        let (mut hashes_between, _) = self.antipast_hashes_between(highest_with_body.unwrap(), high, None);
         let statuses = self.statuses_store.read();
         hashes_between.retain(|&h| statuses.get(h).unwrap().is_header_only());
+
         Ok(hashes_between)
     }
 }
