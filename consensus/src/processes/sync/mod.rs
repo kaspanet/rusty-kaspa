@@ -96,9 +96,8 @@ impl<
 
             highest = Some(current);
             blocks.extend(
-                once(gd.selected_parent)
-                    .chain(gd.ascending_mergeset_without_selected_parent(&*self.ghostdag_store).map(|sb| sb.hash))
-                    .filter(|hash| self.reachability_service.is_dag_ancestor_of(*hash, original_low)),
+                gd.consensus_ordered_mergeset(self.ghostdag_store.deref())
+                    .filter(|hash| !self.reachability_service.is_dag_ancestor_of(*hash, original_low)),
             );
         }
 
