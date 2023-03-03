@@ -82,9 +82,9 @@ impl IbdFlow {
             // Zoom in
             locator_hashes = self
                 .get_syncer_chain_block_locator(
-                    lowest_unknown_syncer_chain_hash, // Note: both passed hashes are some
                     current_highest_known_syncer_chain_hash,
-                    Duration::from_secs(10), // We use a short timeout here to prevent a long spam negotiation
+                    lowest_unknown_syncer_chain_hash, // Note: both passed hashes are some
+                    Duration::from_secs(10),          // We use a short timeout here to prevent a long spam negotiation
                 )
                 .await?;
             if !locator_hashes.is_empty() {
@@ -94,6 +94,15 @@ impl IbdFlow {
                     return Err(ProtocolError::Other("Expecting the high and low hashes to match the locator bounds"));
                 }
                 negotiation_zoom_counts += 1;
+                debug!(
+                    "IBD chain negotiation with peer {} zoomed in ({}) and received {} hashes ({}, {})",
+                    self.router,
+                    negotiation_zoom_counts,
+                    locator_hashes.len(),
+                    locator_hashes[0],
+                    locator_hashes.last().unwrap()
+                );
+
                 if locator_hashes.len() == 2 {
                     // We found our search target
                     highest_known_syncer_chain_hash = current_highest_known_syncer_chain_hash;
