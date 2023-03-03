@@ -80,7 +80,7 @@ impl<
         // high's chain.
         // We keep original_low to filter out blocks in its past later down the road
         let original_low = low;
-        let low = self.find_higher_common_chain_block(low, high);
+        let low = self.find_highest_common_chain_block(low, high);
         let mut highest = None;
         let mut blocks = Vec::with_capacity(match max_blocks {
             Some(max_blocks) => max(max_blocks, (high_bs - low_bs) as usize),
@@ -110,7 +110,7 @@ impl<
         (blocks, highest)
     }
 
-    fn find_higher_common_chain_block(&self, low: Hash, high: Hash) -> Hash {
+    fn find_highest_common_chain_block(&self, low: Hash, high: Hash) -> Hash {
         self.reachability_service
             .default_backward_chain_iterator(low)
             .find(|candidate| self.reachability_service.is_chain_ancestor_of(*candidate, high))
@@ -187,7 +187,7 @@ impl<
             }
         }
 
-        if highest_with_body.is_none() {
+        if highest_with_body.is_none() || highest_with_body.unwrap() == high {
             return Ok(vec![]);
         };
 

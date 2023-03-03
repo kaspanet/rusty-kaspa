@@ -19,15 +19,15 @@ use p2p_lib::{
     convert::model::trusted::TrustedDataPackage,
     dequeue_with_timeout, make_message,
     pb::{
-        kaspad_message::Payload, RequestHeadersMessage, RequestIbdBlocksMessage, RequestPruningPointAndItsAnticoneMessage,
-        RequestPruningPointProofMessage, RequestPruningPointUtxoSetMessage,
+        kaspad_message::Payload, RequestAnticoneMessage, RequestHeadersMessage, RequestIbdBlocksMessage,
+        RequestPruningPointAndItsAnticoneMessage, RequestPruningPointProofMessage, RequestPruningPointUtxoSetMessage,
     },
     IncomingRoute, Router,
 };
 use std::{sync::Arc, time::Duration};
 use tokio::sync::mpsc::Receiver;
 
-use super::{PruningPointUtxosetChunkStream, IBD_BATCH_SIZE};
+use super::{HeadersChunk, PruningPointUtxosetChunkStream, IBD_BATCH_SIZE};
 
 /// Flow for managing IBD - Initial Block Download
 pub struct IbdFlow {
@@ -81,14 +81,26 @@ impl IbdFlow {
                             &consensus,
                             negotiation_output.syncer_header_selected_tip,
                             highest_known_syncer_chain_hash,
+                            relay_block.hash(),
                         )
                         .await?;
                     }
                     IbdType::DownloadHeadersProof => {
-                        self.perform_ibd_with_headers_proof(&consensus, negotiation_output.syncer_header_selected_tip).await?;
+                        self.perform_ibd_with_headers_proof(
+                            &consensus,
+                            negotiation_output.syncer_header_selected_tip,
+                            relay_block.hash(),
+                        )
+                        .await?;
                     }
                 }
+
+                // Sync missing bodies in the past of syncer selected tip
                 self.sync_missing_block_bodies(&consensus, negotiation_output.syncer_header_selected_tip).await?;
+
+                // Relay block might be in the anticone of syncer selected tip, thus
+                // check his chain for missing bodies as well.
+                self.sync_missing_block_bodies(&consensus, relay_block.hash()).await?;
 
                 // TODO: make sure a message is printed also on errors
                 info!("IBD with peer {} finished", self.router);
@@ -126,10 +138,11 @@ impl IbdFlow {
         &mut self,
         consensus: &DynConsensus,
         syncer_header_selected_tip: Hash,
+        relay_block_hash: Hash,
     ) -> Result<(), ProtocolError> {
         info!("Starting IBD with headers proof");
         let pruning_point = self.sync_and_validate_pruning_proof(consensus).await?;
-        self.sync_pruning_point_future_headers(consensus, syncer_header_selected_tip, pruning_point).await?;
+        self.sync_pruning_point_future_headers(consensus, syncer_header_selected_tip, pruning_point, relay_block_hash).await?;
         self.sync_pruning_point_utxoset(consensus, pruning_point).await?;
         Ok(())
     }
@@ -207,6 +220,7 @@ impl IbdFlow {
         consensus: &DynConsensus,
         syncer_header_selected_tip: Hash,
         highest_known_syncer_chain_hash: Hash,
+        relay_block_hash: Hash,
     ) -> Result<(), ProtocolError> {
         // TODO: sync missing relay block past \cap anticone(syncer tip)
 
@@ -222,21 +236,65 @@ impl IbdFlow {
         let mut chunk_stream = HeadersChunkStream::new(&self.router, &mut self.incoming_route);
 
         let Some(chunk) = chunk_stream.next().await? else { return Ok(()); };
-        let mut prev_joins: Vec<BlockValidationFuture> =
+        let mut prev_jobs: Vec<BlockValidationFuture> =
             chunk.into_iter().map(|h| consensus.clone().validate_and_insert_block(Block::from_header_arc(h), false)).collect();
 
         // TODO: logs
         while let Some(chunk) = chunk_stream.next().await? {
-            let current_joins =
+            let current_jobs =
                 chunk.into_iter().map(|h| consensus.clone().validate_and_insert_block(Block::from_header_arc(h), false)).collect();
             // Join the previous chunk so that we always concurrently process a chunk and receive another
-            join_all(prev_joins).await.into_iter().try_for_each(|x| x.map(drop))?;
-            prev_joins = current_joins;
+            join_all(prev_jobs).await.into_iter().try_for_each(|x| x.map(drop))?;
+            prev_jobs = current_jobs;
         }
 
-        join_all(prev_joins).await.into_iter().try_for_each(|x| x.map(drop))?;
+        join_all(prev_jobs).await.into_iter().try_for_each(|x| x.map(drop))?;
+
+        self.sync_missing_relay_past_headers(consensus, syncer_header_selected_tip, relay_block_hash).await?;
 
         Ok(())
+    }
+
+    async fn sync_missing_relay_past_headers(
+        &mut self,
+        consensus: &DynConsensus,
+        syncer_header_selected_tip: Hash,
+        relay_block_hash: Hash,
+    ) -> Result<(), ProtocolError> {
+        // Finished downloading syncer selected tip blocks,
+        // check if we already have the triggering relay block
+        if consensus.get_block_status(relay_block_hash).is_some() {
+            return Ok(());
+        }
+
+        // Send a special header request for the selected tip anticone. This is expected to
+        // be a small set, as it is bounded to the size of virtual's mergeset.
+        self.router
+            .enqueue(make_message!(
+                Payload::RequestAnticone,
+                RequestAnticoneMessage {
+                    block_hash: Some(syncer_header_selected_tip.into()),
+                    context_hash: Some(relay_block_hash.into())
+                }
+            ))
+            .await?;
+
+        let msg = dequeue_with_timeout!(self.incoming_route, Payload::BlockHeaders)?;
+        let chunk: HeadersChunk = msg.try_into()?;
+        let jobs: Vec<BlockValidationFuture> =
+            chunk.into_iter().map(|h| consensus.validate_and_insert_block(Block::from_header_arc(h), false)).collect();
+        join_all(jobs).await.into_iter().try_for_each(|x| x.map(drop))?;
+        dequeue_with_timeout!(self.incoming_route, Payload::DoneHeaders)?;
+
+        if consensus.get_block_status(relay_block_hash).is_none() {
+            // If the relay block has still not been received, the peer is misbehaving
+            Err(ProtocolError::OtherOwned(format!(
+                "did not receive relay block {} from peer {} during block download",
+                relay_block_hash, self.router
+            )))
+        } else {
+            Ok(())
+        }
     }
 
     async fn sync_pruning_point_utxoset(&mut self, consensus: &DynConsensus, pruning_point: Hash) -> Result<(), ProtocolError> {
