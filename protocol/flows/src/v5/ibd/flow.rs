@@ -256,6 +256,7 @@ impl IbdFlow {
     }
 
     async fn sync_missing_block_bodies(&mut self, consensus: &DynConsensus, high: Hash) -> Result<(), ProtocolError> {
+        // TODO: query consensus in batches
         let hashes = consensus.get_missing_block_body_hashes(high)?;
         if hashes.is_empty() {
             return Ok(());
@@ -263,36 +264,54 @@ impl IbdFlow {
         // TODO: progress reporter using DAA score from below headers
         let _low_header = consensus.get_header(*hashes.first().unwrap())?;
         let _high_header = consensus.get_header(*hashes.last().unwrap())?;
-        for (i, chunk) in hashes.chunks(IBD_BATCH_SIZE).enumerate() {
-            self.router
-                .enqueue(make_message!(
-                    Payload::RequestIbdBlocks,
-                    RequestIbdBlocksMessage { hashes: chunk.iter().map(|h| h.into()).collect() }
-                ))
-                .await?;
-            for &expected_hash in chunk {
-                let msg = dequeue_with_timeout!(self.incoming_route, Payload::IbdBlock)?;
-                let block: Block = msg.try_into()?;
-                if block.hash() != expected_hash {
-                    return Err(ProtocolError::OtherOwned(format!("expected block {} but got {}", expected_hash, block.hash())));
-                }
-                if block.is_header_only() {
-                    return Err(ProtocolError::OtherOwned(format!("sent header of {} where expected block with body", block.hash())));
-                }
-                // TODO: decide if we resolve virtual separately on long IBD
-                // TODO: collect futures and alternate bunches
-                consensus.validate_and_insert_block(block, true).await?;
 
-                // TODO: raise new block event or make sure consensus does
-            }
+        let mut iter = hashes.chunks(IBD_BATCH_SIZE);
+        let mut prev_jobs = self.queue_block_processing_chunk(consensus, iter.next().expect("hashes was non empty")).await?;
 
-            if i % 20 == 0 {
-                info!("Processed {} block bodies", i * IBD_BATCH_SIZE);
+        // TODO: logs
+        for (i, chunk) in iter.enumerate() {
+            let current_jobs = self.queue_block_processing_chunk(consensus, chunk).await?;
+            // Join the previous chunk so that we always concurrently process a chunk and receive another
+            join_all(prev_jobs).await.into_iter().try_for_each(|x| x.map(drop))?;
+            prev_jobs = current_jobs;
+
+            if i % 5 == 0 {
+                info!("Processed {} block bodies", (i + 1) * IBD_BATCH_SIZE);
             }
         }
+
+        join_all(prev_jobs).await.into_iter().try_for_each(|x| x.map(drop))?;
 
         // TODO: raise new block template event
 
         Ok(())
+    }
+
+    async fn queue_block_processing_chunk(
+        &mut self,
+        consensus: &DynConsensus,
+        chunk: &[Hash],
+    ) -> Result<Vec<BlockValidationFuture>, ProtocolError> {
+        let mut jobs = Vec::with_capacity(chunk.len());
+        self.router
+            .enqueue(make_message!(
+                Payload::RequestIbdBlocks,
+                RequestIbdBlocksMessage { hashes: chunk.iter().map(|h| h.into()).collect() }
+            ))
+            .await?;
+        for &expected_hash in chunk {
+            let msg = dequeue_with_timeout!(self.incoming_route, Payload::IbdBlock)?;
+            let block: Block = msg.try_into()?;
+            if block.hash() != expected_hash {
+                return Err(ProtocolError::OtherOwned(format!("expected block {} but got {}", expected_hash, block.hash())));
+            }
+            if block.is_header_only() {
+                return Err(ProtocolError::OtherOwned(format!("sent header of {} where expected block with body", block.hash())));
+            }
+            // TODO: decide if we resolve virtual separately on long IBD
+            jobs.push(consensus.validate_and_insert_block(block, true));
+        }
+
+        Ok(jobs)
     }
 }
