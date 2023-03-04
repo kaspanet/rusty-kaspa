@@ -32,6 +32,7 @@ const UTXOINDEX_DB: &str = "utxoindex";
 // TODO: add a Config
 // TODO: apply Args to Config
 // TODO: log to file
+// TODO: refactor the shutdown sequence into a predefined controlled sequence
 
 /// Kaspa Node launch arguments
 #[derive(Parser, Debug)]
