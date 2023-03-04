@@ -63,13 +63,13 @@ use consensus_notify::{
     },
     root::ConsensusNotificationRoot,
 };
-use database::prelude::StoreError;
+use database::prelude::{StoreError, StoreResultExtensions};
 use hashes::Hash;
 use kaspa_core::{debug, info, trace};
 use kaspa_notify::notifier::Notify;
 use muhash::MuHash;
 
-use crossbeam_channel::Receiver as CrossbeamReceiver; // to aviod confusion with async_channel
+use crossbeam_channel::Receiver as CrossbeamReceiver; // to avoid confusion with async_channel
 use itertools::Itertools;
 use parking_lot::{RwLock, RwLockUpgradableReadGuard};
 use rayon::ThreadPool;
@@ -120,20 +120,27 @@ pub struct VirtualStateProcessor {
     pub(super) utxo_multisets_store: Arc<DbUtxoMultisetsStore>,
     pub(super) acceptance_data_store: Arc<DbAcceptanceDataStore>,
     pub virtual_stores: Arc<RwLock<VirtualStores>>,
-    pub(super) pruning_point_utxo_set_store: Arc<DbUtxoSetStore>,
+    pub pruning_point_utxo_set_store: Arc<DbUtxoSetStore>,
     // TODO: remove all pub from stores when StoreManager is implemented
 
     // Managers and services
     pub(super) ghostdag_manager: DbGhostdagManager,
     pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
     pub(super) relations_service: MTRelationsService<DbRelationsStore>,
-    pub(super) dag_traversal_manager: DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore>,
+    pub(super) dag_traversal_manager:
+        DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
     pub(super) difficulty_manager: DifficultyManager<DbHeadersStore>,
     pub(super) coinbase_manager: CoinbaseManager,
     pub(super) transaction_validator: TransactionValidator,
-    pub(super) past_median_time_manager: PastMedianTimeManager<DbHeadersStore, DbGhostdagStore, BlockWindowCacheStore>,
+    pub(super) past_median_time_manager: PastMedianTimeManager<
+        DbHeadersStore,
+        DbGhostdagStore,
+        BlockWindowCacheStore,
+        DbReachabilityStore,
+        MTRelationsService<DbRelationsStore>,
+    >,
     pub(super) pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
-    pub(super) parents_manager: ParentsManager<DbHeadersStore, DbReachabilityStore, DbRelationsStore>,
+    pub(super) parents_manager: ParentsManager<DbHeadersStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
     pub(super) depth_manager: BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>,
 
     pub(crate) notification_root: Arc<ConsensusNotificationRoot>,
@@ -167,13 +174,24 @@ impl VirtualStateProcessor {
         ghostdag_manager: DbGhostdagManager,
         reachability_service: MTReachabilityService<DbReachabilityStore>,
         relations_service: MTRelationsService<DbRelationsStore>,
-        dag_traversal_manager: DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore>,
+        dag_traversal_manager: DagTraversalManager<
+            DbGhostdagStore,
+            BlockWindowCacheStore,
+            DbReachabilityStore,
+            MTRelationsService<DbRelationsStore>,
+        >,
         difficulty_manager: DifficultyManager<DbHeadersStore>,
         coinbase_manager: CoinbaseManager,
         transaction_validator: TransactionValidator,
-        past_median_time_manager: PastMedianTimeManager<DbHeadersStore, DbGhostdagStore, BlockWindowCacheStore>,
+        past_median_time_manager: PastMedianTimeManager<
+            DbHeadersStore,
+            DbGhostdagStore,
+            BlockWindowCacheStore,
+            DbReachabilityStore,
+            MTRelationsService<DbRelationsStore>,
+        >,
         pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
-        parents_manager: ParentsManager<DbHeadersStore, DbReachabilityStore, DbRelationsStore>,
+        parents_manager: ParentsManager<DbHeadersStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
         depth_manager: BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>,
         notification_root: Arc<ConsensusNotificationRoot>,
     ) -> Self {
@@ -696,6 +714,27 @@ impl VirtualStateProcessor {
         }
     }
 
+    pub fn init(self: &Arc<Self>) {
+        // TODO: Consider refactoring and removing code duplication with process_genesis_if_needed
+        // when staging consensus is implemented.
+        let pp_read_guard = self.pruning_store.upgradable_read();
+        if pp_read_guard.pruning_point().unwrap_option().is_none() {
+            match self.past_pruning_points_store.insert(0, self.genesis_hash) {
+                Ok(()) => {}
+                Err(StoreError::KeyAlreadyExists(_)) => {
+                    // If already exists, make sure the store was initialized correctly
+                    match self.past_pruning_points_store.get(0) {
+                        Ok(hash) => assert_eq!(hash, self.genesis_hash, "first pruning point is not genesis"),
+                        Err(err) => panic!("unexpected error {err}"),
+                    }
+                }
+                Err(err) => panic!("unexpected store error {err}"),
+            }
+
+            RwLockUpgradableReadGuard::upgrade(pp_read_guard).set(self.genesis_hash, self.genesis_hash, 0).unwrap();
+        }
+    }
+
     pub fn process_genesis_if_needed(self: &Arc<Self>) {
         if !self.process_genesis {
             return;
@@ -717,6 +756,7 @@ impl VirtualStateProcessor {
                     ))
                     .unwrap();
                 self.commit_utxo_state(self.genesis_hash, UtxoDiff::default(), MuHash::new(), AcceptanceData {});
+
                 match self.past_pruning_points_store.insert(0, self.genesis_hash) {
                     Ok(()) => {}
                     Err(StoreError::KeyAlreadyExists(_)) => {
@@ -728,6 +768,8 @@ impl VirtualStateProcessor {
                     }
                     Err(err) => panic!("unexpected store error {err}"),
                 }
+
+                self.pruning_store.write().set(self.genesis_hash, self.genesis_hash, 0).unwrap();
             }
             StatusUTXOValid => {}
             _ => panic!("unexpected genesis status {status:?}"),

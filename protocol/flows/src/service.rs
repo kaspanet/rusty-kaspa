@@ -14,12 +14,13 @@ const P2P_CORE_SERVICE: &str = "p2p-service";
 pub struct P2pService {
     consensus: DynConsensus,
     connect: Option<String>, // TEMP: optional connect peer
+    listen: Option<String>,
     shutdown: SingleTrigger,
 }
 
 impl P2pService {
-    pub fn new(consensus: DynConsensus, connect: Option<String>) -> Self {
-        Self { consensus, connect, shutdown: SingleTrigger::default() }
+    pub fn new(consensus: DynConsensus, connect: Option<String>, listen: Option<String>) -> Self {
+        Self { consensus, connect, shutdown: SingleTrigger::default(), listen }
     }
 }
 
@@ -36,7 +37,7 @@ impl AsyncService for P2pService {
 
         // Launch the service and wait for a shutdown signal
         Box::pin(async move {
-            let server_address = String::from("[::1]:50051");
+            let server_address = self.listen.clone().unwrap_or(String::from("[::1]:50051"));
             let ctx = Arc::new(FlowContext::new(self.consensus.clone()));
             let p2p_adaptor = Adaptor::bidirectional(server_address.clone(), ctx).unwrap();
 

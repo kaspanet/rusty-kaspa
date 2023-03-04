@@ -1,42 +1,69 @@
-use std::{cmp::Reverse, collections::BinaryHeap, ops::Deref, sync::Arc};
+use std::{
+    cmp::Reverse,
+    collections::{BinaryHeap, VecDeque},
+    ops::Deref,
+    sync::Arc,
+};
 
 use crate::{
-    model::stores::{
-        block_window_cache::{BlockWindowCacheReader, BlockWindowHeap},
-        ghostdag::{GhostdagData, GhostdagStoreReader},
+    model::{
+        services::reachability::{MTReachabilityService, ReachabilityService},
+        stores::{
+            block_window_cache::{BlockWindowCacheReader, BlockWindowHeap},
+            ghostdag::{GhostdagData, GhostdagStoreReader},
+            reachability::ReachabilityStoreReader,
+            relations::RelationsStoreReader,
+        },
     },
     processes::ghostdag::ordering::SortableBlock,
 };
-use consensus_core::{blockhash::BlockHashExtensions, errors::block::RuleError, BlueWorkType};
+use consensus_core::{
+    blockhash::BlockHashExtensions,
+    errors::{
+        block::RuleError,
+        traversal::{TraversalError, TraversalResult},
+    },
+    BlockHashSet, BlueWorkType, ChainPath, HashMapCustomHasher,
+};
 use hashes::Hash;
+use itertools::Itertools;
 use kaspa_utils::refs::Refs;
 
 #[derive(Clone)]
-pub struct DagTraversalManager<T: GhostdagStoreReader, U: BlockWindowCacheReader> {
+pub struct DagTraversalManager<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: ReachabilityStoreReader, W: RelationsStoreReader>
+{
     genesis_hash: Hash,
     ghostdag_store: Arc<T>,
+    relations_store: W,
+    reachability_service: MTReachabilityService<V>,
     block_window_cache_for_difficulty: Arc<U>,
     block_window_cache_for_past_median_time: Arc<U>,
     difficulty_window_size: usize,
     past_median_time_window_size: usize,
 }
 
-impl<T: GhostdagStoreReader, U: BlockWindowCacheReader> DagTraversalManager<T, U> {
+impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: ReachabilityStoreReader, W: RelationsStoreReader>
+    DagTraversalManager<T, U, V, W>
+{
     pub fn new(
         genesis_hash: Hash,
         ghostdag_store: Arc<T>,
+        relations_store: W,
         block_window_cache_for_difficulty: Arc<U>,
         block_window_cache_for_past_median_time: Arc<U>,
         difficulty_window_size: usize,
         past_median_time_window_size: usize,
+        reachability_service: MTReachabilityService<V>,
     ) -> Self {
         Self {
             genesis_hash,
             ghostdag_store,
+            relations_store,
             block_window_cache_for_difficulty,
             difficulty_window_size,
             block_window_cache_for_past_median_time,
             past_median_time_window_size,
+            reachability_service,
         }
     }
 
@@ -119,6 +146,63 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader> DagTraversalManager<T, U
             }
         }
         false
+    }
+
+    pub fn calculate_chain_path(&self, from: Hash, to: Hash) -> ChainPath {
+        let mut removed = Vec::new();
+        let mut common_ancestor = from;
+        for current in self.reachability_service.default_backward_chain_iterator(from) {
+            if !self.reachability_service.is_chain_ancestor_of(current, to) {
+                removed.push(current);
+            } else {
+                common_ancestor = current;
+                break;
+            }
+        }
+
+        let mut added = self.reachability_service.backward_chain_iterator(to, common_ancestor, false).collect_vec(); // It is more intuitive to use forward iterator here, but going downwards the selected chain is faster.
+        added.reverse();
+        ChainPath { added, removed }
+    }
+
+    pub fn anticone(
+        &self,
+        block: Hash,
+        tips: impl Iterator<Item = Hash>,
+        max_traversal_allowed: Option<u64>,
+    ) -> TraversalResult<Vec<Hash>> {
+        let mut anticone = Vec::new();
+        let mut queue = VecDeque::from_iter(tips);
+        let mut visited = BlockHashSet::new();
+        let mut traversal_count = 0;
+        while let Some(current) = queue.pop_front() {
+            if !visited.insert(current) {
+                continue;
+            }
+
+            if self.reachability_service.is_dag_ancestor_of(current, block) {
+                continue;
+            }
+
+            // We count the number of blocks in past(tips) \setminus past(block).
+            // We don't use `visited.len()` since it includes some maximal blocks in past(block) as well.
+            traversal_count += 1;
+            if let Some(max_traversal_allowed) = max_traversal_allowed {
+                if traversal_count > max_traversal_allowed {
+                    return Err(TraversalError::ReachedMaxTraversalAllowed(traversal_count, max_traversal_allowed));
+                }
+            }
+
+            if !self.reachability_service.is_dag_ancestor_of(block, current) {
+                anticone.push(current);
+            }
+
+            for parent in self.relations_store.get_parents(current).unwrap().iter().copied() {
+                queue.push_back(parent);
+            }
+        }
+
+        Ok(anticone)
     }
 }
 

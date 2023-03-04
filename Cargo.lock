@@ -2018,6 +2018,7 @@ dependencies = [
  "consensus-core",
  "futures",
  "hashes",
+ "itertools 0.10.5",
  "kaspa-core",
  "kaspa-utils",
  "log",

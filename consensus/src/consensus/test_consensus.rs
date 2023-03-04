@@ -25,13 +25,17 @@ use crate::{
     config::Config,
     constants::TX_VERSION,
     errors::BlockProcessResult,
-    model::stores::{
-        block_window_cache::BlockWindowCacheStore,
-        ghostdag::DbGhostdagStore,
-        headers::{DbHeadersStore, HeaderStoreReader},
-        pruning::PruningStoreReader,
-        reachability::DbReachabilityStore,
-        DB,
+    model::{
+        services::relations::MTRelationsService,
+        stores::{
+            block_window_cache::BlockWindowCacheStore,
+            ghostdag::DbGhostdagStore,
+            headers::{DbHeadersStore, HeaderStoreReader},
+            pruning::PruningStoreReader,
+            reachability::DbReachabilityStore,
+            relations::DbRelationsStore,
+            DB,
+        },
     },
     params::Params,
     pipeline::{body_processor::BlockBodyProcessor, ProcessingCounters},
@@ -135,7 +139,9 @@ impl TestConsensus {
         self.consensus.shutdown(wait_handles)
     }
 
-    pub fn dag_traversal_manager(&self) -> &DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore> {
+    pub fn dag_traversal_manager(
+        &self,
+    ) -> &DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>> {
         &self.consensus.dag_traversal_manager
     }
 
@@ -163,7 +169,15 @@ impl TestConsensus {
         &self.consensus.body_processor
     }
 
-    pub fn past_median_time_manager(&self) -> &PastMedianTimeManager<DbHeadersStore, DbGhostdagStore, BlockWindowCacheStore> {
+    pub fn past_median_time_manager(
+        &self,
+    ) -> &PastMedianTimeManager<
+        DbHeadersStore,
+        DbGhostdagStore,
+        BlockWindowCacheStore,
+        DbReachabilityStore,
+        MTRelationsService<DbRelationsStore>,
+    > {
         &self.consensus.past_median_time_manager
     }
 
