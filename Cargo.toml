@@ -17,7 +17,6 @@ members = [
     "notify",
     "indexes/processor",
     "indexes/utxoindex",
-    "event_processor",
     "rpc/core",
     "rpc/grpc/core",
     "rpc/grpc/client",
@@ -53,7 +52,6 @@ muhash = { path = "crypto/muhash" }
 addresses = { path = "crypto/addresses" }
 merkle = { path = "crypto/merkle" }
 pow = { path = "consensus/pow" }
-event-processor = { path = "event_processor" }
 kaspa-index-processor = { path = "indexes/processor" }
 utxoindex = { path = "indexes/utxoindex" }
 kaspa-utils = { path = "utils" }

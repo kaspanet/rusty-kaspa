@@ -10,7 +10,6 @@ pub mod blockstatus;
 pub mod coinbase;
 pub mod constants;
 pub mod errors;
-pub mod events;
 pub mod hashing;
 pub mod header;
 pub mod mass;

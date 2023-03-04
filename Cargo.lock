@@ -949,26 +949,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0206175f82b8d6bf6652ff7d71a1e27fd2e4efde587fd368662814d6ec1d9ce0"
 
 [[package]]
-name = "event-processor"
-version = "0.1.0"
-dependencies = [
- "async-channel",
- "consensus",
- "consensus-core",
- "futures",
- "hashes",
- "kaspa-core",
- "kaspa-utils",
- "log",
- "parking_lot",
- "rand 0.8.5",
- "thiserror",
- "tokio",
- "triggered",
- "utxoindex",
-]
-
-[[package]]
 name = "faster-hex"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
