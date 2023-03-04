@@ -124,7 +124,7 @@ where
     }
 
     #[cfg(test)]
-    fn with_sync(name: &'static str, incoming: Receiver<N>, _sync: Option<Sender<()>>) -> Self {
+    pub fn with_sync(name: &'static str, incoming: Receiver<N>, _sync: Option<Sender<()>>) -> Self {
         Self {
             name,
             started: Arc::new(AtomicBool::default()),
@@ -237,40 +237,20 @@ where
     }
 }
 
-// TODO: tests
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{
-        address::test_helpers::get_3_addresses,
         connection::ChannelConnection,
         listener::Listener,
         notification::test_helpers::*,
-        scope::{BlockAddedScope, Scope, UtxosChangedScope, VirtualChainChangedScope},
-        subscription::{Command, Mutation},
+        notifier::test_helpers::{
+            overall_test_steps, utxos_changed_test_steps, virtual_chain_changed_test_steps, Step, TestConnection,
+        },
     };
     use async_channel::{unbounded, Sender};
 
-    type TestConnection = ChannelConnection<TestNotification>;
     type TestBroadcaster = Broadcaster<TestNotification, ChannelConnection<TestNotification>>;
-
-    struct Step {
-        name: &'static str,
-        mutations: Vec<Option<Mutation>>,
-        notification: TestNotification,
-        expected: Vec<Option<TestNotification>>,
-    }
-
-    impl Step {
-        fn set_data(&mut self, data: u64) {
-            *self.notification.data_mut() = data;
-            self.expected.iter_mut().for_each(|x| {
-                if let Some(notification) = x.as_mut() {
-                    *notification.data_mut() = data;
-                }
-            });
-        }
-    }
 
     struct Test {
         name: &'static str,
@@ -285,7 +265,7 @@ mod tests {
     }
 
     impl Test {
-        fn new(name: &'static str, listener_count: usize) -> Self {
+        fn new(name: &'static str, listener_count: usize, steps: Vec<Step>) -> Self {
             let (sync_sender, sync_receiver) = unbounded();
             let (notification_sender, notification_receiver) = unbounded();
             let broadcaster = Arc::new(TestBroadcaster::with_sync("test", notification_receiver, Some(sync_sender)));
@@ -306,17 +286,13 @@ mod tests {
                 sync_receiver,
                 notification_sender,
                 notification_receivers,
-                steps: vec![],
+                steps,
             }
         }
 
         async fn run(&mut self) {
             self.broadcaster.start();
 
-            // Prepare the notification data markers for the test
-            for (idx, step) in self.steps.iter_mut().enumerate() {
-                step.set_data(idx as u64);
-            }
             // Execute the test steps
             for step in self.steps.iter() {
                 // Apply the subscription mutations and register the changes into the broadcaster
@@ -358,7 +334,7 @@ mod tests {
                 assert!(self.sync_receiver.recv().await.is_ok(), "{} - {}: receiving a sync message failed", self.name, step.name);
 
                 // Check what the listeners do receive
-                for (idx, expected) in step.expected.iter().enumerate() {
+                for (idx, expected) in step.expected_notifications.iter().enumerate() {
                     if let Some(ref expected) = expected {
                         let notification = self.notification_receivers[idx].recv().await.unwrap();
                         assert_eq!(*expected, notification, "{} - {}: listener[{}] got wrong notification", self.name, step.name, idx);
@@ -379,185 +355,22 @@ mod tests {
 
     #[tokio::test]
     async fn test_overall() {
-        fn m(command: Option<Command>) -> Option<Mutation> {
-            command.map(|x| Mutation { command: x, scope: Scope::BlockAdded(BlockAddedScope {}) })
-        }
-        fn n(_: ()) -> TestNotification {
-            TestNotification::BlockAdded(BlockAddedNotification::default())
-        }
-        fn e(value: Option<()>) -> Option<TestNotification> {
-            value.map(|_| TestNotification::BlockAdded(BlockAddedNotification::default()))
-        }
-
         kaspa_core::log::try_init_logger("trace,kaspa_notify=trace");
-        let mut test = Test::new("BlockAdded broadcast (OverallSubscription type)", 2);
-        test.steps = vec![
-            Step { name: "do nothing", mutations: vec![], notification: n(()), expected: vec![None, None] },
-            Step {
-                name: "L0 on",
-                mutations: vec![m(Some(Command::Start)), m(None)],
-                notification: n(()),
-                expected: vec![e(Some(())), None],
-            },
-            Step {
-                name: "L0 & L1 on",
-                mutations: vec![m(None), m(Some(Command::Start))],
-                notification: n(()),
-                expected: vec![e(Some(())), e(Some(()))],
-            },
-            Step {
-                name: "L1 on",
-                mutations: vec![m(Some(Command::Stop)), m(None)],
-                notification: n(()),
-                expected: vec![None, e(Some(()))],
-            },
-            Step {
-                name: "all off",
-                mutations: vec![m(None), m(Some(Command::Stop))],
-                notification: n(()),
-                expected: vec![None, None],
-            },
-        ];
-
+        let mut test = Test::new("BlockAdded broadcast (OverallSubscription type)", 2, overall_test_steps(0));
         test.run().await;
     }
 
     #[tokio::test]
     async fn test_virtual_chain_changed() {
-        fn m(command: Option<(Command, bool)>) -> Option<Mutation> {
-            command.map(|(command, include_accepted_transaction_ids)| Mutation {
-                command,
-                scope: Scope::VirtualChainChanged(VirtualChainChangedScope::new(include_accepted_transaction_ids)),
-            })
-        }
-        fn n(accepted_transaction_ids: Option<u64>) -> TestNotification {
-            TestNotification::VirtualChainChanged(VirtualChainChangedNotification { data: 0, accepted_transaction_ids })
-        }
-        fn e(value: Option<Option<u64>>) -> Option<TestNotification> {
-            value.map(|x| {
-                TestNotification::VirtualChainChanged(VirtualChainChangedNotification { data: 0, accepted_transaction_ids: x })
-            })
-        }
-
         kaspa_core::log::try_init_logger("trace,kaspa_notify=trace");
-        let mut test = Test::new("VirtualChainChanged broadcast", 2);
-        test.steps = vec![
-            Step { name: "do nothing", mutations: vec![], notification: n(None), expected: vec![None, None] },
-            Step {
-                name: "L0+ on",
-                mutations: vec![m(Some((Command::Start, true))), m(None)],
-                notification: n(Some(21)),
-                expected: vec![e(Some(Some(21))), None],
-            },
-            Step {
-                name: "L0+ & L1- on",
-                mutations: vec![m(None), m(Some((Command::Start, false)))],
-                notification: n(Some(42)),
-                expected: vec![e(Some(Some(42))), e(Some(None))],
-            },
-            Step {
-                name: "L0- & L1+ on",
-                mutations: vec![m(Some((Command::Start, false))), m(Some((Command::Start, true)))],
-                notification: n(Some(63)),
-                expected: vec![e(Some(None)), e(Some(Some(63)))],
-            },
-            Step {
-                name: "L1+ on",
-                mutations: vec![m(Some((Command::Stop, false))), m(None)],
-                notification: n(Some(84)),
-                expected: vec![e(None), e(Some(Some(84)))],
-            },
-            Step {
-                name: "all off",
-                mutations: vec![m(None), m(Some((Command::Stop, false)))],
-                notification: n(Some(21)),
-                expected: vec![None, None],
-            },
-        ];
-
+        let mut test = Test::new("VirtualChainChanged broadcast", 2, virtual_chain_changed_test_steps(0));
         test.run().await;
     }
 
     #[tokio::test]
     async fn test_utxos_changed() {
-        let a_stock = get_3_addresses(true);
-
-        let a = |indexes: &[usize]| indexes.iter().map(|idx| (a_stock[*idx]).clone()).collect::<Vec<_>>();
-        let m = |command: Option<(Command, &[usize])>| {
-            if let Some((command, indexes)) = command {
-                return Some(Mutation { command, scope: Scope::UtxosChanged(UtxosChangedScope::new(a(indexes))) });
-            }
-            None
-        };
-        let n =
-            |indexes: &[usize]| TestNotification::UtxosChanged(UtxosChangedNotification { data: 0, addresses: Arc::new(a(indexes)) });
-        let e = |value: Option<&[usize]>| {
-            if let Some(indexes) = value {
-                return Some(TestNotification::UtxosChanged(UtxosChangedNotification { data: 0, addresses: Arc::new(a(indexes)) }));
-            }
-            None
-        };
-
         kaspa_core::log::try_init_logger("trace,kaspa_notify=trace");
-        let mut test = Test::new("VirtualChainChanged broadcast", 3);
-        test.steps = vec![
-            Step { name: "do nothing", mutations: vec![], notification: n(&[]), expected: vec![None, None, None] },
-            Step {
-                name: "L0[0] <= N[0]",
-                mutations: vec![m(Some((Command::Start, &[0]))), m(None), m(None)],
-                notification: n(&[0]),
-                expected: vec![e(Some(&[0])), None, None],
-            },
-            Step {
-                name: "L0[0] <= N[0,1,2]",
-                mutations: vec![m(Some((Command::Start, &[0]))), m(None), m(None)],
-                notification: n(&[0, 1, 2]),
-                expected: vec![e(Some(&[0])), None, None],
-            },
-            Step {
-                name: "L0[0], L1[1] <= N[0,1,2]",
-                mutations: vec![m(None), m(Some((Command::Start, &[1]))), m(None)],
-                notification: n(&[0, 1, 2]),
-                expected: vec![e(Some(&[0])), e(Some(&[1])), None],
-            },
-            Step {
-                name: "L0[0], L1[1], L2[2] <= N[0,1,2]",
-                mutations: vec![m(None), m(None), m(Some((Command::Start, &[2])))],
-                notification: n(&[0, 1, 2]),
-                expected: vec![e(Some(&[0])), e(Some(&[1])), e(Some(&[2]))],
-            },
-            Step {
-                name: "L0[0, 2], L1[*], L2[1, 2] <= N[0,1,2]",
-                mutations: vec![m(Some((Command::Start, &[2]))), m(Some((Command::Start, &[]))), m(Some((Command::Start, &[1])))],
-                notification: n(&[0, 1, 2]),
-                expected: vec![e(Some(&[0, 2])), e(Some(&[0, 1, 2])), e(Some(&[1, 2]))],
-            },
-            Step {
-                name: "L0[0, 2], L1[*], L2[1, 2] <= N[0]",
-                mutations: vec![m(None), m(None), m(None)],
-                notification: n(&[0]),
-                expected: vec![e(Some(&[0])), e(Some(&[0])), e(None)],
-            },
-            Step {
-                name: "L0[2], L1[1], L2[*] <= N[0, 1]",
-                mutations: vec![m(Some((Command::Stop, &[0]))), m(Some((Command::Start, &[1]))), m(Some((Command::Start, &[])))],
-                notification: n(&[0, 1]),
-                expected: vec![e(None), e(Some(&[1])), e(Some(&[0, 1]))],
-            },
-            Step {
-                name: "L2[*] <= N[0, 1, 2]",
-                mutations: vec![m(Some((Command::Stop, &[]))), m(Some((Command::Stop, &[1]))), m(Some((Command::Stop, &[1])))],
-                notification: n(&[0, 1, 2]),
-                expected: vec![e(None), e(None), e(Some(&[0, 1, 2]))],
-            },
-            Step {
-                name: "all off",
-                mutations: vec![m(None), m(None), m(Some((Command::Stop, &[])))],
-                notification: n(&[0, 1, 2]),
-                expected: vec![e(None), e(None), e(None)],
-            },
-        ];
-
+        let mut test = Test::new("UtxosChanged broadcast", 3, utxos_changed_test_steps(0));
         test.run().await;
     }
 }

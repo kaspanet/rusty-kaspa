@@ -137,6 +137,7 @@ pub mod test_helpers {
     use super::*;
     use async_channel::Sender;
 
+    #[derive(Clone, Debug, PartialEq, Eq)]
     pub struct SubscriptionMessage {
         pub listener_id: ListenerId,
         pub mutation: Mutation,
