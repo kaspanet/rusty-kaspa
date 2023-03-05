@@ -1,5 +1,6 @@
 use self::{
     blockrelay::flow::HandleRelayInvsFlow,
+    address::{ReceiveAddressesFlow, SendAddressesFlow},
     ibd::IbdFlow,
     ping::{ReceivePingsFlow, SendPingsFlow},
     pruning_point_and_its_anticone_requests::PruningPointAndItsAnticoneRequestsFlow,
@@ -18,6 +19,7 @@ use p2p_lib::{
 use std::sync::Arc;
 
 mod blockrelay;
+mod address;
 mod ibd;
 mod ping;
 mod pruning_point_and_its_anticone_requests;
@@ -84,20 +86,22 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
             ]),
         )),
         Box::new(RequestPruningPointUtxoSetFlow::new(
-            ctx,
+            ctx.clone(),
             router.clone(),
             router.subscribe(vec![KaspadMessagePayloadType::RequestPruningPointUtxoSet]),
         )),
+        Box::new(ReceiveAddressesFlow::new(ctx.clone(), router.clone(), router.subscribe(vec![KaspadMessagePayloadType::Addresses]))),
+        Box::new(SendAddressesFlow::new(ctx, router.clone(), router.subscribe(vec![KaspadMessagePayloadType::RequestAddresses]))),
     ];
 
     // TEMP: subscribe to remaining messages and ignore them
     // NOTE: as flows are implemented, the below types should be all commented out
     let mut unimplemented_messages_route = router.subscribe(vec![
-        KaspadMessagePayloadType::Addresses,
+        // KaspadMessagePayloadType::Addresses,
         // KaspadMessagePayloadType::Block,
         KaspadMessagePayloadType::Transaction,
         // KaspadMessagePayloadType::BlockLocator,
-        KaspadMessagePayloadType::RequestAddresses,
+        // KaspadMessagePayloadType::RequestAddresses,
         KaspadMessagePayloadType::RequestRelayBlocks,
         KaspadMessagePayloadType::RequestTransactions,
         // KaspadMessagePayloadType::IbdBlock,
@@ -141,14 +145,8 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
     tokio::spawn(async move {
         while let Some(msg) = unimplemented_messages_route.recv().await {
             // TEMP: responding to this request is required in order to keep the
-            // connection live until we implement the send addresses flow
+            // connection live until we implement the mempool related flow
             match msg.payload {
-                Some(KaspadMessagePayload::RequestAddresses(_)) => {
-                    debug!("P2P Flows, got request addresses message");
-                    let _ = router
-                        .enqueue(make_message!(KaspadMessagePayload::Addresses, AddressesMessage { address_list: vec![] }))
-                        .await;
-                }
                 Some(KaspadMessagePayload::InvTransactions(_)) => (),
                 _ => debug!("P2P unimplemented routes message: {:?}", msg),
             }

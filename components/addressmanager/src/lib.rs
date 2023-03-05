@@ -2,7 +2,11 @@ mod stores;
 
 extern crate self as address_manager;
 
-use std::{collections::HashSet, net::Ipv6Addr, sync::Arc};
+use std::{
+    collections::HashSet,
+    net::{IpAddr, Ipv6Addr, SocketAddr},
+    sync::Arc,
+};
 
 use database::prelude::{StoreResultExtensions, DB};
 use kaspa_core::time::unix_now;
@@ -22,13 +26,25 @@ pub struct AddressManager {
 
 #[derive(PartialEq, Eq, Hash, Copy, Clone)]
 pub struct NetAddress {
-    ip: Ipv6Addr,
-    port: u16,
+    pub ip: Ipv6Addr,
+    pub port: u16,
 }
 
 impl NetAddress {
-    pub fn new(ip: Ipv6Addr, port: u16) -> Self {
-        Self { ip, port }
+    pub fn new(ip: IpAddr, port: u16) -> Self {
+        Self {
+            ip: match ip {
+                IpAddr::V4(ip) => ip.to_ipv6_mapped(),
+                IpAddr::V6(ip) => ip,
+            },
+            port,
+        }
+    }
+}
+
+impl From<SocketAddr> for NetAddress {
+    fn from(value: SocketAddr) -> Self {
+        Self::new(value.ip(), value.port())
     }
 }
 
@@ -76,8 +92,8 @@ impl AddressManager {
         self.not_banned_address_store.get_all_addresses()
     }
 
-    pub fn get_random_addresses(&self, count: usize, exceptions: HashSet<NetAddress>) -> Vec<NetAddress> {
-        self.not_banned_address_store.get_random_addresses(count, exceptions)
+    pub fn get_random_addresses(&self, exceptions: HashSet<NetAddress>) -> Vec<NetAddress> {
+        self.not_banned_address_store.get_random_addresses(exceptions)
     }
 
     pub fn ban(&mut self, ip: Ipv6Addr) {
@@ -109,7 +125,6 @@ mod not_banned_address_store_with_cache {
     // Since we need operations such as iterating all addresses, count, etc, we keep an easy to use copy of the database addresses.
     // We don't expect it to be expensive since we limit the number of saved addresses.
     use std::{
-        cmp::min,
         collections::{HashMap, HashSet},
         net::Ipv6Addr,
         sync::Arc,
@@ -146,7 +161,7 @@ mod not_banned_address_store_with_cache {
 
         pub fn set(&mut self, address: NetAddress, connection_failed_count: ConnectionFailureCount) {
             self.db_store.set(address.ip, address.port, connection_failed_count).unwrap();
-            self.addresses.insert(NetAddress::new(address.ip, address.port), connection_failed_count);
+            self.addresses.insert(NetAddress::new(address.ip.into(), address.port), connection_failed_count);
             self.keep_limit();
         }
 
@@ -170,13 +185,14 @@ mod not_banned_address_store_with_cache {
             self.addresses.keys().copied()
         }
 
-        pub fn get_random_addresses(&self, count: usize, exceptions: HashSet<NetAddress>) -> Vec<NetAddress> {
+        pub fn get_random_addresses(&self, exceptions: HashSet<NetAddress>) -> Vec<NetAddress> {
             let addresses = self.addresses.iter().filter(|(addr, _)| !exceptions.contains(addr)).collect_vec();
-            let count = min(count, addresses.len());
-            let mut weights =
-                addresses.iter().map(|(_, count)| 64f64.powf((MAX_CONNECTION_FAILED_COUNT + 1 - count.0) as f64)).collect_vec();
+            let mut weights = addresses
+                .iter()
+                .map(|(_, failure_count)| 64f64.powf((MAX_CONNECTION_FAILED_COUNT + 1 - failure_count.0) as f64))
+                .collect_vec();
 
-            (0..count)
+            (0..addresses.len())
                 .map(|_| {
                     let dist = WeightedIndex::new(&weights).unwrap();
                     let i = dist.sample(&mut rand::thread_rng());

@@ -2,6 +2,7 @@ extern crate consensus;
 extern crate core;
 extern crate hashes;
 
+use addressmanager::AddressManager;
 use clap::Parser;
 use consensus_core::api::DynConsensus;
 use consensus_core::networktype::NetworkType;
@@ -32,6 +33,7 @@ mod monitor;
 const DEFAULT_DATA_DIR: &str = "datadir";
 const CONSENSUS_DB: &str = "consensus";
 const UTXOINDEX_DB: &str = "utxoindex";
+const AMGR_DB: &str = "addressmanager";
 // TODO: add a Config
 // TODO: apply Args to Config
 // TODO: log to file
@@ -126,6 +128,7 @@ pub fn main() {
 
     let consensus_db_dir = db_dir.join(CONSENSUS_DB);
     let utxoindex_db_dir = db_dir.join(UTXOINDEX_DB);
+    let amgr_db_dir = db_dir.join(AMGR_DB);
 
     if args.reset_db {
         // TODO: add prompt that validates the choice (unless you pass -y)
@@ -174,10 +177,13 @@ pub fn main() {
         None
     };
 
+    let amgr_db = database::prelude::open_db(amgr_db_dir, true, num_cpus::get());
+    let amgr = AddressManager::new(amgr_db);
+
     let rpc_core_server =
         Arc::new(RpcCoreServer::new(consensus.clone(), notify_service.notifier(), index_service.as_ref().map(|x| x.notifier())));
     let grpc_server = Arc::new(GrpcServer::new(grpc_server_addr, rpc_core_server.service()));
-    let p2p_service = Arc::new(P2pService::new(consensus.clone(), &config, args.connect, args.listen));
+    let p2p_service = Arc::new(P2pService::new(consensus.clone(), amgr, &config, args.connect, args.listen));
 
     // TODO: TEMP: temp mining manager initialization just to make sure it complies with consensus
     let _mining_manager =

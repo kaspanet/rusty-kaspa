@@ -10,3 +10,4 @@ pub mod pruning;
 pub mod trusted;
 pub mod tx;
 pub mod utxo;
+pub mod net_address;

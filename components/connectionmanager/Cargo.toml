@@ -1,0 +1,18 @@
+[package]
+name = "connectionmanager"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
+
+[dependencies]
+p2p-lib.workspace = true
+addressmanager.workspace = true
+tokio.workspace = true
+log.workspace = true
+parking_lot.workspace = true
+itertools.workspace = true
+rand.workspace = true
+futures-util.workspace = true
+duration-string = "0.2.0"

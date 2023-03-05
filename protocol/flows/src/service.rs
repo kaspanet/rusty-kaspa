@@ -1,11 +1,15 @@
-use consensus_core::{api::DynConsensus, config::Config};
+use addressmanager::AddressManager;
+use connectionmanager::ConnectionManager;
+use consensus_core::api::DynConsensus;
+use consensus_core::config::Config;
 use kaspa_core::{
     task::service::{AsyncService, AsyncServiceFuture},
     trace,
 };
 use kaspa_utils::triggers::SingleTrigger;
 use p2p_lib::Adaptor;
-use std::{sync::Arc, time::Duration};
+use parking_lot::Mutex;
+use std::{net::ToSocketAddrs, sync::Arc};
 
 use crate::flow_context::FlowContext;
 
@@ -19,8 +23,14 @@ pub struct P2pService {
 }
 
 impl P2pService {
-    pub fn new(consensus: DynConsensus, config: &Config, connect: Option<String>, listen: Option<String>) -> Self {
-        Self { ctx: Arc::new(FlowContext::new(consensus, config)), connect, shutdown: SingleTrigger::default(), listen }
+    pub fn new(
+        consensus: DynConsensus,
+        amgr: Arc<Mutex<AddressManager>>,
+        config: &Config,
+        connect: Option<String>,
+        listen: Option<String>,
+    ) -> Self {
+        Self { ctx: Arc::new(FlowContext::new(consensus, amgr, config)), connect, shutdown: SingleTrigger::default(), listen }
     }
 }
 
@@ -39,16 +49,22 @@ impl AsyncService for P2pService {
         Box::pin(async move {
             let server_address = self.listen.clone().unwrap_or(String::from("[::1]:50051"));
             let p2p_adaptor = Adaptor::bidirectional(server_address.clone(), self.ctx.clone()).unwrap();
+            let connection_manager = ConnectionManager::new(
+                p2p_adaptor.clone(),
+                8,   //TODO: Override from CLI args
+                128, //TODO: Override from CLI args
+                self.ctx.amgr.clone(),
+            );
 
             // For now, attempt to connect to a running golang node
             if let Some(peer_address) = self.connect.clone() {
-                trace!("P2P, p2p::main - starting peer:{peer_address}");
-                let _peer_id = p2p_adaptor.connect_peer_with_retry_params(peer_address, 1, Duration::from_secs(1)).await;
+                connection_manager.add_connection_request(peer_address.to_socket_addrs().unwrap().next().unwrap(), true).await;
             }
 
             // Keep the P2P server running until a service shutdown signal is received
             shutdown_signal.await;
             p2p_adaptor.terminate_all_peers().await;
+            connection_manager.stop().await;
             // drop(p2p_adaptor);
             // tokio::time::sleep(std::time::Duration::from_secs(1)).await;
         })

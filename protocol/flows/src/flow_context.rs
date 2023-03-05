@@ -1,5 +1,6 @@
 use crate::flowcontext::orphans::{OrphanBlocksPool, MAX_ORPHANS};
 use crate::v5;
+use addressmanager::AddressManager;
 use async_trait::async_trait;
 use consensus_core::api::{ConsensusApi, DynConsensus};
 use consensus_core::block::Block;
@@ -23,6 +24,7 @@ pub struct FlowContext {
     orphans_pool: Arc<AsyncRwLock<OrphanBlocksPool<dyn ConsensusApi>>>,
     shared_block_requests: Arc<Mutex<HashSet<Hash>>>,
     is_ibd_running: Arc<AtomicBool>, // TODO: pass the context wrapped with Arc and avoid some of the internal ones
+    pub amgr: Arc<Mutex<AddressManager>>,
 }
 
 pub struct IbdRunningGuard {
@@ -54,13 +56,14 @@ impl Drop for BlockRequestScope<'_> {
 }
 
 impl FlowContext {
-    pub fn new(consensus: DynConsensus, config: &Config) -> Self {
+    pub fn new(consensus: DynConsensus, amgr: Arc<Mutex<AddressManager>>, config: &Config) -> Self {
         Self {
             consensus: consensus.clone(),
             config: config.clone(),
             orphans_pool: Arc::new(AsyncRwLock::new(OrphanBlocksPool::new(consensus, MAX_ORPHANS))),
             shared_block_requests: Arc::new(Mutex::new(HashSet::new())),
             is_ibd_running: Arc::new(AtomicBool::default()),
+            amgr,
         }
     }
 
@@ -146,6 +149,10 @@ impl ConnectionInitializer for FlowContext {
         // Launch all flows. Note we launch only after the ready signal was exchanged
         for flow in flows {
             flow.launch();
+        }
+
+        if router.is_outbound() {
+            self.amgr.lock().add_address(router.net_address().into());
         }
 
         // Note: we deliberately do not hold the handshake in memory so at this point receivers for handshake subscriptions
