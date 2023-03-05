@@ -10,12 +10,8 @@ use consensus_core::{
     tx::{TransactionOutpoint, UtxoEntry},
 };
 use hashes::Hash;
-use itertools::Itertools;
-use std::{
-    mem::size_of,
-    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
-    sync::Arc,
-};
+
+use std::{net::IpAddr, sync::Arc};
 
 // ----------------------------------------------------------------------------
 // protowire to consensus_core

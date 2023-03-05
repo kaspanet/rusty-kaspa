@@ -10,12 +10,8 @@ use self::{
     request_pruning_point_utxo_set::RequestPruningPointUtxoSetFlow,
 };
 use crate::{flow_context::FlowContext, flow_trait::Flow};
-use kaspa_core::debug;
-use p2p_lib::{
-    make_message,
-    pb::{kaspad_message::Payload as KaspadMessagePayload, AddressesMessage},
-    KaspadMessagePayloadType, Router,
-};
+
+use p2p_lib::{KaspadMessagePayloadType, Router};
 use std::sync::Arc;
 
 mod blockrelay;

@@ -1,22 +1,17 @@
 use crate::{flow_context::FlowContext, flow_trait::Flow};
 use addressmanager::NetAddress;
-use consensus_core::subnets::SUBNETWORK_ID_NATIVE;
+
 use itertools::Itertools;
-use kaspa_core::debug;
+
 use p2p_lib::{
     common::ProtocolError,
     dequeue, dequeue_with_timeout, make_message,
-    pb::{kaspad_message::Payload, AddressesMessage, PingMessage, PongMessage, RequestAddressesMessage},
+    pb::{kaspad_message::Payload, AddressesMessage, RequestAddressesMessage},
     IncomingRoute, Router,
 };
-use rand::Rng;
-use std::{
-    net::IpAddr,
-    sync::{Arc, Weak},
-    time::Duration,
-};
 
-/// Flow for managing a loop receiving pings and responding with pongs
+use std::{net::IpAddr, sync::Arc};
+
 pub struct ReceiveAddressesFlow {
     ctx: FlowContext,
     router: Arc<Router>,
@@ -50,7 +45,7 @@ impl ReceiveAddressesFlow {
                 RequestAddressesMessage { include_all_subnetworks: false, subnetwork_id: None }
             ))
             .await?;
-        // We dequeue without a timeout in this case, responding to pings whenever they arrive
+
         let msg = dequeue_with_timeout!(self.incoming_route, Payload::Addresses)?;
         let address_list: Vec<(IpAddr, u16)> = msg.try_into()?;
         for (ip, port) in address_list {
@@ -61,7 +56,6 @@ impl ReceiveAddressesFlow {
     }
 }
 
-/// Flow for managing a loop sending pings and waiting for pongs
 pub struct SendAddressesFlow {
     ctx: FlowContext,
     router: Arc<Router>,
@@ -90,14 +84,12 @@ impl SendAddressesFlow {
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
         loop {
-            dequeue!(self.incoming_route, Payload::Ping)?;
+            dequeue!(self.incoming_route, Payload::RequestAddresses)?;
             let addresses = self.ctx.amgr.lock().get_random_addresses(Default::default());
             self.router
                 .enqueue(make_message!(
                     Payload::Addresses,
-                    AddressesMessage {
-                        address_list: addresses.into_iter().map(|addr| (addr.ip.into(), addr.port).into()).collect_vec()
-                    }
+                    AddressesMessage { address_list: addresses.into_iter().map(|addr| (addr.ip, addr.port).into()).collect_vec() }
                 ))
                 .await?;
         }

@@ -51,7 +51,7 @@ impl AsyncService for P2pService {
             let p2p_adaptor = Adaptor::bidirectional(server_address.clone(), self.ctx.clone()).unwrap();
             let connection_manager = ConnectionManager::new(
                 p2p_adaptor.clone(),
-                8,   //TODO: Override from CLI args
+                1,   //TODO: Override from CLI args
                 128, //TODO: Override from CLI args
                 self.ctx.amgr.clone(),
             );

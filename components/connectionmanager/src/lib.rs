@@ -147,9 +147,9 @@ impl ConnectionManager {
 
         let addresses = self.amgr.lock().get_random_addresses(active_outbound);
         for net_addr in addresses {
-            let socket_addr = SocketAddr::new(net_addr.ip.into(), net_addr.port).to_string();
+            let socket_addr = SocketAddr::new(net_addr.ip, net_addr.port).to_string();
             debug!("Connecting to {}", &socket_addr);
-            if self.p2p_adaptor.connect_peer(socket_addr.clone()).await.is_some() {
+            if self.p2p_adaptor.connect_peer_with_retry_params(socket_addr.clone(), 1, Default::default()).await.is_some() {
                 debug!("Failed connecting to {}", socket_addr);
                 self.amgr.lock().mark_connection_failure(net_addr);
                 missing_connections -= 1;
