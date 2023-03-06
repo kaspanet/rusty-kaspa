@@ -248,6 +248,8 @@ impl IbdFlow {
             prev_jobs = current_jobs;
         }
 
+        // TODO: consider using
+        // try_join_all(prev_jobs).await?;
         join_all(prev_jobs).await.into_iter().try_for_each(|x| x.map(drop))?;
 
         self.sync_missing_relay_past_headers(consensus, syncer_header_selected_tip, relay_block_hash).await?;

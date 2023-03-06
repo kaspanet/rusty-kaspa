@@ -36,6 +36,12 @@ pub enum ProtocolError {
     ConnectionClosed,
 }
 
+impl ProtocolError {
+    pub fn is_connection_closed_error(&self) -> bool {
+        matches!(self, Self::ConnectionClosed)
+    }
+}
+
 /// Wraps an inner payload message into a valid `KaspadMessage`.
 /// Usage:
 /// ```ignore

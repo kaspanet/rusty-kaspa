@@ -1,7 +1,7 @@
 use crate::core::hub::HubEvent;
 use crate::pb::KaspadMessage;
 use crate::{common::ProtocolError, KaspadMessagePayloadType};
-use kaspa_core::{debug, error, trace, warn};
+use kaspa_core::{debug, error, info, trace, warn};
 use parking_lot::{Mutex, RwLock};
 use std::fmt::Display;
 use std::net::SocketAddr;
@@ -99,11 +99,11 @@ impl Router {
                             }
                         }
                         Ok(None) => {
-                            debug!("P2P, Router receive loop - incoming stream ended, router-id: {}", router.identity);
+                            info!("P2P, Router receive loop - incoming stream ended from peer {}", router);
                             break;
                         }
                         Err(err) => {
-                            warn!("P2P, Router receive loop - network error: {:?}, router-id: {}", err, router.identity);
+                            warn!("P2P, Router receive loop - network error: {:?} from peer {}", err, router);
                             break;
                         }
                     }
@@ -200,8 +200,9 @@ impl Router {
         self.hub_sender.send(HubEvent::Broadcast(Box::new(msg))).await.is_ok()
     }
 
-    /// Closes the router, signals exit, and cleans up all resources so that underlying connections will be aborted correctly
-    pub async fn close(&self) {
+    /// Closes the router, signals exit, and cleans up all resources so that underlying connections will be aborted correctly.
+    /// Returns true of this is the first call to close
+    pub async fn close(&self) -> bool {
         // Acquire state mutex and send the shutdown signal
         // NOTE: Using a block to drop the lock asap
         {
@@ -216,8 +217,8 @@ impl Router {
                 let _ = signal.send(());
             } else {
                 // This means the router was already closed
-                debug!("P2P, Router close was called more than once, router-id: {}", self.identity);
-                return;
+                trace!("P2P, Router close was called more than once, router-id: {}", self.identity);
+                return false;
             }
         }
 
@@ -226,5 +227,7 @@ impl Router {
 
         // Send a close notification to the central Hub
         self.hub_sender.send(HubEvent::PeerClosing(self.identity)).await.expect("hub receiver should never drop before senders");
+
+        true
     }
 }

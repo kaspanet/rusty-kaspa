@@ -142,10 +142,15 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
         while let Some(msg) = unimplemented_messages_route.recv().await {
             // TEMP: responding to this request is required in order to keep the
             // connection live until we implement the send addresses flow
-            if let Some(KaspadMessagePayload::RequestAddresses(_)) = msg.payload {
-                debug!("P2P Flows, got request addresses message");
-                let _ =
-                    router.enqueue(make_message!(KaspadMessagePayload::Addresses, AddressesMessage { address_list: vec![] })).await;
+            match msg.payload {
+                Some(KaspadMessagePayload::RequestAddresses(_)) => {
+                    debug!("P2P Flows, got request addresses message");
+                    let _ = router
+                        .enqueue(make_message!(KaspadMessagePayload::Addresses, AddressesMessage { address_list: vec![] }))
+                        .await;
+                }
+                Some(KaspadMessagePayload::InvTransactions(_)) => (),
+                _ => debug!("P2P unimplemented routes message: {:?}", msg),
             }
         }
     });

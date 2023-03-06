@@ -3,13 +3,15 @@ use consensus_core::{
     block::Block,
     blockstatus::BlockStatus,
 };
+use futures::future::join_all;
 use hashes::Hash;
 use indexmap::{map::Entry::Occupied, IndexMap};
+use itertools::Itertools;
 use kaspa_core::{debug, info, warn};
 use kaspa_utils::option::OptionExtensions;
 use rand::Rng;
 use std::{
-    collections::{HashSet, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     sync::Arc,
 };
 
@@ -103,34 +105,41 @@ impl<T: ConsensusBlockProcessor + ?Sized> OrphanBlocksPool<T> {
     }
 
     pub async fn unorphan_blocks(&mut self, root: Hash) -> Vec<Block> {
-        let mut unorphaned_blocks = Vec::new();
         let mut process_queue = ProcessQueue::from(self.iterate_child_orphans(root).collect());
+        let mut processing = HashMap::new();
         while let Some(orphan_hash) = process_queue.dequeue() {
             // If the entry does not exist it means it was processed on a previous iteration
             if let Occupied(entry) = self.orphans.entry(orphan_hash) {
-                let processable = entry
-                    .get()
-                    .header
-                    .direct_parents()
-                    .iter()
-                    .copied()
-                    .all(|p| self.consensus.get_block_status(p).has_value_and(|s| !s.is_header_only()));
+                let processable =
+                    entry.get().header.direct_parents().iter().copied().all(|p| {
+                        processing.contains_key(&p) || self.consensus.get_block_status(p).has_value_and(|s| !s.is_header_only())
+                    });
                 if processable {
                     let orphan_block = entry.remove();
-                    match self.consensus.validate_and_insert_block(orphan_block.clone()).await {
-                        Ok(_) => {
-                            unorphaned_blocks.push(orphan_block);
-                            process_queue.enqueue_chunk(self.iterate_child_orphans(orphan_hash));
-                        }
-                        Err(e) => warn!("Validation failed for orphan block {}: {}", orphan_hash, e),
-                    }
+                    processing.insert(orphan_hash, (orphan_block.clone(), self.consensus.validate_and_insert_block(orphan_block)));
+                    process_queue.enqueue_chunk(self.iterate_child_orphans(orphan_hash));
                 }
             }
+        }
+        let mut unorphaned_blocks = Vec::with_capacity(processing.len());
+        let (blocks, jobs): (Vec<_>, Vec<_>) = processing.into_values().map(|v| (v.0, v.1)).unzip();
+        let results = join_all(jobs).await;
+        for (block, result) in blocks.into_iter().zip(results) {
+            match result {
+                Ok(_) => unorphaned_blocks.push(block),
+                Err(e) => warn!("Validation failed for orphan block {}: {}", block.hash(), e),
+            }
+        }
+        match unorphaned_blocks.len() {
+            0 => {}
+            1 => info!("Unorphaned block {}", unorphaned_blocks[0].hash()),
+            n => info!("Unorphaned {} blocks: {}", n, unorphaned_blocks.iter().map(|b| b.hash()).format(", ")),
         }
         unorphaned_blocks
     }
 
     fn iterate_child_orphans(&self, hash: Hash) -> impl Iterator<Item = Hash> + '_ {
+        // TODO: consider optimizing by holding a list of child dependencies for each orphan
         self.orphans.iter().filter_map(move |(&orphan_hash, orphan_block)| {
             for &parent in orphan_block.header.direct_parents() {
                 if parent == hash {

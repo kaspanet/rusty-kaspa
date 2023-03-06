@@ -137,6 +137,9 @@ impl HandleRelayInvsFlow {
 
             info!("Accepted block {} via relay", inv.hash);
 
+            // TODO: FIX
+            let _blocks = self.ctx.unorphan_blocks(block.hash()).await;
+
             // TODO: broadcast all new blocks in past(virtual)
             // TEMP:
             self.router
