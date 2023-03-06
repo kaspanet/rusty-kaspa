@@ -1,4 +1,4 @@
-use std::{cmp::max, ops::Deref, sync::Arc};
+use std::{cmp::min, ops::Deref, sync::Arc};
 
 use consensus_core::errors::sync::{SyncManagerError, SyncManagerResult};
 use database::prelude::StoreResultExtensions;
@@ -63,17 +63,11 @@ impl<
     }
 
     /// Returns the hashes of the blocks between low's antipast and high's antipast, or up to `max_blocks`, if provided.
-    /// The result excludes low and includes high. If low == high, returns nothing. If max_blocks is some then it MUST be >= MergeSetSizeLimit + 1
+    /// The result excludes low and includes high. If low == high, returns nothing. If max_blocks is some then it MUST be >= MergeSetSizeLimit
     /// because it returns blocks with MergeSet granularity, so if MergeSet > max_blocks, the function will return nothing which is undesired behavior.
     pub fn antipast_hashes_between(&self, low: Hash, high: Hash, max_blocks: Option<usize>) -> (Vec<Hash>, Hash) {
-        assert!(match max_blocks {
-            Some(max_blocks) => max_blocks >= self.mergeset_size_limit,
-            None => true,
-        });
-
-        let low_bs = self.ghostdag_store.get_blue_score(low).unwrap();
-        let high_bs = self.ghostdag_store.get_blue_score(high).unwrap();
-        assert!(low_bs <= high_bs);
+        let max_blocks = max_blocks.unwrap_or(usize::MAX);
+        assert!(max_blocks >= self.mergeset_size_limit);
 
         // If low is not in the chain of high - forward_chain_iterator will fail.
         // Therefore, we traverse down low's chain until we reach a block that is in
@@ -81,33 +75,31 @@ impl<
         // We keep original_low to filter out blocks in its past later down the road
         let original_low = low;
         let low = self.find_highest_common_chain_block(low, high);
-        let mut highest = None;
-        let mut blocks = Vec::with_capacity(match max_blocks {
-            Some(max_blocks) => max(max_blocks, (high_bs - low_bs) as usize),
-            None => (high_bs - low_bs) as usize,
-        });
-        for current in self.reachability_service.forward_chain_iterator(low, high, false) {
-            let gd = self.ghostdag_store.get_data(current).unwrap();
-            if let Some(max_blocks) = max_blocks {
-                if blocks.len() + gd.mergeset_size() > max_blocks {
-                    break;
-                }
-            }
 
-            highest = Some(current);
+        let low_bs = self.ghostdag_store.get_blue_score(low).unwrap();
+        let high_bs = self.ghostdag_store.get_blue_score(high).unwrap();
+        assert!(low_bs <= high_bs);
+
+        let mut highest_reached = low; // The highest chain block we reached before completing/reaching a limit
+        let mut blocks = Vec::with_capacity(min(max_blocks, (high_bs - low_bs) as usize));
+        for current in self.reachability_service.forward_chain_iterator(low, high, true).skip(1) {
+            let gd = self.ghostdag_store.get_data(current).unwrap();
+            if blocks.len() + gd.mergeset_size() > max_blocks {
+                break;
+            }
             blocks.extend(
                 gd.consensus_ordered_mergeset(self.ghostdag_store.deref())
                     .filter(|hash| !self.reachability_service.is_dag_ancestor_of(*hash, original_low)),
             );
+            highest_reached = current;
         }
 
-        // The process above doesn't return highest, so include it explicitly, unless highest == low
-        let highest = highest.expect("`blocks` should have at least one block");
-        if low != highest {
-            blocks.push(highest);
+        // The process above doesn't return `highest_reached`, so include it explicitly unless it is `low`
+        if low != highest_reached {
+            blocks.push(highest_reached);
         }
 
-        (blocks, highest)
+        (blocks, highest_reached)
     }
 
     fn find_highest_common_chain_block(&self, low: Hash, high: Hash) -> Hash {
@@ -178,11 +170,11 @@ impl<
                 break;
             }
 
-            let Some(current) = backward_iterator.next() else { break; };
-            let status = self.statuses_store.read().get(current).unwrap();
+            let Some(backward_current) = backward_iterator.next() else { break; };
+            let status = self.statuses_store.read().get(backward_current).unwrap();
             if status.has_block_body() {
                 // Since this iterator is going down, current must be the highest with body
-                highest_with_body = Some(current);
+                highest_with_body = Some(backward_current);
                 break;
             }
         }
