@@ -1,6 +1,6 @@
 use self::{
-    blockrelay::flow::HandleRelayInvsFlow,
     address::{ReceiveAddressesFlow, SendAddressesFlow},
+    blockrelay::flow::HandleRelayInvsFlow,
     ibd::IbdFlow,
     ping::{ReceivePingsFlow, SendPingsFlow},
     pruning_point_and_its_anticone_requests::PruningPointAndItsAnticoneRequestsFlow,
@@ -11,11 +11,12 @@ use self::{
 };
 use crate::{flow_context::FlowContext, flow_trait::Flow};
 
-use p2p_lib::{KaspadMessagePayloadType, Router};
+use log::debug;
+use p2p_lib::{pb::kaspad_message::Payload as KaspadMessagePayload, KaspadMessagePayloadType, Router};
 use std::sync::Arc;
 
-mod blockrelay;
 mod address;
+mod blockrelay;
 mod ibd;
 mod ping;
 mod pruning_point_and_its_anticone_requests;

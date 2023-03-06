@@ -2073,6 +2073,7 @@ dependencies = [
  "futures",
  "h2",
  "hashes",
+ "hex",
  "itertools 0.10.5",
  "kaspa-core",
  "log",

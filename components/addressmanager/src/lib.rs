@@ -65,7 +65,7 @@ impl AddressManager {
     }
 
     pub fn get_random_addresses(&self, exceptions: HashSet<NetAddress>) -> Vec<NetAddress> {
-        self.not_banned_address_store.get_random_addresses(exceptions)
+        self.not_banned_address_store.get_randomized_addresses(exceptions)
     }
 
     pub fn ban(&mut self, ip: IpAddr) {
@@ -169,7 +169,7 @@ mod not_banned_address_store_with_cache {
             self.addresses.values().map(|entry| entry.address)
         }
 
-        pub fn get_random_addresses(&self, exceptions: HashSet<NetAddress>) -> Vec<NetAddress> {
+        pub fn get_randomized_addresses(&self, exceptions: HashSet<NetAddress>) -> Vec<NetAddress> {
             let exceptions: HashSet<AddressKey> = exceptions.into_iter().map(|addr| addr.into()).collect();
             let addresses = self.addresses.iter().filter(|(addr, _)| !exceptions.contains(addr)).collect_vec();
             let mut weights = addresses

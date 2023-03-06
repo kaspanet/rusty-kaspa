@@ -69,6 +69,12 @@ struct Args {
     #[arg(long = "reset-db")]
     reset_db: bool,
 
+    #[arg(long = "outpeers", default_value = "8")]
+    target_outbound: usize,
+
+    #[arg(long = "maxinpeers", default_value = "128")]
+    inbound_limit: usize,
+
     #[arg(long = "testnet")]
     testnet: bool,
 
@@ -135,6 +141,7 @@ pub fn main() {
         info!("Deleting databases {:?}, {:?}", consensus_db_dir, utxoindex_db_dir);
         database::prelude::delete_db(consensus_db_dir.clone());
         database::prelude::delete_db(utxoindex_db_dir.clone());
+        database::prelude::delete_db(amgr_db_dir.clone());
     }
 
     info!("Consensus Data directory {}", consensus_db_dir.display());
@@ -183,7 +190,15 @@ pub fn main() {
     let rpc_core_server =
         Arc::new(RpcCoreServer::new(consensus.clone(), notify_service.notifier(), index_service.as_ref().map(|x| x.notifier())));
     let grpc_server = Arc::new(GrpcServer::new(grpc_server_addr, rpc_core_server.service()));
-    let p2p_service = Arc::new(P2pService::new(consensus.clone(), amgr, &config, args.connect, args.listen));
+    let p2p_service = Arc::new(P2pService::new(
+        consensus.clone(),
+        amgr,
+        &config,
+        args.connect,
+        args.listen,
+        args.target_outbound,
+        args.inbound_limit,
+    ));
 
     // TODO: TEMP: temp mining manager initialization just to make sure it complies with consensus
     let _mining_manager =

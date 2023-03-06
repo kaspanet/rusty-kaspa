@@ -19,6 +19,8 @@ pub struct P2pService {
     ctx: Arc<FlowContext>,
     connect: Option<String>, // TEMP: optional connect peer
     listen: Option<String>,
+    outbound_target: usize,
+    inbound_limit: usize,
     shutdown: SingleTrigger,
 }
 
@@ -29,8 +31,17 @@ impl P2pService {
         config: &Config,
         connect: Option<String>,
         listen: Option<String>,
+        outbound_target: usize,
+        inbound_limit: usize,
     ) -> Self {
-        Self { ctx: Arc::new(FlowContext::new(consensus, amgr, config)), connect, shutdown: SingleTrigger::default(), listen }
+        Self {
+            ctx: Arc::new(FlowContext::new(consensus, amgr, config)),
+            connect,
+            shutdown: SingleTrigger::default(),
+            listen,
+            outbound_target,
+            inbound_limit,
+        }
     }
 }
 
@@ -55,6 +66,8 @@ impl AsyncService for P2pService {
                 128, //TODO: Override from CLI args
                 self.ctx.amgr.clone(),
             );
+            let connection_manager =
+                ConnectionManager::new(p2p_adaptor.clone(), self.outbound_target, self.inbound_limit, self.ctx.amgr.clone());
 
             // For now, attempt to connect to a running golang node
             if let Some(peer_address) = self.connect.clone() {
