@@ -4,6 +4,7 @@ extern crate core;
 pub mod caches;
 mod data_stack;
 mod opcodes;
+pub mod script_class;
 
 use crate::caches::Cache;
 use crate::data_stack::{DataStack, Stack};
