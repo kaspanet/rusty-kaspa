@@ -19,6 +19,11 @@ use opcodes::{codes, to_small_int, OpCond};
 use script_class::ScriptClass;
 use txscript_errors::TxScriptError;
 
+pub mod prelude {
+    pub use super::standard::*;
+}
+pub use standard::*;
+
 pub const MAX_SCRIPT_PUBLIC_KEY_VERSION: u16 = 0;
 pub const MAX_STACK_SIZE: usize = 244;
 pub const MAX_SCRIPTS_SIZE: usize = 10000;

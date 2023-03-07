@@ -74,23 +74,6 @@ impl ConsensusMock {
         }
         true
     }
-
-    // fn t() {
-    //             // TODO: Replace this hack by a call to build the script (some txscript.PayToAddrScript(payAddress) equivalent).
-    //     //       See app\rpc\rpchandlers\get_block_template.go HandleGetBlockTemplate
-    //     const ADDRESS_PUBLIC_KEY_SCRIPT_PUBLIC_KEY_VERSION: u16 = 0;
-    //     const OP_CHECK_SIG: u8 = 172;
-    //     let mut script_addr = request.pay_address.payload.clone();
-    //     let mut pay_to_pub_key_script = Vec::with_capacity(34);
-    //     pay_to_pub_key_script.push(u8::try_from(script_addr.len()).unwrap());
-    //     pay_to_pub_key_script.append(&mut script_addr);
-    //     pay_to_pub_key_script.push(OP_CHECK_SIG);
-
-    //     let script = ScriptVec::from_vec(pay_to_pub_key_script);
-
-    //     let script_public_key = ScriptPublicKey::new(ADDRESS_PUBLIC_KEY_SCRIPT_PUBLIC_KEY_VERSION, script);
-
-    // }
 }
 
 impl ConsensusApi for ConsensusMock {
