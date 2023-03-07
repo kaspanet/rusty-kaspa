@@ -4,11 +4,11 @@ use addresses::{Address, Prefix};
 
 pub fn encode_benchmark(c: &mut Criterion) {
     c.bench_function("Address::into::String", |b| {
-        let address = Address {
-            prefix: Prefix::Mainnet,
-            payload: b"\x5f\xff\x3c\x4d\xa1\x8f\x45\xad\xcd\xd4\x99\xe4\x46\x11\xe9\xff\xf1\x48\xba\x69\xdb\x3c\x4e\xa2\xdd\xd9\x55\xfc\x46\xa5\x95\x22".to_vec(),
-            version: addresses::Version::PubKey
-        };
+        let address = Address::new(
+            Prefix::Mainnet,
+            addresses::Version::PubKey,
+            b"\x5f\xff\x3c\x4d\xa1\x8f\x45\xad\xcd\xd4\x99\xe4\x46\x11\xe9\xff\xf1\x48\xba\x69\xdb\x3c\x4e\xa2\xdd\xd9\x55\xfc\x46\xa5\x95\x22",
+        );
         b.iter(|| -> String { Address::into(black_box(address.clone())) })
     });
 }

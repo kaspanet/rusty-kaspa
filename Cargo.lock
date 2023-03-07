@@ -9,6 +9,7 @@ dependencies = [
  "borsh",
  "criterion",
  "serde",
+ "smallvec",
 ]
 
 [[package]]
