@@ -245,7 +245,7 @@ mod tests {
     use super::*;
     use crate::mempool::config::{Config, DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE};
     use crate::testutils::consensus_mock::ConsensusMock;
-    use addresses::{Address, Prefix};
+    use addresses::{Address, Prefix, Version};
     use consensus_core::{
         constants::{MAX_TX_IN_SEQUENCE_NUM, SOMPI_PER_KASPA, TX_VERSION},
         subnets::SUBNETWORK_ID_NATIVE,
@@ -399,7 +399,7 @@ mod tests {
         let addr_hash = vec![1u8; 32];
 
         // TODO: call a constructor here when available
-        let addr = Address { prefix: Prefix::Testnet, payload: addr_hash, version: 0u8 };
+        let addr = Address { prefix: Prefix::Testnet, payload: addr_hash, version: Version::PubKey };
 
         // TODO: Replace this hack by a call to build the script (some txscript.PayToAddrScript(addr) equivalent).
         const ADDRESS_PUBLIC_KEY_SCRIPT_PUBLIC_KEY_VERSION: u16 = 0;

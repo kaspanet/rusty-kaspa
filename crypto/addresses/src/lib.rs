@@ -8,6 +8,7 @@ mod bech32;
 pub enum AddressError {
     InvalidPrefix(String),
     MissingPrefix,
+    InvalidVersion(u8),
     DecodingError(char),
     BadChecksum,
 }
@@ -20,6 +21,7 @@ impl Display for AddressError {
             match self {
                 Self::InvalidPrefix(prefix) => format!("Invalid prefix {prefix}"),
                 Self::MissingPrefix => "Prefix is missing".to_string(),
+                Self::InvalidVersion(version) => format!("Invalid version {version}"),
                 Self::BadChecksum => "Checksum is invalid".to_string(),
                 Self::DecodingError(c) => format!("Invalid character {c}"),
             }
@@ -54,6 +56,14 @@ impl Prefix {
             Prefix::B => "b",
         }
     }
+
+    #[inline(always)]
+    fn is_test(&self) -> bool {
+        #[cfg(not(test))]
+        return false;
+        #[cfg(test)]
+        matches!(self, Prefix::A | Prefix::B)
+    }
 }
 
 impl Display for Prefix {
@@ -80,11 +90,55 @@ impl TryFrom<&str> for Prefix {
     }
 }
 
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[repr(u8)]
+pub enum Version {
+    /// PubKey addresses always have the version byte set to 0
+    PubKey = 0,
+    /// PubKey ECDSA addresses always have the version byte set to 1
+    PubKeyECDSA = 1,
+    /// ScriptHash addresses always have the version byte set to 8
+    ScriptHash = 8,
+}
+
+impl Version {
+    pub fn public_key_len(&self) -> usize {
+        match self {
+            Version::PubKey => 32,
+            Version::PubKeyECDSA => 33,
+            Version::ScriptHash => 32,
+        }
+    }
+}
+
+impl TryFrom<u8> for Version {
+    type Error = AddressError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Version::PubKey),
+            1 => Ok(Version::PubKeyECDSA),
+            8 => Ok(Version::ScriptHash),
+            _ => Err(AddressError::InvalidVersion(value)),
+        }
+    }
+}
+
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct Address {
+    // TODO: consider using a smallvec for the payload
     pub prefix: Prefix,
+    pub version: Version,
     pub payload: Vec<u8>,
-    pub version: u8,
+}
+
+impl Address {
+    pub fn new(prefix: Prefix, version: Version, payload: &[u8]) -> Self {
+        if !prefix.is_test() {
+            assert_eq!(payload.len(), version.public_key_len());
+        }
+        Self { prefix, payload: payload.to_vec(), version }
+    }
 }
 
 impl From<Address> for String {
@@ -127,21 +181,23 @@ mod tests {
 
     fn cases() -> Vec<(Address, &'static str)> {
         vec![
-            (Address{prefix: Prefix::A, version: 0, payload: b"".to_vec()}, "a:qqeq69uvrh"),
-            (Address{prefix: Prefix::A, version: 8, payload: b"".to_vec()}, "a:pq99546ray"),
-            (Address{prefix: Prefix::A, version: 120, payload: b"".to_vec()}, "a:0qf6jrhtdq"),
-            (Address{prefix: Prefix::B, version: 8, payload: b" ".to_vec()}, "b:pqsqzsjd64fv"),
-            (Address{prefix: Prefix::B, version: 8, payload: b"-".to_vec()}, "b:pqksmhczf8ud"),
-            (Address{prefix: Prefix::B, version: 8, payload: b"0".to_vec()}, "b:pqcq53eqrk0e"),
-            (Address{prefix: Prefix::B, version: 8, payload: b"1".to_vec()}, "b:pqcshg75y0vf"),
-            (Address{prefix: Prefix::B, version: 8, payload: b"-1".to_vec()}, "b:pqknzl4e9y0zy"),
-            (Address{prefix: Prefix::B, version: 8, payload: b"11".to_vec()}, "b:pqcnzt888ytdg"),
-            (Address{prefix: Prefix::B, version: 8, payload: b"abc".to_vec()}, "b:ppskycc8txxxn2w"),
-            (Address{prefix: Prefix::B, version: 8, payload: b"1234598760".to_vec()}, "b:pqcnyve5x5unsdekxqeusxeyu2"),
-            (Address{prefix: Prefix::B, version: 8, payload: b"abcdefghijklmnopqrstuvwxyz".to_vec()}, "b:ppskycmyv4nxw6rfdf4kcmtwdac8zunnw36hvamc09aqtpppz8lk"),
-            (Address{prefix: Prefix::B, version: 8, payload: b"000000000000000000000000000000000000000000".to_vec()}, "b:pqcrqvpsxqcrqvpsxqcrqvpsxqcrqvpsxqcrqvpsxqcrqvpsxqcrqvpsxqcrqvpsxqcrq7ag684l3"),
-            (Address { prefix: Prefix::Mainnet, payload: vec![0u8; 32], version: 0u8 }, "kaspa:qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqkx9awp4e"),
-            (Address { prefix: Prefix::Mainnet, payload: b"\x5f\xff\x3c\x4d\xa1\x8f\x45\xad\xcd\xd4\x99\xe4\x46\x11\xe9\xff\xf1\x48\xba\x69\xdb\x3c\x4e\xa2\xdd\xd9\x55\xfc\x46\xa5\x95\x22".to_vec(), version: 0u8 }, "kaspa:qp0l70zd5x85ttwd6jv7g3s3a8llzj96d8dncn4zmhv4tlzx5k2jyqh70xmfj"),
+            (Address{prefix: Prefix::A, version: Version::PubKey,     payload: b"".to_vec()}, "a:qqeq69uvrh"),
+            (Address{prefix: Prefix::A, version: Version::ScriptHash, payload: b"".to_vec()}, "a:pq99546ray"),
+            (Address{prefix: Prefix::B, version: Version::ScriptHash, payload: b" ".to_vec()}, "b:pqsqzsjd64fv"),
+            (Address{prefix: Prefix::B, version: Version::ScriptHash, payload: b"-".to_vec()}, "b:pqksmhczf8ud"),
+            (Address{prefix: Prefix::B, version: Version::ScriptHash, payload: b"0".to_vec()}, "b:pqcq53eqrk0e"),
+            (Address{prefix: Prefix::B, version: Version::ScriptHash, payload: b"1".to_vec()}, "b:pqcshg75y0vf"),
+            (Address{prefix: Prefix::B, version: Version::ScriptHash, payload: b"-1".to_vec()}, "b:pqknzl4e9y0zy"),
+            (Address{prefix: Prefix::B, version: Version::ScriptHash, payload: b"11".to_vec()}, "b:pqcnzt888ytdg"),
+            (Address{prefix: Prefix::B, version: Version::ScriptHash, payload: b"abc".to_vec()}, "b:ppskycc8txxxn2w"),
+            (Address{prefix: Prefix::B, version: Version::ScriptHash, payload: b"1234598760".to_vec()}, "b:pqcnyve5x5unsdekxqeusxeyu2"),
+            (Address{prefix: Prefix::B, version: Version::ScriptHash, payload: b"abcdefghijklmnopqrstuvwxyz".to_vec()}, "b:ppskycmyv4nxw6rfdf4kcmtwdac8zunnw36hvamc09aqtpppz8lk"),
+            (Address{prefix: Prefix::B, version: Version::ScriptHash, payload: b"000000000000000000000000000000000000000000".to_vec()}, "b:pqcrqvpsxqcrqvpsxqcrqvpsxqcrqvpsxqcrqvpsxqcrqvpsxqcrqvpsxqcrqvpsxqcrq7ag684l3"),
+            (Address::new(Prefix::Testnet, Version::PubKey, &[0u8; 32]),      "kaspatest:qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqhqrxplya"),
+            (Address::new(Prefix::Testnet, Version::PubKeyECDSA, &[0u8; 33]), "kaspatest:qyqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqhe837j2d"),
+            (Address::new(Prefix::Testnet, Version::PubKeyECDSA, b"\xba\x01\xfc\x5f\x4e\x9d\x98\x79\x59\x9c\x69\xa3\xda\xfd\xb8\x35\xa7\x25\x5e\x5f\x2e\x93\x4e\x93\x22\xec\xd3\xaf\x19\x0a\xb0\xf6\x0e"), "kaspatest:qxaqrlzlf6wes72en3568khahq66wf27tuhfxn5nytkd8tcep2c0vrse6gdmpks"),
+            (Address::new(Prefix::Mainnet, Version::PubKey, &[0u8; 32]),      "kaspa:qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqkx9awp4e"),
+            (Address::new(Prefix::Mainnet, Version::PubKey, b"\x5f\xff\x3c\x4d\xa1\x8f\x45\xad\xcd\xd4\x99\xe4\x46\x11\xe9\xff\xf1\x48\xba\x69\xdb\x3c\x4e\xa2\xdd\xd9\x55\xfc\x46\xa5\x95\x22"), "kaspa:qp0l70zd5x85ttwd6jv7g3s3a8llzj96d8dncn4zmhv4tlzx5k2jyqh70xmfj"),
         ]
     }
 
