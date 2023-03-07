@@ -180,6 +180,7 @@ mod tests {
     use crate::*;
 
     fn cases() -> Vec<(Address, &'static str)> {
+        // cspell:disable
         vec![
             (Address{prefix: Prefix::A, version: Version::PubKey,     payload: b"".to_vec()}, "a:qqeq69uvrh"),
             (Address{prefix: Prefix::A, version: Version::ScriptHash, payload: b"".to_vec()}, "a:pq99546ray"),
@@ -199,6 +200,7 @@ mod tests {
             (Address::new(Prefix::Mainnet, Version::PubKey, &[0u8; 32]),      "kaspa:qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqkx9awp4e"),
             (Address::new(Prefix::Mainnet, Version::PubKey, b"\x5f\xff\x3c\x4d\xa1\x8f\x45\xad\xcd\xd4\x99\xe4\x46\x11\xe9\xff\xf1\x48\xba\x69\xdb\x3c\x4e\xa2\xdd\xd9\x55\xfc\x46\xa5\x95\x22"), "kaspa:qp0l70zd5x85ttwd6jv7g3s3a8llzj96d8dncn4zmhv4tlzx5k2jyqh70xmfj"),
         ]
+        // cspell:enable
     }
 
     #[test]
@@ -219,6 +221,7 @@ mod tests {
 
     #[test]
     fn test_errors() {
+        // cspell:disable
         let address_str: String = "kaspa:qqqqqqqqqqqqq1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqkx9awp4e".to_string();
         let address: Result<Address, AddressError> = address_str.try_into();
         assert_eq!(Err(AddressError::DecodingError('1')), address);
@@ -238,5 +241,6 @@ mod tests {
         let address_str: String = "kaspa:qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqkx9awp4e".to_string();
         let address: Result<Address, AddressError> = address_str.try_into();
         assert_eq!(Err(AddressError::BadChecksum), address);
+        // cspell:enable
     }
 }

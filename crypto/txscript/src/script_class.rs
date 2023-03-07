@@ -145,14 +145,15 @@ impl From<Version> for ScriptClass {
 mod tests {
     use super::*;
 
-    struct Test {
-        name: &'static str,
-        script: Vec<u8>,
-        class: ScriptClass,
-    }
-
     #[test]
     fn test_script_class_from_script() {
+        struct Test {
+            name: &'static str,
+            script: Vec<u8>,
+            class: ScriptClass,
+        }
+
+        // cspell:disable
         let tests = vec![
             Test {
                 name: "valid pubkey script",
@@ -180,6 +181,8 @@ mod tests {
                 class: ScriptClass::NonStandard,
             },
         ];
+        // cspell:enable
+
         for test in tests {
             assert_eq!(test.class, ScriptClass::from_script(&test.script), "{} wrong script class", test.name);
         }
