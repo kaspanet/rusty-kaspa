@@ -11,7 +11,7 @@ pub fn op_true_script() -> (ScriptPublicKey, Vec<u8>) {
     // TODO: use txscript.OpTrue instead when available
     let redeem_script = vec![81u8];
 
-    // TODO: use txscript.PayToScriptHashScript(redeemScript) when available
+    // TODO: use txscript::pay_to_script_hash_script(redeemScript)
     // This is just a hack
     let mut hasher = hashes::TransactionSigningHash::new();
     let redeem_script_hash = hasher.update(redeem_script.clone()).clone().finalize();

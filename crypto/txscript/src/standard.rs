@@ -1,5 +1,6 @@
 use addresses::{Address, Prefix, Version};
 use consensus_core::tx::{ScriptPublicKey, ScriptVec};
+use hashes::HasherBase;
 use smallvec::SmallVec;
 use std::iter::once;
 use txscript_errors::TxScriptError;
@@ -10,14 +11,14 @@ use crate::{
 };
 
 /// Creates a new script to pay a transaction output to a 32-byte pubkey.
-fn pay_to_pub_key_script(address_payload: &[u8]) -> ScriptVec {
+fn pay_to_pub_key(address_payload: &[u8]) -> ScriptVec {
     // TODO: use ScriptBuilder when add_op and add_data fns or equivalents are available
     assert_eq!(address_payload.len(), 32);
     SmallVec::from_iter(once(OpData32).chain(address_payload.iter().copied()).chain(once(OpCheckSig)))
 }
 
 /// Creates a new script to pay a transaction output to a 33-byte ECDSA pubkey.
-fn pay_to_pub_key_ecdsa_script(address_payload: &[u8]) -> ScriptVec {
+fn pay_to_pub_key_ecdsa(address_payload: &[u8]) -> ScriptVec {
     // TODO: use ScriptBuilder when add_op and add_data fns or equivalents are available
     assert_eq!(address_payload.len(), 33);
     SmallVec::from_iter(once(OpData33).chain(address_payload.iter().copied()).chain(once(OpCheckSigECDSA)))
@@ -25,7 +26,7 @@ fn pay_to_pub_key_ecdsa_script(address_payload: &[u8]) -> ScriptVec {
 
 // Creates a new script to pay a transaction output to a script hash.
 // It is expected that the input is a valid hash.
-fn pay_to_script_hash_script(script_hash: &[u8]) -> ScriptVec {
+fn pay_to_script_hash(script_hash: &[u8]) -> ScriptVec {
     // TODO: use ScriptBuilder when add_op and add_data fns or equivalents are available
     assert_eq!(script_hash.len(), 32);
     SmallVec::from_iter([OpBlake2b, OpData32].iter().copied().chain(script_hash.iter().copied()).chain(once(OpEqual)))
@@ -34,11 +35,19 @@ fn pay_to_script_hash_script(script_hash: &[u8]) -> ScriptVec {
 /// Creates a new script to pay a transaction output to the specified address.
 pub fn pay_to_address_script(address: &Address) -> ScriptPublicKey {
     let script = match address.version {
-        Version::PubKey => pay_to_pub_key_script(address.payload.as_slice()),
-        Version::PubKeyECDSA => pay_to_pub_key_ecdsa_script(address.payload.as_slice()),
-        Version::ScriptHash => pay_to_script_hash_script(address.payload.as_slice()),
+        Version::PubKey => pay_to_pub_key(address.payload.as_slice()),
+        Version::PubKeyECDSA => pay_to_pub_key_ecdsa(address.payload.as_slice()),
+        Version::ScriptHash => pay_to_script_hash(address.payload.as_slice()),
     };
     ScriptPublicKey::new(ScriptClass::from(address.version).version(), script)
+}
+
+/// Takes a script and returns an equivalent pay-to-script-hash script
+pub fn pay_to_script_hash_script(redeem_script: &[u8]) -> ScriptPublicKey {
+    let mut hasher = hashes::TransactionSigningHash::new();
+    let redeem_script_hash = hasher.update(redeem_script).clone().finalize();
+    let script = pay_to_script_hash(redeem_script_hash.as_bytes().as_ref());
+    ScriptPublicKey::new(ScriptClass::ScriptHash.version(), script)
 }
 
 /// Returns the address encoded in a script public key.
