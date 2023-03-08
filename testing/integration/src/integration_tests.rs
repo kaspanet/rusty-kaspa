@@ -97,7 +97,7 @@ fn reachability_stretch_test(use_attack_json: bool) {
 
     // Act
     let (_temp_db_lifetime, db) = create_temp_db();
-    let mut store = DbReachabilityStore::new(db, 100000);
+    let mut store = DbReachabilityStore::new(db, None, 100000);
     let mut builder = DagBuilder::new(&mut store);
 
     builder.init();

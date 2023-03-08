@@ -44,7 +44,7 @@ impl DbSelectedChainStore {
             db: Arc::clone(&db),
             access_hash_by_index: CachedDbAccess::new(db.clone(), cache_size, STORE_PREFIX_HASH_BY_INDEX.to_vec()),
             access_index_by_hash: CachedDbAccess::new(db.clone(), cache_size, STORE_PREFIX_INDEX_BY_HASH.to_vec()),
-            access_highest_index: CachedDbItem::new(db, STORE_PREFIX_HIGHEST_INDEX),
+            access_highest_index: CachedDbItem::new(db, STORE_PREFIX_HIGHEST_INDEX.to_vec()),
         }
     }
 

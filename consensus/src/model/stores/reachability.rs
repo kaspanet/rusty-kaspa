@@ -1,11 +1,12 @@
 use crate::processes::reachability::interval::Interval;
 use consensus_core::{
     blockhash::{self, BlockHashes},
-    BlockHashMap, BlockHasher, HashMapCustomHasher,
+    BlockHashMap, BlockHasher, BlockLevel, HashMapCustomHasher,
 };
 use database::prelude::{BatchDbWriter, CachedDbAccess, CachedDbItem, DbKey, DirectDbWriter, StoreError, DB};
 use hashes::Hash;
 
+use itertools::Itertools;
 use parking_lot::{RwLockUpgradableReadGuard, RwLockWriteGuard};
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
@@ -58,19 +59,27 @@ pub struct DbReachabilityStore {
     db: Arc<DB>,
     access: CachedDbAccess<Hash, Arc<ReachabilityData>, BlockHasher>,
     reindex_root: CachedDbItem<Hash>,
+    level: Option<BlockLevel>,
 }
 
 impl DbReachabilityStore {
-    pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
+    pub fn new(db: Arc<DB>, level: Option<BlockLevel>, cache_size: u64) -> Self {
+        let lvl_bytes = match level {
+            Some(level) => level.to_le_bytes(),
+            None => BlockLevel::MAX.to_le_bytes(),
+        };
+        let store_prefix = STORE_PREFIX.iter().copied().chain(lvl_bytes).collect_vec();
+        let reindex_root_prefix = REINDEX_ROOT_KEY.iter().copied().chain(lvl_bytes).collect_vec();
         Self {
             db: Arc::clone(&db),
-            access: CachedDbAccess::new(Arc::clone(&db), cache_size, STORE_PREFIX.to_vec()),
-            reindex_root: CachedDbItem::new(db, REINDEX_ROOT_KEY),
+            access: CachedDbAccess::new(Arc::clone(&db), cache_size, store_prefix),
+            reindex_root: CachedDbItem::new(db, reindex_root_prefix),
+            level,
         }
     }
 
     pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {
-        Self::new(Arc::clone(&self.db), cache_size)
+        Self::new(Arc::clone(&self.db), self.level, cache_size)
     }
 }
 

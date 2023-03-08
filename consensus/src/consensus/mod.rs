@@ -190,7 +190,8 @@ impl Consensus {
                 })
                 .collect_vec(),
         ));
-        let reachability_store = Arc::new(RwLock::new(DbReachabilityStore::new(db.clone(), pruning_plus_finality_size_for_caches)));
+        let reachability_store =
+            Arc::new(RwLock::new(DbReachabilityStore::new(db.clone(), None, pruning_plus_finality_size_for_caches)));
         let ghostdag_stores = (0..=params.max_block_level)
             .map(|level| {
                 let cache_size =
@@ -693,8 +694,8 @@ impl ConsensusApi for Consensus {
         self.coinbase_manager.modify_coinbase_payload(payload, miner_data)
     }
 
-    fn validate_pruning_proof(&self, _proof: &PruningPointProof) -> Result<(), PruningImportError> {
-        unimplemented!()
+    fn validate_pruning_proof(&self, proof: &PruningPointProof) -> Result<(), PruningImportError> {
+        self.pruning_proof_manager.validate_pruning_point_proof(proof)
     }
 
     fn apply_pruning_proof(&self, proof: PruningPointProof, trusted_set: &[TrustedBlock]) {

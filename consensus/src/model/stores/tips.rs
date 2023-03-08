@@ -27,7 +27,7 @@ pub struct DbTipsStore {
 
 impl DbTipsStore {
     pub fn new(db: Arc<DB>) -> Self {
-        Self { db: Arc::clone(&db), access: CachedDbItem::new(db.clone(), STORE_NAME) }
+        Self { db: Arc::clone(&db), access: CachedDbItem::new(db.clone(), STORE_NAME.to_vec()) }
     }
 
     pub fn clone_with_new_cache(&self) -> Self {
