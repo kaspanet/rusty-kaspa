@@ -59,14 +59,14 @@ impl KaspaRpcClient {
 
         [
             RpcApiOps::NotifyBlockAdded,
-            RpcApiOps::NotifyFinalityConflict,
-            RpcApiOps::NotifyFinalityConflicts,
-            RpcApiOps::NotifyNewBlockTemplate,
-            RpcApiOps::NotifyPruningPointUtxoSetOverride,
-            RpcApiOps::NotifyUtxosChanged,
-            RpcApiOps::NotifyVirtualDaaScoreChanged,
-            RpcApiOps::NotifyVirtualSelectedParentBlueScoreChanged,
             RpcApiOps::NotifyVirtualSelectedParentChainChanged,
+            RpcApiOps::NotifyFinalityConflict,
+            RpcApiOps::NotifyFinalityConflictResolved,
+            RpcApiOps::NotifyUtxosChanged,
+            RpcApiOps::NotifyVirtualSelectedParentBlueScoreChanged,
+            RpcApiOps::NotifyVirtualDaaScoreChanged,
+            RpcApiOps::NotifyPruningPointUtxoSetOverride,
+            RpcApiOps::NotifyNewBlockTemplate,
         ]
         .into_iter()
         .for_each(|notification_op| {

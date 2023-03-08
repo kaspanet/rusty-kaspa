@@ -42,13 +42,13 @@ impl From<&Notification> for RpcApiOps {
         match item {
             Notification::BlockAdded(_) => RpcApiOps::NotifyBlockAdded,
             Notification::FinalityConflict(_) => RpcApiOps::NotifyFinalityConflict,
-            Notification::FinalityConflictResolved(_) => RpcApiOps::NotifyFinalityConflictResolved,
             Notification::NewBlockTemplate(_) => RpcApiOps::NotifyNewBlockTemplate,
             Notification::PruningPointUtxoSetOverride(_) => RpcApiOps::NotifyPruningPointUtxoSetOverride,
             Notification::UtxosChanged(_) => RpcApiOps::NotifyUtxosChanged,
             Notification::VirtualDaaScoreChanged(_) => RpcApiOps::NotifyVirtualDaaScoreChanged,
             Notification::VirtualSelectedParentBlueScoreChanged(_) => RpcApiOps::NotifyVirtualSelectedParentBlueScoreChanged,
             Notification::VirtualSelectedParentChainChanged(_) => RpcApiOps::NotifyVirtualSelectedParentChainChanged,
+            Notification::FinalityConflictResolved(_) => todo!(),
         }
     }
 }
