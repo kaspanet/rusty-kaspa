@@ -194,10 +194,8 @@ where
     ) -> Self {
         assert!(broadcasters > 0, "a notifier requires a minimum of one broadcaster");
         let notification_channel = Channel::unbounded();
-        let broadcasters = (0..broadcasters)
-            .into_iter()
-            .map(|_| Arc::new(Broadcaster::new(name, notification_channel.receiver.clone())))
-            .collect::<Vec<_>>();
+        let broadcasters =
+            (0..broadcasters).map(|_| Arc::new(Broadcaster::new(name, notification_channel.receiver.clone()))).collect::<Vec<_>>();
         Self {
             enabled_events,
             listeners: Mutex::new(HashMap::new()),
@@ -224,7 +222,6 @@ where
         assert!(broadcasters > 0, "a notifier requires a minimum of one broadcaster");
         let notification_channel = Channel::unbounded();
         let broadcasters = (0..broadcasters)
-            .into_iter()
             .map(|_| Arc::new(Broadcaster::with_sync(name, notification_channel.receiver.clone(), _sync.clone())))
             .collect::<Vec<_>>();
         Self {

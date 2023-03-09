@@ -1019,7 +1019,7 @@ async fn json_concurrency_test(file_path: &str) {
         None
     };
 
-    let chunks = lines.into_iter().chunks(1000);
+    let chunks = lines.chunks(1000);
     let mut iter = chunks.into_iter();
     let mut chunk = iter.next().unwrap();
     let mut prev_joins = submit_chunk(&consensus, &mut chunk, proof_exists);
@@ -1467,7 +1467,7 @@ async fn selected_chain_test() {
     for i in 15..23 {
         consensus.add_block_with_parents(i.into(), vec![config.genesis_hash]).await.unwrap();
     }
-    consensus.add_block_with_parents(23.into(), (15..23).into_iter().map(|i| i.into()).collect_vec()).await.unwrap();
+    consensus.add_block_with_parents(23.into(), (15..23).map(|i| i.into()).collect_vec()).await.unwrap();
 
     assert_eq!(consensus.header_processor.selected_chain_store.read().get_by_index(0).unwrap(), config.genesis_hash);
     assert_eq!(consensus.header_processor.selected_chain_store.read().get_by_index(1).unwrap(), 22.into()); // We expect 23's selected parent to be 22 because of GHOSTDAG tie breaer rules.
