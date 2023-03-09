@@ -10,7 +10,7 @@ use consensus_core::{
     block::Block,
     pruning::{PruningPointProof, PruningPointsList},
 };
-use futures::future::join_all;
+use futures::future::try_join_all;
 use hashes::Hash;
 use kaspa_core::{debug, info};
 use muhash::MuHash;
@@ -244,13 +244,11 @@ impl IbdFlow {
             let current_jobs =
                 chunk.into_iter().map(|h| consensus.clone().validate_and_insert_block(Block::from_header_arc(h), false)).collect();
             // Join the previous chunk so that we always concurrently process a chunk and receive another
-            join_all(prev_jobs).await.into_iter().try_for_each(|x| x.map(drop))?;
+            try_join_all(prev_jobs).await?;
             prev_jobs = current_jobs;
         }
 
-        // TODO: consider using
-        // try_join_all(prev_jobs).await?;
-        join_all(prev_jobs).await.into_iter().try_for_each(|x| x.map(drop))?;
+        try_join_all(prev_jobs).await?;
 
         self.sync_missing_relay_past_headers(consensus, syncer_header_selected_tip, relay_block_hash).await?;
 
@@ -285,7 +283,7 @@ impl IbdFlow {
         let chunk: HeadersChunk = msg.try_into()?;
         let jobs: Vec<BlockValidationFuture> =
             chunk.into_iter().map(|h| consensus.validate_and_insert_block(Block::from_header_arc(h), false)).collect();
-        join_all(jobs).await.into_iter().try_for_each(|x| x.map(drop))?;
+        try_join_all(jobs).await?;
         dequeue_with_timeout!(self.incoming_route, Payload::DoneHeaders)?;
 
         if consensus.get_block_status(relay_block_hash).is_none() {
@@ -332,7 +330,7 @@ impl IbdFlow {
         for (i, chunk) in iter.enumerate() {
             let current_jobs = self.queue_block_processing_chunk(consensus, chunk).await?;
             // Join the previous chunk so that we always concurrently process a chunk and receive another
-            join_all(prev_jobs).await.into_iter().try_for_each(|x| x.map(drop))?;
+            try_join_all(prev_jobs).await?;
             prev_jobs = current_jobs;
 
             if i % 5 == 0 {
@@ -340,7 +338,7 @@ impl IbdFlow {
             }
         }
 
-        join_all(prev_jobs).await.into_iter().try_for_each(|x| x.map(drop))?;
+        try_join_all(prev_jobs).await?;
 
         // TODO: raise new block template event
 
