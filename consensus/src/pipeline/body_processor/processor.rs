@@ -15,7 +15,10 @@ use crate::{
             DB,
         },
     },
-    pipeline::deps_manager::{BlockProcessingMessage, BlockTaskDependencyManager},
+    pipeline::{
+        deps_manager::{BlockProcessingMessage, BlockTaskDependencyManager},
+        ProcessingCounters,
+    },
     processes::{
         coinbase::CoinbaseManager, mass::MassCalculator, past_median_time::PastMedianTimeManager,
         transaction_validator::TransactionValidator,
@@ -32,7 +35,7 @@ use hashes::Hash;
 use parking_lot::RwLock;
 use rayon::ThreadPool;
 use rocksdb::WriteBatch;
-use std::sync::Arc;
+use std::sync::{atomic::Ordering, Arc};
 
 pub struct BlockBodyProcessor {
     // Channels
@@ -72,6 +75,9 @@ pub struct BlockBodyProcessor {
 
     // Dependency manager
     task_manager: BlockTaskDependencyManager,
+
+    // Counters
+    counters: Arc<ProcessingCounters>,
 }
 
 impl BlockBodyProcessor {
@@ -100,6 +106,7 @@ impl BlockBodyProcessor {
         max_block_mass: u64,
         genesis_hash: Hash,
         process_genesis: bool,
+        counters: Arc<ProcessingCounters>,
     ) -> Self {
         Self {
             receiver,
@@ -120,6 +127,7 @@ impl BlockBodyProcessor {
             genesis_hash,
             process_genesis,
             task_manager: BlockTaskDependencyManager::new(),
+            counters,
         }
     }
 
@@ -196,6 +204,10 @@ impl BlockBodyProcessor {
         }
 
         self.commit_body(block.hash(), block.header.direct_parents(), block.transactions.clone());
+
+        // Report counters
+        self.counters.body_counts.fetch_add(1, Ordering::Relaxed);
+        self.counters.txs_counts.fetch_add(block.transactions.len() as u64, Ordering::Relaxed);
         Ok(BlockStatus::StatusUTXOPendingVerification)
     }
 

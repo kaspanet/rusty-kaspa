@@ -331,10 +331,7 @@ impl HeaderProcessor {
                         .parents_at_level(header, level)
                         .iter()
                         .copied()
-                        .filter(|parent| {
-                            // self.ghostdag_stores[level as usize].has(*parent).unwrap()
-                            relations_read[level as usize].has(*parent).unwrap()
-                        })
+                        .filter(|parent| relations_read[level as usize].has(*parent).unwrap())
                         .collect_vec();
                     if filtered.is_empty() {
                         vec![ORIGIN]

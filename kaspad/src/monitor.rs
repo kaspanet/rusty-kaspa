@@ -1,13 +1,12 @@
 use consensus::pipeline::ProcessingCounters;
 use kaspa_core::{core::Core, info, service::Service, trace};
-use num_format::{Locale, ToFormattedString};
 use std::{
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
     thread::{self, spawn, JoinHandle},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 pub struct ConsensusMonitor {
@@ -23,6 +22,7 @@ impl ConsensusMonitor {
 
     pub fn worker(self: &Arc<ConsensusMonitor>) {
         let mut last_snapshot = self.counters.snapshot();
+        let mut last_log_time = Instant::now();
         let snapshot_interval = 10;
         loop {
             thread::sleep(Duration::from_secs(snapshot_interval));
@@ -34,25 +34,27 @@ impl ConsensusMonitor {
             let snapshot = self.counters.snapshot();
             if snapshot == last_snapshot {
                 // No update, avoid printing useless info
+                last_log_time = Instant::now();
                 continue;
             }
 
-            let send_rate = (snapshot.blocks_submitted - last_snapshot.blocks_submitted) as f64 / snapshot_interval as f64;
-            let header_rate = (snapshot.header_counts - last_snapshot.header_counts) as f64 / snapshot_interval as f64;
-            let deps_rate = (snapshot.dep_counts - last_snapshot.dep_counts) as f64 / snapshot_interval as f64;
-            let pending: i64 = i64::try_from(snapshot.blocks_submitted).unwrap() - i64::try_from(snapshot.header_counts).unwrap();
+            // Subtract the snapshots
+            let delta = &snapshot - &last_snapshot;
+            let now = Instant::now();
 
             info!(
-                "sent: {}, processed: {}, pending: {}, -> send rate b/s: {:.2}, process rate b/s: {:.2}, deps rate e/s: {:.2}",
-                snapshot.blocks_submitted.to_formatted_string(&Locale::en),
-                snapshot.header_counts.to_formatted_string(&Locale::en),
-                pending.to_formatted_string(&Locale::en),
-                send_rate,
-                header_rate,
-                deps_rate,
+                "Processed {} blocks and {} headers in the last {:.2}s ({} transactions; {} parent references; {} blocks queued; {} UTXO-validated blocks)", 
+                delta.body_counts,
+                delta.header_counts,
+                (now - last_log_time).as_secs_f64(),
+                delta.txs_counts,
+                delta.dep_counts,
+                delta.blocks_submitted,
+                delta.chain_block_counts,
             );
 
             last_snapshot = snapshot;
+            last_log_time = now;
         }
 
         trace!("monitor thread exiting");

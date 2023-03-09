@@ -161,7 +161,7 @@ impl<
         let mut forward_iterator = self.reachability_service.forward_chain_iterator(pp, high, true).tuple_windows();
         let mut backward_iterator = self.reachability_service.backward_chain_iterator(high, pp, true);
         loop {
-            // We loop from both directions in parallel in order use the shorter path
+            // We loop from both directions in parallel in order to use the shorter path
             let Some((parent, current)) = forward_iterator.next() else { break; };
             let status = self.statuses_store.read().get(current).unwrap();
             if status.is_header_only() {

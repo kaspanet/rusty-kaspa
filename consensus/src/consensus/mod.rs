@@ -402,6 +402,7 @@ impl Consensus {
             params.max_block_mass,
             params.genesis_hash,
             config.process_genesis,
+            counters.clone(),
         ));
 
         let virtual_processor = Arc::new(VirtualStateProcessor::new(
@@ -435,6 +436,7 @@ impl Consensus {
             parents_manager.clone(),
             depth_manager,
             notification_root.clone(),
+            counters.clone(),
         ));
 
         let pruning_proof_manager = PruningProofManager::new(
@@ -539,7 +541,7 @@ impl Consensus {
         self.block_sender
             .send(BlockProcessingMessage::Process(BlockTask { block, trusted_ghostdag_data: None, update_virtual }, vec![tx]))
             .unwrap();
-        self.counters.blocks_submitted.fetch_add(1, Ordering::SeqCst);
+        self.counters.blocks_submitted.fetch_add(1, Ordering::Relaxed);
         async { rx.await.unwrap() }
     }
 
@@ -551,7 +553,7 @@ impl Consensus {
                 vec![tx],
             ))
             .unwrap();
-        self.counters.blocks_submitted.fetch_add(1, Ordering::SeqCst);
+        self.counters.blocks_submitted.fetch_add(1, Ordering::Relaxed);
         async { rx.await.unwrap() }
     }
 

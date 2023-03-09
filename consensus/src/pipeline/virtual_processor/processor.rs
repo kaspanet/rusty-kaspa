@@ -29,7 +29,7 @@ use crate::{
         },
     },
     params::Params,
-    pipeline::{deps_manager::BlockProcessingMessage, virtual_processor::utxo_validation::UtxoProcessingContext},
+    pipeline::{deps_manager::BlockProcessingMessage, virtual_processor::utxo_validation::UtxoProcessingContext, ProcessingCounters},
     processes::{
         block_depth::BlockDepthManager,
         coinbase::CoinbaseManager,
@@ -77,7 +77,7 @@ use std::{
     collections::HashSet,
     collections::VecDeque,
     ops::Deref,
-    sync::Arc,
+    sync::{atomic::Ordering, Arc},
     time::{Duration, SystemTime},
 };
 
@@ -142,6 +142,9 @@ pub struct VirtualStateProcessor {
     pub(super) depth_manager: BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>,
 
     pub(crate) notification_root: Arc<ConsensusNotificationRoot>,
+    
+    // Counters
+    counters: Arc<ProcessingCounters>,
 }
 
 impl VirtualStateProcessor {
@@ -192,6 +195,7 @@ impl VirtualStateProcessor {
         parents_manager: ParentsManager<DbHeadersStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
         depth_manager: BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>,
         notification_root: Arc<ConsensusNotificationRoot>,
+        counters: Arc<ProcessingCounters>,
     ) -> Self {
         Self {
             receiver,
@@ -232,6 +236,7 @@ impl VirtualStateProcessor {
             parents_manager,
             depth_manager,
             notification_root,
+            counters,
         }
     }
 
@@ -305,6 +310,7 @@ impl VirtualStateProcessor {
         // Walk back up to the new virtual selected parent candidate
         let mut last_log_index = 0;
         let mut last_log_time = SystemTime::now();
+        let mut chain_block_counter = 0;
         for (i, (selected_parent, current)) in
             self.reachability_service.forward_chain_iterator(split_point, new_selected, true).tuple_windows().enumerate()
         {
@@ -348,11 +354,17 @@ impl VirtualStateProcessor {
                         // Commit UTXO data for current chain block
                         self.commit_utxo_state(current, ctx.mergeset_diff, ctx.multiset_hash, AcceptanceData {});
                         // TODO: AcceptanceData
+
+                        // Count the number of UTXO-processed chain blocks
+                        chain_block_counter += 1;
                     }
                 }
                 Err(err) => panic!("unexpected error {err}"),
             }
         }
+
+        // Report counters
+        self.counters.chain_block_counts.fetch_add(chain_block_counter, Ordering::Relaxed);
 
         // NOTE: inlining this within the match captures the statuses store lock and should be avoided.
         // TODO: wrap statuses store lock within a service
