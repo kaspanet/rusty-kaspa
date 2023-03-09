@@ -191,13 +191,13 @@ pub fn main() {
     async_runtime.register(rpc_core_server);
     async_runtime.register(grpc_server);
     async_runtime.register(p2p_service);
+    async_runtime.register(monitor);
 
     // Bind the keyboard signal to the core
     Arc::new(Signals::new(&core)).init();
 
     // Consensus must start first in order to init genesis in stores
     core.bind(consensus);
-    core.bind(monitor);
     core.bind(async_runtime);
 
     core.run();

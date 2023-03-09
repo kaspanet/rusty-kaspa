@@ -1,11 +1,14 @@
 use consensus::pipeline::ProcessingCounters;
-use kaspa_core::{core::Core, info, service::Service, trace};
+use kaspa_core::{
+    info,
+    task::service::{AsyncService, AsyncServiceFuture},
+    trace,
+};
 use std::{
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
-    thread::{self, spawn, JoinHandle},
     time::{Duration, Instant},
 };
 
@@ -20,12 +23,12 @@ impl ConsensusMonitor {
         ConsensusMonitor { terminate: AtomicBool::new(false), counters }
     }
 
-    pub fn worker(self: &Arc<ConsensusMonitor>) {
+    pub async fn worker(self: &Arc<ConsensusMonitor>) {
         let mut last_snapshot = self.counters.snapshot();
         let mut last_log_time = Instant::now();
         let snapshot_interval = 10;
         loop {
-            thread::sleep(Duration::from_secs(snapshot_interval));
+            tokio::time::sleep(Duration::from_secs(snapshot_interval)).await;
 
             if self.terminate.load(Ordering::SeqCst) {
                 break;
@@ -62,16 +65,20 @@ impl ConsensusMonitor {
 }
 
 // service trait implementation for Monitor
-impl Service for ConsensusMonitor {
-    fn ident(self: Arc<ConsensusMonitor>) -> &'static str {
+impl AsyncService for ConsensusMonitor {
+    fn ident(self: Arc<Self>) -> &'static str {
         "consensus-monitor"
     }
 
-    fn start(self: Arc<ConsensusMonitor>, _core: Arc<Core>) -> Vec<JoinHandle<()>> {
-        vec![spawn(move || self.worker())]
+    fn start(self: Arc<Self>) -> AsyncServiceFuture {
+        Box::pin(async move { self.worker().await })
     }
 
-    fn stop(self: Arc<ConsensusMonitor>) {
+    fn signal_exit(self: Arc<Self>) {
         self.terminate.store(true, Ordering::SeqCst);
+    }
+
+    fn stop(self: Arc<Self>) -> AsyncServiceFuture {
+        Box::pin(async move {})
     }
 }
