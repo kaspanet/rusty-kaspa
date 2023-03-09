@@ -27,7 +27,7 @@ use p2p_lib::{
 use std::{sync::Arc, time::Duration};
 use tokio::sync::mpsc::Receiver;
 
-use super::{HeadersChunk, PruningPointUtxosetChunkStream, IBD_BATCH_SIZE};
+use super::{progress::ProgressReporter, HeadersChunk, PruningPointUtxosetChunkStream, IBD_BATCH_SIZE};
 
 /// Flow for managing IBD - Initial Block Download
 pub struct IbdFlow {
@@ -82,16 +82,13 @@ impl IbdFlow {
                             negotiation_output.syncer_header_selected_tip,
                             highest_known_syncer_chain_hash,
                             relay_block.hash(),
+                            relay_block.header.daa_score,
                         )
                         .await?;
                     }
                     IbdType::DownloadHeadersProof => {
-                        self.perform_ibd_with_headers_proof(
-                            &consensus,
-                            negotiation_output.syncer_header_selected_tip,
-                            relay_block.hash(),
-                        )
-                        .await?;
+                        self.perform_ibd_with_headers_proof(&consensus, negotiation_output.syncer_header_selected_tip, &relay_block)
+                            .await?;
                     }
                 }
 
@@ -138,11 +135,18 @@ impl IbdFlow {
         &mut self,
         consensus: &DynConsensus,
         syncer_header_selected_tip: Hash,
-        relay_block_hash: Hash,
+        relay_block: &Block,
     ) -> Result<(), ProtocolError> {
         info!("Starting IBD with headers proof");
         let pruning_point = self.sync_and_validate_pruning_proof(consensus).await?;
-        self.sync_pruning_point_future_headers(consensus, syncer_header_selected_tip, pruning_point, relay_block_hash).await?;
+        self.sync_pruning_point_future_headers(
+            consensus,
+            syncer_header_selected_tip,
+            pruning_point,
+            relay_block.hash(),
+            relay_block.header.daa_score,
+        )
+        .await?;
         self.sync_pruning_point_utxoset(consensus, pruning_point).await?;
         Ok(())
     }
@@ -221,8 +225,10 @@ impl IbdFlow {
         syncer_header_selected_tip: Hash,
         highest_known_syncer_chain_hash: Hash,
         relay_block_hash: Hash,
+        high_block_daa_score_hint: u64,
     ) -> Result<(), ProtocolError> {
-        // TODO: sync missing relay block past \cap anticone(syncer tip)
+        let highest_shared_header_score = consensus.get_header(highest_known_syncer_chain_hash)?.daa_score;
+        let mut progress_reporter = ProgressReporter::new(highest_shared_header_score, high_block_daa_score_hint, "block headers");
 
         self.router
             .enqueue(make_message!(
@@ -235,20 +241,28 @@ impl IbdFlow {
             .await?;
         let mut chunk_stream = HeadersChunkStream::new(&self.router, &mut self.incoming_route);
 
-        let Some(chunk) = chunk_stream.next().await? else { return Ok(()); };
-        let mut prev_jobs: Vec<BlockValidationFuture> =
-            chunk.into_iter().map(|h| consensus.clone().validate_and_insert_block(Block::from_header_arc(h), false)).collect();
-
-        // TODO: logs
-        while let Some(chunk) = chunk_stream.next().await? {
-            let current_jobs =
+        if let Some(chunk) = chunk_stream.next().await? {
+            let mut prev_daa_score = chunk.last().expect("chunk is never empty").daa_score;
+            let mut prev_jobs: Vec<BlockValidationFuture> =
                 chunk.into_iter().map(|h| consensus.clone().validate_and_insert_block(Block::from_header_arc(h), false)).collect();
-            // Join the previous chunk so that we always concurrently process a chunk and receive another
-            try_join_all(prev_jobs).await?;
-            prev_jobs = current_jobs;
-        }
 
-        try_join_all(prev_jobs).await?;
+            while let Some(chunk) = chunk_stream.next().await? {
+                let current_daa_score = chunk.last().expect("chunk is never empty").daa_score;
+                let current_jobs =
+                    chunk.into_iter().map(|h| consensus.clone().validate_and_insert_block(Block::from_header_arc(h), false)).collect();
+                let prev_chunk_len = prev_jobs.len();
+                // Join the previous chunk so that we always concurrently process a chunk and receive another
+                try_join_all(prev_jobs).await?;
+                // Log the progress
+                progress_reporter.report(prev_chunk_len, prev_daa_score);
+                prev_daa_score = current_daa_score;
+                prev_jobs = current_jobs;
+            }
+
+            let prev_chunk_len = prev_jobs.len();
+            try_join_all(prev_jobs).await?;
+            progress_reporter.report(prev_chunk_len, prev_daa_score);
+        }
 
         self.sync_missing_relay_past_headers(consensus, syncer_header_selected_tip, relay_block_hash).await?;
 
@@ -319,26 +333,29 @@ impl IbdFlow {
         if hashes.is_empty() {
             return Ok(());
         }
-        // TODO: progress reporter using DAA score from below headers
-        let _low_header = consensus.get_header(*hashes.first().unwrap())?;
-        let _high_header = consensus.get_header(*hashes.last().unwrap())?;
+
+        let low_header = consensus.get_header(*hashes.first().expect("hashes was non empty"))?;
+        let high_header = consensus.get_header(*hashes.last().expect("hashes was non empty"))?;
+        let mut progress_reporter = ProgressReporter::new(low_header.daa_score, high_header.daa_score, "blocks");
 
         let mut iter = hashes.chunks(IBD_BATCH_SIZE);
-        let mut prev_jobs = self.queue_block_processing_chunk(consensus, iter.next().expect("hashes was non empty")).await?;
+        let (mut prev_jobs, mut prev_daa_score) =
+            self.queue_block_processing_chunk(consensus, iter.next().expect("hashes was non empty")).await?;
 
-        // TODO: logs
-        for (i, chunk) in iter.enumerate() {
-            let current_jobs = self.queue_block_processing_chunk(consensus, chunk).await?;
+        for chunk in iter {
+            let (current_jobs, current_daa_score) = self.queue_block_processing_chunk(consensus, chunk).await?;
+            let prev_chunk_len = prev_jobs.len();
             // Join the previous chunk so that we always concurrently process a chunk and receive another
             try_join_all(prev_jobs).await?;
+            // Log the progress
+            progress_reporter.report(prev_chunk_len, prev_daa_score);
+            prev_daa_score = current_daa_score;
             prev_jobs = current_jobs;
-
-            if i % 5 == 0 {
-                info!("Processed {} block bodies", (i + 1) * IBD_BATCH_SIZE);
-            }
         }
 
+        let prev_chunk_len = prev_jobs.len();
         try_join_all(prev_jobs).await?;
+        progress_reporter.report(prev_chunk_len, prev_daa_score);
 
         // TODO: raise new block template event
 
@@ -349,8 +366,9 @@ impl IbdFlow {
         &mut self,
         consensus: &DynConsensus,
         chunk: &[Hash],
-    ) -> Result<Vec<BlockValidationFuture>, ProtocolError> {
+    ) -> Result<(Vec<BlockValidationFuture>, u64), ProtocolError> {
         let mut jobs = Vec::with_capacity(chunk.len());
+        let mut current_daa_score = 0;
         self.router
             .enqueue(make_message!(
                 Payload::RequestIbdBlocks,
@@ -366,10 +384,11 @@ impl IbdFlow {
             if block.is_header_only() {
                 return Err(ProtocolError::OtherOwned(format!("sent header of {} where expected block with body", block.hash())));
             }
+            current_daa_score = block.header.daa_score;
             // TODO: decide if we resolve virtual separately on long IBD
             jobs.push(consensus.validate_and_insert_block(block, true));
         }
 
-        Ok(jobs)
+        Ok((jobs, current_daa_score))
     }
 }
