@@ -293,10 +293,7 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         unimplemented!();
     }
 
-    async fn get_sink_blue_score_call(
-        &self,
-        _request: GetVirtualSelectedParentBlueScoreRequest,
-    ) -> RpcResult<GetVirtualSelectedParentBlueScoreResponse> {
+    async fn get_sink_blue_score_call(&self, _request: GetSinkBlueScoreRequest) -> RpcResult<GetSinkBlueScoreResponse> {
         unimplemented!();
     }
 

@@ -205,12 +205,9 @@ where
 
     /// Requests the blue score of the current selected parent of the virtual block.
     async fn get_sink_blue_score(&self) -> RpcResult<u64> {
-        Ok(self.get_sink_blue_score_call(GetVirtualSelectedParentBlueScoreRequest {}).await?.blue_score)
+        Ok(self.get_sink_blue_score_call(GetSinkBlueScoreRequest {}).await?.blue_score)
     }
-    async fn get_sink_blue_score_call(
-        &self,
-        request: GetVirtualSelectedParentBlueScoreRequest,
-    ) -> RpcResult<GetVirtualSelectedParentBlueScoreResponse>;
+    async fn get_sink_blue_score_call(&self, request: GetSinkBlueScoreRequest) -> RpcResult<GetSinkBlueScoreResponse>;
 
     /// Bans the given ip.
     async fn ban(&self, address: RpcPeerAddress) -> RpcResult<()> {

@@ -29,7 +29,7 @@ impl From<&kaspad_request::Payload> for RpcApiOps {
             Payload::GetUtxosByAddressesRequest(_) => RpcApiOps::GetUtxosByAddresses,
             Payload::GetBalanceByAddressRequest(_) => RpcApiOps::GetBalanceByAddress,
             Payload::GetBalancesByAddressesRequest(_) => RpcApiOps::GetBalancesByAddresses,
-            Payload::GetVirtualSelectedParentBlueScoreRequest(_) => RpcApiOps::GetVirtualSelectedParentBlueScore,
+            Payload::GetSinkBlueScoreRequest(_) => RpcApiOps::GetSinkBlueScore,
             Payload::BanRequest(_) => RpcApiOps::Ban,
             Payload::UnbanRequest(_) => RpcApiOps::Unban,
             Payload::EstimateNetworkHashesPerSecondRequest(_) => RpcApiOps::EstimateNetworkHashesPerSecond,
@@ -82,7 +82,7 @@ impl From<&kaspad_response::Payload> for RpcApiOps {
             Payload::GetUtxosByAddressesResponse(_) => RpcApiOps::GetUtxosByAddresses,
             Payload::GetBalanceByAddressResponse(_) => RpcApiOps::GetBalanceByAddress,
             Payload::GetBalancesByAddressesResponse(_) => RpcApiOps::GetBalancesByAddresses,
-            Payload::GetVirtualSelectedParentBlueScoreResponse(_) => RpcApiOps::GetVirtualSelectedParentBlueScore,
+            Payload::GetSinkBlueScoreResponse(_) => RpcApiOps::GetSinkBlueScore,
             Payload::BanResponse(_) => RpcApiOps::Ban,
             Payload::UnbanResponse(_) => RpcApiOps::Unban,
             Payload::EstimateNetworkHashesPerSecondResponse(_) => RpcApiOps::EstimateNetworkHashesPerSecond,
@@ -164,7 +164,7 @@ pub mod kaspad_request_convert {
     impl_into_kaspad_request!(GetUtxosByAddresses);
     impl_into_kaspad_request!(GetBalanceByAddress);
     impl_into_kaspad_request!(GetBalancesByAddresses);
-    impl_into_kaspad_request!(GetVirtualSelectedParentBlueScore);
+    impl_into_kaspad_request!(GetSinkBlueScore);
     impl_into_kaspad_request!(Ban);
     impl_into_kaspad_request!(Unban);
     impl_into_kaspad_request!(EstimateNetworkHashesPerSecond);
@@ -292,7 +292,7 @@ pub mod kaspad_response_convert {
     impl_into_kaspad_response!(GetUtxosByAddresses);
     impl_into_kaspad_response!(GetBalanceByAddress);
     impl_into_kaspad_response!(GetBalancesByAddresses);
-    impl_into_kaspad_response!(GetVirtualSelectedParentBlueScore);
+    impl_into_kaspad_response!(GetSinkBlueScore);
     impl_into_kaspad_response!(Ban);
     impl_into_kaspad_response!(Unban);
     impl_into_kaspad_response!(EstimateNetworkHashesPerSecond);

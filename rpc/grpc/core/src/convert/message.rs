@@ -278,12 +278,10 @@ from!(_item: RpcResult<&kaspa_rpc_core::GetBalancesByAddressesResponse>, protowi
     unimplemented!();
 });
 
-from!(&kaspa_rpc_core::GetVirtualSelectedParentBlueScoreRequest, protowire::GetVirtualSelectedParentBlueScoreRequestMessage);
-from!(
-    item: RpcResult<&kaspa_rpc_core::GetVirtualSelectedParentBlueScoreResponse>,
-    protowire::GetVirtualSelectedParentBlueScoreResponseMessage,
-    { Self { blue_score: item.blue_score, error: None } }
-);
+from!(&kaspa_rpc_core::GetSinkBlueScoreRequest, protowire::GetSinkBlueScoreRequestMessage);
+from!(item: RpcResult<&kaspa_rpc_core::GetSinkBlueScoreResponse>, protowire::GetSinkBlueScoreResponseMessage, {
+    Self { blue_score: item.blue_score, error: None }
+});
 
 from!(_item: &kaspa_rpc_core::BanRequest, protowire::BanRequestMessage, {
     unimplemented!();
@@ -601,12 +599,10 @@ try_from!(_item: &protowire::GetBalancesByAddressesResponseMessage, RpcResult<ka
     unimplemented!()
 });
 
-try_from!(&protowire::GetVirtualSelectedParentBlueScoreRequestMessage, kaspa_rpc_core::GetVirtualSelectedParentBlueScoreRequest);
-try_from!(
-    item: &protowire::GetVirtualSelectedParentBlueScoreResponseMessage,
-    RpcResult<kaspa_rpc_core::GetVirtualSelectedParentBlueScoreResponse>,
-    { Self { blue_score: item.blue_score } }
-);
+try_from!(&protowire::GetSinkBlueScoreRequestMessage, kaspa_rpc_core::GetSinkBlueScoreRequest);
+try_from!(item: &protowire::GetSinkBlueScoreResponseMessage, RpcResult<kaspa_rpc_core::GetSinkBlueScoreResponse>, {
+    Self { blue_score: item.blue_score }
+});
 
 try_from!(_item: &protowire::BanRequestMessage, kaspa_rpc_core::BanRequest, {
     //

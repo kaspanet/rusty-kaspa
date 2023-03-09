@@ -564,12 +564,12 @@ message GetBalancesByAddressesResponseMessage {
   RPCError error = 1000;
 }
 
-// GetVirtualSelectedParentBlueScoreRequestMessage requests the blue score of the current selected parent
+// GetSinkBlueScoreRequestMessage requests the blue score of the current selected parent
 // of the virtual block.
-message GetVirtualSelectedParentBlueScoreRequestMessage {
+message GetSinkBlueScoreRequestMessage {
 }
 
-message GetVirtualSelectedParentBlueScoreResponseMessage {
+message GetSinkBlueScoreResponseMessage {
   uint64 blueScore = 1;
 
   RPCError error = 1000;

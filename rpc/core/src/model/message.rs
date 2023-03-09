@@ -529,15 +529,15 @@ impl GetBalancesByAddressesResponse {
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct GetVirtualSelectedParentBlueScoreRequest {}
+pub struct GetSinkBlueScoreRequest {}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct GetVirtualSelectedParentBlueScoreResponse {
+pub struct GetSinkBlueScoreResponse {
     pub blue_score: u64,
 }
 
-impl GetVirtualSelectedParentBlueScoreResponse {
+impl GetSinkBlueScoreResponse {
     pub fn new(blue_score: u64) -> Self {
         Self { blue_score }
     }

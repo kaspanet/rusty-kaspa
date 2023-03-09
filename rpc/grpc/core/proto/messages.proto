@@ -35,7 +35,7 @@ message KaspadRequest {
     NotifyUtxosChangedRequestMessage notifyUtxosChangedRequest = 1049;
     // UtxosChangedNotificationMessage utxosChangedNotification = 1051;
     GetUtxosByAddressesRequestMessage getUtxosByAddressesRequest = 1052;
-    GetVirtualSelectedParentBlueScoreRequestMessage getVirtualSelectedParentBlueScoreRequest = 1054;
+    GetSinkBlueScoreRequestMessage getSinkBlueScoreRequest = 1054;
     NotifySinkBlueScoreChangedRequestMessage notifySinkBlueScoreChangedRequest = 1056;
     // SinkBlueScoreChangedNotificationMessage sinkBlueScoreChangedNotification = 1058;
     BanRequestMessage banRequest = 1059;
@@ -91,7 +91,7 @@ message KaspadResponse {
     NotifyUtxosChangedResponseMessage notifyUtxosChangedResponse = 1050;
     UtxosChangedNotificationMessage utxosChangedNotification = 1051;
     GetUtxosByAddressesResponseMessage getUtxosByAddressesResponse = 1053;
-    GetVirtualSelectedParentBlueScoreResponseMessage getVirtualSelectedParentBlueScoreResponse = 1055;
+    GetSinkBlueScoreResponseMessage getSinkBlueScoreResponse = 1055;
     NotifySinkBlueScoreChangedResponseMessage notifySinkBlueScoreChangedResponse = 1057;
     SinkBlueScoreChangedNotificationMessage sinkBlueScoreChangedNotification = 1058;
     BanResponseMessage banResponse = 1060;

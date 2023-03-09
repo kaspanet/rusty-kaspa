@@ -131,7 +131,7 @@ impl RpcApi<ChannelConnection> for GrpcClient {
     route!(get_utxos_by_addresses_call, GetUtxosByAddresses);
     route!(get_balance_by_address_call, GetBalanceByAddress);
     route!(get_balances_by_addresses_call, GetBalancesByAddresses);
-    route!(get_sink_blue_score_call, GetVirtualSelectedParentBlueScore);
+    route!(get_sink_blue_score_call, GetSinkBlueScore);
     route!(ban_call, Ban);
     route!(unban_call, Unban);
     route!(estimate_network_hashes_per_second_call, EstimateNetworkHashesPerSecond);

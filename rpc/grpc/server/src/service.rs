@@ -193,9 +193,9 @@ impl Rpc for GrpcService {
                                     Ok(request) => core_service.ban_call(request).await.into(),
                                     Err(err) => BanResponseMessage::from(err).into(),
                                 },
-                                Payload::GetVirtualSelectedParentBlueScoreRequest(ref request) => match request.try_into() {
+                                Payload::GetSinkBlueScoreRequest(ref request) => match request.try_into() {
                                     Ok(request) => core_service.get_sink_blue_score_call(request).await.into(),
-                                    Err(err) => GetVirtualSelectedParentBlueScoreResponseMessage::from(err).into(),
+                                    Err(err) => GetSinkBlueScoreResponseMessage::from(err).into(),
                                 },
                                 Payload::GetUtxosByAddressesRequest(ref request) => match request.try_into() {
                                     Ok(request) => core_service.get_utxos_by_addresses_call(request).await.into(),

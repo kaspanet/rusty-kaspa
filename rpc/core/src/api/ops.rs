@@ -28,7 +28,7 @@ u32_try_from! {
         GetUtxosByAddresses,
         GetBalanceByAddress,
         GetBalancesByAddresses,
-        GetVirtualSelectedParentBlueScore,
+        GetSinkBlueScore,
         Ban,
         Unban,
         GetInfo,
