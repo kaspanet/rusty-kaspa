@@ -36,6 +36,9 @@ pub enum RpcError {
     #[error(transparent)]
     NetworkTypeError(#[from] consensus_core::networktype::NetworkTypeError),
 
+    #[error(transparent)]
+    NotificationError(#[from] kaspa_notify::error::Error),
+
     #[error("{0}")]
     General(String),
 }

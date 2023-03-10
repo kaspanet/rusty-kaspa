@@ -5,11 +5,11 @@ edition = "2021"
 
 [dependencies]
 consensus-core.workspace = true
+kaspa-rpc-core.workspace = true
+kaspa-grpc-client.workspace = true
 kaspa-wrpc-server.workspace = true
 tokio.workspace = true
-rpc-grpc.workspace = true
 thiserror.workspace = true
-rpc-core.workspace = true
 clap.workspace = true
 workflow-core.workspace = true
 workflow-rpc.workspace = true

@@ -11,9 +11,10 @@ use std::{collections::BTreeMap, vec::Vec};
 /// Supported languages.
 ///
 /// Presently only English is specified by the BIP39 standard
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 pub enum Language {
     /// English is presently the only supported language
+    #[default]
     English,
 }
 
@@ -30,12 +31,6 @@ impl Language {
         match *self {
             Language::English => &lazy::WORDMAP_ENGLISH,
         }
-    }
-}
-
-impl Default for Language {
-    fn default() -> Language {
-        Language::English
     }
 }
 

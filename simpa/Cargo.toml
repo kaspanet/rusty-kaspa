@@ -20,6 +20,8 @@ rayon.workspace = true
 clap.workspace = true
 indexmap.workspace = true
 log.workspace = true
+async-channel.workspace = true
+num_cpus.workspace = true
 
 futures = "0.3"
 rand_distr = "0.4"

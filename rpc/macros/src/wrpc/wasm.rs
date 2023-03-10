@@ -130,7 +130,8 @@ impl ToTokens for RpcSubscriptions {
             let blank = regex.replace(&name, "");
             let subscribe = regex.replace(&name, "Subscribe");
             let unsubscribe = regex.replace(&name, "Unsubscribe");
-            let notify_type = Ident::new(&blank, Span::call_site());
+            let scope = Ident::new(&blank, Span::call_site());
+            let sub_scope = Ident::new(format!("{blank}Scope").as_str(), Span::call_site());
             let fn_subscribe_snake = Ident::new(&subscribe.to_case(Case::Snake), Span::call_site());
             let fn_subscribe_camel = Ident::new(&subscribe.to_case(Case::Camel), Span::call_site());
             let fn_unsubscribe_snake = Ident::new(&unsubscribe.to_case(Case::Snake), Span::call_site());
@@ -140,13 +141,13 @@ impl ToTokens for RpcSubscriptions {
 
                 #[wasm_bindgen(js_name = #fn_subscribe_camel)]
                 pub async fn #fn_subscribe_snake(&self) -> JsResult<()> {
-                    self.client.start_notify(ListenerId::default(), NotificationType:: #notify_type).await?;
+                    self.client.start_notify(ListenerId::default(), Scope:: #scope(#sub_scope)).await?;
                     Ok(())
                 }
 
                 #[wasm_bindgen(js_name = #fn_unsubscribe_camel)]
                 pub async fn #fn_unsubscribe_snake(&self) -> JsResult<()> {
-                    self.client.stop_notify(ListenerId::default(), NotificationType:: #notify_type).await?;
+                    self.client.stop_notify(ListenerId::default(), Scope:: #scope).await?;
                     Ok(())
                 }
 

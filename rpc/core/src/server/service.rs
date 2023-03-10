@@ -1,15 +1,7 @@
 //! Core server implementation for ClientAPI
 
-use super::collector::{ConsensusCollector, ConsensusNotificationReceiver};
-use crate::{
-    api::rpc::RpcApi,
-    model::*,
-    notify::{
-        listener::{ListenerID, ListenerUtxoNotificationFilterSetting},
-        notifier::Notifier,
-    },
-    FromRpcHex, Notification, NotificationSender, NotificationType, RpcError, RpcResult,
-};
+use super::collector::{CollectorFromConsensus, CollectorFromIndex};
+use crate::{api::rpc::RpcApi, model::*, notify::connection::ChannelConnection, FromRpcHex, Notification, RpcError, RpcResult};
 use async_trait::async_trait;
 use consensus_core::{
     api::DynConsensus,
@@ -17,14 +9,31 @@ use consensus_core::{
     coinbase::MinerData,
     tx::{ScriptPublicKey, ScriptVec},
 };
+use consensus_notify::{
+    service::NotifyService,
+    {connection::ConsensusChannelConnection, notification::Notification as ConsensusNotification},
+};
 use hashes::Hash;
 use kaspa_core::trace;
+use kaspa_index_processor::{
+    connection::IndexChannelConnection, notification::Notification as IndexNotification, service::IndexService,
+};
+use kaspa_notify::{
+    collector::DynCollector,
+    events::{EventSwitches, EventType, EVENT_TYPE_ARRAY},
+    listener::ListenerId,
+    notifier::{Notifier, Notify},
+    scope::Scope,
+    subscriber::{Subscriber, SubscriptionManager},
+};
+use kaspa_utils::channel::Channel;
 use std::{
     str::FromStr,
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
     vec,
 };
+use utxoindex::api::DynUtxoIndexApi;
 
 /// A service implementing the Rpc API at rpc_core level.
 ///
@@ -45,39 +54,75 @@ use std::{
 /// Subscriber.
 pub struct RpcCoreService {
     consensus: DynConsensus,
-    notifier: Arc<Notifier>,
+    notifier: Arc<Notifier<Notification, ChannelConnection>>,
+    index_service: Option<Arc<IndexService>>,
 }
 
+const RPC_CORE: &str = "rpc-core";
+
 impl RpcCoreService {
-    pub fn new(consensus: DynConsensus, consensus_recv: ConsensusNotificationReceiver) -> Self {
+    pub fn new(consensus: DynConsensus, notify_service: Arc<NotifyService>, index_service: Option<Arc<IndexService>>) -> Self {
         // TODO: instead of getting directly a DynConsensus, rely on some Context equivalent
         //       See app\rpc\rpccontext\context.go
-        // TODO: the channel receiver should be obtained by registering to a consensus notification service
 
-        let collector = Arc::new(ConsensusCollector::new(consensus_recv));
+        // Prepare consensus-notify objects
+        let consensus_notify_channel = Channel::<ConsensusNotification>::default();
+        let consensus_notify_listener_id =
+            notify_service.notifier().register_new_listener(ConsensusChannelConnection::new(consensus_notify_channel.sender()));
 
-        // TODO: Some consensus-compatible subscriber could be provided here
-        let notifier = Arc::new(Notifier::new(Some(collector), None, ListenerUtxoNotificationFilterSetting::All));
+        // Prepare the rpc-core notifier objects
+        let mut consensus_events: EventSwitches = EVENT_TYPE_ARRAY[..].into();
+        consensus_events[EventType::UtxosChanged] = false;
+        consensus_events[EventType::PruningPointUtxoSetOverride] = index_service.is_none();
+        let consensus_collector = Arc::new(CollectorFromConsensus::new(consensus_notify_channel.receiver()));
+        let consensus_subscriber =
+            Arc::new(Subscriber::new(consensus_events, notify_service.notifier(), consensus_notify_listener_id));
 
-        Self { consensus, notifier }
+        let mut collectors: Vec<DynCollector<Notification>> = vec![consensus_collector];
+        let mut subscribers = vec![consensus_subscriber];
+
+        // Prepare index-processor objects if an IndexService is provided
+        if let Some(ref index_service) = index_service {
+            let index_notify_channel = Channel::<IndexNotification>::default();
+            let index_notify_listener_id =
+                index_service.notifier().register_new_listener(IndexChannelConnection::new(index_notify_channel.sender()));
+
+            let index_events: EventSwitches = [EventType::UtxosChanged, EventType::PruningPointUtxoSetOverride].as_ref().into();
+            let index_collector = Arc::new(CollectorFromIndex::new(index_notify_channel.receiver()));
+            let index_subscriber = Arc::new(Subscriber::new(index_events, index_service.notifier(), index_notify_listener_id));
+
+            collectors.push(index_collector);
+            subscribers.push(index_subscriber);
+        }
+
+        // Create the rcp-core notifier
+        let notifier = Arc::new(Notifier::new(EVENT_TYPE_ARRAY[..].into(), collectors, subscribers, 1, RPC_CORE));
+
+        Self { consensus, notifier, index_service }
     }
 
     pub fn start(&self) {
-        self.notifier.clone().start();
+        self.notifier().start();
     }
 
     pub async fn stop(&self) -> RpcResult<()> {
-        self.notifier.clone().stop().await?;
+        self.notifier().stop().await?;
         Ok(())
     }
 
-    pub fn notifier(&self) -> Arc<Notifier> {
+    #[inline(always)]
+    pub fn notifier(&self) -> Arc<Notifier<Notification, ChannelConnection>> {
         self.notifier.clone()
+    }
+
+    #[inline(always)]
+    pub fn utxoindex(&self) -> DynUtxoIndexApi {
+        self.index_service.as_ref().and_then(|x| x.utxoindex())
     }
 }
 
 #[async_trait]
-impl RpcApi for RpcCoreService {
+impl RpcApi<ChannelConnection> for RpcCoreService {
     async fn submit_block_call(&self, request: SubmitBlockRequest) -> RpcResult<SubmitBlockResponse> {
         let try_block: RpcResult<Block> = (&request.block).try_into();
         if let Err(ref err) = try_block {
@@ -102,10 +147,10 @@ impl RpcApi for RpcCoreService {
 
         // Notify about new added block
         // TODO: let consensus emit this notification through an event channel
-        self.notifier.clone().notify(Arc::new(Notification::BlockAdded(BlockAddedNotification { block: rpc_block }))).unwrap();
+        self.notifier.notify(Notification::BlockAdded(BlockAddedNotification { block: Arc::new(rpc_block) })).unwrap();
 
         // Emit a NewBlockTemplate notification
-        self.notifier.clone().notify(Arc::new(Notification::NewBlockTemplate(NewBlockTemplateNotification {}))).unwrap();
+        self.notifier.notify(Notification::NewBlockTemplate(NewBlockTemplateNotification {})).unwrap();
 
         result
     }
@@ -197,10 +242,10 @@ impl RpcApi for RpcCoreService {
         unimplemented!();
     }
 
-    async fn get_virtual_selected_parent_chain_from_block_call(
+    async fn get_virtual_chain_from_block_call(
         &self,
-        _request: GetVirtualSelectedParentChainFromBlockRequest,
-    ) -> RpcResult<GetVirtualSelectedParentChainFromBlockResponse> {
+        _request: GetVirtualChainFromBlockRequest,
+    ) -> RpcResult<GetVirtualChainFromBlockResponse> {
         unimplemented!();
     }
 
@@ -232,6 +277,7 @@ impl RpcApi for RpcCoreService {
     }
 
     async fn get_balance_by_address_call(&self, _request: GetBalanceByAddressRequest) -> RpcResult<GetBalanceByAddressResponse> {
+        //TODO: use self.utxoindex for this
         unimplemented!();
     }
 
@@ -243,13 +289,11 @@ impl RpcApi for RpcCoreService {
     }
 
     async fn get_utxos_by_addresses_call(&self, _addresses: GetUtxosByAddressesRequest) -> RpcResult<GetUtxosByAddressesResponse> {
+        //TODO: use self.utxoindex for this
         unimplemented!();
     }
 
-    async fn get_virtual_selected_parent_blue_score_call(
-        &self,
-        _request: GetVirtualSelectedParentBlueScoreRequest,
-    ) -> RpcResult<GetVirtualSelectedParentBlueScoreResponse> {
+    async fn get_sink_blue_score_call(&self, _request: GetSinkBlueScoreRequest) -> RpcResult<GetSinkBlueScoreResponse> {
         unimplemented!();
     }
 
@@ -290,28 +334,28 @@ impl RpcApi for RpcCoreService {
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API
 
-    /// Register a new listener and returns an id and a channel receiver.
-    fn register_new_listener(&self, sender: NotificationSender) -> ListenerID {
-        self.notifier.register_new_listener(sender)
+    /// Register a new listener and returns an id identifying it.
+    fn register_new_listener(&self, connection: ChannelConnection) -> ListenerId {
+        self.notifier.register_new_listener(connection)
     }
 
     /// Unregister an existing listener.
     ///
-    /// Stop all notifications for this listener and drop its channel.
-    async fn unregister_listener(&self, id: ListenerID) -> RpcResult<()> {
+    /// Stop all notifications for this listener, unregister the id and its associated connection.
+    async fn unregister_listener(&self, id: ListenerId) -> RpcResult<()> {
         self.notifier.unregister_listener(id)?;
         Ok(())
     }
 
     /// Start sending notifications of some type to a listener.
-    async fn start_notify(&self, id: ListenerID, notification_type: NotificationType) -> RpcResult<()> {
-        self.notifier.start_notify(id, notification_type)?;
+    async fn start_notify(&self, id: ListenerId, scope: Scope) -> RpcResult<()> {
+        self.notifier.clone().start_notify(id, scope).await?;
         Ok(())
     }
 
     /// Stop sending notifications of some type to a listener.
-    async fn stop_notify(&self, id: ListenerID, notification_type: NotificationType) -> RpcResult<()> {
-        self.notifier.stop_notify(id, notification_type)?;
+    async fn stop_notify(&self, id: ListenerId, scope: Scope) -> RpcResult<()> {
+        self.notifier.clone().stop_notify(id, scope).await?;
         Ok(())
     }
 }

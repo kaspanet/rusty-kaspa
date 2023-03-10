@@ -1,16 +1,17 @@
 use crate::connection::*;
 use crate::server::*;
+use kaspa_notify::scope::Scope;
+use kaspa_rpc_core::api::ops::RpcApiOps;
+use kaspa_rpc_core::api::rpc::RpcApi;
+use kaspa_rpc_core::prelude::*;
 use kaspa_rpc_macros::build_wrpc_server_interface;
-use rpc_core::api::ops::RpcApiOps;
-use rpc_core::api::rpc::RpcApi;
-use rpc_core::prelude::*;
 use std::sync::Arc;
 use workflow_rpc::server::prelude::*;
 
 /// Accessor to the [`RpcApi`] that may reside within
 /// different structs.
 pub trait RpcApiContainer: Send + Sync + 'static {
-    fn get_rpc_api(&self) -> Arc<dyn RpcApi>;
+    fn get_rpc_api(&self) -> Arc<dyn RpcApi<Connection>>;
     fn verbose(&self) -> bool {
         false
     }
@@ -80,8 +81,8 @@ impl Router {
                 GetSelectedTipHash,
                 GetSubnetwork,
                 GetUtxosByAddresses,
-                GetVirtualSelectedParentBlueScore,
-                GetVirtualSelectedParentChainFromBlock,
+                GetSinkBlueScore,
+                GetVirtualChainFromBlock,
                 Ping,
                 ResolveFinalityConflict,
                 Shutdown,
@@ -93,22 +94,28 @@ impl Router {
 
         interface.method(
             RpcApiOps::Subscribe,
-            workflow_rpc::server::Method::new(move |manager: Server, connection: Connection, notification_type: NotificationType| {
+            workflow_rpc::server::Method::new(move |manager: Server, connection: Connection, scope: Scope| {
                 Box::pin(async move {
                     let rpc_api = manager.get_rpc_api(&connection);
 
                     let id = if let Some(listener_id) = connection.listener_id() {
                         listener_id
                     } else {
-                        let id = rpc_api.register_new_listener(manager.notification_ingest());
-                        connection.register_notification_listener(id); //, connection.clone());
-                        manager.register_notification_listener(id, connection.clone());
-                        id
+                        //
+                        // FIXME: let the server handle the registration into the manager
+                        //
+
+                        // let id = rpc_api.register_new_listener(connection);
+                        // connection.register_notification_listener(id); //, connection.clone());
+                        // manager.register_notification_listener(id, connection.clone());
+                        // id
+
+                        rpc_api.register_new_listener(connection)
                     };
 
-                    workflow_log::log_trace!("notification subscribe[0x{id:x}] {notification_type:?}");
+                    workflow_log::log_trace!("notification subscribe[0x{id:x}] {scope:?}");
 
-                    rpc_api.start_notify(id, notification_type).await.map_err(|err| err.to_string())?;
+                    rpc_api.start_notify(id, scope).await.map_err(|err| err.to_string())?;
 
                     Ok(SubscribeResponse::new(id))
                 })
@@ -117,7 +124,7 @@ impl Router {
 
         interface.method(
             RpcApiOps::Unsubscribe,
-            workflow_rpc::server::Method::new(move |manager: Server, connection: Connection, notification_type: NotificationType| {
+            workflow_rpc::server::Method::new(move |manager: Server, connection: Connection, notification_type: Scope| {
                 Box::pin(async move {
                     if let Some(listener_id) = connection.listener_id() {
                         workflow_log::log_trace!("notification unsubscribe[0x{listener_id:x}] {notification_type:?}");

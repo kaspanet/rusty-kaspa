@@ -8,6 +8,7 @@ members = [
     "wallet/bip32",
     "consensus",
     "consensus/core",
+    "consensus/notify",
     "consensus/pow",
     "kaspad",
     "simpa",
@@ -17,8 +18,13 @@ members = [
     "crypto/muhash",
     "crypto/addresses",
     "crypto/merkle",
+    "notify",
+    "indexes/processor",
+    "indexes/utxoindex",
     "rpc/core",
-    "rpc/grpc",
+    "rpc/grpc/core",
+    "rpc/grpc/client",
+    "rpc/grpc/server",
     "rpc/macros",
     "rpc/wrpc/client",
     "rpc/wrpc/server",
@@ -26,7 +32,12 @@ members = [
     "rpc/wrpc/wasm",
     "mining",
     "protocol/p2p",
-    "protocol/flows"
+    "protocol/flows",
+    "components/addressmanager",
+    "database",
+    "crypto/txscript",
+    "crypto/txscript/errors",
+    "testing/integration",
 ]
 
 [workspace.package]
@@ -41,6 +52,7 @@ kaspa-core = { path = "core" }
 # kaspa-wallet = { path = "wallet" }
 consensus = { path = "consensus" }
 consensus-core = { path = "consensus/core" }
+consensus-notify = { path = "consensus/notify" }
 kaspad = { path = "kaspad" }
 math = { path = "math" }
 hashes = { path = "crypto/hashes" }
@@ -48,9 +60,14 @@ muhash = { path = "crypto/muhash" }
 addresses = { path = "crypto/addresses" }
 merkle = { path = "crypto/merkle" }
 pow = { path = "consensus/pow" }
+kaspa-index-processor = { path = "indexes/processor" }
+utxoindex = { path = "indexes/utxoindex" }
 kaspa-utils = { path = "utils" }
-rpc-core = { path = "rpc/core" }
-rpc-grpc = { path = "rpc/grpc" }
+kaspa-notify = { path = "notify" }
+kaspa-rpc-core = { path = "rpc/core" }
+kaspa-grpc-core = { path = "rpc/grpc/core" }
+kaspa-grpc-client = { path = "rpc/grpc/client" }
+kaspa-grpc-server = { path = "rpc/grpc/server" }
 kaspa-rpc-macros = { path = "rpc/macros" }
 kaspa-wrpc-client = { path = "rpc/wrpc/client" }
 kaspa-wrpc-server = { path = "rpc/wrpc/server" }
@@ -65,6 +82,11 @@ kaspa-bip32 = { path = "wallet/bip32" }
 p2p-lib = { path = "protocol/p2p" }
 p2p-flows = { path = "protocol/flows" }
 mining = { path = "mining" }
+txscript = { path = "crypto/txscript" }
+txscript-errors = { path = "crypto/txscript/errors" }
+addressmanager = { path = "components/addressmanager" }
+database = { path = "database" }
+testing-integration = { path = "testing/integration" }
 
 thiserror = "1"
 faster-hex = "0.6"
@@ -73,6 +95,8 @@ rand = "0.8"
 rand_chacha = "0.3"
 rayon = "1"
 tempfile = "3.3"
+blake2b_simd = "1"
+sha2 = "0.10"
 serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1.0.91"
 serde-wasm-bindgen = "0.4.5"
@@ -85,6 +109,7 @@ tokio = { version = "1", features = ["sync","rt-multi-thread"] }
 wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
 criterion = { version = "0.4", default-features = false }
 indexmap = "1.9.1"
+parking_lot = "0.12"
 smallvec = { version = "1.10.0", features = ["serde"] }
 borsh = { version = "0.9.1", features = ["rc"] } # please keep this fixed
 async-std = { version = "1.12.0", features = ['attributes'] }
@@ -93,6 +118,8 @@ clap = { version = "4.0.23", features = ["derive", "string","cargo"] }
 derive_more = { version = "0.99" }
 log = "0.4"
 cfg-if = "1.0.0"
+rocksdb = "0.19"
+num_cpus = "1.15.0"
 async-trait = "0.1.57"
 paste = "1.0.11"
 regex = "1.6.0"
@@ -100,7 +127,6 @@ pad = "0.1.6"
 convert_case = "0.5.0"
 wasm-bindgen-futures="0.4.33"
 js-sys = "0.3.56"
-num_cpus = "1.15.0"
 getrandom = { version = "0.2.8", features = ["js"] }
 
 # bip32 dependencies
@@ -108,7 +134,7 @@ rand_core = { version = "0.6", features = ["std"] }
 bs58 = { version = "0.4", features = ["check"], default-features = false}
 hmac = {version = "0.12", default-features = false}
 secp256k1 = { version = "0.24", features = ["global-context", "rand-std"] }
-sha2 = {version = "0.10", default-features = false}
+#sha2 = {version = "0.10", default-features = false}
 zeroize = {version = "1", default-features = false, features=["alloc"]}
 ripemd = {version = "0.1", default-features = false}
 subtle = {version = "2", default-features = false}

@@ -1,19 +1,21 @@
 use crate::connection::Connection;
 use futures::future::*;
 use futures::*;
-use rpc_core::api::ops::RpcApiOps;
-use rpc_core::api::rpc::RpcApi;
-use rpc_core::{notify::listener::*, NotificationMessage};
+use kaspa_notify::listener::ListenerId;
+use kaspa_rpc_core::api::rpc::RpcApi;
+use kaspa_rpc_core::Notification;
 use std::collections::HashMap;
 use std::sync::Arc;
 use workflow_core::channel::*;
 use workflow_core::task::*;
 use workflow_log::*;
 
-pub type ListenerId = ListenerID;
+//
+// FIXME: use a notifier
+//
 
 pub struct NotificationManager {
-    pub ingest: Channel<Arc<NotificationMessage>>,
+    pub ingest: Channel<Arc<Notification>>,
     pub tasks: Vec<Arc<NotificationTask>>,
 }
 
@@ -21,7 +23,7 @@ impl NotificationManager {
     pub fn new(tasks: usize) -> Self {
         // log_info!("notification manager tasks: {tasks}");
         let ingest = Channel::unbounded();
-        let tasks = (0..tasks).into_iter().map(|_| Arc::new(NotificationTask::new(ingest.clone()))).collect::<Vec<_>>();
+        let tasks = (0..tasks).map(|_| Arc::new(NotificationTask::new(ingest.clone()))).collect::<Vec<_>>();
         tasks.iter().for_each(|task| task.start());
         NotificationManager { ingest, tasks }
     }
@@ -50,7 +52,7 @@ impl NotificationManager {
         })
     }
 
-    pub async fn disconnect(&self, rpc_api: Arc<dyn RpcApi>, connection: Connection) {
+    pub async fn disconnect(&self, rpc_api: Arc<dyn RpcApi<Connection>>, connection: Connection) {
         let subscriptions = connection.drain_subscriptions();
         if !subscriptions.is_empty() {
             for id in subscriptions.iter() {
@@ -77,12 +79,12 @@ pub enum Ctl {
 
 pub struct NotificationTask {
     pub ctl: Channel<Ctl>,
-    pub ingest: Channel<Arc<NotificationMessage>>,
+    pub ingest: Channel<Arc<Notification>>,
     pub completion: Channel<()>,
 }
 
 impl NotificationTask {
-    pub fn new(ingest: Channel<Arc<NotificationMessage>>) -> Self {
+    pub fn new(ingest: Channel<Arc<Notification>>) -> Self {
         // log_info!("... creating notification task");
         Self { ctl: Channel::unbounded(), ingest, completion: Channel::oneshot() }
     }
@@ -113,12 +115,12 @@ impl NotificationTask {
                     },
 
                     msg = ingest.recv().fuse() => {
-                        if let Ok(msg) = msg {
-                            let NotificationMessage { id, payload } = &*msg;
-                            if let Some(connection) = listeners.get(id) {
-                                let notification_op: RpcApiOps = (&**payload).into();
-                                connection.messenger().notify(notification_op,payload.clone()).await.ok();
-                            }
+                        if let Ok(_msg) = msg {
+                            // let NotificationMessage { id, payload } = &*msg;
+                            // if let Some(connection) = listeners.get(id) {
+                            //     let notification_op: RpcApiOps = (&**payload).into();
+                            //     connection.messenger().notify(notification_op,payload.clone()).await.ok();
+                            // }
                         }
                     }
 

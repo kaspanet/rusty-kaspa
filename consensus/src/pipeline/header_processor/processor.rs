@@ -6,7 +6,6 @@ use crate::{
             block_window_cache::{BlockWindowCacheStore, BlockWindowHeap},
             daa::DbDaaStore,
             depth::DbDepthStore,
-            errors::StoreResultExtensions,
             ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStoreReader},
             headers::DbHeadersStore,
             headers_selected_tip::{DbHeadersSelectedTipStore, HeadersSelectedTipStoreReader},
@@ -14,6 +13,7 @@ use crate::{
             pruning::{DbPruningStore, PruningPointInfo, PruningStore, PruningStoreReader},
             reachability::{DbReachabilityStore, ReachabilityStoreReader, StagingReachabilityStore},
             relations::{DbRelationsStore, RelationsStoreReader},
+            selected_chain::{DbSelectedChainStore, SelectedChainStore},
             statuses::{DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader},
             DB,
         },
@@ -39,6 +39,7 @@ use consensus_core::{
     BlockHashSet, BlockLevel,
 };
 use crossbeam_channel::{Receiver, Sender};
+use database::prelude::StoreResultExtensions;
 use hashes::Hash;
 use itertools::Itertools;
 use parking_lot::RwLock;
@@ -129,6 +130,7 @@ pub struct HeaderProcessor {
     pub(super) daa_store: Arc<DbDaaStore>,
     pub(super) headers_store: Arc<DbHeadersStore>,
     pub(super) headers_selected_tip_store: Arc<RwLock<DbHeadersSelectedTipStore>>,
+    pub selected_chain_store: Arc<RwLock<DbSelectedChainStore>>,
     depth_store: Arc<DbDepthStore>,
 
     // Managers and services
@@ -140,13 +142,20 @@ pub struct HeaderProcessor {
             DbHeadersStore,
         >,
     >,
-    pub(super) dag_traversal_manager: DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore>,
+    pub(super) dag_traversal_manager:
+        DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
     pub(super) difficulty_manager: DifficultyManager<DbHeadersStore>,
-    pub(super) past_median_time_manager: PastMedianTimeManager<DbHeadersStore, DbGhostdagStore, BlockWindowCacheStore>,
+    pub(super) past_median_time_manager: PastMedianTimeManager<
+        DbHeadersStore,
+        DbGhostdagStore,
+        BlockWindowCacheStore,
+        DbReachabilityStore,
+        MTRelationsService<DbRelationsStore>,
+    >,
     pub(super) depth_manager: BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>,
     pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
     pub(super) pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
-    pub(super) parents_manager: ParentsManager<DbHeadersStore, DbReachabilityStore, DbRelationsStore>,
+    pub(super) parents_manager: ParentsManager<DbHeadersStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
 
     // Dependency manager
     task_manager: BlockTaskDependencyManager,
@@ -173,15 +182,27 @@ impl HeaderProcessor {
         pruning_store: Arc<RwLock<DbPruningStore>>,
         depth_store: Arc<DbDepthStore>,
         headers_selected_tip_store: Arc<RwLock<DbHeadersSelectedTipStore>>,
+        selected_chain_store: Arc<RwLock<DbSelectedChainStore>>,
         block_window_cache_for_difficulty: Arc<BlockWindowCacheStore>,
         block_window_cache_for_past_median_time: Arc<BlockWindowCacheStore>,
         reachability_service: MTReachabilityService<DbReachabilityStore>,
-        past_median_time_manager: PastMedianTimeManager<DbHeadersStore, DbGhostdagStore, BlockWindowCacheStore>,
-        dag_traversal_manager: DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore>,
+        past_median_time_manager: PastMedianTimeManager<
+            DbHeadersStore,
+            DbGhostdagStore,
+            BlockWindowCacheStore,
+            DbReachabilityStore,
+            MTRelationsService<DbRelationsStore>,
+        >,
+        dag_traversal_manager: DagTraversalManager<
+            DbGhostdagStore,
+            BlockWindowCacheStore,
+            DbReachabilityStore,
+            MTRelationsService<DbRelationsStore>,
+        >,
         difficulty_manager: DifficultyManager<DbHeadersStore>,
         depth_manager: BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>,
         pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
-        parents_manager: ParentsManager<DbHeadersStore, DbReachabilityStore, DbRelationsStore>,
+        parents_manager: ParentsManager<DbHeadersStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
         ghostdag_managers: Vec<
             GhostdagManager<
                 DbGhostdagStore,
@@ -209,6 +230,7 @@ impl HeaderProcessor {
             headers_store,
             depth_store,
             headers_selected_tip_store,
+            selected_chain_store,
             block_window_cache_for_difficulty,
             block_window_cache_for_past_median_time,
             ghostdag_managers,
@@ -367,7 +389,8 @@ impl HeaderProcessor {
     }
 
     fn commit_header(self: &Arc<HeaderProcessor>, ctx: HeaderProcessingContext, header: &Arc<Header>) {
-        let ghostdag_data = ctx.ghostdag_data.unwrap();
+        let ghostdag_data = ctx.ghostdag_data.as_ref().unwrap();
+        let pp = ctx.pruning_point();
 
         // Create a DB batch writer
         let mut batch = WriteBatch::default();
@@ -422,11 +445,20 @@ impl HeaderProcessor {
         // Non-append only stores need to use write locks.
         // Note we need to keep the lock write guards until the batch is written.
         let mut hst_write_guard = self.headers_selected_tip_store.write();
+        let mut sc_write_guard = self.selected_chain_store.write();
         let prev_hst = hst_write_guard.get().unwrap();
-        if SortableBlock::new(ctx.hash, header.blue_work) > prev_hst {
+        if SortableBlock::new(ctx.hash, header.blue_work) > prev_hst
+            && reachability::is_chain_ancestor_of(&staging, pp, ctx.hash).unwrap()
+        // We can't calculate chain path for blocks that do not have the pruning point in their chain, so we just skip them.
+        {
             // Hint reachability about the new tip.
             reachability::hint_virtual_selected_parent(&mut staging, ctx.hash).unwrap();
             hst_write_guard.set_batch(&mut batch, SortableBlock::new(ctx.hash, header.blue_work)).unwrap();
+            if ctx.hash != pp {
+                let mut chain_path = self.dag_traversal_manager.calculate_chain_path(prev_hst.hash, ghostdag_data[0].selected_parent);
+                chain_path.added.push(ctx.hash);
+                sc_write_guard.apply_changes(&mut batch, chain_path).unwrap();
+            }
         }
 
         let is_genesis = header.direct_parents().is_empty();
@@ -465,6 +497,7 @@ impl HeaderProcessor {
         drop(statuses_write_guard);
         drop(relations_write_guard);
         drop(hst_write_guard);
+        drop(sc_write_guard);
     }
 
     pub fn process_genesis_if_needed(self: &Arc<HeaderProcessor>) {
@@ -474,10 +507,14 @@ impl HeaderProcessor {
 
         {
             let mut batch = WriteBatch::default();
+            let mut sc_write_guard = self.selected_chain_store.write();
+            sc_write_guard.init_with_pruning_point(&mut batch, self.genesis_hash).unwrap();
+
             let mut hst_write_guard = self.headers_selected_tip_store.write();
             hst_write_guard.set_batch(&mut batch, SortableBlock::new(self.genesis_hash, 0.into())).unwrap(); // TODO: take blue work from genesis block
             self.db.write(batch).unwrap();
             drop(hst_write_guard);
+            drop(sc_write_guard);
         }
 
         self.pruning_store.write().set(self.genesis_hash, self.genesis_hash, 0).unwrap();

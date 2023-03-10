@@ -14,6 +14,7 @@ use consensus_core::tx::{
 use consensus_core::utxo::utxo_view::UtxoView;
 use futures::future::join_all;
 use indexmap::IndexSet;
+use itertools::Itertools;
 use kaspa_core::trace;
 use rand::rngs::ThreadRng;
 use rand::Rng;
@@ -21,6 +22,7 @@ use rand_distr::{Distribution, Exp};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use std::cmp::max;
 use std::future::Future;
+use std::iter::once;
 use std::pin::Pin;
 use std::sync::Arc;
 
@@ -68,11 +70,14 @@ impl Miner {
         target_txs_per_block: u64,
         target_blocks: Option<u64>,
     ) -> Self {
+        let (schnorr_public_key, _) = pk.x_only_public_key();
+        let script_pub_key_script = once(0x20).chain(schnorr_public_key.serialize().into_iter()).chain(once(0xac)).collect_vec(); // TODO: Use script builder when available to create p2pk properly
+        let script_pub_key_script_vec = ScriptVec::from_slice(&script_pub_key_script);
         Self {
             id,
             consensus,
             params: params.clone(),
-            miner_data: MinerData::new(ScriptPublicKey::new(0, ScriptVec::from_slice(&pk.serialize())), Vec::new()),
+            miner_data: MinerData::new(ScriptPublicKey::new(0, ScriptVec::from_slice(&script_pub_key_script_vec)), Vec::new()),
             secret_key: sk,
             futures: Vec::new(),
             possible_unspent_outpoints: IndexSet::new(),

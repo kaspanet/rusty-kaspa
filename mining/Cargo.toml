@@ -9,6 +9,7 @@ license.workspace = true
 [dependencies]
 addresses.workspace = true
 hashes.workspace = true
+muhash.workspace = true
 consensus-core.workspace = true
 kaspa-core.workspace = true
 thiserror.workspace = true
@@ -17,8 +18,7 @@ log.workspace = true
 futures-util.workspace = true
 smallvec.workspace = true
 rand.workspace = true
-
-parking_lot = "0.12"
+parking_lot.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true

@@ -1,0 +1,53 @@
+use std::sync::Arc;
+
+use log::debug;
+use p2p_lib::{
+    common::ProtocolError,
+    dequeue_with_timeout, make_message,
+    pb::{kaspad_message::Payload, PruningPointProofMessage},
+    IncomingRoute, Router,
+};
+
+use crate::{flow_context::FlowContext, flow_trait::Flow};
+
+pub struct RequestPruningPointProofFlow {
+    ctx: FlowContext,
+    router: Arc<Router>,
+    incoming_route: IncomingRoute,
+}
+
+#[async_trait::async_trait]
+impl Flow for RequestPruningPointProofFlow {
+    fn name(&self) -> &'static str {
+        "REQUEST_PROOF"
+    }
+
+    fn router(&self) -> Option<Arc<Router>> {
+        Some(self.router.clone())
+    }
+
+    async fn start(&mut self) -> Result<(), ProtocolError> {
+        self.start_impl().await
+    }
+}
+
+impl RequestPruningPointProofFlow {
+    pub fn new(ctx: FlowContext, router: Arc<Router>, incoming_route: IncomingRoute) -> Self {
+        Self { ctx, router, incoming_route }
+    }
+
+    async fn start_impl(&mut self) -> Result<(), ProtocolError> {
+        loop {
+            dequeue_with_timeout!(self.incoming_route, Payload::RequestPruningPointProof)?;
+            debug!("Got pruning point proof request");
+            let proof = self.ctx.consensus().get_pruning_point_proof();
+            self.router
+                .enqueue(make_message!(
+                    Payload::PruningPointProof,
+                    PruningPointProofMessage { headers: proof.iter().map(|headers| headers.try_into().unwrap()).collect() }
+                ))
+                .await?;
+            debug!("Sent pruning point proof");
+        }
+    }
+}

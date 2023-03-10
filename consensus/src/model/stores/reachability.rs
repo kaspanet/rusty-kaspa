@@ -1,13 +1,9 @@
-use super::{
-    database::prelude::{BatchDbWriter, CachedDbAccess, CachedDbItem, DbKey, DirectDbWriter},
-    errors::StoreError,
-    DB,
-};
 use crate::processes::reachability::interval::Interval;
 use consensus_core::{
     blockhash::{self, BlockHashes},
     BlockHashMap, BlockHasher, HashMapCustomHasher,
 };
+use database::prelude::{BatchDbWriter, CachedDbAccess, CachedDbItem, DbKey, DirectDbWriter, StoreError, DB};
 use hashes::Hash;
 
 use parking_lot::{RwLockUpgradableReadGuard, RwLockWriteGuard};

@@ -13,6 +13,8 @@ pub enum NotificationMode {
     Direct,
 }
 
+const WRPC_CLIENT: &str = "wrpc-client";
+
 /// [`KaspaRpcClient`] allows connection to the Kaspa wRPC Server via
 /// binary Borsh or JSON protocols.
 ///
@@ -25,7 +27,7 @@ pub enum NotificationMode {
 #[derive(Clone)]
 pub struct KaspaRpcClient {
     rpc: Arc<RpcClient<RpcApiOps>>,
-    notifier: Option<Arc<Notifier>>,
+    notifier: Option<Arc<Notifier<Notification, ChannelConnection>>>,
     notification_mode: NotificationMode,
     notification_channel: Channel<Notification>,
     encoding: Encoding,
@@ -44,8 +46,9 @@ impl KaspaRpcClient {
         // log_trace!("Kaspa wRPC::{encoding} connecting to: {url}");
         let options = RpcClientOptions { url: &url, ..RpcClientOptions::default() };
 
+        let enabled_events = EVENT_TYPE_ARRAY[..].into();
         let notifier = if matches!(notification_mode, NotificationMode::NotSynced) {
-            Some(Arc::new(Notifier::new(None, None, ListenerUtxoNotificationFilterSetting::FilteredByAddress)))
+            Some(Arc::new(Notifier::new(enabled_events, vec![], vec![], 3, WRPC_CLIENT)))
         } else {
             None
         };
@@ -59,11 +62,11 @@ impl KaspaRpcClient {
 
         [
             RpcApiOps::NotifyBlockAdded,
-            RpcApiOps::NotifyVirtualSelectedParentChainChanged,
+            RpcApiOps::NotifyVirtualChainChanged,
             RpcApiOps::NotifyFinalityConflict,
             RpcApiOps::NotifyFinalityConflictResolved,
             RpcApiOps::NotifyUtxosChanged,
-            RpcApiOps::NotifyVirtualSelectedParentBlueScoreChanged,
+            RpcApiOps::NotifySinkBlueScoreChanged,
             RpcApiOps::NotifyVirtualDaaScoreChanged,
             RpcApiOps::NotifyPruningPointUtxoSetOverride,
             RpcApiOps::NotifyNewBlockTemplate,
@@ -74,7 +77,7 @@ impl KaspaRpcClient {
             let notification_sender_ = notification_channel.sender.clone();
             interface.notification(
                 notification_op,
-                workflow_rpc::client::Notification::new(move |notification: rpc_core::Notification| {
+                workflow_rpc::client::Notification::new(move |notification: kaspa_rpc_core::Notification| {
                     let notifier = notifier_.clone();
                     let notification_sender = notification_sender_.clone();
                     Box::pin(async move {
@@ -82,7 +85,7 @@ impl KaspaRpcClient {
                         // log_trace!("notification {:?}", notification);
                         if let Some(notifier) = &notifier {
                             // log_info!("notification: posting to notifier");
-                            let _res = notifier.clone().notify(notification.into());
+                            let _res = notifier.clone().notify(notification);
                             // log_trace!("notifier.notify: result {:?}", _res);
                         } else if notification_sender.receiver_count() > 1 {
                             // log_info!("notification: posting direct");
@@ -181,7 +184,7 @@ impl KaspaRpcClient {
 }
 
 #[async_trait]
-impl RpcApi for KaspaRpcClient {
+impl RpcApi<ChannelConnection> for KaspaRpcClient {
     //
     // The following proc-macro iterates over the array of enum variants
     // generating a function for each variant as follows:
@@ -217,8 +220,8 @@ impl RpcApi for KaspaRpcClient {
             GetSelectedTipHash,
             GetSubnetwork,
             GetUtxosByAddresses,
-            GetVirtualSelectedParentBlueScore,
-            GetVirtualSelectedParentChainFromBlock,
+            GetSinkBlueScore,
+            GetVirtualChainFromBlock,
             Ping,
             ResolveFinalityConflict,
             Shutdown,
@@ -232,9 +235,9 @@ impl RpcApi for KaspaRpcClient {
     // Notification API
 
     /// Register a new listener and returns an id and a channel receiver.
-    fn register_new_listener(&self, sender: NotificationSender) -> ListenerId {
+    fn register_new_listener(&self, connection: ChannelConnection) -> ListenerId {
         match self.notification_mode {
-            NotificationMode::NotSynced => self.notifier.as_ref().unwrap().register_new_listener(sender),
+            NotificationMode::NotSynced => self.notifier.as_ref().unwrap().register_new_listener(connection),
             NotificationMode::Direct => ListenerId::default(),
         }
     }
@@ -253,10 +256,10 @@ impl RpcApi for KaspaRpcClient {
     }
 
     /// Start sending notifications of some type to a listener.
-    async fn start_notify(&self, id: ListenerId, notification_type: NotificationType) -> RpcResult<()> {
+    async fn start_notify(&self, id: ListenerId, notification_type: Scope) -> RpcResult<()> {
         match self.notification_mode {
             NotificationMode::NotSynced => {
-                self.notifier.clone().unwrap().start_notify(id, notification_type.clone())?;
+                self.notifier.clone().unwrap().try_start_notify(id, notification_type.clone())?;
                 let _response: SubscribeResponse =
                     self.rpc.call(RpcApiOps::Subscribe, notification_type).await.map_err(|err| err.to_string())?;
             }
@@ -269,10 +272,10 @@ impl RpcApi for KaspaRpcClient {
     }
 
     /// Stop sending notifications of some type to a listener.
-    async fn stop_notify(&self, id: ListenerID, notification_type: NotificationType) -> RpcResult<()> {
+    async fn stop_notify(&self, id: ListenerId, notification_type: Scope) -> RpcResult<()> {
         match self.notification_mode {
             NotificationMode::NotSynced => {
-                self.notifier.clone().unwrap().stop_notify(id, notification_type.clone())?;
+                self.notifier.clone().unwrap().try_stop_notify(id, notification_type.clone())?;
                 let _response: UnsubscribeResponse =
                     self.rpc.call(RpcApiOps::Unsubscribe, notification_type).await.map_err(|err| err.to_string())?;
             }

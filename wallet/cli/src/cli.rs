@@ -89,12 +89,13 @@ impl WalletCli {
             Action::Sweep => {
                 self.wallet.sweep().await?;
             }
-            Action::SubscribeDaaScore => {
-                self.wallet.subscribe_daa_score().await?;
-            }
-            Action::UnsubscribeDaaScore => {
-                self.wallet.unsubscribe_daa_score().await?;
-            }
+            // FIXME
+            // Action::SubscribeDaaScore => {
+            //     self.wallet.subscribe_daa_score().await?;
+            // }
+            // Action::UnsubscribeDaaScore => {
+            //     self.wallet.unsubscribe_daa_score().await?;
+            // }
             #[cfg(target_arch = "wasm32")]
             Action::Reload => {
                 workflow_dom::utils::window().location().reload().ok();

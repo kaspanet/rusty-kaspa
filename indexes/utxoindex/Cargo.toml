@@ -1,0 +1,23 @@
+[package]
+name = "utxoindex"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
+
+[dependencies]
+hashes.workspace = true
+thiserror.workspace = true
+consensus-core.workspace = true
+kaspa-core.workspace = true
+kaspa-utils.workspace = true
+database.workspace = true
+log.workspace = true
+rocksdb.workspace = true
+serde.workspace = true
+parking_lot.workspace = true
+
+[dev-dependencies]
+consensus.workspace = true
+rand = { workspace = true, features = ["small_rng"] }

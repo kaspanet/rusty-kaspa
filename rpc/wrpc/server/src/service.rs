@@ -4,8 +4,10 @@ use crate::router::*;
 use crate::server::*;
 use async_trait::async_trait;
 use kaspa_core::task::service::{AsyncService, AsyncServiceError, AsyncServiceFuture};
-use rpc_core::api::ops::RpcApiOps;
-use rpc_core::api::rpc::RpcApi;
+use kaspa_rpc_core::{
+    api::{ops::RpcApiOps, rpc::RpcApi},
+    server::service::RpcCoreService,
+};
 use std::sync::Arc;
 use workflow_log::*;
 use workflow_rpc::server::prelude::*;
@@ -45,7 +47,12 @@ pub struct KaspaRpcHandler {
 }
 
 impl KaspaRpcHandler {
-    pub fn new(tasks: usize, encoding: WrpcEncoding, rpc_api: Option<Arc<dyn RpcApi>>, options: Arc<Options>) -> KaspaRpcHandler {
+    pub fn new(
+        tasks: usize,
+        encoding: WrpcEncoding,
+        rpc_api: Option<Arc<dyn RpcApi<Connection>>>,
+        options: Arc<Options>,
+    ) -> KaspaRpcHandler {
         KaspaRpcHandler { server: Server::new(tasks, encoding, rpc_api, options.clone()), options }
     }
     pub fn proxy(tasks: usize, encoding: WrpcEncoding, options: Arc<Options>) -> KaspaRpcHandler {
@@ -99,10 +106,16 @@ pub struct WrpcService {
 
 impl WrpcService {
     /// Create and initialize RpcServer
-    pub fn new(tasks: usize, rpc_api: Arc<dyn RpcApi>, encoding: &Encoding, options: Options) -> Self {
+    pub fn new(tasks: usize, _core_service: Arc<RpcCoreService>, encoding: &Encoding, options: Options) -> Self {
         let options = Arc::new(options);
         // Create handle to manage connections
-        let rpc_handler = Arc::new(KaspaRpcHandler::new(tasks, *encoding, Some(rpc_api), options.clone()));
+
+        //
+        // FIXME: use core_service
+        //
+        //let rpc_handler = Arc::new(KaspaRpcHandler::new(tasks, *encoding, Some(rpc_api), options.clone()));
+        let rpc_handler = Arc::new(KaspaRpcHandler::new(tasks, *encoding, None, options.clone()));
+
         // Create router (initializes Interface registering RPC method and notification handlers)
         let router = Arc::new(Router::new(rpc_handler.server.clone()));
         // Create a server

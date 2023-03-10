@@ -9,7 +9,7 @@ Work in progress to implement the Kaspa full-node and related libraries in the R
   - Windows: [protoc-21.10-win64.zip](https://github.com/protocolbuffers/protobuf/releases/download/v21.10/protoc-21.10-win64.zip) and add `bin` dir to `Path`
   - MacOS: `brew install protobuf`
 - Install the [clang toolchain](https://clang.llvm.org/) (required for RocksDB)
-  - Linux: `sudo apt intall clang`
+  - Linux: `sudo apt install clang`
   - Windows: [LLVM-15.0.6-win64.exe](https://github.com/llvm/llvm-project/releases/download/llvmorg-15.0.6/LLVM-15.0.6-win64.exe) and set `LIBCLANG_PATH` env var pointing to the `bin` dir of the llvm installation
   - MacOS: Please see [Installing clang toolchain on MacOS](#installing-clang-toolchain-on-macos)
 - Install the [rust toolchain](https://rustup.rs/)
@@ -25,7 +25,7 @@ $ cd rusty-kaspa
 The `kaspad` rust executable is currently at the initial stage where a devnet consensus instance can be built and mined locally through the RPC interface. The P2P network is not supported yet. To see it in action, perform the following:
 
 ```bash
-$ cargo run --bin kaspad --release
+$ cargo run --bin kaspad --release -- --devnet
 ```
 
 - Download and unzip the latest binaries bundle of [kaspanet/kaspad](https://github.com/kaspanet/kaspad/releases).
@@ -55,7 +55,7 @@ $ cargo run --release --bin simpa -- -t=200 -d=2 -b=8 -n=1000
 Logging in `kaspad` and `simpa` can be [filtered](https://docs.rs/env_logger/0.10.0/env_logger/#filtering-results) either by defining the environment variable `RUST_LOG` and/or by adding a `--loglevel` argument to the command, ie.:
 
 ```bash
-$ cargo run --bin kaspad -- --loglevel info,rpc_core=trace,rpc_grpc=trace,consensus=trace,kaspa_core=trace
+$ cargo run --bin kaspad -- --loglevel info,kaspa_rpc_core=trace,kaspa_grpc_core=trace,consensus=trace,kaspa_core=trace
 ```
 
 

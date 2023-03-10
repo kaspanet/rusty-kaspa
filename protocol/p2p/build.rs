@@ -1,5 +1,5 @@
 fn main() {
-    let proto_files = &["./proto/messages.proto", "./proto/p2p.proto", "./proto/rpc.proto"];
+    let proto_files = &["./proto/messages.proto", "./proto/p2p.proto"];
     let dirs = &["./proto"];
 
     tonic_build::configure()

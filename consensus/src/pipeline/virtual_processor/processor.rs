@@ -13,7 +13,6 @@ use crate::{
             block_window_cache::BlockWindowCacheStore,
             daa::DbDaaStore,
             depth::DbDepthStore,
-            errors::StoreError,
             ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStoreReader},
             headers::{DbHeadersStore, HeaderStoreReader},
             past_pruning_points::{DbPastPruningPointsStore, PastPruningPointsStore, PastPruningPointsStoreReader},
@@ -50,20 +49,27 @@ use consensus_core::{
     header::Header,
     merkle::calc_hash_merkle_root,
     muhash::MuHashExtensions,
-    tx::{
-        PopulatedTransaction, Transaction, {MutableTransaction, TransactionOutpoint, UtxoEntry, ValidatedTransaction},
-    },
+    tx::{MutableTransaction, PopulatedTransaction, Transaction, TransactionOutpoint, UtxoEntry, ValidatedTransaction},
     utxo::{
         utxo_diff::UtxoDiff,
         utxo_view::{UtxoView, UtxoViewComposition},
     },
     BlockHashMap, BlockHashSet, HashMapCustomHasher,
 };
+use consensus_notify::{
+    notification::{
+        Notification, SinkBlueScoreChangedNotification, UtxosChangedNotification, VirtualChainChangedNotification,
+        VirtualDaaScoreChangedNotification,
+    },
+    root::ConsensusNotificationRoot,
+};
+use database::prelude::{StoreError, StoreResultExtensions};
 use hashes::Hash;
 use kaspa_core::{debug, info, trace};
+use kaspa_notify::notifier::Notify;
 use muhash::MuHash;
 
-use crossbeam_channel::Receiver;
+use crossbeam_channel::Receiver as CrossbeamReceiver; // to avoid confusion with async_channel
 use itertools::Itertools;
 use parking_lot::{RwLock, RwLockUpgradableReadGuard};
 use rayon::ThreadPool;
@@ -77,11 +83,11 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use super::errors::{VirtualProcessorError, VirtualProcessorResult};
+use super::errors::{PruningImportError, PruningImportResult};
 
 pub struct VirtualStateProcessor {
     // Channels
-    receiver: Receiver<BlockProcessingMessage>,
+    receiver: CrossbeamReceiver<BlockProcessingMessage>,
 
     // Thread pool
     pub(super) thread_pool: Arc<ThreadPool>,
@@ -114,27 +120,36 @@ pub struct VirtualStateProcessor {
     pub(super) utxo_multisets_store: Arc<DbUtxoMultisetsStore>,
     pub(super) acceptance_data_store: Arc<DbAcceptanceDataStore>,
     pub virtual_stores: Arc<RwLock<VirtualStores>>,
-    pub(super) pruning_point_utxo_set_store: Arc<DbUtxoSetStore>,
+    pub pruning_point_utxo_set_store: Arc<DbUtxoSetStore>,
     // TODO: remove all pub from stores when StoreManager is implemented
 
     // Managers and services
     pub(super) ghostdag_manager: DbGhostdagManager,
     pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
     pub(super) relations_service: MTRelationsService<DbRelationsStore>,
-    pub(super) dag_traversal_manager: DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore>,
+    pub(super) dag_traversal_manager:
+        DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
     pub(super) difficulty_manager: DifficultyManager<DbHeadersStore>,
     pub(super) coinbase_manager: CoinbaseManager,
     pub(super) transaction_validator: TransactionValidator,
-    pub(super) past_median_time_manager: PastMedianTimeManager<DbHeadersStore, DbGhostdagStore, BlockWindowCacheStore>,
+    pub(super) past_median_time_manager: PastMedianTimeManager<
+        DbHeadersStore,
+        DbGhostdagStore,
+        BlockWindowCacheStore,
+        DbReachabilityStore,
+        MTRelationsService<DbRelationsStore>,
+    >,
     pub(super) pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
-    pub(super) parents_manager: ParentsManager<DbHeadersStore, DbReachabilityStore, DbRelationsStore>,
+    pub(super) parents_manager: ParentsManager<DbHeadersStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
     pub(super) depth_manager: BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>,
+
+    pub(crate) notification_root: Arc<ConsensusNotificationRoot>,
 }
 
 impl VirtualStateProcessor {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        receiver: Receiver<BlockProcessingMessage>,
+        receiver: CrossbeamReceiver<BlockProcessingMessage>,
         thread_pool: Arc<ThreadPool>,
         params: &Params,
         process_genesis: bool,
@@ -159,14 +174,26 @@ impl VirtualStateProcessor {
         ghostdag_manager: DbGhostdagManager,
         reachability_service: MTReachabilityService<DbReachabilityStore>,
         relations_service: MTRelationsService<DbRelationsStore>,
-        dag_traversal_manager: DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore>,
+        dag_traversal_manager: DagTraversalManager<
+            DbGhostdagStore,
+            BlockWindowCacheStore,
+            DbReachabilityStore,
+            MTRelationsService<DbRelationsStore>,
+        >,
         difficulty_manager: DifficultyManager<DbHeadersStore>,
         coinbase_manager: CoinbaseManager,
         transaction_validator: TransactionValidator,
-        past_median_time_manager: PastMedianTimeManager<DbHeadersStore, DbGhostdagStore, BlockWindowCacheStore>,
+        past_median_time_manager: PastMedianTimeManager<
+            DbHeadersStore,
+            DbGhostdagStore,
+            BlockWindowCacheStore,
+            DbReachabilityStore,
+            MTRelationsService<DbRelationsStore>,
+        >,
         pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
-        parents_manager: ParentsManager<DbHeadersStore, DbReachabilityStore, DbRelationsStore>,
+        parents_manager: ParentsManager<DbHeadersStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
         depth_manager: BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>,
+        notification_root: Arc<ConsensusNotificationRoot>,
     ) -> Self {
         Self {
             receiver,
@@ -206,7 +233,13 @@ impl VirtualStateProcessor {
             pruning_manager,
             parents_manager,
             depth_manager,
+            notification_root,
         }
+    }
+
+    #[inline(always)]
+    pub fn notification_root(self: &Arc<Self>) -> Arc<ConsensusNotificationRoot> {
+        self.notification_root.clone()
     }
 
     pub fn worker(self: &Arc<Self>) {
@@ -337,12 +370,19 @@ impl VirtualStateProcessor {
                 let mut ctx = UtxoProcessingContext::new((&virtual_ghostdag_data).into(), selected_parent_multiset_hash);
 
                 // Calc virtual DAA score, difficulty bits and past median time
-                let window = self.dag_traversal_manager.block_window(&virtual_ghostdag_data, self.difficulty_window_size);
+                let window = self
+                    .dag_traversal_manager
+                    .block_window(&virtual_ghostdag_data, self.difficulty_window_size)
+                    .expect("rule error for insufficient DAA window size is unexpected here");
                 let (virtual_daa_score, mergeset_non_daa) = self
                     .difficulty_manager
                     .calc_daa_score_and_non_daa_mergeset_blocks(&mut window.iter().map(|item| item.0.hash), &virtual_ghostdag_data);
                 let virtual_bits = self.difficulty_manager.calculate_difficulty_bits(&window);
-                let virtual_past_median_time = self.past_median_time_manager.calc_past_median_time(&virtual_ghostdag_data).0;
+                let virtual_past_median_time = self
+                    .past_median_time_manager
+                    .calc_past_median_time(&virtual_ghostdag_data)
+                    .expect("rule error for insufficient median window size is unexpected here")
+                    .0;
 
                 // Calc virtual UTXO state relative to selected parent
                 self.calculate_utxo_state(&mut ctx, &selected_parent_utxo_view, virtual_daa_score);
@@ -371,13 +411,30 @@ impl VirtualStateProcessor {
                 virtual_write.utxo_set.write_diff_batch(&mut batch, &accumulated_diff).unwrap();
 
                 // Update virtual state
-                virtual_write.state.set_batch(&mut batch, new_virtual_state).unwrap();
+                virtual_write.state.set_batch(&mut batch, new_virtual_state.clone()).unwrap();
 
                 // Flush the batch changes
                 self.db.write(batch).unwrap();
-
                 // Calling the drops explicitly after the batch is written in order to avoid possible errors.
                 drop(virtual_write);
+
+                // Emit notifications
+                let accumulated_diff = Arc::new(accumulated_diff);
+                let virtual_parents = Arc::new(new_virtual_state.parents);
+                let _ = self
+                    .notification_root()
+                    .notify(Notification::UtxosChanged(UtxosChangedNotification::new(accumulated_diff, virtual_parents)));
+                let _ = self.notification_root().notify(Notification::SinkBlueScoreChanged(SinkBlueScoreChangedNotification::new(
+                    new_virtual_state.ghostdag_data.blue_score,
+                )));
+                let _ = self.notification_root().notify(Notification::VirtualDaaScoreChanged(
+                    VirtualDaaScoreChangedNotification::new(new_virtual_state.daa_score),
+                ));
+                let _ = self.notification_root().notify(Notification::VirtualChainChanged(VirtualChainChangedNotification::new(
+                    new_virtual_state.ghostdag_data.mergeset_blues.clone(),
+                    new_virtual_state.ghostdag_data.mergeset_reds.clone(),
+                    Arc::new(new_virtual_state.accepted_tx_ids),
+                )));
             }
             BlockStatus::StatusDisqualifiedFromChain => {
                 // TODO: this means another chain needs to be checked
@@ -657,6 +714,27 @@ impl VirtualStateProcessor {
         }
     }
 
+    pub fn init(self: &Arc<Self>) {
+        // TODO: Consider refactoring and removing code duplication with process_genesis_if_needed
+        // when staging consensus is implemented.
+        let pp_read_guard = self.pruning_store.upgradable_read();
+        if pp_read_guard.pruning_point().unwrap_option().is_none() {
+            match self.past_pruning_points_store.insert(0, self.genesis_hash) {
+                Ok(()) => {}
+                Err(StoreError::KeyAlreadyExists(_)) => {
+                    // If already exists, make sure the store was initialized correctly
+                    match self.past_pruning_points_store.get(0) {
+                        Ok(hash) => assert_eq!(hash, self.genesis_hash, "first pruning point is not genesis"),
+                        Err(err) => panic!("unexpected error {err}"),
+                    }
+                }
+                Err(err) => panic!("unexpected store error {err}"),
+            }
+
+            RwLockUpgradableReadGuard::upgrade(pp_read_guard).set(self.genesis_hash, self.genesis_hash, 0).unwrap();
+        }
+    }
+
     pub fn process_genesis_if_needed(self: &Arc<Self>) {
         if !self.process_genesis {
             return;
@@ -678,6 +756,7 @@ impl VirtualStateProcessor {
                     ))
                     .unwrap();
                 self.commit_utxo_state(self.genesis_hash, UtxoDiff::default(), MuHash::new(), AcceptanceData {});
+
                 match self.past_pruning_points_store.insert(0, self.genesis_hash) {
                     Ok(()) => {}
                     Err(StoreError::KeyAlreadyExists(_)) => {
@@ -689,6 +768,8 @@ impl VirtualStateProcessor {
                     }
                     Err(err) => panic!("unexpected store error {err}"),
                 }
+
+                self.pruning_store.write().set(self.genesis_hash, self.genesis_hash, 0).unwrap();
             }
             StatusUTXOValid => {}
             _ => panic!("unexpected genesis status {status:?}"),
@@ -699,12 +780,12 @@ impl VirtualStateProcessor {
         &self,
         new_pruning_point: Hash,
         imported_utxo_multiset: &mut MuHash,
-    ) -> VirtualProcessorResult<()> {
+    ) -> PruningImportResult<()> {
         info!("Importing the UTXO set of the pruning point {}", new_pruning_point);
         let new_pruning_point_header = self.headers_store.get_header(new_pruning_point).unwrap();
         let imported_utxo_multiset_hash = imported_utxo_multiset.finalize();
         if imported_utxo_multiset_hash != new_pruning_point_header.utxo_commitment {
-            return Err(VirtualProcessorError::ImportedMultisetHashMismatch(
+            return Err(PruningImportError::ImportedMultisetHashMismatch(
                 new_pruning_point_header.utxo_commitment,
                 imported_utxo_multiset_hash,
             ));
@@ -716,20 +797,20 @@ impl VirtualStateProcessor {
         let mut virtual_multiset = imported_utxo_multiset.clone();
         let virtual_parents = vec![new_pruning_point];
         let virtual_gd = self.ghostdag_manager.ghostdag(&virtual_parents);
-        let window = self.dag_traversal_manager.block_window(&virtual_gd, self.difficulty_window_size);
+        let window = self.dag_traversal_manager.block_window(&virtual_gd, self.difficulty_window_size)?;
         let (virtual_daa_score, mergeset_non_daa) = self
             .difficulty_manager
             .calc_daa_score_and_non_daa_mergeset_blocks(&mut window.iter().map(|item| item.0.hash), &virtual_gd);
 
         for tx in new_pruning_point_transactions.iter() {
-            let res: VirtualProcessorResult<Vec<_>> = tx
+            let res: PruningImportResult<Vec<_>> = tx
                 .inputs
                 .iter()
                 .map(|input| {
                     if let Some(entry) = self.pruning_point_utxo_set_store.get(&input.previous_outpoint) {
                         Ok(entry)
                     } else {
-                        Err(VirtualProcessorError::NewPruningPointTxMissingUTXOEntry(tx.id()))
+                        Err(PruningImportError::NewPruningPointTxMissingUTXOEntry(tx.id()))
                     }
                 })
                 .collect();
@@ -742,7 +823,7 @@ impl VirtualStateProcessor {
             };
 
             if let Err(e) = res {
-                return Err(VirtualProcessorError::NewPruningPointTxError(tx.id(), e));
+                return Err(PruningImportError::NewPruningPointTxError(tx.id(), e));
             } else {
                 let tx_fee = res.unwrap();
                 total_fee += tx_fee;
@@ -797,7 +878,7 @@ impl VirtualStateProcessor {
             .collect_vec();
         self.virtual_stores.write().utxo_set.write_many(&new_pp_added_utxos).unwrap();
 
-        let virtual_past_median_time = self.past_median_time_manager.calc_past_median_time(&virtual_gd).0;
+        let virtual_past_median_time = self.past_median_time_manager.calc_past_median_time(&virtual_gd)?.0;
         let new_virtual_state = VirtualState {
             parents: virtual_parents,
             ghostdag_data: virtual_gd,

@@ -1,3 +1,4 @@
+use async_channel::unbounded;
 use std::sync::Arc;
 use std::thread::JoinHandle;
 
@@ -41,11 +42,12 @@ impl KaspaNetworkSimulator {
         let mut rng = rand::thread_rng();
         for i in 0..num_miners {
             let (lifetime, db) = if i == 0 && self.output_dir.is_some() {
-                create_permanent_db(self.output_dir.clone().unwrap())
+                create_permanent_db(self.output_dir.clone().unwrap(), num_cpus::get())
             } else {
                 create_temp_db()
             };
-            let consensus = Arc::new(Consensus::new(db, &self.config));
+            let (dummy_notification_sender, _) = unbounded();
+            let consensus = Arc::new(Consensus::new(db, &self.config, dummy_notification_sender));
             let handles = consensus.init();
             let (sk, pk) = secp.generate_keypair(&mut rng);
             let miner_process = Box::new(Miner::new(

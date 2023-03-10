@@ -85,7 +85,7 @@ impl RpcClient {
         let ctl_receiver = self.notification_ctl.request.receiver.clone();
         let ctl_sender = self.notification_ctl.response.sender.clone();
         let notification_receiver = self.client.notification_channel_receiver();
-        let notification_callback = self.notification_callback.clone();
+        let _notification_callback = self.notification_callback.clone();
 
         spawn(async move {
             loop {
@@ -93,25 +93,30 @@ impl RpcClient {
                     _ = ctl_receiver.recv().fuse() => {
                         break;
                     },
-                    msg = notification_receiver.recv().fuse() => {
+                    _msg = notification_receiver.recv().fuse() => {
                         // log_info!("notification: {:?}",msg);
-                        if let Ok(notification) = &msg {
-                            if let Some(callback) = notification_callback.lock().unwrap().as_ref() {
-                                let op: RpcApiOps = notification.into();
-                                let op_value = to_value(&op).map_err(|err|{
-                                    log_error!("Notification handler - unable to convert notification op: {}",err.to_string());
-                                }).ok();
-                                let op_payload = notification.to_value().map_err(|err| {
-                                    log_error!("Notification handler - unable to convert notification payload: {}",err.to_string());
-                                }).ok();
-                                if op_value.is_none() || op_payload.is_none() {
-                                    continue;
-                                }
-                                if let Err(err) = callback.0.call2(&JsValue::undefined(), &op_value.unwrap(), &op_payload.unwrap()) {
-                                    log_error!("Error while executing notification callback: {:?}",err);
-                                }
-                            }
-                        }
+
+                        //
+                        // FIXME: decide either to impl the converter or not rely on RpcApiOps
+                        //
+
+                        // if let Ok(notification) = &msg {
+                        //     if let Some(callback) = notification_callback.lock().unwrap().as_ref() {
+                        //         let op: RpcApiOps = notification.into();
+                        //         let op_value = to_value(&op).map_err(|err|{
+                        //             log_error!("Notification handler - unable to convert notification op: {}",err.to_string());
+                        //         }).ok();
+                        //         let op_payload = notification.to_value().map_err(|err| {
+                        //             log_error!("Notification handler - unable to convert notification payload: {}",err.to_string());
+                        //         }).ok();
+                        //         if op_value.is_none() || op_payload.is_none() {
+                        //             continue;
+                        //         }
+                        //         if let Err(err) = callback.0.call2(&JsValue::undefined(), &op_value.unwrap(), &op_payload.unwrap()) {
+                        //             log_error!("Error while executing notification callback: {:?}",err);
+                        //         }
+                        //     }
+                        // }
                     }
                 }
             }
@@ -127,33 +132,41 @@ impl RpcClient {
 impl RpcClient {
     // experimental/test functions
 
-    /// Subscription to DAA Score (test)
-    #[wasm_bindgen(js_name = subscribeDaaScore)]
-    pub async fn subscribe_daa_score(&self) -> JsResult<()> {
-        self.client.start_notify(ListenerId::default(), NotificationType::VirtualDaaScoreChanged).await?;
-        Ok(())
-    }
+    //
+    // FIXME: build scope-based functions
+    //
 
-    /// Unsubscribe from DAA Score (test)
-    #[wasm_bindgen(js_name = unsubscribeDaaScore)]
-    pub async fn unsubscribe_daa_score(&self) -> JsResult<()> {
-        self.client.stop_notify(ListenerId::default(), NotificationType::VirtualDaaScoreChanged).await?;
-        Ok(())
-    }
+    // /// Subscription to DAA Score (test)
+    // #[wasm_bindgen(js_name = subscribeDaaScore)]
+    // pub async fn subscribe_daa_score(&self) -> JsResult<()> {
+    //     self.client.start_notify(ListenerId::default(), Scope::VirtualDaaScoreChanged).await?;
+    //     Ok(())
+    // }
+
+    // /// Unsubscribe from DAA Score (test)
+    // #[wasm_bindgen(js_name = unsubscribeDaaScore)]
+    // pub async fn unsubscribe_daa_score(&self) -> JsResult<()> {
+    //     self.client.stop_notify(ListenerId::default(), Scope::VirtualDaaScoreChanged).await?;
+    //     Ok(())
+    // }
 }
 
 // Build subscribe functions
 build_wrpc_wasm_bindgen_subscriptions!([
-    NotifyBlockAdded,
-    NotifyFinalityConflict,
-    NotifyFinalityConflictResolved, // TODO added to match NotificationType
-    // NotifyFinalityConflicts,        // TODO - missing in NotificationType
-    NotifyNewBlockTemplate,
-    NotifyPruningPointUtxoSetOverride,
-    // NotifyUtxosChanged,          // can't used this here due to non-C-style enum variant
-    NotifyVirtualDaaScoreChanged,
-    NotifyVirtualSelectedParentBlueScoreChanged,
-    NotifyVirtualSelectedParentChainChanged,
+    //
+    // FIXME: build scope-based functions
+    //
+
+    // NotifyBlockAdded,
+    // NotifyFinalityConflict,
+    // NotifyFinalityConflictResolved, // TODO added to match Scope
+    // // NotifyFinalityConflicts,        // TODO - missing in Scope
+    // NotifyNewBlockTemplate,
+    // NotifyPruningPointUtxoSetOverride,
+    // // NotifyUtxosChanged,          // can't used this here due to non-C-style enum variant
+    // NotifyVirtualDaaScoreChanged,
+    // NotifySinkBlueScoreChanged,
+    // NotifyVirtualChainChanged,
 ]);
 
 // Build RPC method invocation functions. This macro
@@ -172,7 +185,7 @@ build_wrpc_wasm_bindgen_interface!(
         GetPeerAddresses,
         GetProcessMetrics,
         GetSelectedTipHash,
-        GetVirtualSelectedParentBlueScore,
+        GetSinkBlueScore,
         Ping,
         Shutdown,
     ],
@@ -193,7 +206,7 @@ build_wrpc_wasm_bindgen_interface!(
         GetMempoolEntry,
         GetSubnetwork,
         GetUtxosByAddresses,
-        GetVirtualSelectedParentChainFromBlock,
+        GetVirtualChainFromBlock,
         ResolveFinalityConflict,
         SubmitBlock,
         SubmitTransaction,

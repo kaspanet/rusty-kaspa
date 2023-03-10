@@ -8,16 +8,16 @@ pub enum Error {
     RpcError(#[from] RpcError),
 
     #[error("RpcApi error: {0}")]
-    RpcApiError(#[from] rpc_core::error::RpcError),
+    RpcApiError(#[from] kaspa_rpc_core::error::RpcError),
 
     #[error("Notification subsystem error: {0}")]
-    NotificationError(#[from] rpc_core::notify::error::Error),
+    NotificationError(#[from] kaspa_notify::error::Error),
 
     #[error("Channel error: {0}")]
     ChannelError(String),
 }
 
-impl From<Error> for rpc_core::error::RpcError {
+impl From<Error> for kaspa_rpc_core::error::RpcError {
     fn from(err: Error) -> Self {
         err.to_string().into()
     }

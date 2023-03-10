@@ -16,10 +16,10 @@ pub mod mass;
 pub mod merkle;
 pub mod muhash;
 pub mod networktype;
-pub mod notify;
 pub mod pruning;
 pub mod sign;
 pub mod subnets;
+pub mod trusted;
 pub mod tx;
 pub mod utxo;
 
@@ -29,6 +29,12 @@ pub mod testutils;
 /// 2^128 work in a single block (btc has ~2^80), and no more than 2^64
 /// overall blocks, so 2^192 is definitely a justified upper-bound.
 pub type BlueWorkType = math::Uint192;
+
+/// The type used to represent the GHOSTDAG K parameter
+pub type KType = u16;
+
+/// Map from Block hash to K type
+pub type HashKTypeMap = std::sync::Arc<BlockHashMap<KType>>;
 
 /// This HashMap skips the hashing of the key and uses the key directly as the hash.
 /// Should only be used for block hashes that have correct DAA,
@@ -65,6 +71,11 @@ impl HashMapCustomHasher for BlockHashSet {
     fn with_capacity(cap: usize) -> Self {
         Self::with_capacity_and_hasher(cap, BlockHasher::new())
     }
+}
+
+pub struct ChainPath {
+    pub added: Vec<Hash>,
+    pub removed: Vec<Hash>,
 }
 
 /// `hashes::Hash` writes 4 u64s so we just use the last one as the hash here

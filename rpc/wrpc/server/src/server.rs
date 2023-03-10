@@ -1,10 +1,10 @@
 use crate::connection::Connection;
-use crate::notifications::{ListenerId, NotificationManager};
+use crate::notifications::NotificationManager;
 use crate::result::Result;
 use crate::service::Options;
-use rpc_core::api::rpc::RpcApi;
-use rpc_core::NotificationMessage;
-use rpc_grpc::client::RpcApiGrpc;
+use kaspa_grpc_client::GrpcClient;
+use kaspa_notify::listener::ListenerId;
+use kaspa_rpc_core::{api::rpc::RpcApi, Notification};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -19,7 +19,7 @@ pub struct ConnectionManagerInner {
     pub id: AtomicU64,
     pub encoding: Encoding,
     pub sockets: Mutex<HashMap<u64, Connection>>,
-    pub rpc_api: Option<Arc<dyn RpcApi>>,
+    pub rpc_api: Option<Arc<dyn RpcApi<Connection>>>,
     pub notifications: NotificationManager,
     pub options: Arc<Options>,
 }
@@ -30,7 +30,7 @@ pub struct Server {
 }
 
 impl Server {
-    pub fn new(tasks: usize, encoding: Encoding, rpc_api: Option<Arc<dyn RpcApi>>, options: Arc<Options>) -> Self {
+    pub fn new(tasks: usize, encoding: Encoding, rpc_api: Option<Arc<dyn RpcApi<Connection>>>, options: Arc<Options>) -> Self {
         Server {
             inner: Arc::new(ConnectionManagerInner {
                 id: AtomicU64::new(0),
@@ -49,8 +49,9 @@ impl Server {
 
         if let Some(grpc_proxy_address) = &self.inner.options.grpc_proxy_address {
             log_info!("Routing wrpc://{peer} -> {grpc_proxy_address}");
-            let grpc =
-                RpcApiGrpc::connect(true, grpc_proxy_address.to_owned()).await.map_err(|e| WebSocketError::Other(e.to_string()))?;
+            let grpc = GrpcClient::connect(grpc_proxy_address.to_owned(), true, true)
+                .await
+                .map_err(|e| WebSocketError::Other(e.to_string()))?;
             // log_trace!("starting gRPC");
             grpc.start().await;
             // log_trace!("gRPC started...");
@@ -73,19 +74,25 @@ impl Server {
         self.inner.notifications.disconnect(rpc_api, connection).await;
     }
 
-    pub fn get_rpc_api(&self, connection: &Connection) -> Arc<dyn RpcApi> {
-        if self.inner.options.grpc_proxy_address.is_some() {
-            connection.get_rpc_api()
-        } else {
-            self.inner.rpc_api.as_ref().expect("invalid access: Server is missing RpcApi while inner.proxy is present").clone()
-        }
+    pub fn get_rpc_api(&self, _connection: &Connection) -> Arc<dyn RpcApi<Connection>> {
+        //
+        // FIXME: separate grpc client and wrpc server RpcApi objects
+        //
+
+        // if self.inner.options.grpc_proxy_address.is_some() {
+        //     connection.get_rpc_api()
+        // } else {
+        //     self.inner.rpc_api.as_ref().expect("invalid access: Server is missing RpcApi while inner.proxy is present").clone()
+        // }
+
+        self.inner.rpc_api.as_ref().expect("invalid access: Server is missing RpcApi while inner.proxy is present").clone()
     }
 
     pub fn verbose(&self) -> bool {
         self.inner.options.verbose
     }
 
-    pub fn notification_ingest(&self) -> Sender<Arc<NotificationMessage>> {
+    pub fn notification_ingest(&self) -> Sender<Arc<Notification>> {
         self.inner.notifications.ingest.sender.clone()
     }
 

@@ -1,144 +1,93 @@
-use crate::NotificationMessage;
-use crate::{api::ops::RpcApiOps, model::message::*, RpcAddress};
+use crate::model::message::*;
 use async_channel::{Receiver, Sender};
-use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+use borsh::{BorshDeserialize, BorshSerialize};
+use derive_more::Display;
+use kaspa_notify::{
+    events::EventType,
+    notification::{full_featured, Notification as NotificationTrait},
+    subscription::{
+        single::{OverallSubscription, UtxosChangedSubscription, VirtualChainChangedSubscription},
+        Single,
+    },
+};
 use serde::{Deserialize, Serialize};
 pub use serde_wasm_bindgen::*;
-use std::fmt::Display;
 use std::sync::Arc;
-use wasm_bindgen::JsValue;
 
-#[derive(Clone, Debug, Hash, Eq, PartialEq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
-pub enum NotificationType {
-    BlockAdded,
-    FinalityConflict,
-    FinalityConflictResolved,
-    NewBlockTemplate,
-    PruningPointUtxoSetOverride,
-    UtxosChanged(Vec<RpcAddress>),
-    VirtualDaaScoreChanged,
-    VirtualSelectedParentBlueScoreChanged,
-    VirtualSelectedParentChainChanged,
-}
-
-impl From<&Notification> for NotificationType {
-    fn from(item: &Notification) -> Self {
-        match item {
-            Notification::BlockAdded(_) => NotificationType::BlockAdded,
-            Notification::FinalityConflict(_) => NotificationType::FinalityConflict,
-            Notification::FinalityConflictResolved(_) => NotificationType::FinalityConflictResolved,
-            Notification::NewBlockTemplate(_) => NotificationType::NewBlockTemplate,
-            Notification::PruningPointUtxoSetOverride(_) => NotificationType::PruningPointUtxoSetOverride,
-            Notification::UtxosChanged(_) => NotificationType::UtxosChanged(vec![]),
-            Notification::VirtualDaaScoreChanged(_) => NotificationType::VirtualDaaScoreChanged,
-            Notification::VirtualSelectedParentBlueScoreChanged(_) => NotificationType::VirtualSelectedParentBlueScoreChanged,
-            Notification::VirtualSelectedParentChainChanged(_) => NotificationType::VirtualSelectedParentChainChanged,
-        }
-    }
-}
-
-impl From<&Notification> for RpcApiOps {
-    fn from(item: &Notification) -> Self {
-        match item {
-            Notification::BlockAdded(_) => RpcApiOps::NotifyBlockAdded,
-            Notification::FinalityConflict(_) => RpcApiOps::NotifyFinalityConflict,
-            Notification::NewBlockTemplate(_) => RpcApiOps::NotifyNewBlockTemplate,
-            Notification::PruningPointUtxoSetOverride(_) => RpcApiOps::NotifyPruningPointUtxoSetOverride,
-            Notification::UtxosChanged(_) => RpcApiOps::NotifyUtxosChanged,
-            Notification::VirtualDaaScoreChanged(_) => RpcApiOps::NotifyVirtualDaaScoreChanged,
-            Notification::VirtualSelectedParentBlueScoreChanged(_) => RpcApiOps::NotifyVirtualSelectedParentBlueScoreChanged,
-            Notification::VirtualSelectedParentChainChanged(_) => RpcApiOps::NotifyVirtualSelectedParentChainChanged,
-            Notification::FinalityConflictResolved(_) => todo!(),
-        }
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
-#[allow(clippy::large_enum_variant)]
+full_featured! {
+#[derive(Clone, Debug, Display, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub enum Notification {
+    #[display(fmt = "BlockAdded notification: block hash {}", "_0.block.header.hash")]
     BlockAdded(BlockAddedNotification),
+
+    #[display(fmt = "VirtualChainChanged notification: {} removed blocks, {} added blocks, {} accepted transactions", "_0.removed_chain_block_hashes.len()", "_0.added_chain_block_hashes.len()", "_0.accepted_transaction_ids.len()")]
+    VirtualChainChanged(VirtualChainChangedNotification),
+
+    #[display(fmt = "FinalityConflict notification: violating block hash {}", "_0.violating_block_hash")]
     FinalityConflict(FinalityConflictNotification),
+
+    #[display(fmt = "FinalityConflict notification: violating block hash {}", "_0.finality_block_hash")]
     FinalityConflictResolved(FinalityConflictResolvedNotification),
-    NewBlockTemplate(NewBlockTemplateNotification),
-    PruningPointUtxoSetOverride(PruningPointUtxoSetOverrideNotification),
+
+    #[display(fmt = "UtxosChanged notification: {} removed, {} added", "_0.removed.len()", "_0.added.len()")]
     UtxosChanged(UtxosChangedNotification),
+
+    #[display(fmt = "SinkBlueScoreChanged notification: virtual selected parent blue score {}", "_0.sink_blue_score")]
+    SinkBlueScoreChanged(SinkBlueScoreChangedNotification),
+
+    #[display(fmt = "VirtualDaaScoreChanged notification: virtual DAA score {}", "_0.virtual_daa_score")]
     VirtualDaaScoreChanged(VirtualDaaScoreChangedNotification),
-    VirtualSelectedParentBlueScoreChanged(VirtualSelectedParentBlueScoreChangedNotification),
-    VirtualSelectedParentChainChanged(VirtualSelectedParentChainChangedNotification),
+
+    #[display(fmt = "PruningPointUtxoSetOverride notification")]
+    PruningPointUtxoSetOverride(PruningPointUtxoSetOverrideNotification),
+
+    #[display(fmt = "NewBlockTemplate notification")]
+    NewBlockTemplate(NewBlockTemplateNotification),
+}
 }
 
-impl Notification {
-    pub fn to_value(&self) -> std::result::Result<JsValue, serde_wasm_bindgen::Error> {
-        match self {
-            Notification::BlockAdded(v) => to_value(&v),
-            Notification::FinalityConflict(v) => to_value(&v),
-            Notification::FinalityConflictResolved(v) => to_value(&v),
-            Notification::NewBlockTemplate(v) => to_value(&v),
-            Notification::PruningPointUtxoSetOverride(v) => to_value(&v),
-            Notification::UtxosChanged(v) => to_value(&v),
-            Notification::VirtualDaaScoreChanged(v) => to_value(&v),
-            Notification::VirtualSelectedParentBlueScoreChanged(v) => to_value(&v),
-            Notification::VirtualSelectedParentChainChanged(v) => to_value(&v),
+impl NotificationTrait for Notification {
+    fn apply_overall_subscription(&self, subscription: &OverallSubscription) -> Option<Self> {
+        match subscription.active() {
+            true => Some(self.clone()),
+            false => None,
         }
+    }
+
+    fn apply_virtual_chain_changed_subscription(&self, subscription: &VirtualChainChangedSubscription) -> Option<Self> {
+        match subscription.active() {
+            true => {
+                if let Notification::VirtualChainChanged(ref payload) = self {
+                    if !subscription.include_accepted_transaction_ids() && !payload.accepted_transaction_ids.is_empty() {
+                        return Some(Notification::VirtualChainChanged(VirtualChainChangedNotification {
+                            removed_chain_block_hashes: payload.removed_chain_block_hashes.clone(),
+                            added_chain_block_hashes: payload.added_chain_block_hashes.clone(),
+                            accepted_transaction_ids: Arc::new(vec![]),
+                        }));
+                    }
+                }
+                Some(self.clone())
+            }
+            false => None,
+        }
+    }
+
+    fn apply_utxos_changed_subscription(&self, _subscription: &UtxosChangedSubscription) -> Option<Self> {
+        // TODO: filter according to subscription
+        Some(self.clone())
+    }
+
+    fn event_type(&self) -> EventType {
+        self.into()
     }
 }
 
-impl Display for Notification {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Notification::BlockAdded(ref notification) => {
-                write!(f, "BlockAdded notification: block hash {}", notification.block.header.hash)
-            }
-            Notification::NewBlockTemplate(_) => {
-                write!(f, "NewBlockTemplate notification")
-            }
-            Notification::VirtualSelectedParentChainChanged(ref notification) => {
-                write!(
-                    f,
-                    "VirtualSelectedParentChainChanged notification: {} removed blocks, {} added blocks, {} accepted transactions",
-                    notification.removed_chain_block_hashes.len(),
-                    notification.added_chain_block_hashes.len(),
-                    notification.accepted_transaction_ids.len()
-                )
-            }
-            Notification::FinalityConflict(ref notification) => {
-                write!(f, "FinalityConflict notification: violating block hash {}", notification.violating_block_hash)
-            }
-            Notification::FinalityConflictResolved(ref notification) => {
-                write!(f, "FinalityConflictResolved notification: finality block hash {}", notification.finality_block_hash)
-            }
-            Notification::UtxosChanged(ref notification) => {
-                write!(f, "UtxosChanged notification: {} removed, {} added", notification.removed.len(), notification.added.len())
-            }
-            Notification::VirtualSelectedParentBlueScoreChanged(ref notification) => {
-                write!(
-                    f,
-                    "VirtualSelectedParentBlueScoreChanged notification: virtual selected parent blue score {}",
-                    notification.virtual_selected_parent_blue_score
-                )
-            }
-            Notification::VirtualDaaScoreChanged(ref notification) => {
-                write!(f, "VirtualDaaScoreChanged notification: virtual DAA score {}", notification.virtual_daa_score)
-            }
-            Notification::PruningPointUtxoSetOverride(_) => {
-                write!(f, "PruningPointUtxoSetOverride notification")
-            }
-        }
-    }
-}
-
-pub type NotificationSender = Sender<Arc<NotificationMessage>>;
-pub type NotificationReceiver = Receiver<Arc<NotificationMessage>>;
+pub type NotificationSender = Sender<Notification>;
+pub type NotificationReceiver = Receiver<Notification>;
 
 pub enum NotificationHandle {
     Existing(u64),
     New(NotificationSender),
-}
-
-impl AsRef<Notification> for Notification {
-    fn as_ref(&self) -> &Self {
-        self
-    }
 }
 
 #[cfg(test)]

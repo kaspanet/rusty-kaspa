@@ -1,20 +1,19 @@
 use std::sync::Arc;
 
-use super::{
-    database::prelude::{BatchDbWriter, CachedDbItem, DirectDbWriter},
-    errors::StoreResult,
-    ghostdag::GhostdagData,
-    DB,
-};
 use consensus_core::{
     coinbase::BlockRewardData, tx::TransactionId, utxo::utxo_diff::UtxoDiff, BlockHashMap, BlockHashSet, HashMapCustomHasher,
 };
+use database::prelude::StoreResult;
+use database::prelude::DB;
+use database::prelude::{BatchDbWriter, CachedDbItem, DirectDbWriter};
 use hashes::Hash;
 use muhash::MuHash;
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Serialize, Deserialize)]
+use super::ghostdag::GhostdagData;
+
+#[derive(Clone, Serialize, Deserialize, Default)]
 pub struct VirtualState {
     pub parents: Vec<Hash>,
     pub ghostdag_data: GhostdagData,

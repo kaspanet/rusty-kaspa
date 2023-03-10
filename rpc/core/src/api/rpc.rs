@@ -4,8 +4,9 @@
 //! All data provided by the RCP server can be trusted by the client
 //! No data submitted by the client to the server can be trusted
 
-use crate::{api::ops::SubscribeCommand, model::*, notify::listener::ListenerID, NotificationSender, NotificationType, RpcResult};
+use crate::{model::*, RpcResult};
 use async_trait::async_trait;
+use kaspa_notify::{connection::Connection, listener::ListenerId, scope::Scope, subscription::Command};
 
 /// Client RPC Api
 ///
@@ -13,7 +14,10 @@ use async_trait::async_trait;
 ///
 /// For each RPC call a matching readily implemented function taking detailed parameters is also provided.
 #[async_trait]
-pub trait RpcApi: Sync + Send {
+pub trait RpcApi<C>: Sync + Send
+where
+    C: Connection,
+{
     ///
     async fn ping(&self) -> RpcResult<()> {
         self.ping_call(PingRequest {}).await?;
@@ -118,21 +122,18 @@ pub trait RpcApi: Sync + Send {
     async fn get_subnetwork_call(&self, request: GetSubnetworkRequest) -> RpcResult<GetSubnetworkResponse>;
 
     /// Requests the virtual selected parent chain from some `start_hash` to this node's current virtual.
-    async fn get_virtual_selected_parent_chain_from_block(
+    async fn get_virtual_chain_from_block(
         &self,
         start_hash: RpcHash,
         include_accepted_transaction_ids: bool,
-    ) -> RpcResult<GetVirtualSelectedParentChainFromBlockResponse> {
-        self.get_virtual_selected_parent_chain_from_block_call(GetVirtualSelectedParentChainFromBlockRequest::new(
-            start_hash,
-            include_accepted_transaction_ids,
-        ))
-        .await
+    ) -> RpcResult<GetVirtualChainFromBlockResponse> {
+        self.get_virtual_chain_from_block_call(GetVirtualChainFromBlockRequest::new(start_hash, include_accepted_transaction_ids))
+            .await
     }
-    async fn get_virtual_selected_parent_chain_from_block_call(
+    async fn get_virtual_chain_from_block_call(
         &self,
-        request: GetVirtualSelectedParentChainFromBlockRequest,
-    ) -> RpcResult<GetVirtualSelectedParentChainFromBlockResponse>;
+        request: GetVirtualChainFromBlockRequest,
+    ) -> RpcResult<GetVirtualChainFromBlockResponse>;
 
     /// Requests blocks between a certain block `low_hash` up to this node's current virtual.
     async fn get_blocks(&self, low_hash: RpcHash, include_blocks: bool, include_transactions: bool) -> RpcResult<GetBlocksResponse> {
@@ -203,13 +204,10 @@ pub trait RpcApi: Sync + Send {
     async fn get_utxos_by_addresses_call(&self, request: GetUtxosByAddressesRequest) -> RpcResult<GetUtxosByAddressesResponse>;
 
     /// Requests the blue score of the current selected parent of the virtual block.
-    async fn get_virtual_selected_parent_blue_score(&self) -> RpcResult<u64> {
-        Ok(self.get_virtual_selected_parent_blue_score_call(GetVirtualSelectedParentBlueScoreRequest {}).await?.blue_score)
+    async fn get_sink_blue_score(&self) -> RpcResult<u64> {
+        Ok(self.get_sink_blue_score_call(GetSinkBlueScoreRequest {}).await?.blue_score)
     }
-    async fn get_virtual_selected_parent_blue_score_call(
-        &self,
-        request: GetVirtualSelectedParentBlueScoreRequest,
-    ) -> RpcResult<GetVirtualSelectedParentBlueScoreResponse>;
+    async fn get_sink_blue_score_call(&self, request: GetSinkBlueScoreRequest) -> RpcResult<GetSinkBlueScoreResponse>;
 
     /// Bans the given ip.
     async fn ban(&self, address: RpcPeerAddress) -> RpcResult<()> {
@@ -273,31 +271,26 @@ pub trait RpcApi: Sync + Send {
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API
 
-    /// Register a new listener and returns an id.
-    fn register_new_listener(&self, sender: NotificationSender) -> ListenerID;
+    /// Register a new listener and returns an id identifying it.
+    fn register_new_listener(&self, connection: C) -> ListenerId;
 
     /// Unregister an existing listener.
     ///
-    /// Stop all notifications for this listener and drop its channel.
-    async fn unregister_listener(&self, id: ListenerID) -> RpcResult<()>;
+    /// Stop all notifications for this listener, unregister the id and its associated connection.
+    async fn unregister_listener(&self, id: ListenerId) -> RpcResult<()>;
 
     /// Start sending notifications of some type to a listener.
-    async fn start_notify(&self, id: ListenerID, notification_type: NotificationType) -> RpcResult<()>;
+    async fn start_notify(&self, id: ListenerId, scope: Scope) -> RpcResult<()>;
 
     /// Stop sending notifications of some type to a listener.
-    async fn stop_notify(&self, id: ListenerID, notification_type: NotificationType) -> RpcResult<()>;
+    async fn stop_notify(&self, id: ListenerId, scope: Scope) -> RpcResult<()>;
 
     /// Execute a subscription command leading to either start or stop sending notifications
     /// of some type to a listener.
-    async fn execute_subscribe_command(
-        &self,
-        id: ListenerID,
-        notification_type: NotificationType,
-        command: SubscribeCommand,
-    ) -> RpcResult<()> {
+    async fn execute_subscribe_command(&self, id: ListenerId, scope: Scope, command: Command) -> RpcResult<()> {
         match command {
-            SubscribeCommand::Start => self.start_notify(id, notification_type).await,
-            SubscribeCommand::Stop => self.stop_notify(id, notification_type).await,
+            Command::Start => self.start_notify(id, scope).await,
+            Command::Stop => self.stop_notify(id, scope).await,
         }
     }
 }

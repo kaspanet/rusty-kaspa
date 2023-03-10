@@ -8,6 +8,11 @@ pub struct Defaults {
     pub rpclisten_json: &'static str,
     pub async_threads: usize,
     pub wrpc_serializer_tasks: usize,
+    pub utxoindex: bool,
+    pub reset_db: bool,
+    pub testnet: bool,
+    pub devnet: bool,
+    pub simnet: bool,
 }
 
 impl Default for Defaults {
@@ -19,6 +24,11 @@ impl Default for Defaults {
             rpclisten_json: "127.0.0.1:18110",
             async_threads: num_cpus::get() / 2,
             wrpc_serializer_tasks: num_cpus::get() / 2,
+            utxoindex: false,
+            reset_db: false,
+            testnet: false,
+            devnet: false,
+            simnet: false,
         }
     }
 }
@@ -33,6 +43,13 @@ pub struct Args {
     pub wrpc_verbose: bool,
     pub log_level: String,
     pub async_threads: usize,
+    pub connect: Option<String>,
+    pub listen: Option<String>,
+    pub utxoindex: bool,
+    pub reset_db: bool,
+    pub testnet: bool,
+    pub devnet: bool,
+    pub simnet: bool,
 }
 
 pub fn cli(defaults: &Defaults) -> Command {
@@ -57,7 +74,7 @@ pub fn cli(defaults: &Defaults) -> Command {
                 .default_value("info")
                 .num_args(0..=1)
                 .require_equals(true)
-                .help("Specify log level."),
+                .help("Logging level for all subsystems {off, error, warn, info, debug, trace}\n-- You may also specify <subsystem>=<level>,<subsystem2>=<level>,... to set the log level for individual subsystems.".to_string()),
         )
         .arg(
             Arg::new("rpclisten")
@@ -90,6 +107,27 @@ pub fn cli(defaults: &Defaults) -> Command {
                 .default_missing_value(defaults.rpclisten_json)
                 .help(format!("Interface:port to listen for wRPC JSON connections (default: {}).", defaults.rpclisten_json)),
         )
+        .arg(
+            Arg::new("connect")
+                .long("connect")
+                .value_name("connect")
+                .num_args(0..=1)
+                .require_equals(true)
+                .help("Connect only to the specified peers at startup."),
+        )
+        .arg(
+            Arg::new("listen")
+                .long("listen")
+                .value_name("listen")
+                .num_args(0..=1)
+                .require_equals(true)
+                .help("Add an interface/port to listen for connections (default all interfaces port: 16111, testnet: 16211)."),
+        )
+        .arg(arg!(--reset-db "Reset database before starting node. It's needed when switching between subnetworks."))
+        .arg(arg!(--utxoindex "Enable the UTXO index"))
+        .arg(arg!(--testnet "Use the test network"))
+        .arg(arg!(--devnet "Use the development test network"))
+        .arg(arg!(--simnet "Use the simulation test network"))
 }
 
 impl Args {
@@ -103,6 +141,13 @@ impl Args {
             wrpc_verbose: false,
             log_level: m.get_one::<String>("log_level").cloned().unwrap(),
             async_threads: m.get_one::<usize>("async_threads").cloned().unwrap_or(defaults.async_threads),
+            connect: m.get_one::<String>("connect").cloned(),
+            listen: m.get_one::<String>("listen").cloned(),
+            reset_db: m.get_one::<bool>("reet-db").cloned().unwrap_or(defaults.reset_db),
+            utxoindex: m.get_one::<bool>("utxoindex").cloned().unwrap_or(defaults.utxoindex),
+            testnet: m.get_one::<bool>("testnet").cloned().unwrap_or(defaults.testnet),
+            devnet: m.get_one::<bool>("devnet").cloned().unwrap_or(defaults.devnet),
+            simnet: m.get_one::<bool>("simnet").cloned().unwrap_or(defaults.simnet),
         }
     }
 }

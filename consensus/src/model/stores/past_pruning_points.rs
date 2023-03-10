@@ -1,33 +1,12 @@
-use std::{fmt::Display, sync::Arc};
+use std::sync::Arc;
 
-use super::{
-    database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter},
-    errors::{StoreError, StoreResult},
-    DB,
-};
+use database::prelude::DB;
+use database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
+use database::prelude::{StoreError, StoreResult};
 use hashes::Hash;
 use rocksdb::WriteBatch;
 
-#[derive(PartialEq, Eq, Clone, Copy, Hash)]
-pub struct Key([u8; 8]);
-
-impl From<u64> for Key {
-    fn from(value: u64) -> Self {
-        Self(value.to_le_bytes()) // TODO: Consider using big-endian for future ordering.
-    }
-}
-
-impl AsRef<[u8]> for Key {
-    fn as_ref(&self) -> &[u8] {
-        &self.0
-    }
-}
-
-impl Display for Key {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", u64::from_le_bytes(self.0))
-    }
-}
+use super::U64Key;
 
 pub trait PastPruningPointsStoreReader {
     fn get(&self, index: u64) -> StoreResult<Hash>;
@@ -36,6 +15,7 @@ pub trait PastPruningPointsStoreReader {
 pub trait PastPruningPointsStore: PastPruningPointsStoreReader {
     // This is append only
     fn insert(&self, index: u64, pruning_point: Hash) -> StoreResult<()>;
+    fn set(&self, index: u64, pruning_point: Hash) -> StoreResult<()>;
 }
 
 const STORE_PREFIX: &[u8] = b"past-pruning-points";
@@ -44,7 +24,7 @@ const STORE_PREFIX: &[u8] = b"past-pruning-points";
 #[derive(Clone)]
 pub struct DbPastPruningPointsStore {
     db: Arc<DB>,
-    access: CachedDbAccess<Key, Hash>,
+    access: CachedDbAccess<U64Key, Hash>,
 }
 
 impl DbPastPruningPointsStore {
@@ -76,6 +56,10 @@ impl PastPruningPointsStore for DbPastPruningPointsStore {
         if self.access.has(index.into())? {
             return Err(StoreError::KeyAlreadyExists(index.to_string()));
         }
+        self.set(index, pruning_point)
+    }
+
+    fn set(&self, index: u64, pruning_point: Hash) -> StoreResult<()> {
         self.access.write(DirectDbWriter::new(&self.db), index.into(), pruning_point)?;
         Ok(())
     }

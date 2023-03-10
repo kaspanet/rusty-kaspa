@@ -3,12 +3,12 @@ mod result;
 
 use clap::Parser;
 use consensus_core::networktype::NetworkType;
+use kaspa_rpc_core::api::ops::RpcApiOps;
 use kaspa_wrpc_server::connection::Connection;
 use kaspa_wrpc_server::router::Router;
 use kaspa_wrpc_server::server::Server;
 use kaspa_wrpc_server::service::{KaspaRpcHandler, Options};
 use result::Result;
-use rpc_core::api::ops::RpcApiOps;
 use std::sync::Arc;
 use workflow_log::*;
 use workflow_rpc::server::prelude::*;

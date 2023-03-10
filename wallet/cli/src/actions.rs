@@ -42,11 +42,11 @@ pub enum Action {
     Sweep,
 
     // Notifications
-    #[describe("Subscribe DAA score")]
-    SubscribeDaaScore,
-    #[describe("Unsubscribe DAA score")]
-    UnsubscribeDaaScore,
-
+    // FIXME
+    // #[describe("Subscribe DAA score")]
+    // SubscribeDaaScore,
+    // #[describe("Unsubscribe DAA score")]
+    // UnsubscribeDaaScore,
     #[describe("Exit the wallet shell")]
     Exit,
 

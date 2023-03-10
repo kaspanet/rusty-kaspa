@@ -4,6 +4,7 @@ pub mod assert;
 pub mod console;
 pub mod log;
 pub mod panic;
+pub mod time;
 
 cfg_if::cfg_if! {
     if #[cfg(not(target_arch = "wasm32"))] {

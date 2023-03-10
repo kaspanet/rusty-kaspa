@@ -1,7 +1,8 @@
 use crate::result::Result;
 use crate::wallets::HDWalletGen1;
+use kaspa_notify::listener::ListenerId;
+use kaspa_rpc_core::{api::rpc::RpcApi, Notification};
 use kaspa_wrpc_client::{KaspaRpcClient, NotificationMode, WrpcEncoding};
-use rpc_core::{api::rpc::RpcApi, prelude::ListenerID as ListenerId, NotificationMessage, NotificationType};
 use std::sync::{Arc, Mutex};
 #[allow(unused_imports)]
 use workflow_core::channel::{Channel, Receiver};
@@ -11,7 +12,7 @@ pub struct Wallet {
     pub rpc: Arc<KaspaRpcClient>,
     hd_wallet: HDWalletGen1,
     listener_id: Arc<Mutex<Option<ListenerId>>>,
-    notification_channel: Channel<Arc<NotificationMessage>>,
+    _notification_channel: Channel<Arc<Notification>>,
     notification_mode: NotificationMode,
 }
 
@@ -24,7 +25,7 @@ impl Wallet {
         let wallet = Wallet {
             rpc: Arc::new(KaspaRpcClient::new_with_args(WrpcEncoding::Borsh, notification_mode.clone(), "wrpc://localhost:17110")?),
             hd_wallet: HDWalletGen1::from_master_xprv(master_xprv, false, 0).await?,
-            notification_channel: Channel::unbounded(),
+            _notification_channel: Channel::unbounded(),
             listener_id: Arc::new(Mutex::new(None)),
             notification_mode,
         };
@@ -49,11 +50,15 @@ impl Wallet {
         self.rpc.start().await?;
         self.rpc.connect_as_task()?;
 
-        // TODO - this won't work if implementing NotificationMode::Synced
-        if matches!(self.notification_mode, NotificationMode::NotSynced) {
-            let id = self.rpc.register_new_listener(self.notification_channel.sender.clone());
-            *self.listener_id.lock().unwrap() = Some(id);
-        }
+        //
+        // FIXME
+        //
+
+        // // TODO - this won't work if implementing NotificationMode::Synced
+        // if matches!(self.notification_mode, NotificationMode::NotSynced) {
+        //     let id = self.rpc.register_new_listener(self.notification_channel.sender.clone());
+        //     *self.listener_id.lock().unwrap() = Some(id);
+        // }
         Ok(())
     }
 
@@ -81,15 +86,19 @@ impl Wallet {
         Ok(format!("{v:#?}").replace('\n', "\r\n"))
     }
 
-    pub async fn subscribe_daa_score(&self) -> Result<()> {
-        self.rpc.start_notify(self.listener_id(), NotificationType::VirtualDaaScoreChanged).await?;
-        Ok(())
-    }
+    //
+    // FIXME
+    //
 
-    pub async fn unsubscribe_daa_score(&self) -> Result<()> {
-        self.rpc.stop_notify(self.listener_id(), NotificationType::VirtualDaaScoreChanged).await?;
-        Ok(())
-    }
+    // pub async fn subscribe_daa_score(&self) -> Result<()> {
+    //     self.rpc.start_notify(self.listener_id(), Scope::VirtualDaaScoreChanged).await?;
+    //     Ok(())
+    // }
+
+    // pub async fn unsubscribe_daa_score(&self) -> Result<()> {
+    //     self.rpc.stop_notify(self.listener_id(), Scope::VirtualDaaScoreChanged).await?;
+    //     Ok(())
+    // }
 
     pub async fn ping(&self) -> Result<()> {
         Ok(self.rpc.ping().await?)

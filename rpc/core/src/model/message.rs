@@ -1,7 +1,11 @@
-use crate::{api::ops::SubscribeCommand, model::*};
+use crate::model::*;
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+use kaspa_notify::subscription::Command;
 use serde::{Deserialize, Serialize};
-use std::fmt::{Display, Formatter};
+use std::{
+    fmt::{Display, Formatter},
+    sync::Arc,
+};
 
 pub type RpcExtraData = Vec<u8>;
 
@@ -308,12 +312,12 @@ impl GetSubnetworkResponse {
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct GetVirtualSelectedParentChainFromBlockRequest {
+pub struct GetVirtualChainFromBlockRequest {
     pub start_hash: RpcHash,
     pub include_accepted_transaction_ids: bool,
 }
 
-impl GetVirtualSelectedParentChainFromBlockRequest {
+impl GetVirtualChainFromBlockRequest {
     pub fn new(start_hash: RpcHash, include_accepted_transaction_ids: bool) -> Self {
         Self { start_hash, include_accepted_transaction_ids }
     }
@@ -321,13 +325,13 @@ impl GetVirtualSelectedParentChainFromBlockRequest {
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct GetVirtualSelectedParentChainFromBlockResponse {
+pub struct GetVirtualChainFromBlockResponse {
     pub removed_chain_block_hashes: Vec<RpcHash>,
     pub added_chain_block_hashes: Vec<RpcHash>,
     pub accepted_transaction_ids: Vec<RpcAcceptedTransactionIds>,
 }
 
-impl GetVirtualSelectedParentChainFromBlockResponse {
+impl GetVirtualChainFromBlockResponse {
     pub fn new(
         removed_chain_block_hashes: Vec<RpcHash>,
         added_chain_block_hashes: Vec<RpcHash>,
@@ -525,15 +529,15 @@ impl GetBalancesByAddressesResponse {
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct GetVirtualSelectedParentBlueScoreRequest {}
+pub struct GetSinkBlueScoreRequest {}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct GetVirtualSelectedParentBlueScoreResponse {
+pub struct GetSinkBlueScoreResponse {
     pub blue_score: u64,
 }
 
-impl GetVirtualSelectedParentBlueScoreResponse {
+impl GetSinkBlueScoreResponse {
     pub fn new(blue_score: u64) -> Self {
         Self { blue_score }
     }
@@ -715,10 +719,10 @@ impl GetProcessMetricsResponse {
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct NotifyBlockAddedRequest {
-    pub command: SubscribeCommand,
+    pub command: Command,
 }
 impl NotifyBlockAddedRequest {
-    pub fn new(command: SubscribeCommand) -> Self {
+    pub fn new(command: Command) -> Self {
         Self { command }
     }
 }
@@ -731,46 +735,46 @@ pub struct NotifyBlockAddedResponse {}
 /// into the DAG.
 ///
 /// See: NotifyBlockAddedRequest
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BlockAddedNotification {
-    pub block: RpcBlock,
+    pub block: Arc<RpcBlock>,
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-// VirtualSelectedParentChainChangedNotification
+// VirtualChainChangedNotification
 
-// NotifyVirtualSelectedParentChainChangedRequest registers this connection for
+// NotifyVirtualChainChangedRequest registers this connection for
 // virtualDaaScoreChanged notifications.
 //
-// See: VirtualSelectedParentChainChangedNotification
+// See: VirtualChainChangedNotification
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct NotifyVirtualSelectedParentChainChangedRequest {
+pub struct NotifyVirtualChainChangedRequest {
     pub include_accepted_transaction_ids: bool,
-    pub command: SubscribeCommand,
+    pub command: Command,
 }
 
-impl NotifyVirtualSelectedParentChainChangedRequest {
-    pub fn new(include_accepted_transaction_ids: bool, command: SubscribeCommand) -> Self {
+impl NotifyVirtualChainChangedRequest {
+    pub fn new(include_accepted_transaction_ids: bool, command: Command) -> Self {
         Self { include_accepted_transaction_ids, command }
     }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct NotifyVirtualSelectedParentChainChangedResponse {}
+pub struct NotifyVirtualChainChangedResponse {}
 
-// VirtualSelectedParentChainChangedNotification is sent whenever the DAG's selected parent
+// VirtualChainChangedNotification is sent whenever the DAG's selected parent
 // chain had changed.
 //
-// See: NotifyVirtualSelectedParentChainChangedRequest
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+// See: NotifyVirtualChainChangedRequest
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct VirtualSelectedParentChainChangedNotification {
-    pub removed_chain_block_hashes: Vec<RpcHash>,
-    pub added_chain_block_hashes: Vec<RpcHash>,
-    pub accepted_transaction_ids: Vec<RpcAcceptedTransactionIds>,
+pub struct VirtualChainChangedNotification {
+    pub removed_chain_block_hashes: Arc<Vec<RpcHash>>,
+    pub added_chain_block_hashes: Arc<Vec<RpcHash>>,
+    pub accepted_transaction_ids: Arc<Vec<RpcAcceptedTransactionIds>>,
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -779,11 +783,11 @@ pub struct VirtualSelectedParentChainChangedNotification {
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct NotifyFinalityConflictRequest {
-    pub command: SubscribeCommand,
+    pub command: Command,
 }
 
 impl NotifyFinalityConflictRequest {
-    pub fn new(command: SubscribeCommand) -> Self {
+    pub fn new(command: Command) -> Self {
         Self { command }
     }
 }
@@ -792,10 +796,10 @@ impl NotifyFinalityConflictRequest {
 #[serde(rename_all = "camelCase")]
 pub struct NotifyFinalityConflictResponse {}
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FinalityConflictNotification {
-    pub violating_block_hash: RpcHash,
+    pub violating_block_hash: Arc<RpcHash>,
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -804,11 +808,11 @@ pub struct FinalityConflictNotification {
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct NotifyFinalityConflictResolvedRequest {
-    pub command: SubscribeCommand,
+    pub command: Command,
 }
 
 impl NotifyFinalityConflictResolvedRequest {
-    pub fn new(command: SubscribeCommand) -> Self {
+    pub fn new(command: Command) -> Self {
         Self { command }
     }
 }
@@ -817,10 +821,10 @@ impl NotifyFinalityConflictResolvedRequest {
 #[serde(rename_all = "camelCase")]
 pub struct NotifyFinalityConflictResolvedResponse {}
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FinalityConflictResolvedNotification {
-    pub finality_block_hash: RpcHash,
+    pub finality_block_hash: Arc<RpcHash>,
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -839,11 +843,11 @@ pub struct FinalityConflictResolvedNotification {
 #[serde(rename_all = "camelCase")]
 pub struct NotifyUtxosChangedRequest {
     pub addresses: Vec<RpcAddress>,
-    pub command: SubscribeCommand,
+    pub command: Command,
 }
 
 impl NotifyUtxosChangedRequest {
-    pub fn new(addresses: Vec<RpcAddress>, command: SubscribeCommand) -> Self {
+    pub fn new(addresses: Vec<RpcAddress>, command: Command) -> Self {
         Self { addresses, command }
     }
 }
@@ -855,44 +859,44 @@ pub struct NotifyUtxosChangedResponse {}
 // UtxosChangedNotificationMessage is sent whenever the UTXO index had been updated.
 //
 // See: NotifyUtxosChangedRequest
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UtxosChangedNotification {
-    pub added: Vec<RpcUtxosByAddressesEntry>,
-    pub removed: Vec<RpcUtxosByAddressesEntry>,
+    pub added: Arc<Vec<RpcUtxosByAddressesEntry>>,
+    pub removed: Arc<Vec<RpcUtxosByAddressesEntry>>,
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-// VirtualSelectedParentBlueScoreChangedNotification
+// SinkBlueScoreChangedNotification
 
-// NotifyVirtualSelectedParentBlueScoreChangedRequest registers this connection for
-// virtualSelectedParentBlueScoreChanged notifications.
+// NotifySinkBlueScoreChangedRequest registers this connection for
+// sinkBlueScoreChanged notifications.
 //
-// See: VirtualSelectedParentBlueScoreChangedNotification
+// See: SinkBlueScoreChangedNotification
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct NotifyVirtualSelectedParentBlueScoreChangedRequest {
-    pub command: SubscribeCommand,
+pub struct NotifySinkBlueScoreChangedRequest {
+    pub command: Command,
 }
 
-impl NotifyVirtualSelectedParentBlueScoreChangedRequest {
-    pub fn new(command: SubscribeCommand) -> Self {
+impl NotifySinkBlueScoreChangedRequest {
+    pub fn new(command: Command) -> Self {
         Self { command }
     }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct NotifyVirtualSelectedParentBlueScoreChangedResponse {}
+pub struct NotifySinkBlueScoreChangedResponse {}
 
-// VirtualSelectedParentBlueScoreChangedNotification is sent whenever the blue score
+// SinkBlueScoreChangedNotification is sent whenever the blue score
 // of the virtual's selected parent changes.
 //
-/// See: NotifyVirtualSelectedParentBlueScoreChangedRequest
+/// See: NotifySinkBlueScoreChangedRequest
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct VirtualSelectedParentBlueScoreChangedNotification {
-    pub virtual_selected_parent_blue_score: u64,
+pub struct SinkBlueScoreChangedNotification {
+    pub sink_blue_score: u64,
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -905,11 +909,11 @@ pub struct VirtualSelectedParentBlueScoreChangedNotification {
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct NotifyVirtualDaaScoreChangedRequest {
-    pub command: SubscribeCommand,
+    pub command: Command,
 }
 
 impl NotifyVirtualDaaScoreChangedRequest {
-    pub fn new(command: SubscribeCommand) -> Self {
+    pub fn new(command: Command) -> Self {
         Self { command }
     }
 }
@@ -934,11 +938,11 @@ pub struct VirtualDaaScoreChangedNotification {
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct NotifyPruningPointUtxoSetOverrideRequest {
-    pub command: SubscribeCommand,
+    pub command: Command,
 }
 
 impl NotifyPruningPointUtxoSetOverrideRequest {
-    pub fn new(command: SubscribeCommand) -> Self {
+    pub fn new(command: Command) -> Self {
         Self { command }
     }
 }
@@ -960,10 +964,10 @@ pub struct PruningPointUtxoSetOverrideNotification {}
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct NotifyNewBlockTemplateRequest {
-    pub command: SubscribeCommand,
+    pub command: Command,
 }
 impl NotifyNewBlockTemplateRequest {
-    pub fn new(command: SubscribeCommand) -> Self {
+    pub fn new(command: Command) -> Self {
         Self { command }
     }
 }

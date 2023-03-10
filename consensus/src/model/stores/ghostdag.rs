@@ -1,8 +1,10 @@
-use super::database::prelude::{BatchDbWriter, CachedDbAccess, DbKey, DirectDbWriter};
-use super::{errors::StoreError, DB};
 use crate::processes::ghostdag::ordering::SortableBlock;
+use consensus_core::trusted::ExternalGhostdagData;
 use consensus_core::{blockhash::BlockHashes, BlueWorkType};
 use consensus_core::{BlockHashMap, BlockHasher, BlockLevel, HashMapCustomHasher};
+use database::prelude::StoreError;
+use database::prelude::DB;
+use database::prelude::{BatchDbWriter, CachedDbAccess, DbKey, DirectDbWriter};
 use hashes::Hash;
 
 use itertools::EitherOrBoth::{Both, Left, Right};
@@ -12,10 +14,10 @@ use serde::{Deserialize, Serialize};
 use std::iter::once;
 use std::{cell::RefCell, sync::Arc};
 
-pub type KType = u8; // This type must be increased to u16 if we ever set GHOSTDAG K > 255
-pub type HashKTypeMap = Arc<BlockHashMap<KType>>;
+/// Re-export for convenience
+pub use consensus_core::{HashKTypeMap, KType};
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Default)]
 pub struct GhostdagData {
     pub blue_score: u64,
     pub blue_work: BlueWorkType,
@@ -30,6 +32,32 @@ pub struct CompactGhostdagData {
     pub blue_score: u64,
     pub blue_work: BlueWorkType,
     pub selected_parent: Hash,
+}
+
+impl From<ExternalGhostdagData> for GhostdagData {
+    fn from(value: ExternalGhostdagData) -> Self {
+        Self {
+            blue_score: value.blue_score,
+            blue_work: value.blue_work,
+            selected_parent: value.selected_parent,
+            mergeset_blues: Arc::new(value.mergeset_blues),
+            mergeset_reds: Arc::new(value.mergeset_reds),
+            blues_anticone_sizes: Arc::new(value.blues_anticone_sizes),
+        }
+    }
+}
+
+impl From<&GhostdagData> for ExternalGhostdagData {
+    fn from(value: &GhostdagData) -> Self {
+        Self {
+            blue_score: value.blue_score,
+            blue_work: value.blue_work,
+            selected_parent: value.selected_parent,
+            mergeset_blues: (*value.mergeset_blues).clone(),
+            mergeset_reds: (*value.mergeset_reds).clone(),
+            blues_anticone_sizes: (*value.blues_anticone_sizes).clone(),
+        }
+    }
 }
 
 impl GhostdagData {
@@ -174,7 +202,6 @@ impl GhostdagData {
         self.blue_work = blue_work;
     }
 }
-
 pub trait GhostdagStoreReader {
     fn get_blue_score(&self, hash: Hash) -> Result<u64, StoreError>;
     fn get_blue_work(&self, hash: Hash) -> Result<BlueWorkType, StoreError>;

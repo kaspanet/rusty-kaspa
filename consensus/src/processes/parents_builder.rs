@@ -7,10 +7,7 @@ use smallvec::{smallvec, SmallVec};
 use std::sync::Arc;
 
 use crate::model::{
-    services::{
-        reachability::{MTReachabilityService, ReachabilityService},
-        relations::MTRelationsService,
-    },
+    services::reachability::{MTReachabilityService, ReachabilityService},
     stores::{headers::HeaderStoreReader, reachability::ReachabilityStoreReader, relations::RelationsStoreReader},
 };
 
@@ -23,7 +20,7 @@ pub struct ParentsManager<T: HeaderStoreReader, U: ReachabilityStoreReader, V: R
 
     headers_store: Arc<T>,
     reachability_service: MTReachabilityService<U>,
-    relations_service: MTRelationsService<V>,
+    relations_service: V,
 }
 
 impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> ParentsManager<T, U, V> {
@@ -32,7 +29,7 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
         genesis_hash: Hash,
         headers_store: Arc<T>,
         reachability_service: MTReachabilityService<U>,
-        relations_service: MTRelationsService<V>,
+        relations_service: V,
     ) -> Self {
         Self { max_block_level, genesis_hash, headers_store, reachability_service, relations_service }
     }
@@ -189,9 +186,8 @@ mod tests {
     use super::*;
     use crate::{
         model::{
-            services::reachability::MTReachabilityService,
+            services::{reachability::MTReachabilityService, relations::MTRelationsService},
             stores::{
-                errors::StoreError,
                 headers::{HeaderStoreReader, HeaderWithBlockLevel},
                 reachability::MemoryReachabilityStore,
                 relations::RelationsStoreReader,
@@ -206,6 +202,7 @@ mod tests {
         header::Header,
         BlockHashSet, HashMapCustomHasher,
     };
+    use database::prelude::StoreError;
     use hashes::Hash;
     use itertools::Itertools;
     use parking_lot::RwLock;

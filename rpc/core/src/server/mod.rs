@@ -1,13 +1,14 @@
-use std::sync::Arc;
-
 use consensus_core::api::DynConsensus;
+use consensus_notify::service::NotifyService;
 use kaspa_core::{
     task::service::{AsyncService, AsyncServiceError, AsyncServiceFuture},
     trace,
 };
+use kaspa_index_processor::service::IndexService;
 use kaspa_utils::triggers::DuplexTrigger;
+use std::sync::Arc;
 
-use self::{collector::ConsensusNotificationReceiver, service::RpcCoreService};
+use self::service::RpcCoreService;
 
 pub mod collector;
 pub mod service;
@@ -21,8 +22,8 @@ pub struct RpcCoreServer {
 }
 
 impl RpcCoreServer {
-    pub fn new(consensus: DynConsensus, consensus_recv: ConsensusNotificationReceiver) -> Self {
-        let service = Arc::new(RpcCoreService::new(consensus, consensus_recv));
+    pub fn new(consensus: DynConsensus, notify_service: Arc<NotifyService>, index_service: Option<Arc<IndexService>>) -> Self {
+        let service = Arc::new(RpcCoreService::new(consensus, notify_service, index_service));
         Self { service, shutdown: DuplexTrigger::default() }
     }
 
@@ -43,7 +44,7 @@ impl AsyncService for RpcCoreServer {
         trace!("{} starting", RPC_CORE_SERVICE);
         let service = self.service.clone();
 
-        // Prepare a start shutdown signal receiver and a shutwdown ended signal sender
+        // Prepare a start shutdown signal receiver and a shutdown ended signal sender
         let shutdown_signal = self.shutdown.request.listener.clone();
         let shutdown_executed = self.shutdown.response.trigger.clone();
 

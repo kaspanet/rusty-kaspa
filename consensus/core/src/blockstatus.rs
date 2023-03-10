@@ -21,11 +21,22 @@ pub enum BlockStatus {
 }
 
 impl BlockStatus {
+    pub fn has_block_header(self) -> bool {
+        matches!(
+            self,
+            Self::StatusHeaderOnly | Self::StatusUTXOValid | Self::StatusUTXOPendingVerification | Self::StatusDisqualifiedFromChain
+        )
+    }
+
     pub fn has_block_body(self) -> bool {
         matches!(self, Self::StatusUTXOValid | Self::StatusUTXOPendingVerification | Self::StatusDisqualifiedFromChain)
     }
 
     pub fn is_utxo_valid_or_pending(self) -> bool {
         matches!(self, Self::StatusUTXOValid | Self::StatusUTXOPendingVerification)
+    }
+
+    pub fn is_valid(self) -> bool {
+        self != BlockStatus::StatusInvalid
     }
 }

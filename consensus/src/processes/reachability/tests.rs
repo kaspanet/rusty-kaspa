@@ -3,13 +3,11 @@
 //!
 use super::{inquirer::*, tree::*};
 use crate::{
-    model::stores::{
-        errors::StoreError,
-        reachability::{ReachabilityStore, ReachabilityStoreReader},
-    },
+    model::stores::reachability::{ReachabilityStore, ReachabilityStoreReader},
     processes::reachability::interval::Interval,
 };
 use consensus_core::{blockhash::BlockHashExtensions, BlockHashMap, BlockHashSet, HashMapCustomHasher};
+use database::prelude::StoreError;
 use hashes::Hash;
 use std::collections::VecDeque;
 use thiserror::Error;
