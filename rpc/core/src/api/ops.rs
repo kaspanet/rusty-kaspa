@@ -1,4 +1,5 @@
 use borsh::{BorshDeserialize, BorshSerialize};
+use kaspa_notify::events::EventType;
 use serde::{Deserialize, Serialize};
 use workflow_core::enums::Describe;
 
@@ -65,11 +66,42 @@ pub enum RpcApiOps {
 
     // Server to client notification
     Notification,
+
+    // Notification ops required by wRPC
+    // TODO: Remove these ops and use EventType as NotificationOps when workflow_rpc::server::interface::Interface
+    //       will be generic over a MethodOps and NotificationOps instead of a single Ops param.
+    BlockAddedNotification,
+    VirtualChainChangedNotification,
+    FinalityConflictNotification,
+    FinalityConflictResolvedNotification,
+    UtxosChangedNotification,
+    SinkBlueScoreChangedNotification,
+    VirtualDaaScoreChangedNotification,
+    PruningPointUtxoSetOverrideNotification,
+    NewBlockTemplateNotification,
 }
 //});
 
 impl From<RpcApiOps> for u32 {
     fn from(item: RpcApiOps) -> Self {
         item as u32
+    }
+}
+
+// TODO: Remove this conversion when workflow_rpc::server::interface::Interface
+//       will be generic over a MethodOps and NotificationOps instead of a single Ops param.
+impl From<EventType> for RpcApiOps {
+    fn from(item: EventType) -> Self {
+        match item {
+            EventType::BlockAdded => RpcApiOps::BlockAddedNotification,
+            EventType::VirtualChainChanged => RpcApiOps::VirtualChainChangedNotification,
+            EventType::FinalityConflict => RpcApiOps::FinalityConflictNotification,
+            EventType::FinalityConflictResolved => RpcApiOps::FinalityConflictResolvedNotification,
+            EventType::UtxosChanged => RpcApiOps::UtxosChangedNotification,
+            EventType::SinkBlueScoreChanged => RpcApiOps::SinkBlueScoreChangedNotification,
+            EventType::VirtualDaaScoreChanged => RpcApiOps::VirtualDaaScoreChangedNotification,
+            EventType::PruningPointUtxoSetOverride => RpcApiOps::PruningPointUtxoSetOverrideNotification,
+            EventType::NewBlockTemplate => RpcApiOps::NewBlockTemplateNotification,
+        }
     }
 }
