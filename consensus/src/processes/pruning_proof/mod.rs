@@ -421,7 +421,7 @@ impl PruningProofManager {
 
         let proof_pp_header = proof[0].last().expect("checked if empty");
         let proof_pp = proof_pp_header.hash;
-        let proof_pp_level = calc_block_level(&proof_pp_header, self.max_block_level);
+        let proof_pp_level = calc_block_level(proof_pp_header, self.max_block_level);
 
         let (db_lifetime, db) = create_temp_db(); // TODO: move this out of test-consensus
         let headers_store = Arc::new(DbHeadersStore::new(db.clone(), 2 * self.pruning_proof_m)); // TODO: Think about cache size
@@ -539,7 +539,7 @@ impl PruningProofManager {
             }
 
             if selected_tip.unwrap() != proof_pp
-                && !self.parents_manager.parents_at_level(&proof_pp_header, level).contains(&selected_tip.unwrap())
+                && !self.parents_manager.parents_at_level(proof_pp_header, level).contains(&selected_tip.unwrap())
             {
                 return Err(PruningImportError::PruningProofMissesBlocksBelowPruningPoint(selected_tip.unwrap(), level));
             }
@@ -559,7 +559,7 @@ impl PruningProofManager {
                 if selected_tip != proof_pp {
                     return Err(PruningImportError::PruningProofSelectedTipIsNotThePruningPoint(selected_tip, level));
                 }
-            } else if !self.parents_manager.parents_at_level(&proof_pp_header, level).contains(&selected_tip) {
+            } else if !self.parents_manager.parents_at_level(proof_pp_header, level).contains(&selected_tip) {
                 return Err(PruningImportError::PruningProofSelectedTipNotParentOfPruningPoint(selected_tip, level));
             }
 
@@ -587,7 +587,7 @@ impl PruningProofManager {
 
             if let Some((proof_common_ancestor_gd, common_ancestor_gd)) = common_ancestor_data {
                 let selected_tip_blue_work_diff = proof_selected_tip_gd.blue_work - proof_common_ancestor_gd.blue_work;
-                for parent in self.parents_manager.parents_at_level(&current_pp_header, level).into_iter().copied() {
+                for parent in self.parents_manager.parents_at_level(&current_pp_header, level).iter().copied() {
                     let parent_blue_work = self.ghostdag_stores[level_idx].get_blue_work(parent).unwrap();
                     let parent_blue_work_diff = parent_blue_work - common_ancestor_gd.blue_work;
                     if parent_blue_work_diff >= selected_tip_blue_work_diff {
@@ -637,8 +637,7 @@ impl PruningProofManager {
                     pp
                 } else {
                     self.ghostdag_managers[level as usize].find_selected_parent(
-                        &mut self
-                            .parents_manager
+                        self.parents_manager
                             .parents_at_level(&pp_header.header, level)
                             .iter()
                             .filter(|parent| self.ghostdag_stores[level as usize].has(**parent).unwrap())

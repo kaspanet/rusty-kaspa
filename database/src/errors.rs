@@ -34,11 +34,11 @@ impl<T> StoreResultExtensions<T> for StoreResult<T> {
 }
 
 pub trait StoreResultEmptyTuple {
-    fn unwrap_and_ignore_key_already_exists(self) -> ();
+    fn unwrap_and_ignore_key_already_exists(self);
 }
 
 impl StoreResultEmptyTuple for StoreResult<()> {
-    fn unwrap_and_ignore_key_already_exists(self) -> () {
+    fn unwrap_and_ignore_key_already_exists(self) {
         match self {
             Ok(_) => (),
             Err(StoreError::KeyAlreadyExists(_)) => (),
