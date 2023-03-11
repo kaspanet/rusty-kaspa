@@ -39,7 +39,7 @@ mod tests {
         const TX_COUNT: u32 = 10;
         let consensus = Arc::new(ConsensusMock::new());
         let mining_manager = MiningManager::new(consensus.clone(), TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS, None);
-        let transactions_to_insert = (0..TX_COUNT).into_iter().map(|i| create_transaction_with_utxo_entry(i, 0)).collect::<Vec<_>>();
+        let transactions_to_insert = (0..TX_COUNT).map(|i| create_transaction_with_utxo_entry(i, 0)).collect::<Vec<_>>();
         for transaction in transactions_to_insert.iter() {
             let result = mining_manager.validate_and_insert_mutable_transaction(transaction.clone(), false, true);
             assert!(result.is_ok(), "inserting a valid transaction failed");
@@ -202,7 +202,7 @@ mod tests {
         let mining_manager = MiningManager::new(consensus, TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS, None);
 
         const TX_COUNT: u32 = 10;
-        let transactions_to_insert = (0..TX_COUNT).into_iter().map(|i| create_transaction_with_utxo_entry(i, 0)).collect::<Vec<_>>();
+        let transactions_to_insert = (0..TX_COUNT).map(|i| create_transaction_with_utxo_entry(i, 0)).collect::<Vec<_>>();
         for transaction in transactions_to_insert.iter() {
             let result = mining_manager.validate_and_insert_transaction(transaction.tx.as_ref().clone(), false, true);
             assert!(result.is_ok(), "the insertion of a new valid transaction in the mempool failed");
@@ -819,7 +819,6 @@ mod tests {
     ) -> (Vec<Transaction>, Vec<Transaction>) {
         // Make the funding amounts always different so that funding txs have different ids
         let parent_child_pairs = (0..count)
-            .into_iter()
             .map(|i| {
                 create_parent_and_children_transactions(consensus, vec![500 * SOMPI_PER_KASPA, 3_000 * SOMPI_PER_KASPA + i as u64])
             })
