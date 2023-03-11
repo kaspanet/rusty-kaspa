@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 use kaspa_core::info;
 
 /// Minimum number of items to report
-const REPORT_BATCH_GRANULARITY: usize = 1000;
+const REPORT_BATCH_GRANULARITY: usize = 500;
 /// Maximum time to go without report
 const REPORT_TIME_GRANULARITY: Duration = Duration::from_secs(2);
 
@@ -37,7 +37,7 @@ impl ProgressReporter {
     pub fn report(&mut self, processed_delta: usize, current_daa_score: u64) {
         self.current_batch += processed_delta;
         let now = Instant::now();
-        if now - self.last_log_time < REPORT_TIME_GRANULARITY && self.current_batch < REPORT_BATCH_GRANULARITY {
+        if now - self.last_log_time < REPORT_TIME_GRANULARITY && self.current_batch < REPORT_BATCH_GRANULARITY && self.processed > 0 {
             return;
         }
         self.processed += self.current_batch;
@@ -52,5 +52,10 @@ impl ProgressReporter {
             self.last_reported_percent = percent;
         }
         self.last_log_time = now;
+    }
+
+    pub fn report_completion(mut self, processed_delta: usize) {
+        self.processed += self.current_batch + processed_delta;
+        info!("IBD: Processed {} {} (100%)", self.processed, self.object_name);
     }
 }

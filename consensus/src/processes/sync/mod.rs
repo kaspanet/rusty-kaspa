@@ -4,6 +4,7 @@ use consensus_core::errors::sync::{SyncManagerError, SyncManagerResult};
 use database::prelude::StoreResultExtensions;
 use hashes::Hash;
 use itertools::Itertools;
+use kaspa_utils::option::OptionExtensions;
 use math::uint::malachite_base::num::arithmetic::traits::CeilingLogBase2;
 use parking_lot::RwLock;
 
@@ -179,7 +180,7 @@ impl<
             }
         }
 
-        if highest_with_body.is_none() || highest_with_body.unwrap() == high {
+        if highest_with_body.is_none_or(|&h| h == high) {
             return Ok(vec![]);
         };
 

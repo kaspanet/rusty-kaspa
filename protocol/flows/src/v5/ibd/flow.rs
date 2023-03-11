@@ -261,7 +261,7 @@ impl IbdFlow {
 
             let prev_chunk_len = prev_jobs.len();
             try_join_all(prev_jobs).await?;
-            progress_reporter.report(prev_chunk_len, prev_daa_score);
+            progress_reporter.report_completion(prev_chunk_len);
         }
 
         self.sync_missing_relay_past_headers(consensus, syncer_header_selected_tip, relay_block_hash).await?;
@@ -355,7 +355,7 @@ impl IbdFlow {
 
         let prev_chunk_len = prev_jobs.len();
         try_join_all(prev_jobs).await?;
-        progress_reporter.report(prev_chunk_len, prev_daa_score);
+        progress_reporter.report_completion(prev_chunk_len);
 
         // TODO: raise new block template event
 

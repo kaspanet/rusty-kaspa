@@ -539,7 +539,7 @@ impl Consensus {
     ) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
         let (tx, rx): (BlockResultSender, _) = oneshot::channel();
         self.block_sender
-            .send(BlockProcessingMessage::Process(BlockTask { block, trusted_ghostdag_data: None, update_virtual }, vec![tx]))
+            .send(BlockProcessingMessage::Process(BlockTask { block, trusted_ghostdag_data: None, update_virtual }, tx))
             .unwrap();
         self.counters.blocks_submitted.fetch_add(1, Ordering::Relaxed);
         async { rx.await.unwrap() }
@@ -550,7 +550,7 @@ impl Consensus {
         self.block_sender
             .send(BlockProcessingMessage::Process(
                 BlockTask { block: tb.block, trusted_ghostdag_data: Some(Arc::new(tb.ghostdag.into())), update_virtual: false },
-                vec![tx],
+                tx,
             ))
             .unwrap();
         self.counters.blocks_submitted.fetch_add(1, Ordering::Relaxed);

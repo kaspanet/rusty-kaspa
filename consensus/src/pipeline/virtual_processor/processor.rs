@@ -264,11 +264,9 @@ impl VirtualStateProcessor {
             for msg in messages {
                 match msg {
                     BlockProcessingMessage::Exit => break 'outer,
-                    BlockProcessingMessage::Process(task, result_transmitters) => {
-                        for transmitter in result_transmitters {
-                            // We don't care if receivers were dropped
-                            let _ = transmitter.send(Ok(statuses_read.get(task.block.hash()).unwrap()));
-                        }
+                    BlockProcessingMessage::Process(task, result_transmitter) => {
+                        // We don't care if receivers were dropped
+                        let _ = result_transmitter.send(Ok(statuses_read.get(task.block.hash()).unwrap()));
                     }
                 };
             }
@@ -570,7 +568,7 @@ impl VirtualStateProcessor {
         } else {
             self.pruning_manager.expected_header_pruning_point(ghostdag_data.to_compact(), self.pruning_store.read().get().unwrap())
         };
-        debug!("The expected pruning point based on the curent virtual parents is {expected_pruning_point}");
+        debug!("The expected pruning point based on the current virtual parents is {expected_pruning_point}");
         let merge_depth_root = self.depth_manager.calc_merge_depth_root(&ghostdag_data, expected_pruning_point);
         let mut kosherizing_blues: Option<Vec<Hash>> = None;
         let mut bad_reds = Vec::new();

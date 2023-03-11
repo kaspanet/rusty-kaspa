@@ -19,7 +19,7 @@ use crate::{
         },
     },
     params::Params,
-    pipeline::deps_manager::{BlockProcessingMessage, BlockTaskDependencyManager},
+    pipeline::deps_manager::{BlockProcessingMessage, BlockTaskDependencyManager, TaskId},
     processes::{
         block_depth::BlockDepthManager,
         difficulty::DifficultyManager,
@@ -258,12 +258,11 @@ impl HeaderProcessor {
         while let Ok(msg) = self.receiver.recv() {
             match msg {
                 BlockProcessingMessage::Exit => break,
-                BlockProcessingMessage::Process(task, result_transmitters) => {
-                    let hash = task.block.header.hash;
-                    if self.task_manager.register(task, result_transmitters) {
+                BlockProcessingMessage::Process(task, result_transmitter) => {
+                    if let Some(task_id) = self.task_manager.register(task, result_transmitter) {
                         let processor = self.clone();
                         self.thread_pool.spawn(move || {
-                            processor.queue_block(hash);
+                            processor.queue_block(task_id);
                         });
                     }
                 }
@@ -277,18 +276,16 @@ impl HeaderProcessor {
         self.body_sender.send(BlockProcessingMessage::Exit).unwrap();
     }
 
-    fn queue_block(self: &Arc<HeaderProcessor>, hash: Hash) {
-        if let Some(task) = self.task_manager.try_begin(hash) {
+    fn queue_block(self: &Arc<HeaderProcessor>, task_id: TaskId) {
+        if let Some(task) = self.task_manager.try_begin(task_id) {
             let res = self.process_header(&task.block.header, task.trusted_ghostdag_data);
 
-            let dependent_tasks = self.task_manager.end(hash, |task, result_transmitters| {
+            let dependent_tasks = self.task_manager.end(task_id, |task, result_transmitter| {
                 if res.is_err() || task.block.is_header_only() {
-                    for transmitter in result_transmitters {
-                        // We don't care if receivers were dropped
-                        let _ = transmitter.send(res.clone());
-                    }
+                    // We don't care if receivers were dropped
+                    let _ = result_transmitter.send(res.clone());
                 } else {
-                    self.body_sender.send(BlockProcessingMessage::Process(task, result_transmitters)).unwrap();
+                    self.body_sender.send(BlockProcessingMessage::Process(task, result_transmitter)).unwrap();
                 }
             });
 

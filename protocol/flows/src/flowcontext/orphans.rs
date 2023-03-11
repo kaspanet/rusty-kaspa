@@ -231,7 +231,10 @@ mod tests {
         pool.consensus.validate_and_insert_block(a.clone()).await.unwrap();
         pool.consensus.validate_and_insert_block(b.clone()).await.unwrap();
 
-        assert_eq!(pool.unorphan_blocks(8.into()).await.into_iter().map(|b| b.hash()).collect::<Vec<_>>(), vec![10.into(), 11.into()]);
+        assert_eq!(
+            pool.unorphan_blocks(8.into()).await.into_iter().map(|b| b.hash()).collect::<HashSet<_>>(),
+            HashSet::from([10.into(), 11.into()])
+        );
         assert!(pool.orphans.is_empty());
 
         drop((a, b, c, d));

@@ -16,7 +16,7 @@ use crate::{
         },
     },
     pipeline::{
-        deps_manager::{BlockProcessingMessage, BlockTaskDependencyManager},
+        deps_manager::{BlockProcessingMessage, BlockTaskDependencyManager, TaskId},
         ProcessingCounters,
     },
     processes::{
@@ -135,12 +135,11 @@ impl BlockBodyProcessor {
         while let Ok(msg) = self.receiver.recv() {
             match msg {
                 BlockProcessingMessage::Exit => break,
-                BlockProcessingMessage::Process(task, result_transmitters) => {
-                    let hash = task.block.header.hash;
-                    if self.task_manager.register(task, result_transmitters) {
+                BlockProcessingMessage::Process(task, result_transmitter) => {
+                    if let Some(task_id) = self.task_manager.register(task, result_transmitter) {
                         let processor = self.clone();
                         self.thread_pool.spawn(move || {
-                            processor.queue_block(hash);
+                            processor.queue_block(task_id);
                         });
                     }
                 }
@@ -154,18 +153,16 @@ impl BlockBodyProcessor {
         self.sender.send(BlockProcessingMessage::Exit).unwrap();
     }
 
-    fn queue_block(self: &Arc<BlockBodyProcessor>, hash: Hash) {
-        if let Some(task) = self.task_manager.try_begin(hash) {
+    fn queue_block(self: &Arc<BlockBodyProcessor>, task_id: TaskId) {
+        if let Some(task) = self.task_manager.try_begin(task_id) {
             let res = self.process_block_body(&task.block, task.trusted_ghostdag_data.is_some());
 
-            let dependent_tasks = self.task_manager.end(hash, |task, result_transmitters| {
+            let dependent_tasks = self.task_manager.end(task_id, |task, result_transmitter| {
                 if res.is_err() {
-                    for transmitter in result_transmitters {
-                        // We don't care if receivers were dropped
-                        let _ = transmitter.send(res.clone());
-                    }
+                    // We don't care if receivers were dropped
+                    let _ = result_transmitter.send(res.clone());
                 } else {
-                    self.sender.send(BlockProcessingMessage::Process(task, result_transmitters)).unwrap();
+                    self.sender.send(BlockProcessingMessage::Process(task, result_transmitter)).unwrap();
                 }
             });
 
