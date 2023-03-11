@@ -74,7 +74,7 @@ impl GrpcClient {
     }
 
     #[inline(always)]
-    fn notifier(&self) -> Arc<Notifier<Notification, ChannelConnection>> {
+    pub fn notifier(&self) -> Arc<Notifier<Notification, ChannelConnection>> {
         self.notifier.clone()
     }
 
