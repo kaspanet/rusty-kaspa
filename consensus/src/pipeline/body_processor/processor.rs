@@ -157,7 +157,7 @@ impl BlockBodyProcessor {
         if let Some(task) = self.task_manager.try_begin(task_id) {
             let res = self.process_block_body(&task.block, task.trusted_ghostdag_data.is_some());
 
-            let dependent_tasks = self.task_manager.end(task_id, |task, result_transmitter| {
+            let dependent_tasks = self.task_manager.end(task, |task, result_transmitter| {
                 if res.is_err() {
                     // We don't care if receivers were dropped
                     let _ = result_transmitter.send(res.clone());

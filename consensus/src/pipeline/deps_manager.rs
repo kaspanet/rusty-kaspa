@@ -34,7 +34,7 @@ pub struct BlockTask {
 /// An internal struct used to manage a block processing task
 struct BlockTaskInternal {
     // The externally accepted block task
-    task: BlockTask,
+    task: Option<BlockTask>,
 
     // A list of channel senders for transmitting the processing result of this task to the async callers
     result_transmitter: BlockResultSender,
@@ -42,14 +42,14 @@ struct BlockTaskInternal {
 
 impl BlockTaskInternal {
     fn new(task: BlockTask, result_transmitter: BlockResultSender) -> Self {
-        Self { task, result_transmitter }
+        Self { task: Some(task), result_transmitter }
     }
 }
 
 pub(crate) type TaskId = Hash;
 
 struct BlockTaskGroup {
-    // Queue of tasks within this group (belong to the same hash; rare event)
+    // Queue of tasks within this group (where all belong to the same hash)
     tasks: VecDeque<BlockTaskInternal>,
 
     // A list of block hashes depending on the completion of this task group
@@ -104,38 +104,45 @@ impl BlockTaskDependencyManager {
     /// and wil be re-evaluated once that task completes -- in which case the function will return `None`.
     pub fn try_begin(&self, hash: TaskId) -> Option<BlockTask> {
         // Lock the pending map. The contention around the lock is
-        // expected to be negligible in header processing time
+        // expected to be negligible in task processing time
         let mut pending = self.pending.lock();
-        let group = pending.get(&hash).unwrap();
+        let group = pending.get(&hash).expect("try_begin expects a task group");
         let internal_task = group.tasks.front().expect("try_begin expects a task");
-        let task = internal_task.task.clone();
-
-        for parent in task.block.header.direct_parents().iter() {
-            if let Some(parent_tasks) = pending.get_mut(parent) {
-                parent_tasks.dependent_tasks.push(hash);
+        let header = internal_task.task.as_ref().expect("task is expected to not be taken").block.header.clone();
+        for parent in header.direct_parents().iter() {
+            if let Some(parent_task) = pending.get_mut(parent) {
+                parent_task.dependent_tasks.push(hash);
                 return None; // The block will be reprocessed once the pending parent completes processing
             }
         }
-        Some(task)
+        // Take the same data but now with mutable access
+        Some(pending.get_mut(&hash).unwrap().tasks.front_mut().unwrap().task.take().unwrap())
     }
 
     /// Report the completion of a processing task. Signals idleness if pending task list is emptied.
-    /// The function passes the `block` and the `result_transmitter` to the
+    /// The function passes the `task` and the `result_transmitter` to the
     /// provided `callback` function (note that `callback` is called under the internal lock),
     /// and returns a list of `dependent_tasks` which should be requeued to workers.
-    pub fn end<F>(&self, hash: TaskId, callback: F) -> Vec<TaskId>
+    pub fn end<F>(&self, task: BlockTask, callback: F) -> Vec<TaskId>
     where
         F: Fn(BlockTask, BlockResultSender),
     {
+        let hash = task.block.hash();
         // Re-lock for post-processing steps
         let mut pending = self.pending.lock();
 
-        let Occupied(mut entry) = pending.entry(hash) else { panic!("processed block is expected to have an entry") };
+        let Occupied(mut entry) = pending.entry(hash) else { panic!("processed task is expected to have an entry") };
         let internal_task = entry.get_mut().tasks.pop_front().expect("same task from try_begin is expected");
+
+        // If this task group is not empty, we return the same hash in order for the next task in
+        // the group to be queued, otherwise we return the dependent tasks
         let next_tasks = if entry.get().tasks.is_empty() { entry.remove().dependent_tasks } else { vec![hash] };
 
+        // We expect the inner task to be taken by `try_begin`
+        assert!(internal_task.task.is_none());
+
         // Callback within the lock
-        callback(internal_task.task, internal_task.result_transmitter);
+        callback(task, internal_task.result_transmitter);
 
         if pending.is_empty() {
             self.idle_signal.notify_one();

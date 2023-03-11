@@ -278,9 +278,9 @@ impl HeaderProcessor {
 
     fn queue_block(self: &Arc<HeaderProcessor>, task_id: TaskId) {
         if let Some(task) = self.task_manager.try_begin(task_id) {
-            let res = self.process_header(&task.block.header, task.trusted_ghostdag_data);
+            let res = self.process_header(&task.block.header, &task.trusted_ghostdag_data);
 
-            let dependent_tasks = self.task_manager.end(task_id, |task, result_transmitter| {
+            let dependent_tasks = self.task_manager.end(task, |task, result_transmitter| {
                 if res.is_err() || task.block.is_header_only() {
                     // We don't care if receivers were dropped
                     let _ = result_transmitter.send(res.clone());
@@ -303,7 +303,7 @@ impl HeaderProcessor {
     fn process_header(
         self: &Arc<HeaderProcessor>,
         header: &Arc<Header>,
-        optional_trusted_ghostdag_data: Option<Arc<GhostdagData>>,
+        optional_trusted_ghostdag_data: &Option<Arc<GhostdagData>>,
     ) -> BlockProcessResult<BlockStatus> {
         let is_trusted = optional_trusted_ghostdag_data.is_some();
         let status_option = self.statuses_store.read().get(header.hash).unwrap_option();
