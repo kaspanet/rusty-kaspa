@@ -1,21 +1,23 @@
-use kaspa_grpc_client::GrpcClient;
-use kaspa_notify::{connection::Connection as TConnection, listener::ListenerId};
-use kaspa_rpc_core::notify::connection::ChannelConnection;
-use kaspa_rpc_core::{api::rpc::RpcApi, Notification};
-use std::collections::HashSet;
-use std::sync::Arc;
+use kaspa_notify::{connection::Connection as ConnectionT, listener::ListenerId, notification::Notification as NotificationT};
+use kaspa_rpc_core::api::ops::RpcApiOps;
+use kaspa_rpc_core::Notification;
 use std::sync::Mutex;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 use workflow_rpc::server::prelude::*;
+use workflow_rpc::server::result::Result as WrpcResult;
+use workflow_rpc::types::{MsgT, OpsT};
 
 //
-// FIXME: Use workflow_rpc::encoding directly in the TConnection implementation by deriving Hash, Eq and PartialEq in situ
+// FIXME: Use workflow_rpc::encoding::Encoding directly in the ConnectionT implementation by deriving Hash, Eq and PartialEq in situ
 //
 #[derive(Clone, Debug, Hash, Eq, PartialEq)]
 pub enum NotifyEncoding {
     Borsh,
     SerdeJson,
 }
-
 impl From<Encoding> for NotifyEncoding {
     fn from(value: Encoding) -> Self {
         match value {
@@ -38,10 +40,9 @@ pub struct ConnectionInner {
     pub id: u64,
     pub peer: SocketAddr,
     pub messenger: Arc<Messenger>,
-    pub grpc_api: Option<Arc<GrpcClient>>,
     // not using an atomic in case an Id will change type in the future...
     pub listener_id: Mutex<Option<ListenerId>>,
-    pub subscriptions: Mutex<HashSet<ListenerId>>,
+    pub closed: AtomicBool,
 }
 
 impl ConnectionInner {}
@@ -57,15 +58,14 @@ pub struct Connection {
 }
 
 impl Connection {
-    pub fn new(id: u64, peer: &SocketAddr, messenger: Arc<Messenger>, grpc_api: Option<Arc<GrpcClient>>) -> Connection {
+    pub fn new(id: u64, peer: &SocketAddr, messenger: Arc<Messenger>) -> Connection {
         Connection {
             inner: Arc::new(ConnectionInner {
                 id,
                 peer: *peer,
                 messenger,
-                grpc_api,
                 listener_id: Mutex::new(None),
-                subscriptions: Mutex::new(HashSet::new()),
+                closed: AtomicBool::new(false),
             }),
         }
     }
@@ -80,14 +80,6 @@ impl Connection {
         &self.inner.messenger
     }
 
-    pub fn get_rpc_api(&self) -> Arc<dyn RpcApi<ChannelConnection>> {
-        self.inner
-            .grpc_api
-            .as_ref()
-            .cloned()
-            .unwrap_or_else(|| panic!("Incorrect use: `server::ConnectionContext` does not carry RpcApi references"))
-    }
-
     pub fn listener_id(&self) -> Option<ListenerId> {
         *self.inner.listener_id.lock().unwrap()
     }
@@ -96,47 +88,50 @@ impl Connection {
         self.inner.listener_id.lock().unwrap().replace(id);
     }
 
-    pub fn subscriptions(&self) -> &Mutex<HashSet<ListenerId>> {
-        &self.inner.subscriptions
-    }
-
-    pub fn drain_subscriptions(&self) -> Vec<ListenerId> {
-        self.inner.subscriptions.lock().unwrap().drain().collect()
-    }
-
-    pub fn has_listener_id(&self, id: &u64) -> bool {
-        self.inner.subscriptions.lock().unwrap().get(id).is_some()
-    }
-
     pub fn peer(&self) -> &SocketAddr {
         &self.inner.peer
     }
+
+    /// Creates a WebSocket [`Message`] that can be posted to the connection ([`Messenger`]) sink
+    /// directly.
+    pub fn create_serialized_notification_message<Ops, Msg>(encoding: Encoding, op: Ops, msg: Msg) -> WrpcResult<Message>
+    where
+        Ops: OpsT,
+        Msg: MsgT,
+    {
+        match encoding {
+            Encoding::Borsh => workflow_rpc::server::protocol::borsh::create_serialized_notification_message(op, msg),
+            Encoding::SerdeJson => workflow_rpc::server::protocol::borsh::create_serialized_notification_message(op, msg),
+        }
+    }
 }
 
-impl TConnection for Connection {
+impl ConnectionT for Connection {
     type Notification = Notification;
-    type Message = Notification;
+    type Message = Message;
     type Encoding = NotifyEncoding;
     type Error = kaspa_notify::error::Error;
 
     fn encoding(&self) -> Self::Encoding {
-        todo!()
+        self.messenger().encoding().into()
     }
 
-    fn into_message(_notification: &Self::Notification, _encoding: &Self::Encoding) -> Self::Message {
-        todo!()
+    fn into_message(notification: &Self::Notification, encoding: &Self::Encoding) -> Self::Message {
+        let op: RpcApiOps = notification.event_type().into();
+        Self::create_serialized_notification_message(encoding.clone().into(), op, notification.clone()).unwrap()
     }
 
-    fn send(&self, _message: Self::Message) -> core::result::Result<(), Self::Error> {
-        todo!()
+    fn send(&self, message: Self::Message) -> core::result::Result<(), Self::Error> {
+        self.messenger().send_raw_message(message).map_err(|err| kaspa_notify::error::Error::General(err.to_string()))
     }
 
     fn close(&self) -> bool {
-        todo!()
+        self.inner.closed.store(true, Ordering::SeqCst);
+        true
     }
 
     fn is_closed(&self) -> bool {
-        todo!()
+        self.inner.closed.load(Ordering::SeqCst)
     }
 }
 

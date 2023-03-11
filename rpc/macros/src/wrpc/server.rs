@@ -53,7 +53,7 @@ impl ToTokens for RpcTable {
                     interface.method(#rpc_api_ops::#handler, method!(|server_ctx: #server_ctx_type, connection_ctx: #connection_ctx_type, request: #request_type| async move {
                         let verbose = server_ctx.verbose();
                         if verbose { workflow_log::log_info!("request: {:?}",request); }
-                        let response: #response_type = server_ctx.get_rpc_api(&connection_ctx).#fn_call(request).await
+                        let response: #response_type = server_ctx.rpc_service(&connection_ctx).#fn_call(request).await
                             .map_err(|e|ServerError::Text(e.to_string()))?;
                         if verbose { workflow_log::log_info!("response: {:?}",response); }
                         Ok(response)

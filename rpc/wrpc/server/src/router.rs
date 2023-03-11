@@ -2,38 +2,15 @@ use crate::connection::*;
 use crate::server::*;
 use kaspa_notify::scope::Scope;
 use kaspa_rpc_core::api::ops::RpcApiOps;
-use kaspa_rpc_core::api::rpc::RpcApi;
 use kaspa_rpc_core::prelude::*;
 use kaspa_rpc_macros::build_wrpc_server_interface;
 use std::sync::Arc;
 use workflow_rpc::server::prelude::*;
 
-/// Accessor to the [`RpcApi`] that may reside within
-/// different structs.
-pub trait RpcApiContainer: Send + Sync + 'static {
-    fn get_rpc_api(&self) -> Arc<dyn RpcApi<Connection>>;
-    fn verbose(&self) -> bool {
-        false
-    }
-}
-
-/// [`RouterTarget`] is used during the method and notification
-/// registration process to indicate whether the `dyn RpcApi`
-/// resides in the `ServerContext` or `ConnectionContext`.
-/// When using with rusty-kaspa Server, the RpcApi is local and
-/// thus resides in the `ServerContext`, when using with GRPC
-/// Proxy, the RpcApi is represented by each forwarding connection
-/// and as such resides in the `ConnectionContext`
-// #[derive(Clone)]
-// pub enum RouterTarget {
-//     Server,
-//     Connection,
-// }
-
 /// A wrapper that creates an [`Interface`] instance and initializes
-/// RPC methods and notifications agains this interface. The inteface
+/// RPC methods and notifications against this interface. The interface
 /// is later given to the RpcServer.  This wrapper exists to allow
-/// a single initalization location for both the Kaspad Server and
+/// a single initialization location for both the Kaspad Server and
 /// the GRPC Proxy.
 pub struct Router {
     pub interface: Arc<Interface<Server, Connection, RpcApiOps>>,
@@ -96,27 +73,16 @@ impl Router {
             RpcApiOps::Subscribe,
             workflow_rpc::server::Method::new(move |manager: Server, connection: Connection, scope: Scope| {
                 Box::pin(async move {
-                    let rpc_api = manager.get_rpc_api(&connection);
-
+                    let notifier = manager.notifier();
                     let id = if let Some(listener_id) = connection.listener_id() {
                         listener_id
                     } else {
-                        //
-                        // FIXME: let the server handle the registration into the manager
-                        //
-
-                        // let id = rpc_api.register_new_listener(connection);
-                        // connection.register_notification_listener(id); //, connection.clone());
-                        // manager.register_notification_listener(id, connection.clone());
-                        // id
-
-                        rpc_api.register_new_listener(connection)
+                        let id = notifier.register_new_listener(connection.clone());
+                        connection.register_notification_listener(id);
+                        id
                     };
-
                     workflow_log::log_trace!("notification subscribe[0x{id:x}] {scope:?}");
-
-                    rpc_api.start_notify(id, scope).await.map_err(|err| err.to_string())?;
-
+                    notifier.try_start_notify(id, scope).map_err(|err| err.to_string())?;
                     Ok(SubscribeResponse::new(id))
                 })
             }),
@@ -124,22 +90,16 @@ impl Router {
 
         interface.method(
             RpcApiOps::Unsubscribe,
-            workflow_rpc::server::Method::new(move |manager: Server, connection: Connection, notification_type: Scope| {
+            workflow_rpc::server::Method::new(move |manager: Server, connection: Connection, scope: Scope| {
                 Box::pin(async move {
                     if let Some(listener_id) = connection.listener_id() {
-                        workflow_log::log_trace!("notification unsubscribe[0x{listener_id:x}] {notification_type:?}");
-                    } else {
-                        workflow_log::log_trace!("notification unsubscribe[N/A] {notification_type:?}");
-                    }
-
-                    let rpc_api = manager.get_rpc_api(&connection);
-
-                    if let Some(listener_id) = connection.listener_id() {
-                        rpc_api.stop_notify(listener_id, notification_type).await.unwrap_or_else(|err| {
-                            format!("wRPC -> RpcApiOps::Unsubscribe error calling stop_notify(): {err}");
+                        workflow_log::log_trace!("notification unsubscribe[0x{listener_id:x}] {scope:?}");
+                        manager.notifier().try_stop_notify(listener_id, scope).unwrap_or_else(|err| {
+                            format!("wRPC -> RpcApiOps::Unsubscribe error calling try_stop_notify(): {err}");
                         });
+                    } else {
+                        workflow_log::log_trace!("notification unsubscribe[N/A] {scope:?}");
                     }
-
                     Ok(UnsubscribeResponse {})
                 })
             }),

@@ -3,6 +3,7 @@ mod result;
 
 use clap::Parser;
 use consensus_core::networktype::NetworkType;
+use kaspa_grpc_client::GrpcClient;
 use kaspa_rpc_core::api::ops::RpcApiOps;
 use kaspa_wrpc_server::connection::Connection;
 use kaspa_wrpc_server::router::Router;
@@ -52,8 +53,18 @@ async fn main() -> Result<()> {
     log_info!("");
     log_info!("Proxy routing to `{}` on {}", network_type, options.grpc_proxy_address.as_ref().unwrap());
 
+    //log_info!("Routing wrpc://{peer} -> {grpc_proxy_address}");
+    let grpc_client: GrpcClient = GrpcClient::connect(options.grpc_proxy_address.as_ref().unwrap().clone(), true, true)
+        .await
+        .map_err(|e| WebSocketError::Other(e.to_string()))?;
+    // log_trace!("starting gRPC");
+    grpc_client.start().await;
+    // log_trace!("gRPC started...");
+    let grpc_client = Arc::new(grpc_client);
+    // log_trace!("Creating proxy relay...");
+
     let tasks = threads.unwrap_or_else(num_cpus::get);
-    let rpc_handler = Arc::new(KaspaRpcHandler::proxy(tasks, encoding, options.clone()));
+    let rpc_handler = Arc::new(KaspaRpcHandler::new(tasks, encoding, grpc_client.clone(), grpc_client.notifier(), options.clone()));
 
     let router = Arc::new(Router::new(rpc_handler.server.clone()));
     let server = RpcServer::new_with_encoding::<Server, Connection, RpcApiOps, Id64>(encoding, rpc_handler, router.interface.clone());

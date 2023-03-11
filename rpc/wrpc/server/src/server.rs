@@ -1,26 +1,29 @@
+use crate::collector::WrpcServiceCollector;
 use crate::connection::Connection;
-use crate::notifications::NotificationManager;
 use crate::result::Result;
 use crate::service::Options;
-use kaspa_grpc_client::GrpcClient;
-use kaspa_notify::listener::ListenerId;
+use kaspa_grpc_core::channel::NotificationChannel;
+use kaspa_notify::events::EVENT_TYPE_ARRAY;
+use kaspa_notify::subscriber::{DynSubscriptionManager, Subscriber};
+use kaspa_notify::{listener::ListenerId, notifier::Notifier};
+use kaspa_rpc_core::notify::connection::ChannelConnection;
 use kaspa_rpc_core::{api::rpc::RpcApi, Notification};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::sync::Mutex;
-use workflow_core::channel::Sender;
 use workflow_log::*;
 use workflow_rpc::server::prelude::*;
-use workflow_rpc::server::result::Result as WrpcResult;
-use workflow_rpc::types::*;
+
+pub type DynRpcService = Arc<dyn RpcApi<ChannelConnection>>;
 
 pub struct ConnectionManagerInner {
     pub id: AtomicU64,
     pub encoding: Encoding,
     pub sockets: Mutex<HashMap<u64, Connection>>,
-    pub rpc_api: Option<Arc<dyn RpcApi<Connection>>>,
-    pub notifications: NotificationManager,
+    pub rpc_service: DynRpcService,
+    pub rpc_listener_id: ListenerId,
+    pub notifier: Arc<Notifier<Notification, Connection>>,
     pub options: Arc<Options>,
 }
 
@@ -29,88 +32,70 @@ pub struct Server {
     inner: Arc<ConnectionManagerInner>,
 }
 
+const WRPC_SERVER: &str = "wrpc-server";
+
 impl Server {
-    pub fn new(tasks: usize, encoding: Encoding, rpc_api: Option<Arc<dyn RpcApi<Connection>>>, options: Arc<Options>) -> Self {
+    pub fn new(
+        tasks: usize,
+        encoding: Encoding,
+        rpc_service: DynRpcService,
+        subscription_manager: DynSubscriptionManager,
+        options: Arc<Options>,
+    ) -> Self {
+        // Prepare rpc service objects
+        let rpc_channel = NotificationChannel::default();
+        let rpc_listener_id = rpc_service.register_new_listener(ChannelConnection::new(rpc_channel.sender()));
+
+        // Prepare notification internals
+        let rpc_events = EVENT_TYPE_ARRAY[..].into();
+        let collector = Arc::new(WrpcServiceCollector::new(rpc_channel.receiver()));
+        let subscriber = Arc::new(Subscriber::new(rpc_events, subscription_manager, rpc_listener_id));
+        let notifier: Arc<Notifier<Notification, Connection>> =
+            Arc::new(Notifier::new(rpc_events, vec![collector], vec![subscriber], tasks, WRPC_SERVER));
+
         Server {
             inner: Arc::new(ConnectionManagerInner {
                 id: AtomicU64::new(0),
                 encoding,
                 sockets: Mutex::new(HashMap::new()),
-                rpc_api,
+                rpc_service,
+                rpc_listener_id,
+                notifier,
                 options,
-                notifications: NotificationManager::new(tasks),
             }),
         }
     }
 
-    pub async fn connect(&self, peer: &SocketAddr, messenger: Arc<Messenger>) -> Result<Connection> {
+    pub fn connect(&self, peer: &SocketAddr, messenger: Arc<Messenger>) -> Result<Connection> {
         log_info!("WebSocket connected: {}", peer);
         let id = self.inner.id.fetch_add(1, Ordering::SeqCst);
-
-        if let Some(grpc_proxy_address) = &self.inner.options.grpc_proxy_address {
-            log_info!("Routing wrpc://{peer} -> {grpc_proxy_address}");
-            let grpc = GrpcClient::connect(grpc_proxy_address.to_owned(), true, true)
-                .await
-                .map_err(|e| WebSocketError::Other(e.to_string()))?;
-            // log_trace!("starting gRPC");
-            grpc.start().await;
-            // log_trace!("gRPC started...");
-            let grpc = Arc::new(grpc);
-            // log_trace!("Creating proxy relay...");
-            Ok(Connection::new(id, peer, messenger, Some(grpc)))
-        } else {
-            let connection = Connection::new(id, peer, messenger, None);
-            self.inner.sockets.lock()?.insert(id, connection.clone());
-            Ok(connection)
-        }
+        let connection = Connection::new(id, peer, messenger);
+        self.inner.sockets.lock()?.insert(id, connection.clone());
+        Ok(connection)
     }
 
-    pub async fn disconnect(&self, connection: Connection) {
+    pub fn disconnect(&self, connection: Connection) {
         log_info!("WebSocket disconnected: {}", connection.peer());
 
+        if let Some(listener_id) = connection.listener_id() {
+            self.notifier().unregister_listener(listener_id).unwrap_or_else(|err| {
+                format!("WebSocket {} (disconnected) error unregistering the notification listener: {err}", connection.peer());
+            })
+        }
         self.inner.sockets.lock().unwrap().remove(&connection.id());
-
-        let rpc_api = self.get_rpc_api(&connection);
-        self.inner.notifications.disconnect(rpc_api, connection).await;
     }
 
-    pub fn get_rpc_api(&self, _connection: &Connection) -> Arc<dyn RpcApi<Connection>> {
-        //
-        // FIXME: separate grpc client and wrpc server RpcApi objects
-        //
+    #[inline(always)]
+    pub fn notifier(&self) -> Arc<Notifier<Notification, Connection>> {
+        self.inner.notifier.clone()
+    }
 
-        // if self.inner.options.grpc_proxy_address.is_some() {
-        //     connection.get_rpc_api()
-        // } else {
-        //     self.inner.rpc_api.as_ref().expect("invalid access: Server is missing RpcApi while inner.proxy is present").clone()
-        // }
-
-        self.inner.rpc_api.as_ref().expect("invalid access: Server is missing RpcApi while inner.proxy is present").clone()
+    pub fn rpc_service(&self, _connection: &Connection) -> DynRpcService {
+        self.inner.rpc_service.clone()
     }
 
     pub fn verbose(&self) -> bool {
         self.inner.options.verbose
-    }
-
-    pub fn notification_ingest(&self) -> Sender<Arc<Notification>> {
-        self.inner.notifications.ingest.sender.clone()
-    }
-
-    pub fn register_notification_listener(&self, id: ListenerId, connection: Connection) {
-        self.inner.notifications.register_notification_listener(id, connection)
-    }
-
-    /// Creates a WebSocket [`Message`] that can be posted to the connection ([`Messenger`]) sink
-    /// directly.
-    pub fn create_serialiaed_notification_message<Ops, Msg>(&self, op: Ops, msg: Msg) -> WrpcResult<Message>
-    where
-        Ops: OpsT,
-        Msg: MsgT,
-    {
-        match self.inner.encoding {
-            Encoding::Borsh => workflow_rpc::server::protocol::borsh::create_serialized_notification_message(op, msg),
-            Encoding::SerdeJson => workflow_rpc::server::protocol::borsh::create_serialized_notification_message(op, msg),
-        }
     }
 }
 
