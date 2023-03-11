@@ -48,9 +48,72 @@ impl BlockTaskInternal {
 
 pub(crate) type TaskId = Hash;
 
+/// We usually only have a single task per hash. This enum optimizes for this.
+enum TaskQueue {
+    Empty,
+    Single(BlockTaskInternal),
+    Many(VecDeque<BlockTaskInternal>),
+}
+
+impl TaskQueue {
+    fn new(task: BlockTaskInternal) -> Self {
+        TaskQueue::Single(task)
+    }
+
+    fn push_back(&mut self, task: BlockTaskInternal) {
+        match self {
+            TaskQueue::Empty => *self = Self::Single(task),
+            TaskQueue::Single(_) => {
+                let s = std::mem::replace(self, Self::Many(VecDeque::with_capacity(2)));
+                let TaskQueue::Single(t) = s else { panic!() };
+                let TaskQueue::Many(q) = self else { panic!() };
+                q.push_back(t);
+                q.push_back(task);
+            }
+            TaskQueue::Many(q) => q.push_back(task),
+        }
+    }
+
+    fn front(&self) -> Option<&BlockTaskInternal> {
+        match self {
+            TaskQueue::Empty => None,
+            TaskQueue::Single(t) => Some(t),
+            TaskQueue::Many(q) => q.front(),
+        }
+    }
+
+    fn front_mut(&mut self) -> Option<&mut BlockTaskInternal> {
+        match self {
+            TaskQueue::Empty => None,
+            TaskQueue::Single(t) => Some(t),
+            TaskQueue::Many(q) => q.front_mut(),
+        }
+    }
+
+    fn pop_front(&mut self) -> Option<BlockTaskInternal> {
+        match self {
+            TaskQueue::Empty => None,
+            TaskQueue::Single(_) => {
+                let s = std::mem::replace(self, Self::Empty);
+                let TaskQueue::Single(t) = s else { panic!() };
+                Some(t)
+            }
+            TaskQueue::Many(q) => q.pop_front(),
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        match self {
+            TaskQueue::Empty => true,
+            TaskQueue::Single(_) => false,
+            TaskQueue::Many(q) => q.is_empty(),
+        }
+    }
+}
+
 struct BlockTaskGroup {
     // Queue of tasks within this group (where all belong to the same hash)
-    tasks: VecDeque<BlockTaskInternal>,
+    tasks: TaskQueue,
 
     // A list of block hashes depending on the completion of this task group
     dependent_tasks: Vec<TaskId>,
@@ -58,7 +121,7 @@ struct BlockTaskGroup {
 
 impl BlockTaskGroup {
     fn new(task: BlockTaskInternal) -> Self {
-        Self { tasks: VecDeque::from([task]), dependent_tasks: Vec::new() }
+        Self { tasks: TaskQueue::new(task), dependent_tasks: Vec::new() }
     }
 }
 
@@ -115,7 +178,7 @@ impl BlockTaskDependencyManager {
                 return None; // The block will be reprocessed once the pending parent completes processing
             }
         }
-        // Take the same data but now with mutable access
+        // Re-access and take the inner task (now with mutable access)
         Some(pending.get_mut(&hash).unwrap().tasks.front_mut().unwrap().task.take().unwrap())
     }
 
