@@ -105,6 +105,7 @@ impl<T: ConsensusBlockProcessor + ?Sized> OrphanBlocksPool<T> {
     }
 
     pub async fn unorphan_blocks(&mut self, root: Hash) -> Vec<Block> {
+        self.orphans.remove(&root); // Try removing the root, just in case it was previously an orphan
         let mut process_queue = ProcessQueue::from(self.iterate_child_orphans(root).collect());
         let mut processing = HashMap::new();
         while let Some(orphan_hash) = process_queue.dequeue() {
@@ -122,7 +123,7 @@ impl<T: ConsensusBlockProcessor + ?Sized> OrphanBlocksPool<T> {
             }
         }
         let mut unorphaned_blocks = Vec::with_capacity(processing.len());
-        let (blocks, jobs): (Vec<_>, Vec<_>) = processing.into_values().map(|v| (v.0, v.1)).unzip();
+        let (blocks, jobs): (Vec<_>, Vec<_>) = processing.into_values().unzip();
         let results = join_all(jobs).await;
         for (block, result) in blocks.into_iter().zip(results) {
             match result {

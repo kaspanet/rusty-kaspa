@@ -102,6 +102,9 @@ impl HandleRelayInvsFlow {
 
             if self.ctx.is_ibd_running() {
                 let sink_timestamp = consensus.get_sink_timestamp();
+                // We consider the node close to being synced if the sink (virtual selected parent) block timestamp is less than DAA duration
+                // far in the past. In such a case, we continue processing relay blocks even though an IBD is in progress.
+                // For instance this means that downloading a side-chain from a delayed node does not interop the normal flow of live blocks
                 if sink_timestamp.is_none_or(|t| unix_now() > t + self.ctx.config.expected_daa_window_duration_in_milliseconds()) {
                     continue;
                 }
@@ -132,6 +135,9 @@ impl HandleRelayInvsFlow {
                 }
             }
 
+            // TODO: consider awaiting this task on a spawned routine in order to continue 
+            // queueing the following relay blocks. On the other hand we might have sufficient 
+            // concurrency from all parallel relay flows 
             match consensus.validate_and_insert_block(block.clone(), true).await {
                 Ok(_) => {}
                 Err(RuleError::MissingParents(missing_parents)) => {
@@ -144,7 +150,7 @@ impl HandleRelayInvsFlow {
 
             info!("Accepted block {} via relay", inv.hash);
 
-            // TODO: FIX
+            // TODO: use all new blocks to unorphan mempool txs and broadcast the txs
             let _blocks = self.ctx.unorphan_blocks(block.hash()).await;
 
             // TODO: broadcast all new blocks in past(virtual)
