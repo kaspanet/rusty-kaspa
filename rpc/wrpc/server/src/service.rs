@@ -1,7 +1,4 @@
-use crate::connection::*;
-use crate::result::Result;
-use crate::router::*;
-use crate::server::*;
+use crate::{connection::*, result::Result, router::*, server::*};
 use async_trait::async_trait;
 use kaspa_core::task::service::{AsyncService, AsyncServiceError, AsyncServiceFuture};
 use kaspa_notify::subscriber::DynSubscriptionManager;
@@ -86,7 +83,7 @@ impl RpcHandler for KaspaRpcHandler {
 
     /// Disconnect the websocket. Receives `Connection` (a.k.a `Self::Context`)
     /// before dropping it. This is the last chance to cleanup and resources owned by
-    /// this connection. Delegate to ConnectoinManager.
+    /// this connection. Delegate to Server.
     async fn disconnect(self: Arc<Self>, ctx: Self::Context, _result: WebSocketResult<()>) {
         self.server.disconnect(ctx);
     }
@@ -98,6 +95,7 @@ impl RpcHandler for KaspaRpcHandler {
 pub struct WrpcService {
     options: Arc<Options>,
     server: RpcServer,
+    rpc_handler: Arc<KaspaRpcHandler>,
 }
 
 impl WrpcService {
@@ -112,14 +110,18 @@ impl WrpcService {
         let router = Arc::new(Router::new(rpc_handler.server.clone()));
         // Create a server
         // let server = RpcServer::new_with_encoding::<KaspaRpcHandlerReference, Connection, RpcApiOps, Id64>(
-        let server =
-            RpcServer::new_with_encoding::<Server, Connection, RpcApiOps, Id64>(*encoding, rpc_handler, router.interface.clone());
+        let server = RpcServer::new_with_encoding::<Server, Connection, RpcApiOps, Id64>(
+            *encoding,
+            rpc_handler.clone(),
+            router.interface.clone(),
+        );
 
-        WrpcService { options, server }
+        WrpcService { options, server, rpc_handler }
     }
 
     /// Start listening on the configured address (will yield an error if the the socket listen() fails)
     async fn run(self: Arc<Self>) -> Result<()> {
+        self.rpc_handler.server.start();
         let addr = &self.options.listen_address;
         log_info!("wRPC server is listening on {}", addr);
         self.server.listen(addr).await?;
@@ -144,6 +146,11 @@ impl AsyncService for WrpcService {
 
     fn stop(self: Arc<Self>) -> AsyncServiceFuture {
         Box::pin(async move {
+            self.rpc_handler
+                .server
+                .stop()
+                .await
+                .map_err(|err| AsyncServiceError::Service(format!("Notification system error: `{err}`")))?;
             self.server.join().await.map_err(|err| AsyncServiceError::Service(format!("wRPC error: `{err}`")))?;
             Ok(())
         })

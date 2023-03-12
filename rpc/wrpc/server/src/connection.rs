@@ -1,14 +1,11 @@
 use kaspa_notify::{connection::Connection as ConnectionT, listener::ListenerId, notification::Notification as NotificationT};
-use kaspa_rpc_core::api::ops::RpcApiOps;
-use kaspa_rpc_core::Notification;
-use std::sync::Mutex;
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc,
+use kaspa_rpc_core::{api::ops::RpcApiOps, Notification};
+use std::sync::{Arc, Mutex};
+use workflow_log::log_trace;
+use workflow_rpc::{
+    server::{prelude::*, result::Result as WrpcResult},
+    types::{MsgT, OpsT},
 };
-use workflow_rpc::server::prelude::*;
-use workflow_rpc::server::result::Result as WrpcResult;
-use workflow_rpc::types::{MsgT, OpsT};
 
 //
 // FIXME: Use workflow_rpc::encoding::Encoding directly in the ConnectionT implementation by deriving Hash, Eq and PartialEq in situ
@@ -42,7 +39,6 @@ pub struct ConnectionInner {
     pub messenger: Arc<Messenger>,
     // not using an atomic in case an Id will change type in the future...
     pub listener_id: Mutex<Option<ListenerId>>,
-    pub closed: AtomicBool,
 }
 
 impl ConnectionInner {}
@@ -59,15 +55,7 @@ pub struct Connection {
 
 impl Connection {
     pub fn new(id: u64, peer: &SocketAddr, messenger: Arc<Messenger>) -> Connection {
-        Connection {
-            inner: Arc::new(ConnectionInner {
-                id,
-                peer: *peer,
-                messenger,
-                listener_id: Mutex::new(None),
-                closed: AtomicBool::new(false),
-            }),
-        }
+        Connection { inner: Arc::new(ConnectionInner { id, peer: *peer, messenger, listener_id: Mutex::new(None) }) }
     }
 
     /// Obtain the connection id
@@ -84,8 +72,8 @@ impl Connection {
         *self.inner.listener_id.lock().unwrap()
     }
 
-    pub fn register_notification_listener(&self, id: ListenerId) {
-        self.inner.listener_id.lock().unwrap().replace(id);
+    pub fn register_notification_listener(&self, listener_id: ListenerId) {
+        self.inner.listener_id.lock().unwrap().replace(listener_id);
     }
 
     pub fn peer(&self) -> &SocketAddr {
@@ -126,12 +114,18 @@ impl ConnectionT for Connection {
     }
 
     fn close(&self) -> bool {
-        self.inner.closed.store(true, Ordering::SeqCst);
-        true
+        if !self.is_closed() {
+            if let Err(err) = self.messenger().close() {
+                log_trace!("Error closing connection {}: {}", self.peer(), err);
+            } else {
+                return true;
+            }
+        }
+        false
     }
 
     fn is_closed(&self) -> bool {
-        self.inner.closed.load(Ordering::SeqCst)
+        self.messenger().sink().is_closed()
     }
 }
 

@@ -5,10 +5,12 @@ use clap::Parser;
 use consensus_core::networktype::NetworkType;
 use kaspa_grpc_client::GrpcClient;
 use kaspa_rpc_core::api::ops::RpcApiOps;
-use kaspa_wrpc_server::connection::Connection;
-use kaspa_wrpc_server::router::Router;
-use kaspa_wrpc_server::server::Server;
-use kaspa_wrpc_server::service::{KaspaRpcHandler, Options};
+use kaspa_wrpc_server::{
+    connection::Connection,
+    router::Router,
+    server::Server,
+    service::{KaspaRpcHandler, Options},
+};
 use result::Result;
 use std::sync::Arc;
 use workflow_log::*;
@@ -57,8 +59,6 @@ async fn main() -> Result<()> {
     let grpc_client: GrpcClient = GrpcClient::connect(options.grpc_proxy_address.as_ref().unwrap().clone(), true, true)
         .await
         .map_err(|e| WebSocketError::Other(e.to_string()))?;
-    // log_trace!("starting gRPC");
-    grpc_client.start().await;
     // log_trace!("gRPC started...");
     let grpc_client = Arc::new(grpc_client);
     // log_trace!("Creating proxy relay...");
@@ -67,7 +67,14 @@ async fn main() -> Result<()> {
     let rpc_handler = Arc::new(KaspaRpcHandler::new(tasks, encoding, grpc_client.clone(), grpc_client.notifier(), options.clone()));
 
     let router = Arc::new(Router::new(rpc_handler.server.clone()));
-    let server = RpcServer::new_with_encoding::<Server, Connection, RpcApiOps, Id64>(encoding, rpc_handler, router.interface.clone());
+    let server =
+        RpcServer::new_with_encoding::<Server, Connection, RpcApiOps, Id64>(encoding, rpc_handler.clone(), router.interface.clone());
+
+    // Start the notification system
+    // log_trace!("starting gRPC");
+    grpc_client.start().await;
+    // log_tract!("starting wRPC notification system");
+    rpc_handler.server.start();
 
     log_info!("Kaspa wRPC server is listening on {}", options.listen_address);
     log_info!("Using `{encoding}` protocol encoding");

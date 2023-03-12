@@ -1,27 +1,31 @@
-use crate::collector::WrpcServiceCollector;
-use crate::connection::Connection;
-use crate::result::Result;
-use crate::service::Options;
-use kaspa_grpc_core::channel::NotificationChannel;
-use kaspa_notify::events::EVENT_TYPE_ARRAY;
-use kaspa_notify::subscriber::{DynSubscriptionManager, Subscriber};
-use kaspa_notify::{listener::ListenerId, notifier::Notifier};
-use kaspa_rpc_core::notify::connection::ChannelConnection;
-use kaspa_rpc_core::{api::rpc::RpcApi, Notification};
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
-use std::sync::Mutex;
+use crate::{collector::WrpcServiceCollector, connection::Connection, result::Result, service::Options};
+use kaspa_notify::{
+    events::EVENT_TYPE_ARRAY,
+    listener::ListenerId,
+    notifier::Notifier,
+    subscriber::{DynSubscriptionManager, Subscriber},
+};
+use kaspa_rpc_core::{api::rpc::RpcApi, notify::connection::ChannelConnection, Notification};
+use kaspa_utils::channel::Channel;
+use std::{
+    collections::HashMap,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc, Mutex,
+    },
+};
 use workflow_log::*;
 use workflow_rpc::server::prelude::*;
 
 pub type DynRpcService = Arc<dyn RpcApi<ChannelConnection>>;
+pub type NotificationChannel = Channel<Notification>;
 
-pub struct ConnectionManagerInner {
-    pub id: AtomicU64,
+pub struct ServerInner {
+    pub next_connection_id: AtomicU64,
     pub encoding: Encoding,
     pub sockets: Mutex<HashMap<u64, Connection>>,
     pub rpc_service: DynRpcService,
+    pub rpc_channel: NotificationChannel,
     pub rpc_listener_id: ListenerId,
     pub notifier: Arc<Notifier<Notification, Connection>>,
     pub options: Arc<Options>,
@@ -29,7 +33,7 @@ pub struct ConnectionManagerInner {
 
 #[derive(Clone)]
 pub struct Server {
-    inner: Arc<ConnectionManagerInner>,
+    inner: Arc<ServerInner>,
 }
 
 const WRPC_SERVER: &str = "wrpc-server";
@@ -54,11 +58,12 @@ impl Server {
             Arc::new(Notifier::new(rpc_events, vec![collector], vec![subscriber], tasks, WRPC_SERVER));
 
         Server {
-            inner: Arc::new(ConnectionManagerInner {
-                id: AtomicU64::new(0),
+            inner: Arc::new(ServerInner {
+                next_connection_id: AtomicU64::new(0),
                 encoding,
                 sockets: Mutex::new(HashMap::new()),
                 rpc_service,
+                rpc_channel,
                 rpc_listener_id,
                 notifier,
                 options,
@@ -66,9 +71,14 @@ impl Server {
         }
     }
 
+    pub fn start(&self) {
+        // Start the internal notifier
+        self.notifier().start();
+    }
+
     pub fn connect(&self, peer: &SocketAddr, messenger: Arc<Messenger>) -> Result<Connection> {
         log_info!("WebSocket connected: {}", peer);
-        let id = self.inner.id.fetch_add(1, Ordering::SeqCst);
+        let id = self.inner.next_connection_id.fetch_add(1, Ordering::SeqCst);
         let connection = Connection::new(id, peer, messenger);
         self.inner.sockets.lock()?.insert(id, connection.clone());
         Ok(connection)
@@ -83,6 +93,9 @@ impl Server {
             })
         }
         self.inner.sockets.lock().unwrap().remove(&connection.id());
+
+        // TODO: determine if messenger should be closed explicitly
+        // connection.close();
     }
 
     #[inline(always)]
@@ -97,6 +110,21 @@ impl Server {
     pub fn verbose(&self) -> bool {
         self.inner.options.verbose
     }
-}
 
-pub type ConnectionManagerReference = Arc<Server>;
+    pub async fn stop(&self) -> Result<()> {
+        // Unsubscribe from all notification types
+        let listener_id = self.inner.rpc_listener_id;
+        for event in EVENT_TYPE_ARRAY.into_iter() {
+            self.inner.rpc_service.stop_notify(listener_id, event.into()).await?;
+        }
+
+        // Unregister the listener into RPC service & close the channel
+        self.inner.rpc_service.unregister_listener(self.inner.rpc_listener_id).await?;
+        self.inner.rpc_channel.close();
+
+        // Stop the internal notifier
+        self.notifier().stop().await?;
+
+        Ok(())
+    }
+}

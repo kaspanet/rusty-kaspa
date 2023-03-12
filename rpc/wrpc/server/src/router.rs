@@ -1,8 +1,6 @@
-use crate::connection::*;
-use crate::server::*;
+use crate::{connection::*, server::*};
 use kaspa_notify::scope::Scope;
-use kaspa_rpc_core::api::ops::RpcApiOps;
-use kaspa_rpc_core::prelude::*;
+use kaspa_rpc_core::{api::ops::RpcApiOps, prelude::*};
 use kaspa_rpc_macros::build_wrpc_server_interface;
 use std::sync::Arc;
 use workflow_rpc::server::prelude::*;
@@ -23,7 +21,7 @@ impl Router {
 
         // The following macro iterates the supplied enum variants taking the variant
         // name and creating an RPC handler using that name. For example, receiving
-        // `GetInfo` the macro will conver it to snake name for the function name
+        // `GetInfo` the macro will convert it to snake name for the function name
         // as well as create `Request` and `Response` typenames and using these typenames
         // it will create the RPC method handler.
         // ... `GetInfo` yields: get_info_call() + GetInfoRequest + GetInfoResponse
