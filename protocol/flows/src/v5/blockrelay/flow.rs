@@ -96,17 +96,13 @@ impl HandleRelayInvsFlow {
             }
 
             if self.ctx.is_known_orphan(inv.hash).await {
-                // TODO: check for config conditions
                 self.enqueue_orphan_roots(inv.hash).await;
                 continue;
             }
 
-            // TODO: check if IBD is running and node is not nearly synced
             if self.ctx.is_ibd_running() {
-                // TODO: fix consensus call to avoid Option
                 let sink_timestamp = consensus.get_sink_timestamp();
-                // TODO: use config
-                if sink_timestamp.is_none() || unix_now() > sink_timestamp.unwrap() + 2641 * 1000 {
+                if sink_timestamp.is_none_or(|t| unix_now() > t + self.ctx.config.expected_daa_window_duration_in_milliseconds()) {
                     continue;
                 }
             }
@@ -116,8 +112,6 @@ impl HandleRelayInvsFlow {
             if block.is_header_only() {
                 return Err(ProtocolError::OtherOwned(format!("sent header of {} where expected block with body", block.hash())));
             }
-
-            // TODO: check for config conditions
 
             // Note we do not apply the heuristic below if inv was queued indirectly (as an orphan root), since
             // that means the process started by a proper and relevant relay block

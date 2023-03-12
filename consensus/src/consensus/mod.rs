@@ -632,7 +632,7 @@ impl ConsensusApi for Consensus {
     }
 
     fn get_virtual_merge_depth_root(&self) -> Option<Hash> {
-        // TODO: consider saving the depth root as part of virtual state
+        // TODO: consider saving the merge depth root as part of virtual state
         // TODO: unwrap on pruning_point and virtual state reads when staging consensus is implemented
         let Ok(pruning_point) = self.pruning_store.read().pruning_point() else { return None; };
         let Ok(virtual_state) = self.virtual_processor.virtual_stores.read().state.get() else { return None; };
@@ -646,7 +646,7 @@ impl ConsensusApi for Consensus {
     }
 
     fn get_sink_timestamp(&self) -> Option<u64> {
-        // TODO: fix this code and avoid the Option returned
+        // TODO: unwrap on virtual state read when staging consensus is implemented
         let res = self.virtual_processor.virtual_stores.read().state.get();
         if let Ok(state) = res {
             let sink = state.ghostdag_data.selected_parent;

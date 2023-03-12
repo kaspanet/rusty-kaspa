@@ -24,7 +24,10 @@ use p2p_lib::{
     },
     IncomingRoute, Router,
 };
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use tokio::sync::mpsc::Receiver;
 
 use super::{progress::ProgressReporter, HeadersChunk, PruningPointUtxosetChunkStream, IBD_BATCH_SIZE};
@@ -160,7 +163,7 @@ impl IbdFlow {
         debug!("received proof with overall {} headers", proof.iter().map(|l| l.len()).sum::<usize>());
 
         // TODO: call validate_pruning_proof when implemented
-        // consensus.clone().validate_pruning_proof(&proof);
+        // consensus.validate_pruning_proof(&proof);
 
         let proof_pruning_point = proof[0].last().expect("was just ensured by validation").hash;
 
@@ -198,21 +201,21 @@ impl IbdFlow {
         consensus.clone().apply_pruning_proof(proof, &trusted_set);
         consensus.clone().import_pruning_points(pruning_points);
 
-        info!("Starting to process {} semi-trusted blocks", trusted_set.len());
-        let mut last_time = std::time::SystemTime::now();
+        info!("Starting to process {} trusted blocks", trusted_set.len());
+        let mut last_time = Instant::now();
         let mut last_index: usize = 0;
         for (i, tb) in trusted_set.into_iter().enumerate() {
-            let now = std::time::SystemTime::now();
-            let passed = now.duration_since(last_time).unwrap();
+            let now = Instant::now();
+            let passed = now.duration_since(last_time);
             if passed > Duration::from_secs(1) {
-                info!("Processed {} semi-trusted blocks in the last {} seconds (total {})", i - last_index, passed.as_secs(), i);
+                info!("Processed {} trusted blocks in the last {} seconds (total {})", i - last_index, passed.as_secs(), i);
                 last_time = now;
                 last_index = i;
             }
-            // TODO: queue all and join
+            // TODO: queue and join in batches
             consensus.clone().validate_and_insert_trusted_block(tb).await?;
         }
-        info!("Done processing semi-trusted blocks");
+        info!("Done processing trusted blocks");
 
         // TODO: make sure that the proof pruning point is not genesis
 

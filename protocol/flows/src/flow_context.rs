@@ -3,6 +3,7 @@ use crate::v5;
 use async_trait::async_trait;
 use consensus_core::api::{ConsensusApi, DynConsensus};
 use consensus_core::block::Block;
+use consensus_core::config::Config;
 use hashes::Hash;
 use kaspa_core::debug;
 use kaspa_core::time::unix_now;
@@ -16,6 +17,7 @@ use uuid::Uuid;
 #[derive(Clone)]
 pub struct FlowContext {
     pub consensus: DynConsensus,
+    pub config: Config,
     orphans_pool: Arc<RwLock<OrphanBlocksPool<dyn ConsensusApi>>>,
     is_ibd_running: Arc<AtomicBool>, // TODO: pass the context wrapped with Arc and avoid some of the internal ones
 }
@@ -31,9 +33,10 @@ impl Drop for IbdRunningGuard {
 }
 
 impl FlowContext {
-    pub fn new(consensus: DynConsensus) -> Self {
+    pub fn new(consensus: DynConsensus, config: &Config) -> Self {
         Self {
             consensus: consensus.clone(),
+            config: config.clone(),
             orphans_pool: Arc::new(RwLock::new(OrphanBlocksPool::new(consensus, MAX_ORPHANS))),
             is_ibd_running: Arc::new(AtomicBool::default()),
         }

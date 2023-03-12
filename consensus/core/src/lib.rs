@@ -9,6 +9,7 @@ pub mod block;
 pub mod blockhash;
 pub mod blockstatus;
 pub mod coinbase;
+pub mod config;
 pub mod constants;
 pub mod errors;
 pub mod hashing;
