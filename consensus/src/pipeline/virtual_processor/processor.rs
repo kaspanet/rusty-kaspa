@@ -561,21 +561,12 @@ impl VirtualStateProcessor {
         current_pruning_point: Hash,
     ) -> (Vec<Hash>, GhostdagData) {
         let mut ghostdag_data = self.ghostdag_manager.ghostdag(&virtual_parents);
-        let current_pruning_point_bs = self.headers_store.get_blue_score(current_pruning_point).unwrap();
-        let expected_pruning_point = if ghostdag_data.blue_score < current_pruning_point_bs + self.pruning_depth {
-            // If the pruning point is not in pruning depth, it means we're still in IBD, so we can't look for a more up to date pruning point.
-            current_pruning_point
-        } else {
-            self.pruning_manager.expected_header_pruning_point(ghostdag_data.to_compact(), self.pruning_store.read().get().unwrap())
-        };
-        trace!("The expected pruning point based on the current virtual parents is {expected_pruning_point}");
-        // TODO: consider simply passing current_pruning_point (like the golang imp)
-        let merge_depth_root = self.depth_manager.calc_merge_depth_root(&ghostdag_data, expected_pruning_point);
+        let merge_depth_root = self.depth_manager.calc_merge_depth_root(&ghostdag_data, current_pruning_point);
         let mut kosherizing_blues: Option<Vec<Hash>> = None;
         let mut bad_reds = Vec::new();
 
         //
-        // Note that the code below optimizes for the usual case where there are no merge bound violating blocks.
+        // Note that the code below optimizes for the usual case where there are no merge-bound-violating blocks.
         //
 
         // Find red blocks violating the merge bound and which are not kosherized by any blue
