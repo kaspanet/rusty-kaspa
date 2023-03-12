@@ -63,7 +63,7 @@ use consensus_notify::{
 };
 use database::prelude::{StoreError, StoreResultExtensions};
 use hashes::Hash;
-use kaspa_core::{debug, info, trace};
+use kaspa_core::{debug, info, time::unix_now, trace};
 use kaspa_notify::notifier::Notify;
 use muhash::MuHash;
 
@@ -568,7 +568,8 @@ impl VirtualStateProcessor {
         } else {
             self.pruning_manager.expected_header_pruning_point(ghostdag_data.to_compact(), self.pruning_store.read().get().unwrap())
         };
-        debug!("The expected pruning point based on the current virtual parents is {expected_pruning_point}");
+        trace!("The expected pruning point based on the current virtual parents is {expected_pruning_point}");
+        // TODO: consider simply passing current_pruning_point (like the golang imp)
         let merge_depth_root = self.depth_manager.calc_merge_depth_root(&ghostdag_data, expected_pruning_point);
         let mut kosherizing_blues: Option<Vec<Hash>> = None;
         let mut bad_reds = Vec::new();
@@ -670,14 +671,13 @@ impl VirtualStateProcessor {
         let utxo_commitment = virtual_state.multiset.clone().finalize();
         // Past median time is the exclusive lower bound for valid block time, so we increase by 1 to get the valid min
         let min_block_time = virtual_state.past_median_time + 1;
-        let now = SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64;
         let header = Header::new(
             version,
             parents_by_level,
             hash_merkle_root,
             accepted_id_merkle_root,
             utxo_commitment,
-            u64::max(min_block_time, now),
+            u64::max(min_block_time, unix_now()),
             virtual_state.bits,
             0,
             virtual_state.daa_score,

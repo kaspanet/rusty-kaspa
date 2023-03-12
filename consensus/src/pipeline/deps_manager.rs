@@ -18,7 +18,6 @@ pub enum BlockProcessingMessage {
     Process(BlockTask, BlockResultSender),
 }
 
-#[derive(Clone)]
 pub struct BlockTask {
     /// The block to process, possibly header-only
     pub block: Block,
@@ -153,8 +152,8 @@ impl BlockTaskDependencyManager {
                 Some(hash)
             }
             e => {
-                e.and_modify(|v| {
-                    v.tasks.push_back(BlockTaskInternal::new(task, result_transmitter));
+                e.and_modify(|g| {
+                    g.tasks.push_back(BlockTaskInternal::new(task, result_transmitter));
                 });
                 None
             }

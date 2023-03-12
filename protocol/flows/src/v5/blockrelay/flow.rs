@@ -122,7 +122,20 @@ impl HandleRelayInvsFlow {
             // Note we do not apply the heuristic below if inv was queued indirectly (as an orphan root), since
             // that means the process started by a proper and relevant relay block
             if !inv.is_indirect {
-                // TODO: imp merge depth root heuristic
+                // Check bounded merge depth to avoid requesting irrelevant data which cannot be merged under virtual
+                if let Some(virtual_merge_depth_root) = consensus.get_virtual_merge_depth_root() {
+                    let root_header = consensus.get_header(virtual_merge_depth_root).unwrap();
+                    // Since `blue_work` respects topology, this condition means that the relay
+                    // block is not in the future of virtual's merge depth root, and thus cannot be merged unless
+                    // other valid blocks Kosherize it, in which case it will be obtained once the merger is relayed
+                    if block.header.blue_work <= root_header.blue_work {
+                        debug!(
+                            "Relay block {} has lower blue work than virtual's merge depth root {} ({} <= {}), hence we are skipping it",
+                            inv.hash, virtual_merge_depth_root, block.header.blue_work, root_header.blue_work
+                        );
+                        continue;
+                    }
+                }
             }
 
             match consensus.validate_and_insert_block(block.clone(), true).await {
@@ -194,7 +207,7 @@ impl HandleRelayInvsFlow {
         Ok(())
     }
 
-    /// Finds out whether the given blockHash should be retrieved via the unorphaning
+    /// Finds out whether the given block hash should be retrieved via the unorphaning
     /// mechanism or via IBD. This method sends a BlockLocator request to the peer with
     /// a limit of ORPHAN_RESOLUTION_RANGE. In the response, if we know none of the hashes,
     /// we should retrieve the given blockHash via IBD. Otherwise, via unorphaning.

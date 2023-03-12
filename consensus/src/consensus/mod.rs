@@ -50,6 +50,7 @@ use crate::{
 use consensus_core::{
     api::ConsensusApi,
     block::{Block, BlockTemplate},
+    blockhash::BlockHashExtensions,
     blockstatus::BlockStatus,
     coinbase::MinerData,
     errors::pruning::PruningImportError,
@@ -158,6 +159,7 @@ pub struct Consensus {
         DbPruningStore,
         DbStatusesStore,
     >,
+    depth_manager: BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>,
 
     notification_root: Arc<ConsensusNotificationRoot>,
 
@@ -434,7 +436,7 @@ impl Consensus {
             past_median_time_manager.clone(),
             pruning_manager.clone(),
             parents_manager.clone(),
-            depth_manager,
+            depth_manager.clone(),
             notification_root.clone(),
             counters.clone(),
         ));
@@ -513,8 +515,8 @@ impl Consensus {
             pruning_manager,
             pruning_proof_manager,
             sync_manager,
+            depth_manager,
             notification_root,
-
             counters,
         }
     }
@@ -627,6 +629,20 @@ impl ConsensusApi for Consensus {
 
     fn get_virtual_daa_score(&self) -> u64 {
         self.virtual_processor.virtual_stores.read().state.get().unwrap().daa_score
+    }
+
+    fn get_virtual_merge_depth_root(&self) -> Option<Hash> {
+        // TODO: consider saving the depth root as part of virtual state
+        // TODO: unwrap on pruning_point and virtual state reads when staging consensus is implemented
+        let Ok(pruning_point) = self.pruning_store.read().pruning_point() else { return None; };
+        let Ok(virtual_state) = self.virtual_processor.virtual_stores.read().state.get() else { return None; };
+        let virtual_ghostdag_data = &virtual_state.ghostdag_data;
+        let root = self.depth_manager.calc_merge_depth_root(virtual_ghostdag_data, pruning_point);
+        if root.is_origin() {
+            None
+        } else {
+            Some(root)
+        }
     }
 
     fn get_sink_timestamp(&self) -> Option<u64> {
