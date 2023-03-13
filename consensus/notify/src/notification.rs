@@ -85,11 +85,11 @@ impl NotificationTrait for Notification {
 
 #[derive(Debug, Clone)]
 pub struct BlockAddedNotification {
-    pub block: Arc<Block>,
+    pub block: Block,
 }
 
 impl BlockAddedNotification {
-    pub fn new(block: Arc<Block>) -> Self {
+    pub fn new(block: Block) -> Self {
         Self { block }
     }
 }
