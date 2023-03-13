@@ -8,7 +8,7 @@ use crate::{
             relations::MTRelationsService,
         },
         stores::{
-            acceptance_data::{AcceptanceData, DbAcceptanceDataStore},
+            acceptance_data::DbAcceptanceDataStore,
             block_transactions::{BlockTransactionsStoreReader, DbBlockTransactionsStore},
             block_window_cache::BlockWindowCacheStore,
             daa::DbDaaStore,
@@ -43,6 +43,7 @@ use crate::{
     },
 };
 use consensus_core::{
+    acceptance_data::AcceptanceData,
     block::{BlockTemplate, MutableBlock},
     blockstatus::BlockStatus::{self, StatusDisqualifiedFromChain, StatusUTXOPendingVerification, StatusUTXOValid},
     coinbase::{BlockRewardData, MinerData},
@@ -57,10 +58,7 @@ use consensus_core::{
     BlockHashMap, BlockHashSet, HashMapCustomHasher,
 };
 use consensus_notify::{
-    notification::{
-        Notification, SinkBlueScoreChangedNotification, UtxosChangedNotification, VirtualChainChangedNotification,
-        VirtualDaaScoreChangedNotification,
-    },
+    notification::{Notification, SinkBlueScoreChangedNotification, UtxosChangedNotification, VirtualDaaScoreChangedNotification},
     root::ConsensusNotificationRoot,
 };
 use database::prelude::{StoreError, StoreResultExtensions};
@@ -430,11 +428,12 @@ impl VirtualStateProcessor {
                 let _ = self.notification_root().notify(Notification::VirtualDaaScoreChanged(
                     VirtualDaaScoreChangedNotification::new(new_virtual_state.daa_score),
                 ));
-                let _ = self.notification_root().notify(Notification::VirtualChainChanged(VirtualChainChangedNotification::new(
-                    new_virtual_state.ghostdag_data.mergeset_blues.clone(),
-                    new_virtual_state.ghostdag_data.mergeset_reds.clone(),
-                    Arc::new(new_virtual_state.accepted_tx_ids),
-                )));
+                // TODO: fix the contents which is wrong in the following commented version
+                // let _ = self.notification_root().notify(Notification::VirtualChainChanged(VirtualChainChangedNotification::new(
+                //     new_virtual_state.ghostdag_data.mergeset_blues.clone(),
+                //     new_virtual_state.ghostdag_data.mergeset_reds.clone(),
+                //     Arc::new(new_virtual_state.accepted_tx_ids),
+                // )));
             }
             BlockStatus::StatusDisqualifiedFromChain => {
                 // TODO: this means another chain needs to be checked

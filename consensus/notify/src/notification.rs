@@ -1,4 +1,4 @@
-use consensus_core::{block::Block, tx::TransactionId, utxo::utxo_diff::UtxoDiff};
+use consensus_core::{acceptance_data::AcceptanceData, block::Block, utxo::utxo_diff::UtxoDiff};
 use derive_more::Display;
 use hashes::Hash;
 use kaspa_notify::{
@@ -18,7 +18,7 @@ pub enum Notification {
     #[display(fmt = "BlockAdded notification: block hash {}", "_0.block.header.hash")]
     BlockAdded(BlockAddedNotification),
 
-    #[display(fmt = "VirtualChainChanged notification: {} removed blocks, {} added blocks, {} accepted transactions", "_0.removed_chain_block_hashes.len()", "_0.added_chain_block_hashes.len()", "_0.accepted_transaction_ids.len()")]
+    #[display(fmt = "VirtualChainChanged notification: {} removed blocks, {} added blocks, {} accepted transactions", "_0.removed_chain_block_hashes.len()", "_0.added_chain_block_hashes.len()", "_0.added_chain_blocks_acceptance_data.len()")]
     VirtualChainChanged(VirtualChainChangedNotification),
 
     #[display(fmt = "FinalityConflict notification: violating block hash {}", "_0.violating_block_hash")]
@@ -58,11 +58,11 @@ impl NotificationTrait for Notification {
                 // If the subscription excludes accepted transaction ids and the notification includes some
                 // then we must re-create the object and drop the ids, otherwise we can clone it as is.
                 if let Notification::VirtualChainChanged(ref payload) = self {
-                    if !subscription.include_accepted_transaction_ids() && !payload.accepted_transaction_ids.is_empty() {
+                    if !subscription.include_accepted_transaction_ids() && !payload.added_chain_blocks_acceptance_data.is_empty() {
                         return Some(Notification::VirtualChainChanged(VirtualChainChangedNotification {
                             removed_chain_block_hashes: payload.removed_chain_block_hashes.clone(),
                             added_chain_block_hashes: payload.added_chain_block_hashes.clone(),
-                            accepted_transaction_ids: Arc::new(vec![]),
+                            added_chain_blocks_acceptance_data: Arc::new(vec![]),
                         }));
                     }
                 }
@@ -98,16 +98,15 @@ impl BlockAddedNotification {
 pub struct VirtualChainChangedNotification {
     pub added_chain_block_hashes: Arc<Vec<Hash>>,
     pub removed_chain_block_hashes: Arc<Vec<Hash>>,
-    pub accepted_transaction_ids: Arc<Vec<TransactionId>>,
+    pub added_chain_blocks_acceptance_data: Arc<Vec<AcceptanceData>>,
 }
-
 impl VirtualChainChangedNotification {
     pub fn new(
         added_chain_block_hashes: Arc<Vec<Hash>>,
         removed_chain_block_hashes: Arc<Vec<Hash>>,
-        accepted_transaction_ids: Arc<Vec<TransactionId>>,
+        added_chain_blocks_acceptance_data: Arc<Vec<AcceptanceData>>,
     ) -> Self {
-        Self { added_chain_block_hashes, removed_chain_block_hashes, accepted_transaction_ids }
+        Self { added_chain_block_hashes, removed_chain_block_hashes, added_chain_blocks_acceptance_data }
     }
 }
 

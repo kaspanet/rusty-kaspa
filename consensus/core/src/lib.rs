@@ -3,6 +3,7 @@ use std::hash::{BuildHasher, Hasher};
 
 use hashes::Hash;
 
+pub mod acceptance_data;
 pub mod api;
 pub mod block;
 pub mod blockhash;
