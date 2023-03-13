@@ -110,7 +110,7 @@ impl HandleRelayInvsFlow {
                 }
             }
 
-            let block = self.request_block(inv.hash).await?;
+            let Some(block) = self.request_block(inv.hash).await? else { continue; };
 
             if block.is_header_only() {
                 return Err(ProtocolError::OtherOwned(format!("sent header of {} where expected block with body", block.hash())));
@@ -137,9 +137,8 @@ impl HandleRelayInvsFlow {
 
             let prev_virtual_parents = consensus.get_virtual_parents();
 
-            // TODO: consider awaiting this task on a spawned routine in order to continue
-            // queueing the following relay blocks. On the other hand we might have sufficient
-            // concurrency from all parallel relay flows
+            // TODO: consider storing the future in a task queue and polling it (without awaiting) in order to continue
+            // queueing the following relay blocks. On the other hand we might have sufficient concurrency from all parallel relay flows
             match consensus.validate_and_insert_block(block.clone(), true).await {
                 Ok(_) => {}
                 Err(RuleError::MissingParents(missing_parents)) => {
@@ -177,8 +176,9 @@ impl HandleRelayInvsFlow {
         }
     }
 
-    async fn request_block(&mut self, requested_hash: Hash) -> Result<Block, ProtocolError> {
-        // TODO: manage shared requests and return `exists` if it's already a pending request
+    async fn request_block(&mut self, requested_hash: Hash) -> Result<Option<Block>, ProtocolError> {
+        // TODO: perhaps the request scope should be captured until block processing is completed
+        let Some(_request_scope) = self.ctx.try_adding_block_request(requested_hash) else { return Ok(None); };
         self.router
             .enqueue(make_message!(Payload::RequestRelayBlocks, RequestRelayBlocksMessage { hashes: vec![requested_hash.into()] }))
             .await?;
@@ -187,7 +187,7 @@ impl HandleRelayInvsFlow {
         if block.hash() != requested_hash {
             Err(ProtocolError::OtherOwned(format!("requested block hash {} but got block {}", requested_hash, block.hash())))
         } else {
-            Ok(block)
+            Ok(Some(block))
         }
     }
 

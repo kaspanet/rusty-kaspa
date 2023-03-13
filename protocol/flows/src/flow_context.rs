@@ -9,16 +9,19 @@ use kaspa_core::debug;
 use kaspa_core::time::unix_now;
 use p2p_lib::pb;
 use p2p_lib::{common::ProtocolError, ConnectionInitializer, KaspadHandshake, Router};
+use parking_lot::Mutex;
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use tokio::sync::RwLock as AsyncRwLock;
 use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct FlowContext {
     pub consensus: DynConsensus,
     pub config: Config,
-    orphans_pool: Arc<RwLock<OrphanBlocksPool<dyn ConsensusApi>>>,
+    orphans_pool: Arc<AsyncRwLock<OrphanBlocksPool<dyn ConsensusApi>>>,
+    shared_block_requests: Arc<Mutex<HashSet<Hash>>>,
     is_ibd_running: Arc<AtomicBool>, // TODO: pass the context wrapped with Arc and avoid some of the internal ones
 }
 
@@ -32,12 +35,30 @@ impl Drop for IbdRunningGuard {
     }
 }
 
+pub struct BlockRequestScope<'a> {
+    ctx: &'a FlowContext,
+    req: Hash,
+}
+
+impl<'a> BlockRequestScope<'a> {
+    pub fn new(ctx: &'a FlowContext, req: Hash) -> Self {
+        Self { ctx, req }
+    }
+}
+
+impl Drop for BlockRequestScope<'_> {
+    fn drop(&mut self) {
+        self.ctx.shared_block_requests.lock().remove(&self.req);
+    }
+}
+
 impl FlowContext {
     pub fn new(consensus: DynConsensus, config: &Config) -> Self {
         Self {
             consensus: consensus.clone(),
             config: config.clone(),
-            orphans_pool: Arc::new(RwLock::new(OrphanBlocksPool::new(consensus, MAX_ORPHANS))),
+            orphans_pool: Arc::new(AsyncRwLock::new(OrphanBlocksPool::new(consensus, MAX_ORPHANS))),
+            shared_block_requests: Arc::new(Mutex::new(HashSet::new())),
             is_ibd_running: Arc::new(AtomicBool::default()),
         }
     }
@@ -56,6 +77,14 @@ impl FlowContext {
 
     pub fn is_ibd_running(&self) -> bool {
         self.is_ibd_running.load(Ordering::SeqCst)
+    }
+
+    pub fn try_adding_block_request(&self, req: Hash) -> Option<BlockRequestScope> {
+        if self.shared_block_requests.lock().insert(req) {
+            Some(BlockRequestScope::new(self, req))
+        } else {
+            None
+        }
     }
 
     pub async fn add_orphan(&self, orphan_block: Block) {
