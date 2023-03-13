@@ -10,13 +10,13 @@ use consensus_core::{
     tx::{ScriptPublicKey, ScriptVec},
 };
 use consensus_notify::{
-    service::NotifyService,
+    notifier::ConsensusNotifier,
     {connection::ConsensusChannelConnection, notification::Notification as ConsensusNotification},
 };
 use hashes::Hash;
 use kaspa_core::trace;
 use kaspa_index_processor::{
-    connection::IndexChannelConnection, notification::Notification as IndexNotification, service::IndexService,
+    connection::IndexChannelConnection, notification::Notification as IndexNotification, notifier::IndexNotifier,
 };
 use kaspa_notify::{
     collector::DynCollector,
@@ -33,7 +33,6 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
     vec,
 };
-use utxoindex::api::DynUtxoIndexApi;
 
 /// A service implementing the Rpc API at rpc_core level.
 ///
@@ -55,41 +54,43 @@ use utxoindex::api::DynUtxoIndexApi;
 pub struct RpcCoreService {
     consensus: DynConsensus,
     notifier: Arc<Notifier<Notification, ChannelConnection>>,
-    index_service: Option<Arc<IndexService>>,
 }
 
 const RPC_CORE: &str = "rpc-core";
 
 impl RpcCoreService {
-    pub fn new(consensus: DynConsensus, notify_service: Arc<NotifyService>, index_service: Option<Arc<IndexService>>) -> Self {
+    pub fn new(
+        consensus: DynConsensus,
+        consensus_notifier: Arc<ConsensusNotifier>,
+        index_notifier: Option<Arc<IndexNotifier>>,
+    ) -> Self {
         // TODO: instead of getting directly a DynConsensus, rely on some Context equivalent
         //       See app\rpc\rpccontext\context.go
 
         // Prepare consensus-notify objects
         let consensus_notify_channel = Channel::<ConsensusNotification>::default();
         let consensus_notify_listener_id =
-            notify_service.notifier().register_new_listener(ConsensusChannelConnection::new(consensus_notify_channel.sender()));
+            consensus_notifier.register_new_listener(ConsensusChannelConnection::new(consensus_notify_channel.sender()));
 
         // Prepare the rpc-core notifier objects
         let mut consensus_events: EventSwitches = EVENT_TYPE_ARRAY[..].into();
         consensus_events[EventType::UtxosChanged] = false;
-        consensus_events[EventType::PruningPointUtxoSetOverride] = index_service.is_none();
+        consensus_events[EventType::PruningPointUtxoSetOverride] = index_notifier.is_none();
         let consensus_collector = Arc::new(CollectorFromConsensus::new(consensus_notify_channel.receiver()));
-        let consensus_subscriber =
-            Arc::new(Subscriber::new(consensus_events, notify_service.notifier(), consensus_notify_listener_id));
+        let consensus_subscriber = Arc::new(Subscriber::new(consensus_events, consensus_notifier, consensus_notify_listener_id));
 
         let mut collectors: Vec<DynCollector<Notification>> = vec![consensus_collector];
         let mut subscribers = vec![consensus_subscriber];
 
         // Prepare index-processor objects if an IndexService is provided
-        if let Some(ref index_service) = index_service {
+        if let Some(ref index_notifier) = index_notifier {
             let index_notify_channel = Channel::<IndexNotification>::default();
             let index_notify_listener_id =
-                index_service.notifier().register_new_listener(IndexChannelConnection::new(index_notify_channel.sender()));
+                index_notifier.clone().register_new_listener(IndexChannelConnection::new(index_notify_channel.sender()));
 
             let index_events: EventSwitches = [EventType::UtxosChanged, EventType::PruningPointUtxoSetOverride].as_ref().into();
             let index_collector = Arc::new(CollectorFromIndex::new(index_notify_channel.receiver()));
-            let index_subscriber = Arc::new(Subscriber::new(index_events, index_service.notifier(), index_notify_listener_id));
+            let index_subscriber = Arc::new(Subscriber::new(index_events, index_notifier.clone(), index_notify_listener_id));
 
             collectors.push(index_collector);
             subscribers.push(index_subscriber);
@@ -98,7 +99,7 @@ impl RpcCoreService {
         // Create the rcp-core notifier
         let notifier = Arc::new(Notifier::new(EVENT_TYPE_ARRAY[..].into(), collectors, subscribers, 1, RPC_CORE));
 
-        Self { consensus, notifier, index_service }
+        Self { consensus, notifier }
     }
 
     pub fn start(&self) {
@@ -113,11 +114,6 @@ impl RpcCoreService {
     #[inline(always)]
     pub fn notifier(&self) -> Arc<Notifier<Notification, ChannelConnection>> {
         self.notifier.clone()
-    }
-
-    #[inline(always)]
-    pub fn utxoindex(&self) -> DynUtxoIndexApi {
-        self.index_service.as_ref().and_then(|x| x.utxoindex())
     }
 }
 

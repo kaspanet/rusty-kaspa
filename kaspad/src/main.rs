@@ -172,7 +172,8 @@ pub fn main() {
         None
     };
 
-    let rpc_core_server = Arc::new(RpcCoreServer::new(consensus.clone(), notify_service.clone(), index_service.clone()));
+    let rpc_core_server =
+        Arc::new(RpcCoreServer::new(consensus.clone(), notify_service.notifier(), index_service.as_ref().map(|x| x.notifier())));
     let grpc_server = Arc::new(GrpcServer::new(grpc_server_addr, rpc_core_server.service()));
     let p2p_service = Arc::new(P2pService::new(consensus.clone(), args.connect, args.listen));
 
