@@ -18,7 +18,7 @@ use crate::{
             depth::DbDepthStore,
             ghostdag::DbGhostdagStore,
             headers::{DbHeadersStore, HeaderStoreReader},
-            headers_selected_tip::DbHeadersSelectedTipStore,
+            headers_selected_tip::{DbHeadersSelectedTipStore, HeadersSelectedTipStoreReader},
             past_pruning_points::{DbPastPruningPointsStore, PastPruningPointsStoreReader},
             pruning::{DbPruningStore, PruningStoreReader},
             reachability::DbReachabilityStore,
@@ -741,6 +741,10 @@ impl ConsensusApi for Consensus {
     fn get_header(&self, hash: Hash) -> ConsensusResult<Arc<Header>> {
         self.validate_block_exists(hash)?;
         Ok(self.headers_store.get_header(hash).unwrap())
+    }
+
+    fn get_headers_selected_tip(&self) -> Hash {
+        self.headers_selected_tip_store.read().get().unwrap().hash
     }
 
     fn get_pruning_point_proof(&self) -> Arc<PruningPointProof> {

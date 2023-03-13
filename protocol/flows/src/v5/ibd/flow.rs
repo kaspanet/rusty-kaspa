@@ -8,6 +8,7 @@ use crate::{
 use consensus_core::{
     api::{BlockValidationFuture, DynConsensus},
     block::Block,
+    header::Header,
     pruning::{PruningPointProof, PruningPointsList},
 };
 use futures::future::try_join_all;
@@ -58,7 +59,6 @@ impl Flow for IbdFlow {
 }
 
 pub enum IbdType {
-    #[allow(dead_code)]
     None,
     Sync(Hash),
     DownloadHeadersProof,
@@ -90,7 +90,7 @@ impl IbdFlow {
     async fn ibd(&mut self, relay_block: Block) -> Result<(), ProtocolError> {
         let consensus = self.ctx.consensus();
         let negotiation_output = self.negotiate_missing_syncer_chain_segment(&consensus).await?;
-        match self.determine_ibd_type(&consensus, &relay_block, negotiation_output.highest_known_syncer_chain_hash)? {
+        match self.determine_ibd_type(&consensus, &relay_block.header, negotiation_output.highest_known_syncer_chain_hash)? {
             IbdType::None => return Ok(()),
             IbdType::Sync(highest_known_syncer_chain_hash) => {
                 self.sync_headers(
@@ -117,25 +117,32 @@ impl IbdFlow {
     fn determine_ibd_type(
         &self,
         consensus: &DynConsensus,
-        _relay_block: &Block,
+        relay_header: &Header,
         highest_known_syncer_chain_hash: Option<Hash>,
     ) -> Result<IbdType, ProtocolError> {
-        let Some(pp) = consensus.pruning_point() else {
+        let Some(pruning_point) = consensus.pruning_point() else {
             // TODO: fix when applying staging consensus
             return Ok(IbdType::DownloadHeadersProof);
         };
 
-        Ok(if let Some(highest_known_syncer_chain_hash) = highest_known_syncer_chain_hash {
-            if consensus.is_chain_ancestor_of(pp, highest_known_syncer_chain_hash)? {
-                IbdType::Sync(highest_known_syncer_chain_hash)
-            } else {
-                IbdType::DownloadHeadersProof
+        if let Some(highest_known_syncer_chain_hash) = highest_known_syncer_chain_hash {
+            if consensus.is_chain_ancestor_of(pruning_point, highest_known_syncer_chain_hash)? {
+                // The node is only missing a segment in the future of its current pruning point, and the chains
+                // agree as well, so we perform a simple sync IBD and only download the missing data
+                return Ok(IbdType::Sync(highest_known_syncer_chain_hash));
             }
-        } else {
-            IbdType::DownloadHeadersProof
-        })
 
-        // TODO: full imp with blue work check
+            // TODO: in this case we know a syncer chain block, but it violates our current finality. In some cases
+            // this info should possibly be used to reject the IBD despite having more blue work etc.
+        }
+
+        let hst = consensus.get_header(consensus.get_headers_selected_tip()).unwrap();
+        if relay_header.blue_score >= hst.blue_score + self.ctx.config.pruning_depth && relay_header.blue_work > hst.blue_work {
+            // The relayed block has sufficient blue score and blue work over the current header selected tip
+            Ok(IbdType::DownloadHeadersProof)
+        } else {
+            Ok(IbdType::None)
+        }
     }
 
     async fn ibd_with_headers_proof(

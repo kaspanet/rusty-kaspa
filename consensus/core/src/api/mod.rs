@@ -71,6 +71,8 @@ pub trait ConsensusApi: Send + Sync {
 
     fn get_header(&self, hash: Hash) -> ConsensusResult<Arc<Header>>;
 
+    fn get_headers_selected_tip(&self) -> Hash;
+
     fn get_pruning_point_proof(&self) -> Arc<PruningPointProof>;
 
     fn create_headers_selected_chain_block_locator(&self, low: Option<Hash>, high: Option<Hash>) -> ConsensusResult<Vec<Hash>>;
