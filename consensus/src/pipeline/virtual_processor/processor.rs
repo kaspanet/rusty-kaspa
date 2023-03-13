@@ -420,7 +420,7 @@ impl VirtualStateProcessor {
                 let accumulated_diff = Arc::new(accumulated_diff);
                 let virtual_parents = Arc::new(new_virtual_state.parents);
                 let _ = self
-                    .notification_root()
+                    .notification_root
                     .notify(Notification::UtxosChanged(UtxosChangedNotification::new(accumulated_diff, virtual_parents)));
                 let _ = self.notification_root().notify(Notification::SinkBlueScoreChanged(SinkBlueScoreChangedNotification::new(
                     new_virtual_state.ghostdag_data.blue_score,
