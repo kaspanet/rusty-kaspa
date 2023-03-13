@@ -167,7 +167,7 @@ pub fn main() {
         // Use only a single thread for none-consensus databases
         let utxoindex_db = database::prelude::open_db(utxoindex_db_dir, true, 1);
         let utxoindex: DynUtxoIndexApi = Some(UtxoIndex::new(consensus.clone(), utxoindex_db).unwrap());
-        Some(Arc::new(IndexService::new(notify_service.clone(), utxoindex)))
+        Some(Arc::new(IndexService::new(&notify_service.notifier(), utxoindex)))
     } else {
         None
     };
