@@ -656,8 +656,8 @@ impl ConsensusApi for Consensus {
         }
     }
 
-    fn get_virtual_state_tips(&self) -> Vec<Hash> {
-        self.virtual_processor.virtual_stores.read().state.get().unwrap().parents.clone()
+    fn get_virtual_parents(&self) -> BlockHashSet {
+        self.virtual_processor.virtual_stores.read().state.get().unwrap().parents.iter().copied().collect()
     }
 
     fn get_virtual_utxos(

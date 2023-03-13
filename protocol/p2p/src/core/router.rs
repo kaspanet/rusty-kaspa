@@ -99,7 +99,7 @@ impl Router {
                             }
                         }
                         Ok(None) => {
-                            info!("P2P, Router receive loop - incoming stream ended from peer {}", router);
+                            info!("P2P, Router receive loop - incoming stream ended for peer {}", router);
                             break;
                         }
                         Err(err) => {

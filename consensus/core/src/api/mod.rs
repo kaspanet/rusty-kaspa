@@ -17,6 +17,7 @@ use crate::{
     pruning::{PruningPointProof, PruningPointsList},
     trusted::{TrustedBlock, TrustedGhostdagData, TrustedHeader},
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
+    BlockHashSet,
 };
 use hashes::Hash;
 pub type BlockValidationFuture = BoxFuture<'static, BlockProcessResult<BlockStatus>>;
@@ -41,7 +42,7 @@ pub trait ConsensusApi: Send + Sync {
 
     fn get_sink_timestamp(&self) -> Option<u64>;
 
-    fn get_virtual_state_tips(&self) -> Vec<Hash>;
+    fn get_virtual_parents(&self) -> BlockHashSet;
 
     fn get_virtual_utxos(
         &self,

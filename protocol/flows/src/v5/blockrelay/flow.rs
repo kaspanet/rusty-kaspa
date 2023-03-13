@@ -1,5 +1,5 @@
 use crate::{flow_context::FlowContext, flow_trait::Flow, flowcontext::orphans::ORPHAN_RESOLUTION_RANGE};
-use consensus_core::{block::Block, blockstatus::BlockStatus, errors::block::RuleError};
+use consensus_core::{api::DynConsensus, block::Block, blockstatus::BlockStatus, errors::block::RuleError};
 use hashes::Hash;
 use kaspa_core::{debug, info, time::unix_now};
 use kaspa_utils::option::OptionExtensions;
@@ -135,14 +135,16 @@ impl HandleRelayInvsFlow {
                 }
             }
 
-            // TODO: consider awaiting this task on a spawned routine in order to continue 
-            // queueing the following relay blocks. On the other hand we might have sufficient 
-            // concurrency from all parallel relay flows 
+            let prev_virtual_parents = consensus.get_virtual_parents();
+
+            // TODO: consider awaiting this task on a spawned routine in order to continue
+            // queueing the following relay blocks. On the other hand we might have sufficient
+            // concurrency from all parallel relay flows
             match consensus.validate_and_insert_block(block.clone(), true).await {
                 Ok(_) => {}
                 Err(RuleError::MissingParents(missing_parents)) => {
                     debug!("Block {} is orphan and has missing parents: {:?}", block.hash(), missing_parents);
-                    self.process_orphan(block).await?;
+                    self.process_orphan(&consensus, block).await?;
                     continue;
                 }
                 Err(rule_error) => return Err(rule_error.into()),
@@ -153,19 +155,25 @@ impl HandleRelayInvsFlow {
             // TODO: use all new blocks to unorphan mempool txs and broadcast the txs
             let _blocks = self.ctx.unorphan_blocks(block.hash()).await;
 
-            // TODO: broadcast all new blocks in past(virtual)
-            // TEMP:
-            self.router
-                .broadcast(make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(block.hash().into()) }))
-                .await;
+            // Broadcast all *new* virtual parents. As a policy, we avoid directly relaying the new block since
+            // we wish to relay only blocks who entered past(virtual).
+            for new_virtual_parent in consensus.get_virtual_parents().difference(&prev_virtual_parents) {
+                self.router
+                    .broadcast(make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(new_virtual_parent.into()) }))
+                    .await;
+            }
+
+            // TODO: raise new block template event
         }
     }
 
     async fn enqueue_orphan_roots(&mut self, orphan: Hash) {
         if let Some(roots) = self.ctx.get_orphan_roots(orphan).await {
+            if roots.is_empty() {
+                return;
+            }
+            info!("Block {} has {} missing ancestors. Adding them to the invs queue...", orphan, roots.len());
             self.invs_route.enqueue_indirect_invs(roots)
-        } else {
-            // TODO: log
         }
     }
 
@@ -183,15 +191,14 @@ impl HandleRelayInvsFlow {
         }
     }
 
-    async fn process_orphan(&mut self, block: Block) -> Result<(), ProtocolError> {
+    async fn process_orphan(&mut self, consensus: &DynConsensus, block: Block) -> Result<(), ProtocolError> {
         // Return if the block has been orphaned from elsewhere already
         if self.ctx.is_known_orphan(block.hash()).await {
             return Ok(());
         }
 
         // Add the block to the orphan pool if it's within orphan resolution range
-        if self.check_orphan_resolution_range(block.hash()).await? {
-            // TODO: check for config conditions
+        if self.check_orphan_resolution_range(consensus, block.hash()).await? {
             let hash = block.hash();
             self.ctx.add_orphan(block).await;
             self.enqueue_orphan_roots(hash).await;
@@ -211,7 +218,7 @@ impl HandleRelayInvsFlow {
     /// mechanism or via IBD. This method sends a BlockLocator request to the peer with
     /// a limit of ORPHAN_RESOLUTION_RANGE. In the response, if we know none of the hashes,
     /// we should retrieve the given blockHash via IBD. Otherwise, via unorphaning.
-    async fn check_orphan_resolution_range(&mut self, hash: Hash) -> Result<bool, ProtocolError> {
+    async fn check_orphan_resolution_range(&mut self, consensus: &DynConsensus, hash: Hash) -> Result<bool, ProtocolError> {
         self.router
             .enqueue(make_message!(
                 Payload::RequestBlockLocator,
@@ -220,7 +227,6 @@ impl HandleRelayInvsFlow {
             .await?;
         let msg = dequeue_with_timeout!(self.msg_route, Payload::BlockLocator)?;
         let locator_hashes: Vec<Hash> = msg.try_into()?;
-        let consensus = self.ctx.consensus(); // TODO: should we pass the consensus instance through the call chain?
         Ok(locator_hashes.into_iter().any(|p| consensus.get_block_status(p).has_value_and(|s| !s.is_header_only())))
     }
 }
