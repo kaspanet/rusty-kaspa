@@ -154,6 +154,8 @@ impl IbdFlow {
         info!("Starting IBD with headers proof");
         let pruning_point = self.sync_and_validate_pruning_proof(consensus).await?;
         self.sync_headers(consensus, syncer_header_selected_tip, pruning_point, relay_block).await?;
+        // TODO: call when implementing staging consensus
+        // self._validate_staging_timestamps(consensus)?;
         self.sync_pruning_point_utxoset(consensus, pruning_point).await?;
         Ok(())
     }
@@ -200,10 +202,9 @@ impl IbdFlow {
             entries.push(entry);
         }
 
-        // TODO: logs
         let trusted_set = pkg.build_trusted_subdag(entries)?;
-        consensus.clone().apply_pruning_proof(proof, &trusted_set);
-        consensus.clone().import_pruning_points(pruning_points);
+        consensus.apply_pruning_proof(proof, &trusted_set);
+        consensus.import_pruning_points(pruning_points);
 
         info!("Starting to process {} trusted blocks", trusted_set.len());
         let mut last_time = Instant::now();
@@ -212,12 +213,12 @@ impl IbdFlow {
             let now = Instant::now();
             let passed = now.duration_since(last_time);
             if passed > Duration::from_secs(1) {
-                info!("Processed {} trusted blocks in the last {} seconds (total {})", i - last_index, passed.as_secs(), i);
+                info!("Processed {} trusted blocks in the last {:.2}s (total {})", i - last_index, passed.as_secs_f64(), i);
                 last_time = now;
                 last_index = i;
             }
             // TODO: queue and join in batches
-            consensus.clone().validate_and_insert_trusted_block(tb).await?;
+            consensus.validate_and_insert_trusted_block(tb).await?;
         }
         info!("Done processing trusted blocks");
 
@@ -250,12 +251,12 @@ impl IbdFlow {
         if let Some(chunk) = chunk_stream.next().await? {
             let mut prev_daa_score = chunk.last().expect("chunk is never empty").daa_score;
             let mut prev_jobs: Vec<BlockValidationFuture> =
-                chunk.into_iter().map(|h| consensus.clone().validate_and_insert_block(Block::from_header_arc(h), false)).collect();
+                chunk.into_iter().map(|h| consensus.validate_and_insert_block(Block::from_header_arc(h), false)).collect();
 
             while let Some(chunk) = chunk_stream.next().await? {
                 let current_daa_score = chunk.last().expect("chunk is never empty").daa_score;
                 let current_jobs =
-                    chunk.into_iter().map(|h| consensus.clone().validate_and_insert_block(Block::from_header_arc(h), false)).collect();
+                    chunk.into_iter().map(|h| consensus.validate_and_insert_block(Block::from_header_arc(h), false)).collect();
                 let prev_chunk_len = prev_jobs.len();
                 // Join the previous chunk so that we always concurrently process a chunk and receive another
                 try_join_all(prev_jobs).await?;
@@ -311,6 +312,21 @@ impl IbdFlow {
             Err(ProtocolError::OtherOwned(format!(
                 "did not receive relay block {} from peer {} during block download",
                 relay_block_hash, self.router
+            )))
+        } else {
+            Ok(())
+        }
+    }
+
+    fn _validate_staging_timestamps(&self, consensus: &DynConsensus, staging_consensus: &DynConsensus) -> Result<(), ProtocolError> {
+        let staging_hst = staging_consensus.get_header(staging_consensus.get_headers_selected_tip()).unwrap();
+        let current_hst = consensus.get_header(consensus.get_headers_selected_tip()).unwrap();
+        // If staging is behind current or within 10 minutes ahead of it, then something is wrong and we reject the IBD
+        if staging_hst.timestamp < current_hst.timestamp || staging_hst.timestamp - current_hst.timestamp < 600_000 {
+            Err(ProtocolError::OtherOwned(format!(
+                "The difference between the timestamp of the current selected tip ({}) and the 
+staging selected tip ({}) is too small or negative. Aborting IBD...",
+                current_hst.timestamp, staging_hst.timestamp
             )))
         } else {
             Ok(())
