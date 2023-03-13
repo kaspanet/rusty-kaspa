@@ -92,7 +92,11 @@ impl HandleRelayInvsFlow {
                     // Report a protocol error
                     return Err(ProtocolError::OtherOwned(format!("sent inv of an invalid block {}", inv.hash)));
                 }
-                _ => continue, // Block is already known, skip to next inv
+                _ => {
+                    // Block is already known, skip to next inv
+                    debug!("Relay block {} already exists, continuing...", inv.hash);
+                    continue;
+                }
             }
 
             if self.ctx.is_known_orphan(inv.hash).await {
@@ -106,11 +110,15 @@ impl HandleRelayInvsFlow {
                 // far in the past. In such a case, we continue processing relay blocks even though an IBD is in progress.
                 // For instance this means that downloading a side-chain from a delayed node does not interop the normal flow of live blocks
                 if sink_timestamp.is_none_or(|t| unix_now() > t + self.ctx.config.expected_daa_window_duration_in_milliseconds()) {
+                    debug!("Got relay block {} while in IBD and the node is out of sync, continuing...", inv.hash);
                     continue;
                 }
             }
 
-            let Some(block) = self.request_block(inv.hash).await? else { continue; };
+            let Some(block) = self.request_block(inv.hash).await? else {
+                debug!("Relay block {} was already requested from another peer, continuing...", inv.hash);
+                continue;
+            };
 
             if block.is_header_only() {
                 return Err(ProtocolError::OtherOwned(format!("sent header of {} where expected block with body", block.hash())));

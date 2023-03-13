@@ -141,14 +141,15 @@ impl<T: ConsensusBlockProcessor + ?Sized> OrphanBlocksPool<T> {
 
     fn iterate_child_orphans(&self, hash: Hash) -> impl Iterator<Item = Hash> + '_ {
         // TODO: consider optimizing by holding a list of child dependencies for each orphan
-        self.orphans.iter().filter_map(move |(&orphan_hash, orphan_block)| {
-            for &parent in orphan_block.header.direct_parents() {
-                if parent == hash {
-                    return Some(orphan_hash);
+        self.orphans.iter().filter_map(
+            move |(&orphan_hash, orphan_block)| {
+                if orphan_block.header.direct_parents().contains(&hash) {
+                    Some(orphan_hash)
+                } else {
+                    None
                 }
-            }
-            None
-        })
+            },
+        )
     }
 }
 

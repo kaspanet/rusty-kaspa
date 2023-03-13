@@ -31,7 +31,8 @@ pub struct IbdRunningGuard {
 
 impl Drop for IbdRunningGuard {
     fn drop(&mut self) {
-        assert!(self.indicator.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_ok())
+        let result = self.indicator.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst);
+        assert!(result.is_ok())
     }
 }
 

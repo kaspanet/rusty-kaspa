@@ -110,7 +110,7 @@ impl IbdFlow {
         self.sync_missing_block_bodies(&consensus, negotiation_output.syncer_header_selected_tip).await?;
 
         // Relay block might be in the anticone of syncer selected tip, thus
-        // check his chain for missing bodies as well.
+        // check its chain for missing bodies as well.
         self.sync_missing_block_bodies(&consensus, relay_block.hash()).await
     }
 
