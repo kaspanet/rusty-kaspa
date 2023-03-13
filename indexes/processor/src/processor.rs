@@ -1,6 +1,5 @@
 use crate::{
     errors::{IndexError, IndexResult},
-    notification::{Notification, PruningPointUtxoSetOverrideNotification, UtxosChangedNotification},
     IDENT,
 };
 use async_trait::async_trait;
@@ -10,6 +9,7 @@ use futures::{
     select,
 };
 use kaspa_core::trace;
+use kaspa_index_core::notification::{Notification, PruningPointUtxoSetOverrideNotification, UtxosChangedNotification};
 use kaspa_notify::{
     collector::{Collector, CollectorNotificationReceiver},
     error::{Error, Result},

@@ -1,3 +1,4 @@
+use crate::indexed_utxos::{UtxoChanges, UtxoSetByScriptPublicKey};
 use derive_more::Display;
 use kaspa_notify::{
     events::EventType,
@@ -9,7 +10,6 @@ use kaspa_notify::{
     },
 };
 use std::sync::Arc;
-use utxoindex::model::{UtxoChanges, UtxoSetByScriptPublicKey};
 
 full_featured! {
 #[derive(Clone, Debug, Display)]

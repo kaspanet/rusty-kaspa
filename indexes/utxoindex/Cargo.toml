@@ -12,6 +12,7 @@ thiserror.workspace = true
 consensus-core.workspace = true
 kaspa-core.workspace = true
 kaspa-utils.workspace = true
+kaspa-index-core.workspace = true
 database.workspace = true
 log.workspace = true
 rocksdb.workspace = true

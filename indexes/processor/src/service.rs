@@ -1,4 +1,4 @@
-use crate::{notifier::IndexNotifier, processor::Processor, IDENT};
+use crate::{processor::Processor, IDENT};
 use consensus_notify::{
     connection::ConsensusChannelConnection, notification::Notification as ConsensusNotification, notifier::ConsensusNotifier,
 };
@@ -6,6 +6,7 @@ use kaspa_core::{
     task::service::{AsyncService, AsyncServiceFuture},
     trace,
 };
+use kaspa_index_core::notifier::IndexNotifier;
 use kaspa_notify::{
     events::{EventSwitches, EventType},
     scope::{PruningPointUtxoSetOverrideScope, Scope, UtxosChangedScope},

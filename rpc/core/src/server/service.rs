@@ -15,9 +15,7 @@ use consensus_notify::{
 };
 use hashes::Hash;
 use kaspa_core::trace;
-use kaspa_index_processor::{
-    connection::IndexChannelConnection, notification::Notification as IndexNotification, notifier::IndexNotifier,
-};
+use kaspa_index_core::{connection::IndexChannelConnection, notification::Notification as IndexNotification, notifier::IndexNotifier};
 use kaspa_notify::{
     collector::DynCollector,
     events::{EventSwitches, EventType, EVENT_TYPE_ARRAY},
@@ -64,9 +62,6 @@ impl RpcCoreService {
         consensus_notifier: Arc<ConsensusNotifier>,
         index_notifier: Option<Arc<IndexNotifier>>,
     ) -> Self {
-        // TODO: instead of getting directly a DynConsensus, rely on some Context equivalent
-        //       See app\rpc\rpccontext\context.go
-
         // Prepare consensus-notify objects
         let consensus_notify_channel = Channel::<ConsensusNotification>::default();
         let consensus_notify_listener_id =

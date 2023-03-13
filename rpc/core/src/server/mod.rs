@@ -4,7 +4,7 @@ use kaspa_core::{
     task::service::{AsyncService, AsyncServiceFuture},
     trace,
 };
-use kaspa_index_processor::notifier::IndexNotifier;
+use kaspa_index_core::notifier::IndexNotifier;
 use kaspa_utils::triggers::DuplexTrigger;
 use std::sync::Arc;
 
