@@ -52,13 +52,13 @@ impl From<&consensus_notify::VirtualChainChangedNotification> for VirtualChainCh
 
 impl From<&consensus_notify::FinalityConflictNotification> for FinalityConflictNotification {
     fn from(item: &consensus_notify::FinalityConflictNotification) -> Self {
-        Self { violating_block_hash: item.violating_block_hash.clone() }
+        Self { violating_block_hash: item.violating_block_hash }
     }
 }
 
 impl From<&consensus_notify::FinalityConflictResolvedNotification> for FinalityConflictResolvedNotification {
     fn from(item: &consensus_notify::FinalityConflictResolvedNotification) -> Self {
-        Self { finality_block_hash: item.finality_block_hash.clone() }
+        Self { finality_block_hash: item.finality_block_hash }
     }
 }
 

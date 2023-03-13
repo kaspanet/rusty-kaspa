@@ -112,22 +112,22 @@ impl VirtualChainChangedNotification {
 
 #[derive(Debug, Clone, Default)]
 pub struct FinalityConflictNotification {
-    pub violating_block_hash: Arc<Hash>,
+    pub violating_block_hash: Hash,
 }
 
 impl FinalityConflictNotification {
-    pub fn new(violating_block_hash: Arc<Hash>) -> Self {
+    pub fn new(violating_block_hash: Hash) -> Self {
         Self { violating_block_hash }
     }
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct FinalityConflictResolvedNotification {
-    pub finality_block_hash: Arc<Hash>,
+    pub finality_block_hash: Hash,
 }
 
 impl FinalityConflictResolvedNotification {
-    pub fn new(finality_block_hash: Arc<Hash>) -> Self {
+    pub fn new(finality_block_hash: Hash) -> Self {
         Self { finality_block_hash }
     }
 }

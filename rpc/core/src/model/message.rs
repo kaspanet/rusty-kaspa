@@ -799,7 +799,7 @@ pub struct NotifyFinalityConflictResponse {}
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FinalityConflictNotification {
-    pub violating_block_hash: Arc<RpcHash>,
+    pub violating_block_hash: RpcHash,
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -824,7 +824,7 @@ pub struct NotifyFinalityConflictResolvedResponse {}
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FinalityConflictResolvedNotification {
-    pub finality_block_hash: Arc<RpcHash>,
+    pub finality_block_hash: RpcHash,
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~
