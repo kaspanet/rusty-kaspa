@@ -7,7 +7,7 @@ declare -a crates=(
     "addresses"
     "hashes"
     "math"
-    "rpc-core"
+    "kaspa-rpc-core"
     "kaspa-bip32"
     "kaspa-wrpc-client"
     "kaspa-wrpc-wasm"
