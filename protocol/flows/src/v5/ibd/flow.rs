@@ -74,43 +74,47 @@ impl IbdFlow {
             if let Some(_guard) = self.ctx.try_set_ibd_running() {
                 info!("IBD started with peer {}", self.router);
 
-                let consensus = self.ctx.consensus();
-                let negotiation_output = self.negotiate_missing_syncer_chain_segment(&consensus).await?;
-                match self.decide_ibd_type(&consensus, &relay_block, negotiation_output.highest_known_syncer_chain_hash)? {
-                    IbdType::None => continue,
-                    IbdType::Sync(highest_known_syncer_chain_hash) => {
-                        // TODO: check config conditions
-                        self.sync_pruning_point_future_headers(
-                            &consensus,
-                            negotiation_output.syncer_header_selected_tip,
-                            highest_known_syncer_chain_hash,
-                            relay_block.hash(),
-                            relay_block.header.daa_score,
-                        )
-                        .await?;
-                    }
-                    IbdType::DownloadHeadersProof => {
-                        self.perform_ibd_with_headers_proof(&consensus, negotiation_output.syncer_header_selected_tip, &relay_block)
-                            .await?;
+                match self.ibd(relay_block).await {
+                    Ok(_) => info!("IBD with peer {} completed successfully", self.router),
+                    Err(e) => {
+                        info!("IBD with peer {} completed with error {:?}", self.router, e);
+                        return Err(e);
                     }
                 }
-
-                // Sync missing bodies in the past of syncer selected tip
-                self.sync_missing_block_bodies(&consensus, negotiation_output.syncer_header_selected_tip).await?;
-
-                // Relay block might be in the anticone of syncer selected tip, thus
-                // check his chain for missing bodies as well.
-                self.sync_missing_block_bodies(&consensus, relay_block.hash()).await?;
-
-                // TODO: make sure a message is printed also on errors
-                info!("IBD with peer {} finished", self.router);
             }
         }
 
         Ok(())
     }
 
-    fn decide_ibd_type(
+    async fn ibd(&mut self, relay_block: Block) -> Result<(), ProtocolError> {
+        let consensus = self.ctx.consensus();
+        let negotiation_output = self.negotiate_missing_syncer_chain_segment(&consensus).await?;
+        match self.determine_ibd_type(&consensus, &relay_block, negotiation_output.highest_known_syncer_chain_hash)? {
+            IbdType::None => return Ok(()),
+            IbdType::Sync(highest_known_syncer_chain_hash) => {
+                self.sync_headers(
+                    &consensus,
+                    negotiation_output.syncer_header_selected_tip,
+                    highest_known_syncer_chain_hash,
+                    &relay_block,
+                )
+                .await?;
+            }
+            IbdType::DownloadHeadersProof => {
+                self.ibd_with_headers_proof(&consensus, negotiation_output.syncer_header_selected_tip, &relay_block).await?;
+            }
+        }
+
+        // Sync missing bodies in the past of syncer selected tip
+        self.sync_missing_block_bodies(&consensus, negotiation_output.syncer_header_selected_tip).await?;
+
+        // Relay block might be in the anticone of syncer selected tip, thus
+        // check his chain for missing bodies as well.
+        self.sync_missing_block_bodies(&consensus, relay_block.hash()).await
+    }
+
+    fn determine_ibd_type(
         &self,
         consensus: &DynConsensus,
         _relay_block: &Block,
@@ -134,7 +138,7 @@ impl IbdFlow {
         // TODO: full imp with blue work check
     }
 
-    async fn perform_ibd_with_headers_proof(
+    async fn ibd_with_headers_proof(
         &mut self,
         consensus: &DynConsensus,
         syncer_header_selected_tip: Hash,
@@ -142,14 +146,7 @@ impl IbdFlow {
     ) -> Result<(), ProtocolError> {
         info!("Starting IBD with headers proof");
         let pruning_point = self.sync_and_validate_pruning_proof(consensus).await?;
-        self.sync_pruning_point_future_headers(
-            consensus,
-            syncer_header_selected_tip,
-            pruning_point,
-            relay_block.hash(),
-            relay_block.header.daa_score,
-        )
-        .await?;
+        self.sync_headers(consensus, syncer_header_selected_tip, pruning_point, relay_block).await?;
         self.sync_pruning_point_utxoset(consensus, pruning_point).await?;
         Ok(())
     }
@@ -222,16 +219,15 @@ impl IbdFlow {
         Ok(proof_pruning_point)
     }
 
-    async fn sync_pruning_point_future_headers(
+    async fn sync_headers(
         &mut self,
         consensus: &DynConsensus,
         syncer_header_selected_tip: Hash,
         highest_known_syncer_chain_hash: Hash,
-        relay_block_hash: Hash,
-        high_block_daa_score_hint: u64,
+        relay_block: &Block,
     ) -> Result<(), ProtocolError> {
         let highest_shared_header_score = consensus.get_header(highest_known_syncer_chain_hash)?.daa_score;
-        let mut progress_reporter = ProgressReporter::new(highest_shared_header_score, high_block_daa_score_hint, "block headers");
+        let mut progress_reporter = ProgressReporter::new(highest_shared_header_score, relay_block.header.daa_score, "block headers");
 
         self.router
             .enqueue(make_message!(
@@ -267,7 +263,7 @@ impl IbdFlow {
             progress_reporter.report_completion(prev_chunk_len);
         }
 
-        self.sync_missing_relay_past_headers(consensus, syncer_header_selected_tip, relay_block_hash).await?;
+        self.sync_missing_relay_past_headers(consensus, syncer_header_selected_tip, relay_block.hash()).await?;
 
         Ok(())
     }
