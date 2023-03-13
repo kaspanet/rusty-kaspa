@@ -1,7 +1,8 @@
 use crate::StatusResult;
 use kaspa_core::trace;
 use kaspa_grpc_core::protowire::KaspadResponse;
-use kaspa_rpc_core::notify::{connection::Connection, error::Error as NotificationError, listener::ListenerID, notifier::Notifier};
+use kaspa_notify::{connection::Connection, error::Error as NotificationError, listener::ListenerId, notifier::Notifier};
+use kaspa_rpc_core::Notification;
 use std::{
     collections::HashMap,
     net::SocketAddr,
@@ -41,6 +42,7 @@ pub enum GrpcEncoding {
 }
 
 impl Connection for GrpcConnection {
+    type Notification = Notification;
     type Message = Arc<StatusResult<KaspadResponse>>;
     type Encoding = GrpcEncoding;
     type Error = super::error::Error;
@@ -73,15 +75,15 @@ impl Connection for GrpcConnection {
 
 pub(crate) struct GrpcConnectionManager {
     connections: HashMap<SocketAddr, GrpcConnection>,
-    notifier: Arc<Notifier<GrpcConnection>>,
+    notifier: Arc<Notifier<Notification, GrpcConnection>>,
 }
 
 impl GrpcConnectionManager {
-    pub fn new(notifier: Arc<Notifier<GrpcConnection>>) -> Self {
+    pub fn new(notifier: Arc<Notifier<Notification, GrpcConnection>>) -> Self {
         Self { connections: HashMap::new(), notifier }
     }
 
-    pub fn register(&mut self, address: SocketAddr, sender: GrpcSender) -> ListenerID {
+    pub fn register(&mut self, address: SocketAddr, sender: GrpcSender) -> ListenerId {
         let connection = GrpcConnection::new(address, sender);
         let id = self.notifier.clone().register_new_listener(connection.clone());
         trace!("registering a new gRPC connection from: {address} with listener id {id}");

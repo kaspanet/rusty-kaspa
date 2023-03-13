@@ -17,14 +17,12 @@ use consensus_core::blockhash::new_unique;
 use consensus_core::blockstatus::BlockStatus;
 use consensus_core::constants::BLOCK_VERSION;
 use consensus_core::errors::block::{BlockProcessResult, RuleError};
-use consensus_core::events::ConsensusEvent;
 use consensus_core::header::Header;
 use consensus_core::subnets::SubnetworkId;
 use consensus_core::trusted::{ExternalGhostdagData, TrustedBlock};
 use consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry};
 use consensus_core::{blockhash, hashing, BlockHashMap, BlueWorkType};
-use event_processor::notify::Notification;
-use event_processor::processor::EventProcessor;
+use consensus_notify::service::NotifyService;
 use hashes::Hash;
 
 use flate2::read::GzDecoder;
@@ -34,6 +32,7 @@ use kaspa_core::core::Core;
 use kaspa_core::info;
 use kaspa_core::signals::Shutdown;
 use kaspa_core::task::runtime::AsyncRuntime;
+use kaspa_index_processor::service::IndexService;
 use math::Uint256;
 use muhash::MuHash;
 use serde::{Deserialize, Serialize};
@@ -846,15 +845,17 @@ async fn json_test(file_path: &str) {
         config.process_genesis = false;
     }
 
-    let (consensus_send, consensus_recv) = unbounded::<ConsensusEvent>();
-    let (event_processor_send, _event_processor_recv) = unbounded::<Notification>();
-    let consensus = Arc::new(TestConsensus::create_from_temp_db(&config, consensus_send));
+    let (notification_send, notification_recv) = unbounded();
+    let consensus = Arc::new(TestConsensus::create_from_temp_db(&config, notification_send));
+    let notify_service = Arc::new(NotifyService::new(consensus.notification_root(), notification_recv));
 
     let (_utxoindex_db_lifetime, utxoindex_db) = create_temp_db();
     let utxoindex = UtxoIndex::new(consensus.consensus(), utxoindex_db).unwrap();
-    let event_processor = Arc::new(EventProcessor::new(Some(utxoindex.clone()), consensus_recv, event_processor_send));
+    let index_service = Arc::new(IndexService::new(&notify_service.notifier(), Some(utxoindex.clone())));
+
     let async_runtime = Arc::new(AsyncRuntime::new());
-    async_runtime.register(event_processor.clone());
+    async_runtime.register(notify_service.clone());
+    async_runtime.register(index_service.clone());
 
     let core = Arc::new(Core::new());
     core.bind(consensus.clone());
@@ -1018,7 +1019,7 @@ async fn json_concurrency_test(file_path: &str) {
         None
     };
 
-    let chunks = lines.into_iter().chunks(1000);
+    let chunks = lines.chunks(1000);
     let mut iter = chunks.into_iter();
     let mut chunk = iter.next().unwrap();
     let mut prev_joins = submit_chunk(&consensus, &mut chunk, proof_exists);
@@ -1466,7 +1467,7 @@ async fn selected_chain_test() {
     for i in 15..23 {
         consensus.add_block_with_parents(i.into(), vec![config.genesis_hash]).await.unwrap();
     }
-    consensus.add_block_with_parents(23.into(), (15..23).into_iter().map(|i| i.into()).collect_vec()).await.unwrap();
+    consensus.add_block_with_parents(23.into(), (15..23).map(|i| i.into()).collect_vec()).await.unwrap();
 
     assert_eq!(consensus.header_processor.selected_chain_store.read().get_by_index(0).unwrap(), config.genesis_hash);
     assert_eq!(consensus.header_processor.selected_chain_store.read().get_by_index(1).unwrap(), 22.into()); // We expect 23's selected parent to be 22 because of GHOSTDAG tie breaer rules.

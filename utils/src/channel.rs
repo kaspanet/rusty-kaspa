@@ -1,5 +1,4 @@
-use async_channel::TrySendError;
-use async_channel::{unbounded, Receiver, Sender};
+use async_channel::{unbounded, Receiver, RecvError, SendError, Sender, TryRecvError, TrySendError};
 
 /// Multiple producers multiple consumers channel
 #[derive(Clone, Debug)]
@@ -29,8 +28,36 @@ impl<T> Channel<T> {
         self.receiver.is_closed()
     }
 
+    pub async fn recv(&self) -> Result<T, RecvError> {
+        self.receiver.recv().await
+    }
+
+    pub fn try_recv(&self) -> Result<T, TryRecvError> {
+        self.receiver.try_recv()
+    }
+
+    pub async fn send(&self, msg: T) -> Result<(), SendError<T>> {
+        self.sender.send(msg).await
+    }
+
     pub fn try_send(&self, msg: T) -> Result<(), TrySendError<T>> {
         self.sender.try_send(msg)
+    }
+
+    pub fn len(&self) -> usize {
+        self.receiver.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.receiver.is_empty()
+    }
+
+    pub fn receiver_count(&self) -> usize {
+        self.sender.receiver_count()
+    }
+
+    pub fn sender_count(&self) -> usize {
+        self.sender.sender_count()
     }
 }
 

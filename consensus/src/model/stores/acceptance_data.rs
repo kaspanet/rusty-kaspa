@@ -1,16 +1,11 @@
+use consensus_core::acceptance_data::AcceptanceData;
 use consensus_core::BlockHasher;
 use database::prelude::StoreError;
 use database::prelude::DB;
 use database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
 use hashes::Hash;
 use rocksdb::WriteBatch;
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AcceptanceData {
-    // TODO
-}
 
 pub trait AcceptanceDataStoreReader {
     fn get(&self, hash: Hash) -> Result<Arc<AcceptanceData>, StoreError>;

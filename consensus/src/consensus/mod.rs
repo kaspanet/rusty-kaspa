@@ -58,7 +58,6 @@ use consensus_core::{
         consensus::{ConsensusError, ConsensusResult},
         tx::TxResult,
     },
-    events::ConsensusEvent,
     header::Header,
     muhash::MuHashExtensions,
     pruning::{PruningPointProof, PruningPointsList},
@@ -66,11 +65,11 @@ use consensus_core::{
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     BlockHashSet,
 };
+use consensus_notify::root::ConsensusNotificationRoot;
 
-use async_channel::Sender as AsyncSender; // to avoid confusion with crossbeam
 use crossbeam_channel::{unbounded as unbounded_crossbeam, Receiver as CrossbeamReceiver, Sender as CrossbeamSender};
 use database::prelude::StoreResultExtensions;
-// to aviod confusion with async_channel
+// to avoid confusion with async_channel
 use futures_util::future::BoxFuture;
 use hashes::Hash;
 use itertools::Itertools;
@@ -110,7 +109,6 @@ pub struct Consensus {
 
     // Channels
     block_sender: CrossbeamSender<BlockProcessingMessage>,
-    pub consensus_sender: AsyncSender<ConsensusEvent>,
 
     // Processors
     pub header_processor: Arc<HeaderProcessor>,
@@ -154,12 +152,14 @@ pub struct Consensus {
     pub(super) pruning_proof_manager: PruningProofManager,
     sync_manager: SyncManager<DbReachabilityStore, DbGhostdagStore, DbSelectedChainStore, DbHeadersSelectedTipStore, DbPruningStore>,
 
+    notification_root: Arc<ConsensusNotificationRoot>,
+
     // Counters
     pub counters: Arc<ProcessingCounters>,
 }
 
 impl Consensus {
-    pub fn new(db: Arc<DB>, config: &Config, consensus_sender: AsyncSender<ConsensusEvent>) -> Self {
+    pub fn new(db: Arc<DB>, config: &Config, notification_root: Arc<ConsensusNotificationRoot>) -> Self {
         let params = &config.params;
         let perf_params = &config.perf;
         //
@@ -400,7 +400,6 @@ impl Consensus {
         let virtual_processor = Arc::new(VirtualStateProcessor::new(
             virtual_receiver,
             virtual_pool,
-            consensus_sender.clone(),
             params,
             config.process_genesis,
             db.clone(),
@@ -428,6 +427,7 @@ impl Consensus {
             pruning_manager.clone(),
             parents_manager.clone(),
             depth_manager,
+            notification_root.clone(),
         ));
 
         let pruning_proof_manager = PruningProofManager::new(
@@ -503,9 +503,9 @@ impl Consensus {
             pruning_manager,
             pruning_proof_manager,
             sync_manager,
+            notification_root,
 
             counters,
-            consensus_sender,
         }
     }
 
@@ -565,6 +565,10 @@ impl Consensus {
 
     pub fn block_status(&self, hash: Hash) -> BlockStatus {
         self.statuses_store.read().get(hash).unwrap()
+    }
+
+    pub fn notification_root(&self) -> Arc<ConsensusNotificationRoot> {
+        self.notification_root.clone()
     }
 
     pub fn processing_counters(&self) -> &Arc<ProcessingCounters> {

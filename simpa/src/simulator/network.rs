@@ -1,4 +1,5 @@
 use async_channel::unbounded;
+use consensus_notify::root::ConsensusNotificationRoot;
 use std::sync::Arc;
 use std::thread::JoinHandle;
 
@@ -9,7 +10,6 @@ use consensus::config::Config;
 use consensus::consensus::test_consensus::{create_permanent_db, create_temp_db, TempDbLifetime};
 use consensus::consensus::Consensus;
 use consensus_core::block::Block;
-use consensus_core::events::ConsensusEvent;
 
 type ConsensusWrapper = (Arc<Consensus>, Vec<JoinHandle<()>>, TempDbLifetime);
 
@@ -47,8 +47,9 @@ impl KaspaNetworkSimulator {
             } else {
                 create_temp_db()
             };
-            let (dummy_sender, _) = unbounded::<ConsensusEvent>();
-            let consensus = Arc::new(Consensus::new(db, &self.config, dummy_sender));
+            let (dummy_notification_sender, _) = unbounded();
+            let notification_root = Arc::new(ConsensusNotificationRoot::new(dummy_notification_sender));
+            let consensus = Arc::new(Consensus::new(db, &self.config, notification_root));
             let handles = consensus.init();
             let (sk, pk) = secp.generate_keypair(&mut rng);
             let miner_process = Box::new(Miner::new(

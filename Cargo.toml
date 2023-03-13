@@ -4,6 +4,7 @@ members = [
     "wallet",
     "consensus",
     "consensus/core",
+    "consensus/notify",
     "consensus/pow",
     "kaspad",
     "simpa",
@@ -13,8 +14,10 @@ members = [
     "crypto/muhash",
     "crypto/addresses",
     "crypto/merkle",
+    "notify",
+    "indexes/core",
+    "indexes/processor",
     "indexes/utxoindex",
-    "event_processor",
     "rpc/core",
     "rpc/grpc/core",
     "rpc/grpc/client",
@@ -41,6 +44,7 @@ kaspa-core = { path = "core" }
 kaspa-wallet = { path = "wallet" }
 consensus = { path = "consensus" }
 consensus-core = { path = "consensus/core" }
+consensus-notify = { path = "consensus/notify" }
 kaspad = { path = "kaspad" }
 wasm = { path = "wasm" }
 math = { path = "math" }
@@ -49,9 +53,11 @@ muhash = { path = "crypto/muhash" }
 addresses = { path = "crypto/addresses" }
 merkle = { path = "crypto/merkle" }
 pow = { path = "consensus/pow" }
-event-processor = {path = "event_processor" }
+kaspa-index-core = { path = "indexes/core" }
+kaspa-index-processor = { path = "indexes/processor" }
 utxoindex = { path = "indexes/utxoindex" }
 kaspa-utils = { path = "utils" }
+kaspa-notify = { path = "notify" }
 kaspa-rpc-core = { path = "rpc/core" }
 kaspa-grpc-core = { path = "rpc/grpc/core" }
 kaspa-grpc-client = { path = "rpc/grpc/client" }
@@ -85,7 +91,7 @@ criterion = { version = "0.4", default-features = false }
 indexmap = "1.9.1"
 parking_lot = "0.12"
 smallvec = { version = "1.10.0", features = ["serde"] }
-borsh = "0.9.3"
+borsh = { version = "0.9", features = ["rc"] } # please keep this fixed
 clap = { version = "4.0.23", features = ["derive", "string"] }
 async-channel = "1.8.0"
 derive_more = { version = "0.99" }

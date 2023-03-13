@@ -208,20 +208,12 @@ from!(_item: RpcResult<&kaspa_rpc_core::GetSubnetworkResponse>, protowire::GetSu
 
 // ~~~
 
-from!(
-    _item: &kaspa_rpc_core::GetVirtualSelectedParentChainFromBlockRequest,
-    protowire::GetVirtualSelectedParentChainFromBlockRequestMessage,
-    {
-        unimplemented!();
-    }
-);
-from!(
-    _item: RpcResult<&kaspa_rpc_core::GetVirtualSelectedParentChainFromBlockResponse>,
-    protowire::GetVirtualSelectedParentChainFromBlockResponseMessage,
-    {
-        unimplemented!();
-    }
-);
+from!(_item: &kaspa_rpc_core::GetVirtualChainFromBlockRequest, protowire::GetVirtualChainFromBlockRequestMessage, {
+    unimplemented!();
+});
+from!(_item: RpcResult<&kaspa_rpc_core::GetVirtualChainFromBlockResponse>, protowire::GetVirtualChainFromBlockResponseMessage, {
+    unimplemented!();
+});
 
 from!(item: &kaspa_rpc_core::GetBlocksRequest, protowire::GetBlocksRequestMessage, {
     Self { low_hash: item.low_hash.to_string(), include_blocks: item.include_blocks, include_transactions: item.include_transactions }
@@ -286,12 +278,10 @@ from!(_item: RpcResult<&kaspa_rpc_core::GetBalancesByAddressesResponse>, protowi
     unimplemented!();
 });
 
-from!(&kaspa_rpc_core::GetVirtualSelectedParentBlueScoreRequest, protowire::GetVirtualSelectedParentBlueScoreRequestMessage);
-from!(
-    item: RpcResult<&kaspa_rpc_core::GetVirtualSelectedParentBlueScoreResponse>,
-    protowire::GetVirtualSelectedParentBlueScoreResponseMessage,
-    { Self { blue_score: item.blue_score, error: None } }
-);
+from!(&kaspa_rpc_core::GetSinkBlueScoreRequest, protowire::GetSinkBlueScoreRequestMessage);
+from!(item: RpcResult<&kaspa_rpc_core::GetSinkBlueScoreResponse>, protowire::GetSinkBlueScoreResponseMessage, {
+    Self { blue_score: item.blue_score, error: None }
+});
 
 from!(_item: &kaspa_rpc_core::BanRequest, protowire::BanRequestMessage, {
     unimplemented!();
@@ -373,25 +363,15 @@ from!(item: &kaspa_rpc_core::NotifyVirtualDaaScoreChangedRequest, protowire::Not
 });
 from!(RpcResult<&kaspa_rpc_core::NotifyVirtualDaaScoreChangedResponse>, protowire::NotifyVirtualDaaScoreChangedResponseMessage);
 
-from!(
-    item: &kaspa_rpc_core::NotifyVirtualSelectedParentChainChangedRequest,
-    protowire::NotifyVirtualSelectedParentChainChangedRequestMessage,
-    { Self { include_accepted_transaction_ids: item.include_accepted_transaction_ids, command: item.command.into() } }
-);
-from!(
-    RpcResult<&kaspa_rpc_core::NotifyVirtualSelectedParentChainChangedResponse>,
-    protowire::NotifyVirtualSelectedParentChainChangedResponseMessage
-);
+from!(item: &kaspa_rpc_core::NotifyVirtualChainChangedRequest, protowire::NotifyVirtualChainChangedRequestMessage, {
+    Self { include_accepted_transaction_ids: item.include_accepted_transaction_ids, command: item.command.into() }
+});
+from!(RpcResult<&kaspa_rpc_core::NotifyVirtualChainChangedResponse>, protowire::NotifyVirtualChainChangedResponseMessage);
 
-from!(
-    item: &kaspa_rpc_core::NotifyVirtualSelectedParentBlueScoreChangedRequest,
-    protowire::NotifyVirtualSelectedParentBlueScoreChangedRequestMessage,
-    { Self { command: item.command.into() } }
-);
-from!(
-    RpcResult<&kaspa_rpc_core::NotifyVirtualSelectedParentBlueScoreChangedResponse>,
-    protowire::NotifyVirtualSelectedParentBlueScoreChangedResponseMessage
-);
+from!(item: &kaspa_rpc_core::NotifySinkBlueScoreChangedRequest, protowire::NotifySinkBlueScoreChangedRequestMessage, {
+    Self { command: item.command.into() }
+});
+from!(RpcResult<&kaspa_rpc_core::NotifySinkBlueScoreChangedResponse>, protowire::NotifySinkBlueScoreChangedResponseMessage);
 
 // ----------------------------------------------------------------------------
 // protowire to rpc_core
@@ -548,16 +528,12 @@ try_from!(_item: &protowire::GetSubnetworkResponseMessage, RpcResult<kaspa_rpc_c
     unimplemented!()
 });
 
-try_from!(
-    _item: &protowire::GetVirtualSelectedParentChainFromBlockRequestMessage,
-    kaspa_rpc_core::GetVirtualSelectedParentChainFromBlockRequest,
-    { unimplemented!() }
-);
-try_from!(
-    _item: &protowire::GetVirtualSelectedParentChainFromBlockResponseMessage,
-    RpcResult<kaspa_rpc_core::GetVirtualSelectedParentChainFromBlockResponse>,
-    { unimplemented!() }
-);
+try_from!(_item: &protowire::GetVirtualChainFromBlockRequestMessage, kaspa_rpc_core::GetVirtualChainFromBlockRequest, {
+    unimplemented!()
+});
+try_from!(_item: &protowire::GetVirtualChainFromBlockResponseMessage, RpcResult<kaspa_rpc_core::GetVirtualChainFromBlockResponse>, {
+    unimplemented!()
+});
 
 try_from!(item: &protowire::GetBlocksRequestMessage, kaspa_rpc_core::GetBlocksRequest, {
     Self {
@@ -623,12 +599,10 @@ try_from!(_item: &protowire::GetBalancesByAddressesResponseMessage, RpcResult<ka
     unimplemented!()
 });
 
-try_from!(&protowire::GetVirtualSelectedParentBlueScoreRequestMessage, kaspa_rpc_core::GetVirtualSelectedParentBlueScoreRequest);
-try_from!(
-    item: &protowire::GetVirtualSelectedParentBlueScoreResponseMessage,
-    RpcResult<kaspa_rpc_core::GetVirtualSelectedParentBlueScoreResponse>,
-    { Self { blue_score: item.blue_score } }
-);
+try_from!(&protowire::GetSinkBlueScoreRequestMessage, kaspa_rpc_core::GetSinkBlueScoreRequest);
+try_from!(item: &protowire::GetSinkBlueScoreResponseMessage, RpcResult<kaspa_rpc_core::GetSinkBlueScoreResponse>, {
+    Self { blue_score: item.blue_score }
+});
 
 try_from!(_item: &protowire::BanRequestMessage, kaspa_rpc_core::BanRequest, {
     //
@@ -721,25 +695,15 @@ try_from!(item: &protowire::NotifyVirtualDaaScoreChangedRequestMessage, kaspa_rp
 });
 try_from!(&protowire::NotifyVirtualDaaScoreChangedResponseMessage, RpcResult<kaspa_rpc_core::NotifyVirtualDaaScoreChangedResponse>);
 
-try_from!(
-    item: &protowire::NotifyVirtualSelectedParentChainChangedRequestMessage,
-    kaspa_rpc_core::NotifyVirtualSelectedParentChainChangedRequest,
-    { Self { include_accepted_transaction_ids: item.include_accepted_transaction_ids, command: item.command.into() } }
-);
-try_from!(
-    &protowire::NotifyVirtualSelectedParentChainChangedResponseMessage,
-    RpcResult<kaspa_rpc_core::NotifyVirtualSelectedParentChainChangedResponse>
-);
+try_from!(item: &protowire::NotifyVirtualChainChangedRequestMessage, kaspa_rpc_core::NotifyVirtualChainChangedRequest, {
+    Self { include_accepted_transaction_ids: item.include_accepted_transaction_ids, command: item.command.into() }
+});
+try_from!(&protowire::NotifyVirtualChainChangedResponseMessage, RpcResult<kaspa_rpc_core::NotifyVirtualChainChangedResponse>);
 
-try_from!(
-    item: &protowire::NotifyVirtualSelectedParentBlueScoreChangedRequestMessage,
-    kaspa_rpc_core::NotifyVirtualSelectedParentBlueScoreChangedRequest,
-    { Self { command: item.command.into() } }
-);
-try_from!(
-    &protowire::NotifyVirtualSelectedParentBlueScoreChangedResponseMessage,
-    RpcResult<kaspa_rpc_core::NotifyVirtualSelectedParentBlueScoreChangedResponse>
-);
+try_from!(item: &protowire::NotifySinkBlueScoreChangedRequestMessage, kaspa_rpc_core::NotifySinkBlueScoreChangedRequest, {
+    Self { command: item.command.into() }
+});
+try_from!(&protowire::NotifySinkBlueScoreChangedResponseMessage, RpcResult<kaspa_rpc_core::NotifySinkBlueScoreChangedResponse>);
 
 // ----------------------------------------------------------------------------
 // Unit tests
