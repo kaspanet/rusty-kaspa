@@ -4,6 +4,7 @@ extern crate hashes;
 
 use clap::Parser;
 use consensus_core::networktype::NetworkType;
+use consensus_notify::root::ConsensusNotificationRoot;
 use consensus_notify::service::NotifyService;
 
 use kaspa_core::{core::Core, signals::Signals, task::runtime::AsyncRuntime};
@@ -153,10 +154,11 @@ pub fn main() {
     };
 
     let (notification_send, notification_recv) = unbounded();
+    let notification_root = Arc::new(ConsensusNotificationRoot::new(notification_send));
 
     // Use `num_cpus` background threads for the consensus database as recommended by rocksdb
     let consensus_db = database::prelude::open_db(consensus_db_dir, true, num_cpus::get());
-    let consensus = Arc::new(Consensus::new(consensus_db, &config, notification_send));
+    let consensus = Arc::new(Consensus::new(consensus_db, &config, notification_root));
     let monitor = Arc::new(ConsensusMonitor::new(consensus.processing_counters().clone()));
 
     let notify_service = Arc::new(NotifyService::new(consensus.notification_root(), notification_recv));

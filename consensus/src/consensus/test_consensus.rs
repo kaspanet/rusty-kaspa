@@ -15,7 +15,7 @@ use consensus_core::{
     tx::Transaction,
     BlockHashSet,
 };
-use consensus_notify::notification::Notification;
+use consensus_notify::{notification::Notification, root::ConsensusNotificationRoot};
 use hashes::Hash;
 use kaspa_core::{core::Core, service::Service};
 use parking_lot::RwLock;
@@ -53,8 +53,9 @@ pub struct TestConsensus {
 
 impl TestConsensus {
     pub fn new(db: Arc<DB>, config: &Config, notification_sender: Sender<Notification>) -> Self {
+        let notification_root = Arc::new(ConsensusNotificationRoot::new(notification_sender));
         Self {
-            consensus: Arc::new(Consensus::new(db, config, notification_sender)),
+            consensus: Arc::new(Consensus::new(db, config, notification_root)),
             params: config.params.clone(),
             temp_db_lifetime: Default::default(),
         }
@@ -66,17 +67,15 @@ impl TestConsensus {
 
     pub fn create_from_temp_db(config: &Config, notification_sender: Sender<Notification>) -> Self {
         let (temp_db_lifetime, db) = create_temp_db();
-        Self { consensus: Arc::new(Consensus::new(db, config, notification_sender)), params: config.params.clone(), temp_db_lifetime }
+        let notification_root = Arc::new(ConsensusNotificationRoot::new(notification_sender));
+        Self { consensus: Arc::new(Consensus::new(db, config, notification_root)), params: config.params.clone(), temp_db_lifetime }
     }
 
     pub fn create_from_temp_db_and_dummy_sender(config: &Config) -> Self {
         let (temp_db_lifetime, db) = create_temp_db();
         let (dummy_notification_sender, _) = async_channel::unbounded();
-        Self {
-            consensus: Arc::new(Consensus::new(db, config, dummy_notification_sender)),
-            params: config.params.clone(),
-            temp_db_lifetime,
-        }
+        let notification_root = Arc::new(ConsensusNotificationRoot::new(dummy_notification_sender));
+        Self { consensus: Arc::new(Consensus::new(db, config, notification_root)), params: config.params.clone(), temp_db_lifetime }
     }
 
     pub fn build_header_with_parents(&self, hash: Hash, parents: Vec<Hash>) -> Header {

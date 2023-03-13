@@ -2667,6 +2667,7 @@ dependencies = [
  "clap 4.1.4",
  "consensus",
  "consensus-core",
+ "consensus-notify",
  "futures",
  "futures-util",
  "hashes",
