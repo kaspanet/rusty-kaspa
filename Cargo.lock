@@ -602,6 +602,7 @@ dependencies = [
  "async-channel",
  "bincode",
  "consensus-core",
+ "consensus-notify",
  "criterion",
  "crossbeam-channel",
  "database",
@@ -612,6 +613,7 @@ dependencies = [
  "indexmap",
  "itertools 0.10.5",
  "kaspa-core",
+ "kaspa-notify",
  "kaspa-utils",
  "log",
  "math",
@@ -653,6 +655,24 @@ dependencies = [
  "smallvec",
  "thiserror",
  "txscript-errors",
+]
+
+[[package]]
+name = "consensus-notify"
+version = "0.1.0"
+dependencies = [
+ "async-channel",
+ "consensus-core",
+ "derive_more",
+ "futures",
+ "hashes",
+ "kaspa-core",
+ "kaspa-notify",
+ "kaspa-utils",
+ "log",
+ "paste",
+ "thiserror",
+ "triggered",
 ]
 
 [[package]]
@@ -927,26 +947,6 @@ name = "event-listener"
 version = "2.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0206175f82b8d6bf6652ff7d71a1e27fd2e4efde587fd368662814d6ec1d9ce0"
-
-[[package]]
-name = "event-processor"
-version = "0.1.0"
-dependencies = [
- "async-channel",
- "consensus",
- "consensus-core",
- "futures",
- "hashes",
- "kaspa-core",
- "kaspa-utils",
- "log",
- "parking_lot",
- "rand 0.8.5",
- "thiserror",
- "tokio",
- "triggered",
- "utxoindex",
-]
 
 [[package]]
 name = "faster-hex"
@@ -1451,6 +1451,7 @@ dependencies = [
  "h2",
  "kaspa-core",
  "kaspa-grpc-core",
+ "kaspa-notify",
  "kaspa-rpc-core",
  "kaspa-utils",
  "log",
@@ -1475,6 +1476,7 @@ dependencies = [
  "futures",
  "h2",
  "kaspa-core",
+ "kaspa-notify",
  "kaspa-rpc-core",
  "kaspa-utils",
  "log",
@@ -1501,6 +1503,7 @@ dependencies = [
  "h2",
  "kaspa-core",
  "kaspa-grpc-core",
+ "kaspa-notify",
  "kaspa-rpc-core",
  "kaspa-utils",
  "log",
@@ -1515,6 +1518,82 @@ dependencies = [
 ]
 
 [[package]]
+name = "kaspa-index-core"
+version = "0.1.0"
+dependencies = [
+ "async-channel",
+ "async-trait",
+ "consensus",
+ "consensus-core",
+ "consensus-notify",
+ "derive_more",
+ "futures",
+ "hashes",
+ "kaspa-core",
+ "kaspa-notify",
+ "kaspa-utils",
+ "log",
+ "parking_lot",
+ "paste",
+ "rand 0.8.5",
+ "serde",
+ "thiserror",
+ "tokio",
+ "triggered",
+]
+
+[[package]]
+name = "kaspa-index-processor"
+version = "0.1.0"
+dependencies = [
+ "async-channel",
+ "async-trait",
+ "consensus",
+ "consensus-core",
+ "consensus-notify",
+ "derive_more",
+ "futures",
+ "hashes",
+ "kaspa-core",
+ "kaspa-index-core",
+ "kaspa-notify",
+ "kaspa-utils",
+ "log",
+ "parking_lot",
+ "paste",
+ "rand 0.8.5",
+ "thiserror",
+ "tokio",
+ "triggered",
+ "utxoindex",
+]
+
+[[package]]
+name = "kaspa-notify"
+version = "0.1.0"
+dependencies = [
+ "addresses",
+ "async-channel",
+ "async-trait",
+ "borsh",
+ "consensus-core",
+ "derive_more",
+ "futures",
+ "futures-util",
+ "kaspa-core",
+ "kaspa-utils",
+ "log",
+ "parking_lot",
+ "paste",
+ "rand 0.8.5",
+ "serde",
+ "thiserror",
+ "tokio",
+ "triggered",
+ "workflow-core",
+]
+
+[[package]]
 name = "kaspa-rpc-core"
 version = "0.1.0"
 dependencies = [
@@ -1524,16 +1603,19 @@ dependencies = [
  "borsh",
  "cfg-if",
  "consensus-core",
+ "consensus-notify",
  "derive_more",
- "event-processor",
  "faster-hex",
  "futures",
  "futures-util",
  "hashes",
  "kaspa-core",
+ "kaspa-index-core",
+ "kaspa-notify",
  "kaspa-utils",
  "log",
  "math",
+ "paste",
  "rand 0.8.5",
  "serde",
  "smallvec",
@@ -1575,13 +1657,14 @@ dependencies = [
  "clap 4.1.4",
  "consensus",
  "consensus-core",
+ "consensus-notify",
  "database",
  "dirs",
- "event-processor",
  "futures-util",
  "hashes",
  "kaspa-core",
  "kaspa-grpc-server",
+ "kaspa-index-processor",
  "kaspa-rpc-core",
  "log",
  "num-format",
@@ -2610,6 +2693,7 @@ dependencies = [
  "clap 4.1.4",
  "consensus",
  "consensus-core",
+ "consensus-notify",
  "futures",
  "futures-util",
  "hashes",
@@ -2719,10 +2803,10 @@ dependencies = [
  "bincode",
  "consensus",
  "consensus-core",
+ "consensus-notify",
  "criterion",
  "crossbeam-channel",
  "database",
- "event-processor",
  "faster-hex",
  "flate2",
  "futures-util",
@@ -2730,6 +2814,7 @@ dependencies = [
  "indexmap",
  "itertools 0.10.5",
  "kaspa-core",
+ "kaspa-index-processor",
  "kaspa-utils",
  "log",
  "math",
@@ -3089,6 +3174,7 @@ dependencies = [
  "database",
  "hashes",
  "kaspa-core",
+ "kaspa-index-core",
  "kaspa-utils",
  "log",
  "parking_lot",

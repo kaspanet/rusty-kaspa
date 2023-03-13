@@ -306,23 +306,23 @@ message SubmitTransactionResponseMessage{
   RPCError error = 1000;
 }
 
-// NotifyVirtualSelectedParentChainChangedRequestMessage registers this connection for virtualSelectedParentChainChanged notifications.
+// NotifyVirtualChainChangedRequestMessage registers this connection for virtualChainChanged notifications.
 //
-// See: VirtualSelectedParentChainChangedNotificationMessage
-message NotifyVirtualSelectedParentChainChangedRequestMessage{
+// See: VirtualChainChangedNotificationMessage
+message NotifyVirtualChainChangedRequestMessage{
   bool includeAcceptedTransactionIds = 1;
   RpcNotifyCommand command = 101;
 }
 
-message NotifyVirtualSelectedParentChainChangedResponseMessage{
+message NotifyVirtualChainChangedResponseMessage{
   RPCError error = 1000;
 }
 
-// VirtualSelectedParentChainChangedNotificationMessage is sent whenever the DAG's selected parent
+// VirtualChainChangedNotificationMessage is sent whenever the DAG's selected parent
 // chain had changed.
 //
-// See: NotifyVirtualSelectedParentChainChangedRequestMessage
-message VirtualSelectedParentChainChangedNotificationMessage{
+// See: NotifyVirtualChainChangedRequestMessage
+message VirtualChainChangedNotificationMessage{
   // The chain blocks that were removed, in high-to-low order
   repeated string removedChainBlockHashes = 1;
 
@@ -359,9 +359,9 @@ message GetSubnetworkResponseMessage{
   RPCError error = 1000;
 }
 
-// GetVirtualSelectedParentChainFromBlockRequestMessage requests the virtual selected
+// GetVirtualChainFromBlockRequestMessage requests the virtual selected
 // parent chain from some startHash to this kaspad's current virtual
-message GetVirtualSelectedParentChainFromBlockRequestMessage{
+message GetVirtualChainFromBlockRequestMessage{
   string startHash = 1;
   bool includeAcceptedTransactionIds = 2;
 }
@@ -371,7 +371,7 @@ message RpcAcceptedTransactionIds{
   repeated string acceptedTransactionIds = 2;
 }
 
-message GetVirtualSelectedParentChainFromBlockResponseMessage{
+message GetVirtualChainFromBlockResponseMessage{
   // The chain blocks that were removed, in high-to-low order
   repeated string removedChainBlockHashes = 1;
 
@@ -564,35 +564,35 @@ message GetBalancesByAddressesResponseMessage {
   RPCError error = 1000;
 }
 
-// GetVirtualSelectedParentBlueScoreRequestMessage requests the blue score of the current selected parent
+// GetSinkBlueScoreRequestMessage requests the blue score of the current selected parent
 // of the virtual block.
-message GetVirtualSelectedParentBlueScoreRequestMessage {
+message GetSinkBlueScoreRequestMessage {
 }
 
-message GetVirtualSelectedParentBlueScoreResponseMessage {
+message GetSinkBlueScoreResponseMessage {
   uint64 blueScore = 1;
 
   RPCError error = 1000;
 }
 
-// NotifyVirtualSelectedParentBlueScoreChangedRequestMessage registers this connection for
-// virtualSelectedParentBlueScoreChanged notifications.
+// NotifySinkBlueScoreChangedRequestMessage registers this connection for
+// sinkBlueScoreChanged notifications.
 //
-// See: VirtualSelectedParentBlueScoreChangedNotificationMessage
-message NotifyVirtualSelectedParentBlueScoreChangedRequestMessage {
+// See: SinkBlueScoreChangedNotificationMessage
+message NotifySinkBlueScoreChangedRequestMessage {
   RpcNotifyCommand command = 101;
 }
 
-message NotifyVirtualSelectedParentBlueScoreChangedResponseMessage {
+message NotifySinkBlueScoreChangedResponseMessage {
   RPCError error = 1000;
 }
 
-// VirtualSelectedParentBlueScoreChangedNotificationMessage is sent whenever the blue score
+// SinkBlueScoreChangedNotificationMessage is sent whenever the blue score
 // of the virtual's selected parent changes.
 //
-// See NotifyVirtualSelectedParentBlueScoreChangedRequestMessage
-message VirtualSelectedParentBlueScoreChangedNotificationMessage {
-  uint64 virtualSelectedParentBlueScore = 1;
+// See NotifySinkBlueScoreChangedRequestMessage
+message SinkBlueScoreChangedNotificationMessage {
+  uint64 sinkBlueScore = 1;
 }
 
 // NotifyVirtualDaaScoreChangedRequestMessage registers this connection for

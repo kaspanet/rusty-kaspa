@@ -12,6 +12,7 @@ hashes.workspace = true
 kaspa-core.workspace = true
 consensus-core.workspace = true
 consensus.workspace = true
+consensus-notify.workspace = true
 
 rand.workspace = true
 itertools.workspace = true

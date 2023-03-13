@@ -3,6 +3,7 @@ use std::hash::{BuildHasher, Hasher};
 
 use hashes::Hash;
 
+pub mod acceptance_data;
 pub mod api;
 pub mod block;
 pub mod blockhash;
@@ -10,7 +11,6 @@ pub mod blockstatus;
 pub mod coinbase;
 pub mod constants;
 pub mod errors;
-pub mod events;
 pub mod hashing;
 pub mod header;
 pub mod mass;

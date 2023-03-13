@@ -1,0 +1,32 @@
+[package]
+name = "kaspa-index-processor"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
+
+[dependencies]
+hashes.workspace = true
+thiserror.workspace = true
+consensus-core.workspace = true
+consensus-notify.workspace = true
+consensus.workspace = true
+kaspa-core.workspace = true
+kaspa-utils.workspace = true
+kaspa-notify.workspace = true
+kaspa-index-core.workspace = true
+utxoindex.workspace = true
+async-channel.workspace = true
+async-trait = "0.1.57"
+log.workspace = true
+futures = "0.3.25"
+triggered = "0.1"
+derive_more.workspace = true
+paste = "1.0.11"
+tokio = { version = "1.21.2", features = [ "rt-multi-thread", "macros", "signal" ]}
+
+[dev-dependencies]
+parking_lot.workspace = true
+tokio = { workspace = true, features = ["rt", "macros"] }
+rand = {workspace = true,  features = [ "small_rng" ]}

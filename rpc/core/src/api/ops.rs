@@ -1,5 +1,3 @@
-use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
-use serde::{Deserialize, Serialize};
 use workflow_core::enums::u32_try_from;
 
 u32_try_from! {
@@ -20,7 +18,7 @@ u32_try_from! {
         SubmitTransaction,
         GetBlock,
         GetSubnetwork,
-        GetVirtualSelectedParentChainFromBlock,
+        GetVirtualChainFromBlock,
         GetBlocks,
         GetBlockCount,
         GetBlockDagInfo,
@@ -30,7 +28,7 @@ u32_try_from! {
         GetUtxosByAddresses,
         GetBalanceByAddress,
         GetBalancesByAddresses,
-        GetVirtualSelectedParentBlueScore,
+        GetSinkBlueScore,
         Ban,
         Unban,
         GetInfo,
@@ -45,8 +43,8 @@ u32_try_from! {
         NotifyPruningPointUtxoSetOverride,
         NotifyFinalityConflict,
         NotifyVirtualDaaScoreChanged,
-        NotifyVirtualSelectedParentChainChanged,
-        NotifyVirtualSelectedParentBlueScoreChanged,
+        NotifyVirtualChainChanged,
+        NotifySinkBlueScoreChanged,
 
         // Server to client notification
         Notification,
@@ -56,29 +54,6 @@ u32_try_from! {
 impl From<RpcApiOps> for u32 {
     fn from(item: RpcApiOps) -> Self {
         item as u32
-    }
-}
-
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
-pub enum SubscribeCommand {
-    Start = 0,
-    Stop = 1,
-}
-
-impl From<SubscribeCommand> for i32 {
-    fn from(item: SubscribeCommand) -> Self {
-        item as i32
-    }
-}
-
-impl From<i32> for SubscribeCommand {
-    // We make this conversion infallible by falling back to Start from any unexpected value.
-    fn from(item: i32) -> Self {
-        if item == 1 {
-            SubscribeCommand::Stop
-        } else {
-            SubscribeCommand::Start
-        }
     }
 }
 
