@@ -184,7 +184,7 @@ pub fn main() {
         None
     };
 
-    let amgr_db = database::prelude::open_db(amgr_db_dir, true, num_cpus::get());
+    let amgr_db = database::prelude::open_db(amgr_db_dir, true, 1);
     let amgr = AddressManager::new(amgr_db);
 
     let rpc_core_server =

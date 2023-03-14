@@ -48,8 +48,9 @@ impl ReceiveAddressesFlow {
 
         let msg = dequeue_with_timeout!(self.incoming_route, Payload::Addresses)?;
         let address_list: Vec<(IpAddr, u16)> = msg.try_into()?;
+        let mut amgr_lock = self.ctx.amgr.lock();
         for (ip, port) in address_list {
-            self.ctx.amgr.lock().add_address(NetAddress::new(ip, port))
+            amgr_lock.add_address(NetAddress::new(ip, port))
         }
 
         Ok(())
