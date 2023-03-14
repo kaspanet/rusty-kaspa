@@ -70,7 +70,7 @@ impl Wallet {
 
     pub fn listener_id(&self) -> ListenerId {
         match &self.notification_mode {
-            NotificationMode::NotSynced => self
+            NotificationMode::MultiListeners => self
                 .listener_id
                 .lock()
                 .unwrap()

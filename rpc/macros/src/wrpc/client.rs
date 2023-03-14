@@ -67,7 +67,7 @@ impl ToTokens for RpcTable {
                         let __self = self;
                         //let request = request;
                         let __ret: RpcResult<#response_type> = {
-                            let resp: ClientResult<#response_type> = __self.rpc.call(#rpc_api_ops::#handler, request).await;
+                            let resp: ClientResult<#response_type> = __self.inner.rpc.call(#rpc_api_ops::#handler, request).await;
                             Ok(resp.map_err(|e| e.to_string())?)
                         };
                         #[allow(unreachable_code)]
