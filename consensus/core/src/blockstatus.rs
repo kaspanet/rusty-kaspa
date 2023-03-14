@@ -28,6 +28,10 @@ impl BlockStatus {
         )
     }
 
+    pub fn is_header_only(self) -> bool {
+        self == Self::StatusHeaderOnly
+    }
+
     pub fn has_block_body(self) -> bool {
         matches!(self, Self::StatusUTXOValid | Self::StatusUTXOPendingVerification | Self::StatusDisqualifiedFromChain)
     }

@@ -1,4 +1,4 @@
-use consensus_core::api::DynConsensus;
+use consensus_core::{api::DynConsensus, config::Config};
 use kaspa_core::{
     task::service::{AsyncService, AsyncServiceFuture},
     trace,
@@ -12,15 +12,15 @@ use crate::flow_context::FlowContext;
 const P2P_CORE_SERVICE: &str = "p2p-service";
 
 pub struct P2pService {
-    consensus: DynConsensus,
+    ctx: Arc<FlowContext>,
     connect: Option<String>, // TEMP: optional connect peer
     listen: Option<String>,
     shutdown: SingleTrigger,
 }
 
 impl P2pService {
-    pub fn new(consensus: DynConsensus, connect: Option<String>, listen: Option<String>) -> Self {
-        Self { consensus, connect, shutdown: SingleTrigger::default(), listen }
+    pub fn new(consensus: DynConsensus, config: &Config, connect: Option<String>, listen: Option<String>) -> Self {
+        Self { ctx: Arc::new(FlowContext::new(consensus, config)), connect, shutdown: SingleTrigger::default(), listen }
     }
 }
 
@@ -38,8 +38,7 @@ impl AsyncService for P2pService {
         // Launch the service and wait for a shutdown signal
         Box::pin(async move {
             let server_address = self.listen.clone().unwrap_or(String::from("[::1]:50051"));
-            let ctx = Arc::new(FlowContext::new(self.consensus.clone()));
-            let p2p_adaptor = Adaptor::bidirectional(server_address.clone(), ctx).unwrap();
+            let p2p_adaptor = Adaptor::bidirectional(server_address.clone(), self.ctx.clone()).unwrap();
 
             // For now, attempt to connect to a running golang node
             if let Some(peer_address) = self.connect.clone() {

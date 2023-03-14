@@ -1,5 +1,5 @@
 use crate::{signals::Shutdown, task::service::AsyncServiceResult};
-use futures_util::future::{join_all, select_all};
+use futures_util::future::{select_all, try_join_all};
 use kaspa_core::core::Core;
 use kaspa_core::service::Service;
 use kaspa_core::task::service::AsyncService;
@@ -8,7 +8,7 @@ use std::{
     sync::{Arc, Mutex},
     thread::{self, JoinHandle as ThreadJoinHandle},
 };
-use tokio::task::{JoinError, JoinHandle as TaskJoinHandle};
+use tokio::task::JoinHandle as TaskJoinHandle;
 
 const ASYNC_RUNTIME: &str = "async-runtime";
 
@@ -84,7 +84,7 @@ impl AsyncRuntime {
         }
 
         // wait for remaining services to finish
-        join_all(remaining_futures).await.into_iter().collect::<Result<Vec<AsyncServiceResult<()>>, JoinError>>().unwrap();
+        try_join_all(remaining_futures).await.unwrap();
 
         // Stop all async services
         // All services futures are spawned as tokio tasks to enable parallelism
@@ -96,7 +96,7 @@ impl AsyncRuntime {
             .iter()
             .map(|x| tokio::spawn(x.clone().stop()))
             .collect::<Vec<TaskJoinHandle<AsyncServiceResult<()>>>>();
-        join_all(futures).await.into_iter().collect::<Result<Vec<AsyncServiceResult<()>>, JoinError>>().unwrap();
+        try_join_all(futures).await.unwrap();
 
         trace!("async-runtime worker exiting");
     }

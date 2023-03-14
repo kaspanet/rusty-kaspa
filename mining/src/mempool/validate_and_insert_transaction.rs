@@ -1,9 +1,12 @@
 use std::sync::Arc;
 
-use crate::mempool::{
-    errors::{RuleError, RuleResult},
-    model::{pool::Pool, tx::MempoolTransaction},
-    Mempool,
+use crate::{
+    consensus_context::ConsensusMiningContext,
+    mempool::{
+        errors::{RuleError, RuleResult},
+        model::{pool::Pool, tx::MempoolTransaction},
+        Mempool,
+    },
 };
 use consensus_core::{
     constants::UNACCEPTED_DAA_SCORE,
@@ -11,7 +14,7 @@ use consensus_core::{
 };
 use kaspa_core::info;
 
-impl Mempool {
+impl<T: ConsensusMiningContext + ?Sized> Mempool<T> {
     pub(crate) fn validate_and_insert_transaction(
         &mut self,
         transaction: Transaction,

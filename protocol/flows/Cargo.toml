@@ -17,6 +17,8 @@ rand.workspace = true
 thiserror.workspace = true
 log.workspace = true
 itertools.workspace = true
+indexmap.workspace = true
+parking_lot.workspace = true
 futures = { version = "0.3", default-features = false, features = ["alloc"] }
 tokio = { version = "1.21.2", features = [
     "rt-multi-thread",

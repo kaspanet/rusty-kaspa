@@ -1,26 +1,30 @@
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::{
+    sync::Arc,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
-use crate::{block_template::selector::TransactionsSelector, model::candidate_tx::CandidateTransaction};
+use crate::{
+    block_template::selector::TransactionsSelector, consensus_context::ConsensusMiningContext,
+    model::candidate_tx::CandidateTransaction,
+};
 
 use super::{errors::BuilderResult, policy::Policy};
-use consensus_core::{
-    api::DynConsensus, block::BlockTemplate, coinbase::MinerData, merkle::calc_hash_merkle_root, tx::COINBASE_TRANSACTION_INDEX,
-};
+use consensus_core::{block::BlockTemplate, coinbase::MinerData, merkle::calc_hash_merkle_root, tx::COINBASE_TRANSACTION_INDEX};
 use kaspa_core::debug;
 
-pub(crate) struct BlockTemplateBuilder {
-    consensus: DynConsensus,
+pub(crate) struct BlockTemplateBuilder<T: ConsensusMiningContext + ?Sized> {
+    consensus: Arc<T>,
     policy: Policy,
 }
 
-impl BlockTemplateBuilder {
-    pub(crate) fn new(consensus: DynConsensus, max_block_mass: u64) -> Self {
+impl<T: ConsensusMiningContext + ?Sized> BlockTemplateBuilder<T> {
+    pub(crate) fn new(consensus: Arc<T>, max_block_mass: u64) -> Self {
         let policy = Policy::new(max_block_mass);
         Self { consensus, policy }
     }
 
-    pub(crate) fn consensus(&self) -> DynConsensus {
-        self.consensus.clone()
+    pub(crate) fn consensus(&self) -> &T {
+        &self.consensus
     }
 
     /// BuildBlockTemplate creates a block template for a miner to consume

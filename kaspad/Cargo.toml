@@ -21,6 +21,7 @@ kaspa-rpc-core.workspace = true
 kaspa-grpc-server.workspace = true
 kaspa-wrpc-server.workspace = true
 p2p-flows.workspace = true
+mining.workspace = true
 
 thiserror.workspace = true
 futures-util.workspace = true

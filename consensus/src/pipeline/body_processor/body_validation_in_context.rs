@@ -6,6 +6,7 @@ use crate::{
 use consensus_core::block::Block;
 use database::prelude::StoreResultExtensions;
 use hashes::Hash;
+use kaspa_utils::option::OptionExtensions;
 use std::sync::Arc;
 
 impl BlockBodyProcessor {
@@ -45,10 +46,10 @@ impl BlockBodyProcessor {
             .header
             .direct_parents()
             .iter()
-            .cloned()
+            .copied()
             .filter(|parent| {
                 let status_option = statuses_read_guard.get(*parent).unwrap_option();
-                status_option.is_none() || !status_option.unwrap().has_block_body()
+                status_option.is_none_or(|s| !s.has_block_body())
             })
             .collect();
         if !missing.is_empty() {

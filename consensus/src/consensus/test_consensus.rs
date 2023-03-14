@@ -7,6 +7,7 @@ use std::{
 
 use async_channel::Sender;
 use consensus_core::{
+    api::ConsensusApi,
     block::{Block, MutableBlock},
     blockstatus::BlockStatus,
     header::Header,
@@ -127,7 +128,7 @@ impl TestConsensus {
     }
 
     pub fn validate_and_insert_block(&self, block: Block) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
-        self.consensus.as_ref().validate_and_insert_block(block, true)
+        self.consensus.validate_and_insert_block(block, true)
     }
 
     pub fn init(&self) -> Vec<JoinHandle<()>> {

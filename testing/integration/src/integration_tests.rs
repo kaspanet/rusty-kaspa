@@ -26,7 +26,7 @@ use consensus_notify::service::NotifyService;
 use hashes::Hash;
 
 use flate2::read::GzDecoder;
-use futures_util::future::join_all;
+use futures_util::future::try_join_all;
 use itertools::Itertools;
 use kaspa_core::core::Core;
 use kaspa_core::info;
@@ -1026,13 +1026,13 @@ async fn json_concurrency_test(file_path: &str) {
 
     for (i, mut chunk) in iter.enumerate() {
         let current_joins = submit_chunk(&consensus, &mut chunk, proof_exists);
-        let statuses = join_all(prev_joins).await.into_iter().collect::<Result<Vec<BlockStatus>, RuleError>>().unwrap();
+        let statuses = try_join_all(prev_joins).await.unwrap();
         assert!(statuses.iter().all(|s| s.is_utxo_valid_or_pending()));
         prev_joins = current_joins;
         info!("Processed 1000 blocks ({} overall)", (i + 1) * 1000);
     }
 
-    let statuses = join_all(prev_joins).await.into_iter().collect::<Result<Vec<BlockStatus>, RuleError>>().unwrap();
+    let statuses = try_join_all(prev_joins).await.unwrap();
     assert!(statuses.iter().all(|s| s.is_utxo_valid_or_pending()));
 
     if proof_exists {

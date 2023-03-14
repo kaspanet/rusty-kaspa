@@ -63,6 +63,8 @@ impl<S: DepthStoreReader, U: ReachabilityStoreReader, V: GhostdagStoreReader> Bl
             self.depth_store.finality_point(ghostdag_data.selected_parent).unwrap()
         };
 
+        // In this case we expect the pruning point or a block above it to be the block at depth.
+        // Note that above we already verified the chain and distance conditions for this
         if current == ORIGIN {
             current = pruning_point;
         }
@@ -90,7 +92,7 @@ impl<S: DepthStoreReader, U: ReachabilityStoreReader, V: GhostdagStoreReader> Bl
         ghostdag_data
             .mergeset_blues
             .iter()
-            .cloned()
+            .copied()
             .filter(move |blue| self.reachability_service.is_chain_ancestor_of(merge_depth_root, *blue))
     }
 }
