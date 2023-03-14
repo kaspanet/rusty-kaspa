@@ -3,6 +3,7 @@ extern crate core;
 extern crate hashes;
 
 use clap::Parser;
+use consensus_core::api::DynConsensus;
 use consensus_core::networktype::NetworkType;
 use consensus_notify::root::ConsensusNotificationRoot;
 use consensus_notify::service::NotifyService;

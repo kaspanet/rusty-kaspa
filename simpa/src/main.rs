@@ -17,8 +17,8 @@ use consensus::{
     processes::ghostdag::ordering::SortableBlock,
 };
 use consensus_core::{
-    api::ConsensusApi, block::Block, blockstatus::BlockStatus, errors::block::BlockProcessResult, events::ConsensusEvent,
-    header::Header, BlockHashSet, HashMapCustomHasher,
+    api::ConsensusApi, block::Block, blockstatus::BlockStatus, errors::block::BlockProcessResult, header::Header, BlockHashSet,
+    HashMapCustomHasher,
 };
 use consensus_notify::root::ConsensusNotificationRoot;
 use futures::{future::try_join_all, Future};

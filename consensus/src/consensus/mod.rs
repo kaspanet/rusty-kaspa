@@ -161,6 +161,7 @@ pub struct Consensus {
     >,
     depth_manager: BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>,
 
+    // Notification management
     notification_root: Arc<ConsensusNotificationRoot>,
 
     // Counters

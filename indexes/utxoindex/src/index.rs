@@ -188,7 +188,6 @@ mod tests {
     use consensus_core::{
         api::ConsensusApi,
         utxo::{utxo_collection::UtxoCollection, utxo_diff::UtxoDiff},
-        BlockHashSet,
     };
     use kaspa_core::info;
     use std::{collections::HashSet, sync::Arc, time::Instant};
@@ -273,7 +272,7 @@ mod tests {
         assert_eq!(utxoindex.read().get_circulating_supply().expect("expected circulating supply"), consensus_supply);
         assert_eq!(
             *utxoindex.read().get_utxo_index_tips().expect("expected circulating supply"),
-            BlockHashSet::from_iter(test_consensus.consensus().get_virtual_state_tips())
+            test_consensus.consensus().get_virtual_parents()
         );
 
         // Test update: Change and signal new virtual state.
@@ -354,7 +353,7 @@ mod tests {
 
         assert_eq!(
             *utxoindex.read().get_utxo_index_tips().expect("expected circulating supply"),
-            BlockHashSet::from_iter(test_consensus.consensus().get_virtual_state_tips())
+            test_consensus.consensus().get_virtual_parents()
         );
 
         // Deconstruct

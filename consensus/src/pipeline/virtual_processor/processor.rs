@@ -142,7 +142,7 @@ pub struct VirtualStateProcessor {
     pub(super) depth_manager: BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>,
 
     pub(crate) notification_root: Arc<ConsensusNotificationRoot>,
-    
+
     // Counters
     counters: Arc<ProcessingCounters>,
 }
