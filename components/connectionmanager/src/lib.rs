@@ -145,7 +145,7 @@ impl ConnectionManager {
             return;
         }
 
-        let addresses = self.amgr.lock().get_random_addresses(active_outbound);
+        let addresses = self.amgr.lock().iterate_prioritized_random_addresses(active_outbound);
         for net_addr in addresses {
             let socket_addr = SocketAddr::new(net_addr.ip, net_addr.port).to_string();
             debug!("Connecting to {}", &socket_addr);

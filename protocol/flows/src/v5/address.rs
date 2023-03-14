@@ -9,8 +9,16 @@ use p2p_lib::{
     pb::{kaspad_message::Payload, AddressesMessage, RequestAddressesMessage},
     IncomingRoute, Router,
 };
+use rand::seq::SliceRandom;
 
 use std::{net::IpAddr, sync::Arc};
+
+/// The maximum number of addresses that are sent in a single kaspa Addresses message.
+const MAX_ADDRESSES_SEND: usize = 1000;
+
+/// The maximum number of addresses that can be received in a single kaspa Addresses response.
+/// If a peer exceeds this value we consider it a protocol error.
+const MAX_ADDRESSES_RECEIVE: usize = 2500;
 
 pub struct ReceiveAddressesFlow {
     ctx: FlowContext,
@@ -48,6 +56,9 @@ impl ReceiveAddressesFlow {
 
         let msg = dequeue_with_timeout!(self.incoming_route, Payload::Addresses)?;
         let address_list: Vec<(IpAddr, u16)> = msg.try_into()?;
+        if address_list.len() > MAX_ADDRESSES_RECEIVE {
+            return Err(ProtocolError::OtherOwned(format!("address count {} exceeded {}", address_list.len(), MAX_ADDRESSES_RECEIVE)));
+        }
         let mut amgr_lock = self.ctx.amgr.lock();
         for (ip, port) in address_list {
             amgr_lock.add_address(NetAddress::new(ip, port))
@@ -86,13 +97,12 @@ impl SendAddressesFlow {
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
         loop {
             dequeue!(self.incoming_route, Payload::RequestAddresses)?;
-            let addresses = self.ctx.amgr.lock().get_random_addresses(Default::default());
-            self.router
-                .enqueue(make_message!(
-                    Payload::Addresses,
-                    AddressesMessage { address_list: addresses.into_iter().map(|addr| (addr.ip, addr.port).into()).collect_vec() }
-                ))
-                .await?;
+            let addresses = self.ctx.amgr.lock().iterate_addresses().collect_vec();
+            let address_list = addresses
+                .choose_multiple(&mut rand::thread_rng(), MAX_ADDRESSES_SEND)
+                .map(|addr| (addr.ip, addr.port).into())
+                .collect();
+            self.router.enqueue(make_message!(Payload::Addresses, AddressesMessage { address_list })).await?;
         }
     }
 }
