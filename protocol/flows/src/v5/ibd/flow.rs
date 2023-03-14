@@ -8,6 +8,7 @@ use crate::{
 use consensus_core::{
     api::{BlockValidationFuture, DynConsensus},
     block::Block,
+    blockhash::BlockHashExtensions,
     header::Header,
     pruning::{PruningPointProof, PruningPointsList},
 };
@@ -136,8 +137,15 @@ impl IbdFlow {
             // this info should possibly be used to reject the IBD despite having more blue work etc.
         }
 
-        let hst = consensus.get_header(consensus.get_headers_selected_tip()).unwrap();
-        if relay_header.blue_score >= hst.blue_score + self.ctx.config.pruning_depth && relay_header.blue_work > hst.blue_work {
+        let hst_hash = consensus.get_headers_selected_tip();
+        // TODO: remove when applying staging consensus
+        if hst_hash.is_origin() {
+            return Ok(IbdType::DownloadHeadersProof);
+        }
+        let hst_header = consensus.get_header(hst_hash).unwrap();
+        if relay_header.blue_score >= hst_header.blue_score + self.ctx.config.pruning_depth
+            && relay_header.blue_work > hst_header.blue_work
+        {
             // The relayed block has sufficient blue score and blue work over the current header selected tip
             Ok(IbdType::DownloadHeadersProof)
         } else {
