@@ -2,8 +2,8 @@ use std::net::{IpAddr, Ipv6Addr, SocketAddr};
 
 use serde::{Deserialize, Serialize};
 
+pub(super) mod address_store;
 pub(super) mod banned_address_store;
-pub(super) mod not_banned_address_store;
 
 #[derive(PartialEq, Eq, Hash, Copy, Clone, Serialize, Deserialize)]
 pub struct NetAddress {

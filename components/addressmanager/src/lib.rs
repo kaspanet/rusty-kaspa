@@ -17,60 +17,60 @@ const MAX_CONNECTION_FAILED_COUNT: u64 = 3;
 
 pub struct AddressManager {
     banned_address_store: DbBannedAddressesStore,
-    not_banned_address_store: not_banned_address_store_with_cache::Store,
+    address_store: address_store_with_cache::Store,
 }
 
 impl AddressManager {
     pub fn new(db: Arc<DB>) -> Arc<Mutex<Self>> {
         Arc::new(Mutex::new(Self {
             banned_address_store: DbBannedAddressesStore::new(db.clone(), MAX_ADDRESSES as u64),
-            not_banned_address_store: not_banned_address_store_with_cache::new(db),
+            address_store: address_store_with_cache::new(db),
         }))
     }
 
     pub fn add_address(&mut self, address: NetAddress) {
         // TODO: Don't add non routable addresses
 
-        if self.not_banned_address_store.has(address) {
+        if self.address_store.has(address) {
             return;
         }
 
         // We mark `connection_failed_count` as 0 only after first success
-        self.not_banned_address_store.set(address, 1);
+        self.address_store.set(address, 1);
     }
 
     pub fn mark_connection_failure(&mut self, address: NetAddress) {
-        if !self.not_banned_address_store.has(address) {
+        if !self.address_store.has(address) {
             return;
         }
 
-        let new_count = self.not_banned_address_store.get(address).connection_failed_count + 1;
+        let new_count = self.address_store.get(address).connection_failed_count + 1;
         if new_count > MAX_CONNECTION_FAILED_COUNT {
-            self.not_banned_address_store.remove(address);
+            self.address_store.remove(address);
         } else {
-            self.not_banned_address_store.set(address, new_count);
+            self.address_store.set(address, new_count);
         }
     }
 
     pub fn mark_connection_success(&mut self, address: NetAddress) {
-        if !self.not_banned_address_store.has(address) {
+        if !self.address_store.has(address) {
             return;
         }
 
-        self.not_banned_address_store.set(address, 0);
+        self.address_store.set(address, 0);
     }
 
     pub fn get_all_addresses(&self) -> impl Iterator<Item = NetAddress> + '_ {
-        self.not_banned_address_store.get_all_addresses()
+        self.address_store.get_all_addresses()
     }
 
     pub fn get_random_addresses(&self, exceptions: HashSet<NetAddress>) -> Vec<NetAddress> {
-        self.not_banned_address_store.get_randomized_addresses(exceptions)
+        self.address_store.get_randomized_addresses(exceptions)
     }
 
     pub fn ban(&mut self, ip: IpAddr) {
         self.banned_address_store.set(ip, ConnectionBanTimestamp(unix_now())).unwrap();
-        self.not_banned_address_store.remove_by_ip(ip);
+        self.address_store.remove_by_ip(ip);
     }
 
     pub fn unban(&mut self, ip: IpAddr) {
@@ -93,7 +93,7 @@ impl AddressManager {
     }
 }
 
-mod not_banned_address_store_with_cache {
+mod address_store_with_cache {
     // Since we need operations such as iterating all addresses, count, etc, we keep an easy to use copy of the database addresses.
     // We don't expect it to be expensive since we limit the number of saved addresses.
     use std::{
@@ -108,20 +108,20 @@ mod not_banned_address_store_with_cache {
 
     use crate::{
         stores::{
-            not_banned_address_store::{DbNotBannedAddressesStore, Entry, NotBannedAddressesStore},
+            address_store::{AddressesStore, DbAddressesStore, Entry},
             AddressKey,
         },
         NetAddress, MAX_ADDRESSES, MAX_CONNECTION_FAILED_COUNT,
     };
 
     pub struct Store {
-        db_store: DbNotBannedAddressesStore,
+        db_store: DbAddressesStore,
         addresses: HashMap<AddressKey, Entry>,
     }
 
     impl Store {
         fn new(db: Arc<DB>) -> Self {
-            let db_store = DbNotBannedAddressesStore::new(db, 0);
+            let db_store = DbAddressesStore::new(db, 0);
             let mut addresses = HashMap::new();
             for (key, entry) in db_store.iterator().map(|res| res.unwrap()) {
                 addresses.insert(key, entry);
