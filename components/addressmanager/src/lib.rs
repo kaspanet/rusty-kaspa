@@ -2,13 +2,16 @@ mod stores;
 
 extern crate self as address_manager;
 
-use std::{collections::HashSet, net::IpAddr, sync::Arc};
+use std::{collections::HashSet, net::IpAddr, path::Iter, sync::Arc};
 
 use database::prelude::{StoreResultExtensions, DB};
 use kaspa_core::time::unix_now;
 use parking_lot::Mutex;
 
-use stores::banned_address_store::{BannedAddressesStore, BannedAddressesStoreReader, ConnectionBanTimestamp, DbBannedAddressesStore};
+use stores::{
+    banned_address_store::{BannedAddressesStore, BannedAddressesStoreReader, ConnectionBanTimestamp, DbBannedAddressesStore},
+    AddressKey,
+};
 
 pub use stores::NetAddress;
 
@@ -64,7 +67,7 @@ impl AddressManager {
         self.address_store.get_all_addresses()
     }
 
-    pub fn get_random_addresses(&self, exceptions: HashSet<NetAddress>) -> Vec<NetAddress> {
+    pub fn get_random_addresses(&self, exceptions: HashSet<NetAddress>) -> impl Iterator<Item = NetAddress> {
         self.address_store.get_randomized_addresses(exceptions)
     }
 
@@ -169,22 +172,17 @@ mod address_store_with_cache {
             self.addresses.values().map(|entry| entry.address)
         }
 
-        pub fn get_randomized_addresses(&self, exceptions: HashSet<NetAddress>) -> Vec<NetAddress> {
+        pub fn get_randomized_addresses(&self, exceptions: HashSet<NetAddress>) -> impl Iterator<Item = NetAddress> {
             let exceptions: HashSet<AddressKey> = exceptions.into_iter().map(|addr| addr.into()).collect();
-            let addresses = self.addresses.iter().filter(|(addr, _)| !exceptions.contains(addr)).collect_vec();
-            let mut weights = addresses
+            let address_entries =
+                self.addresses.iter().filter(|(addr_key, _)| !exceptions.contains(addr_key)).map(|(_, entry)| entry).collect_vec();
+            let mut weights = address_entries
                 .iter()
-                .map(|(_, entry)| 64f64.powf((MAX_CONNECTION_FAILED_COUNT + 1 - entry.connection_failed_count) as f64))
+                .map(|entry| 64f64.powf((MAX_CONNECTION_FAILED_COUNT + 1 - entry.connection_failed_count) as f64))
                 .collect_vec();
+            let addresses = address_entries.into_iter().map(|entry| entry.address).collect_vec();
 
-            (0..addresses.len())
-                .map(|_| {
-                    let dist = WeightedIndex::new(&weights).unwrap();
-                    let i = dist.sample(&mut rand::thread_rng());
-                    weights[i] = 0f64;
-                    addresses[i].1.address
-                })
-                .collect_vec()
+            RandomItertaor::new(weights, addresses)
         }
 
         pub fn remove_by_ip(&mut self, ip: IpAddr) {
@@ -196,5 +194,33 @@ mod address_store_with_cache {
 
     pub fn new(db: Arc<DB>) -> Store {
         Store::new(db)
+    }
+
+    pub struct RandomItertaor {
+        weights: Vec<f64>,
+        addresses: Vec<NetAddress>,
+        consumed_count: usize,
+    }
+
+    impl RandomItertaor {
+        pub fn new(weights: Vec<f64>, addresses: Vec<NetAddress>) -> Self {
+            Self { weights, addresses, consumed_count: 0 }
+        }
+    }
+
+    impl Iterator for RandomItertaor {
+        type Item = NetAddress;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            if self.consumed_count == self.addresses.len() {
+                None
+            } else {
+                self.consumed_count += 1;
+                let dist = WeightedIndex::new(&self.weights).unwrap();
+                let i = dist.sample(&mut rand::thread_rng());
+                self.weights[i] = 0f64;
+                Some(self.addresses[i])
+            }
+        }
     }
 }
