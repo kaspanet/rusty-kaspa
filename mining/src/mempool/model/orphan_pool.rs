@@ -1,14 +1,16 @@
-use crate::mempool::{
-    config::Config,
-    errors::{RuleError, RuleResult},
-    model::{
-        map::{MempoolTransactionCollection, OutpointIndex},
-        pool::Pool,
-        tx::MempoolTransaction,
+use crate::{
+    consensus_context::ConsensusMiningContext,
+    mempool::{
+        config::Config,
+        errors::{RuleError, RuleResult},
+        model::{
+            map::{MempoolTransactionCollection, OutpointIndex},
+            pool::Pool,
+            tx::MempoolTransaction,
+        },
     },
 };
 use consensus_core::{
-    api::DynConsensus,
     tx::MutableTransaction,
     tx::{TransactionId, TransactionOutpoint},
 };
@@ -32,8 +34,8 @@ use super::pool::TransactionsEdges;
 ///   introducing a indirection stage when the matching object is required.
 /// - "un-orphaning" a transaction induces a move of the object from orphan
 ///   to transactions pool with no reconstruction nor cloning.
-pub(crate) struct OrphanPool {
-    consensus: DynConsensus,
+pub(crate) struct OrphanPool<T: ConsensusMiningContext + ?Sized> {
+    consensus: Arc<T>,
     config: Arc<Config>,
     all_orphans: MempoolTransactionCollection,
     /// Transactions dependencies formed by outputs present in pool - successor relations.
@@ -42,8 +44,8 @@ pub(crate) struct OrphanPool {
     last_expire_scan: u64,
 }
 
-impl OrphanPool {
-    pub(crate) fn new(consensus: DynConsensus, config: Arc<Config>) -> Self {
+impl<T: ConsensusMiningContext + ?Sized> OrphanPool<T> {
+    pub(crate) fn new(consensus: Arc<T>, config: Arc<Config>) -> Self {
         Self {
             consensus,
             config,
@@ -54,8 +56,8 @@ impl OrphanPool {
         }
     }
 
-    pub(crate) fn consensus(&self) -> DynConsensus {
-        self.consensus.clone()
+    pub(crate) fn consensus(&self) -> &T {
+        &self.consensus
     }
 
     pub(crate) fn outpoint_orphan(&self, outpoint: &TransactionOutpoint) -> Option<&MempoolTransaction> {
@@ -272,7 +274,7 @@ impl OrphanPool {
     }
 }
 
-impl Pool for OrphanPool {
+impl<T: ConsensusMiningContext + ?Sized> Pool for OrphanPool<T> {
     fn all(&self) -> &MempoolTransactionCollection {
         &self.all_orphans
     }

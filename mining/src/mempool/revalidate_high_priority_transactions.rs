@@ -1,4 +1,5 @@
 use crate::{
+    consensus_context::ConsensusMiningContext,
     mempool::{
         errors::{RuleError, RuleResult},
         model::pool::Pool,
@@ -9,7 +10,7 @@ use crate::{
 use consensus_core::tx::{MutableTransaction, TransactionId};
 use kaspa_core::debug;
 
-impl Mempool {
+impl<T: ConsensusMiningContext + ?Sized> Mempool<T> {
     pub(crate) fn revalidate_high_priority_transactions(&mut self) -> RuleResult<Vec<TransactionId>> {
         // First establish a topologically ordered list of all high priority transaction ids
 

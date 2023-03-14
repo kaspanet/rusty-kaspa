@@ -45,7 +45,7 @@ impl<'a, 'b> TrustedEntryStream<'a, 'b> {
                         }
                         _ => Err(ProtocolError::UnexpectedMessage(
                             stringify!(Payload::BlockWithTrustedDataV4 | Payload::DoneBlocksWithTrustedData),
-                            Box::new(msg.payload),
+                            msg.payload.as_ref().map(|v| v.into()),
                         )),
                     }
                 } else {
@@ -106,7 +106,7 @@ impl<'a, 'b> HeadersChunkStream<'a, 'b> {
                         }
                         _ => Err(ProtocolError::UnexpectedMessage(
                             stringify!(Payload::BlockHeaders | Payload::DoneHeaders),
-                            Box::new(msg.payload),
+                            msg.payload.as_ref().map(|v| v.into()),
                         )),
                     }
                 } else {
@@ -153,8 +153,12 @@ impl<'a, 'b> PruningPointUtxosetChunkStream<'a, 'b> {
                         }
                         Some(Payload::UnexpectedPruningPoint(_)) => todo!(), // TODO: return a special indication for this case
                         _ => Err(ProtocolError::UnexpectedMessage(
-                            stringify!(Payload::PruningPointUtxoSetChunk | Payload::DonePruningPointUtxoSetChunks),
-                            Box::new(msg.payload),
+                            stringify!(
+                                Payload::PruningPointUtxoSetChunk
+                                    | Payload::DonePruningPointUtxoSetChunks
+                                    | Payload::UnexpectedPruningPoint
+                            ),
+                            msg.payload.as_ref().map(|v| v.into()),
                         )),
                     }
                 } else {

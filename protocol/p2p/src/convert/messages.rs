@@ -100,3 +100,19 @@ impl TryFrom<protowire::RequestPruningPointUtxoSetMessage> for Hash {
         msg.pruning_point_hash.try_into_ex()
     }
 }
+
+impl TryFrom<protowire::InvRelayBlockMessage> for Hash {
+    type Error = ConversionError;
+
+    fn try_from(msg: protowire::InvRelayBlockMessage) -> Result<Self, Self::Error> {
+        msg.hash.try_into_ex()
+    }
+}
+
+impl TryFrom<protowire::BlockLocatorMessage> for Vec<Hash> {
+    type Error = ConversionError;
+
+    fn try_from(msg: protowire::BlockLocatorMessage) -> Result<Self, Self::Error> {
+        msg.hashes.into_iter().map(|v| v.try_into()).collect()
+    }
+}

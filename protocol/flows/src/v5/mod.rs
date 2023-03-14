@@ -1,4 +1,5 @@
 use self::{
+    blockrelay::flow::HandleRelayInvsFlow,
     ibd::IbdFlow,
     ping::{ReceivePingsFlow, SendPingsFlow},
     pruning_point_and_its_anticone_requests::PruningPointAndItsAnticoneRequestsFlow,
@@ -16,6 +17,7 @@ use p2p_lib::{
 };
 use std::sync::Arc;
 
+mod blockrelay;
 mod ibd;
 mod ping;
 mod pruning_point_and_its_anticone_requests;
@@ -25,6 +27,8 @@ mod request_pp_proof;
 mod request_pruning_point_utxo_set;
 
 pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
+    // IBD flow <-> invs flow channel requires no buffering hence the minimal size possible
+    let (ibd_sender, relay_receiver) = tokio::sync::mpsc::channel(1);
     let flows: Vec<Box<dyn Flow>> = vec![
         Box::new(IbdFlow::new(
             ctx.clone(),
@@ -45,6 +49,14 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
                 KaspadMessagePayloadType::PruningPointUtxoSetChunk,
                 KaspadMessagePayloadType::DonePruningPointUtxoSetChunks,
             ]),
+            relay_receiver,
+        )),
+        Box::new(HandleRelayInvsFlow::new(
+            ctx.clone(),
+            router.clone(),
+            router.subscribe(vec![KaspadMessagePayloadType::InvRelayBlock]),
+            router.subscribe(vec![KaspadMessagePayloadType::Block, KaspadMessagePayloadType::BlockLocator]),
+            ibd_sender,
         )),
         Box::new(ReceivePingsFlow::new(ctx.clone(), router.clone(), router.subscribe(vec![KaspadMessagePayloadType::Ping]))),
         Box::new(SendPingsFlow::new(ctx.clone(), Arc::downgrade(&router), router.subscribe(vec![KaspadMessagePayloadType::Pong]))),
@@ -82,14 +94,14 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
     // NOTE: as flows are implemented, the below types should be all commented out
     let mut unimplemented_messages_route = router.subscribe(vec![
         KaspadMessagePayloadType::Addresses,
-        KaspadMessagePayloadType::Block,
+        // KaspadMessagePayloadType::Block,
         KaspadMessagePayloadType::Transaction,
-        KaspadMessagePayloadType::BlockLocator,
+        // KaspadMessagePayloadType::BlockLocator,
         KaspadMessagePayloadType::RequestAddresses,
         KaspadMessagePayloadType::RequestRelayBlocks,
         KaspadMessagePayloadType::RequestTransactions,
         // KaspadMessagePayloadType::IbdBlock,
-        KaspadMessagePayloadType::InvRelayBlock,
+        // KaspadMessagePayloadType::InvRelayBlock,
         KaspadMessagePayloadType::InvTransactions,
         // KaspadMessagePayloadType::Ping,
         // KaspadMessagePayloadType::Pong,
@@ -130,10 +142,15 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
         while let Some(msg) = unimplemented_messages_route.recv().await {
             // TEMP: responding to this request is required in order to keep the
             // connection live until we implement the send addresses flow
-            if let Some(KaspadMessagePayload::RequestAddresses(_)) = msg.payload {
-                debug!("P2P Flows, got request addresses message");
-                let _ =
-                    router.enqueue(make_message!(KaspadMessagePayload::Addresses, AddressesMessage { address_list: vec![] })).await;
+            match msg.payload {
+                Some(KaspadMessagePayload::RequestAddresses(_)) => {
+                    debug!("P2P Flows, got request addresses message");
+                    let _ = router
+                        .enqueue(make_message!(KaspadMessagePayload::Addresses, AddressesMessage { address_list: vec![] }))
+                        .await;
+                }
+                Some(KaspadMessagePayload::InvTransactions(_)) => (),
+                _ => debug!("P2P unimplemented routes message: {:?}", msg),
             }
         }
     });

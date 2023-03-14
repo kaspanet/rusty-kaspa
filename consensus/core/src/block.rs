@@ -57,6 +57,11 @@ impl Block {
     pub fn hash(&self) -> Hash {
         self.header.hash
     }
+
+    /// WARNING: To be used for test purposes only
+    pub fn from_precomputed_hash(hash: Hash, parents: Vec<Hash>) -> Block {
+        Block::from_header(Header::from_precomputed_hash(hash, parents))
+    }
 }
 
 /// A block template for miners.

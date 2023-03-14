@@ -3,12 +3,14 @@ extern crate core;
 extern crate hashes;
 
 use clap::Parser;
+use consensus_core::api::DynConsensus;
 use consensus_core::networktype::NetworkType;
 use consensus_notify::root::ConsensusNotificationRoot;
 use consensus_notify::service::NotifyService;
 
 use kaspa_core::{core::Core, signals::Signals, task::runtime::AsyncRuntime};
 use kaspa_index_processor::service::IndexService;
+use mining::manager::MiningManager;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -175,7 +177,11 @@ pub fn main() {
     let rpc_core_server =
         Arc::new(RpcCoreServer::new(consensus.clone(), notify_service.notifier(), index_service.as_ref().map(|x| x.notifier())));
     let grpc_server = Arc::new(GrpcServer::new(grpc_server_addr, rpc_core_server.service()));
-    let p2p_service = Arc::new(P2pService::new(consensus.clone(), args.connect, args.listen));
+    let p2p_service = Arc::new(P2pService::new(consensus.clone(), &config, args.connect, args.listen));
+
+    // TODO: TEMP: temp mining manager initialization just to make sure it complies with consensus
+    let _mining_manager =
+        MiningManager::new(consensus.clone() as DynConsensus, config.target_time_per_block, false, config.max_block_mass, None);
 
     // Create an async runtime and register the top-level async services
     let async_runtime = Arc::new(AsyncRuntime::new());
@@ -186,13 +192,13 @@ pub fn main() {
     async_runtime.register(rpc_core_server);
     async_runtime.register(grpc_server);
     async_runtime.register(p2p_service);
+    async_runtime.register(monitor);
 
     // Bind the keyboard signal to the core
     Arc::new(Signals::new(&core)).init();
 
     // Consensus must start first in order to init genesis in stores
     core.bind(consensus);
-    core.bind(monitor);
     core.bind(async_runtime);
 
     core.run();

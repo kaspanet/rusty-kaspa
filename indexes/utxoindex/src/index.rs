@@ -96,7 +96,7 @@ impl UtxoIndexApi for UtxoIndex {
         let utxoindex_tips = self.store.get_tips();
         match utxoindex_tips {
             Ok(utxoindex_tips) => {
-                let consensus_tips = BlockHashSet::from_iter(self.consensus.clone().get_virtual_state_tips());
+                let consensus_tips = self.consensus.get_virtual_parents();
                 let res = *utxoindex_tips == consensus_tips;
                 trace!("[{0}] sync status is {1}", IDENT, res);
                 Ok(res)
@@ -120,11 +120,11 @@ impl UtxoIndexApi for UtxoIndex {
         trace!("[{0}] resyncing...", IDENT);
 
         self.store.delete_all()?;
-        let consensus_tips = self.consensus.clone().get_virtual_state_tips();
+        let consensus_tips = self.consensus.get_virtual_parents();
         let mut circulating_supply: CirculatingSupply = 0;
 
         //Initial batch is without specified seek and none-skipping.
-        let mut virtual_utxo_batch = self.consensus.clone().get_virtual_utxos(None, RESYNC_CHUNK_SIZE, false);
+        let mut virtual_utxo_batch = self.consensus.get_virtual_utxos(None, RESYNC_CHUNK_SIZE, false);
         let mut current_chunk_size = virtual_utxo_batch.len();
         trace!("[{0}] resyncing with batch of {1} utxos from consensus db", IDENT, current_chunk_size);
         // While loop stops resync attempts from an empty utxo db, and unneeded processing when the utxo state size happens to be a multiple of [`RESYNC_CHUNK_SIZE`]
@@ -145,7 +145,7 @@ impl UtxoIndexApi for UtxoIndex {
                 break;
             };
 
-            virtual_utxo_batch = self.consensus.clone().get_virtual_utxos(next_outpoint_from, RESYNC_CHUNK_SIZE, true);
+            virtual_utxo_batch = self.consensus.get_virtual_utxos(next_outpoint_from, RESYNC_CHUNK_SIZE, true);
             current_chunk_size = virtual_utxo_batch.len();
             trace!("[{0}] resyncing with batch of {1} utxos from consensus db", IDENT, current_chunk_size);
         }
@@ -156,7 +156,7 @@ impl UtxoIndexApi for UtxoIndex {
         self.store.insert_circulating_supply(circulating_supply, true)?;
 
         trace!("[{0}] committing consensus tips {consensus_tips:?} from consensus db", IDENT);
-        self.store.set_tips(BlockHashSet::from_iter(consensus_tips), true)?;
+        self.store.set_tips(consensus_tips, true)?;
 
         Ok(())
     }
@@ -188,7 +188,6 @@ mod tests {
     use consensus_core::{
         api::ConsensusApi,
         utxo::{utxo_collection::UtxoCollection, utxo_diff::UtxoDiff},
-        BlockHashSet,
     };
     use kaspa_core::info;
     use std::{collections::HashSet, sync::Arc, time::Instant};
@@ -273,7 +272,7 @@ mod tests {
         assert_eq!(utxoindex.read().get_circulating_supply().expect("expected circulating supply"), consensus_supply);
         assert_eq!(
             *utxoindex.read().get_utxo_index_tips().expect("expected circulating supply"),
-            BlockHashSet::from_iter(test_consensus.consensus().get_virtual_state_tips())
+            test_consensus.consensus().get_virtual_parents()
         );
 
         // Test update: Change and signal new virtual state.
@@ -354,7 +353,7 @@ mod tests {
 
         assert_eq!(
             *utxoindex.read().get_utxo_index_tips().expect("expected circulating supply"),
-            BlockHashSet::from_iter(test_consensus.consensus().get_virtual_state_tips())
+            test_consensus.consensus().get_virtual_parents()
         );
 
         // Deconstruct
