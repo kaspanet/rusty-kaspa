@@ -115,7 +115,7 @@ impl ConnectionManager {
 
             if !is_connected && request.next_attempt <= SystemTime::now() {
                 debug!("Connecting to a connection request to {}", address);
-                if self.p2p_adaptor.connect_peer_with_retry_params(address.to_string(), 1, Default::default()).await.is_none() {
+                if self.p2p_adaptor.connect_peer(address.to_string()).await.is_none() {
                     debug!("Failed connecting to a connection request to {}", address);
                     if request.is_permanent {
                         const MAX_RETRY_DURATION: Duration = Duration::from_secs(600);
@@ -151,12 +151,12 @@ impl ConnectionManager {
         for net_addr in addresses {
             let socket_addr = SocketAddr::new(net_addr.ip, net_addr.port).to_string();
             info!(
-                "Connecting to {} ({}/{} current outgoing connections)",
+                "Connecting to {} ({}/{} outgoing connections)",
                 &socket_addr,
                 self.outbound_target - missing_connections,
                 self.outbound_target
             );
-            if self.p2p_adaptor.connect_peer_with_retry_params(socket_addr.clone(), 1, Default::default()).await.is_none() {
+            if self.p2p_adaptor.connect_peer(socket_addr.clone()).await.is_none() {
                 debug!("Failed connecting to {}", socket_addr);
                 self.amgr.lock().mark_connection_failure(net_addr);
             } else {

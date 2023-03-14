@@ -6,8 +6,8 @@ use consensus_core::api::{ConsensusApi, DynConsensus};
 use consensus_core::block::Block;
 use consensus_core::config::Config;
 use hashes::Hash;
-use kaspa_core::debug;
 use kaspa_core::time::unix_now;
+use kaspa_core::{debug, info};
 use p2p_lib::pb;
 use p2p_lib::{common::ProtocolError, ConnectionInitializer, KaspadHandshake, Router};
 use parking_lot::Mutex;
@@ -145,6 +145,8 @@ impl ConnectionInitializer for FlowContext {
 
         // Send and receive the ready signal
         handshake.exchange_ready_messages().await?;
+
+        info!("Registering p2p flows for peer {} for protocol version {}", router, peer_version_message.protocol_version);
 
         // Launch all flows. Note we launch only after the ready signal was exchanged
         for flow in flows {

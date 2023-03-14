@@ -72,8 +72,6 @@ impl AsyncService for P2pService {
             shutdown_signal.await;
             p2p_adaptor.terminate_all_peers().await;
             connection_manager.stop().await;
-            // drop(p2p_adaptor);
-            // tokio::time::sleep(std::time::Duration::from_secs(1)).await;
         })
     }
 
