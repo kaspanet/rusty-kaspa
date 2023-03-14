@@ -152,12 +152,12 @@ impl ConnectionManager {
             if self.p2p_adaptor.connect_peer_with_retry_params(socket_addr.clone(), 1, Default::default()).await.is_none() {
                 debug!("Failed connecting to {}", socket_addr);
                 self.amgr.lock().mark_connection_failure(net_addr);
+            } else {
+                self.amgr.lock().mark_connection_success(net_addr);
                 missing_connections -= 1;
                 if missing_connections == 0 {
                     break;
                 }
-            } else {
-                self.amgr.lock().mark_connection_success(net_addr);
             }
         }
     }
