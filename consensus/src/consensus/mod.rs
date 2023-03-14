@@ -658,7 +658,11 @@ impl ConsensusApi for Consensus {
     }
 
     fn get_virtual_parents(&self) -> BlockHashSet {
-        self.virtual_processor.virtual_stores.read().state.get().unwrap().parents.iter().copied().collect()
+        // TODO: unwrap on virtual state read when staging consensus is implemented
+        match self.virtual_processor.virtual_stores.read().state.get() {
+            Ok(s) => s.parents.iter().copied().collect(),
+            Err(_) => Default::default(),
+        }
     }
 
     fn get_virtual_utxos(
