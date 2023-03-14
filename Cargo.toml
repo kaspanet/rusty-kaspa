@@ -19,6 +19,7 @@ members = [
     "crypto/addresses",
     "crypto/merkle",
     "notify",
+    "indexes/core",
     "indexes/processor",
     "indexes/utxoindex",
     "rpc/core",
@@ -60,6 +61,7 @@ muhash = { path = "crypto/muhash" }
 addresses = { path = "crypto/addresses" }
 merkle = { path = "crypto/merkle" }
 pow = { path = "consensus/pow" }
+kaspa-index-core = { path = "indexes/core" }
 kaspa-index-processor = { path = "indexes/processor" }
 utxoindex = { path = "indexes/utxoindex" }
 kaspa-utils = { path = "utils" }

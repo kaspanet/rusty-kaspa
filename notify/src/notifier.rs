@@ -33,6 +33,14 @@ where
 
 pub type DynNotify<N> = Arc<dyn Notify<N>>;
 
+// pub trait Registrar<N>: Send + Sync + Debug
+// where
+//     N: Notification,
+// {
+// }
+
+// pub type DynRegistrar<N> = Arc<dyn Registrar<N>>;
+
 /// A Notifier is a notification broadcaster that manages a collection of [`Listener`]s and, for each one,
 /// a set of subscriptions to notifications by event type.
 ///

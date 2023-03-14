@@ -4,7 +4,7 @@ use crate::{
     UtxosChangedNotification, VirtualChainChangedNotification, VirtualDaaScoreChangedNotification,
 };
 use consensus_notify::notification as consensus_notify;
-use kaspa_index_processor::notification as index_notify;
+use kaspa_index_core::notification as index_notify;
 use std::sync::Arc;
 
 // ----------------------------------------------------------------------------
@@ -35,7 +35,7 @@ impl From<&consensus_notify::Notification> for Notification {
 
 impl From<&consensus_notify::BlockAddedNotification> for BlockAddedNotification {
     fn from(item: &consensus_notify::BlockAddedNotification) -> Self {
-        Self { block: Arc::new((&*item.block).into()) }
+        Self { block: Arc::new((&item.block).into()) }
     }
 }
 
@@ -52,13 +52,13 @@ impl From<&consensus_notify::VirtualChainChangedNotification> for VirtualChainCh
 
 impl From<&consensus_notify::FinalityConflictNotification> for FinalityConflictNotification {
     fn from(item: &consensus_notify::FinalityConflictNotification) -> Self {
-        Self { violating_block_hash: item.violating_block_hash.clone() }
+        Self { violating_block_hash: item.violating_block_hash }
     }
 }
 
 impl From<&consensus_notify::FinalityConflictResolvedNotification> for FinalityConflictResolvedNotification {
     fn from(item: &consensus_notify::FinalityConflictResolvedNotification) -> Self {
-        Self { finality_block_hash: item.finality_block_hash.clone() }
+        Self { finality_block_hash: item.finality_block_hash }
     }
 }
 

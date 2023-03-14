@@ -1,11 +1,12 @@
-use crate::{notifier::IndexNotifier, processor::Processor, IDENT};
+use crate::{processor::Processor, IDENT};
 use consensus_notify::{
-    connection::ConsensusChannelConnection, notification::Notification as ConsensusNotification, service::NotifyService,
+    connection::ConsensusChannelConnection, notification::Notification as ConsensusNotification, notifier::ConsensusNotifier,
 };
 use kaspa_core::{
     task::service::{AsyncService, AsyncServiceError, AsyncServiceFuture},
     trace,
 };
+use kaspa_index_core::notifier::IndexNotifier;
 use kaspa_notify::{
     events::{EventSwitches, EventType},
     scope::{PruningPointUtxoSetOverrideScope, Scope, UtxosChangedScope},
@@ -23,11 +24,11 @@ pub struct IndexService {
 }
 
 impl IndexService {
-    pub fn new(notify_service: Arc<NotifyService>, utxoindex: DynUtxoIndexApi) -> Self {
+    pub fn new(consensus_notifier: &Arc<ConsensusNotifier>, utxoindex: DynUtxoIndexApi) -> Self {
         // Prepare consensus-notify objects
         let consensus_notify_channel = Channel::<ConsensusNotification>::default();
         let consensus_notify_listener_id =
-            notify_service.notifier().register_new_listener(ConsensusChannelConnection::new(consensus_notify_channel.sender()));
+            consensus_notifier.register_new_listener(ConsensusChannelConnection::new(consensus_notify_channel.sender()));
 
         // Prepare the index-processor notifier
         // No subscriber is defined here because the subscription are manually created during the construction and never changed after that.
@@ -36,12 +37,10 @@ impl IndexService {
         let notifier = Arc::new(IndexNotifier::new(events, vec![collector], vec![], 1, INDEX_SERVICE));
 
         // Manually subscribe to index-processor related event types
-        notify_service
-            .notifier()
+        consensus_notifier
             .try_start_notify(consensus_notify_listener_id, Scope::UtxosChanged(UtxosChangedScope::default()))
             .expect("the subscription always succeeds");
-        notify_service
-            .notifier()
+        consensus_notifier
             .try_start_notify(consensus_notify_listener_id, Scope::PruningPointUtxoSetOverride(PruningPointUtxoSetOverrideScope {}))
             .expect("the subscription always succeeds");
 

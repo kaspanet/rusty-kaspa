@@ -147,11 +147,11 @@ try_from!(item: &VirtualChainChangedNotificationMessage, kaspa_rpc_core::Virtual
 });
 
 try_from!(item: &FinalityConflictNotificationMessage, kaspa_rpc_core::FinalityConflictNotification, {
-    Self { violating_block_hash: Arc::new(RpcHash::from_str(&item.violating_block_hash)?) }
+    Self { violating_block_hash: RpcHash::from_str(&item.violating_block_hash)? }
 });
 
 try_from!(item: &FinalityConflictResolvedNotificationMessage, kaspa_rpc_core::FinalityConflictResolvedNotification, {
-    Self { finality_block_hash: Arc::new(RpcHash::from_str(&item.finality_block_hash)?) }
+    Self { finality_block_hash: RpcHash::from_str(&item.finality_block_hash)? }
 });
 
 try_from!(item: &UtxosChangedNotificationMessage, kaspa_rpc_core::UtxosChangedNotification, {

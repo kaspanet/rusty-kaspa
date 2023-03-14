@@ -3,6 +3,7 @@ extern crate core;
 extern crate hashes;
 
 use consensus_core::networktype::NetworkType;
+use consensus_notify::root::ConsensusNotificationRoot;
 use consensus_notify::service::NotifyService;
 
 use kaspa_core::{core::Core, signals::Signals, task::runtime::AsyncRuntime};
@@ -183,10 +184,11 @@ pub fn main() {
     };
 
     let (notification_send, notification_recv) = unbounded();
+    let notification_root = Arc::new(ConsensusNotificationRoot::new(notification_send));
 
     // Use `num_cpus` background threads for the consensus database as recommended by rocksdb
     let consensus_db = database::prelude::open_db(consensus_db_dir, true, num_cpus::get());
-    let consensus = Arc::new(Consensus::new(consensus_db, &config, notification_send));
+    let consensus = Arc::new(Consensus::new(consensus_db, &config, notification_root));
     let monitor = Arc::new(ConsensusMonitor::new(consensus.processing_counters().clone()));
 
     let notify_service = Arc::new(NotifyService::new(consensus.notification_root(), notification_recv));
@@ -195,12 +197,13 @@ pub fn main() {
         // Use only a single thread for none-consensus databases
         let utxoindex_db = database::prelude::open_db(utxoindex_db_dir, true, 1);
         let utxoindex: DynUtxoIndexApi = Some(UtxoIndex::new(consensus.clone(), utxoindex_db).unwrap());
-        Some(Arc::new(IndexService::new(notify_service.clone(), utxoindex)))
+        Some(Arc::new(IndexService::new(&notify_service.notifier(), utxoindex)))
     } else {
         None
     };
 
-    let rpc_core_server = Arc::new(RpcCoreServer::new(consensus.clone(), notify_service.clone(), index_service.clone()));
+    let rpc_core_server =
+        Arc::new(RpcCoreServer::new(consensus.clone(), notify_service.notifier(), index_service.as_ref().map(|x| x.notifier())));
     let grpc_server = Arc::new(GrpcServer::new(grpc_server_addr, rpc_core_server.service()));
     let p2p_service = Arc::new(P2pService::new(consensus.clone(), args.connect, args.listen));
 

@@ -65,12 +65,11 @@ use consensus_core::{
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     BlockHashSet,
 };
-use consensus_notify::{notification::Notification, root::ConsensusNotificationRoot};
+use consensus_notify::root::ConsensusNotificationRoot;
 
-use async_channel::Sender as AsyncSender; // to avoid confusion with crossbeam
 use crossbeam_channel::{unbounded as unbounded_crossbeam, Receiver as CrossbeamReceiver, Sender as CrossbeamSender};
 use database::prelude::StoreResultExtensions;
-// to aviod confusion with async_channel
+// to avoid confusion with async_channel
 use futures_util::future::BoxFuture;
 use hashes::Hash;
 use itertools::Itertools;
@@ -160,7 +159,7 @@ pub struct Consensus {
 }
 
 impl Consensus {
-    pub fn new(db: Arc<DB>, config: &Config, notification_sender: AsyncSender<Notification>) -> Self {
+    pub fn new(db: Arc<DB>, config: &Config, notification_root: Arc<ConsensusNotificationRoot>) -> Self {
         let params = &config.params;
         let perf_params = &config.perf;
         //
@@ -318,8 +317,6 @@ impl Consensus {
             unbounded_crossbeam();
         let (virtual_sender, virtual_receiver): (CrossbeamSender<BlockProcessingMessage>, CrossbeamReceiver<BlockProcessingMessage>) =
             unbounded_crossbeam();
-
-        let notification_root = Arc::new(ConsensusNotificationRoot::new(notification_sender));
 
         let counters = Arc::new(ProcessingCounters::default());
 

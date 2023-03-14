@@ -1,7 +1,6 @@
+use consensus_core::tx::{ScriptPublicKey, TransactionOutpoint, UtxoEntry};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-
-use consensus_core::tx::{ScriptPublicKey, TransactionOutpoint, UtxoEntry};
 
 // TODO: explore potential optimization via custom TransactionOutpoint hasher for below,
 // One possible implementation: u64 of transaction id xor'd with 4 bytes of transaction index.
