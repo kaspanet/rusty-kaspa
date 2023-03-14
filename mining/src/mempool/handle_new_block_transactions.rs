@@ -1,8 +1,11 @@
-use crate::mempool::{errors::RuleResult, Mempool};
+use crate::{
+    consensus_context::ConsensusMiningContext,
+    mempool::{errors::RuleResult, Mempool},
+};
 use consensus_core::tx::Transaction;
 use std::{collections::HashSet, sync::Arc};
 
-impl Mempool {
+impl<T: ConsensusMiningContext + ?Sized> Mempool<T> {
     pub(crate) fn handle_new_block_transactions(&mut self, block_transactions: &[Transaction]) -> RuleResult<Vec<Arc<Transaction>>> {
         let mut accepted_orphans = vec![];
         for transaction in block_transactions[1..].iter() {

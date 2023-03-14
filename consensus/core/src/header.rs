@@ -64,4 +64,23 @@ impl Header {
     pub fn direct_parents(&self) -> &Vec<Hash> {
         &self.parents_by_level[0]
     }
+
+    /// WARNING: To be used for test purposes only
+    pub fn from_precomputed_hash(hash: Hash, parents: Vec<Hash>) -> Header {
+        Header {
+            version: crate::constants::BLOCK_VERSION,
+            hash,
+            parents_by_level: vec![parents],
+            hash_merkle_root: Default::default(),
+            accepted_id_merkle_root: Default::default(),
+            utxo_commitment: Default::default(),
+            nonce: 0,
+            timestamp: 0,
+            daa_score: 0,
+            bits: 0,
+            blue_work: 0.into(),
+            blue_score: 0,
+            pruning_point: Default::default(),
+        }
+    }
 }

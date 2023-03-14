@@ -164,7 +164,7 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         let script_public_key = ScriptPublicKey::new(ADDRESS_PUBLIC_KEY_SCRIPT_PUBLIC_KEY_VERSION, script);
         let miner_data: MinerData = MinerData::new(script_public_key, request.extra_data);
         // TODO: handle error properly when managed through mining manager
-        let block_template = self.consensus.clone().build_block_template(miner_data, vec![]).unwrap();
+        let block_template = self.consensus.build_block_template(miner_data, vec![]).unwrap();
 
         Ok((&block_template).into())
     }

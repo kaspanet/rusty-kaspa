@@ -46,12 +46,11 @@ impl ConnectionHandler {
 
     /// Launches a P2P server listener loop
     pub(crate) fn serve(&self, serve_address: String) -> Result<OneshotSender<()>, ConnectionError> {
-        info!("P2P, Start Listener, ip & port: {:?}", serve_address);
         let (termination_sender, termination_receiver) = oneshot_channel::<()>();
         let connection_handler = self.clone();
         let Some(socket_address) = serve_address.to_socket_addrs()?.next() else { return Err(ConnectionError::NoAddress); };
+        info!("P2P Server starting on: {}", serve_address);
         tokio::spawn(async move {
-            debug!("P2P, Listener starting, ip & port: {:?}....", serve_address);
             let proto_server = ProtoP2pServer::new(connection_handler)
                 .accept_compressed(tonic::codec::CompressionEncoding::Gzip)
                 .send_compressed(tonic::codec::CompressionEncoding::Gzip);
@@ -62,8 +61,8 @@ impl ConnectionHandler {
                 .await;
 
             match serve_result {
-                Ok(_) => debug!("P2P, Server stopped, ip & port: {:?}", serve_address),
-                Err(err) => panic!("P2P, Server stopped with error: {err:?}, ip & port: {serve_address:?}"),
+                Ok(_) => debug!("P2P, Server stopped: {}", serve_address),
+                Err(err) => panic!("P2P, Server {serve_address} stopped with error: {err:?}"),
             }
         });
         Ok(termination_sender)

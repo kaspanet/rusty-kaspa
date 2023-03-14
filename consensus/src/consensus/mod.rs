@@ -18,7 +18,7 @@ use crate::{
             depth::DbDepthStore,
             ghostdag::DbGhostdagStore,
             headers::{DbHeadersStore, HeaderStoreReader},
-            headers_selected_tip::DbHeadersSelectedTipStore,
+            headers_selected_tip::{DbHeadersSelectedTipStore, HeadersSelectedTipStoreReader},
             past_pruning_points::{DbPastPruningPointsStore, PastPruningPointsStoreReader},
             pruning::{DbPruningStore, PruningStoreReader},
             reachability::DbReachabilityStore,
@@ -50,6 +50,7 @@ use crate::{
 use consensus_core::{
     api::ConsensusApi,
     block::{Block, BlockTemplate},
+    blockhash::BlockHashExtensions,
     blockstatus::BlockStatus,
     coinbase::MinerData,
     errors::pruning::PruningImportError,
@@ -150,8 +151,17 @@ pub struct Consensus {
     pub(super) coinbase_manager: CoinbaseManager,
     pub(super) pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
     pub(super) pruning_proof_manager: PruningProofManager,
-    sync_manager: SyncManager<DbReachabilityStore, DbGhostdagStore, DbSelectedChainStore, DbHeadersSelectedTipStore, DbPruningStore>,
+    sync_manager: SyncManager<
+        DbReachabilityStore,
+        DbGhostdagStore,
+        DbSelectedChainStore,
+        DbHeadersSelectedTipStore,
+        DbPruningStore,
+        DbStatusesStore,
+    >,
+    depth_manager: BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>,
 
+    // Notification management
     notification_root: Arc<ConsensusNotificationRoot>,
 
     // Counters
@@ -395,6 +405,7 @@ impl Consensus {
             params.max_block_mass,
             params.genesis_hash,
             config.process_genesis,
+            counters.clone(),
         ));
 
         let virtual_processor = Arc::new(VirtualStateProcessor::new(
@@ -426,8 +437,9 @@ impl Consensus {
             past_median_time_manager.clone(),
             pruning_manager.clone(),
             parents_manager.clone(),
-            depth_manager,
+            depth_manager.clone(),
             notification_root.clone(),
+            counters.clone(),
         ));
 
         let pruning_proof_manager = PruningProofManager::new(
@@ -461,6 +473,7 @@ impl Consensus {
             selected_chain_store,
             headers_selected_tip_store.clone(),
             pruning_store.clone(),
+            statuses_store.clone(),
         );
 
         // Ensure that reachability store is initialized
@@ -503,8 +516,8 @@ impl Consensus {
             pruning_manager,
             pruning_proof_manager,
             sync_manager,
+            depth_manager,
             notification_root,
-
             counters,
         }
     }
@@ -522,41 +535,33 @@ impl Consensus {
         ]
     }
 
-    pub fn validate_and_insert_block(
+    fn validate_and_insert_block_impl(
         &self,
         block: Block,
         update_virtual: bool,
     ) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
         let (tx, rx): (BlockResultSender, _) = oneshot::channel();
         self.block_sender
-            .send(BlockProcessingMessage::Process(BlockTask { block, trusted_ghostdag_data: None, update_virtual }, vec![tx]))
+            .send(BlockProcessingMessage::Process(BlockTask { block, trusted_ghostdag_data: None, update_virtual }, tx))
             .unwrap();
-        self.counters.blocks_submitted.fetch_add(1, Ordering::SeqCst);
+        self.counters.blocks_submitted.fetch_add(1, Ordering::Relaxed);
         async { rx.await.unwrap() }
     }
 
-    pub fn validate_and_insert_trusted_block(&self, tb: TrustedBlock) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
+    fn validate_and_insert_trusted_block_impl(&self, tb: TrustedBlock) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
         let (tx, rx): (BlockResultSender, _) = oneshot::channel();
         self.block_sender
             .send(BlockProcessingMessage::Process(
                 BlockTask { block: tb.block, trusted_ghostdag_data: Some(Arc::new(tb.ghostdag.into())), update_virtual: false },
-                vec![tx],
+                tx,
             ))
             .unwrap();
-        self.counters.blocks_submitted.fetch_add(1, Ordering::SeqCst);
+        self.counters.blocks_submitted.fetch_add(1, Ordering::Relaxed);
         async { rx.await.unwrap() }
-    }
-
-    pub fn import_pruning_points(&self, pruning_points: PruningPointsList) {
-        self.pruning_proof_manager.import_pruning_points(&pruning_points)
     }
 
     pub fn resolve_virtual(&self) {
         self.virtual_processor.resolve_virtual()
-    }
-
-    pub fn build_block_template(&self, miner_data: MinerData, txs: Vec<Transaction>) -> Result<BlockTemplate, RuleError> {
-        self.virtual_processor.build_block_template(miner_data, txs)
     }
 
     pub fn body_tips(&self) -> Arc<BlockHashSet> {
@@ -600,43 +605,65 @@ impl Consensus {
 }
 
 impl ConsensusApi for Consensus {
-    fn build_block_template(self: Arc<Self>, miner_data: MinerData, txs: Vec<Transaction>) -> Result<BlockTemplate, RuleError> {
-        self.as_ref().build_block_template(miner_data, txs)
+    fn build_block_template(&self, miner_data: MinerData, txs: Vec<Transaction>) -> Result<BlockTemplate, RuleError> {
+        self.virtual_processor.build_block_template(miner_data, txs)
     }
 
-    fn validate_and_insert_block(
-        self: Arc<Self>,
-        block: Block,
-        update_virtual: bool,
-    ) -> BoxFuture<'static, BlockProcessResult<BlockStatus>> {
-        let result = self.as_ref().validate_and_insert_block(block, update_virtual);
+    fn validate_and_insert_block(&self, block: Block, update_virtual: bool) -> BoxFuture<'static, BlockProcessResult<BlockStatus>> {
+        let result = self.validate_and_insert_block_impl(block, update_virtual);
         Box::pin(async move { result.await })
     }
 
-    fn validate_and_insert_trusted_block(self: Arc<Self>, tb: TrustedBlock) -> BoxFuture<'static, BlockProcessResult<BlockStatus>> {
-        let result = self.as_ref().validate_and_insert_trusted_block(tb);
+    fn validate_and_insert_trusted_block(&self, tb: TrustedBlock) -> BoxFuture<'static, BlockProcessResult<BlockStatus>> {
+        let result = self.validate_and_insert_trusted_block_impl(tb);
         Box::pin(async move { result.await })
     }
 
-    fn validate_mempool_transaction_and_populate(self: Arc<Self>, transaction: &mut MutableTransaction) -> TxResult<()> {
+    fn validate_mempool_transaction_and_populate(&self, transaction: &mut MutableTransaction) -> TxResult<()> {
         self.virtual_processor.validate_mempool_transaction_and_populate(transaction)?;
         Ok(())
     }
 
-    fn calculate_transaction_mass(self: Arc<Self>, transaction: &Transaction) -> u64 {
+    fn calculate_transaction_mass(&self, transaction: &Transaction) -> u64 {
         self.body_processor.mass_calculator.calc_tx_mass(transaction)
     }
 
-    fn get_virtual_daa_score(self: Arc<Self>) -> u64 {
+    fn get_virtual_daa_score(&self) -> u64 {
         self.virtual_processor.virtual_stores.read().state.get().unwrap().daa_score
     }
 
-    fn get_virtual_state_tips(self: Arc<Self>) -> Vec<Hash> {
-        self.virtual_processor.virtual_stores.read().state.get().unwrap().parents.clone()
+    fn get_virtual_merge_depth_root(&self) -> Option<Hash> {
+        // TODO: consider saving the merge depth root as part of virtual state
+        // TODO: unwrap on pruning_point and virtual state reads when staging consensus is implemented
+        let Some(pruning_point) = self.pruning_store.read().pruning_point().unwrap_option() else { return None; };
+        let Some(virtual_state) = self.virtual_processor.virtual_stores.read().state.get().unwrap_option() else { return None; };
+        let virtual_ghostdag_data = &virtual_state.ghostdag_data;
+        let root = self.depth_manager.calc_merge_depth_root(virtual_ghostdag_data, pruning_point);
+        if root.is_origin() {
+            None
+        } else {
+            Some(root)
+        }
+    }
+
+    fn get_sink_timestamp(&self) -> Option<u64> {
+        // TODO: unwrap on virtual state read when staging consensus is implemented
+        self.virtual_processor.virtual_stores.read().state.get().unwrap_option().map(|state| {
+            let sink = state.ghostdag_data.selected_parent;
+            self.headers_store.get_timestamp(sink).unwrap()
+        })
+    }
+
+    fn get_virtual_parents(&self) -> BlockHashSet {
+        // TODO: unwrap on virtual state read when staging consensus is implemented
+        match self.virtual_processor.virtual_stores.read().state.get().unwrap_option() {
+            Some(s) => s.parents.iter().copied().collect(),
+            None => Default::default(),
+        }
     }
 
     fn get_virtual_utxos(
-        self: Arc<Self>,
+        &self,
         from_outpoint: Option<TransactionOutpoint>,
         chunk_size: usize,
         skip_first: bool,
@@ -647,7 +674,7 @@ impl ConsensusApi for Consensus {
     }
 
     fn get_pruning_point_utxos(
-        self: Arc<Self>,
+        &self,
         expected_pruning_point: Hash,
         from_outpoint: Option<TransactionOutpoint>,
         chunk_size: usize,
@@ -662,20 +689,20 @@ impl ConsensusApi for Consensus {
         Ok(iter.map(|item| item.unwrap()).collect())
     }
 
-    fn modify_coinbase_payload(self: Arc<Self>, payload: Vec<u8>, miner_data: &MinerData) -> CoinbaseResult<Vec<u8>> {
+    fn modify_coinbase_payload(&self, payload: Vec<u8>, miner_data: &MinerData) -> CoinbaseResult<Vec<u8>> {
         self.coinbase_manager.modify_coinbase_payload(payload, miner_data)
     }
 
-    fn validate_pruning_proof(self: Arc<Self>, _proof: &PruningPointProof) -> Result<(), PruningImportError> {
+    fn validate_pruning_proof(&self, _proof: &PruningPointProof) -> Result<(), PruningImportError> {
         unimplemented!()
     }
 
-    fn apply_pruning_proof(self: Arc<Self>, proof: PruningPointProof, trusted_set: &[TrustedBlock]) {
+    fn apply_pruning_proof(&self, proof: PruningPointProof, trusted_set: &[TrustedBlock]) {
         self.pruning_proof_manager.apply_proof(proof, trusted_set)
     }
 
-    fn import_pruning_points(self: Arc<Self>, pruning_points: PruningPointsList) {
-        self.as_ref().import_pruning_points(pruning_points)
+    fn import_pruning_points(&self, pruning_points: PruningPointsList) {
+        self.pruning_proof_manager.import_pruning_points(&pruning_points)
     }
 
     fn append_imported_pruning_point_utxos(&self, utxoset_chunk: &[(TransactionOutpoint, UtxoEntry)], current_multiset: &mut MuHash) {
@@ -692,33 +719,37 @@ impl ConsensusApi for Consensus {
         self.virtual_processor.import_pruning_point_utxo_set(new_pruning_point, imported_utxo_multiset)
     }
 
-    fn header_exists(self: Arc<Self>, hash: Hash) -> bool {
+    fn header_exists(&self, hash: Hash) -> bool {
         match self.statuses_store.read().get(hash).unwrap_option() {
             Some(status) => status.has_block_header(),
             None => false,
         }
     }
 
-    fn is_chain_ancestor_of(self: Arc<Self>, low: Hash, high: Hash) -> ConsensusResult<bool> {
+    fn is_chain_ancestor_of(&self, low: Hash, high: Hash) -> ConsensusResult<bool> {
         self.validate_block_exists(low)?;
         self.validate_block_exists(high)?;
         Ok(self.reachability_service.is_chain_ancestor_of(low, high))
     }
 
     // max_blocks has to be greater than the merge set size limit
-    fn get_hashes_between(self: Arc<Self>, low: Hash, high: Hash, max_blocks: usize) -> ConsensusResult<(Vec<Hash>, Hash)> {
+    fn get_hashes_between(&self, low: Hash, high: Hash, max_blocks: usize) -> ConsensusResult<(Vec<Hash>, Hash)> {
         self.validate_block_exists(low)?;
         self.validate_block_exists(high)?;
 
-        Ok(self.sync_manager.get_hashes_between(low, high, Some(max_blocks)))
+        Ok(self.sync_manager.antipast_hashes_between(low, high, Some(max_blocks)))
     }
 
-    fn get_header(self: Arc<Self>, hash: Hash) -> ConsensusResult<Arc<Header>> {
+    fn get_header(&self, hash: Hash) -> ConsensusResult<Arc<Header>> {
         self.validate_block_exists(hash)?;
         Ok(self.headers_store.get_header(hash).unwrap())
     }
 
-    fn get_pruning_point_proof(self: Arc<Self>) -> Arc<PruningPointProof> {
+    fn get_headers_selected_tip(&self) -> Hash {
+        self.headers_selected_tip_store.read().get().unwrap().hash
+    }
+
+    fn get_pruning_point_proof(&self) -> Arc<PruningPointProof> {
         self.pruning_proof_manager.get_pruning_point_proof()
     }
 
@@ -761,6 +792,19 @@ impl ConsensusApi for Consensus {
             header: self.headers_store.get_header(hash).unwrap(),
             transactions: self.block_transactions_store.get(hash).unwrap(),
         })
+    }
+
+    fn get_block_status(&self, hash: Hash) -> Option<BlockStatus> {
+        self.statuses_store.read().get(hash).unwrap_option()
+    }
+
+    fn get_missing_block_body_hashes(&self, high: Hash) -> ConsensusResult<Vec<Hash>> {
+        self.validate_block_exists(high)?;
+        Ok(self.sync_manager.get_missing_block_body_hashes(high)?)
+    }
+
+    fn pruning_point(&self) -> Option<Hash> {
+        self.pruning_store.read().pruning_point().unwrap_option()
     }
 }
 

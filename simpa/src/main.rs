@@ -17,14 +17,11 @@ use consensus::{
     processes::ghostdag::ordering::SortableBlock,
 };
 use consensus_core::{
-    block::Block,
-    blockstatus::BlockStatus,
-    errors::block::{BlockProcessResult, RuleError},
-    header::Header,
-    BlockHashSet, HashMapCustomHasher,
+    api::ConsensusApi, block::Block, blockstatus::BlockStatus, errors::block::BlockProcessResult, header::Header, BlockHashSet,
+    HashMapCustomHasher,
 };
 use consensus_notify::root::ConsensusNotificationRoot;
-use futures::{future::join_all, Future};
+use futures::{future::try_join_all, Future};
 use hashes::Hash;
 use itertools::Itertools;
 use kaspa_core::{info, warn};
@@ -215,12 +212,12 @@ async fn validate(src_consensus: &Consensus, dst_consensus: &Consensus, params: 
 
     for mut chunk in iter {
         let current_joins = submit_chunk(src_consensus, dst_consensus, &mut chunk);
-        let statuses = join_all(prev_joins).await.into_iter().collect::<Result<Vec<BlockStatus>, RuleError>>().unwrap();
+        let statuses = try_join_all(prev_joins).await.unwrap();
         assert!(statuses.iter().all(|s| s.is_utxo_valid_or_pending()));
         prev_joins = current_joins;
     }
 
-    let statuses = join_all(prev_joins).await.into_iter().collect::<Result<Vec<BlockStatus>, RuleError>>().unwrap();
+    let statuses = try_join_all(prev_joins).await.unwrap();
     assert!(statuses.iter().all(|s| s.is_utxo_valid_or_pending()));
 
     // Assert that at least one body tip was resolved with valid UTXO

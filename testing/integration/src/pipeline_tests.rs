@@ -5,8 +5,8 @@ use consensus::{
     params::MAINNET_PARAMS,
     processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions},
 };
-use consensus_core::{blockhash, blockstatus::BlockStatus, errors::block::RuleError};
-use futures_util::future::join_all;
+use consensus_core::blockhash;
+use futures_util::future::try_join_all;
 use hashes::Hash;
 use parking_lot::RwLock;
 use rand_distr::{Distribution, Poisson};
@@ -172,7 +172,7 @@ async fn test_concurrent_pipeline_random() {
             let f = consensus.validate_and_insert_block(b);
             futures.push(f);
         }
-        join_all(futures).await.into_iter().collect::<Result<Vec<BlockStatus>, RuleError>>().unwrap();
+        try_join_all(futures).await.unwrap();
         tips = new_tips;
     }
 

@@ -1,7 +1,10 @@
-use crate::mempool::{errors::RuleResult, model::pool::Pool, Mempool};
+use crate::{
+    consensus_context::ConsensusMiningContext,
+    mempool::{errors::RuleResult, model::pool::Pool, Mempool},
+};
 use consensus_core::tx::TransactionId;
 
-impl Mempool {
+impl<T: ConsensusMiningContext + ?Sized> Mempool<T> {
     pub(crate) fn remove_transaction(&mut self, transaction_id: &TransactionId, remove_redeemers: bool) -> RuleResult<()> {
         if self.orphan_pool.has(transaction_id) {
             return self.orphan_pool.remove_orphan(transaction_id, true).map(|_| ());
