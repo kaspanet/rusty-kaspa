@@ -277,4 +277,8 @@ impl ConsensusApi for ConsensusMock {
     ) -> consensus_core::errors::consensus::ConsensusResult<Vec<(TransactionOutpoint, UtxoEntry)>> {
         unimplemented!()
     }
+
+    fn get_block_status(&self, _hash: hashes::Hash) -> Option<BlockStatus> {
+        unimplemented!()
+    }
 }

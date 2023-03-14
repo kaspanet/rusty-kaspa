@@ -2025,6 +2025,7 @@ dependencies = [
  "futures",
  "hashes",
  "itertools 0.10.5",
+ "indexmap",
  "kaspa-core",
  "kaspa-utils",
  "log",

@@ -83,6 +83,8 @@ pub trait ConsensusApi: Send + Sync {
         chunk_size: usize,
         skip_first: bool,
     ) -> ConsensusResult<Vec<(TransactionOutpoint, UtxoEntry)>>;
+    
+    fn get_block_status(&self, hash: Hash) -> Option<BlockStatus>;
 }
 
 pub type DynConsensus = Arc<dyn ConsensusApi>;
