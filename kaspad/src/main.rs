@@ -179,7 +179,7 @@ pub fn main() {
     let grpc_server = Arc::new(GrpcServer::new(grpc_server_addr, rpc_core_server.service()));
     let p2p_service = Arc::new(P2pService::new(consensus.clone(), &config, args.connect, args.listen));
 
-    // TEMP: temp mining manager initialization just to make sure it complies with consensus
+    // TODO: TEMP: temp mining manager initialization just to make sure it complies with consensus
     let _mining_manager =
         MiningManager::new(consensus.clone() as DynConsensus, config.target_time_per_block, false, config.max_block_mass, None);
 

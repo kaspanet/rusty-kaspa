@@ -635,8 +635,8 @@ impl ConsensusApi for Consensus {
     fn get_virtual_merge_depth_root(&self) -> Option<Hash> {
         // TODO: consider saving the merge depth root as part of virtual state
         // TODO: unwrap on pruning_point and virtual state reads when staging consensus is implemented
-        let Ok(pruning_point) = self.pruning_store.read().pruning_point() else { return None; };
-        let Ok(virtual_state) = self.virtual_processor.virtual_stores.read().state.get() else { return None; };
+        let Some(pruning_point) = self.pruning_store.read().pruning_point().unwrap_option() else { return None; };
+        let Some(virtual_state) = self.virtual_processor.virtual_stores.read().state.get().unwrap_option() else { return None; };
         let virtual_ghostdag_data = &virtual_state.ghostdag_data;
         let root = self.depth_manager.calc_merge_depth_root(virtual_ghostdag_data, pruning_point);
         if root.is_origin() {
@@ -648,20 +648,17 @@ impl ConsensusApi for Consensus {
 
     fn get_sink_timestamp(&self) -> Option<u64> {
         // TODO: unwrap on virtual state read when staging consensus is implemented
-        let res = self.virtual_processor.virtual_stores.read().state.get();
-        if let Ok(state) = res {
+        self.virtual_processor.virtual_stores.read().state.get().unwrap_option().map(|state| {
             let sink = state.ghostdag_data.selected_parent;
-            Some(self.headers_store.get_timestamp(sink).unwrap())
-        } else {
-            None
-        }
+            self.headers_store.get_timestamp(sink).unwrap()
+        })
     }
 
     fn get_virtual_parents(&self) -> BlockHashSet {
         // TODO: unwrap on virtual state read when staging consensus is implemented
-        match self.virtual_processor.virtual_stores.read().state.get() {
-            Ok(s) => s.parents.iter().copied().collect(),
-            Err(_) => Default::default(),
+        match self.virtual_processor.virtual_stores.read().state.get().unwrap_option() {
+            Some(s) => s.parents.iter().copied().collect(),
+            None => Default::default(),
         }
     }
 
