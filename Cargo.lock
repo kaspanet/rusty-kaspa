@@ -603,6 +603,7 @@ dependencies = [
  "duration-string",
  "futures-util",
  "itertools 0.10.5",
+ "kaspa-core",
  "log",
  "p2p-lib",
  "parking_lot",
