@@ -60,12 +60,6 @@ impl AsyncService for P2pService {
         Box::pin(async move {
             let server_address = self.listen.clone().unwrap_or(String::from("[::1]:50051"));
             let p2p_adaptor = Adaptor::bidirectional(server_address.clone(), self.ctx.clone()).unwrap();
-            let connection_manager = ConnectionManager::new(
-                p2p_adaptor.clone(),
-                1,   //TODO: Override from CLI args
-                128, //TODO: Override from CLI args
-                self.ctx.amgr.clone(),
-            );
             let connection_manager =
                 ConnectionManager::new(p2p_adaptor.clone(), self.outbound_target, self.inbound_limit, self.ctx.amgr.clone());
 

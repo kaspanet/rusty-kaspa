@@ -2,16 +2,13 @@ mod stores;
 
 extern crate self as address_manager;
 
-use std::{collections::HashSet, net::IpAddr, path::Iter, sync::Arc};
+use std::{collections::HashSet, net::IpAddr, sync::Arc};
 
 use database::prelude::{StoreResultExtensions, DB};
 use kaspa_core::time::unix_now;
 use parking_lot::Mutex;
 
-use stores::{
-    banned_address_store::{BannedAddressesStore, BannedAddressesStoreReader, ConnectionBanTimestamp, DbBannedAddressesStore},
-    AddressKey,
-};
+use stores::banned_address_store::{BannedAddressesStore, BannedAddressesStoreReader, ConnectionBanTimestamp, DbBannedAddressesStore};
 
 pub use stores::NetAddress;
 
@@ -176,7 +173,7 @@ mod address_store_with_cache {
             let exceptions: HashSet<AddressKey> = exceptions.into_iter().map(|addr| addr.into()).collect();
             let address_entries =
                 self.addresses.iter().filter(|(addr_key, _)| !exceptions.contains(addr_key)).map(|(_, entry)| entry).collect_vec();
-            let mut weights = address_entries
+            let weights = address_entries
                 .iter()
                 .map(|entry| 64f64.powf((MAX_CONNECTION_FAILED_COUNT + 1 - entry.connection_failed_count) as f64))
                 .collect_vec();
