@@ -93,7 +93,7 @@ impl Router {
                     res = incoming_stream.message() => match res {
                         Ok(Some(msg)) => {
                             trace!("P2P, Router receive loop - got message: {:?}, router-id: {}", msg, router.identity);
-                            let msg_str = msg_to_string(&msg);
+                            let msg_str = msg_type_string(&msg);
                             if !(router.route_to_flow(msg).await) {
                                 debug!("P2P, Router receive loop - no route for message {} - exiting loop, router-id: {}", msg_str, router.identity);
                                 break;
@@ -233,56 +233,12 @@ impl Router {
     }
 }
 
-fn msg_to_string(msg: &KaspadMessage) -> String {
+fn msg_type_string(msg: &KaspadMessage) -> String {
     match msg.payload.as_ref() {
-        Some(payload) => match payload {
-            crate::pb::kaspad_message::Payload::Addresses(_) => "Addresses",
-            crate::pb::kaspad_message::Payload::Block(_) => "Block",
-            crate::pb::kaspad_message::Payload::Transaction(_) => "Transaction",
-            crate::pb::kaspad_message::Payload::BlockLocator(_) => "BlockLocator",
-            crate::pb::kaspad_message::Payload::RequestAddresses(_) => "RequestAddresses",
-            crate::pb::kaspad_message::Payload::RequestRelayBlocks(_) => "RequestRelayBlocks",
-            crate::pb::kaspad_message::Payload::RequestTransactions(_) => "RequestTransactions",
-            crate::pb::kaspad_message::Payload::IbdBlock(_) => "IbdBlock",
-            crate::pb::kaspad_message::Payload::InvRelayBlock(_) => "InvRelayBlock",
-            crate::pb::kaspad_message::Payload::InvTransactions(_) => "InvTransactions",
-            crate::pb::kaspad_message::Payload::Ping(_) => "Ping",
-            crate::pb::kaspad_message::Payload::Pong(_) => "Pong",
-            crate::pb::kaspad_message::Payload::Verack(_) => "Verack",
-            crate::pb::kaspad_message::Payload::Version(_) => "Version",
-            crate::pb::kaspad_message::Payload::TransactionNotFound(_) => "TransactionNotFound",
-            crate::pb::kaspad_message::Payload::Reject(_) => "Reject",
-            crate::pb::kaspad_message::Payload::PruningPointUtxoSetChunk(_) => "PruningPointUtxoSetChunk",
-            crate::pb::kaspad_message::Payload::RequestIbdBlocks(_) => "RequestIbdBlocks",
-            crate::pb::kaspad_message::Payload::UnexpectedPruningPoint(_) => "UnexpectedPruningPoint",
-            crate::pb::kaspad_message::Payload::IbdBlockLocator(_) => "IbdBlockLocator",
-            crate::pb::kaspad_message::Payload::IbdBlockLocatorHighestHash(_) => "IbdBlockLocatorHighestHash",
-            crate::pb::kaspad_message::Payload::RequestNextPruningPointUtxoSetChunk(_) => "RequestNextPruningPointUtxoSetChunk",
-            crate::pb::kaspad_message::Payload::DonePruningPointUtxoSetChunks(_) => "DonePruningPointUtxoSetChunks",
-            crate::pb::kaspad_message::Payload::IbdBlockLocatorHighestHashNotFound(_) => "IbdBlockLocatorHighestHashNotFound",
-            crate::pb::kaspad_message::Payload::BlockWithTrustedData(_) => "BlockWithTrustedData",
-            crate::pb::kaspad_message::Payload::DoneBlocksWithTrustedData(_) => "DoneBlocksWithTrustedData",
-            crate::pb::kaspad_message::Payload::RequestPruningPointAndItsAnticone(_) => "RequestPruningPointAndItsAnticone",
-            crate::pb::kaspad_message::Payload::BlockHeaders(_) => "BlockHeaders",
-            crate::pb::kaspad_message::Payload::RequestNextHeaders(_) => "RequestNextHeaders",
-            crate::pb::kaspad_message::Payload::DoneHeaders(_) => "DoneHeaders",
-            crate::pb::kaspad_message::Payload::RequestPruningPointUtxoSet(_) => "RequestPruningPointUtxoSet",
-            crate::pb::kaspad_message::Payload::RequestHeaders(_) => "RequestHeaders",
-            crate::pb::kaspad_message::Payload::RequestBlockLocator(_) => "RequestBlockLocator",
-            crate::pb::kaspad_message::Payload::PruningPoints(_) => "PruningPoints",
-            crate::pb::kaspad_message::Payload::RequestPruningPointProof(_) => "RequestPruningPointProof",
-            crate::pb::kaspad_message::Payload::PruningPointProof(_) => "PruningPointProof",
-            crate::pb::kaspad_message::Payload::Ready(_) => "Ready",
-            crate::pb::kaspad_message::Payload::BlockWithTrustedDataV4(_) => "BlockWithTrustedDataV4",
-            crate::pb::kaspad_message::Payload::TrustedData(_) => "TrustedData",
-            crate::pb::kaspad_message::Payload::RequestIbdChainBlockLocator(_) => "RequestIbdChainBlockLocator",
-            crate::pb::kaspad_message::Payload::IbdChainBlockLocator(_) => "IbdChainBlockLocator",
-            crate::pb::kaspad_message::Payload::RequestAnticone(_) => "RequestAnticone",
-            crate::pb::kaspad_message::Payload::RequestNextPruningPointAndItsAnticoneBlocks(_) => {
-                "RequestNextPruningPointAndItsAnticoneBlocks"
-            }
-        },
-        None => "EMPTY_PAYLOAD",
+        Some(payload) => {
+            let payload_type: KaspadMessagePayloadType = payload.into();
+            format!("{:?}", payload_type)
+        }
+        None => "<EMPTY_PAYLOAD>".to_owned(),
     }
-    .to_owned()
 }
