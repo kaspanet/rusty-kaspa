@@ -1,6 +1,6 @@
 use addresses::{Address, Prefix, Version};
+use blake2b_simd::Params;
 use consensus_core::tx::{ScriptPublicKey, ScriptVec};
-use hashes::HasherBase;
 use smallvec::SmallVec;
 use std::iter::once;
 use txscript_errors::TxScriptError;
@@ -44,9 +44,8 @@ pub fn pay_to_address_script(address: &Address) -> ScriptPublicKey {
 
 /// Takes a script and returns an equivalent pay-to-script-hash script
 pub fn pay_to_script_hash_script(redeem_script: &[u8]) -> ScriptPublicKey {
-    let mut hasher = hashes::TransactionSigningHash::new();
-    let redeem_script_hash = hasher.update(redeem_script).clone().finalize();
-    let script = pay_to_script_hash(redeem_script_hash.as_bytes().as_ref());
+    let redeem_script_hash = Params::new().hash_length(32).to_state().update(redeem_script).finalize();
+    let script = pay_to_script_hash(redeem_script_hash.as_bytes());
     ScriptPublicKey::new(ScriptClass::ScriptHash.version(), script)
 }
 
