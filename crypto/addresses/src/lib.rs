@@ -2,35 +2,27 @@ use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use std::fmt::{Display, Formatter};
+use thiserror::Error;
 
 mod bech32;
 
-#[derive(PartialEq, Eq, Debug, Clone)]
+#[derive(Error, PartialEq, Eq, Debug, Clone)]
 pub enum AddressError {
+    #[error("Invalid prefix {0}")]
     InvalidPrefix(String),
+
+    #[error("Prefix is missing")]
     MissingPrefix,
+
+    #[error("Invalid version {0}")]
     InvalidVersion(u8),
+
+    #[error("Invalid character {0}")]
     DecodingError(char),
+
+    #[error("Checksum is invalid")]
     BadChecksum,
 }
-
-impl Display for AddressError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Address decoding failed: {}",
-            match self {
-                Self::InvalidPrefix(prefix) => format!("Invalid prefix {prefix}"),
-                Self::MissingPrefix => "Prefix is missing".to_string(),
-                Self::InvalidVersion(version) => format!("Invalid version {version}"),
-                Self::BadChecksum => "Checksum is invalid".to_string(),
-                Self::DecodingError(c) => format!("Invalid character {c}"),
-            }
-        )
-    }
-}
-
-impl std::error::Error for AddressError {}
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub enum Prefix {
