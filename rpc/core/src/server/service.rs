@@ -7,7 +7,6 @@ use consensus_core::{
     api::DynConsensus,
     block::Block,
     coinbase::MinerData,
-    tx::{ScriptPublicKey, ScriptVec},
 };
 use consensus_notify::{
     notifier::ConsensusNotifier,
