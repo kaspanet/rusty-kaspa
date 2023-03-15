@@ -5,7 +5,7 @@ use std::fmt::Debug;
 
 /// [`NotificationMoe`] controls notification delivery process
 #[wasm_bindgen]
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum NotificationMode {
     /// Local notifier is used for notification processing.
     ///
@@ -78,11 +78,6 @@ impl Inner {
 
     pub fn notification_channel_receiver(&self) -> Receiver<Notification> {
         self.notification_channel.receiver.clone()
-    }
-
-    #[allow(dead_code)]
-    pub fn encoding(&self) -> Encoding {
-        self.encoding
     }
 
     /// Start sending notifications of some type to the client.
@@ -220,6 +215,10 @@ impl KaspaRpcClient {
 
     pub fn encoding(&self) -> Encoding {
         self.inner.encoding
+    }
+
+    pub fn notification_mode(&self) -> NotificationMode {
+        self.notification_mode
     }
 }
 
