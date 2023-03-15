@@ -596,6 +596,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "connectionmanager"
+version = "0.1.0"
+dependencies = [
+ "addressmanager",
+ "duration-string",
+ "futures-util",
+ "itertools 0.10.5",
+ "kaspa-core",
+ "log",
+ "p2p-lib",
+ "parking_lot",
+ "rand 0.8.5",
+ "tokio",
+]
+
+[[package]]
 name = "consensus"
 version = "0.1.0"
 dependencies = [
@@ -889,6 +905,12 @@ dependencies = [
  "redox_users",
  "winapi",
 ]
+
+[[package]]
+name = "duration-string"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c5d74010fd35f37054de1eb72485be4f562b0815e0e7b477e578581d3998fa47"
 
 [[package]]
 name = "either"
@@ -1653,6 +1675,7 @@ dependencies = [
 name = "kaspad"
 version = "0.1.0"
 dependencies = [
+ "addressmanager",
  "async-channel",
  "clap 4.1.4",
  "consensus",
@@ -2021,7 +2044,9 @@ checksum = "9b7820b9daea5457c9f21c69448905d723fbd21136ccf521748f23fd49e723ee"
 name = "p2p-flows"
 version = "0.1.0"
 dependencies = [
+ "addressmanager",
  "async-trait",
+ "connectionmanager",
  "consensus-core",
  "futures",
  "hashes",
@@ -2049,6 +2074,8 @@ dependencies = [
  "futures",
  "h2",
  "hashes",
+ "hex",
+ "itertools 0.10.5",
  "kaspa-core",
  "log",
  "math",

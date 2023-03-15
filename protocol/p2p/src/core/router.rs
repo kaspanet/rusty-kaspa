@@ -93,8 +93,9 @@ impl Router {
                     res = incoming_stream.message() => match res {
                         Ok(Some(msg)) => {
                             trace!("P2P, Router receive loop - got message: {:?}, router-id: {}", msg, router.identity);
+                            let msg_str = msg_type_string(&msg);
                             if !(router.route_to_flow(msg).await) {
-                                debug!("P2P, Router receive loop - no route for message - exiting loop, router-id: {}", router.identity);
+                                debug!("P2P, Router receive loop - no route for message {} - exiting loop, router-id: {}", msg_str, router.identity);
                                 break;
                             }
                         }
@@ -229,5 +230,15 @@ impl Router {
         self.hub_sender.send(HubEvent::PeerClosing(self.identity)).await.expect("hub receiver should never drop before senders");
 
         true
+    }
+}
+
+fn msg_type_string(msg: &KaspadMessage) -> String {
+    match msg.payload.as_ref() {
+        Some(payload) => {
+            let payload_type: KaspadMessagePayloadType = payload.into();
+            format!("{:?}", payload_type)
+        }
+        None => "<EMPTY_PAYLOAD>".to_owned(),
     }
 }

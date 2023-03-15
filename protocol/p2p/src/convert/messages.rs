@@ -10,7 +10,8 @@ use consensus_core::{
     tx::{TransactionOutpoint, UtxoEntry},
 };
 use hashes::Hash;
-use std::sync::Arc;
+
+use std::{net::IpAddr, sync::Arc};
 
 // ----------------------------------------------------------------------------
 // protowire to consensus_core
@@ -114,5 +115,13 @@ impl TryFrom<protowire::BlockLocatorMessage> for Vec<Hash> {
 
     fn try_from(msg: protowire::BlockLocatorMessage) -> Result<Self, Self::Error> {
         msg.hashes.into_iter().map(|v| v.try_into()).collect()
+    }
+}
+
+impl TryFrom<protowire::AddressesMessage> for Vec<(IpAddr, u16)> {
+    type Error = ConversionError;
+
+    fn try_from(msg: protowire::AddressesMessage) -> Result<Self, Self::Error> {
+        msg.address_list.into_iter().map(|addr| addr.try_into()).collect::<Result<_, _>>()
     }
 }
