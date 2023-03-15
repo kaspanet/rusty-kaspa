@@ -24,7 +24,7 @@ impl Display for Error {
 
 impl std::error::Error for Error {}
 
-/// Classes of script payment known about in the blockDAG
+/// Standard classes of script payment in the blockDAG
 #[derive(PartialEq, Eq, Debug, Clone)]
 #[repr(u8)]
 pub enum ScriptClass {
