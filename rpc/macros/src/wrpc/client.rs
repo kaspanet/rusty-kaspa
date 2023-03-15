@@ -44,7 +44,7 @@ impl ToTokens for RpcTable {
             let Handler { fn_call, request_type, response_type, .. } = Handler::new(handler);
 
             // async fn #fn_call(&self, request : #request_type) -> RpcResult<#response_type> {
-            //     let response: ClientResult<#response_type> = self.rpc.call(#rpc_api_ops::#handler, request).await;
+            //     let response: ClientResult<#response_type> = self.inner.rpc.call(#rpc_api_ops::#handler, request).await;
             //     Ok(response.map_err(|e| e.to_string())?)
             // }
 
