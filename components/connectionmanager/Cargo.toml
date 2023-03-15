@@ -7,6 +7,7 @@ include.workspace = true
 license.workspace = true
 
 [dependencies]
+kaspa-core.workspace = true
 p2p-lib.workspace = true
 addressmanager.workspace = true
 tokio.workspace = true

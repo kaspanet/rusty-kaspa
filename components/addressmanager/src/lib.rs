@@ -60,12 +60,12 @@ impl AddressManager {
         self.address_store.set(address, 0);
     }
 
-    pub fn get_all_addresses(&self) -> impl Iterator<Item = NetAddress> + '_ {
-        self.address_store.get_all_addresses()
+    pub fn iterate_addresses(&self) -> impl Iterator<Item = NetAddress> + '_ {
+        self.address_store.iterate_addresses()
     }
 
-    pub fn get_random_addresses(&self, exceptions: HashSet<NetAddress>) -> impl Iterator<Item = NetAddress> {
-        self.address_store.get_randomized_addresses(exceptions)
+    pub fn iterate_prioritized_random_addresses(&self, exceptions: HashSet<NetAddress>) -> impl Iterator<Item = NetAddress> {
+        self.address_store.iterate_prioritized_random_addresses(exceptions)
     }
 
     pub fn ban(&mut self, ip: IpAddr) {
@@ -104,7 +104,10 @@ mod address_store_with_cache {
 
     use database::prelude::DB;
     use itertools::Itertools;
-    use rand::{distributions::WeightedIndex, prelude::Distribution};
+    use rand::{
+        distributions::{WeightedError, WeightedIndex},
+        prelude::Distribution,
+    };
 
     use crate::{
         stores::{
@@ -165,21 +168,20 @@ mod address_store_with_cache {
             self.db_store.remove(key).unwrap()
         }
 
-        pub fn get_all_addresses(&self) -> impl Iterator<Item = NetAddress> + '_ {
+        pub fn iterate_addresses(&self) -> impl Iterator<Item = NetAddress> + '_ {
             self.addresses.values().map(|entry| entry.address)
         }
 
-        pub fn get_randomized_addresses(&self, exceptions: HashSet<NetAddress>) -> impl Iterator<Item = NetAddress> {
+        pub fn iterate_prioritized_random_addresses(&self, exceptions: HashSet<NetAddress>) -> impl Iterator<Item = NetAddress> {
             let exceptions: HashSet<AddressKey> = exceptions.into_iter().map(|addr| addr.into()).collect();
-            let address_entries =
-                self.addresses.iter().filter(|(addr_key, _)| !exceptions.contains(addr_key)).map(|(_, entry)| entry).collect_vec();
-            let weights = address_entries
+            let (weights, addresses) = self
+                .addresses
                 .iter()
-                .map(|entry| 64f64.powf((MAX_CONNECTION_FAILED_COUNT + 1 - entry.connection_failed_count) as f64))
-                .collect_vec();
-            let addresses = address_entries.into_iter().map(|entry| entry.address).collect_vec();
+                .filter(|(addr_key, _)| !exceptions.contains(addr_key))
+                .map(|(_, e)| (64f64.powf((MAX_CONNECTION_FAILED_COUNT + 1 - e.connection_failed_count) as f64), e.address))
+                .unzip();
 
-            RandomItertaor::new(weights, addresses)
+            RandomWeightedIterator::new(weights, addresses)
         }
 
         pub fn remove_by_ip(&mut self, ip: IpAddr) {
@@ -193,31 +195,47 @@ mod address_store_with_cache {
         Store::new(db)
     }
 
-    pub struct RandomItertaor {
-        weights: Vec<f64>,
+    pub struct RandomWeightedIterator {
+        weighted_index: WeightedIndex<f64>,
         addresses: Vec<NetAddress>,
-        consumed_count: usize,
+        consumed: bool,
     }
 
-    impl RandomItertaor {
+    impl RandomWeightedIterator {
         pub fn new(weights: Vec<f64>, addresses: Vec<NetAddress>) -> Self {
-            Self { weights, addresses, consumed_count: 0 }
+            Self { weighted_index: WeightedIndex::new(weights).unwrap(), addresses, consumed: false }
         }
     }
 
-    impl Iterator for RandomItertaor {
+    impl Iterator for RandomWeightedIterator {
         type Item = NetAddress;
 
         fn next(&mut self) -> Option<Self::Item> {
-            if self.consumed_count == self.addresses.len() {
+            if self.consumed {
                 None
             } else {
-                self.consumed_count += 1;
-                let dist = WeightedIndex::new(&self.weights).unwrap();
-                let i = dist.sample(&mut rand::thread_rng());
-                self.weights[i] = 0f64;
+                let i = self.weighted_index.sample(&mut rand::thread_rng());
+                // Zero the selected address entry
+                match self.weighted_index.update_weights(&[(i, &0f64)]) {
+                    Ok(_) => {}
+                    Err(WeightedError::AllWeightsZero) => self.consumed = true,
+                    Err(e) => panic!("{e}"),
+                }
                 Some(self.addresses[i])
             }
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use std::net::{IpAddr, Ipv6Addr};
+
+        #[test]
+        fn test_weighted_iterator() {
+            let address = NetAddress::new(IpAddr::V6(Ipv6Addr::LOCALHOST), 1);
+            let iter = RandomWeightedIterator::new(vec![0.2, 0.3, 0.0], vec![address, address, address]);
+            assert_eq!(iter.count(), 2);
         }
     }
 }

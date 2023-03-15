@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 pub(super) mod address_store;
 pub(super) mod banned_address_store;
 
-#[derive(PartialEq, Eq, Hash, Copy, Clone, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Hash, Copy, Clone, Serialize, Deserialize, Debug)]
 pub struct NetAddress {
     pub ip: IpAddr,
     pub port: u16,

@@ -61,18 +61,13 @@ impl Adaptor {
         Ok(adaptor)
     }
 
-    /// Connect to a new peer with default retry settings (16 retries, 2 seconds apart)
+    /// Connect to a new peer (no retries)
     pub async fn connect_peer(&self, peer_address: String) -> Option<Uuid> {
-        self.connection_handler.connect_with_retry(peer_address, 16, Duration::from_secs(2)).await.map(|r| r.identity())
+        self.connection_handler.connect_with_retry(peer_address, 1, Default::default()).await.map(|r| r.identity())
     }
 
     /// Connect to a new peer (with params controlling retry behavior)
-    pub async fn connect_peer_with_retry_params(
-        &self,
-        peer_address: String,
-        retry_attempts: u8,
-        retry_interval: Duration,
-    ) -> Option<Uuid> {
+    pub async fn connect_peer_with_retries(&self, peer_address: String, retry_attempts: u8, retry_interval: Duration) -> Option<Uuid> {
         self.connection_handler.connect_with_retry(peer_address, retry_attempts, retry_interval).await.map(|r| r.identity())
     }
 
