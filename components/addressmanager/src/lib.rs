@@ -202,6 +202,7 @@ mod address_store_with_cache {
 
     impl RandomWeightedIterator {
         pub fn new(weights: Vec<f64>, addresses: Vec<NetAddress>) -> Self {
+            assert_eq!(weights.len(), addresses.len());
             let weighted_index = match WeightedIndex::new(weights) {
                 Ok(index) => Some(index),
                 Err(WeightedError::NoItem) => None,
@@ -240,6 +241,9 @@ mod address_store_with_cache {
             let address = NetAddress::new(IpAddr::V6(Ipv6Addr::LOCALHOST), 1);
             let iter = RandomWeightedIterator::new(vec![0.2, 0.3, 0.0], vec![address, address, address]);
             assert_eq!(iter.count(), 2);
+
+            let iter = RandomWeightedIterator::new(vec![], vec![]);
+            assert_eq!(iter.count(), 0);
         }
     }
 }
