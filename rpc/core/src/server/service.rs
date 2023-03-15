@@ -3,11 +3,7 @@
 use super::collector::{CollectorFromConsensus, CollectorFromIndex};
 use crate::{api::rpc::RpcApi, model::*, notify::connection::ChannelConnection, FromRpcHex, Notification, RpcError, RpcResult};
 use async_trait::async_trait;
-use consensus_core::{
-    api::DynConsensus,
-    block::Block,
-    coinbase::MinerData,
-};
+use consensus_core::{api::DynConsensus, block::Block, coinbase::MinerData};
 use consensus_notify::{
     notifier::ConsensusNotifier,
     {connection::ConsensusChannelConnection, notification::Notification as ConsensusNotification},

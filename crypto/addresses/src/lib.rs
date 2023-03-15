@@ -85,7 +85,9 @@ impl TryFrom<&str> for Prefix {
     }
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(
+    PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema,
+)]
 #[repr(u8)]
 pub enum Version {
     /// PubKey addresses always have the version byte set to 0
