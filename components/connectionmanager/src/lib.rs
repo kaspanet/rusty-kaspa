@@ -145,25 +145,39 @@ impl ConnectionManager {
         if active_outbound.len() >= self.outbound_target {
             return;
         }
-        let mut missing_connections = self.outbound_target - active_outbound.len();
 
-        let addresses = self.amgr.lock().iterate_prioritized_random_addresses(active_outbound);
-        for net_addr in addresses {
-            let socket_addr = SocketAddr::new(net_addr.ip, net_addr.port).to_string();
-            info!(
-                "Connecting to {} ({}/{} outgoing connections)",
-                &socket_addr,
-                self.outbound_target - missing_connections,
-                self.outbound_target
-            );
-            if self.p2p_adaptor.connect_peer(socket_addr.clone()).await.is_none() {
-                debug!("Failed connecting to {}", socket_addr);
-                self.amgr.lock().mark_connection_failure(net_addr);
-            } else {
-                self.amgr.lock().mark_connection_success(net_addr);
-                missing_connections -= 1;
-                if missing_connections == 0 {
+        let mut missing_connections = self.outbound_target - active_outbound.len();
+        let mut addresses = self.amgr.lock().iterate_prioritized_random_addresses(active_outbound);
+
+        let mut connecting = true;
+        while connecting && missing_connections > 0 {
+            let mut addr = Vec::with_capacity(missing_connections);
+            let mut jobs = Vec::with_capacity(missing_connections);
+            for _ in 0..missing_connections {
+                let Some(net_addr) = addresses.next() else {
+                    connecting = false;
                     break;
+                };
+                let socket_addr = SocketAddr::new(net_addr.ip, net_addr.port).to_string();
+                debug!("Connecting to {}", &socket_addr);
+                addr.push(net_addr);
+                jobs.push(self.p2p_adaptor.connect_peer(socket_addr.clone()));
+            }
+
+            info!(
+                "Connection manager: has {}/{} outgoing connections, trying to make {} additional connections...",
+                self.outbound_target - missing_connections,
+                self.outbound_target,
+                jobs.len(),
+            );
+
+            for (res, net_addr) in (join_all(jobs).await).into_iter().zip(addr) {
+                if res.is_none() {
+                    debug!("Failed connecting to {:?}", net_addr);
+                    self.amgr.lock().mark_connection_failure(net_addr);
+                } else {
+                    self.amgr.lock().mark_connection_success(net_addr);
+                    missing_connections -= 1;
                 }
             }
         }
