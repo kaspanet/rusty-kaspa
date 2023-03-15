@@ -3,7 +3,7 @@ use database::{
     prelude::{StoreError, StoreResult},
 };
 use serde::{Deserialize, Serialize};
-use std::net::Ipv6Addr;
+use std::net::{IpAddr, Ipv6Addr};
 use std::{fmt::Display, sync::Arc};
 
 const STORE_PREFIX: &[u8] = b"banned-addresses";
@@ -12,12 +12,12 @@ const STORE_PREFIX: &[u8] = b"banned-addresses";
 pub struct ConnectionBanTimestamp(pub u64);
 
 pub trait BannedAddressesStoreReader {
-    fn get(&self, address: Ipv6Addr) -> Result<ConnectionBanTimestamp, StoreError>;
+    fn get(&self, address: IpAddr) -> Result<ConnectionBanTimestamp, StoreError>;
 }
 
 pub trait BannedAddressesStore: BannedAddressesStoreReader {
-    fn set(&mut self, ip: Ipv6Addr, timestamp: ConnectionBanTimestamp) -> StoreResult<()>;
-    fn remove(&mut self, ip: Ipv6Addr) -> StoreResult<()>;
+    fn set(&mut self, ip: IpAddr, timestamp: ConnectionBanTimestamp) -> StoreResult<()>;
+    fn remove(&mut self, ip: IpAddr) -> StoreResult<()>;
 }
 
 const IPV6_LEN: usize = 16;
@@ -39,9 +39,12 @@ impl Display for AddressKey {
     }
 }
 
-impl From<Ipv6Addr> for AddressKey {
-    fn from(ip: Ipv6Addr) -> Self {
-        Self(ip.octets())
+impl From<IpAddr> for AddressKey {
+    fn from(ip: IpAddr) -> Self {
+        Self(match ip {
+            IpAddr::V4(ip) => ip.to_ipv6_mapped().octets(),
+            IpAddr::V6(ip) => ip.octets(),
+        })
     }
 }
 
@@ -64,17 +67,17 @@ impl DbBannedAddressesStore {
 }
 
 impl BannedAddressesStoreReader for DbBannedAddressesStore {
-    fn get(&self, ip: Ipv6Addr) -> Result<ConnectionBanTimestamp, StoreError> {
+    fn get(&self, ip: IpAddr) -> Result<ConnectionBanTimestamp, StoreError> {
         self.access.read(ip.into())
     }
 }
 
 impl BannedAddressesStore for DbBannedAddressesStore {
-    fn set(&mut self, ip: Ipv6Addr, timestamp: ConnectionBanTimestamp) -> StoreResult<()> {
+    fn set(&mut self, ip: IpAddr, timestamp: ConnectionBanTimestamp) -> StoreResult<()> {
         self.access.write(DirectDbWriter::new(&self.db), ip.into(), timestamp)
     }
 
-    fn remove(&mut self, ip: Ipv6Addr) -> StoreResult<()> {
+    fn remove(&mut self, ip: IpAddr) -> StoreResult<()> {
         self.access.delete(DirectDbWriter::new(&self.db), ip.into())
     }
 }

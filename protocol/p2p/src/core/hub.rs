@@ -1,5 +1,5 @@
 use crate::{common::ProtocolError, pb::KaspadMessage, ConnectionInitializer, Peer, Router};
-use kaspa_core::debug;
+use kaspa_core::{debug, info};
 use parking_lot::RwLock;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::mpsc::Receiver as MpscReceiver;
@@ -33,6 +33,7 @@ impl Hub {
                     HubEvent::NewPeer(new_router) => {
                         match initializer.initialize_connection(new_router.clone()).await {
                             Ok(_) => {
+                                info!("P2P Connected to {}", new_router);
                                 self.peers.write().insert(new_router.identity(), new_router);
                             }
                             Err(err) => {

@@ -26,6 +26,7 @@ members = [
     "protocol/p2p",
     "protocol/flows",
     "components/addressmanager",
+    "components/connectionmanager",
     "database",
     "crypto/txscript",
     "crypto/txscript/errors",
@@ -55,6 +56,7 @@ merkle = { path = "crypto/merkle" }
 pow = { path = "consensus/pow" }
 kaspa-index-core = { path = "indexes/core" }
 kaspa-index-processor = { path = "indexes/processor" }
+event-processor = { path = "event_processor" }
 utxoindex = { path = "indexes/utxoindex" }
 kaspa-utils = { path = "utils" }
 kaspa-notify = { path = "notify" }
@@ -68,6 +70,7 @@ mining = { path = "mining" }
 txscript = { path = "crypto/txscript" }
 txscript-errors = { path = "crypto/txscript/errors" }
 addressmanager = { path = "components/addressmanager" }
+connectionmanager = { path = "components/connectionmanager" }
 database = { path = "database" }
 testing-integration = { path = "testing/integration" }
 
