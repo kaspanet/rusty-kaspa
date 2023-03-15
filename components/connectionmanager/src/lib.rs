@@ -165,7 +165,7 @@ impl ConnectionManager {
                 jobs.push(self.p2p_adaptor.connect_peer(socket_addr.clone()));
             }
 
-            if progressing {
+            if progressing && !jobs.is_empty() {
                 // Log only if progress was made
                 info!(
                     "Connection manager: has {}/{} outgoing connections, trying to make {} additional connections...",

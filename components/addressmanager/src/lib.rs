@@ -196,14 +196,18 @@ mod address_store_with_cache {
     }
 
     pub struct RandomWeightedIterator {
-        weighted_index: WeightedIndex<f64>,
+        weighted_index: Option<WeightedIndex<f64>>,
         addresses: Vec<NetAddress>,
-        consumed: bool,
     }
 
     impl RandomWeightedIterator {
         pub fn new(weights: Vec<f64>, addresses: Vec<NetAddress>) -> Self {
-            Self { weighted_index: WeightedIndex::new(weights).unwrap(), addresses, consumed: false }
+            let weighted_index = match WeightedIndex::new(weights) {
+                Ok(index) => Some(index),
+                Err(WeightedError::NoItem) => None,
+                Err(e) => panic!("{e}"),
+            };
+            Self { weighted_index, addresses }
         }
     }
 
@@ -211,17 +215,17 @@ mod address_store_with_cache {
         type Item = NetAddress;
 
         fn next(&mut self) -> Option<Self::Item> {
-            if self.consumed {
-                None
-            } else {
-                let i = self.weighted_index.sample(&mut rand::thread_rng());
+            if let Some(weighted_index) = self.weighted_index.as_mut() {
+                let i = weighted_index.sample(&mut rand::thread_rng());
                 // Zero the selected address entry
-                match self.weighted_index.update_weights(&[(i, &0f64)]) {
+                match weighted_index.update_weights(&[(i, &0f64)]) {
                     Ok(_) => {}
-                    Err(WeightedError::AllWeightsZero) => self.consumed = true,
+                    Err(WeightedError::AllWeightsZero) => self.weighted_index = None,
                     Err(e) => panic!("{e}"),
                 }
                 Some(self.addresses[i])
+            } else {
+                None
             }
         }
     }
