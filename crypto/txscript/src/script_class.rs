@@ -1,6 +1,6 @@
 use crate::{opcodes, MAX_SCRIPT_PUBLIC_KEY_VERSION};
 use addresses::Version;
-use consensus_core::tx::ScriptPublicKeyVersion;
+use consensus_core::tx::{ScriptPublicKey, ScriptPublicKeyVersion};
 use std::{
     fmt::{Display, Formatter},
     str::FromStr,
@@ -44,13 +44,14 @@ const PUB_KEY_ECDSA: &str = "pubkeyecdsa";
 const SCRIPT_HASH: &str = "scripthash";
 
 impl ScriptClass {
-    pub fn from_script(script_public_key: &[u8], version: ScriptPublicKeyVersion) -> Self {
-        if version == MAX_SCRIPT_PUBLIC_KEY_VERSION {
-            if Self::is_pay_to_pubkey(script_public_key) {
+    pub fn from_script(script_public_key: &ScriptPublicKey) -> Self {
+        let script_public_key_ = script_public_key.script();
+        if script_public_key.version() == MAX_SCRIPT_PUBLIC_KEY_VERSION {
+            if Self::is_pay_to_pubkey(script_public_key_) {
                 ScriptClass::PubKey
-            } else if Self::is_pay_to_pubkey_ecdsa(script_public_key) {
+            } else if Self::is_pay_to_pubkey_ecdsa(script_public_key_) {
                 Self::PubKeyECDSA
-            } else if Self::is_pay_to_script_hash(script_public_key) {
+            } else if Self::is_pay_to_script_hash(script_public_key_) {
                 Self::ScriptHash
             } else {
                 ScriptClass::NonStandard
@@ -147,6 +148,8 @@ impl From<Version> for ScriptClass {
 
 #[cfg(test)]
 mod tests {
+    use consensus_core::tx::ScriptVec;
+
     use super::*;
 
     #[test]
@@ -200,7 +203,8 @@ mod tests {
         // cspell:enable
 
         for test in tests {
-            assert_eq!(test.class, ScriptClass::from_script(&test.script, test.version), "{} wrong script class", test.name);
+            let script_public_key = ScriptPublicKey::new(test.version, ScriptVec::from_iter(test.script.iter().copied()));
+            assert_eq!(test.class, ScriptClass::from_script(&script_public_key), "{} wrong script class", test.name);
         }
     }
 }

@@ -60,11 +60,11 @@ pub fn pay_to_script_hash_script(redeem_script: &[u8]) -> ScriptPublicKey {
 ///    or use `address.version` directly instead, where address is the successfully
 ///    returned address.
 pub fn extract_script_pub_key_address(script_public_key: &ScriptPublicKey, prefix: Prefix) -> Result<Address, TxScriptError> {
-    let script = script_public_key.script();
-    let class = ScriptClass::from_script(script, script_public_key.version());
+    let class = ScriptClass::from_script(script_public_key);
     if script_public_key.version() > class.version() {
         return Err(TxScriptError::PubKeyFormat);
     }
+    let script = script_public_key.script();
     match class {
         ScriptClass::NonStandard => Err(TxScriptError::PubKeyFormat),
         ScriptClass::PubKey => Ok(Address::new(prefix, Version::PubKey, &script[1..33])),
