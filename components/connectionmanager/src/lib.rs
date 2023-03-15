@@ -147,21 +147,21 @@ impl ConnectionManager {
         }
 
         let mut missing_connections = self.outbound_target - active_outbound.len();
-        let mut addresses = self.amgr.lock().iterate_prioritized_random_addresses(active_outbound);
+        let mut addr_iter = self.amgr.lock().iterate_prioritized_random_addresses(active_outbound);
 
         let mut progressing = true;
         let mut connecting = true;
         while connecting && missing_connections > 0 {
-            let mut addr = Vec::with_capacity(missing_connections);
+            let mut addrs_to_connect = Vec::with_capacity(missing_connections);
             let mut jobs = Vec::with_capacity(missing_connections);
             for _ in 0..missing_connections {
-                let Some(net_addr) = addresses.next() else {
+                let Some(net_addr) = addr_iter.next() else {
                     connecting = false;
                     break;
                 };
                 let socket_addr = SocketAddr::new(net_addr.ip, net_addr.port).to_string();
                 debug!("Connecting to {}", &socket_addr);
-                addr.push(net_addr);
+                addrs_to_connect.push(net_addr);
                 jobs.push(self.p2p_adaptor.connect_peer(socket_addr.clone()));
             }
 
@@ -176,7 +176,7 @@ impl ConnectionManager {
                 progressing = false;
             }
 
-            for (res, net_addr) in (join_all(jobs).await).into_iter().zip(addr) {
+            for (res, net_addr) in (join_all(jobs).await).into_iter().zip(addrs_to_connect) {
                 if res.is_none() {
                     debug!("Failed connecting to {:?}", net_addr);
                     self.amgr.lock().mark_connection_failure(net_addr);
