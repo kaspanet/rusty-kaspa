@@ -118,6 +118,9 @@ impl TryFrom<u8> for Version {
 }
 
 /// Size of the payload vector of an address.
+///
+/// This size is the smallest SmallVec size greater or equal to the largest
+/// possible payload, which is 33 for [`Version::PubKeyECDSA`].
 pub const PAYLOAD_VECTOR_SIZE: usize = 36;
 
 /// Used as the underlying type for address payload, optimized for the largest version length (33).
