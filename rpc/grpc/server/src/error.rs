@@ -7,7 +7,7 @@ pub enum Error {
     RpcApiError(#[from] kaspa_rpc_core::error::RpcError),
 
     #[error("Notification subsystem error: {0}")]
-    NotificationError(#[from] kaspa_rpc_core::notify::error::Error),
+    NotificationError(#[from] kaspa_notify::error::Error),
 }
 
 impl From<Error> for kaspa_rpc_core::error::RpcError {
@@ -19,10 +19,10 @@ impl From<Error> for kaspa_rpc_core::error::RpcError {
     }
 }
 
-impl From<Error> for kaspa_rpc_core::notify::error::Error {
+impl From<Error> for kaspa_notify::error::Error {
     fn from(err: Error) -> Self {
         match err {
-            Error::RpcApiError(err) => kaspa_rpc_core::notify::error::Error::General(err.to_string()),
+            Error::RpcApiError(err) => kaspa_notify::error::Error::General(err.to_string()),
             Error::NotificationError(err) => err,
         }
     }
@@ -30,7 +30,7 @@ impl From<Error> for kaspa_rpc_core::notify::error::Error {
 
 impl<T> From<TrySendError<T>> for Error {
     fn from(_: TrySendError<T>) -> Self {
-        kaspa_rpc_core::notify::error::Error::ChannelSendError.into()
+        kaspa_notify::error::Error::ChannelSendError.into()
     }
 }
 

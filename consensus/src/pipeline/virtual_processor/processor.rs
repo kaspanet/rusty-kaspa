@@ -8,7 +8,7 @@ use crate::{
             relations::MTRelationsService,
         },
         stores::{
-            acceptance_data::{AcceptanceData, DbAcceptanceDataStore},
+            acceptance_data::DbAcceptanceDataStore,
             block_transactions::{BlockTransactionsStoreReader, DbBlockTransactionsStore},
             block_window_cache::BlockWindowCacheStore,
             daa::DbDaaStore,
@@ -29,7 +29,7 @@ use crate::{
         },
     },
     params::Params,
-    pipeline::{deps_manager::BlockProcessingMessage, virtual_processor::utxo_validation::UtxoProcessingContext},
+    pipeline::{deps_manager::BlockProcessingMessage, virtual_processor::utxo_validation::UtxoProcessingContext, ProcessingCounters},
     processes::{
         block_depth::BlockDepthManager,
         coinbase::CoinbaseManager,
@@ -43,10 +43,10 @@ use crate::{
     },
 };
 use consensus_core::{
+    acceptance_data::AcceptanceData,
     block::{BlockTemplate, MutableBlock},
     blockstatus::BlockStatus::{self, StatusDisqualifiedFromChain, StatusUTXOPendingVerification, StatusUTXOValid},
     coinbase::{BlockRewardData, MinerData},
-    events::{ConsensusEvent, VirtualChangeSetEvent},
     header::Header,
     merkle::calc_hash_merkle_root,
     muhash::MuHashExtensions,
@@ -57,13 +57,17 @@ use consensus_core::{
     },
     BlockHashMap, BlockHashSet, HashMapCustomHasher,
 };
+use consensus_notify::{
+    notification::{Notification, SinkBlueScoreChangedNotification, UtxosChangedNotification, VirtualDaaScoreChangedNotification},
+    root::ConsensusNotificationRoot,
+};
 use database::prelude::{StoreError, StoreResultExtensions};
 use hashes::Hash;
-use kaspa_core::{debug, info, trace};
+use kaspa_core::{debug, info, time::unix_now, trace};
+use kaspa_notify::notifier::Notify;
 use muhash::MuHash;
 
-use async_channel::Sender as AsyncSender; // to avoid confusion with crossbeam
-use crossbeam_channel::Receiver as CrossbeamReceiver; // to aviod confusion with async_channel
+use crossbeam_channel::Receiver as CrossbeamReceiver; // to avoid confusion with async_channel
 use itertools::Itertools;
 use parking_lot::{RwLock, RwLockUpgradableReadGuard};
 use rayon::ThreadPool;
@@ -73,7 +77,7 @@ use std::{
     collections::HashSet,
     collections::VecDeque,
     ops::Deref,
-    sync::Arc,
+    sync::{atomic::Ordering, Arc},
     time::{Duration, SystemTime},
 };
 
@@ -82,7 +86,6 @@ use super::errors::{PruningImportError, PruningImportResult};
 pub struct VirtualStateProcessor {
     // Channels
     receiver: CrossbeamReceiver<BlockProcessingMessage>,
-    consensus_sender: AsyncSender<ConsensusEvent>,
 
     // Thread pool
     pub(super) thread_pool: Arc<ThreadPool>,
@@ -137,6 +140,11 @@ pub struct VirtualStateProcessor {
     pub(super) pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
     pub(super) parents_manager: ParentsManager<DbHeadersStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
     pub(super) depth_manager: BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>,
+
+    pub(crate) notification_root: Arc<ConsensusNotificationRoot>,
+
+    // Counters
+    counters: Arc<ProcessingCounters>,
 }
 
 impl VirtualStateProcessor {
@@ -144,7 +152,6 @@ impl VirtualStateProcessor {
     pub fn new(
         receiver: CrossbeamReceiver<BlockProcessingMessage>,
         thread_pool: Arc<ThreadPool>,
-        consensus_sender: AsyncSender<ConsensusEvent>,
         params: &Params,
         process_genesis: bool,
         db: Arc<DB>,
@@ -187,12 +194,12 @@ impl VirtualStateProcessor {
         pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
         parents_manager: ParentsManager<DbHeadersStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
         depth_manager: BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>,
+        notification_root: Arc<ConsensusNotificationRoot>,
+        counters: Arc<ProcessingCounters>,
     ) -> Self {
         Self {
             receiver,
             thread_pool,
-
-            consensus_sender,
 
             genesis_hash: params.genesis_hash,
             genesis_bits: params.genesis_bits,
@@ -228,7 +235,14 @@ impl VirtualStateProcessor {
             pruning_manager,
             parents_manager,
             depth_manager,
+            notification_root,
+            counters,
         }
+    }
+
+    #[inline(always)]
+    pub fn notification_root(self: &Arc<Self>) -> Arc<ConsensusNotificationRoot> {
+        self.notification_root.clone()
     }
 
     pub fn worker(self: &Arc<Self>) {
@@ -250,11 +264,9 @@ impl VirtualStateProcessor {
             for msg in messages {
                 match msg {
                     BlockProcessingMessage::Exit => break 'outer,
-                    BlockProcessingMessage::Process(task, result_transmitters) => {
-                        for transmitter in result_transmitters {
-                            // We don't care if receivers were dropped
-                            let _ = transmitter.send(Ok(statuses_read.get(task.block.hash()).unwrap()));
-                        }
+                    BlockProcessingMessage::Process(task, result_transmitter) => {
+                        // We don't care if receivers were dropped
+                        let _ = result_transmitter.send(Ok(statuses_read.get(task.block.hash()).unwrap()));
                     }
                 };
             }
@@ -296,6 +308,7 @@ impl VirtualStateProcessor {
         // Walk back up to the new virtual selected parent candidate
         let mut last_log_index = 0;
         let mut last_log_time = SystemTime::now();
+        let mut chain_block_counter = 0;
         for (i, (selected_parent, current)) in
             self.reachability_service.forward_chain_iterator(split_point, new_selected, true).tuple_windows().enumerate()
         {
@@ -339,11 +352,17 @@ impl VirtualStateProcessor {
                         // Commit UTXO data for current chain block
                         self.commit_utxo_state(current, ctx.mergeset_diff, ctx.multiset_hash, AcceptanceData {});
                         // TODO: AcceptanceData
+
+                        // Count the number of UTXO-processed chain blocks
+                        chain_block_counter += 1;
                     }
                 }
                 Err(err) => panic!("unexpected error {err}"),
             }
         }
+
+        // Report counters
+        self.counters.chain_block_counts.fetch_add(chain_block_counter, Ordering::Relaxed);
 
         // NOTE: inlining this within the match captures the statuses store lock and should be avoided.
         // TODO: wrap statuses store lock within a service
@@ -407,21 +426,24 @@ impl VirtualStateProcessor {
                 // Calling the drops explicitly after the batch is written in order to avoid possible errors.
                 drop(virtual_write);
 
-                // Stops consensus from sending into and bloating an unread channel in cases where event processor is not required (such as in testing cases).
-                if self.consensus_sender.receiver_count() > 0 {
-                    // We use try_send on consensus sender since this is none-blocking.
-                    self.consensus_sender
-                        .try_send(ConsensusEvent::VirtualChangeSet(Arc::new(VirtualChangeSetEvent {
-                            accumulated_utxo_diff: Arc::new(accumulated_diff),
-                            parents: Arc::new(new_virtual_state.parents),
-                            selected_parent_blue_score: new_virtual_state.ghostdag_data.blue_score,
-                            daa_score: new_virtual_state.daa_score,
-                            mergeset_blues: new_virtual_state.ghostdag_data.mergeset_blues,
-                            mergeset_reds: new_virtual_state.ghostdag_data.mergeset_reds,
-                            accepted_tx_ids: Arc::new(new_virtual_state.accepted_tx_ids),
-                        })))
-                        .expect("expected send");
-                };
+                // Emit notifications
+                let accumulated_diff = Arc::new(accumulated_diff);
+                let virtual_parents = Arc::new(new_virtual_state.parents);
+                let _ = self
+                    .notification_root
+                    .notify(Notification::UtxosChanged(UtxosChangedNotification::new(accumulated_diff, virtual_parents)));
+                let _ = self.notification_root().notify(Notification::SinkBlueScoreChanged(SinkBlueScoreChangedNotification::new(
+                    new_virtual_state.ghostdag_data.blue_score,
+                )));
+                let _ = self.notification_root().notify(Notification::VirtualDaaScoreChanged(
+                    VirtualDaaScoreChangedNotification::new(new_virtual_state.daa_score),
+                ));
+                // TODO: fix the contents which is wrong in the following commented version
+                // let _ = self.notification_root().notify(Notification::VirtualChainChanged(VirtualChainChangedNotification::new(
+                //     new_virtual_state.ghostdag_data.mergeset_blues.clone(),
+                //     new_virtual_state.ghostdag_data.mergeset_reds.clone(),
+                //     Arc::new(new_virtual_state.accepted_tx_ids),
+                // )));
             }
             BlockStatus::StatusDisqualifiedFromChain => {
                 // TODO: this means another chain needs to be checked
@@ -539,20 +561,12 @@ impl VirtualStateProcessor {
         current_pruning_point: Hash,
     ) -> (Vec<Hash>, GhostdagData) {
         let mut ghostdag_data = self.ghostdag_manager.ghostdag(&virtual_parents);
-        let current_pruning_point_bs = self.headers_store.get_blue_score(current_pruning_point).unwrap();
-        let expected_pruning_point = if ghostdag_data.blue_score < current_pruning_point_bs + self.pruning_depth {
-            // If the pruning point is not in pruning depth, it means we're still in IBD, so we can't look for a more up to date pruning point.
-            current_pruning_point
-        } else {
-            self.pruning_manager.expected_header_pruning_point(ghostdag_data.to_compact(), self.pruning_store.read().get().unwrap())
-        };
-        debug!("The expected pruning point based on the curent virtual parents is {expected_pruning_point}");
-        let merge_depth_root = self.depth_manager.calc_merge_depth_root(&ghostdag_data, expected_pruning_point);
+        let merge_depth_root = self.depth_manager.calc_merge_depth_root(&ghostdag_data, current_pruning_point);
         let mut kosherizing_blues: Option<Vec<Hash>> = None;
         let mut bad_reds = Vec::new();
 
         //
-        // Note that the code below optimizes for the usual case where there are no merge bound violating blocks.
+        // Note that the code below optimizes for the usual case where there are no merge-bound-violating blocks.
         //
 
         // Find red blocks violating the merge bound and which are not kosherized by any blue
@@ -648,14 +662,13 @@ impl VirtualStateProcessor {
         let utxo_commitment = virtual_state.multiset.clone().finalize();
         // Past median time is the exclusive lower bound for valid block time, so we increase by 1 to get the valid min
         let min_block_time = virtual_state.past_median_time + 1;
-        let now = SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64;
         let header = Header::new(
             version,
             parents_by_level,
             hash_merkle_root,
             accepted_id_merkle_root,
             utxo_commitment,
-            u64::max(min_block_time, now),
+            u64::max(min_block_time, unix_now()),
             virtual_state.bits,
             0,
             virtual_state.daa_score,

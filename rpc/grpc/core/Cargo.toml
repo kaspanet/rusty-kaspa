@@ -8,6 +8,7 @@ license.workspace = true
 
 [dependencies]
 thiserror.workspace = true
+kaspa-notify.workspace = true
 kaspa-rpc-core.workspace = true
 kaspa-utils.workspace = true
 kaspa-core.workspace = true

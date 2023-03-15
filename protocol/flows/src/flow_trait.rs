@@ -15,9 +15,11 @@ where
         tokio::spawn(async move {
             let res = self.start().await;
             if let Err(err) = res {
-                warn!("{} flow error: {}, disconnecting from peer.", self.name(), err); // TODO: imp complete error handler with net-connection peer info etc
+                // TODO: imp complete error handler
                 if let Some(router) = self.router() {
-                    router.close().await;
+                    if router.close().await || !err.is_connection_closed_error() {
+                        warn!("{} flow error: {}, disconnecting from peer {}.", self.name(), err, router);
+                    }
                 }
             }
         });

@@ -1,4 +1,3 @@
-mod indexed_utxos;
 mod supply;
 
-pub use {indexed_utxos::*, supply::*};
+pub use {kaspa_index_core::indexed_utxos::*, supply::*};

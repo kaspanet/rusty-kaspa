@@ -1,4 +1,5 @@
 use crate::{
+    consensus_context::ConsensusMiningContext,
     mempool::{
         config::Config,
         errors::{RuleError, RuleResult},
@@ -7,7 +8,6 @@ use crate::{
     model::{candidate_tx::CandidateTransaction, topological_index::TopologicalIndex},
 };
 use consensus_core::{
-    api::DynConsensus,
     tx::TransactionId,
     tx::{MutableTransaction, TransactionOutpoint},
 };
@@ -41,8 +41,8 @@ use super::pool::TransactionsEdges;
 ///   of low-priority transactions sorted by fee rates. This design might eventually
 ///   prove to be sub-optimal, in which case an index should be implemented, probably
 ///   requiring smart pointers eventually or an indirection stage too.
-pub(crate) struct TransactionsPool {
-    consensus: DynConsensus,
+pub(crate) struct TransactionsPool<T: ConsensusMiningContext + ?Sized> {
+    consensus: Arc<T>,
     config: Arc<Config>,
 
     /// Store of transactions
@@ -60,8 +60,8 @@ pub(crate) struct TransactionsPool {
     utxo_set: MempoolUtxoSet,
 }
 
-impl TransactionsPool {
-    pub(crate) fn new(consensus: DynConsensus, config: Arc<Config>) -> Self {
+impl<T: ConsensusMiningContext + ?Sized> TransactionsPool<T> {
+    pub(crate) fn new(consensus: Arc<T>, config: Arc<Config>) -> Self {
         Self {
             consensus,
             config,
@@ -74,8 +74,8 @@ impl TransactionsPool {
         }
     }
 
-    pub(crate) fn consensus(&self) -> DynConsensus {
-        self.consensus.clone()
+    pub(crate) fn consensus(&self) -> &T {
+        &self.consensus
     }
 
     /// Add a mutable transaction to the pool
@@ -275,7 +275,7 @@ impl TransactionsPool {
 type IterTxId<'a> = Iter<'a, TransactionId>;
 type KeysTxId<'a> = Keys<'a, TransactionId, MempoolTransaction>;
 
-impl<'a> TopologicalIndex<'a, KeysTxId<'a>, IterTxId<'a>, TransactionId> for TransactionsPool {
+impl<'a, T: ConsensusMiningContext> TopologicalIndex<'a, KeysTxId<'a>, IterTxId<'a>, TransactionId> for TransactionsPool<T> {
     fn topology_nodes(&'a self) -> KeysTxId<'a> {
         self.all_transactions.keys()
     }
@@ -285,7 +285,7 @@ impl<'a> TopologicalIndex<'a, KeysTxId<'a>, IterTxId<'a>, TransactionId> for Tra
     }
 }
 
-impl Pool for TransactionsPool {
+impl<T: ConsensusMiningContext + ?Sized> Pool for TransactionsPool<T> {
     #[inline]
     fn all(&self) -> &MempoolTransactionCollection {
         &self.all_transactions

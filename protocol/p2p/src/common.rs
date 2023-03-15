@@ -1,4 +1,4 @@
-use crate::{convert::error::ConversionError, pb::kaspad_message::Payload as KaspadMessagePayload};
+use crate::{convert::error::ConversionError, KaspadMessagePayloadType};
 use consensus_core::errors::{block::RuleError, consensus::ConsensusError, pruning::PruningImportError};
 use std::time::Duration;
 use thiserror::Error;
@@ -12,7 +12,7 @@ pub enum ProtocolError {
     Timeout(Duration),
 
     #[error("expected message type/s {0} but got {1:?}")]
-    UnexpectedMessage(&'static str, Box<Option<KaspadMessagePayload>>),
+    UnexpectedMessage(&'static str, Option<KaspadMessagePayloadType>),
 
     #[error("{0}")]
     ConversionError(#[from] ConversionError),
@@ -34,6 +34,12 @@ pub enum ProtocolError {
 
     #[error("peer connection is closed")]
     ConnectionClosed,
+}
+
+impl ProtocolError {
+    pub fn is_connection_closed_error(&self) -> bool {
+        matches!(self, Self::ConnectionClosed)
+    }
 }
 
 /// Wraps an inner payload message into a valid `KaspadMessage`.
@@ -60,7 +66,7 @@ macro_rules! unwrap_message {
             if let Some($pattern(inner_msg)) = msg.payload {
                 Ok(inner_msg)
             } else {
-                Err($crate::common::ProtocolError::UnexpectedMessage(stringify!($pattern), Box::new(msg.payload)))
+                Err($crate::common::ProtocolError::UnexpectedMessage(stringify!($pattern), msg.payload.as_ref().map(|v| v.into())))
             }
         } else {
             Err($crate::common::ProtocolError::ConnectionClosed)

@@ -1,8 +1,9 @@
 use crate::core::hub::HubEvent;
 use crate::pb::KaspadMessage;
 use crate::{common::ProtocolError, KaspadMessagePayloadType};
-use kaspa_core::{debug, error, trace, warn};
+use kaspa_core::{debug, error, info, trace, warn};
 use parking_lot::{Mutex, RwLock};
+use std::fmt::Display;
 use std::net::SocketAddr;
 use std::{collections::HashMap, sync::Arc};
 use tokio::select;
@@ -48,6 +49,12 @@ pub struct Router {
     mutable_state: Mutex<RouterMutableState>,
 }
 
+impl Display for Router {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.net_address)
+    }
+}
+
 impl Router {
     pub(crate) async fn new(
         net_address: SocketAddr,
@@ -86,17 +93,18 @@ impl Router {
                     res = incoming_stream.message() => match res {
                         Ok(Some(msg)) => {
                             trace!("P2P, Router receive loop - got message: {:?}, router-id: {}", msg, router.identity);
+                            let msg_str = msg_type_string(&msg);
                             if !(router.route_to_flow(msg).await) {
-                                debug!("P2P, Router receive loop - no route for message - exiting loop, router-id: {}", router.identity);
+                                debug!("P2P, Router receive loop - no route for message {} - exiting loop, router-id: {}", msg_str, router.identity);
                                 break;
                             }
                         }
                         Ok(None) => {
-                            debug!("P2P, Router receive loop - incoming stream ended, router-id: {}", router.identity);
+                            info!("P2P, Router receive loop - incoming stream ended for peer {}", router);
                             break;
                         }
                         Err(err) => {
-                            warn!("P2P, Router receive loop - network error: {:?}, router-id: {}", err, router.identity);
+                            warn!("P2P, Router receive loop - network error: {:?} from peer {}", err, router);
                             break;
                         }
                     }
@@ -193,8 +201,9 @@ impl Router {
         self.hub_sender.send(HubEvent::Broadcast(Box::new(msg))).await.is_ok()
     }
 
-    /// Closes the router, signals exit, and cleans up all resources so that underlying connections will be aborted correctly
-    pub async fn close(&self) {
+    /// Closes the router, signals exit, and cleans up all resources so that underlying connections will be aborted correctly.
+    /// Returns true of this is the first call to close
+    pub async fn close(&self) -> bool {
         // Acquire state mutex and send the shutdown signal
         // NOTE: Using a block to drop the lock asap
         {
@@ -209,8 +218,8 @@ impl Router {
                 let _ = signal.send(());
             } else {
                 // This means the router was already closed
-                debug!("P2P, Router close was called more than once, router-id: {}", self.identity);
-                return;
+                trace!("P2P, Router close was called more than once, router-id: {}", self.identity);
+                return false;
             }
         }
 
@@ -219,5 +228,17 @@ impl Router {
 
         // Send a close notification to the central Hub
         self.hub_sender.send(HubEvent::PeerClosing(self.identity)).await.expect("hub receiver should never drop before senders");
+
+        true
+    }
+}
+
+fn msg_type_string(msg: &KaspadMessage) -> String {
+    match msg.payload.as_ref() {
+        Some(payload) => {
+            let payload_type: KaspadMessagePayloadType = payload.into();
+            format!("{:?}", payload_type)
+        }
+        None => "<EMPTY_PAYLOAD>".to_owned(),
     }
 }

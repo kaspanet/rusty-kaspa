@@ -1,10 +1,7 @@
-use crate::notify::{collector::CollectorFrom, connection::ChannelConnection};
-use async_channel::{Receiver, Sender};
-use event_processor::notify::Notification as EventNotification;
-use kaspa_utils::channel::Channel;
+use crate::Notification;
+use consensus_notify::notification::Notification as ConsensusNotification;
+use kaspa_index_core::notification::Notification as IndexNotification;
+use kaspa_notify::collector::CollectorFrom;
 
-pub(crate) type EventNotificationCollector = CollectorFrom<EventNotification, ChannelConnection>;
-
-pub type EventNotificationChannel = Channel<EventNotification>;
-pub type EventNotificationSender = Sender<EventNotification>;
-pub type EventNotificationReceiver = Receiver<EventNotification>;
+pub(crate) type CollectorFromConsensus = CollectorFrom<ConsensusNotification, Notification>;
+pub(crate) type CollectorFromIndex = CollectorFrom<IndexNotification, Notification>;

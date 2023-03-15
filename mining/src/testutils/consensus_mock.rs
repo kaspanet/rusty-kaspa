@@ -1,30 +1,24 @@
+use super::coinbase_mock::CoinbaseManagerMock;
+use crate::consensus_context::ConsensusMiningContext;
 use consensus_core::{
-    api::ConsensusApi,
-    block::{Block, BlockTemplate, MutableBlock},
-    blockstatus::BlockStatus,
+    block::{BlockTemplate, MutableBlock},
     coinbase::MinerData,
     constants::BLOCK_VERSION,
     errors::{
-        block::{BlockProcessResult, RuleError},
+        block::RuleError,
         coinbase::CoinbaseResult,
-        consensus::ConsensusError,
-        pruning::PruningImportResult,
         tx::{TxResult, TxRuleError},
     },
     header::Header,
     mass::transaction_estimated_serialized_size,
     merkle::calc_hash_merkle_root,
-    trusted::TrustedBlock,
     tx::{MutableTransaction, Transaction, TransactionId, TransactionOutpoint, UtxoEntry},
     utxo::utxo_collection::UtxoCollection,
 };
-use futures_util::future::BoxFuture;
 use hashes::ZERO_HASH;
-use muhash::MuHash;
-use parking_lot::RwLock;
-use std::{collections::HashMap, sync::Arc, time::SystemTime, unimplemented};
 
-use super::coinbase_mock::CoinbaseManagerMock;
+use parking_lot::RwLock;
+use std::{collections::HashMap, sync::Arc, time::SystemTime};
 
 pub(crate) struct ConsensusMock {
     transactions: RwLock<HashMap<TransactionId, Arc<Transaction>>>,
@@ -76,8 +70,8 @@ impl ConsensusMock {
     }
 }
 
-impl ConsensusApi for ConsensusMock {
-    fn build_block_template(self: Arc<Self>, miner_data: MinerData, mut txs: Vec<Transaction>) -> Result<BlockTemplate, RuleError> {
+impl ConsensusMiningContext for ConsensusMock {
+    fn build_block_template(&self, miner_data: MinerData, mut txs: Vec<Transaction>) -> Result<BlockTemplate, RuleError> {
         let coinbase_manager = CoinbaseManagerMock::new();
         let coinbase = coinbase_manager.expected_coinbase_transaction(miner_data.clone());
         txs.insert(0, coinbase.tx);
@@ -102,19 +96,7 @@ impl ConsensusApi for ConsensusMock {
         Ok(BlockTemplate::new(mutable_block, miner_data, coinbase.has_red_reward, now))
     }
 
-    fn validate_and_insert_block(
-        self: Arc<Self>,
-        _block: Block,
-        _update_virtual: bool,
-    ) -> BoxFuture<'static, BlockProcessResult<BlockStatus>> {
-        unimplemented!()
-    }
-
-    fn validate_and_insert_trusted_block(self: Arc<Self>, _tb: TrustedBlock) -> BoxFuture<'static, BlockProcessResult<BlockStatus>> {
-        unimplemented!()
-    }
-
-    fn validate_mempool_transaction_and_populate(self: Arc<Self>, mutable_tx: &mut MutableTransaction) -> TxResult<()> {
+    fn validate_mempool_transaction_and_populate(&self, mutable_tx: &mut MutableTransaction) -> TxResult<()> {
         // If a predefined status was registered to simulate an error, return it right away
         if let Some(status) = self.statuses.read().get(&mutable_tx.id()) {
             if status.is_err() {
@@ -146,7 +128,7 @@ impl ConsensusApi for ConsensusMock {
         Ok(())
     }
 
-    fn calculate_transaction_mass(self: Arc<Self>, transaction: &Transaction) -> u64 {
+    fn calculate_transaction_mass(&self, transaction: &Transaction) -> u64 {
         if transaction.is_coinbase() {
             0
         } else {
@@ -154,110 +136,12 @@ impl ConsensusApi for ConsensusMock {
         }
     }
 
-    fn get_virtual_daa_score(self: Arc<Self>) -> u64 {
+    fn get_virtual_daa_score(&self) -> u64 {
         0
     }
 
-    fn modify_coinbase_payload(self: Arc<Self>, payload: Vec<u8>, miner_data: &MinerData) -> CoinbaseResult<Vec<u8>> {
+    fn modify_coinbase_payload(&self, payload: Vec<u8>, miner_data: &MinerData) -> CoinbaseResult<Vec<u8>> {
         let coinbase_manager = CoinbaseManagerMock::new();
         Ok(coinbase_manager.modify_coinbase_payload(payload, miner_data))
-    }
-
-    fn validate_pruning_proof(self: Arc<Self>, _proof: &consensus_core::pruning::PruningPointProof) -> PruningImportResult<()> {
-        unimplemented!()
-    }
-
-    fn apply_pruning_proof(self: Arc<Self>, _proof: consensus_core::pruning::PruningPointProof, _trusted_set: &[TrustedBlock]) {
-        unimplemented!()
-    }
-
-    fn import_pruning_points(self: Arc<Self>, _pruning_points: consensus_core::pruning::PruningPointsList) {
-        unimplemented!()
-    }
-
-    fn get_virtual_state_tips(self: Arc<Self>) -> Vec<hashes::Hash> {
-        unimplemented!()
-    }
-
-    fn get_virtual_utxos(
-        self: Arc<Self>,
-        _from_outpoint: Option<TransactionOutpoint>,
-        _limit: usize,
-        _skip_first: bool,
-    ) -> Vec<(TransactionOutpoint, UtxoEntry)> {
-        unimplemented!()
-    }
-
-    fn header_exists(self: Arc<Self>, _hash: hashes::Hash) -> bool {
-        unimplemented!()
-    }
-
-    fn is_chain_ancestor_of(self: Arc<Self>, _low: hashes::Hash, _high: hashes::Hash) -> Result<bool, ConsensusError> {
-        unimplemented!()
-    }
-
-    fn get_hashes_between(
-        self: Arc<Self>,
-        _low: hashes::Hash,
-        _high: hashes::Hash,
-        _max_blocks: usize,
-    ) -> consensus_core::errors::consensus::ConsensusResult<(Vec<hashes::Hash>, hashes::Hash)> {
-        unimplemented!()
-    }
-
-    fn get_header(self: Arc<Self>, _hash: hashes::Hash) -> consensus_core::errors::consensus::ConsensusResult<Arc<Header>> {
-        unimplemented!()
-    }
-
-    fn append_imported_pruning_point_utxos(
-        &self,
-        _utxoset_chunk: &[(TransactionOutpoint, UtxoEntry)],
-        _current_multiset: &mut MuHash,
-    ) {
-        unimplemented!()
-    }
-
-    fn import_pruning_point_utxo_set(
-        &self,
-        _new_pruning_point: hashes::Hash,
-        _imported_utxo_multiset: &mut MuHash,
-    ) -> PruningImportResult<()> {
-        unimplemented!()
-    }
-
-    fn get_pruning_point_proof(self: Arc<Self>) -> Arc<consensus_core::pruning::PruningPointProof> {
-        unimplemented!()
-    }
-
-    fn pruning_point_headers(&self) -> Vec<Arc<Header>> {
-        unimplemented!()
-    }
-
-    fn get_pruning_point_anticone_and_trusted_data(
-        &self,
-    ) -> Arc<(Vec<hashes::Hash>, Vec<consensus_core::trusted::TrustedHeader>, Vec<consensus_core::trusted::TrustedGhostdagData>)> {
-        unimplemented!()
-    }
-
-    fn get_block(&self, _hash: hashes::Hash) -> consensus_core::errors::consensus::ConsensusResult<Block> {
-        unimplemented!()
-    }
-
-    fn create_headers_selected_chain_block_locator(
-        &self,
-        _low: Option<hashes::Hash>,
-        _high: Option<hashes::Hash>,
-    ) -> consensus_core::errors::consensus::ConsensusResult<Vec<hashes::Hash>> {
-        unimplemented!()
-    }
-
-    fn get_pruning_point_utxos(
-        self: Arc<Self>,
-        _expected_pruning_point: hashes::Hash,
-        _from_outpoint: Option<TransactionOutpoint>,
-        _chunk_size: usize,
-        _skip_first: bool,
-    ) -> consensus_core::errors::consensus::ConsensusResult<Vec<(TransactionOutpoint, UtxoEntry)>> {
-        unimplemented!()
     }
 }

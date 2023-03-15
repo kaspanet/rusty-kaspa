@@ -2,11 +2,16 @@ extern crate consensus;
 extern crate core;
 extern crate hashes;
 
+use addressmanager::AddressManager;
 use clap::Parser;
-use consensus_core::{events::ConsensusEvent, networktype::NetworkType};
-use event_processor::notify::Notification;
+use consensus_core::api::DynConsensus;
+use consensus_core::networktype::NetworkType;
+use consensus_notify::root::ConsensusNotificationRoot;
+use consensus_notify::service::NotifyService;
 
 use kaspa_core::{core::Core, signals::Signals, task::runtime::AsyncRuntime};
+use kaspa_index_processor::service::IndexService;
+use mining::manager::MiningManager;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -18,7 +23,6 @@ use consensus::params::{DEVNET_PARAMS, MAINNET_PARAMS};
 use utxoindex::{api::DynUtxoIndexApi, UtxoIndex};
 
 use async_channel::unbounded;
-use event_processor::processor::EventProcessor;
 use kaspa_core::{info, trace};
 use kaspa_grpc_server::GrpcServer;
 use kaspa_rpc_core::server::RpcCoreServer;
@@ -29,9 +33,11 @@ mod monitor;
 const DEFAULT_DATA_DIR: &str = "datadir";
 const CONSENSUS_DB: &str = "consensus";
 const UTXOINDEX_DB: &str = "utxoindex";
+const AMGR_DB: &str = "addressmanager";
 // TODO: add a Config
 // TODO: apply Args to Config
 // TODO: log to file
+// TODO: refactor the shutdown sequence into a predefined controlled sequence
 
 /// Kaspa Node launch arguments
 #[derive(Parser, Debug)]
@@ -62,6 +68,12 @@ struct Args {
 
     #[arg(long = "reset-db")]
     reset_db: bool,
+
+    #[arg(long = "outpeers", default_value = "8")]
+    target_outbound: usize,
+
+    #[arg(long = "maxinpeers", default_value = "128")]
+    inbound_limit: usize,
 
     #[arg(long = "testnet")]
     testnet: bool,
@@ -122,12 +134,14 @@ pub fn main() {
 
     let consensus_db_dir = db_dir.join(CONSENSUS_DB);
     let utxoindex_db_dir = db_dir.join(UTXOINDEX_DB);
+    let amgr_db_dir = db_dir.join(AMGR_DB);
 
     if args.reset_db {
         // TODO: add prompt that validates the choice (unless you pass -y)
         info!("Deleting databases {:?}, {:?}", consensus_db_dir, utxoindex_db_dir);
         database::prelude::delete_db(consensus_db_dir.clone());
         database::prelude::delete_db(utxoindex_db_dir.clone());
+        database::prelude::delete_db(amgr_db_dir.clone());
     }
 
     info!("Consensus Data directory {}", consensus_db_dir.display());
@@ -151,41 +165,61 @@ pub fn main() {
         NetworkType::Simnet => unimplemented!("simnet params"),
     };
 
-    let (consensus_send, consensus_recv) = unbounded::<ConsensusEvent>();
-    let (event_processor_send, event_processor_recv) = unbounded::<Notification>();
+    let (notification_send, notification_recv) = unbounded();
+    let notification_root = Arc::new(ConsensusNotificationRoot::new(notification_send));
 
     // Use `num_cpus` background threads for the consensus database as recommended by rocksdb
     let consensus_db = database::prelude::open_db(consensus_db_dir, true, num_cpus::get());
-    let consensus = Arc::new(Consensus::new(consensus_db, &config, consensus_send));
+    let consensus = Arc::new(Consensus::new(consensus_db, &config, notification_root));
     let monitor = Arc::new(ConsensusMonitor::new(consensus.processing_counters().clone()));
 
-    let utxoindex: DynUtxoIndexApi = if args.utxoindex {
+    let notify_service = Arc::new(NotifyService::new(consensus.notification_root(), notification_recv));
+
+    let index_service: Option<Arc<IndexService>> = if args.utxoindex {
         // Use only a single thread for none-consensus databases
         let utxoindex_db = database::prelude::open_db(utxoindex_db_dir, true, 1);
-        Some(UtxoIndex::new(consensus.clone(), utxoindex_db).unwrap())
+        let utxoindex: DynUtxoIndexApi = Some(UtxoIndex::new(consensus.clone(), utxoindex_db).unwrap());
+        Some(Arc::new(IndexService::new(&notify_service.notifier(), utxoindex)))
     } else {
         None
     };
 
-    let event_processor = Arc::new(EventProcessor::new(utxoindex.clone(), consensus_recv, event_processor_send));
+    let amgr_db = database::prelude::open_db(amgr_db_dir, true, 1);
+    let amgr = AddressManager::new(amgr_db);
 
-    let rpc_core_server = Arc::new(RpcCoreServer::new(consensus.clone(), utxoindex, event_processor_recv));
+    let rpc_core_server =
+        Arc::new(RpcCoreServer::new(consensus.clone(), notify_service.notifier(), index_service.as_ref().map(|x| x.notifier())));
     let grpc_server = Arc::new(GrpcServer::new(grpc_server_addr, rpc_core_server.service()));
-    let p2p_service = Arc::new(P2pService::new(consensus.clone(), args.connect, args.listen));
+    let p2p_service = Arc::new(P2pService::new(
+        consensus.clone(),
+        amgr,
+        &config,
+        args.connect,
+        args.listen,
+        args.target_outbound,
+        args.inbound_limit,
+    ));
+
+    // TODO: TEMP: temp mining manager initialization just to make sure it complies with consensus
+    let _mining_manager =
+        MiningManager::new(consensus.clone() as DynConsensus, config.target_time_per_block, false, config.max_block_mass, None);
 
     // Create an async runtime and register the top-level async services
     let async_runtime = Arc::new(AsyncRuntime::new());
-    async_runtime.register(event_processor);
+    async_runtime.register(notify_service);
+    if let Some(index_service) = index_service {
+        async_runtime.register(index_service)
+    };
     async_runtime.register(rpc_core_server);
     async_runtime.register(grpc_server);
     async_runtime.register(p2p_service);
+    async_runtime.register(monitor);
 
     // Bind the keyboard signal to the core
     Arc::new(Signals::new(&core)).init();
 
     // Consensus must start first in order to init genesis in stores
     core.bind(consensus);
-    core.bind(monitor);
     core.bind(async_runtime);
 
     core.run();

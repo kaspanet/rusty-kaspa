@@ -24,7 +24,9 @@ pub enum AddressError {
     BadChecksum,
 }
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(
+    PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema,
+)]
 pub enum Prefix {
     Mainnet,
     Testnet,
@@ -83,7 +85,7 @@ impl TryFrom<&str> for Prefix {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[repr(u8)]
 pub enum Version {
     /// PubKey addresses always have the version byte set to 0
@@ -126,9 +128,8 @@ pub const PAYLOAD_VECTOR_SIZE: usize = 36;
 /// Used as the underlying type for address payload, optimized for the largest version length (33).
 pub type PayloadVec = SmallVec<[u8; PAYLOAD_VECTOR_SIZE]>;
 
-#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Hash, Serialize, Deserialize)]
 pub struct Address {
-    // TODO: consider using a smallvec for the payload
     pub prefix: Prefix,
     pub version: Version,
     pub payload: PayloadVec,

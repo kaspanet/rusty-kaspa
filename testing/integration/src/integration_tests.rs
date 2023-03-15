@@ -17,23 +17,22 @@ use consensus_core::blockhash::new_unique;
 use consensus_core::blockstatus::BlockStatus;
 use consensus_core::constants::BLOCK_VERSION;
 use consensus_core::errors::block::{BlockProcessResult, RuleError};
-use consensus_core::events::ConsensusEvent;
 use consensus_core::header::Header;
 use consensus_core::subnets::SubnetworkId;
 use consensus_core::trusted::{ExternalGhostdagData, TrustedBlock};
 use consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry};
 use consensus_core::{blockhash, hashing, BlockHashMap, BlueWorkType};
-use event_processor::notify::Notification;
-use event_processor::processor::EventProcessor;
+use consensus_notify::service::NotifyService;
 use hashes::Hash;
 
 use flate2::read::GzDecoder;
-use futures_util::future::join_all;
+use futures_util::future::try_join_all;
 use itertools::Itertools;
 use kaspa_core::core::Core;
 use kaspa_core::info;
 use kaspa_core::signals::Shutdown;
 use kaspa_core::task::runtime::AsyncRuntime;
+use kaspa_index_processor::service::IndexService;
 use math::Uint256;
 use muhash::MuHash;
 use serde::{Deserialize, Serialize};
@@ -846,15 +845,17 @@ async fn json_test(file_path: &str) {
         config.process_genesis = false;
     }
 
-    let (consensus_send, consensus_recv) = unbounded::<ConsensusEvent>();
-    let (event_processor_send, _event_processor_recv) = unbounded::<Notification>();
-    let consensus = Arc::new(TestConsensus::create_from_temp_db(&config, consensus_send));
+    let (notification_send, notification_recv) = unbounded();
+    let consensus = Arc::new(TestConsensus::create_from_temp_db(&config, notification_send));
+    let notify_service = Arc::new(NotifyService::new(consensus.notification_root(), notification_recv));
 
     let (_utxoindex_db_lifetime, utxoindex_db) = create_temp_db();
     let utxoindex = UtxoIndex::new(consensus.consensus(), utxoindex_db).unwrap();
-    let event_processor = Arc::new(EventProcessor::new(Some(utxoindex.clone()), consensus_recv, event_processor_send));
+    let index_service = Arc::new(IndexService::new(&notify_service.notifier(), Some(utxoindex.clone())));
+
     let async_runtime = Arc::new(AsyncRuntime::new());
-    async_runtime.register(event_processor.clone());
+    async_runtime.register(notify_service.clone());
+    async_runtime.register(index_service.clone());
 
     let core = Arc::new(Core::new());
     core.bind(consensus.clone());
@@ -1025,13 +1026,13 @@ async fn json_concurrency_test(file_path: &str) {
 
     for (i, mut chunk) in iter.enumerate() {
         let current_joins = submit_chunk(&consensus, &mut chunk, proof_exists);
-        let statuses = join_all(prev_joins).await.into_iter().collect::<Result<Vec<BlockStatus>, RuleError>>().unwrap();
+        let statuses = try_join_all(prev_joins).await.unwrap();
         assert!(statuses.iter().all(|s| s.is_utxo_valid_or_pending()));
         prev_joins = current_joins;
         info!("Processed 1000 blocks ({} overall)", (i + 1) * 1000);
     }
 
-    let statuses = join_all(prev_joins).await.into_iter().collect::<Result<Vec<BlockStatus>, RuleError>>().unwrap();
+    let statuses = try_join_all(prev_joins).await.unwrap();
     assert!(statuses.iter().all(|s| s.is_utxo_valid_or_pending()));
 
     if proof_exists {

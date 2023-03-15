@@ -25,7 +25,7 @@ $ cd rusty-kaspa
 The `kaspad` rust executable is currently at the initial stage where a devnet consensus instance can be built and mined locally through the RPC interface. The P2P network is not supported yet. To see it in action, perform the following:
 
 ```bash
-$ cargo run --bin kaspad --release
+$ cargo run --bin kaspad --release -- --devnet
 ```
 
 - Download and unzip the latest binaries bundle of [kaspanet/kaspad](https://github.com/kaspanet/kaspad/releases).

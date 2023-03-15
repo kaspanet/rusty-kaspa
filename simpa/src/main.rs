@@ -17,14 +17,11 @@ use consensus::{
     processes::ghostdag::ordering::SortableBlock,
 };
 use consensus_core::{
-    block::Block,
-    blockstatus::BlockStatus,
-    errors::block::{BlockProcessResult, RuleError},
-    events::ConsensusEvent,
-    header::Header,
-    BlockHashSet, HashMapCustomHasher,
+    api::ConsensusApi, block::Block, blockstatus::BlockStatus, errors::block::BlockProcessResult, header::Header, BlockHashSet,
+    HashMapCustomHasher,
 };
-use futures::{future::join_all, Future};
+use consensus_notify::root::ConsensusNotificationRoot;
+use futures::{future::try_join_all, Future};
 use hashes::Hash;
 use itertools::Itertools;
 use kaspa_core::{info, warn};
@@ -134,8 +131,9 @@ fn main() {
     // Load an existing consensus or run the simulation
     let (consensus, _lifetime) = if let Some(input_dir) = args.input_dir {
         let (lifetime, db) = load_existing_db(input_dir, num_cpus::get());
-        let (dummy_sender, _) = unbounded::<ConsensusEvent>();
-        let consensus = Arc::new(Consensus::new(db, &config, dummy_sender));
+        let (dummy_notification_sender, _) = unbounded();
+        let notification_root = Arc::new(ConsensusNotificationRoot::new(dummy_notification_sender));
+        let consensus = Arc::new(Consensus::new(db, &config, notification_root));
         (consensus, lifetime)
     } else {
         let until = if args.target_blocks.is_none() { args.sim_time * 1000 } else { u64::MAX }; // milliseconds
@@ -147,8 +145,9 @@ fn main() {
 
     // Benchmark the DAG validation time
     let (_lifetime2, db2) = create_temp_db_with_parallelism(num_cpus::get());
-    let (dummy_sender, _) = unbounded::<ConsensusEvent>();
-    let consensus2 = Arc::new(Consensus::new(db2, &config, dummy_sender));
+    let (dummy_notification_sender, _) = unbounded();
+    let notification_root = Arc::new(ConsensusNotificationRoot::new(dummy_notification_sender));
+    let consensus2 = Arc::new(Consensus::new(db2, &config, notification_root));
     let handles2 = consensus2.init();
     validate(&consensus, &consensus2, &config, args.delay, args.bps);
     consensus2.shutdown(handles2);
@@ -213,12 +212,12 @@ async fn validate(src_consensus: &Consensus, dst_consensus: &Consensus, params: 
 
     for mut chunk in iter {
         let current_joins = submit_chunk(src_consensus, dst_consensus, &mut chunk);
-        let statuses = join_all(prev_joins).await.into_iter().collect::<Result<Vec<BlockStatus>, RuleError>>().unwrap();
+        let statuses = try_join_all(prev_joins).await.unwrap();
         assert!(statuses.iter().all(|s| s.is_utxo_valid_or_pending()));
         prev_joins = current_joins;
     }
 
-    let statuses = join_all(prev_joins).await.into_iter().collect::<Result<Vec<BlockStatus>, RuleError>>().unwrap();
+    let statuses = try_join_all(prev_joins).await.unwrap();
     assert!(statuses.iter().all(|s| s.is_utxo_valid_or_pending()));
 
     // Assert that at least one body tip was resolved with valid UTXO

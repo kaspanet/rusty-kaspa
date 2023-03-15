@@ -2,17 +2,18 @@ use super::infra::{Environment, Process, Resumption, Suspension};
 use consensus::consensus::Consensus;
 use consensus::model::stores::virtual_state::VirtualStateStoreReader;
 use consensus::params::Params;
+use consensus_core::api::ConsensusApi;
 use consensus_core::block::Block;
 use consensus_core::blockstatus::BlockStatus;
 use consensus_core::coinbase::MinerData;
-use consensus_core::errors::block::{BlockProcessResult, RuleError};
+use consensus_core::errors::block::BlockProcessResult;
 use consensus_core::sign::sign;
 use consensus_core::subnets::SUBNETWORK_ID_NATIVE;
 use consensus_core::tx::{
     MutableTransaction, ScriptPublicKey, ScriptVec, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry,
 };
 use consensus_core::utxo::utxo_view::UtxoView;
-use futures::future::join_all;
+use futures::future::try_join_all;
 use indexmap::IndexSet;
 use itertools::Itertools;
 use kaspa_core::trace;
@@ -93,17 +94,13 @@ impl Miner {
 
     fn build_new_block(&mut self, timestamp: u64) -> Block {
         // Sync on all processed blocks before building the new block
-        let statuses = futures::executor::block_on(join_all(self.futures.drain(..)))
-            .into_iter()
-            .collect::<Result<Vec<BlockStatus>, RuleError>>()
-            .unwrap();
+        let statuses = futures::executor::block_on(try_join_all(self.futures.drain(..))).unwrap();
         assert!(statuses.iter().all(|s| s.is_utxo_valid_or_pending()));
 
         let txs = self.build_txs();
         let nonce = self.id;
         let mut block_template = self
             .consensus
-            .as_ref()
             .build_block_template(self.miner_data.clone(), txs)
             .expect("simulation txs are selected in sync with virtual state and are expected to be valid");
         block_template.block.header.timestamp = timestamp; // Use simulation time rather than real time

@@ -4,7 +4,7 @@ use crate::pb::{
 };
 use crate::Router;
 use futures::FutureExt;
-use kaspa_core::{debug, info, warn};
+use kaspa_core::{debug, info};
 use std::net::ToSocketAddrs;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -46,24 +46,26 @@ impl ConnectionHandler {
 
     /// Launches a P2P server listener loop
     pub(crate) fn serve(&self, serve_address: String) -> Result<OneshotSender<()>, ConnectionError> {
-        info!("P2P, Start Listener, ip & port: {:?}", serve_address);
         let (termination_sender, termination_receiver) = oneshot_channel::<()>();
         let connection_handler = self.clone();
         let Some(socket_address) = serve_address.to_socket_addrs()?.next() else { return Err(ConnectionError::NoAddress); };
+        info!("P2P Server starting on: {}", serve_address);
         tokio::spawn(async move {
-            debug!("P2P, Listener starting, ip & port: {:?}....", serve_address);
             let proto_server = ProtoP2pServer::new(connection_handler)
                 .accept_compressed(tonic::codec::CompressionEncoding::Gzip)
                 .send_compressed(tonic::codec::CompressionEncoding::Gzip);
 
+            // TODO: set max message sizes to 1GB or less. Check if `builder().max_frame_size(frame_size)` is the correct setting (seems not).
+            // Seems like this important feature should be in the next tonic version: https://github.com/hyperium/tonic/pull/1274
+            // TODO: check whether we should set tcp_keepalive
             let serve_result = TonicServer::builder()
                 .add_service(proto_server)
                 .serve_with_shutdown(socket_address, termination_receiver.map(drop))
                 .await;
 
             match serve_result {
-                Ok(_) => debug!("P2P, Server stopped, ip & port: {:?}", serve_address),
-                Err(err) => panic!("P2P, Server stopped with error: {err:?}, ip & port: {serve_address:?}"),
+                Ok(_) => debug!("P2P, Server stopped: {}", serve_address),
+                Err(err) => panic!("P2P, Server {serve_address} stopped with error: {err:?}"),
             }
         });
         Ok(termination_sender)
@@ -73,6 +75,8 @@ impl ConnectionHandler {
     pub(crate) async fn connect(&self, peer_address: String) -> Result<Arc<Router>, ConnectionError> {
         let Some(socket_address) = peer_address.to_socket_addrs()?.next() else { return Err(ConnectionError::NoAddress); };
         let peer_address = format!("http://{}", peer_address); // Add scheme prefix as required by Tonic
+
+        // TODO: set max message sizes to 1GB or less. See comment above in server configuration.
         let channel = tonic::transport::Endpoint::new(peer_address)?
             .timeout(Duration::from_millis(Self::communication_timeout()))
             .connect_timeout(Duration::from_millis(Self::connect_timeout()))
@@ -110,10 +114,11 @@ impl ConnectionHandler {
                 }
             }
         }
-        warn!("P2P, Client connection retry #{} - all failed", retry_attempts);
+        debug!("P2P, Client connection retry #{} - all failed", retry_attempts);
         None
     }
 
+    // TODO: revisit the below constants
     fn outgoing_network_channel_size() -> usize {
         128
     }
@@ -127,7 +132,7 @@ impl ConnectionHandler {
     }
 
     fn connect_timeout() -> u64 {
-        10_000
+        1_000
     }
 }
 

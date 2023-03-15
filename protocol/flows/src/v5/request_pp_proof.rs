@@ -3,7 +3,7 @@ use std::sync::Arc;
 use log::debug;
 use p2p_lib::{
     common::ProtocolError,
-    dequeue_with_timeout, make_message,
+    dequeue, make_message,
     pb::{kaspad_message::Payload, PruningPointProofMessage},
     IncomingRoute, Router,
 };
@@ -38,7 +38,7 @@ impl RequestPruningPointProofFlow {
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
         loop {
-            dequeue_with_timeout!(self.incoming_route, Payload::RequestPruningPointProof)?;
+            dequeue!(self.incoming_route, Payload::RequestPruningPointProof)?;
             debug!("Got pruning point proof request");
             let proof = self.ctx.consensus().get_pruning_point_proof();
             self.router

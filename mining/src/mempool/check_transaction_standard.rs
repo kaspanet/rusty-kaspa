@@ -1,8 +1,11 @@
-use crate::mempool::{
-    errors::{NonStandardError, NonStandardResult},
-    Mempool,
-};
 use crate::stubs::ScriptClass;
+use crate::{
+    consensus_context::ConsensusMiningContext,
+    mempool::{
+        errors::{NonStandardError, NonStandardResult},
+        Mempool,
+    },
+};
 use consensus_core::{
     constants::{MAX_SCRIPT_PUBLIC_KEY_VERSION, MAX_SOMPI},
     mass,
@@ -36,7 +39,7 @@ const MAXIMUM_STANDARD_SIGNATURE_SCRIPT_SIZE: u64 = 1650;
 /// are considered standard and will therefore be relayed and considered for mining.
 const MAXIMUM_STANDARD_TRANSACTION_MASS: u64 = 100_000;
 
-impl Mempool {
+impl<T: ConsensusMiningContext + ?Sized> Mempool<T> {
     pub(crate) fn check_transaction_standard_in_isolation(&self, transaction: &MutableTransaction) -> NonStandardResult<()> {
         let transaction_id = transaction.id();
 
