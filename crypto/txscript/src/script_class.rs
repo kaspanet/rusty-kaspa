@@ -44,13 +44,17 @@ const PUB_KEY_ECDSA: &str = "pubkeyecdsa";
 const SCRIPT_HASH: &str = "scripthash";
 
 impl ScriptClass {
-    pub fn from_script(script_public_key: &[u8]) -> Self {
-        if Self::is_pay_to_pubkey(script_public_key) {
-            ScriptClass::PubKey
-        } else if Self::is_pay_to_pubkey_ecdsa(script_public_key) {
-            Self::PubKeyECDSA
-        } else if Self::is_pay_to_script_hash(script_public_key) {
-            Self::ScriptHash
+    pub fn from_script(script_public_key: &[u8], version: ScriptPublicKeyVersion) -> Self {
+        if version == MAX_SCRIPT_PUBLIC_KEY_VERSION {
+            if Self::is_pay_to_pubkey(script_public_key) {
+                ScriptClass::PubKey
+            } else if Self::is_pay_to_pubkey_ecdsa(script_public_key) {
+                Self::PubKeyECDSA
+            } else if Self::is_pay_to_script_hash(script_public_key) {
+                Self::ScriptHash
+            } else {
+                ScriptClass::NonStandard
+            }
         } else {
             ScriptClass::NonStandard
         }
@@ -150,6 +154,7 @@ mod tests {
         struct Test {
             name: &'static str,
             script: Vec<u8>,
+            version: ScriptPublicKeyVersion,
             class: ScriptClass,
         }
 
@@ -158,33 +163,44 @@ mod tests {
             Test {
                 name: "valid pubkey script",
                 script: hex::decode("204a23f5eef4b2dead811c7efb4f1afbd8df845e804b6c36a4001fc096e13f8151ac").unwrap(),
+                version: 0,
                 class: ScriptClass::PubKey,
             },
             Test {
                 name: "valid pubkey ecdsa script",
                 script: hex::decode("21fd4a23f5eef4b2dead811c7efb4f1afbd8df845e804b6c36a4001fc096e13f8151ab").unwrap(),
+                version: 0,
                 class: ScriptClass::PubKeyECDSA,
             },
             Test {
                 name: "valid scripthash script",
                 script: hex::decode("aa204a23f5eef4b2dead811c7efb4f1afbd8df845e804b6c36a4001fc096e13f815187").unwrap(),
+                version: 0,
                 class: ScriptClass::ScriptHash,
+            },
+            Test {
+                name: "non standard script (unexpected version)",
+                script: hex::decode("204a23f5eef4b2dead811c7efb4f1afbd8df845e804b6c36a4001fc096e13f8151ac").unwrap(),
+                version: MAX_SCRIPT_PUBLIC_KEY_VERSION + 1,
+                class: ScriptClass::NonStandard,
             },
             Test {
                 name: "non standard script (unexpected key len)",
                 script: hex::decode("1f4a23f5eef4b2dead811c7efb4f1afbd8df845e804b6c36a4001fc096e13f81ac").unwrap(),
+                version: 0,
                 class: ScriptClass::NonStandard,
             },
             Test {
                 name: "non standard script (unexpected final check sig op)",
                 script: hex::decode("204a23f5eef4b2dead811c7efb4f1afbd8df845e804b6c36a4001fc096e13f8151ad").unwrap(),
+                version: 0,
                 class: ScriptClass::NonStandard,
             },
         ];
         // cspell:enable
 
         for test in tests {
-            assert_eq!(test.class, ScriptClass::from_script(&test.script), "{} wrong script class", test.name);
+            assert_eq!(test.class, ScriptClass::from_script(&test.script, test.version), "{} wrong script class", test.name);
         }
     }
 }
