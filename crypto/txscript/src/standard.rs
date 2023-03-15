@@ -108,6 +108,7 @@ pub mod test_helpers {
         Transaction::new(TX_VERSION, vec![input], vec![output], 0, SUBNETWORK_ID_NATIVE, 0, vec![])
     }
 
+    // TODO: remove this function and use txscript::standard::pay_to_script_hash_signature_script when available
     pub fn pay_to_script_hash_signature_script(redeem_script: Vec<u8>, signature: Vec<u8>) -> Vec<u8> {
         // This is just a hack until we have ScriptBuilder
         // For now, we just suppose that redeem_script len is in the u8 range
