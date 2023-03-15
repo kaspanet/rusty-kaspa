@@ -149,6 +149,7 @@ impl ConnectionManager {
         let mut missing_connections = self.outbound_target - active_outbound.len();
         let mut addresses = self.amgr.lock().iterate_prioritized_random_addresses(active_outbound);
 
+        let mut progressing = true;
         let mut connecting = true;
         while connecting && missing_connections > 0 {
             let mut addr = Vec::with_capacity(missing_connections);
@@ -164,12 +165,16 @@ impl ConnectionManager {
                 jobs.push(self.p2p_adaptor.connect_peer(socket_addr.clone()));
             }
 
-            info!(
-                "Connection manager: has {}/{} outgoing connections, trying to make {} additional connections...",
-                self.outbound_target - missing_connections,
-                self.outbound_target,
-                jobs.len(),
-            );
+            if progressing {
+                // Log only if progress was made
+                info!(
+                    "Connection manager: has {}/{} outgoing connections, trying to make {} additional connections...",
+                    self.outbound_target - missing_connections,
+                    self.outbound_target,
+                    jobs.len(),
+                );
+                progressing = false;
+            }
 
             for (res, net_addr) in (join_all(jobs).await).into_iter().zip(addr) {
                 if res.is_none() {
@@ -178,6 +183,7 @@ impl ConnectionManager {
                 } else {
                     self.amgr.lock().mark_connection_success(net_addr);
                     missing_connections -= 1;
+                    progressing = true;
                 }
             }
         }
