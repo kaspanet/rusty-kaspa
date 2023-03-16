@@ -12,6 +12,7 @@ hashes.workspace = true
 muhash.workspace = true
 consensus-core.workspace = true
 kaspa-core.workspace = true
+txscript.workspace = true
 thiserror.workspace = true
 serde.workspace = true
 log.workspace = true
