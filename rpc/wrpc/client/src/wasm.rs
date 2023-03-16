@@ -1,4 +1,5 @@
 use crate::imports::*;
+use kaspa_notify::notification::Notification as NotificationT;
 pub use kaspa_rpc_macros::{build_wrpc_wasm_bindgen_interface, build_wrpc_wasm_bindgen_subscriptions};
 pub use serde_wasm_bindgen::*;
 
@@ -85,7 +86,7 @@ impl RpcClient {
         let ctl_receiver = self.notification_ctl.request.receiver.clone();
         let ctl_sender = self.notification_ctl.response.sender.clone();
         let notification_receiver = self.client.notification_channel_receiver();
-        let _notification_callback = self.notification_callback.clone();
+        let notification_callback = self.notification_callback.clone();
 
         spawn(async move {
             loop {
@@ -93,30 +94,25 @@ impl RpcClient {
                     _ = ctl_receiver.recv().fuse() => {
                         break;
                     },
-                    _msg = notification_receiver.recv().fuse() => {
+                    msg = notification_receiver.recv().fuse() => {
                         // log_info!("notification: {:?}",msg);
-
-                        //
-                        // FIXME: decide either to impl the converter or not rely on RpcApiOps
-                        //
-
-                        // if let Ok(notification) = &msg {
-                        //     if let Some(callback) = notification_callback.lock().unwrap().as_ref() {
-                        //         let op: RpcApiOps = notification.into();
-                        //         let op_value = to_value(&op).map_err(|err|{
-                        //             log_error!("Notification handler - unable to convert notification op: {}",err.to_string());
-                        //         }).ok();
-                        //         let op_payload = notification.to_value().map_err(|err| {
-                        //             log_error!("Notification handler - unable to convert notification payload: {}",err.to_string());
-                        //         }).ok();
-                        //         if op_value.is_none() || op_payload.is_none() {
-                        //             continue;
-                        //         }
-                        //         if let Err(err) = callback.0.call2(&JsValue::undefined(), &op_value.unwrap(), &op_payload.unwrap()) {
-                        //             log_error!("Error while executing notification callback: {:?}",err);
-                        //         }
-                        //     }
-                        // }
+                        if let Ok(notification) = &msg {
+                            if let Some(callback) = notification_callback.lock().unwrap().as_ref() {
+                                let op: RpcApiOps = notification.event_type().into();
+                                let op_value = to_value(&op).map_err(|err|{
+                                    log_error!("Notification handler - unable to convert notification op: {}",err.to_string());
+                                }).ok();
+                                let op_payload = notification.to_value().map_err(|err| {
+                                    log_error!("Notification handler - unable to convert notification payload: {}",err.to_string());
+                                }).ok();
+                                if op_value.is_none() || op_payload.is_none() {
+                                    continue;
+                                }
+                                if let Err(err) = callback.0.call2(&JsValue::undefined(), &op_value.unwrap(), &op_payload.unwrap()) {
+                                    log_error!("Error while executing notification callback: {:?}",err);
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -132,41 +128,69 @@ impl RpcClient {
 impl RpcClient {
     // experimental/test functions
 
-    //
-    // FIXME: build scope-based functions
-    //
+    /// Subscription to DAA Score (test)
+    #[wasm_bindgen(js_name = subscribeDaaScore)]
+    pub async fn subscribe_daa_score(&self) -> JsResult<()> {
+        self.client.start_notify(ListenerId::default(), Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
+        Ok(())
+    }
 
-    // /// Subscription to DAA Score (test)
-    // #[wasm_bindgen(js_name = subscribeDaaScore)]
-    // pub async fn subscribe_daa_score(&self) -> JsResult<()> {
-    //     self.client.start_notify(ListenerId::default(), Scope::VirtualDaaScoreChanged).await?;
+    /// Unsubscribe from DAA Score (test)
+    #[wasm_bindgen(js_name = unsubscribeDaaScore)]
+    pub async fn unsubscribe_daa_score(&self) -> JsResult<()> {
+        self.client.stop_notify(ListenerId::default(), Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
+        Ok(())
+    }
+
+    // scope variant with field functions
+
+    #[wasm_bindgen(js_name = subscribeVirtualChainChanged)]
+    pub async fn subscribe_virtual_chain_changed(&self, include_accepted_transaction_ids: bool) -> JsResult<()> {
+        self.client
+            .start_notify(
+                ListenerId::default(),
+                Scope::VirtualChainChanged(VirtualChainChangedScope { include_accepted_transaction_ids }),
+            )
+            .await?;
+        Ok(())
+    }
+    #[wasm_bindgen(js_name = unsubscribeVirtualChainChanged)]
+    pub async fn unsubscribe_virtual_chain_changed(&self, include_accepted_transaction_ids: bool) -> JsResult<()> {
+        self.client
+            .stop_notify(
+                ListenerId::default(),
+                Scope::VirtualChainChanged(VirtualChainChangedScope { include_accepted_transaction_ids }),
+            )
+            .await?;
+        Ok(())
+    }
+
+    // #[wasm_bindgen(js_name = subscribeUtxosChanged)]
+    // pub async fn subscribe_utxos_changed(&self, addresses: Vec<Address>) -> JsResult<()> {
+    //     self.client.start_notify(ListenerId::default(), Scope::UtxosChanged(UtxosChangedScope { addresses })).await?;
     //     Ok(())
     // }
-
-    // /// Unsubscribe from DAA Score (test)
-    // #[wasm_bindgen(js_name = unsubscribeDaaScore)]
-    // pub async fn unsubscribe_daa_score(&self) -> JsResult<()> {
-    //     self.client.stop_notify(ListenerId::default(), Scope::VirtualDaaScoreChanged).await?;
+    // #[wasm_bindgen(js_name = unsubscribeUtxosChanged)]
+    // pub async fn unsubscribe_utxos_changed(&self, addresses: Vec<Address>) -> JsResult<()> {
+    //     self.client.stop_notify(ListenerId::default(), Scope::UtxosChanged(UtxosChangedScope { addresses })).await?;
     //     Ok(())
     // }
 }
 
+#[wasm_bindgen]
+struct RpcClient1 {}
+
 // Build subscribe functions
 build_wrpc_wasm_bindgen_subscriptions!([
-    //
-    // FIXME: build scope-based functions
-    //
-
-    // NotifyBlockAdded,
-    // NotifyFinalityConflict,
-    // NotifyFinalityConflictResolved, // TODO added to match Scope
-    // // NotifyFinalityConflicts,        // TODO - missing in Scope
-    // NotifyNewBlockTemplate,
-    // NotifyPruningPointUtxoSetOverride,
-    // // NotifyUtxosChanged,          // can't used this here due to non-C-style enum variant
-    // NotifyVirtualDaaScoreChanged,
-    // NotifySinkBlueScoreChanged,
-    // NotifyVirtualChainChanged,
+    BlockAdded,
+    //VirtualChainChanged, // can't used this here due to non-C-style enum variant
+    FinalityConflict,
+    FinalityConflictResolved,
+    //UtxosChanged, // can't used this here due to non-C-style enum variant
+    SinkBlueScoreChanged,
+    VirtualDaaScoreChanged,
+    PruningPointUtxoSetOverride,
+    NewBlockTemplate,
 ]);
 
 // Build RPC method invocation functions. This macro

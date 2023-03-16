@@ -125,7 +125,7 @@ impl ToTokens for RpcSubscriptions {
         let mut targets = Vec::new();
 
         for handler in self.handlers.elems.iter() {
-            let name = handler.to_token_stream().to_string();
+            let name = format!("Notify{}", handler.to_token_stream().to_string().as_str());
             let regex = Regex::new(r"^Notify").unwrap();
             let blank = regex.replace(&name, "");
             let subscribe = regex.replace(&name, "Subscribe");
@@ -141,13 +141,13 @@ impl ToTokens for RpcSubscriptions {
 
                 #[wasm_bindgen(js_name = #fn_subscribe_camel)]
                 pub async fn #fn_subscribe_snake(&self) -> JsResult<()> {
-                    self.client.start_notify(ListenerId::default(), Scope:: #scope(#sub_scope)).await?;
+                    self.client.start_notify(ListenerId::default(), Scope::#scope(#sub_scope {})).await?;
                     Ok(())
                 }
 
                 #[wasm_bindgen(js_name = #fn_unsubscribe_camel)]
                 pub async fn #fn_unsubscribe_snake(&self) -> JsResult<()> {
-                    self.client.stop_notify(ListenerId::default(), Scope:: #scope).await?;
+                    self.client.stop_notify(ListenerId::default(), Scope::#scope(#sub_scope {})).await?;
                     Ok(())
                 }
 
