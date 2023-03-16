@@ -18,10 +18,6 @@ mod tests {
         errors::tx::{TxResult, TxRuleError},
         mass::transaction_estimated_serialized_size,
         subnets::SUBNETWORK_ID_NATIVE,
-        testutils::{
-            create_transaction::{create_transaction, pay_to_script_hash_signature_script},
-            op_true_script::op_true_script,
-        },
         tx::{
             scriptvec, MutableTransaction, ScriptPublicKey, ScriptVec, Transaction, TransactionId, TransactionInput,
             TransactionOutpoint, TransactionOutput, UtxoEntry,
@@ -29,6 +25,7 @@ mod tests {
     };
     use hashes::Hash;
     use std::sync::Arc;
+    use txscript::test_helpers::{create_transaction, op_true_script, pay_to_script_hash_signature_script};
 
     const TARGET_TIME_PER_BLOCK: u64 = 1_000;
     const MAX_BLOCK_MASS: u64 = 500_000;

@@ -3,12 +3,7 @@
 use super::collector::{CollectorFromConsensus, CollectorFromIndex};
 use crate::{api::rpc::RpcApi, model::*, notify::connection::ChannelConnection, FromRpcHex, Notification, RpcError, RpcResult};
 use async_trait::async_trait;
-use consensus_core::{
-    api::DynConsensus,
-    block::Block,
-    coinbase::MinerData,
-    tx::{ScriptPublicKey, ScriptVec},
-};
+use consensus_core::{api::DynConsensus, block::Block, coinbase::MinerData};
 use consensus_notify::{
     notifier::ConsensusNotifier,
     {connection::ConsensusChannelConnection, notification::Notification as ConsensusNotification},
@@ -149,19 +144,7 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
     async fn get_block_template_call(&self, request: GetBlockTemplateRequest) -> RpcResult<GetBlockTemplateResponse> {
         trace!("incoming GetBlockTemplate request");
 
-        // TODO: Replace this hack by a call to build the script (some txscript.PayToAddrScript(payAddress) equivalent).
-        //       See app\rpc\rpchandlers\get_block_template.go HandleGetBlockTemplate
-        const ADDRESS_PUBLIC_KEY_SCRIPT_PUBLIC_KEY_VERSION: u16 = 0;
-        const OP_CHECK_SIG: u8 = 172;
-        let mut script_addr = request.pay_address.payload.clone();
-        let mut pay_to_pub_key_script = Vec::with_capacity(34);
-        pay_to_pub_key_script.push(u8::try_from(script_addr.len()).unwrap());
-        pay_to_pub_key_script.append(&mut script_addr);
-        pay_to_pub_key_script.push(OP_CHECK_SIG);
-
-        let script = ScriptVec::from_vec(pay_to_pub_key_script);
-
-        let script_public_key = ScriptPublicKey::new(ADDRESS_PUBLIC_KEY_SCRIPT_PUBLIC_KEY_VERSION, script);
+        let script_public_key = txscript::pay_to_address_script(&request.pay_address);
         let miner_data: MinerData = MinerData::new(script_public_key, request.extra_data);
         // TODO: handle error properly when managed through mining manager
         let block_template = self.consensus.build_block_template(miner_data, vec![]).unwrap();

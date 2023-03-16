@@ -1,33 +1,28 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
+use smallvec::SmallVec;
 use std::fmt::{Display, Formatter};
+use thiserror::Error;
 
 mod bech32;
 
-#[derive(PartialEq, Eq, Debug, Clone)]
+#[derive(Error, PartialEq, Eq, Debug, Clone)]
 pub enum AddressError {
+    #[error("Invalid prefix {0}")]
     InvalidPrefix(String),
+
+    #[error("Prefix is missing")]
     MissingPrefix,
+
+    #[error("Invalid version {0}")]
+    InvalidVersion(u8),
+
+    #[error("Invalid character {0}")]
     DecodingError(char),
+
+    #[error("Checksum is invalid")]
     BadChecksum,
 }
-
-impl Display for AddressError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Address decoding failed: {}",
-            match self {
-                Self::InvalidPrefix(prefix) => format!("Invalid prefix {prefix}"),
-                Self::MissingPrefix => "Prefix is missing".to_string(),
-                Self::BadChecksum => "Checksum is invalid".to_string(),
-                Self::DecodingError(c) => format!("Invalid character {c}"),
-            }
-        )
-    }
-}
-
-impl std::error::Error for AddressError {}
 
 #[derive(
     PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema,
@@ -56,6 +51,14 @@ impl Prefix {
             Prefix::B => "b",
         }
     }
+
+    #[inline(always)]
+    fn is_test(&self) -> bool {
+        #[cfg(not(test))]
+        return false;
+        #[cfg(test)]
+        matches!(self, Prefix::A | Prefix::B)
+    }
 }
 
 impl Display for Prefix {
@@ -83,12 +86,111 @@ impl TryFrom<&str> for Prefix {
 }
 
 #[derive(
-    PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema,
+    PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema,
 )]
+#[repr(u8)]
+pub enum Version {
+    /// PubKey addresses always have the version byte set to 0
+    PubKey = 0,
+    /// PubKey ECDSA addresses always have the version byte set to 1
+    PubKeyECDSA = 1,
+    /// ScriptHash addresses always have the version byte set to 8
+    ScriptHash = 8,
+}
+
+impl Version {
+    pub fn public_key_len(&self) -> usize {
+        match self {
+            Version::PubKey => 32,
+            Version::PubKeyECDSA => 33,
+            Version::ScriptHash => 32,
+        }
+    }
+}
+
+impl TryFrom<u8> for Version {
+    type Error = AddressError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Version::PubKey),
+            1 => Ok(Version::PubKeyECDSA),
+            8 => Ok(Version::ScriptHash),
+            _ => Err(AddressError::InvalidVersion(value)),
+        }
+    }
+}
+
+/// Size of the payload vector of an address.
+///
+/// This size is the smallest SmallVec supported backing store size greater or equal to the largest
+/// possible payload, which is 33 for [`Version::PubKeyECDSA`].
+pub const PAYLOAD_VECTOR_SIZE: usize = 36;
+
+/// Used as the underlying type for address payload, optimized for the largest version length (33).
+pub type PayloadVec = SmallVec<[u8; PAYLOAD_VECTOR_SIZE]>;
+
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Hash, Serialize, Deserialize)]
 pub struct Address {
     pub prefix: Prefix,
-    pub payload: Vec<u8>,
-    pub version: u8,
+    pub version: Version,
+    pub payload: PayloadVec,
+}
+
+impl Address {
+    pub fn new(prefix: Prefix, version: Version, payload: &[u8]) -> Self {
+        if !prefix.is_test() {
+            assert_eq!(payload.len(), version.public_key_len());
+        }
+        Self { prefix, payload: PayloadVec::from_slice(payload), version }
+    }
+}
+
+//
+// Borsh serializers need to be manually implemented for `Address` since
+// smallvec does not currently support Borsh
+//
+
+impl BorshSerialize for Address {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        borsh::BorshSerialize::serialize(&self.prefix, writer)?;
+        borsh::BorshSerialize::serialize(&self.version, writer)?;
+        // Vectors and slices are all serialized internally the same way
+        borsh::BorshSerialize::serialize(&self.payload.as_slice(), writer)?;
+        Ok(())
+    }
+}
+
+impl BorshDeserialize for Address {
+    fn deserialize(buf: &mut &[u8]) -> std::io::Result<Self> {
+        // Deserialize into vec first since we have no custom smallvec support
+        let prefix: Prefix = borsh::BorshDeserialize::deserialize(buf)?;
+        let version: Version = borsh::BorshDeserialize::deserialize(buf)?;
+        let payload: Vec<u8> = borsh::BorshDeserialize::deserialize(buf)?;
+        Ok(Self::new(prefix, version, &payload))
+    }
+}
+
+impl BorshSchema for Address {
+    fn add_definitions_recursively(
+        definitions: &mut std::collections::HashMap<borsh::schema::Declaration, borsh::schema::Definition>,
+    ) {
+        let fields = borsh::schema::Fields::NamedFields(std::vec![
+            ("prefix".to_string(), <Prefix>::declaration()),
+            ("version".to_string(), <Version>::declaration()),
+            ("payload".to_string(), <Vec<u8>>::declaration())
+        ]);
+        let definition = borsh::schema::Definition::Struct { fields };
+        Self::add_definition(Self::declaration(), definition, definitions);
+        <Prefix>::add_definitions_recursively(definitions);
+        <Version>::add_definitions_recursively(definitions);
+        // `<Vec<u8>>` can be safely used as scheme definition for smallvec. See comments above.
+        <Vec<u8>>::add_definitions_recursively(definitions);
+    }
+
+    fn declaration() -> borsh::schema::Declaration {
+        "Address".to_string()
+    }
 }
 
 impl From<Address> for String {
@@ -130,23 +232,27 @@ mod tests {
     use crate::*;
 
     fn cases() -> Vec<(Address, &'static str)> {
+        // cspell:disable
         vec![
-            (Address{prefix: Prefix::A, version: 0, payload: b"".to_vec()}, "a:qqeq69uvrh"),
-            (Address{prefix: Prefix::A, version: 8, payload: b"".to_vec()}, "a:pq99546ray"),
-            (Address{prefix: Prefix::A, version: 120, payload: b"".to_vec()}, "a:0qf6jrhtdq"),
-            (Address{prefix: Prefix::B, version: 8, payload: b" ".to_vec()}, "b:pqsqzsjd64fv"),
-            (Address{prefix: Prefix::B, version: 8, payload: b"-".to_vec()}, "b:pqksmhczf8ud"),
-            (Address{prefix: Prefix::B, version: 8, payload: b"0".to_vec()}, "b:pqcq53eqrk0e"),
-            (Address{prefix: Prefix::B, version: 8, payload: b"1".to_vec()}, "b:pqcshg75y0vf"),
-            (Address{prefix: Prefix::B, version: 8, payload: b"-1".to_vec()}, "b:pqknzl4e9y0zy"),
-            (Address{prefix: Prefix::B, version: 8, payload: b"11".to_vec()}, "b:pqcnzt888ytdg"),
-            (Address{prefix: Prefix::B, version: 8, payload: b"abc".to_vec()}, "b:ppskycc8txxxn2w"),
-            (Address{prefix: Prefix::B, version: 8, payload: b"1234598760".to_vec()}, "b:pqcnyve5x5unsdekxqeusxeyu2"),
-            (Address{prefix: Prefix::B, version: 8, payload: b"abcdefghijklmnopqrstuvwxyz".to_vec()}, "b:ppskycmyv4nxw6rfdf4kcmtwdac8zunnw36hvamc09aqtpppz8lk"),
-            (Address{prefix: Prefix::B, version: 8, payload: b"000000000000000000000000000000000000000000".to_vec()}, "b:pqcrqvpsxqcrqvpsxqcrqvpsxqcrqvpsxqcrqvpsxqcrqvpsxqcrqvpsxqcrqvpsxqcrq7ag684l3"),
-            (Address { prefix: Prefix::Mainnet, payload: vec![0u8; 32], version: 0u8 }, "kaspa:qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqkx9awp4e"),
-            (Address { prefix: Prefix::Mainnet, payload: b"\x5f\xff\x3c\x4d\xa1\x8f\x45\xad\xcd\xd4\x99\xe4\x46\x11\xe9\xff\xf1\x48\xba\x69\xdb\x3c\x4e\xa2\xdd\xd9\x55\xfc\x46\xa5\x95\x22".to_vec(), version: 0u8 }, "kaspa:qp0l70zd5x85ttwd6jv7g3s3a8llzj96d8dncn4zmhv4tlzx5k2jyqh70xmfj"),
+            (Address::new(Prefix::A, Version::PubKey, b""), "a:qqeq69uvrh"),
+            (Address::new(Prefix::A, Version::ScriptHash, b""), "a:pq99546ray"),
+            (Address::new(Prefix::B, Version::ScriptHash, b" "), "b:pqsqzsjd64fv"),
+            (Address::new(Prefix::B, Version::ScriptHash, b"-"), "b:pqksmhczf8ud"),
+            (Address::new(Prefix::B, Version::ScriptHash, b"0"), "b:pqcq53eqrk0e"),
+            (Address::new(Prefix::B, Version::ScriptHash, b"1"), "b:pqcshg75y0vf"),
+            (Address::new(Prefix::B, Version::ScriptHash, b"-1"), "b:pqknzl4e9y0zy"),
+            (Address::new(Prefix::B, Version::ScriptHash, b"11"), "b:pqcnzt888ytdg"),
+            (Address::new(Prefix::B, Version::ScriptHash, b"abc"), "b:ppskycc8txxxn2w"),
+            (Address::new(Prefix::B, Version::ScriptHash, b"1234598760"), "b:pqcnyve5x5unsdekxqeusxeyu2"),
+            (Address::new(Prefix::B, Version::ScriptHash, b"abcdefghijklmnopqrstuvwxyz"), "b:ppskycmyv4nxw6rfdf4kcmtwdac8zunnw36hvamc09aqtpppz8lk"),
+            (Address::new(Prefix::B, Version::ScriptHash, b"000000000000000000000000000000000000000000"), "b:pqcrqvpsxqcrqvpsxqcrqvpsxqcrqvpsxqcrqvpsxqcrqvpsxqcrqvpsxqcrqvpsxqcrq7ag684l3"),
+            (Address::new(Prefix::Testnet, Version::PubKey, &[0u8; 32]),      "kaspatest:qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqhqrxplya"),
+            (Address::new(Prefix::Testnet, Version::PubKeyECDSA, &[0u8; 33]), "kaspatest:qyqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqhe837j2d"),
+            (Address::new(Prefix::Testnet, Version::PubKeyECDSA, b"\xba\x01\xfc\x5f\x4e\x9d\x98\x79\x59\x9c\x69\xa3\xda\xfd\xb8\x35\xa7\x25\x5e\x5f\x2e\x93\x4e\x93\x22\xec\xd3\xaf\x19\x0a\xb0\xf6\x0e"), "kaspatest:qxaqrlzlf6wes72en3568khahq66wf27tuhfxn5nytkd8tcep2c0vrse6gdmpks"),
+            (Address::new(Prefix::Mainnet, Version::PubKey, &[0u8; 32]),      "kaspa:qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqkx9awp4e"),
+            (Address::new(Prefix::Mainnet, Version::PubKey, b"\x5f\xff\x3c\x4d\xa1\x8f\x45\xad\xcd\xd4\x99\xe4\x46\x11\xe9\xff\xf1\x48\xba\x69\xdb\x3c\x4e\xa2\xdd\xd9\x55\xfc\x46\xa5\x95\x22"), "kaspa:qp0l70zd5x85ttwd6jv7g3s3a8llzj96d8dncn4zmhv4tlzx5k2jyqh70xmfj"),
         ]
+        // cspell:enable
     }
 
     #[test]
@@ -167,6 +273,7 @@ mod tests {
 
     #[test]
     fn test_errors() {
+        // cspell:disable
         let address_str: String = "kaspa:qqqqqqqqqqqqq1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqkx9awp4e".to_string();
         let address: Result<Address, AddressError> = address_str.try_into();
         assert_eq!(Err(AddressError::DecodingError('1')), address);
@@ -186,5 +293,6 @@ mod tests {
         let address_str: String = "kaspa:qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqkx9awp4e".to_string();
         let address: Result<Address, AddressError> = address_str.try_into();
         assert_eq!(Err(AddressError::BadChecksum), address);
+        // cspell:enable
     }
 }

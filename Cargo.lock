@@ -9,6 +9,8 @@ dependencies = [
  "borsh",
  "criterion",
  "serde",
+ "smallvec",
+ "thiserror",
 ]
 
 [[package]]
@@ -1643,6 +1645,7 @@ dependencies = [
  "smallvec",
  "thiserror",
  "triggered",
+ "txscript",
  "utxoindex",
  "workflow-core",
 ]
@@ -1922,6 +1925,7 @@ dependencies = [
  "serde",
  "smallvec",
  "thiserror",
+ "txscript",
 ]
 
 [[package]]
@@ -3147,6 +3151,7 @@ checksum = "3528ecfd12c466c6f163363caf2d02a71161dd5e1cc6ae7b34207ea2d42d81ed"
 name = "txscript"
 version = "0.1.0"
 dependencies = [
+ "addresses",
  "blake2b_simd",
  "consensus-core",
  "criterion",

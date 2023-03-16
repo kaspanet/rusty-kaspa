@@ -248,7 +248,7 @@ mod tests {
     use super::*;
     use crate::mempool::config::{Config, DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE};
     use crate::testutils::consensus_mock::ConsensusMock;
-    use addresses::{Address, Prefix};
+    use addresses::{Address, Prefix, Version};
     use consensus_core::{
         constants::{MAX_TX_IN_SEQUENCE_NUM, SOMPI_PER_KASPA, TX_VERSION},
         subnets::SUBNETWORK_ID_NATIVE,
@@ -401,19 +401,8 @@ mod tests {
         let dummy_tx_input = TransactionInput::new(dummy_prev_out, dummy_sig_script, MAX_TX_IN_SEQUENCE_NUM, 1);
         let addr_hash = vec![1u8; 32];
 
-        // TODO: call a constructor here when available
-        let addr = Address { prefix: Prefix::Testnet, payload: addr_hash, version: 0u8 };
-
-        // TODO: Replace this hack by a call to build the script (some txscript.PayToAddrScript(addr) equivalent).
-        const ADDRESS_PUBLIC_KEY_SCRIPT_PUBLIC_KEY_VERSION: u16 = 0;
-        const OP_CHECK_SIG: u8 = 172;
-        let mut pay_to_pub_key_script = Vec::with_capacity(34);
-        pay_to_pub_key_script.push(u8::try_from(addr.payload.len()).unwrap());
-        pay_to_pub_key_script.extend(addr.payload);
-        pay_to_pub_key_script.push(OP_CHECK_SIG);
-        let script = ScriptVec::from_vec(pay_to_pub_key_script);
-        let dummy_script_public_key = ScriptPublicKey::new(ADDRESS_PUBLIC_KEY_SCRIPT_PUBLIC_KEY_VERSION, script);
-
+        let addr = Address::new(Prefix::Testnet, Version::PubKey, &addr_hash);
+        let dummy_script_public_key = txscript::pay_to_address_script(&addr);
         let dummy_tx_out = TransactionOutput::new(SOMPI_PER_KASPA, dummy_script_public_key);
 
         struct Test {
@@ -470,7 +459,7 @@ mod tests {
                         vec![TransactionOutput::new(
                             0u64,
                             ScriptPublicKey::new(
-                                ADDRESS_PUBLIC_KEY_SCRIPT_PUBLIC_KEY_VERSION,
+                                MAX_SCRIPT_PUBLIC_KEY_VERSION,
                                 ScriptVec::from_vec(vec![0u8; MAXIMUM_STANDARD_TRANSACTION_MASS as usize + 1]),
                             ),
                         )],
@@ -514,7 +503,7 @@ mod tests {
                             SOMPI_PER_KASPA,
                             // TODO: build an invalid script ie. externalapi.ScriptPublicKey{[]byte{txscript.OpTrue}, 0}
                             // when txscript is available
-                            ScriptPublicKey::new(ADDRESS_PUBLIC_KEY_SCRIPT_PUBLIC_KEY_VERSION, ScriptVec::from_vec(vec![81u8; 1])),
+                            ScriptPublicKey::new(MAX_SCRIPT_PUBLIC_KEY_VERSION, ScriptVec::from_vec(vec![81u8; 1])),
                         )],
                         0,
                         SUBNETWORK_ID_NATIVE,
@@ -551,7 +540,7 @@ mod tests {
                             SOMPI_PER_KASPA,
                             // TODO: build an invalid script ie. externalapi.ScriptPublicKey{[]byte{txscript.OpReturn}, 0}
                             // when txscript is available
-                            ScriptPublicKey::new(ADDRESS_PUBLIC_KEY_SCRIPT_PUBLIC_KEY_VERSION, ScriptVec::from_vec(vec![106u8; 1])),
+                            ScriptPublicKey::new(MAX_SCRIPT_PUBLIC_KEY_VERSION, ScriptVec::from_vec(vec![106u8; 1])),
                         )],
                         0,
                         SUBNETWORK_ID_NATIVE,
