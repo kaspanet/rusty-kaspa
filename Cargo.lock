@@ -1670,7 +1670,6 @@ version = "0.1.0"
 dependencies = [
  "async-channel",
  "async-trait",
- "consensus",
  "consensus-core",
  "consensus-notify",
  "derive_more",
@@ -1769,7 +1768,6 @@ dependencies = [
  "smallvec",
  "thiserror",
  "triggered",
- "utxoindex",
  "wasm-bindgen",
  "workflow-core",
 ]
