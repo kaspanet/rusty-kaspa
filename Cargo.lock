@@ -684,6 +684,7 @@ name = "consensus-notify"
 version = "0.1.0"
 dependencies = [
  "async-channel",
+ "cfg-if",
  "consensus-core",
  "derive_more",
  "futures",
