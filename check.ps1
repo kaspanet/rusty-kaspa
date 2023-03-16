@@ -17,7 +17,9 @@ $crates = @(
   "kaspa-wasm"
 )
 
+$env:AR="llvm-ar"
 foreach ($crate in $crates)
 {
   cargo clippy -p $crate --target wasm32-unknown-unknown
 }
+$env:AR=""
