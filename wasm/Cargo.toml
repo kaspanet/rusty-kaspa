@@ -20,4 +20,3 @@ addresses.workspace = true
 kaspa-utils.workspace = true
 kaspa-rpc-core.workspace = true
 kaspa-wrpc-client.workspace = true
-kaspa-wrpc-wasm.workspace = true
