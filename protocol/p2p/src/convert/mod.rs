@@ -5,6 +5,7 @@ pub mod hash;
 pub mod header;
 pub mod messages;
 pub mod model;
+pub mod net_address;
 pub mod option;
 pub mod pruning;
 pub mod trusted;

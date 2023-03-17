@@ -87,6 +87,7 @@ mining = { path = "mining" }
 txscript = { path = "crypto/txscript" }
 txscript-errors = { path = "crypto/txscript/errors" }
 addressmanager = { path = "components/addressmanager" }
+connectionmanager = { path = "components/connectionmanager" }
 database = { path = "database" }
 testing-integration = { path = "testing/integration" }
 

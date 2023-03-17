@@ -145,6 +145,8 @@ impl ConnectionInitializer for EchoFlowInitializer {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::*;
     use crate::Adaptor;
     use kaspa_core::debug;
@@ -160,7 +162,10 @@ mod tests {
         let adaptor2 = Adaptor::bidirectional(address2.clone(), Arc::new(EchoFlowInitializer::new())).unwrap();
 
         // Initiate the connection from `adaptor1` (outbound) to `adaptor2` (inbound)
-        let peer2_id = adaptor1.connect_peer(String::from("[::1]:50054")).await.expect("peer connection failed");
+        let peer2_id = adaptor1
+            .connect_peer_with_retries(String::from("[::1]:50054"), 16, Duration::from_secs(1))
+            .await
+            .expect("peer connection failed");
 
         // Wait for handshake completion
         tokio::time::sleep(std::time::Duration::from_secs(2)).await;

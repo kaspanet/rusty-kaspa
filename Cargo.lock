@@ -9,13 +9,14 @@ dependencies = [
  "borsh",
  "criterion",
  "serde",
+ "smallvec",
+ "thiserror",
 ]
 
 [[package]]
 name = "addressmanager"
 version = "0.1.0"
 dependencies = [
- "consensus-core",
  "database",
  "itertools 0.10.5",
  "kaspa-core",
@@ -617,6 +618,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "connectionmanager"
+version = "0.1.0"
+dependencies = [
+ "addressmanager",
+ "duration-string",
+ "futures-util",
+ "itertools 0.10.5",
+ "kaspa-core",
+ "log",
+ "p2p-lib",
+ "parking_lot",
+ "rand 0.8.5",
+ "tokio",
+]
+
+[[package]]
 name = "consensus"
 version = "0.1.0"
 dependencies = [
@@ -969,6 +986,12 @@ name = "downcast-rs"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9ea835d29036a4087793836fa931b08837ad5e957da9e23886b29586fb9b6650"
+
+[[package]]
+name = "duration-string"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c5d74010fd35f37054de1eb72485be4f562b0815e0e7b477e578581d3998fa47"
 
 [[package]]
 name = "either"
@@ -1764,6 +1787,7 @@ dependencies = [
  "smallvec",
  "thiserror",
  "triggered",
+ "txscript",
  "wasm-bindgen",
  "workflow-core",
 ]
@@ -1773,7 +1797,6 @@ name = "kaspa-rpc-macros"
 version = "0.1.0"
 dependencies = [
  "convert_case 0.5.0",
- "parse-variants",
  "proc-macro-error",
  "proc-macro2",
  "quote",
@@ -1948,6 +1971,7 @@ dependencies = [
 name = "kaspad"
 version = "0.1.0"
 dependencies = [
+ "addressmanager",
  "async-channel",
  "clap 4.1.8",
  "consensus",
@@ -1964,11 +1988,9 @@ dependencies = [
  "kaspa-wrpc-server",
  "log",
  "mining",
- "num-format",
  "num_cpus",
  "p2p-flows",
  "rand 0.8.5",
- "rand_distr",
  "rayon",
  "tempfile",
  "thiserror",
@@ -2205,6 +2227,7 @@ dependencies = [
  "serde",
  "smallvec",
  "thiserror",
+ "txscript",
 ]
 
 [[package]]
@@ -2270,16 +2293,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "num-format"
-version = "0.4.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a652d9771a63711fd3c3deb670acfbe5c30a4072e664d7a3bf5a9e1056ac72c3"
-dependencies = [
- "arrayvec",
- "itoa",
-]
-
-[[package]]
 name = "num-traits"
 version = "0.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2333,7 +2346,9 @@ checksum = "9b7820b9daea5457c9f21c69448905d723fbd21136ccf521748f23fd49e723ee"
 name = "p2p-flows"
 version = "0.1.0"
 dependencies = [
+ "addressmanager",
  "async-trait",
+ "connectionmanager",
  "consensus-core",
  "futures",
  "hashes",
@@ -2361,6 +2376,8 @@ dependencies = [
  "futures",
  "h2",
  "hashes",
+ "hex",
+ "itertools 0.10.5",
  "kaspa-core",
  "log",
  "math",
@@ -3565,6 +3582,7 @@ dependencies = [
 name = "txscript"
 version = "0.1.0"
 dependencies = [
+ "addresses",
  "blake2b_simd",
  "consensus-core",
  "criterion",

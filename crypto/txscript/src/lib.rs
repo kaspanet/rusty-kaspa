@@ -4,6 +4,8 @@ extern crate core;
 pub mod caches;
 mod data_stack;
 mod opcodes;
+pub mod script_class;
+pub mod standard;
 
 use crate::caches::Cache;
 use crate::data_stack::{DataStack, Stack};
@@ -14,7 +16,13 @@ use consensus_core::tx::{ScriptPublicKey, TransactionInput, UtxoEntry, Verifiabl
 use itertools::Itertools;
 use log::trace;
 use opcodes::{codes, to_small_int, OpCond};
+use script_class::ScriptClass;
 use txscript_errors::TxScriptError;
+
+pub mod prelude {
+    pub use super::standard::*;
+}
+pub use standard::*;
 
 pub const MAX_SCRIPT_PUBLIC_KEY_VERSION: u16 = 0;
 pub const MAX_STACK_SIZE: usize = 244;
@@ -82,7 +90,7 @@ fn parse_script<T: VerifiableTransaction>(
 }
 
 pub fn get_sig_op_count<T: VerifiableTransaction>(signature_script: &[u8], prev_script_public_key: &ScriptPublicKey) -> u64 {
-    let is_p2sh = is_script_public_key_p2sh(prev_script_public_key.script());
+    let is_p2sh = ScriptClass::is_pay_to_script_hash(prev_script_public_key.script());
     let script_pub_key_ops = parse_script::<T>(prev_script_public_key.script()).collect_vec();
     if !is_p2sh {
         return get_sig_op_count_by_opcodes(&script_pub_key_ops);
@@ -128,13 +136,6 @@ fn get_sig_op_count_by_opcodes<T: VerifiableTransaction>(opcodes: &[Result<Box<d
     num_sigs
 }
 
-fn is_script_public_key_p2sh(script_public_key: &[u8]) -> bool {
-    (script_public_key.len() == 35) && // 3 opcodes number + 32 data
-                (script_public_key[0] == opcodes::codes::OpBlake2b) &&
-                (script_public_key[1] == opcodes::codes::OpData32) &&
-                (script_public_key[script_public_key.len() -1] == opcodes::codes::OpEqual)
-}
-
 impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
     pub fn new(reused_values: &'a mut SigHashReusedValues, sig_cache: &'a Cache<SigCacheKey, bool>) -> Self {
         Self {
@@ -159,7 +160,7 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
         let script_public_key = utxo_entry.script_public_key.script();
         // The script_public_key in P2SH is just validating the hash on the OpMultiSig script
         // the user provides
-        let is_p2sh = is_script_public_key_p2sh(script_public_key);
+        let is_p2sh = ScriptClass::is_pay_to_script_hash(script_public_key);
         match input_idx < tx.tx().inputs.len() {
             true => Ok(Self {
                 dstack: Default::default(),

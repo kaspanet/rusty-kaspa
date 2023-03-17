@@ -10,6 +10,8 @@ pub struct Defaults {
     pub wrpc_serializer_tasks: usize,
     pub utxoindex: bool,
     pub reset_db: bool,
+    pub outbound_target: usize,
+    pub inbound_limit: usize,
     pub testnet: bool,
     pub devnet: bool,
     pub simnet: bool,
@@ -26,6 +28,8 @@ impl Default for Defaults {
             wrpc_serializer_tasks: num_cpus::get() / 2,
             utxoindex: false,
             reset_db: false,
+            outbound_target: 8,
+            inbound_limit: 128,
             testnet: false,
             devnet: false,
             simnet: false,
@@ -47,6 +51,8 @@ pub struct Args {
     pub listen: Option<String>,
     pub utxoindex: bool,
     pub reset_db: bool,
+    pub outbound_target: usize,
+    pub inbound_limit: usize,
     pub testnet: bool,
     pub devnet: bool,
     pub simnet: bool,
@@ -123,6 +129,22 @@ pub fn cli(defaults: &Defaults) -> Command {
                 .require_equals(true)
                 .help("Add an interface/port to listen for connections (default all interfaces port: 16111, testnet: 16211)."),
         )
+        .arg(
+            Arg::new("outpeers")
+                .long("outpeers")
+                .value_name("outpeers")
+                .num_args(0..=1)
+                .require_equals(true)
+                .help("Target number of outbound peers (default: 8)."),
+        )
+        .arg(
+            Arg::new("maxinpeers")
+                .long("maxinpeers")
+                .value_name("maxinpeers")
+                .num_args(0..=1)
+                .require_equals(true)
+                .help("Max number of inbound peers (default: 128)."),
+        )
         .arg(arg!(--reset-db "Reset database before starting node. It's needed when switching between subnetworks."))
         .arg(arg!(--utxoindex "Enable the UTXO index"))
         .arg(arg!(--testnet "Use the test network"))
@@ -143,7 +165,9 @@ impl Args {
             async_threads: m.get_one::<usize>("async_threads").cloned().unwrap_or(defaults.async_threads),
             connect: m.get_one::<String>("connect").cloned(),
             listen: m.get_one::<String>("listen").cloned(),
-            reset_db: m.get_one::<bool>("reet-db").cloned().unwrap_or(defaults.reset_db),
+            outbound_target: m.get_one::<usize>("outpeers").cloned().unwrap_or(defaults.outbound_target),
+            inbound_limit: m.get_one::<usize>("maxinpeers").cloned().unwrap_or(defaults.inbound_limit),
+            reset_db: m.get_one::<bool>("reset-db").cloned().unwrap_or(defaults.reset_db),
             utxoindex: m.get_one::<bool>("utxoindex").cloned().unwrap_or(defaults.utxoindex),
             testnet: m.get_one::<bool>("testnet").cloned().unwrap_or(defaults.testnet),
             devnet: m.get_one::<bool>("devnet").cloned().unwrap_or(defaults.devnet),

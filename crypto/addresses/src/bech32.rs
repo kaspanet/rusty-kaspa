@@ -96,7 +96,7 @@ fn conv5to8(payload: &[u8]) -> Vec<u8> {
 impl Address {
     pub(crate) fn encode_payload(&self) -> String {
         // Convert into 5 bits vector
-        let fivebit_payload = conv8to5(&[[self.version].as_slice(), self.payload.as_slice()].concat());
+        let fivebit_payload = conv8to5(&[[self.version as u8].as_slice(), self.payload.as_slice()].concat());
         let fivebit_prefix = self.prefix.as_str().as_bytes().iter().copied().map(|c| c & 0x1fu8);
 
         let checksum = checksum(fivebit_payload.as_slice(), fivebit_prefix);
@@ -133,6 +133,6 @@ impl Address {
         }
 
         let payload_u8 = conv5to8(payload_u5);
-        Ok(Self { prefix, version: payload_u8[0], payload: payload_u8[1..].into() })
+        Ok(Self::new(prefix, payload_u8[0].try_into()?, payload_u8[1..].into()))
     }
 }

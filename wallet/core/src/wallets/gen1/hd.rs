@@ -1,4 +1,4 @@
-use addresses::{Address, Prefix as AddressPrefix};
+use addresses::{Address, Prefix as AddressPrefix, Version};
 use hmac::Mac;
 use ripemd::Ripemd160;
 use sha2::{Digest, Sha256};
@@ -77,7 +77,7 @@ impl HDWalletInner {
         let (key, _chain_code) = HDWalletGen1::derive_public_key_child(&self.public_key, index, self.hmac.clone())?;
 
         let pubkey = &key.to_bytes()[1..];
-        let address = Address { prefix: AddressPrefix::Mainnet, version: 0, payload: pubkey.to_vec() };
+        let address = Address::new(AddressPrefix::Mainnet, Version::PubKey, pubkey);
 
         Ok(address)
     }

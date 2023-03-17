@@ -21,6 +21,7 @@ rand.workspace = true
 parking_lot.workspace = true
 
 [dev-dependencies]
+txscript.workspace = true
 criterion.workspace = true
 secp256k1 = { version = "0.24", features = ["global-context", "rand-std"] }
 

@@ -5,8 +5,11 @@ pub enum ConversionError {
     #[error("General p2p conversion error")]
     General,
 
-    #[error("Optional field is None while expected")]
+    #[error("Optional field is None while expected to be Some")]
     NoneValue,
+
+    #[error("IP has illegal length {0}")]
+    IllegalIPLength(usize),
 
     #[error("Bytes size mismatch error {0}")]
     ArrayBytesSizeError(#[from] std::array::TryFromSliceError),

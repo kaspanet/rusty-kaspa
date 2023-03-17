@@ -1,4 +1,4 @@
-use addresses::{Address, Prefix as AddressPrefix};
+use addresses::{Address, Prefix as AddressPrefix, Version};
 use hmac::Mac;
 use kaspa_bip32::{
     types::*, AddressType, ChildNumber, ExtendedKey, ExtendedKeyAttrs, ExtendedPrivateKey, ExtendedPublicKey, Prefix, PrivateKey,
@@ -28,7 +28,7 @@ impl HDWalletInner {
         let (private_key, _) = HDWalletGen0::derive_private_key(&self.private_key, ChildNumber::new(index, true)?, self.hmac.clone())?;
 
         let pubkey = &private_key.get_public_key().to_bytes()[1..];
-        let address = Address { prefix: AddressPrefix::Mainnet, version: 0, payload: pubkey.to_vec() };
+        let address = Address::new(AddressPrefix::Mainnet, Version::PubKey, pubkey);
 
         Ok(address)
     }

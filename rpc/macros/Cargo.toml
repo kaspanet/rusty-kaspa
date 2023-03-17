@@ -15,7 +15,6 @@ Macros for the Kaspa RPC infrastructure
 proc-macro = true
 
 [dependencies]
-parse-variants = "0.1"
 proc-macro-error = { version = "1", default-features = false }
 proc-macro2 = { version = "1.0.43" }
 quote = "1.0.21"

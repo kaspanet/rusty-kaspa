@@ -22,6 +22,7 @@ kaspa-grpc-server.workspace = true
 kaspa-wrpc-server.workspace = true
 p2p-flows.workspace = true
 mining.workspace = true
+addressmanager.workspace = true
 
 thiserror.workspace = true
 futures-util.workspace = true
@@ -32,7 +33,7 @@ tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread"] }
 clap.workspace = true
 log.workspace = true
 workflow-log.workspace = true
-rand_distr = "0.4"
-num-format = "0.4"
+# rand_distr = "0.4"
+# num-format = "0.4"
 dirs = "4.0"
 num_cpus.workspace = true

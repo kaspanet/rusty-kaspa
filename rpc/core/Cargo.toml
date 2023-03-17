@@ -16,6 +16,7 @@ kaspa-core.workspace = true
 kaspa-utils.workspace = true
 kaspa-notify.workspace = true
 kaspa-index-core.workspace = true
+txscript.workspace = true
 faster-hex.workspace = true
 serde.workspace = true
 derive_more.workspace = true

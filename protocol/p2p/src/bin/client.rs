@@ -13,7 +13,7 @@ async fn main() {
     let ip_port = String::from("[::1]:50051");
     for i in 0..1 {
         debug!("P2P, p2p_client::main - starting peer:{}", i);
-        let _peer_id = adaptor.connect_peer(ip_port.clone()).await;
+        let _peer_id = adaptor.connect_peer_with_retries(ip_port.clone(), 16, Duration::from_secs(1)).await;
     }
     // [2] - wait a few seconds and terminate
     tokio::time::sleep(Duration::from_secs(5)).await;

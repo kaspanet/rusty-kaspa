@@ -9,6 +9,7 @@ license.workspace = true
 
 [dependencies]
 consensus-core.workspace = true
+addresses.workspace = true
 log.workspace = true
 hashes.workspace = true
 blake2b_simd.workspace = true
@@ -19,6 +20,7 @@ indexmap.workspace = true
 secp256k1 = { version = "0.24", features = ["global-context", "rand-std"] }
 parking_lot.workspace = true
 txscript-errors.workspace = true
+smallvec.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
