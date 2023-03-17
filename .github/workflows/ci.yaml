@@ -45,8 +45,8 @@ jobs:
 
       - name: Install llvm
         run: wget https://apt.llvm.org/llvm.sh
-        run: chmod +x llvm.sh
-        run: sudo ./llvm.sh all
+      - run: chmod +x llvm.sh
+      - run: sudo ./llvm.sh all
 
       - name: Cache
         uses: actions/cache@v3
