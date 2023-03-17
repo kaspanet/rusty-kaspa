@@ -30,6 +30,38 @@ jobs:
       - name: Run cargo check
         run: cargo check --tests --workspace --benches
 
+  check-wasm32:
+    name: Check Wasm32
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v3
+
+      - name: Install protoc
+        run: sudo apt install -y protobuf-compiler
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install llvm
+        run: wget https://apt.llvm.org/llvm.sh
+        run: chmod +x llvm.sh
+        run: sudo ./llvm.sh all
+
+      - name: Cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Run cargo check for wasm32
+        run: ./check
+
   test:
     name: Test Suite
     # runs-on: ${{ matrix.os }}
