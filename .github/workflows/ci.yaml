@@ -30,7 +30,7 @@ jobs:
       - name: Run cargo check
         run: cargo check --tests --workspace --benches
 
-  check-wasm32:
+  check_wasm32:
     name: Check Wasm32
     runs-on: ubuntu-latest
     steps:
