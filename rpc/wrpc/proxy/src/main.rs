@@ -23,6 +23,11 @@ struct Args {
     /// network type
     #[clap(name = "network", default_value = "mainnet")]
     network_type: NetworkType,
+
+    /// proxy:port for gRPC server (grpc://127.0.0.1:16110)
+    #[clap(name = "grpc")]
+    grpc_proxy_address: Option<String>,
+
     // /// wRPC port
     /// interface:port for wRPC server (wrpc://127.0.0.1:17110)
     #[clap(long)]
@@ -40,7 +45,7 @@ struct Args {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let Args { network_type, interface, verbose, threads, encoding } = Args::parse();
+    let Args { network_type, grpc_proxy_address, interface, verbose, threads, encoding } = Args::parse();
     let proxy_port: u16 = 17110;
 
     let encoding: Encoding = encoding.unwrap_or_else(|| "borsh".to_owned()).parse()?;
@@ -48,7 +53,7 @@ async fn main() -> Result<()> {
 
     let options = Arc::new(Options {
         listen_address: interface.unwrap_or_else(|| format!("wrpc://127.0.0.1:{proxy_port}")),
-        grpc_proxy_address: Some(format!("grpc://127.0.0.1:{kaspad_port}")),
+        grpc_proxy_address: Some(grpc_proxy_address.unwrap_or_else(|| format!("grpc://127.0.0.1:{kaspad_port}"))),
         verbose,
         // ..Options::default()
     });
