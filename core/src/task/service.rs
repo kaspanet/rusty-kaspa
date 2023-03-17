@@ -1,9 +1,17 @@
 use futures_util::future::BoxFuture;
 use intertrait::CastFromSync;
-
 use std::sync::Arc;
+use thiserror::Error;
 
-pub type AsyncServiceFuture = BoxFuture<'static, ()>;
+#[derive(Error, Debug)]
+pub enum AsyncServiceError {
+    #[error("{0}")]
+    Service(String),
+}
+
+pub type AsyncServiceResult<T> = std::result::Result<T, AsyncServiceError>;
+
+pub type AsyncServiceFuture = BoxFuture<'static, AsyncServiceResult<()>>;
 
 pub trait AsyncService: CastFromSync {
     fn ident(self: Arc<Self>) -> &'static str;

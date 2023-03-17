@@ -1,7 +1,7 @@
 use crate::{notification::Notification, notifier::ConsensusNotifier, root::ConsensusNotificationRoot};
 use async_channel::Receiver;
 use kaspa_core::{
-    task::service::{AsyncService, AsyncServiceFuture},
+    task::service::{AsyncService, AsyncServiceError, AsyncServiceFuture},
     trace,
 };
 use kaspa_notify::{
@@ -51,9 +51,10 @@ impl AsyncService for NotifyService {
             // Keep the notifier running until a service shutdown signal is received
             shutdown_signal.await;
             match self.notifier.stop().await {
-                Ok(_) => {}
+                Ok(_) => Ok(()),
                 Err(err) => {
                     trace!("Error while stopping {}: {}", NOTIFY_SERVICE, err);
+                    Err(AsyncServiceError::Service(err.to_string()))
                 }
             }
         })
@@ -68,6 +69,7 @@ impl AsyncService for NotifyService {
         trace!("{} stopping", NOTIFY_SERVICE);
         Box::pin(async move {
             trace!("{} exiting", NOTIFY_SERVICE);
+            Ok(())
         })
     }
 }

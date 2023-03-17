@@ -1,0 +1,6 @@
+/target
+/Cargo.lock
+/web/node_modules
+/nodejs/kaspa-wallet
+/nodejs/node_modules
+/nodejs/package-lock.json

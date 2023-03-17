@@ -120,7 +120,7 @@ pub fn generate_random_transaction(rng: &mut SmallRng, input_amount: usize, outp
         rng.gen(),
         SubnetworkId::from_byte(rng.gen()),
         rng.gen(),
-        (0..20).map(|_| rng.gen()).collect(),
+        (0..20).map(|_| rng.gen::<u8>()).collect(),
     )
 }
 
@@ -131,7 +131,7 @@ pub fn generate_random_transactions(rng: &mut SmallRng, amount: usize, input_amo
 
 ///Note: generate_random_transactions is filled with random data, it does not represent consensus-valid  transaction input!
 pub fn generate_random_transaction_input(rng: &mut SmallRng) -> TransactionInput {
-    TransactionInput::new(generate_random_transaction_outpoint(rng), (0..32).map(|_| rng.gen()).collect(), rng.gen(), rng.gen())
+    TransactionInput::new(generate_random_transaction_outpoint(rng), (0..32).map(|_| rng.gen::<u8>()).collect(), rng.gen(), rng.gen())
 }
 
 ///Note: generate_random_transactions is filled with random data, it does not represent consensus-valid  transaction output!

@@ -70,7 +70,10 @@ impl AsyncService for ConsensusMonitor {
     }
 
     fn start(self: Arc<Self>) -> AsyncServiceFuture {
-        Box::pin(async move { self.worker().await })
+        Box::pin(async move {
+            self.worker().await;
+            Ok(())
+        })
     }
 
     fn signal_exit(self: Arc<Self>) {
@@ -78,6 +81,6 @@ impl AsyncService for ConsensusMonitor {
     }
 
     fn stop(self: Arc<Self>) -> AsyncServiceFuture {
-        Box::pin(async move {})
+        Box::pin(async move { Ok(()) })
     }
 }

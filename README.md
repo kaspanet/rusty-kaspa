@@ -9,10 +9,13 @@ Work in progress to implement the Kaspa full-node and related libraries in the R
   - Windows: [protoc-21.10-win64.zip](https://github.com/protocolbuffers/protobuf/releases/download/v21.10/protoc-21.10-win64.zip) and add `bin` dir to `Path`
   - MacOS: `brew install protobuf`
 - Install the [clang toolchain](https://clang.llvm.org/) (required for RocksDB)
-  - Linux: `sudo apt install clang`
+  - Linux: `apt-get install clang-format clang-tidy clang-tools clang clangd libc++-dev libc++1 libc++abi-dev libc++abi1 libclang-dev libclang1 liblldb-dev libllvm-ocaml-dev libomp-dev libomp5 lld lldb llvm-dev llvm-runtime llvm python3-clang`
   - Windows: [LLVM-15.0.6-win64.exe](https://github.com/llvm/llvm-project/releases/download/llvmorg-15.0.6/LLVM-15.0.6-win64.exe) and set `LIBCLANG_PATH` env var pointing to the `bin` dir of the llvm installation
   - MacOS: Please see [Installing clang toolchain on MacOS](#installing-clang-toolchain-on-macos)
 - Install the [rust toolchain](https://rustup.rs/)
+- If you already have rust installed, update it by running: `rustup update`
+- Install wasm-pack: `cargo install wasm-pack`
+- Install wasm32 target: `rustup target add wasm32-unknown-unknown`
 - Run the following commands:
 
 ```bash
@@ -110,4 +113,110 @@ export AR=/opt/homebrew/opt/llvm/bin/llvm-ar
 Reload the `~/.zshrc` file
 ```bash
 source ~/.zshrc
+```
+
+## JSON and Borsh RPC protocols
+
+In addition to gRPC, Rusty Kaspa integrates an optional wRPC
+subsystem. wRPC is a high-performance, platform-neutral, Rust-centric, WebSocket-framed RPC 
+implementation that can use Borsh and JSON protocol encoding. JSON protocol messaging 
+is similar to JSON-RPC 1.0, but differs from the specification due to server-side 
+notifications. Borsh encoding is meant for inter-process communication. When using Borsh
+both client and server should be built from the same codebase.  JSON protocol is based on 
+Kaspa data structures and is data-structure-version agnostic. You can connect to the
+JSON endpoint using any WebSocket library. Built-in RPC clients for JavaScript and
+TypeScript capable of running in web browsers and Node.js are available as a part of
+the Kaspa WASM framework.
+
+## Enabling wRPC
+
+wRPC subsystem is disabled by default in `kaspad` and can be enabled via:
+- `--rpclisten-json = <interface:port>` for JSON protocol
+- `--rpclisten-borsh = <interface:port>` for Borsh protocol
+
+## wRPC to gRPC Proxy
+
+Proxy providing wRPC to gRPC relay is available in `rpc/wrpc/proxy`.
+By default, the proxy server will connect to *grpc://127.0.01:16110*
+while offering wRPC connections on *wrpc://127.0.0.1:17110*. Use `--help`
+to see configuration options.
+
+The Proxy server is currently used for testing with the Golang implementation
+of Kaspad. At the time of writing, the gRPC has only partial messsage translation
+implementation.
+
+To run the proxy:
+```bash
+cd rpc/wrpc/proxy
+cargo run
+```
+
+## Native JavaScript & TypeScript RPC clients for Browsers and Node.js environments
+
+Integration in a Browser and Node.js environments is possible using WASM.
+The JavaScript code is agnostic to which environment it runs in.
+NOTE: to run in Node.js environment, you must instantiate a W3C WebSocket
+shim using a `WebSocket` crate before initializing Kaspa environment:
+`globalThis.WebSocket = require('websocket').w3cwebsocket;`
+
+Prerequisites:
+- WasmPack: https://rustwasm.github.io/wasm-pack/installer/
+
+To test Node.js:
+- Make sure you have Rust and WasmPack installed
+- Start Golang Kaspad
+- Start wRPC proxy
+
+```bash
+cd rpc/wrpc/wasm
+./build-node
+cd nodejs
+npm install
+node index
+```
+
+You can take a look at `rpc/wrpc/wasm/nodejs/index.js` to see the use of the native JavaScript & TypeScript APIs.
+
+NOTE: `npm install` is needed to install [WebSocket](https://github.com/theturtle32/WebSocket-Node) module.
+When running in the Browser environment, no additional dependencies are necessary because
+the browser provides the W3C WebSocket class natively.
+
+## Wallet CLI
+
+The wallet CLI is under heavy development.  To test the environment you can do the following:
+
+- Start Golang Kaspad
+- Start wRPC proxy
+
+Native (OS command line):
+
+```bash
+cd wallet/native
+cargo run
+```
+
+Web Browser (WASM):
+
+Run an http server inside of `wallet/wasm/web` folder. If you don't have once, you can use `basic-http-server`.
+```bash
+cd wallet/wasm/web
+cargo install basic-http-server
+basic-http-server
+```
+The *basic-http-server* will serve on port 4000 by default, so open your web browser and load http://localhost:4000
+
+The framework is compatible with all major desktop and mobile browsers.
+
+## Using Wallet CLI
+
+This project is under heavy development and currently demonstrates only the RPC data exchange and
+address generation using the native or WASM wallet library. 
+
+Here are the few commands that work:
+
+```
+get-info
+subscribe-daa-score
+new-address
+exit
 ```

@@ -1,0 +1,10 @@
+[package]
+name = "kaspa-wrpc-wasm"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+kaspa-wrpc-client.workspace = true

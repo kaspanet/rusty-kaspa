@@ -1,0 +1,22 @@
+[package]
+name = "kaspa-bip32"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rand_core.workspace = true
+bs58.workspace = true
+hmac.workspace = true
+secp256k1.workspace = true
+sha2.workspace = true
+zeroize.workspace = true
+ripemd.workspace = true
+subtle.workspace = true
+once_cell.workspace = true
+pbkdf2.workspace = true
+thiserror.workspace = true
+getrandom = { workspace = true, features = ["js"] }
+
+
+[dev-dependencies]
+faster-hex.workspace = true

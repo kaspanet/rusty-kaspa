@@ -23,13 +23,17 @@ cfg_if::cfg_if! {
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn init_logger(filters: &str) {
+    let level = log::LevelFilter::Info;
+
     env_logger::Builder::new()
         .format_target(false)
         .format_timestamp_secs()
-        .filter_level(log::LevelFilter::Info)
+        .filter_level(level)
         .parse_default_env()
         .parse_filters(filters)
         .init();
+
+    workflow_log::set_log_level(level);
 }
 
 /// Tries to init the global logger, but does not panic if it was already setup.

@@ -3,7 +3,6 @@ extern crate core;
 extern crate hashes;
 
 use addressmanager::AddressManager;
-use clap::Parser;
 use consensus_core::api::DynConsensus;
 use consensus_core::networktype::NetworkType;
 use consensus_notify::root::ConsensusNotificationRoot;
@@ -16,6 +15,15 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+// ~~~
+// TODO - discuss handling
+use args::{Args, Defaults};
+// use clap::Parser;
+// any specific reason this was used?  changed as_display() to display() below
+// use thiserror::__private::PathAsDisplay;
+// ~~~
+//use clap::Parser;
+
 use crate::monitor::ConsensusMonitor;
 use consensus::config::ConfigBuilder;
 use consensus::consensus::Consensus;
@@ -26,8 +34,10 @@ use async_channel::unbounded;
 use kaspa_core::{info, trace};
 use kaspa_grpc_server::GrpcServer;
 use kaspa_rpc_core::server::RpcCoreServer;
+use kaspa_wrpc_server::service::{Options as WrpcServerOptions, WrpcEncoding, WrpcService};
 use p2p_flows::service::P2pService;
 
+mod args;
 mod monitor;
 
 const DEFAULT_DATA_DIR: &str = "datadir";
@@ -39,6 +49,7 @@ const AMGR_DB: &str = "addressmanager";
 // TODO: log to file
 // TODO: refactor the shutdown sequence into a predefined controlled sequence
 
+/*
 /// Kaspa Node launch arguments
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -47,13 +58,26 @@ struct Args {
     #[arg(short = 'b', long = "appdir")]
     app_dir: Option<String>,
 
-    /// Interface/port to listen for RPC connections (default port: 16110, testnet: 16210)
+    /// Interface/port to listen for gRPC connections (default port: 16110, testnet: 16210)
     #[arg(long = "rpclisten")]
     rpc_listen: Option<String>,
 
     /// Activate the utxoindex
     #[arg(long = "utxoindex")]
     utxoindex: bool,
+
+    /// Interface/port to listen for wRPC Borsh connections (default: 127.0.0.1:17110)
+    #[clap(long = "rpclisten-borsh", default_missing_value = "abc")]
+    // #[arg()]
+    wrpc_listen_borsh: Option<String>,
+
+    /// Interface/port to listen for wRPC JSON connections (default: 127.0.0.1:18110)
+    #[arg(long = "rpclisten-json")]
+    wrpc_listen_json: Option<String>,
+
+    /// Enable verbose logging of wRPC data exchange
+    #[arg(long = "wrpc-verbose")]
+    wrpc_verbose: bool,
 
     /// Logging level for all subsystems {off, error, warn, info, debug, trace}
     ///  -- You may also specify <subsystem>=<level>,<subsystem2>=<level>,... to set the log level for individual subsystems
@@ -84,6 +108,7 @@ struct Args {
     #[arg(long = "simnet")]
     simnet: bool,
 }
+ */
 
 fn get_home_dir() -> PathBuf {
     #[cfg(target_os = "windows")]
@@ -100,8 +125,13 @@ fn get_app_dir() -> PathBuf {
 }
 
 pub fn main() {
-    // Get CLI arguments
-    let args = Args::parse();
+    let defaults = Defaults {
+        // --async-threads N
+        async_threads: num_cpus::get() / 2,
+        ..Defaults::default()
+    };
+
+    let args = Args::parse(&defaults);
 
     // Initialize the logger
     kaspa_core::log::init_logger(&args.log_level);
@@ -122,7 +152,7 @@ pub fn main() {
 
     // TODO: Refactor all this quick-and-dirty code
     let app_dir = args
-        .app_dir
+        .appdir
         .unwrap_or_else(|| get_app_dir().as_path().to_str().unwrap().to_string())
         .replace('~', get_home_dir().as_path().to_str().unwrap());
     let app_dir = if app_dir.is_empty() { get_app_dir() } else { PathBuf::from(app_dir) };
@@ -151,7 +181,7 @@ pub fn main() {
         fs::create_dir_all(utxoindex_db_dir.as_path()).unwrap();
     }
 
-    let grpc_server_addr = args.rpc_listen.unwrap_or_else(|| "127.0.0.1:16610".to_string()).parse().unwrap();
+    let grpc_server_addr = args.rpclisten.unwrap_or_else(|| "127.0.0.1:16610".to_string()).parse().unwrap();
 
     let core = Arc::new(Core::new());
 
@@ -196,7 +226,7 @@ pub fn main() {
         &config,
         args.connect,
         args.listen,
-        args.target_outbound,
+        args.outbound_target,
         args.inbound_limit,
     ));
 
@@ -205,15 +235,35 @@ pub fn main() {
         MiningManager::new(consensus.clone() as DynConsensus, config.target_time_per_block, false, config.max_block_mass, None);
 
     // Create an async runtime and register the top-level async services
-    let async_runtime = Arc::new(AsyncRuntime::new());
+    let async_runtime = Arc::new(AsyncRuntime::new(args.async_threads));
     async_runtime.register(notify_service);
     if let Some(index_service) = index_service {
         async_runtime.register(index_service)
     };
-    async_runtime.register(rpc_core_server);
+    async_runtime.register(rpc_core_server.clone());
     async_runtime.register(grpc_server);
     async_runtime.register(p2p_service);
     async_runtime.register(monitor);
+
+    let wrpc_service_tasks: usize = 2; // num_cpus::get() / 2;
+                                       // Register wRPC servers based on command line arguments
+    [(args.rpclisten_borsh, WrpcEncoding::Borsh), (args.rpclisten_json, WrpcEncoding::SerdeJson)]
+        .iter()
+        .filter_map(|(listen_address, encoding)| {
+            listen_address.as_ref().map(|listen_address| {
+                Arc::new(WrpcService::new(
+                    wrpc_service_tasks,
+                    rpc_core_server.service(),
+                    encoding,
+                    WrpcServerOptions {
+                        listen_address: listen_address.to_string(),
+                        verbose: args.wrpc_verbose,
+                        ..WrpcServerOptions::default()
+                    },
+                ))
+            })
+        })
+        .for_each(|server| async_runtime.register(server));
 
     // Bind the keyboard signal to the core
     Arc::new(Signals::new(&core)).init();

@@ -1,0 +1,20 @@
+[package]
+name = "kaspa-wallet-cli"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+async-trait.workspace = true
+convert_case.workspace = true
+futures.workspace = true
+kaspa-wallet-core.workspace = true
+kaspa-wrpc-client.workspace = true
+pad.workspace = true
+thiserror.workspace = true
+workflow-core.workspace = true
+workflow-dom.workspace = true
+workflow-log.workspace = true
+workflow-terminal.workspace = true

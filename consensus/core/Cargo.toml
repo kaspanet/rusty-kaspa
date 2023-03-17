@@ -21,4 +21,5 @@ futures-util.workspace = true
 itertools.workspace = true
 cfg-if.workspace = true
 addresses.workspace = true
+getrandom.workspace = true
 txscript-errors.workspace = true
