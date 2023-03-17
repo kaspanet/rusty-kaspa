@@ -145,7 +145,7 @@ pub fn cli(defaults: &Defaults) -> Command {
                 .require_equals(true)
                 .help("Max number of inbound peers (default: 128)."),
         )
-        .arg(arg!(--reset-db "Reset database before starting node. It's needed when switching between subnetworks."))
+        .arg(arg!(--"reset-db" "Reset database before starting node. It's needed when switching between subnetworks."))
         .arg(arg!(--utxoindex "Enable the UTXO index"))
         .arg(arg!(--testnet "Use the test network"))
         .arg(arg!(--devnet "Use the development test network"))
