@@ -72,6 +72,7 @@ impl AsyncService for P2pService {
             shutdown_signal.await;
             p2p_adaptor.terminate_all_peers().await;
             connection_manager.stop().await;
+            Ok(())
         })
     }
 
@@ -84,6 +85,7 @@ impl AsyncService for P2pService {
         trace!("{} stopping", P2P_CORE_SERVICE);
         Box::pin(async move {
             trace!("{} exiting", P2P_CORE_SERVICE);
+            Ok(())
         })
     }
 }

@@ -853,7 +853,7 @@ async fn json_test(file_path: &str) {
     let utxoindex = UtxoIndex::new(consensus.consensus(), utxoindex_db).unwrap();
     let index_service = Arc::new(IndexService::new(&notify_service.notifier(), Some(utxoindex.clone())));
 
-    let async_runtime = Arc::new(AsyncRuntime::new());
+    let async_runtime = Arc::new(AsyncRuntime::new(2));
     async_runtime.register(notify_service.clone());
     async_runtime.register(index_service.clone());
 

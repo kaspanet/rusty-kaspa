@@ -11,7 +11,9 @@ use kaspa_notify::{
     },
 };
 use serde::{Deserialize, Serialize};
+use serde_wasm_bindgen::to_value;
 use std::sync::Arc;
+use wasm_bindgen::JsValue;
 
 full_featured! {
 #[derive(Clone, Debug, Display, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
@@ -43,6 +45,23 @@ pub enum Notification {
     #[display(fmt = "NewBlockTemplate notification")]
     NewBlockTemplate(NewBlockTemplateNotification),
 }
+}
+
+impl Notification {
+    ///
+    pub fn to_value(&self) -> std::result::Result<JsValue, serde_wasm_bindgen::Error> {
+        match self {
+            Notification::BlockAdded(v) => to_value(&v),
+            Notification::FinalityConflict(v) => to_value(&v),
+            Notification::FinalityConflictResolved(v) => to_value(&v),
+            Notification::NewBlockTemplate(v) => to_value(&v),
+            Notification::PruningPointUtxoSetOverride(v) => to_value(&v),
+            Notification::UtxosChanged(v) => to_value(&v),
+            Notification::VirtualDaaScoreChanged(v) => to_value(&v),
+            Notification::SinkBlueScoreChanged(v) => to_value(&v),
+            Notification::VirtualChainChanged(v) => to_value(&v),
+        }
+    }
 }
 
 impl NotificationTrait for Notification {
@@ -87,4 +106,16 @@ pub type NotificationReceiver = Receiver<Notification>;
 pub enum NotificationHandle {
     Existing(u64),
     New(NotificationSender),
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_notification_from_bytes() {
+        let bytes = &vec![6, 169, 167, 75, 2, 0, 0, 0, 0][..];
+        let notification = Notification::try_from_slice(bytes);
+        println!("notification: {notification:?}");
+    }
 }

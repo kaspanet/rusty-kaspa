@@ -1,5 +1,5 @@
 use kaspa_core::{
-    task::service::{AsyncService, AsyncServiceFuture},
+    task::service::{AsyncService, AsyncServiceError, AsyncServiceFuture},
     trace,
 };
 use kaspa_grpc_core::protowire::rpc_server::RpcServer;
@@ -58,17 +58,19 @@ impl AsyncService for GrpcServer {
 
             // Start the tonic gRPC server
             trace!("gRPC server listening on: {}", address);
-            match Server::builder().add_service(svc).serve_with_shutdown(address, shutdown_signal).await {
-                Ok(_) => {
-                    trace!("gRPC server exited gracefully");
-                }
-                Err(err) => {
-                    trace!("gRPC server exited with error {0}", err);
-                }
+            let result = Server::builder()
+                .add_service(svc)
+                .serve_with_shutdown(address, shutdown_signal)
+                .await
+                .map_err(|err| AsyncServiceError::Service(format!("gRPC server exited with error `{err}`")));
+
+            if result.is_ok() {
+                trace!("gRPC server exited gracefully");
             }
 
             // Send a signal telling the shutdown is done
             shutdown_executed.trigger();
+            result
         })
     }
 
@@ -100,6 +102,9 @@ impl AsyncService for GrpcServer {
                 }
             }
             trace!("{} exiting", GRPC_SERVER);
+
+            // TODO - review error handling
+            Ok(())
         })
     }
 }

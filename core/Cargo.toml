@@ -11,9 +11,12 @@ futures-util.workspace = true
 wasm-bindgen.workspace = true
 log.workspace = true
 cfg-if.workspace = true
+thiserror.workspace = true
 env_logger = "0.10"
+workflow-log.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread"] }
 ctrlc = "3.2"
 intertrait = "0.2"
+num_cpus.workspace = true

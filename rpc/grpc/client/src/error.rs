@@ -9,6 +9,9 @@ pub enum Error {
     #[error("Error: {0}")]
     String(String),
 
+    #[error("gRPC invalid address schema {0}")]
+    GrpcAddressSchema(String),
+
     #[error("gRPC client error {0}")]
     TonicStatus(#[from] tonic::Status),
 

@@ -12,7 +12,6 @@ hashes.workspace = true
 muhash.workspace = true
 consensus-core.workspace = true
 kaspa-core.workspace = true
-txscript.workspace = true
 thiserror.workspace = true
 serde.workspace = true
 log.workspace = true
@@ -22,6 +21,7 @@ rand.workspace = true
 parking_lot.workspace = true
 
 [dev-dependencies]
+txscript.workspace = true
 criterion.workspace = true
 secp256k1 = { version = "0.24", features = ["global-context", "rand-std"] }
 

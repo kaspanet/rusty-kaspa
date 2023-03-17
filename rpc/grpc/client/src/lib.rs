@@ -32,6 +32,7 @@ use kaspa_rpc_core::{
     Notification, NotificationSender,
 };
 use kaspa_utils::triggers::DuplexTrigger;
+use regex::Regex;
 use std::{
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -42,11 +43,12 @@ use std::{
 use tonic::Streaming;
 use tonic::{codec::CompressionEncoding, transport::Endpoint};
 
-mod error;
+pub mod error;
 mod resolver;
 #[macro_use]
 mod route;
 
+#[derive(Debug)]
 pub struct GrpcClient {
     inner: Arc<Inner>,
     notifier: Arc<Notifier<Notification, ChannelConnection>>,
@@ -55,9 +57,13 @@ pub struct GrpcClient {
 const GRPC_CLIENT: &str = "grpc-client";
 
 impl GrpcClient {
-    pub async fn connect(address: String, reconnect: bool) -> Result<GrpcClient> {
+    pub async fn connect(address: String, reconnect: bool, override_handle_stop_notify: bool) -> Result<GrpcClient> {
+        let schema = Regex::new(r"^grpc://").unwrap();
+        if !schema.is_match(&address) {
+            return Err(Error::GrpcAddressSchema(address));
+        }
         let notify_channel = NotificationChannel::default();
-        let inner = Inner::connect(address, reconnect, notify_channel.sender()).await?;
+        let inner = Inner::connect(address, reconnect, notify_channel.sender(), override_handle_stop_notify).await?;
         let core_events = EVENT_TYPE_ARRAY[..].into();
         let collector = Arc::new(RpcCoreCollector::new(notify_channel.receiver()));
         let subscriber = Arc::new(Subscriber::new(core_events, inner.clone(), 0));
@@ -206,8 +212,8 @@ struct ServerFeatures {
 ///
 /// TODO:
 ///
-/// Carry any subscribe call result up to the initial RpcApiGrpc::start_notify execution.
-/// For now, RpcApiGrpc::start_notify only gets a result reflecting the call to
+/// Carry any subscribe call result up to the initial GrpcClient::start_notify execution.
+/// For now, GrpcClient::start_notify only gets a result reflecting the call to
 /// Notifier::try_send_dispatch. This is not complete.
 ///
 /// Investigate a possible bottleneck in handle_response with the processing of pendings.
@@ -249,6 +255,9 @@ struct Inner {
     connector_is_running: AtomicBool,
     connector_shutdown: DuplexTrigger,
     connector_timer_interval: u64,
+
+    // temporary hack to override the handle_stop_notify flag
+    override_handle_stop_notify: bool,
 }
 
 impl Inner {
@@ -258,6 +267,7 @@ impl Inner {
         notify_sender: NotificationSender,
         request_sender: KaspadRequestSender,
         request_receiver: KaspadRequestReceiver,
+        override_handle_stop_notify: bool,
     ) -> Self {
         let resolver: DynResolver = match server_features.handle_message_id {
             true => Arc::new(IdResolver::new()),
@@ -279,10 +289,17 @@ impl Inner {
             connector_is_running: AtomicBool::new(false),
             connector_shutdown: DuplexTrigger::new(),
             connector_timer_interval: RECONNECT_INTERVAL,
+            override_handle_stop_notify,
         }
     }
 
-    async fn connect(address: String, reconnect: bool, notify_sender: NotificationSender) -> Result<Arc<Self>> {
+    // TODO - remove the override (discuss how to handle this in relation to the golang client)
+    async fn connect(
+        address: String,
+        reconnect: bool,
+        notify_sender: NotificationSender,
+        override_handle_stop_notify: bool,
+    ) -> Result<Arc<Self>> {
         // Request channel
         let (request_sender, request_receiver) = async_channel::unbounded();
 
@@ -290,7 +307,14 @@ impl Inner {
         let (stream, server_features) = Inner::try_connect(address.clone(), request_sender.clone(), request_receiver.clone()).await?;
 
         // create the inner object
-        let inner = Arc::new(Inner::new(address, server_features, notify_sender, request_sender, request_receiver));
+        let inner = Arc::new(Inner::new(
+            address,
+            server_features,
+            notify_sender,
+            request_sender,
+            request_receiver,
+            override_handle_stop_notify,
+        ));
 
         // Start the request timeout cleaner
         inner.clone().spawn_request_timeout_monitor();
@@ -380,7 +404,12 @@ impl Inner {
 
     #[inline(always)]
     fn handle_stop_notify(&self) -> bool {
-        self.server_features.handle_stop_notify
+        // TODO - remove this
+        if self.override_handle_stop_notify {
+            true
+        } else {
+            self.server_features.handle_stop_notify
+        }
     }
 
     #[inline(always)]

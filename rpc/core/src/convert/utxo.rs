@@ -1,7 +1,5 @@
 use crate::RpcUtxosByAddressesEntry;
-// use addresses::Address;
-// use consensus_core::tx::UtxoEntry;
-use utxoindex::model::UtxoSetByScriptPublicKey;
+use kaspa_index_core::indexed_utxos::UtxoSetByScriptPublicKey;
 
 // ----------------------------------------------------------------------------
 // index to rpc_core

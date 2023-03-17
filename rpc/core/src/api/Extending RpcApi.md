@@ -38,6 +38,6 @@ As an illustration, let's pretend that we add a new `submit_block` method.
 7. In `rpc\grpc\src\convert\kaspad.rs`, add calls to `impl_into_kaspad_request!` and `impl_into_kaspad_response!`
    (ie. `impl_into_kaspad_request!(kaspa_rpc_core::SubmitBlockRequest, SubmitBlockRequestMessage, SubmitBlockRequest);` and
    `impl_into_kaspad_response!(kaspa_rpc_core::SubmitBlockResponse, SubmitBlockResponseMessage, SubmitBlockResponse);`).
-8. Implement the function having a `_call` suffix into `kaspa_grpc_client::RpcApiGrpc`.
+8. Implement the function having a `_call` suffix into `kaspa_grpc_client::GrpcClient`.
 9. In `kaspa_grpc_server::service::RpcService::message_stream`, requests handler, add an arm and implement
    a handler for the new method.

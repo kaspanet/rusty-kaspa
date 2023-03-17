@@ -14,8 +14,9 @@ crate-type = ["cdylib"]
 
 [dependencies]
 kaspa-core.workspace = true
-kaspa-wallet.workspace = true
+kaspa-wallet-core.workspace = true
 wasm-bindgen.workspace = true
 addresses.workspace = true
-kaspa-rpc-core.workspace = true
 kaspa-utils.workspace = true
+kaspa-rpc-core.workspace = true
+kaspa-wrpc-client.workspace = true

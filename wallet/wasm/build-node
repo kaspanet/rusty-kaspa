@@ -1,0 +1,1 @@
+wasm-pack build --target nodejs --out-name kaspa-wallet --out-dir nodejs/kaspa-wallet

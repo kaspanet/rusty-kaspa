@@ -3,7 +3,7 @@ use consensus_notify::{
     connection::ConsensusChannelConnection, notification::Notification as ConsensusNotification, notifier::ConsensusNotifier,
 };
 use kaspa_core::{
-    task::service::{AsyncService, AsyncServiceFuture},
+    task::service::{AsyncService, AsyncServiceError, AsyncServiceFuture},
     trace,
 };
 use kaspa_index_core::notifier::IndexNotifier;
@@ -74,9 +74,10 @@ impl AsyncService for IndexService {
             // Keep the notifier running until a service shutdown signal is received
             shutdown_signal.await;
             match self.notifier.stop().await {
-                Ok(_) => {}
+                Ok(_) => Ok(()),
                 Err(err) => {
                     trace!("Error while stopping {}: {}", INDEX_SERVICE, err);
+                    Err(AsyncServiceError::Service(err.to_string()))
                 }
             }
         })
@@ -91,6 +92,7 @@ impl AsyncService for IndexService {
         trace!("{} stopping", INDEX_SERVICE);
         Box::pin(async move {
             trace!("{} exiting", INDEX_SERVICE);
+            Ok(())
         })
     }
 }

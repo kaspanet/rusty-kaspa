@@ -1,0 +1,26 @@
+[package]
+name = "kaspa-wrpc-server"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+async-trait.workspace = true
+borsh = { workspace = true, features = ["rc"] }
+consensus-core.workspace = true
+futures.workspace = true
+kaspa-core.workspace = true
+kaspa-notify.workspace = true
+kaspa-rpc-core.workspace = true
+kaspa-rpc-macros.workspace = true
+kaspa-utils.workspace = true
+paste.workspace = true
+serde = { workspace = true, features = ["rc"] }
+thiserror.workspace = true
+tokio.workspace = true
+workflow-core.workspace = true
+workflow-log.workspace = true
+workflow-rpc.workspace = true
+num_cpus.workspace = true
