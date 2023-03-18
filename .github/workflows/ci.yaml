@@ -62,8 +62,16 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Run cargo check for wasm32
-        run: ./check
+      # append here any new wasm32 crate not already covered by the existing checks
+      
+      - name: Run cargo check of kaspa-wrpc-wasm for wasm32 target
+        run: cargo clippy -p kaspa-wrpc-wasm --target wasm32-unknown-unknown
+
+      - name: Run cargo check of kaspa-wallet-cli-wasm for wasm32 target
+        run: cargo clippy -p kaspa-wallet-cli-wasm --target wasm32-unknown-unknown
+
+      - name: Run cargo check of kaspa-wasm for wasm32 target
+        run: cargo clippy -p kaspa-wasm --target wasm32-unknown-unknown
 
   # test:
   #   name: Test Suite
