@@ -3,32 +3,32 @@ name: Tests
 on: [push, pull_request]
 
 jobs:
-  # check:
-  #   name: Check
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - name: Checkout sources
-  #       uses: actions/checkout@v3
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v3
 
-  #     - name: Install protoc
-  #       run: sudo apt install -y protobuf-compiler
+      - name: Install protoc
+        run: sudo apt install -y protobuf-compiler
 
-  #     - name: Install stable toolchain
-  #       uses: dtolnay/rust-toolchain@stable
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
 
-  #     - name: Cache
-  #       uses: actions/cache@v3
-  #       with:
-  #         path: |
-  #           ~/.cargo/bin/
-  #           ~/.cargo/registry/index/
-  #           ~/.cargo/registry/cache/
-  #           ~/.cargo/git/db/
-  #           target/
-  #         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-  #     - name: Run cargo check
-  #       run: cargo check --tests --workspace --benches
+      - name: Run cargo check
+        run: cargo check --tests --workspace --benches
 
   check_wasm32:
     name: Check Wasm32
@@ -62,8 +62,8 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      # append here any new wasm32 crate not already covered by the existing checks
-      
+      append here any new wasm32 crate not already covered by the existing checks
+
       - name: Run cargo check of kaspa-wrpc-wasm for wasm32 target
         run: cargo clippy -p kaspa-wrpc-wasm --target wasm32-unknown-unknown
 
@@ -73,17 +73,57 @@ jobs:
       - name: Run cargo check of kaspa-wasm for wasm32 target
         run: cargo clippy -p kaspa-wasm --target wasm32-unknown-unknown
 
-  # test:
-  #   name: Test Suite
-  #   # runs-on: ${{ matrix.os }}
-  #   runs-on: ubuntu-latest
+  test:
+    name: Test Suite
+    # runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      # matrix:
+      #   os: [ ubuntu-latest, macos-latest, windows-latest ]
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v3
+
+      - name: Fix CRLF on Windows
+        if: runner.os == 'Windows'
+        run: git config --global core.autocrlf false
+
+      - name: Install protoc
+        run: sudo apt install -y protobuf-compiler
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Run cargo test regular features
+        run: cargo test --workspace
+
+      - name: Run cargo test on hashes without asm
+        run: cargo test -p hashes --features=no-asm --benches
+
+
+  # test-release:
+  #   name: Test Suite Release
+  #   runs-on: ${{ matrix.os }}
+
   #   strategy:
   #     fail-fast: false
-  #     # matrix:
-  #     #   os: [ ubuntu-latest, macos-latest, windows-latest ]
+  #     matrix:
+  #       os: [ ubuntu-latest, macos-latest, windows-latest ]
   #   steps:
   #     - name: Checkout sources
-  #       uses: actions/checkout@v3
+  #       uses: actions/checkout@v2
 
   #     - name: Fix CRLF on Windows
   #       if: runner.os == 'Windows'
@@ -93,7 +133,11 @@ jobs:
   #       run: sudo apt install -y protobuf-compiler
 
   #     - name: Install stable toolchain
-  #       uses: dtolnay/rust-toolchain@stable
+  #       uses: actions-rs/toolchain@v1
+  #       with:
+  #         profile: minimal
+  #         toolchain: stable
+  #         override: true
 
   #     - name: Cache
   #       uses: actions/cache@v3
@@ -106,90 +150,46 @@ jobs:
   #           target/
   #         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-  #     - name: Run cargo test regular features
-  #       run: cargo test --workspace
-
-  #     - name: Run cargo test on hashes without asm
-  #       run: cargo test -p hashes --features=no-asm --benches
-
-
-  # # test-release:
-  # #   name: Test Suite Release
-  # #   runs-on: ${{ matrix.os }}
-
-  # #   strategy:
-  # #     fail-fast: false
-  # #     matrix:
-  # #       os: [ ubuntu-latest, macos-latest, windows-latest ]
-  # #   steps:
-  # #     - name: Checkout sources
-  # #       uses: actions/checkout@v2
-
-  # #     - name: Fix CRLF on Windows
-  # #       if: runner.os == 'Windows'
-  # #       run: git config --global core.autocrlf false
-
-  # #     - name: Install protoc
-  # #       run: sudo apt install -y protobuf-compiler
-
-  # #     - name: Install stable toolchain
-  # #       uses: actions-rs/toolchain@v1
-  # #       with:
-  # #         profile: minimal
-  # #         toolchain: stable
-  # #         override: true
-
-  # #     - name: Cache
-  # #       uses: actions/cache@v3
-  # #       with:
-  # #         path: |
-  # #           ~/.cargo/bin/
-  # #           ~/.cargo/registry/index/
-  # #           ~/.cargo/registry/cache/
-  # #           ~/.cargo/git/db/
-  # #           target/
-  # #         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
-  # #     - name: Run cargo test release regular features
-  # #       uses: actions-rs/cargo@v1
-  # #       with:
-  # #         command: test
-  # #         args: --release
-
-  # #     - name: Run cargo test release on hashes without asm
-  # #       uses: actions-rs/cargo@v1
-  # #       with:
-  # #         command: test
-  # #         args: -p hashes --features=no-asm --benches --release
-
-  # lints:
-  #   name: Lints
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - name: Checkout sources
-  #       uses: actions/checkout@v3
-
-  #     - name: Install protoc
-  #       run: sudo apt install -y protobuf-compiler
-
-  #     - name: Install stable toolchain
-  #       uses: dtolnay/rust-toolchain@stable
+  #     - name: Run cargo test release regular features
+  #       uses: actions-rs/cargo@v1
   #       with:
-  #         components: rustfmt, clippy
+  #         command: test
+  #         args: --release
 
-  #     - name: Cache
-  #       uses: actions/cache@v3
+  #     - name: Run cargo test release on hashes without asm
+  #       uses: actions-rs/cargo@v1
   #       with:
-  #         path: |
-  #           ~/.cargo/bin/
-  #           ~/.cargo/registry/index/
-  #           ~/.cargo/registry/cache/
-  #           ~/.cargo/git/db/
-  #           target/
-  #         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+  #         command: test
+  #         args: -p hashes --features=no-asm --benches --release
 
-  #     - name: Run cargo fmt
-  #       run: cargo fmt --all -- --check
+  lints:
+    name: Lints
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v3
 
-  #     - name: Run cargo clippy
-  #       run: cargo clippy --workspace --tests --benches -- -D warnings
+      - name: Install protoc
+        run: sudo apt install -y protobuf-compiler
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Run cargo fmt
+        run: cargo fmt --all -- --check
+
+      - name: Run cargo clippy
+        run: cargo clippy --workspace --tests --benches -- -D warnings
