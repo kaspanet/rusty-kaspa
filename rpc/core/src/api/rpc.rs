@@ -6,6 +6,7 @@
 
 use crate::{model::*, RpcResult};
 use async_trait::async_trait;
+use downcast::{downcast_sync, AnySync};
 use kaspa_notify::{connection::Connection, listener::ListenerId, scope::Scope, subscription::Command};
 
 /// Client RPC Api
@@ -14,7 +15,7 @@ use kaspa_notify::{connection::Connection, listener::ListenerId, scope::Scope, s
 ///
 /// For each RPC call a matching readily implemented function taking detailed parameters is also provided.
 #[async_trait]
-pub trait RpcApi<C>: Sync + Send
+pub trait RpcApi<C>: Sync + Send + AnySync
 where
     C: Connection,
 {
@@ -294,3 +295,5 @@ where
         }
     }
 }
+
+downcast_sync!(<C> dyn RpcApi<C> where C: Connection);

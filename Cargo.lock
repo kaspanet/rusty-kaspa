@@ -1770,6 +1770,7 @@ dependencies = [
  "consensus-core",
  "consensus-notify",
  "derive_more",
+ "downcast",
  "faster-hex",
  "futures",
  "futures-util",
