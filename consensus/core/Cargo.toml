@@ -16,10 +16,19 @@ serde.workspace = true
 faster-hex.workspace = true
 smallvec.workspace = true
 borsh.workspace = true
-secp256k1 = { version = "0.24", features = ["global-context", "rand-std"] }
+secp256k1 = { version = "0.24", features = ["global-context", "rand-std", "serde"] }
 futures-util.workspace = true
 itertools.workspace = true
 cfg-if.workspace = true
 addresses.workspace = true
 getrandom.workspace = true
 txscript-errors.workspace = true
+
+kaspa-core.workspace = true
+serde_json.workspace = true
+serde-wasm-bindgen.workspace = true
+js-sys.workspace = true
+wasm-bindgen.workspace = true
+workflow-wasm.workspace = true
+rand.workspace = true
+workflow-log.workspace = true

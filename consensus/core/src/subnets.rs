@@ -2,6 +2,7 @@ use std::fmt::{Debug, Display, Formatter};
 use std::str::{self, FromStr};
 
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+use kaspa_core::hex::{FromHex, ToHex};
 use serde::{Deserialize, Serialize};
 
 /// The size of the array used to store subnetwork IDs.
@@ -63,13 +64,29 @@ impl Display for SubnetworkId {
     }
 }
 
+impl ToHex for SubnetworkId {
+    fn to_hex(&self) -> String {
+        let mut hex = [0u8; SUBNETWORK_ID_SIZE * 2];
+        faster_hex::hex_encode(&self.0, &mut hex).expect("The output is exactly twice the size of the input");
+        str::from_utf8(&hex).expect("hex is always valid UTF-8").to_string()
+    }
+}
+
 impl FromStr for SubnetworkId {
     type Err = faster_hex::Error;
 
     #[inline]
-    fn from_str(str: &str) -> Result<Self, Self::Err> {
+    fn from_str(hex_str: &str) -> Result<Self, Self::Err> {
         let mut bytes = [0u8; SUBNETWORK_ID_SIZE];
-        faster_hex::hex_decode(str.as_bytes(), &mut bytes)?;
+        faster_hex::hex_decode(hex_str.as_bytes(), &mut bytes)?;
+        Ok(SubnetworkId(bytes))
+    }
+}
+
+impl FromHex for SubnetworkId {
+    fn from_hex(hex_str: &str) -> Result<Self, faster_hex::Error> {
+        let mut bytes = [0u8; SUBNETWORK_ID_SIZE];
+        faster_hex::hex_decode(hex_str.as_bytes(), &mut bytes)?;
         Ok(SubnetworkId(bytes))
     }
 }
