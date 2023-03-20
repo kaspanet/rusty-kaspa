@@ -1,5 +1,5 @@
 use crate::result::Result;
-use crate::wallets::HDWalletGen1;
+use crate::wallets::GeneratorV1;
 use kaspa_notify::{
     listener::ListenerId,
     scope::{Scope, VirtualDaaScoreChangedScope},
@@ -13,7 +13,7 @@ use workflow_core::channel::{Channel, Receiver};
 #[derive(Clone)]
 pub struct Wallet {
     pub rpc: Arc<KaspaRpcClient>,
-    hd_wallet: HDWalletGen1,
+    hd_wallet: GeneratorV1,
     listener_id: ListenerId,
     notification_receiver: Receiver<Notification>,
 }
@@ -42,12 +42,8 @@ impl Wallet {
             NotificationMode::Direct => (ListenerId::default(), rpc.notification_channel_receiver()),
         };
 
-        let wallet = Wallet {
-            rpc,
-            hd_wallet: HDWalletGen1::from_master_xprv(master_xprv, false, 0).await?,
-            notification_receiver,
-            listener_id,
-        };
+        let wallet =
+            Wallet { rpc, hd_wallet: GeneratorV1::from_master_xprv(master_xprv, false, 0).await?, notification_receiver, listener_id };
 
         Ok(wallet)
     }

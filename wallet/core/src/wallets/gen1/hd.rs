@@ -25,7 +25,7 @@ where
 }
 
 #[derive(Clone)]
-pub struct HDWalletInner {
+pub struct GeneratorInner {
     /// Derived public key
     public_key: secp256k1::PublicKey,
 
@@ -40,7 +40,7 @@ pub struct HDWalletInner {
     index: Arc<Mutex<u32>>,
 }
 
-impl HDWalletInner {
+impl GeneratorInner {
     pub fn new(
         public_key: secp256k1::PublicKey,
         attrs: ExtendedKeyAttrs,
@@ -74,7 +74,7 @@ impl HDWalletInner {
         Ok(address)
     }
     pub async fn derive_address(&self, index: u32) -> Result<Address> {
-        let (key, _chain_code) = HDWalletGen1::derive_public_key_child(&self.public_key, index, self.hmac.clone())?;
+        let (key, _chain_code) = GeneratorV1::derive_public_key_child(&self.public_key, index, self.hmac.clone())?;
 
         let pubkey = &key.to_bytes()[1..];
         let address = Address::new(AddressPrefix::Mainnet, Version::PubKey, pubkey);
@@ -107,25 +107,25 @@ impl HDWalletInner {
     }
 }
 
-impl From<&HDWalletInner> for ExtendedPublicKey<secp256k1::PublicKey> {
-    fn from(inner: &HDWalletInner) -> ExtendedPublicKey<secp256k1::PublicKey> {
+impl From<&GeneratorInner> for ExtendedPublicKey<secp256k1::PublicKey> {
+    fn from(inner: &GeneratorInner) -> ExtendedPublicKey<secp256k1::PublicKey> {
         ExtendedPublicKey { public_key: inner.public_key, attrs: inner.attrs().clone() }
     }
 }
 
 #[derive(Clone)]
-pub struct HDWalletGen1 {
+pub struct GeneratorV1 {
     /// extended public key derived upto `m/<Purpose>'/111111'/<Account Index>'`
     extended_public_key: ExtendedPublicKey<secp256k1::PublicKey>,
 
     /// receive address wallet
-    receive_wallet: HDWalletInner,
+    receive_wallet: GeneratorInner,
 
     /// change address wallet
-    change_wallet: HDWalletInner,
+    change_wallet: GeneratorInner,
 }
 
-impl HDWalletGen1 {
+impl GeneratorV1 {
     /// build wallet from root/master private key
     pub async fn from_master_xprv(xprv: &str, is_multisig: bool, account_index: u64) -> Result<Self> {
         let xprv_key = ExtendedPrivateKey::<SecretKey>::from_str(xprv)?;
@@ -173,10 +173,10 @@ impl HDWalletGen1 {
         Ok((private_key, attrs))
     }
 
-    pub fn receive_wallet(&self) -> &HDWalletInner {
+    pub fn receive_wallet(&self) -> &GeneratorInner {
         &self.receive_wallet
     }
-    pub fn change_wallet(&self) -> &HDWalletInner {
+    pub fn change_wallet(&self) -> &GeneratorInner {
         &self.change_wallet
     }
 
@@ -206,13 +206,13 @@ impl HDWalletGen1 {
     pub async fn derive_wallet(
         mut public_key: ExtendedPublicKey<secp256k1::PublicKey>,
         address_type: AddressType,
-    ) -> Result<HDWalletInner> {
+    ) -> Result<GeneratorInner> {
         public_key = public_key.derive_child(ChildNumber::new(address_type.index(), false)?)?;
 
         let mut hmac = HmacSha512::new_from_slice(&public_key.attrs().chain_code).map_err(Error::Hmac)?;
         hmac.update(&public_key.to_bytes());
 
-        HDWalletInner::new(*public_key.public_key(), public_key.attrs().clone(), public_key.fingerprint(), hmac, 0)
+        GeneratorInner::new(*public_key.public_key(), public_key.attrs().clone(), public_key.fingerprint(), hmac, 0)
     }
 
     pub async fn derive_public_key(
@@ -329,7 +329,7 @@ impl HDWalletGen1 {
     }
 }
 
-impl Debug for HDWalletGen1 {
+impl Debug for GeneratorV1 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("HDWallet")
             .field("depth", &self.attrs().depth)
@@ -344,7 +344,7 @@ impl Debug for HDWalletGen1 {
 #[cfg(not(target_arch = "wasm32"))]
 #[cfg(test)]
 mod tests {
-    use super::HDWalletGen1;
+    use super::GeneratorV1;
 
     fn gen1_receive_addresses() -> Vec<String> {
         vec![
@@ -402,7 +402,7 @@ mod tests {
         let master_xprv =
             "kprv5y2qurMHCsXYrNfU3GCihuwG3vMqFji7PZXajMEqyBkNh9UZUJgoHYBLTKu1eM4MvUtomcXPQ3Sw9HZ5ebbM4byoUciHo1zrPJBQfqpLorQ";
 
-        let hd_wallet = HDWalletGen1::from_master_xprv(master_xprv, false, 0).await;
+        let hd_wallet = GeneratorV1::from_master_xprv(master_xprv, false, 0).await;
         assert!(hd_wallet.is_ok(), "Could not parse key");
         let hd_wallet = hd_wallet.unwrap();
 

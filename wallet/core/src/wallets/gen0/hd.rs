@@ -10,7 +10,7 @@ use std::{fmt::Debug, str::FromStr};
 use zeroize::Zeroizing;
 
 #[derive(Clone)]
-pub struct HDWalletInner {
+pub struct GeneratorInner {
     /// Derived private key
     private_key: SecretKey,
 
@@ -23,9 +23,9 @@ pub struct HDWalletInner {
     hmac: HmacSha512,
 }
 
-impl HDWalletInner {
+impl GeneratorInner {
     pub async fn derive_address(&self, index: u32) -> Result<Address> {
-        let (private_key, _) = HDWalletGen0::derive_private_key(&self.private_key, ChildNumber::new(index, true)?, self.hmac.clone())?;
+        let (private_key, _) = GeneratorV0::derive_private_key(&self.private_key, ChildNumber::new(index, true)?, self.hmac.clone())?;
 
         let pubkey = &private_key.get_public_key().to_bytes()[1..];
         let address = Address::new(AddressPrefix::Mainnet, Version::PubKey, pubkey);
@@ -47,25 +47,25 @@ impl HDWalletInner {
     }
 }
 
-impl From<&HDWalletInner> for ExtendedPublicKey<<SecretKey as PrivateKey>::PublicKey> {
-    fn from(inner: &HDWalletInner) -> ExtendedPublicKey<<SecretKey as PrivateKey>::PublicKey> {
+impl From<&GeneratorInner> for ExtendedPublicKey<<SecretKey as PrivateKey>::PublicKey> {
+    fn from(inner: &GeneratorInner) -> ExtendedPublicKey<<SecretKey as PrivateKey>::PublicKey> {
         ExtendedPublicKey { public_key: inner.private_key().get_public_key(), attrs: inner.attrs().clone() }
     }
 }
 
 #[derive(Clone)]
-pub struct HDWalletGen0 {
+pub struct GeneratorV0 {
     /// Derived private key
     private_key: SecretKey,
 
     /// Extended key attributes.
     attrs: ExtendedKeyAttrs,
 
-    receive_wallet: HDWalletInner,
-    change_wallet: HDWalletInner,
+    receive_wallet: GeneratorInner,
+    change_wallet: GeneratorInner,
 }
 
-impl HDWalletGen0 {
+impl GeneratorV0 {
     pub async fn from_str(xpriv: &str) -> Result<Self> {
         let xpriv_key = ExtendedPrivateKey::<SecretKey>::from_str(xpriv)?;
         let attrs = xpriv_key.attrs();
@@ -106,7 +106,7 @@ impl HDWalletGen0 {
         mut private_key: SecretKey,
         mut attrs: ExtendedKeyAttrs,
         address_type: AddressType,
-    ) -> Result<HDWalletInner> {
+    ) -> Result<GeneratorInner> {
         let address_path = format!("44'/972/0'/{}'", address_type.index());
         let children = address_path.split('/');
         for child in children {
@@ -121,7 +121,7 @@ impl HDWalletGen0 {
 
         let hmac = Self::create_hmac(&private_key, &attrs, true)?;
 
-        Ok(HDWalletInner { private_key, attrs, fingerprint, hmac })
+        Ok(GeneratorInner { private_key, attrs, fingerprint, hmac })
     }
 
     pub async fn derive_child(
@@ -229,13 +229,13 @@ impl HDWalletGen0 {
     }
 }
 
-impl From<&HDWalletGen0> for ExtendedPublicKey<<SecretKey as PrivateKey>::PublicKey> {
-    fn from(hd_wallet: &HDWalletGen0) -> ExtendedPublicKey<<SecretKey as PrivateKey>::PublicKey> {
+impl From<&GeneratorV0> for ExtendedPublicKey<<SecretKey as PrivateKey>::PublicKey> {
+    fn from(hd_wallet: &GeneratorV0) -> ExtendedPublicKey<<SecretKey as PrivateKey>::PublicKey> {
         ExtendedPublicKey { public_key: hd_wallet.private_key().get_public_key(), attrs: hd_wallet.attrs().clone() }
     }
 }
 
-impl Debug for HDWalletGen0 {
+impl Debug for GeneratorV0 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("HDWallet")
             .field("depth", &self.attrs.depth)
