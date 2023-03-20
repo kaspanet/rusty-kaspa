@@ -56,6 +56,10 @@ pub trait OpCodeMetadata: Debug {
 
     fn is_push_opcode(&self) -> bool;
     fn get_data(&self) -> &[u8];
+
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 pub trait OpCodeExecution<T: VerifiableTransaction> {

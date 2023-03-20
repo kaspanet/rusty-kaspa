@@ -3,7 +3,7 @@ extern crate core;
 
 pub mod caches;
 mod data_stack;
-mod opcodes;
+pub mod opcodes;
 pub mod script_builder;
 pub mod script_class;
 pub mod standard;
