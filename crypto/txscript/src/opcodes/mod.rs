@@ -175,6 +175,14 @@ opcode OpCodeName<id, length>(self, vm) {
 }
 // OR
 opcode OpCodeName<id, length>(self, vm) statement
+
+// in case of an opcode alias
+opcode |OpCodeAlias| OpCodeName<id, length>(self, vm) {
+    code;
+    output
+}
+// OR
+opcode |OpCodeAlias| OpCodeName<id, length>(self, vm) statement
 ```
 
 Length specification is either a number (for fixed length) or a unsigned integer type
@@ -187,7 +195,7 @@ Implementation details in `opcodes/macros.rs`.
 opcode_list! {
 
     // Data push opcodes.
-    opcode OpFalse<0x00, 1>(self , vm) {
+    opcode |Op0| OpFalse<0x00, 1>(self , vm) {
         vm.dstack.push(vec![]);
         Ok(())
     }
@@ -275,7 +283,7 @@ opcode_list! {
 
     opcode OpReserved<0x50, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
 
-    opcode OpTrue<0x51, 1>(self, vm) push_number(1, vm)
+    opcode |Op1| OpTrue<0x51, 1>(self, vm) push_number(1, vm)
     opcode Op2<0x52, 1>(self, vm) push_number(2, vm)
     opcode Op3<0x53, 1>(self, vm) push_number(3, vm)
     opcode Op4<0x54, 1>(self, vm) push_number(4, vm)
