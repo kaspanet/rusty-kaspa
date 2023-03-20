@@ -44,11 +44,11 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// better choice to generate the script):
 ///
 /// ```
-///     let builder := ScriptBuilder::new()
-///     builder.add_op(Op2).add_data(pubKey1).add_data(pubKey2)
-///     builder.add_data(pubKey3).add_op(Op3)
-///     builder.add_op(OpCheckMultiSig)
-///     let script = builder.script()
+///     let builder := ScriptBuilder::new();
+///     builder.add_op(Op2).add_data(pubKey1).add_data(pubKey2);
+///     builder.add_data(pubKey3).add_op(Op3);
+///     builder.add_op(OpCheckMultiSig);
+///     let script = builder.script();
 ///     if let Some(err) = script {
 ///         // Handle the error.
 ///         return;
