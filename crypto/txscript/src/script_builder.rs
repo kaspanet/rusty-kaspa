@@ -22,7 +22,7 @@ pub enum Error {
     DataRejected(usize),
 
     #[error("adding a data element of {0} bytes exceed the maximum allowed script element size of {MAX_SCRIPT_ELEMENT_SIZE}")]
-    ElementRejected(usize),
+    ElementExceedsMaxSize(usize),
 
     #[error("adding an integer would exceed the maximum allowed canonical script length of {MAX_SCRIPTS_SIZE}")]
     IntegerRejected,
@@ -43,18 +43,17 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// a pay-to-script-hash (although in this situation MultiSigScript() would be a
 /// better choice to generate the script):
 ///
-/// FIXME: rust code here
 /// ```
 ///     let builder := ScriptBuilder::new()
-///     builder.AddOp(Op2).AddData(pubKey1).AddData(pubKey2)
-///     builder.AddData(pubKey3).AddOp(Op3)
-///     builder.AddOp(OpCheckMultiSig)
-///     let script = builder.Script()
+///     builder.add_op(Op2).add_data(pubKey1).add_data(pubKey2)
+///     builder.add_data(pubKey3).add_op(Op3)
+///     builder.add_op(OpCheckMultiSig)
+///     let script = builder.script()
 ///     if let Some(err) = script {
 ///         // Handle the error.
 ///         return;
 ///     }
-///     trace!("Final multi-sig script: {:?}", script.unwrap());
+///     trace!("Final multi-sig script: {}", script.unwrap());
 /// ```
 pub struct ScriptBuilder {
     script: Vec<u8>,
@@ -71,6 +70,16 @@ impl ScriptBuilder {
             None => Ok(&self.script),
             Some(ref err) => Err(*err),
         }
+    }
+
+    #[cfg(test)]
+    pub fn raw_script(&self) -> &[u8] {
+        &self.script
+    }
+
+    #[cfg(test)]
+    pub fn raw_error(&self) -> Option<Error> {
+        self.error
     }
 
     pub fn drain(&mut self) -> Result<Vec<u8>> {
@@ -230,7 +239,7 @@ impl ScriptBuilder {
         // script that is not canonical.
         let data_len = data.len();
         if data_len > MAX_SCRIPT_ELEMENT_SIZE {
-            self.error = Some(Error::ElementRejected(data_len));
+            self.error = Some(Error::ElementExceedsMaxSize(data_len));
             return self;
         }
 
@@ -294,5 +303,305 @@ impl ScriptBuilder {
 impl Default for ScriptBuilder {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::iter::{once, repeat};
+
+    // Tests that pushing opcodes to a script via the ScriptBuilder API works as expected.
+    #[test]
+    fn test_add_op() {
+        struct Test {
+            name: &'static str,
+            opcodes: Vec<u8>,
+            expected: Vec<u8>,
+        }
+
+        let tests = vec![
+            Test { name: "push OP_FALSE", opcodes: vec![OpFalse], expected: vec![OpFalse] },
+            Test { name: "push OP_TRUE", opcodes: vec![OpTrue], expected: vec![OpTrue] },
+            Test { name: "push OP_0", opcodes: vec![Op0], expected: vec![Op0] },
+            Test { name: "push OP_1 OP_2", opcodes: vec![Op1, Op2], expected: vec![Op1, Op2] },
+            Test { name: "push OP_BLAKE2B OP_EQUAL", opcodes: vec![OpBlake2b, OpEqual], expected: vec![OpBlake2b, OpEqual] },
+        ];
+
+        // Run tests and individually add each op via AddOp.
+        for test in tests.iter() {
+            let mut builder = ScriptBuilder::new();
+            test.opcodes.iter().for_each(|opcode| {
+                builder.add_op(*opcode);
+            });
+            let result = builder.script().expect("the script is canonical");
+            assert_eq!(result, &test.expected, "{} wrong result using add_op", test.name);
+        }
+
+        // Run tests and bulk add ops via AddOps.
+        for test in tests.iter() {
+            let mut builder = ScriptBuilder::new();
+            let result = builder.add_ops(&test.opcodes).script().expect("the script is canonical");
+            assert_eq!(result, &test.expected, "{} wrong result using add_ops", test.name);
+        }
+    }
+
+    /// Tests that pushing signed integers to a script via the ScriptBuilder API works as expected.
+    #[test]
+    fn test_add_i64() {
+        struct Test {
+            name: &'static str,
+            val: i64,
+            expected: Vec<u8>,
+        }
+
+        let tests = vec![
+            Test { name: "push -1", val: -1, expected: vec![Op1Negate] },
+            Test { name: "push small int 0", val: 0, expected: vec![Op0] },
+            Test { name: "push small int 1", val: 1, expected: vec![Op1] },
+            Test { name: "push small int 2", val: 2, expected: vec![Op2] },
+            Test { name: "push small int 3", val: 3, expected: vec![Op3] },
+            Test { name: "push small int 4", val: 4, expected: vec![Op4] },
+            Test { name: "push small int 5", val: 5, expected: vec![Op5] },
+            Test { name: "push small int 6", val: 6, expected: vec![Op6] },
+            Test { name: "push small int 7", val: 7, expected: vec![Op7] },
+            Test { name: "push small int 8", val: 8, expected: vec![Op8] },
+            Test { name: "push small int 9", val: 9, expected: vec![Op9] },
+            Test { name: "push small int 10", val: 10, expected: vec![Op10] },
+            Test { name: "push small int 11", val: 11, expected: vec![Op11] },
+            Test { name: "push small int 12", val: 12, expected: vec![Op12] },
+            Test { name: "push small int 13", val: 13, expected: vec![Op13] },
+            Test { name: "push small int 14", val: 14, expected: vec![Op14] },
+            Test { name: "push small int 15", val: 15, expected: vec![Op15] },
+            Test { name: "push small int 16", val: 16, expected: vec![Op16] },
+            Test { name: "push 17", val: 17, expected: vec![OpData1, 0x11] },
+            Test { name: "push 65", val: 65, expected: vec![OpData1, 0x41] },
+            Test { name: "push 127", val: 127, expected: vec![OpData1, 0x7f] },
+            Test { name: "push 128", val: 128, expected: vec![OpData2, 0x80, 0] },
+            Test { name: "push 255", val: 255, expected: vec![OpData2, 0xff, 0] },
+            Test { name: "push 256", val: 256, expected: vec![OpData2, 0, 0x01] },
+            Test { name: "push 32767", val: 32767, expected: vec![OpData2, 0xff, 0x7f] },
+            Test { name: "push 32768", val: 32768, expected: vec![OpData3, 0, 0x80, 0] },
+            Test { name: "push -2", val: -2, expected: vec![OpData1, 0x82] },
+            Test { name: "push -3", val: -3, expected: vec![OpData1, 0x83] },
+            Test { name: "push -4", val: -4, expected: vec![OpData1, 0x84] },
+            Test { name: "push -5", val: -5, expected: vec![OpData1, 0x85] },
+            Test { name: "push -17", val: -17, expected: vec![OpData1, 0x91] },
+            Test { name: "push -65", val: -65, expected: vec![OpData1, 0xc1] },
+            Test { name: "push -127", val: -127, expected: vec![OpData1, 0xff] },
+            Test { name: "push -128", val: -128, expected: vec![OpData2, 0x80, 0x80] },
+            Test { name: "push -255", val: -255, expected: vec![OpData2, 0xff, 0x80] },
+            Test { name: "push -256", val: -256, expected: vec![OpData2, 0x00, 0x81] },
+            Test { name: "push -32767", val: -32767, expected: vec![OpData2, 0xff, 0xff] },
+            Test { name: "push -32768", val: -32768, expected: vec![OpData3, 0x00, 0x80, 0x80] },
+        ];
+
+        for test in tests {
+            let mut builder = ScriptBuilder::new();
+            let result = builder.add_i64(test.val).script().expect("the script is canonical");
+            assert_eq!(result, test.expected, "{} wrong result", test.name);
+        }
+    }
+
+    /// Tests that pushing data to a script via the ScriptBuilder API works as expected and conforms to BIP0062.
+    #[test]
+    fn test_add_data() {
+        struct Test {
+            name: &'static str,
+            data: Vec<u8>,
+            expected: Result<Vec<u8>>,
+            /// use add_data_unchecked instead of add_data
+            unchecked: bool,
+        }
+
+        let tests = vec![
+            // BIP0062: Pushing an empty byte sequence must use OP_0.
+            Test { name: "push empty byte sequence", data: vec![], expected: Ok(vec![Op0]), unchecked: false },
+            Test { name: "push 1 byte 0x00", data: vec![0x00], expected: Ok(vec![Op0]), unchecked: false },
+            // BIP0062: Pushing a 1-byte sequence of byte 0x01 through 0x10 must use OP_n.
+            Test { name: "push 1 byte 0x01", data: vec![0x01], expected: Ok(vec![Op1]), unchecked: false },
+            Test { name: "push 1 byte 0x02", data: vec![0x02], expected: Ok(vec![Op2]), unchecked: false },
+            Test { name: "push 1 byte 0x03", data: vec![0x03], expected: Ok(vec![Op3]), unchecked: false },
+            Test { name: "push 1 byte 0x04", data: vec![0x04], expected: Ok(vec![Op4]), unchecked: false },
+            Test { name: "push 1 byte 0x05", data: vec![0x05], expected: Ok(vec![Op5]), unchecked: false },
+            Test { name: "push 1 byte 0x06", data: vec![0x06], expected: Ok(vec![Op6]), unchecked: false },
+            Test { name: "push 1 byte 0x07", data: vec![0x07], expected: Ok(vec![Op7]), unchecked: false },
+            Test { name: "push 1 byte 0x08", data: vec![0x08], expected: Ok(vec![Op8]), unchecked: false },
+            Test { name: "push 1 byte 0x09", data: vec![0x09], expected: Ok(vec![Op9]), unchecked: false },
+            Test { name: "push 1 byte 0x0a", data: vec![0x0a], expected: Ok(vec![Op10]), unchecked: false },
+            Test { name: "push 1 byte 0x0b", data: vec![0x0b], expected: Ok(vec![Op11]), unchecked: false },
+            Test { name: "push 1 byte 0x0c", data: vec![0x0c], expected: Ok(vec![Op12]), unchecked: false },
+            Test { name: "push 1 byte 0x0d", data: vec![0x0d], expected: Ok(vec![Op13]), unchecked: false },
+            Test { name: "push 1 byte 0x0e", data: vec![0x0e], expected: Ok(vec![Op14]), unchecked: false },
+            Test { name: "push 1 byte 0x0f", data: vec![0x0f], expected: Ok(vec![Op15]), unchecked: false },
+            Test { name: "push 1 byte 0x10", data: vec![0x10], expected: Ok(vec![Op16]), unchecked: false },
+            // BIP0062: Pushing the byte 0x81 must use OP_1NEGATE.
+            Test { name: "push 1 byte 0x81", data: vec![0x81], expected: Ok(vec![Op1Negate]), unchecked: false },
+            // BIP0062: Pushing any other byte sequence up to 75 bytes must
+            // use the normal data push (opcode byte n, with n the number of
+            // bytes, followed n bytes of data being pushed).
+            Test { name: "push 1 byte 0x11", data: vec![0x11], expected: Ok(vec![OpData1, 0x11]), unchecked: false },
+            Test { name: "push 1 byte 0x80", data: vec![0x80], expected: Ok(vec![OpData1, 0x80]), unchecked: false },
+            Test { name: "push 1 byte 0x82", data: vec![0x82], expected: Ok(vec![OpData1, 0x82]), unchecked: false },
+            Test { name: "push 1 byte 0xff", data: vec![0xff], expected: Ok(vec![OpData1, 0xff]), unchecked: false },
+            Test {
+                name: "push data len 17",
+                data: vec![0x49; 17],
+                expected: Ok(once(OpData17).chain(repeat(0x49).take(17)).collect()),
+                unchecked: false,
+            },
+            Test {
+                name: "push data len 75",
+                data: vec![0x49; 75],
+                expected: Ok(once(OpData75).chain(repeat(0x49).take(75)).collect()),
+                unchecked: false,
+            },
+            // BIP0062: Pushing 76 to 255 bytes must use OP_PUSHDATA1.
+            Test {
+                name: "push data len 76",
+                data: vec![0x49; 76],
+                expected: Ok(once(OpPushData1).chain(once(76)).chain(repeat(0x49).take(76)).collect()),
+                unchecked: false,
+            },
+            Test {
+                name: "push data len 255",
+                data: vec![0x49; 255],
+                expected: Ok(once(OpPushData1).chain(once(255)).chain(repeat(0x49).take(255)).collect()),
+                unchecked: false,
+            },
+            // // BIP0062: Pushing 256 to 520 bytes must use OP_PUSHDATA2.
+            Test {
+                name: "push data len 256",
+                data: vec![0x49; 256],
+                expected: Ok(once(OpPushData2).chain([0, 1]).chain(repeat(0x49).take(256)).collect()),
+                unchecked: false,
+            },
+            Test {
+                name: "push data len 520",
+                data: vec![0x49; 520],
+                expected: Ok(once(OpPushData2).chain([8, 2]).chain(repeat(0x49).take(520)).collect()),
+                unchecked: false,
+            },
+            // BIP0062: OP_PUSHDATA4 can never be used, as pushes over 520
+            // bytes are not allowed, and those below can be done using
+            // other operators.
+            Test {
+                name: "push data len 521",
+                data: vec![0x49; 521],
+                expected: Err(Error::ElementExceedsMaxSize(521)),
+                unchecked: false,
+            },
+            Test {
+                name: "push data len 32767 (canonical)",
+                data: vec![0x49; 32767],
+                expected: Err(Error::DataRejected(32770)),
+                unchecked: false,
+            },
+            Test {
+                name: "push data len 65536 (canonical)",
+                data: vec![0x49; 65536],
+                expected: Err(Error::DataRejected(65541)),
+                unchecked: false,
+            },
+            // // Additional tests for the add_data_unchecked function that
+            // // intentionally allows data pushes to exceed the limit for
+            // // testing purposes.
+
+            // 3-byte data push via OP_PUSHDATA_2.
+            Test {
+                name: "push data len 32767 (non-canonical)",
+                data: vec![0x49; 32767],
+                expected: Ok(once(OpPushData2).chain([255, 127]).chain(repeat(0x49).take(32767)).collect()),
+                unchecked: true,
+            },
+            // 5-byte data push via OP_PUSHDATA_4.
+            Test {
+                name: "push data len 65536 (non-canonical)",
+                data: vec![0x49; 65536],
+                expected: Ok(once(OpPushData4).chain([0, 0, 1, 0]).chain(repeat(0x49).take(65536)).collect()),
+                unchecked: true,
+            },
+        ];
+
+        for test in tests {
+            let mut builder = ScriptBuilder::new();
+            match test.unchecked {
+                false => {
+                    builder.add_data(&test.data);
+                }
+                true => {
+                    builder.add_data_unchecked(&test.data);
+                }
+            }
+            let result = builder.drain();
+            assert_eq!(result, test.expected, "{} wrong result", test.name);
+        }
+    }
+
+    /// Ensures that all of the functions that can be used to add data to a script don't allow
+    /// the script to exceed the max allowed size.
+    #[test]
+    fn test_exceed_max_script_size() {
+        fn full_builder() -> ScriptBuilder {
+            let mut builder = ScriptBuilder::new();
+            builder.add_data_unchecked(&[0u8; MAX_SCRIPTS_SIZE - 3]);
+            builder
+        }
+        // Start off by constructing a max size script.
+        let mut builder = full_builder();
+        let original_result = builder.script().map(Vec::from);
+        assert!(original_result.is_ok(), "adding unchecked data respecting the max script size must succeed");
+
+        // Ensure adding data that would exceed the maximum size of the script
+        // does not add the data.
+        let result = builder.add_data(&[0u8]).script();
+        assert_eq!(result, Err(Error::DataRejected(1)), "adding data that would exceed the maximum size of the script must fail");
+        assert_eq!(builder.raw_script(), original_result.as_ref().unwrap(), "unexpected modified script");
+
+        // Ensure adding an opcode that would exceed the maximum size of the
+        // script does not add the data.
+        let result = full_builder().add_op(Op0).drain();
+        assert_eq!(result, Err(Error::OpCodeRejected), "adding an opcode that would exceed the maximum size of the script must fail");
+        assert_eq!(builder.raw_script(), original_result.as_ref().unwrap(), "unexpected modified script");
+
+        // Ensure adding an opcode array that would exceed the maximum size of the
+        // script does not add the data.
+        let result = full_builder().add_ops(&[OpCheckSig]).drain();
+        assert_eq!(
+            result,
+            Err(Error::OpCodesRejected),
+            "adding an opcode array that would exceed the maximum size of the script must fail"
+        );
+        assert_eq!(builder.raw_script(), original_result.as_ref().unwrap(), "unexpected modified script");
+
+        // Ensure adding an integer that would exceed the maximum size of the
+        // script does not add the data.
+        let result = full_builder().add_i64(0).drain();
+        assert_eq!(
+            result,
+            Err(Error::IntegerRejected),
+            "adding an integer that would exceed the maximum size of the script must fail"
+        );
+        assert_eq!(builder.raw_script(), original_result.as_ref().unwrap(), "unexpected modified script");
+
+        // Ensure adding a lock time that would exceed the maximum size of the
+        // script does not add the data.
+        let result = full_builder().add_lock_time(0).drain();
+        assert_eq!(
+            result,
+            Err(Error::DataRejected(1)),
+            "adding a lock time that would exceed the maximum size of the script must fail"
+        );
+        assert_eq!(builder.raw_script(), original_result.as_ref().unwrap(), "unexpected modified script");
+
+        // Ensure adding a sequence that would exceed the maximum size of the
+        // script does not add the data.
+        let result = full_builder().add_sequence(0).drain();
+        assert_eq!(
+            result,
+            Err(Error::DataRejected(1)),
+            "adding a sequence that would exceed the maximum size of the script must fail"
+        );
+        assert_eq!(builder.raw_script(), original_result.as_ref().unwrap(), "unexpected modified script");
     }
 }
