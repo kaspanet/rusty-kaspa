@@ -4,6 +4,7 @@
             import * as workflow from './kaspa-wallet/kaspa-wallet.js';
             (async () => {
                 const wasm = await workflow.default('./kaspa-wallet/kaspa-wallet_bg.wasm');
+                await wasm.load_kaspa_wallet_cli();
             })();
         </script>
     </head>
