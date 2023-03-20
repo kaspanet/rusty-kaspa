@@ -2,17 +2,21 @@ mod hashers;
 mod pow_hashers;
 
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt::{Debug, Display, Formatter};
 use std::hash::{Hash as StdHash, Hasher as StdHasher};
 use std::str::{self, FromStr};
+use wasm_bindgen::prelude::*;
+use workflow_wasm::abi::ref_from_abi;
+use workflow_wasm::jsvalue::JsValueTrait;
 
 pub const HASH_SIZE: usize = 32;
 
 pub use hashers::*;
 
 // TODO: Check if we use hash more as an array of u64 or of bytes and change the default accordingly
-#[derive(Eq, Clone, Copy, Default, PartialOrd, Ord, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Eq, Clone, Copy, Default, PartialOrd, Ord, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[wasm_bindgen(inspectable)]
 pub struct Hash([u8; HASH_SIZE]);
 
 impl Hash {
@@ -113,6 +117,52 @@ impl AsRef<[u8]> for Hash {
     #[inline(always)]
     fn as_ref(&self) -> &[u8] {
         &self.0
+    }
+}
+
+impl Serialize for Hash {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+impl<'de> Deserialize<'de> for Hash {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = <std::string::String as Deserialize>::deserialize(deserializer)?;
+        FromStr::from_str(&s).map_err(serde::de::Error::custom)
+    }
+}
+
+#[wasm_bindgen]
+impl Hash {
+    #[wasm_bindgen(constructor)]
+    pub fn constructor(hex_str: &str) -> Self {
+        Hash::from_str(hex_str).expect("invalid hash value")
+    }
+}
+
+type TryFromError = workflow_wasm::error::Error;
+impl TryFrom<JsValue> for Hash {
+    type Error = workflow_wasm::error::Error;
+    fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
+        let hash = if js_value.is_string() || js_value.is_array() {
+            let bytes = js_value.try_as_vec_u8()?;
+            Hash(
+                <[u8; HASH_SIZE]>::try_from(bytes)
+                    .map_err(|_| TryFromError::WrongSize("Slice must have the length of Hash".into()))?,
+            )
+        } else if js_value.is_object() {
+            ref_from_abi!(Hash, &js_value).map_err(|_| TryFromError::WrongType("supplied object must be a `Hash`".to_string()))?
+        } else {
+            return Err(TryFromError::WrongType("supplied object must be a `Hash`".to_string()));
+        };
+        Ok(hash)
     }
 }
 
