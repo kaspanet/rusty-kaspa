@@ -20,3 +20,8 @@ addresses.workspace = true
 kaspa-utils.workspace = true
 kaspa-rpc-core.workspace = true
 kaspa-wrpc-client.workspace = true
+
+[features] 
+wallet = [] 
+full = ["wallet"] 
+default = [] 
