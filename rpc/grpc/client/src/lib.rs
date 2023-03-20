@@ -2,13 +2,15 @@ use self::{
     error::{Error, Result},
     resolver::{id::IdResolver, queue::QueueResolver, DynResolver},
 };
+use async_channel::Sender;
 use async_trait::async_trait;
+use connection_event::ConnectionEvent;
 use futures::{
     future::FutureExt, // for `.fuse()`
     pin_mut,
     select,
 };
-use kaspa_core::trace;
+use kaspa_core::{debug, trace};
 use kaspa_grpc_core::{
     channel::NotificationChannel,
     protowire::{kaspad_request, rpc_client::RpcClient, GetInfoRequestMessage, KaspadRequest, KaspadResponse},
@@ -43,6 +45,7 @@ use std::{
 use tonic::Streaming;
 use tonic::{codec::CompressionEncoding, transport::Endpoint};
 
+mod connection_event;
 pub mod error;
 mod resolver;
 #[macro_use]
@@ -57,13 +60,19 @@ pub struct GrpcClient {
 const GRPC_CLIENT: &str = "grpc-client";
 
 impl GrpcClient {
-    pub async fn connect(address: String, reconnect: bool, override_handle_stop_notify: bool) -> Result<GrpcClient> {
+    pub async fn connect(
+        address: String,
+        reconnect: bool,
+        connection_event_sender: Option<Sender<ConnectionEvent>>,
+        override_handle_stop_notify: bool,
+    ) -> Result<GrpcClient> {
         let schema = Regex::new(r"^grpc://").unwrap();
         if !schema.is_match(&address) {
             return Err(Error::GrpcAddressSchema(address));
         }
         let notify_channel = NotificationChannel::default();
-        let inner = Inner::connect(address, reconnect, notify_channel.sender(), override_handle_stop_notify).await?;
+        let inner =
+            Inner::connect(address, reconnect, notify_channel.sender(), connection_event_sender, override_handle_stop_notify).await?;
         let core_events = EVENT_TYPE_ARRAY[..].into();
         let collector = Arc::new(RpcCoreCollector::new(notify_channel.receiver()));
         let subscriber = Arc::new(Subscriber::new(core_events, inner.clone(), 0));
@@ -256,6 +265,9 @@ struct Inner {
     connector_shutdown: DuplexTrigger,
     connector_timer_interval: u64,
 
+    // Connection event channel
+    connection_event_sender: Option<Sender<ConnectionEvent>>,
+
     // temporary hack to override the handle_stop_notify flag
     override_handle_stop_notify: bool,
 }
@@ -267,6 +279,7 @@ impl Inner {
         notify_sender: NotificationSender,
         request_sender: KaspadRequestSender,
         request_receiver: KaspadRequestReceiver,
+        connection_event_sender: Option<Sender<ConnectionEvent>>,
         override_handle_stop_notify: bool,
     ) -> Self {
         let resolver: DynResolver = match server_features.handle_message_id {
@@ -289,6 +302,7 @@ impl Inner {
             connector_is_running: AtomicBool::new(false),
             connector_shutdown: DuplexTrigger::new(),
             connector_timer_interval: RECONNECT_INTERVAL,
+            connection_event_sender,
             override_handle_stop_notify,
         }
     }
@@ -298,6 +312,7 @@ impl Inner {
         address: String,
         reconnect: bool,
         notify_sender: NotificationSender,
+        connection_event_sender: Option<Sender<ConnectionEvent>>,
         override_handle_stop_notify: bool,
     ) -> Result<Arc<Self>> {
         // Request channel
@@ -313,6 +328,7 @@ impl Inner {
             notify_sender,
             request_sender,
             request_receiver,
+            connection_event_sender,
             override_handle_stop_notify,
         ));
 
@@ -391,6 +407,14 @@ impl Inner {
         self.spawn_response_receiver_task(stream);
 
         Ok(())
+    }
+
+    fn send_connection_event(&self, event: ConnectionEvent) {
+        if let Some(ref connection_event_sender) = self.connection_event_sender {
+            if let Err(err) = connection_event_sender.try_send(event) {
+                debug!("Send connection event error: {err}");
+            }
+        }
     }
 
     fn is_connected(&self) -> bool {
@@ -483,6 +507,9 @@ impl Inner {
             return;
         }
 
+        // Send connection event
+        self.send_connection_event(ConnectionEvent::Connected);
+
         tokio::spawn(async move {
             loop {
                 trace!("[GrpcClient] response receiver loop");
@@ -503,6 +530,7 @@ impl Inner {
                                     },
                                     None =>{
                                         trace!("[GrpcClient] the connection to the server is closed");
+
                                         // A reconnection is needed
                                         break;
                                     }
@@ -519,6 +547,7 @@ impl Inner {
 
             // Mark as not connected
             self.receiver_is_running.store(false, Ordering::SeqCst);
+            self.send_connection_event(ConnectionEvent::Disconnected);
 
             if self.receiver_shutdown.request.listener.is_triggered() {
                 self.receiver_shutdown.response.trigger.trigger();
