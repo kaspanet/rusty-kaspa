@@ -2,6 +2,7 @@ extern crate self as kaspa_core;
 
 pub mod assert;
 pub mod console;
+pub mod hex;
 pub mod log;
 pub mod panic;
 pub mod time;
