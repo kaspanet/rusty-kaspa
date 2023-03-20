@@ -43,17 +43,20 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// a pay-to-script-hash (although in this situation MultiSigScript() would be a
 /// better choice to generate the script):
 ///
-/// ```
-///     let builder := ScriptBuilder::new();
-///     builder.add_op(Op2).add_data(pubKey1).add_data(pubKey2);
-///     builder.add_data(pubKey3).add_op(Op3);
+/// ```ignore
+///     use txscript::opcodes::codes::*;
+///     use txscript::script_builder::ScriptBuilder;
+/// 
+///     let mut builder = ScriptBuilder::new();
+///     builder.add_op(Op2).add_data(pub_key1).add_data(pub_ey2);
+///     builder.add_data(pub_key3).add_op(Op3);
 ///     builder.add_op(OpCheckMultiSig);
 ///     let script = builder.script();
 ///     if let Some(err) = script {
 ///         // Handle the error.
 ///         return;
 ///     }
-///     trace!("Final multi-sig script: {}", script.unwrap());
+///     //trace!("Final multi-sig script: {}", script.unwrap());
 /// ```
 pub struct ScriptBuilder {
     script: Vec<u8>,
@@ -215,7 +218,7 @@ impl ScriptBuilder {
     /// AddData pushes the passed data to the end of the script. It automatically
     /// chooses canonical opcodes depending on the length of the data.
     ///
-    /// A zero length buffer will lead to a push of empty data onto the stack (Op0 = [`OpFalse`])
+    /// A zero length buffer will lead to a push of empty data onto the stack (Op0 = OpFalse)
     /// and any push of data greater than [`MAX_SCRIPT_ELEMENT_SIZE`] will not modify
     /// the script since that is not allowed by the script engine.
     ///
