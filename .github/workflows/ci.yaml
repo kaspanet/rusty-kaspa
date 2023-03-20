@@ -230,5 +230,5 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Build wasm pack for nodejs
-        run: cp wasm
+        run: cd wasm
       - run: wasm-pack build --target nodejs --out-dir nodejs/kaspa
