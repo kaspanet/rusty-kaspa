@@ -30,49 +30,6 @@ jobs:
       - name: Run cargo check
         run: cargo check --tests --workspace --benches
 
-  check-wasm32:
-    name: Check Wasm32
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout sources
-        uses: actions/checkout@v3
-
-      - name: Install protoc
-        run: sudo apt install -y protobuf-compiler
-
-      - name: Install llvm
-        run: wget https://apt.llvm.org/llvm.sh
-      - run: chmod +x llvm.sh
-      - run: sudo ./llvm.sh all
-
-      - name: Install stable toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Add wasm32 target
-        run: rustup target add wasm32-unknown-unknown
-
-      - name: Cache
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
-      # append here any new wasm32 crate not already covered by the existing checks
-
-      - name: Run cargo check of kaspa-wrpc-wasm for wasm32 target
-        run: cargo clippy -p kaspa-wrpc-wasm --target wasm32-unknown-unknown
-
-      - name: Run cargo check of kaspa-wallet-cli-wasm for wasm32 target
-        run: cargo clippy -p kaspa-wallet-cli-wasm --target wasm32-unknown-unknown
-
-      - name: Run cargo check of kaspa-wasm for wasm32 target
-        run: cargo clippy -p kaspa-wasm --target wasm32-unknown-unknown
-
   test:
     name: Test Suite
     # runs-on: ${{ matrix.os }}
@@ -111,7 +68,6 @@ jobs:
 
       - name: Run cargo test on hashes without asm
         run: cargo test -p hashes --features=no-asm --benches
-
 
   # test-release:
   #   name: Test Suite Release
@@ -193,3 +149,86 @@ jobs:
 
       - name: Run cargo clippy
         run: cargo clippy --workspace --tests --benches -- -D warnings
+
+
+  check-wasm32:
+    name: Check Wasm32
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v3
+
+      - name: Install protoc
+        run: sudo apt install -y protobuf-compiler
+
+      - name: Install llvm
+        run: wget https://apt.llvm.org/llvm.sh
+      - run: chmod +x llvm.sh
+      - run: sudo ./llvm.sh all
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Add wasm32 target
+        run: rustup target add wasm32-unknown-unknown
+
+      - name: Cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      # append here any new wasm32 crate not already covered by the existing checks
+
+      - name: Run cargo check of kaspa-wrpc-wasm for wasm32 target
+        run: cargo clippy -p kaspa-wrpc-wasm --target wasm32-unknown-unknown
+
+      - name: Run cargo check of kaspa-wallet-cli-wasm for wasm32 target
+        run: cargo clippy -p kaspa-wallet-cli-wasm --target wasm32-unknown-unknown
+
+      - name: Run cargo check of kaspa-wasm for wasm32 target
+        run: cargo clippy -p kaspa-wasm --target wasm32-unknown-unknown
+
+  build-wasm32:
+    name: Build Wasm32
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v3
+
+      - name: Install protoc
+        run: sudo apt install -y protobuf-compiler
+
+      - name: Install llvm
+        run: wget https://apt.llvm.org/llvm.sh
+      - run: chmod +x llvm.sh
+      - run: sudo ./llvm.sh all
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install wasm-pack
+        run: cargo install wasm-pack
+
+      - name: Add wasm32 target
+        run: rustup target add wasm32-unknown-unknown
+
+      - name: Cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build wasm pack for nodejs
+        run: cp wasm
+      - run: wasm-pack build --target nodejs --out-dir nodejs/kaspa
