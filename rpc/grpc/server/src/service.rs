@@ -71,7 +71,7 @@ impl GrpcService {
     pub fn new(core_service: Arc<RpcCoreService>) -> Self {
         // Prepare core objects
         let core_channel = NotificationChannel::default();
-        let core_listener_id = core_service.register_new_listener(ChannelConnection::new(core_channel.sender()));
+        let core_listener_id = core_service.notifier().register_new_listener(ChannelConnection::new(core_channel.sender()));
 
         // Prepare internals
         let core_events = EVENT_TYPE_ARRAY[..].into();
@@ -103,20 +103,13 @@ impl GrpcService {
     }
 
     pub async fn stop(&self) -> RpcResult<()> {
-        // Unsubscribe from all notification types
-        let listener_id = self.core_listener_id;
-        for event in EVENT_TYPE_ARRAY.into_iter() {
-            self.core_service.stop_notify(listener_id, event.into()).await?;
-        }
-
         // Stop the internal notifier
         self.notifier().stop().await?;
-
         Ok(())
     }
 
-    pub async fn finalize(&self) -> RpcResult<()> {
-        self.core_service.unregister_listener(self.core_listener_id).await?;
+    pub fn finalize(&self) -> RpcResult<()> {
+        self.core_service.notifier().unregister_listener(self.core_listener_id)?;
         self.core_channel.receiver().close();
         Ok(())
     }
