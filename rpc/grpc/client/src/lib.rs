@@ -115,7 +115,7 @@ impl GrpcClient {
 }
 
 #[async_trait]
-impl RpcApi<ChannelConnection> for GrpcClient {
+impl RpcApi for GrpcClient {
     // this example illustrates the body of the function created by the route!() macro
     // async fn submit_block_call(&self, request: SubmitBlockRequest) -> RpcResult<SubmitBlockResponse> {
     //     self.inner.call(RpcApiOps::SubmitBlock, request).await?.as_ref().try_into()

@@ -223,7 +223,7 @@ impl KaspaRpcClient {
 }
 
 #[async_trait]
-impl RpcApi<ChannelConnection> for KaspaRpcClient {
+impl RpcApi for KaspaRpcClient {
     //
     // The following proc-macro iterates over the array of enum variants
     // generating a function for each variant as follows:
