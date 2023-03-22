@@ -26,9 +26,6 @@ pub enum Error {
 
     #[error("adding an integer would exceed the maximum allowed canonical script length of {MAX_SCRIPTS_SIZE}")]
     IntegerRejected,
-
-    #[error("adding the unsigned integer {0} would exceed the maximum allowed encoded length of 8")]
-    NumberIsTooBig(u64),
 }
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -274,29 +271,24 @@ impl ScriptBuilder {
 
     /// Gets a u64 lock time, converts it to byte array in little-endian, and then used the add_data function.
     pub fn add_lock_time(&mut self, lock_time: u64) -> &mut Self {
-        self.add_u64_as_i64(lock_time)
+        self.add_trimmed_u64(lock_time)
     }
 
     /// Gets a u64 sequence, converts it to byte array in little-endian, and then used the add_data function.
     pub fn add_sequence(&mut self, sequence: u64) -> &mut Self {
-        self.add_u64_as_i64(sequence)
+        self.add_trimmed_u64(sequence)
     }
 
     /// Gets a u64 lock time or sequence, converts it to byte array in little-endian, and then used the add_data function.
-    fn add_u64_as_i64(&mut self, val: u64) -> &mut Self {
+    fn add_trimmed_u64(&mut self, val: u64) -> &mut Self {
         if self.has_error() {
             return self;
         }
 
-        // TODO: This implementation differs from golang. Verify it is functionally equivalent.
-        let converted = <i64>::try_from(val);
-        if converted.is_err() {
-            self.error = Some(Error::NumberIsTooBig(val));
-            return self;
-        }
-
-        let bytes: Vec<_> = OpcodeData::serialize(converted.as_ref().unwrap());
-        self.add_data(&bytes)
+        let buffer: [u8; 8] = val.to_le_bytes();
+        let trimmed_size = 8 - buffer.iter().rev().position(|x| *x != 0u8).unwrap_or(8);
+        let trimmed = &buffer[0..trimmed_size];
+        self.add_data(trimmed)
     }
 }
 
@@ -308,7 +300,7 @@ impl Default for ScriptBuilder {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::*; 
     use std::iter::{once, repeat};
 
     // Tests that pushing opcodes to a script via the ScriptBuilder API works as expected.
@@ -535,6 +527,38 @@ mod tests {
             }
             let result = builder.drain();
             assert_eq!(result, test.expected, "{} wrong result", test.name);
+        }
+    }
+
+    #[test]
+    fn test_trimmed_u64() {
+        struct Test {
+            name: &'static str,
+            value: u64,
+            expected: Result<Vec<u8>>,
+        }
+
+        let tests = vec![
+            Test { name: "0x00", value: 0x00, expected: Ok(vec![Op0]) },
+            Test { name: "0x01", value: 0x01, expected: Ok(vec![Op1]) },
+            Test { name: "0xff", value: 0xff, expected: Ok(vec![OpData1, 0xff]) },
+            Test { name: "0xffee", value: 0xffee, expected: Ok(vec![OpData2, 0xee, 0xff]) },
+            Test { name: "0xffeedd", value: 0xffeedd, expected: Ok(vec![OpData3, 0xdd, 0xee, 0xff]) },
+            Test { name: "0xffeeddcc", value: 0xffeeddcc, expected: Ok(vec![OpData4, 0xcc, 0xdd, 0xee, 0xff]) },
+            Test { name: "0xffeeddccbb", value: 0xffeeddccbb, expected: Ok(vec![OpData5, 0xbb, 0xcc, 0xdd, 0xee, 0xff]) },
+            Test { name: "0xffeeddccbbaa", value: 0xffeeddccbbaa, expected: Ok(vec![OpData6, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff]) },
+            Test { name: "0xffeeddccbbaa99", value: 0xffeeddccbbaa99, expected: Ok(vec![OpData7, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff]) },
+            Test { name: "0xffeeddccbbaa9988", value: 0xffeeddccbbaa9988, expected: Ok(vec![OpData8, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff]) },
+            Test { name: "0xffffffffffffffff", value: u64::MAX, expected: Ok(once(OpData8).chain(repeat(0xff).take(8)).collect()), },
+        ];
+
+        for test in tests {
+            let result = ScriptBuilder::new().add_trimmed_u64(test.value).drain();
+            assert_eq!(result, test.expected, "{} wrong result", test.name);
+            let result = ScriptBuilder::new().add_lock_time(test.value).drain();
+            assert_eq!(result, test.expected, "{} wrong lock time result", test.name);
+            let result = ScriptBuilder::new().add_sequence(test.value).drain();
+            assert_eq!(result, test.expected, "{} wrong sequence result", test.name);
         }
     }
 
