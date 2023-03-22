@@ -1,7 +1,7 @@
 use crate::processes::reachability::interval::Interval;
 use consensus_core::{
     blockhash::{self, BlockHashes},
-    BlockHashMap, BlockHasher, BlockLevel, HashMapCustomHasher,
+    BlockHashMap, BlockHasher, HashMapCustomHasher,
 };
 use database::prelude::{BatchDbWriter, CachedDbAccess, CachedDbItem, DbKey, DirectDbWriter, StoreError, DB};
 use hashes::Hash;
@@ -10,7 +10,7 @@ use itertools::Itertools;
 use parking_lot::{RwLockUpgradableReadGuard, RwLockWriteGuard};
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
-use std::{collections::hash_map::Entry::Vacant, sync::Arc};
+use std::{collections::hash_map::Entry::Vacant, iter::once, sync::Arc};
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct ReachabilityData {
@@ -59,27 +59,34 @@ pub struct DbReachabilityStore {
     db: Arc<DB>,
     access: CachedDbAccess<Hash, Arc<ReachabilityData>, BlockHasher>,
     reindex_root: CachedDbItem<Hash>,
-    level: Option<BlockLevel>,
+    prefix_end: u8,
 }
 
+const DEFAULT_PREFIX_END: u8 = u8::MAX;
+
 impl DbReachabilityStore {
-    pub fn new(db: Arc<DB>, level: Option<BlockLevel>, cache_size: u64) -> Self {
-        let lvl_bytes = match level {
-            Some(level) => level.to_le_bytes(),
-            None => BlockLevel::MAX.to_le_bytes(),
-        };
-        let store_prefix = STORE_PREFIX.iter().copied().chain(lvl_bytes).collect_vec();
-        let reindex_root_prefix = REINDEX_ROOT_KEY.iter().copied().chain(lvl_bytes).collect_vec();
+    pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
+        Self::new_with_prefix_end(db, cache_size, DEFAULT_PREFIX_END)
+    }
+
+    pub fn new_with_alternative_prefix_end(db: Arc<DB>, cache_size: u64, prefix_end: u8) -> Self {
+        assert_ne!(DEFAULT_PREFIX_END, prefix_end, "this prefix end is already used as the default one");
+        Self::new_with_prefix_end(db, cache_size, DEFAULT_PREFIX_END)
+    }
+
+    fn new_with_prefix_end(db: Arc<DB>, cache_size: u64, prefix_end: u8) -> Self {
+        let store_prefix = STORE_PREFIX.iter().copied().chain(once(prefix_end)).collect_vec();
+        let reindex_root_prefix = REINDEX_ROOT_KEY.iter().copied().chain(once(prefix_end)).collect_vec();
         Self {
             db: Arc::clone(&db),
             access: CachedDbAccess::new(Arc::clone(&db), cache_size, store_prefix),
             reindex_root: CachedDbItem::new(db, reindex_root_prefix),
-            level,
+            prefix_end,
         }
     }
 
     pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {
-        Self::new(Arc::clone(&self.db), self.level, cache_size)
+        Self::new_with_prefix_end(Arc::clone(&self.db), cache_size, self.prefix_end)
     }
 }
 

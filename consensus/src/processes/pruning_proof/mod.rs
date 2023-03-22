@@ -431,7 +431,13 @@ impl PruningProofManager {
         let mut relations_stores =
             (0..=self.max_block_level).map(|level| DbRelationsStore::new(db.clone(), level, 2 * self.pruning_proof_m)).collect_vec();
         let reachability_stores = (0..=self.max_block_level)
-            .map(|level| Arc::new(RwLock::new(DbReachabilityStore::new(db.clone(), Some(level), 2 * self.pruning_proof_m))))
+            .map(|level| {
+                Arc::new(RwLock::new(DbReachabilityStore::new_with_alternative_prefix_end(
+                    db.clone(),
+                    2 * self.pruning_proof_m,
+                    level,
+                )))
+            })
             .collect_vec();
 
         let reachability_services = (0..=self.max_block_level)

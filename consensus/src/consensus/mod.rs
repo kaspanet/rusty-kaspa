@@ -190,8 +190,7 @@ impl Consensus {
                 })
                 .collect_vec(),
         ));
-        let reachability_store =
-            Arc::new(RwLock::new(DbReachabilityStore::new(db.clone(), None, pruning_plus_finality_size_for_caches)));
+        let reachability_store = Arc::new(RwLock::new(DbReachabilityStore::new(db.clone(), pruning_plus_finality_size_for_caches)));
         let ghostdag_stores = (0..=params.max_block_level)
             .map(|level| {
                 let cache_size =

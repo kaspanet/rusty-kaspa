@@ -18,7 +18,7 @@ use tokio::join;
 fn test_reachability_staging() {
     // Arrange
     let (_temp_db_lifetime, db) = create_temp_db();
-    let store = RwLock::new(DbReachabilityStore::new(db.clone(), None, 10000));
+    let store = RwLock::new(DbReachabilityStore::new(db.clone(), 10000));
     let mut staging = StagingReachabilityStore::new(store.upgradable_read());
 
     // Act
