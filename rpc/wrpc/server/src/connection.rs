@@ -1,4 +1,4 @@
-use kaspa_grpc_client::GrpcClient;
+use kaspa_grpc_client::{GrpcClient, GrpcClientNotify};
 use kaspa_notify::{
     connection::Connection as ConnectionT,
     error::{Error as NotifyError, Result as NotifyResult},
@@ -43,7 +43,7 @@ impl From<NotifyEncoding> for Encoding {
 }
 
 #[derive(Debug)]
-pub struct ConnectionInner {
+struct ConnectionInner {
     pub id: u64,
     pub peer: SocketAddr,
     pub messenger: Arc<Messenger>,
@@ -52,7 +52,18 @@ pub struct ConnectionInner {
     pub listener_id: Mutex<Option<ListenerId>>,
 }
 
-impl ConnectionInner {}
+impl ConnectionInner {
+    fn send(&self, message: Message) -> crate::result::Result<()> {
+        Ok(self.messenger.send_raw_message(message)?)
+    }
+}
+
+impl Notify<Notification> for ConnectionInner {
+    fn notify(&self, notification: Notification) -> NotifyResult<()> {
+        self.send(Connection::into_message(&notification, &self.messenger.encoding().into()))
+            .map_err(|err| NotifyError::General(err.to_string()))
+    }
+}
 
 /// [`Connection`] represents a currently connected WebSocket RPC channel.
 /// This struct owns a [`Messenger`] that has [`Messenger::notify`]
@@ -66,10 +77,10 @@ pub struct Connection {
 
 impl Connection {
     pub fn new(id: u64, peer: &SocketAddr, messenger: Arc<Messenger>, grpc_client: Option<Arc<GrpcClient>>) -> Connection {
-        // Should a gRPC client be provided in direct mode, no listener_id is required for subscriptions so the listener id is set to default
-        let listener_id = Mutex::new(
-            grpc_client.clone().filter(|x| (*x).notification_mode() == NotificationMode::Direct).map(|_| ListenerId::default()),
-        );
+        // If a GrpcClient is provided, it has to come configured in direct mode
+        assert!(grpc_client.is_none() || grpc_client.as_ref().unwrap().notification_mode() == NotificationMode::Direct);
+        // Should a gRPC client be provided, no listener_id is required for subscriptions so the listener id is set to default
+        let listener_id = Mutex::new(grpc_client.clone().map(|_| ListenerId::default()));
         Connection { inner: Arc::new(ConnectionInner { id, peer: *peer, messenger, grpc_client, listener_id }) }
     }
 
@@ -89,6 +100,10 @@ impl Connection {
             .as_ref()
             .cloned()
             .unwrap_or_else(|| panic!("Incorrect use: `server::Connection` does not carry RpcApi references"))
+    }
+
+    pub fn grpc_client_notify_target(&self) -> GrpcClientNotify {
+        self.inner.clone()
     }
 
     pub fn listener_id(&self) -> Option<ListenerId> {
@@ -133,7 +148,7 @@ impl ConnectionT for Connection {
     }
 
     fn send(&self, message: Self::Message) -> core::result::Result<(), Self::Error> {
-        self.messenger().send_raw_message(message).map_err(|err| NotifyError::General(err.to_string()))
+        self.inner.send(message).map_err(|err| NotifyError::General(err.to_string()))
     }
 
     fn close(&self) -> bool {
@@ -149,12 +164,6 @@ impl ConnectionT for Connection {
 
     fn is_closed(&self) -> bool {
         self.messenger().sink().is_closed()
-    }
-}
-
-impl Notify<Notification> for Connection {
-    fn notify(&self, notification: Notification) -> NotifyResult<()> {
-        self.send(Connection::into_message(&notification, &self.encoding())).map_err(|err| NotifyError::General(err.to_string()))
     }
 }
 

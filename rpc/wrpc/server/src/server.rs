@@ -19,12 +19,6 @@ use workflow_rpc::server::prelude::*;
 
 pub type WrpcNotifier = Notifier<Notification, Connection>;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Provider {
-    RpcCore,
-    GrpcClient,
-}
-
 struct RpcCore {
     pub service: Arc<RpcCoreService>,
     pub notification_channel: NotificationChannel,
@@ -82,15 +76,6 @@ impl Server {
         }
     }
 
-    #[inline(always)]
-    pub fn provider(&self) -> Provider {
-        if self.inner.rpc_core.is_some() {
-            Provider::RpcCore
-        } else {
-            Provider::GrpcClient
-        }
-    }
-
     pub fn start(&self) {
         if let Some(rpc_core) = &self.inner.rpc_core {
             // Start the internal notifier
@@ -109,18 +94,19 @@ impl Server {
             let grpc_client = GrpcClient::connect(NotificationMode::Direct, grpc_proxy_address.to_owned(), false, None, true)
                 .await
                 .map_err(|e| WebSocketError::Other(e.to_string()))?;
-            // log_trace!("starting gRPC");
-            grpc_client.start().await;
-            // log_trace!("gRPC started...");
-            let grpc_client = Arc::new(grpc_client);
             // log_trace!("Creating proxy relay...");
-            Some(grpc_client)
+            Some(Arc::new(grpc_client))
         } else {
             // Provider::RpcCore
 
             None
         };
         let connection = Connection::new(id, peer, messenger, grpc_client);
+        if self.inner.options.grpc_proxy_address.is_some() {
+            // log_trace!("starting gRPC");
+            connection.grpc_client().start(Some(connection.grpc_client_notify_target())).await;
+            // log_trace!("gRPC started...");
+        }
         self.inner.sockets.lock()?.insert(id, connection.clone());
         Ok(connection)
     }
@@ -150,9 +136,10 @@ impl Server {
     }
 
     pub fn rpc_service(&self, connection: &Connection) -> DynRpcService {
-        match self.provider() {
-            Provider::RpcCore => self.inner.rpc_core.as_ref().unwrap().service.clone(),
-            Provider::GrpcClient => connection.grpc_client(),
+        if let Some(rpc_core) = &self.inner.rpc_core {
+            rpc_core.service.clone()
+        } else {
+            connection.grpc_client()
         }
     }
 
@@ -169,7 +156,8 @@ impl Server {
             // Stop the internal notifier
             rpc_core.wrpc_notifier.stop().await?;
         } else {
-            // FIXME
+            // FIXME: check if all existing connections are actually getting a call to self.disconnect(connection)
+            //        else do it here
         }
         Ok(())
     }

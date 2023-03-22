@@ -76,6 +76,10 @@ where
         }
     }
 
+    pub fn is_started(&self) -> bool {
+        self.is_started.load(Ordering::SeqCst)
+    }
+
     fn spawn_collecting_task(self: Arc<Self>, notifier: DynNotify<N>) {
         // The task can only be spawned once
         if self.is_started.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {

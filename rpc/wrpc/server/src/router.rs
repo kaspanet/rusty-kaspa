@@ -76,7 +76,8 @@ impl Router {
                         listener_id
                     } else {
                         // The only possible case here is a server connected to rpc core.
-                        // If the proxy is used, the listener id is always set to Some(ListenerId::default()).
+                        // If the proxy is used, the connection has a gRPC client and the listener id
+                        // is always set to Some(ListenerId::default()) by the connection ctor.
                         let notifier = manager
                             .notifier()
                             .unwrap_or_else(|| panic!("Incorrect use: `server::Server` does not carry an internal notifier"));

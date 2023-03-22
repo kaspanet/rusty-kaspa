@@ -13,10 +13,11 @@ use futures::{
 use kaspa_core::{debug, trace};
 use kaspa_grpc_core::protowire::{kaspad_request, rpc_client::RpcClient, GetInfoRequestMessage, KaspadRequest, KaspadResponse};
 use kaspa_notify::{
+    collector::{Collector, CollectorFrom},
     error::{Error as NotifyError, Result as NotifyResult},
     events::{EventType, EVENT_TYPE_ARRAY},
     listener::ListenerId,
-    notifier::Notifier,
+    notifier::{DynNotify, Notifier},
     scope::Scope,
     subscriber::{Subscriber, SubscriptionManager},
     subscription::Command,
@@ -48,10 +49,16 @@ mod resolver;
 #[macro_use]
 mod route;
 
+pub type GrpcClientCollector = CollectorFrom<Notification, Notification>;
+pub type GrpcClientNotify = DynNotify<Notification>;
+
 #[derive(Debug)]
 pub struct GrpcClient {
     inner: Arc<Inner>,
+    /// In multi listener mode, a full-featured Notifier
     notifier: Option<Arc<Notifier<Notification, ChannelConnection>>>,
+    /// In direct mode, a Collector relaying incoming notifications to any provided DynNotify
+    collector: Option<Arc<GrpcClientCollector>>,
     notification_mode: NotificationMode,
 }
 
@@ -71,16 +78,22 @@ impl GrpcClient {
         }
         let inner = Inner::connect(url, reconnect, connection_event_sender, override_handle_stop_notify).await?;
 
-        let notifier = if matches!(notification_mode, NotificationMode::MultiListeners) {
-            let enabled_events = EVENT_TYPE_ARRAY[..].into();
-            let collector = Arc::new(RpcCoreCollector::new(inner.notification_channel_receiver()));
-            let subscriber = Arc::new(Subscriber::new(enabled_events, inner.clone(), 0));
-            Some(Arc::new(Notifier::new(enabled_events, vec![collector], vec![subscriber], 10, GRPC_CLIENT)))
-        } else {
-            None
+        let (notifier, collector) = match notification_mode {
+            NotificationMode::MultiListeners => {
+                let enabled_events = EVENT_TYPE_ARRAY[..].into();
+                let collector = Arc::new(RpcCoreCollector::new(inner.notification_channel_receiver()));
+                let subscriber = Arc::new(Subscriber::new(enabled_events, inner.clone(), 0));
+                let notifier: Notifier<Notification, ChannelConnection> =
+                    Notifier::new(enabled_events, vec![collector], vec![subscriber], 10, GRPC_CLIENT);
+                (Some(Arc::new(notifier)), None)
+            }
+            NotificationMode::Direct => {
+                let collector = GrpcClientCollector::new(inner.notification_channel_receiver());
+                (None, Some(Arc::new(collector)))
+            }
         };
 
-        Ok(Self { inner, notifier, notification_mode })
+        Ok(Self { inner, notifier, collector, notification_mode })
     }
 
     #[inline(always)]
@@ -89,12 +102,16 @@ impl GrpcClient {
     }
 
     /// Starts RPC services.
-    pub async fn start(&self) {
+    pub async fn start(&self, notify: Option<GrpcClientNotify>) {
         match &self.notification_mode {
             NotificationMode::MultiListeners => {
                 self.notifier.clone().unwrap().start();
             }
-            NotificationMode::Direct => {}
+            NotificationMode::Direct => {
+                if let Some(notify) = notify {
+                    self.collector.as_ref().unwrap().clone().start(notify);
+                }
+            }
         }
     }
 
@@ -104,7 +121,13 @@ impl GrpcClient {
             NotificationMode::MultiListeners => {
                 self.notifier.as_ref().unwrap().stop().await?;
             }
-            NotificationMode::Direct => {}
+            NotificationMode::Direct => {
+                if let Some(collector) = &self.collector {
+                    if collector.is_started() {
+                        collector.clone().stop().await?;
+                    }
+                }
+            }
         }
         Ok(())
     }
