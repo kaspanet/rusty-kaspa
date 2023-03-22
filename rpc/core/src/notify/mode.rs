@@ -1,5 +1,5 @@
 /// [`NotificationMode`] controls notification delivery process
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NotificationMode {
     /// Local notifier is used for notification processing.
     ///

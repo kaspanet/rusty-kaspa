@@ -1946,6 +1946,7 @@ dependencies = [
  "consensus-core",
  "futures",
  "kaspa-core",
+ "kaspa-grpc-client",
  "kaspa-notify",
  "kaspa-rpc-core",
  "kaspa-rpc-macros",

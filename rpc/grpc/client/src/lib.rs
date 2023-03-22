@@ -11,10 +11,7 @@ use futures::{
     select,
 };
 use kaspa_core::{debug, trace};
-use kaspa_grpc_core::{
-    channel::NotificationChannel,
-    protowire::{kaspad_request, rpc_client::RpcClient, GetInfoRequestMessage, KaspadRequest, KaspadResponse},
-};
+use kaspa_grpc_core::protowire::{kaspad_request, rpc_client::RpcClient, GetInfoRequestMessage, KaspadRequest, KaspadResponse};
 use kaspa_notify::{
     error::{Error as NotifyError, Result as NotifyResult},
     events::{EventType, EVENT_TYPE_ARRAY},
@@ -30,7 +27,7 @@ use kaspa_rpc_core::{
     error::RpcError,
     error::RpcResult,
     model::message::*,
-    notify::{collector::RpcCoreCollector, connection::ChannelConnection, mode::NotificationMode},
+    notify::{channel::NotificationChannel, collector::RpcCoreCollector, connection::ChannelConnection, mode::NotificationMode},
     Notification,
 };
 use kaspa_utils::{channel::Channel, triggers::DuplexTrigger};
@@ -124,8 +121,8 @@ impl GrpcClient {
         self.inner.handle_stop_notify()
     }
 
-    pub async fn shutdown(&mut self) -> Result<()> {
-        self.inner.shutdown().await?;
+    pub async fn disconnect(&self) -> Result<()> {
+        self.inner.disconnect().await?;
         Ok(())
     }
 
@@ -670,7 +667,7 @@ impl Inner {
         }
     }
 
-    async fn shutdown(&self) -> Result<()> {
+    async fn disconnect(&self) -> Result<()> {
         self.stop_timeout_monitor().await?;
         self.stop_response_receiver_task().await?;
         self.stop_connector_monitor().await?;

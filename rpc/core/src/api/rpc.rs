@@ -8,6 +8,7 @@ use crate::{model::*, notify::connection::ChannelConnection, RpcResult};
 use async_trait::async_trait;
 use downcast::{downcast_sync, AnySync};
 use kaspa_notify::{listener::ListenerId, scope::Scope, subscription::Command};
+use std::sync::Arc;
 
 /// Client RPC Api
 ///
@@ -292,5 +293,7 @@ pub trait RpcApi: Sync + Send + AnySync {
         }
     }
 }
+
+pub type DynRpcService = Arc<dyn RpcApi>;
 
 downcast_sync!(dyn RpcApi);
