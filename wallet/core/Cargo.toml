@@ -24,6 +24,7 @@ async-trait.workspace = true
 secp256k1.workspace = true
 faster-hex.workspace = true
 wasm-bindgen.workspace = true
+workflow-wasm.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 tokio.workspace = true

@@ -2,6 +2,7 @@
 mod gen0;
 #[allow(dead_code)]
 mod gen1;
+mod generator;
 use addresses::{Address, Prefix as AddressPrefix, Version};
 
 pub fn dummy_address() -> Address {
@@ -10,3 +11,4 @@ pub fn dummy_address() -> Address {
 
 pub use gen0::*;
 pub use gen1::*;
+pub use generator::*;

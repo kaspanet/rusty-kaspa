@@ -1,13 +1,15 @@
+extern crate self as kaspa_wallet_core;
+
 pub mod error;
+pub mod generators;
 pub mod result;
 pub mod wallet;
-pub mod wallets;
 pub mod wrapper;
 
 pub use addresses::Address;
+pub use generators::dummy_address;
 pub use result::Result;
 pub use wallet::Wallet;
-pub use wallets::dummy_address;
 pub use wrapper::WalletWrapper;
 
 #[macro_export]

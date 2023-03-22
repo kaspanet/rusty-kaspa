@@ -4,13 +4,16 @@ use kaspa_bip32::{
     types::*, AddressType, ChildNumber, ExtendedKey, ExtendedKeyAttrs, ExtendedPrivateKey, ExtendedPublicKey, Prefix, PrivateKey,
     PublicKey, SecretKey, SecretKeyExt,
 };
+use consensus_core::wasm::{Generator,WalletGenerator};
+use kaspa_wallet_core::generators::Generator;
 use ripemd::Ripemd160;
 use sha2::{Digest, Sha256};
 use std::{fmt::Debug, str::FromStr};
 use zeroize::Zeroizing;
 
-#[derive(Clone)]
-pub struct GeneratorInner {
+#[derive(Default, Clone)]
+#[wasm_bindgen]
+pub struct GeneratorV0 {
     /// Derived private key
     private_key: SecretKey,
 
@@ -23,9 +26,10 @@ pub struct GeneratorInner {
     hmac: HmacSha512,
 }
 
-impl GeneratorInner {
+impl GeneratorV0 {
     pub async fn derive_address(&self, index: u32) -> Result<Address> {
-        let (private_key, _) = GeneratorV0::derive_private_key(&self.private_key, ChildNumber::new(index, true)?, self.hmac.clone())?;
+        let (private_key, _) =
+            WalletGeneratorV0::derive_private_key(&self.private_key, ChildNumber::new(index, true)?, self.hmac.clone())?;
 
         let pubkey = &private_key.get_public_key().to_bytes()[1..];
         let address = Address::new(AddressPrefix::Mainnet, Version::PubKey, pubkey);
@@ -47,25 +51,49 @@ impl GeneratorInner {
     }
 }
 
-impl From<&GeneratorInner> for ExtendedPublicKey<<SecretKey as PrivateKey>::PublicKey> {
-    fn from(inner: &GeneratorInner) -> ExtendedPublicKey<<SecretKey as PrivateKey>::PublicKey> {
+impl From<&GeneratorV0> for ExtendedPublicKey<<SecretKey as PrivateKey>::PublicKey> {
+    fn from(inner: &GeneratorV0) -> ExtendedPublicKey<<SecretKey as PrivateKey>::PublicKey> {
         ExtendedPublicKey { public_key: inner.private_key().get_public_key(), attrs: inner.attrs().clone() }
     }
 }
 
+impl GeneratorT for GeneratorV0 {
+    // generators
+}
+
+#[wasm_bindgen]
+impl GeneratorV0 {
+    #[wasm_bindgen(constructor)]
+    pub fn constructor(js_value : JsValue) -> Generator {
+
+        // FIXME - handle arguments
+        let generator = GeneratorV0::default();
+        //  {
+            // private_key: js_value.into(),
+            // attrs: ExtendedKeyAttrs::default(),
+            // fingerprint: KeyFingerprint::default(),
+            // hmac: HmacSha512::default(),
+        // };
+
+        Generator::new(Box::new(generator))
+
+    }
+}
+
 #[derive(Clone)]
-pub struct GeneratorV0 {
+#[wasm_bindgen]
+pub struct WalletGeneratorV0 {
     /// Derived private key
     private_key: SecretKey,
 
     /// Extended key attributes.
     attrs: ExtendedKeyAttrs,
 
-    receive_wallet: GeneratorInner,
-    change_wallet: GeneratorInner,
+    receive_wallet: GeneratorV0,
+    change_wallet: GeneratorV0,
 }
 
-impl GeneratorV0 {
+impl WalletGeneratorV0 {
     pub async fn from_str(xpriv: &str) -> Result<Self> {
         let xpriv_key = ExtendedPrivateKey::<SecretKey>::from_str(xpriv)?;
         let attrs = xpriv_key.attrs();
@@ -106,7 +134,7 @@ impl GeneratorV0 {
         mut private_key: SecretKey,
         mut attrs: ExtendedKeyAttrs,
         address_type: AddressType,
-    ) -> Result<GeneratorInner> {
+    ) -> Result<GeneratorV0> {
         let address_path = format!("44'/972/0'/{}'", address_type.index());
         let children = address_path.split('/');
         for child in children {
@@ -121,7 +149,7 @@ impl GeneratorV0 {
 
         let hmac = Self::create_hmac(&private_key, &attrs, true)?;
 
-        Ok(GeneratorInner { private_key, attrs, fingerprint, hmac })
+        Ok(GeneratorV0 { private_key, attrs, fingerprint, hmac })
     }
 
     pub async fn derive_child(
@@ -229,13 +257,13 @@ impl GeneratorV0 {
     }
 }
 
-impl From<&GeneratorV0> for ExtendedPublicKey<<SecretKey as PrivateKey>::PublicKey> {
-    fn from(hd_wallet: &GeneratorV0) -> ExtendedPublicKey<<SecretKey as PrivateKey>::PublicKey> {
+impl From<&WalletGeneratorV0> for ExtendedPublicKey<<SecretKey as PrivateKey>::PublicKey> {
+    fn from(hd_wallet: &WalletGeneratorV0) -> ExtendedPublicKey<<SecretKey as PrivateKey>::PublicKey> {
         ExtendedPublicKey { public_key: hd_wallet.private_key().get_public_key(), attrs: hd_wallet.attrs().clone() }
     }
 }
 
-impl Debug for GeneratorV0 {
+impl Debug for WalletGeneratorV0 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("HDWallet")
             .field("depth", &self.attrs.depth)
@@ -245,4 +273,8 @@ impl Debug for GeneratorV0 {
             .field("parent_fingerprint", &self.attrs.parent_fingerprint)
             .finish()
     }
+}
+
+impl WalletGeneratorT for WalletGeneratorV0 {
+    // generators
 }

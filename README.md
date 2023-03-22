@@ -100,8 +100,17 @@ To build WASM on MacOS you need to install `llvm` from homebrew (at the time of 
 brew install llvm
 ```
 NOTE: depending on your setup, the installation location may be different.
-To determine the installation location you can type `which llvm` or `which clang`
+To determine the installation location you can use `which llvm`, `which clang`
+or `brew list llvm` commands
 and then modify the paths below accordingly.
+
+```bash
+% brew list llvm
+/usr/local/Cellar/llvm/15.0.7_1/bin/FileCheck
+/usr/local/Cellar/llvm/15.0.7_1/bin/UnicodeNameMappingGenerator
+```
+should i replace 'opt/homebrew/opt' to ''/usr/local/Cellar/llvm/15.0.7_1"?
+
 
 Add the following to your `~/.zshrc` file:
 ```bash
@@ -110,6 +119,8 @@ export LDFLAGS="-L/opt/homebrew/opt/llvm/lib"
 export CPPFLAGS="-I/opt/homebrew/opt/llvm/include"
 export AR=/opt/homebrew/opt/llvm/bin/llvm-ar
 ```
+
+
 Reload the `~/.zshrc` file
 ```bash
 source ~/.zshrc

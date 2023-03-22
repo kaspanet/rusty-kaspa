@@ -7,8 +7,10 @@ pub mod signer;
 use consensus_core::sign::sign;
 use consensus_core::subnets::SubnetworkId;
 use consensus_core::tx::{
-    MutableTransaction,
+    self,
+    // MutableTransaction,
     // PopulatedTransaction,
+    // SignableTransaction,
     ScriptVec,
     TransactionId,
     UtxoEntry,
@@ -18,6 +20,94 @@ use core::str::FromStr;
 use itertools::Itertools;
 use secp256k1::Secp256k1;
 use std::iter::once;
+use std::sync::{Arc,Mutex};
+use wasm_bindgen::prelude::*;
+
+use crate::tx::SignableTransaction;
+
+use super::signer::Signer;
+
+// +-------------------------------------------------------
+// |
+// |  Temporary scaffolding for testing
+// |
+// +-------------------------------------------------------
+
+
+pub trait GeneratorT {}
+
+pub trait WalletGeneratorT {}
+
+#[wasm_bindgen]
+pub struct Generator {
+    inner : Arc<Mutex<Box<dyn GeneratorT>>>,
+}
+
+impl Generator {
+    pub fn new(inner : Box<dyn GeneratorT>) -> Generator {
+        Generator {
+            inner : Arc::new(Mutex::new(Box::new(GeneratorT::default()))),
+        }
+    }
+}
+
+impl Signer for Generator {}
+
+#[wasm_bindgen]
+struct UtxoEntryList(Arc<Mutex<Vec<UtxoEntry>>>);
+
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct MutableTransaction {
+    //inner : Arc<tx::MutableTransaction<Transaction>>,
+    tx : Arc<Mutex<tx::Transaction>>,
+    /// Partially filled UTXO entry data
+    pub entries: UtxoEntryList, // Vec<Option<UtxoEntry>>,
+    /// Populated fee
+    pub calculated_fee: Option<u64>,
+    /// Populated mass
+    pub calculated_mass: Option<u64>,
+
+
+}
+
+#[wasm_bindgen]
+impl MutableTransaction {
+
+    fn constructor() {
+
+    }
+
+    fn sign(js_value: JsValue) -> MutableTransaction {
+
+        // TODO - get signer
+        // use signer.sign(self)
+
+    }
+
+    fn sign_with_key(js_value: JsValue) -> MutableTransaction {
+
+    }
+
+    pub fn as_signable(&self) -> SignableTransaction {
+        todo!()
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct XSignableTransaction  {
+}
+
+// type txs = tx::SignableTransaxtion;
+
+
+// pub fn _sign(tx : &MutableTransaction, entries : &UtxoEntryList, signer : dyn Signer) -> MutableTransaction
+
+// pub fn _sign(mut signable_tx: SignableTransaction, privkey: [u8; 32]) -> SignableTransaction {
+//     todo!()
+// }
 
 // test code taken from consensus/src/processes/transaction_validator/transaction_validator_populated.rs
 #[allow(dead_code)]
