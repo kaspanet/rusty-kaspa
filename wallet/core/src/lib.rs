@@ -3,6 +3,7 @@ extern crate self as kaspa_wallet_core;
 pub mod error;
 pub mod generators;
 pub mod result;
+pub mod storage;
 pub mod wallet;
 pub mod wrapper;
 

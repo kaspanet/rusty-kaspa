@@ -26,6 +26,8 @@ faster-hex.workspace = true
 wasm-bindgen.workspace = true
 workflow-wasm.workspace = true
 consensus-core.workspace = true
+serde.workspace = true
+borsh.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 tokio.workspace = true

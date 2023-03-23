@@ -11,6 +11,8 @@ use std::sync::{Arc, Mutex};
 use workflow_core::channel::{Channel, Receiver};
 use wasm_bindgen::prelude::*;
 
+
+
 #[derive(Clone)]
 pub struct Inner {
     // TODO - replace with Vec<dyn WalletGenerator>
@@ -69,7 +71,7 @@ impl Wallet {
     }
 
     pub fn rpc(&self) -> Arc<KaspaRpcClient> {
-        self.inner.rpc.clone()
+        self.rpc.clone()
     }
 
     // intended for starting async management tasks
