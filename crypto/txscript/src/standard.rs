@@ -51,7 +51,7 @@ pub fn pay_to_script_hash_script(redeem_script: &[u8]) -> ScriptPublicKey {
 
 /// Generates a signature script that fits a pay-to-script-hash script
 pub fn pay_to_script_hash_signature_script(redeem_script: Vec<u8>, signature: Vec<u8>) -> ScriptBuilderResult<Vec<u8>> {
-    let redeem_script_as_data = ScriptBuilder::new().add_data(&redeem_script).drain()?;
+    let redeem_script_as_data = ScriptBuilder::new().add_data(&redeem_script)?.drain();
     Ok(Vec::from_iter(signature.iter().copied().chain(redeem_script_as_data.iter().copied())))
 }
 
