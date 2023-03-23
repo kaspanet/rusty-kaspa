@@ -1,15 +1,26 @@
 
-use crate::hashing::sighash::{SigHashReusedValues, calc_schnorr_signature_hash};
+use secp256k1::SecretKey;
+
+use crate::hashing::{sighash::{SigHashReusedValues, calc_schnorr_signature_hash}, sighash_type::SIG_HASH_ALL};
 
 use super::*;
+
+use thiserror::Error;
+#[derive(Error, Debug, Clone)]
+pub enum Error {
+    #[error("{0}")]
+    Message(String),
+}
+
 
 // TODO - prototype Signer trait that should be used by signing primitives
 pub trait Signer {
     // fn sign(&self, message: &[u8]) -> Result<Vec<u8>, Error>;
     // fn public_key(&self) -> Result<PublicKey, Error>;
 
+    fn private_key(&self) -> Result<SecretKey, Error>;
 
-    fn sign(mtx : &SignableTransaction) {
+    fn sign(&self, mtx : &SignableTransaction) {
 
     }
 
@@ -17,15 +28,15 @@ pub trait Signer {
 
 
 /// Sign a transaction using schnorr
-pub fn sign_tx(mut signable_tx: SignableTransaction, signer : Box<dyn Signer>) -> SignableTransaction {
+pub fn sign_tx(mut signable_tx: SignableTransaction, signer : Box<dyn Signer>) -> Result<SignableTransaction,Error> {
     // pub fn sign_tx(mut signable_tx: SignableTransaction, privkey: [u8; 32]) -> SignableTransaction {
         for i in 0..signable_tx.tx.inputs.len() {
             signable_tx.tx.inputs[i].sig_op_count = 1;
         }
     
-        let privkey = signer.privkey();
+        let privkey = signer.private_key()?;
 
-        let schnorr_key = secp256k1::KeyPair::from_seckey_slice(secp256k1::SECP256K1, &privkey).unwrap();
+        let schnorr_key = secp256k1::KeyPair::from_seckey_slice(secp256k1::SECP256K1, &privkey.secret_bytes()).unwrap();
         let mut reused_values = SigHashReusedValues::new();
         for i in 0..signable_tx.tx.inputs.len() {
             let sig_hash = calc_schnorr_signature_hash(&signable_tx.as_verifiable(), i, SIG_HASH_ALL, &mut reused_values);
@@ -34,7 +45,7 @@ pub fn sign_tx(mut signable_tx: SignableTransaction, signer : Box<dyn Signer>) -
             // This represents OP_DATA_65 <SIGNATURE+SIGHASH_TYPE> (since signature length is 64 bytes and SIGHASH_TYPE is one byte)
             signable_tx.tx.inputs[i].signature_script = std::iter::once(65u8).chain(sig).chain([SIG_HASH_ALL.to_u8()]).collect();
         }
-        signable_tx
+        Ok(signable_tx)
     }
     
     

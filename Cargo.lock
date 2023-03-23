@@ -1622,6 +1622,7 @@ dependencies = [
  "faster-hex",
  "getrandom 0.2.8",
  "hmac",
+ "kaspa-core",
  "once_cell",
  "pbkdf2",
  "rand_core 0.6.4",
@@ -1630,6 +1631,8 @@ dependencies = [
  "sha2 0.10.6",
  "subtle",
  "thiserror",
+ "wasm-bindgen",
+ "workflow-wasm",
  "zeroize",
 ]
 
@@ -1905,6 +1908,7 @@ version = "0.1.0"
 dependencies = [
  "addresses",
  "async-trait",
+ "consensus-core",
  "faster-hex",
  "hmac",
  "kaspa-bip32",

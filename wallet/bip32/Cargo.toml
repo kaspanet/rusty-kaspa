@@ -16,7 +16,9 @@ once_cell.workspace = true
 pbkdf2.workspace = true
 thiserror.workspace = true
 getrandom = { workspace = true, features = ["js"] }
-
+wasm-bindgen.workspace = true
+workflow-wasm.workspace = true
+kaspa-core.workspace = true
 
 [dev-dependencies]
 faster-hex.workspace = true

@@ -12,16 +12,20 @@ use zeroize::{Zeroize, Zeroizing};
 
 //#[cfg(feature = "bip39")]
 use {super::seed::Seed, hmac::Hmac, sha2::Sha512};
+use wasm_bindgen::prelude::*;
 
+use kaspa_core::hex::*;
+use workflow_wasm::jsvalue::*;
 /// Number of PBKDF2 rounds to perform when deriving the seed
 //#[cfg(feature = "bip39")]
 const PBKDF2_ROUNDS: u32 = 2048;
 
 /// Source entropy for a BIP39 mnemonic phrase
 pub type Entropy = [u8; KEY_SIZE];
-
+use std::convert::TryInto;
 /// BIP39 mnemonic phrases: sequences of words representing cryptographic keys.
 #[derive(Clone)]
+#[wasm_bindgen(inspectable)]
 pub struct Mnemonic {
     /// Language
     language: Language,
@@ -31,6 +35,35 @@ pub struct Mnemonic {
 
     /// Mnemonic phrase
     phrase: String,
+}
+
+#[wasm_bindgen]
+impl Mnemonic {
+
+    #[wasm_bindgen(constructor)]
+    pub fn constructor(language: Language, entropy: JsValue, phrase: String) -> Mnemonic {
+
+        let vec : Vec<u8> = entropy.try_as_vec_u8().unwrap_or_else(|err|panic!("invalid entropy {err}"));
+        let entropy = <Vec<u8> as TryInto<Entropy>>::try_into(vec).unwrap_or_else(|vec|panic!("invalid mnemonic: {vec:?}"));
+
+        Mnemonic {
+            language,
+            entropy,
+            phrase,
+        }
+    }
+
+    #[wasm_bindgen(getter, js_name = entropy)]
+    pub fn get_entropy(&self) -> String {
+        self.entropy.as_ref().to_hex()
+    }
+    
+    #[wasm_bindgen(setter, js_name = entropy)]
+    pub fn set_entropy(&mut self, entropy: String) {
+        let vec = Vec::<u8>::from_hex(&entropy).unwrap_or_else(|err|panic!("invalid entropy `{entropy}`: {err}"));
+        self.entropy = <Vec<u8> as TryInto<Entropy>>::try_into(vec).unwrap_or_else(|_|panic!("Invalid entropy: `{entropy}`"));
+    }
+
 }
 
 impl Mnemonic {

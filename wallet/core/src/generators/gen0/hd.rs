@@ -4,14 +4,15 @@ use kaspa_bip32::{
     types::*, AddressType, ChildNumber, ExtendedKey, ExtendedKeyAttrs, ExtendedPrivateKey, ExtendedPublicKey, Prefix, PrivateKey,
     PublicKey, SecretKey, SecretKeyExt,
 };
-use consensus_core::wasm::{Generator,WalletGenerator};
-use kaspa_wallet_core::generators::Generator;
+use consensus_core::wasm::{Generator,GeneratorT,WalletGeneratorT};
+// use kaspa_wallet_core::generators::Generator;
 use ripemd::Ripemd160;
 use sha2::{Digest, Sha256};
 use std::{fmt::Debug, str::FromStr};
 use zeroize::Zeroizing;
+use wasm_bindgen::prelude::*;
 
-#[derive(Default, Clone)]
+#[derive(Clone)]
 #[wasm_bindgen]
 pub struct GeneratorV0 {
     /// Derived private key
@@ -66,8 +67,10 @@ impl GeneratorV0 {
     #[wasm_bindgen(constructor)]
     pub fn constructor(js_value : JsValue) -> Generator {
 
+        todo!();
+
         // FIXME - handle arguments
-        let generator = GeneratorV0::default();
+        // let generator = GeneratorV0::default();
         //  {
             // private_key: js_value.into(),
             // attrs: ExtendedKeyAttrs::default(),
@@ -75,7 +78,7 @@ impl GeneratorV0 {
             // hmac: HmacSha512::default(),
         // };
 
-        Generator::new(Box::new(generator))
+        // Generator::new(Box::new(generator))
 
     }
 }

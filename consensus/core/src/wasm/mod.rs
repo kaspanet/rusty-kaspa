@@ -25,7 +25,7 @@ use wasm_bindgen::prelude::*;
 
 use crate::tx::SignableTransaction;
 
-use super::signer::Signer;
+use signer::Signer;
 
 // +-------------------------------------------------------
 // |
@@ -46,23 +46,27 @@ pub struct Generator {
 impl Generator {
     pub fn new(inner : Box<dyn GeneratorT>) -> Generator {
         Generator {
-            inner : Arc::new(Mutex::new(Box::new(GeneratorT::default()))),
+            inner : Arc::new(Mutex::new(inner)),
         }
     }
 }
 
-impl Signer for Generator {}
+// impl Signer for Generator {}
 
+
+#[derive(Clone, Debug)]
 #[wasm_bindgen]
-struct UtxoEntryList(Arc<Mutex<Vec<UtxoEntry>>>);
+pub struct UtxoEntryList(Arc<Mutex<Vec<UtxoEntry>>>);
 
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
 pub struct MutableTransaction {
     //inner : Arc<tx::MutableTransaction<Transaction>>,
+
     tx : Arc<Mutex<tx::Transaction>>,
     /// Partially filled UTXO entry data
+    #[wasm_bindgen(getter_with_clone)]
     pub entries: UtxoEntryList, // Vec<Option<UtxoEntry>>,
     /// Populated fee
     pub calculated_fee: Option<u64>,
@@ -79,20 +83,20 @@ impl MutableTransaction {
 
     }
 
-    fn sign(js_value: JsValue) -> MutableTransaction {
+    // fn sign(js_value: JsValue) -> MutableTransaction {
 
-        // TODO - get signer
-        // use signer.sign(self)
+    //     // TODO - get signer
+    //     // use signer.sign(self)
 
-    }
+    // }
 
-    fn sign_with_key(js_value: JsValue) -> MutableTransaction {
+    // fn sign_with_key(js_value: JsValue) -> MutableTransaction {
 
-    }
+    // }
 
-    pub fn as_signable(&self) -> SignableTransaction {
-        todo!()
-    }
+    // pub fn as_signable(&self) -> SignableTransaction {
+    //     todo!()
+    // }
 }
 
 #[derive(Clone, Debug)]
@@ -177,7 +181,7 @@ fn test_sign() {
         },
         UtxoEntry { amount: 300, script_public_key: ScriptPublicKey::new(0, script_pub_key), block_daa_score: 0, is_coinbase: false },
     ];
-    let signed_tx = sign(MutableTransaction::with_entries(unsigned_tx, entries), secret_key.secret_bytes());
+    let signed_tx = sign(tx::MutableTransaction::with_entries(unsigned_tx, entries), secret_key.secret_bytes());
     let _populated_tx = signed_tx.as_verifiable();
     // assert_eq!(tv.check_scripts(&populated_tx), Ok(()));
     // assert_eq!(TransactionValidator::check_sig_op_counts(&populated_tx), Ok(()));

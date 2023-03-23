@@ -13,6 +13,7 @@ use kaspa_bip32::{
     types::*, AddressType, ChildNumber, ExtendedKey, ExtendedKeyAttrs, ExtendedPrivateKey, ExtendedPublicKey, Prefix, PrivateKey,
     PublicKey, SecretKey, SecretKeyExt,
 };
+use consensus_core::wasm::{Generator,GeneratorT,WalletGeneratorT};
 use wasm_bindgen::prelude::*;
 use workflow_wasm::jsvalue::*;
 
@@ -354,7 +355,7 @@ impl Debug for WalletGeneratorV1 {
     }
 }
 
-impl WalletGeneratorT for WalletGeneratorV0 {
+impl WalletGeneratorT for WalletGeneratorV1 {
     // generators
 }
 
