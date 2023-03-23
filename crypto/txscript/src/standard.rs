@@ -1,6 +1,6 @@
 use crate::{
     opcodes::codes::{OpBlake2b, OpCheckSig, OpCheckSigECDSA, OpData32, OpData33, OpEqual},
-    script_builder::ScriptBuilder,
+    script_builder::{ScriptBuilder, ScriptBuilderResult},
     script_class::ScriptClass,
 };
 use addresses::{Address, Prefix, Version};
@@ -50,7 +50,7 @@ pub fn pay_to_script_hash_script(redeem_script: &[u8]) -> ScriptPublicKey {
 }
 
 /// Generates a signature script that fits a pay-to-script-hash script
-pub fn pay_to_script_hash_signature_script(redeem_script: Vec<u8>, signature: Vec<u8>) -> crate::script_builder::Result<Vec<u8>> {
+pub fn pay_to_script_hash_signature_script(redeem_script: Vec<u8>, signature: Vec<u8>) -> ScriptBuilderResult<Vec<u8>> {
     let redeem_script_as_data = ScriptBuilder::new().add_data(&redeem_script).drain()?;
     Ok(Vec::from_iter(signature.iter().copied().chain(redeem_script_as_data.iter().copied())))
 }

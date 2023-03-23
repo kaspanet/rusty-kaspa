@@ -1,6 +1,10 @@
 use std::iter::once;
 
-use crate::{data_stack::OpcodeData, opcodes::codes::*, MAX_SCRIPTS_SIZE, MAX_SCRIPT_ELEMENT_SIZE};
+use crate::{
+    data_stack::OpcodeData,
+    opcodes::{codes::*, OP_1_NEGATE_VAL, OP_DATA_MAX_VAL, OP_DATA_MIN_VAL, OP_MAX_VAL},
+    MAX_SCRIPTS_SIZE, MAX_SCRIPT_ELEMENT_SIZE,
+};
 use thiserror::Error;
 
 /// DEFAULT_SCRIPT_ALLOC is the default size used for the backing array
@@ -11,7 +15,7 @@ use thiserror::Error;
 const DEFAULT_SCRIPT_ALLOC: usize = 512;
 
 #[derive(Error, PartialEq, Eq, Debug, Clone, Copy)]
-pub enum Error {
+pub enum ScriptBuilderError {
     #[error("adding an opcode would exceed the maximum allowed canonical script length of {MAX_SCRIPTS_SIZE}")]
     OpCodeRejected,
 
@@ -27,7 +31,7 @@ pub enum Error {
     #[error("adding an integer would exceed the maximum allowed canonical script length of {MAX_SCRIPTS_SIZE}")]
     IntegerRejected,
 }
-pub type Result<T> = std::result::Result<T, Error>;
+pub type ScriptBuilderResult<T> = std::result::Result<T, ScriptBuilderError>;
 
 /// ScriptBuilder provides a facility for building custom scripts. It allows
 /// you to push opcodes, ints, and data while respecting canonical encoding. In
@@ -54,7 +58,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// ```
 pub struct ScriptBuilder {
     script: Vec<u8>,
-    error: Option<Error>,
+    error: Option<ScriptBuilderError>,
 }
 
 impl ScriptBuilder {
@@ -62,7 +66,7 @@ impl ScriptBuilder {
         Self { script: Vec::with_capacity(DEFAULT_SCRIPT_ALLOC), error: None }
     }
 
-    pub fn script(&self) -> Result<&[u8]> {
+    pub fn script(&self) -> ScriptBuilderResult<&[u8]> {
         match self.error {
             None => Ok(&self.script),
             Some(ref err) => Err(*err),
@@ -75,11 +79,11 @@ impl ScriptBuilder {
     }
 
     #[cfg(test)]
-    pub fn raw_error(&self) -> Option<Error> {
+    pub fn raw_error(&self) -> Option<ScriptBuilderError> {
         self.error
     }
 
-    pub fn drain(&mut self) -> Result<Vec<u8>> {
+    pub fn drain(&mut self) -> ScriptBuilderResult<Vec<u8>> {
         match self.error {
             None => Ok(std::mem::take(&mut self.script)),
             Some(err) => {
@@ -106,7 +110,7 @@ impl ScriptBuilder {
         // Pushes that would cause the script to exceed the largest allowed
         // script size would result in a non-canonical script.
         if self.script.len() >= MAX_SCRIPTS_SIZE {
-            self.error = Some(Error::OpCodeRejected);
+            self.error = Some(ScriptBuilderError::OpCodeRejected);
             return self;
         }
 
@@ -122,7 +126,7 @@ impl ScriptBuilder {
         // Pushes that would cause the script to exceed the largest allowed
         // script size would result in a non-canonical script.
         if self.script.len() + opcodes.len() > MAX_SCRIPTS_SIZE {
-            self.error = Some(Error::OpCodesRejected);
+            self.error = Some(ScriptBuilderError::OpCodesRejected);
             return self;
         }
 
@@ -135,18 +139,18 @@ impl ScriptBuilder {
         let data_len = data.len();
 
         // When the data consists of a single number that can be represented
-        // by one of the "small integer" opcodes, that opcode will be instead
+        // by one of the "small integer" opcodes, that opcode will used be instead
         // of a data push opcode followed by the number.
-        if data_len == 0 || (data_len == 1 && (data[0] <= 16 || data[0] == 0x81)) {
+        if data_len == 0 || (data_len == 1 && (data[0] <= OP_MAX_VAL || data[0] == OP_1_NEGATE_VAL)) {
             return 1;
         }
 
         data_len
-            + if data_len < OpPushData1 as usize {
+            + if data_len <= OP_DATA_MAX_VAL as usize {
                 1
-            } else if data_len <= 0xff {
+            } else if data_len <= u8::MAX as usize {
                 2
-            } else if data_len <= 0xffff {
+            } else if data_len <= u16::MAX as usize {
                 3
             } else {
                 5
@@ -163,13 +167,13 @@ impl ScriptBuilder {
         // When the data consists of a single number that can be represented
         // by one of the "small integer" opcodes, use that opcode instead of
         // a data push opcode followed by the number.
-        if data_len == 0 || data_len == 1 && data[0] == 0 {
+        if data_len == 0 || (data_len == 1 && data[0] == 0) {
             self.script.push(Op0);
             return self;
-        } else if data_len == 1 && data[0] <= 16 {
+        } else if data_len == 1 && data[0] <= OP_MAX_VAL {
             self.script.push((Op1 - 1) + data[0]);
             return self;
-        } else if data_len == 1 && data[0] == 0x81 {
+        } else if data_len == 1 && data[0] == OP_1_NEGATE_VAL {
             self.script.push(Op1Negate);
             return self;
         }
@@ -178,11 +182,11 @@ impl ScriptBuilder {
         // enough so the data push instruction is only a single byte.
         // Otherwise, choose the smallest possible OpPushData# opcode that
         // can represent the length of the data.
-        if data_len < OpPushData1 as usize {
-            self.script.push(OpData1 - 1 + data_len as u8);
-        } else if data_len <= 0xff {
+        if data_len <= OP_DATA_MAX_VAL as usize {
+            self.script.push((OP_DATA_MIN_VAL - 1) + data_len as u8);
+        } else if data_len <= u8::MAX as usize {
             self.script.extend(once(OpPushData1).chain(once(data_len as u8)));
-        } else if data_len <= 0xffff {
+        } else if data_len <= u16::MAX as usize {
             self.script.extend(once(OpPushData2).chain((data_len as u16).to_le_bytes()));
         } else {
             self.script.extend(once(OpPushData4).chain((data_len as u32).to_le_bytes()));
@@ -228,7 +232,7 @@ impl ScriptBuilder {
         let data_size = Self::canonical_data_size(data);
 
         if self.script.len() + data_size > MAX_SCRIPTS_SIZE {
-            self.error = Some(Error::DataRejected(data_size));
+            self.error = Some(ScriptBuilderError::DataRejected(data_size));
             return self;
         }
 
@@ -236,7 +240,7 @@ impl ScriptBuilder {
         // script that is not canonical.
         let data_len = data.len();
         if data_len > MAX_SCRIPT_ELEMENT_SIZE {
-            self.error = Some(Error::ElementExceedsMaxSize(data_len));
+            self.error = Some(ScriptBuilderError::ElementExceedsMaxSize(data_len));
             return self;
         }
 
@@ -251,7 +255,7 @@ impl ScriptBuilder {
         // Pushes that would cause the script to exceed the largest allowed
         // script size would result in a non-canonical script.
         if self.script.len() + 1 > MAX_SCRIPTS_SIZE {
-            self.error = Some(Error::IntegerRejected);
+            self.error = Some(ScriptBuilderError::IntegerRejected);
             return self;
         }
 
@@ -271,16 +275,16 @@ impl ScriptBuilder {
 
     /// Gets a u64 lock time, converts it to byte array in little-endian, and then used the add_data function.
     pub fn add_lock_time(&mut self, lock_time: u64) -> &mut Self {
-        self.add_trimmed_u64(lock_time)
+        self.add_u64(lock_time)
     }
 
     /// Gets a u64 sequence, converts it to byte array in little-endian, and then used the add_data function.
     pub fn add_sequence(&mut self, sequence: u64) -> &mut Self {
-        self.add_trimmed_u64(sequence)
+        self.add_u64(sequence)
     }
 
     /// Gets a u64 lock time or sequence, converts it to byte array in little-endian, and then used the add_data function.
-    fn add_trimmed_u64(&mut self, val: u64) -> &mut Self {
+    fn add_u64(&mut self, val: u64) -> &mut Self {
         if self.has_error() {
             return self;
         }
@@ -300,7 +304,7 @@ impl Default for ScriptBuilder {
 
 #[cfg(test)]
 mod tests {
-    use super::*; 
+    use super::*;
     use std::iter::{once, repeat};
 
     // Tests that pushing opcodes to a script via the ScriptBuilder API works as expected.
@@ -401,7 +405,7 @@ mod tests {
         struct Test {
             name: &'static str,
             data: Vec<u8>,
-            expected: Result<Vec<u8>>,
+            expected: ScriptBuilderResult<Vec<u8>>,
             /// use add_data_unchecked instead of add_data
             unchecked: bool,
         }
@@ -480,19 +484,19 @@ mod tests {
             Test {
                 name: "push data len 521",
                 data: vec![0x49; 521],
-                expected: Err(Error::ElementExceedsMaxSize(521)),
+                expected: Err(ScriptBuilderError::ElementExceedsMaxSize(521)),
                 unchecked: false,
             },
             Test {
                 name: "push data len 32767 (canonical)",
                 data: vec![0x49; 32767],
-                expected: Err(Error::DataRejected(32770)),
+                expected: Err(ScriptBuilderError::DataRejected(32770)),
                 unchecked: false,
             },
             Test {
                 name: "push data len 65536 (canonical)",
                 data: vec![0x49; 65536],
-                expected: Err(Error::DataRejected(65541)),
+                expected: Err(ScriptBuilderError::DataRejected(65541)),
                 unchecked: false,
             },
             // // Additional tests for the add_data_unchecked function that
@@ -535,7 +539,7 @@ mod tests {
         struct Test {
             name: &'static str,
             value: u64,
-            expected: Result<Vec<u8>>,
+            expected: ScriptBuilderResult<Vec<u8>>,
         }
 
         let tests = vec![
@@ -547,13 +551,21 @@ mod tests {
             Test { name: "0xffeeddcc", value: 0xffeeddcc, expected: Ok(vec![OpData4, 0xcc, 0xdd, 0xee, 0xff]) },
             Test { name: "0xffeeddccbb", value: 0xffeeddccbb, expected: Ok(vec![OpData5, 0xbb, 0xcc, 0xdd, 0xee, 0xff]) },
             Test { name: "0xffeeddccbbaa", value: 0xffeeddccbbaa, expected: Ok(vec![OpData6, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff]) },
-            Test { name: "0xffeeddccbbaa99", value: 0xffeeddccbbaa99, expected: Ok(vec![OpData7, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff]) },
-            Test { name: "0xffeeddccbbaa9988", value: 0xffeeddccbbaa9988, expected: Ok(vec![OpData8, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff]) },
-            Test { name: "0xffffffffffffffff", value: u64::MAX, expected: Ok(once(OpData8).chain(repeat(0xff).take(8)).collect()), },
+            Test {
+                name: "0xffeeddccbbaa99",
+                value: 0xffeeddccbbaa99,
+                expected: Ok(vec![OpData7, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff]),
+            },
+            Test {
+                name: "0xffeeddccbbaa9988",
+                value: 0xffeeddccbbaa9988,
+                expected: Ok(vec![OpData8, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff]),
+            },
+            Test { name: "0xffffffffffffffff", value: u64::MAX, expected: Ok(once(OpData8).chain(repeat(0xff).take(8)).collect()) },
         ];
 
         for test in tests {
-            let result = ScriptBuilder::new().add_trimmed_u64(test.value).drain();
+            let result = ScriptBuilder::new().add_u64(test.value).drain();
             assert_eq!(result, test.expected, "{} wrong result", test.name);
             let result = ScriptBuilder::new().add_lock_time(test.value).drain();
             assert_eq!(result, test.expected, "{} wrong lock time result", test.name);
@@ -579,13 +591,21 @@ mod tests {
         // Ensure adding data that would exceed the maximum size of the script
         // does not add the data.
         let result = builder.add_data(&[0u8]).script();
-        assert_eq!(result, Err(Error::DataRejected(1)), "adding data that would exceed the maximum size of the script must fail");
+        assert_eq!(
+            result,
+            Err(ScriptBuilderError::DataRejected(1)),
+            "adding data that would exceed the maximum size of the script must fail"
+        );
         assert_eq!(builder.raw_script(), original_result.as_ref().unwrap(), "unexpected modified script");
 
         // Ensure adding an opcode that would exceed the maximum size of the
         // script does not add the data.
         let result = full_builder().add_op(Op0).drain();
-        assert_eq!(result, Err(Error::OpCodeRejected), "adding an opcode that would exceed the maximum size of the script must fail");
+        assert_eq!(
+            result,
+            Err(ScriptBuilderError::OpCodeRejected),
+            "adding an opcode that would exceed the maximum size of the script must fail"
+        );
         assert_eq!(builder.raw_script(), original_result.as_ref().unwrap(), "unexpected modified script");
 
         // Ensure adding an opcode array that would exceed the maximum size of the
@@ -593,7 +613,7 @@ mod tests {
         let result = full_builder().add_ops(&[OpCheckSig]).drain();
         assert_eq!(
             result,
-            Err(Error::OpCodesRejected),
+            Err(ScriptBuilderError::OpCodesRejected),
             "adding an opcode array that would exceed the maximum size of the script must fail"
         );
         assert_eq!(builder.raw_script(), original_result.as_ref().unwrap(), "unexpected modified script");
@@ -603,7 +623,7 @@ mod tests {
         let result = full_builder().add_i64(0).drain();
         assert_eq!(
             result,
-            Err(Error::IntegerRejected),
+            Err(ScriptBuilderError::IntegerRejected),
             "adding an integer that would exceed the maximum size of the script must fail"
         );
         assert_eq!(builder.raw_script(), original_result.as_ref().unwrap(), "unexpected modified script");
@@ -613,7 +633,7 @@ mod tests {
         let result = full_builder().add_lock_time(0).drain();
         assert_eq!(
             result,
-            Err(Error::DataRejected(1)),
+            Err(ScriptBuilderError::DataRejected(1)),
             "adding a lock time that would exceed the maximum size of the script must fail"
         );
         assert_eq!(builder.raw_script(), original_result.as_ref().unwrap(), "unexpected modified script");
@@ -623,7 +643,7 @@ mod tests {
         let result = full_builder().add_sequence(0).drain();
         assert_eq!(
             result,
-            Err(Error::DataRejected(1)),
+            Err(ScriptBuilderError::DataRejected(1)),
             "adding a sequence that would exceed the maximum size of the script must fail"
         );
         assert_eq!(builder.raw_script(), original_result.as_ref().unwrap(), "unexpected modified script");

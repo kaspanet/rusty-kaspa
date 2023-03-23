@@ -15,6 +15,17 @@ use core::cmp::{max, min};
 use sha2::{Digest, Sha256};
 use std::fmt::{Debug, Formatter};
 
+/// First value in the range formed by Op# opcodes
+pub const OP_MIN_VAL: u8 = 1;
+/// Last value in the range formed by Op# opcodes
+pub const OP_MAX_VAL: u8 = 16;
+/// First value in the range formed by OpData# opcodes (where opcode == value)
+pub const OP_DATA_MIN_VAL: u8 = self::codes::OpData1;
+/// Last value in the range formed by OpData# opcodes (where opcode == value)
+pub const OP_DATA_MAX_VAL: u8 = self::codes::OpData75;
+/// Minus 1 value
+pub const OP_1_NEGATE_VAL: u8 = 0x81;
+
 #[derive(PartialEq, Eq)]
 pub(crate) enum OpCond {
     False,
@@ -111,35 +122,35 @@ impl<const CODE: u8> OpCodeMetadata for OpCode<CODE> {
                     "zero length data push is encoded with opcode {self:?} instead of OpFalse"
                 )));
             }
-        } else if data_len == 1 && self.data[0] >= 1 && self.data[0] <= 16 {
+        } else if data_len == 1 && OP_MIN_VAL <= self.data[0] && self.data[0] <= OP_MAX_VAL {
             if opcode != codes::OpTrue + self.data[0] - 1 {
                 return Err(TxScriptError::NotMinimalData(format!(
                     "zero length data push is encoded with opcode {:?} instead of Op_{}",
                     self, self.data[0]
                 )));
             }
-        } else if data_len == 1 && self.data[0] == 0x81 {
+        } else if data_len == 1 && self.data[0] == OP_1_NEGATE_VAL {
             if opcode != codes::Op1Negate {
                 return Err(TxScriptError::NotMinimalData(format!(
                     "data push of the value -1 encoded \
                                     with opcode {self:?} instead of OP_1NEGATE"
                 )));
             }
-        } else if data_len <= 75 {
+        } else if data_len <= OP_DATA_MAX_VAL as usize {
             if opcode as usize != data_len {
                 return Err(TxScriptError::NotMinimalData(format!(
                     "data push of {data_len} bytes encoded \
                                     with opcode {self:?} instead of OP_DATA_{data_len}"
                 )));
             }
-        } else if data_len <= 255 {
+        } else if data_len <= u8::MAX as usize {
             if opcode != codes::OpPushData1 {
                 return Err(TxScriptError::NotMinimalData(format!(
                     "data push of {data_len} bytes encoded \
                                     with opcode {self:?} instead of OP_PUSHDATA1"
                 )));
             }
-        } else if data_len < 65535 && opcode != codes::OpPushData2 {
+        } else if data_len < u16::MAX as usize && opcode != codes::OpPushData2 {
             return Err(TxScriptError::NotMinimalData(format!(
                 "data push of {data_len} bytes encoded \
                                 with opcode {self:?} instead of OP_PUSHDATA2"
