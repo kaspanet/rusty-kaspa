@@ -15,10 +15,10 @@ use core::cmp::{max, min};
 use sha2::{Digest, Sha256};
 use std::fmt::{Debug, Formatter};
 
-/// First value in the range formed by Op# opcodes
-pub const OP_MIN_VAL: u8 = 1;
-/// Last value in the range formed by Op# opcodes
-pub const OP_MAX_VAL: u8 = 16;
+/// First value in the range formed by the "small integer" Op# opcodes
+pub const OP_SMALL_INT_MIN_VAL: u8 = 1;
+/// Last value in the range formed by the "small integer" Op# opcodes
+pub const OP_SMALL_INT_MAX_VAL: u8 = 16;
 /// First value in the range formed by OpData# opcodes (where opcode == value)
 pub const OP_DATA_MIN_VAL: u8 = self::codes::OpData1;
 /// Last value in the range formed by OpData# opcodes (where opcode == value)
@@ -122,7 +122,7 @@ impl<const CODE: u8> OpCodeMetadata for OpCode<CODE> {
                     "zero length data push is encoded with opcode {self:?} instead of OpFalse"
                 )));
             }
-        } else if data_len == 1 && OP_MIN_VAL <= self.data[0] && self.data[0] <= OP_MAX_VAL {
+        } else if data_len == 1 && OP_SMALL_INT_MIN_VAL <= self.data[0] && self.data[0] <= OP_SMALL_INT_MAX_VAL {
             if opcode != codes::OpTrue + self.data[0] - 1 {
                 return Err(TxScriptError::NotMinimalData(format!(
                     "zero length data push is encoded with opcode {:?} instead of Op_{}",

@@ -2,7 +2,7 @@ use std::iter::once;
 
 use crate::{
     data_stack::OpcodeData,
-    opcodes::{codes::*, OP_1_NEGATE_VAL, OP_DATA_MAX_VAL, OP_DATA_MIN_VAL, OP_MAX_VAL},
+    opcodes::{codes::*, OP_1_NEGATE_VAL, OP_DATA_MAX_VAL, OP_DATA_MIN_VAL, OP_SMALL_INT_MAX_VAL},
     MAX_SCRIPTS_SIZE, MAX_SCRIPT_ELEMENT_SIZE,
 };
 use thiserror::Error;
@@ -109,7 +109,7 @@ impl ScriptBuilder {
         // When the data consists of a single number that can be represented
         // by one of the "small integer" opcodes, that opcode will used be instead
         // of a data push opcode followed by the number.
-        if data_len == 0 || (data_len == 1 && (data[0] <= OP_MAX_VAL || data[0] == OP_1_NEGATE_VAL)) {
+        if data_len == 0 || (data_len == 1 && (data[0] <= OP_SMALL_INT_MAX_VAL || data[0] == OP_1_NEGATE_VAL)) {
             return 1;
         }
 
@@ -138,7 +138,7 @@ impl ScriptBuilder {
         if data_len == 0 || (data_len == 1 && data[0] == 0) {
             self.script.push(Op0);
             return self;
-        } else if data_len == 1 && data[0] <= OP_MAX_VAL {
+        } else if data_len == 1 && data[0] <= OP_SMALL_INT_MAX_VAL {
             self.script.push((Op1 - 1) + data[0]);
             return self;
         } else if data_len == 1 && data[0] == OP_1_NEGATE_VAL {
