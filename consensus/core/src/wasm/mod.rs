@@ -22,6 +22,8 @@ use secp256k1::Secp256k1;
 use std::iter::once;
 use std::sync::{Arc, Mutex};
 use wasm_bindgen::prelude::*;
+use js_sys::Array;
+use workflow_wasm::abi::ref_from_abi;
 
 use crate::tx::SignableTransaction;
 
@@ -31,7 +33,32 @@ use crate::tx::SignableTransaction;
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct UtxoEntryList(Arc<Mutex<Vec<UtxoEntry>>>);
+pub struct UtxoEntryList(Arc<Vec<UtxoEntry>>);
+
+#[wasm_bindgen]
+impl UtxoEntryList{
+    #[wasm_bindgen(constructor)]
+    pub fn js_ctor(js_value: JsValue) -> Result<UtxoEntryList, JsError> {
+        Ok(js_value.try_into()?)
+    }
+    #[wasm_bindgen(getter = items)]
+    pub fn get_items_as_js_array(&self) -> JsValue {
+        let items = self.0.as_ref().clone().into_iter().map(<UtxoEntry as Into<JsValue>>::into);
+        Array::from_iter(items).into()
+    }
+
+    #[wasm_bindgen(setter = items)]
+    pub fn set_items_from_js_array(&mut self, js_value: &JsValue) {
+        let items = Array::from(js_value)
+            .iter()
+            .map(|js_value| {
+                ref_from_abi!(UtxoEntry, &js_value).unwrap_or_else(|err| panic!("invalid UTXOEntry: {err}"))
+            })
+            .collect::<Vec<_>>();
+        self.0 = Arc::new(items);
+    }
+}
+
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
@@ -49,9 +76,17 @@ pub struct MutableTransaction {
 
 #[wasm_bindgen]
 impl MutableTransaction {
-    fn constructor() {}
+    #[wasm_bindgen(constructor)]
+    pub fn constructor(tx: tx::Transaction, entries:UtxoEntryList) -> Self {
+        Self{
+            tx: Arc::new(Mutex::new(tx)),
+            entries,
+            calculated_fee: None,
+            calculated_mass: None
+        }
+    }
 
-    // fn sign(js_value: JsValue) -> MutableTransaction {
+    // fn sign(js_value: JsValue) -> tx::MutableTransaction {
 
     //     // TODO - get signer
     //     // use signer.sign(self)
@@ -67,9 +102,9 @@ impl MutableTransaction {
     // }
 }
 
-#[derive(Clone, Debug)]
-#[wasm_bindgen]
-pub struct XSignableTransaction {}
+// #[derive(Clone, Debug)]
+// #[wasm_bindgen]
+// pub struct XSignableTransaction {}
 
 // type txs = tx::SignableTransaxtion;
 
@@ -147,7 +182,7 @@ fn test_sign() {
         },
         UtxoEntry { amount: 300, script_public_key: ScriptPublicKey::new(0, script_pub_key), block_daa_score: 0, is_coinbase: false },
     ];
-    let signed_tx = sign(tx::MutableTransaction::with_entries(unsigned_tx, entries), secret_key.secret_bytes());
+    let signed_tx = sign(tx::MutableTransaction::with_entries(unsigned_tx, entries), vec![secret_key.secret_bytes()]);
     let _populated_tx = signed_tx.as_verifiable();
     // assert_eq!(tv.check_scripts(&populated_tx), Ok(()));
     // assert_eq!(TransactionValidator::check_sig_op_counts(&populated_tx), Ok(()));
