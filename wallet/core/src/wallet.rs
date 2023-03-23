@@ -6,16 +6,30 @@ use kaspa_notify::{
 };
 use kaspa_rpc_core::{api::rpc::RpcApi, notify::connection::ChannelConnection, Notification};
 use kaspa_wrpc_client::{KaspaRpcClient, NotificationMode, WrpcEncoding};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 #[allow(unused_imports)]
 use workflow_core::channel::{Channel, Receiver};
+use wasm_bindgen::prelude::*;
 
 #[derive(Clone)]
-pub struct Wallet {
-    pub rpc: Arc<KaspaRpcClient>,
+pub struct Inner {
+    // TODO - replace with Vec<dyn WalletGenerator>
     hd_wallet: WalletGeneratorV1,
     listener_id: ListenerId,
     notification_receiver: Receiver<Notification>,
+}
+
+#[derive(Clone)]
+#[wasm_bindgen]
+pub struct Wallet {
+    #[wasm_bindgen(skip)]
+    pub rpc: Arc<KaspaRpcClient>,
+    inner: Arc<Mutex<Inner>>,
+    // pub rpc: Arc<KaspaRpcClient>,
+    // // TODO - replace with Vec<dyn WalletGenerator>
+    // hd_wallet: WalletGeneratorV1,
+    // listener_id: ListenerId,
+    // notification_receiver: Receiver<Notification>,
 }
 
 impl Wallet {
@@ -44,16 +58,18 @@ impl Wallet {
 
         let wallet = Wallet {
             rpc,
-            hd_wallet: WalletGeneratorV1::from_master_xprv(master_xprv, false, 0).await?,
-            notification_receiver,
-            listener_id,
+            inner : Arc::new(Mutex::new(Inner {
+                hd_wallet: WalletGeneratorV1::from_master_xprv(master_xprv, false, 0).await?,
+                notification_receiver,
+                listener_id,
+            }))
         };
 
         Ok(wallet)
     }
 
     pub fn rpc(&self) -> Arc<KaspaRpcClient> {
-        self.rpc.clone()
+        self.inner.rpc.clone()
     }
 
     // intended for starting async management tasks
@@ -62,33 +78,33 @@ impl Wallet {
         self.rpc.connect_as_task()?;
         Ok(())
     }
-
+    
     // intended for stopping async management task
     pub async fn stop(self: &Arc<Wallet>) -> Result<()> {
         self.rpc.stop().await?;
         Ok(())
     }
-
+    
     pub fn listener_id(&self) -> ListenerId {
-        self.listener_id
+        self.inner.lock().unwrap().listener_id
     }
-
+    
     pub fn notification_channel_receiver(&self) -> Receiver<Notification> {
-        self.notification_receiver.clone()
+        self.inner.lock().unwrap().notification_receiver.clone()
     }
-
+    
     // ~~~
-
+    
     pub async fn get_info(&self) -> Result<String> {
         let v = self.rpc.get_info().await?;
         Ok(format!("{v:#?}").replace('\n', "\r\n"))
     }
-
+    
     pub async fn subscribe_daa_score(&self) -> Result<()> {
         self.rpc.start_notify(self.listener_id(), Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
         Ok(())
     }
-
+    
     pub async fn unsubscribe_daa_score(&self) -> Result<()> {
         self.rpc.stop_notify(self.listener_id(), Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
         Ok(())
@@ -119,7 +135,7 @@ impl Wallet {
     }
 
     pub async fn new_address(self: &Arc<Wallet>) -> Result<String> {
-        let address = self.hd_wallet.receive_wallet().new_address().await?;
+        let address = self.inner.lock().unwrap().hd_wallet.receive_wallet().new_address().await?;
         Ok(address.into())
         //Ok("new_address".to_string())
     }
