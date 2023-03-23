@@ -8,6 +8,7 @@ use workflow_core::channel::*;
 use workflow_log::*;
 use workflow_terminal::Terminal;
 pub use workflow_terminal::{parse, Cli, Options as TerminalOptions, Result as TerminalResult, TargetElement as TerminalTarget};
+
 struct WalletCli {
     term: Arc<Mutex<Option<Arc<Terminal>>>>,
     wallet: Arc<Wallet>,

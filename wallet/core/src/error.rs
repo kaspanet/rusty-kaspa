@@ -1,6 +1,8 @@
 use kaspa_bip32::Error as BIP32Error;
 use kaspa_rpc_core::RpcError as KaspaRpcError;
 use kaspa_wrpc_client::error::Error as KaspaWorkflowRpcError;
+use std::sync::PoisonError;
+use wasm_bindgen::JsValue;
 use workflow_rpc::client::error::Error as RpcError;
 
 use thiserror::Error;
@@ -21,4 +23,22 @@ pub enum Error {
 
     #[error("BIP32 error: {0}")]
     BIP32Error(#[from] BIP32Error),
+
+    #[error("Decoding error: {0}")]
+    Decode(#[from] core::array::TryFromSliceError),
+
+    #[error("PoisonError error: {0}")]
+    PoisonError(String),
+}
+
+impl From<Error> for JsValue {
+    fn from(value: Error) -> Self {
+        JsValue::from(value.to_string())
+    }
+}
+
+impl<T> From<PoisonError<T>> for Error {
+    fn from(err: PoisonError<T>) -> Self {
+        Self::PoisonError(format!("{err:?}"))
+    }
 }

@@ -11,6 +11,7 @@ borsh.workspace = true
 serde.workspace = true
 smallvec.workspace = true
 thiserror.workspace = true
+wasm-bindgen.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true

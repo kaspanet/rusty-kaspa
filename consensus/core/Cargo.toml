@@ -23,6 +23,7 @@ cfg-if.workspace = true
 addresses.workspace = true
 getrandom.workspace = true
 txscript-errors.workspace = true
+async-trait.workspace = true
 
 kaspa-core.workspace = true
 serde_json.workspace = true

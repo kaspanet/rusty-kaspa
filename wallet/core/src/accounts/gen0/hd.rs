@@ -4,17 +4,19 @@ use kaspa_bip32::{
     types::*, AddressType, ChildNumber, ExtendedKey, ExtendedKeyAttrs, ExtendedPrivateKey, ExtendedPublicKey, Prefix, PrivateKey,
     PublicKey, SecretKey, SecretKeyExt,
 };
-use consensus_core::wasm::{Generator,GeneratorT,WalletGeneratorT};
+//use consensus_core::wasm::{Generator,GeneratorT,WalletAccountTrait};
 // use kaspa_wallet_core::generators::Generator;
+use crate::{accounts::account::*, result::Result};
+use async_trait::async_trait;
 use ripemd::Ripemd160;
 use sha2::{Digest, Sha256};
-use std::{fmt::Debug, str::FromStr};
-use zeroize::Zeroizing;
+use std::{fmt::Debug, str::FromStr, sync::Arc};
 use wasm_bindgen::prelude::*;
+use zeroize::Zeroizing;
 
 #[derive(Clone)]
 #[wasm_bindgen]
-pub struct GeneratorV0 {
+pub struct AddressGeneratorV0 {
     /// Derived private key
     private_key: SecretKey,
 
@@ -27,10 +29,10 @@ pub struct GeneratorV0 {
     hmac: HmacSha512,
 }
 
-impl GeneratorV0 {
+impl AddressGeneratorV0 {
     pub async fn derive_address(&self, index: u32) -> Result<Address> {
         let (private_key, _) =
-            WalletGeneratorV0::derive_private_key(&self.private_key, ChildNumber::new(index, true)?, self.hmac.clone())?;
+            WalletAccountV0::derive_private_key(&self.private_key, ChildNumber::new(index, true)?, self.hmac.clone())?;
 
         let pubkey = &private_key.get_public_key().to_bytes()[1..];
         let address = Address::new(AddressPrefix::Mainnet, Version::PubKey, pubkey);
@@ -52,64 +54,72 @@ impl GeneratorV0 {
     }
 }
 
-impl From<&GeneratorV0> for ExtendedPublicKey<<SecretKey as PrivateKey>::PublicKey> {
-    fn from(inner: &GeneratorV0) -> ExtendedPublicKey<<SecretKey as PrivateKey>::PublicKey> {
+impl From<&AddressGeneratorV0> for ExtendedPublicKey<<SecretKey as PrivateKey>::PublicKey> {
+    fn from(inner: &AddressGeneratorV0) -> ExtendedPublicKey<<SecretKey as PrivateKey>::PublicKey> {
         ExtendedPublicKey { public_key: inner.private_key().get_public_key(), attrs: inner.attrs().clone() }
     }
 }
 
-impl GeneratorT for GeneratorV0 {
-    // generators
-}
+#[async_trait]
+impl AddressGeneratorTrait for AddressGeneratorV0 {
+    async fn new_address(&self) -> Result<Address> {
+        self.set_index(self.index()? + 1)?;
+        self.current_address().await
+    }
 
-#[wasm_bindgen]
-impl GeneratorV0 {
-    #[wasm_bindgen(constructor)]
-    pub fn constructor(js_value : JsValue) -> Generator {
+    fn index(&self) -> Result<u32> {
+        todo!() //Ok(*self.index.lock()?)
+    }
 
-        todo!();
+    fn set_index(&self, _index: u32) -> Result<()> {
+        todo!() //*self.index.lock()? = index;
+                //Ok(())
+    }
 
-        // FIXME - handle arguments
-        // let generator = GeneratorV0::default();
-        //  {
-            // private_key: js_value.into(),
-            // attrs: ExtendedKeyAttrs::default(),
-            // fingerprint: KeyFingerprint::default(),
-            // hmac: HmacSha512::default(),
-        // };
+    async fn current_address(&self) -> Result<Address> {
+        todo!()
+        // let index = self.index()?;
+        // let address = self.derive_address(index).await?;
 
-        // Generator::new(Box::new(generator))
-
+        // Ok(address)
     }
 }
 
+// #[wasm_bindgen]
+// impl AddressGeneratorV0 {
+//     #[wasm_bindgen(constructor)]
+//     pub fn constructor(_js_value : JsValue) -> Generator {
+
+//         todo!();
+
+//         // FIXME - handle arguments
+//         // let generator = GeneratorV0::default();
+//         //  {
+//             // private_key: js_value.into(),
+//             // attrs: ExtendedKeyAttrs::default(),
+//             // fingerprint: KeyFingerprint::default(),
+//             // hmac: HmacSha512::default(),
+//         // };
+
+//         // Generator::new(Box::new(generator))
+
+//     }
+// }
+
 #[derive(Clone)]
 #[wasm_bindgen]
-pub struct WalletGeneratorV0 {
+pub struct WalletAccountV0 {
     /// Derived private key
     private_key: SecretKey,
 
     /// Extended key attributes.
     attrs: ExtendedKeyAttrs,
 
-    receive_wallet: GeneratorV0,
-    change_wallet: GeneratorV0,
+    receive_wallet: AddressGeneratorV0,
+    change_wallet: AddressGeneratorV0,
 }
 
-impl WalletGeneratorV0 {
-    pub async fn from_str(xpriv: &str) -> Result<Self> {
-        let xpriv_key = ExtendedPrivateKey::<SecretKey>::from_str(xpriv)?;
-        let attrs = xpriv_key.attrs();
-
-        let receive_wallet = Self::derive_wallet(*xpriv_key.private_key(), attrs.clone(), AddressType::Receive).await?;
-
-        let change_wallet = Self::derive_wallet(*xpriv_key.private_key(), attrs.clone(), AddressType::Change).await?;
-
-        let wallet = Self { private_key: *xpriv_key.private_key(), attrs: attrs.clone(), receive_wallet, change_wallet };
-
-        Ok(wallet)
-    }
-
+impl WalletAccountV0 {
     #[allow(dead_code)]
     pub async fn derive_address(&self, address_type: AddressType, index: u32) -> Result<Address> {
         let address = match address_type {
@@ -137,7 +147,7 @@ impl WalletGeneratorV0 {
         mut private_key: SecretKey,
         mut attrs: ExtendedKeyAttrs,
         address_type: AddressType,
-    ) -> Result<GeneratorV0> {
+    ) -> Result<AddressGeneratorV0> {
         let address_path = format!("44'/972/0'/{}'", address_type.index());
         let children = address_path.split('/');
         for child in children {
@@ -152,7 +162,7 @@ impl WalletGeneratorV0 {
 
         let hmac = Self::create_hmac(&private_key, &attrs, true)?;
 
-        Ok(GeneratorV0 { private_key, attrs, fingerprint, hmac })
+        Ok(AddressGeneratorV0 { private_key, attrs, fingerprint, hmac })
     }
 
     pub async fn derive_child(
@@ -260,13 +270,13 @@ impl WalletGeneratorV0 {
     }
 }
 
-impl From<&WalletGeneratorV0> for ExtendedPublicKey<<SecretKey as PrivateKey>::PublicKey> {
-    fn from(hd_wallet: &WalletGeneratorV0) -> ExtendedPublicKey<<SecretKey as PrivateKey>::PublicKey> {
+impl From<&WalletAccountV0> for ExtendedPublicKey<<SecretKey as PrivateKey>::PublicKey> {
+    fn from(hd_wallet: &WalletAccountV0) -> ExtendedPublicKey<<SecretKey as PrivateKey>::PublicKey> {
         ExtendedPublicKey { public_key: hd_wallet.private_key().get_public_key(), attrs: hd_wallet.attrs().clone() }
     }
 }
 
-impl Debug for WalletGeneratorV0 {
+impl Debug for WalletAccountV0 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("HDWallet")
             .field("depth", &self.attrs.depth)
@@ -278,6 +288,61 @@ impl Debug for WalletGeneratorV0 {
     }
 }
 
-impl WalletGeneratorT for WalletGeneratorV0 {
-    // generators
+#[async_trait]
+impl WalletAccountTrait for WalletAccountV0 {
+    async fn from_master_xprv(xprv: &str, _is_multisig: bool, _account_index: u64) -> Result<Self> {
+        let xpriv_key = ExtendedPrivateKey::<SecretKey>::from_str(xprv)?;
+        let attrs = xpriv_key.attrs();
+
+        let receive_wallet = Self::derive_wallet(*xpriv_key.private_key(), attrs.clone(), AddressType::Receive).await?;
+
+        let change_wallet = Self::derive_wallet(*xpriv_key.private_key(), attrs.clone(), AddressType::Change).await?;
+
+        let wallet = Self { private_key: *xpriv_key.private_key(), attrs: attrs.clone(), receive_wallet, change_wallet };
+
+        Ok(wallet)
+    }
+
+    async fn from_extended_public_key_str(_xpub: &str) -> Result<Self> {
+        todo!()
+    }
+
+    async fn from_extended_public_key(_extended_public_key: ExtendedPublicKey<secp256k1::PublicKey>) -> Result<Self> {
+        todo!()
+    }
+
+    fn receive_wallet(&self) -> Arc<dyn AddressGeneratorTrait> {
+        todo!()
+    }
+    fn change_wallet(&self) -> Arc<dyn AddressGeneratorTrait> {
+        todo!()
+    }
+
+    #[inline(always)]
+    async fn derive_receive_address(&self, _index: u32) -> Result<Address> {
+        // let address = self.receive_wallet.derive_address(index).await?;
+        // Ok(address)
+        todo!()
+    }
+
+    #[inline(always)]
+    async fn derive_change_address(&self, _index: u32) -> Result<Address> {
+        // let address = self.change_wallet.derive_address(index).await?;
+        // Ok(address)
+        todo!()
+    }
+
+    #[inline(always)]
+    async fn new_receive_address(&self) -> Result<Address> {
+        // let address = self.receive_wallet.new_address().await?;
+        // Ok(address)
+        todo!()
+    }
+
+    #[inline(always)]
+    async fn new_change_address(&self) -> Result<Address> {
+        // let address = self.change_wallet.new_address().await?;
+        // Ok(address)
+        todo!()
+    }
 }

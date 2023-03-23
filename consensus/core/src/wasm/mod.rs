@@ -20,51 +20,24 @@ use core::str::FromStr;
 use itertools::Itertools;
 use secp256k1::Secp256k1;
 use std::iter::once;
-use std::sync::{Arc,Mutex};
+use std::sync::{Arc, Mutex};
 use wasm_bindgen::prelude::*;
 
 use crate::tx::SignableTransaction;
 
-use signer::Signer;
-
-// +-------------------------------------------------------
-// |
-// |  Temporary scaffolding for testing
-// |
-// +-------------------------------------------------------
-
-
-pub trait GeneratorT {}
-
-pub trait WalletGeneratorT {}
-
-#[wasm_bindgen]
-pub struct Generator {
-    inner : Arc<Mutex<Box<dyn GeneratorT>>>,
-}
-
-impl Generator {
-    pub fn new(inner : Box<dyn GeneratorT>) -> Generator {
-        Generator {
-            inner : Arc::new(Mutex::new(inner)),
-        }
-    }
-}
+//use signer::Signer as _Signer;
 
 // impl Signer for Generator {}
-
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
 pub struct UtxoEntryList(Arc<Mutex<Vec<UtxoEntry>>>);
 
-
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
 pub struct MutableTransaction {
     //inner : Arc<tx::MutableTransaction<Transaction>>,
-
-    tx : Arc<Mutex<tx::Transaction>>,
+    tx: Arc<Mutex<tx::Transaction>>,
     /// Partially filled UTXO entry data
     #[wasm_bindgen(getter_with_clone)]
     pub entries: UtxoEntryList, // Vec<Option<UtxoEntry>>,
@@ -72,16 +45,11 @@ pub struct MutableTransaction {
     pub calculated_fee: Option<u64>,
     /// Populated mass
     pub calculated_mass: Option<u64>,
-
-
 }
 
 #[wasm_bindgen]
 impl MutableTransaction {
-
-    fn constructor() {
-
-    }
+    fn constructor() {}
 
     // fn sign(js_value: JsValue) -> MutableTransaction {
 
@@ -101,11 +69,9 @@ impl MutableTransaction {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct XSignableTransaction  {
-}
+pub struct XSignableTransaction {}
 
 // type txs = tx::SignableTransaxtion;
-
 
 // pub fn _sign(tx : &MutableTransaction, entries : &UtxoEntryList, signer : dyn Signer) -> MutableTransaction
 

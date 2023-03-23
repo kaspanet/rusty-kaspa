@@ -1,14 +1,14 @@
 extern crate self as kaspa_wallet_core;
 
+pub mod accounts;
 pub mod error;
-pub mod generators;
 pub mod result;
 pub mod storage;
 pub mod wallet;
 pub mod wrapper;
 
+pub use accounts::dummy_address;
 pub use addresses::Address;
-pub use generators::dummy_address;
 pub use result::Result;
 pub use wallet::Wallet;
 pub use wrapper::WalletWrapper;

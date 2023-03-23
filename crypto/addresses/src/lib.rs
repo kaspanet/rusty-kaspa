@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use std::fmt::{Display, Formatter};
 use thiserror::Error;
+use wasm_bindgen::prelude::*;
 
 mod bech32;
 
@@ -89,6 +90,7 @@ impl TryFrom<&str> for Prefix {
     PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema,
 )]
 #[repr(u8)]
+#[wasm_bindgen]
 pub enum Version {
     /// PubKey addresses always have the version byte set to 0
     PubKey = 0,
@@ -131,9 +133,12 @@ pub const PAYLOAD_VECTOR_SIZE: usize = 36;
 pub type PayloadVec = SmallVec<[u8; PAYLOAD_VECTOR_SIZE]>;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Hash, Serialize, Deserialize)]
+#[wasm_bindgen(inspectable)]
 pub struct Address {
+    #[wasm_bindgen(skip)]
     pub prefix: Prefix,
     pub version: Version,
+    #[wasm_bindgen(skip)]
     pub payload: PayloadVec,
 }
 
