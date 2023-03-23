@@ -1,13 +1,13 @@
-use consensus_core::{
+use futures::future::join_all;
+use indexmap::{map::Entry::Occupied, IndexMap};
+use itertools::Itertools;
+use kaspa_consensus_core::{
     api::{BlockValidationFuture, ConsensusApi},
     block::Block,
     blockstatus::BlockStatus,
 };
-use futures::future::join_all;
-use hashes::Hash;
-use indexmap::{map::Entry::Occupied, IndexMap};
-use itertools::Itertools;
 use kaspa_core::{debug, info, warn};
+use kaspa_hashes::Hash;
 use kaspa_utils::option::OptionExtensions;
 use rand::Rng;
 use std::{
@@ -190,7 +190,7 @@ mod queue {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use consensus_core::errors::block::BlockProcessResult;
+    use kaspa_consensus_core::errors::block::BlockProcessResult;
     use std::cell::RefCell;
 
     #[derive(Default)]

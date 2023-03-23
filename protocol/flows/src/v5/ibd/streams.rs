@@ -2,7 +2,7 @@
 //! Logical stream abstractions used throughout the IBD negotiation protocols
 //!
 
-use consensus_core::{
+use kaspa_consensus_core::{
     header::Header,
     tx::{TransactionOutpoint, UtxoEntry},
 };

@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
-use consensus_core::BlockHashSet;
-use database::prelude::StoreResult;
-use database::prelude::DB;
-use database::prelude::{BatchDbWriter, CachedDbItem, DirectDbWriter};
-use hashes::Hash;
+use kaspa_consensus_core::BlockHashSet;
+use kaspa_database::prelude::StoreResult;
+use kaspa_database::prelude::DB;
+use kaspa_database::prelude::{BatchDbWriter, CachedDbItem, DirectDbWriter};
+use kaspa_hashes::Hash;
 use rocksdb::WriteBatch;
 
 /// Reader API for `TipsStore`.

@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use database::prelude::{CachedDbItem, DirectDbWriter, StoreError, StoreResult, DB};
+use kaspa_database::prelude::{CachedDbItem, DirectDbWriter, StoreError, StoreResult, DB};
 
-use consensus_core::BlockHashSet;
+use kaspa_consensus_core::BlockHashSet;
 
 /// Reader API for `UtxoIndexTipsStore`.
 pub trait UtxoIndexTipsStoreReader {

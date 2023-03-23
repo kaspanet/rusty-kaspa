@@ -1,4 +1,4 @@
-use consensus_core::{
+use kaspa_consensus_core::{
     api::ConsensusApi,
     block::BlockTemplate,
     coinbase::MinerData,

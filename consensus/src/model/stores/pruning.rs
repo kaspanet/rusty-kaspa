@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-use database::prelude::StoreResult;
-use database::prelude::DB;
-use database::prelude::{BatchDbWriter, CachedDbItem, DirectDbWriter};
-use hashes::Hash;
+use kaspa_database::prelude::StoreResult;
+use kaspa_database::prelude::DB;
+use kaspa_database::prelude::{BatchDbWriter, CachedDbItem, DirectDbWriter};
+use kaspa_hashes::Hash;
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
 

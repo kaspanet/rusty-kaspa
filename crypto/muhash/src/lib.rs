@@ -5,8 +5,8 @@ pub mod u3072;
 mod u3072;
 
 use crate::u3072::U3072;
-use hashes::{Hash, Hasher, HasherBase, MuHashElementHash, MuHashFinalizeHash};
-use math::Uint3072;
+use kaspa_hashes::{Hash, Hasher, HasherBase, MuHashElementHash, MuHashFinalizeHash};
+use kaspa_math::Uint3072;
 use rand_chacha::rand_core::{RngCore, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use serde::{Deserialize, Serialize};
@@ -187,7 +187,7 @@ impl Default for MuHash {
 mod tests {
     use crate::OverflowError;
     use crate::{MuHash, EMPTY_MUHASH, U3072};
-    use hashes::Hash;
+    use kaspa_hashes::Hash;
     use rand::{Rng, SeedableRng};
     use rand_chacha::ChaCha8Rng;
 

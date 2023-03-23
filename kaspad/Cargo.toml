@@ -8,12 +8,12 @@ include.workspace = true
 license.workspace = true
 
 [dependencies]
-hashes.workspace = true
+kaspa-hashes.workspace = true
 kaspa-core.workspace = true
-consensus-core.workspace = true
-consensus.workspace = true
-consensus-notify.workspace = true
-database.workspace = true
+kaspa-consensus-core.workspace = true
+kaspa-consensus.workspace = true
+kaspa-consensus-notify.workspace = true
+kaspa-database.workspace = true
 kaspa-index-processor.workspace = true
 utxoindex.workspace = true
 async-channel.workspace = true

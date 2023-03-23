@@ -1,12 +1,12 @@
 use std::ops::Deref;
 use std::sync::Arc;
 
-use consensus_core::blockhash;
+use kaspa_consensus_core::blockhash;
 use parking_lot::RwLock;
 
 use crate::model::stores::reachability::ReachabilityStoreReader;
 use crate::processes::reachability::{inquirer, Result};
-use hashes::Hash;
+use kaspa_hashes::Hash;
 
 pub trait ReachabilityService {
     fn is_chain_ancestor_of(&self, this: Hash, queried: Hash) -> bool;

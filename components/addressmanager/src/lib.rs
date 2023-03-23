@@ -4,8 +4,8 @@ extern crate self as address_manager;
 
 use std::{collections::HashSet, net::IpAddr, sync::Arc};
 
-use database::prelude::{StoreResultExtensions, DB};
 use kaspa_core::time::unix_now;
+use kaspa_database::prelude::{StoreResultExtensions, DB};
 use parking_lot::Mutex;
 
 use stores::banned_address_store::{BannedAddressesStore, BannedAddressesStoreReader, ConnectionBanTimestamp, DbBannedAddressesStore};
@@ -102,8 +102,8 @@ mod address_store_with_cache {
         sync::Arc,
     };
 
-    use database::prelude::DB;
     use itertools::Itertools;
+    use kaspa_database::prelude::DB;
     use rand::{
         distributions::{WeightedError, WeightedIndex},
         prelude::Distribution,

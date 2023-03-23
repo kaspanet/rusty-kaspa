@@ -1,4 +1,4 @@
-use consensus_core::block::BlockTemplate;
+use kaspa_consensus_core::block::BlockTemplate;
 use kaspa_core::time::unix_now;
 use std::sync::Arc;
 

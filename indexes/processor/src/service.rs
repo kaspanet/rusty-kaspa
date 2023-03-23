@@ -1,5 +1,5 @@
 use crate::{processor::Processor, IDENT};
-use consensus_notify::{
+use kaspa_consensus_notify::{
     connection::ConsensusChannelConnection, notification::Notification as ConsensusNotification, notifier::ConsensusNotifier,
 };
 use kaspa_core::{

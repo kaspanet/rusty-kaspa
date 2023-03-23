@@ -1,4 +1,4 @@
-use consensus_core::{
+use kaspa_consensus_core::{
     coinbase::*,
     errors::coinbase::{CoinbaseError, CoinbaseResult},
     subnets,
@@ -228,7 +228,7 @@ const SUBSIDY_BY_MONTH_TABLE: [u64; 426] = [
 mod tests {
     use super::*;
     use crate::params::MAINNET_PARAMS;
-    use consensus_core::tx::scriptvec;
+    use kaspa_consensus_core::tx::scriptvec;
 
     #[test]
     fn subsidy_test() {

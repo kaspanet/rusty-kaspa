@@ -9,9 +9,9 @@ use crate::{
     SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK,
 };
 use blake2b_simd::Params;
-use consensus_core::hashing::sighash_type::SigHashType;
-use consensus_core::tx::VerifiableTransaction;
 use core::cmp::{max, min};
+use kaspa_consensus_core::hashing::sighash_type::SigHashType;
+use kaspa_consensus_core::tx::VerifiableTransaction;
 use sha2::{Digest, Sha256};
 use std::fmt::{Debug, Formatter};
 
@@ -925,8 +925,8 @@ mod test {
     use crate::caches::Cache;
     use crate::opcodes::{OpCodeExecution, OpCodeImplementation};
     use crate::{opcodes, TxScriptEngine, TxScriptError};
-    use consensus_core::hashing::sighash::SigHashReusedValues;
-    use consensus_core::tx::PopulatedTransaction;
+    use kaspa_consensus_core::hashing::sighash::SigHashReusedValues;
+    use kaspa_consensus_core::tx::PopulatedTransaction;
 
     #[test]
     fn test_opcode_disabled() {

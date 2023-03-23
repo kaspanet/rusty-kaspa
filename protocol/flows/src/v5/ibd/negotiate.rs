@@ -1,9 +1,9 @@
 use std::time::Duration;
 
 use super::IbdFlow;
-use consensus_core::{api::DynConsensus, blockstatus::BlockStatus};
-use hashes::Hash;
+use kaspa_consensus_core::{api::DynConsensus, blockstatus::BlockStatus};
 use kaspa_core::{debug, warn};
+use kaspa_hashes::Hash;
 use p2p_lib::{
     common::{ProtocolError, DEFAULT_TIMEOUT},
     dequeue_with_timeout, make_message,

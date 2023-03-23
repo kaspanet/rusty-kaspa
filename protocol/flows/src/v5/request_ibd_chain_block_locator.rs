@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use consensus_core::errors::{consensus::ConsensusError, sync::SyncManagerError};
+use kaspa_consensus_core::errors::{consensus::ConsensusError, sync::SyncManagerError};
 
 use p2p_lib::{
     common::ProtocolError,

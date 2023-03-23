@@ -1,7 +1,7 @@
 use addressmanager::AddressManager;
 use connectionmanager::ConnectionManager;
-use consensus_core::api::DynConsensus;
-use consensus_core::config::Config;
+use kaspa_consensus_core::api::DynConsensus;
+use kaspa_consensus_core::config::Config;
 use kaspa_core::{
     task::service::{AsyncService, AsyncServiceFuture},
     trace,

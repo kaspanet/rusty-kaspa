@@ -4,5 +4,5 @@ pub mod store_names {
 }
 
 // Re-exports constants from consensus core for internal crate usage
-pub use consensus_core::config::constants::*;
-pub(crate) use consensus_core::constants::*;
+pub use kaspa_consensus_core::config::constants::*;
+pub(crate) use kaspa_consensus_core::constants::*;

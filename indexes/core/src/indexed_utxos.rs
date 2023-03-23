@@ -1,4 +1,4 @@
-use consensus_core::tx::{ScriptPublicKey, TransactionOutpoint, UtxoEntry};
+use kaspa_consensus_core::tx::{ScriptPublicKey, TransactionOutpoint, UtxoEntry};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 

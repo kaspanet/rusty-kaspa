@@ -7,7 +7,7 @@ use crate::{
     model::stores::{block_transactions::BlockTransactionsStoreReader, daa::DaaStoreReader, ghostdag::GhostdagData},
     processes::transaction_validator::errors::{TxResult, TxRuleError},
 };
-use consensus_core::{
+use kaspa_consensus_core::{
     coinbase::*,
     hashing,
     header::Header,
@@ -19,10 +19,10 @@ use consensus_core::{
     },
     BlockHashMap, BlockHashSet, HashMapCustomHasher,
 };
-use hashes::Hash;
 use kaspa_core::{info, trace};
+use kaspa_hashes::Hash;
+use kaspa_muhash::MuHash;
 use kaspa_utils::refs::Refs;
-use muhash::MuHash;
 
 use rayon::prelude::*;
 use std::{iter::once, ops::Deref};
@@ -123,7 +123,7 @@ impl VirtualStateProcessor {
         trace!("correct commitment: {}, {}", header.hash, expected_commitment);
 
         // Verify header accepted_id_merkle_root
-        let expected_accepted_id_merkle_root = merkle::calc_merkle_root(ctx.accepted_tx_ids.iter().copied());
+        let expected_accepted_id_merkle_root = kaspa_merkle::calc_merkle_root(ctx.accepted_tx_ids.iter().copied());
         if expected_accepted_id_merkle_root != header.accepted_id_merkle_root {
             return Err(BadAcceptedIDMerkleRoot(header.hash, header.accepted_id_merkle_root, expected_accepted_id_merkle_root));
         }

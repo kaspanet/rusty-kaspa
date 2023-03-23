@@ -1,13 +1,13 @@
 use std::sync::Arc;
 
-use consensus_core::{
+use kaspa_consensus_core::{
     coinbase::BlockRewardData, tx::TransactionId, utxo::utxo_diff::UtxoDiff, BlockHashMap, BlockHashSet, HashMapCustomHasher,
 };
-use database::prelude::StoreResult;
-use database::prelude::DB;
-use database::prelude::{BatchDbWriter, CachedDbItem, DirectDbWriter};
-use hashes::Hash;
-use muhash::MuHash;
+use kaspa_database::prelude::StoreResult;
+use kaspa_database::prelude::DB;
+use kaspa_database::prelude::{BatchDbWriter, CachedDbItem, DirectDbWriter};
+use kaspa_hashes::Hash;
+use kaspa_muhash::MuHash;
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
 

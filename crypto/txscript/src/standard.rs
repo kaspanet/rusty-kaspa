@@ -1,9 +1,9 @@
-use addresses::{Address, Prefix, Version};
 use blake2b_simd::Params;
-use consensus_core::tx::{ScriptPublicKey, ScriptVec};
+use kaspa_addresses::{Address, Prefix, Version};
+use kaspa_consensus_core::tx::{ScriptPublicKey, ScriptVec};
+use kaspa_txscript_errors::TxScriptError;
 use smallvec::SmallVec;
 use std::iter::once;
-use txscript_errors::TxScriptError;
 
 use crate::{
     opcodes::codes::{OpBlake2b, OpCheckSig, OpCheckSigECDSA, OpData32, OpData33, OpEqual},
@@ -79,7 +79,7 @@ pub mod test_helpers {
         opcodes::codes::{OpPushData1, OpTrue},
         MAX_TX_IN_SEQUENCE_NUM,
     };
-    use consensus_core::{
+    use kaspa_consensus_core::{
         constants::TX_VERSION,
         subnets::SUBNETWORK_ID_NATIVE,
         tx::{Transaction, TransactionInput, TransactionOutpoint, TransactionOutput},
@@ -108,7 +108,7 @@ pub mod test_helpers {
         Transaction::new(TX_VERSION, vec![input], vec![output], 0, SUBNETWORK_ID_NATIVE, 0, vec![])
     }
 
-    // TODO: remove this function and use txscript::standard::pay_to_script_hash_signature_script when available
+    // TODO: remove this function and use kaspa_txscript::standard::pay_to_script_hash_signature_script when available
     pub fn pay_to_script_hash_signature_script(redeem_script: Vec<u8>, signature: Vec<u8>) -> Vec<u8> {
         // This is just a hack until we have ScriptBuilder
         // For now, we just suppose that redeem_script len is in the u8 range

@@ -47,7 +47,7 @@ use crate::{
         transaction_validator::TransactionValidator, traversal_manager::DagTraversalManager,
     },
 };
-use consensus_core::{
+use kaspa_consensus_core::{
     api::ConsensusApi,
     block::{Block, BlockTemplate},
     blockhash::BlockHashExtensions,
@@ -66,16 +66,16 @@ use consensus_core::{
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     BlockHashSet,
 };
-use consensus_notify::root::ConsensusNotificationRoot;
+use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 
 use crossbeam_channel::{unbounded as unbounded_crossbeam, Receiver as CrossbeamReceiver, Sender as CrossbeamSender};
-use database::prelude::StoreResultExtensions;
+use kaspa_database::prelude::StoreResultExtensions;
 // to avoid confusion with async_channel
 use futures_util::future::BoxFuture;
-use hashes::Hash;
 use itertools::Itertools;
 use kaspa_core::{core::Core, service::Service};
-use muhash::MuHash;
+use kaspa_hashes::Hash;
+use kaspa_muhash::MuHash;
 use parking_lot::RwLock;
 use std::{
     cmp::max,
@@ -776,7 +776,8 @@ impl ConsensusApi for Consensus {
 
     fn get_pruning_point_anticone_and_trusted_data(
         &self,
-    ) -> Arc<(Vec<Hash>, Vec<consensus_core::trusted::TrustedHeader>, Vec<consensus_core::trusted::TrustedGhostdagData>)> {
+    ) -> Arc<(Vec<Hash>, Vec<kaspa_consensus_core::trusted::TrustedHeader>, Vec<kaspa_consensus_core::trusted::TrustedGhostdagData>)>
+    {
         self.pruning_proof_manager.get_pruning_point_anticone_and_trusted_data()
     }
 

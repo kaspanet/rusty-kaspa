@@ -1,5 +1,5 @@
-use consensus_core::api::DynConsensus;
-use consensus_notify::notifier::ConsensusNotifier;
+use kaspa_consensus_core::api::DynConsensus;
+use kaspa_consensus_notify::notifier::ConsensusNotifier;
 use kaspa_core::{
     task::service::{AsyncService, AsyncServiceError, AsyncServiceFuture},
     trace,

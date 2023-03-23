@@ -1,5 +1,5 @@
-use addresses::Address;
-use consensus_core::tx::ScriptPublicKey;
+use kaspa_addresses::Address;
+use kaspa_consensus_core::tx::ScriptPublicKey;
 
 #[allow(dead_code)]
 /// Represents an [`Address`] and its matching [`ScriptPublicKey`] representation
@@ -40,7 +40,7 @@ impl From<ScriptPublicKey> for UtxoAddress {
 
 pub mod test_helpers {
     use super::*;
-    use addresses::{Prefix, Version};
+    use kaspa_addresses::{Prefix, Version};
 
     pub fn get_3_addresses(sorted: bool) -> Vec<Address> {
         let mut addresses = vec![

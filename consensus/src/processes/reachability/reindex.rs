@@ -1,7 +1,7 @@
 use super::{extensions::ReachabilityStoreIntervalExtensions, inquirer::get_next_chain_ancestor_unchecked, interval::Interval, *};
 use crate::model::stores::reachability::ReachabilityStore;
-use consensus_core::{blockhash::BlockHashExtensions, BlockHashMap, HashMapCustomHasher};
-use hashes::Hash;
+use kaspa_consensus_core::{blockhash::BlockHashExtensions, BlockHashMap, HashMapCustomHasher};
+use kaspa_hashes::Hash;
 use std::collections::VecDeque;
 
 /// A struct used during reindex operations. It represents a temporary context
@@ -488,7 +488,7 @@ mod tests {
         model::stores::reachability::{MemoryReachabilityStore, ReachabilityStoreReader},
         processes::reachability::interval::Interval,
     };
-    use consensus_core::blockhash;
+    use kaspa_consensus_core::blockhash;
 
     #[test]
     fn test_count_subtrees() {

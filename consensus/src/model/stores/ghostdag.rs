@@ -1,11 +1,11 @@
 use crate::processes::ghostdag::ordering::SortableBlock;
-use consensus_core::trusted::ExternalGhostdagData;
-use consensus_core::{blockhash::BlockHashes, BlueWorkType};
-use consensus_core::{BlockHashMap, BlockHasher, BlockLevel, HashMapCustomHasher};
-use database::prelude::StoreError;
-use database::prelude::DB;
-use database::prelude::{BatchDbWriter, CachedDbAccess, DbKey, DirectDbWriter};
-use hashes::Hash;
+use kaspa_consensus_core::trusted::ExternalGhostdagData;
+use kaspa_consensus_core::{blockhash::BlockHashes, BlueWorkType};
+use kaspa_consensus_core::{BlockHashMap, BlockHasher, BlockLevel, HashMapCustomHasher};
+use kaspa_database::prelude::StoreError;
+use kaspa_database::prelude::DB;
+use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DbKey, DirectDbWriter};
+use kaspa_hashes::Hash;
 
 use itertools::EitherOrBoth::{Both, Left, Right};
 use itertools::Itertools;
@@ -15,7 +15,7 @@ use std::iter::once;
 use std::{cell::RefCell, sync::Arc};
 
 /// Re-export for convenience
-pub use consensus_core::{HashKTypeMap, KType};
+pub use kaspa_consensus_core::{HashKTypeMap, KType};
 
 #[derive(Clone, Serialize, Deserialize, Default)]
 pub struct GhostdagData {
@@ -441,7 +441,7 @@ impl GhostdagStoreReader for MemoryGhostdagStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use consensus_core::BlockHashSet;
+    use kaspa_consensus_core::BlockHashSet;
 
     #[test]
     fn test_mergeset_iterators() {

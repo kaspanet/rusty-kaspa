@@ -3,11 +3,11 @@ use crate::{
     IDENT,
 };
 use async_trait::async_trait;
-use consensus_notify::{notification as consensus_notification, notification::Notification as ConsensusNotification};
 use futures::{
     future::FutureExt, // for `.fuse()`
     select,
 };
+use kaspa_consensus_notify::{notification as consensus_notification, notification::Notification as ConsensusNotification};
 use kaspa_core::trace;
 use kaspa_index_core::notification::{Notification, PruningPointUtxoSetOverrideNotification, UtxosChangedNotification};
 use kaspa_notify::{
@@ -148,13 +148,13 @@ impl Collector<Notification> for Processor {
 mod tests {
     use super::*;
     use async_channel::{unbounded, Receiver, Sender};
-    use consensus::{
+    use kaspa_consensus::{
         config::Config,
         consensus::test_consensus::{create_temp_db, TempDbLifetime, TestConsensus},
         params::DEVNET_PARAMS,
         test_helpers::*,
     };
-    use consensus_core::utxo::{utxo_collection::UtxoCollection, utxo_diff::UtxoDiff};
+    use kaspa_consensus_core::utxo::{utxo_collection::UtxoCollection, utxo_diff::UtxoDiff};
     use kaspa_notify::notifier::test_helpers::NotifyMock;
     use rand::{rngs::SmallRng, SeedableRng};
     use std::sync::Arc;

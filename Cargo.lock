@@ -3,23 +3,12 @@
 version = 3
 
 [[package]]
-name = "addresses"
-version = "0.1.0"
-dependencies = [
- "borsh",
- "criterion",
- "serde",
- "smallvec",
- "thiserror",
-]
-
-[[package]]
 name = "addressmanager"
 version = "0.1.0"
 dependencies = [
- "database",
  "itertools 0.10.5",
  "kaspa-core",
+ "kaspa-database",
  "parking_lot",
  "rand 0.8.5",
  "rocksdb",
@@ -634,88 +623,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "consensus"
-version = "0.1.0"
-dependencies = [
- "async-channel",
- "bincode",
- "consensus-core",
- "consensus-notify",
- "criterion",
- "crossbeam-channel",
- "database",
- "faster-hex",
- "flate2",
- "futures-util",
- "hashes",
- "indexmap",
- "itertools 0.10.5",
- "kaspa-core",
- "kaspa-notify",
- "kaspa-utils",
- "log",
- "math",
- "merkle",
- "muhash",
- "parking_lot",
- "pow",
- "rand 0.8.5",
- "rand_distr",
- "rayon",
- "rocksdb",
- "secp256k1",
- "serde",
- "serde_json",
- "smallvec",
- "tempfile",
- "thiserror",
- "tokio",
- "txscript",
- "txscript-errors",
-]
-
-[[package]]
-name = "consensus-core"
-version = "0.1.0"
-dependencies = [
- "addresses",
- "borsh",
- "cfg-if",
- "faster-hex",
- "futures-util",
- "getrandom 0.2.8",
- "hashes",
- "itertools 0.10.5",
- "math",
- "merkle",
- "muhash",
- "secp256k1",
- "serde",
- "smallvec",
- "thiserror",
- "txscript-errors",
-]
-
-[[package]]
-name = "consensus-notify"
-version = "0.1.0"
-dependencies = [
- "async-channel",
- "cfg-if",
- "consensus-core",
- "derive_more",
- "futures",
- "hashes",
- "kaspa-core",
- "kaspa-notify",
- "kaspa-utils",
- "log",
- "paste",
- "thiserror",
- "triggered",
-]
-
-[[package]]
 name = "console"
 version = "0.15.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -903,23 +810,6 @@ checksum = "bbcf33c2a618cbe41ee43ae6e9f2e48368cd9f9db2896f10167d8d762679f639"
 dependencies = [
  "nix",
  "windows-sys 0.45.0",
-]
-
-[[package]]
-name = "database"
-version = "0.1.0"
-dependencies = [
- "bincode",
- "faster-hex",
- "hashes",
- "indexmap",
- "itertools 0.10.5",
- "num_cpus",
- "parking_lot",
- "rand 0.8.5",
- "rocksdb",
- "serde",
- "thiserror",
 ]
 
 [[package]]
@@ -1300,23 +1190,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a9ee70c43aaf417c914396645a0fa852624801b24ebb7ae78fe8272889ac888"
 
 [[package]]
-name = "hashes"
-version = "0.1.0"
-dependencies = [
- "blake2b_simd",
- "borsh",
- "cc",
- "criterion",
- "faster-hex",
- "keccak",
- "once_cell",
- "rand 0.8.5",
- "serde",
- "sha2 0.10.6",
- "sha3 0.10.6",
-]
-
-[[package]]
 name = "heck"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1573,6 +1446,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "kaspa-addresses"
+version = "0.1.0"
+dependencies = [
+ "borsh",
+ "criterion",
+ "serde",
+ "smallvec",
+ "thiserror",
+]
+
+[[package]]
 name = "kaspa-bip32"
 version = "0.1.0"
 dependencies = [
@@ -1592,6 +1476,88 @@ dependencies = [
 ]
 
 [[package]]
+name = "kaspa-consensus"
+version = "0.1.0"
+dependencies = [
+ "async-channel",
+ "bincode",
+ "criterion",
+ "crossbeam-channel",
+ "faster-hex",
+ "flate2",
+ "futures-util",
+ "indexmap",
+ "itertools 0.10.5",
+ "kaspa-consensus-core",
+ "kaspa-consensus-notify",
+ "kaspa-core",
+ "kaspa-database",
+ "kaspa-hashes",
+ "kaspa-math",
+ "kaspa-merkle",
+ "kaspa-muhash",
+ "kaspa-notify",
+ "kaspa-pow",
+ "kaspa-txscript",
+ "kaspa-txscript-errors",
+ "kaspa-utils",
+ "log",
+ "parking_lot",
+ "rand 0.8.5",
+ "rand_distr",
+ "rayon",
+ "rocksdb",
+ "secp256k1",
+ "serde",
+ "serde_json",
+ "smallvec",
+ "tempfile",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
+name = "kaspa-consensus-core"
+version = "0.1.0"
+dependencies = [
+ "borsh",
+ "cfg-if",
+ "faster-hex",
+ "futures-util",
+ "getrandom 0.2.8",
+ "itertools 0.10.5",
+ "kaspa-addresses",
+ "kaspa-hashes",
+ "kaspa-math",
+ "kaspa-merkle",
+ "kaspa-muhash",
+ "kaspa-txscript-errors",
+ "secp256k1",
+ "serde",
+ "smallvec",
+ "thiserror",
+]
+
+[[package]]
+name = "kaspa-consensus-notify"
+version = "0.1.0"
+dependencies = [
+ "async-channel",
+ "cfg-if",
+ "derive_more",
+ "futures",
+ "kaspa-consensus-core",
+ "kaspa-core",
+ "kaspa-hashes",
+ "kaspa-notify",
+ "kaspa-utils",
+ "log",
+ "paste",
+ "thiserror",
+ "triggered",
+]
+
+[[package]]
 name = "kaspa-core"
 version = "0.1.0"
 dependencies = [
@@ -1606,6 +1572,23 @@ dependencies = [
  "tokio",
  "wasm-bindgen",
  "workflow-log",
+]
+
+[[package]]
+name = "kaspa-database"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "faster-hex",
+ "indexmap",
+ "itertools 0.10.5",
+ "kaspa-hashes",
+ "num_cpus",
+ "parking_lot",
+ "rand 0.8.5",
+ "rocksdb",
+ "serde",
+ "thiserror",
 ]
 
 [[package]]
@@ -1689,15 +1672,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "kaspa-hashes"
+version = "0.1.0"
+dependencies = [
+ "blake2b_simd",
+ "borsh",
+ "cc",
+ "criterion",
+ "faster-hex",
+ "keccak",
+ "once_cell",
+ "rand 0.8.5",
+ "serde",
+ "sha2 0.10.6",
+ "sha3 0.10.6",
+]
+
+[[package]]
 name = "kaspa-index-core"
 version = "0.1.0"
 dependencies = [
  "async-channel",
  "async-trait",
- "consensus-core",
  "derive_more",
  "futures",
- "hashes",
+ "kaspa-consensus-core",
+ "kaspa-hashes",
  "kaspa-notify",
  "kaspa-utils",
  "log",
@@ -1713,13 +1713,13 @@ version = "0.1.0"
 dependencies = [
  "async-channel",
  "async-trait",
- "consensus",
- "consensus-core",
- "consensus-notify",
  "derive_more",
  "futures",
- "hashes",
+ "kaspa-consensus",
+ "kaspa-consensus-core",
+ "kaspa-consensus-notify",
  "kaspa-core",
+ "kaspa-hashes",
  "kaspa-index-core",
  "kaspa-notify",
  "kaspa-utils",
@@ -1734,17 +1734,50 @@ dependencies = [
 ]
 
 [[package]]
+name = "kaspa-math"
+version = "0.1.0"
+dependencies = [
+ "borsh",
+ "criterion",
+ "faster-hex",
+ "malachite-base",
+ "malachite-nz",
+ "rand_chacha 0.3.1",
+ "serde",
+]
+
+[[package]]
+name = "kaspa-merkle"
+version = "0.1.0"
+dependencies = [
+ "kaspa-hashes",
+]
+
+[[package]]
+name = "kaspa-muhash"
+version = "0.1.0"
+dependencies = [
+ "criterion",
+ "kaspa-hashes",
+ "kaspa-math",
+ "rand 0.8.5",
+ "rand_chacha 0.3.1",
+ "rayon",
+ "serde",
+]
+
+[[package]]
 name = "kaspa-notify"
 version = "0.1.0"
 dependencies = [
- "addresses",
  "async-channel",
  "async-trait",
  "borsh",
- "consensus-core",
  "derive_more",
  "futures",
  "futures-util",
+ "kaspa-addresses",
+ "kaspa-consensus-core",
  "kaspa-core",
  "kaspa-utils",
  "log",
@@ -1759,27 +1792,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "kaspa-pow"
+version = "0.1.0"
+dependencies = [
+ "criterion",
+ "kaspa-consensus-core",
+ "kaspa-hashes",
+ "kaspa-math",
+]
+
+[[package]]
 name = "kaspa-rpc-core"
 version = "0.1.0"
 dependencies = [
- "addresses",
  "async-channel",
  "async-trait",
  "borsh",
  "cfg-if",
- "consensus-core",
- "consensus-notify",
  "derive_more",
  "faster-hex",
  "futures",
  "futures-util",
- "hashes",
+ "kaspa-addresses",
+ "kaspa-consensus-core",
+ "kaspa-consensus-notify",
  "kaspa-core",
+ "kaspa-hashes",
  "kaspa-index-core",
+ "kaspa-math",
  "kaspa-notify",
+ "kaspa-txscript",
  "kaspa-utils",
  "log",
- "math",
  "paste",
  "rand 0.8.5",
  "serde",
@@ -1787,7 +1831,6 @@ dependencies = [
  "smallvec",
  "thiserror",
  "triggered",
- "txscript",
  "wasm-bindgen",
  "workflow-core",
 ]
@@ -1802,6 +1845,35 @@ dependencies = [
  "quote",
  "regex",
  "syn",
+]
+
+[[package]]
+name = "kaspa-txscript"
+version = "0.1.0"
+dependencies = [
+ "blake2b_simd",
+ "criterion",
+ "hex",
+ "indexmap",
+ "itertools 0.10.5",
+ "kaspa-addresses",
+ "kaspa-consensus-core",
+ "kaspa-hashes",
+ "kaspa-txscript-errors",
+ "log",
+ "parking_lot",
+ "rand 0.8.5",
+ "secp256k1",
+ "sha2 0.10.6",
+ "smallvec",
+]
+
+[[package]]
+name = "kaspa-txscript-errors"
+version = "0.1.0"
+dependencies = [
+ "secp256k1",
+ "thiserror",
 ]
 
 [[package]]
@@ -1859,10 +1931,10 @@ dependencies = [
 name = "kaspa-wallet-core"
 version = "0.1.0"
 dependencies = [
- "addresses",
  "async-trait",
  "faster-hex",
  "hmac",
+ "kaspa-addresses",
  "kaspa-bip32",
  "kaspa-notify",
  "kaspa-rpc-core",
@@ -1883,7 +1955,7 @@ dependencies = [
 name = "kaspa-wasm"
 version = "0.1.0"
 dependencies = [
- "addresses",
+ "kaspa-addresses",
  "kaspa-core",
  "kaspa-rpc-core",
  "kaspa-utils",
@@ -1923,7 +1995,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "clap 4.1.8",
- "consensus-core",
+ "kaspa-consensus-core",
  "kaspa-grpc-client",
  "kaspa-rpc-core",
  "kaspa-rpc-macros",
@@ -1942,8 +2014,8 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "borsh",
- "consensus-core",
  "futures",
+ "kaspa-consensus-core",
  "kaspa-core",
  "kaspa-notify",
  "kaspa-rpc-core",
@@ -1973,15 +2045,15 @@ dependencies = [
  "addressmanager",
  "async-channel",
  "clap 4.1.8",
- "consensus",
- "consensus-core",
- "consensus-notify",
- "database",
  "dirs",
  "futures-util",
- "hashes",
+ "kaspa-consensus",
+ "kaspa-consensus-core",
+ "kaspa-consensus-notify",
  "kaspa-core",
+ "kaspa-database",
  "kaspa-grpc-server",
+ "kaspa-hashes",
  "kaspa-index-processor",
  "kaspa-rpc-core",
  "kaspa-wrpc-server",
@@ -2162,19 +2234,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b87248edafb776e59e6ee64a79086f65890d3510f2c656c000bf2a7e8a0aea40"
 
 [[package]]
-name = "math"
-version = "0.1.0"
-dependencies = [
- "borsh",
- "criterion",
- "faster-hex",
- "malachite-base",
- "malachite-nz",
- "rand_chacha 0.3.1",
- "serde",
-]
-
-[[package]]
 name = "memchr"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2187,13 +2246,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d61c719bcfbcf5d62b3a09efa6088de8c54bc0bfcd3ea7ae39fcc186108b8de1"
 dependencies = [
  "autocfg",
-]
-
-[[package]]
-name = "merkle"
-version = "0.1.0"
-dependencies = [
- "hashes",
 ]
 
 [[package]]
@@ -2212,21 +2264,21 @@ checksum = "68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a"
 name = "mining"
 version = "0.1.0"
 dependencies = [
- "addresses",
- "consensus-core",
  "criterion",
  "futures-util",
- "hashes",
+ "kaspa-addresses",
+ "kaspa-consensus-core",
  "kaspa-core",
+ "kaspa-hashes",
+ "kaspa-muhash",
+ "kaspa-txscript",
  "log",
- "muhash",
  "parking_lot",
  "rand 0.8.5",
  "secp256k1",
  "serde",
  "smallvec",
  "thiserror",
- "txscript",
 ]
 
 [[package]]
@@ -2248,19 +2300,6 @@ dependencies = [
  "log",
  "wasi 0.11.0+wasi-snapshot-preview1",
  "windows-sys 0.45.0",
-]
-
-[[package]]
-name = "muhash"
-version = "0.1.0"
-dependencies = [
- "criterion",
- "hashes",
- "math",
- "rand 0.8.5",
- "rand_chacha 0.3.1",
- "rayon",
- "serde",
 ]
 
 [[package]]
@@ -2348,15 +2387,15 @@ dependencies = [
  "addressmanager",
  "async-trait",
  "connectionmanager",
- "consensus-core",
  "futures",
- "hashes",
  "indexmap",
  "itertools 0.10.5",
+ "kaspa-consensus-core",
  "kaspa-core",
+ "kaspa-hashes",
+ "kaspa-muhash",
  "kaspa-utils",
  "log",
- "muhash",
  "p2p-lib",
  "parking_lot",
  "rand 0.8.5",
@@ -2370,16 +2409,16 @@ dependencies = [
 name = "p2p-lib"
 version = "0.1.0"
 dependencies = [
- "consensus-core",
  "ctrlc",
  "futures",
  "h2",
- "hashes",
  "hex",
  "itertools 0.10.5",
+ "kaspa-consensus-core",
  "kaspa-core",
+ "kaspa-hashes",
+ "kaspa-math",
  "log",
- "math",
  "parking_lot",
  "prost",
  "thiserror",
@@ -2535,16 +2574,6 @@ dependencies = [
  "log",
  "wepoll-ffi",
  "windows-sys 0.42.0",
-]
-
-[[package]]
-name = "pow"
-version = "0.1.0"
-dependencies = [
- "consensus-core",
- "criterion",
- "hashes",
- "math",
 ]
 
 [[package]]
@@ -3095,15 +3124,15 @@ version = "0.1.0"
 dependencies = [
  "async-channel",
  "clap 4.1.8",
- "consensus",
- "consensus-core",
- "consensus-notify",
  "futures",
  "futures-util",
- "hashes",
  "indexmap",
  "itertools 0.10.5",
+ "kaspa-consensus",
+ "kaspa-consensus-core",
+ "kaspa-consensus-notify",
  "kaspa-core",
+ "kaspa-hashes",
  "log",
  "num_cpus",
  "rand 0.8.5",
@@ -3219,27 +3248,29 @@ version = "0.1.0"
 dependencies = [
  "async-channel",
  "bincode",
- "consensus",
- "consensus-core",
- "consensus-notify",
  "criterion",
  "crossbeam-channel",
- "database",
  "faster-hex",
  "flate2",
  "futures-util",
- "hashes",
  "indexmap",
  "itertools 0.10.5",
+ "kaspa-consensus",
+ "kaspa-consensus-core",
+ "kaspa-consensus-notify",
  "kaspa-core",
+ "kaspa-database",
+ "kaspa-hashes",
  "kaspa-index-processor",
+ "kaspa-math",
+ "kaspa-merkle",
+ "kaspa-muhash",
+ "kaspa-pow",
+ "kaspa-txscript",
+ "kaspa-txscript-errors",
  "kaspa-utils",
  "log",
- "math",
- "merkle",
- "muhash",
  "parking_lot",
- "pow",
  "rand 0.8.5",
  "rand_distr",
  "rayon",
@@ -3251,8 +3282,6 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
- "txscript",
- "txscript-errors",
  "utxoindex",
 ]
 
@@ -3578,35 +3607,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "txscript"
-version = "0.1.0"
-dependencies = [
- "addresses",
- "blake2b_simd",
- "consensus-core",
- "criterion",
- "hashes",
- "hex",
- "indexmap",
- "itertools 0.10.5",
- "log",
- "parking_lot",
- "rand 0.8.5",
- "secp256k1",
- "sha2 0.10.6",
- "smallvec",
- "txscript-errors",
-]
-
-[[package]]
-name = "txscript-errors"
-version = "0.1.0"
-dependencies = [
- "secp256k1",
- "thiserror",
-]
-
-[[package]]
 name = "typenum"
 version = "1.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3672,11 +3672,11 @@ checksum = "09cc8ee72d2a9becf2f2febe0205bbed8fc6615b7cb429ad062dc7b7ddd036a9"
 name = "utxoindex"
 version = "0.1.0"
 dependencies = [
- "consensus",
- "consensus-core",
- "database",
- "hashes",
+ "kaspa-consensus",
+ "kaspa-consensus-core",
  "kaspa-core",
+ "kaspa-database",
+ "kaspa-hashes",
  "kaspa-index-core",
  "kaspa-utils",
  "log",

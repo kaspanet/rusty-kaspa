@@ -7,10 +7,10 @@ include.workspace = true
 license.workspace = true
 
 [dependencies]
-hashes.workspace = true
+kaspa-hashes.workspace = true
 thiserror.workspace = true
-consensus-core.workspace = true
-consensus-notify.workspace = true
+kaspa-consensus-core.workspace = true
+kaspa-consensus-notify.workspace = true
 kaspa-core.workspace = true
 kaspa-utils.workspace = true
 kaspa-notify.workspace = true
@@ -26,7 +26,7 @@ paste = "1.0.11"
 tokio = { version = "1.21.2", features = [ "rt-multi-thread", "macros", "signal" ]}
 
 [dev-dependencies]
-consensus.workspace = true
+kaspa-consensus.workspace = true
 parking_lot.workspace = true
 tokio = { workspace = true, features = ["rt", "macros"] }
 rand = {workspace = true,  features = [ "small_rng" ]}

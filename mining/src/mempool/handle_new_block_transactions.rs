@@ -2,7 +2,7 @@ use crate::{
     consensus_context::ConsensusMiningContext,
     mempool::{errors::RuleResult, Mempool},
 };
-use consensus_core::tx::Transaction;
+use kaspa_consensus_core::tx::Transaction;
 use std::{collections::HashSet, sync::Arc};
 
 impl<T: ConsensusMiningContext + ?Sized> Mempool<T> {

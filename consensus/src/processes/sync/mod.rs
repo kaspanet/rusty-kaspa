@@ -1,11 +1,11 @@
 use std::{cmp::min, ops::Deref, sync::Arc};
 
-use consensus_core::errors::sync::{SyncManagerError, SyncManagerResult};
-use database::prelude::StoreResultExtensions;
-use hashes::Hash;
 use itertools::Itertools;
+use kaspa_consensus_core::errors::sync::{SyncManagerError, SyncManagerResult};
+use kaspa_database::prelude::StoreResultExtensions;
+use kaspa_hashes::Hash;
+use kaspa_math::uint::malachite_base::num::arithmetic::traits::CeilingLogBase2;
 use kaspa_utils::option::OptionExtensions;
-use math::uint::malachite_base::num::arithmetic::traits::CeilingLogBase2;
 use parking_lot::RwLock;
 
 use crate::model::{

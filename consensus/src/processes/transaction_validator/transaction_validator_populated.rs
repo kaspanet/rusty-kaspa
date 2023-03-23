@@ -1,6 +1,6 @@
 use crate::constants::{MAX_SOMPI, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK};
-use consensus_core::{hashing::sighash::SigHashReusedValues, tx::VerifiableTransaction};
-use txscript::{get_sig_op_count, TxScriptEngine};
+use kaspa_consensus_core::{hashing::sighash::SigHashReusedValues, tx::VerifiableTransaction};
+use kaspa_txscript::{get_sig_op_count, TxScriptEngine};
 
 use super::{
     errors::{TxResult, TxRuleError},
@@ -116,16 +116,16 @@ impl TransactionValidator {
 #[cfg(test)]
 mod tests {
     use super::super::errors::TxRuleError;
-    use consensus_core::sign::sign;
-    use consensus_core::subnets::SubnetworkId;
-    use consensus_core::tx::{MutableTransaction, PopulatedTransaction, ScriptVec, TransactionId, UtxoEntry};
-    use consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
     use core::str::FromStr;
     use itertools::Itertools;
+    use kaspa_consensus_core::sign::sign;
+    use kaspa_consensus_core::subnets::SubnetworkId;
+    use kaspa_consensus_core::tx::{MutableTransaction, PopulatedTransaction, ScriptVec, TransactionId, UtxoEntry};
+    use kaspa_consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
+    use kaspa_txscript_errors::TxScriptError;
     use secp256k1::Secp256k1;
     use smallvec::SmallVec;
     use std::iter::once;
-    use txscript_errors::TxScriptError;
 
     use crate::{params::MAINNET_PARAMS, processes::transaction_validator::TransactionValidator};
 

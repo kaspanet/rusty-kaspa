@@ -1,6 +1,6 @@
 use crate::{hashing, tx::Transaction};
-use hashes::Hash;
-use merkle::calc_merkle_root;
+use kaspa_hashes::Hash;
+use kaspa_merkle::calc_merkle_root;
 
 pub fn calc_hash_merkle_root<'a>(txs: impl ExactSizeIterator<Item = &'a Transaction>) -> Hash {
     calc_merkle_root(txs.map(hashing::tx::hash))
@@ -13,7 +13,7 @@ mod tests {
         subnets::{SUBNETWORK_ID_COINBASE, SUBNETWORK_ID_NATIVE},
         tx::{scriptvec, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput},
     };
-    use hashes::Hash;
+    use kaspa_hashes::Hash;
 
     #[test]
     fn merkle_root_test() {

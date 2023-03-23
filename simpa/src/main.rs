@@ -1,6 +1,8 @@
 use async_channel::unbounded;
 use clap::Parser;
-use consensus::{
+use futures::{future::try_join_all, Future};
+use itertools::Itertools;
+use kaspa_consensus::{
     config::ConfigBuilder,
     consensus::{
         test_consensus::{create_temp_db_with_parallelism, load_existing_db},
@@ -16,15 +18,13 @@ use consensus::{
     params::{Params, DEVNET_PARAMS},
     processes::ghostdag::ordering::SortableBlock,
 };
-use consensus_core::{
+use kaspa_consensus_core::{
     api::ConsensusApi, block::Block, blockstatus::BlockStatus, errors::block::BlockProcessResult, header::Header, BlockHashSet,
     HashMapCustomHasher,
 };
-use consensus_notify::root::ConsensusNotificationRoot;
-use futures::{future::try_join_all, Future};
-use hashes::Hash;
-use itertools::Itertools;
+use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_core::{info, warn};
+use kaspa_hashes::Hash;
 use simulator::network::KaspaNetworkSimulator;
 use std::{collections::VecDeque, mem::size_of, sync::Arc};
 

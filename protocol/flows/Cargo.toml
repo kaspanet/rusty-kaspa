@@ -7,11 +7,11 @@ edition = "2021"
 
 [dependencies]
 kaspa-core.workspace = true
-consensus-core.workspace = true
+kaspa-consensus-core.workspace = true
 p2p-lib.workspace = true
 kaspa-utils.workspace = true
-hashes.workspace = true
-muhash.workspace = true
+kaspa-hashes.workspace = true
+kaspa-muhash.workspace = true
 connectionmanager.workspace = true
 addressmanager.workspace = true
 

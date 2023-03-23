@@ -5,7 +5,7 @@ use rand_chacha::{
     ChaCha8Rng,
 };
 
-use math::{construct_uint, Uint3072};
+use kaspa_math::{construct_uint, Uint3072};
 construct_uint!(Uint128, 2);
 construct_uint!(Uint256, 4);
 
