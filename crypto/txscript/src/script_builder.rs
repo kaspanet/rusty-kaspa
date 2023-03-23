@@ -46,14 +46,14 @@ pub type ScriptBuilderResult<T> = std::result::Result<T, ScriptBuilderError>;
 ///
 /// ```
 /// use txscript::opcodes::codes::*;
-/// use txscript::script_builder::{Result, ScriptBuilder};
-/// fn build_multisig_script(pub_key1: &[u8], pub_key2: &[u8], pub_key3: &[u8]) -> Result<Vec<u8>> {
-///     ScriptBuilder::new()
-///         .add_op(Op2)
-///         .add_data(pub_key1).add_data(pub_key2).add_data(pub_key3)
-///         .add_op(Op3)
-///         .add_op(OpCheckMultiSig)
-///         .drain()
+/// use txscript::script_builder::{ScriptBuilderResult, ScriptBuilder};
+/// fn build_multisig_script(pub_key1: &[u8], pub_key2: &[u8], pub_key3: &[u8]) -> ScriptBuilderResult<Vec<u8>> {
+///     Ok(ScriptBuilder::new()
+///         .add_op(Op2)?
+///         .add_data(pub_key1)?.add_data(pub_key2)?.add_data(pub_key3)?
+///         .add_op(Op3)?
+///         .add_op(OpCheckMultiSig)?
+///         .drain())
 /// }
 /// ```
 pub struct ScriptBuilder {
