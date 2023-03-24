@@ -24,7 +24,6 @@ mod tests {
         },
     };
     use kaspa_hashes::Hash;
-    use kaspa_txscript::test_helpers::{create_transaction, op_true_script, pay_to_script_hash_signature_script};
     use kaspa_txscript::{
         pay_to_script_hash_signature_script,
         test_helpers::{create_transaction, op_true_script},
