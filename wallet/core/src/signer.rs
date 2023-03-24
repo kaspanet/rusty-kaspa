@@ -16,7 +16,9 @@ use js_sys::Array;
 use std::collections::BTreeMap;
 use wasm_bindgen::prelude::*;
 use workflow_log::log_trace;
+use workflow_wasm::abi::TryFromJsValue;
 
+#[derive(TryFromJsValue, Clone, Debug)]
 #[wasm_bindgen]
 pub struct Signer {
     private_keys: Vec<PrivateKey>,
@@ -30,18 +32,16 @@ impl Signer {
         Ok(Self { private_keys: private_keys.try_into()?, varify: true })
     }
 
-    #[wasm_bindgen(js_name = "sign")]
-    pub fn sign_impl(&self, mtx: MutableTransaction) -> std::result::Result<MutableTransaction, SignerError> {
-        let mtx = sign_transaction(mtx, &self.private_keys.iter().map(|k| k.into()).collect::<Vec<_>>(), self.varify)
-            .map_err(|err| SignerError::Custom(err.to_string()))?;
-
-        Ok(mtx)
+    #[wasm_bindgen(js_name = "signTransaction")]
+    pub fn sign_transaction(&self, mtx: MutableTransaction, varify_sig: bool) -> std::result::Result<MutableTransaction, SignerError> {
+        sign_transaction(mtx, &self.private_keys.iter().map(|k| k.into()).collect::<Vec<_>>(), varify_sig)
+            .map_err(|err| SignerError::Custom(err.to_string()))
     }
 }
 
 impl SignerTrait for Signer {
     fn sign(&self, mtx: SignableTransaction) -> SignerResult {
-        self.sign_impl(mtx.try_into()?)?.try_into()
+        self.sign_transaction(mtx.try_into()?, self.varify)?.try_into()
     }
 }
 
@@ -50,6 +50,10 @@ extern "C" {
     #[wasm_bindgen(extends = js_sys::Array, is_type_of = Array::is_array, typescript_type = "PrivateKey[]")]
     #[derive(Clone, Debug, PartialEq, Eq)]
     pub type PrivateKeyArray;
+
+    #[wasm_bindgen(extends = js_sys::Object, typescript_type = "PrivateKey[] | Signer")]
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    pub type PrivateKeyArrayOrSigner;
 }
 
 impl TryFrom<PrivateKeyArray> for Vec<PrivateKey> {
@@ -67,25 +71,31 @@ impl TryFrom<PrivateKeyArray> for Vec<PrivateKey> {
 #[wasm_bindgen(js_name = "signTransaction")]
 pub fn js_sign_transaction(
     mtx: MutableTransaction,
-    keys: PrivateKeyArray,
+    signer: PrivateKeyArrayOrSigner,
     verify_sig: bool,
-) -> std::result::Result<MutableTransaction, JsError> {
-    let mut private_keys: Vec<[u8; 32]> = vec![];
-    for key in keys.iter() {
-        let key = PrivateKey::try_from(&key).map_err(|_| JsError::new("Unable to cast PrivateKey"))?;
-        private_keys.push(key.secret_bytes());
+) -> std::result::Result<MutableTransaction, SignerError> {
+    if signer.is_array() {
+        let mut private_keys: Vec<[u8; 32]> = vec![];
+        for key in Array::from(&signer).iter() {
+            let key = PrivateKey::try_from(&key).map_err(|_| SignerError::Custom("Unable to cast PrivateKey".to_string()))?;
+            private_keys.push(key.secret_bytes());
+        }
+
+        let mtx =
+            sign_transaction(mtx, &private_keys, verify_sig).map_err(|err| SignerError::Custom(format!("Unable to sign: {err:?}")))?;
+        return Ok(mtx);
     }
 
-    let mtx = sign_transaction(mtx, &private_keys, verify_sig)?;
-
-    Ok(mtx)
+    let signer = Signer::try_from(&JsValue::from(signer)).map_err(|_| SignerError::Custom("Unable to cast Signer".to_string()))?;
+    log_trace!("\nSigning via Signer: {signer:?}....\n");
+    signer.sign_transaction(mtx, verify_sig)
 }
 
 pub fn sign_transaction(mtx: MutableTransaction, private_keys: &Vec<[u8; 32]>, verify_sig: bool) -> Result<MutableTransaction> {
     let mtx = sign(mtx.try_into()?, private_keys)?;
     if verify_sig {
         let mtx_clone = mtx.clone();
-        log_trace!("mtx_clone: {mtx_clone:?}");
+        log_trace!("sign_transaction mtx: {mtx_clone:?}");
         let tx_verifiable = mtx_clone.as_verifiable();
         log_trace!("verify...");
         verify(&tx_verifiable)?;

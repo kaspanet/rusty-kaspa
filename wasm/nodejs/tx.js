@@ -106,11 +106,15 @@ console.log("transaction:", transaction);
 let signer = new kaspa.Signer([
     keypair1.privateKey
 ]);
-//signer.varify = false;
 
-console.log("signer", signer.varify)
+console.log("signer:", signer)
 
-transaction = signer.sign(transaction);
+// Option 1
+// transaction = signer.signTransaction(transaction, true);
+
+// Option 2
+transaction = kaspa.signTransaction(transaction, signer, true);
+
 console.log("transaction:", transaction);
 
 

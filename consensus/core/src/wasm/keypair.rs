@@ -44,7 +44,7 @@ pub fn generate_random_keypair_not_secure() -> Result<Keypair, JsError> {
     Ok(Keypair::new(secret_key, public_key, xonly_public_key))
 }
 
-#[derive(TryFromJsValue, Clone)]
+#[derive(TryFromJsValue, Clone, Debug)]
 #[wasm_bindgen]
 pub struct PrivateKey {
     inner: SecretKey,
