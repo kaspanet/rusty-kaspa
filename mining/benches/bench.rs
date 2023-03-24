@@ -1,5 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use mining::model::topological_index::TopologicalIndex;
+use kaspa_mining::model::topological_index::TopologicalIndex;
 use std::collections::{hash_set::Iter, HashMap, HashSet};
 
 #[derive(Default)]
