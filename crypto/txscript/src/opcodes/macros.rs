@@ -71,12 +71,18 @@ macro_rules! opcode_impl {
 }
 
 macro_rules! opcode_list {
-    ( $( opcode $name:ident<$num:literal, $length:tt>($self:ident, $vm:ident) $code: expr ) *)  => {
-        pub(crate) mod codes {
+    ( $( opcode $(|$alias:ident|)? $name:ident<$num:literal, $length:tt>($self:ident, $vm:ident) $code: expr ) *)  => {
+        pub mod codes {
             $(
                 #[allow(non_upper_case_globals)]
                 #[allow(dead_code)]
-                pub(crate) const $name: u8 = $num;
+                pub const $name: u8 = $num;
+
+                $(
+                    #[allow(non_upper_case_globals)]
+                    #[allow(dead_code)]
+                    pub const $alias: u8 = $num;
+                )?
             )*
         }
 

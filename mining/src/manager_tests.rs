@@ -25,6 +25,10 @@ mod tests {
     };
     use kaspa_hashes::Hash;
     use kaspa_txscript::test_helpers::{create_transaction, op_true_script, pay_to_script_hash_signature_script};
+    use kaspa_txscript::{
+        pay_to_script_hash_signature_script,
+        test_helpers::{create_transaction, op_true_script},
+    };
     use std::sync::Arc;
 
     const TARGET_TIME_PER_BLOCK: u64 = 1_000;
@@ -794,7 +798,7 @@ mod tests {
     fn create_transaction_with_utxo_entry(i: u32, block_daa_score: u64) -> MutableTransaction {
         let previous_outpoint = TransactionOutpoint::new(Hash::default(), i);
         let (script_public_key, redeem_script) = op_true_script();
-        let signature_script = pay_to_script_hash_signature_script(redeem_script, vec![]);
+        let signature_script = pay_to_script_hash_signature_script(redeem_script, vec![]).expect("the redeem script is canonical");
 
         let input = TransactionInput::new(previous_outpoint, signature_script, MAX_TX_IN_SEQUENCE_NUM, 1);
         let entry = UtxoEntry::new(SOMPI_PER_KASPA, script_public_key.clone(), block_daa_score, true);

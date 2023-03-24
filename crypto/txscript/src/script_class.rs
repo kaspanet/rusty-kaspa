@@ -5,24 +5,13 @@ use std::{
     fmt::{Display, Formatter},
     str::FromStr,
 };
+use thiserror::Error;
 
-#[derive(PartialEq, Eq, Debug, Clone)]
+#[derive(Error, PartialEq, Eq, Debug, Clone)]
 pub enum Error {
+    #[error("Invalid script class {0}")]
     InvalidScriptClass(String),
 }
-
-impl Display for Error {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_str(
-            match self {
-                Self::InvalidScriptClass(class) => format!("Invalid script class {class}"),
-            }
-            .as_str(),
-        )
-    }
-}
-
-impl std::error::Error for Error {}
 
 /// Standard classes of script payment in the blockDAG
 #[derive(PartialEq, Eq, Debug, Clone)]
