@@ -1,12 +1,13 @@
 use addressmanager::AddressManager;
 use connectionmanager::ConnectionManager;
-use consensus_core::api::DynConsensus;
+use consensus_core::api::{ConsensusApi, DynConsensus};
 use consensus_core::config::Config;
 use kaspa_core::{
     task::service::{AsyncService, AsyncServiceFuture},
     trace,
 };
 use kaspa_utils::triggers::SingleTrigger;
+use mining::manager::MiningManager;
 use p2p_lib::Adaptor;
 use parking_lot::Mutex;
 use std::{net::ToSocketAddrs, sync::Arc};
@@ -28,6 +29,7 @@ impl P2pService {
     pub fn new(
         consensus: DynConsensus,
         amgr: Arc<Mutex<AddressManager>>,
+        mining_manager: Arc<MiningManager<dyn ConsensusApi>>,
         config: &Config,
         connect: Option<String>,
         listen: Option<String>,
@@ -35,7 +37,7 @@ impl P2pService {
         inbound_limit: usize,
     ) -> Self {
         Self {
-            ctx: Arc::new(FlowContext::new(consensus, amgr, config)),
+            ctx: Arc::new(FlowContext::new(consensus, amgr, config, mining_manager)),
             connect,
             shutdown: SingleTrigger::default(),
             listen,

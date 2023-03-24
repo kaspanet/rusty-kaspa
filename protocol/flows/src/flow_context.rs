@@ -8,6 +8,7 @@ use consensus_core::config::Config;
 use hashes::Hash;
 use kaspa_core::time::unix_now;
 use kaspa_core::{debug, info};
+use mining::manager::MiningManager;
 use p2p_lib::pb;
 use p2p_lib::{common::ProtocolError, ConnectionInitializer, KaspadHandshake, Router};
 use parking_lot::Mutex;
@@ -25,6 +26,7 @@ pub struct FlowContext {
     shared_block_requests: Arc<Mutex<HashSet<Hash>>>,
     is_ibd_running: Arc<AtomicBool>, // TODO: pass the context wrapped with Arc and avoid some of the internal ones
     pub amgr: Arc<Mutex<AddressManager>>,
+    mining_manager: Arc<MiningManager<dyn ConsensusApi>>,
 }
 
 pub struct IbdRunningGuard {
@@ -56,7 +58,12 @@ impl Drop for BlockRequestScope<'_> {
 }
 
 impl FlowContext {
-    pub fn new(consensus: DynConsensus, amgr: Arc<Mutex<AddressManager>>, config: &Config) -> Self {
+    pub fn new(
+        consensus: DynConsensus,
+        amgr: Arc<Mutex<AddressManager>>,
+        config: &Config,
+        mining_manager: Arc<MiningManager<dyn ConsensusApi>>,
+    ) -> Self {
         Self {
             consensus: consensus.clone(),
             config: config.clone(),
@@ -64,11 +71,16 @@ impl FlowContext {
             shared_block_requests: Arc::new(Mutex::new(HashSet::new())),
             is_ibd_running: Arc::new(AtomicBool::default()),
             amgr,
+            mining_manager,
         }
     }
 
     pub fn consensus(&self) -> DynConsensus {
         self.consensus.clone()
+    }
+
+    pub fn mining_manager(&self) -> Arc<MiningManager<dyn ConsensusApi>> {
+        self.mining_manager.clone()
     }
 
     pub fn try_set_ibd_running(&self) -> Option<IbdRunningGuard> {

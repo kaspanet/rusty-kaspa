@@ -2356,6 +2356,7 @@ dependencies = [
  "kaspa-core",
  "kaspa-utils",
  "log",
+ "mining",
  "muhash",
  "p2p-lib",
  "parking_lot",
