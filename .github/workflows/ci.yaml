@@ -66,8 +66,8 @@ jobs:
       - name: Run cargo test regular features
         run: cargo test --workspace
 
-      - name: Run cargo test on hashes without asm
-        run: cargo test -p hashes --features=no-asm --benches
+      - name: Run cargo test on kaspa-hashes without asm
+        run: cargo test -p kaspa-hashes --features=no-asm --benches
 
   # test-release:
   #   name: Test Suite Release
