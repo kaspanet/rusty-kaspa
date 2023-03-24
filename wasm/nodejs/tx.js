@@ -93,15 +93,29 @@ let signableTx = new kaspa.MutableTransaction(transaction, utxoEntries);
 
 //console.log("signableTx.entries.items", signableTx.entries.items)
 let keys = [
-    keypair2.secretKey,
-    keypair1.secretKey
+    keypair2.privateKey,
+    //keypair1.privateKey
 ]
 
 console.log("keys", keys)
 
-transaction = kaspa.signTransaction(signableTx, keys, true);
+transaction = kaspa.signTransaction(signableTx, keys, false);
 
 console.log("transaction:", transaction);
+
+let signer = new kaspa.Signer([
+    keypair1.privateKey
+]);
+//signer.varify = false;
+
+console.log("signer", signer.varify)
+
+transaction = signer.sign(transaction);
+console.log("transaction:", transaction);
+
+
+
+
 
 //console.log("transaction:", JSON.stringify(transaction, null, "\t"));
 // console.log("transaction (JSON):", JSON.stringify(transaction,(k,v) => {

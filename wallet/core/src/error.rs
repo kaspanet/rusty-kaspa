@@ -1,3 +1,5 @@
+use consensus_core::sign::Error as CoreSignError;
+use consensus_core::wasm::error::Error as CoreWasmError;
 use kaspa_bip32::Error as BIP32Error;
 use kaspa_rpc_core::RpcError as KaspaRpcError;
 use kaspa_wrpc_client::error::Error as KaspaWorkflowRpcError;
@@ -33,6 +35,12 @@ pub enum Error {
 
     #[error("Secp256k1Error error: {0}")]
     Secp256k1Error(#[from] Secp256k1Error),
+
+    #[error("CoreWasmError: {0}")]
+    CoreWasmError(#[from] CoreWasmError),
+
+    #[error("CoreSignError: {0}")]
+    CoreSignError(#[from] CoreSignError),
 }
 
 impl From<Error> for JsValue {

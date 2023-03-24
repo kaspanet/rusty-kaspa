@@ -112,14 +112,15 @@ impl MutableTransaction {
     // }
 }
 
-impl From<MutableTransaction> for tx::MutableTransaction<Transaction> {
-    fn from(value: MutableTransaction) -> Self {
-        Self {
-            tx: value.tx.lock().unwrap().clone(),
+impl TryFrom<MutableTransaction> for tx::MutableTransaction<Transaction> {
+    type Error = error::Error;
+    fn try_from(value: MutableTransaction) -> Result<Self, Self::Error> {
+        Ok(Self {
+            tx: value.tx.lock()?.clone(),
             entries: value.entries.into(),
             calculated_fee: value.calculated_fee,
             calculated_mass: value.calculated_mass,
-        }
+        })
     }
 }
 
