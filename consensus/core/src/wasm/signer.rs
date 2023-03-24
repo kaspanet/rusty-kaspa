@@ -1,9 +1,9 @@
-use secp256k1::SecretKey;
+// use secp256k1::SecretKey;
 
-use crate::hashing::{
-    sighash::{calc_schnorr_signature_hash, SigHashReusedValues},
-    sighash_type::SIG_HASH_ALL,
-};
+// use crate::hashing::{
+//     sighash::{calc_schnorr_signature_hash, SigHashReusedValues},
+//     sighash_type::SIG_HASH_ALL,
+// };
 
 use super::*;
 
@@ -14,6 +14,8 @@ pub enum Error {
     Message(String),
 }
 
+pub type Result = std::result::Result<SignableTransaction, Error>;
+
 // TODO - prototype Signer trait that should be used by signing primitives
 pub trait Signer {
     // fn sign(&self, message: &[u8]) -> Result<Vec<u8>, Error>;
@@ -21,7 +23,7 @@ pub trait Signer {
 
     //fn private_key(&self) -> Result<SecretKey, Error>;
 
-    fn sign(&self, _mtx: SignableTransaction)->Result<SignableTransaction, Error>;
+    fn sign(&self, _mtx: SignableTransaction) -> Result;
 }
 
 // /// Sign a transaction using schnorr

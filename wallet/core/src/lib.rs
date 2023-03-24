@@ -3,6 +3,7 @@ extern crate self as kaspa_wallet_core;
 pub mod accounts;
 pub mod error;
 pub mod result;
+pub mod signer;
 pub mod storage;
 pub mod wallet;
 pub mod wrapper;
@@ -10,6 +11,7 @@ pub mod wrapper;
 pub use accounts::dummy_address;
 pub use addresses::Address;
 pub use result::Result;
+pub use signer::Signer;
 pub use wallet::Wallet;
 pub use wrapper::WalletWrapper;
 

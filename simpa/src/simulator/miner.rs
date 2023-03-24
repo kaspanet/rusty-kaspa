@@ -125,7 +125,7 @@ impl Miner {
             .take(self.target_txs_per_block as usize)
             .collect::<Vec<_>>()
             .into_par_iter()
-            .map(|mutable_tx| sign(mutable_tx, self.secret_key.secret_bytes()).tx)
+            .map(|mutable_tx| sign(mutable_tx, vec![self.secret_key.secret_bytes()]).tx)
             .collect::<Vec<_>>();
 
         for outpoint in txs.iter().flat_map(|t| t.inputs.iter().map(|i| i.previous_outpoint)) {

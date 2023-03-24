@@ -23,6 +23,11 @@ impl Keypair {
         to_value(&self.public_key).unwrap()
     }
 
+    #[wasm_bindgen(getter = secretKey)]
+    pub fn get_secret_key(&self) -> JsValue {
+        to_value(&self.secret_key).unwrap()
+    }
+
     #[wasm_bindgen(getter = xOnlyPublicKey)]
     pub fn get_xonly_public_key(&self) -> JsValue {
         to_value(&self.xonly_public_key).unwrap()

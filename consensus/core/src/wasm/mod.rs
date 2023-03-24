@@ -18,11 +18,11 @@ use consensus_core::tx::{
 use consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
 use core::str::FromStr;
 use itertools::Itertools;
+use js_sys::Array;
 use secp256k1::Secp256k1;
 use std::iter::once;
 use std::sync::{Arc, Mutex};
 use wasm_bindgen::prelude::*;
-use js_sys::Array;
 use workflow_wasm::abi::ref_from_abi;
 
 use crate::tx::SignableTransaction;
@@ -36,7 +36,7 @@ use crate::tx::SignableTransaction;
 pub struct UtxoEntryList(Arc<Vec<UtxoEntry>>);
 
 #[wasm_bindgen]
-impl UtxoEntryList{
+impl UtxoEntryList {
     #[wasm_bindgen(constructor)]
     pub fn js_ctor(js_value: JsValue) -> Result<UtxoEntryList, JsError> {
         Ok(js_value.try_into()?)
@@ -51,14 +51,29 @@ impl UtxoEntryList{
     pub fn set_items_from_js_array(&mut self, js_value: &JsValue) {
         let items = Array::from(js_value)
             .iter()
-            .map(|js_value| {
-                ref_from_abi!(UtxoEntry, &js_value).unwrap_or_else(|err| panic!("invalid UTXOEntry: {err}"))
-            })
+            .map(|js_value| ref_from_abi!(UtxoEntry, &js_value).unwrap_or_else(|err| panic!("invalid UTXOEntry: {err}")))
             .collect::<Vec<_>>();
         self.0 = Arc::new(items);
     }
 }
 
+impl From<UtxoEntryList> for Vec<Option<UtxoEntry>> {
+    fn from(value: UtxoEntryList) -> Self {
+        value.0.as_ref().iter().map(|entry| Some(entry.clone())).collect_vec()
+    }
+}
+
+impl TryFrom<Vec<Option<UtxoEntry>>> for UtxoEntryList {
+    type Error = error::Error;
+    fn try_from(value: Vec<Option<UtxoEntry>>) -> Result<Self, Self::Error> {
+        let mut list = vec![];
+        for entry in value.into_iter() {
+            list.push(entry.ok_or(error::Error::Custom("Unable to cast `Vec<Option<UtxoEntry>>` into `UtxoEntryList`.".to_string()))?);
+        }
+
+        Ok(Self(Arc::new(list)))
+    }
+}
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
@@ -77,13 +92,8 @@ pub struct MutableTransaction {
 #[wasm_bindgen]
 impl MutableTransaction {
     #[wasm_bindgen(constructor)]
-    pub fn constructor(tx: tx::Transaction, entries:UtxoEntryList) -> Self {
-        Self{
-            tx: Arc::new(Mutex::new(tx)),
-            entries,
-            calculated_fee: None,
-            calculated_mass: None
-        }
+    pub fn constructor(tx: tx::Transaction, entries: UtxoEntryList) -> Self {
+        Self { tx: Arc::new(Mutex::new(tx)), entries, calculated_fee: None, calculated_mass: None }
     }
 
     // fn sign(js_value: JsValue) -> tx::MutableTransaction {
@@ -100,6 +110,29 @@ impl MutableTransaction {
     // pub fn as_signable(&self) -> SignableTransaction {
     //     todo!()
     // }
+}
+
+impl From<MutableTransaction> for tx::MutableTransaction<Transaction> {
+    fn from(value: MutableTransaction) -> Self {
+        Self {
+            tx: value.tx.lock().unwrap().clone(),
+            entries: value.entries.into(),
+            calculated_fee: value.calculated_fee,
+            calculated_mass: value.calculated_mass,
+        }
+    }
+}
+
+impl TryFrom<tx::MutableTransaction<Transaction>> for MutableTransaction {
+    type Error = error::Error;
+    fn try_from(value: tx::MutableTransaction<Transaction>) -> Result<Self, Self::Error> {
+        Ok(Self {
+            tx: Arc::new(Mutex::new(value.tx)),
+            entries: value.entries.try_into()?,
+            calculated_fee: value.calculated_fee,
+            calculated_mass: value.calculated_mass,
+        })
+    }
 }
 
 // #[derive(Clone, Debug)]

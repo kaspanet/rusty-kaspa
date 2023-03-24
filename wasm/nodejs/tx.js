@@ -52,12 +52,12 @@ console.log("scriptPublicKey2:",scriptPublicKey2);
 let utxos = [
     new kaspa.UtxoEntry(300n, scriptPublicKey1, 0n, false),
     new kaspa.UtxoEntry(200n, scriptPublicKey2, 0n, false),
-    //new kaspa.UtxoEntry(300n, scriptPublicKey1, 0n, false),
+    //new kaspa.UtxoEntry(310n, scriptPublicKey1, 0n, false),
     {
         amount: 310n,
         scriptPublicKey: {
           version: 0,
-          script: '03c1ed141f19045258a38081ea7c9445e72e85f87ecc335058fc2555fac3524dd5'
+          script: keypair1.publicKey
         },
         blockDaaScore: 0n,
         isCoinbase: false
@@ -67,7 +67,7 @@ let utxos = [
 console.log("utxos", utxos)
 
 let utxoEntries = new kaspa.UtxoEntryList(utxos);
-console.log("utxoEntries:", utxoEntries.items);
+//console.log("utxoEntries:", utxoEntries.items);
 
 let outputs = [
     new kaspa.TransactionOutput(300n, new kaspa.ScriptPublicKey(0, keypair3.publicKey)),
@@ -77,7 +77,7 @@ let outputs = [
     },
 ];
 
-console.log("outputs:",outputs);
+//console.log("outputs:",outputs);
 
 let transaction = new kaspa.Transaction({
     inputs,
@@ -91,7 +91,17 @@ let transaction = new kaspa.Transaction({
 
 let signableTx = new kaspa.MutableTransaction(transaction, utxoEntries);
 
-console.log("signableTx.entries.items", signableTx.entries.items)
+//console.log("signableTx.entries.items", signableTx.entries.items)
+let keys = [
+    keypair2.secretKey,
+    keypair1.secretKey
+]
+
+console.log("keys", keys)
+
+transaction = kaspa.signTransaction(signableTx, keys, true);
+
+console.log("transaction:", transaction);
 
 //console.log("transaction:", JSON.stringify(transaction, null, "\t"));
 // console.log("transaction (JSON):", JSON.stringify(transaction,(k,v) => {
