@@ -11,6 +11,7 @@ dependencies = [
  "serde",
  "smallvec",
  "thiserror",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -679,6 +680,7 @@ name = "consensus-core"
 version = "0.1.0"
 dependencies = [
  "addresses",
+ "async-trait",
  "borsh",
  "cfg-if",
  "faster-hex",
@@ -1912,6 +1914,7 @@ dependencies = [
  "consensus-core",
  "faster-hex",
  "hmac",
+ "js-sys",
  "kaspa-bip32",
  "kaspa-notify",
  "kaspa-rpc-core",
@@ -1923,6 +1926,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "wasm-bindgen",
+ "wasm-bindgen-futures",
  "workflow-core",
  "workflow-log",
  "workflow-rpc",

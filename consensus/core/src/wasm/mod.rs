@@ -4,7 +4,7 @@ pub mod keypair;
 pub mod signer;
 
 // use crate::config::params::MAINNET_PARAMS;
-use consensus_core::sign::sign;
+// use consensus_core::sign::sign;
 use consensus_core::subnets::SubnetworkId;
 use consensus_core::tx::{
     self,
@@ -25,6 +25,7 @@ use std::sync::{Arc, Mutex};
 use wasm_bindgen::prelude::*;
 use workflow_wasm::abi::ref_from_abi;
 
+use crate::sign::sign_with_multiple;
 use crate::tx::SignableTransaction;
 
 //use signer::Signer as _Signer;
@@ -215,7 +216,7 @@ fn test_sign() {
         },
         UtxoEntry { amount: 300, script_public_key: ScriptPublicKey::new(0, script_pub_key), block_daa_score: 0, is_coinbase: false },
     ];
-    let signed_tx = sign(tx::MutableTransaction::with_entries(unsigned_tx, entries), vec![secret_key.secret_bytes()]);
+    let signed_tx = sign_with_multiple(tx::MutableTransaction::with_entries(unsigned_tx, entries), vec![secret_key.secret_bytes()]);
     let _populated_tx = signed_tx.as_verifiable();
     // assert_eq!(tv.check_scripts(&populated_tx), Ok(()));
     // assert_eq!(TransactionValidator::check_sig_op_counts(&populated_tx), Ok(()));

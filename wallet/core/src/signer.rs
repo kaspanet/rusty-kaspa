@@ -1,6 +1,6 @@
 use crate::{error::Error, Result};
 use consensus_core::{
-    sign::{sign, verify},
+    sign::{sign_with_multiple, verify},
     tx::SignableTransaction,
     wasm::{
         signer::{Result as SignerResult, Signer as SignerTrait},
@@ -62,7 +62,7 @@ pub fn sign_transaction(mtx: MutableTransaction, keys: Array, verify_sig: bool) 
         log_trace!("SecretKey: {}", k.inner.display_secret());
         private_keys.push(k.inner.secret_bytes());
     }
-    let mtx = sign(mtx.into(), private_keys);
+    let mtx = sign_with_multiple(mtx.into(), private_keys);
     if verify_sig {
         let mtx_clone = mtx.clone();
         log_trace!("mtx_clone: {mtx_clone:#?}");
