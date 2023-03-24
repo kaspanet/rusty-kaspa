@@ -51,13 +51,13 @@ include = ["src/**/*.rs", "Cargo.toml"]
 [workspace.dependencies]
 
 # not published
-addressmanager = { path = "components/addressmanager" }
-connectionmanager = { path = "components/connectionmanager" }
-mining = { path = "mining" }
-p2p-flows = { path = "protocol/flows" }
-p2p-lib = { path = "protocol/p2p" }
-testing-integration = { path = "testing/integration" }
-utxoindex = { path = "indexes/utxoindex" }
+kaspa-addressmanager = { path = "components/addressmanager" }
+kaspa-connectionmanager = { path = "components/connectionmanager" }
+kaspa-mining = { path = "mining" }
+kaspa-p2p-flows = { path = "protocol/flows" }
+kaspa-p2p-lib = { path = "protocol/p2p" }
+kaspa-testing-integration = { path = "testing/integration" }
+kaspa-utxoindex = { path = "indexes/utxoindex" }
 
 # published
 kaspa-addresses = { version = "0.1.0", path = "crypto/addresses" }

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use kaspa_consensus_core::errors::{consensus::ConsensusError, sync::SyncManagerError};
 
-use p2p_lib::{
+use kaspa_p2p_lib::{
     common::ProtocolError,
     dequeue, make_message,
     pb::{kaspad_message::Payload, IbdChainBlockLocatorMessage},

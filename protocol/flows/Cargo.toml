@@ -1,5 +1,5 @@
 [package]
-name = "p2p-flows"
+name = "kaspa-p2p-flows"
 version = "0.1.0"
 edition = "2021"
 
@@ -8,12 +8,12 @@ edition = "2021"
 [dependencies]
 kaspa-core.workspace = true
 kaspa-consensus-core.workspace = true
-p2p-lib.workspace = true
+kaspa-p2p-lib.workspace = true
 kaspa-utils.workspace = true
 kaspa-hashes.workspace = true
 kaspa-muhash.workspace = true
-connectionmanager.workspace = true
-addressmanager.workspace = true
+kaspa-connectionmanager.workspace = true
+kaspa-addressmanager.workspace = true
 
 parking_lot.workspace = true
 rand.workspace = true

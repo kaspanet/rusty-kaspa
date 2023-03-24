@@ -7,7 +7,7 @@ use kaspa_consensus_core::{
     tx::{TransactionOutpoint, UtxoEntry},
 };
 use kaspa_core::{debug, info};
-use p2p_lib::{
+use kaspa_p2p_lib::{
     common::{ProtocolError, DEFAULT_TIMEOUT},
     convert::model::trusted::TrustedDataEntry,
     make_message,

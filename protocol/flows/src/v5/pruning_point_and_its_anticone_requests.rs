@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
 use itertools::Itertools;
-use log::debug;
-use p2p_lib::{
+use kaspa_p2p_lib::{
     common::ProtocolError,
     dequeue, make_message,
     pb::{
@@ -11,6 +10,7 @@ use p2p_lib::{
     },
     IncomingRoute, Router,
 };
+use log::debug;
 
 use crate::{flow_context::FlowContext, flow_trait::Flow, v5::ibd::IBD_BATCH_SIZE};
 

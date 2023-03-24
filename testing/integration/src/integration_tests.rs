@@ -35,6 +35,8 @@ use kaspa_core::task::runtime::AsyncRuntime;
 use kaspa_index_processor::service::IndexService;
 use kaspa_math::Uint256;
 use kaspa_muhash::MuHash;
+use kaspa_utxoindex::api::UtxoIndexApi;
+use kaspa_utxoindex::UtxoIndex;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::HashSet;
@@ -48,8 +50,6 @@ use std::{
     str::{from_utf8, FromStr},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
-use utxoindex::api::UtxoIndexApi;
-use utxoindex::UtxoIndex;
 
 use crate::common;
 

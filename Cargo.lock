@@ -3,19 +3,6 @@
 version = 3
 
 [[package]]
-name = "addressmanager"
-version = "0.1.0"
-dependencies = [
- "itertools 0.10.5",
- "kaspa-core",
- "kaspa-database",
- "parking_lot",
- "rand 0.8.5",
- "rocksdb",
- "serde",
-]
-
-[[package]]
 name = "adler"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -604,22 +591,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c278839b831783b70278b14df4d45e1beb1aad306c07bb796637de9a0e323e8e"
 dependencies = [
  "crossbeam-utils",
-]
-
-[[package]]
-name = "connectionmanager"
-version = "0.1.0"
-dependencies = [
- "addressmanager",
- "duration-string",
- "futures-util",
- "itertools 0.10.5",
- "kaspa-core",
- "log",
- "p2p-lib",
- "parking_lot",
- "rand 0.8.5",
- "tokio",
 ]
 
 [[package]]
@@ -1457,6 +1428,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "kaspa-addressmanager"
+version = "0.1.0"
+dependencies = [
+ "itertools 0.10.5",
+ "kaspa-core",
+ "kaspa-database",
+ "parking_lot",
+ "rand 0.8.5",
+ "rocksdb",
+ "serde",
+]
+
+[[package]]
 name = "kaspa-bip32"
 version = "0.1.0"
 dependencies = [
@@ -1473,6 +1457,22 @@ dependencies = [
  "subtle",
  "thiserror",
  "zeroize",
+]
+
+[[package]]
+name = "kaspa-connectionmanager"
+version = "0.1.0"
+dependencies = [
+ "duration-string",
+ "futures-util",
+ "itertools 0.10.5",
+ "kaspa-addressmanager",
+ "kaspa-core",
+ "kaspa-p2p-lib",
+ "log",
+ "parking_lot",
+ "rand 0.8.5",
+ "tokio",
 ]
 
 [[package]]
@@ -1723,6 +1723,7 @@ dependencies = [
  "kaspa-index-core",
  "kaspa-notify",
  "kaspa-utils",
+ "kaspa-utxoindex",
  "log",
  "parking_lot",
  "paste",
@@ -1730,7 +1731,6 @@ dependencies = [
  "thiserror",
  "tokio",
  "triggered",
- "utxoindex",
 ]
 
 [[package]]
@@ -1751,6 +1751,27 @@ name = "kaspa-merkle"
 version = "0.1.0"
 dependencies = [
  "kaspa-hashes",
+]
+
+[[package]]
+name = "kaspa-mining"
+version = "0.1.0"
+dependencies = [
+ "criterion",
+ "futures-util",
+ "kaspa-addresses",
+ "kaspa-consensus-core",
+ "kaspa-core",
+ "kaspa-hashes",
+ "kaspa-muhash",
+ "kaspa-txscript",
+ "log",
+ "parking_lot",
+ "rand 0.8.5",
+ "secp256k1",
+ "serde",
+ "smallvec",
+ "thiserror",
 ]
 
 [[package]]
@@ -1789,6 +1810,55 @@ dependencies = [
  "tokio",
  "triggered",
  "workflow-core",
+]
+
+[[package]]
+name = "kaspa-p2p-flows"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "futures",
+ "indexmap",
+ "itertools 0.10.5",
+ "kaspa-addressmanager",
+ "kaspa-connectionmanager",
+ "kaspa-consensus-core",
+ "kaspa-core",
+ "kaspa-hashes",
+ "kaspa-muhash",
+ "kaspa-p2p-lib",
+ "kaspa-utils",
+ "log",
+ "parking_lot",
+ "rand 0.8.5",
+ "thiserror",
+ "tokio",
+ "tokio-stream",
+ "uuid 1.3.0",
+]
+
+[[package]]
+name = "kaspa-p2p-lib"
+version = "0.1.0"
+dependencies = [
+ "ctrlc",
+ "futures",
+ "h2",
+ "hex",
+ "itertools 0.10.5",
+ "kaspa-consensus-core",
+ "kaspa-core",
+ "kaspa-hashes",
+ "kaspa-math",
+ "log",
+ "parking_lot",
+ "prost",
+ "thiserror",
+ "tokio",
+ "tokio-stream",
+ "tonic",
+ "tonic-build",
+ "uuid 1.3.0",
 ]
 
 [[package]]
@@ -1848,6 +1918,49 @@ dependencies = [
 ]
 
 [[package]]
+name = "kaspa-testing-integration"
+version = "0.1.0"
+dependencies = [
+ "async-channel",
+ "bincode",
+ "criterion",
+ "crossbeam-channel",
+ "faster-hex",
+ "flate2",
+ "futures-util",
+ "indexmap",
+ "itertools 0.10.5",
+ "kaspa-consensus",
+ "kaspa-consensus-core",
+ "kaspa-consensus-notify",
+ "kaspa-core",
+ "kaspa-database",
+ "kaspa-hashes",
+ "kaspa-index-processor",
+ "kaspa-math",
+ "kaspa-merkle",
+ "kaspa-muhash",
+ "kaspa-pow",
+ "kaspa-txscript",
+ "kaspa-txscript-errors",
+ "kaspa-utils",
+ "kaspa-utxoindex",
+ "log",
+ "parking_lot",
+ "rand 0.8.5",
+ "rand_distr",
+ "rayon",
+ "rocksdb",
+ "secp256k1",
+ "serde",
+ "serde_json",
+ "smallvec",
+ "tempfile",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
 name = "kaspa-txscript"
 version = "0.1.0"
 dependencies = [
@@ -1883,6 +1996,25 @@ version = "0.1.0"
 dependencies = [
  "async-channel",
  "triggered",
+]
+
+[[package]]
+name = "kaspa-utxoindex"
+version = "0.1.0"
+dependencies = [
+ "kaspa-consensus",
+ "kaspa-consensus-core",
+ "kaspa-core",
+ "kaspa-database",
+ "kaspa-hashes",
+ "kaspa-index-core",
+ "kaspa-utils",
+ "log",
+ "parking_lot",
+ "rand 0.8.5",
+ "rocksdb",
+ "serde",
+ "thiserror",
 ]
 
 [[package]]
@@ -2043,11 +2175,11 @@ dependencies = [
 name = "kaspad"
 version = "0.1.0"
 dependencies = [
- "addressmanager",
  "async-channel",
  "clap 4.1.8",
  "dirs",
  "futures-util",
+ "kaspa-addressmanager",
  "kaspa-consensus",
  "kaspa-consensus-core",
  "kaspa-consensus-notify",
@@ -2056,18 +2188,18 @@ dependencies = [
  "kaspa-grpc-server",
  "kaspa-hashes",
  "kaspa-index-processor",
+ "kaspa-mining",
+ "kaspa-p2p-flows",
  "kaspa-rpc-core",
+ "kaspa-utxoindex",
  "kaspa-wrpc-server",
  "log",
- "mining",
  "num_cpus",
- "p2p-flows",
  "rand 0.8.5",
  "rayon",
  "tempfile",
  "thiserror",
  "tokio",
- "utxoindex",
  "workflow-log",
 ]
 
@@ -2262,27 +2394,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a"
 
 [[package]]
-name = "mining"
-version = "0.1.0"
-dependencies = [
- "criterion",
- "futures-util",
- "kaspa-addresses",
- "kaspa-consensus-core",
- "kaspa-core",
- "kaspa-hashes",
- "kaspa-muhash",
- "kaspa-txscript",
- "log",
- "parking_lot",
- "rand 0.8.5",
- "secp256k1",
- "serde",
- "smallvec",
- "thiserror",
-]
-
-[[package]]
 name = "miniz_oxide"
 version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2380,55 +2491,6 @@ name = "os_str_bytes"
 version = "6.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b7820b9daea5457c9f21c69448905d723fbd21136ccf521748f23fd49e723ee"
-
-[[package]]
-name = "p2p-flows"
-version = "0.1.0"
-dependencies = [
- "addressmanager",
- "async-trait",
- "connectionmanager",
- "futures",
- "indexmap",
- "itertools 0.10.5",
- "kaspa-consensus-core",
- "kaspa-core",
- "kaspa-hashes",
- "kaspa-muhash",
- "kaspa-utils",
- "log",
- "p2p-lib",
- "parking_lot",
- "rand 0.8.5",
- "thiserror",
- "tokio",
- "tokio-stream",
- "uuid 1.3.0",
-]
-
-[[package]]
-name = "p2p-lib"
-version = "0.1.0"
-dependencies = [
- "ctrlc",
- "futures",
- "h2",
- "hex",
- "itertools 0.10.5",
- "kaspa-consensus-core",
- "kaspa-core",
- "kaspa-hashes",
- "kaspa-math",
- "log",
- "parking_lot",
- "prost",
- "thiserror",
- "tokio",
- "tokio-stream",
- "tonic",
- "tonic-build",
- "uuid 1.3.0",
-]
 
 [[package]]
 name = "pad"
@@ -3244,49 +3306,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "testing-integration"
-version = "0.1.0"
-dependencies = [
- "async-channel",
- "bincode",
- "criterion",
- "crossbeam-channel",
- "faster-hex",
- "flate2",
- "futures-util",
- "indexmap",
- "itertools 0.10.5",
- "kaspa-consensus",
- "kaspa-consensus-core",
- "kaspa-consensus-notify",
- "kaspa-core",
- "kaspa-database",
- "kaspa-hashes",
- "kaspa-index-processor",
- "kaspa-math",
- "kaspa-merkle",
- "kaspa-muhash",
- "kaspa-pow",
- "kaspa-txscript",
- "kaspa-txscript-errors",
- "kaspa-utils",
- "log",
- "parking_lot",
- "rand 0.8.5",
- "rand_distr",
- "rayon",
- "rocksdb",
- "secp256k1",
- "serde",
- "serde_json",
- "smallvec",
- "tempfile",
- "thiserror",
- "tokio",
- "utxoindex",
-]
-
-[[package]]
 name = "textwrap"
 version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3668,25 +3687,6 @@ name = "utf-8"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "09cc8ee72d2a9becf2f2febe0205bbed8fc6615b7cb429ad062dc7b7ddd036a9"
-
-[[package]]
-name = "utxoindex"
-version = "0.1.0"
-dependencies = [
- "kaspa-consensus",
- "kaspa-consensus-core",
- "kaspa-core",
- "kaspa-database",
- "kaspa-hashes",
- "kaspa-index-core",
- "kaspa-utils",
- "log",
- "parking_lot",
- "rand 0.8.5",
- "rocksdb",
- "serde",
- "thiserror",
-]
 
 [[package]]
 name = "uuid"

@@ -1,5 +1,5 @@
 [package]
-name = "mining"
+name = "kaspa-mining"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

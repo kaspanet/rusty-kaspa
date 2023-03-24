@@ -1,5 +1,5 @@
 [package]
-name = "p2p-lib"
+name = "kaspa-p2p-lib"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

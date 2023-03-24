@@ -18,11 +18,11 @@ use kaspa_notify::{
     notifier::DynNotify,
 };
 use kaspa_utils::triggers::DuplexTrigger;
+use kaspa_utxoindex::api::DynUtxoIndexApi;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
-use utxoindex::api::DynUtxoIndexApi;
 
 /// Processor processes incoming consensus UtxosChanged and PruningPointUtxoSetOverride
 /// notifications submitting them to a UtxoIndex.
@@ -156,9 +156,9 @@ mod tests {
     };
     use kaspa_consensus_core::utxo::{utxo_collection::UtxoCollection, utxo_diff::UtxoDiff};
     use kaspa_notify::notifier::test_helpers::NotifyMock;
+    use kaspa_utxoindex::{api::DynUtxoIndexApi, UtxoIndex};
     use rand::{rngs::SmallRng, SeedableRng};
     use std::sync::Arc;
-    use utxoindex::{api::DynUtxoIndexApi, UtxoIndex};
 
     // TODO: rewrite with Simnet, when possible.
 

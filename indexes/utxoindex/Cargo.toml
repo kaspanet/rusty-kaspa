@@ -1,5 +1,5 @@
 [package]
-name = "utxoindex"
+name = "kaspa-utxoindex"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

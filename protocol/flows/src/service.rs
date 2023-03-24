@@ -1,13 +1,13 @@
-use addressmanager::AddressManager;
-use connectionmanager::ConnectionManager;
+use kaspa_addressmanager::AddressManager;
+use kaspa_connectionmanager::ConnectionManager;
 use kaspa_consensus_core::api::DynConsensus;
 use kaspa_consensus_core::config::Config;
 use kaspa_core::{
     task::service::{AsyncService, AsyncServiceFuture},
     trace,
 };
+use kaspa_p2p_lib::Adaptor;
 use kaspa_utils::triggers::SingleTrigger;
-use p2p_lib::Adaptor;
 use parking_lot::Mutex;
 use std::{net::ToSocketAddrs, sync::Arc};
 

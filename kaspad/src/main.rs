@@ -2,7 +2,7 @@ extern crate kaspa_consensus;
 extern crate kaspa_core;
 extern crate kaspa_hashes;
 
-use addressmanager::AddressManager;
+use kaspa_addressmanager::AddressManager;
 use kaspa_consensus_core::api::DynConsensus;
 use kaspa_consensus_core::networktype::NetworkType;
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
@@ -10,7 +10,7 @@ use kaspa_consensus_notify::service::NotifyService;
 
 use kaspa_core::{core::Core, signals::Signals, task::runtime::AsyncRuntime};
 use kaspa_index_processor::service::IndexService;
-use mining::manager::MiningManager;
+use kaspa_mining::manager::MiningManager;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -28,14 +28,14 @@ use crate::monitor::ConsensusMonitor;
 use kaspa_consensus::config::ConfigBuilder;
 use kaspa_consensus::consensus::Consensus;
 use kaspa_consensus::params::{DEVNET_PARAMS, MAINNET_PARAMS};
-use utxoindex::{api::DynUtxoIndexApi, UtxoIndex};
+use kaspa_utxoindex::{api::DynUtxoIndexApi, UtxoIndex};
 
 use async_channel::unbounded;
 use kaspa_core::{info, trace};
 use kaspa_grpc_server::GrpcServer;
+use kaspa_p2p_flows::service::P2pService;
 use kaspa_rpc_core::server::RpcCoreServer;
 use kaspa_wrpc_server::service::{Options as WrpcServerOptions, WrpcEncoding, WrpcService};
-use p2p_flows::service::P2pService;
 
 mod args;
 mod monitor;

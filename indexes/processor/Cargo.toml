@@ -8,14 +8,15 @@ license.workspace = true
 
 [dependencies]
 kaspa-hashes.workspace = true
-thiserror.workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-consensus-notify.workspace = true
 kaspa-core.workspace = true
 kaspa-utils.workspace = true
 kaspa-notify.workspace = true
 kaspa-index-core.workspace = true
-utxoindex.workspace = true
+kaspa-utxoindex.workspace = true
+
+thiserror.workspace = true
 async-channel.workspace = true
 async-trait = "0.1.57"
 log.workspace = true

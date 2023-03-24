@@ -1,5 +1,5 @@
 [package]
-name = "testing-integration"
+name = "kaspa-testing-integration"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -34,7 +34,7 @@ parking_lot.workspace = true
 kaspa-txscript.workspace = true
 rocksdb.workspace = true
 kaspa-database.workspace = true
-utxoindex.workspace = true
+kaspa-utxoindex.workspace = true
 kaspa-index-processor.workspace = true
 
 crossbeam-channel = "0.5"

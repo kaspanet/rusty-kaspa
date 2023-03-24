@@ -1,15 +1,15 @@
 use crate::flowcontext::orphans::{OrphanBlocksPool, MAX_ORPHANS};
 use crate::v5;
-use addressmanager::AddressManager;
 use async_trait::async_trait;
+use kaspa_addressmanager::AddressManager;
 use kaspa_consensus_core::api::{ConsensusApi, DynConsensus};
 use kaspa_consensus_core::block::Block;
 use kaspa_consensus_core::config::Config;
 use kaspa_core::time::unix_now;
 use kaspa_core::{debug, info};
 use kaspa_hashes::Hash;
-use p2p_lib::pb;
-use p2p_lib::{common::ProtocolError, ConnectionInitializer, KaspadHandshake, Router};
+use kaspa_p2p_lib::pb;
+use kaspa_p2p_lib::{common::ProtocolError, ConnectionInitializer, KaspadHandshake, Router};
 use parking_lot::Mutex;
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
