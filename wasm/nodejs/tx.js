@@ -1,4 +1,4 @@
-BigInt.prototype["toJSON"] = function(){
+BigInt.prototype["toJSON1"] = function(){
     return this.toString()
 }
 
@@ -50,8 +50,8 @@ let scriptPublicKey2 = new kaspa.ScriptPublicKey(0, keypair2.publicKey);
 console.log("scriptPublicKey2:",scriptPublicKey2);
 
 let utxos = [
-    new kaspa.UtxoEntry(300n, scriptPublicKey1, 0n, false),
-    new kaspa.UtxoEntry(200n, scriptPublicKey2, 0n, false),
+    new kaspa.UtxoEntry(18446744073709551615n, scriptPublicKey1, 0n, false),
+    new kaspa.UtxoEntry(340282366920938463463374607431768211455n, scriptPublicKey2, 0n, false),
     //new kaspa.UtxoEntry(310n, scriptPublicKey1, 0n, false),
     {
         amount: 310n,
@@ -89,7 +89,37 @@ let transaction = new kaspa.Transaction({
     payload: [],
 });
 
+// transaction.inputs.push(new kaspa.TransactionInput({
+//     previousOutpoint: { transactionId: txid, index: 2 },
+//     signatureScript: [],
+//     sequence: 2,
+//     sigOpCount: 0
+// }));
+// transaction.inputs.push(new kaspa.TransactionInput({
+//     previousOutpoint: { transactionId: txid, index: 2 },
+//     signatureScript: [],
+//     sequence: 2,
+//     sigOpCount: 0
+// }));
+
+// console.log("transaction.inputs.length", transaction.inputs.length)
+
 let signableTx = new kaspa.MutableTransaction(transaction, utxoEntries);
+let json = signableTx.toJSON();
+console.log("\nsignableTx.toJSON()", json);
+console.log("\nsignableTx.getScriptHashes()", signableTx.getScriptHashes());
+
+signableTx = kaspa.MutableTransaction.fromJSON(json);
+// console.log("\nJSON casting test: ", signableTx.toJSON()==json);
+
+// console.log("\njson parse direct", JSON.parse(json));
+// console.log("\njson parse via helper", JSON.parse(json, (key, value, c)=>{
+//     if (["amount"].includes(key)){
+//         return BigInt(value)
+//     }
+//     console.log("#######", {key, value, c})
+//     return value;
+// }));
 
 //console.log("signableTx.entries.items", signableTx.entries.items)
 let keys = [
@@ -97,17 +127,17 @@ let keys = [
     //keypair1.privateKey
 ]
 
-console.log("keys", keys)
+console.log("\nkeys", keys)
 
 transaction = kaspa.signTransaction(signableTx, keys, false);
 
-console.log("transaction:", transaction);
+console.log("\ntransaction:", transaction);
 
 let signer = new kaspa.Signer([
     keypair1.privateKey
 ]);
 
-console.log("signer:", signer)
+console.log("\nsigner:", signer)
 
 // Option 1
 // transaction = signer.signTransaction(transaction, true);
@@ -115,7 +145,7 @@ console.log("signer:", signer)
 // Option 2
 transaction = kaspa.signTransaction(transaction, signer, true);
 
-console.log("transaction:", transaction);
+console.log("\ntransaction:", transaction);
 
 
 

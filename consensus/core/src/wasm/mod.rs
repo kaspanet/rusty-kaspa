@@ -5,6 +5,9 @@ pub mod signer;
 
 // use crate::config::params::MAINNET_PARAMS;
 // use consensus_core::sign::sign;
+use consensus_core::hashing::sighash::calc_schnorr_signature_hash;
+use consensus_core::hashing::sighash::SigHashReusedValues;
+use consensus_core::hashing::sighash_type::SIG_HASH_ALL;
 use consensus_core::subnets::SubnetworkId;
 use consensus_core::tx::{
     self,
@@ -20,6 +23,8 @@ use core::str::FromStr;
 use itertools::Itertools;
 use js_sys::Array;
 use secp256k1::Secp256k1;
+use serde::{Deserialize, Serialize};
+use serde_wasm_bindgen::to_value;
 use std::iter::once;
 use std::sync::{Arc, Mutex};
 use wasm_bindgen::prelude::*;
@@ -32,7 +37,7 @@ use crate::tx::SignableTransaction;
 
 // impl Signer for Generator {}
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[wasm_bindgen]
 pub struct UtxoEntryList(Arc<Vec<UtxoEntry>>);
 
@@ -76,14 +81,28 @@ impl TryFrom<Vec<Option<UtxoEntry>>> for UtxoEntryList {
     }
 }
 
-#[derive(Clone, Debug)]
+pub fn script_hashes(mut mutable_tx: SignableTransaction) -> Result<Vec<hashes::Hash>, error::Error> {
+    let mut list = vec![];
+    for i in 0..mutable_tx.tx.inputs.len() {
+        mutable_tx.tx.inputs[i].sig_op_count = 1;
+    }
+
+    let mut reused_values = SigHashReusedValues::new();
+    for i in 0..mutable_tx.tx.inputs.len() {
+        let sig_hash = calc_schnorr_signature_hash(&mutable_tx.as_verifiable(), i, SIG_HASH_ALL, &mut reused_values);
+        list.push(sig_hash);
+    }
+    Ok(list)
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[wasm_bindgen]
 pub struct MutableTransaction {
     //inner : Arc<tx::MutableTransaction<Transaction>>,
     tx: Arc<Mutex<tx::Transaction>>,
     /// Partially filled UTXO entry data
     #[wasm_bindgen(getter_with_clone)]
-    pub entries: UtxoEntryList, // Vec<Option<UtxoEntry>>,
+    pub entries: UtxoEntryList,
     // Populated fee
     // #[wasm_bindgen(skip)]
     // pub calculated_fee: Option<u64>,
@@ -98,6 +117,23 @@ impl MutableTransaction {
     pub fn constructor(tx: tx::Transaction, entries: UtxoEntryList) -> Self {
         Self { tx: Arc::new(Mutex::new(tx)), entries }
         // Self { tx: Arc::new(Mutex::new(tx)), entries, calculated_fee: None, calculated_mass: None }
+    }
+
+    #[wasm_bindgen(js_name=toJSON)]
+    pub fn to_json(&self) -> Result<String, JsError> {
+        Ok(self.serialize(serde_json::value::Serializer)?.to_string())
+    }
+
+    #[wasm_bindgen(js_name=fromJSON)]
+    pub fn from_json(json: &str) -> Result<MutableTransaction, JsError> {
+        let mtx: Self = serde_json::from_value(serde_json::Value::from_str(json)?)?;
+        Ok(mtx)
+    }
+
+    #[wasm_bindgen(js_name=getScriptHashes)]
+    pub fn script_hashes(&self) -> Result<JsValue, JsError> {
+        let hashes = script_hashes(self.clone().try_into()?)?;
+        Ok(to_value(&hashes)?)
     }
 
     // fn sign(js_value: JsValue) -> tx::MutableTransaction {
@@ -122,7 +158,7 @@ impl TryFrom<MutableTransaction> for tx::MutableTransaction<Transaction> {
         Ok(Self {
             tx: value.tx.lock()?.clone(),
             entries: value.entries.into(),
-            calculated_fee: None, //value.calculated_fee,
+            calculated_fee: None,  //value.calculated_fee,
             calculated_mass: None, //value.calculated_mass,
         })
     }

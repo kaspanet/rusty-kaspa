@@ -247,5 +247,4 @@ impl RpcClient {
         let response: SubmitTransactionResponse = result.map_err(|err| wasm_bindgen::JsError::new(&err.to_string()))?;
         to_value(&response).map_err(|err| err.into())
     }
-
 }
