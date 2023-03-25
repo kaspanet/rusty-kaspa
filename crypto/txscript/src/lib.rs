@@ -3,7 +3,8 @@ extern crate core;
 
 pub mod caches;
 mod data_stack;
-mod opcodes;
+pub mod opcodes;
+pub mod script_builder;
 pub mod script_class;
 pub mod standard;
 
@@ -26,7 +27,7 @@ pub use standard::*;
 
 pub const MAX_SCRIPT_PUBLIC_KEY_VERSION: u16 = 0;
 pub const MAX_STACK_SIZE: usize = 244;
-pub const MAX_SCRIPTS_SIZE: usize = 10000;
+pub const MAX_SCRIPTS_SIZE: usize = 10_000;
 pub const MAX_SCRIPT_ELEMENT_SIZE: usize = 520;
 pub const MAX_OPS_PER_SCRIPT: i32 = 201;
 pub const MAX_TX_IN_SEQUENCE_NUM: u64 = u64::MAX;

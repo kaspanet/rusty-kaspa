@@ -555,12 +555,29 @@ mod tests {
             }, // 16779520
         ];
 
-        let test_of_size_9 = vec![TestCase::<SizedEncodeInt<9>> {
-            serialized: hex::decode("ffffffffffffffffff").expect("failed parsing hex"),
-            result: Err(TxScriptError::NotMinimalData(
-                "numeric value encoded as [ff, ff, ff, ff, ff, ff, ff, ff, ff] is longer than 8 bytes".to_string(),
-            )),
-        }];
+        let test_of_size_8 = vec![
+            TestCase::<SizedEncodeInt<8>> {
+                serialized: hex::decode("ffffffffffffff7f").expect("failed parsing hex"),
+                result: Ok(SizedEncodeInt::<8>(i64::MAX)),
+            },
+            TestCase::<SizedEncodeInt<8>> {
+                serialized: hex::decode("ffffffffffffffff").expect("failed parsing hex"),
+                result: Ok(SizedEncodeInt::<8>(i64::MIN + 1)),
+            },
+        ];
+
+        let test_of_size_9 = vec![
+            TestCase::<SizedEncodeInt<9>> {
+                serialized: hex::decode("ffffffffffffffffff").expect("failed parsing hex"),
+                result: Err(TxScriptError::NotMinimalData(
+                    "numeric value encoded as [ff, ff, ff, ff, ff, ff, ff, ff, ff] is longer than 8 bytes".to_string(),
+                )),
+            },
+            TestCase::<SizedEncodeInt<9>> {
+                serialized: hex::decode("ffffffffffffffff").expect("failed parsing hex"),
+                result: Ok(SizedEncodeInt::<9>(i64::MIN + 1)),
+            },
+        ];
 
         let test_of_size_10 = vec![TestCase::<SizedEncodeInt<10>> {
             serialized: hex::decode("00000000000000000000").expect("failed parsing hex"),
@@ -588,6 +605,12 @@ mod tests {
         }
 
         for test in test_of_size_5 {
+            // Ensure the error code is of the expected type and the error
+            // code matches the value specified in the test instance.
+            assert_eq!(test.serialized.deserialize(), test.result);
+        }
+
+        for test in test_of_size_8 {
             // Ensure the error code is of the expected type and the error
             // code matches the value specified in the test instance.
             assert_eq!(test.serialized.deserialize(), test.result);
