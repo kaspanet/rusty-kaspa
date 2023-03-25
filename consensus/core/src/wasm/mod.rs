@@ -84,17 +84,20 @@ pub struct MutableTransaction {
     /// Partially filled UTXO entry data
     #[wasm_bindgen(getter_with_clone)]
     pub entries: UtxoEntryList, // Vec<Option<UtxoEntry>>,
-    /// Populated fee
-    pub calculated_fee: Option<u64>,
-    /// Populated mass
-    pub calculated_mass: Option<u64>,
+    // Populated fee
+    // #[wasm_bindgen(skip)]
+    // pub calculated_fee: Option<u64>,
+    // Populated mass
+    // #[wasm_bindgen(skip)]
+    // pub calculated_mass: Option<u64>,
 }
 
 #[wasm_bindgen]
 impl MutableTransaction {
     #[wasm_bindgen(constructor)]
     pub fn constructor(tx: tx::Transaction, entries: UtxoEntryList) -> Self {
-        Self { tx: Arc::new(Mutex::new(tx)), entries, calculated_fee: None, calculated_mass: None }
+        Self { tx: Arc::new(Mutex::new(tx)), entries }
+        // Self { tx: Arc::new(Mutex::new(tx)), entries, calculated_fee: None, calculated_mass: None }
     }
 
     // fn sign(js_value: JsValue) -> tx::MutableTransaction {
@@ -119,8 +122,8 @@ impl TryFrom<MutableTransaction> for tx::MutableTransaction<Transaction> {
         Ok(Self {
             tx: value.tx.lock()?.clone(),
             entries: value.entries.into(),
-            calculated_fee: value.calculated_fee,
-            calculated_mass: value.calculated_mass,
+            calculated_fee: None, //value.calculated_fee,
+            calculated_mass: None, //value.calculated_mass,
         })
     }
 }
@@ -131,8 +134,8 @@ impl TryFrom<tx::MutableTransaction<Transaction>> for MutableTransaction {
         Ok(Self {
             tx: Arc::new(Mutex::new(value.tx)),
             entries: value.entries.try_into()?,
-            calculated_fee: value.calculated_fee,
-            calculated_mass: value.calculated_mass,
+            // calculated_fee: value.calculated_fee,
+            // calculated_mass: value.calculated_mass,
         })
     }
 }

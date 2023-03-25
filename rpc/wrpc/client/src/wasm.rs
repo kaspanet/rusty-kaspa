@@ -233,7 +233,19 @@ build_wrpc_wasm_bindgen_interface!(
         GetVirtualChainFromBlock,
         ResolveFinalityConflict,
         SubmitBlock,
-        SubmitTransaction,
+        // SubmitTransaction,
         Unban,
     ]
 );
+
+#[wasm_bindgen]
+impl RpcClient {
+    #[wasm_bindgen(js_name = submitTransaction)]
+    pub async fn submit_transaction(&self, request: JsValue) -> JsResult<JsValue> {
+        let request: SubmitTransactionRequest = from_value(request)?;
+        let result: RpcResult<SubmitTransactionResponse> = self.client.submit_transaction_call(request).await;
+        let response: SubmitTransactionResponse = result.map_err(|err| wasm_bindgen::JsError::new(&err.to_string()))?;
+        to_value(&response).map_err(|err| err.into())
+    }
+
+}
