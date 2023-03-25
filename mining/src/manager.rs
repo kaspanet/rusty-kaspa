@@ -7,7 +7,12 @@ use crate::{
     cache::BlockTemplateCache,
     consensus_context::ConsensusMiningContext,
     errors::MiningManagerResult,
-    mempool::{config::Config, errors::RuleResult, Mempool},
+    mempool::{
+        config::Config,
+        errors::RuleResult,
+        tx::{Orphan, Priority},
+        Mempool,
+    },
     model::{
         candidate_tx::CandidateTransaction,
         owner_txs::{GroupedOwnerTransactions, ScriptPublicKeySet},
@@ -120,10 +125,10 @@ impl<T: ConsensusMiningContext + ?Sized> MiningManager<T> {
     pub fn validate_and_insert_transaction(
         &self,
         transaction: Transaction,
-        is_high_priority: bool,
-        allow_orphan: bool,
+        priority: Priority,
+        orphan: Orphan,
     ) -> MiningManagerResult<Vec<Arc<Transaction>>> {
-        Ok(self.mempool.write().validate_and_insert_transaction(transaction, is_high_priority, allow_orphan)?)
+        Ok(self.mempool.write().validate_and_insert_transaction(transaction, priority, orphan)?)
     }
 
     /// Exposed only for tests. Ordinary users should let the mempool create the mutable tx internally
@@ -131,10 +136,10 @@ impl<T: ConsensusMiningContext + ?Sized> MiningManager<T> {
     pub fn validate_and_insert_mutable_transaction(
         &self,
         transaction: MutableTransaction,
-        is_high_priority: bool,
-        allow_orphan: bool,
+        priority: Priority,
+        orphan: Orphan,
     ) -> MiningManagerResult<Vec<Arc<Transaction>>> {
-        Ok(self.mempool.write().validate_and_insert_mutable_transaction(transaction, is_high_priority, allow_orphan)?)
+        Ok(self.mempool.write().validate_and_insert_mutable_transaction(transaction, priority, orphan)?)
     }
 
     /// Try to return a mempool transaction by its id.

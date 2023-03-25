@@ -14,21 +14,23 @@ use consensus_core::{
 };
 use kaspa_core::info;
 
+use super::tx::{Orphan, Priority};
+
 impl<T: ConsensusMiningContext + ?Sized> Mempool<T> {
     pub(crate) fn validate_and_insert_transaction(
         &mut self,
         transaction: Transaction,
-        is_high_priority: bool,
-        allow_orphan: bool,
+        priority: Priority,
+        orphan: Orphan,
     ) -> RuleResult<Vec<Arc<Transaction>>> {
-        self.validate_and_insert_mutable_transaction(MutableTransaction::from_tx(transaction), is_high_priority, allow_orphan)
+        self.validate_and_insert_mutable_transaction(MutableTransaction::from_tx(transaction), priority, orphan)
     }
 
     pub(crate) fn validate_and_insert_mutable_transaction(
         &mut self,
         mut transaction: MutableTransaction,
-        is_high_priority: bool,
-        allow_orphan: bool,
+        priority: Priority,
+        orphan: Orphan,
     ) -> RuleResult<Vec<Arc<Transaction>>> {
         // Populate mass in the beginning, it will be used in multiple places throughout the validation and insertion.
         transaction.calculated_mass = Some(self.consensus().calculate_transaction_mass(&transaction.tx));
@@ -38,10 +40,10 @@ impl<T: ConsensusMiningContext + ?Sized> Mempool<T> {
         match self.populate_entries_and_try_validate(&mut transaction) {
             Ok(_) => {}
             Err(RuleError::RejectMissingOutpoint) => {
-                if !allow_orphan {
+                if orphan == Orphan::Forbidden {
                     return Err(RuleError::RejectDisallowedOrphan(transaction.id()));
                 }
-                self.orphan_pool.try_add_orphan(transaction, is_high_priority)?;
+                self.orphan_pool.try_add_orphan(transaction, priority)?;
                 return Ok(vec![]);
             }
             Err(err) => {
@@ -56,7 +58,7 @@ impl<T: ConsensusMiningContext + ?Sized> Mempool<T> {
 
         // Here the accepted transaction is cloned in order to prevent having self borrowed immutably for the
         // transaction reference and mutably for the call to process_orphans_after_accepted_transaction
-        let accepted_transaction = self.transaction_pool.add_transaction(transaction, is_high_priority)?.mtx.tx.clone();
+        let accepted_transaction = self.transaction_pool.add_transaction(transaction, priority)?.mtx.tx.clone();
         let accepted_orphans = self.process_orphans_after_accepted_transaction(&accepted_transaction)?;
         Ok(accepted_orphans)
     }

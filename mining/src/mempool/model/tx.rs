@@ -1,16 +1,17 @@
+use crate::mempool::tx::Priority;
 use consensus_core::{tx::MutableTransaction, tx::TransactionId};
 use std::cmp::Ordering;
 
 pub(crate) struct MempoolTransaction {
     pub(crate) mtx: MutableTransaction,
-    pub(crate) is_high_priority: bool,
+    pub(crate) priority: Priority,
     pub(crate) added_at_daa_score: u64,
 }
 
 impl MempoolTransaction {
-    pub(crate) fn new(mtx: MutableTransaction, is_high_priority: bool, added_at_daa_score: u64) -> Self {
+    pub(crate) fn new(mtx: MutableTransaction, priority: Priority, added_at_daa_score: u64) -> Self {
         assert_eq!(mtx.tx.inputs.len(), mtx.entries.len());
-        Self { mtx, is_high_priority, added_at_daa_score }
+        Self { mtx, priority, added_at_daa_score }
     }
 
     pub(crate) fn id(&self) -> TransactionId {

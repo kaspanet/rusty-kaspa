@@ -4,6 +4,7 @@ use crate::{
         config::Config,
         errors::{RuleError, RuleResult},
         model::{map::MempoolTransactionCollection, pool::Pool, tx::MempoolTransaction, utxo_set::MempoolUtxoSet},
+        tx::Priority,
     },
     model::{candidate_tx::CandidateTransaction, topological_index::TopologicalIndex},
 };
@@ -79,13 +80,9 @@ impl<T: ConsensusMiningContext + ?Sized> TransactionsPool<T> {
     }
 
     /// Add a mutable transaction to the pool
-    pub(crate) fn add_transaction(
-        &mut self,
-        transaction: MutableTransaction,
-        is_high_priority: bool,
-    ) -> RuleResult<&MempoolTransaction> {
+    pub(crate) fn add_transaction(&mut self, transaction: MutableTransaction, priority: Priority) -> RuleResult<&MempoolTransaction> {
         let virtual_daa_score = self.consensus().get_virtual_daa_score();
-        let transaction = MempoolTransaction::new(transaction, is_high_priority, virtual_daa_score);
+        let transaction = MempoolTransaction::new(transaction, priority, virtual_daa_score);
         let id = transaction.id();
         self.add_mempool_transaction(transaction)?;
         Ok(self.get(&id).unwrap())
@@ -170,7 +167,8 @@ impl<T: ConsensusMiningContext + ?Sized> TransactionsPool<T> {
             .all_transactions
             .values()
             .filter_map(|x| {
-                if !x.is_high_priority && virtual_daa_score - x.added_at_daa_score > self.config.transaction_expire_interval_daa_score
+                if (x.priority == Priority::Low)
+                    && virtual_daa_score - x.added_at_daa_score > self.config.transaction_expire_interval_daa_score
                 {
                     debug!(
                         "Removing transaction {}, because it expired, DAAScore moved by {}, expire interval: {}",
@@ -230,7 +228,7 @@ impl<T: ConsensusMiningContext + ?Sized> TransactionsPool<T> {
             // Sorting this vector here may be sub-optimal compared with maintaining a sorted
             // index of all_transactions low-priority items if the proportion of low-priority txs
             // in all_transactions is important.
-            let mut low_priority_txs = self.all_transactions.values().filter(|x| x.is_high_priority).collect::<Vec<_>>();
+            let mut low_priority_txs = self.all_transactions.values().filter(|x| x.priority == Priority::Low).collect::<Vec<_>>();
 
             if !low_priority_txs.is_empty() {
                 low_priority_txs.sort_by(|a, b| a.fee_rate().partial_cmp(&b.fee_rate()).unwrap());

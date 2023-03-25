@@ -8,6 +8,7 @@ use crate::{
             pool::Pool,
             tx::MempoolTransaction,
         },
+        tx::Priority,
     },
 };
 use consensus_core::{
@@ -68,7 +69,7 @@ impl<T: ConsensusMiningContext + ?Sized> OrphanPool<T> {
         self.outpoint_owner_id.get(outpoint).and_then(|id| self.all_orphans.get_mut(id))
     }
 
-    pub(crate) fn try_add_orphan(&mut self, transaction: MutableTransaction, is_high_priority: bool) -> RuleResult<()> {
+    pub(crate) fn try_add_orphan(&mut self, transaction: MutableTransaction, priority: Priority) -> RuleResult<()> {
         // Rust rewrite: original name is maybeAddOrphan
         if self.config.maximum_orphan_transaction_count == 0 {
             // TODO: determine how/why this may happen
@@ -79,7 +80,7 @@ impl<T: ConsensusMiningContext + ?Sized> OrphanPool<T> {
         self.check_orphan_double_spend(&transaction)?;
         // Make sure there is room in the pool for the new transaction
         self.limit_orphan_pool_size(1)?;
-        self.add_orphan(transaction, is_high_priority)?;
+        self.add_orphan(transaction, priority)?;
         Ok(())
     }
 
@@ -130,9 +131,9 @@ impl<T: ConsensusMiningContext + ?Sized> OrphanPool<T> {
         Ok(())
     }
 
-    fn add_orphan(&mut self, transaction: MutableTransaction, is_high_priority: bool) -> RuleResult<()> {
+    fn add_orphan(&mut self, transaction: MutableTransaction, priority: Priority) -> RuleResult<()> {
         let id = transaction.id();
-        let transaction = MempoolTransaction::new(transaction, is_high_priority, self.consensus().get_virtual_daa_score());
+        let transaction = MempoolTransaction::new(transaction, priority, self.consensus().get_virtual_daa_score());
         // Add all entries in outpoint_owner_id
         for input in transaction.mtx.tx.inputs.iter() {
             self.outpoint_owner_id.insert(input.previous_outpoint, id);
@@ -228,7 +229,9 @@ impl<T: ConsensusMiningContext + ?Sized> OrphanPool<T> {
             .all_orphans
             .values()
             .filter_map(|x| {
-                if !x.is_high_priority && virtual_daa_score - x.added_at_daa_score > self.config.orphan_expire_interval_daa_score {
+                if (x.priority == Priority::Low)
+                    && virtual_daa_score - x.added_at_daa_score > self.config.orphan_expire_interval_daa_score
+                {
                     Some(x.id())
                 } else {
                     None
@@ -270,7 +273,7 @@ impl<T: ConsensusMiningContext + ?Sized> OrphanPool<T> {
     }
 
     fn get_random_low_priority_orphan(&self) -> Option<&MempoolTransaction> {
-        self.all_orphans.values().find(|x| !x.is_high_priority)
+        self.all_orphans.values().find(|x| x.priority == Priority::Low)
     }
 }
 

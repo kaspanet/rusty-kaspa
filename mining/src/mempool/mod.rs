@@ -121,3 +121,17 @@ impl<T: ConsensusMiningContext + ?Sized> Mempool<T> {
         self.transaction_pool.all_ready_transactions()
     }
 }
+
+pub mod tx {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum Priority {
+        Low,
+        High,
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum Orphan {
+        Forbidden,
+        Allowed,
+    }
+}

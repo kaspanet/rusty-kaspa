@@ -1,10 +1,13 @@
 use std::collections::{hash_set::Iter, HashMap, HashSet};
 
 use super::{map::MempoolTransactionCollection, tx::MempoolTransaction};
-use crate::model::{
-    owner_txs::{GroupedOwnerTransactions, ScriptPublicKeySet},
-    topological_index::TopologicalIndex,
-    TransactionIdSet,
+use crate::{
+    mempool::tx::Priority,
+    model::{
+        owner_txs::{GroupedOwnerTransactions, ScriptPublicKeySet},
+        topological_index::TopologicalIndex,
+        TransactionIdSet,
+    },
 };
 use consensus_core::tx::{MutableTransaction, TransactionId};
 
@@ -32,9 +35,9 @@ pub(crate) trait Pool {
 
     /// Returns an index over either high or low priority transaction ids which can
     /// in turn be topologically ordered.
-    fn index(&self, is_high_priority: bool) -> PoolIndex {
+    fn index(&self, priority: Priority) -> PoolIndex {
         let transactions: TransactionIdSet =
-            self.all().iter().filter_map(|(id, tx)| if tx.is_high_priority == is_high_priority { Some(*id) } else { None }).collect();
+            self.all().iter().filter_map(|(id, tx)| if tx.priority == priority { Some(*id) } else { None }).collect();
         let chained_transactions = transactions
             .iter()
             .filter_map(|id| {
