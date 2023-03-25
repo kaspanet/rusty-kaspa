@@ -11,6 +11,7 @@ addresses.workspace = true
 hashes.workspace = true
 muhash.workspace = true
 consensus-core.workspace = true
+txscript.workspace = true
 kaspa-core.workspace = true
 thiserror.workspace = true
 serde.workspace = true

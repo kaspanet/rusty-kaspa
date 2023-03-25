@@ -1,4 +1,3 @@
-use crate::stubs::ScriptClass;
 use crate::{
     consensus_context::ConsensusMiningContext,
     mempool::{
@@ -9,8 +8,9 @@ use crate::{
 use consensus_core::{
     constants::{MAX_SCRIPT_PUBLIC_KEY_VERSION, MAX_SOMPI},
     mass,
-    tx::{MutableTransaction, TransactionOutput},
+    tx::{MutableTransaction, PopulatedTransaction, TransactionOutput},
 };
+use txscript::script_class::ScriptClass;
 
 /// MAX_STANDARD_P2SH_SIG_OPS is the maximum number of signature operations
 /// that are considered standard in a pay-to-script-hash script.
@@ -94,11 +94,7 @@ impl<T: ConsensusMiningContext + ?Sized> Mempool<T> {
                 return Err(NonStandardError::RejectScriptPublicKeyVersion(transaction_id, i));
             }
 
-            // TODO: call script engine when available instead of this sanity check test
-            // let script_class = txscript.get_script_class(output.script_public_key.script())
-            let script_class =
-                if output.script_public_key.script().len() < 34 { ScriptClass::NonStandard } else { ScriptClass::PubKey };
-            if script_class == ScriptClass::NonStandard {
+            if ScriptClass::from_script(&output.script_public_key) == ScriptClass::NonStandard {
                 return Err(NonStandardError::RejectOutputScriptClass(transaction_id, i));
             }
 
@@ -184,28 +180,22 @@ impl<T: ConsensusMiningContext + ?Sized> Mempool<T> {
     pub(crate) fn check_transaction_standard_in_context(&self, transaction: &MutableTransaction) -> NonStandardResult<()> {
         let transaction_id = transaction.id();
 
-        for (i, _input) in transaction.tx.inputs.iter().enumerate() {
+        for (i, input) in transaction.tx.inputs.iter().enumerate() {
             // It is safe to elide existence and index checks here since
             // they have already been checked prior to calling this
             // function.
-
-            // TODO: call script engine when available
-            // let entry = transaction.entries[i].as_ref().unwrap();
-            // let origin_script_key = entry.script_public_key.script();
-            // script_class = txscript.get_script_class(origin_script_key)
-            let script_class = ScriptClass::ScriptHash;
-            match script_class {
+            let entry = transaction.entries[i].as_ref().unwrap();
+            match ScriptClass::from_script(&entry.script_public_key) {
                 ScriptClass::NonStandard => {
                     return Err(NonStandardError::RejectInputScriptClass(transaction_id, i));
                 }
 
                 // TODO: handle these 2 cases
                 ScriptClass::PubKey => {}
-                ScriptClass::_PubKeyECDSA => {}
+                ScriptClass::PubKeyECDSA => {}
 
                 ScriptClass::ScriptHash => {
-                    // TODO: call script engine when available
-                    //  txscript.GetPreciseSigOpCount(input.SignatureScript, origin_script_key, true)
+                    txscript::get_sig_op_count::<PopulatedTransaction>(&input.signature_script, &entry.script_public_key);
                     let num_sig_ops = 1;
                     if num_sig_ops > MAX_STANDARD_P2SH_SIG_OPS {
                         return Err(NonStandardError::RejectSignatureCount(transaction_id, i, num_sig_ops, MAX_STANDARD_P2SH_SIG_OPS));
