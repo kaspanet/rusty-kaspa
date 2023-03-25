@@ -7,14 +7,15 @@
 
 use super::*;
 
-use thiserror::Error;
-#[derive(Error, Debug, Clone)]
-pub enum Error {
-    #[error("{0}")]
-    Message(String),
-}
+// use thiserror::Error;
+// #[derive(Error, Debug, Clone)]
+// pub enum Error {
+//     #[error("{0}")]
+//     Message(String),
+// }
 
-pub type Result = std::result::Result<SignableTransaction, Error>;
+pub use super::error::Error;
+pub type Result = std::result::Result<SignableTransaction, super::error::Error>;
 
 // TODO - prototype Signer trait that should be used by signing primitives
 pub trait Signer {
