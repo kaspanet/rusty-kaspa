@@ -1416,6 +1416,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "home"
+version = "0.5.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "747309b4b440c06d57b0b25f2aee03ee9b5e5397d288c60e21fc709bb98a7408"
+dependencies = [
+ "winapi",
+]
+
+[[package]]
 name = "http"
 version = "0.2.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1910,10 +1919,13 @@ version = "0.1.0"
 dependencies = [
  "addresses",
  "async-trait",
+ "base64 0.21.0",
  "borsh",
+ "cfg-if",
  "consensus-core",
  "faster-hex",
  "hmac",
+ "home",
  "js-sys",
  "kaspa-bip32",
  "kaspa-notify",
@@ -1922,11 +1934,13 @@ dependencies = [
  "ripemd",
  "secp256k1",
  "serde",
+ "serde_json",
  "sha2 0.10.6",
  "thiserror",
  "tokio",
  "wasm-bindgen",
  "wasm-bindgen-futures",
+ "web-sys",
  "workflow-core",
  "workflow-log",
  "workflow-rpc",

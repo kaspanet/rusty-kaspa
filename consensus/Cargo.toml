@@ -25,7 +25,7 @@ tokio.workspace = true
 bincode.workspace = true
 tempfile.workspace = true
 rayon.workspace = true
-rand.workspace = true
+# rand.workspace = true
 indexmap.workspace = true
 smallvec.workspace = true
 kaspa-utils.workspace = true
@@ -40,10 +40,13 @@ crossbeam-channel = "0.5"
 async-channel = "1.8.0"
 secp256k1 = { version = "0.24", features = ["global-context", "rand-std"] }
 
+rand = { workspace = true, features = ["small_rng"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+tokio = { workspace = true, features = ["rt", "macros"] }
+
 [dev-dependencies]
 criterion.workspace = true
-rand = { workspace = true, features = ["small_rng"] }
-tokio = { workspace = true, features = ["rt", "macros"] }
 serde_json = "1.0"
 flate2 = "1"
 rand_distr = "0.4"

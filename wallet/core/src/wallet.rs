@@ -142,8 +142,9 @@ impl Wallet {
     }
 
     pub async fn new_address(self: &Arc<Self>) -> Result<String> {
-        let address = self.receive_wallet()?.new_address().await?;
-        Ok(address.into())
+        todo!()
+        // let address = self.receive_wallet()?.new_address().await?;
+        // Ok(address.into())
     }
 
     pub async fn new_change_address(self: &Arc<Self>) -> Result<String> {

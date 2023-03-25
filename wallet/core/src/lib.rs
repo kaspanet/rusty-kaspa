@@ -6,6 +6,7 @@ pub mod error;
 pub mod result;
 pub mod signer;
 pub mod storage;
+pub mod utxo;
 pub mod wallet;
 pub mod wrapper;
 
