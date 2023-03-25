@@ -4,7 +4,13 @@ use crate::{
 };
 use consensus_core::tx::{Transaction, TransactionId};
 use itertools::Itertools;
-use mining::{errors::MiningManagerError, mempool::errors::RuleError};
+use mining::{
+    errors::MiningManagerError,
+    mempool::{
+        errors::RuleError,
+        tx::{Orphan, Priority},
+    },
+};
 use p2p_lib::{
     common::{ProtocolError, DEFAULT_TIMEOUT},
     dequeue, make_message,
@@ -181,7 +187,7 @@ impl RelayTransactionsFlow {
                 )));
             }
             let Response::Transaction(transaction) = response else { continue; };
-            let result = self.ctx.mining_manager().validate_and_insert_transaction(transaction, false, true);
+            let result = self.ctx.mining_manager().validate_and_insert_transaction(transaction, Priority::Low, Orphan::Allowed);
             match result {
                 Ok(accepted_transactions) => {
                     self.broadcast_accepted_transactions(accepted_transactions.iter().map(|x| x.id()).collect_vec()).await?;
