@@ -24,6 +24,7 @@ mod request_headers;
 mod request_ibd_chain_block_locator;
 mod request_pp_proof;
 mod request_pruning_point_utxo_set;
+mod txrelay;
 
 pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
     // IBD flow <-> invs flow channel requires no buffering hence the minimal size possible

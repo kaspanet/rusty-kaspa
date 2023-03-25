@@ -43,16 +43,16 @@ pub enum RuleError {
     #[error("orphan transaction size of {0} bytes is larger than max allowed size of {1} bytes")]
     RejectBadOrphanMass(u64, u64),
 
-    #[error("Orphan transaction {0} is already in the orphan pool")]
+    #[error("orphan transaction {0} is already in the orphan pool")]
     RejectDuplicateOrphan(TransactionId),
 
-    #[error("Orphan transaction {0} is double spending an input from already existing orphan {1}")]
+    #[error("orphan transaction {0} is double spending an input from already existing orphan {1}")]
     RejectDoubleSpendOrphan(TransactionId, TransactionId),
 
     #[error("transaction {0} is an orphan where orphan is disallowed")]
     RejectDisallowedOrphan(TransactionId),
 
-    #[error("Input No. {0} of {1} ({2}) doesn't exist in orphan_ids_by_previous_outpoint")]
+    #[error("input No. {0} of {1} ({2}) doesn't exist in orphan_ids_by_previous_outpoint")]
     RejectMissingOrphanOutpoint(usize, TransactionId, TransactionOutpoint),
 
     #[error("transaction {0} doesn't exist in orphan pool")]
@@ -64,6 +64,10 @@ pub enum RuleError {
 
     #[error("transactions in mempool form a cycle")]
     RejectCycleInMempoolTransactions,
+
+    // TODO: This error is added for the tx_relay flow but is never constructed neither in the golang nor in this version. Discuss if it can be removed.
+    #[error("transaction {0} is invalid")]
+    RejectInvalid(TransactionId),
 }
 
 impl From<NonStandardError> for RuleError {

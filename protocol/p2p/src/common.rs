@@ -32,6 +32,9 @@ pub enum ProtocolError {
     #[error("{0}")]
     OtherOwned(String),
 
+    #[error("misbehaving peer: {0}")]
+    MisbehavingPeer(String),
+
     #[error("peer connection is closed")]
     ConnectionClosed,
 }

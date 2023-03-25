@@ -5,6 +5,7 @@ use async_trait::async_trait;
 use consensus_core::api::{ConsensusApi, DynConsensus};
 use consensus_core::block::Block;
 use consensus_core::config::Config;
+use consensus_core::tx::TransactionId;
 use hashes::Hash;
 use kaspa_core::time::unix_now;
 use kaspa_core::{debug, info};
@@ -24,6 +25,7 @@ pub struct FlowContext {
     pub config: Config,
     orphans_pool: Arc<AsyncRwLock<OrphanBlocksPool<dyn ConsensusApi>>>,
     shared_block_requests: Arc<Mutex<HashSet<Hash>>>,
+    shared_transaction_requests: Arc<Mutex<HashSet<TransactionId>>>,
     is_ibd_running: Arc<AtomicBool>, // TODO: pass the context wrapped with Arc and avoid some of the internal ones
     pub amgr: Arc<Mutex<AddressManager>>,
     mining_manager: Arc<MiningManager<dyn ConsensusApi>>,
@@ -40,20 +42,20 @@ impl Drop for IbdRunningGuard {
     }
 }
 
-pub struct BlockRequestScope<'a> {
-    ctx: &'a FlowContext,
-    req: Hash,
+pub struct RequestScope<T: PartialEq + Eq + std::hash::Hash> {
+    set: Arc<Mutex<HashSet<T>>>,
+    pub req: T,
 }
 
-impl<'a> BlockRequestScope<'a> {
-    pub fn new(ctx: &'a FlowContext, req: Hash) -> Self {
-        Self { ctx, req }
+impl<T: PartialEq + Eq + std::hash::Hash> RequestScope<T> {
+    pub fn new(set: Arc<Mutex<HashSet<T>>>, req: T) -> Self {
+        Self { set, req }
     }
 }
 
-impl Drop for BlockRequestScope<'_> {
+impl<T: PartialEq + Eq + std::hash::Hash> Drop for RequestScope<T> {
     fn drop(&mut self) {
-        self.ctx.shared_block_requests.lock().remove(&self.req);
+        self.set.lock().remove(&self.req);
     }
 }
 
@@ -69,6 +71,7 @@ impl FlowContext {
             config: config.clone(),
             orphans_pool: Arc::new(AsyncRwLock::new(OrphanBlocksPool::new(consensus, MAX_ORPHANS))),
             shared_block_requests: Arc::new(Mutex::new(HashSet::new())),
+            shared_transaction_requests: Arc::new(Mutex::new(HashSet::new())),
             is_ibd_running: Arc::new(AtomicBool::default()),
             amgr,
             mining_manager,
@@ -95,9 +98,17 @@ impl FlowContext {
         self.is_ibd_running.load(Ordering::SeqCst)
     }
 
-    pub fn try_adding_block_request(&self, req: Hash) -> Option<BlockRequestScope> {
+    pub fn try_adding_block_request(&self, req: Hash) -> Option<RequestScope<Hash>> {
         if self.shared_block_requests.lock().insert(req) {
-            Some(BlockRequestScope::new(self, req))
+            Some(RequestScope::new(self.shared_block_requests.clone(), req))
+        } else {
+            None
+        }
+    }
+
+    pub fn try_adding_transaction_request(&self, req: TransactionId) -> Option<RequestScope<TransactionId>> {
+        if self.shared_transaction_requests.lock().insert(req) {
+            Some(RequestScope::new(self.shared_transaction_requests.clone(), req))
         } else {
             None
         }
