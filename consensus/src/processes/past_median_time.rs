@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use consensus_core::errors::block::RuleError;
+use kaspa_consensus_core::errors::block::RuleError;
 
 use crate::model::stores::{
     block_window_cache::{BlockWindowCacheReader, BlockWindowHeap},

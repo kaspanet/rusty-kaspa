@@ -6,8 +6,8 @@ use crate::{
     tx::{TransactionId, TransactionOutpoint},
     BlueWorkType,
 };
-use hashes::Hash;
 use itertools::Itertools;
+use kaspa_hashes::Hash;
 use thiserror::Error;
 
 #[derive(Clone, Debug)]

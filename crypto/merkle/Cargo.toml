@@ -1,5 +1,5 @@
 [package]
-name = "merkle"
+name = "kaspa-merkle"
 description = "Merkle tree lib"
 version.workspace = true
 edition.workspace = true
@@ -8,4 +8,4 @@ include.workspace = true
 license.workspace = true
 
 [dependencies]
-hashes.workspace = true
+kaspa-hashes.workspace = true

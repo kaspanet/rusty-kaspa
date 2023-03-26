@@ -5,7 +5,7 @@ mod reindex;
 pub mod tests;
 mod tree;
 
-use database::prelude::StoreError;
+use kaspa_database::prelude::StoreError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]

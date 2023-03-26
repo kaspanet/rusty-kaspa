@@ -15,7 +15,7 @@ pub enum ConversionError {
     ArrayBytesSizeError(#[from] std::array::TryFromSliceError),
 
     #[error("Bytes size mismatch error {0}")]
-    UintBytesSizeError(#[from] math::uint::TryFromSliceError),
+    UintBytesSizeError(#[from] kaspa_math::uint::TryFromSliceError),
 
     #[error("Integer parsing error: {0}")]
     IntCastingError(#[from] std::num::TryFromIntError),

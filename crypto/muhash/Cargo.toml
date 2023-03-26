@@ -1,5 +1,5 @@
 [package]
-name = "muhash"
+name = "kaspa-muhash"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -7,8 +7,8 @@ include.workspace = true
 license.workspace = true
 
 [dependencies]
-math.workspace = true
-hashes.workspace = true
+kaspa-math.workspace = true
+kaspa-hashes.workspace = true
 rand_chacha.workspace = true
 serde.workspace = true
 

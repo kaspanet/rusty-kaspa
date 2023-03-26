@@ -4,7 +4,7 @@ use crate::{
     scope::{Scope, UtxosChangedScope, VirtualChainChangedScope},
     subscription::Command,
 };
-use addresses::Address;
+use kaspa_addresses::Address;
 use std::{
     collections::HashSet,
     fmt::Debug,

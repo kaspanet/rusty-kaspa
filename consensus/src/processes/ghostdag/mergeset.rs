@@ -2,8 +2,8 @@ use super::protocol::GhostdagManager;
 use crate::model::stores::ghostdag::GhostdagStoreReader;
 use crate::model::stores::relations::RelationsStoreReader;
 use crate::model::{services::reachability::ReachabilityService, stores::headers::HeaderStoreReader};
-use consensus_core::{BlockHashSet, HashMapCustomHasher};
-use hashes::Hash;
+use kaspa_consensus_core::{BlockHashSet, HashMapCustomHasher};
+use kaspa_hashes::Hash;
 use std::collections::VecDeque;
 
 impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V: HeaderStoreReader> GhostdagManager<T, S, U, V> {

@@ -8,7 +8,7 @@ use crate::{
         Mempool,
     },
 };
-use consensus_core::{
+use kaspa_consensus_core::{
     constants::UNACCEPTED_DAA_SCORE,
     tx::{MutableTransaction, Transaction, TransactionId, TransactionOutpoint, UtxoEntry},
 };

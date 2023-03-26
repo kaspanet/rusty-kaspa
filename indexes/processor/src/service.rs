@@ -1,5 +1,5 @@
 use crate::{processor::Processor, IDENT};
-use consensus_notify::{
+use kaspa_consensus_notify::{
     connection::ConsensusChannelConnection, notification::Notification as ConsensusNotification, notifier::ConsensusNotifier,
 };
 use kaspa_core::{
@@ -12,8 +12,8 @@ use kaspa_notify::{
     scope::{PruningPointUtxoSetOverrideScope, Scope, UtxosChangedScope},
 };
 use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
+use kaspa_utxoindex::api::DynUtxoIndexApi;
 use std::sync::Arc;
-use utxoindex::api::DynUtxoIndexApi;
 
 const INDEX_SERVICE: &str = IDENT;
 

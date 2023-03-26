@@ -1,10 +1,10 @@
-use consensus_core::{
+use kaspa_consensus_core::{
     tx::{ScriptPublicKeys, TransactionOutpoint},
     utxo::utxo_diff::UtxoDiff,
     BlockHashSet,
 };
-use database::prelude::StoreResult;
-use hashes::Hash;
+use kaspa_database::prelude::StoreResult;
+use kaspa_hashes::Hash;
 use parking_lot::RwLock;
 use std::{collections::HashSet, fmt::Debug, sync::Arc};
 

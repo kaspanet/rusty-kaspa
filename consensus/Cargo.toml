@@ -1,5 +1,5 @@
 [package]
-name = "consensus"
+name = "kaspa-consensus"
 description = "Kaspa consensus lib"
 version.workspace = true
 edition.workspace = true
@@ -8,14 +8,14 @@ include.workspace = true
 license.workspace = true
 
 [dependencies]
-pow.workspace = true
-math.workspace = true
-hashes.workspace = true
-merkle.workspace = true
+kaspa-pow.workspace = true
+kaspa-math.workspace = true
+kaspa-hashes.workspace = true
+kaspa-merkle.workspace = true
 kaspa-core.workspace = true
 kaspa-notify.workspace = true
-consensus-core.workspace = true
-consensus-notify.workspace = true
+kaspa-consensus-core.workspace = true
+kaspa-consensus-notify.workspace = true
 faster-hex.workspace = true
 thiserror.workspace = true
 serde.workspace = true
@@ -30,11 +30,11 @@ indexmap.workspace = true
 smallvec.workspace = true
 kaspa-utils.workspace = true
 log.workspace = true
-muhash.workspace = true
+kaspa-muhash.workspace = true
 parking_lot.workspace = true
-txscript.workspace = true
+kaspa-txscript.workspace = true
 rocksdb.workspace = true
-database.workspace = true
+kaspa-database.workspace = true
 
 crossbeam-channel = "0.5"
 async-channel = "1.8.0"
@@ -47,7 +47,7 @@ tokio = { workspace = true, features = ["rt", "macros"] }
 serde_json = "1.0"
 flate2 = "1"
 rand_distr = "0.4"
-txscript-errors.workspace = true
+kaspa-txscript-errors.workspace = true
 
 [[bench]]
 name = "hash_benchmarks"

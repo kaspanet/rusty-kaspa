@@ -5,7 +5,7 @@ pub mod daa;
 pub mod selected_chain;
 use std::{fmt::Display, mem::size_of};
 
-pub use database;
+pub use kaspa_database;
 pub mod depth;
 pub mod ghostdag;
 pub mod headers;

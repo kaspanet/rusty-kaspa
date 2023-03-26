@@ -3,13 +3,13 @@
 use super::collector::{CollectorFromConsensus, CollectorFromIndex};
 use crate::{api::rpc::RpcApi, model::*, notify::connection::ChannelConnection, FromRpcHex, Notification, RpcError, RpcResult};
 use async_trait::async_trait;
-use consensus_core::{api::DynConsensus, block::Block, coinbase::MinerData};
-use consensus_notify::{
+use kaspa_consensus_core::{api::DynConsensus, block::Block, coinbase::MinerData};
+use kaspa_consensus_notify::{
     notifier::ConsensusNotifier,
     {connection::ConsensusChannelConnection, notification::Notification as ConsensusNotification},
 };
-use hashes::Hash;
 use kaspa_core::trace;
+use kaspa_hashes::Hash;
 use kaspa_index_core::{connection::IndexChannelConnection, notification::Notification as IndexNotification, notifier::IndexNotifier};
 use kaspa_notify::{
     collector::DynCollector,
@@ -144,7 +144,7 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
     async fn get_block_template_call(&self, request: GetBlockTemplateRequest) -> RpcResult<GetBlockTemplateResponse> {
         trace!("incoming GetBlockTemplate request");
 
-        let script_public_key = txscript::pay_to_address_script(&request.pay_address);
+        let script_public_key = kaspa_txscript::pay_to_address_script(&request.pay_address);
         let miner_data: MinerData = MinerData::new(script_public_key, request.extra_data);
         // TODO: handle error properly when managed through mining manager
         let block_template = self.consensus.build_block_template(miner_data, vec![]).unwrap();

@@ -1,4 +1,4 @@
-use consensus_core::{tx::MutableTransaction, tx::TransactionId};
+use kaspa_consensus_core::{tx::MutableTransaction, tx::TransactionId};
 use std::cmp::Ordering;
 
 pub(crate) struct MempoolTransaction {

@@ -1,5 +1,5 @@
 use futures_util::future::BoxFuture;
-use muhash::MuHash;
+use kaspa_muhash::MuHash;
 use std::sync::Arc;
 
 use crate::{
@@ -19,7 +19,7 @@ use crate::{
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     BlockHashSet,
 };
-use hashes::Hash;
+use kaspa_hashes::Hash;
 pub type BlockValidationFuture = BoxFuture<'static, BlockProcessResult<BlockStatus>>;
 
 /// Abstracts the consensus external API

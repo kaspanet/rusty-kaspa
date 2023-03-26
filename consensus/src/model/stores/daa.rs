@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
-use consensus_core::{BlockHashSet, BlockHasher};
-use database::prelude::StoreError;
-use database::prelude::DB;
-use database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
-use hashes::Hash;
+use kaspa_consensus_core::{BlockHashSet, BlockHasher};
+use kaspa_database::prelude::StoreError;
+use kaspa_database::prelude::DB;
+use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
+use kaspa_hashes::Hash;
 use rocksdb::WriteBatch;
 
 pub trait DaaStoreReader {

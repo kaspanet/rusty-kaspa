@@ -1,7 +1,7 @@
 use crate::processes::ghostdag::ordering::SortableBlock;
-use database::prelude::StoreResult;
-use database::prelude::DB;
-use database::prelude::{BatchDbWriter, CachedDbItem, DirectDbWriter};
+use kaspa_database::prelude::StoreResult;
+use kaspa_database::prelude::DB;
+use kaspa_database::prelude::{BatchDbWriter, CachedDbItem, DirectDbWriter};
 use rocksdb::WriteBatch;
 use std::sync::Arc;
 

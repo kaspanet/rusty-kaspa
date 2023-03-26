@@ -10,7 +10,7 @@ use self::{
     config::Config,
     model::{orphan_pool::OrphanPool, pool::Pool, transactions_pool::TransactionsPool},
 };
-use consensus_core::tx::{MutableTransaction, TransactionId};
+use kaspa_consensus_core::tx::{MutableTransaction, TransactionId};
 use std::sync::Arc;
 
 pub(crate) mod check_transaction_standard;

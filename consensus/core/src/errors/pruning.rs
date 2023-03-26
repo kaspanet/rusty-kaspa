@@ -1,7 +1,7 @@
 use crate::BlockLevel;
 
 use super::{block::RuleError, tx::TxRuleError};
-use hashes::Hash;
+use kaspa_hashes::Hash;
 use thiserror::Error;
 
 #[derive(Error, Debug, Clone)]

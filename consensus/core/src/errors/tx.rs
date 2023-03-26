@@ -1,7 +1,7 @@
 use crate::constants::MAX_SOMPI;
 use crate::tx::TransactionOutpoint;
+use kaspa_txscript_errors::TxScriptError;
 use thiserror::Error;
-use txscript_errors::TxScriptError;
 
 #[derive(Error, Debug, Clone, PartialEq, Eq)]
 pub enum TxRuleError {

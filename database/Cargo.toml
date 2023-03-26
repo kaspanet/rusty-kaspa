@@ -1,5 +1,5 @@
 [package]
-name = "database"
+name = "kaspa-database"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -15,6 +15,6 @@ parking_lot.workspace = true
 thiserror.workspace = true
 rand.workspace = true
 faster-hex.workspace = true
-hashes.workspace = true
+kaspa-hashes.workspace = true
 itertools.workspace = true
 num_cpus.workspace = true

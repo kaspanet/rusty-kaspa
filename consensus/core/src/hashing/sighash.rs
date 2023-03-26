@@ -1,4 +1,4 @@
-use hashes::{Hash, Hasher, HasherBase, TransactionSigningHash, TransactionSigningHashECDSA, ZERO_HASH};
+use kaspa_hashes::{Hash, Hasher, HasherBase, TransactionSigningHash, TransactionSigningHashECDSA, ZERO_HASH};
 
 use crate::{
     subnets::SUBNETWORK_ID_NATIVE,

@@ -1,10 +1,10 @@
-use consensus_core::BlockHasher;
-use database::prelude::StoreError;
-use database::prelude::DB;
-use database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
-use hashes::Hash;
-use math::Uint3072;
-use muhash::MuHash;
+use kaspa_consensus_core::BlockHasher;
+use kaspa_database::prelude::StoreError;
+use kaspa_database::prelude::DB;
+use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
+use kaspa_hashes::Hash;
+use kaspa_math::Uint3072;
+use kaspa_muhash::MuHash;
 use rocksdb::WriteBatch;
 use std::sync::Arc;
 

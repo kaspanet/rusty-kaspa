@@ -1,5 +1,5 @@
 [package]
-name = "hashes"
+name = "kaspa-hashes"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

@@ -1,9 +1,9 @@
-use consensus_core::{
+use kaspa_consensus_core::{
     tx::{TransactionOutpoint, UtxoEntry},
     utxo::utxo_diff::UtxoDiff,
     BlockHashSet, HashMapCustomHasher,
 };
-use hashes::Hash;
+use kaspa_hashes::Hash;
 use kaspa_utils::hashmap::NestedHashMapExtensions;
 
 use crate::model::{CirculatingSupplyDiff, CompactUtxoEntry, UtxoChanges, UtxoSetByScriptPublicKey};

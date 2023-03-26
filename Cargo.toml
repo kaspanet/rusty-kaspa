@@ -49,48 +49,54 @@ edition = "2021"
 include = ["src/**/*.rs", "Cargo.toml"]
 
 [workspace.dependencies]
-kaspa-core = { path = "core" }
-# kaspa-wallet = { path = "wallet" }
-consensus = { path = "consensus" }
-consensus-core = { path = "consensus/core" }
-consensus-notify = { path = "consensus/notify" }
-kaspad = { path = "kaspad" }
-math = { path = "math" }
-hashes = { path = "crypto/hashes" }
-muhash = { path = "crypto/muhash" }
-addresses = { path = "crypto/addresses" }
-merkle = { path = "crypto/merkle" }
-pow = { path = "consensus/pow" }
+
+# not published
+kaspa-addressmanager = { path = "components/addressmanager" }
+kaspa-connectionmanager = { path = "components/connectionmanager" }
+kaspa-mining = { path = "mining" }
+kaspa-p2p-flows = { path = "protocol/flows" }
+kaspa-p2p-lib = { path = "protocol/p2p" }
+kaspa-testing-integration = { path = "testing/integration" }
+kaspa-utxoindex = { path = "indexes/utxoindex" }
+
+# published
+kaspa-addresses = { version = "0.1.0", path = "crypto/addresses" }
+kaspa-bip32 = { version = "0.1.0", path = "wallet/bip32" }
+kaspa-consensus = { version = "0.1.0", path = "consensus" }
+kaspa-consensus-core = { version = "0.1.0", path = "consensus/core" }
+kaspa-consensus-notify = { version = "0.1.0", path = "consensus/notify" }
+kaspa-core = { version = "0.1.0", path = "core" }
+kaspa-database = { version = "0.1.0", path = "database" }
+kaspa-grpc-client = { version = "0.1.0", path = "rpc/grpc/client" }
+kaspa-grpc-core = { version = "0.1.0", path = "rpc/grpc/core" }
+kaspa-hashes = { version = "0.1.0", path = "crypto/hashes" }
+kaspa-math = { version = "0.1.0", path = "math" }
+kaspa-merkle = { version = "0.1.0", path = "crypto/merkle" }
+kaspa-muhash = { version = "0.1.0", path = "crypto/muhash" }
+kaspa-notify = { version = "0.1.0", path = "notify" }
+kaspa-pow = { version = "0.1.0", path = "consensus/pow" }
+kaspa-rpc-core = { version = "0.1.0", path = "rpc/core" }
+kaspa-rpc-macros = { version = "0.1.0", path = "rpc/macros" }
+kaspa-txscript = { version = "0.1.0", path = "crypto/txscript" }
+kaspa-txscript-errors = { version = "0.1.0", path = "crypto/txscript/errors" }
+kaspa-utils = { version = "0.1.0", path = "utils" }
+kaspa-wallet-core = { version = "0.1.0", path = "wallet/core" }
+kaspa-wasm = { version = "0.1.0", path = "wasm" }
+kaspa-wrpc-client = { version = "0.1.0", path = "rpc/wrpc/client" }
+kaspa-wrpc-wasm = { version = "0.1.0", path = "rpc/wrpc/wasm" }
+
+# not published
+kaspa-grpc-server = { path = "rpc/grpc/server" }
 kaspa-index-core = { path = "indexes/core" }
 kaspa-index-processor = { path = "indexes/processor" }
-utxoindex = { path = "indexes/utxoindex" }
-kaspa-utils = { path = "utils" }
-kaspa-notify = { path = "notify" }
-kaspa-rpc-core = { path = "rpc/core" }
-kaspa-grpc-core = { path = "rpc/grpc/core" }
-kaspa-grpc-client = { path = "rpc/grpc/client" }
-kaspa-grpc-server = { path = "rpc/grpc/server" }
-kaspa-rpc-macros = { path = "rpc/macros" }
-kaspa-wrpc-client = { path = "rpc/wrpc/client" }
-kaspa-wrpc-server = { path = "rpc/wrpc/server" }
-kaspa-wrpc-proxy = { path = "rpc/wrpc/proxy" }
-kaspa-wrpc-wasm = { path = "rpc/wrpc/wasm" }
-kaspa-wallet-core = { path = "wallet/core" }
 kaspa-wallet-cli = { path = "wallet/cli" }
 kaspa-wallet-cli-native = { path = "wallet/native" }
 kaspa-wallet-cli-wasm = { path = "wallet/wasm" }
-kaspa-wasm = { path = "wasm" }
-kaspa-bip32 = { path = "wallet/bip32" }
-p2p-lib = { path = "protocol/p2p" }
-p2p-flows = { path = "protocol/flows" }
-mining = { path = "mining" }
-txscript = { path = "crypto/txscript" }
-txscript-errors = { path = "crypto/txscript/errors" }
-addressmanager = { path = "components/addressmanager" }
-connectionmanager = { path = "components/connectionmanager" }
-database = { path = "database" }
-testing-integration = { path = "testing/integration" }
+kaspa-wrpc-proxy = { path = "rpc/wrpc/proxy" }
+kaspa-wrpc-server = { path = "rpc/wrpc/server" }
+kaspad = { path = "kaspad" }
 
+# external
 thiserror = "1"
 faster-hex = "0.6"
 itertools = "0.10"
