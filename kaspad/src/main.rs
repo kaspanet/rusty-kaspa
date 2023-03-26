@@ -181,7 +181,7 @@ pub fn main() {
         fs::create_dir_all(utxoindex_db_dir.as_path()).unwrap();
     }
 
-    let grpc_server_addr = args.rpclisten.unwrap_or_else(|| "127.0.0.1:16610".to_string()).parse().unwrap();
+    let grpc_server_addr = args.rpclisten.unwrap_or_else(|| format!("127.0.0.1:{}", network_type.port())).parse().unwrap();
 
     let core = Arc::new(Core::new());
 
