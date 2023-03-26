@@ -4,8 +4,8 @@ mod tx_validation_in_isolation;
 pub mod tx_validation_not_utxo_related;
 use crate::model::stores::ghostdag;
 
+use kaspa_txscript::{caches::Cache, SigCacheKey};
 pub use tx_validation_in_isolation::*;
-use txscript::{caches::Cache, SigCacheKey};
 
 #[derive(Clone)]
 pub struct TransactionValidator {

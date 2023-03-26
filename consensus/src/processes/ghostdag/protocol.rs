@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
-use consensus_core::{
+use kaspa_consensus_core::{
     blockhash::{self, BlockHashExtensions, BlockHashes},
     BlockHashMap, BlueWorkType, HashMapCustomHasher,
 };
-use hashes::Hash;
+use kaspa_hashes::Hash;
 use kaspa_utils::refs::Refs;
 
 use crate::{

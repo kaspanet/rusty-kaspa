@@ -1,10 +1,10 @@
 use crate::processes::reachability::interval::Interval;
-use consensus_core::{
+use kaspa_consensus_core::{
     blockhash::{self, BlockHashes},
     BlockHashMap, BlockHasher, HashMapCustomHasher,
 };
-use database::prelude::{BatchDbWriter, CachedDbAccess, CachedDbItem, DbKey, DirectDbWriter, StoreError, DB};
-use hashes::Hash;
+use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, CachedDbItem, DbKey, DirectDbWriter, StoreError, DB};
+use kaspa_hashes::Hash;
 
 use itertools::Itertools;
 use parking_lot::{RwLockUpgradableReadGuard, RwLockWriteGuard};

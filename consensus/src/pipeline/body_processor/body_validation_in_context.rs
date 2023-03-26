@@ -3,9 +3,9 @@ use crate::{
     errors::{BlockProcessResult, RuleError},
     model::stores::{ghostdag::GhostdagStoreReader, statuses::StatusesStoreReader},
 };
-use consensus_core::block::Block;
-use database::prelude::StoreResultExtensions;
-use hashes::Hash;
+use kaspa_consensus_core::block::Block;
+use kaspa_database::prelude::StoreResultExtensions;
+use kaspa_hashes::Hash;
 use kaspa_utils::option::OptionExtensions;
 use std::sync::Arc;
 
@@ -86,13 +86,13 @@ mod tests {
         config::ConfigBuilder, consensus::test_consensus::TestConsensus, constants::TX_VERSION, errors::RuleError,
         model::stores::ghostdag::GhostdagStoreReader, params::DEVNET_PARAMS, processes::transaction_validator::errors::TxRuleError,
     };
-    use consensus_core::{
+    use kaspa_consensus_core::{
         merkle::calc_hash_merkle_root,
         subnets::SUBNETWORK_ID_NATIVE,
         tx::{Transaction, TransactionInput, TransactionOutpoint},
     };
-    use hashes::Hash;
     use kaspa_core::assert_match;
+    use kaspa_hashes::Hash;
 
     #[tokio::test]
     async fn validate_body_in_context_test() {

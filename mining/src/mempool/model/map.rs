@@ -1,5 +1,5 @@
 use super::tx::MempoolTransaction;
-use consensus_core::tx::{TransactionId, TransactionOutpoint};
+use kaspa_consensus_core::tx::{TransactionId, TransactionOutpoint};
 use std::collections::HashMap;
 
 /// MempoolTransactionCollection maps a transaction id to a mempool transaction

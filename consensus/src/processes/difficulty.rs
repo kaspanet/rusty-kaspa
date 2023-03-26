@@ -1,7 +1,7 @@
 use crate::model::stores::{block_window_cache::BlockWindowHeap, ghostdag::GhostdagData, headers::HeaderStoreReader};
-use consensus_core::{BlockHashSet, BlueWorkType};
-use hashes::Hash;
-use math::{Uint256, Uint320};
+use kaspa_consensus_core::{BlockHashSet, BlueWorkType};
+use kaspa_hashes::Hash;
+use kaspa_math::{Uint256, Uint320};
 use std::{
     cmp::{max, Ordering},
     sync::Arc,

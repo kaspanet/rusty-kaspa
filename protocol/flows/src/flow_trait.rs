@@ -1,5 +1,5 @@
 use kaspa_core::warn;
-use p2p_lib::{common::ProtocolError, Router};
+use kaspa_p2p_lib::{common::ProtocolError, Router};
 use std::sync::Arc;
 
 #[async_trait::async_trait]

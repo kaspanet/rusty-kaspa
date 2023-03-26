@@ -1,4 +1,4 @@
-use consensus_core::tx::{MutableTransaction, Transaction};
+use kaspa_consensus_core::tx::{MutableTransaction, Transaction};
 use std::sync::Arc;
 
 /// Transaction with additional metadata needed in order to be a candidate

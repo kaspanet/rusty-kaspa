@@ -1,6 +1,6 @@
 use super::coinbase_mock::CoinbaseManagerMock;
 use crate::consensus_context::ConsensusMiningContext;
-use consensus_core::{
+use kaspa_consensus_core::{
     block::{BlockTemplate, MutableBlock},
     coinbase::MinerData,
     constants::BLOCK_VERSION,
@@ -15,7 +15,7 @@ use consensus_core::{
     tx::{MutableTransaction, Transaction, TransactionId, TransactionOutpoint, UtxoEntry},
     utxo::utxo_collection::UtxoCollection,
 };
-use hashes::ZERO_HASH;
+use kaspa_hashes::ZERO_HASH;
 
 use parking_lot::RwLock;
 use std::{collections::HashMap, sync::Arc, time::SystemTime};

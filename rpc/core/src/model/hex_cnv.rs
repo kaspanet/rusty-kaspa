@@ -1,4 +1,4 @@
-use consensus_core::BlueWorkType;
+use kaspa_consensus_core::BlueWorkType;
 use smallvec::{smallvec, SmallVec};
 use std::str;
 

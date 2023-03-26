@@ -1,7 +1,7 @@
 use crate::processes::ghostdag::ordering::SortableBlock;
-use consensus_core::BlockHasher;
-use database::prelude::Cache;
-use hashes::Hash;
+use kaspa_consensus_core::BlockHasher;
+use kaspa_database::prelude::Cache;
+use kaspa_hashes::Hash;
 use std::{cmp::Reverse, collections::BinaryHeap, sync::Arc};
 
 pub type BlockWindowHeap = BinaryHeap<Reverse<SortableBlock>>;

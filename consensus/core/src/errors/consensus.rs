@@ -1,4 +1,4 @@
-use hashes::Hash;
+use kaspa_hashes::Hash;
 use thiserror::Error;
 
 use super::{sync::SyncManagerError, traversal::TraversalError};

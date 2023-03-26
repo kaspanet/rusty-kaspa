@@ -1,4 +1,4 @@
-use hashes::{Hash, HasherBase, MerkleBranchHash, ZERO_HASH};
+use kaspa_hashes::{Hash, HasherBase, MerkleBranchHash, ZERO_HASH};
 
 pub fn calc_merkle_root(hashes: impl ExactSizeIterator<Item = Hash>) -> Hash {
     if hashes.len() == 0 {

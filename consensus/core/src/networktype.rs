@@ -1,5 +1,5 @@
-use addresses::Prefix;
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+use kaspa_addresses::Prefix;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Display, Formatter};
 use std::str::FromStr;

@@ -1,4 +1,4 @@
-use hashes::{Hash, HASH_SIZE};
+use kaspa_hashes::{Hash, HASH_SIZE};
 use std::sync::Arc;
 
 pub type BlockHashes = Arc<Vec<Hash>>;

@@ -2,7 +2,7 @@ use std::io;
 use thiserror::Error;
 
 use crate::IDENT;
-use database::prelude::StoreError;
+use kaspa_database::prelude::StoreError;
 
 /// Errors originating from the [`UtxoIndex`].
 #[derive(Error, Debug)]

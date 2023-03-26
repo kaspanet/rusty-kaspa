@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use database::prelude::{CachedDbItem, DirectDbWriter, StoreResult, DB};
+use kaspa_database::prelude::{CachedDbItem, DirectDbWriter, StoreResult, DB};
 
 use crate::model::CirculatingSupply;
 

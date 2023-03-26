@@ -2,7 +2,7 @@ mod error;
 mod result;
 
 use clap::Parser;
-use consensus_core::networktype::NetworkType;
+use kaspa_consensus_core::networktype::NetworkType;
 use kaspa_grpc_client::GrpcClient;
 use kaspa_rpc_core::api::ops::RpcApiOps;
 use kaspa_wrpc_server::{

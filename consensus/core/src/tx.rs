@@ -15,7 +15,7 @@ pub const COINBASE_TRANSACTION_INDEX: usize = 0;
 pub const SCRIPT_VECTOR_SIZE: usize = 36;
 
 /// Represents the ID of a Kaspa transaction
-pub type TransactionId = hashes::Hash;
+pub type TransactionId = kaspa_hashes::Hash;
 
 /// Used as the underlying type for script public key data, optimized for the common p2pk script size (34).
 pub type ScriptVec = SmallVec<[u8; SCRIPT_VECTOR_SIZE]>;

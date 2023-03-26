@@ -42,7 +42,7 @@ use crate::{
         traversal_manager::DagTraversalManager,
     },
 };
-use consensus_core::{
+use kaspa_consensus_core::{
     acceptance_data::AcceptanceData,
     block::{BlockTemplate, MutableBlock},
     blockstatus::BlockStatus::{self, StatusDisqualifiedFromChain, StatusUTXOPendingVerification, StatusUTXOValid},
@@ -57,15 +57,15 @@ use consensus_core::{
     },
     BlockHashMap, BlockHashSet, HashMapCustomHasher,
 };
-use consensus_notify::{
+use kaspa_consensus_notify::{
     notification::{Notification, SinkBlueScoreChangedNotification, UtxosChangedNotification, VirtualDaaScoreChangedNotification},
     root::ConsensusNotificationRoot,
 };
-use database::prelude::{StoreError, StoreResultExtensions};
-use hashes::Hash;
 use kaspa_core::{debug, info, time::unix_now, trace};
+use kaspa_database::prelude::{StoreError, StoreResultExtensions};
+use kaspa_hashes::Hash;
+use kaspa_muhash::MuHash;
 use kaspa_notify::notifier::Notify;
-use muhash::MuHash;
 
 use crossbeam_channel::Receiver as CrossbeamReceiver; // to avoid confusion with async_channel
 use itertools::Itertools;
@@ -658,7 +658,7 @@ impl VirtualStateProcessor {
         let version = BLOCK_VERSION;
         let parents_by_level = self.parents_manager.calc_block_parents(pruning_point, &virtual_state.parents);
         let hash_merkle_root = calc_hash_merkle_root(txs.iter());
-        let accepted_id_merkle_root = merkle::calc_merkle_root(virtual_state.accepted_tx_ids.iter().copied());
+        let accepted_id_merkle_root = kaspa_merkle::calc_merkle_root(virtual_state.accepted_tx_ids.iter().copied());
         let utxo_commitment = virtual_state.multiset.clone().finalize();
         // Past median time is the exclusive lower bound for valid block time, so we increase by 1 to get the valid min
         let min_block_time = virtual_state.past_median_time + 1;

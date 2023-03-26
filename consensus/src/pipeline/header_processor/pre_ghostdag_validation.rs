@@ -3,11 +3,11 @@ use crate::constants;
 use crate::errors::{BlockProcessResult, RuleError};
 use crate::model::services::reachability::ReachabilityService;
 use crate::model::stores::statuses::StatusesStoreReader;
-use consensus_core::blockhash::BlockHashExtensions;
-use consensus_core::blockstatus::BlockStatus::StatusInvalid;
-use consensus_core::header::Header;
-use consensus_core::BlockLevel;
-use database::prelude::StoreResultExtensions;
+use kaspa_consensus_core::blockhash::BlockHashExtensions;
+use kaspa_consensus_core::blockstatus::BlockStatus::StatusInvalid;
+use kaspa_consensus_core::header::Header;
+use kaspa_consensus_core::BlockLevel;
+use kaspa_database::prelude::StoreResultExtensions;
 use std::cmp::max;
 use std::{
     sync::Arc,
@@ -118,7 +118,7 @@ impl HeaderProcessor {
     }
 
     fn check_pow_and_calc_block_level(self: &Arc<HeaderProcessor>, ctx: &mut HeaderProcessingContext) -> BlockProcessResult<()> {
-        let state = pow::State::new(ctx.header);
+        let state = kaspa_pow::State::new(ctx.header);
         let (passed, pow) = state.check_pow(ctx.header.nonce);
         if passed || self.skip_proof_of_work {
             let signed_block_level = self.max_block_level as i64 - pow.bits() as i64;

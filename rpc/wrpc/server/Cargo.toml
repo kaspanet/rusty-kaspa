@@ -9,7 +9,7 @@ crate-type = ["cdylib", "lib"]
 [dependencies]
 async-trait.workspace = true
 borsh = { workspace = true, features = ["rc"] }
-consensus-core.workspace = true
+kaspa-consensus-core.workspace = true
 futures.workspace = true
 kaspa-core.workspace = true
 kaspa-notify.workspace = true

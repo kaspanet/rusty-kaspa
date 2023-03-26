@@ -1,7 +1,7 @@
 use super::*;
 use crate::errors::{BlockProcessResult, RuleError};
 use crate::model::services::reachability::ReachabilityService;
-use consensus_core::header::Header;
+use kaspa_consensus_core::header::Header;
 use std::sync::Arc;
 
 impl HeaderProcessor {

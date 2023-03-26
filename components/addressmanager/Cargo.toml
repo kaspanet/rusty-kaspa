@@ -1,5 +1,5 @@
 [package]
-name = "addressmanager"
+name = "kaspa-addressmanager"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -9,7 +9,7 @@ license.workspace = true
 [dependencies]
 rocksdb.workspace = true
 kaspa-core.workspace = true
-database.workspace = true
+kaspa-database.workspace = true
 serde.workspace = true
 itertools.workspace = true
 rand.workspace = true

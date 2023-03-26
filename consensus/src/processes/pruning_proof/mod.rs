@@ -5,7 +5,8 @@ use std::{
     sync::Arc,
 };
 
-use consensus_core::{
+use itertools::Itertools;
+use kaspa_consensus_core::{
     blockhash::{BlockHashExtensions, BlockHashes, ORIGIN},
     errors::pruning::{PruningImportError, PruningImportResult},
     header::Header,
@@ -13,12 +14,11 @@ use consensus_core::{
     trusted::{TrustedBlock, TrustedGhostdagData, TrustedHeader},
     BlockHashMap, BlockHashSet, BlockLevel, HashMapCustomHasher, KType,
 };
-use database::prelude::{StoreError, StoreResultEmptyTuple, StoreResultExtensions};
-use hashes::Hash;
-use itertools::Itertools;
-use log::{info, trace};
+use kaspa_core::{info, trace};
+use kaspa_database::prelude::{StoreError, StoreResultEmptyTuple, StoreResultExtensions};
+use kaspa_hashes::Hash;
+use kaspa_pow::calc_block_level;
 use parking_lot::RwLock;
-use pow::calc_block_level;
 use rocksdb::WriteBatch;
 
 use crate::{
@@ -90,34 +90,37 @@ struct HeaderStoreMock {}
 
 #[allow(unused_variables)]
 impl HeaderStoreReader for HeaderStoreMock {
-    fn get_daa_score(&self, hash: hashes::Hash) -> Result<u64, StoreError> {
+    fn get_daa_score(&self, hash: kaspa_hashes::Hash) -> Result<u64, StoreError> {
         todo!()
     }
 
-    fn get_blue_score(&self, hash: hashes::Hash) -> Result<u64, StoreError> {
+    fn get_blue_score(&self, hash: kaspa_hashes::Hash) -> Result<u64, StoreError> {
         todo!()
     }
 
-    fn get_timestamp(&self, hash: hashes::Hash) -> Result<u64, StoreError> {
+    fn get_timestamp(&self, hash: kaspa_hashes::Hash) -> Result<u64, StoreError> {
         todo!()
     }
 
-    fn get_bits(&self, hash: hashes::Hash) -> Result<u32, StoreError> {
+    fn get_bits(&self, hash: kaspa_hashes::Hash) -> Result<u32, StoreError> {
         todo!()
     }
 
-    fn get_header(&self, hash: hashes::Hash) -> Result<Arc<Header>, StoreError> {
+    fn get_header(&self, hash: kaspa_hashes::Hash) -> Result<Arc<Header>, StoreError> {
         todo!()
     }
 
     fn get_header_with_block_level(
         &self,
-        hash: hashes::Hash,
+        hash: kaspa_hashes::Hash,
     ) -> Result<crate::model::stores::headers::HeaderWithBlockLevel, StoreError> {
         todo!()
     }
 
-    fn get_compact_header_data(&self, hash: hashes::Hash) -> Result<crate::model::stores::headers::CompactHeaderData, StoreError> {
+    fn get_compact_header_data(
+        &self,
+        hash: kaspa_hashes::Hash,
+    ) -> Result<crate::model::stores::headers::CompactHeaderData, StoreError> {
         todo!()
     }
 }
@@ -126,39 +129,39 @@ struct GhostdagStoreMock {}
 
 #[allow(unused_variables)]
 impl GhostdagStoreReader for GhostdagStoreMock {
-    fn get_blue_score(&self, hash: hashes::Hash) -> Result<u64, StoreError> {
+    fn get_blue_score(&self, hash: kaspa_hashes::Hash) -> Result<u64, StoreError> {
         todo!()
     }
 
-    fn get_blue_work(&self, hash: hashes::Hash) -> Result<consensus_core::BlueWorkType, StoreError> {
+    fn get_blue_work(&self, hash: kaspa_hashes::Hash) -> Result<kaspa_consensus_core::BlueWorkType, StoreError> {
         todo!()
     }
 
-    fn get_selected_parent(&self, hash: hashes::Hash) -> Result<hashes::Hash, StoreError> {
+    fn get_selected_parent(&self, hash: kaspa_hashes::Hash) -> Result<kaspa_hashes::Hash, StoreError> {
         todo!()
     }
 
-    fn get_mergeset_blues(&self, hash: hashes::Hash) -> Result<BlockHashes, StoreError> {
+    fn get_mergeset_blues(&self, hash: kaspa_hashes::Hash) -> Result<BlockHashes, StoreError> {
         todo!()
     }
 
-    fn get_mergeset_reds(&self, hash: hashes::Hash) -> Result<BlockHashes, StoreError> {
+    fn get_mergeset_reds(&self, hash: kaspa_hashes::Hash) -> Result<BlockHashes, StoreError> {
         todo!()
     }
 
-    fn get_blues_anticone_sizes(&self, hash: hashes::Hash) -> Result<crate::model::stores::ghostdag::HashKTypeMap, StoreError> {
+    fn get_blues_anticone_sizes(&self, hash: kaspa_hashes::Hash) -> Result<crate::model::stores::ghostdag::HashKTypeMap, StoreError> {
         todo!()
     }
 
-    fn get_data(&self, hash: hashes::Hash) -> Result<Arc<crate::model::stores::ghostdag::GhostdagData>, StoreError> {
+    fn get_data(&self, hash: kaspa_hashes::Hash) -> Result<Arc<crate::model::stores::ghostdag::GhostdagData>, StoreError> {
         todo!()
     }
 
-    fn get_compact_data(&self, hash: hashes::Hash) -> Result<crate::model::stores::ghostdag::CompactGhostdagData, StoreError> {
+    fn get_compact_data(&self, hash: kaspa_hashes::Hash) -> Result<crate::model::stores::ghostdag::CompactGhostdagData, StoreError> {
         todo!()
     }
 
-    fn has(&self, hash: hashes::Hash) -> Result<bool, StoreError> {
+    fn has(&self, hash: kaspa_hashes::Hash) -> Result<bool, StoreError> {
         todo!()
     }
 }
@@ -228,7 +231,7 @@ impl PruningProofManager {
                 continue;
             }
 
-            let state = pow::State::new(header);
+            let state = kaspa_pow::State::new(header);
             let (_, pow) = state.check_pow(header.nonce);
             let signed_block_level = self.max_block_level as i64 - pow.bits() as i64;
             let block_level = max(signed_block_level, 0) as BlockLevel;
@@ -329,7 +332,7 @@ impl PruningProofManager {
         let mut up_heap = BinaryHeap::new();
         for header in proof.iter().flatten().cloned() {
             if let Vacant(e) = dag.entry(header.hash) {
-                let state = pow::State::new(&header);
+                let state = kaspa_pow::State::new(&header);
                 let (_, pow) = state.check_pow(header.nonce); // TODO: Check if pow passes
                 let signed_block_level = self.max_block_level as i64 - pow.bits() as i64;
                 let block_level = max(signed_block_level, 0) as BlockLevel;

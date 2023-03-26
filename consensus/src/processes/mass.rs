@@ -1,4 +1,4 @@
-use consensus_core::{mass::transaction_estimated_serialized_size, tx::Transaction};
+use kaspa_consensus_core::{mass::transaction_estimated_serialized_size, tx::Transaction};
 
 pub struct MassCalculator {
     mass_per_tx_byte: u64,

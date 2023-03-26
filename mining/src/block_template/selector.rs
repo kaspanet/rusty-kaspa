@@ -8,7 +8,7 @@ use super::{
     model::tx::{CandidateList, SelectableTransaction, SelectableTransactions, TransactionIndex},
     policy::Policy,
 };
-use consensus_core::{subnets::SubnetworkId, tx::Transaction};
+use kaspa_consensus_core::{subnets::SubnetworkId, tx::Transaction};
 
 /// ALPHA is a coefficient that defines how uniform the distribution of
 /// candidate transactions should be. A smaller alpha makes the distribution

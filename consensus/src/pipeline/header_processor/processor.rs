@@ -32,16 +32,16 @@ use crate::{
     },
     test_helpers::header_from_precomputed_hash,
 };
-use consensus_core::{
+use crossbeam_channel::{Receiver, Sender};
+use itertools::Itertools;
+use kaspa_consensus_core::{
     blockhash::{BlockHashExtensions, BlockHashes, ORIGIN},
     blockstatus::BlockStatus::{self, StatusHeaderOnly, StatusInvalid},
     header::Header,
     BlockHashSet, BlockLevel,
 };
-use crossbeam_channel::{Receiver, Sender};
-use database::prelude::StoreResultExtensions;
-use hashes::Hash;
-use itertools::Itertools;
+use kaspa_database::prelude::StoreResultExtensions;
+use kaspa_hashes::Hash;
 use parking_lot::RwLock;
 use rayon::ThreadPool;
 use rocksdb::WriteBatch;

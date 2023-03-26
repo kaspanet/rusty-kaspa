@@ -1,5 +1,5 @@
 [package]
-name = "p2p-lib"
+name = "kaspa-p2p-lib"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -19,9 +19,9 @@ path = "./src/bin/server.rs"
 
 [dependencies]
 kaspa-core.workspace = true
-consensus-core.workspace = true
-hashes.workspace = true
-math.workspace = true
+kaspa-consensus-core.workspace = true
+kaspa-hashes.workspace = true
+kaspa-math.workspace = true
 
 log.workspace = true
 thiserror.workspace = true

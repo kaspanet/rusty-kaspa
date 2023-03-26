@@ -10,7 +10,7 @@ use crate::{
         },
     },
 };
-use consensus_core::{
+use kaspa_consensus_core::{
     tx::MutableTransaction,
     tx::{TransactionId, TransactionOutpoint},
 };

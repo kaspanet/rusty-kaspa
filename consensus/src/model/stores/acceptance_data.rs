@@ -1,9 +1,9 @@
-use consensus_core::acceptance_data::AcceptanceData;
-use consensus_core::BlockHasher;
-use database::prelude::StoreError;
-use database::prelude::DB;
-use database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
-use hashes::Hash;
+use kaspa_consensus_core::acceptance_data::AcceptanceData;
+use kaspa_consensus_core::BlockHasher;
+use kaspa_database::prelude::StoreError;
+use kaspa_database::prelude::DB;
+use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
+use kaspa_hashes::Hash;
 use rocksdb::WriteBatch;
 use std::sync::Arc;
 

@@ -1,7 +1,7 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use std::str::FromStr;
 
-use hashes::Hash;
+use kaspa_hashes::Hash;
 
 /// Placeholder for actual benchmarks
 pub fn hash_benchmark(c: &mut Criterion) {

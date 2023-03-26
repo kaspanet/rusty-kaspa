@@ -1,1 +1,1 @@
-pub type RpcBlueWorkType = consensus_core::BlueWorkType;
+pub type RpcBlueWorkType = kaspa_consensus_core::BlueWorkType;

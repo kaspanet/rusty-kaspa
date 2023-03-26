@@ -11,8 +11,8 @@ mod tests {
         model::candidate_tx::CandidateTransaction,
         testutils::consensus_mock::ConsensusMock,
     };
-    use addresses::Prefix;
-    use consensus_core::{
+    use kaspa_addresses::Prefix;
+    use kaspa_consensus_core::{
         coinbase::MinerData,
         constants::{MAX_TX_IN_SEQUENCE_NUM, SOMPI_PER_KASPA, TX_VERSION},
         errors::tx::{TxResult, TxRuleError},
@@ -23,12 +23,12 @@ mod tests {
             TransactionOutpoint, TransactionOutput, UtxoEntry,
         },
     };
-    use hashes::Hash;
-    use std::sync::Arc;
-    use txscript::{
+    use kaspa_hashes::Hash;
+    use kaspa_txscript::{
         pay_to_script_hash_signature_script,
         test_helpers::{create_transaction, op_true_script},
     };
+    use std::sync::Arc;
 
     const TARGET_TIME_PER_BLOCK: u64 = 1_000;
     const MAX_BLOCK_MASS: u64 = 500_000;
