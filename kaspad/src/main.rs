@@ -1,16 +1,16 @@
-extern crate consensus;
-extern crate core;
-extern crate hashes;
+extern crate kaspa_consensus;
+extern crate kaspa_core;
+extern crate kaspa_hashes;
 
-use addressmanager::AddressManager;
-use consensus_core::api::DynConsensus;
-use consensus_core::networktype::NetworkType;
-use consensus_notify::root::ConsensusNotificationRoot;
-use consensus_notify::service::NotifyService;
+use kaspa_addressmanager::AddressManager;
+use kaspa_consensus_core::api::DynConsensus;
+use kaspa_consensus_core::networktype::NetworkType;
+use kaspa_consensus_notify::root::ConsensusNotificationRoot;
+use kaspa_consensus_notify::service::NotifyService;
 
 use kaspa_core::{core::Core, signals::Signals, task::runtime::AsyncRuntime};
 use kaspa_index_processor::service::IndexService;
-use mining::manager::MiningManager;
+use kaspa_mining::manager::MiningManager;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -25,17 +25,17 @@ use args::{Args, Defaults};
 //use clap::Parser;
 
 use crate::monitor::ConsensusMonitor;
-use consensus::config::ConfigBuilder;
-use consensus::consensus::Consensus;
-use consensus::params::{DEVNET_PARAMS, MAINNET_PARAMS};
-use utxoindex::{api::DynUtxoIndexApi, UtxoIndex};
+use kaspa_consensus::config::ConfigBuilder;
+use kaspa_consensus::consensus::Consensus;
+use kaspa_consensus::params::{DEVNET_PARAMS, MAINNET_PARAMS};
+use kaspa_utxoindex::{api::DynUtxoIndexApi, UtxoIndex};
 
 use async_channel::unbounded;
 use kaspa_core::{info, trace};
 use kaspa_grpc_server::GrpcServer;
+use kaspa_p2p_flows::service::P2pService;
 use kaspa_rpc_core::server::RpcCoreServer;
 use kaspa_wrpc_server::service::{Options as WrpcServerOptions, WrpcEncoding, WrpcService};
-use p2p_flows::service::P2pService;
 
 mod args;
 mod monitor;
@@ -169,9 +169,9 @@ pub fn main() {
     if args.reset_db {
         // TODO: add prompt that validates the choice (unless you pass -y)
         info!("Deleting databases {:?}, {:?}", consensus_db_dir, utxoindex_db_dir);
-        database::prelude::delete_db(consensus_db_dir.clone());
-        database::prelude::delete_db(utxoindex_db_dir.clone());
-        database::prelude::delete_db(amgr_db_dir.clone());
+        kaspa_database::prelude::delete_db(consensus_db_dir.clone());
+        kaspa_database::prelude::delete_db(utxoindex_db_dir.clone());
+        kaspa_database::prelude::delete_db(amgr_db_dir.clone());
     }
 
     info!("Consensus Data directory {}", consensus_db_dir.display());
@@ -199,7 +199,7 @@ pub fn main() {
     let notification_root = Arc::new(ConsensusNotificationRoot::new(notification_send));
 
     // Use `num_cpus` background threads for the consensus database as recommended by rocksdb
-    let consensus_db = database::prelude::open_db(consensus_db_dir, true, num_cpus::get());
+    let consensus_db = kaspa_database::prelude::open_db(consensus_db_dir, true, num_cpus::get());
     let consensus = Arc::new(Consensus::new(consensus_db, &config, notification_root));
     let monitor = Arc::new(ConsensusMonitor::new(consensus.processing_counters().clone()));
 
@@ -207,14 +207,14 @@ pub fn main() {
 
     let index_service: Option<Arc<IndexService>> = if args.utxoindex {
         // Use only a single thread for none-consensus databases
-        let utxoindex_db = database::prelude::open_db(utxoindex_db_dir, true, 1);
+        let utxoindex_db = kaspa_database::prelude::open_db(utxoindex_db_dir, true, 1);
         let utxoindex: DynUtxoIndexApi = Some(UtxoIndex::new(consensus.clone(), utxoindex_db).unwrap());
         Some(Arc::new(IndexService::new(&notify_service.notifier(), utxoindex)))
     } else {
         None
     };
 
-    let amgr_db = database::prelude::open_db(amgr_db_dir, true, 1);
+    let amgr_db = kaspa_database::prelude::open_db(amgr_db_dir, true, 1);
     let amgr = AddressManager::new(amgr_db);
 
     let rpc_core_server =

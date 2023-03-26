@@ -1,4 +1,4 @@
-use hashes::Hash;
+use kaspa_hashes::Hash;
 use std::num::Wrapping;
 
 pub struct XoShiRo256PlusPlus {

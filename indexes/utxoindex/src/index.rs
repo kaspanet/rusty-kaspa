@@ -6,10 +6,10 @@ use crate::{
     update_container::UtxoIndexChanges,
     IDENT,
 };
-use consensus_core::{api::DynConsensus, tx::ScriptPublicKeys, utxo::utxo_diff::UtxoDiff, BlockHashSet};
-use database::prelude::{StoreError, StoreResult, DB};
-use hashes::Hash;
+use kaspa_consensus_core::{api::DynConsensus, tx::ScriptPublicKeys, utxo::utxo_diff::UtxoDiff, BlockHashSet};
 use kaspa_core::trace;
+use kaspa_database::prelude::{StoreError, StoreResult, DB};
+use kaspa_hashes::Hash;
 use kaspa_utils::arc::ArcExtensions;
 use parking_lot::RwLock;
 use std::{fmt::Debug, sync::Arc};
@@ -162,7 +162,7 @@ impl UtxoIndexApi for UtxoIndex {
     }
 
     // This can have a big memory footprint, so it should be used only for tests.
-    fn get_all_outpoints(&self) -> StoreResult<std::collections::HashSet<consensus_core::tx::TransactionOutpoint>> {
+    fn get_all_outpoints(&self) -> StoreResult<std::collections::HashSet<kaspa_consensus_core::tx::TransactionOutpoint>> {
         self.store.get_all_outpoints()
     }
 }
@@ -176,7 +176,7 @@ impl Debug for UtxoIndex {
 #[cfg(test)]
 mod tests {
     use crate::{api::UtxoIndexApi, model::CirculatingSupply, testutils::virtual_change_emulator::VirtualChangeEmulator, UtxoIndex};
-    use consensus::{
+    use kaspa_consensus::{
         config::Config,
         consensus::test_consensus::{create_temp_db, TestConsensus},
         model::stores::{
@@ -185,7 +185,7 @@ mod tests {
         },
         params::DEVNET_PARAMS,
     };
-    use consensus_core::{
+    use kaspa_consensus_core::{
         api::ConsensusApi,
         utxo::{utxo_collection::UtxoCollection, utxo_diff::UtxoDiff},
     };

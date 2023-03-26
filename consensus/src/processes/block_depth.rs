@@ -1,5 +1,5 @@
-use consensus_core::blockhash::ORIGIN;
-use hashes::Hash;
+use kaspa_consensus_core::blockhash::ORIGIN;
+use kaspa_hashes::Hash;
 use std::sync::Arc;
 
 use crate::model::{

@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-consensus-core.workspace = true
+kaspa-consensus-core.workspace = true
 kaspa-rpc-core.workspace = true
 kaspa-grpc-client.workspace = true
 kaspa-wrpc-server.workspace = true

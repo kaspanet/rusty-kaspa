@@ -2,7 +2,7 @@ use crate::{
     consensus_context::ConsensusMiningContext,
     mempool::{errors::RuleResult, model::pool::Pool, Mempool},
 };
-use consensus_core::tx::TransactionId;
+use kaspa_consensus_core::tx::TransactionId;
 
 impl<T: ConsensusMiningContext + ?Sized> Mempool<T> {
     pub(crate) fn remove_transaction(&mut self, transaction_id: &TransactionId, remove_redeemers: bool) -> RuleResult<()> {

@@ -1,5 +1,5 @@
 [package]
-name = "txscript"
+name = "kaspa-txscript"
 description = "Kaspa txscript engine lib"
 version.workspace = true
 edition.workspace = true
@@ -8,10 +8,10 @@ include.workspace = true
 license.workspace = true
 
 [dependencies]
-consensus-core.workspace = true
-addresses.workspace = true
+kaspa-consensus-core.workspace = true
+kaspa-addresses.workspace = true
 log.workspace = true
-hashes.workspace = true
+kaspa-hashes.workspace = true
 blake2b_simd.workspace = true
 sha2.workspace = true
 itertools.workspace = true
@@ -19,8 +19,9 @@ rand.workspace = true
 indexmap.workspace = true
 secp256k1 = { version = "0.24", features = ["global-context", "rand-std"] }
 parking_lot.workspace = true
-txscript-errors.workspace = true
+kaspa-txscript-errors.workspace = true
 smallvec.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true

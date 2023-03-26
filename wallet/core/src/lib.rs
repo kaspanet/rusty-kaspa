@@ -12,7 +12,7 @@ pub mod wallet;
 pub mod wrapper;
 
 pub use accounts::dummy_address;
-pub use addresses::Address;
+pub use kaspa_addresses::Address;
 pub use result::Result;
 pub use signer::Signer;
 pub use wallet::Wallet;

@@ -1,5 +1,5 @@
 [package]
-name = "consensus-core"
+name = "kaspa-consensus-core"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -7,10 +7,11 @@ include.workspace = true
 license.workspace = true
 
 [dependencies]
-hashes.workspace = true
-muhash.workspace = true
-merkle.workspace = true
-math.workspace = true
+kaspa-hashes.workspace = true
+kaspa-muhash.workspace = true
+kaspa-merkle.workspace = true
+kaspa-math.workspace = true
+kaspa-txscript-errors.workspace = true
 thiserror.workspace = true
 serde.workspace = true
 faster-hex.workspace = true
@@ -20,9 +21,8 @@ secp256k1 = { version = "0.24", features = ["global-context", "rand-std", "serde
 futures-util.workspace = true
 itertools.workspace = true
 cfg-if.workspace = true
-addresses.workspace = true
+kaspa-addresses.workspace = true
 getrandom.workspace = true
-txscript-errors.workspace = true
 async-trait.workspace = true
 
 kaspa-core.workspace = true

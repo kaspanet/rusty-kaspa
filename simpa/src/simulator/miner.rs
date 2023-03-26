@@ -1,21 +1,21 @@
 use super::infra::{Environment, Process, Resumption, Suspension};
-use consensus::consensus::Consensus;
-use consensus::model::stores::virtual_state::VirtualStateStoreReader;
-use consensus::params::Params;
-use consensus_core::api::ConsensusApi;
-use consensus_core::block::Block;
-use consensus_core::blockstatus::BlockStatus;
-use consensus_core::coinbase::MinerData;
-use consensus_core::errors::block::BlockProcessResult;
-use consensus_core::sign::sign;
-use consensus_core::subnets::SUBNETWORK_ID_NATIVE;
-use consensus_core::tx::{
-    MutableTransaction, ScriptPublicKey, ScriptVec, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry,
-};
-use consensus_core::utxo::utxo_view::UtxoView;
 use futures::future::try_join_all;
 use indexmap::IndexSet;
 use itertools::Itertools;
+use kaspa_consensus::consensus::Consensus;
+use kaspa_consensus::model::stores::virtual_state::VirtualStateStoreReader;
+use kaspa_consensus::params::Params;
+use kaspa_consensus_core::api::ConsensusApi;
+use kaspa_consensus_core::block::Block;
+use kaspa_consensus_core::blockstatus::BlockStatus;
+use kaspa_consensus_core::coinbase::MinerData;
+use kaspa_consensus_core::errors::block::BlockProcessResult;
+use kaspa_consensus_core::sign::sign;
+use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
+use kaspa_consensus_core::tx::{
+    MutableTransaction, ScriptPublicKey, ScriptVec, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry,
+};
+use kaspa_consensus_core::utxo::utxo_view::UtxoView;
 use kaspa_core::trace;
 use rand::rngs::ThreadRng;
 use rand::Rng;

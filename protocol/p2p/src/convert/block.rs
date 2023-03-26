@@ -1,6 +1,6 @@
 use super::{error::ConversionError, option::TryIntoOptionEx};
 use crate::pb as protowire;
-use consensus_core::{block::Block, tx::Transaction};
+use kaspa_consensus_core::{block::Block, tx::Transaction};
 
 // ----------------------------------------------------------------------------
 // consensus_core to protowire

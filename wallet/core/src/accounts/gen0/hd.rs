@@ -1,5 +1,5 @@
-use addresses::{Address, Prefix as AddressPrefix, Version};
 use hmac::Mac;
+use kaspa_addresses::{Address, Prefix as AddressPrefix, Version};
 use kaspa_bip32::{
     types::*, AddressType, ChildNumber, ExtendedKey, ExtendedKeyAttrs, ExtendedPrivateKey, ExtendedPublicKey, Prefix, PrivateKey,
     PublicKey, SecretKey, SecretKeyExt,

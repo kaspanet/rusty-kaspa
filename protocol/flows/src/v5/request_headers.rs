@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
-use log::debug;
-use p2p_lib::{
+use kaspa_p2p_lib::{
     common::ProtocolError,
     dequeue, dequeue_with_timeout, make_message,
     pb::{self, kaspad_message::Payload, BlockHeadersMessage, DoneHeadersMessage},
     IncomingRoute, Router,
 };
+use log::debug;
 
 use crate::{flow_context::FlowContext, flow_trait::Flow};
 

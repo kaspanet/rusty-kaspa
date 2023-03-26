@@ -6,7 +6,7 @@ use crate::model::{
     topological_index::TopologicalIndex,
     TransactionIdSet,
 };
-use consensus_core::tx::{MutableTransaction, TransactionId};
+use kaspa_consensus_core::tx::{MutableTransaction, TransactionId};
 
 pub(crate) type TransactionsEdges = HashMap<TransactionId, TransactionIdSet>;
 

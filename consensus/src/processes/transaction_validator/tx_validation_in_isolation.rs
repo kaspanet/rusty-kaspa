@@ -1,5 +1,5 @@
 use crate::constants::{MAX_SOMPI, TX_VERSION};
-use consensus_core::tx::Transaction;
+use kaspa_consensus_core::tx::Transaction;
 use std::collections::HashSet;
 
 use super::{
@@ -30,7 +30,7 @@ impl TransactionValidator {
         self.check_transaction_script_public_keys(tx)
     }
 
-    fn check_coinbase_in_isolation(&self, tx: &consensus_core::tx::Transaction) -> TxResult<()> {
+    fn check_coinbase_in_isolation(&self, tx: &kaspa_consensus_core::tx::Transaction) -> TxResult<()> {
         if !tx.is_coinbase() {
             return Ok(());
         }
@@ -148,7 +148,7 @@ fn check_transaction_output_value_ranges(tx: &Transaction) -> TxResult<()> {
 
 #[cfg(test)]
 mod tests {
-    use consensus_core::{
+    use kaspa_consensus_core::{
         subnets::{SUBNETWORK_ID_COINBASE, SUBNETWORK_ID_NATIVE},
         tx::{scriptvec, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput},
     };

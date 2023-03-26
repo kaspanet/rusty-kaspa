@@ -1,6 +1,6 @@
 use super::HasherExtensions;
 use crate::tx::{Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput};
-use hashes::{Hash, Hasher};
+use kaspa_hashes::{Hash, Hasher};
 
 /// A bitmask defining which transaction fields we
 /// want to encode and which to ignore.
@@ -11,7 +11,7 @@ pub const TX_ENCODING_EXCLUDE_SIGNATURE_SCRIPT: TxEncodingFlags = 1;
 
 /// Returns the transaction hash. Note that this is different than the transaction ID.
 pub fn hash(tx: &Transaction) -> Hash {
-    let mut hasher = hashes::TransactionHash::new();
+    let mut hasher = kaspa_hashes::TransactionHash::new();
     write_transaction(&mut hasher, tx, TX_ENCODING_FULL);
     hasher.finalize()
 }
@@ -22,7 +22,7 @@ pub(crate) fn id(tx: &Transaction) -> TransactionId {
     // payload and hash the result.
 
     let encoding_flags = if tx.is_coinbase() { TX_ENCODING_FULL } else { TX_ENCODING_EXCLUDE_SIGNATURE_SCRIPT };
-    let mut hasher = hashes::TransactionID::new();
+    let mut hasher = kaspa_hashes::TransactionID::new();
     write_transaction(&mut hasher, tx, encoding_flags);
     hasher.finalize()
 }

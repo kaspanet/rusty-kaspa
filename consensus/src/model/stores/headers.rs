@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
-use consensus_core::{header::Header, BlockHasher, BlockLevel};
-use database::prelude::DB;
-use database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
-use database::prelude::{StoreError, StoreResult};
-use hashes::Hash;
+use kaspa_consensus_core::{header::Header, BlockHasher, BlockLevel};
+use kaspa_database::prelude::DB;
+use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
+use kaspa_database::prelude::{StoreError, StoreResult};
+use kaspa_hashes::Hash;
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
 

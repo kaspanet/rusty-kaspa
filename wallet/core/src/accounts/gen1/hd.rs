@@ -1,5 +1,5 @@
-use addresses::{Address, Prefix as AddressPrefix, Version};
 use hmac::Mac;
+use kaspa_addresses::{Address, Prefix as AddressPrefix, Version};
 use ripemd::Ripemd160;
 use sha2::{Digest, Sha256};
 use std::{

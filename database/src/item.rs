@@ -9,13 +9,12 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub struct CachedDbItem<T> {
     db: Arc<DB>,
-    key: &'static [u8],
+    key: Vec<u8>,
     cached_item: Arc<RwLock<Option<T>>>,
 }
 
 impl<T> CachedDbItem<T> {
-    pub fn new(db: Arc<DB>, key: &'static [u8]) -> Self {
-        assert!(String::from_utf8(Vec::from(key)).is_ok());
+    pub fn new(db: Arc<DB>, key: Vec<u8>) -> Self {
         Self { db, key, cached_item: Arc::new(RwLock::new(None)) }
     }
 
@@ -26,12 +25,12 @@ impl<T> CachedDbItem<T> {
         if let Some(item) = self.cached_item.read().clone() {
             return Ok(item);
         }
-        if let Some(slice) = self.db.get_pinned(self.key)? {
+        if let Some(slice) = self.db.get_pinned(&self.key)? {
             let item: T = bincode::deserialize(&slice)?;
             *self.cached_item.write() = Some(item.clone());
             Ok(item)
         } else {
-            Err(StoreError::KeyNotFound(DbKey::prefix_only(self.key)))
+            Err(StoreError::KeyNotFound(DbKey::prefix_only(&self.key)))
         }
     }
 
@@ -41,14 +40,14 @@ impl<T> CachedDbItem<T> {
     {
         *self.cached_item.write() = Some(item.clone());
         let bin_data = bincode::serialize(item)?;
-        writer.put(self.key, bin_data)?;
+        writer.put(&self.key, bin_data)?;
         Ok(())
     }
 
     pub fn remove(&mut self, mut writer: impl DbWriter) -> Result<(), StoreError>
 where {
         *self.cached_item.write() = None;
-        writer.delete(self.key)?;
+        writer.delete(&self.key)?;
         Ok(())
     }
 
@@ -60,17 +59,17 @@ where {
         let mut guard = self.cached_item.write();
         let mut item = if let Some(item) = guard.take() {
             item
-        } else if let Some(slice) = self.db.get_pinned(self.key)? {
+        } else if let Some(slice) = self.db.get_pinned(&self.key)? {
             let item: T = bincode::deserialize(&slice)?;
             item
         } else {
-            return Err(StoreError::KeyNotFound(DbKey::prefix_only(self.key)));
+            return Err(StoreError::KeyNotFound(DbKey::prefix_only(&self.key)));
         };
 
         item = op(item); // Apply the update op
         *guard = Some(item.clone());
         let bin_data = bincode::serialize(&item)?;
-        writer.put(self.key, bin_data)?;
+        writer.put(&self.key, bin_data)?;
         Ok(item)
     }
 }

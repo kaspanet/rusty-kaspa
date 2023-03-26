@@ -6,12 +6,12 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use addressmanager::AddressManager;
 use duration_string::DurationString;
 use futures_util::future::join_all;
 use itertools::Itertools;
+use kaspa_addressmanager::AddressManager;
 use kaspa_core::{debug, info};
-use p2p_lib::Peer;
+use kaspa_p2p_lib::Peer;
 use parking_lot::Mutex as ParkingLotMutex;
 use rand::{seq::SliceRandom, thread_rng};
 use tokio::{
@@ -24,7 +24,7 @@ use tokio::{
 };
 
 pub struct ConnectionManager {
-    p2p_adaptor: Arc<p2p_lib::Adaptor>,
+    p2p_adaptor: Arc<kaspa_p2p_lib::Adaptor>,
     outbound_target: usize,
     inbound_limit: usize,
     amgr: Arc<ParkingLotMutex<AddressManager>>,
@@ -42,7 +42,7 @@ struct ConnectionRequest {
 
 impl ConnectionManager {
     pub fn new(
-        p2p_adaptor: Arc<p2p_lib::Adaptor>,
+        p2p_adaptor: Arc<kaspa_p2p_lib::Adaptor>,
         outbound_target: usize,
         inbound_limit: usize,
         amgr: Arc<ParkingLotMutex<AddressManager>>,
@@ -140,7 +140,7 @@ impl ConnectionManager {
     }
 
     async fn handle_outbound_connections(self: &Arc<Self>, peer_by_address: &HashMap<SocketAddr, Peer>) {
-        let active_outbound: HashSet<addressmanager::NetAddress> =
+        let active_outbound: HashSet<kaspa_addressmanager::NetAddress> =
             peer_by_address.values().filter(|peer| peer.is_outbound()).map(|peer| peer.net_address().into()).collect();
         if active_outbound.len() >= self.outbound_target {
             return;

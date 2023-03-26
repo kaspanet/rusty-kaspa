@@ -1,6 +1,14 @@
 cargo fmt --all
 cargo clippy
 
+status=$?
+if [ $status -ne 0 ]; then
+    echo
+    echo "--> cargo clippy check failed"
+    echo
+    exit $status
+fi
+
 declare -a crates=(
     "kaspa-wrpc-wasm"
     "kaspa-wallet-cli-wasm"
@@ -9,11 +17,12 @@ declare -a crates=(
 
 for crate in "${crates[@]}"
 do
-    echo -e "\ncargo clippy -p $crate --target wasm32-unknown-unknown"
     cargo clippy -p $crate --target wasm32-unknown-unknown
     status=$?
     if [ $status -ne 0 ]; then
-        echo -e "\n--> wasm32 check of $crate failed\n"
+        echo
+        echo "--> wasm32 check of $crate failed"
+        echo
         exit $status
     fi
 done

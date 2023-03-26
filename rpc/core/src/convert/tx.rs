@@ -1,5 +1,5 @@
 use crate::{RpcError, RpcResult, RpcTransaction, RpcTransactionInput, RpcTransactionOutput};
-use consensus_core::tx::{Transaction, TransactionInput, TransactionOutput};
+use kaspa_consensus_core::tx::{Transaction, TransactionInput, TransactionOutput};
 
 // ----------------------------------------------------------------------------
 // consensus_core to rpc_core
@@ -56,12 +56,12 @@ impl TryFrom<&RpcTransaction> for Transaction {
             item.version,
             item.inputs
                 .iter()
-                .map(consensus_core::tx::TransactionInput::try_from)
-                .collect::<RpcResult<Vec<consensus_core::tx::TransactionInput>>>()?,
+                .map(kaspa_consensus_core::tx::TransactionInput::try_from)
+                .collect::<RpcResult<Vec<kaspa_consensus_core::tx::TransactionInput>>>()?,
             item.outputs
                 .iter()
-                .map(consensus_core::tx::TransactionOutput::try_from)
-                .collect::<RpcResult<Vec<consensus_core::tx::TransactionOutput>>>()?,
+                .map(kaspa_consensus_core::tx::TransactionOutput::try_from)
+                .collect::<RpcResult<Vec<kaspa_consensus_core::tx::TransactionOutput>>>()?,
             item.lock_time,
             item.subnetwork_id.clone(),
             item.gas,

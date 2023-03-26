@@ -4,10 +4,12 @@ pub mod matrix;
 #[doc(hidden)]
 pub mod xoshiro;
 
+use std::cmp::max;
+
 use crate::matrix::Matrix;
-use consensus_core::{hashing, header::Header};
-use hashes::PowHash;
-use math::Uint256;
+use kaspa_consensus_core::{hashing, header::Header, BlockLevel};
+use kaspa_hashes::PowHash;
+use kaspa_math::Uint256;
 
 /// State is an intermediate data structure with pre-computed values to speed up mining.
 pub struct State {
@@ -47,4 +49,15 @@ impl State {
         // The pow hash must be less or equal than the claimed target.
         (pow <= self.target, pow)
     }
+}
+
+pub fn calc_block_level(header: &Header, max_block_level: BlockLevel) -> BlockLevel {
+    if header.parents_by_level.is_empty() {
+        return max_block_level; // Genesis has the max block level
+    }
+
+    let state = State::new(header);
+    let (_, pow) = state.check_pow(header.nonce);
+    let signed_block_level = max_block_level as i64 - pow.bits() as i64;
+    max(signed_block_level, 0) as BlockLevel
 }

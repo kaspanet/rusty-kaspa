@@ -1,6 +1,6 @@
-use consensus_core::{acceptance_data::AcceptanceData, block::Block, utxo::utxo_diff::UtxoDiff};
 use derive_more::Display;
-use hashes::Hash;
+use kaspa_consensus_core::{acceptance_data::AcceptanceData, block::Block, utxo::utxo_diff::UtxoDiff};
+use kaspa_hashes::Hash;
 use kaspa_notify::{
     events::EventType,
     full_featured,

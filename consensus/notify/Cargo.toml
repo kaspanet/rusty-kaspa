@@ -1,5 +1,5 @@
 [package]
-name = "consensus-notify"
+name = "kaspa-consensus-notify"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -7,9 +7,9 @@ include.workspace = true
 license.workspace = true
 
 [dependencies]
-hashes.workspace = true
+kaspa-hashes.workspace = true
 thiserror.workspace = true
-consensus-core.workspace = true
+kaspa-consensus-core.workspace = true
 kaspa-notify.workspace = true
 kaspa-core.workspace = true
 kaspa-utils.workspace = true

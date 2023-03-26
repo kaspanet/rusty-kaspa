@@ -1,7 +1,7 @@
 use crate::processes::ghostdag::ordering::SortableBlock;
-use database::prelude::StoreResult;
-use database::prelude::DB;
-use database::prelude::{BatchDbWriter, CachedDbItem, DirectDbWriter};
+use kaspa_database::prelude::StoreResult;
+use kaspa_database::prelude::DB;
+use kaspa_database::prelude::{BatchDbWriter, CachedDbItem, DirectDbWriter};
 use rocksdb::WriteBatch;
 use std::sync::Arc;
 
@@ -25,7 +25,7 @@ pub struct DbHeadersSelectedTipStore {
 
 impl DbHeadersSelectedTipStore {
     pub fn new(db: Arc<DB>) -> Self {
-        Self { db: Arc::clone(&db), access: CachedDbItem::new(db.clone(), STORE_NAME) }
+        Self { db: Arc::clone(&db), access: CachedDbItem::new(db.clone(), STORE_NAME.to_vec()) }
     }
 
     pub fn clone_with_new_cache(&self) -> Self {

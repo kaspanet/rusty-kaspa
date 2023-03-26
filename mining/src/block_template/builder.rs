@@ -9,7 +9,7 @@ use crate::{
 };
 
 use super::{errors::BuilderResult, policy::Policy};
-use consensus_core::{block::BlockTemplate, coinbase::MinerData, merkle::calc_hash_merkle_root, tx::COINBASE_TRANSACTION_INDEX};
+use kaspa_consensus_core::{block::BlockTemplate, coinbase::MinerData, merkle::calc_hash_merkle_root, tx::COINBASE_TRANSACTION_INDEX};
 use kaspa_core::debug;
 
 pub(crate) struct BlockTemplateBuilder<T: ConsensusMiningContext + ?Sized> {

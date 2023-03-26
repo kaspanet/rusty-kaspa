@@ -11,7 +11,7 @@ use crate::model::{
         reachability::ReachabilityStoreReader,
     },
 };
-use hashes::Hash;
+use kaspa_hashes::Hash;
 
 #[derive(Clone)]
 pub struct PruningManager<S: GhostdagStoreReader, T: ReachabilityStoreReader, U: HeaderStoreReader, V: PastPruningPointsStoreReader> {

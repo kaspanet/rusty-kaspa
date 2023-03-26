@@ -1,2 +1,2 @@
 // Re-exports from consensus core for internal crate usage
-pub use consensus_core::config::*;
+pub use kaspa_consensus_core::config::*;

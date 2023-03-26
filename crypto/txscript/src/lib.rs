@@ -3,21 +3,22 @@ extern crate core;
 
 pub mod caches;
 mod data_stack;
-mod opcodes;
+pub mod opcodes;
+pub mod script_builder;
 pub mod script_class;
 pub mod standard;
 
 use crate::caches::Cache;
 use crate::data_stack::{DataStack, Stack};
 use crate::opcodes::{deserialize_opcode_data, OpCodeImplementation};
-use consensus_core::hashing::sighash::{calc_ecdsa_signature_hash, calc_schnorr_signature_hash, SigHashReusedValues};
-use consensus_core::hashing::sighash_type::SigHashType;
-use consensus_core::tx::{ScriptPublicKey, TransactionInput, UtxoEntry, VerifiableTransaction};
 use itertools::Itertools;
+use kaspa_consensus_core::hashing::sighash::{calc_ecdsa_signature_hash, calc_schnorr_signature_hash, SigHashReusedValues};
+use kaspa_consensus_core::hashing::sighash_type::SigHashType;
+use kaspa_consensus_core::tx::{ScriptPublicKey, TransactionInput, UtxoEntry, VerifiableTransaction};
+use kaspa_txscript_errors::TxScriptError;
 use log::trace;
 use opcodes::{codes, to_small_int, OpCond};
 use script_class::ScriptClass;
-use txscript_errors::TxScriptError;
 
 pub mod prelude {
     pub use super::standard::*;
@@ -26,7 +27,7 @@ pub use standard::*;
 
 pub const MAX_SCRIPT_PUBLIC_KEY_VERSION: u16 = 0;
 pub const MAX_STACK_SIZE: usize = 244;
-pub const MAX_SCRIPTS_SIZE: usize = 10000;
+pub const MAX_SCRIPTS_SIZE: usize = 10_000;
 pub const MAX_SCRIPT_ELEMENT_SIZE: usize = 520;
 pub const MAX_OPS_PER_SCRIPT: i32 = 201;
 pub const MAX_TX_IN_SEQUENCE_NUM: u64 = u64::MAX;
@@ -491,7 +492,7 @@ mod tests {
     use crate::opcodes::codes::{OpBlake2b, OpCheckSig, OpData1, OpData2, OpData32, OpDup, OpEqual, OpPushData1, OpTrue};
 
     use super::*;
-    use consensus_core::tx::{
+    use kaspa_consensus_core::tx::{
         PopulatedTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionOutpoint, TransactionOutput,
     };
     use smallvec::SmallVec;

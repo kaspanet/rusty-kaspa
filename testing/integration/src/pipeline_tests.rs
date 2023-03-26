@@ -1,13 +1,13 @@
-use consensus::{
+use futures_util::future::try_join_all;
+use kaspa_consensus::{
     config::ConfigBuilder,
     consensus::test_consensus::{create_temp_db, TestConsensus},
     model::stores::reachability::{DbReachabilityStore, StagingReachabilityStore},
     params::MAINNET_PARAMS,
     processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions},
 };
-use consensus_core::blockhash;
-use futures_util::future::try_join_all;
-use hashes::Hash;
+use kaspa_consensus_core::blockhash;
+use kaspa_hashes::Hash;
 use parking_lot::RwLock;
 use rand_distr::{Distribution, Poisson};
 use rocksdb::WriteBatch;

@@ -6,7 +6,7 @@ use std::{
 };
 
 use async_channel::Sender;
-use consensus_core::{
+use kaspa_consensus_core::{
     api::ConsensusApi,
     block::{Block, MutableBlock},
     blockstatus::BlockStatus,
@@ -16,9 +16,9 @@ use consensus_core::{
     tx::Transaction,
     BlockHashSet,
 };
-use consensus_notify::{notification::Notification, root::ConsensusNotificationRoot};
-use hashes::Hash;
+use kaspa_consensus_notify::{notification::Notification, root::ConsensusNotificationRoot};
 use kaspa_core::{core::Core, service::Service};
+use kaspa_hashes::Hash;
 use parking_lot::RwLock;
 use std::future::Future;
 
@@ -262,7 +262,7 @@ pub fn create_temp_db_with_parallelism(parallelism: usize) -> (TempDbLifetime, A
     fs::create_dir_all(kaspa_tempdir.as_path()).unwrap();
     let db_tempdir = tempfile::tempdir_in(kaspa_tempdir.as_path()).unwrap();
     let db_path = db_tempdir.path().to_owned();
-    let db = database::prelude::open_db(db_path, true, parallelism);
+    let db = kaspa_database::prelude::open_db(db_path, true, parallelism);
     (TempDbLifetime::new(db_tempdir, Arc::downgrade(&db)), db)
 }
 
@@ -283,7 +283,7 @@ pub fn create_permanent_db(db_path: String, parallelism: usize) -> (TempDbLifeti
             _ => panic!("{e}"),
         }
     }
-    let db = database::prelude::open_db(db_dir, true, parallelism);
+    let db = kaspa_database::prelude::open_db(db_dir, true, parallelism);
     (TempDbLifetime::without_destroy(Arc::downgrade(&db)), db)
 }
 
@@ -291,6 +291,6 @@ pub fn create_permanent_db(db_path: String, parallelism: usize) -> (TempDbLifeti
 /// Callers must keep the `TempDbLifetime` guard for as long as they wish the DB instance to exist.
 pub fn load_existing_db(db_path: String, parallelism: usize) -> (TempDbLifetime, Arc<DB>) {
     let db_dir = PathBuf::from(db_path);
-    let db = database::prelude::open_db(db_dir, false, parallelism);
+    let db = kaspa_database::prelude::open_db(db_dir, false, parallelism);
     (TempDbLifetime::without_destroy(Arc::downgrade(&db)), db)
 }

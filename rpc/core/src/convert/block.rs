@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::{GetBlockTemplateResponse, RpcBlock, RpcError, RpcResult, RpcTransaction};
-use consensus_core::block::{Block, BlockTemplate, MutableBlock};
+use kaspa_consensus_core::block::{Block, BlockTemplate, MutableBlock};
 
 // ----------------------------------------------------------------------------
 // consensus_core to rpc_core
@@ -51,8 +51,8 @@ impl TryFrom<&RpcBlock> for Block {
             transactions: Arc::new(
                 item.transactions
                     .iter()
-                    .map(consensus_core::tx::Transaction::try_from)
-                    .collect::<RpcResult<Vec<consensus_core::tx::Transaction>>>()?,
+                    .map(kaspa_consensus_core::tx::Transaction::try_from)
+                    .collect::<RpcResult<Vec<kaspa_consensus_core::tx::Transaction>>>()?,
             ),
         })
     }

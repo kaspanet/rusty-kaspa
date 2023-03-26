@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-use database::prelude::StoreResult;
-use database::prelude::DB;
-use database::prelude::{BatchDbWriter, CachedDbItem, DirectDbWriter};
-use hashes::Hash;
+use kaspa_database::prelude::StoreResult;
+use kaspa_database::prelude::DB;
+use kaspa_database::prelude::{BatchDbWriter, CachedDbItem, DirectDbWriter};
+use kaspa_hashes::Hash;
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
 
@@ -51,7 +51,7 @@ const PRUNING_POINT_KEY: &[u8] = b"pruning-point";
 
 impl DbPruningStore {
     pub fn new(db: Arc<DB>) -> Self {
-        Self { db: Arc::clone(&db), access: CachedDbItem::new(db.clone(), PRUNING_POINT_KEY) }
+        Self { db: Arc::clone(&db), access: CachedDbItem::new(db.clone(), PRUNING_POINT_KEY.to_vec()) }
     }
 
     pub fn clone_with_new_cache(&self) -> Self {

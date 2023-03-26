@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use database::prelude::{CachedDbItem, DirectDbWriter, StoreResult, DB};
+use kaspa_database::prelude::{CachedDbItem, DirectDbWriter, StoreResult, DB};
 
 use crate::model::CirculatingSupply;
 
@@ -28,7 +28,7 @@ pub struct DbCirculatingSupplyStore {
 
 impl DbCirculatingSupplyStore {
     pub fn new(db: Arc<DB>) -> Self {
-        Self { db: Arc::clone(&db), access: CachedDbItem::new(db, CIRCULATING_SUPPLY_STORE_PREFIX) }
+        Self { db: Arc::clone(&db), access: CachedDbItem::new(db, CIRCULATING_SUPPLY_STORE_PREFIX.to_vec()) }
     }
 }
 

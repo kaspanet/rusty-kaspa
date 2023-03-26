@@ -2,7 +2,7 @@ use crate::{
     consensus_context::ConsensusMiningContext,
     mempool::{errors::RuleResult, model::pool::Pool, Mempool},
 };
-use consensus_core::{constants::UNACCEPTED_DAA_SCORE, tx::MutableTransaction, tx::UtxoEntry};
+use kaspa_consensus_core::{constants::UNACCEPTED_DAA_SCORE, tx::MutableTransaction, tx::UtxoEntry};
 
 impl<T: ConsensusMiningContext + ?Sized> Mempool<T> {
     pub(crate) fn populate_entries_and_try_validate(&self, transaction: &mut MutableTransaction) -> RuleResult<()> {

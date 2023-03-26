@@ -1,5 +1,5 @@
 [package]
-name = "math"
+name = "kaspa-math"
 description = "Kaspa miscellaneous lib"
 version.workspace = true
 edition.workspace = true

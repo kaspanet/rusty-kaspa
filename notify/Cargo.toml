@@ -7,10 +7,10 @@ include.workspace = true
 license.workspace = true
 
 [dependencies]
-addresses.workspace = true
+kaspa-addresses.workspace = true
 kaspa-core.workspace = true
 kaspa-utils.workspace = true
-consensus-core.workspace = true
+kaspa-consensus-core.workspace = true
 serde.workspace = true
 derive_more.workspace = true
 thiserror.workspace = true
