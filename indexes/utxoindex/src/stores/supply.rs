@@ -28,7 +28,7 @@ pub struct DbCirculatingSupplyStore {
 
 impl DbCirculatingSupplyStore {
     pub fn new(db: Arc<DB>) -> Self {
-        Self { db: Arc::clone(&db), access: CachedDbItem::new(db, CIRCULATING_SUPPLY_STORE_PREFIX) }
+        Self { db: Arc::clone(&db), access: CachedDbItem::new(db, CIRCULATING_SUPPLY_STORE_PREFIX.to_vec()) }
     }
 }
 
