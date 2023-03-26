@@ -7,7 +7,7 @@ use crate::{
     },
     model::topological_index::TopologicalIndex,
 };
-use consensus_core::tx::{MutableTransaction, TransactionId};
+use kaspa_consensus_core::tx::{MutableTransaction, TransactionId};
 use kaspa_core::debug;
 
 use super::tx::Priority;

@@ -1,4 +1,4 @@
-use consensus::pipeline::ProcessingCounters;
+use kaspa_consensus::pipeline::ProcessingCounters;
 use kaspa_core::{
     info,
     task::service::{AsyncService, AsyncServiceFuture},

@@ -1,14 +1,14 @@
 use crate::{flow_context::FlowContext, flow_trait::Flow, flowcontext::orphans::ORPHAN_RESOLUTION_RANGE};
-use consensus_core::{api::DynConsensus, block::Block, blockstatus::BlockStatus, errors::block::RuleError};
-use hashes::Hash;
+use kaspa_consensus_core::{api::DynConsensus, block::Block, blockstatus::BlockStatus, errors::block::RuleError};
 use kaspa_core::{debug, info, time::unix_now};
-use kaspa_utils::option::OptionExtensions;
-use p2p_lib::{
+use kaspa_hashes::Hash;
+use kaspa_p2p_lib::{
     common::ProtocolError,
     dequeue, dequeue_with_timeout, make_message,
     pb::{kaspad_message::Payload, InvRelayBlockMessage, RequestBlockLocatorMessage, RequestRelayBlocksMessage},
     IncomingRoute, Router,
 };
+use kaspa_utils::option::OptionExtensions;
 use std::{collections::VecDeque, sync::Arc};
 use tokio::sync::mpsc::{error::TrySendError, Sender};
 

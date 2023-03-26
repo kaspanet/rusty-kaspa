@@ -1,14 +1,14 @@
-use consensus_core::blockstatus::BlockStatus;
-use consensus_core::ChainPath;
+use kaspa_consensus_core::blockstatus::BlockStatus;
+use kaspa_consensus_core::ChainPath;
 use parking_lot::RwLockWriteGuard;
 use rocksdb::WriteBatch;
 
 use std::sync::Arc;
 
-use database::prelude::{BatchDbWriter, CachedDbAccess};
-use database::prelude::{CachedDbItem, DB};
-use database::prelude::{StoreError, StoreResult};
-use hashes::Hash;
+use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess};
+use kaspa_database::prelude::{CachedDbItem, DB};
+use kaspa_database::prelude::{StoreError, StoreResult};
+use kaspa_hashes::Hash;
 
 use super::U64Key;
 
@@ -44,7 +44,7 @@ impl DbSelectedChainStore {
             db: Arc::clone(&db),
             access_hash_by_index: CachedDbAccess::new(db.clone(), cache_size, STORE_PREFIX_HASH_BY_INDEX.to_vec()),
             access_index_by_hash: CachedDbAccess::new(db.clone(), cache_size, STORE_PREFIX_INDEX_BY_HASH.to_vec()),
-            access_highest_index: CachedDbItem::new(db, STORE_PREFIX_HIGHEST_INDEX),
+            access_highest_index: CachedDbItem::new(db, STORE_PREFIX_HIGHEST_INDEX.to_vec()),
         }
     }
 

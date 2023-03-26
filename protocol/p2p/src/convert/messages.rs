@@ -4,12 +4,12 @@ use super::{
     option::TryIntoOptionEx,
 };
 use crate::pb as protowire;
-use consensus_core::{
+use kaspa_consensus_core::{
     header::Header,
     pruning::{PruningPointProof, PruningPointsList},
     tx::{TransactionId, TransactionOutpoint, UtxoEntry},
 };
-use hashes::Hash;
+use kaspa_hashes::Hash;
 
 use std::{net::IpAddr, sync::Arc};
 

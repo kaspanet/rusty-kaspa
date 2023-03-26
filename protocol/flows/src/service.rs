@@ -1,14 +1,16 @@
-use addressmanager::AddressManager;
-use connectionmanager::ConnectionManager;
-use consensus_core::api::{ConsensusApi, DynConsensus};
-use consensus_core::config::Config;
+use kaspa_addressmanager::AddressManager;
+use kaspa_connectionmanager::ConnectionManager;
+use kaspa_consensus_core::{
+    api::{ConsensusApi, DynConsensus},
+    config::Config,
+};
 use kaspa_core::{
     task::service::{AsyncService, AsyncServiceFuture},
     trace,
 };
+use kaspa_mining::manager::MiningManager;
+use kaspa_p2p_lib::Adaptor;
 use kaspa_utils::triggers::SingleTrigger;
-use mining::manager::MiningManager;
-use p2p_lib::Adaptor;
 use parking_lot::Mutex;
 use std::{net::ToSocketAddrs, sync::Arc};
 

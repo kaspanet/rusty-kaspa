@@ -8,7 +8,7 @@ use crate::{
     },
     model::{candidate_tx::CandidateTransaction, topological_index::TopologicalIndex},
 };
-use consensus_core::{
+use kaspa_consensus_core::{
     tx::TransactionId,
     tx::{MutableTransaction, TransactionOutpoint},
 };

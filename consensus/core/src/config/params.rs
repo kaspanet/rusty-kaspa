@@ -1,5 +1,5 @@
 use crate::{BlockLevel, KType};
-use hashes::{Hash, HASH_SIZE};
+use kaspa_hashes::{Hash, HASH_SIZE};
 
 /// Consensus parameters. Contains settings and configurations which are consensus-sensitive.
 /// Changing one of these on a network node would exclude and prevent it from reaching consensus

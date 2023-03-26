@@ -1,10 +1,10 @@
 use super::{error::ConversionError, option::TryIntoOptionEx};
 use crate::pb as protowire;
-use consensus_core::{
+use kaspa_consensus_core::{
     subnets::SubnetworkId,
     tx::{ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry},
 };
-use hashes::Hash;
+use kaspa_hashes::Hash;
 
 // ----------------------------------------------------------------------------
 // consensus_core to protowire

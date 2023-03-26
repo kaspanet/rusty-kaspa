@@ -1,5 +1,5 @@
 [package]
-name = "mining"
+name = "kaspa-mining"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -7,11 +7,11 @@ include.workspace = true
 license.workspace = true
 
 [dependencies]
-addresses.workspace = true
-hashes.workspace = true
-muhash.workspace = true
-consensus-core.workspace = true
-txscript.workspace = true
+kaspa-addresses.workspace = true
+kaspa-hashes.workspace = true
+kaspa-muhash.workspace = true
+kaspa-consensus-core.workspace = true
+kaspa-txscript.workspace = true
 kaspa-core.workspace = true
 thiserror.workspace = true
 serde.workspace = true
@@ -22,7 +22,7 @@ rand.workspace = true
 parking_lot.workspace = true
 
 [dev-dependencies]
-txscript.workspace = true
+kaspa-txscript.workspace = true
 criterion.workspace = true
 secp256k1 = { version = "0.24", features = ["global-context", "rand-std"] }
 

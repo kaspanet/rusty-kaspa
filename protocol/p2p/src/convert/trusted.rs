@@ -1,4 +1,4 @@
-use consensus_core::trusted::{TrustedGhostdagData, TrustedHeader};
+use kaspa_consensus_core::trusted::{TrustedGhostdagData, TrustedHeader};
 
 use crate::pb as protowire;
 

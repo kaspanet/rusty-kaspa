@@ -4,7 +4,7 @@ pub mod wallet;
 pub mod wallets;
 pub mod wrapper;
 
-pub use addresses::Address;
+pub use kaspa_addresses::Address;
 pub use result::Result;
 pub use wallet::Wallet;
 pub use wallets::dummy_address;

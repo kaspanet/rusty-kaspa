@@ -17,7 +17,8 @@ use crate::{
     },
     processes::ghostdag::ordering::SortableBlock,
 };
-use consensus_core::{
+use itertools::Itertools;
+use kaspa_consensus_core::{
     blockhash::BlockHashExtensions,
     errors::{
         block::RuleError,
@@ -25,8 +26,7 @@ use consensus_core::{
     },
     BlockHashSet, BlueWorkType, ChainPath, HashMapCustomHasher,
 };
-use hashes::Hash;
-use itertools::Itertools;
+use kaspa_hashes::Hash;
 use kaspa_utils::refs::Refs;
 
 #[derive(Clone)]

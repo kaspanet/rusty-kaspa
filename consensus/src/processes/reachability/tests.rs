@@ -6,9 +6,9 @@ use crate::{
     model::stores::reachability::{ReachabilityStore, ReachabilityStoreReader},
     processes::reachability::interval::Interval,
 };
-use consensus_core::{blockhash::BlockHashExtensions, BlockHashMap, BlockHashSet, HashMapCustomHasher};
-use database::prelude::StoreError;
-use hashes::Hash;
+use kaspa_consensus_core::{blockhash::BlockHashExtensions, BlockHashMap, BlockHashSet, HashMapCustomHasher};
+use kaspa_database::prelude::StoreError;
+use kaspa_hashes::Hash;
 use std::collections::VecDeque;
 use thiserror::Error;
 

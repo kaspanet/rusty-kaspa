@@ -1,11 +1,11 @@
 use std::{collections::HashSet, sync::Arc};
 
-use consensus_core::{
+use kaspa_consensus_core::{
     tx::{ScriptPublicKeys, TransactionOutpoint},
     BlockHashSet,
 };
-use database::prelude::{StoreResult, DB};
 use kaspa_core::trace;
+use kaspa_database::prelude::{StoreResult, DB};
 
 use crate::{
     model::UtxoSetByScriptPublicKey,

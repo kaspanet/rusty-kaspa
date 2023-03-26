@@ -72,7 +72,7 @@ impl Debug for DbKey {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use hashes::{Hash, HASH_SIZE};
+    use kaspa_hashes::{Hash, HASH_SIZE};
 
     #[test]
     fn test_key_display() {

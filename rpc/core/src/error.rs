@@ -31,10 +31,10 @@ pub enum RpcError {
     PrimitiveToEnumConversionError,
 
     #[error(transparent)]
-    AddressError(#[from] addresses::AddressError),
+    AddressError(#[from] kaspa_addresses::AddressError),
 
     #[error(transparent)]
-    NetworkTypeError(#[from] consensus_core::networktype::NetworkTypeError),
+    NetworkTypeError(#[from] kaspa_consensus_core::networktype::NetworkTypeError),
 
     #[error(transparent)]
     NotificationError(#[from] kaspa_notify::error::Error),

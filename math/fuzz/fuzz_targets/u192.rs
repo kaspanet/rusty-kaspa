@@ -3,7 +3,7 @@ mod utils;
 
 use core::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Rem};
 use libfuzzer_sys::fuzz_target;
-use math::construct_uint;
+use kaspa_math::construct_uint;
 use num_bigint::{BigInt, BigUint};
 use num_integer::Integer;
 use num_traits::{Signed, Zero};

@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
-use consensus_core::BlockHashSet;
-use database::prelude::StoreResult;
-use database::prelude::DB;
-use database::prelude::{BatchDbWriter, CachedDbItem, DirectDbWriter};
-use hashes::Hash;
+use kaspa_consensus_core::BlockHashSet;
+use kaspa_database::prelude::StoreResult;
+use kaspa_database::prelude::DB;
+use kaspa_database::prelude::{BatchDbWriter, CachedDbItem, DirectDbWriter};
+use kaspa_hashes::Hash;
 use rocksdb::WriteBatch;
 
 /// Reader API for `TipsStore`.
@@ -27,7 +27,7 @@ pub struct DbTipsStore {
 
 impl DbTipsStore {
     pub fn new(db: Arc<DB>) -> Self {
-        Self { db: Arc::clone(&db), access: CachedDbItem::new(db.clone(), STORE_NAME) }
+        Self { db: Arc::clone(&db), access: CachedDbItem::new(db.clone(), STORE_NAME.to_vec()) }
     }
 
     pub fn clone_with_new_cache(&self) -> Self {

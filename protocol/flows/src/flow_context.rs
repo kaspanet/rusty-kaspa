@@ -1,21 +1,25 @@
 use crate::flowcontext::orphans::{OrphanBlocksPool, MAX_ORPHANS};
 use crate::v5;
-use addressmanager::AddressManager;
 use async_trait::async_trait;
-use consensus_core::api::{ConsensusApi, DynConsensus};
-use consensus_core::block::Block;
-use consensus_core::config::Config;
-use consensus_core::tx::TransactionId;
-use hashes::Hash;
-use kaspa_core::time::unix_now;
-use kaspa_core::{debug, info};
-use mining::manager::MiningManager;
-use p2p_lib::pb;
-use p2p_lib::{common::ProtocolError, ConnectionInitializer, KaspadHandshake, Router};
+use kaspa_addressmanager::AddressManager;
+use kaspa_consensus_core::{
+    api::{ConsensusApi, DynConsensus},
+    block::Block,
+    config::Config,
+    tx::TransactionId,
+};
+use kaspa_core::{debug, info, time::unix_now};
+use kaspa_hashes::Hash;
+use kaspa_mining::manager::MiningManager;
+use kaspa_p2p_lib::{common::ProtocolError, pb, ConnectionInitializer, KaspadHandshake, Router};
 use parking_lot::Mutex;
-use std::collections::HashSet;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::{
+    collections::HashSet,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+};
 use tokio::sync::RwLock as AsyncRwLock;
 use uuid::Uuid;
 

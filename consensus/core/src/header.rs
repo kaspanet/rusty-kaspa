@@ -1,6 +1,6 @@
 use crate::{hashing, BlueWorkType};
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
-use hashes::Hash;
+use kaspa_hashes::Hash;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]

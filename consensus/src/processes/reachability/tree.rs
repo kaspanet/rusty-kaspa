@@ -3,7 +3,7 @@
 //!
 use super::{extensions::ReachabilityStoreIntervalExtensions, inquirer::*, reindex::ReindexOperationContext, *};
 use crate::model::stores::reachability::ReachabilityStore;
-use hashes::Hash;
+use kaspa_hashes::Hash;
 
 /// Adds `new_block` as a child of `parent` in the tree structure. If this block
 /// has no remaining interval to allocate, a reindexing is triggered. When a reindexing

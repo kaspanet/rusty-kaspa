@@ -24,14 +24,14 @@ use crate::{
         transaction_validator::TransactionValidator,
     },
 };
-use consensus_core::{
+use crossbeam_channel::{Receiver, Sender};
+use kaspa_consensus_core::{
     block::Block,
     blockstatus::BlockStatus::{self, StatusHeaderOnly, StatusInvalid},
     subnets::SUBNETWORK_ID_COINBASE,
     tx::Transaction,
 };
-use crossbeam_channel::{Receiver, Sender};
-use hashes::Hash;
+use kaspa_hashes::Hash;
 use parking_lot::RwLock;
 use rayon::ThreadPool;
 use rocksdb::WriteBatch;

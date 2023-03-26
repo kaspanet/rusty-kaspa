@@ -1,6 +1,6 @@
 use crate::{opcodes, MAX_SCRIPT_PUBLIC_KEY_VERSION};
-use addresses::Version;
-use consensus_core::tx::{ScriptPublicKey, ScriptPublicKeyVersion};
+use kaspa_addresses::Version;
+use kaspa_consensus_core::tx::{ScriptPublicKey, ScriptPublicKeyVersion};
 use std::{
     fmt::{Display, Formatter},
     str::FromStr,
@@ -137,7 +137,7 @@ impl From<Version> for ScriptClass {
 
 #[cfg(test)]
 mod tests {
-    use consensus_core::tx::ScriptVec;
+    use kaspa_consensus_core::tx::ScriptVec;
 
     use super::*;
 

@@ -5,18 +5,18 @@ use crate::{
         Flow,
     },
 };
-use consensus_core::{
+use futures::future::try_join_all;
+use kaspa_consensus_core::{
     api::{BlockValidationFuture, DynConsensus},
     block::Block,
     blockhash::BlockHashExtensions,
     header::Header,
     pruning::{PruningPointProof, PruningPointsList},
 };
-use futures::future::try_join_all;
-use hashes::Hash;
 use kaspa_core::{debug, info};
-use muhash::MuHash;
-use p2p_lib::{
+use kaspa_hashes::Hash;
+use kaspa_muhash::MuHash;
+use kaspa_p2p_lib::{
     common::ProtocolError,
     convert::model::trusted::TrustedDataPackage,
     dequeue_with_timeout, make_message,
@@ -176,8 +176,7 @@ impl IbdFlow {
         let proof: PruningPointProof = msg.try_into()?;
         debug!("received proof with overall {} headers", proof.iter().map(|l| l.len()).sum::<usize>());
 
-        // TODO: call validate_pruning_proof when implemented
-        // consensus.validate_pruning_proof(&proof);
+        consensus.validate_pruning_proof(&proof)?;
 
         let proof_pruning_point = proof[0].last().expect("was just ensured by validation").hash;
 

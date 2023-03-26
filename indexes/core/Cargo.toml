@@ -7,9 +7,9 @@ include.workspace = true
 license.workspace = true
 
 [dependencies]
-hashes.workspace = true
+kaspa-hashes.workspace = true
 thiserror.workspace = true
-consensus-core.workspace = true
+kaspa-consensus-core.workspace = true
 kaspa-utils.workspace = true
 kaspa-notify.workspace = true
 async-channel.workspace = true

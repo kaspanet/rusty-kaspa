@@ -2,7 +2,7 @@ use crate::{RpcTransactionOutpoint, RpcUtxoEntry};
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
 
-pub type RpcAddress = addresses::Address;
+pub type RpcAddress = kaspa_addresses::Address;
 
 ///
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]

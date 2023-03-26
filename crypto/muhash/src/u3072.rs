@@ -1,5 +1,5 @@
 use crate::ELEMENT_BYTE_SIZE;
-use math::Uint3072;
+use kaspa_math::Uint3072;
 use serde::{Deserialize, Serialize};
 use std::ops::{DivAssign, MulAssign};
 

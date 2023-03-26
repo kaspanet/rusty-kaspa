@@ -1,1 +1,1 @@
-pub type RpcNetworkType = consensus_core::networktype::NetworkType;
+pub type RpcNetworkType = kaspa_consensus_core::networktype::NetworkType;

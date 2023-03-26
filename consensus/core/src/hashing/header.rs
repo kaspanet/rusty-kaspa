@@ -1,11 +1,11 @@
 use super::HasherExtensions;
 use crate::header::Header;
-use hashes::{Hash, HasherBase};
+use kaspa_hashes::{Hash, HasherBase};
 
 /// Returns the header hash using the provided nonce+timestamp instead of those in the header.
 #[inline]
 pub fn hash_override_nonce_time(header: &Header, nonce: u64, timestamp: u64) -> Hash {
-    let mut hasher = hashes::BlockHash::new();
+    let mut hasher = kaspa_hashes::BlockHash::new();
     hasher.update(header.version.to_le_bytes()).write_len(header.parents_by_level.len()); // Write the number of parent levels
 
     // Write parents at each level
@@ -64,10 +64,10 @@ mod tests {
             vec![(0.into(), vec![0, 0, 0, 0, 0, 0, 0, 0]), (123456.into(), vec![3, 0, 0, 0, 0, 0, 0, 0, 1, 226, 64])];
 
         for test in tests {
-            let mut hasher = hashes::BlockHash::new();
+            let mut hasher = kaspa_hashes::BlockHash::new();
             hasher.write_blue_work(test.0);
 
-            let mut hasher2 = hashes::BlockHash::new();
+            let mut hasher2 = kaspa_hashes::BlockHash::new();
             hasher2.update(test.1);
             assert_eq!(hasher.finalize(), hasher2.finalize())
         }

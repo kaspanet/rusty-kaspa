@@ -1,12 +1,12 @@
-use consensus_core::{blockstatus::BlockStatus, BlockHasher};
+use kaspa_consensus_core::{blockstatus::BlockStatus, BlockHasher};
 use parking_lot::{RwLock, RwLockWriteGuard};
 use rocksdb::WriteBatch;
 use std::sync::Arc;
 
-use database::prelude::DB;
-use database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
-use database::prelude::{StoreError, StoreResult};
-use hashes::Hash;
+use kaspa_database::prelude::DB;
+use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
+use kaspa_database::prelude::{StoreError, StoreResult};
+use kaspa_hashes::Hash;
 
 /// Reader API for `StatusesStore`.
 pub trait StatusesStoreReader {

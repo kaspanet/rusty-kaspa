@@ -2,16 +2,16 @@ use crate::{
     flow_context::{FlowContext, RequestScope},
     flow_trait::Flow,
 };
-use consensus_core::tx::{Transaction, TransactionId};
 use itertools::Itertools;
-use mining::{
+use kaspa_consensus_core::tx::{Transaction, TransactionId};
+use kaspa_mining::{
     errors::MiningManagerError,
     mempool::{
         errors::RuleError,
         tx::{Orphan, Priority},
     },
 };
-use p2p_lib::{
+use kaspa_p2p_lib::{
     common::{ProtocolError, DEFAULT_TIMEOUT},
     dequeue, make_message,
     pb::{kaspad_message::Payload, RequestTransactionsMessage, TransactionNotFoundMessage},

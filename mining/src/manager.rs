@@ -18,7 +18,7 @@ use crate::{
         owner_txs::{GroupedOwnerTransactions, ScriptPublicKeySet},
     },
 };
-use consensus_core::{
+use kaspa_consensus_core::{
     block::BlockTemplate,
     coinbase::MinerData,
     errors::block::RuleError,

@@ -1,6 +1,6 @@
 use super::events::EventType;
-use addresses::Address;
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+use kaspa_addresses::Address;
 use serde::{Deserialize, Serialize};
 
 macro_rules! scope_enum {

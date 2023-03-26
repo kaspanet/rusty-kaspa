@@ -1,4 +1,4 @@
-use consensus_core::{
+use kaspa_consensus_core::{
     errors::tx::TxRuleError,
     tx::{TransactionId, TransactionOutpoint},
 };

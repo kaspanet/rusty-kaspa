@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
-use consensus_core::{
+use kaspa_consensus_core::{
     blockhash::{self, BlockHashExtensions, BlockHashes},
     BlockHashMap, BlueWorkType, HashMapCustomHasher,
 };
-use hashes::Hash;
+use kaspa_hashes::Hash;
 use kaspa_utils::refs::Refs;
 
 use crate::{
@@ -65,8 +65,9 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
         ))
     }
 
-    pub fn find_selected_parent(&self, parents: &mut impl Iterator<Item = Hash>) -> Hash {
+    pub fn find_selected_parent(&self, parents: impl IntoIterator<Item = Hash>) -> Hash {
         parents
+            .into_iter()
             .map(|parent| SortableBlock { hash: parent, blue_work: self.ghostdag_store.get_blue_work(parent).unwrap() })
             .max()
             .unwrap()

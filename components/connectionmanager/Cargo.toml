@@ -1,5 +1,5 @@
 [package]
-name = "connectionmanager"
+name = "kaspa-connectionmanager"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -8,8 +8,8 @@ license.workspace = true
 
 [dependencies]
 kaspa-core.workspace = true
-p2p-lib.workspace = true
-addressmanager.workspace = true
+kaspa-p2p-lib.workspace = true
+kaspa-addressmanager.workspace = true
 tokio.workspace = true
 log.workspace = true
 parking_lot.workspace = true

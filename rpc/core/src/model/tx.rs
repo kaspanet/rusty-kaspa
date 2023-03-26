@@ -1,5 +1,5 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
-use consensus_core::tx::{ScriptPublicKey, ScriptVec, TransactionId, TransactionOutpoint, UtxoEntry};
+use kaspa_consensus_core::tx::{ScriptPublicKey, ScriptVec, TransactionId, TransactionOutpoint, UtxoEntry};
 use serde::{Deserialize, Serialize};
 
 use crate::prelude::{RpcHash, RpcScriptClass, RpcSubnetworkId};

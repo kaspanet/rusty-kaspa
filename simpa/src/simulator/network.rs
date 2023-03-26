@@ -1,15 +1,15 @@
 use async_channel::unbounded;
-use consensus_notify::root::ConsensusNotificationRoot;
+use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use std::sync::Arc;
 use std::thread::JoinHandle;
 
 use super::infra::Simulation;
 use super::miner::Miner;
 
-use consensus::config::Config;
-use consensus::consensus::test_consensus::{create_permanent_db, create_temp_db, TempDbLifetime};
-use consensus::consensus::Consensus;
-use consensus_core::block::Block;
+use kaspa_consensus::config::Config;
+use kaspa_consensus::consensus::test_consensus::{create_permanent_db, create_temp_db, TempDbLifetime};
+use kaspa_consensus::consensus::Consensus;
+use kaspa_consensus_core::block::Block;
 
 type ConsensusWrapper = (Arc<Consensus>, Vec<JoinHandle<()>>, TempDbLifetime);
 

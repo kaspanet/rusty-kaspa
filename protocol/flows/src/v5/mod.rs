@@ -11,8 +11,8 @@ use self::{
 };
 use crate::{flow_context::FlowContext, flow_trait::Flow};
 
+use kaspa_p2p_lib::{pb::kaspad_message::Payload as KaspadMessagePayload, KaspadMessagePayloadType, Router};
 use log::debug;
-use p2p_lib::{pb::kaspad_message::Payload as KaspadMessagePayload, KaspadMessagePayloadType, Router};
 use std::sync::Arc;
 
 mod address;

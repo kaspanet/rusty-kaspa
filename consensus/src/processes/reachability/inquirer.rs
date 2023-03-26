@@ -1,8 +1,8 @@
 use super::interval::Interval;
 use super::{tree::*, *};
 use crate::model::stores::reachability::{ReachabilityStore, ReachabilityStoreReader};
-use consensus_core::blockhash;
-use hashes::Hash;
+use kaspa_consensus_core::blockhash;
+use kaspa_hashes::Hash;
 
 /// Init the reachability store to match the state required by the algorithmic layer.
 /// The function first checks the store for possibly being initialized already.
