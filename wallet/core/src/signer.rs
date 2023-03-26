@@ -22,26 +22,26 @@ use workflow_wasm::abi::TryFromJsValue;
 #[wasm_bindgen]
 pub struct Signer {
     private_keys: Vec<PrivateKey>,
-    pub varify: bool,
+    pub verify: bool,
 }
 
 #[wasm_bindgen]
 impl Signer {
     #[wasm_bindgen(constructor)]
     pub fn js_ctor(private_keys: PrivateKeyArray) -> Result<Signer> {
-        Ok(Self { private_keys: private_keys.try_into()?, varify: true })
+        Ok(Self { private_keys: private_keys.try_into()?, verify: true })
     }
 
     #[wasm_bindgen(js_name = "signTransaction")]
-    pub fn sign_transaction(&self, mtx: MutableTransaction, varify_sig: bool) -> std::result::Result<MutableTransaction, SignerError> {
-        sign_transaction(mtx, &self.private_keys.iter().map(|k| k.into()).collect::<Vec<_>>(), varify_sig)
+    pub fn sign_transaction(&self, mtx: MutableTransaction, verify_sig: bool) -> std::result::Result<MutableTransaction, SignerError> {
+        sign_transaction(mtx, &self.private_keys.iter().map(|k| k.into()).collect::<Vec<_>>(), verify_sig)
             .map_err(|err| SignerError::Custom(err.to_string()))
     }
 }
 
 impl SignerTrait for Signer {
     fn sign(&self, mtx: SignableTransaction) -> SignerResult {
-        self.sign_transaction(mtx.try_into()?, self.varify)?.try_into()
+        self.sign_transaction(mtx.try_into()?, self.verify)?.try_into()
     }
 }
 
