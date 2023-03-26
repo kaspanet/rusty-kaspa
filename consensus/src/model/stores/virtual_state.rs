@@ -96,7 +96,7 @@ pub struct DbVirtualStateStore {
 
 impl DbVirtualStateStore {
     pub fn new(db: Arc<DB>) -> Self {
-        Self { db: Arc::clone(&db), access: CachedDbItem::new(db.clone(), STORE_PREFIX) }
+        Self { db: Arc::clone(&db), access: CachedDbItem::new(db.clone(), STORE_PREFIX.to_vec()) }
     }
 
     pub fn clone_with_new_cache(&self) -> Self {
