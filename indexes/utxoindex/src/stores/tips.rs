@@ -26,7 +26,7 @@ pub struct DbUtxoIndexTipsStore {
 
 impl DbUtxoIndexTipsStore {
     pub fn new(db: Arc<DB>) -> Self {
-        Self { db: Arc::clone(&db), access: CachedDbItem::new(db.clone(), TIPS_STORE_PREFIX) }
+        Self { db: Arc::clone(&db), access: CachedDbItem::new(db.clone(), TIPS_STORE_PREFIX.to_vec()) }
     }
 }
 
