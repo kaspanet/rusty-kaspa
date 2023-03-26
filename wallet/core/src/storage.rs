@@ -13,6 +13,7 @@ use std::sync::{Arc, Mutex};
 #[allow(unused_imports)]
 use workflow_core::channel::{Channel, Receiver};
 use workflow_core::runtime;
+use wasm_bindgen::prelude::*;
 
 pub struct PrivateKey(Vec<SecretKey>);
 
@@ -39,27 +40,39 @@ impl Wallet {
     }
 }
 
+// #[derive()]
+#[wasm_bindgen(inspectable)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Store {
     filename: PathBuf,
 }
 
+#[wasm_bindgen]
 impl Store {
-    pub fn new(filename: Option<&str>) -> Store {
+    #[wasm_bindgen(getter, js_name = filename)]
+    pub fn filename_as_string(&self) -> String {
+        self.filename.to_str().unwrap().to_string()
+    }
+}
+
+impl Store {
+    pub fn new(filename: Option<&str>) -> Result<Store> {
         let filename = {
+            let filename = parse(filename.unwrap_or("~/.kaspa/wallet.kaspa"));
             cfg_if! {
                 if #[cfg(any(target_os = "linux", target_os = "macos", target_family = "unix", target_os = "windows"))] {
-                    parse(filename.unwrap_or("~/.kaspa/wallet.kaspa"))
+                    filename
                 } else if #[cfg(target_arch = "wasm32")] {
                     if runtime::is_node() || runtime::is_nw() {
-                        parse(filename.unwrap_or("~/.kaspa/wallet.kaspa"))
+                        filename
                     } else {
-                        PathBuf::from(filename.unwrap_or("kaspa"))
+                        PathBuf::from(filename.file_name().ok_or(Error::InvalidFilename(format!("{}",filename.display())))?)
                     }
                 }
             }
         };
 
-        Store { filename }
+        Ok(Store { filename })
     }
 
     pub fn filename(&self) -> &PathBuf {

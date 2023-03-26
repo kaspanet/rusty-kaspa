@@ -50,6 +50,9 @@ pub enum Error {
     #[error("No wallet found")]
     NoWalletInStorage,
 
+    #[error("invalid filename: {0}")]
+    InvalidFilename(String),
+
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
 

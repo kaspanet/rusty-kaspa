@@ -42,7 +42,6 @@ pub struct UtxoSet {
 }
 
 impl UtxoSet {
-
     pub fn insert(&mut self, utxo_entry: AccountUtxoEntry) {
         self.inner.entries.lock().unwrap().push(utxo_entry);
         self.inner.ordered.store(UtxoOrdering::Unordered as u32, Ordering::SeqCst);

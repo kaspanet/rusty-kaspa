@@ -90,7 +90,7 @@ impl TryFrom<&str> for Prefix {
     PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema,
 )]
 #[repr(u8)]
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = "AddressVersion")]
 pub enum Version {
     /// PubKey addresses always have the version byte set to 0
     PubKey = 0,

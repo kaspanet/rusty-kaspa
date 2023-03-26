@@ -1,33 +1,18 @@
 #![allow(unused_imports)]
 
-pub mod addresses {
-    //! Kaspa Address Structs
-    pub use addresses::*;
+pub use addresses::{Address,Version as AddressVersion};
+pub use consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry};
+pub use consensus_core::wasm::keypair::{Keypair, PrivateKey};
+
+pub mod rpc {
+    //! Kaspa RPC interface
+    pub use kaspa_rpc_core::model::message::*;
+    pub use kaspa_wrpc_client::wasm::{
+        RpcClient,
+    };
 }
 
-// pub mod transactions {
-pub use consensus_core::tx::{Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry};
-// }
+pub use kaspa_wallet_core::{account::Account, signer::{Signer,
 
-// pub mod core {
-//     pub use kaspa_core::*;
-// }
-
-// pub mod rpc {
-pub use kaspa_rpc_core::*;
-// }
-
-// pub mod utils {
-//     pub use kaspa_utils::*;
-// }
-
-// use kaspa_rpc_core::*;
-// use kaspa_utils::*;
-// use kaspa_wallet_core::*;
-// use kaspa_wrpc_client::*;
-
-// pub use addresses;
-// pub use kaspa_rpc_core;
-// pub use kaspa_utils;
-// pub use kaspa_wallet_core;
-// pub use kaspa_wrpc_client;
+js_sign_transaction as sign_transaction
+}, wallet::Wallet, storage::Store, utxo::UtxoSet };

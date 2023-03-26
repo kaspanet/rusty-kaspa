@@ -68,6 +68,7 @@ impl TryFrom<PrivateKeyArray> for Vec<PrivateKey> {
     }
 }
 
+/// `signTransaction()` is a helper function to sign a transaction using a private key array or a signer array.
 #[wasm_bindgen(js_name = "signTransaction")]
 pub fn js_sign_transaction(
     mtx: MutableTransaction,
