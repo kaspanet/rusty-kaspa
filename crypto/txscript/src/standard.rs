@@ -1,14 +1,14 @@
+use crate::{
+    opcodes::codes::{OpBlake2b, OpCheckSig, OpCheckSigECDSA, OpData32, OpData33, OpEqual},
+    script_builder::{ScriptBuilder, ScriptBuilderResult},
+    script_class::ScriptClass,
+};
 use addresses::{Address, Prefix, Version};
 use blake2b_simd::Params;
 use consensus_core::tx::{ScriptPublicKey, ScriptVec};
 use smallvec::SmallVec;
 use std::iter::once;
 use txscript_errors::TxScriptError;
-
-use crate::{
-    opcodes::codes::{OpBlake2b, OpCheckSig, OpCheckSigECDSA, OpData32, OpData33, OpEqual},
-    script_class::ScriptClass,
-};
 
 /// Creates a new script to pay a transaction output to a 32-byte pubkey.
 fn pay_to_pub_key(address_payload: &[u8]) -> ScriptVec {
@@ -24,8 +24,8 @@ fn pay_to_pub_key_ecdsa(address_payload: &[u8]) -> ScriptVec {
     SmallVec::from_iter(once(OpData33).chain(address_payload.iter().copied()).chain(once(OpCheckSigECDSA)))
 }
 
-// Creates a new script to pay a transaction output to a script hash.
-// It is expected that the input is a valid hash.
+/// Creates a new script to pay a transaction output to a script hash.
+/// It is expected that the input is a valid hash.
 fn pay_to_script_hash(script_hash: &[u8]) -> ScriptVec {
     // TODO: use ScriptBuilder when add_op and add_data fns or equivalents are available
     assert_eq!(script_hash.len(), 32);
@@ -47,6 +47,12 @@ pub fn pay_to_script_hash_script(redeem_script: &[u8]) -> ScriptPublicKey {
     let redeem_script_hash = Params::new().hash_length(32).to_state().update(redeem_script).finalize();
     let script = pay_to_script_hash(redeem_script_hash.as_bytes());
     ScriptPublicKey::new(ScriptClass::ScriptHash.version(), script)
+}
+
+/// Generates a signature script that fits a pay-to-script-hash script
+pub fn pay_to_script_hash_signature_script(redeem_script: Vec<u8>, signature: Vec<u8>) -> ScriptBuilderResult<Vec<u8>> {
+    let redeem_script_as_data = ScriptBuilder::new().add_data(&redeem_script)?.drain();
+    Ok(Vec::from_iter(signature.iter().copied().chain(redeem_script_as_data.iter().copied())))
 }
 
 /// Returns the address encoded in a script public key.
@@ -75,51 +81,31 @@ pub fn extract_script_pub_key_address(script_public_key: &ScriptPublicKey, prefi
 
 pub mod test_helpers {
     use super::*;
-    use crate::{
-        opcodes::codes::{OpPushData1, OpTrue},
-        MAX_TX_IN_SEQUENCE_NUM,
-    };
+    use crate::{opcodes::codes::OpTrue, MAX_TX_IN_SEQUENCE_NUM};
     use consensus_core::{
         constants::TX_VERSION,
         subnets::SUBNETWORK_ID_NATIVE,
         tx::{Transaction, TransactionInput, TransactionOutpoint, TransactionOutput},
     };
 
-    // op_true_script returns a P2SH script paying to an anyone-can-spend address,
-    // The second return value is a redeemScript to be used with txscript.PayToScriptHashSignatureScript
+    /// Returns a P2SH script paying to an anyone-can-spend address,
+    /// The second return value is a redeemScript to be used with txscript.pay_to_script_hash_signature_script
     pub fn op_true_script() -> (ScriptPublicKey, Vec<u8>) {
         let redeem_script = vec![OpTrue];
         let script_public_key = pay_to_script_hash_script(&redeem_script);
         (script_public_key, redeem_script)
     }
 
-    // create_transaction create a transaction that spends the first output of provided transaction.
+    // Creates a transaction that spends the first output of provided transaction.
     // Assumes that the output being spent has opTrueScript as it's scriptPublicKey.
     // Creates the value of the spent output minus provided `fee` (in sompi).
     pub fn create_transaction(tx_to_spend: &Transaction, fee: u64) -> Transaction {
         let (script_public_key, redeem_script) = op_true_script();
-
-        // TODO: call txscript.PayToScriptHashSignatureScript(redeemScript, nil) when available
-        let signature_script = pay_to_script_hash_signature_script(redeem_script, vec![]);
-
+        let signature_script = pay_to_script_hash_signature_script(redeem_script, vec![]).expect("the script is canonical");
         let previous_outpoint = TransactionOutpoint::new(tx_to_spend.id(), 0);
         let input = TransactionInput::new(previous_outpoint, signature_script, MAX_TX_IN_SEQUENCE_NUM, 1);
         let output = TransactionOutput::new(tx_to_spend.outputs[0].value - fee, script_public_key);
         Transaction::new(TX_VERSION, vec![input], vec![output], 0, SUBNETWORK_ID_NATIVE, 0, vec![])
-    }
-
-    // TODO: remove this function and use txscript::standard::pay_to_script_hash_signature_script when available
-    pub fn pay_to_script_hash_signature_script(redeem_script: Vec<u8>, signature: Vec<u8>) -> Vec<u8> {
-        // This is just a hack until we have ScriptBuilder
-        // For now, we just suppose that redeem_script len is in the u8 range
-        Vec::from_iter(
-            signature
-                .iter()
-                .copied()
-                .chain(once(OpPushData1))
-                .chain(once(redeem_script.len() as u8))
-                .chain(redeem_script.iter().copied()),
-        )
     }
 }
 
