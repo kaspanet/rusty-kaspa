@@ -51,7 +51,7 @@ const PRUNING_POINT_KEY: &[u8] = b"pruning-point";
 
 impl DbPruningStore {
     pub fn new(db: Arc<DB>) -> Self {
-        Self { db: Arc::clone(&db), access: CachedDbItem::new(db.clone(), PRUNING_POINT_KEY) }
+        Self { db: Arc::clone(&db), access: CachedDbItem::new(db.clone(), PRUNING_POINT_KEY.to_vec()) }
     }
 
     pub fn clone_with_new_cache(&self) -> Self {

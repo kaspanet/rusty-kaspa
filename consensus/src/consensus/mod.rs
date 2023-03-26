@@ -693,8 +693,8 @@ impl ConsensusApi for Consensus {
         self.coinbase_manager.modify_coinbase_payload(payload, miner_data)
     }
 
-    fn validate_pruning_proof(&self, _proof: &PruningPointProof) -> Result<(), PruningImportError> {
-        unimplemented!()
+    fn validate_pruning_proof(&self, proof: &PruningPointProof) -> Result<(), PruningImportError> {
+        self.pruning_proof_manager.validate_pruning_point_proof(proof)
     }
 
     fn apply_pruning_proof(&self, proof: PruningPointProof, trusted_set: &[TrustedBlock]) {
