@@ -1,5 +1,6 @@
 use crate::Result;
-use consensus_core::{
+use js_sys::Array;
+use kaspa_consensus_core::{
     hashing::{
         sighash::{calc_schnorr_signature_hash, SigHashReusedValues},
         sighash_type::SIG_HASH_ALL,
@@ -12,12 +13,12 @@ use consensus_core::{
         MutableTransaction,
     },
 };
-use js_sys::Array;
 use std::collections::BTreeMap;
 use wasm_bindgen::prelude::*;
 use workflow_log::log_trace;
 use workflow_wasm::abi::TryFromJsValue;
 
+/// `Signer` is a type capable of signing transactions.
 #[derive(TryFromJsValue, Clone, Debug)]
 #[wasm_bindgen]
 pub struct Signer {

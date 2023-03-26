@@ -1,7 +1,7 @@
 use base64::DecodeError;
-use consensus_core::sign::Error as CoreSignError;
-use consensus_core::wasm::error::Error as CoreWasmError;
 use kaspa_bip32::Error as BIP32Error;
+use kaspa_consensus_core::sign::Error as CoreSignError;
+use kaspa_consensus_core::wasm::error::Error as CoreWasmError;
 use kaspa_rpc_core::RpcError as KaspaRpcError;
 use kaspa_wrpc_client::error::Error as KaspaWorkflowRpcError;
 use secp256k1::Error as Secp256k1Error;

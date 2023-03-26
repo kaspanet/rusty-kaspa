@@ -10,10 +10,12 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use wasm_bindgen::prelude::*;
 #[allow(unused_imports)]
 use workflow_core::channel::{Channel, Receiver};
 use workflow_core::runtime;
-use wasm_bindgen::prelude::*;
+
+const DEFAULT_PATH: &str = "~/.kaspa/wallet.kaspa";
 
 pub struct PrivateKey(Vec<SecretKey>);
 
@@ -58,7 +60,8 @@ impl Store {
 impl Store {
     pub fn new(filename: Option<&str>) -> Result<Store> {
         let filename = {
-            let filename = parse(filename.unwrap_or("~/.kaspa/wallet.kaspa"));
+            #[allow(clippy::let_and_return)]
+            let filename = parse(filename.unwrap_or(DEFAULT_PATH));
             cfg_if! {
                 if #[cfg(any(target_os = "linux", target_os = "macos", target_family = "unix", target_os = "windows"))] {
                     filename

@@ -20,9 +20,12 @@ kaspa-addresses.workspace = true
 kaspa-utils.workspace = true
 kaspa-rpc-core.workspace = true
 kaspa-wrpc-client.workspace = true
-consensus-core.workspace = true
+kaspa-consensus-core.workspace = true
 
 [features] 
 wallet = [] 
 full = ["wallet"] 
 default = [] 
+
+[package.metadata.docs.rs]
+targets = ["wasm32-unknown-unknown"]

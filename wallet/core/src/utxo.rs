@@ -1,5 +1,5 @@
 use crate::result::Result;
-use consensus_core::tx::UtxoEntry;
+use kaspa_consensus_core::tx::UtxoEntry;
 use std::sync::{
     atomic::{AtomicU32, Ordering},
     Arc, Mutex,

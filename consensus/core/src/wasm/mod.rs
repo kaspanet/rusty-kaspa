@@ -81,7 +81,7 @@ impl TryFrom<Vec<Option<UtxoEntry>>> for UtxoEntryList {
     }
 }
 
-pub fn script_hashes(mut mutable_tx: SignableTransaction) -> Result<Vec<hashes::Hash>, error::Error> {
+pub fn script_hashes(mut mutable_tx: SignableTransaction) -> Result<Vec<kaspa_hashes::Hash>, error::Error> {
     let mut list = vec![];
     for i in 0..mutable_tx.tx.inputs.len() {
         mutable_tx.tx.inputs[i].sig_op_count = 1;

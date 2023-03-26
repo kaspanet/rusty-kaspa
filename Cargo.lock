@@ -1465,6 +1465,7 @@ dependencies = [
  "serde",
  "smallvec",
  "thiserror",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -1563,22 +1564,31 @@ dependencies = [
 name = "kaspa-consensus-core"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "borsh",
  "cfg-if",
  "faster-hex",
  "futures-util",
  "getrandom 0.2.8",
  "itertools 0.10.5",
+ "js-sys",
  "kaspa-addresses",
+ "kaspa-core",
  "kaspa-hashes",
  "kaspa-math",
  "kaspa-merkle",
  "kaspa-muhash",
  "kaspa-txscript-errors",
+ "rand 0.8.5",
  "secp256k1",
  "serde",
+ "serde-wasm-bindgen",
+ "serde_json",
  "smallvec",
  "thiserror",
+ "wasm-bindgen",
+ "workflow-log",
+ "workflow-wasm",
 ]
 
 [[package]]
@@ -1725,12 +1735,15 @@ dependencies = [
  "cc",
  "criterion",
  "faster-hex",
+ "js-sys",
  "keccak",
  "once_cell",
  "rand 0.8.5",
  "serde",
  "sha2 0.10.6",
  "sha3 0.10.6",
+ "wasm-bindgen",
+ "workflow-wasm",
 ]
 
 [[package]]
@@ -2113,11 +2126,13 @@ dependencies = [
  "base64 0.21.0",
  "borsh",
  "cfg-if",
- "consensus-core",
  "faster-hex",
  "hmac",
+ "home",
+ "js-sys",
  "kaspa-addresses",
  "kaspa-bip32",
+ "kaspa-consensus-core",
  "kaspa-notify",
  "kaspa-rpc-core",
  "kaspa-wrpc-client",
@@ -2143,6 +2158,7 @@ name = "kaspa-wasm"
 version = "0.1.0"
 dependencies = [
  "kaspa-addresses",
+ "kaspa-consensus-core",
  "kaspa-core",
  "kaspa-rpc-core",
  "kaspa-utils",
