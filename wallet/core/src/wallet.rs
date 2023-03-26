@@ -134,9 +134,11 @@ impl Wallet {
         Ok(self.inner.lock().unwrap().accounts.get(0).unwrap().clone())
     }
 
+    #[allow(dead_code)]
     fn receive_wallet(self: &Arc<Self>) -> Result<Arc<dyn AddressGeneratorTrait>> {
         Ok(self.account()?.receive_wallet())
     }
+
     fn change_wallet(self: &Arc<Self>) -> Result<Arc<dyn AddressGeneratorTrait>> {
         Ok(self.account()?.change_wallet())
     }

@@ -1953,6 +1953,7 @@ name = "kaspa-wasm"
 version = "0.1.0"
 dependencies = [
  "addresses",
+ "consensus-core",
  "kaspa-core",
  "kaspa-rpc-core",
  "kaspa-utils",
