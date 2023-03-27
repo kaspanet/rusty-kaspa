@@ -193,7 +193,7 @@ mod tests {
         api::ConsensusApi,
         utxo::{utxo_collection::UtxoCollection, utxo_diff::UtxoDiff},
     };
-    use kaspa_consensusmanager::{ConsensusManager, SingletonFactory};
+    use kaspa_consensusmanager::ConsensusManager;
     use kaspa_core::info;
     use std::{collections::HashSet, sync::Arc, time::Instant};
 
@@ -211,8 +211,7 @@ mod tests {
         let (_utxoindex_db_lifetime, utxoindex_db) = create_temp_db();
         let config = Config::new(DEVNET_PARAMS);
         let tc = Arc::new(TestConsensus::create_from_temp_db_and_dummy_sender(&config));
-        let consensus_manager =
-            Arc::new(ConsensusManager::new(Arc::new(SingletonFactory::new(tc.consensus(), tc.consensus())), &config));
+        let consensus_manager = Arc::new(ConsensusManager::from_consensus(tc.consensus()));
         let utxoindex = UtxoIndex::new(consensus_manager, utxoindex_db).unwrap();
 
         // Fill initial utxo collection in emulator.

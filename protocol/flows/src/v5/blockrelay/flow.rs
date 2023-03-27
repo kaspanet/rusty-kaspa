@@ -102,7 +102,7 @@ impl HandleRelayInvsFlow {
             }
 
             if self.ctx.is_known_orphan(inv.hash).await {
-                self.enqueue_orphan_roots(inv.hash).await;
+                self.enqueue_orphan_roots(session.deref(), inv.hash).await;
                 continue;
             }
 
@@ -162,7 +162,7 @@ impl HandleRelayInvsFlow {
             info!("Accepted block {} via relay", inv.hash);
 
             // TODO: use all new blocks to unorphan mempool txs and broadcast the txs
-            let _blocks = self.ctx.unorphan_blocks(block.hash()).await;
+            let _blocks = self.ctx.unorphan_blocks(session.deref(), block.hash()).await;
 
             // Broadcast all *new* virtual parents. As a policy, we avoid directly relaying the new block since
             // we wish to relay only blocks who entered past(virtual).
@@ -176,8 +176,8 @@ impl HandleRelayInvsFlow {
         }
     }
 
-    async fn enqueue_orphan_roots(&mut self, orphan: Hash) {
-        if let Some(roots) = self.ctx.get_orphan_roots(orphan).await {
+    async fn enqueue_orphan_roots(&mut self, consensus: &dyn ConsensusApi, orphan: Hash) {
+        if let Some(roots) = self.ctx.get_orphan_roots(consensus, orphan).await {
             if roots.is_empty() {
                 return;
             }
@@ -211,7 +211,7 @@ impl HandleRelayInvsFlow {
         if self.check_orphan_resolution_range(consensus, block.hash()).await? {
             let hash = block.hash();
             self.ctx.add_orphan(block).await;
-            self.enqueue_orphan_roots(hash).await;
+            self.enqueue_orphan_roots(consensus, hash).await;
         } else {
             // Send the block to IBD flow via the dedicated channel.
             // Note that this is a non-blocking send and we don't care about being rejected if channel is full,

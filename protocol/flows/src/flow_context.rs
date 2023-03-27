@@ -2,6 +2,7 @@ use crate::flowcontext::orphans::{OrphanBlocksPool, MAX_ORPHANS};
 use crate::v5;
 use async_trait::async_trait;
 use kaspa_addressmanager::AddressManager;
+use kaspa_consensus_core::api::ConsensusApi;
 use kaspa_consensus_core::block::Block;
 use kaspa_consensus_core::config::Config;
 use kaspa_consensusmanager::{ConsensusInstance, ConsensusManager};
@@ -58,9 +59,9 @@ impl Drop for BlockRequestScope<'_> {
 impl FlowContext {
     pub fn new(consensus_manager: Arc<ConsensusManager>, amgr: Arc<Mutex<AddressManager>>, config: &Config) -> Self {
         Self {
-            consensus_manager: consensus_manager.clone(),
+            consensus_manager,
             config: config.clone(),
-            orphans_pool: Arc::new(AsyncRwLock::new(OrphanBlocksPool::new(consensus_manager, MAX_ORPHANS))),
+            orphans_pool: Arc::new(AsyncRwLock::new(OrphanBlocksPool::new(MAX_ORPHANS))),
             shared_block_requests: Arc::new(Mutex::new(HashSet::new())),
             is_ibd_running: Arc::new(AtomicBool::default()),
             amgr,
@@ -99,12 +100,12 @@ impl FlowContext {
         self.orphans_pool.read().await.is_known_orphan(hash)
     }
 
-    pub async fn get_orphan_roots(&self, orphan: Hash) -> Option<Vec<Hash>> {
-        self.orphans_pool.read().await.get_orphan_roots(orphan)
+    pub async fn get_orphan_roots(&self, consensus: &dyn ConsensusApi, orphan: Hash) -> Option<Vec<Hash>> {
+        self.orphans_pool.read().await.get_orphan_roots(consensus, orphan)
     }
 
-    pub async fn unorphan_blocks(&self, root: Hash) -> Vec<Block> {
-        self.orphans_pool.write().await.unorphan_blocks(root).await
+    pub async fn unorphan_blocks(&self, consensus: &dyn ConsensusApi, root: Hash) -> Vec<Block> {
+        self.orphans_pool.write().await.unorphan_blocks(consensus, root).await
     }
 }
 

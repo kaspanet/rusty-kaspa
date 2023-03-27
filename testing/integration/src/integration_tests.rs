@@ -23,7 +23,7 @@ use kaspa_consensus_core::trusted::{ExternalGhostdagData, TrustedBlock};
 use kaspa_consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry};
 use kaspa_consensus_core::{blockhash, hashing, BlockHashMap, BlueWorkType};
 use kaspa_consensus_notify::service::NotifyService;
-use kaspa_consensusmanager::{ConsensusManager, SingletonFactory};
+use kaspa_consensusmanager::ConsensusManager;
 use kaspa_hashes::Hash;
 
 use flate2::read::GzDecoder;
@@ -847,12 +847,11 @@ async fn json_test(file_path: &str) {
     }
 
     let (notification_send, notification_recv) = unbounded();
-    let consensus = Arc::new(TestConsensus::create_from_temp_db(&config, notification_send));
-    let notify_service = Arc::new(NotifyService::new(consensus.notification_root(), notification_recv));
+    let tc = Arc::new(TestConsensus::create_from_temp_db(&config, notification_send));
+    let notify_service = Arc::new(NotifyService::new(tc.notification_root(), notification_recv));
 
     let (_utxoindex_db_lifetime, utxoindex_db) = create_temp_db();
-    let consensus_manager =
-        Arc::new(ConsensusManager::new(Arc::new(SingletonFactory::new(consensus.consensus(), consensus.consensus())), &config));
+    let consensus_manager = Arc::new(ConsensusManager::from_consensus(tc.consensus()));
     let utxoindex = UtxoIndex::new(consensus_manager, utxoindex_db).unwrap();
     let index_service = Arc::new(IndexService::new(&notify_service.notifier(), Some(utxoindex.clone())));
 
@@ -861,7 +860,7 @@ async fn json_test(file_path: &str) {
     async_runtime.register(index_service.clone());
 
     let core = Arc::new(Core::new());
-    core.bind(consensus.clone());
+    core.bind(tc.clone());
     core.bind(async_runtime);
     let joins = core.start();
 
@@ -876,13 +875,13 @@ async fn json_test(file_path: &str) {
 
         // TODO: Add consensus validation that the pruning point is one of the trusted blocks.
         let trusted_blocks = gzip_file_lines(&main_path.join("trusted.json.gz")).map(json_trusted_line_to_block_and_gd).collect_vec();
-        consensus.consensus().apply_pruning_proof(proof, &trusted_blocks);
+        tc.consensus().apply_pruning_proof(proof, &trusted_blocks);
 
         let past_pruning_points =
             gzip_file_lines(&main_path.join("past-pps.json.gz")).map(|line| json_line_to_block(line).header).collect_vec();
         let pruning_point = past_pruning_points.last().unwrap().hash;
 
-        consensus.consensus.as_ref().import_pruning_points(past_pruning_points);
+        tc.consensus.as_ref().import_pruning_points(past_pruning_points);
 
         info!("Starting to process {} trusted blocks", trusted_blocks.len());
         let mut last_time = SystemTime::now();
@@ -895,7 +894,7 @@ async fn json_test(file_path: &str) {
                 last_time = now;
                 last_index = i;
             }
-            consensus.consensus.as_ref().validate_and_insert_trusted_block(tb).await.unwrap();
+            tc.consensus.as_ref().validate_and_insert_trusted_block(tb).await.unwrap();
         }
         info!("Done processing trusted blocks");
         Some(pruning_point)
@@ -917,7 +916,7 @@ async fn json_test(file_path: &str) {
         let hash = block.header.hash;
         // Test our hashing implementation vs the hash accepted from the json source
         assert_eq!(hashing::header::hash(&block.header), hash, "header hashing for block {i} {hash} failed");
-        let status = consensus
+        let status = tc
             .consensus()
             .as_ref()
             .validate_and_insert_block(block, !proof_exists)
@@ -929,12 +928,12 @@ async fn json_test(file_path: &str) {
     if proof_exists {
         let mut multiset = MuHash::new();
         for outpoint_utxo_pairs in gzip_file_lines(&main_path.join("pp-utxo.json.gz")).map(json_line_to_utxo_pairs) {
-            consensus.consensus.append_imported_pruning_point_utxos(&outpoint_utxo_pairs, &mut multiset);
+            tc.consensus.append_imported_pruning_point_utxos(&outpoint_utxo_pairs, &mut multiset);
         }
 
-        consensus.consensus.import_pruning_point_utxo_set(pruning_point.unwrap(), &mut multiset).unwrap();
+        tc.consensus.import_pruning_point_utxo_set(pruning_point.unwrap(), &mut multiset).unwrap();
         utxoindex.write().resync().unwrap();
-        consensus.consensus.resolve_virtual();
+        tc.consensus.resolve_virtual();
         // TODO: Add consensus validation that the pruning point is actually the right block according to the rules (in pruning depth etc).
     }
 
@@ -942,9 +941,9 @@ async fn json_test(file_path: &str) {
     core.join(joins);
 
     // Assert that at least one body tip was resolved with valid UTXO
-    assert!(consensus.body_tips().iter().copied().any(|h| consensus.block_status(h) == BlockStatus::StatusUTXOValid));
+    assert!(tc.body_tips().iter().copied().any(|h| tc.block_status(h) == BlockStatus::StatusUTXOValid));
     let virtual_utxos: HashSet<TransactionOutpoint> =
-        HashSet::from_iter(consensus.consensus().get_virtual_utxos(None, usize::MAX, false).into_iter().map(|(outpoint, _)| outpoint));
+        HashSet::from_iter(tc.consensus().get_virtual_utxos(None, usize::MAX, false).into_iter().map(|(outpoint, _)| outpoint));
     let utxoindex_utxos = utxoindex.read().get_all_outpoints().unwrap();
     assert_eq!(virtual_utxos.len(), utxoindex_utxos.len());
     assert!(virtual_utxos.is_subset(&utxoindex_utxos));

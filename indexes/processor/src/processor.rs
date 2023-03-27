@@ -155,7 +155,7 @@ mod tests {
         test_helpers::*,
     };
     use kaspa_consensus_core::utxo::{utxo_collection::UtxoCollection, utxo_diff::UtxoDiff};
-    use kaspa_consensusmanager::{ConsensusManager, SingletonFactory};
+    use kaspa_consensusmanager::ConsensusManager;
     use kaspa_notify::notifier::test_helpers::NotifyMock;
     use kaspa_utxoindex::{api::DynUtxoIndexApi, UtxoIndex};
     use rand::{rngs::SmallRng, SeedableRng};
@@ -179,8 +179,7 @@ mod tests {
             let config = Config::new(DEVNET_PARAMS);
             let tc = TestConsensus::create_from_temp_db_and_dummy_sender(&config);
             tc.init();
-            let consensus_manager =
-                Arc::new(ConsensusManager::new(Arc::new(SingletonFactory::new(tc.consensus(), tc.consensus())), &config));
+            let consensus_manager = Arc::new(ConsensusManager::from_consensus(tc.consensus()));
             let utxoindex: DynUtxoIndexApi = Some(UtxoIndex::new(consensus_manager, utxoindex_db).unwrap());
             let processor = Arc::new(Processor::new(utxoindex, consensus_receiver));
             let (processor_sender, processor_receiver) = unbounded();

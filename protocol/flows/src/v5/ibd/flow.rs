@@ -90,14 +90,16 @@ impl IbdFlow {
     }
 
     async fn ibd(&mut self, relay_block: Block) -> Result<(), ProtocolError> {
-        let consensus = self.ctx.consensus();
-        let session = consensus.session().await; // TODO: should this really be a single session?
-        let negotiation_output = self.negotiate_missing_syncer_chain_segment(session.deref()).await?;
-        match self.determine_ibd_type(session.deref(), &relay_block.header, negotiation_output.highest_known_syncer_chain_hash)? {
+        let ci = self.ctx.consensus();
+        let session = ci.session().await; // TODO: should this really be a single session?
+        let consensus = session.deref();
+
+        let negotiation_output = self.negotiate_missing_syncer_chain_segment(consensus).await?;
+        match self.determine_ibd_type(consensus, &relay_block.header, negotiation_output.highest_known_syncer_chain_hash)? {
             IbdType::None => return Ok(()),
             IbdType::Sync(highest_known_syncer_chain_hash) => {
                 self.sync_headers(
-                    session.deref(),
+                    consensus,
                     negotiation_output.syncer_header_selected_tip,
                     highest_known_syncer_chain_hash,
                     &relay_block,
@@ -105,16 +107,16 @@ impl IbdFlow {
                 .await?;
             }
             IbdType::DownloadHeadersProof => {
-                self.ibd_with_headers_proof(session.deref(), negotiation_output.syncer_header_selected_tip, &relay_block).await?;
+                self.ibd_with_headers_proof(consensus, negotiation_output.syncer_header_selected_tip, &relay_block).await?;
             }
         }
 
         // Sync missing bodies in the past of syncer selected tip
-        self.sync_missing_block_bodies(session.deref(), negotiation_output.syncer_header_selected_tip).await?;
+        self.sync_missing_block_bodies(consensus, negotiation_output.syncer_header_selected_tip).await?;
 
         // Relay block might be in the anticone of syncer selected tip, thus
         // check its chain for missing bodies as well.
-        self.sync_missing_block_bodies(session.deref(), relay_block.hash()).await
+        self.sync_missing_block_bodies(consensus, relay_block.hash()).await
     }
 
     fn determine_ibd_type(
