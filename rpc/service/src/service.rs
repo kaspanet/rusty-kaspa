@@ -1,7 +1,7 @@
 //! Core server implementation for ClientAPI
 
 use super::collector::{CollectorFromConsensus, CollectorFromIndex};
-use crate::{api::rpc::RpcApi, model::*, notify::connection::ChannelConnection, FromRpcHex, Notification, RpcError, RpcResult};
+use kaspa_rpc_core::{api::rpc::RpcApi, model::*, notify::connection::ChannelConnection, FromRpcHex, Notification, RpcError, RpcResult};
 use async_trait::async_trait;
 use kaspa_consensus_core::{api::DynConsensus, block::Block, coinbase::MinerData};
 use kaspa_consensus_notify::{

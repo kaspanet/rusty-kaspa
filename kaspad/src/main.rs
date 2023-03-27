@@ -11,6 +11,7 @@ use kaspa_consensus_notify::service::NotifyService;
 use kaspa_core::{core::Core, signals::Signals, task::runtime::AsyncRuntime};
 use kaspa_index_processor::service::IndexService;
 use kaspa_mining::manager::MiningManager;
+use kaspa_rpc_service::RpcCoreServer;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -34,7 +35,6 @@ use async_channel::unbounded;
 use kaspa_core::{info, trace};
 use kaspa_grpc_server::GrpcServer;
 use kaspa_p2p_flows::service::P2pService;
-use kaspa_rpc_core::server::RpcCoreServer;
 use kaspa_wrpc_server::service::{Options as WrpcServerOptions, WrpcEncoding, WrpcService};
 
 mod args;

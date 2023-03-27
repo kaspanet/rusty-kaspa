@@ -6,11 +6,6 @@ pub mod convert;
 pub mod error;
 pub mod model;
 pub mod notify;
-cfg_if::cfg_if! {
-    if #[cfg(not(target_arch = "wasm32"))] {
-        pub mod server;
-    }
-}
 
 pub mod prelude {
     pub use super::api::notifications::*;

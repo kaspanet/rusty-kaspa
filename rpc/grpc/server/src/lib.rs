@@ -3,7 +3,7 @@ use kaspa_core::{
     trace,
 };
 use kaspa_grpc_core::protowire::rpc_server::RpcServer;
-use kaspa_rpc_core::server::service::RpcCoreService;
+use kaspa_rpc_service::service::RpcCoreService;
 use kaspa_utils::triggers::DuplexTrigger;
 use std::net::SocketAddr;
 use std::sync::Arc;
