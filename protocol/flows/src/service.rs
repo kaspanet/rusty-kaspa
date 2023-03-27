@@ -1,7 +1,7 @@
 use kaspa_addressmanager::AddressManager;
 use kaspa_connectionmanager::ConnectionManager;
-use kaspa_consensus_core::api::DynConsensus;
 use kaspa_consensus_core::config::Config;
+use kaspa_consensusmanager::ConsensusManager;
 use kaspa_core::{
     task::service::{AsyncService, AsyncServiceFuture},
     trace,
@@ -26,7 +26,7 @@ pub struct P2pService {
 
 impl P2pService {
     pub fn new(
-        consensus: DynConsensus,
+        consensus_manager: Arc<ConsensusManager>,
         amgr: Arc<Mutex<AddressManager>>,
         config: &Config,
         connect: Option<String>,
@@ -35,7 +35,7 @@ impl P2pService {
         inbound_limit: usize,
     ) -> Self {
         Self {
-            ctx: Arc::new(FlowContext::new(consensus, amgr, config)),
+            ctx: Arc::new(FlowContext::new(consensus_manager, amgr, config)),
             connect,
             shutdown: SingleTrigger::default(),
             listen,

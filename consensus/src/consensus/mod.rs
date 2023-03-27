@@ -1,3 +1,4 @@
+pub mod factory;
 pub mod test_consensus;
 
 use crate::{
@@ -69,6 +70,7 @@ use kaspa_consensus_core::{
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 
 use crossbeam_channel::{unbounded as unbounded_crossbeam, Receiver as CrossbeamReceiver, Sender as CrossbeamSender};
+use kaspa_consensusmanager::ConsensusCtl;
 use kaspa_database::prelude::StoreResultExtensions;
 // to avoid confusion with async_channel
 use futures_util::future::BoxFuture;
@@ -169,7 +171,12 @@ pub struct Consensus {
 }
 
 impl Consensus {
-    pub fn new(db: Arc<DB>, config: &Config, notification_root: Arc<ConsensusNotificationRoot>) -> Self {
+    pub fn new(
+        db: Arc<DB>,
+        config: &Config,
+        notification_root: Arc<ConsensusNotificationRoot>,
+        counters: Arc<ProcessingCounters>,
+    ) -> Self {
         let params = &config.params;
         let perf_params = &config.perf;
         //
@@ -327,8 +334,6 @@ impl Consensus {
             unbounded_crossbeam();
         let (virtual_sender, virtual_receiver): (CrossbeamSender<BlockProcessingMessage>, CrossbeamReceiver<BlockProcessingMessage>) =
             unbounded_crossbeam();
-
-        let counters = Arc::new(ProcessingCounters::default());
 
         //
         // Thread-pools
@@ -822,3 +827,5 @@ impl Service for Consensus {
         self.signal_exit()
     }
 }
+
+impl ConsensusCtl for Consensus {}

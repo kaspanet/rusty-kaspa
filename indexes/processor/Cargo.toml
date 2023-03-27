@@ -15,6 +15,7 @@ kaspa-utils.workspace = true
 kaspa-notify.workspace = true
 kaspa-index-core.workspace = true
 kaspa-utxoindex.workspace = true
+kaspa-consensusmanager.workspace = true
 
 thiserror.workspace = true
 async-channel.workspace = true

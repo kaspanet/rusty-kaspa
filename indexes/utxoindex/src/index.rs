@@ -6,7 +6,8 @@ use crate::{
     update_container::UtxoIndexChanges,
     IDENT,
 };
-use kaspa_consensus_core::{api::DynConsensus, tx::ScriptPublicKeys, utxo::utxo_diff::UtxoDiff, BlockHashSet};
+use kaspa_consensus_core::{tx::ScriptPublicKeys, utxo::utxo_diff::UtxoDiff, BlockHashSet};
+use kaspa_consensusmanager::ConsensusManager;
 use kaspa_core::trace;
 use kaspa_database::prelude::{StoreError, StoreResult, DB};
 use kaspa_hashes::Hash;
@@ -20,14 +21,14 @@ const RESYNC_CHUNK_SIZE: usize = 2048; //Increased from 1k (used in go-kaspad), 
 /// Note: The UtxoIndex struct by itself is not thread save, only correct usage of the supplied RwLock via `new` makes it so.
 /// please follow guidelines found in the comments under `utxoindex::core::api::UtxoIndexApi` for proper thread safety.
 pub struct UtxoIndex {
-    consensus: DynConsensus,
+    consensus_manager: Arc<ConsensusManager>,
     store: Store,
 }
 
 impl UtxoIndex {
     /// Creates a new [`UtxoIndex`] within a [`RwLock`]
-    pub fn new(consensus: DynConsensus, db: Arc<DB>) -> UtxoIndexResult<Arc<RwLock<Self>>> {
-        let mut utxoindex = Self { consensus, store: Store::new(db) };
+    pub fn new(consensus_manager: Arc<ConsensusManager>, db: Arc<DB>) -> UtxoIndexResult<Arc<RwLock<Self>>> {
+        let mut utxoindex = Self { consensus_manager, store: Store::new(db) };
         if !utxoindex.is_synced()? {
             utxoindex.resync()?;
         }
@@ -96,7 +97,7 @@ impl UtxoIndexApi for UtxoIndex {
         let utxoindex_tips = self.store.get_tips();
         match utxoindex_tips {
             Ok(utxoindex_tips) => {
-                let consensus_tips = self.consensus.get_virtual_parents();
+                let consensus_tips = self.consensus_manager.consensus().session_blocking().get_virtual_parents();
                 let res = *utxoindex_tips == consensus_tips;
                 trace!("[{0}] sync status is {1}", IDENT, res);
                 Ok(res)
@@ -120,11 +121,14 @@ impl UtxoIndexApi for UtxoIndex {
         trace!("[{0}] resyncing...", IDENT);
 
         self.store.delete_all()?;
-        let consensus_tips = self.consensus.get_virtual_parents();
+        let consensus = self.consensus_manager.consensus();
+        let consensus_session = consensus.session_blocking();
+
+        let consensus_tips = consensus_session.get_virtual_parents();
         let mut circulating_supply: CirculatingSupply = 0;
 
         //Initial batch is without specified seek and none-skipping.
-        let mut virtual_utxo_batch = self.consensus.get_virtual_utxos(None, RESYNC_CHUNK_SIZE, false);
+        let mut virtual_utxo_batch = consensus_session.get_virtual_utxos(None, RESYNC_CHUNK_SIZE, false);
         let mut current_chunk_size = virtual_utxo_batch.len();
         trace!("[{0}] resyncing with batch of {1} utxos from consensus db", IDENT, current_chunk_size);
         // While loop stops resync attempts from an empty utxo db, and unneeded processing when the utxo state size happens to be a multiple of [`RESYNC_CHUNK_SIZE`]
@@ -145,7 +149,7 @@ impl UtxoIndexApi for UtxoIndex {
                 break;
             };
 
-            virtual_utxo_batch = self.consensus.get_virtual_utxos(next_outpoint_from, RESYNC_CHUNK_SIZE, true);
+            virtual_utxo_batch = consensus_session.get_virtual_utxos(next_outpoint_from, RESYNC_CHUNK_SIZE, true);
             current_chunk_size = virtual_utxo_batch.len();
             trace!("[{0}] resyncing with batch of {1} utxos from consensus db", IDENT, current_chunk_size);
         }
@@ -189,6 +193,7 @@ mod tests {
         api::ConsensusApi,
         utxo::{utxo_collection::UtxoCollection, utxo_diff::UtxoDiff},
     };
+    use kaspa_consensusmanager::{ConsensusManager, SingletonFactory};
     use kaspa_core::info;
     use std::{collections::HashSet, sync::Arc, time::Instant};
 
@@ -204,8 +209,11 @@ mod tests {
         // Initialize all components, and virtual change emulator proxy.
         let mut virtual_change_emulator = VirtualChangeEmulator::new();
         let (_utxoindex_db_lifetime, utxoindex_db) = create_temp_db();
-        let test_consensus = Arc::new(TestConsensus::create_from_temp_db_and_dummy_sender(&Config::new(DEVNET_PARAMS)));
-        let utxoindex = UtxoIndex::new(test_consensus.consensus(), utxoindex_db).unwrap();
+        let config = Config::new(DEVNET_PARAMS);
+        let tc = Arc::new(TestConsensus::create_from_temp_db_and_dummy_sender(&config));
+        let consensus_manager =
+            Arc::new(ConsensusManager::new(Arc::new(SingletonFactory::new(tc.consensus(), tc.consensus())), &config));
+        let utxoindex = UtxoIndex::new(consensus_manager, utxoindex_db).unwrap();
 
         // Fill initial utxo collection in emulator.
         virtual_change_emulator.fill_utxo_collection(resync_utxo_collection_size, script_public_key_pool_size); //10_000 utxos belonging to 100 script public keys
@@ -218,22 +226,14 @@ mod tests {
             ..Default::default()
         };
         // Write virtual state from emulator to test_consensus db.
-        test_consensus
-            .consensus
+        tc.consensus
             .virtual_processor
             .virtual_stores
             .write()
             .utxo_set
             .write_diff(&test_consensus_virtual_state.utxo_diff)
             .expect("expected write diff");
-        test_consensus
-            .consensus
-            .virtual_processor
-            .virtual_stores
-            .write()
-            .state
-            .set(test_consensus_virtual_state)
-            .expect("setting of state");
+        tc.consensus.virtual_processor.virtual_stores.write().state.set(test_consensus_virtual_state).expect("setting of state");
 
         // Sync utxoindex from scratch.
         assert!(!utxoindex.read().is_synced().expect("expected bool"));
@@ -247,7 +247,7 @@ mod tests {
         assert!(utxoindex.read().is_synced().expect("expected bool"));
 
         // Test the sync from scratch via consensus db.
-        let consensus_utxos = test_consensus.consensus().get_virtual_utxos(None, usize::MAX, false); // `usize::MAX` to ensure to get all.
+        let consensus_utxos = tc.consensus().get_virtual_utxos(None, usize::MAX, false); // `usize::MAX` to ensure to get all.
         let mut i = 0;
         let mut consensus_supply: CirculatingSupply = 0;
         let consensus_utxo_set_size = consensus_utxos.len();
@@ -272,7 +272,7 @@ mod tests {
         assert_eq!(utxoindex.read().get_circulating_supply().expect("expected circulating supply"), consensus_supply);
         assert_eq!(
             *utxoindex.read().get_utxo_index_tips().expect("expected circulating supply"),
-            test_consensus.consensus().get_virtual_parents()
+            tc.consensus().get_virtual_parents()
         );
 
         // Test update: Change and signal new virtual state.
@@ -332,7 +332,7 @@ mod tests {
         // Since we changed virtual state in the emulator, but not in test-consensus db,
         // we expect the resync to get the utxo-set from the test-consensus,
         // these utxos correspond the the initial sync test.
-        let consensus_utxos = test_consensus.consensus().get_virtual_utxos(None, usize::MAX, false); // `usize::MAX` to ensure to get all.
+        let consensus_utxos = tc.consensus().get_virtual_utxos(None, usize::MAX, false); // `usize::MAX` to ensure to get all.
         let mut i = 0;
         let consensus_utxo_set_size = consensus_utxos.len();
         for (tx_outpoint, utxo_entry) in consensus_utxos.into_iter() {
@@ -353,11 +353,11 @@ mod tests {
 
         assert_eq!(
             *utxoindex.read().get_utxo_index_tips().expect("expected circulating supply"),
-            test_consensus.consensus().get_virtual_parents()
+            tc.consensus().get_virtual_parents()
         );
 
         // Deconstruct
         drop(utxoindex);
-        drop(test_consensus);
+        drop(tc);
     }
 }

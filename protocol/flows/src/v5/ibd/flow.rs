@@ -13,6 +13,7 @@ use kaspa_consensus_core::{
     header::Header,
     pruning::{PruningPointProof, PruningPointsList},
 };
+use kaspa_consensusmanager::ConsensusSession;
 use kaspa_core::{debug, info};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
@@ -27,6 +28,7 @@ use kaspa_p2p_lib::{
     IncomingRoute, Router,
 };
 use std::{
+    ops::Deref,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -78,7 +80,7 @@ impl IbdFlow {
                 match self.ibd(relay_block).await {
                     Ok(_) => info!("IBD with peer {} completed successfully", self.router),
                     Err(e) => {
-                        info!("IBD with peer {} completed with error {:?}", self.router, e);
+                        info!("IBD with peer {} completed with error: {:?}", self.router, e);
                         return Err(e);
                     }
                 }
@@ -90,12 +92,13 @@ impl IbdFlow {
 
     async fn ibd(&mut self, relay_block: Block) -> Result<(), ProtocolError> {
         let consensus = self.ctx.consensus();
-        let negotiation_output = self.negotiate_missing_syncer_chain_segment(&consensus).await?;
-        match self.determine_ibd_type(&consensus, &relay_block.header, negotiation_output.highest_known_syncer_chain_hash)? {
+        let session = consensus.session().await; // TODO: should this really be a single session?
+        let negotiation_output = self.negotiate_missing_syncer_chain_segment(session.deref()).await?;
+        match self.determine_ibd_type(&session, &relay_block.header, negotiation_output.highest_known_syncer_chain_hash)? {
             IbdType::None => return Ok(()),
             IbdType::Sync(highest_known_syncer_chain_hash) => {
                 self.sync_headers(
-                    &consensus,
+                    &session,
                     negotiation_output.syncer_header_selected_tip,
                     highest_known_syncer_chain_hash,
                     &relay_block,
@@ -103,21 +106,21 @@ impl IbdFlow {
                 .await?;
             }
             IbdType::DownloadHeadersProof => {
-                self.ibd_with_headers_proof(&consensus, negotiation_output.syncer_header_selected_tip, &relay_block).await?;
+                self.ibd_with_headers_proof(&session, negotiation_output.syncer_header_selected_tip, &relay_block).await?;
             }
         }
 
         // Sync missing bodies in the past of syncer selected tip
-        self.sync_missing_block_bodies(&consensus, negotiation_output.syncer_header_selected_tip).await?;
+        self.sync_missing_block_bodies(&session, negotiation_output.syncer_header_selected_tip).await?;
 
         // Relay block might be in the anticone of syncer selected tip, thus
         // check its chain for missing bodies as well.
-        self.sync_missing_block_bodies(&consensus, relay_block.hash()).await
+        self.sync_missing_block_bodies(&session, relay_block.hash()).await
     }
 
     fn determine_ibd_type(
         &self,
-        consensus: &DynConsensus,
+        consensus: &ConsensusSession,
         relay_header: &Header,
         highest_known_syncer_chain_hash: Option<Hash>,
     ) -> Result<IbdType, ProtocolError> {
@@ -155,7 +158,7 @@ impl IbdFlow {
 
     async fn ibd_with_headers_proof(
         &mut self,
-        consensus: &DynConsensus,
+        consensus: &ConsensusSession<'_>,
         syncer_header_selected_tip: Hash,
         relay_block: &Block,
     ) -> Result<(), ProtocolError> {
@@ -168,7 +171,7 @@ impl IbdFlow {
         Ok(())
     }
 
-    async fn sync_and_validate_pruning_proof(&mut self, consensus: &DynConsensus) -> Result<Hash, ProtocolError> {
+    async fn sync_and_validate_pruning_proof(&mut self, consensus: &ConsensusSession<'_>) -> Result<Hash, ProtocolError> {
         self.router.enqueue(make_message!(Payload::RequestPruningPointProof, RequestPruningPointProofMessage {})).await?;
 
         // Pruning proof generation and communication might take several minutes, so we allow a long 10 minute timeout
@@ -236,7 +239,7 @@ impl IbdFlow {
 
     async fn sync_headers(
         &mut self,
-        consensus: &DynConsensus,
+        consensus: &ConsensusSession<'_>,
         syncer_header_selected_tip: Hash,
         highest_known_syncer_chain_hash: Hash,
         relay_block: &Block,
@@ -285,7 +288,7 @@ impl IbdFlow {
 
     async fn sync_missing_relay_past_headers(
         &mut self,
-        consensus: &DynConsensus,
+        consensus: &ConsensusSession<'_>,
         syncer_header_selected_tip: Hash,
         relay_block_hash: Hash,
     ) -> Result<(), ProtocolError> {
@@ -340,7 +343,11 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
         }
     }
 
-    async fn sync_pruning_point_utxoset(&mut self, consensus: &DynConsensus, pruning_point: Hash) -> Result<(), ProtocolError> {
+    async fn sync_pruning_point_utxoset(
+        &mut self,
+        consensus: &ConsensusSession<'_>,
+        pruning_point: Hash,
+    ) -> Result<(), ProtocolError> {
         self.router
             .enqueue(make_message!(
                 Payload::RequestPruningPointUtxoSet,
@@ -356,7 +363,7 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
         Ok(())
     }
 
-    async fn sync_missing_block_bodies(&mut self, consensus: &DynConsensus, high: Hash) -> Result<(), ProtocolError> {
+    async fn sync_missing_block_bodies(&mut self, consensus: &ConsensusSession<'_>, high: Hash) -> Result<(), ProtocolError> {
         // TODO: query consensus in batches
         let hashes = consensus.get_missing_block_body_hashes(high)?;
         if hashes.is_empty() {
@@ -393,7 +400,7 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
 
     async fn queue_block_processing_chunk(
         &mut self,
-        consensus: &DynConsensus,
+        consensus: &ConsensusSession<'_>,
         chunk: &[Hash],
     ) -> Result<(Vec<BlockValidationFuture>, u64), ProtocolError> {
         let mut jobs = Vec::with_capacity(chunk.len());

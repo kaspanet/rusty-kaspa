@@ -40,7 +40,11 @@ impl RequestHeadersFlow {
         loop {
             let msg = dequeue!(self.incoming_route, Payload::RequestHeaders)?;
             let (high, mut low) = msg.try_into()?;
-            match self.ctx.consensus().is_chain_ancestor_of(low, high) {
+
+            let consensus = self.ctx.consensus();
+            let session = consensus.session().await;
+
+            match session.is_chain_ancestor_of(low, high) {
                 Ok(is_ancestor) => {
                     if !is_ancestor {
                         return Err(ProtocolError::OtherOwned(format!(
@@ -57,7 +61,7 @@ impl RequestHeadersFlow {
             while low != high {
                 const MAX_BLOCKS: usize = 1 << 10;
                 debug!("Getting block headers between {} and {}", high, low);
-                let (hashes, _) = match self.ctx.consensus().get_hashes_between(low, high, MAX_BLOCKS) {
+                let (hashes, _) = match session.get_hashes_between(low, high, MAX_BLOCKS) {
                     Ok(hashes) => hashes,
                     Err(e) => return Err(e.into()),
                 };
@@ -66,7 +70,7 @@ impl RequestHeadersFlow {
                 low = *hashes.last().unwrap();
                 let mut block_headers = Vec::with_capacity(hashes.len());
                 for hash in hashes {
-                    block_headers.push(<pb::BlockHeader>::from(&*self.ctx.consensus().get_header(hash)?));
+                    block_headers.push(<pb::BlockHeader>::from(&*session.get_header(hash)?));
                 }
 
                 self.router.enqueue(make_message!(Payload::BlockHeaders, BlockHeadersMessage { block_headers })).await?;

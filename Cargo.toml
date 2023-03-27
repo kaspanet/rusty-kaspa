@@ -36,6 +36,8 @@ members = [
     "protocol/p2p",
     "protocol/flows",
     "components/addressmanager",
+    "components/connectionmanager",
+    "components/consensusmanager",
     "database",
     "crypto/txscript",
     "crypto/txscript/errors",
@@ -54,6 +56,7 @@ include = ["src/**/*.rs", "Cargo.toml"]
 # not published
 kaspa-addressmanager = { path = "components/addressmanager" }
 kaspa-connectionmanager = { path = "components/connectionmanager" }
+kaspa-consensusmanager = { path = "components/consensusmanager" }
 kaspa-mining = { path = "mining" }
 kaspa-p2p-flows = { path = "protocol/flows" }
 kaspa-p2p-lib = { path = "protocol/p2p" }

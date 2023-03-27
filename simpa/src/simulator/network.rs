@@ -49,7 +49,7 @@ impl KaspaNetworkSimulator {
             };
             let (dummy_notification_sender, _) = unbounded();
             let notification_root = Arc::new(ConsensusNotificationRoot::new(dummy_notification_sender));
-            let consensus = Arc::new(Consensus::new(db, &self.config, notification_root));
+            let consensus = Arc::new(Consensus::new(db, &self.config, notification_root, Default::default()));
             let handles = consensus.init();
             let (sk, pk) = secp.generate_keypair(&mut rng);
             let miner_process = Box::new(Miner::new(

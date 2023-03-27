@@ -3,14 +3,16 @@ extern crate kaspa_core;
 extern crate kaspa_hashes;
 
 use kaspa_addressmanager::AddressManager;
-use kaspa_consensus_core::api::DynConsensus;
+use kaspa_consensus::consensus;
+use kaspa_consensus::consensus::factory::Factory as ConsensusFactory;
+use kaspa_consensus::pipeline::ProcessingCounters;
 use kaspa_consensus_core::networktype::NetworkType;
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_consensus_notify::service::NotifyService;
 
+use kaspa_consensusmanager::ConsensusManager;
 use kaspa_core::{core::Core, signals::Signals, task::runtime::AsyncRuntime};
 use kaspa_index_processor::service::IndexService;
-use kaspa_mining::manager::MiningManager;
 use kaspa_rpc_service::RpcCoreServer;
 use std::fs;
 use std::path::PathBuf;
@@ -27,7 +29,6 @@ use args::{Args, Defaults};
 
 use crate::monitor::ConsensusMonitor;
 use kaspa_consensus::config::ConfigBuilder;
-use kaspa_consensus::consensus::Consensus;
 use kaspa_consensus::params::{DEVNET_PARAMS, MAINNET_PARAMS};
 use kaspa_utxoindex::{api::DynUtxoIndexApi, UtxoIndex};
 
@@ -188,8 +189,7 @@ pub fn main() {
     // ---
 
     let config = match network_type {
-        // TODO: TEMP, until staging consensus is managed, skip adding genesis on mainnet
-        NetworkType::Mainnet => ConfigBuilder::new(MAINNET_PARAMS).skip_adding_genesis().build(),
+        NetworkType::Mainnet => ConfigBuilder::new(MAINNET_PARAMS).build(),
         NetworkType::Testnet => unimplemented!("testnet params"),
         NetworkType::Devnet => ConfigBuilder::new(DEVNET_PARAMS).build(),
         NetworkType::Simnet => unimplemented!("simnet params"),
@@ -197,18 +197,21 @@ pub fn main() {
 
     let (notification_send, notification_recv) = unbounded();
     let notification_root = Arc::new(ConsensusNotificationRoot::new(notification_send));
+    let counters = Arc::new(ProcessingCounters::default());
 
     // Use `num_cpus` background threads for the consensus database as recommended by rocksdb
-    let consensus_db = kaspa_database::prelude::open_db(consensus_db_dir, true, num_cpus::get());
-    let consensus = Arc::new(Consensus::new(consensus_db, &config, notification_root));
-    let monitor = Arc::new(ConsensusMonitor::new(consensus.processing_counters().clone()));
+    let consensus_db_parallelism = num_cpus::get();
+    let consensus_factory =
+        Arc::new(ConsensusFactory::new(consensus_db_dir, consensus_db_parallelism, notification_root.clone(), counters.clone()));
+    let consensus_manager = Arc::new(ConsensusManager::new(consensus_factory, &config));
+    let monitor = Arc::new(ConsensusMonitor::new(counters));
 
-    let notify_service = Arc::new(NotifyService::new(consensus.notification_root(), notification_recv));
+    let notify_service = Arc::new(NotifyService::new(notification_root, notification_recv));
 
     let index_service: Option<Arc<IndexService>> = if args.utxoindex {
         // Use only a single thread for none-consensus databases
         let utxoindex_db = kaspa_database::prelude::open_db(utxoindex_db_dir, true, 1);
-        let utxoindex: DynUtxoIndexApi = Some(UtxoIndex::new(consensus.clone(), utxoindex_db).unwrap());
+        let utxoindex: DynUtxoIndexApi = Some(UtxoIndex::new(consensus_manager.clone(), utxoindex_db).unwrap());
         Some(Arc::new(IndexService::new(&notify_service.notifier(), utxoindex)))
     } else {
         None
@@ -217,11 +220,14 @@ pub fn main() {
     let amgr_db = kaspa_database::prelude::open_db(amgr_db_dir, true, 1);
     let amgr = AddressManager::new(amgr_db);
 
-    let rpc_core_server =
-        Arc::new(RpcCoreServer::new(consensus.clone(), notify_service.notifier(), index_service.as_ref().map(|x| x.notifier())));
+    let rpc_core_server = Arc::new(RpcCoreServer::new(
+        consensus_manager.clone(),
+        notify_service.notifier(),
+        index_service.as_ref().map(|x| x.notifier()),
+    ));
     let grpc_server = Arc::new(GrpcServer::new(grpc_server_addr, rpc_core_server.service()));
     let p2p_service = Arc::new(P2pService::new(
-        consensus.clone(),
+        consensus_manager.clone(),
         amgr,
         &config,
         args.connect,
@@ -231,8 +237,8 @@ pub fn main() {
     ));
 
     // TODO: TEMP: temp mining manager initialization just to make sure it complies with consensus
-    let _mining_manager =
-        MiningManager::new(consensus.clone() as DynConsensus, config.target_time_per_block, false, config.max_block_mass, None);
+    // let _mining_manager =
+    //     MiningManager::new(consensus.clone() as DynConsensus, config.target_time_per_block, false, config.max_block_mass, None);
 
     // Create an async runtime and register the top-level async services
     let async_runtime = Arc::new(AsyncRuntime::new(args.async_threads));
@@ -269,7 +275,7 @@ pub fn main() {
     Arc::new(Signals::new(&core)).init();
 
     // Consensus must start first in order to init genesis in stores
-    core.bind(consensus);
+    core.bind(consensus_manager);
     core.bind(async_runtime);
 
     core.run();

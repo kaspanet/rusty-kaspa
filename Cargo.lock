@@ -1490,6 +1490,7 @@ dependencies = [
  "itertools 0.10.5",
  "kaspa-consensus-core",
  "kaspa-consensus-notify",
+ "kaspa-consensusmanager",
  "kaspa-core",
  "kaspa-database",
  "kaspa-hashes",
@@ -1555,6 +1556,22 @@ dependencies = [
  "paste",
  "thiserror",
  "triggered",
+]
+
+[[package]]
+name = "kaspa-consensusmanager"
+version = "0.1.0"
+dependencies = [
+ "duration-string",
+ "futures-util",
+ "itertools 0.10.5",
+ "kaspa-consensus-core",
+ "kaspa-consensus-notify",
+ "kaspa-core",
+ "log",
+ "parking_lot",
+ "rand 0.8.5",
+ "tokio",
 ]
 
 [[package]]
@@ -1659,6 +1676,7 @@ dependencies = [
  "kaspa-grpc-core",
  "kaspa-notify",
  "kaspa-rpc-core",
+ "kaspa-rpc-service",
  "kaspa-utils",
  "log",
  "paste",
@@ -1718,6 +1736,7 @@ dependencies = [
  "kaspa-consensus",
  "kaspa-consensus-core",
  "kaspa-consensus-notify",
+ "kaspa-consensusmanager",
  "kaspa-core",
  "kaspa-hashes",
  "kaspa-index-core",
@@ -1823,6 +1842,7 @@ dependencies = [
  "kaspa-addressmanager",
  "kaspa-connectionmanager",
  "kaspa-consensus-core",
+ "kaspa-consensusmanager",
  "kaspa-core",
  "kaspa-hashes",
  "kaspa-muhash",
@@ -1918,6 +1938,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "kaspa-rpc-service"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "kaspa-consensus-core",
+ "kaspa-consensus-notify",
+ "kaspa-consensusmanager",
+ "kaspa-core",
+ "kaspa-hashes",
+ "kaspa-index-core",
+ "kaspa-notify",
+ "kaspa-rpc-core",
+ "kaspa-txscript",
+ "kaspa-utils",
+ "log",
+]
+
+[[package]]
 name = "kaspa-testing-integration"
 version = "0.1.0"
 dependencies = [
@@ -1933,6 +1971,7 @@ dependencies = [
  "kaspa-consensus",
  "kaspa-consensus-core",
  "kaspa-consensus-notify",
+ "kaspa-consensusmanager",
  "kaspa-core",
  "kaspa-database",
  "kaspa-hashes",
@@ -2004,6 +2043,7 @@ version = "0.1.0"
 dependencies = [
  "kaspa-consensus",
  "kaspa-consensus-core",
+ "kaspa-consensusmanager",
  "kaspa-core",
  "kaspa-database",
  "kaspa-hashes",
@@ -2153,6 +2193,7 @@ dependencies = [
  "kaspa-notify",
  "kaspa-rpc-core",
  "kaspa-rpc-macros",
+ "kaspa-rpc-service",
  "kaspa-utils",
  "num_cpus",
  "paste",
@@ -2183,6 +2224,7 @@ dependencies = [
  "kaspa-consensus",
  "kaspa-consensus-core",
  "kaspa-consensus-notify",
+ "kaspa-consensusmanager",
  "kaspa-core",
  "kaspa-database",
  "kaspa-grpc-server",
@@ -2191,6 +2233,7 @@ dependencies = [
  "kaspa-mining",
  "kaspa-p2p-flows",
  "kaspa-rpc-core",
+ "kaspa-rpc-service",
  "kaspa-utxoindex",
  "kaspa-wrpc-server",
  "log",

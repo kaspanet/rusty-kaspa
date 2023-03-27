@@ -1,5 +1,10 @@
 use crate::{flow_context::FlowContext, flow_trait::Flow, flowcontext::orphans::ORPHAN_RESOLUTION_RANGE};
-use kaspa_consensus_core::{api::DynConsensus, block::Block, blockstatus::BlockStatus, errors::block::RuleError};
+use kaspa_consensus_core::{
+    api::{ConsensusApi, DynConsensus},
+    block::Block,
+    blockstatus::BlockStatus,
+    errors::block::RuleError,
+};
 use kaspa_core::{debug, info, time::unix_now};
 use kaspa_hashes::Hash;
 use kaspa_p2p_lib::{
@@ -9,7 +14,7 @@ use kaspa_p2p_lib::{
     IncomingRoute, Router,
 };
 use kaspa_utils::option::OptionExtensions;
-use std::{collections::VecDeque, sync::Arc};
+use std::{collections::VecDeque, ops::Deref, sync::Arc};
 use tokio::sync::mpsc::{error::TrySendError, Sender};
 
 pub struct RelayInvMessage {
@@ -84,9 +89,11 @@ impl HandleRelayInvsFlow {
         loop {
             // Loop over incoming block inv messages
             let inv = self.invs_route.dequeue().await?;
-            let consensus = self.ctx.consensus();
 
-            match consensus.get_block_status(inv.hash) {
+            let consensus = self.ctx.consensus();
+            let session = consensus.session().await;
+
+            match session.get_block_status(inv.hash) {
                 None | Some(BlockStatus::StatusHeaderOnly) => {} // Continue processing this missing inv
                 Some(BlockStatus::StatusInvalid) => {
                     // Report a protocol error
@@ -105,7 +112,7 @@ impl HandleRelayInvsFlow {
             }
 
             if self.ctx.is_ibd_running() {
-                let sink_timestamp = consensus.get_sink_timestamp();
+                let sink_timestamp = session.get_sink_timestamp();
                 // We consider the node close to being synced if the sink (virtual selected parent) block timestamp is less than DAA duration
                 // far in the past. In such a case, we continue processing relay blocks even though an IBD is in progress.
                 // For instance this means that downloading a side-chain from a delayed node does not interop the normal flow of live blocks
@@ -128,8 +135,8 @@ impl HandleRelayInvsFlow {
             // that means the process started by a proper and relevant relay block
             if !inv.is_indirect {
                 // Check bounded merge depth to avoid requesting irrelevant data which cannot be merged under virtual
-                if let Some(virtual_merge_depth_root) = consensus.get_virtual_merge_depth_root() {
-                    let root_header = consensus.get_header(virtual_merge_depth_root).unwrap();
+                if let Some(virtual_merge_depth_root) = session.get_virtual_merge_depth_root() {
+                    let root_header = session.get_header(virtual_merge_depth_root).unwrap();
                     // Since `blue_work` respects topology, this condition means that the relay
                     // block is not in the future of virtual's merge depth root, and thus cannot be merged unless
                     // other valid blocks Kosherize it, in which case it will be obtained once the merger is relayed
@@ -143,15 +150,15 @@ impl HandleRelayInvsFlow {
                 }
             }
 
-            let prev_virtual_parents = consensus.get_virtual_parents();
+            let prev_virtual_parents = session.get_virtual_parents();
 
             // TODO: consider storing the future in a task queue and polling it (without awaiting) in order to continue
             // queueing the following relay blocks. On the other hand we might have sufficient concurrency from all parallel relay flows
-            match consensus.validate_and_insert_block(block.clone(), true).await {
+            match session.validate_and_insert_block(block.clone(), true).await {
                 Ok(_) => {}
                 Err(RuleError::MissingParents(missing_parents)) => {
                     debug!("Block {} is orphan and has missing parents: {:?}", block.hash(), missing_parents);
-                    self.process_orphan(&consensus, block).await?;
+                    self.process_orphan(session.deref(), block).await?;
                     continue;
                 }
                 Err(rule_error) => return Err(rule_error.into()),
@@ -164,7 +171,7 @@ impl HandleRelayInvsFlow {
 
             // Broadcast all *new* virtual parents. As a policy, we avoid directly relaying the new block since
             // we wish to relay only blocks who entered past(virtual).
-            for new_virtual_parent in consensus.get_virtual_parents().difference(&prev_virtual_parents) {
+            for new_virtual_parent in session.get_virtual_parents().difference(&prev_virtual_parents) {
                 self.router
                     .broadcast(make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(new_virtual_parent.into()) }))
                     .await;
@@ -199,7 +206,7 @@ impl HandleRelayInvsFlow {
         }
     }
 
-    async fn process_orphan(&mut self, consensus: &DynConsensus, block: Block) -> Result<(), ProtocolError> {
+    async fn process_orphan(&mut self, consensus: &dyn ConsensusApi, block: Block) -> Result<(), ProtocolError> {
         // Return if the block has been orphaned from elsewhere already
         if self.ctx.is_known_orphan(block.hash()).await {
             return Ok(());
@@ -226,7 +233,7 @@ impl HandleRelayInvsFlow {
     /// mechanism or via IBD. This method sends a BlockLocator request to the peer with
     /// a limit of ORPHAN_RESOLUTION_RANGE. In the response, if we know none of the hashes,
     /// we should retrieve the given blockHash via IBD. Otherwise, via unorphaning.
-    async fn check_orphan_resolution_range(&mut self, consensus: &DynConsensus, hash: Hash) -> Result<bool, ProtocolError> {
+    async fn check_orphan_resolution_range(&mut self, consensus: &dyn ConsensusApi, hash: Hash) -> Result<bool, ProtocolError> {
         self.router
             .enqueue(make_message!(
                 Payload::RequestBlockLocator,

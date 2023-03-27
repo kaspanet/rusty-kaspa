@@ -40,12 +40,15 @@ impl RequestPruningPointUtxoSetFlow {
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
         loop {
             let expected_pp = dequeue!(self.incoming_route, Payload::RequestPruningPointUtxoSet)?.try_into()?;
+
+            let consensus = self.ctx.consensus();
+            let session = consensus.session().await;
+
             const CHUNK_SIZE: usize = 1000;
             let mut from_outpoint = None;
             let mut chunks_sent = 0;
             loop {
-                let pp_utxos =
-                    self.ctx.consensus().get_pruning_point_utxos(expected_pp, from_outpoint, CHUNK_SIZE, chunks_sent != 0)?;
+                let pp_utxos = session.get_pruning_point_utxos(expected_pp, from_outpoint, CHUNK_SIZE, chunks_sent != 0)?;
                 debug!("Retrieved {} UTXOs for pruning point {}", pp_utxos.len(), expected_pp);
 
                 self.router

@@ -5,6 +5,7 @@ use kaspa_addressmanager::AddressManager;
 use kaspa_consensus_core::api::{ConsensusApi, DynConsensus};
 use kaspa_consensus_core::block::Block;
 use kaspa_consensus_core::config::Config;
+use kaspa_consensusmanager::{ConsensusInstance, ConsensusManager, ConsensusSession};
 use kaspa_core::time::unix_now;
 use kaspa_core::{debug, info};
 use kaspa_hashes::Hash;
@@ -19,9 +20,9 @@ use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct FlowContext {
-    pub consensus: DynConsensus,
+    pub consensus_manager: Arc<ConsensusManager>,
     pub config: Config,
-    orphans_pool: Arc<AsyncRwLock<OrphanBlocksPool<dyn ConsensusApi>>>,
+    orphans_pool: Arc<AsyncRwLock<OrphanBlocksPool>>,
     shared_block_requests: Arc<Mutex<HashSet<Hash>>>,
     is_ibd_running: Arc<AtomicBool>, // TODO: pass the context wrapped with Arc and avoid some of the internal ones
     pub amgr: Arc<Mutex<AddressManager>>,
@@ -56,19 +57,19 @@ impl Drop for BlockRequestScope<'_> {
 }
 
 impl FlowContext {
-    pub fn new(consensus: DynConsensus, amgr: Arc<Mutex<AddressManager>>, config: &Config) -> Self {
+    pub fn new(consensus_manager: Arc<ConsensusManager>, amgr: Arc<Mutex<AddressManager>>, config: &Config) -> Self {
         Self {
-            consensus: consensus.clone(),
+            consensus_manager: consensus_manager.clone(),
             config: config.clone(),
-            orphans_pool: Arc::new(AsyncRwLock::new(OrphanBlocksPool::new(consensus, MAX_ORPHANS))),
+            orphans_pool: Arc::new(AsyncRwLock::new(OrphanBlocksPool::new(consensus_manager, MAX_ORPHANS))),
             shared_block_requests: Arc::new(Mutex::new(HashSet::new())),
             is_ibd_running: Arc::new(AtomicBool::default()),
             amgr,
         }
     }
 
-    pub fn consensus(&self) -> DynConsensus {
-        self.consensus.clone()
+    pub fn consensus(&self) -> ConsensusInstance {
+        self.consensus_manager.consensus()
     }
 
     pub fn try_set_ibd_running(&self) -> Option<IbdRunningGuard> {

@@ -23,6 +23,7 @@ use kaspa_consensus_core::trusted::{ExternalGhostdagData, TrustedBlock};
 use kaspa_consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry};
 use kaspa_consensus_core::{blockhash, hashing, BlockHashMap, BlueWorkType};
 use kaspa_consensus_notify::service::NotifyService;
+use kaspa_consensusmanager::{ConsensusManager, SingletonFactory};
 use kaspa_hashes::Hash;
 
 use flate2::read::GzDecoder;
@@ -850,7 +851,9 @@ async fn json_test(file_path: &str) {
     let notify_service = Arc::new(NotifyService::new(consensus.notification_root(), notification_recv));
 
     let (_utxoindex_db_lifetime, utxoindex_db) = create_temp_db();
-    let utxoindex = UtxoIndex::new(consensus.consensus(), utxoindex_db).unwrap();
+    let consensus_manager =
+        Arc::new(ConsensusManager::new(Arc::new(SingletonFactory::new(consensus.consensus(), consensus.consensus())), &config));
+    let utxoindex = UtxoIndex::new(consensus_manager, utxoindex_db).unwrap();
     let index_service = Arc::new(IndexService::new(&notify_service.notifier(), Some(utxoindex.clone())));
 
     let async_runtime = Arc::new(AsyncRuntime::new(2));

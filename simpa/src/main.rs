@@ -133,7 +133,7 @@ fn main() {
         let (lifetime, db) = load_existing_db(input_dir, num_cpus::get());
         let (dummy_notification_sender, _) = unbounded();
         let notification_root = Arc::new(ConsensusNotificationRoot::new(dummy_notification_sender));
-        let consensus = Arc::new(Consensus::new(db, &config, notification_root));
+        let consensus = Arc::new(Consensus::new(db, &config, notification_root, Default::default()));
         (consensus, lifetime)
     } else {
         let until = if args.target_blocks.is_none() { args.sim_time * 1000 } else { u64::MAX }; // milliseconds
@@ -147,7 +147,7 @@ fn main() {
     let (_lifetime2, db2) = create_temp_db_with_parallelism(num_cpus::get());
     let (dummy_notification_sender, _) = unbounded();
     let notification_root = Arc::new(ConsensusNotificationRoot::new(dummy_notification_sender));
-    let consensus2 = Arc::new(Consensus::new(db2, &config, notification_root));
+    let consensus2 = Arc::new(Consensus::new(db2, &config, notification_root, Default::default()));
     let handles2 = consensus2.init();
     validate(&consensus, &consensus2, &config, args.delay, args.bps);
     consensus2.shutdown(handles2);
