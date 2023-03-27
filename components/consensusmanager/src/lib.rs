@@ -143,11 +143,6 @@ impl ConsensusInstance {
         Self { session_lock: Arc::new(TokioRwLock::new(())), consensus }
     }
 
-    pub fn session_blocking(&self) -> ConsensusSession<'_> {
-        let g = self.session_lock.blocking_read();
-        ConsensusSession::new(g, self.consensus.clone())
-    }
-
     pub async fn session(&self) -> ConsensusSession<'_> {
         let g = self.session_lock.read().await;
         ConsensusSession::new(g, self.consensus.clone())

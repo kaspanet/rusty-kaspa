@@ -94,10 +94,13 @@ impl UtxoIndexApi for UtxoIndex {
     fn is_synced(&self) -> UtxoIndexResult<bool> {
         trace!("[{0}] checking sync status...", IDENT);
 
+        let consensus = self.consensus_manager.consensus();
+        let session = futures::executor::block_on(consensus.session());
+
         let utxoindex_tips = self.store.get_tips();
         match utxoindex_tips {
             Ok(utxoindex_tips) => {
-                let consensus_tips = self.consensus_manager.consensus().session_blocking().get_virtual_parents();
+                let consensus_tips = session.get_virtual_parents();
                 let res = *utxoindex_tips == consensus_tips;
                 trace!("[{0}] sync status is {1}", IDENT, res);
                 Ok(res)
@@ -122,13 +125,13 @@ impl UtxoIndexApi for UtxoIndex {
 
         self.store.delete_all()?;
         let consensus = self.consensus_manager.consensus();
-        let consensus_session = consensus.session_blocking();
+        let session = futures::executor::block_on(consensus.session());
 
-        let consensus_tips = consensus_session.get_virtual_parents();
+        let consensus_tips = session.get_virtual_parents();
         let mut circulating_supply: CirculatingSupply = 0;
 
         //Initial batch is without specified seek and none-skipping.
-        let mut virtual_utxo_batch = consensus_session.get_virtual_utxos(None, RESYNC_CHUNK_SIZE, false);
+        let mut virtual_utxo_batch = session.get_virtual_utxos(None, RESYNC_CHUNK_SIZE, false);
         let mut current_chunk_size = virtual_utxo_batch.len();
         trace!("[{0}] resyncing with batch of {1} utxos from consensus db", IDENT, current_chunk_size);
         // While loop stops resync attempts from an empty utxo db, and unneeded processing when the utxo state size happens to be a multiple of [`RESYNC_CHUNK_SIZE`]
@@ -149,7 +152,7 @@ impl UtxoIndexApi for UtxoIndex {
                 break;
             };
 
-            virtual_utxo_batch = consensus_session.get_virtual_utxos(next_outpoint_from, RESYNC_CHUNK_SIZE, true);
+            virtual_utxo_batch = session.get_virtual_utxos(next_outpoint_from, RESYNC_CHUNK_SIZE, true);
             current_chunk_size = virtual_utxo_batch.len();
             trace!("[{0}] resyncing with batch of {1} utxos from consensus db", IDENT, current_chunk_size);
         }

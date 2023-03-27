@@ -2041,6 +2041,7 @@ dependencies = [
 name = "kaspa-utxoindex"
 version = "0.1.0"
 dependencies = [
+ "futures",
  "kaspa-consensus",
  "kaspa-consensus-core",
  "kaspa-consensusmanager",
