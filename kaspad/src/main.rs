@@ -3,7 +3,6 @@ extern crate kaspa_core;
 extern crate kaspa_hashes;
 
 use kaspa_addressmanager::AddressManager;
-use kaspa_consensus::consensus;
 use kaspa_consensus::consensus::factory::Factory as ConsensusFactory;
 use kaspa_consensus::pipeline::ProcessingCounters;
 use kaspa_consensus_core::networktype::NetworkType;

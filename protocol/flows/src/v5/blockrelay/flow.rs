@@ -1,10 +1,5 @@
 use crate::{flow_context::FlowContext, flow_trait::Flow, flowcontext::orphans::ORPHAN_RESOLUTION_RANGE};
-use kaspa_consensus_core::{
-    api::{ConsensusApi, DynConsensus},
-    block::Block,
-    blockstatus::BlockStatus,
-    errors::block::RuleError,
-};
+use kaspa_consensus_core::{api::ConsensusApi, block::Block, blockstatus::BlockStatus, errors::block::RuleError};
 use kaspa_core::{debug, info, time::unix_now};
 use kaspa_hashes::Hash;
 use kaspa_p2p_lib::{

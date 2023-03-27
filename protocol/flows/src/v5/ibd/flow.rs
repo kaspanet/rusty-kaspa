@@ -7,13 +7,12 @@ use crate::{
 };
 use futures::future::try_join_all;
 use kaspa_consensus_core::{
-    api::{BlockValidationFuture, DynConsensus},
+    api::{BlockValidationFuture, ConsensusApi},
     block::Block,
     blockhash::BlockHashExtensions,
     header::Header,
     pruning::{PruningPointProof, PruningPointsList},
 };
-use kaspa_consensusmanager::ConsensusSession;
 use kaspa_core::{debug, info};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
@@ -94,11 +93,11 @@ impl IbdFlow {
         let consensus = self.ctx.consensus();
         let session = consensus.session().await; // TODO: should this really be a single session?
         let negotiation_output = self.negotiate_missing_syncer_chain_segment(session.deref()).await?;
-        match self.determine_ibd_type(&session, &relay_block.header, negotiation_output.highest_known_syncer_chain_hash)? {
+        match self.determine_ibd_type(session.deref(), &relay_block.header, negotiation_output.highest_known_syncer_chain_hash)? {
             IbdType::None => return Ok(()),
             IbdType::Sync(highest_known_syncer_chain_hash) => {
                 self.sync_headers(
-                    &session,
+                    session.deref(),
                     negotiation_output.syncer_header_selected_tip,
                     highest_known_syncer_chain_hash,
                     &relay_block,
@@ -106,21 +105,21 @@ impl IbdFlow {
                 .await?;
             }
             IbdType::DownloadHeadersProof => {
-                self.ibd_with_headers_proof(&session, negotiation_output.syncer_header_selected_tip, &relay_block).await?;
+                self.ibd_with_headers_proof(session.deref(), negotiation_output.syncer_header_selected_tip, &relay_block).await?;
             }
         }
 
         // Sync missing bodies in the past of syncer selected tip
-        self.sync_missing_block_bodies(&session, negotiation_output.syncer_header_selected_tip).await?;
+        self.sync_missing_block_bodies(session.deref(), negotiation_output.syncer_header_selected_tip).await?;
 
         // Relay block might be in the anticone of syncer selected tip, thus
         // check its chain for missing bodies as well.
-        self.sync_missing_block_bodies(&session, relay_block.hash()).await
+        self.sync_missing_block_bodies(session.deref(), relay_block.hash()).await
     }
 
     fn determine_ibd_type(
         &self,
-        consensus: &ConsensusSession,
+        consensus: &dyn ConsensusApi,
         relay_header: &Header,
         highest_known_syncer_chain_hash: Option<Hash>,
     ) -> Result<IbdType, ProtocolError> {
@@ -158,7 +157,7 @@ impl IbdFlow {
 
     async fn ibd_with_headers_proof(
         &mut self,
-        consensus: &ConsensusSession<'_>,
+        consensus: &dyn ConsensusApi,
         syncer_header_selected_tip: Hash,
         relay_block: &Block,
     ) -> Result<(), ProtocolError> {
@@ -171,7 +170,7 @@ impl IbdFlow {
         Ok(())
     }
 
-    async fn sync_and_validate_pruning_proof(&mut self, consensus: &ConsensusSession<'_>) -> Result<Hash, ProtocolError> {
+    async fn sync_and_validate_pruning_proof(&mut self, consensus: &dyn ConsensusApi) -> Result<Hash, ProtocolError> {
         self.router.enqueue(make_message!(Payload::RequestPruningPointProof, RequestPruningPointProofMessage {})).await?;
 
         // Pruning proof generation and communication might take several minutes, so we allow a long 10 minute timeout
@@ -239,7 +238,7 @@ impl IbdFlow {
 
     async fn sync_headers(
         &mut self,
-        consensus: &ConsensusSession<'_>,
+        consensus: &dyn ConsensusApi,
         syncer_header_selected_tip: Hash,
         highest_known_syncer_chain_hash: Hash,
         relay_block: &Block,
@@ -288,7 +287,7 @@ impl IbdFlow {
 
     async fn sync_missing_relay_past_headers(
         &mut self,
-        consensus: &ConsensusSession<'_>,
+        consensus: &dyn ConsensusApi,
         syncer_header_selected_tip: Hash,
         relay_block_hash: Hash,
     ) -> Result<(), ProtocolError> {
@@ -328,7 +327,11 @@ impl IbdFlow {
         }
     }
 
-    fn _validate_staging_timestamps(&self, consensus: &DynConsensus, staging_consensus: &DynConsensus) -> Result<(), ProtocolError> {
+    fn _validate_staging_timestamps(
+        &self,
+        consensus: &dyn ConsensusApi,
+        staging_consensus: &dyn ConsensusApi,
+    ) -> Result<(), ProtocolError> {
         let staging_hst = staging_consensus.get_header(staging_consensus.get_headers_selected_tip()).unwrap();
         let current_hst = consensus.get_header(consensus.get_headers_selected_tip()).unwrap();
         // If staging is behind current or within 10 minutes ahead of it, then something is wrong and we reject the IBD
@@ -343,11 +346,7 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
         }
     }
 
-    async fn sync_pruning_point_utxoset(
-        &mut self,
-        consensus: &ConsensusSession<'_>,
-        pruning_point: Hash,
-    ) -> Result<(), ProtocolError> {
+    async fn sync_pruning_point_utxoset(&mut self, consensus: &dyn ConsensusApi, pruning_point: Hash) -> Result<(), ProtocolError> {
         self.router
             .enqueue(make_message!(
                 Payload::RequestPruningPointUtxoSet,
@@ -363,7 +362,7 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
         Ok(())
     }
 
-    async fn sync_missing_block_bodies(&mut self, consensus: &ConsensusSession<'_>, high: Hash) -> Result<(), ProtocolError> {
+    async fn sync_missing_block_bodies(&mut self, consensus: &dyn ConsensusApi, high: Hash) -> Result<(), ProtocolError> {
         // TODO: query consensus in batches
         let hashes = consensus.get_missing_block_body_hashes(high)?;
         if hashes.is_empty() {
@@ -400,7 +399,7 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
 
     async fn queue_block_processing_chunk(
         &mut self,
-        consensus: &ConsensusSession<'_>,
+        consensus: &dyn ConsensusApi,
         chunk: &[Hash],
     ) -> Result<(Vec<BlockValidationFuture>, u64), ProtocolError> {
         let mut jobs = Vec::with_capacity(chunk.len());

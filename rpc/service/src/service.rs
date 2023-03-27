@@ -2,7 +2,7 @@
 
 use super::collector::{CollectorFromConsensus, CollectorFromIndex};
 use async_trait::async_trait;
-use kaspa_consensus_core::{api::DynConsensus, block::Block, coinbase::MinerData};
+use kaspa_consensus_core::{block::Block, coinbase::MinerData};
 use kaspa_consensus_notify::{
     notifier::ConsensusNotifier,
     {connection::ConsensusChannelConnection, notification::Notification as ConsensusNotification},
