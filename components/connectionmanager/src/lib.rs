@@ -168,7 +168,7 @@ impl ConnectionManager {
             if progressing && !jobs.is_empty() {
                 // Log only if progress was made
                 info!(
-                    "Connection manager: has {}/{} outgoing connections, trying to make {} additional connections...",
+                    "Connection manager: has {}/{} outgoing connections, trying to obtain {} additional connections...",
                     self.outbound_target - missing_connections,
                     self.outbound_target,
                     jobs.len(),
