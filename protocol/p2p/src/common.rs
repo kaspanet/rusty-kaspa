@@ -1,5 +1,6 @@
 use crate::{convert::error::ConversionError, KaspadMessagePayloadType};
 use kaspa_consensus_core::errors::{block::RuleError, consensus::ConsensusError, pruning::PruningImportError};
+use kaspa_mining::errors::MiningManagerError;
 use std::time::Duration;
 use thiserror::Error;
 
@@ -25,6 +26,10 @@ pub enum ProtocolError {
 
     #[error("{0}")]
     ConsensusError(#[from] ConsensusError),
+
+    // TODO: discuss if such an error type makes sense here
+    #[error("{0}")]
+    MiningManagerError(#[from] MiningManagerError),
 
     #[error("{0}")]
     Other(&'static str),

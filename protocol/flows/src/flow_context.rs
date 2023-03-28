@@ -1,4 +1,5 @@
 use crate::flowcontext::orphans::{OrphanBlocksPool, MAX_ORPHANS};
+use crate::flowcontext::transactions::TransactionsSpread;
 use crate::v5;
 use async_trait::async_trait;
 use kaspa_addressmanager::AddressManager;
@@ -6,11 +7,14 @@ use kaspa_consensus_core::{
     api::{ConsensusApi, DynConsensus},
     block::Block,
     config::Config,
-    tx::TransactionId,
+    tx::{Transaction, TransactionId},
 };
 use kaspa_core::{debug, info, time::unix_now};
 use kaspa_hashes::Hash;
-use kaspa_mining::manager::MiningManager;
+use kaspa_mining::{
+    manager::MiningManager,
+    mempool::tx::{Orphan, Priority},
+};
 use kaspa_p2p_lib::{common::ProtocolError, pb, ConnectionInitializer, KaspadHandshake, Router};
 use parking_lot::Mutex;
 use std::{
@@ -29,6 +33,7 @@ pub struct FlowContext {
     pub config: Config,
     orphans_pool: Arc<AsyncRwLock<OrphanBlocksPool<dyn ConsensusApi>>>,
     shared_block_requests: Arc<Mutex<HashSet<Hash>>>,
+    transactions_spread: Arc<Mutex<TransactionsSpread>>,
     shared_transaction_requests: Arc<Mutex<HashSet<TransactionId>>>,
     is_ibd_running: Arc<AtomicBool>, // TODO: pass the context wrapped with Arc and avoid some of the internal ones
     pub amgr: Arc<Mutex<AddressManager>>,
@@ -75,6 +80,7 @@ impl FlowContext {
             config: config.clone(),
             orphans_pool: Arc::new(AsyncRwLock::new(OrphanBlocksPool::new(consensus, MAX_ORPHANS))),
             shared_block_requests: Arc::new(Mutex::new(HashSet::new())),
+            transactions_spread: Arc::new(Mutex::new(TransactionsSpread::new())),
             shared_transaction_requests: Arc::new(Mutex::new(HashSet::new())),
             is_ibd_running: Arc::new(AtomicBool::default()),
             amgr,
@@ -132,6 +138,27 @@ impl FlowContext {
 
     pub async fn unorphan_blocks(&self, root: Hash) -> Vec<Block> {
         self.orphans_pool.write().await.unorphan_blocks(root).await
+    }
+
+    pub async fn add_transaction(&self, transaction: Transaction, orphan: Orphan) -> Result<(), ProtocolError> {
+        let accepted_transactions = self.mining_manager().validate_and_insert_transaction(transaction, Priority::High, orphan)?;
+        self.broadcast_transactions(accepted_transactions.iter().map(|x| x.id()).collect()).await
+    }
+
+    /// Returns true if the time for a rebroadcast of the mempool high priority transactions has come.
+    ///
+    /// If true, the instant of the call is registered as the last rebroadcast time.
+    pub fn should_rebroadcast_transactions(&self) -> bool {
+        self.transactions_spread.lock().should_rebroadcast()
+    }
+
+    /// Add the given transactions IDs to a set of IDs to broadcast. The IDs will be broadcasted to all peers
+    /// within transaction Inv messages.
+    ///
+    /// The broadcast itself may happen only during a subsequent call to this function since it is done at most
+    /// at preset intervals or when the queue length is larger than the Inv message capacity.
+    pub async fn broadcast_transactions(&self, transaction_ids: Vec<TransactionId>) -> Result<(), ProtocolError> {
+        self.transactions_spread.lock().broadcast(transaction_ids).await
     }
 }
 
