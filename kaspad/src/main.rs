@@ -200,9 +200,14 @@ pub fn main() {
 
     // Use `num_cpus` background threads for the consensus database as recommended by rocksdb
     let consensus_db_parallelism = num_cpus::get();
-    let consensus_factory =
-        Arc::new(ConsensusFactory::new(consensus_db_dir, consensus_db_parallelism, notification_root.clone(), counters.clone()));
-    let consensus_manager = Arc::new(ConsensusManager::new(consensus_factory, &config));
+    let consensus_factory = Arc::new(ConsensusFactory::new(
+        &config,
+        consensus_db_dir,
+        consensus_db_parallelism,
+        notification_root.clone(),
+        counters.clone(),
+    ));
+    let consensus_manager = Arc::new(ConsensusManager::new(consensus_factory));
     let monitor = Arc::new(ConsensusMonitor::new(counters));
 
     let notify_service = Arc::new(NotifyService::new(notification_root, notification_recv));

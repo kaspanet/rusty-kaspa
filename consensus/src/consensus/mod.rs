@@ -828,4 +828,20 @@ impl Service for Consensus {
     }
 }
 
-impl ConsensusCtl for Consensus {}
+impl ConsensusCtl for Consensus {
+    fn start(&self) -> Vec<JoinHandle<()>> {
+        todo!()
+    }
+
+    fn stop(&self) {
+        todo!()
+    }
+
+    fn make_active(&self) {
+        todo!()
+    }
+
+    fn delete(&self) {
+        todo!()
+    }
+}

@@ -1,7 +1,4 @@
-use kaspa_consensus_core::{
-    api::{ConsensusApi, DynConsensus},
-    config::Config,
-};
+use kaspa_consensus_core::api::{ConsensusApi, DynConsensus};
 use kaspa_core::{core::Core, service::Service};
 use parking_lot::RwLock;
 use std::{collections::VecDeque, ops::Deref, sync::Arc, thread::JoinHandle};
@@ -9,79 +6,98 @@ use tokio::sync::{RwLock as TokioRwLock, RwLockReadGuard as TokioRwLockReadGuard
 
 /// Consensus controller trait. Includes methods required to start/stop/control consensus, but which should not
 /// be exposed to ordinary users
-pub trait ConsensusCtl: Service {
-    // TODO
-    // fn set_notification_root(&self, root: Arc<ConsensusNotificationRoot>);
+pub trait ConsensusCtl: Sync + Send {
+    /// Initialize and start processors etc    
+    fn start(&self) -> Vec<JoinHandle<()>>;
+
+    /// Shutdown all workers and clear runtime resources
+    fn stop(&self);
+
+    /// Set as current active consensus
+    fn make_active(&self);
+
+    /// Delete this consensus instance from memory and disk permanently
+    fn delete(&self);
 }
 
 pub type DynConsensusCtl = Arc<dyn ConsensusCtl>;
 
 pub trait ConsensusFactory: Sync + Send {
-    fn new_consensus(&self, config: &Config) -> (DynConsensus, DynConsensusCtl);
+    /// Create an instance of current active consensus or create one if no such exists
+    fn new_active_consensus(&self) -> (DynConsensus, DynConsensusCtl);
+
+    /// Create a new empty staging consensus
+    fn new_staging_consensus(&self) -> (DynConsensus, DynConsensusCtl);
 }
 
+/// Test-only mock factory
 struct MockFactory;
 
 impl ConsensusFactory for MockFactory {
-    fn new_consensus(&self, _config: &Config) -> (DynConsensus, DynConsensusCtl) {
+    fn new_active_consensus(&self) -> (DynConsensus, DynConsensusCtl) {
+        unimplemented!()
+    }
+
+    fn new_staging_consensus(&self) -> (DynConsensus, DynConsensusCtl) {
         unimplemented!()
     }
 }
 
-struct Inner {
-    /// Consensus instances
-    current_consensus: ConsensusInstance,
-    _staging_consensus: Option<ConsensusInstance>,
+/// Wraps all needed structures required for interacting and controlling a consensus instance
+struct ConsensusInner {
+    consensus: ConsensusInstance,
+    ctl: DynConsensusCtl,
+}
 
-    /// Consensus service controllers
-    current_ctl: DynConsensusCtl,
-    _staging_ctl: Option<DynConsensusCtl>,
+impl ConsensusInner {
+    fn new(consensus: DynConsensus, ctl: DynConsensusCtl) -> Self {
+        Self { consensus: ConsensusInstance::new(consensus), ctl }
+    }
+}
+
+struct ManagerInner {
+    /// Current consensus
+    current: ConsensusInner,
 
     /// Service join handles
     handles: VecDeque<JoinHandle<()>>,
 }
 
-impl Inner {
+impl ManagerInner {
     fn new(consensus: DynConsensus, ctl: DynConsensusCtl) -> Self {
-        Self {
-            current_consensus: ConsensusInstance::new(consensus),
-            _staging_consensus: None,
-            current_ctl: ctl,
-            _staging_ctl: None,
-            handles: Default::default(),
-        }
+        Self { current: ConsensusInner::new(consensus, ctl), handles: Default::default() }
     }
 }
 
 pub struct ConsensusManager {
-    _factory: Arc<dyn ConsensusFactory>,
-    _config: Option<Config>,
-    inner: RwLock<Inner>,
+    factory: Arc<dyn ConsensusFactory>,
+    inner: RwLock<ManagerInner>,
 }
 
 impl ConsensusManager {
-    pub fn new(factory: Arc<dyn ConsensusFactory>, config: &Config) -> Self {
-        let (consensus, ctl) = factory.new_consensus(config);
-        Self { _factory: factory, _config: Some(config.clone()), inner: RwLock::new(Inner::new(consensus, ctl)) }
+    pub fn new(factory: Arc<dyn ConsensusFactory>) -> Self {
+        let (consensus, ctl) = factory.new_active_consensus();
+        Self { factory, inner: RwLock::new(ManagerInner::new(consensus, ctl)) }
     }
 
     /// Creates a consensus manager with a fixed consensus. Will panic if staging API is used. To be
     /// used for test purposes only.
-    pub fn from_consensus<T: ConsensusApi + ConsensusCtl>(consensus: Arc<T>) -> Self {
+    pub fn from_consensus<T: ConsensusApi + ConsensusCtl + 'static>(consensus: Arc<T>) -> Self {
         let (consensus, ctl) = (consensus.clone() as DynConsensus, consensus as DynConsensusCtl);
-        Self { _factory: Arc::new(MockFactory), _config: None, inner: RwLock::new(Inner::new(consensus, ctl)) }
+        Self { factory: Arc::new(MockFactory), inner: RwLock::new(ManagerInner::new(consensus, ctl)) }
     }
 
     pub fn consensus(&self) -> ConsensusInstance {
-        self.inner.read().current_consensus.clone()
+        self.inner.read().current.consensus.clone()
     }
 
     pub fn new_staging_consensus(&self) -> StagingConsensus<'_> {
-        todo!()
+        let (consensus, ctl) = self.factory.new_staging_consensus();
+        StagingConsensus::new(self, ConsensusInner::new(consensus, ctl))
     }
 
-    fn worker(&self, core: Arc<Core>) {
-        let handles = self.inner.read().current_ctl.clone().start(core);
+    fn worker(&self, _core: Arc<Core>) {
+        let handles = self.inner.read().current.ctl.clone().start();
         self.inner.write().handles.extend(handles);
         // If current consensus is switched, this loop will join the replaced handles, and will switch to waiting for the new ones
         while let Some(handle) = self.inner.write().handles.pop_front() {
@@ -100,27 +116,36 @@ impl Service for ConsensusManager {
     }
 
     fn stop(self: Arc<Self>) {
-        // TODO: staging
-        self.inner.read().current_ctl.clone().stop();
+        self.inner.read().current.ctl.clone().stop();
     }
 }
 
 pub struct StagingConsensus<'a> {
-    _manager: &'a ConsensusManager,
-    staging: ConsensusInstance,
+    manager: &'a ConsensusManager,
+    staging: ConsensusInner,
+    handles: VecDeque<JoinHandle<()>>,
 }
 
 impl<'a> StagingConsensus<'a> {
-    pub fn new(manager: &'a ConsensusManager, staging: ConsensusInstance) -> Self {
-        Self { _manager: manager, staging }
+    fn new(manager: &'a ConsensusManager, staging: ConsensusInner) -> Self {
+        let handles = VecDeque::from_iter(staging.ctl.start());
+        Self { manager, staging, handles }
     }
 
-    pub fn commit(&self) {
-        todo!()
+    pub fn commit(self) {
+        let mut g = self.manager.inner.write();
+        let prev = std::mem::replace(&mut g.current, self.staging);
+        g.handles.extend(self.handles);
+        prev.ctl.stop();
+        g.current.ctl.make_active();
     }
 
     pub fn cancel(self) {
-        todo!()
+        self.staging.ctl.stop();
+        for handle in self.handles {
+            handle.join().unwrap();
+        }
+        self.staging.ctl.delete();
     }
 }
 
@@ -128,7 +153,7 @@ impl Deref for StagingConsensus<'_> {
     type Target = ConsensusInstance;
 
     fn deref(&self) -> &Self::Target {
-        &self.staging
+        &self.staging.consensus
     }
 }
 

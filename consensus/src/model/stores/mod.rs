@@ -21,8 +21,7 @@ pub mod utxo_multisets;
 pub mod utxo_set;
 pub mod virtual_state;
 
-use rocksdb::{DBWithThreadMode, MultiThreaded};
-pub type DB = DBWithThreadMode<MultiThreaded>;
+pub use kaspa_database::prelude::DB;
 
 #[derive(PartialEq, Eq, Clone, Copy, Hash)]
 pub(crate) struct U64Key([u8; size_of::<u64>()]);
