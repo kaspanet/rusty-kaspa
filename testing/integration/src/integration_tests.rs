@@ -4,12 +4,14 @@
 
 use async_channel::unbounded;
 use kaspa_consensus::config::{Config, ConfigBuilder};
-use kaspa_consensus::consensus::test_consensus::{create_temp_db, TestConsensus};
+use kaspa_consensus::consensus::factory::Factory as ConsensusFactory;
+use kaspa_consensus::consensus::test_consensus::{create_temp_db, get_kaspa_tempdir, TestConsensus};
 use kaspa_consensus::model::stores::ghostdag::{GhostdagStoreReader, KType as GhostdagKType};
 use kaspa_consensus::model::stores::headers::HeaderStoreReader;
 use kaspa_consensus::model::stores::reachability::DbReachabilityStore;
 use kaspa_consensus::model::stores::selected_chain::SelectedChainStoreReader;
 use kaspa_consensus::params::{Params, DEVNET_PARAMS, MAINNET_PARAMS};
+use kaspa_consensus::pipeline::ProcessingCounters;
 use kaspa_consensus::processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions};
 use kaspa_consensus_core::api::ConsensusApi;
 use kaspa_consensus_core::block::Block;
@@ -22,6 +24,7 @@ use kaspa_consensus_core::subnets::SubnetworkId;
 use kaspa_consensus_core::trusted::{ExternalGhostdagData, TrustedBlock};
 use kaspa_consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry};
 use kaspa_consensus_core::{blockhash, hashing, BlockHashMap, BlueWorkType};
+use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_consensus_notify::service::NotifyService;
 use kaspa_consensusmanager::ConsensusManager;
 use kaspa_hashes::Hash;
@@ -1477,4 +1480,33 @@ async fn selected_chain_test() {
     assert!(consensus.header_processor.selected_chain_store.read().get_by_index(3).is_err());
 
     consensus.shutdown(wait_handles);
+}
+
+#[tokio::test]
+async fn staging_consensus_test() {
+    let config = ConfigBuilder::new(MAINNET_PARAMS).build();
+
+    let db_tempdir = get_kaspa_tempdir();
+    let db_path = db_tempdir.path().to_owned();
+    let consensus_db_dir = db_path.join("consensus");
+    let meta_db_dir = db_path.join("meta");
+
+    let meta_db = kaspa_database::prelude::open_db(meta_db_dir, true, 1);
+
+    let (notification_send, _notification_recv) = unbounded();
+    let notification_root = Arc::new(ConsensusNotificationRoot::new(notification_send));
+    let counters = Arc::new(ProcessingCounters::default());
+
+    let consensus_factory = Arc::new(ConsensusFactory::new(meta_db, &config, consensus_db_dir, 4, notification_root, counters));
+    let consensus_manager = Arc::new(ConsensusManager::new(consensus_factory));
+
+    let core = Arc::new(Core::new());
+    core.bind(consensus_manager.clone());
+    let joins = core.start();
+
+    let staging = consensus_manager.new_staging_consensus();
+    staging.commit();
+
+    core.shutdown();
+    core.join(joins);
 }

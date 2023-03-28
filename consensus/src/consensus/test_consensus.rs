@@ -265,13 +265,18 @@ impl Drop for TempDbLifetime {
     }
 }
 
+pub fn get_kaspa_tempdir() -> tempfile::TempDir {
+    let global_tempdir = env::temp_dir();
+    let kaspa_tempdir = global_tempdir.join("rusty-kaspa");
+    fs::create_dir_all(kaspa_tempdir.as_path()).unwrap();
+    let db_tempdir = tempfile::tempdir_in(kaspa_tempdir.as_path()).unwrap();
+    db_tempdir
+}
+
 /// Creates a DB within a temp directory under `<OS SPECIFIC TEMP DIR>/kaspa-rust`
 /// Callers must keep the `TempDbLifetime` guard for as long as they wish the DB to exist.
 pub fn create_temp_db_with_parallelism(parallelism: usize) -> (TempDbLifetime, Arc<DB>) {
-    let global_tempdir = env::temp_dir();
-    let kaspa_tempdir = global_tempdir.join("kaspa-rust");
-    fs::create_dir_all(kaspa_tempdir.as_path()).unwrap();
-    let db_tempdir = tempfile::tempdir_in(kaspa_tempdir.as_path()).unwrap();
+    let db_tempdir = get_kaspa_tempdir();
     let db_path = db_tempdir.path().to_owned();
     let db = kaspa_database::prelude::open_db(db_path, true, parallelism);
     (TempDbLifetime::new(db_tempdir, Arc::downgrade(&db)), db)

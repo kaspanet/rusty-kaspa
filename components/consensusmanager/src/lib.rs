@@ -103,8 +103,11 @@ impl ConsensusManager {
         let handles = self.inner.read().current.ctl.clone().start();
         self.inner.write().handles.extend(handles);
         // If current consensus is switched, this loop will join the replaced handles, and will switch to waiting for the new ones
-        while let Some(handle) = self.inner.write().handles.pop_front() {
+        let mut g = self.inner.write();
+        while let Some(handle) = g.handles.pop_front() {
+            drop(g);
             handle.join().unwrap();
+            g = self.inner.write();
         }
     }
 }
