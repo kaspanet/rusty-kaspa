@@ -31,6 +31,10 @@ impl Config {
     pub fn new(params: Params) -> Self {
         Self { params, perf: PERF_PARAMS, process_genesis: true }
     }
+
+    pub fn to_builder(&self) -> ConfigBuilder {
+        ConfigBuilder { config: self.clone() }
+    }
 }
 
 impl AsRef<Params> for Config {

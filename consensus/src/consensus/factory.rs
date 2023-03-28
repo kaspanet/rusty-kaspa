@@ -1,9 +1,12 @@
-use super::Consensus;
+use super::{ctl::Ctl, Consensus};
 use crate::{model::stores::U64Key, pipeline::ProcessingCounters};
 use kaspa_consensus_core::config::Config;
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_consensusmanager::{ConsensusFactory, ConsensusInstance, DynConsensusCtl};
-use kaspa_database::prelude::{CachedDbAccess, CachedDbItem, DB};
+use kaspa_core::time::unix_now;
+use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, CachedDbItem, DirectDbWriter, StoreResult, StoreResultExtensions, DB};
+use parking_lot::RwLock;
+use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, sync::Arc};
 use tokio::sync::RwLock as TokioRwLock;
@@ -12,30 +15,105 @@ use tokio::sync::RwLock as TokioRwLock;
 pub struct ConsensusEntry {
     directory_name: String,
     creation_timestamp: u64,
-    // TODO: add additional metadata
 }
 
-const MULTI_CONSENSUS_PREFIX: &[u8] = b"multi-consensus-prefix";
-const CURRENT_CONSENSUS_KEY: &[u8] = b"current-consensus-key";
+impl ConsensusEntry {
+    pub fn new(directory_name: String, creation_timestamp: u64) -> Self {
+        Self { directory_name, creation_timestamp }
+    }
+
+    pub fn from_key(key: u64) -> Self {
+        Self { directory_name: format!("consensus-{:0>3}", key), creation_timestamp: unix_now() }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Default)]
+pub struct MultiConsensusMetadata {
+    current_consensus_key: u64,
+    staging_consensus_key: Option<u64>,
+    max_key_used: u64,
+    /// Memorize whether this node was recently an archive node
+    is_archival_node: bool,
+}
+
+const CONSENSUS_ENTRIES_PREFIX: &[u8] = b"consensus-entries-prefix";
+const MULTI_CONSENSUS_METADATA_KEY: &[u8] = b"multi-consensus-metadata-key";
 
 #[derive(Clone)]
 pub struct MultiConsensusManagementStore {
     db: Arc<DB>,
-    access: CachedDbAccess<U64Key, ConsensusEntry>,
-    current_consensus: CachedDbItem<u64>,
+    entries: CachedDbAccess<U64Key, ConsensusEntry>,
+    metadata: CachedDbItem<MultiConsensusMetadata>,
 }
 
 impl MultiConsensusManagementStore {
     pub fn new(db: Arc<DB>) -> Self {
-        Self {
+        let mut store = Self {
             db: db.clone(),
-            access: CachedDbAccess::new(db.clone(), 0, MULTI_CONSENSUS_PREFIX.to_vec()),
-            current_consensus: CachedDbItem::new(db, CURRENT_CONSENSUS_KEY.to_vec()),
+            entries: CachedDbAccess::new(db.clone(), 16, CONSENSUS_ENTRIES_PREFIX.to_vec()),
+            metadata: CachedDbItem::new(db, MULTI_CONSENSUS_METADATA_KEY.to_vec()),
+        };
+        store.init();
+        store
+    }
+
+    fn init(&mut self) {
+        if self.metadata.read().unwrap_option().is_none() {
+            let mut batch = WriteBatch::default();
+            let metadata = MultiConsensusMetadata::default();
+            self.metadata.write(BatchDbWriter::new(&mut batch), &metadata).unwrap();
+            self.entries
+                .write(
+                    BatchDbWriter::new(&mut batch),
+                    metadata.current_consensus_key.into(),
+                    ConsensusEntry::from_key(metadata.current_consensus_key),
+                )
+                .unwrap();
+            self.db.write(batch).unwrap();
         }
+    }
+
+    pub fn current_consensus_entry(&self) -> StoreResult<ConsensusEntry> {
+        self.entries.read(self.metadata.read()?.current_consensus_key.into())
+    }
+
+    pub fn new_staging_consensus_entry(&mut self) -> StoreResult<ConsensusEntry> {
+        let mut metadata = self.metadata.read()?;
+
+        // TODO: handle the case where `staging_consensus_key` is some
+
+        metadata.max_key_used += 1;
+        let new_key = metadata.max_key_used;
+        metadata.staging_consensus_key = Some(new_key);
+        let new_entry = ConsensusEntry::from_key(new_key);
+
+        let mut batch = WriteBatch::default();
+        self.metadata.write(BatchDbWriter::new(&mut batch), &metadata)?;
+        self.entries.write(BatchDbWriter::new(&mut batch), new_key.into(), new_entry.clone())?;
+        self.db.write(batch)?;
+
+        Ok(new_entry)
+    }
+
+    pub fn commit_staging_consensus(&mut self) -> StoreResult<()> {
+        self.metadata.update(DirectDbWriter::new(&self.db), |mut data| {
+            data.current_consensus_key = data.staging_consensus_key.take().expect("expecting a staging consensus");
+            data
+        })?;
+        Ok(())
+    }
+
+    pub fn cancel_staging_consensus(&mut self) -> StoreResult<()> {
+        self.metadata.update(DirectDbWriter::new(&self.db), |mut data| {
+            data.staging_consensus_key = None;
+            data
+        })?;
+        Ok(())
     }
 }
 
 pub struct Factory {
+    management_store: Arc<RwLock<MultiConsensusManagementStore>>,
     config: Config,
     db_root_dir: PathBuf,
     db_parallelism: usize,
@@ -45,6 +123,7 @@ pub struct Factory {
 
 impl Factory {
     pub fn new(
+        management_db: Arc<DB>,
         config: &Config,
         db_root_dir: PathBuf,
         db_parallelism: usize,
@@ -53,21 +132,42 @@ impl Factory {
     ) -> Self {
         let mut config = config.clone();
         config.process_genesis = true;
-        Self { config, db_root_dir, db_parallelism, notification_root, counters }
+        Self {
+            management_store: Arc::new(RwLock::new(MultiConsensusManagementStore::new(management_db))),
+            config,
+            db_root_dir,
+            db_parallelism,
+            notification_root,
+            counters,
+        }
     }
 }
 
 impl ConsensusFactory for Factory {
     fn new_active_consensus(&self) -> (ConsensusInstance, DynConsensusCtl) {
-        // TODO: manage sub-dirs
-        let db = kaspa_database::prelude::open_db(self.db_root_dir.clone(), true, self.db_parallelism);
-        // TODO: pass to consensus
+        let entry = self.management_store.read().current_consensus_entry().unwrap();
+        let dir = self.db_root_dir.join(entry.directory_name);
+        let db = kaspa_database::prelude::open_db(dir, true, self.db_parallelism);
+        // TODO: pass lock to consensus
         let session_lock = Arc::new(TokioRwLock::new(()));
-        let consensus = Arc::new(Consensus::new(db, &self.config, self.notification_root.clone(), self.counters.clone()));
-        (ConsensusInstance::new(session_lock, consensus.clone()), consensus)
+        let consensus = Arc::new(Consensus::new(db.clone(), &self.config, self.notification_root.clone(), self.counters.clone()));
+
+        (ConsensusInstance::new(session_lock, consensus.clone()), Arc::new(Ctl::new(self.management_store.clone(), db, consensus)))
     }
 
     fn new_staging_consensus(&self) -> (ConsensusInstance, DynConsensusCtl) {
-        todo!()
+        let entry = self.management_store.write().new_staging_consensus_entry().unwrap();
+        let dir = self.db_root_dir.join(entry.directory_name);
+        let db = kaspa_database::prelude::open_db(dir, true, self.db_parallelism);
+        // TODO: pass lock to consensus
+        let session_lock = Arc::new(TokioRwLock::new(()));
+        let consensus = Arc::new(Consensus::new(
+            db.clone(),
+            &self.config.to_builder().skip_adding_genesis().build(),
+            self.notification_root.clone(),
+            self.counters.clone(),
+        ));
+
+        (ConsensusInstance::new(session_lock, consensus.clone()), Arc::new(Ctl::new(self.management_store.clone(), db, consensus)))
     }
 }

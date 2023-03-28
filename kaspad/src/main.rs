@@ -43,7 +43,8 @@ mod monitor;
 const DEFAULT_DATA_DIR: &str = "datadir";
 const CONSENSUS_DB: &str = "consensus";
 const UTXOINDEX_DB: &str = "utxoindex";
-const AMGR_DB: &str = "addressmanager";
+const META_DB: &str = "meta";
+
 // TODO: add a Config
 // TODO: apply Args to Config
 // TODO: log to file
@@ -119,9 +120,9 @@ fn get_home_dir() -> PathBuf {
 
 fn get_app_dir() -> PathBuf {
     #[cfg(target_os = "windows")]
-    return get_home_dir().join("kaspa-rust");
+    return get_home_dir().join("rusty-kaspa");
     #[cfg(not(target_os = "windows"))]
-    return get_home_dir().join(".kaspa-rust");
+    return get_home_dir().join(".rusty-kaspa");
 }
 
 pub fn main() {
@@ -164,22 +165,26 @@ pub fn main() {
 
     let consensus_db_dir = db_dir.join(CONSENSUS_DB);
     let utxoindex_db_dir = db_dir.join(UTXOINDEX_DB);
-    let amgr_db_dir = db_dir.join(AMGR_DB);
+    let meta_db_dir = db_dir.join(META_DB);
 
     if args.reset_db {
         // TODO: add prompt that validates the choice (unless you pass -y)
         info!("Deleting databases {:?}, {:?}", consensus_db_dir, utxoindex_db_dir);
         kaspa_database::prelude::delete_db(consensus_db_dir.clone());
         kaspa_database::prelude::delete_db(utxoindex_db_dir.clone());
-        kaspa_database::prelude::delete_db(amgr_db_dir.clone());
+        kaspa_database::prelude::delete_db(meta_db_dir.clone());
     }
 
     info!("Consensus Data directory {}", consensus_db_dir.display());
     fs::create_dir_all(consensus_db_dir.as_path()).unwrap();
+    fs::create_dir_all(meta_db_dir.as_path()).unwrap();
     if args.utxoindex {
         info!("Utxoindex Data directory {}", utxoindex_db_dir.display());
         fs::create_dir_all(utxoindex_db_dir.as_path()).unwrap();
     }
+
+    // DB used for addresses store and for multi-consensus management
+    let meta_db = kaspa_database::prelude::open_db(meta_db_dir, true, 1);
 
     let grpc_server_addr = args.rpclisten.unwrap_or_else(|| "127.0.0.1:16610".to_string()).parse().unwrap();
 
@@ -201,6 +206,7 @@ pub fn main() {
     // Use `num_cpus` background threads for the consensus database as recommended by rocksdb
     let consensus_db_parallelism = num_cpus::get();
     let consensus_factory = Arc::new(ConsensusFactory::new(
+        meta_db.clone(),
         &config,
         consensus_db_dir,
         consensus_db_parallelism,
@@ -221,8 +227,7 @@ pub fn main() {
         None
     };
 
-    let amgr_db = kaspa_database::prelude::open_db(amgr_db_dir, true, 1);
-    let amgr = AddressManager::new(amgr_db);
+    let amgr = AddressManager::new(meta_db);
 
     let rpc_core_server = Arc::new(RpcCoreServer::new(
         consensus_manager.clone(),

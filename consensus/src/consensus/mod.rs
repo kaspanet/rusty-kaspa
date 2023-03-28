@@ -1,3 +1,4 @@
+pub mod ctl;
 pub mod factory;
 pub mod test_consensus;
 
@@ -70,12 +71,9 @@ use kaspa_consensus_core::{
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 
 use crossbeam_channel::{unbounded as unbounded_crossbeam, Receiver as CrossbeamReceiver, Sender as CrossbeamSender};
-use kaspa_consensusmanager::ConsensusCtl;
-use kaspa_database::prelude::StoreResultExtensions;
-// to avoid confusion with async_channel
 use futures_util::future::BoxFuture;
 use itertools::Itertools;
-use kaspa_core::{core::Core, service::Service};
+use kaspa_database::prelude::StoreResultExtensions;
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
 use parking_lot::RwLock;
@@ -811,37 +809,5 @@ impl ConsensusApi for Consensus {
 
     fn pruning_point(&self) -> Option<Hash> {
         self.pruning_store.read().pruning_point().unwrap_option()
-    }
-}
-
-impl Service for Consensus {
-    fn ident(self: Arc<Consensus>) -> &'static str {
-        "consensus"
-    }
-
-    fn start(self: Arc<Consensus>, _core: Arc<Core>) -> Vec<JoinHandle<()>> {
-        self.init()
-    }
-
-    fn stop(self: Arc<Consensus>) {
-        self.signal_exit()
-    }
-}
-
-impl ConsensusCtl for Consensus {
-    fn start(&self) -> Vec<JoinHandle<()>> {
-        todo!()
-    }
-
-    fn stop(&self) {
-        todo!()
-    }
-
-    fn make_active(&self) {
-        todo!()
-    }
-
-    fn delete(&self) {
-        todo!()
     }
 }
