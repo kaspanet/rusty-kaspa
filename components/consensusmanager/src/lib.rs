@@ -94,9 +94,9 @@ impl ConsensusManager {
         self.inner.read().current.consensus.clone()
     }
 
-    pub fn new_staging_consensus(&self) -> StagingConsensus<'_> {
+    pub fn new_staging_consensus(self: &Arc<Self>) -> StagingConsensus {
         let (consensus, ctl) = self.factory.new_staging_consensus();
-        StagingConsensus::new(self, ConsensusInner::new(consensus, ctl))
+        StagingConsensus::new(self.clone(), ConsensusInner::new(consensus, ctl))
     }
 
     fn worker(&self) {
@@ -126,14 +126,14 @@ impl Service for ConsensusManager {
     }
 }
 
-pub struct StagingConsensus<'a> {
-    manager: &'a ConsensusManager,
+pub struct StagingConsensus {
+    manager: Arc<ConsensusManager>,
     staging: ConsensusInner,
     handles: VecDeque<JoinHandle<()>>,
 }
 
-impl<'a> StagingConsensus<'a> {
-    fn new(manager: &'a ConsensusManager, staging: ConsensusInner) -> Self {
+impl StagingConsensus {
+    fn new(manager: Arc<ConsensusManager>, staging: ConsensusInner) -> Self {
         let handles = VecDeque::from_iter(staging.ctl.start());
         Self { manager, staging, handles }
     }
@@ -155,13 +155,7 @@ impl<'a> StagingConsensus<'a> {
     }
 }
 
-// impl Drop for StagingConsensus<'_> {
-//     fn drop(&mut self) {
-//         todo!()
-//     }
-// }
-
-impl Deref for StagingConsensus<'_> {
+impl Deref for StagingConsensus {
     type Target = ConsensusInstance;
 
     fn deref(&self) -> &Self::Target {
