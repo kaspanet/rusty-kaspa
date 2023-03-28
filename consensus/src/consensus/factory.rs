@@ -1,11 +1,12 @@
 use super::Consensus;
 use crate::{model::stores::U64Key, pipeline::ProcessingCounters};
-use kaspa_consensus_core::{api::DynConsensus, config::Config};
+use kaspa_consensus_core::config::Config;
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
-use kaspa_consensusmanager::{ConsensusFactory, DynConsensusCtl};
+use kaspa_consensusmanager::{ConsensusFactory, ConsensusInstance, DynConsensusCtl};
 use kaspa_database::prelude::{CachedDbAccess, CachedDbItem, DB};
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, sync::Arc};
+use tokio::sync::RwLock as TokioRwLock;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct ConsensusEntry {
@@ -57,21 +58,16 @@ impl Factory {
 }
 
 impl ConsensusFactory for Factory {
-    // fn new_consensus(&self, config: &Config) -> (DynConsensus, DynConsensusCtl) {
-    //     // TODO: manage sub-dirs
-    //     let db = kaspa_database::prelude::open_db(self.db_root_dir.clone(), true, self.db_parallelism);
-    //     let consensus = Arc::new(Consensus::new(db, config, self.notification_root.clone(), self.counters.clone()));
-    //     (consensus.clone(), consensus)
-    // }
-
-    fn new_active_consensus(&self) -> (DynConsensus, DynConsensusCtl) {
+    fn new_active_consensus(&self) -> (ConsensusInstance, DynConsensusCtl) {
         // TODO: manage sub-dirs
         let db = kaspa_database::prelude::open_db(self.db_root_dir.clone(), true, self.db_parallelism);
+        // TODO: pass to consensus
+        let session_lock = Arc::new(TokioRwLock::new(()));
         let consensus = Arc::new(Consensus::new(db, &self.config, self.notification_root.clone(), self.counters.clone()));
-        (consensus.clone(), consensus)
+        (ConsensusInstance::new(session_lock, consensus.clone()), consensus)
     }
 
-    fn new_staging_consensus(&self) -> (DynConsensus, DynConsensusCtl) {
+    fn new_staging_consensus(&self) -> (ConsensusInstance, DynConsensusCtl) {
         todo!()
     }
 }

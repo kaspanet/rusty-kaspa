@@ -7,7 +7,7 @@ use tokio::sync::{RwLock as TokioRwLock, RwLockReadGuard as TokioRwLockReadGuard
 /// Consensus controller trait. Includes methods required to start/stop/control consensus, but which should not
 /// be exposed to ordinary users
 pub trait ConsensusCtl: Sync + Send {
-    /// Initialize and start processors etc    
+    /// Initialize and start workers etc    
     fn start(&self) -> Vec<JoinHandle<()>>;
 
     /// Shutdown all workers and clear runtime resources
@@ -23,22 +23,22 @@ pub trait ConsensusCtl: Sync + Send {
 pub type DynConsensusCtl = Arc<dyn ConsensusCtl>;
 
 pub trait ConsensusFactory: Sync + Send {
-    /// Create an instance of current active consensus or create one if no such exists
-    fn new_active_consensus(&self) -> (DynConsensus, DynConsensusCtl);
+    /// Load an instance of current active consensus or create one if no such exists
+    fn new_active_consensus(&self) -> (ConsensusInstance, DynConsensusCtl);
 
     /// Create a new empty staging consensus
-    fn new_staging_consensus(&self) -> (DynConsensus, DynConsensusCtl);
+    fn new_staging_consensus(&self) -> (ConsensusInstance, DynConsensusCtl);
 }
 
 /// Test-only mock factory
 struct MockFactory;
 
 impl ConsensusFactory for MockFactory {
-    fn new_active_consensus(&self) -> (DynConsensus, DynConsensusCtl) {
+    fn new_active_consensus(&self) -> (ConsensusInstance, DynConsensusCtl) {
         unimplemented!()
     }
 
-    fn new_staging_consensus(&self) -> (DynConsensus, DynConsensusCtl) {
+    fn new_staging_consensus(&self) -> (ConsensusInstance, DynConsensusCtl) {
         unimplemented!()
     }
 }
@@ -50,8 +50,8 @@ struct ConsensusInner {
 }
 
 impl ConsensusInner {
-    fn new(consensus: DynConsensus, ctl: DynConsensusCtl) -> Self {
-        Self { consensus: ConsensusInstance::new(consensus), ctl }
+    fn new(consensus: ConsensusInstance, ctl: DynConsensusCtl) -> Self {
+        Self { consensus, ctl }
     }
 }
 
@@ -64,7 +64,7 @@ struct ManagerInner {
 }
 
 impl ManagerInner {
-    fn new(consensus: DynConsensus, ctl: DynConsensusCtl) -> Self {
+    fn new(consensus: ConsensusInstance, ctl: DynConsensusCtl) -> Self {
         Self { current: ConsensusInner::new(consensus, ctl), handles: Default::default() }
     }
 }
@@ -84,7 +84,10 @@ impl ConsensusManager {
     /// used for test purposes only.
     pub fn from_consensus<T: ConsensusApi + ConsensusCtl + 'static>(consensus: Arc<T>) -> Self {
         let (consensus, ctl) = (consensus.clone() as DynConsensus, consensus as DynConsensusCtl);
-        Self { factory: Arc::new(MockFactory), inner: RwLock::new(ManagerInner::new(consensus, ctl)) }
+        Self {
+            factory: Arc::new(MockFactory),
+            inner: RwLock::new(ManagerInner::new(ConsensusInstance::new(Arc::new(TokioRwLock::new(())), consensus), ctl)),
+        }
     }
 
     pub fn consensus(&self) -> ConsensusInstance {
@@ -96,7 +99,7 @@ impl ConsensusManager {
         StagingConsensus::new(self, ConsensusInner::new(consensus, ctl))
     }
 
-    fn worker(&self, _core: Arc<Core>) {
+    fn worker(&self) {
         let handles = self.inner.read().current.ctl.clone().start();
         self.inner.write().handles.extend(handles);
         // If current consensus is switched, this loop will join the replaced handles, and will switch to waiting for the new ones
@@ -111,8 +114,8 @@ impl Service for ConsensusManager {
         "consensus manager"
     }
 
-    fn start(self: Arc<Self>, core: Arc<Core>) -> Vec<JoinHandle<()>> {
-        vec![std::thread::spawn(move || self.worker(core))]
+    fn start(self: Arc<Self>, _core: Arc<Core>) -> Vec<JoinHandle<()>> {
+        vec![std::thread::spawn(move || self.worker())]
     }
 
     fn stop(self: Arc<Self>) {
@@ -149,6 +152,12 @@ impl<'a> StagingConsensus<'a> {
     }
 }
 
+// impl Drop for StagingConsensus<'_> {
+//     fn drop(&mut self) {
+//         todo!()
+//     }
+// }
+
 impl Deref for StagingConsensus<'_> {
     type Target = ConsensusInstance;
 
@@ -164,8 +173,8 @@ pub struct ConsensusInstance {
 }
 
 impl ConsensusInstance {
-    pub fn new(consensus: DynConsensus) -> Self {
-        Self { session_lock: Arc::new(TokioRwLock::new(())), consensus }
+    pub fn new(session_lock: Arc<TokioRwLock<()>>, consensus: DynConsensus) -> Self {
+        Self { session_lock, consensus }
     }
 
     pub async fn session(&self) -> ConsensusSession<'_> {
