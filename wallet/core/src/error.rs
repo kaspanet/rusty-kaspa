@@ -15,7 +15,10 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum Error {
     #[error("Error: {0}")]
-    String(String),
+    Custom(String),
+
+    #[error("please select an account")]
+    AccountSelection,
 
     #[error("RPC error: {0}")]
     KaspaRpcClientResult(#[from] KaspaRpcError),
@@ -61,6 +64,15 @@ pub enum Error {
 
     #[error("Base64 decode error: {0}")]
     DecodeError(#[from] DecodeError),
+
+    #[error(transparent)]
+    WorkflowWasm(#[from] workflow_wasm::error::Error),
+
+    #[error(transparent)]
+    Address(#[from] kaspa_addresses::AddressError),
+
+    // #[error(transparent)]
+    // CoreSigner(#[from] CoreSignerError),
 }
 
 impl From<Error> for JsValue {
@@ -77,7 +89,13 @@ impl<T> From<PoisonError<T>> for Error {
 
 impl From<String> for Error {
     fn from(err: String) -> Self {
-        Self::String(err)
+        Self::Custom(err)
+    }
+}
+
+impl From<&str> for Error {
+    fn from(err: &str) -> Self {
+        Self::Custom(err.to_string())
     }
 }
 

@@ -10,13 +10,14 @@ use kaspa_consensus_core::{
     wasm::{
         keypair::PrivateKey,
         signer::{Error as SignerError, Result as SignerResult, Signer as SignerTrait},
-        MutableTransaction,
+        // tx::MutableTransaction,
     },
 };
 use std::collections::BTreeMap;
 use wasm_bindgen::prelude::*;
 use workflow_log::log_trace;
 use workflow_wasm::abi::TryFromJsValue;
+use crate::tx::MutableTransaction;
 
 /// `Signer` is a type capable of signing transactions.
 #[derive(TryFromJsValue, Clone, Debug)]
@@ -62,7 +63,7 @@ impl TryFrom<PrivateKeyArray> for Vec<PrivateKey> {
     fn try_from(keys: PrivateKeyArray) -> std::result::Result<Self, Self::Error> {
         let mut private_keys: Vec<PrivateKey> = vec![];
         for key in keys.iter() {
-            private_keys.push(PrivateKey::try_from(&key).map_err(|_| Self::Error::String("Unable to cast PrivateKey".to_string()))?);
+            private_keys.push(PrivateKey::try_from(&key).map_err(|_| Self::Error::Custom("Unable to cast PrivateKey".to_string()))?);
         }
 
         Ok(private_keys)

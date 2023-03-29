@@ -1,11 +1,11 @@
 use super::error::Error;
 use consensus_core::subnets::SubnetworkId;
-use consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
-use consensus_core::wasm::{ref_from_abi, UtxoEntry, UtxoEntryList};
-use js_sys::{Array, Object};
+use consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput };
+// use consensus_core::wasm::{ref_from_abi, UtxoEntry };
+use js_sys::Object;
 use wasm_bindgen::prelude::*;
 //use workflow_log::log_trace;
-use std::sync::Arc;
+// use std::sync::Arc;
 use workflow_wasm::jsvalue::*;
 use workflow_wasm::object::*;
 
@@ -107,35 +107,5 @@ impl TryFrom<JsValue> for Transaction {
         } else {
             Err("Transaction must be an object".into())
         }
-    }
-}
-
-impl TryFrom<JsValue> for UtxoEntryList {
-    type Error = Error;
-    fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
-        if !js_value.is_array() {
-            return Err("UtxoEntryList must be an array".into());
-        }
-
-        let mut list = vec![];
-        for entry in Array::from(&js_value).iter() {
-            list.push(match ref_from_abi!(UtxoEntry, &entry) {
-                Ok(value) => value,
-                Err(err) => {
-                    if !entry.is_object() {
-                        panic!("invalid UTXOEntry: {err}")
-                    }
-                    //log_trace!("entry: {:?}", entry);
-                    let object = Object::from(entry);
-                    let amount = object.get_u64("amount")?;
-                    let script_public_key: ScriptPublicKey =
-                        object.get("scriptPublicKey").map_err(|_| Error::Custom("missing `script` property".into()))?.try_into()?;
-                    let block_daa_score = object.get_u64("blockDaaScore")?;
-                    let is_coinbase = object.get_bool("isCoinbase")?;
-                    UtxoEntry { amount, script_public_key, block_daa_score, is_coinbase }
-                }
-            })
-        }
-        Ok(Self(Arc::new(list)))
     }
 }

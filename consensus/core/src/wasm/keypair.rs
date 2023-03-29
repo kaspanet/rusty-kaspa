@@ -4,6 +4,7 @@ use std::str::FromStr;
 use wasm_bindgen::prelude::*;
 use workflow_wasm::abi::TryFromJsValue;
 
+/// Data structure that contains a secret and public keys.
 #[derive(Debug, Clone)]
 #[wasm_bindgen(inspectable)]
 pub struct Keypair {
@@ -44,6 +45,7 @@ pub fn generate_random_keypair_not_secure() -> Result<Keypair, JsError> {
     Ok(Keypair::new(secret_key, public_key, xonly_public_key))
 }
 
+/// Data structure that envelops a Private Key
 #[derive(TryFromJsValue, Clone, Debug)]
 #[wasm_bindgen]
 pub struct PrivateKey {

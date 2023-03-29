@@ -57,6 +57,21 @@ impl Mnemonic {
         let vec = Vec::<u8>::from_hex(&entropy).unwrap_or_else(|err| panic!("invalid entropy `{entropy}`: {err}"));
         self.entropy = <Vec<u8> as TryInto<Entropy>>::try_into(vec).unwrap_or_else(|_| panic!("Invalid entropy: `{entropy}`"));
     }
+    
+    #[wasm_bindgen(js_name = random)]
+    pub fn random_js(&self) -> Mnemonic {
+        Mnemonic::random(&mut rand::thread_rng(), Default::default())
+    }
+    
+    #[wasm_bindgen(getter, js_name = phrase)]
+    pub fn phrase_string(&self) -> String {
+        self.phrase.clone()
+    }
+
+    #[wasm_bindgen(setter, js_name = phrase)]
+    pub fn set_phrase(&mut self, phrase: &str) {
+        self.phrase = phrase.to_string();
+    }
 }
 
 impl Mnemonic {

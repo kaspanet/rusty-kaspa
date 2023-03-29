@@ -122,7 +122,7 @@ impl BorshSchema for ScriptPublicKey {
 /// much it pays.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
-#[wasm_bindgen(inspectable)]
+#[wasm_bindgen(inspectable, js_name = TxUtxoEntry)]
 pub struct UtxoEntry {
     pub amount: u64,
     #[wasm_bindgen(js_name = scriptPublicKey, getter_with_clone)]

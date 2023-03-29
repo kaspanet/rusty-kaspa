@@ -17,19 +17,23 @@ use workflow_core::runtime;
 
 const DEFAULT_PATH: &str = "~/.kaspa/wallet.kaspa";
 
+pub use kaspa_wallet_core::account::AccountKind;
+
 pub struct PrivateKey(Vec<SecretKey>);
 
 #[derive(Default, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
-pub struct WalletAccount {
-    name: String,
-    private_key_index: u32,
+pub struct StoredWalletAccount {
+    pub private_key_index: u32,
+    pub account_kind: AccountKind,
+    pub name: String,
+    pub title: String,
 }
 
 // pub enum WalletAccountVersion {
 //     V1(WalletAccount),
 // }
 
-pub type WalletAccountList = Arc<Mutex<Vec<WalletAccount>>>;
+pub type WalletAccountList = Arc<Mutex<Vec<StoredWalletAccount>>>;
 
 #[derive(Default, Clone, Serialize, Deserialize)]
 pub struct Wallet {
@@ -42,7 +46,7 @@ impl Wallet {
     }
 }
 
-// #[derive()]
+/// Wallet file storage interface
 #[wasm_bindgen(inspectable)]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Store {

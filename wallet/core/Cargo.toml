@@ -30,10 +30,16 @@ workflow-wasm.workspace = true
 kaspa-consensus-core.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+serde-wasm-bindgen.workspace = true
 borsh.workspace = true
 # consensus.workspace = true
 cfg-if.workspace = true
 base64.workspace = true
+itertools.workspace = true
+futures.workspace = true
+kaspa-utils.workspace = true
+kaspa-hashes.workspace = true
+
 
 [dependencies.web-sys]
 workspace = true

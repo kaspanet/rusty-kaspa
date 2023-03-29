@@ -86,6 +86,9 @@ impl TryFrom<&str> for Prefix {
     }
 }
 
+///
+///  Kaspa `Address` version (`PubKey`, `PubKey ECDSA`, `ScriptHash`)
+/// 
 #[derive(
     PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema,
 )]
@@ -132,6 +135,7 @@ pub const PAYLOAD_VECTOR_SIZE: usize = 36;
 /// Used as the underlying type for address payload, optimized for the largest version length (33).
 pub type PayloadVec = SmallVec<[u8; PAYLOAD_VECTOR_SIZE]>;
 
+/// Kaspa `Address` struct that serializes to and from an address format string: `kaspa:qz0s...t8cv`.
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Hash, Serialize, Deserialize)]
 #[wasm_bindgen(inspectable)]
 pub struct Address {

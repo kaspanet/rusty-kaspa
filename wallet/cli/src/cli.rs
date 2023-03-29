@@ -35,7 +35,7 @@ impl WalletCli {
         self.term.lock().unwrap().as_ref().cloned() //map(|term| term.clone())
     }
 
-    async fn action(&self, action: Action, _argv: Vec<String>, term: Arc<Terminal>) -> Result<()> {
+    async fn action(&self, action: Action, mut argv: Vec<String>, term: Arc<Terminal>) -> Result<()> {
         match action {
             Action::Help => {
                 term.writeln("\n\rCommands:\n\r");
@@ -95,6 +95,30 @@ impl WalletCli {
             }
             Action::UnsubscribeDaaScore => {
                 self.wallet.unsubscribe_daa_score().await?;
+            }
+
+            // ~~~
+
+            Action::List => {
+                let accounts = self.wallet.accounts().await;
+                for account in accounts.iter() {
+                    term.writeln(account.get_ls_string());
+                }
+            }
+            Action::Select => {
+                if argv.is_empty() {
+                    self.wallet.select(None).await?;
+                } else {
+                    let name = argv.remove(0);
+                    let accounts = self.wallet.accounts().await;
+                    if let Some(idx) = accounts.iter().position(|account| account.name() == name) {
+                        self.wallet.select(Some(accounts.get(idx).unwrap().clone())).await?;
+                    } else {
+                        self.wallet.select(None).await?;
+                    }
+                }
+
+                // TODO
             }
             #[cfg(target_arch = "wasm32")]
             Action::Reload => {

@@ -1,6 +1,7 @@
 use crate::imports::*;
 use kaspa_rpc_core::notify::collector::RpcCoreCollector;
 pub use kaspa_rpc_macros::build_wrpc_client_interface;
+use workflow_rpc::client::Ctl;
 use std::fmt::Debug;
 
 /// [`NotificationMoe`] controls notification delivery process
@@ -21,6 +22,7 @@ struct Inner {
     rpc: Arc<RpcClient<RpcApiOps>>,
     notification_channel: Channel<Notification>,
     encoding: Encoding,
+    ctl_channel: Channel<Ctl>,
 }
 
 impl Inner {
@@ -28,7 +30,11 @@ impl Inner {
         let re = Regex::new(r"^wrpc").unwrap();
         let url = re.replace(url, "ws").to_string();
         // log_trace!("Kaspa wRPC::{encoding} connecting to: {url}");
-        let options = RpcClientOptions { url: &url, ..RpcClientOptions::default() };
+        let ctl_channel = Channel::<Ctl>::unbounded();
+
+        let options = RpcClientOptions { url: &url, 
+            ctl_channel: Some(ctl_channel.clone()),
+            ..RpcClientOptions::default() };
 
         let notification_channel = Channel::unbounded();
 
@@ -71,7 +77,7 @@ impl Inner {
         });
         let rpc = Arc::new(RpcClient::new_with_encoding(encoding, interface.into(), options)?);
 
-        let client = Self { rpc, notification_channel, encoding };
+        let client = Self { rpc, notification_channel, encoding, ctl_channel };
 
         Ok(client)
     }
@@ -220,6 +226,11 @@ impl KaspaRpcClient {
     pub fn notification_mode(&self) -> NotificationMode {
         self.notification_mode
     }
+
+    pub fn ctl_channel_receiver(&self) -> Receiver<Ctl> {
+        self.inner.ctl_channel.receiver.clone()
+    }
+
 }
 
 #[async_trait]

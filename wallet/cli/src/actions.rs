@@ -12,6 +12,10 @@ use workflow_terminal::Terminal;
 pub enum Action {
     #[describe("Display this help")]
     Help,
+    #[describe("List wallet accounts")]
+    List,
+    #[describe("Select an account")]
+    Select,
     #[describe("?Ping server (testing)")]
     Ping,
     #[describe("Get Info (testing)")]
