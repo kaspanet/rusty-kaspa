@@ -1,8 +1,7 @@
-use js_sys::Object;
+//use js_sys::Object;
 use kaspa_addresses::Address;
 use wasm_bindgen::prelude::*;
 // pub use kaspa_consensus_core::wasm::MutableTransaction;
-
 
 use kaspa_consensus_core::hashing::sighash::calc_schnorr_signature_hash;
 use kaspa_consensus_core::hashing::sighash::SigHashReusedValues;
@@ -15,7 +14,6 @@ use crate::utxo::*;
 // use crate::tx;
 use secp256k1::{rand, Secp256k1};
 
-
 // ::{
 //     // self,
 //     // MutableTransaction,
@@ -25,8 +23,13 @@ use secp256k1::{rand, Secp256k1};
 //     // TransactionId,
 //     UtxoEntry,
 // };
-use kaspa_consensus_core::tx::{self, ScriptPublicKey, Transaction, // UtxoEntry,
-    TransactionInput, TransactionOutpoint, TransactionOutput
+use kaspa_consensus_core::tx::{
+    self,
+    ScriptPublicKey,
+    Transaction, // UtxoEntry,
+    TransactionInput,
+    TransactionOutpoint,
+    TransactionOutput,
 };
 // use crate::tx;
 // use crate::wasm::UtxoEntry;
@@ -84,7 +87,7 @@ pub struct MutableTransaction {
 impl MutableTransaction {
     #[wasm_bindgen(constructor)]
     pub fn constructor(tx: &Transaction, entries: &UtxoEntryList) -> Self {
-        Self { tx: Arc::new(Mutex::new(tx.clone())), entries : entries.clone() }
+        Self { tx: Arc::new(Mutex::new(tx.clone())), entries: entries.clone() }
         // Self { tx: Arc::new(Mutex::new(tx)), entries, calculated_fee: None, calculated_mass: None }
     }
 
@@ -126,38 +129,36 @@ impl TryFrom<MutableTransaction> for tx::MutableTransaction<Transaction> {
     fn try_from(mtx: MutableTransaction) -> Result<Self, Self::Error> {
         Ok(Self {
             tx: mtx.tx.lock()?.clone(),
-            entries: mtx.entries.into(),//iter().map(|entry|entry.).collect(),
-            calculated_fee: None,  //value.calculated_fee,
-            calculated_mass: None, //value.calculated_mass,
+            entries: mtx.entries.into(), //iter().map(|entry|entry.).collect(),
+            calculated_fee: None,        //value.calculated_fee,
+            calculated_mass: None,       //value.calculated_mass,
         })
     }
 }
 
-// impl TryFrom<tx::MutableTransaction<Transaction>> for MutableTransaction {
-//     type Error = Error;
-//     fn try_from(value: tx::MutableTransaction<Transaction>) -> Result<Self, Self::Error> {
-//         Ok(Self {
-//             tx: Arc::new(Mutex::new(value.tx)),
-//             entries: value.entries.try_into()?,
-//             // calculated_fee: value.calculated_fee,
-//             // calculated_mass: value.calculated_mass,
-//         })
-//     }
-// }
-
+impl TryFrom<(tx::MutableTransaction<Transaction>, UtxoEntryList)> for MutableTransaction {
+    type Error = Error;
+    fn try_from(value: (tx::MutableTransaction<Transaction>, UtxoEntryList)) -> Result<Self, Self::Error> {
+        Ok(Self {
+            tx: Arc::new(Mutex::new(value.0.tx)),
+            entries: value.1,
+            // calculated_fee: value.calculated_fee,
+            // calculated_mass: value.calculated_mass,
+        })
+    }
+}
 
 pub struct Destination {
-// outpoint: OutPoint,
+    // outpoint: OutPoint,
 }
 
-pub struct TransactionOptions {
+pub struct TransactionOptions {}
 
-}
-
+#[allow(dead_code)] //TODO: remove me
 pub struct Output {
-    address : Address,
-    amount : u64,
-    utxo_entry : Option<Arc<UtxoEntry>>,
+    address: Address,
+    amount: u64,
+    utxo_entry: Option<Arc<UtxoEntry>>,
 }
 
 pub struct Outputs {
@@ -167,89 +168,64 @@ pub struct Outputs {
 /// `VirtualTransaction` envelops a collection of multiple related `kaspa_wallet_coreMutableTransaction` instances.
 #[derive(Clone)]
 #[wasm_bindgen]
+#[allow(dead_code)] //TODO: remove me
 pub struct VirtualTransaction {
     transactions: Vec<MutableTransaction>,
-    payload : Vec<u8>,
+    payload: Vec<u8>,
     // include_fees : bool,
 }
 
 impl VirtualTransaction {
-    pub fn new(utxo_selection: SelectionContext, outputs: &Outputs, payload: Vec<u8>) -> Self {
-
+    pub fn new(utxo_selection: SelectionContext, _outputs: &Outputs, payload: Vec<u8>) -> Self {
         let entries = &utxo_selection.selected_entries;
 
         let chunks = entries.chunks(80).collect::<Vec<&[UtxoEntryReference]>>();
 
-        let mut mutable = vec![];
+        //let mut mutable: std::vec::Vec<T> = vec![];
 
         // ---------------------------------------------
         // TODO - get a set of destination addresses
         let secp = Secp256k1::new();
-        let (secret_key, public_key) = secp.generate_keypair(&mut rand::thread_rng());
+        let (_secret_key, public_key) = secp.generate_keypair(&mut rand::thread_rng());
         let script_pub_key = ScriptVec::from_slice(&public_key.serialize());
         let prev_tx_id = TransactionId::from_str("880eb9819a31821d9d2399e2f35e2433b72637e393d71ecc9b8d0250f49153c3").unwrap();
         // ---------------------------------------------
 
+        let transactions = chunks
+            .into_iter()
+            .map(|chunk| {
+                let utxos = chunk.iter().map(|reference| reference.utxo.clone()).collect::<Vec<Arc<UtxoEntry>>>();
 
-        let transactions = chunks.into_iter().map(|chunk| {
-
-            let utxos = chunk.iter().map(|reference|{
-                reference.utxo.clone()
-            }).collect::<Vec<Arc<UtxoEntry>>>();
-
-            // let prev_tx_id = TransactionId::default();
-            let inputs = utxos.iter().enumerate().map(|(sequence,utxo)| {
-                TransactionInput {
-                    previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 0 },
-                    signature_script: vec![],
-                    sequence : sequence as u64,
-                    sig_op_count: 0,
-                }
-            }).collect::<Vec<TransactionInput>>();
-
-
-            let tx = Transaction::new(
-                0,
-                vec![
-                    TransactionInput {
+                // let prev_tx_id = TransactionId::default();
+                let inputs = utxos
+                    .iter()
+                    .enumerate()
+                    .map(|(sequence, _utxo)| TransactionInput {
                         previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 0 },
                         signature_script: vec![],
-                        sequence: 0,
+                        sequence: sequence as u64,
                         sig_op_count: 0,
-                    },
-                    TransactionInput {
-                        previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 1 },
-                        signature_script: vec![],
-                        sequence: 1,
-                        sig_op_count: 0,
-                    },
-                    TransactionInput {
-                        previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 2 },
-                        signature_script: vec![],
-                        sequence: 2,
-                        sig_op_count: 0,
-                    },
-                ],
-                vec![
-                    TransactionOutput { value: 300, script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()) },
-                    TransactionOutput { value: 300, script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()) },
-                ],
-                1615462089000,
-                SubnetworkId::from_bytes([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
-                0,
-                vec![],
-            );
+                    })
+                    .collect::<Vec<TransactionInput>>();
 
-            MutableTransaction { 
-                tx : Arc::new(Mutex::new(tx)), 
-                entries : utxos, //entries.try_into().unwrap()
-            }
+                let tx = Transaction::new(
+                    0,
+                    inputs,
+                    // outputs.into(),
+                    vec![
+                        TransactionOutput { value: 300, script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()) },
+                        TransactionOutput { value: 300, script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()) },
+                    ],
+                    1615462089000,
+                    SubnetworkId::from_bytes([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+                    0,
+                    vec![],
+                );
 
-        }).collect();
+                MutableTransaction { tx: Arc::new(Mutex::new(tx)), entries: (*entries).clone().try_into().unwrap() }
+            })
+            .collect();
 
-        VirtualTransaction {
-            transactions,
-            payload,
-        }
+        VirtualTransaction { transactions, payload }
     }
 }

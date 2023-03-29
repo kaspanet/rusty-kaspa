@@ -1,3 +1,4 @@
+use crate::tx::MutableTransaction;
 use crate::Result;
 use js_sys::Array;
 use kaspa_consensus_core::{
@@ -17,7 +18,6 @@ use std::collections::BTreeMap;
 use wasm_bindgen::prelude::*;
 use workflow_log::log_trace;
 use workflow_wasm::abi::TryFromJsValue;
-use crate::tx::MutableTransaction;
 
 /// `Signer` is a type capable of signing transactions.
 #[derive(TryFromJsValue, Clone, Debug)]
@@ -25,6 +25,12 @@ use crate::tx::MutableTransaction;
 pub struct Signer {
     private_keys: Vec<PrivateKey>,
     pub verify: bool,
+}
+
+impl Signer {
+    fn private_keys(&self) -> Vec<[u8; 32]> {
+        self.private_keys.iter().map(|k| k.into()).collect::<Vec<_>>()
+    }
 }
 
 #[wasm_bindgen]
@@ -36,14 +42,15 @@ impl Signer {
 
     #[wasm_bindgen(js_name = "signTransaction")]
     pub fn sign_transaction(&self, mtx: MutableTransaction, verify_sig: bool) -> std::result::Result<MutableTransaction, SignerError> {
-        sign_transaction(mtx, &self.private_keys.iter().map(|k| k.into()).collect::<Vec<_>>(), verify_sig)
-            .map_err(|err| SignerError::Custom(err.to_string()))
+        sign_mutable_transaction(mtx, &self.private_keys(), verify_sig).map_err(|err| SignerError::Custom(err.to_string()))
     }
 }
 
 impl SignerTrait for Signer {
     fn sign(&self, mtx: SignableTransaction) -> SignerResult {
-        self.sign_transaction(mtx.try_into()?, self.verify)?.try_into()
+        let mtx = sign_transaction(mtx, &self.private_keys(), self.verify).map_err(|err| SignerError::Custom(err.to_string()))?;
+
+        Ok(mtx)
     }
 }
 
@@ -84,8 +91,8 @@ pub fn js_sign_transaction(
             private_keys.push(key.secret_bytes());
         }
 
-        let mtx =
-            sign_transaction(mtx, &private_keys, verify_sig).map_err(|err| SignerError::Custom(format!("Unable to sign: {err:?}")))?;
+        let mtx = sign_mutable_transaction(mtx, &private_keys, verify_sig)
+            .map_err(|err| SignerError::Custom(format!("Unable to sign: {err:?}")))?;
         return Ok(mtx);
     }
 
@@ -94,8 +101,19 @@ pub fn js_sign_transaction(
     signer.sign_transaction(mtx, verify_sig)
 }
 
-pub fn sign_transaction(mtx: MutableTransaction, private_keys: &Vec<[u8; 32]>, verify_sig: bool) -> Result<MutableTransaction> {
-    let mtx = sign(mtx.try_into()?, private_keys)?;
+pub fn sign_mutable_transaction(
+    mtx: MutableTransaction,
+    private_keys: &Vec<[u8; 32]>,
+    verify_sig: bool,
+) -> Result<MutableTransaction> {
+    let entries = mtx.entries.clone();
+    let mtx = sign_transaction(mtx.try_into()?, private_keys, verify_sig)?;
+    let mtx = MutableTransaction::try_from((mtx, entries))?;
+    Ok(mtx)
+}
+
+pub fn sign_transaction(mtx: SignableTransaction, private_keys: &Vec<[u8; 32]>, verify_sig: bool) -> Result<SignableTransaction> {
+    let mtx = sign(mtx, private_keys)?;
     if verify_sig {
         let mtx_clone = mtx.clone();
         log_trace!("sign_transaction mtx: {mtx_clone:?}");
@@ -103,7 +121,6 @@ pub fn sign_transaction(mtx: MutableTransaction, private_keys: &Vec<[u8; 32]>, v
         log_trace!("verify...");
         verify(&tx_verifiable)?;
     }
-    let mtx = MutableTransaction::try_from(mtx)?;
     Ok(mtx)
 }
 

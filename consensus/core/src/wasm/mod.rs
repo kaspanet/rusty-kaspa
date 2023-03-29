@@ -11,6 +11,7 @@ pub mod utxo;
 // use consensus_core::hashing::sighash::SigHashReusedValues;
 // use consensus_core::hashing::sighash_type::SIG_HASH_ALL;
 use consensus_core::subnets::SubnetworkId;
+use consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
 use consensus_core::tx::{
     // self,
     // MutableTransaction,
@@ -20,7 +21,6 @@ use consensus_core::tx::{
     TransactionId,
     UtxoEntry,
 };
-use consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
 use core::str::FromStr;
 use itertools::Itertools;
 // use js_sys::Array;
@@ -119,7 +119,10 @@ fn test_sign() {
         },
         UtxoEntry { amount: 300, script_public_key: ScriptPublicKey::new(0, script_pub_key), block_daa_score: 0, is_coinbase: false },
     ];
-    let signed_tx = sign_with_multiple(consensus_core::tx::MutableTransaction::with_entries(unsigned_tx, entries), vec![secret_key.secret_bytes()]);
+    let signed_tx = sign_with_multiple(
+        consensus_core::tx::MutableTransaction::with_entries(unsigned_tx, entries),
+        vec![secret_key.secret_bytes()],
+    );
     let _populated_tx = signed_tx.as_verifiable();
     // assert_eq!(tv.check_scripts(&populated_tx), Ok(()));
     // assert_eq!(TransactionValidator::check_sig_op_counts(&populated_tx), Ok(()));

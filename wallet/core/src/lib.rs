@@ -7,10 +7,10 @@ pub mod error;
 pub mod result;
 pub mod signer;
 pub mod storage;
+pub mod tx;
 pub mod utxo;
 pub mod wallet;
 pub mod wrapper;
-pub mod tx;
 
 pub use accounts::dummy_address;
 pub use kaspa_addresses::Address;
@@ -31,7 +31,7 @@ macro_rules! hex {
     [..]};
 }
 
-use kaspa_rpc_core::{api::rpc::RpcApi, notify::connection::ChannelConnection, Notification};
+use kaspa_rpc_core::{/*api::rpc::RpcApi,*/ notify::connection::ChannelConnection, Notification};
 use kaspa_utils::channel::Channel;
 
 pub type DynRpcApi = dyn kaspa_rpc_core::api::rpc::RpcApi<ChannelConnection>;

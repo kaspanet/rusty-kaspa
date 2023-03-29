@@ -1,8 +1,8 @@
 use crate::imports::*;
 use kaspa_rpc_core::notify::collector::RpcCoreCollector;
 pub use kaspa_rpc_macros::build_wrpc_client_interface;
-use workflow_rpc::client::Ctl;
 use std::fmt::Debug;
+use workflow_rpc::client::Ctl;
 
 /// [`NotificationMoe`] controls notification delivery process
 #[wasm_bindgen]
@@ -32,9 +32,7 @@ impl Inner {
         // log_trace!("Kaspa wRPC::{encoding} connecting to: {url}");
         let ctl_channel = Channel::<Ctl>::unbounded();
 
-        let options = RpcClientOptions { url: &url, 
-            ctl_channel: Some(ctl_channel.clone()),
-            ..RpcClientOptions::default() };
+        let options = RpcClientOptions { url: &url, ctl_channel: Some(ctl_channel.clone()), ..RpcClientOptions::default() };
 
         let notification_channel = Channel::unbounded();
 
@@ -230,7 +228,6 @@ impl KaspaRpcClient {
     pub fn ctl_channel_receiver(&self) -> Receiver<Ctl> {
         self.inner.ctl_channel.receiver.clone()
     }
-
 }
 
 #[async_trait]

@@ -1,6 +1,6 @@
 use super::error::Error;
 use consensus_core::subnets::SubnetworkId;
-use consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput };
+use consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
 // use consensus_core::wasm::{ref_from_abi, UtxoEntry };
 use js_sys::Object;
 use wasm_bindgen::prelude::*;

@@ -70,7 +70,6 @@ pub enum Error {
 
     #[error(transparent)]
     Address(#[from] kaspa_addresses::AddressError),
-
     // #[error(transparent)]
     // CoreSigner(#[from] CoreSignerError),
 }
