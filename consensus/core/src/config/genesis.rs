@@ -1,8 +1,6 @@
 use crate::{block::Block, header::Header, subnets::SUBNETWORK_ID_COINBASE, tx::Transaction};
-use kaspa_hashes::{Hash, HASH_SIZE};
+use kaspa_hashes::{Hash, ZERO_HASH};
 use kaspa_muhash::EMPTY_MUHASH;
-
-const ZERO_HASH: Hash = Hash::from_bytes([0u8; HASH_SIZE]);
 
 /// The constants uniquely representing the genesis block
 #[derive(Clone)]
@@ -200,19 +198,24 @@ pub const DEVNET_GENESIS: GenesisBlock = GenesisBlock {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::merkle::calc_hash_merkle_root;
 
     #[test]
     fn test_genesis_hashes() {
         let genesis: Block = GENESIS.into();
+        assert_eq!(calc_hash_merkle_root(genesis.transactions.iter()), genesis.header.hash_merkle_root);
         assert_hashes_eq(genesis.hash(), GENESIS.hash);
 
         let genesis: Block = TESTNET_GENESIS.into();
+        assert_eq!(calc_hash_merkle_root(genesis.transactions.iter()), genesis.header.hash_merkle_root);
         assert_hashes_eq(genesis.hash(), TESTNET_GENESIS.hash);
 
         let genesis: Block = SIMNET_GENESIS.into();
+        assert_eq!(calc_hash_merkle_root(genesis.transactions.iter()), genesis.header.hash_merkle_root);
         assert_hashes_eq(genesis.hash(), SIMNET_GENESIS.hash);
 
         let genesis: Block = DEVNET_GENESIS.into();
+        assert_eq!(calc_hash_merkle_root(genesis.transactions.iter()), genesis.header.hash_merkle_root);
         assert_hashes_eq(genesis.hash(), DEVNET_GENESIS.hash);
     }
 
