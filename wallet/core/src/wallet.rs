@@ -1,24 +1,23 @@
-use crate::account::{AccountKind, AccountConfig};
+//use crate::account::{AccountConfig, AccountKind};
 use crate::error::Error;
-use crate::{accounts::*, account::Account};
 use crate::result::Result;
+use crate::storage::StoredWalletAccount;
+use crate::{account::Account, accounts::*};
+use futures::{select, FutureExt};
 use kaspa_notify::{
     listener::ListenerId,
     scope::{Scope, VirtualDaaScoreChangedScope},
 };
 use kaspa_rpc_core::{api::rpc::RpcApi, notify::connection::ChannelConnection, Notification};
 use kaspa_wrpc_client::{KaspaRpcClient, NotificationMode, WrpcEncoding};
-use workflow_core::channel::DuplexChannel;
-use workflow_log::log_error;
 use std::sync::{Arc, Mutex};
 use wasm_bindgen::prelude::*;
+use workflow_core::channel::DuplexChannel;
 #[allow(unused_imports)]
-use workflow_core::channel::{Channel, Receiver, Multiplexer};
-use workflow_rpc::client::Ctl;
-use crate::storage::StoredWalletAccount;
+use workflow_core::channel::{Channel, Multiplexer, Receiver};
 use workflow_core::task::spawn;
-use futures::{select, FutureExt};
-
+use workflow_log::log_error;
+use workflow_rpc::client::Ctl;
 
 #[derive(Clone)]
 pub enum Events {
@@ -29,12 +28,13 @@ pub enum Events {
 //#[derive(Clone)]
 pub struct Inner {
     // accounts: Vec<Arc<dyn WalletAccountTrait>>,
-    accounts : Mutex<Vec<Arc<Account>>>,
+    accounts: Mutex<Vec<Arc<Account>>>,
     listener_id: Mutex<ListenerId>,
     notification_receiver: Receiver<Notification>,
-    ctl_receiver : Receiver<Ctl>,
-    pub task_ctl : DuplexChannel,
-    multiplexer : Multiplexer<Events>,
+    #[allow(dead_code)] //TODO: remove me
+    ctl_receiver: Receiver<Ctl>,
+    pub task_ctl: DuplexChannel,
+    multiplexer: Multiplexer<Events>,
     pub selected_account: Mutex<Option<Arc<Account>>>,
 }
 
@@ -53,7 +53,7 @@ impl Wallet {
     }
 
     pub async fn try_with_rpc(rpc: Option<Arc<KaspaRpcClient>>) -> Result<Wallet> {
-        let master_xprv =
+        let _master_xprv =
             "kprv5y2qurMHCsXYrNfU3GCihuwG3vMqFji7PZXajMEqyBkNh9UZUJgoHYBLTKu1eM4MvUtomcXPQ3Sw9HZ5ebbM4byoUciHo1zrPJBQfqpLorQ";
 
         let rpc = if let Some(rpc) = rpc {
@@ -76,14 +76,12 @@ impl Wallet {
 
         let multiplexer = Multiplexer::new();
 
-
-
         let wallet = Wallet {
             rpc,
             inner: Arc::new(Inner {
                 accounts: Mutex::new(vec![]), //vec![Arc::new(WalletAccount::from_master_xprv(master_xprv, false, 0).await?)],
                 notification_receiver,
-                listener_id : Mutex::new(listener_id),
+                listener_id: Mutex::new(listener_id),
                 ctl_receiver,
                 multiplexer,
                 task_ctl: DuplexChannel::oneshot(),
@@ -94,14 +92,17 @@ impl Wallet {
         Ok(wallet)
     }
 
-    pub fn load_accounts(&self, stored_accounts : Vec<StoredWalletAccount>) {
-        let accounts = stored_accounts.iter().map(|stored| {
-            // TODO
-            // let config = AccountConfig { kind : AccountKind::Bip32 };
-            // storage_accounts
-            let rpc_api : Arc<crate::DynRpcApi> = self.rpc.clone();
-            Arc::new(Account::new(rpc_api, stored))
-        }).collect();
+    pub fn load_accounts(&self, stored_accounts: Vec<StoredWalletAccount>) {
+        let accounts = stored_accounts
+            .iter()
+            .map(|stored| {
+                // TODO
+                // let config = AccountConfig { kind : AccountKind::Bip32 };
+                // storage_accounts
+                let rpc_api: Arc<crate::DynRpcApi> = self.rpc.clone();
+                Arc::new(Account::new(rpc_api, stored))
+            })
+            .collect();
         *self.inner.accounts.lock().unwrap() = accounts;
     }
 
@@ -128,7 +129,7 @@ impl Wallet {
     }
 
     pub fn listener_id(&self) -> ListenerId {
-        self.inner.listener_id.lock().unwrap().clone()
+        *self.inner.listener_id.lock().unwrap()
     }
 
     pub fn notification_channel_receiver(&self) -> Receiver<Notification> {
@@ -180,13 +181,13 @@ impl Wallet {
     //     Ok(self.inner.lock().unwrap().accounts.get(0).unwrap().clone())
     // }
 
-    pub async fn select(&self, account : Option<Arc<Account>>) -> Result<()> {
+    pub async fn select(&self, account: Option<Arc<Account>>) -> Result<()> {
         *self.inner.selected_account.lock().unwrap() = account;
         Ok(())
     }
 
-    pub async fn account(self : &Arc<Self>) -> Result<Arc<Account>> {
-        Ok(self.inner.selected_account.lock().unwrap().clone().ok_or_else(|| Error::AccountSelection)?)
+    pub async fn account(self: &Arc<Self>) -> Result<Arc<Account>> {
+        self.inner.selected_account.lock().unwrap().clone().ok_or_else(|| Error::AccountSelection)
         // let account = self.inner.selected_account.lock().unwrap().clone();
         // if let Some(account) = account {
         //     account
@@ -204,7 +205,7 @@ impl Wallet {
         todo!()
         // Ok(self.account()?.receive_wallet())
     }
-    
+
     fn change_wallet(self: &Arc<Self>) -> Result<Arc<dyn AddressGeneratorTrait>> {
         todo!()
         // Ok(self.account()?.change_wallet())
@@ -242,8 +243,7 @@ impl Wallet {
     }
 
     pub async fn start_task(&self) -> Result<()> {
-
-        let self_ = self.clone();
+        let _self = self.clone();
         let ctl_receiver = self.rpc.ctl_channel_receiver();
         // let task_ctl = self.inner.lock().unwrap().task_ctl.clone();
         let multiplexer = self.inner.multiplexer.clone();
@@ -252,7 +252,6 @@ impl Wallet {
         // let multiplexer = multiplexer.clone();
 
         spawn(async move {
-
             loop {
                 select! {
                     _ = task_ctl_receiver.recv().fuse() => {
@@ -276,7 +275,6 @@ impl Wallet {
             }
 
             task_ctl_sender.send(()).await.unwrap();
-
         });
         Ok(())
     }
@@ -292,12 +290,11 @@ impl Wallet {
     //     }
     //     Ok(())
     // }
-    
+
     // pub async fn disconnect(&self) -> Result<()> {
     //     for account in self.inner.accounts.iter() {
     //         account.disconnect().await?;
     //     }
     //     Ok(())
     // }
-
 }

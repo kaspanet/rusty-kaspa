@@ -1,33 +1,20 @@
-use crate::result::Result;
 use crate::error::Error;
-use js_sys::{Array, Object};
+use crate::result::Result;
 use itertools::Itertools;
-// use kaspa_consensus_core::tx::UtxoEntry;
-// use kaspa_consensus_core::wasm::utxo::{UtxoEntry,UtxoEntryReference};
+use js_sys::{Array, Object};
+use kaspa_consensus_core::tx::{self, ScriptPublicKey, TransactionOutpoint};
 use kaspa_rpc_core::RpcUtxosByAddressesEntry;
-use workflow_wasm::abi::{TryFromJsValue, ref_from_abi};
 use std::sync::{
     atomic::{AtomicU32, Ordering},
     Arc, Mutex,
 };
 use wasm_bindgen::prelude::*;
-// use crate::wasm::utxo::*;
-use kaspa_consensus_core::tx::{self, ScriptPublicKey, TransactionOutpoint};
-// use crate::result::Result;
-// pub use crate::tx;//::UtxoEntry;
-// use workflow_wasm::abi::TryFromJsValue;
+use workflow_wasm::abi::ref_from_abi;
 use workflow_wasm::object::*;
-// use std::sync::{
-//     // atomic::{AtomicU32, Ordering},
-//     Arc, 
-//     // Mutex,
-// };
-use wasm_bindgen::prelude::*;
 
+use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use kaspa_addresses::Address;
 use serde::{Deserialize, Serialize};
-use borsh::{BorshDeserialize, BorshSerialize, BorshSchema};
-
 
 // #[derive(Clone, TryFromJsValue)]
 // #[wasm_bindgen]
@@ -54,8 +41,6 @@ use borsh::{BorshDeserialize, BorshSerialize, BorshSchema};
 //     }
 // }
 
-
-
 ///
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
@@ -70,9 +55,19 @@ pub struct UtxoEntry {
 
 impl UtxoEntry {
     #[inline(always)]
-    pub fn amount(&self) -> u64 { self.utxo_entry.amount }
+    pub fn amount(&self) -> u64 {
+        self.utxo_entry.amount
+    }
     #[inline(always)]
-    pub fn block_daa_score(&self) -> u64 { self.utxo_entry.block_daa_score }
+    pub fn block_daa_score(&self) -> u64 {
+        self.utxo_entry.block_daa_score
+    }
+}
+
+impl From<RpcUtxosByAddressesEntry> for UtxoEntry {
+    fn from(entry: RpcUtxosByAddressesEntry) -> UtxoEntry {
+        UtxoEntry { address: entry.address, outpoint: entry.outpoint, utxo_entry: entry.utxo_entry }
+    }
 }
 
 // #[derive(Clone, TryFromJsValue)]
@@ -89,14 +84,17 @@ impl AsRef<UtxoEntry> for UtxoEntryReference {
     }
 }
 
+impl From<UtxoEntryReference> for UtxoEntry {
+    fn from(value: UtxoEntryReference) -> Self {
+        (*value.utxo).clone()
+    }
+}
+
 pub struct SelectionContext {
     pub transaction_amount: u64,
     pub total_selected_amount: u64,
     pub selected_entries: Vec<UtxoEntryReference>,
 }
-
-
-
 
 #[derive(Clone, Copy)]
 #[repr(u32)]
@@ -129,10 +127,12 @@ impl UtxoSet {
     pub fn order(&self, order: UtxoOrdering) -> Result<()> {
         match order {
             UtxoOrdering::AscendingAmount => {
-                self.inner.entries.lock().unwrap().sort_by(|a, b| a.as_ref().amount().cmp(&b.as_ref().amount()));
+                //self.inner.entries.lock().unwrap().sort_by(|a, b| a.as_ref().amount().cmp(&b.as_ref().amount()));
+                self.inner.entries.lock().unwrap().sort_by_key(|a| a.as_ref().amount());
             }
             UtxoOrdering::AscendingDaaScore => {
-                self.inner.entries.lock().unwrap().sort_by(|a, b| a.as_ref().block_daa_score().cmp(&b.as_ref().block_daa_score()));
+                //self.inner.entries.lock().unwrap().sort_by(|a, b| a.as_ref().block_daa_score().cmp(&b.as_ref().block_daa_score()));
+                self.inner.entries.lock().unwrap().sort_by_key(|a| a.as_ref().block_daa_score());
             }
             UtxoOrdering::Unordered => {
                 // Ok(self.entries)
@@ -184,19 +184,6 @@ impl UtxoSet {
     }
 }
 
-
-impl From<RpcUtxosByAddressesEntry> for UtxoEntry {
-    fn from(entry: RpcUtxosByAddressesEntry) -> UtxoEntry {
-        UtxoEntry {
-            address: entry.address,
-            outpoint: entry.outpoint,
-            utxo_entry: entry.utxo_entry,
-        }
-    }
-}
-
-
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[wasm_bindgen]
 pub struct UtxoEntryList(Arc<Vec<UtxoEntry>>);
@@ -205,7 +192,7 @@ pub struct UtxoEntryList(Arc<Vec<UtxoEntry>>);
 impl UtxoEntryList {
     #[wasm_bindgen(constructor)]
     pub fn js_ctor(js_value: JsValue) -> Result<UtxoEntryList> {
-        Ok(js_value.try_into()?)
+        js_value.try_into()
     }
     #[wasm_bindgen(getter = items)]
     pub fn get_items_as_js_array(&self) -> JsValue {
@@ -247,6 +234,21 @@ impl TryFrom<Vec<Option<UtxoEntry>>> for UtxoEntryList {
     }
 }
 
+impl TryFrom<Vec<UtxoEntryReference>> for UtxoEntryList {
+    type Error = Error;
+    fn try_from(value: Vec<UtxoEntryReference>) -> std::result::Result<Self, Self::Error> {
+        let mut list = vec![];
+        for entry in value.into_iter() {
+            list.push(
+                entry
+                    .try_into()
+                    .map_err(|_| Error::Custom("Unable to cast `Vec<UtxoEntryReference>` into `UtxoEntryList`.".to_string()))?,
+            );
+        }
+
+        Ok(Self(Arc::new(list)))
+    }
+}
 
 impl TryFrom<JsValue> for UtxoEntryList {
     type Error = Error;
@@ -270,12 +272,12 @@ impl TryFrom<JsValue> for UtxoEntryList {
                         object.get("scriptPublicKey").map_err(|_| Error::Custom("missing `script` property".into()))?.try_into()?;
                     let block_daa_score = object.get_u64("blockDaaScore")?;
                     let is_coinbase = object.get_bool("isCoinbase")?;
-                    let address : Address = object.get_string("address")?.try_into()?;
-                    let outpoint : TransactionOutpoint = object.get("outpoint")?.try_into()?;
+                    let address: Address = object.get_string("address")?.try_into()?;
+                    let outpoint: TransactionOutpoint = object.get("outpoint")?.try_into()?;
                     UtxoEntry {
                         address,
-                        outpoint,                        
-                        utxo_entry : tx::UtxoEntry { amount, script_public_key, block_daa_score, is_coinbase }
+                        outpoint,
+                        utxo_entry: tx::UtxoEntry { amount, script_public_key, block_daa_score, is_coinbase },
                     }
                 }
             })

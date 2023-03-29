@@ -25,10 +25,10 @@ use kaspa_consensus_core::{blockhash, hashing, BlockHashMap, BlueWorkType};
 use kaspa_consensus_notify::service::NotifyService;
 use kaspa_hashes::Hash;
 
-use kaspa_bip32::{Mnemonic, ExtendedPrivateKey as XPrv};
 use flate2::read::GzDecoder;
 use futures_util::future::try_join_all;
 use itertools::Itertools;
+use kaspa_bip32::{ExtendedPrivateKey as XPrv, Mnemonic};
 use kaspa_core::core::Core;
 use kaspa_core::info;
 use kaspa_core::signals::Shutdown;

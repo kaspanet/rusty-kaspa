@@ -1,13 +1,15 @@
-use js_sys::Object;
-use wasm_bindgen::prelude::*;
-use crate::tx::{self, ScriptPublicKey, 
-    // Transaction, 
+use crate::tx::{
+    self,
+    ScriptPublicKey,
+    // Transaction,
     UtxoEntry,
     // TransactionInput, TransactionOutpoint, TransactionOutput
 };
 use itertools::Itertools;
 use js_sys::Array;
+use js_sys::Object;
 use serde::{Deserialize, Serialize};
+use wasm_bindgen::prelude::*;
 // use serde_wasm_bindgen::to_value;
 use std::sync::Arc;
 use workflow_wasm::abi::ref_from_abi;
@@ -58,7 +60,6 @@ impl TryFrom<Vec<Option<UtxoEntry>>> for UtxoEntryList {
         Ok(Self(Arc::new(list)))
     }
 }
-
 
 impl TryFrom<JsValue> for UtxoEntryList {
     type Error = Error;

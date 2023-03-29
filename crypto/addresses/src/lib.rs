@@ -88,7 +88,7 @@ impl TryFrom<&str> for Prefix {
 
 ///
 ///  Kaspa `Address` version (`PubKey`, `PubKey ECDSA`, `ScriptHash`)
-/// 
+///
 #[derive(
     PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema,
 )]

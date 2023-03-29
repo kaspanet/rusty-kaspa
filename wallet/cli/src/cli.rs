@@ -98,7 +98,6 @@ impl WalletCli {
             }
 
             // ~~~
-
             Action::List => {
                 let accounts = self.wallet.accounts().await;
                 for account in accounts.iter() {
