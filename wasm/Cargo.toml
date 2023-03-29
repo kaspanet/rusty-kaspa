@@ -29,3 +29,10 @@ default = []
 
 [package.metadata.docs.rs]
 targets = ["wasm32-unknown-unknown"]
+
+[package.metadata.emanate.wasm]
+targets = [
+    { target = "nodejs", out-dir = "nodejs/kaspa" },
+    { target = "web", out-dir = "web/kaspa" }
+]
+folder = "setup"
