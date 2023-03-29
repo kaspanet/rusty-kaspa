@@ -74,7 +74,7 @@ pub struct MutableTransaction {
     tx: Arc<Mutex<Transaction>>,
     /// Partially filled UTXO entry data
     #[wasm_bindgen(getter_with_clone)]
-    pub entries: UtxoEntryList,
+    pub entries: UtxoEntries,
     // Populated fee
     // #[wasm_bindgen(skip)]
     // pub calculated_fee: Option<u64>,
@@ -86,7 +86,7 @@ pub struct MutableTransaction {
 #[wasm_bindgen]
 impl MutableTransaction {
     #[wasm_bindgen(constructor)]
-    pub fn constructor(tx: &Transaction, entries: &UtxoEntryList) -> Self {
+    pub fn constructor(tx: &Transaction, entries: &UtxoEntries) -> Self {
         Self { tx: Arc::new(Mutex::new(tx.clone())), entries: entries.clone() }
         // Self { tx: Arc::new(Mutex::new(tx)), entries, calculated_fee: None, calculated_mass: None }
     }
@@ -136,9 +136,9 @@ impl TryFrom<MutableTransaction> for tx::MutableTransaction<Transaction> {
     }
 }
 
-impl TryFrom<(tx::MutableTransaction<Transaction>, UtxoEntryList)> for MutableTransaction {
+impl TryFrom<(tx::MutableTransaction<Transaction>, UtxoEntries)> for MutableTransaction {
     type Error = Error;
-    fn try_from(value: (tx::MutableTransaction<Transaction>, UtxoEntryList)) -> Result<Self, Self::Error> {
+    fn try_from(value: (tx::MutableTransaction<Transaction>, UtxoEntries)) -> Result<Self, Self::Error> {
         Ok(Self {
             tx: Arc::new(Mutex::new(value.0.tx)),
             entries: value.1,

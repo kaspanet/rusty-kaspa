@@ -186,12 +186,12 @@ impl UtxoSet {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[wasm_bindgen]
-pub struct UtxoEntryList(Arc<Vec<UtxoEntry>>);
+pub struct UtxoEntries(Arc<Vec<UtxoEntry>>);
 
 #[wasm_bindgen]
-impl UtxoEntryList {
+impl UtxoEntries {
     #[wasm_bindgen(constructor)]
-    pub fn js_ctor(js_value: JsValue) -> Result<UtxoEntryList> {
+    pub fn js_ctor(js_value: JsValue) -> Result<UtxoEntries> {
         js_value.try_into()
     }
     #[wasm_bindgen(getter = items)]
@@ -210,19 +210,19 @@ impl UtxoEntryList {
     }
 }
 
-impl From<UtxoEntryList> for Vec<Option<UtxoEntry>> {
-    fn from(value: UtxoEntryList) -> Self {
+impl From<UtxoEntries> for Vec<Option<UtxoEntry>> {
+    fn from(value: UtxoEntries) -> Self {
         value.0.as_ref().iter().map(|entry| Some(entry.clone())).collect_vec()
     }
 }
 
-impl From<UtxoEntryList> for Vec<Option<tx::UtxoEntry>> {
-    fn from(value: UtxoEntryList) -> Self {
+impl From<UtxoEntries> for Vec<Option<tx::UtxoEntry>> {
+    fn from(value: UtxoEntries) -> Self {
         value.0.as_ref().iter().map(|entry| Some(entry.utxo_entry.clone())).collect_vec()
     }
 }
 
-impl TryFrom<Vec<Option<UtxoEntry>>> for UtxoEntryList {
+impl TryFrom<Vec<Option<UtxoEntry>>> for UtxoEntries {
     type Error = Error;
     fn try_from(value: Vec<Option<UtxoEntry>>) -> std::result::Result<Self, Self::Error> {
         let mut list = vec![];
@@ -234,7 +234,7 @@ impl TryFrom<Vec<Option<UtxoEntry>>> for UtxoEntryList {
     }
 }
 
-impl TryFrom<Vec<UtxoEntryReference>> for UtxoEntryList {
+impl TryFrom<Vec<UtxoEntryReference>> for UtxoEntries {
     type Error = Error;
     fn try_from(value: Vec<UtxoEntryReference>) -> std::result::Result<Self, Self::Error> {
         let mut list = vec![];
@@ -250,7 +250,7 @@ impl TryFrom<Vec<UtxoEntryReference>> for UtxoEntryList {
     }
 }
 
-impl TryFrom<JsValue> for UtxoEntryList {
+impl TryFrom<JsValue> for UtxoEntries {
     type Error = Error;
     fn try_from(js_value: JsValue) -> std::result::Result<Self, Self::Error> {
         if !js_value.is_array() {
@@ -282,6 +282,6 @@ impl TryFrom<JsValue> for UtxoEntryList {
                 }
             })
         }
-        Ok(UtxoEntryList(Arc::new(list)))
+        Ok(Self(Arc::new(list)))
     }
 }
