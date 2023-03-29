@@ -6,7 +6,7 @@ use tokio::sync::mpsc::Receiver as MpscReceiver;
 use uuid::Uuid;
 
 #[derive(Debug)]
-pub(crate) enum HubEvent {
+pub enum HubEvent {
     NewPeer(Arc<Router>),
     PeerClosing(Uuid),
     Broadcast(Box<KaspadMessage>),

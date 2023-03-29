@@ -1,5 +1,7 @@
-use crate::flowcontext::orphans::{OrphanBlocksPool, MAX_ORPHANS};
-use crate::flowcontext::transactions::TransactionsSpread;
+use crate::flowcontext::{
+    orphans::{OrphanBlocksPool, MAX_ORPHANS},
+    transactions::TransactionsSpread,
+};
 use crate::v5;
 use async_trait::async_trait;
 use kaspa_addressmanager::AddressManager;
@@ -15,7 +17,11 @@ use kaspa_mining::{
     manager::MiningManager,
     mempool::tx::{Orphan, Priority},
 };
-use kaspa_p2p_lib::{common::ProtocolError, pb, ConnectionInitializer, KaspadHandshake, Router};
+use kaspa_p2p_lib::{
+    common::ProtocolError,
+    pb::{self, KaspadMessage},
+    ConnectionInitializer, HubEvent, KaspadHandshake, Router,
+};
 use parking_lot::Mutex;
 use std::{
     collections::HashSet,
@@ -24,16 +30,17 @@ use std::{
         Arc,
     },
 };
-use tokio::sync::RwLock as AsyncRwLock;
+use tokio::sync::{mpsc::Sender as MpscSender, RwLock as AsyncRwLock};
 use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct FlowContext {
     pub consensus: DynConsensus,
     pub config: Config,
+    hub_sender: MpscSender<HubEvent>,
     orphans_pool: Arc<AsyncRwLock<OrphanBlocksPool<dyn ConsensusApi>>>,
     shared_block_requests: Arc<Mutex<HashSet<Hash>>>,
-    transactions_spread: Arc<Mutex<TransactionsSpread>>,
+    transactions_spread: Arc<AsyncRwLock<TransactionsSpread>>,
     shared_transaction_requests: Arc<Mutex<HashSet<TransactionId>>>,
     is_ibd_running: Arc<AtomicBool>, // TODO: pass the context wrapped with Arc and avoid some of the internal ones
     pub amgr: Arc<Mutex<AddressManager>>,
@@ -71,16 +78,18 @@ impl<T: PartialEq + Eq + std::hash::Hash> Drop for RequestScope<T> {
 impl FlowContext {
     pub fn new(
         consensus: DynConsensus,
+        hub_sender: MpscSender<HubEvent>,
         amgr: Arc<Mutex<AddressManager>>,
         config: &Config,
         mining_manager: Arc<MiningManager<dyn ConsensusApi>>,
     ) -> Self {
         Self {
             consensus: consensus.clone(),
+            hub_sender: hub_sender.clone(),
             config: config.clone(),
             orphans_pool: Arc::new(AsyncRwLock::new(OrphanBlocksPool::new(consensus, MAX_ORPHANS))),
             shared_block_requests: Arc::new(Mutex::new(HashSet::new())),
-            transactions_spread: Arc::new(Mutex::new(TransactionsSpread::new())),
+            transactions_spread: Arc::new(AsyncRwLock::new(TransactionsSpread::new(hub_sender))),
             shared_transaction_requests: Arc::new(Mutex::new(HashSet::new())),
             is_ibd_running: Arc::new(AtomicBool::default()),
             amgr,
@@ -148,8 +157,8 @@ impl FlowContext {
     /// Returns true if the time for a rebroadcast of the mempool high priority transactions has come.
     ///
     /// If true, the instant of the call is registered as the last rebroadcast time.
-    pub fn should_rebroadcast_transactions(&self) -> bool {
-        self.transactions_spread.lock().should_rebroadcast()
+    pub async fn should_rebroadcast_transactions(&self) -> bool {
+        self.transactions_spread.write().await.should_rebroadcast()
     }
 
     /// Add the given transactions IDs to a set of IDs to broadcast. The IDs will be broadcasted to all peers
@@ -158,7 +167,12 @@ impl FlowContext {
     /// The broadcast itself may happen only during a subsequent call to this function since it is done at most
     /// at preset intervals or when the queue length is larger than the Inv message capacity.
     pub async fn broadcast_transactions(&self, transaction_ids: Vec<TransactionId>) -> Result<(), ProtocolError> {
-        self.transactions_spread.lock().broadcast(transaction_ids).await
+        self.transactions_spread.write().await.broadcast_ids(transaction_ids).await
+    }
+
+    /// Broadcast a locally-originated message to all active network peers
+    pub async fn broadcast(&self, msg: KaspadMessage) -> bool {
+        self.hub_sender.send(HubEvent::Broadcast(Box::new(msg))).await.is_ok()
     }
 }
 

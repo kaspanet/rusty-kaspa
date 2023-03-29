@@ -1,11 +1,11 @@
 use crate::common::ProtocolError;
 use crate::core::hub::Hub;
-use crate::ConnectionError;
 use crate::{core::connection_handler::ConnectionHandler, Router};
+use crate::{ConnectionError, HubEvent};
 use std::ops::Deref;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::mpsc::channel as mpsc_channel;
+use tokio::sync::mpsc::{channel as mpsc_channel, Receiver as MpscReceiver, Sender as MpscSender};
 use tokio::sync::oneshot::Sender as OneshotSender;
 use uuid::Uuid;
 
@@ -44,7 +44,7 @@ impl Adaptor {
 
     /// Creates a P2P adaptor with only client-side support. Typical Kaspa nodes should use `Adaptor::bidirectional`
     pub fn client_only(initializer: Arc<dyn ConnectionInitializer>) -> Arc<Self> {
-        let (hub_sender, hub_receiver) = mpsc_channel(128);
+        let (hub_sender, hub_receiver) = mpsc_channel(Self::hub_channel_size());
         let connection_handler = ConnectionHandler::new(hub_sender);
         let adaptor = Arc::new(Adaptor::new(None, connection_handler));
         adaptor.hub.clone().start_event_loop(hub_receiver, initializer);
@@ -52,8 +52,11 @@ impl Adaptor {
     }
 
     /// Creates a bidirectional P2P adaptor with a server serving at `serve_address` and with client support
-    pub fn bidirectional(serve_address: String, initializer: Arc<dyn ConnectionInitializer>) -> Result<Arc<Self>, ConnectionError> {
-        let (hub_sender, hub_receiver) = mpsc_channel(128);
+    pub fn bidirectional(
+        serve_address: String,
+        initializer: Arc<dyn ConnectionInitializer>,
+        (hub_sender, hub_receiver): (MpscSender<HubEvent>, MpscReceiver<HubEvent>),
+    ) -> Result<Arc<Self>, ConnectionError> {
         let connection_handler = ConnectionHandler::new(hub_sender);
         let server_termination = connection_handler.serve(serve_address)?;
         let adaptor = Arc::new(Adaptor::new(Some(server_termination), connection_handler));
@@ -74,6 +77,10 @@ impl Adaptor {
     /// Terminates all peers and cleans up any additional async resources
     pub async fn close(&self) {
         self.terminate_all_peers().await;
+    }
+
+    pub fn hub_channel_size() -> usize {
+        128
     }
 }
 

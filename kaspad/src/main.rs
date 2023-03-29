@@ -11,9 +11,12 @@ use kaspa_consensus_notify::service::NotifyService;
 use kaspa_core::{core::Core, signals::Signals, task::runtime::AsyncRuntime};
 use kaspa_index_processor::service::IndexService;
 use kaspa_mining::manager::MiningManager;
+use kaspa_p2p_flows::flow_context::FlowContext;
+use kaspa_p2p_lib::Adaptor;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
+use tokio::sync::mpsc::channel as mpsc_channel;
 
 // ~~~
 // TODO - discuss handling
@@ -228,16 +231,12 @@ pub fn main() {
     let rpc_core_server =
         Arc::new(RpcCoreServer::new(consensus.clone(), notify_service.notifier(), index_service.as_ref().map(|x| x.notifier())));
     let grpc_server = Arc::new(GrpcServer::new(grpc_server_addr, rpc_core_server.service()));
-    let p2p_service = Arc::new(P2pService::new(
-        consensus.clone(),
-        amgr,
-        mining_manager,
-        &config,
-        args.connect,
-        args.listen,
-        args.outbound_target,
-        args.inbound_limit,
-    ));
+
+    let (hub_sender, hub_receiver) = mpsc_channel(Adaptor::hub_channel_size());
+    let flow_context = Arc::new(FlowContext::new(consensus.clone(), hub_sender.clone(), amgr, &config, mining_manager));
+    let p2p_server_address = args.listen.clone().unwrap_or(String::from("[::1]:50051"));
+    let p2p_adaptor = Adaptor::bidirectional(p2p_server_address, flow_context.clone(), (hub_sender, hub_receiver)).unwrap();
+    let p2p_service = Arc::new(P2pService::new(flow_context, p2p_adaptor, args.connect, args.outbound_target, args.inbound_limit));
 
     // Create an async runtime and register the top-level async services
     let async_runtime = Arc::new(AsyncRuntime::new(args.async_threads));

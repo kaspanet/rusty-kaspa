@@ -2192,6 +2192,7 @@ dependencies = [
  "kaspa-index-processor",
  "kaspa-mining",
  "kaspa-p2p-flows",
+ "kaspa-p2p-lib",
  "kaspa-rpc-core",
  "kaspa-utxoindex",
  "kaspa-wrpc-server",
