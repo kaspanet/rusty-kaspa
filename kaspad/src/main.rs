@@ -169,7 +169,7 @@ pub fn main() {
 
     if args.reset_db {
         // TODO: add prompt that validates the choice (unless you pass -y)
-        info!("Deleting databases {:?}, {:?}", consensus_db_dir, utxoindex_db_dir);
+        info!("Deleting databases {:?}, {:?}, {:?}", consensus_db_dir, utxoindex_db_dir, meta_db_dir);
         kaspa_database::prelude::delete_db(consensus_db_dir.clone());
         kaspa_database::prelude::delete_db(utxoindex_db_dir.clone());
         kaspa_database::prelude::delete_db(meta_db_dir.clone());
