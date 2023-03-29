@@ -30,13 +30,13 @@ use crate::{
         reachability::inquirer as reachability,
         traversal_manager::DagTraversalManager,
     },
-    test_helpers::header_from_precomputed_hash,
 };
 use crossbeam_channel::{Receiver, Sender};
 use itertools::Itertools;
 use kaspa_consensus_core::{
     blockhash::{BlockHashExtensions, BlockHashes, ORIGIN},
     blockstatus::BlockStatus::{self, StatusHeaderOnly, StatusInvalid},
+    config::genesis::GenesisBlock,
     header::Header,
     BlockHashSet, BlockLevel,
 };
@@ -104,9 +104,7 @@ pub struct HeaderProcessor {
     pub(super) thread_pool: Arc<ThreadPool>,
 
     // Config
-    pub(super) genesis_hash: Hash,
-    pub(super) genesis_timestamp: u64,
-    pub(super) genesis_bits: u32,
+    pub(super) genesis: GenesisBlock,
     pub(super) timestamp_deviation_tolerance: u64,
     pub(super) target_time_per_block: u64,
     pub(super) max_block_parents: u8,
@@ -217,8 +215,7 @@ impl HeaderProcessor {
             receiver,
             body_sender,
             thread_pool,
-            genesis_hash: params.genesis_hash,
-            genesis_timestamp: params.genesis_timestamp,
+            genesis: params.genesis.clone(),
             difficulty_window_size: params.difficulty_window_size,
             db,
             relations_stores,
@@ -247,7 +244,6 @@ impl HeaderProcessor {
             target_time_per_block: params.target_time_per_block,
             max_block_parents: params.max_block_parents,
             mergeset_size_limit: params.mergeset_size_limit,
-            genesis_bits: params.genesis_bits,
             skip_proof_of_work: params.skip_proof_of_work,
             max_block_level: params.max_block_level,
             process_genesis,
@@ -495,31 +491,30 @@ impl HeaderProcessor {
     }
 
     pub fn process_genesis_if_needed(self: &Arc<HeaderProcessor>) {
-        if !self.process_genesis || self.header_was_processed(self.genesis_hash) {
+        if !self.process_genesis || self.header_was_processed(self.genesis.hash) {
             return;
         }
 
         {
             let mut batch = WriteBatch::default();
             let mut sc_write_guard = self.selected_chain_store.write();
-            sc_write_guard.init_with_pruning_point(&mut batch, self.genesis_hash).unwrap();
+            sc_write_guard.init_with_pruning_point(&mut batch, self.genesis.hash).unwrap();
 
             let mut hst_write_guard = self.headers_selected_tip_store.write();
-            hst_write_guard.set_batch(&mut batch, SortableBlock::new(self.genesis_hash, 0.into())).unwrap(); // TODO: take blue work from genesis block
+            hst_write_guard.set_batch(&mut batch, SortableBlock::new(self.genesis.hash, 0.into())).unwrap();
             self.db.write(batch).unwrap();
             drop(hst_write_guard);
             drop(sc_write_guard);
         }
 
-        self.pruning_store.write().set(self.genesis_hash, self.genesis_hash, 0).unwrap();
-        let mut header = header_from_precomputed_hash(self.genesis_hash, vec![]); // TODO
-        header.bits = self.genesis_bits;
-        header.timestamp = self.genesis_timestamp;
-        let header = Arc::new(header);
+        self.pruning_store.write().set(self.genesis.hash, self.genesis.hash, 0).unwrap();
+        let mut genesis_header: Header = self.genesis.clone().into();
+        genesis_header.hash = self.genesis.hash; // Force the provided genesis hash. Important for some tests.
+        let genesis_header = Arc::new(genesis_header);
         let mut ctx = HeaderProcessingContext::new(
-            self.genesis_hash,
-            &header,
-            PruningPointInfo::from_genesis(self.genesis_hash),
+            self.genesis.hash,
+            &genesis_header,
+            PruningPointInfo::from_genesis(self.genesis.hash),
             vec![BlockHashes::new(vec![ORIGIN])],
         );
         ctx.ghostdag_data = Some(self.ghostdag_managers.iter().map(|m| Arc::new(m.genesis_ghostdag_data())).collect());
@@ -529,7 +524,7 @@ impl HeaderProcessor {
         ctx.merge_depth_root = Some(ORIGIN);
         ctx.finality_point = Some(ORIGIN);
         ctx.block_level = Some(self.max_block_level);
-        self.commit_header(ctx, &header);
+        self.commit_header(ctx, &genesis_header);
     }
 
     pub fn process_origin_if_needed(self: &Arc<HeaderProcessor>) {

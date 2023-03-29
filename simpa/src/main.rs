@@ -200,7 +200,7 @@ fn adjust_perf_params(args: &Args, consensus_params: &Params, perf_params: &mut 
 
 #[tokio::main]
 async fn validate(src_consensus: &Consensus, dst_consensus: &Consensus, params: &Params, delay: f64, bps: f64) {
-    let hashes = topologically_ordered_hashes(src_consensus, params.genesis_hash);
+    let hashes = topologically_ordered_hashes(src_consensus, params.genesis.hash);
     let num_blocks = hashes.len();
     let num_txs = print_stats(src_consensus, &hashes, delay, bps, params.ghostdag_k);
     info!("Validating {num_blocks} blocks with {num_txs} transactions overall...");

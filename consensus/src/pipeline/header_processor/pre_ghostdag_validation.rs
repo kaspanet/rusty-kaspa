@@ -21,7 +21,7 @@ impl HeaderProcessor {
         header: &Header,
         is_trusted: bool,
     ) -> BlockProcessResult<()> {
-        if header.hash == self.genesis_hash {
+        if header.hash == self.genesis.hash {
             return Ok(());
         }
 
@@ -35,7 +35,7 @@ impl HeaderProcessor {
     }
 
     fn validate_header_in_isolation(self: &Arc<HeaderProcessor>, ctx: &mut HeaderProcessingContext) -> BlockProcessResult<()> {
-        if ctx.header.hash == self.genesis_hash {
+        if ctx.header.hash == self.genesis.hash {
             return Ok(());
         }
 

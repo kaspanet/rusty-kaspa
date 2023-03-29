@@ -21,14 +21,11 @@ use std::sync::Arc;
 // TODO - discuss handling
 use args::{Args, Defaults};
 // use clap::Parser;
-// any specific reason this was used?  changed as_display() to display() below
-// use thiserror::__private::PathAsDisplay;
 // ~~~
-//use clap::Parser;
 
 use crate::monitor::ConsensusMonitor;
 use kaspa_consensus::config::ConfigBuilder;
-use kaspa_consensus::params::{DEVNET_PARAMS, MAINNET_PARAMS};
+use kaspa_consensus::params::{DEVNET_PARAMS, MAINNET_PARAMS, SIMNET_PARAMS, TESTNET_PARAMS};
 use kaspa_utxoindex::{api::DynUtxoIndexApi, UtxoIndex};
 
 use async_channel::unbounded;
@@ -194,9 +191,9 @@ pub fn main() {
 
     let config = match network_type {
         NetworkType::Mainnet => ConfigBuilder::new(MAINNET_PARAMS).build(),
-        NetworkType::Testnet => unimplemented!("testnet params"),
+        NetworkType::Testnet => ConfigBuilder::new(TESTNET_PARAMS).build(),
         NetworkType::Devnet => ConfigBuilder::new(DEVNET_PARAMS).build(),
-        NetworkType::Simnet => unimplemented!("simnet params"),
+        NetworkType::Simnet => ConfigBuilder::new(SIMNET_PARAMS).build(),
     };
 
     let (notification_send, notification_recv) = unbounded();

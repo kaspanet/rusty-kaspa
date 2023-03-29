@@ -1,4 +1,5 @@
 pub mod constants;
+pub mod genesis;
 pub mod params;
 
 use std::ops::Deref;

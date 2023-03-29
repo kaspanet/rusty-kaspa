@@ -104,7 +104,7 @@ mod tests {
         let wait_handles = consensus.init();
         let body_processor = consensus.block_body_processor();
 
-        consensus.add_block_with_parents(1.into(), vec![config.genesis_hash]).await.unwrap();
+        consensus.add_block_with_parents(1.into(), vec![config.genesis.hash]).await.unwrap();
 
         {
             let block = consensus.build_block_with_parents_and_transactions(2.into(), vec![1.into()], vec![]);
@@ -112,7 +112,7 @@ mod tests {
             assert_match!(body_processor.validate_body_in_context(&block.to_immutable()), Err(RuleError::MissingParents(_)));
         }
 
-        let valid_block = consensus.build_block_with_parents_and_transactions(3.into(), vec![config.genesis_hash], vec![]);
+        let valid_block = consensus.build_block_with_parents_and_transactions(3.into(), vec![config.genesis.hash], vec![]);
         consensus.validate_and_insert_block(valid_block.to_immutable()).await.unwrap();
         {
             let mut block = consensus.build_block_with_parents_and_transactions(2.into(), vec![3.into()], vec![]);

@@ -201,9 +201,9 @@ impl VirtualStateProcessor {
             receiver,
             thread_pool,
 
-            genesis_hash: params.genesis_hash,
-            genesis_bits: params.genesis_bits,
-            genesis_timestamp: params.genesis_timestamp,
+            genesis_hash: params.genesis.hash,
+            genesis_bits: params.genesis.bits,
+            genesis_timestamp: params.genesis.timestamp,
             max_block_parents: params.max_block_parents,
             difficulty_window_size: params.difficulty_window_size,
             mergeset_size_limit: params.mergeset_size_limit,

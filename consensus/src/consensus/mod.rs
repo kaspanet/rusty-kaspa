@@ -242,7 +242,7 @@ impl Consensus {
         let relations_service = relations_services[0].clone();
         let reachability_service = MTReachabilityService::new(reachability_store.clone());
         let dag_traversal_manager = DagTraversalManager::new(
-            params.genesis_hash,
+            params.genesis.hash,
             ghostdag_store.clone(),
             relations_service.clone(),
             block_window_cache_for_difficulty.clone(),
@@ -255,18 +255,18 @@ impl Consensus {
             headers_store.clone(),
             dag_traversal_manager.clone(),
             params.timestamp_deviation_tolerance as usize,
-            params.genesis_timestamp,
+            params.genesis.timestamp,
         );
         let difficulty_manager = DifficultyManager::new(
             headers_store.clone(),
-            params.genesis_bits,
+            params.genesis.bits,
             params.difficulty_window_size,
             params.target_time_per_block,
         );
         let depth_manager = BlockDepthManager::new(
             params.merge_depth,
             params.finality_depth,
-            params.genesis_hash,
+            params.genesis.hash,
             depth_store.clone(),
             reachability_service.clone(),
             ghostdag_store.clone(),
@@ -277,7 +277,7 @@ impl Consensus {
             .enumerate()
             .map(|(level, ghostdag_store)| {
                 GhostdagManager::new(
-                    params.genesis_hash,
+                    params.genesis.hash,
                     params.ghostdag_k,
                     ghostdag_store,
                     relations_services[level].clone(),
@@ -311,7 +311,7 @@ impl Consensus {
         let pruning_manager = PruningManager::new(
             params.pruning_depth,
             params.finality_depth,
-            params.genesis_hash,
+            params.genesis.hash,
             reachability_service.clone(),
             ghostdag_store.clone(),
             headers_store.clone(),
@@ -320,7 +320,7 @@ impl Consensus {
 
         let parents_manager = ParentsManager::new(
             params.max_block_level,
-            params.genesis_hash,
+            params.genesis.hash,
             headers_store.clone(),
             reachability_service.clone(),
             relations_service.clone(),
@@ -406,7 +406,7 @@ impl Consensus {
             transaction_validator.clone(),
             past_median_time_manager.clone(),
             params.max_block_mass,
-            params.genesis_hash,
+            params.genesis.hash,
             config.process_genesis,
             counters.clone(),
         ));
@@ -463,7 +463,7 @@ impl Consensus {
             ghostdag_managers,
             dag_traversal_manager.clone(),
             params.max_block_level,
-            params.genesis_hash,
+            params.genesis.hash,
             params.pruning_proof_m,
             params.difficulty_window_size,
             params.ghostdag_k,
