@@ -201,8 +201,7 @@ impl IbdFlow {
         let proof: PruningPointProof = msg.try_into()?;
         debug!("received proof with overall {} headers", proof.iter().map(|l| l.len()).sum::<usize>());
 
-        // TODO: fix key already exists bug
-        // consensus.validate_pruning_proof(&proof)?;
+        consensus.validate_pruning_proof(&proof)?;
 
         let proof_pruning_point = proof[0].last().expect("was just ensured by validation").hash;
 
