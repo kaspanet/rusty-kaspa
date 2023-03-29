@@ -36,6 +36,9 @@ pub enum PruningImportError {
     #[error("the pruning proof doesn't have any shared blocks with the known DAGs, but doesn't have enough headers from levels higher than the existing block levels.")]
     PruningProofNotEnoughHeaders,
 
+    #[error("block {0} already appeared in the proof headers for leve {1}")]
+    PruningProofDuplicateHeaderAtLevel(Hash, BlockLevel),
+
     #[error("new pruning point has an invalid transaction {0}: {1}")]
     NewPruningPointTxError(Hash, TxRuleError),
 
