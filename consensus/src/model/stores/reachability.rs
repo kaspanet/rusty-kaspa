@@ -71,7 +71,7 @@ impl DbReachabilityStore {
 
     pub fn new_with_alternative_prefix_end(db: Arc<DB>, cache_size: u64, prefix_end: u8) -> Self {
         assert_ne!(DEFAULT_PREFIX_END, prefix_end, "this prefix end is already used as the default one");
-        Self::new_with_prefix_end(db, cache_size, DEFAULT_PREFIX_END)
+        Self::new_with_prefix_end(db, cache_size, prefix_end)
     }
 
     fn new_with_prefix_end(db: Arc<DB>, cache_size: u64, prefix_end: u8) -> Self {
