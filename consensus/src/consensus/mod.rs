@@ -480,7 +480,9 @@ impl Consensus {
         reachability::init(reachability_store.write().deref_mut()).unwrap();
 
         // Ensure the relations stores are initialized
-        header_processor.process_origin_if_needed();
+        header_processor.init();
+        // Ensure that some pruning point is registered
+        virtual_processor.init();
 
         // Ensure that genesis was processed
         if config.process_genesis {

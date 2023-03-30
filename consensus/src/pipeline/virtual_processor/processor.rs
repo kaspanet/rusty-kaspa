@@ -63,7 +63,7 @@ use kaspa_consensus_notify::{
     root::ConsensusNotificationRoot,
 };
 use kaspa_core::{debug, info, time::unix_now, trace};
-use kaspa_database::prelude::StoreError;
+use kaspa_database::prelude::{StoreError, StoreResultEmptyTuple, StoreResultExtensions};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
 use kaspa_notify::notifier::Notify;
@@ -708,6 +708,16 @@ impl VirtualStateProcessor {
         }
     }
 
+    pub fn init(self: &Arc<Self>) {
+        let pp_read_guard = self.pruning_store.upgradable_read();
+
+        // Ensure that some pruning point is registered
+        if pp_read_guard.pruning_point().unwrap_option().is_none() {
+            self.past_pruning_points_store.insert(0, self.genesis.hash).unwrap_and_ignore_key_already_exists();
+            RwLockUpgradableReadGuard::upgrade(pp_read_guard).set(self.genesis.hash, self.genesis.hash, 0).unwrap();
+        }
+    }
+
     pub fn process_genesis(self: &Arc<Self>) {
         // Init virtual and pruning stores
         self.virtual_stores
@@ -715,7 +725,7 @@ impl VirtualStateProcessor {
             .state
             .set(VirtualState::from_genesis(&self.genesis, self.ghostdag_manager.ghostdag(&[self.genesis.hash])))
             .unwrap();
-        self.past_pruning_points_store.insert(0, self.genesis.hash).unwrap();
+        self.past_pruning_points_store.insert(0, self.genesis.hash).unwrap_and_ignore_key_already_exists();
         self.pruning_store.write().set(self.genesis.hash, self.genesis.hash, 0).unwrap();
 
         // Write the UTXO state of genesis

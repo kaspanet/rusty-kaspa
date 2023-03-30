@@ -4,7 +4,9 @@ use kaspa_consensus_core::config::Config;
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_consensusmanager::{ConsensusFactory, ConsensusInstance, DynConsensusCtl};
 use kaspa_core::time::unix_now;
-use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, CachedDbItem, DirectDbWriter, StoreResult, StoreResultExtensions, DB};
+use kaspa_database::prelude::{
+    BatchDbWriter, CachedDbAccess, CachedDbItem, DirectDbWriter, StoreError, StoreResult, StoreResultExtensions, DB,
+};
 use parking_lot::RwLock;
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
@@ -13,23 +15,24 @@ use tokio::sync::RwLock as TokioRwLock;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct ConsensusEntry {
+    key: u64,
     directory_name: String,
     creation_timestamp: u64,
 }
 
 impl ConsensusEntry {
-    pub fn new(directory_name: String, creation_timestamp: u64) -> Self {
-        Self { directory_name, creation_timestamp }
+    pub fn new(key: u64, directory_name: String, creation_timestamp: u64) -> Self {
+        Self { key, directory_name, creation_timestamp }
     }
 
     pub fn from_key(key: u64) -> Self {
-        Self { directory_name: format!("consensus-{:0>3}", key), creation_timestamp: unix_now() }
+        Self { key, directory_name: format!("consensus-{:0>3}", key), creation_timestamp: unix_now() }
     }
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct MultiConsensusMetadata {
-    current_consensus_key: u64,
+    current_consensus_key: Option<u64>,
     staging_consensus_key: Option<u64>,
     max_key_used: u64,
     /// Memorize whether this node was recently an archive node
@@ -62,25 +65,45 @@ impl MultiConsensusManagementStore {
             let mut batch = WriteBatch::default();
             let metadata = MultiConsensusMetadata::default();
             self.metadata.write(BatchDbWriter::new(&mut batch), &metadata).unwrap();
-            self.entries
-                .write(
-                    BatchDbWriter::new(&mut batch),
-                    metadata.current_consensus_key.into(),
-                    ConsensusEntry::from_key(metadata.current_consensus_key),
-                )
-                .unwrap();
             self.db.write(batch).unwrap();
+        }
+
+        // TODO: iterate through consensus entries and remove non active ones (if not archival)
+    }
+
+    /// The inner Ok/Error signifies whether the returned entry is an existing/new consensus
+    pub fn active_consensus_entry(&mut self) -> StoreResult<Result<ConsensusEntry, ConsensusEntry>> {
+        let mut metadata = self.metadata.read()?;
+        match metadata.current_consensus_key {
+            Some(key) => Ok(Ok(self.entries.read(key.into())?)),
+            None => {
+                metadata.max_key_used += 1; // Capture the slot
+                let key = metadata.max_key_used;
+                self.metadata.write(DirectDbWriter::new(&self.db), &metadata)?;
+                Ok(Err(ConsensusEntry::from_key(key)))
+            }
         }
     }
 
-    pub fn current_consensus_entry(&self) -> StoreResult<ConsensusEntry> {
-        self.entries.read(self.metadata.read()?.current_consensus_key.into())
+    pub fn save_new_active_consensus(&mut self, entry: ConsensusEntry) -> StoreResult<()> {
+        let key = entry.key;
+        if self.entries.has(key.into())? {
+            return Err(StoreError::KeyAlreadyExists(format!("{key}")));
+        }
+        let mut batch = WriteBatch::default();
+        self.entries.write(BatchDbWriter::new(&mut batch), key.into(), entry)?;
+        self.metadata.update(BatchDbWriter::new(&mut batch), |mut data| {
+            data.current_consensus_key = Some(key);
+            data
+        })?;
+        self.db.write(batch)?;
+        Ok(())
     }
 
     pub fn new_staging_consensus_entry(&mut self) -> StoreResult<ConsensusEntry> {
         let mut metadata = self.metadata.read()?;
 
-        // TODO: handle the case where `staging_consensus_key` is some
+        // TODO: handle the case where `staging_consensus_key` is already some (perhaps from a previous interrupted run)
 
         metadata.max_key_used += 1;
         let new_key = metadata.max_key_used;
@@ -97,7 +120,8 @@ impl MultiConsensusManagementStore {
 
     pub fn commit_staging_consensus(&mut self) -> StoreResult<()> {
         self.metadata.update(DirectDbWriter::new(&self.db), |mut data| {
-            data.current_consensus_key = data.staging_consensus_key.take().expect("expecting a staging consensus");
+            assert!(data.staging_consensus_key.is_some());
+            data.current_consensus_key = data.staging_consensus_key.take();
             data
         })?;
         Ok(())
@@ -131,7 +155,7 @@ impl Factory {
         counters: Arc<ProcessingCounters>,
     ) -> Self {
         let mut config = config.clone();
-        config.process_genesis = true;
+        config.process_genesis = false;
         Self {
             management_store: Arc::new(RwLock::new(MultiConsensusManagementStore::new(management_db))),
             config,
@@ -145,12 +169,31 @@ impl Factory {
 
 impl ConsensusFactory for Factory {
     fn new_active_consensus(&self) -> (ConsensusInstance, DynConsensusCtl) {
-        let entry = self.management_store.read().current_consensus_entry().unwrap();
-        let dir = self.db_root_dir.join(entry.directory_name);
+        let mut config = self.config.clone();
+        let mut is_new_consensus = false;
+        let entry = match self.management_store.write().active_consensus_entry().unwrap() {
+            Ok(entry) => {
+                config.process_genesis = false;
+                entry
+            }
+            Err(entry) => {
+                // Configure to process genesis only if this is a brand new consensus
+                config.process_genesis = true;
+                is_new_consensus = true;
+                entry
+            }
+        };
+        let dir = self.db_root_dir.join(entry.directory_name.clone());
         let db = kaspa_database::prelude::open_db(dir, true, self.db_parallelism);
         // TODO: pass lock to consensus
         let session_lock = Arc::new(TokioRwLock::new(()));
-        let consensus = Arc::new(Consensus::new(db.clone(), &self.config, self.notification_root.clone(), self.counters.clone()));
+        let consensus = Arc::new(Consensus::new(db.clone(), &config, self.notification_root.clone(), self.counters.clone()));
+
+        // We write the new active entry only once the instance was created successfully.
+        // This way we can safely avoid processing genesis in future process runs
+        if is_new_consensus {
+            self.management_store.write().save_new_active_consensus(entry).unwrap();
+        }
 
         (ConsensusInstance::new(session_lock, consensus.clone()), Arc::new(Ctl::new(self.management_store.clone(), db, consensus)))
     }

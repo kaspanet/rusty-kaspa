@@ -516,7 +516,7 @@ impl HeaderProcessor {
         self.commit_header(ctx, &genesis_header);
     }
 
-    pub fn process_origin_if_needed(self: &Arc<HeaderProcessor>) {
+    pub fn init(self: &Arc<HeaderProcessor>) {
         if self.relations_stores.read()[0].has(ORIGIN).unwrap() {
             return;
         }
