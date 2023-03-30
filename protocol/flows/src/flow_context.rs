@@ -1,5 +1,6 @@
 use crate::flowcontext::{
     orphans::{OrphanBlocksPool, MAX_ORPHANS},
+    process_queue::ProcessQueue,
     transactions::TransactionsSpread,
 };
 use crate::v5;
@@ -25,6 +26,7 @@ use kaspa_p2p_lib::{
 use parking_lot::Mutex;
 use std::{
     collections::HashSet,
+    iter::once,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -149,25 +151,73 @@ impl FlowContext {
         self.orphans_pool.write().await.unorphan_blocks(root).await
     }
 
+    /// Updates the mempool after a new block arrival, relays newly unorphaned transactions
+    /// and possibly rebroadcast manually added transactions when not in IBD.
+    ///
+    /// _GO-KASPAD: OnNewBlock + broadcastTransactionsAfterBlockAdded_
+    pub async fn on_new_block(&self, block: Block) -> Result<(), ProtocolError> {
+        let hash = block.hash();
+        let blocks = self.unorphan_blocks(hash).await;
+        // Use a ProcessQueue so we get rid of duplicates
+        let mut transactions_to_broadcast = ProcessQueue::new();
+        for block in once(block).chain(blocks.into_iter()) {
+            transactions_to_broadcast
+                .enqueue_chunk(self.mining_manager().handle_new_block_transactions(&block.transactions)?.iter().map(|x| x.id()));
+        }
+
+        // Don't relay transactions when in IBD
+        if self.is_ibd_running() {
+            return Ok(());
+        }
+
+        if self.should_rebroadcast_transactions().await {
+            transactions_to_broadcast.enqueue_chunk(self.mining_manager().revalidate_high_priority_transactions()?.into_iter());
+        }
+
+        self.broadcast_transactions(transactions_to_broadcast.drain(transactions_to_broadcast.len())).await
+    }
+
+    /// Notifies that a new block template is available for miners.
+    pub async fn on_new_block_template(&self) -> Result<(), ProtocolError> {
+        // Clear current template cache
+        self.mining_manager().clear_block_template();
+        // TODO: call a handler function or a predefined registered service
+        Ok(())
+    }
+
+    /// Notifies that the UTXO set resets due to pruning point change via IBD.
+    pub async fn on_pruning_point_utxoset_override(&self) -> Result<(), ProtocolError> {
+        // TODO: call a handler function or a predefined registered service
+        Ok(())
+    }
+
+    /// Notifies that a transaction has been added to the mempool.
+    pub async fn on_transaction_added_to_mempool(&self) {
+        // TODO: call a handler function or a predefined registered service
+    }
+
     pub async fn add_transaction(&self, transaction: Transaction, orphan: Orphan) -> Result<(), ProtocolError> {
         let accepted_transactions = self.mining_manager().validate_and_insert_transaction(transaction, Priority::High, orphan)?;
-        self.broadcast_transactions(accepted_transactions.iter().map(|x| x.id()).collect()).await
+        self.broadcast_transactions(accepted_transactions.iter().map(|x| x.id())).await
     }
 
     /// Returns true if the time for a rebroadcast of the mempool high priority transactions has come.
     ///
     /// If true, the instant of the call is registered as the last rebroadcast time.
     pub async fn should_rebroadcast_transactions(&self) -> bool {
-        self.transactions_spread.write().await.should_rebroadcast()
+        self.transactions_spread.write().await.should_rebroadcast_transactions()
     }
 
     /// Add the given transactions IDs to a set of IDs to broadcast. The IDs will be broadcasted to all peers
     /// within transaction Inv messages.
     ///
     /// The broadcast itself may happen only during a subsequent call to this function since it is done at most
-    /// at preset intervals or when the queue length is larger than the Inv message capacity.
-    pub async fn broadcast_transactions(&self, transaction_ids: Vec<TransactionId>) -> Result<(), ProtocolError> {
-        self.transactions_spread.write().await.broadcast_ids(transaction_ids).await
+    /// after a predefined interval or when the queue length is larger than the Inv message capacity.
+    pub async fn broadcast_transactions<I: IntoIterator<Item = TransactionId>>(
+        &self,
+        transaction_ids: I,
+    ) -> Result<(), ProtocolError> {
+        self.transactions_spread.write().await.broadcast_transactions(transaction_ids).await
     }
 
     /// Broadcast a locally-originated message to all active network peers

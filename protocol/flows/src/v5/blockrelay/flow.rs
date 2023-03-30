@@ -158,9 +158,7 @@ impl HandleRelayInvsFlow {
             }
 
             info!("Accepted block {} via relay", inv.hash);
-
-            // TODO: use all new blocks to unorphan mempool txs and broadcast the txs
-            let _blocks = self.ctx.unorphan_blocks(block.hash()).await;
+            self.ctx.on_new_block(block).await?;
 
             // Broadcast all *new* virtual parents. As a policy, we avoid directly relaying the new block since
             // we wish to relay only blocks who entered past(virtual).
@@ -170,7 +168,7 @@ impl HandleRelayInvsFlow {
                     .await;
             }
 
-            // TODO: raise new block template event
+            self.ctx.on_new_block_template().await?;
         }
     }
 

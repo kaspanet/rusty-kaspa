@@ -9,7 +9,6 @@ use crate::{
     errors::MiningManagerResult,
     mempool::{
         config::Config,
-        errors::RuleResult,
         tx::{Orphan, Priority},
         Mempool,
     },
@@ -184,8 +183,8 @@ impl<T: ConsensusMiningContext + ?Sized> MiningManager<T> {
         Ok(self.mempool.write().handle_new_block_transactions(block_transactions)?)
     }
 
-    pub fn revalidate_high_priority_transactions(&self) -> RuleResult<Vec<TransactionId>> {
-        self.mempool.write().revalidate_high_priority_transactions()
+    pub fn revalidate_high_priority_transactions(&self) -> MiningManagerResult<Vec<TransactionId>> {
+        Ok(self.mempool.write().revalidate_high_priority_transactions()?)
     }
 
     /// is_transaction_output_dust returns whether or not the passed transaction output
