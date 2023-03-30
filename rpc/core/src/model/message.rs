@@ -6,6 +6,7 @@ use std::{
     fmt::{Display, Formatter},
     sync::Arc,
 };
+// use wasm_bindgen::prelude::*;
 
 pub type RpcExtraData = Vec<u8>;
 
@@ -545,7 +546,9 @@ impl GetSinkBlueScoreResponse {
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
+// #[wasm_bindgen]
 pub struct GetUtxosByAddressesRequest {
+    // #[wasm_bindgen(getter_with_clone)]
     pub addresses: Vec<RpcAddress>,
 }
 

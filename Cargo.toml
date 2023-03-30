@@ -140,6 +140,8 @@ web-sys = "0.3.61"
 getrandom = { version = "0.2.8", features = ["js"] }
 home = "0.5.4"
 base64 = "0.21.0"
+chacha20poly1305 = "0.10.1"
+heapless = "0.7.16"
 
 # bip32 dependencies
 rand_core = { version = "0.6", features = ["std"] }

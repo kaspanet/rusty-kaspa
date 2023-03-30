@@ -74,7 +74,24 @@ pub enum Error {
     // CoreSigner(#[from] CoreSignerError),
     #[error(transparent)]
     SerdeWasmBindgen(#[from] serde_wasm_bindgen::Error),
+
+    #[error("{0}")]
+    Chacha20poly1305(chacha20poly1305::Error),
+    // #[error(transparent)]
+    // InvalidHashLength(sha2::digest::InvalidLength),
 }
+
+impl From<chacha20poly1305::Error> for Error {
+    fn from(e: chacha20poly1305::Error) -> Self {
+        Error::Chacha20poly1305(e)
+    }
+}
+
+// impl From<sha2::digest::InvalidLength> for Error {
+//     fn from(e: sha2::digest::InvalidLength) -> Self {
+//         Error::InvalidHashLength(e)
+//     }
+// }
 
 impl From<Error> for JsValue {
     fn from(value: Error) -> Self {

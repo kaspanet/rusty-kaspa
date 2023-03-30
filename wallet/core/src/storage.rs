@@ -4,6 +4,14 @@ use crate::result::Result;
 use base64::{engine::general_purpose, Engine as _};
 use borsh::{BorshDeserialize, BorshSerialize};
 use cfg_if::cfg_if;
+use chacha20poly1305::Key as ChaChaKey;
+use chacha20poly1305::{
+    aead::{AeadCore, AeadInPlace, KeyInit, OsRng},
+    // aead::{AeadCore, KeyInit, OsRng},
+    ChaCha20Poly1305,
+    // Nonce,
+};
+// use heapless::Vec as HeaplessVec;
 use kaspa_bip32::SecretKey;
 use serde::{Deserialize, Serialize};
 #[allow(unused_imports)]
@@ -184,4 +192,28 @@ pub fn parse(path: &str) -> PathBuf {
 
 pub fn local_storage() -> web_sys::Storage {
     web_sys::window().unwrap().local_storage().unwrap().unwrap()
+}
+
+pub fn encrypt(data: &mut [u8], _password_hash: &[u8]) -> Result<Vec<u8>> {
+    let private_key_bytes = [0u8; 32]; // replace with your actual private key bytes
+    let key = ChaChaKey::from_slice(&private_key_bytes);
+    let cipher = ChaCha20Poly1305::new(&key);
+    let nonce = ChaCha20Poly1305::generate_nonce(&mut OsRng); // 96-bits; unique per message
+
+    let mut buffer = data.to_vec();
+    cipher.encrypt_in_place(&nonce, b"", &mut buffer)?;
+    // cipher.decrypt_in_place(&nonce, b"", &mut buffer)?;
+    Ok(buffer)
+}
+
+pub fn decrypt(data: &[u8], _password_hash: &[u8]) -> Result<Vec<u8>> {
+    let private_key_bytes = [0u8; 32]; // replace with your actual private key bytes
+    let key = ChaChaKey::from_slice(&private_key_bytes);
+    let cipher = ChaCha20Poly1305::new(&key);
+    let nonce = ChaCha20Poly1305::generate_nonce(&mut OsRng); // 96-bits; unique per message
+
+    let mut buffer = data.to_vec();
+    // cipher.encrypt_in_place(&nonce, b"", &mut buffer)?;
+    cipher.decrypt_in_place(&nonce, b"", &mut buffer)?;
+    Ok(buffer)
 }
