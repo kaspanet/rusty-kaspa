@@ -1,5 +1,6 @@
 //use js_sys::Object;
 use kaspa_addresses::Address;
+use kaspa_rpc_core::RpcTransactionOutput;
 use wasm_bindgen::prelude::*;
 // pub use kaspa_consensus_core::wasm::MutableTransaction;
 
@@ -8,7 +9,8 @@ use kaspa_consensus_core::hashing::sighash::SigHashReusedValues;
 use kaspa_consensus_core::hashing::sighash_type::SIG_HASH_ALL;
 use kaspa_consensus_core::subnets::SubnetworkId;
 use kaspa_consensus_core::tx::ScriptVec;
-use kaspa_consensus_core::tx::TransactionId;
+use kaspa_rpc_core::{RpcTransaction, RpcTransactionInput};
+//use kaspa_consensus_core::tx::TransactionId;
 // use kaspa_consensus_core::subnets::SubnetworkId;
 use crate::utxo::*;
 // use crate::tx;
@@ -28,7 +30,7 @@ use kaspa_consensus_core::tx::{
     ScriptPublicKey,
     Transaction, // UtxoEntry,
     TransactionInput,
-    TransactionOutpoint,
+    //TransactionOutpoint,
     TransactionOutput,
 };
 // use crate::tx;
@@ -87,7 +89,7 @@ pub struct MutableTransaction {
 #[wasm_bindgen]
 impl MutableTransaction {
     #[wasm_bindgen(constructor)]
-    pub fn constructor(tx: &Transaction, entries: &UtxoEntries) -> Self {
+    pub fn new(tx: &Transaction, entries: &UtxoEntries) -> Self {
         Self { tx: Arc::new(Mutex::new(tx.clone())), entries: entries.clone() }
         // Self { tx: Arc::new(Mutex::new(tx)), entries, calculated_fee: None, calculated_mass: None }
     }
@@ -149,6 +151,26 @@ impl TryFrom<(tx::MutableTransaction<Transaction>, UtxoEntries)> for MutableTran
     }
 }
 
+impl TryFrom<MutableTransaction> for RpcTransaction {
+    type Error = Error;
+    fn try_from(mtx: MutableTransaction) -> Result<Self, Self::Error> {
+        let tx = tx::MutableTransaction::try_from(mtx)?.tx;
+
+        let rpc_tx = RpcTransaction {
+            version: tx.version,
+            inputs: RpcTransactionInput::from_transaction_inputs(tx.inputs),
+            outputs: RpcTransactionOutput::from_transaction_outputs(tx.outputs),
+            lock_time: tx.lock_time,
+            subnetwork_id: tx.subnetwork_id,
+            gas: tx.gas,
+            payload: tx.payload,
+            verbose_data: None,
+        };
+
+        Ok(rpc_tx)
+    }
+}
+
 pub struct Destination {
     // outpoint: OutPoint,
 }
@@ -162,12 +184,18 @@ pub struct Output {
     utxo_entry: Option<Arc<UtxoEntry>>,
 }
 
+impl Output {
+    pub fn new(address: Address, amount: u64, utxo_entry: Option<Arc<UtxoEntry>>) -> Self {
+        Self { address, amount, utxo_entry }
+    }
+}
+
 pub struct Outputs {
     pub outputs: Vec<Output>,
 }
 
 /// `VirtualTransaction` envelops a collection of multiple related `kaspa_wallet_coreMutableTransaction` instances.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[wasm_bindgen]
 #[allow(dead_code)] //TODO: remove me
 pub struct VirtualTransaction {
@@ -189,7 +217,7 @@ impl VirtualTransaction {
         let secp = Secp256k1::new();
         let (_secret_key, public_key) = secp.generate_keypair(&mut rand::thread_rng());
         let script_pub_key = ScriptVec::from_slice(&public_key.serialize());
-        let prev_tx_id = TransactionId::from_str("880eb9819a31821d9d2399e2f35e2433b72637e393d71ecc9b8d0250f49153c3").unwrap();
+        //let prev_tx_id = TransactionId::from_str("880eb9819a31821d9d2399e2f35e2433b72637e393d71ecc9b8d0250f49153c3").unwrap();
         // ---------------------------------------------
 
         let transactions = chunks
@@ -201,8 +229,8 @@ impl VirtualTransaction {
                 let inputs = utxos
                     .iter()
                     .enumerate()
-                    .map(|(sequence, _utxo)| TransactionInput {
-                        previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 0 },
+                    .map(|(sequence, utxo)| TransactionInput {
+                        previous_outpoint: utxo.outpoint,
                         signature_script: vec![],
                         sequence: sequence as u64,
                         sig_op_count: 0,
@@ -217,7 +245,7 @@ impl VirtualTransaction {
                         TransactionOutput { value: 300, script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()) },
                         TransactionOutput { value: 300, script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()) },
                     ],
-                    1615462089000,
+                    0,
                     SubnetworkId::from_bytes([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
                     0,
                     vec![],

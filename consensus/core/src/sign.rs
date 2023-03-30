@@ -84,8 +84,8 @@ pub fn verify(tx: &impl crate::tx::VerifiableTransaction) -> Result<(), Error> {
     for (i, (input, entry)) in tx.populated_inputs().enumerate() {
         //log_trace!("input({i}).signature_script.len(): {}", input.signature_script.len());
         if input.signature_script.is_empty() {
-            //return Err(Error::Message(format!("Signature is empty for input: {i}")));
-            return Err(secp256k1::Error::InvalidSignature.into());
+            return Err(Error::Message(format!("Signature is empty for input: {i}")));
+            //return Err(secp256k1::Error::InvalidSignature.into());
         }
         let pk = &entry.script_public_key.script()[1..33];
         //log_trace!("pk: {pk:?}");

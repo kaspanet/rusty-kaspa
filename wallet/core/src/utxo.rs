@@ -90,6 +90,12 @@ impl From<UtxoEntryReference> for UtxoEntry {
     }
 }
 
+impl From<RpcUtxosByAddressesEntry> for UtxoEntryReference {
+    fn from(entry: RpcUtxosByAddressesEntry) -> Self {
+        Self { utxo: Arc::new(entry.into()) }
+    }
+}
+
 /// Result containing data produced by the `UtxoSet::select()` function
 pub struct SelectionContext {
     pub transaction_amount: u64,
@@ -113,6 +119,12 @@ pub struct Inner {
     ordered: AtomicU32,
 }
 
+impl Inner {
+    fn new() -> Self {
+        Self { entries: Mutex::new(vec![]), ordered: AtomicU32::new(UtxoOrdering::AscendingAmount as u32) }
+    }
+}
+
 /// a collection of UTXO entries
 #[derive(Clone, Default)]
 #[wasm_bindgen]
@@ -121,6 +133,9 @@ pub struct UtxoSet {
 }
 
 impl UtxoSet {
+    pub fn new() -> Self {
+        Self { inner: Arc::new(Inner::new()) }
+    }
     pub fn insert(&mut self, utxo_entry: UtxoEntryReference) {
         self.inner.entries.lock().unwrap().push(utxo_entry);
         self.inner.ordered.store(UtxoOrdering::Unordered as u32, Ordering::SeqCst);
@@ -215,6 +230,12 @@ impl UtxoEntries {
 impl From<UtxoEntries> for Vec<Option<UtxoEntry>> {
     fn from(value: UtxoEntries) -> Self {
         value.0.as_ref().iter().map(|entry| Some(entry.clone())).collect_vec()
+    }
+}
+
+impl From<Vec<UtxoEntry>> for UtxoEntries {
+    fn from(value: Vec<UtxoEntry>) -> Self {
+        Self(Arc::new(value))
     }
 }
 

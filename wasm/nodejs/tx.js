@@ -66,7 +66,7 @@ let utxos = [
 
 console.log("utxos", utxos)
 
-let utxoEntries = new kaspa.UtxoEntryList(utxos);
+let utxoEntries = new kaspa.UtxoEntries(utxos);
 //console.log("utxoEntries:", utxoEntries.items);
 
 let outputs = [
