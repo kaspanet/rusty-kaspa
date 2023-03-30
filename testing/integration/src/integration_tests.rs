@@ -836,13 +836,13 @@ async fn json_test(file_path: &str) {
         if !proof_exists {
             let second_line = lines.next().unwrap();
             let genesis_block = json_line_to_block(second_line);
-            params.genesis = genesis_block.header.as_ref().into();
+            params.genesis = (genesis_block.header.as_ref(), DEVNET_PARAMS.genesis.coinbase_payload).into();
         }
         params
     } else {
         let genesis_block = json_line_to_block(first_line);
         let mut params = DEVNET_PARAMS;
-        params.genesis = genesis_block.header.as_ref().into();
+        params.genesis = (genesis_block.header.as_ref(), params.genesis.coinbase_payload).into();
         params
     };
 
@@ -968,13 +968,13 @@ async fn json_concurrency_test(file_path: &str) {
         if !proof_exists {
             let second_line = lines.next().unwrap();
             let genesis_block = json_line_to_block(second_line);
-            params.genesis = genesis_block.header.as_ref().into();
+            params.genesis = (genesis_block.header.as_ref(), DEVNET_PARAMS.genesis.coinbase_payload).into();
         }
         params
     } else {
         let genesis_block = json_line_to_block(first_line);
         let mut params = DEVNET_PARAMS;
-        params.genesis = genesis_block.header.as_ref().into();
+        params.genesis = (genesis_block.header.as_ref(), params.genesis.coinbase_payload).into();
         params
     };
 

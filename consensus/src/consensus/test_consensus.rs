@@ -143,7 +143,7 @@ impl TestConsensus {
     }
 
     pub fn init(&self) -> Vec<JoinHandle<()>> {
-        self.consensus.init()
+        self.consensus.run_processors()
     }
 
     pub fn shutdown(&self, wait_handles: Vec<JoinHandle<()>>) {

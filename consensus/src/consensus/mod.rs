@@ -365,7 +365,6 @@ impl Consensus {
             body_sender,
             block_processors_pool.clone(),
             params,
-            config.process_genesis,
             db.clone(),
             relations_stores.clone(),
             reachability_store.clone(),
@@ -406,8 +405,7 @@ impl Consensus {
             transaction_validator.clone(),
             past_median_time_manager.clone(),
             params.max_block_mass,
-            params.genesis.hash,
-            config.process_genesis,
+            params.genesis.clone(),
             counters.clone(),
         ));
 
@@ -415,7 +413,6 @@ impl Consensus {
             virtual_receiver,
             virtual_pool,
             params,
-            config.process_genesis,
             db.clone(),
             statuses_store.clone(),
             ghostdag_store.clone(),
@@ -482,12 +479,15 @@ impl Consensus {
         // Ensure that reachability store is initialized
         reachability::init(reachability_store.write().deref_mut()).unwrap();
 
-        // Ensure that genesis was processed
+        // Ensure the relations stores are initialized
         header_processor.process_origin_if_needed();
-        header_processor.process_genesis_if_needed();
-        body_processor.process_genesis_if_needed();
-        virtual_processor.init();
-        virtual_processor.process_genesis_if_needed();
+
+        // Ensure that genesis was processed
+        if config.process_genesis {
+            header_processor.process_genesis();
+            body_processor.process_genesis();
+            virtual_processor.process_genesis();
+        }
 
         Self {
             db,
@@ -525,7 +525,7 @@ impl Consensus {
         }
     }
 
-    pub fn init(&self) -> Vec<JoinHandle<()>> {
+    pub fn run_processors(&self) -> Vec<JoinHandle<()>> {
         // Spawn the asynchronous processors.
         let header_processor = self.header_processor.clone();
         let body_processor = self.body_processor.clone();

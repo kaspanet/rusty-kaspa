@@ -148,7 +148,7 @@ fn main() {
     let (dummy_notification_sender, _) = unbounded();
     let notification_root = Arc::new(ConsensusNotificationRoot::new(dummy_notification_sender));
     let consensus2 = Arc::new(Consensus::new(db2, &config, notification_root, Default::default()));
-    let handles2 = consensus2.init();
+    let handles2 = consensus2.run_processors();
     validate(&consensus, &consensus2, &config, args.delay, args.bps);
     consensus2.shutdown(handles2);
     drop(consensus);

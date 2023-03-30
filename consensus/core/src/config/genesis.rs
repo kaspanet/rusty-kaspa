@@ -16,8 +16,14 @@ pub struct GenesisBlock {
     pub coinbase_payload: &'static [u8],
 }
 
-impl From<GenesisBlock> for Header {
-    fn from(genesis: GenesisBlock) -> Self {
+impl GenesisBlock {
+    pub fn build_genesis_transactions(&self) -> Vec<Transaction> {
+        vec![Transaction::new(0, Vec::new(), Vec::new(), 0, SUBNETWORK_ID_COINBASE, 0, self.coinbase_payload.to_vec())]
+    }
+}
+
+impl From<&GenesisBlock> for Header {
+    fn from(genesis: &GenesisBlock) -> Self {
         Header::new(
             genesis.version,
             Vec::new(),
@@ -35,16 +41,14 @@ impl From<GenesisBlock> for Header {
     }
 }
 
-impl From<GenesisBlock> for Block {
-    fn from(genesis: GenesisBlock) -> Self {
-        let coinbase_transaction =
-            Transaction::new(0, Vec::new(), Vec::new(), 0, SUBNETWORK_ID_COINBASE, 0, genesis.coinbase_payload.to_vec());
-        Block::new(genesis.into(), vec![coinbase_transaction])
+impl From<&GenesisBlock> for Block {
+    fn from(genesis: &GenesisBlock) -> Self {
+        Block::new(genesis.into(), genesis.build_genesis_transactions())
     }
 }
 
-impl From<&Header> for GenesisBlock {
-    fn from(header: &Header) -> Self {
+impl From<(&Header, &'static [u8])> for GenesisBlock {
+    fn from((header, payload): (&Header, &'static [u8])) -> Self {
         Self {
             hash: header.hash,
             version: header.version,
@@ -54,7 +58,7 @@ impl From<&Header> for GenesisBlock {
             bits: header.bits,
             nonce: header.nonce,
             daa_score: header.daa_score,
-            coinbase_payload: &[],
+            coinbase_payload: payload,
         }
     }
 }
@@ -180,8 +184,8 @@ pub const DEVNET_GENESIS: GenesisBlock = GenesisBlock {
     ]),
     utxo_commitment: EMPTY_MUHASH,
     timestamp: 0x11e9db49828,
-    // bits: 525264379, // Golang devnet genesis bits: 525264379
-    bits: 0x1e21bc1c,
+    // bits: 525264379, // Golang devnet genesis bits
+    bits: 0x1e21bc1c, // Bits with ~testnet-like difficulty for slow devnet start
     nonce: 0x48e5e,
     daa_score: 0,
     #[rustfmt::skip]
@@ -202,21 +206,11 @@ mod tests {
 
     #[test]
     fn test_genesis_hashes() {
-        let genesis: Block = GENESIS.into();
-        assert_eq!(calc_hash_merkle_root(genesis.transactions.iter()), genesis.header.hash_merkle_root);
-        assert_hashes_eq(genesis.hash(), GENESIS.hash);
-
-        let genesis: Block = TESTNET_GENESIS.into();
-        assert_eq!(calc_hash_merkle_root(genesis.transactions.iter()), genesis.header.hash_merkle_root);
-        assert_hashes_eq(genesis.hash(), TESTNET_GENESIS.hash);
-
-        let genesis: Block = SIMNET_GENESIS.into();
-        assert_eq!(calc_hash_merkle_root(genesis.transactions.iter()), genesis.header.hash_merkle_root);
-        assert_hashes_eq(genesis.hash(), SIMNET_GENESIS.hash);
-
-        let genesis: Block = DEVNET_GENESIS.into();
-        assert_eq!(calc_hash_merkle_root(genesis.transactions.iter()), genesis.header.hash_merkle_root);
-        assert_hashes_eq(genesis.hash(), DEVNET_GENESIS.hash);
+        [GENESIS, TESTNET_GENESIS, SIMNET_GENESIS, DEVNET_GENESIS].into_iter().for_each(|genesis| {
+            let block: Block = (&genesis).into();
+            assert_eq!(calc_hash_merkle_root(block.transactions.iter()), block.header.hash_merkle_root);
+            assert_hashes_eq(block.hash(), genesis.hash);
+        });
     }
 
     fn assert_hashes_eq(got: Hash, expected: Hash) {

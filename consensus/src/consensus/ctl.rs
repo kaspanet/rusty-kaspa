@@ -29,7 +29,7 @@ impl Ctl {
 
 impl ConsensusCtl for Ctl {
     fn start(&self) -> Vec<JoinHandle<()>> {
-        self.consensus.init()
+        self.consensus.run_processors()
     }
 
     fn stop(&self) {
@@ -66,7 +66,7 @@ impl ConsensusCtl for Ctl {
 /// Impl for test purposes
 impl ConsensusCtl for Consensus {
     fn start(&self) -> Vec<JoinHandle<()>> {
-        self.init()
+        self.run_processors()
     }
 
     fn stop(&self) {
