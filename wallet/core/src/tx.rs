@@ -1,20 +1,27 @@
 //use js_sys::Object;
 use kaspa_addresses::Address;
+use kaspa_consensus_core::tx::TransactionOutpoint;
 use kaspa_rpc_core::RpcTransactionOutput;
+use wasm_bindgen::convert::FromWasmAbi;
 use wasm_bindgen::prelude::*;
 // pub use kaspa_consensus_core::wasm::MutableTransaction;
 
+//use itertools::Itertools;
 use kaspa_consensus_core::hashing::sighash::calc_schnorr_signature_hash;
 use kaspa_consensus_core::hashing::sighash::SigHashReusedValues;
 use kaspa_consensus_core::hashing::sighash_type::SIG_HASH_ALL;
 use kaspa_consensus_core::subnets::SubnetworkId;
-use kaspa_consensus_core::tx::ScriptVec;
+//use kaspa_consensus_core::tx::ScriptVec;
 use kaspa_rpc_core::{RpcTransaction, RpcTransactionInput};
+use kaspa_txscript::pay_to_address_script;
+use serde::Deserializer;
+use serde_wasm_bindgen::from_value;
+use workflow_log::log_trace;
 //use kaspa_consensus_core::tx::TransactionId;
 // use kaspa_consensus_core::subnets::SubnetworkId;
 use crate::utxo::*;
 // use crate::tx;
-use secp256k1::{rand, Secp256k1};
+//use secp256k1::{rand, Secp256k1};
 
 // ::{
 //     // self,
@@ -27,7 +34,7 @@ use secp256k1::{rand, Secp256k1};
 // };
 use kaspa_consensus_core::tx::{
     self,
-    ScriptPublicKey,
+    //ScriptPublicKey,
     Transaction, // UtxoEntry,
     TransactionInput,
     //TransactionOutpoint,
@@ -111,6 +118,12 @@ impl MutableTransaction {
         Ok(to_value(&hashes)?)
     }
 
+    #[wasm_bindgen(js_name=toRpcTransaction)]
+    pub fn rpc_tx_request(&self) -> Result<JsValue, JsError> {
+        let tx: RpcTransaction = (*self).clone().try_into()?;
+        Ok(to_value(&tx)?)
+    }
+
     // fn sign(js_value: JsValue) -> tx::MutableTransaction {
 
     //     // TODO - get signer
@@ -177,24 +190,80 @@ pub struct Destination {
 
 pub struct TransactionOptions {}
 
+#[derive(Debug)]
+#[wasm_bindgen(inspectable)]
 #[allow(dead_code)] //TODO: remove me
 pub struct Output {
-    address: Address,
-    amount: u64,
+    #[wasm_bindgen(getter_with_clone)]
+    pub address: Address,
+    pub amount: u64,
     utxo_entry: Option<Arc<UtxoEntry>>,
 }
 
+#[wasm_bindgen]
 impl Output {
-    pub fn new(address: Address, amount: u64, utxo_entry: Option<Arc<UtxoEntry>>) -> Self {
-        Self { address, amount, utxo_entry }
+    #[wasm_bindgen(constructor)]
+    pub fn new(address: Address, amount: u64, utxo_entry: Option<UtxoEntry>) -> Self {
+        Self { address, amount, utxo_entry: utxo_entry.map(Arc::new) }
     }
 }
 
-pub struct Outputs {
-    pub outputs: Vec<Output>,
+impl<'de> Deserialize<'de> for Output {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_any(OutputVisitor)
+    }
 }
 
-/// `VirtualTransaction` envelops a collection of multiple related `kaspa_wallet_coreMutableTransaction` instances.
+struct OutputVisitor;
+
+impl<'de> serde::de::Visitor<'de> for OutputVisitor {
+    type Value = Output;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(formatter, "valid Output object.")
+    }
+
+    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+    where
+        A: serde::de::MapAccess<'de>,
+    {
+        let key = map.next_key::<String>()?;
+        let value = map.next_value::<u32>()?;
+
+        if let Some(key) = &key {
+            if key.eq("ptr") {
+                return Ok(unsafe { Self::Value::from_abi(value) });
+            }
+        }
+        Err(serde::de::Error::invalid_value(serde::de::Unexpected::Map, &self))
+        //Err(serde::de::Error::invalid_value(serde::de::Unexpected::Str(&format!("Invalid address: {{{key:?}:{value:?}}}")), &self))
+    }
+}
+
+#[derive(Debug)]
+#[wasm_bindgen]
+pub struct Outputs {
+    #[wasm_bindgen(skip)]
+    pub outputs: Vec<Output>,
+}
+#[wasm_bindgen]
+impl Outputs {
+    #[wasm_bindgen(constructor)]
+    pub fn js_ctor(output_array: JsValue) -> crate::Result<Outputs> {
+        let mut outputs = vec![];
+        let iterator = js_sys::try_iter(&output_array)?.ok_or("need to pass iterable JS values!")?;
+        for x in iterator {
+            outputs.push(from_value(x?)?);
+        }
+
+        Ok(Self { outputs })
+    }
+}
+
+/// `VirtualTransaction` envelops a collection of multiple related `kaspa_wallet_core::MutableTransaction` instances.
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
 #[allow(dead_code)] //TODO: remove me
@@ -204,8 +273,20 @@ pub struct VirtualTransaction {
     // include_fees : bool,
 }
 
+#[wasm_bindgen]
 impl VirtualTransaction {
-    pub fn new(utxo_selection: SelectionContext, _outputs: &Outputs, payload: Vec<u8>) -> Self {
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        utxo_selection: SelectionContext,
+        outputs: Outputs,
+        change_address: Address,
+        payload: Vec<u8>,
+    ) -> crate::Result<VirtualTransaction> {
+        log_trace!("VirtualTransaction...");
+        log_trace!("utxo_selection.transaction_amount: {:?}", utxo_selection.transaction_amount);
+        log_trace!("outputs.outputs: {:?}", outputs.outputs);
+        log_trace!("change_address: {change_address:?}");
+
         let entries = &utxo_selection.selected_entries;
 
         let chunks = entries.chunks(80).collect::<Vec<&[UtxoEntryReference]>>();
@@ -214,47 +295,174 @@ impl VirtualTransaction {
 
         // ---------------------------------------------
         // TODO - get a set of destination addresses
-        let secp = Secp256k1::new();
-        let (_secret_key, public_key) = secp.generate_keypair(&mut rand::thread_rng());
-        let script_pub_key = ScriptVec::from_slice(&public_key.serialize());
+        //let secp = Secp256k1::new();
+        //let (_secret_key, public_key) = secp.generate_keypair(&mut rand::thread_rng());
+        //let script_pub_key = ScriptVec::from_slice(&public_key.serialize());
         //let prev_tx_id = TransactionId::from_str("880eb9819a31821d9d2399e2f35e2433b72637e393d71ecc9b8d0250f49153c3").unwrap();
         // ---------------------------------------------
-
-        let transactions = chunks
+        let mut final_inputs = vec![];
+        let mut final_utxos = vec![];
+        let mut final_amount = 0;
+        let mut transactions = chunks
             .into_iter()
             .map(|chunk| {
                 let utxos = chunk.iter().map(|reference| reference.utxo.clone()).collect::<Vec<Arc<UtxoEntry>>>();
 
                 // let prev_tx_id = TransactionId::default();
+                let mut amount = 0;
+                let mut entries = vec![];
+
                 let inputs = utxos
                     .iter()
                     .enumerate()
-                    .map(|(sequence, utxo)| TransactionInput {
-                        previous_outpoint: utxo.outpoint,
-                        signature_script: vec![],
-                        sequence: sequence as u64,
-                        sig_op_count: 0,
+                    .map(|(sequence, utxo)| {
+                        amount += utxo.utxo_entry.amount;
+                        entries.push(utxo.as_ref().clone());
+                        TransactionInput {
+                            previous_outpoint: utxo.outpoint,
+                            signature_script: vec![],
+                            sequence: sequence as u64,
+                            sig_op_count: 0,
+                        }
                     })
                     .collect::<Vec<TransactionInput>>();
 
+                let amount_after_fee = amount - 500; //TODO: calculate Fee
+
+                let script_public_key = pay_to_address_script(&change_address);
                 let tx = Transaction::new(
                     0,
                     inputs,
-                    // outputs.into(),
-                    vec![
-                        TransactionOutput { value: 300, script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()) },
-                        TransactionOutput { value: 300, script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()) },
-                    ],
+                    vec![TransactionOutput { value: amount_after_fee, script_public_key: script_public_key.clone() }],
                     0,
-                    SubnetworkId::from_bytes([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+                    SubnetworkId::from_bytes([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
                     0,
                     vec![],
                 );
 
-                MutableTransaction { tx: Arc::new(Mutex::new(tx)), entries: (*entries).clone().try_into().unwrap() }
-            })
-            .collect();
+                let transaction_id = tx.id();
 
-        VirtualTransaction { transactions, payload }
+                final_amount += amount_after_fee;
+                final_utxos.push(UtxoEntry {
+                    address: change_address.clone(),
+                    outpoint: TransactionOutpoint { transaction_id, index: 0 },
+                    utxo_entry: tx::UtxoEntry {
+                        amount: amount_after_fee,
+                        script_public_key,
+                        block_daa_score: u64::MAX,
+                        is_coinbase: false,
+                    },
+                });
+                final_inputs.push(TransactionInput {
+                    previous_outpoint: TransactionOutpoint { transaction_id, index: 0 },
+                    signature_script: vec![],
+                    sequence: final_inputs.len() as u64,
+                    sig_op_count: 0,
+                });
+
+                MutableTransaction { tx: Arc::new(Mutex::new(tx)), entries: entries.into() }
+            })
+            .collect::<Vec<MutableTransaction>>();
+
+        let fee = 500; //TODO: calculate Fee
+        let amount_after_fee = final_amount - fee;
+
+        let mut outputs_ = vec![];
+        let mut total_amount = 0;
+        for output in &outputs.outputs {
+            total_amount += output.amount;
+            outputs_.push(TransactionOutput { value: output.amount, script_public_key: pay_to_address_script(&output.address) });
+        }
+
+        if total_amount > amount_after_fee {
+            return Err("total_amount({total_amount}) > amount_after_fee({amount_after_fee})".to_string().into());
+        }
+
+        let change = amount_after_fee - total_amount;
+        let dust = 500;
+        if change > dust {
+            outputs_.push(TransactionOutput { value: change, script_public_key: pay_to_address_script(&change_address) });
+        }
+
+        let tx = Transaction::new(
+            0,
+            final_inputs,
+            outputs_,
+            0,
+            SubnetworkId::from_bytes([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+            0,
+            payload.clone(),
+        );
+
+        let mtx = MutableTransaction { tx: Arc::new(Mutex::new(tx)), entries: final_utxos.into() };
+        transactions.push(mtx);
+
+        log_trace!("transactions: {transactions:#?}");
+
+        Ok(VirtualTransaction { transactions, payload })
     }
+}
+
+#[wasm_bindgen(js_name=createTransaction)]
+pub fn create_transaction(
+    utxo_selection: SelectionContext,
+    outputs: Outputs,
+    change_address: Address,
+    priority_fee: Option<u32>,
+    payload: Option<Vec<u8>>,
+) -> crate::Result<MutableTransaction> {
+    let entries = &utxo_selection.selected_entries;
+
+    let utxos = entries.iter().map(|reference| reference.utxo.clone()).collect::<Vec<Arc<UtxoEntry>>>();
+
+    // let prev_tx_id = TransactionId::default();
+    let mut amount = 0;
+    let mut entries = vec![];
+
+    let inputs = utxos
+        .iter()
+        .enumerate()
+        .map(|(sequence, utxo)| {
+            amount += utxo.utxo_entry.amount;
+            entries.push(utxo.as_ref().clone());
+            TransactionInput { previous_outpoint: utxo.outpoint, signature_script: vec![], sequence: sequence as u64, sig_op_count: 0 }
+        })
+        .collect::<Vec<TransactionInput>>();
+
+    let fee = 2036 + priority_fee.unwrap_or(0) as u64; //TODO: calculate Fee
+    if fee > amount {
+        return Err(format!("fee({fee}) > amount({amount})").into());
+    }
+    let amount_after_fee = amount - fee;
+
+    let mut outputs_ = vec![];
+    let mut total_amount = 0;
+    for output in &outputs.outputs {
+        total_amount += output.amount;
+        outputs_.push(TransactionOutput { value: output.amount, script_public_key: pay_to_address_script(&output.address) });
+    }
+
+    if total_amount > amount_after_fee {
+        return Err(format!("total_amount({total_amount}) > amount_after_fee({amount_after_fee})").into());
+    }
+
+    let change = amount_after_fee - total_amount;
+    let dust = 500;
+    if change > dust {
+        outputs_.push(TransactionOutput { value: change, script_public_key: pay_to_address_script(&change_address) });
+    }
+
+    let tx = Transaction::new(
+        0,
+        inputs,
+        outputs_,
+        0,
+        SubnetworkId::from_bytes([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+        0,
+        payload.unwrap_or(vec![]),
+    );
+
+    let mtx = MutableTransaction { tx: Arc::new(Mutex::new(tx)), entries: entries.into() };
+
+    Ok(mtx)
 }
