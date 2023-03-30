@@ -2,7 +2,6 @@ use crate::{
     flow_context::{FlowContext, RequestScope},
     flow_trait::Flow,
 };
-use itertools::Itertools;
 use kaspa_consensus_core::tx::{Transaction, TransactionId};
 use kaspa_mining::{
     errors::MiningManagerError,
@@ -202,11 +201,9 @@ impl RelayTransactionsFlow {
                 )));
             }
             let Response::Transaction(transaction) = response else { continue; };
-            let result = self.ctx.mining_manager().validate_and_insert_transaction(transaction, Priority::Low, Orphan::Allowed);
-            match result {
+            match self.ctx.mining_manager().validate_and_insert_transaction(transaction, Priority::Low, Orphan::Allowed) {
                 Ok(accepted_transactions) => {
-                    let transaction_ids = accepted_transactions.iter().map(|x| x.id()).collect_vec();
-                    self.ctx.broadcast_transactions(transaction_ids).await?;
+                    self.ctx.broadcast_transactions(accepted_transactions.iter().map(|x| x.id())).await?;
                 }
                 Err(MiningManagerError::MempoolError(err)) => {
                     if let RuleError::RejectInvalid(_) = err {
