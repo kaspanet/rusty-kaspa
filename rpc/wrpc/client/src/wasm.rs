@@ -250,9 +250,8 @@ impl RpcClient {
 
     #[wasm_bindgen(js_name = getUtxosByAddresses)]
     pub async fn get_utxos_by_addresses(&self, request: JsValue) -> JsResult<JsValue> {
-        log_info!("get_utxos_by_addresses");
-        let request: GetUtxosByAddressesRequest = from_value(request)?;
         log_info!("get_utxos_by_addresses req: {:?}", request);
+        let request: GetUtxosByAddressesRequest = from_value(request)?;
         let result: RpcResult<GetUtxosByAddressesResponse> = self.client.get_utxos_by_addresses_call(request).await;
         log_info!("get_utxos_by_addresses result: {:?}", result);
         let response: GetUtxosByAddressesResponse = result.map_err(|err| wasm_bindgen::JsError::new(&err.to_string()))?;

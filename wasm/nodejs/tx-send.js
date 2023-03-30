@@ -1,9 +1,5 @@
 globalThis.WebSocket = require('websocket').w3cwebsocket; // W3C WebSocket module shim
 
-// BigInt.prototype["toJSON1"] = function(){
-//     return this.toString()
-// }
-
 // let {RpcClient,Encoding,init_console_panic_hook,defer} = require('./kaspa');
 let kaspa = require('./kaspa/kaspa_wasm');
 let { RpcClient, UtxoSet, Address, Encoding } = kaspa;
@@ -25,15 +21,15 @@ kaspa.init_console_panic_hook();
     console.log(info2);
     
     let addresses = [new Address("kaspatest:qz7ulu4c25dh7fzec9zjyrmlhnkzrg4wmf89q7gzr3gfrsj3uz6xjceef60sd")];
-    // let addresses = ["kaspatest:qz7ulu4c25dh7fzec9zjyrmlhnkzrg4wmf89q7gzr3gfrsj3uz6xjceef60sd"];
-    console.log(addresses);
+    //let addresses = ["kaspatest:qz7ulu4c25dh7fzec9zjyrmlhnkzrg4wmf89q7gzr3gfrsj3uz6xjceef60sd"];
+    console.log("addresses:", {addresses});
     // console.log(addresses.toString());
-    
-    // let utxos = await rpc.getUtxosByAddresses(addresses);
+
     console.log("getting UTXOs...");
     let utxos_by_address = await rpc.getUtxosByAddresses({ addresses });
     console.log("Creating UtxoSet...");
-    let utxos = UtxoSet.from(utxos_by_address); //await rpc.getUtxosByAddresses(addresses));
+    //console.log("utxos_by_address", utxos_by_address)
+    let utxos = UtxoSet.from(utxos_by_address);
 
     await rpc.disconnect();
 

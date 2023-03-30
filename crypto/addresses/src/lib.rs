@@ -1,8 +1,9 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
-use serde::{Deserialize, Serialize, Deserializer, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smallvec::SmallVec;
 use std::fmt::{Display, Formatter};
 use thiserror::Error;
+use wasm_bindgen::convert::FromWasmAbi;
 use wasm_bindgen::prelude::*;
 
 mod bech32;
@@ -137,7 +138,8 @@ impl ToString for Version {
             Version::PubKey => "PubKey",
             Version::PubKeyECDSA => "PubKeyECDSA",
             Version::ScriptHash => "ScriptHash",
-        }.to_string()
+        }
+        .to_string()
     }
 }
 
@@ -152,7 +154,7 @@ pub type PayloadVec = SmallVec<[u8; PAYLOAD_VECTOR_SIZE]>;
 
 /// Kaspa `Address` struct that serializes to and from an address format string: `kaspa:qz0s...t8cv`.
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Hash)]
-#[wasm_bindgen(inspectable)]
+#[wasm_bindgen]
 pub struct Address {
     #[wasm_bindgen(skip)]
     pub prefix: Prefix,
@@ -175,13 +177,19 @@ impl Address {
 impl Address {
     #[wasm_bindgen(constructor)]
     pub fn constructor(address: &str) -> Address {
-        address.try_into().unwrap_or_else(|err|panic!("Address::constructor() - address error `{}`: {err}", address))
+        address.try_into().unwrap_or_else(|err| panic!("Address::constructor() - address error `{}`: {err}", address))
     }
 
     /// Convert an address to a string.
     #[wasm_bindgen(js_name = toString)]
-    pub fn to_string(&self) -> String {
+    pub fn to_str(&self) -> String {
         self.into()
+    }
+
+    /// Convert an address to a string.
+    #[wasm_bindgen(js_name = toJSON)]
+    pub fn to_json(&self) -> String {
+        self.to_string()
     }
 
     #[wasm_bindgen(getter)]
@@ -195,13 +203,19 @@ impl Address {
     }
 
     #[wasm_bindgen(setter)]
-    pub fn set_prefix(&mut self, prefix : &str) {
-        self.prefix = Prefix::try_from(prefix).unwrap_or_else(|err|panic!("Address::prefix() - invalid prefix `{prefix}`: {err}"));
+    pub fn set_prefix(&mut self, prefix: &str) {
+        self.prefix = Prefix::try_from(prefix).unwrap_or_else(|err| panic!("Address::prefix() - invalid prefix `{prefix}`: {err}"));
     }
 
     #[wasm_bindgen(getter)]
     pub fn payload(&self) -> String {
         self.encode_payload()
+    }
+}
+
+impl Display for Address {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.to_str())
     }
 }
 
@@ -300,11 +314,45 @@ impl<'de> Deserialize<'de> for Address {
     where
         D: Deserializer<'de>,
     {
-        let s = <std::string::String as Deserialize>::deserialize(deserializer)?;
-        Ok(s.try_into().map_err(serde::de::Error::custom)?)
+        // let s = <std::string::String as Deserialize>::deserialize(deserializer)?;
+        // Ok(s.try_into().map_err(serde::de::Error::custom)?)
+        let address = deserializer.deserialize_any(AddressVistitor)?;
+        Ok(address)
     }
 }
 
+struct AddressVistitor;
+
+impl<'de> serde::de::Visitor<'de> for AddressVistitor {
+    type Value = Address;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(formatter, "valid address as string or Address object.")
+    }
+
+    fn visit_str<E>(self, str: &str) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Address::try_from(str).map_err(|_| serde::de::Error::invalid_value(serde::de::Unexpected::Str(str), &self))
+    }
+
+    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+    where
+        A: serde::de::MapAccess<'de>,
+    {
+        let key = map.next_key::<String>()?;
+        let value = map.next_value::<u32>()?;
+
+        if let Some(key) = &key {
+            if key.eq("ptr") {
+                return Ok(unsafe { Address::from_abi(value) });
+            }
+        }
+        Err(serde::de::Error::invalid_value(serde::de::Unexpected::Map, &self))
+        //Err(serde::de::Error::invalid_value(serde::de::Unexpected::Str(&format!("Invalid address: {{{key:?}:{value:?}}}")), &self))
+    }
+}
 
 #[cfg(test)]
 mod tests {

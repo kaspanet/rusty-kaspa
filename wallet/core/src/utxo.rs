@@ -3,7 +3,7 @@ use crate::result::Result;
 use itertools::Itertools;
 use js_sys::{Array, Object};
 use kaspa_consensus_core::tx::{self, ScriptPublicKey, TransactionOutpoint};
-use kaspa_rpc_core::{RpcUtxosByAddressesEntry, GetUtxosByAddressesResponse};
+use kaspa_rpc_core::{GetUtxosByAddressesResponse, RpcUtxosByAddressesEntry};
 use serde_wasm_bindgen::from_value;
 use std::sync::{
     atomic::{AtomicU32, Ordering},
@@ -126,7 +126,7 @@ impl Inner {
         Self { entries: Mutex::new(vec![]), ordered: AtomicU32::new(UtxoOrdering::Unordered as u32) }
     }
 
-    fn new_with_args(entries : Vec<UtxoEntryReference>, ordered : UtxoOrdering) -> Self {
+    fn new_with_args(entries: Vec<UtxoEntryReference>, ordered: UtxoOrdering) -> Self {
         Self { entries: Mutex::new(entries), ordered: AtomicU32::new(ordered as u32) }
     }
 }
@@ -147,7 +147,7 @@ impl UtxoSet {
 
     pub fn from(js_value: JsValue) -> Result<UtxoSet> {
         log_info!("js_value: {:?}", js_value);
-        let r : GetUtxosByAddressesResponse = from_value(js_value)?;
+        let r: GetUtxosByAddressesResponse = from_value(js_value)?;
         log_info!("r: {:?}", r);
         let entries = r.entries.into_iter().map(|entry| entry.into()).collect::<Vec<UtxoEntryReference>>();
         log_info!("entries ...");
