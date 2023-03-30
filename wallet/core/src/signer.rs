@@ -1,7 +1,9 @@
+use crate::accounts::WalletAccount;
 use crate::tx::MutableTransaction;
 use crate::Result;
 use itertools::Itertools;
 use js_sys::Array;
+use kaspa_bip32::{ChildNumber, ExtendedPrivateKey, SecretKey};
 use kaspa_consensus_core::{
     hashing::{
         sighash::{calc_schnorr_signature_hash, SigHashReusedValues},
@@ -18,9 +20,44 @@ use kaspa_consensus_core::{
 use kaspa_core::hex::ToHex;
 use std::collections::BTreeMap;
 use std::iter::once;
+use std::str::FromStr;
 use wasm_bindgen::prelude::*;
 use workflow_log::log_trace;
 use workflow_wasm::abi::TryFromJsValue;
+
+#[wasm_bindgen]
+pub struct XPrivateKey {
+    receive: ExtendedPrivateKey<SecretKey>,
+    change: ExtendedPrivateKey<SecretKey>,
+}
+#[wasm_bindgen]
+impl XPrivateKey {
+    #[wasm_bindgen(constructor)]
+    pub fn js_ctor(xprv: &str, is_multisig: bool, account_index: u64) -> Result<XPrivateKey> {
+        let xkey = ExtendedPrivateKey::<SecretKey>::from_str(xprv)?;
+        let receive = xkey.clone().derive_path(WalletAccount::build_derivate_path(
+            is_multisig,
+            account_index,
+            Some(kaspa_bip32::AddressType::Receive),
+        )?)?;
+        let change =
+            xkey.derive_path(WalletAccount::build_derivate_path(is_multisig, account_index, Some(kaspa_bip32::AddressType::Change))?)?;
+
+        Ok(Self { receive, change })
+    }
+
+    #[wasm_bindgen(js_name=receiveKey)]
+    pub fn receive_key(&self, index: u32) -> Result<PrivateKey> {
+        let xkey = self.receive.derive_child(ChildNumber::new(index, false)?)?;
+        Ok(PrivateKey::from(xkey.private_key()))
+    }
+
+    #[wasm_bindgen(js_name=changeKey)]
+    pub fn change_key(&self, index: u32) -> Result<PrivateKey> {
+        let xkey = self.change.derive_child(ChildNumber::new(index, false)?)?;
+        Ok(PrivateKey::from(xkey.private_key()))
+    }
+}
 
 /// `Signer` is a type capable of signing transactions.
 #[derive(TryFromJsValue, Clone, Debug)]
