@@ -154,7 +154,7 @@ pub type PayloadVec = SmallVec<[u8; PAYLOAD_VECTOR_SIZE]>;
 
 /// Kaspa `Address` struct that serializes to and from an address format string: `kaspa:qz0s...t8cv`.
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Hash)]
-#[wasm_bindgen]
+#[wasm_bindgen(inspectable)]
 pub struct Address {
     #[wasm_bindgen(skip)]
     pub prefix: Prefix,
@@ -316,14 +316,14 @@ impl<'de> Deserialize<'de> for Address {
     {
         // let s = <std::string::String as Deserialize>::deserialize(deserializer)?;
         // Ok(s.try_into().map_err(serde::de::Error::custom)?)
-        let address = deserializer.deserialize_any(AddressVistitor)?;
+        let address = deserializer.deserialize_any(AddressVisitor)?;
         Ok(address)
     }
 }
 
-struct AddressVistitor;
+struct AddressVisitor;
 
-impl<'de> serde::de::Visitor<'de> for AddressVistitor {
+impl<'de> serde::de::Visitor<'de> for AddressVisitor {
     type Value = Address;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {

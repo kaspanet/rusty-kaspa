@@ -253,9 +253,9 @@ impl RpcClient {
         log_info!("get_utxos_by_addresses req: {:?}", request);
         let request: GetUtxosByAddressesRequest = from_value(request)?;
         let result: RpcResult<GetUtxosByAddressesResponse> = self.client.get_utxos_by_addresses_call(request).await;
-        log_info!("get_utxos_by_addresses result: {:?}", result);
+        //log_info!("get_utxos_by_addresses result: {:?}", result);
         let response: GetUtxosByAddressesResponse = result.map_err(|err| wasm_bindgen::JsError::new(&err.to_string()))?;
-        log_info!("get_utxos_by_addresses resp: {:?}", response);
+        //log_info!("get_utxos_by_addresses resp: {:?}", response);
         to_value(&response).map_err(|err| err.into())
     }
 }

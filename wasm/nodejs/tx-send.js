@@ -2,7 +2,7 @@ globalThis.WebSocket = require('websocket').w3cwebsocket; // W3C WebSocket modul
 
 // let {RpcClient,Encoding,init_console_panic_hook,defer} = require('./kaspa');
 let kaspa = require('./kaspa/kaspa_wasm');
-let { RpcClient, UtxoSet, Address, Encoding } = kaspa;
+let { RpcClient, UtxoSet, Address, Encoding, UtxoOrdering} = kaspa;
 kaspa.init_console_panic_hook();
 
 (async ()=>{
@@ -20,16 +20,28 @@ kaspa.init_console_panic_hook();
     let info2 = await rpc.getInfo();
     console.log(info2);
     
-    let addresses = [new Address("kaspatest:qz7ulu4c25dh7fzec9zjyrmlhnkzrg4wmf89q7gzr3gfrsj3uz6xjceef60sd")];
+    let addresses = [
+        new Address("kaspatest:qz7ulu4c25dh7fzec9zjyrmlhnkzrg4wmf89q7gzr3gfrsj3uz6xjceef60sd"),
+        //new Address("kaspatest:qz7ulu4c25dh7fzec9zjyrmlhnkzrg4wmf89q7gzr3gfrsj3uz6xjceef60sd")
+    ];
     //let addresses = ["kaspatest:qz7ulu4c25dh7fzec9zjyrmlhnkzrg4wmf89q7gzr3gfrsj3uz6xjceef60sd"];
-    console.log("addresses:", {addresses});
+    console.log("\naddresses:", addresses);
+    console.log("\nJSON.stringify(addresses):", JSON.stringify(addresses));
+    console.log("\naddresses.toString():", addresses.toString());
     // console.log(addresses.toString());
 
-    console.log("getting UTXOs...");
+    console.log("\ngetting UTXOs...");
     let utxos_by_address = await rpc.getUtxosByAddresses({ addresses });
     console.log("Creating UtxoSet...");
     //console.log("utxos_by_address", utxos_by_address)
-    let utxos = UtxoSet.from(utxos_by_address);
+    let utxoSet = UtxoSet.from(utxos_by_address);
+
+    //console.log("utxos_by_address", utxos_by_address)
+
+    let utxo_selection = await utxoSet.select(1000n, UtxoOrdering.AscendingAmount);
+
+    console.log("utxo_selection.amount", utxo_selection.amount)
+    console.log("utxo_selection.totalAmount", utxo_selection.totalAmount)
 
     await rpc.disconnect();
 

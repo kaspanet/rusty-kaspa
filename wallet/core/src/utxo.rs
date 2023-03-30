@@ -16,7 +16,7 @@ use workflow_wasm::object::*;
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use kaspa_addresses::Address;
 use serde::{Deserialize, Serialize};
-use workflow_log::log_info;
+//use workflow_log::log_info;
 
 // #[derive(Clone, TryFromJsValue)]
 // #[wasm_bindgen]
@@ -98,10 +98,14 @@ impl From<RpcUtxosByAddressesEntry> for UtxoEntryReference {
     }
 }
 
+#[wasm_bindgen]
 /// Result containing data produced by the `UtxoSet::select()` function
 pub struct SelectionContext {
+    #[wasm_bindgen(js_name = "amount")]
     pub transaction_amount: u64,
+    #[wasm_bindgen(js_name = "totalAmount")]
     pub total_selected_amount: u64,
+    #[wasm_bindgen(skip)]
     pub selected_entries: Vec<UtxoEntryReference>,
 }
 
@@ -145,14 +149,20 @@ impl UtxoSet {
         self.inner.ordered.store(UtxoOrdering::Unordered as u32, Ordering::SeqCst);
     }
 
+    #[wasm_bindgen(js_name=select)]
+    pub async fn select_utxos(&mut self, transaction_amount: u64, order: UtxoOrdering) -> Result<SelectionContext> {
+        let data = self.select(transaction_amount, order).await?;
+        Ok(data)
+    }
+
     pub fn from(js_value: JsValue) -> Result<UtxoSet> {
-        log_info!("js_value: {:?}", js_value);
+        //log_info!("js_value: {:?}", js_value);
         let r: GetUtxosByAddressesResponse = from_value(js_value)?;
-        log_info!("r: {:?}", r);
+        //log_info!("r: {:?}", r);
         let entries = r.entries.into_iter().map(|entry| entry.into()).collect::<Vec<UtxoEntryReference>>();
-        log_info!("entries ...");
+        //log_info!("entries ...");
         let utxo_set = Self { inner: Arc::new(Inner::new_with_args(entries, UtxoOrdering::Unordered)) };
-        log_info!("utxo_set ...");
+        //log_info!("utxo_set ...");
         Ok(utxo_set)
     }
 }
