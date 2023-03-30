@@ -8,6 +8,7 @@ use self::{
     request_ibd_chain_block_locator::RequestIbdChainBlockLocatorFlow,
     request_pp_proof::RequestPruningPointProofFlow,
     request_pruning_point_utxo_set::RequestPruningPointUtxoSetFlow,
+    txrelay::flow::{RelayTransactionsFlow, RequestTransactionsFlow},
 };
 use crate::{flow_context::FlowContext, flow_trait::Flow};
 
@@ -88,6 +89,17 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
             router.clone(),
             router.subscribe(vec![KaspadMessagePayloadType::RequestPruningPointUtxoSet]),
         )),
+        Box::new(RelayTransactionsFlow::new(
+            ctx.clone(),
+            router.clone(),
+            router.subscribe(vec![KaspadMessagePayloadType::InvTransactions]),
+            router.subscribe(vec![KaspadMessagePayloadType::Transaction, KaspadMessagePayloadType::TransactionNotFound]),
+        )),
+        Box::new(RequestTransactionsFlow::new(
+            ctx.clone(),
+            router.clone(),
+            router.subscribe(vec![KaspadMessagePayloadType::RequestTransactions]),
+        )),
         Box::new(ReceiveAddressesFlow::new(ctx.clone(), router.clone(), router.subscribe(vec![KaspadMessagePayloadType::Addresses]))),
         Box::new(SendAddressesFlow::new(ctx, router.clone(), router.subscribe(vec![KaspadMessagePayloadType::RequestAddresses]))),
     ];
@@ -97,20 +109,20 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
     let mut unimplemented_messages_route = router.subscribe(vec![
         // KaspadMessagePayloadType::Addresses,
         // KaspadMessagePayloadType::Block,
-        KaspadMessagePayloadType::Transaction,
+        // KaspadMessagePayloadType::Transaction,
         // KaspadMessagePayloadType::BlockLocator,
         // KaspadMessagePayloadType::RequestAddresses,
         KaspadMessagePayloadType::RequestRelayBlocks,
-        KaspadMessagePayloadType::RequestTransactions,
+        // KaspadMessagePayloadType::RequestTransactions,
         // KaspadMessagePayloadType::IbdBlock,
         // KaspadMessagePayloadType::InvRelayBlock,
-        KaspadMessagePayloadType::InvTransactions,
+        // KaspadMessagePayloadType::InvTransactions,
         // KaspadMessagePayloadType::Ping,
         // KaspadMessagePayloadType::Pong,
         // KaspadMessagePayloadType::Verack,
         // KaspadMessagePayloadType::Version,
         // KaspadMessagePayloadType::Ready,
-        KaspadMessagePayloadType::TransactionNotFound,
+        // KaspadMessagePayloadType::TransactionNotFound,
         KaspadMessagePayloadType::Reject,
         // KaspadMessagePayloadType::PruningPointUtxoSetChunk,
         KaspadMessagePayloadType::RequestIbdBlocks,

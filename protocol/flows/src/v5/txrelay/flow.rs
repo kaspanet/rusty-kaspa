@@ -24,7 +24,7 @@ pub type RelayInvMessage = Vec<TransactionId>;
 
 /// Encapsulates an incoming invs route which also receives data locally
 pub struct TwoWayIncomingRoute {
-    incoming_route: IncomingRoute,
+    pub incoming_route: IncomingRoute,
     indirect_invs: VecDeque<Vec<TransactionId>>,
 }
 
@@ -68,6 +68,8 @@ pub struct RelayTransactionsFlow {
     router: Arc<Router>,
     /// A route specific for invs messages
     invs_route: TwoWayIncomingRoute,
+    /// A route for other messages such as Transaction and TransactionNotFound
+    msg_route: IncomingRoute,
 }
 
 #[async_trait::async_trait]
@@ -87,8 +89,8 @@ impl Flow for RelayTransactionsFlow {
 
 impl RelayTransactionsFlow {
     #[allow(dead_code)]
-    pub fn new(ctx: FlowContext, router: Arc<Router>, incoming_route: IncomingRoute) -> Self {
-        Self { ctx, router, invs_route: TwoWayIncomingRoute::new(incoming_route) }
+    pub fn new(ctx: FlowContext, router: Arc<Router>, incoming_route: IncomingRoute, msg_route: IncomingRoute) -> Self {
+        Self { ctx, router, invs_route: TwoWayIncomingRoute::new(incoming_route), msg_route }
     }
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
@@ -143,32 +145,48 @@ impl RelayTransactionsFlow {
         self.ctx.mining_manager().get_transaction(transaction_id, true, true).is_some()
     }
 
-    /// Returns the next Transaction or TransactionNotFound message in incoming_route,
+    /// Returns the next Transaction or TransactionNotFound message in msg_route,
     /// returning only one of the message types at a time.
     ///
     /// Populates the invs_route queue with any inv messages that meanwhile arrive.
     async fn read_response(&mut self) -> Result<Response, ProtocolError> {
         loop {
-            return match timeout(DEFAULT_TIMEOUT, self.invs_route.incoming_route.recv()).await {
-                Ok(op) => {
-                    if let Some(msg) = op {
-                        match msg.payload {
-                            Some(Payload::InvTransactions(payload)) => {
-                                self.invs_route.enqueue_indirect_inv(payload.try_into()?);
-                                continue;
-                            }
-                            Some(Payload::Transaction(payload)) => Ok(Response::Transaction(payload.try_into()?)),
-                            Some(Payload::TransactionNotFound(payload)) => Ok(Response::NotFound(payload.try_into()?)),
-                            _ => Err(ProtocolError::UnexpectedMessage(
-                                stringify!(Payload::InvTransactions | Payload::Transaction | Payload::TransactionNotFound),
+            tokio::select! {
+                incoming = self.invs_route.incoming_route.recv() => {
+                    if let Some(msg) = incoming {
+                        if let Some(Payload::InvTransactions(inner_msg)) = msg.payload {
+                            self.invs_route.enqueue_indirect_inv(inner_msg.try_into()?);
+                            continue;
+                        } else {
+                            return Err(ProtocolError::UnexpectedMessage(
+                                stringify!(Payload::Transaction | Payload::InvTransactions),
                                 msg.payload.as_ref().map(|v| v.into()),
-                            )),
+                            ));
                         }
                     } else {
-                        Err(ProtocolError::ConnectionClosed)
+                        return Err(ProtocolError::ConnectionClosed);
                     }
-                }
-                Err(_) => Err(ProtocolError::Timeout(DEFAULT_TIMEOUT)),
+                },
+
+                msg = timeout(DEFAULT_TIMEOUT, self.msg_route.recv()) => {
+                    return match msg {
+                        Ok(op) => {
+                            if let Some(msg) = op {
+                                match msg.payload {
+                                    Some(Payload::Transaction(payload)) => Ok(Response::Transaction(payload.try_into()?)),
+                                    Some(Payload::TransactionNotFound(payload)) => Ok(Response::NotFound(payload.try_into()?)),
+                                    _ => Err(ProtocolError::UnexpectedMessage(
+                                        stringify!(Payload::Transaction | Payload::TransactionNotFound),
+                                        msg.payload.as_ref().map(|v| v.into()),
+                                    )),
+                                }
+                            } else {
+                                Err(ProtocolError::ConnectionClosed)
+                            }
+                        },
+                        Err(_) => Err(ProtocolError::Timeout(DEFAULT_TIMEOUT)),
+                    }
+                },
             };
         }
     }
