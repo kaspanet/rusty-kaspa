@@ -11,7 +11,18 @@
 Rusty-Kaspa WASM32 bindings offer direct integration of Rust code and Rusty-Kaspa
 codebase within JavaScript environments such as Node.js and Web Browsers.
 
-The APIs are currently separated into the following groups:
+## Documentation
+
+- **Rustdoc** documentation is available here: [https://docs.rs/kaspa-wasm/latest/kaspa-wasm](https://docs.rs/kaspa-wasm/latest/kaspa-wasm)
+- **JSDoc** documentation is available here: [https://aspectron.com/docs/kaspa-wasm/](https://aspectron.com/docs/kaspa-wasm/)
+
+Please note that while WASM directly binds JacaScript and Rust resources, their names on JavaScript side
+are different from their name in Rust as they conform to the 'camelCase' convention in JavaScript and 
+to the 'snake_case' convention in Rust. 
+
+## Interfaces
+
+The APIs are currently separated into the following groups (this will be expanded in the future):
 
 - **Transaction API** — Bindings for primitives related to transactions.
 This includes basic primitives related to consensus transactions, as well as
@@ -24,7 +35,7 @@ transaction creation.
 Compatible with Rusty Kaspa as well as with the Golang node (kaspad) via the `kaspa-wrpc-proxy` 
 WebSocket / gRPC proxy (located in `rpc/wrpc/proxy`).
 
-# Using RPC
+## Using RPC
 
 **NODEJS:** To use WASM RPC client in the Node.js environment, you need to introduce a W3C WebSocket object 
 before loading the WASM32 library. You can use any Node.js module that exposes a W3C-compatible 
@@ -41,7 +52,45 @@ globalThis.WebSocket = require('websocket').w3cwebsocket;
 globalThis.WebSocket = require('isomorphic-ws');
 ```
 
+## Loading in a Web App
 
+```html
+<html>
+    <head>
+        <script type="module">
+            import * as kaspa_wasm from './kaspa/kaspa-wasm.js';
+            (async () => {
+                const kaspa = await kaspa_wasm.default('./kaspa/kaspa-wasm_bg.wasm');
+            })();
+        </script>
+    </head>
+    <body></body>
+</html>
+```
+
+## Loading in a Node.js App
+
+```rust
+// W3C WebSocket module shim
+globalThis.WebSocket = require('websocket').w3cwebsocket;
+
+let {RpcClient,Encoding,init_console_panic_hook,defer} = require('./kaspa-rpc');
+// init_console_panic_hook();
+
+let URL = "ws://127.0.0.1:17110";
+let rpc = new RpcClient(Encoding.Borsh,URL);
+
+(async () => {
+    console.log(`# connecting to ${URL}`)
+    await rpc.connect();
+    console.log(`# connected ...`)
+
+    let info = await rpc.getInfo();
+    console.log(info);
+
+    await rpc.disconnect();
+})();
+```
 
 */
 
