@@ -67,9 +67,11 @@ pub struct Account {
     balance: AtomicU64,
     rpc_api: Arc<DynRpcApi>,
     is_connected: AtomicBool,
+    #[wasm_bindgen(js_name = "accountKind")]
     pub account_kind: AccountKind,
     // index of the private key in the wallet store
     #[allow(dead_code)] //TODO: remove me
+    // #[wasm_bindgen(js_name = "privateKeyIndex")]
     private_key_index: u32,
 }
 

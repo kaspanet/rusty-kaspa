@@ -4,7 +4,7 @@ pub use kaspa_rpc_macros::build_wrpc_client_interface;
 use std::fmt::Debug;
 use workflow_rpc::client::Ctl;
 
-/// [`NotificationMoe`] controls notification delivery process
+/// [`NotificationMode`] controls notification delivery process
 #[wasm_bindgen]
 #[derive(Clone, Copy, Debug)]
 pub enum NotificationMode {

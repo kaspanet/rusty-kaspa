@@ -67,12 +67,13 @@ pub fn script_hashes(mut mutable_tx: SignableTransaction) -> Result<Vec<kaspa_ha
     Ok(list)
 }
 
+/// Represents a generic mutable transaction
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[wasm_bindgen]
 pub struct MutableTransaction {
     //inner : Arc<tx::MutableTransaction<Transaction>>,
     tx: Arc<Mutex<Transaction>>,
-    /// Partially filled UTXO entry data
+    /// UTXO entry data
     #[wasm_bindgen(getter_with_clone)]
     pub entries: UtxoEntries,
     // Populated fee

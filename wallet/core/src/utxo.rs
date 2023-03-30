@@ -90,12 +90,14 @@ impl From<UtxoEntryReference> for UtxoEntry {
     }
 }
 
+/// Result containing data produced by the `UtxoSet::select()` function
 pub struct SelectionContext {
     pub transaction_amount: u64,
     pub total_selected_amount: u64,
     pub selected_entries: Vec<UtxoEntryReference>,
 }
 
+/// UtxoOrdering enum denotes UTXO sort order (`Unordered`, `AscendingAmount`, `AscendingDaaScore`)
 #[derive(Clone, Copy)]
 #[repr(u32)]
 #[wasm_bindgen]
