@@ -1,5 +1,7 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
-use kaspa_consensus_core::tx::{ScriptPublicKey, ScriptVec, TransactionId, TransactionOutpoint, UtxoEntry};
+use kaspa_consensus_core::tx::{
+    ScriptPublicKey, ScriptVec, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::prelude::{RpcHash, RpcScriptClass, RpcSubnetworkId};
@@ -25,6 +27,24 @@ pub struct RpcTransactionInput {
     pub verbose_data: Option<RpcTransactionInputVerboseData>,
 }
 
+impl From<TransactionInput> for RpcTransactionInput {
+    fn from(input: TransactionInput) -> Self {
+        Self {
+            previous_outpoint: input.previous_outpoint,
+            signature_script: input.signature_script,
+            sequence: input.sequence,
+            sig_op_count: input.sig_op_count,
+            verbose_data: None,
+        }
+    }
+}
+
+impl RpcTransactionInput {
+    pub fn from_transaction_inputs(other: Vec<TransactionInput>) -> Vec<Self> {
+        other.into_iter().map(Self::from).collect()
+    }
+}
+
 /// Represent Kaspa transaction input verbose data
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
@@ -37,6 +57,18 @@ pub struct RpcTransactionOutput {
     pub value: u64,
     pub script_public_key: RpcScriptPublicKey,
     pub verbose_data: Option<RpcTransactionOutputVerboseData>,
+}
+
+impl RpcTransactionOutput {
+    pub fn from_transaction_outputs(other: Vec<TransactionOutput>) -> Vec<Self> {
+        other.into_iter().map(Self::from).collect()
+    }
+}
+
+impl From<TransactionOutput> for RpcTransactionOutput {
+    fn from(output: TransactionOutput) -> Self {
+        Self { value: output.value, script_public_key: output.script_public_key, verbose_data: None }
+    }
 }
 
 /// Represent Kaspa transaction output verbose data

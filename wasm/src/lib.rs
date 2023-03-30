@@ -26,21 +26,21 @@ The APIs are currently separated into the following groups (this will be expande
 
 - **Transaction API** — Bindings for primitives related to transactions.
 This includes basic primitives related to consensus transactions, as well as
-`MutableTransaction` and `VirtualTransaction` primitives usable for 
+`MutableTransaction` and `VirtualTransaction` primitives usable for
 transaction creation.
 
 - **Wallet API** — API for async core wallet processing tasks.
 
 - **RPC API** — [RPC interface bindings](rpc) for the Kaspa node using WebSocket connections.
-Compatible with Rusty Kaspa as well as with the Golang node (kaspad) via the `kaspa-wrpc-proxy` 
+Compatible with Rusty Kaspa as well as with the Golang node (kaspad) via the `kaspa-wrpc-proxy`
 WebSocket / gRPC proxy (located in `rpc/wrpc/proxy`).
 
 ## Using RPC
 
-**NODEJS:** To use WASM RPC client in the Node.js environment, you need to introduce a W3C WebSocket object 
-before loading the WASM32 library. You can use any Node.js module that exposes a W3C-compatible 
-WebSocket implementation. Two of such modules are [WebSocket](https://www.npmjs.com/package/websocket) 
-(provides a custom implementation) and [isomorphic-ws](https://www.npmjs.com/package/isomorphic-ws) 
+**NODEJS:** To use WASM RPC client in the Node.js environment, you need to introduce a W3C WebSocket object
+before loading the WASM32 library. You can use any Node.js module that exposes a W3C-compatible
+WebSocket implementation. Two of such modules are [WebSocket](https://www.npmjs.com/package/websocket)
+(provides a custom implementation) and [isomorphic-ws](https://www.npmjs.com/package/isomorphic-ws)
 (built on top of the ws WebSocket module).
 
 You can use the following shims:
@@ -104,14 +104,14 @@ pub use kaspa_consensus_core::wasm::keypair::{Keypair, PrivateKey};
 
 pub mod rpc {
     //! Kaspa RPC interface
-    //! 
+    //!
 
     pub mod messages {
         //! Kaspa RPC messages
         pub use kaspa_rpc_core::model::message::*;
     }
-    pub use kaspa_wrpc_client::wasm::RpcClient;
     pub use kaspa_rpc_core::api::rpc::RpcApi;
+    pub use kaspa_wrpc_client::wasm::RpcClient;
 }
 
 pub use kaspa_wallet_core::{

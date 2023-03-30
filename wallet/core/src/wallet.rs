@@ -60,7 +60,7 @@ impl Wallet {
             rpc
         } else {
             // Arc::new(KaspaRpcClient::new_with_args(WrpcEncoding::Borsh, NotificationMode::Direct, "wrpc://localhost:17110")?)
-            Arc::new(KaspaRpcClient::new_with_args(WrpcEncoding::Borsh, NotificationMode::MultiListeners, "wrpc://localhost:17110")?)
+            Arc::new(KaspaRpcClient::new_with_args(WrpcEncoding::Borsh, NotificationMode::MultiListeners, "wrpc://127.0.0.1:17110")?)
         };
 
         let (listener_id, notification_receiver) = match rpc.notification_mode() {
@@ -297,4 +297,155 @@ impl Wallet {
     //     }
     //     Ok(())
     // }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[cfg(test)]
+mod test {
+    use std::{str::FromStr, thread::sleep, time};
+
+    use super::*;
+    use crate::{
+        signer::sign_mutable_transaction,
+        // Signer,
+        tx::MutableTransaction,
+        utxo::{
+            //SelectionContext,
+            UtxoOrdering,
+            UtxoSet,
+        },
+    };
+    //use kaspa_bip32::{ExtendedPrivateKey, SecretKey};
+    use kaspa_consensus_core::subnets::SubnetworkId;
+    use kaspa_consensus_core::tx::Transaction;
+    use kaspa_consensus_core::tx::TransactionInput;
+    use kaspa_consensus_core::tx::TransactionOutput;
+    //use kaspa_consensus_core::tx::ScriptPublicKey;
+    //use kaspa_consensus_core::tx::MutableTransaction;
+    use kaspa_addresses::{Address, Prefix, Version};
+    use kaspa_bip32::{ChildNumber, ExtendedPrivateKey, SecretKey};
+    use kaspa_txscript::pay_to_address_script;
+
+    async fn get_utxos_set_by_addresses(rpc: Arc<KaspaRpcClient>, addresses: Vec<Address>) -> Result<UtxoSet> {
+        let utxos = rpc.get_utxos_by_addresses(addresses).await?;
+        let mut utxo_set = UtxoSet::new();
+        for utxo in utxos {
+            utxo_set.insert(utxo.into());
+        }
+        Ok(utxo_set)
+    }
+
+    #[tokio::test]
+    async fn wallet_test() -> Result<()> {
+        println!("Creating wallet...");
+        let wallet = Arc::new(Wallet::try_new().await?);
+        // let stored_accounts = vec![StoredWalletAccount{
+        //     private_key_index: 0,
+        //     account_kind: crate::storage::AccountKind::Bip32,
+        //     name: "Default Account".to_string(),
+        //     title: "Default Account".to_string(),
+        // }];
+
+        // wallet.load_accounts(stored_accounts);
+
+        let rpc = wallet.rpc();
+
+        let _connect_result = rpc.connect(true).await;
+        //println!("connect_result: {_connect_result:?}");
+
+        let _result = wallet.start().await;
+        //println!("wallet.task(): {_result:?}");
+        let result = wallet.get_info().await;
+        println!("wallet.get_info(): {result:#?}");
+
+        let address = Address::try_from("kaspatest:qz7ulu4c25dh7fzec9zjyrmlhnkzrg4wmf89q7gzr3gfrsj3uz6xjceef60sd")?;
+
+        let utxo_set = self::get_utxos_set_by_addresses(rpc.clone(), vec![address.clone()]).await?;
+
+        let utxo_set_balance = utxo_set.calculate_balance().await?;
+        println!("get_utxos_by_addresses: {utxo_set_balance:?}");
+
+        let utxo_selection = utxo_set.select(100000, UtxoOrdering::AscendingAmount).await?;
+
+        //let payload = vec![];
+        let to_address = Address::try_from("kaspatest:qpakxqlesqywgkq7rg4wyhjd93kmw7trkl3gpa3vd5flyt59a43yyn8vu0w8c")?;
+        //let outputs = Outputs { outputs: vec![Output::new(to_address, 100000, None)] };
+        //let vtx = VirtualTransaction::new(utxo_selection, &outputs, payload);
+
+        //vtx.sign();
+        let utxo = (*utxo_selection.selected_entries[0].utxo).clone();
+        //utxo.utxo_entry.is_coinbase = false;
+        let selected_entries = vec![utxo];
+
+        let entries = &selected_entries;
+
+        let inputs = selected_entries
+            .iter()
+            .enumerate()
+            .map(|(sequence, utxo)| TransactionInput {
+                previous_outpoint: utxo.outpoint.into(),
+                signature_script: vec![],
+                sequence: sequence as u64,
+                sig_op_count: 0,
+            })
+            .collect::<Vec<TransactionInput>>();
+
+        let tx = Transaction::new(
+            0,
+            inputs,
+            vec![
+                TransactionOutput { value: 1000, script_public_key: pay_to_address_script(&to_address) },
+                //TransactionOutput { value: 300, script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()) },
+            ],
+            0,
+            SubnetworkId::from_bytes([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+            0,
+            vec![],
+        );
+
+        let mtx = MutableTransaction::new(&tx, &(*entries).clone().into());
+
+        let derivation_path = WalletAccount::build_derivate_path(false, 0, Some(kaspa_bip32::AddressType::Receive))?;
+
+        let xprv = "kprv5y2qurMHCsXYrNfU3GCihuwG3vMqFji7PZXajMEqyBkNh9UZUJgoHYBLTKu1eM4MvUtomcXPQ3Sw9HZ5ebbM4byoUciHo1zrPJBQfqpLorQ";
+        //let (xkey, _attrs) = WalletAccount::create_extended_key_from_xprv(xprv, false, 0).await?;
+
+        let xkey = ExtendedPrivateKey::<SecretKey>::from_str(xprv)?.derive_path(derivation_path)?;
+
+        let xkey = xkey.derive_child(ChildNumber::new(0, false)?)?;
+
+        // address test
+        let address_test = Address::new(Prefix::Testnet, Version::PubKey, &xkey.public_key().to_bytes()[1..]);
+        let address_str: String = address_test.clone().into();
+        assert_eq!(address, address_test, "Address dont match");
+        println!("address: {address_str}");
+
+        let private_keys = vec![
+            //xkey.private_key().into()
+            xkey.to_bytes(),
+        ];
+
+        println!("mtx: {mtx:?}");
+
+        //let signer = Signer::new(private_keys)?;
+
+        let mtx = sign_mutable_transaction(mtx, &private_keys, true)?;
+
+        //println!("mtx: {mtx:?}");
+
+        let utxo_set = self::get_utxos_set_by_addresses(rpc.clone(), vec![to_address.clone()]).await?;
+        let to_balance = utxo_set.calculate_balance().await?;
+        println!("to address balance before tx submit: {to_balance:?}");
+
+        let result = rpc.submit_transaction(mtx.try_into()?, false).await?;
+
+        println!("tx submit result, {:?}", result);
+        println!("sleep for 5s...");
+        sleep(time::Duration::from_millis(5000));
+        let utxo_set = self::get_utxos_set_by_addresses(rpc.clone(), vec![to_address.clone()]).await?;
+        let to_balance = utxo_set.calculate_balance().await?;
+        println!("to address balance after tx submit: {to_balance:?}");
+
+        Ok(())
+    }
 }

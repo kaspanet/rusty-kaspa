@@ -10,8 +10,8 @@ use std::{
 use zeroize::Zeroizing;
 
 use kaspa_bip32::{
-    types::*, AddressType, ChildNumber, ExtendedKey, ExtendedKeyAttrs, ExtendedPrivateKey, ExtendedPublicKey, Prefix, PrivateKey,
-    PublicKey, SecretKey, SecretKeyExt,
+    types::*, AddressType, ChildNumber, DerivationPath, ExtendedKey, ExtendedKeyAttrs, ExtendedPrivateKey, ExtendedPublicKey, Prefix,
+    PrivateKey, PublicKey, SecretKey, SecretKeyExt,
 };
 //use consensus_core::wasm::{GeneratorT, WalletAccountTrait};
 use wasm_bindgen::prelude::*;
@@ -144,6 +144,31 @@ pub struct WalletAccount {
 }
 
 impl WalletAccount {
+    pub async fn create_extended_key_from_xprv(
+        xprv: &str,
+        is_multisig: bool,
+        account_index: u64,
+    ) -> Result<(SecretKey, ExtendedKeyAttrs)> {
+        let xprv_key = ExtendedPrivateKey::<SecretKey>::from_str(xprv)?;
+        let attrs = xprv_key.attrs();
+
+        let (extended_private_key, attrs) =
+            Self::create_extended_key(*xprv_key.private_key(), attrs.clone(), is_multisig, account_index).await?;
+
+        Ok((extended_private_key, attrs))
+    }
+
+    pub fn build_derivate_path(is_multisig: bool, account_index: u64, address_type: Option<AddressType>) -> Result<DerivationPath> {
+        let purpose = if is_multisig { 45 } else { 44 };
+        let path = if let Some(address_type) = address_type {
+            format!("m/{purpose}'/111111'/{account_index}'/{}", address_type.index())
+        } else {
+            format!("m/{purpose}'/111111'/{account_index}'")
+        };
+        let path = path.parse::<DerivationPath>()?;
+        Ok(path)
+    }
+
     async fn create_extended_key(
         mut private_key: SecretKey,
         mut attrs: ExtendedKeyAttrs,
@@ -386,6 +411,7 @@ impl WalletAccountTrait for WalletAccount {
 #[cfg(test)]
 mod tests {
     use super::{WalletAccount, WalletAccountTrait};
+    use kaspa_addresses::{Address, Prefix};
 
     fn gen1_receive_addresses() -> Vec<&'static str> {
         vec![
@@ -456,5 +482,52 @@ mod tests {
             let address: String = hd_wallet.derive_change_address(index).await.unwrap().into();
             assert_eq!(change_addresses[index as usize], address, "change address at {index} failed");
         }
+    }
+
+    #[tokio::test]
+    async fn generate_kaspatest_addresses() {
+        // receive_addresses: [
+        //     "kaspatest:qz7ulu4c25dh7fzec9zjyrmlhnkzrg4wmf89q7gzr3gfrsj3uz6xjceef60sd",
+        //     "kaspatest:qzn3qjzf2nzyd3zj303nk4sgv0aae42v3ufutk5xsxckfels57dxjnltw0jwz",
+        //     "kaspatest:qpakxqlesqywgkq7rg4wyhjd93kmw7trkl3gpa3vd5flyt59a43yyn8vu0w8c",
+        //     "kaspatest:qz0skffpert8cav6h2c9nfndmhzzfhvkrjexclmwgjjwt0sutysnwme80mr8t",
+        //     "kaspatest:qrmzemw6sm67svltul0qsk3974ema4auhrja3k68f4sfhxe4mxjwxw752m0ud",
+        //     "kaspatest:qpe4apax5dquy600py9rprmukhq8fqyqv9qu072twkvgse0glhqa75z4a5jc8",
+        //     "kaspatest:qrptdge6ykdq672xqjd4rv2cedwdcz030jngsr2xhaxrn5l8pfhc2ynq7hqh7",
+        //     "kaspatest:qqnys5nyennjkvyl77vwneq5j2vmjss57zerd88ptzaeqhm998smx0vp8yfkm",
+        //     "kaspatest:qztckuvk02885rdazvj9w079qujg5qpxcdnmsvxqx0q8z7l483prk3y5mpscd",
+        //     "kaspatest:qrp53krck4m0x6n0dxs7vzf5mg0x6we8e06xjpmu8xr8p4du6f89kkxtepyd2",
+        //     "kaspatest:qr4l3mahqe0jeeu6c474q5tywz08mudhddgtdneeq46unv0qx0j77htdcm5dc",
+        //     "kaspatest:qzatdsueklx7pkfzanh9u0pwr47sd3a25gfm8wypsevdejhhpj8cks2cwr2yk",
+        //     "kaspatest:qqk3g5l6ymdkjfmzezx4zrv9fhr5rh0d8tm07udkqxq79n6t60tzus0m9sd3v",
+        //     "kaspatest:qqasa6d590u6875hsese68fa9f8mnedzesn2udehp0s73ggt5cklwtwl220gy",
+        //     "kaspatest:qpuzq5jc757uxue9fradme33jd6egxr9fdznd8qysqcc5xy8k7alqq5w6zkjh",
+        //     "kaspatest:qqygznwmkl56vprrnvyvnta9qql43yv52m3qz2462vxskn32axl0xe746l7hp",
+        //     "kaspatest:qqk974yml6uuustenwu57hn8n7d202luvn4dum0txvzjgg60g2jzsh44nc8vj",
+        //     "kaspatest:qpxqat995cxnjla8nm0dwnneesqnk5enc6hqrua7jztels0eqjg8v3af29pl2",
+        //     "kaspatest:qpyzkjs2a6k8ljx2qt4pwscj6jccr6k7pmru9k7r2t25teajjuzazlyszlz7a",
+        //     "kaspatest:qzf5mxtvk8wgp8gr3dcj3dkzdu6w4dgpvp2f0gm9pepv9vazxrhy5lc0lgqj0",
+        // ]
+
+        let master_xprv =
+            "kprv5y2qurMHCsXYrNfU3GCihuwG3vMqFji7PZXajMEqyBkNh9UZUJgoHYBLTKu1eM4MvUtomcXPQ3Sw9HZ5ebbM4byoUciHo1zrPJBQfqpLorQ";
+
+        let hd_wallet = WalletAccount::from_master_xprv(master_xprv, false, 0).await;
+        assert!(hd_wallet.is_ok(), "Could not parse key");
+        let hd_wallet = hd_wallet.unwrap();
+
+        let mut receive_addresses = vec![]; //gen1_receive_addresses();
+                                            //let change_addresses = gen1_change_addresses();
+
+        for index in 0..20 {
+            let address = hd_wallet.derive_receive_address(index).await.unwrap();
+            let address = Address::new(Prefix::Testnet, kaspa_addresses::Version::PubKey, address.payload.as_slice());
+            receive_addresses.push(String::from(address));
+            //assert_eq!(receive_addresses[index as usize], address, "receive address at {index} failed");
+            //let address: String = hd_wallet.derive_change_address(index).await.unwrap().into();
+            //assert_eq!(change_addresses[index as usize], address, "change address at {index} failed");
+        }
+
+        println!("receive_addresses: {receive_addresses:#?}");
     }
 }

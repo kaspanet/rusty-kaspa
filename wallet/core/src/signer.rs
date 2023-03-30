@@ -1,5 +1,6 @@
 use crate::tx::MutableTransaction;
 use crate::Result;
+use itertools::Itertools;
 use js_sys::Array;
 use kaspa_consensus_core::{
     hashing::{
@@ -14,7 +15,9 @@ use kaspa_consensus_core::{
         // tx::MutableTransaction,
     },
 };
+use kaspa_core::hex::ToHex;
 use std::collections::BTreeMap;
+use std::iter::once;
 use wasm_bindgen::prelude::*;
 use workflow_log::log_trace;
 use workflow_wasm::abi::TryFromJsValue;
@@ -28,6 +31,9 @@ pub struct Signer {
 }
 
 impl Signer {
+    pub fn new(private_keys: Vec<PrivateKey>) -> Result<Signer> {
+        Ok(Self { private_keys, verify: true })
+    }
     fn private_keys(&self) -> Vec<[u8; 32]> {
         self.private_keys.iter().map(|k| k.into()).collect::<Vec<_>>()
     }
@@ -129,7 +135,11 @@ pub fn sign(mut mutable_tx: SignableTransaction, privkeys: &Vec<[u8; 32]>) -> Re
     let mut map = BTreeMap::new();
     for privkey in privkeys {
         let schnorr_key = secp256k1::KeyPair::from_seckey_slice(secp256k1::SECP256K1, privkey)?;
-        map.insert(schnorr_key.public_key().serialize(), schnorr_key);
+        let schnorr_public_key = schnorr_key.public_key().x_only_public_key().0;
+        let script_pub_key_script = once(0x20).chain(schnorr_public_key.serialize().into_iter()).chain(once(0xac)).collect_vec(); // TODO: Use script builder when available to create p2pk properly
+                                                                                                                                  //map.insert(schnorr_public_key.serialize(), schnorr_key);
+        map.insert(script_pub_key_script.to_hex(), schnorr_key);
+        //println!("schnorr_key.public_key().serialize(): {:x?}", schnorr_public_key.serialize())
     }
     for i in 0..mutable_tx.tx.inputs.len() {
         mutable_tx.tx.inputs[i].sig_op_count = 1;
@@ -137,8 +147,8 @@ pub fn sign(mut mutable_tx: SignableTransaction, privkeys: &Vec<[u8; 32]>) -> Re
 
     let mut reused_values = SigHashReusedValues::new();
     for i in 0..mutable_tx.tx.inputs.len() {
-        let script = mutable_tx.entries[i].as_ref().unwrap().script_public_key.script();
-        if let Some(schnorr_key) = map.get(script) {
+        let script = mutable_tx.entries[i].as_ref().unwrap().script_public_key.script().to_hex();
+        if let Some(schnorr_key) = map.get(&script) {
             let sig_hash = calc_schnorr_signature_hash(&mutable_tx.as_verifiable(), i, SIG_HASH_ALL, &mut reused_values);
             let msg = secp256k1::Message::from_slice(sig_hash.as_bytes().as_slice()).unwrap();
             let sig: [u8; 64] = *schnorr_key.sign_schnorr(msg).as_ref();
