@@ -229,7 +229,7 @@ build_wrpc_wasm_bindgen_interface!(
         GetMempoolEntriesByAddresses,
         GetMempoolEntry,
         GetSubnetwork,
-        GetUtxosByAddresses,
+        // GetUtxosByAddresses,
         GetVirtualChainFromBlock,
         ResolveFinalityConflict,
         SubmitBlock,
@@ -245,6 +245,18 @@ impl RpcClient {
         let request: SubmitTransactionRequest = from_value(request)?;
         let result: RpcResult<SubmitTransactionResponse> = self.client.submit_transaction_call(request).await;
         let response: SubmitTransactionResponse = result.map_err(|err| wasm_bindgen::JsError::new(&err.to_string()))?;
+        to_value(&response).map_err(|err| err.into())
+    }
+
+    #[wasm_bindgen(js_name = getUtxosByAddresses)]
+    pub async fn get_utxos_by_addresses(&self, request: JsValue) -> JsResult<JsValue> {
+        log_info!("get_utxos_by_addresses");
+        let request: GetUtxosByAddressesRequest = from_value(request)?;
+        log_info!("get_utxos_by_addresses req: {:?}", request);
+        let result: RpcResult<GetUtxosByAddressesResponse> = self.client.get_utxos_by_addresses_call(request).await;
+        log_info!("get_utxos_by_addresses result: {:?}", result);
+        let response: GetUtxosByAddressesResponse = result.map_err(|err| wasm_bindgen::JsError::new(&err.to_string()))?;
+        log_info!("get_utxos_by_addresses resp: {:?}", response);
         to_value(&response).map_err(|err| err.into())
     }
 }

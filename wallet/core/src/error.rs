@@ -72,6 +72,9 @@ pub enum Error {
     Address(#[from] kaspa_addresses::AddressError),
     // #[error(transparent)]
     // CoreSigner(#[from] CoreSignerError),
+
+    #[error(transparent)]
+    SerdeWasmBindgen(#[from] serde_wasm_bindgen::Error),
 }
 
 impl From<Error> for JsValue {

@@ -3,7 +3,7 @@ BigInt.prototype["toJSON1"] = function(){
 }
 
 // let {RpcClient,Encoding,init_console_panic_hook,defer} = require('./kaspa');
-let kaspa = require('./kaspa');
+let kaspa = require('./kaspa/kaspa_wasm');
 kaspa.init_console_panic_hook();
 
 // let txid = new kaspa.Hash("880eb9819a31821d9d2399e2f35e2433b72637e393d71ecc9b8d0250f49153c3");

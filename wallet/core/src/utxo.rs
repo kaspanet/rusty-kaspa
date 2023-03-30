@@ -3,18 +3,20 @@ use crate::result::Result;
 use itertools::Itertools;
 use js_sys::{Array, Object};
 use kaspa_consensus_core::tx::{self, ScriptPublicKey, TransactionOutpoint};
-use kaspa_rpc_core::RpcUtxosByAddressesEntry;
+use kaspa_rpc_core::{RpcUtxosByAddressesEntry, GetUtxosByAddressesResponse};
+use serde_wasm_bindgen::from_value;
 use std::sync::{
     atomic::{AtomicU32, Ordering},
     Arc, Mutex,
 };
 use wasm_bindgen::prelude::*;
-use workflow_wasm::abi::ref_from_abi;
+use workflow_wasm::abi::{ref_from_abi, TryFromJsValue};
 use workflow_wasm::object::*;
 
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use kaspa_addresses::Address;
 use serde::{Deserialize, Serialize};
+use workflow_log::log_info;
 
 // #[derive(Clone, TryFromJsValue)]
 // #[wasm_bindgen]
@@ -70,11 +72,11 @@ impl From<RpcUtxosByAddressesEntry> for UtxoEntry {
     }
 }
 
-// #[derive(Clone, TryFromJsValue)]
-#[derive(Clone)]
-// #[wasm_bindgen]
+#[derive(Clone, TryFromJsValue)]
+// #[derive(Clone)]
+#[wasm_bindgen]
 pub struct UtxoEntryReference {
-    // #[wasm_bindgen(skip)]
+    #[wasm_bindgen(skip)]
     pub utxo: Arc<UtxoEntry>,
 }
 
@@ -121,7 +123,11 @@ pub struct Inner {
 
 impl Inner {
     fn new() -> Self {
-        Self { entries: Mutex::new(vec![]), ordered: AtomicU32::new(UtxoOrdering::AscendingAmount as u32) }
+        Self { entries: Mutex::new(vec![]), ordered: AtomicU32::new(UtxoOrdering::Unordered as u32) }
+    }
+
+    fn new_with_args(entries : Vec<UtxoEntryReference>, ordered : UtxoOrdering) -> Self {
+        Self { entries: Mutex::new(entries), ordered: AtomicU32::new(ordered as u32) }
     }
 }
 
@@ -132,13 +138,28 @@ pub struct UtxoSet {
     inner: Arc<Inner>,
 }
 
+#[wasm_bindgen]
 impl UtxoSet {
-    pub fn new() -> Self {
-        Self { inner: Arc::new(Inner::new()) }
-    }
     pub fn insert(&mut self, utxo_entry: UtxoEntryReference) {
         self.inner.entries.lock().unwrap().push(utxo_entry);
         self.inner.ordered.store(UtxoOrdering::Unordered as u32, Ordering::SeqCst);
+    }
+
+    pub fn from(js_value: JsValue) -> Result<UtxoSet> {
+        log_info!("js_value: {:?}", js_value);
+        let r : GetUtxosByAddressesResponse = from_value(js_value)?;
+        log_info!("r: {:?}", r);
+        let entries = r.entries.into_iter().map(|entry| entry.into()).collect::<Vec<UtxoEntryReference>>();
+        log_info!("entries ...");
+        let utxo_set = Self { inner: Arc::new(Inner::new_with_args(entries, UtxoOrdering::Unordered)) };
+        log_info!("utxo_set ...");
+        Ok(utxo_set)
+    }
+}
+
+impl UtxoSet {
+    pub fn new() -> Self {
+        Self { inner: Arc::new(Inner::new()) }
     }
 
     pub fn order(&self, order: UtxoOrdering) -> Result<()> {

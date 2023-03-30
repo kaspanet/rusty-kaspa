@@ -17,8 +17,8 @@ codebase within JavaScript environments such as Node.js and Web Browsers.
 - **JSDoc** documentation is available here: [https://aspectron.com/docs/kaspa-wasm/](https://aspectron.com/docs/kaspa-wasm/)
 
 Please note that while WASM directly binds JacaScript and Rust resources, their names on JavaScript side
-are different from their name in Rust as they conform to the 'camelCase' convention in JavaScript and 
-to the 'snake_case' convention in Rust. 
+are different from their name in Rust as they conform to the 'camelCase' convention in JavaScript and
+to the 'snake_case' convention in Rust.
 
 ## Interfaces
 
