@@ -93,9 +93,11 @@ impl RelayTransactionsFlow {
     }
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
+        // trace!("Starting relay transactions flow with {}", self.router.identity());
         loop {
             // Loop over incoming block inv messages
             let inv = self.invs_route.dequeue().await?;
+            // trace!("Receive an inv message from {} with {} transaction ids", self.router.identity(), inv.len());
 
             // Transaction relay is disabled if the node is out of sync and thus not mining
             if self.ctx.is_ibd_running() {
@@ -127,6 +129,7 @@ impl RelayTransactionsFlow {
         // Request the transactions
         if !requests.is_empty() {
             // TODO: determine if there should be a limit to the number of ids per message
+            // trace!("Send a request to {} with {} transaction ids", self.router.identity(), requests.len());
             self.router
                 .enqueue(make_message!(
                     Payload::RequestTransactions,
@@ -158,7 +161,7 @@ impl RelayTransactionsFlow {
                             continue;
                         } else {
                             return Err(ProtocolError::UnexpectedMessage(
-                                stringify!(Payload::Transaction | Payload::InvTransactions),
+                                stringify!(Payload::InvTransactions),
                                 msg.payload.as_ref().map(|v| v.into()),
                             ));
                         }
@@ -191,6 +194,7 @@ impl RelayTransactionsFlow {
     }
 
     async fn receive_transactions(&mut self, requests: Vec<RequestScope<TransactionId>>) -> Result<(), ProtocolError> {
+        // trace!("Receive {} transaction ids from {}", requests.len(), self.router.identity());
         for requested_id in requests.iter().map(|x| x.req.to_owned()) {
             let response = self.read_response().await?;
             let transaction_id = response.transaction_id();
@@ -203,6 +207,7 @@ impl RelayTransactionsFlow {
             let Response::Transaction(transaction) = response else { continue; };
             match self.ctx.mining_manager().validate_and_insert_transaction(transaction, Priority::Low, Orphan::Allowed) {
                 Ok(accepted_transactions) => {
+                    // trace!("Broadcast {} accepted transaction ids", accepted_transactions.len());
                     self.ctx.broadcast_transactions(accepted_transactions.iter().map(|x| x.id())).await?;
                 }
                 Err(MiningManagerError::MempoolError(err)) => {
@@ -215,6 +220,7 @@ impl RelayTransactionsFlow {
                 Err(_) => {}
             }
         }
+        // trace!("Processed {} transactions from {}", requests.len(), self.router.identity());
         Ok(())
     }
 }
@@ -255,8 +261,10 @@ impl RequestTransactionsFlow {
             let tx_ids: Vec<_> = msg.try_into()?;
             for transaction_id in tx_ids {
                 if let Some(mutable_tx) = self.ctx.mining_manager().get_transaction(&transaction_id, true, false) {
+                    // trace!("Send transaction {} to {}", mutable_tx.id(), self.router.identity());
                     self.router.enqueue(make_message!(Payload::Transaction, (&*mutable_tx.tx).into())).await?;
                 } else {
+                    // trace!("Send transaction id {} not found to {}", transaction_id, self.router.identity());
                     self.router
                         .enqueue(make_message!(
                             Payload::TransactionNotFound,
