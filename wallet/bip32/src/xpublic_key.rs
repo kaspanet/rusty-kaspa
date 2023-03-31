@@ -1,8 +1,8 @@
 //! Extended public keys
 //!
 use crate::{
-    types::*, ChildNumber, Error, ExtendedKey, ExtendedKeyAttrs, ExtendedPrivateKey, KeyFingerprint, Prefix, PrivateKey, PublicKey,
-    PublicKeyBytes, Result, KEY_SIZE,
+    types::*, ChildNumber, DerivationPath, Error, ExtendedKey, ExtendedKeyAttrs, ExtendedPrivateKey, KeyFingerprint, Prefix,
+    PrivateKey, PublicKey, PublicKeyBytes, Result, KEY_SIZE,
 };
 use core::str::FromStr;
 use hmac::Mac;
@@ -73,6 +73,16 @@ where
         };
 
         Ok(ExtendedPublicKey { public_key, attrs })
+    }
+
+    pub fn derive_path(self, path: DerivationPath) -> Result<Self> {
+        path.iter().fold(Ok(self), |maybe_key, child_num| {
+            //workflow_log::log_trace!("child_num: {child_num:?}");
+            maybe_key.and_then(|key| key.derive_child(child_num)).map_err(|err| {
+                //workflow_log::log_trace!("child_num: {child_num:?}, err:{err:?}");
+                err
+            })
+        })
     }
 
     /// Serialize the raw public key as a byte array (e.g. SEC1-encoded).

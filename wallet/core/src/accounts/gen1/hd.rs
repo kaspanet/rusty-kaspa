@@ -1,3 +1,4 @@
+use futures::future::join_all;
 use hmac::Mac;
 use kaspa_addresses::{Address, Prefix as AddressPrefix, Version};
 use ripemd::Ripemd160;
@@ -53,6 +54,17 @@ impl AddressGenerator {
         let wallet = Self { public_key, attrs, fingerprint, hmac, index: Arc::new(Mutex::new(index)) };
 
         Ok(wallet)
+    }
+
+    pub async fn derive_addresses(&self, indexes: std::ops::Range<u32>) -> Result<Vec<Address>> {
+        let list = indexes.map(|index| self.derive_address(index)).collect::<Vec<_>>();
+
+        let mut addresses = vec![];
+        for res in join_all(list).await {
+            addresses.push(res?);
+        }
+
+        Ok(addresses)
     }
 
     pub async fn derive_address(&self, index: u32) -> Result<Address> {
@@ -225,14 +237,14 @@ impl WalletAccount {
         let mut hmac = HmacSha512::new_from_slice(&attrs.chain_code).map_err(Error::Hmac)?;
         hmac.update(&public_key.to_bytes());
 
-        let (private_key, chain_code) = Self::derive_public_key_child(public_key, index, hmac)?;
+        let (key, chain_code) = Self::derive_public_key_child(public_key, index, hmac)?;
 
         let depth = attrs.depth.checked_add(1).ok_or(Error::Depth)?;
 
         let attrs =
             ExtendedKeyAttrs { parent_fingerprint: fingerprint, child_number: ChildNumber::new(index, false)?, chain_code, depth };
 
-        Ok((private_key, attrs))
+        Ok((key, attrs))
     }
 
     fn derive_public_key_child(
@@ -481,6 +493,29 @@ mod tests {
             assert_eq!(receive_addresses[index as usize], address, "receive address at {index} failed");
             let address: String = hd_wallet.derive_change_address(index).await.unwrap().into();
             assert_eq!(change_addresses[index as usize], address, "change address at {index} failed");
+        }
+    }
+
+    #[tokio::test]
+    async fn generate_addresses_by_range() {
+        let master_xprv =
+            "kprv5y2qurMHCsXYrNfU3GCihuwG3vMqFji7PZXajMEqyBkNh9UZUJgoHYBLTKu1eM4MvUtomcXPQ3Sw9HZ5ebbM4byoUciHo1zrPJBQfqpLorQ";
+
+        let hd_wallet = WalletAccount::from_master_xprv(master_xprv, false, 0).await;
+        assert!(hd_wallet.is_ok(), "Could not parse key");
+        let hd_wallet = hd_wallet.unwrap();
+        let addresses_receive = hd_wallet.receive_wallet().derive_addresses(0..20).await.unwrap();
+        let addresses_receive = addresses_receive.into_iter().map(String::from).collect::<Vec<String>>();
+
+        let addresses_change = hd_wallet.change_wallet().derive_addresses(0..20).await.unwrap();
+        let addresses_change = addresses_change.into_iter().map(String::from).collect::<Vec<String>>();
+        println!("receive addresses: {addresses_receive:#?}");
+        println!("change addresses: {addresses_change:#?}");
+        let receive_addresses = gen1_receive_addresses();
+        let change_addresses = gen1_change_addresses();
+        for index in 0..20 {
+            assert_eq!(receive_addresses[index as usize], addresses_receive[index], "receive address at {index} failed");
+            assert_eq!(change_addresses[index as usize], addresses_change[index], "change address at {index} failed");
         }
     }
 

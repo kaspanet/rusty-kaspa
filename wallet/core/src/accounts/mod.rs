@@ -1,4 +1,4 @@
-mod account;
+pub mod account;
 #[allow(dead_code)]
 mod gen0;
 #[allow(dead_code)]
