@@ -20,7 +20,6 @@ kaspa-rpc-core.workspace = true
 kaspa-grpc-server.workspace = true
 kaspa-wrpc-server.workspace = true
 kaspa-p2p-flows.workspace = true
-kaspa-p2p-lib.workspace = true
 kaspa-mining.workspace = true
 kaspa-addressmanager.workspace = true
 
