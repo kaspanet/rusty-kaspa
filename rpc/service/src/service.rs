@@ -8,7 +8,7 @@ use kaspa_consensus_notify::{
     {connection::ConsensusChannelConnection, notification::Notification as ConsensusNotification},
 };
 use kaspa_consensusmanager::ConsensusManager;
-use kaspa_core::trace;
+use kaspa_core::{info, trace};
 use kaspa_hashes::Hash;
 use kaspa_index_core::{connection::IndexChannelConnection, notification::Notification as IndexNotification, notifier::IndexNotifier};
 use kaspa_notify::{
@@ -118,30 +118,33 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
             trace!("incoming SubmitBlockRequest with block conversion error: {}", err);
         }
         let block = try_block?;
+        let hash = block.hash();
 
         // We recreate a RpcBlock for the BlockAdded notification.
         // This guaranties that we have the right hash.
         // TODO: remove it when consensus emit a BlockAdded notification.
         let rpc_block: RpcBlock = (&block).into();
 
-        trace!("incoming SubmitBlockRequest for block {}", block.header.hash);
+        trace!("incoming SubmitBlockRequest for block {}", hash);
 
-        let result = match self.consensus_manager.consensus().session().await.validate_and_insert_block(block, true).await {
-            Ok(_) => Ok(SubmitBlockResponse { report: SubmitBlockReport::Success }),
+        match self.consensus_manager.consensus().session().await.validate_and_insert_block(block, true).await {
+            Ok(_) => {
+                info!("Accepted block {} via submit block", hash);
+
+                // Notify about new added block
+                // TODO: let consensus emit this notification through an event channel
+                self.notifier.notify(Notification::BlockAdded(BlockAddedNotification { block: Arc::new(rpc_block) })).unwrap();
+
+                // Emit a NewBlockTemplate notification
+                self.notifier.notify(Notification::NewBlockTemplate(NewBlockTemplateNotification {})).unwrap();
+
+                Ok(SubmitBlockResponse { report: SubmitBlockReport::Success })
+            }
             Err(err) => {
                 trace!("submit block error: {}", err);
                 Ok(SubmitBlockResponse { report: SubmitBlockReport::Reject(SubmitBlockRejectReason::BlockInvalid) })
             } // TODO: handle also the IsInIBD reject reason
-        };
-
-        // Notify about new added block
-        // TODO: let consensus emit this notification through an event channel
-        self.notifier.notify(Notification::BlockAdded(BlockAddedNotification { block: Arc::new(rpc_block) })).unwrap();
-
-        // Emit a NewBlockTemplate notification
-        self.notifier.notify(Notification::NewBlockTemplate(NewBlockTemplateNotification {})).unwrap();
-
-        result
+        }
     }
 
     async fn get_block_template_call(&self, request: GetBlockTemplateRequest) -> RpcResult<GetBlockTemplateResponse> {

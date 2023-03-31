@@ -1,4 +1,5 @@
 use kaspa_core::{
+    info,
     task::service::{AsyncService, AsyncServiceError, AsyncServiceFuture},
     trace,
 };
@@ -57,7 +58,7 @@ impl AsyncService for GrpcServer {
                 .accept_compressed(CompressionEncoding::Gzip);
 
             // Start the tonic gRPC server
-            trace!("gRPC server listening on: {}", address);
+            info!("Grpc server starting on: {}", address);
             let result = Server::builder()
                 .add_service(svc)
                 .serve_with_shutdown(address, shutdown_signal)

@@ -172,7 +172,6 @@ pub fn main() {
         kaspa_database::prelude::delete_db(meta_db_dir.clone());
     }
 
-    info!("Consensus Data directory {}", consensus_db_dir.display());
     fs::create_dir_all(consensus_db_dir.as_path()).unwrap();
     fs::create_dir_all(meta_db_dir.as_path()).unwrap();
     if args.utxoindex {
