@@ -4,16 +4,18 @@ use crate::result::Result;
 use base64::{engine::general_purpose, Engine as _};
 use borsh::{BorshDeserialize, BorshSerialize};
 use cfg_if::cfg_if;
-use chacha20poly1305::Key as ChaChaKey;
+// use chacha20poly1305::{Key as ChaChaKey};
 use chacha20poly1305::{
     aead::{AeadCore, AeadInPlace, KeyInit, OsRng},
     // aead::{AeadCore, KeyInit, OsRng},
     ChaCha20Poly1305,
     // Nonce,
+    Key,
 };
 // use heapless::Vec as HeaplessVec;
 use kaspa_bip32::SecretKey;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 #[allow(unused_imports)]
 use std::fs;
 use std::path::PathBuf;
@@ -194,26 +196,47 @@ pub fn local_storage() -> web_sys::Storage {
     web_sys::window().unwrap().local_storage().unwrap().unwrap()
 }
 
-pub fn encrypt(data: &mut [u8], _password_hash: &[u8]) -> Result<Vec<u8>> {
-    let private_key_bytes = [0u8; 32]; // replace with your actual private key bytes
-    let key = ChaChaKey::from_slice(&private_key_bytes);
-    let cipher = ChaCha20Poly1305::new(&key);
+pub fn encrypt(data: &[u8], private_key_bytes: &[u8]) -> Result<Vec<u8>> {
+    let private_key_bytes: &[u8; 32] = private_key_bytes.try_into()?;
+    let key = Key::from_slice(private_key_bytes);
+    let cipher = ChaCha20Poly1305::new(key);
     let nonce = ChaCha20Poly1305::generate_nonce(&mut OsRng); // 96-bits; unique per message
-
     let mut buffer = data.to_vec();
     cipher.encrypt_in_place(&nonce, b"", &mut buffer)?;
-    // cipher.decrypt_in_place(&nonce, b"", &mut buffer)?;
+    buffer.splice(0..0, nonce.iter().cloned());
     Ok(buffer)
 }
 
-pub fn decrypt(data: &[u8], _password_hash: &[u8]) -> Result<Vec<u8>> {
-    let private_key_bytes = [0u8; 32]; // replace with your actual private key bytes
-    let key = ChaChaKey::from_slice(&private_key_bytes);
-    let cipher = ChaCha20Poly1305::new(&key);
-    let nonce = ChaCha20Poly1305::generate_nonce(&mut OsRng); // 96-bits; unique per message
-
-    let mut buffer = data.to_vec();
-    // cipher.encrypt_in_place(&nonce, b"", &mut buffer)?;
-    cipher.decrypt_in_place(&nonce, b"", &mut buffer)?;
+pub fn decrypt(data: &[u8], private_key_bytes: &[u8]) -> Result<Vec<u8>> {
+    let private_key_bytes: &[u8; 32] = private_key_bytes.try_into()?;
+    let key = Key::from_slice(private_key_bytes);
+    let cipher = ChaCha20Poly1305::new(key);
+    let nonce = &data[0..12];
+    let mut buffer = data[12..].to_vec();
+    cipher.decrypt_in_place(nonce.into(), b"", &mut buffer)?;
     Ok(buffer)
+}
+
+pub fn hash_password(password: &str) -> Result<Vec<u8>> {
+    let mut sha256 = Sha256::new();
+    sha256.update(password);
+    Ok(sha256.finalize().to_vec())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_encrypt_decrypt() {
+        println!("testing encrypt/decrypt");
+        let password_hash = hash_password("password").unwrap();
+        // println!("password hash: {password_hash:?}");
+
+        let data = b"hello world".to_vec();
+        let orig = data.clone();
+        let data = encrypt(&data, &password_hash).unwrap();
+        let data = decrypt(&data, &password_hash).unwrap();
+        assert_eq!(data, orig);
+    }
 }
