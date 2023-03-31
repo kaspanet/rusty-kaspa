@@ -14,6 +14,7 @@ use serde_wasm_bindgen::from_value;
 use wasm_bindgen::convert::FromWasmAbi;
 use wasm_bindgen::prelude::*;
 use workflow_log::log_trace;
+use workflow_wasm::jsvalue::JsValueTrait;
 
 use core::str::FromStr;
 use kaspa_consensus_core::tx::SignableTransaction;
@@ -73,7 +74,8 @@ impl MutableTransaction {
 
     #[wasm_bindgen(js_name=setSignatures)]
     pub fn set_signatures(&self, signatures: js_sys::Array) -> Result<JsValue, JsError> {
-        let signatures = signatures.iter().map(|s| s.as_string().unwrap()).collect::<Vec<_>>();
+        // let signatures : Result<Vec<Vec<u8>>> = signatures.iter().map(|s| s.try_as_vec_u8()?).collect::<Result<Vec<Vec<u8>>>>()?;
+        let signatures  = signatures.iter().map(|s|s.try_as_vec_u8()).collect::<Result<Vec<Vec<u8>>,workflow_wasm::error::Error>>()?;
 
         {
             let mut locked = self.tx.lock();
@@ -83,9 +85,9 @@ impl MutableTransaction {
                 return Err(Error::Custom("Signature counts dont match input counts".to_string()).into());
             }
 
-            for (i, signature) in signatures.iter().enumerate().take(tx.inputs.len()) {
+            for (i, signature) in signatures.into_iter().enumerate().take(tx.inputs.len()) {
                 tx.inputs[i].sig_op_count = 1;
-                tx.inputs[i].signature_script = Vec::<u8>::from_hex(signature)?;
+                tx.inputs[i].signature_script = signature;
                 //log_trace!("tx.inputs[i].signature_script: {:?}", tx.inputs[i].signature_script);
             }
         }
