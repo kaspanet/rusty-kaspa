@@ -196,11 +196,6 @@ impl Router {
         }
     }
 
-    /// Broadcast a locally-originated message to all active network peers
-    pub async fn broadcast(&self, msg: KaspadMessage) -> bool {
-        self.hub_sender.send(HubEvent::Broadcast(Box::new(msg))).await.is_ok()
-    }
-
     /// Closes the router, signals exit, and cleans up all resources so that underlying connections will be aborted correctly.
     /// Returns true of this is the first call to close
     pub async fn close(&self) -> bool {

@@ -9,7 +9,6 @@ use uuid::Uuid;
 pub(crate) enum HubEvent {
     NewPeer(Arc<Router>),
     PeerClosing(Uuid),
-    Broadcast(Box<KaspadMessage>),
 }
 
 /// Hub of active peers (represented as Router objects). Note that all public methods of this type are exposed through the Adaptor
@@ -47,9 +46,6 @@ impl Hub {
                         if let Some(router) = self.peers.write().remove(&peer_id) {
                             debug!("P2P, Hub event loop, removing peer, router-id: {}", router.identity());
                         }
-                    }
-                    HubEvent::Broadcast(msg) => {
-                        self.broadcast(*msg).await;
                     }
                 }
             }

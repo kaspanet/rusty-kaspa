@@ -163,7 +163,7 @@ impl HandleRelayInvsFlow {
             // Broadcast all *new* virtual parents. As a policy, we avoid directly relaying the new block since
             // we wish to relay only blocks who entered past(virtual).
             for new_virtual_parent in consensus.get_virtual_parents().difference(&prev_virtual_parents) {
-                self.router
+                self.ctx
                     .broadcast(make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(new_virtual_parent.into()) }))
                     .await;
             }

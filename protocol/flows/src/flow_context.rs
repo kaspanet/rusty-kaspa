@@ -20,7 +20,7 @@ use kaspa_mining::{
 };
 use kaspa_p2p_lib::{
     common::ProtocolError,
-    pb::{self},
+    pb::{self, KaspadMessage},
     ConnectionInitializer, Hub, KaspadHandshake, Router,
 };
 use parking_lot::Mutex;
@@ -222,6 +222,11 @@ impl FlowContext {
         transaction_ids: I,
     ) -> Result<(), ProtocolError> {
         self.transactions_spread.write().await.broadcast_transactions(transaction_ids).await
+    }
+
+    /// Broadcast a locally-originated message to all active network peers
+    pub async fn broadcast(&self, msg: KaspadMessage) {
+        self.hub.broadcast(msg).await;
     }
 }
 
