@@ -83,12 +83,7 @@ kaspa.init_console_panic_hook();
     let private_key = xkey.receiveKey(0);
 
     let transaction = signTransaction(tx, [private_key], true);
-    //console.log("transaction", transaction)
-
     transaction = transaction.toRpcTransaction();
-
-    //console.log("rpcTransaction", transaction)
-
     let result = await rpc.submitTransaction({transaction, allowOrphan:false});
 
     console.log("result", result)
