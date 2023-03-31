@@ -26,9 +26,9 @@ kaspa.init_console_panic_hook();
 
     console.log("xpub", xpub)
 
-    let addresses = await xpub.receiveAddresses(10, 0);
+    let addresses = await xpub.receiveAddresses(0, 10);
     console.log("receive addresses", addresses)
-    addresses = await xpub.changeAddresses(10, 0);
+    addresses = await xpub.changeAddresses(0, 10);
     console.log("change addresses", addresses)
 
     //await rpc.disconnect();
