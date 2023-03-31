@@ -18,6 +18,8 @@ use kaspa_consensus_core::{
     },
 };
 use kaspa_core::hex::ToHex;
+use kaspa_hashes::Hash;
+use serde_wasm_bindgen::from_value;
 use std::collections::BTreeMap;
 use std::iter::once;
 use std::str::FromStr;
@@ -194,4 +196,19 @@ pub fn sign(mut mutable_tx: SignableTransaction, privkeys: &Vec<[u8; 32]>) -> Re
         }
     }
     Ok(mutable_tx)
+}
+
+#[wasm_bindgen(js_name=signScriptHash)]
+pub fn sign_script_hash(script_hash: JsValue, privkey: &PrivateKey) -> Result<String> {
+    let script_hash = from_value(script_hash)?;
+    let result = sign_hash(script_hash, &privkey.into())?;
+    Ok(result.to_hex())
+}
+
+pub fn sign_hash(sig_hash: Hash, privkey: &[u8; 32]) -> Result<Vec<u8>> {
+    let msg = secp256k1::Message::from_slice(sig_hash.as_bytes().as_slice())?;
+    let schnorr_key = secp256k1::KeyPair::from_seckey_slice(secp256k1::SECP256K1, privkey)?;
+    let sig: [u8; 64] = *schnorr_key.sign_schnorr(msg).as_ref();
+    let signature = std::iter::once(65u8).chain(sig).chain([SIG_HASH_ALL.to_u8()]).collect();
+    Ok(signature)
 }

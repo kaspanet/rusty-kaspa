@@ -7,11 +7,13 @@ let { RpcClient, UtxoSet, Address, Encoding, UtxoOrdering,
     XPrivateKey,
     VirtualTransaction,
     createTransaction,
-    signTransaction
+    signTransaction,
+    signScriptHash
 } = kaspa;
 kaspa.init_console_panic_hook();
 
 (async ()=>{
+    // return;
     
     let URL = "ws://127.0.0.1:17110";
     let rpc = new RpcClient(Encoding.Borsh,URL);
@@ -26,15 +28,10 @@ kaspa.init_console_panic_hook();
     console.log(info2);
     
     let addresses = [
-        new Address("kaspatest:qz7ulu4c25dh7fzec9zjyrmlhnkzrg4wmf89q7gzr3gfrsj3uz6xjceef60sd"),
-        //new Address("kaspatest:qz7ulu4c25dh7fzec9zjyrmlhnkzrg4wmf89q7gzr3gfrsj3uz6xjceef60sd")
+        new Address("kaspatest:qz7ulu4c25dh7fzec9zjyrmlhnkzrg4wmf89q7gzr3gfrsj3uz6xjceef60sd")
     ];
 
-    //let addresses = ["kaspatest:qz7ulu4c25dh7fzec9zjyrmlhnkzrg4wmf89q7gzr3gfrsj3uz6xjceef60sd"];
-    //console.log("\naddresses:", addresses);
     console.log("\nJSON.stringify(addresses):", JSON.stringify(addresses));
-    //console.log("\naddresses.toString():", addresses.toString());
-    // console.log(addresses.toString());
 
     console.log("\ngetting UTXOs...");
     let utxos_by_address = await rpc.getUtxosByAddresses({ addresses });
@@ -62,17 +59,10 @@ kaspa.init_console_panic_hook();
 
     let change_address = new Address("kaspatest:qz7ulu4c25dh7fzec9zjyrmlhnkzrg4wmf89q7gzr3gfrsj3uz6xjceef60sd");
 
-    // let vtx = new VirtualTransaction(
-    //     utxo_selection, 
-    //     outputs,
-    //     change_address,
-    //     []
-    // );
-
-    // console.log("vtx", vtx)
     let priorityFee = 1500;
     let tx = createTransaction(utxo_selection, outputs, change_address, priorityFee);
-    console.log("tx", tx)
+    let scriptHashes = tx.getScriptHashes();
+    console.log("scriptHashes", scriptHashes)
 
     let xkey = new XPrivateKey(
         "kprv5y2qurMHCsXYrNfU3GCihuwG3vMqFji7PZXajMEqyBkNh9UZUJgoHYBLTKu1eM4MvUtomcXPQ3Sw9HZ5ebbM4byoUciHo1zrPJBQfqpLorQ",
@@ -82,12 +72,12 @@ kaspa.init_console_panic_hook();
 
     let private_key = xkey.receiveKey(0);
 
-    let transaction = signTransaction(tx, [private_key], true);
-    //console.log("transaction", transaction)
+    let signatures = scriptHashes.map(hash=>signScriptHash(hash, private_key));
+    console.log("signatures", signatures)
 
-    transaction = transaction.toRpcTransaction();
-
-    //console.log("rpcTransaction", transaction)
+    let transaction = tx.setSignatures(signatures);
+    console.log("transaction", transaction)
+    //let transaction = tx.toRpcTransaction();
 
     let result = await rpc.submitTransaction({transaction, allowOrphan:false});
 

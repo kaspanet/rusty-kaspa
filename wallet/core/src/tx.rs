@@ -1,66 +1,27 @@
-//use js_sys::Object;
+use crate::utxo::*;
 use kaspa_addresses::Address;
-use kaspa_consensus_core::tx::TransactionOutpoint;
-use kaspa_rpc_core::RpcTransactionOutput;
-use wasm_bindgen::convert::FromWasmAbi;
-use wasm_bindgen::prelude::*;
-// pub use kaspa_consensus_core::wasm::MutableTransaction;
-
-//use itertools::Itertools;
 use kaspa_consensus_core::hashing::sighash::calc_schnorr_signature_hash;
 use kaspa_consensus_core::hashing::sighash::SigHashReusedValues;
 use kaspa_consensus_core::hashing::sighash_type::SIG_HASH_ALL;
 use kaspa_consensus_core::subnets::SubnetworkId;
-//use kaspa_consensus_core::tx::ScriptVec;
+use kaspa_consensus_core::tx::TransactionOutpoint;
+use kaspa_core::hex::FromHex;
+use kaspa_rpc_core::RpcTransactionOutput;
 use kaspa_rpc_core::{RpcTransaction, RpcTransactionInput};
 use kaspa_txscript::pay_to_address_script;
 use serde::Deserializer;
 use serde_wasm_bindgen::from_value;
+use wasm_bindgen::convert::FromWasmAbi;
+use wasm_bindgen::prelude::*;
 use workflow_log::log_trace;
-//use kaspa_consensus_core::tx::TransactionId;
-// use kaspa_consensus_core::subnets::SubnetworkId;
-use crate::utxo::*;
-// use crate::tx;
-//use secp256k1::{rand, Secp256k1};
 
-// ::{
-//     // self,
-//     // MutableTransaction,
-//     // PopulatedTransaction,
-//     // SignableTransaction,
-//     // ScriptVec,
-//     // TransactionId,
-//     UtxoEntry,
-// };
-use kaspa_consensus_core::tx::{
-    self,
-    //ScriptPublicKey,
-    Transaction, // UtxoEntry,
-    TransactionInput,
-    //TransactionOutpoint,
-    TransactionOutput,
-};
-// use crate::tx;
-// use crate::wasm::UtxoEntry;
 use core::str::FromStr;
-// use itertools::Itertools;
-// use js_sys::Array;
-// use secp256k1::Secp256k1;
+use kaspa_consensus_core::tx::SignableTransaction;
+use kaspa_consensus_core::tx::{self, Transaction, TransactionInput, TransactionOutput};
+use kaspa_consensus_core::wasm::error::Error;
 use serde::{Deserialize, Serialize};
 use serde_wasm_bindgen::to_value;
-// use std::iter::once;
 use std::sync::{Arc, Mutex};
-// use wasm_bindgen::prelude::*;
-// use workflow_wasm::abi::ref_from_abi;
-
-// use crate::sign::sign_with_multiple;
-use kaspa_consensus_core::tx::SignableTransaction;
-use kaspa_consensus_core::wasm::error::Error;
-// use workflow_wasm::object::*;
-
-// use crate::utxo::SelectionContext;
-// use workflow_wasm::jsvalue::*;
-// use kaspa_consensus_core::wasm::utxo::UtxoEntryList;
 
 pub fn script_hashes(mut mutable_tx: SignableTransaction) -> Result<Vec<kaspa_hashes::Hash>, Error> {
     let mut list = vec![];
@@ -80,17 +41,10 @@ pub fn script_hashes(mut mutable_tx: SignableTransaction) -> Result<Vec<kaspa_ha
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[wasm_bindgen]
 pub struct MutableTransaction {
-    //inner : Arc<tx::MutableTransaction<Transaction>>,
     tx: Arc<Mutex<Transaction>>,
     /// UTXO entry data
     #[wasm_bindgen(getter_with_clone)]
     pub entries: UtxoEntries,
-    // Populated fee
-    // #[wasm_bindgen(skip)]
-    // pub calculated_fee: Option<u64>,
-    // Populated mass
-    // #[wasm_bindgen(skip)]
-    // pub calculated_mass: Option<u64>,
 }
 
 #[wasm_bindgen]
@@ -98,7 +52,6 @@ impl MutableTransaction {
     #[wasm_bindgen(constructor)]
     pub fn new(tx: &Transaction, entries: &UtxoEntries) -> Self {
         Self { tx: Arc::new(Mutex::new(tx.clone())), entries: entries.clone() }
-        // Self { tx: Arc::new(Mutex::new(tx)), entries, calculated_fee: None, calculated_mass: None }
     }
 
     #[wasm_bindgen(js_name=toJSON)]
@@ -118,26 +71,34 @@ impl MutableTransaction {
         Ok(to_value(&hashes)?)
     }
 
+    #[wasm_bindgen(js_name=setSignatures)]
+    pub fn set_signatures(&self, signatures: js_sys::Array) -> Result<JsValue, JsError> {
+        let signatures = signatures.iter().map(|s| s.as_string().unwrap()).collect::<Vec<_>>();
+
+        {
+            let mut locked = self.tx.lock();
+            let tx = locked.as_mut().unwrap();
+
+            if signatures.len() != tx.inputs.len() {
+                return Err(Error::Custom("Signature counts dont match input counts".to_string()).into());
+            }
+
+            for (i, signature) in signatures.iter().enumerate().take(tx.inputs.len()) {
+                tx.inputs[i].sig_op_count = 1;
+                tx.inputs[i].signature_script = Vec::<u8>::from_hex(signature)?;
+                //log_trace!("tx.inputs[i].signature_script: {:?}", tx.inputs[i].signature_script);
+            }
+        }
+
+        let tx: RpcTransaction = (*self).clone().try_into()?;
+        Ok(to_value(&tx)?)
+    }
+
     #[wasm_bindgen(js_name=toRpcTransaction)]
     pub fn rpc_tx_request(&self) -> Result<JsValue, JsError> {
         let tx: RpcTransaction = (*self).clone().try_into()?;
         Ok(to_value(&tx)?)
     }
-
-    // fn sign(js_value: JsValue) -> tx::MutableTransaction {
-
-    //     // TODO - get signer
-    //     // use signer.sign(self)
-
-    // }
-
-    // fn sign_with_key(js_value: JsValue) -> MutableTransaction {
-
-    // }
-
-    // pub fn as_signable(&self) -> SignableTransaction {
-    //     todo!()
-    // }
 }
 
 impl TryFrom<MutableTransaction> for tx::MutableTransaction<Transaction> {
