@@ -189,7 +189,7 @@ pub struct TransactionInput {
     #[wasm_bindgen(skip)]
     pub signature_script: Vec<u8>, // TODO: Consider using SmallVec
     pub sequence: u64,
-    #[wasm_bindgen(js_name = sigOpCount)]
+    #[wasm_bindgen(skip)]
     pub sig_op_count: u8,
 }
 
@@ -214,6 +214,16 @@ impl TransactionInput {
     #[wasm_bindgen(setter = signatureScript)]
     pub fn set_signature_script_from_js_value(&mut self, js_value: JsValue) {
         self.signature_script = js_value.try_as_vec_u8().expect("invalid signature script");
+    }
+
+    #[wasm_bindgen(setter = sigOpCount)]
+    pub fn set_sig_op_count(&mut self, sig_op_count: u8) {
+        self.sig_op_count = sig_op_count;
+    }
+
+    #[wasm_bindgen(getter = sigOpCount)]
+    pub fn sig_op_count(&self) -> u8 {
+        self.sig_op_count
     }
 }
 
@@ -319,14 +329,14 @@ impl Transaction {
     }
 
     #[wasm_bindgen(getter = inputs)]
-    pub fn get_inputs_as_js_array(&self) -> JsValue {
-        let inputs = self.inputs.clone().into_iter().map(<TransactionInput as Into<JsValue>>::into);
-        Array::from_iter(inputs).into()
+    pub fn get_inputs_as_js_array(&self) -> Array {
+        let inputs = self.inputs.clone().into_iter().map(JsValue::from);
+        Array::from_iter(inputs)
     }
 
     #[wasm_bindgen(setter = inputs)]
-    pub fn set_inputs_from_js_array(&mut self, js_value: &JsValue) {
-        let inputs = Array::from(js_value)
+    pub fn set_inputs_from_js_array(&mut self, inputs: &Array) {
+        let inputs = inputs
             .iter()
             .map(|js_value| {
                 ref_from_abi!(TransactionInput, &js_value).unwrap_or_else(|err| panic!("invalid transaction input: {err}"))

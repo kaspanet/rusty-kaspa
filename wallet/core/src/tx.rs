@@ -11,7 +11,6 @@ use kaspa_consensus_core::subnets;
 use kaspa_consensus_core::subnets::SubnetworkId;
 use kaspa_consensus_core::tx::ScriptPublicKey;
 use kaspa_consensus_core::tx::TransactionOutpoint;
-// use kaspa_core::hex::FromHex;
 use kaspa_core::hex::ToHex;
 use kaspa_rpc_core::RpcTransactionOutput;
 use kaspa_rpc_core::{RpcTransaction, RpcTransactionInput};
@@ -443,6 +442,12 @@ impl MutableTransaction {
     pub fn rpc_tx_request(&self) -> Result<JsValue, JsError> {
         let tx: RpcTransaction = (*self).clone().try_into()?;
         Ok(to_value(&tx)?)
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn inputs(&self) -> Result<js_sys::Array, JsError> {
+        let inputs = self.tx.lock()?.get_inputs_as_js_array();
+        Ok(inputs)
     }
 }
 
