@@ -5,7 +5,7 @@ use kaspa_consensus_core::hashing::sighash::SigHashReusedValues;
 use kaspa_consensus_core::hashing::sighash_type::SIG_HASH_ALL;
 use kaspa_consensus_core::subnets::SubnetworkId;
 use kaspa_consensus_core::tx::TransactionOutpoint;
-use kaspa_core::hex::FromHex;
+//use kaspa_core::hex::FromHex;
 use kaspa_rpc_core::RpcTransactionOutput;
 use kaspa_rpc_core::{RpcTransaction, RpcTransactionInput};
 use kaspa_txscript::pay_to_address_script;
@@ -75,7 +75,8 @@ impl MutableTransaction {
     #[wasm_bindgen(js_name=setSignatures)]
     pub fn set_signatures(&self, signatures: js_sys::Array) -> Result<JsValue, JsError> {
         // let signatures : Result<Vec<Vec<u8>>> = signatures.iter().map(|s| s.try_as_vec_u8()?).collect::<Result<Vec<Vec<u8>>>>()?;
-        let signatures  = signatures.iter().map(|s|s.try_as_vec_u8()).collect::<Result<Vec<Vec<u8>>,workflow_wasm::error::Error>>()?;
+        let signatures =
+            signatures.iter().map(|s| s.try_as_vec_u8()).collect::<Result<Vec<Vec<u8>>, workflow_wasm::error::Error>>()?;
 
         {
             let mut locked = self.tx.lock();
@@ -100,6 +101,12 @@ impl MutableTransaction {
     pub fn rpc_tx_request(&self) -> Result<JsValue, JsError> {
         let tx: RpcTransaction = (*self).clone().try_into()?;
         Ok(to_value(&tx)?)
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn inputs(&self) -> Result<js_sys::Array, JsError> {
+        let inputs = self.tx.lock()?.get_inputs_as_js_array();
+        Ok(inputs)
     }
 }
 

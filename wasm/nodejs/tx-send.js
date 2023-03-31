@@ -7,7 +7,10 @@ let { RpcClient, UtxoSet, Address, Encoding, UtxoOrdering,
     XPrivateKey,
     VirtualTransaction,
     createTransaction,
-    signTransaction
+    signTransaction,
+    Person,
+    Address1,
+    Location
 } = kaspa;
 kaspa.init_console_panic_hook();
 
@@ -62,14 +65,6 @@ kaspa.init_console_panic_hook();
 
     let change_address = new Address("kaspatest:qz7ulu4c25dh7fzec9zjyrmlhnkzrg4wmf89q7gzr3gfrsj3uz6xjceef60sd");
 
-    // let vtx = new VirtualTransaction(
-    //     utxo_selection, 
-    //     outputs,
-    //     change_address,
-    //     []
-    // );
-
-    // console.log("vtx", vtx)
     let priorityFee = 1500;
     let tx = createTransaction(utxo_selection, outputs, change_address, priorityFee);
     console.log("tx", tx)
@@ -81,6 +76,8 @@ kaspa.init_console_panic_hook();
     );
 
     let private_key = xkey.receiveKey(0);
+
+    console.log("tx.inputs", tx.inputs)
 
     let transaction = signTransaction(tx, [private_key], true);
     transaction = transaction.toRpcTransaction();
