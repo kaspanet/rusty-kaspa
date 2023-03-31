@@ -13,8 +13,8 @@ const P2P_CORE_SERVICE: &str = "p2p-service";
 
 pub struct P2pService {
     flow_context: Arc<FlowContext>,
-    p2p_adaptor: Arc<Adaptor>,
     connect: Option<String>, // TEMP: optional connect peer
+    listen: Option<String>,
     outbound_target: usize,
     inbound_limit: usize,
     shutdown: SingleTrigger,
@@ -23,12 +23,12 @@ pub struct P2pService {
 impl P2pService {
     pub fn new(
         flow_context: Arc<FlowContext>,
-        p2p_adaptor: Arc<Adaptor>,
         connect: Option<String>,
+        listen: Option<String>,
         outbound_target: usize,
         inbound_limit: usize,
     ) -> Self {
-        Self { flow_context, p2p_adaptor, connect, shutdown: SingleTrigger::default(), outbound_target, inbound_limit }
+        Self { flow_context, connect, listen, shutdown: SingleTrigger::default(), outbound_target, inbound_limit }
     }
 }
 
@@ -45,12 +45,11 @@ impl AsyncService for P2pService {
 
         // Launch the service and wait for a shutdown signal
         Box::pin(async move {
-            let connection_manager = ConnectionManager::new(
-                self.p2p_adaptor.clone(),
-                self.outbound_target,
-                self.inbound_limit,
-                self.flow_context.amgr.clone(),
-            );
+            let server_address = self.listen.clone().unwrap_or(String::from("[::1]:50051"));
+            let p2p_adaptor =
+                Adaptor::bidirectional(server_address.clone(), self.flow_context.hub(), self.flow_context.clone()).unwrap();
+            let connection_manager =
+                ConnectionManager::new(p2p_adaptor.clone(), self.outbound_target, self.inbound_limit, self.flow_context.amgr.clone());
 
             // For now, attempt to connect to a running golang node
             if let Some(peer_address) = self.connect.clone() {
@@ -59,9 +58,8 @@ impl AsyncService for P2pService {
 
             // Keep the P2P server running until a service shutdown signal is received
             shutdown_signal.await;
-            self.p2p_adaptor.terminate_all_peers().await;
+            p2p_adaptor.terminate_all_peers().await;
             connection_manager.stop().await;
-            // TODO: close hub_sender
             Ok(())
         })
     }

@@ -6,7 +6,7 @@ use tokio::sync::mpsc::Receiver as MpscReceiver;
 use uuid::Uuid;
 
 #[derive(Debug)]
-pub enum HubEvent {
+pub(crate) enum HubEvent {
     NewPeer(Arc<Router>),
     PeerClosing(Uuid),
     Broadcast(Box<KaspadMessage>),
@@ -20,7 +20,7 @@ pub struct Hub {
 }
 
 impl Hub {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self { peers: Arc::new(RwLock::new(HashMap::new())) }
     }
 
@@ -97,5 +97,11 @@ impl Hub {
     /// Returns a list of all currently active peers
     pub fn active_peers(&self) -> Vec<Peer> {
         self.peers.read().values().map(|r| r.as_ref().into()).collect()
+    }
+}
+
+impl Default for Hub {
+    fn default() -> Self {
+        Self::new()
     }
 }

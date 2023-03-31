@@ -20,8 +20,8 @@ use kaspa_mining::{
 };
 use kaspa_p2p_lib::{
     common::ProtocolError,
-    pb::{self, KaspadMessage},
-    ConnectionInitializer, HubEvent, KaspadHandshake, Router,
+    pb::{self},
+    ConnectionInitializer, Hub, KaspadHandshake, Router,
 };
 use parking_lot::Mutex;
 use std::{
@@ -32,14 +32,14 @@ use std::{
         Arc,
     },
 };
-use tokio::sync::{mpsc::Sender as MpscSender, RwLock as AsyncRwLock};
+use tokio::sync::RwLock as AsyncRwLock;
 use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct FlowContext {
     pub consensus: DynConsensus,
     pub config: Config,
-    hub_sender: MpscSender<HubEvent>,
+    hub: Hub,
     orphans_pool: Arc<AsyncRwLock<OrphanBlocksPool<dyn ConsensusApi>>>,
     shared_block_requests: Arc<Mutex<HashSet<Hash>>>,
     transactions_spread: Arc<AsyncRwLock<TransactionsSpread>>,
@@ -80,20 +80,20 @@ impl<T: PartialEq + Eq + std::hash::Hash> Drop for RequestScope<T> {
 impl FlowContext {
     pub fn new(
         consensus: DynConsensus,
-        hub_sender: MpscSender<HubEvent>,
         amgr: Arc<Mutex<AddressManager>>,
         config: &Config,
         mining_manager: Arc<MiningManager<dyn ConsensusApi>>,
     ) -> Self {
+        let hub = Hub::new();
         Self {
             consensus: consensus.clone(),
-            hub_sender: hub_sender.clone(),
             config: config.clone(),
             orphans_pool: Arc::new(AsyncRwLock::new(OrphanBlocksPool::new(consensus, MAX_ORPHANS))),
             shared_block_requests: Arc::new(Mutex::new(HashSet::new())),
-            transactions_spread: Arc::new(AsyncRwLock::new(TransactionsSpread::new(hub_sender))),
+            transactions_spread: Arc::new(AsyncRwLock::new(TransactionsSpread::new(hub.clone()))),
             shared_transaction_requests: Arc::new(Mutex::new(HashSet::new())),
             is_ibd_running: Arc::new(AtomicBool::default()),
+            hub,
             amgr,
             mining_manager,
         }
@@ -101,6 +101,10 @@ impl FlowContext {
 
     pub fn consensus(&self) -> DynConsensus {
         self.consensus.clone()
+    }
+
+    pub fn hub(&self) -> Hub {
+        self.hub.clone()
     }
 
     pub fn mining_manager(&self) -> Arc<MiningManager<dyn ConsensusApi>> {
@@ -218,11 +222,6 @@ impl FlowContext {
         transaction_ids: I,
     ) -> Result<(), ProtocolError> {
         self.transactions_spread.write().await.broadcast_transactions(transaction_ids).await
-    }
-
-    /// Broadcast a locally-originated message to all active network peers
-    pub async fn broadcast(&self, msg: KaspadMessage) -> bool {
-        self.hub_sender.send(HubEvent::Broadcast(Box::new(msg))).await.is_ok()
     }
 }
 

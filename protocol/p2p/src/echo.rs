@@ -148,23 +148,18 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
-    use crate::Adaptor;
+    use crate::{Adaptor, Hub};
     use kaspa_core::debug;
-    use tokio::sync::mpsc::channel as mpsc_channel;
 
     #[tokio::test]
     async fn test_handshake() {
         kaspa_core::log::try_init_logger("debug");
 
         let address1 = String::from("[::1]:50053");
-        let adaptor1 =
-            Adaptor::bidirectional(address1.clone(), Arc::new(EchoFlowInitializer::new()), mpsc_channel(Adaptor::hub_channel_size()))
-                .unwrap();
+        let adaptor1 = Adaptor::bidirectional(address1.clone(), Hub::new(), Arc::new(EchoFlowInitializer::new())).unwrap();
 
         let address2 = String::from("[::1]:50054");
-        let adaptor2 =
-            Adaptor::bidirectional(address2.clone(), Arc::new(EchoFlowInitializer::new()), mpsc_channel(Adaptor::hub_channel_size()))
-                .unwrap();
+        let adaptor2 = Adaptor::bidirectional(address2.clone(), Hub::new(), Arc::new(EchoFlowInitializer::new())).unwrap();
 
         // Initiate the connection from `adaptor1` (outbound) to `adaptor2` (inbound)
         let peer2_id = adaptor1
