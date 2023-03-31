@@ -28,6 +28,10 @@ impl NetworkType {
             NetworkType::Devnet => 16610,
         }
     }
+
+    pub fn name(&self) -> String {
+        format!("kaspa-{}", self)
+    }
 }
 
 impl TryFrom<Prefix> for NetworkType {

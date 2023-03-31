@@ -18,8 +18,12 @@ use std::sync::Arc;
 use tokio::sync::RwLock as AsyncRwLock;
 use uuid::Uuid;
 
+/// The P2P protocol version. Currently the only one supported.
+const PROTOCOL_VERSION: u32 = 5;
+
 #[derive(Clone)]
 pub struct FlowContext {
+    pub node_id: Uuid,
     pub consensus_manager: Arc<ConsensusManager>,
     pub config: Config,
     orphans_pool: Arc<AsyncRwLock<OrphanBlocksPool>>,
@@ -59,6 +63,7 @@ impl Drop for BlockRequestScope<'_> {
 impl FlowContext {
     pub fn new(consensus_manager: Arc<ConsensusManager>, amgr: Arc<Mutex<AddressManager>>, config: &Config) -> Self {
         Self {
+            node_id: Uuid::new_v4(),
             consensus_manager,
             config: config.clone(),
             orphans_pool: Arc::new(AsyncRwLock::new(OrphanBlocksPool::new(MAX_ORPHANS))),
@@ -121,27 +126,31 @@ impl ConnectionInitializer for FlowContext {
         // Build the local version message
         // TODO: full and accurate version info
         let self_version_message = pb::VersionMessage {
-            protocol_version: 5, // TODO: make a const
-            services: 0,         // TODO: get number of live services
+            protocol_version: PROTOCOL_VERSION,
+            services: 0, // TODO: get number of live services
             timestamp: unix_now() as i64,
-            address: None,                          // TODO
-            id: Vec::from(Uuid::new_v4().as_ref()), // TODO
-            user_agent: String::new(),              // TODO
-            disable_relay_tx: false,                // TODO: config/cmd?
-            subnetwork_id: None,                    // Subnets are not currently supported
-            network: "kaspa-mainnet".to_string(),   // TODO: get network from config
+            address: None, // TODO
+            id: Vec::from(self.node_id.as_ref()),
+            user_agent: String::new(), // TODO
+            disable_relay_tx: false,   // TODO: config/cmd
+            subnetwork_id: None,       // Subnets are not currently supported
+            network: self.config.net.name(),
         };
 
         // Perform the handshake
         let peer_version_message = handshake.handshake(self_version_message).await?;
 
-        // TODO: verify the versions are compatible
-        debug!("protocol versions - self: {}, peer: {}", 5, peer_version_message.protocol_version);
+        if peer_version_message.network != self.config.net.name() {
+            return Err(ProtocolError::WrongNetwork(self.config.net.name(), peer_version_message.network));
+        }
+
+        debug!("protocol versions - self: {}, peer: {}", PROTOCOL_VERSION, peer_version_message.protocol_version);
 
         // Register all flows according to version
         let flows = match peer_version_message.protocol_version {
-            5 => v5::register(self.clone(), router.clone()),
-            _ => todo!(),
+            PROTOCOL_VERSION => v5::register(self.clone(), router.clone()),
+            // TODO: different errors for obsolete (low version) vs unknown (high)
+            v => return Err(ProtocolError::VersionMismatch(PROTOCOL_VERSION, v)),
         };
 
         // Send and receive the ready signal

@@ -11,6 +11,12 @@ pub enum ProtocolError {
     #[error("timeout expired after {0:?}")]
     Timeout(Duration),
 
+    #[error("P2P protocol version mismatch - local: {0}, remote: {1}")]
+    VersionMismatch(u32, u32),
+
+    #[error("Network mismatch - local: {0}, remote: {1}")]
+    WrongNetwork(String, String),
+
     #[error("expected message type/s {0} but got {1:?}")]
     UnexpectedMessage(&'static str, Option<KaspadMessagePayloadType>),
 
