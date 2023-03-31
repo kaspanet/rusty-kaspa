@@ -123,6 +123,8 @@ impl ConnectionInitializer for FlowContext {
         // We start the router receive loop only after we registered to handshake routes
         router.start();
 
+        let network_name = self.config.net.name(self.config.net_suffix);
+
         // Build the local version message
         // TODO: full and accurate version info
         let self_version_message = pb::VersionMessage {
@@ -134,14 +136,14 @@ impl ConnectionInitializer for FlowContext {
             user_agent: String::new(), // TODO
             disable_relay_tx: false,   // TODO: config/cmd
             subnetwork_id: None,       // Subnets are not currently supported
-            network: self.config.net.name(),
+            network: network_name.clone(),
         };
 
         // Perform the handshake
         let peer_version_message = handshake.handshake(self_version_message).await?;
 
-        if peer_version_message.network != self.config.net.name() {
-            return Err(ProtocolError::WrongNetwork(self.config.net.name(), peer_version_message.network));
+        if peer_version_message.network != network_name {
+            return Err(ProtocolError::WrongNetwork(network_name, peer_version_message.network));
         }
 
         debug!("protocol versions - self: {}, peer: {}", PROTOCOL_VERSION, peer_version_message.protocol_version);

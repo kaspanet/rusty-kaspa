@@ -29,8 +29,12 @@ impl NetworkType {
         }
     }
 
-    pub fn name(&self) -> String {
-        format!("kaspa-{}", self)
+    pub fn name(&self, suffix: Option<u32>) -> String {
+        if let Some(suffix) = suffix {
+            format!("kaspa-{}-{}", self, suffix)
+        } else {
+            format!("kaspa-{}", self)
+        }
     }
 }
 

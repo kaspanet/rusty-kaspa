@@ -7,6 +7,7 @@ use crate::{networktype::NetworkType, BlockLevel, KType};
 #[derive(Clone)]
 pub struct Params {
     pub net: NetworkType,
+    pub net_suffix: Option<u32>,
     pub genesis: GenesisBlock,
     pub ghostdag_k: KType,
     pub timestamp_deviation_tolerance: u64,
@@ -44,6 +45,7 @@ impl Params {
 const DEFAULT_GHOSTDAG_K: KType = 18;
 pub const MAINNET_PARAMS: Params = Params {
     net: NetworkType::Mainnet,
+    net_suffix: None,
     genesis: GENESIS,
     ghostdag_k: DEFAULT_GHOSTDAG_K,
     timestamp_deviation_tolerance: 132,
@@ -87,6 +89,7 @@ pub const MAINNET_PARAMS: Params = Params {
 
 pub const TESTNET_PARAMS: Params = Params {
     net: NetworkType::Testnet,
+    net_suffix: Some(10),
     genesis: TESTNET_GENESIS,
     ghostdag_k: DEFAULT_GHOSTDAG_K,
     timestamp_deviation_tolerance: 132,
@@ -130,6 +133,7 @@ pub const TESTNET_PARAMS: Params = Params {
 
 pub const SIMNET_PARAMS: Params = Params {
     net: NetworkType::Simnet,
+    net_suffix: None,
     genesis: SIMNET_GENESIS,
     ghostdag_k: DEFAULT_GHOSTDAG_K,
     timestamp_deviation_tolerance: 132,
@@ -173,6 +177,7 @@ pub const SIMNET_PARAMS: Params = Params {
 
 pub const DEVNET_PARAMS: Params = Params {
     net: NetworkType::Devnet,
+    net_suffix: None,
     genesis: DEVNET_GENESIS,
     ghostdag_k: DEFAULT_GHOSTDAG_K,
     timestamp_deviation_tolerance: 132,
