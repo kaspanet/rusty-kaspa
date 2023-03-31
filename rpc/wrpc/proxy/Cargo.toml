@@ -17,3 +17,7 @@ workflow-log.workspace = true
 async-trait.workspace = true
 kaspa-rpc-macros.workspace = true
 num_cpus.workspace = true
+
+
+[package.metadata.emanate.build]
+folder = "setup"
