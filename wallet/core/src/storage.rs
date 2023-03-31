@@ -196,6 +196,21 @@ pub fn local_storage() -> web_sys::Storage {
     web_sys::window().unwrap().local_storage().unwrap().unwrap()
 }
 
+#[wasm_bindgen(js_name = "encrypt")]
+pub fn js_encrypt(text : String, password : String) -> Result<String> {
+    let password_hash = hash_password(&password)?;
+    let encrypted = encrypt(text.as_bytes(),&password_hash)?;
+    Ok(general_purpose::STANDARD.encode(&encrypted))
+}
+
+#[wasm_bindgen(js_name = "decrypt")]
+pub fn js_decrypt(text : String, password : String) -> Result<String> {
+    let password_hash = hash_password(&password)?;
+    let encrypted = decrypt(text.as_bytes(),&password_hash)?;
+    let decoded = general_purpose::STANDARD.decode(&encrypted)?;
+    Ok(String::from_utf8(decoded)?)
+}
+
 pub fn encrypt(data: &[u8], private_key_bytes: &[u8]) -> Result<Vec<u8>> {
     let private_key_bytes: &[u8; 32] = private_key_bytes.try_into()?;
     let key = Key::from_slice(private_key_bytes);

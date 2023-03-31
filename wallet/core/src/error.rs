@@ -79,6 +79,9 @@ pub enum Error {
     Chacha20poly1305(chacha20poly1305::Error),
     // #[error(transparent)]
     // InvalidHashLength(sha2::digest::InvalidLength),
+
+    #[error(transparent)]
+    FromUtf8Error(#[from] std::string::FromUtf8Error),
 }
 
 impl From<chacha20poly1305::Error> for Error {
