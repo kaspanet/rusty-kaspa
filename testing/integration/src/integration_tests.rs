@@ -729,6 +729,7 @@ impl KaspadGoParams {
         let finality_depth = self.FinalityDuration / self.TargetTimePerBlock;
         Params {
             net: Mainnet,
+            net_suffix: None,
             genesis: GENESIS,
             ghostdag_k: self.K,
             timestamp_deviation_tolerance: self.TimestampDeviationTolerance,
