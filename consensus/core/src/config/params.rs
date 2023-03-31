@@ -40,6 +40,10 @@ impl Params {
     pub fn expected_daa_window_duration_in_milliseconds(&self) -> u64 {
         self.target_time_per_block * self.difficulty_window_size as u64
     }
+
+    pub fn network_name(&self) -> String {
+        self.net.name(self.net_suffix)
+    }
 }
 
 const DEFAULT_GHOSTDAG_K: KType = 18;

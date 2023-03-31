@@ -148,13 +148,20 @@ pub fn main() {
         _ => panic!("only a single net should be activated"),
     };
 
+    let config = match network_type {
+        NetworkType::Mainnet => ConfigBuilder::new(MAINNET_PARAMS).build(),
+        NetworkType::Testnet => ConfigBuilder::new(TESTNET_PARAMS).build(),
+        NetworkType::Devnet => ConfigBuilder::new(DEVNET_PARAMS).build(),
+        NetworkType::Simnet => ConfigBuilder::new(SIMNET_PARAMS).build(),
+    };
+
     // TODO: Refactor all this quick-and-dirty code
     let app_dir = args
         .appdir
         .unwrap_or_else(|| get_app_dir().as_path().to_str().unwrap().to_string())
         .replace('~', get_home_dir().as_path().to_str().unwrap());
     let app_dir = if app_dir.is_empty() { get_app_dir() } else { PathBuf::from(app_dir) };
-    let db_dir = app_dir.join(format!("kaspa-{}", network_type)).join(DEFAULT_DATA_DIR); // TODO: append testnet number
+    let db_dir = app_dir.join(config.network_name()).join(DEFAULT_DATA_DIR);
 
     assert!(!db_dir.to_str().unwrap().is_empty());
     info!("Application directory: {}", app_dir.display());
@@ -187,13 +194,6 @@ pub fn main() {
     let core = Arc::new(Core::new());
 
     // ---
-
-    let config = match network_type {
-        NetworkType::Mainnet => ConfigBuilder::new(MAINNET_PARAMS).build(),
-        NetworkType::Testnet => ConfigBuilder::new(TESTNET_PARAMS).build(),
-        NetworkType::Devnet => ConfigBuilder::new(DEVNET_PARAMS).build(),
-        NetworkType::Simnet => ConfigBuilder::new(SIMNET_PARAMS).build(),
-    };
 
     let (notification_send, notification_recv) = unbounded();
     let notification_root = Arc::new(ConsensusNotificationRoot::new(notification_send));

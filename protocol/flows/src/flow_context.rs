@@ -123,7 +123,7 @@ impl ConnectionInitializer for FlowContext {
         // We start the router receive loop only after we registered to handshake routes
         router.start();
 
-        let network_name = self.config.net.name(self.config.net_suffix);
+        let network_name = self.config.network_name();
 
         // Build the local version message
         // TODO: full and accurate version info
