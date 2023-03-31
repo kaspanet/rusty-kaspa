@@ -1,11 +1,18 @@
 use crate::utxo::*;
+use js_sys::Array;
 use kaspa_addresses::Address;
+// use kaspa_consensus_core::hashing;
 use kaspa_consensus_core::hashing::sighash::calc_schnorr_signature_hash;
 use kaspa_consensus_core::hashing::sighash::SigHashReusedValues;
 use kaspa_consensus_core::hashing::sighash_type::SIG_HASH_ALL;
+// use kaspa_consensus_core::hashing::tx::TX_ENCODING_EXCLUDE_SIGNATURE_SCRIPT;
+// use kaspa_consensus_core::hashing::tx::TX_ENCODING_FULL;
+use kaspa_consensus_core::subnets;
 use kaspa_consensus_core::subnets::SubnetworkId;
+use kaspa_consensus_core::tx::ScriptPublicKey;
 use kaspa_consensus_core::tx::TransactionOutpoint;
-use kaspa_core::hex::FromHex;
+// use kaspa_core::hex::FromHex;
+use kaspa_core::hex::ToHex;
 use kaspa_rpc_core::RpcTransactionOutput;
 use kaspa_rpc_core::{RpcTransaction, RpcTransactionInput};
 use kaspa_txscript::pay_to_address_script;
@@ -14,14 +21,16 @@ use serde_wasm_bindgen::from_value;
 use wasm_bindgen::convert::FromWasmAbi;
 use wasm_bindgen::prelude::*;
 use workflow_log::log_trace;
+use workflow_wasm::abi::ref_from_abi;
 use workflow_wasm::jsvalue::JsValueTrait;
 
 use core::str::FromStr;
 use kaspa_consensus_core::tx::SignableTransaction;
-use kaspa_consensus_core::tx::{self, Transaction, TransactionInput, TransactionOutput};
+use kaspa_consensus_core::tx::{self, Transaction, TransactionId, TransactionIndexType, TransactionInput, TransactionOutput};
 use kaspa_consensus_core::wasm::error::Error;
 use serde::{Deserialize, Serialize};
 use serde_wasm_bindgen::to_value;
+use std::sync::MutexGuard;
 use std::sync::{Arc, Mutex};
 
 pub fn script_hashes(mut mutable_tx: SignableTransaction) -> Result<Vec<kaspa_hashes::Hash>, Error> {
@@ -37,6 +46,339 @@ pub fn script_hashes(mut mutable_tx: SignableTransaction) -> Result<Vec<kaspa_ha
     }
     Ok(list)
 }
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+pub struct TransactionOutpointInner {
+    pub transaction_id: TransactionId,
+    pub index: TransactionIndexType,
+}
+
+/// Represents a Kaspa transaction outpoint
+// #[derive(Eq, Hash, PartialEq, Debug, Clone)]
+#[derive(Clone)]
+// #[serde(rename_all = "camelCase")]
+#[wasm_bindgen(inspectable)]
+pub struct XTransactionOutpoint {
+    // #[wasm_bindgen(js_name = transactionId)]
+    inner: Arc<Mutex<TransactionOutpointInner>>,
+}
+
+// impl XTransactionOutpoint {
+//     pub fn new(transaction_id: TransactionId, index: u32) -> Self {
+//         Self { inner : Arc::new(Mutex::new( TransactionOutpointInner { transaction_id, index })) }
+//     }
+// }
+
+#[wasm_bindgen]
+impl XTransactionOutpoint {
+    #[wasm_bindgen(constructor)]
+    pub fn new(transaction_id: &TransactionId, index: u32) -> Self {
+        Self { inner: Arc::new(Mutex::new(TransactionOutpointInner { transaction_id: *transaction_id, index })) }
+    }
+
+    #[wasm_bindgen(getter, js_name = transactionId)]
+    pub fn get_transaction_id(&self) -> TransactionId {
+        self.inner.lock().unwrap().transaction_id
+    }
+
+    #[wasm_bindgen(getter, js_name = index)]
+    pub fn get_index(&self) -> TransactionIndexType {
+        self.inner.lock().unwrap().index
+    }
+}
+
+impl std::fmt::Display for XTransactionOutpoint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let inner = self.inner.lock().unwrap();
+        write!(f, "({}, {})", inner.transaction_id, inner.index)
+    }
+}
+
+pub struct TransactionInputInner {
+    // #[wasm_bindgen(js_name = previousOutpoint)]
+    pub previous_outpoint: TransactionOutpoint,
+    // #[wasm_bindgen(skip)]
+    pub signature_script: Vec<u8>, // TODO: Consider using SmallVec
+    pub sequence: u64,
+    // #[wasm_bindgen(js_name = sigOpCount)]
+    pub sig_op_count: u8,
+}
+
+/// Represents a Kaspa transaction input
+#[derive(Clone)]
+#[wasm_bindgen(inspectable)]
+pub struct XTransactionInput {
+    inner: Arc<Mutex<TransactionInputInner>>,
+}
+
+impl XTransactionInput {
+    pub fn new(previous_outpoint: TransactionOutpoint, signature_script: Vec<u8>, sequence: u64, sig_op_count: u8) -> Self {
+        Self { inner: Arc::new(Mutex::new(TransactionInputInner { previous_outpoint, signature_script, sequence, sig_op_count })) }
+    }
+}
+
+#[wasm_bindgen]
+impl XTransactionInput {
+    #[wasm_bindgen(constructor)]
+    pub fn constructor(js_value: JsValue) -> Result<TransactionInput, JsError> {
+        Ok(js_value.try_into()?)
+    }
+
+    #[wasm_bindgen(getter = signatureScript)]
+    pub fn get_signature_script_as_hex(&self) -> String {
+        self.inner.lock().unwrap().signature_script.to_hex()
+    }
+
+    #[wasm_bindgen(setter = signatureScript)]
+    pub fn set_signature_script_from_js_value(&mut self, js_value: JsValue) {
+        self.inner.lock().unwrap().signature_script = js_value.try_as_vec_u8().expect("invalid signature script");
+    }
+}
+
+pub struct TransactionOutputInner {
+    pub value: u64,
+    // #[wasm_bindgen(js_name = scriptPublicKey, getter_with_clone)]
+    pub script_public_key: ScriptPublicKey,
+}
+
+/// Represents a Kaspad transaction output
+#[derive(Clone)]
+// #[serde(rename_all = "camelCase")]
+#[wasm_bindgen(inspectable)]
+pub struct XTransactionOutput {
+    inner: Arc<Mutex<TransactionOutputInner>>,
+}
+
+// impl XTransactionOutput {
+//     pub fn new(value: u64, script_public_key: ScriptPublicKey) -> Self {
+//         Self { inner : Arc::new(Mutex::new(TransactionOutputInner { value, script_public_key })) }
+//     }
+// }
+
+#[wasm_bindgen]
+impl XTransactionOutput {
+    #[wasm_bindgen(constructor)]
+    /// TransactionOutput constructor
+    pub fn constructor(value: u64, script_public_key: &ScriptPublicKey) -> XTransactionOutput {
+        Self { inner: Arc::new(Mutex::new(TransactionOutputInner { value, script_public_key: script_public_key.clone() })) }
+    }
+
+    fn inner(&self) -> MutexGuard<'_, TransactionOutputInner> {
+        self.inner.lock().unwrap()
+    }
+
+    #[wasm_bindgen(getter, js_name = value)]
+    pub fn get_value(&self) -> u64 {
+        self.inner().value
+    }
+
+    #[wasm_bindgen(setter, js_name = value)]
+    pub fn set_value(&self, v: u64) {
+        self.inner().value = v;
+    }
+
+    #[wasm_bindgen(getter, js_name = scriptPublicKey)]
+    pub fn get_script_public_key(&self) -> ScriptPublicKey {
+        self.inner().script_public_key.clone()
+    }
+
+    #[wasm_bindgen(setter, js_name = scriptPublicKey)]
+    pub fn set_script_public_key(&self, v: &ScriptPublicKey) {
+        self.inner().script_public_key = v.clone();
+    }
+}
+
+pub struct TransactionInner {
+    pub version: u16,
+    pub inputs: Vec<XTransactionInput>,
+    pub outputs: Vec<XTransactionOutput>,
+    // #[wasm_bindgen(js_name = lockTime)]
+    pub lock_time: u64,
+
+    pub subnetwork_id: SubnetworkId,
+    // TODO
+    pub gas: u64,
+    pub payload: Vec<u8>,
+
+    // A field that is used to cache the transaction ID.
+    // Always use the corresponding self.id() instead of accessing this field directly
+    id: TransactionId,
+}
+
+/// Represents a Kaspa transaction
+#[derive(Clone)]
+// #[serde(rename_all = "camelCase")]
+#[wasm_bindgen(inspectable)]
+pub struct XTransaction {
+    inner: Arc<Mutex<TransactionInner>>,
+}
+
+impl XTransaction {
+    pub fn new(
+        version: u16,
+        inputs: Vec<XTransactionInput>,
+        outputs: Vec<XTransactionOutput>,
+        lock_time: u64,
+        subnetwork_id: SubnetworkId,
+        gas: u64,
+        payload: Vec<u8>,
+    ) -> Self {
+        let tx = Self {
+            inner: Arc::new(Mutex::new(TransactionInner {
+                version,
+                inputs,
+                outputs,
+                lock_time,
+                subnetwork_id,
+                gas,
+                payload,
+                id: Default::default(), // Temp init before the finalize below
+            })),
+        };
+        tx.finalize();
+        tx
+    }
+}
+
+// pub(crate) fn id(tx: &XTransaction) -> TransactionId {
+//     // Encode the transaction, replace signature script with zeroes, cut off
+//     // payload and hash the result.
+
+//     let encoding_flags = if tx.is_coinbase() { TX_ENCODING_FULL } else { TX_ENCODING_EXCLUDE_SIGNATURE_SCRIPT };
+//     let mut hasher = kaspa_hashes::TransactionID::new();
+//     write_transaction(&mut hasher, tx, encoding_flags);
+//     hasher.finalize()
+// }
+
+#[wasm_bindgen]
+impl XTransaction {
+    /// Determines whether or not a transaction is a coinbase transaction. A coinbase
+    /// transaction is a special transaction created by miners that distributes fees and block subsidy
+    /// to the previous blocks' miners, and specifies the script_pub_key that will be used to pay the current
+    /// miner in future blocks.
+    pub fn is_coinbase(&self) -> bool {
+        self.inner().subnetwork_id == subnets::SUBNETWORK_ID_COINBASE
+    }
+
+    /// Recompute and finalize the tx id based on updated tx fields
+    pub fn finalize(&self) {
+        // self.try_into()?
+        // self.id = hashing::tx::id(self);
+        todo!()
+    }
+
+    /// Returns the transaction ID
+    pub fn id(&self) -> TransactionId {
+        self.inner().id
+    }
+}
+
+#[wasm_bindgen]
+impl XTransaction {
+    #[wasm_bindgen(constructor)]
+    pub fn constructor(js_value: JsValue) -> Result<Transaction, JsError> {
+        Ok(js_value.try_into()?)
+    }
+
+    fn inner(&self) -> MutexGuard<'_, TransactionInner> {
+        self.inner.lock().unwrap()
+    }
+
+    #[wasm_bindgen(getter = inputs)]
+    pub fn get_inputs_as_js_array(&self) -> JsValue {
+        let inputs = self.inner.lock().unwrap().inputs.clone().into_iter().map(<XTransactionInput as Into<JsValue>>::into);
+        Array::from_iter(inputs).into()
+    }
+
+    #[wasm_bindgen(setter = inputs)]
+    pub fn set_inputs_from_js_array(&mut self, js_value: &JsValue) {
+        let inputs = Array::from(js_value)
+            .iter()
+            .map(|js_value| {
+                ref_from_abi!(XTransactionInput, &js_value).unwrap_or_else(|err| panic!("invalid transaction input: {err}"))
+            })
+            .collect::<Vec<_>>();
+        self.inner().inputs = inputs;
+    }
+
+    #[wasm_bindgen(getter = outputs)]
+    pub fn get_outputs_as_js_array(&self) -> JsValue {
+        let outputs = self.inner.lock().unwrap().outputs.clone().into_iter().map(<XTransactionOutput as Into<JsValue>>::into);
+        Array::from_iter(outputs).into()
+    }
+
+    #[wasm_bindgen(setter = outputs)]
+    pub fn set_outputs_from_js_array(&mut self, js_value: &JsValue) {
+        let outputs = Array::from(js_value)
+            .iter()
+            .map(|js_value| {
+                ref_from_abi!(XTransactionOutput, &js_value).unwrap_or_else(|err| panic!("invalid transaction output: {err}"))
+            })
+            .collect::<Vec<_>>();
+        self.inner().outputs = outputs;
+    }
+
+    #[wasm_bindgen(getter = subnetworkId)]
+    pub fn get_subnetwork_id_as_hex(&self) -> String {
+        self.inner().subnetwork_id.to_hex()
+    }
+
+    #[wasm_bindgen(setter = subnetworkId)]
+    pub fn set_subnetwork_id_from_js_value(&mut self, js_value: JsValue) {
+        let subnetwork_id = js_value.try_as_vec_u8().unwrap_or_else(|err| panic!("subnetwork id error: {err}"));
+        self.inner().subnetwork_id = subnetwork_id.as_slice().try_into().unwrap_or_else(|err| panic!("subnetwork id error: {err}"));
+    }
+
+    #[wasm_bindgen(getter = payload)]
+    pub fn get_payload_as_hex_string(&self) -> String {
+        self.inner().payload.to_hex()
+    }
+
+    #[wasm_bindgen(setter = payload)]
+    pub fn set_payload_from_js_value(&mut self, js_value: JsValue) {
+        self.inner.lock().unwrap().payload = js_value.try_as_vec_u8().unwrap_or_else(|err| panic!("payload value error: {err}"));
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// Represents a generic mutable transaction
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -75,7 +417,8 @@ impl MutableTransaction {
     #[wasm_bindgen(js_name=setSignatures)]
     pub fn set_signatures(&self, signatures: js_sys::Array) -> Result<JsValue, JsError> {
         // let signatures : Result<Vec<Vec<u8>>> = signatures.iter().map(|s| s.try_as_vec_u8()?).collect::<Result<Vec<Vec<u8>>>>()?;
-        let signatures  = signatures.iter().map(|s|s.try_as_vec_u8()).collect::<Result<Vec<Vec<u8>>,workflow_wasm::error::Error>>()?;
+        let signatures =
+            signatures.iter().map(|s| s.try_as_vec_u8()).collect::<Result<Vec<Vec<u8>>, workflow_wasm::error::Error>>()?;
 
         {
             let mut locked = self.tx.lock();
