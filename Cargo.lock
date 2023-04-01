@@ -4328,7 +4328,7 @@ dependencies = [
 
 [[package]]
 name = "workflow-core"
-version = "0.3.12"
+version = "0.3.14"
 dependencies = [
  "async-channel",
  "async-std",
@@ -4353,7 +4353,7 @@ dependencies = [
 
 [[package]]
 name = "workflow-core-macros"
-version = "0.3.12"
+version = "0.3.14"
 dependencies = [
  "convert_case 0.6.0",
  "parse-variants",
@@ -4367,7 +4367,7 @@ dependencies = [
 
 [[package]]
 name = "workflow-dom"
-version = "0.3.12"
+version = "0.3.14"
 dependencies = [
  "futures",
  "js-sys",
@@ -4382,7 +4382,7 @@ dependencies = [
 
 [[package]]
 name = "workflow-log"
-version = "0.3.12"
+version = "0.3.14"
 dependencies = [
  "cfg-if",
  "console",
@@ -4396,7 +4396,7 @@ dependencies = [
 
 [[package]]
 name = "workflow-macro-tools"
-version = "0.3.12"
+version = "0.3.14"
 dependencies = [
  "convert_case 0.6.0",
  "parse-variants",
@@ -4407,7 +4407,7 @@ dependencies = [
 
 [[package]]
 name = "workflow-panic-hook"
-version = "0.3.12"
+version = "0.3.14"
 dependencies = [
  "cfg-if",
  "wasm-bindgen",
@@ -4416,7 +4416,7 @@ dependencies = [
 
 [[package]]
 name = "workflow-rpc"
-version = "0.3.12"
+version = "0.3.14"
 dependencies = [
  "ahash 0.8.3",
  "async-std",
@@ -4444,7 +4444,7 @@ dependencies = [
 
 [[package]]
 name = "workflow-rpc-macros"
-version = "0.3.12"
+version = "0.3.14"
 dependencies = [
  "parse-variants",
  "proc-macro-error",
@@ -4455,7 +4455,7 @@ dependencies = [
 
 [[package]]
 name = "workflow-task"
-version = "0.3.12"
+version = "0.3.14"
 dependencies = [
  "futures",
  "thiserror",
@@ -4465,7 +4465,7 @@ dependencies = [
 
 [[package]]
 name = "workflow-task-macros"
-version = "0.3.12"
+version = "0.3.14"
 dependencies = [
  "convert_case 0.6.0",
  "parse-variants",
@@ -4479,7 +4479,7 @@ dependencies = [
 
 [[package]]
 name = "workflow-terminal"
-version = "0.3.12"
+version = "0.3.14"
 dependencies = [
  "async-std",
  "async-trait",
@@ -4501,7 +4501,7 @@ dependencies = [
 
 [[package]]
 name = "workflow-wasm"
-version = "0.3.12"
+version = "0.3.14"
 dependencies = [
  "cfg-if",
  "faster-hex",
@@ -4520,7 +4520,7 @@ dependencies = [
 
 [[package]]
 name = "workflow-wasm-macros"
-version = "0.3.12"
+version = "0.3.14"
 dependencies = [
  "js-sys",
  "proc-macro-error",
@@ -4532,7 +4532,7 @@ dependencies = [
 
 [[package]]
 name = "workflow-websocket"
-version = "0.3.12"
+version = "0.3.14"
 dependencies = [
  "ahash 0.8.3",
  "async-std",

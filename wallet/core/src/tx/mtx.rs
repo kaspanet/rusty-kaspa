@@ -1,5 +1,5 @@
-use super::script_hashes;
 use super::transaction::Transaction;
+use super::{script_hashes, TransactionInput, TransactionOutput};
 use crate::error::Error;
 use crate::utxo::UtxoEntries;
 use kaspa_consensus_core::tx;
@@ -8,7 +8,7 @@ use kaspa_rpc_core::{RpcTransaction, RpcTransactionInput};
 use serde::{Deserialize, Serialize};
 use serde_wasm_bindgen::to_value;
 use std::str::FromStr;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 use wasm_bindgen::prelude::*;
 use workflow_wasm::jsvalue::JsValueTrait;
 
@@ -76,10 +76,39 @@ impl MutableTransaction {
         Ok(to_value(&tx)?)
     }
 
-    #[wasm_bindgen(getter)]
-    pub fn inputs(&self) -> Result<js_sys::Array, JsError> {
+    #[wasm_bindgen(getter=inputs)]
+    pub fn get_inputs(&self) -> Result<js_sys::Array, JsError> {
         let inputs = self.tx.lock()?.get_inputs_as_js_array();
         Ok(inputs)
+    }
+
+    #[wasm_bindgen(getter=outputs)]
+    pub fn get_outputs(&self) -> Result<js_sys::Array, JsError> {
+        let outputs = self.tx.lock()?.get_outputs_as_js_array();
+        Ok(outputs)
+    }
+}
+
+impl MutableTransaction {
+    pub fn tx(&self) -> MutexGuard<'_, Transaction> {
+        self.tx.lock().unwrap()
+    }
+    pub fn inputs(&self) -> Result<Vec<TransactionInput>, crate::error::Error> {
+        Ok(self.tx.lock()?.inner().inputs.clone())
+    }
+
+    pub fn outputs(&self) -> Result<Vec<TransactionOutput>, crate::error::Error> {
+        Ok(self.tx.lock()?.inner().outputs.clone())
+    }
+
+    pub fn total_input_amount(&self) -> Result<u64, crate::error::Error> {
+        let amount = self.entries.items().iter().map(|entry| entry.amount()).sum();
+        Ok(amount)
+    }
+
+    pub fn total_output_amount(&self) -> Result<u64, crate::error::Error> {
+        let amount = self.outputs()?.iter().map(|output| output.get_value()).sum();
+        Ok(amount)
     }
 }
 

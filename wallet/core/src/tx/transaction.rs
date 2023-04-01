@@ -1,16 +1,7 @@
 use super::input::TransactionInput;
-use super::output::TransactionOutput;
+use super::output::{Outputs, TransactionOutput};
 use crate::imports::*;
 use crate::Result;
-// use js_sys::Array;
-// use kaspa_consensus_core::{
-//     subnets::{SubnetworkId, SUBNETWORK_ID_COINBASE},
-//     tx::{self, TransactionId},
-// };
-// use kaspa_core::hex::ToHex;
-// use serde::{Deserialize, Serialize};
-// use std::sync::{Arc, Mutex, MutexGuard};
-// use wasm_bindgen::prelude::*;
 use workflow_wasm::abi::ref_from_abi;
 use workflow_wasm::jsvalue::JsValueTrait;
 
@@ -122,9 +113,9 @@ impl Transaction {
     }
 
     #[wasm_bindgen(getter = outputs)]
-    pub fn get_outputs_as_js_array(&self) -> JsValue {
+    pub fn get_outputs_as_js_array(&self) -> Array {
         let outputs = self.inner.lock().unwrap().outputs.clone().into_iter().map(JsValue::from);
-        Array::from_iter(outputs).into()
+        Array::from_iter(outputs)
     }
 
     #[wasm_bindgen(setter = outputs)]
@@ -168,16 +159,6 @@ impl Transaction {
         self.inner().lock_time = v;
     }
 
-    // #[wasm_bindgen(getter, js_name = id)]
-    // pub fn get_id(&self) -> TransactionId {
-    //     self.inner().id
-    // }
-
-    // #[wasm_bindgen(setter, js_name = gas)]
-    // pub fn set_gas(&self, v: u64) {
-    //     self.inner().lock_time = v;
-    // }
-
     #[wasm_bindgen(getter = subnetworkId)]
     pub fn get_subnetwork_id_as_hex(&self) -> String {
         self.inner().subnetwork_id.to_hex()
@@ -206,6 +187,7 @@ impl TryFrom<JsValue> for Transaction {
         if js_value.is_object() {
             let object = Object::from(js_value);
             let version = object.get_u16("version")?;
+            workflow_log::log_trace!("JsValue->Transaction: version: {version:?}");
             let lock_time = object.get_u64("lockTime")?;
             let gas = object.get_u64("gas")?;
             let payload = object.get_vec_u8("payload")?;
@@ -215,16 +197,28 @@ impl TryFrom<JsValue> for Transaction {
             }
             let subnetwork_id: SubnetworkId =
                 subnetwork_id.as_slice().try_into().map_err(|err| Error::Custom(format!("`subnetworkId` property error: `{err}`")))?;
+            workflow_log::log_trace!("JsValue->Transaction: subnetwork_id: {subnetwork_id:?}");
             let inputs = object
                 .get_vec("inputs")?
                 .into_iter()
                 .map(|jsv| jsv.try_into())
                 .collect::<std::result::Result<Vec<TransactionInput>, Error>>()?;
-            let outputs = object
-                .get_vec("outputs")?
-                .into_iter()
-                .map(|jsv| jsv.try_into())
-                .collect::<std::result::Result<Vec<TransactionOutput>, Error>>()?;
+            workflow_log::log_trace!("JsValue->Transaction: inputs.len(): {:?}", inputs.len());
+            let jsv_outputs = object.get("outputs")?;
+            let outputs: Vec<TransactionOutput> = if !jsv_outputs.is_array() {
+                let outputs: Outputs = jsv_outputs.try_into()?;
+                outputs.into()
+            } else {
+                object
+                    .get_vec("outputs")?
+                    .into_iter()
+                    .map(|jsv| {
+                        workflow_log::log_trace!("JsValue->Transaction: output : {jsv:?}");
+                        jsv.try_into()
+                    })
+                    .collect::<std::result::Result<Vec<TransactionOutput>, Error>>()?
+            };
+            workflow_log::log_trace!("JsValue->Transaction: outputs: {outputs:?}");
             Transaction::new(version, inputs, outputs, lock_time, subnetwork_id, gas, payload)
         } else {
             Err("Transaction must be an object".into())

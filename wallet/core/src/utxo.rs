@@ -234,6 +234,11 @@ impl UtxoEntries {
         self.0 = Arc::new(items);
     }
 }
+impl UtxoEntries {
+    pub fn items(&self) -> Arc<Vec<UtxoEntry>> {
+        self.0.clone()
+    }
+}
 
 impl From<UtxoEntries> for Vec<Option<UtxoEntry>> {
     fn from(value: UtxoEntries) -> Self {

@@ -72,30 +72,9 @@ pub fn create_transaction(
     }
 
     let mut outputs_ = vec![];
-    let mut total_output_amount = 0;
     for output in &outputs.outputs {
-        total_output_amount += output.amount;
         outputs_.push(TransactionOutput::new(output.amount, &pay_to_address_script(&output.address)));
     }
-
-    // total_input_amount = 10_000
-    // priority_fee = 1_000
-    // total_output_amount = 2_000
-
-    let amount_after_priority_fee = total_input_amount - priority_fee;
-    // amount_after_priority_fee = 10_000 - 1_000 = 9_000
-    if total_output_amount > amount_after_priority_fee {
-        return Err(format!("total_amount({total_output_amount}) > amount_after_priority_fee({amount_after_priority_fee})").into());
-    }
-
-    let change = amount_after_priority_fee - total_output_amount;
-    //change = 9_000 - 2_000 = 7_000
-    let dust = 500;
-    if change > dust {
-        total_output_amount += change;
-        outputs_.push(TransactionOutput::new(change, &pay_to_address_script(&change_address)));
-    }
-    // total_output_amount = 2_000 + 7_000 = 9_000
 
     let tx = Transaction::new(
         0,
@@ -107,8 +86,42 @@ pub fn create_transaction(
         payload.unwrap_or(vec![]),
     )?;
 
-    let fee = total_input_amount - total_output_amount;
-    //fee = 10_000 - 9_000 = 1_000
+    let mtx = MutableTransaction::new(&tx, &entries.into());
+    adjust_transaction_for_fee(&mtx, change_address, Some(priority_fee))?;
+
+    Ok(mtx)
+}
+
+#[wasm_bindgen(js_name=adjustTransactionForFee)]
+pub fn adjust_transaction_for_fee(
+    mtx: &MutableTransaction,
+    change_address: Address,
+    priority_fee: Option<u64>,
+) -> crate::Result<bool> {
+    let total_input_amount = mtx.total_input_amount()?;
+    let mut total_output_amount = mtx.total_output_amount()?;
+    let priority_fee = priority_fee.unwrap_or(0);
+
+    // total_input_amount = 10_000
+    // priority_fee = 1_000
+    // total_output_amount = 2_000
+
+    let amount_after_priority_fee = total_input_amount - priority_fee;
+    // amount_after_priority_fee = 10_000 - 1_000 = 9_000
+    if total_output_amount > amount_after_priority_fee {
+        return Err(format!("total_amount({total_output_amount}) > amount_after_priority_fee({amount_after_priority_fee})").into());
+    }
+
+    let tx = (*mtx.tx()).clone();
+
+    let change = amount_after_priority_fee - total_output_amount;
+    //change = 9_000 - 2_000 = 7_000
+    let dust = 500;
+    if change > dust {
+        total_output_amount += change;
+        tx.inner().outputs.push(TransactionOutput::new(change, &pay_to_address_script(&change_address)));
+    }
+    // total_output_amount = 2_000 + 7_000 = 9_000
 
     let params = get_consensus_params_by_address(&change_address);
     let minimum_fee = calculate_minimum_transaction_fee(&tx, &params, true);
@@ -116,8 +129,11 @@ pub fn create_transaction(
     let total_fee = minimum_fee + priority_fee;
     log_trace!("priority_fee: {priority_fee}");
     log_trace!("total_fee: {total_fee}");
-    log_trace!("fee: {fee}");
     // total_fee = 500 + 1_000 = 1_500
+
+    let fee = total_input_amount - total_output_amount;
+    //fee = 10_000 - 9_000 = 1_000
+    log_trace!("fee: {fee}");
 
     //if tx fee is less than required minimum fee + priority_fee
     if fee < total_fee {
@@ -142,7 +158,11 @@ pub fn create_transaction(
         }
     }
 
-    let mtx = MutableTransaction::new(&tx, &entries.into());
+    Ok(true)
+}
 
-    Ok(mtx)
+#[wasm_bindgen(js_name = "minimumTransactionFee")]
+pub fn minimum_transaction_fee(tx: &Transaction, network_type: NetworkType) -> u64 {
+    let params = get_consensus_params_by_network(&network_type);
+    calculate_minimum_transaction_fee(tx, &params, true)
 }

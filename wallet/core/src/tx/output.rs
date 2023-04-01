@@ -1,5 +1,6 @@
 use crate::imports::*;
 use crate::utxo::UtxoEntry;
+use kaspa_txscript::pay_to_address_script;
 use serde_wasm_bindgen::from_value;
 use wasm_bindgen::convert::FromWasmAbi;
 
@@ -82,7 +83,10 @@ impl TryFrom<JsValue> for TransactionOutput {
     type Error = Error;
     fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
         if js_value.is_object() {
+            workflow_log::log_trace!("js_value->TransactionOutput: {js_value:?}");
             let object = Object::from(js_value);
+            let has_address = Object::has_own(&object, &JsValue::from("address"));
+            workflow_log::log_trace!("js_value->TransactionOutput: has_address:{has_address:?}");
             let value = object.get_u64("value")?;
             let script_public_key: ScriptPublicKey =
                 object.get("scriptPublicKey").map_err(|_| Error::Custom("missing `script` property".into()))?.try_into()?;
@@ -110,6 +114,12 @@ impl Output {
     #[wasm_bindgen(constructor)]
     pub fn new(address: Address, amount: u64, utxo_entry: Option<UtxoEntry>) -> Self {
         Self { address, amount, utxo_entry: utxo_entry.map(Arc::new) }
+    }
+}
+
+impl From<Output> for TransactionOutput {
+    fn from(value: Output) -> Self {
+        Self::new_with_inner(TransactionOutputInner { script_public_key: pay_to_address_script(&value.address), value: value.amount })
     }
 }
 
@@ -165,5 +175,20 @@ impl Outputs {
         }
 
         Ok(Self { outputs })
+    }
+}
+
+impl TryFrom<JsValue> for Outputs {
+    type Error = Error;
+    fn try_from(value: JsValue) -> Result<Self, Self::Error> {
+        let api = Object::from(value).get_u64("ptr")?;
+        let outputs = unsafe { Self::from_abi(api as u32) };
+        Ok(outputs)
+    }
+}
+
+impl From<Outputs> for Vec<TransactionOutput> {
+    fn from(value: Outputs) -> Self {
+        value.outputs.into_iter().map(TransactionOutput::from).collect()
     }
 }

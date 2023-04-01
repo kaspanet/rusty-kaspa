@@ -4,9 +4,14 @@ use kaspa_consensus_core::{
     config::params::{Params, DEVNET_PARAMS, MAINNET_PARAMS},
     constants::*,
     mass::MassCalculator,
-    // tx::Transaction,
 };
-//use kaspa_consensus_core::mass::transaction_estimated_serialized_size;
+use wasm_bindgen::prelude::*;
+
+#[wasm_bindgen]
+pub enum NetworkType {
+    Mainnet,
+    Testnet,
+}
 
 /// MINIMUM_RELAY_TRANSACTION_FEE specifies the minimum transaction fee for a transaction to be accepted to
 /// the mempool and relayed. It is specified in sompi per 1kg (or 1000 grams) of transaction mass.
@@ -61,6 +66,14 @@ pub fn calculate_minimum_transaction_fee(tx: &Transaction, params: &Params, esti
 pub fn get_consensus_params_by_address(address: &Address) -> Params {
     match address.prefix {
         Prefix::Mainnet => MAINNET_PARAMS,
+        _ => DEVNET_PARAMS,
+    }
+}
+
+/// find Consensus parameters for given NetworkType
+pub fn get_consensus_params_by_network(network: &NetworkType) -> Params {
+    match network {
+        NetworkType::Mainnet => MAINNET_PARAMS,
         _ => DEVNET_PARAMS,
     }
 }
