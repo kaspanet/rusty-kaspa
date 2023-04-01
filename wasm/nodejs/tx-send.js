@@ -21,12 +21,9 @@ kaspa.init_console_panic_hook();
     
     console.log(`# connecting to ${URL}`)
     await rpc.connect();
-    console.log(`# connected ...`)
     
-    let info1 = await rpc.getInfo();
-    console.log(info1);
-    let info2 = await rpc.getInfo();
-    console.log(info2);
+    let info = await rpc.getInfo();
+    console.log("info", info);
     
     let addresses = [
         new Address("kaspatest:qz7ulu4c25dh7fzec9zjyrmlhnkzrg4wmf89q7gzr3gfrsj3uz6xjceef60sd"),
@@ -65,7 +62,7 @@ kaspa.init_console_panic_hook();
 
     let change_address = new Address("kaspatest:qz7ulu4c25dh7fzec9zjyrmlhnkzrg4wmf89q7gzr3gfrsj3uz6xjceef60sd");
 
-    let priorityFee = 1500;
+    let priorityFee = 0;
     let tx = createTransaction(utxo_selection, outputs, change_address, priorityFee);
     console.log("tx", tx)
 

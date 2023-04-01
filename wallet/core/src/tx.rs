@@ -1,5 +1,6 @@
 use crate::utxo::*;
 use js_sys::Array;
+use crate::utils::*;
 use kaspa_addresses::Address;
 // use kaspa_consensus_core::hashing;
 use kaspa_consensus_core::hashing::sighash::calc_schnorr_signature_hash;
@@ -747,43 +748,51 @@ pub fn create_transaction(
     let utxos = entries.iter().map(|reference| reference.utxo.clone()).collect::<Vec<Arc<UtxoEntry>>>();
 
     // let prev_tx_id = TransactionId::default();
-    let mut amount = 0;
+    let mut total_input_amount = 0;
     let mut entries = vec![];
 
     let inputs = utxos
         .iter()
         .enumerate()
         .map(|(sequence, utxo)| {
-            amount += utxo.utxo_entry.amount;
+            total_input_amount += utxo.utxo_entry.amount;
             entries.push(utxo.as_ref().clone());
             TransactionInput { previous_outpoint: utxo.outpoint, signature_script: vec![], sequence: sequence as u64, sig_op_count: 0 }
         })
         .collect::<Vec<TransactionInput>>();
 
-    let fee = 2036 + priority_fee.unwrap_or(0) as u64; //TODO: calculate Fee
-    if fee > amount {
-        return Err(format!("fee({fee}) > amount({amount})").into());
+    let priority_fee = priority_fee.unwrap_or(0) as u64;
+    if priority_fee > total_input_amount {
+        return Err(format!("priority_fee({priority_fee}) > amount({total_input_amount})").into());
     }
-    let amount_after_fee = amount - fee;
 
     let mut outputs_ = vec![];
-    let mut total_amount = 0;
+    let mut total_output_amount = 0;
     for output in &outputs.outputs {
-        total_amount += output.amount;
+        total_output_amount += output.amount;
         outputs_.push(TransactionOutput { value: output.amount, script_public_key: pay_to_address_script(&output.address) });
     }
 
-    if total_amount > amount_after_fee {
-        return Err(format!("total_amount({total_amount}) > amount_after_fee({amount_after_fee})").into());
+    // total_input_amount = 10_000
+    // priority_fee = 1_000
+    // total_output_amount = 2_000
+
+    let amount_after_priority_fee = total_input_amount - priority_fee;
+    // amount_after_priority_fee = 10_000 - 1_000 = 9_000
+    if total_output_amount > amount_after_priority_fee {
+        return Err(format!("total_amount({total_output_amount}) > amount_after_priority_fee({amount_after_priority_fee})").into());
     }
 
-    let change = amount_after_fee - total_amount;
+    let change = amount_after_priority_fee - total_output_amount;
+    //change = 9_000 - 2_000 = 7_000
     let dust = 500;
     if change > dust {
+        total_output_amount += change;
         outputs_.push(TransactionOutput { value: change, script_public_key: pay_to_address_script(&change_address) });
     }
+    // total_output_amount = 2_000 + 7_000 = 9_000
 
-    let tx = Transaction::new(
+    let mut tx = Transaction::new(
         0,
         inputs,
         outputs_,
@@ -792,6 +801,42 @@ pub fn create_transaction(
         0,
         payload.unwrap_or(vec![]),
     );
+
+    let fee = total_input_amount-total_output_amount;
+    //fee = 10_000 - 9_000 = 1_000
+
+    let params = get_consensus_params_by_address(&change_address);
+    let minimum_fee = calculate_minimum_transaction_fee(&tx, &params, true);
+    log_trace!("minimum_fee: {minimum_fee}");
+    let total_fee = minimum_fee + priority_fee;
+    log_trace!("priority_fee: {priority_fee}");
+    log_trace!("total_fee: {total_fee}");
+    log_trace!("fee: {fee}");
+    // total_fee = 500 + 1_000 = 1_500
+
+    //if tx fee is less than required minimum fee + priority_fee
+    if fee < total_fee{
+        let fee_difference = total_fee - fee;
+        // fee_difference = 1_500 - 1_000 = 500
+
+        // if there is no change output or change cant fullfill minimum required fee
+        if change <= dust || change < fee_difference{
+            return Err(format!("total_fee({total_fee}) > tx fee({fee})").into());
+        }
+
+        let new_change = change - fee_difference;
+        //new_change = 7_000 - 500 = 6_500
+
+        // if new change can make a valid output
+        if new_change > dust{
+            let last_index = tx.outputs.len()-1;
+            tx.outputs[last_index].value = new_change;
+        }else{
+            // else remove change output
+            let _change_output = tx.outputs.pop().unwrap();
+        }
+
+    }
 
     let mtx = MutableTransaction { tx: Arc::new(Mutex::new(tx)), entries: entries.into() };
 

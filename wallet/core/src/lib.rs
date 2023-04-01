@@ -12,6 +12,7 @@ pub mod tx;
 pub mod utxo;
 pub mod wallet;
 pub mod wrapper;
+pub mod utils;
 
 pub use accounts::dummy_address;
 pub use kaspa_addresses::Address;
