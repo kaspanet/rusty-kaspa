@@ -122,14 +122,14 @@ impl BorshSchema for ScriptPublicKey {
 /// much it pays.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
-#[wasm_bindgen(inspectable, js_name = TxUtxoEntry)]
+// #[wasm_bindgen(inspectable, js_name = TxUtxoEntry)]
 pub struct UtxoEntry {
     pub amount: u64,
-    #[wasm_bindgen(js_name = scriptPublicKey, getter_with_clone)]
+    // #[wasm_bindgen(js_name = scriptPublicKey, getter_with_clone)]
     pub script_public_key: ScriptPublicKey,
-    #[wasm_bindgen(js_name = blockDaaScore)]
+    // #[wasm_bindgen(js_name = blockDaaScore)]
     pub block_daa_score: u64,
-    #[wasm_bindgen(js_name = isCoinbase)]
+    // #[wasm_bindgen(js_name = isCoinbase)]
     pub is_coinbase: bool,
 }
 
@@ -139,22 +139,22 @@ impl UtxoEntry {
     }
 }
 
-#[wasm_bindgen]
-impl UtxoEntry {
-    #[wasm_bindgen(constructor)]
-    pub fn constructor(amount: u64, script_public_key: &ScriptPublicKey, block_daa_score: u64, is_coinbase: bool) -> Self {
-        Self { amount, script_public_key: script_public_key.clone(), block_daa_score, is_coinbase }
-    }
-}
+// #[wasm_bindgen]
+// impl UtxoEntry {
+//     #[wasm_bindgen(constructor)]
+//     pub fn constructor(amount: u64, script_public_key: &ScriptPublicKey, block_daa_score: u64, is_coinbase: bool) -> Self {
+//         Self { amount, script_public_key: script_public_key.clone(), block_daa_score, is_coinbase }
+//     }
+// }
 
 pub type TransactionIndexType = u32;
 
 /// Represents a Kaspa transaction outpoint
 #[derive(Eq, Hash, PartialEq, Debug, Copy, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
-#[wasm_bindgen(inspectable)]
+// #[wasm_bindgen(inspectable)]
 pub struct TransactionOutpoint {
-    #[wasm_bindgen(js_name = transactionId)]
+    // #[wasm_bindgen(js_name = transactionId)]
     pub transaction_id: TransactionId,
     pub index: TransactionIndexType,
 }
@@ -165,13 +165,13 @@ impl TransactionOutpoint {
     }
 }
 
-#[wasm_bindgen]
-impl TransactionOutpoint {
-    #[wasm_bindgen(constructor)]
-    pub fn constructor(transaction_id: &TransactionId, index: u32) -> Self {
-        Self { transaction_id: *transaction_id, index }
-    }
-}
+// #[wasm_bindgen]
+// impl TransactionOutpoint {
+//     #[wasm_bindgen(constructor)]
+//     pub fn constructor(transaction_id: &TransactionId, index: u32) -> Self {
+//         Self { transaction_id: *transaction_id, index }
+//     }
+// }
 
 impl Display for TransactionOutpoint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -182,14 +182,14 @@ impl Display for TransactionOutpoint {
 /// Represents a Kaspa transaction input
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
-#[wasm_bindgen(inspectable)]
+// #[wasm_bindgen(inspectable)]
 pub struct TransactionInput {
-    #[wasm_bindgen(js_name = previousOutpoint)]
+    // #[wasm_bindgen(js_name = previousOutpoint)]
     pub previous_outpoint: TransactionOutpoint,
-    #[wasm_bindgen(skip)]
+    // #[wasm_bindgen(skip)]
     pub signature_script: Vec<u8>, // TODO: Consider using SmallVec
     pub sequence: u64,
-    #[wasm_bindgen(skip)]
+    // #[wasm_bindgen(skip)]
     pub sig_op_count: u8,
 }
 
@@ -199,33 +199,33 @@ impl TransactionInput {
     }
 }
 
-#[wasm_bindgen]
-impl TransactionInput {
-    #[wasm_bindgen(constructor)]
-    pub fn js_ctor(js_value: JsValue) -> Result<TransactionInput, JsError> {
-        Ok(js_value.try_into()?)
-    }
+// #[wasm_bindgen]
+// impl TransactionInput {
+//     #[wasm_bindgen(constructor)]
+//     pub fn js_ctor(js_value: JsValue) -> Result<TransactionInput, JsError> {
+//         Ok(js_value.try_into()?)
+//     }
 
-    #[wasm_bindgen(getter = signatureScript)]
-    pub fn get_signature_script_as_hex(&self) -> String {
-        self.signature_script.to_hex()
-    }
+//     #[wasm_bindgen(getter = signatureScript)]
+//     pub fn get_signature_script_as_hex(&self) -> String {
+//         self.signature_script.to_hex()
+//     }
 
-    #[wasm_bindgen(setter = signatureScript)]
-    pub fn set_signature_script_from_js_value(&mut self, js_value: JsValue) {
-        self.signature_script = js_value.try_as_vec_u8().expect("invalid signature script");
-    }
+//     #[wasm_bindgen(setter = signatureScript)]
+//     pub fn set_signature_script_from_js_value(&mut self, js_value: JsValue) {
+//         self.signature_script = js_value.try_as_vec_u8().expect("invalid signature script");
+//     }
 
-    #[wasm_bindgen(setter = sigOpCount)]
-    pub fn set_sig_op_count(&mut self, sig_op_count: u8) {
-        self.sig_op_count = sig_op_count;
-    }
+//     #[wasm_bindgen(setter = sigOpCount)]
+//     pub fn set_sig_op_count(&mut self, sig_op_count: u8) {
+//         self.sig_op_count = sig_op_count;
+//     }
 
-    #[wasm_bindgen(getter = sigOpCount)]
-    pub fn sig_op_count(&self) -> u8 {
-        self.sig_op_count
-    }
-}
+//     #[wasm_bindgen(getter = sigOpCount)]
+//     pub fn sig_op_count(&self) -> u8 {
+//         self.sig_op_count
+//     }
+// }
 
 /// Represents a Kaspad transaction output
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, BorshSchema)]
@@ -255,19 +255,19 @@ impl TransactionOutput {
 /// Represents a Kaspa transaction
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[wasm_bindgen(inspectable)]
+// #[wasm_bindgen(inspectable)]
 pub struct Transaction {
     pub version: u16,
-    #[wasm_bindgen(skip)]
+    // #[wasm_bindgen(skip)]
     pub inputs: Vec<TransactionInput>,
-    #[wasm_bindgen(skip)]
+    // #[wasm_bindgen(skip)]
     pub outputs: Vec<TransactionOutput>,
-    #[wasm_bindgen(js_name = lockTime)]
+    // #[wasm_bindgen(js_name = lockTime)]
     pub lock_time: u64,
-    #[wasm_bindgen(skip)]
+    // #[wasm_bindgen(skip)]
     pub subnetwork_id: SubnetworkId,
     pub gas: u64,
-    #[wasm_bindgen(skip)]
+    // #[wasm_bindgen(skip)]
     pub payload: Vec<u8>,
 
     // A field that is used to cache the transaction ID.
@@ -300,7 +300,7 @@ impl Transaction {
     }
 }
 
-#[wasm_bindgen]
+// #[wasm_bindgen]
 impl Transaction {
     /// Determines whether or not a transaction is a coinbase transaction. A coinbase
     /// transaction is a special transaction created by miners that distributes fees and block subsidy
@@ -321,68 +321,68 @@ impl Transaction {
     }
 }
 
-#[wasm_bindgen]
-impl Transaction {
-    #[wasm_bindgen(constructor)]
-    pub fn constructor(js_value: JsValue) -> Result<Transaction, JsError> {
-        Ok(js_value.try_into()?)
-    }
+// #[wasm_bindgen]
+// impl Transaction {
+//     #[wasm_bindgen(constructor)]
+//     pub fn constructor(js_value: JsValue) -> Result<Transaction, JsError> {
+//         Ok(js_value.try_into()?)
+//     }
 
-    #[wasm_bindgen(getter = inputs)]
-    pub fn get_inputs_as_js_array(&self) -> Array {
-        let inputs = self.inputs.clone().into_iter().map(JsValue::from);
-        Array::from_iter(inputs)
-    }
+//     #[wasm_bindgen(getter = inputs)]
+//     pub fn get_inputs_as_js_array(&self) -> Array {
+//         let inputs = self.inputs.clone().into_iter().map(JsValue::from);
+//         Array::from_iter(inputs)
+//     }
 
-    #[wasm_bindgen(setter = inputs)]
-    pub fn set_inputs_from_js_array(&mut self, inputs: &Array) {
-        let inputs = inputs
-            .iter()
-            .map(|js_value| {
-                ref_from_abi!(TransactionInput, &js_value).unwrap_or_else(|err| panic!("invalid transaction input: {err}"))
-            })
-            .collect::<Vec<_>>();
-        self.inputs = inputs;
-    }
+//     #[wasm_bindgen(setter = inputs)]
+//     pub fn set_inputs_from_js_array(&mut self, inputs: &Array) {
+//         let inputs = inputs
+//             .iter()
+//             .map(|js_value| {
+//                 ref_from_abi!(TransactionInput, &js_value).unwrap_or_else(|err| panic!("invalid transaction input: {err}"))
+//             })
+//             .collect::<Vec<_>>();
+//         self.inputs = inputs;
+//     }
 
-    #[wasm_bindgen(getter = outputs)]
-    pub fn get_outputs_as_js_array(&self) -> JsValue {
-        let outputs = self.outputs.clone().into_iter().map(<TransactionOutput as Into<JsValue>>::into);
-        Array::from_iter(outputs).into()
-    }
+//     #[wasm_bindgen(getter = outputs)]
+//     pub fn get_outputs_as_js_array(&self) -> JsValue {
+//         let outputs = self.outputs.clone().into_iter().map(<TransactionOutput as Into<JsValue>>::into);
+//         Array::from_iter(outputs).into()
+//     }
 
-    #[wasm_bindgen(setter = outputs)]
-    pub fn set_outputs_from_js_array(&mut self, js_value: &JsValue) {
-        let outputs = Array::from(js_value)
-            .iter()
-            .map(|js_value| {
-                ref_from_abi!(TransactionOutput, &js_value).unwrap_or_else(|err| panic!("invalid transaction output: {err}"))
-            })
-            .collect::<Vec<_>>();
-        self.outputs = outputs;
-    }
+//     #[wasm_bindgen(setter = outputs)]
+//     pub fn set_outputs_from_js_array(&mut self, js_value: &JsValue) {
+//         let outputs = Array::from(js_value)
+//             .iter()
+//             .map(|js_value| {
+//                 ref_from_abi!(TransactionOutput, &js_value).unwrap_or_else(|err| panic!("invalid transaction output: {err}"))
+//             })
+//             .collect::<Vec<_>>();
+//         self.outputs = outputs;
+//     }
 
-    #[wasm_bindgen(getter = subnetworkId)]
-    pub fn get_subnetwork_id_as_hex(&self) -> String {
-        self.subnetwork_id.to_hex()
-    }
+//     #[wasm_bindgen(getter = subnetworkId)]
+//     pub fn get_subnetwork_id_as_hex(&self) -> String {
+//         self.subnetwork_id.to_hex()
+//     }
 
-    #[wasm_bindgen(setter = subnetworkId)]
-    pub fn set_subnetwork_id_from_js_value(&mut self, js_value: JsValue) {
-        let subnetwork_id = js_value.try_as_vec_u8().unwrap_or_else(|err| panic!("subnetwork id error: {err}"));
-        self.subnetwork_id = subnetwork_id.as_slice().try_into().unwrap_or_else(|err| panic!("subnetwork id error: {err}"));
-    }
+//     #[wasm_bindgen(setter = subnetworkId)]
+//     pub fn set_subnetwork_id_from_js_value(&mut self, js_value: JsValue) {
+//         let subnetwork_id = js_value.try_as_vec_u8().unwrap_or_else(|err| panic!("subnetwork id error: {err}"));
+//         self.subnetwork_id = subnetwork_id.as_slice().try_into().unwrap_or_else(|err| panic!("subnetwork id error: {err}"));
+//     }
 
-    #[wasm_bindgen(getter = payload)]
-    pub fn get_payload_as_hex_string(&self) -> String {
-        self.payload.to_hex()
-    }
+//     #[wasm_bindgen(getter = payload)]
+//     pub fn get_payload_as_hex_string(&self) -> String {
+//         self.payload.to_hex()
+//     }
 
-    #[wasm_bindgen(setter = payload)]
-    pub fn set_payload_from_js_value(&mut self, js_value: JsValue) {
-        self.payload = js_value.try_as_vec_u8().unwrap_or_else(|err| panic!("payload value error: {err}"));
-    }
-}
+//     #[wasm_bindgen(setter = payload)]
+//     pub fn set_payload_from_js_value(&mut self, js_value: JsValue) {
+//         self.payload = js_value.try_as_vec_u8().unwrap_or_else(|err| panic!("payload value error: {err}"));
+//     }
+// }
 
 /// Represents any kind of transaction which has populated UTXO entry data and can be verified/signed etc
 pub trait VerifiableTransaction {

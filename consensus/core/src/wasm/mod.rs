@@ -2,7 +2,7 @@ pub mod convert;
 pub mod error;
 pub mod keypair;
 pub mod signer;
-pub mod tx;
+// pub mod tx;
 pub mod utxo;
 
 // use crate::config::params::MAINNET_PARAMS;
