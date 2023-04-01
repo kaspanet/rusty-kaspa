@@ -7,10 +7,20 @@
 <img alt="license" src="https://img.shields.io/crates/l/kaspa-wasm.svg?maxAge=2592000&color=6ac&style=for-the-badge&logoColor=fff" height="20">
 
 
+
+<img alt="Rust" height="24px" style="margin: 5px;" src="https://aspectron.com/images/ferris.svg" />
+<img alt="WASM" height="24px" style="margin: 5px;" src="https://aspectron.com/images/wasm.svg" />
+<img alt="TypeScript" height="24px" style="margin: 5px;" src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/typescript/typescript-plain.svg" />
+<img alt="JavaScript" height="24px" style="margin: 5px;" src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/javascript/javascript-plain.svg" />
+<img alt="NodeJS" height="24px" style="margin: 5px;" src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/nodejs/nodejs-original.svg" />
+<img alt="NWJS" height="24px" style="margin: 5px;" src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/nodewebkit/nodewebkit-original.svg" />
+
 <br>
 
 Rusty-Kaspa WASM32 bindings offer direct integration of Rust code and Rusty-Kaspa
 codebase within JavaScript environments such as Node.js and Web Browsers.
+
+
 
 ## Documentation
 
