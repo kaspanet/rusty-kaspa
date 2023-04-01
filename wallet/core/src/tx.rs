@@ -87,9 +87,9 @@ impl XTransactionOutpoint {
         self.inner.lock().unwrap()
     }
 
-//     pub fn new(transaction_id: TransactionId, index: u32) -> Self {
-//         Self { inner : Arc::new(Mutex::new( TransactionOutpointInner { transaction_id, index })) }
-//     }
+    //     pub fn new(transaction_id: TransactionId, index: u32) -> Self {
+    //         Self { inner : Arc::new(Mutex::new( TransactionOutpointInner { transaction_id, index })) }
+    //     }
 }
 
 #[wasm_bindgen]
@@ -105,7 +105,7 @@ impl XTransactionOutpoint {
     }
 
     #[wasm_bindgen(setter, js_name = transactionId)]
-    pub fn set_transaction_id(&self, transaction_id : &TransactionId) {
+    pub fn set_transaction_id(&self, transaction_id: &TransactionId) {
         self.inner().transaction_id = *transaction_id;
     }
 
@@ -114,7 +114,7 @@ impl XTransactionOutpoint {
         self.inner().index
     }
     #[wasm_bindgen(setter, js_name = index)]
-    pub fn set_index(&self, index : TransactionIndexType) {
+    pub fn set_index(&self, index: TransactionIndexType) {
         self.inner().index = index;
     }
 }
@@ -189,7 +189,7 @@ impl XTransactionInput {
     }
 
     #[wasm_bindgen(setter = sequence)]
-    pub fn set_sequence(&mut self, sequence : u64) {
+    pub fn set_sequence(&mut self, sequence: u64) {
         self.inner().sequence = sequence; //js_value.try_as_vec_u8().expect("invalid signature script");
     }
 
@@ -199,7 +199,7 @@ impl XTransactionInput {
     }
 
     #[wasm_bindgen(setter = sequence)]
-    pub fn set_sig_op_count(&mut self, sig_op_count : u8) {
+    pub fn set_sig_op_count(&mut self, sig_op_count: u8) {
         self.inner().sig_op_count = sig_op_count;
     }
 }
@@ -398,6 +398,46 @@ impl XTransaction {
             .collect::<Vec<_>>();
         self.inner().outputs = outputs;
     }
+
+    #[wasm_bindgen(getter, js_name = version)]
+    pub fn get_version(&self) -> u16 {
+        self.inner().version
+    }
+
+    #[wasm_bindgen(setter, js_name = version)]
+    pub fn set_version(&self, v: u16) {
+        self.inner().version = v;
+    }
+
+    #[wasm_bindgen(getter, js_name = lock_time)]
+    pub fn get_lock_time(&self) -> u64 {
+        self.inner().lock_time
+    }
+
+    #[wasm_bindgen(setter, js_name = lock_time)]
+    pub fn set_lock_time(&self, v: u64) {
+        self.inner().lock_time = v;
+    }
+
+    #[wasm_bindgen(getter, js_name = gas)]
+    pub fn get_gas(&self) -> u64 {
+        self.inner().lock_time
+    }
+
+    #[wasm_bindgen(setter, js_name = gas)]
+    pub fn set_gas(&self, v: u64) {
+        self.inner().lock_time = v;
+    }
+
+    #[wasm_bindgen(getter, js_name = id)]
+    pub fn get_id(&self) -> TransactionId {
+        self.inner().id
+    }
+
+    // #[wasm_bindgen(setter, js_name = gas)]
+    // pub fn set_gas(&self, v: u64) {
+    //     self.inner().lock_time = v;
+    // }
 
     #[wasm_bindgen(getter = subnetworkId)]
     pub fn get_subnetwork_id_as_hex(&self) -> String {
