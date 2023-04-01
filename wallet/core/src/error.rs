@@ -81,6 +81,8 @@ pub enum Error {
     // InvalidHashLength(sha2::digest::InvalidLength),
     #[error(transparent)]
     FromUtf8Error(#[from] std::string::FromUtf8Error),
+    //     #[error(transparent)]
+    //     ConsensusCoreWasm(#[from] kaspa_consensus_core::wasm::error::Error),
 }
 
 impl From<chacha20poly1305::Error> for Error {

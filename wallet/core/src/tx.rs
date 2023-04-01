@@ -65,6 +65,8 @@ pub fn script_hashes(mut mutable_tx: SignableTransaction) -> Result<Vec<kaspa_ha
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TransactionOutpointInner {
     pub transaction_id: TransactionId,
     pub index: TransactionIndexType,
@@ -111,9 +113,11 @@ impl std::fmt::Display for XTransactionOutpoint {
     }
 }
 
+// #[derive(Debug, Clone, Serialize, Deserialize)]
+// #[serde(rename_all = "camelCase")]
 pub struct TransactionInputInner {
     // #[wasm_bindgen(js_name = previousOutpoint)]
-    pub previous_outpoint: TransactionOutpoint,
+    pub previous_outpoint: XTransactionOutpoint,
     // #[wasm_bindgen(skip)]
     pub signature_script: Vec<u8>, // TODO: Consider using SmallVec
     pub sequence: u64,
@@ -129,15 +133,19 @@ pub struct XTransactionInput {
 }
 
 impl XTransactionInput {
-    pub fn new(previous_outpoint: TransactionOutpoint, signature_script: Vec<u8>, sequence: u64, sig_op_count: u8) -> Self {
+    pub fn new(previous_outpoint: XTransactionOutpoint, signature_script: Vec<u8>, sequence: u64, sig_op_count: u8) -> Self {
         Self { inner: Arc::new(Mutex::new(TransactionInputInner { previous_outpoint, signature_script, sequence, sig_op_count })) }
+    }
+
+    pub fn new_with_inner(inner: TransactionInputInner) -> Self {
+        Self { inner: Arc::new(Mutex::new(inner)) }
     }
 }
 
 #[wasm_bindgen]
 impl XTransactionInput {
     #[wasm_bindgen(constructor)]
-    pub fn constructor(js_value: JsValue) -> Result<TransactionInput, JsError> {
+    pub fn constructor(js_value: JsValue) -> Result<XTransactionInput, JsError> {
         Ok(js_value.try_into()?)
     }
 
@@ -152,6 +160,8 @@ impl XTransactionInput {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TransactionOutputInner {
     pub value: u64,
     // #[wasm_bindgen(js_name = scriptPublicKey, getter_with_clone)]
@@ -166,17 +176,21 @@ pub struct XTransactionOutput {
     inner: Arc<Mutex<TransactionOutputInner>>,
 }
 
-// impl XTransactionOutput {
-//     pub fn new(value: u64, script_public_key: ScriptPublicKey) -> Self {
-//         Self { inner : Arc::new(Mutex::new(TransactionOutputInner { value, script_public_key })) }
-//     }
-// }
+impl XTransactionOutput {
+    pub fn new_with_inner(inner: TransactionOutputInner) -> Self {
+        Self { inner: Arc::new(Mutex::new(inner)) }
+    }
+
+    //     pub fn new(value: u64, script_public_key: ScriptPublicKey) -> Self {
+    //         Self { inner : Arc::new(Mutex::new(TransactionOutputInner { value, script_public_key })) }
+    //     }
+}
 
 #[wasm_bindgen]
 impl XTransactionOutput {
     #[wasm_bindgen(constructor)]
     /// TransactionOutput constructor
-    pub fn constructor(value: u64, script_public_key: &ScriptPublicKey) -> XTransactionOutput {
+    pub fn new(value: u64, script_public_key: &ScriptPublicKey) -> XTransactionOutput {
         Self { inner: Arc::new(Mutex::new(TransactionOutputInner { value, script_public_key: script_public_key.clone() })) }
     }
 
@@ -205,6 +219,8 @@ impl XTransactionOutput {
     }
 }
 
+// #[derive(Debug, Clone, Serialize, Deserialize)]
+// #[serde(rename_all = "camelCase")]
 pub struct TransactionInner {
     pub version: u16,
     pub inputs: Vec<XTransactionInput>,
@@ -219,7 +235,7 @@ pub struct TransactionInner {
 
     // A field that is used to cache the transaction ID.
     // Always use the corresponding self.id() instead of accessing this field directly
-    id: TransactionId,
+    pub id: TransactionId,
 }
 
 /// Represents a Kaspa transaction
@@ -254,6 +270,10 @@ impl XTransaction {
         };
         tx.finalize();
         tx
+    }
+
+    pub fn new_with_inner(inner: TransactionInner) -> Self {
+        Self { inner: Arc::new(Mutex::new(inner)) }
     }
 }
 
@@ -293,7 +313,7 @@ impl XTransaction {
 #[wasm_bindgen]
 impl XTransaction {
     #[wasm_bindgen(constructor)]
-    pub fn constructor(js_value: JsValue) -> Result<Transaction, JsError> {
+    pub fn constructor(js_value: JsValue) -> Result<XTransaction, JsError> {
         Ok(js_value.try_into()?)
     }
 

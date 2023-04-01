@@ -3,6 +3,7 @@ extern crate self as kaspa_wallet_core;
 
 pub mod account;
 pub mod accounts;
+pub mod convert;
 pub mod error;
 pub mod result;
 pub mod signer;
