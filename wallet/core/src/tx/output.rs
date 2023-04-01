@@ -30,6 +30,11 @@ impl TransactionOutput {
         Self { inner: Arc::new(Mutex::new(inner)) }
     }
 
+    pub fn inner(&self) -> MutexGuard<'_, TransactionOutputInner> {
+        self.inner.lock().unwrap()
+    }
+
+
     //     pub fn new(value: u64, script_public_key: ScriptPublicKey) -> Self {
     //         Self { inner : Arc::new(Mutex::new(TransactionOutputInner { value, script_public_key })) }
     //     }
@@ -41,10 +46,6 @@ impl TransactionOutput {
     /// TransactionOutput constructor
     pub fn new(value: u64, script_public_key: &ScriptPublicKey) -> TransactionOutput {
         Self { inner: Arc::new(Mutex::new(TransactionOutputInner { value, script_public_key: script_public_key.clone() })) }
-    }
-
-    fn inner(&self) -> MutexGuard<'_, TransactionOutputInner> {
-        self.inner.lock().unwrap()
     }
 
     #[wasm_bindgen(getter, js_name = value)]

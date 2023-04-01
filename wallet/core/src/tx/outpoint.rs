@@ -21,7 +21,7 @@ pub struct TransactionOutpoint {
 }
 
 impl TransactionOutpoint {
-    fn inner(&self) -> MutexGuard<'_, TransactionOutpointInner> {
+    pub fn inner(&self) -> MutexGuard<'_, TransactionOutpointInner> {
         self.inner.lock().unwrap()
     }
 

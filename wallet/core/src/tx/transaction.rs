@@ -68,6 +68,11 @@ impl Transaction {
     pub fn new_with_inner(inner: TransactionInner) -> Self {
         Self { inner: Arc::new(Mutex::new(inner)) }
     }
+
+    pub fn inner<'a>(&'a self) -> MutexGuard<'a, TransactionInner> {
+        self.inner.lock().unwrap()
+    }
+
 }
 
 // pub(crate) fn id(tx: &XTransaction) -> TransactionId {
@@ -105,10 +110,6 @@ impl Transaction {
     #[wasm_bindgen(constructor)]
     pub fn constructor(js_value: JsValue) -> Result<Transaction, JsError> {
         Ok(js_value.try_into()?)
-    }
-
-    fn inner(&self) -> MutexGuard<'_, TransactionInner> {
-        self.inner.lock().unwrap()
     }
 
     #[wasm_bindgen(getter = inputs)]

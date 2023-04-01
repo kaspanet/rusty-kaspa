@@ -316,10 +316,12 @@ mod test {
         },
     };
     //use kaspa_bip32::{ExtendedPrivateKey, SecretKey};
+
+    // TODO - re-export subnets
     use kaspa_consensus_core::subnets::SubnetworkId;
-    use kaspa_consensus_core::tx::Transaction;
-    use kaspa_consensus_core::tx::TransactionInput;
-    use kaspa_consensus_core::tx::TransactionOutput;
+    use crate::tx::Transaction;
+    use crate::tx::TransactionInput;
+    use crate::tx::TransactionOutput;
     //use kaspa_consensus_core::tx::ScriptPublicKey;
     //use kaspa_consensus_core::tx::MutableTransaction;
     use kaspa_addresses::{Address, Prefix, Version};
@@ -382,19 +384,20 @@ mod test {
         let inputs = selected_entries
             .iter()
             .enumerate()
-            .map(|(sequence, utxo)| TransactionInput {
-                previous_outpoint: utxo.outpoint.into(),
-                signature_script: vec![],
-                sequence: sequence as u64,
-                sig_op_count: 0,
-            })
+            .map(|(sequence, utxo)| TransactionInput::new(
+                utxo.outpoint.try_into().unwrap(),
+                vec![],
+                sequence as u64,
+                0,
+            ))
             .collect::<Vec<TransactionInput>>();
 
         let tx = Transaction::new(
             0,
             inputs,
             vec![
-                TransactionOutput { value: 1000, script_public_key: pay_to_address_script(&to_address) },
+                TransactionOutput::new(1000, &pay_to_address_script(&to_address)),
+                // TransactionOutput::new() { value: 1000, script_public_key: pay_to_address_script(&to_address) },
                 //TransactionOutput { value: 300, script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()) },
             ],
             0,

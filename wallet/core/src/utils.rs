@@ -3,8 +3,9 @@ use kaspa_consensus_core::{
     config::params::{Params, DEVNET_PARAMS, MAINNET_PARAMS},
     constants::*,
     mass::MassCalculator,
-    tx::Transaction,
+    // tx::Transaction,
 };
+use crate::tx::Transaction;
 //use kaspa_consensus_core::mass::transaction_estimated_serialized_size;
 
 /// MINIMUM_RELAY_TRANSACTION_FEE specifies the minimum transaction fee for a transaction to be accepted to
@@ -33,7 +34,7 @@ pub fn minimum_required_transaction_relay_fee(mass: u64) -> u64 {
 
 pub fn calculate_mass(tx: &Transaction, params: &Params, estimate_signature_mass: bool) -> u64 {
     let mass_calculator = MassCalculator::new(params.mass_per_tx_byte, params.mass_per_script_pub_key_byte, params.mass_per_sig_op);
-    let mass = mass_calculator.calc_tx_mass(tx);
+    let mass = mass_calculator.calc_tx_mass(&tx.try_into().unwrap());
     if !estimate_signature_mass {
         return mass;
     }
@@ -44,7 +45,7 @@ pub fn calculate_mass(tx: &Transaction, params: &Params, estimate_signature_mass
 
 pub fn transaction_estimate_signature_mass(tx: &Transaction, params: &Params) -> u64 {
     let signature_script_size = 66; //params.max_signature_script_len;
-    tx.inputs.len() as u64 * signature_script_size * params.mass_per_script_pub_key_byte
+    tx.inner().inputs.len() as u64 * signature_script_size * params.mass_per_script_pub_key_byte
 }
 
 pub fn calculate_minimum_transaction_fee(tx: &Transaction, params: &Params, estimate_signature_mass: bool) -> u64 {

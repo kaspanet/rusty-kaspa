@@ -55,13 +55,15 @@ impl MutableTransaction {
             let mut locked = self.tx.lock();
             let tx = locked.as_mut().unwrap();
 
-            if signatures.len() != tx.inputs.len() {
+            if signatures.len() != tx.inner().inputs.len() {
                 return Err(Error::Custom("Signature counts dont match input counts".to_string()).into());
             }
 
-            for (i, signature) in signatures.into_iter().enumerate().take(tx.inputs.len()) {
-                tx.inputs[i].sig_op_count = 1;
-                tx.inputs[i].signature_script = signature;
+            for (i, signature) in signatures.into_iter().enumerate().take(tx.inner().inputs.len()) {
+                // tx.inputs[i].sig_op_count = 1;
+                // tx.inputs[i].signature_script = signature;
+                tx.inner().inputs[i].inner().sig_op_count = 1;
+                tx.inner().inputs[i].inner().signature_script = signature;
                 //log_trace!("tx.inputs[i].signature_script: {:?}", tx.inputs[i].signature_script);
             }
         }
@@ -87,7 +89,7 @@ impl TryFrom<MutableTransaction> for tx::MutableTransaction<tx::Transaction> {
     type Error = Error;
     fn try_from(mtx: MutableTransaction) -> Result<Self, Self::Error> {
         Ok(Self {
-            tx: mtx.tx.lock()?.clone(),
+            tx: mtx.tx.try_into()?,     //lock()?.clone(),
             entries: mtx.entries.into(), //iter().map(|entry|entry.).collect(),
             calculated_fee: None,        //value.calculated_fee,
             calculated_mass: None,       //value.calculated_mass,

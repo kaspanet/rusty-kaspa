@@ -30,7 +30,7 @@ impl TransactionInput {
         Self { inner: Arc::new(Mutex::new(inner)) }
     }
 
-    fn inner(&self) -> MutexGuard<'_, TransactionInputInner> {
+    pub fn inner(&self) -> MutexGuard<'_, TransactionInputInner> {
         self.inner.lock().unwrap()
     }
 }

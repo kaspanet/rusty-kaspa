@@ -29,6 +29,25 @@ impl TryFrom<tx::TransactionOutpoint> for TransactionOutpoint {
     }
 }
 
+impl TryFrom<TransactionOutpoint> for tx::TransactionOutpoint {
+    type Error = Error;
+    fn try_from(outpoint: TransactionOutpoint) -> Result<Self, Self::Error> {
+        let inner = outpoint.inner();
+        let transaction_id = inner.transaction_id;
+        let index = inner.index;
+        Ok(tx::TransactionOutpoint::new(transaction_id, index))
+    }
+}
+
+// impl TryFrom<tx::TransactionOutpoint> for TransactionOutpoint {
+//     type Error = Error;
+//     fn try_from(outpoint: tx::TransactionOutpoint) -> Result<Self, Self::Error> {
+//         let transaction_id = outpoint.transaction_id;
+//         let index = outpoint.index;
+//         Ok(TransactionOutpoint::new(&transaction_id, index))
+//     }
+// }
+
 impl TryFrom<JsValue> for TransactionInput {
     type Error = Error;
     fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
@@ -55,6 +74,23 @@ impl TryFrom<tx::TransactionInput> for TransactionInput {
             sequence: tx_input.sequence,
             sig_op_count: tx_input.sig_op_count,
         }))
+    }
+}
+
+impl TryFrom<TransactionInput> for tx::TransactionInput {
+    type Error = Error;
+    fn try_from(tx_input: TransactionInput) -> Result<Self, Self::Error> {
+        let inner = tx_input.inner();
+        Ok(tx::TransactionInput::new(
+            inner.previous_outpoint.try_into()?,
+            inner.signature_script,
+            inner.sequence,
+            inner.sig_op_count,
+            // previous_outpoint: tx_input.previous_outpoint.try_into()?,
+            // signature_script: tx_input.signature_script,
+            // sequence: tx_input.sequence,
+            // sig_op_count: tx_input.sig_op_count,
+        ))
     }
 }
 
@@ -91,6 +127,14 @@ impl TryFrom<tx::TransactionOutput> for TransactionOutput {
     type Error = Error;
     fn try_from(output: tx::TransactionOutput) -> Result<Self, Self::Error> {
         Ok(TransactionOutput::new(output.value, &output.script_public_key))
+    }
+}
+
+impl TryFrom<TransactionOutput> for tx::TransactionOutput {
+    type Error = Error;
+    fn try_from(output: TransactionOutput) -> Result<Self, Self::Error> {
+        let inner = output.inner();
+        Ok(tx::TransactionOutput::new(inner.value, inner.script_public_key))
     }
 }
 
@@ -153,5 +197,37 @@ impl TryFrom<tx::Transaction> for Transaction {
             subnetwork_id: tx.subnetwork_id,
             id, // : tx.id(),
         }))
+    }
+}
+
+impl TryFrom<&Transaction> for tx::Transaction {
+    type Error = Error;
+    fn try_from(tx: &Transaction) -> Result<Self, Self::Error> {
+        let id = tx.id();
+        let inner = tx.inner();
+        let inputs: Vec<tx::TransactionInput> =
+            inner.inputs.into_iter().map(|input| input.try_into()).collect::<Result<Vec<tx::TransactionInput>, Error>>()?;
+        let outputs: Vec<tx::TransactionOutput> =
+            inner.outputs.into_iter().map(|output| output.try_into()).collect::<Result<Vec<tx::TransactionOutput>, Error>>()?;
+        Ok(tx::Transaction::new(
+            inner.version,
+            inputs,
+            outputs,
+            inner.lock_time,
+            inner.subnetwork_id,
+            inner.gas,
+            inner.payload,
+        //   id,
+        ))
+        //  {
+        //     version: tx.version,
+        //     inputs,
+        //     outputs,
+        //     lock_time: tx.lock_time,
+        //     gas: tx.gas,
+        //     payload: tx.payload,
+        //     subnetwork_id: tx.subnetwork_id,
+        //     id, // : tx.id(),
+        // }))
     }
 }
