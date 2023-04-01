@@ -74,8 +74,8 @@ pub struct TransactionOutpointInner {
 
 /// Represents a Kaspa transaction outpoint
 // #[derive(Eq, Hash, PartialEq, Debug, Clone)]
-#[derive(Clone)]
-// #[serde(rename_all = "camelCase")]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 #[wasm_bindgen(inspectable)]
 pub struct XTransactionOutpoint {
     // #[wasm_bindgen(js_name = transactionId)]
@@ -113,8 +113,8 @@ impl std::fmt::Display for XTransactionOutpoint {
     }
 }
 
-// #[derive(Debug, Clone, Serialize, Deserialize)]
-// #[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TransactionInputInner {
     // #[wasm_bindgen(js_name = previousOutpoint)]
     pub previous_outpoint: XTransactionOutpoint,
@@ -126,7 +126,7 @@ pub struct TransactionInputInner {
 }
 
 /// Represents a Kaspa transaction input
-#[derive(Clone)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[wasm_bindgen(inspectable)]
 pub struct XTransactionInput {
     inner: Arc<Mutex<TransactionInputInner>>,
@@ -169,8 +169,8 @@ pub struct TransactionOutputInner {
 }
 
 /// Represents a Kaspad transaction output
-#[derive(Clone)]
-// #[serde(rename_all = "camelCase")]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 #[wasm_bindgen(inspectable)]
 pub struct XTransactionOutput {
     inner: Arc<Mutex<TransactionOutputInner>>,
@@ -219,8 +219,8 @@ impl XTransactionOutput {
     }
 }
 
-// #[derive(Debug, Clone, Serialize, Deserialize)]
-// #[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TransactionInner {
     pub version: u16,
     pub inputs: Vec<XTransactionInput>,
