@@ -1,12 +1,12 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
-use js_sys::Array;
+//use js_sys::Array;
 use kaspa_core::hex::*;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
-use std::iter::FromIterator;
+//use std::iter::FromIterator;
 use std::{collections::HashSet, fmt::Display, ops::Range};
 use wasm_bindgen::prelude::*;
-use workflow_wasm::{abi::ref_from_abi, jsvalue::JsValueTrait};
+use workflow_wasm::jsvalue::JsValueTrait;
 
 use crate::{
     hashing,
@@ -122,10 +122,10 @@ impl BorshSchema for ScriptPublicKey {
 /// much it pays.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
-// #[wasm_bindgen(inspectable, js_name = TxUtxoEntry)]
+#[wasm_bindgen(inspectable, js_name = TxUtxoEntry)]
 pub struct UtxoEntry {
     pub amount: u64,
-    // #[wasm_bindgen(js_name = scriptPublicKey, getter_with_clone)]
+    #[wasm_bindgen(js_name = scriptPublicKey, getter_with_clone)]
     pub script_public_key: ScriptPublicKey,
     // #[wasm_bindgen(js_name = blockDaaScore)]
     pub block_daa_score: u64,

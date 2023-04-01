@@ -9,10 +9,10 @@ pub mod result;
 pub mod signer;
 pub mod storage;
 pub mod tx;
+pub mod utils;
 pub mod utxo;
 pub mod wallet;
 pub mod wrapper;
-pub mod utils;
 
 pub use accounts::dummy_address;
 pub use kaspa_addresses::Address;

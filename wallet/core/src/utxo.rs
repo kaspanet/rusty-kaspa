@@ -1,8 +1,9 @@
 use crate::error::Error;
 use crate::result::Result;
+use crate::tx::TransactionOutpoint;
 use itertools::Itertools;
 use js_sys::{Array, Object};
-use kaspa_consensus_core::tx::{self, ScriptPublicKey, TransactionOutpoint};
+use kaspa_consensus_core::tx::{self, ScriptPublicKey};
 use kaspa_rpc_core::{GetUtxosByAddressesResponse, RpcUtxosByAddressesEntry};
 use serde_wasm_bindgen::from_value;
 use std::sync::{
@@ -13,44 +14,19 @@ use wasm_bindgen::prelude::*;
 use workflow_wasm::abi::{ref_from_abi, TryFromJsValue};
 use workflow_wasm::object::*;
 
-use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+//use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use kaspa_addresses::Address;
 use serde::{Deserialize, Serialize};
-//use workflow_log::log_info;
-
-// #[derive(Clone, TryFromJsValue)]
-// #[wasm_bindgen]
-// pub struct UtxoEntryReference {
-//     #[wasm_bindgen(skip)]
-//     pub utxo: Arc<UtxoEntry>,
-// }
-
-// impl AsRef<UtxoEntry> for UtxoEntryReference {
-//     fn as_ref(&self) -> &UtxoEntry {
-//         &self.utxo
-//     }
-// }
-
-// pub struct SelectionContext {
-//     pub transaction_amount: u64,
-//     pub total_selected_amount: u64,
-//     pub selected_entries: Vec<UtxoEntryReference>,
-// }
-
-// impl AsMut<UtxoEntry> for AccountUtxoEntry {
-//     fn as_mut(&mut self) -> &mut UtxoEntry {
-//         &mut self.0
-//     }
-// }
 
 ///
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen]
 pub struct UtxoEntry {
     #[wasm_bindgen(getter_with_clone)]
     pub address: Address,
-    pub outpoint: tx::TransactionOutpoint,
+    #[wasm_bindgen(getter_with_clone)]
+    pub outpoint: TransactionOutpoint,
     #[wasm_bindgen(getter_with_clone)]
     pub utxo_entry: tx::UtxoEntry,
 }
@@ -68,7 +44,7 @@ impl UtxoEntry {
 
 impl From<RpcUtxosByAddressesEntry> for UtxoEntry {
     fn from(entry: RpcUtxosByAddressesEntry) -> UtxoEntry {
-        UtxoEntry { address: entry.address, outpoint: entry.outpoint, utxo_entry: entry.utxo_entry }
+        UtxoEntry { address: entry.address, outpoint: entry.outpoint.try_into().unwrap(), utxo_entry: entry.utxo_entry }
     }
 }
 

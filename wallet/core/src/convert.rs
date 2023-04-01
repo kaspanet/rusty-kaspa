@@ -1,64 +1,55 @@
+use super::tx::*;
 use crate::error::Error;
 use js_sys::Object;
 use kaspa_consensus_core::subnets::{self, SubnetworkId};
-use kaspa_consensus_core::tx::{
-    self,
-    ScriptPublicKey,
-    Transaction,
-    // TransactionInput,
-    TransactionOutpoint,
-    TransactionOutput,
-};
+use kaspa_consensus_core::tx::{self, ScriptPublicKey};
 use wasm_bindgen::prelude::*;
-//use workflow_log::log_trace;
-use super::tx::*;
-// use workflow_wasm::jsvalue::*;
 use workflow_wasm::object::*;
 
-impl TryFrom<JsValue> for XTransactionOutpoint {
+impl TryFrom<JsValue> for TransactionOutpoint {
     type Error = Error;
     fn try_from(value: JsValue) -> Result<Self, Self::Error> {
         if value.is_object() {
             let object = Object::from(value);
             let transaction_id = object.get("transactionId")?.try_into()?;
             let index = object.get_u32("index")?;
-            Ok(XTransactionOutpoint::new(&transaction_id, index))
+            Ok(TransactionOutpoint::new(&transaction_id, index))
         } else {
             Err("outpoint is not an object".into())
         }
     }
 }
 
-impl TryFrom<TransactionOutpoint> for XTransactionOutpoint {
+impl TryFrom<tx::TransactionOutpoint> for TransactionOutpoint {
     type Error = Error;
-    fn try_from(outpoint: TransactionOutpoint) -> Result<Self, Self::Error> {
+    fn try_from(outpoint: tx::TransactionOutpoint) -> Result<Self, Self::Error> {
         let transaction_id = outpoint.transaction_id;
         let index = outpoint.index;
-        Ok(XTransactionOutpoint::new(&transaction_id, index))
+        Ok(TransactionOutpoint::new(&transaction_id, index))
     }
 }
 
-impl TryFrom<JsValue> for XTransactionInput {
+impl TryFrom<JsValue> for TransactionInput {
     type Error = Error;
     fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
         if js_value.is_object() {
             let object = Object::from(js_value);
-            let previous_outpoint: XTransactionOutpoint = object.get("previousOutpoint")?.try_into()?;
+            let previous_outpoint: TransactionOutpoint = object.get("previousOutpoint")?.try_into()?;
             let signature_script = object.get_vec_u8("signatureScript")?;
             let sequence = object.get_u64("sequence")?;
             let sig_op_count = object.get_u8("sigOpCount")?;
 
-            Ok(XTransactionInput::new(previous_outpoint, signature_script, sequence, sig_op_count))
+            Ok(TransactionInput::new(previous_outpoint, signature_script, sequence, sig_op_count))
         } else {
             Err("TransactionInput must be an object".into())
         }
     }
 }
 
-impl TryFrom<tx::TransactionInput> for XTransactionInput {
+impl TryFrom<tx::TransactionInput> for TransactionInput {
     type Error = Error;
     fn try_from(tx_input: tx::TransactionInput) -> Result<Self, Self::Error> {
-        Ok(XTransactionInput::new_with_inner(TransactionInputInner {
+        Ok(TransactionInput::new_with_inner(TransactionInputInner {
             previous_outpoint: tx_input.previous_outpoint.try_into()?,
             signature_script: tx_input.signature_script,
             sequence: tx_input.sequence,
@@ -96,14 +87,14 @@ impl TryFrom<tx::TransactionInput> for XTransactionInput {
 //     }
 // }
 
-impl TryFrom<TransactionOutput> for XTransactionOutput {
+impl TryFrom<tx::TransactionOutput> for TransactionOutput {
     type Error = Error;
-    fn try_from(output: TransactionOutput) -> Result<Self, Self::Error> {
-        Ok(XTransactionOutput::new(output.value, &output.script_public_key))
+    fn try_from(output: tx::TransactionOutput) -> Result<Self, Self::Error> {
+        Ok(TransactionOutput::new(output.value, &output.script_public_key))
     }
 }
 
-impl TryFrom<JsValue> for XTransactionOutput {
+impl TryFrom<JsValue> for TransactionOutput {
     type Error = Error;
     fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
         if js_value.is_object() {
@@ -111,14 +102,14 @@ impl TryFrom<JsValue> for XTransactionOutput {
             let value = object.get_u64("value")?;
             let script_public_key: ScriptPublicKey =
                 object.get("scriptPublicKey").map_err(|_| Error::Custom("missing `script` property".into()))?.try_into()?;
-            Ok(XTransactionOutput::new(value, &script_public_key))
+            Ok(TransactionOutput::new(value, &script_public_key))
         } else {
             Err("TransactionInput must be an object".into())
         }
     }
 }
 
-impl TryFrom<JsValue> for XTransaction {
+impl TryFrom<JsValue> for Transaction {
     type Error = Error;
     fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
         if js_value.is_object() {
@@ -134,27 +125,24 @@ impl TryFrom<JsValue> for XTransaction {
             let subnetwork_id: SubnetworkId =
                 subnetwork_id.as_slice().try_into().map_err(|err| Error::Custom(format!("`subnetworkId` property error: `{err}`")))?;
             let inputs =
-                object.get_vec("inputs")?.into_iter().map(|jsv| jsv.try_into()).collect::<Result<Vec<XTransactionInput>, Error>>()?;
-            let outputs = object
-                .get_vec("outputs")?
-                .into_iter()
-                .map(|jsv| jsv.try_into())
-                .collect::<Result<Vec<XTransactionOutput>, Error>>()?;
-            Ok(XTransaction::new(version, inputs, outputs, lock_time, subnetwork_id, gas, payload))
+                object.get_vec("inputs")?.into_iter().map(|jsv| jsv.try_into()).collect::<Result<Vec<TransactionInput>, Error>>()?;
+            let outputs =
+                object.get_vec("outputs")?.into_iter().map(|jsv| jsv.try_into()).collect::<Result<Vec<TransactionOutput>, Error>>()?;
+            Ok(Transaction::new(version, inputs, outputs, lock_time, subnetwork_id, gas, payload))
         } else {
             Err("Transaction must be an object".into())
         }
     }
 }
 
-impl TryFrom<Transaction> for XTransaction {
+impl TryFrom<tx::Transaction> for Transaction {
     type Error = Error;
-    fn try_from(tx: Transaction) -> Result<Self, Self::Error> {
+    fn try_from(tx: tx::Transaction) -> Result<Self, Self::Error> {
         let id = tx.id();
-        let inputs: Vec<XTransactionInput> =
-            tx.inputs.into_iter().map(|input| input.try_into()).collect::<Result<Vec<XTransactionInput>, Error>>()?;
-        let outputs: Vec<XTransactionOutput> =
-            tx.outputs.into_iter().map(|output| output.try_into()).collect::<Result<Vec<XTransactionOutput>, Error>>()?;
+        let inputs: Vec<TransactionInput> =
+            tx.inputs.into_iter().map(|input| input.try_into()).collect::<Result<Vec<TransactionInput>, Error>>()?;
+        let outputs: Vec<TransactionOutput> =
+            tx.outputs.into_iter().map(|output| output.try_into()).collect::<Result<Vec<TransactionOutput>, Error>>()?;
         Ok(Self::new_with_inner(TransactionInner {
             version: tx.version,
             inputs,

@@ -56,7 +56,6 @@ pub fn transaction_output_estimated_serialized_size(output: &TransactionOutput) 
     size
 }
 
-
 pub struct MassCalculator {
     mass_per_tx_byte: u64,
     mass_per_script_pub_key_byte: u64,
