@@ -1800,6 +1800,8 @@ dependencies = [
  "kaspa-addresses",
  "kaspa-consensus-core",
  "kaspa-core",
+ "kaspa-txscript",
+ "kaspa-txscript-errors",
  "kaspa-utils",
  "log",
  "parking_lot",
