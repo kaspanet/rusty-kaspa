@@ -72,7 +72,6 @@ impl Transaction {
     pub fn inner<'a>(&'a self) -> MutexGuard<'a, TransactionInner> {
         self.inner.lock().unwrap()
     }
-
 }
 
 // pub(crate) fn id(tx: &XTransaction) -> TransactionId {

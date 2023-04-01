@@ -34,7 +34,6 @@ impl TransactionOutput {
         self.inner.lock().unwrap()
     }
 
-
     //     pub fn new(value: u64, script_public_key: ScriptPublicKey) -> Self {
     //         Self { inner : Arc::new(Mutex::new(TransactionOutputInner { value, script_public_key })) }
     //     }

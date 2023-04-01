@@ -217,7 +217,7 @@ impl TryFrom<&Transaction> for tx::Transaction {
             inner.subnetwork_id,
             inner.gas,
             inner.payload,
-        //   id,
+            //   id,
         ))
         //  {
         //     version: tx.version,

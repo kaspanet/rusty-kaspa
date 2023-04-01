@@ -318,10 +318,10 @@ mod test {
     //use kaspa_bip32::{ExtendedPrivateKey, SecretKey};
 
     // TODO - re-export subnets
-    use kaspa_consensus_core::subnets::SubnetworkId;
     use crate::tx::Transaction;
     use crate::tx::TransactionInput;
     use crate::tx::TransactionOutput;
+    use kaspa_consensus_core::subnets::SubnetworkId;
     //use kaspa_consensus_core::tx::ScriptPublicKey;
     //use kaspa_consensus_core::tx::MutableTransaction;
     use kaspa_addresses::{Address, Prefix, Version};
@@ -384,12 +384,7 @@ mod test {
         let inputs = selected_entries
             .iter()
             .enumerate()
-            .map(|(sequence, utxo)| TransactionInput::new(
-                utxo.outpoint.try_into().unwrap(),
-                vec![],
-                sequence as u64,
-                0,
-            ))
+            .map(|(sequence, utxo)| TransactionInput::new(utxo.outpoint.try_into().unwrap(), vec![], sequence as u64, 0))
             .collect::<Vec<TransactionInput>>();
 
         let tx = Transaction::new(

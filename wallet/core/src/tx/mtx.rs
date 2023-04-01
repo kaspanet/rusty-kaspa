@@ -89,7 +89,7 @@ impl TryFrom<MutableTransaction> for tx::MutableTransaction<tx::Transaction> {
     type Error = Error;
     fn try_from(mtx: MutableTransaction) -> Result<Self, Self::Error> {
         Ok(Self {
-            tx: mtx.tx.try_into()?,     //lock()?.clone(),
+            tx: mtx.tx.try_into()?,      //lock()?.clone(),
             entries: mtx.entries.into(), //iter().map(|entry|entry.).collect(),
             calculated_fee: None,        //value.calculated_fee,
             calculated_mass: None,       //value.calculated_mass,
@@ -101,7 +101,8 @@ impl TryFrom<(tx::MutableTransaction<tx::Transaction>, UtxoEntries)> for Mutable
     type Error = Error;
     fn try_from(value: (tx::MutableTransaction<tx::Transaction>, UtxoEntries)) -> Result<Self, Self::Error> {
         Ok(Self {
-            tx: Arc::new(Mutex::new(value.0.tx)),
+            tx : value.0.tx.try_into()?,
+            // tx: Arc::new(Mutex::new(value.0.tx)),
             entries: value.1,
             // calculated_fee: value.calculated_fee,
             // calculated_mass: value.calculated_mass,

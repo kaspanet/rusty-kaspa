@@ -1,3 +1,4 @@
+use crate::tx::Transaction;
 use kaspa_addresses::{Address, Prefix};
 use kaspa_consensus_core::{
     config::params::{Params, DEVNET_PARAMS, MAINNET_PARAMS},
@@ -5,7 +6,6 @@ use kaspa_consensus_core::{
     mass::MassCalculator,
     // tx::Transaction,
 };
-use crate::tx::Transaction;
 //use kaspa_consensus_core::mass::transaction_estimated_serialized_size;
 
 /// MINIMUM_RELAY_TRANSACTION_FEE specifies the minimum transaction fee for a transaction to be accepted to

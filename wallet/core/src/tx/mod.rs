@@ -136,10 +136,10 @@ pub fn create_transaction(
         // if new change can make a valid output
         if new_change > dust {
             let last_index = tx.inner().outputs.len() - 1;
-            tx.inner().outputs[last_index].value = new_change;
+            tx.inner().outputs[last_index].inner().value = new_change;
         } else {
             // else remove change output
-            let _change_output = tx.outputs.pop().unwrap();
+            let _change_output = tx.inner().outputs.pop().unwrap();
         }
     }
 
