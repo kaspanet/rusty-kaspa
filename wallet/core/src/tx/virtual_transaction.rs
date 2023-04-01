@@ -10,7 +10,7 @@ use crate::utxo::UtxoEntryReference;
 use kaspa_addresses::Address;
 use kaspa_consensus_core::{subnets::SubnetworkId, tx};
 use kaspa_txscript::pay_to_address_script;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 use workflow_log::log_trace;
 
@@ -69,7 +69,7 @@ impl VirtualTransaction {
                     .map(|(sequence, utxo)| {
                         amount += utxo.utxo_entry.amount;
                         entries.push(utxo.as_ref().clone());
-                        TransactionInput::new(utxo.outpoint, vec![], sequence as u64, 0)
+                        TransactionInput::new(utxo.outpoint.clone(), vec![], sequence as u64, 0)
                     })
                     .collect::<Vec<TransactionInput>>();
 
@@ -84,7 +84,8 @@ impl VirtualTransaction {
                     SubnetworkId::from_bytes([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
                     0,
                     vec![],
-                );
+                )
+                .unwrap();
 
                 let transaction_id = tx.id();
 
@@ -106,7 +107,7 @@ impl VirtualTransaction {
                     0,
                 ));
 
-                MutableTransaction { tx: Arc::new(Mutex::new(tx)), entries: entries.into() }
+                MutableTransaction::new(&tx, &entries.into())
             })
             .collect::<Vec<MutableTransaction>>();
 
@@ -138,9 +139,9 @@ impl VirtualTransaction {
             SubnetworkId::from_bytes([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
             0,
             payload.clone(),
-        );
+        )?;
 
-        let mtx = MutableTransaction { tx: Arc::new(Mutex::new(tx)), entries: final_utxos.into() };
+        let mtx = MutableTransaction::new(&tx, &final_utxos.into());
         transactions.push(mtx);
 
         log_trace!("transactions: {transactions:#?}");

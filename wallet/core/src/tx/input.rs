@@ -69,15 +69,15 @@ impl TransactionInput {
 
     #[wasm_bindgen(setter = sequence)]
     pub fn set_sequence(&mut self, sequence: u64) {
-        self.inner().sequence = sequence; //js_value.try_as_vec_u8().expect("invalid signature script");
+        self.inner().sequence = sequence;
     }
 
-    #[wasm_bindgen(getter = sequence)]
+    #[wasm_bindgen(getter = sigOpCount)]
     pub fn get_sig_op_count(&self) -> u8 {
         self.inner().sig_op_count
     }
 
-    #[wasm_bindgen(setter = sequence)]
+    #[wasm_bindgen(setter = sigOpCount)]
     pub fn set_sig_op_count(&mut self, sig_op_count: u8) {
         self.inner().sig_op_count = sig_op_count;
     }

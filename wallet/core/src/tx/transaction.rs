@@ -1,9 +1,10 @@
 use super::input::TransactionInput;
 use super::output::TransactionOutput;
+use crate::Result;
 use js_sys::Array;
 use kaspa_consensus_core::{
     subnets::{SubnetworkId, SUBNETWORK_ID_COINBASE},
-    tx::TransactionId,
+    tx::{self, TransactionId},
 };
 use kaspa_core::hex::ToHex;
 use serde::{Deserialize, Serialize};
@@ -48,7 +49,7 @@ impl Transaction {
         subnetwork_id: SubnetworkId,
         gas: u64,
         payload: Vec<u8>,
-    ) -> Self {
+    ) -> Result<Self> {
         let tx = Self {
             inner: Arc::new(Mutex::new(TransactionInner {
                 version,
@@ -61,28 +62,18 @@ impl Transaction {
                 id: Default::default(), // Temp init before the finalize below
             })),
         };
-        tx.finalize();
-        tx
+        tx.finalize()?;
+        Ok(tx)
     }
 
     pub fn new_with_inner(inner: TransactionInner) -> Self {
         Self { inner: Arc::new(Mutex::new(inner)) }
     }
 
-    pub fn inner<'a>(&'a self) -> MutexGuard<'a, TransactionInner> {
+    pub fn inner(&self) -> MutexGuard<'_, TransactionInner> {
         self.inner.lock().unwrap()
     }
 }
-
-// pub(crate) fn id(tx: &XTransaction) -> TransactionId {
-//     // Encode the transaction, replace signature script with zeroes, cut off
-//     // payload and hash the result.
-
-//     let encoding_flags = if tx.is_coinbase() { TX_ENCODING_FULL } else { TX_ENCODING_EXCLUDE_SIGNATURE_SCRIPT };
-//     let mut hasher = kaspa_hashes::TransactionID::new();
-//     write_transaction(&mut hasher, tx, encoding_flags);
-//     hasher.finalize()
-// }
 
 #[wasm_bindgen]
 impl Transaction {
@@ -95,19 +86,20 @@ impl Transaction {
     }
 
     /// Recompute and finalize the tx id based on updated tx fields
-    pub fn finalize(&self) {
-        // self.try_into()?
-        // self.id = hashing::tx::id(self);
-        todo!()
+    pub fn finalize(&self) -> Result<()> {
+        let tx: tx::Transaction = self.try_into()?;
+        self.inner().id = tx.id();
+        Ok(())
     }
 
     /// Returns the transaction ID
+    #[wasm_bindgen(getter, js_name = id)]
     pub fn id(&self) -> TransactionId {
         self.inner().id
     }
 
     #[wasm_bindgen(constructor)]
-    pub fn constructor(js_value: JsValue) -> Result<Transaction, JsError> {
+    pub fn constructor(js_value: JsValue) -> std::result::Result<Transaction, JsError> {
         Ok(js_value.try_into()?)
     }
 
@@ -175,10 +167,10 @@ impl Transaction {
         self.inner().lock_time = v;
     }
 
-    #[wasm_bindgen(getter, js_name = id)]
-    pub fn get_id(&self) -> TransactionId {
-        self.inner().id
-    }
+    // #[wasm_bindgen(getter, js_name = id)]
+    // pub fn get_id(&self) -> TransactionId {
+    //     self.inner().id
+    // }
 
     // #[wasm_bindgen(setter, js_name = gas)]
     // pub fn set_gas(&self, v: u64) {

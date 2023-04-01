@@ -7,6 +7,7 @@ use kaspa_rpc_core::RpcTransactionOutput;
 use kaspa_rpc_core::{RpcTransaction, RpcTransactionInput};
 use serde::{Deserialize, Serialize};
 use serde_wasm_bindgen::to_value;
+use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use wasm_bindgen::prelude::*;
 use workflow_wasm::jsvalue::JsValueTrait;
@@ -60,11 +61,8 @@ impl MutableTransaction {
             }
 
             for (i, signature) in signatures.into_iter().enumerate().take(tx.inner().inputs.len()) {
-                // tx.inputs[i].sig_op_count = 1;
-                // tx.inputs[i].signature_script = signature;
                 tx.inner().inputs[i].inner().sig_op_count = 1;
                 tx.inner().inputs[i].inner().signature_script = signature;
-                //log_trace!("tx.inputs[i].signature_script: {:?}", tx.inputs[i].signature_script);
             }
         }
 
@@ -88,8 +86,9 @@ impl MutableTransaction {
 impl TryFrom<MutableTransaction> for tx::MutableTransaction<tx::Transaction> {
     type Error = Error;
     fn try_from(mtx: MutableTransaction) -> Result<Self, Self::Error> {
+        let tx = &mtx.tx.lock()?.clone();
         Ok(Self {
-            tx: mtx.tx.try_into()?,      //lock()?.clone(),
+            tx: tx.try_into()?,          //lock()?.clone(),
             entries: mtx.entries.into(), //iter().map(|entry|entry.).collect(),
             calculated_fee: None,        //value.calculated_fee,
             calculated_mass: None,       //value.calculated_mass,
@@ -100,13 +99,7 @@ impl TryFrom<MutableTransaction> for tx::MutableTransaction<tx::Transaction> {
 impl TryFrom<(tx::MutableTransaction<tx::Transaction>, UtxoEntries)> for MutableTransaction {
     type Error = Error;
     fn try_from(value: (tx::MutableTransaction<tx::Transaction>, UtxoEntries)) -> Result<Self, Self::Error> {
-        Ok(Self {
-            tx : value.0.tx.try_into()?,
-            // tx: Arc::new(Mutex::new(value.0.tx)),
-            entries: value.1,
-            // calculated_fee: value.calculated_fee,
-            // calculated_mass: value.calculated_mass,
-        })
+        Ok(Self { tx: Arc::new(Mutex::new(value.0.tx.try_into()?)), entries: value.1 })
     }
 }
 

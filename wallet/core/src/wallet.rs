@@ -384,7 +384,7 @@ mod test {
         let inputs = selected_entries
             .iter()
             .enumerate()
-            .map(|(sequence, utxo)| TransactionInput::new(utxo.outpoint.try_into().unwrap(), vec![], sequence as u64, 0))
+            .map(|(sequence, utxo)| TransactionInput::new(utxo.outpoint.clone().try_into().unwrap(), vec![], sequence as u64, 0))
             .collect::<Vec<TransactionInput>>();
 
         let tx = Transaction::new(
@@ -399,7 +399,7 @@ mod test {
             SubnetworkId::from_bytes([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
             0,
             vec![],
-        );
+        )?;
 
         let mtx = MutableTransaction::new(&tx, &(*entries).clone().into());
 

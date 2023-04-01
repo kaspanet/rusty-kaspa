@@ -23,7 +23,7 @@ use kaspa_consensus_core::tx::ScriptPublicKey;
 use kaspa_consensus_core::tx::SignableTransaction;
 use kaspa_consensus_core::wasm::error::Error;
 use kaspa_txscript::pay_to_address_script;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 use workflow_log::log_trace;
 
@@ -63,7 +63,7 @@ pub fn create_transaction(
         .map(|(sequence, utxo)| {
             total_input_amount += utxo.utxo_entry.amount;
             entries.push(utxo.as_ref().clone());
-            TransactionInput::new(utxo.outpoint, vec![], sequence as u64, 0)
+            TransactionInput::new(utxo.outpoint.clone(), vec![], sequence as u64, 0)
         })
         .collect::<Vec<TransactionInput>>();
 
@@ -98,7 +98,7 @@ pub fn create_transaction(
     }
     // total_output_amount = 2_000 + 7_000 = 9_000
 
-    let mut tx = Transaction::new(
+    let tx = Transaction::new(
         0,
         inputs,
         outputs_,
@@ -106,7 +106,7 @@ pub fn create_transaction(
         SubnetworkId::from_bytes([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
         0,
         payload.unwrap_or(vec![]),
-    );
+    )?;
 
     let fee = total_input_amount - total_output_amount;
     //fee = 10_000 - 9_000 = 1_000
@@ -143,7 +143,7 @@ pub fn create_transaction(
         }
     }
 
-    let mtx = MutableTransaction { tx: Arc::new(Mutex::new(tx)), entries: entries.into() };
+    let mtx = MutableTransaction::new(&tx, &entries.into());
 
     Ok(mtx)
 }

@@ -230,10 +230,10 @@ impl TransactionInput {
 /// Represents a Kaspad transaction output
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
-#[wasm_bindgen(inspectable)]
+//#[wasm_bindgen(inspectable)]
 pub struct TransactionOutput {
     pub value: u64,
-    #[wasm_bindgen(js_name = scriptPublicKey, getter_with_clone)]
+    //#[wasm_bindgen(js_name = scriptPublicKey, getter_with_clone)]
     pub script_public_key: ScriptPublicKey,
 }
 
@@ -243,14 +243,14 @@ impl TransactionOutput {
     }
 }
 
-#[wasm_bindgen]
-impl TransactionOutput {
-    #[wasm_bindgen(constructor)]
-    /// TransactionOutput constructor
-    pub fn constructor(value: u64, script_public_key: &ScriptPublicKey) -> TransactionOutput {
-        Self { value, script_public_key: script_public_key.clone() }
-    }
-}
+// //#[wasm_bindgen]
+// impl TransactionOutput {
+//     //#[wasm_bindgen(constructor)]
+//     /// TransactionOutput constructor
+//     pub fn constructor(value: u64, script_public_key: &ScriptPublicKey) -> TransactionOutput {
+//         Self { value, script_public_key: script_public_key.clone() }
+//     }
+// }
 
 /// Represents a Kaspa transaction
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]

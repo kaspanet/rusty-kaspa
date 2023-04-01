@@ -82,8 +82,8 @@ impl TryFrom<TransactionInput> for tx::TransactionInput {
     fn try_from(tx_input: TransactionInput) -> Result<Self, Self::Error> {
         let inner = tx_input.inner();
         Ok(tx::TransactionInput::new(
-            inner.previous_outpoint.try_into()?,
-            inner.signature_script,
+            inner.previous_outpoint.clone().try_into()?,
+            inner.signature_script.clone(),
             inner.sequence,
             inner.sig_op_count,
             // previous_outpoint: tx_input.previous_outpoint.try_into()?,
@@ -134,7 +134,7 @@ impl TryFrom<TransactionOutput> for tx::TransactionOutput {
     type Error = Error;
     fn try_from(output: TransactionOutput) -> Result<Self, Self::Error> {
         let inner = output.inner();
-        Ok(tx::TransactionOutput::new(inner.value, inner.script_public_key))
+        Ok(tx::TransactionOutput::new(inner.value, inner.script_public_key.clone()))
     }
 }
 
@@ -172,7 +172,7 @@ impl TryFrom<JsValue> for Transaction {
                 object.get_vec("inputs")?.into_iter().map(|jsv| jsv.try_into()).collect::<Result<Vec<TransactionInput>, Error>>()?;
             let outputs =
                 object.get_vec("outputs")?.into_iter().map(|jsv| jsv.try_into()).collect::<Result<Vec<TransactionOutput>, Error>>()?;
-            Ok(Transaction::new(version, inputs, outputs, lock_time, subnetwork_id, gas, payload))
+            Transaction::new(version, inputs, outputs, lock_time, subnetwork_id, gas, payload)
         } else {
             Err("Transaction must be an object".into())
         }
@@ -203,31 +203,23 @@ impl TryFrom<tx::Transaction> for Transaction {
 impl TryFrom<&Transaction> for tx::Transaction {
     type Error = Error;
     fn try_from(tx: &Transaction) -> Result<Self, Self::Error> {
-        let id = tx.id();
         let inner = tx.inner();
         let inputs: Vec<tx::TransactionInput> =
-            inner.inputs.into_iter().map(|input| input.try_into()).collect::<Result<Vec<tx::TransactionInput>, Error>>()?;
-        let outputs: Vec<tx::TransactionOutput> =
-            inner.outputs.into_iter().map(|output| output.try_into()).collect::<Result<Vec<tx::TransactionOutput>, Error>>()?;
+            inner.inputs.clone().into_iter().map(|input| input.try_into()).collect::<Result<Vec<tx::TransactionInput>, Error>>()?;
+        let outputs: Vec<tx::TransactionOutput> = inner
+            .outputs
+            .clone()
+            .into_iter()
+            .map(|output| output.try_into())
+            .collect::<Result<Vec<tx::TransactionOutput>, Error>>()?;
         Ok(tx::Transaction::new(
             inner.version,
             inputs,
             outputs,
             inner.lock_time,
-            inner.subnetwork_id,
+            inner.subnetwork_id.clone(),
             inner.gas,
-            inner.payload,
-            //   id,
+            inner.payload.clone(),
         ))
-        //  {
-        //     version: tx.version,
-        //     inputs,
-        //     outputs,
-        //     lock_time: tx.lock_time,
-        //     gas: tx.gas,
-        //     payload: tx.payload,
-        //     subnetwork_id: tx.subnetwork_id,
-        //     id, // : tx.id(),
-        // }))
     }
 }
