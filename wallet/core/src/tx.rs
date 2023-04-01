@@ -82,11 +82,15 @@ pub struct XTransactionOutpoint {
     inner: Arc<Mutex<TransactionOutpointInner>>,
 }
 
-// impl XTransactionOutpoint {
+impl XTransactionOutpoint {
+    fn inner(&self) -> MutexGuard<'_, TransactionOutpointInner> {
+        self.inner.lock().unwrap()
+    }
+
 //     pub fn new(transaction_id: TransactionId, index: u32) -> Self {
 //         Self { inner : Arc::new(Mutex::new( TransactionOutpointInner { transaction_id, index })) }
 //     }
-// }
+}
 
 #[wasm_bindgen]
 impl XTransactionOutpoint {
@@ -97,12 +101,21 @@ impl XTransactionOutpoint {
 
     #[wasm_bindgen(getter, js_name = transactionId)]
     pub fn get_transaction_id(&self) -> TransactionId {
-        self.inner.lock().unwrap().transaction_id
+        self.inner().transaction_id
+    }
+
+    #[wasm_bindgen(setter, js_name = transactionId)]
+    pub fn set_transaction_id(&self, transaction_id : &TransactionId) {
+        self.inner().transaction_id = *transaction_id;
     }
 
     #[wasm_bindgen(getter, js_name = index)]
     pub fn get_index(&self) -> TransactionIndexType {
-        self.inner.lock().unwrap().index
+        self.inner().index
+    }
+    #[wasm_bindgen(setter, js_name = index)]
+    pub fn set_index(&self, index : TransactionIndexType) {
+        self.inner().index = index;
     }
 }
 
@@ -116,12 +129,9 @@ impl std::fmt::Display for XTransactionOutpoint {
 // #[derive(Debug, Clone, Serialize, Deserialize)]
 // #[serde(rename_all = "camelCase")]
 pub struct TransactionInputInner {
-    // #[wasm_bindgen(js_name = previousOutpoint)]
     pub previous_outpoint: XTransactionOutpoint,
-    // #[wasm_bindgen(skip)]
     pub signature_script: Vec<u8>, // TODO: Consider using SmallVec
     pub sequence: u64,
-    // #[wasm_bindgen(js_name = sigOpCount)]
     pub sig_op_count: u8,
 }
 
@@ -140,6 +150,10 @@ impl XTransactionInput {
     pub fn new_with_inner(inner: TransactionInputInner) -> Self {
         Self { inner: Arc::new(Mutex::new(inner)) }
     }
+
+    fn inner(&self) -> MutexGuard<'_, TransactionInputInner> {
+        self.inner.lock().unwrap()
+    }
 }
 
 #[wasm_bindgen]
@@ -149,14 +163,44 @@ impl XTransactionInput {
         Ok(js_value.try_into()?)
     }
 
+    #[wasm_bindgen(getter = previousOutpoint)]
+    pub fn get_previous_outpoint(&self) -> XTransactionOutpoint {
+        self.inner().previous_outpoint.clone()
+    }
+
+    #[wasm_bindgen(setter = previousOutpoint)]
+    pub fn set_previous_outpoint(&mut self, js_value: JsValue) {
+        self.inner().previous_outpoint = js_value.try_into().expect("invalid signature script");
+    }
+
     #[wasm_bindgen(getter = signatureScript)]
     pub fn get_signature_script_as_hex(&self) -> String {
-        self.inner.lock().unwrap().signature_script.to_hex()
+        self.inner().signature_script.to_hex()
     }
 
     #[wasm_bindgen(setter = signatureScript)]
     pub fn set_signature_script_from_js_value(&mut self, js_value: JsValue) {
-        self.inner.lock().unwrap().signature_script = js_value.try_as_vec_u8().expect("invalid signature script");
+        self.inner().signature_script = js_value.try_as_vec_u8().expect("invalid signature script");
+    }
+
+    #[wasm_bindgen(getter = sequence)]
+    pub fn get_sequence(&self) -> u64 {
+        self.inner().sequence
+    }
+
+    #[wasm_bindgen(setter = sequence)]
+    pub fn set_sequence(&mut self, sequence : u64) {
+        self.inner().sequence = sequence; //js_value.try_as_vec_u8().expect("invalid signature script");
+    }
+
+    #[wasm_bindgen(getter = sequence)]
+    pub fn get_sig_op_count(&self) -> u8 {
+        self.inner().sig_op_count
+    }
+
+    #[wasm_bindgen(setter = sequence)]
+    pub fn set_sig_op_count(&mut self, sig_op_count : u8) {
+        self.inner().sig_op_count = sig_op_count;
     }
 }
 
