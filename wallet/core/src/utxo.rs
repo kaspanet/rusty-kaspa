@@ -21,13 +21,13 @@ use serde::{Deserialize, Serialize};
 ///
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[wasm_bindgen]
+#[wasm_bindgen(inspectable)]
 pub struct UtxoEntry {
     #[wasm_bindgen(getter_with_clone)]
     pub address: Address,
     #[wasm_bindgen(getter_with_clone)]
     pub outpoint: TransactionOutpoint,
-    #[wasm_bindgen(getter_with_clone)]
+    #[wasm_bindgen(js_name=entry, getter_with_clone)]
     pub utxo_entry: tx::UtxoEntry,
 }
 
@@ -50,10 +50,18 @@ impl From<RpcUtxosByAddressesEntry> for UtxoEntry {
 
 #[derive(Clone, TryFromJsValue)]
 // #[derive(Clone)]
-#[wasm_bindgen]
+#[wasm_bindgen(inspectable)]
 pub struct UtxoEntryReference {
     #[wasm_bindgen(skip)]
     pub utxo: Arc<UtxoEntry>,
+}
+
+#[wasm_bindgen]
+impl UtxoEntryReference {
+    #[wasm_bindgen(getter)]
+    pub fn data(&self) -> UtxoEntry {
+        self.as_ref().clone()
+    }
 }
 
 impl AsRef<UtxoEntry> for UtxoEntryReference {
@@ -83,6 +91,13 @@ pub struct SelectionContext {
     pub total_selected_amount: u64,
     #[wasm_bindgen(skip)]
     pub selected_entries: Vec<UtxoEntryReference>,
+}
+#[wasm_bindgen]
+impl SelectionContext {
+    #[wasm_bindgen(getter=utxos)]
+    pub fn selected_entries(&self) -> js_sys::Array {
+        js_sys::Array::from_iter(self.selected_entries.clone().into_iter().map(JsValue::from))
+    }
 }
 
 /// UtxoOrdering enum denotes UTXO sort order (`Unordered`, `AscendingAmount`, `AscendingDaaScore`)

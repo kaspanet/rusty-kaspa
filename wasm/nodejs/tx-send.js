@@ -50,6 +50,10 @@ kaspa.init_console_panic_hook();
 
     console.log("utxo_selection.amount", utxo_selection.amount)
     console.log("utxo_selection.totalAmount", utxo_selection.totalAmount)
+    let utxos = utxo_selection.utxos;
+    console.log("utxos", utxos)
+    console.log("utxos.*.data.entry", utxos.map(a=>a.data.entry))
+
 
     let output = new Output(
         new Address("kaspatest:qz7ulu4c25dh7fzec9zjyrmlhnkzrg4wmf89q7gzr3gfrsj3uz6xjceef60sd"),

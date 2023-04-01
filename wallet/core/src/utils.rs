@@ -34,18 +34,23 @@ pub fn minimum_required_transaction_relay_fee(mass: u64) -> u64 {
 
 pub fn calculate_mass(tx: &Transaction, params: &Params, estimate_signature_mass: bool) -> u64 {
     let mass_calculator = MassCalculator::new(params.mass_per_tx_byte, params.mass_per_script_pub_key_byte, params.mass_per_sig_op);
-    let mass = mass_calculator.calc_tx_mass(&tx.try_into().unwrap());
+    let mut mass = mass_calculator.calc_tx_mass(&tx.try_into().unwrap());
+
     if !estimate_signature_mass {
         return mass;
     }
-    let signature_mass = transaction_estimate_signature_mass(tx, params);
 
+    //TODO: remove this sig_op_count mass calculation
+    let sig_op_count = 1;
+    mass += (sig_op_count * tx.inner().inputs.len() as u64) * params.mass_per_sig_op;
+
+    let signature_mass = transaction_estimate_signature_mass(tx, params);
     mass + signature_mass
 }
 
 pub fn transaction_estimate_signature_mass(tx: &Transaction, params: &Params) -> u64 {
     let signature_script_size = 66; //params.max_signature_script_len;
-    tx.inner().inputs.len() as u64 * signature_script_size * params.mass_per_script_pub_key_byte
+    tx.inner().inputs.len() as u64 * signature_script_size * params.mass_per_tx_byte
 }
 
 pub fn calculate_minimum_transaction_fee(tx: &Transaction, params: &Params, estimate_signature_mass: bool) -> u64 {
