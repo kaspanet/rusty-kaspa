@@ -1,7 +1,4 @@
-use kaspa_consensus_core::tx::{TransactionId, TransactionIndexType};
-use serde::{Deserialize, Serialize};
-use std::sync::{Arc, Mutex, MutexGuard};
-use wasm_bindgen::prelude::*;
+use crate::imports::*;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -61,5 +58,38 @@ impl std::fmt::Display for TransactionOutpoint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let inner = self.inner.lock().unwrap();
         write!(f, "({}, {})", inner.transaction_id, inner.index)
+    }
+}
+
+impl TryFrom<JsValue> for TransactionOutpoint {
+    type Error = Error;
+    fn try_from(value: JsValue) -> Result<Self, Self::Error> {
+        if value.is_object() {
+            let object = Object::from(value);
+            let transaction_id = object.get("transactionId")?.try_into()?;
+            let index = object.get_u32("index")?;
+            Ok(TransactionOutpoint::new(&transaction_id, index))
+        } else {
+            Err("outpoint is not an object".into())
+        }
+    }
+}
+
+impl TryFrom<cctx::TransactionOutpoint> for TransactionOutpoint {
+    type Error = Error;
+    fn try_from(outpoint: cctx::TransactionOutpoint) -> Result<Self, Self::Error> {
+        let transaction_id = outpoint.transaction_id;
+        let index = outpoint.index;
+        Ok(TransactionOutpoint::new(&transaction_id, index))
+    }
+}
+
+impl TryFrom<TransactionOutpoint> for cctx::TransactionOutpoint {
+    type Error = Error;
+    fn try_from(outpoint: TransactionOutpoint) -> Result<Self, Self::Error> {
+        let inner = outpoint.inner();
+        let transaction_id = inner.transaction_id;
+        let index = inner.index;
+        Ok(cctx::TransactionOutpoint::new(transaction_id, index))
     }
 }

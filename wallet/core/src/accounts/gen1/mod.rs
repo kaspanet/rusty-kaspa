@@ -1,5 +1,5 @@
 mod hd;
-mod wallet;
+// mod wallet;
 
 pub use hd::WalletAccount;
-pub use wallet::WalletGen1;
+// pub use wallet::WalletGen1;

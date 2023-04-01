@@ -1,5 +1,6 @@
 use crate::accounts::account::WalletAccountTrait;
 use crate::accounts::WalletAccount;
+use crate::imports::*;
 use crate::tx::MutableTransaction;
 use crate::Result;
 use itertools::Itertools;
@@ -18,13 +19,12 @@ use kaspa_consensus_core::{
         // tx::MutableTransaction,
     },
 };
-use kaspa_core::hex::ToHex;
+// use kaspa_core::hex::ToHex;
 use kaspa_hashes::Hash;
 use serde_wasm_bindgen::{from_value, to_value};
 use std::collections::BTreeMap;
 use std::iter::once;
 use std::str::FromStr;
-use wasm_bindgen::prelude::*;
 use workflow_log::log_trace;
 use workflow_wasm::abi::TryFromJsValue;
 

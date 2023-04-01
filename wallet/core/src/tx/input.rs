@@ -1,9 +1,5 @@
 use super::TransactionOutpoint;
-use kaspa_core::hex::ToHex;
-use serde::{Deserialize, Serialize};
-use std::sync::{Arc, Mutex, MutexGuard};
-use wasm_bindgen::prelude::*;
-use workflow_wasm::jsvalue::JsValueTrait;
+use crate::imports::*;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -80,5 +76,51 @@ impl TransactionInput {
     #[wasm_bindgen(setter = sigOpCount)]
     pub fn set_sig_op_count(&mut self, sig_op_count: u8) {
         self.inner().sig_op_count = sig_op_count;
+    }
+}
+
+impl TryFrom<JsValue> for TransactionInput {
+    type Error = Error;
+    fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
+        if js_value.is_object() {
+            let object = Object::from(js_value);
+            let previous_outpoint: TransactionOutpoint = object.get("previousOutpoint")?.try_into()?;
+            let signature_script = object.get_vec_u8("signatureScript")?;
+            let sequence = object.get_u64("sequence")?;
+            let sig_op_count = object.get_u8("sigOpCount")?;
+
+            Ok(TransactionInput::new(previous_outpoint, signature_script, sequence, sig_op_count))
+        } else {
+            Err("TransactionInput must be an object".into())
+        }
+    }
+}
+
+impl TryFrom<cctx::TransactionInput> for TransactionInput {
+    type Error = Error;
+    fn try_from(tx_input: cctx::TransactionInput) -> Result<Self, Self::Error> {
+        Ok(TransactionInput::new_with_inner(TransactionInputInner {
+            previous_outpoint: tx_input.previous_outpoint.try_into()?,
+            signature_script: tx_input.signature_script,
+            sequence: tx_input.sequence,
+            sig_op_count: tx_input.sig_op_count,
+        }))
+    }
+}
+
+impl TryFrom<TransactionInput> for cctx::TransactionInput {
+    type Error = Error;
+    fn try_from(tx_input: TransactionInput) -> Result<Self, Self::Error> {
+        let inner = tx_input.inner();
+        Ok(cctx::TransactionInput::new(
+            inner.previous_outpoint.clone().try_into()?,
+            inner.signature_script.clone(),
+            inner.sequence,
+            inner.sig_op_count,
+            // previous_outpoint: tx_input.previous_outpoint.try_into()?,
+            // signature_script: tx_input.signature_script,
+            // sequence: tx_input.sequence,
+            // sig_op_count: tx_input.sig_op_count,
+        ))
     }
 }

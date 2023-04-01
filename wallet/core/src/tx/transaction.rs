@@ -1,15 +1,16 @@
 use super::input::TransactionInput;
 use super::output::TransactionOutput;
+use crate::imports::*;
 use crate::Result;
-use js_sys::Array;
-use kaspa_consensus_core::{
-    subnets::{SubnetworkId, SUBNETWORK_ID_COINBASE},
-    tx::{self, TransactionId},
-};
-use kaspa_core::hex::ToHex;
-use serde::{Deserialize, Serialize};
-use std::sync::{Arc, Mutex, MutexGuard};
-use wasm_bindgen::prelude::*;
+// use js_sys::Array;
+// use kaspa_consensus_core::{
+//     subnets::{SubnetworkId, SUBNETWORK_ID_COINBASE},
+//     tx::{self, TransactionId},
+// };
+// use kaspa_core::hex::ToHex;
+// use serde::{Deserialize, Serialize};
+// use std::sync::{Arc, Mutex, MutexGuard};
+// use wasm_bindgen::prelude::*;
 use workflow_wasm::abi::ref_from_abi;
 use workflow_wasm::jsvalue::JsValueTrait;
 
@@ -82,12 +83,12 @@ impl Transaction {
     /// to the previous blocks' miners, and specifies the script_pub_key that will be used to pay the current
     /// miner in future blocks.
     pub fn is_coinbase(&self) -> bool {
-        self.inner().subnetwork_id == SUBNETWORK_ID_COINBASE
+        self.inner().subnetwork_id == subnets::SUBNETWORK_ID_COINBASE
     }
 
     /// Recompute and finalize the tx id based on updated tx fields
     pub fn finalize(&self) -> Result<()> {
-        let tx: tx::Transaction = self.try_into()?;
+        let tx: cctx::Transaction = self.try_into()?;
         self.inner().id = tx.id();
         Ok(())
     }
@@ -196,5 +197,86 @@ impl Transaction {
     #[wasm_bindgen(setter = payload)]
     pub fn set_payload_from_js_value(&mut self, js_value: JsValue) {
         self.inner.lock().unwrap().payload = js_value.try_as_vec_u8().unwrap_or_else(|err| panic!("payload value error: {err}"));
+    }
+}
+
+impl TryFrom<JsValue> for Transaction {
+    type Error = Error;
+    fn try_from(js_value: JsValue) -> std::result::Result<Self, Self::Error> {
+        if js_value.is_object() {
+            let object = Object::from(js_value);
+            let version = object.get_u16("version")?;
+            let lock_time = object.get_u64("lockTime")?;
+            let gas = object.get_u64("gas")?;
+            let payload = object.get_vec_u8("payload")?;
+            let subnetwork_id = object.get_vec_u8("subnetworkId")?;
+            if subnetwork_id.len() != subnets::SUBNETWORK_ID_SIZE {
+                return Err(Error::Custom("subnetworkId must be 20 bytes long".into()));
+            }
+            let subnetwork_id: SubnetworkId =
+                subnetwork_id.as_slice().try_into().map_err(|err| Error::Custom(format!("`subnetworkId` property error: `{err}`")))?;
+            let inputs = object
+                .get_vec("inputs")?
+                .into_iter()
+                .map(|jsv| jsv.try_into())
+                .collect::<std::result::Result<Vec<TransactionInput>, Error>>()?;
+            let outputs = object
+                .get_vec("outputs")?
+                .into_iter()
+                .map(|jsv| jsv.try_into())
+                .collect::<std::result::Result<Vec<TransactionOutput>, Error>>()?;
+            Transaction::new(version, inputs, outputs, lock_time, subnetwork_id, gas, payload)
+        } else {
+            Err("Transaction must be an object".into())
+        }
+    }
+}
+
+impl TryFrom<cctx::Transaction> for Transaction {
+    type Error = Error;
+    fn try_from(tx: cctx::Transaction) -> std::result::Result<Self, Self::Error> {
+        let id = tx.id();
+        let inputs: Vec<TransactionInput> =
+            tx.inputs.into_iter().map(|input| input.try_into()).collect::<std::result::Result<Vec<TransactionInput>, Error>>()?;
+        let outputs: Vec<TransactionOutput> =
+            tx.outputs.into_iter().map(|output| output.try_into()).collect::<std::result::Result<Vec<TransactionOutput>, Error>>()?;
+        Ok(Self::new_with_inner(TransactionInner {
+            version: tx.version,
+            inputs,
+            outputs,
+            lock_time: tx.lock_time,
+            gas: tx.gas,
+            payload: tx.payload,
+            subnetwork_id: tx.subnetwork_id,
+            id, // : tx.id(),
+        }))
+    }
+}
+
+impl TryFrom<&Transaction> for cctx::Transaction {
+    type Error = Error;
+    fn try_from(tx: &Transaction) -> std::result::Result<Self, Self::Error> {
+        let inner = tx.inner();
+        let inputs: Vec<cctx::TransactionInput> = inner
+            .inputs
+            .clone()
+            .into_iter()
+            .map(|input| input.try_into())
+            .collect::<std::result::Result<Vec<cctx::TransactionInput>, Error>>()?;
+        let outputs: Vec<cctx::TransactionOutput> = inner
+            .outputs
+            .clone()
+            .into_iter()
+            .map(|output| output.try_into())
+            .collect::<std::result::Result<Vec<cctx::TransactionOutput>, Error>>()?;
+        Ok(cctx::Transaction::new(
+            inner.version,
+            inputs,
+            outputs,
+            inner.lock_time,
+            inner.subnetwork_id.clone(),
+            inner.gas,
+            inner.payload.clone(),
+        ))
     }
 }

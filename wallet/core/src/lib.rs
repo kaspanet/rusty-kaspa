@@ -3,8 +3,8 @@ extern crate self as kaspa_wallet_core;
 
 pub mod account;
 pub mod accounts;
-pub mod convert;
 pub mod error;
+pub mod imports;
 pub mod result;
 pub mod signer;
 pub mod storage;
@@ -12,14 +12,14 @@ pub mod tx;
 pub mod utils;
 pub mod utxo;
 pub mod wallet;
-pub mod wrapper;
+// pub mod wrapper;
 
 pub use accounts::dummy_address;
 pub use kaspa_addresses::Address;
 pub use result::Result;
 pub use signer::Signer;
 pub use wallet::Wallet;
-pub use wrapper::WalletWrapper;
+// pub use wrapper::WalletWrapper;
 
 #[macro_export]
 macro_rules! hex {
@@ -37,5 +37,4 @@ use kaspa_rpc_core::{/*api::rpc::RpcApi,*/ notify::connection::ChannelConnection
 use kaspa_utils::channel::Channel;
 
 pub type DynRpcApi = dyn kaspa_rpc_core::api::rpc::RpcApi<ChannelConnection>;
-// pub type DynRpcService = Arc<dyn RpcApi<ChannelConnection>>;
 pub type NotificationChannel = Channel<Notification>;

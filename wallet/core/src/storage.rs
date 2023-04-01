@@ -1,6 +1,5 @@
-use crate::error::Error;
+use crate::imports::*;
 use crate::result::Result;
-#[allow(unused_imports)]
 use base64::{engine::general_purpose, Engine as _};
 use borsh::{BorshDeserialize, BorshSerialize};
 use cfg_if::cfg_if;
@@ -8,13 +7,9 @@ use chacha20poly1305::{
     aead::{AeadCore, AeadInPlace, KeyInit, OsRng},
     ChaCha20Poly1305, Key,
 };
-use js_sys::Object;
 use kaspa_bip32::SecretKey;
-use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
-use wasm_bindgen::prelude::*;
 use workflow_core::runtime;
 use zeroize::Zeroize;
 

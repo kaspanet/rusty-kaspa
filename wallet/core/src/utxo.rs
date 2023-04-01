@@ -1,24 +1,12 @@
-use crate::error::Error;
+use crate::imports::*;
 use crate::result::Result;
 use crate::tx::TransactionOutpoint;
 use itertools::Itertools;
-use js_sys::{Array, Object};
-use kaspa_consensus_core::tx::{self, ScriptPublicKey};
 use kaspa_rpc_core::{GetUtxosByAddressesResponse, RpcUtxosByAddressesEntry};
 use serde_wasm_bindgen::from_value;
-use std::sync::{
-    atomic::{AtomicU32, Ordering},
-    Arc, Mutex,
-};
-use wasm_bindgen::prelude::*;
+use std::sync::atomic::{AtomicU32, Ordering};
 use workflow_wasm::abi::{ref_from_abi, TryFromJsValue};
-use workflow_wasm::object::*;
 
-//use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
-use kaspa_addresses::Address;
-use serde::{Deserialize, Serialize};
-
-///
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen(inspectable)]
@@ -28,7 +16,7 @@ pub struct UtxoEntry {
     #[wasm_bindgen(getter_with_clone)]
     pub outpoint: TransactionOutpoint,
     #[wasm_bindgen(js_name=entry, getter_with_clone)]
-    pub utxo_entry: tx::UtxoEntry,
+    pub utxo_entry: cctx::UtxoEntry,
 }
 
 impl UtxoEntry {
@@ -49,7 +37,6 @@ impl From<RpcUtxosByAddressesEntry> for UtxoEntry {
 }
 
 #[derive(Clone, TryFromJsValue)]
-// #[derive(Clone)]
 #[wasm_bindgen(inspectable)]
 pub struct UtxoEntryReference {
     #[wasm_bindgen(skip)]
@@ -92,6 +79,7 @@ pub struct SelectionContext {
     #[wasm_bindgen(skip)]
     pub selected_entries: Vec<UtxoEntryReference>,
 }
+
 #[wasm_bindgen]
 impl SelectionContext {
     #[wasm_bindgen(getter=utxos)]
@@ -214,8 +202,6 @@ impl UtxoSet {
             .sum();
 
         Ok(SelectionContext { transaction_amount, total_selected_amount, selected_entries })
-
-        // TODO - untested!
     }
 
     pub async fn calculate_balance(&self) -> Result<u64> {
@@ -243,7 +229,7 @@ impl UtxoEntries {
     pub fn set_items_from_js_array(&mut self, js_value: &JsValue) {
         let items = Array::from(js_value)
             .iter()
-            .map(|js_value| ref_from_abi!(UtxoEntry, &js_value).unwrap_or_else(|err| panic!("invalid UTXOEntry: {err}")))
+            .map(|js_value| ref_from_abi!(UtxoEntry, &js_value).unwrap_or_else(|err| panic!("invalid UtxoEntry: {err}")))
             .collect::<Vec<_>>();
         self.0 = Arc::new(items);
     }
@@ -261,7 +247,7 @@ impl From<Vec<UtxoEntry>> for UtxoEntries {
     }
 }
 
-impl From<UtxoEntries> for Vec<Option<tx::UtxoEntry>> {
+impl From<UtxoEntries> for Vec<Option<cctx::UtxoEntry>> {
     fn from(value: UtxoEntries) -> Self {
         value.0.as_ref().iter().map(|entry| Some(entry.utxo_entry.clone())).collect_vec()
     }
@@ -272,7 +258,7 @@ impl TryFrom<Vec<Option<UtxoEntry>>> for UtxoEntries {
     fn try_from(value: Vec<Option<UtxoEntry>>) -> std::result::Result<Self, Self::Error> {
         let mut list = vec![];
         for entry in value.into_iter() {
-            list.push(entry.ok_or(Error::Custom("Unable to cast `Vec<Option<UtxoEntry>>` into `UtxoEntryList`.".to_string()))?);
+            list.push(entry.ok_or(Error::Custom("Unable to cast `Vec<Option<UtxoEntry>>` into `UtxoEntries`.".to_string()))?);
         }
 
         Ok(Self(Arc::new(list)))
@@ -287,7 +273,7 @@ impl TryFrom<Vec<UtxoEntryReference>> for UtxoEntries {
             list.push(
                 entry
                     .try_into()
-                    .map_err(|_| Error::Custom("Unable to cast `Vec<UtxoEntryReference>` into `UtxoEntryList`.".to_string()))?,
+                    .map_err(|_| Error::Custom("Unable to cast `Vec<UtxoEntryReference>` into `UtxoEntries`.".to_string()))?,
             );
         }
 
@@ -299,7 +285,7 @@ impl TryFrom<JsValue> for UtxoEntries {
     type Error = Error;
     fn try_from(js_value: JsValue) -> std::result::Result<Self, Self::Error> {
         if !js_value.is_array() {
-            return Err("UtxoEntryList must be an array".into());
+            return Err("UtxoEntries must be an array".into());
         }
 
         let mut list = vec![];
@@ -322,7 +308,7 @@ impl TryFrom<JsValue> for UtxoEntries {
                     UtxoEntry {
                         address,
                         outpoint,
-                        utxo_entry: tx::UtxoEntry { amount, script_public_key, block_daa_score, is_coinbase },
+                        utxo_entry: cctx::UtxoEntry { amount, script_public_key, block_daa_score, is_coinbase },
                     }
                 }
             })

@@ -1,12 +1,7 @@
-use crate::tx::ScriptPublicKey;
+use crate::imports::*;
 use crate::utxo::UtxoEntry;
-use kaspa_addresses::Address;
-use serde::Deserializer;
-use serde::{Deserialize, Serialize};
 use serde_wasm_bindgen::from_value;
-use std::sync::{Arc, Mutex, MutexGuard};
 use wasm_bindgen::convert::FromWasmAbi;
-use wasm_bindgen::prelude::*;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -67,6 +62,38 @@ impl TransactionOutput {
         self.inner().script_public_key = v.clone();
     }
 }
+
+impl TryFrom<cctx::TransactionOutput> for TransactionOutput {
+    type Error = Error;
+    fn try_from(output: cctx::TransactionOutput) -> Result<Self, Self::Error> {
+        Ok(TransactionOutput::new(output.value, &output.script_public_key))
+    }
+}
+
+impl TryFrom<TransactionOutput> for cctx::TransactionOutput {
+    type Error = Error;
+    fn try_from(output: TransactionOutput) -> Result<Self, Self::Error> {
+        let inner = output.inner();
+        Ok(cctx::TransactionOutput::new(inner.value, inner.script_public_key.clone()))
+    }
+}
+
+impl TryFrom<JsValue> for TransactionOutput {
+    type Error = Error;
+    fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
+        if js_value.is_object() {
+            let object = Object::from(js_value);
+            let value = object.get_u64("value")?;
+            let script_public_key: ScriptPublicKey =
+                object.get("scriptPublicKey").map_err(|_| Error::Custom("missing `script` property".into()))?.try_into()?;
+            Ok(TransactionOutput::new(value, &script_public_key))
+        } else {
+            Err("TransactionInput must be an object".into())
+        }
+    }
+}
+
+// ~~~
 
 #[derive(Debug)]
 #[wasm_bindgen(inspectable)]

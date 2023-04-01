@@ -1,5 +1,4 @@
-//use crate::account::{AccountConfig, AccountKind};
-use crate::error::Error;
+use crate::imports::*;
 use crate::result::Result;
 use crate::storage::StoredWalletAccount;
 use crate::{account::Account, accounts::*};
@@ -10,11 +9,7 @@ use kaspa_notify::{
 };
 use kaspa_rpc_core::{api::rpc::RpcApi, notify::connection::ChannelConnection, Notification};
 use kaspa_wrpc_client::{KaspaRpcClient, NotificationMode, WrpcEncoding};
-use std::sync::{Arc, Mutex};
-use wasm_bindgen::prelude::*;
-use workflow_core::channel::DuplexChannel;
-#[allow(unused_imports)]
-use workflow_core::channel::{Channel, Multiplexer, Receiver};
+use workflow_core::channel::{Channel, DuplexChannel, Multiplexer, Receiver};
 use workflow_core::task::spawn;
 use workflow_log::log_error;
 use workflow_rpc::client::Ctl;

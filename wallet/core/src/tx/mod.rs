@@ -19,7 +19,6 @@ use kaspa_consensus_core::hashing::sighash::calc_schnorr_signature_hash;
 use kaspa_consensus_core::hashing::sighash::SigHashReusedValues;
 use kaspa_consensus_core::hashing::sighash_type::SIG_HASH_ALL;
 use kaspa_consensus_core::subnets::SubnetworkId;
-use kaspa_consensus_core::tx::ScriptPublicKey;
 use kaspa_consensus_core::tx::SignableTransaction;
 use kaspa_consensus_core::wasm::error::Error;
 use kaspa_txscript::pay_to_address_script;
