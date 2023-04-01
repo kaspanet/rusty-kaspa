@@ -6,15 +6,6 @@
 [<img alt="docs.rs" src="https://img.shields.io/badge/docs.rs-kaspa--wasm-56c2a5?maxAge=2592000&style=for-the-badge&logo=docs.rs" height="20">](https://docs.rs/kaspa-wasm)
 <img alt="license" src="https://img.shields.io/crates/l/kaspa-wasm.svg?maxAge=2592000&color=6ac&style=for-the-badge&logoColor=fff" height="20">
 
-<img align="left" alt="Rust" height="32px" style="margin: 5px;" src="https://aspectron.com/images/ferris.svg" />
-<img align="left" alt="WASM" height="32px" style="margin: 5px;" src="https://aspectron.com/images/wasm.svg" />
-<img align="left" alt="TypeScript" height="32px" style="margin: 5px;" src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/typescript/typescript-plain.svg" />
-<img align="left" alt="JavaScript" height="32px" style="margin: 5px;" src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/javascript/javascript-plain.svg" />
-<img align="left" alt="NodeJS" height="32px" style="margin: 5px;" src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/nodejs/nodejs-original.svg" />
-<img align="left" alt="NWJS" height="32px" style="margin: 5px;" src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/nodewebkit/nodewebkit-original.svg" />
-
-<br/>&nbsp;<br/>
-
 Rusty-Kaspa WASM32 bindings offer direct integration of Rust code and Rusty-Kaspa
 codebase within JavaScript environments such as Node.js and Web Browsers.
 
