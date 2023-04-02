@@ -117,7 +117,7 @@ pub fn adjust_transaction_for_fee(
     let mut change_output_opt = None;
     if change > 0 {
         let change_output = TransactionOutput::new(change, &pay_to_address_script(&change_address));
-        if !change_output.is_dust(){
+        if !change_output.is_dust() {
             total_output_amount += change;
             change_output_opt = Some(change_output.clone());
             tx.inner().outputs.push(change_output);

@@ -57,7 +57,7 @@ impl TransactionOutput {
     }
 
     #[wasm_bindgen(js_name=isDust)]
-    pub fn is_dust(&self)->bool{
+    pub fn is_dust(&self) -> bool {
         is_transaction_output_dust(self)
     }
 }

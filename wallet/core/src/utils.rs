@@ -101,10 +101,7 @@ pub fn is_transaction_output_dust(transaction_output: &TransactionOutput) -> boo
     let value = output.value;
     match value.checked_mul(1000) {
         Some(value_1000) => value_1000 / (3 * total_serialized_size) < MINIMUM_RELAY_TRANSACTION_FEE,
-        None => {
-            (value as u128 * 1000 / (3 * total_serialized_size as u128))
-                < MINIMUM_RELAY_TRANSACTION_FEE as u128
-        }
+        None => (value as u128 * 1000 / (3 * total_serialized_size as u128)) < MINIMUM_RELAY_TRANSACTION_FEE as u128,
     }
 }
 
