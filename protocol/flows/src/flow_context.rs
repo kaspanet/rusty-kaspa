@@ -103,6 +103,10 @@ impl FlowContext {
         self.consensus.clone()
     }
 
+    pub fn is_nearly_synced(&self) -> bool {
+        self.consensus.is_nearly_synced()
+    }
+
     pub fn hub(&self) -> Hub {
         self.hub.clone()
     }

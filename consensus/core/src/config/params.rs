@@ -1,5 +1,6 @@
 use crate::{BlockLevel, KType};
 use kaspa_hashes::{Hash, HASH_SIZE};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Consensus parameters. Contains settings and configurations which are consensus-sensitive.
 /// Changing one of these on a network node would exclude and prevent it from reaching consensus
@@ -39,6 +40,14 @@ pub struct Params {
 impl Params {
     pub fn expected_daa_window_duration_in_milliseconds(&self) -> u64 {
         self.target_time_per_block * self.difficulty_window_size as u64
+    }
+
+    pub fn is_nearly_synced(&self, sink_timestamp: u64) -> bool {
+        // We consider the node close to being synced if the sink (virtual selected parent) block timestamp is less than DAA duration
+        // far in the past. In such a case, we continue processing relay blocks even though an IBD is in progress.
+        // For instance this means that downloading a side-chain from a delayed node does not interop the normal flow of live blocks.
+        SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64
+            > sink_timestamp + self.expected_daa_window_duration_in_milliseconds()
     }
 }
 

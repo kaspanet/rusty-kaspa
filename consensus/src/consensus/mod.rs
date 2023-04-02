@@ -67,6 +67,7 @@ use kaspa_consensus_core::{
     BlockHashSet,
 };
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
+use kaspa_utils::option::OptionExtensions;
 
 use crossbeam_channel::{unbounded as unbounded_crossbeam, Receiver as CrossbeamReceiver, Sender as CrossbeamSender};
 use kaspa_database::prelude::StoreResultExtensions;
@@ -166,10 +167,14 @@ pub struct Consensus {
 
     // Counters
     pub counters: Arc<ProcessingCounters>,
+
+    // Config
+    config: Config,
 }
 
 impl Consensus {
     pub fn new(db: Arc<DB>, config: &Config, notification_root: Arc<ConsensusNotificationRoot>) -> Self {
+        let config = config.clone();
         let params = &config.params;
         let perf_params = &config.perf;
         //
@@ -519,6 +524,7 @@ impl Consensus {
             depth_manager,
             notification_root,
             counters,
+            config,
         }
     }
 
@@ -652,6 +658,13 @@ impl ConsensusApi for Consensus {
             let sink = state.ghostdag_data.selected_parent;
             self.headers_store.get_timestamp(sink).unwrap()
         })
+    }
+
+    fn is_nearly_synced(&self) -> bool {
+        // We consider the node close to being synced if the sink (virtual selected parent) block timestamp is less than DAA duration
+        // far in the past. In such a case, we continue processing relay blocks even though an IBD is in progress.
+        // For instance this means that downloading a side-chain from a delayed node does not interop the normal flow of live blocks.
+        self.get_sink_timestamp().is_none_or(|t| self.config.is_nearly_synced(*t))
     }
 
     fn get_virtual_parents(&self) -> BlockHashSet {
