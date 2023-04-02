@@ -87,7 +87,6 @@ impl Flow for RelayTransactionsFlow {
 }
 
 impl RelayTransactionsFlow {
-    #[allow(dead_code)]
     pub fn new(ctx: FlowContext, router: Arc<Router>, incoming_route: IncomingRoute, msg_route: IncomingRoute) -> Self {
         Self { ctx, router, invs_route: TwoWayIncomingRoute::new(incoming_route), msg_route }
     }
@@ -250,7 +249,6 @@ impl Flow for RequestTransactionsFlow {
 }
 
 impl RequestTransactionsFlow {
-    #[allow(dead_code)]
     pub fn new(ctx: FlowContext, router: Arc<Router>, incoming_route: IncomingRoute) -> Self {
         Self { ctx, router, incoming_route }
     }
