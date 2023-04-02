@@ -194,13 +194,13 @@ impl RelayTransactionsFlow {
 
     async fn receive_transactions(&mut self, requests: Vec<RequestScope<TransactionId>>) -> Result<(), ProtocolError> {
         // trace!("Receive {} transaction ids from {}", requests.len(), self.router.identity());
-        for requested_id in requests.iter().map(|x| x.req.to_owned()) {
+        for request in requests {
             let response = self.read_response().await?;
             let transaction_id = response.transaction_id();
-            if transaction_id != requested_id {
+            if transaction_id != request.req {
                 return Err(ProtocolError::OtherOwned(format!(
                     "requested transaction id {} but got transaction {}",
-                    requested_id, transaction_id
+                    request.req, transaction_id
                 )));
             }
             let Response::Transaction(transaction) = response else { continue; };
