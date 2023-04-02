@@ -39,6 +39,6 @@ kaspa.init_console_panic_hook();
 
     let xPub = xPrv.publicKey();
 
-    console.log("xPub", xPub.derivePath("m/1"));
+    console.log("xPub", xPub.derivePath("m/1").intoString("xpub"));
 
 })();
