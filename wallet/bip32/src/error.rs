@@ -4,6 +4,7 @@ use core::fmt::{self, Display};
 use core::str::Utf8Error;
 use std::sync::PoisonError;
 use thiserror::Error;
+use wasm_bindgen::JsValue;
 
 /// Result type.
 pub type Result<T> = core::result::Result<T, Error>;
@@ -117,5 +118,11 @@ impl From<bs58::decode::Error> for Error {
 impl From<hmac::digest::InvalidLength> for Error {
     fn from(e: hmac::digest::InvalidLength) -> Error {
         Error::Hmac(e)
+    }
+}
+
+impl From<Error> for JsValue {
+    fn from(value: Error) -> Self {
+        JsValue::from(value.to_string())
     }
 }

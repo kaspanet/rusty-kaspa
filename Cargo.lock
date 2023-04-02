@@ -1581,6 +1581,7 @@ dependencies = [
  "faster-hex",
  "getrandom 0.2.8",
  "hmac",
+ "js-sys",
  "kaspa-core",
  "once_cell",
  "pbkdf2",
