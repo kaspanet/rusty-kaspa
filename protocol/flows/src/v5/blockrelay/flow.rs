@@ -164,6 +164,7 @@ impl HandleRelayInvsFlow {
             // we wish to relay only blocks who entered past(virtual).
             for new_virtual_parent in consensus.get_virtual_parents().difference(&prev_virtual_parents) {
                 self.ctx
+                    .hub()
                     .broadcast(make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(new_virtual_parent.into()) }))
                     .await;
             }
