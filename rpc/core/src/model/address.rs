@@ -8,7 +8,7 @@ pub type RpcAddress = kaspa_addresses::Address;
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcUtxosByAddressesEntry {
-    pub address: RpcAddress,
+    pub address: Option<RpcAddress>,
     pub outpoint: RpcTransactionOutpoint,
     pub utxo_entry: RpcUtxoEntry,
 }

@@ -120,6 +120,9 @@ impl From<&index_notify::PruningPointUtxoSetOverrideNotification> for PruningPoi
 
 impl From<&index_notify::UtxosChangedNotification> for UtxosChangedNotification {
     fn from(item: &index_notify::UtxosChangedNotification) -> Self {
-        Self { added: Arc::new(utxo_set_into_rpc(&item.added)), removed: Arc::new(utxo_set_into_rpc(&item.removed)) }
+        Self {
+            added: Arc::new(utxo_set_into_rpc(&item.added, item.prefix)),
+            removed: Arc::new(utxo_set_into_rpc(&item.removed, item.prefix)),
+        }
     }
 }

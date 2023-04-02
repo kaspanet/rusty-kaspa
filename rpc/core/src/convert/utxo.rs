@@ -1,23 +1,25 @@
 use crate::RpcUtxosByAddressesEntry;
+use kaspa_addresses::Prefix;
+use kaspa_consensus_core::tx::UtxoEntry;
 use kaspa_index_core::indexed_utxos::UtxoSetByScriptPublicKey;
+use kaspa_txscript::extract_script_pub_key_address;
 
 // ----------------------------------------------------------------------------
 // index to rpc_core
 // ----------------------------------------------------------------------------
 
-pub fn utxo_set_into_rpc(_item: &UtxoSetByScriptPublicKey) -> Vec<RpcUtxosByAddressesEntry> {
-    // TODO: handle address/script_public_key pairs
-    //       this will be possible when txscript will have golang PayToAddrScript and ExtractScriptPubKeyAddress ported
-
-    let result = vec![];
-    // for (script, utxo_set) in item {
-    //     result.extend(utxo_set.iter().map(|(outpoint, entry)|
-    //     RpcUtxosByAddressesEntry {
-    //         address: ,
-    //         outpoint: outpoint.clone(),
-    //         utxo_entry: UtxoEntry::new(entry.amount, script.clone(), entry.block_daa_score, entry.is_coinbase),
-    //     }
-    //     ));
-    // }
-    result
+pub fn utxo_set_into_rpc(item: &UtxoSetByScriptPublicKey, prefix: Prefix) -> Vec<RpcUtxosByAddressesEntry> {
+    item.iter()
+        .flat_map(|(script_public_key, utxo_collection)| {
+            let address = extract_script_pub_key_address(script_public_key, prefix).ok();
+            utxo_collection
+                .iter()
+                .map(|(outpoint, entry)| RpcUtxosByAddressesEntry {
+                    address: address.clone(),
+                    outpoint: *outpoint,
+                    utxo_entry: UtxoEntry::new(entry.amount, script_public_key.clone(), entry.block_daa_score, entry.is_coinbase),
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>()
 }
