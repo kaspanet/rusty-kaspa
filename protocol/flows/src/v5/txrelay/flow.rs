@@ -16,35 +16,8 @@ use kaspa_p2p_lib::{
     pb::{kaspad_message::Payload, RequestTransactionsMessage, TransactionNotFoundMessage},
     IncomingRoute, Router,
 };
-use std::{collections::VecDeque, sync::Arc};
+use std::sync::Arc;
 use tokio::time::timeout;
-
-pub type RelayInvMessage = Vec<TransactionId>;
-
-/// Encapsulates an incoming invs route which also receives data locally
-pub struct TwoWayIncomingRoute {
-    pub incoming_route: IncomingRoute,
-    indirect_invs: VecDeque<Vec<TransactionId>>,
-}
-
-impl TwoWayIncomingRoute {
-    pub fn new(incoming_route: IncomingRoute) -> Self {
-        Self { incoming_route, indirect_invs: VecDeque::new() }
-    }
-
-    pub fn enqueue_indirect_inv(&mut self, ids: Vec<TransactionId>) {
-        self.indirect_invs.push_back(ids)
-    }
-
-    pub async fn dequeue(&mut self) -> Result<RelayInvMessage, ProtocolError> {
-        if let Some(inv) = self.indirect_invs.pop_front() {
-            Ok(inv)
-        } else {
-            let msg = dequeue!(self.incoming_route, Payload::InvTransactions)?;
-            Ok(msg.try_into()?)
-        }
-    }
-}
 
 enum Response {
     Transaction(Transaction),
@@ -66,7 +39,7 @@ pub struct RelayTransactionsFlow {
     ctx: FlowContext,
     router: Arc<Router>,
     /// A route specific for invs messages
-    invs_route: TwoWayIncomingRoute,
+    invs_route: IncomingRoute,
     /// A route for other messages such as Transaction and TransactionNotFound
     msg_route: IncomingRoute,
 }
@@ -87,15 +60,20 @@ impl Flow for RelayTransactionsFlow {
 }
 
 impl RelayTransactionsFlow {
-    pub fn new(ctx: FlowContext, router: Arc<Router>, incoming_route: IncomingRoute, msg_route: IncomingRoute) -> Self {
-        Self { ctx, router, invs_route: TwoWayIncomingRoute::new(incoming_route), msg_route }
+    pub fn new(ctx: FlowContext, router: Arc<Router>, invs_route: IncomingRoute, msg_route: IncomingRoute) -> Self {
+        Self { ctx, router, invs_route, msg_route }
+    }
+
+    pub fn invs_channel_size() -> usize {
+        // TODO: reevaluate when the node is fully functional and later when the network tx rate increases
+        256
     }
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
         // trace!("Starting relay transactions flow with {}", self.router.identity());
         loop {
             // Loop over incoming block inv messages
-            let inv = self.invs_route.dequeue().await?;
+            let inv = dequeue!(self.invs_route, Payload::InvTransactions)?.try_into()?;
             // trace!("Receive an inv message from {} with {} transaction ids", self.router.identity(), inv.len());
 
             // Transaction relay is disabled if the node is out of sync and thus not mining
@@ -148,47 +126,27 @@ impl RelayTransactionsFlow {
 
     /// Returns the next Transaction or TransactionNotFound message in msg_route,
     /// returning only one of the message types at a time.
-    ///
-    /// Populates the invs_route queue with any inv messages that meanwhile arrive.
     async fn read_response(&mut self) -> Result<Response, ProtocolError> {
-        loop {
-            tokio::select! {
-                incoming = self.invs_route.incoming_route.recv() => {
-                    if let Some(msg) = incoming {
-                        if let Some(Payload::InvTransactions(inner_msg)) = msg.payload {
-                            self.invs_route.enqueue_indirect_inv(inner_msg.try_into()?);
-                            continue;
-                        } else {
-                            return Err(ProtocolError::UnexpectedMessage(
-                                stringify!(Payload::InvTransactions),
-                                msg.payload.as_ref().map(|v| v.into()),
-                            ));
-                        }
-                    } else {
-                        return Err(ProtocolError::ConnectionClosed);
+        match timeout(DEFAULT_TIMEOUT, self.msg_route.recv()).await {
+            Ok(op) => {
+                if let Some(msg) = op {
+                    match msg.payload {
+                        Some(Payload::Transaction(payload)) => Ok(Response::Transaction(payload.try_into()?)),
+                        Some(Payload::TransactionNotFound(payload)) => Ok(Response::NotFound(payload.try_into()?)),
+                        _ => Err(ProtocolError::UnexpectedMessage(
+                            stringify!(Payload::Transaction | Payload::TransactionNotFound),
+                            msg.payload.as_ref().map(|v| v.into()),
+                        )),
                     }
-                },
-
-                msg = timeout(DEFAULT_TIMEOUT, self.msg_route.recv()) => {
-                    return match msg {
-                        Ok(op) => {
-                            if let Some(msg) = op {
-                                match msg.payload {
-                                    Some(Payload::Transaction(payload)) => Ok(Response::Transaction(payload.try_into()?)),
-                                    Some(Payload::TransactionNotFound(payload)) => Ok(Response::NotFound(payload.try_into()?)),
-                                    _ => Err(ProtocolError::UnexpectedMessage(
-                                        stringify!(Payload::Transaction | Payload::TransactionNotFound),
-                                        msg.payload.as_ref().map(|v| v.into()),
-                                    )),
-                                }
-                            } else {
-                                Err(ProtocolError::ConnectionClosed)
-                            }
-                        },
-                        Err(_) => Err(ProtocolError::Timeout(DEFAULT_TIMEOUT)),
-                    }
-                },
-            };
+                } else {
+                    Err(ProtocolError::ConnectionClosed)
+                }
+            }
+            Err(_) => {
+                // One reason this may happen is the invs_route being full and preventing
+                // the router from routing other incoming messages
+                Err(ProtocolError::Timeout(DEFAULT_TIMEOUT))
+            }
         }
     }
 
