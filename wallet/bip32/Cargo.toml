@@ -20,6 +20,7 @@ wasm-bindgen.workspace = true
 workflow-wasm.workspace = true
 kaspa-core.workspace = true
 rand.workspace = true
+js-sys.workspace = true
 
 [dev-dependencies]
 faster-hex.workspace = true

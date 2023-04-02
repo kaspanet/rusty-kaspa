@@ -201,6 +201,29 @@ impl Debug for DebugVersion {
     }
 }
 
+impl TryFrom<&str> for Prefix {
+    type Error = Error;
+    fn try_from(value: &str) -> std::result::Result<Self, Self::Error> {
+        match value {
+            "kprv" => Ok(Prefix::KPRV),
+            "kpub" => Ok(Prefix::KPUB),
+
+            "tprv" => Ok(Prefix::TPRV),
+            "tpub" => Ok(Prefix::TPUB),
+
+            "xprv" => Ok(Prefix::XPRV),
+            "xpub" => Ok(Prefix::XPUB),
+
+            "yprv" => Ok(Prefix::YPRV),
+            "ypub" => Ok(Prefix::YPUB),
+
+            "zprv" => Ok(Prefix::ZPRV),
+            "zpub" => Ok(Prefix::ZPUB),
+            _ => Err(Error::String(format!("Invalid prefix: {value}"))),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::Prefix;

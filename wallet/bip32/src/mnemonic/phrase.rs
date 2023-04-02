@@ -15,7 +15,8 @@ use wasm_bindgen::prelude::*;
 use {super::seed::Seed, hmac::Hmac, sha2::Sha512};
 
 use kaspa_core::hex::*;
-use workflow_wasm::jsvalue::*;
+//use workflow_wasm::jsvalue::*;
+use crate::Result;
 /// Number of PBKDF2 rounds to perform when deriving the seed
 //#[cfg(feature = "bip39")]
 const PBKDF2_ROUNDS: u32 = 2048;
@@ -40,11 +41,13 @@ pub struct Mnemonic {
 #[wasm_bindgen]
 impl Mnemonic {
     #[wasm_bindgen(constructor)]
-    pub fn constructor(language: Language, entropy: JsValue, phrase: String) -> Mnemonic {
-        let vec: Vec<u8> = entropy.try_as_vec_u8().unwrap_or_else(|err| panic!("invalid entropy {err}"));
-        let entropy = <Vec<u8> as TryInto<Entropy>>::try_into(vec).unwrap_or_else(|vec| panic!("invalid mnemonic: {vec:?}"));
+    pub fn constructor(phrase: String, language: Option<Language>) -> Result<Mnemonic> {
+        //let vec: Vec<u8> = entropy.try_as_vec_u8().unwrap_or_else(|err| panic!("invalid entropy {err}"));
+        //let entropy = <Vec<u8> as TryInto<Entropy>>::try_into(vec).unwrap_or_else(|vec| panic!("invalid mnemonic: {vec:?}"));
 
-        Mnemonic { language, entropy, phrase }
+        //Mnemonic { language, entropy, phrase }
+
+        Mnemonic::new(phrase, language.unwrap_or(Language::English))
     }
 
     #[wasm_bindgen(getter, js_name = entropy)]
@@ -59,7 +62,7 @@ impl Mnemonic {
     }
 
     #[wasm_bindgen(js_name = random)]
-    pub fn random_js(&self) -> Mnemonic {
+    pub fn random_js() -> Mnemonic {
         Mnemonic::random(rand::thread_rng(), Default::default())
     }
 
@@ -71,6 +74,11 @@ impl Mnemonic {
     #[wasm_bindgen(setter, js_name = phrase)]
     pub fn set_phrase(&mut self, phrase: &str) {
         self.phrase = phrase.to_string();
+    }
+
+    #[wasm_bindgen(js_name = toSeed)]
+    pub fn create_seed(&self, password: &str) -> String {
+        self.to_seed(password).as_bytes().to_vec().to_hex()
     }
 }
 
@@ -109,7 +117,7 @@ impl Mnemonic {
     /// To use the default language, English, (the only one supported by this
     /// library and also the only one standardized for BIP39) you can supply
     /// `Default::default()` as the language.
-    pub fn new<S>(phrase: S, language: Language) -> Result<Self, Error>
+    pub fn new<S>(phrase: S, language: Language) -> Result<Self>
     where
         S: AsRef<str>,
     {

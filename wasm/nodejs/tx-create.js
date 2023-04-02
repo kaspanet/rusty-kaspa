@@ -1,6 +1,5 @@
 globalThis.WebSocket = require('websocket').w3cwebsocket; // W3C WebSocket module shim
 
-// let {RpcClient,Encoding,init_console_panic_hook,defer} = require('./kaspa');
 let kaspa = require('./kaspa/kaspa_wasm');
 let { RpcClient, UtxoSet, Address, Encoding, UtxoOrdering, 
     Outputs, Output, 
@@ -34,6 +33,7 @@ kaspa.init_console_panic_hook();
 
     console.log("\ngetting UTXOs...");
     let utxos_by_address = await rpc.getUtxosByAddresses({ addresses });
+    //console.log("utxos_by_address", utxos_by_address.entries.slice(0, 2))
     let utxoSet = UtxoSet.from(utxos_by_address);
 
     let amount = 1000n;
