@@ -1,15 +1,10 @@
-use super::transaction::Transaction;
-use super::{script_hashes, TransactionInput, TransactionOutput};
-use crate::error::Error;
+use crate::imports::*;
+use crate::tx::{script_hashes, Transaction, TransactionInput, TransactionOutput};
 use crate::utxo::UtxoEntries;
 use kaspa_consensus_core::tx;
-use kaspa_rpc_core::RpcTransactionOutput;
-use kaspa_rpc_core::{RpcTransaction, RpcTransactionInput};
-use serde::{Deserialize, Serialize};
+use kaspa_rpc_core::{RpcTransaction, RpcTransactionInput, RpcTransactionOutput};
 use serde_wasm_bindgen::to_value;
 use std::str::FromStr;
-use std::sync::{Arc, Mutex, MutexGuard};
-use wasm_bindgen::prelude::*;
 use workflow_wasm::jsvalue::JsValueTrait;
 
 /// Represents a generic mutable transaction

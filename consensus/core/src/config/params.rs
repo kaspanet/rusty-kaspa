@@ -1,10 +1,12 @@
 use crate::{BlockLevel, KType};
 use kaspa_hashes::{Hash, HASH_SIZE};
+use serde::Serialize;
 
 /// Consensus parameters. Contains settings and configurations which are consensus-sensitive.
 /// Changing one of these on a network node would exclude and prevent it from reaching consensus
 /// with the other unmodified nodes.
-#[derive(Clone)]
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Params {
     pub genesis_hash: Hash,
     pub ghostdag_k: KType,

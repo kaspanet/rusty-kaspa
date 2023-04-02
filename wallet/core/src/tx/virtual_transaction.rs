@@ -1,18 +1,11 @@
-use crate::tx::transaction::Transaction;
-use crate::tx::MutableTransaction;
-use crate::tx::Outputs;
-use crate::tx::TransactionInput;
-use crate::tx::TransactionOutpoint;
-use crate::tx::TransactionOutput;
-use crate::utxo::SelectionContext;
-use crate::utxo::UtxoEntry;
-use crate::utxo::UtxoEntryReference;
+// work in progress
+
+use crate::imports::*;
+use crate::tx::{MutableTransaction, PaymentOutputs, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
+use crate::utxo::{SelectionContext, UtxoEntry, UtxoEntryReference};
 use kaspa_addresses::Address;
 use kaspa_consensus_core::{subnets::SubnetworkId, tx};
 use kaspa_txscript::pay_to_address_script;
-use std::sync::Arc;
-use wasm_bindgen::prelude::*;
-use workflow_log::log_trace;
 
 /// `VirtualTransaction` envelops a collection of multiple related `kaspa_wallet_core::MutableTransaction` instances.
 #[derive(Clone, Debug)]
@@ -29,7 +22,7 @@ impl VirtualTransaction {
     #[wasm_bindgen(constructor)]
     pub fn new(
         utxo_selection: SelectionContext,
-        outputs: Outputs,
+        outputs: PaymentOutputs,
         change_address: Address,
         payload: Vec<u8>,
     ) -> crate::Result<VirtualTransaction> {

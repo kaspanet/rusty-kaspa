@@ -1,5 +1,6 @@
 use super::input::TransactionInput;
-use super::output::{Outputs, TransactionOutput};
+use super::output::TransactionOutput;
+use super::payment::PaymentOutputs;
 use crate::imports::*;
 use crate::Result;
 use workflow_wasm::abi::ref_from_abi;
@@ -11,11 +12,8 @@ pub struct TransactionInner {
     pub version: u16,
     pub inputs: Vec<TransactionInput>,
     pub outputs: Vec<TransactionOutput>,
-    // #[wasm_bindgen(js_name = lockTime)]
     pub lock_time: u64,
-
     pub subnetwork_id: SubnetworkId,
-    // TODO
     pub gas: u64,
     pub payload: Vec<u8>,
 
@@ -26,7 +24,6 @@ pub struct TransactionInner {
 
 /// Represents a Kaspa transaction
 #[derive(Clone, Debug, Serialize, Deserialize)]
-// #[serde(rename_all = "camelCase")]
 #[wasm_bindgen(inspectable)]
 pub struct Transaction {
     inner: Arc<Mutex<TransactionInner>>,
@@ -206,7 +203,7 @@ impl TryFrom<JsValue> for Transaction {
             workflow_log::log_trace!("JsValue->Transaction: inputs.len(): {:?}", inputs.len());
             let jsv_outputs = object.get("outputs")?;
             let outputs: Vec<TransactionOutput> = if !jsv_outputs.is_array() {
-                let outputs: Outputs = jsv_outputs.try_into()?;
+                let outputs: PaymentOutputs = jsv_outputs.try_into()?;
                 outputs.into()
             } else {
                 object

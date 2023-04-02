@@ -2,6 +2,7 @@ pub mod input;
 pub mod mtx;
 pub mod outpoint;
 pub mod output;
+pub mod payment;
 pub mod transaction;
 pub mod virtual_transaction;
 
@@ -9,6 +10,7 @@ pub use input::*;
 pub use mtx::*;
 pub use outpoint::*;
 pub use output::*;
+pub use payment::*;
 pub use transaction::*;
 pub use virtual_transaction::*;
 
@@ -20,13 +22,15 @@ use kaspa_consensus_core::hashing::sighash::SigHashReusedValues;
 use kaspa_consensus_core::hashing::sighash_type::SIG_HASH_ALL;
 use kaspa_consensus_core::subnets::SubnetworkId;
 use kaspa_consensus_core::tx::SignableTransaction;
-use kaspa_consensus_core::wasm::error::Error;
+// use kaspa_consensus_core::wasm::error::Error;
+use crate::result::Result;
 use kaspa_txscript::pay_to_address_script;
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 use workflow_log::log_trace;
 
-pub fn script_hashes(mut mutable_tx: SignableTransaction) -> Result<Vec<kaspa_hashes::Hash>, Error> {
+// pub fn script_hashes(mut mutable_tx: SignableTransaction) -> Result<Vec<kaspa_hashes::Hash>, Error> {
+pub fn script_hashes(mut mutable_tx: SignableTransaction) -> Result<Vec<kaspa_hashes::Hash>> {
     let mut list = vec![];
     for i in 0..mutable_tx.tx.inputs.len() {
         mutable_tx.tx.inputs[i].sig_op_count = 1;
@@ -43,7 +47,7 @@ pub fn script_hashes(mut mutable_tx: SignableTransaction) -> Result<Vec<kaspa_ha
 #[wasm_bindgen(js_name=createTransaction)]
 pub fn create_transaction(
     utxo_selection: SelectionContext,
-    outputs: Outputs,
+    outputs: PaymentOutputs,
     change_address: Address,
     priority_fee: Option<u32>,
     payload: Option<Vec<u8>>,
@@ -161,8 +165,17 @@ pub fn adjust_transaction_for_fee(
     Ok(true)
 }
 
+/// Calculate the minimum transaction fee. Transaction fee is derived from the
+///
 #[wasm_bindgen(js_name = "minimumTransactionFee")]
 pub fn minimum_transaction_fee(tx: &Transaction, network_type: NetworkType) -> u64 {
     let params = get_consensus_params_by_network(&network_type);
     calculate_minimum_transaction_fee(tx, &params, true)
+}
+
+/// Calculate transaction mass. Transaction mass is used in the fee calculation.
+#[wasm_bindgen(js_name = "calculateTransactionMass")]
+pub fn calculate_mass_js(tx: &Transaction, network_type: NetworkType, estimate_signature_mass: bool) -> Result<u64> {
+    let params = get_consensus_params_by_network(&network_type);
+    Ok(calculate_mass(tx, &params, estimate_signature_mass))
 }

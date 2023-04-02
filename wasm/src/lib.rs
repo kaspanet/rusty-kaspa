@@ -70,7 +70,7 @@ globalThis.WebSocket = require('isomorphic-ws');
 
 ## Loading in a Node.js App
 
-```rust
+```javascript
 // W3C WebSocket module shim
 globalThis.WebSocket = require('websocket').w3cwebsocket;
 
