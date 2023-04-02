@@ -106,12 +106,7 @@ pub fn adjust_transaction_for_fee(
     let mut total_output_amount = mtx.total_output_amount()?;
     let priority_fee = priority_fee.unwrap_or(0);
 
-    // total_input_amount = 10_000
-    // priority_fee = 1_000
-    // total_output_amount = 2_000
-
     let amount_after_priority_fee = total_input_amount - priority_fee;
-    // amount_after_priority_fee = 10_000 - 1_000 = 9_000
     if total_output_amount > amount_after_priority_fee {
         return Err(format!("total_amount({total_output_amount}) > amount_after_priority_fee({amount_after_priority_fee})").into());
     }
@@ -119,45 +114,41 @@ pub fn adjust_transaction_for_fee(
     let tx = (*mtx.tx()).clone();
 
     let change = amount_after_priority_fee - total_output_amount;
-    //change = 9_000 - 2_000 = 7_000
-    let dust = 500;
-    if change > dust {
-        total_output_amount += change;
-        tx.inner().outputs.push(TransactionOutput::new(change, &pay_to_address_script(&change_address)));
+    let mut change_output_opt = None;
+    if change > 0 {
+        let change_output = TransactionOutput::new(change, &pay_to_address_script(&change_address));
+        if !change_output.is_dust(){
+            total_output_amount += change;
+            change_output_opt = Some(change_output.clone());
+            tx.inner().outputs.push(change_output);
+        }
     }
-    // total_output_amount = 2_000 + 7_000 = 9_000
 
     let params = get_consensus_params_by_address(&change_address);
     let minimum_fee = calculate_minimum_transaction_fee(&tx, &params, true);
-    log_trace!("minimum_fee: {minimum_fee}");
     let total_fee = minimum_fee + priority_fee;
+    log_trace!("minimum_fee: {minimum_fee}");
     log_trace!("priority_fee: {priority_fee}");
     log_trace!("total_fee: {total_fee}");
-    // total_fee = 500 + 1_000 = 1_500
 
     let fee = total_input_amount - total_output_amount;
-    //fee = 10_000 - 9_000 = 1_000
     log_trace!("fee: {fee}");
 
     //if tx fee is less than required minimum fee + priority_fee
     if fee < total_fee {
         let fee_difference = total_fee - fee;
-        // fee_difference = 1_500 - 1_000 = 500
 
         // if there is no change output or change cant fullfill minimum required fee
-        if change <= dust || change < fee_difference {
+        if change_output_opt.is_none() || change < fee_difference {
             return Err(format!("total_fee({total_fee}) > tx fee({fee})").into());
         }
 
-        let new_change = change - fee_difference;
-        //new_change = 7_000 - 500 = 6_500
+        let change_output = change_output_opt.unwrap();
 
-        // if new change can make a valid output
-        if new_change > dust {
-            let last_index = tx.inner().outputs.len() - 1;
-            tx.inner().outputs[last_index].inner().value = new_change;
-        } else {
-            // else remove change output
+        let new_change = change - fee_difference;
+        change_output.inner().value = new_change;
+
+        if change_output.is_dust() {
             let _change_output = tx.inner().outputs.pop().unwrap();
         }
     }

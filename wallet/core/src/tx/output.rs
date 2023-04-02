@@ -1,4 +1,5 @@
 use crate::imports::*;
+use crate::utils::is_transaction_output_dust;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -53,6 +54,11 @@ impl TransactionOutput {
     #[wasm_bindgen(setter, js_name = scriptPublicKey)]
     pub fn set_script_public_key(&self, v: &ScriptPublicKey) {
         self.inner().script_public_key = v.clone();
+    }
+
+    #[wasm_bindgen(js_name=isDust)]
+    pub fn is_dust(&self)->bool{
+        is_transaction_output_dust(self)
     }
 }
 
