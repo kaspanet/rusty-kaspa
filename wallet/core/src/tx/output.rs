@@ -1,5 +1,6 @@
 use crate::imports::*;
 use crate::utxo::UtxoEntry;
+use crate::utils::is_transaction_output_dust;
 use kaspa_txscript::pay_to_address_script;
 use serde_wasm_bindgen::from_value;
 use wasm_bindgen::convert::FromWasmAbi;
@@ -61,6 +62,11 @@ impl TransactionOutput {
     #[wasm_bindgen(setter, js_name = scriptPublicKey)]
     pub fn set_script_public_key(&self, v: &ScriptPublicKey) {
         self.inner().script_public_key = v.clone();
+    }
+
+    #[wasm_bindgen(js_name=isDust)]
+    pub fn is_dust(&self)->bool{
+        is_transaction_output_dust(self)
     }
 }
 
