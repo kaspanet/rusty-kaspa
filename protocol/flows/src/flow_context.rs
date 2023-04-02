@@ -174,7 +174,7 @@ impl FlowContext {
         }
 
         // Don't relay transactions when in IBD
-        if self.is_ibd_running() {
+        if self.is_ibd_running() && !self.is_nearly_synced() {
             return Ok(());
         }
 

@@ -1,6 +1,6 @@
 use crate::{flow_context::FlowContext, flow_trait::Flow, flowcontext::orphans::ORPHAN_RESOLUTION_RANGE};
 use kaspa_consensus_core::{api::DynConsensus, block::Block, blockstatus::BlockStatus, errors::block::RuleError};
-use kaspa_core::{debug, info, time::unix_now};
+use kaspa_core::{debug, info};
 use kaspa_hashes::Hash;
 use kaspa_p2p_lib::{
     common::ProtocolError,
@@ -104,15 +104,9 @@ impl HandleRelayInvsFlow {
                 continue;
             }
 
-            if self.ctx.is_ibd_running() {
-                let sink_timestamp = consensus.get_sink_timestamp();
-                // We consider the node close to being synced if the sink (virtual selected parent) block timestamp is less than DAA duration
-                // far in the past. In such a case, we continue processing relay blocks even though an IBD is in progress.
-                // For instance this means that downloading a side-chain from a delayed node does not interop the normal flow of live blocks
-                if sink_timestamp.is_none_or(|t| unix_now() > t + self.ctx.config.expected_daa_window_duration_in_milliseconds()) {
-                    debug!("Got relay block {} while in IBD and the node is out of sync, continuing...", inv.hash);
-                    continue;
-                }
+            if self.ctx.is_ibd_running() && !self.ctx.is_nearly_synced() {
+                debug!("Got relay block {} while in IBD and the node is out of sync, continuing...", inv.hash);
+                continue;
             }
 
             let Some(block) = self.request_block(inv.hash).await? else {
