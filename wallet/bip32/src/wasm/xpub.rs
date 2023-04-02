@@ -2,7 +2,7 @@ use crate::{wasm::DerivationPath, ChildNumber, ExtendedPublicKey, Result};
 use secp256k1::PublicKey;
 use std::str::FromStr;
 use wasm_bindgen::prelude::*;
-use js_sys::Array;
+//use js_sys::Array;
 
 #[wasm_bindgen]
 pub struct XPub {
@@ -37,11 +37,11 @@ impl XPub {
         Ok(self.inner.to_string(Some(prefix.try_into()?)))
     }
 
-    #[wasm_bindgen(js_name = toBytes)]
-    pub fn to_bytes(&self)->Array{
-        let array = js_sys::Uint8Array::from(&self.inner.to_bytes());
-        Array::from_iter(self.inner.to_bytes().iter().map(JsValue::from))
-    }
+    // #[wasm_bindgen(js_name = toBytes)]
+    // pub fn to_bytes(&self)->Array{
+    //     let array = js_sys::Uint8Array::from(&self.inner.to_bytes());
+    //     Array::from_iter(self.inner.to_bytes().iter().map(JsValue::from))
+    // }
 }
 
 impl From<ExtendedPublicKey<PublicKey>> for XPub {
