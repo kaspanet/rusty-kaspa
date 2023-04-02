@@ -3,6 +3,7 @@
 //!
 
 use async_channel::unbounded;
+use kaspa_addresses::Prefix;
 use kaspa_consensus::config::{Config, ConfigBuilder};
 use kaspa_consensus::consensus::test_consensus::{create_temp_db, TestConsensus};
 use kaspa_consensus::model::stores::ghostdag::{GhostdagStoreReader, KType as GhostdagKType};
@@ -750,6 +751,7 @@ impl KaspadGoParams {
             skip_proof_of_work: self.SkipProofOfWork,
             max_block_level: self.MaxBlockLevel,
             pruning_proof_m: self.PruningProofM,
+            prefix: Prefix::Mainnet,
         }
     }
 }

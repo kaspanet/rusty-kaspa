@@ -11,7 +11,7 @@ use {
 /// Various consensus configurations all bundled up under a single struct. Use `Config::new` for directly building from
 /// a `Params` instance. For anything more complex it is recommended to use `ConfigBuilder`. NOTE: this struct can be
 /// implicitly de-refed into `Params`
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Config {
     /// Consensus params
     pub params: Params,

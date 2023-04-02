@@ -1,10 +1,11 @@
 use crate::{BlockLevel, KType};
+use kaspa_addresses::Prefix;
 use kaspa_hashes::{Hash, HASH_SIZE};
 
 /// Consensus parameters. Contains settings and configurations which are consensus-sensitive.
 /// Changing one of these on a network node would exclude and prevent it from reaching consensus
 /// with the other unmodified nodes.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Params {
     pub genesis_hash: Hash,
     pub ghostdag_k: KType,
@@ -34,6 +35,9 @@ pub struct Params {
     pub skip_proof_of_work: bool,
     pub max_block_level: BlockLevel,
     pub pruning_proof_m: u64,
+
+    // Human-readable prefix for Bech32 encoded addresses
+    pub prefix: Prefix,
 }
 
 impl Params {
@@ -88,6 +92,8 @@ pub const MAINNET_PARAMS: Params = Params {
     skip_proof_of_work: false,
     max_block_level: 225,
     pruning_proof_m: 1000,
+
+    prefix: Prefix::Mainnet,
 };
 
 pub const DEVNET_PARAMS: Params = Params {
@@ -132,4 +138,6 @@ pub const DEVNET_PARAMS: Params = Params {
     skip_proof_of_work: false,
     max_block_level: 250,
     pruning_proof_m: 1000,
+
+    prefix: Prefix::Devnet,
 };
