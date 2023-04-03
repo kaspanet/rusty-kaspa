@@ -7,7 +7,7 @@ use crate::pb as protowire;
 use kaspa_consensus_core::{
     header::Header,
     pruning::{PruningPointProof, PruningPointsList},
-    tx::{TransactionOutpoint, UtxoEntry},
+    tx::{TransactionId, TransactionOutpoint, UtxoEntry},
 };
 use kaspa_hashes::Hash;
 
@@ -123,5 +123,29 @@ impl TryFrom<protowire::AddressesMessage> for Vec<(IpAddr, u16)> {
 
     fn try_from(msg: protowire::AddressesMessage) -> Result<Self, Self::Error> {
         msg.address_list.into_iter().map(|addr| addr.try_into()).collect::<Result<_, _>>()
+    }
+}
+
+impl TryFrom<protowire::RequestTransactionsMessage> for Vec<TransactionId> {
+    type Error = ConversionError;
+
+    fn try_from(msg: protowire::RequestTransactionsMessage) -> Result<Self, Self::Error> {
+        msg.ids.into_iter().map(|v| v.try_into()).collect()
+    }
+}
+
+impl TryFrom<protowire::InvTransactionsMessage> for Vec<TransactionId> {
+    type Error = ConversionError;
+
+    fn try_from(msg: protowire::InvTransactionsMessage) -> Result<Self, Self::Error> {
+        msg.ids.into_iter().map(|v| v.try_into()).collect()
+    }
+}
+
+impl TryFrom<protowire::TransactionNotFoundMessage> for TransactionId {
+    type Error = ConversionError;
+
+    fn try_from(msg: protowire::TransactionNotFoundMessage) -> Result<Self, Self::Error> {
+        msg.id.try_into_ex()
     }
 }

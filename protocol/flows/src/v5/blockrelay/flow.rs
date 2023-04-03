@@ -1,6 +1,6 @@
 use crate::{flow_context::FlowContext, flow_trait::Flow, flowcontext::orphans::ORPHAN_RESOLUTION_RANGE};
 use kaspa_consensus_core::{api::DynConsensus, block::Block, blockstatus::BlockStatus, errors::block::RuleError};
-use kaspa_core::{debug, info, time::unix_now};
+use kaspa_core::{debug, info};
 use kaspa_hashes::Hash;
 use kaspa_p2p_lib::{
     common::ProtocolError,
@@ -104,15 +104,11 @@ impl HandleRelayInvsFlow {
                 continue;
             }
 
-            if self.ctx.is_ibd_running() {
-                let sink_timestamp = consensus.get_sink_timestamp();
-                // We consider the node close to being synced if the sink (virtual selected parent) block timestamp is less than DAA duration
-                // far in the past. In such a case, we continue processing relay blocks even though an IBD is in progress.
-                // For instance this means that downloading a side-chain from a delayed node does not interop the normal flow of live blocks
-                if sink_timestamp.is_none_or(|t| unix_now() > t + self.ctx.config.expected_daa_window_duration_in_milliseconds()) {
-                    debug!("Got relay block {} while in IBD and the node is out of sync, continuing...", inv.hash);
-                    continue;
-                }
+            if self.ctx.is_ibd_running() && !self.ctx.is_nearly_synced() {
+                // Note: If the node is considered nearly synced we continue processing relay blocks even though an IBD is in progress.
+                // For instance this means that downloading a side-chain from a delayed node does not interop the normal flow of live blocks.
+                debug!("Got relay block {} while in IBD and the node is out of sync, continuing...", inv.hash);
+                continue;
             }
 
             let Some(block) = self.request_block(inv.hash).await? else {
@@ -158,19 +154,18 @@ impl HandleRelayInvsFlow {
             }
 
             info!("Accepted block {} via relay", inv.hash);
-
-            // TODO: use all new blocks to unorphan mempool txs and broadcast the txs
-            let _blocks = self.ctx.unorphan_blocks(block.hash()).await;
+            self.ctx.on_new_block(block).await?;
 
             // Broadcast all *new* virtual parents. As a policy, we avoid directly relaying the new block since
             // we wish to relay only blocks who entered past(virtual).
             for new_virtual_parent in consensus.get_virtual_parents().difference(&prev_virtual_parents) {
-                self.router
+                self.ctx
+                    .hub()
                     .broadcast(make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(new_virtual_parent.into()) }))
                     .await;
             }
 
-            // TODO: raise new block template event
+            self.ctx.on_new_block_template().await?;
         }
     }
 
