@@ -153,6 +153,11 @@ impl<T: ConsensusMiningContext + ?Sized> MiningManager<T> {
         self.mempool.read().get_transaction(transaction_id, include_transaction_pool, include_orphan_pool)
     }
 
+    /// Returns whether the mempool holds this transaction in any form.
+    pub fn has_transaction(&self, transaction_id: &TransactionId, include_transaction_pool: bool, include_orphan_pool: bool) -> bool {
+        self.mempool.read().has_transaction(transaction_id, include_transaction_pool, include_orphan_pool)
+    }
+
     pub fn get_all_transactions(
         &self,
         include_transaction_pool: bool,

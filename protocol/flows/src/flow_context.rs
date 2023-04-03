@@ -107,12 +107,12 @@ impl FlowContext {
         self.consensus.is_nearly_synced()
     }
 
-    pub fn hub(&self) -> Hub {
-        self.hub.clone()
+    pub fn hub(&self) -> &Hub {
+        &self.hub
     }
 
-    pub fn mining_manager(&self) -> Arc<MiningManager<dyn ConsensusApi>> {
-        self.mining_manager.clone()
+    pub fn mining_manager(&self) -> &MiningManager<dyn ConsensusApi> {
+        &self.mining_manager
     }
 
     pub fn try_set_ibd_running(&self) -> Option<IbdRunningGuard> {

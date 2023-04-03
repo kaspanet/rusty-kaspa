@@ -121,7 +121,7 @@ impl RelayTransactionsFlow {
     fn is_known_transaction(&self, transaction_id: &TransactionId) -> bool {
         // Ask the transaction memory pool if the transaction is known
         // to it in any form (main pool or orphan).
-        self.ctx.mining_manager().get_transaction(transaction_id, true, true).is_some()
+        self.ctx.mining_manager().has_transaction(transaction_id, true, true)
     }
 
     /// Returns the next Transaction or TransactionNotFound message in msg_route,
