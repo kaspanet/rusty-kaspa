@@ -66,12 +66,22 @@ impl<T: ConsensusMiningContext + ?Sized> Mempool<T> {
     ) -> Option<MutableTransaction> {
         let mut transaction = None;
         if include_transaction_pool {
-            transaction = self.transaction_pool.all().get(transaction_id);
+            transaction = self.transaction_pool.get(transaction_id);
         }
         if transaction.is_none() && include_orphan_pool {
             transaction = self.orphan_pool.get(transaction_id);
         }
         transaction.map(|x| x.mtx.clone())
+    }
+
+    pub(crate) fn has_transaction(
+        &self,
+        transaction_id: &TransactionId,
+        include_transaction_pool: bool,
+        include_orphan_pool: bool,
+    ) -> bool {
+        (include_transaction_pool && self.transaction_pool.has(transaction_id))
+            || (include_orphan_pool && self.orphan_pool.has(transaction_id))
     }
 
     pub(crate) fn get_all_transactions(
@@ -119,5 +129,19 @@ impl<T: ConsensusMiningContext + ?Sized> Mempool<T> {
 
     pub(crate) fn block_candidate_transactions(&self) -> Vec<CandidateTransaction> {
         self.transaction_pool.all_ready_transactions()
+    }
+}
+
+pub mod tx {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum Priority {
+        Low,
+        High,
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum Orphan {
+        Forbidden,
+        Allowed,
     }
 }
