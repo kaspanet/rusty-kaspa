@@ -30,6 +30,11 @@ impl ConsensusEntry {
     }
 }
 
+pub enum ConsensusEntryType {
+    Existing(ConsensusEntry),
+    New(ConsensusEntry),
+}
+
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct MultiConsensusMetadata {
     current_consensus_key: Option<u64>,
@@ -71,16 +76,16 @@ impl MultiConsensusManagementStore {
         // TODO: iterate through consensus entries and remove non active ones (if not archival)
     }
 
-    /// The inner Ok/Error signifies whether the returned entry is an existing/new consensus
-    pub fn active_consensus_entry(&mut self) -> StoreResult<Result<ConsensusEntry, ConsensusEntry>> {
+    /// The entry type signifies whether the returned entry is an existing/new consensus
+    pub fn active_consensus_entry(&mut self) -> StoreResult<ConsensusEntryType> {
         let mut metadata = self.metadata.read()?;
         match metadata.current_consensus_key {
-            Some(key) => Ok(Ok(self.entries.read(key.into())?)),
+            Some(key) => Ok(ConsensusEntryType::Existing(self.entries.read(key.into())?)),
             None => {
                 metadata.max_key_used += 1; // Capture the slot
                 let key = metadata.max_key_used;
                 self.metadata.write(DirectDbWriter::new(&self.db), &metadata)?;
-                Ok(Err(ConsensusEntry::from_key(key)))
+                Ok(ConsensusEntryType::New(ConsensusEntry::from_key(key)))
             }
         }
     }
@@ -172,11 +177,11 @@ impl ConsensusFactory for Factory {
         let mut config = self.config.clone();
         let mut is_new_consensus = false;
         let entry = match self.management_store.write().active_consensus_entry().unwrap() {
-            Ok(entry) => {
+            ConsensusEntryType::Existing(entry) => {
                 config.process_genesis = false;
                 entry
             }
-            Err(entry) => {
+            ConsensusEntryType::New(entry) => {
                 // Configure to process genesis only if this is a brand new consensus
                 config.process_genesis = true;
                 is_new_consensus = true;
