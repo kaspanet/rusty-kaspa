@@ -165,8 +165,8 @@ impl UtxosChangedSubscription {
         self.addresses = addresses
             .into_iter()
             .map(|x| {
-                let utxo_address = UtxoAddress::from_address(x);
-                (utxo_address.script_public_key().to_owned(), utxo_address)
+                let utxo_address: UtxoAddress = x.into();
+                (utxo_address.to_script_public_key(), utxo_address)
             })
             .collect();
         self
@@ -174,10 +174,10 @@ impl UtxosChangedSubscription {
 
     pub fn insert_address(&mut self, address: &Address) -> bool {
         let mut result: bool = false;
-        let script_public_key = pay_to_address_script(address);
-        self.addresses.entry(script_public_key.clone()).or_insert_with(|| {
+        let utxo_address: UtxoAddress = address.clone().into();
+        self.addresses.entry(utxo_address.to_script_public_key()).or_insert_with(|| {
             result = true;
-            UtxoAddress { address: address.to_owned(), script_public_key }
+            utxo_address
         });
         result
     }
@@ -216,7 +216,7 @@ impl Hash for UtxosChangedSubscription {
 
         // Since item order in hash set is undefined, build a sorted vector
         // so that hashing is determinist.
-        let mut items: Vec<&Address> = self.addresses.values().map(|x| x.address()).collect::<Vec<_>>();
+        let mut items: Vec<&Address> = self.addresses.values().map(|x| &**x).collect::<Vec<_>>();
         items.sort();
         items.hash(state);
     }
@@ -251,7 +251,7 @@ impl Single for UtxosChangedSubscription {
                     if scope.addresses.is_empty() {
                         // Mutation None
                         self.active = false;
-                        let removed = self.addresses.drain().map(|x| x.1.address).collect();
+                        let removed = self.addresses.drain().map(|(_, x)| x.into()).collect();
                         Some(vec![Mutation::new(Command::Stop, Scope::UtxosChanged(UtxosChangedScope::new(removed)))])
                     } else {
                         // Mutation Remove(R)
@@ -274,7 +274,7 @@ impl Single for UtxosChangedSubscription {
                         }
                     } else {
                         // Mutation All
-                        let removed: Vec<Address> = self.addresses.drain().map(|x| x.1.address).collect();
+                        let removed: Vec<Address> = self.addresses.drain().map(|(_, x)| x.into()).collect();
                         Some(vec![
                             Mutation::new(Command::Stop, Scope::UtxosChanged(UtxosChangedScope::new(removed))),
                             Mutation::new(Command::Start, Scope::UtxosChanged(UtxosChangedScope::default())),
@@ -311,7 +311,7 @@ impl Single for UtxosChangedSubscription {
     }
 
     fn scope(&self) -> Scope {
-        Scope::UtxosChanged(UtxosChangedScope::new(self.addresses.values().map(|x| x.address()).cloned().collect()))
+        Scope::UtxosChanged(UtxosChangedScope::new(self.addresses.values().map(|x| &**x).cloned().collect()))
     }
 }
 
