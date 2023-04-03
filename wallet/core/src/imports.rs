@@ -1,3 +1,4 @@
+pub use crate::convert::ScriptPublicKeyTrait;
 pub use crate::error::Error;
 pub use borsh::{BorshDeserialize, BorshSerialize};
 pub use js_sys::{Array, Object};

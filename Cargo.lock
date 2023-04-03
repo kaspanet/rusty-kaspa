@@ -2241,6 +2241,7 @@ dependencies = [
  "kaspa-txscript",
  "kaspa-utils",
  "kaspa-wrpc-client",
+ "rand 0.8.5",
  "ripemd",
  "secp256k1",
  "serde",

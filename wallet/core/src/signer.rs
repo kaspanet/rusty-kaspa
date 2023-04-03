@@ -1,11 +1,9 @@
-use crate::accounts::account::WalletAccountTrait;
-use crate::accounts::WalletAccount;
 use crate::imports::*;
+use crate::keypair::PrivateKey;
 use crate::tx::MutableTransaction;
 use crate::Result;
 use itertools::Itertools;
 use js_sys::Array;
-use kaspa_bip32::{ChildNumber, ExtendedPrivateKey, SecretKey};
 use kaspa_consensus_core::{
     hashing::{
         sighash::{calc_schnorr_signature_hash, SigHashReusedValues},
@@ -13,121 +11,17 @@ use kaspa_consensus_core::{
     },
     sign::verify,
     tx::SignableTransaction,
-    wasm::{
-        keypair::PrivateKey,
-        signer::{Error as SignerError, Result as SignerResult, Signer as SignerTrait},
-    },
 };
 use kaspa_hashes::Hash;
-use serde_wasm_bindgen::{from_value, to_value};
+use serde_wasm_bindgen::from_value;
 use std::collections::BTreeMap;
 use std::iter::once;
-use std::str::FromStr;
 use workflow_log::log_trace;
 use workflow_wasm::abi::TryFromJsValue;
 
-#[wasm_bindgen]
-pub struct XPrivateKey {
-    receive: ExtendedPrivateKey<SecretKey>,
-    change: ExtendedPrivateKey<SecretKey>,
+pub trait SignerTrait {
+    fn sign(&self, _mtx: SignableTransaction) -> Result<SignableTransaction>;
 }
-#[wasm_bindgen]
-impl XPrivateKey {
-    #[wasm_bindgen(constructor)]
-    pub fn new(xprv: &str, is_multisig: bool, account_index: u64) -> Result<XPrivateKey> {
-        let xkey = ExtendedPrivateKey::<SecretKey>::from_str(xprv)?;
-        let receive = xkey.clone().derive_path(WalletAccount::build_derivate_path(
-            is_multisig,
-            account_index,
-            Some(kaspa_bip32::AddressType::Receive),
-        )?)?;
-        let change =
-            xkey.derive_path(WalletAccount::build_derivate_path(is_multisig, account_index, Some(kaspa_bip32::AddressType::Change))?)?;
-
-        Ok(Self { receive, change })
-    }
-
-    #[wasm_bindgen(js_name=receiveKey)]
-    pub fn receive_key(&self, index: u32) -> Result<PrivateKey> {
-        let xkey = self.receive.derive_child(ChildNumber::new(index, false)?)?;
-        Ok(PrivateKey::from(xkey.private_key()))
-    }
-
-    #[wasm_bindgen(js_name=changeKey)]
-    pub fn change_key(&self, index: u32) -> Result<PrivateKey> {
-        let xkey = self.change.derive_child(ChildNumber::new(index, false)?)?;
-        Ok(PrivateKey::from(xkey.private_key()))
-    }
-}
-
-#[wasm_bindgen]
-pub struct XPublicKey {
-    // receive: ExtendedPublicKey<secp256k1::PublicKey>,
-    // change: ExtendedPublicKey<secp256k1::PublicKey>,
-    hd_wallet: WalletAccount,
-}
-#[wasm_bindgen]
-impl XPublicKey {
-    // #[wasm_bindgen(constructor)]
-    // pub async fn new(kpub: &str, is_multisig: bool, account_index: u64) -> Result<XPublicKey> {
-    //     let xpub = ExtendedPublicKey::<secp256k1::PublicKey>::from_str(kpub)?;
-    //     Self::from_xpublic_key(xpub, is_multisig, account_index).await
-    // }
-
-    #[wasm_bindgen(js_name=fromXPrv)]
-    pub async fn from_xprv(xprv: &str, is_multisig: bool, account_index: u64) -> Result<XPublicKey> {
-        let xprv = ExtendedPrivateKey::<SecretKey>::from_str(xprv)?;
-        let path = WalletAccount::build_derivate_path(is_multisig, account_index, None)?;
-        let xprv = xprv.derive_path(path)?;
-        let xpub = xprv.public_key();
-        let hd_wallet = WalletAccount::from_extended_public_key(xpub).await?;
-        Ok(Self { hd_wallet })
-    }
-
-    #[wasm_bindgen(js_name=receiveAddresses)]
-    pub async fn receive_addresses(&self, mut start: u32, mut end: u32) -> Result<JsValue> {
-        if start > end {
-            (start, end) = (end, start);
-        }
-        let addresses = self.hd_wallet.receive_wallet().derive_addresses(start..end).await?;
-        let addresses = to_value(&addresses)?;
-        Ok(addresses)
-    }
-
-    #[wasm_bindgen(js_name=changeAddresses)]
-    pub async fn change_addresses(&self, mut start: u32, mut end: u32) -> Result<JsValue> {
-        if start > end {
-            (start, end) = (end, start);
-        }
-        let addresses = self.hd_wallet.change_wallet().derive_addresses(start..end).await?;
-        let addresses = to_value(&addresses)?;
-        Ok(addresses)
-    }
-
-    // #[wasm_bindgen(js_name=receiveKey)]
-    // pub fn receive_key(&self, index: u32) -> Result<Publickey> {
-    //     let xkey = self.receive.derive_child(ChildNumber::new(index, false)?)?;
-    //     Ok(Publickey::from(xkey.public_key()))
-    // }
-
-    // #[wasm_bindgen(js_name=changeKey)]
-    // pub fn change_key(&self, index: u32) -> Result<Publickey> {
-    //     let xkey = self.change.derive_child(ChildNumber::new(index, false)?)?;
-    //     Ok(Publickey::from(xkey.public_key()))
-    // }
-}
-
-// impl XPublicKey{
-//     pub async fn from_xpublic_key(kpub: ExtendedPublicKey<secp256k1::PublicKey>, is_multisig: bool, account_index: u64)->Result<Self>{
-//         let path = WalletAccount::build_derivate_path(is_multisig, account_index, None)?;
-//         log_trace!("derivate_path: {path} , {path:?}");
-//         let kpub = kpub.derive_path(path)?;
-//         log_trace!("kpub: {kpub:?} ");
-//         let hd_wallet = WalletAccount::from_extended_public_key(kpub).await?;
-
-//         Ok(Self { hd_wallet })
-//     }
-// }
 
 /// `Signer` is a type capable of signing transactions.
 #[derive(TryFromJsValue, Clone, Debug)]
@@ -154,14 +48,14 @@ impl Signer {
     }
 
     #[wasm_bindgen(js_name = "signTransaction")]
-    pub fn sign_transaction(&self, mtx: MutableTransaction, verify_sig: bool) -> std::result::Result<MutableTransaction, SignerError> {
-        sign_mutable_transaction(mtx, &self.private_keys(), verify_sig).map_err(|err| SignerError::Custom(err.to_string()))
+    pub fn sign_transaction(&self, mtx: MutableTransaction, verify_sig: bool) -> Result<MutableTransaction> {
+        sign_mutable_transaction(mtx, &self.private_keys(), verify_sig).map_err(|err| Error::Custom(err.to_string()))
     }
 }
 
 impl SignerTrait for Signer {
-    fn sign(&self, mtx: SignableTransaction) -> SignerResult {
-        let mtx = sign_transaction(mtx, &self.private_keys(), self.verify).map_err(|err| SignerError::Custom(err.to_string()))?;
+    fn sign(&self, mtx: SignableTransaction) -> Result<SignableTransaction> {
+        let mtx = sign_transaction(mtx, &self.private_keys(), self.verify).map_err(|err| Error::Custom(err.to_string()))?;
 
         Ok(mtx)
     }
@@ -192,24 +86,20 @@ impl TryFrom<PrivateKeyArray> for Vec<PrivateKey> {
 
 /// `signTransaction()` is a helper function to sign a transaction using a private key array or a signer array.
 #[wasm_bindgen(js_name = "signTransaction")]
-pub fn js_sign_transaction(
-    mtx: MutableTransaction,
-    signer: PrivateKeyArrayOrSigner,
-    verify_sig: bool,
-) -> std::result::Result<MutableTransaction, SignerError> {
+pub fn js_sign_transaction(mtx: MutableTransaction, signer: PrivateKeyArrayOrSigner, verify_sig: bool) -> Result<MutableTransaction> {
     if signer.is_array() {
         let mut private_keys: Vec<[u8; 32]> = vec![];
         for key in Array::from(&signer).iter() {
-            let key = PrivateKey::try_from(&key).map_err(|_| SignerError::Custom("Unable to cast PrivateKey".to_string()))?;
+            let key = PrivateKey::try_from(&key).map_err(|_| Error::Custom("Unable to cast PrivateKey".to_string()))?;
             private_keys.push(key.secret_bytes());
         }
 
         let mtx = sign_mutable_transaction(mtx, &private_keys, verify_sig)
-            .map_err(|err| SignerError::Custom(format!("Unable to sign: {err:?}")))?;
+            .map_err(|err| Error::Custom(format!("Unable to sign: {err:?}")))?;
         return Ok(mtx);
     }
 
-    let signer = Signer::try_from(&JsValue::from(signer)).map_err(|_| SignerError::Custom("Unable to cast Signer".to_string()))?;
+    let signer = Signer::try_from(&JsValue::from(signer)).map_err(|_| Error::Custom("Unable to cast Signer".to_string()))?;
     log_trace!("\nSigning via Signer: {signer:?}....\n");
     signer.sign_transaction(mtx, verify_sig)
 }

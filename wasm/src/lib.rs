@@ -100,7 +100,6 @@ pub use kaspa_addresses::{Address, Version as AddressVersion};
 pub use kaspa_consensus_core::tx::{
     ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry,
 };
-pub use kaspa_consensus_core::wasm::keypair::{Keypair, PrivateKey};
 
 pub mod rpc {
     //! Kaspa RPC interface
@@ -116,6 +115,7 @@ pub mod rpc {
 
 pub use kaspa_wallet_core::{
     account::Account,
+    keypair::{Keypair, PrivateKey},
     signer::{js_sign_transaction as sign_transaction, Signer},
     storage::Store,
     tx::{MutableTransaction, VirtualTransaction},

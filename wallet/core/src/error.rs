@@ -1,7 +1,6 @@
 use base64::DecodeError;
 use kaspa_bip32::Error as BIP32Error;
 use kaspa_consensus_core::sign::Error as CoreSignError;
-use kaspa_consensus_core::wasm::error::Error as CoreWasmError;
 use kaspa_rpc_core::RpcError as KaspaRpcError;
 use kaspa_wrpc_client::error::Error as KaspaWorkflowRpcError;
 use secp256k1::Error as Secp256k1Error;
@@ -40,9 +39,6 @@ pub enum Error {
 
     #[error("Secp256k1 error: {0}")]
     Secp256k1Error(#[from] Secp256k1Error),
-
-    #[error("consensus core WASM error: {0}")]
-    CoreWasmError(#[from] CoreWasmError),
 
     #[error("consensus core sign() error: {0}")]
     CoreSignError(#[from] CoreSignError),
@@ -90,12 +86,6 @@ impl From<chacha20poly1305::Error> for Error {
         Error::Chacha20poly1305(e)
     }
 }
-
-// impl From<sha2::digest::InvalidLength> for Error {
-//     fn from(e: sha2::digest::InvalidLength) -> Self {
-//         Error::InvalidHashLength(e)
-//     }
-// }
 
 impl From<Error> for JsValue {
     fn from(value: Error) -> Self {
