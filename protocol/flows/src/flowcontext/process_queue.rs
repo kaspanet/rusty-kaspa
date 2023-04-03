@@ -40,7 +40,7 @@ impl<T: Copy + PartialEq + Eq + std::hash::Hash> ProcessQueue<T> {
         }
     }
 
-    pub fn dequeue_chunk(&mut self, max_chunk_size: usize) -> impl Iterator<Item = T> + '_ {
+    pub fn dequeue_chunk(&mut self, max_chunk_size: usize) -> impl ExactSizeIterator<Item = T> + '_ {
         self.deque.drain(0..max_chunk_size.min(self.deque.len())).inspect(|x| assert!(self.set.remove(x)))
     }
 }
