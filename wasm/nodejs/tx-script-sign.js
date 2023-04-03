@@ -3,7 +3,7 @@ globalThis.WebSocket = require('websocket').w3cwebsocket; // W3C WebSocket modul
 // let {RpcClient,Encoding,init_console_panic_hook,defer} = require('./kaspa');
 let kaspa = require('./kaspa/kaspa_wasm');
 let { RpcClient, UtxoSet, Address, Encoding, UtxoOrdering, 
-    Outputs, Output, 
+    PaymentOutputs, PaymentOutput, 
     XPrivateKey,
     VirtualTransaction,
     createTransaction,
@@ -48,12 +48,12 @@ kaspa.init_console_panic_hook();
     console.log("utxo_selection.amount", utxo_selection.amount)
     console.log("utxo_selection.totalAmount", utxo_selection.totalAmount)
 
-    let output = new Output(
+    let output = new PaymentOutput(
         new Address("kaspatest:qz7ulu4c25dh7fzec9zjyrmlhnkzrg4wmf89q7gzr3gfrsj3uz6xjceef60sd"),
         amount
     );
     //console.log("output", output)
-    let outputs = new Outputs([output])
+    let outputs = new PaymentOutputs([output])
 
     console.log("outputs", outputs)
 
