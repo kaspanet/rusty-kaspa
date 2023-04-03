@@ -506,6 +506,10 @@ impl PruningProofManager {
                 }
                 .into();
 
+                if relations_stores[level_idx].has(header.hash).unwrap() {
+                    return Err(PruningImportError::PruningProofDuplicateHeaderAtLevel(header.hash, level));
+                }
+
                 relations_stores[level_idx].insert(header.hash, parents.clone()).unwrap();
                 let ghostdag_data = Arc::new(ghostdag_managers[level_idx].ghostdag(&parents));
                 ghostdag_stores[level_idx].insert(header.hash, ghostdag_data.clone()).unwrap();
