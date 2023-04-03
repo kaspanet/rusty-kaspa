@@ -2171,6 +2171,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "kaspa-wallet"
+version = "0.1.0"
+dependencies = [
+ "async-std",
+ "async-trait",
+ "kaspa-wallet-cli",
+ "tokio",
+ "workflow-log",
+ "workflow-terminal",
+]
+
+[[package]]
 name = "kaspa-wallet-cli"
 version = "0.1.0"
 dependencies = [
@@ -2183,18 +2195,6 @@ dependencies = [
  "thiserror",
  "workflow-core",
  "workflow-dom",
- "workflow-log",
- "workflow-terminal",
-]
-
-[[package]]
-name = "kaspa-wallet-cli-native"
-version = "0.1.0"
-dependencies = [
- "async-std",
- "async-trait",
- "kaspa-wallet-cli",
- "tokio",
  "workflow-log",
  "workflow-terminal",
 ]

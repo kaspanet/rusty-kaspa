@@ -90,7 +90,7 @@ kaspa-grpc-server = { path = "rpc/grpc/server" }
 kaspa-index-core = { path = "indexes/core" }
 kaspa-index-processor = { path = "indexes/processor" }
 kaspa-wallet-cli = { path = "wallet/cli" }
-kaspa-wallet-cli-native = { path = "wallet/native" }
+kaspa-wallet = { path = "wallet/native" }
 kaspa-wallet-cli-wasm = { path = "wallet/wasm" }
 kaspa-wrpc-proxy = { path = "rpc/wrpc/proxy" }
 kaspa-wrpc-server = { path = "rpc/wrpc/server" }
