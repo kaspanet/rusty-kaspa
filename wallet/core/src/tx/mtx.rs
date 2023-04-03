@@ -53,8 +53,8 @@ impl MutableTransaction {
             if signatures.len() != tx.inner().inputs.len() {
                 return Err(Error::Custom("Signature counts dont match input counts".to_string()).into());
             }
-
-            for (i, signature) in signatures.into_iter().enumerate().take(tx.inner().inputs.len()) {
+            let len = tx.inner().inputs.len();
+            for (i, signature) in signatures.into_iter().enumerate().take(len) {
                 tx.inner().inputs[i].inner().sig_op_count = 1;
                 tx.inner().inputs[i].inner().signature_script = signature;
             }
