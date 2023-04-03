@@ -9,12 +9,11 @@
 Rusty-Kaspa WASM32 bindings offer direct integration of Rust code and Rusty-Kaspa
 codebase within JavaScript environments such as Node.js and Web Browsers.
 
-
-
 ## Documentation
 
-- **Rustdoc** documentation is available here: [https://docs.rs/kaspa-wasm/latest/kaspa-wasm](https://docs.rs/kaspa-wasm/latest/kaspa-wasm)
-- **JSDoc** documentation is available here: [https://aspectron.com/docs/kaspa-wasm/](https://aspectron.com/docs/kaspa-wasm/)
+- [**integrating with Kaspa** guide](https://kaspa-mdbook.aspectron.com/)
+- [**Rustdoc** documentation](https://docs.rs/kaspa-wasm/latest/kaspa-wasm)
+- [**JSDoc** documentation](https://aspectron.com/docs/kaspa-wasm/)
 
 Please note that while WASM directly binds JacaScript and Rust resources, their names on JavaScript side
 are different from their name in Rust as they conform to the 'camelCase' convention in JavaScript and 
@@ -39,7 +38,7 @@ WebSocket / gRPC proxy (located in `rpc/wrpc/proxy`).
 
 There are multiple ways to use RPC:
 - Control over WebSocket-framed JSON-RPC protocol (you have to manually handle serialization)
-- Use `RpcClient` class that handles the connectivity automatically and provides RPC interfaces in a form of async function calls..
+- Use `RpcClient` class that handles the connectivity automatically and provides RPC interfaces in a form of async function calls.
 
 **NODEJS:** To use WASM RPC client in the Node.js environment, you need to introduce a W3C WebSocket object 
 before loading the WASM32 library. You can use any Node.js module that exposes a W3C-compatible 
@@ -56,3 +55,4 @@ globalThis.WebSocket = require('websocket').w3cwebsocket;
 globalThis.WebSocket = require('isomorphic-ws');
 ```
 
+For more details, please follow the [**integrating with Kaspa**](https://kaspa-mdbook.aspectron.com/) guide.

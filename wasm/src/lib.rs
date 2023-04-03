@@ -13,8 +13,9 @@ codebase within JavaScript environments such as Node.js and Web Browsers.
 
 ## Documentation
 
-- **Rustdoc** documentation is available here: [https://docs.rs/kaspa-wasm/latest/kaspa-wasm](https://docs.rs/kaspa-wasm/latest/kaspa-wasm)
-- **JSDoc** documentation is available here: [https://aspectron.com/docs/kaspa-wasm/](https://aspectron.com/docs/kaspa-wasm/)
+- [**integrating with Kaspa** guide](https://kaspa-mdbook.aspectron.com/)
+- [**Rustdoc** documentation](https://docs.rs/kaspa-wasm/latest/kaspa-wasm)
+- [**JSDoc** documentation](https://aspectron.com/docs/kaspa-wasm/)
 
 Please note that while WASM directly binds JacaScript and Rust resources, their names on JavaScript side
 are different from their name in Rust as they conform to the 'camelCase' convention in JavaScript and
@@ -77,13 +78,10 @@ globalThis.WebSocket = require('websocket').w3cwebsocket;
 let {RpcClient,Encoding,init_console_panic_hook,defer} = require('./kaspa-rpc');
 // init_console_panic_hook();
 
-let URL = "ws://127.0.0.1:17110";
-let rpc = new RpcClient(Encoding.Borsh,URL);
+let rpc = new RpcClient(Encoding.Borsh,"ws://127.0.0.1:17110");
 
 (async () => {
-    console.log(`# connecting to ${URL}`)
     await rpc.connect();
-    console.log(`# connected ...`)
 
     let info = await rpc.getInfo();
     console.log(info);
@@ -91,6 +89,8 @@ let rpc = new RpcClient(Encoding.Borsh,URL);
     await rpc.disconnect();
 })();
 ```
+
+For more details, please follow the [**integrating with Kaspa**](https://kaspa-mdbook.aspectron.com/) guide.
 
 */
 

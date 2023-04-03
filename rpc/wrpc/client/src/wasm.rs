@@ -203,9 +203,6 @@ impl RpcClient {
     // }
 }
 
-#[wasm_bindgen]
-struct RpcClient1 {}
-
 // Build subscribe functions
 build_wrpc_wasm_bindgen_subscriptions!([
     BlockAdded,

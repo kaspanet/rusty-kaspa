@@ -28,7 +28,6 @@ use kaspa_hashes::Hash;
 use flate2::read::GzDecoder;
 use futures_util::future::try_join_all;
 use itertools::Itertools;
-use kaspa_bip32::{ExtendedPrivateKey as XPrv, Mnemonic};
 use kaspa_core::core::Core;
 use kaspa_core::info;
 use kaspa_core::signals::Shutdown;

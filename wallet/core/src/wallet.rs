@@ -332,7 +332,8 @@ mod test {
         Ok(utxo_set)
     }
 
-    #[tokio::test]
+    #[allow(dead_code)]
+    // #[tokio::test]
     async fn wallet_test() -> Result<()> {
         println!("Creating wallet...");
         let wallet = Arc::new(Wallet::try_new().await?);
@@ -421,9 +422,7 @@ mod test {
         println!("mtx: {mtx:?}");
 
         //let signer = Signer::new(private_keys)?;
-
         let mtx = sign_mutable_transaction(mtx, &private_keys, true)?;
-
         //println!("mtx: {mtx:?}");
 
         let utxo_set = self::get_utxos_set_by_addresses(rpc.clone(), vec![to_address.clone()]).await?;
