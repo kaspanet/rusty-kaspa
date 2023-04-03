@@ -10,6 +10,8 @@ use crate::{
 use kaspa_consensus_core::tx::{MutableTransaction, TransactionId};
 use kaspa_core::debug;
 
+use super::tx::Priority;
+
 impl<T: ConsensusMiningContext + ?Sized> Mempool<T> {
     pub(crate) fn revalidate_high_priority_transactions(&mut self) -> RuleResult<Vec<TransactionId>> {
         // First establish a topologically ordered list of all high priority transaction ids
@@ -17,7 +19,7 @@ impl<T: ConsensusMiningContext + ?Sized> Mempool<T> {
         // Processing the transactions in a parent to chained order guarantees that
         // any transaction removal will propagate to all chained dependencies saving
         // validations calls to consensus.
-        let ids = self.transaction_pool.index(true).topological_index()?;
+        let ids = self.transaction_pool.index(Priority::High).topological_index()?;
         let mut valid_ids = vec![];
 
         for transaction_id in ids.iter() {

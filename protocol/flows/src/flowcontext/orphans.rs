@@ -15,7 +15,7 @@ use std::{
     sync::Arc,
 };
 
-use self::queue::ProcessQueue;
+use super::process_queue::ProcessQueue;
 
 /// The maximum amount of blockLocator hashes to search for known
 /// blocks. See check_orphan_resolution_range for further details
@@ -150,40 +150,6 @@ impl<T: ConsensusBlockProcessor + ?Sized> OrphanBlocksPool<T> {
                 }
             },
         )
-    }
-}
-
-mod queue {
-    use super::Hash;
-    use std::collections::{HashSet, VecDeque};
-
-    /// A simple deque backed by a set for efficient duplication filtering
-    pub struct ProcessQueue {
-        deque: VecDeque<Hash>,
-        set: HashSet<Hash>,
-    }
-
-    impl ProcessQueue {
-        pub fn from(set: HashSet<Hash>) -> Self {
-            Self { deque: set.iter().copied().collect(), set }
-        }
-
-        pub fn enqueue_chunk<I: IntoIterator<Item = Hash>>(&mut self, iter: I) {
-            for item in iter {
-                if self.set.insert(item) {
-                    self.deque.push_back(item);
-                }
-            }
-        }
-
-        pub fn dequeue(&mut self) -> Option<Hash> {
-            if let Some(item) = self.deque.pop_front() {
-                self.set.remove(&item);
-                Some(item)
-            } else {
-                None
-            }
-        }
     }
 }
 
