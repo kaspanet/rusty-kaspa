@@ -661,10 +661,8 @@ impl ConsensusApi for Consensus {
     }
 
     fn is_nearly_synced(&self) -> bool {
-        // We consider the node close to being synced if the sink (virtual selected parent) block timestamp is less than DAA duration
-        // far in the past. In such a case, we continue processing relay blocks even though an IBD is in progress.
-        // For instance this means that downloading a side-chain from a delayed node does not interop the normal flow of live blocks.
-        self.get_sink_timestamp().is_none_or(|t| self.config.is_nearly_synced(*t))
+        // See comment within `config.is_nearly_synced`
+        self.get_sink_timestamp().has_value_and(|&t| self.config.is_nearly_synced(t))
     }
 
     fn get_virtual_parents(&self) -> BlockHashSet {

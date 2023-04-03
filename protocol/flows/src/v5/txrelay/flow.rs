@@ -77,7 +77,7 @@ impl RelayTransactionsFlow {
             // trace!("Receive an inv message from {} with {} transaction ids", self.router.identity(), inv.len());
 
             // Transaction relay is disabled if the node is out of sync and thus not mining
-            if self.ctx.is_ibd_running() && !self.ctx.is_nearly_synced() {
+            if !self.ctx.is_nearly_synced() {
                 continue;
             }
 
