@@ -1,6 +1,6 @@
 [package]
 name = "kaspa-wasm"
-description = "KASPA bindings"
+description = "KASPA WASM bindings"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

@@ -1,6 +1,6 @@
 [package]
 name = "kaspa-txscript"
-description = "Kaspa txscript engine lib"
+description = "Kaspa txscript engine library"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

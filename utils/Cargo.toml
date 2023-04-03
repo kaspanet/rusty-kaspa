@@ -1,5 +1,6 @@
 [package]
 name = "kaspa-utils"
+description = "Kaspa utilities"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

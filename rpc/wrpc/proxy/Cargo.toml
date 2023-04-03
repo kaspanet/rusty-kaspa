@@ -1,7 +1,11 @@
 [package]
 name = "kaspa-wrpc-proxy"
-version = "0.1.0"
-edition = "2021"
+description = "Kaspa wRPC to gRPC proxy"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
 
 [dependencies]
 kaspa-consensus-core.workspace = true

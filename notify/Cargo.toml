@@ -1,5 +1,6 @@
 [package]
 name = "kaspa-notify"
+description = "Kaspa notification subsystem"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

@@ -1,7 +1,11 @@
 [package]
 name = "kaspa-wrpc-client"
-version = "0.1.0"
-edition = "2021"
+description = "Kaspa wRPC client"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
 
 [lib]
 crate-type = ["cdylib", "lib"]

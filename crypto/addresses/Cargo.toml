@@ -1,5 +1,6 @@
 [package]
 name = "kaspa-addresses"
+description = "Kaspa address"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

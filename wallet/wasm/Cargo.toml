@@ -1,7 +1,11 @@
 [package]
 name = "kaspa-wallet-cli-wasm"
-version = "0.1.0"
-edition = "2021"
+description = "Kaspa CLI wallet for WASM"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
 
 [lib]
 crate-type = ["cdylib", "lib"]

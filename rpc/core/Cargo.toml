@@ -1,5 +1,6 @@
 [package]
 name = "kaspa-rpc-core"
+description = "Kaspa RPC core"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

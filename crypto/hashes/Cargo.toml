@@ -1,5 +1,6 @@
 [package]
 name = "kaspa-hashes"
+description = "Kaspa hashing functions"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

@@ -1,5 +1,6 @@
 [package]
 name = "kaspa-addressmanager"
+description = "Kaspa address manager"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

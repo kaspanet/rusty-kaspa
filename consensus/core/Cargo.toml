@@ -1,5 +1,6 @@
 [package]
 name = "kaspa-consensus-core"
+description = "Kaspa consensus core"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

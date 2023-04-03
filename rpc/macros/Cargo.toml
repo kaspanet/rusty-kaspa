@@ -1,5 +1,6 @@
 [package]
 name = "kaspa-rpc-macros"
+description = "Kaspa RPC macros"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true

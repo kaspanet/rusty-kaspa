@@ -1,7 +1,11 @@
 [package]
 name = "kaspa-p2p-flows"
-version = "0.1.0"
-edition = "2021"
+description = "Kaspa p2p flows"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
