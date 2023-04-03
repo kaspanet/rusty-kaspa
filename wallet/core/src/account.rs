@@ -121,20 +121,6 @@ impl Account {
     }
 }
 
-// impl AccountT for Account {
-//     fn connect(&self) {
-//         self.is_connected.store(true, std::sync::atomic::Ordering::SeqCst);
-//     }
-
-//     fn disconnect(&self) {
-//         self.is_connected.store(false, std::sync::atomic::Ordering::SeqCst);
-//     }
-
-// fn reset() {
-
-// }
-// }
-
 #[wasm_bindgen]
 impl Account {
     #[wasm_bindgen(getter)]

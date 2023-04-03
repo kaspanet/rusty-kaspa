@@ -154,16 +154,12 @@ impl UtxoSet {
     pub fn order(&self, order: UtxoOrdering) -> Result<()> {
         match order {
             UtxoOrdering::AscendingAmount => {
-                //self.inner.entries.lock().unwrap().sort_by(|a, b| a.as_ref().amount().cmp(&b.as_ref().amount()));
                 self.inner.entries.lock().unwrap().sort_by_key(|a| a.as_ref().amount());
             }
             UtxoOrdering::AscendingDaaScore => {
-                //self.inner.entries.lock().unwrap().sort_by(|a, b| a.as_ref().block_daa_score().cmp(&b.as_ref().block_daa_score()));
                 self.inner.entries.lock().unwrap().sort_by_key(|a| a.as_ref().block_daa_score());
             }
-            UtxoOrdering::Unordered => {
-                // Ok(self.entries)
-            }
+            UtxoOrdering::Unordered => {}
         }
 
         Ok(())

@@ -43,7 +43,6 @@ impl MutableTransaction {
 
     #[wasm_bindgen(js_name=setSignatures)]
     pub fn set_signatures(&self, signatures: js_sys::Array) -> Result<JsValue, JsError> {
-        // let signatures : Result<Vec<Vec<u8>>> = signatures.iter().map(|s| s.try_as_vec_u8()?).collect::<Result<Vec<Vec<u8>>>>()?;
         let signatures =
             signatures.iter().map(|s| s.try_as_vec_u8()).collect::<Result<Vec<Vec<u8>>, workflow_wasm::error::Error>>()?;
 
@@ -111,12 +110,7 @@ impl TryFrom<MutableTransaction> for tx::MutableTransaction<tx::Transaction> {
     type Error = Error;
     fn try_from(mtx: MutableTransaction) -> Result<Self, Self::Error> {
         let tx = &mtx.tx.lock()?.clone();
-        Ok(Self {
-            tx: tx.try_into()?,          //lock()?.clone(),
-            entries: mtx.entries.into(), //iter().map(|entry|entry.).collect(),
-            calculated_fee: None,        //value.calculated_fee,
-            calculated_mass: None,       //value.calculated_mass,
-        })
+        Ok(Self { tx: tx.try_into()?, entries: mtx.entries.into(), calculated_fee: None, calculated_mass: None })
     }
 }
 

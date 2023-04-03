@@ -163,9 +163,6 @@ impl Store {
                     let js_value = read_file_sync(&filename, options);
                     let base64enc = js_value.as_string().expect("wallet file data is not a string (empty or encoding error)");
                     Ok(general_purpose::STANDARD.decode(base64enc)?)
-
-                    // let vec : Vec<u8> = js_value.as_str();
-                    // Ok(vec)
                 } else {
                     let base64enc = local_storage().get_item(&filename)?.unwrap();
                     Ok(general_purpose::STANDARD.decode(base64enc)?)
@@ -177,8 +174,6 @@ impl Store {
                 let filename = self.filename().to_string_lossy().to_string();
                 let base64enc = general_purpose::STANDARD.encode(data);
                 if runtime::is_node() || runtime::is_nw() {
-                    // let js_array = Array::new();
-                    // js_array.from(data)?;
                     let options = Object::new();
                     write_file_sync(&filename, &base64enc, options);
                 } else {

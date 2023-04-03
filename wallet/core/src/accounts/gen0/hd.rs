@@ -1,13 +1,11 @@
+use crate::{accounts::account::*, result::Result};
+use async_trait::async_trait;
 use hmac::Mac;
 use kaspa_addresses::{Address, Prefix as AddressPrefix, Version};
 use kaspa_bip32::{
     types::*, AddressType, ChildNumber, ExtendedKey, ExtendedKeyAttrs, ExtendedPrivateKey, ExtendedPublicKey, Prefix, PrivateKey,
     PublicKey, SecretKey, SecretKeyExt,
 };
-//use consensus_core::wasm::{Generator,GeneratorT,WalletAccountTrait};
-// use kaspa_wallet_core::generators::Generator;
-use crate::{accounts::account::*, result::Result};
-use async_trait::async_trait;
 use ripemd::Ripemd160;
 use sha2::{Digest, Sha256};
 use std::{fmt::Debug, str::FromStr, sync::Arc};

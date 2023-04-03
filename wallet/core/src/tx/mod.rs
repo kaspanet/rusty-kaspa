@@ -14,6 +14,7 @@ pub use payment::*;
 pub use transaction::*;
 pub use virtual_transaction::*;
 
+use crate::result::Result;
 use crate::utils::*;
 use crate::utxo::*;
 use kaspa_addresses::Address;
@@ -22,14 +23,11 @@ use kaspa_consensus_core::hashing::sighash::SigHashReusedValues;
 use kaspa_consensus_core::hashing::sighash_type::SIG_HASH_ALL;
 use kaspa_consensus_core::subnets::SubnetworkId;
 use kaspa_consensus_core::tx::SignableTransaction;
-// use kaspa_consensus_core::wasm::error::Error;
-use crate::result::Result;
 use kaspa_txscript::pay_to_address_script;
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 use workflow_log::log_trace;
 
-// pub fn script_hashes(mut mutable_tx: SignableTransaction) -> Result<Vec<kaspa_hashes::Hash>, Error> {
 pub fn script_hashes(mut mutable_tx: SignableTransaction) -> Result<Vec<kaspa_hashes::Hash>> {
     let mut list = vec![];
     for i in 0..mutable_tx.tx.inputs.len() {

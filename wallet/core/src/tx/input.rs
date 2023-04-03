@@ -117,10 +117,6 @@ impl TryFrom<TransactionInput> for cctx::TransactionInput {
             inner.signature_script.clone(),
             inner.sequence,
             inner.sig_op_count,
-            // previous_outpoint: tx_input.previous_outpoint.try_into()?,
-            // signature_script: tx_input.signature_script,
-            // sequence: tx_input.sequence,
-            // sig_op_count: tx_input.sig_op_count,
         ))
     }
 }

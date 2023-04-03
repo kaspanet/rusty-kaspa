@@ -8,12 +8,10 @@ pub struct TransactionOutpointInner {
 }
 
 /// Represents a Kaspa transaction outpoint
-// #[derive(Eq, Hash, PartialEq, Debug, Clone)]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen(inspectable)]
 pub struct TransactionOutpoint {
-    // #[wasm_bindgen(js_name = transactionId)]
     inner: Arc<Mutex<TransactionOutpointInner>>,
 }
 
@@ -21,10 +19,6 @@ impl TransactionOutpoint {
     pub fn inner(&self) -> MutexGuard<'_, TransactionOutpointInner> {
         self.inner.lock().unwrap()
     }
-
-    //     pub fn new(transaction_id: TransactionId, index: u32) -> Self {
-    //         Self { inner : Arc::new(Mutex::new( TransactionOutpointInner { transaction_id, index })) }
-    //     }
 }
 
 #[wasm_bindgen]

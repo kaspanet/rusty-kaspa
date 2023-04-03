@@ -77,13 +77,3 @@ impl PrivateKey {
         Ok(Self { inner: SecretKey::from_str(key)? })
     }
 }
-
-// impl TryFrom<JsValue> for PrivateKey {
-//     type Error = super::error::Error;
-//     fn try_from(value: JsValue) -> Result<Self, Self::Error> {
-//         //Self::new(value.as_string().ok_or(super::error::Error::Custom("Invalid SecretKey".to_string()))?.as_str())
-//         let key = value.dyn_ref::<Self>().unwrap();
-//         //let key = value.try_into()?;
-//         Ok(key.clone())
-//     }
-// }

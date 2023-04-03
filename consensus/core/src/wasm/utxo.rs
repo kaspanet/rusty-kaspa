@@ -1,20 +1,12 @@
-use crate::tx::{
-    self,
-    ScriptPublicKey,
-    // Transaction,
-    UtxoEntry,
-    // TransactionInput, TransactionOutpoint, TransactionOutput
-};
+use crate::tx::{self, ScriptPublicKey, UtxoEntry};
+use crate::wasm::error::Error;
 use itertools::Itertools;
 use js_sys::Array;
 use js_sys::Object;
 use serde::{Deserialize, Serialize};
-use wasm_bindgen::prelude::*;
-// use serde_wasm_bindgen::to_value;
 use std::sync::Arc;
+use wasm_bindgen::prelude::*;
 use workflow_wasm::abi::ref_from_abi;
-// use crate::tx::SignableTransaction;
-use crate::wasm::error::Error;
 use workflow_wasm::object::*;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

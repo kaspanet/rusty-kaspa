@@ -16,10 +16,8 @@ use kaspa_consensus_core::{
     wasm::{
         keypair::PrivateKey,
         signer::{Error as SignerError, Result as SignerResult, Signer as SignerTrait},
-        // tx::MutableTransaction,
     },
 };
-// use kaspa_core::hex::ToHex;
 use kaspa_hashes::Hash;
 use serde_wasm_bindgen::{from_value, to_value};
 use std::collections::BTreeMap;
