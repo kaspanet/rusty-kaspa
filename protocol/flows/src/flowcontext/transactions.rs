@@ -58,8 +58,7 @@ impl TransactionsSpread {
         }
 
         while !self.transaction_ids.is_empty() {
-            let ids =
-                self.transaction_ids.drain(self.transaction_ids.len().min(MAX_INV_PER_TX_INV_MSG)).map(|x| x.into()).collect_vec();
+            let ids = self.transaction_ids.dequeue_chunk(MAX_INV_PER_TX_INV_MSG).map(|x| x.into()).collect_vec();
             debug!("Transaction propagation: broadcasting {} transactions", ids.len());
             let msg = make_message!(Payload::InvTransactions, InvTransactionsMessage { ids });
             self.broadcast(msg).await;

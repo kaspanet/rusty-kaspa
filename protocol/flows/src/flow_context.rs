@@ -182,7 +182,7 @@ impl FlowContext {
             transactions_to_broadcast.enqueue_chunk(self.mining_manager().revalidate_high_priority_transactions()?.into_iter());
         }
 
-        self.broadcast_transactions(transactions_to_broadcast.drain(transactions_to_broadcast.len())).await
+        self.broadcast_transactions(transactions_to_broadcast).await
     }
 
     /// Notifies that a new block template is available for miners.
