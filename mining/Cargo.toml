@@ -12,6 +12,7 @@ kaspa-addresses.workspace = true
 kaspa-hashes.workspace = true
 kaspa-muhash.workspace = true
 kaspa-consensus-core.workspace = true
+kaspa-txscript.workspace = true
 kaspa-core.workspace = true
 thiserror.workspace = true
 serde.workspace = true

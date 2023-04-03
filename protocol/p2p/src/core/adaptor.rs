@@ -38,25 +38,29 @@ pub struct Adaptor {
 }
 
 impl Adaptor {
-    pub(crate) fn new(server_termination: Option<OneshotSender<()>>, connection_handler: ConnectionHandler) -> Self {
-        Self { _server_termination: server_termination, connection_handler, hub: Hub::new() }
+    pub(crate) fn new(server_termination: Option<OneshotSender<()>>, connection_handler: ConnectionHandler, hub: Hub) -> Self {
+        Self { _server_termination: server_termination, connection_handler, hub }
     }
 
     /// Creates a P2P adaptor with only client-side support. Typical Kaspa nodes should use `Adaptor::bidirectional`
-    pub fn client_only(initializer: Arc<dyn ConnectionInitializer>) -> Arc<Self> {
-        let (hub_sender, hub_receiver) = mpsc_channel(128);
+    pub fn client_only(hub: Hub, initializer: Arc<dyn ConnectionInitializer>) -> Arc<Self> {
+        let (hub_sender, hub_receiver) = mpsc_channel(Self::hub_channel_size());
         let connection_handler = ConnectionHandler::new(hub_sender);
-        let adaptor = Arc::new(Adaptor::new(None, connection_handler));
+        let adaptor = Arc::new(Adaptor::new(None, connection_handler, hub));
         adaptor.hub.clone().start_event_loop(hub_receiver, initializer);
         adaptor
     }
 
     /// Creates a bidirectional P2P adaptor with a server serving at `serve_address` and with client support
-    pub fn bidirectional(serve_address: String, initializer: Arc<dyn ConnectionInitializer>) -> Result<Arc<Self>, ConnectionError> {
-        let (hub_sender, hub_receiver) = mpsc_channel(128);
+    pub fn bidirectional(
+        serve_address: String,
+        hub: Hub,
+        initializer: Arc<dyn ConnectionInitializer>,
+    ) -> Result<Arc<Self>, ConnectionError> {
+        let (hub_sender, hub_receiver) = mpsc_channel(Self::hub_channel_size());
         let connection_handler = ConnectionHandler::new(hub_sender);
         let server_termination = connection_handler.serve(serve_address)?;
-        let adaptor = Arc::new(Adaptor::new(Some(server_termination), connection_handler));
+        let adaptor = Arc::new(Adaptor::new(Some(server_termination), connection_handler, hub));
         adaptor.hub.clone().start_event_loop(hub_receiver, initializer);
         Ok(adaptor)
     }
@@ -74,6 +78,10 @@ impl Adaptor {
     /// Terminates all peers and cleans up any additional async resources
     pub async fn close(&self) {
         self.terminate_all_peers().await;
+    }
+
+    pub fn hub_channel_size() -> usize {
+        128
     }
 }
 
