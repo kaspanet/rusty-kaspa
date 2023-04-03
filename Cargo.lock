@@ -2280,6 +2280,7 @@ dependencies = [
  "borsh",
  "futures",
  "js-sys",
+ "kaspa-addresses",
  "kaspa-notify",
  "kaspa-rpc-core",
  "kaspa-rpc-macros",

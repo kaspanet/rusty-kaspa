@@ -1,4 +1,6 @@
 use crate::imports::*;
+use js_sys::Array;
+use kaspa_addresses::Address;
 use kaspa_notify::notification::Notification as NotificationT;
 pub use kaspa_rpc_macros::{build_wrpc_wasm_bindgen_interface, build_wrpc_wasm_bindgen_subscriptions};
 pub use serde_wasm_bindgen::*;
@@ -139,6 +141,30 @@ impl RpcClient {
     #[wasm_bindgen(js_name = unsubscribeDaaScore)]
     pub async fn unsubscribe_daa_score(&self) -> JsResult<()> {
         self.client.stop_notify(ListenerId::default(), Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
+        Ok(())
+    }
+
+    /// Subscription to UTXOs Changed notifications
+    #[wasm_bindgen(js_name = subscribeUtxosChanged)]
+    pub async fn subscribe_utxos_changed(&self, addresses: &JsValue) -> JsResult<()> {
+        let addresses = Array::from(addresses)
+            .to_vec()
+            .into_iter()
+            .map(|jsv| from_value(jsv).map_err(|err| JsError::new(&err.to_string())))
+            .collect::<std::result::Result<Vec<Address>, JsError>>()?;
+        self.client.start_notify(ListenerId::default(), Scope::UtxosChanged(UtxosChangedScope { addresses })).await?;
+        Ok(())
+    }
+
+    /// Unsubscribe from DAA Score (test)
+    #[wasm_bindgen(js_name = unsubscribeUtxosChanged)]
+    pub async fn unsubscribe_utxos_changed(&self, addresses: &JsValue) -> JsResult<()> {
+        let addresses = Array::from(addresses)
+            .to_vec()
+            .into_iter()
+            .map(|jsv| from_value(jsv).map_err(|err| JsError::new(&err.to_string())))
+            .collect::<std::result::Result<Vec<Address>, JsError>>()?;
+        self.client.stop_notify(ListenerId::default(), Scope::UtxosChanged(UtxosChangedScope { addresses })).await?;
         Ok(())
     }
 
