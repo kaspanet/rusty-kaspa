@@ -26,7 +26,7 @@ impl<'a> KaspadHandshake<'a> {
         debug!("starting receive version flow");
 
         let version_message = dequeue_with_timeout!(version_receiver, Payload::Version)?;
-        debug!("accepted version massage: {version_message:?}");
+        debug!("accepted version message: {version_message:?}");
 
         let verack_message = make_message!(Payload::Verack, VerackMessage {});
         router.enqueue(verack_message).await?;
@@ -41,7 +41,7 @@ impl<'a> KaspadHandshake<'a> {
     ) -> Result<(), ProtocolError> {
         debug!("starting send version flow");
 
-        debug!("sending version massage: {version_message:?}");
+        debug!("sending version message: {version_message:?}");
         let version_message = make_message!(Payload::Version, version_message);
         router.enqueue(version_message).await?;
 

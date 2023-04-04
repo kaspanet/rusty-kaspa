@@ -9,7 +9,6 @@ use uuid::Uuid;
 pub(crate) enum HubEvent {
     NewPeer(Arc<Router>),
     PeerClosing(Uuid),
-    Broadcast(Box<KaspadMessage>),
 }
 
 /// Hub of active peers (represented as Router objects). Note that all public methods of this type are exposed through the Adaptor
@@ -20,7 +19,7 @@ pub struct Hub {
 }
 
 impl Hub {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self { peers: Arc::new(RwLock::new(HashMap::new())) }
     }
 
@@ -47,9 +46,6 @@ impl Hub {
                         if let Some(router) = self.peers.write().remove(&peer_id) {
                             debug!("P2P, Hub event loop, removing peer, router-id: {}", router.identity());
                         }
-                    }
-                    HubEvent::Broadcast(msg) => {
-                        self.broadcast(*msg).await;
                     }
                 }
             }
@@ -97,5 +93,11 @@ impl Hub {
     /// Returns a list of all currently active peers
     pub fn active_peers(&self) -> Vec<Peer> {
         self.peers.read().values().map(|r| r.as_ref().into()).collect()
+    }
+}
+
+impl Default for Hub {
+    fn default() -> Self {
+        Self::new()
     }
 }

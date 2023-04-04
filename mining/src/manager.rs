@@ -7,7 +7,11 @@ use crate::{
     cache::BlockTemplateCache,
     consensus_context::ConsensusMiningContext,
     errors::MiningManagerResult,
-    mempool::{config::Config, errors::RuleResult, Mempool},
+    mempool::{
+        config::Config,
+        tx::{Orphan, Priority},
+        Mempool,
+    },
     model::{
         candidate_tx::CandidateTransaction,
         owner_txs::{GroupedOwnerTransactions, ScriptPublicKeySet},
@@ -120,10 +124,10 @@ impl<T: ConsensusMiningContext + ?Sized> MiningManager<T> {
     pub fn validate_and_insert_transaction(
         &self,
         transaction: Transaction,
-        is_high_priority: bool,
-        allow_orphan: bool,
+        priority: Priority,
+        orphan: Orphan,
     ) -> MiningManagerResult<Vec<Arc<Transaction>>> {
-        Ok(self.mempool.write().validate_and_insert_transaction(transaction, is_high_priority, allow_orphan)?)
+        Ok(self.mempool.write().validate_and_insert_transaction(transaction, priority, orphan)?)
     }
 
     /// Exposed only for tests. Ordinary users should let the mempool create the mutable tx internally
@@ -131,10 +135,10 @@ impl<T: ConsensusMiningContext + ?Sized> MiningManager<T> {
     pub fn validate_and_insert_mutable_transaction(
         &self,
         transaction: MutableTransaction,
-        is_high_priority: bool,
-        allow_orphan: bool,
+        priority: Priority,
+        orphan: Orphan,
     ) -> MiningManagerResult<Vec<Arc<Transaction>>> {
-        Ok(self.mempool.write().validate_and_insert_mutable_transaction(transaction, is_high_priority, allow_orphan)?)
+        Ok(self.mempool.write().validate_and_insert_mutable_transaction(transaction, priority, orphan)?)
     }
 
     /// Try to return a mempool transaction by its id.
@@ -147,6 +151,11 @@ impl<T: ConsensusMiningContext + ?Sized> MiningManager<T> {
         include_orphan_pool: bool,
     ) -> Option<MutableTransaction> {
         self.mempool.read().get_transaction(transaction_id, include_transaction_pool, include_orphan_pool)
+    }
+
+    /// Returns whether the mempool holds this transaction in any form.
+    pub fn has_transaction(&self, transaction_id: &TransactionId, include_transaction_pool: bool, include_orphan_pool: bool) -> bool {
+        self.mempool.read().has_transaction(transaction_id, include_transaction_pool, include_orphan_pool)
     }
 
     pub fn get_all_transactions(
@@ -179,8 +188,8 @@ impl<T: ConsensusMiningContext + ?Sized> MiningManager<T> {
         Ok(self.mempool.write().handle_new_block_transactions(block_transactions)?)
     }
 
-    pub fn revalidate_high_priority_transactions(&self) -> RuleResult<Vec<TransactionId>> {
-        self.mempool.write().revalidate_high_priority_transactions()
+    pub fn revalidate_high_priority_transactions(&self) -> MiningManagerResult<Vec<TransactionId>> {
+        Ok(self.mempool.write().revalidate_high_priority_transactions()?)
     }
 
     /// is_transaction_output_dust returns whether or not the passed transaction output

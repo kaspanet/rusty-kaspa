@@ -69,6 +69,7 @@ use kaspa_consensus_core::{
     BlockHashSet,
 };
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
+use kaspa_utils::option::OptionExtensions;
 
 use crossbeam_channel::{unbounded as unbounded_crossbeam, Receiver as CrossbeamReceiver, Sender as CrossbeamSender};
 use futures_util::future::BoxFuture;
@@ -166,6 +167,9 @@ pub struct Consensus {
 
     // Counters
     pub counters: Arc<ProcessingCounters>,
+
+    // Config
+    config: Config,
 }
 
 impl Consensus {
@@ -175,6 +179,7 @@ impl Consensus {
         notification_root: Arc<ConsensusNotificationRoot>,
         counters: Arc<ProcessingCounters>,
     ) -> Self {
+        let config = config.clone();
         let params = &config.params;
         let perf_params = &config.perf;
         //
@@ -524,6 +529,7 @@ impl Consensus {
             depth_manager,
             notification_root,
             counters,
+            config,
         }
     }
 
@@ -657,6 +663,11 @@ impl ConsensusApi for Consensus {
             let sink = state.ghostdag_data.selected_parent;
             self.headers_store.get_timestamp(sink).unwrap()
         })
+    }
+
+    fn is_nearly_synced(&self) -> bool {
+        // See comment within `config.is_nearly_synced`
+        self.get_sink_timestamp().has_value_and(|&t| self.config.is_nearly_synced(t))
     }
 
     fn get_virtual_parents(&self) -> BlockHashSet {

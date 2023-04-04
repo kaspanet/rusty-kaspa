@@ -415,7 +415,7 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
         try_join_all(prev_jobs).await?;
         progress_reporter.report_completion(prev_chunk_len);
 
-        // TODO: raise new block template event
+        self.ctx.on_new_block_template().await?;
 
         Ok(())
     }
@@ -444,6 +444,8 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
             }
             current_daa_score = block.header.daa_score;
             // TODO: decide if we resolve virtual separately on long IBD
+            // TODO: handle peer banning
+            // TODO: call self.ctx.on_new_block for every inserted block
             jobs.push(consensus.validate_and_insert_block(block, true));
         }
 

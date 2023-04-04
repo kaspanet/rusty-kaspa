@@ -1,8 +1,6 @@
 use crate::{flow_context::FlowContext, flow_trait::Flow};
-use kaspa_addressmanager::NetAddress;
-
 use itertools::Itertools;
-
+use kaspa_addressmanager::NetAddress;
 use kaspa_p2p_lib::{
     common::ProtocolError,
     dequeue, dequeue_with_timeout, make_message,
@@ -10,7 +8,6 @@ use kaspa_p2p_lib::{
     IncomingRoute, Router,
 };
 use rand::seq::SliceRandom;
-
 use std::{net::IpAddr, sync::Arc};
 
 /// The maximum number of addresses that are sent in a single kaspa Addresses message.

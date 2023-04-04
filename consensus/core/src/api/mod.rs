@@ -38,7 +38,7 @@ pub trait ConsensusApi: Send + Sync {
     }
 
     /// Populates the mempool transaction with maximally found UTXO entry data and proceeds to full transaction
-    /// validation if all are found. If validation is successful, also [`calculated_fee`] is expected to be populated
+    /// validation if all are found. If validation is successful, also [`transaction.calculated_fee`] is expected to be populated
     fn validate_mempool_transaction_and_populate(&self, transaction: &mut MutableTransaction) -> TxResult<()> {
         unimplemented!()
     }
@@ -56,6 +56,13 @@ pub trait ConsensusApi: Send + Sync {
     }
 
     fn get_sink_timestamp(&self) -> Option<u64> {
+        unimplemented!()
+    }
+
+    /// Returns whether this consensus is considered synced or close to being synced.
+    ///
+    /// This info is used to determine if it's ok to use a block template from this node for mining purposes.
+    fn is_nearly_synced(&self) -> bool {
         unimplemented!()
     }
 

@@ -139,6 +139,7 @@ impl Router {
     }
 
     fn incoming_flow_channel_size() -> usize {
+        // TODO: reevaluate when the node is fully functional
         128
     }
 
@@ -153,9 +154,18 @@ impl Router {
         }
     }
 
-    /// Subscribe to specific message types. This should be used by `ConnectionInitializer` instances to register application-specific flows
+    /// Subscribe to specific message types.
+    ///
+    /// This should be used by `ConnectionInitializer` instances to register application-specific flows
     pub fn subscribe(&self, msg_types: Vec<KaspadMessagePayloadType>) -> IncomingRoute {
-        let (sender, receiver) = mpsc_channel(Self::incoming_flow_channel_size());
+        self.subscribe_with_capacity(msg_types, Self::incoming_flow_channel_size())
+    }
+
+    /// Subscribe to specific message types with a specific channel capacity.
+    ///
+    /// This should be used by `ConnectionInitializer` instances to register application-specific flows.
+    pub fn subscribe_with_capacity(&self, msg_types: Vec<KaspadMessagePayloadType>, capacity: usize) -> IncomingRoute {
+        let (sender, receiver) = mpsc_channel(capacity);
         let mut map = self.routing_map.write();
         for msg_type in msg_types {
             match map.insert(msg_type, sender.clone()) {
@@ -194,11 +204,6 @@ impl Router {
             Ok(_r) => Ok(()),
             Err(_e) => Err(ProtocolError::ConnectionClosed),
         }
-    }
-
-    /// Broadcast a locally-originated message to all active network peers
-    pub async fn broadcast(&self, msg: KaspadMessage) -> bool {
-        self.hub_sender.send(HubEvent::Broadcast(Box::new(msg))).await.is_ok()
     }
 
     /// Closes the router, signals exit, and cleans up all resources so that underlying connections will be aborted correctly.

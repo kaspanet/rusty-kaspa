@@ -5,14 +5,17 @@ extern crate kaspa_hashes;
 use kaspa_addressmanager::AddressManager;
 use kaspa_consensus::consensus::factory::Factory as ConsensusFactory;
 use kaspa_consensus::pipeline::ProcessingCounters;
+use kaspa_consensus_core::api::DynConsensus;
 use kaspa_consensus_core::networktype::NetworkType;
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_consensus_notify::service::NotifyService;
-
 use kaspa_consensusmanager::ConsensusManager;
 use kaspa_core::{core::Core, signals::Signals, task::runtime::AsyncRuntime};
 use kaspa_index_processor::service::IndexService;
+use kaspa_mining::manager::MiningManager;
+use kaspa_p2p_flows::flow_context::FlowContext;
 use kaspa_rpc_service::RpcCoreServer;
+
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -189,7 +192,7 @@ pub fn main() {
     // DB used for addresses store and for multi-consensus management
     let meta_db = kaspa_database::prelude::open_db(meta_db_dir, true, 1);
 
-    let grpc_server_addr = args.rpclisten.unwrap_or_else(|| "127.0.0.1:16610".to_string()).parse().unwrap();
+    let grpc_server_addr = args.rpclisten.unwrap_or_else(|| format!("127.0.0.1:{}", network_type.port())).parse().unwrap();
 
     let core = Arc::new(Core::new());
 
@@ -225,25 +228,24 @@ pub fn main() {
 
     let amgr = AddressManager::new(meta_db);
 
+    let mining_manager = Arc::new(MiningManager::new(
+        consensus_manager.consensus().consensus.clone() as DynConsensus, // TEMP
+        config.target_time_per_block,
+        false,
+        config.max_block_mass,
+        None,
+    ));
+
+    let flow_context = Arc::new(FlowContext::new(consensus_manager.clone(), amgr, &config, mining_manager));
+    let p2p_service = Arc::new(P2pService::new(flow_context, args.connect, args.listen, args.outbound_target, args.inbound_limit));
+
+    // TODO: pass the FlowContext to RpcCoreService
     let rpc_core_server = Arc::new(RpcCoreServer::new(
         consensus_manager.clone(),
         notify_service.notifier(),
         index_service.as_ref().map(|x| x.notifier()),
     ));
     let grpc_server = Arc::new(GrpcServer::new(grpc_server_addr, rpc_core_server.service()));
-    let p2p_service = Arc::new(P2pService::new(
-        consensus_manager.clone(),
-        amgr,
-        &config,
-        args.connect,
-        args.listen,
-        args.outbound_target,
-        args.inbound_limit,
-    ));
-
-    // TODO: TEMP: temp mining manager initialization just to make sure it complies with consensus
-    // let _mining_manager =
-    //     MiningManager::new(consensus.clone() as DynConsensus, config.target_time_per_block, false, config.max_block_mass, None);
 
     // Create an async runtime and register the top-level async services
     let async_runtime = Arc::new(AsyncRuntime::new(args.async_threads));

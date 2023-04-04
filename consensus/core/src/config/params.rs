@@ -1,5 +1,6 @@
 use super::genesis::{GenesisBlock, DEVNET_GENESIS, GENESIS, SIMNET_GENESIS, TESTNET_GENESIS};
 use crate::{networktype::NetworkType, BlockLevel, KType};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Consensus parameters. Contains settings and configurations which are consensus-sensitive.
 /// Changing one of these on a network node would exclude and prevent it from reaching consensus
@@ -36,9 +37,21 @@ pub struct Params {
     pub pruning_proof_m: u64,
 }
 
+fn unix_now() -> u64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64
+}
+
 impl Params {
     pub fn expected_daa_window_duration_in_milliseconds(&self) -> u64 {
         self.target_time_per_block * self.difficulty_window_size as u64
+    }
+
+    /// Returns whether the sink timestamp is recent enough and the node is considered synced or nearly synced.
+    pub fn is_nearly_synced(&self, sink_timestamp: u64) -> bool {
+        // We consider the node close to being synced if the sink (virtual selected parent) block
+        // timestamp is within DAA window duration far in the past. Blocks mined over such DAG state would
+        // enter the DAA window of fully-synced nodes and thus contribute to overall network difficulty
+        unix_now() < sink_timestamp + self.expected_daa_window_duration_in_milliseconds()
     }
 
     pub fn network_name(&self) -> String {

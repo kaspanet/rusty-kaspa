@@ -3,7 +3,6 @@ use clap::{arg, command, Arg, Command};
 
 pub struct Defaults {
     pub appdir: &'static str,
-    pub rpclisten: &'static str,
     pub rpclisten_borsh: &'static str,
     pub rpclisten_json: &'static str,
     pub async_threads: usize,
@@ -21,7 +20,6 @@ impl Default for Defaults {
     fn default() -> Self {
         Defaults {
             appdir: "datadir",
-            rpclisten: "127.0.0.1:16110",
             rpclisten_borsh: "127.0.0.1:17110",
             rpclisten_json: "127.0.0.1:18110",
             async_threads: num_cpus::get() / 2,
@@ -86,8 +84,6 @@ pub fn cli(defaults: &Defaults) -> Command {
             Arg::new("rpclisten")
                 .long("rpclisten")
                 .value_name("rpclisten")
-                // .default_value(DEFAULT_LISTEN_GRPC)
-                .default_value(defaults.rpclisten)
                 .num_args(0..=1)
                 .require_equals(true)
                 .help("Interface:port to listen for gRPC connections (default port: 16110, testnet: 16210)."),
