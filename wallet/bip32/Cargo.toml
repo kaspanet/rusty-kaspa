@@ -4,8 +4,10 @@ description = "BIP32 for Kaspa"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
-include.workspace = true
 license.workspace = true
+# include *.txt files for word lists
+include = ["src/**/*.rs", "Cargo.toml", "src/**/*.txt"]
+
 
 [dependencies]
 rand_core.workspace = true
