@@ -166,7 +166,7 @@ impl Deref for StagingConsensus {
 #[derive(Clone)]
 pub struct ConsensusInstance {
     session_lock: Arc<TokioRwLock<()>>,
-    pub consensus: DynConsensus, // TEMP: pub
+    consensus: DynConsensus,
 }
 
 impl ConsensusInstance {

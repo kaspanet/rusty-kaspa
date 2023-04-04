@@ -1,9 +1,6 @@
-use crate::{
-    consensus_context::ConsensusMiningContext,
-    model::{
-        candidate_tx::CandidateTransaction,
-        owner_txs::{GroupedOwnerTransactions, ScriptPublicKeySet},
-    },
+use crate::model::{
+    candidate_tx::CandidateTransaction,
+    owner_txs::{GroupedOwnerTransactions, ScriptPublicKeySet},
 };
 
 use self::{
@@ -39,23 +36,18 @@ pub(crate) mod validate_and_insert_transaction;
 ///   rebroadcasts them once in a while.
 /// - Transactions received through P2P have **low-priority**. They expire after
 ///   60 seconds and are removed if not inserted in a block for mining.
-pub(crate) struct Mempool<T: ConsensusMiningContext + ?Sized> {
+pub(crate) struct Mempool {
     config: Arc<Config>,
-    consensus: Arc<T>,
-    transaction_pool: TransactionsPool<T>,
-    orphan_pool: OrphanPool<T>,
+    transaction_pool: TransactionsPool,
+    orphan_pool: OrphanPool,
 }
 
-impl<T: ConsensusMiningContext + ?Sized> Mempool<T> {
-    pub(crate) fn new(consensus: Arc<T>, config: Config) -> Self {
+impl Mempool {
+    pub(crate) fn new(config: Config) -> Self {
         let config = Arc::new(config);
-        let transaction_pool = TransactionsPool::new(consensus.clone(), config.clone());
-        let orphan_pool = OrphanPool::new(consensus.clone(), config.clone());
-        Self { config, consensus, transaction_pool, orphan_pool }
-    }
-
-    pub(crate) fn consensus(&self) -> &T {
-        &self.consensus
+        let transaction_pool = TransactionsPool::new(config.clone());
+        let orphan_pool = OrphanPool::new(config.clone());
+        Self { config, transaction_pool, orphan_pool }
     }
 
     pub(crate) fn get_transaction(

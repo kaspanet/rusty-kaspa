@@ -1,6 +1,6 @@
 use super::coinbase_mock::CoinbaseManagerMock;
-use crate::consensus_context::ConsensusMiningContext;
 use kaspa_consensus_core::{
+    api::ConsensusApi,
     block::{BlockTemplate, MutableBlock},
     coinbase::MinerData,
     constants::BLOCK_VERSION,
@@ -70,7 +70,7 @@ impl ConsensusMock {
     }
 }
 
-impl ConsensusMiningContext for ConsensusMock {
+impl ConsensusApi for ConsensusMock {
     fn build_block_template(&self, miner_data: MinerData, mut txs: Vec<Transaction>) -> Result<BlockTemplate, RuleError> {
         let coinbase_manager = CoinbaseManagerMock::new();
         let coinbase = coinbase_manager.expected_coinbase_transaction(miner_data.clone());

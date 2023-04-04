@@ -1,14 +1,12 @@
 use std::sync::Arc;
 
-use crate::{
-    consensus_context::ConsensusMiningContext,
-    mempool::{
-        errors::{RuleError, RuleResult},
-        model::{pool::Pool, tx::MempoolTransaction},
-        Mempool,
-    },
+use crate::mempool::{
+    errors::{RuleError, RuleResult},
+    model::{pool::Pool, tx::MempoolTransaction},
+    Mempool,
 };
 use kaspa_consensus_core::{
+    api::ConsensusApi,
     constants::UNACCEPTED_DAA_SCORE,
     tx::{MutableTransaction, Transaction, TransactionId, TransactionOutpoint, UtxoEntry},
 };
@@ -16,34 +14,36 @@ use kaspa_core::info;
 
 use super::tx::{Orphan, Priority};
 
-impl<T: ConsensusMiningContext + ?Sized> Mempool<T> {
+impl Mempool {
     pub(crate) fn validate_and_insert_transaction(
         &mut self,
+        consensus: &dyn ConsensusApi,
         transaction: Transaction,
         priority: Priority,
         orphan: Orphan,
     ) -> RuleResult<Vec<Arc<Transaction>>> {
-        self.validate_and_insert_mutable_transaction(MutableTransaction::from_tx(transaction), priority, orphan)
+        self.validate_and_insert_mutable_transaction(consensus, MutableTransaction::from_tx(transaction), priority, orphan)
     }
 
     pub(crate) fn validate_and_insert_mutable_transaction(
         &mut self,
+        consensus: &dyn ConsensusApi,
         mut transaction: MutableTransaction,
         priority: Priority,
         orphan: Orphan,
     ) -> RuleResult<Vec<Arc<Transaction>>> {
         // Populate mass in the beginning, it will be used in multiple places throughout the validation and insertion.
-        transaction.calculated_mass = Some(self.consensus().calculate_transaction_mass(&transaction.tx));
+        transaction.calculated_mass = Some(consensus.calculate_transaction_mass(&transaction.tx));
 
         self.validate_transaction_pre_utxo_entry(&transaction)?;
 
-        match self.populate_entries_and_try_validate(&mut transaction) {
+        match self.populate_entries_and_try_validate(consensus, &mut transaction) {
             Ok(_) => {}
             Err(RuleError::RejectMissingOutpoint) => {
                 if orphan == Orphan::Forbidden {
                     return Err(RuleError::RejectDisallowedOrphan(transaction.id()));
                 }
-                self.orphan_pool.try_add_orphan(transaction, priority)?;
+                self.orphan_pool.try_add_orphan(consensus, transaction, priority)?;
                 return Ok(vec![]);
             }
             Err(err) => {
@@ -58,8 +58,9 @@ impl<T: ConsensusMiningContext + ?Sized> Mempool<T> {
 
         // Here the accepted transaction is cloned in order to prevent having self borrowed immutably for the
         // transaction reference and mutably for the call to process_orphans_after_accepted_transaction
-        let accepted_transaction = self.transaction_pool.add_transaction(transaction, priority)?.mtx.tx.clone();
-        let accepted_orphans = self.process_orphans_after_accepted_transaction(&accepted_transaction)?;
+        let accepted_transaction =
+            self.transaction_pool.add_transaction(transaction, consensus.get_virtual_daa_score(), priority)?.mtx.tx.clone();
+        let accepted_orphans = self.process_orphans_after_accepted_transaction(consensus, &accepted_transaction)?;
         Ok(accepted_orphans)
     }
 
@@ -92,12 +93,14 @@ impl<T: ConsensusMiningContext + ?Sized> Mempool<T> {
     /// Returns the list of all successfully processed transactions.
     pub(crate) fn process_orphans_after_accepted_transaction(
         &mut self,
+        consensus: &dyn ConsensusApi,
         accepted_transaction: &Transaction,
     ) -> RuleResult<Vec<Arc<Transaction>>> {
         // Rust rewrite:
         // - The function is relocated from OrphanPool into Mempool
         let mut added_transactions = Vec::new();
-        let mut unorphaned_transactions = self.get_unorphaned_transactions_after_accepted_transaction(accepted_transaction)?;
+        let mut unorphaned_transactions =
+            self.get_unorphaned_transactions_after_accepted_transaction(consensus, accepted_transaction)?;
         while !unorphaned_transactions.is_empty() {
             let transaction = unorphaned_transactions.pop().unwrap();
 
@@ -114,6 +117,7 @@ impl<T: ConsensusMiningContext + ?Sized> Mempool<T> {
     /// transaction has been accepted.
     fn get_unorphaned_transactions_after_accepted_transaction(
         &mut self,
+        consensus: &dyn ConsensusApi,
         transaction: &Transaction,
     ) -> RuleResult<Vec<MempoolTransaction>> {
         let mut accepted_orphans = Vec::new();
@@ -139,7 +143,7 @@ impl<T: ConsensusMiningContext + ?Sized> Mempool<T> {
                 continue;
             }
             if let Some(orphan_id) = orphan_id {
-                match self.unorphan_transaction(&orphan_id) {
+                match self.unorphan_transaction(consensus, &orphan_id) {
                     Ok(accepted_tx) => {
                         accepted_orphans.push(accepted_tx);
                     }
@@ -154,7 +158,11 @@ impl<T: ConsensusMiningContext + ?Sized> Mempool<T> {
         Ok(accepted_orphans)
     }
 
-    fn unorphan_transaction(&mut self, transaction_id: &TransactionId) -> RuleResult<MempoolTransaction> {
+    fn unorphan_transaction(
+        &mut self,
+        consensus: &dyn ConsensusApi,
+        transaction_id: &TransactionId,
+    ) -> RuleResult<MempoolTransaction> {
         // Rust rewrite:
         // - Instead of adding the validated transaction to mempool transaction pool,
         //   we return it.
@@ -168,9 +176,9 @@ impl<T: ConsensusMiningContext + ?Sized> Mempool<T> {
         assert_eq!(transactions.len(), 1, "the list returned by remove_orphan is expected to contain exactly one transaction");
         let mut transaction = transactions.pop().unwrap();
 
-        self.consensus().validate_mempool_transaction_and_populate(&mut transaction.mtx)?;
+        consensus.validate_mempool_transaction_and_populate(&mut transaction.mtx)?;
         self.validate_transaction_in_context(&transaction.mtx)?;
-        transaction.added_at_daa_score = self.consensus().get_virtual_daa_score();
+        transaction.added_at_daa_score = consensus.get_virtual_daa_score();
         Ok(transaction)
     }
 }

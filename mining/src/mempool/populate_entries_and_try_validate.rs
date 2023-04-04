@@ -1,11 +1,12 @@
-use crate::{
-    consensus_context::ConsensusMiningContext,
-    mempool::{errors::RuleResult, model::pool::Pool, Mempool},
-};
-use kaspa_consensus_core::{constants::UNACCEPTED_DAA_SCORE, tx::MutableTransaction, tx::UtxoEntry};
+use crate::mempool::{errors::RuleResult, model::pool::Pool, Mempool};
+use kaspa_consensus_core::{api::ConsensusApi, constants::UNACCEPTED_DAA_SCORE, tx::MutableTransaction, tx::UtxoEntry};
 
-impl<T: ConsensusMiningContext + ?Sized> Mempool<T> {
-    pub(crate) fn populate_entries_and_try_validate(&self, transaction: &mut MutableTransaction) -> RuleResult<()> {
+impl Mempool {
+    pub(crate) fn populate_entries_and_try_validate(
+        &self,
+        consensus: &dyn ConsensusApi,
+        transaction: &mut MutableTransaction,
+    ) -> RuleResult<()> {
         // Rust rewrite note:
         // Neither parentsInPool nor missingOutpoints are actually used or needed by the
         // callers so we neither build nor return them.
@@ -13,7 +14,7 @@ impl<T: ConsensusMiningContext + ?Sized> Mempool<T> {
         // missingOutpoints is reduced to a simple ConsensusError::TxMissingOutpoints.
 
         self.populate_mempool_entries(transaction);
-        self.consensus().validate_mempool_transaction_and_populate(transaction)?;
+        consensus.validate_mempool_transaction_and_populate(transaction)?;
         Ok(())
     }
 

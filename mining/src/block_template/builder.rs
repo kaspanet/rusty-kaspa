@@ -1,30 +1,19 @@
-use std::{
-    sync::Arc,
-    time::{SystemTime, UNIX_EPOCH},
-};
-
-use crate::{
-    block_template::selector::TransactionsSelector, consensus_context::ConsensusMiningContext,
-    model::candidate_tx::CandidateTransaction,
-};
-
 use super::{errors::BuilderResult, policy::Policy};
-use kaspa_consensus_core::{block::BlockTemplate, coinbase::MinerData, merkle::calc_hash_merkle_root, tx::COINBASE_TRANSACTION_INDEX};
+use crate::{block_template::selector::TransactionsSelector, model::candidate_tx::CandidateTransaction};
+use kaspa_consensus_core::{
+    api::ConsensusApi, block::BlockTemplate, coinbase::MinerData, merkle::calc_hash_merkle_root, tx::COINBASE_TRANSACTION_INDEX,
+};
 use kaspa_core::debug;
+use std::time::{SystemTime, UNIX_EPOCH};
 
-pub(crate) struct BlockTemplateBuilder<T: ConsensusMiningContext + ?Sized> {
-    consensus: Arc<T>,
+pub(crate) struct BlockTemplateBuilder {
     policy: Policy,
 }
 
-impl<T: ConsensusMiningContext + ?Sized> BlockTemplateBuilder<T> {
-    pub(crate) fn new(consensus: Arc<T>, max_block_mass: u64) -> Self {
+impl BlockTemplateBuilder {
+    pub(crate) fn new(max_block_mass: u64) -> Self {
         let policy = Policy::new(max_block_mass);
-        Self { consensus, policy }
-    }
-
-    pub(crate) fn consensus(&self) -> &T {
-        &self.consensus
+        Self { policy }
     }
 
     /// BuildBlockTemplate creates a block template for a miner to consume
@@ -92,18 +81,20 @@ impl<T: ConsensusMiningContext + ?Sized> BlockTemplateBuilder<T> {
     ///   -----------------------------------  --
     pub(crate) fn build_block_template(
         &self,
+        consensus: &dyn ConsensusApi,
         miner_data: &MinerData,
         transactions: Vec<CandidateTransaction>,
     ) -> BuilderResult<BlockTemplate> {
         debug!("Considering {} transactions for inclusion to new block", transactions.len());
         let mut selector = TransactionsSelector::new(self.policy.clone(), transactions);
         let block_txs = selector.select_transactions();
-        Ok(self.consensus().build_block_template(miner_data.clone(), block_txs)?)
+        Ok(consensus.build_block_template(miner_data.clone(), block_txs)?)
     }
 
     /// modify_block_template clones an existing block template, modifies it to the requested coinbase data and updates the timestamp
     pub(crate) fn modify_block_template(
         &self,
+        consensus: &dyn ConsensusApi,
         new_miner_data: &MinerData,
         block_template_to_modify: &BlockTemplate,
     ) -> BuilderResult<BlockTemplate> {
@@ -111,7 +102,7 @@ impl<T: ConsensusMiningContext + ?Sized> BlockTemplateBuilder<T> {
 
         // The first transaction is always the coinbase transaction
         let coinbase_tx = &mut block_template.block.transactions[COINBASE_TRANSACTION_INDEX];
-        let new_payload = self.consensus().modify_coinbase_payload(coinbase_tx.payload.clone(), new_miner_data)?;
+        let new_payload = consensus.modify_coinbase_payload(coinbase_tx.payload.clone(), new_miner_data)?;
         coinbase_tx.payload = new_payload;
         if block_template.coinbase_has_red_reward {
             // The last output is always the coinbase red blocks reward

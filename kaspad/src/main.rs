@@ -5,7 +5,6 @@ extern crate kaspa_hashes;
 use kaspa_addressmanager::AddressManager;
 use kaspa_consensus::consensus::factory::Factory as ConsensusFactory;
 use kaspa_consensus::pipeline::ProcessingCounters;
-use kaspa_consensus_core::api::DynConsensus;
 use kaspa_consensus_core::networktype::NetworkType;
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_consensus_notify::service::NotifyService;
@@ -226,17 +225,11 @@ pub fn main() {
         None
     };
 
-    let amgr = AddressManager::new(meta_db);
+    let address_manager = AddressManager::new(meta_db);
 
-    let mining_manager = Arc::new(MiningManager::new(
-        consensus_manager.consensus().consensus.clone() as DynConsensus, // TEMP
-        config.target_time_per_block,
-        false,
-        config.max_block_mass,
-        None,
-    ));
+    let mining_manager = Arc::new(MiningManager::new(config.target_time_per_block, false, config.max_block_mass, None));
 
-    let flow_context = Arc::new(FlowContext::new(consensus_manager.clone(), amgr, &config, mining_manager));
+    let flow_context = Arc::new(FlowContext::new(consensus_manager.clone(), address_manager, &config, mining_manager));
     let p2p_service = Arc::new(P2pService::new(flow_context, args.connect, args.listen, args.outbound_target, args.inbound_limit));
 
     // TODO: pass the FlowContext to RpcCoreService

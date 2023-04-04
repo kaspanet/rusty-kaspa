@@ -1,5 +1,4 @@
 use crate::{
-    consensus_context::ConsensusMiningContext,
     mempool::{
         config::Config,
         errors::{RuleError, RuleResult},
@@ -12,7 +11,7 @@ use kaspa_consensus_core::{
     tx::TransactionId,
     tx::{MutableTransaction, TransactionOutpoint},
 };
-use kaspa_core::{debug, warn};
+use kaspa_core::{debug, time::unix_now, warn};
 use std::{
     collections::{hash_map::Keys, hash_set::Iter},
     sync::Arc,
@@ -42,8 +41,8 @@ use super::pool::TransactionsEdges;
 ///   of low-priority transactions sorted by fee rates. This design might eventually
 ///   prove to be sub-optimal, in which case an index should be implemented, probably
 ///   requiring smart pointers eventually or an indirection stage too.
-pub(crate) struct TransactionsPool<T: ConsensusMiningContext + ?Sized> {
-    consensus: Arc<T>,
+pub(crate) struct TransactionsPool {
+    /// Mempool config
     config: Arc<Config>,
 
     /// Store of transactions
@@ -61,10 +60,9 @@ pub(crate) struct TransactionsPool<T: ConsensusMiningContext + ?Sized> {
     utxo_set: MempoolUtxoSet,
 }
 
-impl<T: ConsensusMiningContext + ?Sized> TransactionsPool<T> {
-    pub(crate) fn new(consensus: Arc<T>, config: Arc<Config>) -> Self {
+impl TransactionsPool {
+    pub(crate) fn new(config: Arc<Config>) -> Self {
         Self {
-            consensus,
             config,
             all_transactions: MempoolTransactionCollection::default(),
             parent_transactions: TransactionsEdges::default(),
@@ -75,13 +73,17 @@ impl<T: ConsensusMiningContext + ?Sized> TransactionsPool<T> {
         }
     }
 
-    pub(crate) fn consensus(&self) -> &T {
-        &self.consensus
-    }
+    // pub(crate) fn consensus(&self) -> &T {
+    //     &self.consensus
+    // }
 
     /// Add a mutable transaction to the pool
-    pub(crate) fn add_transaction(&mut self, transaction: MutableTransaction, priority: Priority) -> RuleResult<&MempoolTransaction> {
-        let virtual_daa_score = self.consensus().get_virtual_daa_score();
+    pub(crate) fn add_transaction(
+        &mut self,
+        transaction: MutableTransaction,
+        virtual_daa_score: u64,
+        priority: Priority,
+    ) -> RuleResult<&MempoolTransaction> {
         let transaction = MempoolTransaction::new(transaction, priority, virtual_daa_score);
         let id = transaction.id();
         self.add_mempool_transaction(transaction)?;
@@ -152,11 +154,10 @@ impl<T: ConsensusMiningContext + ?Sized> TransactionsPool<T> {
         self.all_transactions.remove(transaction_id).ok_or(RuleError::RejectMissingTransaction(*transaction_id))
     }
 
-    pub(crate) fn expire_low_priority_transactions(&mut self) -> RuleResult<()> {
-        let virtual_daa_score = self.consensus().get_virtual_daa_score();
-        let now = SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64;
-        if virtual_daa_score - self.last_expire_scan_daa_score < self.config.transaction_expire_scan_interval_daa_score
-            || now - self.last_expire_scan_time < self.config.transaction_expire_scan_interval_milliseconds
+    pub(crate) fn expire_low_priority_transactions(&mut self, virtual_daa_score: u64) -> RuleResult<()> {
+        let now = unix_now();
+        if virtual_daa_score < self.last_expire_scan_daa_score + self.config.transaction_expire_scan_interval_daa_score
+            || now < self.last_expire_scan_time + self.config.transaction_expire_scan_interval_milliseconds
         {
             return Ok(());
         }
@@ -168,7 +169,7 @@ impl<T: ConsensusMiningContext + ?Sized> TransactionsPool<T> {
             .values()
             .filter_map(|x| {
                 if (x.priority == Priority::Low)
-                    && virtual_daa_score - x.added_at_daa_score > self.config.transaction_expire_interval_daa_score
+                    && virtual_daa_score > x.added_at_daa_score + self.config.transaction_expire_interval_daa_score
                 {
                     debug!(
                         "Removing transaction {}, because it expired, DAAScore moved by {}, expire interval: {}",
@@ -273,7 +274,7 @@ impl<T: ConsensusMiningContext + ?Sized> TransactionsPool<T> {
 type IterTxId<'a> = Iter<'a, TransactionId>;
 type KeysTxId<'a> = Keys<'a, TransactionId, MempoolTransaction>;
 
-impl<'a, T: ConsensusMiningContext> TopologicalIndex<'a, KeysTxId<'a>, IterTxId<'a>, TransactionId> for TransactionsPool<T> {
+impl<'a> TopologicalIndex<'a, KeysTxId<'a>, IterTxId<'a>, TransactionId> for TransactionsPool {
     fn topology_nodes(&'a self) -> KeysTxId<'a> {
         self.all_transactions.keys()
     }
@@ -283,7 +284,7 @@ impl<'a, T: ConsensusMiningContext> TopologicalIndex<'a, KeysTxId<'a>, IterTxId<
     }
 }
 
-impl<T: ConsensusMiningContext + ?Sized> Pool for TransactionsPool<T> {
+impl Pool for TransactionsPool {
     #[inline]
     fn all(&self) -> &MempoolTransactionCollection {
         &self.all_transactions

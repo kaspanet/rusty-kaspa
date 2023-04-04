@@ -50,7 +50,7 @@ pub struct FlowContext {
     shared_transaction_requests: Arc<Mutex<HashSet<TransactionId>>>,
     is_ibd_running: Arc<AtomicBool>, // TODO: pass the context wrapped with Arc and avoid some of the internal ones
     pub amgr: Arc<Mutex<AddressManager>>,
-    mining_manager: Arc<MiningManager<dyn ConsensusApi>>,
+    mining_manager: Arc<MiningManager>,
 }
 
 pub struct IbdRunningGuard {
@@ -86,7 +86,7 @@ impl FlowContext {
         consensus_manager: Arc<ConsensusManager>,
         amgr: Arc<Mutex<AddressManager>>,
         config: &Config,
-        mining_manager: Arc<MiningManager<dyn ConsensusApi>>,
+        mining_manager: Arc<MiningManager>,
     ) -> Self {
         let hub = Hub::new();
         Self {
@@ -112,7 +112,7 @@ impl FlowContext {
         &self.hub
     }
 
-    pub fn mining_manager(&self) -> &MiningManager<dyn ConsensusApi> {
+    pub fn mining_manager(&self) -> &MiningManager {
         &self.mining_manager
     }
 
@@ -170,8 +170,9 @@ impl FlowContext {
         // Use a ProcessQueue so we get rid of duplicates
         let mut transactions_to_broadcast = ProcessQueue::new();
         for block in once(block).chain(blocks.into_iter()) {
-            transactions_to_broadcast
-                .enqueue_chunk(self.mining_manager().handle_new_block_transactions(&block.transactions)?.iter().map(|x| x.id()));
+            transactions_to_broadcast.enqueue_chunk(
+                self.mining_manager().handle_new_block_transactions(consensus, &block.transactions)?.iter().map(|x| x.id()),
+            );
         }
 
         // Don't relay transactions when in IBD
@@ -180,7 +181,8 @@ impl FlowContext {
         }
 
         if self.should_rebroadcast_transactions().await {
-            transactions_to_broadcast.enqueue_chunk(self.mining_manager().revalidate_high_priority_transactions()?.into_iter());
+            transactions_to_broadcast
+                .enqueue_chunk(self.mining_manager().revalidate_high_priority_transactions(consensus)?.into_iter());
         }
 
         self.broadcast_transactions(transactions_to_broadcast).await
@@ -205,8 +207,14 @@ impl FlowContext {
         // TODO: call a handler function or a predefined registered service
     }
 
-    pub async fn add_transaction(&self, transaction: Transaction, orphan: Orphan) -> Result<(), ProtocolError> {
-        let accepted_transactions = self.mining_manager().validate_and_insert_transaction(transaction, Priority::High, orphan)?;
+    pub async fn add_transaction(
+        &self,
+        consensus: &dyn ConsensusApi,
+        transaction: Transaction,
+        orphan: Orphan,
+    ) -> Result<(), ProtocolError> {
+        let accepted_transactions =
+            self.mining_manager().validate_and_insert_transaction(consensus, transaction, Priority::High, orphan)?;
         self.broadcast_transactions(accepted_transactions.iter().map(|x| x.id())).await
     }
 
