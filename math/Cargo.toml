@@ -4,8 +4,9 @@ description = "Kaspa misc math library"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
-include.workspace = true
 license.workspace = true
+# include benches into a published crate
+include = ["src/**/*.rs", "Cargo.toml", "benches/**/*.rs"]
 
 [dependencies]
 serde.workspace = true
