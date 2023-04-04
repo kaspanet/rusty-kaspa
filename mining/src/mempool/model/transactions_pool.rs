@@ -73,10 +73,6 @@ impl TransactionsPool {
         }
     }
 
-    // pub(crate) fn consensus(&self) -> &T {
-    //     &self.consensus
-    // }
-
     /// Add a mutable transaction to the pool
     pub(crate) fn add_transaction(
         &mut self,
