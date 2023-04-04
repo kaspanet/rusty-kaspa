@@ -1,17 +1,15 @@
-use crate::{
-    consensus_context::ConsensusMiningContext,
-    mempool::{
-        config::Config,
-        errors::{RuleError, RuleResult},
-        model::{
-            map::{MempoolTransactionCollection, OutpointIndex},
-            pool::Pool,
-            tx::MempoolTransaction,
-        },
-        tx::Priority,
+use crate::mempool::{
+    config::Config,
+    errors::{RuleError, RuleResult},
+    model::{
+        map::{MempoolTransactionCollection, OutpointIndex},
+        pool::Pool,
+        tx::MempoolTransaction,
     },
+    tx::Priority,
 };
 use kaspa_consensus_core::{
+    api::ConsensusApi,
     tx::MutableTransaction,
     tx::{TransactionId, TransactionOutpoint},
 };
@@ -35,8 +33,7 @@ use super::pool::TransactionsEdges;
 ///   introducing a indirection stage when the matching object is required.
 /// - "un-orphaning" a transaction induces a move of the object from orphan
 ///   to transactions pool with no reconstruction nor cloning.
-pub(crate) struct OrphanPool<T: ConsensusMiningContext + ?Sized> {
-    consensus: Arc<T>,
+pub(crate) struct OrphanPool {
     config: Arc<Config>,
     all_orphans: MempoolTransactionCollection,
     /// Transactions dependencies formed by outputs present in pool - successor relations.
@@ -45,20 +42,15 @@ pub(crate) struct OrphanPool<T: ConsensusMiningContext + ?Sized> {
     last_expire_scan: u64,
 }
 
-impl<T: ConsensusMiningContext + ?Sized> OrphanPool<T> {
-    pub(crate) fn new(consensus: Arc<T>, config: Arc<Config>) -> Self {
+impl OrphanPool {
+    pub(crate) fn new(config: Arc<Config>) -> Self {
         Self {
-            consensus,
             config,
             all_orphans: MempoolTransactionCollection::default(),
             chained_orphans: TransactionsEdges::default(),
             outpoint_owner_id: OutpointIndex::default(),
             last_expire_scan: 0,
         }
-    }
-
-    pub(crate) fn consensus(&self) -> &T {
-        &self.consensus
     }
 
     pub(crate) fn outpoint_orphan(&self, outpoint: &TransactionOutpoint) -> Option<&MempoolTransaction> {
@@ -69,7 +61,12 @@ impl<T: ConsensusMiningContext + ?Sized> OrphanPool<T> {
         self.outpoint_owner_id.get(outpoint).and_then(|id| self.all_orphans.get_mut(id))
     }
 
-    pub(crate) fn try_add_orphan(&mut self, transaction: MutableTransaction, priority: Priority) -> RuleResult<()> {
+    pub(crate) fn try_add_orphan(
+        &mut self,
+        consensus: &dyn ConsensusApi,
+        transaction: MutableTransaction,
+        priority: Priority,
+    ) -> RuleResult<()> {
         // Rust rewrite: original name is maybeAddOrphan
         if self.config.maximum_orphan_transaction_count == 0 {
             // TODO: determine how/why this may happen
@@ -80,7 +77,7 @@ impl<T: ConsensusMiningContext + ?Sized> OrphanPool<T> {
         self.check_orphan_double_spend(&transaction)?;
         // Make sure there is room in the pool for the new transaction
         self.limit_orphan_pool_size(1)?;
-        self.add_orphan(transaction, priority)?;
+        self.add_orphan(consensus, transaction, priority)?;
         Ok(())
     }
 
@@ -131,9 +128,9 @@ impl<T: ConsensusMiningContext + ?Sized> OrphanPool<T> {
         Ok(())
     }
 
-    fn add_orphan(&mut self, transaction: MutableTransaction, priority: Priority) -> RuleResult<()> {
+    fn add_orphan(&mut self, consensus: &dyn ConsensusApi, transaction: MutableTransaction, priority: Priority) -> RuleResult<()> {
         let id = transaction.id();
-        let transaction = MempoolTransaction::new(transaction, priority, self.consensus().get_virtual_daa_score());
+        let transaction = MempoolTransaction::new(transaction, priority, consensus.get_virtual_daa_score());
         // Add all entries in outpoint_owner_id
         for input in transaction.mtx.tx.inputs.iter() {
             self.outpoint_owner_id.insert(input.previous_outpoint, id);
@@ -217,8 +214,8 @@ impl<T: ConsensusMiningContext + ?Sized> OrphanPool<T> {
         self.get_redeemer_ids_in_pool(transaction_id).iter().map(|x| self.remove_single_orphan(x)).collect()
     }
 
-    pub(crate) fn expire_low_priority_transactions(&mut self) -> RuleResult<()> {
-        let virtual_daa_score = self.consensus().get_virtual_daa_score();
+    pub(crate) fn expire_low_priority_transactions(&mut self, consensus: &dyn ConsensusApi) -> RuleResult<()> {
+        let virtual_daa_score = consensus.get_virtual_daa_score();
         if virtual_daa_score - self.last_expire_scan < self.config.orphan_expire_scan_interval_daa_score {
             return Ok(());
         }
@@ -277,7 +274,7 @@ impl<T: ConsensusMiningContext + ?Sized> OrphanPool<T> {
     }
 }
 
-impl<T: ConsensusMiningContext + ?Sized> Pool for OrphanPool<T> {
+impl Pool for OrphanPool {
     fn all(&self) -> &MempoolTransactionCollection {
         &self.all_orphans
     }

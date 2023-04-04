@@ -110,6 +110,14 @@ impl TryFrom<protowire::InvRelayBlockMessage> for Hash {
     }
 }
 
+impl TryFrom<protowire::RequestRelayBlocksMessage> for Vec<Hash> {
+    type Error = ConversionError;
+
+    fn try_from(msg: protowire::RequestRelayBlocksMessage) -> Result<Self, Self::Error> {
+        msg.hashes.into_iter().map(|v| v.try_into()).collect()
+    }
+}
+
 impl TryFrom<protowire::BlockLocatorMessage> for Vec<Hash> {
     type Error = ConversionError;
 

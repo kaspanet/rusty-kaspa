@@ -1,14 +1,14 @@
 //! Core server implementation for ClientAPI
 
 use super::collector::{CollectorFromConsensus, CollectorFromIndex};
-use crate::{api::rpc::RpcApi, model::*, notify::connection::ChannelConnection, FromRpcHex, Notification, RpcError, RpcResult};
 use async_trait::async_trait;
-use kaspa_consensus_core::{api::DynConsensus, block::Block, coinbase::MinerData};
+use kaspa_consensus_core::{block::Block, coinbase::MinerData};
 use kaspa_consensus_notify::{
     notifier::ConsensusNotifier,
     {connection::ConsensusChannelConnection, notification::Notification as ConsensusNotification},
 };
-use kaspa_core::trace;
+use kaspa_consensusmanager::ConsensusManager;
+use kaspa_core::{info, trace};
 use kaspa_hashes::Hash;
 use kaspa_index_core::{connection::IndexChannelConnection, notification::Notification as IndexNotification, notifier::IndexNotifier};
 use kaspa_notify::{
@@ -18,6 +18,9 @@ use kaspa_notify::{
     notifier::{Notifier, Notify},
     scope::Scope,
     subscriber::{Subscriber, SubscriptionManager},
+};
+use kaspa_rpc_core::{
+    api::rpc::RpcApi, model::*, notify::connection::ChannelConnection, FromRpcHex, Notification, RpcError, RpcResult,
 };
 use kaspa_utils::channel::Channel;
 use std::{
@@ -45,7 +48,7 @@ use std::{
 /// by adding respectively to the registered service a Collector and a
 /// Subscriber.
 pub struct RpcCoreService {
-    consensus: DynConsensus,
+    consensus_manager: Arc<ConsensusManager>,
     notifier: Arc<Notifier<Notification, ChannelConnection>>,
 }
 
@@ -53,7 +56,7 @@ const RPC_CORE: &str = "rpc-core";
 
 impl RpcCoreService {
     pub fn new(
-        consensus: DynConsensus,
+        consensus_manager: Arc<ConsensusManager>,
         consensus_notifier: Arc<ConsensusNotifier>,
         index_notifier: Option<Arc<IndexNotifier>>,
     ) -> Self {
@@ -89,7 +92,7 @@ impl RpcCoreService {
         // Create the rcp-core notifier
         let notifier = Arc::new(Notifier::new(EVENT_TYPE_ARRAY[..].into(), collectors, subscribers, 1, RPC_CORE));
 
-        Self { consensus, notifier }
+        Self { consensus_manager, notifier }
     }
 
     pub fn start(&self) {
@@ -115,30 +118,33 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
             trace!("incoming SubmitBlockRequest with block conversion error: {}", err);
         }
         let block = try_block?;
+        let hash = block.hash();
 
         // We recreate a RpcBlock for the BlockAdded notification.
         // This guaranties that we have the right hash.
         // TODO: remove it when consensus emit a BlockAdded notification.
         let rpc_block: RpcBlock = (&block).into();
 
-        trace!("incoming SubmitBlockRequest for block {}", block.header.hash);
+        trace!("incoming SubmitBlockRequest for block {}", hash);
 
-        let result = match self.consensus.clone().validate_and_insert_block(block, true).await {
-            Ok(_) => Ok(SubmitBlockResponse { report: SubmitBlockReport::Success }),
+        match self.consensus_manager.consensus().session().await.validate_and_insert_block(block, true).await {
+            Ok(_) => {
+                info!("Accepted block {} via submit block", hash);
+
+                // Notify about new added block
+                // TODO: let consensus emit this notification through an event channel
+                self.notifier.notify(Notification::BlockAdded(BlockAddedNotification { block: Arc::new(rpc_block) })).unwrap();
+
+                // Emit a NewBlockTemplate notification
+                self.notifier.notify(Notification::NewBlockTemplate(NewBlockTemplateNotification {})).unwrap();
+
+                Ok(SubmitBlockResponse { report: SubmitBlockReport::Success })
+            }
             Err(err) => {
                 trace!("submit block error: {}", err);
                 Ok(SubmitBlockResponse { report: SubmitBlockReport::Reject(SubmitBlockRejectReason::BlockInvalid) })
             } // TODO: handle also the IsInIBD reject reason
-        };
-
-        // Notify about new added block
-        // TODO: let consensus emit this notification through an event channel
-        self.notifier.notify(Notification::BlockAdded(BlockAddedNotification { block: Arc::new(rpc_block) })).unwrap();
-
-        // Emit a NewBlockTemplate notification
-        self.notifier.notify(Notification::NewBlockTemplate(NewBlockTemplateNotification {})).unwrap();
-
-        result
+        }
     }
 
     async fn get_block_template_call(&self, request: GetBlockTemplateRequest) -> RpcResult<GetBlockTemplateResponse> {
@@ -147,7 +153,7 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         let script_public_key = kaspa_txscript::pay_to_address_script(&request.pay_address);
         let miner_data: MinerData = MinerData::new(script_public_key, request.extra_data);
         // TODO: handle error properly when managed through mining manager
-        let block_template = self.consensus.build_block_template(miner_data, vec![]).unwrap();
+        let block_template = self.consensus_manager.consensus().session().await.build_block_template(miner_data, vec![]).unwrap();
 
         Ok((&block_template).into())
     }

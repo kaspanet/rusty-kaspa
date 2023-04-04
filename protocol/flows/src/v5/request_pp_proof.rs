@@ -40,7 +40,7 @@ impl RequestPruningPointProofFlow {
         loop {
             dequeue!(self.incoming_route, Payload::RequestPruningPointProof)?;
             debug!("Got pruning point proof request");
-            let proof = self.ctx.consensus().get_pruning_point_proof();
+            let proof = (self.ctx.consensus().session().await).get_pruning_point_proof();
             self.router
                 .enqueue(make_message!(
                     Payload::PruningPointProof,

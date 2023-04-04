@@ -44,7 +44,11 @@ impl PruningPointAndItsAnticoneRequestsFlow {
         loop {
             dequeue!(self.incoming_route, Payload::RequestPruningPointAndItsAnticone)?;
             debug!("Got request for pruning point and its anticone");
-            let pp_headers = self.ctx.consensus().pruning_point_headers();
+
+            let consensus = self.ctx.consensus();
+            let session = consensus.session().await;
+
+            let pp_headers = session.pruning_point_headers();
             self.router
                 .enqueue(make_message!(
                     Payload::PruningPoints,
@@ -52,7 +56,7 @@ impl PruningPointAndItsAnticoneRequestsFlow {
                 ))
                 .await?;
 
-            let trusted_data = self.ctx.consensus().get_pruning_point_anticone_and_trusted_data();
+            let trusted_data = session.get_pruning_point_anticone_and_trusted_data();
             let pp_anticone = &trusted_data.0;
             let daa_window = &trusted_data.1;
             let ghostdag_data = &trusted_data.2;
@@ -68,7 +72,7 @@ impl PruningPointAndItsAnticoneRequestsFlow {
 
             for hashes in pp_anticone.chunks(IBD_BATCH_SIZE) {
                 for hash in hashes {
-                    let block = self.ctx.consensus().get_block(*hash)?;
+                    let block = session.get_block(*hash)?;
                     self.router
                         .enqueue(make_message!(
                             Payload::BlockWithTrustedDataV4,

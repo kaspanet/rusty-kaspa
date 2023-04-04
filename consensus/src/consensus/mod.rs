@@ -1,3 +1,5 @@
+pub mod ctl;
+pub mod factory;
 pub mod test_consensus;
 
 use crate::{
@@ -70,11 +72,9 @@ use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_utils::option::OptionExtensions;
 
 use crossbeam_channel::{unbounded as unbounded_crossbeam, Receiver as CrossbeamReceiver, Sender as CrossbeamSender};
-use kaspa_database::prelude::StoreResultExtensions;
-// to avoid confusion with async_channel
 use futures_util::future::BoxFuture;
 use itertools::Itertools;
-use kaspa_core::{core::Core, service::Service};
+use kaspa_database::prelude::StoreResultExtensions;
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
 use parking_lot::RwLock;
@@ -173,7 +173,12 @@ pub struct Consensus {
 }
 
 impl Consensus {
-    pub fn new(db: Arc<DB>, config: &Config, notification_root: Arc<ConsensusNotificationRoot>) -> Self {
+    pub fn new(
+        db: Arc<DB>,
+        config: &Config,
+        notification_root: Arc<ConsensusNotificationRoot>,
+        counters: Arc<ProcessingCounters>,
+    ) -> Self {
         let config = config.clone();
         let params = &config.params;
         let perf_params = &config.perf;
@@ -242,7 +247,7 @@ impl Consensus {
         let relations_service = relations_services[0].clone();
         let reachability_service = MTReachabilityService::new(reachability_store.clone());
         let dag_traversal_manager = DagTraversalManager::new(
-            params.genesis_hash,
+            params.genesis.hash,
             ghostdag_store.clone(),
             relations_service.clone(),
             block_window_cache_for_difficulty.clone(),
@@ -255,18 +260,18 @@ impl Consensus {
             headers_store.clone(),
             dag_traversal_manager.clone(),
             params.timestamp_deviation_tolerance as usize,
-            params.genesis_timestamp,
+            params.genesis.timestamp,
         );
         let difficulty_manager = DifficultyManager::new(
             headers_store.clone(),
-            params.genesis_bits,
+            params.genesis.bits,
             params.difficulty_window_size,
             params.target_time_per_block,
         );
         let depth_manager = BlockDepthManager::new(
             params.merge_depth,
             params.finality_depth,
-            params.genesis_hash,
+            params.genesis.hash,
             depth_store.clone(),
             reachability_service.clone(),
             ghostdag_store.clone(),
@@ -277,7 +282,7 @@ impl Consensus {
             .enumerate()
             .map(|(level, ghostdag_store)| {
                 GhostdagManager::new(
-                    params.genesis_hash,
+                    params.genesis.hash,
                     params.ghostdag_k,
                     ghostdag_store,
                     relations_services[level].clone(),
@@ -311,7 +316,7 @@ impl Consensus {
         let pruning_manager = PruningManager::new(
             params.pruning_depth,
             params.finality_depth,
-            params.genesis_hash,
+            params.genesis.hash,
             reachability_service.clone(),
             ghostdag_store.clone(),
             headers_store.clone(),
@@ -320,7 +325,7 @@ impl Consensus {
 
         let parents_manager = ParentsManager::new(
             params.max_block_level,
-            params.genesis_hash,
+            params.genesis.hash,
             headers_store.clone(),
             reachability_service.clone(),
             relations_service.clone(),
@@ -332,8 +337,6 @@ impl Consensus {
             unbounded_crossbeam();
         let (virtual_sender, virtual_receiver): (CrossbeamSender<BlockProcessingMessage>, CrossbeamReceiver<BlockProcessingMessage>) =
             unbounded_crossbeam();
-
-        let counters = Arc::new(ProcessingCounters::default());
 
         //
         // Thread-pools
@@ -367,7 +370,6 @@ impl Consensus {
             body_sender,
             block_processors_pool.clone(),
             params,
-            config.process_genesis,
             db.clone(),
             relations_stores.clone(),
             reachability_store.clone(),
@@ -408,8 +410,7 @@ impl Consensus {
             transaction_validator.clone(),
             past_median_time_manager.clone(),
             params.max_block_mass,
-            params.genesis_hash,
-            config.process_genesis,
+            params.genesis.clone(),
             counters.clone(),
         ));
 
@@ -417,7 +418,6 @@ impl Consensus {
             virtual_receiver,
             virtual_pool,
             params,
-            config.process_genesis,
             db.clone(),
             statuses_store.clone(),
             ghostdag_store.clone(),
@@ -465,7 +465,7 @@ impl Consensus {
             ghostdag_managers,
             dag_traversal_manager.clone(),
             params.max_block_level,
-            params.genesis_hash,
+            params.genesis.hash,
             params.pruning_proof_m,
             params.difficulty_window_size,
             params.ghostdag_k,
@@ -484,12 +484,17 @@ impl Consensus {
         // Ensure that reachability store is initialized
         reachability::init(reachability_store.write().deref_mut()).unwrap();
 
-        // Ensure that genesis was processed
-        header_processor.process_origin_if_needed();
-        header_processor.process_genesis_if_needed();
-        body_processor.process_genesis_if_needed();
+        // Ensure the relations stores are initialized
+        header_processor.init();
+        // Ensure that some pruning point is registered
         virtual_processor.init();
-        virtual_processor.process_genesis_if_needed();
+
+        // Ensure that genesis was processed
+        if config.process_genesis {
+            header_processor.process_genesis();
+            body_processor.process_genesis();
+            virtual_processor.process_genesis();
+        }
 
         Self {
             db,
@@ -528,7 +533,7 @@ impl Consensus {
         }
     }
 
-    pub fn init(&self) -> Vec<JoinHandle<()>> {
+    pub fn run_processors(&self) -> Vec<JoinHandle<()>> {
         // Spawn the asynchronous processors.
         let header_processor = self.header_processor.clone();
         let body_processor = self.body_processor.clone();
@@ -817,19 +822,5 @@ impl ConsensusApi for Consensus {
 
     fn pruning_point(&self) -> Option<Hash> {
         self.pruning_store.read().pruning_point().unwrap_option()
-    }
-}
-
-impl Service for Consensus {
-    fn ident(self: Arc<Consensus>) -> &'static str {
-        "consensus"
-    }
-
-    fn start(self: Arc<Consensus>, _core: Arc<Core>) -> Vec<JoinHandle<()>> {
-        self.init()
-    }
-
-    fn stop(self: Arc<Consensus>) {
-        self.signal_exit()
     }
 }

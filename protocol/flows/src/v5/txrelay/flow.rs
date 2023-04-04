@@ -2,7 +2,10 @@ use crate::{
     flow_context::{FlowContext, RequestScope},
     flow_trait::Flow,
 };
-use kaspa_consensus_core::tx::{Transaction, TransactionId};
+use kaspa_consensus_core::{
+    api::ConsensusApi,
+    tx::{Transaction, TransactionId},
+};
 use kaspa_mining::{
     errors::MiningManagerError,
     mempool::{
@@ -16,7 +19,7 @@ use kaspa_p2p_lib::{
     pb::{kaspad_message::Payload, RequestTransactionsMessage, TransactionNotFoundMessage},
     IncomingRoute, Router,
 };
-use std::sync::Arc;
+use std::{ops::Deref, sync::Arc};
 use tokio::time::timeout;
 
 enum Response {
@@ -76,13 +79,16 @@ impl RelayTransactionsFlow {
             let inv = dequeue!(self.invs_route, Payload::InvTransactions)?.try_into()?;
             // trace!("Receive an inv message from {} with {} transaction ids", self.router.identity(), inv.len());
 
+            let consensus = self.ctx.consensus();
+            let session = consensus.session().await;
+
             // Transaction relay is disabled if the node is out of sync and thus not mining
-            if !self.ctx.is_nearly_synced() {
+            if !session.is_nearly_synced() {
                 continue;
             }
 
             let requests = self.request_transactions(inv).await?;
-            self.receive_transactions(requests).await?;
+            self.receive_transactions(session.deref(), requests).await?;
         }
     }
 
@@ -150,7 +156,11 @@ impl RelayTransactionsFlow {
         }
     }
 
-    async fn receive_transactions(&mut self, requests: Vec<RequestScope<TransactionId>>) -> Result<(), ProtocolError> {
+    async fn receive_transactions(
+        &mut self,
+        consensus: &dyn ConsensusApi,
+        requests: Vec<RequestScope<TransactionId>>,
+    ) -> Result<(), ProtocolError> {
         // trace!("Receive {} transaction ids from {}", requests.len(), self.router.identity());
         for request in requests {
             let response = self.read_response().await?;
@@ -162,7 +172,7 @@ impl RelayTransactionsFlow {
                 )));
             }
             let Response::Transaction(transaction) = response else { continue; };
-            match self.ctx.mining_manager().validate_and_insert_transaction(transaction, Priority::Low, Orphan::Allowed) {
+            match self.ctx.mining_manager().validate_and_insert_transaction(consensus, transaction, Priority::Low, Orphan::Allowed) {
                 Ok(accepted_transactions) => {
                     // trace!("Broadcast {} accepted transaction ids", accepted_transactions.len());
                     self.ctx.broadcast_transactions(accepted_transactions.iter().map(|x| x.id())).await?;

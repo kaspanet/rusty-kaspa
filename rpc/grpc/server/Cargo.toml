@@ -10,6 +10,7 @@ license.workspace = true
 thiserror.workspace = true
 kaspa-notify.workspace = true
 kaspa-rpc-core.workspace = true
+kaspa-rpc-service.workspace = true
 kaspa-grpc-core.workspace = true
 kaspa-utils.workspace = true
 kaspa-core.workspace = true

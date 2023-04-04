@@ -28,6 +28,14 @@ impl NetworkType {
             NetworkType::Devnet => 16610,
         }
     }
+
+    pub fn name(&self, suffix: Option<u32>) -> String {
+        if let Some(suffix) = suffix {
+            format!("kaspa-{}-{}", self, suffix)
+        } else {
+            format!("kaspa-{}", self)
+        }
+    }
 }
 
 impl TryFrom<Prefix> for NetworkType {
