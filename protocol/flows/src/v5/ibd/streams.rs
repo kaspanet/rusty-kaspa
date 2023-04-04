@@ -40,7 +40,7 @@ impl<'a, 'b> TrustedEntryStream<'a, 'b> {
                     match msg.payload {
                         Some(Payload::BlockWithTrustedDataV4(payload)) => Ok(Some(payload.try_into()?)),
                         Some(Payload::DoneBlocksWithTrustedData(_)) => {
-                            debug!("semi-trusted entry stream completed after {} items", self.i);
+                            debug!("trusted entry stream completed after {} items", self.i);
                             Ok(None)
                         }
                         _ => Err(ProtocolError::UnexpectedMessage(

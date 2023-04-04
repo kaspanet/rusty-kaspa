@@ -78,7 +78,7 @@ fn test_reachability_staging() {
 
 #[tokio::test]
 async fn test_concurrent_pipeline() {
-    let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().edit_consensus_params(|p| p.genesis_hash = 1.into()).build();
+    let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().edit_consensus_params(|p| p.genesis.hash = 1.into()).build();
     let consensus = TestConsensus::create_from_temp_db_and_dummy_sender(&config);
     let wait_handles = consensus.init();
 
@@ -147,7 +147,7 @@ async fn test_concurrent_pipeline_random() {
     let poi = Poisson::new((bps * delay) as f64).unwrap();
     let mut thread_rng = rand::thread_rng();
 
-    let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().edit_consensus_params(|p| p.genesis_hash = genesis).build();
+    let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().edit_consensus_params(|p| p.genesis.hash = genesis).build();
     let consensus = TestConsensus::create_from_temp_db_and_dummy_sender(&config);
     let wait_handles = consensus.init();
 

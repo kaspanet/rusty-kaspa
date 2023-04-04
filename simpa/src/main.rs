@@ -133,7 +133,7 @@ fn main() {
         let (lifetime, db) = load_existing_db(input_dir, num_cpus::get());
         let (dummy_notification_sender, _) = unbounded();
         let notification_root = Arc::new(ConsensusNotificationRoot::new(dummy_notification_sender));
-        let consensus = Arc::new(Consensus::new(db, &config, notification_root));
+        let consensus = Arc::new(Consensus::new(db, &config, notification_root, Default::default()));
         (consensus, lifetime)
     } else {
         let until = if args.target_blocks.is_none() { args.sim_time * 1000 } else { u64::MAX }; // milliseconds
@@ -147,8 +147,8 @@ fn main() {
     let (_lifetime2, db2) = create_temp_db_with_parallelism(num_cpus::get());
     let (dummy_notification_sender, _) = unbounded();
     let notification_root = Arc::new(ConsensusNotificationRoot::new(dummy_notification_sender));
-    let consensus2 = Arc::new(Consensus::new(db2, &config, notification_root));
-    let handles2 = consensus2.init();
+    let consensus2 = Arc::new(Consensus::new(db2, &config, notification_root, Default::default()));
+    let handles2 = consensus2.run_processors();
     validate(&consensus, &consensus2, &config, args.delay, args.bps);
     consensus2.shutdown(handles2);
     drop(consensus);
@@ -200,7 +200,7 @@ fn adjust_perf_params(args: &Args, consensus_params: &Params, perf_params: &mut 
 
 #[tokio::main]
 async fn validate(src_consensus: &Consensus, dst_consensus: &Consensus, params: &Params, delay: f64, bps: f64) {
-    let hashes = topologically_ordered_hashes(src_consensus, params.genesis_hash);
+    let hashes = topologically_ordered_hashes(src_consensus, params.genesis.hash);
     let num_blocks = hashes.len();
     let num_txs = print_stats(src_consensus, &hashes, delay, bps, params.ghostdag_k);
     info!("Validating {num_blocks} blocks with {num_txs} transactions overall...");

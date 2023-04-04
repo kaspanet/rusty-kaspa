@@ -1,9 +1,10 @@
 use kaspa_core::{
+    info,
     task::service::{AsyncService, AsyncServiceError, AsyncServiceFuture},
     trace,
 };
 use kaspa_grpc_core::protowire::rpc_server::RpcServer;
-use kaspa_rpc_core::server::service::RpcCoreService;
+use kaspa_rpc_service::service::RpcCoreService;
 use kaspa_utils::triggers::DuplexTrigger;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -57,7 +58,7 @@ impl AsyncService for GrpcServer {
                 .accept_compressed(CompressionEncoding::Gzip);
 
             // Start the tonic gRPC server
-            trace!("gRPC server listening on: {}", address);
+            info!("Grpc server starting on: {}", address);
             let result = Server::builder()
                 .add_service(svc)
                 .serve_with_shutdown(address, shutdown_signal)

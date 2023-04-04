@@ -61,8 +61,12 @@ impl Header {
         self.hash = hashing::header::hash(self);
     }
 
-    pub fn direct_parents(&self) -> &Vec<Hash> {
-        &self.parents_by_level[0]
+    pub fn direct_parents(&self) -> &[Hash] {
+        if self.parents_by_level.is_empty() {
+            &[]
+        } else {
+            &self.parents_by_level[0]
+        }
     }
 
     /// WARNING: To be used for test purposes only

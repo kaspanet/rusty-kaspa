@@ -6,13 +6,13 @@ use crate::flowcontext::{
 use crate::v5;
 use async_trait::async_trait;
 use kaspa_addressmanager::AddressManager;
-use kaspa_consensus_core::{
-    api::{ConsensusApi, DynConsensus},
-    block::Block,
-    config::Config,
-    tx::{Transaction, TransactionId},
-};
-use kaspa_core::{debug, info, time::unix_now};
+use kaspa_consensus_core::api::ConsensusApi;
+use kaspa_consensus_core::block::Block;
+use kaspa_consensus_core::config::Config;
+use kaspa_consensus_core::tx::{Transaction, TransactionId};
+use kaspa_consensusmanager::{ConsensusInstance, ConsensusManager};
+use kaspa_core::time::unix_now;
+use kaspa_core::{debug, info};
 use kaspa_hashes::Hash;
 use kaspa_mining::{
     manager::MiningManager,
@@ -35,18 +35,22 @@ use std::{
 use tokio::sync::RwLock as AsyncRwLock;
 use uuid::Uuid;
 
+/// The P2P protocol version. Currently the only one supported.
+const PROTOCOL_VERSION: u32 = 5;
+
 #[derive(Clone)]
 pub struct FlowContext {
-    pub consensus: DynConsensus,
+    pub node_id: Uuid,
+    pub consensus_manager: Arc<ConsensusManager>,
     pub config: Config,
     hub: Hub,
-    orphans_pool: Arc<AsyncRwLock<OrphanBlocksPool<dyn ConsensusApi>>>,
+    orphans_pool: Arc<AsyncRwLock<OrphanBlocksPool>>,
     shared_block_requests: Arc<Mutex<HashSet<Hash>>>,
     transactions_spread: Arc<AsyncRwLock<TransactionsSpread>>,
     shared_transaction_requests: Arc<Mutex<HashSet<TransactionId>>>,
     is_ibd_running: Arc<AtomicBool>, // TODO: pass the context wrapped with Arc and avoid some of the internal ones
     pub amgr: Arc<Mutex<AddressManager>>,
-    mining_manager: Arc<MiningManager<dyn ConsensusApi>>,
+    mining_manager: Arc<MiningManager>,
 }
 
 pub struct IbdRunningGuard {
@@ -79,16 +83,17 @@ impl<T: PartialEq + Eq + std::hash::Hash> Drop for RequestScope<T> {
 
 impl FlowContext {
     pub fn new(
-        consensus: DynConsensus,
+        consensus_manager: Arc<ConsensusManager>,
         amgr: Arc<Mutex<AddressManager>>,
         config: &Config,
-        mining_manager: Arc<MiningManager<dyn ConsensusApi>>,
+        mining_manager: Arc<MiningManager>,
     ) -> Self {
         let hub = Hub::new();
         Self {
-            consensus: consensus.clone(),
+            node_id: Uuid::new_v4(),
+            consensus_manager,
             config: config.clone(),
-            orphans_pool: Arc::new(AsyncRwLock::new(OrphanBlocksPool::new(consensus, MAX_ORPHANS))),
+            orphans_pool: Arc::new(AsyncRwLock::new(OrphanBlocksPool::new(MAX_ORPHANS))),
             shared_block_requests: Arc::new(Mutex::new(HashSet::new())),
             transactions_spread: Arc::new(AsyncRwLock::new(TransactionsSpread::new(hub.clone()))),
             shared_transaction_requests: Arc::new(Mutex::new(HashSet::new())),
@@ -99,19 +104,15 @@ impl FlowContext {
         }
     }
 
-    pub fn consensus(&self) -> DynConsensus {
-        self.consensus.clone()
-    }
-
-    pub fn is_nearly_synced(&self) -> bool {
-        self.consensus.is_nearly_synced()
+    pub fn consensus(&self) -> ConsensusInstance {
+        self.consensus_manager.consensus()
     }
 
     pub fn hub(&self) -> &Hub {
         &self.hub
     }
 
-    pub fn mining_manager(&self) -> &MiningManager<dyn ConsensusApi> {
+    pub fn mining_manager(&self) -> &MiningManager {
         &self.mining_manager
     }
 
@@ -151,26 +152,27 @@ impl FlowContext {
         self.orphans_pool.read().await.is_known_orphan(hash)
     }
 
-    pub async fn get_orphan_roots(&self, orphan: Hash) -> Option<Vec<Hash>> {
-        self.orphans_pool.read().await.get_orphan_roots(orphan)
+    pub async fn get_orphan_roots(&self, consensus: &dyn ConsensusApi, orphan: Hash) -> Option<Vec<Hash>> {
+        self.orphans_pool.read().await.get_orphan_roots(consensus, orphan)
     }
 
-    pub async fn unorphan_blocks(&self, root: Hash) -> Vec<Block> {
-        self.orphans_pool.write().await.unorphan_blocks(root).await
+    pub async fn unorphan_blocks(&self, consensus: &dyn ConsensusApi, root: Hash) -> Vec<Block> {
+        self.orphans_pool.write().await.unorphan_blocks(consensus, root).await
     }
 
     /// Updates the mempool after a new block arrival, relays newly unorphaned transactions
     /// and possibly rebroadcast manually added transactions when not in IBD.
     ///
     /// _GO-KASPAD: OnNewBlock + broadcastTransactionsAfterBlockAdded_
-    pub async fn on_new_block(&self, block: Block) -> Result<(), ProtocolError> {
+    pub async fn on_new_block(&self, consensus: &dyn ConsensusApi, block: Block) -> Result<(), ProtocolError> {
         let hash = block.hash();
-        let blocks = self.unorphan_blocks(hash).await;
+        let blocks = self.unorphan_blocks(consensus, hash).await;
         // Use a ProcessQueue so we get rid of duplicates
         let mut transactions_to_broadcast = ProcessQueue::new();
         for block in once(block).chain(blocks.into_iter()) {
-            transactions_to_broadcast
-                .enqueue_chunk(self.mining_manager().handle_new_block_transactions(&block.transactions)?.iter().map(|x| x.id()));
+            transactions_to_broadcast.enqueue_chunk(
+                self.mining_manager().handle_new_block_transactions(consensus, &block.transactions)?.iter().map(|x| x.id()),
+            );
         }
 
         // Don't relay transactions when in IBD
@@ -179,7 +181,8 @@ impl FlowContext {
         }
 
         if self.should_rebroadcast_transactions().await {
-            transactions_to_broadcast.enqueue_chunk(self.mining_manager().revalidate_high_priority_transactions()?.into_iter());
+            transactions_to_broadcast
+                .enqueue_chunk(self.mining_manager().revalidate_high_priority_transactions(consensus)?.into_iter());
         }
 
         self.broadcast_transactions(transactions_to_broadcast).await
@@ -204,8 +207,14 @@ impl FlowContext {
         // TODO: call a handler function or a predefined registered service
     }
 
-    pub async fn add_transaction(&self, transaction: Transaction, orphan: Orphan) -> Result<(), ProtocolError> {
-        let accepted_transactions = self.mining_manager().validate_and_insert_transaction(transaction, Priority::High, orphan)?;
+    pub async fn add_transaction(
+        &self,
+        consensus: &dyn ConsensusApi,
+        transaction: Transaction,
+        orphan: Orphan,
+    ) -> Result<(), ProtocolError> {
+        let accepted_transactions =
+            self.mining_manager().validate_and_insert_transaction(consensus, transaction, Priority::High, orphan)?;
         self.broadcast_transactions(accepted_transactions.iter().map(|x| x.id())).await
     }
 
@@ -238,30 +247,36 @@ impl ConnectionInitializer for FlowContext {
         // We start the router receive loop only after we registered to handshake routes
         router.start();
 
+        let network_name = self.config.network_name();
+
         // Build the local version message
         // TODO: full and accurate version info
         let self_version_message = pb::VersionMessage {
-            protocol_version: 5, // TODO: make a const
-            services: 0,         // TODO: get number of live services
+            protocol_version: PROTOCOL_VERSION,
+            services: 0, // TODO: get number of live services
             timestamp: unix_now() as i64,
-            address: None,                          // TODO
-            id: Vec::from(Uuid::new_v4().as_ref()), // TODO
-            user_agent: String::new(),              // TODO
-            disable_relay_tx: false,                // TODO: config/cmd?
-            subnetwork_id: None,                    // Subnets are not currently supported
-            network: "kaspa-mainnet".to_string(),   // TODO: get network from config
+            address: None, // TODO
+            id: Vec::from(self.node_id.as_ref()),
+            user_agent: String::new(), // TODO
+            disable_relay_tx: false,   // TODO: config/cmd
+            subnetwork_id: None,       // Subnets are not currently supported
+            network: network_name.clone(),
         };
 
         // Perform the handshake
         let peer_version_message = handshake.handshake(self_version_message).await?;
 
-        // TODO: verify the versions are compatible
-        debug!("protocol versions - self: {}, peer: {}", 5, peer_version_message.protocol_version);
+        if peer_version_message.network != network_name {
+            return Err(ProtocolError::WrongNetwork(network_name, peer_version_message.network));
+        }
+
+        debug!("protocol versions - self: {}, peer: {}", PROTOCOL_VERSION, peer_version_message.protocol_version);
 
         // Register all flows according to version
         let flows = match peer_version_message.protocol_version {
-            5 => v5::register(self.clone(), router.clone()),
-            _ => todo!(),
+            PROTOCOL_VERSION => v5::register(self.clone(), router.clone()),
+            // TODO: different errors for obsolete (low version) vs unknown (high)
+            v => return Err(ProtocolError::VersionMismatch(PROTOCOL_VERSION, v)),
         };
 
         // Send and receive the ready signal

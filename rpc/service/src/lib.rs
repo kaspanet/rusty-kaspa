@@ -1,5 +1,5 @@
-use kaspa_consensus_core::api::DynConsensus;
 use kaspa_consensus_notify::notifier::ConsensusNotifier;
+use kaspa_consensusmanager::ConsensusManager;
 use kaspa_core::{
     task::service::{AsyncService, AsyncServiceError, AsyncServiceFuture},
     trace,
@@ -23,11 +23,11 @@ pub struct RpcCoreServer {
 
 impl RpcCoreServer {
     pub fn new(
-        consensus: DynConsensus,
+        consensus_manager: Arc<ConsensusManager>,
         consensus_notifier: Arc<ConsensusNotifier>,
         index_notifier: Option<Arc<IndexNotifier>>,
     ) -> Self {
-        let service = Arc::new(RpcCoreService::new(consensus, consensus_notifier, index_notifier));
+        let service = Arc::new(RpcCoreService::new(consensus_manager, consensus_notifier, index_notifier));
         Self { service, shutdown: DuplexTrigger::default() }
     }
 

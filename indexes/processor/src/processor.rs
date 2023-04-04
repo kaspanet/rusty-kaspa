@@ -163,6 +163,7 @@ mod tests {
         test_helpers::*,
     };
     use kaspa_consensus_core::utxo::{utxo_collection::UtxoCollection, utxo_diff::UtxoDiff};
+    use kaspa_consensusmanager::ConsensusManager;
     use kaspa_notify::notifier::test_helpers::NotifyMock;
     use kaspa_utxoindex::{api::DynUtxoIndexApi, UtxoIndex};
     use rand::{rngs::SmallRng, SeedableRng};
@@ -184,14 +185,15 @@ mod tests {
             let (consensus_sender, consensus_receiver) = unbounded();
             let (utxoindex_db_lifetime, utxoindex_db) = create_temp_db();
             let config = Config::new(DEVNET_PARAMS);
-            let test_consensus = TestConsensus::create_from_temp_db_and_dummy_sender(&config);
-            test_consensus.init();
-            let utxoindex: DynUtxoIndexApi = Some(UtxoIndex::new(test_consensus.consensus(), utxoindex_db).unwrap());
+            let tc = TestConsensus::create_from_temp_db_and_dummy_sender(&config);
+            tc.init();
+            let consensus_manager = Arc::new(ConsensusManager::from_consensus(tc.consensus()));
+            let utxoindex: DynUtxoIndexApi = Some(UtxoIndex::new(consensus_manager, utxoindex_db).unwrap());
             let processor = Arc::new(Processor::new(utxoindex, consensus_receiver, &config));
             let (processor_sender, processor_receiver) = unbounded();
             let notifier = Arc::new(NotifyMock::new(processor_sender));
             processor.clone().start(notifier);
-            Self { test_consensus, consensus_sender, processor, processor_receiver, utxoindex_db_lifetime }
+            Self { test_consensus: tc, consensus_sender, processor, processor_receiver, utxoindex_db_lifetime }
         }
     }
 
