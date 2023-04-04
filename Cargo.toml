@@ -46,7 +46,7 @@ version = "0.0.1"
 authors = ["Kaspa developers"]
 license = "MIT/Apache-2.0"
 edition = "2021"
-include = ["src/**/*.rs", "Cargo.toml"]
+include = ["src/**/*.rs", "Cargo.toml", "benches/**/*.rs"]
 
 [workspace.dependencies]
 kaspa-addressmanager = { version = "0.0.1", path = "components/addressmanager" }
