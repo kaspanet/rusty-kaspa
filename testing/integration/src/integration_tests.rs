@@ -3,7 +3,6 @@
 //!
 
 use async_channel::unbounded;
-use kaspa_addresses::Prefix;
 use kaspa_consensus::config::genesis::GENESIS;
 use kaspa_consensus::config::{Config, ConfigBuilder};
 use kaspa_consensus::consensus::factory::Factory as ConsensusFactory;
@@ -757,7 +756,6 @@ impl KaspadGoParams {
             skip_proof_of_work: self.SkipProofOfWork,
             max_block_level: self.MaxBlockLevel,
             pruning_proof_m: self.PruningProofM,
-            prefix: Prefix::Mainnet,
         }
     }
 }

@@ -117,7 +117,7 @@ impl Processor {
         trace!("[{IDENT}]: processing {:?}", notification);
         if let Some(utxoindex) = self.utxoindex.as_deref() {
             let utxos_changed = utxoindex.write().update(notification.accumulated_utxo_diff.clone(), notification.virtual_parents)?;
-            return Ok(UtxosChangedNotification::from_utxos_changed(utxos_changed, self.config.prefix));
+            return Ok(UtxosChangedNotification::from_utxos_changed(utxos_changed, self.config.prefix()));
         };
         Err(IndexError::NotSupported(EventType::UtxosChanged))
     }

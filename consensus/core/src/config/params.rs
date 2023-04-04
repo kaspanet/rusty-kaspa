@@ -36,9 +36,6 @@ pub struct Params {
     pub skip_proof_of_work: bool,
     pub max_block_level: BlockLevel,
     pub pruning_proof_m: u64,
-
-    // Human-readable prefix for Bech32 encoded addresses
-    pub prefix: Prefix,
 }
 
 fn unix_now() -> u64 {
@@ -60,6 +57,10 @@ impl Params {
 
     pub fn network_name(&self) -> String {
         self.net.name(self.net_suffix)
+    }
+
+    pub fn prefix(&self) -> Prefix {
+        self.net.into()
     }
 }
 
@@ -106,8 +107,6 @@ pub const MAINNET_PARAMS: Params = Params {
     skip_proof_of_work: false,
     max_block_level: 225,
     pruning_proof_m: 1000,
-
-    prefix: Prefix::Mainnet,
 };
 
 pub const TESTNET_PARAMS: Params = Params {
@@ -152,8 +151,6 @@ pub const TESTNET_PARAMS: Params = Params {
     skip_proof_of_work: false,
     max_block_level: 250,
     pruning_proof_m: 1000,
-
-    prefix: Prefix::Testnet,
 };
 
 pub const SIMNET_PARAMS: Params = Params {
@@ -198,8 +195,6 @@ pub const SIMNET_PARAMS: Params = Params {
     skip_proof_of_work: false,
     max_block_level: 250,
     pruning_proof_m: 1000,
-
-    prefix: Prefix::Simnet,
 };
 
 pub const DEVNET_PARAMS: Params = Params {
@@ -244,6 +239,4 @@ pub const DEVNET_PARAMS: Params = Params {
     skip_proof_of_work: false,
     max_block_level: 250,
     pruning_proof_m: 1000,
-
-    prefix: Prefix::Devnet,
 };
