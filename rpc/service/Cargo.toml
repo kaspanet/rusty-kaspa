@@ -1,5 +1,5 @@
 [package]
-name = "kaspa-utxoindex"
+name = "kaspa-rpc-service"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -7,20 +7,16 @@ include.workspace = true
 license.workspace = true
 
 [dependencies]
-kaspa-hashes.workspace = true
-thiserror.workspace = true
+kaspa-rpc-core.workspace = true
 kaspa-consensus-core.workspace = true
+kaspa-consensus-notify.workspace = true
+kaspa-hashes.workspace = true
 kaspa-core.workspace = true
 kaspa-utils.workspace = true
+kaspa-notify.workspace = true
 kaspa-index-core.workspace = true
-kaspa-database.workspace = true
+kaspa-txscript.workspace = true
 kaspa-consensusmanager.workspace = true
 log.workspace = true
-rocksdb.workspace = true
-serde.workspace = true
-parking_lot.workspace = true
-futures.workspace = true
 
-[dev-dependencies]
-kaspa-consensus.workspace = true
-rand = { workspace = true, features = ["small_rng"] }
+async-trait = "0.1.57"

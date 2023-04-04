@@ -9,7 +9,7 @@ pub enum PruningImportError {
     #[error("pruning proof validation failed")]
     ProofValidationError,
 
-    #[error("pruning proof doesn't have {0} leves")]
+    #[error("pruning proof doesn't have {0} levels")]
     ProofNotEnoughLevels(usize),
 
     #[error("block {0} level is {1} when it's expected to be at least {2}")]
@@ -36,7 +36,7 @@ pub enum PruningImportError {
     #[error("the pruning proof doesn't have any shared blocks with the known DAGs, but doesn't have enough headers from levels higher than the existing block levels.")]
     PruningProofNotEnoughHeaders,
 
-    #[error("block {0} already appeared in the proof headers for leve {1}")]
+    #[error("block {0} already appeared in the proof headers for level {1}")]
     PruningProofDuplicateHeaderAtLevel(Hash, BlockLevel),
 
     #[error("new pruning point has an invalid transaction {0}: {1}")]

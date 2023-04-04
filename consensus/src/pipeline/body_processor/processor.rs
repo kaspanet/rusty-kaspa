@@ -1,5 +1,4 @@
 use crate::{
-    constants::TX_VERSION,
     errors::{BlockProcessResult, RuleError},
     model::{
         services::{reachability::MTReachabilityService, relations::MTRelationsService},
@@ -28,7 +27,7 @@ use crossbeam_channel::{Receiver, Sender};
 use kaspa_consensus_core::{
     block::Block,
     blockstatus::BlockStatus::{self, StatusHeaderOnly, StatusInvalid},
-    subnets::SUBNETWORK_ID_COINBASE,
+    config::genesis::GenesisBlock,
     tx::Transaction,
 };
 use kaspa_hashes::Hash;
@@ -50,8 +49,7 @@ pub struct BlockBodyProcessor {
 
     // Config
     pub(super) max_block_mass: u64,
-    pub(super) genesis_hash: Hash,
-    process_genesis: bool,
+    pub(super) genesis: GenesisBlock,
 
     // Stores
     pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
@@ -104,8 +102,7 @@ impl BlockBodyProcessor {
             MTRelationsService<DbRelationsStore>,
         >,
         max_block_mass: u64,
-        genesis_hash: Hash,
-        process_genesis: bool,
+        genesis: GenesisBlock,
         counters: Arc<ProcessingCounters>,
     ) -> Self {
         Self {
@@ -124,8 +121,7 @@ impl BlockBodyProcessor {
             transaction_validator,
             past_median_time_manager,
             max_block_mass,
-            genesis_hash,
-            process_genesis,
+            genesis,
             task_manager: BlockTaskDependencyManager::new(),
             counters,
         }
@@ -235,41 +231,15 @@ impl BlockBodyProcessor {
         drop(body_tips_write_guard);
     }
 
-    pub fn process_genesis_if_needed(self: &Arc<BlockBodyProcessor>) {
-        if !self.process_genesis {
-            return;
-        }
+    pub fn process_genesis(self: &Arc<BlockBodyProcessor>) {
+        // Init tips store
+        let mut batch = WriteBatch::default();
+        let mut body_tips_write_guard = self.body_tips_store.write();
+        body_tips_write_guard.init_batch(&mut batch, &[]).unwrap();
+        self.db.write(batch).unwrap();
+        drop(body_tips_write_guard);
 
-        let status = self.statuses_store.read().get(self.genesis_hash).unwrap();
-        match status {
-            StatusHeaderOnly => {
-                let mut batch = WriteBatch::default();
-                let mut body_tips_write_guard = self.body_tips_store.write();
-                body_tips_write_guard.init_batch(&mut batch, &[]).unwrap();
-                self.db.write(batch).unwrap();
-                drop(body_tips_write_guard);
-
-                let genesis_coinbase = Transaction::new(
-                    TX_VERSION,
-                    vec![],
-                    vec![],
-                    0,
-                    SUBNETWORK_ID_COINBASE,
-                    0,
-                    vec![
-                        // Kaspad devnet coinbase payload
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // Blue score
-                        0x00, 0xE1, 0xF5, 0x05, 0x00, 0x00, 0x00, 0x00, // Subsidy
-                        0x00, 0x00, // Script version
-                        0x01, // Varint
-                        0x00, // OP-FALSE
-                        0x6b, 0x61, 0x73, 0x70, 0x61, 0x2d, 0x64, 0x65, 0x76, 0x6e, 0x65, 0x74, // kaspa-devnet
-                    ],
-                );
-                self.commit_body(self.genesis_hash, &[], Arc::new(vec![genesis_coinbase]))
-            }
-            _ if status.has_block_body() => (),
-            _ => panic!("unexpected genesis status {status:?}"),
-        }
+        // Write the genesis body
+        self.commit_body(self.genesis.hash, &[], Arc::new(self.genesis.build_genesis_transactions()))
     }
 }

@@ -28,7 +28,7 @@ impl P2pService {
         outbound_target: usize,
         inbound_limit: usize,
     ) -> Self {
-        Self { flow_context, connect, listen, shutdown: SingleTrigger::default(), outbound_target, inbound_limit }
+        Self { flow_context, connect, shutdown: SingleTrigger::default(), listen, outbound_target, inbound_limit }
     }
 }
 

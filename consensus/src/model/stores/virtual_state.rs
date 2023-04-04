@@ -1,11 +1,12 @@
 use std::sync::Arc;
 
+use kaspa_consensus_core::config::genesis::GenesisBlock;
 use kaspa_consensus_core::{
     coinbase::BlockRewardData, tx::TransactionId, utxo::utxo_diff::UtxoDiff, BlockHashMap, BlockHashSet, HashMapCustomHasher,
 };
 use kaspa_database::prelude::StoreResult;
-use kaspa_database::prelude::DB;
 use kaspa_database::prelude::{BatchDbWriter, CachedDbItem, DirectDbWriter};
+use kaspa_database::prelude::{StoreError, DB};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
 use rocksdb::WriteBatch;
@@ -54,24 +55,18 @@ impl VirtualState {
         }
     }
 
-    pub fn from_genesis(
-        genesis_hash: Hash,
-        genesis_bits: u32,
-        past_median_time: u64,
-        accepted_tx_ids: Vec<TransactionId>,
-        initial_ghostdag_data: GhostdagData,
-    ) -> Self {
+    pub fn from_genesis(genesis: &GenesisBlock, ghostdag_data: GhostdagData) -> Self {
         Self {
-            parents: vec![genesis_hash],
-            ghostdag_data: initial_ghostdag_data,
+            parents: vec![genesis.hash],
+            ghostdag_data,
             daa_score: 0,
-            bits: genesis_bits,
-            past_median_time,
+            bits: genesis.bits,
+            past_median_time: genesis.timestamp,
             multiset: MuHash::new(),
             utxo_diff: UtxoDiff::default(), // Virtual diff is initially empty since genesis receives no reward
-            accepted_tx_ids,
+            accepted_tx_ids: genesis.build_genesis_transactions().into_iter().map(|tx| tx.id()).collect(),
             mergeset_rewards: BlockHashMap::new(),
-            mergeset_non_daa: BlockHashSet::from_iter(std::iter::once(genesis_hash)),
+            mergeset_non_daa: BlockHashSet::from_iter(std::iter::once(genesis.hash)),
         }
     }
 }
@@ -101,6 +96,14 @@ impl DbVirtualStateStore {
 
     pub fn clone_with_new_cache(&self) -> Self {
         Self::new(Arc::clone(&self.db))
+    }
+
+    pub fn is_initialized(&self) -> StoreResult<bool> {
+        match self.access.read() {
+            Ok(_) => Ok(true),
+            Err(StoreError::KeyNotFound(_)) => Ok(false),
+            Err(e) => Err(e),
+        }
     }
 
     pub fn set_batch(&mut self, batch: &mut WriteBatch, state: VirtualState) -> StoreResult<()> {

@@ -20,9 +20,8 @@ use kaspa_notify::{
     },
     subscriber::{Subscriber, SubscriptionManager},
 };
-use kaspa_rpc_core::{
-    api::rpc::RpcApi, notify::connection::ChannelConnection, server::service::RpcCoreService, Notification, RpcResult,
-};
+use kaspa_rpc_core::{api::rpc::RpcApi, notify::connection::ChannelConnection, Notification, RpcResult};
+use kaspa_rpc_service::service::RpcCoreService;
 use std::{io::ErrorKind, net::SocketAddr, pin::Pin, sync::Arc};
 use tokio::sync::{mpsc, RwLock};
 use tokio_stream::wrappers::ReceiverStream;
