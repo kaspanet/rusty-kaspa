@@ -48,7 +48,7 @@ license = "MIT/Apache-2.0"
 edition = "2021"
 include = [
     "src/**/*.rs",
-    "src/**/*.proto",
+    "proto/**/*.proto",
     "benches/**/*.rs",
     "build.rs",
     "Cargo.toml"
