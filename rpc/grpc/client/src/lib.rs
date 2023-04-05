@@ -14,6 +14,7 @@ use kaspa_core::{debug, trace};
 use kaspa_grpc_core::{
     channel::NotificationChannel,
     protowire::{kaspad_request, rpc_client::RpcClient, GetInfoRequestMessage, KaspadRequest, KaspadResponse},
+    RPC_MAX_MESSAGE_SIZE,
 };
 use kaspa_notify::{
     error::Result as NotifyResult,
@@ -359,8 +360,10 @@ impl Inner {
             .connect()
             .await?;
 
-        let mut client =
-            RpcClient::new(channel).send_compressed(CompressionEncoding::Gzip).accept_compressed(CompressionEncoding::Gzip);
+        let mut client = RpcClient::new(channel)
+            .send_compressed(CompressionEncoding::Gzip)
+            .accept_compressed(CompressionEncoding::Gzip)
+            .max_decoding_message_size(RPC_MAX_MESSAGE_SIZE);
 
         // Force the opening of the stream when connected to a go kaspad server.
         // This is also needed for querying server capabilities.
