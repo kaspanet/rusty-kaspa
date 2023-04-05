@@ -11,7 +11,7 @@ pub mod perf {
     /// algorithm to encounter for blocks out of the selected chain.
     pub const DEFAULT_REINDEX_SLACK: u64 = 1 << 12;
 
-    #[derive(Clone)]
+    #[derive(Clone, Debug)]
     pub struct PerfParams {
         //
         // Cache sizes

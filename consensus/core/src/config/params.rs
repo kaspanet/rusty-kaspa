@@ -1,11 +1,12 @@
 use super::genesis::{GenesisBlock, DEVNET_GENESIS, GENESIS, SIMNET_GENESIS, TESTNET_GENESIS};
 use crate::{networktype::NetworkType, BlockLevel, KType};
+use kaspa_addresses::Prefix;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Consensus parameters. Contains settings and configurations which are consensus-sensitive.
 /// Changing one of these on a network node would exclude and prevent it from reaching consensus
 /// with the other unmodified nodes.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Params {
     pub net: NetworkType,
     pub net_suffix: Option<u32>,
@@ -56,6 +57,10 @@ impl Params {
 
     pub fn network_name(&self) -> String {
         self.net.name(self.net_suffix)
+    }
+
+    pub fn prefix(&self) -> Prefix {
+        self.net.into()
     }
 }
 

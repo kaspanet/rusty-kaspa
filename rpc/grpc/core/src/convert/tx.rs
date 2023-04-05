@@ -82,7 +82,11 @@ from!(item: &kaspa_rpc_core::RpcAcceptedTransactionIds, protowire::RpcAcceptedTr
 });
 
 from!(item: &kaspa_rpc_core::RpcUtxosByAddressesEntry, protowire::RpcUtxosByAddressesEntry, {
-    Self { address: (&item.address).into(), outpoint: Some((&item.outpoint).into()), utxo_entry: Some((&item.utxo_entry).into()) }
+    Self {
+        address: item.address.as_ref().map_or("".to_string(), |x| x.into()),
+        outpoint: Some((&item.outpoint).into()),
+        utxo_entry: Some((&item.utxo_entry).into()),
+    }
 });
 
 // ----------------------------------------------------------------------------
@@ -184,8 +188,9 @@ try_from!(item: &protowire::RpcAcceptedTransactionIds, kaspa_rpc_core::RpcAccept
 });
 
 try_from!(item: &protowire::RpcUtxosByAddressesEntry, kaspa_rpc_core::RpcUtxosByAddressesEntry, {
+    let address = if item.address.is_empty() { None } else { Some(item.address.as_str().try_into()?) };
     Self {
-        address: item.address.as_str().try_into()?,
+        address,
         outpoint: item
             .outpoint
             .as_ref()

@@ -1,40 +1,37 @@
-use kaspa_addresses::Address;
+use derive_more::Deref;
+use kaspa_addresses::{Address, Prefix};
 use kaspa_consensus_core::tx::ScriptPublicKey;
+use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script};
+use kaspa_txscript_errors::TxScriptError;
 
 #[allow(dead_code)]
 /// Represents an [`Address`] and its matching [`ScriptPublicKey`] representation
-pub struct UtxoAddress {
-    address: Address,
-    script_public_key: ScriptPublicKey,
-}
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Hash, Deref)]
+pub struct UtxoAddress(Address);
 
 impl UtxoAddress {
-    pub fn new(address: Address, script_public_key: ScriptPublicKey) -> Self {
-        Self { address, script_public_key }
+    pub fn from_address(address: Address) -> Self {
+        Self(address)
     }
 
-    #[inline(always)]
-    pub fn address(&self) -> &Address {
-        &self.address
+    pub fn try_from_script(script_public_key: ScriptPublicKey, prefix: Prefix) -> Result<Self, TxScriptError> {
+        Ok(Self::from_address(extract_script_pub_key_address(&script_public_key, prefix)?))
     }
 
-    #[inline(always)]
-    pub fn script_public_key(&self) -> &ScriptPublicKey {
-        &self.script_public_key
+    pub fn to_script_public_key(&self) -> ScriptPublicKey {
+        pay_to_address_script(self)
     }
 }
 
 impl From<Address> for UtxoAddress {
-    fn from(_item: Address) -> Self {
-        // TODO: call txscript golang PayToAddrScript equivalent when available
-        todo!()
+    fn from(address: Address) -> Self {
+        Self::from_address(address)
     }
 }
 
-impl From<ScriptPublicKey> for UtxoAddress {
-    fn from(_item: ScriptPublicKey) -> Self {
-        // TODO: call txscript golang ExtractScriptPubKeyAddress equivalent when available
-        todo!()
+impl From<UtxoAddress> for Address {
+    fn from(item: UtxoAddress) -> Self {
+        item.0
     }
 }
 
