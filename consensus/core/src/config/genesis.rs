@@ -3,7 +3,7 @@ use kaspa_hashes::{Hash, ZERO_HASH};
 use kaspa_muhash::EMPTY_MUHASH;
 
 /// The constants uniquely representing the genesis block
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct GenesisBlock {
     pub hash: Hash,
     pub version: u16,

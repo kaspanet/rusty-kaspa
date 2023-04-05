@@ -1,5 +1,6 @@
 use crate::indexed_utxos::{UtxoChanges, UtxoSetByScriptPublicKey};
 use derive_more::Display;
+use kaspa_addresses::Prefix;
 use kaspa_notify::{
     events::EventType,
     full_featured,
@@ -9,7 +10,7 @@ use kaspa_notify::{
         Single,
     },
 };
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 full_featured! {
 #[derive(Clone, Debug, Display)]
@@ -34,9 +35,14 @@ impl NotificationTrait for Notification {
         Some(self.clone())
     }
 
-    fn apply_utxos_changed_subscription(&self, _subscription: &UtxosChangedSubscription) -> Option<Self> {
-        // TODO: apply the subscription
-        Some(self.clone())
+    fn apply_utxos_changed_subscription(&self, subscription: &UtxosChangedSubscription) -> Option<Self> {
+        match subscription.active() {
+            true => {
+                let Self::UtxosChanged(notification) = self else { return None };
+                notification.apply_utxos_changed_subscription(subscription).map(Self::UtxosChanged)
+            }
+            false => None,
+        }
     }
 
     fn event_type(&self) -> EventType {
@@ -49,12 +55,49 @@ pub struct PruningPointUtxoSetOverrideNotification {}
 
 #[derive(Debug, Clone)]
 pub struct UtxosChangedNotification {
+    pub prefix: Prefix,
     pub added: Arc<UtxoSetByScriptPublicKey>,
     pub removed: Arc<UtxoSetByScriptPublicKey>,
 }
 
-impl From<UtxoChanges> for UtxosChangedNotification {
-    fn from(item: UtxoChanges) -> Self {
-        Self { added: Arc::new(item.added), removed: Arc::new(item.removed) }
+impl UtxosChangedNotification {
+    pub fn from_utxos_changed(utxos_changed: UtxoChanges, prefix: Prefix) -> Self {
+        Self { added: Arc::new(utxos_changed.added), removed: Arc::new(utxos_changed.removed), prefix }
+    }
+
+    pub(crate) fn apply_utxos_changed_subscription(&self, subscription: &UtxosChangedSubscription) -> Option<Self> {
+        if subscription.to_all() {
+            Some(self.clone())
+        } else {
+            let added = Self::filter_utxo_set(&self.added, subscription);
+            let removed = Self::filter_utxo_set(&self.removed, subscription);
+            if added.is_empty() && removed.is_empty() {
+                None
+            } else {
+                Some(Self { prefix: self.prefix, added: Arc::new(added), removed: Arc::new(removed) })
+            }
+        }
+    }
+
+    fn filter_utxo_set(utxo_set: &UtxoSetByScriptPublicKey, subscription: &UtxosChangedSubscription) -> UtxoSetByScriptPublicKey {
+        // As an optimization, we iterate over the smaller set (O(n)) among the two below
+        // and check existence over the larger set (O(1))
+        let mut result = HashMap::default();
+        if utxo_set.len() < subscription.addresses().len() {
+            utxo_set.iter().for_each(|(script_public_key, collection)| {
+                if subscription.addresses().contains_key(script_public_key) {
+                    result.insert(script_public_key.clone(), collection.clone());
+                }
+            });
+        } else {
+            subscription.addresses().iter().filter(|(script_public_key, _)| utxo_set.contains_key(script_public_key)).for_each(
+                |(script_public_key, _)| {
+                    if let Some(collection) = utxo_set.get(script_public_key) {
+                        result.insert(script_public_key.clone(), collection.clone());
+                    }
+                },
+            );
+        }
+        result
     }
 }

@@ -134,11 +134,8 @@ pub mod test_helpers {
                 true => {
                     if let TestNotification::UtxosChanged(ref payload) = self {
                         if !subscription.to_all() {
-                            let addresses = payload
-                                .addresses
-                                .iter()
-                                .filter_map(|x| if subscription.addresses().contains(x) { Some((*x).clone()) } else { None })
-                                .collect::<Vec<_>>();
+                            let addresses =
+                                payload.addresses.iter().filter(|x| subscription.contains_address(x)).cloned().collect::<Vec<_>>();
                             if !addresses.is_empty() {
                                 return Some(TestNotification::UtxosChanged(UtxosChangedNotification {
                                     data: payload.data,

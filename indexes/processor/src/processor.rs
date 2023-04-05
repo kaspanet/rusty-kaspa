@@ -7,6 +7,7 @@ use futures::{
     future::FutureExt, // for `.fuse()`
     select,
 };
+use kaspa_consensus_core::config::Config;
 use kaspa_consensus_notify::{notification as consensus_notification, notification::Notification as ConsensusNotification};
 use kaspa_core::trace;
 use kaspa_index_core::notification::{Notification, PruningPointUtxoSetOverrideNotification, UtxosChangedNotification};
@@ -31,6 +32,7 @@ use std::sync::{
 /// into their pending local versions and relaying them to a local notifier.
 #[derive(Debug)]
 pub struct Processor {
+    config: Config,
     utxoindex: DynUtxoIndexApi,
     recv_channel: CollectorNotificationReceiver<ConsensusNotification>,
 
@@ -41,12 +43,17 @@ pub struct Processor {
 }
 
 impl Processor {
-    pub fn new(utxoindex: DynUtxoIndexApi, recv_channel: CollectorNotificationReceiver<ConsensusNotification>) -> Self {
+    pub fn new(
+        utxoindex: DynUtxoIndexApi,
+        recv_channel: CollectorNotificationReceiver<ConsensusNotification>,
+        config: &Config,
+    ) -> Self {
         Self {
             utxoindex,
             recv_channel,
             collect_shutdown: Arc::new(DuplexTrigger::new()),
             is_started: Arc::new(AtomicBool::new(false)),
+            config: config.clone(),
         }
     }
 
@@ -109,7 +116,8 @@ impl Processor {
     ) -> IndexResult<UtxosChangedNotification> {
         trace!("[{IDENT}]: processing {:?}", notification);
         if let Some(utxoindex) = self.utxoindex.as_deref() {
-            return Ok(utxoindex.write().update(notification.accumulated_utxo_diff.clone(), notification.virtual_parents)?.into());
+            let utxos_changed = utxoindex.write().update(notification.accumulated_utxo_diff.clone(), notification.virtual_parents)?;
+            return Ok(UtxosChangedNotification::from_utxos_changed(utxos_changed, self.config.prefix()));
         };
         Err(IndexError::NotSupported(EventType::UtxosChanged))
     }
@@ -181,7 +189,7 @@ mod tests {
             tc.init();
             let consensus_manager = Arc::new(ConsensusManager::from_consensus(tc.consensus()));
             let utxoindex: DynUtxoIndexApi = Some(UtxoIndex::new(consensus_manager, utxoindex_db).unwrap());
-            let processor = Arc::new(Processor::new(utxoindex, consensus_receiver));
+            let processor = Arc::new(Processor::new(utxoindex, consensus_receiver, &config));
             let (processor_sender, processor_receiver) = unbounded();
             let notifier = Arc::new(NotifyMock::new(processor_sender));
             processor.clone().start(notifier);
