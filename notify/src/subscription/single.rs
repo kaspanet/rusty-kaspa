@@ -173,13 +173,8 @@ impl UtxosChangedSubscription {
     }
 
     pub fn insert_address(&mut self, address: &Address) -> bool {
-        let mut result: bool = false;
         let utxo_address: UtxoAddress = address.clone().into();
-        self.addresses.entry(utxo_address.to_script_public_key()).or_insert_with(|| {
-            result = true;
-            utxo_address
-        });
-        result
+        self.addresses.insert(utxo_address.to_script_public_key(), utxo_address).is_none()
     }
 
     pub fn contains_address(&self, address: &Address) -> bool {
