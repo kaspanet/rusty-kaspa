@@ -1,3 +1,5 @@
+use self::service::RpcCoreService;
+use kaspa_consensus_core::config::Config;
 use kaspa_consensus_notify::notifier::ConsensusNotifier;
 use kaspa_consensusmanager::ConsensusManager;
 use kaspa_core::{
@@ -5,10 +7,10 @@ use kaspa_core::{
     trace,
 };
 use kaspa_index_core::notifier::IndexNotifier;
+use kaspa_mining::manager::MiningManager;
+use kaspa_p2p_flows::flow_context::FlowContext;
 use kaspa_utils::triggers::DuplexTrigger;
 use std::sync::Arc;
-
-use self::service::RpcCoreService;
 
 pub mod collector;
 pub mod service;
@@ -26,8 +28,12 @@ impl RpcCoreServer {
         consensus_manager: Arc<ConsensusManager>,
         consensus_notifier: Arc<ConsensusNotifier>,
         index_notifier: Option<Arc<IndexNotifier>>,
+        mining_manager: Arc<MiningManager>,
+        flow_context: Arc<FlowContext>,
+        config: Config,
     ) -> Self {
-        let service = Arc::new(RpcCoreService::new(consensus_manager, consensus_notifier, index_notifier));
+        let service =
+            Arc::new(RpcCoreService::new(consensus_manager, consensus_notifier, index_notifier, mining_manager, flow_context, config));
         Self { service, shutdown: DuplexTrigger::default() }
     }
 

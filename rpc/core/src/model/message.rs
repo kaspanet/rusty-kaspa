@@ -93,6 +93,7 @@ pub struct GetBlockTemplateResponse {
     /// chance the block will never be accepted, thus the solving effort would have been wasted.
     pub is_synced: bool,
 }
+
 /// GetBlockRequest requests information about a specific block
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]

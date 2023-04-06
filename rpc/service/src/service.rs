@@ -2,7 +2,7 @@
 
 use super::collector::{CollectorFromConsensus, CollectorFromIndex};
 use async_trait::async_trait;
-use kaspa_consensus_core::{block::Block, coinbase::MinerData};
+use kaspa_consensus_core::{block::Block, coinbase::MinerData, config::Config, tx::COINBASE_TRANSACTION_INDEX};
 use kaspa_consensus_notify::{
     notifier::ConsensusNotifier,
     {connection::ConsensusChannelConnection, notification::Notification as ConsensusNotification},
@@ -11,6 +11,7 @@ use kaspa_consensusmanager::ConsensusManager;
 use kaspa_core::{info, trace};
 use kaspa_hashes::Hash;
 use kaspa_index_core::{connection::IndexChannelConnection, notification::Notification as IndexNotification, notifier::IndexNotifier};
+use kaspa_mining::manager::MiningManager;
 use kaspa_notify::{
     collector::DynCollector,
     events::{EventSwitches, EventType, EVENT_TYPE_ARRAY},
@@ -19,18 +20,21 @@ use kaspa_notify::{
     scope::Scope,
     subscriber::{Subscriber, SubscriptionManager},
 };
+use kaspa_p2p_flows::flow_context::FlowContext;
 use kaspa_rpc_core::{
     api::rpc::RpcApi, model::*, notify::connection::ChannelConnection, FromRpcHex, Notification, RpcError, RpcResult,
 };
 use kaspa_utils::channel::Channel;
 use std::{
+    iter::once,
+    ops::Deref,
     str::FromStr,
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
     vec,
 };
 
-/// A service implementing the Rpc API at rpc_core level.
+/// A service implementing the Rpc API at kaspa_rpc_core level.
 ///
 /// Collects notifications from the consensus and forwards them to
 /// actual protocol-featured services. Thanks to the subscription pattern,
@@ -50,6 +54,9 @@ use std::{
 pub struct RpcCoreService {
     consensus_manager: Arc<ConsensusManager>,
     notifier: Arc<Notifier<Notification, ChannelConnection>>,
+    mining_manager: Arc<MiningManager>,
+    flow_context: Arc<FlowContext>,
+    config: Config,
 }
 
 const RPC_CORE: &str = "rpc-core";
@@ -59,6 +66,9 @@ impl RpcCoreService {
         consensus_manager: Arc<ConsensusManager>,
         consensus_notifier: Arc<ConsensusNotifier>,
         index_notifier: Option<Arc<IndexNotifier>>,
+        mining_manager: Arc<MiningManager>,
+        flow_context: Arc<FlowContext>,
+        config: Config,
     ) -> Self {
         // Prepare consensus-notify objects
         let consensus_notify_channel = Channel::<ConsensusNotification>::default();
@@ -92,7 +102,7 @@ impl RpcCoreService {
         // Create the rcp-core notifier
         let notifier = Arc::new(Notifier::new(EVENT_TYPE_ARRAY[..].into(), collectors, subscribers, 1, RPC_CORE));
 
-        Self { consensus_manager, notifier }
+        Self { consensus_manager, notifier, mining_manager, flow_context, config }
     }
 
     pub fn start(&self) {
@@ -150,12 +160,30 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
     async fn get_block_template_call(&self, request: GetBlockTemplateRequest) -> RpcResult<GetBlockTemplateResponse> {
         trace!("incoming GetBlockTemplate request");
 
-        let script_public_key = kaspa_txscript::pay_to_address_script(&request.pay_address);
-        let miner_data: MinerData = MinerData::new(script_public_key, request.extra_data);
-        // TODO: handle error properly when managed through mining manager
-        let block_template = self.consensus_manager.consensus().session().await.build_block_template(miner_data, vec![]).unwrap();
+        // Make sure the pay address prefix matches the config network type
+        if request.pay_address.prefix != self.config.prefix() {
+            return Err(kaspa_addresses::AddressError::InvalidPrefix(request.pay_address.prefix.to_string()))?;
+        }
 
-        Ok((&block_template).into())
+        // Build block template
+        let script_public_key = kaspa_txscript::pay_to_address_script(&request.pay_address);
+        let version_prefix = env!("CARGO_PKG_VERSION");
+        let extra_data = version_prefix.as_bytes().iter().chain(once(&(b'/'))).chain(&request.extra_data).cloned().collect::<Vec<_>>();
+        let miner_data: MinerData = MinerData::new(script_public_key, extra_data);
+        let consensus = self.consensus_manager.consensus();
+        let session = consensus.session().await;
+        let block_template = self.mining_manager.get_block_template(session.deref(), &miner_data)?;
+
+        // Check coinbase tx payload length
+        if block_template.block.transactions[COINBASE_TRANSACTION_INDEX].payload.len() > self.config.max_coinbase_payload_len {
+            return Err(RpcError::CoinbasePayloadLengthAboveMax(self.config.max_coinbase_payload_len));
+        }
+
+        let is_nearly_synced = self.config.is_nearly_synced(block_template.selected_parent_timestamp);
+        Ok(GetBlockTemplateResponse {
+            block: (&block_template.block).into(),
+            is_synced: self.flow_context.hub().has_peers() && is_nearly_synced,
+        })
     }
 
     async fn get_block_call(&self, req: GetBlockRequest) -> RpcResult<GetBlockResponse> {

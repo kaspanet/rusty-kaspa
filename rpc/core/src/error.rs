@@ -30,6 +30,9 @@ pub enum RpcError {
     #[error("Primitive to enum conversion error")]
     PrimitiveToEnumConversionError,
 
+    #[error("Coinbase payload is above max length ({0}). Try to shorten the extra data.")]
+    CoinbasePayloadLengthAboveMax(usize),
+
     #[error(transparent)]
     AddressError(#[from] kaspa_addresses::AddressError),
 
@@ -38,6 +41,9 @@ pub enum RpcError {
 
     #[error(transparent)]
     NotificationError(#[from] kaspa_notify::error::Error),
+
+    #[error(transparent)]
+    MiningManagerError(#[from] kaspa_mining::errors::MiningManagerError),
 
     #[error("{0}")]
     General(String),
