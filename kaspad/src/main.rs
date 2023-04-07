@@ -9,6 +9,7 @@ use kaspa_consensus_core::networktype::NetworkType;
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_consensus_notify::service::NotifyService;
 use kaspa_consensusmanager::ConsensusManager;
+use kaspa_core::version::version;
 use kaspa_core::{core::Core, signals::Signals, task::runtime::AsyncRuntime};
 use kaspa_index_processor::service::IndexService;
 use kaspa_mining::manager::MiningManager;
@@ -137,7 +138,7 @@ pub fn main() {
     kaspa_core::log::init_logger(&args.log_level);
 
     // Print package name and version
-    info!("{} v{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+    info!("{} v{}", env!("CARGO_PKG_NAME"), version());
 
     // Configure the panic behavior
     kaspa_core::panic::configure_panic();
@@ -151,11 +152,13 @@ pub fn main() {
     };
 
     let config = match network_type {
-        NetworkType::Mainnet => ConfigBuilder::new(MAINNET_PARAMS).build(),
-        NetworkType::Testnet => ConfigBuilder::new(TESTNET_PARAMS).build(),
-        NetworkType::Devnet => ConfigBuilder::new(DEVNET_PARAMS).build(),
-        NetworkType::Simnet => ConfigBuilder::new(SIMNET_PARAMS).build(),
-    };
+        NetworkType::Mainnet => ConfigBuilder::new(MAINNET_PARAMS),
+        NetworkType::Testnet => ConfigBuilder::new(TESTNET_PARAMS),
+        NetworkType::Devnet => ConfigBuilder::new(DEVNET_PARAMS),
+        NetworkType::Simnet => ConfigBuilder::new(SIMNET_PARAMS),
+    }
+    .apply_args(|config| args.apply_to_config(config))
+    .build();
 
     // TODO: Refactor all this quick-and-dirty code
     let app_dir = args

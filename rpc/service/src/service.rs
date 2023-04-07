@@ -8,7 +8,7 @@ use kaspa_consensus_notify::{
     {connection::ConsensusChannelConnection, notification::Notification as ConsensusNotification},
 };
 use kaspa_consensusmanager::ConsensusManager;
-use kaspa_core::{info, trace, warn};
+use kaspa_core::{info, trace, version::version, warn};
 use kaspa_hashes::Hash;
 use kaspa_index_core::{connection::IndexChannelConnection, notification::Notification as IndexNotification, notifier::IndexNotifier};
 use kaspa_mining::manager::MiningManager;
@@ -178,8 +178,7 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
 
         // Build block template
         let script_public_key = kaspa_txscript::pay_to_address_script(&request.pay_address);
-        let version_prefix = env!("CARGO_PKG_VERSION");
-        let extra_data = version_prefix.as_bytes().iter().chain(once(&(b'/'))).chain(&request.extra_data).cloned().collect::<Vec<_>>();
+        let extra_data = version().as_bytes().iter().chain(once(&(b'/'))).chain(&request.extra_data).cloned().collect::<Vec<_>>();
         let miner_data: MinerData = MinerData::new(script_public_key, extra_data);
         let consensus = self.consensus_manager.consensus();
         let session = consensus.session().await;
@@ -209,14 +208,14 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         Ok(GetBlockResponse { block: create_dummy_rpc_block() })
     }
 
-    async fn get_info_call(&self, _req: GetInfoRequest) -> RpcResult<GetInfoResponse> {
-        // TODO: query info from consensus and use it to build the response
+    async fn get_info_call(&self, _request: GetInfoRequest) -> RpcResult<GetInfoResponse> {
+        let is_nearly_synced = self.flow_context.is_nearly_synced().await;
         Ok(GetInfoResponse {
-            p2p_id: "test".to_string(),
-            mempool_size: 1,
-            server_version: "0.12.8".to_string(),
-            is_utxo_indexed: false,
-            is_synced: false,
+            p2p_id: self.flow_context.node_id.to_string(),
+            mempool_size: self.mining_manager.transaction_count(true, false) as u64,
+            server_version: version().to_string(),
+            is_utxo_indexed: self.config.utxoindex,
+            is_synced: self.flow_context.hub().has_peers() && is_nearly_synced,
             has_notify_command: true,
             has_message_id: true,
         })

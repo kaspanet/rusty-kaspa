@@ -26,14 +26,19 @@ pub struct Config {
     // TODO:
     // is_archival: bool,
     // enable_sanity_check_pruning_utxoset: bool,
+    //
+    /// Enable the UTXO index
+    pub utxoindex: bool,
 
+    /// Allow the node to accept blocks from RPC while not synced
+    /// (this flag is mainly used for testing)
     // TODO: add and handle a matching kaspad command argument
     pub allow_submit_block_when_not_synced: bool,
 }
 
 impl Config {
     pub fn new(params: Params) -> Self {
-        Self { params, perf: PERF_PARAMS, process_genesis: true, allow_submit_block_when_not_synced: false }
+        Self { params, perf: PERF_PARAMS, process_genesis: true, utxoindex: false, allow_submit_block_when_not_synced: false }
     }
 
     pub fn to_builder(&self) -> ConfigBuilder {
@@ -74,6 +79,14 @@ impl ConfigBuilder {
         F: Fn(&mut Params),
     {
         edit_func(&mut self.config.params);
+        self
+    }
+
+    pub fn apply_args<F>(mut self, edit_func: F) -> Self
+    where
+        F: Fn(&mut Config),
+    {
+        edit_func(&mut self.config);
         self
     }
 
