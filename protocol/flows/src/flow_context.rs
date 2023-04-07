@@ -128,6 +128,11 @@ impl FlowContext {
         self.is_ibd_running.load(Ordering::SeqCst)
     }
 
+    pub async fn is_nearly_synced(&self) -> bool {
+        // TODO: make sure relying on is_ibd_running() is safe in all cases
+        !self.is_ibd_running() || self.consensus().session().await.is_nearly_synced()
+    }
+
     pub fn try_adding_block_request(&self, req: Hash) -> Option<RequestScope<Hash>> {
         if self.shared_block_requests.lock().insert(req) {
             Some(RequestScope::new(self.shared_block_requests.clone(), req))
