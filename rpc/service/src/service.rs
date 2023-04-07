@@ -8,7 +8,7 @@ use kaspa_consensus_notify::{
     {connection::ConsensusChannelConnection, notification::Notification as ConsensusNotification},
 };
 use kaspa_consensusmanager::ConsensusManager;
-use kaspa_core::{info, trace};
+use kaspa_core::{info, trace, warn};
 use kaspa_hashes::Hash;
 use kaspa_index_core::{connection::IndexChannelConnection, notification::Notification as IndexNotification, notifier::IndexNotifier};
 use kaspa_mining::manager::MiningManager;
@@ -16,7 +16,7 @@ use kaspa_notify::{
     collector::DynCollector,
     events::{EventSwitches, EventType, EVENT_TYPE_ARRAY},
     listener::ListenerId,
-    notifier::{Notifier, Notify},
+    notifier::Notifier,
     scope::Scope,
     subscriber::{Subscriber, SubscriptionManager},
 };
@@ -123,37 +123,48 @@ impl RpcCoreService {
 #[async_trait]
 impl RpcApi<ChannelConnection> for RpcCoreService {
     async fn submit_block_call(&self, request: SubmitBlockRequest) -> RpcResult<SubmitBlockResponse> {
+        // TODO: consider adding an error field to SubmitBlockReport to document both the report and error fields
+        let is_synced: bool = self.flow_context.hub().has_peers() && self.flow_context.is_nearly_synced().await;
+
+        if !self.config.allow_submit_block_when_not_synced && !is_synced {
+            // error = "Block not submitted - node is not synced"
+            return Ok(SubmitBlockResponse { report: SubmitBlockReport::Reject(SubmitBlockRejectReason::IsInIBD) });
+        }
+
         let try_block: RpcResult<Block> = (&request.block).try_into();
         if let Err(ref err) = try_block {
             trace!("incoming SubmitBlockRequest with block conversion error: {}", err);
+            // error = format!("Could not parse block: {0}", err)
+            return Ok(SubmitBlockResponse { report: SubmitBlockReport::Reject(SubmitBlockRejectReason::BlockInvalid) });
         }
         let block = try_block?;
         let hash = block.hash();
 
-        // We recreate a RpcBlock for the BlockAdded notification.
-        // This guaranties that we have the right hash.
-        // TODO: remove it when consensus emit a BlockAdded notification.
-        let rpc_block: RpcBlock = (&block).into();
+        let consensus = self.consensus_manager.consensus();
+        let session = consensus.session().await;
+
+        if !request.allow_non_daa_blocks {
+            let virtual_daa_score = session.get_virtual_daa_score();
+
+            // A simple heuristic check which signals that the mined block is out of date
+            // and should not be accepted unless user explicitly requests
+            if !self.config.is_in_difficulty_window(block.header.daa_score, virtual_daa_score) {
+                // error = format!("Block rejected. Reason: block DAA score {0} is too far behind virtual's DAA score {1}", block.header.daa_score, virtual_daa_score)
+                return Ok(SubmitBlockResponse { report: SubmitBlockReport::Reject(SubmitBlockRejectReason::BlockInvalid) });
+            }
+        }
 
         trace!("incoming SubmitBlockRequest for block {}", hash);
-
-        match self.consensus_manager.consensus().session().await.validate_and_insert_block(block, true).await {
+        match self.flow_context.add_block(session.deref(), block.clone()).await {
             Ok(_) => {
                 info!("Accepted block {} via submit block", hash);
-
-                // Notify about new added block
-                // TODO: let consensus emit this notification through an event channel
-                self.notifier.notify(Notification::BlockAdded(BlockAddedNotification { block: Arc::new(rpc_block) })).unwrap();
-
-                // Emit a NewBlockTemplate notification
-                self.notifier.notify(Notification::NewBlockTemplate(NewBlockTemplateNotification {})).unwrap();
-
                 Ok(SubmitBlockResponse { report: SubmitBlockReport::Success })
             }
             Err(err) => {
-                trace!("submit block error: {}", err);
+                warn!("The RPC submitted block triggered an error: {}\nPrinting the full header for debug purposes:\n{:?}", err, err);
+                // error = format!("Block rejected. Reason: {}", err))
                 Ok(SubmitBlockResponse { report: SubmitBlockReport::Reject(SubmitBlockRejectReason::BlockInvalid) })
-            } // TODO: handle also the IsInIBD reject reason
+            }
         }
     }
 

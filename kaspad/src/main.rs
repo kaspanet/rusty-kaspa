@@ -214,7 +214,7 @@ pub fn main() {
     let consensus_manager = Arc::new(ConsensusManager::new(consensus_factory));
     let monitor = Arc::new(ConsensusMonitor::new(counters));
 
-    let notify_service = Arc::new(NotifyService::new(notification_root, notification_recv));
+    let notify_service = Arc::new(NotifyService::new(notification_root.clone(), notification_recv));
 
     let index_service: Option<Arc<IndexService>> = if args.utxoindex {
         // Use only a single thread for none-consensus databases
@@ -229,7 +229,8 @@ pub fn main() {
 
     let mining_manager = Arc::new(MiningManager::new(config.target_time_per_block, false, config.max_block_mass, None));
 
-    let flow_context = Arc::new(FlowContext::new(consensus_manager.clone(), address_manager, &config, mining_manager.clone()));
+    let flow_context =
+        Arc::new(FlowContext::new(consensus_manager.clone(), address_manager, &config, mining_manager.clone(), notification_root));
     let p2p_service =
         Arc::new(P2pService::new(flow_context.clone(), args.connect, args.listen, args.outbound_target, args.inbound_limit));
 

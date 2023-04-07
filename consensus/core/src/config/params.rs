@@ -15,6 +15,7 @@ pub struct Params {
     pub timestamp_deviation_tolerance: u64,
     pub target_time_per_block: u64,
     pub max_block_parents: u8,
+    /// Size of window that is inspected to calculate the required difficulty of each block
     pub difficulty_window_size: usize,
     pub mergeset_size_limit: u64,
     pub merge_depth: u64,
@@ -53,6 +54,13 @@ impl Params {
         // timestamp is within DAA window duration far in the past. Blocks mined over such DAG state would
         // enter the DAA window of fully-synced nodes and thus contribute to overall network difficulty
         unix_now() < sink_timestamp + self.expected_daa_window_duration_in_milliseconds()
+    }
+
+    /// Determines if `daa_score` is located in the DAA window headed by `virtual_daa_score`.
+    ///
+    /// Note: The function returns true if `daa_score` is greater then `virtual_daa_score`.
+    pub fn is_in_difficulty_window(&self, daa_score: u64, virtual_daa_score: u64) -> bool {
+        virtual_daa_score <= self.difficulty_window_size as u64 || daa_score > virtual_daa_score - self.difficulty_window_size as u64
     }
 
     pub fn network_name(&self) -> String {

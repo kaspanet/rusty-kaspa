@@ -48,8 +48,12 @@ impl AsyncService for P2pService {
             let server_address = self.listen.clone().unwrap_or(String::from("[::1]:50051"));
             let p2p_adaptor =
                 Adaptor::bidirectional(server_address.clone(), self.flow_context.hub().clone(), self.flow_context.clone()).unwrap();
-            let connection_manager =
-                ConnectionManager::new(p2p_adaptor.clone(), self.outbound_target, self.inbound_limit, self.flow_context.amgr.clone());
+            let connection_manager = ConnectionManager::new(
+                p2p_adaptor.clone(),
+                self.outbound_target,
+                self.inbound_limit,
+                self.flow_context.address_manager.clone(),
+            );
 
             // For now, attempt to connect to a running golang node
             if let Some(peer_address) = self.connect.clone() {

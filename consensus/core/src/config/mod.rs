@@ -26,11 +26,14 @@ pub struct Config {
     // TODO:
     // is_archival: bool,
     // enable_sanity_check_pruning_utxoset: bool,
+
+    // TODO: add and handle a matching kaspad command argument
+    pub allow_submit_block_when_not_synced: bool,
 }
 
 impl Config {
     pub fn new(params: Params) -> Self {
-        Self { params, perf: PERF_PARAMS, process_genesis: true }
+        Self { params, perf: PERF_PARAMS, process_genesis: true, allow_submit_block_when_not_synced: false }
     }
 
     pub fn to_builder(&self) -> ConfigBuilder {

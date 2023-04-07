@@ -411,6 +411,7 @@ impl Consensus {
             past_median_time_manager.clone(),
             params.max_block_mass,
             params.genesis.clone(),
+            notification_root.clone(),
             counters.clone(),
         ));
 
