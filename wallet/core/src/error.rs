@@ -79,6 +79,8 @@ pub enum Error {
     FromUtf8Error(#[from] std::string::FromUtf8Error),
     //     #[error(transparent)]
     //     ConsensusCoreWasm(#[from] kaspa_consensus_core::wasm::error::Error),
+    #[error(transparent)]
+    ScriptBuilderError(#[from] kaspa_txscript::script_builder::ScriptBuilderError),
 }
 
 impl From<chacha20poly1305::Error> for Error {

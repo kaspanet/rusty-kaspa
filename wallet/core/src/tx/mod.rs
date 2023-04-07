@@ -4,6 +4,7 @@ pub mod outpoint;
 pub mod output;
 pub mod payment;
 pub mod transaction;
+pub mod txscript;
 pub mod virtual_transaction;
 
 pub use input::*;
@@ -12,6 +13,7 @@ pub use outpoint::*;
 pub use output::*;
 pub use payment::*;
 pub use transaction::*;
+pub use txscript::*;
 pub use virtual_transaction::*;
 
 use crate::result::Result;
