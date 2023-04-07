@@ -2,16 +2,21 @@
 
 use super::collector::{CollectorFromConsensus, CollectorFromIndex};
 use async_trait::async_trait;
-use kaspa_consensus_core::{block::Block, coinbase::MinerData, config::Config, tx::COINBASE_TRANSACTION_INDEX};
+use kaspa_consensus_core::{
+    block::Block,
+    coinbase::MinerData,
+    config::Config,
+    tx::{Transaction, COINBASE_TRANSACTION_INDEX},
+};
 use kaspa_consensus_notify::{
     notifier::ConsensusNotifier,
     {connection::ConsensusChannelConnection, notification::Notification as ConsensusNotification},
 };
 use kaspa_consensusmanager::ConsensusManager;
-use kaspa_core::{info, trace, version::version, warn};
+use kaspa_core::{debug, info, trace, version::version, warn};
 use kaspa_hashes::Hash;
 use kaspa_index_core::{connection::IndexChannelConnection, notification::Notification as IndexNotification, notifier::IndexNotifier};
-use kaspa_mining::manager::MiningManager;
+use kaspa_mining::{manager::MiningManager, mempool::tx::Orphan};
 use kaspa_notify::{
     collector::DynCollector,
     events::{EventSwitches, EventType, EVENT_TYPE_ARRAY},
@@ -132,7 +137,7 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         }
 
         let try_block: RpcResult<Block> = (&request.block).try_into();
-        if let Err(ref err) = try_block {
+        if let Err(err) = &try_block {
             trace!("incoming SubmitBlockRequest with block conversion error: {}", err);
             // error = format!("Could not parse block: {0}", err)
             return Ok(SubmitBlockResponse { report: SubmitBlockReport::Reject(SubmitBlockRejectReason::BlockInvalid) });
@@ -221,6 +226,19 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         })
     }
 
+    async fn submit_transaction_call(&self, request: SubmitTransactionRequest) -> RpcResult<SubmitTransactionResponse> {
+        let transaction: Transaction = (&request.transaction).try_into()?;
+        let transaction_id = transaction.id();
+        let consensus = self.consensus_manager.consensus();
+        let session = consensus.session().await;
+        self.flow_context.add_transaction(session.deref(), transaction, Orphan::Allowed).await.map_err(|err| {
+            let err = RpcError::RejectedTransaction(transaction_id, err.to_string());
+            debug!("{err}");
+            err
+        })?;
+        Ok(SubmitTransactionResponse::new(transaction_id))
+    }
+
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // UNIMPLEMENTED METHODS
 
@@ -249,10 +267,6 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
     }
 
     async fn add_peer_call(&self, _request: AddPeerRequest) -> RpcResult<AddPeerResponse> {
-        unimplemented!();
-    }
-
-    async fn submit_transaction_call(&self, _request: SubmitTransactionRequest) -> RpcResult<SubmitTransactionResponse> {
         unimplemented!();
     }
 

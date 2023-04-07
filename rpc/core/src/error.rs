@@ -1,6 +1,8 @@
 use std::num::TryFromIntError;
 use thiserror::Error;
 
+use crate::RpcTransactionId;
+
 #[derive(Clone, Debug, Error)]
 pub enum RpcError {
     #[error("Not implemented")]
@@ -32,6 +34,9 @@ pub enum RpcError {
 
     #[error("Coinbase payload is above max length ({0}). Try to shorten the extra data.")]
     CoinbasePayloadLengthAboveMax(usize),
+
+    #[error("Rejected transaction {0}: {1}")]
+    RejectedTransaction(RpcTransactionId, String),
 
     #[error(transparent)]
     AddressError(#[from] kaspa_addresses::AddressError),
