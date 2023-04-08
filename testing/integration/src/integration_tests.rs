@@ -11,7 +11,7 @@ use kaspa_consensus::model::stores::ghostdag::{GhostdagStoreReader, KType as Gho
 use kaspa_consensus::model::stores::headers::HeaderStoreReader;
 use kaspa_consensus::model::stores::reachability::DbReachabilityStore;
 use kaspa_consensus::model::stores::selected_chain::SelectedChainStoreReader;
-use kaspa_consensus::params::{Params, DEVNET_PARAMS, MAINNET_PARAMS};
+use kaspa_consensus::params::{Params, DEVNET_PARAMS, DIFFICULTY_MAX, MAINNET_PARAMS};
 use kaspa_consensus::pipeline::ProcessingCounters;
 use kaspa_consensus::processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions};
 use kaspa_consensus_core::api::ConsensusApi;
@@ -735,6 +735,7 @@ impl KaspadGoParams {
             timestamp_deviation_tolerance: self.TimestampDeviationTolerance,
             target_time_per_block: self.TargetTimePerBlock / 1_000_000,
             max_block_parents: self.MaxBlockParents,
+            max_difficulty: DIFFICULTY_MAX,
             difficulty_window_size: self.DifficultyAdjustmentWindowSize,
             mergeset_size_limit: self.MergeSetSizeLimit,
             merge_depth: self.MergeDepth,

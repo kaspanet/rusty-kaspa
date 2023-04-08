@@ -1950,6 +1950,7 @@ dependencies = [
  "kaspa-core",
  "kaspa-hashes",
  "kaspa-index-core",
+ "kaspa-math",
  "kaspa-mining",
  "kaspa-notify",
  "kaspa-p2p-flows",
