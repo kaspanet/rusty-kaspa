@@ -8,7 +8,7 @@ use crate::{
             relations::MTRelationsService,
         },
         stores::{
-            acceptance_data::DbAcceptanceDataStore,
+            acceptance_data::{AcceptanceDataStoreReader, DbAcceptanceDataStore},
             block_transactions::{BlockTransactionsStoreReader, DbBlockTransactionsStore},
             block_window_cache::BlockWindowCacheStore,
             daa::DbDaaStore,
@@ -59,7 +59,10 @@ use kaspa_consensus_core::{
     BlockHashMap, BlockHashSet, HashMapCustomHasher,
 };
 use kaspa_consensus_notify::{
-    notification::{Notification, SinkBlueScoreChangedNotification, UtxosChangedNotification, VirtualDaaScoreChangedNotification},
+    notification::{
+        Notification, SinkBlueScoreChangedNotification, UtxosChangedNotification, VirtualChainChangedNotification,
+        VirtualDaaScoreChangedNotification,
+    },
     root::ConsensusNotificationRoot,
 };
 use kaspa_core::{debug, info, time::unix_now, trace};
@@ -344,7 +347,7 @@ impl VirtualStateProcessor {
                         // Accumulate
                         accumulated_diff.with_diff_in_place(&ctx.mergeset_diff).unwrap();
                         // Commit UTXO data for current chain block
-                        self.commit_utxo_state(current, ctx.mergeset_diff, ctx.multiset_hash, AcceptanceData {});
+                        self.commit_utxo_state(current, ctx.mergeset_diff, ctx.multiset_hash, ctx.mergeset_acceptance_data);
                         // TODO: AcceptanceData
 
                         // Count the number of UTXO-processed chain blocks
@@ -432,12 +435,14 @@ impl VirtualStateProcessor {
                 let _ = self.notification_root().notify(Notification::VirtualDaaScoreChanged(
                     VirtualDaaScoreChangedNotification::new(new_virtual_state.daa_score),
                 ));
-                // TODO: fix the contents which is wrong in the following commented version
-                // let _ = self.notification_root().notify(Notification::VirtualChainChanged(VirtualChainChangedNotification::new(
-                //     new_virtual_state.ghostdag_data.mergeset_blues.clone(),
-                //     new_virtual_state.ghostdag_data.mergeset_reds.clone(),
-                //     Arc::new(new_virtual_state.accepted_tx_ids),
-                // )));
+                let chain_path = self.dag_traversal_manager.calculate_chain_path(prev_selected, new_selected);
+                let added_chain_blocks_acceptance_data =
+                    chain_path.added.iter().copied().map(|added| self.acceptance_data_store.get(added).unwrap()).collect_vec();
+                let _ = self.notification_root().notify(Notification::VirtualChainChanged(VirtualChainChangedNotification::new(
+                    chain_path.added.into(),
+                    chain_path.removed.into(),
+                    Arc::new(added_chain_blocks_acceptance_data),
+                )));
             }
             BlockStatus::StatusDisqualifiedFromChain => {
                 // TODO: this means another chain needs to be checked
@@ -729,7 +734,7 @@ impl VirtualStateProcessor {
         self.pruning_store.write().set(self.genesis.hash, self.genesis.hash, 0).unwrap();
 
         // Write the UTXO state of genesis
-        self.commit_utxo_state(self.genesis.hash, UtxoDiff::default(), MuHash::new(), AcceptanceData {});
+        self.commit_utxo_state(self.genesis.hash, UtxoDiff::default(), MuHash::new(), vec![]);
     }
 
     pub fn import_pruning_point_utxo_set(

@@ -8,6 +8,7 @@ use crate::{
     processes::transaction_validator::errors::{TxResult, TxRuleError},
 };
 use kaspa_consensus_core::{
+    acceptance_data::MergeSetBlockAcceptanceData,
     coinbase::*,
     hashing,
     header::Header,
@@ -34,6 +35,7 @@ pub(super) struct UtxoProcessingContext<'a> {
     pub multiset_hash: MuHash,
     pub mergeset_diff: UtxoDiff,
     pub accepted_tx_ids: Vec<TransactionId>,
+    pub mergeset_acceptance_data: Vec<MergeSetBlockAcceptanceData>,
     pub mergeset_rewards: BlockHashMap<BlockRewardData>,
 }
 
@@ -46,6 +48,7 @@ impl<'a> UtxoProcessingContext<'a> {
             mergeset_diff: UtxoDiff::default(),
             accepted_tx_ids: Vec::with_capacity(1), // We expect at least the selected parent coinbase tx
             mergeset_rewards: BlockHashMap::with_capacity(mergeset_size),
+            mergeset_acceptance_data: Vec::with_capacity(mergeset_size),
         }
     }
 
@@ -84,12 +87,17 @@ impl VirtualStateProcessor {
             let validated_transactions = self.validate_transactions_in_parallel(&txs, &composed_view, pov_daa_score);
 
             let mut block_fee = 0u64;
-            for validated_tx in validated_transactions {
-                ctx.mergeset_diff.add_transaction(&validated_tx, pov_daa_score).unwrap();
-                ctx.multiset_hash.add_transaction(&validated_tx, pov_daa_score);
+            for validated_tx in validated_transactions.iter() {
+                ctx.mergeset_diff.add_transaction(validated_tx, pov_daa_score).unwrap();
+                ctx.multiset_hash.add_transaction(validated_tx, pov_daa_score);
                 ctx.accepted_tx_ids.push(validated_tx.id());
                 block_fee += validated_tx.calculated_fee;
             }
+
+            ctx.mergeset_acceptance_data.push(MergeSetBlockAcceptanceData {
+                block_hash: merged_block,
+                accepted_transactions: validated_transactions.into_iter().map(|tx| tx.id()).collect(),
+            });
 
             let coinbase_data = self.coinbase_manager.deserialize_coinbase_payload(&txs[0].payload).unwrap();
             ctx.mergeset_rewards.insert(
