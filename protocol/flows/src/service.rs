@@ -65,7 +65,7 @@ impl AsyncService for P2pService {
                 p2p_adaptor.clone(),
                 self.outbound_target,
                 self.inbound_limit,
-                self.dns_seeders.clone(),
+                self.dns_seeders,
                 self.default_port,
                 self.flow_context.amgr.clone(),
             );
