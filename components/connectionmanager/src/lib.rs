@@ -220,8 +220,9 @@ impl ConnectionManager {
 
         for seeder in dns_seeders {
             info!("Querying DNS seeder {}", seeder);
-            let addrs = match format!("{}:53", seeder).to_socket_addrs() {
-                Ok(ips) => ips,
+            // Since the DNS lookup protocol doesn't come with a port, we must assume that the default port is used.
+            let addrs = match format!("{}:{}", seeder, self.default_port).to_socket_addrs() {
+                Ok(addrs) => addrs,
                 Err(e) => {
                     warn!("error connecting to DNS seeder {}: {}", seeder, e);
                     continue;
@@ -232,7 +233,7 @@ impl ConnectionManager {
             info!("Retrieved {} addresses from DNS seeder {}", addrs_len, seeder);
             let mut amgr_lock = self.amgr.lock();
             for addr in addrs {
-                amgr_lock.add_address(NetAddress::new(addr.ip(), self.default_port));
+                amgr_lock.add_address(NetAddress::new(addr.ip(), addr.port()));
             }
 
             if addrs_len >= min_addresses_to_fetch {
