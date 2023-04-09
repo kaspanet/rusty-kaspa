@@ -9,6 +9,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// with the other unmodified nodes.
 #[derive(Clone, Debug)]
 pub struct Params {
+    pub dns_seeders: &'static [&'static str],
+    pub default_port: u16,
     pub net: NetworkType,
     pub net_suffix: Option<u32>,
     pub genesis: GenesisBlock,
@@ -83,6 +85,27 @@ pub const DIFFICULTY_MAX: Uint256 = Uint256([18446744073709551615, 1844674407370
 
 const DEFAULT_GHOSTDAG_K: KType = 18;
 pub const MAINNET_PARAMS: Params = Params {
+    dns_seeders: &[
+        // This DNS seeder is run by Wolfie
+        "mainnet-dnsseed.kas.pa",
+        // This DNS seeder is run by Denis Mashkevich
+        "mainnet-dnsseed-1.kaspanet.org",
+        // This DNS seeder is run by Denis Mashkevich
+        "mainnet-dnsseed-2.kaspanet.org",
+        // This DNS seeder is run by Constantine Bytensky
+        "dnsseed.cbytensky.org",
+        // This DNS seeder is run by Georges Künzli
+        "seeder1.kaspad.net",
+        // This DNS seeder is run by Georges Künzli
+        "seeder2.kaspad.net",
+        // This DNS seeder is run by Georges Künzli
+        "seeder3.kaspad.net",
+        // This DNS seeder is run by Georges Künzli
+        "seeder4.kaspad.net",
+        // This DNS seeder is run by Tim
+        "kaspadns.kaspacalc.net",
+    ],
+    default_port: 16111,
     net: NetworkType::Mainnet,
     net_suffix: None,
     genesis: GENESIS,
@@ -128,6 +151,12 @@ pub const MAINNET_PARAMS: Params = Params {
 };
 
 pub const TESTNET_PARAMS: Params = Params {
+    dns_seeders: &[
+        "testnet-10-dnsseed.kas.pa",
+        // This DNS seeder is run by Tiram
+        "seeder1-testnet.kaspad.net",
+    ],
+    default_port: 16211,
     net: NetworkType::Testnet,
     net_suffix: Some(10),
     genesis: TESTNET_GENESIS,
@@ -173,6 +202,8 @@ pub const TESTNET_PARAMS: Params = Params {
 };
 
 pub const SIMNET_PARAMS: Params = Params {
+    dns_seeders: &[],
+    default_port: 16511,
     net: NetworkType::Simnet,
     net_suffix: None,
     genesis: SIMNET_GENESIS,
@@ -218,6 +249,8 @@ pub const SIMNET_PARAMS: Params = Params {
 };
 
 pub const DEVNET_PARAMS: Params = Params {
+    dns_seeders: &[],
+    default_port: 16611,
     net: NetworkType::Devnet,
     net_suffix: None,
     genesis: DEVNET_GENESIS,

@@ -17,6 +17,8 @@ pub struct P2pService {
     listen: Option<String>,
     outbound_target: usize,
     inbound_limit: usize,
+    dns_seeders: &'static [&'static str],
+    default_port: u16,
     shutdown: SingleTrigger,
 }
 
@@ -27,8 +29,19 @@ impl P2pService {
         listen: Option<String>,
         outbound_target: usize,
         inbound_limit: usize,
+        dns_seeders: &'static [&'static str],
+        default_port: u16,
     ) -> Self {
-        Self { flow_context, connect, shutdown: SingleTrigger::default(), listen, outbound_target, inbound_limit }
+        Self {
+            flow_context,
+            connect,
+            shutdown: SingleTrigger::default(),
+            listen,
+            outbound_target,
+            inbound_limit,
+            dns_seeders,
+            default_port,
+        }
     }
 }
 
@@ -52,6 +65,8 @@ impl AsyncService for P2pService {
                 p2p_adaptor.clone(),
                 self.outbound_target,
                 self.inbound_limit,
+                self.dns_seeders,
+                self.default_port,
                 self.flow_context.address_manager.clone(),
             );
 
