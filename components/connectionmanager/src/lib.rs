@@ -215,10 +215,9 @@ impl ConnectionManager {
     }
 
     fn dns_seed(self: &Arc<Self>, mut min_addresses_to_fetch: usize) {
-        let mut dns_seeders = self.dns_seeders.to_vec();
-        dns_seeders.shuffle(&mut thread_rng());
+        let shuffled_dns_seeders = self.dns_seeders.choose_multiple(&mut thread_rng(), self.dns_seeders.len());
 
-        for seeder in dns_seeders {
+        for seeder in shuffled_dns_seeders {
             info!("Querying DNS seeder {}", seeder);
             // Since the DNS lookup protocol doesn't come with a port, we must assume that the default port is used.
             let addrs = match format!("{}:{}", seeder, self.default_port).to_socket_addrs() {
