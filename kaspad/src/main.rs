@@ -230,7 +230,15 @@ pub fn main() {
     let mining_manager = Arc::new(MiningManager::new(config.target_time_per_block, false, config.max_block_mass, None));
 
     let flow_context = Arc::new(FlowContext::new(consensus_manager.clone(), address_manager, &config, mining_manager));
-    let p2p_service = Arc::new(P2pService::new(flow_context, args.connect, args.listen, args.outbound_target, args.inbound_limit));
+    let p2p_service = Arc::new(P2pService::new(
+        flow_context,
+        args.connect,
+        args.listen,
+        args.outbound_target,
+        args.inbound_limit,
+        config.params.dns_seeders,
+        config.params.default_port,
+    ));
 
     // TODO: pass the FlowContext to RpcCoreService
     let rpc_core_server = Arc::new(RpcCoreServer::new(

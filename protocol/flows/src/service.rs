@@ -17,6 +17,8 @@ pub struct P2pService {
     listen: Option<String>,
     outbound_target: usize,
     inbound_limit: usize,
+    dns_seeders: &'static [&'static str],
+    default_port: u16,
     shutdown: SingleTrigger,
 }
 
@@ -27,8 +29,19 @@ impl P2pService {
         listen: Option<String>,
         outbound_target: usize,
         inbound_limit: usize,
+        dns_seeders: &'static [&'static str],
+        default_port: u16,
     ) -> Self {
-        Self { flow_context, connect, shutdown: SingleTrigger::default(), listen, outbound_target, inbound_limit }
+        Self {
+            flow_context,
+            connect,
+            shutdown: SingleTrigger::default(),
+            listen,
+            outbound_target,
+            inbound_limit,
+            dns_seeders,
+            default_port,
+        }
     }
 }
 
@@ -48,8 +61,14 @@ impl AsyncService for P2pService {
             let server_address = self.listen.clone().unwrap_or(String::from("[::1]:50051"));
             let p2p_adaptor =
                 Adaptor::bidirectional(server_address.clone(), self.flow_context.hub().clone(), self.flow_context.clone()).unwrap();
-            let connection_manager =
-                ConnectionManager::new(p2p_adaptor.clone(), self.outbound_target, self.inbound_limit, self.flow_context.amgr.clone());
+            let connection_manager = ConnectionManager::new(
+                p2p_adaptor.clone(),
+                self.outbound_target,
+                self.inbound_limit,
+                self.dns_seeders.clone(),
+                self.default_port,
+                self.flow_context.amgr.clone(),
+            );
 
             // For now, attempt to connect to a running golang node
             if let Some(peer_address) = self.connect.clone() {
