@@ -96,7 +96,7 @@ where
                     notification = notifications.next().fuse() => {
                         match notification {
                             Some(notification) => {
-                                match notifier.notify(converter.convert(notification)) {
+                                match notifier.notify(converter.convert(notification).await) {
                                     Ok(_) => (),
                                     Err(err) => {
                                         trace!("[Collector] notification sender error: {:?}", err);

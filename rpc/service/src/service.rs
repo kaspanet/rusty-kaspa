@@ -1,6 +1,6 @@
 //! Core server implementation for ClientAPI
 
-use crate::collector::{ConsensusConverter, IndexConverter};
+use crate::{collector::IndexConverter, converter::consensus::ConsensusConverter};
 
 use super::collector::{CollectorFromConsensus, CollectorFromIndex};
 use async_trait::async_trait;
@@ -16,7 +16,6 @@ use kaspa_consensus_notify::{
 };
 use kaspa_consensusmanager::ConsensusManager;
 use kaspa_core::{debug, info, trace, version::version, warn};
-use kaspa_hashes::Hash;
 use kaspa_index_core::{connection::IndexChannelConnection, notification::Notification as IndexNotification, notifier::IndexNotifier};
 use kaspa_mining::{manager::MiningManager, mempool::tx::Orphan};
 use kaspa_notify::{
@@ -28,18 +27,9 @@ use kaspa_notify::{
     subscriber::{Subscriber, SubscriptionManager},
 };
 use kaspa_p2p_flows::flow_context::FlowContext;
-use kaspa_rpc_core::{
-    api::rpc::RpcApi, model::*, notify::connection::ChannelConnection, FromRpcHex, Notification, RpcError, RpcResult,
-};
+use kaspa_rpc_core::{api::rpc::RpcApi, model::*, notify::connection::ChannelConnection, Notification, RpcError, RpcResult};
 use kaspa_utils::channel::Channel;
-use std::{
-    iter::once,
-    ops::Deref,
-    str::FromStr,
-    sync::Arc,
-    time::{SystemTime, UNIX_EPOCH},
-    vec,
-};
+use std::{iter::once, ops::Deref, sync::Arc, vec};
 
 /// A service implementing the Rpc API at kaspa_rpc_core level.
 ///
@@ -64,6 +54,7 @@ pub struct RpcCoreService {
     mining_manager: Arc<MiningManager>,
     flow_context: Arc<FlowContext>,
     config: Config,
+    consensus_converter: Arc<ConsensusConverter>,
 }
 
 const RPC_CORE: &str = "rpc-core";
@@ -86,8 +77,9 @@ impl RpcCoreService {
         let mut consensus_events: EventSwitches = EVENT_TYPE_ARRAY[..].into();
         consensus_events[EventType::UtxosChanged] = false;
         consensus_events[EventType::PruningPointUtxoSetOverride] = index_notifier.is_none();
-        let consensus_converter = Arc::new(ConsensusConverter::new());
-        let consensus_collector = Arc::new(CollectorFromConsensus::new(consensus_notify_channel.receiver(), consensus_converter));
+        let consensus_converter = Arc::new(ConsensusConverter::new(consensus_manager.clone(), config.clone()));
+        let consensus_collector =
+            Arc::new(CollectorFromConsensus::new(consensus_notify_channel.receiver(), consensus_converter.clone()));
         let consensus_subscriber = Arc::new(Subscriber::new(consensus_events, consensus_notifier, consensus_notify_listener_id));
 
         let mut collectors: Vec<DynCollector<Notification>> = vec![consensus_collector];
@@ -111,7 +103,7 @@ impl RpcCoreService {
         // Create the rcp-core notifier
         let notifier = Arc::new(Notifier::new(EVENT_TYPE_ARRAY[..].into(), collectors, subscribers, 1, RPC_CORE));
 
-        Self { consensus_manager, notifier, mining_manager, flow_context, config }
+        Self { consensus_manager, notifier, mining_manager, flow_context, config, consensus_converter }
     }
 
     pub fn start(&self) {
@@ -205,16 +197,14 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         })
     }
 
-    async fn get_block_call(&self, req: GetBlockRequest) -> RpcResult<GetBlockResponse> {
-        // TODO: Remove the following test when consensus is used to fetch data
-
-        // This is a test to simulate a consensus error
-        if req.hash.as_bytes()[0] == 0 {
-            return Err(RpcError::General(format!("Block {0} not found", req.hash)));
+    async fn get_block_call(&self, request: GetBlockRequest) -> RpcResult<GetBlockResponse> {
+        let consensus = self.consensus_manager.consensus();
+        let session = consensus.session().await;
+        let mut block = session.get_block_even_if_header_only(request.hash)?;
+        if !request.include_transactions {
+            block.transactions = Arc::new(vec![]);
         }
-
-        // TODO: query info from consensus and use it to build the response
-        Ok(GetBlockResponse { block: create_dummy_rpc_block() })
+        Ok(GetBlockResponse { block: self.consensus_converter.get_block(session.deref(), &block, request.include_transactions)? })
     }
 
     async fn get_info_call(&self, _request: GetInfoRequest) -> RpcResult<GetInfoResponse> {
@@ -393,40 +383,5 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
     async fn stop_notify(&self, id: ListenerId, scope: Scope) -> RpcResult<()> {
         self.notifier.clone().stop_notify(id, scope).await?;
         Ok(())
-    }
-}
-
-// TODO: Remove the following function when consensus is used to fetch data
-fn create_dummy_rpc_block() -> RpcBlock {
-    let sel_parent_hash = Hash::from_str("5963be67f12da63004ce1baceebd7733c4fb601b07e9b0cfb447a3c5f4f3c4f0").unwrap();
-    RpcBlock {
-        header: RpcHeader {
-            hash: Hash::from_str("8270e63a0295d7257785b9c9b76c9a2efb7fb8d6ac0473a1bff1571c5030e995").unwrap(),
-            version: 1,
-            parents_by_level: vec![],
-            hash_merkle_root: Hash::from_str("4b5a041951c4668ecc190c6961f66e54c1ce10866bef1cf1308e46d66adab270").unwrap(),
-            accepted_id_merkle_root: Hash::from_str("1a1310d49d20eab15bf62c106714bdc81e946d761701e81fabf7f35e8c47b479").unwrap(),
-            utxo_commitment: Hash::from_str("e7cdeaa3a8966f3fff04e967ed2481615c76b7240917c5d372ee4ed353a5cc15").unwrap(),
-            timestamp: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64,
-            bits: 1,
-            nonce: 1234,
-            daa_score: 123456,
-            blue_work: RpcBlueWorkType::from_rpc_hex("1234567890abcdef").unwrap(),
-            pruning_point: Hash::from_str("7190c08d42a0f7994b183b52e7ef2f99bac0b91ef9023511cadf4da3a2184b16").unwrap(),
-            blue_score: 12345678901,
-        },
-        transactions: vec![],
-        verbose_data: Some(RpcBlockVerboseData {
-            hash: Hash::from_str("8270e63a0295d7257785b9c9b76c9a2efb7fb8d6ac0473a1bff1571c5030e995").unwrap(),
-            difficulty: 5678.0,
-            selected_parent_hash: sel_parent_hash,
-            transaction_ids: vec![],
-            is_header_only: true,
-            blue_score: 98765,
-            children_hashes: vec![],
-            merge_set_blues_hashes: vec![],
-            merge_set_reds_hashes: vec![],
-            is_chain_block: true,
-        }),
     }
 }

@@ -13,6 +13,7 @@ use kaspa_utils::triggers::DuplexTrigger;
 use std::sync::Arc;
 
 pub mod collector;
+pub mod converter;
 pub mod service;
 
 const RPC_CORE_SERVICE: &str = "rpc-core-service";

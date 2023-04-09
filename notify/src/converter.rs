@@ -1,12 +1,15 @@
+use async_trait::async_trait;
+
 use crate::notification::Notification;
 use core::fmt::Debug;
 use std::marker::PhantomData;
 
+#[async_trait]
 pub trait Converter: Send + Sync + Debug {
     type Incoming: Send + Sync + 'static + Sized + Debug;
     type Outgoing: Notification;
 
-    fn convert(&self, incoming: Self::Incoming) -> Self::Outgoing;
+    async fn convert(&self, incoming: Self::Incoming) -> Self::Outgoing;
 }
 
 /// A notification [`Converter`] that converts an incoming `I` into a notification `N` using the [`From`] trait.
@@ -40,6 +43,7 @@ where
     }
 }
 
+#[async_trait]
 impl<I, N> Converter for ConverterFrom<I, N>
 where
     N: Notification,
@@ -49,7 +53,7 @@ where
     type Incoming = I;
     type Outgoing = N;
 
-    fn convert(&self, incoming: I) -> N {
+    async fn convert(&self, incoming: I) -> N {
         incoming.into()
     }
 }

@@ -18,13 +18,13 @@ use crate::{
             block_window_cache::BlockWindowCacheStore,
             daa::DbDaaStore,
             depth::DbDepthStore,
-            ghostdag::DbGhostdagStore,
+            ghostdag::{DbGhostdagStore, GhostdagStoreReader},
             headers::{DbHeadersStore, HeaderStoreReader},
             headers_selected_tip::{DbHeadersSelectedTipStore, HeadersSelectedTipStoreReader},
             past_pruning_points::{DbPastPruningPointsStore, PastPruningPointsStoreReader},
             pruning::{DbPruningStore, PruningStoreReader},
             reachability::DbReachabilityStore,
-            relations::DbRelationsStore,
+            relations::{DbRelationsStore, RelationsStoreReader},
             selected_chain::DbSelectedChainStore,
             statuses::{DbStatusesStore, StatusesStoreReader},
             tips::{DbTipsStore, TipsStoreReader},
@@ -51,7 +51,7 @@ use crate::{
 };
 use kaspa_consensus_core::{
     api::ConsensusApi,
-    block::{Block, BlockTemplate},
+    block::{Block, BlockInfo, BlockRelations, BlockTemplate},
     blockhash::BlockHashExtensions,
     blockstatus::BlockStatus,
     coinbase::MinerData,
@@ -812,8 +812,64 @@ impl ConsensusApi for Consensus {
         })
     }
 
+    fn get_block_even_if_header_only(&self, hash: Hash) -> ConsensusResult<Block> {
+        let Some(status) = self.statuses_store.read().get(hash).unwrap_option().filter(|&status| !status.has_block_header()) else {
+            return Err(ConsensusError::BlockNotFound(hash));
+        };
+        Ok(Block {
+            header: self.headers_store.get_header(hash).unwrap(),
+            transactions: if status.is_header_only() { Arc::new(vec![]) } else { self.block_transactions_store.get(hash).unwrap() },
+        })
+    }
+
+    fn get_block_info(&self, hash: Hash) -> ConsensusResult<BlockInfo> {
+        let (exists, block_status) = match self.get_block_status(hash) {
+            Some(status) => (true, status),
+            None => (false, BlockStatus::StatusInvalid),
+        };
+
+        // If the status is invalid, then we don't have the necessary reachability data to check if it's in PruningPoint.Future.
+        if block_status == BlockStatus::StatusInvalid {
+            return Ok(BlockInfo::with_exists(exists));
+        }
+
+        // FIXME: check this call
+        let ghostdag_data = self.ghostdag_store.get_data(hash).unwrap();
+
+        Ok(BlockInfo::new(
+            exists,
+            block_status,
+            ghostdag_data.blue_score,
+            ghostdag_data.blue_work,
+            ghostdag_data.selected_parent,
+            (*ghostdag_data.mergeset_blues).clone(),
+            (*ghostdag_data.mergeset_reds).clone(),
+        ))
+    }
+
+    fn get_block_relations(&self, hash: Hash) -> Option<BlockRelations> {
+        let store = &self.relations_stores.read()[0];
+        let parents = store.get_parents(hash).unwrap_option();
+        let children = store.get_children(hash).unwrap_option();
+        parents.and_then(|parents| children.map(|children| BlockRelations::new(parents, children)))
+    }
+
+    fn get_block_children(&self, hash: Hash) -> Option<Arc<Vec<Hash>>> {
+        self.relations_stores.read()[0].get_children(hash).unwrap_option()
+    }
+
+    fn get_block_parents(&self, hash: Hash) -> Option<Arc<Vec<Hash>>> {
+        self.relations_stores.read()[0].get_parents(hash).unwrap_option()
+    }
+
     fn get_block_status(&self, hash: Hash) -> Option<BlockStatus> {
         self.statuses_store.read().get(hash).unwrap_option()
+    }
+
+    fn is_chain_block(&self, hash: Hash) -> ConsensusResult<bool> {
+        // FIXME: check this call
+        let ghostdag_data = self.ghostdag_store.get_data(hash).unwrap();
+        self.is_chain_ancestor_of(hash, ghostdag_data.selected_parent)
     }
 
     fn get_missing_block_body_hashes(&self, high: Hash) -> ConsensusResult<Vec<Hash>> {

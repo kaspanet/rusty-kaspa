@@ -70,7 +70,7 @@ from!(&kaspa_rpc_core::RpcTransactionInputVerboseData, protowire::RpcTransaction
 from!(item: &kaspa_rpc_core::RpcTransactionOutputVerboseData, protowire::RpcTransactionOutputVerboseData, {
     Self {
         script_public_key_type: item.script_public_key_type.to_string(),
-        script_public_key_address: item.script_public_key_address.clone(),
+        script_public_key_address: (&item.script_public_key_address).into(),
     }
 });
 
@@ -176,7 +176,7 @@ try_from!(&protowire::RpcTransactionInputVerboseData, kaspa_rpc_core::RpcTransac
 try_from!(item: &protowire::RpcTransactionOutputVerboseData, kaspa_rpc_core::RpcTransactionOutputVerboseData, {
     Self {
         script_public_key_type: item.script_public_key_type.as_str().try_into()?,
-        script_public_key_address: item.script_public_key_address.clone(),
+        script_public_key_address: item.script_public_key_address.as_str().try_into()?,
     }
 });
 

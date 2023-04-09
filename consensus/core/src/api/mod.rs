@@ -3,7 +3,7 @@ use kaspa_muhash::MuHash;
 use std::sync::Arc;
 
 use crate::{
-    block::{Block, BlockTemplate},
+    block::{Block, BlockInfo, BlockRelations, BlockTemplate},
     blockstatus::BlockStatus,
     coinbase::MinerData,
     errors::{
@@ -143,6 +143,34 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
+    fn get_block_even_if_header_only(&self, hash: Hash) -> ConsensusResult<Block> {
+        unimplemented!()
+    }
+
+    fn get_block_info(&self, hash: Hash) -> ConsensusResult<BlockInfo> {
+        unimplemented!()
+    }
+
+    fn get_block_relations(&self, hash: Hash) -> Option<BlockRelations> {
+        unimplemented!()
+    }
+
+    fn get_block_children(&self, hash: Hash) -> Option<Arc<Vec<Hash>>> {
+        unimplemented!()
+    }
+
+    fn get_block_parents(&self, hash: Hash) -> Option<Arc<Vec<Hash>>> {
+        unimplemented!()
+    }
+
+    fn get_block_status(&self, hash: Hash) -> Option<BlockStatus> {
+        unimplemented!()
+    }
+
+    fn is_chain_block(&self, hash: Hash) -> ConsensusResult<bool> {
+        unimplemented!()
+    }
+
     fn get_pruning_point_utxos(
         &self,
         expected_pruning_point: Hash,
@@ -150,10 +178,6 @@ pub trait ConsensusApi: Send + Sync {
         chunk_size: usize,
         skip_first: bool,
     ) -> ConsensusResult<Vec<(TransactionOutpoint, UtxoEntry)>> {
-        unimplemented!()
-    }
-
-    fn get_block_status(&self, hash: Hash) -> Option<BlockStatus> {
         unimplemented!()
     }
 
