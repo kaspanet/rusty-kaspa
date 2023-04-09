@@ -32,7 +32,7 @@ use std::sync::{
 /// into their pending local versions and relaying them to a local notifier.
 #[derive(Debug)]
 pub struct Processor {
-    config: Config,
+    config: Arc<Config>,
     utxoindex: DynUtxoIndexApi,
     recv_channel: CollectorNotificationReceiver<ConsensusNotification>,
 
@@ -46,14 +46,14 @@ impl Processor {
     pub fn new(
         utxoindex: DynUtxoIndexApi,
         recv_channel: CollectorNotificationReceiver<ConsensusNotification>,
-        config: &Config,
+        config: Arc<Config>,
     ) -> Self {
         Self {
             utxoindex,
             recv_channel,
             collect_shutdown: Arc::new(DuplexTrigger::new()),
             is_started: Arc::new(AtomicBool::new(false)),
-            config: config.clone(),
+            config,
         }
     }
 
@@ -184,12 +184,12 @@ mod tests {
         fn new() -> Self {
             let (consensus_sender, consensus_receiver) = unbounded();
             let (utxoindex_db_lifetime, utxoindex_db) = create_temp_db();
-            let config = Config::new(DEVNET_PARAMS);
+            let config = Arc::new(Config::new(DEVNET_PARAMS));
             let tc = TestConsensus::create_from_temp_db_and_dummy_sender(&config);
             tc.init();
             let consensus_manager = Arc::new(ConsensusManager::from_consensus(tc.consensus()));
             let utxoindex: DynUtxoIndexApi = Some(UtxoIndex::new(consensus_manager, utxoindex_db).unwrap());
-            let processor = Arc::new(Processor::new(utxoindex, consensus_receiver, &config));
+            let processor = Arc::new(Processor::new(utxoindex, consensus_receiver, config));
             let (processor_sender, processor_receiver) = unbounded();
             let notifier = Arc::new(NotifyMock::new(processor_sender));
             processor.clone().start(notifier);

@@ -151,14 +151,16 @@ pub fn main() {
         _ => panic!("only a single net should be activated"),
     };
 
-    let config = match network_type {
-        NetworkType::Mainnet => ConfigBuilder::new(MAINNET_PARAMS),
-        NetworkType::Testnet => ConfigBuilder::new(TESTNET_PARAMS),
-        NetworkType::Devnet => ConfigBuilder::new(DEVNET_PARAMS),
-        NetworkType::Simnet => ConfigBuilder::new(SIMNET_PARAMS),
-    }
-    .apply_args(|config| args.apply_to_config(config))
-    .build();
+    let config = Arc::new(
+        match network_type {
+            NetworkType::Mainnet => ConfigBuilder::new(MAINNET_PARAMS),
+            NetworkType::Testnet => ConfigBuilder::new(TESTNET_PARAMS),
+            NetworkType::Devnet => ConfigBuilder::new(DEVNET_PARAMS),
+            NetworkType::Simnet => ConfigBuilder::new(SIMNET_PARAMS),
+        }
+        .apply_args(|config| args.apply_to_config(config))
+        .build(),
+    );
 
     // TODO: Refactor all this quick-and-dirty code
     let app_dir = args
@@ -223,7 +225,7 @@ pub fn main() {
         // Use only a single thread for none-consensus databases
         let utxoindex_db = kaspa_database::prelude::open_db(utxoindex_db_dir, true, 1);
         let utxoindex: DynUtxoIndexApi = Some(UtxoIndex::new(consensus_manager.clone(), utxoindex_db).unwrap());
-        Some(Arc::new(IndexService::new(&notify_service.notifier(), utxoindex, &config)))
+        Some(Arc::new(IndexService::new(&notify_service.notifier(), utxoindex, config.clone())))
     } else {
         None
     };
@@ -232,8 +234,13 @@ pub fn main() {
 
     let mining_manager = Arc::new(MiningManager::new(config.target_time_per_block, false, config.max_block_mass, None));
 
-    let flow_context =
-        Arc::new(FlowContext::new(consensus_manager.clone(), address_manager, &config, mining_manager.clone(), notification_root));
+    let flow_context = Arc::new(FlowContext::new(
+        consensus_manager.clone(),
+        address_manager,
+        config.clone(),
+        mining_manager.clone(),
+        notification_root,
+    ));
     let p2p_service = Arc::new(P2pService::new(
         flow_context.clone(),
         args.connect,

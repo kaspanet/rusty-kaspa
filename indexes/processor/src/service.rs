@@ -25,7 +25,7 @@ pub struct IndexService {
 }
 
 impl IndexService {
-    pub fn new(consensus_notifier: &Arc<ConsensusNotifier>, utxoindex: DynUtxoIndexApi, config: &Config) -> Self {
+    pub fn new(consensus_notifier: &Arc<ConsensusNotifier>, utxoindex: DynUtxoIndexApi, config: Arc<Config>) -> Self {
         // Prepare consensus-notify objects
         let consensus_notify_channel = Channel::<ConsensusNotification>::default();
         let consensus_notify_listener_id =

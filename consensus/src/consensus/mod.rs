@@ -169,17 +169,16 @@ pub struct Consensus {
     pub counters: Arc<ProcessingCounters>,
 
     // Config
-    config: Config,
+    config: Arc<Config>,
 }
 
 impl Consensus {
     pub fn new(
         db: Arc<DB>,
-        config: &Config,
+        config: Arc<Config>,
         notification_root: Arc<ConsensusNotificationRoot>,
         counters: Arc<ProcessingCounters>,
     ) -> Self {
-        let config = config.clone();
         let params = &config.params;
         let perf_params = &config.perf;
         //

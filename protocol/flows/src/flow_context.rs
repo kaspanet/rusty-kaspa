@@ -48,7 +48,7 @@ const PROTOCOL_VERSION: u32 = 5;
 pub struct FlowContext {
     pub node_id: Uuid,
     pub consensus_manager: Arc<ConsensusManager>,
-    pub config: Config,
+    pub config: Arc<Config>,
     hub: Hub,
     orphans_pool: Arc<AsyncRwLock<OrphanBlocksPool>>,
     shared_block_requests: Arc<Mutex<HashSet<Hash>>>,
@@ -92,7 +92,7 @@ impl FlowContext {
     pub fn new(
         consensus_manager: Arc<ConsensusManager>,
         address_manager: Arc<Mutex<AddressManager>>,
-        config: &Config,
+        config: Arc<Config>,
         mining_manager: Arc<MiningManager>,
         notification_root: Arc<ConsensusNotificationRoot>,
     ) -> Self {
@@ -100,7 +100,7 @@ impl FlowContext {
         Self {
             node_id: Uuid::new_v4(),
             consensus_manager,
-            config: config.clone(),
+            config,
             orphans_pool: Arc::new(AsyncRwLock::new(OrphanBlocksPool::new(MAX_ORPHANS))),
             shared_block_requests: Arc::new(Mutex::new(HashSet::new())),
             transactions_spread: Arc::new(AsyncRwLock::new(TransactionsSpread::new(hub.clone()))),

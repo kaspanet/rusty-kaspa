@@ -21,11 +21,11 @@ use std::{fmt::Debug, ops::Deref, sync::Arc};
 /// Conversion of consensus_core to rpc_core structures
 pub struct ConsensusConverter {
     consensus_manager: Arc<ConsensusManager>,
-    config: Config,
+    config: Arc<Config>,
 }
 
 impl ConsensusConverter {
-    pub fn new(consensus_manager: Arc<ConsensusManager>, config: Config) -> Self {
+    pub fn new(consensus_manager: Arc<ConsensusManager>, config: Arc<Config>) -> Self {
         Self { consensus_manager, config }
     }
 

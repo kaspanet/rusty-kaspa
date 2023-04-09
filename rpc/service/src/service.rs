@@ -53,7 +53,7 @@ pub struct RpcCoreService {
     notifier: Arc<Notifier<Notification, ChannelConnection>>,
     mining_manager: Arc<MiningManager>,
     flow_context: Arc<FlowContext>,
-    config: Config,
+    config: Arc<Config>,
     consensus_converter: Arc<ConsensusConverter>,
 }
 
@@ -66,7 +66,7 @@ impl RpcCoreService {
         index_notifier: Option<Arc<IndexNotifier>>,
         mining_manager: Arc<MiningManager>,
         flow_context: Arc<FlowContext>,
-        config: Config,
+        config: Arc<Config>,
     ) -> Self {
         // Prepare consensus-notify objects
         let consensus_notify_channel = Channel::<ConsensusNotification>::default();

@@ -31,7 +31,7 @@ impl RpcCoreServer {
         index_notifier: Option<Arc<IndexNotifier>>,
         mining_manager: Arc<MiningManager>,
         flow_context: Arc<FlowContext>,
-        config: Config,
+        config: Arc<Config>,
     ) -> Self {
         let service =
             Arc::new(RpcCoreService::new(consensus_manager, consensus_notifier, index_notifier, mining_manager, flow_context, config));
