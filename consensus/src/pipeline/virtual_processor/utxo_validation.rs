@@ -8,6 +8,7 @@ use crate::{
     processes::transaction_validator::errors::{TxResult, TxRuleError},
 };
 use kaspa_consensus_core::{
+    acceptance_data::{AcceptedTxEntry, MergesetBlockAcceptanceData},
     coinbase::*,
     hashing,
     header::Header,
@@ -34,6 +35,7 @@ pub(super) struct UtxoProcessingContext<'a> {
     pub multiset_hash: MuHash,
     pub mergeset_diff: UtxoDiff,
     pub accepted_tx_ids: Vec<TransactionId>,
+    pub mergeset_acceptance_data: Vec<MergesetBlockAcceptanceData>,
     pub mergeset_rewards: BlockHashMap<BlockRewardData>,
 }
 
@@ -46,6 +48,7 @@ impl<'a> UtxoProcessingContext<'a> {
             mergeset_diff: UtxoDiff::default(),
             accepted_tx_ids: Vec::with_capacity(1), // We expect at least the selected parent coinbase tx
             mergeset_rewards: BlockHashMap::with_capacity(mergeset_size),
+            mergeset_acceptance_data: Vec::with_capacity(mergeset_size),
         }
     }
 
@@ -84,12 +87,20 @@ impl VirtualStateProcessor {
             let validated_transactions = self.validate_transactions_in_parallel(&txs, &composed_view, pov_daa_score);
 
             let mut block_fee = 0u64;
-            for validated_tx in validated_transactions {
-                ctx.mergeset_diff.add_transaction(&validated_tx, pov_daa_score).unwrap();
-                ctx.multiset_hash.add_transaction(&validated_tx, pov_daa_score);
+            for (validated_tx, _) in validated_transactions.iter() {
+                ctx.mergeset_diff.add_transaction(validated_tx, pov_daa_score).unwrap();
+                ctx.multiset_hash.add_transaction(validated_tx, pov_daa_score);
                 ctx.accepted_tx_ids.push(validated_tx.id());
                 block_fee += validated_tx.calculated_fee;
             }
+
+            ctx.mergeset_acceptance_data.push(MergesetBlockAcceptanceData {
+                block_hash: merged_block,
+                accepted_transactions: validated_transactions
+                    .into_iter()
+                    .map(|(tx, tx_idx)| AcceptedTxEntry { transaction_id: tx.id(), index_within_block: tx_idx })
+                    .collect(),
+            });
 
             let coinbase_data = self.coinbase_manager.deserialize_coinbase_payload(&txs[0].payload).unwrap();
             ctx.mergeset_rewards.insert(
@@ -179,13 +190,14 @@ impl VirtualStateProcessor {
         txs: &'a Vec<Transaction>,
         utxo_view: &V,
         pov_daa_score: u64,
-    ) -> Vec<ValidatedTransaction<'a>> {
+    ) -> Vec<(ValidatedTransaction<'a>, u32)> {
         self.thread_pool.install(|| {
             txs
                 .par_iter() // We can do this in parallel without complications since block body validation already ensured
                             // that all txs within each block are independent
+                .enumerate()
                 .skip(1) // Skip the coinbase tx.
-                .filter_map(|tx| self.validate_transaction_in_utxo_context(tx, &utxo_view, pov_daa_score).ok())
+                .filter_map(|(i, tx)| self.validate_transaction_in_utxo_context(tx, &utxo_view, pov_daa_score).ok().map(|vtx| (vtx, i as u32)))
                 .collect()
         })
     }
