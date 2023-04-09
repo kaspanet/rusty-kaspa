@@ -8,7 +8,7 @@ use crate::{
     processes::transaction_validator::errors::{TxResult, TxRuleError},
 };
 use kaspa_consensus_core::{
-    acceptance_data::{AcceptedTxEntry, MergeSetBlockAcceptanceData},
+    acceptance_data::{AcceptedTxEntry, MergesetBlockAcceptanceData},
     coinbase::*,
     hashing,
     header::Header,
@@ -35,7 +35,7 @@ pub(super) struct UtxoProcessingContext<'a> {
     pub multiset_hash: MuHash,
     pub mergeset_diff: UtxoDiff,
     pub accepted_tx_ids: Vec<TransactionId>,
-    pub mergeset_acceptance_data: Vec<MergeSetBlockAcceptanceData>,
+    pub mergeset_acceptance_data: Vec<MergesetBlockAcceptanceData>,
     pub mergeset_rewards: BlockHashMap<BlockRewardData>,
 }
 
@@ -94,7 +94,7 @@ impl VirtualStateProcessor {
                 block_fee += validated_tx.calculated_fee;
             }
 
-            ctx.mergeset_acceptance_data.push(MergeSetBlockAcceptanceData {
+            ctx.mergeset_acceptance_data.push(MergesetBlockAcceptanceData {
                 block_hash: merged_block,
                 accepted_transactions: validated_transactions
                     .into_iter()

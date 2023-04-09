@@ -348,7 +348,6 @@ impl VirtualStateProcessor {
                         accumulated_diff.with_diff_in_place(&ctx.mergeset_diff).unwrap();
                         // Commit UTXO data for current chain block
                         self.commit_utxo_state(current, ctx.mergeset_diff, ctx.multiset_hash, ctx.mergeset_acceptance_data);
-                        // TODO: AcceptanceData
 
                         // Count the number of UTXO-processed chain blocks
                         chain_block_counter += 1;
@@ -435,9 +434,9 @@ impl VirtualStateProcessor {
                 let _ = self.notification_root().notify(Notification::VirtualDaaScoreChanged(
                     VirtualDaaScoreChangedNotification::new(new_virtual_state.daa_score),
                 ));
-                let chain_path = self.dag_traversal_manager.calculate_chain_path(prev_selected, new_selected);
+                let chain_path = self.dag_traversal_manager.calculate_chain_path(prev_selected, new_selected); // TODO: As an optimization, calculate the chain path as part of the loop on the chain iterator above.
                 let added_chain_blocks_acceptance_data =
-                    chain_path.added.iter().copied().map(|added| self.acceptance_data_store.get(added).unwrap()).collect_vec();
+                    chain_path.added.iter().copied().map(|added| self.acceptance_data_store.get(added).unwrap()).collect_vec(); // TODO: Fetch acceptance data only if there's a subscriber for the below notification.
                 let _ = self.notification_root().notify(Notification::VirtualChainChanged(VirtualChainChangedNotification::new(
                     chain_path.added.into(),
                     chain_path.removed.into(),

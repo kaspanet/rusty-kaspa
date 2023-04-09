@@ -3,10 +3,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::tx::TransactionId;
 
-pub type AcceptanceData = Vec<MergeSetBlockAcceptanceData>;
+pub type AcceptanceData = Vec<MergesetBlockAcceptanceData>;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MergeSetBlockAcceptanceData {
+pub struct MergesetBlockAcceptanceData {
     pub block_hash: Hash,
     pub accepted_transactions: Vec<AcceptedTxEntry>,
 }
