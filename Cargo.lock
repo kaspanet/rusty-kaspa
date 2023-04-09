@@ -2010,6 +2010,7 @@ name = "kaspa-txscript"
 version = "0.1.0"
 dependencies = [
  "blake2b_simd",
+ "borsh",
  "criterion",
  "hex",
  "indexmap",
@@ -2022,6 +2023,7 @@ dependencies = [
  "parking_lot",
  "rand 0.8.5",
  "secp256k1",
+ "serde",
  "sha2 0.10.6",
  "smallvec",
  "thiserror",

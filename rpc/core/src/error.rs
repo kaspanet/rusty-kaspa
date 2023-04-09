@@ -1,7 +1,7 @@
 use std::num::TryFromIntError;
 use thiserror::Error;
 
-use crate::RpcTransactionId;
+use crate::{RpcHash, RpcTransactionId};
 
 #[derive(Clone, Debug, Error)]
 pub enum RpcError {
@@ -38,6 +38,9 @@ pub enum RpcError {
     #[error("Rejected transaction {0}: {1}")]
     RejectedTransaction(RpcTransactionId, String),
 
+    #[error("Block {0} is invalid. No verbose data can be built.")]
+    InvalidBlock(RpcHash),
+
     #[error(transparent)]
     AddressError(#[from] kaspa_addresses::AddressError),
 
@@ -49,6 +52,12 @@ pub enum RpcError {
 
     #[error(transparent)]
     MiningManagerError(#[from] kaspa_mining::errors::MiningManagerError),
+
+    #[error(transparent)]
+    ConsensusError(#[from] kaspa_consensus_core::errors::consensus::ConsensusError),
+
+    #[error(transparent)]
+    ScriptClassError(#[from] kaspa_txscript::script_class::Error),
 
     #[error("{0}")]
     General(String),
