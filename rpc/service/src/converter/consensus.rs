@@ -76,7 +76,7 @@ impl ConsensusConverter {
             .transactions
             .iter()
             .map(|x| self.get_transaction(consensus, x, Some(&block.header), include_transaction_verbose_data))
-            .collect::<RpcResult<Vec<RpcTransaction>>>()?;
+            .collect::<Vec<_>>();
 
         Ok(RpcBlock { header: (*block.header).clone(), transactions, verbose_data })
     }
@@ -90,7 +90,7 @@ impl ConsensusConverter {
         transaction: &Transaction,
         header: Option<&Header>,
         include_verbose_data: bool,
-    ) -> RpcResult<RpcTransaction> {
+    ) -> RpcTransaction {
         if include_verbose_data {
             let verbose_data = Some(RpcTransactionVerboseData {
                 transaction_id: transaction.id(),
@@ -100,7 +100,7 @@ impl ConsensusConverter {
                 block_hash: header.map_or_else(RpcHash::default, |x| x.hash),
                 block_time: header.map_or(0, |x| x.timestamp),
             });
-            Ok(RpcTransaction {
+            RpcTransaction {
                 version: transaction.version,
                 inputs: transaction.inputs.iter().map(|x| self.get_transaction_input(x)).collect(),
                 outputs: transaction.outputs.iter().map(|x| self.get_transaction_output(x)).collect(),
@@ -109,9 +109,9 @@ impl ConsensusConverter {
                 gas: transaction.gas,
                 payload: transaction.payload.clone(),
                 verbose_data,
-            })
+            }
         } else {
-            Ok(transaction.into())
+            transaction.into()
         }
     }
 

@@ -1,3 +1,4 @@
+use kaspa_consensus_core::tx::TransactionId;
 use std::num::TryFromIntError;
 use thiserror::Error;
 
@@ -46,6 +47,9 @@ pub enum RpcError {
 
     #[error("No sink exists.")]
     NoSink,
+
+    #[error("Transaction {0} not found")]
+    TransactionNotFound(TransactionId),
 
     #[error(transparent)]
     AddressError(#[from] kaspa_addresses::AddressError),

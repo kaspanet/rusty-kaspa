@@ -276,6 +276,21 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         })
     }
 
+    async fn get_mempool_entry_call(&self, request: GetMempoolEntryRequest) -> RpcResult<GetMempoolEntryResponse> {
+        let Some(transaction) = self.mining_manager.get_transaction(&request.transaction_id, !request.filter_transaction_pool, request.include_orphan_pool) else {
+            return Err(RpcError::TransactionNotFound(request.transaction_id));
+        };
+        let consensus = self.consensus_manager.consensus();
+        let session = consensus.session().await;
+        let is_orphan = !transaction.is_fully_populated();
+        let rpc_transaction = self.consensus_converter.get_transaction(session.deref(), &transaction.tx, None, true);
+        Ok(GetMempoolEntryResponse::new(RpcMempoolEntry::new(
+            transaction.calculated_fee.unwrap_or_default(),
+            rpc_transaction,
+            is_orphan,
+        )))
+    }
+
     async fn submit_transaction_call(&self, request: SubmitTransactionRequest) -> RpcResult<SubmitTransactionResponse> {
         let transaction: Transaction = (&request.transaction).try_into()?;
         let transaction_id = transaction.id();
@@ -301,10 +316,6 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
     }
 
     async fn get_selected_tip_hash_call(&self, _request: GetSelectedTipHashRequest) -> RpcResult<GetSelectedTipHashResponse> {
-        unimplemented!();
-    }
-
-    async fn get_mempool_entry_call(&self, _request: GetMempoolEntryRequest) -> RpcResult<GetMempoolEntryResponse> {
         unimplemented!();
     }
 
