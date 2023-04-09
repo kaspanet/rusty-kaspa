@@ -1,4 +1,5 @@
 use crate::notification::Notification;
-use kaspa_notify::collector::CollectorFrom;
+use kaspa_notify::{collector::CollectorFrom, converter::ConverterFrom};
 
-pub type ConsensusCollector = CollectorFrom<Notification, Notification>;
+pub type ConsensusConverter = ConverterFrom<Notification, Notification>;
+pub type ConsensusCollector = CollectorFrom<ConsensusConverter>;

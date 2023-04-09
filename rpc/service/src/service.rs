@@ -1,5 +1,7 @@
 //! Core server implementation for ClientAPI
 
+use crate::collector::{ConsensusConverter, IndexConverter};
+
 use super::collector::{CollectorFromConsensus, CollectorFromIndex};
 use async_trait::async_trait;
 use kaspa_consensus_core::{
@@ -84,7 +86,8 @@ impl RpcCoreService {
         let mut consensus_events: EventSwitches = EVENT_TYPE_ARRAY[..].into();
         consensus_events[EventType::UtxosChanged] = false;
         consensus_events[EventType::PruningPointUtxoSetOverride] = index_notifier.is_none();
-        let consensus_collector = Arc::new(CollectorFromConsensus::new(consensus_notify_channel.receiver()));
+        let consensus_converter = Arc::new(ConsensusConverter::new());
+        let consensus_collector = Arc::new(CollectorFromConsensus::new(consensus_notify_channel.receiver(), consensus_converter));
         let consensus_subscriber = Arc::new(Subscriber::new(consensus_events, consensus_notifier, consensus_notify_listener_id));
 
         let mut collectors: Vec<DynCollector<Notification>> = vec![consensus_collector];
@@ -97,7 +100,8 @@ impl RpcCoreService {
                 index_notifier.clone().register_new_listener(IndexChannelConnection::new(index_notify_channel.sender()));
 
             let index_events: EventSwitches = [EventType::UtxosChanged, EventType::PruningPointUtxoSetOverride].as_ref().into();
-            let index_collector = Arc::new(CollectorFromIndex::new(index_notify_channel.receiver()));
+            let index_converter = Arc::new(IndexConverter::new());
+            let index_collector = Arc::new(CollectorFromIndex::new(index_notify_channel.receiver(), index_converter));
             let index_subscriber = Arc::new(Subscriber::new(index_events, index_notifier.clone(), index_notify_listener_id));
 
             collectors.push(index_collector);
