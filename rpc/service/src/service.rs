@@ -8,6 +8,7 @@ use kaspa_consensus_core::{
     block::Block,
     coinbase::MinerData,
     config::Config,
+    errors::consensus::ConsensusError,
     tx::{Transaction, COINBASE_TRANSACTION_INDEX},
 };
 use kaspa_consensus_notify::{
@@ -198,6 +199,7 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
     }
 
     async fn get_block_call(&self, request: GetBlockRequest) -> RpcResult<GetBlockResponse> {
+        // TODO: test
         let consensus = self.consensus_manager.consensus();
         let session = consensus.session().await;
         let mut block = session.get_block_even_if_header_only(request.hash)?;
@@ -205,6 +207,60 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
             block.transactions = Arc::new(vec![]);
         }
         Ok(GetBlockResponse { block: self.consensus_converter.get_block(session.deref(), &block, request.include_transactions)? })
+    }
+
+    async fn get_blocks_call(&self, request: GetBlocksRequest) -> RpcResult<GetBlocksResponse> {
+        // Validate that user didn't set include_transactions without setting include_blocks
+        if !request.include_blocks && request.include_transactions {
+            return Err(RpcError::InvalidGetBlocksRequest);
+        }
+
+        let consensus = self.consensus_manager.consensus();
+        let session = consensus.session().await;
+
+        // If low_hash is empty - use genesis instead.
+        let low_hash = match request.low_hash {
+            Some(low_hash) => {
+                if !session.deref().get_block_info(low_hash)?.block_status.has_block_header() {
+                    return Err(ConsensusError::BlockNotFound(low_hash))?;
+                }
+                low_hash
+            }
+            None => self.config.genesis.hash,
+        };
+
+        // Get hashes between low_hash and sink
+        let Some(sink_hash) = session.get_sink() else {
+            return Err(RpcError::NoSink);
+        };
+
+        // We use +1 because low_hash is also returned
+        // max_blocks MUST be >= mergeset_size_limit + 1
+        let max_blocks = self.config.mergeset_size_limit as usize + 1;
+        let (block_hashes, high_hash) = session.get_hashes_between(low_hash, sink_hash, max_blocks)?;
+
+        // If the high hash is equal to sink it means get_hashes_between didn't skip any hashes, and
+        // there's space to add the sink anticone, otherwise we cannot add the anticone because
+        // there's no guarantee that all of the anticone root ancestors will be present.
+        let sink_anticone = if high_hash == sink_hash { session.anticone(sink_hash)? } else { vec![] };
+        // Prepend low hash to make it inclusive and append the sink anticone
+        let block_hashes = once(low_hash).chain(block_hashes).chain(sink_anticone).collect::<Vec<_>>();
+        let blocks = if request.include_blocks {
+            block_hashes
+                .iter()
+                .cloned()
+                .map(|hash| {
+                    let mut block = session.get_block_even_if_header_only(hash)?;
+                    if !request.include_transactions {
+                        block.transactions = Arc::new(vec![]);
+                    }
+                    self.consensus_converter.get_block(session.deref(), &block, request.include_transactions)
+                })
+                .collect::<RpcResult<Vec<_>>>()
+        } else {
+            Ok(vec![])
+        }?;
+        Ok(GetBlocksResponse { block_hashes, blocks })
     }
 
     async fn get_info_call(&self, _request: GetInfoRequest) -> RpcResult<GetInfoResponse> {
@@ -272,10 +328,6 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         &self,
         _request: GetVirtualChainFromBlockRequest,
     ) -> RpcResult<GetVirtualChainFromBlockResponse> {
-        unimplemented!();
-    }
-
-    async fn get_blocks_call(&self, _request: GetBlocksRequest) -> RpcResult<GetBlocksResponse> {
         unimplemented!();
     }
 

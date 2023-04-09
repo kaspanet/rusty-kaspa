@@ -41,6 +41,12 @@ pub enum RpcError {
     #[error("Block {0} is invalid. No verbose data can be built.")]
     InvalidBlock(RpcHash),
 
+    #[error("If includeTransactions is set, then includeBlockVerboseData must be set as well.")]
+    InvalidGetBlocksRequest,
+
+    #[error("No sink exists.")]
+    NoSink,
+
     #[error(transparent)]
     AddressError(#[from] kaspa_addresses::AddressError),
 

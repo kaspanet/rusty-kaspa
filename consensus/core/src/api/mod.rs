@@ -59,6 +59,10 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
+    fn get_sink(&self) -> Option<Hash> {
+        unimplemented!()
+    }
+
     /// Returns whether this consensus is considered synced or close to being synced.
     ///
     /// This info is used to determine if it's ok to use a block template from this node for mining purposes.
@@ -120,6 +124,10 @@ pub trait ConsensusApi: Send + Sync {
     }
 
     fn get_headers_selected_tip(&self) -> Hash {
+        unimplemented!()
+    }
+
+    fn anticone(&self, hash: Hash) -> ConsensusResult<Vec<Hash>> {
         unimplemented!()
     }
 

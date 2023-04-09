@@ -345,13 +345,13 @@ impl GetVirtualChainFromBlockResponse {
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GetBlocksRequest {
-    pub low_hash: RpcHash,
+    pub low_hash: Option<RpcHash>,
     pub include_blocks: bool,
     pub include_transactions: bool,
 }
 
 impl GetBlocksRequest {
-    pub fn new(low_hash: RpcHash, include_blocks: bool, include_transactions: bool) -> Self {
+    pub fn new(low_hash: Option<RpcHash>, include_blocks: bool, include_transactions: bool) -> Self {
         Self { low_hash, include_blocks, include_transactions }
     }
 }

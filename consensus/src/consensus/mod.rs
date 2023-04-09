@@ -657,6 +657,11 @@ impl ConsensusApi for Consensus {
         }
     }
 
+    fn get_sink(&self) -> Option<Hash> {
+        // TODO: unwrap on virtual state read when staging consensus is implemented
+        self.virtual_processor.virtual_stores.read().state.get().unwrap_option().map(|state| state.ghostdag_data.selected_parent)
+    }
+
     fn get_sink_timestamp(&self) -> Option<u64> {
         // TODO: unwrap on virtual state read when staging consensus is implemented
         self.virtual_processor.virtual_stores.read().state.get().unwrap_option().map(|state| {
@@ -750,6 +755,7 @@ impl ConsensusApi for Consensus {
 
     // max_blocks has to be greater than the merge set size limit
     fn get_hashes_between(&self, low: Hash, high: Hash, max_blocks: usize) -> ConsensusResult<(Vec<Hash>, Hash)> {
+        assert!(max_blocks as u64 > self.config.mergeset_size_limit);
         self.validate_block_exists(low)?;
         self.validate_block_exists(high)?;
 
@@ -763,6 +769,11 @@ impl ConsensusApi for Consensus {
 
     fn get_headers_selected_tip(&self) -> Hash {
         self.headers_selected_tip_store.read().get().unwrap().hash
+    }
+
+    fn anticone(&self, hash: Hash) -> ConsensusResult<Vec<Hash>> {
+        self.validate_block_exists(hash)?;
+        Ok(self.dag_traversal_manager.anticone(hash, self.virtual_stores.read().state.get().unwrap().parents.iter().copied(), None)?)
     }
 
     fn get_pruning_point_proof(&self) -> Arc<PruningPointProof> {
