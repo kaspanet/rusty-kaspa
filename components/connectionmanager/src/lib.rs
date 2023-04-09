@@ -1,7 +1,7 @@
 use std::{
     cmp::min,
     collections::{HashMap, HashSet},
-    net::SocketAddr,
+    net::{SocketAddr, ToSocketAddrs},
     sync::Arc,
     time::{Duration, SystemTime},
 };
@@ -9,8 +9,8 @@ use std::{
 use duration_string::DurationString;
 use futures_util::future::join_all;
 use itertools::Itertools;
-use kaspa_addressmanager::AddressManager;
-use kaspa_core::{debug, info};
+use kaspa_addressmanager::{AddressManager, NetAddress};
+use kaspa_core::{debug, info, warn};
 use kaspa_p2p_lib::Peer;
 use parking_lot::Mutex as ParkingLotMutex;
 use rand::{seq::SliceRandom, thread_rng};
@@ -27,6 +27,8 @@ pub struct ConnectionManager {
     p2p_adaptor: Arc<kaspa_p2p_lib::Adaptor>,
     outbound_target: usize,
     inbound_limit: usize,
+    dns_seeders: &'static [&'static str],
+    default_port: u16,
     amgr: Arc<ParkingLotMutex<AddressManager>>,
     connection_requests: TokioMutex<HashMap<SocketAddr, ConnectionRequest>>,
     force_next_iteration: UnboundedSender<()>,
@@ -45,6 +47,8 @@ impl ConnectionManager {
         p2p_adaptor: Arc<kaspa_p2p_lib::Adaptor>,
         outbound_target: usize,
         inbound_limit: usize,
+        dns_seeders: &'static [&'static str],
+        default_port: u16,
         amgr: Arc<ParkingLotMutex<AddressManager>>,
     ) -> Arc<Self> {
         let (tx, rx) = unbounded_channel::<()>();
@@ -57,6 +61,8 @@ impl ConnectionManager {
             connection_requests: Default::default(),
             force_next_iteration: tx,
             shutdown_signal: shutdown_signal_tx,
+            dns_seeders,
+            default_port,
         });
         manager.clone().start_event_loop(rx, shutdown_signal_rx);
         manager.force_next_iteration.send(()).unwrap();
@@ -187,6 +193,10 @@ impl ConnectionManager {
                 }
             }
         }
+
+        if missing_connections > 0 {
+            self.dns_seed(missing_connections); //TODO: Consider putting a number higher than `missing_connections`.
+        }
     }
 
     async fn handle_inbound_connections(self: &Arc<Self>, peer_by_address: &HashMap<SocketAddr, Peer>) {
@@ -202,5 +212,33 @@ impl ConnectionManager {
             futures.push(self.p2p_adaptor.terminate(peer.identity()));
         }
         join_all(futures).await;
+    }
+
+    fn dns_seed(self: &Arc<Self>, mut min_addresses_to_fetch: usize) {
+        let shuffled_dns_seeders = self.dns_seeders.choose_multiple(&mut thread_rng(), self.dns_seeders.len());
+        for &seeder in shuffled_dns_seeders {
+            info!("Querying DNS seeder {}", seeder);
+            // Since the DNS lookup protocol doesn't come with a port, we must assume that the default port is used.
+            let addrs = match (seeder, self.default_port).to_socket_addrs() {
+                Ok(addrs) => addrs,
+                Err(e) => {
+                    warn!("error connecting to DNS seeder {}: {}", seeder, e);
+                    continue;
+                }
+            };
+
+            let addrs_len = addrs.len();
+            info!("Retrieved {} addresses from DNS seeder {}", addrs_len, seeder);
+            let mut amgr_lock = self.amgr.lock();
+            for addr in addrs {
+                amgr_lock.add_address(NetAddress::new(addr.ip(), addr.port()));
+            }
+
+            if addrs_len >= min_addresses_to_fetch {
+                break;
+            } else {
+                min_addresses_to_fetch -= addrs_len;
+            }
+        }
     }
 }
