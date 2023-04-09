@@ -5,18 +5,19 @@ use kaspa_consensus_core::{
     config::Config,
     hashing::tx::hash,
     header::Header,
-    tx::{MutableTransaction, Transaction, TransactionInput, TransactionOutput},
+    tx::{MutableTransaction, Transaction, TransactionId, TransactionInput, TransactionOutput},
 };
 use kaspa_consensus_notify::notification::{self as consensus_notify, Notification as ConsensusNotification};
 use kaspa_consensusmanager::ConsensusManager;
 use kaspa_math::Uint256;
+use kaspa_mining::model::TransactionIdSet;
 use kaspa_notify::converter::Converter;
 use kaspa_rpc_core::{
     BlockAddedNotification, Notification, RpcBlock, RpcBlockVerboseData, RpcError, RpcHash, RpcMempoolEntry, RpcResult,
     RpcTransaction, RpcTransactionInput, RpcTransactionOutput, RpcTransactionOutputVerboseData, RpcTransactionVerboseData,
 };
 use kaspa_txscript::{extract_script_pub_key_address, script_class::ScriptClass};
-use std::{fmt::Debug, ops::Deref, sync::Arc};
+use std::{collections::HashMap, fmt::Debug, ops::Deref, sync::Arc};
 
 /// Conversion of consensus_core to rpc_core structures
 pub struct ConsensusConverter {
@@ -85,6 +86,15 @@ impl ConsensusConverter {
         let is_orphan = !transaction.is_fully_populated();
         let rpc_transaction = self.get_transaction(consensus, &transaction.tx, None, true);
         RpcMempoolEntry::new(transaction.calculated_fee.unwrap_or_default(), rpc_transaction, is_orphan)
+    }
+
+    pub fn get_owner_entries(
+        &self,
+        consensus: &dyn ConsensusApi,
+        transaction_ids: &TransactionIdSet,
+        transactions: &HashMap<TransactionId, MutableTransaction>,
+    ) -> Vec<RpcMempoolEntry> {
+        transaction_ids.iter().map(|x| self.get_mempool_entry(consensus, transactions.get(x).expect("transaction exists"))).collect()
     }
 
     /// Converts a consensus [`Transaction`] into an [`RpcTransaction`], optionally including verbose data.

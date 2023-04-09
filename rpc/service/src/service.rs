@@ -1,8 +1,7 @@
 //! Core server implementation for ClientAPI
 
-use crate::{collector::IndexConverter, converter::consensus::ConsensusConverter};
-
 use super::collector::{CollectorFromConsensus, CollectorFromIndex};
+use crate::{collector::IndexConverter, converter::consensus::ConsensusConverter};
 use async_trait::async_trait;
 use kaspa_consensus_core::{
     block::Block,
@@ -29,6 +28,7 @@ use kaspa_notify::{
 };
 use kaspa_p2p_flows::flow_context::FlowContext;
 use kaspa_rpc_core::{api::rpc::RpcApi, model::*, notify::connection::ChannelConnection, Notification, RpcError, RpcResult};
+use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script};
 use kaspa_utils::channel::Channel;
 use std::{iter::once, ops::Deref, sync::Arc, vec};
 
@@ -298,6 +298,37 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         Ok(GetMempoolEntriesResponse::new(mempool_entries))
     }
 
+    async fn get_mempool_entries_by_addresses_call(
+        &self,
+        request: GetMempoolEntriesByAddressesRequest,
+    ) -> RpcResult<GetMempoolEntriesByAddressesResponse> {
+        let consensus = self.consensus_manager.consensus();
+        let session = consensus.session().await;
+        let script_public_keys = request.addresses.iter().map(pay_to_address_script).collect();
+        let grouped_txs = self.mining_manager.get_transactions_by_addresses(
+            &script_public_keys,
+            !request.filter_transaction_pool,
+            request.include_orphan_pool,
+        );
+        let mempool_entries = grouped_txs
+            .owners
+            .iter()
+            .map(|(script_public_key, transactions)| {
+                let address = extract_script_pub_key_address(script_public_key, self.config.prefix())
+                    .expect("script public key is convertible into an address");
+                let sending =
+                    self.consensus_converter.get_owner_entries(session.deref(), &transactions.sending_txs, &grouped_txs.transactions);
+                let receiving = self.consensus_converter.get_owner_entries(
+                    session.deref(),
+                    &transactions.receiving_txs,
+                    &grouped_txs.transactions,
+                );
+                RpcMempoolEntryByAddress::new(address, sending, receiving)
+            })
+            .collect();
+        Ok(GetMempoolEntriesByAddressesResponse::new(mempool_entries))
+    }
+
     async fn submit_transaction_call(&self, request: SubmitTransactionRequest) -> RpcResult<SubmitTransactionResponse> {
         let transaction: Transaction = (&request.transaction).try_into()?;
         let transaction_id = transaction.id();
@@ -401,13 +432,6 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         &self,
         _request: EstimateNetworkHashesPerSecondRequest,
     ) -> RpcResult<EstimateNetworkHashesPerSecondResponse> {
-        unimplemented!();
-    }
-
-    async fn get_mempool_entries_by_addresses_call(
-        &self,
-        _request: GetMempoolEntriesByAddressesRequest,
-    ) -> RpcResult<GetMempoolEntriesByAddressesResponse> {
         unimplemented!();
     }
 
