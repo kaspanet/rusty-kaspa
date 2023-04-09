@@ -5,15 +5,15 @@ use kaspa_consensus_core::{
     config::Config,
     hashing::tx::hash,
     header::Header,
-    tx::{Transaction, TransactionInput, TransactionOutput},
+    tx::{MutableTransaction, Transaction, TransactionInput, TransactionOutput},
 };
 use kaspa_consensus_notify::notification::{self as consensus_notify, Notification as ConsensusNotification};
 use kaspa_consensusmanager::ConsensusManager;
 use kaspa_math::Uint256;
 use kaspa_notify::converter::Converter;
 use kaspa_rpc_core::{
-    BlockAddedNotification, Notification, RpcBlock, RpcBlockVerboseData, RpcError, RpcHash, RpcResult, RpcTransaction,
-    RpcTransactionInput, RpcTransactionOutput, RpcTransactionOutputVerboseData, RpcTransactionVerboseData,
+    BlockAddedNotification, Notification, RpcBlock, RpcBlockVerboseData, RpcError, RpcHash, RpcMempoolEntry, RpcResult,
+    RpcTransaction, RpcTransactionInput, RpcTransactionOutput, RpcTransactionOutputVerboseData, RpcTransactionVerboseData,
 };
 use kaspa_txscript::{extract_script_pub_key_address, script_class::ScriptClass};
 use std::{fmt::Debug, ops::Deref, sync::Arc};
@@ -79,6 +79,12 @@ impl ConsensusConverter {
             .collect::<Vec<_>>();
 
         Ok(RpcBlock { header: (*block.header).clone(), transactions, verbose_data })
+    }
+
+    pub fn get_mempool_entry(&self, consensus: &dyn ConsensusApi, transaction: &MutableTransaction) -> RpcMempoolEntry {
+        let is_orphan = !transaction.is_fully_populated();
+        let rpc_transaction = self.get_transaction(consensus, &transaction.tx, None, true);
+        RpcMempoolEntry::new(transaction.calculated_fee.unwrap_or_default(), rpc_transaction, is_orphan)
     }
 
     /// Converts a consensus [`Transaction`] into an [`RpcTransaction`], optionally including verbose data.
