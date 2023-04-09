@@ -27,6 +27,7 @@ pub mod subnets;
 pub mod trusted;
 pub mod tx;
 pub mod utxo;
+pub mod wasm;
 
 /// Integer type for accumulated PoW of blue blocks. We expect no more than
 /// 2^128 work in a single block (btc has ~2^80), and no more than 2^64

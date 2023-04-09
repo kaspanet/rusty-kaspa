@@ -12,6 +12,8 @@ license.workspace = true
 kaspa-hashes.workspace = true
 kaspa-math.workspace = true
 kaspa-consensus-core.workspace = true
+wasm-bindgen.workspace = true
+js-sys.workspace = true
 
 
 [dev-dependencies]

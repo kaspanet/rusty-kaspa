@@ -1892,10 +1892,12 @@ dependencies = [
  "borsh",
  "criterion",
  "faster-hex",
+ "js-sys",
  "malachite-base",
  "malachite-nz",
  "rand_chacha 0.3.1",
  "serde",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -2020,9 +2022,11 @@ name = "kaspa-pow"
 version = "0.0.1"
 dependencies = [
  "criterion",
+ "js-sys",
  "kaspa-consensus-core",
  "kaspa-hashes",
  "kaspa-math",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -2267,6 +2271,7 @@ dependencies = [
  "kaspa-addresses",
  "kaspa-consensus-core",
  "kaspa-core",
+ "kaspa-pow",
  "kaspa-rpc-core",
  "kaspa-utils",
  "kaspa-wallet-core",

@@ -100,6 +100,7 @@ pub use kaspa_addresses::{Address, Version as AddressVersion};
 pub use kaspa_consensus_core::tx::{
     ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry,
 };
+pub use kaspa_pow::wasm::*;
 
 pub mod rpc {
     //! Kaspa RPC interface

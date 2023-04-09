@@ -2,6 +2,9 @@ use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 
 pub mod int;
 pub mod uint;
+//#[cfg(target_arch="wasm32")]
+pub mod wasm;
+
 construct_uint!(Uint192, 3, BorshSerialize, BorshDeserialize, BorshSchema);
 construct_uint!(Uint256, 4);
 construct_uint!(Uint320, 5);

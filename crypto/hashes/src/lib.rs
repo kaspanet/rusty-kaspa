@@ -166,6 +166,17 @@ impl TryFrom<JsValue> for Hash {
     }
 }
 
+impl Hash {
+    pub fn try_vec_from_array(array: js_sys::Array) -> Result<Vec<Hash>, workflow_wasm::error::Error> {
+        let mut list = vec![];
+        for item in array.iter() {
+            list.push(item.try_into()?);
+        }
+
+        Ok(list)
+    }
+}
+
 pub const ZERO_HASH: Hash = Hash([0; HASH_SIZE]);
 
 #[cfg(test)]
