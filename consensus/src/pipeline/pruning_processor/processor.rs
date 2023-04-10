@@ -1,3 +1,5 @@
+//! TODO: module comment about locking safety and consistency of various pruning stores
+
 use crate::{
     model::stores::{
         ghostdag::{CompactGhostdagData, DbGhostdagStore},

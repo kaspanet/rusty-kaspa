@@ -722,6 +722,8 @@ impl ConsensusApi for Consensus {
         let pruning_point_utxo_set = self.pruning_point_utxo_set_store.read();
         let iter = pruning_point_utxo_set.seek_iterator(from_outpoint, chunk_size, skip_first);
         Ok(iter.map(|item| item.unwrap()).collect())
+
+        // NOTE: we rely on order of operations by pruning processor. See extended comment therein.
     }
 
     fn modify_coinbase_payload(&self, payload: Vec<u8>, miner_data: &MinerData) -> CoinbaseResult<Vec<u8>> {
