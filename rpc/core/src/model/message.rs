@@ -143,6 +143,12 @@ pub struct GetCurrentNetworkResponse {
     pub network: RpcNetworkType,
 }
 
+impl GetCurrentNetworkResponse {
+    pub fn new(network: RpcNetworkType) -> Self {
+        Self { network }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GetPeerAddressesRequest {}

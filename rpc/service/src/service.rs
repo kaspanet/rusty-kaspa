@@ -340,12 +340,16 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         Ok(SubmitTransactionResponse::new(transaction_id))
     }
 
+    async fn get_current_network_call(&self, _request: GetCurrentNetworkRequest) -> RpcResult<GetCurrentNetworkResponse> {
+        Ok(GetCurrentNetworkResponse::new(self.config.net))
+    }
+
+    async fn get_subnetwork_call(&self, _request: GetSubnetworkRequest) -> RpcResult<GetSubnetworkResponse> {
+        Err(RpcError::NotImplemented)
+    }
+
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // UNIMPLEMENTED METHODS
-
-    async fn get_current_network_call(&self, _request: GetCurrentNetworkRequest) -> RpcResult<GetCurrentNetworkResponse> {
-        unimplemented!();
-    }
 
     async fn get_peer_addresses_call(&self, _request: GetPeerAddressesRequest) -> RpcResult<GetPeerAddressesResponse> {
         unimplemented!();
@@ -360,10 +364,6 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
     }
 
     async fn add_peer_call(&self, _request: AddPeerRequest) -> RpcResult<AddPeerResponse> {
-        unimplemented!();
-    }
-
-    async fn get_subnetwork_call(&self, _request: GetSubnetworkRequest) -> RpcResult<GetSubnetworkResponse> {
         unimplemented!();
     }
 
