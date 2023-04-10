@@ -3,6 +3,7 @@ use kaspa_muhash::MuHash;
 use std::sync::Arc;
 
 use crate::{
+    acceptance_data::AcceptanceData,
     block::{Block, BlockInfo, BlockRelations, BlockTemplate},
     blockstatus::BlockStatus,
     coinbase::MinerData,
@@ -17,7 +18,7 @@ use crate::{
     pruning::{PruningPointProof, PruningPointsList},
     trusted::{TrustedBlock, TrustedGhostdagData, TrustedHeader},
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
-    BlockHashSet,
+    BlockHashSet, ChainPath,
 };
 use kaspa_hashes::Hash;
 pub type BlockValidationFuture = BoxFuture<'static, BlockProcessResult<BlockStatus>>;
@@ -67,6 +68,10 @@ pub trait ConsensusApi: Send + Sync {
     ///
     /// This info is used to determine if it's ok to use a block template from this node for mining purposes.
     fn is_nearly_synced(&self) -> bool {
+        unimplemented!()
+    }
+
+    fn get_virtual_chain_from_block(&self, hash: Hash) -> Option<ChainPath> {
         unimplemented!()
     }
 
@@ -172,6 +177,14 @@ pub trait ConsensusApi: Send + Sync {
     }
 
     fn get_block_status(&self, hash: Hash) -> Option<BlockStatus> {
+        unimplemented!()
+    }
+
+    fn get_block_acceptance_data(&self, hash: Hash) -> ConsensusResult<Arc<AcceptanceData>> {
+        unimplemented!()
+    }
+
+    fn get_blocks_acceptance_data(&self, hashes: &[Hash]) -> ConsensusResult<Vec<Arc<AcceptanceData>>> {
         unimplemented!()
     }
 

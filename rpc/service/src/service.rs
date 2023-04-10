@@ -360,6 +360,21 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         Ok(GetSinkBlueScoreResponse::new(block_info.blue_score))
     }
 
+    async fn get_virtual_chain_from_block_call(
+        &self,
+        request: GetVirtualChainFromBlockRequest,
+    ) -> RpcResult<GetVirtualChainFromBlockResponse> {
+        let consensus = self.consensus_manager.consensus();
+        let session = consensus.session().await;
+        let virtual_chain = session.get_virtual_chain_from_block(request.start_hash).ok_or(RpcError::NoSink)?;
+        let accepted_transaction_ids = if request.include_accepted_transaction_ids {
+            self.consensus_converter.get_virtual_chain_accepted_transaction_ids(session.deref(), &virtual_chain)?
+        } else {
+            vec![]
+        };
+        Ok(GetVirtualChainFromBlockResponse::new(virtual_chain.removed, virtual_chain.added, accepted_transaction_ids))
+    }
+
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // UNIMPLEMENTED METHODS
 
@@ -372,13 +387,6 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
     }
 
     async fn add_peer_call(&self, _request: AddPeerRequest) -> RpcResult<AddPeerResponse> {
-        unimplemented!();
-    }
-
-    async fn get_virtual_chain_from_block_call(
-        &self,
-        _request: GetVirtualChainFromBlockRequest,
-    ) -> RpcResult<GetVirtualChainFromBlockResponse> {
         unimplemented!();
     }
 

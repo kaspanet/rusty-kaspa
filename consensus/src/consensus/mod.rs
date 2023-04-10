@@ -13,7 +13,7 @@ use crate::{
             statuses::MTStatusesService,
         },
         stores::{
-            acceptance_data::DbAcceptanceDataStore,
+            acceptance_data::{AcceptanceDataStoreReader, DbAcceptanceDataStore},
             block_transactions::{BlockTransactionsStoreReader, DbBlockTransactionsStore},
             block_window_cache::BlockWindowCacheStore,
             daa::DbDaaStore,
@@ -50,6 +50,7 @@ use crate::{
     },
 };
 use kaspa_consensus_core::{
+    acceptance_data::AcceptanceData,
     api::ConsensusApi,
     block::{Block, BlockInfo, BlockRelations, BlockTemplate},
     blockhash::BlockHashExtensions,
@@ -66,7 +67,7 @@ use kaspa_consensus_core::{
     pruning::{PruningPointProof, PruningPointsList},
     trusted::TrustedBlock,
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
-    BlockHashSet,
+    BlockHashSet, ChainPath,
 };
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_utils::option::OptionExtensions;
@@ -675,6 +676,14 @@ impl ConsensusApi for Consensus {
         self.get_sink_timestamp().has_value_and(|&t| self.config.is_nearly_synced(t))
     }
 
+    fn get_virtual_chain_from_block(&self, hash: Hash) -> Option<ChainPath> {
+        // Calculate chain changes between the given hash and the
+        // sink. Note that we explicitly don't
+        // do the calculation against the virtual itself so that we
+        // won't later need to remove it from the result.
+        self.get_sink().map(|sink_hash| self.dag_traversal_manager.calculate_chain_path(hash, sink_hash))
+    }
+
     fn get_virtual_parents(&self) -> BlockHashSet {
         // TODO: unwrap on virtual state read when staging consensus is implemented
         match self.virtual_processor.virtual_stores.read().state.get().unwrap_option() {
@@ -878,6 +887,23 @@ impl ConsensusApi for Consensus {
 
     fn get_block_status(&self, hash: Hash) -> Option<BlockStatus> {
         self.statuses_store.read().get(hash).unwrap_option()
+    }
+
+    fn get_block_acceptance_data(&self, hash: Hash) -> ConsensusResult<Arc<AcceptanceData>> {
+        self.validate_block_exists(hash)?;
+        Ok(self.virtual_processor.acceptance_data_store().get(hash).unwrap())
+    }
+
+    fn get_blocks_acceptance_data(&self, hashes: &[Hash]) -> ConsensusResult<Vec<Arc<AcceptanceData>>> {
+        let acceptance_data_store = self.virtual_processor.acceptance_data_store();
+        hashes
+            .iter()
+            .copied()
+            .map(|hash| {
+                self.validate_block_exists(hash)?;
+                Ok(acceptance_data_store.get(hash).unwrap())
+            })
+            .collect::<ConsensusResult<Vec<_>>>()
     }
 
     fn is_chain_block(&self, hash: Hash) -> ConsensusResult<bool> {

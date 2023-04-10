@@ -7,6 +7,7 @@ use kaspa_consensus_core::{
     hashing::tx::hash,
     header::Header,
     tx::{MutableTransaction, Transaction, TransactionId, TransactionInput, TransactionOutput},
+    ChainPath,
 };
 use kaspa_consensus_notify::notification::{self as consensus_notify, Notification as ConsensusNotification};
 use kaspa_consensusmanager::ConsensusManager;
@@ -14,8 +15,9 @@ use kaspa_math::Uint256;
 use kaspa_mining::model::{owner_txs::OwnerTransactions, TransactionIdSet};
 use kaspa_notify::converter::Converter;
 use kaspa_rpc_core::{
-    BlockAddedNotification, Notification, RpcBlock, RpcBlockVerboseData, RpcError, RpcHash, RpcMempoolEntry, RpcMempoolEntryByAddress,
-    RpcResult, RpcTransaction, RpcTransactionInput, RpcTransactionOutput, RpcTransactionOutputVerboseData, RpcTransactionVerboseData,
+    BlockAddedNotification, Notification, RpcAcceptedTransactionIds, RpcBlock, RpcBlockVerboseData, RpcError, RpcHash,
+    RpcMempoolEntry, RpcMempoolEntryByAddress, RpcResult, RpcTransaction, RpcTransactionInput, RpcTransactionOutput,
+    RpcTransactionOutputVerboseData, RpcTransactionVerboseData,
 };
 use kaspa_txscript::{extract_script_pub_key_address, script_class::ScriptClass};
 use std::{collections::HashMap, fmt::Debug, ops::Deref, sync::Arc};
@@ -154,6 +156,27 @@ impl ConsensusConverter {
         let verbose_data =
             address.map(|address| RpcTransactionOutputVerboseData { script_public_key_type, script_public_key_address: address });
         RpcTransactionOutput { value: output.value, script_public_key: output.script_public_key.clone(), verbose_data }
+    }
+
+    pub fn get_virtual_chain_accepted_transaction_ids(
+        &self,
+        consensus: &dyn ConsensusApi,
+        chain_path: &ChainPath,
+    ) -> RpcResult<Vec<RpcAcceptedTransactionIds>> {
+        // TODO: handle calls to consensus by chunks if still relevant
+        let acceptance_data = consensus.get_blocks_acceptance_data(&chain_path.added)?;
+        Ok(chain_path
+            .added
+            .iter()
+            .zip(acceptance_data.iter())
+            .map(|(hash, block_data)| RpcAcceptedTransactionIds {
+                accepting_block_hash: hash.to_owned(),
+                accepted_transaction_ids: block_data
+                    .iter()
+                    .flat_map(|x| x.accepted_transactions.iter().map(|tx| tx.transaction_id))
+                    .collect(),
+            })
+            .collect())
     }
 }
 

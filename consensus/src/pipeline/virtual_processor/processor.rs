@@ -242,6 +242,11 @@ impl VirtualStateProcessor {
         self.notification_root.clone()
     }
 
+    #[inline(always)]
+    pub fn acceptance_data_store(self: &Arc<Self>) -> Arc<DbAcceptanceDataStore> {
+        self.acceptance_data_store.clone()
+    }
+
     pub fn worker(self: &Arc<Self>) {
         'outer: while let Ok(first_msg) = self.receiver.recv() {
             // Once a task arrived, collect all pending tasks from the channel.
