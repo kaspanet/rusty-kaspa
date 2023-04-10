@@ -235,7 +235,7 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Build wasm-pack for Node.js
-        run: cd wasm && wasm-pack build --target nodejs --out-dir testing/wasm/kaspa --features full
+        run: cd wasm && wasm-pack build --target nodejs --out-dir testing/kaspa --features full
  
       - name: Install Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v1
@@ -243,11 +243,11 @@ jobs:
           node-version: ${{ matrix.node-version }}
 
       - name: Install needed modules for unit tests
-        working-directory: ./testing/wasm
+        working-directory: ./wasm/testing
         run: npm install
 
       - name: Run unit tests for Node.js
-        working-directory: ./testing/wasm
+        working-directory: ./wasm/testing
         run: npm test
 
 
