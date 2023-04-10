@@ -16,6 +16,7 @@ use crate::{
     },
     header::Header,
     pruning::{PruningPointProof, PruningPointsList},
+    sync_info::SyncInfo,
     trusted::{TrustedBlock, TrustedGhostdagData, TrustedHeader},
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     BlockHashSet, ChainPath,
@@ -56,11 +57,15 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
+    fn get_sink(&self) -> Option<Hash> {
+        unimplemented!()
+    }
+
     fn get_sink_timestamp(&self) -> Option<u64> {
         unimplemented!()
     }
 
-    fn get_sink(&self) -> Option<Hash> {
+    fn get_sync_info(&self) -> SyncInfo {
         unimplemented!()
     }
 

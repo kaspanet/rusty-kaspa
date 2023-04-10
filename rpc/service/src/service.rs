@@ -375,6 +375,10 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         Ok(GetVirtualChainFromBlockResponse::new(virtual_chain.removed, virtual_chain.added, accepted_transaction_ids))
     }
 
+    async fn get_block_count_call(&self, _: GetBlockCountRequest) -> RpcResult<GetBlockCountResponse> {
+        Ok(self.consensus_manager.consensus().session().await.get_sync_info())
+    }
+
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // UNIMPLEMENTED METHODS
 
@@ -387,10 +391,6 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
     }
 
     async fn add_peer_call(&self, _request: AddPeerRequest) -> RpcResult<AddPeerResponse> {
-        unimplemented!();
-    }
-
-    async fn get_block_count_call(&self, _request: GetBlockCountRequest) -> RpcResult<GetBlockCountResponse> {
         unimplemented!();
     }
 

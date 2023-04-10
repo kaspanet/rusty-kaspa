@@ -65,6 +65,7 @@ use kaspa_consensus_core::{
     header::Header,
     muhash::MuHashExtensions,
     pruning::{PruningPointProof, PruningPointsList},
+    sync_info::SyncInfo,
     trusted::TrustedBlock,
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     BlockHashSet, ChainPath,
@@ -669,6 +670,11 @@ impl ConsensusApi for Consensus {
             let sink = state.ghostdag_data.selected_parent;
             self.headers_store.get_timestamp(sink).unwrap()
         })
+    }
+
+    fn get_sync_info(&self) -> SyncInfo {
+        // FIXME
+        todo!()
     }
 
     fn is_nearly_synced(&self) -> bool {
