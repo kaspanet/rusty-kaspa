@@ -434,7 +434,7 @@ impl Consensus {
             pruning_store.clone(),
             past_pruning_points_store.clone(),
             body_tips_store.clone(),
-            utxo_diffs_store,
+            utxo_diffs_store.clone(),
             utxo_multisets_store,
             acceptance_data_store,
             virtual_stores.clone(),
@@ -459,7 +459,11 @@ impl Consensus {
             db.clone(),
             pruning_store.clone(),
             past_pruning_points_store.clone(),
+            pruning_point_utxo_set_store.clone(),
+            utxo_diffs_store,
+            headers_store.clone(),
             pruning_manager.clone(),
+            reachability_service.clone(),
         ));
 
         let pruning_proof_manager = PruningProofManager::new(
@@ -714,16 +718,21 @@ impl ConsensusApi for Consensus {
         chunk_size: usize,
         skip_first: bool,
     ) -> ConsensusResult<Vec<(TransactionOutpoint, UtxoEntry)>> {
-        let pp_read_guard = self.pruning_store.read();
-        let current_pp = pp_read_guard.pruning_point().unwrap();
-        if current_pp != expected_pruning_point {
+        if self.pruning_store.read().pruning_point().unwrap() != expected_pruning_point {
             return Err(ConsensusError::UnexpectedPruningPoint);
         }
-        let pruning_point_utxo_set = self.pruning_point_utxo_set_store.read();
-        let iter = pruning_point_utxo_set.seek_iterator(from_outpoint, chunk_size, skip_first);
-        Ok(iter.map(|item| item.unwrap()).collect())
+        let pruning_point_utxoset_read = self.pruning_point_utxo_set_store.read();
+        let iter = pruning_point_utxoset_read.seek_iterator(from_outpoint, chunk_size, skip_first);
+        let utxos = iter.map(|item| item.unwrap()).collect();
+        drop(pruning_point_utxoset_read);
 
+        // We recheck the expected pruning point in case it was switched just before the utxo set read.
         // NOTE: we rely on order of operations by pruning processor. See extended comment therein.
+        if self.pruning_store.read().pruning_point().unwrap() != expected_pruning_point {
+            return Err(ConsensusError::UnexpectedPruningPoint);
+        }
+
+        Ok(utxos)
     }
 
     fn modify_coinbase_payload(&self, payload: Vec<u8>, miner_data: &MinerData) -> CoinbaseResult<Vec<u8>> {
