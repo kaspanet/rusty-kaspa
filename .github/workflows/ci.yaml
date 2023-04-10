@@ -195,7 +195,7 @@ jobs:
         run: cargo clippy -p kaspa-wasm --target wasm32-unknown-unknown
 
   build-test-wasm32:
-    name: Build and Test Wasm32
+    name: Build & Test Wasm32
     runs-on: ubuntu-latest
 
     strategy:
