@@ -128,7 +128,7 @@ pub struct Consensus {
     body_tips_store: Arc<RwLock<DbTipsStore>>,
     pub headers_store: Arc<DbHeadersStore>,
     pub block_transactions_store: Arc<DbBlockTransactionsStore>,
-    pruning_point_utxo_set_store: Arc<DbUtxoSetStore>,
+    pruning_point_utxo_set_store: Arc<RwLock<DbUtxoSetStore>>,
     pub(super) virtual_stores: Arc<RwLock<VirtualStores>>,
     pub(super) past_pruning_points_store: Arc<DbPastPruningPointsStore>,
     // TODO: remove all pub from stores and processors when StoreManager is implemented
@@ -219,7 +219,7 @@ impl Consensus {
         let pruning_store = Arc::new(RwLock::new(DbPruningStore::new(db.clone())));
         let past_pruning_points_store = Arc::new(DbPastPruningPointsStore::new(db.clone(), 4));
         let pruning_point_utxo_set_store =
-            Arc::new(DbUtxoSetStore::new(db.clone(), perf_params.utxo_set_cache_size, store_names::PRUNING_UTXO_SET));
+            Arc::new(RwLock::new(DbUtxoSetStore::new(db.clone(), perf_params.utxo_set_cache_size, store_names::PRUNING_UTXO_SET)));
 
         // Block data
 
@@ -719,7 +719,8 @@ impl ConsensusApi for Consensus {
         if current_pp != expected_pruning_point {
             return Err(ConsensusError::UnexpectedPruningPoint(expected_pruning_point, current_pp));
         }
-        let iter = self.virtual_processor.pruning_point_utxo_set_store.seek_iterator(from_outpoint, chunk_size, skip_first);
+        let pruning_point_utxo_set = self.pruning_point_utxo_set_store.read();
+        let iter = pruning_point_utxo_set.seek_iterator(from_outpoint, chunk_size, skip_first);
         Ok(iter.map(|item| item.unwrap()).collect())
     }
 
@@ -743,7 +744,8 @@ impl ConsensusApi for Consensus {
         // TODO: Check if a db tx is needed. We probably need some kind of a flag that is set on this function to true, and then
         // is set to false on the end of import_pruning_point_utxo_set. On any failure on any of those functions (and also if the
         // node starts when the flag is true) the related data will be deleted and the flag will be set to false.
-        self.pruning_point_utxo_set_store.write_many(utxoset_chunk).unwrap();
+        let mut pruning_point_utxo_set = self.pruning_point_utxo_set_store.write();
+        pruning_point_utxo_set.write_many(utxoset_chunk).unwrap();
         for (outpoint, entry) in utxoset_chunk {
             current_multiset.add_utxo(outpoint, entry);
         }

@@ -123,7 +123,7 @@ pub struct VirtualStateProcessor {
     pub(super) utxo_multisets_store: Arc<DbUtxoMultisetsStore>,
     pub(super) acceptance_data_store: Arc<DbAcceptanceDataStore>,
     pub virtual_stores: Arc<RwLock<VirtualStores>>,
-    pub pruning_point_utxo_set_store: Arc<DbUtxoSetStore>,
+    pruning_point_utxo_set_store: Arc<RwLock<DbUtxoSetStore>>,
     // TODO: remove all pub from stores when StoreManager is implemented
 
     // Managers and services
@@ -175,7 +175,7 @@ impl VirtualStateProcessor {
         acceptance_data_store: Arc<DbAcceptanceDataStore>,
         // Virtual-related stores
         virtual_stores: Arc<RwLock<VirtualStores>>,
-        pruning_point_utxo_set_store: Arc<DbUtxoSetStore>,
+        pruning_point_utxo_set_store: Arc<RwLock<DbUtxoSetStore>>,
         // Managers
         ghostdag_manager: DbGhostdagManager,
         reachability_service: MTReachabilityService<DbReachabilityStore>,
@@ -735,13 +735,14 @@ impl VirtualStateProcessor {
         let (virtual_daa_score, mergeset_non_daa) = self
             .difficulty_manager
             .calc_daa_score_and_non_daa_mergeset_blocks(&mut window.iter().map(|item| item.0.hash), &virtual_gd);
+        let pruning_point_utxo_set = self.pruning_point_utxo_set_store.read();
 
         for tx in new_pruning_point_transactions.iter() {
             let res: PruningImportResult<Vec<_>> = tx
                 .inputs
                 .iter()
                 .map(|input| {
-                    if let Some(entry) = self.pruning_point_utxo_set_store.get(&input.previous_outpoint) {
+                    if let Some(entry) = pruning_point_utxo_set.get(&input.previous_outpoint) {
                         Ok(entry)
                     } else {
                         Err(PruningImportError::NewPruningPointTxMissingUTXOEntry(tx.id()))
@@ -786,7 +787,7 @@ impl VirtualStateProcessor {
         let new_pp_spent_outpoints: HashSet<TransactionOutpoint> =
             new_pruning_point_transactions.iter().flat_map(|tx| tx.inputs.iter().map(|input| input.previous_outpoint)).collect();
         let mut to_remove_diff = Vec::new();
-        for (outpoint, entry) in self.pruning_point_utxo_set_store.iterator().map(|iter_result| iter_result.unwrap()) {
+        for (outpoint, entry) in pruning_point_utxo_set.iterator().map(|iter_result| iter_result.unwrap()) {
             if new_pp_spent_outpoints.contains(&outpoint) {
                 to_remove_diff.push((outpoint, (*entry).clone()));
             }
