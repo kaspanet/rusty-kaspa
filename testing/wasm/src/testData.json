@@ -1,0 +1,12 @@
+{
+  "wallet": {
+    "address": {
+      "valid": "kaspa:qr36zdxs0dn3n0h799jhdl02qks5742lxjgmfsfj9xmlca7n4l6mw0s0n48nx",
+      "invalid": {
+        "checksum": "kaspa:qr36zdxs0dn3n0h799jhdl02qks5742lxjgmfsfj9xmlca7n4l6mw0s0n4uwu",
+        "prefix": "kipsi:qr36zdxs0dn3n0h799jhdl02qks5742lxjgmfsfj9xmlca7n4l6mw0s0n48nx",
+        "content": "kaspa:asdfasdfkaspaasdf"
+      }
+    }
+  }
+}

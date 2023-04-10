@@ -234,7 +234,7 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Build wasm pack for Node.js
+      - name: Build wasm-pack for Node.js
         run: cd wasm && wasm-pack build --target nodejs --out-dir testing/wasm/kaspa --features full
  
       - name: Install Node.js ${{ matrix.node-version }}
