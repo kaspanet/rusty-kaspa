@@ -8,8 +8,8 @@ pub enum ConsensusError {
     #[error("couldn't find block {0}")]
     BlockNotFound(Hash),
 
-    #[error("unexpected pruning point: expected {0} but got {1}")]
-    UnexpectedPruningPoint(Hash, Hash),
+    #[error("got unexpected pruning point")]
+    UnexpectedPruningPoint,
 
     #[error("sync manager error")]
     SyncManagerError(#[from] SyncManagerError),

@@ -59,7 +59,7 @@ impl RequestPruningPointUtxoSetFlow {
                 CHUNK_SIZE,
                 chunks_sent != 0,
             ) {
-                Err(ConsensusError::UnexpectedPruningPoint(_, _)) => return self.send_unexpected_pruning_point_message().await,
+                Err(ConsensusError::UnexpectedPruningPoint) => return self.send_unexpected_pruning_point_message().await,
                 res => res,
             }?;
             debug!("Retrieved {} UTXOs for pruning point {}", pp_utxos.len(), expected_pp);

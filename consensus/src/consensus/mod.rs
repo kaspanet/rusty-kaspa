@@ -717,7 +717,7 @@ impl ConsensusApi for Consensus {
         let pp_read_guard = self.pruning_store.read();
         let current_pp = pp_read_guard.pruning_point().unwrap();
         if current_pp != expected_pruning_point {
-            return Err(ConsensusError::UnexpectedPruningPoint(expected_pruning_point, current_pp));
+            return Err(ConsensusError::UnexpectedPruningPoint);
         }
         let pruning_point_utxo_set = self.pruning_point_utxo_set_store.read();
         let iter = pruning_point_utxo_set.seek_iterator(from_outpoint, chunk_size, skip_first);
