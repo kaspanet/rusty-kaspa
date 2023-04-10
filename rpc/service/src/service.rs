@@ -340,22 +340,30 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         Ok(SubmitTransactionResponse::new(transaction_id))
     }
 
-    async fn get_current_network_call(&self, _request: GetCurrentNetworkRequest) -> RpcResult<GetCurrentNetworkResponse> {
+    async fn get_current_network_call(&self, _: GetCurrentNetworkRequest) -> RpcResult<GetCurrentNetworkResponse> {
         Ok(GetCurrentNetworkResponse::new(self.config.net))
     }
 
-    async fn get_subnetwork_call(&self, _request: GetSubnetworkRequest) -> RpcResult<GetSubnetworkResponse> {
+    async fn get_subnetwork_call(&self, _: GetSubnetworkRequest) -> RpcResult<GetSubnetworkResponse> {
         Err(RpcError::NotImplemented)
+    }
+
+    async fn get_selected_tip_hash_call(&self, _: GetSelectedTipHashRequest) -> RpcResult<GetSelectedTipHashResponse> {
+        Ok(GetSelectedTipHashResponse::new(self.consensus_manager.consensus().session().await.get_sink().ok_or(RpcError::NoSink)?))
+    }
+
+    async fn get_sink_blue_score_call(&self, _: GetSinkBlueScoreRequest) -> RpcResult<GetSinkBlueScoreResponse> {
+        let consensus = self.consensus_manager.consensus();
+        let session = consensus.session().await;
+        let sink_hash = session.get_sink().ok_or(RpcError::NoSink)?;
+        let block_info = session.get_block_info(sink_hash)?;
+        Ok(GetSinkBlueScoreResponse::new(block_info.blue_score))
     }
 
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // UNIMPLEMENTED METHODS
 
     async fn get_peer_addresses_call(&self, _request: GetPeerAddressesRequest) -> RpcResult<GetPeerAddressesResponse> {
-        unimplemented!();
-    }
-
-    async fn get_selected_tip_hash_call(&self, _request: GetSelectedTipHashRequest) -> RpcResult<GetSelectedTipHashResponse> {
         unimplemented!();
     }
 
@@ -411,10 +419,6 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
 
     async fn get_utxos_by_addresses_call(&self, _addresses: GetUtxosByAddressesRequest) -> RpcResult<GetUtxosByAddressesResponse> {
         //TODO: use self.utxoindex for this
-        unimplemented!();
-    }
-
-    async fn get_sink_blue_score_call(&self, _request: GetSinkBlueScoreRequest) -> RpcResult<GetSinkBlueScoreResponse> {
         unimplemented!();
     }
 
