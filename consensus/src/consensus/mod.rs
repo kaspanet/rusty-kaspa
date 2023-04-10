@@ -861,7 +861,11 @@ impl ConsensusApi for Consensus {
         let store = &self.relations_stores.read()[0];
         let parents = store.get_parents(hash).unwrap_option();
         let children = store.get_children(hash).unwrap_option();
-        parents.and_then(|parents| children.map(|children| BlockRelations::new(parents, children)))
+        if parents.is_some() || children.is_some() {
+            Some(BlockRelations::new(parents.unwrap_or_default(), children.unwrap_or_default()))
+        } else {
+            None
+        }
     }
 
     fn get_block_children(&self, hash: Hash) -> Option<Arc<Vec<Hash>>> {
