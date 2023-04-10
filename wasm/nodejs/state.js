@@ -2,7 +2,7 @@ let kaspa = require('./kaspa/kaspa_wasm');
 kaspa.init_console_panic_hook();
 
 const {
-    Header, Uint256, Uint192, State, Hash
+    Header, State, Hash
 } = kaspa;
 
 (async ()=>{
@@ -16,7 +16,7 @@ const {
         0,//bits
         0n,//nonce
         0n,//daa_score
-        new Uint192(0n),//blue_work
+        0n,//blue_work
         0n,//blue_score
         new Hash("0000000000000000000000000000000000000000000000000000000000000000")//pruning_point
     );

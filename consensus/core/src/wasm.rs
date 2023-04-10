@@ -1,7 +1,7 @@
 use crate::header::Header as Inner;
 //use crate::BlueWorkType;
 use kaspa_hashes::Hash;
-use kaspa_math::wasm::Uint192;
+//use kaspa_math::wasm::Uint192;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -23,7 +23,7 @@ impl Header {
         bits: u32,
         nonce: u64,
         daa_score: u64,
-        blue_work: Uint192,
+        blue_work: u64,
         blue_score: u64,
         pruning_point: Hash,
     ) -> Result<Header, workflow_wasm::error::Error> {

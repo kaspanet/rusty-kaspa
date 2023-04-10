@@ -145,6 +145,16 @@ impl Hash {
     pub fn constructor(hex_str: &str) -> Self {
         Hash::from_str(hex_str).expect("invalid hash value")
     }
+
+    #[wasm_bindgen(getter)]
+    pub fn value(&self) -> String {
+        self.to_string()
+    }
+
+    #[wasm_bindgen(js_name = toString)]
+    pub fn to_str(&self) -> String {
+        self.to_string()
+    }
 }
 
 type TryFromError = workflow_wasm::error::Error;
