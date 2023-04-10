@@ -1,6 +1,7 @@
 pub mod body_processor;
 pub mod deps_manager;
 pub mod header_processor;
+pub mod pruning_processor;
 pub mod virtual_processor;
 
 use std::sync::atomic::{AtomicU64, Ordering};

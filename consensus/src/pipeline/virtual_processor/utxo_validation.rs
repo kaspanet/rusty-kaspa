@@ -184,7 +184,7 @@ impl VirtualStateProcessor {
     }
 
     /// Validates transactions against the provided `utxo_view` and returns a vector with all transactions
-    /// which passed the validation
+    /// which passed the validation along with their original index within the containing block
     pub fn validate_transactions_in_parallel<'a, V: UtxoView + Sync>(
         &self,
         txs: &'a Vec<Transaction>,
@@ -223,7 +223,7 @@ impl VirtualStateProcessor {
         match res {
             Ok(calculated_fee) => Ok(ValidatedTransaction::new(populated_tx, calculated_fee)),
             Err(tx_rule_error) => {
-                info!("tx rule error {} for tx {}", tx_rule_error, transaction.id());
+                info!("Rejecting transaction {} due to transaction rule error: {}", transaction.id(), tx_rule_error);
                 Err(tx_rule_error)
             }
         }

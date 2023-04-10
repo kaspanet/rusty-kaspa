@@ -39,6 +39,7 @@ use crate::{
         body_processor::BlockBodyProcessor,
         deps_manager::{BlockProcessingMessage, BlockResultSender, BlockTask},
         header_processor::HeaderProcessor,
+        pruning_processor::processor::{PruningProcessingMessage, PruningProcessor},
         virtual_processor::{errors::PruningImportResult, VirtualStateProcessor},
         ProcessingCounters,
     },
@@ -116,6 +117,7 @@ pub struct Consensus {
     pub header_processor: Arc<HeaderProcessor>,
     pub(super) body_processor: Arc<BlockBodyProcessor>,
     pub virtual_processor: Arc<VirtualStateProcessor>,
+    pub pruning_processor: Arc<PruningProcessor>,
 
     // Stores
     statuses_store: Arc<RwLock<DbStatusesStore>>,
@@ -337,6 +339,10 @@ impl Consensus {
             unbounded_crossbeam();
         let (virtual_sender, virtual_receiver): (CrossbeamSender<BlockProcessingMessage>, CrossbeamReceiver<BlockProcessingMessage>) =
             unbounded_crossbeam();
+        let (pruning_sender, pruning_receiver): (
+            CrossbeamSender<PruningProcessingMessage>,
+            CrossbeamReceiver<PruningProcessingMessage>,
+        ) = unbounded_crossbeam();
 
         //
         // Thread-pools
@@ -416,6 +422,7 @@ impl Consensus {
 
         let virtual_processor = Arc::new(VirtualStateProcessor::new(
             virtual_receiver,
+            pruning_sender,
             virtual_pool,
             params,
             db.clone(),
@@ -445,6 +452,14 @@ impl Consensus {
             depth_manager.clone(),
             notification_root.clone(),
             counters.clone(),
+        ));
+
+        let pruning_processor = Arc::new(PruningProcessor::new(
+            pruning_receiver,
+            db.clone(),
+            pruning_store.clone(),
+            past_pruning_points_store.clone(),
+            pruning_manager.clone(),
         ));
 
         let pruning_proof_manager = PruningProofManager::new(
@@ -502,6 +517,7 @@ impl Consensus {
             header_processor,
             body_processor,
             virtual_processor,
+            pruning_processor,
             statuses_store,
             relations_stores,
             reachability_store,
@@ -538,11 +554,13 @@ impl Consensus {
         let header_processor = self.header_processor.clone();
         let body_processor = self.body_processor.clone();
         let virtual_processor = self.virtual_processor.clone();
+        let pruning_processor = self.pruning_processor.clone();
 
         vec![
             thread::Builder::new().name("header-processor".to_string()).spawn(move || header_processor.worker()).unwrap(),
             thread::Builder::new().name("body-processor".to_string()).spawn(move || body_processor.worker()).unwrap(),
             thread::Builder::new().name("virtual-processor".to_string()).spawn(move || virtual_processor.worker()).unwrap(),
+            thread::Builder::new().name("pruning-processor".to_string()).spawn(move || pruning_processor.worker()).unwrap(),
         ]
     }
 
