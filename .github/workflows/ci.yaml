@@ -250,4 +250,11 @@ jobs:
         working-directory: ./wasm/testing
         run: npm test
 
+      - name: Upload WASM binary to GitHub
+        uses: actions/upload-artifact@v3
+        with:
+          name: wasm-binary
+          path: wasm/testing/kaspa/
+
+
 
