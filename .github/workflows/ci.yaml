@@ -194,9 +194,14 @@ jobs:
       - name: Run cargo check of kaspa-wasm for wasm32 target
         run: cargo clippy -p kaspa-wasm --target wasm32-unknown-unknown
 
-  build-wasm32:
-    name: Build Wasm32
+  build-test-wasm32:
+    name: Build and Test Wasm32
     runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [16.x]
+
     steps:
       - name: Checkout sources
         uses: actions/checkout@v3
@@ -229,5 +234,20 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Build wasm pack for nodejs
-        run: cd wasm && wasm-pack build --target nodejs --out-dir nodejs/kaspa --features full
+      - name: Build wasm pack for Node.js
+        run: cd wasm && wasm-pack build --target nodejs --out-dir testing/wasm/kaspa --features full
+ 
+      - name: Install Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v1
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Install needed modules for unit tests
+        working-directory: ./testing/wasm
+        run: npm install
+
+      - name: Run unit tests for Node.js
+        working-directory: ./testing/wasm
+        run: npm test
+
+
