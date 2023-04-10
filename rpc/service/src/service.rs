@@ -313,17 +313,15 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         let mempool_entries = grouped_txs
             .owners
             .iter()
-            .map(|(script_public_key, transactions)| {
+            .map(|(script_public_key, owner_transactions)| {
                 let address = extract_script_pub_key_address(script_public_key, self.config.prefix())
                     .expect("script public key is convertible into an address");
-                let sending =
-                    self.consensus_converter.get_owner_entries(session.deref(), &transactions.sending_txs, &grouped_txs.transactions);
-                let receiving = self.consensus_converter.get_owner_entries(
+                self.consensus_converter.get_mempool_entries_by_address(
                     session.deref(),
-                    &transactions.receiving_txs,
+                    address,
+                    owner_transactions,
                     &grouped_txs.transactions,
-                );
-                RpcMempoolEntryByAddress::new(address, sending, receiving)
+                )
             })
             .collect();
         Ok(GetMempoolEntriesByAddressesResponse::new(mempool_entries))

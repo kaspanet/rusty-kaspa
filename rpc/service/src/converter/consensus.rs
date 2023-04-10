@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use kaspa_addresses::Address;
 use kaspa_consensus_core::{
     api::ConsensusApi,
     block::Block,
@@ -10,11 +11,11 @@ use kaspa_consensus_core::{
 use kaspa_consensus_notify::notification::{self as consensus_notify, Notification as ConsensusNotification};
 use kaspa_consensusmanager::ConsensusManager;
 use kaspa_math::Uint256;
-use kaspa_mining::model::TransactionIdSet;
+use kaspa_mining::model::{owner_txs::OwnerTransactions, TransactionIdSet};
 use kaspa_notify::converter::Converter;
 use kaspa_rpc_core::{
-    BlockAddedNotification, Notification, RpcBlock, RpcBlockVerboseData, RpcError, RpcHash, RpcMempoolEntry, RpcResult,
-    RpcTransaction, RpcTransactionInput, RpcTransactionOutput, RpcTransactionOutputVerboseData, RpcTransactionVerboseData,
+    BlockAddedNotification, Notification, RpcBlock, RpcBlockVerboseData, RpcError, RpcHash, RpcMempoolEntry, RpcMempoolEntryByAddress,
+    RpcResult, RpcTransaction, RpcTransactionInput, RpcTransactionOutput, RpcTransactionOutputVerboseData, RpcTransactionVerboseData,
 };
 use kaspa_txscript::{extract_script_pub_key_address, script_class::ScriptClass};
 use std::{collections::HashMap, fmt::Debug, ops::Deref, sync::Arc};
@@ -86,6 +87,18 @@ impl ConsensusConverter {
         let is_orphan = !transaction.is_fully_populated();
         let rpc_transaction = self.get_transaction(consensus, &transaction.tx, None, true);
         RpcMempoolEntry::new(transaction.calculated_fee.unwrap_or_default(), rpc_transaction, is_orphan)
+    }
+
+    pub fn get_mempool_entries_by_address(
+        &self,
+        consensus: &dyn ConsensusApi,
+        address: Address,
+        owner_transactions: &OwnerTransactions,
+        transactions: &HashMap<TransactionId, MutableTransaction>,
+    ) -> RpcMempoolEntryByAddress {
+        let sending = self.get_owner_entries(consensus, &owner_transactions.sending_txs, transactions);
+        let receiving = self.get_owner_entries(consensus, &owner_transactions.receiving_txs, transactions);
+        RpcMempoolEntryByAddress::new(address, sending, receiving)
     }
 
     pub fn get_owner_entries(
