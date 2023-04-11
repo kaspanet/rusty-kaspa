@@ -220,15 +220,15 @@ mod tests {
     #[allow(unused_variables)]
     impl HeaderStoreReader for HeaderStoreMock {
         fn get_daa_score(&self, hash: kaspa_hashes::Hash) -> Result<u64, StoreError> {
-            todo!()
+            unimplemented!()
         }
 
         fn get_timestamp(&self, hash: kaspa_hashes::Hash) -> Result<u64, StoreError> {
-            todo!()
+            unimplemented!()
         }
 
         fn get_bits(&self, hash: kaspa_hashes::Hash) -> Result<u32, StoreError> {
-            todo!()
+            unimplemented!()
         }
 
         fn get_header(&self, hash: kaspa_hashes::Hash) -> Result<Arc<Header>, StoreError> {
@@ -239,11 +239,11 @@ mod tests {
             &self,
             hash: kaspa_hashes::Hash,
         ) -> Result<crate::model::stores::headers::CompactHeaderData, StoreError> {
-            todo!()
+            unimplemented!()
         }
 
         fn get_blue_score(&self, hash: kaspa_hashes::Hash) -> Result<u64, StoreError> {
-            todo!()
+            unimplemented!()
         }
 
         fn get_header_with_block_level(&self, hash: kaspa_hashes::Hash) -> Result<HeaderWithBlockLevel, StoreError> {
@@ -258,7 +258,7 @@ mod tests {
     #[allow(unused_variables)]
     impl RelationsStoreReader for RelationsStoreMock {
         fn get_parents(&self, hash: Hash) -> Result<kaspa_consensus_core::blockhash::BlockHashes, StoreError> {
-            todo!()
+            unimplemented!()
         }
 
         fn get_children(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
@@ -266,7 +266,7 @@ mod tests {
         }
 
         fn has(&self, hash: Hash) -> Result<bool, StoreError> {
-            todo!()
+            unimplemented!()
         }
     }
 

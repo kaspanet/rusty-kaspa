@@ -75,13 +75,26 @@ impl PruningProcessor {
     }
 
     pub fn worker(self: &Arc<Self>) {
-        while let Ok(msg) = self.receiver.recv() {
+        while let Ok(mut msg) = self.receiver.recv() {
+            let mut exit = false;
+            // Empty the channel from all pending messages and process the last one
+            // TODO: turn the channel into a watch-like object dropping earlier messages internally
+            for next_msg in self.receiver.try_iter() {
+                match next_msg {
+                    PruningProcessingMessage::Exit => exit = true,
+                    m => msg = m,
+                }
+            }
             match msg {
                 PruningProcessingMessage::Exit => break,
                 PruningProcessingMessage::Process { sink_ghostdag_data } => {
                     self.advance_pruning_point_and_candidate_if_possible(sink_ghostdag_data);
                 }
             };
+
+            if exit {
+                break;
+            }
         }
     }
 
