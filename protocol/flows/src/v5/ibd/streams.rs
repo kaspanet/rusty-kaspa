@@ -3,6 +3,7 @@
 //!
 
 use kaspa_consensus_core::{
+    errors::consensus::ConsensusError,
     header::Header,
     tx::{TransactionOutpoint, UtxoEntry},
 };
@@ -151,7 +152,11 @@ impl<'a, 'b> PruningPointUtxosetChunkStream<'a, 'b> {
                             info!("Finished receiving the UTXO set. Total UTXOs: {}", self.utxo_count);
                             Ok(None)
                         }
-                        Some(Payload::UnexpectedPruningPoint(_)) => todo!(), // TODO: return a special indication for this case
+                        Some(Payload::UnexpectedPruningPoint(_)) => {
+                            // Although this can happen also to an honest syncer (if his pruning point moves during the sync),
+                            // we prefer erring and disconnecting to avoid possible exploits by a syncer repeating this failure
+                            Err(ProtocolError::ConsensusError(ConsensusError::UnexpectedPruningPoint))
+                        }
                         _ => Err(ProtocolError::UnexpectedMessage(
                             stringify!(
                                 Payload::PruningPointUtxoSetChunk

@@ -91,37 +91,37 @@ struct HeaderStoreMock {}
 #[allow(unused_variables)]
 impl HeaderStoreReader for HeaderStoreMock {
     fn get_daa_score(&self, hash: kaspa_hashes::Hash) -> Result<u64, StoreError> {
-        todo!()
+        unimplemented!()
     }
 
     fn get_blue_score(&self, hash: kaspa_hashes::Hash) -> Result<u64, StoreError> {
-        todo!()
+        unimplemented!()
     }
 
     fn get_timestamp(&self, hash: kaspa_hashes::Hash) -> Result<u64, StoreError> {
-        todo!()
+        unimplemented!()
     }
 
     fn get_bits(&self, hash: kaspa_hashes::Hash) -> Result<u32, StoreError> {
-        todo!()
+        unimplemented!()
     }
 
     fn get_header(&self, hash: kaspa_hashes::Hash) -> Result<Arc<Header>, StoreError> {
-        todo!()
+        unimplemented!()
     }
 
     fn get_header_with_block_level(
         &self,
         hash: kaspa_hashes::Hash,
     ) -> Result<crate::model::stores::headers::HeaderWithBlockLevel, StoreError> {
-        todo!()
+        unimplemented!()
     }
 
     fn get_compact_header_data(
         &self,
         hash: kaspa_hashes::Hash,
     ) -> Result<crate::model::stores::headers::CompactHeaderData, StoreError> {
-        todo!()
+        unimplemented!()
     }
 }
 
@@ -130,39 +130,39 @@ struct GhostdagStoreMock {}
 #[allow(unused_variables)]
 impl GhostdagStoreReader for GhostdagStoreMock {
     fn get_blue_score(&self, hash: kaspa_hashes::Hash) -> Result<u64, StoreError> {
-        todo!()
+        unimplemented!()
     }
 
     fn get_blue_work(&self, hash: kaspa_hashes::Hash) -> Result<kaspa_consensus_core::BlueWorkType, StoreError> {
-        todo!()
+        unimplemented!()
     }
 
     fn get_selected_parent(&self, hash: kaspa_hashes::Hash) -> Result<kaspa_hashes::Hash, StoreError> {
-        todo!()
+        unimplemented!()
     }
 
     fn get_mergeset_blues(&self, hash: kaspa_hashes::Hash) -> Result<BlockHashes, StoreError> {
-        todo!()
+        unimplemented!()
     }
 
     fn get_mergeset_reds(&self, hash: kaspa_hashes::Hash) -> Result<BlockHashes, StoreError> {
-        todo!()
+        unimplemented!()
     }
 
     fn get_blues_anticone_sizes(&self, hash: kaspa_hashes::Hash) -> Result<crate::model::stores::ghostdag::HashKTypeMap, StoreError> {
-        todo!()
+        unimplemented!()
     }
 
     fn get_data(&self, hash: kaspa_hashes::Hash) -> Result<Arc<crate::model::stores::ghostdag::GhostdagData>, StoreError> {
-        todo!()
+        unimplemented!()
     }
 
     fn get_compact_data(&self, hash: kaspa_hashes::Hash) -> Result<crate::model::stores::ghostdag::CompactGhostdagData, StoreError> {
-        todo!()
+        unimplemented!()
     }
 
     fn has(&self, hash: kaspa_hashes::Hash) -> Result<bool, StoreError> {
-        todo!()
+        unimplemented!()
     }
 }
 
