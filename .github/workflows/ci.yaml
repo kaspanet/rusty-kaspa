@@ -166,7 +166,7 @@ jobs:
         continue-on-error: true
         run: wget https://apt.llvm.org/llvm.sh
       - run: chmod +x llvm.sh
-      - run: sudo ./llvm.sh all
+      - run: sudo ./llvm.sh all 2>/dev/null
 
       - name: Install stable toolchain
         if: steps.install_llvm.outcome == 'success' && steps.install_llvm.conclusion == 'success'
@@ -212,7 +212,7 @@ jobs:
         continue-on-error: true
         run: wget https://apt.llvm.org/llvm.sh
       - run: chmod +x llvm.sh
-      - run: sudo ./llvm.sh all
+      - run: sudo ./llvm.sh all 2>/dev/null
 
       - name: Install stable toolchain
         if: steps.install_llvm.outcome == 'success' && steps.install_llvm.conclusion == 'success'
