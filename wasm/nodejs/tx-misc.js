@@ -1,3 +1,5 @@
+/*
+
 BigInt.prototype["toJSON1"] = function(){
     return this.toString()
 }
@@ -162,3 +164,5 @@ console.log("\ntransaction:", transaction);
 // },"\t"));
 
 // TODO sign
+
+*/

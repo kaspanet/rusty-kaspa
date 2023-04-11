@@ -21,6 +21,7 @@ kaspa-utils.workspace = true
 kaspa-rpc-core.workspace = true
 kaspa-wrpc-client.workspace = true
 kaspa-consensus-core.workspace = true
+kaspa-pow.workspace = true
 
 [features] 
 wallet = [] 

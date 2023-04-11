@@ -42,7 +42,7 @@ kaspa.init_console_panic_hook();
     console.log("utxo_selection.amount", utxo_selection.amount)
     console.log("utxo_selection.totalAmount", utxo_selection.totalAmount)
     let utxos = utxo_selection.utxos;
-    console.log("utxos", utxos)
+    console.log("utxos[0].data.outpoint", utxos[0]?.data.outpoint)
     console.log("utxos.*.data.outpoint", utxos.map(a=>a.data.outpoint))
     console.log("utxos.*.data.entry", utxos.map(a=>a.data.entry))
 
