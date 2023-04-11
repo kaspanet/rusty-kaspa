@@ -673,8 +673,7 @@ impl ConsensusApi for Consensus {
     }
 
     fn get_sync_info(&self) -> SyncInfo {
-        // FIXME
-        todo!()
+        SyncInfo::default()
     }
 
     fn is_nearly_synced(&self) -> bool {
