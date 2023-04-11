@@ -162,12 +162,14 @@ jobs:
         run: sudo apt install -y protobuf-compiler
 
       - name: Install llvm
-        continue-on-error: true.
+        id: install_llvm
+        continue-on-error: true
         run: wget https://apt.llvm.org/llvm.sh
       - run: chmod +x llvm.sh
-      - run: sudo ./llvm.sh all 2>/dev/nul
+      - run: sudo ./llvm.sh all
 
       - name: Install stable toolchain
+        if: steps.install_llvm.outcome == 'success' && steps.install_llvm.conclusion == 'success'
         uses: dtolnay/rust-toolchain@stable
 
       - name: Add wasm32 target
@@ -206,12 +208,14 @@ jobs:
         run: sudo apt install -y protobuf-compiler
 
       - name: Install llvm
-        continue-on-error: true.
+        id: install_llvm
+        continue-on-error: true
         run: wget https://apt.llvm.org/llvm.sh
       - run: chmod +x llvm.sh
-      - run: sudo ./llvm.sh all 2>/dev/nul
+      - run: sudo ./llvm.sh all
 
       - name: Install stable toolchain
+        if: steps.install_llvm.outcome == 'success' && steps.install_llvm.conclusion == 'success'
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install wasm-pack
