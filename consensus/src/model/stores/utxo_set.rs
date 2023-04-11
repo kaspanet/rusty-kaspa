@@ -26,7 +26,7 @@ pub trait UtxoSetStore: UtxoSetStoreReader {
     /// Note we define `self` as `mut` in order to require write access even though the compiler does not require it.
     /// This is because concurrent readers can interfere with cache consistency.  
     fn write_diff(&mut self, utxo_diff: &UtxoDiff) -> Result<(), StoreError>;
-    fn write_many(&self, utxos: &[(TransactionOutpoint, UtxoEntry)]) -> Result<(), StoreError>;
+    fn write_many(&mut self, utxos: &[(TransactionOutpoint, UtxoEntry)]) -> Result<(), StoreError>;
 }
 
 pub const UTXO_KEY_SIZE: usize = kaspa_hashes::HASH_SIZE + std::mem::size_of::<TransactionIndexType>();
@@ -135,7 +135,7 @@ impl UtxoSetStore for DbUtxoSetStore {
         Ok(())
     }
 
-    fn write_many(&self, utxos: &[(TransactionOutpoint, UtxoEntry)]) -> Result<(), StoreError> {
+    fn write_many(&mut self, utxos: &[(TransactionOutpoint, UtxoEntry)]) -> Result<(), StoreError> {
         let mut writer = DirectDbWriter::new(&self.db);
         self.access.write_many(&mut writer, &mut utxos.iter().map(|(o, e)| ((*o).into(), Arc::new(e.clone()))))?;
         Ok(())

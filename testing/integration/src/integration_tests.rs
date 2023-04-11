@@ -764,12 +764,12 @@ impl KaspadGoParams {
 }
 
 #[tokio::test]
-async fn goref_custom_pruning_depth() {
+async fn goref_custom_pruning_depth_test() {
     json_test("testdata/dags_for_json_tests/goref_custom_pruning_depth").await
 }
 
 #[tokio::test]
-async fn goref_custom_pruning_depth_concurrent() {
+async fn goref_custom_pruning_depth_concurrent_test() {
     json_concurrency_test("testdata/dags_for_json_tests/goref_custom_pruning_depth").await
 }
 
