@@ -933,9 +933,7 @@ impl ConsensusApi for Consensus {
     }
 
     fn is_chain_block(&self, hash: Hash) -> ConsensusResult<bool> {
-        // FIXME: check this call
-        let ghostdag_data = self.ghostdag_store.get_data(hash).unwrap();
-        self.is_chain_ancestor_of(hash, ghostdag_data.selected_parent)
+        self.is_chain_ancestor_of(hash, self.get_sink().unwrap())
     }
 
     fn get_missing_block_body_hashes(&self, high: Hash) -> ConsensusResult<Vec<Hash>> {
