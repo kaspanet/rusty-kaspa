@@ -37,3 +37,4 @@ rand = "0.8"
 triggered = "0.1"
 workflow-core.workspace = true
 paste.workspace = true
+downcast.workspace = true

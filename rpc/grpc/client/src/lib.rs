@@ -2,7 +2,7 @@ use self::{
     error::{Error, Result},
     resolver::{id::IdResolver, queue::QueueResolver, DynResolver},
 };
-use async_channel::Sender;
+use async_channel::{Receiver, Sender};
 use async_trait::async_trait;
 use connection_event::ConnectionEvent;
 use futures::{
@@ -11,15 +11,13 @@ use futures::{
     select,
 };
 use kaspa_core::{debug, trace};
-use kaspa_grpc_core::{
-    channel::NotificationChannel,
-    protowire::{kaspad_request, rpc_client::RpcClient, GetInfoRequestMessage, KaspadRequest, KaspadResponse},
-};
+use kaspa_grpc_core::protowire::{kaspad_request, rpc_client::RpcClient, GetInfoRequestMessage, KaspadRequest, KaspadResponse};
 use kaspa_notify::{
-    error::Result as NotifyResult,
+    collector::{Collector, CollectorFrom},
+    error::{Error as NotifyError, Result as NotifyResult},
     events::{EventType, EVENT_TYPE_ARRAY},
     listener::ListenerId,
-    notifier::Notifier,
+    notifier::{DynNotify, Notifier},
     scope::Scope,
     subscriber::{Subscriber, SubscriptionManager},
     subscription::Command,
@@ -30,10 +28,10 @@ use kaspa_rpc_core::{
     error::RpcError,
     error::RpcResult,
     model::message::*,
-    notify::{collector::RpcCoreCollector, connection::ChannelConnection},
-    Notification, NotificationSender,
+    notify::{channel::NotificationChannel, collector::RpcCoreCollector, connection::ChannelConnection, mode::NotificationMode},
+    Notification,
 };
-use kaspa_utils::triggers::DuplexTrigger;
+use kaspa_utils::{channel::Channel, triggers::DuplexTrigger};
 use regex::Regex;
 use std::{
     sync::{
@@ -51,48 +49,86 @@ mod resolver;
 #[macro_use]
 mod route;
 
+pub type GrpcClientCollector = CollectorFrom<Notification, Notification>;
+pub type GrpcClientNotify = DynNotify<Notification>;
+
 #[derive(Debug)]
 pub struct GrpcClient {
     inner: Arc<Inner>,
-    notifier: Arc<Notifier<Notification, ChannelConnection>>,
+    /// In multi listener mode, a full-featured Notifier
+    notifier: Option<Arc<Notifier<Notification, ChannelConnection>>>,
+    /// In direct mode, a Collector relaying incoming notifications to any provided DynNotify
+    collector: Option<Arc<GrpcClientCollector>>,
+    notification_mode: NotificationMode,
 }
 
 const GRPC_CLIENT: &str = "grpc-client";
 
 impl GrpcClient {
     pub async fn connect(
-        address: String,
+        notification_mode: NotificationMode,
+        url: String,
         reconnect: bool,
         connection_event_sender: Option<Sender<ConnectionEvent>>,
         override_handle_stop_notify: bool,
     ) -> Result<GrpcClient> {
         let schema = Regex::new(r"^grpc://").unwrap();
-        if !schema.is_match(&address) {
-            return Err(Error::GrpcAddressSchema(address));
+        if !schema.is_match(&url) {
+            return Err(Error::GrpcAddressSchema(url));
         }
-        let notify_channel = NotificationChannel::default();
-        let inner =
-            Inner::connect(address, reconnect, notify_channel.sender(), connection_event_sender, override_handle_stop_notify).await?;
-        let core_events = EVENT_TYPE_ARRAY[..].into();
-        let collector = Arc::new(RpcCoreCollector::new(notify_channel.receiver()));
-        let subscriber = Arc::new(Subscriber::new(core_events, inner.clone(), 0));
+        let inner = Inner::connect(url, reconnect, connection_event_sender, override_handle_stop_notify).await?;
 
-        let notifier = Arc::new(Notifier::new(core_events, vec![collector], vec![subscriber], 10, GRPC_CLIENT));
+        let (notifier, collector) = match notification_mode {
+            NotificationMode::MultiListeners => {
+                let enabled_events = EVENT_TYPE_ARRAY[..].into();
+                let collector = Arc::new(RpcCoreCollector::new(inner.notification_channel_receiver()));
+                let subscriber = Arc::new(Subscriber::new(enabled_events, inner.clone(), 0));
+                let notifier: Notifier<Notification, ChannelConnection> =
+                    Notifier::new(enabled_events, vec![collector], vec![subscriber], 10, GRPC_CLIENT);
+                (Some(Arc::new(notifier)), None)
+            }
+            NotificationMode::Direct => {
+                let collector = GrpcClientCollector::new(inner.notification_channel_receiver());
+                (None, Some(Arc::new(collector)))
+            }
+        };
 
-        Ok(Self { inner, notifier })
+        Ok(Self { inner, notifier, collector, notification_mode })
     }
 
     #[inline(always)]
-    pub fn notifier(&self) -> Arc<Notifier<Notification, ChannelConnection>> {
+    pub fn notifier(&self) -> Option<Arc<Notifier<Notification, ChannelConnection>>> {
         self.notifier.clone()
     }
 
-    pub async fn start(&self) {
-        self.notifier().start();
+    /// Starts RPC services.
+    pub async fn start(&self, notify: Option<GrpcClientNotify>) {
+        match &self.notification_mode {
+            NotificationMode::MultiListeners => {
+                self.notifier.clone().unwrap().start();
+            }
+            NotificationMode::Direct => {
+                if let Some(notify) = notify {
+                    self.collector.as_ref().unwrap().clone().start(notify);
+                }
+            }
+        }
     }
 
+    /// Stops RPC services.
     pub async fn stop(&self) -> Result<()> {
-        self.notifier().stop().await?;
+        match &self.notification_mode {
+            NotificationMode::MultiListeners => {
+                self.notifier.as_ref().unwrap().stop().await?;
+            }
+            NotificationMode::Direct => {
+                if let Some(collector) = &self.collector {
+                    if collector.is_started() {
+                        collector.clone().stop().await?;
+                    }
+                }
+            }
+        }
         Ok(())
     }
 
@@ -108,14 +144,22 @@ impl GrpcClient {
         self.inner.handle_stop_notify()
     }
 
-    pub async fn shutdown(&mut self) -> Result<()> {
-        self.inner.shutdown().await?;
+    pub async fn disconnect(&self) -> Result<()> {
+        self.inner.disconnect().await?;
         Ok(())
+    }
+
+    pub fn notification_channel_receiver(&self) -> Receiver<Notification> {
+        self.inner.notification_channel.receiver()
+    }
+
+    pub fn notification_mode(&self) -> NotificationMode {
+        self.notification_mode
     }
 }
 
 #[async_trait]
-impl RpcApi<ChannelConnection> for GrpcClient {
+impl RpcApi for GrpcClient {
     // this example illustrates the body of the function created by the route!() macro
     // async fn submit_block_call(&self, request: SubmitBlockRequest) -> RpcResult<SubmitBlockResponse> {
     //     self.inner.call(RpcApiOps::SubmitBlock, request).await?.as_ref().try_into()
@@ -158,27 +202,49 @@ impl RpcApi<ChannelConnection> for GrpcClient {
 
     /// Register a new listener and returns an id identifying it.
     fn register_new_listener(&self, connection: ChannelConnection) -> ListenerId {
-        self.notifier.register_new_listener(connection)
+        match self.notification_mode {
+            NotificationMode::MultiListeners => self.notifier.as_ref().unwrap().register_new_listener(connection),
+            NotificationMode::Direct => ListenerId::default(),
+        }
     }
 
     /// Unregister an existing listener.
     ///
     /// Stop all notifications for this listener, unregister the id and its associated connection.
     async fn unregister_listener(&self, id: ListenerId) -> RpcResult<()> {
-        self.notifier.unregister_listener(id)?;
+        match self.notification_mode {
+            NotificationMode::MultiListeners => {
+                self.notifier.as_ref().unwrap().unregister_listener(id)?;
+            }
+            NotificationMode::Direct => {}
+        }
         Ok(())
     }
 
     /// Start sending notifications of some type to a listener.
     async fn start_notify(&self, id: ListenerId, scope: Scope) -> RpcResult<()> {
-        self.notifier().start_notify(id, scope).await?;
+        match self.notification_mode {
+            NotificationMode::MultiListeners => {
+                self.notifier.clone().unwrap().try_start_notify(id, scope)?;
+            }
+            NotificationMode::Direct => {
+                self.inner.start_notify_to_client(scope).await?;
+            }
+        }
         Ok(())
     }
 
     /// Stop sending notifications of some type to a listener.
     async fn stop_notify(&self, id: ListenerId, scope: Scope) -> RpcResult<()> {
         if self.handle_stop_notify() {
-            self.notifier().stop_notify(id, scope).await?;
+            match self.notification_mode {
+                NotificationMode::MultiListeners => {
+                    self.notifier.clone().unwrap().try_stop_notify(id, scope)?;
+                }
+                NotificationMode::Direct => {
+                    self.inner.stop_notify_to_client(scope).await?;
+                }
+            }
             Ok(())
         } else {
             Err(RpcError::UnsupportedFeature)
@@ -241,7 +307,8 @@ struct Inner {
     server_features: ServerFeatures,
 
     // Pushing incoming notifications forward
-    notify_sender: NotificationSender,
+    //notify_sender: NotificationSender,
+    notification_channel: NotificationChannel,
 
     // Sending to server
     request_sender: KaspadRequestSender,
@@ -274,9 +341,8 @@ struct Inner {
 
 impl Inner {
     fn new(
-        address: String,
+        url: String,
         server_features: ServerFeatures,
-        notify_sender: NotificationSender,
         request_sender: KaspadRequestSender,
         request_receiver: KaspadRequestReceiver,
         connection_event_sender: Option<Sender<ConnectionEvent>>,
@@ -286,10 +352,11 @@ impl Inner {
             true => Arc::new(IdResolver::new()),
             false => Arc::new(QueueResolver::new()),
         };
+        let notification_channel = Channel::default();
         Self {
-            address,
+            address: url,
             server_features,
-            notify_sender,
+            notification_channel,
             request_sender,
             request_receiver,
             resolver,
@@ -309,9 +376,8 @@ impl Inner {
 
     // TODO - remove the override (discuss how to handle this in relation to the golang client)
     async fn connect(
-        address: String,
+        url: String,
         reconnect: bool,
-        notify_sender: NotificationSender,
         connection_event_sender: Option<Sender<ConnectionEvent>>,
         override_handle_stop_notify: bool,
     ) -> Result<Arc<Self>> {
@@ -319,13 +385,12 @@ impl Inner {
         let (request_sender, request_receiver) = async_channel::unbounded();
 
         // Try to connect to the server
-        let (stream, server_features) = Inner::try_connect(address.clone(), request_sender.clone(), request_receiver.clone()).await?;
+        let (stream, server_features) = Inner::try_connect(url.clone(), request_sender.clone(), request_receiver.clone()).await?;
 
         // create the inner object
         let inner = Arc::new(Inner::new(
-            address,
+            url,
             server_features,
-            notify_sender,
             request_sender,
             request_receiver,
             connection_event_sender,
@@ -407,6 +472,10 @@ impl Inner {
         self.spawn_response_receiver_task(stream);
 
         Ok(())
+    }
+
+    pub fn notification_channel_receiver(&self) -> Receiver<Notification> {
+        self.notification_channel.receiver()
     }
 
     fn send_connection_event(&self, event: ConnectionEvent) {
@@ -605,7 +674,7 @@ impl Inner {
                     trace!("[GrpcClient] handle_response received notification: {:?}", event);
 
                     // Here we ignore any returned error
-                    match self.notify_sender.try_send(notification) {
+                    match self.notification_channel.try_send(notification) {
                         Ok(_) => {}
                         Err(err) => {
                             trace!("[GrpcClient] error while trying to send a notification to the notifier: {:?}", err);
@@ -621,7 +690,7 @@ impl Inner {
         }
     }
 
-    async fn shutdown(&self) -> Result<()> {
+    async fn disconnect(&self) -> Result<()> {
         self.stop_timeout_monitor().await?;
         self.stop_response_receiver_task().await?;
         self.stop_connector_monitor().await?;
@@ -651,22 +720,36 @@ impl Inner {
         }
         Ok(())
     }
+
+    /// Start sending notifications of some type to the client.
+    async fn start_notify_to_client(&self, scope: Scope) -> RpcResult<()> {
+        let request = kaspad_request::Payload::from_notification_type(&scope, Command::Start);
+        self.call((&request).into(), request).await?;
+        Ok(())
+    }
+
+    /// Stop sending notifications of some type to the client.
+    async fn stop_notify_to_client(&self, scope: Scope) -> RpcResult<()> {
+        if self.handle_stop_notify() {
+            let request = kaspad_request::Payload::from_notification_type(&scope, Command::Stop);
+            self.call((&request).into(), request).await?;
+        }
+        Ok(())
+    }
 }
 
 #[async_trait]
 impl SubscriptionManager for Inner {
     async fn start_notify(&self, _: ListenerId, scope: Scope) -> NotifyResult<()> {
         trace!("[GrpcClient] start_notify: {:?}", scope);
-        let request = kaspad_request::Payload::from_notification_type(&scope, Command::Start);
-        self.call((&request).into(), request).await?;
+        self.start_notify_to_client(scope).await.map_err(|err| NotifyError::General(err.to_string()))?;
         Ok(())
     }
 
     async fn stop_notify(&self, _: ListenerId, scope: Scope) -> NotifyResult<()> {
         if self.handle_stop_notify() {
             trace!("[GrpcClient] stop_notify: {:?}", scope);
-            let request = kaspad_request::Payload::from_notification_type(&scope, Command::Stop);
-            self.call((&request).into(), request).await?;
+            self.stop_notify_to_client(scope).await.map_err(|err| NotifyError::General(err.to_string()))?;
         } else {
             trace!("[GrpcClient] stop_notify ignored because not supported by the server: {:?}", scope);
         }

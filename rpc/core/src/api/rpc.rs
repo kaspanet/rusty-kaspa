@@ -4,9 +4,11 @@
 //! All data provided by the RCP server can be trusted by the client
 //! No data submitted by the client to the server can be trusted
 
-use crate::{model::*, RpcResult};
+use crate::{model::*, notify::connection::ChannelConnection, RpcResult};
 use async_trait::async_trait;
-use kaspa_notify::{connection::Connection, listener::ListenerId, scope::Scope, subscription::Command};
+use downcast::{downcast_sync, AnySync};
+use kaspa_notify::{listener::ListenerId, scope::Scope, subscription::Command};
+use std::sync::Arc;
 
 /// Client RPC Api
 ///
@@ -14,10 +16,7 @@ use kaspa_notify::{connection::Connection, listener::ListenerId, scope::Scope, s
 ///
 /// For each RPC call a matching readily implemented function taking detailed parameters is also provided.
 #[async_trait]
-pub trait RpcApi<C>: Sync + Send
-where
-    C: Connection,
-{
+pub trait RpcApi: Sync + Send + AnySync {
     ///
     async fn ping(&self) -> RpcResult<()> {
         self.ping_call(PingRequest {}).await?;
@@ -272,7 +271,7 @@ where
     // Notification API
 
     /// Register a new listener and returns an id identifying it.
-    fn register_new_listener(&self, connection: C) -> ListenerId;
+    fn register_new_listener(&self, connection: ChannelConnection) -> ListenerId;
 
     /// Unregister an existing listener.
     ///
@@ -294,3 +293,7 @@ where
         }
     }
 }
+
+pub type DynRpcService = Arc<dyn RpcApi>;
+
+downcast_sync!(dyn RpcApi);

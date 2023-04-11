@@ -1,21 +1,20 @@
 use crate::imports::*;
-use kaspa_rpc_core::notify::collector::RpcCoreCollector;
 pub use kaspa_rpc_macros::build_wrpc_client_interface;
 use std::fmt::Debug;
 use workflow_rpc::client::Ctl;
 
-/// [`NotificationMode`] controls notification delivery process
-#[wasm_bindgen]
-#[derive(Clone, Copy, Debug)]
-pub enum NotificationMode {
-    /// Local notifier is used for notification processing.
-    ///
-    /// Multiple listeners can register and subscribe independently.
-    MultiListeners,
-    /// No notifier is present, notifications are relayed
-    /// directly through the internal channel to a single listener.
-    Direct,
-}
+// /// [`NotificationMode`] controls notification delivery process
+// #[wasm_bindgen]
+// #[derive(Clone, Copy, Debug)]
+// pub enum NotificationMode {
+//     /// Local notifier is used for notification processing.
+//     ///
+//     /// Multiple listeners can register and subscribe independently.
+//     MultiListeners,
+//     /// No notifier is present, notifications are relayed
+//     /// directly through the internal channel to a single listener.
+//     Direct,
+// }
 
 #[derive(Clone)]
 struct Inner {
@@ -231,7 +230,7 @@ impl KaspaRpcClient {
 }
 
 #[async_trait]
-impl RpcApi<ChannelConnection> for KaspaRpcClient {
+impl RpcApi for KaspaRpcClient {
     //
     // The following proc-macro iterates over the array of enum variants
     // generating a function for each variant as follows:
