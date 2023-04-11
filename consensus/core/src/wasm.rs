@@ -52,8 +52,8 @@ impl Header {
     }
 
     #[wasm_bindgen(js_name=calculateHash)]
-    pub fn calculate_hash(&self) -> Hash {
-        crate::hashing::header::hash(&self.inner)
+    pub fn calculate_hash(&self) -> String {
+        crate::hashing::header::hash(&self.inner).to_string()
     }
 }
 
