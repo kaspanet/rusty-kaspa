@@ -2,13 +2,13 @@ let kaspa = require('./kaspa/kaspa_wasm');
 kaspa.init_console_panic_hook();
 
 const {
-    Header, State
+    Header, State, Hash
 } = kaspa;
 
 (async ()=>{
-   let header = new Header(
+    let header = new Header(
         0,//version
-        [["0000000000000000000000000000000000000000000000000000000000000000"]],//parents_by_level_array
+        [[new Hash("0000000000000000000000000000000000000000000000000000000000000000")]],//parents_by_level_array
         "0000000000000000000000000000000000000000000000000000000000000000",//hash_merkle_root
         "0000000000000000000000000000000000000000000000000000000000000000",//accepted_id_merkle_root
         "0000000000000000000000000000000000000000000000000000000000000000",//utxo_commitment
@@ -20,6 +20,9 @@ const {
         0n,//blue_score
         "0000000000000000000000000000000000000000000000000000000000000000"//pruning_point
     );
+
+    let header_hash = header.calculateHash();
+    console.log("header_hash", header_hash, header_hash+"");
 
     let state = new State(header);
 
