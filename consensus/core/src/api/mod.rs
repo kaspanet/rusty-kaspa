@@ -213,6 +213,17 @@ pub trait ConsensusApi: Send + Sync {
     fn pruning_point(&self) -> Option<Hash> {
         unimplemented!()
     }
+
+    // TODO: Delete this function once there's no need for go-kaspad backward compatability.
+    fn get_daa_window(&self, hash: Hash) -> ConsensusResult<Vec<Hash>> {
+        unimplemented!()
+    }
+
+    // TODO: Think of a better name.
+    // TODO: Delete this function once there's no need for go-kaspad backward compatability.
+    fn get_trusted_block_associated_ghostdagdata_block_hashes(&self, hash: Hash) -> ConsensusResult<Vec<Hash>> {
+        unimplemented!()
+    }
 }
 
 pub type DynConsensus = Arc<dyn ConsensusApi>;

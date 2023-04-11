@@ -924,4 +924,30 @@ impl ConsensusApi for Consensus {
     fn pruning_point(&self) -> Option<Hash> {
         self.pruning_store.read().pruning_point().unwrap_option()
     }
+
+    fn get_daa_window(&self, hash: Hash) -> ConsensusResult<Vec<Hash>> {
+        self.validate_block_exists(hash)?;
+        Ok(self
+            .dag_traversal_manager
+            .block_window(&self.ghostdag_store.get_data(hash).unwrap(), self.config.params.difficulty_window_size)
+            .unwrap()
+            .into_iter()
+            .map(|block| block.0.hash)
+            .collect())
+    }
+
+    fn get_trusted_block_associated_ghostdagdata_block_hashes(&self, hash: Hash) -> ConsensusResult<Vec<Hash>> {
+        self.validate_block_exists(hash)?;
+        let mut hashes = Vec::with_capacity(self.config.params.ghostdag_k as usize);
+        let mut current = hash;
+        for _ in 0..self.config.params.ghostdag_k {
+            hashes.push(current);
+            if current == self.config.params.genesis.hash {
+                break;
+            }
+
+            current = self.ghostdag_store.get_selected_parent(current).unwrap();
+        }
+        Ok(hashes)
+    }
 }
