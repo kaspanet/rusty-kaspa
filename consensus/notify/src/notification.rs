@@ -98,13 +98,13 @@ impl BlockAddedNotification {
 pub struct VirtualChainChangedNotification {
     pub added_chain_block_hashes: Arc<Vec<Hash>>,
     pub removed_chain_block_hashes: Arc<Vec<Hash>>,
-    pub added_chain_blocks_acceptance_data: Arc<Vec<AcceptanceData>>,
+    pub added_chain_blocks_acceptance_data: Arc<Vec<Arc<AcceptanceData>>>,
 }
 impl VirtualChainChangedNotification {
     pub fn new(
         added_chain_block_hashes: Arc<Vec<Hash>>,
         removed_chain_block_hashes: Arc<Vec<Hash>>,
-        added_chain_blocks_acceptance_data: Arc<Vec<AcceptanceData>>,
+        added_chain_blocks_acceptance_data: Arc<Vec<Arc<AcceptanceData>>>,
     ) -> Self {
         Self { added_chain_block_hashes, removed_chain_block_hashes, added_chain_blocks_acceptance_data }
     }

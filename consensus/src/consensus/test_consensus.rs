@@ -55,8 +55,9 @@ pub struct TestConsensus {
 impl TestConsensus {
     pub fn new(db: Arc<DB>, config: &Config, notification_sender: Sender<Notification>) -> Self {
         let notification_root = Arc::new(ConsensusNotificationRoot::new(notification_sender));
+        let counters = Arc::new(ProcessingCounters::default());
         Self {
-            consensus: Arc::new(Consensus::new(db, config, notification_root)),
+            consensus: Arc::new(Consensus::new(db, config, notification_root, counters)),
             params: config.params.clone(),
             temp_db_lifetime: Default::default(),
         }
@@ -69,14 +70,24 @@ impl TestConsensus {
     pub fn create_from_temp_db(config: &Config, notification_sender: Sender<Notification>) -> Self {
         let (temp_db_lifetime, db) = create_temp_db();
         let notification_root = Arc::new(ConsensusNotificationRoot::new(notification_sender));
-        Self { consensus: Arc::new(Consensus::new(db, config, notification_root)), params: config.params.clone(), temp_db_lifetime }
+        let counters = Arc::new(ProcessingCounters::default());
+        Self {
+            consensus: Arc::new(Consensus::new(db, config, notification_root, counters)),
+            params: config.params.clone(),
+            temp_db_lifetime,
+        }
     }
 
     pub fn create_from_temp_db_and_dummy_sender(config: &Config) -> Self {
         let (temp_db_lifetime, db) = create_temp_db();
         let (dummy_notification_sender, _) = async_channel::unbounded();
         let notification_root = Arc::new(ConsensusNotificationRoot::new(dummy_notification_sender));
-        Self { consensus: Arc::new(Consensus::new(db, config, notification_root)), params: config.params.clone(), temp_db_lifetime }
+        let counters = Arc::new(ProcessingCounters::default());
+        Self {
+            consensus: Arc::new(Consensus::new(db, config, notification_root, counters)),
+            params: config.params.clone(),
+            temp_db_lifetime,
+        }
     }
 
     pub fn build_header_with_parents(&self, hash: Hash, parents: Vec<Hash>) -> Header {
@@ -132,7 +143,7 @@ impl TestConsensus {
     }
 
     pub fn init(&self) -> Vec<JoinHandle<()>> {
-        self.consensus.init()
+        self.consensus.run_processors()
     }
 
     pub fn shutdown(&self, wait_handles: Vec<JoinHandle<()>>) {
@@ -254,13 +265,18 @@ impl Drop for TempDbLifetime {
     }
 }
 
+pub fn get_kaspa_tempdir() -> tempfile::TempDir {
+    let global_tempdir = env::temp_dir();
+    let kaspa_tempdir = global_tempdir.join("rusty-kaspa");
+    fs::create_dir_all(kaspa_tempdir.as_path()).unwrap();
+    let db_tempdir = tempfile::tempdir_in(kaspa_tempdir.as_path()).unwrap();
+    db_tempdir
+}
+
 /// Creates a DB within a temp directory under `<OS SPECIFIC TEMP DIR>/kaspa-rust`
 /// Callers must keep the `TempDbLifetime` guard for as long as they wish the DB to exist.
 pub fn create_temp_db_with_parallelism(parallelism: usize) -> (TempDbLifetime, Arc<DB>) {
-    let global_tempdir = env::temp_dir();
-    let kaspa_tempdir = global_tempdir.join("kaspa-rust");
-    fs::create_dir_all(kaspa_tempdir.as_path()).unwrap();
-    let db_tempdir = tempfile::tempdir_in(kaspa_tempdir.as_path()).unwrap();
+    let db_tempdir = get_kaspa_tempdir();
     let db_path = db_tempdir.path().to_owned();
     let db = kaspa_database::prelude::open_db(db_path, true, parallelism);
     (TempDbLifetime::new(db_tempdir, Arc::downgrade(&db)), db)

@@ -1,22 +1,23 @@
-use crate::{BlockLevel, KType};
-use kaspa_hashes::{Hash, HASH_SIZE};
-use serde::Serialize;
+use super::genesis::{GenesisBlock, DEVNET_GENESIS, GENESIS, SIMNET_GENESIS, TESTNET_GENESIS};
+use crate::{networktype::NetworkType, BlockLevel, KType};
+use kaspa_addresses::Prefix;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Consensus parameters. Contains settings and configurations which are consensus-sensitive.
 /// Changing one of these on a network node would exclude and prevent it from reaching consensus
 /// with the other unmodified nodes.
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Debug)]
 pub struct Params {
-    pub genesis_hash: Hash,
+    pub dns_seeders: &'static [&'static str],
+    pub default_port: u16,
+    pub net: NetworkType,
+    pub net_suffix: Option<u32>,
+    pub genesis: GenesisBlock,
     pub ghostdag_k: KType,
     pub timestamp_deviation_tolerance: u64,
     pub target_time_per_block: u64,
     pub max_block_parents: u8,
     pub difficulty_window_size: usize,
-    pub genesis_timestamp: u64,
-    pub genesis_bits: u32,
     pub mergeset_size_limit: u64,
     pub merge_depth: u64,
     pub finality_depth: u64,
@@ -55,21 +56,47 @@ impl Params {
         // enter the DAA window of fully-synced nodes and thus contribute to overall network difficulty
         unix_now() < sink_timestamp + self.expected_daa_window_duration_in_milliseconds()
     }
+
+    pub fn network_name(&self) -> String {
+        self.net.name(self.net_suffix)
+    }
+
+    pub fn prefix(&self) -> Prefix {
+        self.net.into()
+    }
 }
 
 const DEFAULT_GHOSTDAG_K: KType = 18;
 pub const MAINNET_PARAMS: Params = Params {
-    genesis_hash: Hash::from_bytes([
-        0x58, 0xc2, 0xd4, 0x19, 0x9e, 0x21, 0xf9, 0x10, 0xd1, 0x57, 0x1d, 0x11, 0x49, 0x69, 0xce, 0xce, 0xf4, 0x8f, 0x9, 0xf9, 0x34,
-        0xd4, 0x2c, 0xcb, 0x6a, 0x28, 0x1a, 0x15, 0x86, 0x8f, 0x29, 0x99,
-    ]),
+    dns_seeders: &[
+        // This DNS seeder is run by Wolfie
+        "mainnet-dnsseed.kas.pa",
+        // This DNS seeder is run by Denis Mashkevich
+        "mainnet-dnsseed-1.kaspanet.org",
+        // This DNS seeder is run by Denis Mashkevich
+        "mainnet-dnsseed-2.kaspanet.org",
+        // This DNS seeder is run by Constantine Bytensky
+        "dnsseed.cbytensky.org",
+        // This DNS seeder is run by Georges Künzli
+        "seeder1.kaspad.net",
+        // This DNS seeder is run by Georges Künzli
+        "seeder2.kaspad.net",
+        // This DNS seeder is run by Georges Künzli
+        "seeder3.kaspad.net",
+        // This DNS seeder is run by Georges Künzli
+        "seeder4.kaspad.net",
+        // This DNS seeder is run by Tim
+        "kaspadns.kaspacalc.net",
+    ],
+    default_port: 16111,
+    net: NetworkType::Mainnet,
+    net_suffix: None,
+    genesis: GENESIS,
     ghostdag_k: DEFAULT_GHOSTDAG_K,
     timestamp_deviation_tolerance: 132,
     target_time_per_block: 1000,
     max_block_parents: 10,
     difficulty_window_size: 2641,
-    genesis_timestamp: 1637609671037,
-    genesis_bits: 486722099,
     mergeset_size_limit: (DEFAULT_GHOSTDAG_K as u64) * 10,
     merge_depth: 3600,
     finality_depth: 86400,
@@ -105,15 +132,113 @@ pub const MAINNET_PARAMS: Params = Params {
     pruning_proof_m: 1000,
 };
 
-pub const DEVNET_PARAMS: Params = Params {
-    genesis_hash: Hash::from_bytes([1u8; HASH_SIZE]), // TODO: Use golang devnet genesis here
+pub const TESTNET_PARAMS: Params = Params {
+    dns_seeders: &[
+        "testnet-10-dnsseed.kas.pa",
+        // This DNS seeder is run by Tiram
+        "seeder1-testnet.kaspad.net",
+    ],
+    default_port: 16211,
+    net: NetworkType::Testnet,
+    net_suffix: Some(10),
+    genesis: TESTNET_GENESIS,
     ghostdag_k: DEFAULT_GHOSTDAG_K,
     timestamp_deviation_tolerance: 132,
     target_time_per_block: 1000,
     max_block_parents: 10,
     difficulty_window_size: 2641,
-    genesis_timestamp: 0,     // TODO: Use real value
-    genesis_bits: 0x1e21bc1c, // As observed on testnet
+    mergeset_size_limit: (DEFAULT_GHOSTDAG_K as u64) * 10,
+    merge_depth: 3600,
+    finality_depth: 86400,
+    pruning_depth: 185798,
+    coinbase_payload_script_public_key_max_len: 150,
+    max_coinbase_payload_len: 204,
+
+    // This is technically a soft fork from the Go implementation since kaspad's consensus doesn't
+    // check these rules, but in practice it's enforced by the network layer that limits the message
+    // size to 1 GB.
+    // These values should be lowered to more reasonable amounts on the next planned HF/SF.
+    max_tx_inputs: 1_000_000_000,
+    max_tx_outputs: 1_000_000_000,
+    max_signature_script_len: 1_000_000_000,
+    max_script_public_key_len: 1_000_000_000,
+
+    mass_per_tx_byte: 1,
+    mass_per_script_pub_key_byte: 10,
+    mass_per_sig_op: 1000,
+    max_block_mass: 500_000,
+
+    // deflationary_phase_daa_score is the DAA score after which the pre-deflationary period
+    // switches to the deflationary period. This number is calculated as follows:
+    // We define a year as 365.25 days
+    // Half a year in seconds = 365.25 / 2 * 24 * 60 * 60 = 15778800
+    // The network was down for three days shortly after launch
+    // Three days in seconds = 3 * 24 * 60 * 60 = 259200
+    deflationary_phase_daa_score: 15778800 - 259200,
+    pre_deflationary_phase_base_subsidy: 50000000000,
+    coinbase_maturity: 100,
+    skip_proof_of_work: false,
+    max_block_level: 250,
+    pruning_proof_m: 1000,
+};
+
+pub const SIMNET_PARAMS: Params = Params {
+    dns_seeders: &[],
+    default_port: 16511,
+    net: NetworkType::Simnet,
+    net_suffix: None,
+    genesis: SIMNET_GENESIS,
+    ghostdag_k: DEFAULT_GHOSTDAG_K,
+    timestamp_deviation_tolerance: 132,
+    target_time_per_block: 1000,
+    max_block_parents: 10,
+    difficulty_window_size: 2641,
+    mergeset_size_limit: (DEFAULT_GHOSTDAG_K as u64) * 10,
+    merge_depth: 3600,
+    finality_depth: 86400,
+    pruning_depth: 185798,
+    coinbase_payload_script_public_key_max_len: 150,
+    max_coinbase_payload_len: 204,
+
+    // This is technically a soft fork from the Go implementation since kaspad's consensus doesn't
+    // check these rules, but in practice it's enforced by the network layer that limits the message
+    // size to 1 GB.
+    // These values should be lowered to more reasonable amounts on the next planned HF/SF.
+    max_tx_inputs: 1_000_000_000,
+    max_tx_outputs: 1_000_000_000,
+    max_signature_script_len: 1_000_000_000,
+    max_script_public_key_len: 1_000_000_000,
+
+    mass_per_tx_byte: 1,
+    mass_per_script_pub_key_byte: 10,
+    mass_per_sig_op: 1000,
+    max_block_mass: 500_000,
+
+    // deflationary_phase_daa_score is the DAA score after which the pre-deflationary period
+    // switches to the deflationary period. This number is calculated as follows:
+    // We define a year as 365.25 days
+    // Half a year in seconds = 365.25 / 2 * 24 * 60 * 60 = 15778800
+    // The network was down for three days shortly after launch
+    // Three days in seconds = 3 * 24 * 60 * 60 = 259200
+    deflationary_phase_daa_score: 15778800 - 259200,
+    pre_deflationary_phase_base_subsidy: 50000000000,
+    coinbase_maturity: 100,
+    skip_proof_of_work: false,
+    max_block_level: 250,
+    pruning_proof_m: 1000,
+};
+
+pub const DEVNET_PARAMS: Params = Params {
+    dns_seeders: &[],
+    default_port: 16611,
+    net: NetworkType::Devnet,
+    net_suffix: None,
+    genesis: DEVNET_GENESIS,
+    ghostdag_k: DEFAULT_GHOSTDAG_K,
+    timestamp_deviation_tolerance: 132,
+    target_time_per_block: 1000,
+    max_block_parents: 10,
+    difficulty_window_size: 2641,
     mergeset_size_limit: (DEFAULT_GHOSTDAG_K as u64) * 10,
     merge_depth: 3600,
     finality_depth: 86400,

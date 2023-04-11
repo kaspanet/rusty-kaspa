@@ -1,12 +1,15 @@
 use super::{Mutation, Single, Subscription};
 use crate::{
+    address::UtxoAddress,
     events::EventType,
     scope::{Scope, UtxosChangedScope, VirtualChainChangedScope},
     subscription::Command,
 };
 use kaspa_addresses::Address;
+use kaspa_consensus_core::tx::ScriptPublicKey;
+use kaspa_txscript::pay_to_address_script;
 use std::{
-    collections::HashSet,
+    collections::HashMap,
     fmt::Debug,
     hash::{Hash, Hasher},
 };
@@ -147,14 +150,42 @@ impl Subscription for VirtualChainChangedSubscription {
 
 #[derive(Clone, Debug, Default)]
 pub struct UtxosChangedSubscription {
-    // TODO: handle address/script_public_key pairs
-    //       this will be possible when txscript will have golang PayToAddrScript and ExtractScriptPubKeyAddress ported
     active: bool,
-    addresses: HashSet<Address>,
+    addresses: HashMap<ScriptPublicKey, UtxoAddress>,
 }
 
 impl UtxosChangedSubscription {
-    pub fn addresses(&self) -> &HashSet<Address> {
+    pub fn new(active: bool, addresses: Vec<Address>) -> Self {
+        let mut subscription = Self { active, addresses: HashMap::default() };
+        subscription.set_addresses(addresses);
+        subscription
+    }
+
+    fn set_addresses(&mut self, addresses: Vec<Address>) -> &mut Self {
+        self.addresses = addresses
+            .into_iter()
+            .map(|x| {
+                let utxo_address: UtxoAddress = x.into();
+                (utxo_address.to_script_public_key(), utxo_address)
+            })
+            .collect();
+        self
+    }
+
+    pub fn insert_address(&mut self, address: &Address) -> bool {
+        let utxo_address: UtxoAddress = address.clone().into();
+        self.addresses.insert(utxo_address.to_script_public_key(), utxo_address).is_none()
+    }
+
+    pub fn contains_address(&self, address: &Address) -> bool {
+        self.addresses.contains_key(&pay_to_address_script(address))
+    }
+
+    pub fn remove_address(&mut self, address: &Address) -> bool {
+        self.addresses.remove(&pay_to_address_script(address)).is_some()
+    }
+
+    pub fn addresses(&self) -> &HashMap<ScriptPublicKey, UtxoAddress> {
         &self.addresses
     }
 
@@ -166,8 +197,8 @@ impl UtxosChangedSubscription {
 impl PartialEq for UtxosChangedSubscription {
     fn eq(&self, other: &Self) -> bool {
         if self.active == other.active && self.addresses.len() == other.addresses.len() {
-            // HashSets are equal if they contain the same elements
-            return self.addresses.iter().all(|x| other.addresses.contains(x));
+            // HashMaps are considered equal if they contain the same keys
+            return self.addresses.keys().all(|x| other.addresses.contains_key(x));
         }
         false
     }
@@ -180,7 +211,7 @@ impl Hash for UtxosChangedSubscription {
 
         // Since item order in hash set is undefined, build a sorted vector
         // so that hashing is determinist.
-        let mut items: Vec<&Address> = self.addresses.iter().collect::<Vec<_>>();
+        let mut items: Vec<&Address> = self.addresses.values().map(|x| &**x).collect::<Vec<_>>();
         items.sort();
         items.hash(state);
     }
@@ -206,7 +237,7 @@ impl Single for UtxosChangedSubscription {
                     // Here is an exception to the aforementioned goal
                     // Mutations Add(A) && All
                     self.active = true;
-                    self.addresses = scope.addresses.iter().cloned().collect();
+                    self.set_addresses(scope.addresses.clone());
                     Some(vec![mutation])
                 }
             } else if !self.addresses.is_empty() {
@@ -215,11 +246,11 @@ impl Single for UtxosChangedSubscription {
                     if scope.addresses.is_empty() {
                         // Mutation None
                         self.active = false;
-                        let removed = self.addresses.drain().collect();
+                        let removed = self.addresses.drain().map(|(_, x)| x.into()).collect();
                         Some(vec![Mutation::new(Command::Stop, Scope::UtxosChanged(UtxosChangedScope::new(removed)))])
                     } else {
                         // Mutation Remove(R)
-                        let removed: Vec<Address> = scope.addresses.iter().filter(|x| self.addresses.remove(x)).cloned().collect();
+                        let removed: Vec<Address> = scope.addresses.iter().filter(|x| self.remove_address(x)).cloned().collect();
                         if self.addresses.is_empty() {
                             self.active = false;
                         }
@@ -231,15 +262,14 @@ impl Single for UtxosChangedSubscription {
                 } else {
                     if !scope.addresses.is_empty() {
                         // Mutation Add(A)
-                        let added =
-                            scope.addresses.iter().filter(|x| self.addresses.insert((*x).clone())).cloned().collect::<Vec<_>>();
+                        let added = scope.addresses.iter().filter(|x| self.insert_address(x)).cloned().collect::<Vec<_>>();
                         match added.is_empty() {
                             false => Some(vec![Mutation::new(Command::Start, Scope::UtxosChanged(UtxosChangedScope::new(added)))]),
                             true => None,
                         }
                     } else {
                         // Mutation All
-                        let removed: Vec<Address> = self.addresses.drain().collect();
+                        let removed: Vec<Address> = self.addresses.drain().map(|(_, x)| x.into()).collect();
                         Some(vec![
                             Mutation::new(Command::Stop, Scope::UtxosChanged(UtxosChangedScope::new(removed))),
                             Mutation::new(Command::Start, Scope::UtxosChanged(UtxosChangedScope::default())),
@@ -261,7 +291,7 @@ impl Single for UtxosChangedSubscription {
                     if !scope.addresses.is_empty() {
                         // Mutation Add(A)
                         scope.addresses.iter().for_each(|x| {
-                            self.addresses.insert((*x).clone());
+                            self.insert_address(x);
                         });
                         Some(vec![mutation, Mutation::new(Command::Stop, Scope::UtxosChanged(UtxosChangedScope::default()))])
                     } else {
@@ -276,7 +306,7 @@ impl Single for UtxosChangedSubscription {
     }
 
     fn scope(&self) -> Scope {
-        Scope::UtxosChanged(UtxosChangedScope::new(self.addresses.iter().cloned().collect()))
+        Scope::UtxosChanged(UtxosChangedScope::new(self.addresses.values().map(|x| &**x).cloned().collect()))
     }
 }
 
@@ -385,10 +415,10 @@ mod tests {
             Test {
                 name: "test utxos changed subscription",
                 subscriptions: vec![
-                    Box::new(UtxosChangedSubscription { active: false, addresses: HashSet::default() }),
-                    Box::new(UtxosChangedSubscription { active: true, addresses: addresses[0..2].iter().cloned().collect() }),
-                    Box::new(UtxosChangedSubscription { active: true, addresses: addresses[0..3].iter().cloned().collect() }),
-                    Box::new(UtxosChangedSubscription { active: true, addresses: sorted_addresses[0..3].iter().cloned().collect() }),
+                    Box::new(UtxosChangedSubscription::new(false, vec![])),
+                    Box::new(UtxosChangedSubscription::new(true, addresses[0..2].to_vec())),
+                    Box::new(UtxosChangedSubscription::new(true, addresses[0..3].to_vec())),
+                    Box::new(UtxosChangedSubscription::new(true, sorted_addresses[0..3].to_vec())),
                 ],
                 comparisons: vec![
                     Comparison::new(0, 1, false),
@@ -608,10 +638,8 @@ mod tests {
         let a_stock = get_3_addresses(true);
 
         let av = |indexes: &[usize]| indexes.iter().map(|idx| (a_stock[*idx]).clone()).collect::<Vec<_>>();
-        let ah = |indexes: &[usize]| indexes.iter().map(|idx| (a_stock[*idx]).clone()).collect::<HashSet<_>>();
-        let s = |active: bool, indexes: &[usize]| {
-            Box::new(UtxosChangedSubscription { active, addresses: ah(indexes) }) as SingleSubscription
-        };
+        let ah = |indexes: &[usize]| indexes.iter().map(|idx| (a_stock[*idx]).clone()).collect::<Vec<_>>();
+        let s = |active: bool, indexes: &[usize]| Box::new(UtxosChangedSubscription::new(active, ah(indexes))) as SingleSubscription;
         let m = |command: Command, indexes: &[usize]| -> Mutation {
             Mutation { command, scope: Scope::UtxosChanged(UtxosChangedScope { addresses: av(indexes) }) }
         };

@@ -5,7 +5,6 @@ use std::sync::Arc;
 use crate::{
     block_template::{builder::BlockTemplateBuilder, errors::BuilderError},
     cache::BlockTemplateCache,
-    consensus_context::ConsensusMiningContext,
     errors::MiningManagerResult,
     mempool::{
         config::Config,
@@ -18,6 +17,7 @@ use crate::{
     },
 };
 use kaspa_consensus_core::{
+    api::ConsensusApi,
     block::BlockTemplate,
     coinbase::MinerData,
     errors::block::RuleError,
@@ -26,32 +26,31 @@ use kaspa_consensus_core::{
 use kaspa_core::error;
 use parking_lot::{Mutex, RwLock};
 
-pub struct MiningManager<T: ConsensusMiningContext + ?Sized> {
-    block_template_builder: BlockTemplateBuilder<T>,
+pub struct MiningManager {
+    block_template_builder: BlockTemplateBuilder,
     block_template_cache: Mutex<BlockTemplateCache>,
-    mempool: RwLock<Mempool<T>>,
+    mempool: RwLock<Mempool>,
 }
 
-impl<T: ConsensusMiningContext + ?Sized> MiningManager<T> {
+impl MiningManager {
     pub fn new(
-        consensus: Arc<T>,
         target_time_per_block: u64,
         relay_non_std_transactions: bool,
         max_block_mass: u64,
         cache_lifetime: Option<u64>,
     ) -> Self {
         let config = Config::build_default(target_time_per_block, relay_non_std_transactions, max_block_mass);
-        Self::with_config(consensus, config, cache_lifetime)
+        Self::with_config(config, cache_lifetime)
     }
 
-    pub(crate) fn with_config(consensus: Arc<T>, config: Config, cache_lifetime: Option<u64>) -> Self {
-        let block_template_builder = BlockTemplateBuilder::new(consensus.clone(), config.maximum_mass_per_block);
-        let mempool = RwLock::new(Mempool::new(consensus, config));
+    pub(crate) fn with_config(config: Config, cache_lifetime: Option<u64>) -> Self {
+        let block_template_builder = BlockTemplateBuilder::new(config.maximum_mass_per_block);
+        let mempool = RwLock::new(Mempool::new(config));
         let block_template_cache = Mutex::new(BlockTemplateCache::new(cache_lifetime));
         Self { block_template_builder, block_template_cache, mempool }
     }
 
-    pub fn get_block_template(&self, miner_data: &MinerData) -> MiningManagerResult<BlockTemplate> {
+    pub fn get_block_template(&self, consensus: &dyn ConsensusApi, miner_data: &MinerData) -> MiningManagerResult<BlockTemplate> {
         let mut cache_lock = self.block_template_cache.lock();
         let immutable_template = cache_lock.get_immutable_cached_template();
 
@@ -63,7 +62,7 @@ impl<T: ConsensusMiningContext + ?Sized> MiningManager<T> {
             }
             // Miner data is new -- make the minimum changes required
             // Note the call returns a modified clone of the cached block template
-            let block_template = self.block_template_builder.modify_block_template(miner_data, &immutable_template)?;
+            let block_template = self.block_template_builder.modify_block_template(consensus, miner_data, &immutable_template)?;
 
             // No point in updating cache since we have no reason to believe this coinbase will be used more
             // than the previous one, and we want to maintain the original template caching time
@@ -76,7 +75,7 @@ impl<T: ConsensusMiningContext + ?Sized> MiningManager<T> {
         // We remove recursion seen in blockTemplateBuilder.BuildBlockTemplate here.
         loop {
             let transactions = self.block_candidate_transactions();
-            match self.block_template_builder.build_block_template(miner_data, transactions) {
+            match self.block_template_builder.build_block_template(consensus, miner_data, transactions) {
                 Ok(block_template) => {
                     let block_template = cache_lock.set_immutable_cached_template(block_template);
                     return Ok(block_template.as_ref().clone());
@@ -112,7 +111,7 @@ impl<T: ConsensusMiningContext + ?Sized> MiningManager<T> {
     }
 
     #[cfg(test)]
-    pub(crate) fn block_template_builder(&self) -> &BlockTemplateBuilder<T> {
+    pub(crate) fn block_template_builder(&self) -> &BlockTemplateBuilder {
         &self.block_template_builder
     }
 
@@ -123,22 +122,24 @@ impl<T: ConsensusMiningContext + ?Sized> MiningManager<T> {
     /// The returned transactions are clones of objects owned by the mempool.
     pub fn validate_and_insert_transaction(
         &self,
+        consensus: &dyn ConsensusApi,
         transaction: Transaction,
         priority: Priority,
         orphan: Orphan,
     ) -> MiningManagerResult<Vec<Arc<Transaction>>> {
-        Ok(self.mempool.write().validate_and_insert_transaction(transaction, priority, orphan)?)
+        Ok(self.mempool.write().validate_and_insert_transaction(consensus, transaction, priority, orphan)?)
     }
 
     /// Exposed only for tests. Ordinary users should let the mempool create the mutable tx internally
     #[cfg(test)]
     pub fn validate_and_insert_mutable_transaction(
         &self,
+        consensus: &dyn ConsensusApi,
         transaction: MutableTransaction,
         priority: Priority,
         orphan: Orphan,
     ) -> MiningManagerResult<Vec<Arc<Transaction>>> {
-        Ok(self.mempool.write().validate_and_insert_mutable_transaction(transaction, priority, orphan)?)
+        Ok(self.mempool.write().validate_and_insert_mutable_transaction(consensus, transaction, priority, orphan)?)
     }
 
     /// Try to return a mempool transaction by its id.
@@ -183,13 +184,17 @@ impl<T: ConsensusMiningContext + ?Sized> MiningManager<T> {
         self.mempool.read().transaction_count(include_transaction_pool, include_orphan_pool)
     }
 
-    pub fn handle_new_block_transactions(&self, block_transactions: &[Transaction]) -> MiningManagerResult<Vec<Arc<Transaction>>> {
+    pub fn handle_new_block_transactions(
+        &self,
+        consensus: &dyn ConsensusApi,
+        block_transactions: &[Transaction],
+    ) -> MiningManagerResult<Vec<Arc<Transaction>>> {
         // TODO: should use tx acceptance data to verify that new block txs are actually accepted into virtual state.
-        Ok(self.mempool.write().handle_new_block_transactions(block_transactions)?)
+        Ok(self.mempool.write().handle_new_block_transactions(consensus, block_transactions)?)
     }
 
-    pub fn revalidate_high_priority_transactions(&self) -> MiningManagerResult<Vec<TransactionId>> {
-        Ok(self.mempool.write().revalidate_high_priority_transactions()?)
+    pub fn revalidate_high_priority_transactions(&self, consensus: &dyn ConsensusApi) -> MiningManagerResult<Vec<TransactionId>> {
+        Ok(self.mempool.write().revalidate_high_priority_transactions(consensus)?)
     }
 
     /// is_transaction_output_dust returns whether or not the passed transaction output

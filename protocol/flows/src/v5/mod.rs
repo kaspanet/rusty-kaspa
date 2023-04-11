@@ -1,6 +1,6 @@
 use self::{
     address::{ReceiveAddressesFlow, SendAddressesFlow},
-    blockrelay::flow::HandleRelayInvsFlow,
+    blockrelay::{flow::HandleRelayInvsFlow, handle_requests::HandleRelayBlockRequests},
     ibd::IbdFlow,
     ping::{ReceivePingsFlow, SendPingsFlow},
     pruning_point_and_its_anticone_requests::PruningPointAndItsAnticoneRequestsFlow,
@@ -59,6 +59,11 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
             router.subscribe(vec![KaspadMessagePayloadType::Block, KaspadMessagePayloadType::BlockLocator]),
             ibd_sender,
         )),
+        Box::new(HandleRelayBlockRequests::new(
+            ctx.clone(),
+            router.clone(),
+            router.subscribe(vec![KaspadMessagePayloadType::RequestRelayBlocks]),
+        )),
         Box::new(ReceivePingsFlow::new(ctx.clone(), router.clone(), router.subscribe(vec![KaspadMessagePayloadType::Ping]))),
         Box::new(SendPingsFlow::new(ctx.clone(), Arc::downgrade(&router), router.subscribe(vec![KaspadMessagePayloadType::Pong]))),
         Box::new(RequestHeadersFlow::new(
@@ -113,7 +118,7 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
         // KaspadMessagePayloadType::Transaction,
         // KaspadMessagePayloadType::BlockLocator,
         // KaspadMessagePayloadType::RequestAddresses,
-        KaspadMessagePayloadType::RequestRelayBlocks,
+        // KaspadMessagePayloadType::RequestRelayBlocks,
         // KaspadMessagePayloadType::RequestTransactions,
         // KaspadMessagePayloadType::IbdBlock,
         // KaspadMessagePayloadType::InvRelayBlock,

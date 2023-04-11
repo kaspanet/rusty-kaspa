@@ -10,7 +10,7 @@ pub enum NetworkTypeError {
     InvalidNetworkType(String),
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum NetworkType {
     Mainnet,
@@ -28,6 +28,14 @@ impl NetworkType {
             NetworkType::Devnet => 16610,
         }
     }
+
+    pub fn name(&self, suffix: Option<u32>) -> String {
+        if let Some(suffix) = suffix {
+            format!("kaspa-{}-{}", self, suffix)
+        } else {
+            format!("kaspa-{}", self)
+        }
+    }
 }
 
 impl TryFrom<Prefix> for NetworkType {
@@ -41,6 +49,17 @@ impl TryFrom<Prefix> for NetworkType {
             #[allow(unreachable_patterns)]
             #[cfg(test)]
             _ => Err(NetworkTypeError::InvalidNetworkType(prefix.to_string())),
+        }
+    }
+}
+
+impl From<NetworkType> for Prefix {
+    fn from(network_type: NetworkType) -> Self {
+        match network_type {
+            NetworkType::Mainnet => Prefix::Mainnet,
+            NetworkType::Testnet => Prefix::Testnet,
+            NetworkType::Devnet => Prefix::Devnet,
+            NetworkType::Simnet => Prefix::Simnet,
         }
     }
 }

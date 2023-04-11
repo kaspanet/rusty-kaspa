@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use kaspa_consensus_core::BlockHashSet;
 use kaspa_database::prelude::StoreResult;
+use kaspa_database::prelude::StoreResultExtensions;
 use kaspa_database::prelude::DB;
 use kaspa_database::prelude::{BatchDbWriter, CachedDbItem, DirectDbWriter};
 use kaspa_hashes::Hash;
@@ -32,6 +33,10 @@ impl DbTipsStore {
 
     pub fn clone_with_new_cache(&self) -> Self {
         Self::new(Arc::clone(&self.db))
+    }
+
+    pub fn is_initialized(&self) -> bool {
+        self.access.read().unwrap_option().is_some()
     }
 
     pub fn init_batch(&mut self, batch: &mut WriteBatch, initial_tips: &[Hash]) -> StoreResult<()> {

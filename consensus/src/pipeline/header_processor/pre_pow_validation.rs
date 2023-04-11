@@ -10,7 +10,7 @@ impl HeaderProcessor {
         ctx: &mut HeaderProcessingContext,
         header: &Header,
     ) -> BlockProcessResult<()> {
-        if header.hash == self.genesis_hash {
+        if header.hash == self.genesis.hash {
             return Ok(());
         }
 

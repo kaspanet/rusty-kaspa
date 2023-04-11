@@ -10,12 +10,15 @@ license.workspace = true
 [dependencies]
 kaspa-pow.workspace = true
 kaspa-math.workspace = true
+kaspa-addresses.workspace = true
 kaspa-hashes.workspace = true
 kaspa-merkle.workspace = true
 kaspa-core.workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-consensus-notify.workspace = true
 kaspa-consensus.workspace = true
+kaspa-consensusmanager.workspace = true
+
 faster-hex.workspace = true
 thiserror.workspace = true
 serde.workspace = true

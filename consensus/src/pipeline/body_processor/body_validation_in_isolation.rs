@@ -438,7 +438,7 @@ mod tests {
         let consensus = TestConsensus::create_from_temp_db_and_dummy_sender(&config);
         let wait_handles = consensus.init();
 
-        let mut block = consensus.build_block_with_parents_and_transactions(1.into(), vec![config.genesis_hash], vec![]);
+        let mut block = consensus.build_block_with_parents_and_transactions(1.into(), vec![config.genesis.hash], vec![]);
         block.transactions[0].version += 1;
 
         assert_match!(consensus.validate_and_insert_block(block.clone().to_immutable()).await, Err(RuleError::BadMerkleRoot(_, _)));
@@ -446,7 +446,7 @@ mod tests {
         // BadMerkleRoot shouldn't mark the block as known invalid
         assert_match!(consensus.validate_and_insert_block(block.to_immutable()).await, Err(RuleError::BadMerkleRoot(_, _)));
 
-        let mut block = consensus.build_block_with_parents_and_transactions(1.into(), vec![config.genesis_hash], vec![]);
+        let mut block = consensus.build_block_with_parents_and_transactions(1.into(), vec![config.genesis.hash], vec![]);
         block.header.parents_by_level[0][0] = 0.into();
 
         assert_match!(consensus.validate_and_insert_block(block.clone().to_immutable()).await, Err(RuleError::MissingParents(_)));

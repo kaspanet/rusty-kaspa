@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use super::IbdFlow;
-use kaspa_consensus_core::{api::DynConsensus, blockstatus::BlockStatus};
+use kaspa_consensus_core::{api::ConsensusApi, blockstatus::BlockStatus};
 use kaspa_core::{debug, warn};
 use kaspa_hashes::Hash;
 use kaspa_p2p_lib::{
@@ -18,7 +18,7 @@ pub struct ChainNegotiationOutput {
 impl IbdFlow {
     pub(super) async fn negotiate_missing_syncer_chain_segment(
         &mut self,
-        consensus: &DynConsensus,
+        consensus: &dyn ConsensusApi,
     ) -> Result<ChainNegotiationOutput, ProtocolError> {
         /*
             Algorithm:

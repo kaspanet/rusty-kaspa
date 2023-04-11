@@ -8,14 +8,14 @@ use crate::{
             relations::MTRelationsService,
         },
         stores::{
-            acceptance_data::DbAcceptanceDataStore,
+            acceptance_data::{AcceptanceDataStoreReader, DbAcceptanceDataStore},
             block_transactions::{BlockTransactionsStoreReader, DbBlockTransactionsStore},
             block_window_cache::BlockWindowCacheStore,
             daa::DbDaaStore,
             depth::DbDepthStore,
             ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStoreReader},
             headers::{DbHeadersStore, HeaderStoreReader},
-            past_pruning_points::{DbPastPruningPointsStore, PastPruningPointsStore, PastPruningPointsStoreReader},
+            past_pruning_points::{DbPastPruningPointsStore, PastPruningPointsStore},
             pruning::{DbPruningStore, PruningStore, PruningStoreReader},
             reachability::DbReachabilityStore,
             relations::{DbRelationsStore, RelationsStoreReader},
@@ -45,8 +45,9 @@ use crate::{
 use kaspa_consensus_core::{
     acceptance_data::AcceptanceData,
     block::{BlockTemplate, MutableBlock},
-    blockstatus::BlockStatus::{self, StatusDisqualifiedFromChain, StatusUTXOPendingVerification, StatusUTXOValid},
+    blockstatus::BlockStatus::{self, StatusDisqualifiedFromChain, StatusUTXOValid},
     coinbase::{BlockRewardData, MinerData},
+    config::genesis::GenesisBlock,
     header::Header,
     merkle::calc_hash_merkle_root,
     muhash::MuHashExtensions,
@@ -58,11 +59,14 @@ use kaspa_consensus_core::{
     BlockHashMap, BlockHashSet, HashMapCustomHasher,
 };
 use kaspa_consensus_notify::{
-    notification::{Notification, SinkBlueScoreChangedNotification, UtxosChangedNotification, VirtualDaaScoreChangedNotification},
+    notification::{
+        Notification, SinkBlueScoreChangedNotification, UtxosChangedNotification, VirtualChainChangedNotification,
+        VirtualDaaScoreChangedNotification,
+    },
     root::ConsensusNotificationRoot,
 };
 use kaspa_core::{debug, info, time::unix_now, trace};
-use kaspa_database::prelude::{StoreError, StoreResultExtensions};
+use kaspa_database::prelude::{StoreError, StoreResultEmptyTuple, StoreResultExtensions};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
 use kaspa_notify::notifier::Notify;
@@ -94,14 +98,11 @@ pub struct VirtualStateProcessor {
     db: Arc<DB>,
 
     // Config
-    pub(super) genesis_hash: Hash,
-    pub(super) genesis_bits: u32,
-    pub(super) genesis_timestamp: u64,
+    pub(super) genesis: GenesisBlock,
     pub(super) max_block_parents: u8,
     pub(super) difficulty_window_size: usize,
     pub(super) mergeset_size_limit: u64,
     pub(super) pruning_depth: u64,
-    process_genesis: bool,
 
     // Stores
     pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
@@ -153,7 +154,6 @@ impl VirtualStateProcessor {
         receiver: CrossbeamReceiver<BlockProcessingMessage>,
         thread_pool: Arc<ThreadPool>,
         params: &Params,
-        process_genesis: bool,
         db: Arc<DB>,
         // Stores
         statuses_store: Arc<RwLock<DbStatusesStore>>,
@@ -201,14 +201,11 @@ impl VirtualStateProcessor {
             receiver,
             thread_pool,
 
-            genesis_hash: params.genesis_hash,
-            genesis_bits: params.genesis_bits,
-            genesis_timestamp: params.genesis_timestamp,
+            genesis: params.genesis.clone(),
             max_block_parents: params.max_block_parents,
             difficulty_window_size: params.difficulty_window_size,
             mergeset_size_limit: params.mergeset_size_limit,
             pruning_depth: params.pruning_depth,
-            process_genesis,
 
             db,
             statuses_store,
@@ -350,8 +347,7 @@ impl VirtualStateProcessor {
                         // Accumulate
                         accumulated_diff.with_diff_in_place(&ctx.mergeset_diff).unwrap();
                         // Commit UTXO data for current chain block
-                        self.commit_utxo_state(current, ctx.mergeset_diff, ctx.multiset_hash, AcceptanceData {});
-                        // TODO: AcceptanceData
+                        self.commit_utxo_state(current, ctx.mergeset_diff, ctx.multiset_hash, ctx.mergeset_acceptance_data);
 
                         // Count the number of UTXO-processed chain blocks
                         chain_block_counter += 1;
@@ -438,12 +434,14 @@ impl VirtualStateProcessor {
                 let _ = self.notification_root().notify(Notification::VirtualDaaScoreChanged(
                     VirtualDaaScoreChangedNotification::new(new_virtual_state.daa_score),
                 ));
-                // TODO: fix the contents which is wrong in the following commented version
-                // let _ = self.notification_root().notify(Notification::VirtualChainChanged(VirtualChainChangedNotification::new(
-                //     new_virtual_state.ghostdag_data.mergeset_blues.clone(),
-                //     new_virtual_state.ghostdag_data.mergeset_reds.clone(),
-                //     Arc::new(new_virtual_state.accepted_tx_ids),
-                // )));
+                let chain_path = self.dag_traversal_manager.calculate_chain_path(prev_selected, new_selected); // TODO: As an optimization, calculate the chain path as part of the loop on the chain iterator above.
+                let added_chain_blocks_acceptance_data =
+                    chain_path.added.iter().copied().map(|added| self.acceptance_data_store.get(added).unwrap()).collect_vec(); // TODO: Fetch acceptance data only if there's a subscriber for the below notification.
+                let _ = self.notification_root().notify(Notification::VirtualChainChanged(VirtualChainChangedNotification::new(
+                    chain_path.added.into(),
+                    chain_path.removed.into(),
+                    Arc::new(added_chain_blocks_acceptance_data),
+                )));
             }
             BlockStatus::StatusDisqualifiedFromChain => {
                 // TODO: this means another chain needs to be checked
@@ -685,7 +683,7 @@ impl VirtualStateProcessor {
         pruning_read_guard: RwLockUpgradableReadGuard<DbPruningStore>,
     ) {
         let virtual_sp = self.virtual_stores.read().state.get().unwrap().ghostdag_data.selected_parent;
-        if virtual_sp == self.genesis_hash {
+        if virtual_sp == self.genesis.hash {
             return;
         }
 
@@ -715,65 +713,27 @@ impl VirtualStateProcessor {
     }
 
     pub fn init(self: &Arc<Self>) {
-        // TODO: Consider refactoring and removing code duplication with process_genesis_if_needed
-        // when staging consensus is implemented.
         let pp_read_guard = self.pruning_store.upgradable_read();
-        if pp_read_guard.pruning_point().unwrap_option().is_none() {
-            match self.past_pruning_points_store.insert(0, self.genesis_hash) {
-                Ok(()) => {}
-                Err(StoreError::KeyAlreadyExists(_)) => {
-                    // If already exists, make sure the store was initialized correctly
-                    match self.past_pruning_points_store.get(0) {
-                        Ok(hash) => assert_eq!(hash, self.genesis_hash, "first pruning point is not genesis"),
-                        Err(err) => panic!("unexpected error {err}"),
-                    }
-                }
-                Err(err) => panic!("unexpected store error {err}"),
-            }
 
-            RwLockUpgradableReadGuard::upgrade(pp_read_guard).set(self.genesis_hash, self.genesis_hash, 0).unwrap();
+        // Ensure that some pruning point is registered
+        if pp_read_guard.pruning_point().unwrap_option().is_none() {
+            self.past_pruning_points_store.insert(0, self.genesis.hash).unwrap_and_ignore_key_already_exists();
+            RwLockUpgradableReadGuard::upgrade(pp_read_guard).set(self.genesis.hash, self.genesis.hash, 0).unwrap();
         }
     }
 
-    pub fn process_genesis_if_needed(self: &Arc<Self>) {
-        if !self.process_genesis {
-            return;
-        }
+    pub fn process_genesis(self: &Arc<Self>) {
+        // Init virtual and pruning stores
+        self.virtual_stores
+            .write()
+            .state
+            .set(VirtualState::from_genesis(&self.genesis, self.ghostdag_manager.ghostdag(&[self.genesis.hash])))
+            .unwrap();
+        self.past_pruning_points_store.insert(0, self.genesis.hash).unwrap_and_ignore_key_already_exists();
+        self.pruning_store.write().set(self.genesis.hash, self.genesis.hash, 0).unwrap();
 
-        let status = self.statuses_store.read().get(self.genesis_hash).unwrap();
-        match status {
-            StatusUTXOPendingVerification => {
-                let txs = self.block_transactions_store.get(self.genesis_hash).unwrap();
-                self.virtual_stores
-                    .write()
-                    .state
-                    .set(VirtualState::from_genesis(
-                        self.genesis_hash,
-                        self.genesis_bits,
-                        self.genesis_timestamp,
-                        vec![txs[0].id()],
-                        self.ghostdag_manager.ghostdag(&[self.genesis_hash]),
-                    ))
-                    .unwrap();
-                self.commit_utxo_state(self.genesis_hash, UtxoDiff::default(), MuHash::new(), AcceptanceData {});
-
-                match self.past_pruning_points_store.insert(0, self.genesis_hash) {
-                    Ok(()) => {}
-                    Err(StoreError::KeyAlreadyExists(_)) => {
-                        // If already exists, make sure the store was initialized correctly
-                        match self.past_pruning_points_store.get(0) {
-                            Ok(hash) => assert_eq!(hash, self.genesis_hash, "first pruning point is not genesis"),
-                            Err(err) => panic!("unexpected error {err}"),
-                        }
-                    }
-                    Err(err) => panic!("unexpected store error {err}"),
-                }
-
-                self.pruning_store.write().set(self.genesis_hash, self.genesis_hash, 0).unwrap();
-            }
-            StatusUTXOValid => {}
-            _ => panic!("unexpected genesis status {status:?}"),
-        }
+        // Write the UTXO state of genesis
+        self.commit_utxo_state(self.genesis.hash, UtxoDiff::default(), MuHash::new(), vec![]);
     }
 
     pub fn import_pruning_point_utxo_set(

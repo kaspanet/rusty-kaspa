@@ -35,6 +35,7 @@ parking_lot.workspace = true
 kaspa-txscript.workspace = true
 rocksdb.workspace = true
 kaspa-database.workspace = true
+kaspa-consensusmanager.workspace = true
 
 crossbeam-channel = "0.5"
 async-channel = "1.8.0"

@@ -9,6 +9,7 @@ license.workspace = true
 
 [dependencies]
 kaspa-hashes.workspace = true
+kaspa-addresses.workspace = true
 thiserror.workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-utils.workspace = true

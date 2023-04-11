@@ -18,6 +18,7 @@ futures.workspace = true
 kaspa-core.workspace = true
 kaspa-notify.workspace = true
 kaspa-rpc-core.workspace = true
+kaspa-rpc-service.workspace = true
 kaspa-rpc-macros.workspace = true
 kaspa-utils.workspace = true
 paste.workspace = true

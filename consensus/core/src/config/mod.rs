@@ -1,4 +1,5 @@
 pub mod constants;
+pub mod genesis;
 pub mod params;
 
 use std::ops::Deref;
@@ -11,7 +12,7 @@ use {
 /// Various consensus configurations all bundled up under a single struct. Use `Config::new` for directly building from
 /// a `Params` instance. For anything more complex it is recommended to use `ConfigBuilder`. NOTE: this struct can be
 /// implicitly de-refed into `Params`
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Config {
     /// Consensus params
     pub params: Params,
@@ -30,6 +31,10 @@ pub struct Config {
 impl Config {
     pub fn new(params: Params) -> Self {
         Self { params, perf: PERF_PARAMS, process_genesis: true }
+    }
+
+    pub fn to_builder(&self) -> ConfigBuilder {
+        ConfigBuilder { config: self.clone() }
     }
 }
 

@@ -1,6 +1,6 @@
 use crate::model::*;
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
-use kaspa_notify::subscription::Command;
+use kaspa_notify::subscription::{single::UtxosChangedSubscription, Command};
 use serde::{Deserialize, Serialize};
 use std::{
     fmt::{Display, Formatter},
@@ -867,6 +867,26 @@ pub struct NotifyUtxosChangedResponse {}
 pub struct UtxosChangedNotification {
     pub added: Arc<Vec<RpcUtxosByAddressesEntry>>,
     pub removed: Arc<Vec<RpcUtxosByAddressesEntry>>,
+}
+
+impl UtxosChangedNotification {
+    pub(crate) fn apply_utxos_changed_subscription(&self, subscription: &UtxosChangedSubscription) -> Option<Self> {
+        if subscription.to_all() {
+            Some(self.clone())
+        } else {
+            let added = Self::filter_utxos(&self.added, subscription);
+            let removed = Self::filter_utxos(&self.removed, subscription);
+            if added.is_empty() && removed.is_empty() {
+                None
+            } else {
+                Some(Self { added: Arc::new(added), removed: Arc::new(removed) })
+            }
+        }
+    }
+
+    fn filter_utxos(utxo_set: &[RpcUtxosByAddressesEntry], subscription: &UtxosChangedSubscription) -> Vec<RpcUtxosByAddressesEntry> {
+        utxo_set.iter().filter(|x| subscription.addresses().contains_key(&x.utxo_entry.script_public_key)).cloned().collect()
+    }
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

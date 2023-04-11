@@ -41,7 +41,7 @@ impl RequestIbdChainBlockLocatorFlow {
             let msg = dequeue!(self.incoming_route, Payload::RequestIbdChainBlockLocator)?;
             let (low, high) = msg.try_into()?;
 
-            let locator = match self.ctx.consensus().create_headers_selected_chain_block_locator(low, high) {
+            let locator = match (self.ctx.consensus().session().await).create_headers_selected_chain_block_locator(low, high) {
                 Ok(locator) => Ok(locator),
                 Err(e) => {
                     let orig = e.clone();

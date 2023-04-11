@@ -1,9 +1,6 @@
-use crate::{
-    consensus_context::ConsensusMiningContext,
-    mempool::{
-        errors::{NonStandardError, NonStandardResult},
-        Mempool,
-    },
+use crate::mempool::{
+    errors::{NonStandardError, NonStandardResult},
+    Mempool,
 };
 use kaspa_consensus_core::{
     constants::{MAX_SCRIPT_PUBLIC_KEY_VERSION, MAX_SOMPI},
@@ -39,7 +36,7 @@ const MAXIMUM_STANDARD_SIGNATURE_SCRIPT_SIZE: u64 = 1650;
 /// are considered standard and will therefore be relayed and considered for mining.
 const MAXIMUM_STANDARD_TRANSACTION_MASS: u64 = 100_000;
 
-impl<T: ConsensusMiningContext + ?Sized> Mempool<T> {
+impl Mempool {
     pub(crate) fn check_transaction_standard_in_isolation(&self, transaction: &MutableTransaction) -> NonStandardResult<()> {
         let transaction_id = transaction.id();
 
@@ -237,7 +234,6 @@ impl<T: ConsensusMiningContext + ?Sized> Mempool<T> {
 mod tests {
     use super::*;
     use crate::mempool::config::{Config, DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE};
-    use crate::testutils::consensus_mock::ConsensusMock;
     use kaspa_addresses::{Address, Prefix, Version};
     use kaspa_consensus_core::{
         constants::{MAX_TX_IN_SEQUENCE_NUM, SOMPI_PER_KASPA, TX_VERSION},
@@ -245,7 +241,6 @@ mod tests {
         tx::{ScriptPublicKey, ScriptVec, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput},
     };
     use smallvec::smallvec;
-    use std::sync::Arc;
 
     #[test]
     fn test_calc_min_required_tx_relay_fee() {
@@ -286,10 +281,9 @@ mod tests {
 
         for test in tests.iter() {
             // TODO: test all nets params
-            let consensus = Arc::new(ConsensusMock::new());
             let mut config = Config::build_default(1000, false, 500_000);
             config.minimum_relay_transaction_fee = test.minimum_relay_transaction_fee;
-            let mempool = Mempool::new(consensus, config);
+            let mempool = Mempool::new(config);
 
             let got = mempool.minimum_required_transaction_relay_fee(test.size);
             if got != test.want {
@@ -369,10 +363,9 @@ mod tests {
         ];
         for test in tests {
             // TODO: test all nets params
-            let consensus = Arc::new(ConsensusMock::new());
             let mut config = Config::build_default(1000, false, 500_000);
             config.minimum_relay_transaction_fee = test.minimum_relay_transaction_fee;
-            let mempool = Mempool::new(consensus, config);
+            let mempool = Mempool::new(config);
 
             println!("test_is_transaction_output_dust test '{}' ", test.name);
             let res = mempool.is_transaction_output_dust(&test.tx_out);
@@ -545,9 +538,8 @@ mod tests {
 
         for test in tests {
             // TODO: test all nets params
-            let consensus = Arc::new(ConsensusMock::new());
             let config = Config::build_default(1000, false, 500_000);
-            let mempool = Mempool::new(consensus, config);
+            let mempool = Mempool::new(config);
 
             // Ensure standard-ness is as expected.
             println!("test_check_transaction_standard_in_isolation test '{}' ", test.name);

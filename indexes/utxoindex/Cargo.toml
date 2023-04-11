@@ -15,10 +15,12 @@ kaspa-core.workspace = true
 kaspa-utils.workspace = true
 kaspa-index-core.workspace = true
 kaspa-database.workspace = true
+kaspa-consensusmanager.workspace = true
 log.workspace = true
 rocksdb.workspace = true
 serde.workspace = true
 parking_lot.workspace = true
+futures.workspace = true
 
 [dev-dependencies]
 kaspa-consensus.workspace = true

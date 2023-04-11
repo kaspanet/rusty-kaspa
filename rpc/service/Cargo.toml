@@ -1,0 +1,22 @@
+[package]
+name = "kaspa-rpc-service"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
+
+[dependencies]
+kaspa-rpc-core.workspace = true
+kaspa-consensus-core.workspace = true
+kaspa-consensus-notify.workspace = true
+kaspa-hashes.workspace = true
+kaspa-core.workspace = true
+kaspa-utils.workspace = true
+kaspa-notify.workspace = true
+kaspa-index-core.workspace = true
+kaspa-txscript.workspace = true
+kaspa-consensusmanager.workspace = true
+log.workspace = true
+
+async-trait = "0.1.57"
