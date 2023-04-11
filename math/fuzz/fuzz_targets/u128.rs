@@ -2,8 +2,8 @@
 mod utils;
 
 use core::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Rem};
-use libfuzzer_sys::fuzz_target;
 use kaspa_math::construct_uint;
+use libfuzzer_sys::fuzz_target;
 use std::convert::TryInto;
 use utils::{consume, try_opt};
 
@@ -106,6 +106,11 @@ fuzz_target!(|data: &[u8]| {
         let (lib, native) = try_opt!(generate_ints(&mut data));
         assert_eq!(lib.as_u128(), native as u128, "native: {native}");
     }
+    // as f64
+    {
+        let (lib, native) = try_opt!(generate_ints(&mut data));
+        assert_eq!(lib.as_f64(), native as f64, "native: {native}");
+    }
     // to_le_bytes
     {
         let (lib, native) = try_opt!(generate_ints(&mut data));
@@ -129,7 +134,7 @@ fuzz_target!(|data: &[u8]| {
     // mod_inv
     {
         // the modular inverse of 1 in Z/1Z is weird, should it be 1 or 0?
-          // Also, 0 never has a mod_inverse
+        // Also, 0 never has a mod_inverse
         let ((lib1, native1), (lib2, native2)) = loop {
             let (lib1, native1) = try_opt!(generate_ints_top_bit_cleared(&mut data));
             let (lib2, native2) = try_opt!(generate_ints_top_bit_cleared(&mut data));
@@ -145,7 +150,6 @@ fuzz_target!(|data: &[u8]| {
         }
     }
 });
-
 
 fn naive_mod_inv(x: u128, p: u128) -> Option<u128> {
     let mut t = 0;
