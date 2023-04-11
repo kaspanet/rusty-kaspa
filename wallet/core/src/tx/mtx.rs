@@ -24,6 +24,11 @@ impl MutableTransaction {
         Self { tx: Arc::new(Mutex::new(tx.clone())), entries: entries.clone() }
     }
 
+    #[wasm_bindgen(getter=id)]
+    pub fn id(&self) -> Result<String, JsError> {
+        Ok(self.tx.lock()?.id())
+    }
+
     #[wasm_bindgen(js_name=toJSON)]
     pub fn to_json(&self) -> Result<String, JsError> {
         Ok(self.serialize(serde_json::value::Serializer)?.to_string())

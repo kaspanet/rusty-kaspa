@@ -1,6 +1,7 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smallvec::SmallVec;
+use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use thiserror::Error;
 use wasm_bindgen::convert::FromWasmAbi;
@@ -186,11 +187,11 @@ impl Address {
         self.into()
     }
 
-    /// Convert an address to a string.
-    #[wasm_bindgen(js_name = toJSON)]
-    pub fn to_json(&self) -> String {
-        self.to_string()
-    }
+    // /// Convert an address to a string.
+    // #[wasm_bindgen(js_name = toJSON1)]
+    // pub fn to_json(&self) -> String {
+    //     self.to_string()
+    // }
 
     #[wasm_bindgen(getter)]
     pub fn version(&self) -> String {
@@ -341,14 +342,38 @@ impl<'de> serde::de::Visitor<'de> for AddressVisitor {
     where
         A: serde::de::MapAccess<'de>,
     {
-        let key = map.next_key::<String>()?;
-        let value = map.next_value::<u32>()?;
+        let key = map.next_key::<String>()?.ok_or(serde::de::Error::invalid_value(serde::de::Unexpected::Map, &self))?;
 
-        if let Some(key) = &key {
-            if key.eq("ptr") {
-                return Ok(unsafe { Address::from_abi(value) });
-            }
+        if key.eq("ptr") {
+            let value = map.next_value::<u32>()?;
+            return Ok(unsafe { Address::from_abi(value) });
         }
+
+        if key.eq("version") || key.eq("prefix") || key.eq("payload") {
+            let mut set = HashMap::new();
+            let value = map.next_value::<String>().map_err(|_| serde::de::Error::invalid_value(serde::de::Unexpected::Map, &self))?;
+            set.insert(key, value);
+
+            let key = map.next_key::<String>()?.ok_or(serde::de::Error::invalid_value(serde::de::Unexpected::Map, &self))?;
+            let value = map.next_value::<String>().map_err(|_| serde::de::Error::invalid_value(serde::de::Unexpected::Map, &self))?;
+            set.insert(key, value);
+
+            let key = map.next_key::<String>()?.ok_or(serde::de::Error::invalid_value(serde::de::Unexpected::Map, &self))?;
+            let value = map.next_value::<String>().map_err(|_| serde::de::Error::invalid_value(serde::de::Unexpected::Map, &self))?;
+            set.insert(key, value);
+
+            if !set.contains_key("version") || !set.contains_key("prefix") || !set.contains_key("payload") {
+                return Err(serde::de::Error::invalid_value(serde::de::Unexpected::Map, &self));
+            }
+
+            let prefix = set.get("prefix").unwrap();
+            let payload = set.get("payload").unwrap();
+
+            let address_str = format!("{prefix}:{payload}");
+
+            return Address::try_from(address_str).map_err(|e| serde::de::Error::custom(e.to_string()));
+        }
+
         Err(serde::de::Error::invalid_value(serde::de::Unexpected::Map, &self))
         //Err(serde::de::Error::invalid_value(serde::de::Unexpected::Str(&format!("Invalid address: {{{key:?}:{value:?}}}")), &self))
     }

@@ -84,8 +84,8 @@ impl VirtualTransaction {
 
                 final_amount += amount_after_fee;
                 final_utxos.push(UtxoEntry {
-                    address: change_address.clone(),
-                    outpoint: TransactionOutpoint::new(&transaction_id, 0),
+                    address: Some(change_address.clone()),
+                    outpoint: TransactionOutpoint::new(&transaction_id, 0).unwrap(),
                     utxo_entry: tx::UtxoEntry {
                         amount: amount_after_fee,
                         script_public_key,
@@ -94,7 +94,7 @@ impl VirtualTransaction {
                     },
                 });
                 final_inputs.push(TransactionInput::new(
-                    TransactionOutpoint::new(&transaction_id, 0),
+                    TransactionOutpoint::new(&transaction_id, 0).unwrap(),
                     vec![],
                     final_inputs.len() as u64,
                     0,

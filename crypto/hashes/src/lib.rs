@@ -7,7 +7,7 @@ use std::fmt::{Debug, Display, Formatter};
 use std::hash::{Hash as StdHash, Hasher as StdHasher};
 use std::str::{self, FromStr};
 use wasm_bindgen::prelude::*;
-use workflow_wasm::abi::ref_from_abi;
+//use workflow_wasm::abi::ref_from_abi;
 use workflow_wasm::jsvalue::JsValueTrait;
 
 pub const HASH_SIZE: usize = 32;
@@ -16,7 +16,7 @@ pub use hashers::*;
 
 // TODO: Check if we use hash more as an array of u64 or of bytes and change the default accordingly
 #[derive(Eq, Clone, Copy, Default, PartialOrd, Ord, BorshSerialize, BorshDeserialize, BorshSchema)]
-#[wasm_bindgen(inspectable)]
+//#[wasm_bindgen(inspectable)]
 pub struct Hash([u8; HASH_SIZE]);
 
 impl Hash {
@@ -139,23 +139,23 @@ impl<'de> Deserialize<'de> for Hash {
     }
 }
 
-#[wasm_bindgen]
-impl Hash {
-    #[wasm_bindgen(constructor)]
-    pub fn constructor(hex_str: &str) -> Self {
-        Hash::from_str(hex_str).expect("invalid hash value")
-    }
+// #[wasm_bindgen]
+// impl Hash {
+//     #[wasm_bindgen(constructor)]
+//     pub fn constructor(hex_str: &str) -> Self {
+//         Hash::from_str(hex_str).expect("invalid hash value")
+//     }
 
-    #[wasm_bindgen(getter)]
-    pub fn value(&self) -> String {
-        self.to_string()
-    }
+//     #[wasm_bindgen(getter)]
+//     pub fn value(&self) -> String {
+//         self.to_string()
+//     }
 
-    #[wasm_bindgen(js_name = toString)]
-    pub fn to_str(&self) -> String {
-        self.to_string()
-    }
-}
+//     #[wasm_bindgen(js_name = toString)]
+//     pub fn to_str(&self) -> String {
+//         self.to_string()
+//     }
+// }
 
 type TryFromError = workflow_wasm::error::Error;
 impl TryFrom<JsValue> for Hash {
@@ -167,8 +167,8 @@ impl TryFrom<JsValue> for Hash {
                 <[u8; HASH_SIZE]>::try_from(bytes)
                     .map_err(|_| TryFromError::WrongSize("Slice must have the length of Hash".into()))?,
             )
-        } else if js_value.is_object() {
-            ref_from_abi!(Hash, &js_value).map_err(|_| TryFromError::WrongType("supplied object must be a `Hash`".to_string()))?
+        // } else if js_value.is_object() {
+        //     ref_from_abi!(Hash, &js_value).map_err(|_| TryFromError::WrongType("supplied object must be a `Hash`".to_string()))?
         } else {
             return Err(TryFromError::WrongType("supplied object must be a `Hash`".to_string()));
         };

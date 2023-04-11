@@ -83,8 +83,8 @@ impl Transaction {
 
     /// Returns the transaction ID
     #[wasm_bindgen(getter, js_name = id)]
-    pub fn id(&self) -> TransactionId {
-        self.inner().id
+    pub fn id(&self) -> String {
+        self.inner().id.to_string()
     }
 
     #[wasm_bindgen(constructor)]

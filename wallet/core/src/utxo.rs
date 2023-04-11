@@ -12,7 +12,7 @@ use workflow_wasm::abi::{ref_from_abi, TryFromJsValue};
 #[wasm_bindgen(inspectable)]
 pub struct UtxoEntry {
     #[wasm_bindgen(getter_with_clone)]
-    pub address: Address,
+    pub address: Option<Address>,
     #[wasm_bindgen(getter_with_clone)]
     pub outpoint: TransactionOutpoint,
     #[wasm_bindgen(js_name=entry, getter_with_clone)]
@@ -308,7 +308,7 @@ impl TryFrom<JsValue> for UtxoEntries {
                     let address: Address = object.get_string("address")?.try_into()?;
                     let outpoint: TransactionOutpoint = object.get("outpoint")?.try_into()?;
                     UtxoEntry {
-                        address,
+                        address: address.into(),
                         outpoint,
                         utxo_entry: cctx::UtxoEntry { amount, script_public_key, block_daa_score, is_coinbase },
                     }

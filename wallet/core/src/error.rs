@@ -1,4 +1,5 @@
 use base64::DecodeError;
+use faster_hex::Error as FasterHexError;
 use kaspa_bip32::Error as BIP32Error;
 use kaspa_consensus_core::sign::Error as CoreSignError;
 use kaspa_rpc_core::RpcError as KaspaRpcError;
@@ -70,6 +71,9 @@ pub enum Error {
     // CoreSigner(#[from] CoreSignerError),
     #[error(transparent)]
     SerdeWasmBindgen(#[from] serde_wasm_bindgen::Error),
+
+    #[error("FasterHexError: {0:?}")]
+    FasterHexError(#[from] FasterHexError),
 
     #[error("{0}")]
     Chacha20poly1305(chacha20poly1305::Error),

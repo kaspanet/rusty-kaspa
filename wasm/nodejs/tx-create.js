@@ -31,7 +31,7 @@ kaspa.init_console_panic_hook();
         //new Address("kaspatest:qz7ulu4c25dh7fzec9zjyrmlhnkzrg4wmf89q7gzr3gfrsj3uz6xjceef60sd")
     ];
 
-    console.log("\ngetting UTXOs...");
+    console.log("\ngetting UTXOs...", addresses);
     let utxos_by_address = await rpc.getUtxosByAddresses({ addresses });
     //console.log("utxos_by_address", utxos_by_address.entries.slice(0, 2))
     let utxoSet = UtxoSet.from(utxos_by_address);
@@ -113,11 +113,13 @@ kaspa.init_console_panic_hook();
 
     let private_key = xkey.receiveKey(0);
     
-    let signableTx = new MutableTransaction(transaction, utxoEntries);
-    let adjustTransactionResult = adjustTransactionForFee(signableTx, change_address, priorityFee);
+    let mtx = new MutableTransaction(transaction, utxoEntries);
+    let adjustTransactionResult = adjustTransactionForFee(mtx, change_address, priorityFee);
     console.log("adjustTransactionResult", adjustTransactionResult)
-    transaction = signTransaction(signableTx, [private_key], true);
-    transaction = transaction.toRpcTransaction();
+    mtx = signTransaction(mtx, [private_key], true);
+    console.log("before submit mtx.id", mtx.id)
+    transaction = mtx.toRpcTransaction();
+    
     let result = await rpc.submitTransaction({transaction, allowOrphan:false});
 
     console.log("result", result)

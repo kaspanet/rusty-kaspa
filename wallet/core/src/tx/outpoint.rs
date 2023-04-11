@@ -1,4 +1,6 @@
 use crate::imports::*;
+use kaspa_hashes::Hash;
+use std::str::FromStr;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -24,18 +26,19 @@ impl TransactionOutpoint {
 #[wasm_bindgen]
 impl TransactionOutpoint {
     #[wasm_bindgen(constructor)]
-    pub fn new(transaction_id: &TransactionId, index: u32) -> Self {
-        Self { inner: Arc::new(Mutex::new(TransactionOutpointInner { transaction_id: *transaction_id, index })) }
+    pub fn new(transaction_id: &str, index: u32) -> crate::Result<TransactionOutpoint> {
+        Ok(Self { inner: Arc::new(Mutex::new(TransactionOutpointInner { transaction_id: Hash::from_str(transaction_id)?, index })) })
     }
 
     #[wasm_bindgen(getter, js_name = transactionId)]
-    pub fn get_transaction_id(&self) -> TransactionId {
-        self.inner().transaction_id
+    pub fn get_transaction_id(&self) -> String {
+        self.inner().transaction_id.to_string()
     }
 
     #[wasm_bindgen(setter, js_name = transactionId)]
-    pub fn set_transaction_id(&self, transaction_id: &TransactionId) {
-        self.inner().transaction_id = *transaction_id;
+    pub fn set_transaction_id(&self, transaction_id: &str) -> Result<(), Error> {
+        self.inner().transaction_id = Hash::from_str(transaction_id)?;
+        Ok(())
     }
 
     #[wasm_bindgen(getter, js_name = index)]
@@ -60,9 +63,9 @@ impl TryFrom<JsValue> for TransactionOutpoint {
     fn try_from(value: JsValue) -> Result<Self, Self::Error> {
         if value.is_object() {
             let object = Object::from(value);
-            let transaction_id = object.get("transactionId")?.try_into()?;
+            let transaction_id: TransactionId = object.get("transactionId")?.try_into()?;
             let index = object.get_u32("index")?;
-            Ok(TransactionOutpoint::new(&transaction_id, index))
+            Ok(TransactionOutpoint::new(&transaction_id.to_string(), index)?)
         } else {
             Err("outpoint is not an object".into())
         }
@@ -72,9 +75,9 @@ impl TryFrom<JsValue> for TransactionOutpoint {
 impl TryFrom<cctx::TransactionOutpoint> for TransactionOutpoint {
     type Error = Error;
     fn try_from(outpoint: cctx::TransactionOutpoint) -> Result<Self, Self::Error> {
-        let transaction_id = outpoint.transaction_id;
+        let transaction_id = outpoint.transaction_id.to_string();
         let index = outpoint.index;
-        Ok(TransactionOutpoint::new(&transaction_id, index))
+        TransactionOutpoint::new(&transaction_id, index)
     }
 }
 
