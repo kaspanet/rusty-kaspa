@@ -98,7 +98,7 @@ For more details, please follow the [**integrating with Kaspa**](https://kaspa-m
 
 pub use kaspa_addresses::{Address, Version as AddressVersion};
 pub use kaspa_consensus_core::tx::{
-    ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry,
+    ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, 
 };
 
 pub mod rpc {
@@ -119,6 +119,6 @@ pub use kaspa_wallet_core::{
     signer::{js_sign_transaction as sign_transaction, Signer},
     storage::Store,
     tx::{MutableTransaction, VirtualTransaction},
-    utxo::{UtxoEntryReference, UtxoOrdering, UtxoSet},
+    utxo::{UtxoEntryReference, UtxoOrdering, UtxoSet, UtxoEntry},
     wallet::Wallet,
 };
