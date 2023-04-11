@@ -637,11 +637,11 @@ mod tests {
 
         impl VerifiableTransaction for VerifiableTransactionMock {
             fn tx(&self) -> &Transaction {
-                todo!()
+                unimplemented!()
             }
 
             fn populated_input(&self, _index: usize) -> (&TransactionInput, &UtxoEntry) {
-                todo!()
+                unimplemented!()
             }
         }
 

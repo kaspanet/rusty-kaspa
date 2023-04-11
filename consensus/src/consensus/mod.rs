@@ -39,6 +39,7 @@ use crate::{
         body_processor::BlockBodyProcessor,
         deps_manager::{BlockProcessingMessage, BlockResultSender, BlockTask},
         header_processor::HeaderProcessor,
+        pruning_processor::processor::{PruningProcessingMessage, PruningProcessor},
         virtual_processor::{errors::PruningImportResult, VirtualStateProcessor},
         ProcessingCounters,
     },
@@ -116,6 +117,7 @@ pub struct Consensus {
     pub header_processor: Arc<HeaderProcessor>,
     pub(super) body_processor: Arc<BlockBodyProcessor>,
     pub virtual_processor: Arc<VirtualStateProcessor>,
+    pub pruning_processor: Arc<PruningProcessor>,
 
     // Stores
     statuses_store: Arc<RwLock<DbStatusesStore>>,
@@ -126,7 +128,7 @@ pub struct Consensus {
     body_tips_store: Arc<RwLock<DbTipsStore>>,
     pub headers_store: Arc<DbHeadersStore>,
     pub block_transactions_store: Arc<DbBlockTransactionsStore>,
-    pruning_point_utxo_set_store: Arc<DbUtxoSetStore>,
+    pruning_point_utxo_set_store: Arc<RwLock<DbUtxoSetStore>>,
     pub(super) virtual_stores: Arc<RwLock<VirtualStores>>,
     pub(super) past_pruning_points_store: Arc<DbPastPruningPointsStore>,
     // TODO: remove all pub from stores and processors when StoreManager is implemented
@@ -217,7 +219,7 @@ impl Consensus {
         let pruning_store = Arc::new(RwLock::new(DbPruningStore::new(db.clone())));
         let past_pruning_points_store = Arc::new(DbPastPruningPointsStore::new(db.clone(), 4));
         let pruning_point_utxo_set_store =
-            Arc::new(DbUtxoSetStore::new(db.clone(), perf_params.utxo_set_cache_size, store_names::PRUNING_UTXO_SET));
+            Arc::new(RwLock::new(DbUtxoSetStore::new(db.clone(), perf_params.utxo_set_cache_size, store_names::PRUNING_UTXO_SET)));
 
         // Block data
 
@@ -337,6 +339,10 @@ impl Consensus {
             unbounded_crossbeam();
         let (virtual_sender, virtual_receiver): (CrossbeamSender<BlockProcessingMessage>, CrossbeamReceiver<BlockProcessingMessage>) =
             unbounded_crossbeam();
+        let (pruning_sender, pruning_receiver): (
+            CrossbeamSender<PruningProcessingMessage>,
+            CrossbeamReceiver<PruningProcessingMessage>,
+        ) = unbounded_crossbeam();
 
         //
         // Thread-pools
@@ -416,6 +422,7 @@ impl Consensus {
 
         let virtual_processor = Arc::new(VirtualStateProcessor::new(
             virtual_receiver,
+            pruning_sender,
             virtual_pool,
             params,
             db.clone(),
@@ -427,7 +434,7 @@ impl Consensus {
             pruning_store.clone(),
             past_pruning_points_store.clone(),
             body_tips_store.clone(),
-            utxo_diffs_store,
+            utxo_diffs_store.clone(),
             utxo_multisets_store,
             acceptance_data_store,
             virtual_stores.clone(),
@@ -445,6 +452,18 @@ impl Consensus {
             depth_manager.clone(),
             notification_root.clone(),
             counters.clone(),
+        ));
+
+        let pruning_processor = Arc::new(PruningProcessor::new(
+            pruning_receiver,
+            db.clone(),
+            pruning_store.clone(),
+            past_pruning_points_store.clone(),
+            pruning_point_utxo_set_store.clone(),
+            utxo_diffs_store,
+            headers_store.clone(),
+            pruning_manager.clone(),
+            reachability_service.clone(),
         ));
 
         let pruning_proof_manager = PruningProofManager::new(
@@ -502,6 +521,7 @@ impl Consensus {
             header_processor,
             body_processor,
             virtual_processor,
+            pruning_processor,
             statuses_store,
             relations_stores,
             reachability_store,
@@ -538,11 +558,13 @@ impl Consensus {
         let header_processor = self.header_processor.clone();
         let body_processor = self.body_processor.clone();
         let virtual_processor = self.virtual_processor.clone();
+        let pruning_processor = self.pruning_processor.clone();
 
         vec![
             thread::Builder::new().name("header-processor".to_string()).spawn(move || header_processor.worker()).unwrap(),
             thread::Builder::new().name("body-processor".to_string()).spawn(move || body_processor.worker()).unwrap(),
             thread::Builder::new().name("virtual-processor".to_string()).spawn(move || virtual_processor.worker()).unwrap(),
+            thread::Builder::new().name("pruning-processor".to_string()).spawn(move || pruning_processor.worker()).unwrap(),
         ]
     }
 
@@ -696,13 +718,21 @@ impl ConsensusApi for Consensus {
         chunk_size: usize,
         skip_first: bool,
     ) -> ConsensusResult<Vec<(TransactionOutpoint, UtxoEntry)>> {
-        let pp_read_guard = self.pruning_store.read();
-        let current_pp = pp_read_guard.pruning_point().unwrap();
-        if current_pp != expected_pruning_point {
-            return Err(ConsensusError::UnexpectedPruningPoint(expected_pruning_point, current_pp));
+        if self.pruning_store.read().pruning_point().unwrap() != expected_pruning_point {
+            return Err(ConsensusError::UnexpectedPruningPoint);
         }
-        let iter = self.virtual_processor.pruning_point_utxo_set_store.seek_iterator(from_outpoint, chunk_size, skip_first);
-        Ok(iter.map(|item| item.unwrap()).collect())
+        let pruning_point_utxoset_read = self.pruning_point_utxo_set_store.read();
+        let iter = pruning_point_utxoset_read.seek_iterator(from_outpoint, chunk_size, skip_first);
+        let utxos = iter.map(|item| item.unwrap()).collect();
+        drop(pruning_point_utxoset_read);
+
+        // We recheck the expected pruning point in case it was switched just before the utxo set read.
+        // NOTE: we rely on order of operations by pruning processor. See extended comment therein.
+        if self.pruning_store.read().pruning_point().unwrap() != expected_pruning_point {
+            return Err(ConsensusError::UnexpectedPruningPoint);
+        }
+
+        Ok(utxos)
     }
 
     fn modify_coinbase_payload(&self, payload: Vec<u8>, miner_data: &MinerData) -> CoinbaseResult<Vec<u8>> {
@@ -725,7 +755,8 @@ impl ConsensusApi for Consensus {
         // TODO: Check if a db tx is needed. We probably need some kind of a flag that is set on this function to true, and then
         // is set to false on the end of import_pruning_point_utxo_set. On any failure on any of those functions (and also if the
         // node starts when the flag is true) the related data will be deleted and the flag will be set to false.
-        self.pruning_point_utxo_set_store.write_many(utxoset_chunk).unwrap();
+        let mut pruning_point_utxo_set = self.pruning_point_utxo_set_store.write();
+        pruning_point_utxo_set.write_many(utxoset_chunk).unwrap();
         for (outpoint, entry) in utxoset_chunk {
             current_multiset.add_utxo(outpoint, entry);
         }
