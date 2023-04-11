@@ -695,6 +695,7 @@ impl ConsensusApi for Consensus {
     }
 
     fn get_sync_info(&self) -> SyncInfo {
+        // TODO: actually get those numbers
         SyncInfo::default()
     }
 
