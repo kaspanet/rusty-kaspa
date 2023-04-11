@@ -161,12 +161,14 @@ jobs:
       - name: Install protoc
         run: sudo apt install -y protobuf-compiler
 
+      - name: Get llvm install script
+        run: wget https://apt.llvm.org/llvm.sh
+      - run: chmod +x llvm.sh
+
       - name: Install llvm
         id: install_llvm
         continue-on-error: true
-        run: wget https://apt.llvm.org/llvm.sh
-      - run: chmod +x llvm.sh
-      - run: sudo ./llvm.sh all || true
+        run: sudo ./llvm.sh all || true
 
       - name: Install stable toolchain
         if: steps.install_llvm.outcome == 'success' && steps.install_llvm.conclusion == 'success'
@@ -207,12 +209,14 @@ jobs:
       - name: Install protoc
         run: sudo apt install -y protobuf-compiler
 
+      - name: Get llvm install script
+        run: wget https://apt.llvm.org/llvm.sh
+      - run: chmod +x llvm.sh
+
       - name: Install llvm
         id: install_llvm
         continue-on-error: true
-        run: wget https://apt.llvm.org/llvm.sh
-      - run: chmod +x llvm.sh
-      - run: sudo ./llvm.sh all || true
+        run: sudo ./llvm.sh all || true
 
       - name: Install stable toolchain
         if: steps.install_llvm.outcome == 'success' && steps.install_llvm.conclusion == 'success'
