@@ -159,7 +159,8 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
 
             // A simple heuristic check which signals that the mined block is out of date
             // and should not be accepted unless user explicitly requests
-            if !self.config.is_in_difficulty_window(block.header.daa_score, virtual_daa_score) {
+            let daa_window_size = self.config.difficulty_window_size as u64;
+            if virtual_daa_score > daa_window_size && block.header.daa_score < virtual_daa_score - daa_window_size {
                 // error = format!("Block rejected. Reason: block DAA score {0} is too far behind virtual's DAA score {1}", block.header.daa_score, virtual_daa_score)
                 return Ok(SubmitBlockResponse { report: SubmitBlockReport::Reject(SubmitBlockRejectReason::BlockInvalid) });
             }

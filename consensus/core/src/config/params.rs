@@ -62,13 +62,6 @@ impl Params {
         unix_now() < sink_timestamp + self.expected_daa_window_duration_in_milliseconds()
     }
 
-    /// Determines if `daa_score` is located in the DAA window headed by `virtual_daa_score`.
-    ///
-    /// Note: The function returns true if `daa_score` is greater then `virtual_daa_score`.
-    pub fn is_in_difficulty_window(&self, daa_score: u64, virtual_daa_score: u64) -> bool {
-        virtual_daa_score <= self.difficulty_window_size as u64 || daa_score > virtual_daa_score - self.difficulty_window_size as u64
-    }
-
     pub fn network_name(&self) -> String {
         self.net.name(self.net_suffix)
     }
