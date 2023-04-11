@@ -137,7 +137,7 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn anticone(&self, hash: Hash) -> ConsensusResult<Vec<Hash>> {
+    fn get_anticone(&self, hash: Hash) -> ConsensusResult<Vec<Hash>> {
         unimplemented!()
     }
 

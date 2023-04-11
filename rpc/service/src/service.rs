@@ -242,7 +242,7 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         // If the high hash is equal to sink it means get_hashes_between didn't skip any hashes, and
         // there's space to add the sink anticone, otherwise we cannot add the anticone because
         // there's no guarantee that all of the anticone root ancestors will be present.
-        let sink_anticone = if high_hash == sink_hash { session.anticone(sink_hash)? } else { vec![] };
+        let sink_anticone = if high_hash == sink_hash { session.get_anticone(sink_hash)? } else { vec![] };
         // Prepend low hash to make it inclusive and append the sink anticone
         let block_hashes = once(low_hash).chain(block_hashes).chain(sink_anticone).collect::<Vec<_>>();
         let blocks = if request.include_blocks {

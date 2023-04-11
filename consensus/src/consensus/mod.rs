@@ -786,7 +786,7 @@ impl ConsensusApi for Consensus {
         self.headers_selected_tip_store.read().get().unwrap().hash
     }
 
-    fn anticone(&self, hash: Hash) -> ConsensusResult<Vec<Hash>> {
+    fn get_anticone(&self, hash: Hash) -> ConsensusResult<Vec<Hash>> {
         self.validate_block_exists(hash)?;
         Ok(self.dag_traversal_manager.anticone(hash, self.virtual_stores.read().state.get().unwrap().parents.iter().copied(), None)?)
     }
