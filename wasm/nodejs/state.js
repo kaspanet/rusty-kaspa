@@ -22,7 +22,7 @@ const {
     );
 
     let header_hash = header.calculateHash();
-    console.log("header_hash", header_hash, header_hash+"");
+    console.log("header_hash", header_hash);
 
     let state = new State(header);
 
