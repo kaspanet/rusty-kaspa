@@ -37,8 +37,8 @@ macro_rules! hex {
     [..]};
 }
 
-use kaspa_rpc_core::{/*api::rpc::RpcApi,*/ notify::connection::ChannelConnection, Notification};
+use kaspa_rpc_core::Notification;
 use kaspa_utils::channel::Channel;
 
-pub type DynRpcApi = dyn kaspa_rpc_core::api::rpc::RpcApi<ChannelConnection>;
+pub type DynRpcApi = dyn kaspa_rpc_core::api::rpc::RpcApi;
 pub type NotificationChannel = Channel<Notification>;

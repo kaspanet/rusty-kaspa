@@ -4,9 +4,9 @@ use kaspa_notify::{events::EVENT_TYPE_ARRAY, listener::ListenerId, notifier::Not
 use kaspa_rpc_core::{
     api::rpc::DynRpcService,
     notify::{channel::NotificationChannel, connection::ChannelConnection, mode::NotificationMode},
-    server::service::RpcCoreService,
     Notification,
 };
+use kaspa_rpc_service::service::RpcCoreService;
 use std::{
     collections::HashMap,
     sync::{
