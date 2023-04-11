@@ -304,9 +304,11 @@ pub const DEVNET_PARAMS: Params = Params {
 #[cfg(test)]
 mod tests {
     use crate::config::params::{DIFFICULTY_MAX, DIFFICULTY_MAX_AS_F64};
+    use kaspa_math::Uint256;
 
     #[test]
     fn test_difficulty_max_consts() {
+        assert_eq!(DIFFICULTY_MAX, Uint256::from_u64(1).wrapping_shl(255) - 1.into());
         assert_eq!(DIFFICULTY_MAX_AS_F64, DIFFICULTY_MAX.as_f64());
     }
 }
