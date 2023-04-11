@@ -1,7 +1,7 @@
 //! Core server implementation for ClientAPI
 
 use super::collector::{CollectorFromConsensus, CollectorFromIndex};
-use crate::{collector::IndexConverter, converter::consensus::ConsensusConverter};
+use crate::converter::{consensus::ConsensusConverter, index::IndexConverter};
 use async_trait::async_trait;
 use kaspa_consensus_core::{
     block::Block,
@@ -56,6 +56,7 @@ pub struct RpcCoreService {
     flow_context: Arc<FlowContext>,
     config: Arc<Config>,
     consensus_converter: Arc<ConsensusConverter>,
+    _index_converter: Arc<IndexConverter>,
 }
 
 const RPC_CORE: &str = "rpc-core";
@@ -87,14 +88,14 @@ impl RpcCoreService {
         let mut subscribers = vec![consensus_subscriber];
 
         // Prepare index-processor objects if an IndexService is provided
+        let index_converter = Arc::new(IndexConverter::new(config.clone()));
         if let Some(ref index_notifier) = index_notifier {
             let index_notify_channel = Channel::<IndexNotification>::default();
             let index_notify_listener_id =
                 index_notifier.clone().register_new_listener(IndexChannelConnection::new(index_notify_channel.sender()));
 
             let index_events: EventSwitches = [EventType::UtxosChanged, EventType::PruningPointUtxoSetOverride].as_ref().into();
-            let index_converter = Arc::new(IndexConverter::new());
-            let index_collector = Arc::new(CollectorFromIndex::new(index_notify_channel.receiver(), index_converter));
+            let index_collector = Arc::new(CollectorFromIndex::new(index_notify_channel.receiver(), index_converter.clone()));
             let index_subscriber = Arc::new(Subscriber::new(index_events, index_notifier.clone(), index_notify_listener_id));
 
             collectors.push(index_collector);
@@ -104,7 +105,15 @@ impl RpcCoreService {
         // Create the rcp-core notifier
         let notifier = Arc::new(Notifier::new(EVENT_TYPE_ARRAY[..].into(), collectors, subscribers, 1, RPC_CORE));
 
-        Self { consensus_manager, notifier, mining_manager, flow_context, config, consensus_converter }
+        Self {
+            consensus_manager,
+            notifier,
+            mining_manager,
+            flow_context,
+            config,
+            consensus_converter,
+            _index_converter: index_converter,
+        }
     }
 
     pub fn start(&self) {

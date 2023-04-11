@@ -1707,7 +1707,6 @@ dependencies = [
  "async-trait",
  "derive_more",
  "futures",
- "kaspa-addresses",
  "kaspa-consensus-core",
  "kaspa-hashes",
  "kaspa-notify",

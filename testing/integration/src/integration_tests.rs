@@ -864,7 +864,7 @@ async fn json_test(file_path: &str) {
     let (_utxoindex_db_lifetime, utxoindex_db) = create_temp_db();
     let consensus_manager = Arc::new(ConsensusManager::from_consensus(tc.consensus()));
     let utxoindex = UtxoIndex::new(consensus_manager, utxoindex_db).unwrap();
-    let index_service = Arc::new(IndexService::new(&notify_service.notifier(), Some(utxoindex.clone()), config));
+    let index_service = Arc::new(IndexService::new(&notify_service.notifier(), Some(utxoindex.clone())));
 
     let async_runtime = Arc::new(AsyncRuntime::new(2));
     async_runtime.register(notify_service.clone());
