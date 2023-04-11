@@ -133,6 +133,7 @@ pub struct Consensus {
     pruning_point_utxo_set_store: Arc<RwLock<DbUtxoSetStore>>,
     pub(super) virtual_stores: Arc<RwLock<VirtualStores>>,
     pub(super) past_pruning_points_store: Arc<DbPastPruningPointsStore>,
+    acceptance_data_store: Arc<DbAcceptanceDataStore>,
     // TODO: remove all pub from stores and processors when StoreManager is implemented
 
     // Append-only stores
@@ -438,7 +439,7 @@ impl Consensus {
             body_tips_store.clone(),
             utxo_diffs_store.clone(),
             utxo_multisets_store,
-            acceptance_data_store,
+            acceptance_data_store.clone(),
             virtual_stores.clone(),
             pruning_point_utxo_set_store.clone(),
             ghostdag_manager.clone(),
@@ -535,6 +536,7 @@ impl Consensus {
             block_transactions_store,
             pruning_point_utxo_set_store,
             virtual_stores,
+            acceptance_data_store,
             past_pruning_points_store,
 
             statuses_service,
@@ -917,17 +919,16 @@ impl ConsensusApi for Consensus {
 
     fn get_block_acceptance_data(&self, hash: Hash) -> ConsensusResult<Arc<AcceptanceData>> {
         self.validate_block_exists(hash)?;
-        Ok(self.virtual_processor.acceptance_data_store().get(hash).unwrap())
+        Ok(self.acceptance_data_store.get(hash).unwrap())
     }
 
     fn get_blocks_acceptance_data(&self, hashes: &[Hash]) -> ConsensusResult<Vec<Arc<AcceptanceData>>> {
-        let acceptance_data_store = self.virtual_processor.acceptance_data_store();
         hashes
             .iter()
             .copied()
             .map(|hash| {
                 self.validate_block_exists(hash)?;
-                Ok(acceptance_data_store.get(hash).unwrap())
+                Ok(self.acceptance_data_store.get(hash).unwrap())
             })
             .collect::<ConsensusResult<Vec<_>>>()
     }
