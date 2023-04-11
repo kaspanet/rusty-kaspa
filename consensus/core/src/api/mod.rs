@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crate::{
     acceptance_data::AcceptanceData,
-    block::{Block, BlockInfo, BlockRelations, BlockTemplate},
+    block::{Block, BlockInfo, BlockTemplate},
     blockstatus::BlockStatus,
     coinbase::MinerData,
     errors::{
@@ -166,10 +166,6 @@ pub trait ConsensusApi: Send + Sync {
     }
 
     fn get_block_info(&self, hash: Hash) -> ConsensusResult<BlockInfo> {
-        unimplemented!()
-    }
-
-    fn get_block_relations(&self, hash: Hash) -> Option<BlockRelations> {
         unimplemented!()
     }
 

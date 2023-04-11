@@ -131,14 +131,3 @@ impl Default for BlockInfo {
         }
     }
 }
-
-pub struct BlockRelations {
-    pub parents: Arc<Vec<Hash>>,
-    pub children: Arc<Vec<Hash>>,
-}
-
-impl BlockRelations {
-    pub fn new(parents: Arc<Vec<Hash>>, children: Arc<Vec<Hash>>) -> Self {
-        Self { parents, children }
-    }
-}

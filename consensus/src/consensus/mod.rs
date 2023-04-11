@@ -53,7 +53,7 @@ use crate::{
 use kaspa_consensus_core::{
     acceptance_data::AcceptanceData,
     api::ConsensusApi,
-    block::{Block, BlockInfo, BlockRelations, BlockTemplate},
+    block::{Block, BlockInfo, BlockTemplate},
     blockhash::BlockHashExtensions,
     blockstatus::BlockStatus,
     coinbase::MinerData,
@@ -901,17 +901,6 @@ impl ConsensusApi for Consensus {
             (*ghostdag_data.mergeset_blues).clone(),
             (*ghostdag_data.mergeset_reds).clone(),
         ))
-    }
-
-    fn get_block_relations(&self, hash: Hash) -> Option<BlockRelations> {
-        let store = &self.relations_stores.read()[0];
-        let parents = store.get_parents(hash).unwrap_option();
-        let children = store.get_children(hash).unwrap_option();
-        if parents.is_some() || children.is_some() {
-            Some(BlockRelations::new(parents.unwrap_or_default(), children.unwrap_or_default()))
-        } else {
-            None
-        }
     }
 
     fn get_block_children(&self, hash: Hash) -> Option<Arc<Vec<Hash>>> {
