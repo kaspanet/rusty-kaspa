@@ -40,11 +40,8 @@ impl ConsensusConverter {
         // converted back to a number. Note this is not the same as the proof of
         // work limit directly because the block difficulty is encoded in a block
         // with the compact form which loses precision.
-        let _target = Uint256::from_compact_target_bits(bits);
-
-        // TODO: use Uint265::to_f64() when available
-        // self.config.params.pow_max.to_f64() / target.to_f64()
-        1.0
+        let target = Uint256::from_compact_target_bits(bits);
+        self.config.params.max_difficulty_f64 / target.as_f64()
     }
 
     /// Converts a consensus [`Block`] into an [`RpcBlock`], optionally including transaction verbose data.
