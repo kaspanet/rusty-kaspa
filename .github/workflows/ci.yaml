@@ -162,9 +162,10 @@ jobs:
         run: sudo apt install -y protobuf-compiler
 
       - name: Install llvm
+        continue-on-error: true.
         run: wget https://apt.llvm.org/llvm.sh
       - run: chmod +x llvm.sh
-      - run: sudo ./llvm.sh all
+      - run: sudo ./llvm.sh all 2>/dev/nul
 
       - name: Install stable toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -205,9 +206,10 @@ jobs:
         run: sudo apt install -y protobuf-compiler
 
       - name: Install llvm
+        continue-on-error: true.
         run: wget https://apt.llvm.org/llvm.sh
       - run: chmod +x llvm.sh
-      - run: sudo ./llvm.sh all
+      - run: sudo ./llvm.sh all 2>/dev/nul
 
       - name: Install stable toolchain
         uses: dtolnay/rust-toolchain@stable
