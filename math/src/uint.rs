@@ -58,6 +58,11 @@ macro_rules! construct_uint {
                 0
             }
 
+            #[inline(always)]
+            pub fn leading_zeros(&self) -> u32 {
+                return Self::BITS - self.bits();
+            }
+
             #[inline]
             pub fn overflowing_shl(self, mut s: u32) -> (Self, bool) {
                 let overflows = s >= Self::BITS;
@@ -250,6 +255,42 @@ macro_rules! construct_uint {
                     rem = (n % other as u128) as u64;
                 });
                 (self, rem)
+            }
+
+            #[inline]
+            pub fn as_f64(&self) -> f64 {
+                // Reference: https://blog.m-ou.se/floats/
+                // Step 1: Get leading zeroes
+                let leading_zeroes =  self.leading_zeros();
+                // Step 2: Align the bits to the left, so the highest bit will be 1.
+                let left_aligned = self.wrapping_shl(leading_zeroes);
+                // Step 3: Take the highest 53 bits as the mantissa (equivalent to shifting by (Self::BITS - 53))
+                let mut mantissa = left_aligned.0[Self::LIMBS - 1] >> 11;
+                // Step 4: Get the dropped bits, which are the bits that are not part of the mantissa
+                // The dropped bits are left_aligned << 53 (everything except the highest 53 bits).
+                // Unlike the blog here we split the highest bit and the rest of the bits into 2 variables.
+                // We first take the highest 11 bits that were dropped.
+                let highest_dropped_bits = left_aligned.0[Self::LIMBS - 1] << 53;
+                let highest_dropped_bit = highest_dropped_bits >> 63 != 0;
+                // Now we OR together the rest of the bits.
+                let mut rest_dropped_bits = highest_dropped_bits << 1; // Remove the highest.
+                for &word in &left_aligned.0[..Self::LIMBS - 1] {
+                    rest_dropped_bits |= word;
+                }
+                // This is true if the dropped bits are higher than half the int.
+                let higher_than_half = highest_dropped_bit & (rest_dropped_bits != 0);
+                let exactly_half_but_mantissa_odd = highest_dropped_bit & (rest_dropped_bits == 0) & (mantissa & 1 == 1);
+                // Step 5: if the dropped bits are higher than half the int, we add 1 to the mantissa.
+                // If the dropped bits are exactly half the int, we add 1 to the mantissa only if the mantissa is odd. (IEEE-754)
+                mantissa += (higher_than_half | exactly_half_but_mantissa_odd) as u64;
+                // Step 6: Calculate the exponent
+                // If self is 0, exponent should be 0 (special meaning) and mantissa will end up 0 too
+                // Otherwise, (Self::BITS - 1 - leading_zeros) + 1022 so it simplifies to Self::BITS + 1021 - leading_zeroes
+                // 1023 and 1022 are the cutoffs for the exponent having the msb next to the decimal point
+                let exponent = if self.is_zero() { 0 } else { u64::from(Self::BITS) + 1021 - u64::from(leading_zeroes) };
+                // Step 7: sign bit is always 0, exponent is shifted into place
+                // Use addition instead of bitwise OR to saturate the exponent if mantissa overflows
+                f64::from_bits((exponent << 52) + mantissa)
             }
 
             // divmod like operation, returns (quotient, remainder)
@@ -896,7 +937,7 @@ mod tests {
         let mut rng = ChaCha8Rng::from_seed([0; 32]);
         let mut buf = [0u8; 16];
         let mut str_buf = String::with_capacity(32);
-        for i in 0..64_000 {
+        for i in 0..80_000 {
             // Checking all the fmt's is quite expensive.
             let check_fmt = i % 8 == 1;
             rng.fill_bytes(&mut buf);
@@ -929,6 +970,12 @@ mod tests {
                 let default_divrem = (default / default2, default % default2);
                 assert_equal(mine_divrem.0, default_divrem.0, check_fmt);
                 assert_equal(mine_divrem.1, default_divrem.1, check_fmt);
+            }
+            // Test conversion to f64
+            {
+                let mine_f64 = mine.as_f64();
+                let default_f64 = default as f64;
+                assert_eq!(mine_f64, default_f64);
             }
             // Test fast u64 division.
             {
