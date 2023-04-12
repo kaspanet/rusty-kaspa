@@ -72,9 +72,9 @@ impl PruningPointAndItsAnticoneRequestsFlow {
                 .await?;
 
             let daa_window_hash_to_index =
-                BlockHashMap::from_iter(daa_window.into_iter().enumerate().map(|(i, trusted_header)| (trusted_header.header.hash, i)));
+                BlockHashMap::from_iter(daa_window.iter().enumerate().map(|(i, trusted_header)| (trusted_header.header.hash, i)));
             let ghostdag_data_hash_to_index =
-                BlockHashMap::from_iter(ghostdag_data.into_iter().enumerate().map(|(i, trusted_gd)| (trusted_gd.hash, i)));
+                BlockHashMap::from_iter(ghostdag_data.iter().enumerate().map(|(i, trusted_gd)| (trusted_gd.hash, i)));
 
             for hashes in pp_anticone.chunks(IBD_BATCH_SIZE) {
                 for hash in hashes {
