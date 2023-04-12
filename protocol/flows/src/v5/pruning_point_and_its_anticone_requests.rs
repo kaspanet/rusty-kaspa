@@ -99,9 +99,11 @@ impl PruningPointAndItsAnticoneRequestsFlow {
                         .await?;
                 }
 
-                // No timeout here, as we don't care if the syncee takes its time computing,
-                // since it only blocks this dedicated flow
-                dequeue!(self.incoming_route, Payload::RequestNextPruningPointAndItsAnticoneBlocks)?;
+                if hashes.len() == IBD_BATCH_SIZE {
+                    // No timeout here, as we don't care if the syncee takes its time computing,
+                    // since it only blocks this dedicated flow
+                    dequeue!(self.incoming_route, Payload::RequestNextPruningPointAndItsAnticoneBlocks)?;
+                }
             }
 
             self.router.enqueue(make_message!(Payload::DoneBlocksWithTrustedData, DoneBlocksWithTrustedDataMessage {})).await?;

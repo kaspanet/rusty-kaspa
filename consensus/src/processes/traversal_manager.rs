@@ -204,6 +204,26 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: ReachabilityStoreRead
 
         Ok(anticone)
     }
+
+    pub fn lowest_chain_block_above_or_equal_to_blue_score(&self, high: Hash, blue_score: u64) -> Hash {
+        let high_gd = self.ghostdag_store.get_compact_data(high).unwrap();
+        assert!(high_gd.blue_score >= blue_score);
+
+        let mut current = high;
+        let mut current_gd = high_gd;
+
+        while current != self.genesis_hash {
+            let selected_parent_gd = self.ghostdag_store.get_compact_data(current_gd.selected_parent).unwrap();
+            if selected_parent_gd.blue_score < blue_score {
+                break;
+            }
+
+            current = current_gd.selected_parent;
+            current_gd = selected_parent_gd;
+        }
+
+        current
+    }
 }
 
 struct BoundedSizeBlockHeap {

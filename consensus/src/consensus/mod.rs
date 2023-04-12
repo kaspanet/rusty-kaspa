@@ -157,12 +157,14 @@ pub struct Consensus {
     pub(super) pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
     pub(super) pruning_proof_manager: PruningProofManager,
     sync_manager: SyncManager<
+        MTRelationsService<DbRelationsStore>,
         DbReachabilityStore,
         DbGhostdagStore,
         DbSelectedChainStore,
         DbHeadersSelectedTipStore,
         DbPruningStore,
         DbStatusesStore,
+        BlockWindowCacheStore,
     >,
     depth_manager: BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>,
 
@@ -495,6 +497,7 @@ impl Consensus {
         let sync_manager = SyncManager::new(
             params.mergeset_size_limit as usize,
             reachability_service.clone(),
+            dag_traversal_manager.clone(),
             ghostdag_store.clone(),
             selected_chain_store,
             headers_selected_tip_store.clone(),
@@ -949,5 +952,13 @@ impl ConsensusApi for Consensus {
             current = self.ghostdag_store.get_selected_parent(current).unwrap();
         }
         Ok(hashes)
+    }
+
+    fn create_block_locator_from_pruning_point(&self, high: Hash, limit: usize) -> ConsensusResult<Vec<Hash>> {
+        self.validate_block_exists(high)?;
+
+        let pp_read_guard = self.pruning_store.read();
+        let pp = pp_read_guard.pruning_point().unwrap();
+        Ok(self.sync_manager.create_block_locator_from_pruning_point(high, pp, Some(limit))?)
     }
 }

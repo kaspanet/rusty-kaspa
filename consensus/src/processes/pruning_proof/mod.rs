@@ -746,7 +746,8 @@ impl PruningProofManager {
             .traversal_manager
             .anticone(pruning_point, self.virtual_stores.read().state.get().unwrap().parents.iter().copied(), None)
             .expect("no error is expected when max_traversal_allowed is None");
-        let anticone = self.ghostdag_managers[0].sort_blocks(anticone);
+        let mut anticone = self.ghostdag_managers[0].sort_blocks(anticone);
+        anticone.insert(0, pruning_point);
 
         let mut daa_window_blocks = BlockHashMap::new();
         let mut ghostdag_blocks = BlockHashMap::new();

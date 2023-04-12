@@ -149,6 +149,10 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
+    fn create_block_locator_from_pruning_point(&self, high: Hash, limit: usize) -> ConsensusResult<Vec<Hash>> {
+        unimplemented!()
+    }
+
     fn pruning_point_headers(&self) -> Vec<Arc<Header>> {
         unimplemented!()
     }
