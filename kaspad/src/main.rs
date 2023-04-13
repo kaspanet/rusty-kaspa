@@ -178,12 +178,10 @@ pub fn main() {
     let utxoindex_db_dir = db_dir.join(UTXOINDEX_DB);
     let meta_db_dir = db_dir.join(META_DB);
 
-    if args.reset_db {
+    if args.reset_db && db_dir.exists() {
         // TODO: add prompt that validates the choice (unless you pass -y)
-        info!("Deleting databases {:?}, {:?}, {:?}", consensus_db_dir, utxoindex_db_dir, meta_db_dir);
-        kaspa_database::prelude::delete_db(consensus_db_dir.clone());
-        kaspa_database::prelude::delete_db(utxoindex_db_dir.clone());
-        kaspa_database::prelude::delete_db(meta_db_dir.clone());
+        info!("Deleting databases");
+        fs::remove_dir_all(db_dir).unwrap();
     }
 
     fs::create_dir_all(consensus_db_dir.as_path()).unwrap();

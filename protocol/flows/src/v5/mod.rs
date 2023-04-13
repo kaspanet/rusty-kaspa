@@ -4,6 +4,7 @@ use self::{
     ibd::IbdFlow,
     ping::{ReceivePingsFlow, SendPingsFlow},
     pruning_point_and_its_anticone_requests::PruningPointAndItsAnticoneRequestsFlow,
+    request_block_locator::RequestBlockLocatorFlow,
     request_headers::RequestHeadersFlow,
     request_ibd_chain_block_locator::RequestIbdChainBlockLocatorFlow,
     request_pp_proof::RequestPruningPointProofFlow,
@@ -21,6 +22,7 @@ mod blockrelay;
 mod ibd;
 mod ping;
 mod pruning_point_and_its_anticone_requests;
+mod request_block_locator;
 mod request_headers;
 mod request_ibd_chain_block_locator;
 mod request_pp_proof;
@@ -107,7 +109,16 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
             router.subscribe(vec![KaspadMessagePayloadType::RequestTransactions]),
         )),
         Box::new(ReceiveAddressesFlow::new(ctx.clone(), router.clone(), router.subscribe(vec![KaspadMessagePayloadType::Addresses]))),
-        Box::new(SendAddressesFlow::new(ctx, router.clone(), router.subscribe(vec![KaspadMessagePayloadType::RequestAddresses]))),
+        Box::new(SendAddressesFlow::new(
+            ctx.clone(),
+            router.clone(),
+            router.subscribe(vec![KaspadMessagePayloadType::RequestAddresses]),
+        )),
+        Box::new(RequestBlockLocatorFlow::new(
+            ctx,
+            router.clone(),
+            router.subscribe(vec![KaspadMessagePayloadType::RequestBlockLocator]),
+        )),
     ];
 
     // TEMP: subscribe to remaining messages and ignore them
@@ -146,7 +157,7 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
         // KaspadMessagePayloadType::DoneHeaders,
         // KaspadMessagePayloadType::RequestPruningPointUtxoSet,
         // KaspadMessagePayloadType::RequestHeaders,
-        KaspadMessagePayloadType::RequestBlockLocator,
+        // KaspadMessagePayloadType::RequestBlockLocator,
         // KaspadMessagePayloadType::PruningPoints,
         // KaspadMessagePayloadType::RequestPruningPointProof,
         // KaspadMessagePayloadType::PruningPointProof,
