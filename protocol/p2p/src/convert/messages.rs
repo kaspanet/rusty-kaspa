@@ -157,3 +157,10 @@ impl TryFrom<protowire::TransactionNotFoundMessage> for TransactionId {
         msg.id.try_into_ex()
     }
 }
+
+impl TryFrom<protowire::RequestBlockLocatorMessage> for (Hash, u32) {
+    type Error = ConversionError;
+    fn try_from(msg: protowire::RequestBlockLocatorMessage) -> Result<Self, Self::Error> {
+        Ok((msg.high_hash.try_into_ex()?, msg.limit))
+    }
+}

@@ -746,7 +746,8 @@ impl PruningProofManager {
             .traversal_manager
             .anticone(pruning_point, self.virtual_stores.read().state.get().unwrap().parents.iter().copied(), None)
             .expect("no error is expected when max_traversal_allowed is None");
-        let anticone = self.ghostdag_managers[0].sort_blocks(anticone);
+        let mut anticone = self.ghostdag_managers[0].sort_blocks(anticone);
+        anticone.insert(0, pruning_point);
 
         let mut daa_window_blocks = BlockHashMap::new();
         let mut ghostdag_blocks = BlockHashMap::new();
@@ -771,12 +772,11 @@ impl PruningProofManager {
                 );
             }
 
-            for hash in self.reachability_service.default_backward_chain_iterator(anticone_block).take(self.ghostdag_k as usize) {
-                if ghostdag_blocks.contains_key(&hash) {
-                    continue;
-                }
-
-                ghostdag_blocks.insert(hash, (&*self.ghostdag_stores[0].get_data(hash).unwrap()).into());
+            let mut current = anticone_block;
+            for _ in 0..=self.ghostdag_k {
+                let current_gd = self.ghostdag_stores[0].get_data(current).unwrap();
+                ghostdag_blocks.insert(current, (&*current_gd).into());
+                current = current_gd.selected_parent;
             }
         }
 
