@@ -439,6 +439,14 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         Ok(GetCoinSupplyResponse::new(MAX_SOMPI, circulating_sompi))
     }
 
+    async fn ping_call(&self, _: PingRequest) -> RpcResult<PingResponse> {
+        Ok(PingResponse {})
+    }
+
+    async fn get_headers_call(&self, _request: GetHeadersRequest) -> RpcResult<GetHeadersResponse> {
+        Err(RpcError::NotImplemented)
+    }
+
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // UNIMPLEMENTED METHODS
 
@@ -469,10 +477,6 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         unimplemented!();
     }
 
-    async fn get_headers_call(&self, _request: GetHeadersRequest) -> RpcResult<GetHeadersResponse> {
-        unimplemented!();
-    }
-
     async fn ban_call(&self, _request: BanRequest) -> RpcResult<BanResponse> {
         unimplemented!();
     }
@@ -486,10 +490,6 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         _request: EstimateNetworkHashesPerSecondRequest,
     ) -> RpcResult<EstimateNetworkHashesPerSecondResponse> {
         unimplemented!();
-    }
-
-    async fn ping_call(&self, _request: PingRequest) -> RpcResult<PingResponse> {
-        Ok(PingResponse {})
     }
 
     async fn get_process_metrics_call(&self, _request: GetProcessMetricsRequest) -> RpcResult<GetProcessMetricsResponse> {
