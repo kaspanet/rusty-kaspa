@@ -7,6 +7,7 @@ use kaspa_consensus_core::{
     block::Block,
     coinbase::MinerData,
     config::Config,
+    constants::MAX_SOMPI,
     tx::{Transaction, COINBASE_TRANSACTION_INDEX},
 };
 use kaspa_consensus_notify::{
@@ -429,6 +430,15 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         Ok(GetBalancesByAddressesResponse::new(entries))
     }
 
+    async fn get_coin_supply_call(&self, _: GetCoinSupplyRequest) -> RpcResult<GetCoinSupplyResponse> {
+        if !self.config.utxoindex {
+            return Err(RpcError::NoUtxoIndex);
+        }
+        let circulating_sompi =
+            self.utxoindex.as_ref().unwrap().read().get_circulating_supply().map_err(|e| RpcError::General(e.to_string()))?;
+        Ok(GetCoinSupplyResponse::new(MAX_SOMPI, circulating_sompi))
+    }
+
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // UNIMPLEMENTED METHODS
 
@@ -475,10 +485,6 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         &self,
         _request: EstimateNetworkHashesPerSecondRequest,
     ) -> RpcResult<EstimateNetworkHashesPerSecondResponse> {
-        unimplemented!();
-    }
-
-    async fn get_coin_supply_call(&self, _request: GetCoinSupplyRequest) -> RpcResult<GetCoinSupplyResponse> {
         unimplemented!();
     }
 
