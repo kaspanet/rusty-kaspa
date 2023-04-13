@@ -48,6 +48,9 @@ pub enum RpcError {
     #[error("Transaction {0} not found")]
     TransactionNotFound(TransactionId),
 
+    #[error("Method unavailable. Run the node with the --utxoindex argument.")]
+    NoUtxoIndex,
+
     #[error(transparent)]
     AddressError(#[from] kaspa_addresses::AddressError),
 
