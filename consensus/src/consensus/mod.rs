@@ -866,7 +866,7 @@ impl ConsensusApi for Consensus {
     }
 
     fn get_block_even_if_header_only(&self, hash: Hash) -> ConsensusResult<Block> {
-        let Some(status) = self.statuses_store.read().get(hash).unwrap_option().filter(|&status| !status.has_block_header()) else {
+        let Some(status) = self.statuses_store.read().get(hash).unwrap_option().filter(|&status| status.has_block_header()) else {
             return Err(ConsensusError::BlockNotFound(hash));
         };
         Ok(Block {
