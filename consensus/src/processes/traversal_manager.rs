@@ -213,6 +213,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: ReachabilityStoreRead
         let mut current_gd = high_gd;
 
         while current != self.genesis_hash {
+            assert!(!current.is_origin(), "there's no such known block");
             let selected_parent_gd = self.ghostdag_store.get_compact_data(current_gd.selected_parent).unwrap();
             if selected_parent_gd.blue_score < blue_score {
                 break;

@@ -86,7 +86,7 @@ impl PruningPointAndItsAnticoneRequestsFlow {
                         .collect_vec();
 
                     let ghostdag_data_indices = session
-                        .get_trusted_block_associated_ghostdagdata_block_hashes(hash)?
+                        .get_trusted_block_associated_ghostdag_data_block_hashes(hash)?
                         .into_iter()
                         .map(|hash| *ghostdag_data_hash_to_index.get(&hash).unwrap() as u64)
                         .collect_vec();

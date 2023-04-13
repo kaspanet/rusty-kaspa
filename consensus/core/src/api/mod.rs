@@ -225,7 +225,7 @@ pub trait ConsensusApi: Send + Sync {
 
     // TODO: Think of a better name.
     // TODO: Delete this function once there's no need for go-kaspad backward compatability.
-    fn get_trusted_block_associated_ghostdagdata_block_hashes(&self, hash: Hash) -> ConsensusResult<Vec<Hash>> {
+    fn get_trusted_block_associated_ghostdag_data_block_hashes(&self, hash: Hash) -> ConsensusResult<Vec<Hash>> {
         unimplemented!()
     }
 }

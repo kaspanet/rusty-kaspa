@@ -218,7 +218,7 @@ impl<
         loop {
             locator.push(current);
             if let Some(limit) = limit {
-                if locator.len() > limit {
+                if locator.len() == limit {
                     break;
                 }
             }

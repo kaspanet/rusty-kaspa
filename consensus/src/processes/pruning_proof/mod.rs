@@ -772,6 +772,13 @@ impl PruningProofManager {
                 );
             }
 
+            let mut current = anticone_block;
+            for _ in 0..=self.ghostdag_k {
+                let current_gd = self.ghostdag_stores[0].get_data(current).unwrap();
+                ghostdag_blocks.insert(current, (&*current_gd).into());
+                current = current_gd.selected_parent;
+            }
+
             for hash in self.reachability_service.default_backward_chain_iterator(anticone_block).take(self.ghostdag_k as usize) {
                 if ghostdag_blocks.contains_key(&hash) {
                     continue;

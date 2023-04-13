@@ -932,23 +932,27 @@ impl ConsensusApi for Consensus {
         self.validate_block_exists(hash)?;
         Ok(self
             .dag_traversal_manager
-            .block_window(&self.ghostdag_store.get_data(hash).unwrap(), self.config.params.difficulty_window_size)
+            .block_window(&self.ghostdag_store.get_data(hash).unwrap(), self.config.difficulty_window_size)
             .unwrap()
             .into_iter()
             .map(|block| block.0.hash)
             .collect())
     }
 
-    fn get_trusted_block_associated_ghostdagdata_block_hashes(&self, hash: Hash) -> ConsensusResult<Vec<Hash>> {
+    fn get_trusted_block_associated_ghostdag_data_block_hashes(&self, hash: Hash) -> ConsensusResult<Vec<Hash>> {
         self.validate_block_exists(hash)?;
+
+        // In order to guarantee the chain height is at least k, we check that the pruning point is not genesis.
+        if self.pruning_point().unwrap() == self.config.genesis.hash {
+            return Err(ConsensusError::UnexpectedPruningPoint);
+        }
+
         let mut hashes = Vec::with_capacity(self.config.params.ghostdag_k as usize);
         let mut current = hash;
-        for _ in 0..self.config.params.ghostdag_k {
+        // TODO: This will crash if we don't have the data for k blocks in the past of
+        // current. The syncee should validate it got all of the associated data.
+        for _ in 0..=self.config.params.ghostdag_k {
             hashes.push(current);
-            if current == self.config.params.genesis.hash {
-                break;
-            }
-
             current = self.ghostdag_store.get_selected_parent(current).unwrap();
         }
         Ok(hashes)
