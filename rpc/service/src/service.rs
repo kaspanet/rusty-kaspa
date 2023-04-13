@@ -15,7 +15,10 @@ use kaspa_consensus_notify::{
 };
 use kaspa_consensusmanager::ConsensusManager;
 use kaspa_core::{debug, info, trace, version::version, warn};
-use kaspa_index_core::{connection::IndexChannelConnection, notification::Notification as IndexNotification, notifier::IndexNotifier};
+use kaspa_index_core::{
+    connection::IndexChannelConnection, indexed_utxos::UtxoSetByScriptPublicKey, notification::Notification as IndexNotification,
+    notifier::IndexNotifier,
+};
 use kaspa_mining::{manager::MiningManager, mempool::tx::Orphan};
 use kaspa_notify::{
     collector::DynCollector,
@@ -122,6 +125,15 @@ impl RpcCoreService {
     #[inline(always)]
     pub fn notifier(&self) -> Arc<Notifier<Notification, ChannelConnection>> {
         self.notifier.clone()
+    }
+
+    fn get_utxo_set_by_script_public_key<'a>(&self, addresses: impl Iterator<Item = &'a RpcAddress>) -> UtxoSetByScriptPublicKey {
+        self.utxoindex
+            .as_ref()
+            .unwrap()
+            .read()
+            .get_utxos_by_script_public_keys(addresses.map(pay_to_address_script).collect())
+            .unwrap_or_default()
     }
 }
 
@@ -384,13 +396,7 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         }
         // TODO: discuss if the entry order is part of the method requirements
         //       (the current impl does not retain an entry order matching the request addresses order)
-        let entry_map = self
-            .utxoindex
-            .as_ref()
-            .unwrap()
-            .read()
-            .get_utxos_by_script_public_keys(request.addresses.iter().map(pay_to_address_script).collect())
-            .unwrap_or_default();
+        let entry_map = self.get_utxo_set_by_script_public_key(request.addresses.iter());
         Ok(GetUtxosByAddressesResponse::new(self.index_converter.get_utxos_by_addresses_entries(&entry_map)))
     }
 
@@ -398,15 +404,29 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         if !self.config.utxoindex {
             return Err(RpcError::NoUtxoIndex);
         }
-        let entry_map = self
-            .utxoindex
-            .as_ref()
-            .unwrap()
-            .read()
-            .get_utxos_by_script_public_keys(once(&request.address).map(pay_to_address_script).collect())
-            .unwrap_or_default();
+        let entry_map = self.get_utxo_set_by_script_public_key(once(&request.address));
         let balance = entry_map.values().flat_map(|x| x.values().map(|entry| entry.amount)).sum();
         Ok(GetBalanceByAddressResponse::new(balance))
+    }
+
+    async fn get_balances_by_addresses_call(
+        &self,
+        request: GetBalancesByAddressesRequest,
+    ) -> RpcResult<GetBalancesByAddressesResponse> {
+        if !self.config.utxoindex {
+            return Err(RpcError::NoUtxoIndex);
+        }
+        let entry_map = self.get_utxo_set_by_script_public_key(request.addresses.iter());
+        let entries = request
+            .addresses
+            .iter()
+            .map(|address| {
+                let script_public_key = pay_to_address_script(address);
+                let balance = entry_map.get(&script_public_key).map(|x| x.values().map(|entry| entry.amount).sum());
+                RpcBalancesByAddressesEntry { address: address.to_owned(), balance }
+            })
+            .collect();
+        Ok(GetBalancesByAddressesResponse::new(entries))
     }
 
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -440,13 +460,6 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
     }
 
     async fn get_headers_call(&self, _request: GetHeadersRequest) -> RpcResult<GetHeadersResponse> {
-        unimplemented!();
-    }
-
-    async fn get_balances_by_addresses_call(
-        &self,
-        _addresses: GetBalancesByAddressesRequest,
-    ) -> RpcResult<GetBalancesByAddressesResponse> {
         unimplemented!();
     }
 
