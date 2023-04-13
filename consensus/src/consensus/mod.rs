@@ -907,7 +907,7 @@ impl ConsensusApi for Consensus {
             .copied()
             .map(|hash| {
                 self.validate_block_exists(hash)?;
-                Ok(self.acceptance_data_store.get(hash).unwrap())
+                self.acceptance_data_store.get(hash).map_err(|_| ConsensusError::MissingData(hash))
             })
             .collect::<ConsensusResult<Vec<_>>>()
     }

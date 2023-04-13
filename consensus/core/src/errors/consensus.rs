@@ -11,6 +11,9 @@ pub enum ConsensusError {
     #[error("block {0} is invalid")]
     InvalidBlock(Hash),
 
+    #[error("some data is missing for block {0}")]
+    MissingData(Hash),
+
     #[error("got unexpected pruning point")]
     UnexpectedPruningPoint,
 

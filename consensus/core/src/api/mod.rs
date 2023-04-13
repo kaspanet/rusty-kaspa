@@ -185,6 +185,9 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
+    /// Returns acceptance data for a set of blocks belonging to the selected parent chain.
+    ///
+    /// See `self::get_virtual_chain`
     fn get_blocks_acceptance_data(&self, hashes: &[Hash]) -> ConsensusResult<Vec<Arc<AcceptanceData>>> {
         unimplemented!()
     }

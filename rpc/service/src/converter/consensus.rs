@@ -158,8 +158,7 @@ impl ConsensusConverter {
         consensus: &dyn ConsensusApi,
         chain_path: &ChainPath,
     ) -> RpcResult<Vec<RpcAcceptedTransactionIds>> {
-        // TODO: handle calls to consensus by chunks if still relevant
-        let acceptance_data = consensus.get_blocks_acceptance_data(&chain_path.added)?;
+        let acceptance_data = consensus.get_blocks_acceptance_data(&chain_path.added).unwrap();
         Ok(chain_path
             .added
             .iter()
