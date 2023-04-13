@@ -137,6 +137,13 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
+    /// Returns the anticone of block `hash` from the POV of `context`, i.e. `anticone(hash) ∩ past(context)`.
+    /// Since this might be an expensive operation for deep blocks, we allow the caller to specify a limit
+    /// `max_traversal_allowed` on the maximum amount of blocks to traverse for obtaining the answer
+    fn get_anticone_from_pov(&self, hash: Hash, context: Hash, max_traversal_allowed: Option<u64>) -> ConsensusResult<Vec<Hash>> {
+        unimplemented!()
+    }
+
     fn get_anticone(&self, hash: Hash) -> ConsensusResult<Vec<Hash>> {
         unimplemented!()
     }
