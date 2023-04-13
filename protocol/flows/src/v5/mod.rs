@@ -94,7 +94,10 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
         Box::new(RequestPruningPointUtxoSetFlow::new(
             ctx.clone(),
             router.clone(),
-            router.subscribe(vec![KaspadMessagePayloadType::RequestPruningPointUtxoSet]),
+            router.subscribe(vec![
+                KaspadMessagePayloadType::RequestPruningPointUtxoSet,
+                KaspadMessagePayloadType::RequestNextPruningPointUtxoSetChunk,
+            ]),
         )),
         Box::new(RelayTransactionsFlow::new(
             ctx.clone(),
