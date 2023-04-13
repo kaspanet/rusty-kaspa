@@ -45,9 +45,6 @@ pub enum RpcError {
     #[error("If includeTransactions is set, then includeBlockVerboseData must be set as well.")]
     InvalidGetBlocksRequest,
 
-    #[error("No sink exists.")]
-    NoSink,
-
     #[error("Transaction {0} not found")]
     TransactionNotFound(TransactionId),
 

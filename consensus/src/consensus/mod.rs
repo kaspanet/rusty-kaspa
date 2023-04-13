@@ -72,7 +72,6 @@ use kaspa_consensus_core::{
     BlockHashSet, ChainPath,
 };
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
-use kaspa_utils::option::OptionExtensions;
 
 use crossbeam_channel::{unbounded as unbounded_crossbeam, Receiver as CrossbeamReceiver, Sender as CrossbeamSender};
 use futures_util::future::BoxFuture;
@@ -683,17 +682,12 @@ impl ConsensusApi for Consensus {
         }
     }
 
-    fn get_sink(&self) -> Option<Hash> {
-        // TODO: unwrap on virtual state read when staging consensus is implemented
-        self.virtual_processor.virtual_stores.read().state.get().unwrap_option().map(|state| state.ghostdag_data.selected_parent)
+    fn get_sink(&self) -> Hash {
+        self.virtual_processor.virtual_stores.read().state.get().unwrap().ghostdag_data.selected_parent
     }
 
-    fn get_sink_timestamp(&self) -> Option<u64> {
-        // TODO: unwrap on virtual state read when staging consensus is implemented
-        self.virtual_processor.virtual_stores.read().state.get().unwrap_option().map(|state| {
-            let sink = state.ghostdag_data.selected_parent;
-            self.headers_store.get_timestamp(sink).unwrap()
-        })
+    fn get_sink_timestamp(&self) -> u64 {
+        self.headers_store.get_timestamp(self.get_sink()).unwrap()
     }
 
     fn get_sync_info(&self) -> SyncInfo {
@@ -703,15 +697,16 @@ impl ConsensusApi for Consensus {
 
     fn is_nearly_synced(&self) -> bool {
         // See comment within `config.is_nearly_synced`
-        self.get_sink_timestamp().has_value_and(|&t| self.config.is_nearly_synced(t))
+        self.config.is_nearly_synced(self.get_sink_timestamp())
     }
 
-    fn get_virtual_chain_from_block(&self, hash: Hash) -> Option<ChainPath> {
+    fn get_virtual_chain_from_block(&self, hash: Hash) -> ConsensusResult<ChainPath> {
         // Calculate chain changes between the given hash and the
         // sink. Note that we explicitly don't
         // do the calculation against the virtual itself so that we
         // won't later need to remove it from the result.
-        self.get_sink().map(|sink_hash| self.dag_traversal_manager.calculate_chain_path(hash, sink_hash))
+        self.validate_block_exists(hash)?;
+        Ok(self.dag_traversal_manager.calculate_chain_path(hash, self.get_sink()))
     }
 
     fn get_virtual_parents(&self) -> BlockHashSet {
@@ -918,7 +913,7 @@ impl ConsensusApi for Consensus {
     }
 
     fn is_chain_block(&self, hash: Hash) -> ConsensusResult<bool> {
-        self.is_chain_ancestor_of(hash, self.get_sink().unwrap())
+        self.is_chain_ancestor_of(hash, self.get_sink())
     }
 
     fn get_missing_block_body_hashes(&self, high: Hash) -> ConsensusResult<Vec<Hash>> {

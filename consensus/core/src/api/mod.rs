@@ -57,11 +57,11 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn get_sink(&self) -> Option<Hash> {
+    fn get_sink(&self) -> Hash {
         unimplemented!()
     }
 
-    fn get_sink_timestamp(&self) -> Option<u64> {
+    fn get_sink_timestamp(&self) -> u64 {
         unimplemented!()
     }
 
@@ -76,7 +76,7 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn get_virtual_chain_from_block(&self, hash: Hash) -> Option<ChainPath> {
+    fn get_virtual_chain_from_block(&self, hash: Hash) -> ConsensusResult<ChainPath> {
         unimplemented!()
     }
 

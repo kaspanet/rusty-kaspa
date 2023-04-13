@@ -238,9 +238,7 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         };
 
         // Get hashes between low_hash and sink
-        let Some(sink_hash) = session.get_sink() else {
-            return Err(RpcError::NoSink);
-        };
+        let sink_hash = session.get_sink();
 
         // We use +1 because low_hash is also returned
         // max_blocks MUST be >= mergeset_size_limit + 1
@@ -357,14 +355,13 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
     }
 
     async fn get_selected_tip_hash_call(&self, _: GetSelectedTipHashRequest) -> RpcResult<GetSelectedTipHashResponse> {
-        Ok(GetSelectedTipHashResponse::new(self.consensus_manager.consensus().session().await.get_sink().ok_or(RpcError::NoSink)?))
+        Ok(GetSelectedTipHashResponse::new(self.consensus_manager.consensus().session().await.get_sink()))
     }
 
     async fn get_sink_blue_score_call(&self, _: GetSinkBlueScoreRequest) -> RpcResult<GetSinkBlueScoreResponse> {
         let consensus = self.consensus_manager.consensus();
         let session = consensus.session().await;
-        let sink_hash = session.get_sink().ok_or(RpcError::NoSink)?;
-        Ok(GetSinkBlueScoreResponse::new(session.get_ghostdag_data(sink_hash)?.blue_score))
+        Ok(GetSinkBlueScoreResponse::new(session.get_ghostdag_data(session.get_sink())?.blue_score))
     }
 
     async fn get_virtual_chain_from_block_call(
@@ -373,7 +370,7 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
     ) -> RpcResult<GetVirtualChainFromBlockResponse> {
         let consensus = self.consensus_manager.consensus();
         let session = consensus.session().await;
-        let virtual_chain = session.get_virtual_chain_from_block(request.start_hash).ok_or(RpcError::NoSink)?;
+        let virtual_chain = session.get_virtual_chain_from_block(request.start_hash)?;
         let accepted_transaction_ids = if request.include_accepted_transaction_ids {
             self.consensus_converter.get_virtual_chain_accepted_transaction_ids(session.deref(), &virtual_chain)?
         } else {
