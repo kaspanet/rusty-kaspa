@@ -514,8 +514,8 @@ mod tests {
         let receive_addresses = gen1_receive_addresses();
         let change_addresses = gen1_change_addresses();
         for index in 0..20 {
-            assert_eq!(receive_addresses[index as usize], addresses_receive[index], "receive address at {index} failed");
-            assert_eq!(change_addresses[index as usize], addresses_change[index], "change address at {index} failed");
+            assert_eq!(receive_addresses[index], addresses_receive[index], "receive address at {index} failed");
+            assert_eq!(change_addresses[index], addresses_change[index], "change address at {index} failed");
         }
     }
 
