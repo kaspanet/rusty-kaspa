@@ -17,6 +17,7 @@ use crate::{
 };
 use crossbeam_channel::Receiver as CrossbeamReceiver;
 use kaspa_consensus_core::muhash::MuHashExtensions;
+use kaspa_core::info;
 use kaspa_database::prelude::DB;
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
@@ -119,6 +120,8 @@ impl PruningProcessor {
             write_guard.set_batch(&mut batch, new_pruning_point, new_candidate, new_pp_index).unwrap();
             self.db.write(batch).unwrap();
             drop(write_guard);
+
+            info!("Daily pruning point movement: advancing from {} to {}", current_pruning_info.pruning_point, new_pruning_point);
 
             // TODO: DB batching via marker
             let mut utxoset_write = self.pruning_point_utxo_set_store.write();
