@@ -885,11 +885,11 @@ impl ConsensusApi for Consensus {
     }
 
     fn get_block_children(&self, hash: Hash) -> Option<Arc<Vec<Hash>>> {
-        self.relations_stores.read()[0].get_children(hash).unwrap_option()
+        self.relations_service.get_children(hash).unwrap_option()
     }
 
     fn get_block_parents(&self, hash: Hash) -> Option<Arc<Vec<Hash>>> {
-        self.relations_stores.read()[0].get_parents(hash).unwrap_option()
+        self.relations_service.get_parents(hash).unwrap_option()
     }
 
     fn get_block_status(&self, hash: Hash) -> Option<BlockStatus> {
