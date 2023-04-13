@@ -133,8 +133,11 @@ impl RpcCoreService {
 #[async_trait]
 impl RpcApi<ChannelConnection> for RpcCoreService {
     async fn submit_block_call(&self, request: SubmitBlockRequest) -> RpcResult<SubmitBlockResponse> {
+        let consensus = self.consensus_manager.consensus();
+        let session = consensus.session().await;
+
         // TODO: consider adding an error field to SubmitBlockReport to document both the report and error fields
-        let is_synced: bool = self.flow_context.hub().has_peers() && self.flow_context.is_nearly_synced().await;
+        let is_synced: bool = self.flow_context.hub().has_peers() && session.is_nearly_synced();
 
         if !self.config.allow_submit_block_when_not_synced && !is_synced {
             // error = "Block not submitted - node is not synced"
@@ -149,9 +152,6 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         }
         let block = try_block?;
         let hash = block.hash();
-
-        let consensus = self.consensus_manager.consensus();
-        let session = consensus.session().await;
 
         if !request.allow_non_daa_blocks {
             let virtual_daa_score = session.get_virtual_daa_score();
@@ -270,7 +270,7 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
     }
 
     async fn get_info_call(&self, _request: GetInfoRequest) -> RpcResult<GetInfoResponse> {
-        let is_nearly_synced = self.flow_context.is_nearly_synced().await;
+        let is_nearly_synced = self.consensus_manager.consensus().session().await.is_nearly_synced();
         Ok(GetInfoResponse {
             p2p_id: self.flow_context.node_id.to_string(),
             mempool_size: self.mining_manager.transaction_count(true, false) as u64,
