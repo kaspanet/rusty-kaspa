@@ -24,6 +24,7 @@ pub mod networktype;
 pub mod pruning;
 pub mod sign;
 pub mod subnets;
+pub mod sync_info;
 pub mod trusted;
 pub mod tx;
 pub mod utxo;

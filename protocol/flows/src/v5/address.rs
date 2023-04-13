@@ -56,7 +56,7 @@ impl ReceiveAddressesFlow {
         if address_list.len() > MAX_ADDRESSES_RECEIVE {
             return Err(ProtocolError::OtherOwned(format!("address count {} exceeded {}", address_list.len(), MAX_ADDRESSES_RECEIVE)));
         }
-        let mut amgr_lock = self.ctx.amgr.lock();
+        let mut amgr_lock = self.ctx.address_manager.lock();
         for (ip, port) in address_list {
             amgr_lock.add_address(NetAddress::new(ip, port))
         }
@@ -94,7 +94,7 @@ impl SendAddressesFlow {
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
         loop {
             dequeue!(self.incoming_route, Payload::RequestAddresses)?;
-            let addresses = self.ctx.amgr.lock().iterate_addresses().collect_vec();
+            let addresses = self.ctx.address_manager.lock().iterate_addresses().collect_vec();
             let address_list = addresses
                 .choose_multiple(&mut rand::thread_rng(), MAX_ADDRESSES_SEND)
                 .map(|addr| (addr.ip, addr.port).into())

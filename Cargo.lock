@@ -1928,7 +1928,6 @@ dependencies = [
  "async-trait",
  "derive_more",
  "futures",
- "kaspa-addresses",
  "kaspa-consensus-core",
  "kaspa-hashes",
  "kaspa-notify",
@@ -2061,11 +2060,13 @@ dependencies = [
  "kaspa-addressmanager",
  "kaspa-connectionmanager",
  "kaspa-consensus-core",
+ "kaspa-consensus-notify",
  "kaspa-consensusmanager",
  "kaspa-core",
  "kaspa-hashes",
  "kaspa-mining",
  "kaspa-muhash",
+ "kaspa-notify",
  "kaspa-p2p-lib",
  "kaspa-utils",
  "log",
@@ -2134,6 +2135,7 @@ dependencies = [
  "kaspa-hashes",
  "kaspa-index-core",
  "kaspa-math",
+ "kaspa-mining",
  "kaspa-notify",
  "kaspa-txscript",
  "kaspa-utils",
@@ -2166,13 +2168,17 @@ name = "kaspa-rpc-service"
 version = "0.1.2"
 dependencies = [
  "async-trait",
+ "kaspa-addresses",
  "kaspa-consensus-core",
  "kaspa-consensus-notify",
  "kaspa-consensusmanager",
  "kaspa-core",
  "kaspa-hashes",
  "kaspa-index-core",
+ "kaspa-math",
+ "kaspa-mining",
  "kaspa-notify",
+ "kaspa-p2p-flows",
  "kaspa-rpc-core",
  "kaspa-txscript",
  "kaspa-utils",
@@ -2230,6 +2236,7 @@ name = "kaspa-txscript"
 version = "0.1.2"
 dependencies = [
  "blake2b_simd",
+ "borsh",
  "criterion",
  "hex",
  "indexmap",
@@ -2242,6 +2249,7 @@ dependencies = [
  "parking_lot",
  "rand 0.8.5",
  "secp256k1",
+ "serde",
  "sha2 0.10.6",
  "smallvec",
  "thiserror",
@@ -3369,14 +3377,14 @@ dependencies = [
 
 [[package]]
 name = "rustls"
-version = "0.20.8"
+version = "0.21.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fff78fc74d175294f4e83b28343315ffcfb114b156f0185e9741cb5570f50e2f"
+checksum = "07180898a28ed6a7f7ba2311594308f595e3dd2e3c3812fa0a80a47b45f17e5d"
 dependencies = [
  "log",
  "ring",
+ "rustls-webpki",
  "sct",
- "webpki",
 ]
 
 [[package]]
@@ -3386,6 +3394,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d194b56d58803a43635bdc398cd17e383d6f71f9182b9a192c127ca42494a59b"
 dependencies = [
  "base64 0.21.0",
+]
+
+[[package]]
+name = "rustls-webpki"
+version = "0.100.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d6207cd5ed3d8dca7816f8f3725513a34609c0c765bf652b8c3cb4cfd87db46b"
+dependencies = [
+ "ring",
+ "untrusted",
 ]
 
 [[package]]
@@ -3870,13 +3888,12 @@ dependencies = [
 
 [[package]]
 name = "tokio-rustls"
-version = "0.23.4"
+version = "0.24.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c43ee83903113e03984cb9e5cebe6c04a5116269e900e3ddba8f068a62adda59"
+checksum = "e0d409377ff5b1e3ca6437aa86c1eb7d40c134bfec254e44c830defa92669db5"
 dependencies = [
  "rustls",
  "tokio",
- "webpki",
 ]
 
 [[package]]
@@ -3929,14 +3946,14 @@ dependencies = [
 
 [[package]]
 name = "tonic"
-version = "0.8.3"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f219fad3b929bef19b1f86fbc0358d35daed8f2cac972037ac0dc10bbb8d5fb"
+checksum = "38bd8e87955eb13c1986671838177d6792cdc52af9bffced0d2c8a9a7f741ab3"
 dependencies = [
  "async-stream",
  "async-trait",
  "axum",
- "base64 0.13.1",
+ "base64 0.21.0",
  "bytes",
  "flate2",
  "futures-core",
@@ -3949,24 +3966,21 @@ dependencies = [
  "percent-encoding",
  "pin-project",
  "prost",
- "prost-derive",
  "rustls-pemfile",
  "tokio",
  "tokio-rustls",
  "tokio-stream",
- "tokio-util",
  "tower",
  "tower-layer",
  "tower-service",
  "tracing",
- "tracing-futures",
 ]
 
 [[package]]
 name = "tonic-build"
-version = "0.8.4"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5bf5e9b9c0f7e0a7c027dcfaba7b2c60816c7049171f679d99ee2ff65d0de8c4"
+checksum = "0f60a933bbea70c95d633c04c951197ddf084958abaa2ed502a3743bdd8d8dd7"
 dependencies = [
  "prettyplease",
  "proc-macro2",
@@ -4037,16 +4051,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "24eb03ba0eab1fd845050058ce5e616558e8f8d8fca633e6b163fe25c797213a"
 dependencies = [
  "once_cell",
-]
-
-[[package]]
-name = "tracing-futures"
-version = "0.2.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "97d095ae15e245a057c8e8451bab9b3ee1e1f68e9ba2b4fbc18d0ac5237835f2"
-dependencies = [
- "pin-project",
- "tracing",
 ]
 
 [[package]]
@@ -4314,16 +4318,6 @@ checksum = "e33b99f4b23ba3eec1a53ac264e35a755f00e966e0065077d6027c0f575b0b97"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
-]
-
-[[package]]
-name = "webpki"
-version = "0.22.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f095d78192e208183081cc07bc5515ef55216397af48b873e5edcd72637fa1bd"
-dependencies = [
- "ring",
- "untrusted",
 ]
 
 [[package]]

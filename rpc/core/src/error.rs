@@ -1,5 +1,8 @@
+use kaspa_consensus_core::tx::TransactionId;
 use std::num::TryFromIntError;
 use thiserror::Error;
+
+use crate::{RpcHash, RpcTransactionId};
 
 #[derive(Clone, Debug, Error)]
 pub enum RpcError {
@@ -30,6 +33,21 @@ pub enum RpcError {
     #[error("Primitive to enum conversion error")]
     PrimitiveToEnumConversionError,
 
+    #[error("Coinbase payload is above max length ({0}). Try to shorten the extra data.")]
+    CoinbasePayloadLengthAboveMax(usize),
+
+    #[error("Rejected transaction {0}: {1}")]
+    RejectedTransaction(RpcTransactionId, String),
+
+    #[error("Block {0} is invalid. No verbose data can be built.")]
+    InvalidBlock(RpcHash),
+
+    #[error("If includeTransactions is set, then includeBlockVerboseData must be set as well.")]
+    InvalidGetBlocksRequest,
+
+    #[error("Transaction {0} not found")]
+    TransactionNotFound(TransactionId),
+
     #[error(transparent)]
     AddressError(#[from] kaspa_addresses::AddressError),
 
@@ -38,6 +56,15 @@ pub enum RpcError {
 
     #[error(transparent)]
     NotificationError(#[from] kaspa_notify::error::Error),
+
+    #[error(transparent)]
+    MiningManagerError(#[from] kaspa_mining::errors::MiningManagerError),
+
+    #[error(transparent)]
+    ConsensusError(#[from] kaspa_consensus_core::errors::consensus::ConsensusError),
+
+    #[error(transparent)]
+    ScriptClassError(#[from] kaspa_txscript::script_class::Error),
 
     #[error("{0}")]
     General(String),

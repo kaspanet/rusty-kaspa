@@ -1,4 +1,9 @@
-use crate::{collector::WrpcServiceCollector, connection::Connection, result::Result, service::Options};
+use crate::{
+    collector::{WrpcServiceCollector, WrpcServiceConverter},
+    connection::Connection,
+    result::Result,
+    service::Options,
+};
 use kaspa_grpc_client::GrpcClient;
 use kaspa_notify::{events::EVENT_TYPE_ARRAY, listener::ListenerId, notifier::Notifier, subscriber::Subscriber};
 use kaspa_rpc_core::{
@@ -57,7 +62,8 @@ impl Server {
 
             // Prepare notification internals
             let enabled_events = EVENT_TYPE_ARRAY[..].into();
-            let collector = Arc::new(WrpcServiceCollector::new(notification_channel.receiver()));
+            let converter = Arc::new(WrpcServiceConverter::new());
+            let collector = Arc::new(WrpcServiceCollector::new(notification_channel.receiver(), converter));
             let subscriber = Arc::new(Subscriber::new(enabled_events, service.notifier(), listener_id));
             let wrpc_notifier = Arc::new(Notifier::new(enabled_events, vec![collector], vec![subscriber], tasks, WRPC_SERVER));
             Some(RpcCore { service, notification_channel, listener_id, wrpc_notifier })

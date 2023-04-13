@@ -39,12 +39,12 @@ tokio = { version = "1.21.2", features = [
     "signal",
 ] }
 tokio-stream = { version = "0.1.11", features = ["net"] }
-tonic = { version = "0.8.3", features = ["tls", "gzip"] }
+tonic = { version = "0.9.1", features = ["tls", "gzip"] }
 h2 = "0.3"
 uuid = { version = "1.2.2", features = ["v4", "fast-rng"] }
 
 [build-dependencies]
-tonic-build = { version = "0.8.3", features = ["prost"] }
+tonic-build = { version = "0.9.1", features = ["prost"] }
 
 [dev-dependencies]
 hex = "0.4.3"

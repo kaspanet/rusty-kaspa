@@ -1,9 +1,8 @@
-use crate::notifier::DynNotify;
-
 use super::{
     error::{Error, Result},
     notification::Notification,
 };
+use crate::{converter::Converter, notifier::DynNotify};
 use async_channel::{Receiver, Sender};
 use async_trait::async_trait;
 use core::fmt::Debug;
@@ -14,11 +13,11 @@ use futures::{
 };
 use futures_util::stream::StreamExt;
 use kaspa_core::trace;
-use kaspa_utils::channel::Channel;
-use kaspa_utils::triggers::DuplexTrigger;
-use std::marker::PhantomData;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use kaspa_utils::{channel::Channel, triggers::DuplexTrigger};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 
 pub type CollectorNotificationChannel<T> = Channel<T>;
 pub type CollectorNotificationSender<T> = Sender<T>;
@@ -46,33 +45,30 @@ pub type DynCollector<N> = Arc<dyn Collector<N>>;
 /// A notification [`Collector`] that receives `I` from a channel,
 /// converts it into a `N` and sends it to a [`DynNotify<N>`].
 #[derive(Debug)]
-pub struct CollectorFrom<I, N>
+pub struct CollectorFrom<C>
 where
-    N: Notification,
-    I: Send + Sync + 'static + Sized + Debug,
+    C: Converter,
 {
-    recv_channel: CollectorNotificationReceiver<I>,
+    recv_channel: CollectorNotificationReceiver<C::Incoming>,
+
+    converter: Arc<C>,
 
     /// Has this collector been started?
     is_started: Arc<AtomicBool>,
 
     collect_shutdown: Arc<DuplexTrigger>,
-
-    _notification: PhantomData<N>,
 }
 
-impl<I, N> CollectorFrom<I, N>
+impl<C> CollectorFrom<C>
 where
-    N: Notification,
-    I: Send + Sync + 'static + Sized + Debug,
-    I: Into<N>,
+    C: Converter + 'static,
 {
-    pub fn new(recv_channel: CollectorNotificationReceiver<I>) -> Self {
+    pub fn new(recv_channel: CollectorNotificationReceiver<C::Incoming>, converter: Arc<C>) -> Self {
         Self {
             recv_channel,
+            converter,
             collect_shutdown: Arc::new(DuplexTrigger::new()),
             is_started: Arc::new(AtomicBool::new(false)),
-            _notification: PhantomData,
         }
     }
 
@@ -80,13 +76,14 @@ where
         self.is_started.load(Ordering::SeqCst)
     }
 
-    fn spawn_collecting_task(self: Arc<Self>, notifier: DynNotify<N>) {
+    fn spawn_collecting_task(self: Arc<Self>, notifier: DynNotify<C::Outgoing>) {
         // The task can only be spawned once
         if self.is_started.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
             return;
         }
         let collect_shutdown = self.collect_shutdown.clone();
         let recv_channel = self.recv_channel.clone();
+        let converter = self.converter.clone();
 
         workflow_core::task::spawn(async move {
             trace!("[Collector] collecting_task start");
@@ -103,7 +100,7 @@ where
                     notification = notifications.next().fuse() => {
                         match notification {
                             Some(notification) => {
-                                match notifier.notify(notification.into()) {
+                                match notifier.notify(converter.convert(notification).await) {
                                     Ok(_) => (),
                                     Err(err) => {
                                         trace!("[Collector] notification sender error: {:?}", err);
@@ -133,11 +130,10 @@ where
 }
 
 #[async_trait]
-impl<I, N> Collector<N> for CollectorFrom<I, N>
+impl<N, C> Collector<N> for CollectorFrom<C>
 where
     N: Notification,
-    I: Send + Sync + 'static + Sized + Debug,
-    I: Into<N>,
+    C: Converter<Outgoing = N> + 'static,
 {
     fn start(self: Arc<Self>, notifier: DynNotify<N>) {
         self.spawn_collecting_task(notifier);
@@ -152,6 +148,7 @@ where
 mod tests {
     use super::*;
     use crate::{
+        converter::ConverterFrom,
         events::EventType,
         notifier::test_helpers::NotifyMock,
         subscription::single::{OverallSubscription, UtxosChangedSubscription, VirtualChainChangedSubscription},
@@ -199,9 +196,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_collector_from() {
+        type TestConverter = ConverterFrom<IncomingNotification, OutgoingNotification>;
         let incoming = Channel::default();
-        let collector: Arc<CollectorFrom<IncomingNotification, OutgoingNotification>> =
-            Arc::new(CollectorFrom::new(incoming.receiver()));
+        let collector: Arc<CollectorFrom<TestConverter>> =
+            Arc::new(CollectorFrom::new(incoming.receiver(), Arc::new(TestConverter::new())));
         let outgoing = Channel::default();
         let notifier = Arc::new(NotifyMock::new(outgoing.sender()));
         collector.clone().start(notifier);

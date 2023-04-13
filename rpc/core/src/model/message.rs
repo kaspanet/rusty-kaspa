@@ -1,5 +1,6 @@
 use crate::model::*;
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+use kaspa_consensus_core::sync_info::SyncInfo;
 use kaspa_notify::subscription::{single::UtxosChangedSubscription, Command};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -94,6 +95,7 @@ pub struct GetBlockTemplateResponse {
     /// chance the block will never be accepted, thus the solving effort would have been wasted.
     pub is_synced: bool,
 }
+
 /// GetBlockRequest requests information about a specific block
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
@@ -141,6 +143,12 @@ pub struct GetCurrentNetworkRequest {}
 #[serde(rename_all = "camelCase")]
 pub struct GetCurrentNetworkResponse {
     pub network: RpcNetworkType,
+}
+
+impl GetCurrentNetworkResponse {
+    pub fn new(network: RpcNetworkType) -> Self {
+        Self { network }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
@@ -345,13 +353,13 @@ impl GetVirtualChainFromBlockResponse {
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GetBlocksRequest {
-    pub low_hash: RpcHash,
+    pub low_hash: Option<RpcHash>,
     pub include_blocks: bool,
     pub include_transactions: bool,
 }
 
 impl GetBlocksRequest {
-    pub fn new(low_hash: RpcHash, include_blocks: bool, include_transactions: bool) -> Self {
+    pub fn new(low_hash: Option<RpcHash>, include_blocks: bool, include_transactions: bool) -> Self {
         Self { low_hash, include_blocks, include_transactions }
     }
 }
@@ -373,18 +381,7 @@ impl GetBlocksResponse {
 #[serde(rename_all = "camelCase")]
 pub struct GetBlockCountRequest {}
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct GetBlockCountResponse {
-    pub block_count: u64,
-    pub header_count: u64,
-}
-
-impl GetBlockCountResponse {
-    pub fn new(block_count: u64, header_count: u64) -> Self {
-        Self { block_count, header_count }
-    }
-}
+pub type GetBlockCountResponse = SyncInfo;
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]

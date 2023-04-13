@@ -12,6 +12,7 @@ license.workspace = true
 [dependencies]
 kaspa-core.workspace = true
 kaspa-consensus-core.workspace = true
+kaspa-consensus-notify.workspace = true
 kaspa-p2p-lib.workspace = true
 kaspa-utils.workspace = true
 kaspa-hashes.workspace = true
@@ -20,6 +21,7 @@ kaspa-connectionmanager.workspace = true
 kaspa-addressmanager.workspace = true
 kaspa-consensusmanager.workspace = true
 kaspa-mining.workspace = true
+kaspa-notify.workspace = true
 
 parking_lot.workspace = true
 rand.workspace = true

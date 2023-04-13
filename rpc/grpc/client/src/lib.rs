@@ -11,7 +11,11 @@ use futures::{
     select,
 };
 use kaspa_core::{debug, trace};
-use kaspa_grpc_core::protowire::{kaspad_request, rpc_client::RpcClient, GetInfoRequestMessage, KaspadRequest, KaspadResponse};
+use kaspa_grpc_core::{
+    channel::NotificationChannel,
+    protowire::{kaspad_request, rpc_client::RpcClient, GetInfoRequestMessage, KaspadRequest, KaspadResponse},
+    RPC_MAX_MESSAGE_SIZE,
+};
 use kaspa_notify::{
     collector::{Collector, CollectorFrom},
     error::{Error as NotifyError, Result as NotifyResult},
@@ -28,7 +32,7 @@ use kaspa_rpc_core::{
     error::RpcError,
     error::RpcResult,
     model::message::*,
-    notify::{channel::NotificationChannel, collector::RpcCoreCollector, connection::ChannelConnection, mode::NotificationMode},
+    notify::{collector::RpcCoreConverter, connection::ChannelConnection, mode::NotificationMode},
     Notification,
 };
 use kaspa_utils::{channel::Channel, triggers::DuplexTrigger};
@@ -49,7 +53,7 @@ mod resolver;
 #[macro_use]
 mod route;
 
-pub type GrpcClientCollector = CollectorFrom<Notification, Notification>;
+pub type GrpcClientCollector = CollectorFrom<RpcCoreConverter>;
 pub type GrpcClientNotify = DynNotify<Notification>;
 
 #[derive(Debug)]
@@ -78,17 +82,18 @@ impl GrpcClient {
         }
         let inner = Inner::connect(url, reconnect, connection_event_sender, override_handle_stop_notify).await?;
 
+        let converter = Arc::new(RpcCoreConverter::new());
         let (notifier, collector) = match notification_mode {
             NotificationMode::MultiListeners => {
                 let enabled_events = EVENT_TYPE_ARRAY[..].into();
-                let collector = Arc::new(RpcCoreCollector::new(inner.notification_channel_receiver()));
+                let collector = Arc::new(GrpcClientCollector::new(inner.notification_channel_receiver(), converter));
                 let subscriber = Arc::new(Subscriber::new(enabled_events, inner.clone(), 0));
                 let notifier: Notifier<Notification, ChannelConnection> =
                     Notifier::new(enabled_events, vec![collector], vec![subscriber], 10, GRPC_CLIENT);
                 (Some(Arc::new(notifier)), None)
             }
             NotificationMode::Direct => {
-                let collector = GrpcClientCollector::new(inner.notification_channel_receiver());
+                let collector = GrpcClientCollector::new(inner.notification_channel_receiver(), converter);
                 (None, Some(Arc::new(collector)))
             }
         };
@@ -307,7 +312,6 @@ struct Inner {
     server_features: ServerFeatures,
 
     // Pushing incoming notifications forward
-    //notify_sender: NotificationSender,
     notification_channel: NotificationChannel,
 
     // Sending to server
@@ -424,8 +428,10 @@ impl Inner {
             .connect()
             .await?;
 
-        let mut client =
-            RpcClient::new(channel).send_compressed(CompressionEncoding::Gzip).accept_compressed(CompressionEncoding::Gzip);
+        let mut client = RpcClient::new(channel)
+            .send_compressed(CompressionEncoding::Gzip)
+            .accept_compressed(CompressionEncoding::Gzip)
+            .max_decoding_message_size(RPC_MAX_MESSAGE_SIZE);
 
         // Force the opening of the stream when connected to a go kaspad server.
         // This is also needed for querying server capabilities.

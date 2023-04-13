@@ -11,22 +11,28 @@ use parking_lot::RwLock;
 use crate::model::{
     services::reachability::{MTReachabilityService, ReachabilityService},
     stores::{
-        ghostdag::GhostdagStoreReader, headers_selected_tip::HeadersSelectedTipStoreReader, pruning::PruningStoreReader,
-        reachability::ReachabilityStoreReader, selected_chain::SelectedChainStoreReader, statuses::StatusesStoreReader,
+        block_window_cache::BlockWindowCacheReader, ghostdag::GhostdagStoreReader,
+        headers_selected_tip::HeadersSelectedTipStoreReader, pruning::PruningStoreReader, reachability::ReachabilityStoreReader,
+        relations::RelationsStoreReader, selected_chain::SelectedChainStoreReader, statuses::StatusesStoreReader,
     },
 };
 
+use super::traversal_manager::DagTraversalManager;
+
 #[derive(Clone)]
 pub struct SyncManager<
+    S: RelationsStoreReader,
     T: ReachabilityStoreReader,
     U: GhostdagStoreReader,
     V: SelectedChainStoreReader,
     W: HeadersSelectedTipStoreReader,
     X: PruningStoreReader,
     Y: StatusesStoreReader,
+    Z: BlockWindowCacheReader,
 > {
     mergeset_size_limit: usize,
     reachability_service: MTReachabilityService<T>,
+    traversal_manager: DagTraversalManager<U, Z, T, S>,
     ghostdag_store: Arc<U>,
     selected_chain_store: Arc<RwLock<V>>,
     header_selected_tip_store: Arc<RwLock<W>>,
@@ -35,17 +41,20 @@ pub struct SyncManager<
 }
 
 impl<
+        S: RelationsStoreReader,
         T: ReachabilityStoreReader,
         U: GhostdagStoreReader,
         V: SelectedChainStoreReader,
         W: HeadersSelectedTipStoreReader,
         X: PruningStoreReader,
         Y: StatusesStoreReader,
-    > SyncManager<T, U, V, W, X, Y>
+        Z: BlockWindowCacheReader,
+    > SyncManager<S, T, U, V, W, X, Y, Z>
 {
     pub fn new(
         mergeset_size_limit: usize,
         reachability_service: MTReachabilityService<T>,
+        traversal_manager: DagTraversalManager<U, Z, T, S>,
         ghostdag_store: Arc<U>,
         selected_chain_store: Arc<RwLock<V>>,
         header_selected_tip_store: Arc<RwLock<W>>,
@@ -55,6 +64,7 @@ impl<
         Self {
             mergeset_size_limit,
             reachability_service,
+            traversal_manager,
             ghostdag_store,
             selected_chain_store,
             header_selected_tip_store,
@@ -189,5 +199,52 @@ impl<
         hashes_between.retain(|&h| statuses.get(h).unwrap().is_header_only());
 
         Ok(hashes_between)
+    }
+
+    pub fn create_block_locator_from_pruning_point(
+        &self,
+        high: Hash,
+        low: Hash,
+        limit: Option<usize>,
+    ) -> SyncManagerResult<Vec<Hash>> {
+        if !self.reachability_service.is_chain_ancestor_of(low, high) {
+            return Err(SyncManagerError::LocatorLowHashNotInHighHashChain(low, high));
+        }
+
+        let low_bs = self.ghostdag_store.get_blue_score(low).unwrap();
+        let mut current = high;
+        let mut step = 1;
+        let mut locator = Vec::new();
+        loop {
+            locator.push(current);
+            if let Some(limit) = limit {
+                if locator.len() == limit {
+                    break;
+                }
+            }
+
+            let current_gd = self.ghostdag_store.get_compact_data(current).unwrap();
+
+            // Nothing more to add once the low node has been added.
+            if current_gd.blue_score <= low_bs {
+                break;
+            }
+
+            // Calculate blue score of previous block to include ensuring the
+            // final block is `low`.
+            let next_bs = if current_gd.blue_score < step || current_gd.blue_score - step < low_bs {
+                low_bs
+            } else {
+                current_gd.blue_score - step
+            };
+
+            // Walk down currentHash's selected parent chain to the appropriate ancestor
+            current = self.traversal_manager.lowest_chain_block_above_or_equal_to_blue_score(current, next_bs);
+
+            // Double the distance between included hashes
+            step *= 2;
+        }
+
+        Ok(locator)
     }
 }

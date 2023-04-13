@@ -216,7 +216,11 @@ from!(_item: RpcResult<&kaspa_rpc_core::GetVirtualChainFromBlockResponse>, proto
 });
 
 from!(item: &kaspa_rpc_core::GetBlocksRequest, protowire::GetBlocksRequestMessage, {
-    Self { low_hash: item.low_hash.to_string(), include_blocks: item.include_blocks, include_transactions: item.include_transactions }
+    Self {
+        low_hash: item.low_hash.map_or(Default::default(), |x| x.to_string()),
+        include_blocks: item.include_blocks,
+        include_transactions: item.include_transactions,
+    }
 });
 from!(item: RpcResult<&kaspa_rpc_core::GetBlocksResponse>, protowire::GetBlocksResponseMessage, {
     Self {
@@ -537,7 +541,7 @@ try_from!(_item: &protowire::GetVirtualChainFromBlockResponseMessage, RpcResult<
 
 try_from!(item: &protowire::GetBlocksRequestMessage, kaspa_rpc_core::GetBlocksRequest, {
     Self {
-        low_hash: RpcHash::from_str(&item.low_hash)?,
+        low_hash: if item.low_hash.is_empty() { None } else { Some(RpcHash::from_str(&item.low_hash)?) },
         include_blocks: item.include_blocks,
         include_transactions: item.include_transactions,
     }

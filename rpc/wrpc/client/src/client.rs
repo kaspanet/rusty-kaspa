@@ -1,4 +1,5 @@
 use crate::imports::*;
+use kaspa_rpc_core::notify::collector::{RpcCoreCollector, RpcCoreConverter};
 pub use kaspa_rpc_macros::build_wrpc_client_interface;
 use std::fmt::Debug;
 use workflow_rpc::client::Ctl;
@@ -150,7 +151,8 @@ impl KaspaRpcClient {
         let inner = Arc::new(Inner::new(encoding, url)?);
         let notifier = if matches!(notification_mode, NotificationMode::MultiListeners) {
             let enabled_events = EVENT_TYPE_ARRAY[..].into();
-            let collector = Arc::new(RpcCoreCollector::new(inner.notification_channel_receiver()));
+            let converter = Arc::new(RpcCoreConverter::new());
+            let collector = Arc::new(RpcCoreCollector::new(inner.notification_channel_receiver(), converter));
             let subscriber = Arc::new(Subscriber::new(enabled_events, inner.clone(), 0));
             Some(Arc::new(Notifier::new(enabled_events, vec![collector], vec![subscriber], 3, WRPC_CLIENT)))
         } else {
