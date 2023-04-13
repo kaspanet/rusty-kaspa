@@ -43,6 +43,7 @@ members = [
     "crypto/txscript",
     "crypto/txscript/errors",
     "testing/integration",
+    "utils",
 ]
 
 [workspace.package]
