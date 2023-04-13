@@ -32,6 +32,9 @@ pub enum ConnectionError {
     TonicStatus(#[from] TonicStatus),
 }
 
+/// Maximum P2P decoded gRPC message size to send and receive
+const P2P_MAX_MESSAGE_SIZE: usize = 1024 * 1024 * 1024; // 1GB
+
 /// Handles Router creation for both server and client-side new connections
 #[derive(Clone)]
 pub struct ConnectionHandler {
@@ -53,10 +56,9 @@ impl ConnectionHandler {
         tokio::spawn(async move {
             let proto_server = ProtoP2pServer::new(connection_handler)
                 .accept_compressed(tonic::codec::CompressionEncoding::Gzip)
-                .send_compressed(tonic::codec::CompressionEncoding::Gzip);
+                .send_compressed(tonic::codec::CompressionEncoding::Gzip)
+                .max_decoding_message_size(P2P_MAX_MESSAGE_SIZE);
 
-            // TODO: set max message sizes to 1GB or less. Check if `builder().max_frame_size(frame_size)` is the correct setting (seems not).
-            // Seems like this important feature should be in the next tonic version: https://github.com/hyperium/tonic/pull/1274
             // TODO: check whether we should set tcp_keepalive
             let serve_result = TonicServer::builder()
                 .add_service(proto_server)
@@ -76,7 +78,6 @@ impl ConnectionHandler {
         let Some(socket_address) = peer_address.to_socket_addrs()?.next() else { return Err(ConnectionError::NoAddress); };
         let peer_address = format!("http://{}", peer_address); // Add scheme prefix as required by Tonic
 
-        // TODO: set max message sizes to 1GB or less. See comment above in server configuration.
         let channel = tonic::transport::Endpoint::new(peer_address)?
             .timeout(Duration::from_millis(Self::communication_timeout()))
             .connect_timeout(Duration::from_millis(Self::connect_timeout()))
@@ -86,7 +87,8 @@ impl ConnectionHandler {
 
         let mut client = ProtoP2pClient::new(channel)
             .send_compressed(tonic::codec::CompressionEncoding::Gzip)
-            .accept_compressed(tonic::codec::CompressionEncoding::Gzip);
+            .accept_compressed(tonic::codec::CompressionEncoding::Gzip)
+            .max_decoding_message_size(P2P_MAX_MESSAGE_SIZE);
 
         let (outgoing_route, outgoing_receiver) = mpsc_channel(Self::outgoing_network_channel_size());
         let incoming_stream = client.message_stream(ReceiverStream::new(outgoing_receiver)).await?.into_inner();

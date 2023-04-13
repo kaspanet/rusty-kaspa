@@ -13,18 +13,18 @@ use crate::{
             statuses::MTStatusesService,
         },
         stores::{
-            acceptance_data::DbAcceptanceDataStore,
+            acceptance_data::{AcceptanceDataStoreReader, DbAcceptanceDataStore},
             block_transactions::{BlockTransactionsStoreReader, DbBlockTransactionsStore},
             block_window_cache::BlockWindowCacheStore,
             daa::DbDaaStore,
             depth::DbDepthStore,
-            ghostdag::DbGhostdagStore,
+            ghostdag::{DbGhostdagStore, GhostdagStoreReader},
             headers::{DbHeadersStore, HeaderStoreReader},
             headers_selected_tip::{DbHeadersSelectedTipStore, HeadersSelectedTipStoreReader},
             past_pruning_points::{DbPastPruningPointsStore, PastPruningPointsStoreReader},
             pruning::{DbPruningStore, PruningStoreReader},
             reachability::DbReachabilityStore,
-            relations::DbRelationsStore,
+            relations::{DbRelationsStore, RelationsStoreReader},
             selected_chain::DbSelectedChainStore,
             statuses::{DbStatusesStore, StatusesStoreReader},
             tips::{DbTipsStore, TipsStoreReader},
@@ -51,6 +51,7 @@ use crate::{
     },
 };
 use kaspa_consensus_core::{
+    acceptance_data::AcceptanceData,
     api::ConsensusApi,
     block::{Block, BlockTemplate},
     blockhash::BlockHashExtensions,
@@ -65,12 +66,12 @@ use kaspa_consensus_core::{
     header::Header,
     muhash::MuHashExtensions,
     pruning::{PruningPointProof, PruningPointsList},
-    trusted::TrustedBlock,
+    sync_info::SyncInfo,
+    trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
-    BlockHashSet,
+    BlockHashSet, ChainPath,
 };
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
-use kaspa_utils::option::OptionExtensions;
 
 use crossbeam_channel::{unbounded as unbounded_crossbeam, Receiver as CrossbeamReceiver, Sender as CrossbeamSender};
 use futures_util::future::BoxFuture;
@@ -131,6 +132,7 @@ pub struct Consensus {
     pruning_point_utxo_set_store: Arc<RwLock<DbUtxoSetStore>>,
     pub(super) virtual_stores: Arc<RwLock<VirtualStores>>,
     pub(super) past_pruning_points_store: Arc<DbPastPruningPointsStore>,
+    acceptance_data_store: Arc<DbAcceptanceDataStore>,
     // TODO: remove all pub from stores and processors when StoreManager is implemented
 
     // Append-only stores
@@ -171,17 +173,16 @@ pub struct Consensus {
     pub counters: Arc<ProcessingCounters>,
 
     // Config
-    config: Config,
+    config: Arc<Config>,
 }
 
 impl Consensus {
     pub fn new(
         db: Arc<DB>,
-        config: &Config,
+        config: Arc<Config>,
         notification_root: Arc<ConsensusNotificationRoot>,
         counters: Arc<ProcessingCounters>,
     ) -> Self {
-        let config = config.clone();
         let params = &config.params;
         let perf_params = &config.perf;
         //
@@ -417,6 +418,7 @@ impl Consensus {
             past_median_time_manager.clone(),
             params.max_block_mass,
             params.genesis.clone(),
+            notification_root.clone(),
             counters.clone(),
         ));
 
@@ -436,7 +438,7 @@ impl Consensus {
             body_tips_store.clone(),
             utxo_diffs_store.clone(),
             utxo_multisets_store,
-            acceptance_data_store,
+            acceptance_data_store.clone(),
             virtual_stores.clone(),
             pruning_point_utxo_set_store.clone(),
             ghostdag_manager.clone(),
@@ -533,6 +535,7 @@ impl Consensus {
             block_transactions_store,
             pruning_point_utxo_set_store,
             virtual_stores,
+            acceptance_data_store,
             past_pruning_points_store,
 
             statuses_service,
@@ -679,17 +682,31 @@ impl ConsensusApi for Consensus {
         }
     }
 
-    fn get_sink_timestamp(&self) -> Option<u64> {
-        // TODO: unwrap on virtual state read when staging consensus is implemented
-        self.virtual_processor.virtual_stores.read().state.get().unwrap_option().map(|state| {
-            let sink = state.ghostdag_data.selected_parent;
-            self.headers_store.get_timestamp(sink).unwrap()
-        })
+    fn get_sink(&self) -> Hash {
+        self.virtual_processor.virtual_stores.read().state.get().unwrap().ghostdag_data.selected_parent
+    }
+
+    fn get_sink_timestamp(&self) -> u64 {
+        self.headers_store.get_timestamp(self.get_sink()).unwrap()
+    }
+
+    fn get_sync_info(&self) -> SyncInfo {
+        // TODO: actually get those numbers
+        SyncInfo::default()
     }
 
     fn is_nearly_synced(&self) -> bool {
         // See comment within `config.is_nearly_synced`
-        self.get_sink_timestamp().has_value_and(|&t| self.config.is_nearly_synced(t))
+        self.config.is_nearly_synced(self.get_sink_timestamp())
+    }
+
+    fn get_virtual_chain_from_block(&self, hash: Hash) -> ConsensusResult<ChainPath> {
+        // Calculate chain changes between the given hash and the
+        // sink. Note that we explicitly don't
+        // do the calculation against the virtual itself so that we
+        // won't later need to remove it from the result.
+        self.validate_block_exists(hash)?;
+        Ok(self.dag_traversal_manager.calculate_chain_path(hash, self.get_sink()))
     }
 
     fn get_virtual_parents(&self) -> BlockHashSet {
@@ -781,6 +798,7 @@ impl ConsensusApi for Consensus {
 
     // max_blocks has to be greater than the merge set size limit
     fn get_hashes_between(&self, low: Hash, high: Hash, max_blocks: usize) -> ConsensusResult<(Vec<Hash>, Hash)> {
+        assert!(max_blocks as u64 > self.config.mergeset_size_limit);
         self.validate_block_exists(low)?;
         self.validate_block_exists(high)?;
 
@@ -794,6 +812,11 @@ impl ConsensusApi for Consensus {
 
     fn get_headers_selected_tip(&self) -> Hash {
         self.headers_selected_tip_store.read().get().unwrap().hash
+    }
+
+    fn get_anticone(&self, hash: Hash) -> ConsensusResult<Vec<Hash>> {
+        self.validate_block_exists(hash)?;
+        Ok(self.dag_traversal_manager.anticone(hash, self.virtual_stores.read().state.get().unwrap().parents.iter().copied(), None)?)
     }
 
     fn get_pruning_point_proof(&self) -> Arc<PruningPointProof> {
@@ -842,8 +865,55 @@ impl ConsensusApi for Consensus {
         })
     }
 
+    fn get_block_even_if_header_only(&self, hash: Hash) -> ConsensusResult<Block> {
+        let Some(status) = self.statuses_store.read().get(hash).unwrap_option().filter(|&status| status.has_block_header()) else {
+            return Err(ConsensusError::BlockNotFound(hash));
+        };
+        Ok(Block {
+            header: self.headers_store.get_header(hash).unwrap(),
+            transactions: if status.is_header_only() { Arc::new(vec![]) } else { self.block_transactions_store.get(hash).unwrap() },
+        })
+    }
+
+    fn get_ghostdag_data(&self, hash: Hash) -> ConsensusResult<ExternalGhostdagData> {
+        match self.get_block_status(hash) {
+            None => return Err(ConsensusError::BlockNotFound(hash)),
+            Some(BlockStatus::StatusInvalid) => return Err(ConsensusError::InvalidBlock(hash)),
+            _ => {}
+        };
+        Ok((&*self.ghostdag_store.get_data(hash).unwrap()).into())
+    }
+
+    fn get_block_children(&self, hash: Hash) -> Option<Arc<Vec<Hash>>> {
+        self.relations_service.get_children(hash).unwrap_option()
+    }
+
+    fn get_block_parents(&self, hash: Hash) -> Option<Arc<Vec<Hash>>> {
+        self.relations_service.get_parents(hash).unwrap_option()
+    }
+
     fn get_block_status(&self, hash: Hash) -> Option<BlockStatus> {
         self.statuses_store.read().get(hash).unwrap_option()
+    }
+
+    fn get_block_acceptance_data(&self, hash: Hash) -> ConsensusResult<Arc<AcceptanceData>> {
+        self.validate_block_exists(hash)?;
+        Ok(self.acceptance_data_store.get(hash).unwrap())
+    }
+
+    fn get_blocks_acceptance_data(&self, hashes: &[Hash]) -> ConsensusResult<Vec<Arc<AcceptanceData>>> {
+        hashes
+            .iter()
+            .copied()
+            .map(|hash| {
+                self.validate_block_exists(hash)?;
+                self.acceptance_data_store.get(hash).map_err(|_| ConsensusError::MissingData(hash))
+            })
+            .collect::<ConsensusResult<Vec<_>>>()
+    }
+
+    fn is_chain_block(&self, hash: Hash) -> ConsensusResult<bool> {
+        self.is_chain_ancestor_of(hash, self.get_sink())
     }
 
     fn get_missing_block_body_hashes(&self, high: Hash) -> ConsensusResult<Vec<Hash>> {

@@ -1,4 +1,9 @@
-use crate::{collector::WrpcServiceCollector, connection::Connection, result::Result, service::Options};
+use crate::{
+    collector::{WrpcServiceCollector, WrpcServiceConverter},
+    connection::Connection,
+    result::Result,
+    service::Options,
+};
 use kaspa_notify::{
     events::EVENT_TYPE_ARRAY,
     listener::ListenerId,
@@ -52,7 +57,8 @@ impl Server {
 
         // Prepare notification internals
         let rpc_events = EVENT_TYPE_ARRAY[..].into();
-        let collector = Arc::new(WrpcServiceCollector::new(rpc_channel.receiver()));
+        let converter = Arc::new(WrpcServiceConverter::new());
+        let collector = Arc::new(WrpcServiceCollector::new(rpc_channel.receiver(), converter));
         let subscriber = Arc::new(Subscriber::new(rpc_events, subscription_manager, rpc_listener_id));
         let notifier: Arc<Notifier<Notification, Connection>> =
             Arc::new(Notifier::new(rpc_events, vec![collector], vec![subscriber], tasks, WRPC_SERVER));

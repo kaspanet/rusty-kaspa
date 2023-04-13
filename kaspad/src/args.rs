@@ -1,5 +1,7 @@
 #[allow(unused)]
 use clap::{arg, command, Arg, Command};
+use kaspa_consensus::config::Config;
+use kaspa_core::version::version;
 
 pub struct Defaults {
     pub appdir: &'static str,
@@ -58,7 +60,7 @@ pub struct Args {
 
 pub fn cli(defaults: &Defaults) -> Command {
     Command::new("kaspad")
-        .about(format!("{} (rusty-kaspa) v{}", env!("CARGO_PKG_DESCRIPTION"), env!("CARGO_PKG_VERSION")))
+        .about(format!("{} (rusty-kaspa) v{}", env!("CARGO_PKG_DESCRIPTION"), version()))
         .version(env!("CARGO_PKG_VERSION"))
         .arg(arg!(-b --appdir <DATA_DIR> "Directory to store data."))
         .arg(
@@ -169,6 +171,10 @@ impl Args {
             devnet: m.get_one::<bool>("devnet").cloned().unwrap_or(defaults.devnet),
             simnet: m.get_one::<bool>("simnet").cloned().unwrap_or(defaults.simnet),
         }
+    }
+
+    pub fn apply_to_config(&self, config: &mut Config) {
+        config.utxoindex = self.utxoindex;
     }
 }
 

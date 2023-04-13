@@ -67,7 +67,7 @@ impl AsyncService for P2pService {
                 self.inbound_limit,
                 self.dns_seeders,
                 self.default_port,
-                self.flow_context.amgr.clone(),
+                self.flow_context.address_manager.clone(),
             );
 
             // For now, attempt to connect to a running golang node

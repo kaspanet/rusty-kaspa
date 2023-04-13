@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use crate::{GetBlockTemplateResponse, RpcBlock, RpcError, RpcResult, RpcTransaction};
-use kaspa_consensus_core::block::{Block, BlockTemplate, MutableBlock};
+use crate::{RpcBlock, RpcError, RpcResult, RpcTransaction};
+use kaspa_consensus_core::block::{Block, MutableBlock};
 
 // ----------------------------------------------------------------------------
 // consensus_core to rpc_core
@@ -24,17 +24,6 @@ impl From<&MutableBlock> for RpcBlock {
             header: item.header.clone(),
             transactions: item.transactions.iter().map(RpcTransaction::from).collect(),
             verbose_data: None,
-        }
-    }
-}
-
-impl From<&BlockTemplate> for GetBlockTemplateResponse {
-    fn from(item: &BlockTemplate) -> Self {
-        Self {
-            block: (&item.block).into(),
-            // TODO: either call some Block.is_synced() if/when available or implement
-            // a functional equivalent here based on item.selected_parent_timestamp
-            is_synced: true,
         }
     }
 }

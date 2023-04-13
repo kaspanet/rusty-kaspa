@@ -126,18 +126,18 @@ fn main() {
     let mut perf_params = PERF_PARAMS;
     adjust_consensus_params(&args, &mut params);
     adjust_perf_params(&args, &params, &mut perf_params);
-    let config = ConfigBuilder::new(params).set_perf_params(perf_params).skip_proof_of_work().build();
+    let config = Arc::new(ConfigBuilder::new(params).set_perf_params(perf_params).skip_proof_of_work().build());
 
     // Load an existing consensus or run the simulation
     let (consensus, _lifetime) = if let Some(input_dir) = args.input_dir {
         let (lifetime, db) = load_existing_db(input_dir, num_cpus::get());
         let (dummy_notification_sender, _) = unbounded();
         let notification_root = Arc::new(ConsensusNotificationRoot::new(dummy_notification_sender));
-        let consensus = Arc::new(Consensus::new(db, &config, notification_root, Default::default()));
+        let consensus = Arc::new(Consensus::new(db, config.clone(), notification_root, Default::default()));
         (consensus, lifetime)
     } else {
         let until = if args.target_blocks.is_none() { args.sim_time * 1000 } else { u64::MAX }; // milliseconds
-        let mut sim = KaspaNetworkSimulator::new(args.delay, args.bps, args.target_blocks, &config, args.output_dir);
+        let mut sim = KaspaNetworkSimulator::new(args.delay, args.bps, args.target_blocks, config.clone(), args.output_dir);
         let (consensus, handles, lifetime) = sim.init(args.miners, args.tpb).run(until);
         consensus.shutdown(handles);
         (consensus, lifetime)
@@ -147,7 +147,7 @@ fn main() {
     let (_lifetime2, db2) = create_temp_db_with_parallelism(num_cpus::get());
     let (dummy_notification_sender, _) = unbounded();
     let notification_root = Arc::new(ConsensusNotificationRoot::new(dummy_notification_sender));
-    let consensus2 = Arc::new(Consensus::new(db2, &config, notification_root, Default::default()));
+    let consensus2 = Arc::new(Consensus::new(db2, config.clone(), notification_root, Default::default()));
     let handles2 = consensus2.run_processors();
     validate(&consensus, &consensus2, &config, args.delay, args.bps);
     consensus2.shutdown(handles2);

@@ -6,21 +6,27 @@ use crate::flowcontext::{
 use crate::v5;
 use async_trait::async_trait;
 use kaspa_addressmanager::AddressManager;
-use kaspa_consensus_core::api::ConsensusApi;
 use kaspa_consensus_core::block::Block;
 use kaspa_consensus_core::config::Config;
 use kaspa_consensus_core::tx::{Transaction, TransactionId};
+use kaspa_consensus_core::{api::ConsensusApi, errors::block::RuleError};
+use kaspa_consensus_notify::{
+    notification::{NewBlockTemplateNotification, Notification},
+    root::ConsensusNotificationRoot,
+};
 use kaspa_consensusmanager::{ConsensusInstance, ConsensusManager};
-use kaspa_core::time::unix_now;
 use kaspa_core::{debug, info};
+use kaspa_core::{time::unix_now, warn};
 use kaspa_hashes::Hash;
 use kaspa_mining::{
     manager::MiningManager,
     mempool::tx::{Orphan, Priority},
 };
+use kaspa_notify::notifier::Notify;
 use kaspa_p2p_lib::{
     common::ProtocolError,
-    pb::{self},
+    make_message,
+    pb::{self, kaspad_message::Payload, InvRelayBlockMessage},
     ConnectionInitializer, Hub, KaspadHandshake, Router,
 };
 use parking_lot::Mutex;
@@ -42,15 +48,16 @@ const PROTOCOL_VERSION: u32 = 5;
 pub struct FlowContext {
     pub node_id: Uuid,
     pub consensus_manager: Arc<ConsensusManager>,
-    pub config: Config,
+    pub config: Arc<Config>,
     hub: Hub,
     orphans_pool: Arc<AsyncRwLock<OrphanBlocksPool>>,
     shared_block_requests: Arc<Mutex<HashSet<Hash>>>,
     transactions_spread: Arc<AsyncRwLock<TransactionsSpread>>,
     shared_transaction_requests: Arc<Mutex<HashSet<TransactionId>>>,
     is_ibd_running: Arc<AtomicBool>, // TODO: pass the context wrapped with Arc and avoid some of the internal ones
-    pub amgr: Arc<Mutex<AddressManager>>,
+    pub address_manager: Arc<Mutex<AddressManager>>,
     mining_manager: Arc<MiningManager>,
+    notification_root: Arc<ConsensusNotificationRoot>,
 }
 
 pub struct IbdRunningGuard {
@@ -84,23 +91,25 @@ impl<T: PartialEq + Eq + std::hash::Hash> Drop for RequestScope<T> {
 impl FlowContext {
     pub fn new(
         consensus_manager: Arc<ConsensusManager>,
-        amgr: Arc<Mutex<AddressManager>>,
-        config: &Config,
+        address_manager: Arc<Mutex<AddressManager>>,
+        config: Arc<Config>,
         mining_manager: Arc<MiningManager>,
+        notification_root: Arc<ConsensusNotificationRoot>,
     ) -> Self {
         let hub = Hub::new();
         Self {
             node_id: Uuid::new_v4(),
             consensus_manager,
-            config: config.clone(),
+            config,
             orphans_pool: Arc::new(AsyncRwLock::new(OrphanBlocksPool::new(MAX_ORPHANS))),
             shared_block_requests: Arc::new(Mutex::new(HashSet::new())),
             transactions_spread: Arc::new(AsyncRwLock::new(TransactionsSpread::new(hub.clone()))),
             shared_transaction_requests: Arc::new(Mutex::new(HashSet::new())),
             is_ibd_running: Arc::new(AtomicBool::default()),
             hub,
-            amgr,
+            address_manager,
             mining_manager,
+            notification_root,
         }
     }
 
@@ -160,6 +169,22 @@ impl FlowContext {
         self.orphans_pool.write().await.unorphan_blocks(consensus, root).await
     }
 
+    /// Adds the given block to the DAG and propagates it.
+    pub async fn add_block(&self, consensus: &dyn ConsensusApi, block: Block) -> Result<(), ProtocolError> {
+        if block.transactions.is_empty() {
+            return Err(RuleError::NoTransactions)?;
+        }
+        let hash = block.hash();
+        if let Err(err) = self.consensus().session().await.validate_and_insert_block(block.clone(), true).await {
+            warn!("Validation failed for block {}: {}", hash, err);
+            return Err(err)?;
+        }
+        self.on_new_block_template().await?;
+        self.on_new_block(consensus, block).await?;
+        self.hub.broadcast(make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(hash.into()) })).await;
+        Ok(())
+    }
+
     /// Updates the mempool after a new block arrival, relays newly unorphaned transactions
     /// and possibly rebroadcast manually added transactions when not in IBD.
     ///
@@ -192,7 +217,10 @@ impl FlowContext {
     pub async fn on_new_block_template(&self) -> Result<(), ProtocolError> {
         // Clear current template cache
         self.mining_manager().clear_block_template();
-        // TODO: call a handler function or a predefined registered service
+        // TODO: better handle notification errors
+        self.notification_root
+            .notify(Notification::NewBlockTemplate(NewBlockTemplateNotification {}))
+            .map_err(|_| ProtocolError::Other("Notification error"))?;
         Ok(())
     }
 
@@ -290,7 +318,7 @@ impl ConnectionInitializer for FlowContext {
         }
 
         if router.is_outbound() {
-            self.amgr.lock().add_address(router.net_address().into());
+            self.address_manager.lock().add_address(router.net_address().into());
         }
 
         // Note: we deliberately do not hold the handshake in memory so at this point receivers for handshake subscriptions

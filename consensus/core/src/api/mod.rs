@@ -3,6 +3,7 @@ use kaspa_muhash::MuHash;
 use std::sync::Arc;
 
 use crate::{
+    acceptance_data::AcceptanceData,
     block::{Block, BlockTemplate},
     blockstatus::BlockStatus,
     coinbase::MinerData,
@@ -15,9 +16,10 @@ use crate::{
     },
     header::Header,
     pruning::{PruningPointProof, PruningPointsList},
-    trusted::{TrustedBlock, TrustedGhostdagData, TrustedHeader},
+    sync_info::SyncInfo,
+    trusted::{ExternalGhostdagData, TrustedBlock, TrustedGhostdagData, TrustedHeader},
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
-    BlockHashSet,
+    BlockHashSet, ChainPath,
 };
 use kaspa_hashes::Hash;
 pub type BlockValidationFuture = BoxFuture<'static, BlockProcessResult<BlockStatus>>;
@@ -55,7 +57,15 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn get_sink_timestamp(&self) -> Option<u64> {
+    fn get_sink(&self) -> Hash {
+        unimplemented!()
+    }
+
+    fn get_sink_timestamp(&self) -> u64 {
+        unimplemented!()
+    }
+
+    fn get_sync_info(&self) -> SyncInfo {
         unimplemented!()
     }
 
@@ -63,6 +73,10 @@ pub trait ConsensusApi: Send + Sync {
     ///
     /// This info is used to determine if it's ok to use a block template from this node for mining purposes.
     fn is_nearly_synced(&self) -> bool {
+        unimplemented!()
+    }
+
+    fn get_virtual_chain_from_block(&self, hash: Hash) -> ConsensusResult<ChainPath> {
         unimplemented!()
     }
 
@@ -123,6 +137,10 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
+    fn get_anticone(&self, hash: Hash) -> ConsensusResult<Vec<Hash>> {
+        unimplemented!()
+    }
+
     fn get_pruning_point_proof(&self) -> Arc<PruningPointProof> {
         unimplemented!()
     }
@@ -143,6 +161,41 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
+    fn get_block_even_if_header_only(&self, hash: Hash) -> ConsensusResult<Block> {
+        unimplemented!()
+    }
+
+    fn get_ghostdag_data(&self, hash: Hash) -> ConsensusResult<ExternalGhostdagData> {
+        unimplemented!()
+    }
+
+    fn get_block_children(&self, hash: Hash) -> Option<Arc<Vec<Hash>>> {
+        unimplemented!()
+    }
+
+    fn get_block_parents(&self, hash: Hash) -> Option<Arc<Vec<Hash>>> {
+        unimplemented!()
+    }
+
+    fn get_block_status(&self, hash: Hash) -> Option<BlockStatus> {
+        unimplemented!()
+    }
+
+    fn get_block_acceptance_data(&self, hash: Hash) -> ConsensusResult<Arc<AcceptanceData>> {
+        unimplemented!()
+    }
+
+    /// Returns acceptance data for a set of blocks belonging to the selected parent chain.
+    ///
+    /// See `self::get_virtual_chain`
+    fn get_blocks_acceptance_data(&self, hashes: &[Hash]) -> ConsensusResult<Vec<Arc<AcceptanceData>>> {
+        unimplemented!()
+    }
+
+    fn is_chain_block(&self, hash: Hash) -> ConsensusResult<bool> {
+        unimplemented!()
+    }
+
     fn get_pruning_point_utxos(
         &self,
         expected_pruning_point: Hash,
@@ -150,10 +203,6 @@ pub trait ConsensusApi: Send + Sync {
         chunk_size: usize,
         skip_first: bool,
     ) -> ConsensusResult<Vec<(TransactionOutpoint, UtxoEntry)>> {
-        unimplemented!()
-    }
-
-    fn get_block_status(&self, hash: Hash) -> Option<BlockStatus> {
         unimplemented!()
     }
 

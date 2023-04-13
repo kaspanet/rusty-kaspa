@@ -1,6 +1,5 @@
 use crate::indexed_utxos::{UtxoChanges, UtxoSetByScriptPublicKey};
 use derive_more::Display;
-use kaspa_addresses::Prefix;
 use kaspa_notify::{
     events::EventType,
     full_featured,
@@ -55,14 +54,19 @@ pub struct PruningPointUtxoSetOverrideNotification {}
 
 #[derive(Debug, Clone)]
 pub struct UtxosChangedNotification {
-    pub prefix: Prefix,
     pub added: Arc<UtxoSetByScriptPublicKey>,
     pub removed: Arc<UtxoSetByScriptPublicKey>,
 }
 
+impl From<UtxoChanges> for UtxosChangedNotification {
+    fn from(item: UtxoChanges) -> Self {
+        Self { added: Arc::new(item.added), removed: Arc::new(item.removed) }
+    }
+}
+
 impl UtxosChangedNotification {
-    pub fn from_utxos_changed(utxos_changed: UtxoChanges, prefix: Prefix) -> Self {
-        Self { added: Arc::new(utxos_changed.added), removed: Arc::new(utxos_changed.removed), prefix }
+    pub fn from_utxos_changed(utxos_changed: UtxoChanges) -> Self {
+        Self { added: Arc::new(utxos_changed.added), removed: Arc::new(utxos_changed.removed) }
     }
 
     pub(crate) fn apply_utxos_changed_subscription(&self, subscription: &UtxosChangedSubscription) -> Option<Self> {
@@ -74,7 +78,7 @@ impl UtxosChangedNotification {
             if added.is_empty() && removed.is_empty() {
                 None
             } else {
-                Some(Self { prefix: self.prefix, added: Arc::new(added), removed: Arc::new(removed) })
+                Some(Self { added: Arc::new(added), removed: Arc::new(removed) })
             }
         }
     }
