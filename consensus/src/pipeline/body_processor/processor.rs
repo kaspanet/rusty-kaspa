@@ -30,7 +30,12 @@ use kaspa_consensus_core::{
     config::genesis::GenesisBlock,
     tx::Transaction,
 };
+use kaspa_consensus_notify::{
+    notification::{BlockAddedNotification, Notification},
+    root::ConsensusNotificationRoot,
+};
 use kaspa_hashes::Hash;
+use kaspa_notify::notifier::Notify;
 use parking_lot::RwLock;
 use rayon::ThreadPool;
 use rocksdb::WriteBatch;
@@ -74,6 +79,8 @@ pub struct BlockBodyProcessor {
     // Dependency manager
     task_manager: BlockTaskDependencyManager,
 
+    pub(crate) notification_root: Arc<ConsensusNotificationRoot>,
+
     // Counters
     counters: Arc<ProcessingCounters>,
 }
@@ -103,6 +110,7 @@ impl BlockBodyProcessor {
         >,
         max_block_mass: u64,
         genesis: GenesisBlock,
+        notification_root: Arc<ConsensusNotificationRoot>,
         counters: Arc<ProcessingCounters>,
     ) -> Self {
         Self {
@@ -123,6 +131,7 @@ impl BlockBodyProcessor {
             max_block_mass,
             genesis,
             task_manager: BlockTaskDependencyManager::new(),
+            notification_root,
             counters,
         }
     }
@@ -197,6 +206,10 @@ impl BlockBodyProcessor {
         }
 
         self.commit_body(block.hash(), block.header.direct_parents(), block.transactions.clone());
+
+        // Send a BlockAdded notification
+        // TODO: handle notify errors
+        let _ = self.notification_root.notify(Notification::BlockAdded(BlockAddedNotification::new(block.to_owned())));
 
         // Report counters
         self.counters.body_counts.fetch_add(1, Ordering::Relaxed);

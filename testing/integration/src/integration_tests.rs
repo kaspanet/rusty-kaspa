@@ -11,7 +11,7 @@ use kaspa_consensus::model::stores::ghostdag::{GhostdagStoreReader, KType as Gho
 use kaspa_consensus::model::stores::headers::HeaderStoreReader;
 use kaspa_consensus::model::stores::reachability::DbReachabilityStore;
 use kaspa_consensus::model::stores::selected_chain::SelectedChainStoreReader;
-use kaspa_consensus::params::{Params, DEVNET_PARAMS, MAINNET_PARAMS};
+use kaspa_consensus::params::{Params, DEVNET_PARAMS, DIFFICULTY_MAX, DIFFICULTY_MAX_AS_F64, MAINNET_PARAMS};
 use kaspa_consensus::pipeline::ProcessingCounters;
 use kaspa_consensus::processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions};
 use kaspa_consensus_core::api::ConsensusApi;
@@ -737,6 +737,8 @@ impl KaspadGoParams {
             timestamp_deviation_tolerance: self.TimestampDeviationTolerance,
             target_time_per_block: self.TargetTimePerBlock / 1_000_000,
             max_block_parents: self.MaxBlockParents,
+            max_difficulty: DIFFICULTY_MAX,
+            max_difficulty_f64: DIFFICULTY_MAX_AS_F64,
             difficulty_window_size: self.DifficultyAdjustmentWindowSize,
             mergeset_size_limit: self.MergeSetSizeLimit,
             merge_depth: self.MergeDepth,
@@ -853,6 +855,7 @@ async fn json_test(file_path: &str) {
     if proof_exists {
         config.process_genesis = false;
     }
+    let config = Arc::new(config);
 
     let (notification_send, notification_recv) = unbounded();
     let tc = Arc::new(TestConsensus::create_from_temp_db(&config, notification_send));
@@ -861,7 +864,7 @@ async fn json_test(file_path: &str) {
     let (_utxoindex_db_lifetime, utxoindex_db) = create_temp_db();
     let consensus_manager = Arc::new(ConsensusManager::from_consensus(tc.consensus()));
     let utxoindex = UtxoIndex::new(consensus_manager, utxoindex_db).unwrap();
-    let index_service = Arc::new(IndexService::new(&notify_service.notifier(), Some(utxoindex.clone()), &config));
+    let index_service = Arc::new(IndexService::new(&notify_service.notifier(), Some(utxoindex.clone())));
 
     let async_runtime = Arc::new(AsyncRuntime::new(2));
     async_runtime.register(notify_service.clone());

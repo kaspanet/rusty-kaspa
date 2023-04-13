@@ -14,6 +14,7 @@ use kaspa_core::{debug, trace};
 use kaspa_grpc_core::{
     channel::NotificationChannel,
     protowire::{kaspad_request, rpc_client::RpcClient, GetInfoRequestMessage, KaspadRequest, KaspadResponse},
+    RPC_MAX_MESSAGE_SIZE,
 };
 use kaspa_notify::{
     error::Result as NotifyResult,
@@ -30,7 +31,10 @@ use kaspa_rpc_core::{
     error::RpcError,
     error::RpcResult,
     model::message::*,
-    notify::{collector::RpcCoreCollector, connection::ChannelConnection},
+    notify::{
+        collector::{RpcCoreCollector, RpcCoreConverter},
+        connection::ChannelConnection,
+    },
     Notification, NotificationSender,
 };
 use kaspa_utils::triggers::DuplexTrigger;
@@ -74,7 +78,8 @@ impl GrpcClient {
         let inner =
             Inner::connect(address, reconnect, notify_channel.sender(), connection_event_sender, override_handle_stop_notify).await?;
         let core_events = EVENT_TYPE_ARRAY[..].into();
-        let collector = Arc::new(RpcCoreCollector::new(notify_channel.receiver()));
+        let converter = Arc::new(RpcCoreConverter::new());
+        let collector = Arc::new(RpcCoreCollector::new(notify_channel.receiver(), converter));
         let subscriber = Arc::new(Subscriber::new(core_events, inner.clone(), 0));
 
         let notifier = Arc::new(Notifier::new(core_events, vec![collector], vec![subscriber], 10, GRPC_CLIENT));
@@ -359,8 +364,10 @@ impl Inner {
             .connect()
             .await?;
 
-        let mut client =
-            RpcClient::new(channel).send_compressed(CompressionEncoding::Gzip).accept_compressed(CompressionEncoding::Gzip);
+        let mut client = RpcClient::new(channel)
+            .send_compressed(CompressionEncoding::Gzip)
+            .accept_compressed(CompressionEncoding::Gzip)
+            .max_decoding_message_size(RPC_MAX_MESSAGE_SIZE);
 
         // Force the opening of the stream when connected to a go kaspad server.
         // This is also needed for querying server capabilities.

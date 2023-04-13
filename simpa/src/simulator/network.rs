@@ -20,22 +20,15 @@ pub struct KaspaNetworkSimulator {
     // Consensus instances
     consensuses: Vec<ConsensusWrapper>,
 
-    config: Config,             // Consensus config
+    config: Arc<Config>,        // Consensus config
     bps: f64,                   // Blocks per second
     target_blocks: Option<u64>, // Target simulation blocks
     output_dir: Option<String>, // Possible permanent output directory
 }
 
 impl KaspaNetworkSimulator {
-    pub fn new(delay: f64, bps: f64, target_blocks: Option<u64>, config: &Config, output_dir: Option<String>) -> Self {
-        Self {
-            simulation: Simulation::new((delay * 1000.0) as u64),
-            consensuses: Vec::new(),
-            bps,
-            config: config.clone(),
-            target_blocks,
-            output_dir,
-        }
+    pub fn new(delay: f64, bps: f64, target_blocks: Option<u64>, config: Arc<Config>, output_dir: Option<String>) -> Self {
+        Self { simulation: Simulation::new((delay * 1000.0) as u64), consensuses: Vec::new(), bps, config, target_blocks, output_dir }
     }
 
     pub fn init(&mut self, num_miners: u64, target_txs_per_block: u64) -> &mut Self {
@@ -49,7 +42,7 @@ impl KaspaNetworkSimulator {
             };
             let (dummy_notification_sender, _) = unbounded();
             let notification_root = Arc::new(ConsensusNotificationRoot::new(dummy_notification_sender));
-            let consensus = Arc::new(Consensus::new(db, &self.config, notification_root, Default::default()));
+            let consensus = Arc::new(Consensus::new(db, self.config.clone(), notification_root, Default::default()));
             let handles = consensus.run_processors();
             let (sk, pk) = secp.generate_keypair(&mut rng);
             let miner_process = Box::new(Miner::new(

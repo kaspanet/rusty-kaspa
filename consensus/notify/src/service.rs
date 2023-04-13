@@ -1,11 +1,15 @@
-use crate::{notification::Notification, notifier::ConsensusNotifier, root::ConsensusNotificationRoot};
+use crate::{
+    collector::{ConsensusCollector, ConsensusConverter},
+    notification::Notification,
+    notifier::ConsensusNotifier,
+    root::ConsensusNotificationRoot,
+};
 use async_channel::Receiver;
 use kaspa_core::{
     task::service::{AsyncService, AsyncServiceError, AsyncServiceFuture},
     trace,
 };
 use kaspa_notify::{
-    collector::CollectorFrom,
     events::{EventSwitches, EVENT_TYPE_ARRAY},
     subscriber::Subscriber,
 };
@@ -22,7 +26,7 @@ pub struct NotifyService {
 impl NotifyService {
     pub fn new(root: Arc<ConsensusNotificationRoot>, notification_receiver: Receiver<Notification>) -> Self {
         let root_events: EventSwitches = EVENT_TYPE_ARRAY[..].into();
-        let collector = Arc::new(CollectorFrom::<Notification, Notification>::new(notification_receiver));
+        let collector = Arc::new(ConsensusCollector::new(notification_receiver, Arc::new(ConsensusConverter::new())));
         let subscriber = Arc::new(Subscriber::new(root_events, root, 0));
         let notifier = Arc::new(ConsensusNotifier::new(root_events, vec![collector], vec![subscriber], 1, NOTIFY_SERVICE));
         Self { notifier, shutdown: SingleTrigger::default() }

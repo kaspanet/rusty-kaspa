@@ -94,6 +94,11 @@ impl Hub {
     pub fn active_peers(&self) -> Vec<Peer> {
         self.peers.read().values().map(|r| r.as_ref().into()).collect()
     }
+
+    /// Returns whether there are currently active peers
+    pub fn has_peers(&self) -> bool {
+        !self.peers.read().is_empty()
+    }
 }
 
 impl Default for Hub {
