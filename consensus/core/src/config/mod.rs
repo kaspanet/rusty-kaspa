@@ -27,6 +27,8 @@ pub struct Config {
     // is_archival: bool,
     // enable_sanity_check_pruning_utxoset: bool,
     //
+
+    // TODO: move non-consensus parameters like utxoindex to a higher scoped Config
     /// Enable the UTXO index
     pub utxoindex: bool,
 
