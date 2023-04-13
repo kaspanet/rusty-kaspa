@@ -258,6 +258,7 @@ pub fn main() {
         index_service.as_ref().map(|x| x.notifier()),
         mining_manager,
         flow_context,
+        index_service.as_ref().map(|x| x.utxoindex().unwrap()),
         config,
     ));
     let grpc_server = Arc::new(GrpcServer::new(grpc_server_addr, rpc_core_server.service()));

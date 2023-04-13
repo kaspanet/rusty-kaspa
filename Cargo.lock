@@ -1956,6 +1956,7 @@ dependencies = [
  "kaspa-rpc-core",
  "kaspa-txscript",
  "kaspa-utils",
+ "kaspa-utxoindex",
  "log",
 ]
 
