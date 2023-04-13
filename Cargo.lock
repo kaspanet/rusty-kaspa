@@ -1904,6 +1904,7 @@ dependencies = [
  "futures",
  "futures-util",
  "kaspa-addresses",
+ "kaspa-addressmanager",
  "kaspa-consensus-core",
  "kaspa-consensus-notify",
  "kaspa-core",

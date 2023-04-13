@@ -1,11 +1,8 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+use kaspa_addressmanager::NetAddress;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
-// TODO: replace this type with the peer address type declared by p2p
-pub struct RpcPeerAddress {
-    pub address: String,
-}
+pub type RpcPeerAddress = NetAddress;
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct RpcPeerInfo {
