@@ -3,13 +3,13 @@ use self::{
     blockrelay::{flow::HandleRelayInvsFlow, handle_requests::HandleRelayBlockRequests},
     ibd::IbdFlow,
     ping::{ReceivePingsFlow, SendPingsFlow},
-    pruning_point_and_its_anticone_requests::PruningPointAndItsAnticoneRequestsFlow,
     request_anticone::HandleAnticoneRequests,
     request_block_locator::RequestBlockLocatorFlow,
     request_headers::RequestHeadersFlow,
     request_ibd_blocks::HandleIbdBlockRequests,
     request_ibd_chain_block_locator::RequestIbdChainBlockLocatorFlow,
     request_pp_proof::RequestPruningPointProofFlow,
+    request_pruning_point_and_anticone::PruningPointAndItsAnticoneRequestsFlow,
     request_pruning_point_utxo_set::RequestPruningPointUtxoSetFlow,
     txrelay::flow::{RelayTransactionsFlow, RequestTransactionsFlow},
 };
@@ -23,13 +23,13 @@ mod address;
 mod blockrelay;
 mod ibd;
 mod ping;
-mod pruning_point_and_its_anticone_requests;
 mod request_anticone;
 mod request_block_locator;
 mod request_headers;
 mod request_ibd_blocks;
 mod request_ibd_chain_block_locator;
 mod request_pp_proof;
+mod request_pruning_point_and_anticone;
 mod request_pruning_point_utxo_set;
 mod txrelay;
 
