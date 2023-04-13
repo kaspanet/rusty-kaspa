@@ -7,6 +7,7 @@ use kaspa_consensus_core::{
     block::Block,
     coinbase::MinerData,
     config::Config,
+    constants::MAX_SOMPI,
     tx::{Transaction, COINBASE_TRANSACTION_INDEX},
 };
 use kaspa_consensus_notify::{
@@ -15,7 +16,10 @@ use kaspa_consensus_notify::{
 };
 use kaspa_consensusmanager::ConsensusManager;
 use kaspa_core::{debug, info, trace, version::version, warn};
-use kaspa_index_core::{connection::IndexChannelConnection, notification::Notification as IndexNotification, notifier::IndexNotifier};
+use kaspa_index_core::{
+    connection::IndexChannelConnection, indexed_utxos::UtxoSetByScriptPublicKey, notification::Notification as IndexNotification,
+    notifier::IndexNotifier,
+};
 use kaspa_mining::{manager::MiningManager, mempool::tx::Orphan};
 use kaspa_notify::{
     collector::DynCollector,
@@ -29,6 +33,7 @@ use kaspa_p2p_flows::flow_context::FlowContext;
 use kaspa_rpc_core::{api::rpc::RpcApi, model::*, notify::connection::ChannelConnection, Notification, RpcError, RpcResult};
 use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script};
 use kaspa_utils::channel::Channel;
+use kaspa_utxoindex::api::DynUtxoIndexApi;
 use std::{iter::once, ops::Deref, sync::Arc, vec};
 
 /// A service implementing the Rpc API at kaspa_rpc_core level.
@@ -53,9 +58,10 @@ pub struct RpcCoreService {
     notifier: Arc<Notifier<Notification, ChannelConnection>>,
     mining_manager: Arc<MiningManager>,
     flow_context: Arc<FlowContext>,
+    utxoindex: DynUtxoIndexApi,
     config: Arc<Config>,
     consensus_converter: Arc<ConsensusConverter>,
-    _index_converter: Arc<IndexConverter>,
+    index_converter: Arc<IndexConverter>,
 }
 
 const RPC_CORE: &str = "rpc-core";
@@ -67,6 +73,7 @@ impl RpcCoreService {
         index_notifier: Option<Arc<IndexNotifier>>,
         mining_manager: Arc<MiningManager>,
         flow_context: Arc<FlowContext>,
+        utxoindex: DynUtxoIndexApi,
         config: Arc<Config>,
     ) -> Self {
         // Prepare consensus-notify objects
@@ -104,15 +111,7 @@ impl RpcCoreService {
         // Create the rcp-core notifier
         let notifier = Arc::new(Notifier::new(EVENT_TYPE_ARRAY[..].into(), collectors, subscribers, 1, RPC_CORE));
 
-        Self {
-            consensus_manager,
-            notifier,
-            mining_manager,
-            flow_context,
-            config,
-            consensus_converter,
-            _index_converter: index_converter,
-        }
+        Self { consensus_manager, notifier, mining_manager, flow_context, utxoindex, config, consensus_converter, index_converter }
     }
 
     pub fn start(&self) {
@@ -127,6 +126,15 @@ impl RpcCoreService {
     #[inline(always)]
     pub fn notifier(&self) -> Arc<Notifier<Notification, ChannelConnection>> {
         self.notifier.clone()
+    }
+
+    fn get_utxo_set_by_script_public_key<'a>(&self, addresses: impl Iterator<Item = &'a RpcAddress>) -> UtxoSetByScriptPublicKey {
+        self.utxoindex
+            .as_ref()
+            .unwrap()
+            .read()
+            .get_utxos_by_script_public_keys(addresses.map(pay_to_address_script).collect())
+            .unwrap_or_default()
     }
 }
 
@@ -383,6 +391,62 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         Ok(self.consensus_manager.consensus().session().await.get_sync_info())
     }
 
+    async fn get_utxos_by_addresses_call(&self, request: GetUtxosByAddressesRequest) -> RpcResult<GetUtxosByAddressesResponse> {
+        if !self.config.utxoindex {
+            return Err(RpcError::NoUtxoIndex);
+        }
+        // TODO: discuss if the entry order is part of the method requirements
+        //       (the current impl does not retain an entry order matching the request addresses order)
+        let entry_map = self.get_utxo_set_by_script_public_key(request.addresses.iter());
+        Ok(GetUtxosByAddressesResponse::new(self.index_converter.get_utxos_by_addresses_entries(&entry_map)))
+    }
+
+    async fn get_balance_by_address_call(&self, request: GetBalanceByAddressRequest) -> RpcResult<GetBalanceByAddressResponse> {
+        if !self.config.utxoindex {
+            return Err(RpcError::NoUtxoIndex);
+        }
+        let entry_map = self.get_utxo_set_by_script_public_key(once(&request.address));
+        let balance = entry_map.values().flat_map(|x| x.values().map(|entry| entry.amount)).sum();
+        Ok(GetBalanceByAddressResponse::new(balance))
+    }
+
+    async fn get_balances_by_addresses_call(
+        &self,
+        request: GetBalancesByAddressesRequest,
+    ) -> RpcResult<GetBalancesByAddressesResponse> {
+        if !self.config.utxoindex {
+            return Err(RpcError::NoUtxoIndex);
+        }
+        let entry_map = self.get_utxo_set_by_script_public_key(request.addresses.iter());
+        let entries = request
+            .addresses
+            .iter()
+            .map(|address| {
+                let script_public_key = pay_to_address_script(address);
+                let balance = entry_map.get(&script_public_key).map(|x| x.values().map(|entry| entry.amount).sum());
+                RpcBalancesByAddressesEntry { address: address.to_owned(), balance }
+            })
+            .collect();
+        Ok(GetBalancesByAddressesResponse::new(entries))
+    }
+
+    async fn get_coin_supply_call(&self, _: GetCoinSupplyRequest) -> RpcResult<GetCoinSupplyResponse> {
+        if !self.config.utxoindex {
+            return Err(RpcError::NoUtxoIndex);
+        }
+        let circulating_sompi =
+            self.utxoindex.as_ref().unwrap().read().get_circulating_supply().map_err(|e| RpcError::General(e.to_string()))?;
+        Ok(GetCoinSupplyResponse::new(MAX_SOMPI, circulating_sompi))
+    }
+
+    async fn ping_call(&self, _: PingRequest) -> RpcResult<PingResponse> {
+        Ok(PingResponse {})
+    }
+
+    async fn get_headers_call(&self, _request: GetHeadersRequest) -> RpcResult<GetHeadersResponse> {
+        Err(RpcError::NotImplemented)
+    }
+
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // UNIMPLEMENTED METHODS
 
@@ -413,27 +477,6 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         unimplemented!();
     }
 
-    async fn get_headers_call(&self, _request: GetHeadersRequest) -> RpcResult<GetHeadersResponse> {
-        unimplemented!();
-    }
-
-    async fn get_balance_by_address_call(&self, _request: GetBalanceByAddressRequest) -> RpcResult<GetBalanceByAddressResponse> {
-        //TODO: use self.utxoindex for this
-        unimplemented!();
-    }
-
-    async fn get_balances_by_addresses_call(
-        &self,
-        _addresses: GetBalancesByAddressesRequest,
-    ) -> RpcResult<GetBalancesByAddressesResponse> {
-        unimplemented!();
-    }
-
-    async fn get_utxos_by_addresses_call(&self, _addresses: GetUtxosByAddressesRequest) -> RpcResult<GetUtxosByAddressesResponse> {
-        //TODO: use self.utxoindex for this
-        unimplemented!();
-    }
-
     async fn ban_call(&self, _request: BanRequest) -> RpcResult<BanResponse> {
         unimplemented!();
     }
@@ -447,14 +490,6 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         _request: EstimateNetworkHashesPerSecondRequest,
     ) -> RpcResult<EstimateNetworkHashesPerSecondResponse> {
         unimplemented!();
-    }
-
-    async fn get_coin_supply_call(&self, _request: GetCoinSupplyRequest) -> RpcResult<GetCoinSupplyResponse> {
-        unimplemented!();
-    }
-
-    async fn ping_call(&self, _request: PingRequest) -> RpcResult<PingResponse> {
-        Ok(PingResponse {})
     }
 
     async fn get_process_metrics_call(&self, _request: GetProcessMetricsRequest) -> RpcResult<GetProcessMetricsResponse> {
