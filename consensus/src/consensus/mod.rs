@@ -157,12 +157,14 @@ pub struct Consensus {
     pub(super) pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
     pub(super) pruning_proof_manager: PruningProofManager,
     sync_manager: SyncManager<
+        MTRelationsService<DbRelationsStore>,
         DbReachabilityStore,
         DbGhostdagStore,
         DbSelectedChainStore,
         DbHeadersSelectedTipStore,
         DbPruningStore,
         DbStatusesStore,
+        BlockWindowCacheStore,
     >,
     depth_manager: BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>,
 
@@ -495,6 +497,7 @@ impl Consensus {
         let sync_manager = SyncManager::new(
             params.mergeset_size_limit as usize,
             reachability_service.clone(),
+            dag_traversal_manager.clone(),
             ghostdag_store.clone(),
             selected_chain_store,
             headers_selected_tip_store.clone(),
@@ -923,5 +926,43 @@ impl ConsensusApi for Consensus {
 
     fn pruning_point(&self) -> Option<Hash> {
         self.pruning_store.read().pruning_point().unwrap_option()
+    }
+
+    fn get_daa_window(&self, hash: Hash) -> ConsensusResult<Vec<Hash>> {
+        self.validate_block_exists(hash)?;
+        Ok(self
+            .dag_traversal_manager
+            .block_window(&self.ghostdag_store.get_data(hash).unwrap(), self.config.difficulty_window_size)
+            .unwrap()
+            .into_iter()
+            .map(|block| block.0.hash)
+            .collect())
+    }
+
+    fn get_trusted_block_associated_ghostdag_data_block_hashes(&self, hash: Hash) -> ConsensusResult<Vec<Hash>> {
+        self.validate_block_exists(hash)?;
+
+        // In order to guarantee the chain height is at least k, we check that the pruning point is not genesis.
+        if self.pruning_point().unwrap() == self.config.genesis.hash {
+            return Err(ConsensusError::UnexpectedPruningPoint);
+        }
+
+        let mut hashes = Vec::with_capacity(self.config.params.ghostdag_k as usize);
+        let mut current = hash;
+        // TODO: This will crash if we don't have the data for k blocks in the past of
+        // current. The syncee should validate it got all of the associated data.
+        for _ in 0..=self.config.params.ghostdag_k {
+            hashes.push(current);
+            current = self.ghostdag_store.get_selected_parent(current).unwrap();
+        }
+        Ok(hashes)
+    }
+
+    fn create_block_locator_from_pruning_point(&self, high: Hash, limit: usize) -> ConsensusResult<Vec<Hash>> {
+        self.validate_block_exists(high)?;
+
+        let pp_read_guard = self.pruning_store.read();
+        let pp = pp_read_guard.pruning_point().unwrap();
+        Ok(self.sync_manager.create_block_locator_from_pruning_point(high, pp, Some(limit))?)
     }
 }

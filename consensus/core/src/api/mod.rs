@@ -149,6 +149,10 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
+    fn create_block_locator_from_pruning_point(&self, high: Hash, limit: usize) -> ConsensusResult<Vec<Hash>> {
+        unimplemented!()
+    }
+
     fn pruning_point_headers(&self) -> Vec<Arc<Header>> {
         unimplemented!()
     }
@@ -211,6 +215,17 @@ pub trait ConsensusApi: Send + Sync {
     }
 
     fn pruning_point(&self) -> Option<Hash> {
+        unimplemented!()
+    }
+
+    // TODO: Delete this function once there's no need for go-kaspad backward compatability.
+    fn get_daa_window(&self, hash: Hash) -> ConsensusResult<Vec<Hash>> {
+        unimplemented!()
+    }
+
+    // TODO: Think of a better name.
+    // TODO: Delete this function once there's no need for go-kaspad backward compatability.
+    fn get_trusted_block_associated_ghostdag_data_block_hashes(&self, hash: Hash) -> ConsensusResult<Vec<Hash>> {
         unimplemented!()
     }
 }
