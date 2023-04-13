@@ -15,9 +15,9 @@ use kaspa_math::Uint256;
 use kaspa_mining::model::{owner_txs::OwnerTransactions, TransactionIdSet};
 use kaspa_notify::converter::Converter;
 use kaspa_rpc_core::{
-    BlockAddedNotification, Notification, RpcAcceptedTransactionIds, RpcBlock, RpcBlockVerboseData, RpcError, RpcHash,
-    RpcMempoolEntry, RpcMempoolEntryByAddress, RpcResult, RpcTransaction, RpcTransactionInput, RpcTransactionOutput,
-    RpcTransactionOutputVerboseData, RpcTransactionVerboseData,
+    BlockAddedNotification, Notification, RpcAcceptedTransactionIds, RpcBlock, RpcBlockVerboseData, RpcHash, RpcMempoolEntry,
+    RpcMempoolEntryByAddress, RpcResult, RpcTransaction, RpcTransactionInput, RpcTransactionOutput, RpcTransactionOutputVerboseData,
+    RpcTransactionVerboseData,
 };
 use kaspa_txscript::{extract_script_pub_key_address, script_class::ScriptClass};
 use std::{collections::HashMap, fmt::Debug, ops::Deref, sync::Arc};
@@ -54,22 +54,20 @@ impl ConsensusConverter {
         include_transaction_verbose_data: bool,
     ) -> RpcResult<RpcBlock> {
         let hash = block.hash();
-        let block_info = consensus.get_block_info(hash)?;
-        if !block_info.block_status.is_valid() {
-            return Err(RpcError::InvalidBlock(hash));
-        }
+        let ghostdag_data = consensus.get_ghostdag_data(hash)?;
+        let block_status = consensus.get_block_status(hash).unwrap();
         let children = consensus.get_block_children(hash).unwrap_or_default();
         let is_chain_block = consensus.is_chain_block(hash)?;
         let verbose_data = Some(RpcBlockVerboseData {
             hash,
             difficulty: self.get_difficulty_ratio(block.header.bits),
-            selected_parent_hash: block_info.selected_parent,
+            selected_parent_hash: ghostdag_data.selected_parent,
             transaction_ids: block.transactions.iter().map(|x| x.id()).collect(),
-            is_header_only: block_info.block_status.is_header_only(),
-            blue_score: block_info.blue_score,
+            is_header_only: block_status.is_header_only(),
+            blue_score: ghostdag_data.blue_score,
             children_hashes: (*children).clone(),
-            merge_set_blues_hashes: block_info.mergeset_blues,
-            merge_set_reds_hashes: block_info.mergeset_reds,
+            merge_set_blues_hashes: ghostdag_data.mergeset_blues,
+            merge_set_reds_hashes: ghostdag_data.mergeset_reds,
             is_chain_block,
         });
 

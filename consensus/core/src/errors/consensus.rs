@@ -8,6 +8,9 @@ pub enum ConsensusError {
     #[error("couldn't find block {0}")]
     BlockNotFound(Hash),
 
+    #[error("block {0} is invalid")]
+    InvalidBlock(Hash),
+
     #[error("got unexpected pruning point")]
     UnexpectedPruningPoint,
 

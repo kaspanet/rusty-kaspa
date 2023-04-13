@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crate::{
     acceptance_data::AcceptanceData,
-    block::{Block, BlockInfo, BlockTemplate},
+    block::{Block, BlockTemplate},
     blockstatus::BlockStatus,
     coinbase::MinerData,
     errors::{
@@ -17,7 +17,7 @@ use crate::{
     header::Header,
     pruning::{PruningPointProof, PruningPointsList},
     sync_info::SyncInfo,
-    trusted::{TrustedBlock, TrustedGhostdagData, TrustedHeader},
+    trusted::{ExternalGhostdagData, TrustedBlock, TrustedGhostdagData, TrustedHeader},
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     BlockHashSet, ChainPath,
 };
@@ -165,7 +165,7 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn get_block_info(&self, hash: Hash) -> ConsensusResult<BlockInfo> {
+    fn get_ghostdag_data(&self, hash: Hash) -> ConsensusResult<ExternalGhostdagData> {
         unimplemented!()
     }
 

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::{blockstatus::BlockStatus, coinbase::MinerData, header::Header, tx::Transaction, BlueWorkType};
+use crate::{coinbase::MinerData, header::Header, tx::Transaction};
 use kaspa_hashes::Hash;
 
 /// A mutable block structure where header and transactions within can still be mutated.
@@ -76,58 +76,5 @@ pub struct BlockTemplate {
 impl BlockTemplate {
     pub fn new(block: MutableBlock, miner_data: MinerData, coinbase_has_red_reward: bool, selected_parent_timestamp: u64) -> Self {
         Self { block, miner_data, coinbase_has_red_reward, selected_parent_timestamp }
-    }
-}
-
-/// A structure containing various information about a specific block
-#[derive(Debug, Clone)]
-pub struct BlockInfo {
-    pub exists: bool,
-    pub block_status: BlockStatus,
-    pub blue_score: u64,
-    pub blue_work: BlueWorkType,
-    pub selected_parent: Hash,
-    pub mergeset_blues: Vec<Hash>,
-    pub mergeset_reds: Vec<Hash>,
-}
-
-impl BlockInfo {
-    pub fn new(
-        exists: bool,
-        block_status: BlockStatus,
-        blue_score: u64,
-        blue_work: BlueWorkType,
-        selected_parent: Hash,
-        mergeset_blues: Vec<Hash>,
-        mergeset_reds: Vec<Hash>,
-    ) -> Self {
-        Self { exists, block_status, blue_score, blue_work, selected_parent, mergeset_blues, mergeset_reds }
-    }
-
-    pub fn with_exists(exists: bool) -> Self {
-        Self { exists, ..Default::default() }
-    }
-
-    /// Returns whether the block exists and has a valid header
-    pub fn has_header(&self) -> bool {
-        self.exists && self.block_status.has_block_header()
-    }
-
-    pub fn has_body(&self) -> bool {
-        self.exists && self.block_status.has_block_body()
-    }
-}
-
-impl Default for BlockInfo {
-    fn default() -> Self {
-        Self {
-            exists: Default::default(),
-            block_status: BlockStatus::StatusInvalid,
-            blue_score: Default::default(),
-            blue_work: Default::default(),
-            selected_parent: Default::default(),
-            mergeset_blues: Default::default(),
-            mergeset_reds: Default::default(),
-        }
     }
 }

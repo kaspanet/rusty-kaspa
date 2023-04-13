@@ -53,7 +53,7 @@ use crate::{
 use kaspa_consensus_core::{
     acceptance_data::AcceptanceData,
     api::ConsensusApi,
-    block::{Block, BlockInfo, BlockTemplate},
+    block::{Block, BlockTemplate},
     blockhash::BlockHashExtensions,
     blockstatus::BlockStatus,
     coinbase::MinerData,
@@ -67,7 +67,7 @@ use kaspa_consensus_core::{
     muhash::MuHashExtensions,
     pruning::{PruningPointProof, PruningPointsList},
     sync_info::SyncInfo,
-    trusted::TrustedBlock,
+    trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     BlockHashSet, ChainPath,
 };
@@ -880,29 +880,13 @@ impl ConsensusApi for Consensus {
         })
     }
 
-    fn get_block_info(&self, hash: Hash) -> ConsensusResult<BlockInfo> {
-        let (exists, block_status) = match self.get_block_status(hash) {
-            Some(status) => (true, status),
-            None => (false, BlockStatus::StatusInvalid),
+    fn get_ghostdag_data(&self, hash: Hash) -> ConsensusResult<ExternalGhostdagData> {
+        match self.get_block_status(hash) {
+            None => return Err(ConsensusError::BlockNotFound(hash)),
+            Some(BlockStatus::StatusInvalid) => return Err(ConsensusError::InvalidBlock(hash)),
+            _ => {}
         };
-
-        // If the status is invalid, then we don't have the necessary reachability data to check if it's in PruningPoint.Future.
-        if block_status == BlockStatus::StatusInvalid {
-            return Ok(BlockInfo::with_exists(exists));
-        }
-
-        // FIXME: check this call
-        let ghostdag_data = self.ghostdag_store.get_data(hash).unwrap();
-
-        Ok(BlockInfo::new(
-            exists,
-            block_status,
-            ghostdag_data.blue_score,
-            ghostdag_data.blue_work,
-            ghostdag_data.selected_parent,
-            (*ghostdag_data.mergeset_blues).clone(),
-            (*ghostdag_data.mergeset_reds).clone(),
-        ))
+        Ok((&*self.ghostdag_store.get_data(hash).unwrap()).into())
     }
 
     fn get_block_children(&self, hash: Hash) -> Option<Arc<Vec<Hash>>> {

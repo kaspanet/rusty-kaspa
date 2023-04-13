@@ -7,7 +7,6 @@ use kaspa_consensus_core::{
     block::Block,
     coinbase::MinerData,
     config::Config,
-    errors::consensus::ConsensusError,
     tx::{Transaction, COINBASE_TRANSACTION_INDEX},
 };
 use kaspa_consensus_notify::{
@@ -231,9 +230,8 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         // If low_hash is empty - use genesis instead.
         let low_hash = match request.low_hash {
             Some(low_hash) => {
-                if !session.deref().get_block_info(low_hash)?.block_status.has_block_header() {
-                    return Err(ConsensusError::BlockNotFound(low_hash))?;
-                }
+                // Make sure low_hash points to an existing and valid block
+                session.deref().get_ghostdag_data(low_hash)?;
                 low_hash
             }
             None => self.config.genesis.hash,
@@ -366,8 +364,7 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         let consensus = self.consensus_manager.consensus();
         let session = consensus.session().await;
         let sink_hash = session.get_sink().ok_or(RpcError::NoSink)?;
-        let block_info = session.get_block_info(sink_hash)?;
-        Ok(GetSinkBlueScoreResponse::new(block_info.blue_score))
+        Ok(GetSinkBlueScoreResponse::new(session.get_ghostdag_data(sink_hash)?.blue_score))
     }
 
     async fn get_virtual_chain_from_block_call(
