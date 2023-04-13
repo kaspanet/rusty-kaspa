@@ -382,6 +382,8 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         if !self.config.utxoindex {
             return Err(RpcError::NoUtxoIndex);
         }
+        // TODO: discuss if the entry order is part of the method requirements
+        //       (the current impl does not retain an entry order matching the request addresses order)
         let entry_map = self
             .utxoindex
             .as_ref()
@@ -390,6 +392,21 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
             .get_utxos_by_script_public_keys(request.addresses.iter().map(pay_to_address_script).collect())
             .unwrap_or_default();
         Ok(GetUtxosByAddressesResponse::new(self.index_converter.get_utxos_by_addresses_entries(&entry_map)))
+    }
+
+    async fn get_balance_by_address_call(&self, request: GetBalanceByAddressRequest) -> RpcResult<GetBalanceByAddressResponse> {
+        if !self.config.utxoindex {
+            return Err(RpcError::NoUtxoIndex);
+        }
+        let entry_map = self
+            .utxoindex
+            .as_ref()
+            .unwrap()
+            .read()
+            .get_utxos_by_script_public_keys(once(&request.address).map(pay_to_address_script).collect())
+            .unwrap_or_default();
+        let balance = entry_map.values().flat_map(|x| x.values().map(|entry| entry.amount)).sum();
+        Ok(GetBalanceByAddressResponse::new(balance))
     }
 
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -423,11 +440,6 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
     }
 
     async fn get_headers_call(&self, _request: GetHeadersRequest) -> RpcResult<GetHeadersResponse> {
-        unimplemented!();
-    }
-
-    async fn get_balance_by_address_call(&self, _request: GetBalanceByAddressRequest) -> RpcResult<GetBalanceByAddressResponse> {
-        //TODO: use self.utxoindex for this
         unimplemented!();
     }
 
