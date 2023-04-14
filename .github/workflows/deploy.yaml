@@ -26,11 +26,12 @@ jobs:
 
       - name: Install protoc on Windows
         if: runner.os == 'Windows'
+        shell: pwsh
         run: |
-          powershell "wget https://github.com/protocolbuffers/protobuf/releases/download/v21.10/protoc-21.10-win64.zip -outfile \"$env:TEMP\protoc.zip\""
-          powershell "Expand-Archive \"$env:TEMP\protoc.zip\" -DestinationPath \"$env:TEMP\protoc\""
-          powershell "$Env:Path += [IO.Path]::PathSeparator + \"$Env:TEMP\protoc\bin\""
+          wget https://github.com/protocolbuffers/protobuf/releases/download/v21.10/protoc-21.10-win64.zip -outfile "$env:TEMP\protoc.zip"
+          Expand-Archive "$env:TEMP\protoc.zip" -DestinationPath "$env:TEMP\protoc"
           $Env:Path += [IO.Path]::PathSeparator + "$Env:TEMP\protoc\bin"
+          echo $Env:Path
 
       - name: Install protoc on MacOS
         if: runner.os == 'macOS'
@@ -39,6 +40,17 @@ jobs:
 
       - name: Install stable toolchain
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Build on Linux
         if: runner.os == 'Linux'
