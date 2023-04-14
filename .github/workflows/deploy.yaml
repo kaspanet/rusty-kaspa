@@ -19,8 +19,23 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v3
 
-      - name: Install protoc
+
+      - name: Install protoc on Linux
+        if: runner.os == 'Linux'
         run: sudo apt install -y protobuf-compiler
+
+      - name: Install protoc on Windows
+        if: runner.os == 'Windows'
+        run: |
+          powershell "wget https://github.com/protocolbuffers/protobuf/releases/download/v21.10/protoc-21.10-win64.zip -outfile \"$env:TEMP\protoc.zip\""
+          powershell "Expand-Archive \"$env:TEMP\protoc.zip\" -DestinationPath \"$env:TEMP\protoc\""
+          powershell "$Env:Path += [IO.Path]::PathSeparator + \"$Env:TEMP\protoc\bin\""
+          $Env:Path += [IO.Path]::PathSeparator + "$Env:TEMP\protoc\bin"
+
+      - name: Install protoc on MacOS
+        if: runner.os == 'macOS'
+        run: brew install protobuf
+
 
       - name: Install stable toolchain
         uses: dtolnay/rust-toolchain@stable
