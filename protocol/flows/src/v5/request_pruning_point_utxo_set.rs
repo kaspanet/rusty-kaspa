@@ -51,14 +51,12 @@ impl RequestPruningPointUtxoSetFlow {
         let mut from_outpoint = None;
         let mut chunks_sent = 0;
 
+        let consensus = self.ctx.consensus();
+        let mut session = consensus.session().await;
+
         loop {
             // We avoid keeping the consensus session across the limitless dequeue call below
-            let pp_utxos = match (self.ctx.consensus().session().await).get_pruning_point_utxos(
-                expected_pp,
-                from_outpoint,
-                CHUNK_SIZE,
-                chunks_sent != 0,
-            ) {
+            let pp_utxos = match session.get_pruning_point_utxos(expected_pp, from_outpoint, CHUNK_SIZE, chunks_sent != 0) {
                 Err(ConsensusError::UnexpectedPruningPoint) => return self.send_unexpected_pruning_point_message().await,
                 res => res,
             }?;
@@ -79,7 +77,9 @@ impl RequestPruningPointUtxoSetFlow {
 
             chunks_sent += 1;
             if chunks_sent % IBD_BATCH_SIZE == 0 {
+                drop(session); // Avoid holding the session through dequeue calls
                 dequeue!(self.incoming_route, Payload::RequestNextPruningPointUtxoSetChunk)?;
+                session = consensus.session().await;
             }
 
             // This indicates that there are no more entries to query

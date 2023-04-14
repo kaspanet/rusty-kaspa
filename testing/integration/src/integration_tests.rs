@@ -729,7 +729,6 @@ impl KaspadGoParams {
         let finality_depth = self.FinalityDuration / self.TargetTimePerBlock;
         Params {
             dns_seeders: &[],
-            default_port: 0,
             net: Mainnet,
             net_suffix: None,
             genesis: GENESIS,

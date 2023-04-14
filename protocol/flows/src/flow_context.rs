@@ -11,7 +11,7 @@ use kaspa_consensus_core::config::Config;
 use kaspa_consensus_core::tx::{Transaction, TransactionId};
 use kaspa_consensus_core::{api::ConsensusApi, errors::block::RuleError};
 use kaspa_consensus_notify::{
-    notification::{NewBlockTemplateNotification, Notification},
+    notification::{NewBlockTemplateNotification, Notification, PruningPointUtxoSetOverrideNotification},
     root::ConsensusNotificationRoot,
 };
 use kaspa_consensusmanager::{ConsensusInstance, ConsensusManager};
@@ -225,9 +225,9 @@ impl FlowContext {
     }
 
     /// Notifies that the UTXO set resets due to pruning point change via IBD.
-    pub async fn on_pruning_point_utxoset_override(&self) -> Result<(), ProtocolError> {
-        // TODO: call a handler function or a predefined registered service
-        Ok(())
+    pub fn on_consensus_reset(&self) {
+        // TODO: handle notify return error
+        let _ = self.notification_root.notify(Notification::PruningPointUtxoSetOverride(PruningPointUtxoSetOverrideNotification {}));
     }
 
     /// Notifies that a transaction has been added to the mempool.
