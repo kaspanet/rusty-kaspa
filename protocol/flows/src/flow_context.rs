@@ -33,6 +33,7 @@ use parking_lot::Mutex;
 use std::{
     collections::HashSet,
     iter::once,
+    ops::Deref,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -44,8 +45,7 @@ use uuid::Uuid;
 /// The P2P protocol version. Currently the only one supported.
 const PROTOCOL_VERSION: u32 = 5;
 
-#[derive(Clone)]
-pub struct FlowContext {
+pub struct FlowContextInner {
     pub node_id: Uuid,
     pub consensus_manager: Arc<ConsensusManager>,
     pub config: Arc<Config>,
@@ -54,10 +54,15 @@ pub struct FlowContext {
     shared_block_requests: Arc<Mutex<HashSet<Hash>>>,
     transactions_spread: Arc<AsyncRwLock<TransactionsSpread>>,
     shared_transaction_requests: Arc<Mutex<HashSet<TransactionId>>>,
-    is_ibd_running: Arc<AtomicBool>, // TODO: pass the context wrapped with Arc and avoid some of the internal ones
+    is_ibd_running: Arc<AtomicBool>,
     pub address_manager: Arc<Mutex<AddressManager>>,
     mining_manager: Arc<MiningManager>,
     notification_root: Arc<ConsensusNotificationRoot>,
+}
+
+#[derive(Clone)]
+pub struct FlowContext {
+    inner: Arc<FlowContextInner>,
 }
 
 pub struct IbdRunningGuard {
@@ -88,6 +93,14 @@ impl<T: PartialEq + Eq + std::hash::Hash> Drop for RequestScope<T> {
     }
 }
 
+impl Deref for FlowContext {
+    type Target = FlowContextInner;
+
+    fn deref(&self) -> &Self::Target {
+        self.inner.as_ref()
+    }
+}
+
 impl FlowContext {
     pub fn new(
         consensus_manager: Arc<ConsensusManager>,
@@ -98,18 +111,20 @@ impl FlowContext {
     ) -> Self {
         let hub = Hub::new();
         Self {
-            node_id: Uuid::new_v4(),
-            consensus_manager,
-            config,
-            orphans_pool: Arc::new(AsyncRwLock::new(OrphanBlocksPool::new(MAX_ORPHANS))),
-            shared_block_requests: Arc::new(Mutex::new(HashSet::new())),
-            transactions_spread: Arc::new(AsyncRwLock::new(TransactionsSpread::new(hub.clone()))),
-            shared_transaction_requests: Arc::new(Mutex::new(HashSet::new())),
-            is_ibd_running: Arc::new(AtomicBool::default()),
-            hub,
-            address_manager,
-            mining_manager,
-            notification_root,
+            inner: Arc::new(FlowContextInner {
+                node_id: Uuid::new_v4(),
+                consensus_manager,
+                config,
+                orphans_pool: Arc::new(AsyncRwLock::new(OrphanBlocksPool::new(MAX_ORPHANS))),
+                shared_block_requests: Arc::new(Mutex::new(HashSet::new())),
+                transactions_spread: Arc::new(AsyncRwLock::new(TransactionsSpread::new(hub.clone()))),
+                shared_transaction_requests: Arc::new(Mutex::new(HashSet::new())),
+                is_ibd_running: Arc::new(AtomicBool::default()),
+                hub,
+                address_manager,
+                mining_manager,
+                notification_root,
+            }),
         }
     }
 

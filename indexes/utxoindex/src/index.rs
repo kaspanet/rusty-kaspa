@@ -121,7 +121,7 @@ impl UtxoIndexApi for UtxoIndex {
     /// 1) There is an implicit expectation that the consensus store must have [VirtualParent] tips. i.e. consensus database must be initiated.
     /// 2) resyncing while consensus notifies of utxo differences, may result in a corrupted db.
     fn resync(&mut self) -> UtxoIndexResult<()> {
-        info!("[{0}] resyncing...", IDENT);
+        info!("Resyncing the utxoindex...");
 
         self.store.delete_all()?;
         let consensus = self.consensus_manager.consensus();
