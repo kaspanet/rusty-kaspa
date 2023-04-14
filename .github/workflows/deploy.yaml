@@ -43,12 +43,12 @@ jobs:
         run: |
           cargo build --bin kaspad --release
           cargo build --bin simpa --release
-          mkdir target/bin || true
-          cp target/release/kaspad target/bin/
-          cp target/release/simpa target/bin/
-          archive="target/bin/rusty-kaspa-${{ github.event.release.tag_name }}-linux.zip"
+          mkdir bin || true
+          cp target/release/kaspad bin/
+          cp target/release/simpa bin/
+          archive="bin/rusty-kaspa-${{ github.event.release.tag_name }}-linux.zip"
           asset_name="rusty-kaspa-${{ github.event.release.tag_name }}-linux.zip"
-          zip -r "${archive}" ./target/bin/*
+          zip -r "${archive}" ./bin/*
           echo "archive=${archive}" >> $GITHUB_ENV
           echo "asset_name=${asset_name}" >> $GITHUB_ENV
 
@@ -58,12 +58,12 @@ jobs:
         run: |
           cargo build --bin kaspad --release
           cargo build --bin simpa --release
-          mkdir target/bin || true
-          cp target/release/kaspad.exe target/bin/
-          cp target/release/simpa.exe target/bin/
-          archive="target/bin/rusty-kaspa-${{ github.event.release.tag_name }}-win64.zip"
+          mkdir bin || true
+          cp target/release/kaspad.exe bin/
+          cp target/release/simpa.exe bin/
+          archive="bin/rusty-kaspa-${{ github.event.release.tag_name }}-win64.zip"
           asset_name="rusty-kaspa-${{ github.event.release.tag_name }}-win64.zip"
-          powershell "Compress-Archive target/bin/* \"${archive}\""
+          powershell "Compress-Archive bin/* \"${archive}\""
           echo "archive=${archive}" >> $GITHUB_ENV
           echo "asset_name=${asset_name}" >> $GITHUB_ENV
 
@@ -72,12 +72,12 @@ jobs:
         run: |
           cargo build --bin kaspad --release
           cargo build --bin simpa --release
-          mkdir target/bin || true
-          cp target/release/kaspad target/bin/
-          cp target/release/simpa target/bin/
-          archive="target/bin/rusty-kaspa-${{ github.event.release.tag_name }}-osx.zip"
+          mkdir bin || true
+          cp target/release/kaspad bin/
+          cp target/release/simpa bin/
+          archive="bin/rusty-kaspa-${{ github.event.release.tag_name }}-osx.zip"
           asset_name="rusty-kaspa-${{ github.event.release.tag_name }}-osx.zip"
-          zip -r "${archive}" ./target/bin/*
+          zip -r "${archive}" ./bin/*
           echo "archive=${archive}" >> $GITHUB_ENV
           echo "asset_name=${asset_name}" >> $GITHUB_ENV
 
