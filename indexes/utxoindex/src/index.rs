@@ -7,13 +7,16 @@ use crate::{
     IDENT,
 };
 use kaspa_consensus_core::{tx::ScriptPublicKeys, utxo::utxo_diff::UtxoDiff, BlockHashSet};
-use kaspa_consensusmanager::ConsensusManager;
-use kaspa_core::trace;
+use kaspa_consensusmanager::{ConsensusManager, ConsensusResetHandler};
+use kaspa_core::{info, trace};
 use kaspa_database::prelude::{StoreError, StoreResult, DB};
 use kaspa_hashes::Hash;
 use kaspa_utils::arc::ArcExtensions;
 use parking_lot::RwLock;
-use std::{fmt::Debug, sync::Arc};
+use std::{
+    fmt::Debug,
+    sync::{Arc, Weak},
+};
 
 const RESYNC_CHUNK_SIZE: usize = 2048; //Increased from 1k (used in go-kaspad), for quicker resets, while still having a low memory footprint.
 
@@ -28,11 +31,13 @@ pub struct UtxoIndex {
 impl UtxoIndex {
     /// Creates a new [`UtxoIndex`] within a [`RwLock`]
     pub fn new(consensus_manager: Arc<ConsensusManager>, db: Arc<DB>) -> UtxoIndexResult<Arc<RwLock<Self>>> {
-        let mut utxoindex = Self { consensus_manager, store: Store::new(db) };
+        let mut utxoindex = Self { consensus_manager: consensus_manager.clone(), store: Store::new(db) };
         if !utxoindex.is_synced()? {
             utxoindex.resync()?;
         }
-        Ok(Arc::new(RwLock::new(utxoindex)))
+        let utxoindex = Arc::new(RwLock::new(utxoindex));
+        consensus_manager.register_consensus_reset_handler(Arc::new(UtxoIndexConsensusResetHandler::new(Arc::downgrade(&utxoindex))));
+        Ok(utxoindex)
     }
 }
 
@@ -121,7 +126,7 @@ impl UtxoIndexApi for UtxoIndex {
     /// 1) There is an implicit expectation that the consensus store must have [VirtualParent] tips. i.e. consensus database must be initiated.
     /// 2) resyncing while consensus notifies of utxo differences, may result in a corrupted db.
     fn resync(&mut self) -> UtxoIndexResult<()> {
-        trace!("[{0}] resyncing...", IDENT);
+        info!("Resyncing the utxoindex...");
 
         self.store.delete_all()?;
         let consensus = self.consensus_manager.consensus();
@@ -177,6 +182,24 @@ impl UtxoIndexApi for UtxoIndex {
 impl Debug for UtxoIndex {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("UtxoIndex").finish()
+    }
+}
+
+struct UtxoIndexConsensusResetHandler {
+    utxoindex: Weak<RwLock<UtxoIndex>>,
+}
+
+impl UtxoIndexConsensusResetHandler {
+    fn new(utxoindex: Weak<RwLock<UtxoIndex>>) -> Self {
+        Self { utxoindex }
+    }
+}
+
+impl ConsensusResetHandler for UtxoIndexConsensusResetHandler {
+    fn handle_consensus_reset(&self) {
+        if let Some(utxoindex) = self.utxoindex.upgrade() {
+            utxoindex.write().resync().unwrap();
+        }
     }
 }
 

@@ -817,6 +817,11 @@ impl ConsensusApi for Consensus {
         self.headers_selected_tip_store.read().get().unwrap().hash
     }
 
+    fn get_anticone_from_pov(&self, hash: Hash, context: Hash, max_traversal_allowed: Option<u64>) -> ConsensusResult<Vec<Hash>> {
+        self.validate_block_exists(hash)?;
+        Ok(self.dag_traversal_manager.anticone(hash, std::iter::once(context), max_traversal_allowed)?)
+    }
+
     fn get_anticone(&self, hash: Hash) -> ConsensusResult<Vec<Hash>> {
         self.validate_block_exists(hash)?;
         Ok(self.dag_traversal_manager.anticone(hash, self.virtual_stores.read().state.get().unwrap().parents.iter().copied(), None)?)
@@ -901,7 +906,7 @@ impl ConsensusApi for Consensus {
 
     fn get_block_acceptance_data(&self, hash: Hash) -> ConsensusResult<Arc<AcceptanceData>> {
         self.validate_block_exists(hash)?;
-        Ok(self.acceptance_data_store.get(hash).unwrap())
+        self.acceptance_data_store.get(hash).unwrap_option().ok_or(ConsensusError::MissingData(hash))
     }
 
     fn get_blocks_acceptance_data(&self, hashes: &[Hash]) -> ConsensusResult<Vec<Arc<AcceptanceData>>> {
@@ -910,7 +915,7 @@ impl ConsensusApi for Consensus {
             .copied()
             .map(|hash| {
                 self.validate_block_exists(hash)?;
-                self.acceptance_data_store.get(hash).map_err(|_| ConsensusError::MissingData(hash))
+                self.acceptance_data_store.get(hash).unwrap_option().ok_or(ConsensusError::MissingData(hash))
             })
             .collect::<ConsensusResult<Vec<_>>>()
     }

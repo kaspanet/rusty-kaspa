@@ -112,9 +112,9 @@ impl IbdFlow {
                 drop(session); // Avoid holding the previous consensus throughout the staging IBD
                 let staging = self.ctx.consensus_manager.new_staging_consensus();
                 match self.ibd_with_headers_proof(&staging, negotiation_output.syncer_header_selected_tip, &relay_block).await {
-                    // TODO: log commit/cancel
                     Ok(()) => {
                         staging.commit();
+                        self.ctx.on_pruning_point_utxoset_override();
                     }
                     Err(e) => {
                         staging.cancel();
