@@ -28,7 +28,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          wget https://github.com/protocolbuffers/protobuf/releases/download/v21.10/protoc-21.10-win64.zip -outfile "$env:TEMP\protoc.zip"
+          Invoke-Webrequest https://github.com/protocolbuffers/protobuf/releases/download/v21.10/protoc-21.10-win64.zip -outfile "$env:TEMP\protoc.zip"
           Expand-Archive "$env:TEMP\protoc.zip" -DestinationPath "$env:TEMP\protoc"
           $Env:Path += [IO.Path]::PathSeparator + "$Env:TEMP\protoc\bin"
           echo $Env:Path
