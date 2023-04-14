@@ -1,0 +1,79 @@
+name: Build and upload assets
+on:
+  release:
+    types: [ published ]
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, windows-latest, macos-latest ]
+    name: Building, ${{ matrix.os }}
+    steps:
+      - name: Fix CRLF on Windows
+        if: runner.os == 'Windows'
+        run: git config --global core.autocrlf false
+
+      - name: Checkout sources
+        uses: actions/checkout@v3
+
+      - name: Install protoc
+        run: sudo apt install -y protobuf-compiler
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build on Linux
+        if: runner.os == 'Linux'
+        run: |
+          cargo build --bin kaspad --release
+          cargo build --bin simpa --release
+          mkdir target/bin || true
+          cp target/release/kaspad target/bin/
+          cp target/release/simpa target/bin/
+          archive="target/bin/rusty-kaspa-${{ github.event.release.tag_name }}-linux.zip"
+          asset_name="rusty-kaspa-${{ github.event.release.tag_name }}-linux.zip"
+          zip -r "${archive}" ./target/bin/*
+          echo "archive=${archive}" >> $GITHUB_ENV
+          echo "asset_name=${asset_name}" >> $GITHUB_ENV
+
+      - name: Build on Windows
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          cargo build --bin kaspad --release
+          cargo build --bin simpa --release
+          mkdir target/bin || true
+          cp target/release/kaspad.exe target/bin/
+          cp target/release/simpa.exe target/bin/
+          archive="target/bin/rusty-kaspa-${{ github.event.release.tag_name }}-win64.zip"
+          asset_name="rusty-kaspa-${{ github.event.release.tag_name }}-win64.zip"
+          powershell "Compress-Archive target/bin/* \"${archive}\""
+          echo "archive=${archive}" >> $GITHUB_ENV
+          echo "asset_name=${asset_name}" >> $GITHUB_ENV
+
+      - name: Build on MacOS
+        if: runner.os == 'macOS'
+        run: |
+          cargo build --bin kaspad --release
+          cargo build --bin simpa --release
+          mkdir target/bin || true
+          cp target/release/kaspad target/bin/
+          cp target/release/simpa target/bin/
+          archive="target/bin/rusty-kaspa-${{ github.event.release.tag_name }}-osx.zip"
+          asset_name="rusty-kaspa-${{ github.event.release.tag_name }}-osx.zip"
+          zip -r "${archive}" ./target/bin/*
+          echo "archive=${archive}" >> $GITHUB_ENV
+          echo "asset_name=${asset_name}" >> $GITHUB_ENV
+
+      - name: Upload release asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: "./${{ env.archive }}"
+          asset_name: "${{ env.asset_name }}"
+          asset_content_type: application/zip
