@@ -8,7 +8,7 @@ use crate::{
 };
 use kaspa_consensus_core::{tx::ScriptPublicKeys, utxo::utxo_diff::UtxoDiff, BlockHashSet};
 use kaspa_consensusmanager::ConsensusManager;
-use kaspa_core::trace;
+use kaspa_core::{info, trace};
 use kaspa_database::prelude::{StoreError, StoreResult, DB};
 use kaspa_hashes::Hash;
 use kaspa_utils::arc::ArcExtensions;
@@ -121,7 +121,7 @@ impl UtxoIndexApi for UtxoIndex {
     /// 1) There is an implicit expectation that the consensus store must have [VirtualParent] tips. i.e. consensus database must be initiated.
     /// 2) resyncing while consensus notifies of utxo differences, may result in a corrupted db.
     fn resync(&mut self) -> UtxoIndexResult<()> {
-        trace!("[{0}] resyncing...", IDENT);
+        info!("[{0}] resyncing...", IDENT);
 
         self.store.delete_all()?;
         let consensus = self.consensus_manager.consensus();

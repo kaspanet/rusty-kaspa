@@ -194,7 +194,7 @@ pub fn main() {
     // DB used for addresses store and for multi-consensus management
     let meta_db = kaspa_database::prelude::open_db(meta_db_dir, true, 1);
 
-    let grpc_server_addr = args.rpclisten.unwrap_or_else(|| format!("127.0.0.1:{}", network_type.port())).parse().unwrap();
+    let grpc_server_addr = args.rpclisten.unwrap_or_else(|| format!("0.0.0.0:{}", config.default_rpc_port())).parse().unwrap();
 
     let core = Arc::new(Core::new());
 
@@ -245,11 +245,10 @@ pub fn main() {
         args.listen,
         args.outbound_target,
         args.inbound_limit,
-        config.params.dns_seeders,
-        config.params.default_port,
+        config.dns_seeders,
+        config.default_p2p_port(),
     ));
 
-    // TODO: pass the FlowContext to RpcCoreService
     let rpc_core_server = Arc::new(RpcCoreServer::new(
         consensus_manager.clone(),
         notify_service.notifier(),

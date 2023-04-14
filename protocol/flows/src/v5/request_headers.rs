@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use kaspa_p2p_lib::{
     common::ProtocolError,
-    dequeue, dequeue_with_timeout, make_message,
+    dequeue, make_message,
     pb::{self, kaspad_message::Payload, BlockHeadersMessage, DoneHeadersMessage},
     IncomingRoute, Router,
 };
@@ -42,7 +42,7 @@ impl RequestHeadersFlow {
             let (high, mut low) = msg.try_into()?;
 
             let consensus = self.ctx.consensus();
-            let session = consensus.session().await;
+            let mut session = consensus.session().await;
 
             match session.is_chain_ancestor_of(low, high) {
                 Ok(is_ancestor) => {
@@ -75,7 +75,9 @@ impl RequestHeadersFlow {
 
                 self.router.enqueue(make_message!(Payload::BlockHeaders, BlockHeadersMessage { block_headers })).await?;
 
-                dequeue_with_timeout!(self.incoming_route, Payload::RequestNextHeaders)?;
+                drop(session); // Avoid holding the session through dequeue calls
+                dequeue!(self.incoming_route, Payload::RequestNextHeaders)?;
+                session = consensus.session().await;
             }
 
             self.router.enqueue(make_message!(Payload::DoneHeaders, DoneHeadersMessage {})).await?;

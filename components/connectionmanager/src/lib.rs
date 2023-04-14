@@ -35,7 +35,7 @@ pub struct ConnectionManager {
     shutdown_signal: UnboundedSender<()>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct ConnectionRequest {
     next_attempt: SystemTime,
     is_permanent: bool,

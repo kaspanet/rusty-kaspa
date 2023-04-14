@@ -60,6 +60,8 @@ impl Processor {
 
             loop {
                 select! {
+                    // TODO: make sure we process all pending consensus events before exiting.
+                    // Ideally this should be done through a carefully ordered shutdown process
                     _ = self.collect_shutdown.request.listener.clone().fuse() => break,
 
                     notification = self.recv_channel.recv().fuse() => {

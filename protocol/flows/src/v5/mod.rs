@@ -3,29 +3,33 @@ use self::{
     blockrelay::{flow::HandleRelayInvsFlow, handle_requests::HandleRelayBlockRequests},
     ibd::IbdFlow,
     ping::{ReceivePingsFlow, SendPingsFlow},
-    pruning_point_and_its_anticone_requests::PruningPointAndItsAnticoneRequestsFlow,
+    request_anticone::HandleAnticoneRequests,
     request_block_locator::RequestBlockLocatorFlow,
     request_headers::RequestHeadersFlow,
+    request_ibd_blocks::HandleIbdBlockRequests,
     request_ibd_chain_block_locator::RequestIbdChainBlockLocatorFlow,
     request_pp_proof::RequestPruningPointProofFlow,
+    request_pruning_point_and_anticone::PruningPointAndItsAnticoneRequestsFlow,
     request_pruning_point_utxo_set::RequestPruningPointUtxoSetFlow,
     txrelay::flow::{RelayTransactionsFlow, RequestTransactionsFlow},
 };
 use crate::{flow_context::FlowContext, flow_trait::Flow};
 
 use kaspa_p2p_lib::{pb::kaspad_message::Payload as KaspadMessagePayload, KaspadMessagePayloadType, Router};
-use log::debug;
+use log::{debug, warn};
 use std::sync::Arc;
 
 mod address;
 mod blockrelay;
 mod ibd;
 mod ping;
-mod pruning_point_and_its_anticone_requests;
+mod request_anticone;
 mod request_block_locator;
 mod request_headers;
+mod request_ibd_blocks;
 mod request_ibd_chain_block_locator;
 mod request_pp_proof;
+mod request_pruning_point_and_anticone;
 mod request_pruning_point_utxo_set;
 mod txrelay;
 
@@ -94,7 +98,20 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
         Box::new(RequestPruningPointUtxoSetFlow::new(
             ctx.clone(),
             router.clone(),
-            router.subscribe(vec![KaspadMessagePayloadType::RequestPruningPointUtxoSet]),
+            router.subscribe(vec![
+                KaspadMessagePayloadType::RequestPruningPointUtxoSet,
+                KaspadMessagePayloadType::RequestNextPruningPointUtxoSetChunk,
+            ]),
+        )),
+        Box::new(HandleIbdBlockRequests::new(
+            ctx.clone(),
+            router.clone(),
+            router.subscribe(vec![KaspadMessagePayloadType::RequestIbdBlocks]),
+        )),
+        Box::new(HandleAnticoneRequests::new(
+            ctx.clone(),
+            router.clone(),
+            router.subscribe(vec![KaspadMessagePayloadType::RequestAnticone]),
         )),
         Box::new(RelayTransactionsFlow::new(
             ctx.clone(),
@@ -142,14 +159,17 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
         // KaspadMessagePayloadType::TransactionNotFound,
         KaspadMessagePayloadType::Reject,
         // KaspadMessagePayloadType::PruningPointUtxoSetChunk,
-        KaspadMessagePayloadType::RequestIbdBlocks,
+        // KaspadMessagePayloadType::RequestIbdBlocks,
         // KaspadMessagePayloadType::UnexpectedPruningPoint,
-        KaspadMessagePayloadType::IbdBlockLocator,
         // KaspadMessagePayloadType::IbdBlockLocatorHighestHash,
         // KaspadMessagePayloadType::RequestNextPruningPointUtxoSetChunk,
         // KaspadMessagePayloadType::DonePruningPointUtxoSetChunks,
         // KaspadMessagePayloadType::IbdBlockLocatorHighestHashNotFound,
-        KaspadMessagePayloadType::BlockWithTrustedData,
+
+        // We do not register the below two messages since they are deprecated also in go-kaspa
+        // KaspadMessagePayloadType::BlockWithTrustedData,
+        // KaspadMessagePayloadType::IbdBlockLocator,
+
         // KaspadMessagePayloadType::DoneBlocksWithTrustedData,
         // KaspadMessagePayloadType::RequestPruningPointAndItsAnticone,
         // KaspadMessagePayloadType::BlockHeaders,
@@ -165,16 +185,16 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
         // KaspadMessagePayloadType::TrustedData,
         // KaspadMessagePayloadType::RequestIbdChainBlockLocator,
         // KaspadMessagePayloadType::IbdChainBlockLocator,
-        KaspadMessagePayloadType::RequestAnticone,
+        // KaspadMessagePayloadType::RequestAnticone,
         // KaspadMessagePayloadType::RequestNextPruningPointAndItsAnticoneBlocks,
     ]);
 
     tokio::spawn(async move {
         while let Some(msg) = unimplemented_messages_route.recv().await {
-            // TEMP: responding to this request is required in order to keep the
-            // connection live until we implement the mempool related flow
             match msg.payload {
-                Some(KaspadMessagePayload::InvTransactions(_)) => (),
+                Some(KaspadMessagePayload::Reject(reject_msg)) => {
+                    warn!("Got a reject message {} from peer {}", reject_msg.reason, router);
+                }
                 _ => debug!("P2P unimplemented routes message: {:?}", msg),
             }
         }

@@ -47,7 +47,7 @@ impl PruningPointAndItsAnticoneRequestsFlow {
             debug!("Got request for pruning point and its anticone");
 
             let consensus = self.ctx.consensus();
-            let session = consensus.session().await;
+            let mut session = consensus.session().await;
 
             let pp_headers = session.pruning_point_headers();
             self.router
@@ -102,7 +102,9 @@ impl PruningPointAndItsAnticoneRequestsFlow {
                 if hashes.len() == IBD_BATCH_SIZE {
                     // No timeout here, as we don't care if the syncee takes its time computing,
                     // since it only blocks this dedicated flow
+                    drop(session); // Avoid holding the session through dequeue calls
                     dequeue!(self.incoming_route, Payload::RequestNextPruningPointAndItsAnticoneBlocks)?;
+                    session = consensus.session().await;
                 }
             }
 
