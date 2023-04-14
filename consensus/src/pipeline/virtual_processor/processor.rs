@@ -288,7 +288,16 @@ impl VirtualStateProcessor {
         let virtual_read = self.virtual_stores.upgradable_read();
         let prev_state = virtual_read.state.get().unwrap();
         let tips = self.body_tips_store.read().get().unwrap().iter().copied().collect_vec();
-        let new_selected = self.ghostdag_manager.find_selected_parent(&mut tips.iter().copied());
+        let new_selected_parent_candidates =
+            tips.iter().copied().filter(|hash| self.reachability_service.is_chain_ancestor_of(pruning_point, *hash)).collect_vec(); // We filter out blocks that don't have the pruning point
+                                                                                                                                    // in its chain because we don't have the necessary data to UTXO validate
+                                                                                                                                    // it, and we know it won't be part of the virtual chain when the node is synced.
+        if new_selected_parent_candidates.is_empty() {
+            info!("Skipping virtual resolution because there are not candidates for a new virtual selected parent");
+            return;
+        }
+
+        let new_selected = self.ghostdag_manager.find_selected_parent(new_selected_parent_candidates.into());
         let prev_selected = prev_state.ghostdag_data.selected_parent;
 
         let mut split_point: Option<Hash> = None;
@@ -479,6 +488,9 @@ impl VirtualStateProcessor {
         // TODO: tests
         let max_block_parents = self.max_block_parents as usize;
 
+        let sp_reverse_sortable_block =
+            Reverse(SortableBlock { hash: selected_parent, blue_work: self.ghostdag_store.get_blue_work(selected_parent).unwrap() });
+
         // Limit to max_block_parents*3 candidates, that way we don't go over thousands of tips when the network isn't healthy.
         // There's no specific reason for a factor of 3, and its not a consensus rule, just an estimation saying we probably
         // don't want to consider and calculate 3 times the amount of candidates for the set of parents.
@@ -487,6 +499,7 @@ impl VirtualStateProcessor {
             .into_iter()
             .filter(|&h| h != selected_parent) // Filter the selected parent since we already know it must be included
             .map(|block| Reverse(SortableBlock { hash: block, blue_work: self.ghostdag_store.get_blue_work(block).unwrap() }))
+            .filter(|block| *block > sp_reverse_sortable_block) // If for some reason the selected parent was chosen in a way that doesn't maximize blue work (finality violation etc), we filter out blocks that would overrule that decision.
             .k_smallest(max_candidates) // Takes the k largest blocks by blue work in descending order
             .map(|s| s.0.hash)
             .collect::<VecDeque<_>>();
