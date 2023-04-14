@@ -36,7 +36,7 @@ impl UtxoIndex {
             utxoindex.resync()?;
         }
         let utxoindex = Arc::new(RwLock::new(utxoindex));
-        consensus_manager.register_consensus_reset_handler(Box::new(UtxoIndexConsensusResetHandler::new(Arc::downgrade(&utxoindex))));
+        consensus_manager.register_consensus_reset_handler(Arc::new(UtxoIndexConsensusResetHandler::new(Arc::downgrade(&utxoindex))));
         Ok(utxoindex)
     }
 }

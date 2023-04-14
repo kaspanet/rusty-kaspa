@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use kaspa_consensus_core::api::{ConsensusApi, DynConsensus};
 use kaspa_core::{core::Core, service::Service};
 use parking_lot::RwLock;
@@ -70,7 +71,7 @@ struct ManagerInner {
     handles: VecDeque<JoinHandle<()>>,
 
     /// Handlers called when the consensus is reset to a staging consensus
-    consensus_reset_handlers: Vec<Box<dyn ConsensusResetHandler>>,
+    consensus_reset_handlers: Vec<Arc<dyn ConsensusResetHandler>>,
 }
 
 impl ManagerInner {
@@ -113,7 +114,7 @@ impl ConsensusManager {
         StagingConsensus::new(self.clone(), ConsensusInner::new(consensus, ctl))
     }
 
-    pub fn register_consensus_reset_handler(&self, handler: Box<dyn ConsensusResetHandler>) {
+    pub fn register_consensus_reset_handler(&self, handler: Arc<dyn ConsensusResetHandler>) {
         self.inner.write().consensus_reset_handlers.push(handler);
     }
 
@@ -163,7 +164,8 @@ impl StagingConsensus {
         prev.ctl.stop();
         g.current.ctl.make_active();
         drop(g);
-        for handler in self.manager.inner.read().consensus_reset_handlers.iter() {
+        let handlers = self.manager.inner.read().consensus_reset_handlers.iter().cloned().collect_vec();
+        for handler in handlers {
             handler.handle_consensus_reset();
         }
     }
