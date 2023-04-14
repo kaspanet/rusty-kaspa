@@ -29,7 +29,7 @@ use args::{Args, Defaults};
 use crate::monitor::ConsensusMonitor;
 use kaspa_consensus::config::ConfigBuilder;
 use kaspa_consensus::params::{DEVNET_PARAMS, MAINNET_PARAMS, SIMNET_PARAMS, TESTNET_PARAMS};
-use kaspa_utxoindex::{api::DynUtxoIndexApi, UtxoIndex};
+use kaspa_utxoindex::UtxoIndex;
 
 use async_channel::unbounded;
 use kaspa_core::{info, trace};
@@ -218,18 +218,17 @@ pub fn main() {
     let monitor = Arc::new(ConsensusMonitor::new(counters));
 
     let notify_service = Arc::new(NotifyService::new(notification_root.clone(), notification_recv));
-
     let index_service: Option<Arc<IndexService>> = if args.utxoindex {
         // Use only a single thread for none-consensus databases
         let utxoindex_db = kaspa_database::prelude::open_db(utxoindex_db_dir, true, 1);
-        let utxoindex: DynUtxoIndexApi = Some(UtxoIndex::new(consensus_manager.clone(), utxoindex_db).unwrap());
-        Some(Arc::new(IndexService::new(&notify_service.notifier(), utxoindex)))
+        let utxoindex = UtxoIndex::new(consensus_manager.clone(), utxoindex_db).unwrap();
+        let index_service = Arc::new(IndexService::new(&notify_service.notifier(), Some(utxoindex)));
+        Some(index_service)
     } else {
         None
     };
 
     let address_manager = AddressManager::new(meta_db);
-
     let mining_manager = Arc::new(MiningManager::new(config.target_time_per_block, false, config.max_block_mass, None));
 
     let flow_context = Arc::new(FlowContext::new(

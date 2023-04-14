@@ -114,7 +114,6 @@ impl IbdFlow {
                 match self.ibd_with_headers_proof(&staging, negotiation_output.syncer_header_selected_tip, &relay_block).await {
                     Ok(()) => {
                         staging.commit();
-                        self.ctx.on_consensus_reset();
                     }
                     Err(e) => {
                         staging.cancel();
