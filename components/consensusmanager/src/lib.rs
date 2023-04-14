@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use kaspa_consensus_core::api::{ConsensusApi, DynConsensus};
 use kaspa_core::{core::Core, service::Service};
 use parking_lot::RwLock;
@@ -43,6 +44,13 @@ impl ConsensusFactory for MockFactory {
     }
 }
 
+/// Defines a trait which handles consensus resets for external parts of the system. We avoid using
+/// the generic notification system since the reset needs to be handled synchronously in order to
+/// retain state consistency
+pub trait ConsensusResetHandler: Send + Sync {
+    fn handle_consensus_reset(&self);
+}
+
 /// Wraps all needed structures required for interacting and controlling a consensus instance
 struct ConsensusInner {
     consensus: ConsensusInstance,
@@ -61,11 +69,18 @@ struct ManagerInner {
 
     /// Service join handles
     handles: VecDeque<JoinHandle<()>>,
+
+    /// Handlers called when the consensus is reset to a staging consensus
+    consensus_reset_handlers: Vec<Arc<dyn ConsensusResetHandler>>,
 }
 
 impl ManagerInner {
     fn new(consensus: ConsensusInstance, ctl: DynConsensusCtl) -> Self {
-        Self { current: ConsensusInner::new(consensus, ctl), handles: Default::default() }
+        Self {
+            current: ConsensusInner::new(consensus, ctl),
+            handles: Default::default(),
+            consensus_reset_handlers: Default::default(),
+        }
     }
 }
 
@@ -97,6 +112,10 @@ impl ConsensusManager {
     pub fn new_staging_consensus(self: &Arc<Self>) -> StagingConsensus {
         let (consensus, ctl) = self.factory.new_staging_consensus();
         StagingConsensus::new(self.clone(), ConsensusInner::new(consensus, ctl))
+    }
+
+    pub fn register_consensus_reset_handler(&self, handler: Arc<dyn ConsensusResetHandler>) {
+        self.inner.write().consensus_reset_handlers.push(handler);
     }
 
     fn worker(&self) {
@@ -144,6 +163,11 @@ impl StagingConsensus {
         g.handles.extend(self.handles);
         prev.ctl.stop();
         g.current.ctl.make_active();
+        drop(g);
+        let handlers = self.manager.inner.read().consensus_reset_handlers.iter().cloned().collect_vec();
+        for handler in handlers {
+            handler.handle_consensus_reset();
+        }
     }
 
     pub fn cancel(self) {
