@@ -219,11 +219,15 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         // TODO: test
         let consensus = self.consensus_manager.consensus();
         let session = consensus.session().await;
-        let mut block = session.get_block_even_if_header_only(request.hash)?;
-        if !request.include_transactions {
-            block.transactions = Arc::new(vec![]);
-        }
-        Ok(GetBlockResponse { block: self.consensus_converter.get_block(session.deref(), &block, request.include_transactions)? })
+        let block = session.get_block_even_if_header_only(request.hash)?;
+        Ok(GetBlockResponse {
+            block: self.consensus_converter.get_block(
+                session.deref(),
+                &block,
+                request.include_transactions,
+                request.include_transactions,
+            )?,
+        })
     }
 
     async fn get_blocks_call(&self, request: GetBlocksRequest) -> RpcResult<GetBlocksResponse> {
@@ -264,11 +268,13 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
                 .iter()
                 .cloned()
                 .map(|hash| {
-                    let mut block = session.get_block_even_if_header_only(hash)?;
-                    if !request.include_transactions {
-                        block.transactions = Arc::new(vec![]);
-                    }
-                    self.consensus_converter.get_block(session.deref(), &block, request.include_transactions)
+                    let block = session.get_block_even_if_header_only(hash)?;
+                    self.consensus_converter.get_block(
+                        session.deref(),
+                        &block,
+                        request.include_transactions,
+                        request.include_transactions,
+                    )
                 })
                 .collect::<RpcResult<Vec<_>>>()
         } else {
