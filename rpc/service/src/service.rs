@@ -451,49 +451,49 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
     // UNIMPLEMENTED METHODS
 
     async fn get_peer_addresses_call(&self, _request: GetPeerAddressesRequest) -> RpcResult<GetPeerAddressesResponse> {
-        unimplemented!();
+        Err(RpcError::NotImplemented)
     }
 
     async fn get_connected_peer_info_call(&self, _request: GetConnectedPeerInfoRequest) -> RpcResult<GetConnectedPeerInfoResponse> {
-        unimplemented!();
+        Err(RpcError::NotImplemented)
     }
 
     async fn add_peer_call(&self, _request: AddPeerRequest) -> RpcResult<AddPeerResponse> {
-        unimplemented!();
+        Err(RpcError::NotImplemented)
     }
 
     async fn get_block_dag_info_call(&self, _request: GetBlockDagInfoRequest) -> RpcResult<GetBlockDagInfoResponse> {
-        unimplemented!();
+        Err(RpcError::NotImplemented)
     }
 
     async fn resolve_finality_conflict_call(
         &self,
         _request: ResolveFinalityConflictRequest,
     ) -> RpcResult<ResolveFinalityConflictResponse> {
-        unimplemented!();
+        Err(RpcError::NotImplemented)
     }
 
     async fn shutdown_call(&self, _request: ShutdownRequest) -> RpcResult<ShutdownResponse> {
-        unimplemented!();
+        Err(RpcError::NotImplemented)
     }
 
     async fn ban_call(&self, _request: BanRequest) -> RpcResult<BanResponse> {
-        unimplemented!();
+        Err(RpcError::NotImplemented)
     }
 
     async fn unban_call(&self, _request: UnbanRequest) -> RpcResult<UnbanResponse> {
-        unimplemented!();
+        Err(RpcError::NotImplemented)
     }
 
     async fn estimate_network_hashes_per_second_call(
         &self,
         _request: EstimateNetworkHashesPerSecondRequest,
     ) -> RpcResult<EstimateNetworkHashesPerSecondResponse> {
-        unimplemented!();
+        Err(RpcError::NotImplemented)
     }
 
     async fn get_process_metrics_call(&self, _request: GetProcessMetricsRequest) -> RpcResult<GetProcessMetricsResponse> {
-        unimplemented!();
+        Err(RpcError::NotImplemented)
     }
 
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
