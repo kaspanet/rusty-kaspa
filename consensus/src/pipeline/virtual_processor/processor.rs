@@ -402,7 +402,7 @@ impl VirtualStateProcessor {
                 accumulated_diff.with_diff_in_place(&ctx.mergeset_diff).unwrap();
 
                 // Build the new virtual state
-                let new_virtual_state = VirtualState::new(
+                let new_virtual_state = Arc::new(VirtualState::new(
                     virtual_parents,
                     virtual_daa_score,
                     virtual_bits,
@@ -413,7 +413,7 @@ impl VirtualStateProcessor {
                     ctx.mergeset_rewards,
                     mergeset_non_daa,
                     virtual_ghostdag_data,
-                );
+                ));
 
                 let mut batch = WriteBatch::default();
                 let mut virtual_write = RwLockUpgradableReadGuard::upgrade(virtual_read);
@@ -435,7 +435,7 @@ impl VirtualStateProcessor {
 
                 // Emit notifications
                 let accumulated_diff = Arc::new(accumulated_diff);
-                let virtual_parents = Arc::new(new_virtual_state.parents);
+                let virtual_parents = Arc::new(new_virtual_state.parents.clone());
                 let _ = self
                     .notification_root
                     .notify(Notification::UtxosChanged(UtxosChangedNotification::new(accumulated_diff, virtual_parents)));
@@ -701,7 +701,7 @@ impl VirtualStateProcessor {
         self.virtual_stores
             .write()
             .state
-            .set(VirtualState::from_genesis(&self.genesis, self.ghostdag_manager.ghostdag(&[self.genesis.hash])))
+            .set(Arc::new(VirtualState::from_genesis(&self.genesis, self.ghostdag_manager.ghostdag(&[self.genesis.hash]))))
             .unwrap();
         self.past_pruning_points_store.insert(0, self.genesis.hash).unwrap_and_ignore_key_already_exists();
         self.pruning_store.write().set(self.genesis.hash, self.genesis.hash, 0).unwrap();
@@ -814,7 +814,7 @@ impl VirtualStateProcessor {
         self.virtual_stores.write().utxo_set.write_many(&new_pp_added_utxos).unwrap();
 
         let virtual_past_median_time = self.past_median_time_manager.calc_past_median_time(&virtual_gd)?.0;
-        let new_virtual_state = VirtualState {
+        let new_virtual_state = Arc::new(VirtualState {
             parents: virtual_parents,
             ghostdag_data: virtual_gd,
             daa_score: virtual_daa_score,
@@ -825,7 +825,7 @@ impl VirtualStateProcessor {
             mergeset_rewards,
             mergeset_non_daa,
             past_median_time: virtual_past_median_time,
-        };
+        });
         self.virtual_stores.write().state.set(new_virtual_state).unwrap();
 
         Ok(())
