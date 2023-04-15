@@ -85,6 +85,12 @@ pub enum Error {
     //     ConsensusCoreWasm(#[from] kaspa_consensus_core::wasm::error::Error),
     #[error(transparent)]
     ScriptBuilderError(#[from] kaspa_txscript::script_builder::ScriptBuilderError),
+
+    #[error("argon2 {0}")]
+    Argon2(argon2::Error),
+
+    #[error("argon2::password_hash {0}")]
+    Argon2ph(argon2::password_hash::Error),
 }
 
 impl From<chacha20poly1305::Error> for Error {
@@ -120,5 +126,17 @@ impl From<&str> for Error {
 impl From<wasm_bindgen::JsValue> for Error {
     fn from(err: wasm_bindgen::JsValue) -> Self {
         Self::JsValue(Sendable(err))
+    }
+}
+
+impl From<argon2::Error> for Error {
+    fn from(err: argon2::Error) -> Self {
+        Self::Argon2(err)
+    }
+}
+
+impl From<argon2::password_hash::Error> for Error {
+    fn from(err: argon2::password_hash::Error) -> Self {
+        Self::Argon2ph(err)
     }
 }

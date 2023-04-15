@@ -1,11 +1,12 @@
 use crate::imports::*;
 use crate::result::Result;
+use argon2::Argon2;
 use base64::{engine::general_purpose, Engine as _};
 use borsh::{BorshDeserialize, BorshSerialize};
 use cfg_if::cfg_if;
 use chacha20poly1305::{
     aead::{AeadCore, AeadInPlace, KeyInit, OsRng},
-    ChaCha20Poly1305, Key,
+    Key, XChaCha20Poly1305,
 };
 use kaspa_bip32::SecretKey;
 use sha2::{Digest, Sha256};
@@ -232,44 +233,66 @@ pub fn local_storage() -> web_sys::Storage {
 
 #[wasm_bindgen(js_name = "encrypt")]
 pub fn js_encrypt(text: String, password: String) -> Result<String> {
-    let secret = Secret(hash(&password)?);
+    let secret = sha256_hash(password.as_bytes())?;
     let encrypted = encrypt(text.as_bytes(), secret)?;
     Ok(general_purpose::STANDARD.encode(encrypted))
 }
 
 #[wasm_bindgen(js_name = "decrypt")]
 pub fn js_decrypt(text: String, password: String) -> Result<String> {
-    let secret = Secret(hash(&password)?);
+    let secret = sha256_hash(password.as_bytes())?;
     let encrypted = decrypt(text.as_bytes(), secret)?;
     let decoded = general_purpose::STANDARD.decode(encrypted)?;
     Ok(String::from_utf8(decoded)?)
 }
 
+#[wasm_bindgen(js_name = "sha256")]
+pub fn js_sha256_hash(data: JsValue) -> Result<String> {
+    let data = data.try_as_vec_u8()?;
+    let hash = sha256_hash(&data)?;
+    Ok(hash.0.to_hex())
+}
+
+#[wasm_bindgen(js_name = "argon2sha256iv")]
+pub fn js_argon2_sha256iv_phash(data: JsValue, byte_length: usize) -> Result<String> {
+    let data = data.try_as_vec_u8()?;
+    let hash = argon2_sha256iv_hash(&data, byte_length)?;
+    Ok(hash.0.to_hex())
+}
+
+pub fn sha256_hash(data: &[u8]) -> Result<Secret> {
+    let mut sha256 = Sha256::new();
+    sha256.update(data);
+    Ok(Secret(sha256.finalize().to_vec()))
+}
+
+pub fn argon2_sha256iv_hash(data: &[u8], byte_length: usize) -> Result<Secret> {
+    let salt = sha256_hash(data)?;
+    let mut key = vec![0u8; byte_length];
+    Argon2::default().hash_password_into(data, salt.as_ref(), &mut key)?;
+    Ok(key.into())
+}
+
 pub fn encrypt(data: &[u8], secret: Secret) -> Result<Vec<u8>> {
-    let private_key_bytes: &[u8; 32] = secret.as_ref().try_into()?;
-    let key = Key::from_slice(private_key_bytes);
-    let cipher = ChaCha20Poly1305::new(key);
-    let nonce = ChaCha20Poly1305::generate_nonce(&mut OsRng); // 96-bits; unique per message
+    let private_key_bytes = argon2_sha256iv_hash(secret.as_ref(), 32)?;
+    let key = Key::from_slice(private_key_bytes.as_ref());
+    let cipher = XChaCha20Poly1305::new(key);
+    let nonce = XChaCha20Poly1305::generate_nonce(&mut OsRng); // 96-bits; unique per message
     let mut buffer = data.to_vec();
-    cipher.encrypt_in_place(&nonce, b"", &mut buffer)?;
+    buffer.reserve(16);
+    cipher.encrypt_in_place(&nonce, &[], &mut buffer)?;
     buffer.splice(0..0, nonce.iter().cloned());
     Ok(buffer)
 }
 
 pub fn decrypt(data: &[u8], secret: Secret) -> Result<Vec<u8>> {
-    let private_key_bytes: &[u8; 32] = secret.as_ref().try_into()?;
-    let key = Key::from_slice(private_key_bytes);
-    let cipher = ChaCha20Poly1305::new(key);
-    let nonce = &data[0..12];
-    let mut buffer = data[12..].to_vec();
-    cipher.decrypt_in_place(nonce.into(), b"", &mut buffer)?;
+    let private_key_bytes = argon2_sha256iv_hash(secret.as_ref(), 32)?;
+    let key = Key::from_slice(private_key_bytes.as_ref());
+    let cipher = XChaCha20Poly1305::new(key);
+    let nonce = &data[0..24];
+    let mut buffer = data[24..].to_vec();
+    cipher.decrypt_in_place(nonce.into(), &[], &mut buffer)?;
     Ok(buffer)
-}
-
-pub fn hash(password: &str) -> Result<Vec<u8>> {
-    let mut sha256 = Sha256::new();
-    sha256.update(password);
-    Ok(sha256.finalize().to_vec())
 }
 
 #[cfg(test)]
@@ -277,14 +300,28 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_encrypt_decrypt() {
-        println!("testing encrypt/decrypt");
-        let hash = hash("password").unwrap();
+    fn test_wallet_store_argon2() {
+        println!("testing argon2 hash");
+        let password = b"user_password";
+        let hash = argon2_sha256iv_hash(password, 32).unwrap();
+        let hash_hex = hash.as_ref().to_hex();
+        // println!("argon2hash: {:?}", hash_hex);
+        assert_eq!(hash_hex, "a79b661f0defd1960a4770889e19da0ce2fde1e98ca040f84ab9b2519ca46234");
+    }
 
-        let data = b"hello world".to_vec();
-        let orig = data.clone();
-        let data = encrypt(&data, hash.as_slice().into()).unwrap();
-        let data = decrypt(&data, hash.as_slice().into()).unwrap();
-        assert_eq!(data, orig);
+    #[test]
+    fn test_wallet_store_encrypt_decrypt() -> Result<()> {
+        println!("testing encrypt/decrypt");
+
+        let password = b"password";
+        let original = b"hello world".to_vec();
+        // println!("original: {}", original.to_hex());
+        let encrypted = encrypt(&original, password.as_ref().into()).unwrap();
+        // println!("encrypted: {}", encrypted.to_hex());
+        let decrypted = decrypt(&encrypted, password.as_ref().into()).unwrap();
+        // println!("decrypted: {}", decrypted.to_hex());
+        assert_eq!(decrypted, original);
+
+        Ok(())
     }
 }
