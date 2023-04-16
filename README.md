@@ -1,6 +1,6 @@
 # Kaspa on Rust
 
-An alpha version for a Kaspa full-node and related libraries in the Rust programming language.
+This repository contains the implementation of the Kaspa full-node and related libraries in the Rust programming language. This is an Alpha version at the initial testing phase, however the node is expected to be fully functional and capable as a drop-in replacement for the Kaspa golang node.
 
 ## Getting started
 
@@ -34,7 +34,7 @@ $ (cargo run --release --bin kaspad) 2>&1 | tee ~/rusty-kaspa.log
 And if you want to setup a test node, run the following command instead:
 
 ```bash
-$ (cargo run --release --bin kaspad -- --testnet) 2>&1 | tee ~/rusty-kaspa.log
+$ (cargo run --release --bin kaspad -- --testnet) 2>&1 | tee ~/rusty-kaspa-testnet.log
 ```
 
 ## Mining

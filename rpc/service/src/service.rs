@@ -192,7 +192,7 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         trace!("incoming GetBlockTemplate request");
 
         if self.config.net == NetworkType::Mainnet {
-            return Err(RpcError::General("Mining on mainnet is not supported".to_owned()));
+            return Err(RpcError::General("Mining on mainnet is not supported for the Rust Alpha version".to_owned()));
         }
 
         // Make sure the pay address prefix matches the config network type
