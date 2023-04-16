@@ -77,7 +77,7 @@ pub trait VirtualStateStoreReader {
 }
 
 pub trait VirtualStateStore: VirtualStateStoreReader {
-    fn set(&mut self, state: VirtualState) -> StoreResult<()>;
+    fn set(&mut self, state: Arc<VirtualState>) -> StoreResult<()>;
 }
 
 const STORE_PREFIX: &[u8] = b"virtual-state";
@@ -106,8 +106,8 @@ impl DbVirtualStateStore {
         }
     }
 
-    pub fn set_batch(&mut self, batch: &mut WriteBatch, state: VirtualState) -> StoreResult<()> {
-        self.access.write(BatchDbWriter::new(batch), &Arc::new(state))
+    pub fn set_batch(&mut self, batch: &mut WriteBatch, state: Arc<VirtualState>) -> StoreResult<()> {
+        self.access.write(BatchDbWriter::new(batch), &state)
     }
 }
 
@@ -118,7 +118,7 @@ impl VirtualStateStoreReader for DbVirtualStateStore {
 }
 
 impl VirtualStateStore for DbVirtualStateStore {
-    fn set(&mut self, state: VirtualState) -> StoreResult<()> {
-        self.access.write(DirectDbWriter::new(&self.db), &Arc::new(state))
+    fn set(&mut self, state: Arc<VirtualState>) -> StoreResult<()> {
+        self.access.write(DirectDbWriter::new(&self.db), &state)
     }
 }

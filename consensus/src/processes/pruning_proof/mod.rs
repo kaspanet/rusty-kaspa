@@ -301,7 +301,7 @@ impl PruningProofManager {
         let virtual_parents = vec![pruning_point];
         let virtual_gd = self.ghostdag_managers[0].ghostdag(&virtual_parents);
 
-        let virtual_state = VirtualState {
+        let virtual_state = Arc::new(VirtualState {
             // TODO: Use real values when possible
             parents: virtual_parents.clone(),
             ghostdag_data: virtual_gd,
@@ -313,7 +313,7 @@ impl PruningProofManager {
             mergeset_rewards: Default::default(),
             mergeset_non_daa: Default::default(),
             past_median_time: 0,
-        };
+        });
         self.virtual_stores.write().state.set(virtual_state).unwrap();
 
         let mut batch = WriteBatch::default();
