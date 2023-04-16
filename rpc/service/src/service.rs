@@ -453,6 +453,23 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         Err(RpcError::NotImplemented)
     }
 
+    async fn get_block_dag_info_call(&self, _: GetBlockDagInfoRequest) -> RpcResult<GetBlockDagInfoResponse> {
+        let consensus = self.consensus_manager.consensus();
+        let session = consensus.session().await;
+        let sync_info = session.get_sync_info();
+        Ok(GetBlockDagInfoResponse::new(
+            self.config.net,
+            sync_info.block_count,
+            sync_info.header_count,
+            session.get_tips(),
+            self.consensus_converter.get_difficulty_ratio(session.get_virtual_bits()),
+            session.get_virtual_past_median_time(),
+            session.get_virtual_parents().iter().copied().collect::<Vec<_>>(),
+            session.pruning_point().unwrap_or_default(),
+            session.get_virtual_daa_score(),
+        ))
+    }
+
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // UNIMPLEMENTED METHODS
 
@@ -465,10 +482,6 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
     }
 
     async fn add_peer_call(&self, _request: AddPeerRequest) -> RpcResult<AddPeerResponse> {
-        Err(RpcError::NotImplemented)
-    }
-
-    async fn get_block_dag_info_call(&self, _request: GetBlockDagInfoRequest) -> RpcResult<GetBlockDagInfoResponse> {
         Err(RpcError::NotImplemented)
     }
 

@@ -671,6 +671,14 @@ impl ConsensusApi for Consensus {
         self.virtual_processor.virtual_stores.read().state.get().unwrap().daa_score
     }
 
+    fn get_virtual_bits(&self) -> u32 {
+        self.virtual_processor.virtual_stores.read().state.get().unwrap().bits
+    }
+
+    fn get_virtual_past_median_time(&self) -> u64 {
+        self.virtual_processor.virtual_stores.read().state.get().unwrap().past_median_time
+    }
+
     fn get_virtual_merge_depth_root(&self) -> Option<Hash> {
         // TODO: consider saving the merge depth root as part of virtual state
         // TODO: unwrap on pruning_point and virtual state reads when staging consensus is implemented
@@ -713,11 +721,7 @@ impl ConsensusApi for Consensus {
     }
 
     fn get_virtual_parents(&self) -> BlockHashSet {
-        // TODO: unwrap on virtual state read when staging consensus is implemented
-        match self.virtual_processor.virtual_stores.read().state.get().unwrap_option() {
-            Some(s) => s.parents.iter().copied().collect(),
-            None => Default::default(),
-        }
+        self.virtual_processor.virtual_stores.read().state.get().unwrap().parents.iter().copied().collect()
     }
 
     fn get_virtual_utxos(
@@ -729,6 +733,10 @@ impl ConsensusApi for Consensus {
         let virtual_stores = self.virtual_processor.virtual_stores.read();
         let iter = virtual_stores.utxo_set.seek_iterator(from_outpoint, chunk_size, skip_first);
         iter.map(|item| item.unwrap()).collect()
+    }
+
+    fn get_tips(&self) -> Vec<Hash> {
+        self.body_tips().iter().copied().collect_vec()
     }
 
     fn get_pruning_point_utxos(

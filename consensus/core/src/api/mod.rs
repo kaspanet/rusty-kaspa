@@ -53,6 +53,14 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
+    fn get_virtual_bits(&self) -> u32 {
+        unimplemented!()
+    }
+
+    fn get_virtual_past_median_time(&self) -> u64 {
+        unimplemented!()
+    }
+
     fn get_virtual_merge_depth_root(&self) -> Option<Hash> {
         unimplemented!()
     }
@@ -90,6 +98,10 @@ pub trait ConsensusApi: Send + Sync {
         chunk_size: usize,
         skip_first: bool,
     ) -> Vec<(TransactionOutpoint, UtxoEntry)> {
+        unimplemented!()
+    }
+
+    fn get_tips(&self) -> Vec<Hash> {
         unimplemented!()
     }
 
