@@ -42,6 +42,9 @@ pub enum PruningImportError {
     #[error("new pruning point has an invalid transaction {0}: {1}")]
     NewPruningPointTxError(Hash, TxRuleError),
 
+    #[error("new pruning point has some invalid transactions")]
+    NewPruningPointTxErrors,
+
     #[error("new pruning point transaction {0} is missing a UTXO entry")]
     NewPruningPointTxMissingUTXOEntry(Hash),
 
