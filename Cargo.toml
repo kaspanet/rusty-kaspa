@@ -171,3 +171,6 @@ workflow-terminal = { version = "0.3.10" }
 # workflow-rpc = { path = "../workflow-rs/rpc" }
 # workflow-terminal = { path = "../workflow-rs/terminal" }
 
+[profile.release]
+lto = "thin"
+strip = true
