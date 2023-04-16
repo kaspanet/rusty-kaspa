@@ -7,9 +7,7 @@ use kaspa_rpc_core::RpcError;
 // ----------------------------------------------------------------------------
 
 from!(item: &kaspa_rpc_core::RpcBalancesByAddressesEntry, protowire::RpcBalancesByAddressesEntry, {
-    // TODO: Add an error if the balance is None
-    let error = Some(protowire::RpcError { message: "address has no balance".to_string() });
-    Self { address: (&item.address).into(), balance: item.balance.unwrap_or_default(), error }
+    Self { address: (&item.address).into(), balance: item.balance.unwrap_or_default(), error: None }
 });
 
 // ----------------------------------------------------------------------------
