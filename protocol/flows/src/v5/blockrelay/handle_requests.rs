@@ -1,6 +1,11 @@
 use crate::{flow_context::FlowContext, flow_trait::Flow};
 use kaspa_core::debug;
-use kaspa_p2p_lib::{common::ProtocolError, dequeue, make_message, pb::kaspad_message::Payload, IncomingRoute, Router};
+use kaspa_p2p_lib::{
+    common::ProtocolError,
+    dequeue, make_message,
+    pb::{kaspad_message::Payload, InvRelayBlockMessage},
+    IncomingRoute, Router,
+};
 use std::sync::Arc;
 
 pub struct HandleRelayBlockRequests {
@@ -30,6 +35,10 @@ impl HandleRelayBlockRequests {
     }
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
+        // We begin by sending the current sink to the new peer. This is to help nodes to exchange
+        // state even if no new blocks arrive for some reason.
+        // Note: in go-kaspad this was done via a dedicated one-time flow.
+        self.send_sink().await?;
         loop {
             let msg = dequeue!(self.incoming_route, Payload::RequestRelayBlocks)?;
             let hashes: Vec<_> = msg.try_into()?;
@@ -43,5 +52,14 @@ impl HandleRelayBlockRequests {
                 debug!("relayed block with hash {} to peer {}", hash, self.router);
             }
         }
+    }
+
+    async fn send_sink(&mut self) -> Result<(), ProtocolError> {
+        let sink = self.ctx.consensus().session().await.get_sink();
+        if sink == self.ctx.config.genesis.hash {
+            return Ok(());
+        }
+        self.router.enqueue(make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(sink.into()) })).await?;
+        Ok(())
     }
 }
