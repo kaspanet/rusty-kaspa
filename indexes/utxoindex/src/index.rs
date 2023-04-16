@@ -244,12 +244,12 @@ mod tests {
         virtual_change_emulator.fill_utxo_collection(resync_utxo_collection_size, script_public_key_pool_size); //10_000 utxos belonging to 100 script public keys
 
         // Create a virtual state for the test consensus from emulator variables.
-        let test_consensus_virtual_state = VirtualState {
+        let test_consensus_virtual_state = Arc::new(VirtualState {
             daa_score: 0,
             parents: Vec::from_iter(virtual_change_emulator.tips.clone()),
             utxo_diff: UtxoDiff::new(virtual_change_emulator.utxo_collection.clone(), UtxoCollection::new()),
             ..Default::default()
-        };
+        });
         // Write virtual state from emulator to test_consensus db.
         tc.consensus
             .virtual_processor

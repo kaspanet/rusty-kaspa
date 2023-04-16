@@ -158,12 +158,12 @@ pub struct GetPeerAddressesRequest {}
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GetPeerAddressesResponse {
-    pub known_addresses: Vec<RpcAddress>,
-    pub banned_addresses: Vec<RpcAddress>,
+    pub known_addresses: Vec<RpcPeerAddress>,
+    pub banned_addresses: Vec<RpcPeerAddress>,
 }
 
 impl GetPeerAddressesResponse {
-    pub fn new(known_addresses: Vec<RpcAddress>, banned_addresses: Vec<RpcAddress>) -> Self {
+    pub fn new(known_addresses: Vec<RpcPeerAddress>, banned_addresses: Vec<RpcPeerAddress>) -> Self {
         Self { known_addresses, banned_addresses }
     }
 }
@@ -686,8 +686,8 @@ pub struct GetProcessMetricsResponse {
     pub uptime: u64,
     pub memory_used: Vec<u64>,
     pub storage_used: Vec<u64>,
-    pub grpc_connections: Vec<u32>,
-    pub wrpc_connections: Vec<u32>,
+    pub grpc_connections: Vec<u64>,
+    pub wrpc_connections: Vec<u64>,
     // TBD:
     //  - approx bandwidth consumption
     //  - other connection metrics
@@ -699,8 +699,8 @@ impl GetProcessMetricsResponse {
         uptime: u64,
         memory_used: Vec<u64>,
         storage_used: Vec<u64>,
-        grpc_connections: Vec<u32>,
-        wrpc_connections: Vec<u32>,
+        grpc_connections: Vec<u64>,
+        wrpc_connections: Vec<u64>,
     ) -> Self {
         Self { uptime, memory_used, storage_used, grpc_connections, wrpc_connections }
     }
