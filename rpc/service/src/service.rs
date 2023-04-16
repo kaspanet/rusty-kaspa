@@ -8,6 +8,7 @@ use kaspa_consensus_core::{
     coinbase::MinerData,
     config::Config,
     constants::MAX_SOMPI,
+    networktype::NetworkType,
     tx::{Transaction, COINBASE_TRANSACTION_INDEX},
 };
 use kaspa_consensus_notify::{
@@ -189,6 +190,10 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
 
     async fn get_block_template_call(&self, request: GetBlockTemplateRequest) -> RpcResult<GetBlockTemplateResponse> {
         trace!("incoming GetBlockTemplate request");
+
+        if self.config.net == NetworkType::Mainnet {
+            return Err(RpcError::General("Mining on mainnet is not supported".to_owned()));
+        }
 
         // Make sure the pay address prefix matches the config network type
         if request.pay_address.prefix != self.config.prefix() {
