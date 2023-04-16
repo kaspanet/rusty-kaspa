@@ -219,11 +219,15 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         // TODO: test
         let consensus = self.consensus_manager.consensus();
         let session = consensus.session().await;
-        let mut block = session.get_block_even_if_header_only(request.hash)?;
-        if !request.include_transactions {
-            block.transactions = Arc::new(vec![]);
-        }
-        Ok(GetBlockResponse { block: self.consensus_converter.get_block(session.deref(), &block, request.include_transactions)? })
+        let block = session.get_block_even_if_header_only(request.hash)?;
+        Ok(GetBlockResponse {
+            block: self.consensus_converter.get_block(
+                session.deref(),
+                &block,
+                request.include_transactions,
+                request.include_transactions,
+            )?,
+        })
     }
 
     async fn get_blocks_call(&self, request: GetBlocksRequest) -> RpcResult<GetBlocksResponse> {
@@ -264,11 +268,13 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
                 .iter()
                 .cloned()
                 .map(|hash| {
-                    let mut block = session.get_block_even_if_header_only(hash)?;
-                    if !request.include_transactions {
-                        block.transactions = Arc::new(vec![]);
-                    }
-                    self.consensus_converter.get_block(session.deref(), &block, request.include_transactions)
+                    let block = session.get_block_even_if_header_only(hash)?;
+                    self.consensus_converter.get_block(
+                        session.deref(),
+                        &block,
+                        request.include_transactions,
+                        request.include_transactions,
+                    )
                 })
                 .collect::<RpcResult<Vec<_>>>()
         } else {
@@ -447,53 +453,66 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         Err(RpcError::NotImplemented)
     }
 
+    async fn get_block_dag_info_call(&self, _: GetBlockDagInfoRequest) -> RpcResult<GetBlockDagInfoResponse> {
+        let consensus = self.consensus_manager.consensus();
+        let session = consensus.session().await;
+        let sync_info = session.get_sync_info();
+        Ok(GetBlockDagInfoResponse::new(
+            self.config.net,
+            sync_info.block_count,
+            sync_info.header_count,
+            session.get_tips(),
+            self.consensus_converter.get_difficulty_ratio(session.get_virtual_bits()),
+            session.get_virtual_past_median_time(),
+            session.get_virtual_parents().iter().copied().collect::<Vec<_>>(),
+            session.pruning_point().unwrap_or_default(),
+            session.get_virtual_daa_score(),
+        ))
+    }
+
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // UNIMPLEMENTED METHODS
 
     async fn get_peer_addresses_call(&self, _request: GetPeerAddressesRequest) -> RpcResult<GetPeerAddressesResponse> {
-        unimplemented!();
+        Err(RpcError::NotImplemented)
     }
 
     async fn get_connected_peer_info_call(&self, _request: GetConnectedPeerInfoRequest) -> RpcResult<GetConnectedPeerInfoResponse> {
-        unimplemented!();
+        Err(RpcError::NotImplemented)
     }
 
     async fn add_peer_call(&self, _request: AddPeerRequest) -> RpcResult<AddPeerResponse> {
-        unimplemented!();
-    }
-
-    async fn get_block_dag_info_call(&self, _request: GetBlockDagInfoRequest) -> RpcResult<GetBlockDagInfoResponse> {
-        unimplemented!();
+        Err(RpcError::NotImplemented)
     }
 
     async fn resolve_finality_conflict_call(
         &self,
         _request: ResolveFinalityConflictRequest,
     ) -> RpcResult<ResolveFinalityConflictResponse> {
-        unimplemented!();
+        Err(RpcError::NotImplemented)
     }
 
     async fn shutdown_call(&self, _request: ShutdownRequest) -> RpcResult<ShutdownResponse> {
-        unimplemented!();
+        Err(RpcError::NotImplemented)
     }
 
     async fn ban_call(&self, _request: BanRequest) -> RpcResult<BanResponse> {
-        unimplemented!();
+        Err(RpcError::NotImplemented)
     }
 
     async fn unban_call(&self, _request: UnbanRequest) -> RpcResult<UnbanResponse> {
-        unimplemented!();
+        Err(RpcError::NotImplemented)
     }
 
     async fn estimate_network_hashes_per_second_call(
         &self,
         _request: EstimateNetworkHashesPerSecondRequest,
     ) -> RpcResult<EstimateNetworkHashesPerSecondResponse> {
-        unimplemented!();
+        Err(RpcError::NotImplemented)
     }
 
     async fn get_process_metrics_call(&self, _request: GetProcessMetricsRequest) -> RpcResult<GetProcessMetricsResponse> {
-        unimplemented!();
+        Err(RpcError::NotImplemented)
     }
 
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
