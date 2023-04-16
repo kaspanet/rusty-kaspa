@@ -51,6 +51,7 @@ impl ConsensusConverter {
         &self,
         consensus: &dyn ConsensusApi,
         block: &Block,
+        include_transactions: bool,
         include_transaction_verbose_data: bool,
     ) -> RpcResult<RpcBlock> {
         let hash = block.hash();
@@ -71,11 +72,15 @@ impl ConsensusConverter {
             is_chain_block,
         });
 
-        let transactions = block
-            .transactions
-            .iter()
-            .map(|x| self.get_transaction(consensus, x, Some(&block.header), include_transaction_verbose_data))
-            .collect::<Vec<_>>();
+        let transactions = if include_transactions {
+            block
+                .transactions
+                .iter()
+                .map(|x| self.get_transaction(consensus, x, Some(&block.header), include_transaction_verbose_data))
+                .collect::<Vec<_>>()
+        } else {
+            vec![]
+        };
 
         Ok(RpcBlock { header: (*block.header).clone(), transactions, verbose_data })
     }
@@ -186,7 +191,7 @@ impl Converter for ConsensusConverter {
                 let session = consensus.session().await;
 
                 // If get_block fails, rely on the infallible From implementation which will lack verbose data
-                let block = Arc::new(self.get_block(session.deref(), &msg.block, true).unwrap_or_else(|_| (&msg.block).into()));
+                let block = Arc::new(self.get_block(session.deref(), &msg.block, true, true).unwrap_or_else(|_| (&msg.block).into()));
 
                 Notification::BlockAdded(BlockAddedNotification { block })
             }

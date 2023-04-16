@@ -1,5 +1,5 @@
 use crate::protowire::{self, submit_block_response_message::RejectReason};
-use kaspa_rpc_core::{RpcError, RpcExtraData, RpcHash, RpcResult};
+use kaspa_rpc_core::{RpcError, RpcExtraData, RpcHash, RpcNetworkType, RpcPeerAddress, RpcResult};
 use std::str::FromStr;
 
 macro_rules! from {
@@ -158,41 +158,51 @@ from!(RpcResult<&kaspa_rpc_core::NotifyNewBlockTemplateResponse>, protowire::Not
 // ~~~
 
 from!(&kaspa_rpc_core::GetCurrentNetworkRequest, protowire::GetCurrentNetworkRequestMessage);
-from!(_item: RpcResult<&kaspa_rpc_core::GetCurrentNetworkResponse>, protowire::GetCurrentNetworkResponseMessage, {
-    unimplemented!();
+from!(item: RpcResult<&kaspa_rpc_core::GetCurrentNetworkResponse>, protowire::GetCurrentNetworkResponseMessage, {
+    Self { current_network: item.network.to_string(), error: None }
 });
 
 from!(&kaspa_rpc_core::GetPeerAddressesRequest, protowire::GetPeerAddressesRequestMessage);
-from!(_item: RpcResult<&kaspa_rpc_core::GetPeerAddressesResponse>, protowire::GetPeerAddressesResponseMessage, {
-    unimplemented!();
+from!(item: RpcResult<&kaspa_rpc_core::GetPeerAddressesResponse>, protowire::GetPeerAddressesResponseMessage, {
+    Self {
+        addresses: item.known_addresses.iter().map(|x| x.into()).collect(),
+        banned_addresses: item.banned_addresses.iter().map(|x| x.into()).collect(),
+        error: None,
+    }
 });
 
 from!(&kaspa_rpc_core::GetSelectedTipHashRequest, protowire::GetSelectedTipHashRequestMessage);
-from!(_item: RpcResult<&kaspa_rpc_core::GetSelectedTipHashResponse>, protowire::GetSelectedTipHashResponseMessage, {
-    unimplemented!();
+from!(item: RpcResult<&kaspa_rpc_core::GetSelectedTipHashResponse>, protowire::GetSelectedTipHashResponseMessage, {
+    Self { selected_tip_hash: item.selected_tip_hash.to_string(), error: None }
 });
 
-from!(_item: &kaspa_rpc_core::GetMempoolEntryRequest, protowire::GetMempoolEntryRequestMessage, { unimplemented!() });
-from!(_item: RpcResult<&kaspa_rpc_core::GetMempoolEntryResponse>, protowire::GetMempoolEntryResponseMessage, {
-    unimplemented!();
+from!(item: &kaspa_rpc_core::GetMempoolEntryRequest, protowire::GetMempoolEntryRequestMessage, {
+    Self {
+        tx_id: item.transaction_id.to_string(),
+        include_orphan_pool: item.include_orphan_pool,
+        filter_transaction_pool: item.filter_transaction_pool,
+    }
+});
+from!(item: RpcResult<&kaspa_rpc_core::GetMempoolEntryResponse>, protowire::GetMempoolEntryResponseMessage, {
+    Self { entry: Some((&item.mempool_entry).into()), error: None }
 });
 
-from!(_item: &kaspa_rpc_core::GetMempoolEntriesRequest, protowire::GetMempoolEntriesRequestMessage, { unimplemented!() });
-from!(_item: RpcResult<&kaspa_rpc_core::GetMempoolEntriesResponse>, protowire::GetMempoolEntriesResponseMessage, {
-    unimplemented!();
+from!(item: &kaspa_rpc_core::GetMempoolEntriesRequest, protowire::GetMempoolEntriesRequestMessage, {
+    Self { include_orphan_pool: item.include_orphan_pool, filter_transaction_pool: item.filter_transaction_pool }
+});
+from!(item: RpcResult<&kaspa_rpc_core::GetMempoolEntriesResponse>, protowire::GetMempoolEntriesResponseMessage, {
+    Self { entries: item.mempool_entries.iter().map(|x| x.into()).collect(), error: None }
 });
 
-from!(_item: &kaspa_rpc_core::GetConnectedPeerInfoRequest, protowire::GetConnectedPeerInfoRequestMessage, { unimplemented!() });
-from!(_item: RpcResult<&kaspa_rpc_core::GetConnectedPeerInfoResponse>, protowire::GetConnectedPeerInfoResponseMessage, {
-    unimplemented!()
+from!(&kaspa_rpc_core::GetConnectedPeerInfoRequest, protowire::GetConnectedPeerInfoRequestMessage);
+from!(item: RpcResult<&kaspa_rpc_core::GetConnectedPeerInfoResponse>, protowire::GetConnectedPeerInfoResponseMessage, {
+    Self { infos: item.peer_info.iter().map(|x| x.into()).collect(), error: None }
 });
 
-from!(_item: &kaspa_rpc_core::AddPeerRequest, protowire::AddPeerRequestMessage, {
-    unimplemented!();
+from!(item: &kaspa_rpc_core::AddPeerRequest, protowire::AddPeerRequestMessage, {
+    Self { address: item.peer_address.address.clone(), is_permanent: item.is_permanent }
 });
-from!(_item: RpcResult<&kaspa_rpc_core::AddPeerResponse>, protowire::AddPeerResponseMessage, {
-    unimplemented!();
-});
+from!(RpcResult<&kaspa_rpc_core::AddPeerResponse>, protowire::AddPeerResponseMessage);
 
 from!(item: &kaspa_rpc_core::SubmitTransactionRequest, protowire::SubmitTransactionRequestMessage, {
     Self { transaction: Some((&item.transaction).into()), allow_orphan: item.allow_orphan }
@@ -201,18 +211,25 @@ from!(item: RpcResult<&kaspa_rpc_core::SubmitTransactionResponse>, protowire::Su
     Self { transaction_id: item.transaction_id.to_string(), error: None }
 });
 
-from!(_item: &kaspa_rpc_core::GetSubnetworkRequest, protowire::GetSubnetworkRequestMessage, { unimplemented!() });
-from!(_item: RpcResult<&kaspa_rpc_core::GetSubnetworkResponse>, protowire::GetSubnetworkResponseMessage, {
-    unimplemented!();
+from!(item: &kaspa_rpc_core::GetSubnetworkRequest, protowire::GetSubnetworkRequestMessage, {
+    Self { subnetwork_id: item.subnetwork_id.to_string() }
+});
+from!(item: RpcResult<&kaspa_rpc_core::GetSubnetworkResponse>, protowire::GetSubnetworkResponseMessage, {
+    Self { gas_limit: item.gas_limit, error: None }
 });
 
 // ~~~
 
-from!(_item: &kaspa_rpc_core::GetVirtualChainFromBlockRequest, protowire::GetVirtualChainFromBlockRequestMessage, {
-    unimplemented!();
+from!(item: &kaspa_rpc_core::GetVirtualChainFromBlockRequest, protowire::GetVirtualChainFromBlockRequestMessage, {
+    Self { start_hash: item.start_hash.to_string(), include_accepted_transaction_ids: item.include_accepted_transaction_ids }
 });
-from!(_item: RpcResult<&kaspa_rpc_core::GetVirtualChainFromBlockResponse>, protowire::GetVirtualChainFromBlockResponseMessage, {
-    unimplemented!();
+from!(item: RpcResult<&kaspa_rpc_core::GetVirtualChainFromBlockResponse>, protowire::GetVirtualChainFromBlockResponseMessage, {
+    Self {
+        removed_chain_block_hashes: item.removed_chain_block_hashes.iter().map(|x| x.to_string()).collect(),
+        added_chain_block_hashes: item.added_chain_block_hashes.iter().map(|x| x.to_string()).collect(),
+        accepted_transaction_ids: item.accepted_transaction_ids.iter().map(|x| x.into()).collect(),
+        error: None,
+    }
 });
 
 from!(item: &kaspa_rpc_core::GetBlocksRequest, protowire::GetBlocksRequestMessage, {
@@ -230,35 +247,42 @@ from!(item: RpcResult<&kaspa_rpc_core::GetBlocksResponse>, protowire::GetBlocksR
     }
 });
 
-from!(_item: &kaspa_rpc_core::GetBlockCountRequest, protowire::GetBlockCountRequestMessage, {
-    unimplemented!();
-});
-from!(_item: RpcResult<&kaspa_rpc_core::GetBlockCountResponse>, protowire::GetBlockCountResponseMessage, {
-    unimplemented!();
+from!(&kaspa_rpc_core::GetBlockCountRequest, protowire::GetBlockCountRequestMessage);
+from!(item: RpcResult<&kaspa_rpc_core::GetBlockCountResponse>, protowire::GetBlockCountResponseMessage, {
+    Self { block_count: item.block_count, header_count: item.header_count, error: None }
 });
 
-from!(_item: &kaspa_rpc_core::GetBlockDagInfoRequest, protowire::GetBlockDagInfoRequestMessage, {
-    unimplemented!();
-});
-from!(_item: RpcResult<&kaspa_rpc_core::GetBlockDagInfoResponse>, protowire::GetBlockDagInfoResponseMessage, {
-    unimplemented!();
+from!(&kaspa_rpc_core::GetBlockDagInfoRequest, protowire::GetBlockDagInfoRequestMessage);
+from!(item: RpcResult<&kaspa_rpc_core::GetBlockDagInfoResponse>, protowire::GetBlockDagInfoResponseMessage, {
+    Self {
+        network_name: item.network_type.to_string(),
+        block_count: item.block_count,
+        header_count: item.header_count,
+        tip_hashes: item.tip_hashes.iter().map(|x| x.to_string()).collect(),
+        difficulty: item.difficulty,
+        past_median_time: item.past_median_time as i64,
+        virtual_parent_hashes: item.virtual_parent_hashes.iter().map(|x| x.to_string()).collect(),
+        pruning_point_hash: item.pruning_point_hash.to_string(),
+        virtual_daa_score: item.virtual_daa_score,
+        error: None,
+    }
 });
 
-from!(_item: &kaspa_rpc_core::ResolveFinalityConflictRequest, protowire::ResolveFinalityConflictRequestMessage, {
-    unimplemented!();
+from!(item: &kaspa_rpc_core::ResolveFinalityConflictRequest, protowire::ResolveFinalityConflictRequestMessage, {
+    Self { finality_block_hash: item.finality_block_hash.to_string() }
 });
 from!(_item: RpcResult<&kaspa_rpc_core::ResolveFinalityConflictResponse>, protowire::ResolveFinalityConflictResponseMessage, {
-    unimplemented!();
+    Self { error: None }
 });
 
 from!(&kaspa_rpc_core::ShutdownRequest, protowire::ShutdownRequestMessage);
 from!(RpcResult<&kaspa_rpc_core::ShutdownResponse>, protowire::ShutdownResponseMessage);
 
-from!(_item: &kaspa_rpc_core::GetHeadersRequest, protowire::GetHeadersRequestMessage, {
-    unimplemented!();
+from!(item: &kaspa_rpc_core::GetHeadersRequest, protowire::GetHeadersRequestMessage, {
+    Self { start_hash: item.start_hash.to_string(), limit: item.limit, is_ascending: item.is_ascending }
 });
-from!(_item: RpcResult<&kaspa_rpc_core::GetHeadersResponse>, protowire::GetHeadersResponseMessage, {
-    unimplemented!();
+from!(item: RpcResult<&kaspa_rpc_core::GetHeadersResponse>, protowire::GetHeadersResponseMessage, {
+    Self { headers: item.headers.iter().map(|x| x.hash.to_string()).collect(), error: None }
 });
 
 from!(item: &kaspa_rpc_core::GetUtxosByAddressesRequest, protowire::GetUtxosByAddressesRequestMessage, {
@@ -268,18 +292,18 @@ from!(item: RpcResult<&kaspa_rpc_core::GetUtxosByAddressesResponse>, protowire::
     Self { entries: item.entries.iter().map(|x| x.into()).collect(), error: None }
 });
 
-from!(_item: &kaspa_rpc_core::GetBalanceByAddressRequest, protowire::GetBalanceByAddressRequestMessage, {
-    unimplemented!();
+from!(item: &kaspa_rpc_core::GetBalanceByAddressRequest, protowire::GetBalanceByAddressRequestMessage, {
+    Self { address: (&item.address).into() }
 });
-from!(_item: RpcResult<&kaspa_rpc_core::GetBalanceByAddressResponse>, protowire::GetBalanceByAddressResponseMessage, {
-    unimplemented!();
+from!(item: RpcResult<&kaspa_rpc_core::GetBalanceByAddressResponse>, protowire::GetBalanceByAddressResponseMessage, {
+    Self { balance: item.balance, error: None }
 });
 
-from!(_item: &kaspa_rpc_core::GetBalancesByAddressesRequest, protowire::GetBalancesByAddressesRequestMessage, {
-    unimplemented!();
+from!(item: &kaspa_rpc_core::GetBalancesByAddressesRequest, protowire::GetBalancesByAddressesRequestMessage, {
+    Self { addresses: item.addresses.iter().map(|x| x.into()).collect() }
 });
-from!(_item: RpcResult<&kaspa_rpc_core::GetBalancesByAddressesResponse>, protowire::GetBalancesByAddressesResponseMessage, {
-    unimplemented!();
+from!(item: RpcResult<&kaspa_rpc_core::GetBalancesByAddressesResponse>, protowire::GetBalancesByAddressesResponseMessage, {
+    Self { entries: item.entries.iter().map(|x| x.into()).collect(), error: None }
 });
 
 from!(&kaspa_rpc_core::GetSinkBlueScoreRequest, protowire::GetSinkBlueScoreRequestMessage);
@@ -287,61 +311,52 @@ from!(item: RpcResult<&kaspa_rpc_core::GetSinkBlueScoreResponse>, protowire::Get
     Self { blue_score: item.blue_score, error: None }
 });
 
-from!(_item: &kaspa_rpc_core::BanRequest, protowire::BanRequestMessage, {
-    unimplemented!();
-});
-from!(_item: RpcResult<&kaspa_rpc_core::BanResponse>, protowire::BanResponseMessage, {
-    unimplemented!();
-});
+from!(item: &kaspa_rpc_core::BanRequest, protowire::BanRequestMessage, { Self { ip: item.address.address.clone() } });
+from!(_item: RpcResult<&kaspa_rpc_core::BanResponse>, protowire::BanResponseMessage, { Self { error: None } });
 
-from!(_item: &kaspa_rpc_core::UnbanRequest, protowire::UnbanRequestMessage, {
-    unimplemented!();
-});
-from!(_item: RpcResult<&kaspa_rpc_core::UnbanResponse>, protowire::UnbanResponseMessage, {
-    unimplemented!();
-});
+from!(item: &kaspa_rpc_core::UnbanRequest, protowire::UnbanRequestMessage, { Self { ip: item.address.address.clone() } });
+from!(_item: RpcResult<&kaspa_rpc_core::UnbanResponse>, protowire::UnbanResponseMessage, { Self { error: None } });
 
-from!(_item: &kaspa_rpc_core::EstimateNetworkHashesPerSecondRequest, protowire::EstimateNetworkHashesPerSecondRequestMessage, {
-    unimplemented!();
+from!(item: &kaspa_rpc_core::EstimateNetworkHashesPerSecondRequest, protowire::EstimateNetworkHashesPerSecondRequestMessage, {
+    Self { window_size: item.window_size, start_hash: item.start_hash.to_string() }
 });
 from!(
-    _item: RpcResult<&kaspa_rpc_core::EstimateNetworkHashesPerSecondResponse>,
+    item: RpcResult<&kaspa_rpc_core::EstimateNetworkHashesPerSecondResponse>,
     protowire::EstimateNetworkHashesPerSecondResponseMessage,
-    {
-        unimplemented!();
-    }
+    { Self { network_hashes_per_second: item.network_hashes_per_second, error: None } }
 );
 
-from!(_item: &kaspa_rpc_core::GetMempoolEntriesByAddressesRequest, protowire::GetMempoolEntriesByAddressesRequestMessage, {
-    unimplemented!();
+from!(item: &kaspa_rpc_core::GetMempoolEntriesByAddressesRequest, protowire::GetMempoolEntriesByAddressesRequestMessage, {
+    Self {
+        addresses: item.addresses.iter().map(|x| x.into()).collect(),
+        include_orphan_pool: item.include_orphan_pool,
+        filter_transaction_pool: item.filter_transaction_pool,
+    }
 });
 from!(
-    _item: RpcResult<&kaspa_rpc_core::GetMempoolEntriesByAddressesResponse>,
+    item: RpcResult<&kaspa_rpc_core::GetMempoolEntriesByAddressesResponse>,
     protowire::GetMempoolEntriesByAddressesResponseMessage,
-    {
-        unimplemented!();
-    }
+    { Self { entries: item.entries.iter().map(|x| x.into()).collect(), error: None } }
 );
 
-from!(_item: &kaspa_rpc_core::GetCoinSupplyRequest, protowire::GetCoinSupplyRequestMessage, {
-    unimplemented!();
-});
-from!(_item: RpcResult<&kaspa_rpc_core::GetCoinSupplyResponse>, protowire::GetCoinSupplyResponseMessage, {
-    unimplemented!();
+from!(&kaspa_rpc_core::GetCoinSupplyRequest, protowire::GetCoinSupplyRequestMessage);
+from!(item: RpcResult<&kaspa_rpc_core::GetCoinSupplyResponse>, protowire::GetCoinSupplyResponseMessage, {
+    Self { max_sompi: item.max_sompi, circulating_sompi: item.circulating_sompi, error: None }
 });
 
-from!(_item: &kaspa_rpc_core::PingRequest, protowire::PingRequestMessage, {
-    unimplemented!();
-});
-from!(_item: RpcResult<&kaspa_rpc_core::PingResponse>, protowire::PingResponseMessage, {
-    unimplemented!();
-});
+from!(&kaspa_rpc_core::PingRequest, protowire::PingRequestMessage);
+from!(RpcResult<&kaspa_rpc_core::PingResponse>, protowire::PingResponseMessage);
 
-from!(_item: &kaspa_rpc_core::GetProcessMetricsRequest, protowire::GetProcessMetricsRequestMessage, {
-    unimplemented!();
-});
-from!(_item: RpcResult<&kaspa_rpc_core::GetProcessMetricsResponse>, protowire::GetProcessMetricsResponseMessage, {
-    unimplemented!();
+from!(&kaspa_rpc_core::GetProcessMetricsRequest, protowire::GetProcessMetricsRequestMessage);
+from!(item: RpcResult<&kaspa_rpc_core::GetProcessMetricsResponse>, protowire::GetProcessMetricsResponseMessage, {
+    Self {
+        uptime: item.uptime,
+        memory_used: item.memory_used.clone(),
+        storage_used: item.storage_used.clone(),
+        grpc_connections: item.grpc_connections.clone(),
+        wrpc_connections: item.wrpc_connections.clone(),
+        error: None,
+    }
 });
 
 from!(item: &kaspa_rpc_core::NotifyUtxosChangedRequest, protowire::NotifyUtxosChangedRequestMessage, {
@@ -455,59 +470,57 @@ try_from!(&protowire::NotifyNewBlockTemplateResponseMessage, RpcResult<kaspa_rpc
 
 // ~~~
 
-try_from!(_item: &protowire::GetCurrentNetworkRequestMessage, kaspa_rpc_core::GetCurrentNetworkRequest, { unimplemented!() });
-try_from!(_item: &protowire::GetCurrentNetworkResponseMessage, RpcResult<kaspa_rpc_core::GetCurrentNetworkResponse>, {
-    //
-    unimplemented!()
+try_from!(&protowire::GetCurrentNetworkRequestMessage, kaspa_rpc_core::GetCurrentNetworkRequest);
+try_from!(item: &protowire::GetCurrentNetworkResponseMessage, RpcResult<kaspa_rpc_core::GetCurrentNetworkResponse>, {
+    Self { network: RpcNetworkType::from_str(&item.current_network)? }
 });
 
-try_from!(_item: &protowire::GetPeerAddressesRequestMessage, kaspa_rpc_core::GetPeerAddressesRequest, { unimplemented!() });
-try_from!(_item: &protowire::GetPeerAddressesResponseMessage, RpcResult<kaspa_rpc_core::GetPeerAddressesResponse>, {
-    //
-    unimplemented!()
+try_from!(&protowire::GetPeerAddressesRequestMessage, kaspa_rpc_core::GetPeerAddressesRequest);
+try_from!(item: &protowire::GetPeerAddressesResponseMessage, RpcResult<kaspa_rpc_core::GetPeerAddressesResponse>, {
+    Self {
+        known_addresses: item.addresses.iter().map(RpcPeerAddress::try_from).collect::<Result<Vec<_>, _>>()?,
+        banned_addresses: item.banned_addresses.iter().map(RpcPeerAddress::try_from).collect::<Result<Vec<_>, _>>()?,
+    }
 });
 
-try_from!(_item: &protowire::GetSelectedTipHashRequestMessage, kaspa_rpc_core::GetSelectedTipHashRequest, {
-    //
-    unimplemented!()
-});
-try_from!(_item: &protowire::GetSelectedTipHashResponseMessage, RpcResult<kaspa_rpc_core::GetSelectedTipHashResponse>, {
-    //
-    unimplemented!()
+try_from!(&protowire::GetSelectedTipHashRequestMessage, kaspa_rpc_core::GetSelectedTipHashRequest);
+try_from!(item: &protowire::GetSelectedTipHashResponseMessage, RpcResult<kaspa_rpc_core::GetSelectedTipHashResponse>, {
+    Self { selected_tip_hash: RpcHash::from_str(&item.selected_tip_hash)? }
 });
 
-try_from!(_item: &protowire::GetMempoolEntryRequestMessage, kaspa_rpc_core::GetMempoolEntryRequest, {
-    //
-    unimplemented!()
+try_from!(item: &protowire::GetMempoolEntryRequestMessage, kaspa_rpc_core::GetMempoolEntryRequest, {
+    Self {
+        transaction_id: kaspa_rpc_core::RpcTransactionId::from_str(&item.tx_id)?,
+        include_orphan_pool: item.include_orphan_pool,
+        filter_transaction_pool: item.filter_transaction_pool,
+    }
 });
-try_from!(_item: &protowire::GetMempoolEntryResponseMessage, RpcResult<kaspa_rpc_core::GetMempoolEntryResponse>, {
-    //
-    unimplemented!()
-});
-
-try_from!(_item: &protowire::GetMempoolEntriesRequestMessage, kaspa_rpc_core::GetMempoolEntriesRequest, {
-    //
-    unimplemented!()
-});
-try_from!(_item: &protowire::GetMempoolEntriesResponseMessage, RpcResult<kaspa_rpc_core::GetMempoolEntriesResponse>, {
-    //
-    unimplemented!()
-});
-
-try_from!(_item: &protowire::GetConnectedPeerInfoRequestMessage, kaspa_rpc_core::GetConnectedPeerInfoRequest, {
-    //
-    unimplemented!()
-});
-try_from!(_item: &protowire::GetConnectedPeerInfoResponseMessage, RpcResult<kaspa_rpc_core::GetConnectedPeerInfoResponse>, {
-    //
-    unimplemented!()
+try_from!(item: &protowire::GetMempoolEntryResponseMessage, RpcResult<kaspa_rpc_core::GetMempoolEntryResponse>, {
+    Self {
+        mempool_entry: item
+            .entry
+            .as_ref()
+            .ok_or_else(|| RpcError::MissingRpcFieldError("GetMempoolEntryResponseMessage".to_string(), "entry".to_string()))?
+            .try_into()?,
+    }
 });
 
-try_from!(_item: &protowire::AddPeerRequestMessage, kaspa_rpc_core::AddPeerRequest, {
-    //
-    unimplemented!()
+try_from!(item: &protowire::GetMempoolEntriesRequestMessage, kaspa_rpc_core::GetMempoolEntriesRequest, {
+    Self { include_orphan_pool: item.include_orphan_pool, filter_transaction_pool: item.filter_transaction_pool }
 });
-try_from!(item: &protowire::AddPeerResponseMessage, RpcResult<kaspa_rpc_core::AddPeerResponse>, { unimplemented!() });
+try_from!(item: &protowire::GetMempoolEntriesResponseMessage, RpcResult<kaspa_rpc_core::GetMempoolEntriesResponse>, {
+    Self { mempool_entries: item.entries.iter().map(kaspa_rpc_core::RpcMempoolEntry::try_from).collect::<Result<Vec<_>, _>>()? }
+});
+
+try_from!(&protowire::GetConnectedPeerInfoRequestMessage, kaspa_rpc_core::GetConnectedPeerInfoRequest);
+try_from!(item: &protowire::GetConnectedPeerInfoResponseMessage, RpcResult<kaspa_rpc_core::GetConnectedPeerInfoResponse>, {
+    Self { peer_info: item.infos.iter().map(kaspa_rpc_core::RpcPeerInfo::try_from).collect::<Result<Vec<_>, _>>()? }
+});
+
+try_from!(item: &protowire::AddPeerRequestMessage, kaspa_rpc_core::AddPeerRequest, {
+    Self { peer_address: RpcPeerAddress { address: item.address.clone() }, is_permanent: item.is_permanent }
+});
+try_from!(&protowire::AddPeerResponseMessage, RpcResult<kaspa_rpc_core::AddPeerResponse>);
 
 try_from!(item: &protowire::SubmitTransactionRequestMessage, kaspa_rpc_core::SubmitTransactionRequest, {
     Self {
@@ -523,20 +536,26 @@ try_from!(item: &protowire::SubmitTransactionResponseMessage, RpcResult<kaspa_rp
     Self { transaction_id: RpcHash::from_str(&item.transaction_id)? }
 });
 
-try_from!(_item: &protowire::GetSubnetworkRequestMessage, kaspa_rpc_core::GetSubnetworkRequest, {
-    //
-    unimplemented!()
+try_from!(item: &protowire::GetSubnetworkRequestMessage, kaspa_rpc_core::GetSubnetworkRequest, {
+    Self { subnetwork_id: kaspa_rpc_core::RpcSubnetworkId::from_str(&item.subnetwork_id)? }
 });
-try_from!(_item: &protowire::GetSubnetworkResponseMessage, RpcResult<kaspa_rpc_core::GetSubnetworkResponse>, {
-    //
-    unimplemented!()
+try_from!(item: &protowire::GetSubnetworkResponseMessage, RpcResult<kaspa_rpc_core::GetSubnetworkResponse>, {
+    Self { gas_limit: item.gas_limit }
 });
 
-try_from!(_item: &protowire::GetVirtualChainFromBlockRequestMessage, kaspa_rpc_core::GetVirtualChainFromBlockRequest, {
-    unimplemented!()
+try_from!(item: &protowire::GetVirtualChainFromBlockRequestMessage, kaspa_rpc_core::GetVirtualChainFromBlockRequest, {
+    Self { start_hash: RpcHash::from_str(&item.start_hash)?, include_accepted_transaction_ids: item.include_accepted_transaction_ids }
 });
-try_from!(_item: &protowire::GetVirtualChainFromBlockResponseMessage, RpcResult<kaspa_rpc_core::GetVirtualChainFromBlockResponse>, {
-    unimplemented!()
+try_from!(item: &protowire::GetVirtualChainFromBlockResponseMessage, RpcResult<kaspa_rpc_core::GetVirtualChainFromBlockResponse>, {
+    Self {
+        removed_chain_block_hashes: item
+            .removed_chain_block_hashes
+            .iter()
+            .map(|x| RpcHash::from_str(x))
+            .collect::<Result<Vec<_>, _>>()?,
+        added_chain_block_hashes: item.added_chain_block_hashes.iter().map(|x| RpcHash::from_str(x)).collect::<Result<Vec<_>, _>>()?,
+        accepted_transaction_ids: item.accepted_transaction_ids.iter().map(|x| x.try_into()).collect::<Result<Vec<_>, _>>()?,
+    }
 });
 
 try_from!(item: &protowire::GetBlocksRequestMessage, kaspa_rpc_core::GetBlocksRequest, {
@@ -553,36 +572,41 @@ try_from!(item: &protowire::GetBlocksResponseMessage, RpcResult<kaspa_rpc_core::
     }
 });
 
-try_from!(_item: &protowire::GetBlockCountRequestMessage, kaspa_rpc_core::GetBlockCountRequest, {
-    //
-    unimplemented!()
-});
-try_from!(_item: &protowire::GetBlockCountResponseMessage, RpcResult<kaspa_rpc_core::GetBlockCountResponse>, {
-    //
-    unimplemented!()
+try_from!(&protowire::GetBlockCountRequestMessage, kaspa_rpc_core::GetBlockCountRequest);
+try_from!(item: &protowire::GetBlockCountResponseMessage, RpcResult<kaspa_rpc_core::GetBlockCountResponse>, {
+    Self { header_count: item.header_count, block_count: item.block_count }
 });
 
-try_from!(_item: &protowire::GetBlockDagInfoRequestMessage, kaspa_rpc_core::GetBlockDagInfoRequest, {
-    //
-    unimplemented!()
+try_from!(&protowire::GetBlockDagInfoRequestMessage, kaspa_rpc_core::GetBlockDagInfoRequest);
+try_from!(item: &protowire::GetBlockDagInfoResponseMessage, RpcResult<kaspa_rpc_core::GetBlockDagInfoResponse>, {
+    Self {
+        network_type: kaspa_rpc_core::RpcNetworkType::from_str(&item.network_name)?,
+        block_count: item.block_count,
+        header_count: item.header_count,
+        tip_hashes: item.tip_hashes.iter().map(|x| RpcHash::from_str(x)).collect::<Result<Vec<_>, _>>()?,
+        difficulty: item.difficulty,
+        past_median_time: item.past_median_time as u64,
+        virtual_parent_hashes: item.virtual_parent_hashes.iter().map(|x| RpcHash::from_str(x)).collect::<Result<Vec<_>, _>>()?,
+        pruning_point_hash: RpcHash::from_str(&item.pruning_point_hash)?,
+        virtual_daa_score: item.virtual_daa_score,
+    }
 });
-try_from!(_item: &protowire::GetBlockDagInfoResponseMessage, RpcResult<kaspa_rpc_core::GetBlockDagInfoResponse>, {
-    //
-    unimplemented!()
+
+try_from!(item: &protowire::ResolveFinalityConflictRequestMessage, kaspa_rpc_core::ResolveFinalityConflictRequest, {
+    Self { finality_block_hash: RpcHash::from_str(&item.finality_block_hash)? }
 });
-try_from!(_item: &protowire::ResolveFinalityConflictRequestMessage, kaspa_rpc_core::ResolveFinalityConflictRequest, {
-    //
-    unimplemented!()
-});
-try_from!(_item: &protowire::ResolveFinalityConflictResponseMessage, RpcResult<kaspa_rpc_core::ResolveFinalityConflictResponse>, {
-    unimplemented!()
-});
+try_from!(&protowire::ResolveFinalityConflictResponseMessage, RpcResult<kaspa_rpc_core::ResolveFinalityConflictResponse>);
 
 try_from!(&protowire::ShutdownRequestMessage, kaspa_rpc_core::ShutdownRequest);
 try_from!(&protowire::ShutdownResponseMessage, RpcResult<kaspa_rpc_core::ShutdownResponse>);
 
-try_from!(_item: &protowire::GetHeadersRequestMessage, kaspa_rpc_core::GetHeadersRequest, { unimplemented!() });
-try_from!(_item: &protowire::GetHeadersResponseMessage, RpcResult<kaspa_rpc_core::GetHeadersResponse>, { unimplemented!() });
+try_from!(item: &protowire::GetHeadersRequestMessage, kaspa_rpc_core::GetHeadersRequest, {
+    Self { start_hash: RpcHash::from_str(&item.start_hash)?, limit: item.limit, is_ascending: item.is_ascending }
+});
+try_from!(item: &protowire::GetHeadersResponseMessage, RpcResult<kaspa_rpc_core::GetHeadersResponse>, {
+    // TODO
+    Self { headers: vec![] }
+});
 
 try_from!(item: &protowire::GetUtxosByAddressesRequestMessage, kaspa_rpc_core::GetUtxosByAddressesRequest, {
     Self { addresses: item.addresses.iter().map(|x| x.as_str().try_into()).collect::<Result<Vec<_>, _>>()? }
@@ -591,16 +615,18 @@ try_from!(item: &protowire::GetUtxosByAddressesResponseMessage, RpcResult<kaspa_
     Self { entries: item.entries.iter().map(|x| x.try_into()).collect::<Result<Vec<_>, _>>()? }
 });
 
-try_from!(_item: &protowire::GetBalanceByAddressRequestMessage, kaspa_rpc_core::GetBalanceByAddressRequest, { unimplemented!() });
-try_from!(_item: &protowire::GetBalanceByAddressResponseMessage, RpcResult<kaspa_rpc_core::GetBalanceByAddressResponse>, {
-    unimplemented!()
+try_from!(item: &protowire::GetBalanceByAddressRequestMessage, kaspa_rpc_core::GetBalanceByAddressRequest, {
+    Self { address: item.address.as_str().try_into()? }
+});
+try_from!(item: &protowire::GetBalanceByAddressResponseMessage, RpcResult<kaspa_rpc_core::GetBalanceByAddressResponse>, {
+    Self { balance: item.balance }
 });
 
-try_from!(_item: &protowire::GetBalancesByAddressesRequestMessage, kaspa_rpc_core::GetBalancesByAddressesRequest, {
-    unimplemented!()
+try_from!(item: &protowire::GetBalancesByAddressesRequestMessage, kaspa_rpc_core::GetBalancesByAddressesRequest, {
+    Self { addresses: item.addresses.iter().map(|x| x.as_str().try_into()).collect::<Result<Vec<_>, _>>()? }
 });
-try_from!(_item: &protowire::GetBalancesByAddressesResponseMessage, RpcResult<kaspa_rpc_core::GetBalancesByAddressesResponse>, {
-    unimplemented!()
+try_from!(item: &protowire::GetBalancesByAddressesResponseMessage, RpcResult<kaspa_rpc_core::GetBalancesByAddressesResponse>, {
+    Self { entries: item.entries.iter().map(|x| x.try_into()).collect::<Result<Vec<_>, _>>()? }
 });
 
 try_from!(&protowire::GetSinkBlueScoreRequestMessage, kaspa_rpc_core::GetSinkBlueScoreRequest);
@@ -608,67 +634,55 @@ try_from!(item: &protowire::GetSinkBlueScoreResponseMessage, RpcResult<kaspa_rpc
     Self { blue_score: item.blue_score }
 });
 
-try_from!(_item: &protowire::BanRequestMessage, kaspa_rpc_core::BanRequest, {
-    //
-    unimplemented!()
+try_from!(item: &protowire::BanRequestMessage, kaspa_rpc_core::BanRequest, {
+    Self { address: RpcPeerAddress { address: item.ip.clone() } }
 });
-try_from!(_item: &protowire::BanResponseMessage, RpcResult<kaspa_rpc_core::BanResponse>, {
-    //
-    unimplemented!()
-});
+try_from!(&protowire::BanResponseMessage, RpcResult<kaspa_rpc_core::BanResponse>);
 
-try_from!(_item: &protowire::UnbanRequestMessage, kaspa_rpc_core::UnbanRequest, {
-    //
-    unimplemented!()
+try_from!(item: &protowire::UnbanRequestMessage, kaspa_rpc_core::UnbanRequest, {
+    Self { address: RpcPeerAddress { address: item.ip.clone() } }
 });
-try_from!(_item: &protowire::UnbanResponseMessage, RpcResult<kaspa_rpc_core::UnbanResponse>, {
-    //
-    unimplemented!()
-});
+try_from!(&protowire::UnbanResponseMessage, RpcResult<kaspa_rpc_core::UnbanResponse>);
 
-try_from!(_item: &protowire::EstimateNetworkHashesPerSecondRequestMessage, kaspa_rpc_core::EstimateNetworkHashesPerSecondRequest, {
-    unimplemented!()
+try_from!(item: &protowire::EstimateNetworkHashesPerSecondRequestMessage, kaspa_rpc_core::EstimateNetworkHashesPerSecondRequest, {
+    Self { window_size: item.window_size, start_hash: RpcHash::from_str(&item.start_hash)? }
 });
 try_from!(
-    _item: &protowire::EstimateNetworkHashesPerSecondResponseMessage,
+    item: &protowire::EstimateNetworkHashesPerSecondResponseMessage,
     RpcResult<kaspa_rpc_core::EstimateNetworkHashesPerSecondResponse>,
-    { unimplemented!() }
+    { Self { network_hashes_per_second: item.network_hashes_per_second } }
 );
 
-try_from!(_item: &protowire::GetMempoolEntriesByAddressesRequestMessage, kaspa_rpc_core::GetMempoolEntriesByAddressesRequest, {
-    unimplemented!()
+try_from!(item: &protowire::GetMempoolEntriesByAddressesRequestMessage, kaspa_rpc_core::GetMempoolEntriesByAddressesRequest, {
+    Self {
+        addresses: item.addresses.iter().map(|x| x.as_str().try_into()).collect::<Result<Vec<_>, _>>()?,
+        include_orphan_pool: item.include_orphan_pool,
+        filter_transaction_pool: item.filter_transaction_pool,
+    }
 });
 try_from!(
-    _item: &protowire::GetMempoolEntriesByAddressesResponseMessage,
+    item: &protowire::GetMempoolEntriesByAddressesResponseMessage,
     RpcResult<kaspa_rpc_core::GetMempoolEntriesByAddressesResponse>,
-    { unimplemented!() }
+    { Self { entries: item.entries.iter().map(|x| x.try_into()).collect::<Result<Vec<_>, _>>()? } }
 );
 
-try_from!(_item: &protowire::GetCoinSupplyRequestMessage, kaspa_rpc_core::GetCoinSupplyRequest, {
-    //
-    unimplemented!()
-});
-try_from!(_item: &protowire::GetCoinSupplyResponseMessage, RpcResult<kaspa_rpc_core::GetCoinSupplyResponse>, {
-    //
-    unimplemented!()
+try_from!(&protowire::GetCoinSupplyRequestMessage, kaspa_rpc_core::GetCoinSupplyRequest);
+try_from!(item: &protowire::GetCoinSupplyResponseMessage, RpcResult<kaspa_rpc_core::GetCoinSupplyResponse>, {
+    Self { max_sompi: item.max_sompi, circulating_sompi: item.circulating_sompi }
 });
 
-try_from!(_item: &protowire::PingRequestMessage, kaspa_rpc_core::PingRequest, {
-    //
-    unimplemented!()
-});
-try_from!(_item: &protowire::PingResponseMessage, RpcResult<kaspa_rpc_core::PingResponse>, {
-    //
-    unimplemented!()
-});
+try_from!(&protowire::PingRequestMessage, kaspa_rpc_core::PingRequest);
+try_from!(&protowire::PingResponseMessage, RpcResult<kaspa_rpc_core::PingResponse>);
 
-try_from!(_item: &protowire::GetProcessMetricsRequestMessage, kaspa_rpc_core::GetProcessMetricsRequest, {
-    //
-    unimplemented!()
-});
-try_from!(_item: &protowire::GetProcessMetricsResponseMessage, RpcResult<kaspa_rpc_core::GetProcessMetricsResponse>, {
-    //
-    unimplemented!()
+try_from!(&protowire::GetProcessMetricsRequestMessage, kaspa_rpc_core::GetProcessMetricsRequest);
+try_from!(item: &protowire::GetProcessMetricsResponseMessage, RpcResult<kaspa_rpc_core::GetProcessMetricsResponse>, {
+    Self {
+        uptime: item.uptime,
+        memory_used: item.memory_used.clone(),
+        storage_used: item.storage_used.clone(),
+        grpc_connections: item.grpc_connections.clone(),
+        wrpc_connections: item.wrpc_connections.clone(),
+    }
 });
 
 try_from!(item: &protowire::NotifyUtxosChangedRequestMessage, kaspa_rpc_core::NotifyUtxosChangedRequest, {
