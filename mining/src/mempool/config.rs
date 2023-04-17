@@ -75,7 +75,7 @@ impl Config {
     }
 
     /// Build a default config.
-    /// The arguments should be obtained from the current consensus [`consensus::Params`] instance.
+    /// The arguments should be obtained from the current consensus [`kaspa_consensus_core::config::params::Params`] instance.
     pub fn build_default(target_milliseconds_per_block: u64, relay_non_std_transactions: bool, max_block_mass: u64) -> Self {
         Self {
             maximum_transaction_count: DEFAULT_MAXIMUM_TRANSACTION_COUNT,
