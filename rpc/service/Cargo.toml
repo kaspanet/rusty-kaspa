@@ -1,5 +1,6 @@
 [package]
 name = "kaspa-rpc-service"
+description = "Kaspa RPC service"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
