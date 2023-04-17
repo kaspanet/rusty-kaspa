@@ -1,6 +1,6 @@
 //!
 //! v0 (KDX-style) account data decryption
-//! 
+//!
 
 use crate::error::Error;
 use crate::result::Result;
