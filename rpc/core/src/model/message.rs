@@ -567,12 +567,12 @@ impl GetUtxosByAddressesResponse {
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct BanRequest {
-    pub address: RpcPeerAddress,
+    pub ip: RpcIpAddress,
 }
 
 impl BanRequest {
-    pub fn new(address: RpcPeerAddress) -> Self {
-        Self { address }
+    pub fn new(ip: RpcIpAddress) -> Self {
+        Self { ip }
     }
 }
 
@@ -583,12 +583,12 @@ pub struct BanResponse {}
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct UnbanRequest {
-    pub address: RpcPeerAddress,
+    pub ip: RpcIpAddress,
 }
 
 impl UnbanRequest {
-    pub fn new(address: RpcPeerAddress) -> Self {
-        Self { address }
+    pub fn new(ip: RpcIpAddress) -> Self {
+        Self { ip }
     }
 }
 

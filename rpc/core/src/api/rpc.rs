@@ -215,15 +215,15 @@ where
     async fn get_sink_blue_score_call(&self, request: GetSinkBlueScoreRequest) -> RpcResult<GetSinkBlueScoreResponse>;
 
     /// Bans the given ip.
-    async fn ban(&self, address: RpcPeerAddress) -> RpcResult<()> {
-        self.ban_call(BanRequest::new(address)).await?;
+    async fn ban(&self, ip: RpcIpAddress) -> RpcResult<()> {
+        self.ban_call(BanRequest::new(ip)).await?;
         Ok(())
     }
     async fn ban_call(&self, request: BanRequest) -> RpcResult<BanResponse>;
 
     /// Unbans the given ip.
-    async fn unban(&self, address: RpcPeerAddress) -> RpcResult<()> {
-        self.unban_call(UnbanRequest::new(address)).await?;
+    async fn unban(&self, ip: RpcIpAddress) -> RpcResult<()> {
+        self.unban_call(UnbanRequest::new(ip)).await?;
         Ok(())
     }
     async fn unban_call(&self, request: UnbanRequest) -> RpcResult<UnbanResponse>;

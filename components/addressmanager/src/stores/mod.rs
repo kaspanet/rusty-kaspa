@@ -1,4 +1,8 @@
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::{
+    net::{AddrParseError, IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    ops::Deref,
+    str::FromStr,
+};
 
 // use net_address::{BorshDeserialize, BorshSchema, BorshSerialize};
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
@@ -8,20 +12,58 @@ pub(super) mod address_store;
 pub(super) mod banned_address_store;
 
 #[derive(PartialEq, Eq, Hash, Copy, Clone, Serialize, Deserialize, Debug)]
-pub struct NetAddress {
-    pub ip: IpAddr,
-    pub port: u16,
-}
+#[repr(transparent)]
+pub struct IpAddress(pub IpAddr);
 
-impl NetAddress {
-    pub fn new(ip: IpAddr, port: u16) -> Self {
-        Self { ip, port }
+impl IpAddress {
+    pub fn new(ip: IpAddr) -> Self {
+        Self(ip)
+    }
+}
+impl AsRef<IpAddr> for IpAddress {
+    fn as_ref(&self) -> &IpAddr {
+        &self.0
+    }
+}
+impl From<IpAddr> for IpAddress {
+    fn from(ip: IpAddr) -> Self {
+        Self(ip)
+    }
+}
+impl From<&IpAddr> for IpAddress {
+    fn from(ip: &IpAddr) -> Self {
+        Self(ip.to_owned())
+    }
+}
+impl From<Ipv4Addr> for IpAddress {
+    fn from(value: Ipv4Addr) -> Self {
+        Self(value.into())
+    }
+}
+impl From<Ipv6Addr> for IpAddress {
+    fn from(value: Ipv6Addr) -> Self {
+        Self(value.into())
+    }
+}
+impl From<IpAddress> for IpAddr {
+    fn from(value: IpAddress) -> Self {
+        value.0
     }
 }
 
-impl From<SocketAddr> for NetAddress {
-    fn from(value: SocketAddr) -> Self {
-        Self::new(value.ip(), value.port())
+impl FromStr for IpAddress {
+    type Err = AddrParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        IpAddr::from_str(s).map(IpAddress::from)
+    }
+}
+
+impl Deref for IpAddress {
+    type Target = IpAddr;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
@@ -30,14 +72,14 @@ impl From<SocketAddr> for NetAddress {
 // IpAddr does not currently support Borsh
 //
 
-impl BorshSerialize for NetAddress {
+impl BorshSerialize for IpAddress {
     fn serialize<W: borsh::maybestd::io::Write>(&self, writer: &mut W) -> ::core::result::Result<(), borsh::maybestd::io::Error> {
-        let variant_idx: u8 = match self.ip {
+        let variant_idx: u8 = match self.0 {
             IpAddr::V4(..) => 0u8,
             IpAddr::V6(..) => 1u8,
         };
         writer.write_all(&variant_idx.to_le_bytes())?;
-        match self.ip {
+        match self.0 {
             IpAddr::V4(id0) => {
                 borsh::BorshSerialize::serialize(&id0.octets(), writer)?;
             }
@@ -45,12 +87,11 @@ impl BorshSerialize for NetAddress {
                 borsh::BorshSerialize::serialize(&id0.octets(), writer)?;
             }
         }
-        borsh::BorshSerialize::serialize(&self.port, writer)?;
         Ok(())
     }
 }
 
-impl borsh::de::BorshDeserialize for NetAddress {
+impl BorshDeserialize for IpAddress {
     fn deserialize(buf: &mut &[u8]) -> ::core::result::Result<Self, borsh::maybestd::io::Error> {
         let variant_idx: u8 = BorshDeserialize::deserialize(buf)?;
         let ip = match variant_idx {
@@ -67,32 +108,62 @@ impl borsh::de::BorshDeserialize for NetAddress {
                 return Err(borsh::maybestd::io::Error::new(borsh::maybestd::io::ErrorKind::InvalidInput, msg));
             }
         };
-        Ok(Self { ip, port: BorshDeserialize::deserialize(buf)? })
+        Ok(Self(ip))
     }
 }
 
-impl BorshSchema for NetAddress {
+impl BorshSchema for IpAddress {
     fn declaration() -> borsh::schema::Declaration {
-        "NetAddress".to_string()
+        "IpAddress".to_string()
     }
     fn add_definitions_recursively(
         definitions: &mut borsh::maybestd::collections::HashMap<borsh::schema::Declaration, borsh::schema::Definition>,
     ) {
         #[allow(dead_code)]
         #[derive(BorshSchema)]
-        enum IpAddr {
+        enum IpAddress {
             V4([u8; 4]),
             V6([u8; 16]),
         }
+        <IpAddress>::add_definitions_recursively(definitions);
+    }
+}
 
-        let fields = borsh::schema::Fields::NamedFields(borsh::maybestd::vec![
-            ("ip".to_string(), <IpAddr>::declaration()),
-            ("port".to_string(), <u16>::declaration())
-        ]);
-        let definition = borsh::schema::Definition::Struct { fields };
-        Self::add_definition(Self::declaration(), definition, definitions);
-        <IpAddr>::add_definitions_recursively(definitions);
-        <u16>::add_definitions_recursively(definitions);
+#[derive(PartialEq, Eq, Hash, Copy, Clone, Serialize, Deserialize, Debug, BorshSerialize, BorshDeserialize, BorshSchema)]
+pub struct NetAddress {
+    pub ip: IpAddress,
+    pub port: u16,
+}
+
+impl NetAddress {
+    pub fn new(ip: IpAddress, port: u16) -> Self {
+        Self { ip, port }
+    }
+}
+
+impl From<SocketAddr> for NetAddress {
+    fn from(value: SocketAddr) -> Self {
+        Self::new(value.ip().into(), value.port())
+    }
+}
+
+impl From<NetAddress> for SocketAddr {
+    fn from(value: NetAddress) -> Self {
+        Self::new(value.ip.0, value.port)
+    }
+}
+
+impl ToString for NetAddress {
+    fn to_string(&self) -> String {
+        SocketAddr::from(self.to_owned()).to_string()
+    }
+}
+
+impl FromStr for NetAddress {
+    type Err = AddrParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        SocketAddr::from_str(s).map(NetAddress::from)
     }
 }
 
@@ -115,7 +186,7 @@ impl AddressKey {
 impl From<NetAddress> for AddressKey {
     fn from(value: NetAddress) -> Self {
         AddressKey::new(
-            match value.ip {
+            match value.ip.0 {
                 IpAddr::V4(ip) => ip.to_ipv6_mapped(),
                 IpAddr::V6(ip) => ip,
             },

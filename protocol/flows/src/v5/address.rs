@@ -1,6 +1,6 @@
 use crate::{flow_context::FlowContext, flow_trait::Flow};
 use itertools::Itertools;
-use kaspa_addressmanager::NetAddress;
+use kaspa_addressmanager::{IpAddress, NetAddress};
 use kaspa_p2p_lib::{
     common::ProtocolError,
     dequeue, dequeue_with_timeout, make_message,
@@ -8,7 +8,7 @@ use kaspa_p2p_lib::{
     IncomingRoute, Router,
 };
 use rand::seq::SliceRandom;
-use std::{net::IpAddr, sync::Arc};
+use std::sync::Arc;
 
 /// The maximum number of addresses that are sent in a single kaspa Addresses message.
 const MAX_ADDRESSES_SEND: usize = 1000;
@@ -52,7 +52,7 @@ impl ReceiveAddressesFlow {
             .await?;
 
         let msg = dequeue_with_timeout!(self.incoming_route, Payload::Addresses)?;
-        let address_list: Vec<(IpAddr, u16)> = msg.try_into()?;
+        let address_list: Vec<(IpAddress, u16)> = msg.try_into()?;
         if address_list.len() > MAX_ADDRESSES_RECEIVE {
             return Err(ProtocolError::OtherOwned(format!("address count {} exceeded {}", address_list.len(), MAX_ADDRESSES_RECEIVE)));
         }

@@ -4,6 +4,7 @@ use super::{
     option::TryIntoOptionEx,
 };
 use crate::pb as protowire;
+use kaspa_addressmanager::IpAddress;
 use kaspa_consensus_core::{
     header::Header,
     pruning::{PruningPointProof, PruningPointsList},
@@ -11,7 +12,7 @@ use kaspa_consensus_core::{
 };
 use kaspa_hashes::Hash;
 
-use std::{net::IpAddr, sync::Arc};
+use std::sync::Arc;
 
 // ----------------------------------------------------------------------------
 // protowire to consensus_core
@@ -134,7 +135,7 @@ impl TryFrom<protowire::BlockLocatorMessage> for Vec<Hash> {
     }
 }
 
-impl TryFrom<protowire::AddressesMessage> for Vec<(IpAddr, u16)> {
+impl TryFrom<protowire::AddressesMessage> for Vec<(IpAddress, u16)> {
     type Error = ConversionError;
 
     fn try_from(msg: protowire::AddressesMessage) -> Result<Self, Self::Error> {

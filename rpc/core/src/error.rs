@@ -1,5 +1,5 @@
 use kaspa_consensus_core::tx::TransactionId;
-use std::num::TryFromIntError;
+use std::{net::AddrParseError, num::TryFromIntError};
 use thiserror::Error;
 
 use crate::{RpcHash, RpcTransactionId};
@@ -20,6 +20,9 @@ pub enum RpcError {
 
     #[error("Integer parsing error: {0}")]
     ParseIntError(#[from] std::num::ParseIntError),
+
+    #[error("Ip address parsing error {0}")]
+    ParseIpAddressError(#[from] AddrParseError),
 
     #[error("Invalid script class: {0}")]
     InvalidRpcScriptClass(String),

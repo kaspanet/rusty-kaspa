@@ -10,7 +10,7 @@ use parking_lot::Mutex;
 
 use stores::banned_address_store::{BannedAddressesStore, BannedAddressesStoreReader, ConnectionBanTimestamp, DbBannedAddressesStore};
 
-pub use stores::NetAddress;
+pub use stores::{IpAddress, NetAddress};
 
 const MAX_ADDRESSES: usize = 4096;
 const MAX_CONNECTION_FAILED_COUNT: u64 = 3;
@@ -238,7 +238,7 @@ mod address_store_with_cache {
 
         #[test]
         fn test_weighted_iterator() {
-            let address = NetAddress::new(IpAddr::V6(Ipv6Addr::LOCALHOST), 1);
+            let address = NetAddress::new(IpAddr::V6(Ipv6Addr::LOCALHOST).into(), 1);
             let iter = RandomWeightedIterator::new(vec![0.2, 0.3, 0.0], vec![address, address, address]);
             assert_eq!(iter.count(), 2);
 

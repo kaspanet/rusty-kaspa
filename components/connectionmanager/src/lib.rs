@@ -165,7 +165,7 @@ impl ConnectionManager {
                     connecting = false;
                     break;
                 };
-                let socket_addr = SocketAddr::new(net_addr.ip, net_addr.port).to_string();
+                let socket_addr = SocketAddr::new(net_addr.ip.into(), net_addr.port).to_string();
                 debug!("Connecting to {}", &socket_addr);
                 addrs_to_connect.push(net_addr);
                 jobs.push(self.p2p_adaptor.connect_peer(socket_addr.clone()));
@@ -231,7 +231,7 @@ impl ConnectionManager {
             info!("Retrieved {} addresses from DNS seeder {}", addrs_len, seeder);
             let mut amgr_lock = self.amgr.lock();
             for addr in addrs {
-                amgr_lock.add_address(NetAddress::new(addr.ip(), addr.port()));
+                amgr_lock.add_address(NetAddress::new(addr.ip().into(), addr.port()));
             }
 
             if addrs_len >= min_addresses_to_fetch {

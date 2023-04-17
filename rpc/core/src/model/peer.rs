@@ -1,7 +1,8 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
-use kaspa_addressmanager::NetAddress;
+use kaspa_addressmanager::{IpAddress, NetAddress};
 use serde::{Deserialize, Serialize};
 
+pub type RpcIpAddress = IpAddress;
 pub type RpcPeerAddress = NetAddress;
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]

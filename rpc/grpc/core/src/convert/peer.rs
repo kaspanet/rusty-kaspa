@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use crate::protowire;
 use crate::{from, try_from};
 use kaspa_rpc_core::{RpcError, RpcPeerAddress};
@@ -8,8 +10,8 @@ use kaspa_rpc_core::{RpcError, RpcPeerAddress};
 
 from!(item: &kaspa_rpc_core::RpcPeerInfo, protowire::GetConnectedPeerInfoMessage, {
     Self {
-        id: item.id.to_string(),               // TODO
-        address: item.address.address.clone(), // TODO
+        id: item.id.to_string(), // TODO
+        address: item.address.to_string(),
         last_ping_duration: item.last_ping_duration as i64,
         is_outbound: item.is_outbound,
         time_offset: item.time_offset as i64,
@@ -20,7 +22,7 @@ from!(item: &kaspa_rpc_core::RpcPeerInfo, protowire::GetConnectedPeerInfoMessage
     }
 });
 
-from!(item: &kaspa_rpc_core::RpcPeerAddress, protowire::GetPeerAddressesKnownAddressMessage, { Self { addr: item.address.clone() } });
+from!(item: &kaspa_rpc_core::RpcPeerAddress, protowire::GetPeerAddressesKnownAddressMessage, { Self { addr: item.to_string() } });
 
 // ----------------------------------------------------------------------------
 // protowire to rpc_core
@@ -29,7 +31,7 @@ from!(item: &kaspa_rpc_core::RpcPeerAddress, protowire::GetPeerAddressesKnownAdd
 try_from!(item: &protowire::GetConnectedPeerInfoMessage, kaspa_rpc_core::RpcPeerInfo, {
     Self {
         id: 0, // TODO
-        address: RpcPeerAddress { address: item.address.clone() },
+        address: RpcPeerAddress::from_str(&item.address)?,
         last_ping_duration: item.last_ping_duration as u64,
         is_outbound: item.is_outbound,
         time_offset: item.time_offset as u64,
@@ -40,6 +42,4 @@ try_from!(item: &protowire::GetConnectedPeerInfoMessage, kaspa_rpc_core::RpcPeer
     }
 });
 
-try_from!(item: &protowire::GetPeerAddressesKnownAddressMessage, kaspa_rpc_core::RpcPeerAddress, {
-    Self { address: item.addr.clone() }
-});
+try_from!(item: &protowire::GetPeerAddressesKnownAddressMessage, kaspa_rpc_core::RpcPeerAddress, { Self::from_str(&item.addr)? });
