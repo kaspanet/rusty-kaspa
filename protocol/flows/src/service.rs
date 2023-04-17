@@ -58,7 +58,7 @@ impl AsyncService for P2pService {
 
         // Launch the service and wait for a shutdown signal
         Box::pin(async move {
-            let server_address = self.listen.clone().unwrap_or(format!("[::1]:{}", self.default_port));
+            let server_address = self.listen.clone().unwrap_or(format!("0.0.0.0:{}", self.default_port));
             let p2p_adaptor =
                 Adaptor::bidirectional(server_address.clone(), self.flow_context.hub().clone(), self.flow_context.clone()).unwrap();
             let connection_manager = ConnectionManager::new(

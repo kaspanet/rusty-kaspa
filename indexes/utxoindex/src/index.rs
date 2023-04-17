@@ -7,13 +7,16 @@ use crate::{
     IDENT,
 };
 use kaspa_consensus_core::{tx::ScriptPublicKeys, utxo::utxo_diff::UtxoDiff, BlockHashSet};
-use kaspa_consensusmanager::ConsensusManager;
-use kaspa_core::trace;
+use kaspa_consensusmanager::{ConsensusManager, ConsensusResetHandler};
+use kaspa_core::{info, trace};
 use kaspa_database::prelude::{StoreError, StoreResult, DB};
 use kaspa_hashes::Hash;
 use kaspa_utils::arc::ArcExtensions;
 use parking_lot::RwLock;
-use std::{fmt::Debug, sync::Arc};
+use std::{
+    fmt::Debug,
+    sync::{Arc, Weak},
+};
 
 const RESYNC_CHUNK_SIZE: usize = 2048; //Increased from 1k (used in go-kaspad), for quicker resets, while still having a low memory footprint.
 
@@ -28,11 +31,13 @@ pub struct UtxoIndex {
 impl UtxoIndex {
     /// Creates a new [`UtxoIndex`] within a [`RwLock`]
     pub fn new(consensus_manager: Arc<ConsensusManager>, db: Arc<DB>) -> UtxoIndexResult<Arc<RwLock<Self>>> {
-        let mut utxoindex = Self { consensus_manager, store: Store::new(db) };
+        let mut utxoindex = Self { consensus_manager: consensus_manager.clone(), store: Store::new(db) };
         if !utxoindex.is_synced()? {
             utxoindex.resync()?;
         }
-        Ok(Arc::new(RwLock::new(utxoindex)))
+        let utxoindex = Arc::new(RwLock::new(utxoindex));
+        consensus_manager.register_consensus_reset_handler(Arc::new(UtxoIndexConsensusResetHandler::new(Arc::downgrade(&utxoindex))));
+        Ok(utxoindex)
     }
 }
 
@@ -121,7 +126,7 @@ impl UtxoIndexApi for UtxoIndex {
     /// 1) There is an implicit expectation that the consensus store must have [VirtualParent] tips. i.e. consensus database must be initiated.
     /// 2) resyncing while consensus notifies of utxo differences, may result in a corrupted db.
     fn resync(&mut self) -> UtxoIndexResult<()> {
-        trace!("[{0}] resyncing...", IDENT);
+        info!("Resyncing the utxoindex...");
 
         self.store.delete_all()?;
         let consensus = self.consensus_manager.consensus();
@@ -180,6 +185,24 @@ impl Debug for UtxoIndex {
     }
 }
 
+struct UtxoIndexConsensusResetHandler {
+    utxoindex: Weak<RwLock<UtxoIndex>>,
+}
+
+impl UtxoIndexConsensusResetHandler {
+    fn new(utxoindex: Weak<RwLock<UtxoIndex>>) -> Self {
+        Self { utxoindex }
+    }
+}
+
+impl ConsensusResetHandler for UtxoIndexConsensusResetHandler {
+    fn handle_consensus_reset(&self) {
+        if let Some(utxoindex) = self.utxoindex.upgrade() {
+            utxoindex.write().resync().unwrap();
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{api::UtxoIndexApi, model::CirculatingSupply, testutils::virtual_change_emulator::VirtualChangeEmulator, UtxoIndex};
@@ -221,12 +244,12 @@ mod tests {
         virtual_change_emulator.fill_utxo_collection(resync_utxo_collection_size, script_public_key_pool_size); //10_000 utxos belonging to 100 script public keys
 
         // Create a virtual state for the test consensus from emulator variables.
-        let test_consensus_virtual_state = VirtualState {
+        let test_consensus_virtual_state = Arc::new(VirtualState {
             daa_score: 0,
             parents: Vec::from_iter(virtual_change_emulator.tips.clone()),
             utxo_diff: UtxoDiff::new(virtual_change_emulator.utxo_collection.clone(), UtxoCollection::new()),
             ..Default::default()
-        };
+        });
         // Write virtual state from emulator to test_consensus db.
         tc.consensus
             .virtual_processor

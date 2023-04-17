@@ -53,6 +53,14 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
+    fn get_virtual_bits(&self) -> u32 {
+        unimplemented!()
+    }
+
+    fn get_virtual_past_median_time(&self) -> u64 {
+        unimplemented!()
+    }
+
     fn get_virtual_merge_depth_root(&self) -> Option<Hash> {
         unimplemented!()
     }
@@ -90,6 +98,10 @@ pub trait ConsensusApi: Send + Sync {
         chunk_size: usize,
         skip_first: bool,
     ) -> Vec<(TransactionOutpoint, UtxoEntry)> {
+        unimplemented!()
+    }
+
+    fn get_tips(&self) -> Vec<Hash> {
         unimplemented!()
     }
 
@@ -134,6 +146,13 @@ pub trait ConsensusApi: Send + Sync {
     }
 
     fn get_headers_selected_tip(&self) -> Hash {
+        unimplemented!()
+    }
+
+    /// Returns the anticone of block `hash` from the POV of `context`, i.e. `anticone(hash) ∩ past(context)`.
+    /// Since this might be an expensive operation for deep blocks, we allow the caller to specify a limit
+    /// `max_traversal_allowed` on the maximum amount of blocks to traverse for obtaining the answer
+    fn get_anticone_from_pov(&self, hash: Hash, context: Hash, max_traversal_allowed: Option<u64>) -> ConsensusResult<Vec<Hash>> {
         unimplemented!()
     }
 

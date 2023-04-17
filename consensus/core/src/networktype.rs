@@ -10,7 +10,7 @@ pub enum NetworkTypeError {
     InvalidNetworkType(String),
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum NetworkType {
     Mainnet,

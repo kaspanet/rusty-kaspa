@@ -159,6 +159,7 @@ impl<
             step *= 2;
         }
 
+        locator.push(low);
         Ok(locator)
     }
 

@@ -60,6 +60,8 @@ impl Processor {
 
             loop {
                 select! {
+                    // TODO: make sure we process all pending consensus events before exiting.
+                    // Ideally this should be done through a carefully ordered shutdown process
                     _ = self.collect_shutdown.request.listener.clone().fuse() => break,
 
                     notification = self.recv_channel.recv().fuse() => {
@@ -97,7 +99,7 @@ impl Processor {
                 Ok(Notification::UtxosChanged(self.process_utxos_changed(utxos_changed)?))
             }
             ConsensusNotification::PruningPointUtxoSetOverride(_) => {
-                Ok(Notification::PruningPointUtxoSetOverride(self.process_pruning_point_override_event()?))
+                Ok(Notification::PruningPointUtxoSetOverride(PruningPointUtxoSetOverrideNotification {}))
             }
             _ => Err(IndexError::NotSupported(notification.event_type())),
         }
@@ -112,15 +114,6 @@ impl Processor {
             return Ok(utxoindex.write().update(notification.accumulated_utxo_diff.clone(), notification.virtual_parents)?.into());
         };
         Err(IndexError::NotSupported(EventType::UtxosChanged))
-    }
-
-    fn process_pruning_point_override_event(&self) -> IndexResult<PruningPointUtxoSetOverrideNotification> {
-        trace!("[{IDENT}]: processing {:?}", PruningPointUtxoSetOverrideNotification {});
-        if let Some(utxoindex) = self.utxoindex.as_deref() {
-            utxoindex.write().resync()?;
-            return Ok(PruningPointUtxoSetOverrideNotification {});
-        };
-        Err(IndexError::NotSupported(EventType::PruningPointUtxoSetOverride))
     }
 
     async fn stop_collecting_task(&self) -> Result<()> {

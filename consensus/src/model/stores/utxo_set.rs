@@ -104,6 +104,22 @@ impl DbUtxoSetStore {
             Err(e) => Err(e),
         })
     }
+
+    /// Clear the store completely in DB and cache
+    pub fn clear(&mut self) -> Result<(), StoreError> {
+        let writer = DirectDbWriter::new(&self.db);
+        self.access.delete_all(writer)
+    }
+
+    /// Write directly from an iterator and do not cache any data. NOTE: this action also clears the cache
+    pub fn write_from_iterator_without_cache(
+        &mut self,
+        utxos: impl IntoIterator<Item = (TransactionOutpoint, Arc<UtxoEntry>)>,
+    ) -> Result<(), StoreError> {
+        let mut writer = DirectDbWriter::new(&self.db);
+        self.access.write_many_without_cache(&mut writer, &mut utxos.into_iter().map(|(o, e)| (o.into(), e)))?;
+        Ok(())
+    }
 }
 
 impl UtxoView for DbUtxoSetStore {
