@@ -11,7 +11,7 @@ jobs:
       matrix:
         # Build gnu-linux on ubuntu-18.04 and musl on ubuntu latest
         # os: [ ubuntu-18.04, ubuntu-latest, windows-latest, macos-latest ]
-        os: [ ubuntu-18.04, windows-latest, macos-latest ]
+        os: [ ubuntu-latest, windows-latest, macos-latest ]
     name: Building, ${{ matrix.os }}
     steps:
       - name: Fix CRLF on Windows
@@ -40,36 +40,24 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Build on Linux GNU
-        if: matrix.os == 'ubuntu-18.04'
+      - name: Install zig on linux
+        if: runner.os == 'Linux'
+        uses: goto-bus-stop/setup-zig@v2 # needed for cargo-zigbuild
+
+      - name: Build on Linux
+        if: runner.os == 'Linux'
         # We're using musl to make the binaries statically linked and portable
         run: |
-          cargo build --target=x86_64-unknown-linux-gnu --bin kaspad --release
-          cargo build --target=x86_64-unknown-linux-gnu --bin simpa --release
+          cargo install cargo-zigbuild
+          cargo --verbose zigbuild --bin kaspad --bin simpa --release --target x86_64-unknown-linux-gnu.2.27 # Use an older glibc version
           mkdir bin || true
-          cp target/release/kaspad bin/
-          cp target/release/simpa bin/
+          cp target/x86_64-unknown-linux-gnu/release/kaspad bin/
+          cp target/x86_64-unknown-linux-gnu/release/simpa bin/
           archive="bin/rusty-kaspa-${{ github.event.release.tag_name }}-linux-gnu-amd64.zip"
           asset_name="rusty-kaspa-${{ github.event.release.tag_name }}-linux-gnu-amd64.zip"
           zip -r "${archive}" ./bin/*
           echo "archive=${archive}" >> $GITHUB_ENV
           echo "asset_name=${asset_name}" >> $GITHUB_ENV
-
-      # - name: Build on Linux musl
-      #   if: matrix.os == 'ubuntu-latest'
-      #   run: |
-      #     sudo apt-get install -y musl-tools
-      #     rustup target add x86_64-unknown-linux-musl
-      #     cargo build --target=x86_64-unknown-linux-musl --bin kaspad --release
-      #     cargo build --target=x86_64-unknown-linux-musl --bin simpa --release
-      #     mkdir bin || true
-      #     cp target/release/kaspad bin/
-      #     cp target/release/simpa bin/
-      #     archive="bin/rusty-kaspa-${{ github.event.release.tag_name }}-linux-musl-amd64.zip"
-      #     asset_name="rusty-kaspa-${{ github.event.release.tag_name }}-linux-musl-amd64.zip"
-      #     zip -r "${archive}" ./bin/*
-      #     echo "archive=${archive}" >> $GITHUB_ENV
-      #     echo "asset_name=${asset_name}" >> $GITHUB_ENV
 
       - name: Build on Windows
         if: runner.os == 'Windows'
