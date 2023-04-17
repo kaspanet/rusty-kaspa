@@ -19,6 +19,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "aes"
+version = "0.8.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "433cfd6710c9986c576a25ca913c39d66a6474107b406f34f91d4a8923395241"
+dependencies = [
+ "cfg-if 1.0.0",
+ "cipher",
+ "cpufeatures",
+]
+
+[[package]]
 name = "ahash"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -568,6 +579,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cfb-mode"
+version = "0.8.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "738b8d467867f80a71351933f70461f5b56f24d5c93e0cf216e59229c968d330"
+dependencies = [
+ "cipher",
+]
+
+[[package]]
 name = "cfg-if"
 version = "0.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1087,6 +1107,15 @@ name = "event-listener"
 version = "2.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0206175f82b8d6bf6652ff7d71a1e27fd2e4efde587fd368662814d6ec1d9ce0"
+
+[[package]]
+name = "evpkdf"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dfb9671766b4540458f291944466ca7ce2be8f9c81e510b10b5064a8735998d9"
+dependencies = [
+ "digest 0.10.6",
+]
 
 [[package]]
 name = "faster-hex"
@@ -2368,12 +2397,15 @@ dependencies = [
 name = "kaspa-wallet-core"
 version = "0.0.2"
 dependencies = [
+ "aes",
  "argon2",
  "async-trait",
  "base64 0.21.0",
  "borsh",
+ "cfb-mode",
  "cfg-if 1.0.0",
  "chacha20poly1305",
+ "evpkdf",
  "faster-hex",
  "futures",
  "heapless",
@@ -2391,12 +2423,15 @@ dependencies = [
  "kaspa-txscript",
  "kaspa-utils",
  "kaspa-wrpc-client",
+ "md-5",
+ "pbkdf2",
  "rand 0.8.5",
  "ripemd",
  "secp256k1",
  "serde",
  "serde-wasm-bindgen",
  "serde_json",
+ "sha1",
  "sha2 0.10.6",
  "thiserror",
  "tokio",
@@ -2701,6 +2736,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b87248edafb776e59e6ee64a79086f65890d3510f2c656c000bf2a7e8a0aea40"
 
 [[package]]
+name = "md-5"
+version = "0.10.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6365506850d44bff6e2fbcb5176cf63650e48bd45ef2fe2665ae1570e0f4b9ca"
+dependencies = [
+ "digest 0.10.6",
+]
+
+[[package]]
 name = "memchr"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2989,11 +3033,12 @@ checksum = "9f746c4065a8fa3fe23974dd82f15431cc8d40779821001404d10d2e79ca7d79"
 
 [[package]]
 name = "pbkdf2"
-version = "0.11.0"
+version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "83a0692ec44e4cf1ef28ca317f14f8f07da2d95ec3fa01f86e4467b725e60917"
+checksum = "f0ca0b5a68607598bf3bad68f32227a8164f6254833f84eafaac409cd6746c31"
 dependencies = [
  "digest 0.10.6",
+ "hmac",
 ]
 
 [[package]]

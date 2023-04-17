@@ -152,6 +152,12 @@ heapless = "0.7.16"
 downcast = "0.11.0"
 argon2 = "0.5.0"
 uuid = { version = "1.2.2", features = ["v4", "fast-rng"] }
+# pbkdf2 = "0.12.1"
+sha1 = "0.10.5"
+aes = "0.8.2"
+cfb-mode = "0.8.2"
+evpkdf = "0.2.0"
+md-5 = "0.10.5"
 
 # bip32 dependencies
 rand_core = { version = "0.6", features = ["std"] }
@@ -163,7 +169,8 @@ zeroize = {version = "1", default-features = false, features=["alloc"]}
 ripemd = {version = "0.1", default-features = false}
 subtle = {version = "2", default-features = false}
 once_cell = {version = "1"}
-pbkdf2 = {version = "0.11", default-features = false}
+pbkdf2 = {version = "0.12.1"}
+# pbkdf2 = {version = "0.11", default-features = false}
 
 # workflow dependencies
 workflow-log = { version = "0.3.14" }

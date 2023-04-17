@@ -172,7 +172,7 @@ impl Mnemonic {
     pub fn to_seed(&self, password: &str) -> Seed {
         let salt = Zeroizing::new(format!("mnemonic{password}"));
         let mut seed = [0u8; Seed::SIZE];
-        pbkdf2::pbkdf2::<Hmac<Sha512>>(self.phrase.as_bytes(), salt.as_bytes(), PBKDF2_ROUNDS, &mut seed);
+        pbkdf2::pbkdf2::<Hmac<Sha512>>(self.phrase.as_bytes(), salt.as_bytes(), PBKDF2_ROUNDS, &mut seed).unwrap();
         Seed(seed)
     }
 }

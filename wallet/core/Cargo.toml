@@ -50,6 +50,12 @@ kaspa-hashes.workspace = true
 chacha20poly1305.workspace = true
 heapless.workspace = true
 argon2.workspace = true
+cfb-mode.workspace = true
+evpkdf.workspace = true
+sha1.workspace = true
+md-5.workspace = true
+aes.workspace = true
+pbkdf2.workspace = true
 
 [dependencies.web-sys]
 workspace = true
