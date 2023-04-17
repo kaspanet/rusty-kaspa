@@ -1,5 +1,6 @@
 use crate::imports::*;
 use crate::result::Result;
+use crate::secret::Secret;
 use argon2::Argon2;
 use base64::{engine::general_purpose, Engine as _};
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -12,35 +13,10 @@ use kaspa_bip32::SecretKey;
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 use workflow_core::runtime;
-use zeroize::Zeroize;
 
 const DEFAULT_PATH: &str = "~/.kaspa/wallet.kaspa";
 
 pub use kaspa_wallet_core::account::AccountKind;
-
-pub struct Secret(Vec<u8>);
-
-impl AsRef<[u8]> for Secret {
-    fn as_ref(&self) -> &[u8] {
-        &self.0
-    }
-}
-impl From<Vec<u8>> for Secret {
-    fn from(vec: Vec<u8>) -> Self {
-        Secret(vec)
-    }
-}
-impl From<&[u8]> for Secret {
-    fn from(slice: &[u8]) -> Self {
-        Secret(slice.to_vec())
-    }
-}
-
-impl Drop for Secret {
-    fn drop(&mut self) {
-        self.0.zeroize()
-    }
-}
 
 pub struct PrivateKey(Vec<SecretKey>);
 
@@ -250,20 +226,20 @@ pub fn js_decrypt(text: String, password: String) -> Result<String> {
 pub fn js_sha256_hash(data: JsValue) -> Result<String> {
     let data = data.try_as_vec_u8()?;
     let hash = sha256_hash(&data)?;
-    Ok(hash.0.to_hex())
+    Ok(hash.as_ref().to_hex())
 }
 
 #[wasm_bindgen(js_name = "argon2sha256iv")]
 pub fn js_argon2_sha256iv_phash(data: JsValue, byte_length: usize) -> Result<String> {
     let data = data.try_as_vec_u8()?;
     let hash = argon2_sha256iv_hash(&data, byte_length)?;
-    Ok(hash.0.to_hex())
+    Ok(hash.as_ref().to_hex())
 }
 
 pub fn sha256_hash(data: &[u8]) -> Result<Secret> {
     let mut sha256 = Sha256::new();
     sha256.update(data);
-    Ok(Secret(sha256.finalize().to_vec()))
+    Ok(Secret::new(sha256.finalize().to_vec()))
 }
 
 pub fn argon2_sha256iv_hash(data: &[u8], byte_length: usize) -> Result<Secret> {

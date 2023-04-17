@@ -8,6 +8,7 @@ pub mod error;
 pub mod imports;
 pub mod keypair;
 pub mod result;
+pub mod secret;
 pub mod signer;
 pub mod storage;
 pub mod tx;
