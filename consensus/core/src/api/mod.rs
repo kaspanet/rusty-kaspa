@@ -248,7 +248,7 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn estimate_network_hashes_per_second(&self, start_hash: Option<Hash>, window_size: u64) -> u64 {
+    fn estimate_network_hashes_per_second(&self, start_hash: Option<Hash>, window_size: usize) -> ConsensusResult<u64> {
         unimplemented!()
     }
 }

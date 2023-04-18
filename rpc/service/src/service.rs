@@ -490,8 +490,13 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         if request.window_size as u64 > self.config.pruning_depth {
             return Err(RpcError::WindowSizeExceedingPruningDepth(request.window_size, self.config.pruning_depth));
         }
-
-        Err(RpcError::NotImplemented)
+        Ok(EstimateNetworkHashesPerSecondResponse::new(
+            self.consensus_manager
+                .consensus()
+                .session()
+                .await
+                .estimate_network_hashes_per_second(request.start_hash, request.window_size as usize)?,
+        ))
     }
 
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
