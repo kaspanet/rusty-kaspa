@@ -8,6 +8,8 @@ use crate::{model::*, RpcResult};
 use async_trait::async_trait;
 use kaspa_notify::{connection::Connection, listener::ListenerId, scope::Scope, subscription::Command};
 
+pub const MAX_SAFE_WINDOW_SIZE: u32 = 10_000;
+
 /// Client RPC Api
 ///
 /// The [`RpcApi`] trait defines RPC calls taking a request message as unique parameter.
@@ -235,7 +237,7 @@ where
     }
 
     ///
-    async fn estimate_network_hashes_per_second(&self, window_size: u32, start_hash: RpcHash) -> RpcResult<u64> {
+    async fn estimate_network_hashes_per_second(&self, window_size: u32, start_hash: Option<RpcHash>) -> RpcResult<u64> {
         Ok(self
             .estimate_network_hashes_per_second_call(EstimateNetworkHashesPerSecondRequest::new(window_size, start_hash))
             .await?

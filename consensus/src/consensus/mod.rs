@@ -54,7 +54,7 @@ use kaspa_consensus_core::{
     acceptance_data::AcceptanceData,
     api::ConsensusApi,
     block::{Block, BlockTemplate},
-    blockhash::BlockHashExtensions,
+    blockhash::{BlockHashExtensions, VIRTUAL},
     blockstatus::BlockStatus,
     coinbase::MinerData,
     errors::pruning::PruningImportError,
@@ -977,5 +977,10 @@ impl ConsensusApi for Consensus {
         let pp_read_guard = self.pruning_store.read();
         let pp = pp_read_guard.pruning_point().unwrap();
         Ok(self.sync_manager.create_block_locator_from_pruning_point(high, pp, Some(limit))?)
+    }
+
+    fn estimate_network_hashes_per_second(&self, _start_hash: Option<Hash>, _window_size: u64) -> u64 {
+        let _start_hash = _start_hash.unwrap_or(VIRTUAL);
+        todo!()
     }
 }

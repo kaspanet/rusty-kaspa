@@ -600,11 +600,11 @@ pub struct UnbanResponse {}
 #[serde(rename_all = "camelCase")]
 pub struct EstimateNetworkHashesPerSecondRequest {
     pub window_size: u32,
-    pub start_hash: RpcHash,
+    pub start_hash: Option<RpcHash>,
 }
 
 impl EstimateNetworkHashesPerSecondRequest {
-    pub fn new(window_size: u32, start_hash: RpcHash) -> Self {
+    pub fn new(window_size: u32, start_hash: Option<RpcHash>) -> Self {
         Self { window_size, start_hash }
     }
 }

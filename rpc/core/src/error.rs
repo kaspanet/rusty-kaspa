@@ -54,6 +54,12 @@ pub enum RpcError {
     #[error("Method unavailable. Run the node with the --utxoindex argument.")]
     NoUtxoIndex,
 
+    #[error("Requested window size {0} is larger than max {1} allowed in RPC safe mode.")]
+    WindowSizeExceedingMaximum(u32, u32),
+
+    #[error("Requested window size {0} is larger than pruning point depth {1}.")]
+    WindowSizeExceedingPruningDepth(u32, u64),
+
     #[error(transparent)]
     AddressError(#[from] kaspa_addresses::AddressError),
 

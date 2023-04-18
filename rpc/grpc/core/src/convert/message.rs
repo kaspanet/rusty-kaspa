@@ -318,7 +318,7 @@ from!(item: &kaspa_rpc_core::UnbanRequest, protowire::UnbanRequestMessage, { Sel
 from!(_item: RpcResult<&kaspa_rpc_core::UnbanResponse>, protowire::UnbanResponseMessage, { Self { error: None } });
 
 from!(item: &kaspa_rpc_core::EstimateNetworkHashesPerSecondRequest, protowire::EstimateNetworkHashesPerSecondRequestMessage, {
-    Self { window_size: item.window_size, start_hash: item.start_hash.to_string() }
+    Self { window_size: item.window_size, start_hash: item.start_hash.map_or(Default::default(), |x| x.to_string()) }
 });
 from!(
     item: RpcResult<&kaspa_rpc_core::EstimateNetworkHashesPerSecondResponse>,
@@ -641,7 +641,10 @@ try_from!(item: &protowire::UnbanRequestMessage, kaspa_rpc_core::UnbanRequest, {
 try_from!(&protowire::UnbanResponseMessage, RpcResult<kaspa_rpc_core::UnbanResponse>);
 
 try_from!(item: &protowire::EstimateNetworkHashesPerSecondRequestMessage, kaspa_rpc_core::EstimateNetworkHashesPerSecondRequest, {
-    Self { window_size: item.window_size, start_hash: RpcHash::from_str(&item.start_hash)? }
+    Self {
+        window_size: item.window_size,
+        start_hash: if item.start_hash.is_empty() { None } else { Some(RpcHash::from_str(&item.start_hash)?) },
+    }
 });
 try_from!(
     item: &protowire::EstimateNetworkHashesPerSecondResponseMessage,

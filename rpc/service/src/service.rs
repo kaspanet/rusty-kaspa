@@ -31,7 +31,12 @@ use kaspa_notify::{
     subscriber::{Subscriber, SubscriptionManager},
 };
 use kaspa_p2p_flows::flow_context::FlowContext;
-use kaspa_rpc_core::{api::rpc::RpcApi, model::*, notify::connection::ChannelConnection, Notification, RpcError, RpcResult};
+use kaspa_rpc_core::{
+    api::rpc::{RpcApi, MAX_SAFE_WINDOW_SIZE},
+    model::*,
+    notify::connection::ChannelConnection,
+    Notification, RpcError, RpcResult,
+};
 use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script};
 use kaspa_utils::channel::Channel;
 use kaspa_utxoindex::api::DynUtxoIndexApi;
@@ -475,6 +480,20 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         ))
     }
 
+    async fn estimate_network_hashes_per_second_call(
+        &self,
+        request: EstimateNetworkHashesPerSecondRequest,
+    ) -> RpcResult<EstimateNetworkHashesPerSecondResponse> {
+        if !self.config.unsafe_rpc && request.window_size > MAX_SAFE_WINDOW_SIZE {
+            return Err(RpcError::WindowSizeExceedingMaximum(request.window_size, MAX_SAFE_WINDOW_SIZE));
+        }
+        if request.window_size as u64 > self.config.pruning_depth {
+            return Err(RpcError::WindowSizeExceedingPruningDepth(request.window_size, self.config.pruning_depth));
+        }
+
+        Err(RpcError::NotImplemented)
+    }
+
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // UNIMPLEMENTED METHODS
 
@@ -506,13 +525,6 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
     }
 
     async fn unban_call(&self, _request: UnbanRequest) -> RpcResult<UnbanResponse> {
-        Err(RpcError::NotImplemented)
-    }
-
-    async fn estimate_network_hashes_per_second_call(
-        &self,
-        _request: EstimateNetworkHashesPerSecondRequest,
-    ) -> RpcResult<EstimateNetworkHashesPerSecondResponse> {
         Err(RpcError::NotImplemented)
     }
 
