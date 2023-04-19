@@ -1,7 +1,7 @@
 // use crate::accounts::{WalletAccountTrait, WalletAccountV0};
 use crate::imports::*;
 use crate::result::Result;
-use crate::storage::StoredWalletAccount;
+use crate::storage;
 use crate::utxo::UtxoSet;
 use crate::DynRpcApi;
 use async_trait::async_trait;
@@ -62,12 +62,12 @@ pub struct Account {
     // index of the private key in the wallet store
     #[allow(dead_code)] //TODO: remove me
     // #[wasm_bindgen(js_name = "privateKeyIndex")]
-    private_key_index: u32,
+    keydata_id: storage::KeydataId,
 }
 
 impl Account {
     // pub fn new(rpc_api : Arc<DynRpcApi>, config : AccountConfig) -> Self {
-    pub fn new(rpc_api: Arc<DynRpcApi>, stored: &StoredWalletAccount) -> Self {
+    pub fn new(rpc_api: Arc<DynRpcApi>, stored: &storage::Account) -> Self {
         // let generator = match config.kind {
         //     AccountKind::V0 => WalletAccountV0,//Arc::new(V0Account::new(rpc_api.clone())),
         //     AccountKind::Bip32 => Arc::new(Bip32Account::new(rpc_api.clone())),
@@ -88,7 +88,7 @@ impl Account {
             is_connected: AtomicBool::new(false),
             inner: Arc::new(Mutex::new(inner)),
             account_kind: stored.account_kind,
-            private_key_index: stored.private_key_index,
+            keydata_id: stored.keydata_id,
         }
     }
 

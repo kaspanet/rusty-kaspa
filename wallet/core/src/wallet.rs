@@ -1,6 +1,6 @@
 use crate::imports::*;
 use crate::result::Result;
-use crate::storage::StoredWalletAccount;
+use crate::storage;
 use crate::{account::Account, accounts::*};
 use futures::{select, FutureExt};
 use kaspa_notify::{
@@ -92,7 +92,7 @@ impl Wallet {
         Ok(wallet)
     }
 
-    pub fn load_accounts(&self, stored_accounts: Vec<StoredWalletAccount>) {
+    pub fn load_accounts(&self, stored_accounts: Vec<storage::Account>) {
         let accounts = stored_accounts
             .iter()
             .map(|stored| {

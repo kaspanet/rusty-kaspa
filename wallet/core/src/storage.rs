@@ -3,45 +3,138 @@ use crate::result::Result;
 use crate::secret::Secret;
 use argon2::Argon2;
 use base64::{engine::general_purpose, Engine as _};
-use borsh::{BorshDeserialize, BorshSerialize};
 use cfg_if::cfg_if;
 use chacha20poly1305::{
     aead::{AeadCore, AeadInPlace, KeyInit, OsRng},
     Key, XChaCha20Poly1305,
 };
-use kaspa_bip32::SecretKey;
+use faster_hex::{hex_decode, hex_string};
+use kaspa_bip32::ExtendedKey;
+use serde::Serializer;
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 use workflow_core::runtime;
+use zeroize::Zeroize;
 
 const DEFAULT_PATH: &str = "~/.kaspa/wallet.kaspa";
 
 pub use kaspa_wallet_core::account::AccountKind;
 
-pub struct PrivateKey(Vec<SecretKey>);
+#[derive(Clone)]
+pub struct PrivateKey(pub(crate) ExtendedKey);
 
-#[derive(Default, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
-pub struct StoredWalletAccount {
-    pub private_key_index: u32,
+impl PrivateKey {
+    pub fn from_base58(base58: &str) -> Result<Self> {
+        let xprv = base58.parse::<ExtendedKey>()?;
+        Ok(PrivateKey(xprv))
+    }
+}
+
+impl Serialize for PrivateKey {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.0.to_string())
+    }
+}
+
+impl<'de> Deserialize<'de> for PrivateKey {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = <std::string::String as Deserialize>::deserialize(deserializer)?;
+        let xprv = s.parse::<ExtendedKey>().map_err(serde::de::Error::custom)?;
+        Ok(PrivateKey(xprv))
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct KeydataId(pub(crate) [u8; 8]);
+
+impl KeydataId {
+    pub fn new_from_slice(vec: &[u8]) -> Self {
+        Self(<[u8; 8]>::try_from(<&[u8]>::clone(&vec)).expect("Error: invalid slice size for id"))
+    }
+}
+
+impl Serialize for KeydataId {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&hex_string(&self.0))
+    }
+}
+
+impl<'de> Deserialize<'de> for KeydataId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = <std::string::String as Deserialize>::deserialize(deserializer)?;
+        let mut data = vec![0u8; s.len() / 2];
+        hex_decode(s.as_bytes(), &mut data).map_err(serde::de::Error::custom)?;
+        Ok(Self::new_from_slice(&data))
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Keydata {
+    pub id: KeydataId,
+    pub private_key: PrivateKey,
+    pub mnemonic: String,
+    // pub account_kind: AccountKind,
+}
+
+impl Drop for Keydata {
+    fn drop(&mut self) {
+        self.mnemonic.zeroize();
+    }
+}
+
+impl Keydata {
+    pub fn new(
+        private_key: PrivateKey,
+        mnemonic: String,
+        // account_kind: AccountKind,
+    ) -> Self {
+        let hash = sha256_hash(&private_key.0.key_bytes).unwrap();
+        let id = KeydataId::new_from_slice(&hash.as_ref()[0..8]);
+
+        Self { id, private_key, mnemonic }
+    }
+}
+
+// AccountReference contains all account data except keydata,
+// referring to the Keydata by `id`
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Account {
+    pub keydata_id: KeydataId,
     pub account_kind: AccountKind,
     pub name: String,
     pub title: String,
 }
 
-// pub enum WalletAccountVersion {
-//     V1(WalletAccount),
-// }
+impl Account {
+    pub fn new(keydata: &Keydata, account_kind: AccountKind, name: String, title: String) -> Self {
+        Self { keydata_id: keydata.id, account_kind, name, title }
+    }
+}
 
-pub type WalletAccountList = Arc<Mutex<Vec<StoredWalletAccount>>>;
+pub type WalletAccountList = Arc<Mutex<Vec<Account>>>;
 
 #[derive(Default, Clone, Serialize, Deserialize)]
 pub struct Wallet {
-    pub accounts: WalletAccountList,
+    pub keydata: Vec<Keydata>,
+    pub accounts: Vec<Account>,
 }
 
 impl Wallet {
     pub fn new() -> Wallet {
-        Wallet { accounts: Arc::new(Mutex::new(Vec::new())) }
+        Wallet { keydata: vec![], accounts: vec![] }
     }
 }
 
@@ -74,7 +167,7 @@ impl Store {
     pub fn new(filename: Option<&str>) -> Result<Store> {
         let filename = {
             #[allow(clippy::let_and_return)]
-            let filename = parse(filename.unwrap_or(DEFAULT_PATH));
+            let filename = resolve_path(filename.unwrap_or(DEFAULT_PATH));
             cfg_if! {
                 if #[cfg(any(target_os = "linux", target_os = "macos", target_family = "unix", target_os = "windows"))] {
                     filename
@@ -99,21 +192,33 @@ impl Store {
         if self.exists().await? {
             let buffer = self.read().await.map_err(|err| format!("unable to read wallet file: {err}"))?;
             let data = decrypt(&buffer, secret)?;
-            let wallet: Wallet = serde_json::from_slice(&data)?;
+            let wallet: Wallet = serde_json::from_slice(data.as_ref())?;
             Ok(wallet)
         } else {
-            //Ok(Wallet::default())
             Err(Error::NoWalletInStorage)
         }
     }
 
-    pub async fn try_store(&self, secret: Secret) -> Result<()> {
-        let wallet = Wallet::default();
+    pub async fn try_store(&self, secret: Secret, wallet: Wallet) -> Result<()> {
         let json = serde_json::to_value(wallet).map_err(|err| format!("unable to serialize wallet data: {err}"))?.to_string();
         let data = encrypt(json.as_bytes(), secret)?;
         self.write(&data).await.map_err(|err| format!("unable to read wallet file: {err}"))?;
 
         Ok(())
+    }
+
+    /// Obtain [`Keydata`] by [`KeydataId`]
+    pub async fn try_get_keydata(&self, secret: Secret, keydata_id: &KeydataId) -> Result<Option<Keydata>> {
+        let wallet = self.try_load(secret).await?;
+        let idx = wallet.keydata.iter().position(|keydata| &keydata.id == keydata_id);
+        let keydata = idx.map(|idx| wallet.keydata.get(idx).unwrap().clone());
+        Ok(keydata)
+    }
+
+    /// Obtain an array of accounts
+    pub async fn get_accounts(&self, secret: Secret) -> Result<Vec<Account>> {
+        let wallet = self.try_load(secret).await?;
+        Ok(wallet.accounts)
     }
 
     cfg_if! {
@@ -176,14 +281,19 @@ impl Store {
 
             pub async fn write(&self, data: &[u8]) -> Result<()> {
                 let base64enc = general_purpose::STANDARD.encode(data);
-
                 Ok(std::fs::write(self.filename(), base64enc)?)
+            }
+
+            #[allow(dead_code)]
+            pub fn purge(&self) -> Result<()> {
+                std::fs::remove_file(self.filename())?;
+                Ok(())
             }
         }
     }
 }
 
-pub fn parse(path: &str) -> PathBuf {
+pub fn resolve_path(path: &str) -> PathBuf {
     if let Some(_stripped) = path.strip_prefix('~') {
         if runtime::is_web() {
             PathBuf::from(path)
@@ -205,21 +315,6 @@ pub fn parse(path: &str) -> PathBuf {
 
 pub fn local_storage() -> web_sys::Storage {
     web_sys::window().unwrap().local_storage().unwrap().unwrap()
-}
-
-#[wasm_bindgen(js_name = "encrypt")]
-pub fn js_encrypt(text: String, password: String) -> Result<String> {
-    let secret = sha256_hash(password.as_bytes())?;
-    let encrypted = encrypt(text.as_bytes(), secret)?;
-    Ok(general_purpose::STANDARD.encode(encrypted))
-}
-
-#[wasm_bindgen(js_name = "decrypt")]
-pub fn js_decrypt(text: String, password: String) -> Result<String> {
-    let secret = sha256_hash(password.as_bytes())?;
-    let encrypted = decrypt(text.as_bytes(), secret)?;
-    let decoded = general_purpose::STANDARD.decode(encrypted)?;
-    Ok(String::from_utf8(decoded)?)
 }
 
 #[wasm_bindgen(js_name = "sha256")]
@@ -249,6 +344,13 @@ pub fn argon2_sha256iv_hash(data: &[u8], byte_length: usize) -> Result<Secret> {
     Ok(key.into())
 }
 
+#[wasm_bindgen(js_name = "encrypt")]
+pub fn js_encrypt(text: String, password: String) -> Result<String> {
+    let secret = sha256_hash(password.as_bytes())?;
+    let encrypted = encrypt(text.as_bytes(), secret)?;
+    Ok(general_purpose::STANDARD.encode(encrypted))
+}
+
 pub fn encrypt(data: &[u8], secret: Secret) -> Result<Vec<u8>> {
     let private_key_bytes = argon2_sha256iv_hash(secret.as_ref(), 32)?;
     let key = Key::from_slice(private_key_bytes.as_ref());
@@ -261,14 +363,22 @@ pub fn encrypt(data: &[u8], secret: Secret) -> Result<Vec<u8>> {
     Ok(buffer)
 }
 
-pub fn decrypt(data: &[u8], secret: Secret) -> Result<Vec<u8>> {
+#[wasm_bindgen(js_name = "decrypt")]
+pub fn js_decrypt(text: String, password: String) -> Result<String> {
+    let secret = sha256_hash(password.as_bytes())?;
+    let encrypted = decrypt(text.as_bytes(), secret)?;
+    let decoded = general_purpose::STANDARD.decode(encrypted)?;
+    Ok(String::from_utf8(decoded)?)
+}
+
+pub fn decrypt(data: &[u8], secret: Secret) -> Result<Secret> {
     let private_key_bytes = argon2_sha256iv_hash(secret.as_ref(), 32)?;
     let key = Key::from_slice(private_key_bytes.as_ref());
     let cipher = XChaCha20Poly1305::new(key);
     let nonce = &data[0..24];
     let mut buffer = data[24..].to_vec();
     cipher.decrypt_in_place(nonce.into(), &[], &mut buffer)?;
-    Ok(buffer)
+    Ok(Secret::new(buffer))
 }
 
 #[cfg(test)]
@@ -296,7 +406,46 @@ mod tests {
         // println!("encrypted: {}", encrypted.to_hex());
         let decrypted = decrypt(&encrypted, password.as_ref().into()).unwrap();
         // println!("decrypted: {}", decrypted.to_hex());
-        assert_eq!(decrypted, original);
+        assert_eq!(decrypted.as_ref(), original);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_wallet_store_wallet_store_load() -> Result<()> {
+        // This test creates a fake instance of keydata, stored account
+        // instance and a wallet instance that owns them.  It then tests
+        // loading of account references and a wallet instance and confirms
+        // that the serialized data is as expected.
+
+        let store = Store::new(Some("test-wallet-store"))?;
+
+        let mut w1 = Wallet::default();
+
+        let private_key = PrivateKey::from_base58(
+            "xprv9s21ZrQH143K3QTDL4LXw2F7HEK3wJUD2nW2nRk4stbPy6cq3jPPqjiChkVvvNKmPGJxWUtg6LnF5kejMRNNU3TGtRBeJgk33yuGBxrMPHi",
+        )?;
+        let keydata = Keydata::new(private_key, "mnemonic".to_string());
+        // println!("keydata id: {:?}", keydata.id);
+        assert_eq!(keydata.id.0, [79, 36, 5, 159, 220, 113, 179, 22]);
+
+        let account = Account::new(&keydata, AccountKind::Bip32, "name".to_string(), "title".to_string());
+        w1.keydata.push(keydata);
+        w1.accounts.push(account);
+        // println!("w1: {:?}", w1);
+
+        // store the wallet
+        let w1s = serde_json::to_string(&w1).unwrap();
+        // println!("w1s: {}", w1s);
+        store.try_store(Secret::new(b"password".to_vec()), w1).await?;
+
+        // load a new instance of the wallet from the store
+        let w2 = store.try_load(Secret::new(b"password".to_vec())).await?;
+        // purge the store
+        store.purge()?;
+
+        let w2s = serde_json::to_string(&w2).unwrap();
+        assert_eq!(w1s, w2s);
 
         Ok(())
     }
