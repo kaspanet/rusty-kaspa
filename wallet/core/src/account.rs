@@ -13,23 +13,13 @@ use std::sync::atomic::{AtomicBool, AtomicU64};
 use workflow_core::channel::Channel;
 
 #[derive(Debug, Default, Clone, Copy, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "kebab-case")]
 #[wasm_bindgen]
 pub enum AccountKind {
     V0,
     #[default]
     Bip32,
     MultiSig,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AccountConfig {
-    pub kind: AccountKind,
-}
-
-impl AccountConfig {
-    pub fn new(kind: AccountKind) -> Self {
-        Self { kind }
-    }
 }
 
 #[async_trait]

@@ -179,7 +179,7 @@ impl KaspaRpcClient {
     pub async fn stop(&self) -> Result<()> {
         match &self.notification_mode {
             NotificationMode::MultiListeners => {
-                log_info!("stop notifier...");
+                // log_info!("stop notifier...");
                 self.notifier.as_ref().unwrap().stop().await?;
             }
             NotificationMode::Direct => {

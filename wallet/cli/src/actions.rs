@@ -12,6 +12,12 @@ use workflow_terminal::Terminal;
 pub enum Action {
     #[describe("Display this help")]
     Help,
+    #[describe("Create a new account or a wallet")]
+    Create,
+    #[describe("Open a wallet")]
+    Open,
+    #[describe("Close a wallet")]
+    Close,
     #[describe("List wallet accounts")]
     List,
     #[describe("Select an account")]
@@ -24,8 +30,6 @@ pub enum Action {
     Balance,
     #[describe("?Broadcast the given transaction")]
     Broadcast,
-    #[describe("?Creates a new wallet")]
-    Create,
     #[describe("?Create an unsigned Kaspa transaction")]
     CreateUnsignedTx,
     #[describe("?Prints the unencrypted wallet data")]

@@ -2,7 +2,7 @@ use crate::actions::*;
 use crate::result::Result;
 use async_trait::async_trait;
 use futures::*;
-use kaspa_wallet_core::Wallet;
+use kaspa_wallet_core::{secret::Secret, Wallet};
 use std::sync::{Arc, Mutex};
 use workflow_core::channel::*;
 use workflow_log::*;
@@ -110,15 +110,26 @@ impl WalletCli {
                 } else {
                     let name = argv.remove(0);
                     let accounts = self.wallet.accounts().await;
-                    if let Some(idx) = accounts.iter().position(|account| account.name() == name) {
-                        self.wallet.select(Some(accounts.get(idx).unwrap().clone())).await?;
-                    } else {
-                        self.wallet.select(None).await?;
-                    }
+                    let account =
+                        accounts.iter().position(|account| account.name() == name).map(|index| accounts.get(index).unwrap().clone());
+                    self.wallet.select(account).await?;
+                    // if let Some(idx) = accounts.iter().position(|account| account.name() == name) {
+                    //     self.wallet.select(Some(accounts.get(idx).unwrap().clone())).await?;
+                    // } else {
+                    //     self.wallet.select(None).await?;
+                    // }
                 }
 
                 // TODO
             }
+            Action::Open => {
+                let secret = Secret::new(term.ask(false, "Enter something:").await?.trim().as_bytes().to_vec());
+                self.wallet.load_accounts(secret).await?;
+            }
+            Action::Close => {
+                self.wallet.clear().await?;
+            }
+
             #[cfg(target_arch = "wasm32")]
             Action::Reload => {
                 workflow_dom::utils::window().location().reload().ok();

@@ -1,5 +1,6 @@
 use crate::imports::*;
 use crate::result::Result;
+use crate::secret::Secret;
 use crate::storage;
 use crate::{account::Account, accounts::*};
 use futures::{select, FutureExt};
@@ -92,18 +93,26 @@ impl Wallet {
         Ok(wallet)
     }
 
-    pub fn load_accounts(&self, stored_accounts: Vec<storage::Account>) {
+    pub async fn clear(&self) -> Result<()> {
+        self.inner.accounts.lock()?.clear();
+        Ok(())
+    }
+
+    // pub fn load_accounts(&self, stored_accounts: Vec<storage::Account>) => Result<()> {
+    pub async fn load_accounts(&self, secret: Secret) -> Result<()> {
+        let store = storage::Store::new(None)?;
+        let stored_accounts = store.get_accounts(secret).await?;
+
         let accounts = stored_accounts
             .iter()
             .map(|stored| {
-                // TODO
-                // let config = AccountConfig { kind : AccountKind::Bip32 };
-                // storage_accounts
                 let rpc_api: Arc<crate::DynRpcApi> = self.rpc.clone();
                 Arc::new(Account::new(rpc_api, stored))
             })
             .collect();
-        *self.inner.accounts.lock().unwrap() = accounts;
+        *self.inner.accounts.lock()? = accounts;
+
+        Ok(())
     }
 
     pub fn rpc(&self) -> Arc<KaspaRpcClient> {
