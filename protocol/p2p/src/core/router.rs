@@ -96,9 +96,9 @@ impl Router {
                         Ok(Some(msg)) => {
                             trace!("P2P, Router receive loop - got message: {:?}, router-id: {}, peer: {}", msg, router.identity, router);
                             match router.route_to_flow(msg) {
-                                Ok(_) => {},
+                                Ok(()) => {},
                                 Err(e) => {
-                                    info!("P2P, Router receive loop - route error {:?} for peer: {}", e, router);
+                                    info!("P2P, Router receive loop - route error {} for peer: {}", e, router);
                                     break;
                                 },
                             }
@@ -108,7 +108,7 @@ impl Router {
                             break;
                         }
                         Err(err) => {
-                            info!("P2P, Router receive loop - network error: {:?} from peer {}", err, router);
+                            info!("P2P, Router receive loop - network error: {} from peer {}", err, router);
                             break;
                         }
                     }
