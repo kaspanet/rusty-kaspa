@@ -1,6 +1,7 @@
 use crate::imports::*;
 use crate::result::Result;
 use crate::secret::Secret;
+use aes::cipher::typenum::Zero;
 use argon2::Argon2;
 use base64::{engine::general_purpose, Engine as _};
 use cfg_if::cfg_if;
@@ -9,8 +10,8 @@ use chacha20poly1305::{
     Key, XChaCha20Poly1305,
 };
 use faster_hex::{hex_decode, hex_string};
-use kaspa_bip32::ExtendedKey;
-use serde::Serializer;
+// use kaspa_bip32::ExtendedKey;
+use serde::{Serializer, de::DeserializeOwned};
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 use workflow_core::runtime;
@@ -20,12 +21,71 @@ const DEFAULT_PATH: &str = "~/.kaspa/wallet.kaspa";
 
 pub use kaspa_wallet_core::account::AccountKind;
 
+pub struct Decrypted<T>(pub(crate) T) where T: Zeroize;
+impl<T> Drop for Decrypted<T> 
+where T: Zeroize
+{
+    fn drop(&mut self) {
+        self.0.zeroize();
+    }
+}
+
+impl<T> AsRef<T> for Decrypted<T> where T: Zeroize {
+    fn as_ref(&self) -> &T {
+        &self.0
+    }
+}
+
+pub struct Encrypted {
+    payload : Vec<u8>,
+}
+
+impl Encrypted {
+    pub fn new(payload: Vec<u8>) -> Self {
+        Encrypted { payload }
+    }
+
+    pub fn decrypt<T>(&self, secret : Secret) -> Result<Decrypted<T>> where T: Zeroize + DeserializeOwned {
+        let t: T = serde_json::from_slice(decrypt(&self.payload, secret)?.as_ref())?;
+        Ok(Decrypted(t))
+    }
+}
+
+
+impl Serialize for Encrypted {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&hex_string(&self.payload))
+    }
+}
+
+impl<'de> Deserialize<'de> for Encrypted {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = <std::string::String as Deserialize>::deserialize(deserializer)?;
+        let mut data = vec![0u8; s.len() / 2];
+        hex_decode(s.as_bytes(), &mut data).map_err(serde::de::Error::custom)?;
+        Ok(Self::new(data))
+    }
+}
+
+// pub struct Decrypted<T> {
+//     payload : T,
+// }
+
+
+
+
 #[derive(Clone)]
-pub struct PrivateKey(pub(crate) ExtendedKey);
+pub struct PrivateKey(pub(crate) kaspa_bip32::ExtendedKey);
 
 impl PrivateKey {
     pub fn from_base58(base58: &str) -> Result<Self> {
-        let xprv = base58.parse::<ExtendedKey>()?;
+        let xprv = base58.parse::<kaspa_bip32::ExtendedKey>()?;
         Ok(PrivateKey(xprv))
     }
 }
@@ -45,7 +105,7 @@ impl<'de> Deserialize<'de> for PrivateKey {
         D: Deserializer<'de>,
     {
         let s = <std::string::String as Deserialize>::deserialize(deserializer)?;
-        let xprv = s.parse::<ExtendedKey>().map_err(serde::de::Error::custom)?;
+        let xprv = s.parse::<kaspa_bip32::ExtendedKey>().map_err(serde::de::Error::custom)?;
         Ok(PrivateKey(xprv))
     }
 }
@@ -85,7 +145,8 @@ impl<'de> Deserialize<'de> for KeydataId {
 pub struct Keydata {
     pub id: KeydataId,
     pub private_key: PrivateKey,
-    pub mnemonic: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mnemonic: Option<String>,
     // pub account_kind: AccountKind,
 }
 
@@ -98,7 +159,7 @@ impl Drop for Keydata {
 impl Keydata {
     pub fn new(
         private_key: PrivateKey,
-        mnemonic: String,
+        mnemonic: Option<String>,
         // account_kind: AccountKind,
     ) -> Self {
         let hash = sha256_hash(&private_key.0.key_bytes).unwrap();
@@ -106,6 +167,13 @@ impl Keydata {
 
         Self { id, private_key, mnemonic }
     }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Metadata {
+    pub id: KeydataId,
+
 }
 
 // AccountReference contains all account data except keydata,
@@ -124,17 +192,32 @@ impl Account {
     }
 }
 
-pub type WalletAccountList = Arc<Mutex<Vec<Account>>>;
+// pub type WalletAccountList = Arc<Mutex<Vec<Account>>>;
 
 #[derive(Default, Clone, Serialize, Deserialize)]
-pub struct Wallet {
+pub struct Payload {
     pub keydata: Vec<Keydata>,
     pub accounts: Vec<Account>,
 }
 
+impl Payload {
+    pub fn new() -> Payload {
+        Payload { keydata: vec![], accounts: vec![] }
+    }
+}
+
+#[derive(Default, Clone, Serialize, Deserialize)]
+pub struct Wallet {
+    pub payload : Payload,
+    pub metadata: Vec<Metadata>,
+}
+
 impl Wallet {
     pub fn new() -> Wallet {
-        Wallet { keydata: vec![], accounts: vec![] }
+        Wallet { 
+            payload: Payload::new(), 
+            metadata: vec![] 
+        }
     }
 }
 
@@ -210,15 +293,15 @@ impl Store {
     /// Obtain [`Keydata`] by [`KeydataId`]
     pub async fn try_get_keydata(&self, secret: Secret, keydata_id: &KeydataId) -> Result<Option<Keydata>> {
         let wallet = self.try_load(secret).await?;
-        let idx = wallet.keydata.iter().position(|keydata| &keydata.id == keydata_id);
-        let keydata = idx.map(|idx| wallet.keydata.get(idx).unwrap().clone());
+        let idx = wallet.payload.keydata.iter().position(|keydata| &keydata.id == keydata_id);
+        let keydata = idx.map(|idx| wallet.payload.keydata.get(idx).unwrap().clone());
         Ok(keydata)
     }
 
     /// Obtain an array of accounts
     pub async fn get_accounts(&self, secret: Secret) -> Result<Vec<Account>> {
         let wallet = self.try_load(secret).await?;
-        Ok(wallet.accounts)
+        Ok(wallet.payload.accounts)
     }
 
     cfg_if! {
@@ -425,13 +508,13 @@ mod tests {
         let private_key = PrivateKey::from_base58(
             "xprv9s21ZrQH143K3QTDL4LXw2F7HEK3wJUD2nW2nRk4stbPy6cq3jPPqjiChkVvvNKmPGJxWUtg6LnF5kejMRNNU3TGtRBeJgk33yuGBxrMPHi",
         )?;
-        let keydata = Keydata::new(private_key, "mnemonic".to_string());
+        let keydata = Keydata::new(private_key, Some("mnemonic".to_string()));
         // println!("keydata id: {:?}", keydata.id);
         assert_eq!(keydata.id.0, [79, 36, 5, 159, 220, 113, 179, 22]);
 
         let account = Account::new(&keydata, AccountKind::Bip32, "name".to_string(), "title".to_string());
-        w1.keydata.push(keydata);
-        w1.accounts.push(account);
+        w1.payload.keydata.push(keydata);
+        w1.payload.accounts.push(account);
         // println!("w1: {:?}", w1);
 
         // store the wallet
