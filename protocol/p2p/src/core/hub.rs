@@ -1,21 +1,20 @@
-use crate::{common::ProtocolError, pb::KaspadMessage, ConnectionInitializer, Peer, Router};
+use crate::{common::ProtocolError, pb::KaspadMessage, ConnectionInitializer, NodeId, Peer, Router};
 use kaspa_core::{debug, info};
 use parking_lot::RwLock;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::mpsc::Receiver as MpscReceiver;
-use uuid::Uuid;
 
 #[derive(Debug)]
 pub(crate) enum HubEvent {
     NewPeer(Arc<Router>),
-    PeerClosing(Uuid),
+    PeerClosing(NodeId),
 }
 
 /// Hub of active peers (represented as Router objects). Note that all public methods of this type are exposed through the Adaptor
 #[derive(Debug, Clone)]
 pub struct Hub {
     /// Map of currently active peers
-    pub(crate) peers: Arc<RwLock<HashMap<Uuid, Arc<Router>>>>,
+    pub(crate) peers: Arc<RwLock<HashMap<NodeId, Arc<Router>>>>,
 }
 
 impl Hub {
@@ -54,7 +53,7 @@ impl Hub {
     }
 
     /// Send a message to a specific peer
-    pub async fn send(&self, peer_id: Uuid, msg: KaspadMessage) -> Result<bool, ProtocolError> {
+    pub async fn send(&self, peer_id: NodeId, msg: KaspadMessage) -> Result<bool, ProtocolError> {
         let op = self.peers.read().get(&peer_id).cloned();
         if let Some(router) = op {
             router.enqueue(msg).await?;
@@ -74,7 +73,7 @@ impl Hub {
     }
 
     /// Terminate a specific peer
-    pub async fn terminate(&self, peer_id: Uuid) {
+    pub async fn terminate(&self, peer_id: NodeId) {
         let op = self.peers.read().get(&peer_id).cloned();
         if let Some(router) = op {
             // This will eventually lead to peer removal through the Hub event loop

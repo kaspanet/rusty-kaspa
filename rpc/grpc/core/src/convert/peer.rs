@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 use crate::protowire;
 use crate::{from, try_from};
-use kaspa_rpc_core::{RpcError, RpcPeerAddress};
+use kaspa_rpc_core::{RpcError, RpcNodeId, RpcPeerAddress};
 
 // ----------------------------------------------------------------------------
 // rpc_core to protowire
@@ -10,7 +10,7 @@ use kaspa_rpc_core::{RpcError, RpcPeerAddress};
 
 from!(item: &kaspa_rpc_core::RpcPeerInfo, protowire::GetConnectedPeerInfoMessage, {
     Self {
-        id: item.id.to_string(), // TODO
+        id: item.id.to_string(),
         address: item.address.to_string(),
         last_ping_duration: item.last_ping_duration as i64,
         is_outbound: item.is_outbound,
@@ -30,7 +30,7 @@ from!(item: &kaspa_rpc_core::RpcPeerAddress, protowire::GetPeerAddressesKnownAdd
 
 try_from!(item: &protowire::GetConnectedPeerInfoMessage, kaspa_rpc_core::RpcPeerInfo, {
     Self {
-        id: 0, // TODO
+        id: RpcNodeId::from_str(&item.id)?,
         address: RpcPeerAddress::from_str(&item.address)?,
         last_ping_duration: item.last_ping_duration as u64,
         is_outbound: item.is_outbound,

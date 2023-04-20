@@ -78,6 +78,9 @@ pub enum RpcError {
     #[error(transparent)]
     ScriptClassError(#[from] kaspa_txscript::script_class::Error),
 
+    #[error(transparent)]
+    NodeIdError(#[from] uuid::Error),
+
     #[error("{0}")]
     General(String),
 }

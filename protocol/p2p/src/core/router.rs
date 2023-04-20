@@ -1,5 +1,6 @@
 use crate::core::hub::HubEvent;
 use crate::pb::KaspadMessage;
+use crate::NodeId;
 use crate::{common::ProtocolError, KaspadMessagePayloadType};
 use kaspa_core::{debug, error, info, trace, warn};
 use parking_lot::{Mutex, RwLock};
@@ -28,7 +29,7 @@ struct RouterMutableState {
 #[derive(Debug)]
 pub struct Router {
     /// Internal identity of this peer
-    identity: Uuid,
+    identity: NodeId,
 
     /// The socket address of this peer
     net_address: SocketAddr,
@@ -67,7 +68,7 @@ impl Router {
         let (shutdown_sender, mut shutdown_receiver) = oneshot_channel();
 
         let router = Arc::new(Router {
-            identity: Uuid::new_v4(),
+            identity: Uuid::new_v4().into(),
             net_address,
             is_outbound,
             routing_map: RwLock::new(HashMap::new()),
@@ -124,7 +125,7 @@ impl Router {
     }
 
     /// Internal identity of this peer
-    pub fn identity(&self) -> Uuid {
+    pub fn identity(&self) -> NodeId {
         self.identity
     }
 

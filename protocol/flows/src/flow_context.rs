@@ -27,7 +27,7 @@ use kaspa_p2p_lib::{
     common::ProtocolError,
     make_message,
     pb::{self, kaspad_message::Payload, InvRelayBlockMessage},
-    ConnectionInitializer, Hub, KaspadHandshake, Router,
+    ConnectionInitializer, Hub, KaspadHandshake, NodeId, Router,
 };
 use parking_lot::Mutex;
 use std::{
@@ -46,7 +46,7 @@ use uuid::Uuid;
 const PROTOCOL_VERSION: u32 = 5;
 
 pub struct FlowContextInner {
-    pub node_id: Uuid,
+    pub node_id: NodeId,
     pub consensus_manager: Arc<ConsensusManager>,
     pub config: Arc<Config>,
     hub: Hub,
@@ -112,7 +112,7 @@ impl FlowContext {
         let hub = Hub::new();
         Self {
             inner: Arc::new(FlowContextInner {
-                node_id: Uuid::new_v4(),
+                node_id: Uuid::new_v4().into(),
                 consensus_manager,
                 config,
                 orphans_pool: AsyncRwLock::new(OrphanBlocksPool::new(MAX_ORPHANS)),

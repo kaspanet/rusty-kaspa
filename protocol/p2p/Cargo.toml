@@ -30,6 +30,8 @@ thiserror.workspace = true
 parking_lot.workspace = true
 itertools.workspace = true
 uuid.workspace = true
+serde.workspace = true
+borsh.workspace = true
 
 futures = { version = "0.3", default-features = false, features = ["alloc"] }
 prost = "0.11"

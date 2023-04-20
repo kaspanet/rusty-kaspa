@@ -1,22 +1,21 @@
 use std::net::SocketAddr;
-use uuid::Uuid;
 
-use crate::Router;
+use crate::{NodeId, Router};
 
 #[derive(Debug)]
 pub struct Peer {
-    identity: Uuid,
+    identity: NodeId,
     net_address: SocketAddr,
     is_outbound: bool,
 }
 
 impl Peer {
-    pub fn new(identity: Uuid, net_address: SocketAddr, is_outbound: bool) -> Self {
+    pub fn new(identity: NodeId, net_address: SocketAddr, is_outbound: bool) -> Self {
         Self { identity, net_address, is_outbound }
     }
 
     /// Internal identity of this peer
-    pub fn identity(&self) -> Uuid {
+    pub fn identity(&self) -> NodeId {
         self.identity
     }
 

@@ -1,14 +1,15 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use kaspa_addressmanager::{IpAddress, NetAddress};
+use kaspa_p2p_lib::NodeId;
 use serde::{Deserialize, Serialize};
 
+pub type RpcNodeId = NodeId;
 pub type RpcIpAddress = IpAddress;
 pub type RpcPeerAddress = NetAddress;
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct RpcPeerInfo {
-    // TODO: fix the type (gRPC has a string)
-    pub id: u64,
+    pub id: RpcNodeId,
     pub address: RpcPeerAddress,
     pub last_ping_duration: u64, // NOTE: i64 in gRPC protowire
 
