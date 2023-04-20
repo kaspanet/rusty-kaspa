@@ -195,7 +195,12 @@ impl ConnectionManager {
         }
 
         if missing_connections > 0 {
-            self.dns_seed(missing_connections); //TODO: Consider putting a number higher than `missing_connections`.
+            let cmgr = self.clone();
+            // DNS lookup is a blocking i/o operation, so we spawn is as a blocking task
+            let _ = tokio::task::spawn_blocking(move || {
+                cmgr.dns_seed(missing_connections); //TODO: Consider putting a number higher than `missing_connections`.
+            })
+            .await;
         }
     }
 
