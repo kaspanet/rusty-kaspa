@@ -9,3 +9,5 @@ license.workspace = true
 [dependencies]
 async-channel.workspace = true
 triggered = "0.1"
+serde.workspace = true
+borsh.workspace = true

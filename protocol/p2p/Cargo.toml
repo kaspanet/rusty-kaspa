@@ -20,10 +20,10 @@ path = "./src/bin/server.rs"
 [dependencies]
 kaspa-core.workspace = true
 kaspa-consensus-core.workspace = true
-kaspa-addressmanager.workspace = true
 kaspa-mining.workspace = true
 kaspa-hashes.workspace = true
 kaspa-math.workspace = true
+kaspa-utils.workspace = true
 
 log.workspace = true
 thiserror.workspace = true

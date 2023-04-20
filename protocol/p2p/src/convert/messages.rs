@@ -4,13 +4,13 @@ use super::{
     option::TryIntoOptionEx,
 };
 use crate::pb as protowire;
-use kaspa_addressmanager::IpAddress;
 use kaspa_consensus_core::{
     header::Header,
     pruning::{PruningPointProof, PruningPointsList},
     tx::{TransactionId, TransactionOutpoint, UtxoEntry},
 };
 use kaspa_hashes::Hash;
+use kaspa_utils::ip_address::IpAddress;
 
 use std::sync::Arc;
 

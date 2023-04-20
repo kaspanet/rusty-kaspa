@@ -8,6 +8,7 @@ license.workspace = true
 
 [dependencies]
 rocksdb.workspace = true
+kaspa-utils.workspace = true
 kaspa-core.workspace = true
 kaspa-database.workspace = true
 serde.workspace = true

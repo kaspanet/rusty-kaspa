@@ -2,6 +2,8 @@ pub mod arc;
 pub mod binary_heap;
 pub mod channel;
 pub mod hashmap;
+pub mod ip_address;
+pub mod net_address;
 pub mod option;
 pub mod refs;
 pub mod triggers;

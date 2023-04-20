@@ -10,7 +10,7 @@ use parking_lot::Mutex;
 
 use stores::banned_address_store::{BannedAddressesStore, BannedAddressesStoreReader, ConnectionBanTimestamp, DbBannedAddressesStore};
 
-pub use stores::{IpAddress, NetAddress};
+pub use stores::NetAddress;
 
 const MAX_ADDRESSES: usize = 4096;
 const MAX_CONNECTION_FAILED_COUNT: u64 = 3;

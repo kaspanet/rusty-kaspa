@@ -7,7 +7,7 @@ use super::error::ConversionError;
 use crate::pb as protowire;
 
 use itertools::Itertools;
-use kaspa_addressmanager::IpAddress;
+use kaspa_utils::ip_address::IpAddress;
 
 // ----------------------------------------------------------------------------
 // consensus_core to protowire
@@ -55,8 +55,9 @@ impl TryFrom<protowire::NetAddress> for (IpAddress, u16) {
 
 #[cfg(test)]
 mod tests {
+    use kaspa_utils::ip_address::IpAddress;
+
     use crate::pb;
-    use kaspa_addressmanager::IpAddress;
     use std::{
         net::{Ipv4Addr, Ipv6Addr},
         str::FromStr,
