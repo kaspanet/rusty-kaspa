@@ -31,6 +31,12 @@ impl Prefix {
     /// `kpub` prefix
     pub const KPUB: Self = Self::from_parts_unchecked("kpub", 0x038f332e);
 
+    /// `ktrv` prefix
+    pub const KTRV: Self = Self::from_parts_unchecked("ktrv", 0x03909e07);
+
+    /// `ktub` prefix
+    pub const KTUB: Self = Self::from_parts_unchecked("ktub", 0x0390a241);
+
     /// `tprv` prefix
     pub const TPRV: Self = Self::from_parts_unchecked("tprv", 0x04358394);
 
