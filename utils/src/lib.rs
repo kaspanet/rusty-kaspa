@@ -5,5 +5,6 @@ pub mod hashmap;
 pub mod ip_address;
 pub mod net_address;
 pub mod option;
+pub mod peer_id;
 pub mod refs;
 pub mod triggers;

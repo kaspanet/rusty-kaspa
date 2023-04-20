@@ -1,8 +1,8 @@
 use crate::core::hub::HubEvent;
 use crate::pb::KaspadMessage;
-use crate::NodeId;
 use crate::{common::ProtocolError, KaspadMessagePayloadType};
 use kaspa_core::{debug, error, info, trace, warn};
+use kaspa_utils::peer_id::PeerId;
 use parking_lot::{Mutex, RwLock};
 use std::fmt::Display;
 use std::net::SocketAddr;
@@ -29,7 +29,7 @@ struct RouterMutableState {
 #[derive(Debug)]
 pub struct Router {
     /// Internal identity of this peer
-    identity: NodeId,
+    identity: PeerId,
 
     /// The socket address of this peer
     net_address: SocketAddr,
@@ -125,7 +125,7 @@ impl Router {
     }
 
     /// Internal identity of this peer
-    pub fn identity(&self) -> NodeId {
+    pub fn identity(&self) -> PeerId {
         self.identity
     }
 

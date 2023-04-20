@@ -1,21 +1,22 @@
+use kaspa_utils::peer_id::PeerId;
 use std::net::SocketAddr;
 
-use crate::{NodeId, Router};
+use crate::Router;
 
 #[derive(Debug)]
 pub struct Peer {
-    identity: NodeId,
+    identity: PeerId,
     net_address: SocketAddr,
     is_outbound: bool,
 }
 
 impl Peer {
-    pub fn new(identity: NodeId, net_address: SocketAddr, is_outbound: bool) -> Self {
+    pub fn new(identity: PeerId, net_address: SocketAddr, is_outbound: bool) -> Self {
         Self { identity, net_address, is_outbound }
     }
 
     /// Internal identity of this peer
-    pub fn identity(&self) -> NodeId {
+    pub fn identity(&self) -> PeerId {
         self.identity
     }
 

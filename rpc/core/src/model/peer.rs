@@ -1,9 +1,8 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
-use kaspa_p2p_lib::NodeId;
-use kaspa_utils::{ip_address::IpAddress, net_address::NetAddress};
+use kaspa_utils::{ip_address::IpAddress, net_address::NetAddress, peer_id::PeerId};
 use serde::{Deserialize, Serialize};
 
-pub type RpcNodeId = NodeId;
+pub type RpcNodeId = PeerId;
 pub type RpcIpAddress = IpAddress;
 pub type RpcPeerAddress = NetAddress;
 

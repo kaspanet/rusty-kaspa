@@ -27,8 +27,9 @@ use kaspa_p2p_lib::{
     common::ProtocolError,
     make_message,
     pb::{self, kaspad_message::Payload, InvRelayBlockMessage},
-    ConnectionInitializer, Hub, KaspadHandshake, NodeId, Router,
+    ConnectionInitializer, Hub, KaspadHandshake, Router,
 };
+use kaspa_utils::peer_id::PeerId;
 use parking_lot::Mutex;
 use std::{
     collections::HashSet,
@@ -46,7 +47,7 @@ use uuid::Uuid;
 const PROTOCOL_VERSION: u32 = 5;
 
 pub struct FlowContextInner {
-    pub node_id: NodeId,
+    pub node_id: PeerId,
     pub consensus_manager: Arc<ConsensusManager>,
     pub config: Arc<Config>,
     hub: Hub,

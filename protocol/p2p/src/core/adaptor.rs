@@ -1,7 +1,8 @@
 use crate::common::ProtocolError;
 use crate::core::hub::Hub;
+use crate::ConnectionError;
 use crate::{core::connection_handler::ConnectionHandler, Router};
-use crate::{ConnectionError, NodeId};
+use kaspa_utils::peer_id::PeerId;
 use std::ops::Deref;
 use std::sync::Arc;
 use std::time::Duration;
@@ -65,7 +66,7 @@ impl Adaptor {
     }
 
     /// Connect to a new peer (no retries)
-    pub async fn connect_peer(&self, peer_address: String) -> Option<NodeId> {
+    pub async fn connect_peer(&self, peer_address: String) -> Option<PeerId> {
         self.connection_handler.connect_with_retry(peer_address, 1, Default::default()).await.map(|r| r.identity())
     }
 
@@ -75,7 +76,7 @@ impl Adaptor {
         peer_address: String,
         retry_attempts: u8,
         retry_interval: Duration,
-    ) -> Option<NodeId> {
+    ) -> Option<PeerId> {
         self.connection_handler.connect_with_retry(peer_address, retry_attempts, retry_interval).await.map(|r| r.identity())
     }
 

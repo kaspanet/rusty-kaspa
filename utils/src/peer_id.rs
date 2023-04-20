@@ -5,39 +5,39 @@ use uuid::Uuid;
 
 #[derive(PartialEq, Eq, Hash, Copy, Clone, Serialize, Deserialize, Debug)]
 #[repr(transparent)]
-pub struct NodeId(pub Uuid);
+pub struct PeerId(pub Uuid);
 
-impl NodeId {
+impl PeerId {
     pub fn new(ip: Uuid) -> Self {
         Self(ip)
     }
 }
-impl From<Uuid> for NodeId {
+impl From<Uuid> for PeerId {
     fn from(ip: Uuid) -> Self {
         Self(ip)
     }
 }
-impl From<NodeId> for Uuid {
-    fn from(value: NodeId) -> Self {
+impl From<PeerId> for Uuid {
+    fn from(value: PeerId) -> Self {
         value.0
     }
 }
 
-impl FromStr for NodeId {
+impl FromStr for PeerId {
     type Err = uuid::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Uuid::from_str(s).map(NodeId::from)
+        Uuid::from_str(s).map(PeerId::from)
     }
 }
 
-impl Display for NodeId {
+impl Display for PeerId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.0.fmt(f)
     }
 }
 
-impl Deref for NodeId {
+impl Deref for PeerId {
     type Target = Uuid;
 
     fn deref(&self) -> &Self::Target {
@@ -50,21 +50,21 @@ impl Deref for NodeId {
 // Uuid does not currently support Borsh
 //
 
-impl BorshSerialize for NodeId {
+impl BorshSerialize for PeerId {
     fn serialize<W: borsh::maybestd::io::Write>(&self, writer: &mut W) -> ::core::result::Result<(), borsh::maybestd::io::Error> {
         borsh::BorshSerialize::serialize(&self.0.as_bytes(), writer)?;
         Ok(())
     }
 }
 
-impl BorshDeserialize for NodeId {
+impl BorshDeserialize for PeerId {
     fn deserialize(buf: &mut &[u8]) -> ::core::result::Result<Self, borsh::maybestd::io::Error> {
         let bytes: uuid::Bytes = BorshDeserialize::deserialize(buf)?;
         Ok(Self::new(Uuid::from_bytes(bytes)))
     }
 }
 
-impl BorshSchema for NodeId {
+impl BorshSchema for PeerId {
     fn declaration() -> borsh::schema::Declaration {
         "NodeId".to_string()
     }
@@ -85,14 +85,14 @@ mod tests {
     #[test]
     fn test_node_id_borsh() {
         // Tests for NodeId Borsh ser/deser since we manually implemented them
-        let id: NodeId = Uuid::new_v4().into();
+        let id: PeerId = Uuid::new_v4().into();
         let bin = id.try_to_vec().unwrap();
-        let id2: NodeId = BorshDeserialize::try_from_slice(&bin).unwrap();
+        let id2: PeerId = BorshDeserialize::try_from_slice(&bin).unwrap();
         assert_eq!(id, id2);
 
-        let id: NodeId = Uuid::from_bytes([123u8; 16]).into();
+        let id: PeerId = Uuid::from_bytes([123u8; 16]).into();
         let bin = id.try_to_vec().unwrap();
-        let id2: NodeId = BorshDeserialize::try_from_slice(&bin).unwrap();
+        let id2: PeerId = BorshDeserialize::try_from_slice(&bin).unwrap();
         assert_eq!(id, id2);
     }
 }
