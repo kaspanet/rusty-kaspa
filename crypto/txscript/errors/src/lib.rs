@@ -65,4 +65,6 @@ pub enum TxScriptError {
     NoScripts,
     #[error("signature script is not push only")]
     SignatureScriptNotPushOnly,
+    #[error("end of script reached in conditional execution")]
+    ErrUnbalancedConditional,
 }

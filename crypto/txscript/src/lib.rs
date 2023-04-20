@@ -231,8 +231,11 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
             Ok(())
         });
 
-        // Moving between scripts
-        // TODO: Check that we are not in if when moving between scripts
+        // Moving between scripts - we can't be inside an if
+        if !self.cond_stack.is_empty() {
+            return Err(TxScriptError::ErrUnbalancedConditional);
+        }
+
         // Alt stack doesn't persist
         self.astack.clear();
         self.num_ops = 0; // number of ops is per script.
@@ -508,27 +511,7 @@ mod tests {
         is_valid: bool,
     }
 
-    #[test]
-    fn test_check_error_condition() {
-        let test_cases = vec![
-            ScriptTestCase {
-                script: b"\x51", // opcodes::codes::OpTrue{data: ""}
-                expected_result: Ok(()),
-            },
-            ScriptTestCase {
-                script: b"\x61", // opcodes::codes::OpNop{data: ""}
-                expected_result: Err(TxScriptError::EmptyStack),
-            },
-            ScriptTestCase {
-                script: b"\x51\x51", // opcodes::codes::OpTrue, opcodes::codes::OpTrue,
-                expected_result: Err(TxScriptError::CleanStack(1)),
-            },
-            ScriptTestCase {
-                script: b"\x00", // opcodes::codes::OpFalse{data: ""},
-                expected_result: Err(TxScriptError::EvalFalse),
-            },
-        ];
-
+    fn test_script_cases(test_cases: Vec<ScriptTestCase>) {
         let sig_cache = Cache::new(10_000);
         let mut reused_values = SigHashReusedValues::new();
 
@@ -557,6 +540,62 @@ mod tests {
                 .expect("Script creation failed");
             assert_eq!(vm.execute(), test.expected_result);
         }
+    }
+
+    #[test]
+    fn test_check_error_condition() {
+        let test_cases = vec![
+            ScriptTestCase {
+                script: b"\x51", // opcodes::codes::OpTrue{data: ""}
+                expected_result: Ok(()),
+            },
+            ScriptTestCase {
+                script: b"\x61", // opcodes::codes::OpNop{data: ""}
+                expected_result: Err(TxScriptError::EmptyStack),
+            },
+            ScriptTestCase {
+                script: b"\x51\x51", // opcodes::codes::OpTrue, opcodes::codes::OpTrue,
+                expected_result: Err(TxScriptError::CleanStack(1)),
+            },
+            ScriptTestCase {
+                script: b"\x00", // opcodes::codes::OpFalse{data: ""},
+                expected_result: Err(TxScriptError::EvalFalse),
+            },
+        ];
+
+        test_script_cases(test_cases)
+    }
+
+    #[test]
+    fn test_check_opif() {
+        let test_cases = vec![
+            ScriptTestCase {
+                script: b"\x63", // opcodes::codes::OpIf{data: ""}
+                expected_result: Err(TxScriptError::EmptyStack),
+            },
+            ScriptTestCase {
+                script: b"\x52\x63", // opcodes::codes::Op2{data: ""}, opcodes::codes::OpIf{data: ""}
+                expected_result: Err(TxScriptError::InvalidState("expected boolean".to_string())),
+            },
+            ScriptTestCase {
+                script: b"\x51\x63", // opcodes::codes::OpTrue{data: ""}, opcodes::codes::OpIf{data: ""}
+                expected_result: Err(TxScriptError::ErrUnbalancedConditional),
+            },
+            ScriptTestCase {
+                script: b"\x00\x63", // opcodes::codes::OpFalse{data: ""}, opcodes::codes::OpIf{data: ""}
+                expected_result: Err(TxScriptError::ErrUnbalancedConditional),
+            },
+            ScriptTestCase {
+                script: b"\x51\x63\x51\x68", // opcodes::codes::OpTrue{data: ""}, opcodes::codes::OpIf{data: ""}
+                expected_result: Ok(()),
+            },
+            ScriptTestCase {
+                script: b"\x00\x63\x51\x68", // opcodes::codes::OpTrue{data: ""}, opcodes::codes::OpIf{data: ""}
+                expected_result: Err(TxScriptError::EmptyStack),
+            },
+        ];
+
+        test_script_cases(test_cases)
     }
 
     #[test]
