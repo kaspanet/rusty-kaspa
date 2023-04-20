@@ -122,7 +122,8 @@ impl ConnectionHandler {
 
     // TODO: revisit the below constants
     fn outgoing_network_channel_size() -> usize {
-        128
+        // TODO: this number is taken from go-kaspad and should be re-evaluated
+        (1 << 17) + 256
     }
 
     fn communication_timeout() -> u64 {

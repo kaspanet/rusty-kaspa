@@ -48,6 +48,15 @@ pub enum ProtocolError {
 
     #[error("peer connection is closed")]
     ConnectionClosed,
+
+    #[error("incoming route capacity of flow {0:?} has been reached (peer: {1})")]
+    IncomingRouteCapacityReached(KaspadMessagePayloadType, String),
+
+    #[error("outgoing route capacity has been reached (peer: {0})")]
+    OutgoingRouteCapacityReached(String),
+
+    #[error("no flow has been registered for message type {0:?}")]
+    NoRouteForMessageType(KaspadMessagePayloadType),
 }
 
 impl ProtocolError {

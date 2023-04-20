@@ -1,13 +1,14 @@
 use crate::core::hub::HubEvent;
 use crate::pb::KaspadMessage;
 use crate::{common::ProtocolError, KaspadMessagePayloadType};
-use kaspa_core::{debug, error, info, trace, warn};
+use kaspa_core::{debug, error, info, trace};
 use kaspa_utils::peer_id::PeerId;
 use parking_lot::{Mutex, RwLock};
 use std::fmt::Display;
 use std::net::SocketAddr;
 use std::{collections::HashMap, sync::Arc};
 use tokio::select;
+use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::mpsc::{channel as mpsc_channel, Receiver as MpscReceiver, Sender as MpscSender};
 use tokio::sync::oneshot::{channel as oneshot_channel, Sender as OneshotSender};
 use tonic::Streaming;
@@ -93,19 +94,21 @@ impl Router {
 
                     res = incoming_stream.message() => match res {
                         Ok(Some(msg)) => {
-                            trace!("P2P, Router receive loop - got message: {:?}, router-id: {}", msg, router.identity);
-                            let msg_str = msg_type_string(&msg);
-                            if !(router.route_to_flow(msg).await) {
-                                warn!("P2P, Router receive loop - no route for message {} - exiting loop, router-id: {}", msg_str, router.identity);
-                                break;
+                            trace!("P2P, Router receive loop - got message: {:?}, router-id: {}, peer: {}", msg, router.identity, router);
+                            match router.route_to_flow(msg) {
+                                Ok(_) => {},
+                                Err(e) => {
+                                    info!("P2P, Router receive loop - route error {:?} for peer: {}", e, router);
+                                    break;
+                                },
                             }
                         }
                         Ok(None) => {
-                            info!("P2P, Router receive loop - incoming stream ended for peer {}", router);
+                            info!("P2P, Router receive loop - incoming stream ended from peer {}", router);
                             break;
                         }
                         Err(err) => {
-                            warn!("P2P, Router receive loop - network error: {:?} from peer {}", err, router);
+                            info!("P2P, Router receive loop - network error: {:?} from peer {}", err, router);
                             break;
                         }
                     }
@@ -141,7 +144,8 @@ impl Router {
 
     fn incoming_flow_channel_size() -> usize {
         // TODO: reevaluate when the node is fully functional
-        128
+        // Note: in go-kaspad this is set to 200
+        256
     }
 
     /// Send a signal to start this router's receive loop
@@ -184,26 +188,31 @@ impl Router {
     }
 
     /// Routes a message coming from the network to the corresponding registered flow
-    pub async fn route_to_flow(&self, msg: KaspadMessage) -> bool {
+    pub fn route_to_flow(&self, msg: KaspadMessage) -> Result<(), ProtocolError> {
         if msg.payload.is_none() {
-            debug!("P2P, Route to flow got empty payload, router-id: {}", self.identity);
-            return false;
+            debug!("P2P, Route to flow got empty payload, peer: {}", self);
+            return Err(ProtocolError::Other("received kaspad p2p message with empty payload"));
         }
         let msg_type: KaspadMessagePayloadType = msg.payload.as_ref().expect("payload was just verified").into();
         let op = self.routing_map.read().get(&msg_type).cloned();
         if let Some(sender) = op {
-            sender.send(msg).await.is_ok()
+            match sender.try_send(msg) {
+                Ok(_) => Ok(()),
+                Err(TrySendError::Closed(_)) => Err(ProtocolError::ConnectionClosed),
+                Err(TrySendError::Full(_)) => Err(ProtocolError::IncomingRouteCapacityReached(msg_type, self.to_string())),
+            }
         } else {
-            false
+            Err(ProtocolError::NoRouteForMessageType(msg_type))
         }
     }
 
     /// Enqueues a locally-originated message to be sent to the network peer
     pub async fn enqueue(&self, msg: KaspadMessage) -> Result<(), ProtocolError> {
         assert!(msg.payload.is_some(), "Kaspad P2P message should always have a value");
-        match self.outgoing_route.send(msg).await {
-            Ok(_r) => Ok(()),
-            Err(_e) => Err(ProtocolError::ConnectionClosed),
+        match self.outgoing_route.try_send(msg) {
+            Ok(_) => Ok(()),
+            Err(TrySendError::Closed(_)) => Err(ProtocolError::ConnectionClosed),
+            Err(TrySendError::Full(_)) => Err(ProtocolError::OutgoingRouteCapacityReached(self.to_string())),
         }
     }
 
@@ -236,15 +245,5 @@ impl Router {
         self.hub_sender.send(HubEvent::PeerClosing(self.identity)).await.expect("hub receiver should never drop before senders");
 
         true
-    }
-}
-
-fn msg_type_string(msg: &KaspadMessage) -> String {
-    match msg.payload.as_ref() {
-        Some(payload) => {
-            let payload_type: KaspadMessagePayloadType = payload.into();
-            format!("{:?}", payload_type)
-        }
-        None => "<EMPTY_PAYLOAD>".to_owned(),
     }
 }
