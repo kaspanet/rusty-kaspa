@@ -4,7 +4,6 @@ use std::{
     str::FromStr,
 };
 
-// use net_address::{BorshDeserialize, BorshSchema, BorshSerialize};
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
 
@@ -20,19 +19,9 @@ impl IpAddress {
         Self(ip)
     }
 }
-impl AsRef<IpAddr> for IpAddress {
-    fn as_ref(&self) -> &IpAddr {
-        &self.0
-    }
-}
 impl From<IpAddr> for IpAddress {
     fn from(ip: IpAddr) -> Self {
         Self(ip)
-    }
-}
-impl From<&IpAddr> for IpAddress {
-    fn from(ip: &IpAddr) -> Self {
-        Self(ip.to_owned())
     }
 }
 impl From<Ipv4Addr> for IpAddress {
@@ -192,5 +181,24 @@ impl From<NetAddress> for AddressKey {
             },
             value.port,
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_ip_address_borsh() {
+        // Tests for IpAddress Borsh ser/deser since we manually implemented them
+        let ip: IpAddress = Ipv4Addr::from([44u8; 4]).into();
+        let bin = ip.try_to_vec().unwrap();
+        let ip2: IpAddress = BorshDeserialize::try_from_slice(&bin).unwrap();
+        assert_eq!(ip, ip2);
+
+        let ip: IpAddress = Ipv6Addr::from([66u8; 16]).into();
+        let bin = ip.try_to_vec().unwrap();
+        let ip2: IpAddress = BorshDeserialize::try_from_slice(&bin).unwrap();
+        assert_eq!(ip, ip2);
     }
 }
