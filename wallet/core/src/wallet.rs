@@ -4,6 +4,7 @@ use crate::secret::Secret;
 use crate::storage;
 use crate::{account::Account, accounts::*};
 use futures::{select, FutureExt};
+use kaspa_bip32::Mnemonic;
 use kaspa_notify::{
     listener::ListenerId,
     scope::{Scope, VirtualDaaScoreChangedScope},
@@ -19,7 +20,6 @@ use workflow_core::channel::{Channel, DuplexChannel, Multiplexer, Receiver};
 use workflow_core::task::spawn;
 use workflow_log::log_error;
 use workflow_rpc::client::Ctl;
-use kaspa_bip32::Mnemonic;
 
 #[derive(Clone)]
 pub enum Events {
