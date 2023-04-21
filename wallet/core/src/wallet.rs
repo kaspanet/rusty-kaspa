@@ -1,7 +1,7 @@
 use crate::imports::*;
 use crate::result::Result;
 use crate::secret::Secret;
-//use crate::storage;
+use crate::storage;
 use crate::{account::Account, accounts::*};
 use futures::{select, FutureExt};
 use kaspa_notify::{
@@ -99,18 +99,22 @@ impl Wallet {
     }
 
     // pub fn load_accounts(&self, stored_accounts: Vec<storage::Account>) => Result<()> {
-    pub async fn load_accounts(&self, _secret: Secret) -> Result<()> {
-        // let store = storage::Store::new(None)?;
+    pub async fn load_accounts(&self, secret: Secret) -> Result<()> {
+        let store = storage::Store::new(None)?;
+        let wallet = store.wallet().await?;
+        let payload = wallet.payload.decrypt::<storage::Payload>(secret)?;
         // let stored_accounts = store.get_accounts(secret).await?;
 
-        // let accounts = stored_accounts
-        //     .iter()
-        //     .map(|stored| {
-        //         let rpc_api: Arc<crate::DynRpcApi> = self.rpc.clone();
-        //         Arc::new(Account::new(rpc_api, stored))
-        //     })
-        //     .collect();
-        // *self.inner.accounts.lock()? = accounts;
+        let accounts = payload
+            .as_ref()
+            .accounts
+            .iter()
+            .map(|stored| {
+                let rpc_api: Arc<crate::DynRpcApi> = self.rpc.clone();
+                Arc::new(Account::new(rpc_api, stored))
+            })
+            .collect();
+        *self.inner.accounts.lock()? = accounts;
 
         Ok(())
     }

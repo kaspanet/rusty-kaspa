@@ -13,8 +13,11 @@ use sha2::{Digest, Sha256};
 use zeroize::Zeroize;
 
 #[derive(Clone, Serialize, Deserialize)]
+#[serde(tag = "encryptable", content = "payload")]
 pub enum Encryptable<T> {
+    #[serde(rename = "plain")]
     Plain(T),
+    #[serde(rename = "xchacha20poly1305")]
     XChaCha20Poly1305(Encrypted),
 }
 

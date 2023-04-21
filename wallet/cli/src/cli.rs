@@ -57,7 +57,7 @@ impl WalletCli {
                     // - TODO use Store to load settings
                 } else if argv.len() != 2 {
                     term.writeln("\n\rError:\n\r");
-                    term.writeln(&format!("Usage:\n\rset <key> <value>"));
+                    term.writeln("Usage:\n\rset <key> <value>");
                     return Ok(());
                 }
             }
@@ -118,7 +118,7 @@ impl WalletCli {
 
             // ~~~
             Action::Import => {
-                if argv.len() == 0 || argv.get(0) == Some(&"help".to_string()) {
+                if argv.is_empty() || argv.get(0) == Some(&"help".to_string()) {
                     log_info!("Usage: import [mnemonic]");
                     return Ok(());
                 }

@@ -115,6 +115,10 @@ type PubKeyDataId = KeyDataId;
 //     }
 // }
 
+pub struct KeyDataPayload {
+    pub mnemonic: String,
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PrvKeyData {
@@ -209,6 +213,18 @@ pub struct Metadata {
     pub pub_key_data: PubKeyData,
 }
 
+impl From<Account> for Metadata {
+    fn from(account: Account) -> Self {
+        Self {
+            id: account.id,
+            name: account.name,
+            title: account.title,
+            account_kind: account.account_kind,
+            pub_key_data: account.pub_key_data,
+        }
+    }
+}
+
 // #[derive(Debug, Clone, Serialize, Deserialize)]
 // pub struct OpenAccount {
 //     pub id: String,
@@ -244,7 +260,7 @@ impl Zeroize for Payload {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Wallet {
     pub payload: Encrypted, //Payload,
-    pub accounts: Vec<Account>,
+    pub metadata: Vec<Metadata>,
     //pub pub_key_data: Vec<PubKeyData>,
     //pub accounts: Vec<OpenAccount>,
 }
@@ -258,13 +274,13 @@ impl Wallet {
         // Self { payload, accounts: vec![] }
 
         //
-        let accounts = payload.accounts.iter().filter(|a| a.is_visible).cloned().collect();
+        let metadata = payload.accounts.iter().filter(|account| account.is_visible).map(|account| account.clone().into()).collect();
         let payload = Decrypted::new(payload).encrypt(secret)?;
-        Ok(Self { payload, accounts })
+        Ok(Self { payload, metadata })
     }
 
     pub fn payload(&self, secret: Secret) -> Result<Decrypted<Payload>> {
-        Ok(self.payload.decrypt::<Payload>(secret)?)
+        self.payload.decrypt::<Payload>(secret)
     }
 }
 // pub struct
@@ -355,7 +371,8 @@ impl Store {
         &self.filename
     }
 
-    pub async fn try_load(&self, secret: Option<Secret>) -> Result<Wallet> {
+    // pub async fn try_load(&self, secret: Option<Secret>) -> Result<Wallet> {
+    pub async fn try_load(&self) -> Result<Wallet> {
         if self.exists().await? {
             let buffer = self.read().await.map_err(|err| format!("unable to read wallet file: {err}"))?;
             // let wallet_data: WalletData = serde_json::from_slice(buffer.as_ref())?;
@@ -411,9 +428,14 @@ impl Store {
 
     // /// Obtain an array of accounts
     // pub async fn get_accounts(&self, secret: Secret) -> Result<Vec<Account>> {
-    //     let wallet = self.try_load(secret).await?;
+    //     let wallet = self.try_load().await?;
     //     Ok(wallet.accounts)
     // }
+
+    pub async fn wallet(&self) -> Result<Wallet> {
+        let wallet = self.try_load().await?;
+        Ok(wallet)
+    }
 
     cfg_if! {
         if #[cfg(target_arch = "wasm32")] {

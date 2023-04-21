@@ -18,7 +18,7 @@ pub async fn ask_mnemonic(term: &Arc<Terminal>) -> Result<Vec<String>> {
         let text = term.ask(false, "Words:").await?;
         let list = text.split_whitespace().map(|s| s.to_string()).collect::<Vec<String>>();
         if list.is_empty() {
-            return Err(format!("User abort").into());
+            return Err("User abort".into());
         }
         words.extend(list);
 
@@ -28,7 +28,7 @@ pub async fn ask_mnemonic(term: &Arc<Terminal>) -> Result<Vec<String>> {
     }
 
     if words.len() > 24 {
-        Err(format!("Mnemonic must be 12 or 24 words").into())
+        Err("Mnemonic must be 12 or 24 words".into())
     } else {
         Ok(words)
     }
