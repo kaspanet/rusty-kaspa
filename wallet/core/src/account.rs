@@ -50,9 +50,9 @@ pub struct Account {
     #[wasm_bindgen(js_name = "accountKind")]
     pub account_kind: AccountKind,
     // index of the private key in the wallet store
-    #[allow(dead_code)] //TODO: remove me
+    //#[allow(dead_code)] //TODO: remove me
     // #[wasm_bindgen(js_name = "privateKeyIndex")]
-    keydata_id: storage::KeydataId,
+    //keydata_id: storage::KeydataId,
 }
 
 impl Account {
@@ -78,7 +78,7 @@ impl Account {
             is_connected: AtomicBool::new(false),
             inner: Arc::new(Mutex::new(inner)),
             account_kind: stored.account_kind,
-            keydata_id: stored.keydata_id,
+            //keydata_id: stored.keydata_id,
         }
     }
 

@@ -97,7 +97,7 @@ impl Mnemonic {
     /// Create a new BIP39 mnemonic phrase from the given entropy
     pub fn from_entropy(entropy: Vec<u8>, language: Language) -> Result<Self> {
         if entropy.len() != 16 && entropy.len() != 32 {
-            return Err(Error::String(format!("Entropy length should be 16 or 32.")));
+            return Err(Error::String("Entropy length should be 16 or 32.".to_string()));
         }
 
         let wordlist = language.wordlist();
@@ -161,11 +161,11 @@ impl Mnemonic {
             return Err(Error::String(format!("BIP39: actual checksum({actual_checksum}) != expected checksum({expected_checksum})")));
         }
 
-        Ok(Self::from_entropy(entropy.to_vec(), language)?)
+        Self::from_entropy(entropy.to_vec(), language)
     }
 
     fn build_checksum(entropy: &Zeroizing<Vec<u8>>) -> Result<u8> {
-        let binding = Sha256::digest(&*entropy);
+        let binding = Sha256::digest(entropy);
         let bytes = binding.as_slice();
         //println!("len: {}, bytes: {:?}", entropy.len(), bytes);
         match entropy.len() {
