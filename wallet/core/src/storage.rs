@@ -1,4 +1,4 @@
-use crate::imports::*;
+use crate::{imports::*, encryption::sha256_hash};
 use crate::result::Result;
 use crate::secret::Secret;
 use base64::{engine::general_purpose, Engine as _};
@@ -95,6 +95,10 @@ impl KeyDataPayload {
     pub fn new(mnemonic: String) -> Self {
         Self { mnemonic }
     }
+
+    pub fn id(&self)->PrvKeyDataId{
+        PrvKeyDataId::new_from_slice(&sha256_hash(self.mnemonic.as_bytes()).unwrap().as_ref()[0..8])
+    }
 }
 
 impl Zeroize for KeyDataPayload {
@@ -129,13 +133,7 @@ impl Drop for PrvKeyData {
 }
 
 impl PrvKeyData {
-    // pub fn new(encrypted_mnemonics: Vec<Vec<u8>>) -> Self {
-    // pub fn new(mnemonics: Vec<Vec<u8>>) -> Self {
-    // pub fn new(mnemonics: Vec<Encryptable<Vec<u8>>>) -> Self {
-    pub fn new(payload: Encryptable<KeyDataPayload>) -> Self {
-        //TODO sort mnemonics
-        let first_address_payload = "TODO: create address from first mnemonic".as_bytes();
-        let id = PrvKeyDataId::new_from_slice(&first_address_payload[0..8]);
+    pub fn new(id: PrvKeyDataId, payload: Encryptable<KeyDataPayload>) -> Self {
         Self { id, payload }
     }
 }
@@ -553,10 +551,10 @@ mod tests {
         // let prv_key_data = PrvKeyData::new(vec![Encryptable::Plain(mnemonic.as_bytes().to_vec()).encrypt(password.into())?]);
         // let prv_key_data = PrvKeyData::new(vec![Encryptable::Plain(mnemonic.as_bytes().to_vec())]);
         let key_data_payload1 = KeyDataPayload::new(mnemonic1.clone());
-        let prv_key_data1 = PrvKeyData::new(Encryptable::Plain(key_data_payload1));
+        let prv_key_data1 = PrvKeyData::new(key_data_payload1.id(), Encryptable::Plain(key_data_payload1));
 
         let key_data_payload2 = KeyDataPayload::new(mnemonic2.clone());
-        let prv_key_data2 = PrvKeyData::new(Encryptable::Plain(key_data_payload2).into_encrypted(password.clone())?);
+        let prv_key_data2 = PrvKeyData::new(key_data_payload2.id(), Encryptable::Plain(key_data_payload2).into_encrypted(password.clone())?);
 
         let pub_key_data1 = PubKeyData::new(vec!["abc".to_string()]);
         let pub_key_data2 = PubKeyData::new(vec!["xyz".to_string()]);
