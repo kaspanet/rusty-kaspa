@@ -46,7 +46,7 @@ impl<'de> Deserialize<'de> for PrivateKey {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct KeyDataId(pub(crate) [u8; 8]);
 
 impl KeyDataId {
@@ -56,6 +56,12 @@ impl KeyDataId {
 
     pub fn to_hex(&self) -> String {
         self.0.to_vec().to_hex()
+    }
+}
+
+impl std::fmt::Debug for KeyDataId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "KeyDataId ( {:?} )", self.0)
     }
 }
 
@@ -176,6 +182,10 @@ pub struct Account {
     pub is_visible: bool,
     pub pub_key_data: PubKeyData,
     pub prv_key_data_id: Option<PrvKeyDataId>,
+    pub minimum_signatures: u16,
+    pub cosigner_index: u16,
+    pub ecdsa: bool,
+    pub account_index: u32,
 }
 
 impl Account {
@@ -186,9 +196,22 @@ impl Account {
         is_visible: bool,
         pub_key_data: PubKeyData,
         prv_key_data_id: Option<PrvKeyDataId>,
+        account_index: u32,
     ) -> Self {
         let id = pub_key_data.id.to_hex();
-        Self { id, name, title, account_kind, pub_key_data, prv_key_data_id, is_visible }
+        Self {
+            id,
+            name,
+            title,
+            account_kind,
+            pub_key_data,
+            prv_key_data_id,
+            is_visible,
+            ecdsa: false,
+            minimum_signatures: 1,
+            cosigner_index: 0,
+            account_index,
+        }
     }
 }
 
@@ -199,6 +222,8 @@ pub struct Metadata {
     pub title: String,
     pub account_kind: AccountKind,
     pub pub_key_data: PubKeyData,
+    pub ecdsa: bool,
+    pub account_index: u32,
 }
 
 impl From<Account> for Metadata {
@@ -209,6 +234,8 @@ impl From<Account> for Metadata {
             title: account.title,
             account_kind: account.account_kind,
             pub_key_data: account.pub_key_data,
+            ecdsa: account.ecdsa,
+            account_index: account.account_index,
         }
     }
 }
@@ -500,6 +527,7 @@ mod tests {
             true,
             pub_key_data1.clone(),
             Some(prv_key_data1.id),
+            0,
         );
         payload.accounts.push(account1);
 
@@ -510,6 +538,7 @@ mod tests {
             true,
             pub_key_data2.clone(),
             Some(prv_key_data2.id),
+            0,
         );
         payload.accounts.push(account2);
 
