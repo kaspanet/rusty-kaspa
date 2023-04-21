@@ -99,7 +99,7 @@ where
     /// Adds a peer to the node's outgoing connection list.
     ///
     /// This will, in most cases, result in the node connecting to said peer.
-    async fn add_peer(&self, peer_address: RpcPeerAddress, is_permanent: bool) -> RpcResult<()> {
+    async fn add_peer(&self, peer_address: RpcContextualPeerAddress, is_permanent: bool) -> RpcResult<()> {
         self.add_peer_call(AddPeerRequest::new(peer_address, is_permanent)).await?;
         Ok(())
     }

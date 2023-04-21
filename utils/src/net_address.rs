@@ -44,3 +44,17 @@ impl FromStr for NetAddress {
         SocketAddr::from_str(s).map(NetAddress::from)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::net_address::NetAddress;
+    use std::str::FromStr;
+
+    #[test]
+    fn test_net_address_from_str() {
+        let addr_v4 = NetAddress::from_str("1.2.3.4:5678");
+        assert!(addr_v4.is_ok());
+        let addr_v6 = NetAddress::from_str("[2a01:4f8:191:1143::2]:5678");
+        assert!(addr_v6.is_ok());
+    }
+}

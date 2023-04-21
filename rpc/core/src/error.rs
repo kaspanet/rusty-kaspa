@@ -54,6 +54,9 @@ pub enum RpcError {
     #[error("Method unavailable. Run the node with the --utxoindex argument.")]
     NoUtxoIndex,
 
+    #[error("Method unavailable. No connection manager is currently available.")]
+    NoConnectionManager,
+
     #[error("Requested window size {0} is larger than max {1} allowed in RPC safe mode.")]
     WindowSizeExceedingMaximum(u32, u32),
 

@@ -499,6 +499,16 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         ))
     }
 
+    async fn add_peer_call(&self, request: AddPeerRequest) -> RpcResult<AddPeerResponse> {
+        let peer_address = request.peer_address.normalize(self.config.net.default_p2p_port());
+        if let Some(connection_manager) = self.flow_context.connection_manager() {
+            connection_manager.clone().add_connection_request(peer_address.into(), request.is_permanent).await;
+        } else {
+            return Err(RpcError::NoConnectionManager);
+        }
+        Ok(AddPeerResponse {})
+    }
+
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // UNIMPLEMENTED METHODS
 
@@ -507,10 +517,6 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
     }
 
     async fn get_connected_peer_info_call(&self, _request: GetConnectedPeerInfoRequest) -> RpcResult<GetConnectedPeerInfoResponse> {
-        Err(RpcError::NotImplemented)
-    }
-
-    async fn add_peer_call(&self, _request: AddPeerRequest) -> RpcResult<AddPeerResponse> {
         Err(RpcError::NotImplemented)
     }
 

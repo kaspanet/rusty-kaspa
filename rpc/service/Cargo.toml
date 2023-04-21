@@ -10,7 +10,6 @@ license.workspace = true
 kaspa-rpc-core.workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-consensus-notify.workspace = true
-kaspa-hashes.workspace = true
 kaspa-core.workspace = true
 kaspa-utils.workspace = true
 kaspa-notify.workspace = true
@@ -22,6 +21,6 @@ kaspa-addresses.workspace = true
 kaspa-p2p-flows.workspace = true
 kaspa-math.workspace = true
 kaspa-utxoindex.workspace = true
-log.workspace = true
 
-async-trait = "0.1.57"
+log.workspace = true
+async-trait.workspace = true
