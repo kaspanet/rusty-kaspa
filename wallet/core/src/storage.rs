@@ -115,17 +115,44 @@ type PubKeyDataId = KeyDataId;
 //     }
 // }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct KeyDataPayload {
     pub mnemonic: String,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+impl KeyDataPayload {
+    pub fn new(mnemonic: String) -> Self {
+        Self { mnemonic }
+    }
+}
+
+impl Zeroize for KeyDataPayload {
+    fn zeroize(&mut self) {
+        self.mnemonic.zeroize();
+        // self.mnemonics.zeroize();
+        // TODO
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PrvKeyData {
     pub id: PrvKeyDataId,
-    pub mnemonics: Vec<Encryptable<Vec<u8>>>,
-    // pub encrypted_mnemonics: Vec<Vec<u8>>,
+    pub payload: Encryptable<KeyDataPayload>,
 }
+
+// impl std::fmt::Debug for PrvKeyData {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         f.write_str("<PrvKeyData>")
+//         // std::fmt::Display::fmt(&self, f)
+//     }
+// }
+
+
+//    pub mnemonics: Vec<Encryptable<Vec<u8>>>,
+// pub encrypted_mnemonics: Vec<Vec<u8>>,
+// }
 
 impl Zeroize for PrvKeyData {
     fn zeroize(&mut self) {
@@ -146,11 +173,12 @@ impl Drop for PrvKeyData {
 impl PrvKeyData {
     // pub fn new(encrypted_mnemonics: Vec<Vec<u8>>) -> Self {
     // pub fn new(mnemonics: Vec<Vec<u8>>) -> Self {
-    pub fn new(mnemonics: Vec<Encryptable<Vec<u8>>>) -> Self {
+    // pub fn new(mnemonics: Vec<Encryptable<Vec<u8>>>) -> Self {
+    pub fn new(payload: Encryptable<KeyDataPayload>) -> Self {
         //TODO sort mnemonics
         let first_address_payload = "TODO: create address from first mnemonic".as_bytes();
         let id = PrvKeyDataId::new_from_slice(&first_address_payload[0..8]);
-        Self { id, mnemonics }
+        Self { id, payload }
     }
 }
 
@@ -242,7 +270,7 @@ impl From<Account> for Metadata {
 //     }
 // }
 
-#[derive(Default, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Payload {
     pub keydata: Vec<PrvKeyData>,
     pub accounts: Vec<Account>,
@@ -554,9 +582,10 @@ mod tests {
         //     "xprv9s21ZrQH143K3QTDL4LXw2F7HEK3wJUD2nW2nRk4stbPy6cq3jPPqjiChkVvvNKmPGJxWUtg6LnF5kejMRNNU3TGtRBeJgk33yuGBxrMPHi",
         // )?;
 
-        let global_password = "ABC-L4LXw2F7HEK3wJU-Rk4stbPy6c";
-        let password = "test-123-# L4LXw2F7HEK3wJU Rk4stbPy6c";
-        let mnemonic = "caution guide valley easily latin already visual fancy fork car switch runway vicious polar surprise fence boil light nut invite fiction visa hamster coyote".to_string();
+        let global_password = Secret::from("ABC-L4LXw2F7HEK3wJU-Rk4stbPy6c");
+        let password = Secret::from("test-123-# L4LXw2F7HEK3wJU Rk4stbPy6c");
+        let mnemonic1 = "caution guide valley easily latin already visual fancy fork car switch runway vicious polar surprise fence boil light nut invite fiction visa hamster coyote".to_string();
+        let mnemonic2 = "nut invite fiction visa hamster coyote guide caution valley easily latin already visual fancy fork car switch runway vicious polar surprise fence boil light".to_string();
 
         // let encrypted_mnemonic = encrypt(&mnemonic.as_bytes(), password.as_bytes().into()).unwrap();
         // let mmm =
@@ -564,21 +593,39 @@ mod tests {
         // let prv_key_data = PrvKeyData::new(vec![mnemonic.as_bytes()]);
         // let prv_key_data = PrvKeyData::new(vec![encrypted_mnemonic.clone()]);
         // let prv_key_data = PrvKeyData::new(vec![Encryptable::Plain(mnemonic.as_bytes().to_vec()).encrypt(password.into())?]);
-        let prv_key_data = PrvKeyData::new(vec![Encryptable::Plain(mnemonic.as_bytes().to_vec())]);
-        let pub_key_data = PubKeyData::new(vec!["xyz".to_string()]);
-        println!("keydata id: {:?}", prv_key_data.id);
-        //assert_eq!(prv_key_data.id.0, [79, 36, 5, 159, 220, 113, 179, 22]);
+        // let prv_key_data = PrvKeyData::new(vec![Encryptable::Plain(mnemonic.as_bytes().to_vec())]);
+        let key_data_payload1 = KeyDataPayload::new(mnemonic1.clone());
+        let prv_key_data1 = PrvKeyData::new(Encryptable::Plain(key_data_payload1));
 
-        let account = Account::new(
+        let key_data_payload2 = KeyDataPayload::new(mnemonic2.clone());
+        let prv_key_data2 = PrvKeyData::new(Encryptable::Plain(key_data_payload2).into_encrypted(password.clone())?);
+
+        let pub_key_data1 = PubKeyData::new(vec!["abc".to_string()]);
+        let pub_key_data2 = PubKeyData::new(vec!["xyz".to_string()]);
+        println!("keydata1 id: {:?}", prv_key_data1.id);
+        //assert_eq!(prv_key_data.id.0, [79, 36, 5, 159, 220, 113, 179, 22]);
+        payload.keydata.push(prv_key_data1.clone());
+        payload.keydata.push(prv_key_data2.clone());
+
+        let account1 = Account::new(
             "Wallet-A".to_string(),
             "Wallet A".to_string(),
             AccountKind::Bip32,
             true,
-            pub_key_data.clone(),
-            Some(prv_key_data.id),
+            pub_key_data1.clone(),
+            Some(prv_key_data1.id),
         );
-        payload.keydata.push(prv_key_data);
-        payload.accounts.push(account);
+        payload.accounts.push(account1);
+
+        let account2 = Account::new(
+            "Wallet-A".to_string(),
+            "Wallet A".to_string(),
+            AccountKind::Bip32,
+            true,
+            pub_key_data2.clone(),
+            Some(prv_key_data2.id),
+        );
+        payload.accounts.push(account2);
 
         // let account = OpenAccount::new("Open-Account".to_string(), "Open Account".to_string(), AccountKind::Bip32, pub_key_data);
         // w1.accounts.push(account);
@@ -590,32 +637,43 @@ mod tests {
         // println!("w1: {:?}", w1);
 
         let payload_json = serde_json::to_string(&payload).unwrap();
-        store.try_store(global_password.as_bytes().into(), payload).await?;
+        store.try_store(global_password.clone(), payload).await?;
 
         // store the wallet
         // let w1s = serde_json::to_string(&w1).unwrap();
         // println!("w1s: {}", w1s);
         // store.try_store(global_password.as_bytes().into(), w1).await?;
 
-        let open_wallet = store.try_load(None).await?;
-
-        println!("\n=========\nopen_wallet.accounts: {:?}\n\n", open_wallet.accounts);
-
+        // let open_wallet = store.try_load(None).await?;
+        // let wallet = store.try_load().await?;
+        // let
+        
         // load a new instance of the wallet from the store
-        let w2 = store.try_load(Some(global_password.as_bytes().into())).await?;
-        let w2payload = w2.payload.decrypt::<Payload>(global_password.as_bytes().into()).unwrap();
+        // let w2 = store.try_load(Some(global_password.as_bytes().into())).await?;
+        let w2 = store.try_load().await?;
+        let w2payload = w2.payload.decrypt::<Payload>(global_password.clone()).unwrap();
+        println!("\n---\nwallet.metadata (plain): {:#?}\n\n", w2.metadata);
+        // let w2payload_json = serde_json::to_string(w2payload.as_ref()).unwrap();
+        println!("\n---nwallet.payload (decrypted): {:#?}\n\n", w2payload.as_ref());
         // purge the store
         store.purge()?;
 
-        let w2s = serde_json::to_string(&w2).unwrap();
+        // let w2s = serde_json::to_string(&w2).unwrap();
         // assert_eq!(w1s, w2s);
         assert_eq!(payload_json, serde_json::to_string(w2payload.as_ref())?);
 
-        let keydata = w2payload.as_ref().keydata.get(0).unwrap();
-        let first_mnemonic = &keydata.mnemonics[0].decrypt(None)?;
+        let w2keydata1 = w2payload.as_ref().keydata.get(0).unwrap();
+        let w2keydata1_payload = w2keydata1.payload.decrypt(None).unwrap();
+        let first_mnemonic = &w2keydata1_payload.as_ref().mnemonic;
+        // println!("first mnemonic (plain): {}", hex_string(first_mnemonic.as_ref()));
+        println!("first mnemonic (plain): {first_mnemonic}");
+        assert_eq!(&mnemonic1, first_mnemonic);
 
-        println!("first_encrypted_mnemonic: {}", hex_string(first_mnemonic.as_ref()));
-        assert_eq!(&mnemonic.as_bytes().to_vec(), first_mnemonic.as_ref());
+        let w2keydata2 = w2payload.as_ref().keydata.get(1).unwrap();
+        let w2keydata2_payload = w2keydata2.payload.decrypt(Some(password.clone())).unwrap();
+        let second_mnemonic = &w2keydata2_payload.as_ref().mnemonic;
+        println!("second mnemonic (encrypted): {second_mnemonic}");
+        assert_eq!(&mnemonic2, second_mnemonic);
 
         // let mn = decrypt(first_encrypted_mnemonic.as_ref(), password.as_bytes().into())?;
         //println!("mn: {:?}", mn.as_ref());

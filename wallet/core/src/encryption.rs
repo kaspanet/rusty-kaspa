@@ -12,7 +12,7 @@ use serde::{de::DeserializeOwned, Serializer};
 use sha2::{Digest, Sha256};
 use zeroize::Zeroize;
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "encryptable", content = "payload")]
 pub enum Encryptable<T> {
     #[serde(rename = "plain")]
@@ -52,14 +52,11 @@ where
             Self::XChaCha20Poly1305(v) => Ok(v.clone()),
         }
     }
-    pub fn into_encrypted(self, secret: Secret) -> Result<Encrypted> {
-        match self {
-            Self::Plain(v) => {
-                Ok(Decrypted::new(v).encrypt(secret)?)
 
-                // Ok(Encrypted::new(v))
-            }
-            Self::XChaCha20Poly1305(v) => Ok(v),
+    pub fn into_encrypted(self, secret: Secret) -> Result<Self> {
+        match self {
+            Self::Plain(v) => Ok(Self::XChaCha20Poly1305(Decrypted::new(v).encrypt(secret)?)),
+            Self::XChaCha20Poly1305(v) => Ok(Self::XChaCha20Poly1305(v)),
         }
     }
 }
