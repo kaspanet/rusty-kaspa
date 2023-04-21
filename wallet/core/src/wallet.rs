@@ -19,6 +19,7 @@ use workflow_core::channel::{Channel, DuplexChannel, Multiplexer, Receiver};
 use workflow_core::task::spawn;
 use workflow_log::log_error;
 use workflow_rpc::client::Ctl;
+use kaspa_bip32::Mnemonic;
 
 #[derive(Clone)]
 pub enum Events {
@@ -181,6 +182,8 @@ impl Wallet {
     }
 
     pub async fn create(self: &Arc<Wallet>) -> Result<()> {
+        let mnemonic = Mnemonic::random(rand::thread_rng(), Default::default())?;
+        log_trace!("mnemonic: {}", mnemonic.phrase());
         Ok(())
     }
 

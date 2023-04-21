@@ -85,36 +85,6 @@ impl Zeroize for KeyDataId {
 type PrvKeyDataId = KeyDataId;
 type PubKeyDataId = KeyDataId;
 
-// #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-// pub struct PubKeyDataId(pub(crate) [u8; 8]);
-
-// impl PubKeyDataId {
-//     pub fn new_from_slice(vec: &[u8]) -> Self {
-//         Self(<[u8; 8]>::try_from(<&[u8]>::clone(&vec)).expect("Error: invalid slice size for id"))
-//     }
-// }
-
-// impl Serialize for PubKeyDataId {
-//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-//     where
-//         S: Serializer,
-//     {
-//         serializer.serialize_str(&hex_string(&self.0))
-//     }
-// }
-
-// impl<'de> Deserialize<'de> for PubKeyDataId {
-//     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-//     where
-//         D: Deserializer<'de>,
-//     {
-//         let s = <std::string::String as Deserialize>::deserialize(deserializer)?;
-//         let mut data = vec![0u8; s.len() / 2];
-//         hex_decode(s.as_bytes(), &mut data).map_err(serde::de::Error::custom)?;
-//         Ok(Self::new_from_slice(&data))
-//     }
-// }
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct KeyDataPayload {
@@ -141,18 +111,6 @@ pub struct PrvKeyData {
     pub id: PrvKeyDataId,
     pub payload: Encryptable<KeyDataPayload>,
 }
-
-// impl std::fmt::Debug for PrvKeyData {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         f.write_str("<PrvKeyData>")
-//         // std::fmt::Display::fmt(&self, f)
-//     }
-// }
-
-
-//    pub mnemonics: Vec<Encryptable<Vec<u8>>>,
-// pub encrypted_mnemonics: Vec<Vec<u8>>,
-// }
 
 impl Zeroize for PrvKeyData {
     fn zeroize(&mut self) {
