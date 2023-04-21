@@ -6,6 +6,7 @@ use crate::flowcontext::{
 use crate::v5;
 use async_trait::async_trait;
 use kaspa_addressmanager::AddressManager;
+use kaspa_connectionmanager::ConnectionManager;
 use kaspa_consensus_core::block::Block;
 use kaspa_consensus_core::config::Config;
 use kaspa_consensus_core::tx::{Transaction, TransactionId};
@@ -57,6 +58,7 @@ pub struct FlowContextInner {
     shared_transaction_requests: Arc<Mutex<HashSet<TransactionId>>>,
     is_ibd_running: Arc<AtomicBool>,
     pub address_manager: Arc<Mutex<AddressManager>>,
+    connection_manager: Mutex<Option<Arc<ConnectionManager>>>,
     mining_manager: Arc<MiningManager>,
     notification_root: Arc<ConsensusNotificationRoot>,
 }
@@ -123,10 +125,19 @@ impl FlowContext {
                 is_ibd_running: Arc::new(AtomicBool::default()),
                 hub,
                 address_manager,
+                connection_manager: Mutex::new(None),
                 mining_manager,
                 notification_root,
             }),
         }
+    }
+
+    pub fn set_connection_manager(&self, connection_manager: Arc<ConnectionManager>) {
+        self.connection_manager.lock().replace(connection_manager);
+    }
+
+    pub fn connection_manager(&self) -> Option<Arc<ConnectionManager>> {
+        self.connection_manager.lock().clone()
     }
 
     pub fn consensus(&self) -> ConsensusInstance {
