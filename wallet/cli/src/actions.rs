@@ -12,6 +12,14 @@ use workflow_terminal::Terminal;
 pub enum Action {
     #[describe("Display this help")]
     Help,
+    #[describe("Settings")]
+    Set,
+    #[describe("Connect to kaspa network")]
+    Connect,
+    #[describe("Disconnect from kaspa network")]
+    Disconnect,
+    #[describe("Import a wallet or a private key")]
+    Import,
     #[describe("Create a new account or a wallet")]
     Create,
     #[describe("Open a wallet")]

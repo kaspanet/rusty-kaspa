@@ -126,7 +126,9 @@ impl Wallet {
         // rpc services (notifier)
         self.rpc.start().await?;
         // start async RPC connection
-        self.rpc.connect_as_task()?;
+
+        // TODO handle reconnect flag
+        // self.rpc.connect_as_task()?;
         Ok(())
     }
 

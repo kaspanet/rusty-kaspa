@@ -11,7 +11,7 @@ use chacha20poly1305::{
 };
 use faster_hex::{hex_decode, hex_string};
 // use kaspa_bip32::ExtendedKey;
-use serde::{Serializer, de::DeserializeOwned};
+use serde::{de::DeserializeOwned, Serializer};
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 use workflow_core::runtime;
@@ -21,23 +21,29 @@ const DEFAULT_PATH: &str = "~/.kaspa/wallet.kaspa";
 
 pub use kaspa_wallet_core::account::AccountKind;
 
-pub struct Decrypted<T>(pub(crate) T) where T: Zeroize;
-impl<T> Drop for Decrypted<T> 
-where T: Zeroize
+pub struct Decrypted<T>(pub(crate) T)
+where
+    T: Zeroize;
+impl<T> Drop for Decrypted<T>
+where
+    T: Zeroize,
 {
     fn drop(&mut self) {
         self.0.zeroize();
     }
 }
 
-impl<T> AsRef<T> for Decrypted<T> where T: Zeroize {
+impl<T> AsRef<T> for Decrypted<T>
+where
+    T: Zeroize,
+{
     fn as_ref(&self) -> &T {
         &self.0
     }
 }
 
 pub struct Encrypted {
-    payload : Vec<u8>,
+    payload: Vec<u8>,
 }
 
 impl Encrypted {
@@ -45,12 +51,14 @@ impl Encrypted {
         Encrypted { payload }
     }
 
-    pub fn decrypt<T>(&self, secret : Secret) -> Result<Decrypted<T>> where T: Zeroize + DeserializeOwned {
+    pub fn decrypt<T>(&self, secret: Secret) -> Result<Decrypted<T>>
+    where
+        T: Zeroize + DeserializeOwned,
+    {
         let t: T = serde_json::from_slice(decrypt(&self.payload, secret)?.as_ref())?;
         Ok(Decrypted(t))
     }
 }
-
 
 impl Serialize for Encrypted {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -76,9 +84,6 @@ impl<'de> Deserialize<'de> for Encrypted {
 // pub struct Decrypted<T> {
 //     payload : T,
 // }
-
-
-
 
 #[derive(Clone)]
 pub struct PrivateKey(pub(crate) kaspa_bip32::ExtendedKey);
@@ -173,7 +178,6 @@ impl Keydata {
 #[serde(rename_all = "camelCase")]
 pub struct Metadata {
     pub id: KeydataId,
-
 }
 
 // AccountReference contains all account data except keydata,
@@ -208,16 +212,13 @@ impl Payload {
 
 #[derive(Default, Clone, Serialize, Deserialize)]
 pub struct Wallet {
-    pub payload : Payload,
+    pub payload: Payload,
     pub metadata: Vec<Metadata>,
 }
 
 impl Wallet {
     pub fn new() -> Wallet {
-        Wallet { 
-            payload: Payload::new(), 
-            metadata: vec![] 
-        }
+        Wallet { payload: Payload::new(), metadata: vec![] }
     }
 }
 

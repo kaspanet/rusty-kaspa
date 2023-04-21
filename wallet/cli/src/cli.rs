@@ -1,4 +1,5 @@
 use crate::actions::*;
+use crate::helpers::*;
 use crate::result::Result;
 use async_trait::async_trait;
 use futures::*;
@@ -36,6 +37,8 @@ impl WalletCli {
     }
 
     async fn action(&self, action: Action, mut argv: Vec<String>, term: Arc<Terminal>) -> Result<()> {
+        argv.remove(0);
+
         match action {
             Action::Help => {
                 term.writeln("\n\rCommands:\n\r");
@@ -47,6 +50,22 @@ impl WalletCli {
                 term.exit().await;
                 #[cfg(target_arch = "wasm32")]
                 workflow_dom::utils::window().location().reload().ok();
+            }
+            Action::Set => {
+                if argv.is_empty() {
+                    term.writeln("\n\rSettings:\n\r");
+                    // - TODO use Store to load settings
+                } else if argv.len() != 2 {
+                    term.writeln("\n\rError:\n\r");
+                    term.writeln(&format!("Usage:\n\rset <key> <value>"));
+                    return Ok(());
+                }
+            }
+            Action::Connect => {
+                self.wallet.rpc.connect(true).await?;
+            }
+            Action::Disconnect => {
+                self.wallet.rpc.shutdown().await?;
             }
             Action::GetInfo => {
                 let response = self.wallet.get_info().await?;
@@ -95,6 +114,25 @@ impl WalletCli {
             }
             Action::UnsubscribeDaaScore => {
                 self.wallet.unsubscribe_daa_score().await?;
+            }
+
+            // ~~~
+            Action::Import => {
+                if argv.len() == 0 || argv.get(0) == Some(&"help".to_string()) {
+                    log_info!("Usage: import [mnemonic]");
+                    return Ok(());
+                }
+
+                let what = argv.get(0).unwrap();
+                match what.as_str() {
+                    "mnemonic" => {
+                        let mnemonic = ask_mnemonic(&term).await?;
+                        log_info!("Mnemonic: {:?}", mnemonic);
+                    }
+                    _ => {
+                        return Err(format!("Invalid argument: {}", what).into());
+                    }
+                }
             }
 
             // ~~~

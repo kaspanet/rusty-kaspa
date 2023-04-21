@@ -7,7 +7,7 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum Error {
     #[error("Error: {0}")]
-    String(String),
+    Custom(String),
 
     #[error("Wallet error: {0}")]
     WalletError(#[from] WalletError),
@@ -20,6 +20,14 @@ pub enum Error {
     ChannelError(String),
     // #[error("Channel error")]
     // ChannelError(String),
+    #[error(transparent)]
+    WrpcError(#[from] kaspa_wrpc_client::error::Error),
+}
+
+impl Error {
+    pub fn custom<T: Into<String>>(msg: T) -> Self {
+        Error::Custom(msg.into())
+    }
 }
 
 impl From<Error> for TerminalError {
@@ -31,5 +39,17 @@ impl From<Error> for TerminalError {
 impl<T> From<ChannelError<T>> for Error {
     fn from(e: ChannelError<T>) -> Error {
         Error::ChannelError(e.to_string())
+    }
+}
+
+impl From<String> for Error {
+    fn from(err: String) -> Self {
+        Self::Custom(err)
+    }
+}
+
+impl From<&str> for Error {
+    fn from(err: &str) -> Self {
+        Self::Custom(err.to_string())
     }
 }
