@@ -23,6 +23,11 @@ impl From<&[u8]> for Secret {
         Secret(slice.to_vec())
     }
 }
+impl From<&str> for Secret {
+    fn from(s: &str) -> Self {
+        Secret(s.as_bytes().to_vec())
+    }
+}
 
 impl Drop for Secret {
     fn drop(&mut self) {

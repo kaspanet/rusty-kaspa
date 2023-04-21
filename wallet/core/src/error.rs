@@ -93,6 +93,12 @@ pub enum Error {
     Argon2ph(argon2::password_hash::Error),
 }
 
+impl Error {
+    pub fn custom<T: Into<String>>(msg: T) -> Self {
+        Error::Custom(msg.into())
+    }
+}
+
 impl From<chacha20poly1305::Error> for Error {
     fn from(e: chacha20poly1305::Error) -> Self {
         Error::Chacha20poly1305(e)
