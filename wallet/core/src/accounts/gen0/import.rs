@@ -13,6 +13,11 @@ use md5::Md5;
 use pbkdf2::{hmac::Hmac, pbkdf2};
 use serde::{Deserialize, Serialize};
 use sha1::Sha1;
+#[allow(unused_imports)]
+use workflow_core::env;
+use workflow_core::runtime;
+use workflow_store::fs;
+use workflow_store::fs::read_json_with_options;
 use zeroize::Zeroize;
 
 type Aes256CfbDec = cfb_mode::Decryptor<aes::Aes256>;
@@ -106,6 +111,41 @@ fn aes_decrypt_v0(key: &[u8], iv: &[u8], content: &mut [u8]) -> Result<String> {
     let json = String::from_utf8(content[0..last].to_vec()).unwrap();
     Ok(json)
 }
+
+// ---
+// {"type":"kaspa-wallet","encryption":"default","version":1,"generator":"pwa","wallet":{"mnemonic":"hex"}}
+
+#[derive(Deserialize)]
+struct Wallet {
+    mnemonic: String,
+}
+
+#[derive(Deserialize)]
+struct Envelope {
+    #[serde(rename = "type")]
+    kind: Option<String>,
+    encryption: Option<String>,
+    default: Option<String>,
+    generator: Option<String>,
+    wallet: Wallet,
+}
+
+async fn load_v0_keydata(phrase: &Secret) -> Result<PrivateKeyDataV0> {
+    let filename = if runtime::is_windows() {
+        let appdata = env::var("APPDATA")?;
+        fs::resolve_path(&format!("{appdata}/Kaspa/kaspa.kpk"))
+    } else if runtime::is_macos() {
+        fs::resolve_path("~/Library/Application Support/Kaspa/kaspa.kpk")
+    } else {
+        fs::resolve_path("~/.kaspa/kaspa.kpk")
+    };
+
+    let options = workflow_store::fs::Options::with_local_storage_key("kaspa-wallet");
+    let wallet = read_json_with_options::<Wallet>(&filename, options).await?;
+    get_v0_keydata(&wallet.mnemonic, phrase)
+}
+
+// ---
 
 #[test]
 fn test_v0_keydata() {

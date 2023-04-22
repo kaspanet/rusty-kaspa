@@ -182,6 +182,7 @@ pbkdf2 = {version = "0.12.1"}
 # workflow-dom = { version = "0.3.14" }
 # workflow-rpc = { version = "0.3.14" }
 # workflow-node = { version = "0.3.14" }
+# workflow-store = { version = "0.3.14" }
 # workflow-terminal = { version = "0.3.14" }
 
 workflow-log = { path = "../workflow-rs/log" }
@@ -190,5 +191,6 @@ workflow-wasm = { path = "../workflow-rs/wasm" }
 workflow-dom = { path = "../workflow-rs/dom" }
 workflow-rpc = { path = "../workflow-rs/rpc" }
 workflow-node = { path = "../workflow-rs/node" }
+workflow-store = { path = "../workflow-rs/store" }
 workflow-terminal = { path = "../workflow-rs/terminal" }
 

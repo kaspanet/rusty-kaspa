@@ -9,7 +9,6 @@ use workflow_core::channel::*;
 use workflow_log::*;
 use workflow_terminal::Terminal;
 pub use workflow_terminal::{parse, Cli, Options as TerminalOptions, Result as TerminalResult, TargetElement as TerminalTarget};
-
 struct WalletCli {
     term: Arc<Mutex<Option<Arc<Terminal>>>>,
     wallet: Arc<Wallet>,
@@ -129,6 +128,11 @@ impl WalletCli {
                         let mnemonic = ask_mnemonic(&term).await?;
                         log_info!("Mnemonic: {:?}", mnemonic);
                     }
+                    "kaspanet" => {
+                        // Wallet::import_kaspanet(&term).await?;
+                        // load_v0_keydata()
+                    }
+                    "kaspa-wallet" => {}
                     _ => {
                         return Err(format!("Invalid argument: {}", what).into());
                     }

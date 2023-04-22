@@ -66,6 +66,9 @@ pub enum Error {
     WorkflowWasm(#[from] workflow_wasm::error::Error),
 
     #[error(transparent)]
+    WorkflowStore(#[from] workflow_store::error::Error),
+
+    #[error(transparent)]
     Address(#[from] kaspa_addresses::AddressError),
     // #[error(transparent)]
     // CoreSigner(#[from] CoreSignerError),
@@ -91,6 +94,9 @@ pub enum Error {
 
     #[error("argon2::password_hash {0}")]
     Argon2ph(argon2::password_hash::Error),
+
+    #[error(transparent)]
+    VarError(#[from] std::env::VarError),
 }
 
 impl Error {

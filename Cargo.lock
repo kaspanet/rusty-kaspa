@@ -2442,6 +2442,7 @@ dependencies = [
  "workflow-log",
  "workflow-node",
  "workflow-rpc",
+ "workflow-store",
  "workflow-wasm",
  "zeroize",
 ]
@@ -4756,6 +4757,23 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "workflow-store"
+version = "0.3.14"
+dependencies = [
+ "async-std",
+ "base64 0.21.0",
+ "cfg-if 1.0.0",
+ "home",
+ "js-sys",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "wasm-bindgen",
+ "web-sys",
+ "workflow-core",
 ]
 
 [[package]]
