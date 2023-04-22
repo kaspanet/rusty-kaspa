@@ -4,8 +4,10 @@ extern crate self as address_manager;
 
 use std::{collections::HashSet, net::IpAddr, sync::Arc};
 
+use itertools::Itertools;
 use kaspa_core::time::unix_now;
 use kaspa_database::prelude::{StoreResultExtensions, DB};
+use kaspa_utils::ip_address::IpAddress;
 use parking_lot::Mutex;
 
 use stores::banned_address_store::{BannedAddressesStore, BannedAddressesStoreReader, ConnectionBanTimestamp, DbBannedAddressesStore};
@@ -90,6 +92,14 @@ impl AddressManager {
             }
             None => false,
         }
+    }
+
+    pub fn get_all_addresses(&self) -> Vec<NetAddress> {
+        self.address_store.iterate_addresses().collect_vec()
+    }
+
+    pub fn get_all_banned_addresses(&self) -> Vec<IpAddress> {
+        self.banned_address_store.iterator().map(|x| IpAddress::from(x.unwrap().0)).collect_vec()
     }
 }
 

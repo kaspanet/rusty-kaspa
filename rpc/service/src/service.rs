@@ -509,12 +509,13 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         Ok(AddPeerResponse {})
     }
 
+    async fn get_peer_addresses_call(&self, _: GetPeerAddressesRequest) -> RpcResult<GetPeerAddressesResponse> {
+        let address_manager = self.flow_context.address_manager.lock();
+        Ok(GetPeerAddressesResponse::new(address_manager.get_all_addresses(), address_manager.get_all_banned_addresses()))
+    }
+
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // UNIMPLEMENTED METHODS
-
-    async fn get_peer_addresses_call(&self, _request: GetPeerAddressesRequest) -> RpcResult<GetPeerAddressesResponse> {
-        Err(RpcError::NotImplemented)
-    }
 
     async fn get_connected_peer_info_call(&self, _request: GetConnectedPeerInfoRequest) -> RpcResult<GetConnectedPeerInfoResponse> {
         Err(RpcError::NotImplemented)

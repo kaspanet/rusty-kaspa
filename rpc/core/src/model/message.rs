@@ -158,11 +158,11 @@ pub struct GetPeerAddressesRequest {}
 #[serde(rename_all = "camelCase")]
 pub struct GetPeerAddressesResponse {
     pub known_addresses: Vec<RpcPeerAddress>,
-    pub banned_addresses: Vec<RpcPeerAddress>,
+    pub banned_addresses: Vec<RpcIpAddress>,
 }
 
 impl GetPeerAddressesResponse {
-    pub fn new(known_addresses: Vec<RpcPeerAddress>, banned_addresses: Vec<RpcPeerAddress>) -> Self {
+    pub fn new(known_addresses: Vec<RpcPeerAddress>, banned_addresses: Vec<RpcIpAddress>) -> Self {
         Self { known_addresses, banned_addresses }
     }
 }

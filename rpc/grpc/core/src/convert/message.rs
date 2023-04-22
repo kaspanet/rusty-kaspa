@@ -481,7 +481,7 @@ try_from!(&protowire::GetPeerAddressesRequestMessage, kaspa_rpc_core::GetPeerAdd
 try_from!(item: &protowire::GetPeerAddressesResponseMessage, RpcResult<kaspa_rpc_core::GetPeerAddressesResponse>, {
     Self {
         known_addresses: item.addresses.iter().map(RpcPeerAddress::try_from).collect::<Result<Vec<_>, _>>()?,
-        banned_addresses: item.banned_addresses.iter().map(RpcPeerAddress::try_from).collect::<Result<Vec<_>, _>>()?,
+        banned_addresses: item.banned_addresses.iter().map(RpcIpAddress::try_from).collect::<Result<Vec<_>, _>>()?,
     }
 });
 
