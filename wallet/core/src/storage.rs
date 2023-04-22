@@ -1,11 +1,9 @@
 use crate::result::Result;
 use crate::secret::Secret;
 use crate::{encryption::sha256_hash, imports::*};
-// use base64::{engine::general_purpose, Engine as _};
 use cfg_if::cfg_if;
 use faster_hex::{hex_decode, hex_string};
 use serde::Serializer;
-// use std::fs;
 use std::path::PathBuf;
 #[allow(unused_imports)]
 use workflow_core::runtime;
@@ -17,37 +15,6 @@ pub use crate::encryption::{Decrypted, Encryptable, Encrypted};
 const DEFAULT_PATH: &str = "~/.kaspa/wallet.kaspa";
 
 pub use kaspa_wallet_core::account::AccountKind;
-
-// #[derive(Clone)]
-// struct PrivateKey(pub(crate) kaspa_bip32::ExtendedKey);
-
-// impl PrivateKey {
-//     #[allow(dead_code)]
-//     pub fn from_base58(base58: &str) -> Result<Self> {
-//         let xprv = base58.parse::<kaspa_bip32::ExtendedKey>()?;
-//         Ok(PrivateKey(xprv))
-//     }
-// }
-
-// impl Serialize for PrivateKey {
-//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-//     where
-//         S: Serializer,
-//     {
-//         serializer.serialize_str(&self.0.to_string())
-//     }
-// }
-
-// impl<'de> Deserialize<'de> for PrivateKey {
-//     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-//     where
-//         D: Deserializer<'de>,
-//     {
-//         let s = <std::string::String as Deserialize>::deserialize(deserializer)?;
-//         let xprv = s.parse::<kaspa_bip32::ExtendedKey>().map_err(serde::de::Error::custom)?;
-//         Ok(PrivateKey(xprv))
-//     }
-// }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct KeyDataId(pub(crate) [u8; 8]);
@@ -357,6 +324,7 @@ impl Store {
 
     pub async fn try_store(&self, secret: Secret, settings: WalletSettings, payload: Payload) -> Result<()> {
         let wallet = Wallet::try_new(secret, settings, payload)?;
+        self.ensure_dir().await?;
         fs::write_json(self.filename(), &wallet).await?;
         Ok(())
     }
@@ -407,117 +375,19 @@ impl Store {
     pub async fn exists(&self) -> Result<bool> {
         Ok(workflow_store::fs::exists(self.filename()).await?)
     }
-    // }
 
-    // =======
-    // cfg_if! {
-    //     if #[cfg(target_arch = "wasm32")] {
+    pub async fn ensure_dir(&self) -> Result<()> {
+        let file = self.filename();
+        if file.exists() {
+            return Ok(());
+        }
 
-    //         // WASM32 platforms
-
-    //         /// test if wallet file or localstorage data exists
-    //         pub async fn exists(&self) -> Result<bool> {
-    //             let filename = self.filename().to_string_lossy().to_string();
-    //             if runtime::is_node() || runtime::is_nw() {
-    //                 Ok(exists_sync(&filename))
-    //             } else {
-    //                 Ok(local_storage().get_item(&filename)?.is_some())
-    //             }
-    //         }
-
-    //         /// read wallet file or localstorage data
-    //         pub async fn read(&self) -> Result<Vec<u8>> {
-    //             let filename = self.filename().to_string_lossy().to_string();
-    //             if runtime::is_node() || runtime::is_nw() {
-    //                 let options = Object::new();
-    //                 // options.set("encoding", "utf-8");
-    //                 let js_value = read_file_sync(&filename, options);
-    //                 let base64enc = js_value.as_string().expect("wallet file data is not a string (empty or encoding error)");
-    //                 Ok(general_purpose::STANDARD.decode(base64enc)?)
-    //             } else {
-    //                 let base64enc = local_storage().get_item(&filename)?.unwrap();
-    //                 Ok(general_purpose::STANDARD.decode(base64enc)?)
-    //             }
-    //         }
-
-    //         /// write wallet file or localstorage data
-    //         pub async fn write(&self, data: &[u8]) -> Result<()> {
-    //             let filename = self.filename().to_string_lossy().to_string();
-    //             let base64enc = general_purpose::STANDARD.encode(data);
-    //             if runtime::is_node() || runtime::is_nw() {
-    //                 let options = Object::new();
-    //                 write_file_sync(&filename, &base64enc, options);
-    //             } else {
-    //                 local_storage().set_item(&filename, &base64enc)?;
-    //             }
-    //             Ok(())
-    //         }
-
-    //     } else {
-
-    // native (desktop) platforms
-
-    // pub async fn exists(&self) -> Result<bool> {
-    //     Ok(self.filename().exists())
-    // }
-
-    // pub async fn ensure_dir(&self) -> Result<()>{
-    //     let file = self.filename();
-    //     if file.exists(){
-    //         return Ok(());
-    //     }
-
-    //     if let Some(dir) = file.parent(){
-    //         fs::create_dir_all(dir)?;
-    //     }
-    //     Ok(())
-    // }
-
-    // pub async fn read(&self) -> Result<Vec<u8>> {
-    //     let buffer = std::fs::read(self.filename())?;
-    //     let base64enc = String::from_utf8(buffer)?;
-    //     Ok(general_purpose::STANDARD.decode(base64enc)?)
-    // }
-
-    // pub async fn write(&self, data: &[u8]) -> Result<()> {
-    //     let base64enc = general_purpose::STANDARD.encode(data);
-    //     self.ensure_dir().await?;
-    //     Ok(std::fs::write(self.filename(), base64enc)?)
-    // }
-
-    // #[allow(dead_code)]
-    // pub fn purge(&self) -> Result<()> {
-    //     std::fs::remove_file(self.filename())?;
-    //     Ok(())
-    // }
-    // }
-    // }
+        if let Some(dir) = file.parent() {
+            fs::create_dir_all(dir).await?;
+        }
+        Ok(())
+    }
 }
-
-// pub fn resolve_path(path: &str) -> PathBuf {
-//     if let Some(_stripped) = path.strip_prefix("~/") {
-//         if runtime::is_web() {
-//             PathBuf::from(path)
-//         } else if runtime::is_node() || runtime::is_nw() {
-//             todo!();
-//         } else {
-//             cfg_if! {
-//                 if #[cfg(target_arch = "wasm32")] {
-//                     PathBuf::from(path)
-//                 } else {
-//                     home::home_dir().unwrap().join(_stripped)
-//                 }
-//             }
-//         }
-//     } else {
-//         PathBuf::from(path)
-//     }
-// }
-
-// pub fn local_storage() -> web_sys::Storage {
-//     web_sys::window().unwrap().local_storage().unwrap().unwrap()
-// }
-// >>>>>>> 7eec80b033a5ebe07e42afeef5c0c42c0d1aba27
 
 #[cfg(test)]
 mod tests {
@@ -534,24 +404,11 @@ mod tests {
 
         let mut payload = Payload::default();
 
-        // let mut w1 = Wallet::default();
-
-        // let private_key = PrivateKey::from_base58(
-        //     "xprv9s21ZrQH143K3QTDL4LXw2F7HEK3wJUD2nW2nRk4stbPy6cq3jPPqjiChkVvvNKmPGJxWUtg6LnF5kejMRNNU3TGtRBeJgk33yuGBxrMPHi",
-        // )?;
-
         let global_password = Secret::from("ABC-L4LXw2F7HEK3wJU-Rk4stbPy6c");
         let password = Secret::from("test-123-# L4LXw2F7HEK3wJU Rk4stbPy6c");
         let mnemonic1 = "caution guide valley easily latin already visual fancy fork car switch runway vicious polar surprise fence boil light nut invite fiction visa hamster coyote".to_string();
         let mnemonic2 = "nut invite fiction visa hamster coyote guide caution valley easily latin already visual fancy fork car switch runway vicious polar surprise fence boil light".to_string();
 
-        // let encrypted_mnemonic = encrypt(&mnemonic.as_bytes(), password.as_bytes().into()).unwrap();
-        // let mmm =
-
-        // let prv_key_data = PrvKeyData::new(vec![mnemonic.as_bytes()]);
-        // let prv_key_data = PrvKeyData::new(vec![encrypted_mnemonic.clone()]);
-        // let prv_key_data = PrvKeyData::new(vec![Encryptable::Plain(mnemonic.as_bytes().to_vec()).encrypt(password.into())?]);
-        // let prv_key_data = PrvKeyData::new(vec![Encryptable::Plain(mnemonic.as_bytes().to_vec())]);
         let key_data_payload1 = KeyDataPayload::new(mnemonic1.clone());
         let prv_key_data1 = PrvKeyData::new(key_data_payload1.id(), Encryptable::Plain(key_data_payload1));
 
@@ -589,30 +446,10 @@ mod tests {
         );
         payload.accounts.push(account2);
 
-        // let account = OpenAccount::new("Open-Account".to_string(), "Open Account".to_string(), AccountKind::Bip32, pub_key_data);
-        // w1.accounts.push(account);
-
-        // let account = Account::new("Open-Account".to_string(), "Open Account".to_string(), AccountKind::Bip32,
-        // true,
-        // pub_key_data, None);
-        // let accounts = vec![account];
-        // println!("w1: {:?}", w1);
-
         let payload_json = serde_json::to_string(&payload).unwrap();
         let settings = WalletSettings::new(account_id);
         store.try_store(global_password.clone(), settings, payload).await?;
 
-        // store the wallet
-        // let w1s = serde_json::to_string(&w1).unwrap();
-        // println!("w1s: {}", w1s);
-        // store.try_store(global_password.as_bytes().into(), w1).await?;
-
-        // let open_wallet = store.try_load(None).await?;
-        // let wallet = store.try_load().await?;
-        // let
-
-        // load a new instance of the wallet from the store
-        // let w2 = store.try_load(Some(global_password.as_bytes().into())).await?;
         let w2 = store.try_load().await?;
         let w2payload = w2.payload.decrypt::<Payload>(global_password.clone()).unwrap();
         println!("\n---\nwallet.metadata (plain): {:#?}\n\n", w2.metadata);
@@ -621,8 +458,6 @@ mod tests {
         // purge the store
         store.purge().await?;
 
-        // let w2s = serde_json::to_string(&w2).unwrap();
-        // assert_eq!(w1s, w2s);
         assert_eq!(payload_json, serde_json::to_string(w2payload.as_ref())?);
 
         let w2keydata1 = w2payload.as_ref().keydata.get(0).unwrap();
@@ -638,11 +473,6 @@ mod tests {
         println!("second mnemonic (encrypted): {second_mnemonic}");
         assert_eq!(&mnemonic2, second_mnemonic);
 
-        // let mn = decrypt(first_encrypted_mnemonic.as_ref(), password.as_bytes().into())?;
-        //println!("mn: {:?}", mn.as_ref());
-        // let mnemonic2 = String::from_utf8(mn.as_ref().into()).unwrap();
-        // println!("mnemonic: {}", mnemonic2);
-        // assert_eq!(mnemonic, mnemonic2);
         Ok(())
     }
 }
