@@ -5,11 +5,12 @@ use base64::{engine::general_purpose, Engine as _};
 use cfg_if::cfg_if;
 use faster_hex::{hex_decode, hex_string};
 use serde::Serializer;
+use std::fs;
 use std::path::PathBuf;
 use workflow_core::runtime;
 use zeroize::Zeroize;
 
-use crate::encryption::{Decrypted, Encryptable, Encrypted};
+pub use crate::encryption::{Decrypted, Encryptable, Encrypted};
 
 const DEFAULT_PATH: &str = "~/.kaspa/wallet.kaspa";
 
@@ -245,6 +246,17 @@ pub struct Payload {
     pub keydata: Vec<PrvKeyData>,
     pub accounts: Vec<Account>,
 }
+
+impl Payload {
+    pub fn add_keydata(&mut self, mnemonic: String, password: Secret) -> Result<PrvKeyData> {
+        let key_data_payload = KeyDataPayload::new(mnemonic);
+        let prv_key_data = PrvKeyData::new(key_data_payload.id(), Encryptable::Plain(key_data_payload).into_encrypted(password)?);
+        self.keydata.push(prv_key_data.clone());
+
+        Ok(prv_key_data)
+    }
+}
+
 impl Zeroize for Payload {
     fn zeroize(&mut self) {
         self.keydata.iter_mut().for_each(Zeroize::zeroize);
@@ -253,18 +265,28 @@ impl Zeroize for Payload {
         // self.accounts.zeroize();
     }
 }
+#[derive(Clone, Serialize, Deserialize)]
+pub struct WalletSettings {
+    pub account_id: String,
+}
+impl WalletSettings {
+    pub fn new(account_id: String) -> Self {
+        Self { account_id }
+    }
+}
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Wallet {
+    pub settings: WalletSettings,
     pub payload: Encrypted,
     pub metadata: Vec<Metadata>,
 }
 
 impl Wallet {
-    pub fn try_new(secret: Secret, payload: Payload) -> Result<Self> {
+    pub fn try_new(secret: Secret, settings: WalletSettings, payload: Payload) -> Result<Self> {
         let metadata = payload.accounts.iter().filter(|account| account.is_visible).map(|account| account.clone().into()).collect();
         let payload = Decrypted::new(payload).encrypt(secret)?;
-        Ok(Self { payload, metadata })
+        Ok(Self { settings, payload, metadata })
     }
 
     pub fn payload(&self, secret: Secret) -> Result<Decrypted<Payload>> {
@@ -333,8 +355,8 @@ impl Store {
         }
     }
 
-    pub async fn try_store(&self, secret: Secret, payload: Payload) -> Result<()> {
-        let wallet = Wallet::try_new(secret, payload)?;
+    pub async fn try_store(&self, secret: Secret, settings: WalletSettings, payload: Payload) -> Result<()> {
+        let wallet = Wallet::try_new(secret, settings, payload)?;
         let data = serde_json::to_value(wallet).map_err(|err| format!("unable to serialize wallet data: {err}"))?;
         self.write(data.to_string().as_bytes()).await.map_err(|err| format!("unable to read wallet file: {err}"))?;
         Ok(())
@@ -428,15 +450,27 @@ impl Store {
                 Ok(self.filename().exists())
             }
 
+            pub async fn ensure_dir(&self) -> Result<()>{
+                let file = self.filename();
+                if file.exists(){
+                    return Ok(());
+                }
+
+                if let Some(dir) = file.parent(){
+                    fs::create_dir_all(dir)?;
+                }
+                Ok(())
+            }
+
             pub async fn read(&self) -> Result<Vec<u8>> {
                 let buffer = std::fs::read(self.filename())?;
                 let base64enc = String::from_utf8(buffer)?;
                 Ok(general_purpose::STANDARD.decode(base64enc)?)
-
             }
 
             pub async fn write(&self, data: &[u8]) -> Result<()> {
                 let base64enc = general_purpose::STANDARD.encode(data);
+                self.ensure_dir().await?;
                 Ok(std::fs::write(self.filename(), base64enc)?)
             }
 
@@ -450,7 +484,7 @@ impl Store {
 }
 
 pub fn resolve_path(path: &str) -> PathBuf {
-    if let Some(_stripped) = path.strip_prefix('~') {
+    if let Some(_stripped) = path.strip_prefix("~/") {
         if runtime::is_web() {
             PathBuf::from(path)
         } else if runtime::is_node() || runtime::is_nw() {
@@ -529,11 +563,12 @@ mod tests {
             Some(prv_key_data1.id),
             0,
         );
+        let account_id = account1.id.clone();
         payload.accounts.push(account1);
 
         let account2 = Account::new(
-            "Wallet-A".to_string(),
-            "Wallet A".to_string(),
+            "Wallet-B".to_string(),
+            "Wallet B".to_string(),
             AccountKind::Bip32,
             true,
             pub_key_data2.clone(),
@@ -552,7 +587,8 @@ mod tests {
         // println!("w1: {:?}", w1);
 
         let payload_json = serde_json::to_string(&payload).unwrap();
-        store.try_store(global_password.clone(), payload).await?;
+        let settings = WalletSettings::new(account_id);
+        store.try_store(global_password.clone(), settings, payload).await?;
 
         // store the wallet
         // let w1s = serde_json::to_string(&w1).unwrap();

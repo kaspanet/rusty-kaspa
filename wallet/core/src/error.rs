@@ -50,6 +50,9 @@ pub enum Error {
     #[error("No wallet found")]
     NoWalletInStorage,
 
+    #[error("Wallet already exists")]
+    WalletAlreadyExists,
+
     #[error("invalid filename: {0}")]
     InvalidFilename(String),
 
@@ -69,8 +72,8 @@ pub enum Error {
     Address(#[from] kaspa_addresses::AddressError),
     // #[error(transparent)]
     // CoreSigner(#[from] CoreSignerError),
-    #[error(transparent)]
-    SerdeWasmBindgen(#[from] serde_wasm_bindgen::Error),
+    #[error("SerdeWasmBindgen: {0:?}")]
+    SerdeWasmBindgen(Sendable<JsValue>),
 
     #[error("FasterHexError: {0:?}")]
     FasterHexError(#[from] FasterHexError),
@@ -92,6 +95,8 @@ pub enum Error {
     #[error("argon2::password_hash {0}")]
     Argon2ph(argon2::password_hash::Error),
 }
+
+//unsafe impl Send for Error{}
 
 impl Error {
     pub fn custom<T: Into<String>>(msg: T) -> Self {
@@ -132,6 +137,12 @@ impl From<&str> for Error {
 impl From<wasm_bindgen::JsValue> for Error {
     fn from(err: wasm_bindgen::JsValue) -> Self {
         Self::JsValue(Sendable(err))
+    }
+}
+
+impl From<serde_wasm_bindgen::Error> for Error {
+    fn from(err: serde_wasm_bindgen::Error) -> Self {
+        Self::SerdeWasmBindgen(Sendable(err.into()))
     }
 }
 
