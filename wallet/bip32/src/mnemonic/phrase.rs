@@ -66,7 +66,7 @@ impl Mnemonic {
     }
 
     #[wasm_bindgen(js_name = random)]
-    pub fn random_js() -> Result<Mnemonic> {
+    pub fn create_random() -> Result<Mnemonic> {
         Mnemonic::random(rand::thread_rng(), Default::default())
     }
 

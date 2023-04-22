@@ -3,7 +3,8 @@ use crate::helpers::*;
 use crate::result::Result;
 use async_trait::async_trait;
 use futures::*;
-use kaspa_wallet_core::{secret::Secret, Wallet};
+use kaspa_wallet_core::storage::AccountKind;
+use kaspa_wallet_core::{secret::Secret, wallet::AccountCreateArgs, Wallet};
 use std::sync::{Arc, Mutex};
 use workflow_core::channel::*;
 use workflow_log::*;
@@ -78,7 +79,32 @@ impl WalletCli {
                 self.wallet.balance().await?;
             }
             Action::Create => {
-                self.wallet.create().await?;
+                use kaspa_wallet_core::error::Error;
+
+                let title = term.ask(false, "Wallet title: ").await?.trim().to_string();
+                let wallet_password = Secret::new(term.ask(true, "Enter wallet password: ").await?.trim().as_bytes().to_vec());
+                let payment_password = Secret::new(term.ask(true, "Enter payment password: ").await?.trim().as_bytes().to_vec());
+                let account_kind = AccountKind::Bip32;
+                let mut args = AccountCreateArgs::new(title, account_kind, wallet_password.clone(), Some(payment_password.clone()));
+                let res = self.wallet.create(&args).await;
+                let path = if let Err(err) = res {
+                    if !matches!(err, Error::WalletAlreadyExists) {
+                        return Err(err.into());
+                    }
+                    let override_it = term
+                        .ask(false, "Wallet already exists. Are you sure you want to override it (type 'y' to approve)?: ")
+                        .await?;
+                    let override_it = override_it.trim().to_string();
+                    if !override_it.eq("y") {
+                        return Ok(());
+                    }
+                    args.override_wallet = true;
+                    self.wallet.create(&args).await?
+                } else {
+                    res.ok().unwrap()
+                };
+
+                term.writeln(format!("Wrote the wallet into '{}'\n", path.to_str().unwrap()));
             }
             Action::Broadcast => {
                 self.wallet.broadcast().await?;
@@ -165,7 +191,7 @@ impl WalletCli {
                 // TODO
             }
             Action::Open => {
-                let secret = Secret::new(term.ask(false, "Enter something:").await?.trim().as_bytes().to_vec());
+                let secret = Secret::new(term.ask(true, "Enter wallet password:").await?.trim().as_bytes().to_vec());
                 self.wallet.load_accounts(secret).await?;
             }
             Action::Close => {

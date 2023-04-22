@@ -15,11 +15,28 @@ use kaspa_rpc_core::{
     Notification,
 };
 use kaspa_wrpc_client::{KaspaRpcClient, WrpcEncoding};
+use std::path::PathBuf;
 use std::sync::Arc;
+use storage::{Payload, PubKeyData, Store, WalletSettings};
 use workflow_core::channel::{Channel, DuplexChannel, Multiplexer, Receiver};
 use workflow_core::task::spawn;
 use workflow_log::log_error;
 use workflow_rpc::client::Ctl;
+
+#[derive(Clone)]
+pub struct AccountCreateArgs {
+    pub title: String,
+    pub account_kind: storage::AccountKind,
+    pub wallet_password: Secret,
+    pub payment_password: Option<Secret>,
+    pub override_wallet: bool,
+}
+
+impl AccountCreateArgs {
+    pub fn new(title: String, account_kind: storage::AccountKind, wallet_password: Secret, payment_password: Option<Secret>) -> Self {
+        Self { title, account_kind, wallet_password, payment_password, override_wallet: false }
+    }
+}
 
 #[derive(Clone)]
 pub enum Events {
@@ -181,10 +198,37 @@ impl Wallet {
         Ok(())
     }
 
-    pub async fn create(self: &Arc<Wallet>) -> Result<()> {
-        let mnemonic = Mnemonic::random(rand::thread_rng(), Default::default())?;
-        log_trace!("mnemonic: {}", mnemonic.phrase());
-        Ok(())
+    pub async fn create(self: &Arc<Wallet>, args: &AccountCreateArgs) -> Result<PathBuf> {
+        let store = Store::new(None)?;
+        if !args.override_wallet && store.exists().await? {
+            return Err(Error::WalletAlreadyExists);
+        }
+
+        let payment_password = args.payment_password.clone().unwrap_or(args.wallet_password.clone());
+
+        let mnemonic = Mnemonic::create_random()?;
+        let mut payload = Payload::default();
+
+        let prv_key_data = payload.add_keydata(mnemonic.phrase_string(), payment_password)?;
+
+        let pub_key_data = PubKeyData::new(vec!["abc".to_string()]);
+        let account = storage::Account::new(
+            args.title.replace(' ', "-").to_lowercase(),
+            args.title.clone(),
+            args.account_kind,
+            false,
+            pub_key_data,
+            Some(prv_key_data.id),
+            0,
+        );
+
+        let account_id = account.id.clone();
+        payload.accounts.push(account);
+
+        let settings = WalletSettings::new(account_id);
+        store.try_store(args.wallet_password.clone(), settings, payload).await?;
+
+        Ok(store.filename().clone())
     }
 
     pub async fn create_unsigned_transaction(self: &Arc<Wallet>) -> Result<()> {

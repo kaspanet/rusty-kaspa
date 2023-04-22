@@ -5,13 +5,14 @@ use crate::{encryption::sha256_hash, imports::*};
 use cfg_if::cfg_if;
 use faster_hex::{hex_decode, hex_string};
 use serde::Serializer;
+// use std::fs;
 use std::path::PathBuf;
 #[allow(unused_imports)]
 use workflow_core::runtime;
 use workflow_store::fs;
 use zeroize::Zeroize;
 
-use crate::encryption::{Decrypted, Encryptable, Encrypted};
+pub use crate::encryption::{Decrypted, Encryptable, Encrypted};
 
 const DEFAULT_PATH: &str = "~/.kaspa/wallet.kaspa";
 
@@ -48,12 +49,22 @@ pub use kaspa_wallet_core::account::AccountKind;
 //     }
 // }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct KeyDataId(pub(crate) [u8; 8]);
 
 impl KeyDataId {
     pub fn new_from_slice(vec: &[u8]) -> Self {
         Self(<[u8; 8]>::try_from(<&[u8]>::clone(&vec)).expect("Error: invalid slice size for id"))
+    }
+
+    pub fn to_hex(&self) -> String {
+        self.0.to_vec().to_hex()
+    }
+}
+
+impl std::fmt::Debug for KeyDataId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "KeyDataId ( {:?} )", self.0)
     }
 }
 
@@ -155,9 +166,10 @@ impl Drop for PubKeyData {
 
 impl PubKeyData {
     pub fn new(keys: Vec<String>) -> Self {
-        //TODO sort keys
-        let first_address_payload = "TODO: create address from first mnemonic".as_bytes();
-        let id = PubKeyDataId::new_from_slice(&first_address_payload[0..8]);
+        let mut temp = keys.clone();
+        temp.sort();
+        let str = String::from_iter(temp);
+        let id = PubKeyDataId::new_from_slice(&sha256_hash(str.as_bytes()).unwrap().as_ref()[0..8]);
         Self { id, keys }
     }
 }
@@ -173,6 +185,10 @@ pub struct Account {
     pub is_visible: bool,
     pub pub_key_data: PubKeyData,
     pub prv_key_data_id: Option<PrvKeyDataId>,
+    pub minimum_signatures: u16,
+    pub cosigner_index: u16,
+    pub ecdsa: bool,
+    pub account_index: u32,
 }
 
 impl Account {
@@ -183,10 +199,22 @@ impl Account {
         is_visible: bool,
         pub_key_data: PubKeyData,
         prv_key_data_id: Option<PrvKeyDataId>,
+        account_index: u32,
     ) -> Self {
-        //TODO drive id from pubkey
-        let id = serde_json::to_value(pub_key_data.id).unwrap().to_string();
-        Self { id, name, title, account_kind, pub_key_data, prv_key_data_id, is_visible }
+        let id = pub_key_data.id.to_hex();
+        Self {
+            id,
+            name,
+            title,
+            account_kind,
+            pub_key_data,
+            prv_key_data_id,
+            is_visible,
+            ecdsa: false,
+            minimum_signatures: 1,
+            cosigner_index: 0,
+            account_index,
+        }
     }
 }
 
@@ -197,6 +225,8 @@ pub struct Metadata {
     pub title: String,
     pub account_kind: AccountKind,
     pub pub_key_data: PubKeyData,
+    pub ecdsa: bool,
+    pub account_index: u32,
 }
 
 impl From<Account> for Metadata {
@@ -207,32 +237,28 @@ impl From<Account> for Metadata {
             title: account.title,
             account_kind: account.account_kind,
             pub_key_data: account.pub_key_data,
+            ecdsa: account.ecdsa,
+            account_index: account.account_index,
         }
     }
 }
-
-// #[derive(Debug, Clone, Serialize, Deserialize)]
-// pub struct OpenAccount {
-//     pub id: String,
-//     pub name: String,
-//     pub title: String,
-//     pub account_kind: AccountKind,
-//     pub pub_key_data: PubKeyData,
-// }
-
-// impl OpenAccount {
-//     pub fn new(name: String, title: String, account_kind: AccountKind, pub_key_data: PubKeyData) -> Self {
-//         //TODO drive id from pubkey
-//         let id = serde_json::to_value(pub_key_data.id).unwrap().to_string();
-//         Self { id, pub_key_data, account_kind, name, title }
-//     }
-// }
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Payload {
     pub keydata: Vec<PrvKeyData>,
     pub accounts: Vec<Account>,
 }
+
+impl Payload {
+    pub fn add_keydata(&mut self, mnemonic: String, password: Secret) -> Result<PrvKeyData> {
+        let key_data_payload = KeyDataPayload::new(mnemonic);
+        let prv_key_data = PrvKeyData::new(key_data_payload.id(), Encryptable::Plain(key_data_payload).into_encrypted(password)?);
+        self.keydata.push(prv_key_data.clone());
+
+        Ok(prv_key_data)
+    }
+}
+
 impl Zeroize for Payload {
     fn zeroize(&mut self) {
         self.keydata.iter_mut().for_each(Zeroize::zeroize);
@@ -241,71 +267,34 @@ impl Zeroize for Payload {
         // self.accounts.zeroize();
     }
 }
+#[derive(Clone, Serialize, Deserialize)]
+pub struct WalletSettings {
+    pub account_id: String,
+}
+impl WalletSettings {
+    pub fn new(account_id: String) -> Self {
+        Self { account_id }
+    }
+}
 
-// #[derive(Default, Clone, Serialize, Deserialize)]
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Wallet {
-    pub payload: Encrypted, //Payload,
+    pub settings: WalletSettings,
+    pub payload: Encrypted,
     pub metadata: Vec<Metadata>,
-    //pub pub_key_data: Vec<PubKeyData>,
-    //pub accounts: Vec<OpenAccount>,
 }
-// impl DefaultIsZeroes for Payload {
 
-// }
 impl Wallet {
-    pub fn try_new(secret: Secret, payload: Payload) -> Result<Self> {
-        //TODO drive id from pubkey
-        // let id = serde_json::to_value(payload.id).unwrap().to_string();
-        // Self { payload, accounts: vec![] }
-
-        //
+    pub fn try_new(secret: Secret, settings: WalletSettings, payload: Payload) -> Result<Self> {
         let metadata = payload.accounts.iter().filter(|account| account.is_visible).map(|account| account.clone().into()).collect();
         let payload = Decrypted::new(payload).encrypt(secret)?;
-        Ok(Self { payload, metadata })
+        Ok(Self { settings, payload, metadata })
     }
 
     pub fn payload(&self, secret: Secret) -> Result<Decrypted<Payload>> {
         self.payload.decrypt::<Payload>(secret)
     }
 }
-// pub struct
-
-// #[derive(Default, Clone, Serialize, Deserialize)]
-// struct WalletData {
-//     pub payload: Vec<u8>,
-//     pub accounts: Vec<Account>,
-//     //pub pub_key_data: Vec<PubKeyData>,
-//     //pub accounts: Vec<OpenAccount>,
-// }
-
-// impl WalletData {
-//     fn new(secret: Secret, wallet: Wallet) -> Result<Self> {
-//         let json = serde_json::to_value(wallet.payload).map_err(|err| format!("unable to serialize wallet data: {err}"))?.to_string();
-//         let payload = encrypt(json.as_bytes(), secret)?;
-//         Ok(Self {
-//             payload,
-//             //pub_key_data: wallet.pub_key_data,
-//             accounts: wallet.accounts,
-//         })
-//     }
-
-//     fn create_wallet(&self, secret: Option<Secret>) -> Result<Wallet> {
-//         let mut wallet = Wallet {
-//             payload: Payload::default(),
-//             //pub_key_data: self.pub_key_data.clone(),
-//             accounts: self.accounts.clone(),
-//         };
-
-//         if let Some(secret) = secret {
-//             let data = decrypt(&self.payload, secret)?;
-//             let payload: Payload = serde_json::from_slice(data.as_ref())?;
-//             wallet.payload = payload;
-//         }
-
-//         Ok(wallet)
-//     }
-// }
 
 #[wasm_bindgen(module = "fs")]
 extern "C" {
@@ -366,8 +355,8 @@ impl Store {
         }
     }
 
-    pub async fn try_store(&self, secret: Secret, payload: Payload) -> Result<()> {
-        let wallet = Wallet::try_new(secret, payload)?;
+    pub async fn try_store(&self, secret: Secret, settings: WalletSettings, payload: Payload) -> Result<()> {
+        let wallet = Wallet::try_new(secret, settings, payload)?;
         fs::write_json(self.filename(), &wallet).await?;
         Ok(())
     }
@@ -409,12 +398,126 @@ impl Store {
         Ok(wallet)
     }
 
+    // <<<<<<< HEAD
     pub async fn purge(&self) -> Result<()> {
         workflow_store::fs::remove(self.filename()).await?;
         Ok(())
     }
+
+    pub async fn exists(&self) -> Result<bool> {
+        Ok(workflow_store::fs::exists(self.filename()).await?)
+    }
+    // }
+
+    // =======
+    // cfg_if! {
+    //     if #[cfg(target_arch = "wasm32")] {
+
+    //         // WASM32 platforms
+
+    //         /// test if wallet file or localstorage data exists
+    //         pub async fn exists(&self) -> Result<bool> {
+    //             let filename = self.filename().to_string_lossy().to_string();
+    //             if runtime::is_node() || runtime::is_nw() {
+    //                 Ok(exists_sync(&filename))
+    //             } else {
+    //                 Ok(local_storage().get_item(&filename)?.is_some())
+    //             }
+    //         }
+
+    //         /// read wallet file or localstorage data
+    //         pub async fn read(&self) -> Result<Vec<u8>> {
+    //             let filename = self.filename().to_string_lossy().to_string();
+    //             if runtime::is_node() || runtime::is_nw() {
+    //                 let options = Object::new();
+    //                 // options.set("encoding", "utf-8");
+    //                 let js_value = read_file_sync(&filename, options);
+    //                 let base64enc = js_value.as_string().expect("wallet file data is not a string (empty or encoding error)");
+    //                 Ok(general_purpose::STANDARD.decode(base64enc)?)
+    //             } else {
+    //                 let base64enc = local_storage().get_item(&filename)?.unwrap();
+    //                 Ok(general_purpose::STANDARD.decode(base64enc)?)
+    //             }
+    //         }
+
+    //         /// write wallet file or localstorage data
+    //         pub async fn write(&self, data: &[u8]) -> Result<()> {
+    //             let filename = self.filename().to_string_lossy().to_string();
+    //             let base64enc = general_purpose::STANDARD.encode(data);
+    //             if runtime::is_node() || runtime::is_nw() {
+    //                 let options = Object::new();
+    //                 write_file_sync(&filename, &base64enc, options);
+    //             } else {
+    //                 local_storage().set_item(&filename, &base64enc)?;
+    //             }
+    //             Ok(())
+    //         }
+
+    //     } else {
+
+    // native (desktop) platforms
+
+    // pub async fn exists(&self) -> Result<bool> {
+    //     Ok(self.filename().exists())
+    // }
+
+    // pub async fn ensure_dir(&self) -> Result<()>{
+    //     let file = self.filename();
+    //     if file.exists(){
+    //         return Ok(());
+    //     }
+
+    //     if let Some(dir) = file.parent(){
+    //         fs::create_dir_all(dir)?;
+    //     }
+    //     Ok(())
+    // }
+
+    // pub async fn read(&self) -> Result<Vec<u8>> {
+    //     let buffer = std::fs::read(self.filename())?;
+    //     let base64enc = String::from_utf8(buffer)?;
+    //     Ok(general_purpose::STANDARD.decode(base64enc)?)
+    // }
+
+    // pub async fn write(&self, data: &[u8]) -> Result<()> {
+    //     let base64enc = general_purpose::STANDARD.encode(data);
+    //     self.ensure_dir().await?;
+    //     Ok(std::fs::write(self.filename(), base64enc)?)
+    // }
+
+    // #[allow(dead_code)]
+    // pub fn purge(&self) -> Result<()> {
+    //     std::fs::remove_file(self.filename())?;
+    //     Ok(())
+    // }
+    // }
+    // }
 }
 
+// pub fn resolve_path(path: &str) -> PathBuf {
+//     if let Some(_stripped) = path.strip_prefix("~/") {
+//         if runtime::is_web() {
+//             PathBuf::from(path)
+//         } else if runtime::is_node() || runtime::is_nw() {
+//             todo!();
+//         } else {
+//             cfg_if! {
+//                 if #[cfg(target_arch = "wasm32")] {
+//                     PathBuf::from(path)
+//                 } else {
+//                     home::home_dir().unwrap().join(_stripped)
+//                 }
+//             }
+//         }
+//     } else {
+//         PathBuf::from(path)
+//     }
+// }
+
+// pub fn local_storage() -> web_sys::Storage {
+//     web_sys::window().unwrap().local_storage().unwrap().unwrap()
+// }
+// >>>>>>> 7eec80b033a5ebe07e42afeef5c0c42c0d1aba27
 
 #[cfg(test)]
 mod tests {
@@ -470,16 +573,19 @@ mod tests {
             true,
             pub_key_data1.clone(),
             Some(prv_key_data1.id),
+            0,
         );
+        let account_id = account1.id.clone();
         payload.accounts.push(account1);
 
         let account2 = Account::new(
-            "Wallet-A".to_string(),
-            "Wallet A".to_string(),
+            "Wallet-B".to_string(),
+            "Wallet B".to_string(),
             AccountKind::Bip32,
             true,
             pub_key_data2.clone(),
             Some(prv_key_data2.id),
+            0,
         );
         payload.accounts.push(account2);
 
@@ -493,7 +599,8 @@ mod tests {
         // println!("w1: {:?}", w1);
 
         let payload_json = serde_json::to_string(&payload).unwrap();
-        store.try_store(global_password.clone(), payload).await?;
+        let settings = WalletSettings::new(account_id);
+        store.try_store(global_password.clone(), settings, payload).await?;
 
         // store the wallet
         // let w1s = serde_json::to_string(&w1).unwrap();
