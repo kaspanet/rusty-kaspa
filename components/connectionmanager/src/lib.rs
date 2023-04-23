@@ -120,13 +120,13 @@ impl ConnectionManager {
             }
 
             if !is_connected && request.next_attempt <= SystemTime::now() {
-                debug!("Connecting to a connection request to {}", address);
+                debug!("Connecting to peer request {}", address);
                 if self.p2p_adaptor.connect_peer(address.to_string()).await.is_none() {
-                    debug!("Failed connecting to a connection request to {}", address);
+                    debug!("Failed connecting to peer request {}", address);
                     if request.is_permanent {
                         const MAX_RETRY_DURATION: Duration = Duration::from_secs(600);
                         let retry_duration = min(Duration::from_secs(30u64 * 2u64.pow(request.attempts)), MAX_RETRY_DURATION);
-                        debug!("Will retry to connect to {} in {}", address, DurationString::from(retry_duration));
+                        debug!("Will retry peer request {} in {}", address, DurationString::from(retry_duration));
                         new_requests.insert(
                             address,
                             ConnectionRequest {

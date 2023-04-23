@@ -118,12 +118,6 @@ impl Router {
             debug!("P2P, Router receive loop - exited, router-id: {}, router refs: {}", router.identity, Arc::strong_count(&router));
         });
 
-        // Notify the central Hub about the new peer
-        router_clone
-            .hub_sender
-            .send(HubEvent::NewPeer(router_clone.clone()))
-            .await
-            .expect("hub receiver should never drop before senders");
         router_clone
     }
 

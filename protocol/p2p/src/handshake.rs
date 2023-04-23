@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use crate::pb::{kaspad_message::Payload, ReadyMessage, VerackMessage, VersionMessage};
 use crate::{common::ProtocolError, dequeue_with_timeout, make_message};
 use crate::{IncomingRoute, KaspadMessagePayloadType, Router};
@@ -25,7 +27,7 @@ impl<'a> KaspadHandshake<'a> {
     async fn receive_version_flow(router: &Router, version_receiver: &mut IncomingRoute) -> Result<VersionMessage, ProtocolError> {
         debug!("starting receive version flow");
 
-        let version_message = dequeue_with_timeout!(version_receiver, Payload::Version)?;
+        let version_message = dequeue_with_timeout!(version_receiver, Payload::Version, Duration::from_secs(2))?;
         debug!("accepted version message: {version_message:?}");
 
         let verack_message = make_message!(Payload::Verack, VerackMessage {});
@@ -45,7 +47,7 @@ impl<'a> KaspadHandshake<'a> {
         let version_message = make_message!(Payload::Version, version_message);
         router.enqueue(version_message).await?;
 
-        let verack_message = dequeue_with_timeout!(verack_receiver, Payload::Verack)?;
+        let verack_message = dequeue_with_timeout!(verack_receiver, Payload::Verack, Duration::from_secs(2))?;
         debug!("accepted verack_message: {verack_message:?}");
 
         Ok(())
@@ -59,7 +61,7 @@ impl<'a> KaspadHandshake<'a> {
         let sent_ready_message = make_message!(Payload::Ready, ReadyMessage {});
         self.router.enqueue(sent_ready_message).await?;
 
-        let recv_ready_message = dequeue_with_timeout!(self.ready_receiver, Payload::Ready)?;
+        let recv_ready_message = dequeue_with_timeout!(self.ready_receiver, Payload::Ready, Duration::from_secs(8))?;
         debug!("accepted ready message: {recv_ready_message:?}");
 
         Ok(())
