@@ -4,7 +4,7 @@ use crate::{common::ProtocolError, KaspadMessagePayloadType};
 use kaspa_core::{debug, error, info, trace};
 use kaspa_utils::peer_id::PeerId;
 use parking_lot::{Mutex, RwLock};
-use std::fmt::Display;
+use std::fmt::{Debug, Display};
 use std::net::SocketAddr;
 use std::{collections::HashMap, sync::Arc};
 use tokio::select;
@@ -15,6 +15,25 @@ use tonic::Streaming;
 use uuid::Uuid;
 
 pub type IncomingRoute = MpscReceiver<KaspadMessage>;
+
+/// The policy for handling the case where route capacity is reached for a specific route type
+pub enum IncomingRouteOverflowPolicy {
+    /// Drop the incoming message
+    Drop,
+
+    /// Disconnect from this peer
+    Disconnect,
+}
+
+impl From<KaspadMessagePayloadType> for IncomingRouteOverflowPolicy {
+    fn from(msg_type: KaspadMessagePayloadType) -> Self {
+        match msg_type {
+            // Inv messages are unique in the sense that no harm is done if some of them are dropped
+            KaspadMessagePayloadType::InvTransactions | KaspadMessagePayloadType::InvRelayBlock => IncomingRouteOverflowPolicy::Drop,
+            _ => IncomingRouteOverflowPolicy::Disconnect,
+        }
+    }
+}
 
 #[derive(Debug)]
 struct RouterMutableState {
@@ -57,6 +76,12 @@ impl Display for Router {
     }
 }
 
+fn message_summary(msg: &KaspadMessage) -> impl Debug {
+    // TODO (low priority): display a concise summary of the message. Printing full messages
+    // overflows the logs and is hardly useful, hence we currently only return the type
+    msg.payload.as_ref().map(std::convert::Into::<KaspadMessagePayloadType>::into)
+}
+
 impl Router {
     pub(crate) async fn new(
         net_address: SocketAddr,
@@ -94,7 +119,7 @@ impl Router {
 
                     res = incoming_stream.message() => match res {
                         Ok(Some(msg)) => {
-                            trace!("P2P, Router receive loop - got message: {:?}, router-id: {}, peer: {}", msg, router.identity, router);
+                            trace!("P2P msg: {:?}, router-id: {}, peer: {}", message_summary(&msg), router.identity, router);
                             match router.route_to_flow(msg) {
                                 Ok(()) => {},
                                 Err(e) => {
@@ -193,7 +218,15 @@ impl Router {
             match sender.try_send(msg) {
                 Ok(_) => Ok(()),
                 Err(TrySendError::Closed(_)) => Err(ProtocolError::ConnectionClosed),
-                Err(TrySendError::Full(_)) => Err(ProtocolError::IncomingRouteCapacityReached(msg_type, self.to_string())),
+                Err(TrySendError::Full(_)) => {
+                    let overflow_policy: IncomingRouteOverflowPolicy = msg_type.into();
+                    match overflow_policy {
+                        IncomingRouteOverflowPolicy::Drop => Ok(()),
+                        IncomingRouteOverflowPolicy::Disconnect => {
+                            Err(ProtocolError::IncomingRouteCapacityReached(msg_type, self.to_string()))
+                        }
+                    }
+                }
             }
         } else {
             Err(ProtocolError::NoRouteForMessageType(msg_type))
