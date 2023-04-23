@@ -2,7 +2,7 @@ mod stores;
 
 extern crate self as address_manager;
 
-use std::{collections::HashSet, net::IpAddr, sync::Arc};
+use std::{collections::HashSet, sync::Arc};
 
 use itertools::Itertools;
 use kaspa_core::time::unix_now;
@@ -70,18 +70,18 @@ impl AddressManager {
         self.address_store.iterate_prioritized_random_addresses(exceptions)
     }
 
-    pub fn ban(&mut self, ip: IpAddr) {
-        self.banned_address_store.set(ip, ConnectionBanTimestamp(unix_now())).unwrap();
-        self.address_store.remove_by_ip(ip);
+    pub fn ban(&mut self, ip: IpAddress) {
+        self.banned_address_store.set(ip.into(), ConnectionBanTimestamp(unix_now())).unwrap();
+        self.address_store.remove_by_ip(ip.into());
     }
 
-    pub fn unban(&mut self, ip: IpAddr) {
-        self.banned_address_store.remove(ip).unwrap();
+    pub fn unban(&mut self, ip: IpAddress) {
+        self.banned_address_store.remove(ip.into()).unwrap();
     }
 
-    pub fn is_banned(&mut self, ip: IpAddr) -> bool {
+    pub fn is_banned(&mut self, ip: IpAddress) -> bool {
         const MAX_BANNED_TIME: u64 = 24 * 60 * 60 * 1000;
-        match self.banned_address_store.get(ip).unwrap_option() {
+        match self.banned_address_store.get(ip.into()).unwrap_option() {
             Some(timestamp) => {
                 if unix_now() - timestamp.0 > MAX_BANNED_TIME {
                     self.unban(ip);

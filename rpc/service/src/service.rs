@@ -500,6 +500,10 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
     }
 
     async fn add_peer_call(&self, request: AddPeerRequest) -> RpcResult<AddPeerResponse> {
+        if !self.config.unsafe_rpc {
+            warn!("AddPeer RPC command called while node in safe RPC mode -- ignoring.");
+            return Err(RpcError::UnavailableInSafeMode);
+        }
         let peer_address = request.peer_address.normalize(self.config.net.default_p2p_port());
         if let Some(connection_manager) = self.flow_context.connection_manager() {
             connection_manager.clone().add_connection_request(peer_address.into(), request.is_permanent).await;
@@ -514,10 +518,41 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         Ok(GetPeerAddressesResponse::new(address_manager.get_all_addresses(), address_manager.get_all_banned_addresses()))
     }
 
+    async fn ban_call(&self, request: BanRequest) -> RpcResult<BanResponse> {
+        if !self.config.unsafe_rpc {
+            warn!("Ban RPC command called while node in safe RPC mode -- ignoring.");
+            return Err(RpcError::UnavailableInSafeMode);
+        }
+        if let Some(connection_manager) = self.flow_context.connection_manager() {
+            let ip = request.ip.into();
+            if connection_manager.clone().ip_has_permanent_connection(ip).await {
+                return Err(RpcError::IpHasPermanentConnection(request.ip));
+            }
+            connection_manager.clone().ban(ip).await;
+        } else {
+            return Err(RpcError::NoConnectionManager);
+        }
+        Ok(BanResponse {})
+    }
+
+    async fn unban_call(&self, request: UnbanRequest) -> RpcResult<UnbanResponse> {
+        if !self.config.unsafe_rpc {
+            warn!("Unban RPC command called while node in safe RPC mode -- ignoring.");
+            return Err(RpcError::UnavailableInSafeMode);
+        }
+        let mut address_manager = self.flow_context.address_manager.lock();
+        if address_manager.is_banned(request.ip) {
+            address_manager.unban(request.ip)
+        } else {
+            return Err(RpcError::IpIsNotBanned(request.ip));
+        }
+        Ok(UnbanResponse {})
+    }
+
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // UNIMPLEMENTED METHODS
 
-    async fn get_connected_peer_info_call(&self, _request: GetConnectedPeerInfoRequest) -> RpcResult<GetConnectedPeerInfoResponse> {
+    async fn get_connected_peer_info_call(&self, _: GetConnectedPeerInfoRequest) -> RpcResult<GetConnectedPeerInfoResponse> {
         Err(RpcError::NotImplemented)
     }
 
@@ -529,14 +564,6 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
     }
 
     async fn shutdown_call(&self, _request: ShutdownRequest) -> RpcResult<ShutdownResponse> {
-        Err(RpcError::NotImplemented)
-    }
-
-    async fn ban_call(&self, _request: BanRequest) -> RpcResult<BanResponse> {
-        Err(RpcError::NotImplemented)
-    }
-
-    async fn unban_call(&self, _request: UnbanRequest) -> RpcResult<UnbanResponse> {
         Err(RpcError::NotImplemented)
     }
 

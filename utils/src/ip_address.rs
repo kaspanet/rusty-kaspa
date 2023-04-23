@@ -1,4 +1,5 @@
 use std::{
+    fmt::Display,
     net::{AddrParseError, IpAddr, Ipv4Addr, Ipv6Addr},
     ops::Deref,
     str::FromStr,
@@ -42,6 +43,12 @@ impl FromStr for IpAddress {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         IpAddr::from_str(s).map(IpAddress::from)
+    }
+}
+
+impl Display for IpAddress {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
     }
 }
 

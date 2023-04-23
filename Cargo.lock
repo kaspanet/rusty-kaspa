@@ -1464,6 +1464,7 @@ dependencies = [
  "kaspa-addressmanager",
  "kaspa-core",
  "kaspa-p2p-lib",
+ "kaspa-utils",
  "log",
  "parking_lot",
  "rand 0.8.5",

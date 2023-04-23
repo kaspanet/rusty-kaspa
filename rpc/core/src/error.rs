@@ -1,4 +1,5 @@
 use kaspa_consensus_core::tx::TransactionId;
+use kaspa_utils::ip_address::IpAddress;
 use std::{net::AddrParseError, num::TryFromIntError};
 use thiserror::Error;
 
@@ -62,6 +63,15 @@ pub enum RpcError {
 
     #[error("Requested window size {0} is larger than pruning point depth {1}.")]
     WindowSizeExceedingPruningDepth(u32, u64),
+
+    #[error("Method unavailable in safe mode. Run the node with --unsafe argument.")]
+    UnavailableInSafeMode,
+
+    #[error("Cannot ban IP {0} because it has some permanent connection.")]
+    IpHasPermanentConnection(IpAddress),
+
+    #[error("IP {0} is not registered as banned.")]
+    IpIsNotBanned(IpAddress),
 
     #[error(transparent)]
     AddressError(#[from] kaspa_addresses::AddressError),
