@@ -180,6 +180,14 @@ impl ConnectionManager {
                     jobs.len(),
                 );
                 progressing = false;
+            } else {
+                debug!(
+                    "Connection manager: outgoing: {}/{} , connecting: {}, iterator: {}",
+                    self.outbound_target - missing_connections,
+                    self.outbound_target,
+                    jobs.len(),
+                    addr_iter.len(),
+                );
             }
 
             for (res, net_addr) in (join_all(jobs).await).into_iter().zip(addrs_to_connect) {
@@ -196,7 +204,7 @@ impl ConnectionManager {
 
         if missing_connections > 0 {
             let cmgr = self.clone();
-            // DNS lookup is a blocking i/o operation, so we spawn is as a blocking task
+            // DNS lookup is a blocking i/o operation, so we spawn it as a blocking task
             let _ = tokio::task::spawn_blocking(move || {
                 cmgr.dns_seed(missing_connections); //TODO: Consider putting a number higher than `missing_connections`.
             })
@@ -227,7 +235,7 @@ impl ConnectionManager {
             let addrs = match (seeder, self.default_port).to_socket_addrs() {
                 Ok(addrs) => addrs,
                 Err(e) => {
-                    warn!("error connecting to DNS seeder {}: {}", seeder, e);
+                    warn!("Error connecting to DNS seeder {}: {}", seeder, e);
                     continue;
                 }
             };
