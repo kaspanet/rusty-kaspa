@@ -66,7 +66,7 @@ impl AddressManager {
         self.address_store.iterate_addresses()
     }
 
-    pub fn iterate_prioritized_random_addresses(&self, exceptions: HashSet<NetAddress>) -> impl Iterator<Item = NetAddress> {
+    pub fn iterate_prioritized_random_addresses(&self, exceptions: HashSet<NetAddress>) -> impl ExactSizeIterator<Item = NetAddress> {
         self.address_store.iterate_prioritized_random_addresses(exceptions)
     }
 
@@ -182,7 +182,10 @@ mod address_store_with_cache {
             self.addresses.values().map(|entry| entry.address)
         }
 
-        pub fn iterate_prioritized_random_addresses(&self, exceptions: HashSet<NetAddress>) -> impl Iterator<Item = NetAddress> {
+        pub fn iterate_prioritized_random_addresses(
+            &self,
+            exceptions: HashSet<NetAddress>,
+        ) -> impl ExactSizeIterator<Item = NetAddress> {
             let exceptions: HashSet<AddressKey> = exceptions.into_iter().map(|addr| addr.into()).collect();
             let (weights, addresses) = self
                 .addresses
@@ -207,18 +210,20 @@ mod address_store_with_cache {
 
     pub struct RandomWeightedIterator {
         weighted_index: Option<WeightedIndex<f64>>,
+        remaining: usize,
         addresses: Vec<NetAddress>,
     }
 
     impl RandomWeightedIterator {
         pub fn new(weights: Vec<f64>, addresses: Vec<NetAddress>) -> Self {
             assert_eq!(weights.len(), addresses.len());
+            let remaining = weights.iter().filter(|&&w| w > 0.0).count();
             let weighted_index = match WeightedIndex::new(weights) {
                 Ok(index) => Some(index),
                 Err(WeightedError::NoItem) => None,
                 Err(e) => panic!("{e}"),
             };
-            Self { weighted_index, addresses }
+            Self { weighted_index, remaining, addresses }
         }
     }
 
@@ -234,12 +239,19 @@ mod address_store_with_cache {
                     Err(WeightedError::AllWeightsZero) => self.weighted_index = None,
                     Err(e) => panic!("{e}"),
                 }
+                self.remaining -= 1;
                 Some(self.addresses[i])
             } else {
                 None
             }
         }
+
+        fn size_hint(&self) -> (usize, Option<usize>) {
+            (self.remaining, Some(self.remaining))
+        }
     }
+
+    impl ExactSizeIterator for RandomWeightedIterator {}
 
     #[cfg(test)]
     mod tests {
@@ -250,9 +262,11 @@ mod address_store_with_cache {
         fn test_weighted_iterator() {
             let address = NetAddress::new(IpAddr::V6(Ipv6Addr::LOCALHOST).into(), 1);
             let iter = RandomWeightedIterator::new(vec![0.2, 0.3, 0.0], vec![address, address, address]);
+            assert_eq!(iter.len(), 2);
             assert_eq!(iter.count(), 2);
 
             let iter = RandomWeightedIterator::new(vec![], vec![]);
+            assert_eq!(iter.len(), 0);
             assert_eq!(iter.count(), 0);
         }
     }
