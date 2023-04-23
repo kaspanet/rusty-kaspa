@@ -2994,6 +2994,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "rothschild"
+version = "0.1.0"
+dependencies = [
+ "async-channel",
+ "clap 4.1.8",
+ "faster-hex",
+ "futures",
+ "futures-util",
+ "indexmap",
+ "itertools 0.10.5",
+ "kaspa-addresses",
+ "kaspa-consensus",
+ "kaspa-consensus-core",
+ "kaspa-consensus-notify",
+ "kaspa-core",
+ "kaspa-grpc-client",
+ "kaspa-hashes",
+ "kaspa-rpc-core",
+ "kaspa-txscript",
+ "log",
+ "num_cpus",
+ "rand 0.8.5",
+ "rand_distr",
+ "rayon",
+ "secp256k1",
+ "tokio",
+]
+
+[[package]]
 name = "rustc-hash"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
