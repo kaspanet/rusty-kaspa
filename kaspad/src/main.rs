@@ -126,13 +126,7 @@ fn get_app_dir() -> PathBuf {
 }
 
 pub fn main() {
-    let defaults = Defaults {
-        // --async-threads N
-        async_threads: num_cpus::get() / 2,
-        ..Defaults::default()
-    };
-
-    let args = Args::parse(&defaults);
+    let args = Args::parse(&Defaults::default());
 
     // Initialize the logger
     kaspa_core::log::init_logger(&args.log_level);

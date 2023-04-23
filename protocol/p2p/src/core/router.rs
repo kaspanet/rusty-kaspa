@@ -4,7 +4,7 @@ use crate::{common::ProtocolError, KaspadMessagePayloadType};
 use kaspa_core::{debug, error, info, trace};
 use kaspa_utils::peer_id::PeerId;
 use parking_lot::{Mutex, RwLock};
-use std::fmt::Display;
+use std::fmt::{Debug, Display};
 use std::net::SocketAddr;
 use std::{collections::HashMap, sync::Arc};
 use tokio::select;
@@ -57,6 +57,12 @@ impl Display for Router {
     }
 }
 
+fn message_summary(msg: &KaspadMessage) -> impl Debug {
+    // TODO (low priority): display a concise summary of the message. Printing full messages
+    // overflows the logs and is hardly useful, hence we currently only return the type
+    msg.payload.as_ref().map(std::convert::Into::<KaspadMessagePayloadType>::into)
+}
+
 impl Router {
     pub(crate) async fn new(
         net_address: SocketAddr,
@@ -94,7 +100,7 @@ impl Router {
 
                     res = incoming_stream.message() => match res {
                         Ok(Some(msg)) => {
-                            trace!("P2P, Router receive loop - got message: {:?}, router-id: {}, peer: {}", msg, router.identity, router);
+                            trace!("P2P msg: {:?}, router-id: {}, peer: {}", message_summary(&msg), router.identity, router);
                             match router.route_to_flow(msg) {
                                 Ok(()) => {},
                                 Err(e) => {
