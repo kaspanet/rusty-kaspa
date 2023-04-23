@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use itertools::Itertools;
+use kaspa_consensus_core::BlockHashMap;
 use kaspa_p2p_lib::{
     common::ProtocolError,
     dequeue, make_message,
@@ -46,7 +47,7 @@ impl PruningPointAndItsAnticoneRequestsFlow {
             debug!("Got request for pruning point and its anticone");
 
             let consensus = self.ctx.consensus();
-            let session = consensus.session().await;
+            let mut session = consensus.session().await;
 
             let pp_headers = session.pruning_point_headers();
             self.router
@@ -70,24 +71,41 @@ impl PruningPointAndItsAnticoneRequestsFlow {
                 ))
                 .await?;
 
+            let daa_window_hash_to_index =
+                BlockHashMap::from_iter(daa_window.iter().enumerate().map(|(i, trusted_header)| (trusted_header.header.hash, i)));
+            let ghostdag_data_hash_to_index =
+                BlockHashMap::from_iter(ghostdag_data.iter().enumerate().map(|(i, trusted_gd)| (trusted_gd.hash, i)));
+
             for hashes in pp_anticone.chunks(IBD_BATCH_SIZE) {
                 for hash in hashes {
-                    let block = session.get_block(*hash)?;
+                    let hash = *hash;
+                    let daa_window_indices = session
+                        .get_daa_window(hash)?
+                        .into_iter()
+                        .map(|hash| *daa_window_hash_to_index.get(&hash).unwrap() as u64)
+                        .collect_vec();
+
+                    let ghostdag_data_indices = session
+                        .get_trusted_block_associated_ghostdag_data_block_hashes(hash)?
+                        .into_iter()
+                        .map(|hash| *ghostdag_data_hash_to_index.get(&hash).unwrap() as u64)
+                        .collect_vec();
+                    let block = session.get_block(hash)?;
                     self.router
                         .enqueue(make_message!(
                             Payload::BlockWithTrustedDataV4,
-                            BlockWithTrustedDataV4Message {
-                                block: Some((&block).into()),
-                                daa_window_indices: vec![], // TODO: Fill with real values to be compatible with go-kaspad
-                                ghostdag_data_indices: vec![]  // TODO: Fill with real values to be compatible with go-kaspad
-                            }
+                            BlockWithTrustedDataV4Message { block: Some((&block).into()), daa_window_indices, ghostdag_data_indices }
                         ))
                         .await?;
                 }
 
-                // No timeout here, as we don't care if the syncee takes its time computing,
-                // since it only blocks this dedicated flow
-                dequeue!(self.incoming_route, Payload::RequestNextPruningPointAndItsAnticoneBlocks)?;
+                if hashes.len() == IBD_BATCH_SIZE {
+                    // No timeout here, as we don't care if the syncee takes its time computing,
+                    // since it only blocks this dedicated flow
+                    drop(session); // Avoid holding the session through dequeue calls
+                    dequeue!(self.incoming_route, Payload::RequestNextPruningPointAndItsAnticoneBlocks)?;
+                    session = consensus.session().await;
+                }
             }
 
             self.router.enqueue(make_message!(Payload::DoneBlocksWithTrustedData, DoneBlocksWithTrustedDataMessage {})).await?;

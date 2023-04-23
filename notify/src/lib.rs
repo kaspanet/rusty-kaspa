@@ -4,6 +4,7 @@ pub mod address;
 pub(crate) mod broadcaster;
 pub mod collector;
 pub mod connection;
+pub mod converter;
 pub mod error;
 pub mod events;
 pub mod listener;

@@ -118,6 +118,14 @@ impl TryFrom<protowire::RequestRelayBlocksMessage> for Vec<Hash> {
     }
 }
 
+impl TryFrom<protowire::RequestIbdBlocksMessage> for Vec<Hash> {
+    type Error = ConversionError;
+
+    fn try_from(msg: protowire::RequestIbdBlocksMessage) -> Result<Self, Self::Error> {
+        msg.hashes.into_iter().map(|v| v.try_into()).collect()
+    }
+}
+
 impl TryFrom<protowire::BlockLocatorMessage> for Vec<Hash> {
     type Error = ConversionError;
 
@@ -155,5 +163,19 @@ impl TryFrom<protowire::TransactionNotFoundMessage> for TransactionId {
 
     fn try_from(msg: protowire::TransactionNotFoundMessage) -> Result<Self, Self::Error> {
         msg.id.try_into_ex()
+    }
+}
+
+impl TryFrom<protowire::RequestBlockLocatorMessage> for (Hash, u32) {
+    type Error = ConversionError;
+    fn try_from(msg: protowire::RequestBlockLocatorMessage) -> Result<Self, Self::Error> {
+        Ok((msg.high_hash.try_into_ex()?, msg.limit))
+    }
+}
+
+impl TryFrom<protowire::RequestAnticoneMessage> for (Hash, Hash) {
+    type Error = ConversionError;
+    fn try_from(msg: protowire::RequestAnticoneMessage) -> Result<Self, Self::Error> {
+        Ok((msg.block_hash.try_into_ex()?, msg.context_hash.try_into_ex()?))
     }
 }

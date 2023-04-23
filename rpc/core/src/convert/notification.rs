@@ -119,10 +119,9 @@ impl From<&index_notify::PruningPointUtxoSetOverrideNotification> for PruningPoi
 }
 
 impl From<&index_notify::UtxosChangedNotification> for UtxosChangedNotification {
+    // This is not intended to be ever called because no address prefix is available.
+    // Use kaspa_rpc_service::converter::index::IndexConverter instead.
     fn from(item: &index_notify::UtxosChangedNotification) -> Self {
-        Self {
-            added: Arc::new(utxo_set_into_rpc(&item.added, item.prefix)),
-            removed: Arc::new(utxo_set_into_rpc(&item.removed, item.prefix)),
-        }
+        Self { added: Arc::new(utxo_set_into_rpc(&item.added, None)), removed: Arc::new(utxo_set_into_rpc(&item.removed, None)) }
     }
 }

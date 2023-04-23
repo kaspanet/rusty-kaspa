@@ -655,6 +655,7 @@ mod tests {
     use super::{test_helpers::*, *};
     use crate::{
         collector::CollectorFrom,
+        converter::ConverterFrom,
         events::EVENT_TYPE_ARRAY,
         notification::test_helpers::*,
         subscriber::test_helpers::{SubscriptionManagerMock, SubscriptionMessage},
@@ -676,11 +677,13 @@ mod tests {
 
     impl Test {
         fn new(name: &'static str, listener_count: usize, steps: Vec<Step>) -> Self {
+            type TestConverter = ConverterFrom<TestNotification, TestNotification>;
+            type TestCollector = CollectorFrom<TestConverter>;
             // Build the full-featured notifier
             let (sync_sender, sync_receiver) = unbounded();
             let (notification_sender, notification_receiver) = unbounded();
             let (subscription_sender, subscription_receiver) = unbounded();
-            let collector = Arc::new(CollectorFrom::<TestNotification, TestNotification>::new(notification_receiver));
+            let collector = Arc::new(TestCollector::new(notification_receiver, Arc::new(TestConverter::new())));
             let subscription_manager = Arc::new(SubscriptionManagerMock::new(subscription_sender));
             let subscriber = Arc::new(Subscriber::new(EVENT_TYPE_ARRAY[..].into(), subscription_manager, SUBSCRIPTION_MANAGER_ID));
             let notifier = Arc::new(TestNotifier::with_sync(

@@ -1,5 +1,7 @@
 #[allow(unused)]
 use clap::{arg, command, Arg, Command};
+use kaspa_consensus::config::Config;
+use kaspa_core::version::version;
 
 pub struct Defaults {
     pub appdir: &'static str,
@@ -58,7 +60,7 @@ pub struct Args {
 
 pub fn cli(defaults: &Defaults) -> Command {
     Command::new("kaspad")
-        .about(format!("{} (rusty-kaspa) v{}", env!("CARGO_PKG_DESCRIPTION"), env!("CARGO_PKG_VERSION")))
+        .about(format!("{} (rusty-kaspa) v{}", env!("CARGO_PKG_DESCRIPTION"), version()))
         .version(env!("CARGO_PKG_VERSION"))
         .arg(arg!(-b --appdir <DATA_DIR> "Directory to store data."))
         .arg(
@@ -68,6 +70,7 @@ pub fn cli(defaults: &Defaults) -> Command {
                 .value_name("async_threads")
                 .num_args(0..=1)
                 .require_equals(true)
+                .value_parser(clap::value_parser!(usize))
                 .help(format!("Specify number of async threads (default: {}).", defaults.async_threads)),
         )
         .arg(
@@ -131,6 +134,7 @@ pub fn cli(defaults: &Defaults) -> Command {
                 .value_name("outpeers")
                 .num_args(0..=1)
                 .require_equals(true)
+                .value_parser(clap::value_parser!(usize))
                 .help("Target number of outbound peers (default: 8)."),
         )
         .arg(
@@ -139,6 +143,7 @@ pub fn cli(defaults: &Defaults) -> Command {
                 .value_name("maxinpeers")
                 .num_args(0..=1)
                 .require_equals(true)
+                .value_parser(clap::value_parser!(usize))
                 .help("Max number of inbound peers (default: 128)."),
         )
         .arg(arg!(--"reset-db" "Reset database before starting node. It's needed when switching between subnetworks."))
@@ -169,6 +174,10 @@ impl Args {
             devnet: m.get_one::<bool>("devnet").cloned().unwrap_or(defaults.devnet),
             simnet: m.get_one::<bool>("simnet").cloned().unwrap_or(defaults.simnet),
         }
+    }
+
+    pub fn apply_to_config(&self, config: &mut Config) {
+        config.utxoindex = self.utxoindex;
     }
 }
 

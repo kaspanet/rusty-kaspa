@@ -1,5 +1,6 @@
 use crate::model::*;
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+use kaspa_consensus_core::sync_info::SyncInfo;
 use kaspa_notify::subscription::{single::UtxosChangedSubscription, Command};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -93,6 +94,7 @@ pub struct GetBlockTemplateResponse {
     /// chance the block will never be accepted, thus the solving effort would have been wasted.
     pub is_synced: bool,
 }
+
 /// GetBlockRequest requests information about a specific block
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
@@ -142,6 +144,12 @@ pub struct GetCurrentNetworkResponse {
     pub network: RpcNetworkType,
 }
 
+impl GetCurrentNetworkResponse {
+    pub fn new(network: RpcNetworkType) -> Self {
+        Self { network }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GetPeerAddressesRequest {}
@@ -149,12 +157,12 @@ pub struct GetPeerAddressesRequest {}
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GetPeerAddressesResponse {
-    pub known_addresses: Vec<RpcAddress>,
-    pub banned_addresses: Vec<RpcAddress>,
+    pub known_addresses: Vec<RpcPeerAddress>,
+    pub banned_addresses: Vec<RpcPeerAddress>,
 }
 
 impl GetPeerAddressesResponse {
-    pub fn new(known_addresses: Vec<RpcAddress>, banned_addresses: Vec<RpcAddress>) -> Self {
+    pub fn new(known_addresses: Vec<RpcPeerAddress>, banned_addresses: Vec<RpcPeerAddress>) -> Self {
         Self { known_addresses, banned_addresses }
     }
 }
@@ -344,13 +352,13 @@ impl GetVirtualChainFromBlockResponse {
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GetBlocksRequest {
-    pub low_hash: RpcHash,
+    pub low_hash: Option<RpcHash>,
     pub include_blocks: bool,
     pub include_transactions: bool,
 }
 
 impl GetBlocksRequest {
-    pub fn new(low_hash: RpcHash, include_blocks: bool, include_transactions: bool) -> Self {
+    pub fn new(low_hash: Option<RpcHash>, include_blocks: bool, include_transactions: bool) -> Self {
         Self { low_hash, include_blocks, include_transactions }
     }
 }
@@ -372,18 +380,7 @@ impl GetBlocksResponse {
 #[serde(rename_all = "camelCase")]
 pub struct GetBlockCountRequest {}
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct GetBlockCountResponse {
-    pub block_count: u64,
-    pub header_count: u64,
-}
-
-impl GetBlockCountResponse {
-    pub fn new(block_count: u64, header_count: u64) -> Self {
-        Self { block_count, header_count }
-    }
-}
+pub type GetBlockCountResponse = SyncInfo;
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
@@ -686,8 +683,8 @@ pub struct GetProcessMetricsResponse {
     pub uptime: u64,
     pub memory_used: Vec<u64>,
     pub storage_used: Vec<u64>,
-    pub grpc_connections: Vec<u32>,
-    pub wrpc_connections: Vec<u32>,
+    pub grpc_connections: Vec<u64>,
+    pub wrpc_connections: Vec<u64>,
     // TBD:
     //  - approx bandwidth consumption
     //  - other connection metrics
@@ -699,8 +696,8 @@ impl GetProcessMetricsResponse {
         uptime: u64,
         memory_used: Vec<u64>,
         storage_used: Vec<u64>,
-        grpc_connections: Vec<u32>,
-        wrpc_connections: Vec<u32>,
+        grpc_connections: Vec<u64>,
+        wrpc_connections: Vec<u64>,
     ) -> Self {
         Self { uptime, memory_used, storage_used, grpc_connections, wrpc_connections }
     }

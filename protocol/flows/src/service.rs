@@ -58,7 +58,7 @@ impl AsyncService for P2pService {
 
         // Launch the service and wait for a shutdown signal
         Box::pin(async move {
-            let server_address = self.listen.clone().unwrap_or(String::from("[::1]:50051"));
+            let server_address = self.listen.clone().unwrap_or(format!("0.0.0.0:{}", self.default_port));
             let p2p_adaptor =
                 Adaptor::bidirectional(server_address.clone(), self.flow_context.hub().clone(), self.flow_context.clone()).unwrap();
             let connection_manager = ConnectionManager::new(
@@ -67,10 +67,9 @@ impl AsyncService for P2pService {
                 self.inbound_limit,
                 self.dns_seeders,
                 self.default_port,
-                self.flow_context.amgr.clone(),
+                self.flow_context.address_manager.clone(),
             );
 
-            // For now, attempt to connect to a running golang node
             if let Some(peer_address) = self.connect.clone() {
                 connection_manager.add_connection_request(peer_address.to_socket_addrs().unwrap().next().unwrap(), true).await;
             }

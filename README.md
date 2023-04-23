@@ -1,6 +1,6 @@
 # Kaspa on Rust
 
-Work in progress to implement the Kaspa full-node and related libraries in the Rust programming language.
+This repository contains the implementation of the Kaspa full-node and related libraries in the Rust programming language. This is an Alpha version at the initial testing phase, however the node is expected to be fully functional and capable as a drop-in replacement for the Kaspa golang node.
 
 ## Getting started
 
@@ -23,23 +23,34 @@ $ git clone https://github.com/kaspanet/rusty-kaspa
 $ cd rusty-kaspa
 ```
 
-## Experimenting with the node
+## Running the node
 
-The `kaspad` rust executable is currently at the initial stage where a devnet consensus instance can be built and mined locally through the RPC interface. The P2P network is not supported yet. To see it in action, perform the following:
+Run the node through the following command:
 
 ```bash
-$ cargo run --bin kaspad --release -- --devnet
+$ (cargo run --release --bin kaspad) 2>&1 | tee ~/rusty-kaspa.log
 ```
+
+And if you want to setup a test node, run the following command instead:
+
+```bash
+$ (cargo run --release --bin kaspad -- --testnet) 2>&1 | tee ~/rusty-kaspa-testnet.log
+```
+
+## Mining
+Mining is currently supported only on testnet, so once you've setup a test node, follow these instructions:
 
 - Download and unzip the latest binaries bundle of [kaspanet/kaspad](https://github.com/kaspanet/kaspad/releases).
 
 - In a separate terminal run the kaspanet/kaspad miner:
 
 ```bash
-$ kaspaminer --rpcserver 127.0.0.1:16610 --devnet --miningaddr kaspadev:qrcqat6l9zcjsu7swnaztqzrv0s7hu04skpaezxk43y4etj8ncwfkuhy0zmax
+$ kaspaminer --testnet --miningaddr kaspatest:qrcqat6l9zcjsu7swnaztqzrv0s7hu04skpaezxk43y4etj8ncwfk308jlcew
 ```
 
 - This will create and feed a DAG with the miner getting block templates from the node and submitting them back when mined. The node processes and stores the blocks while applying all currently implemented logic. Execution can be stopped and resumed, the data is persisted in a database.
+
+- You can replace the above mining address with your own address by creating one as described [here](https://github.com/kaspanet/docs/blob/main/Getting%20Started/Full%20Node%20Installation.md#creating-a-wallet-optional). 
 
 ## Simulation framework (Simpa)
 
@@ -58,7 +69,7 @@ $ cargo run --release --bin simpa -- -t=200 -d=2 -b=8 -n=1000
 Logging in `kaspad` and `simpa` can be [filtered](https://docs.rs/env_logger/0.10.0/env_logger/#filtering-results) either by defining the environment variable `RUST_LOG` and/or by adding a `--loglevel` argument to the command, ie.:
 
 ```bash
-$ cargo run --bin kaspad -- --loglevel info,kaspa_rpc_core=trace,kaspa_grpc_core=trace,consensus=trace,kaspa_core=trace
+$ (cargo run --bin kaspad -- --loglevel info,kaspa_rpc_core=trace,kaspa_grpc_core=trace,consensus=trace,kaspa_core=trace) 2>&1 | tee ~/rusty-kaspa.log
 ```
 
 

@@ -1,4 +1,5 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+use kaspa_addresses::Address;
 use kaspa_consensus_core::tx::{ScriptPublicKey, ScriptVec, TransactionId, TransactionOutpoint, UtxoEntry};
 use serde::{Deserialize, Serialize};
 
@@ -44,9 +45,7 @@ pub struct RpcTransactionOutput {
 #[serde(rename_all = "camelCase")]
 pub struct RpcTransactionOutputVerboseData {
     pub script_public_key_type: RpcScriptClass,
-
-    // TODO: change the type of this field for a better binary representation
-    pub script_public_key_address: String,
+    pub script_public_key_address: Address,
 }
 
 /// Represents a Kaspa transaction

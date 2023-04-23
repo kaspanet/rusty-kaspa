@@ -9,6 +9,7 @@ use kaspa_consensus_core::networktype::NetworkType;
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_consensus_notify::service::NotifyService;
 use kaspa_consensusmanager::ConsensusManager;
+use kaspa_core::version::version;
 use kaspa_core::{core::Core, signals::Signals, task::runtime::AsyncRuntime};
 use kaspa_index_processor::service::IndexService;
 use kaspa_mining::manager::MiningManager;
@@ -28,7 +29,7 @@ use args::{Args, Defaults};
 use crate::monitor::ConsensusMonitor;
 use kaspa_consensus::config::ConfigBuilder;
 use kaspa_consensus::params::{DEVNET_PARAMS, MAINNET_PARAMS, SIMNET_PARAMS, TESTNET_PARAMS};
-use kaspa_utxoindex::{api::DynUtxoIndexApi, UtxoIndex};
+use kaspa_utxoindex::UtxoIndex;
 
 use async_channel::unbounded;
 use kaspa_core::{info, trace};
@@ -137,7 +138,7 @@ pub fn main() {
     kaspa_core::log::init_logger(&args.log_level);
 
     // Print package name and version
-    info!("{} v{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+    info!("{} v{}", env!("CARGO_PKG_NAME"), version());
 
     // Configure the panic behavior
     kaspa_core::panic::configure_panic();
@@ -150,12 +151,16 @@ pub fn main() {
         _ => panic!("only a single net should be activated"),
     };
 
-    let config = match network_type {
-        NetworkType::Mainnet => ConfigBuilder::new(MAINNET_PARAMS).build(),
-        NetworkType::Testnet => ConfigBuilder::new(TESTNET_PARAMS).build(),
-        NetworkType::Devnet => ConfigBuilder::new(DEVNET_PARAMS).build(),
-        NetworkType::Simnet => ConfigBuilder::new(SIMNET_PARAMS).build(),
-    };
+    let config = Arc::new(
+        match network_type {
+            NetworkType::Mainnet => ConfigBuilder::new(MAINNET_PARAMS),
+            NetworkType::Testnet => ConfigBuilder::new(TESTNET_PARAMS),
+            NetworkType::Devnet => ConfigBuilder::new(DEVNET_PARAMS),
+            NetworkType::Simnet => ConfigBuilder::new(SIMNET_PARAMS),
+        }
+        .apply_args(|config| args.apply_to_config(config))
+        .build(),
+    );
 
     // TODO: Refactor all this quick-and-dirty code
     let app_dir = args
@@ -173,12 +178,10 @@ pub fn main() {
     let utxoindex_db_dir = db_dir.join(UTXOINDEX_DB);
     let meta_db_dir = db_dir.join(META_DB);
 
-    if args.reset_db {
+    if args.reset_db && db_dir.exists() {
         // TODO: add prompt that validates the choice (unless you pass -y)
-        info!("Deleting databases {:?}, {:?}, {:?}", consensus_db_dir, utxoindex_db_dir, meta_db_dir);
-        kaspa_database::prelude::delete_db(consensus_db_dir.clone());
-        kaspa_database::prelude::delete_db(utxoindex_db_dir.clone());
-        kaspa_database::prelude::delete_db(meta_db_dir.clone());
+        info!("Deleting databases");
+        fs::remove_dir_all(db_dir).unwrap();
     }
 
     fs::create_dir_all(consensus_db_dir.as_path()).unwrap();
@@ -191,7 +194,7 @@ pub fn main() {
     // DB used for addresses store and for multi-consensus management
     let meta_db = kaspa_database::prelude::open_db(meta_db_dir, true, 1);
 
-    let grpc_server_addr = args.rpclisten.unwrap_or_else(|| format!("127.0.0.1:{}", network_type.port())).parse().unwrap();
+    let grpc_server_addr = args.rpclisten.unwrap_or_else(|| format!("0.0.0.0:{}", config.default_rpc_port())).parse().unwrap();
 
     let core = Arc::new(Core::new());
 
@@ -214,37 +217,45 @@ pub fn main() {
     let consensus_manager = Arc::new(ConsensusManager::new(consensus_factory));
     let monitor = Arc::new(ConsensusMonitor::new(counters));
 
-    let notify_service = Arc::new(NotifyService::new(notification_root, notification_recv));
-
+    let notify_service = Arc::new(NotifyService::new(notification_root.clone(), notification_recv));
     let index_service: Option<Arc<IndexService>> = if args.utxoindex {
         // Use only a single thread for none-consensus databases
         let utxoindex_db = kaspa_database::prelude::open_db(utxoindex_db_dir, true, 1);
-        let utxoindex: DynUtxoIndexApi = Some(UtxoIndex::new(consensus_manager.clone(), utxoindex_db).unwrap());
-        Some(Arc::new(IndexService::new(&notify_service.notifier(), utxoindex, &config)))
+        let utxoindex = UtxoIndex::new(consensus_manager.clone(), utxoindex_db).unwrap();
+        let index_service = Arc::new(IndexService::new(&notify_service.notifier(), Some(utxoindex)));
+        Some(index_service)
     } else {
         None
     };
 
     let address_manager = AddressManager::new(meta_db);
-
     let mining_manager = Arc::new(MiningManager::new(config.target_time_per_block, false, config.max_block_mass, None));
 
-    let flow_context = Arc::new(FlowContext::new(consensus_manager.clone(), address_manager, &config, mining_manager));
+    let flow_context = Arc::new(FlowContext::new(
+        consensus_manager.clone(),
+        address_manager,
+        config.clone(),
+        mining_manager.clone(),
+        notification_root,
+    ));
     let p2p_service = Arc::new(P2pService::new(
-        flow_context,
+        flow_context.clone(),
         args.connect,
         args.listen,
         args.outbound_target,
         args.inbound_limit,
-        config.params.dns_seeders,
-        config.params.default_port,
+        config.dns_seeders,
+        config.default_p2p_port(),
     ));
 
-    // TODO: pass the FlowContext to RpcCoreService
     let rpc_core_server = Arc::new(RpcCoreServer::new(
         consensus_manager.clone(),
         notify_service.notifier(),
         index_service.as_ref().map(|x| x.notifier()),
+        mining_manager,
+        flow_context,
+        index_service.as_ref().map(|x| x.utxoindex().unwrap()),
+        config,
     ));
     let grpc_server = Arc::new(GrpcServer::new(grpc_server_addr, rpc_core_server.service()));
 

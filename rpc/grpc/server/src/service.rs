@@ -1,5 +1,5 @@
 use crate::{
-    collector::GrpcServiceCollector,
+    collector::{GrpcServiceCollector, GrpcServiceConverter},
     connection::{GrpcConnection, GrpcConnectionManager, GrpcSender},
     StatusResult,
 };
@@ -74,7 +74,8 @@ impl GrpcService {
 
         // Prepare internals
         let core_events = EVENT_TYPE_ARRAY[..].into();
-        let collector = Arc::new(GrpcServiceCollector::new(core_channel.receiver()));
+        let converter = Arc::new(GrpcServiceConverter::new());
+        let collector = Arc::new(GrpcServiceCollector::new(core_channel.receiver(), converter));
         let subscriber = Arc::new(Subscriber::new(core_events, core_service.notifier(), core_listener_id));
         let notifier: Arc<Notifier<Notification, GrpcConnection>> =
             Arc::new(Notifier::new(core_events, vec![collector], vec![subscriber], 10, GRPC_SERVER));

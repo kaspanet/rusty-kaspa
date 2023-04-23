@@ -6,4 +6,4 @@ pub mod owner_txs;
 pub mod topological_index;
 
 /// A set of unique transaction ids
-pub(crate) type TransactionIdSet = HashSet<TransactionId>;
+pub type TransactionIdSet = HashSet<TransactionId>;

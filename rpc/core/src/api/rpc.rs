@@ -136,7 +136,12 @@ where
     ) -> RpcResult<GetVirtualChainFromBlockResponse>;
 
     /// Requests blocks between a certain block `low_hash` up to this node's current virtual.
-    async fn get_blocks(&self, low_hash: RpcHash, include_blocks: bool, include_transactions: bool) -> RpcResult<GetBlocksResponse> {
+    async fn get_blocks(
+        &self,
+        low_hash: Option<RpcHash>,
+        include_blocks: bool,
+        include_transactions: bool,
+    ) -> RpcResult<GetBlocksResponse> {
         self.get_blocks_call(GetBlocksRequest::new(low_hash, include_blocks, include_transactions)).await
     }
     async fn get_blocks_call(&self, request: GetBlocksRequest) -> RpcResult<GetBlocksResponse>;

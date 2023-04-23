@@ -111,6 +111,25 @@ where
         Ok(())
     }
 
+    /// Write directly from an iterator and do not cache any data. NOTE: this action also clears the cache
+    pub fn write_many_without_cache(
+        &self,
+        mut writer: impl DbWriter,
+        iter: &mut impl Iterator<Item = (TKey, TData)>,
+    ) -> Result<(), StoreError>
+    where
+        TKey: Clone + AsRef<[u8]>,
+        TData: Serialize,
+    {
+        for (key, data) in iter {
+            let bin_data = bincode::serialize(&data)?;
+            writer.put(DbKey::new(&self.prefix, key), bin_data)?;
+        }
+        // We must clear the cache in order to avoid invalidated entries
+        self.cache.remove_all();
+        Ok(())
+    }
+
     pub fn delete(&self, mut writer: impl DbWriter, key: TKey) -> Result<(), StoreError>
     where
         TKey: Clone + AsRef<[u8]>,

@@ -91,37 +91,37 @@ struct HeaderStoreMock {}
 #[allow(unused_variables)]
 impl HeaderStoreReader for HeaderStoreMock {
     fn get_daa_score(&self, hash: kaspa_hashes::Hash) -> Result<u64, StoreError> {
-        todo!()
+        unimplemented!()
     }
 
     fn get_blue_score(&self, hash: kaspa_hashes::Hash) -> Result<u64, StoreError> {
-        todo!()
+        unimplemented!()
     }
 
     fn get_timestamp(&self, hash: kaspa_hashes::Hash) -> Result<u64, StoreError> {
-        todo!()
+        unimplemented!()
     }
 
     fn get_bits(&self, hash: kaspa_hashes::Hash) -> Result<u32, StoreError> {
-        todo!()
+        unimplemented!()
     }
 
     fn get_header(&self, hash: kaspa_hashes::Hash) -> Result<Arc<Header>, StoreError> {
-        todo!()
+        unimplemented!()
     }
 
     fn get_header_with_block_level(
         &self,
         hash: kaspa_hashes::Hash,
     ) -> Result<crate::model::stores::headers::HeaderWithBlockLevel, StoreError> {
-        todo!()
+        unimplemented!()
     }
 
     fn get_compact_header_data(
         &self,
         hash: kaspa_hashes::Hash,
     ) -> Result<crate::model::stores::headers::CompactHeaderData, StoreError> {
-        todo!()
+        unimplemented!()
     }
 }
 
@@ -130,39 +130,39 @@ struct GhostdagStoreMock {}
 #[allow(unused_variables)]
 impl GhostdagStoreReader for GhostdagStoreMock {
     fn get_blue_score(&self, hash: kaspa_hashes::Hash) -> Result<u64, StoreError> {
-        todo!()
+        unimplemented!()
     }
 
     fn get_blue_work(&self, hash: kaspa_hashes::Hash) -> Result<kaspa_consensus_core::BlueWorkType, StoreError> {
-        todo!()
+        unimplemented!()
     }
 
     fn get_selected_parent(&self, hash: kaspa_hashes::Hash) -> Result<kaspa_hashes::Hash, StoreError> {
-        todo!()
+        unimplemented!()
     }
 
     fn get_mergeset_blues(&self, hash: kaspa_hashes::Hash) -> Result<BlockHashes, StoreError> {
-        todo!()
+        unimplemented!()
     }
 
     fn get_mergeset_reds(&self, hash: kaspa_hashes::Hash) -> Result<BlockHashes, StoreError> {
-        todo!()
+        unimplemented!()
     }
 
     fn get_blues_anticone_sizes(&self, hash: kaspa_hashes::Hash) -> Result<crate::model::stores::ghostdag::HashKTypeMap, StoreError> {
-        todo!()
+        unimplemented!()
     }
 
     fn get_data(&self, hash: kaspa_hashes::Hash) -> Result<Arc<crate::model::stores::ghostdag::GhostdagData>, StoreError> {
-        todo!()
+        unimplemented!()
     }
 
     fn get_compact_data(&self, hash: kaspa_hashes::Hash) -> Result<crate::model::stores::ghostdag::CompactGhostdagData, StoreError> {
-        todo!()
+        unimplemented!()
     }
 
     fn has(&self, hash: kaspa_hashes::Hash) -> Result<bool, StoreError> {
-        todo!()
+        unimplemented!()
     }
 }
 
@@ -301,7 +301,7 @@ impl PruningProofManager {
         let virtual_parents = vec![pruning_point];
         let virtual_gd = self.ghostdag_managers[0].ghostdag(&virtual_parents);
 
-        let virtual_state = VirtualState {
+        let virtual_state = Arc::new(VirtualState {
             // TODO: Use real values when possible
             parents: virtual_parents.clone(),
             ghostdag_data: virtual_gd,
@@ -313,7 +313,7 @@ impl PruningProofManager {
             mergeset_rewards: Default::default(),
             mergeset_non_daa: Default::default(),
             past_median_time: 0,
-        };
+        });
         self.virtual_stores.write().state.set(virtual_state).unwrap();
 
         let mut batch = WriteBatch::default();
@@ -746,7 +746,8 @@ impl PruningProofManager {
             .traversal_manager
             .anticone(pruning_point, self.virtual_stores.read().state.get().unwrap().parents.iter().copied(), None)
             .expect("no error is expected when max_traversal_allowed is None");
-        let anticone = self.ghostdag_managers[0].sort_blocks(anticone);
+        let mut anticone = self.ghostdag_managers[0].sort_blocks(anticone);
+        anticone.insert(0, pruning_point);
 
         let mut daa_window_blocks = BlockHashMap::new();
         let mut ghostdag_blocks = BlockHashMap::new();
@@ -771,12 +772,11 @@ impl PruningProofManager {
                 );
             }
 
-            for hash in self.reachability_service.default_backward_chain_iterator(anticone_block).take(self.ghostdag_k as usize) {
-                if ghostdag_blocks.contains_key(&hash) {
-                    continue;
-                }
-
-                ghostdag_blocks.insert(hash, (&*self.ghostdag_stores[0].get_data(hash).unwrap()).into());
+            let mut current = anticone_block;
+            for _ in 0..=self.ghostdag_k {
+                let current_gd = self.ghostdag_stores[0].get_data(current).unwrap();
+                ghostdag_blocks.insert(current, (&*current_gd).into());
+                current = current_gd.selected_parent;
             }
         }
 
