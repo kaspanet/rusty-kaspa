@@ -1,7 +1,7 @@
 //! Core server implementation for ClientAPI
 
 use super::collector::{CollectorFromConsensus, CollectorFromIndex};
-use crate::converter::{consensus::ConsensusConverter, index::IndexConverter};
+use crate::converter::{consensus::ConsensusConverter, index::IndexConverter, protocol::ProtocolConverter};
 use async_trait::async_trait;
 use kaspa_consensus_core::{
     block::Block,
@@ -68,6 +68,7 @@ pub struct RpcCoreService {
     config: Arc<Config>,
     consensus_converter: Arc<ConsensusConverter>,
     index_converter: Arc<IndexConverter>,
+    protocol_converter: Arc<ProtocolConverter>,
 }
 
 const RPC_CORE: &str = "rpc-core";
@@ -114,10 +115,23 @@ impl RpcCoreService {
             subscribers.push(index_subscriber);
         }
 
+        // Protocol converter
+        let protocol_converter = Arc::new(ProtocolConverter::new(flow_context.clone()));
+
         // Create the rcp-core notifier
         let notifier = Arc::new(Notifier::new(EVENT_TYPE_ARRAY[..].into(), collectors, subscribers, 1, RPC_CORE));
 
-        Self { consensus_manager, notifier, mining_manager, flow_context, utxoindex, config, consensus_converter, index_converter }
+        Self {
+            consensus_manager,
+            notifier,
+            mining_manager,
+            flow_context,
+            utxoindex,
+            config,
+            consensus_converter,
+            index_converter,
+            protocol_converter,
+        }
     }
 
     pub fn start(&self) {
@@ -549,12 +563,14 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         Ok(UnbanResponse {})
     }
 
+    async fn get_connected_peer_info_call(&self, _: GetConnectedPeerInfoRequest) -> RpcResult<GetConnectedPeerInfoResponse> {
+        let peers = self.flow_context.hub().active_peers();
+        let peer_info = self.protocol_converter.get_peers_info(&peers);
+        Ok(GetConnectedPeerInfoResponse::new(peer_info))
+    }
+
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // UNIMPLEMENTED METHODS
-
-    async fn get_connected_peer_info_call(&self, _: GetConnectedPeerInfoRequest) -> RpcResult<GetConnectedPeerInfoResponse> {
-        Err(RpcError::NotImplemented)
-    }
 
     async fn resolve_finality_conflict_call(
         &self,

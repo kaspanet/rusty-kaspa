@@ -1952,6 +1952,7 @@ dependencies = [
  "kaspa-mining",
  "kaspa-notify",
  "kaspa-p2p-flows",
+ "kaspa-p2p-lib",
  "kaspa-rpc-core",
  "kaspa-txscript",
  "kaspa-utils",
