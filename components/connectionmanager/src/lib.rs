@@ -120,13 +120,13 @@ impl ConnectionManager {
             }
 
             if !is_connected && request.next_attempt <= SystemTime::now() {
-                debug!("Connecting to a connection request to {}", address);
+                debug!("Connecting to peer request {}", address);
                 if self.p2p_adaptor.connect_peer(address.to_string()).await.is_none() {
-                    debug!("Failed connecting to a connection request to {}", address);
+                    debug!("Failed connecting to peer request {}", address);
                     if request.is_permanent {
                         const MAX_RETRY_DURATION: Duration = Duration::from_secs(600);
                         let retry_duration = min(Duration::from_secs(30u64 * 2u64.pow(request.attempts)), MAX_RETRY_DURATION);
-                        debug!("Will retry to connect to {} in {}", address, DurationString::from(retry_duration));
+                        debug!("Will retry peer request {} in {}", address, DurationString::from(retry_duration));
                         new_requests.insert(
                             address,
                             ConnectionRequest {
@@ -180,6 +180,14 @@ impl ConnectionManager {
                     jobs.len(),
                 );
                 progressing = false;
+            } else {
+                debug!(
+                    "Connection manager: outgoing: {}/{} , connecting: {}, iterator: {}",
+                    self.outbound_target - missing_connections,
+                    self.outbound_target,
+                    jobs.len(),
+                    addr_iter.len(),
+                );
             }
 
             for (res, net_addr) in (join_all(jobs).await).into_iter().zip(addrs_to_connect) {
@@ -195,7 +203,12 @@ impl ConnectionManager {
         }
 
         if missing_connections > 0 {
-            self.dns_seed(missing_connections); //TODO: Consider putting a number higher than `missing_connections`.
+            let cmgr = self.clone();
+            // DNS lookup is a blocking i/o operation, so we spawn it as a blocking task
+            let _ = tokio::task::spawn_blocking(move || {
+                cmgr.dns_seed(missing_connections); //TODO: Consider putting a number higher than `missing_connections`.
+            })
+            .await;
         }
     }
 
@@ -222,7 +235,7 @@ impl ConnectionManager {
             let addrs = match (seeder, self.default_port).to_socket_addrs() {
                 Ok(addrs) => addrs,
                 Err(e) => {
-                    warn!("error connecting to DNS seeder {}: {}", seeder, e);
+                    warn!("Error connecting to DNS seeder {}: {}", seeder, e);
                     continue;
                 }
             };

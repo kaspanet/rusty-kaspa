@@ -96,9 +96,9 @@ impl Router {
                         Ok(Some(msg)) => {
                             trace!("P2P, Router receive loop - got message: {:?}, router-id: {}, peer: {}", msg, router.identity, router);
                             match router.route_to_flow(msg) {
-                                Ok(_) => {},
+                                Ok(()) => {},
                                 Err(e) => {
-                                    info!("P2P, Router receive loop - route error {:?} for peer: {}", e, router);
+                                    info!("P2P, Router receive loop - route error {} for peer: {}", e, router);
                                     break;
                                 },
                             }
@@ -108,7 +108,7 @@ impl Router {
                             break;
                         }
                         Err(err) => {
-                            info!("P2P, Router receive loop - network error: {:?} from peer {}", err, router);
+                            info!("P2P, Router receive loop - network error: {} from peer {}", err, router);
                             break;
                         }
                     }
@@ -118,12 +118,6 @@ impl Router {
             debug!("P2P, Router receive loop - exited, router-id: {}, router refs: {}", router.identity, Arc::strong_count(&router));
         });
 
-        // Notify the central Hub about the new peer
-        router_clone
-            .hub_sender
-            .send(HubEvent::NewPeer(router_clone.clone()))
-            .await
-            .expect("hub receiver should never drop before senders");
         router_clone
     }
 

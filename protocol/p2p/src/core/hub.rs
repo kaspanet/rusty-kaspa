@@ -1,5 +1,5 @@
 use crate::{common::ProtocolError, pb::KaspadMessage, ConnectionInitializer, Peer, Router};
-use kaspa_core::{debug, info};
+use kaspa_core::{debug, info, warn};
 use kaspa_utils::peer_id::PeerId;
 use parking_lot::RwLock;
 use std::{collections::HashMap, sync::Arc};
@@ -30,15 +30,21 @@ impl Hub {
             while let Some(new_event) = hub_receiver.recv().await {
                 match new_event {
                     HubEvent::NewPeer(new_router) => {
-                        match initializer.initialize_connection(new_router.clone()).await {
-                            Ok(_) => {
-                                info!("P2P Connected to {}", new_router);
-                                self.peers.write().insert(new_router.identity(), new_router);
-                            }
-                            Err(err) => {
-                                // Ignoring the router
-                                new_router.close().await;
-                                debug!("P2P, flow initialization for router-id {:?} failed: {}", new_router.identity(), err);
+                        // If peer is outbound then connection initialization was already performed as part of the connect logic
+                        if new_router.is_outbound() {
+                            info!("P2P Connected to outgoing peer {}", new_router);
+                            self.peers.write().insert(new_router.identity(), new_router);
+                        } else {
+                            match initializer.initialize_connection(new_router.clone()).await {
+                                Ok(()) => {
+                                    info!("P2P Connected to incoming peer {}", new_router);
+                                    self.peers.write().insert(new_router.identity(), new_router);
+                                }
+                                Err(err) => {
+                                    // Ignoring the router
+                                    new_router.close().await;
+                                    warn!("P2P, handshake failed for inbound peer {}: {}", new_router, err);
+                                }
                             }
                         }
                     }

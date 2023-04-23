@@ -58,6 +58,7 @@ pub struct SendPingsFlow {
 
     // We use a weak reference to avoid this flow from holding the router during timer waiting if the connection was closed
     router: Weak<Router>,
+    peer: String,
     incoming_route: IncomingRoute,
 }
 
@@ -77,8 +78,9 @@ impl Flow for SendPingsFlow {
 }
 
 impl SendPingsFlow {
-    pub fn new(ctx: FlowContext, router: Weak<Router>, incoming_route: IncomingRoute) -> Self {
-        Self { _ctx: ctx, router, incoming_route }
+    pub fn new(ctx: FlowContext, router: Arc<Router>, incoming_route: IncomingRoute) -> Self {
+        let peer = router.to_string();
+        Self { _ctx: ctx, router: Arc::downgrade(&router), peer, incoming_route }
     }
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
@@ -100,6 +102,8 @@ impl SendPingsFlow {
             let pong = dequeue_with_timeout!(self.incoming_route, Payload::Pong)?;
             if pong.nonce != nonce {
                 return Err(ProtocolError::Other("nonce mismatch between ping and pong"));
+            } else {
+                debug!("Successful ping with peer {} (nonce: {})", self.peer, pong.nonce);
             }
         }
     }
