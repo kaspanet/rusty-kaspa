@@ -74,7 +74,7 @@ impl IbdFlow {
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
         while let Some(relay_block) = self.relay_receiver.recv().await {
-            if let Some(_guard) = self.ctx.try_set_ibd_running() {
+            if let Some(_guard) = self.ctx.try_set_ibd_running(self.router.identity()) {
                 info!("IBD started with peer {}", self.router);
 
                 match self.ibd(relay_block).await {
