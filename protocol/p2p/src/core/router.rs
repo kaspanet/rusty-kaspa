@@ -16,6 +16,25 @@ use uuid::Uuid;
 
 pub type IncomingRoute = MpscReceiver<KaspadMessage>;
 
+/// The policy for handling the case where route capacity is reached for a specific route type
+pub enum IncomingRouteOverflowPolicy {
+    /// Drop the incoming message
+    Drop,
+
+    /// Disconnect from this peer
+    Disconnect,
+}
+
+impl From<KaspadMessagePayloadType> for IncomingRouteOverflowPolicy {
+    fn from(msg_type: KaspadMessagePayloadType) -> Self {
+        match msg_type {
+            // Inv messages are unique in the sense that no harm is done if some of them are dropped
+            KaspadMessagePayloadType::InvTransactions | KaspadMessagePayloadType::InvRelayBlock => IncomingRouteOverflowPolicy::Drop,
+            _ => IncomingRouteOverflowPolicy::Disconnect,
+        }
+    }
+}
+
 #[derive(Debug)]
 struct RouterMutableState {
     /// Used on router init to signal the router receive loop to start listening
@@ -199,7 +218,15 @@ impl Router {
             match sender.try_send(msg) {
                 Ok(_) => Ok(()),
                 Err(TrySendError::Closed(_)) => Err(ProtocolError::ConnectionClosed),
-                Err(TrySendError::Full(_)) => Err(ProtocolError::IncomingRouteCapacityReached(msg_type, self.to_string())),
+                Err(TrySendError::Full(_)) => {
+                    let overflow_policy: IncomingRouteOverflowPolicy = msg_type.into();
+                    match overflow_policy {
+                        IncomingRouteOverflowPolicy::Drop => Ok(()),
+                        IncomingRouteOverflowPolicy::Disconnect => {
+                            Err(ProtocolError::IncomingRouteCapacityReached(msg_type, self.to_string()))
+                        }
+                    }
+                }
             }
         } else {
             Err(ProtocolError::NoRouteForMessageType(msg_type))
