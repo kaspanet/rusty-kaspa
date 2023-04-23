@@ -25,3 +25,4 @@ kaspa-utxoindex.workspace = true
 
 log.workspace = true
 async-trait.workspace = true
+tokio.workspace = true

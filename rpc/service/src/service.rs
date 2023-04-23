@@ -16,7 +16,7 @@ use kaspa_consensus_notify::{
     {connection::ConsensusChannelConnection, notification::Notification as ConsensusNotification},
 };
 use kaspa_consensusmanager::ConsensusManager;
-use kaspa_core::{debug, info, trace, version::version, warn};
+use kaspa_core::{core::Core, debug, info, signals::Shutdown, trace, version::version, warn};
 use kaspa_index_core::{
     connection::IndexChannelConnection, indexed_utxos::UtxoSetByScriptPublicKey, notification::Notification as IndexNotification,
     notifier::IndexNotifier,
@@ -69,6 +69,7 @@ pub struct RpcCoreService {
     consensus_converter: Arc<ConsensusConverter>,
     index_converter: Arc<IndexConverter>,
     protocol_converter: Arc<ProtocolConverter>,
+    core: Arc<Core>,
 }
 
 const RPC_CORE: &str = "rpc-core";
@@ -82,6 +83,7 @@ impl RpcCoreService {
         flow_context: Arc<FlowContext>,
         utxoindex: DynUtxoIndexApi,
         config: Arc<Config>,
+        core: Arc<Core>,
     ) -> Self {
         // Prepare consensus-notify objects
         let consensus_notify_channel = Channel::<ConsensusNotification>::default();
@@ -131,6 +133,7 @@ impl RpcCoreService {
             consensus_converter,
             index_converter,
             protocol_converter,
+            core,
         }
     }
 
@@ -569,6 +572,23 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         Ok(GetConnectedPeerInfoResponse::new(peer_info))
     }
 
+    async fn shutdown_call(&self, _: ShutdownRequest) -> RpcResult<ShutdownResponse> {
+        if !self.config.unsafe_rpc {
+            warn!("Unban RPC command called while node in safe RPC mode -- ignoring.");
+            return Err(RpcError::UnavailableInSafeMode);
+        }
+        warn!("ShutDown RPC called.");
+
+        // Wait a second before shutting down, to allow time to return the response to the caller
+        let core = self.core.clone();
+        tokio::spawn(async move {
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            core.shutdown();
+        });
+
+        Ok(ShutdownResponse {})
+    }
+
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // UNIMPLEMENTED METHODS
 
@@ -576,10 +596,6 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         &self,
         _request: ResolveFinalityConflictRequest,
     ) -> RpcResult<ResolveFinalityConflictResponse> {
-        Err(RpcError::NotImplemented)
-    }
-
-    async fn shutdown_call(&self, _request: ShutdownRequest) -> RpcResult<ShutdownResponse> {
         Err(RpcError::NotImplemented)
     }
 

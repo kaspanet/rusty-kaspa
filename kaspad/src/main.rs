@@ -250,6 +250,7 @@ pub fn main() {
         flow_context,
         index_service.as_ref().map(|x| x.utxoindex().unwrap()),
         config,
+        core.clone(),
     ));
     let grpc_server = Arc::new(GrpcServer::new(grpc_server_addr, rpc_core_server.service()));
 
