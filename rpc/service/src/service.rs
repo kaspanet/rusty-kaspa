@@ -574,7 +574,7 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
 
     async fn shutdown_call(&self, _: ShutdownRequest) -> RpcResult<ShutdownResponse> {
         if !self.config.unsafe_rpc {
-            warn!("Unban RPC command called while node in safe RPC mode -- ignoring.");
+            warn!("ShutDown RPC command called while node in safe RPC mode -- ignoring.");
             return Err(RpcError::UnavailableInSafeMode);
         }
         warn!("ShutDown RPC called.");
@@ -589,17 +589,21 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         Ok(ShutdownResponse {})
     }
 
-    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    // UNIMPLEMENTED METHODS
-
     async fn resolve_finality_conflict_call(
         &self,
         _request: ResolveFinalityConflictRequest,
     ) -> RpcResult<ResolveFinalityConflictResponse> {
+        if !self.config.unsafe_rpc {
+            warn!("ResolveFinalityConflict RPC command called while node in safe RPC mode -- ignoring.");
+            return Err(RpcError::UnavailableInSafeMode);
+        }
         Err(RpcError::NotImplemented)
     }
 
-    async fn get_process_metrics_call(&self, _request: GetProcessMetricsRequest) -> RpcResult<GetProcessMetricsResponse> {
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    // UNIMPLEMENTED METHODS
+
+    async fn get_process_metrics_call(&self, _: GetProcessMetricsRequest) -> RpcResult<GetProcessMetricsResponse> {
         Err(RpcError::NotImplemented)
     }
 
