@@ -281,7 +281,7 @@ impl VirtualStateProcessor {
         let mut accumulated_diff = prev_state.utxo_diff.clone().to_reversed();
 
         let (new_sink, virtual_parent_candidates) =
-            self.sink_search_algorithm(&virtual_read, &mut accumulated_diff, prev_sink, tips, finality_point);
+            self.sink_search_algorithm(&virtual_read, &mut accumulated_diff, prev_sink, tips, finality_point, pruning_point);
         let (virtual_parents, virtual_ghostdag_data) = self.pick_virtual_parents(new_sink, virtual_parent_candidates, pruning_point);
         assert_eq!(virtual_ghostdag_data.selected_parent, new_sink);
 
@@ -500,6 +500,7 @@ impl VirtualStateProcessor {
         prev_sink: Hash,
         tips: Vec<Hash>,
         finality_point: Hash,
+        pruning_point: Hash,
     ) -> (Hash, VecDeque<Hash>) {
         // TODO (short-term): implement a short-circuit execution path for the almost-always-expected case where max parent is selected
         // TODO: tests
@@ -526,7 +527,8 @@ impl VirtualStateProcessor {
                 } else {
                     debug!("Block candidate {} has invalid UTXO state and is ignored from Virtual chain.", candidate)
                 }
-            } else {
+            } else if finality_point != pruning_point {
+                // `finality_point == pruning_point` indicates we are at IBD start hence no warning required
                 warn!("Finality Violation Detected. Block {} violates finality and is ignored from Virtual chain.", candidate);
             }
             for parent in self.relations_service.get_parents(candidate).unwrap().iter().copied() {
