@@ -1,9 +1,8 @@
 use std::sync::Arc;
 
 use kaspa_p2p_flows::flow_context::FlowContext;
-use kaspa_p2p_lib::Peer;
+use kaspa_p2p_lib::{Peer, PeerKey};
 use kaspa_rpc_core::RpcPeerInfo;
-use kaspa_utils::peer_id::PeerId;
 
 pub struct ProtocolConverter {
     flow_context: Arc<FlowContext>,
@@ -14,13 +13,12 @@ impl ProtocolConverter {
         Self { flow_context }
     }
 
-    fn get_peer_info(&self, peer: &Peer, ibd_peer_id: &Option<PeerId>) -> RpcPeerInfo {
-        let id = peer.identity();
+    fn get_peer_info(&self, peer: &Peer, ibd_peer_key: &Option<PeerKey>) -> RpcPeerInfo {
         RpcPeerInfo {
-            is_ibd_peer: ibd_peer_id.is_some() && id == *ibd_peer_id.as_ref().unwrap(),
-            id,
+            id: peer.identity(),
             address: peer.net_address().into(),
             is_outbound: peer.is_outbound(),
+            is_ibd_peer: ibd_peer_key.is_some() && peer.key() == *ibd_peer_key.as_ref().unwrap(),
             last_ping_duration: 0,          // TODO
             time_offset: 0,                 // TODO
             user_agent: Default::default(), // TODO
@@ -30,7 +28,7 @@ impl ProtocolConverter {
     }
 
     pub fn get_peers_info(&self, peers: &[Peer]) -> Vec<RpcPeerInfo> {
-        let ibd_peer_id = self.flow_context.ibd_peer_id();
-        peers.iter().map(|x| self.get_peer_info(x, &ibd_peer_id)).collect()
+        let ibd_peer_key = self.flow_context.ibd_peer();
+        peers.iter().map(|x| self.get_peer_info(x, &ibd_peer_key)).collect()
     }
 }

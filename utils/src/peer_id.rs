@@ -3,18 +3,22 @@ use serde::{Deserialize, Serialize};
 use std::{fmt::Display, ops::Deref, str::FromStr};
 use uuid::Uuid;
 
-#[derive(PartialEq, Eq, Hash, Copy, Clone, Serialize, Deserialize, Debug)]
+#[derive(PartialEq, Eq, Hash, Copy, Clone, Serialize, Deserialize, Debug, Default)]
 #[repr(transparent)]
 pub struct PeerId(pub Uuid);
 
 impl PeerId {
-    pub fn new(ip: Uuid) -> Self {
-        Self(ip)
+    pub fn new(id: Uuid) -> Self {
+        Self(id)
+    }
+
+    pub fn from_slice(bytes: &[u8]) -> Result<Self, uuid::Error> {
+        Ok(Uuid::from_slice(bytes)?.into())
     }
 }
 impl From<Uuid> for PeerId {
-    fn from(ip: Uuid) -> Self {
-        Self(ip)
+    fn from(id: Uuid) -> Self {
+        Self(id)
     }
 }
 impl From<PeerId> for Uuid {

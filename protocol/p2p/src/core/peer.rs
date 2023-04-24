@@ -1,5 +1,5 @@
-use kaspa_utils::peer_id::PeerId;
-use std::net::SocketAddr;
+use kaspa_utils::{ip_address::IpAddress, peer_id::PeerId};
+use std::{fmt::Display, net::SocketAddr};
 
 use crate::Router;
 
@@ -25,6 +25,10 @@ impl Peer {
         self.net_address
     }
 
+    pub fn key(&self) -> PeerKey {
+        self.into()
+    }
+
     /// Indicates whether this connection is an outbound connection
     pub fn is_outbound(&self) -> bool {
         self.is_outbound
@@ -34,5 +38,29 @@ impl Peer {
 impl From<&Router> for Peer {
     fn from(router: &Router) -> Self {
         Self::new(router.identity(), router.net_address(), router.is_outbound())
+    }
+}
+
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
+pub struct PeerKey {
+    identity: PeerId,
+    ip: IpAddress,
+}
+
+impl PeerKey {
+    pub fn new(identity: PeerId, ip: IpAddress) -> Self {
+        Self { identity, ip }
+    }
+}
+
+impl From<&Peer> for PeerKey {
+    fn from(value: &Peer) -> Self {
+        Self::new(value.identity, value.net_address.ip().into())
+    }
+}
+
+impl Display for PeerKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}+{}", self.identity, self.ip)
     }
 }

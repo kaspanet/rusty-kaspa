@@ -28,7 +28,7 @@ use kaspa_p2p_lib::{
     common::ProtocolError,
     make_message,
     pb::{self, kaspad_message::Payload, InvRelayBlockMessage},
-    ConnectionInitializer, Hub, KaspadHandshake, Router,
+    ConnectionInitializer, Hub, KaspadHandshake, PeerKey, Router,
 };
 use kaspa_utils::peer_id::PeerId;
 use parking_lot::Mutex;
@@ -48,7 +48,7 @@ pub struct FlowContextInner {
     shared_block_requests: Arc<Mutex<HashSet<Hash>>>,
     transactions_spread: AsyncRwLock<TransactionsSpread>,
     shared_transaction_requests: Arc<Mutex<HashSet<TransactionId>>>,
-    ibd_peer_id: Arc<Mutex<Option<PeerId>>>,
+    ibd_peer_key: Arc<Mutex<Option<PeerKey>>>,
     pub address_manager: Arc<Mutex<AddressManager>>,
     connection_manager: Mutex<Option<Arc<ConnectionManager>>>,
     mining_manager: Arc<MiningManager>,
@@ -61,7 +61,7 @@ pub struct FlowContext {
 }
 
 pub struct IbdRunningGuard {
-    indicator: Arc<Mutex<Option<PeerId>>>,
+    indicator: Arc<Mutex<Option<PeerKey>>>,
 }
 
 impl Drop for IbdRunningGuard {
@@ -115,7 +115,7 @@ impl FlowContext {
                 shared_block_requests: Arc::new(Mutex::new(HashSet::new())),
                 transactions_spread: AsyncRwLock::new(TransactionsSpread::new(hub.clone())),
                 shared_transaction_requests: Arc::new(Mutex::new(HashSet::new())),
-                ibd_peer_id: Default::default(),
+                ibd_peer_key: Default::default(),
                 hub,
                 address_manager,
                 connection_manager: Mutex::new(None),
@@ -145,22 +145,22 @@ impl FlowContext {
         &self.mining_manager
     }
 
-    pub fn try_set_ibd_running(&self, peer_id: PeerId) -> Option<IbdRunningGuard> {
-        let mut ibd_peer_id = self.ibd_peer_id.lock();
-        if ibd_peer_id.is_none() {
-            ibd_peer_id.replace(peer_id);
-            Some(IbdRunningGuard { indicator: self.ibd_peer_id.clone() })
+    pub fn try_set_ibd_running(&self, peer_key: PeerKey) -> Option<IbdRunningGuard> {
+        let mut ibd_peer_ley = self.ibd_peer_key.lock();
+        if ibd_peer_ley.is_none() {
+            ibd_peer_ley.replace(peer_key);
+            Some(IbdRunningGuard { indicator: self.ibd_peer_key.clone() })
         } else {
             None
         }
     }
 
     pub fn is_ibd_running(&self) -> bool {
-        self.ibd_peer_id.lock().is_some()
+        self.ibd_peer_key.lock().is_some()
     }
 
-    pub fn ibd_peer_id(&self) -> Option<PeerId> {
-        *self.ibd_peer_id.lock()
+    pub fn ibd_peer(&self) -> Option<PeerKey> {
+        *self.ibd_peer_key.lock()
     }
 
     pub fn try_adding_block_request(&self, req: Hash) -> Option<RequestScope<Hash>> {
@@ -319,6 +319,12 @@ impl ConnectionInitializer for FlowContext {
 
         // Perform the handshake
         let peer_version_message = handshake.handshake(self_version_message).await?;
+        router.set_identity(PeerId::from_slice(&peer_version_message.id)?);
+
+        // Avoid duplicate connections
+        if self.hub.has_peer(router.key()) {
+            return Err(ProtocolError::PeerAlreadyExists(router.key()));
+        }
 
         if peer_version_message.network != network_name {
             return Err(ProtocolError::WrongNetwork(network_name, peer_version_message.network));

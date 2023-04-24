@@ -2,12 +2,13 @@ use crate::common::ProtocolError;
 use crate::core::hub::Hub;
 use crate::ConnectionError;
 use crate::{core::connection_handler::ConnectionHandler, Router};
-use kaspa_utils::peer_id::PeerId;
 use std::ops::Deref;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc::channel as mpsc_channel;
 use tokio::sync::oneshot::Sender as OneshotSender;
+
+use super::peer::PeerKey;
 
 /// The main entrypoint for external usage of the P2P library. An impl of this trait is expected on P2P server
 /// initialization and will be called on each new (in/out) P2P connection with a corresponding dedicated new router
@@ -66,8 +67,8 @@ impl Adaptor {
     }
 
     /// Connect to a new peer (no retries)
-    pub async fn connect_peer(&self, peer_address: String) -> Option<PeerId> {
-        self.connection_handler.connect_with_retry(peer_address, 1, Default::default()).await.map(|r| r.identity())
+    pub async fn connect_peer(&self, peer_address: String) -> Option<PeerKey> {
+        self.connection_handler.connect_with_retry(peer_address, 1, Default::default()).await.map(|r| r.key())
     }
 
     /// Connect to a new peer (with params controlling retry behavior)
@@ -76,8 +77,8 @@ impl Adaptor {
         peer_address: String,
         retry_attempts: u8,
         retry_interval: Duration,
-    ) -> Option<PeerId> {
-        self.connection_handler.connect_with_retry(peer_address, retry_attempts, retry_interval).await.map(|r| r.identity())
+    ) -> Option<PeerKey> {
+        self.connection_handler.connect_with_retry(peer_address, retry_attempts, retry_interval).await.map(|r| r.key())
     }
 
     /// Terminates all peers and cleans up any additional async resources

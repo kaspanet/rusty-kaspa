@@ -4,6 +4,7 @@ use crate::{common::ProtocolError, KaspadMessagePayloadType};
 use kaspa_core::{debug, error, info, trace};
 use kaspa_utils::peer_id::PeerId;
 use parking_lot::{Mutex, RwLock};
+use seqlock::SeqLock;
 use std::fmt::{Debug, Display};
 use std::net::SocketAddr;
 use std::{collections::HashMap, sync::Arc};
@@ -12,7 +13,8 @@ use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::mpsc::{channel as mpsc_channel, Receiver as MpscReceiver, Sender as MpscSender};
 use tokio::sync::oneshot::{channel as oneshot_channel, Sender as OneshotSender};
 use tonic::Streaming;
-use uuid::Uuid;
+
+use super::peer::PeerKey;
 
 pub type IncomingRoute = MpscReceiver<KaspadMessage>;
 
@@ -49,7 +51,7 @@ struct RouterMutableState {
 #[derive(Debug)]
 pub struct Router {
     /// Internal identity of this peer
-    identity: PeerId,
+    identity: SeqLock<PeerId>,
 
     /// The socket address of this peer
     net_address: SocketAddr,
@@ -76,6 +78,12 @@ impl Display for Router {
     }
 }
 
+impl From<&Router> for PeerKey {
+    fn from(value: &Router) -> Self {
+        Self::new(value.identity.read(), value.net_address.ip().into())
+    }
+}
+
 fn message_summary(msg: &KaspadMessage) -> impl Debug {
     // TODO (low priority): display a concise summary of the message. Printing full messages
     // overflows the logs and is hardly useful, hence we currently only return the type
@@ -94,7 +102,7 @@ impl Router {
         let (shutdown_sender, mut shutdown_receiver) = oneshot_channel();
 
         let router = Arc::new(Router {
-            identity: Uuid::new_v4().into(),
+            identity: Default::default(),
             net_address,
             is_outbound,
             routing_map: RwLock::new(HashMap::new()),
@@ -113,13 +121,13 @@ impl Router {
                     biased; // We use biased polling so that the shutdown signal is always checked first
 
                     _ = &mut shutdown_receiver => {
-                        debug!("P2P, Router receive loop - shutdown signal received, exiting router receive loop, router-id: {}", router.identity);
+                        debug!("P2P, Router receive loop - shutdown signal received, exiting router receive loop, router-id: {}", router.identity());
                         break;
                     }
 
                     res = incoming_stream.message() => match res {
                         Ok(Some(msg)) => {
-                            trace!("P2P msg: {:?}, router-id: {}, peer: {}", message_summary(&msg), router.identity, router);
+                            trace!("P2P msg: {:?}, router-id: {}, peer: {}", message_summary(&msg), router.identity(), router);
                             match router.route_to_flow(msg) {
                                 Ok(()) => {},
                                 Err(e) => {
@@ -140,7 +148,7 @@ impl Router {
                 }
             }
             router.close().await;
-            debug!("P2P, Router receive loop - exited, router-id: {}, router refs: {}", router.identity, Arc::strong_count(&router));
+            debug!("P2P, Router receive loop - exited, router-id: {}, router refs: {}", router.identity(), Arc::strong_count(&router));
         });
 
         router_clone
@@ -148,12 +156,20 @@ impl Router {
 
     /// Internal identity of this peer
     pub fn identity(&self) -> PeerId {
-        self.identity
+        self.identity.read()
+    }
+
+    pub fn set_identity(&self, identity: PeerId) {
+        *self.identity.lock_write() = identity;
     }
 
     /// The socket address of this peer
     pub fn net_address(&self) -> SocketAddr {
         self.net_address
+    }
+
+    pub fn key(&self) -> PeerKey {
+        self.into()
     }
 
     /// Indicates whether this connection is an outbound connection
@@ -174,7 +190,7 @@ impl Router {
         if let Some(signal) = op {
             let _ = signal.send(());
         } else {
-            debug!("P2P, Router start was called more than once, router-id: {}", self.identity)
+            debug!("P2P, Router start was called more than once, router-id: {}", self.identity())
         }
     }
 
@@ -195,11 +211,11 @@ impl Router {
             match map.insert(msg_type, sender.clone()) {
                 Some(_) => {
                     // Overrides an existing route -- panic
-                    error!("P2P, Router::subscribe overrides an existing value: {:?}, router-id: {}", msg_type, self.identity);
+                    error!("P2P, Router::subscribe overrides an existing value: {:?}, router-id: {}", msg_type, self.identity());
                     panic!("P2P, Tried to subscribe to an existing route");
                 }
                 None => {
-                    trace!("P2P, Router::subscribe - msg_type: {:?} route is registered, router-id:{:?}", msg_type, self.identity);
+                    trace!("P2P, Router::subscribe - msg_type: {:?} route is registered, router-id:{:?}", msg_type, self.identity());
                 }
             }
         }
@@ -260,7 +276,7 @@ impl Router {
                 let _ = signal.send(());
             } else {
                 // This means the router was already closed
-                trace!("P2P, Router close was called more than once, router-id: {}", self.identity);
+                trace!("P2P, Router close was called more than once, router-id: {}", self.identity());
                 return false;
             }
         }
@@ -269,7 +285,7 @@ impl Router {
         self.routing_map.write().clear();
 
         // Send a close notification to the central Hub
-        self.hub_sender.send(HubEvent::PeerClosing(self.identity)).await.expect("hub receiver should never drop before senders");
+        self.hub_sender.send(HubEvent::PeerClosing(self.key())).await.expect("hub receiver should never drop before senders");
 
         true
     }

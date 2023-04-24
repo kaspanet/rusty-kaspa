@@ -44,6 +44,7 @@ tokio = { version = "1.21.2", features = [
 tokio-stream = { version = "0.1.11", features = ["net"] }
 tonic = { version = "0.9.1", features = ["tls", "gzip"] }
 h2 = "0.3"
+seqlock = "0.2"
 
 [build-dependencies]
 tonic-build = { version = "0.9.1", features = ["prost"] }

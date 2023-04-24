@@ -225,7 +225,7 @@ impl ConnectionManager {
         let mut futures = Vec::with_capacity(active_inbound_len - self.inbound_limit);
         for peer in active_inbound.choose_multiple(&mut thread_rng(), active_inbound_len - self.inbound_limit) {
             debug!("Disconnecting from {} because we're above the inbound limit", peer.net_address());
-            futures.push(self.p2p_adaptor.terminate(peer.identity()));
+            futures.push(self.p2p_adaptor.terminate(peer.key()));
         }
         join_all(futures).await;
     }
@@ -267,7 +267,7 @@ impl ConnectionManager {
         }
         for peer in self.p2p_adaptor.active_peers() {
             if peer.net_address().ip() == ip {
-                self.p2p_adaptor.terminate(peer.identity()).await;
+                self.p2p_adaptor.terminate(peer.key()).await;
             }
         }
         self.address_manager.lock().ban(ip.into());
