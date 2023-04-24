@@ -16,7 +16,7 @@ pub(crate) enum HubEvent {
 #[derive(Debug, Clone)]
 pub struct Hub {
     /// Map of currently active peers
-    /// 
+    ///
     /// Note: the map key holds the node id and IP to prevent node impersonating.
     pub(crate) peers: Arc<RwLock<HashMap<PeerKey, Arc<Router>>>>,
 }
