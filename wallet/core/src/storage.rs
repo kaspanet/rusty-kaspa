@@ -1,7 +1,6 @@
 use crate::result::Result;
 use crate::secret::Secret;
 use crate::{encryption::sha256_hash, imports::*};
-use cfg_if::cfg_if;
 use faster_hex::{hex_decode, hex_string};
 use serde::Serializer;
 use std::path::PathBuf;
@@ -12,7 +11,9 @@ use zeroize::Zeroize;
 
 pub use crate::encryption::{Decrypted, Encryptable, Encrypted};
 
-const DEFAULT_PATH: &str = "~/.kaspa/wallet.kaspa";
+pub const DEFAULT_WALLET_FOLDER: &str = "~/.kaspa/";
+pub const DEFAULT_WALLET_NAME: &str = "kaspa";
+pub const DEFAULT_WALLET_FILE: &str = "~/.kaspa/kaspa.wallet";
 
 pub use kaspa_wallet_core::account::AccountKind;
 
@@ -62,8 +63,8 @@ impl Zeroize for KeyDataId {
     }
 }
 
-type PrvKeyDataId = KeyDataId;
-type PubKeyDataId = KeyDataId;
+pub type PrvKeyDataId = KeyDataId;
+pub type PubKeyDataId = KeyDataId;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -99,6 +100,7 @@ pub struct PrvKeyData {
 impl Zeroize for PrvKeyData {
     fn zeroize(&mut self) {
         self.id.zeroize();
+        // self.payload.zeroize();
         // self.mnemonics.zeroize();
         // TODO
     }
@@ -115,6 +117,14 @@ impl Drop for PrvKeyData {
 impl PrvKeyData {
     pub fn new(id: PrvKeyDataId, payload: Encryptable<KeyDataPayload>) -> Self {
         Self { id, payload }
+    }
+
+    pub fn new_from_mnemonic(mnemonic: &str) -> Self {
+        // TODO - check that mnemonic is valid
+        Self {
+            id: PrvKeyDataId::new_from_slice(&sha256_hash(mnemonic.as_bytes()).unwrap().as_ref()[0..8]),
+            payload: Encryptable::Plain(KeyDataPayload::new(mnemonic.to_string())),
+        }
     }
 }
 
@@ -149,13 +159,13 @@ pub struct Account {
     pub name: String,
     pub title: String,
     pub account_kind: AccountKind,
+    pub account_index: u32,
     pub is_visible: bool,
     pub pub_key_data: PubKeyData,
     pub prv_key_data_id: Option<PrvKeyDataId>,
     pub minimum_signatures: u16,
     pub cosigner_index: u16,
     pub ecdsa: bool,
-    pub account_index: u32,
 }
 
 impl Account {
@@ -163,10 +173,13 @@ impl Account {
         name: String,
         title: String,
         account_kind: AccountKind,
+        account_index: u32,
         is_visible: bool,
         pub_key_data: PubKeyData,
         prv_key_data_id: Option<PrvKeyDataId>,
-        account_index: u32,
+        ecdsa: bool,
+        minimum_signatures: u16,
+        cosigner_index: u16,
     ) -> Self {
         let id = pub_key_data.id.to_hex();
         Self {
@@ -174,14 +187,21 @@ impl Account {
             name,
             title,
             account_kind,
+            account_index,
             pub_key_data,
             prv_key_data_id,
             is_visible,
-            ecdsa: false,
-            minimum_signatures: 1,
-            cosigner_index: 0,
-            account_index,
+            ecdsa,
+            minimum_signatures,
+            cosigner_index,
         }
+    }
+}
+
+impl From<crate::account::Account> for Account {
+    fn from(account: crate::account::Account) -> Self {
+        let inner = account.inner();
+        inner.stored.clone()
     }
 }
 
@@ -212,7 +232,7 @@ impl From<Account> for Metadata {
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Payload {
-    pub keydata: Vec<PrvKeyData>,
+    pub prv_key_data: Vec<PrvKeyData>,
     pub accounts: Vec<Account>,
 }
 
@@ -220,7 +240,7 @@ impl Payload {
     pub fn add_keydata(&mut self, mnemonic: String, password: Secret) -> Result<PrvKeyData> {
         let key_data_payload = KeyDataPayload::new(mnemonic);
         let prv_key_data = PrvKeyData::new(key_data_payload.id(), Encryptable::Plain(key_data_payload).into_encrypted(password)?);
-        self.keydata.push(prv_key_data.clone());
+        self.prv_key_data.push(prv_key_data.clone());
 
         Ok(prv_key_data)
     }
@@ -228,7 +248,7 @@ impl Payload {
 
 impl Zeroize for Payload {
     fn zeroize(&mut self) {
-        self.keydata.iter_mut().for_each(Zeroize::zeroize);
+        self.prv_key_data.iter_mut().for_each(Zeroize::zeroize);
         // TODO
         // self.keydata.zeroize();
         // self.accounts.zeroize();
@@ -261,16 +281,30 @@ impl Wallet {
     pub fn payload(&self, secret: Secret) -> Result<Decrypted<Payload>> {
         self.payload.decrypt::<Payload>(secret)
     }
-}
 
-#[wasm_bindgen(module = "fs")]
-extern "C" {
-    #[wasm_bindgen(js_name = existsSync)]
-    pub fn exists_sync(file: &str) -> bool;
-    #[wasm_bindgen(js_name = writeFileSync)]
-    pub fn write_file_sync(file: &str, data: &str, options: Object);
-    #[wasm_bindgen(js_name = readFileSync)]
-    pub fn read_file_sync(file: &str, options: Object) -> JsValue;
+    pub async fn try_load(store: &Store) -> Result<Wallet> {
+        if fs::exists(store.filename()).await? {
+            let wallet = fs::read_json::<Wallet>(store.filename()).await?;
+            Ok(wallet)
+        } else {
+            Err(Error::NoWalletInStorage)
+        }
+    }
+
+    pub async fn try_store(store: &Store, secret: Secret, settings: WalletSettings, payload: Payload) -> Result<()> {
+        let wallet = Wallet::try_new(secret, settings, payload)?;
+        store.ensure_dir().await?;
+        fs::write_json(store.filename(), &wallet).await?;
+        Ok(())
+    }
+
+    /// Obtain [`PrvKeyData`] by [`PrvKeyDataId`]
+    pub async fn try_get_prv_key_data(&self, secret: Secret, prv_key_data_id: &PrvKeyDataId) -> Result<Option<PrvKeyData>> {
+        let payload = self.payload.decrypt::<Payload>(secret)?;
+        let idx = payload.as_ref().prv_key_data.iter().position(|keydata| &keydata.id == prv_key_data_id);
+        let keydata = idx.map(|idx| payload.as_ref().prv_key_data.get(idx).unwrap().clone());
+        Ok(keydata)
+    }
 }
 
 /// Wallet file storage interface
@@ -289,21 +323,12 @@ impl Store {
 }
 
 impl Store {
-    pub fn new(filename: Option<&str>) -> Result<Store> {
-        let filename = {
-            #[allow(clippy::let_and_return)]
-            let filename = fs::resolve_path(filename.unwrap_or(DEFAULT_PATH));
-            cfg_if! {
-                if #[cfg(any(target_os = "linux", target_os = "macos", target_family = "unix", target_os = "windows"))] {
-                    filename
-                } else if #[cfg(target_arch = "wasm32")] {
-                    if runtime::is_node() || runtime::is_nw() {
-                        filename
-                    } else {
-                        PathBuf::from(filename.file_name().ok_or(Error::InvalidFilename(format!("{}",filename.display())))?)
-                    }
-                }
-            }
+    pub fn new(filename: &str) -> Result<Store> {
+        let filename = fs::resolve_path(filename);
+        let filename = if runtime::is_web() {
+            PathBuf::from(filename.file_name().ok_or(Error::InvalidFilename(format!("{}", filename.display())))?)
+        } else {
+            filename
         };
 
         Ok(Store { filename })
@@ -313,60 +338,6 @@ impl Store {
         &self.filename
     }
 
-    pub async fn try_load(&self) -> Result<Wallet> {
-        if fs::exists(self.filename()).await? {
-            let wallet = fs::read_json::<Wallet>(self.filename()).await?;
-            Ok(wallet)
-        } else {
-            Err(Error::NoWalletInStorage)
-        }
-    }
-
-    pub async fn try_store(&self, secret: Secret, settings: WalletSettings, payload: Payload) -> Result<()> {
-        let wallet = Wallet::try_new(secret, settings, payload)?;
-        self.ensure_dir().await?;
-        fs::write_json(self.filename(), &wallet).await?;
-        Ok(())
-    }
-
-    // pub async fn try_store(&self, secret: Secret, wallet: Wallet) -> Result<()> {
-    //     // let json = serde_json::to_value(wallet.payload).map_err(|err| format!("unable to serialize wallet data: {err}"))?.to_string();
-    //     // let data = encrypt(json.as_bytes(), secret)?;
-    //     let data =
-    //         serde_json::to_value(Wallet::new(secret, wallet)?).map_err(|err| format!("unable to serialize wallet data: {err}"))?;
-    //     self.write(data.to_string().as_bytes()).await.map_err(|err| format!("unable to read wallet file: {err}"))?;
-
-    //     Ok(())
-    // }
-
-    // /// Obtain [`PrvKeyData`] by [`PrvKeyDataId`]
-    // pub async fn try_get_prv_key_data(&self, secret: Secret, prv_key_data_id: &PrvKeyDataId) -> Result<Option<PrvKeyData>> {
-    //     let wallet = self.try_load(secret).await?;
-    //     let idx = wallet.payload.prv_key_data.iter().position(|keydata| &keydata.id == prv_key_data_id);
-    //     let keydata = idx.map(|idx| wallet.payload.prv_key_data.get(idx).unwrap().clone());
-    //     Ok(keydata)
-    // }
-
-    // /// Obtain [`PubKeyData`] by [`PubKeyDataId`]
-    // pub async fn try_get_pub_key_data(&self, secret: Secret, pub_key_data_id: &PubKeyDataId) -> Result<Option<PubKeyData>> {
-    //     let wallet = self.try_load(secret).await?;
-    //     let idx = wallet.open_pub_key_data.iter().position(|keydata| &keydata.id == pub_key_data_id);
-    //     let keydata = idx.map(|idx| wallet.open_pub_key_data.get(idx).unwrap().clone());
-    //     Ok(keydata)
-    // }
-
-    // /// Obtain an array of accounts
-    // pub async fn get_accounts(&self, secret: Secret) -> Result<Vec<Account>> {
-    //     let wallet = self.try_load().await?;
-    //     Ok(wallet.accounts)
-    // }
-
-    pub async fn wallet(&self) -> Result<Wallet> {
-        let wallet = self.try_load().await?;
-        Ok(wallet)
-    }
-
-    // <<<<<<< HEAD
     pub async fn purge(&self) -> Result<()> {
         workflow_store::fs::remove(self.filename()).await?;
         Ok(())
@@ -400,7 +371,7 @@ mod tests {
         // loading of account references and a wallet instance and confirms
         // that the serialized data is as expected.
 
-        let store = Store::new(Some("test-wallet-store"))?;
+        let store = Store::new("test-wallet-store")?;
 
         let mut payload = Payload::default();
 
@@ -420,16 +391,19 @@ mod tests {
         let pub_key_data2 = PubKeyData::new(vec!["xyz".to_string()]);
         println!("keydata1 id: {:?}", prv_key_data1.id);
         //assert_eq!(prv_key_data.id.0, [79, 36, 5, 159, 220, 113, 179, 22]);
-        payload.keydata.push(prv_key_data1.clone());
-        payload.keydata.push(prv_key_data2.clone());
+        payload.prv_key_data.push(prv_key_data1.clone());
+        payload.prv_key_data.push(prv_key_data2.clone());
 
         let account1 = Account::new(
             "Wallet-A".to_string(),
             "Wallet A".to_string(),
             AccountKind::Bip32,
+            0,
             true,
             pub_key_data1.clone(),
             Some(prv_key_data1.id),
+            false,
+            1,
             0,
         );
         let account_id = account1.id.clone();
@@ -439,18 +413,21 @@ mod tests {
             "Wallet-B".to_string(),
             "Wallet B".to_string(),
             AccountKind::Bip32,
+            0,
             true,
             pub_key_data2.clone(),
             Some(prv_key_data2.id),
+            false,
+            1,
             0,
         );
         payload.accounts.push(account2);
 
         let payload_json = serde_json::to_string(&payload).unwrap();
         let settings = WalletSettings::new(account_id);
-        store.try_store(global_password.clone(), settings, payload).await?;
+        Wallet::try_store(&store, global_password.clone(), settings, payload).await?;
 
-        let w2 = store.try_load().await?;
+        let w2 = Wallet::try_load(&store).await?;
         let w2payload = w2.payload.decrypt::<Payload>(global_password.clone()).unwrap();
         println!("\n---\nwallet.metadata (plain): {:#?}\n\n", w2.metadata);
         // let w2payload_json = serde_json::to_string(w2payload.as_ref()).unwrap();
@@ -460,14 +437,14 @@ mod tests {
 
         assert_eq!(payload_json, serde_json::to_string(w2payload.as_ref())?);
 
-        let w2keydata1 = w2payload.as_ref().keydata.get(0).unwrap();
+        let w2keydata1 = w2payload.as_ref().prv_key_data.get(0).unwrap();
         let w2keydata1_payload = w2keydata1.payload.decrypt(None).unwrap();
         let first_mnemonic = &w2keydata1_payload.as_ref().mnemonic;
         // println!("first mnemonic (plain): {}", hex_string(first_mnemonic.as_ref()));
         println!("first mnemonic (plain): {first_mnemonic}");
         assert_eq!(&mnemonic1, first_mnemonic);
 
-        let w2keydata2 = w2payload.as_ref().keydata.get(1).unwrap();
+        let w2keydata2 = w2payload.as_ref().prv_key_data.get(1).unwrap();
         let w2keydata2_payload = w2keydata2.payload.decrypt(Some(password.clone())).unwrap();
         let second_mnemonic = &w2keydata2_payload.as_ref().mnemonic;
         println!("second mnemonic (encrypted): {second_mnemonic}");

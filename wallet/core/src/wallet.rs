@@ -1,8 +1,8 @@
 use crate::imports::*;
 use crate::result::Result;
 use crate::secret::Secret;
-use crate::storage;
-use crate::{account::Account, accounts::*};
+use crate::storage::{self, PrvKeyData};
+use crate::{account::Account, accounts::gen0::import::*, accounts::gen1::import::*, accounts::*};
 use futures::{select, FutureExt};
 use kaspa_bip32::Mnemonic;
 use kaspa_notify::{
@@ -118,10 +118,9 @@ impl Wallet {
 
     // pub fn load_accounts(&self, stored_accounts: Vec<storage::Account>) => Result<()> {
     pub async fn load_accounts(&self, secret: Secret) -> Result<()> {
-        let store = storage::Store::new(None)?;
-        let wallet = store.wallet().await?;
+        let store = storage::Store::new(crate::storage::DEFAULT_WALLET_FILE)?;
+        let wallet = storage::Wallet::try_load(&store).await?;
         let payload = wallet.payload.decrypt::<storage::Payload>(secret)?;
-        // let stored_accounts = store.get_accounts(secret).await?;
 
         let accounts = payload
             .as_ref()
@@ -129,7 +128,7 @@ impl Wallet {
             .iter()
             .map(|stored| {
                 let rpc_api: Arc<crate::DynRpcApi> = self.rpc.clone();
-                Arc::new(Account::new(rpc_api, stored))
+                Arc::new(Account::new_from_storage(rpc_api, stored))
             })
             .collect();
         *self.inner.accounts.lock()? = accounts;
@@ -199,7 +198,7 @@ impl Wallet {
     }
 
     pub async fn create(self: &Arc<Wallet>, args: &AccountCreateArgs) -> Result<PathBuf> {
-        let store = Store::new(None)?;
+        let store = Store::new(storage::DEFAULT_WALLET_FILE)?;
         if !args.override_wallet && store.exists().await? {
             return Err(Error::WalletAlreadyExists);
         }
@@ -216,9 +215,12 @@ impl Wallet {
             args.title.replace(' ', "-").to_lowercase(),
             args.title.clone(),
             args.account_kind,
+            0,
             false,
             pub_key_data,
             Some(prv_key_data.id),
+            false,
+            1,
             0,
         );
 
@@ -226,7 +228,7 @@ impl Wallet {
         payload.accounts.push(account);
 
         let settings = WalletSettings::new(account_id);
-        store.try_store(args.wallet_password.clone(), settings, payload).await?;
+        storage::Wallet::try_store(&store, args.wallet_password.clone(), settings, payload).await?;
 
         Ok(store.filename().clone())
     }
@@ -239,10 +241,6 @@ impl Wallet {
         Ok(())
     }
 
-    // fn account(self: &Arc<Self>) -> Result<Arc<dyn WalletAccountTrait>> {
-    //     Ok(self.inner.lock().unwrap().accounts.get(0).unwrap().clone())
-    // }
-
     pub async fn select(&self, account: Option<Arc<Account>>) -> Result<()> {
         *self.inner.selected_account.lock().unwrap() = account;
         Ok(())
@@ -250,12 +248,6 @@ impl Wallet {
 
     pub async fn account(self: &Arc<Self>) -> Result<Arc<Account>> {
         self.inner.selected_account.lock().unwrap().clone().ok_or_else(|| Error::AccountSelection)
-        // let account = self.inner.selected_account.lock().unwrap().clone();
-        // if let Some(account) = account {
-        //     account
-        // } else {
-        // }
-        // Ok(self.inner.accounts.lock().unwrap().get(0).unwrap().clone())
     }
 
     pub async fn accounts(&self) -> Vec<Arc<Account>> {
@@ -301,6 +293,50 @@ impl Wallet {
     }
 
     pub async fn sweep(self: &Arc<Wallet>) -> Result<()> {
+        Ok(())
+    }
+
+    pub async fn import_gen0_keydata(self: &Arc<Wallet>, import_secret: Secret, wallet_secret: Secret) -> Result<()> {
+        let keydata = load_v0_keydata(&import_secret).await?;
+
+        let store = storage::Store::new(storage::DEFAULT_WALLET_FILE)?;
+        let wallet = storage::Wallet::try_load(&store).await?;
+        let mut payload = wallet.payload.decrypt::<Payload>(wallet_secret).unwrap();
+        let payload = payload.as_mut();
+
+        let prv_key_data = PrvKeyData::new_from_mnemonic(&keydata.mnemonic);
+
+        // TODO: integrate address generation
+        // let derivation_path = gen1::WalletAccount::build_derivate_path(false, 0, Some(kaspa_bip32::AddressType::Receive))?;
+        // let xkey = ExtendedPrivateKey::<SecretKey>::from_str(xprv)?.derive_path(derivation_path)?;
+
+        let stored_account = storage::Account::new(
+            "imported-wallet".to_string(), // name
+            "Imported Wallet".to_string(), // title
+            storage::AccountKind::V0,      // kind
+            0,                             // account index
+            false,                         // public visibility
+            PubKeyData::new(vec![]),       // TODO - pub keydata
+            Some(prv_key_data.id),         // privkey id
+            false,                         // ecdsa
+            1,                             // min signatures
+            0,                             // cosigner_index
+        );
+
+        let runtime_account = Account::new_from_storage(self.rpc(), &stored_account);
+
+        payload.prv_key_data.push(prv_key_data);
+        // TODO - prevent multiple addition of the same private key
+        payload.accounts.push(stored_account);
+
+        self.inner.accounts.lock().unwrap().push(Arc::new(runtime_account));
+
+        Ok(())
+    }
+
+    pub async fn import_gen1_keydata(self: &Arc<Wallet>, secret: Secret) -> Result<()> {
+        let _keydata = load_v1_keydata(&secret).await?;
+
         Ok(())
     }
 
@@ -466,7 +502,7 @@ mod test {
 
         let mtx = MutableTransaction::new(&tx, &(*entries).clone().into());
 
-        let derivation_path = WalletAccount::build_derivate_path(false, 0, Some(kaspa_bip32::AddressType::Receive))?;
+        let derivation_path = gen1::WalletAccount::build_derivate_path(false, 0, Some(kaspa_bip32::AddressType::Receive))?;
 
         let xprv = "kprv5y2qurMHCsXYrNfU3GCihuwG3vMqFji7PZXajMEqyBkNh9UZUJgoHYBLTKu1eM4MvUtomcXPQ3Sw9HZ5ebbM4byoUciHo1zrPJBQfqpLorQ";
         //let (xkey, _attrs) = WalletAccount::create_extended_key_from_xprv(xprv, false, 0).await?;

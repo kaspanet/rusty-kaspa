@@ -1,5 +1,5 @@
 use crate::accounts::account::WalletAccountTrait;
-use crate::accounts::WalletAccount;
+use crate::accounts::gen1::WalletAccount;
 use crate::Result;
 use kaspa_bip32::{ExtendedPrivateKey, SecretKey};
 use serde_wasm_bindgen::to_value;

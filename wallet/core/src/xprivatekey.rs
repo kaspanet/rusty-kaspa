@@ -1,4 +1,4 @@
-use crate::accounts::WalletAccount;
+use crate::accounts::gen1::WalletAccount;
 use crate::keypair::PrivateKey;
 use crate::Result;
 use kaspa_bip32::{ChildNumber, ExtendedPrivateKey, SecretKey};

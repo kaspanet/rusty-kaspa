@@ -1,7 +1,6 @@
-// use crate::accounts::{WalletAccountTrait, WalletAccountV0};
 use crate::imports::*;
 use crate::result::Result;
-use crate::storage;
+use crate::storage::{self, PrvKeyDataId, PubKeyData};
 use crate::utxo::UtxoSet;
 use crate::DynRpcApi;
 use async_trait::async_trait;
@@ -30,10 +29,8 @@ pub trait AccountT {
 }
 
 pub struct Inner {
-    listener_id: ListenerId,
-    name: String,
-    #[allow(dead_code)] //TODO: remove me
-    title: String,
+    pub listener_id: ListenerId,
+    pub stored: storage::Account,
 }
 
 /// Wallet `Account` data structure. An account is typically a single
@@ -49,26 +46,65 @@ pub struct Account {
     is_connected: AtomicBool,
     #[wasm_bindgen(js_name = "accountKind")]
     pub account_kind: AccountKind,
-    // index of the private key in the wallet store
-    //#[allow(dead_code)] //TODO: remove me
-    // #[wasm_bindgen(js_name = "privateKeyIndex")]
-    //keydata_id: storage::KeydataId,
+    pub account_index: u32,
+    #[wasm_bindgen(skip)]
+    pub prv_key_data_id: Option<PrvKeyDataId>,
+    pub ecdsa: bool,
 }
 
 impl Account {
-    // pub fn new(rpc_api : Arc<DynRpcApi>, config : AccountConfig) -> Self {
-    pub fn new(rpc_api: Arc<DynRpcApi>, stored: &storage::Account) -> Self {
-        // let generator = match config.kind {
-        //     AccountKind::V0 => WalletAccountV0,//Arc::new(V0Account::new(rpc_api.clone())),
-        //     AccountKind::Bip32 => Arc::new(Bip32Account::new(rpc_api.clone())),
-        //     AccountKind::MultiSig => Arc::new(MultiSigAccount::new(rpc_api.clone())),
-        // };
+    pub fn new_with_args(
+        rpc_api: Arc<DynRpcApi>,
+        name: &str,
+        title: &str,
+        account_kind: AccountKind,
+        account_index: u32,
+        prv_key_data_id: Option<PrvKeyDataId>,
+        pub_key_data: PubKeyData,
+        ecdsa: bool,
+    ) -> Self {
         let channel = Channel::<Notification>::unbounded();
         let listener_id = rpc_api.register_new_listener(ChannelConnection::new(channel.sender));
 
         // rpc_api.register_new_listener();
 
-        let inner = Inner { listener_id, name: stored.name.clone(), title: stored.title.clone() };
+        let stored = storage::Account::new(
+            name.to_string(),
+            title.to_string(),
+            account_kind,
+            account_index,
+            false,
+            pub_key_data,
+            prv_key_data_id,
+            ecdsa,
+            1,
+            0,
+        );
+
+        let inner = Inner { listener_id, stored };
+
+        Account {
+            utxos: UtxoSet::default(),
+            balance: AtomicU64::new(0),
+            // _generator: Arc::new(config.clone()),
+            rpc_api: rpc_api.clone(),
+            is_connected: AtomicBool::new(false),
+            // -
+            inner: Arc::new(Mutex::new(inner)),
+            // -
+            account_kind,
+            account_index,
+            prv_key_data_id,
+            ecdsa: false,
+        }
+    }
+    pub fn new_from_storage(rpc_api: Arc<DynRpcApi>, stored: &storage::Account) -> Self {
+        let channel = Channel::<Notification>::unbounded();
+        let listener_id = rpc_api.register_new_listener(ChannelConnection::new(channel.sender));
+
+        // rpc_api.register_new_listener();
+
+        let inner = Inner { listener_id, stored: stored.clone() };
 
         Account {
             utxos: UtxoSet::default(),
@@ -78,7 +114,9 @@ impl Account {
             is_connected: AtomicBool::new(false),
             inner: Arc::new(Mutex::new(inner)),
             account_kind: stored.account_kind,
-            //keydata_id: stored.keydata_id,
+            account_index: stored.account_index,
+            prv_key_data_id: stored.prv_key_data_id,
+            ecdsa: stored.ecdsa,
         }
     }
 
@@ -101,13 +139,17 @@ impl Account {
     }
 
     pub fn name(&self) -> String {
-        self.inner.lock().unwrap().name.clone()
+        self.inner.lock().unwrap().stored.name.clone()
     }
 
     pub fn get_ls_string(&self) -> String {
         let name = self.name();
         let balance = self.balance.load(std::sync::atomic::Ordering::SeqCst);
         format!("{balance} - {name}")
+    }
+
+    pub fn inner(&self) -> MutexGuard<Inner> {
+        self.inner.lock().unwrap()
     }
 }
 

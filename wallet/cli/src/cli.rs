@@ -3,13 +3,16 @@ use crate::helpers::*;
 use crate::result::Result;
 use async_trait::async_trait;
 use futures::*;
+use kaspa_wallet_core::accounts::gen0::import::*;
 use kaspa_wallet_core::storage::AccountKind;
 use kaspa_wallet_core::{secret::Secret, wallet::AccountCreateArgs, Wallet};
 use std::sync::{Arc, Mutex};
 use workflow_core::channel::*;
+use workflow_core::runtime;
 use workflow_log::*;
 use workflow_terminal::Terminal;
 pub use workflow_terminal::{parse, Cli, Options as TerminalOptions, Result as TerminalResult, TargetElement as TerminalTarget};
+
 struct WalletCli {
     term: Arc<Mutex<Option<Arc<Terminal>>>>,
     wallet: Arc<Wallet>,
@@ -155,8 +158,22 @@ impl WalletCli {
                         log_info!("Mnemonic: {:?}", mnemonic);
                     }
                     "kaspanet" => {
-                        // Wallet::import_kaspanet(&term).await?;
-                        // load_v0_keydata()
+                        if exists_v0_keydata().await? {
+                            let import_secret = Secret::new(
+                                term.ask(true, "Enter the password for the wallet you are importing:")
+                                    .await?
+                                    .trim()
+                                    .as_bytes()
+                                    .to_vec(),
+                            );
+                            let wallet_secret =
+                                Secret::new(term.ask(true, "Enter wallet password:").await?.trim().as_bytes().to_vec());
+                            self.wallet.import_gen0_keydata(import_secret, wallet_secret).await?;
+                        } else if runtime::is_web() {
+                            return Err("'kaspanet' web wallet storage not found at this domain name".into());
+                        } else {
+                            return Err("KDX/kaspanet keydata file not found".into());
+                        }
                     }
                     "kaspa-wallet" => {}
                     _ => {

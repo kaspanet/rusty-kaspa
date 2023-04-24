@@ -2367,6 +2367,7 @@ name = "kaspa-wallet-cli"
 version = "0.0.3"
 dependencies = [
  "async-trait",
+ "cfg-if 1.0.0",
  "convert_case 0.5.0",
  "futures",
  "kaspa-wallet-core",

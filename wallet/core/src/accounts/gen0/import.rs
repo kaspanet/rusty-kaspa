@@ -13,11 +13,14 @@ use md5::Md5;
 use pbkdf2::{hmac::Hmac, pbkdf2};
 use serde::{Deserialize, Serialize};
 use sha1::Sha1;
+use std::path::PathBuf;
 #[allow(unused_imports)]
 use workflow_core::env;
 use workflow_core::runtime;
 use workflow_store::fs;
+use workflow_store::fs::exists_with_options;
 use workflow_store::fs::read_json_with_options;
+use workflow_store::fs::Options;
 use zeroize::Zeroize;
 
 type Aes256CfbDec = cfb_mode::Decryptor<aes::Aes256>;
@@ -39,7 +42,7 @@ impl Drop for PrivateKeyDataImplV0 {
 #[derive(Debug)]
 pub struct PrivateKeyDataV0 {
     key: String, // TODO - use XPrv
-    mnemonic: String,
+    pub mnemonic: String,
 }
 
 impl Drop for PrivateKeyDataV0 {
@@ -121,16 +124,17 @@ struct Wallet {
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct Envelope {
     #[serde(rename = "type")]
-    kind: Option<String>,
-    encryption: Option<String>,
-    default: Option<String>,
-    generator: Option<String>,
-    wallet: Wallet,
+    pub kind: Option<String>,
+    pub encryption: Option<String>,
+    pub default: Option<String>,
+    pub generator: Option<String>,
+    pub wallet: Wallet,
 }
 
-async fn load_v0_keydata(phrase: &Secret) -> Result<PrivateKeyDataV0> {
+fn v0_keydata_location() -> Result<(PathBuf, Options)> {
     let filename = if runtime::is_windows() {
         let appdata = env::var("APPDATA")?;
         fs::resolve_path(&format!("{appdata}/Kaspa/kaspa.kpk"))
@@ -141,7 +145,24 @@ async fn load_v0_keydata(phrase: &Secret) -> Result<PrivateKeyDataV0> {
     };
 
     let options = workflow_store::fs::Options::with_local_storage_key("kaspa-wallet");
-    let wallet = read_json_with_options::<Wallet>(&filename, options).await?;
+
+    Ok((filename, options))
+}
+
+pub async fn exists_v0_keydata() -> Result<bool> {
+    let (filename, options) = v0_keydata_location()?;
+    Ok(exists_with_options(&filename, options).await?)
+}
+
+pub async fn load_v0_keydata(phrase: &Secret) -> Result<PrivateKeyDataV0> {
+    let (filename, options) = v0_keydata_location()?;
+
+    let wallet = if runtime::is_web() {
+        read_json_with_options::<Wallet>(&filename, options).await?
+    } else {
+        read_json_with_options::<Envelope>(&filename, options).await?.wallet
+    };
+
     get_v0_keydata(&wallet.mnemonic, phrase)
 }
 

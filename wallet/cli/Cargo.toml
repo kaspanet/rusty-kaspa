@@ -12,6 +12,7 @@ crate-type = ["cdylib", "lib"]
 
 [dependencies]
 async-trait.workspace = true
+cfg-if.workspace = true
 convert_case.workspace = true
 futures.workspace = true
 kaspa-wallet-core.workspace = true
