@@ -241,11 +241,6 @@ impl VirtualStateProcessor {
         }
     }
 
-    #[inline(always)]
-    pub fn notification_root(self: &Arc<Self>) -> Arc<ConsensusNotificationRoot> {
-        self.notification_root.clone()
-    }
-
     pub fn worker(self: &Arc<Self>) {
         'outer: while let Ok(first_msg) = self.receiver.recv() {
             // Once a task arrived, collect all pending tasks from the channel.
@@ -280,17 +275,81 @@ impl VirtualStateProcessor {
     pub fn resolve_virtual(self: &Arc<Self>) {
         // TODO: check finality violation
         // TODO: handle disqualified chain loop
-        // TODO: refactor this methods into multiple methods
 
         let pruning_point = self.pruning_store.read().pruning_point().unwrap();
         let virtual_read = self.virtual_stores.upgradable_read();
         let prev_state = virtual_read.state.get().unwrap();
         let tips = self.body_tips_store.read().get().unwrap().iter().copied().collect_vec();
-        let new_selected = self.ghostdag_manager.find_selected_parent(&mut tips.iter().copied());
+        let new_selected = self.ghostdag_manager.find_selected_parent(tips.iter().copied());
         let prev_selected = prev_state.ghostdag_data.selected_parent;
-
-        let mut split_point: Option<Hash> = None;
         let mut accumulated_diff = prev_state.utxo_diff.clone().to_reversed();
+
+        self.calculate_utxo_state_relatively(&virtual_read, &mut accumulated_diff, prev_selected, new_selected);
+
+        // NOTE: inlining this within the match captures the statuses store lock and should be avoided.
+        let new_selected_status = self.statuses_store.read().get(new_selected).unwrap();
+        match new_selected_status {
+            BlockStatus::StatusUTXOValid => {
+                let (virtual_parents, virtual_ghostdag_data) = self.pick_virtual_parents(new_selected, tips, pruning_point);
+                assert_eq!(virtual_ghostdag_data.selected_parent, new_selected);
+
+                let selected_parent_multiset = self.utxo_multisets_store.get(virtual_ghostdag_data.selected_parent).unwrap();
+                let new_virtual_state = self
+                    .calculate_and_commit_virtual_state(
+                        virtual_read,
+                        virtual_parents,
+                        virtual_ghostdag_data,
+                        selected_parent_multiset,
+                        &mut accumulated_diff,
+                    )
+                    .expect("all possible rule errors are unexpected here");
+
+                // Update the pruning processor about the virtual state change
+                let sink_ghostdag_data = self.ghostdag_store.get_compact_data(new_selected).unwrap();
+                self.pruning_sender.send(PruningProcessingMessage::Process { sink_ghostdag_data }).unwrap();
+
+                // Emit notifications
+                let accumulated_diff = Arc::new(accumulated_diff);
+                let virtual_parents = Arc::new(new_virtual_state.parents.clone());
+                let _ = self
+                    .notification_root
+                    .notify(Notification::UtxosChanged(UtxosChangedNotification::new(accumulated_diff, virtual_parents)));
+                let _ = self.notification_root.notify(Notification::SinkBlueScoreChanged(SinkBlueScoreChangedNotification::new(
+                    new_virtual_state.ghostdag_data.blue_score,
+                )));
+                let _ = self.notification_root.notify(Notification::VirtualDaaScoreChanged(VirtualDaaScoreChangedNotification::new(
+                    new_virtual_state.daa_score,
+                )));
+                // TODO: As an optimization, calculate the chain path as part of the loop on the chain iterator above.
+                let chain_path = self.dag_traversal_manager.calculate_chain_path(prev_selected, new_selected);
+                // TODO: Fetch acceptance data only if there's a subscriber for the below notification.
+                let added_chain_blocks_acceptance_data =
+                    chain_path.added.iter().copied().map(|added| self.acceptance_data_store.get(added).unwrap()).collect_vec();
+                let _ = self.notification_root.notify(Notification::VirtualChainChanged(VirtualChainChangedNotification::new(
+                    chain_path.added.into(),
+                    chain_path.removed.into(),
+                    Arc::new(added_chain_blocks_acceptance_data),
+                )));
+            }
+            BlockStatus::StatusDisqualifiedFromChain => {
+                // TODO: this means another chain needs to be checked
+            }
+            _ => panic!("expected utxo valid or disqualified {new_selected}"),
+        }
+    }
+
+    /// Calculates UTXO state of `new_selected` relative to the state of `prev_selected`.
+    /// The provided `accumulated_diff` holds the UTXO diff of `prev_selected` from virtual.
+    /// Upon successfully completion, `accumulated_diff` is expected to hold the diff of `new_selected`
+    /// from virtual
+    fn calculate_utxo_state_relatively(
+        &self,
+        virtual_read: &VirtualStores,
+        accumulated_diff: &mut UtxoDiff,
+        prev_selected: Hash,
+        new_selected: Hash,
+    ) {
+        let mut split_point: Option<Hash> = None;
 
         // Walk down to the reorg split point
         for current in self.reachability_service.default_backward_chain_iterator(prev_selected) {
@@ -338,7 +397,7 @@ impl VirtualStateProcessor {
                     let pov_daa_score = header.daa_score;
 
                     let selected_parent_multiset_hash = self.utxo_multisets_store.get(selected_parent).unwrap();
-                    let selected_parent_utxo_view = (&virtual_read.utxo_set).compose(&accumulated_diff);
+                    let selected_parent_utxo_view = (&virtual_read.utxo_set).compose(&*accumulated_diff);
 
                     let mut ctx = UtxoProcessingContext::new(mergeset_data.into(), selected_parent_multiset_hash);
 
@@ -346,14 +405,13 @@ impl VirtualStateProcessor {
                     let res = self.verify_expected_utxo_state(&mut ctx, &selected_parent_utxo_view, &header);
 
                     if let Err(rule_error) = res {
-                        info!("Block {} is disqualified from virtual chain: {:?}", current, rule_error);
+                        info!("Block {} is disqualified from virtual chain: {}", current, rule_error);
                         self.statuses_store.write().set(current, StatusDisqualifiedFromChain).unwrap();
                     } else {
                         // Accumulate
                         accumulated_diff.with_diff_in_place(&ctx.mergeset_diff).unwrap();
                         // Commit UTXO data for current chain block
                         self.commit_utxo_state(current, ctx.mergeset_diff, ctx.multiset_hash, ctx.mergeset_acceptance_data);
-
                         // Count the number of UTXO-processed chain blocks
                         chain_block_counter += 1;
                     }
@@ -364,58 +422,6 @@ impl VirtualStateProcessor {
 
         // Report counters
         self.counters.chain_block_counts.fetch_add(chain_block_counter, Ordering::Relaxed);
-
-        // NOTE: inlining this within the match captures the statuses store lock and should be avoided.
-        // TODO: wrap statuses store lock within a service
-        let new_selected_status = self.statuses_store.read().get(new_selected).unwrap();
-        match new_selected_status {
-            BlockStatus::StatusUTXOValid => {
-                let (virtual_parents, virtual_ghostdag_data) = self.pick_virtual_parents(new_selected, tips, pruning_point);
-                assert_eq!(virtual_ghostdag_data.selected_parent, new_selected);
-
-                let selected_parent_multiset = self.utxo_multisets_store.get(virtual_ghostdag_data.selected_parent).unwrap();
-                let new_virtual_state = self
-                    .calculate_and_commit_virtual_state(
-                        virtual_read,
-                        virtual_parents,
-                        virtual_ghostdag_data,
-                        selected_parent_multiset,
-                        &mut accumulated_diff,
-                    )
-                    .expect("all possible rule errors are unexpected here");
-
-                // Update the pruning processor about the virtual state change
-                let sink_ghostdag_data = self.ghostdag_store.get_compact_data(new_selected).unwrap();
-                self.pruning_sender.send(PruningProcessingMessage::Process { sink_ghostdag_data }).unwrap();
-
-                // Emit notifications
-                let accumulated_diff = Arc::new(accumulated_diff);
-                let virtual_parents = Arc::new(new_virtual_state.parents.clone());
-                let _ = self
-                    .notification_root
-                    .notify(Notification::UtxosChanged(UtxosChangedNotification::new(accumulated_diff, virtual_parents)));
-                let _ = self.notification_root().notify(Notification::SinkBlueScoreChanged(SinkBlueScoreChangedNotification::new(
-                    new_virtual_state.ghostdag_data.blue_score,
-                )));
-                let _ = self.notification_root().notify(Notification::VirtualDaaScoreChanged(
-                    VirtualDaaScoreChangedNotification::new(new_virtual_state.daa_score),
-                ));
-                // TODO: As an optimization, calculate the chain path as part of the loop on the chain iterator above.
-                let chain_path = self.dag_traversal_manager.calculate_chain_path(prev_selected, new_selected);
-                // TODO: Fetch acceptance data only if there's a subscriber for the below notification.
-                let added_chain_blocks_acceptance_data =
-                    chain_path.added.iter().copied().map(|added| self.acceptance_data_store.get(added).unwrap()).collect_vec();
-                let _ = self.notification_root().notify(Notification::VirtualChainChanged(VirtualChainChangedNotification::new(
-                    chain_path.added.into(),
-                    chain_path.removed.into(),
-                    Arc::new(added_chain_blocks_acceptance_data),
-                )));
-            }
-            BlockStatus::StatusDisqualifiedFromChain => {
-                // TODO: this means another chain needs to be checked
-            }
-            _ => panic!("expected utxo valid or disqualified {new_selected}"),
-        }
     }
 
     fn commit_utxo_state(&self, current: Hash, mergeset_diff: UtxoDiff, multiset: MuHash, acceptance_data: AcceptanceData) {
