@@ -3,7 +3,7 @@ use std::{collections::HashMap, time::Duration};
 use itertools::Itertools;
 use kaspa_addresses::Address;
 use kaspa_consensus_core::{
-    constants::{SOMPI_PER_KASPA, TX_VERSION},
+    constants::TX_VERSION,
     sign::sign,
     subnets::SUBNETWORK_ID_NATIVE,
     tx::{MutableTransaction, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry},
@@ -18,10 +18,9 @@ use tokio::time::{interval, MissedTickBehavior};
 // TODO: pass in CLI args.
 const PRIVATE_KEY: &'static str = "3674b992068d6aa3ca47303d423df9be48a5b147da4884517ce8468a4b2c80a0";
 const ADDRESS: &'static str = "kaspatest:qr0est6tpap7my72c9fw4layj4uhfuvxf4vgh3ypj5xwmcqqvr28zyp62x7kp";
-const TX_INTERVAL: u64 = 3; // In millis.
+const TX_INTERVAL: u64 = 4; // In millis.
 const DEFAULT_SEND_AMOUNT: u64 = 10_000;
 const FEE_PER_MASS: u64 = 10;
-const BIG_TX_NUM_OUTS: u64 = 50;
 
 struct Stats {
     num_txs: usize,
@@ -41,7 +40,6 @@ async fn main() {
     let mut pending = HashMap::new();
     let mut utxos = refresh_utxos(&rpc_client, kaspa_addr.clone(), &mut pending).await;
 
-    let mut refill_mode = false;
     let mut private_key_bytes = [0u8; 32];
     faster_hex::hex_decode(PRIVATE_KEY.as_bytes(), &mut private_key_bytes).unwrap();
     let schnorr_key = secp256k1::KeyPair::from_seckey_slice(secp256k1::SECP256K1, &private_key_bytes).unwrap();
@@ -50,11 +48,12 @@ async fn main() {
 
     loop {
         ticker.tick().await;
-        if !maybe_send_tx(&rpc_client, kaspa_addr.clone(), &mut utxos, &mut pending, schnorr_key, &mut stats, &mut refill_mode).await {
+        if !maybe_send_tx(&rpc_client, kaspa_addr.clone(), &mut utxos, &mut pending, schnorr_key, &mut stats).await {
             info!("Has not enough funds. Refetchin UTXO set");
             tokio::time::sleep(Duration::from_millis(100)).await;
             utxos = refresh_utxos(&rpc_client, kaspa_addr.clone(), &mut pending).await;
         }
+        clean_old_pending_outpoints(&mut pending);
     }
 }
 
@@ -72,7 +71,6 @@ async fn populate_pending_outpoints_from_mempool(
     kaspa_addr: Address,
     pending_outpoints: &mut HashMap<TransactionOutpoint, u64>,
 ) {
-    // info!("Populating pending transactions from the mempool");
     let entries = rpc_client.get_mempool_entries_by_addresses(vec![kaspa_addr], false, false).await.unwrap();
     let now = unix_now();
     for entry in entries {
@@ -112,25 +110,9 @@ async fn maybe_send_tx(
     pending: &mut HashMap<TransactionOutpoint, u64>,
     schnorr_key: KeyPair,
     stats: &mut Stats,
-    refill_mode: &mut bool,
 ) -> bool {
-    let mut send_amount = DEFAULT_SEND_AMOUNT;
-    let mut num_outs = 2;
-    let mut max_utxos = 84;
-    // if utxos.len() < 1000 || (*refill_mode && utxos.len() < 100_000) {
-    //     if !*refill_mode {
-    //         *refill_mode = true;
-    //         info!("Entering refill mode");
-    //     }
-    //     send_amount *= BIG_TX_NUM_OUTS / num_outs;
-    //     num_outs = BIG_TX_NUM_OUTS;
-    //     max_utxos = 25;
-    // } else if *refill_mode {
-    //     info!("Exiting refill mode");
-    //     *refill_mode = false;
-    // }
-
-    let (selected_utxos, selected_amount) = select_utxos(utxos, send_amount, num_outs, max_utxos, pending);
+    let num_outs = 2;
+    let (selected_utxos, selected_amount) = select_utxos(utxos, DEFAULT_SEND_AMOUNT, num_outs, 84, pending);
     if selected_amount == 0 {
         return false;
     }
@@ -149,7 +131,6 @@ async fn maybe_send_tx(
             return true;
         }
     }
-    // info!("Sent transaction {} worth {} kaspa with {} inputs and {} outputs", tx.id(), send_amount, tx.inputs.len(), tx.outputs.len());
 
     stats.num_txs += 1;
     stats.num_utxos += selected_utxos.len();
@@ -174,6 +155,14 @@ async fn maybe_send_tx(
     }
 
     true
+}
+
+fn clean_old_pending_outpoints(pending: &mut HashMap<TransactionOutpoint, u64>) {
+    let now = unix_now();
+    let old_keys = pending.iter().filter(|(_, time)| now - *time > 3600 * 1000).map(|(op, _)| *op).collect_vec();
+    for key in old_keys {
+        pending.remove(&key).unwrap();
+    }
 }
 
 fn required_fee(num_utxos: usize, num_outs: u64) -> u64 {
