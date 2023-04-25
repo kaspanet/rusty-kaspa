@@ -570,27 +570,27 @@ mod tests {
     fn test_check_opif() {
         let test_cases = vec![
             ScriptTestCase {
-                script: b"\x63", // opcodes::codes::OpIf{data: ""}
+                script: b"\x63", // OpIf
                 expected_result: Err(TxScriptError::EmptyStack),
             },
             ScriptTestCase {
-                script: b"\x52\x63", // opcodes::codes::Op2{data: ""}, opcodes::codes::OpIf{data: ""}
+                script: b"\x52\x63", // Op2, OpIf - bool for If must be 0 or 1.
                 expected_result: Err(TxScriptError::InvalidState("expected boolean".to_string())),
             },
             ScriptTestCase {
-                script: b"\x51\x63", // opcodes::codes::OpTrue{data: ""}, opcodes::codes::OpIf{data: ""}
+                script: b"\x51\x63", // OpTrue, OpIf
                 expected_result: Err(TxScriptError::ErrUnbalancedConditional),
             },
             ScriptTestCase {
-                script: b"\x00\x63", // opcodes::codes::OpFalse{data: ""}, opcodes::codes::OpIf{data: ""}
+                script: b"\x00\x63", // OpFalse, OpIf
                 expected_result: Err(TxScriptError::ErrUnbalancedConditional),
             },
             ScriptTestCase {
-                script: b"\x51\x63\x51\x68", // opcodes::codes::OpTrue{data: ""}, opcodes::codes::OpIf{data: ""}
+                script: b"\x51\x63\x51\x68", // OpTrue, OpIf, OpTrue, OpEndIf
                 expected_result: Ok(()),
             },
             ScriptTestCase {
-                script: b"\x00\x63\x51\x68", // opcodes::codes::OpTrue{data: ""}, opcodes::codes::OpIf{data: ""}
+                script: b"\x00\x63\x51\x68", // OpFalse, OpIf, OpTrue, OpEndIf
                 expected_result: Err(TxScriptError::EmptyStack),
             },
         ];
