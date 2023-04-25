@@ -1,5 +1,5 @@
 use crate::{flow_context::FlowContext, flow_trait::Flow};
-use kaspa_core::debug;
+use kaspa_core::{debug, time::unix_now};
 use kaspa_p2p_lib::{
     common::ProtocolError,
     dequeue, dequeue_with_timeout, make_message,
@@ -93,8 +93,8 @@ impl SendPingsFlow {
             // Create a fresh random nonce for each ping
             let nonce = rand::thread_rng().gen::<u64>();
             let ping = make_message!(Payload::Ping, PingMessage { nonce });
+            let ping_time = unix_now();
             if let Some(router) = self.router.upgrade() {
-                router.set_ping_pending(nonce);
                 router.enqueue(ping).await?;
             } else {
                 return Err(ProtocolError::ConnectionClosed);
@@ -106,7 +106,7 @@ impl SendPingsFlow {
                 debug!("Successful ping with peer {} (nonce: {})", self.peer, pong.nonce);
             }
             if let Some(router) = self.router.upgrade() {
-                router.set_ping_idle();
+                router.set_last_ping_duration(unix_now() - ping_time);
             } else {
                 return Err(ProtocolError::ConnectionClosed);
             }

@@ -2,7 +2,6 @@ use crate::core::hub::HubEvent;
 use crate::pb::KaspadMessage;
 use crate::Peer;
 use crate::{common::ProtocolError, KaspadMessagePayloadType};
-use kaspa_core::time::unix_now;
 use kaspa_core::{debug, error, info, trace};
 use kaspa_utils::networking::PeerId;
 use parking_lot::{Mutex, RwLock};
@@ -50,12 +49,6 @@ struct RouterMutableState {
 
     /// Properties of the peer
     properties: Arc<PeerProperties>,
-
-    /// The nonce of the last ping we sent
-    last_ping_nonce: u64,
-
-    /// Time last ping was sent
-    last_ping_time: u64,
 
     /// Duration of the last ping to this peer
     last_ping_duration: u64,
@@ -231,18 +224,9 @@ impl Router {
         self.mutable_state.lock().properties = properties;
     }
 
-    /// Sets the ping state of the peer to 'pending'
-    pub fn set_ping_pending(&self, nonce: u64) {
-        let mut state = self.mutable_state.lock();
-        state.last_ping_nonce = nonce;
-        state.last_ping_time = unix_now();
-    }
-
-    /// sets the ping state of the peer to 'idle'
-    pub fn set_ping_idle(&self) {
-        let mut state = self.mutable_state.lock();
-        state.last_ping_nonce = 0;
-        state.last_ping_duration = unix_now() - state.last_ping_time;
+    /// Sets the duration of the last ping
+    pub fn set_last_ping_duration(&self, last_ping_duration: u64) {
+        self.mutable_state.lock().last_ping_duration = last_ping_duration;
     }
 
     pub fn last_ping_duration(&self) -> u64 {
