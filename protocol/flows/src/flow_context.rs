@@ -329,21 +329,24 @@ impl ConnectionInitializer for FlowContext {
 
         // Perform the handshake
         let peer_version_message = handshake.handshake(self_version_message.into()).await?;
-        let peer_version_message: Version = peer_version_message.try_into()?;
-        router.set_identity(peer_version_message.id);
+        // Get time_offset as accurate as possible by computing right after the handshake
+        let time_offset = unix_now() as i64 - peer_version_message.timestamp;
+
+        let peer_version: Version = peer_version_message.try_into()?;
+        router.set_identity(peer_version.id);
         // Avoid duplicate connections
         if self.hub.has_peer(router.key()) {
             return Err(ProtocolError::PeerAlreadyExists(router.key()));
         }
 
-        if peer_version_message.network != network_name {
-            return Err(ProtocolError::WrongNetwork(network_name, peer_version_message.network));
+        if peer_version.network != network_name {
+            return Err(ProtocolError::WrongNetwork(network_name, peer_version.network));
         }
 
-        debug!("protocol versions - self: {}, peer: {}", PROTOCOL_VERSION, peer_version_message.protocol_version);
+        debug!("protocol versions - self: {}, peer: {}", PROTOCOL_VERSION, peer_version.protocol_version);
 
         // Register all flows according to version
-        let (flows, applied_protocol_version) = match peer_version_message.protocol_version {
+        let (flows, applied_protocol_version) = match peer_version.protocol_version {
             PROTOCOL_VERSION => (v5::register(self.clone(), router.clone()), PROTOCOL_VERSION),
             // TODO: different errors for obsolete (low version) vs unknown (high)
             v => return Err(ProtocolError::VersionMismatch(PROTOCOL_VERSION, v)),
@@ -351,19 +354,19 @@ impl ConnectionInitializer for FlowContext {
 
         // Build and register the peer properties
         let peer_properties = Arc::new(PeerProperties {
-            user_agent: peer_version_message.user_agent.to_owned(),
-            advertised_protocol_version: peer_version_message.protocol_version,
+            user_agent: peer_version.user_agent.to_owned(),
+            advertised_protocol_version: peer_version.protocol_version,
             protocol_version: applied_protocol_version,
-            disable_relay_tx: peer_version_message.disable_relay_tx,
-            subnetwork_id: peer_version_message.subnetwork_id.to_owned(),
-            time_offset: unix_now() as i64 - peer_version_message.timestamp as i64,
+            disable_relay_tx: peer_version.disable_relay_tx,
+            subnetwork_id: peer_version.subnetwork_id.to_owned(),
+            time_offset,
         });
         router.set_properties(peer_properties);
 
         // Send and receive the ready signal
         handshake.exchange_ready_messages().await?;
 
-        info!("Registering p2p flows for peer {} for protocol version {}", router, peer_version_message.protocol_version);
+        info!("Registering p2p flows for peer {} for protocol version {}", router, peer_version.protocol_version);
 
         // Launch all flows. Note we launch only after the ready signal was exchanged
         for flow in flows {
