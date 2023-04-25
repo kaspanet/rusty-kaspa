@@ -32,6 +32,9 @@ pub struct Config {
     /// Enable the UTXO index
     pub utxoindex: bool,
 
+    /// Enable RPC commands which affect the state of the node
+    pub unsafe_rpc: bool,
+
     /// Allow the node to accept blocks from RPC while not synced
     /// (this flag is mainly used for testing)
     // TODO: add and handle a matching kaspad command argument
@@ -40,7 +43,14 @@ pub struct Config {
 
 impl Config {
     pub fn new(params: Params) -> Self {
-        Self { params, perf: PERF_PARAMS, process_genesis: true, utxoindex: false, allow_submit_block_when_not_synced: false }
+        Self {
+            params,
+            perf: PERF_PARAMS,
+            process_genesis: true,
+            utxoindex: false,
+            unsafe_rpc: false,
+            allow_submit_block_when_not_synced: false,
+        }
     }
 
     pub fn to_builder(&self) -> ConfigBuilder {

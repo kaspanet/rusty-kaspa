@@ -49,7 +49,7 @@ async fn main() -> Result<()> {
     let proxy_port: u16 = 17110;
 
     let encoding: Encoding = encoding.unwrap_or_else(|| "borsh".to_owned()).parse()?;
-    let kaspad_port = network_type.port();
+    let kaspad_port = network_type.default_rpc_port();
 
     let options = Arc::new(Options {
         listen_address: interface.unwrap_or_else(|| format!("wrpc://127.0.0.1:{proxy_port}")),

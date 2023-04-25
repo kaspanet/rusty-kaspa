@@ -9,7 +9,7 @@ use kaspa_consensus_core::networktype::NetworkType;
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_consensus_notify::service::NotifyService;
 use kaspa_consensusmanager::ConsensusManager;
-use kaspa_core::version::version;
+use kaspa_core::kaspad_env::version;
 use kaspa_core::{core::Core, signals::Signals, task::runtime::AsyncRuntime};
 use kaspa_index_processor::service::IndexService;
 use kaspa_mining::manager::MiningManager;
@@ -126,13 +126,7 @@ fn get_app_dir() -> PathBuf {
 }
 
 pub fn main() {
-    let defaults = Defaults {
-        // --async-threads N
-        async_threads: num_cpus::get() / 2,
-        ..Defaults::default()
-    };
-
-    let args = Args::parse(&defaults);
+    let args = Args::parse(&Defaults::default());
 
     // Initialize the logger
     kaspa_core::log::init_logger(&args.log_level);
@@ -256,6 +250,7 @@ pub fn main() {
         flow_context,
         index_service.as_ref().map(|x| x.utxoindex().unwrap()),
         config,
+        core.clone(),
     ));
     let grpc_server = Arc::new(GrpcServer::new(grpc_server_addr, rpc_core_server.service()));
 
