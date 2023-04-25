@@ -14,16 +14,17 @@ impl ProtocolConverter {
     }
 
     fn get_peer_info(&self, peer: &Peer, ibd_peer_key: &Option<PeerKey>) -> RpcPeerInfo {
+        let properties = peer.properties();
         RpcPeerInfo {
             id: peer.identity(),
             address: peer.net_address().into(),
             is_outbound: peer.is_outbound(),
             is_ibd_peer: ibd_peer_key.is_some() && peer.key() == *ibd_peer_key.as_ref().unwrap(),
-            last_ping_duration: 0,          // TODO
-            time_offset: 0,                 // TODO
-            user_agent: Default::default(), // TODO
-            advertised_protocol_version: 0, // TODO
-            time_connected: 0,              // TODO
+            last_ping_duration: 0, // TODO
+            time_offset: properties.time_offset,
+            user_agent: properties.user_agent.clone(),
+            advertised_protocol_version: properties.advertised_protocol_version,
+            time_connected: peer.time_connected(),
         }
     }
 

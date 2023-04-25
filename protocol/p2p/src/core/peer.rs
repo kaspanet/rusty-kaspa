@@ -1,18 +1,36 @@
+use kaspa_consensus_core::subnets::SubnetworkId;
 use kaspa_utils::{ip_address::IpAddress, peer_id::PeerId};
-use std::{fmt::Display, net::SocketAddr};
+use std::{fmt::Display, net::SocketAddr, sync::Arc, time::Instant};
 
-use crate::Router;
+#[derive(Debug, Clone, Default)]
+pub struct PeerProperties {
+    pub user_agent: String,
+    // TODO: add services
+    pub advertised_protocol_version: u32,
+    pub protocol_version: u32,
+    pub disable_relay_tx: bool,
+    pub subnetwork_id: Option<SubnetworkId>,
+    pub time_offset: i64,
+}
 
 #[derive(Debug)]
 pub struct Peer {
     identity: PeerId,
     net_address: SocketAddr,
     is_outbound: bool,
+    connection_started: Instant,
+    properties: Arc<PeerProperties>,
 }
 
 impl Peer {
-    pub fn new(identity: PeerId, net_address: SocketAddr, is_outbound: bool) -> Self {
-        Self { identity, net_address, is_outbound }
+    pub fn new(
+        identity: PeerId,
+        net_address: SocketAddr,
+        is_outbound: bool,
+        connection_started: Instant,
+        properties: Arc<PeerProperties>,
+    ) -> Self {
+        Self { identity, net_address, is_outbound, connection_started, properties }
     }
 
     /// Internal identity of this peer
@@ -33,11 +51,13 @@ impl Peer {
     pub fn is_outbound(&self) -> bool {
         self.is_outbound
     }
-}
 
-impl From<&Router> for Peer {
-    fn from(router: &Router) -> Self {
-        Self::new(router.identity(), router.net_address(), router.is_outbound())
+    pub fn time_connected(&self) -> u64 {
+        Instant::now().duration_since(self.connection_started).as_millis() as u64
+    }
+
+    pub fn properties(&self) -> Arc<PeerProperties> {
+        self.properties.clone()
     }
 }
 

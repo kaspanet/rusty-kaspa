@@ -63,7 +63,7 @@ pub struct RpcPeerInfo {
     pub last_ping_duration: u64, // NOTE: i64 in gRPC protowire
 
     pub is_outbound: bool,
-    pub time_offset: u64,
+    pub time_offset: i64,
     pub user_agent: String,
 
     pub advertised_protocol_version: u32,

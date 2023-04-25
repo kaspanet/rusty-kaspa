@@ -7,10 +7,10 @@ use crate::v5;
 use async_trait::async_trait;
 use kaspa_addressmanager::AddressManager;
 use kaspa_connectionmanager::ConnectionManager;
-use kaspa_consensus_core::block::Block;
 use kaspa_consensus_core::config::Config;
 use kaspa_consensus_core::tx::{Transaction, TransactionId};
 use kaspa_consensus_core::{api::ConsensusApi, errors::block::RuleError};
+use kaspa_consensus_core::{block::Block, subnets::SubnetworkId};
 use kaspa_consensus_notify::{
     notification::{NewBlockTemplateNotification, Notification, PruningPointUtxoSetOverrideNotification},
     root::ConsensusNotificationRoot,
@@ -28,7 +28,7 @@ use kaspa_p2p_lib::{
     common::ProtocolError,
     make_message,
     pb::{self, kaspad_message::Payload, InvRelayBlockMessage},
-    ConnectionInitializer, Hub, KaspadHandshake, PeerKey, Router,
+    ConnectionInitializer, Hub, KaspadHandshake, PeerKey, PeerProperties, Router,
 };
 use kaspa_utils::peer_id::PeerId;
 use parking_lot::{Mutex, RwLock};
@@ -332,7 +332,6 @@ impl ConnectionInitializer for FlowContext {
         // Perform the handshake
         let peer_version_message = handshake.handshake(self_version_message).await?;
         router.set_identity(PeerId::from_slice(&peer_version_message.id)?);
-
         // Avoid duplicate connections
         if self.hub.has_peer(router.key()) {
             return Err(ProtocolError::PeerAlreadyExists(router.key()));
@@ -345,11 +344,22 @@ impl ConnectionInitializer for FlowContext {
         debug!("protocol versions - self: {}, peer: {}", PROTOCOL_VERSION, peer_version_message.protocol_version);
 
         // Register all flows according to version
-        let flows = match peer_version_message.protocol_version {
-            PROTOCOL_VERSION => v5::register(self.clone(), router.clone()),
+        let (flows, applied_protocol_version) = match peer_version_message.protocol_version {
+            PROTOCOL_VERSION => (v5::register(self.clone(), router.clone()), PROTOCOL_VERSION),
             // TODO: different errors for obsolete (low version) vs unknown (high)
             v => return Err(ProtocolError::VersionMismatch(PROTOCOL_VERSION, v)),
         };
+
+        // Build and register the peer properties
+        let peer_properties = Arc::new(PeerProperties {
+            user_agent: peer_version_message.user_agent.to_owned(),
+            advertised_protocol_version: peer_version_message.protocol_version,
+            protocol_version: applied_protocol_version,
+            disable_relay_tx: peer_version_message.disable_relay_tx,
+            subnetwork_id: peer_version_message.subnetwork_id.map(|x| SubnetworkId::try_from(x.bytes.as_slice()).unwrap_or_default()),
+            time_offset: unix_now() as i64 - peer_version_message.timestamp,
+        });
+        router.set_properties(peer_properties);
 
         // Send and receive the ready signal
         handshake.exchange_ready_messages().await?;

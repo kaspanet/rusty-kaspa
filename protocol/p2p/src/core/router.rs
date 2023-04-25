@@ -1,5 +1,6 @@
 use crate::core::hub::HubEvent;
 use crate::pb::KaspadMessage;
+use crate::Peer;
 use crate::{common::ProtocolError, KaspadMessagePayloadType};
 use kaspa_core::{debug, error, info, trace};
 use kaspa_utils::peer_id::PeerId;
@@ -7,6 +8,7 @@ use parking_lot::{Mutex, RwLock};
 use seqlock::SeqLock;
 use std::fmt::{Debug, Display};
 use std::net::SocketAddr;
+use std::time::Instant;
 use std::{collections::HashMap, sync::Arc};
 use tokio::select;
 use tokio::sync::mpsc::error::TrySendError;
@@ -14,7 +16,7 @@ use tokio::sync::mpsc::{channel as mpsc_channel, Receiver as MpscReceiver, Sende
 use tokio::sync::oneshot::{channel as oneshot_channel, Sender as OneshotSender};
 use tonic::Streaming;
 
-use super::peer::PeerKey;
+use super::peer::{PeerKey, PeerProperties};
 
 pub type IncomingRoute = MpscReceiver<KaspadMessage>;
 
@@ -59,6 +61,12 @@ pub struct Router {
     /// Indicates whether this connection is an outbound connection
     is_outbound: bool,
 
+    /// Time of creation of this object and the connection it holds
+    connection_started: Instant,
+
+    /// Properties of the peer
+    properties: RwLock<Arc<PeerProperties>>,
+
     /// Routing map for mapping messages to subscribed flows
     routing_map: RwLock<HashMap<KaspadMessagePayloadType, MpscSender<KaspadMessage>>>,
 
@@ -84,6 +92,12 @@ impl From<&Router> for PeerKey {
     }
 }
 
+impl From<&Router> for Peer {
+    fn from(router: &Router) -> Self {
+        Self::new(router.identity(), router.net_address, router.is_outbound, router.connection_started, router.properties())
+    }
+}
+
 fn message_summary(msg: &KaspadMessage) -> impl Debug {
     // TODO (low priority): display a concise summary of the message. Printing full messages
     // overflows the logs and is hardly useful, hence we currently only return the type
@@ -105,6 +119,8 @@ impl Router {
             identity: Default::default(),
             net_address,
             is_outbound,
+            connection_started: Instant::now(),
+            properties: Default::default(),
             routing_map: RwLock::new(HashMap::new()),
             outgoing_route,
             hub_sender,
@@ -175,6 +191,22 @@ impl Router {
     /// Indicates whether this connection is an outbound connection
     pub fn is_outbound(&self) -> bool {
         self.is_outbound
+    }
+
+    pub fn connection_started(&self) -> Instant {
+        self.connection_started
+    }
+
+    pub fn time_connected(&self) -> u64 {
+        Instant::now().duration_since(self.connection_started).as_millis() as u64
+    }
+
+    pub fn properties(&self) -> Arc<PeerProperties> {
+        self.properties.read().clone()
+    }
+
+    pub fn set_properties(&self, properties: Arc<PeerProperties>) {
+        *self.properties.write() = properties;
     }
 
     fn incoming_flow_channel_size() -> usize {
