@@ -3,7 +3,7 @@ use crate::pb::KaspadMessage;
 use crate::Peer;
 use crate::{common::ProtocolError, KaspadMessagePayloadType};
 use kaspa_core::{debug, error, info, trace};
-use kaspa_utils::peer_id::PeerId;
+use kaspa_utils::networking::PeerId;
 use parking_lot::{Mutex, RwLock};
 use seqlock::SeqLock;
 use std::fmt::{Debug, Display};

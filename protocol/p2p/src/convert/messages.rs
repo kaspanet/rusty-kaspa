@@ -13,7 +13,7 @@ use kaspa_consensus_core::{
     tx::{TransactionId, TransactionOutpoint, UtxoEntry},
 };
 use kaspa_hashes::Hash;
-use kaspa_utils::{ip_address::IpAddress, peer_id::PeerId};
+use kaspa_utils::networking::{IpAddress, PeerId};
 
 use std::sync::Arc;
 

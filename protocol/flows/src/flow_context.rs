@@ -34,7 +34,7 @@ use kaspa_p2p_lib::{
     pb::{kaspad_message::Payload, InvRelayBlockMessage},
     ConnectionInitializer, Hub, KaspadHandshake, PeerKey, PeerProperties, Router,
 };
-use kaspa_utils::peer_id::PeerId;
+use kaspa_utils::networking::PeerId;
 use parking_lot::{Mutex, RwLock};
 use std::{
     collections::HashSet,

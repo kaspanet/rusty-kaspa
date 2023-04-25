@@ -7,7 +7,7 @@ use std::{collections::HashSet, sync::Arc};
 use itertools::Itertools;
 use kaspa_core::time::unix_now;
 use kaspa_database::prelude::{StoreResultExtensions, DB};
-use kaspa_utils::ip_address::IpAddress;
+use kaspa_utils::networking::IpAddress;
 use parking_lot::Mutex;
 
 use stores::banned_address_store::{BannedAddressesStore, BannedAddressesStoreReader, ConnectionBanTimestamp, DbBannedAddressesStore};

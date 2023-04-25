@@ -1,5 +1,5 @@
 use kaspa_consensus_core::subnets::SubnetworkId;
-use kaspa_utils::{ip_address::IpAddress, peer_id::PeerId};
+use kaspa_utils::networking::{IpAddress, PeerId};
 use std::{fmt::Display, net::SocketAddr, sync::Arc, time::Instant};
 
 #[derive(Debug, Clone, Default)]

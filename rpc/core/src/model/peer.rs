@@ -4,7 +4,7 @@ use std::{
 };
 
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
-use kaspa_utils::{ip_address::IpAddress, net_address::NetAddress, peer_id::PeerId};
+use kaspa_utils::networking::{IpAddress, NetAddress, PeerId};
 use serde::{Deserialize, Serialize};
 
 pub type RpcNodeId = PeerId;

@@ -1,5 +1,5 @@
 use kaspa_consensus_core::tx::TransactionId;
-use kaspa_utils::ip_address::IpAddress;
+use kaspa_utils::networking::IpAddress;
 use std::{net::AddrParseError, num::TryFromIntError};
 use thiserror::Error;
 

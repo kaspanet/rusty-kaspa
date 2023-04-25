@@ -1,6 +1,6 @@
 use std::net::{IpAddr, Ipv6Addr};
 
-pub use kaspa_utils::net_address::NetAddress;
+pub use kaspa_utils::networking::NetAddress;
 
 pub(super) mod address_store;
 pub(super) mod banned_address_store;

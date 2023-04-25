@@ -3,7 +3,7 @@ use kaspa_core::{
     kaspad_env::{name, version},
     time::unix_now,
 };
-use kaspa_utils::{net_address::NetAddress, peer_id::PeerId};
+use kaspa_utils::networking::{NetAddress, PeerId};
 
 /// Maximum allowed length for the user agent field in a version message `VersionMessage`.
 pub const MAX_USER_AGENT_LEN: usize = 256;
