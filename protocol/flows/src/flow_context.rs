@@ -7,16 +7,19 @@ use crate::v5;
 use async_trait::async_trait;
 use kaspa_addressmanager::AddressManager;
 use kaspa_connectionmanager::ConnectionManager;
+use kaspa_consensus_core::block::Block;
 use kaspa_consensus_core::config::Config;
 use kaspa_consensus_core::tx::{Transaction, TransactionId};
 use kaspa_consensus_core::{api::ConsensusApi, errors::block::RuleError};
-use kaspa_consensus_core::{block::Block, subnets::SubnetworkId};
 use kaspa_consensus_notify::{
     notification::{NewBlockTemplateNotification, Notification, PruningPointUtxoSetOverrideNotification},
     root::ConsensusNotificationRoot,
 };
 use kaspa_consensusmanager::{ConsensusInstance, ConsensusManager};
-use kaspa_core::{debug, info};
+use kaspa_core::{
+    debug, info,
+    kaspad_env::{name, version},
+};
 use kaspa_core::{time::unix_now, warn};
 use kaspa_hashes::Hash;
 use kaspa_mining::{
@@ -26,8 +29,9 @@ use kaspa_mining::{
 use kaspa_notify::notifier::Notify;
 use kaspa_p2p_lib::{
     common::ProtocolError,
+    convert::model::version::Version,
     make_message,
-    pb::{self, kaspad_message::Payload, InvRelayBlockMessage},
+    pb::{kaspad_message::Payload, InvRelayBlockMessage},
     ConnectionInitializer, Hub, KaspadHandshake, PeerKey, PeerProperties, Router,
 };
 use kaspa_utils::peer_id::PeerId;
@@ -316,22 +320,17 @@ impl ConnectionInitializer for FlowContext {
         let network_name = self.config.network_name();
 
         // Build the local version message
+        // Subnets are not currently supported
+        let mut self_version_message = Version::new(None, self.node_id, network_name.clone(), None, PROTOCOL_VERSION);
+        self_version_message.add_user_agent(name(), version(), &[]);
         // TODO: full and accurate version info
-        let self_version_message = pb::VersionMessage {
-            protocol_version: PROTOCOL_VERSION,
-            services: 0, // TODO: get number of live services
-            timestamp: unix_now() as i64,
-            address: None, // TODO
-            id: Vec::from(self.node_id.as_ref()),
-            user_agent: String::new(), // TODO
-            disable_relay_tx: false,   // TODO: config/cmd
-            subnetwork_id: None,       // Subnets are not currently supported
-            network: network_name.clone(),
-        };
+        // TODO: get number of live services
+        // TODO: disable_relay_tx from config/cmd
 
         // Perform the handshake
-        let peer_version_message = handshake.handshake(self_version_message).await?;
-        router.set_identity(PeerId::from_slice(&peer_version_message.id)?);
+        let peer_version_message = handshake.handshake(self_version_message.into()).await?;
+        let peer_version_message: Version = peer_version_message.try_into()?;
+        router.set_identity(peer_version_message.id);
         // Avoid duplicate connections
         if self.hub.has_peer(router.key()) {
             return Err(ProtocolError::PeerAlreadyExists(router.key()));
@@ -356,8 +355,8 @@ impl ConnectionInitializer for FlowContext {
             advertised_protocol_version: peer_version_message.protocol_version,
             protocol_version: applied_protocol_version,
             disable_relay_tx: peer_version_message.disable_relay_tx,
-            subnetwork_id: peer_version_message.subnetwork_id.map(|x| SubnetworkId::try_from(x.bytes.as_slice()).unwrap_or_default()),
-            time_offset: unix_now() as i64 - peer_version_message.timestamp,
+            subnetwork_id: peer_version_message.subnetwork_id.to_owned(),
+            time_offset: unix_now() as i64 - peer_version_message.timestamp as i64,
         });
         router.set_properties(peer_properties);
 

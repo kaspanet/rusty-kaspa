@@ -16,7 +16,7 @@ use kaspa_consensus_notify::{
     {connection::ConsensusChannelConnection, notification::Notification as ConsensusNotification},
 };
 use kaspa_consensusmanager::ConsensusManager;
-use kaspa_core::{core::Core, debug, info, signals::Shutdown, trace, version::version, warn};
+use kaspa_core::{core::Core, debug, info, kaspad_env::version, signals::Shutdown, trace, warn};
 use kaspa_index_core::{
     connection::IndexChannelConnection, indexed_utxos::UtxoSetByScriptPublicKey, notification::Notification as IndexNotification,
     notifier::IndexNotifier,

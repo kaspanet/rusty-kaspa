@@ -7,7 +7,7 @@ use super::error::ConversionError;
 use crate::pb as protowire;
 
 use itertools::Itertools;
-use kaspa_utils::ip_address::IpAddress;
+use kaspa_utils::{ip_address::IpAddress, net_address::NetAddress};
 
 // ----------------------------------------------------------------------------
 // consensus_core to protowire
@@ -24,6 +24,12 @@ impl From<(IpAddress, u16)> for protowire::NetAddress {
             },
             port: port as u32,
         }
+    }
+}
+
+impl From<NetAddress> for protowire::NetAddress {
+    fn from(item: NetAddress) -> Self {
+        (item.ip, item.port).into()
     }
 }
 
@@ -50,6 +56,15 @@ impl TryFrom<protowire::NetAddress> for (IpAddress, u16) {
             len => Err(ConversionError::IllegalIPLength(len)),
         }?;
         Ok((ip, addr.port.try_into()?))
+    }
+}
+
+impl TryFrom<protowire::NetAddress> for NetAddress {
+    type Error = ConversionError;
+
+    fn try_from(item: protowire::NetAddress) -> Result<Self, Self::Error> {
+        let (ip, port) = item.try_into()?;
+        Ok(NetAddress::new(ip, port))
     }
 }
 

@@ -8,6 +8,7 @@ pub mod model;
 pub mod net_address;
 pub mod option;
 pub mod pruning;
+pub mod subnets;
 pub mod trusted;
 pub mod tx;
 pub mod utxo;
