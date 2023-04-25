@@ -271,7 +271,7 @@ impl VirtualStateProcessor {
         self.pruning_sender.send(PruningProcessingMessage::Exit).unwrap();
     }
 
-    pub fn resolve_virtual(self: &Arc<Self>) {
+    fn resolve_virtual(self: &Arc<Self>) {
         let pruning_point = self.pruning_store.read().pruning_point().unwrap();
         let virtual_read = self.virtual_stores.upgradable_read();
         let prev_state = virtual_read.state.get().unwrap();
@@ -338,8 +338,14 @@ impl VirtualStateProcessor {
     /// Calculates the UTXO state of `to` starting from the state of `from`.
     /// The provided `diff` is assumed to initially hold the UTXO diff of `from` from virtual.
     /// The function returns the top-most UTXO-valid block on `chain(to)` which is ideally
-    /// `to` itself. When returning, `diff` holds the diff of the returned block from virtual
+    /// `to` itself (with the exception of returning `from` if `to` is already known to be UTXO disqualified).
+    /// When returning it is guaranteed that `diff` holds the diff of the returned block from virtual
     fn calculate_utxo_state_relatively(&self, stores: &VirtualStores, diff: &mut UtxoDiff, from: Hash, to: Hash) -> Hash {
+        // Avoid reorging if disqualified status is already known
+        if self.statuses_store.read().get(to).unwrap() == StatusDisqualifiedFromChain {
+            return from;
+        }
+
         let mut split_point: Option<Hash> = None;
 
         // Walk down to the reorg split point
@@ -364,15 +370,21 @@ impl VirtualStateProcessor {
         // Walk back up to the new virtual selected parent candidate
         let mut chain_block_counter = 0;
         for (selected_parent, current) in self.reachability_service.forward_chain_iterator(split_point, to, true).tuple_windows() {
+            if selected_parent != diff_point {
+                // This indicates that the selected parent is disqualified, propagate up and continue
+                self.statuses_store.write().set(current, StatusDisqualifiedFromChain).unwrap();
+                continue;
+            }
+
             match self.utxo_diffs_store.get(current) {
                 Ok(mergeset_diff) => {
                     diff.with_diff_in_place(mergeset_diff.deref()).unwrap();
                     diff_point = current;
                 }
                 Err(StoreError::KeyNotFound(_)) => {
-                    if self.statuses_store.read().get(selected_parent).unwrap() == StatusDisqualifiedFromChain {
-                        self.statuses_store.write().set(current, StatusDisqualifiedFromChain).unwrap();
-                        continue; // TODO: optimize
+                    if self.statuses_store.read().get(current).unwrap() == StatusDisqualifiedFromChain {
+                        // Current block is already known to be disqualified
+                        continue;
                     }
 
                     let header = self.headers_store.get_header(current).unwrap();
@@ -502,7 +514,6 @@ impl VirtualStateProcessor {
         finality_point: Hash,
         pruning_point: Hash,
     ) -> (Hash, VecDeque<Hash>) {
-        // TODO (short-term): implement a short-circuit execution path for the almost-always-expected case where max parent is selected
         // TODO: tests
 
         let mut heap = tips
@@ -513,7 +524,7 @@ impl VirtualStateProcessor {
         // The initial diff point is the previous sink
         let mut diff_point = prev_sink;
 
-        // We maintain the following invariant: heap is an antichain.
+        // We maintain the following invariant: `heap` is an antichain.
         // It holds at step 0 since tips are an antichain, and remains through the loop
         // since we check that every pushed block is not in the past of current heap
         // (and it can't be in the future by induction)
