@@ -574,15 +574,15 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
 
     async fn shutdown_call(&self, _: ShutdownRequest) -> RpcResult<ShutdownResponse> {
         if !self.config.unsafe_rpc {
-            warn!("ShutDown RPC command called while node in safe RPC mode -- ignoring.");
+            warn!("Shutdown RPC command called while node in safe RPC mode -- ignoring.");
             return Err(RpcError::UnavailableInSafeMode);
         }
-        warn!("ShutDown RPC called.");
+        warn!("Shutdown RPC command was called, shutting down in 1 second...");
 
         // Wait a second before shutting down, to allow time to return the response to the caller
         let core = self.core.clone();
         tokio::spawn(async move {
-            std::thread::sleep(std::time::Duration::from_secs(1));
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
             core.shutdown();
         });
 
