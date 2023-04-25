@@ -28,7 +28,7 @@ impl ProtocolConverter {
     }
 
     pub fn get_peers_info(&self, peers: &[Peer]) -> Vec<RpcPeerInfo> {
-        let ibd_peer_key = self.flow_context.ibd_peer();
+        let ibd_peer_key = self.flow_context.ibd_peer_key();
         peers.iter().map(|x| self.get_peer_info(x, &ibd_peer_key)).collect()
     }
 }

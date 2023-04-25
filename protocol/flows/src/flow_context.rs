@@ -32,7 +32,15 @@ use kaspa_p2p_lib::{
 };
 use kaspa_utils::peer_id::PeerId;
 use parking_lot::{Mutex, RwLock};
-use std::{collections::HashSet, iter::once, ops::Deref, sync::Arc};
+use std::{
+    collections::HashSet,
+    iter::once,
+    ops::Deref,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+};
 use tokio::sync::RwLock as AsyncRwLock;
 use uuid::Uuid;
 
@@ -48,7 +56,8 @@ pub struct FlowContextInner {
     shared_block_requests: Arc<Mutex<HashSet<Hash>>>,
     transactions_spread: AsyncRwLock<TransactionsSpread>,
     shared_transaction_requests: Arc<Mutex<HashSet<TransactionId>>>,
-    ibd_peer_key: Arc<Mutex<Option<PeerKey>>>,
+    is_ibd_running: Arc<AtomicBool>,
+    ibd_peer_key: Arc<RwLock<Option<PeerKey>>>,
     pub address_manager: Arc<Mutex<AddressManager>>,
     connection_manager: RwLock<Option<Arc<ConnectionManager>>>,
     mining_manager: Arc<MiningManager>,
@@ -61,14 +70,13 @@ pub struct FlowContext {
 }
 
 pub struct IbdRunningGuard {
-    indicator: Arc<Mutex<Option<PeerKey>>>,
+    indicator: Arc<AtomicBool>,
 }
 
 impl Drop for IbdRunningGuard {
     fn drop(&mut self) {
-        let mut indicator = self.indicator.lock();
-        assert!(indicator.is_some());
-        *indicator = None;
+        let result = self.indicator.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst);
+        assert!(result.is_ok())
     }
 }
 
@@ -115,6 +123,7 @@ impl FlowContext {
                 shared_block_requests: Arc::new(Mutex::new(HashSet::new())),
                 transactions_spread: AsyncRwLock::new(TransactionsSpread::new(hub.clone())),
                 shared_transaction_requests: Arc::new(Mutex::new(HashSet::new())),
+                is_ibd_running: Default::default(),
                 ibd_peer_key: Default::default(),
                 hub,
                 address_manager,
@@ -146,21 +155,24 @@ impl FlowContext {
     }
 
     pub fn try_set_ibd_running(&self, peer_key: PeerKey) -> Option<IbdRunningGuard> {
-        let mut ibd_peer_ley = self.ibd_peer_key.lock();
-        if ibd_peer_ley.is_none() {
-            ibd_peer_ley.replace(peer_key);
-            Some(IbdRunningGuard { indicator: self.ibd_peer_key.clone() })
+        if self.is_ibd_running.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
+            self.ibd_peer_key.write().replace(peer_key);
+            Some(IbdRunningGuard { indicator: self.is_ibd_running.clone() })
         } else {
             None
         }
     }
 
     pub fn is_ibd_running(&self) -> bool {
-        self.ibd_peer_key.lock().is_some()
+        self.is_ibd_running.load(Ordering::SeqCst)
     }
 
-    pub fn ibd_peer(&self) -> Option<PeerKey> {
-        *self.ibd_peer_key.lock()
+    pub fn ibd_peer_key(&self) -> Option<PeerKey> {
+        if self.is_ibd_running() {
+            *self.ibd_peer_key.read()
+        } else {
+            None
+        }
     }
 
     pub fn try_adding_block_request(&self, req: Hash) -> Option<RequestScope<Hash>> {
