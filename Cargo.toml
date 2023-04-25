@@ -194,3 +194,6 @@ workflow-node = { path = "../workflow-rs/node" }
 workflow-store = { path = "../workflow-rs/store" }
 workflow-terminal = { path = "../workflow-rs/terminal" }
 
+[profile.release]
+lto = "thin"
+strip = true
