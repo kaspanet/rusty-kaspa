@@ -31,7 +31,7 @@ use kaspa_p2p_lib::{
     ConnectionInitializer, Hub, KaspadHandshake, PeerKey, Router,
 };
 use kaspa_utils::peer_id::PeerId;
-use parking_lot::Mutex;
+use parking_lot::{Mutex, RwLock};
 use std::{collections::HashSet, iter::once, ops::Deref, sync::Arc};
 use tokio::sync::RwLock as AsyncRwLock;
 use uuid::Uuid;
@@ -50,7 +50,7 @@ pub struct FlowContextInner {
     shared_transaction_requests: Arc<Mutex<HashSet<TransactionId>>>,
     ibd_peer_key: Arc<Mutex<Option<PeerKey>>>,
     pub address_manager: Arc<Mutex<AddressManager>>,
-    connection_manager: Mutex<Option<Arc<ConnectionManager>>>,
+    connection_manager: RwLock<Option<Arc<ConnectionManager>>>,
     mining_manager: Arc<MiningManager>,
     notification_root: Arc<ConsensusNotificationRoot>,
 }
@@ -118,7 +118,7 @@ impl FlowContext {
                 ibd_peer_key: Default::default(),
                 hub,
                 address_manager,
-                connection_manager: Mutex::new(None),
+                connection_manager: Default::default(),
                 mining_manager,
                 notification_root,
             }),
@@ -126,11 +126,11 @@ impl FlowContext {
     }
 
     pub fn set_connection_manager(&self, connection_manager: Arc<ConnectionManager>) {
-        self.connection_manager.lock().replace(connection_manager);
+        self.connection_manager.write().replace(connection_manager);
     }
 
     pub fn connection_manager(&self) -> Option<Arc<ConnectionManager>> {
-        self.connection_manager.lock().clone()
+        self.connection_manager.read().clone()
     }
 
     pub fn consensus(&self) -> ConsensusInstance {
