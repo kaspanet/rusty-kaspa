@@ -46,6 +46,9 @@ struct RouterMutableState {
 
     /// Used on router close to signal the router receive loop to exit
     shutdown_signal: Option<OneshotSender<()>>,
+
+    /// Properties of the peer
+    properties: Arc<PeerProperties>,
 }
 
 /// A router object for managing the communication to a network peer. It is named a router because it's responsible
@@ -63,9 +66,6 @@ pub struct Router {
 
     /// Time of creation of this object and the connection it holds
     connection_started: Instant,
-
-    /// Properties of the peer
-    properties: RwLock<Arc<PeerProperties>>,
 
     /// Routing map for mapping messages to subscribed flows
     routing_map: RwLock<HashMap<KaspadMessagePayloadType, MpscSender<KaspadMessage>>>,
@@ -120,11 +120,14 @@ impl Router {
             net_address,
             is_outbound,
             connection_started: Instant::now(),
-            properties: Default::default(),
             routing_map: RwLock::new(HashMap::new()),
             outgoing_route,
             hub_sender,
-            mutable_state: Mutex::new(RouterMutableState { start_signal: Some(start_sender), shutdown_signal: Some(shutdown_sender) }),
+            mutable_state: Mutex::new(RouterMutableState {
+                start_signal: Some(start_sender),
+                shutdown_signal: Some(shutdown_sender),
+                properties: Default::default(),
+            }),
         });
 
         let router_clone = router.clone();
@@ -202,11 +205,11 @@ impl Router {
     }
 
     pub fn properties(&self) -> Arc<PeerProperties> {
-        self.properties.read().clone()
+        self.mutable_state.lock().properties.clone()
     }
 
     pub fn set_properties(&self, properties: Arc<PeerProperties>) {
-        *self.properties.write() = properties;
+        self.mutable_state.lock().properties = properties;
     }
 
     fn incoming_flow_channel_size() -> usize {
