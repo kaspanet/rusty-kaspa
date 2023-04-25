@@ -1,5 +1,5 @@
 use crate::{flow_context::FlowContext, flow_trait::Flow};
-use kaspa_core::{debug, time::unix_now};
+use kaspa_core::debug;
 use kaspa_p2p_lib::{
     common::ProtocolError,
     dequeue, dequeue_with_timeout, make_message,
@@ -9,7 +9,7 @@ use kaspa_p2p_lib::{
 use rand::Rng;
 use std::{
     sync::{Arc, Weak},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 /// Flow for managing a loop receiving pings and responding with pongs
@@ -93,23 +93,16 @@ impl SendPingsFlow {
             // Create a fresh random nonce for each ping
             let nonce = rand::thread_rng().gen::<u64>();
             let ping = make_message!(Payload::Ping, PingMessage { nonce });
-            let ping_time = unix_now();
-            if let Some(router) = self.router.upgrade() {
-                router.enqueue(ping).await?;
-            } else {
-                return Err(ProtocolError::ConnectionClosed);
-            }
+            let ping_time = Instant::now();
+            let Some(router) = self.router.upgrade() else { return Err(ProtocolError::ConnectionClosed); };
+            router.enqueue(ping).await?;
             let pong = dequeue_with_timeout!(self.incoming_route, Payload::Pong)?;
             if pong.nonce != nonce {
                 return Err(ProtocolError::Other("nonce mismatch between ping and pong"));
             } else {
                 debug!("Successful ping with peer {} (nonce: {})", self.peer, pong.nonce);
             }
-            if let Some(router) = self.router.upgrade() {
-                router.set_last_ping_duration(unix_now() - ping_time);
-            } else {
-                return Err(ProtocolError::ConnectionClosed);
-            }
+            router.set_last_ping_duration(ping_time.elapsed().as_millis() as u64);
         }
     }
 }

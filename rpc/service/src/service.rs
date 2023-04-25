@@ -523,7 +523,7 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         }
         let peer_address = request.peer_address.normalize(self.config.net.default_p2p_port());
         if let Some(connection_manager) = self.flow_context.connection_manager() {
-            connection_manager.clone().add_connection_request(peer_address.into(), request.is_permanent).await;
+            connection_manager.add_connection_request(peer_address.into(), request.is_permanent).await;
         } else {
             return Err(RpcError::NoConnectionManager);
         }
@@ -542,10 +542,10 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         }
         if let Some(connection_manager) = self.flow_context.connection_manager() {
             let ip = request.ip.into();
-            if connection_manager.clone().ip_has_permanent_connection(ip).await {
+            if connection_manager.ip_has_permanent_connection(ip).await {
                 return Err(RpcError::IpHasPermanentConnection(request.ip));
             }
-            connection_manager.clone().ban(ip).await;
+            connection_manager.ban(ip).await;
         } else {
             return Err(RpcError::NoConnectionManager);
         }
