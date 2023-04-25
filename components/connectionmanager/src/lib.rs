@@ -42,6 +42,12 @@ struct ConnectionRequest {
     attempts: u32,
 }
 
+impl ConnectionRequest {
+    fn new(is_permanent: bool) -> Self {
+        Self { next_attempt: SystemTime::now(), is_permanent, attempts: 0 }
+    }
+}
+
 impl ConnectionManager {
     pub fn new(
         p2p_adaptor: Arc<kaspa_p2p_lib::Adaptor>,
@@ -96,10 +102,7 @@ impl ConnectionManager {
 
     pub async fn add_connection_request(&self, address: SocketAddr, is_permanent: bool) {
         // If the request already exists, it resets the attempts count and overrides the `is_permanent` setting.
-        self.connection_requests
-            .lock()
-            .await
-            .insert(address, ConnectionRequest { next_attempt: SystemTime::now(), is_permanent, attempts: 0 });
+        self.connection_requests.lock().await.insert(address, ConnectionRequest::new(is_permanent));
         self.force_next_iteration.send(()).unwrap(); // We force the next iteration of the connection loop.
     }
 
@@ -124,8 +127,8 @@ impl ConnectionManager {
                 if self.p2p_adaptor.connect_peer(address.to_string()).await.is_none() {
                     debug!("Failed connecting to peer request {}", address);
                     if request.is_permanent {
-                        const MAX_RETRY_DURATION: Duration = Duration::from_secs(600);
-                        let retry_duration = min(Duration::from_secs(30u64 * 2u64.pow(request.attempts)), MAX_RETRY_DURATION);
+                        const MAX_ACCOUNTABLE_ATTEMPTS: u32 = 4;
+                        let retry_duration = Duration::from_secs(30u64 * 2u64.pow(min(request.attempts, MAX_ACCOUNTABLE_ATTEMPTS)));
                         debug!("Will retry peer request {} in {}", address, DurationString::from(retry_duration));
                         new_requests.insert(
                             address,
@@ -138,7 +141,7 @@ impl ConnectionManager {
                     }
                 } else if request.is_permanent {
                     // Permanent requests are kept forever
-                    new_requests.insert(address, request);
+                    new_requests.insert(address, ConnectionRequest::new(true));
                 }
             } else {
                 new_requests.insert(address, request);
