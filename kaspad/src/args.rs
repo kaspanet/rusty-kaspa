@@ -1,7 +1,7 @@
 #[allow(unused)]
 use clap::{arg, command, Arg, Command};
 use kaspa_consensus::config::Config;
-use kaspa_core::version::version;
+use kaspa_core::kaspad_env::version;
 
 pub struct Defaults {
     pub appdir: &'static str,
