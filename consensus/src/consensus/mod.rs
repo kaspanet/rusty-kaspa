@@ -575,14 +575,10 @@ impl Consensus {
         ]
     }
 
-    fn validate_and_insert_block_impl(
-        &self,
-        block: Block,
-        update_virtual: bool,
-    ) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
+    fn validate_and_insert_block_impl(&self, block: Block) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
         let (tx, rx): (BlockResultSender, _) = oneshot::channel();
         self.block_sender
-            .send(BlockProcessingMessage::Process(BlockTask { block, trusted_ghostdag_data: None, update_virtual }, tx))
+            .send(BlockProcessingMessage::Process(BlockTask { block, trusted_ghostdag_data: None, update_virtual: true }, tx))
             .unwrap();
         self.counters.blocks_submitted.fetch_add(1, Ordering::Relaxed);
         async { rx.await.unwrap() }
@@ -645,8 +641,8 @@ impl ConsensusApi for Consensus {
         self.virtual_processor.build_block_template(miner_data, txs)
     }
 
-    fn validate_and_insert_block(&self, block: Block, update_virtual: bool) -> BoxFuture<'static, BlockProcessResult<BlockStatus>> {
-        let result = self.validate_and_insert_block_impl(block, update_virtual);
+    fn validate_and_insert_block(&self, block: Block) -> BoxFuture<'static, BlockProcessResult<BlockStatus>> {
+        let result = self.validate_and_insert_block_impl(block);
         Box::pin(async move { result.await })
     }
 

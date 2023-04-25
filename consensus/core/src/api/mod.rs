@@ -31,7 +31,7 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn validate_and_insert_block(&self, block: Block, update_virtual: bool) -> BlockValidationFuture {
+    fn validate_and_insert_block(&self, block: Block) -> BlockValidationFuture {
         unimplemented!()
     }
 

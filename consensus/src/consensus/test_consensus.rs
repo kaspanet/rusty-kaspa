@@ -139,7 +139,7 @@ impl TestConsensus {
     }
 
     pub fn validate_and_insert_block(&self, block: Block) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
-        self.consensus.validate_and_insert_block(block, true)
+        self.consensus.validate_and_insert_block(block)
     }
 
     pub fn init(&self) -> Vec<JoinHandle<()>> {

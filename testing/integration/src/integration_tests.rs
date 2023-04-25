@@ -933,12 +933,8 @@ async fn json_test(file_path: &str, concurrency: bool) {
             external_block_store.insert(hash, block.transactions).unwrap();
             let block = Block::from_header_arc(block.header);
 
-            let status = tc
-                .consensus()
-                .as_ref()
-                .validate_and_insert_block(block, true)
-                .await
-                .unwrap_or_else(|e| panic!("block {hash} failed: {e}"));
+            let status =
+                tc.consensus().as_ref().validate_and_insert_block(block).await.unwrap_or_else(|e| panic!("block {hash} failed: {e}"));
             assert!(status.is_header_only());
         }
     }
@@ -977,12 +973,8 @@ async fn json_test(file_path: &str, concurrency: bool) {
     } else {
         for hash in missing_bodies {
             let block = Block::from_arcs(tc.consensus.get_header(hash).unwrap(), external_block_store.get(hash).unwrap());
-            let status = tc
-                .consensus()
-                .as_ref()
-                .validate_and_insert_block(block, true)
-                .await
-                .unwrap_or_else(|e| panic!("block {hash} failed: {e}"));
+            let status =
+                tc.consensus().as_ref().validate_and_insert_block(block).await.unwrap_or_else(|e| panic!("block {hash} failed: {e}"));
             assert!(status.is_utxo_valid_or_pending());
         }
     }
@@ -1010,7 +1002,7 @@ fn submit_header_chunk(
         let block = json_line_to_block(line);
         external_block_store.insert(block.hash(), block.transactions).unwrap();
         let block = Block::from_header_arc(block.header);
-        let f = tc.consensus.as_ref().validate_and_insert_block(block, true);
+        let f = tc.consensus.as_ref().validate_and_insert_block(block);
         futures.push(f);
     }
     futures
@@ -1024,7 +1016,7 @@ fn submit_body_chunk(
     let mut futures = Vec::new();
     for hash in chunk {
         let block = Block::from_arcs(tc.consensus.get_header(hash).unwrap(), external_block_store.get(hash).unwrap());
-        let f = tc.consensus.as_ref().validate_and_insert_block(block, true);
+        let f = tc.consensus.as_ref().validate_and_insert_block(block);
         futures.push(f);
     }
     futures
