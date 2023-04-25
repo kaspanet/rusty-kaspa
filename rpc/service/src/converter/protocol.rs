@@ -20,7 +20,7 @@ impl ProtocolConverter {
             address: peer.net_address().into(),
             is_outbound: peer.is_outbound(),
             is_ibd_peer: ibd_peer_key.is_some() && peer.key() == *ibd_peer_key.as_ref().unwrap(),
-            last_ping_duration: 0, // TODO
+            last_ping_duration: peer.last_ping_duration(),
             time_offset: properties.time_offset,
             user_agent: properties.user_agent.clone(),
             advertised_protocol_version: properties.advertised_protocol_version,

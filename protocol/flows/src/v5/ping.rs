@@ -86,7 +86,6 @@ impl SendPingsFlow {
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
         loop {
             // TODO: handle application shutdown signal
-            // TODO: set peer ping state to pending/idle
 
             // Wait `PING_INTERVAL` between pings
             tokio::time::sleep(PING_INTERVAL).await;
@@ -95,6 +94,7 @@ impl SendPingsFlow {
             let nonce = rand::thread_rng().gen::<u64>();
             let ping = make_message!(Payload::Ping, PingMessage { nonce });
             if let Some(router) = self.router.upgrade() {
+                router.set_ping_pending(nonce);
                 router.enqueue(ping).await?;
             } else {
                 return Err(ProtocolError::ConnectionClosed);
@@ -104,6 +104,11 @@ impl SendPingsFlow {
                 return Err(ProtocolError::Other("nonce mismatch between ping and pong"));
             } else {
                 debug!("Successful ping with peer {} (nonce: {})", self.peer, pong.nonce);
+            }
+            if let Some(router) = self.router.upgrade() {
+                router.set_ping_idle();
+            } else {
+                return Err(ProtocolError::ConnectionClosed);
             }
         }
     }

@@ -2,6 +2,7 @@ use crate::core::hub::HubEvent;
 use crate::pb::KaspadMessage;
 use crate::Peer;
 use crate::{common::ProtocolError, KaspadMessagePayloadType};
+use kaspa_core::time::unix_now;
 use kaspa_core::{debug, error, info, trace};
 use kaspa_utils::networking::PeerId;
 use parking_lot::{Mutex, RwLock};
@@ -39,7 +40,7 @@ impl From<KaspadMessagePayloadType> for IncomingRouteOverflowPolicy {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct RouterMutableState {
     /// Used on router init to signal the router receive loop to start listening
     start_signal: Option<OneshotSender<()>>,
@@ -49,6 +50,21 @@ struct RouterMutableState {
 
     /// Properties of the peer
     properties: Arc<PeerProperties>,
+
+    /// The nonce of the last ping we sent
+    last_ping_nonce: u64,
+
+    /// Time last ping was sent
+    last_ping_time: u64,
+
+    /// Duration of the last ping to this peer
+    last_ping_duration: u64,
+}
+
+impl RouterMutableState {
+    fn new(start_signal: Option<OneshotSender<()>>, shutdown_signal: Option<OneshotSender<()>>) -> Self {
+        Self { start_signal, shutdown_signal, ..Default::default() }
+    }
 }
 
 /// A router object for managing the communication to a network peer. It is named a router because it's responsible
@@ -94,7 +110,14 @@ impl From<&Router> for PeerKey {
 
 impl From<&Router> for Peer {
     fn from(router: &Router) -> Self {
-        Self::new(router.identity(), router.net_address, router.is_outbound, router.connection_started, router.properties())
+        Self::new(
+            router.identity(),
+            router.net_address,
+            router.is_outbound,
+            router.connection_started,
+            router.properties(),
+            router.last_ping_duration(),
+        )
     }
 }
 
@@ -123,11 +146,7 @@ impl Router {
             routing_map: RwLock::new(HashMap::new()),
             outgoing_route,
             hub_sender,
-            mutable_state: Mutex::new(RouterMutableState {
-                start_signal: Some(start_sender),
-                shutdown_signal: Some(shutdown_sender),
-                properties: Default::default(),
-            }),
+            mutable_state: Mutex::new(RouterMutableState::new(Some(start_sender), Some(shutdown_sender))),
         });
 
         let router_clone = router.clone();
@@ -210,6 +229,24 @@ impl Router {
 
     pub fn set_properties(&self, properties: Arc<PeerProperties>) {
         self.mutable_state.lock().properties = properties;
+    }
+
+    /// Sets the ping state of the peer to 'pending'
+    pub fn set_ping_pending(&self, nonce: u64) {
+        let mut state = self.mutable_state.lock();
+        state.last_ping_nonce = nonce;
+        state.last_ping_time = unix_now();
+    }
+
+    /// sets the ping state of the peer to 'idle'
+    pub fn set_ping_idle(&self) {
+        let mut state = self.mutable_state.lock();
+        state.last_ping_nonce = 0;
+        state.last_ping_duration = unix_now() - state.last_ping_time;
+    }
+
+    pub fn last_ping_duration(&self) -> u64 {
+        self.mutable_state.lock().last_ping_duration
     }
 
     fn incoming_flow_channel_size() -> usize {

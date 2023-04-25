@@ -20,6 +20,7 @@ pub struct Peer {
     is_outbound: bool,
     connection_started: Instant,
     properties: Arc<PeerProperties>,
+    last_ping_duration: u64,
 }
 
 impl Peer {
@@ -29,8 +30,9 @@ impl Peer {
         is_outbound: bool,
         connection_started: Instant,
         properties: Arc<PeerProperties>,
+        last_ping_duration: u64,
     ) -> Self {
-        Self { identity, net_address, is_outbound, connection_started, properties }
+        Self { identity, net_address, is_outbound, connection_started, properties, last_ping_duration }
     }
 
     /// Internal identity of this peer
@@ -58,6 +60,10 @@ impl Peer {
 
     pub fn properties(&self) -> Arc<PeerProperties> {
         self.properties.clone()
+    }
+
+    pub fn last_ping_duration(&self) -> u64 {
+        self.last_ping_duration
     }
 }
 
