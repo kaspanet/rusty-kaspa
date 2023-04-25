@@ -131,14 +131,6 @@ impl TryFrom<protowire::TransactionOutput> for TransactionOutput {
     }
 }
 
-impl TryFrom<protowire::SubnetworkId> for SubnetworkId {
-    type Error = ConversionError;
-
-    fn try_from(value: protowire::SubnetworkId) -> Result<Self, Self::Error> {
-        Ok(value.bytes.as_slice().try_into()?)
-    }
-}
-
 impl TryFrom<protowire::TransactionMessage> for Transaction {
     type Error = ConversionError;
 

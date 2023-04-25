@@ -6,6 +6,7 @@ use crate::flowcontext::{
 use crate::v5;
 use async_trait::async_trait;
 use kaspa_addressmanager::AddressManager;
+use kaspa_connectionmanager::ConnectionManager;
 use kaspa_consensus_core::block::Block;
 use kaspa_consensus_core::config::Config;
 use kaspa_consensus_core::tx::{Transaction, TransactionId};
@@ -15,7 +16,10 @@ use kaspa_consensus_notify::{
     root::ConsensusNotificationRoot,
 };
 use kaspa_consensusmanager::{ConsensusInstance, ConsensusManager};
-use kaspa_core::{debug, info};
+use kaspa_core::{
+    debug, info,
+    kaspad_env::{name, version},
+};
 use kaspa_core::{time::unix_now, warn};
 use kaspa_hashes::Hash;
 use kaspa_mining::{
@@ -25,11 +29,13 @@ use kaspa_mining::{
 use kaspa_notify::notifier::Notify;
 use kaspa_p2p_lib::{
     common::ProtocolError,
+    convert::model::version::Version,
     make_message,
-    pb::{self, kaspad_message::Payload, InvRelayBlockMessage},
-    ConnectionInitializer, Hub, KaspadHandshake, Router,
+    pb::{kaspad_message::Payload, InvRelayBlockMessage},
+    ConnectionInitializer, Hub, KaspadHandshake, PeerKey, PeerProperties, Router,
 };
-use parking_lot::Mutex;
+use kaspa_utils::networking::PeerId;
+use parking_lot::{Mutex, RwLock};
 use std::{
     collections::HashSet,
     iter::once,
@@ -46,7 +52,7 @@ use uuid::Uuid;
 const PROTOCOL_VERSION: u32 = 5;
 
 pub struct FlowContextInner {
-    pub node_id: Uuid,
+    pub node_id: PeerId,
     pub consensus_manager: Arc<ConsensusManager>,
     pub config: Arc<Config>,
     hub: Hub,
@@ -55,7 +61,9 @@ pub struct FlowContextInner {
     transactions_spread: AsyncRwLock<TransactionsSpread>,
     shared_transaction_requests: Arc<Mutex<HashSet<TransactionId>>>,
     is_ibd_running: Arc<AtomicBool>,
+    ibd_peer_key: Arc<RwLock<Option<PeerKey>>>,
     pub address_manager: Arc<Mutex<AddressManager>>,
+    connection_manager: RwLock<Option<Arc<ConnectionManager>>>,
     mining_manager: Arc<MiningManager>,
     notification_root: Arc<ConsensusNotificationRoot>,
 }
@@ -112,20 +120,30 @@ impl FlowContext {
         let hub = Hub::new();
         Self {
             inner: Arc::new(FlowContextInner {
-                node_id: Uuid::new_v4(),
+                node_id: Uuid::new_v4().into(),
                 consensus_manager,
                 config,
                 orphans_pool: AsyncRwLock::new(OrphanBlocksPool::new(MAX_ORPHANS)),
                 shared_block_requests: Arc::new(Mutex::new(HashSet::new())),
                 transactions_spread: AsyncRwLock::new(TransactionsSpread::new(hub.clone())),
                 shared_transaction_requests: Arc::new(Mutex::new(HashSet::new())),
-                is_ibd_running: Arc::new(AtomicBool::default()),
+                is_ibd_running: Default::default(),
+                ibd_peer_key: Default::default(),
                 hub,
                 address_manager,
+                connection_manager: Default::default(),
                 mining_manager,
                 notification_root,
             }),
         }
+    }
+
+    pub fn set_connection_manager(&self, connection_manager: Arc<ConnectionManager>) {
+        self.connection_manager.write().replace(connection_manager);
+    }
+
+    pub fn connection_manager(&self) -> Option<Arc<ConnectionManager>> {
+        self.connection_manager.read().clone()
     }
 
     pub fn consensus(&self) -> ConsensusInstance {
@@ -140,8 +158,9 @@ impl FlowContext {
         &self.mining_manager
     }
 
-    pub fn try_set_ibd_running(&self) -> Option<IbdRunningGuard> {
+    pub fn try_set_ibd_running(&self, peer_key: PeerKey) -> Option<IbdRunningGuard> {
         if self.is_ibd_running.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
+            self.ibd_peer_key.write().replace(peer_key);
             Some(IbdRunningGuard { indicator: self.is_ibd_running.clone() })
         } else {
             None
@@ -150,6 +169,14 @@ impl FlowContext {
 
     pub fn is_ibd_running(&self) -> bool {
         self.is_ibd_running.load(Ordering::SeqCst)
+    }
+
+    pub fn ibd_peer_key(&self) -> Option<PeerKey> {
+        if self.is_ibd_running() {
+            *self.ibd_peer_key.read()
+        } else {
+            None
+        }
     }
 
     pub fn try_adding_block_request(&self, req: Hash) -> Option<RequestScope<Hash>> {
@@ -293,39 +320,53 @@ impl ConnectionInitializer for FlowContext {
         let network_name = self.config.network_name();
 
         // Build the local version message
+        // Subnets are not currently supported
+        let mut self_version_message = Version::new(None, self.node_id, network_name.clone(), None, PROTOCOL_VERSION);
+        self_version_message.add_user_agent(name(), version(), &[]);
         // TODO: full and accurate version info
-        let self_version_message = pb::VersionMessage {
-            protocol_version: PROTOCOL_VERSION,
-            services: 0, // TODO: get number of live services
-            timestamp: unix_now() as i64,
-            address: None, // TODO
-            id: Vec::from(self.node_id.as_ref()),
-            user_agent: String::new(), // TODO
-            disable_relay_tx: false,   // TODO: config/cmd
-            subnetwork_id: None,       // Subnets are not currently supported
-            network: network_name.clone(),
-        };
+        // TODO: get number of live services
+        // TODO: disable_relay_tx from config/cmd
 
         // Perform the handshake
-        let peer_version_message = handshake.handshake(self_version_message).await?;
+        let peer_version_message = handshake.handshake(self_version_message.into()).await?;
+        // Get time_offset as accurate as possible by computing right after the handshake
+        let time_offset = unix_now() as i64 - peer_version_message.timestamp;
 
-        if peer_version_message.network != network_name {
-            return Err(ProtocolError::WrongNetwork(network_name, peer_version_message.network));
+        let peer_version: Version = peer_version_message.try_into()?;
+        router.set_identity(peer_version.id);
+        // Avoid duplicate connections
+        if self.hub.has_peer(router.key()) {
+            return Err(ProtocolError::PeerAlreadyExists(router.key()));
         }
 
-        debug!("protocol versions - self: {}, peer: {}", PROTOCOL_VERSION, peer_version_message.protocol_version);
+        if peer_version.network != network_name {
+            return Err(ProtocolError::WrongNetwork(network_name, peer_version.network));
+        }
+
+        debug!("protocol versions - self: {}, peer: {}", PROTOCOL_VERSION, peer_version.protocol_version);
 
         // Register all flows according to version
-        let flows = match peer_version_message.protocol_version {
-            PROTOCOL_VERSION => v5::register(self.clone(), router.clone()),
+        let (flows, applied_protocol_version) = match peer_version.protocol_version {
+            PROTOCOL_VERSION => (v5::register(self.clone(), router.clone()), PROTOCOL_VERSION),
             // TODO: different errors for obsolete (low version) vs unknown (high)
             v => return Err(ProtocolError::VersionMismatch(PROTOCOL_VERSION, v)),
         };
 
+        // Build and register the peer properties
+        let peer_properties = Arc::new(PeerProperties {
+            user_agent: peer_version.user_agent.to_owned(),
+            advertised_protocol_version: peer_version.protocol_version,
+            protocol_version: applied_protocol_version,
+            disable_relay_tx: peer_version.disable_relay_tx,
+            subnetwork_id: peer_version.subnetwork_id.to_owned(),
+            time_offset,
+        });
+        router.set_properties(peer_properties);
+
         // Send and receive the ready signal
         handshake.exchange_ready_messages().await?;
 
-        info!("Registering p2p flows for peer {} for protocol version {}", router, peer_version_message.protocol_version);
+        info!("Registering p2p flows for peer {} for protocol version {}", router, peer_version.protocol_version);
 
         // Launch all flows. Note we launch only after the ready signal was exchanged
         for flow in flows {

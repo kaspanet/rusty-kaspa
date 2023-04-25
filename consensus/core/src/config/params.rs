@@ -70,16 +70,11 @@ impl Params {
     }
 
     pub fn default_p2p_port(&self) -> u16 {
-        match self.net {
-            NetworkType::Mainnet => 16111,
-            NetworkType::Testnet => 16211,
-            NetworkType::Simnet => 16511,
-            NetworkType::Devnet => 16611,
-        }
+        self.net.default_p2p_port()
     }
 
     pub fn default_rpc_port(&self) -> u16 {
-        self.net.port()
+        self.net.default_rpc_port()
     }
 }
 

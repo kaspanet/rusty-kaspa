@@ -56,10 +56,17 @@ impl AsyncRuntime {
             .block_on(async { self.worker_impl(core).await });
     }
 
-    // #[tokio::main(worker_threads = 2)]
-    // TODO: increase the number of threads if needed
-    // TODO: build the runtime explicitly and dedicate a number of threads based on the host specs
     pub async fn worker_impl(self: &Arc<AsyncRuntime>, core: Arc<Core>) {
+        let rt_handle = tokio::runtime::Handle::current();
+        std::thread::spawn(move || loop {
+            // See https://github.com/tokio-rs/tokio/issues/4730 and comment therein referring to
+            // https://gist.github.com/Darksonn/330f2aa771f95b5008ddd4864f5eb9e9#file-main-rs-L6
+            // In our case it's hard to avoid some short blocking i/o calls to the DB so we place this
+            // workaround for now to avoid any rare yet possible system freeze.
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            rt_handle.spawn(std::future::ready(()));
+        });
+
         // Start all async services
         // All services futures are spawned as tokio tasks to enable parallelism
         trace!("async-runtime worker starting");

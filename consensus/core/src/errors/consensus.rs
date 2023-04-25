@@ -1,7 +1,7 @@
 use kaspa_hashes::Hash;
 use thiserror::Error;
 
-use super::{sync::SyncManagerError, traversal::TraversalError};
+use super::{difficulty::DifficultyError, sync::SyncManagerError, traversal::TraversalError};
 
 #[derive(Error, Debug, Clone)]
 pub enum ConsensusError {
@@ -22,6 +22,9 @@ pub enum ConsensusError {
 
     #[error("traversal error")]
     TraversalError(#[from] TraversalError),
+
+    #[error("difficulty error: {0}")]
+    DifficultyError(#[from] DifficultyError),
 
     #[error("{0}")]
     General(&'static str),

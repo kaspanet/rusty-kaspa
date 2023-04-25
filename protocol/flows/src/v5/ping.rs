@@ -9,7 +9,7 @@ use kaspa_p2p_lib::{
 use rand::Rng;
 use std::{
     sync::{Arc, Weak},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 /// Flow for managing a loop receiving pings and responding with pongs
@@ -58,6 +58,7 @@ pub struct SendPingsFlow {
 
     // We use a weak reference to avoid this flow from holding the router during timer waiting if the connection was closed
     router: Weak<Router>,
+    peer: String,
     incoming_route: IncomingRoute,
 }
 
@@ -77,14 +78,14 @@ impl Flow for SendPingsFlow {
 }
 
 impl SendPingsFlow {
-    pub fn new(ctx: FlowContext, router: Weak<Router>, incoming_route: IncomingRoute) -> Self {
-        Self { _ctx: ctx, router, incoming_route }
+    pub fn new(ctx: FlowContext, router: Arc<Router>, incoming_route: IncomingRoute) -> Self {
+        let peer = router.to_string();
+        Self { _ctx: ctx, router: Arc::downgrade(&router), peer, incoming_route }
     }
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
         loop {
             // TODO: handle application shutdown signal
-            // TODO: set peer ping state to pending/idle
 
             // Wait `PING_INTERVAL` between pings
             tokio::time::sleep(PING_INTERVAL).await;
@@ -92,15 +93,16 @@ impl SendPingsFlow {
             // Create a fresh random nonce for each ping
             let nonce = rand::thread_rng().gen::<u64>();
             let ping = make_message!(Payload::Ping, PingMessage { nonce });
-            if let Some(router) = self.router.upgrade() {
-                router.enqueue(ping).await?;
-            } else {
-                return Err(ProtocolError::ConnectionClosed);
-            }
+            let ping_time = Instant::now();
+            let Some(router) = self.router.upgrade() else { return Err(ProtocolError::ConnectionClosed); };
+            router.enqueue(ping).await?;
             let pong = dequeue_with_timeout!(self.incoming_route, Payload::Pong)?;
             if pong.nonce != nonce {
                 return Err(ProtocolError::Other("nonce mismatch between ping and pong"));
+            } else {
+                debug!("Successful ping with peer {} (nonce: {})", self.peer, pong.nonce);
             }
+            router.set_last_ping_duration(ping_time.elapsed().as_millis() as u64);
         }
     }
 }

@@ -1,14 +1,14 @@
 #[allow(unused)]
 use clap::{arg, command, Arg, Command};
 use kaspa_consensus::config::Config;
-use kaspa_core::version::version;
+use kaspa_core::kaspad_env::version;
 
 pub struct Defaults {
     pub appdir: &'static str,
     pub rpclisten_borsh: &'static str,
     pub rpclisten_json: &'static str,
+    pub unsafe_rpc: bool,
     pub async_threads: usize,
-    pub wrpc_serializer_tasks: usize,
     pub utxoindex: bool,
     pub reset_db: bool,
     pub outbound_target: usize,
@@ -24,8 +24,8 @@ impl Default for Defaults {
             appdir: "datadir",
             rpclisten_borsh: "127.0.0.1:17110",
             rpclisten_json: "127.0.0.1:18110",
-            async_threads: num_cpus::get() / 2,
-            wrpc_serializer_tasks: num_cpus::get() / 2,
+            unsafe_rpc: false,
+            async_threads: num_cpus::get(),
             utxoindex: false,
             reset_db: false,
             outbound_target: 8,
@@ -44,6 +44,7 @@ pub struct Args {
     pub rpclisten: Option<String>,
     pub rpclisten_borsh: Option<String>,
     pub rpclisten_json: Option<String>,
+    pub unsafe_rpc: bool,
     pub wrpc_verbose: bool,
     pub log_level: String,
     pub async_threads: usize,
@@ -77,7 +78,7 @@ pub fn cli(defaults: &Defaults) -> Command {
             Arg::new("log_level")
                 .short('d')
                 .long("loglevel")
-                .value_name("log_level")
+                .value_name("LEVEL")
                 .default_value("info")
                 .num_args(0..=1)
                 .require_equals(true)
@@ -86,7 +87,7 @@ pub fn cli(defaults: &Defaults) -> Command {
         .arg(
             Arg::new("rpclisten")
                 .long("rpclisten")
-                .value_name("rpclisten")
+                .value_name("IP[:PORT]")
                 .num_args(0..=1)
                 .require_equals(true)
                 .help("Interface:port to listen for gRPC connections (default port: 16110, testnet: 16210)."),
@@ -94,7 +95,7 @@ pub fn cli(defaults: &Defaults) -> Command {
         .arg(
             Arg::new("rpclisten-borsh")
                 .long("rpclisten-borsh")
-                .value_name("rpclisten-borsh")
+                .value_name("IP[:PORT]")
                 .num_args(0..=1)
                 .require_equals(true)
                 .default_missing_value(defaults.rpclisten_borsh)
@@ -106,16 +107,17 @@ pub fn cli(defaults: &Defaults) -> Command {
         .arg(
             Arg::new("rpclisten-json")
                 .long("rpclisten-json")
-                .value_name("rpclisten-json")
+                .value_name("IP[:PORT]")
                 .num_args(0..=1)
                 .require_equals(true)
                 .default_missing_value(defaults.rpclisten_json)
                 .help(format!("Interface:port to listen for wRPC JSON connections (default: {}).", defaults.rpclisten_json)),
         )
+        .arg(arg!(--unsaferpc "Enable RPC commands which affect the state of the node"))
         .arg(
             Arg::new("connect")
                 .long("connect")
-                .value_name("connect")
+                .value_name("IP[:PORT]")
                 .num_args(0..=1)
                 .require_equals(true)
                 .help("Connect only to the specified peers at startup."),
@@ -123,10 +125,10 @@ pub fn cli(defaults: &Defaults) -> Command {
         .arg(
             Arg::new("listen")
                 .long("listen")
-                .value_name("listen")
+                .value_name("IP[:PORT]")
                 .num_args(0..=1)
                 .require_equals(true)
-                .help("Add an interface/port to listen for connections (default all interfaces port: 16111, testnet: 16211)."),
+                .help("Add an interface:port to listen for connections (default all interfaces port: 16111, testnet: 16211)."),
         )
         .arg(
             Arg::new("outpeers")
@@ -161,6 +163,7 @@ impl Args {
             rpclisten: m.get_one::<String>("rpclisten").cloned(),
             rpclisten_borsh: m.get_one::<String>("rpclisten-borsh").cloned(),
             rpclisten_json: m.get_one::<String>("rpclisten-json").cloned(),
+            unsafe_rpc: m.get_one::<bool>("unsaferpc").cloned().unwrap_or(defaults.unsafe_rpc),
             wrpc_verbose: false,
             log_level: m.get_one::<String>("log_level").cloned().unwrap(),
             async_threads: m.get_one::<usize>("async_threads").cloned().unwrap_or(defaults.async_threads),
@@ -178,6 +181,7 @@ impl Args {
 
     pub fn apply_to_config(&self, config: &mut Config) {
         config.utxoindex = self.utxoindex;
+        config.unsafe_rpc = self.unsafe_rpc;
     }
 }
 

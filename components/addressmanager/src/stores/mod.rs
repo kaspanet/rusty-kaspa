@@ -1,27 +1,9 @@
-use std::net::{IpAddr, Ipv6Addr, SocketAddr};
+use std::net::{IpAddr, Ipv6Addr};
 
-use serde::{Deserialize, Serialize};
+pub use kaspa_utils::networking::NetAddress;
 
 pub(super) mod address_store;
 pub(super) mod banned_address_store;
-
-#[derive(PartialEq, Eq, Hash, Copy, Clone, Serialize, Deserialize, Debug)]
-pub struct NetAddress {
-    pub ip: IpAddr,
-    pub port: u16,
-}
-
-impl NetAddress {
-    pub fn new(ip: IpAddr, port: u16) -> Self {
-        Self { ip, port }
-    }
-}
-
-impl From<SocketAddr> for NetAddress {
-    fn from(value: SocketAddr) -> Self {
-        Self::new(value.ip(), value.port())
-    }
-}
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy)]
 pub struct AddressKey(Ipv6Addr, u16);
@@ -42,7 +24,7 @@ impl AddressKey {
 impl From<NetAddress> for AddressKey {
     fn from(value: NetAddress) -> Self {
         AddressKey::new(
-            match value.ip {
+            match value.ip.0 {
                 IpAddr::V4(ip) => ip.to_ipv6_mapped(),
                 IpAddr::V6(ip) => ip,
             },

@@ -79,6 +79,7 @@ use itertools::Itertools;
 use kaspa_database::prelude::StoreResultExtensions;
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
+use kaspa_utils::refs::Refs;
 use parking_lot::RwLock;
 use std::{
     cmp::max,
@@ -977,5 +978,22 @@ impl ConsensusApi for Consensus {
         let pp_read_guard = self.pruning_store.read();
         let pp = pp_read_guard.pruning_point().unwrap();
         Ok(self.sync_manager.create_block_locator_from_pruning_point(high, pp, Some(limit))?)
+    }
+
+    fn estimate_network_hashes_per_second(&self, start_hash: Option<Hash>, window_size: usize) -> ConsensusResult<u64> {
+        let virtual_ghostdag_data = if start_hash.is_none() {
+            Some(self.virtual_processor.virtual_stores.read().state.get().unwrap().ghostdag_data.clone())
+        } else {
+            None
+        };
+        let high_ghostdag_data: Refs<_> = match start_hash {
+            Some(hash) => {
+                self.validate_block_exists(hash)?;
+                self.ghostdag_store.get_data(hash).unwrap().into()
+            }
+            None => virtual_ghostdag_data.as_ref().unwrap().into(),
+        };
+        let window = self.dag_traversal_manager.block_window(&high_ghostdag_data, window_size).unwrap();
+        Ok(self.difficulty_manager.estimate_network_hashes_per_second(&window)?)
     }
 }

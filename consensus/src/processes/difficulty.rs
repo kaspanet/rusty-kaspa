@@ -1,5 +1,8 @@
 use crate::model::stores::{block_window_cache::BlockWindowHeap, ghostdag::GhostdagData, headers::HeaderStoreReader};
-use kaspa_consensus_core::{BlockHashSet, BlueWorkType};
+use kaspa_consensus_core::{
+    errors::difficulty::{DifficultyError, DifficultyResult},
+    BlockHashSet, BlueWorkType,
+};
 use kaspa_hashes::Hash;
 use kaspa_math::{Uint256, Uint320};
 use std::{
@@ -41,14 +44,18 @@ impl<T: HeaderStoreReader> DifficultyManager<T> {
         (sp_daa_score + mergeset_daa.len() as u64, mergeset_non_daa)
     }
 
-    pub fn calculate_difficulty_bits(&self, window: &BlockWindowHeap) -> u32 {
-        let mut difficulty_blocks: Vec<DifficultyBlock> = window
+    fn get_difficulty_blocks(&self, window: &BlockWindowHeap) -> Vec<DifficultyBlock> {
+        window
             .iter()
             .map(|item| {
                 let data = self.headers_store.get_compact_header_data(item.0.hash).unwrap();
                 DifficultyBlock { timestamp: data.timestamp, bits: data.bits, sortable_block: item.0.clone() }
             })
-            .collect();
+            .collect()
+    }
+
+    pub fn calculate_difficulty_bits(&self, window: &BlockWindowHeap) -> u32 {
+        let mut difficulty_blocks = self.get_difficulty_blocks(window);
 
         // Until there are enough blocks for a full block window the difficulty should remain constant.
         if difficulty_blocks.len() < self.difficulty_adjustment_window_size {
@@ -71,6 +78,34 @@ impl<T: HeaderStoreReader> DifficultyManager<T> {
         let average_target = targets_sum / (difficulty_blocks_len as u64);
         let new_target = average_target * max(max_ts - min_ts, 1) / self.target_time_per_block / difficulty_blocks_len as u64;
         Uint256::try_from(new_target).expect("Expected target should be less than 2^256").compact_target_bits()
+    }
+
+    pub fn estimate_network_hashes_per_second(&self, window: &BlockWindowHeap) -> DifficultyResult<u64> {
+        // TODO: perhaps move this const
+        const MIN_WINDOW_SIZE: usize = 1000;
+        let window_size = window.len();
+        if window_size < MIN_WINDOW_SIZE {
+            return Err(DifficultyError::UnderMinWindowSizeAllowed(window_size, MIN_WINDOW_SIZE));
+        }
+        // return 0 if no blocks had been mined yet
+        if window.is_empty() {
+            return Ok(0);
+        }
+
+        let difficulty_blocks = self.get_difficulty_blocks(window);
+        let (min_ts, max_ts) = difficulty_blocks.iter().map(|x| x.timestamp).minmax().into_option().unwrap();
+        if min_ts == max_ts {
+            return Err(DifficultyError::EmptyTimestampRange);
+        }
+        let window_duration = (max_ts - min_ts) / 1000; // Divided by 1000 to convert milliseconds to seconds
+        if window_duration == 0 {
+            return Ok(0);
+        }
+
+        let (min_blue_work, max_blue_work) =
+            difficulty_blocks.iter().map(|x| x.sortable_block.blue_work).minmax().into_option().unwrap();
+
+        Ok(((max_blue_work - min_blue_work) / window_duration).as_u64())
     }
 }
 

@@ -3,6 +3,7 @@ use kaspa_consensus_core::config::Config;
 use kaspa_consensus_notify::notifier::ConsensusNotifier;
 use kaspa_consensusmanager::ConsensusManager;
 use kaspa_core::{
+    core::Core,
     task::service::{AsyncService, AsyncServiceError, AsyncServiceFuture},
     trace,
 };
@@ -34,6 +35,7 @@ impl RpcCoreServer {
         flow_context: Arc<FlowContext>,
         utxoindex: DynUtxoIndexApi,
         config: Arc<Config>,
+        core: Arc<Core>,
     ) -> Self {
         let service = Arc::new(RpcCoreService::new(
             consensus_manager,
@@ -43,6 +45,7 @@ impl RpcCoreServer {
             flow_context,
             utxoindex,
             config,
+            core,
         ));
         Self { service, shutdown: DuplexTrigger::default() }
     }

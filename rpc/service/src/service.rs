@@ -1,7 +1,7 @@
 //! Core server implementation for ClientAPI
 
 use super::collector::{CollectorFromConsensus, CollectorFromIndex};
-use crate::converter::{consensus::ConsensusConverter, index::IndexConverter};
+use crate::converter::{consensus::ConsensusConverter, index::IndexConverter, protocol::ProtocolConverter};
 use async_trait::async_trait;
 use kaspa_consensus_core::{
     block::Block,
@@ -16,7 +16,7 @@ use kaspa_consensus_notify::{
     {connection::ConsensusChannelConnection, notification::Notification as ConsensusNotification},
 };
 use kaspa_consensusmanager::ConsensusManager;
-use kaspa_core::{debug, info, trace, version::version, warn};
+use kaspa_core::{core::Core, debug, info, kaspad_env::version, signals::Shutdown, trace, warn};
 use kaspa_index_core::{
     connection::IndexChannelConnection, indexed_utxos::UtxoSetByScriptPublicKey, notification::Notification as IndexNotification,
     notifier::IndexNotifier,
@@ -31,7 +31,12 @@ use kaspa_notify::{
     subscriber::{Subscriber, SubscriptionManager},
 };
 use kaspa_p2p_flows::flow_context::FlowContext;
-use kaspa_rpc_core::{api::rpc::RpcApi, model::*, notify::connection::ChannelConnection, Notification, RpcError, RpcResult};
+use kaspa_rpc_core::{
+    api::rpc::{RpcApi, MAX_SAFE_WINDOW_SIZE},
+    model::*,
+    notify::connection::ChannelConnection,
+    Notification, RpcError, RpcResult,
+};
 use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script};
 use kaspa_utils::channel::Channel;
 use kaspa_utxoindex::api::DynUtxoIndexApi;
@@ -63,6 +68,8 @@ pub struct RpcCoreService {
     config: Arc<Config>,
     consensus_converter: Arc<ConsensusConverter>,
     index_converter: Arc<IndexConverter>,
+    protocol_converter: Arc<ProtocolConverter>,
+    core: Arc<Core>,
 }
 
 const RPC_CORE: &str = "rpc-core";
@@ -76,6 +83,7 @@ impl RpcCoreService {
         flow_context: Arc<FlowContext>,
         utxoindex: DynUtxoIndexApi,
         config: Arc<Config>,
+        core: Arc<Core>,
     ) -> Self {
         // Prepare consensus-notify objects
         let consensus_notify_channel = Channel::<ConsensusNotification>::default();
@@ -109,10 +117,24 @@ impl RpcCoreService {
             subscribers.push(index_subscriber);
         }
 
+        // Protocol converter
+        let protocol_converter = Arc::new(ProtocolConverter::new(flow_context.clone()));
+
         // Create the rcp-core notifier
         let notifier = Arc::new(Notifier::new(EVENT_TYPE_ARRAY[..].into(), collectors, subscribers, 1, RPC_CORE));
 
-        Self { consensus_manager, notifier, mining_manager, flow_context, utxoindex, config, consensus_converter, index_converter }
+        Self {
+            consensus_manager,
+            notifier,
+            mining_manager,
+            flow_context,
+            utxoindex,
+            config,
+            consensus_converter,
+            index_converter,
+            protocol_converter,
+            core,
+        }
     }
 
     pub fn start(&self) {
@@ -475,48 +497,113 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         ))
     }
 
-    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    // UNIMPLEMENTED METHODS
-
-    async fn get_peer_addresses_call(&self, _request: GetPeerAddressesRequest) -> RpcResult<GetPeerAddressesResponse> {
-        Err(RpcError::NotImplemented)
+    async fn estimate_network_hashes_per_second_call(
+        &self,
+        request: EstimateNetworkHashesPerSecondRequest,
+    ) -> RpcResult<EstimateNetworkHashesPerSecondResponse> {
+        if !self.config.unsafe_rpc && request.window_size > MAX_SAFE_WINDOW_SIZE {
+            return Err(RpcError::WindowSizeExceedingMaximum(request.window_size, MAX_SAFE_WINDOW_SIZE));
+        }
+        if request.window_size as u64 > self.config.pruning_depth {
+            return Err(RpcError::WindowSizeExceedingPruningDepth(request.window_size, self.config.pruning_depth));
+        }
+        Ok(EstimateNetworkHashesPerSecondResponse::new(
+            self.consensus_manager
+                .consensus()
+                .session()
+                .await
+                .estimate_network_hashes_per_second(request.start_hash, request.window_size as usize)?,
+        ))
     }
 
-    async fn get_connected_peer_info_call(&self, _request: GetConnectedPeerInfoRequest) -> RpcResult<GetConnectedPeerInfoResponse> {
-        Err(RpcError::NotImplemented)
+    async fn add_peer_call(&self, request: AddPeerRequest) -> RpcResult<AddPeerResponse> {
+        if !self.config.unsafe_rpc {
+            warn!("AddPeer RPC command called while node in safe RPC mode -- ignoring.");
+            return Err(RpcError::UnavailableInSafeMode);
+        }
+        let peer_address = request.peer_address.normalize(self.config.net.default_p2p_port());
+        if let Some(connection_manager) = self.flow_context.connection_manager() {
+            connection_manager.add_connection_request(peer_address.into(), request.is_permanent).await;
+        } else {
+            return Err(RpcError::NoConnectionManager);
+        }
+        Ok(AddPeerResponse {})
     }
 
-    async fn add_peer_call(&self, _request: AddPeerRequest) -> RpcResult<AddPeerResponse> {
-        Err(RpcError::NotImplemented)
+    async fn get_peer_addresses_call(&self, _: GetPeerAddressesRequest) -> RpcResult<GetPeerAddressesResponse> {
+        let address_manager = self.flow_context.address_manager.lock();
+        Ok(GetPeerAddressesResponse::new(address_manager.get_all_addresses(), address_manager.get_all_banned_addresses()))
+    }
+
+    async fn ban_call(&self, request: BanRequest) -> RpcResult<BanResponse> {
+        if !self.config.unsafe_rpc {
+            warn!("Ban RPC command called while node in safe RPC mode -- ignoring.");
+            return Err(RpcError::UnavailableInSafeMode);
+        }
+        if let Some(connection_manager) = self.flow_context.connection_manager() {
+            let ip = request.ip.into();
+            if connection_manager.ip_has_permanent_connection(ip).await {
+                return Err(RpcError::IpHasPermanentConnection(request.ip));
+            }
+            connection_manager.ban(ip).await;
+        } else {
+            return Err(RpcError::NoConnectionManager);
+        }
+        Ok(BanResponse {})
+    }
+
+    async fn unban_call(&self, request: UnbanRequest) -> RpcResult<UnbanResponse> {
+        if !self.config.unsafe_rpc {
+            warn!("Unban RPC command called while node in safe RPC mode -- ignoring.");
+            return Err(RpcError::UnavailableInSafeMode);
+        }
+        let mut address_manager = self.flow_context.address_manager.lock();
+        if address_manager.is_banned(request.ip) {
+            address_manager.unban(request.ip)
+        } else {
+            return Err(RpcError::IpIsNotBanned(request.ip));
+        }
+        Ok(UnbanResponse {})
+    }
+
+    async fn get_connected_peer_info_call(&self, _: GetConnectedPeerInfoRequest) -> RpcResult<GetConnectedPeerInfoResponse> {
+        let peers = self.flow_context.hub().active_peers();
+        let peer_info = self.protocol_converter.get_peers_info(&peers);
+        Ok(GetConnectedPeerInfoResponse::new(peer_info))
+    }
+
+    async fn shutdown_call(&self, _: ShutdownRequest) -> RpcResult<ShutdownResponse> {
+        if !self.config.unsafe_rpc {
+            warn!("Shutdown RPC command called while node in safe RPC mode -- ignoring.");
+            return Err(RpcError::UnavailableInSafeMode);
+        }
+        warn!("Shutdown RPC command was called, shutting down in 1 second...");
+
+        // Wait a second before shutting down, to allow time to return the response to the caller
+        let core = self.core.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            core.shutdown();
+        });
+
+        Ok(ShutdownResponse {})
     }
 
     async fn resolve_finality_conflict_call(
         &self,
         _request: ResolveFinalityConflictRequest,
     ) -> RpcResult<ResolveFinalityConflictResponse> {
+        if !self.config.unsafe_rpc {
+            warn!("ResolveFinalityConflict RPC command called while node in safe RPC mode -- ignoring.");
+            return Err(RpcError::UnavailableInSafeMode);
+        }
         Err(RpcError::NotImplemented)
     }
 
-    async fn shutdown_call(&self, _request: ShutdownRequest) -> RpcResult<ShutdownResponse> {
-        Err(RpcError::NotImplemented)
-    }
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    // UNIMPLEMENTED METHODS
 
-    async fn ban_call(&self, _request: BanRequest) -> RpcResult<BanResponse> {
-        Err(RpcError::NotImplemented)
-    }
-
-    async fn unban_call(&self, _request: UnbanRequest) -> RpcResult<UnbanResponse> {
-        Err(RpcError::NotImplemented)
-    }
-
-    async fn estimate_network_hashes_per_second_call(
-        &self,
-        _request: EstimateNetworkHashesPerSecondRequest,
-    ) -> RpcResult<EstimateNetworkHashesPerSecondResponse> {
-        Err(RpcError::NotImplemented)
-    }
-
-    async fn get_process_metrics_call(&self, _request: GetProcessMetricsRequest) -> RpcResult<GetProcessMetricsResponse> {
+    async fn get_process_metrics_call(&self, _: GetProcessMetricsRequest) -> RpcResult<GetProcessMetricsResponse> {
         Err(RpcError::NotImplemented)
     }
 
