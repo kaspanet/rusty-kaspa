@@ -600,10 +600,6 @@ impl Consensus {
         async { rx.await.unwrap() }
     }
 
-    pub fn resolve_virtual(&self) {
-        self.virtual_processor.resolve_virtual()
-    }
-
     pub fn body_tips(&self) -> Arc<BlockHashSet> {
         self.body_tips_store.read().get().unwrap()
     }
