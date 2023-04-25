@@ -69,14 +69,22 @@ impl GrpcClient {
         reconnect: bool,
         connection_event_sender: Option<Sender<ConnectionEvent>>,
         override_handle_stop_notify: bool,
+        request_timeout: Option<u64>,
     ) -> Result<GrpcClient> {
         let schema = Regex::new(r"^grpc://").unwrap();
         if !schema.is_match(&address) {
             return Err(Error::GrpcAddressSchema(address));
         }
         let notify_channel = NotificationChannel::default();
-        let inner =
-            Inner::connect(address, reconnect, notify_channel.sender(), connection_event_sender, override_handle_stop_notify).await?;
+        let inner = Inner::connect(
+            address,
+            reconnect,
+            notify_channel.sender(),
+            connection_event_sender,
+            override_handle_stop_notify,
+            request_timeout.unwrap_or(REQUEST_TIMEOUT_DURATION),
+        )
+        .await?;
         let core_events = EVENT_TYPE_ARRAY[..].into();
         let converter = Arc::new(RpcCoreConverter::new());
         let collector = Arc::new(RpcCoreCollector::new(notify_channel.receiver(), converter));
@@ -275,6 +283,8 @@ struct Inner {
 
     // temporary hack to override the handle_stop_notify flag
     override_handle_stop_notify: bool,
+
+    request_timeout: u64,
 }
 
 impl Inner {
@@ -286,6 +296,7 @@ impl Inner {
         request_receiver: KaspadRequestReceiver,
         connection_event_sender: Option<Sender<ConnectionEvent>>,
         override_handle_stop_notify: bool,
+        request_timeout: u64,
     ) -> Self {
         let resolver: DynResolver = match server_features.handle_message_id {
             true => Arc::new(IdResolver::new()),
@@ -309,6 +320,7 @@ impl Inner {
             connector_timer_interval: RECONNECT_INTERVAL,
             connection_event_sender,
             override_handle_stop_notify,
+            request_timeout,
         }
     }
 
@@ -319,12 +331,14 @@ impl Inner {
         notify_sender: NotificationSender,
         connection_event_sender: Option<Sender<ConnectionEvent>>,
         override_handle_stop_notify: bool,
+        request_timeout: u64,
     ) -> Result<Arc<Self>> {
         // Request channel
         let (request_sender, request_receiver) = async_channel::unbounded();
 
         // Try to connect to the server
-        let (stream, server_features) = Inner::try_connect(address.clone(), request_sender.clone(), request_receiver.clone()).await?;
+        let (stream, server_features) =
+            Inner::try_connect(address.clone(), request_sender.clone(), request_receiver.clone(), request_timeout).await?;
 
         // create the inner object
         let inner = Arc::new(Inner::new(
@@ -335,6 +349,7 @@ impl Inner {
             request_receiver,
             connection_event_sender,
             override_handle_stop_notify,
+            request_timeout,
         ));
 
         // Start the request timeout cleaner
@@ -355,10 +370,11 @@ impl Inner {
         address: String,
         request_sender: KaspadRequestSender,
         request_receiver: KaspadRequestReceiver,
+        request_timeout: u64,
     ) -> Result<(Streaming<KaspadResponse>, ServerFeatures)> {
         // gRPC endpoint
         let channel = Endpoint::from_shared(address.clone())?
-            .timeout(tokio::time::Duration::from_millis(REQUEST_TIMEOUT_DURATION))
+            .timeout(tokio::time::Duration::from_millis(request_timeout))
             .connect_timeout(tokio::time::Duration::from_millis(CONNECT_TIMEOUT_DURATION))
             .tcp_keepalive(Some(tokio::time::Duration::from_millis(KEEP_ALIVE_DURATION)))
             .connect()
@@ -408,7 +424,9 @@ impl Inner {
         // TODO: re-register to notifications
 
         // Try to connect to the server
-        let (stream, _) = Inner::try_connect(self.address.clone(), self.request_sender.clone(), self.request_receiver.clone()).await?;
+        let (stream, _) =
+            Inner::try_connect(self.address.clone(), self.request_sender.clone(), self.request_receiver.clone(), self.request_timeout)
+                .await?;
 
         // Start the response receiving task
         self.spawn_response_receiver_task(stream);

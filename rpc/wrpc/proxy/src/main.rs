@@ -61,7 +61,7 @@ async fn main() -> Result<()> {
     log_info!("Proxy routing to `{}` on {}", network_type, options.grpc_proxy_address.as_ref().unwrap());
 
     //log_info!("Routing wrpc://{peer} -> {grpc_proxy_address}");
-    let grpc_client: GrpcClient = GrpcClient::connect(options.grpc_proxy_address.as_ref().unwrap().clone(), true, None, true)
+    let grpc_client: GrpcClient = GrpcClient::connect(options.grpc_proxy_address.as_ref().unwrap().clone(), true, None, true, None)
         .await
         .map_err(|e| WebSocketError::Other(e.to_string()))?;
     // log_trace!("gRPC started...");
