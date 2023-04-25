@@ -50,7 +50,7 @@ impl Deref for PeerId {
 }
 
 //
-// Borsh serializers need to be manually implemented for `NodeId` since
+// Borsh serializers need to be manually implemented for `PeerId` since
 // Uuid does not currently support Borsh
 //
 
@@ -70,7 +70,7 @@ impl BorshDeserialize for PeerId {
 
 impl BorshSchema for PeerId {
     fn declaration() -> borsh::schema::Declaration {
-        "NodeId".to_string()
+        "PeerId".to_string()
     }
     fn add_definitions_recursively(
         definitions: &mut borsh::maybestd::collections::HashMap<borsh::schema::Declaration, borsh::schema::Definition>,
@@ -87,8 +87,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_node_id_borsh() {
-        // Tests for NodeId Borsh ser/deser since we manually implemented them
+    fn test_peer_id_borsh() {
+        // Tests for PeerId Borsh ser/deser since we manually implemented them
         let id: PeerId = Uuid::new_v4().into();
         let bin = id.try_to_vec().unwrap();
         let id2: PeerId = BorshDeserialize::try_from_slice(&bin).unwrap();
