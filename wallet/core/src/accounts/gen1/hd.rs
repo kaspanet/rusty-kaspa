@@ -32,7 +32,7 @@ where
 
 #[derive(Clone)]
 #[wasm_bindgen(inspectable)]
-pub struct AddressGenerator {
+pub struct AddressDerivationManager {
     /// Derived public key
     public_key: secp256k1::PublicKey,
     /// Extended key attributes.
@@ -43,7 +43,7 @@ pub struct AddressGenerator {
     index: Arc<Mutex<u32>>,
 }
 
-impl AddressGenerator {
+impl AddressDerivationManager {
     pub fn new(
         public_key: secp256k1::PublicKey,
         attrs: ExtendedKeyAttrs,
@@ -56,21 +56,17 @@ impl AddressGenerator {
         Ok(wallet)
     }
 
-    pub async fn derive_addresses(&self, indexes: std::ops::Range<u32>) -> Result<Vec<Address>> {
+    pub async fn derive_address_range(&self, indexes: std::ops::Range<u32>) -> Result<Vec<Address>> {
         let list = indexes.map(|index| self.derive_address(index)).collect::<Vec<_>>();
-
-        let mut addresses = vec![];
-        for res in join_all(list).await {
-            addresses.push(res?);
-        }
-
+        let addresses = join_all(list).await.into_iter().collect::<Result<Vec<_>>>()?;
         Ok(addresses)
     }
 
     pub async fn derive_address(&self, index: u32) -> Result<Address> {
-        let (key, _chain_code) = WalletAccount::derive_public_key_child(&self.public_key, index, self.hmac.clone())?;
+        let (key, _chain_code) = WalletDerivationManager::derive_public_key_child(&self.public_key, index, self.hmac.clone())?;
 
         let pubkey = &key.to_bytes()[1..];
+        // - TODO - where should the address prefix come from?
         let address = Address::new(AddressPrefix::Mainnet, Version::PubKey, pubkey);
 
         Ok(address)
@@ -102,7 +98,7 @@ impl AddressGenerator {
 }
 
 #[wasm_bindgen]
-impl AddressGenerator {
+impl AddressDerivationManager {
     #[wasm_bindgen(getter, js_name = publicKey)]
     pub fn get_public_key(&self) -> String {
         self.public_key().to_string(None)
@@ -114,13 +110,13 @@ impl AddressGenerator {
     }
 }
 
-impl From<&AddressGenerator> for ExtendedPublicKey<secp256k1::PublicKey> {
-    fn from(inner: &AddressGenerator) -> ExtendedPublicKey<secp256k1::PublicKey> {
+impl From<&AddressDerivationManager> for ExtendedPublicKey<secp256k1::PublicKey> {
+    fn from(inner: &AddressDerivationManager) -> ExtendedPublicKey<secp256k1::PublicKey> {
         ExtendedPublicKey { public_key: inner.public_key, attrs: inner.attrs().clone() }
     }
 }
 #[async_trait]
-impl AddressGeneratorTrait for AddressGenerator {
+impl AddressDerivationManagerTrait for AddressDerivationManager {
     async fn new_address(&self) -> Result<Address> {
         self.set_index(self.index()? + 1)?;
         self.current_address().await
@@ -141,21 +137,25 @@ impl AddressGeneratorTrait for AddressGenerator {
 
         Ok(address)
     }
+
+    async fn get_range(&self, range: std::ops::Range<u32>) -> Result<Vec<Address>> {
+        self.derive_address_range(range).await
+    }
 }
 
 #[derive(Clone)]
-pub struct WalletAccount {
+pub struct WalletDerivationManager {
     /// extended public key derived upto `m/<Purpose>'/111111'/<Account Index>'`
     extended_public_key: ExtendedPublicKey<secp256k1::PublicKey>,
 
     /// receive address wallet
-    receive_wallet: Arc<AddressGenerator>,
+    receive_address_manager: Arc<AddressDerivationManager>,
 
     /// change address wallet
-    change_wallet: Arc<AddressGenerator>,
+    change_address_manager: Arc<AddressDerivationManager>,
 }
 
-impl WalletAccount {
+impl WalletDerivationManager {
     pub async fn create_extended_key_from_xprv(
         xprv: &str,
         is_multisig: bool,
@@ -197,34 +197,34 @@ impl WalletAccount {
         Ok((private_key, attrs))
     }
 
-    pub fn receive_wallet(&self) -> &AddressGenerator {
-        &self.receive_wallet
+    pub fn receive_address_manager(&self) -> &AddressDerivationManager {
+        &self.receive_address_manager
     }
-    pub fn change_wallet(&self) -> &AddressGenerator {
-        &self.change_wallet
+    pub fn change_address_manager(&self) -> &AddressDerivationManager {
+        &self.change_address_manager
     }
 
     #[allow(dead_code)]
     pub async fn derive_address(&self, address_type: AddressType, index: u32) -> Result<Address> {
         let address = match address_type {
-            AddressType::Receive => self.receive_wallet.derive_address(index),
-            AddressType::Change => self.change_wallet.derive_address(index),
+            AddressType::Receive => self.receive_address_manager.derive_address(index),
+            AddressType::Change => self.change_address_manager.derive_address(index),
         }
         .await?;
 
         Ok(address)
     }
 
-    pub async fn derive_wallet(
+    pub async fn derive_child_address_manager(
         mut public_key: ExtendedPublicKey<secp256k1::PublicKey>,
         address_type: AddressType,
-    ) -> Result<AddressGenerator> {
+    ) -> Result<AddressDerivationManager> {
         public_key = public_key.derive_child(ChildNumber::new(address_type.index(), false)?)?;
 
         let mut hmac = HmacSha512::new_from_slice(&public_key.attrs().chain_code).map_err(Error::Hmac)?;
         hmac.update(&public_key.to_bytes());
 
-        AddressGenerator::new(*public_key.public_key(), public_key.attrs().clone(), public_key.fingerprint(), hmac, 0)
+        AddressDerivationManager::new(*public_key.public_key(), public_key.attrs().clone(), public_key.fingerprint(), hmac, 0)
     }
 
     pub async fn derive_public_key(
@@ -341,7 +341,7 @@ impl WalletAccount {
     }
 }
 
-impl Debug for WalletAccount {
+impl Debug for WalletDerivationManager {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("WalletAccount")
             .field("depth", &self.attrs().depth)
@@ -354,7 +354,7 @@ impl Debug for WalletAccount {
 }
 
 #[async_trait]
-impl WalletAccountTrait for WalletAccount {
+impl WalletDerivationManagerTrait for WalletDerivationManager {
     /// build wallet from root/master private key
     async fn from_master_xprv(xprv: &str, is_multisig: bool, account_index: u64) -> Result<Self> {
         let xprv_key = ExtendedPrivateKey::<SecretKey>::from_str(xprv)?;
@@ -377,44 +377,48 @@ impl WalletAccountTrait for WalletAccount {
     }
 
     async fn from_extended_public_key(extended_public_key: ExtendedPublicKey<secp256k1::PublicKey>) -> Result<Self> {
-        let receive_wallet = Self::derive_wallet(extended_public_key.clone(), AddressType::Receive).await?;
+        let receive_wallet = Self::derive_child_address_manager(extended_public_key.clone(), AddressType::Receive).await?;
 
-        let change_wallet = Self::derive_wallet(extended_public_key.clone(), AddressType::Change).await?;
+        let change_wallet = Self::derive_child_address_manager(extended_public_key.clone(), AddressType::Change).await?;
 
-        let wallet = Self { extended_public_key, receive_wallet: Arc::new(receive_wallet), change_wallet: Arc::new(change_wallet) };
+        let wallet = Self {
+            extended_public_key,
+            receive_address_manager: Arc::new(receive_wallet),
+            change_address_manager: Arc::new(change_wallet),
+        };
 
         Ok(wallet)
     }
 
-    fn receive_wallet(&self) -> Arc<dyn AddressGeneratorTrait> {
-        self.receive_wallet.clone()
+    fn receive_address_manager(&self) -> Arc<dyn AddressDerivationManagerTrait> {
+        self.receive_address_manager.clone()
     }
 
-    fn change_wallet(&self) -> Arc<dyn AddressGeneratorTrait> {
-        self.change_wallet.clone()
+    fn change_address_manager(&self) -> Arc<dyn AddressDerivationManagerTrait> {
+        self.change_address_manager.clone()
     }
 
     #[inline(always)]
     async fn new_receive_address(&self) -> Result<Address> {
-        let address = self.receive_wallet.new_address().await?;
+        let address = self.receive_address_manager.new_address().await?;
         Ok(address)
     }
 
     #[inline(always)]
     async fn new_change_address(&self) -> Result<Address> {
-        let address = self.change_wallet.new_address().await?;
+        let address = self.change_address_manager.new_address().await?;
         Ok(address)
     }
 
     #[inline(always)]
     async fn derive_receive_address(&self, index: u32) -> Result<Address> {
-        let address = self.receive_wallet.derive_address(index).await?;
+        let address = self.receive_address_manager.derive_address(index).await?;
         Ok(address)
     }
 
     #[inline(always)]
     async fn derive_change_address(&self, index: u32) -> Result<Address> {
-        let address = self.change_wallet.derive_address(index).await?;
+        let address = self.change_address_manager.derive_address(index).await?;
         Ok(address)
     }
 }
@@ -422,7 +426,7 @@ impl WalletAccountTrait for WalletAccount {
 #[cfg(not(target_arch = "wasm32"))]
 #[cfg(test)]
 mod tests {
-    use super::{WalletAccount, WalletAccountTrait};
+    use super::{WalletDerivationManager, WalletDerivationManagerTrait};
     use kaspa_addresses::{Address, Prefix};
 
     fn gen1_receive_addresses() -> Vec<&'static str> {
@@ -481,7 +485,7 @@ mod tests {
         let master_xprv =
             "kprv5y2qurMHCsXYrNfU3GCihuwG3vMqFji7PZXajMEqyBkNh9UZUJgoHYBLTKu1eM4MvUtomcXPQ3Sw9HZ5ebbM4byoUciHo1zrPJBQfqpLorQ";
 
-        let hd_wallet = WalletAccount::from_master_xprv(master_xprv, false, 0).await;
+        let hd_wallet = WalletDerivationManager::from_master_xprv(master_xprv, false, 0).await;
         assert!(hd_wallet.is_ok(), "Could not parse key");
         let hd_wallet = hd_wallet.unwrap();
 
@@ -501,13 +505,13 @@ mod tests {
         let master_xprv =
             "kprv5y2qurMHCsXYrNfU3GCihuwG3vMqFji7PZXajMEqyBkNh9UZUJgoHYBLTKu1eM4MvUtomcXPQ3Sw9HZ5ebbM4byoUciHo1zrPJBQfqpLorQ";
 
-        let hd_wallet = WalletAccount::from_master_xprv(master_xprv, false, 0).await;
+        let hd_wallet = WalletDerivationManager::from_master_xprv(master_xprv, false, 0).await;
         assert!(hd_wallet.is_ok(), "Could not parse key");
         let hd_wallet = hd_wallet.unwrap();
-        let addresses_receive = hd_wallet.receive_wallet().derive_addresses(0..20).await.unwrap();
+        let addresses_receive = hd_wallet.receive_address_manager().derive_address_range(0..20).await.unwrap();
         let addresses_receive = addresses_receive.into_iter().map(String::from).collect::<Vec<String>>();
 
-        let addresses_change = hd_wallet.change_wallet().derive_addresses(0..20).await.unwrap();
+        let addresses_change = hd_wallet.change_address_manager().derive_address_range(0..20).await.unwrap();
         let addresses_change = addresses_change.into_iter().map(String::from).collect::<Vec<String>>();
         println!("receive addresses: {addresses_receive:#?}");
         println!("change addresses: {addresses_change:#?}");
@@ -547,7 +551,7 @@ mod tests {
         let master_xprv =
             "kprv5y2qurMHCsXYrNfU3GCihuwG3vMqFji7PZXajMEqyBkNh9UZUJgoHYBLTKu1eM4MvUtomcXPQ3Sw9HZ5ebbM4byoUciHo1zrPJBQfqpLorQ";
 
-        let hd_wallet = WalletAccount::from_master_xprv(master_xprv, false, 0).await;
+        let hd_wallet = WalletDerivationManager::from_master_xprv(master_xprv, false, 0).await;
         assert!(hd_wallet.is_ok(), "Could not parse key");
         let hd_wallet = hd_wallet.unwrap();
 

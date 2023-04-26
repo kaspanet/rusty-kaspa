@@ -1,5 +1,5 @@
 #[allow(unused_imports)]
-use crate::accounts::{gen0::*, gen1::*, AddressGeneratorTrait, WalletAccountTrait};
+use crate::accounts::{gen0::*, gen1::*, AddressDerivationManagerTrait, WalletDerivationManagerTrait};
 use crate::imports::*;
 use crate::result::Result;
 use crate::secret::Secret;
@@ -66,22 +66,25 @@ pub struct Account {
     // ~
     // pub derivation_path : DerivationPath,
     #[wasm_bindgen(skip)]
-    pub derivator: Arc<dyn crate::accounts::WalletAccountTrait>,
+    pub derivation: Arc<dyn crate::accounts::WalletDerivationManagerTrait>,
 }
 
 impl Account {
-    async fn create_derivator(account_kind: AccountKind, pub_key_data: &PubKeyData) -> Result<Arc<dyn WalletAccountTrait>> {
-        let derivator: Arc<dyn WalletAccountTrait> = match account_kind {
+    async fn create_derivation_manager(
+        account_kind: AccountKind,
+        pub_key_data: &PubKeyData,
+    ) -> Result<Arc<dyn WalletDerivationManagerTrait>> {
+        let derivator: Arc<dyn WalletDerivationManagerTrait> = match account_kind {
             AccountKind::V0 => {
                 // TODO! WalletAccountV0::from_extended_public_key is not yet implemented
                 let xpub = pub_key_data.keys.get(0).unwrap();
                 let extended_public_key = ExtendedPublicKey::<secp256k1::PublicKey>::from_str(xpub)?;
-                Arc::new(WalletAccountV0::from_extended_public_key(extended_public_key).await?)
+                Arc::new(WalletDerivationManagerV0::from_extended_public_key(extended_public_key).await?)
             }
             _ => {
                 let xpub = pub_key_data.keys.get(0).unwrap();
                 let extended_public_key = ExtendedPublicKey::<secp256k1::PublicKey>::from_str(xpub)?;
-                Arc::new(WalletAccount::from_extended_public_key(extended_public_key).await?)
+                Arc::new(WalletDerivationManager::from_extended_public_key(extended_public_key).await?)
             }
         };
 
@@ -102,7 +105,7 @@ impl Account {
         let listener_id = rpc_api.register_new_listener(ChannelConnection::new(channel.sender));
 
         // rpc_api.register_new_listener();
-        let derivator = Self::create_derivator(account_kind, &pub_key_data).await?;
+        let derivation = Self::create_derivation_manager(account_kind, &pub_key_data).await?;
 
         let stored = storage::Account::new(
             name.to_string(),
@@ -133,7 +136,7 @@ impl Account {
             prv_key_data_id,
             ecdsa: false,
             // -
-            derivator,
+            derivation,
         })
     }
 
@@ -142,7 +145,7 @@ impl Account {
         let listener_id = rpc.register_new_listener(ChannelConnection::new(channel.sender));
 
         // rpc_api.register_new_listener();
-        let derivator = Self::create_derivator(stored.account_kind, &stored.pub_key_data).await?;
+        let derivation = Self::create_derivation_manager(stored.account_kind, &stored.pub_key_data).await?;
 
         let inner = Inner { listener_id, stored: stored.clone() };
 
@@ -158,7 +161,7 @@ impl Account {
             prv_key_data_id: stored.prv_key_data_id,
             ecdsa: stored.ecdsa,
             // -
-            derivator,
+            derivation,
         })
     }
 
@@ -194,11 +197,24 @@ impl Account {
         self.inner.lock().unwrap()
     }
 
-    pub async fn scan_utxos(&self) -> Result<u64> {
+    pub async fn scan_utxos(&self, scan_depth: u32, window_size: u32) -> Result<u64> {
         self.utxos.clear();
 
-        let scan_depth: usize = 1024;
-        let window_size: usize = 128;
+        // let scan_depth: usize = 1024;
+        // let window_size: usize = 128;
+
+        let receive = self.derivation.receive_address_manager();
+        let change = self.derivation.change_address_manager();
+
+        // let mut scan = Scan::new(receive,change,window_size,ScanExtent::EmptyRange(window_size));
+        // let next = scan.next().await;
+
+        let receive_index = receive.index()?;
+        let change_index = change.index()?;
+
+        let _last_receive = receive_index + window_size;
+        let _last_change = change_index + window_size;
+
         let mut balance = 0u64;
         let mut cursor = 0;
         while cursor < scan_depth {
@@ -208,20 +224,21 @@ impl Account {
 
             log_info!("first: {}, last: {}", first, last);
 
-            // - TODO - populate address range from derivators/generators
-            let _addresses = Vec::<Address>::new();
+            let addresses = receive.get_range(cursor..(cursor + window_size)).await?;
 
-            let resp = self.rpc.get_utxos_by_addresses(_addresses.clone()).await?;
+            // - TODO - populate address range from derivators/generators
+            // let _addresses = Vec::<Address>::new();
+
+            let resp = self.rpc.get_utxos_by_addresses(addresses.clone()).await?;
 
             let refs: Vec<UtxoEntryReference> = resp.into_iter().map(UtxoEntryReference::from).collect();
 
-            balance += refs.iter().map(|r| r.utxo.utxo_entry.amount).sum::<u64>();
-            for r in refs.iter() {
-                balance += r.as_ref().amount();
-            }
+            balance += refs.iter().map(|r| r.as_ref().amount()).sum::<u64>();
 
             self.utxos.extend(&refs);
         }
+
+        // - TODO - post balance updates to the wallet
 
         self.utxos.order(UtxoOrdering::AscendingAmount)?;
 
@@ -249,24 +266,21 @@ impl Account {
     }
 
     #[allow(dead_code)]
-    fn receive_generator(&self) -> Result<Arc<dyn AddressGeneratorTrait>> {
-        todo!()
-        // Ok(self.account()?.receive_wallet())
+    fn receive_address_manager(&self) -> Result<Arc<dyn AddressDerivationManagerTrait>> {
+        Ok(self.derivation.receive_address_manager())
     }
 
-    fn change_generator(&self) -> Result<Arc<dyn AddressGeneratorTrait>> {
-        todo!()
-        // Ok(self.account()?.change_wallet())
+    fn change_address_manager(&self) -> Result<Arc<dyn AddressDerivationManagerTrait>> {
+        Ok(self.derivation.change_address_manager())
     }
 
     pub async fn new_receive_address(&self) -> Result<String> {
-        todo!()
-        // let address = self.receive_wallet()?.new_address().await?;
-        // Ok(address.into())
+        let address = self.receive_address_manager()?.new_address().await?;
+        Ok(address.into())
     }
 
     pub async fn new_change_address(self: &Arc<Self>) -> Result<String> {
-        let address = self.change_generator()?.new_address().await?;
+        let address = self.change_address_manager()?.new_address().await?;
         Ok(address.into())
     }
 
@@ -288,5 +302,66 @@ impl Account {
     #[wasm_bindgen(getter)]
     pub fn balance(&self) -> u64 {
         self.balance.load(std::sync::atomic::Ordering::SeqCst)
+    }
+}
+
+// ----------------------------------------------------------------------------
+// TODO - relocate to scan.rs
+pub struct Cursor {
+    pub done: bool,
+    index: u32,
+    derivation: Arc<dyn AddressDerivationManagerTrait>,
+}
+
+impl Cursor {
+    pub fn new(derivation: Arc<dyn AddressDerivationManagerTrait>) -> Self {
+        Self { index: 0, done: false, derivation }
+    }
+
+    pub async fn next(&mut self, n: u32) -> Result<Vec<Address>> {
+        let list = self.derivation.get_range(self.index..self.index + n).await?;
+        self.index += n;
+        Ok(list)
+    }
+}
+
+pub enum ScanExtent {
+    /// Scan until an empty range is found
+    EmptyRange(u32),
+    /// Scan until a specific depth (a particular derivation index)
+    Depth(u32),
+}
+
+pub struct Scan {
+    pub derivations: Vec<Cursor>,
+    pub window_size: u32,
+    pub extent: ScanExtent,
+    pub pos: usize,
+}
+
+impl Scan {
+    pub fn new(
+        receive: Arc<dyn AddressDerivationManagerTrait>,
+        change: Arc<dyn AddressDerivationManagerTrait>,
+        window_size: u32,
+        extent: ScanExtent,
+    ) -> Self {
+        let derivations = vec![Cursor::new(receive), Cursor::new(change)];
+        Scan { derivations, window_size, extent, pos: 0 }
+    }
+
+    pub async fn next(&mut self) -> Result<Option<Vec<Address>>> {
+        let len = self.derivations.len();
+        if let Some(cursor) = self.derivations.get_mut(self.pos) {
+            self.pos += 1;
+            if self.pos >= len {
+                self.pos = 0;
+            }
+
+            let list = cursor.next(self.window_size).await?;
+            Ok(Some(list))
+        } else {
+            Ok(None)
+        }
     }
 }

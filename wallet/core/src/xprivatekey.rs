@@ -1,4 +1,4 @@
-use crate::accounts::gen1::WalletAccount;
+use crate::accounts::gen1::WalletDerivationManager;
 use crate::keypair::PrivateKey;
 use crate::Result;
 use kaspa_bip32::{ChildNumber, ExtendedPrivateKey, SecretKey};
@@ -15,13 +15,16 @@ impl XPrivateKey {
     #[wasm_bindgen(constructor)]
     pub fn new(xprv: &str, is_multisig: bool, account_index: u64) -> Result<XPrivateKey> {
         let xkey = ExtendedPrivateKey::<SecretKey>::from_str(xprv)?;
-        let receive = xkey.clone().derive_path(WalletAccount::build_derivate_path(
+        let receive = xkey.clone().derive_path(WalletDerivationManager::build_derivate_path(
             is_multisig,
             account_index,
             Some(kaspa_bip32::AddressType::Receive),
         )?)?;
-        let change =
-            xkey.derive_path(WalletAccount::build_derivate_path(is_multisig, account_index, Some(kaspa_bip32::AddressType::Change))?)?;
+        let change = xkey.derive_path(WalletDerivationManager::build_derivate_path(
+            is_multisig,
+            account_index,
+            Some(kaspa_bip32::AddressType::Change),
+        )?)?;
 
         Ok(Self { receive, change })
     }

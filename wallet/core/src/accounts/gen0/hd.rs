@@ -1,5 +1,6 @@
 use crate::{accounts::account::*, result::Result};
 use async_trait::async_trait;
+use futures::future::join_all;
 use hmac::Mac;
 use kaspa_addresses::{Address, Prefix as AddressPrefix, Version};
 use kaspa_bip32::{
@@ -30,12 +31,18 @@ pub struct AddressGeneratorV0 {
 impl AddressGeneratorV0 {
     pub async fn derive_address(&self, index: u32) -> Result<Address> {
         let (private_key, _) =
-            WalletAccountV0::derive_private_key(&self.private_key, ChildNumber::new(index, true)?, self.hmac.clone())?;
+            WalletDerivationManagerV0::derive_private_key(&self.private_key, ChildNumber::new(index, true)?, self.hmac.clone())?;
 
         let pubkey = &private_key.get_public_key().to_bytes()[1..];
         let address = Address::new(AddressPrefix::Mainnet, Version::PubKey, pubkey);
 
         Ok(address)
+    }
+
+    pub async fn derive_address_range(&self, indexes: std::ops::Range<u32>) -> Result<Vec<Address>> {
+        let list = indexes.map(|index| self.derive_address(index)).collect::<Vec<_>>();
+        let addresses = join_all(list).await.into_iter().collect::<Result<Vec<_>>>()?;
+        Ok(addresses)
     }
 
     #[allow(dead_code)]
@@ -59,7 +66,7 @@ impl From<&AddressGeneratorV0> for ExtendedPublicKey<<SecretKey as PrivateKey>::
 }
 
 #[async_trait]
-impl AddressGeneratorTrait for AddressGeneratorV0 {
+impl AddressDerivationManagerTrait for AddressGeneratorV0 {
     async fn new_address(&self) -> Result<Address> {
         self.set_index(self.index()? + 1)?;
         self.current_address().await
@@ -80,6 +87,10 @@ impl AddressGeneratorTrait for AddressGeneratorV0 {
         // let address = self.derive_address(index).await?;
 
         // Ok(address)
+    }
+
+    async fn get_range(&self, range: std::ops::Range<u32>) -> Result<Vec<Address>> {
+        self.derive_address_range(range).await
     }
 }
 
@@ -106,7 +117,7 @@ impl AddressGeneratorTrait for AddressGeneratorV0 {
 
 #[derive(Clone)]
 #[wasm_bindgen]
-pub struct WalletAccountV0 {
+pub struct WalletDerivationManagerV0 {
     /// Derived private key
     private_key: SecretKey,
 
@@ -117,7 +128,7 @@ pub struct WalletAccountV0 {
     change_wallet: AddressGeneratorV0,
 }
 
-impl WalletAccountV0 {
+impl WalletDerivationManagerV0 {
     #[allow(dead_code)]
     pub async fn derive_address(&self, address_type: AddressType, index: u32) -> Result<Address> {
         let address = match address_type {
@@ -268,13 +279,13 @@ impl WalletAccountV0 {
     }
 }
 
-impl From<&WalletAccountV0> for ExtendedPublicKey<<SecretKey as PrivateKey>::PublicKey> {
-    fn from(hd_wallet: &WalletAccountV0) -> ExtendedPublicKey<<SecretKey as PrivateKey>::PublicKey> {
+impl From<&WalletDerivationManagerV0> for ExtendedPublicKey<<SecretKey as PrivateKey>::PublicKey> {
+    fn from(hd_wallet: &WalletDerivationManagerV0) -> ExtendedPublicKey<<SecretKey as PrivateKey>::PublicKey> {
         ExtendedPublicKey { public_key: hd_wallet.private_key().get_public_key(), attrs: hd_wallet.attrs().clone() }
     }
 }
 
-impl Debug for WalletAccountV0 {
+impl Debug for WalletDerivationManagerV0 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("HDWallet")
             .field("depth", &self.attrs.depth)
@@ -287,7 +298,7 @@ impl Debug for WalletAccountV0 {
 }
 
 #[async_trait]
-impl WalletAccountTrait for WalletAccountV0 {
+impl WalletDerivationManagerTrait for WalletDerivationManagerV0 {
     async fn from_master_xprv(xprv: &str, _is_multisig: bool, _account_index: u64) -> Result<Self> {
         let xpriv_key = ExtendedPrivateKey::<SecretKey>::from_str(xprv)?;
         let attrs = xpriv_key.attrs();
@@ -309,10 +320,10 @@ impl WalletAccountTrait for WalletAccountV0 {
         todo!()
     }
 
-    fn receive_wallet(&self) -> Arc<dyn AddressGeneratorTrait> {
+    fn receive_address_manager(&self) -> Arc<dyn AddressDerivationManagerTrait> {
         todo!()
     }
-    fn change_wallet(&self) -> Arc<dyn AddressGeneratorTrait> {
+    fn change_address_manager(&self) -> Arc<dyn AddressDerivationManagerTrait> {
         todo!()
     }
 

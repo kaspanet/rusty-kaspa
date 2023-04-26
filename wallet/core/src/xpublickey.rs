@@ -1,5 +1,5 @@
-use crate::accounts::account::WalletAccountTrait;
-use crate::accounts::gen1::WalletAccount;
+use crate::accounts::account::WalletDerivationManagerTrait;
+use crate::accounts::gen1::WalletDerivationManager;
 use crate::Result;
 use kaspa_bip32::{ExtendedPrivateKey, SecretKey};
 use serde_wasm_bindgen::to_value;
@@ -8,7 +8,7 @@ use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
 pub struct XPublicKey {
-    hd_wallet: WalletAccount,
+    hd_wallet: WalletDerivationManager,
 }
 #[wasm_bindgen]
 impl XPublicKey {
@@ -21,10 +21,10 @@ impl XPublicKey {
     #[wasm_bindgen(js_name=fromXPrv)]
     pub async fn from_xprv(xprv: &str, is_multisig: bool, account_index: u64) -> Result<XPublicKey> {
         let xprv = ExtendedPrivateKey::<SecretKey>::from_str(xprv)?;
-        let path = WalletAccount::build_derivate_path(is_multisig, account_index, None)?;
+        let path = WalletDerivationManager::build_derivate_path(is_multisig, account_index, None)?;
         let xprv = xprv.derive_path(path)?;
         let xpub = xprv.public_key();
-        let hd_wallet = WalletAccount::from_extended_public_key(xpub).await?;
+        let hd_wallet = WalletDerivationManager::from_extended_public_key(xpub).await?;
         Ok(Self { hd_wallet })
     }
 
@@ -33,7 +33,7 @@ impl XPublicKey {
         if start > end {
             (start, end) = (end, start);
         }
-        let addresses = self.hd_wallet.receive_wallet().derive_addresses(start..end).await?;
+        let addresses = self.hd_wallet.receive_address_manager().derive_address_range(start..end).await?;
         let addresses = to_value(&addresses)?;
         Ok(addresses)
     }
@@ -43,7 +43,7 @@ impl XPublicKey {
         if start > end {
             (start, end) = (end, start);
         }
-        let addresses = self.hd_wallet.change_wallet().derive_addresses(start..end).await?;
+        let addresses = self.hd_wallet.change_address_manager().derive_address_range(start..end).await?;
         let addresses = to_value(&addresses)?;
         Ok(addresses)
     }

@@ -461,7 +461,7 @@ mod test {
 
         let mtx = MutableTransaction::new(&tx, &(*entries).clone().into());
 
-        let derivation_path = gen1::WalletAccount::build_derivate_path(false, 0, Some(kaspa_bip32::AddressType::Receive))?;
+        let derivation_path = gen1::WalletDerivationManager::build_derivate_path(false, 0, Some(kaspa_bip32::AddressType::Receive))?;
 
         let xprv = "kprv5y2qurMHCsXYrNfU3GCihuwG3vMqFji7PZXajMEqyBkNh9UZUJgoHYBLTKu1eM4MvUtomcXPQ3Sw9HZ5ebbM4byoUciHo1zrPJBQfqpLorQ";
         //let (xkey, _attrs) = WalletAccount::create_extended_key_from_xprv(xprv, false, 0).await?;
