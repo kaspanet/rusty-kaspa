@@ -383,7 +383,7 @@ mod test {
 
     async fn get_utxos_set_by_addresses(rpc: Arc<KaspaRpcClient>, addresses: Vec<Address>) -> Result<UtxoSet> {
         let utxos = rpc.get_utxos_by_addresses(addresses).await?;
-        let mut utxo_set = UtxoSet::new();
+        let utxo_set = UtxoSet::new();
         for utxo in utxos {
             utxo_set.insert(utxo.into());
         }
