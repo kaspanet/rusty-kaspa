@@ -575,23 +575,9 @@ impl Consensus {
         ]
     }
 
-    fn validate_and_insert_block_impl(&self, block: Block) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
+    fn validate_and_insert_block_impl(&self, task: BlockTask) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
         let (tx, rx): (BlockResultSender, _) = oneshot::channel();
-        self.block_sender
-            .send(BlockProcessingMessage::Process(BlockTask { block, trusted_ghostdag_data: None, update_virtual: true }, tx))
-            .unwrap();
-        self.counters.blocks_submitted.fetch_add(1, Ordering::Relaxed);
-        async { rx.await.unwrap() }
-    }
-
-    fn validate_and_insert_trusted_block_impl(&self, tb: TrustedBlock) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
-        let (tx, rx): (BlockResultSender, _) = oneshot::channel();
-        self.block_sender
-            .send(BlockProcessingMessage::Process(
-                BlockTask { block: tb.block, trusted_ghostdag_data: Some(Arc::new(tb.ghostdag.into())), update_virtual: false },
-                tx,
-            ))
-            .unwrap();
+        self.block_sender.send(BlockProcessingMessage::Process(task, tx)).unwrap();
         self.counters.blocks_submitted.fetch_add(1, Ordering::Relaxed);
         async { rx.await.unwrap() }
     }
@@ -642,12 +628,12 @@ impl ConsensusApi for Consensus {
     }
 
     fn validate_and_insert_block(&self, block: Block) -> BoxFuture<'static, BlockProcessResult<BlockStatus>> {
-        let result = self.validate_and_insert_block_impl(block);
+        let result = self.validate_and_insert_block_impl(BlockTask::Ordinary { block });
         Box::pin(async move { result.await })
     }
 
     fn validate_and_insert_trusted_block(&self, tb: TrustedBlock) -> BoxFuture<'static, BlockProcessResult<BlockStatus>> {
-        let result = self.validate_and_insert_trusted_block_impl(tb);
+        let result = self.validate_and_insert_block_impl(BlockTask::Trusted { block: tb.block });
         Box::pin(async move { result.await })
     }
 

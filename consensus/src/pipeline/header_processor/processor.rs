@@ -59,7 +59,7 @@ pub struct HeaderProcessingContext<'a> {
     pub ghostdag_data: Option<Vec<Arc<GhostdagData>>>,
     pub block_window_for_difficulty: Option<BlockWindowHeap>,
     pub block_window_for_past_median_time: Option<BlockWindowHeap>,
-    pub mergeset_non_daa: Option<BlockHashSet>,
+    pub mergeset_non_daa: BlockHashSet,
     pub merge_depth_root: Option<Hash>,
     pub finality_point: Option<Hash>,
     pub block_level: Option<BlockLevel>,
@@ -74,7 +74,7 @@ impl<'a> HeaderProcessingContext<'a> {
             non_pruned_parents,
             ghostdag_data: None,
             block_window_for_difficulty: None,
-            mergeset_non_daa: None,
+            mergeset_non_daa: Default::default(),
             block_window_for_past_median_time: None,
             merge_depth_root: None,
             finality_point: None,
@@ -271,10 +271,10 @@ impl HeaderProcessor {
 
     fn queue_block(self: &Arc<HeaderProcessor>, task_id: TaskId) {
         if let Some(task) = self.task_manager.try_begin(task_id) {
-            let res = self.process_header(&task.block.header, &task.trusted_ghostdag_data);
+            let res = self.process_header(&task.block().header, task.is_trusted());
 
             let dependent_tasks = self.task_manager.end(task, |task, result_transmitter| {
-                if res.is_err() || task.block.is_header_only() {
+                if res.is_err() || task.block().is_header_only() {
                     // We don't care if receivers were dropped
                     let _ = result_transmitter.send(res.clone());
                 } else {
@@ -289,12 +289,7 @@ impl HeaderProcessor {
         }
     }
 
-    fn process_header(
-        self: &Arc<HeaderProcessor>,
-        header: &Arc<Header>,
-        optional_trusted_ghostdag_data: &Option<Arc<GhostdagData>>,
-    ) -> BlockProcessResult<BlockStatus> {
-        let is_trusted = optional_trusted_ghostdag_data.is_some();
+    fn process_header(self: &Arc<HeaderProcessor>, header: &Arc<Header>, is_trusted: bool) -> BlockProcessResult<BlockStatus> {
         let status_option = self.statuses_store.read().get(header.hash).unwrap_option();
 
         match status_option {
@@ -304,7 +299,7 @@ impl HeaderProcessor {
         }
 
         // Create processing context
-        let is_genesis = header.direct_parents().is_empty();
+        let is_genesis = header.direct_parents().is_empty(); // TODO: remove
         let pruning_point = self.pruning_store.read().get().unwrap();
         let relations_read = self.relations_stores.read();
         let non_pruned_parents = (0..=self.max_block_level)
@@ -329,9 +324,6 @@ impl HeaderProcessor {
             .collect_vec();
         drop(relations_read);
         let mut ctx = HeaderProcessingContext::new(header.hash, header, pruning_point, non_pruned_parents);
-        if is_trusted {
-            ctx.mergeset_non_daa = Some(Default::default()); // TODO: Check that it's fine for coinbase calculations.
-        }
 
         // Run all header validations for the new header
         self.pre_ghostdag_validation(&mut ctx, header, is_trusted)?;
@@ -346,14 +338,9 @@ impl HeaderProcessor {
             .collect_vec();
         ctx.ghostdag_data = Some(ghostdag_data);
         if is_trusted {
-            // let gd_data = ctx.get_ghostdag_data().unwrap();
-            // let merge_depth_root = self.depth_manager.calc_merge_depth_root(&gd_data, ctx.pruning_point());
-            // let finality_point = self.depth_manager.calc_finality_point(&gd_data, ctx.pruning_point());
             ctx.merge_depth_root = Some(ORIGIN);
             ctx.finality_point = Some(ORIGIN);
-        }
-
-        if !is_trusted {
+        } else {
             // TODO: For now we skip all validations for trusted blocks, but in the future we should
             // employ some validations to avoid spam etc.
             self.pre_pow_validation(&mut ctx, header)?;
@@ -379,7 +366,6 @@ impl HeaderProcessor {
         let mut batch = WriteBatch::default();
 
         // Write to append only stores: this requires no lock and hence done first
-        // TODO: Insert all levels data
         for (level, datum) in ghostdag_data.iter().enumerate() {
             if self.ghostdag_stores[level].has(ctx.hash).unwrap() {
                 // The data might have been already written when applying the pruning proof.
@@ -395,7 +381,7 @@ impl HeaderProcessor {
             self.block_window_cache_for_past_median_time.insert(ctx.hash, Arc::new(window));
         }
 
-        self.daa_store.insert_batch(&mut batch, ctx.hash, Arc::new(ctx.mergeset_non_daa.unwrap())).unwrap();
+        self.daa_store.insert_batch(&mut batch, ctx.hash, Arc::new(ctx.mergeset_non_daa)).unwrap();
         if !self.headers_store.has(ctx.hash).unwrap() {
             // The data might have been already written when applying the pruning proof.
             self.headers_store.insert_batch(&mut batch, ctx.hash, ctx.header.clone(), ctx.block_level.unwrap()).unwrap();
@@ -509,7 +495,6 @@ impl HeaderProcessor {
         ctx.ghostdag_data = Some(self.ghostdag_managers.iter().map(|m| Arc::new(m.genesis_ghostdag_data())).collect());
         ctx.block_window_for_difficulty = Some(Default::default());
         ctx.block_window_for_past_median_time = Some(Default::default());
-        ctx.mergeset_non_daa = Some(Default::default());
         ctx.merge_depth_root = Some(ORIGIN);
         ctx.finality_point = Some(ORIGIN);
         ctx.block_level = Some(self.max_block_level);

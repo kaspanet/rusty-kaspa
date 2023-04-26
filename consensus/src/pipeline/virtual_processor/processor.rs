@@ -246,14 +246,10 @@ impl VirtualStateProcessor {
             // This is done since virtual processing is not a per-block
             // operation, so it benefits from max available info
 
-            let update_virtual =
-                if let BlockProcessingMessage::Process(ref task, _) = first_msg { task.update_virtual } else { false };
             let messages: Vec<BlockProcessingMessage> = std::iter::once(first_msg).chain(self.receiver.try_iter()).collect();
             trace!("virtual processor received {} tasks", messages.len());
 
-            if update_virtual {
-                self.resolve_virtual();
-            }
+            self.resolve_virtual();
 
             let statuses_read = self.statuses_store.read();
             for msg in messages {
@@ -261,7 +257,7 @@ impl VirtualStateProcessor {
                     BlockProcessingMessage::Exit => break 'outer,
                     BlockProcessingMessage::Process(task, result_transmitter) => {
                         // We don't care if receivers were dropped
-                        let _ = result_transmitter.send(Ok(statuses_read.get(task.block.hash()).unwrap()));
+                        let _ = result_transmitter.send(Ok(statuses_read.get(task.block().hash()).unwrap()));
                     }
                 };
             }
@@ -285,13 +281,13 @@ impl VirtualStateProcessor {
         let (virtual_parents, virtual_ghostdag_data) = self.pick_virtual_parents(new_sink, virtual_parent_candidates, pruning_point);
         assert_eq!(virtual_ghostdag_data.selected_parent, new_sink);
 
-        let selected_parent_multiset = self.utxo_multisets_store.get(virtual_ghostdag_data.selected_parent).unwrap();
+        let sink_multiset = self.utxo_multisets_store.get(new_sink).unwrap();
         let new_virtual_state = self
             .calculate_and_commit_virtual_state(
                 virtual_read,
                 virtual_parents,
                 virtual_ghostdag_data,
-                selected_parent_multiset,
+                sink_multiset,
                 &mut accumulated_diff,
             )
             .expect("all possible rule errors are unexpected here");
@@ -306,13 +302,12 @@ impl VirtualStateProcessor {
         let _ = self
             .notification_root
             .notify(Notification::UtxosChanged(UtxosChangedNotification::new(accumulated_diff, virtual_parents)));
-        let _ = self.notification_root.notify(Notification::SinkBlueScoreChanged(SinkBlueScoreChangedNotification::new(
-            new_virtual_state.ghostdag_data.blue_score,
-        )));
+        let _ = self
+            .notification_root
+            .notify(Notification::SinkBlueScoreChanged(SinkBlueScoreChangedNotification::new(sink_ghostdag_data.blue_score)));
         let _ = self
             .notification_root
             .notify(Notification::VirtualDaaScoreChanged(VirtualDaaScoreChangedNotification::new(new_virtual_state.daa_score)));
-        // TODO: As an optimization, calculate the chain path as part of the loop on the chain iterator above.
         let chain_path = self.dag_traversal_manager.calculate_chain_path(prev_sink, new_sink);
         // TODO: Fetch acceptance data only if there's a subscriber for the below notification.
         let added_chain_blocks_acceptance_data =

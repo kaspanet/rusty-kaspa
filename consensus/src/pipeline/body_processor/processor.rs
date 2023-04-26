@@ -160,10 +160,10 @@ impl BlockBodyProcessor {
 
     fn queue_block(self: &Arc<BlockBodyProcessor>, task_id: TaskId) {
         if let Some(task) = self.task_manager.try_begin(task_id) {
-            let res = self.process_block_body(&task.block, task.trusted_ghostdag_data.is_some());
+            let res = self.process_block_body(task.block(), task.is_trusted());
 
             let dependent_tasks = self.task_manager.end(task, |task, result_transmitter| {
-                if res.is_err() {
+                if res.is_err() || !task.requires_virtual_processing() {
                     // We don't care if receivers were dropped
                     let _ = result_transmitter.send(res.clone());
                 } else {
