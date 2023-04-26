@@ -89,16 +89,20 @@ impl<'a> HeaderProcessingContext<'a> {
         }
     }
 
-    pub fn get_non_pruned_parents(&mut self) -> BlockHashes {
+    /// Returns the direct parents of this header after removal of pruned parents
+    pub fn direct_non_pruned_parents(&mut self) -> BlockHashes {
         self.non_pruned_parents[0].clone()
     }
 
+    /// Returns the pruning point at the time this header began processing
     pub fn pruning_point(&self) -> Hash {
         self.pruning_info.pruning_point
     }
 
-    pub fn get_ghostdag_data(&self) -> Option<Arc<GhostdagData>> {
-        Some(self.ghostdag_data.as_ref()?[0].clone())
+    /// Returns the GHOSTDAG data of this header.
+    /// NOTE: is expected to be called only after GHOSTDAG computation was pushed into the context
+    pub fn ghostdag_data(&self) -> &Arc<GhostdagData> {
+        &self.ghostdag_data.as_ref().unwrap()[0]
     }
 }
 

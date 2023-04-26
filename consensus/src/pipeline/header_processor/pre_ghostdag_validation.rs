@@ -79,7 +79,7 @@ impl HeaderProcessor {
     }
 
     fn check_parents_incest(&self, ctx: &mut HeaderProcessingContext) -> BlockProcessResult<()> {
-        let parents = ctx.get_non_pruned_parents();
+        let parents = ctx.direct_non_pruned_parents();
         for parent_a in parents.iter() {
             for parent_b in parents.iter() {
                 if parent_a == parent_b {

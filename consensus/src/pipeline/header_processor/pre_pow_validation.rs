@@ -11,7 +11,7 @@ impl HeaderProcessor {
     }
 
     fn check_pruning_violation(&self, ctx: &mut HeaderProcessingContext) -> BlockProcessResult<()> {
-        let non_pruned_parents = ctx.get_non_pruned_parents();
+        let non_pruned_parents = ctx.direct_non_pruned_parents();
         if non_pruned_parents.is_empty() {
             return Ok(());
         }
@@ -26,12 +26,12 @@ impl HeaderProcessor {
     }
 
     fn check_difficulty_and_daa_score(&self, ctx: &mut HeaderProcessingContext, header: &Header) -> BlockProcessResult<()> {
-        let ghostdag_data = ctx.get_ghostdag_data().unwrap();
-        let window = self.dag_traversal_manager.block_window(&ghostdag_data, self.difficulty_window_size)?;
+        let ghostdag_data = ctx.ghostdag_data();
+        let window = self.dag_traversal_manager.block_window(ghostdag_data, self.difficulty_window_size)?;
 
         let (daa_score, mergeset_non_daa) = self
             .difficulty_manager
-            .calc_daa_score_and_non_daa_mergeset_blocks(&mut window.iter().map(|item| item.0.hash), &ghostdag_data);
+            .calc_daa_score_and_non_daa_mergeset_blocks(&mut window.iter().map(|item| item.0.hash), ghostdag_data);
 
         if daa_score != header.daa_score {
             return Err(RuleError::UnexpectedHeaderDaaScore(daa_score, header.daa_score));
