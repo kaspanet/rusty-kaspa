@@ -227,9 +227,15 @@ mod tests {
     use crate::mempool::config::{Config, DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE};
     use kaspa_addresses::{Address, Prefix, Version};
     use kaspa_consensus_core::{
+        config::params::Params,
         constants::{MAX_TX_IN_SEQUENCE_NUM, SOMPI_PER_KASPA, TX_VERSION},
+        networktype::NetworkType,
         subnets::SUBNETWORK_ID_NATIVE,
         tx::{ScriptPublicKey, ScriptVec, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput},
+    };
+    use kaspa_txscript::{
+        opcodes::codes::{OpReturn, OpTrue},
+        script_builder::ScriptBuilder,
     };
     use smallvec::smallvec;
 
@@ -271,16 +277,18 @@ mod tests {
         ];
 
         for test in tests.iter() {
-            // TODO: test all nets params
-            let mut config = Config::build_default(1000, false, 500_000);
-            config.minimum_relay_transaction_fee = test.minimum_relay_transaction_fee;
-            let mempool = Mempool::new(config);
+            for net in NetworkType::iter() {
+                let params: Params = net.into();
+                let mut config = Config::build_default(params.target_time_per_block, false, params.max_block_mass);
+                config.minimum_relay_transaction_fee = test.minimum_relay_transaction_fee;
+                let mempool = Mempool::new(config);
 
-            let got = mempool.minimum_required_transaction_relay_fee(test.size);
-            if got != test.want {
-                println!("test_calc_min_required_tx_relay_fee test '{}' failed: got {}, want {}", test.name, got, test.want);
+                let got = mempool.minimum_required_transaction_relay_fee(test.size);
+                if got != test.want {
+                    println!("test_calc_min_required_tx_relay_fee test '{}' failed: got {}, want {}", test.name, got, test.want);
+                }
+                assert_eq!(test.want, got);
             }
-            assert_eq!(test.want, got);
         }
     }
 
@@ -353,17 +361,19 @@ mod tests {
             },
         ];
         for test in tests {
-            // TODO: test all nets params
-            let mut config = Config::build_default(1000, false, 500_000);
-            config.minimum_relay_transaction_fee = test.minimum_relay_transaction_fee;
-            let mempool = Mempool::new(config);
+            for net in NetworkType::iter() {
+                let params: Params = net.into();
+                let mut config = Config::build_default(params.target_time_per_block, false, params.max_block_mass);
+                config.minimum_relay_transaction_fee = test.minimum_relay_transaction_fee;
+                let mempool = Mempool::new(config);
 
-            println!("test_is_transaction_output_dust test '{}' ", test.name);
-            let res = mempool.is_transaction_output_dust(&test.tx_out);
-            if res != test.is_dust {
-                println!("test_is_transaction_output_dust test '{}' failed: got {}, want {}", test.name, res, test.is_dust);
+                println!("test_is_transaction_output_dust test '{}' ", test.name);
+                let res = mempool.is_transaction_output_dust(&test.tx_out);
+                if res != test.is_dust {
+                    println!("test_is_transaction_output_dust test '{}' failed: got {}, want {}", test.name, res, test.is_dust);
+                }
+                assert_eq!(test.is_dust, res);
             }
-            assert_eq!(test.is_dust, res);
         }
     }
 
@@ -475,9 +485,10 @@ mod tests {
                         vec![dummy_tx_input.clone()],
                         vec![TransactionOutput::new(
                             SOMPI_PER_KASPA,
-                            // TODO: build an invalid script ie. externalapi.ScriptPublicKey{[]byte{txscript.OpTrue}, 0}
-                            // when txscript is available
-                            ScriptPublicKey::new(MAX_SCRIPT_PUBLIC_KEY_VERSION, ScriptVec::from_vec(vec![81u8; 1])),
+                            ScriptPublicKey::new(
+                                MAX_SCRIPT_PUBLIC_KEY_VERSION,
+                                ScriptBuilder::new().add_op(OpTrue).unwrap().script().into(),
+                            ),
                         )],
                         0,
                         SUBNETWORK_ID_NATIVE,
@@ -512,9 +523,10 @@ mod tests {
                         vec![dummy_tx_input],
                         vec![TransactionOutput::new(
                             SOMPI_PER_KASPA,
-                            // TODO: build an invalid script ie. externalapi.ScriptPublicKey{[]byte{txscript.OpReturn}, 0}
-                            // when txscript is available
-                            ScriptPublicKey::new(MAX_SCRIPT_PUBLIC_KEY_VERSION, ScriptVec::from_vec(vec![106u8; 1])),
+                            ScriptPublicKey::new(
+                                MAX_SCRIPT_PUBLIC_KEY_VERSION,
+                                ScriptBuilder::new().add_op(OpReturn).unwrap().script().into(),
+                            ),
                         )],
                         0,
                         SUBNETWORK_ID_NATIVE,
@@ -528,25 +540,30 @@ mod tests {
         ];
 
         for test in tests {
-            // TODO: test all nets params
-            let config = Config::build_default(1000, false, 500_000);
-            let mempool = Mempool::new(config);
+            for net in NetworkType::iter() {
+                let params: Params = net.into();
+                let config = Config::build_default(params.target_time_per_block, false, params.max_block_mass);
+                let mempool = Mempool::new(config);
 
-            // Ensure standard-ness is as expected.
-            println!("test_check_transaction_standard_in_isolation test '{}' ", test.name);
-            let res = mempool.check_transaction_standard_in_isolation(&test.mtx);
-            if res.is_ok() && test.is_standard {
-                // Test passes since function returned standard for a
-                // transaction which is intended to be standard.
-                continue;
+                // Ensure standard-ness is as expected.
+                println!("test_check_transaction_standard_in_isolation test '{}' ", test.name);
+                let res = mempool.check_transaction_standard_in_isolation(&test.mtx);
+                if res.is_ok() && test.is_standard {
+                    // Test passes since function returned standard for a
+                    // transaction which is intended to be standard.
+                    continue;
+                }
+                if res.is_ok() && !test.is_standard {
+                    println!("test_check_transaction_standard_in_isolation ({}): standard when it should not be", test.name);
+                }
+                if res.is_err() && test.is_standard {
+                    println!(
+                        "test_check_transaction_standard_in_isolation ({}): nonstandard when it should not be: {:?}",
+                        test.name, res
+                    );
+                }
+                assert_eq!(res.is_ok(), test.is_standard, "ensuring transaction standard-ness is as expected");
             }
-            if res.is_ok() && !test.is_standard {
-                println!("test_check_transaction_standard_in_isolation ({}): standard when it should not be", test.name);
-            }
-            if res.is_err() && test.is_standard {
-                println!("test_check_transaction_standard_in_isolation ({}): nonstandard when it should not be: {:?}", test.name, res);
-            }
-            assert_eq!(res.is_ok(), test.is_standard, "ensuring transaction standard-ness is as expected");
         }
     }
 }
