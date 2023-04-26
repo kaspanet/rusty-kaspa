@@ -299,14 +299,11 @@ impl HeaderProcessor {
         }
 
         // Create processing context
-        let is_genesis = header.direct_parents().is_empty(); // TODO: remove
         let pruning_point = self.pruning_store.read().get().unwrap();
         let relations_read = self.relations_stores.read();
         let non_pruned_parents = (0..=self.max_block_level)
             .map(|level| {
-                Arc::new(if is_genesis {
-                    vec![ORIGIN]
-                } else {
+                Arc::new({
                     let filtered = self
                         .parents_manager
                         .parents_at_level(header, level)
@@ -404,10 +401,9 @@ impl HeaderProcessor {
             } else {
                 ghostdag_data[0].selected_parent
             };
-
-            let mut reachability_mergeset = ghostdag_data[0]
-                .unordered_mergeset_without_selected_parent()
-                .filter(|hash| self.reachability_store.read().has(*hash).unwrap()); // TODO: Use read lock only once
+            let reachability_read = &self.reachability_store.read();
+            let mut reachability_mergeset =
+                ghostdag_data[0].unordered_mergeset_without_selected_parent().filter(|hash| reachability_read.has(*hash).unwrap());
             reachability::add_block(&mut staging, ctx.hash, reachability_parent, &mut reachability_mergeset).unwrap();
         }
 
@@ -431,8 +427,8 @@ impl HeaderProcessor {
         }
 
         let is_genesis = header.direct_parents().is_empty();
-        let parents = (0..=ctx.block_level.unwrap()).map(|level| {
-            Arc::new(if is_genesis {
+        let parent_by_level_iter = (0..=ctx.block_level.unwrap()).map(|level| {
+            if is_genesis {
                 vec![ORIGIN]
             } else {
                 self.parents_manager
@@ -441,13 +437,13 @@ impl HeaderProcessor {
                     .copied()
                     .filter(|parent| self.ghostdag_stores[level as usize].has(*parent).unwrap())
                     .collect_vec()
-            })
+            }
         });
 
         let mut relations_write_guard = self.relations_stores.write();
-        parents.enumerate().for_each(|(level, parent_by_level)| {
+        parent_by_level_iter.enumerate().for_each(|(level, parent_by_level)| {
             if !relations_write_guard[level].has(header.hash).unwrap() {
-                relations_write_guard[level].insert_batch(&mut batch, header.hash, parent_by_level).unwrap();
+                relations_write_guard[level].insert_batch(&mut batch, header.hash, BlockHashes::new(parent_by_level)).unwrap();
             }
         });
 
