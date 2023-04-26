@@ -12,6 +12,8 @@ use kaspa_database::prelude::StoreResultExtensions;
 use std::cmp::max;
 
 impl HeaderProcessor {
+    /// Validates the header in isolation including pow check against header declared bits.
+    /// Returns the block level as computed from pow state or a rule error if such was encountered
     pub(super) fn validate_header_in_isolation(&self, header: &Header) -> BlockProcessResult<BlockLevel> {
         self.check_header_version(header)?;
         self.check_block_timestamp_in_isolation(header)?;

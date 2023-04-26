@@ -329,13 +329,7 @@ impl HeaderProcessor {
     /// Runs full ordinary header validation
     fn validate_header(&self, header: &Arc<Header>) -> BlockProcessResult<HeaderProcessingContext> {
         let block_level = self.validate_header_in_isolation(header)?;
-        let mut ctx = HeaderProcessingContext::new(
-            header.hash,
-            header.clone(),
-            block_level,
-            self.pruning_store.read().get().unwrap(),
-            self.collect_non_pruned_parents(header, block_level),
-        );
+        let mut ctx = self.build_processing_context(header, block_level);
         self.validate_parent_relations(&mut ctx, header)?;
         self.ghostdag(&mut ctx);
         self.pre_pow_validation(&mut ctx, header)?;
@@ -351,17 +345,21 @@ impl HeaderProcessor {
         // TODO: For now we skip most validations for trusted blocks, but in the future we should
         // employ some validations to avoid spam etc.
         let block_level = self.validate_header_in_isolation(header)?;
-        let mut ctx = HeaderProcessingContext::new(
+        let mut ctx = self.build_processing_context(header, block_level);
+        self.ghostdag(&mut ctx);
+        ctx.merge_depth_root = Some(ORIGIN);
+        ctx.finality_point = Some(ORIGIN);
+        Ok(ctx)
+    }
+
+    fn build_processing_context(&self, header: &Arc<Header>, block_level: u8) -> HeaderProcessingContext {
+        HeaderProcessingContext::new(
             header.hash,
             header.clone(),
             block_level,
             self.pruning_store.read().get().unwrap(),
             self.collect_non_pruned_parents(header, block_level),
-        );
-        self.ghostdag(&mut ctx);
-        ctx.merge_depth_root = Some(ORIGIN);
-        ctx.finality_point = Some(ORIGIN);
-        Ok(ctx)
+        )
     }
 
     /// Collects the non-pruned parents for all block levels

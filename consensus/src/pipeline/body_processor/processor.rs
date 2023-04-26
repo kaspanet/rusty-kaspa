@@ -160,7 +160,7 @@ impl BlockBodyProcessor {
 
     fn queue_block(self: &Arc<BlockBodyProcessor>, task_id: TaskId) {
         if let Some(task) = self.task_manager.try_begin(task_id) {
-            let res = self.process_block_body(task.block(), task.is_trusted());
+            let res = self.process_body(task.block(), task.is_trusted());
 
             let dependent_tasks = self.task_manager.end(task, |task, result_transmitter| {
                 if res.is_err() || !task.requires_virtual_processing() {
@@ -178,7 +178,7 @@ impl BlockBodyProcessor {
         }
     }
 
-    fn process_block_body(self: &Arc<BlockBodyProcessor>, block: &Block, is_trusted: bool) -> BlockProcessResult<BlockStatus> {
+    fn process_body(self: &Arc<BlockBodyProcessor>, block: &Block, is_trusted: bool) -> BlockProcessResult<BlockStatus> {
         let status = self.statuses_store.read().get(block.hash()).unwrap();
         match status {
             StatusInvalid => return Err(RuleError::KnownInvalid),
