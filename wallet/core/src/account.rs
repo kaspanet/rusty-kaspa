@@ -1,4 +1,5 @@
-use crate::accounts::AddressGeneratorTrait;
+#[allow(unused_imports)]
+use crate::accounts::{gen0::*, gen1::*, AddressGeneratorTrait, WalletAccountTrait};
 use crate::imports::*;
 use crate::result::Result;
 use crate::secret::Secret;
@@ -6,10 +7,12 @@ use crate::storage::{self, PrvKeyDataId, PubKeyData};
 use crate::utxo::{UtxoEntryReference, UtxoOrdering, UtxoSet};
 use crate::DynRpcApi;
 use async_trait::async_trait;
+use kaspa_bip32::ExtendedPublicKey;
 use kaspa_notify::listener::ListenerId;
 use kaspa_notify::scope::{Scope, UtxosChangedScope};
 use kaspa_rpc_core::api::notifications::Notification;
 use kaspa_rpc_core::notify::connection::ChannelConnection;
+use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, AtomicU64};
 use workflow_core::channel::Channel;
 
@@ -60,10 +63,32 @@ pub struct Account {
     #[wasm_bindgen(skip)]
     pub prv_key_data_id: Option<PrvKeyDataId>,
     pub ecdsa: bool,
+    // ~
+    // pub derivation_path : DerivationPath,
+    #[wasm_bindgen(skip)]
+    pub derivator: Arc<dyn crate::accounts::WalletAccountTrait>,
 }
 
 impl Account {
-    pub fn new_with_args(
+    async fn create_derivator(account_kind: AccountKind, pub_key_data: &PubKeyData) -> Result<Arc<dyn WalletAccountTrait>> {
+        let derivator: Arc<dyn WalletAccountTrait> = match account_kind {
+            AccountKind::V0 => {
+                // TODO! WalletAccountV0::from_extended_public_key is not yet implemented
+                let xpub = pub_key_data.keys.get(0).unwrap();
+                let extended_public_key = ExtendedPublicKey::<secp256k1::PublicKey>::from_str(xpub)?;
+                Arc::new(WalletAccountV0::from_extended_public_key(extended_public_key).await?)
+            }
+            _ => {
+                let xpub = pub_key_data.keys.get(0).unwrap();
+                let extended_public_key = ExtendedPublicKey::<secp256k1::PublicKey>::from_str(xpub)?;
+                Arc::new(WalletAccount::from_extended_public_key(extended_public_key).await?)
+            }
+        };
+
+        Ok(derivator)
+    }
+
+    pub async fn try_new_with_args(
         rpc_api: Arc<DynRpcApi>,
         name: &str,
         title: &str,
@@ -72,11 +97,12 @@ impl Account {
         prv_key_data_id: Option<PrvKeyDataId>,
         pub_key_data: PubKeyData,
         ecdsa: bool,
-    ) -> Self {
+    ) -> Result<Self> {
         let channel = Channel::<Notification>::unbounded();
         let listener_id = rpc_api.register_new_listener(ChannelConnection::new(channel.sender));
 
         // rpc_api.register_new_listener();
+        let derivator = Self::create_derivator(account_kind, &pub_key_data).await?;
 
         let stored = storage::Account::new(
             name.to_string(),
@@ -93,7 +119,7 @@ impl Account {
 
         let inner = Inner { listener_id, stored };
 
-        Account {
+        Ok(Account {
             utxos: UtxoSet::default(),
             balance: AtomicU64::new(0),
             // _generator: Arc::new(config.clone()),
@@ -106,28 +132,34 @@ impl Account {
             account_index,
             prv_key_data_id,
             ecdsa: false,
-        }
+            // -
+            derivator,
+        })
     }
-    pub fn new_from_storage(rpc_api: Arc<DynRpcApi>, stored: &storage::Account) -> Self {
+
+    pub async fn try_new_from_storage(rpc: Arc<DynRpcApi>, stored: &storage::Account) -> Result<Self> {
         let channel = Channel::<Notification>::unbounded();
-        let listener_id = rpc_api.register_new_listener(ChannelConnection::new(channel.sender));
+        let listener_id = rpc.register_new_listener(ChannelConnection::new(channel.sender));
 
         // rpc_api.register_new_listener();
+        let derivator = Self::create_derivator(stored.account_kind, &stored.pub_key_data).await?;
 
         let inner = Inner { listener_id, stored: stored.clone() };
 
-        Account {
+        Ok(Account {
             utxos: UtxoSet::default(),
             balance: AtomicU64::new(0),
             // _generator: Arc::new(config.clone()),
-            rpc: rpc_api.clone(),
+            rpc: rpc.clone(),
             is_connected: AtomicBool::new(false),
             inner: Arc::new(Mutex::new(inner)),
             account_kind: stored.account_kind,
             account_index: stored.account_index,
             prv_key_data_id: stored.prv_key_data_id,
             ecdsa: stored.ecdsa,
-        }
+            // -
+            derivator,
+        })
     }
 
     pub async fn subscribe(&self) {

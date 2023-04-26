@@ -4,6 +4,7 @@ use crate::secret::Secret;
 use crate::storage::{self, PrvKeyData};
 #[allow(unused_imports)]
 use crate::{account::Account, accounts::gen0, accounts::gen0::import::*, accounts::gen1, accounts::gen1::import::*};
+use futures::future::join_all;
 use futures::{select, FutureExt};
 use kaspa_bip32::Mnemonic;
 use kaspa_notify::{
@@ -123,15 +124,11 @@ impl Wallet {
         let wallet = storage::Wallet::try_load(&store).await?;
         let payload = wallet.payload.decrypt::<storage::Payload>(secret)?;
 
-        let accounts = payload
-            .as_ref()
-            .accounts
-            .iter()
-            .map(|stored| {
-                let rpc_api: Arc<crate::DynRpcApi> = self.rpc.clone();
-                Arc::new(Account::new_from_storage(rpc_api, stored))
-            })
-            .collect();
+        let accounts =
+            payload.as_ref().accounts.iter().map(|stored| Account::try_new_from_storage(self.rpc.clone(), stored)).collect::<Vec<_>>();
+        let accounts = join_all(accounts).await.into_iter().collect::<Result<Vec<_>>>()?;
+        let accounts = accounts.into_iter().map(Arc::new).collect::<Vec<_>>();
+
         *self.inner.accounts.lock()? = accounts;
 
         Ok(())
@@ -190,7 +187,6 @@ impl Wallet {
         Ok(self.rpc.ping().await?)
     }
 
-
     pub async fn broadcast(&self) -> Result<()> {
         Ok(())
     }
@@ -209,7 +205,7 @@ impl Wallet {
         let prv_key_data = payload.add_keydata(mnemonic.phrase_string(), payment_password)?;
 
         let pub_key_data = PubKeyData::new(vec!["abc".to_string()]);
-        let account = storage::Account::new(
+        let stored_account = storage::Account::new(
             args.title.replace(' ', "-").to_lowercase(),
             args.title.clone(),
             args.account_kind,
@@ -222,11 +218,19 @@ impl Wallet {
             0,
         );
 
-        let account_id = account.id.clone();
-        payload.accounts.push(account);
+        let account_id = stored_account.id.clone();
+        payload.accounts.push(stored_account.clone());
 
         let settings = WalletSettings::new(account_id);
         storage::Wallet::try_store(&store, args.wallet_password.clone(), settings, payload).await?;
+
+        // -
+        self.clear().await?;
+
+        let account = Arc::new(Account::try_new_from_storage(self.rpc.clone(), &stored_account).await?);
+        self.inner.accounts.lock().unwrap().push(account.clone());
+
+        self.select(Some(account)).await?;
 
         Ok(store.filename().clone())
     }
@@ -236,6 +240,8 @@ impl Wallet {
     }
 
     pub async fn select(&self, account: Option<Arc<Account>>) -> Result<()> {
+        // log_info!(target: "term","selecting account");
+        log_info!("selecting account");
         *self.inner.selected_account.lock().unwrap() = account;
         Ok(())
     }
@@ -247,8 +253,6 @@ impl Wallet {
     pub fn accounts(&self) -> Vec<Arc<Account>> {
         self.inner.accounts.lock().unwrap().clone()
     }
-
-
 
     // pub async fn import_gen0_keydata(self: &Arc<Wallet>, import_secret: Secret, wallet_secret: Secret) -> Result<()> {
     pub async fn import_gen0_keydata(&self, import_secret: Secret, wallet_secret: Secret) -> Result<()> {
@@ -268,17 +272,17 @@ impl Wallet {
         let stored_account = storage::Account::new(
             "imported-wallet".to_string(), // name
             "Imported Wallet".to_string(), // title
-            storage::AccountKind::V0, // kind
-            0, // account index
-            false, // public visibility
-            PubKeyData::new(vec![]), // TODO - pub keydata
-            Some(prv_key_data.id), // privkey id
-            false, // ecdsa
-            1, // min signatures
-            0, // cosigner_index
+            storage::AccountKind::V0,      // kind
+            0,                             // account index
+            false,                         // public visibility
+            PubKeyData::new(vec![]),       // TODO - pub keydata
+            Some(prv_key_data.id),         // privkey id
+            false,                         // ecdsa
+            1,                             // min signatures
+            0,                             // cosigner_index
         );
 
-        let runtime_account = Account::new_from_storage(self.rpc(), &stored_account);
+        let runtime_account = Account::try_new_from_storage(self.rpc(), &stored_account).await?;
 
         payload.prv_key_data.push(prv_key_data);
         // TODO - prevent multiple addition of the same private key
