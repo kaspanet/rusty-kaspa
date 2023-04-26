@@ -19,7 +19,7 @@ use crate::{
         },
     },
     params::Params,
-    pipeline::deps_manager::{BlockProcessingMessage, BlockTaskDependencyManager, TaskId},
+    pipeline::deps_manager::{BlockProcessingMessage, BlockTask, BlockTaskDependencyManager, TaskId},
     processes::{
         block_depth::BlockDepthManager,
         difficulty::DifficultyManager,
@@ -50,9 +50,9 @@ use std::sync::{atomic::Ordering, Arc};
 
 use super::super::ProcessingCounters;
 
-pub struct HeaderProcessingContext<'a> {
+pub struct HeaderProcessingContext {
     pub hash: Hash,
-    pub header: &'a Arc<Header>,
+    pub header: Arc<Header>,
     pub pruning_info: PruningPointInfo,
     pub block_level: BlockLevel,
     pub non_pruned_parents: Vec<BlockHashes>,
@@ -66,10 +66,10 @@ pub struct HeaderProcessingContext<'a> {
     pub finality_point: Option<Hash>,
 }
 
-impl<'a> HeaderProcessingContext<'a> {
+impl HeaderProcessingContext {
     pub fn new(
         hash: Hash,
-        header: &'a Arc<Header>,
+        header: Arc<Header>,
         block_level: BlockLevel,
         pruning_info: PruningPointInfo,
         non_pruned_parents: Vec<BlockHashes>,
@@ -282,7 +282,7 @@ impl HeaderProcessor {
 
     fn queue_block(self: &Arc<HeaderProcessor>, task_id: TaskId) {
         if let Some(task) = self.task_manager.try_begin(task_id) {
-            let res = self.process_header(&task.block().header, task.is_trusted());
+            let res = self.process_header(&task);
 
             let dependent_tasks = self.task_manager.end(task, |task, result_transmitter| {
                 if res.is_err() || task.block().is_header_only() {
@@ -300,7 +300,8 @@ impl HeaderProcessor {
         }
     }
 
-    fn process_header(&self, header: &Arc<Header>, is_trusted: bool) -> BlockProcessResult<BlockStatus> {
+    fn process_header(&self, task: &BlockTask) -> BlockProcessResult<BlockStatus> {
+        let header = &task.block().header;
         let status_option = self.statuses_store.read().get(header.hash).unwrap_option();
 
         match status_option {
@@ -309,41 +310,58 @@ impl HeaderProcessor {
             None => {}
         }
 
-        let block_level = self.validate_header_in_isolation(header)?;
+        // Validate the header depending on task type
+        let ctx = match task {
+            BlockTask::Ordinary { .. } => self.validate_header(header)?,
+            BlockTask::Trusted { .. } => self.validate_trusted_header(header)?,
+        };
 
-        // Create processing context
-        let mut ctx = HeaderProcessingContext::new(
-            header.hash,
-            header,
-            block_level,
-            self.pruning_store.read().get().unwrap(),
-            self.collect_non_pruned_parents(header, block_level),
-        );
-
-        // Run all header validations for the new header
-        if !is_trusted {
-            self.validate_parent_relations(&mut ctx, header)?;
-        }
-        self.ghostdag(&mut ctx);
-        if is_trusted {
-            ctx.merge_depth_root = Some(ORIGIN);
-            ctx.finality_point = Some(ORIGIN);
-        } else {
-            // TODO: For now we skip all validations for trusted blocks, but in the future we should
-            // employ some validations to avoid spam etc.
-            self.pre_pow_validation(&mut ctx, header)?;
-            if let Err(e) = self.post_pow_validation(&mut ctx, header) {
-                self.statuses_store.write().set(ctx.hash, StatusInvalid).unwrap();
-                return Err(e);
-            }
-        }
-
+        // Commit the header to stores
         self.commit_header(ctx, header);
 
         // Report counters
         self.counters.header_counts.fetch_add(1, Ordering::Relaxed);
         self.counters.dep_counts.fetch_add(header.direct_parents().len() as u64, Ordering::Relaxed);
+
         Ok(StatusHeaderOnly)
+    }
+
+    /// Runs full ordinary header validation
+    fn validate_header(&self, header: &Arc<Header>) -> BlockProcessResult<HeaderProcessingContext> {
+        let block_level = self.validate_header_in_isolation(header)?;
+        let mut ctx = HeaderProcessingContext::new(
+            header.hash,
+            header.clone(),
+            block_level,
+            self.pruning_store.read().get().unwrap(),
+            self.collect_non_pruned_parents(header, block_level),
+        );
+        self.validate_parent_relations(&mut ctx, header)?;
+        self.ghostdag(&mut ctx);
+        self.pre_pow_validation(&mut ctx, header)?;
+        if let Err(e) = self.post_pow_validation(&mut ctx, header) {
+            self.statuses_store.write().set(ctx.hash, StatusInvalid).unwrap();
+            return Err(e);
+        }
+        Ok(ctx)
+    }
+
+    // Runs partial header validation for trusted blocks (currently validates only header-in-isolation and computes GHOSTDAG).
+    fn validate_trusted_header(&self, header: &Arc<Header>) -> BlockProcessResult<HeaderProcessingContext> {
+        // TODO: For now we skip most validations for trusted blocks, but in the future we should
+        // employ some validations to avoid spam etc.
+        let block_level = self.validate_header_in_isolation(header)?;
+        let mut ctx = HeaderProcessingContext::new(
+            header.hash,
+            header.clone(),
+            block_level,
+            self.pruning_store.read().get().unwrap(),
+            self.collect_non_pruned_parents(header, block_level),
+        );
+        self.ghostdag(&mut ctx);
+        ctx.merge_depth_root = Some(ORIGIN);
+        ctx.finality_point = Some(ORIGIN);
+        Ok(ctx)
     }
 
     /// Collects the non-pruned parents for all block levels
@@ -402,7 +420,7 @@ impl HeaderProcessor {
         self.daa_store.insert_batch(&mut batch, ctx.hash, Arc::new(ctx.mergeset_non_daa)).unwrap();
         if !self.headers_store.has(ctx.hash).unwrap() {
             // The data might have been already written when applying the pruning proof.
-            self.headers_store.insert_batch(&mut batch, ctx.hash, ctx.header.clone(), ctx.block_level).unwrap();
+            self.headers_store.insert_batch(&mut batch, ctx.hash, ctx.header, ctx.block_level).unwrap();
         }
         if let Some(merge_depth_root) = ctx.merge_depth_root {
             self.depth_store.insert_batch(&mut batch, ctx.hash, merge_depth_root, ctx.finality_point.unwrap()).unwrap();
@@ -452,7 +470,7 @@ impl HeaderProcessor {
                 (
                     level as usize,
                     self.parents_manager
-                        .parents_at_level(ctx.header, level)
+                        .parents_at_level(header, level)
                         .iter()
                         .copied()
                         .filter(|parent| self.ghostdag_stores[level as usize].has(*parent).unwrap())
@@ -503,7 +521,7 @@ impl HeaderProcessor {
         let genesis_header = Arc::new(genesis_header);
         let mut ctx = HeaderProcessingContext::new(
             self.genesis.hash,
-            &genesis_header,
+            genesis_header.clone(),
             self.max_block_level,
             PruningPointInfo::from_genesis(self.genesis.hash),
             vec![BlockHashes::new(vec![ORIGIN])],
