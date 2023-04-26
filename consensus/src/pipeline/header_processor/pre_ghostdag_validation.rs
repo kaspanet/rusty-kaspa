@@ -12,27 +12,17 @@ use kaspa_database::prelude::StoreResultExtensions;
 use std::cmp::max;
 
 impl HeaderProcessor {
-    pub(super) fn pre_ghostdag_validation(
-        &self,
-        ctx: &mut HeaderProcessingContext,
-        header: &Header,
-        is_trusted: bool,
-    ) -> BlockProcessResult<()> {
-        self.validate_header_in_isolation(ctx)?;
-        if !is_trusted {
-            self.check_parents_exist(header)?;
-            self.check_parents_incest(ctx)?;
-        }
-
-        Ok(())
+    pub(super) fn validate_header_in_isolation(&self, header: &Header) -> BlockProcessResult<BlockLevel> {
+        self.check_header_version(header)?;
+        self.check_block_timestamp_in_isolation(header)?;
+        self.check_parents_limit(header)?;
+        Self::check_parents_not_origin(header)?;
+        self.check_pow_and_calc_block_level(header)
     }
 
-    fn validate_header_in_isolation(&self, ctx: &mut HeaderProcessingContext) -> BlockProcessResult<()> {
-        self.check_header_version(ctx.header)?;
-        self.check_block_timestamp_in_isolation(ctx.header)?;
-        self.check_parents_limit(ctx.header)?;
-        Self::check_parents_not_origin(ctx.header)?;
-        self.check_pow_and_calc_block_level(ctx)?;
+    pub(super) fn validate_parent_relations(&self, ctx: &mut HeaderProcessingContext, header: &Header) -> BlockProcessResult<()> {
+        self.check_parents_exist(header)?;
+        self.check_parents_incest(ctx)?;
         Ok(())
     }
 
@@ -105,13 +95,12 @@ impl HeaderProcessor {
         Ok(())
     }
 
-    fn check_pow_and_calc_block_level(&self, ctx: &mut HeaderProcessingContext) -> BlockProcessResult<()> {
-        let state = kaspa_pow::State::new(ctx.header);
-        let (passed, pow) = state.check_pow(ctx.header.nonce);
+    fn check_pow_and_calc_block_level(&self, header: &Header) -> BlockProcessResult<BlockLevel> {
+        let state = kaspa_pow::State::new(header);
+        let (passed, pow) = state.check_pow(header.nonce);
         if passed || self.skip_proof_of_work {
             let signed_block_level = self.max_block_level as i64 - pow.bits() as i64;
-            ctx.block_level = Some(max(signed_block_level, 0) as BlockLevel);
-            Ok(())
+            Ok(max(signed_block_level, 0) as BlockLevel)
         } else {
             Err(RuleError::InvalidPoW)
         }

@@ -54,6 +54,7 @@ pub struct HeaderProcessingContext<'a> {
     pub hash: Hash,
     pub header: &'a Arc<Header>,
     pub pruning_info: PruningPointInfo,
+    pub block_level: BlockLevel,
     pub non_pruned_parents: Vec<BlockHashes>,
 
     // Staging data
@@ -63,14 +64,20 @@ pub struct HeaderProcessingContext<'a> {
     pub mergeset_non_daa: BlockHashSet,
     pub merge_depth_root: Option<Hash>,
     pub finality_point: Option<Hash>,
-    pub block_level: Option<BlockLevel>,
 }
 
 impl<'a> HeaderProcessingContext<'a> {
-    pub fn new(hash: Hash, header: &'a Arc<Header>, pruning_info: PruningPointInfo, non_pruned_parents: Vec<BlockHashes>) -> Self {
+    pub fn new(
+        hash: Hash,
+        header: &'a Arc<Header>,
+        block_level: BlockLevel,
+        pruning_info: PruningPointInfo,
+        non_pruned_parents: Vec<BlockHashes>,
+    ) -> Self {
         Self {
             hash,
             header,
+            block_level,
             pruning_info,
             non_pruned_parents,
             ghostdag_data: None,
@@ -79,7 +86,6 @@ impl<'a> HeaderProcessingContext<'a> {
             block_window_for_past_median_time: None,
             merge_depth_root: None,
             finality_point: None,
-            block_level: None,
         }
     }
 
@@ -299,37 +305,22 @@ impl HeaderProcessor {
             None => {}
         }
 
+        let block_level = self.validate_header_in_isolation(header)?;
+
         // Create processing context
-        let pruning_point = self.pruning_store.read().get().unwrap();
-        let relations_read = self.relations_stores.read();
-        let non_pruned_parents = (0..=self.max_block_level)
-            .map(|level| {
-                Arc::new(
-                    self.parents_manager
-                        .parents_at_level(header, level)
-                        .iter()
-                        .copied()
-                        .filter(|parent| relations_read[level as usize].has(*parent).unwrap())
-                        .collect_vec()
-                        .push_if_empty(ORIGIN),
-                )
-            })
-            .collect_vec();
-        drop(relations_read);
-        let mut ctx = HeaderProcessingContext::new(header.hash, header, pruning_point, non_pruned_parents);
+        let mut ctx = HeaderProcessingContext::new(
+            header.hash,
+            header,
+            block_level,
+            self.pruning_store.read().get().unwrap(),
+            self.collect_non_pruned_parents(header, block_level),
+        );
 
         // Run all header validations for the new header
-        self.pre_ghostdag_validation(&mut ctx, header, is_trusted)?;
-        let ghostdag_data = (0..=ctx.block_level.unwrap())
-            .map(|level| {
-                if let Some(gd) = self.ghostdag_stores[level as usize].get_data(ctx.hash).unwrap_option() {
-                    gd
-                } else {
-                    Arc::new(self.ghostdag_managers[level as usize].ghostdag(&ctx.non_pruned_parents[level as usize]))
-                }
-            })
-            .collect_vec();
-        ctx.ghostdag_data = Some(ghostdag_data);
+        if !is_trusted {
+            self.validate_parent_relations(&mut ctx, header)?;
+        }
+        self.ghostdag(&mut ctx);
         if is_trusted {
             ctx.merge_depth_root = Some(ORIGIN);
             ctx.finality_point = Some(ORIGIN);
@@ -351,7 +342,37 @@ impl HeaderProcessor {
         Ok(StatusHeaderOnly)
     }
 
-    fn commit_header(&self, ctx: HeaderProcessingContext, header: &Arc<Header>) {
+    /// Collects the non-pruned parents for all block levels
+    fn collect_non_pruned_parents(&self, header: &Header, block_level: BlockLevel) -> Vec<Arc<Vec<Hash>>> {
+        let relations_read = self.relations_stores.read();
+        (0..=block_level)
+            .map(|level| {
+                Arc::new(
+                    self.parents_manager
+                        .parents_at_level(header, level)
+                        .iter()
+                        .copied()
+                        .filter(|parent| relations_read[level as usize].has(*parent).unwrap())
+                        .collect_vec()
+                        .push_if_empty(ORIGIN),
+                )
+            })
+            .collect_vec()
+    }
+
+    /// Runs the GHOSTDAG algorithm for all block levels and writes the data into the context (if hasn't run already)
+    fn ghostdag(&self, ctx: &mut HeaderProcessingContext) {
+        let ghostdag_data = (0..=ctx.block_level)
+            .map(|level| {
+                self.ghostdag_stores[level as usize].get_data(ctx.hash).unwrap_option().unwrap_or_else(|| {
+                    Arc::new(self.ghostdag_managers[level as usize].ghostdag(&ctx.non_pruned_parents[level as usize]))
+                })
+            })
+            .collect_vec();
+        ctx.ghostdag_data = Some(ghostdag_data);
+    }
+
+    fn commit_header(&self, ctx: HeaderProcessingContext, header: &Header) {
         let ghostdag_data = ctx.ghostdag_data.as_ref().unwrap();
         let pp = ctx.pruning_point();
 
@@ -377,7 +398,7 @@ impl HeaderProcessor {
         self.daa_store.insert_batch(&mut batch, ctx.hash, Arc::new(ctx.mergeset_non_daa)).unwrap();
         if !self.headers_store.has(ctx.hash).unwrap() {
             // The data might have been already written when applying the pruning proof.
-            self.headers_store.insert_batch(&mut batch, ctx.hash, ctx.header.clone(), ctx.block_level.unwrap()).unwrap();
+            self.headers_store.insert_batch(&mut batch, ctx.hash, ctx.header.clone(), ctx.block_level).unwrap();
         }
         if let Some(merge_depth_root) = ctx.merge_depth_root {
             self.depth_store.insert_batch(&mut batch, ctx.hash, merge_depth_root, ctx.finality_point.unwrap()).unwrap();
@@ -422,7 +443,7 @@ impl HeaderProcessor {
         }
 
         let mut relations_write = self.relations_stores.write();
-        (0..=ctx.block_level.unwrap())
+        (0..=ctx.block_level)
             .map(|level| {
                 (
                     level as usize,
@@ -479,6 +500,7 @@ impl HeaderProcessor {
         let mut ctx = HeaderProcessingContext::new(
             self.genesis.hash,
             &genesis_header,
+            self.max_block_level,
             PruningPointInfo::from_genesis(self.genesis.hash),
             vec![BlockHashes::new(vec![ORIGIN])],
         );
@@ -488,7 +510,6 @@ impl HeaderProcessor {
         ctx.block_window_for_past_median_time = Some(Default::default());
         ctx.merge_depth_root = Some(ORIGIN);
         ctx.finality_point = Some(ORIGIN);
-        ctx.block_level = Some(self.max_block_level);
         self.commit_header(ctx, &genesis_header);
     }
 
