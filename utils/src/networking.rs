@@ -8,6 +8,7 @@ use std::{
 };
 use uuid::Uuid;
 
+/// An IP address, newtype of [IpAddr].
 #[derive(PartialEq, Eq, Hash, Copy, Clone, Serialize, Deserialize, Debug)]
 #[repr(transparent)]
 pub struct IpAddress(pub IpAddr);
@@ -122,6 +123,7 @@ impl BorshSchema for IpAddress {
     }
 }
 
+/// A network address, equivalent of a [SocketAddr].
 #[derive(PartialEq, Eq, Hash, Copy, Clone, Serialize, Deserialize, Debug, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct NetAddress {
     pub ip: IpAddress,
@@ -157,6 +159,51 @@ impl FromStr for NetAddress {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         SocketAddr::from_str(s).map(NetAddress::from)
+    }
+}
+
+/// A network address possibly without explicit port.
+///
+/// Use `normalize` to get a fully determined address.
+#[derive(PartialEq, Eq, Hash, Copy, Clone, Serialize, Deserialize, Debug, BorshSerialize, BorshDeserialize, BorshSchema)]
+pub struct ContextualNetAddress {
+    ip: IpAddress,
+    port: Option<u16>,
+}
+
+impl ContextualNetAddress {
+    fn new(ip: IpAddress, port: Option<u16>) -> Self {
+        Self { ip, port }
+    }
+
+    pub fn normalize(&self, default_port: u16) -> NetAddress {
+        NetAddress::new(self.ip, self.port.unwrap_or(default_port))
+    }
+}
+
+impl From<NetAddress> for ContextualNetAddress {
+    fn from(value: NetAddress) -> Self {
+        Self::new(value.ip, Some(value.port))
+    }
+}
+
+impl FromStr for ContextualNetAddress {
+    type Err = AddrParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match SocketAddr::from_str(s) {
+            Ok(socket) => Ok(Self::new(socket.ip().into(), Some(socket.port()))),
+            Err(_) => Ok(Self::new(IpAddress::from_str(s)?, None)),
+        }
+    }
+}
+
+impl ToString for ContextualNetAddress {
+    fn to_string(&self) -> String {
+        match self.port {
+            Some(port) => SocketAddr::new(self.ip.into(), port).to_string(),
+            None => self.ip.to_string(),
+        }
     }
 }
 
