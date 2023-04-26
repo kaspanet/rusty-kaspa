@@ -10,10 +10,6 @@ impl HeaderProcessor {
         ctx: &mut HeaderProcessingContext,
         header: &Header,
     ) -> BlockProcessResult<()> {
-        if header.hash == self.genesis.hash {
-            return Ok(());
-        }
-
         self.check_pruning_violation(ctx)?;
         self.check_difficulty_and_daa_score(ctx, header)?;
         Ok(())

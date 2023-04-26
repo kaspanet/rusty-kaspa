@@ -42,6 +42,7 @@ use kaspa_consensus_core::{
 };
 use kaspa_database::prelude::StoreResultExtensions;
 use kaspa_hashes::Hash;
+use kaspa_utils::vec::VecExtensions;
 use parking_lot::RwLock;
 use rayon::ThreadPool;
 use rocksdb::WriteBatch;
@@ -303,20 +304,15 @@ impl HeaderProcessor {
         let relations_read = self.relations_stores.read();
         let non_pruned_parents = (0..=self.max_block_level)
             .map(|level| {
-                Arc::new({
-                    let filtered = self
-                        .parents_manager
+                Arc::new(
+                    self.parents_manager
                         .parents_at_level(header, level)
                         .iter()
                         .copied()
                         .filter(|parent| relations_read[level as usize].has(*parent).unwrap())
-                        .collect_vec();
-                    if filtered.is_empty() {
-                        vec![ORIGIN]
-                    } else {
-                        filtered
-                    }
-                })
+                        .collect_vec()
+                        .push_if_empty(ORIGIN),
+                )
             })
             .collect_vec();
         drop(relations_read);
@@ -393,8 +389,7 @@ impl HeaderProcessor {
         // alternative is to create a separate ReachabilityProcessor and to manage things more tightly.
         let mut staging = StagingReachabilityStore::new(self.reachability_store.upgradable_read());
 
-        let has_reachability = staging.has(ctx.hash).unwrap();
-        if !has_reachability {
+        if !staging.has(ctx.hash).unwrap() {
             // Add block to staging reachability
             let reachability_parent = if ctx.non_pruned_parents[0].len() == 1 && ctx.non_pruned_parents[0][0].is_origin() {
                 ORIGIN
@@ -426,26 +421,25 @@ impl HeaderProcessor {
             }
         }
 
-        let is_genesis = header.direct_parents().is_empty();
-        let parent_by_level_iter = (0..=ctx.block_level.unwrap()).map(|level| {
-            if is_genesis {
-                vec![ORIGIN]
-            } else {
-                self.parents_manager
-                    .parents_at_level(ctx.header, level)
-                    .iter()
-                    .copied()
-                    .filter(|parent| self.ghostdag_stores[level as usize].has(*parent).unwrap())
-                    .collect_vec()
-            }
-        });
-
         let mut relations_write_guard = self.relations_stores.write();
-        parent_by_level_iter.enumerate().for_each(|(level, parent_by_level)| {
-            if !relations_write_guard[level].has(header.hash).unwrap() {
-                relations_write_guard[level].insert_batch(&mut batch, header.hash, BlockHashes::new(parent_by_level)).unwrap();
-            }
-        });
+        (0..=ctx.block_level.unwrap())
+            .map(|level| {
+                (
+                    level as usize,
+                    self.parents_manager
+                        .parents_at_level(ctx.header, level)
+                        .iter()
+                        .copied()
+                        .filter(|parent| self.ghostdag_stores[level as usize].has(*parent).unwrap())
+                        .collect_vec()
+                        .push_if_empty(ORIGIN),
+                )
+            })
+            .for_each(|(level, parents_by_level)| {
+                if !relations_write_guard[level].has(header.hash).unwrap() {
+                    relations_write_guard[level].insert_batch(&mut batch, header.hash, BlockHashes::new(parents_by_level)).unwrap();
+                }
+            });
 
         let statuses_write_guard = self.statuses_store.set_batch(&mut batch, ctx.hash, StatusHeaderOnly).unwrap();
 
@@ -488,7 +482,8 @@ impl HeaderProcessor {
             PruningPointInfo::from_genesis(self.genesis.hash),
             vec![BlockHashes::new(vec![ORIGIN])],
         );
-        ctx.ghostdag_data = Some(self.ghostdag_managers.iter().map(|m| Arc::new(m.genesis_ghostdag_data())).collect());
+        ctx.ghostdag_data =
+            Some(self.ghostdag_managers.iter().map(|manager_by_level| Arc::new(manager_by_level.genesis_ghostdag_data())).collect());
         ctx.block_window_for_difficulty = Some(Default::default());
         ctx.block_window_for_past_median_time = Some(Default::default());
         ctx.merge_depth_root = Some(ORIGIN);
