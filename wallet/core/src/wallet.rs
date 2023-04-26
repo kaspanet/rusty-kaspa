@@ -124,8 +124,12 @@ impl Wallet {
         let wallet = storage::Wallet::try_load(&store).await?;
         let payload = wallet.payload.decrypt::<storage::Payload>(secret)?;
 
-        let accounts =
-            payload.as_ref().accounts.iter().map(|stored| Account::try_new_from_storage(self.rpc.clone(), stored)).collect::<Vec<_>>();
+        let accounts = payload
+            .as_ref()
+            .accounts
+            .iter()
+            .map(|stored| Account::try_new_from_storage(self.rpc.clone(), self.inner.multiplexer.clone(), stored))
+            .collect::<Vec<_>>();
         let accounts = join_all(accounts).await.into_iter().collect::<Result<Vec<_>>>()?;
         let accounts = accounts.into_iter().map(Arc::new).collect::<Vec<_>>();
 
@@ -227,7 +231,8 @@ impl Wallet {
         // -
         self.clear().await?;
 
-        let account = Arc::new(Account::try_new_from_storage(self.rpc.clone(), &stored_account).await?);
+        let account =
+            Arc::new(Account::try_new_from_storage(self.rpc.clone(), self.inner.multiplexer.clone(), &stored_account).await?);
         self.inner.accounts.lock().unwrap().push(account.clone());
 
         self.select(Some(account)).await?;
@@ -282,7 +287,7 @@ impl Wallet {
             0,                             // cosigner_index
         );
 
-        let runtime_account = Account::try_new_from_storage(self.rpc(), &stored_account).await?;
+        let runtime_account = Account::try_new_from_storage(self.rpc(), self.inner.multiplexer.clone(), &stored_account).await?;
 
         payload.prv_key_data.push(prv_key_data);
         // TODO - prevent multiple addition of the same private key

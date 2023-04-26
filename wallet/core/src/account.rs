@@ -5,6 +5,7 @@ use crate::result::Result;
 use crate::secret::Secret;
 use crate::storage::{self, PrvKeyDataId, PubKeyData};
 use crate::utxo::{UtxoEntryReference, UtxoOrdering, UtxoSet};
+use crate::wallet::Events;
 use crate::DynRpcApi;
 use async_trait::async_trait;
 use kaspa_bip32::ExtendedPublicKey;
@@ -14,7 +15,11 @@ use kaspa_rpc_core::api::notifications::Notification;
 use kaspa_rpc_core::notify::connection::ChannelConnection;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, AtomicU64};
-use workflow_core::channel::Channel;
+use workflow_core::channel::{oneshot, Channel, DuplexChannel, Multiplexer};
+// use workflow_core::channel::{Channel, DuplexChannel, Multiplexer, Receiver};
+use workflow_core::task::spawn;
+// use futures::future::join_all;
+use futures::{select, FutureExt};
 
 #[derive(Default, Clone)]
 pub struct Estimate {
@@ -56,6 +61,7 @@ pub struct Account {
     utxos: UtxoSet,
     balance: AtomicU64,
     rpc: Arc<DynRpcApi>,
+    multiplexer: Multiplexer<Events>,
     is_connected: AtomicBool,
     #[wasm_bindgen(js_name = "accountKind")]
     pub account_kind: AccountKind,
@@ -67,6 +73,9 @@ pub struct Account {
     // pub derivation_path : DerivationPath,
     #[wasm_bindgen(skip)]
     pub derivation: Arc<dyn crate::accounts::WalletDerivationManagerTrait>,
+
+    #[wasm_bindgen(skip)]
+    pub task_ctl: DuplexChannel,
 }
 
 impl Account {
@@ -93,6 +102,7 @@ impl Account {
 
     pub async fn try_new_with_args(
         rpc_api: Arc<DynRpcApi>,
+        multiplexer: Multiplexer<Events>,
         name: &str,
         title: &str,
         account_kind: AccountKind,
@@ -127,6 +137,7 @@ impl Account {
             balance: AtomicU64::new(0),
             // _generator: Arc::new(config.clone()),
             rpc: rpc_api.clone(),
+            multiplexer,
             is_connected: AtomicBool::new(false),
             // -
             inner: Arc::new(Mutex::new(inner)),
@@ -137,10 +148,15 @@ impl Account {
             ecdsa: false,
             // -
             derivation,
+            task_ctl: DuplexChannel::oneshot(),
         })
     }
 
-    pub async fn try_new_from_storage(rpc: Arc<DynRpcApi>, stored: &storage::Account) -> Result<Self> {
+    pub async fn try_new_from_storage(
+        rpc: Arc<DynRpcApi>,
+        multiplexer: Multiplexer<Events>,
+        stored: &storage::Account,
+    ) -> Result<Self> {
         let channel = Channel::<Notification>::unbounded();
         let listener_id = rpc.register_new_listener(ChannelConnection::new(channel.sender));
 
@@ -153,7 +169,8 @@ impl Account {
             utxos: UtxoSet::default(),
             balance: AtomicU64::new(0),
             // _generator: Arc::new(config.clone()),
-            rpc: rpc.clone(),
+            rpc, //: rpc.clone(),
+            multiplexer,
             is_connected: AtomicBool::new(false),
             inner: Arc::new(Mutex::new(inner)),
             account_kind: stored.account_kind,
@@ -162,6 +179,7 @@ impl Account {
             ecdsa: stored.ecdsa,
             // -
             derivation,
+            task_ctl: DuplexChannel::oneshot(),
         })
     }
 
@@ -293,6 +311,89 @@ impl Account {
     }
 
     pub async fn create_unsigned_transaction(&self) -> Result<()> {
+        Ok(())
+    }
+
+    // -
+
+    /// Start Account service task
+    pub async fn start(self: &Arc<Self>) -> Result<()> {
+        self.start_task().await?;
+
+        Ok(())
+    }
+
+    /// Stop Account service task
+    pub async fn stop(&self) -> Result<()> {
+        self.stop_task().await?;
+
+        Ok(())
+    }
+
+    /// handle connection event
+    pub async fn connect(&self) -> Result<()> {
+        self.subscribe_notififcations().await?;
+
+        Ok(())
+    }
+
+    /// handle disconnection event
+    pub async fn disconnect(&self) -> Result<()> {
+        Ok(())
+    }
+
+    async fn subscribe_notififcations(&self) -> Result<()> {
+        // - TODO - subscribe to notifications from the wallet notifier
+        Ok(())
+    }
+
+    async fn start_task(self: &Arc<Self>) -> Result<()> {
+        let _self = self.clone();
+
+        let multiplexer = self.multiplexer.clone();
+        let (mux_id, _mux_sender, mux_receiver) = multiplexer.register_event_channel();
+        let task_ctl_receiver = self.task_ctl.request.receiver.clone();
+        let task_ctl_sender = self.task_ctl.response.sender.clone();
+        let (task_start_sender, task_start_receiver) = oneshot::<()>();
+
+        spawn(async move {
+            task_start_sender.send(()).await.unwrap();
+            loop {
+                select! {
+                    _ = task_ctl_receiver.recv().fuse() => {
+                        break;
+                    },
+                    msg = mux_receiver.recv().fuse() => {
+                        if let Ok(msg) = msg {
+                            match msg {
+                                Events::Connect => {
+                                    // - TODO -
+                                    _self.connect().await.unwrap_or_else(|err| {
+                                        log_error!("{err}");
+                                    });
+                                },
+                                Events::Disconnect => {
+
+                                    _self.disconnect().await.unwrap_or_else(|err| {
+                                        log_error!("{err}");
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            multiplexer.unregister_event_channel(mux_id);
+            task_ctl_sender.send(()).await.unwrap();
+        });
+
+        task_start_receiver.recv().await.unwrap();
+
+        Ok(())
+    }
+
+    async fn stop_task(&self) -> Result<()> {
+        self.task_ctl.signal(()).await.expect("Account::stop_task() `signal` error");
         Ok(())
     }
 }
