@@ -75,6 +75,7 @@ use kaspa_notify::notifier::Notify;
 
 use crossbeam_channel::{Receiver as CrossbeamReceiver, Sender as CrossbeamSender};
 use itertools::Itertools;
+use kaspa_utils::binary_heap::BinaryHeapExtensions;
 use parking_lot::{RwLock, RwLockUpgradableReadGuard};
 use rayon::ThreadPool;
 use rocksdb::WriteBatch;
@@ -499,7 +500,8 @@ impl VirtualStateProcessor {
     /// in the inclusive past of `tips`.
     /// The provided `diff` is assumed to initially hold the UTXO diff of `prev_sink` from virtual.
     /// The function returns with `diff` being the diff of the new sink from previous virtual.
-    /// In addition to the found sink the function also returns a queue of additional virtual parent candidates.
+    /// In addition to the found sink the function also returns a queue of additional virtual
+    /// parent candidates ordered in descending blue work order.
     fn sink_search_algorithm(
         &self,
         stores: &VirtualStores,
@@ -529,7 +531,7 @@ impl VirtualStateProcessor {
                 diff_point = self.calculate_utxo_state_relatively(stores, diff, diff_point, candidate);
                 if diff_point == candidate {
                     // This indicates that candidate has valid UTXO state and that `diff` represents its diff from virtual
-                    return (candidate, heap.into_iter().take(self.max_virtual_parent_candidates()).map(|s| s.hash).collect());
+                    return (candidate, heap.into_sorted_iter().take(self.max_virtual_parent_candidates()).map(|s| s.hash).collect());
                 } else {
                     debug!("Block candidate {} has invalid UTXO state and is ignored from Virtual chain.", candidate)
                 }
@@ -547,8 +549,10 @@ impl VirtualStateProcessor {
     }
 
     /// Picks the virtual parents according to virtual parent selection pruning constrains.
-    /// Assumes `selected_parent` is a UTXO-valid block, and that `candidates` are an antichain
-    /// not containing `selected_parent` and that `selected_parent` has higher blue work than them.  
+    /// Assumes:
+    ///     1. `selected_parent` is a UTXO-valid block
+    ///     2. `candidates` are an antichain ordered in descending blue work order
+    ///     3. `candidates` do not contain `selected_parent` and `selected_parent.blue work > max(candidates.blue_work)`  
     fn pick_virtual_parents(
         &self,
         selected_parent: Hash,
