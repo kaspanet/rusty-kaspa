@@ -290,7 +290,7 @@ impl HeaderProcessor {
         }
     }
 
-    fn process_header(self: &Arc<HeaderProcessor>, header: &Arc<Header>, is_trusted: bool) -> BlockProcessResult<BlockStatus> {
+    fn process_header(&self, header: &Arc<Header>, is_trusted: bool) -> BlockProcessResult<BlockStatus> {
         let status_option = self.statuses_store.read().get(header.hash).unwrap_option();
 
         match status_option {
@@ -351,7 +351,7 @@ impl HeaderProcessor {
         Ok(StatusHeaderOnly)
     }
 
-    fn commit_header(self: &Arc<HeaderProcessor>, ctx: HeaderProcessingContext, header: &Arc<Header>) {
+    fn commit_header(&self, ctx: HeaderProcessingContext, header: &Arc<Header>) {
         let ghostdag_data = ctx.ghostdag_data.as_ref().unwrap();
         let pp = ctx.pruning_point();
 
@@ -459,7 +459,7 @@ impl HeaderProcessor {
         drop(sc_write);
     }
 
-    pub fn process_genesis(self: &Arc<HeaderProcessor>) {
+    pub fn process_genesis(&self) {
         // Init headers selected tip and selected chain stores
         let mut batch = WriteBatch::default();
         let mut sc_write = self.selected_chain_store.write();
@@ -492,7 +492,7 @@ impl HeaderProcessor {
         self.commit_header(ctx, &genesis_header);
     }
 
-    pub fn init(self: &Arc<HeaderProcessor>) {
+    pub fn init(&self) {
         if self.relations_stores.read()[0].has(ORIGIN).unwrap() {
             return;
         }

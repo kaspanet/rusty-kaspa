@@ -2,20 +2,15 @@ use super::*;
 use crate::errors::{BlockProcessResult, RuleError};
 use crate::model::services::reachability::ReachabilityService;
 use kaspa_consensus_core::header::Header;
-use std::sync::Arc;
 
 impl HeaderProcessor {
-    pub(super) fn pre_pow_validation(
-        self: &Arc<HeaderProcessor>,
-        ctx: &mut HeaderProcessingContext,
-        header: &Header,
-    ) -> BlockProcessResult<()> {
+    pub(super) fn pre_pow_validation(&self, ctx: &mut HeaderProcessingContext, header: &Header) -> BlockProcessResult<()> {
         self.check_pruning_violation(ctx)?;
         self.check_difficulty_and_daa_score(ctx, header)?;
         Ok(())
     }
 
-    fn check_pruning_violation(self: &Arc<HeaderProcessor>, ctx: &mut HeaderProcessingContext) -> BlockProcessResult<()> {
+    fn check_pruning_violation(&self, ctx: &mut HeaderProcessingContext) -> BlockProcessResult<()> {
         let non_pruned_parents = ctx.get_non_pruned_parents();
         if non_pruned_parents.is_empty() {
             return Ok(());
@@ -30,11 +25,7 @@ impl HeaderProcessor {
         Ok(())
     }
 
-    fn check_difficulty_and_daa_score(
-        self: &Arc<HeaderProcessor>,
-        ctx: &mut HeaderProcessingContext,
-        header: &Header,
-    ) -> BlockProcessResult<()> {
+    fn check_difficulty_and_daa_score(&self, ctx: &mut HeaderProcessingContext, header: &Header) -> BlockProcessResult<()> {
         let ghostdag_data = ctx.get_ghostdag_data().unwrap();
         let window = self.dag_traversal_manager.block_window(&ghostdag_data, self.difficulty_window_size)?;
 
