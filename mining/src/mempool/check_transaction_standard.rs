@@ -7,7 +7,7 @@ use kaspa_consensus_core::{
     mass,
     tx::{MutableTransaction, PopulatedTransaction, TransactionOutput},
 };
-use kaspa_txscript::{get_sig_op_count, script_class::ScriptClass};
+use kaspa_txscript::{get_sig_op_count, is_unspendable, script_class::ScriptClass};
 
 /// MAX_STANDARD_P2SH_SIG_OPS is the maximum number of signature operations
 /// that are considered standard in a pay-to-script-hash script.
@@ -114,13 +114,7 @@ impl Mempool {
     /// It is exposed by [MiningManager] for use by transaction generators and wallets.
     pub(crate) fn is_transaction_output_dust(&self, transaction_output: &TransactionOutput) -> bool {
         // Unspendable outputs are considered dust.
-        //
-        // TODO: call script engine when available
-        // if txscript.is_unspendable(transaction_output.script_public_key.script()) {
-        //     return true
-        // }
-        // TODO: Remove this code when script engine is available
-        if transaction_output.script_public_key.script().len() < 33 {
+        if is_unspendable::<PopulatedTransaction>(transaction_output.script_public_key.script()) {
             return true;
         }
 
@@ -186,11 +180,8 @@ impl Mempool {
                 ScriptClass::NonStandard => {
                     return Err(NonStandardError::RejectInputScriptClass(transaction_id, i));
                 }
-
-                // TODO: handle these 2 cases
                 ScriptClass::PubKey => {}
                 ScriptClass::PubKeyECDSA => {}
-
                 ScriptClass::ScriptHash => {
                     get_sig_op_count::<PopulatedTransaction>(&input.signature_script, &entry.script_public_key);
                     let num_sig_ops = 1;

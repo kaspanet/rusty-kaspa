@@ -17,6 +17,7 @@ use kaspa_consensus_core::hashing::sighash_type::SigHashType;
 use kaspa_consensus_core::tx::{ScriptPublicKey, TransactionInput, UtxoEntry, VerifiableTransaction};
 use kaspa_txscript_errors::TxScriptError;
 use log::trace;
+use opcodes::codes::OpReturn;
 use opcodes::{codes, to_small_int, OpCond};
 use script_class::ScriptClass;
 
@@ -135,6 +136,13 @@ fn get_sig_op_count_by_opcodes<T: VerifiableTransaction>(opcodes: &[Result<Box<d
         }
     }
     num_sigs
+}
+
+/// Returns whether the passed public key script is unspendable, or guaranteed to fail at execution.
+///
+/// This allows inputs to be pruned instantly when entering the UTXO set.
+pub fn is_unspendable<T: VerifiableTransaction>(script: &[u8]) -> bool {
+    parse_script::<T>(script).enumerate().any(|(index, op)| op.is_err() || (index == 0 && op.unwrap().value() == OpReturn))
 }
 
 impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
@@ -508,6 +516,18 @@ mod tests {
         is_valid: bool,
     }
 
+    struct VerifiableTransactionMock {}
+
+    impl VerifiableTransaction for VerifiableTransactionMock {
+        fn tx(&self) -> &Transaction {
+            unimplemented!()
+        }
+
+        fn populated_input(&self, _index: usize) -> (&TransactionInput, &UtxoEntry) {
+            unimplemented!()
+        }
+    }
+
     #[test]
     fn test_check_error_condition() {
         let test_cases = vec![
@@ -633,18 +653,6 @@ mod tests {
 
     #[test]
     fn test_get_sig_op_count() {
-        struct VerifiableTransactionMock {}
-
-        impl VerifiableTransaction for VerifiableTransactionMock {
-            fn tx(&self) -> &Transaction {
-                unimplemented!()
-            }
-
-            fn populated_input(&self, _index: usize) -> (&TransactionInput, &UtxoEntry) {
-                unimplemented!()
-            }
-        }
-
         struct TestVector<'a> {
             name: &'a str,
             signature_script: &'a [u8],
@@ -721,6 +729,35 @@ mod tests {
             assert_eq!(
                 get_sig_op_count::<VerifiableTransactionMock>(test.signature_script, &test.prev_script_public_key),
                 test.expected_sig_ops,
+                "failed for '{}'",
+                test.name
+            );
+        }
+    }
+
+    #[test]
+    fn test_is_unspendable() {
+        struct Test<'a> {
+            name: &'a str,
+            script_public_key: &'a [u8],
+            expected: bool,
+        }
+        let tests = vec![
+            Test { name: "unspendable", script_public_key: &[0x6a, 0x04, 0x74, 0x65, 0x73, 0x74], expected: true },
+            Test {
+                name: "spendable",
+                script_public_key: &[
+                    0x76, 0xa9, 0x14, 0x29, 0x95, 0xa0, 0xfe, 0x68, 0x43, 0xfa, 0x9b, 0x95, 0x45, 0x97, 0xf0, 0xdc, 0xa7, 0xa4, 0x4d,
+                    0xf6, 0xfa, 0x0b, 0x5c, 0x88, 0xac,
+                ],
+                expected: false,
+            },
+        ];
+
+        for test in tests {
+            assert_eq!(
+                is_unspendable::<VerifiableTransactionMock>(test.script_public_key),
+                test.expected,
                 "failed for '{}'",
                 test.name
             );
