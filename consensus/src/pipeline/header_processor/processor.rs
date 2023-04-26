@@ -404,24 +404,24 @@ impl HeaderProcessor {
 
         // Non-append only stores need to use write locks.
         // Note we need to keep the lock write guards until the batch is written.
-        let mut hst_write_guard = self.headers_selected_tip_store.write();
-        let mut sc_write_guard = self.selected_chain_store.write();
-        let prev_hst = hst_write_guard.get().unwrap();
+        let mut hst_write = self.headers_selected_tip_store.write();
+        let mut sc_write = self.selected_chain_store.write();
+        let prev_hst = hst_write.get().unwrap();
         if SortableBlock::new(ctx.hash, header.blue_work) > prev_hst
             && reachability::is_chain_ancestor_of(&staging, pp, ctx.hash).unwrap()
         // We can't calculate chain path for blocks that do not have the pruning point in their chain, so we just skip them.
         {
             // Hint reachability about the new tip.
             reachability::hint_virtual_selected_parent(&mut staging, ctx.hash).unwrap();
-            hst_write_guard.set_batch(&mut batch, SortableBlock::new(ctx.hash, header.blue_work)).unwrap();
+            hst_write.set_batch(&mut batch, SortableBlock::new(ctx.hash, header.blue_work)).unwrap();
             if ctx.hash != pp {
                 let mut chain_path = self.dag_traversal_manager.calculate_chain_path(prev_hst.hash, ghostdag_data[0].selected_parent);
                 chain_path.added.push(ctx.hash);
-                sc_write_guard.apply_changes(&mut batch, chain_path).unwrap();
+                sc_write.apply_changes(&mut batch, chain_path).unwrap();
             }
         }
 
-        let mut relations_write_guard = self.relations_stores.write();
+        let mut relations_write = self.relations_stores.write();
         (0..=ctx.block_level.unwrap())
             .map(|level| {
                 (
@@ -436,39 +436,39 @@ impl HeaderProcessor {
                 )
             })
             .for_each(|(level, parents_by_level)| {
-                if !relations_write_guard[level].has(header.hash).unwrap() {
-                    relations_write_guard[level].insert_batch(&mut batch, header.hash, BlockHashes::new(parents_by_level)).unwrap();
+                if !relations_write[level].has(header.hash).unwrap() {
+                    relations_write[level].insert_batch(&mut batch, header.hash, BlockHashes::new(parents_by_level)).unwrap();
                 }
             });
 
-        let statuses_write_guard = self.statuses_store.set_batch(&mut batch, ctx.hash, StatusHeaderOnly).unwrap();
+        let statuses_write = self.statuses_store.set_batch(&mut batch, ctx.hash, StatusHeaderOnly).unwrap();
 
         // Write reachability data. Only at this brief moment the reachability store is locked for reads.
         // We take special care for this since reachability read queries are used throughout the system frequently.
         // Note we hold the lock until the batch is written
-        let reachability_write_guard = staging.commit(&mut batch).unwrap();
+        let reachability_write = staging.commit(&mut batch).unwrap();
 
         // Flush the batch to the DB
         self.db.write(batch).unwrap();
 
         // Calling the drops explicitly after the batch is written in order to avoid possible errors.
-        drop(reachability_write_guard);
-        drop(statuses_write_guard);
-        drop(relations_write_guard);
-        drop(hst_write_guard);
-        drop(sc_write_guard);
+        drop(reachability_write);
+        drop(statuses_write);
+        drop(relations_write);
+        drop(hst_write);
+        drop(sc_write);
     }
 
     pub fn process_genesis(self: &Arc<HeaderProcessor>) {
         // Init headers selected tip and selected chain stores
         let mut batch = WriteBatch::default();
-        let mut sc_write_guard = self.selected_chain_store.write();
-        sc_write_guard.init_with_pruning_point(&mut batch, self.genesis.hash).unwrap();
-        let mut hst_write_guard = self.headers_selected_tip_store.write();
-        hst_write_guard.set_batch(&mut batch, SortableBlock::new(self.genesis.hash, 0.into())).unwrap();
+        let mut sc_write = self.selected_chain_store.write();
+        sc_write.init_with_pruning_point(&mut batch, self.genesis.hash).unwrap();
+        let mut hst_write = self.headers_selected_tip_store.write();
+        hst_write.set_batch(&mut batch, SortableBlock::new(self.genesis.hash, 0.into())).unwrap();
         self.db.write(batch).unwrap();
-        drop(hst_write_guard);
-        drop(sc_write_guard);
+        drop(hst_write);
+        drop(sc_write);
 
         // Write the genesis header
         let mut genesis_header: Header = (&self.genesis).into();
@@ -498,14 +498,13 @@ impl HeaderProcessor {
         }
 
         let mut batch = WriteBatch::default();
-        let mut relations_write_guard = self.relations_stores.write();
-        (0..=self.max_block_level).for_each(|level| {
-            relations_write_guard[level as usize].insert_batch(&mut batch, ORIGIN, BlockHashes::new(vec![])).unwrap()
-        });
-        let mut hst_write_guard = self.headers_selected_tip_store.write();
-        hst_write_guard.set_batch(&mut batch, SortableBlock::new(ORIGIN, 0.into())).unwrap();
+        let mut relations_write = self.relations_stores.write();
+        (0..=self.max_block_level)
+            .for_each(|level| relations_write[level as usize].insert_batch(&mut batch, ORIGIN, BlockHashes::new(vec![])).unwrap());
+        let mut hst_write = self.headers_selected_tip_store.write();
+        hst_write.set_batch(&mut batch, SortableBlock::new(ORIGIN, 0.into())).unwrap();
         self.db.write(batch).unwrap();
-        drop(hst_write_guard);
-        drop(relations_write_guard);
+        drop(hst_write);
+        drop(relations_write);
     }
 }
