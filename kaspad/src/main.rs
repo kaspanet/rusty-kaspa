@@ -28,7 +28,6 @@ use args::{Args, Defaults};
 
 use crate::monitor::ConsensusMonitor;
 use kaspa_consensus::config::ConfigBuilder;
-use kaspa_consensus::params::{DEVNET_PARAMS, MAINNET_PARAMS, SIMNET_PARAMS, TESTNET_PARAMS};
 use kaspa_utxoindex::UtxoIndex;
 
 use async_channel::unbounded;
@@ -45,8 +44,6 @@ const CONSENSUS_DB: &str = "consensus";
 const UTXOINDEX_DB: &str = "utxoindex";
 const META_DB: &str = "meta";
 
-// TODO: add a Config
-// TODO: apply Args to Config
 // TODO: log to file
 // TODO: refactor the shutdown sequence into a predefined controlled sequence
 
@@ -145,16 +142,7 @@ pub fn main() {
         _ => panic!("only a single net should be activated"),
     };
 
-    let config = Arc::new(
-        match network_type {
-            NetworkType::Mainnet => ConfigBuilder::new(MAINNET_PARAMS),
-            NetworkType::Testnet => ConfigBuilder::new(TESTNET_PARAMS),
-            NetworkType::Devnet => ConfigBuilder::new(DEVNET_PARAMS),
-            NetworkType::Simnet => ConfigBuilder::new(SIMNET_PARAMS),
-        }
-        .apply_args(|config| args.apply_to_config(config))
-        .build(),
-    );
+    let config = Arc::new(ConfigBuilder::new(network_type.into()).apply_args(|config| args.apply_to_config(config)).build());
 
     // TODO: Refactor all this quick-and-dirty code
     let app_dir = args
