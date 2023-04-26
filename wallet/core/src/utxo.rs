@@ -123,7 +123,11 @@ pub struct UtxoSet {
 
 #[wasm_bindgen]
 impl UtxoSet {
-    pub fn insert(&mut self, utxo_entry: UtxoEntryReference) {
+    pub fn clear(&self) {
+        self.inner.entries.lock().unwrap().clear();
+    }
+
+    pub fn insert(&self, utxo_entry: UtxoEntryReference) {
         self.inner.entries.lock().unwrap().push(utxo_entry);
         self.inner.ordered.store(UtxoOrdering::Unordered as u32, Ordering::SeqCst);
     }
@@ -163,6 +167,11 @@ impl UtxoSet {
         }
 
         Ok(())
+    }
+
+    pub fn extend(&self, utxo_entries: &[UtxoEntryReference]) {
+        self.inner.entries.lock().unwrap().extend(utxo_entries.to_vec());
+        self.inner.ordered.store(UtxoOrdering::Unordered as u32, Ordering::SeqCst);
     }
 
     pub async fn chunks(&self, chunk_size: usize) -> Result<Vec<Vec<UtxoEntryReference>>> {

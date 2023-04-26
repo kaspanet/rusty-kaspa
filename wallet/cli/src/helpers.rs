@@ -33,3 +33,14 @@ pub async fn ask_mnemonic(term: &Arc<Terminal>) -> Result<Vec<String>> {
         Ok(words)
     }
 }
+
+pub fn kas_str_to_sompi(amount: &str) -> Result<u64> {
+    let amount = amount.trim();
+    if amount.is_empty() {
+        return Ok(0);
+    }
+
+    let mut amount = amount.parse::<f64>()?;
+    amount *= kaspa_consensus_core::constants::SOMPI_PER_KASPA as f64;
+    Ok(amount as u64)
+}

@@ -23,3 +23,6 @@ workflow-core.workspace = true
 workflow-dom.workspace = true
 workflow-log.workspace = true
 workflow-terminal.workspace = true
+serde_json.workspace = true
+serde.workspace = true
+kaspa-consensus-core.workspace = true

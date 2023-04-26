@@ -22,6 +22,15 @@ pub enum Error {
     // ChannelError(String),
     #[error(transparent)]
     WrpcError(#[from] kaspa_wrpc_client::error::Error),
+
+    #[error(transparent)]
+    SerdeJsonError(#[from] serde_json::Error),
+
+    #[error(transparent)]
+    ParseFloatError(#[from] std::num::ParseFloatError),
+
+    #[error(transparent)]
+    ParseIntError(#[from] std::num::ParseIntError),
 }
 
 impl Error {

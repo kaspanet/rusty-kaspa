@@ -1,10 +1,11 @@
 use crate::actions::*;
-use crate::helpers::*;
+use crate::helpers;
 use crate::result::Result;
 use async_trait::async_trait;
 use futures::*;
 use kaspa_wallet_core::accounts::gen0::import::*;
 use kaspa_wallet_core::storage::AccountKind;
+use kaspa_wallet_core::Address;
 use kaspa_wallet_core::{secret::Secret, wallet::AccountCreateArgs, Wallet};
 use std::sync::{Arc, Mutex};
 use workflow_core::channel::*;
@@ -79,7 +80,12 @@ impl WalletCli {
                 term.writeln("ok");
             }
             Action::Balance => {
-                self.wallet.balance().await?;
+                let accounts = self.wallet.accounts();
+                for account in accounts {
+                    let balance = account.balance();
+                    let name = account.name();
+                    log_info!("{name} - {balance} KAS");
+                }
             }
             Action::Create => {
                 use kaspa_wallet_core::error::Error;
@@ -108,34 +114,55 @@ impl WalletCli {
                 };
 
                 term.writeln(format!("Wrote the wallet into '{}'\n", path.to_str().unwrap()));
+
+                // - TODO - Select created as a current account
             }
             Action::Broadcast => {
                 self.wallet.broadcast().await?;
             }
             Action::CreateUnsignedTx => {
-                self.wallet.create_unsigned_transaction().await?;
+                let account = self.wallet.account()?;
+                account.create_unsigned_transaction().await?;
             }
             Action::DumpUnencrypted => {
                 self.wallet.dump_unencrypted().await?;
             }
             Action::NewAddress => {
-                let response = self.wallet.new_address().await?;
+                let account = self.wallet.account()?;
+                let response = account.new_receive_address().await?;
                 term.writeln(response);
             }
-            Action::Parse => {
-                self.wallet.parse().await?;
-            }
+            // Action::Parse => {
+            //     self.wallet.parse().await?;
+            // }
             Action::Send => {
-                self.wallet.send().await?;
+                // address, amount, priority fee
+                let account = self.wallet.account()?;
+
+                if argv.len() < 2 {
+                    return Err("Usage: send <address> <amount> <priority fee>".into());
+                }
+                let address = argv.get(0).unwrap();
+                let amount = argv.get(1).unwrap();
+                let priority_fee = argv.get(2);
+
+                let priority_fee = if let Some(fee) = priority_fee { helpers::kas_str_to_sompi(fee)? } else { 0u64 };
+
+                let address = serde_json::from_str::<Address>(address)?;
+                let amount = helpers::kas_str_to_sompi(amount)?;
+
+                let secret = Option::<Secret>::None;
+                account.send(&address, amount, priority_fee, secret).await?;
             }
-            Action::ShowAddress => {
-                self.wallet.show_address().await?;
+            Action::Address => {
+                let address = self.wallet.account()?.address().await?.to_string();
+                term.writeln(address);
             }
             Action::Sign => {
-                self.wallet.sign().await?;
+                self.wallet.account()?.sign().await?;
             }
             Action::Sweep => {
-                self.wallet.sweep().await?;
+                self.wallet.account()?.sweep().await?;
             }
             Action::SubscribeDaaScore => {
                 self.wallet.subscribe_daa_score().await?;
@@ -154,7 +181,7 @@ impl WalletCli {
                 let what = argv.get(0).unwrap();
                 match what.as_str() {
                     "mnemonic" => {
-                        let mnemonic = ask_mnemonic(&term).await?;
+                        let mnemonic = helpers::ask_mnemonic(&term).await?;
                         log_info!("Mnemonic: {:?}", mnemonic);
                     }
                     "kaspanet" => {
@@ -184,7 +211,7 @@ impl WalletCli {
 
             // ~~~
             Action::List => {
-                let accounts = self.wallet.accounts().await;
+                let accounts = self.wallet.accounts();
                 for account in accounts.iter() {
                     term.writeln(account.get_ls_string());
                 }
@@ -194,18 +221,11 @@ impl WalletCli {
                     self.wallet.select(None).await?;
                 } else {
                     let name = argv.remove(0);
-                    let accounts = self.wallet.accounts().await;
+                    let accounts = self.wallet.accounts();
                     let account =
                         accounts.iter().position(|account| account.name() == name).map(|index| accounts.get(index).unwrap().clone());
                     self.wallet.select(account).await?;
-                    // if let Some(idx) = accounts.iter().position(|account| account.name() == name) {
-                    //     self.wallet.select(Some(accounts.get(idx).unwrap().clone())).await?;
-                    // } else {
-                    //     self.wallet.select(None).await?;
-                    // }
                 }
-
-                // TODO
             }
             Action::Open => {
                 let secret = Secret::new(term.ask(true, "Enter wallet password:").await?.trim().as_bytes().to_vec());

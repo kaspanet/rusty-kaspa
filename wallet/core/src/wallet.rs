@@ -2,7 +2,8 @@ use crate::imports::*;
 use crate::result::Result;
 use crate::secret::Secret;
 use crate::storage::{self, PrvKeyData};
-use crate::{account::Account, accounts::gen0::import::*, accounts::gen1::import::*, accounts::*};
+#[allow(unused_imports)]
+use crate::{account::Account, accounts::gen0, accounts::gen0::import::*, accounts::gen1, accounts::gen1::import::*};
 use futures::{select, FutureExt};
 use kaspa_bip32::Mnemonic;
 use kaspa_notify::{
@@ -141,7 +142,7 @@ impl Wallet {
     }
 
     // intended for starting async management tasks
-    pub async fn start(self: &Arc<Wallet>) -> Result<()> {
+    pub async fn start(&self) -> Result<()> {
         // internal event loop
         self.start_task().await?;
         // rpc services (notifier)
@@ -154,7 +155,7 @@ impl Wallet {
     }
 
     // intended for stopping async management task
-    pub async fn stop(self: &Arc<Wallet>) -> Result<()> {
+    pub async fn stop(&self) -> Result<()> {
         self.rpc.stop().await?;
         self.stop_task().await?;
         Ok(())
@@ -189,15 +190,12 @@ impl Wallet {
         Ok(self.rpc.ping().await?)
     }
 
-    pub async fn balance(self: &Arc<Wallet>) -> Result<()> {
+
+    pub async fn broadcast(&self) -> Result<()> {
         Ok(())
     }
 
-    pub async fn broadcast(self: &Arc<Wallet>) -> Result<()> {
-        Ok(())
-    }
-
-    pub async fn create(self: &Arc<Wallet>, args: &AccountCreateArgs) -> Result<PathBuf> {
+    pub async fn create(&self, args: &AccountCreateArgs) -> Result<PathBuf> {
         let store = Store::new(storage::DEFAULT_WALLET_FILE)?;
         if !args.override_wallet && store.exists().await? {
             return Err(Error::WalletAlreadyExists);
@@ -233,11 +231,7 @@ impl Wallet {
         Ok(store.filename().clone())
     }
 
-    pub async fn create_unsigned_transaction(self: &Arc<Wallet>) -> Result<()> {
-        Ok(())
-    }
-
-    pub async fn dump_unencrypted(self: &Arc<Wallet>) -> Result<()> {
+    pub async fn dump_unencrypted(&self) -> Result<()> {
         Ok(())
     }
 
@@ -246,57 +240,18 @@ impl Wallet {
         Ok(())
     }
 
-    pub async fn account(self: &Arc<Self>) -> Result<Arc<Account>> {
+    pub fn account(&self) -> Result<Arc<Account>> {
         self.inner.selected_account.lock().unwrap().clone().ok_or_else(|| Error::AccountSelection)
     }
 
-    pub async fn accounts(&self) -> Vec<Arc<Account>> {
+    pub fn accounts(&self) -> Vec<Arc<Account>> {
         self.inner.accounts.lock().unwrap().clone()
     }
 
-    #[allow(dead_code)]
-    fn receive_wallet(self: &Arc<Self>) -> Result<Arc<dyn AddressGeneratorTrait>> {
-        todo!()
-        // Ok(self.account()?.receive_wallet())
-    }
 
-    fn change_wallet(self: &Arc<Self>) -> Result<Arc<dyn AddressGeneratorTrait>> {
-        todo!()
-        // Ok(self.account()?.change_wallet())
-    }
 
-    pub async fn new_address(self: &Arc<Self>) -> Result<String> {
-        todo!()
-        // let address = self.receive_wallet()?.new_address().await?;
-        // Ok(address.into())
-    }
-
-    pub async fn new_change_address(self: &Arc<Self>) -> Result<String> {
-        let address = self.change_wallet()?.new_address().await?;
-        Ok(address.into())
-    }
-
-    pub async fn parse(self: &Arc<Wallet>) -> Result<()> {
-        Ok(())
-    }
-
-    pub async fn send(self: &Arc<Wallet>) -> Result<()> {
-        Ok(())
-    }
-
-    pub async fn show_address(self: &Arc<Wallet>) -> Result<()> {
-        Ok(())
-    }
-
-    pub async fn sign(self: &Arc<Wallet>) -> Result<()> {
-        Ok(())
-    }
-
-    pub async fn sweep(self: &Arc<Wallet>) -> Result<()> {
-        Ok(())
-    }
-
-    pub async fn import_gen0_keydata(self: &Arc<Wallet>, import_secret: Secret, wallet_secret: Secret) -> Result<()> {
+    // pub async fn import_gen0_keydata(self: &Arc<Wallet>, import_secret: Secret, wallet_secret: Secret) -> Result<()> {
+    pub async fn import_gen0_keydata(&self, import_secret: Secret, wallet_secret: Secret) -> Result<()> {
         let keydata = load_v0_keydata(&import_secret).await?;
 
         let store = storage::Store::new(storage::DEFAULT_WALLET_FILE)?;
@@ -313,14 +268,14 @@ impl Wallet {
         let stored_account = storage::Account::new(
             "imported-wallet".to_string(), // name
             "Imported Wallet".to_string(), // title
-            storage::AccountKind::V0,      // kind
-            0,                             // account index
-            false,                         // public visibility
-            PubKeyData::new(vec![]),       // TODO - pub keydata
-            Some(prv_key_data.id),         // privkey id
-            false,                         // ecdsa
-            1,                             // min signatures
-            0,                             // cosigner_index
+            storage::AccountKind::V0, // kind
+            0, // account index
+            false, // public visibility
+            PubKeyData::new(vec![]), // TODO - pub keydata
+            Some(prv_key_data.id), // privkey id
+            false, // ecdsa
+            1, // min signatures
+            0, // cosigner_index
         );
 
         let runtime_account = Account::new_from_storage(self.rpc(), &stored_account);

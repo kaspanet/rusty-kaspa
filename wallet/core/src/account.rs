@@ -1,7 +1,9 @@
+use crate::accounts::AddressGeneratorTrait;
 use crate::imports::*;
 use crate::result::Result;
+use crate::secret::Secret;
 use crate::storage::{self, PrvKeyDataId, PubKeyData};
-use crate::utxo::UtxoSet;
+use crate::utxo::{UtxoEntryReference, UtxoOrdering, UtxoSet};
 use crate::DynRpcApi;
 use async_trait::async_trait;
 use kaspa_notify::listener::ListenerId;
@@ -10,6 +12,14 @@ use kaspa_rpc_core::api::notifications::Notification;
 use kaspa_rpc_core::notify::connection::ChannelConnection;
 use std::sync::atomic::{AtomicBool, AtomicU64};
 use workflow_core::channel::Channel;
+
+#[derive(Default, Clone)]
+pub struct Estimate {
+    pub total_sompi: u64,
+    pub fees_sompi: u64,
+    pub utxos: usize,
+    pub transactions: usize,
+}
 
 #[derive(Debug, Default, Clone, Copy, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -42,7 +52,7 @@ pub struct Account {
     inner: Arc<Mutex<Inner>>,
     utxos: UtxoSet,
     balance: AtomicU64,
-    rpc_api: Arc<DynRpcApi>,
+    rpc: Arc<DynRpcApi>,
     is_connected: AtomicBool,
     #[wasm_bindgen(js_name = "accountKind")]
     pub account_kind: AccountKind,
@@ -87,7 +97,7 @@ impl Account {
             utxos: UtxoSet::default(),
             balance: AtomicU64::new(0),
             // _generator: Arc::new(config.clone()),
-            rpc_api: rpc_api.clone(),
+            rpc: rpc_api.clone(),
             is_connected: AtomicBool::new(false),
             // -
             inner: Arc::new(Mutex::new(inner)),
@@ -110,7 +120,7 @@ impl Account {
             utxos: UtxoSet::default(),
             balance: AtomicU64::new(0),
             // _generator: Arc::new(config.clone()),
-            rpc_api: rpc_api.clone(),
+            rpc: rpc_api.clone(),
             is_connected: AtomicBool::new(false),
             inner: Arc::new(Mutex::new(inner)),
             account_kind: stored.account_kind,
@@ -125,7 +135,7 @@ impl Account {
         let addresses = vec![];
         let utxos_changed_scope = UtxosChangedScope { addresses };
         let id = self.inner.lock().unwrap().listener_id;
-        let _ = self.rpc_api.start_notify(id, Scope::UtxosChanged(utxos_changed_scope)).await;
+        let _ = self.rpc.start_notify(id, Scope::UtxosChanged(utxos_changed_scope)).await;
     }
 
     pub async fn update_balance(&mut self) -> Result<u64> {
@@ -150,6 +160,94 @@ impl Account {
 
     pub fn inner(&self) -> MutexGuard<Inner> {
         self.inner.lock().unwrap()
+    }
+
+    pub async fn scan_utxos(&self) -> Result<u64> {
+        self.utxos.clear();
+
+        let scan_depth: usize = 1024;
+        let window_size: usize = 128;
+        let mut balance = 0u64;
+        let mut cursor = 0;
+        while cursor < scan_depth {
+            let first = cursor;
+            let last = cursor + window_size;
+            cursor = last;
+
+            log_info!("first: {}, last: {}", first, last);
+
+            // - TODO - populate address range from derivators/generators
+            let _addresses = Vec::<Address>::new();
+
+            let resp = self.rpc.get_utxos_by_addresses(_addresses.clone()).await?;
+
+            let refs: Vec<UtxoEntryReference> = resp.into_iter().map(UtxoEntryReference::from).collect();
+
+            balance += refs.iter().map(|r| r.utxo.utxo_entry.amount).sum::<u64>();
+            for r in refs.iter() {
+                balance += r.as_ref().amount();
+            }
+
+            self.utxos.extend(&refs);
+        }
+
+        self.utxos.order(UtxoOrdering::AscendingAmount)?;
+
+        Ok(balance)
+    }
+
+    pub async fn estimate(&self, _address: &Address, _amount_sompi: u64, _priority_fee_sompi: u64) -> Result<Estimate> {
+        todo!()
+        // Ok(())
+    }
+
+    pub async fn send(
+        &self,
+        _address: &Address,
+        _amount_sompi: u64,
+        _priority_fee_sompi: u64,
+        _payment_secret: Option<Secret>,
+    ) -> Result<()> {
+        todo!()
+        // Ok(())
+    }
+
+    pub async fn address(&self) -> Result<Address> {
+        todo!()
+    }
+
+    #[allow(dead_code)]
+    fn receive_generator(&self) -> Result<Arc<dyn AddressGeneratorTrait>> {
+        todo!()
+        // Ok(self.account()?.receive_wallet())
+    }
+
+    fn change_generator(&self) -> Result<Arc<dyn AddressGeneratorTrait>> {
+        todo!()
+        // Ok(self.account()?.change_wallet())
+    }
+
+    pub async fn new_receive_address(&self) -> Result<String> {
+        todo!()
+        // let address = self.receive_wallet()?.new_address().await?;
+        // Ok(address.into())
+    }
+
+    pub async fn new_change_address(self: &Arc<Self>) -> Result<String> {
+        let address = self.change_generator()?.new_address().await?;
+        Ok(address.into())
+    }
+
+    pub async fn sign(&self) -> Result<()> {
+        Ok(())
+    }
+
+    pub async fn sweep(&self) -> Result<()> {
+        Ok(())
+    }
+
+    pub async fn create_unsigned_transaction(&self) -> Result<()> {
+        Ok(())
     }
 }
 
