@@ -512,6 +512,7 @@ impl HeaderProcessor {
         // Note that for official nets (mainnet, testnet etc) they are guaranteed to be equal as enforced by a test in genesis.rs
         genesis_header.hash = self.genesis.hash;
         let genesis_header = Arc::new(genesis_header);
+
         let mut ctx = HeaderProcessingContext::new(
             self.genesis.hash,
             genesis_header.clone(),
@@ -525,6 +526,7 @@ impl HeaderProcessor {
         ctx.block_window_for_past_median_time = Some(Default::default());
         ctx.merge_depth_root = Some(ORIGIN);
         ctx.finality_point = Some(ORIGIN);
+
         self.commit_header(ctx, &genesis_header);
     }
 

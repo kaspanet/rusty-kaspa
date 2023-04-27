@@ -242,12 +242,16 @@ impl VirtualStateProcessor {
     }
 
     pub fn worker(self: &Arc<Self>) {
-        'outer: while let Ok(first_msg) = self.receiver.recv() {
+        'outer: while let Ok(msg) = self.receiver.recv() {
+            if msg.is_exit_message() {
+                break;
+            }
+
             // Once a task arrived, collect all pending tasks from the channel.
             // This is done since virtual processing is not a per-block
             // operation, so it benefits from max available info
 
-            let messages: Vec<BlockProcessingMessage> = std::iter::once(first_msg).chain(self.receiver.try_iter()).collect();
+            let messages: Vec<BlockProcessingMessage> = std::iter::once(msg).chain(self.receiver.try_iter()).collect();
             trace!("virtual processor received {} tasks", messages.len());
 
             self.resolve_virtual();

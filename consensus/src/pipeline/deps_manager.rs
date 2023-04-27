@@ -15,6 +15,16 @@ pub enum BlockProcessingMessage {
     Process(BlockTask, BlockResultSender),
 }
 
+impl BlockProcessingMessage {
+    pub fn is_processing_message(&self) -> bool {
+        matches!(self, BlockProcessingMessage::Process(_, _))
+    }
+
+    pub fn is_exit_message(&self) -> bool {
+        matches!(self, BlockProcessingMessage::Exit)
+    }
+}
+
 pub enum BlockTask {
     /// Ordinary block processing task, requiring full validation. The block might be header-only
     Ordinary { block: Block },
