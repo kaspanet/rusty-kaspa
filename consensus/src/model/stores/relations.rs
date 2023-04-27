@@ -53,7 +53,7 @@ impl DbRelationsStore {
 
     pub fn insert_batch(&mut self, batch: &mut WriteBatch, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
         if self.has(hash)? {
-            return Err(StoreError::KeyAlreadyExists(hash.to_string()));
+            return Err(StoreError::HashAlreadyExists(hash));
         }
 
         // Insert a new entry for `hash`
@@ -97,7 +97,7 @@ impl RelationsStore for DbRelationsStore {
     /// TODO: use one function with DbWriter for both this function and insert_batch
     fn insert(&mut self, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
         if self.has(hash)? {
-            return Err(StoreError::KeyAlreadyExists(hash.to_string()));
+            return Err(StoreError::HashAlreadyExists(hash));
         }
 
         // Insert a new entry for `hash`
@@ -171,7 +171,7 @@ impl RelationsStore for MemoryRelationsStore {
             self.children_map.insert(hash, BlockHashes::new(Vec::new()));
             Ok(())
         } else {
-            Err(StoreError::KeyAlreadyExists(hash.to_string()))
+            Err(StoreError::HashAlreadyExists(hash))
         }
     }
 }

@@ -40,7 +40,7 @@ use kaspa_consensus_core::{
     header::Header,
     BlockHashSet, BlockLevel,
 };
-use kaspa_database::prelude::StoreResultExtensions;
+use kaspa_database::prelude::{StoreResultEmptyTuple, StoreResultExtensions};
 use kaspa_hashes::Hash;
 use kaspa_utils::vec::VecExtensions;
 use parking_lot::RwLock;
@@ -402,11 +402,8 @@ impl HeaderProcessor {
 
         // Write to append only stores: this requires no lock and hence done first
         for (level, datum) in ghostdag_data.iter().enumerate() {
-            if self.ghostdag_stores[level].has(ctx.hash).unwrap() {
-                // The data might have been already written when applying the pruning proof.
-                continue;
-            }
-            self.ghostdag_stores[level].insert_batch(&mut batch, ctx.hash, datum).unwrap();
+            // The data might have been already written when applying the pruning proof.
+            self.ghostdag_stores[level].insert_batch(&mut batch, ctx.hash, datum).unwrap_and_ignore_key_already_exists();
         }
         if let Some(window) = ctx.block_window_for_difficulty {
             self.block_window_cache_for_difficulty.insert(ctx.hash, Arc::new(window));
@@ -417,10 +414,9 @@ impl HeaderProcessor {
         }
 
         self.daa_store.insert_batch(&mut batch, ctx.hash, Arc::new(ctx.mergeset_non_daa)).unwrap();
-        if !self.headers_store.has(ctx.hash).unwrap() {
-            // The data might have been already written when applying the pruning proof.
-            self.headers_store.insert_batch(&mut batch, ctx.hash, ctx.header, ctx.block_level).unwrap();
-        }
+        // The data might have been already written when applying the pruning proof.
+        self.headers_store.insert_batch(&mut batch, ctx.hash, ctx.header, ctx.block_level).unwrap_and_ignore_key_already_exists();
+
         if let Some(merge_depth_root) = ctx.merge_depth_root {
             self.depth_store.insert_batch(&mut batch, ctx.hash, merge_depth_root, ctx.finality_point.unwrap()).unwrap();
         }
@@ -446,9 +442,9 @@ impl HeaderProcessor {
         let mut hst_write = self.headers_selected_tip_store.write();
         let mut sc_write = self.selected_chain_store.write();
         let prev_hst = hst_write.get().unwrap();
+        // We can't calculate chain path for blocks that do not have the pruning point in their chain, so we just skip them.
         if SortableBlock::new(ctx.hash, header.blue_work) > prev_hst
             && reachability::is_chain_ancestor_of(&staging, pp, ctx.hash).unwrap()
-        // We can't calculate chain path for blocks that do not have the pruning point in their chain, so we just skip them.
         {
             // Hint reachability about the new tip.
             reachability::hint_virtual_selected_parent(&mut staging, ctx.hash).unwrap();
@@ -475,9 +471,9 @@ impl HeaderProcessor {
                 )
             })
             .for_each(|(level, parents_by_level)| {
-                if !relations_write[level].has(header.hash).unwrap() {
-                    relations_write[level].insert_batch(&mut batch, header.hash, BlockHashes::new(parents_by_level)).unwrap();
-                }
+                relations_write[level]
+                    .insert_batch(&mut batch, header.hash, BlockHashes::new(parents_by_level))
+                    .unwrap_and_ignore_key_already_exists();
             });
 
         let statuses_write = self.statuses_store.set_batch(&mut batch, ctx.hash, StatusHeaderOnly).unwrap();

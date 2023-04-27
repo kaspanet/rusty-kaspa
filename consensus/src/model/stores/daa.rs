@@ -36,7 +36,7 @@ impl DbDaaStore {
 
     pub fn insert_batch(&self, batch: &mut WriteBatch, hash: Hash, mergeset_non_daa: Arc<BlockHashSet>) -> Result<(), StoreError> {
         if self.access.has(hash)? {
-            return Err(StoreError::KeyAlreadyExists(hash.to_string()));
+            return Err(StoreError::HashAlreadyExists(hash));
         }
         self.access.write(BatchDbWriter::new(batch), hash, mergeset_non_daa)?;
         Ok(())
@@ -52,7 +52,7 @@ impl DaaStoreReader for DbDaaStore {
 impl DaaStore for DbDaaStore {
     fn insert(&self, hash: Hash, mergeset_non_daa: Arc<BlockHashSet>) -> Result<(), StoreError> {
         if self.access.has(hash)? {
-            return Err(StoreError::KeyAlreadyExists(hash.to_string()));
+            return Err(StoreError::HashAlreadyExists(hash));
         }
         self.access.write(DirectDbWriter::new(&self.db), hash, mergeset_non_daa)?;
         Ok(())
