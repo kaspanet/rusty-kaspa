@@ -763,7 +763,7 @@ impl VirtualStateProcessor {
 
         // Ensure that some pruning point is registered
         if pp_read_guard.pruning_point().unwrap_option().is_none() {
-            self.past_pruning_points_store.insert(0, self.genesis.hash).unwrap_and_ignore_key_already_exists();
+            self.past_pruning_points_store.insert(0, self.genesis.hash).unwrap_or_exists();
             RwLockUpgradableReadGuard::upgrade(pp_read_guard).set(self.genesis.hash, self.genesis.hash, 0).unwrap();
         }
     }
@@ -775,7 +775,7 @@ impl VirtualStateProcessor {
             .state
             .set(Arc::new(VirtualState::from_genesis(&self.genesis, self.ghostdag_manager.ghostdag(&[self.genesis.hash]))))
             .unwrap();
-        self.past_pruning_points_store.insert(0, self.genesis.hash).unwrap_and_ignore_key_already_exists();
+        self.past_pruning_points_store.insert(0, self.genesis.hash).unwrap_or_exists();
         self.pruning_store.write().set(self.genesis.hash, self.genesis.hash, 0).unwrap();
 
         // Write the UTXO state of genesis

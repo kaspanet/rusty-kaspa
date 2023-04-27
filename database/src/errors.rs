@@ -10,6 +10,8 @@ pub enum StoreError {
     #[error("key {0} already exists in store")]
     KeyAlreadyExists(String),
 
+    /// Specialization of key not found for the common `Hash` case.
+    /// Added for avoiding the `String` allocation
     #[error("hash {0} already exists in store")]
     HashAlreadyExists(Hash),
 
@@ -23,7 +25,7 @@ pub enum StoreError {
 pub type StoreResult<T> = std::result::Result<T, StoreError>;
 
 pub trait StoreResultExtensions<T> {
-    /// Unwrap and convert key not fund error to None
+    /// Unwrap or assert that the error is key not fund in which case `None` is returned
     fn unwrap_option(self) -> Option<T>;
 }
 
@@ -38,11 +40,12 @@ impl<T> StoreResultExtensions<T> for StoreResult<T> {
 }
 
 pub trait StoreResultEmptyTuple {
-    fn unwrap_and_ignore_key_already_exists(self);
+    /// Unwrap or assert that the error is key already exists
+    fn unwrap_or_exists(self);
 }
 
 impl StoreResultEmptyTuple for StoreResult<()> {
-    fn unwrap_and_ignore_key_already_exists(self) {
+    fn unwrap_or_exists(self) {
         match self {
             Ok(_) => (),
             Err(StoreError::KeyAlreadyExists(_)) | Err(StoreError::HashAlreadyExists(_)) => (),

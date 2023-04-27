@@ -486,7 +486,7 @@ impl PruningProofManager {
                     return Err(PruningImportError::PruningProofWrongBlockLevel(header.hash, header_level, level));
                 }
 
-                headers_store.insert(header.hash, header.clone(), header_level).unwrap_and_ignore_key_already_exists();
+                headers_store.insert(header.hash, header.clone(), header_level).unwrap_or_exists();
 
                 let parents = self
                     .parents_manager

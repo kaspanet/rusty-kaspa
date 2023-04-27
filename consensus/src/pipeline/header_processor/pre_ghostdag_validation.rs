@@ -22,9 +22,9 @@ impl HeaderProcessor {
         self.check_pow_and_calc_block_level(header)
     }
 
-    pub(super) fn validate_parent_relations(&self, ctx: &mut HeaderProcessingContext, header: &Header) -> BlockProcessResult<()> {
+    pub(super) fn validate_parent_relations(&self, header: &Header) -> BlockProcessResult<()> {
         self.check_parents_exist(header)?;
-        self.check_parents_incest(ctx)?;
+        self.check_parents_incest(header)?;
         Ok(())
     }
 
@@ -80,8 +80,8 @@ impl HeaderProcessor {
         Ok(())
     }
 
-    fn check_parents_incest(&self, ctx: &mut HeaderProcessingContext) -> BlockProcessResult<()> {
-        let parents = ctx.direct_non_pruned_parents();
+    fn check_parents_incest(&self, header: &Header) -> BlockProcessResult<()> {
+        let parents = header.direct_parents();
         for parent_a in parents.iter() {
             for parent_b in parents.iter() {
                 if parent_a == parent_b {
