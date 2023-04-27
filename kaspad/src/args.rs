@@ -53,6 +53,7 @@ pub struct Args {
     pub connect_peers: Vec<ContextualNetAddress>,
     pub add_peers: Vec<ContextualNetAddress>,
     pub listen: Option<ContextualNetAddress>,
+    pub user_agent_comments: Vec<String>,
     pub utxoindex: bool,
     pub reset_db: bool,
     pub outbound_target: usize,
@@ -172,6 +173,14 @@ pub fn cli(defaults: &Defaults) -> Command {
         .arg(arg!(--testnet "Use the test network"))
         .arg(arg!(--devnet "Use the development test network"))
         .arg(arg!(--simnet "Use the simulation test network"))
+        .arg(
+            Arg::new("user_agent_comments")
+                .long("uacomment")
+                .action(ArgAction::Append)
+                .num_args(0..=10)// TODO: define an upper bound
+                .require_equals(true)
+                .help("Comment to add to the user agent -- See BIP 14 for more information."),
+        )
 }
 
 impl Args {
@@ -196,12 +205,14 @@ impl Args {
             testnet: m.get_one::<bool>("testnet").cloned().unwrap_or(defaults.testnet),
             devnet: m.get_one::<bool>("devnet").cloned().unwrap_or(defaults.devnet),
             simnet: m.get_one::<bool>("simnet").cloned().unwrap_or(defaults.simnet),
+            user_agent_comments: m.get_many::<String>("user_agent_comments").unwrap_or_default().cloned().collect(),
         }
     }
 
     pub fn apply_to_config(&self, config: &mut Config) {
         config.utxoindex = self.utxoindex;
         config.unsafe_rpc = self.unsafe_rpc;
+        config.user_agent_comments = self.user_agent_comments.clone();
     }
 }
 
