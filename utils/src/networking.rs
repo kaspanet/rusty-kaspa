@@ -148,17 +148,17 @@ impl From<NetAddress> for SocketAddr {
     }
 }
 
-impl ToString for NetAddress {
-    fn to_string(&self) -> String {
-        SocketAddr::from(self.to_owned()).to_string()
-    }
-}
-
 impl FromStr for NetAddress {
     type Err = AddrParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         SocketAddr::from_str(s).map(NetAddress::from)
+    }
+}
+
+impl Display for NetAddress {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        SocketAddr::from(self.to_owned()).fmt(f)
     }
 }
 
@@ -181,6 +181,12 @@ impl ContextualNetAddress {
     }
 }
 
+impl Default for ContextualNetAddress {
+    fn default() -> Self {
+        Self { ip: IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)).into(), port: None }
+    }
+}
+
 impl From<NetAddress> for ContextualNetAddress {
     fn from(value: NetAddress) -> Self {
         Self::new(value.ip, Some(value.port))
@@ -198,15 +204,14 @@ impl FromStr for ContextualNetAddress {
     }
 }
 
-impl ToString for ContextualNetAddress {
-    fn to_string(&self) -> String {
+impl Display for ContextualNetAddress {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.port {
-            Some(port) => SocketAddr::new(self.ip.into(), port).to_string(),
-            None => self.ip.to_string(),
+            Some(port) => SocketAddr::new(self.ip.into(), port).fmt(f),
+            None => self.ip.fmt(f),
         }
     }
 }
-
 #[derive(PartialEq, Eq, Hash, Copy, Clone, Serialize, Deserialize, Debug, Default)]
 #[repr(transparent)]
 pub struct PeerId(pub Uuid);

@@ -1,7 +1,9 @@
+use clap::ArgAction;
 #[allow(unused)]
 use clap::{arg, command, Arg, Command};
 use kaspa_consensus::config::Config;
 use kaspa_core::kaspad_env::version;
+use kaspa_utils::networking::ContextualNetAddress;
 
 pub struct Defaults {
     pub appdir: &'static str,
@@ -41,15 +43,16 @@ impl Default for Defaults {
 pub struct Args {
     // NOTE: it is best if property names match config file fields
     pub appdir: Option<String>,
-    pub rpclisten: Option<String>,
-    pub rpclisten_borsh: Option<String>,
-    pub rpclisten_json: Option<String>,
+    pub rpclisten: Option<ContextualNetAddress>,
+    pub rpclisten_borsh: Option<ContextualNetAddress>,
+    pub rpclisten_json: Option<ContextualNetAddress>,
     pub unsafe_rpc: bool,
     pub wrpc_verbose: bool,
     pub log_level: String,
     pub async_threads: usize,
-    pub connect: Option<String>,
-    pub listen: Option<String>,
+    pub connect_peers: Vec<ContextualNetAddress>,
+    pub add_peers: Vec<ContextualNetAddress>,
+    pub listen: Option<ContextualNetAddress>,
     pub utxoindex: bool,
     pub reset_db: bool,
     pub outbound_target: usize,
@@ -90,6 +93,7 @@ pub fn cli(defaults: &Defaults) -> Command {
                 .value_name("IP[:PORT]")
                 .num_args(0..=1)
                 .require_equals(true)
+                .value_parser(clap::value_parser!(ContextualNetAddress))
                 .help("Interface:port to listen for gRPC connections (default port: 16110, testnet: 16210)."),
         )
         .arg(
@@ -99,6 +103,7 @@ pub fn cli(defaults: &Defaults) -> Command {
                 .num_args(0..=1)
                 .require_equals(true)
                 .default_missing_value(defaults.rpclisten_borsh)
+                .value_parser(clap::value_parser!(ContextualNetAddress))
                 .help(format!(
                     "Interface:port to listen for wRPC Borsh connections (interop only; default: `{}`).",
                     defaults.rpclisten_borsh
@@ -111,16 +116,29 @@ pub fn cli(defaults: &Defaults) -> Command {
                 .num_args(0..=1)
                 .require_equals(true)
                 .default_missing_value(defaults.rpclisten_json)
+                .value_parser(clap::value_parser!(ContextualNetAddress))
                 .help(format!("Interface:port to listen for wRPC JSON connections (default: {}).", defaults.rpclisten_json)),
         )
         .arg(arg!(--unsaferpc "Enable RPC commands which affect the state of the node"))
         .arg(
-            Arg::new("connect")
+            Arg::new("connect-peers")
                 .long("connect")
                 .value_name("IP[:PORT]")
-                .num_args(0..=1)
+                .action(ArgAction::Append)
+                .num_args(0..=10) // TODO: define an upper bound
                 .require_equals(true)
-                .help("Connect only to the specified peers at startup."),
+                .value_parser(clap::value_parser!(ContextualNetAddress))
+                .help("Connect only to the specified peers at startup (maximum 10 peers)."),
+        )
+        .arg(
+            Arg::new("add-peers")
+                .long("addpeer")
+                .value_name("IP[:PORT]")
+                .action(ArgAction::Append)
+                .num_args(0..=20)// TODO: define an upper bound
+                .require_equals(true)
+                .value_parser(clap::value_parser!(ContextualNetAddress))
+                .help("Add peers to connect with at startup (maximum 20 peers)."),
         )
         .arg(
             Arg::new("listen")
@@ -128,6 +146,7 @@ pub fn cli(defaults: &Defaults) -> Command {
                 .value_name("IP[:PORT]")
                 .num_args(0..=1)
                 .require_equals(true)
+                .value_parser(clap::value_parser!(ContextualNetAddress))
                 .help("Add an interface:port to listen for connections (default all interfaces port: 16111, testnet: 16211)."),
         )
         .arg(
@@ -160,15 +179,16 @@ impl Args {
         let m = cli(defaults).get_matches();
         Args {
             appdir: m.get_one::<String>("appdir").cloned(),
-            rpclisten: m.get_one::<String>("rpclisten").cloned(),
-            rpclisten_borsh: m.get_one::<String>("rpclisten-borsh").cloned(),
-            rpclisten_json: m.get_one::<String>("rpclisten-json").cloned(),
+            rpclisten: m.get_one::<ContextualNetAddress>("rpclisten").cloned(),
+            rpclisten_borsh: m.get_one::<ContextualNetAddress>("rpclisten-borsh").cloned(),
+            rpclisten_json: m.get_one::<ContextualNetAddress>("rpclisten-json").cloned(),
             unsafe_rpc: m.get_one::<bool>("unsaferpc").cloned().unwrap_or(defaults.unsafe_rpc),
             wrpc_verbose: false,
             log_level: m.get_one::<String>("log_level").cloned().unwrap(),
             async_threads: m.get_one::<usize>("async_threads").cloned().unwrap_or(defaults.async_threads),
-            connect: m.get_one::<String>("connect").cloned(),
-            listen: m.get_one::<String>("listen").cloned(),
+            connect_peers: m.get_many::<ContextualNetAddress>("connect-peers").unwrap_or_default().copied().collect(),
+            add_peers: m.get_many::<ContextualNetAddress>("connect-peers").unwrap_or_default().copied().collect(),
+            listen: m.get_one::<ContextualNetAddress>("listen").cloned(),
             outbound_target: m.get_one::<usize>("outpeers").cloned().unwrap_or(defaults.outbound_target),
             inbound_limit: m.get_one::<usize>("maxinpeers").cloned().unwrap_or(defaults.inbound_limit),
             reset_db: m.get_one::<bool>("reset-db").cloned().unwrap_or(defaults.reset_db),

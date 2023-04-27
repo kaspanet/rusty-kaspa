@@ -2248,6 +2248,7 @@ dependencies = [
  "kaspa-p2p-flows",
  "kaspa-rpc-core",
  "kaspa-rpc-service",
+ "kaspa-utils",
  "kaspa-utxoindex",
  "kaspa-wrpc-server",
  "log",

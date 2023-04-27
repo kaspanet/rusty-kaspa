@@ -5,8 +5,7 @@ use kaspa_core::{
 };
 use kaspa_grpc_core::{protowire::rpc_server::RpcServer, RPC_MAX_MESSAGE_SIZE};
 use kaspa_rpc_service::service::RpcCoreService;
-use kaspa_utils::triggers::DuplexTrigger;
-use std::net::SocketAddr;
+use kaspa_utils::{networking::NetAddress, triggers::DuplexTrigger};
 use std::sync::Arc;
 use tonic::{codec::CompressionEncoding, transport::Server};
 
@@ -20,13 +19,13 @@ pub type StatusResult<T> = Result<T, tonic::Status>;
 const GRPC_SERVER: &str = "grpc-server";
 
 pub struct GrpcServer {
-    address: SocketAddr,
+    address: NetAddress,
     grpc_service: Arc<service::GrpcService>,
     shutdown: DuplexTrigger,
 }
 
 impl GrpcServer {
-    pub fn new(address: SocketAddr, core_service: Arc<RpcCoreService>) -> Self {
+    pub fn new(address: NetAddress, core_service: Arc<RpcCoreService>) -> Self {
         let grpc_service = Arc::new(service::GrpcService::new(core_service));
         Self { address, grpc_service, shutdown: DuplexTrigger::default() }
     }
@@ -62,7 +61,7 @@ impl AsyncService for GrpcServer {
             info!("Grpc server starting on: {}", address);
             let result = Server::builder()
                 .add_service(svc)
-                .serve_with_shutdown(address, shutdown_signal)
+                .serve_with_shutdown(address.into(), shutdown_signal)
                 .await
                 .map_err(|err| AsyncServiceError::Service(format!("gRPC server exited with error `{err}`")));
 
