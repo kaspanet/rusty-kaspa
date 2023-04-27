@@ -34,7 +34,7 @@ use crate::{
 use crossbeam_channel::{Receiver, Sender};
 use itertools::Itertools;
 use kaspa_consensus_core::{
-    blockhash::{BlockHashExtensions, BlockHashes, ORIGIN},
+    blockhash::{BlockHashes, ORIGIN},
     blockstatus::BlockStatus::{self, StatusHeaderOnly, StatusInvalid},
     config::genesis::GenesisBlock,
     header::Header,
@@ -90,8 +90,8 @@ impl HeaderProcessingContext {
     }
 
     /// Returns the direct parents of this header after removal of pruned parents
-    pub fn direct_non_pruned_parents(&mut self) -> BlockHashes {
-        self.non_pruned_parents[0].clone()
+    pub fn direct_non_pruned_parents(&self) -> &[Hash] {
+        &self.non_pruned_parents[0]
     }
 
     /// Returns the pruning point at the time this header began processing
@@ -99,7 +99,7 @@ impl HeaderProcessingContext {
         self.pruning_info.pruning_point
     }
 
-    /// Returns the GHOSTDAG data of this header.
+    /// Returns the primary (level 0) GHOSTDAG data of this header.
     /// NOTE: is expected to be called only after GHOSTDAG computation was pushed into the context
     pub fn ghostdag_data(&self) -> &Arc<GhostdagData> {
         &self.ghostdag_data.as_ref().unwrap()[0]
@@ -382,11 +382,12 @@ impl HeaderProcessor {
 
     /// Runs the GHOSTDAG algorithm for all block levels and writes the data into the context (if hasn't run already)
     fn ghostdag(&self, ctx: &mut HeaderProcessingContext) {
-        let ghostdag_data = (0..=ctx.block_level)
+        let ghostdag_data = (0..=ctx.block_level as usize)
             .map(|level| {
-                self.ghostdag_stores[level as usize].get_data(ctx.hash).unwrap_option().unwrap_or_else(|| {
-                    Arc::new(self.ghostdag_managers[level as usize].ghostdag(&ctx.non_pruned_parents[level as usize]))
-                })
+                self.ghostdag_stores[level]
+                    .get_data(ctx.hash)
+                    .unwrap_option()
+                    .unwrap_or_else(|| Arc::new(self.ghostdag_managers[level].ghostdag(&ctx.non_pruned_parents[level])))
             })
             .collect_vec();
         ctx.ghostdag_data = Some(ghostdag_data);
@@ -432,11 +433,8 @@ impl HeaderProcessor {
 
         if !staging.has(ctx.hash).unwrap() {
             // Add block to staging reachability
-            let reachability_parent = if ctx.non_pruned_parents[0].len() == 1 && ctx.non_pruned_parents[0][0].is_origin() {
-                ORIGIN
-            } else {
-                ghostdag_data[0].selected_parent
-            };
+            let reachability_parent =
+                if ctx.non_pruned_parents[0].as_slice() == [ORIGIN] { ORIGIN } else { ghostdag_data[0].selected_parent };
             let reachability_read = &self.reachability_store.read();
             let mut reachability_mergeset =
                 ghostdag_data[0].unordered_mergeset_without_selected_parent().filter(|hash| reachability_read.has(*hash).unwrap());

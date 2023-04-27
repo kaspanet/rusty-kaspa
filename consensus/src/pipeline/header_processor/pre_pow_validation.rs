@@ -10,11 +10,8 @@ impl HeaderProcessor {
         Ok(())
     }
 
-    fn check_pruning_violation(&self, ctx: &mut HeaderProcessingContext) -> BlockProcessResult<()> {
+    fn check_pruning_violation(&self, ctx: &HeaderProcessingContext) -> BlockProcessResult<()> {
         let non_pruned_parents = ctx.direct_non_pruned_parents();
-        if non_pruned_parents.is_empty() {
-            return Ok(());
-        }
 
         // We check that the new block is in the future of the pruning point by verifying that at least
         // one of its parents is in the pruning point future (or the pruning point itself). Otherwise,
