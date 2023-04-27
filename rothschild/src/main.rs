@@ -1,5 +1,6 @@
 use std::{collections::HashMap, time::Duration};
 
+use clap::{Arg, Command};
 use itertools::Itertools;
 use kaspa_addresses::Address;
 use kaspa_consensus_core::{
@@ -8,18 +9,15 @@ use kaspa_consensus_core::{
     subnets::SUBNETWORK_ID_NATIVE,
     tx::{MutableTransaction, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry},
 };
-use kaspa_core::{info, time::unix_now, warn};
+use kaspa_core::{info, time::unix_now, version::version, warn};
 use kaspa_grpc_client::GrpcClient;
 use kaspa_rpc_core::{api::rpc::RpcApi, RpcTransaction, RpcTransactionInput, RpcTransactionOutput};
 use kaspa_txscript::pay_to_address_script;
 use secp256k1::KeyPair;
 use tokio::time::{interval, MissedTickBehavior};
 
-// TODO: pass in CLI args.
-const PRIVATE_KEY: &'static str = "3674b992068d6aa3ca47303d423df9be48a5b147da4884517ce8468a4b2c80a0";
-const ADDRESS: &'static str = "kaspatest:qr0est6tpap7my72c9fw4layj4uhfuvxf4vgh3ypj5xwmcqqvr28zyp62x7kp";
-const TX_INTERVAL: u64 = 4; // In millis.
 const DEFAULT_SEND_AMOUNT: u64 = 10_000;
+
 const FEE_PER_MASS: u64 = 10;
 
 struct Stats {
@@ -30,30 +28,121 @@ struct Stats {
     since: u64,
 }
 
+pub struct Args {
+    pub private_key: String,
+    pub kaspa_address: String,
+    pub tps: u64,
+    pub rpc_server: String,
+}
+
+impl Args {
+    fn parse() -> Self {
+        let m = cli().get_matches();
+        Args {
+            private_key: m.get_one::<String>("private-key").cloned().unwrap(),
+            kaspa_address: m.get_one::<String>("kaspa-address").cloned().unwrap(),
+            tps: m.get_one::<u64>("tps").cloned().unwrap(),
+            rpc_server: m.get_one::<String>("rpcserver").cloned().unwrap_or("localhost:16210".to_owned()),
+        }
+    }
+}
+
+pub fn cli() -> Command {
+    Command::new("rothschild")
+        .about(format!("{} (rothschild) v{}", env!("CARGO_PKG_DESCRIPTION"), version()))
+        .version(env!("CARGO_PKG_VERSION"))
+        .arg(
+            Arg::new("private-key")
+                .long("private-key")
+                .short('k')
+                .value_name("private-key")
+                .num_args(0..=1)
+                .default_value("3674b992068d6aa3ca47303d423df9be48a5b147da4884517ce8468a4b2c80a0")
+                .help("Private key in hex format"),
+        )
+        .arg(
+            Arg::new("kaspa-address")
+                .long("kaspa-address")
+                .short('a')
+                .value_name("kaspa-address")
+                .num_args(0..=1)
+                .default_value("kaspatest:qr0est6tpap7my72c9fw4layj4uhfuvxf4vgh3ypj5xwmcqqvr28zyp62x7kp")
+                .help("Kaspa address"),
+        )
+        .arg(
+            Arg::new("tps")
+                .long("tps")
+                .short('t')
+                .value_name("tps")
+                .num_args(0..=1)
+                .default_value("1")
+                .value_parser(clap::value_parser!(u64))
+                .help("Transactions per second"),
+        )
+        .arg(
+            Arg::new("rpcserver")
+                .long("rpcserver")
+                .short('s')
+                .value_name("rpcserver")
+                .num_args(0..=1)
+                .default_value("localhost:16210")
+                .help("RPC server"),
+        )
+}
+
 #[tokio::main]
 async fn main() {
     kaspa_core::log::init_logger("");
-    // TODO: Pass address in CLI args
+    let args = Args::parse();
     let mut stats = Stats { num_txs: 0, since: unix_now(), num_utxos: 0, utxos_amount: 0, num_outs: 0 };
-    let rpc_client = GrpcClient::connect("grpc://104.11.218.90:16210".into(), true, None, false, Some(50_000)).await.unwrap();
-    let kaspa_addr = Address::try_from(ADDRESS).unwrap();
+    let rpc_client =
+        GrpcClient::connect(format!("grpc://{}", args.rpc_server).into(), true, None, false, Some(500_000)).await.unwrap();
+    info!("Connected to RPC");
+    let kaspa_addr = Address::try_from(args.kaspa_address).unwrap();
     let mut pending = HashMap::new();
     let mut utxos = refresh_utxos(&rpc_client, kaspa_addr.clone(), &mut pending).await;
 
     let mut private_key_bytes = [0u8; 32];
-    faster_hex::hex_decode(PRIVATE_KEY.as_bytes(), &mut private_key_bytes).unwrap();
+    faster_hex::hex_decode(args.private_key.as_bytes(), &mut private_key_bytes).unwrap();
     let schnorr_key = secp256k1::KeyPair::from_seckey_slice(secp256k1::SECP256K1, &private_key_bytes).unwrap();
-    let mut ticker = interval(Duration::from_millis(TX_INTERVAL));
-    ticker.set_missed_tick_behavior(MissedTickBehavior::Burst);
+    let mut ticker = interval(Duration::from_secs_f64(1.0 / (args.tps as f64)));
+    ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
+    let mut maximize_inputs = false;
+    let mut last_refresh = unix_now();
     loop {
         ticker.tick().await;
-        if !maybe_send_tx(&rpc_client, kaspa_addr.clone(), &mut utxos, &mut pending, schnorr_key, &mut stats).await {
-            info!("Has not enough funds. Refetchin UTXO set");
-            tokio::time::sleep(Duration::from_millis(100)).await;
+        maximize_inputs = should_maximize_inputs(maximize_inputs, &utxos, &pending);
+        let now = unix_now();
+        let has_funds =
+            maybe_send_tx(&rpc_client, kaspa_addr.clone(), &mut utxos, &mut pending, schnorr_key, &mut stats, maximize_inputs).await;
+        if !has_funds {
+            info!("Has not enough funds");
+        }
+        if !has_funds || now - last_refresh > 60_000 {
+            info!("Refetching UTXO set");
+            tokio::time::sleep(Duration::from_millis(100)).await; // We don't want this operation to be too frequent since its heavy on the node, so we wait some time before executing it.
             utxos = refresh_utxos(&rpc_client, kaspa_addr.clone(), &mut pending).await;
+            last_refresh = now;
         }
         clean_old_pending_outpoints(&mut pending);
+    }
+}
+
+fn should_maximize_inputs(
+    old_value: bool,
+    utxos: &Vec<(TransactionOutpoint, UtxoEntry)>,
+    pending: &HashMap<TransactionOutpoint, u64>,
+) -> bool {
+    let estimated_utxos = utxos.len() - pending.len();
+    if !old_value && estimated_utxos > 1_000_000 {
+        info!("Starting to maximize inputs");
+        true
+    } else if old_value && estimated_utxos < 500_000 {
+        info!("Stopping to maximize inputs");
+        false
+    } else {
+        old_value
     }
 }
 
@@ -110,9 +199,10 @@ async fn maybe_send_tx(
     pending: &mut HashMap<TransactionOutpoint, u64>,
     schnorr_key: KeyPair,
     stats: &mut Stats,
+    maximize_inputs: bool,
 ) -> bool {
-    let num_outs = 2;
-    let (selected_utxos, selected_amount) = select_utxos(utxos, DEFAULT_SEND_AMOUNT, num_outs, 84, pending);
+    let num_outs = if maximize_inputs { 1 } else { 2 };
+    let (selected_utxos, selected_amount) = select_utxos(utxos, DEFAULT_SEND_AMOUNT, num_outs, maximize_inputs, pending);
     if selected_amount == 0 {
         return false;
     }
@@ -140,12 +230,12 @@ async fn maybe_send_tx(
     let time_past = now - stats.since;
     if time_past > 10_000 {
         info!(
-            "Tx rate: {}/sec, avg UTXO amount: {}, avg UTXOs per tx: {}, avg outs per tx: {}, estimated available UTXOs: {}",
+            "Tx rate: {:.1}/sec, avg UTXO amount: {}, avg UTXOs per tx: {}, avg outs per tx: {}, estimated available UTXOs: {}",
             1000f64 * (stats.num_txs as f64) / (time_past as f64),
             (stats.utxos_amount / stats.num_utxos as u64),
             stats.num_utxos / stats.num_txs,
             stats.num_outs / stats.num_txs,
-            utxos.len(),
+            utxos.len() - pending.len(),
         );
         stats.since = now;
         stats.num_txs = 0;
@@ -226,9 +316,10 @@ fn select_utxos(
     utxos: &[(TransactionOutpoint, UtxoEntry)],
     min_amount: u64,
     num_outs: u64,
-    max_utxos: usize,
+    maximize_utxos: bool,
     pending: &HashMap<TransactionOutpoint, u64>,
 ) -> (Vec<(TransactionOutpoint, UtxoEntry)>, u64) {
+    const MAX_UTXOS: usize = 84;
     let mut selected_amount: u64 = 0;
     let mut selected = Vec::new();
     for (outpoint, entry) in utxos.iter().cloned().filter(|(op, _)| !pending.contains_key(op)) {
@@ -237,11 +328,11 @@ fn select_utxos(
 
         let fee = required_fee(selected.len(), num_outs);
 
-        if selected_amount >= min_amount + fee {
+        if selected_amount >= min_amount + fee && (!maximize_utxos || selected.len() == MAX_UTXOS) {
             return (selected, selected_amount - fee);
         }
 
-        if selected.len() == max_utxos {
+        if selected.len() > MAX_UTXOS {
             return (vec![], 0);
         }
     }

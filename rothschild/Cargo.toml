@@ -8,28 +8,17 @@ include.workspace = true
 license.workspace = true
 
 [dependencies]
-kaspa-hashes.workspace = true
 kaspa-core.workspace = true
-kaspa-consensus.workspace = true
 kaspa-consensus-core.workspace = true
-kaspa-consensus-notify.workspace = true
 kaspa-grpc-client.workspace = true
 kaspa-rpc-core.workspace = true
 kaspa-addresses.workspace = true
 kaspa-txscript.workspace = true
 
-rand.workspace = true
 itertools.workspace = true
-futures-util.workspace = true
-rayon.workspace = true
 clap.workspace = true
-indexmap.workspace = true
 log.workspace = true
-async-channel.workspace = true
-num_cpus.workspace = true
-futures.workspace = true
 faster-hex.workspace = true
 
-rand_distr = "0.4"
 tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread"] }
 secp256k1 = { version = "0.24", features = ["global-context", "rand-std"] }
