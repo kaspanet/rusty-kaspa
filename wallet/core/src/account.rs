@@ -15,7 +15,7 @@ use kaspa_notify::scope::{Scope, UtxosChangedScope};
 use kaspa_rpc_core::api::notifications::Notification;
 use kaspa_rpc_core::notify::connection::ChannelConnection;
 //use std::str::FromStr;
-use std::sync::atomic::{AtomicBool, AtomicU64};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use workflow_core::channel::{oneshot, Channel, DuplexChannel, Multiplexer};
 // use workflow_core::channel::{Channel, DuplexChannel, Multiplexer, Receiver};
 use crate::address::AddressManager;
@@ -50,21 +50,30 @@ pub trait AccountT {
 }
 
 pub struct Inner {
-    pub listener_id: ListenerId,
+    pub listener_id: Option<ListenerId>,
     pub stored: storage::Account,
+}
+
+#[derive(Clone)]
+pub struct Interfaces {
+    pub rpc: Arc<DynRpcApi>,
+    pub multiplexer: Multiplexer<Events>,
+}
+
+impl Interfaces {
+    pub fn new(rpc: Arc<DynRpcApi>, multiplexer: Multiplexer<Events>) -> Interfaces {
+        Interfaces { rpc, multiplexer }
+    }
 }
 
 /// Wallet `Account` data structure. An account is typically a single
 /// HD-key derivation (derived from a wallet or from an an external secret)
 #[wasm_bindgen(inspectable)]
 pub struct Account {
-    // TODO bind with accounts/ primitives
-    // _generator: Arc<dyn WalletAccountTrait>,
     inner: Arc<Mutex<Inner>>,
+    interfaces: Interfaces,
     utxos: UtxoSet,
     balance: AtomicU64,
-    rpc: Arc<DynRpcApi>,
-    multiplexer: Multiplexer<Events>,
     is_connected: AtomicBool,
     #[wasm_bindgen(js_name = "accountKind")]
     pub account_kind: AccountKind,
@@ -79,12 +88,15 @@ pub struct Account {
 
     #[wasm_bindgen(skip)]
     pub task_ctl: DuplexChannel,
+    #[wasm_bindgen(skip)]
+    pub notification_channel: Channel<Notification>,
 }
 
 impl Account {
     pub async fn try_new_with_args(
-        rpc_api: Arc<DynRpcApi>,
-        multiplexer: Multiplexer<Events>,
+        // rpc_api: Arc<DynRpcApi>,
+        // multiplexer: Multiplexer<Events>,
+        interfaces: Interfaces,
         name: &str,
         title: &str,
         account_kind: AccountKind,
@@ -94,9 +106,6 @@ impl Account {
         ecdsa: bool,
         address_prefix: AddressPrefix,
     ) -> Result<Self> {
-        let channel = Channel::<Notification>::unbounded();
-        let listener_id = rpc_api.register_new_listener(ChannelConnection::new(channel.sender));
-
         // rpc_api.register_new_listener();
         let minimum_signatures = pub_key_data.minimum_signatures.unwrap_or(1) as usize;
         let derivation =
@@ -115,14 +124,15 @@ impl Account {
             pub_key_data.cosigner_index.unwrap_or(0),
         );
 
-        let inner = Inner { listener_id, stored };
+        let inner = Inner { listener_id: None, stored };
 
         Ok(Account {
             utxos: UtxoSet::default(),
             balance: AtomicU64::new(0),
             // _generator: Arc::new(config.clone()),
-            rpc: rpc_api.clone(),
-            multiplexer,
+            // rpc: rpc_api.clone(),
+            // multiplexer,
+            interfaces,
             is_connected: AtomicBool::new(false),
             // -
             inner: Arc::new(Mutex::new(inner)),
@@ -134,17 +144,19 @@ impl Account {
             // -
             derivation,
             task_ctl: DuplexChannel::oneshot(),
+            notification_channel: Channel::<Notification>::unbounded(),
         })
     }
 
     pub async fn try_new_from_storage(
-        rpc: Arc<DynRpcApi>,
-        multiplexer: Multiplexer<Events>,
+        // rpc: Arc<DynRpcApi>,
+        // multiplexer: Multiplexer<Events>,
+        interfaces: Interfaces,
         stored: &storage::Account,
         address_prefix: AddressPrefix,
     ) -> Result<Self> {
-        let channel = Channel::<Notification>::unbounded();
-        let listener_id = rpc.register_new_listener(ChannelConnection::new(channel.sender));
+        // let channel = Channel::<Notification>::unbounded();
+        // let listener_id = rpc.register_new_listener(ChannelConnection::new(channel.sender));
 
         // rpc_api.register_new_listener();
         let minimum_signatures = stored.pub_key_data.minimum_signatures.unwrap_or(1) as usize;
@@ -159,14 +171,15 @@ impl Account {
         )
         .await?;
 
-        let inner = Inner { listener_id, stored: stored.clone() };
+        let inner = Inner { listener_id: None, stored: stored.clone() };
 
         Ok(Account {
             utxos: UtxoSet::default(),
             balance: AtomicU64::new(0),
             // _generator: Arc::new(config.clone()),
-            rpc, //: rpc.clone(),
-            multiplexer,
+            // rpc, //: rpc.clone(),
+            // multiplexer,
+            interfaces,
             is_connected: AtomicBool::new(false),
             inner: Arc::new(Mutex::new(inner)),
             account_kind: stored.account_kind,
@@ -176,16 +189,17 @@ impl Account {
             // -
             derivation,
             task_ctl: DuplexChannel::oneshot(),
+            notification_channel: Channel::<Notification>::unbounded(),
         })
     }
 
-    pub async fn subscribe(&self) {
-        // TODO query account interface
-        let addresses = vec![];
-        let utxos_changed_scope = UtxosChangedScope { addresses };
-        let id = self.inner.lock().unwrap().listener_id;
-        let _ = self.rpc.start_notify(id, Scope::UtxosChanged(utxos_changed_scope)).await;
-    }
+    // pub async fn subscribe(&self) {
+    //     // TODO query account interface
+    //     let addresses = vec![];
+    //     let utxos_changed_scope = UtxosChangedScope { addresses };
+    //     let id = self.inner.lock().unwrap().listener_id;
+    //     let _ = self.interfaces.rpc.start_notify(id, Scope::UtxosChanged(utxos_changed_scope)).await;
+    // }
 
     pub async fn update_balance(&mut self) -> Result<u64> {
         let balance = self.utxos.calculate_balance().await?;
@@ -243,7 +257,7 @@ impl Account {
             // - TODO - populate address range from derivators/generators
             // let _addresses = Vec::<Address>::new();
 
-            let resp = self.rpc.get_utxos_by_addresses(addresses.clone()).await?;
+            let resp = self.interfaces.rpc.get_utxos_by_addresses(addresses.clone()).await?;
 
             let refs: Vec<UtxoEntryReference> = resp.into_iter().map(UtxoEntryReference::from).collect();
 
@@ -328,6 +342,7 @@ impl Account {
 
     /// handle connection event
     pub async fn connect(&self) -> Result<()> {
+        self.is_connected.store(true, Ordering::SeqCst);
         self.subscribe_notififcations().await?;
 
         Ok(())
@@ -335,22 +350,60 @@ impl Account {
 
     /// handle disconnection event
     pub async fn disconnect(&self) -> Result<()> {
+        self.is_connected.store(false, Ordering::SeqCst);
+        self.unsubscribe_notifications().await?;
         Ok(())
     }
 
+    // async fn listener_id(&self) -> Option<ListenerId> {
+    //     self.inner.lock().unwrap().listener_id
+    // }
+
     async fn subscribe_notififcations(&self) -> Result<()> {
         // - TODO - subscribe to notifications from the wallet notifier
+
+        // let notification_channel = Channel::<Notification>::unbounded();
+        let listener_id = self.interfaces.rpc.register_new_listener(ChannelConnection::new(self.notification_channel.sender.clone()));
+
+        //     inner.listener_id = Some(listener_id);
+        // if let Ok(mut inner) = self.inner.lock() {
+        //     inner.listener_id = Some(listener_id);
+        //     inner.notification_channel = Some(notification_channel);
+        // } else {
+        //     panic!("Unable to lock Wallet.inner");
+        // }
+
+        self.inner().listener_id = Some(listener_id);
+
+        let addresses = vec![];
+        let utxos_changed_scope = UtxosChangedScope { addresses };
+        self.interfaces.rpc.start_notify(listener_id, Scope::UtxosChanged(utxos_changed_scope)).await?;
+
+        Ok(())
+    }
+
+    async fn unsubscribe_notifications(&self) -> Result<()> {
+        let listener_id = self.inner.lock().unwrap().listener_id.take();
+        if let Some(id) = listener_id {
+            self.interfaces.rpc.unregister_listener(id).await?;
+        }
+        Ok(())
+    }
+
+    async fn handle_notification(&self, notification: Notification) -> Result<()> {
+        log_info!("handling notification: {:?}", notification);
         Ok(())
     }
 
     async fn start_task(self: &Arc<Self>) -> Result<()> {
-        let _self = self.clone();
+        let self_ = self.clone();
 
-        let multiplexer = self.multiplexer.clone();
+        let multiplexer = self.interfaces.multiplexer.clone();
         let (mux_id, _mux_sender, mux_receiver) = multiplexer.register_event_channel();
         let task_ctl_receiver = self.task_ctl.request.receiver.clone();
         let task_ctl_sender = self.task_ctl.response.sender.clone();
         let (task_start_sender, task_start_receiver) = oneshot::<()>();
+        let notification_receiver = self.notification_channel.receiver.clone();
 
         spawn(async move {
             task_start_sender.send(()).await.unwrap();
@@ -359,18 +412,24 @@ impl Account {
                     _ = task_ctl_receiver.recv().fuse() => {
                         break;
                     },
+                    notification = notification_receiver.recv().fuse() => {
+                        if let Ok(notification) = notification {
+                            self_.handle_notification(notification).await.unwrap_or_else(|err| {
+                                log_error!("error while handling notification: {err}");
+                            });
+                        }
+                    },
                     msg = mux_receiver.recv().fuse() => {
                         if let Ok(msg) = msg {
                             match msg {
                                 Events::Connect => {
-                                    // - TODO -
-                                    _self.connect().await.unwrap_or_else(|err| {
+                                    self_.connect().await.unwrap_or_else(|err| {
                                         log_error!("{err}");
                                     });
                                 },
                                 Events::Disconnect => {
 
-                                    _self.disconnect().await.unwrap_or_else(|err| {
+                                    self_.disconnect().await.unwrap_or_else(|err| {
                                         log_error!("{err}");
                                     });
                                 }
