@@ -6,6 +6,7 @@ use crate::storage::{self, PrvKeyData};
 use crate::{account::Account, accounts::gen0, accounts::gen0::import::*, accounts::gen1, accounts::gen1::import::*};
 use futures::future::join_all;
 use futures::{select, FutureExt};
+use kaspa_addresses::Prefix as AddressPrefix;
 use kaspa_bip32::Mnemonic;
 use kaspa_notify::{
     listener::ListenerId,
@@ -128,7 +129,9 @@ impl Wallet {
             .as_ref()
             .accounts
             .iter()
-            .map(|stored| Account::try_new_from_storage(self.rpc.clone(), self.inner.multiplexer.clone(), stored))
+            .map(|stored| {
+                Account::try_new_from_storage(self.rpc.clone(), self.inner.multiplexer.clone(), stored, AddressPrefix::Mainnet)
+            })
             .collect::<Vec<_>>();
         let accounts = join_all(accounts).await.into_iter().collect::<Result<Vec<_>>>()?;
         let accounts = accounts.into_iter().map(Arc::new).collect::<Vec<_>>();
@@ -201,6 +204,8 @@ impl Wallet {
             return Err(Error::WalletAlreadyExists);
         }
 
+        let prefix = AddressPrefix::Mainnet;
+
         let payment_password = args.payment_password.clone().unwrap_or(args.wallet_password.clone());
 
         let mnemonic = Mnemonic::create_random()?;
@@ -208,7 +213,7 @@ impl Wallet {
 
         let prv_key_data = payload.add_keydata(mnemonic.phrase_string(), payment_password)?;
 
-        let pub_key_data = PubKeyData::new(vec!["abc".to_string()]);
+        let pub_key_data = PubKeyData::new(vec!["abc".to_string()], None, None);
         let stored_account = storage::Account::new(
             args.title.replace(' ', "-").to_lowercase(),
             args.title.clone(),
@@ -232,7 +237,7 @@ impl Wallet {
         self.clear().await?;
 
         let account =
-            Arc::new(Account::try_new_from_storage(self.rpc.clone(), self.inner.multiplexer.clone(), &stored_account).await?);
+            Arc::new(Account::try_new_from_storage(self.rpc.clone(), self.inner.multiplexer.clone(), &stored_account, prefix).await?);
         self.inner.accounts.lock().unwrap().push(account.clone());
 
         self.select(Some(account)).await?;
@@ -275,19 +280,22 @@ impl Wallet {
         // let xkey = ExtendedPrivateKey::<SecretKey>::from_str(xprv)?.derive_path(derivation_path)?;
 
         let stored_account = storage::Account::new(
-            "imported-wallet".to_string(), // name
-            "Imported Wallet".to_string(), // title
-            storage::AccountKind::V0,      // kind
-            0,                             // account index
-            false,                         // public visibility
-            PubKeyData::new(vec![]),       // TODO - pub keydata
-            Some(prv_key_data.id),         // privkey id
-            false,                         // ecdsa
-            1,                             // min signatures
-            0,                             // cosigner_index
+            "imported-wallet".to_string(),       // name
+            "Imported Wallet".to_string(),       // title
+            storage::AccountKind::V0,            // kind
+            0,                                   // account index
+            false,                               // public visibility
+            PubKeyData::new(vec![], None, None), // TODO - pub keydata
+            Some(prv_key_data.id),               // privkey id
+            false,                               // ecdsa
+            1,                                   // min signatures
+            0,                                   // cosigner_index
         );
 
-        let runtime_account = Account::try_new_from_storage(self.rpc(), self.inner.multiplexer.clone(), &stored_account).await?;
+        let prefix = AddressPrefix::Mainnet;
+
+        let runtime_account =
+            Account::try_new_from_storage(self.rpc(), self.inner.multiplexer.clone(), &stored_account, prefix).await?;
 
         payload.prv_key_data.push(prv_key_data);
         // TODO - prevent multiple addition of the same private key
@@ -466,7 +474,8 @@ mod test {
 
         let mtx = MutableTransaction::new(&tx, &(*entries).clone().into());
 
-        let derivation_path = gen1::WalletDerivationManager::build_derivate_path(false, 0, Some(kaspa_bip32::AddressType::Receive))?;
+        let derivation_path =
+            gen1::WalletDerivationManager::build_derivate_path(false, 0, None, Some(kaspa_bip32::AddressType::Receive))?;
 
         let xprv = "kprv5y2qurMHCsXYrNfU3GCihuwG3vMqFji7PZXajMEqyBkNh9UZUJgoHYBLTKu1eM4MvUtomcXPQ3Sw9HZ5ebbM4byoUciHo1zrPJBQfqpLorQ";
         //let (xkey, _attrs) = WalletAccount::create_extended_key_from_xprv(xprv, false, 0).await?;

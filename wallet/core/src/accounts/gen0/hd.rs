@@ -15,7 +15,7 @@ use zeroize::Zeroizing;
 
 #[derive(Clone)]
 #[wasm_bindgen]
-pub struct AddressGeneratorV0 {
+pub struct PubkeyDerivationManagerV0 {
     /// Derived private key
     private_key: SecretKey,
 
@@ -28,21 +28,28 @@ pub struct AddressGeneratorV0 {
     hmac: HmacSha512,
 }
 
-impl AddressGeneratorV0 {
-    pub async fn derive_address(&self, index: u32) -> Result<Address> {
+impl PubkeyDerivationManagerV0 {
+    pub async fn derive_pubkey(&self, index: u32) -> Result<secp256k1::PublicKey> {
         let (private_key, _) =
             WalletDerivationManagerV0::derive_private_key(&self.private_key, ChildNumber::new(index, true)?, self.hmac.clone())?;
 
-        let pubkey = &private_key.get_public_key().to_bytes()[1..];
-        let address = Address::new(AddressPrefix::Mainnet, Version::PubKey, pubkey);
+        // let pubkey = &private_key.get_public_key().to_bytes()[1..];
+        // let address = Address::new(AddressPrefix::Mainnet, Version::PubKey, pubkey);
 
-        Ok(address)
+        Ok(private_key.get_public_key())
     }
 
-    pub async fn derive_address_range(&self, indexes: std::ops::Range<u32>) -> Result<Vec<Address>> {
-        let list = indexes.map(|index| self.derive_address(index)).collect::<Vec<_>>();
-        let addresses = join_all(list).await.into_iter().collect::<Result<Vec<_>>>()?;
-        Ok(addresses)
+    pub async fn derive_pubkey_range(&self, indexes: std::ops::Range<u32>) -> Result<Vec<secp256k1::PublicKey>> {
+        let list = indexes.map(|index| self.derive_pubkey(index)).collect::<Vec<_>>();
+        let keys = join_all(list).await.into_iter().collect::<Result<Vec<_>>>()?;
+        Ok(keys)
+    }
+
+    pub fn create_address(key: &secp256k1::PublicKey, prefix: AddressPrefix, _ecdsa: bool) -> Result<Address> {
+        let payload = &key.to_bytes()[1..];
+        let address = Address::new(prefix, Version::PubKey, payload);
+
+        Ok(address)
     }
 
     #[allow(dead_code)]
@@ -59,17 +66,17 @@ impl AddressGeneratorV0 {
     }
 }
 
-impl From<&AddressGeneratorV0> for ExtendedPublicKey<<SecretKey as PrivateKey>::PublicKey> {
-    fn from(inner: &AddressGeneratorV0) -> ExtendedPublicKey<<SecretKey as PrivateKey>::PublicKey> {
+impl From<&PubkeyDerivationManagerV0> for ExtendedPublicKey<<SecretKey as PrivateKey>::PublicKey> {
+    fn from(inner: &PubkeyDerivationManagerV0) -> ExtendedPublicKey<<SecretKey as PrivateKey>::PublicKey> {
         ExtendedPublicKey { public_key: inner.private_key().get_public_key(), attrs: inner.attrs().clone() }
     }
 }
 
 #[async_trait]
-impl AddressDerivationManagerTrait for AddressGeneratorV0 {
-    async fn new_address(&self) -> Result<Address> {
+impl PubkeyDerivationManagerTrait for PubkeyDerivationManagerV0 {
+    async fn new_pubkey(&self) -> Result<secp256k1::PublicKey> {
         self.set_index(self.index()? + 1)?;
-        self.current_address().await
+        self.current_pubkey().await
     }
 
     fn index(&self) -> Result<u32> {
@@ -81,7 +88,7 @@ impl AddressDerivationManagerTrait for AddressGeneratorV0 {
                 //Ok(())
     }
 
-    async fn current_address(&self) -> Result<Address> {
+    async fn current_pubkey(&self) -> Result<secp256k1::PublicKey> {
         todo!()
         // let index = self.index()?;
         // let address = self.derive_address(index).await?;
@@ -89,31 +96,10 @@ impl AddressDerivationManagerTrait for AddressGeneratorV0 {
         // Ok(address)
     }
 
-    async fn get_range(&self, range: std::ops::Range<u32>) -> Result<Vec<Address>> {
-        self.derive_address_range(range).await
+    async fn get_range(&self, range: std::ops::Range<u32>) -> Result<Vec<secp256k1::PublicKey>> {
+        self.derive_pubkey_range(range).await
     }
 }
-
-// #[wasm_bindgen]
-// impl AddressGeneratorV0 {
-//     #[wasm_bindgen(constructor)]
-//     pub fn constructor(_js_value : JsValue) -> Generator {
-
-//         todo!();
-
-//         // FIXME - handle arguments
-//         // let generator = GeneratorV0::default();
-//         //  {
-//             // private_key: js_value.into(),
-//             // attrs: ExtendedKeyAttrs::default(),
-//             // fingerprint: KeyFingerprint::default(),
-//             // hmac: HmacSha512::default(),
-//         // };
-
-//         // Generator::new(Box::new(generator))
-
-//     }
-// }
 
 #[derive(Clone)]
 #[wasm_bindgen]
@@ -124,39 +110,31 @@ pub struct WalletDerivationManagerV0 {
     /// Extended key attributes.
     attrs: ExtendedKeyAttrs,
 
-    receive_wallet: AddressGeneratorV0,
-    change_wallet: AddressGeneratorV0,
+    /// receive address wallet
+    receive_pubkey_manager: Arc<PubkeyDerivationManagerV0>,
+
+    /// change address wallet
+    change_pubkey_manager: Arc<PubkeyDerivationManagerV0>,
 }
 
 impl WalletDerivationManagerV0 {
-    #[allow(dead_code)]
-    pub async fn derive_address(&self, address_type: AddressType, index: u32) -> Result<Address> {
-        let address = match address_type {
-            AddressType::Receive => self.receive_wallet.derive_address(index),
-            AddressType::Change => self.change_wallet.derive_address(index),
-        }
-        .await?;
-
-        Ok(address)
+    #[inline(always)]
+    pub async fn derive_receive_pubkey(&self, index: u32) -> Result<secp256k1::PublicKey> {
+        let key = self.receive_pubkey_manager.derive_pubkey(index).await?;
+        Ok(key)
     }
 
     #[inline(always)]
-    pub async fn derive_receive_address(&self, index: u32) -> Result<Address> {
-        let address = self.receive_wallet.derive_address(index).await?;
-        Ok(address)
-    }
-
-    #[inline(always)]
-    pub async fn derive_change_address(&self, index: u32) -> Result<Address> {
-        let address = self.change_wallet.derive_address(index).await?;
-        Ok(address)
+    pub async fn derive_change_pubkey(&self, index: u32) -> Result<secp256k1::PublicKey> {
+        let key = self.change_pubkey_manager.derive_pubkey(index).await?;
+        Ok(key)
     }
 
     pub async fn derive_wallet(
         mut private_key: SecretKey,
         mut attrs: ExtendedKeyAttrs,
         address_type: AddressType,
-    ) -> Result<AddressGeneratorV0> {
+    ) -> Result<PubkeyDerivationManagerV0> {
         let address_path = format!("44'/972/0'/{}'", address_type.index());
         let children = address_path.split('/');
         for child in children {
@@ -171,7 +149,7 @@ impl WalletDerivationManagerV0 {
 
         let hmac = Self::create_hmac(&private_key, &attrs, true)?;
 
-        Ok(AddressGeneratorV0 { private_key, attrs, fingerprint, hmac })
+        Ok(PubkeyDerivationManagerV0 { private_key, attrs, fingerprint, hmac })
     }
 
     pub async fn derive_child(
@@ -299,58 +277,76 @@ impl Debug for WalletDerivationManagerV0 {
 
 #[async_trait]
 impl WalletDerivationManagerTrait for WalletDerivationManagerV0 {
-    async fn from_master_xprv(xprv: &str, _is_multisig: bool, _account_index: u64) -> Result<Self> {
+    async fn from_master_xprv(xprv: &str, _is_multisig: bool, _account_index: u64, _cosigner_index: Option<u32>) -> Result<Self> {
         let xpriv_key = ExtendedPrivateKey::<SecretKey>::from_str(xprv)?;
         let attrs = xpriv_key.attrs();
 
-        let receive_wallet = Self::derive_wallet(*xpriv_key.private_key(), attrs.clone(), AddressType::Receive).await?;
+        let receive_pubkey_manager = Self::derive_wallet(*xpriv_key.private_key(), attrs.clone(), AddressType::Receive).await?.into();
 
-        let change_wallet = Self::derive_wallet(*xpriv_key.private_key(), attrs.clone(), AddressType::Change).await?;
+        let change_pubkey_manager = Self::derive_wallet(*xpriv_key.private_key(), attrs.clone(), AddressType::Change).await?.into();
 
-        let wallet = Self { private_key: *xpriv_key.private_key(), attrs: attrs.clone(), receive_wallet, change_wallet };
+        let wallet =
+            Self { private_key: *xpriv_key.private_key(), attrs: attrs.clone(), receive_pubkey_manager, change_pubkey_manager };
 
         Ok(wallet)
     }
 
-    async fn from_extended_public_key_str(_xpub: &str) -> Result<Self> {
+    async fn from_extended_public_key_str(_xpub: &str, _cosigner_index: Option<u32>) -> Result<Self> {
         todo!()
     }
 
-    async fn from_extended_public_key(_extended_public_key: ExtendedPublicKey<secp256k1::PublicKey>) -> Result<Self> {
+    async fn from_extended_public_key(
+        _extended_public_key: ExtendedPublicKey<secp256k1::PublicKey>,
+        _cosigner_index: Option<u32>,
+    ) -> Result<Self> {
         todo!()
     }
 
-    fn receive_address_manager(&self) -> Arc<dyn AddressDerivationManagerTrait> {
+    fn receive_pubkey_manager(&self) -> Arc<dyn PubkeyDerivationManagerTrait> {
         todo!()
     }
-    fn change_address_manager(&self) -> Arc<dyn AddressDerivationManagerTrait> {
+    fn change_pubkey_manager(&self) -> Arc<dyn PubkeyDerivationManagerTrait> {
         todo!()
     }
 
     #[inline(always)]
-    async fn derive_receive_address(&self, _index: u32) -> Result<Address> {
-        // let address = self.receive_wallet.derive_address(index).await?;
+    async fn derive_receive_pubkey(&self, _index: u32) -> Result<secp256k1::PublicKey> {
+        // let address = self.receive_wallet.derive_pubkey(index).await?;
         // Ok(address)
         todo!()
     }
 
     #[inline(always)]
-    async fn derive_change_address(&self, _index: u32) -> Result<Address> {
-        // let address = self.change_wallet.derive_address(index).await?;
+    async fn derive_change_pubkey(&self, _index: u32) -> Result<secp256k1::PublicKey> {
+        // let address = self.change_wallet.derive_pubkey(index).await?;
         // Ok(address)
         todo!()
     }
 
     #[inline(always)]
-    async fn new_receive_address(&self) -> Result<Address> {
-        // let address = self.receive_wallet.new_address().await?;
+    async fn receive_pubkey(&self) -> Result<secp256k1::PublicKey> {
+        // let address = self.receive_wallet.new_pubkey().await?;
         // Ok(address)
         todo!()
     }
 
     #[inline(always)]
-    async fn new_change_address(&self) -> Result<Address> {
-        // let address = self.change_wallet.new_address().await?;
+    async fn change_pubkey(&self) -> Result<secp256k1::PublicKey> {
+        // let address = self.change_wallet.new_pubkey().await?;
+        // Ok(address)
+        todo!()
+    }
+
+    #[inline(always)]
+    async fn new_receive_pubkey(&self) -> Result<secp256k1::PublicKey> {
+        // let address = self.receive_wallet.new_pubkey().await?;
+        // Ok(address)
+        todo!()
+    }
+
+    #[inline(always)]
+    async fn new_change_pubkey(&self) -> Result<secp256k1::PublicKey> {
+        // let address = self.change_wallet.new_pubkey().await?;
         // Ok(address)
         todo!()
     }

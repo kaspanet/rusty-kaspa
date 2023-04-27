@@ -1,22 +1,25 @@
 #[allow(unused_imports)]
-use crate::accounts::{gen0::*, gen1::*, AddressDerivationManagerTrait, WalletDerivationManagerTrait};
+use crate::accounts::{gen0::*, gen1::*, PubkeyDerivationManagerTrait, WalletDerivationManagerTrait};
 use crate::imports::*;
 use crate::result::Result;
 use crate::secret::Secret;
 use crate::storage::{self, PrvKeyDataId, PubKeyData};
 use crate::utxo::{UtxoEntryReference, UtxoOrdering, UtxoSet};
 use crate::wallet::Events;
+use crate::AddressDerivationManager;
 use crate::DynRpcApi;
 use async_trait::async_trait;
-use kaspa_bip32::ExtendedPublicKey;
+//use kaspa_bip32::ExtendedPublicKey;
 use kaspa_notify::listener::ListenerId;
 use kaspa_notify::scope::{Scope, UtxosChangedScope};
 use kaspa_rpc_core::api::notifications::Notification;
 use kaspa_rpc_core::notify::connection::ChannelConnection;
-use std::str::FromStr;
+//use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, AtomicU64};
 use workflow_core::channel::{oneshot, Channel, DuplexChannel, Multiplexer};
 // use workflow_core::channel::{Channel, DuplexChannel, Multiplexer, Receiver};
+use crate::address::AddressManager;
+use kaspa_addresses::Prefix as AddressPrefix;
 use workflow_core::task::spawn;
 // use futures::future::join_all;
 use futures::{select, FutureExt};
@@ -72,34 +75,13 @@ pub struct Account {
     // ~
     // pub derivation_path : DerivationPath,
     #[wasm_bindgen(skip)]
-    pub derivation: Arc<dyn crate::accounts::WalletDerivationManagerTrait>,
+    pub derivation: Arc<AddressDerivationManager>,
 
     #[wasm_bindgen(skip)]
     pub task_ctl: DuplexChannel,
 }
 
 impl Account {
-    async fn create_derivation_manager(
-        account_kind: AccountKind,
-        pub_key_data: &PubKeyData,
-    ) -> Result<Arc<dyn WalletDerivationManagerTrait>> {
-        let derivator: Arc<dyn WalletDerivationManagerTrait> = match account_kind {
-            AccountKind::V0 => {
-                // TODO! WalletAccountV0::from_extended_public_key is not yet implemented
-                let xpub = pub_key_data.keys.get(0).unwrap();
-                let extended_public_key = ExtendedPublicKey::<secp256k1::PublicKey>::from_str(xpub)?;
-                Arc::new(WalletDerivationManagerV0::from_extended_public_key(extended_public_key).await?)
-            }
-            _ => {
-                let xpub = pub_key_data.keys.get(0).unwrap();
-                let extended_public_key = ExtendedPublicKey::<secp256k1::PublicKey>::from_str(xpub)?;
-                Arc::new(WalletDerivationManager::from_extended_public_key(extended_public_key).await?)
-            }
-        };
-
-        Ok(derivator)
-    }
-
     pub async fn try_new_with_args(
         rpc_api: Arc<DynRpcApi>,
         multiplexer: Multiplexer<Events>,
@@ -110,12 +92,15 @@ impl Account {
         prv_key_data_id: Option<PrvKeyDataId>,
         pub_key_data: PubKeyData,
         ecdsa: bool,
+        address_prefix: AddressPrefix,
     ) -> Result<Self> {
         let channel = Channel::<Notification>::unbounded();
         let listener_id = rpc_api.register_new_listener(ChannelConnection::new(channel.sender));
 
         // rpc_api.register_new_listener();
-        let derivation = Self::create_derivation_manager(account_kind, &pub_key_data).await?;
+        let minimum_signatures = pub_key_data.minimum_signatures.unwrap_or(1) as usize;
+        let derivation =
+            AddressDerivationManager::new(address_prefix, account_kind, &pub_key_data, ecdsa, minimum_signatures, None, None).await?;
 
         let stored = storage::Account::new(
             name.to_string(),
@@ -123,11 +108,11 @@ impl Account {
             account_kind,
             account_index,
             false,
-            pub_key_data,
+            pub_key_data.clone(),
             prv_key_data_id,
             ecdsa,
-            1,
-            0,
+            pub_key_data.minimum_signatures.unwrap_or(1),
+            pub_key_data.cosigner_index.unwrap_or(0),
         );
 
         let inner = Inner { listener_id, stored };
@@ -156,12 +141,23 @@ impl Account {
         rpc: Arc<DynRpcApi>,
         multiplexer: Multiplexer<Events>,
         stored: &storage::Account,
+        address_prefix: AddressPrefix,
     ) -> Result<Self> {
         let channel = Channel::<Notification>::unbounded();
         let listener_id = rpc.register_new_listener(ChannelConnection::new(channel.sender));
 
         // rpc_api.register_new_listener();
-        let derivation = Self::create_derivation_manager(stored.account_kind, &stored.pub_key_data).await?;
+        let minimum_signatures = stored.pub_key_data.minimum_signatures.unwrap_or(1) as usize;
+        let derivation = AddressDerivationManager::new(
+            address_prefix,
+            stored.account_kind,
+            &stored.pub_key_data,
+            stored.ecdsa,
+            minimum_signatures,
+            None,
+            None,
+        )
+        .await?;
 
         let inner = Inner { listener_id, stored: stored.clone() };
 
@@ -284,11 +280,11 @@ impl Account {
     }
 
     #[allow(dead_code)]
-    fn receive_address_manager(&self) -> Result<Arc<dyn AddressDerivationManagerTrait>> {
+    fn receive_address_manager(&self) -> Result<Arc<AddressManager>> {
         Ok(self.derivation.receive_address_manager())
     }
 
-    fn change_address_manager(&self) -> Result<Arc<dyn AddressDerivationManagerTrait>> {
+    fn change_address_manager(&self) -> Result<Arc<AddressManager>> {
         Ok(self.derivation.change_address_manager())
     }
 
@@ -411,11 +407,11 @@ impl Account {
 pub struct Cursor {
     pub done: bool,
     index: u32,
-    derivation: Arc<dyn AddressDerivationManagerTrait>,
+    derivation: Arc<AddressManager>,
 }
 
 impl Cursor {
-    pub fn new(derivation: Arc<dyn AddressDerivationManagerTrait>) -> Self {
+    pub fn new(derivation: Arc<AddressManager>) -> Self {
         Self { index: 0, done: false, derivation }
     }
 
@@ -441,12 +437,7 @@ pub struct Scan {
 }
 
 impl Scan {
-    pub fn new(
-        receive: Arc<dyn AddressDerivationManagerTrait>,
-        change: Arc<dyn AddressDerivationManagerTrait>,
-        window_size: u32,
-        extent: ScanExtent,
-    ) -> Self {
+    pub fn new(receive: Arc<AddressManager>, change: Arc<AddressManager>, window_size: u32, extent: ScanExtent) -> Self {
         let derivations = vec![Cursor::new(receive), Cursor::new(change)];
         Scan { derivations, window_size, extent, pos: 0 }
     }

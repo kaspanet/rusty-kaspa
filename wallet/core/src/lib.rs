@@ -3,6 +3,7 @@ extern crate self as kaspa_wallet_core;
 
 pub mod account;
 pub mod accounts;
+pub mod address;
 pub mod convert;
 pub mod encryption;
 pub mod error;
@@ -20,6 +21,7 @@ pub mod xprivatekey;
 pub mod xpublickey;
 
 pub use accounts::dummy_address;
+pub use address::AddressDerivationManager;
 pub use kaspa_addresses::Address;
 pub use result::Result;
 pub use signer::Signer;

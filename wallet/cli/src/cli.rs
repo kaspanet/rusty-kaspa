@@ -94,7 +94,7 @@ impl WalletCli {
                 let wallet_password = Secret::new(term.ask(true, "Enter wallet password: ").await?.trim().as_bytes().to_vec());
                 let payment_password = Secret::new(term.ask(true, "Enter payment password: ").await?.trim().as_bytes().to_vec());
                 let account_kind = AccountKind::Bip32;
-                let mut args = AccountCreateArgs::new(title, account_kind, wallet_password.clone(), Some(payment_password.clone()));
+                let mut args = AccountCreateArgs::new(title, account_kind, wallet_password, Some(payment_password));
                 let res = self.wallet.create(&args).await;
                 let path = if let Err(err) = res {
                     if !matches!(err, Error::WalletAlreadyExists) {

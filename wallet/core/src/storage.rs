@@ -133,6 +133,8 @@ impl PrvKeyData {
 pub struct PubKeyData {
     pub id: PubKeyDataId,
     pub keys: Vec<String>,
+    pub cosigner_index: Option<u32>,
+    pub minimum_signatures: Option<u16>,
 }
 
 impl Drop for PubKeyData {
@@ -142,12 +144,12 @@ impl Drop for PubKeyData {
 }
 
 impl PubKeyData {
-    pub fn new(keys: Vec<String>) -> Self {
+    pub fn new(keys: Vec<String>, cosigner_index: Option<u32>, minimum_signatures: Option<u16>) -> Self {
         let mut temp = keys.clone();
         temp.sort();
         let str = String::from_iter(temp);
         let id = PubKeyDataId::new_from_slice(&sha256_hash(str.as_bytes()).unwrap().as_ref()[0..8]);
-        Self { id, keys }
+        Self { id, keys, cosigner_index, minimum_signatures }
     }
 }
 
@@ -164,7 +166,7 @@ pub struct Account {
     pub pub_key_data: PubKeyData,
     pub prv_key_data_id: Option<PrvKeyDataId>,
     pub minimum_signatures: u16,
-    pub cosigner_index: u16,
+    pub cosigner_index: u32,
     pub ecdsa: bool,
 }
 
@@ -179,7 +181,7 @@ impl Account {
         prv_key_data_id: Option<PrvKeyDataId>,
         ecdsa: bool,
         minimum_signatures: u16,
-        cosigner_index: u16,
+        cosigner_index: u32,
     ) -> Self {
         let id = pub_key_data.id.to_hex();
         Self {
@@ -387,8 +389,8 @@ mod tests {
         let prv_key_data2 =
             PrvKeyData::new(key_data_payload2.id(), Encryptable::Plain(key_data_payload2).into_encrypted(password.clone())?);
 
-        let pub_key_data1 = PubKeyData::new(vec!["abc".to_string()]);
-        let pub_key_data2 = PubKeyData::new(vec!["xyz".to_string()]);
+        let pub_key_data1 = PubKeyData::new(vec!["abc".to_string()], None, None);
+        let pub_key_data2 = PubKeyData::new(vec!["xyz".to_string()], None, None);
         println!("keydata1 id: {:?}", prv_key_data1.id);
         //assert_eq!(prv_key_data.id.0, [79, 36, 5, 159, 220, 113, 179, 22]);
         payload.prv_key_data.push(prv_key_data1.clone());

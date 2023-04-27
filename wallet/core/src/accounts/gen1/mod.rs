@@ -1,3 +1,3 @@
 mod hd;
-pub use hd::WalletDerivationManager;
+pub use hd::{PubkeyDerivationManager, WalletDerivationManager};
 pub mod import;
