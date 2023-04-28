@@ -10,6 +10,8 @@ use downcast::{downcast_sync, AnySync};
 use kaspa_notify::{listener::ListenerId, scope::Scope, subscription::Command};
 use std::sync::Arc;
 
+pub const MAX_SAFE_WINDOW_SIZE: u32 = 10_000;
+
 /// Client RPC Api
 ///
 /// The [`RpcApi`] trait defines RPC calls taking a request message as unique parameter.
@@ -96,7 +98,7 @@ pub trait RpcApi: Sync + Send + AnySync {
     /// Adds a peer to the node's outgoing connection list.
     ///
     /// This will, in most cases, result in the node connecting to said peer.
-    async fn add_peer(&self, peer_address: RpcPeerAddress, is_permanent: bool) -> RpcResult<()> {
+    async fn add_peer(&self, peer_address: RpcContextualPeerAddress, is_permanent: bool) -> RpcResult<()> {
         self.add_peer_call(AddPeerRequest::new(peer_address, is_permanent)).await?;
         Ok(())
     }
@@ -214,15 +216,15 @@ pub trait RpcApi: Sync + Send + AnySync {
     async fn get_sink_blue_score_call(&self, request: GetSinkBlueScoreRequest) -> RpcResult<GetSinkBlueScoreResponse>;
 
     /// Bans the given ip.
-    async fn ban(&self, address: RpcPeerAddress) -> RpcResult<()> {
-        self.ban_call(BanRequest::new(address)).await?;
+    async fn ban(&self, ip: RpcIpAddress) -> RpcResult<()> {
+        self.ban_call(BanRequest::new(ip)).await?;
         Ok(())
     }
     async fn ban_call(&self, request: BanRequest) -> RpcResult<BanResponse>;
 
     /// Unbans the given ip.
-    async fn unban(&self, address: RpcPeerAddress) -> RpcResult<()> {
-        self.unban_call(UnbanRequest::new(address)).await?;
+    async fn unban(&self, ip: RpcIpAddress) -> RpcResult<()> {
+        self.unban_call(UnbanRequest::new(ip)).await?;
         Ok(())
     }
     async fn unban_call(&self, request: UnbanRequest) -> RpcResult<UnbanResponse>;
@@ -234,7 +236,7 @@ pub trait RpcApi: Sync + Send + AnySync {
     }
 
     ///
-    async fn estimate_network_hashes_per_second(&self, window_size: u32, start_hash: RpcHash) -> RpcResult<u64> {
+    async fn estimate_network_hashes_per_second(&self, window_size: u32, start_hash: Option<RpcHash>) -> RpcResult<u64> {
         Ok(self
             .estimate_network_hashes_per_second_call(EstimateNetworkHashesPerSecondRequest::new(window_size, start_hash))
             .await?

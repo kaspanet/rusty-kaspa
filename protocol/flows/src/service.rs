@@ -56,20 +56,21 @@ impl AsyncService for P2pService {
         // Prepare a shutdown signal receiver
         let shutdown_signal = self.shutdown.listener.clone();
 
+        let server_address = self.listen.clone().unwrap_or(format!("0.0.0.0:{}", self.default_port));
+        let p2p_adaptor = Adaptor::bidirectional(server_address, self.flow_context.hub().clone(), self.flow_context.clone()).unwrap();
+        let connection_manager = ConnectionManager::new(
+            p2p_adaptor.clone(),
+            self.outbound_target,
+            self.inbound_limit,
+            self.dns_seeders,
+            self.default_port,
+            self.flow_context.address_manager.clone(),
+        );
+
+        self.flow_context.set_connection_manager(connection_manager.clone());
+
         // Launch the service and wait for a shutdown signal
         Box::pin(async move {
-            let server_address = self.listen.clone().unwrap_or(format!("0.0.0.0:{}", self.default_port));
-            let p2p_adaptor =
-                Adaptor::bidirectional(server_address.clone(), self.flow_context.hub().clone(), self.flow_context.clone()).unwrap();
-            let connection_manager = ConnectionManager::new(
-                p2p_adaptor.clone(),
-                self.outbound_target,
-                self.inbound_limit,
-                self.dns_seeders,
-                self.default_port,
-                self.flow_context.address_manager.clone(),
-            );
-
             if let Some(peer_address) = self.connect.clone() {
                 connection_manager.add_connection_request(peer_address.to_socket_addrs().unwrap().next().unwrap(), true).await;
             }

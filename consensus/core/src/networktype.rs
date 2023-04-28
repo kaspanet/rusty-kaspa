@@ -20,7 +20,16 @@ pub enum NetworkType {
 }
 
 impl NetworkType {
-    pub fn port(&self) -> u16 {
+    pub fn default_p2p_port(&self) -> u16 {
+        match self {
+            NetworkType::Mainnet => 16111,
+            NetworkType::Testnet => 16211,
+            NetworkType::Simnet => 16511,
+            NetworkType::Devnet => 16611,
+        }
+    }
+
+    pub fn default_rpc_port(&self) -> u16 {
         match self {
             NetworkType::Mainnet => 16110,
             NetworkType::Testnet => 16210,

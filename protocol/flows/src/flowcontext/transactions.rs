@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 
 const REBROADCAST_INTERVAL: Duration = Duration::from_secs(30);
 const BROADCAST_INTERVAL: Duration = Duration::from_millis(500);
-const MAX_INV_PER_TX_INV_MSG: usize = 131_072;
+pub(crate) const MAX_INV_PER_TX_INV_MSG: usize = 131_072;
 
 pub struct TransactionsSpread {
     hub: Hub,

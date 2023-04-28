@@ -159,11 +159,11 @@ pub struct GetPeerAddressesRequest {}
 #[serde(rename_all = "camelCase")]
 pub struct GetPeerAddressesResponse {
     pub known_addresses: Vec<RpcPeerAddress>,
-    pub banned_addresses: Vec<RpcPeerAddress>,
+    pub banned_addresses: Vec<RpcIpAddress>,
 }
 
 impl GetPeerAddressesResponse {
-    pub fn new(known_addresses: Vec<RpcPeerAddress>, banned_addresses: Vec<RpcPeerAddress>) -> Self {
+    pub fn new(known_addresses: Vec<RpcPeerAddress>, banned_addresses: Vec<RpcIpAddress>) -> Self {
         Self { known_addresses, banned_addresses }
     }
 }
@@ -256,12 +256,12 @@ impl GetConnectedPeerInfoResponse {
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AddPeerRequest {
-    pub peer_address: RpcPeerAddress,
+    pub peer_address: RpcContextualPeerAddress,
     pub is_permanent: bool,
 }
 
 impl AddPeerRequest {
-    pub fn new(peer_address: RpcPeerAddress, is_permanent: bool) -> Self {
+    pub fn new(peer_address: RpcContextualPeerAddress, is_permanent: bool) -> Self {
         Self { peer_address, is_permanent }
     }
 }
@@ -570,12 +570,12 @@ impl GetUtxosByAddressesResponse {
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct BanRequest {
-    pub address: RpcPeerAddress,
+    pub ip: RpcIpAddress,
 }
 
 impl BanRequest {
-    pub fn new(address: RpcPeerAddress) -> Self {
-        Self { address }
+    pub fn new(ip: RpcIpAddress) -> Self {
+        Self { ip }
     }
 }
 
@@ -586,12 +586,12 @@ pub struct BanResponse {}
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct UnbanRequest {
-    pub address: RpcPeerAddress,
+    pub ip: RpcIpAddress,
 }
 
 impl UnbanRequest {
-    pub fn new(address: RpcPeerAddress) -> Self {
-        Self { address }
+    pub fn new(ip: RpcIpAddress) -> Self {
+        Self { ip }
     }
 }
 
@@ -603,11 +603,11 @@ pub struct UnbanResponse {}
 #[serde(rename_all = "camelCase")]
 pub struct EstimateNetworkHashesPerSecondRequest {
     pub window_size: u32,
-    pub start_hash: RpcHash,
+    pub start_hash: Option<RpcHash>,
 }
 
 impl EstimateNetworkHashesPerSecondRequest {
-    pub fn new(window_size: u32, start_hash: RpcHash) -> Self {
+    pub fn new(window_size: u32, start_hash: Option<RpcHash>) -> Self {
         Self { window_size, start_hash }
     }
 }

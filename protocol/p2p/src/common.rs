@@ -1,4 +1,4 @@
-use crate::{convert::error::ConversionError, KaspadMessagePayloadType};
+use crate::{convert::error::ConversionError, core::peer::PeerKey, KaspadMessagePayloadType};
 use kaspa_consensus_core::errors::{block::RuleError, consensus::ConsensusError, pruning::PruningImportError};
 use kaspa_mining::errors::MiningManagerError;
 use std::time::Duration;
@@ -38,6 +38,9 @@ pub enum ProtocolError {
     MiningManagerError(#[from] MiningManagerError),
 
     #[error("{0}")]
+    IdentityError(#[from] uuid::Error),
+
+    #[error("{0}")]
     Other(&'static str),
 
     #[error("{0}")]
@@ -48,6 +51,18 @@ pub enum ProtocolError {
 
     #[error("peer connection is closed")]
     ConnectionClosed,
+
+    #[error("incoming route capacity of flow {0:?} has been reached (peer: {1})")]
+    IncomingRouteCapacityReached(KaspadMessagePayloadType, String),
+
+    #[error("outgoing route capacity has been reached (peer: {0})")]
+    OutgoingRouteCapacityReached(String),
+
+    #[error("no flow has been registered for message type {0:?}")]
+    NoRouteForMessageType(KaspadMessagePayloadType),
+
+    #[error("peer {0} already exists")]
+    PeerAlreadyExists(PeerKey),
 }
 
 impl ProtocolError {

@@ -1,5 +1,6 @@
 use kaspa_consensus_core::tx::TransactionId;
-use std::num::TryFromIntError;
+use kaspa_utils::networking::IpAddress;
+use std::{net::AddrParseError, num::TryFromIntError};
 use thiserror::Error;
 
 use crate::{RpcHash, RpcTransactionId};
@@ -20,6 +21,9 @@ pub enum RpcError {
 
     #[error("Integer parsing error: {0}")]
     ParseIntError(#[from] std::num::ParseIntError),
+
+    #[error("Ip address parsing error {0}")]
+    ParseIpAddressError(#[from] AddrParseError),
 
     #[error("Invalid script class: {0}")]
     InvalidRpcScriptClass(String),
@@ -51,6 +55,24 @@ pub enum RpcError {
     #[error("Method unavailable. Run the node with the --utxoindex argument.")]
     NoUtxoIndex,
 
+    #[error("Method unavailable. No connection manager is currently available.")]
+    NoConnectionManager,
+
+    #[error("Requested window size {0} is larger than max {1} allowed in RPC safe mode.")]
+    WindowSizeExceedingMaximum(u32, u32),
+
+    #[error("Requested window size {0} is larger than pruning point depth {1}.")]
+    WindowSizeExceedingPruningDepth(u32, u64),
+
+    #[error("Method unavailable in safe mode. Run the node with --unsafe argument.")]
+    UnavailableInSafeMode,
+
+    #[error("Cannot ban IP {0} because it has some permanent connection.")]
+    IpHasPermanentConnection(IpAddress),
+
+    #[error("IP {0} is not registered as banned.")]
+    IpIsNotBanned(IpAddress),
+
     #[error(transparent)]
     AddressError(#[from] kaspa_addresses::AddressError),
 
@@ -68,6 +90,9 @@ pub enum RpcError {
 
     #[error(transparent)]
     ScriptClassError(#[from] kaspa_txscript::script_class::Error),
+
+    #[error(transparent)]
+    NodeIdError(#[from] uuid::Error),
 
     #[error("{0}")]
     General(String),

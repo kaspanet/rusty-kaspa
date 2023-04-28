@@ -12,13 +12,12 @@ kaspa-consensus-core.workspace = true
 kaspa-consensus-notify.workspace = true
 kaspa-addresses.workspace = true
 kaspa-hashes.workspace = true
-kaspa-math.workspace = true
-kaspa-core.workspace = true
 kaspa-utils.workspace = true
 kaspa-notify.workspace = true
 kaspa-index-core.workspace = true
 kaspa-txscript.workspace = true
 kaspa-mining.workspace = true
+
 faster-hex.workspace = true
 serde.workspace = true
 derive_more.workspace = true
@@ -27,15 +26,9 @@ borsh.workspace = true
 async-channel.workspace = true
 log.workspace = true
 smallvec.workspace = true
-cfg-if.workspace = true
-futures-util.workspace = true
 serde-wasm-bindgen.workspace = true
 wasm-bindgen.workspace = true
-
-async-trait = "0.1.57"
-futures = { version = "0.3" }
-rand = "0.8"
-triggered = "0.1"
+async-trait.workspace = true
 workflow-core.workspace = true
 paste.workspace = true
 downcast.workspace = true
