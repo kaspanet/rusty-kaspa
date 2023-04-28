@@ -247,6 +247,15 @@ impl Account {
         self.inner.lock().unwrap()
     }
 
+    fn update_address_to_index_map(&self, offset: u32, addresses: &[Address]) -> Result<()> {
+        let address_to_index_map = &mut self.inner().address_to_index_map;
+        for (index, address) in addresses.iter().enumerate() {
+            address_to_index_map.insert(address.clone(), offset + index as u32);
+        }
+
+        Ok(())
+    }
+
     pub async fn scan_address_manager(&self, scan: Scan) -> Result<()> {
         let mut cursor = 0;
 
@@ -259,6 +268,7 @@ impl Account {
 
             let addresses = scan.address_manager.get_range(first..last).await?;
 
+            self.update_address_to_index_map(cursor, &addresses)?;
             self.subscribe_utxos_changed(&addresses).await?;
             let resp = self.rpc.get_utxos_by_addresses(addresses).await?;
             let refs: Vec<UtxoEntryReference> = resp.into_iter().map(UtxoEntryReference::from).collect();
@@ -292,6 +302,7 @@ impl Account {
 
     pub async fn scan_utxos(&self, window_size: Option<u32>, extent: Option<u32>) -> Result<()> {
         self.utxos.clear();
+        self.inner().address_to_index_map.clear();
         self.balance.store(0, Ordering::SeqCst);
 
         let window_size = window_size.unwrap_or(DEFAULT_WINDOW_SIZE);
@@ -543,9 +554,13 @@ impl Account {
 
         match &notification {
             Notification::UtxosChanged(utxos) => {
-                for _entry in utxos.added.iter() {}
+                for _entry in utxos.added.iter() {
+                    // - TODO - ADD NEW UTXOS
+                }
 
-                for _entry in utxos.removed.iter() {}
+                for _entry in utxos.removed.iter() {
+                    // - TODO - REMOVE UTXOS
+                }
             }
             _ => {
                 log_warning!("unknown notification: {:?}", notification);
