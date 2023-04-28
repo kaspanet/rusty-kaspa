@@ -55,7 +55,7 @@ pub struct HeaderProcessingContext {
     pub header: Arc<Header>,
     pub pruning_info: PruningPointInfo,
     pub block_level: BlockLevel,
-    pub non_pruned_parents: Vec<BlockHashes>,
+    pub known_parents: Vec<BlockHashes>,
 
     // Staging data
     pub ghostdag_data: Option<Vec<Arc<GhostdagData>>>,
@@ -72,14 +72,14 @@ impl HeaderProcessingContext {
         header: Arc<Header>,
         block_level: BlockLevel,
         pruning_info: PruningPointInfo,
-        non_pruned_parents: Vec<BlockHashes>,
+        known_parents: Vec<BlockHashes>,
     ) -> Self {
         Self {
             hash,
             header,
             block_level,
             pruning_info,
-            non_pruned_parents,
+            known_parents,
             ghostdag_data: None,
             block_window_for_difficulty: None,
             mergeset_non_daa: Default::default(),
@@ -89,9 +89,9 @@ impl HeaderProcessingContext {
         }
     }
 
-    /// Returns the direct parents of this header after removal of pruned parents
-    pub fn direct_non_pruned_parents(&self) -> &[Hash] {
-        &self.non_pruned_parents[0]
+    /// Returns the direct parents of this header after removal of unknown parents
+    pub fn direct_known_parents(&self) -> &[Hash] {
+        &self.known_parents[0]
     }
 
     /// Returns the pruning point at the time this header began processing
@@ -358,12 +358,12 @@ impl HeaderProcessor {
             header.clone(),
             block_level,
             self.pruning_store.read().get().unwrap(),
-            self.collect_non_pruned_parents(header, block_level),
+            self.collect_known_parents(header, block_level),
         )
     }
 
-    /// Collects the non-pruned parents for all block levels
-    fn collect_non_pruned_parents(&self, header: &Header, block_level: BlockLevel) -> Vec<Arc<Vec<Hash>>> {
+    /// Collects the known parents for all block levels
+    fn collect_known_parents(&self, header: &Header, block_level: BlockLevel) -> Vec<Arc<Vec<Hash>>> {
         let relations_read = self.relations_stores.read();
         (0..=block_level)
             .map(|level| {
@@ -389,7 +389,7 @@ impl HeaderProcessor {
                 self.ghostdag_stores[level]
                     .get_data(ctx.hash)
                     .unwrap_option()
-                    .unwrap_or_else(|| Arc::new(self.ghostdag_managers[level].ghostdag(&ctx.non_pruned_parents[level])))
+                    .unwrap_or_else(|| Arc::new(self.ghostdag_managers[level].ghostdag(&ctx.known_parents[level])))
             })
             .collect_vec();
         ctx.ghostdag_data = Some(ghostdag_data);
@@ -442,7 +442,7 @@ impl HeaderProcessor {
         if !staging.has(ctx.hash).unwrap() {
             // Add block to staging reachability
             let reachability_parent =
-                if ctx.non_pruned_parents[0].as_slice() == [ORIGIN] { ORIGIN } else { ghostdag_data[0].selected_parent };
+                if ctx.known_parents[0].as_slice() == [ORIGIN] { ORIGIN } else { ghostdag_data[0].selected_parent };
             let reachability_read = &self.reachability_store.read();
             let mut reachability_mergeset =
                 ghostdag_data[0].unordered_mergeset_without_selected_parent().filter(|hash| reachability_read.has(*hash).unwrap());
@@ -473,7 +473,7 @@ impl HeaderProcessor {
         //
 
         let mut relations_write = self.relations_stores.write();
-        ctx.non_pruned_parents.into_iter().enumerate().for_each(|(level, parents_by_level)| {
+        ctx.known_parents.into_iter().enumerate().for_each(|(level, parents_by_level)| {
             relations_write[level].insert_batch(&mut batch, header.hash, parents_by_level).unwrap_or_exists();
         });
 
