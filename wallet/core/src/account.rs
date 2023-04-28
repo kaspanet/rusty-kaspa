@@ -223,11 +223,12 @@ impl Account {
     //     let _ = self.interfaces.rpc.start_notify(id, Scope::UtxosChanged(utxos_changed_scope)).await;
     // }
 
-    pub async fn update_balance(&self) -> Result<u64> {
-        let balance = self.utxos.calculate_balance().await?;
-        self.balance.store(self.utxos.calculate_balance().await?, std::sync::atomic::Ordering::SeqCst);
-        Ok(balance)
-    }
+    // balance is now calculated dynamically during scan into the `self.balance` atomic
+    // pub async fn update_balance(&self) -> Result<u64> {
+    //     let balance = self.utxos.calculate_balance().await?;
+    //     self.balance.store(balance, std::sync::atomic::Ordering::SeqCst);
+    //     Ok(balance)
+    // }
 
     pub fn is_connected(&self) -> bool {
         self.is_connected.load(std::sync::atomic::Ordering::SeqCst)
@@ -374,7 +375,7 @@ impl Account {
 
         self.utxos.order(UtxoOrdering::AscendingAmount)?;
 
-        self.update_balance().await?;
+        // self.update_balance().await?;
 
         Ok(())
     }
