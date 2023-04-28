@@ -698,7 +698,6 @@ impl PruningProofManager {
 
                     let current_header = self.headers_store.get_header(current).unwrap();
                     headers.push(current_header.clone());
-                    // TODO: Validate correct use of read lock
                     for child in self.relations_stores.read()[level].get_children(current).unwrap().iter().copied() {
                         queue.push(Reverse(SortableBlock::new(child, self.ghostdag_stores[level].get_blue_work(child).unwrap())));
                     }
