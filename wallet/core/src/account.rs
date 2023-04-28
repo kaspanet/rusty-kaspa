@@ -3,22 +3,25 @@ use crate::accounts::{gen0::*, gen1::*, PubkeyDerivationManagerTrait, WalletDeri
 use crate::imports::*;
 use crate::result::Result;
 use crate::secret::Secret;
-use crate::storage::{self, PrvKeyDataId, PubKeyData};
+use crate::signer::sign_mutable_transaction;
+use crate::storage::{self, PrvKeyData, PrvKeyDataId, PubKeyData};
+use crate::tx::{create_transaction, PaymentOutput, PaymentOutputs};
 use crate::utxo::{UtxoEntryReference, UtxoOrdering, UtxoSet};
 use crate::wallet::Events;
 use crate::AddressDerivationManager;
 use crate::DynRpcApi;
 use async_trait::async_trait;
-//use kaspa_bip32::ExtendedPublicKey;
+use kaspa_bip32::{ChildNumber, ExtendedPrivateKey, Language, Mnemonic, PrivateKey, SecretKey};
+use kaspa_hashes::Hash;
 use kaspa_notify::listener::ListenerId;
-use kaspa_notify::scope::{Scope, UtxosChangedScope};
+//use kaspa_notify::scope::{Scope, UtxosChangedScope};
 use kaspa_rpc_core::api::notifications::Notification;
 use kaspa_rpc_core::notify::connection::ChannelConnection;
 //use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use workflow_core::channel::{oneshot, Channel, DuplexChannel, Multiplexer};
 // use workflow_core::channel::{Channel, DuplexChannel, Multiplexer, Receiver};
-use crate::address::AddressManager;
+use crate::address::{build_derivate_paths, AddressManager};
 use kaspa_addresses::Prefix as AddressPrefix;
 use workflow_core::task::spawn;
 // use futures::future::join_all;
@@ -77,7 +80,7 @@ pub struct Account {
     is_connected: AtomicBool,
     #[wasm_bindgen(js_name = "accountKind")]
     pub account_kind: AccountKind,
-    pub account_index: u32,
+    pub account_index: u64,
     #[wasm_bindgen(skip)]
     pub prv_key_data_id: Option<PrvKeyDataId>,
     pub ecdsa: bool,
@@ -100,7 +103,7 @@ impl Account {
         name: &str,
         title: &str,
         account_kind: AccountKind,
-        account_index: u32,
+        account_index: u64,
         prv_key_data_id: Option<PrvKeyDataId>,
         pub_key_data: PubKeyData,
         ecdsa: bool,
@@ -201,7 +204,7 @@ impl Account {
     //     let _ = self.interfaces.rpc.start_notify(id, Scope::UtxosChanged(utxos_changed_scope)).await;
     // }
 
-    pub async fn update_balance(&mut self) -> Result<u64> {
+    pub async fn update_balance(&self) -> Result<u64> {
         let balance = self.utxos.calculate_balance().await?;
         self.balance.store(self.utxos.calculate_balance().await?, std::sync::atomic::Ordering::SeqCst);
         Ok(balance)
@@ -250,25 +253,42 @@ impl Account {
             let last = cursor + window_size;
             cursor = last;
 
-            log_info!("first: {}, last: {}", first, last);
+            log_info!("first: {}, last: {}\r\n", first, last);
 
-            let addresses = receive.get_range(cursor..(cursor + window_size)).await?;
+            let addresses = receive.get_range(first..last).await?;
+            //let address_str = addresses.iter().map(String::from).collect::<Vec<_>>();
+            let resp = self.interfaces.rpc.get_utxos_by_addresses(addresses).await?;
 
-            // - TODO - populate address range from derivators/generators
-            // let _addresses = Vec::<Address>::new();
-
-            let resp = self.interfaces.rpc.get_utxos_by_addresses(addresses.clone()).await?;
+            //println!("{}", format!("addresses:{:#?}", address_str).replace('\n', "\r\n"));
+            //println!("{}", format!("resp:{:#?}", resp.get(0).and_then(|a|a.address.clone())).replace('\n', "\r\n"));
 
             let refs: Vec<UtxoEntryReference> = resp.into_iter().map(UtxoEntryReference::from).collect();
 
             balance += refs.iter().map(|r| r.as_ref().amount()).sum::<u64>();
 
+            //println!("balance: {balance}");
+            self.utxos.extend(&refs);
+
+            let change_addresses = change.get_range(first..last).await?;
+            //let change_address_str = change_addresses.iter().map(String::from).collect::<Vec<_>>();
+            let resp = self.interfaces.rpc.get_utxos_by_addresses(change_addresses).await?;
+
+            //println!("{}", format!("addresses:{:#?}", address_str).replace('\n', "\r\n"));
+            //println!("{}", format!("resp:{:#?}", resp.get(0).and_then(|a|a.address.clone())).replace('\n', "\r\n"));
+
+            let refs: Vec<UtxoEntryReference> = resp.into_iter().map(UtxoEntryReference::from).collect();
+
+            balance += refs.iter().map(|r| r.as_ref().amount()).sum::<u64>();
+
+            //println!("balance: {balance}");
             self.utxos.extend(&refs);
         }
 
         // - TODO - post balance updates to the wallet
 
         self.utxos.order(UtxoOrdering::AscendingAmount)?;
+
+        self.update_balance().await?;
 
         Ok(balance)
     }
@@ -280,17 +300,68 @@ impl Account {
 
     pub async fn send(
         &self,
-        _address: &Address,
-        _amount_sompi: u64,
-        _priority_fee_sompi: u64,
-        _payment_secret: Option<Secret>,
-    ) -> Result<()> {
-        todo!()
-        // Ok(())
+        address: &Address,
+        amount_sompi: u64,
+        priority_fee_sompi: u64,
+        keydata: PrvKeyData,
+        payment_secret: Option<Secret>,
+    ) -> Result<Hash> {
+        let fee_margin = 1000; //TODO update select_utxos to remove this fee_margin
+        let transaction_amount = amount_sompi + priority_fee_sompi + fee_margin;
+        let utxo_selection = self.utxos.select_utxos(transaction_amount, UtxoOrdering::AscendingAmount).await?;
+
+        let change_address = self.change_address().await?;
+        let outputs = PaymentOutputs { outputs: vec![PaymentOutput::new(address.clone(), amount_sompi, None)] };
+
+        let priority_fee = Some(priority_fee_sompi);
+        let payload = None;
+        let mtx = create_transaction(utxo_selection, outputs, change_address, priority_fee, payload)?;
+
+        // TODO find path indexes by UTXOs/addresses;
+        let receive_indexes = vec![0];
+        let change_indexes = vec![0];
+
+        let private_keys = self.create_private_keys(keydata, payment_secret, receive_indexes, change_indexes)?;
+        let private_keys = &private_keys.iter().map(|k| k.to_bytes()).collect::<Vec<_>>();
+        let mtx = sign_mutable_transaction(mtx, private_keys, true)?;
+        let result = self.interfaces.rpc.submit_transaction(mtx.try_into()?, false).await?;
+        Ok(result)
+    }
+
+    fn create_private_keys(
+        &self,
+        keydata: PrvKeyData,
+        payment_secret: Option<Secret>,
+        receive_indexes: Vec<u32>,
+        change_indexes: Vec<u32>,
+    ) -> Result<Vec<secp256k1::SecretKey>> {
+        let payload = keydata.payload.decrypt(payment_secret)?;
+
+        let mnemonic = Mnemonic::new(&payload.as_ref().mnemonic, Language::English)?;
+        let xkey = ExtendedPrivateKey::<SecretKey>::new(mnemonic.to_seed(""))?;
+
+        let cosigner_index = self.inner().stored.pub_key_data.cosigner_index.unwrap_or(0);
+        let paths = build_derivate_paths(self.account_kind, self.account_index, cosigner_index)?;
+        let receive_xkey = xkey.clone().derive_path(paths.0)?;
+        let change_xkey = xkey.derive_path(paths.1)?;
+
+        let mut private_keys = vec![];
+        for index in receive_indexes {
+            private_keys.push(*receive_xkey.derive_child(ChildNumber::new(index, false)?)?.private_key());
+        }
+        for index in change_indexes {
+            private_keys.push(*change_xkey.derive_child(ChildNumber::new(index, false)?)?.private_key());
+        }
+
+        Ok(private_keys)
     }
 
     pub async fn address(&self) -> Result<Address> {
-        todo!()
+        self.receive_address_manager()?.current_address().await
+    }
+
+    pub async fn change_address(&self) -> Result<Address> {
+        self.change_address_manager()?.current_address().await
     }
 
     #[allow(dead_code)]
@@ -344,7 +415,7 @@ impl Account {
     pub async fn connect(&self) -> Result<()> {
         self.is_connected.store(true, Ordering::SeqCst);
         self.subscribe_notififcations().await?;
-
+        self.scan_utxos(10, 10).await?;
         Ok(())
     }
 
@@ -375,9 +446,9 @@ impl Account {
 
         self.inner().listener_id = Some(listener_id);
 
-        let addresses = vec![];
-        let utxos_changed_scope = UtxosChangedScope { addresses };
-        self.interfaces.rpc.start_notify(listener_id, Scope::UtxosChanged(utxos_changed_scope)).await?;
+        // let addresses = vec![];
+        // let utxos_changed_scope = UtxosChangedScope { addresses };
+        // self.interfaces.rpc.start_notify(listener_id, Scope::UtxosChanged(utxos_changed_scope)).await?;
 
         Ok(())
     }

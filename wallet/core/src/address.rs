@@ -9,6 +9,7 @@ use crate::storage::PubKeyData;
 use crate::Result;
 use futures::future::join_all;
 use kaspa_addresses::{Address, Prefix};
+use kaspa_bip32::{AddressType, DerivationPath, ExtendedPrivateKey, ExtendedPublicKey, Language, Mnemonic, SecretKeyExt};
 use std::sync::{Arc, Mutex};
 
 pub struct AddressManager {
@@ -71,7 +72,7 @@ impl AddressManager {
     }
 
     fn create_multisig_address(&self, _keys: Vec<secp256k1::PublicKey>) -> Result<Address> {
-        Err("TODO:".to_string().into())
+        Err("TODO: multisig_address".to_string().into())
     }
 
     pub fn index(&self) -> Result<u32> {
@@ -96,7 +97,11 @@ impl AddressManager {
 
         if !is_multisig {
             let keys = manager_keys.get(0).unwrap().clone();
-            return Ok(vec![self.create_address(keys)?]);
+            let mut addresses = vec![];
+            for key in keys {
+                addresses.push(self.create_address(vec![key])?);
+            }
+            return Ok(addresses);
         }
 
         let mut addresses = vec![];
@@ -173,4 +178,49 @@ impl AddressDerivationManager {
     pub fn change_address_manager(&self) -> Arc<AddressManager> {
         self.change_address_manager.clone()
     }
+}
+
+pub async fn create_xpub_from_mnemonic(
+    seed_words: &str,
+    account_kind: AccountKind,
+    account_index: u64,
+) -> Result<ExtendedPublicKey<secp256k1::PublicKey>> {
+    let mnemonic = Mnemonic::new(seed_words, Language::English)?;
+    let seed = mnemonic.to_seed("");
+    let xkey = ExtendedPrivateKey::<secp256k1::SecretKey>::new(seed)?;
+
+    let (secret_key, attrs) = match account_kind {
+        AccountKind::V0 => WalletDerivationManagerV0::derive_extened_key_from_master_key(xkey, true, account_index).await?,
+        AccountKind::MultiSig => WalletDerivationManager::derive_extened_key_from_master_key(xkey, true, account_index).await?,
+        _ => WalletDerivationManager::derive_extened_key_from_master_key(xkey, false, account_index).await?,
+    };
+
+    let xkey = ExtendedPublicKey { public_key: secret_key.get_public_key(), attrs };
+
+    Ok(xkey)
+}
+
+pub fn build_derivate_path(
+    account_kind: AccountKind,
+    account_index: u64,
+    cosigner_index: u32,
+    address_type: AddressType,
+) -> Result<DerivationPath> {
+    match account_kind {
+        AccountKind::V0 => WalletDerivationManagerV0::build_derivate_path(false, account_index, None, Some(address_type)),
+        AccountKind::Bip32 => WalletDerivationManager::build_derivate_path(false, account_index, None, Some(address_type)),
+        AccountKind::MultiSig => {
+            WalletDerivationManager::build_derivate_path(true, account_index, Some(cosigner_index), Some(address_type))
+        }
+    }
+}
+
+pub fn build_derivate_paths(
+    account_kind: AccountKind,
+    account_index: u64,
+    cosigner_index: u32,
+) -> Result<(DerivationPath, DerivationPath)> {
+    let receive_path = build_derivate_path(account_kind, account_index, cosigner_index, AddressType::Receive)?;
+    let change_path = build_derivate_path(account_kind, account_index, cosigner_index, AddressType::Change)?;
+    Ok((receive_path, change_path))
 }

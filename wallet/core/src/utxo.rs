@@ -133,7 +133,7 @@ impl UtxoSet {
     }
 
     #[wasm_bindgen(js_name=select)]
-    pub async fn select_utxos(&mut self, transaction_amount: u64, order: UtxoOrdering) -> Result<SelectionContext> {
+    pub async fn select_utxos(&self, transaction_amount: u64, order: UtxoOrdering) -> Result<SelectionContext> {
         let data = self.select(transaction_amount, order).await?;
         Ok(data)
     }

@@ -49,7 +49,7 @@ pub fn create_transaction(
     utxo_selection: SelectionContext,
     outputs: PaymentOutputs,
     change_address: Address,
-    priority_fee: Option<u32>,
+    priority_fee: Option<u64>,
     payload: Option<Vec<u8>>,
 ) -> crate::Result<MutableTransaction> {
     let entries = &utxo_selection.selected_entries;
@@ -70,9 +70,9 @@ pub fn create_transaction(
         })
         .collect::<Vec<TransactionInput>>();
 
-    let priority_fee = priority_fee.unwrap_or(0) as u64;
+    let priority_fee = priority_fee.unwrap_or(0);
     if priority_fee > total_input_amount {
-        return Err(format!("priority_fee({priority_fee}) > amount({total_input_amount})").into());
+        return Err(format!("priority fee({priority_fee}) > amount({total_input_amount})").into());
     }
 
     let mut outputs_ = vec![];

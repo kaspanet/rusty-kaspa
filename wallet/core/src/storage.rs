@@ -1,7 +1,9 @@
+use crate::address::create_xpub_from_mnemonic;
 use crate::result::Result;
 use crate::secret::Secret;
 use crate::{encryption::sha256_hash, imports::*};
 use faster_hex::{hex_decode, hex_string};
+use kaspa_bip32::ExtendedPublicKey;
 use serde::Serializer;
 use std::path::PathBuf;
 #[allow(unused_imports)]
@@ -97,6 +99,19 @@ pub struct PrvKeyData {
     pub payload: Encryptable<KeyDataPayload>,
 }
 
+impl PrvKeyData {
+    pub async fn create_xpub(
+        &self,
+        password: Secret,
+        account_kind: AccountKind,
+        account_index: u64,
+    ) -> Result<ExtendedPublicKey<secp256k1::PublicKey>> {
+        let payload = self.payload.decrypt(Some(password))?;
+        let seed_words = &payload.as_ref().mnemonic;
+        create_xpub_from_mnemonic(seed_words, account_kind, account_index).await
+    }
+}
+
 impl Zeroize for PrvKeyData {
     fn zeroize(&mut self) {
         self.id.zeroize();
@@ -161,7 +176,7 @@ pub struct Account {
     pub name: String,
     pub title: String,
     pub account_kind: AccountKind,
-    pub account_index: u32,
+    pub account_index: u64,
     pub is_visible: bool,
     pub pub_key_data: PubKeyData,
     pub prv_key_data_id: Option<PrvKeyDataId>,
@@ -175,7 +190,7 @@ impl Account {
         name: String,
         title: String,
         account_kind: AccountKind,
-        account_index: u32,
+        account_index: u64,
         is_visible: bool,
         pub_key_data: PubKeyData,
         prv_key_data_id: Option<PrvKeyDataId>,
@@ -215,7 +230,7 @@ pub struct Metadata {
     pub account_kind: AccountKind,
     pub pub_key_data: PubKeyData,
     pub ecdsa: bool,
-    pub account_index: u32,
+    pub account_index: u64,
 }
 
 impl From<Account> for Metadata {

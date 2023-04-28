@@ -136,9 +136,9 @@ impl PubkeyDerivationManagerTrait for PubkeyDerivationManager {
 
     async fn current_pubkey(&self) -> Result<secp256k1::PublicKey> {
         let index = self.index()?;
-        let address = self.derive_pubkey(index).await?;
+        let key = self.derive_pubkey(index).await?;
 
-        Ok(address)
+        Ok(key)
     }
 
     async fn get_range(&self, range: std::ops::Range<u32>) -> Result<Vec<secp256k1::PublicKey>> {
@@ -165,6 +165,14 @@ impl WalletDerivationManager {
         account_index: u64,
     ) -> Result<(SecretKey, ExtendedKeyAttrs)> {
         let xprv_key = ExtendedPrivateKey::<SecretKey>::from_str(xprv)?;
+        Self::derive_extened_key_from_master_key(xprv_key, is_multisig, account_index).await
+    }
+
+    pub async fn derive_extened_key_from_master_key(
+        xprv_key: ExtendedPrivateKey<SecretKey>,
+        is_multisig: bool,
+        account_index: u64,
+    ) -> Result<(SecretKey, ExtendedKeyAttrs)> {
         let attrs = xprv_key.attrs();
 
         let (extended_private_key, attrs) =

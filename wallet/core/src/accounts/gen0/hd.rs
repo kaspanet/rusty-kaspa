@@ -1,11 +1,11 @@
-use crate::{accounts::account::*, result::Result};
+use crate::{accounts::account::*, Result};
 use async_trait::async_trait;
 use futures::future::join_all;
 use hmac::Mac;
 use kaspa_addresses::{Address, Prefix as AddressPrefix, Version};
 use kaspa_bip32::{
-    types::*, AddressType, ChildNumber, ExtendedKey, ExtendedKeyAttrs, ExtendedPrivateKey, ExtendedPublicKey, Prefix, PrivateKey,
-    PublicKey, SecretKey, SecretKeyExt,
+    types::*, AddressType, ChildNumber, DerivationPath, ExtendedKey, ExtendedKeyAttrs, ExtendedPrivateKey, ExtendedPublicKey, Prefix,
+    PrivateKey, PublicKey, SecretKey, SecretKeyExt,
 };
 use ripemd::Ripemd160;
 use sha2::{Digest, Sha256};
@@ -118,6 +118,58 @@ pub struct WalletDerivationManagerV0 {
 }
 
 impl WalletDerivationManagerV0 {
+    pub async fn derive_extened_key_from_master_key(
+        xprv_key: ExtendedPrivateKey<SecretKey>,
+        is_multisig: bool,
+        account_index: u64,
+    ) -> Result<(SecretKey, ExtendedKeyAttrs)> {
+        let attrs = xprv_key.attrs();
+
+        let (extended_private_key, attrs) =
+            Self::create_extended_key(*xprv_key.private_key(), attrs.clone(), is_multisig, account_index).await?;
+
+        Ok((extended_private_key, attrs))
+    }
+
+    async fn create_extended_key(
+        mut _private_key: SecretKey,
+        mut _attrs: ExtendedKeyAttrs,
+        _is_multisig: bool,
+        _account_index: u64,
+    ) -> Result<(SecretKey, ExtendedKeyAttrs)> {
+        // let purpose = if is_multisig { 45 } else { 44 };
+        // let address_path = format!("{purpose}'/972'/{account_index}'");
+        // let children = address_path.split('/');
+        // for child in children {
+        //     (private_key, attrs) = Self::derive_private_key(&private_key, &attrs, child.parse::<ChildNumber>()?).await?;
+        // }
+
+        // Ok((private_key, attrs))
+
+        todo!("WIP")
+    }
+
+    pub fn build_derivate_path(
+        _is_multisig: bool,
+        account_index: u64,
+        _cosigner_index: Option<u32>,
+        address_type: Option<AddressType>,
+    ) -> Result<DerivationPath> {
+        // if is_multisig && cosigner_index.is_none() {
+        //     return Err("cosigner_index is required for multisig path derivation".to_string().into());
+        // }
+        let purpose = 44; //if is_multisig { 45 } else { 44 };
+        let mut path = format!("m/{purpose}'/972'/{account_index}'");
+        // if let Some(cosigner_index) = cosigner_index {
+        //     path = format!("{path}/{}", cosigner_index)
+        // }
+        if let Some(address_type) = address_type {
+            path = format!("{path}/{}", address_type.index());
+        }
+        let path = path.parse::<DerivationPath>()?;
+        Ok(path)
+    }
+
     #[inline(always)]
     pub async fn derive_receive_pubkey(&self, index: u32) -> Result<secp256k1::PublicKey> {
         let key = self.receive_pubkey_manager.derive_pubkey(index).await?;

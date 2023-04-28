@@ -5,8 +5,8 @@ use async_trait::async_trait;
 use futures::*;
 use kaspa_wallet_core::accounts::gen0::import::*;
 use kaspa_wallet_core::storage::AccountKind;
-use kaspa_wallet_core::Address;
 use kaspa_wallet_core::{secret::Secret, wallet::AccountCreateArgs, Wallet};
+use kaspa_wallet_core::{Address, AddressPrefix};
 use std::sync::{Arc, Mutex};
 use workflow_core::channel::*;
 use workflow_core::runtime;
@@ -142,17 +142,29 @@ impl WalletCli {
                 if argv.len() < 2 {
                     return Err("Usage: send <address> <amount> <priority fee>".into());
                 }
+
                 let address = argv.get(0).unwrap();
                 let amount = argv.get(1).unwrap();
                 let priority_fee = argv.get(2);
 
-                let priority_fee = if let Some(fee) = priority_fee { helpers::kas_str_to_sompi(fee)? } else { 0u64 };
-
+                let priority_fee_sompi = if let Some(fee) = priority_fee { helpers::kas_str_to_sompi(fee)? } else { 0u64 };
                 let address = serde_json::from_str::<Address>(address)?;
-                let amount = helpers::kas_str_to_sompi(amount)?;
+                let amount_sompi = helpers::kas_str_to_sompi(amount)?;
 
-                let secret = Option::<Secret>::None;
-                account.send(&address, amount, priority_fee, secret).await?;
+                let password = Secret::new(term.ask(true, "Enter wallet password: ").await?.trim().as_bytes().to_vec());
+                let mut payment_secret = Option::<Secret>::None;
+
+                if self.wallet.is_account_key_encrypted(&account, password.clone()).await? {
+                    payment_secret = Some(Secret::new(term.ask(true, "Enter payment password: ").await?.trim().as_bytes().to_vec()));
+                }
+                let keydata = self.wallet.get_account_keydata(account.prv_key_data_id, password.clone()).await?;
+                if keydata.is_none() {
+                    return Err("It is read only wallet.".into());
+                }
+
+                let hash = account.send(&address, amount_sompi, priority_fee_sompi, keydata.unwrap(), payment_secret).await?;
+
+                term.writeln(format!("\r\ntxid: {hash}"));
             }
             Action::Address => {
                 let address = self.wallet.account()?.address().await?.to_string();
@@ -228,8 +240,16 @@ impl WalletCli {
                 }
             }
             Action::Open => {
+                let mut prefix = AddressPrefix::Mainnet;
+                if argv.contains(&"testnet".to_string()) {
+                    prefix = AddressPrefix::Testnet;
+                } else if argv.contains(&"simnet".to_string()) {
+                    prefix = AddressPrefix::Simnet;
+                } else if argv.contains(&"devnet".to_string()) {
+                    prefix = AddressPrefix::Devnet;
+                }
                 let secret = Secret::new(term.ask(true, "Enter wallet password:").await?.trim().as_bytes().to_vec());
-                self.wallet.load_accounts(secret).await?;
+                self.wallet.load_accounts(secret, prefix).await?;
             }
             Action::Close => {
                 self.wallet.clear().await?;
@@ -265,6 +285,11 @@ impl WalletCli {
                 select! {
 
                     _ = self_.notifications_task_ctl.request.receiver.recv().fuse() => {
+                        // if let Ok(msg) = msg {
+                        //     let text = format!("{msg:#?}").replace('\n',"\r\n");
+                        //     println!("#### text: {text:?}");
+                        //     term.pipe_crlf.send(text).await.unwrap_or_else(|err|log_error!("WalletCli::notification_pipe_task() unable to route to term: `{err}`"));
+                        // }
                         break;
                     },
                     msg = notification_channel_receiver.recv().fuse() => {

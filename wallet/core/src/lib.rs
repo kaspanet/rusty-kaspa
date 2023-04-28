@@ -23,7 +23,7 @@ pub mod xpublickey;
 
 pub use accounts::dummy_address;
 pub use address::AddressDerivationManager;
-pub use kaspa_addresses::Address;
+pub use kaspa_addresses::{Address, Prefix as AddressPrefix};
 pub use result::Result;
 pub use scan::{Cursor, Scan};
 pub use signer::Signer;

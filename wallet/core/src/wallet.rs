@@ -2,7 +2,7 @@ use crate::account::Interfaces;
 use crate::imports::*;
 use crate::result::Result;
 use crate::secret::Secret;
-use crate::storage::{self, PrvKeyData};
+use crate::storage::{self, KeyDataId, PrvKeyData};
 #[allow(unused_imports)]
 use crate::{account::Account, accounts::gen0, accounts::gen0::import::*, accounts::gen1, accounts::gen1::import::*};
 use futures::future::join_all;
@@ -121,7 +121,7 @@ impl Wallet {
     }
 
     // pub fn load_accounts(&self, stored_accounts: Vec<storage::Account>) => Result<()> {
-    pub async fn load_accounts(&self, secret: Secret) -> Result<()> {
+    pub async fn load_accounts(&self, secret: Secret, prefix: AddressPrefix) -> Result<()> {
         let store = storage::Store::new(crate::storage::DEFAULT_WALLET_FILE)?;
         let wallet = storage::Wallet::try_load(&store).await?;
         let payload = wallet.payload.decrypt::<storage::Payload>(secret)?;
@@ -131,11 +131,7 @@ impl Wallet {
             .accounts
             .iter()
             .map(|stored| {
-                Account::try_new_from_storage(
-                    Interfaces::new(self.rpc.clone(), self.inner.multiplexer.clone()),
-                    stored,
-                    AddressPrefix::Mainnet,
-                )
+                Account::try_new_from_storage(Interfaces::new(self.rpc.clone(), self.inner.multiplexer.clone()), stored, prefix)
             })
             .collect::<Vec<_>>();
         let accounts = join_all(accounts).await.into_iter().collect::<Result<Vec<_>>>()?;
@@ -144,6 +140,32 @@ impl Wallet {
         *self.inner.accounts.lock()? = accounts;
 
         Ok(())
+    }
+
+    pub async fn get_account_keydata(&self, id: Option<KeyDataId>, secret: Secret) -> Result<Option<PrvKeyData>> {
+        let id = if let Some(id) = id { id } else { return Ok(None) };
+
+        let store = storage::Store::new(crate::storage::DEFAULT_WALLET_FILE)?;
+        let wallet = storage::Wallet::try_load(&store).await?;
+        let payload = wallet.payload.decrypt::<storage::Payload>(secret)?;
+        let key = payload.as_ref().prv_key_data.iter().find(|k| k.id == id);
+
+        Ok(key.cloned())
+    }
+
+    pub async fn is_account_key_encrypted(&self, account: &Account, secret: Secret) -> Result<bool> {
+        let id = if let Some(id) = account.prv_key_data_id { id } else { return Ok(false) };
+
+        let store = storage::Store::new(crate::storage::DEFAULT_WALLET_FILE)?;
+        let wallet = storage::Wallet::try_load(&store).await?;
+        let payload = wallet.payload.decrypt::<storage::Payload>(secret)?;
+        let key = payload.as_ref().prv_key_data.iter().find(|k| k.id == id);
+
+        if let Some(key) = key {
+            Ok(key.payload.is_encrypted())
+        } else {
+            Ok(false)
+        }
     }
 
     pub fn interfaces(&self) -> Interfaces {
@@ -215,19 +237,22 @@ impl Wallet {
 
         let prefix = AddressPrefix::Mainnet;
 
+        let xpub_prefix = kaspa_bip32::Prefix::XPUB;
+
         let payment_password = args.payment_password.clone().unwrap_or(args.wallet_password.clone());
 
         let mnemonic = Mnemonic::create_random()?;
         let mut payload = Payload::default();
+        let account_index = 0;
+        let prv_key_data = payload.add_keydata(mnemonic.phrase_string(), payment_password.clone())?;
+        let xpub_key = prv_key_data.create_xpub(payment_password, args.account_kind, account_index).await?;
+        let pub_key_data = PubKeyData::new(vec![xpub_key.to_string(Some(xpub_prefix))], None, None);
 
-        let prv_key_data = payload.add_keydata(mnemonic.phrase_string(), payment_password)?;
-
-        let pub_key_data = PubKeyData::new(vec!["abc".to_string()], None, None);
         let stored_account = storage::Account::new(
             args.title.replace(' ', "-").to_lowercase(),
             args.title.clone(),
             args.account_kind,
-            0,
+            account_index,
             false,
             pub_key_data,
             Some(prv_key_data.id),
@@ -263,7 +288,10 @@ impl Wallet {
     pub async fn select(&self, account: Option<Arc<Account>>) -> Result<()> {
         // log_info!(target: "term","selecting account");
         log_info!("selecting account");
-        *self.inner.selected_account.lock().unwrap() = account;
+        *self.inner.selected_account.lock().unwrap() = account.clone();
+        if let Some(account) = account {
+            account.start().await?;
+        }
         Ok(())
     }
 
@@ -343,6 +371,7 @@ impl Wallet {
                         if let Ok(msg) = msg {
                             match msg {
                                 Ctl::Open => {
+                                    //println!("Ctl::Open:::::::");
                                     multiplexer.broadcast(Events::Connect).await.unwrap_or_else(|err| log_error!("{err}"));
                                     // self_.connect().await?;
                                 },
