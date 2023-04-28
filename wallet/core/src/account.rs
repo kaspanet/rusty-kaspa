@@ -439,9 +439,6 @@ impl Account {
     }
 
     async fn register_notification_listener(&self) -> Result<()> {
-        // - TODO - subscribe to notifications from the wallet notifier
-
-        // let notification_channel = Channel::<Notification>::unbounded();
         let listener_id = self.rpc.register_new_listener(ChannelConnection::new(self.notification_channel.sender.clone()));
         self.inner().listener_id = Some(listener_id);
 
