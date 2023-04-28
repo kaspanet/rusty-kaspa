@@ -1,4 +1,3 @@
-use crate::account::Interfaces;
 use crate::imports::*;
 use crate::result::Result;
 use crate::secret::Secret;
@@ -126,14 +125,8 @@ impl Wallet {
         let wallet = storage::Wallet::try_load(&store).await?;
         let payload = wallet.payload.decrypt::<storage::Payload>(secret)?;
 
-        let accounts = payload
-            .as_ref()
-            .accounts
-            .iter()
-            .map(|stored| {
-                Account::try_new_from_storage(Interfaces::new(self.rpc.clone(), self.inner.multiplexer.clone()), stored, prefix)
-            })
-            .collect::<Vec<_>>();
+        let accounts =
+            payload.as_ref().accounts.iter().map(|stored| Account::try_new_from_storage(self, stored, prefix)).collect::<Vec<_>>();
         let accounts = join_all(accounts).await.into_iter().collect::<Result<Vec<_>>>()?;
         let accounts = accounts.into_iter().map(Arc::new).collect::<Vec<_>>();
 
@@ -168,12 +161,12 @@ impl Wallet {
         }
     }
 
-    pub fn interfaces(&self) -> Interfaces {
-        Interfaces { rpc: self.rpc.clone(), multiplexer: self.inner.multiplexer.clone() }
+    pub fn rpc(&self) -> &Arc<KaspaRpcClient> {
+        &self.rpc
     }
 
-    pub fn rpc(&self) -> Arc<KaspaRpcClient> {
-        self.rpc.clone()
+    pub fn multiplexer(&self) -> &Multiplexer<Events> {
+        &self.inner.multiplexer
     }
 
     // intended for starting async management tasks
@@ -270,10 +263,7 @@ impl Wallet {
         // -
         self.clear().await?;
 
-        let account = Arc::new(
-            Account::try_new_from_storage(Interfaces::new(self.rpc.clone(), self.inner.multiplexer.clone()), &stored_account, prefix)
-                .await?,
-        );
+        let account = Arc::new(Account::try_new_from_storage(self, &stored_account, prefix).await?);
         self.inner.accounts.lock().unwrap().push(account.clone());
 
         self.select(Some(account)).await?;
@@ -333,9 +323,7 @@ impl Wallet {
 
         let prefix = AddressPrefix::Mainnet;
 
-        let runtime_account =
-            Account::try_new_from_storage(Interfaces::new(self.rpc(), self.inner.multiplexer.clone()), &stored_account, prefix)
-                .await?;
+        let runtime_account = Account::try_new_from_storage(self, &stored_account, prefix).await?;
 
         payload.prv_key_data.push(prv_key_data);
         // TODO - prevent multiple addition of the same private key
