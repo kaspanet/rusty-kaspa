@@ -557,12 +557,12 @@ impl Account {
 
         match &notification {
             Notification::UtxosChanged(utxos) => {
-                for _entry in utxos.added.iter() {
-                    // - TODO - ADD NEW UTXOS
+                for entry in utxos.added.iter() {
+                    self.utxos.insert(entry.clone().into());
                 }
 
-                for _entry in utxos.removed.iter() {
-                    // - TODO - REMOVE UTXOS
+                for entry in utxos.removed.iter() {
+                    self.utxos.remove(UtxoEntryReference::from(entry.clone()).id());
                 }
             }
             Notification::VirtualDaaScoreChanged(data) => {

@@ -50,6 +50,11 @@ impl UtxoEntryReference {
     pub fn data(&self) -> UtxoEntry {
         self.as_ref().clone()
     }
+
+    #[wasm_bindgen(getter)]
+    pub fn id(&self) -> String {
+        self.utxo.outpoint.id()
+    }
 }
 
 impl AsRef<UtxoEntry> for UtxoEntryReference {
@@ -144,6 +149,27 @@ impl UtxoSet {
             log_warning!("ignoring duplicate utxo entry insert");
         }
     }
+
+    pub fn remove(&self, id: String) -> bool {
+        let mut inner = self.inner();
+        let index = match inner.entries.iter().position(|entry| entry.id() == id) {
+            Some(index) => index,
+            None => return false,
+        };
+
+        inner.entries.remove(index);
+
+        true
+    }
+
+    // pub fn exists(&self, utxo_entry: &UtxoEntryReference) -> bool {
+    //     let id = utxo_entry.id();
+    //     self.inner.entries.lock().unwrap().iter().find(|entry| entry.id() == id).cloned().is_some()
+    // }
+
+    // pub fn find(&self, id: String) -> Option<UtxoEntryReference> {
+    //     self.inner.entries.lock().unwrap().iter().find(|entry| entry.utxo.outpoint.id() == id).cloned()
+    // }
 
     #[wasm_bindgen(js_name=select)]
     pub async fn select_utxos(&self, transaction_amount: u64, order: UtxoOrdering) -> Result<SelectionContext> {
