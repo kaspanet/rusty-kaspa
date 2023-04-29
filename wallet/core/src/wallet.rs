@@ -222,7 +222,7 @@ impl Wallet {
         Ok(())
     }
 
-    pub async fn create(&self, args: &AccountCreateArgs) -> Result<PathBuf> {
+    pub async fn create(&self, args: &AccountCreateArgs) -> Result<(PathBuf, Secret)> {
         let store = Store::new(storage::DEFAULT_WALLET_FILE)?;
         if !args.override_wallet && store.exists().await? {
             return Err(Error::WalletAlreadyExists);
@@ -235,6 +235,7 @@ impl Wallet {
         let payment_password = args.payment_password.clone().unwrap_or(args.wallet_password.clone());
 
         let mnemonic = Mnemonic::create_random()?;
+        let mnemonic_phrase = Secret::new(mnemonic.phrase().as_bytes().to_vec());
         let mut payload = Payload::default();
         let account_index = 0;
         let prv_key_data = payload.add_keydata(mnemonic.phrase_string(), payment_password.clone())?;
@@ -268,7 +269,7 @@ impl Wallet {
 
         self.select(Some(account)).await?;
 
-        Ok(store.filename().clone())
+        Ok((store.filename().clone(), mnemonic_phrase))
     }
 
     pub async fn dump_unencrypted(&self) -> Result<()> {

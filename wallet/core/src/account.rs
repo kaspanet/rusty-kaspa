@@ -11,6 +11,7 @@ use crate::AddressDerivationManager;
 use crate::DynRpcApi;
 use crate::{imports::*, Wallet};
 use async_trait::async_trait;
+use futures::future::join_all;
 use kaspa_bip32::{ChildNumber, ExtendedPrivateKey, Language, Mnemonic, PrivateKey, SecretKey};
 use kaspa_hashes::Hash;
 use kaspa_notify::listener::ListenerId;
@@ -35,6 +36,39 @@ pub struct Estimate {
     pub fees_sompi: u64,
     pub utxos: usize,
     pub transactions: usize,
+}
+
+// pub enum ScanExtent {
+//     /// Scan until an empty range is found
+//     EmptyRange(u32),
+//     /// Scan until a specific depth (a particular derivation index)
+//     Depth(u32),
+// }
+
+const DEFAULT_WINDOW_SIZE: u32 = 128;
+
+#[derive(Default, Clone, Copy)]
+pub enum ScanExtent {
+    /// Scan until an empty range is found
+    #[default]
+    EmptyWindow,
+    /// Scan until a specific depth (a particular derivation index)
+    Depth(u32),
+}
+
+pub struct Scan {
+    pub address_manager: Arc<AddressManager>,
+    pub window_size: u32,
+    pub extent: ScanExtent,
+}
+
+impl Scan {
+    pub fn new(address_manager: Arc<AddressManager>) -> Scan {
+        Scan { address_manager, window_size: DEFAULT_WINDOW_SIZE, extent: ScanExtent::EmptyWindow }
+    }
+    pub fn new_with_args(address_manager: Arc<AddressManager>, window_size: u32, extent: ScanExtent) -> Scan {
+        Scan { address_manager, window_size, extent }
+    }
 }
 
 #[derive(Debug, Default, Clone, Copy, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
@@ -72,7 +106,7 @@ pub struct Account {
     pub multiplexer: Multiplexer<Events>,
 
     utxos: UtxoSet,
-    balance: AtomicU64,
+    balance: Arc<AtomicU64>,
     is_connected: AtomicBool,
     #[wasm_bindgen(js_name = "accountKind")]
     pub account_kind: AccountKind,
@@ -128,7 +162,7 @@ impl Account {
 
         Ok(Account {
             utxos: UtxoSet::default(),
-            balance: AtomicU64::new(0),
+            balance: Arc::new(AtomicU64::new(0)),
             // _generator: Arc::new(config.clone()),
             rpc: wallet.rpc().clone(),
             multiplexer: wallet.multiplexer().clone(),
@@ -165,7 +199,7 @@ impl Account {
 
         Ok(Account {
             utxos: UtxoSet::default(),
-            balance: AtomicU64::new(0),
+            balance: Arc::new(AtomicU64::new(0)),
             rpc: wallet.rpc().clone(), //: rpc.clone(),
             multiplexer: wallet.multiplexer().clone(),
             is_connected: AtomicBool::new(false),
@@ -189,11 +223,12 @@ impl Account {
     //     let _ = self.interfaces.rpc.start_notify(id, Scope::UtxosChanged(utxos_changed_scope)).await;
     // }
 
-    pub async fn update_balance(&self) -> Result<u64> {
-        let balance = self.utxos.calculate_balance().await?;
-        self.balance.store(self.utxos.calculate_balance().await?, std::sync::atomic::Ordering::SeqCst);
-        Ok(balance)
-    }
+    // balance is now calculated dynamically during scan into the `self.balance` atomic
+    // pub async fn update_balance(&self) -> Result<u64> {
+    //     let balance = self.utxos.calculate_balance().await?;
+    //     self.balance.store(balance, std::sync::atomic::Ordering::SeqCst);
+    //     Ok(balance)
+    // }
 
     pub fn is_connected(&self) -> bool {
         self.is_connected.load(std::sync::atomic::Ordering::SeqCst)
@@ -213,74 +248,136 @@ impl Account {
         self.inner.lock().unwrap()
     }
 
-    pub async fn scan_utxos(&self, scan_depth: u32, window_size: u32) -> Result<u64> {
-        self.utxos.clear();
+    fn update_address_to_index_map(&self, offset: u32, addresses: &[Address]) -> Result<()> {
+        let address_to_index_map = &mut self.inner().address_to_index_map;
+        for (index, address) in addresses.iter().enumerate() {
+            address_to_index_map.insert(address.clone(), offset + index as u32);
+        }
 
-        // let scan_depth: usize = 1024;
-        // let window_size: usize = 128;
+        Ok(())
+    }
 
-        let receive = self.derivation.receive_address_manager();
-        let change = self.derivation.change_address_manager();
-
-        // let mut scan = Scan::new(receive,change,window_size,ScanExtent::EmptyRange(window_size));
-        // let next = scan.next().await;
-
-        let receive_index = receive.index()?;
-        let change_index = change.index()?;
-
-        let _last_receive = receive_index + window_size;
-        let _last_change = change_index + window_size;
-
-        let mut futures = vec![];
-
-        let mut balance = 0u64;
+    pub async fn scan_address_manager(&self, scan: Scan) -> Result<()> {
         let mut cursor = 0;
-        while cursor < scan_depth {
+
+        'scan: loop {
             let first = cursor;
-            let last = cursor + window_size;
+            let last = cursor + scan.window_size;
             cursor = last;
 
             log_info!("first: {}, last: {}\r\n", first, last);
 
-            let addresses = receive.get_range(first..last).await?;
-            //let address_str = addresses.iter().map(String::from).collect::<Vec<_>>();
-            futures.push(self.scan_block(addresses.clone()));
+            let addresses = scan.address_manager.get_range(first..last).await?;
+
+            self.update_address_to_index_map(cursor, &addresses)?;
             self.subscribe_utxos_changed(&addresses).await?;
             let resp = self.rpc.get_utxos_by_addresses(addresses).await?;
-
+            let refs: Vec<UtxoEntryReference> = resp.into_iter().map(UtxoEntryReference::from).collect();
             //println!("{}", format!("addresses:{:#?}", address_str).replace('\n', "\r\n"));
             //println!("{}", format!("resp:{:#?}", resp.get(0).and_then(|a|a.address.clone())).replace('\n', "\r\n"));
 
-            let refs: Vec<UtxoEntryReference> = resp.into_iter().map(UtxoEntryReference::from).collect();
-
-            balance += refs.iter().map(|r| r.as_ref().amount()).sum::<u64>();
-
-            //println!("balance: {balance}");
             self.utxos.extend(&refs);
+            let balance = refs.iter().map(|r| r.as_ref().amount()).sum::<u64>();
 
-            let change_addresses = change.get_range(first..last).await?;
-            //let change_address_str = change_addresses.iter().map(String::from).collect::<Vec<_>>();
-            self.subscribe_utxos_changed(&change_addresses).await?;
-            let resp = self.rpc.get_utxos_by_addresses(change_addresses).await?;
+            if balance != 0 {
+                println!("scan_address_managet() balance increment: {balance}");
+                self.balance.fetch_add(balance, Ordering::SeqCst);
 
-            //println!("{}", format!("addresses:{:#?}", change_address_str).replace('\n', "\r\n"));
-            //println!("{}", format!("resp:{:#?}", resp.get(0).and_then(|a|a.address.clone())).replace('\n', "\r\n"));
-
-            let refs: Vec<UtxoEntryReference> = resp.into_iter().map(UtxoEntryReference::from).collect();
-
-            balance += refs.iter().map(|r| r.as_ref().amount()).sum::<u64>();
-
-            //println!("balance: {balance}");
-            self.utxos.extend(&refs);
+                // - TODO - post balance update to the multiplexer?
+            } else {
+                match &scan.extent {
+                    ScanExtent::EmptyWindow => {
+                        break 'scan;
+                    }
+                    ScanExtent::Depth(depth) => {
+                        if &cursor > depth {
+                            break 'scan;
+                        }
+                    }
+                }
+            }
         }
+
+        Ok(())
+    }
+
+    pub async fn scan_utxos(&self, window_size: Option<u32>, extent: Option<u32>) -> Result<()> {
+        self.utxos.clear();
+        self.inner().address_to_index_map.clear();
+        self.balance.store(0, Ordering::SeqCst);
+
+        let window_size = window_size.unwrap_or(DEFAULT_WINDOW_SIZE);
+        let extent = match extent {
+            Some(depth) => ScanExtent::Depth(depth),
+            None => ScanExtent::EmptyWindow,
+        };
+
+        let scans = vec![
+            self.scan_address_manager(Scan::new_with_args(self.derivation.receive_address_manager(), window_size, extent)),
+            self.scan_address_manager(Scan::new_with_args(self.derivation.change_address_manager(), window_size, extent)),
+        ];
+
+        join_all(scans).await.into_iter().collect::<Result<Vec<_>>>()?;
+
+        // let mut scan = Scan::new(receive,change,window_size,ScanExtent::EmptyRange(window_size));
+        // let next = scan.next().await;
+
+        // let receive_index = receive.index()?;
+        // let change_index = change.index()?;
+
+        // let _last_receive = receive_index + window_size;
+        // let _last_change = change_index + window_size;
+
+        // let mut futures = vec![];
+
+        // let mut balance = 0u64;
+        // let mut cursor = 0;
+        // while cursor < scan_depth {
+        //     let first = cursor;
+        //     let last = cursor + window_size;
+        //     cursor = last;
+
+        //     log_info!("first: {}, last: {}\r\n", first, last);
+
+        //     let addresses = receive.get_range(first..last).await?;
+        //     //let address_str = addresses.iter().map(String::from).collect::<Vec<_>>();
+        //     futures.push(self.scan_block(addresses.clone()));
+        //     self.subscribe_utxos_changed(&addresses).await?;
+        //     let resp = self.rpc.get_utxos_by_addresses(addresses).await?;
+
+        //     //println!("{}", format!("addresses:{:#?}", address_str).replace('\n', "\r\n"));
+        //     //println!("{}", format!("resp:{:#?}", resp.get(0).and_then(|a|a.address.clone())).replace('\n', "\r\n"));
+
+        //     let refs: Vec<UtxoEntryReference> = resp.into_iter().map(UtxoEntryReference::from).collect();
+
+        //     balance += refs.iter().map(|r| r.as_ref().amount()).sum::<u64>();
+
+        //     //println!("balance: {balance}");
+        //     self.utxos.extend(&refs);
+
+        //     let change_addresses = change.get_range(first..last).await?;
+        //     //let change_address_str = change_addresses.iter().map(String::from).collect::<Vec<_>>();
+        //     self.subscribe_utxos_changed(&change_addresses).await?;
+        //     let resp = self.rpc.get_utxos_by_addresses(change_addresses).await?;
+
+        //     //println!("{}", format!("addresses:{:#?}", address_str).replace('\n', "\r\n"));
+        //     //println!("{}", format!("resp:{:#?}", resp.get(0).and_then(|a|a.address.clone())).replace('\n', "\r\n"));
+
+        //     let refs: Vec<UtxoEntryReference> = resp.into_iter().map(UtxoEntryReference::from).collect();
+
+        //     balance += refs.iter().map(|r| r.as_ref().amount()).sum::<u64>();
+
+        //     //println!("balance: {balance}");
+        //     self.utxos.extend(&refs);
+        // }
 
         // - TODO - post balance updates to the wallet
 
         self.utxos.order(UtxoOrdering::AscendingAmount)?;
 
-        self.update_balance().await?;
+        // self.update_balance().await?;
 
-        Ok(balance)
+        Ok(())
     }
 
     // - TODO
@@ -413,7 +510,7 @@ impl Account {
     pub async fn connect(&self) -> Result<()> {
         self.is_connected.store(true, Ordering::SeqCst);
         self.register_notification_listener().await?;
-        self.scan_utxos(10, 10).await?;
+        self.scan_utxos(Some(128), None).await?;
         Ok(())
     }
 
@@ -458,9 +555,13 @@ impl Account {
 
         match &notification {
             Notification::UtxosChanged(utxos) => {
-                for _entry in utxos.added.iter() {}
+                for _entry in utxos.added.iter() {
+                    // - TODO - ADD NEW UTXOS
+                }
 
-                for _entry in utxos.removed.iter() {}
+                for _entry in utxos.removed.iter() {
+                    // - TODO - REMOVE UTXOS
+                }
             }
             _ => {
                 log_warning!("unknown notification: {:?}", notification);

@@ -96,7 +96,7 @@ impl WalletCli {
                 let account_kind = AccountKind::Bip32;
                 let mut args = AccountCreateArgs::new(title, account_kind, wallet_password, Some(payment_password));
                 let res = self.wallet.create(&args).await;
-                let path = if let Err(err) = res {
+                let (path, secret) = if let Err(err) = res {
                     if !matches!(err, Error::WalletAlreadyExists) {
                         return Err(err.into());
                     }
@@ -113,6 +113,8 @@ impl WalletCli {
                     res.ok().unwrap()
                 };
 
+                let mnemonic_phrase = String::from_utf8_lossy(secret.as_ref());
+                term.writeln(format!("Default account mnemonic:\n{}\n", mnemonic_phrase));
                 term.writeln(format!("Wrote the wallet into '{}'\n", path.to_str().unwrap()));
 
                 // - TODO - Select created as a current account
