@@ -1,4 +1,5 @@
 use crate::result::Result;
+use kaspa_wallet_core::{account::Account, Wallet};
 use std::sync::Arc;
 use workflow_terminal::Terminal;
 
@@ -43,4 +44,19 @@ pub fn kas_str_to_sompi(amount: &str) -> Result<u64> {
     let mut amount = amount.parse::<f64>()?;
     amount *= kaspa_consensus_core::constants::SOMPI_PER_KASPA as f64;
     Ok(amount as u64)
+}
+
+#[allow(dead_code)]
+pub async fn ask_account(term: &Arc<Terminal>, wallet: &Wallet) -> Result<Option<Arc<Account>>> {
+    let accounts = wallet.accounts();
+
+    for (index, account) in accounts.iter().enumerate() {
+        term.writeln(format!("{index}) {}", account.name()));
+    }
+
+    let selection = term.ask(false, "Choose account:").await?;
+    let index: usize = selection.parse()?;
+    let acct = accounts.get(index).cloned();
+
+    Ok(acct)
 }
