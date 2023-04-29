@@ -15,11 +15,12 @@ use async_trait::async_trait;
 use core::fmt::Debug;
 use futures::future::join_all;
 use kaspa_core::trace;
+use parking_lot::Mutex;
 use std::{
     collections::{hash_map::Entry, HashMap},
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc, Mutex,
+        Arc,
     },
 };
 use workflow_core::channel::Channel;
@@ -258,7 +259,7 @@ where
     }
 
     fn register_new_listener(self: &Arc<Self>, connection: C) -> ListenerId {
-        let mut listeners = self.listeners.lock().unwrap();
+        let mut listeners = self.listeners.lock();
         loop {
             let id = u64::from_le_bytes(rand::random::<[u8; 8]>());
 
@@ -274,7 +275,7 @@ where
     fn unregister_listener(self: &Arc<Self>, id: ListenerId) -> Result<()> {
         // Cancel all remaining subscriptions
         let mut subscriptions = vec![];
-        if let Some(listener) = self.listeners.lock().unwrap().get(&id) {
+        if let Some(listener) = self.listeners.lock().get(&id) {
             subscriptions.extend(listener.subscriptions.iter().filter_map(|subscription| {
                 if subscription.active() {
                     Some(subscription.scope())
@@ -288,16 +289,16 @@ where
             let _ = self.clone().stop_notify(id, scope);
         });
         // Remove listener
-        self.listeners.lock().unwrap().remove(&id);
+        self.listeners.lock().remove(&id);
         Ok(())
     }
 
     pub fn execute_subscribe_command(&self, id: ListenerId, scope: Scope, command: Command) -> Result<()> {
         let event: EventType = (&scope).into();
         if self.enabled_events[event] {
-            let mut listeners = self.listeners.lock().unwrap();
+            let mut listeners = self.listeners.lock();
             if let Some(listener) = listeners.get_mut(&id) {
-                let mut subscriptions = self.subscriptions.lock().unwrap();
+                let mut subscriptions = self.subscriptions.lock();
                 trace!("[Notifier-{}] {command} notifying to {id} about {scope:?}", self.name);
                 if let Some(mutations) = listener.mutate(Mutation::new(command, scope)) {
                     // Update broadcasters
