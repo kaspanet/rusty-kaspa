@@ -10,14 +10,20 @@ use crate::Result;
 use futures::future::join_all;
 use kaspa_addresses::{Address, Prefix};
 use kaspa_bip32::{AddressType, DerivationPath, ExtendedPrivateKey, ExtendedPublicKey, Language, Mnemonic, SecretKeyExt};
-use std::sync::{Arc, Mutex};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, MutexGuard};
+
+pub struct Inner {
+    pub index: u32,
+    pub address_to_index_map: HashMap<Address, u32>,
+}
 
 pub struct AddressManager {
     pub prefix: Prefix,
     pub account_kind: AccountKind,
     pub pubkey_managers: Vec<Arc<dyn PubkeyDerivationManagerTrait>>,
     pub ecdsa: bool,
-    index: Arc<Mutex<u32>>,
+    pub inner: Arc<Mutex<Inner>>,
     pub minimum_signatures: usize,
 }
 
@@ -39,7 +45,13 @@ impl AddressManager {
             m.set_index(index)?;
         }
 
-        Ok(Self { prefix, account_kind, pubkey_managers, ecdsa, index: Arc::new(Mutex::new(index)), minimum_signatures })
+        let inner = Inner { index, address_to_index_map: HashMap::new() };
+
+        Ok(Self { prefix, account_kind, pubkey_managers, ecdsa, minimum_signatures, inner: Arc::new(Mutex::new(inner)) })
+    }
+
+    pub fn inner(&self) -> MutexGuard<Inner> {
+        self.inner.lock().unwrap()
     }
 
     pub async fn new_address(&self) -> Result<Address> {
@@ -51,7 +63,11 @@ impl AddressManager {
         let list = self.pubkey_managers.iter().map(|m| m.current_pubkey());
 
         let keys = join_all(list).await.into_iter().collect::<Result<Vec<_>>>()?;
-        self.create_address(keys)
+        let address = self.create_address(keys)?;
+
+        self.update_address_to_index_map(self.index()?, &[address.clone()])?;
+
+        Ok(address)
     }
 
     fn create_address(&self, keys: Vec<secp256k1::PublicKey>) -> Result<Address> {
@@ -76,10 +92,10 @@ impl AddressManager {
     }
 
     pub fn index(&self) -> Result<u32> {
-        Ok(*self.index.lock()?)
+        Ok(self.inner().index)
     }
     pub fn set_index(&self, index: u32) -> Result<()> {
-        *self.index.lock()? = index;
+        self.inner().index = index;
         for m in self.pubkey_managers.iter() {
             m.set_index(index)?;
         }
@@ -101,11 +117,12 @@ impl AddressManager {
             for key in keys {
                 addresses.push(self.create_address(vec![key])?);
             }
+            self.update_address_to_index_map(indexes.start, &addresses)?;
             return Ok(addresses);
         }
 
         let mut addresses = vec![];
-        for key_index in indexes {
+        for key_index in indexes.clone() {
             let mut keys = vec![];
             for i in 0..manager_length {
                 let k = *manager_keys.get(i).unwrap().get(key_index as usize).unwrap();
@@ -114,7 +131,17 @@ impl AddressManager {
             addresses.push(self.create_address(keys)?);
         }
 
+        self.update_address_to_index_map(indexes.start, &addresses)?;
         Ok(addresses)
+    }
+
+    fn update_address_to_index_map(&self, offset: u32, addresses: &[Address]) -> Result<()> {
+        let address_to_index_map = &mut self.inner().address_to_index_map;
+        for (index, address) in addresses.iter().enumerate() {
+            address_to_index_map.insert(address.clone(), offset + index as u32);
+        }
+
+        Ok(())
     }
 }
 

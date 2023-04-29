@@ -20,7 +20,6 @@ use kaspa_notify::listener::ListenerId;
 use kaspa_notify::scope::{Scope, UtxosChangedScope, VirtualDaaScoreChangedScope};
 use kaspa_rpc_core::api::notifications::Notification;
 use kaspa_rpc_core::notify::connection::ChannelConnection;
-use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use workflow_core::channel::{oneshot, Channel, DuplexChannel};
 use workflow_core::task::spawn;
@@ -86,7 +85,6 @@ pub trait AccountT {
 pub struct Inner {
     pub listener_id: Option<ListenerId>,
     pub stored: storage::Account,
-    pub address_to_index_map: HashMap<Address, u32>,
 }
 
 /// Wallet `Account` data structure. An account is typically a single
@@ -156,7 +154,7 @@ impl Account {
             pub_key_data.cosigner_index.unwrap_or(0),
         );
 
-        let inner = Inner { listener_id: None, stored, address_to_index_map: HashMap::default() };
+        let inner = Inner { listener_id: None, stored };
 
         Ok(Account {
             wallet: wallet.clone(),
@@ -195,7 +193,7 @@ impl Account {
         )
         .await?;
 
-        let inner = Inner { listener_id: None, stored: stored.clone(), address_to_index_map: HashMap::default() };
+        let inner = Inner { listener_id: None, stored: stored.clone() };
 
         Ok(Account {
             wallet: wallet.clone(),
@@ -241,15 +239,6 @@ impl Account {
         self.inner.lock().unwrap()
     }
 
-    fn update_address_to_index_map(&self, offset: u32, addresses: &[Address]) -> Result<()> {
-        let address_to_index_map = &mut self.inner().address_to_index_map;
-        for (index, address) in addresses.iter().enumerate() {
-            address_to_index_map.insert(address.clone(), offset + index as u32);
-        }
-
-        Ok(())
-    }
-
     pub async fn scan_address_manager(&self, scan: Scan) -> Result<()> {
         let mut cursor = 0;
 
@@ -262,7 +251,6 @@ impl Account {
 
             let addresses = scan.address_manager.get_range(first..last).await?;
 
-            self.update_address_to_index_map(cursor, &addresses)?;
             self.subscribe_utxos_changed(&addresses).await?;
             let resp = self.wallet.rpc().get_utxos_by_addresses(addresses).await?;
             let refs: Vec<UtxoEntryReference> = resp.into_iter().map(UtxoEntryReference::from).collect();
@@ -296,7 +284,6 @@ impl Account {
 
     pub async fn scan_utxos(&self, window_size: Option<u32>, extent: Option<u32>) -> Result<()> {
         self.utxos.clear();
-        self.inner().address_to_index_map.clear();
         self.balance.store(0, Ordering::SeqCst);
 
         let window_size = window_size.unwrap_or(DEFAULT_WINDOW_SIZE);
@@ -312,63 +299,8 @@ impl Account {
 
         join_all(scans).await.into_iter().collect::<Result<Vec<_>>>()?;
 
-        // let mut scan = Scan::new(receive,change,window_size,ScanExtent::EmptyRange(window_size));
-        // let next = scan.next().await;
-
-        // let receive_index = receive.index()?;
-        // let change_index = change.index()?;
-
-        // let _last_receive = receive_index + window_size;
-        // let _last_change = change_index + window_size;
-
-        // let mut futures = vec![];
-
-        // let mut balance = 0u64;
-        // let mut cursor = 0;
-        // while cursor < scan_depth {
-        //     let first = cursor;
-        //     let last = cursor + window_size;
-        //     cursor = last;
-
-        //     log_info!("first: {}, last: {}\r\n", first, last);
-
-        //     let addresses = receive.get_range(first..last).await?;
-        //     //let address_str = addresses.iter().map(String::from).collect::<Vec<_>>();
-        //     futures.push(self.scan_block(addresses.clone()));
-        //     self.subscribe_utxos_changed(&addresses).await?;
-        //     let resp = self.rpc.get_utxos_by_addresses(addresses).await?;
-
-        //     //println!("{}", format!("addresses:{:#?}", address_str).replace('\n', "\r\n"));
-        //     //println!("{}", format!("resp:{:#?}", resp.get(0).and_then(|a|a.address.clone())).replace('\n', "\r\n"));
-
-        //     let refs: Vec<UtxoEntryReference> = resp.into_iter().map(UtxoEntryReference::from).collect();
-
-        //     balance += refs.iter().map(|r| r.as_ref().amount()).sum::<u64>();
-
-        //     //println!("balance: {balance}");
-        //     self.utxos.extend(&refs);
-
-        //     let change_addresses = change.get_range(first..last).await?;
-        //     //let change_address_str = change_addresses.iter().map(String::from).collect::<Vec<_>>();
-        //     self.subscribe_utxos_changed(&change_addresses).await?;
-        //     let resp = self.rpc.get_utxos_by_addresses(change_addresses).await?;
-
-        //     //println!("{}", format!("addresses:{:#?}", address_str).replace('\n', "\r\n"));
-        //     //println!("{}", format!("resp:{:#?}", resp.get(0).and_then(|a|a.address.clone())).replace('\n', "\r\n"));
-
-        //     let refs: Vec<UtxoEntryReference> = resp.into_iter().map(UtxoEntryReference::from).collect();
-
-        //     balance += refs.iter().map(|r| r.as_ref().amount()).sum::<u64>();
-
-        //     //println!("balance: {balance}");
-        //     self.utxos.extend(&refs);
-        // }
-
         // - TODO - post balance updates to the wallet
-
         self.utxos.order(UtxoOrdering::AscendingAmount)?;
-
-        // self.update_balance().await?;
 
         Ok(())
     }
