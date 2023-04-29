@@ -240,11 +240,11 @@ impl UtxoSet {
 
     pub fn extend(&self, utxo_entries: &[UtxoEntryReference]) {
         let mut inner = self.inner();
-        inner.entries.extend(utxo_entries.to_vec());
         for entry in utxo_entries {
-            inner.map.insert(entry.utxo.outpoint.inner().clone(), entry.clone());
+            if inner.map.insert(entry.utxo.outpoint.inner().clone(), entry.clone()).is_none() {
+                inner.entries.push(entry.clone());
+            }
         }
-        // inner.map.extend(utxo_entries.to_vec());
         self.ordered.store(UtxoOrdering::Unordered as u32, Ordering::SeqCst);
     }
 
