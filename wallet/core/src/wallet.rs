@@ -1,9 +1,9 @@
-use crate::imports::*;
 use crate::result::Result;
 use crate::secret::Secret;
 use crate::storage::{self, KeyDataId, PrvKeyData};
 #[allow(unused_imports)]
 use crate::{account::Account, accounts::gen0, accounts::gen0::import::*, accounts::gen1, accounts::gen1::import::*};
+use crate::{imports::*, DynRpcApi};
 use futures::future::join_all;
 use futures::{select, FutureExt};
 use kaspa_addresses::Prefix as AddressPrefix;
@@ -19,6 +19,7 @@ use kaspa_rpc_core::{
 };
 use kaspa_wrpc_client::{KaspaRpcClient, WrpcEncoding};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use storage::{Payload, PubKeyData, Store, WalletSettings};
 use workflow_core::channel::{Channel, DuplexChannel, Multiplexer, Receiver};
@@ -56,8 +57,8 @@ pub struct Inner {
     #[allow(dead_code)] //TODO: remove me
     ctl_receiver: Receiver<Ctl>,
     pub task_ctl: DuplexChannel,
-    multiplexer: Multiplexer<Events>,
     pub selected_account: Mutex<Option<Arc<Account>>>,
+    pub is_connected: AtomicBool,
 }
 
 /// `Wallet` data structure
@@ -65,7 +66,11 @@ pub struct Inner {
 #[wasm_bindgen]
 pub struct Wallet {
     #[wasm_bindgen(skip)]
-    pub rpc: Arc<KaspaRpcClient>,
+    pub rpc: Arc<DynRpcApi>,
+    #[wasm_bindgen(skip)]
+    pub multiplexer: Multiplexer<Events>,
+    // #[wasm_bindgen(skip)]
+    // pub rpc_client: Arc<KaspaRpcClient>,
     inner: Arc<Inner>,
 }
 
@@ -99,15 +104,17 @@ impl Wallet {
         let multiplexer = Multiplexer::new();
 
         let wallet = Wallet {
+            // rpc_client : rpc.clone(),
             rpc,
+            multiplexer,
             inner: Arc::new(Inner {
                 accounts: Mutex::new(vec![]), //vec![Arc::new(WalletAccount::from_master_xprv(master_xprv, false, 0).await?)],
                 notification_receiver,
                 listener_id: Mutex::new(listener_id),
                 ctl_receiver,
-                multiplexer,
                 task_ctl: DuplexChannel::oneshot(),
                 selected_account: Mutex::new(None),
+                is_connected: AtomicBool::new(false),
             }),
         };
 
@@ -120,7 +127,7 @@ impl Wallet {
     }
 
     // pub fn load_accounts(&self, stored_accounts: Vec<storage::Account>) => Result<()> {
-    pub async fn load_accounts(&self, secret: Secret, prefix: AddressPrefix) -> Result<()> {
+    pub async fn load_accounts(self: &Arc<Wallet>, secret: Secret, prefix: AddressPrefix) -> Result<()> {
         let store = storage::Store::new(crate::storage::DEFAULT_WALLET_FILE)?;
         let wallet = storage::Wallet::try_load(&store).await?;
         let payload = wallet.payload.decrypt::<storage::Payload>(secret)?;
@@ -161,12 +168,16 @@ impl Wallet {
         }
     }
 
-    pub fn rpc(&self) -> &Arc<KaspaRpcClient> {
-        &self.rpc
+    pub fn rpc_client(&self) -> Arc<KaspaRpcClient> {
+        self.rpc.clone().downcast_arc::<KaspaRpcClient>().expect("unable to downcast DynRpcApi to KaspaRpcClient")
+    }
+
+    pub fn rpc(&self) -> &Arc<DynRpcApi> {
+        &self.rpc //.clone()
     }
 
     pub fn multiplexer(&self) -> &Multiplexer<Events> {
-        &self.inner.multiplexer
+        &self.multiplexer
     }
 
     // intended for starting async management tasks
@@ -174,7 +185,7 @@ impl Wallet {
         // internal event loop
         self.start_task().await?;
         // rpc services (notifier)
-        self.rpc.start().await?;
+        self.rpc_client().start().await?;
         // start async RPC connection
 
         // TODO handle reconnect flag
@@ -184,7 +195,9 @@ impl Wallet {
 
     // intended for stopping async management task
     pub async fn stop(&self) -> Result<()> {
-        self.rpc.stop().await?;
+        self.rpc_client().stop().await?;
+
+        // self.rpc.stop().await?;
         self.stop_task().await?;
         Ok(())
     }
@@ -222,7 +235,7 @@ impl Wallet {
         Ok(())
     }
 
-    pub async fn create(&self, args: &AccountCreateArgs) -> Result<(PathBuf, Secret)> {
+    pub async fn create(self: &Arc<Wallet>, args: &AccountCreateArgs) -> Result<(PathBuf, Secret)> {
         let store = Store::new(storage::DEFAULT_WALLET_FILE)?;
         if !args.override_wallet && store.exists().await? {
             return Err(Error::WalletAlreadyExists);
@@ -295,7 +308,7 @@ impl Wallet {
     }
 
     // pub async fn import_gen0_keydata(self: &Arc<Wallet>, import_secret: Secret, wallet_secret: Secret) -> Result<()> {
-    pub async fn import_gen0_keydata(&self, import_secret: Secret, wallet_secret: Secret) -> Result<()> {
+    pub async fn import_gen0_keydata(self: &Arc<Wallet>, import_secret: Secret, wallet_secret: Secret) -> Result<()> {
         let keydata = load_v0_keydata(&import_secret).await?;
 
         let store = storage::Store::new(storage::DEFAULT_WALLET_FILE)?;
@@ -341,11 +354,28 @@ impl Wallet {
         Ok(())
     }
 
+    /// handle connection event
+    pub async fn connect(&self) -> Result<()> {
+        self.inner.is_connected.store(true, Ordering::SeqCst);
+        // - TODO - register for daa change
+        // self.register_notification_listener().await?;
+        Ok(())
+    }
+
+    /// handle disconnection event
+    pub async fn disconnect(&self) -> Result<()> {
+        self.inner.is_connected.store(false, Ordering::SeqCst);
+        // self.unregister_notification_listener().await?;
+        Ok(())
+    }
+
     pub async fn start_task(&self) -> Result<()> {
-        let _self = self.clone();
-        let ctl_receiver = self.rpc.ctl_channel_receiver();
+        let self_ = self.clone();
+        let ctl_receiver = self.rpc_client().ctl_channel_receiver();
+
+        // let ctl_receiver = self.rpc.ctl_channel_receiver();
         // let task_ctl = self.inner.lock().unwrap().task_ctl.clone();
-        let multiplexer = self.inner.multiplexer.clone();
+        let multiplexer = self.multiplexer.clone();
         let task_ctl_receiver = self.inner.task_ctl.request.receiver.clone();
         let task_ctl_sender = self.inner.task_ctl.response.sender.clone();
         // let multiplexer = multiplexer.clone();
@@ -361,10 +391,12 @@ impl Wallet {
                             match msg {
                                 Ctl::Open => {
                                     //println!("Ctl::Open:::::::");
+                                    self_.connect().await.unwrap_or_else(|err| log_error!("{err}"));
                                     multiplexer.broadcast(Events::Connect).await.unwrap_or_else(|err| log_error!("{err}"));
                                     // self_.connect().await?;
                                 },
                                 Ctl::Close => {
+                                    self_.disconnect().await.unwrap_or_else(|err| log_error!("{err}"));
                                     multiplexer.broadcast(Events::Disconnect).await.unwrap_or_else(|err| log_error!("{err}"));
                                     // self_.disconnect().await?;
                                 }
@@ -451,7 +483,7 @@ mod test {
 
         // wallet.load_accounts(stored_accounts);
 
-        let rpc = wallet.rpc();
+        let rpc = wallet.rpc_client();
 
         let _connect_result = rpc.connect(true).await;
         //println!("connect_result: {_connect_result:?}");

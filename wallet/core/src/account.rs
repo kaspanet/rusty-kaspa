@@ -1,5 +1,6 @@
 #[allow(unused_imports)]
 use crate::accounts::{gen0::*, gen1::*, PubkeyDerivationManagerTrait, WalletDerivationManagerTrait};
+use crate::address::{build_derivate_paths, AddressManager};
 use crate::result::Result;
 use crate::secret::Secret;
 use crate::signer::sign_mutable_transaction;
@@ -8,27 +9,21 @@ use crate::tx::{create_transaction, PaymentOutput, PaymentOutputs};
 use crate::utxo::{UtxoEntryReference, UtxoOrdering, UtxoSet};
 use crate::wallet::Events;
 use crate::AddressDerivationManager;
-use crate::DynRpcApi;
 use crate::{imports::*, Wallet};
 use async_trait::async_trait;
 use futures::future::join_all;
+use futures::{select, FutureExt};
+use kaspa_addresses::Prefix as AddressPrefix;
 use kaspa_bip32::{ChildNumber, ExtendedPrivateKey, Language, Mnemonic, PrivateKey, SecretKey};
 use kaspa_hashes::Hash;
 use kaspa_notify::listener::ListenerId;
-use kaspa_notify::scope::{Scope, UtxosChangedScope};
-//use kaspa_notify::scope::{Scope, UtxosChangedScope};
+use kaspa_notify::scope::{Scope, UtxosChangedScope, VirtualDaaScoreChangedScope};
 use kaspa_rpc_core::api::notifications::Notification;
 use kaspa_rpc_core::notify::connection::ChannelConnection;
 use std::collections::HashMap;
-//use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use workflow_core::channel::{oneshot, Channel, DuplexChannel, Multiplexer};
-// use workflow_core::channel::{Channel, DuplexChannel, Multiplexer, Receiver};
-use crate::address::{build_derivate_paths, AddressManager};
-use kaspa_addresses::Prefix as AddressPrefix;
+use workflow_core::channel::{oneshot, Channel, DuplexChannel};
 use workflow_core::task::spawn;
-// use futures::future::join_all;
-use futures::{select, FutureExt};
 
 #[derive(Default, Clone)]
 pub struct Estimate {
@@ -99,12 +94,12 @@ pub struct Inner {
 #[wasm_bindgen(inspectable)]
 pub struct Account {
     inner: Arc<Mutex<Inner>>,
+    wallet: Arc<Wallet>,
     // interfaces: Interfaces,
-    #[wasm_bindgen(skip)]
-    pub rpc: Arc<DynRpcApi>,
-    #[wasm_bindgen(skip)]
-    pub multiplexer: Multiplexer<Events>,
-
+    // #[wasm_bindgen(skip)]
+    // pub rpc: Arc<DynRpcApi>,
+    // #[wasm_bindgen(skip)]
+    // pub multiplexer: Multiplexer<Events>,
     utxos: UtxoSet,
     balance: Arc<AtomicU64>,
     is_connected: AtomicBool,
@@ -123,6 +118,9 @@ pub struct Account {
     pub task_ctl: DuplexChannel,
     #[wasm_bindgen(skip)]
     pub notification_channel: Channel<Notification>,
+
+    #[wasm_bindgen(skip)]
+    pub virtual_daa_score: Arc<AtomicU64>,
 }
 
 impl Account {
@@ -130,7 +128,7 @@ impl Account {
         // rpc_api: Arc<DynRpcApi>,
         // multiplexer: Multiplexer<Events>,
         // interfaces: Interfaces,
-        wallet: &Wallet,
+        wallet: &Arc<Wallet>,
         name: &str,
         title: &str,
         account_kind: AccountKind,
@@ -161,11 +159,12 @@ impl Account {
         let inner = Inner { listener_id: None, stored, address_to_index_map: HashMap::default() };
 
         Ok(Account {
+            wallet: wallet.clone(),
             utxos: UtxoSet::default(),
             balance: Arc::new(AtomicU64::new(0)),
             // _generator: Arc::new(config.clone()),
-            rpc: wallet.rpc().clone(),
-            multiplexer: wallet.multiplexer().clone(),
+            // rpc: wallet.rpc().clone(),
+            // multiplexer: wallet.multiplexer().clone(),
             // interfaces,
             is_connected: AtomicBool::new(false),
             // -
@@ -179,10 +178,11 @@ impl Account {
             derivation,
             task_ctl: DuplexChannel::oneshot(),
             notification_channel: Channel::<Notification>::unbounded(),
+            virtual_daa_score: Arc::new(AtomicU64::default()),
         })
     }
 
-    pub async fn try_new_from_storage(wallet: &Wallet, stored: &storage::Account, address_prefix: AddressPrefix) -> Result<Self> {
+    pub async fn try_new_from_storage(wallet: &Arc<Wallet>, stored: &storage::Account, address_prefix: AddressPrefix) -> Result<Self> {
         let minimum_signatures = stored.pub_key_data.minimum_signatures.unwrap_or(1) as usize;
         let derivation = AddressDerivationManager::new(
             address_prefix,
@@ -198,10 +198,11 @@ impl Account {
         let inner = Inner { listener_id: None, stored: stored.clone(), address_to_index_map: HashMap::default() };
 
         Ok(Account {
+            wallet: wallet.clone(),
             utxos: UtxoSet::default(),
             balance: Arc::new(AtomicU64::new(0)),
-            rpc: wallet.rpc().clone(), //: rpc.clone(),
-            multiplexer: wallet.multiplexer().clone(),
+            // rpc: wallet.rpc().clone(), //: rpc.clone(),
+            // multiplexer: wallet.multiplexer().clone(),
             is_connected: AtomicBool::new(false),
             inner: Arc::new(Mutex::new(inner)),
             account_kind: stored.account_kind,
@@ -212,23 +213,15 @@ impl Account {
             derivation,
             task_ctl: DuplexChannel::oneshot(),
             notification_channel: Channel::<Notification>::unbounded(),
+            virtual_daa_score: Arc::new(AtomicU64::default()),
         })
     }
 
-    // pub async fn subscribe(&self) {
-    //     // TODO query account interface
-    //     let addresses = vec![];
-    //     let utxos_changed_scope = UtxosChangedScope { addresses };
-    //     let id = self.inner.lock().unwrap().listener_id;
-    //     let _ = self.interfaces.rpc.start_notify(id, Scope::UtxosChanged(utxos_changed_scope)).await;
-    // }
-
-    // balance is now calculated dynamically during scan into the `self.balance` atomic
-    // pub async fn update_balance(&self) -> Result<u64> {
-    //     let balance = self.utxos.calculate_balance().await?;
-    //     self.balance.store(balance, std::sync::atomic::Ordering::SeqCst);
-    //     Ok(balance)
-    // }
+    pub async fn update_balance(&self) -> Result<u64> {
+        let balance = self.utxos.calculate_balance().await?;
+        self.balance.store(balance, std::sync::atomic::Ordering::SeqCst);
+        Ok(balance)
+    }
 
     pub fn is_connected(&self) -> bool {
         self.is_connected.load(std::sync::atomic::Ordering::SeqCst)
@@ -271,7 +264,7 @@ impl Account {
 
             self.update_address_to_index_map(cursor, &addresses)?;
             self.subscribe_utxos_changed(&addresses).await?;
-            let resp = self.rpc.get_utxos_by_addresses(addresses).await?;
+            let resp = self.wallet.rpc().get_utxos_by_addresses(addresses).await?;
             let refs: Vec<UtxoEntryReference> = resp.into_iter().map(UtxoEntryReference::from).collect();
             //println!("{}", format!("addresses:{:#?}", address_str).replace('\n', "\r\n"));
             //println!("{}", format!("resp:{:#?}", resp.get(0).and_then(|a|a.address.clone())).replace('\n', "\r\n"));
@@ -383,7 +376,7 @@ impl Account {
     // - TODO
     pub async fn scan_block(&self, addresses: Vec<Address>) -> Result<Vec<UtxoEntryReference>> {
         self.subscribe_utxos_changed(&addresses).await?;
-        let resp = self.rpc.get_utxos_by_addresses(addresses).await?;
+        let resp = self.wallet.rpc().get_utxos_by_addresses(addresses).await?;
         let refs: Vec<UtxoEntryReference> = resp.into_iter().map(UtxoEntryReference::from).collect();
         Ok(refs)
     }
@@ -419,7 +412,7 @@ impl Account {
         let private_keys = self.create_private_keys(keydata, payment_secret, receive_indexes, change_indexes)?;
         let private_keys = &private_keys.iter().map(|k| k.to_bytes()).collect::<Vec<_>>();
         let mtx = sign_mutable_transaction(mtx, private_keys, true)?;
-        let result = self.rpc.submit_transaction(mtx.try_into()?, false).await?;
+        let result = self.wallet.rpc().submit_transaction(mtx.try_into()?, false).await?;
         Ok(result)
     }
 
@@ -530,14 +523,16 @@ impl Account {
             .listener_id()
             .expect("subscribe_utxos_changed() requires `listener_id` (must call `register_notification_listener()` before use)");
         let utxos_changed_scope = UtxosChangedScope { addresses: addresses.to_vec() };
-        self.rpc.start_notify(listener_id, Scope::UtxosChanged(utxos_changed_scope)).await?;
+        self.wallet.rpc.start_notify(listener_id, Scope::UtxosChanged(utxos_changed_scope)).await?;
 
         Ok(())
     }
 
     async fn register_notification_listener(&self) -> Result<()> {
-        let listener_id = self.rpc.register_new_listener(ChannelConnection::new(self.notification_channel.sender.clone()));
+        let listener_id = self.wallet.rpc.register_new_listener(ChannelConnection::new(self.notification_channel.sender.clone()));
         self.inner().listener_id = Some(listener_id);
+
+        self.wallet.rpc.start_notify(listener_id, Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
 
         Ok(())
     }
@@ -545,8 +540,15 @@ impl Account {
     async fn unregister_notification_listener(&self) -> Result<()> {
         let listener_id = self.inner.lock().unwrap().listener_id.take();
         if let Some(id) = listener_id {
-            self.rpc.unregister_listener(id).await?;
+            // we do not need this as we are unregister the entire listener here...
+            // self.rpc.stop_notify(id, Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
+            self.wallet.rpc.unregister_listener(id).await?;
         }
+        Ok(())
+    }
+
+    async fn handle_daa_score_change(&self, virtual_daa_score: u64) -> Result<()> {
+        self.virtual_daa_score.store(virtual_daa_score, Ordering::SeqCst);
         Ok(())
     }
 
@@ -563,6 +565,9 @@ impl Account {
                     // - TODO - REMOVE UTXOS
                 }
             }
+            Notification::VirtualDaaScoreChanged(data) => {
+                self.handle_daa_score_change(data.virtual_daa_score).await?;
+            }
             _ => {
                 log_warning!("unknown notification: {:?}", notification);
             }
@@ -573,7 +578,7 @@ impl Account {
     async fn start_task(self: &Arc<Self>) -> Result<()> {
         let self_ = self.clone();
 
-        let multiplexer = self.multiplexer.clone();
+        let multiplexer = self.wallet.multiplexer.clone();
         let (mux_id, _mux_sender, mux_receiver) = multiplexer.register_event_channel();
         let task_ctl_receiver = self.task_ctl.request.receiver.clone();
         let task_ctl_sender = self.task_ctl.response.sender.clone();

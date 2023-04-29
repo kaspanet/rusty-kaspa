@@ -66,10 +66,10 @@ impl WalletCli {
                 }
             }
             Action::Connect => {
-                self.wallet.rpc.connect(true).await?;
+                self.wallet.rpc_client().connect(true).await?;
             }
             Action::Disconnect => {
-                self.wallet.rpc.shutdown().await?;
+                self.wallet.rpc_client().shutdown().await?;
             }
             Action::GetInfo => {
                 let response = self.wallet.get_info().await?;
@@ -280,7 +280,7 @@ impl WalletCli {
         // log_info!("### starting notification processor");
         let self_ = self.clone();
         let term = self.term().unwrap_or_else(|| panic!("WalletCli::notification_pipe_task(): `term` is not initialized"));
-        let notification_channel_receiver = self.wallet.rpc.notification_channel_receiver();
+        let notification_channel_receiver = self.wallet.rpc_client().notification_channel_receiver();
         workflow_core::task::spawn(async move {
             // term.writeln(args.to_string());
             loop {
