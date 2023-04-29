@@ -17,7 +17,7 @@ use kaspa_addresses::Prefix as AddressPrefix;
 use kaspa_bip32::{ChildNumber, ExtendedPrivateKey, Language, Mnemonic, PrivateKey, SecretKey};
 use kaspa_hashes::Hash;
 use kaspa_notify::listener::ListenerId;
-use kaspa_notify::scope::{Scope, UtxosChangedScope, VirtualDaaScoreChangedScope};
+use kaspa_notify::scope::{Scope, UtxosChangedScope};
 use kaspa_rpc_core::api::notifications::Notification;
 use kaspa_rpc_core::notify::connection::ChannelConnection;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -116,16 +116,12 @@ pub struct Account {
     pub task_ctl: DuplexChannel,
     #[wasm_bindgen(skip)]
     pub notification_channel: Channel<Notification>,
-
-    #[wasm_bindgen(skip)]
-    pub virtual_daa_score: Arc<AtomicU64>,
+    // #[wasm_bindgen(skip)]
+    // pub virtual_daa_score: Arc<AtomicU64>,
 }
 
 impl Account {
     pub async fn try_new_with_args(
-        // rpc_api: Arc<DynRpcApi>,
-        // multiplexer: Multiplexer<Events>,
-        // interfaces: Interfaces,
         wallet: &Arc<Wallet>,
         name: &str,
         title: &str,
@@ -136,7 +132,6 @@ impl Account {
         ecdsa: bool,
         address_prefix: AddressPrefix,
     ) -> Result<Self> {
-        // rpc_api.register_new_listener();
         let minimum_signatures = pub_key_data.minimum_signatures.unwrap_or(1) as usize;
         let derivation =
             AddressDerivationManager::new(address_prefix, account_kind, &pub_key_data, ecdsa, minimum_signatures, None, None).await?;
@@ -160,23 +155,16 @@ impl Account {
             wallet: wallet.clone(),
             utxos: UtxoSet::default(),
             balance: Arc::new(AtomicU64::new(0)),
-            // _generator: Arc::new(config.clone()),
-            // rpc: wallet.rpc().clone(),
-            // multiplexer: wallet.multiplexer().clone(),
-            // interfaces,
             is_connected: AtomicBool::new(false),
-            // -
             inner: Arc::new(Mutex::new(inner)),
-            // -
             account_kind,
             account_index,
             prv_key_data_id,
             ecdsa: false,
-            // -
             derivation,
             task_ctl: DuplexChannel::oneshot(),
             notification_channel: Channel::<Notification>::unbounded(),
-            virtual_daa_score: Arc::new(AtomicU64::default()),
+            // virtual_daa_score: Arc::new(AtomicU64::default()),
         })
     }
 
@@ -199,19 +187,16 @@ impl Account {
             wallet: wallet.clone(),
             utxos: UtxoSet::default(),
             balance: Arc::new(AtomicU64::new(0)),
-            // rpc: wallet.rpc().clone(), //: rpc.clone(),
-            // multiplexer: wallet.multiplexer().clone(),
             is_connected: AtomicBool::new(false),
             inner: Arc::new(Mutex::new(inner)),
             account_kind: stored.account_kind,
             account_index: stored.account_index,
             prv_key_data_id: stored.prv_key_data_id,
             ecdsa: stored.ecdsa,
-            // -
             derivation,
             task_ctl: DuplexChannel::oneshot(),
             notification_channel: Channel::<Notification>::unbounded(),
-            virtual_daa_score: Arc::new(AtomicU64::default()),
+            // virtual_daa_score: Arc::new(AtomicU64::default()),
         })
     }
 
@@ -464,7 +449,7 @@ impl Account {
         let listener_id = self.wallet.rpc.register_new_listener(ChannelConnection::new(self.notification_channel.sender.clone()));
         self.inner().listener_id = Some(listener_id);
 
-        self.wallet.rpc.start_notify(listener_id, Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
+        // self.wallet.rpc.start_notify(listener_id, Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
 
         Ok(())
     }
@@ -479,8 +464,8 @@ impl Account {
         Ok(())
     }
 
-    async fn handle_daa_score_change(&self, virtual_daa_score: u64) -> Result<()> {
-        self.virtual_daa_score.store(virtual_daa_score, Ordering::SeqCst);
+    async fn handle_daa_score_change(&self, _virtual_daa_score: u64) -> Result<()> {
+        // self.virtual_daa_score.store(virtual_daa_score, Ordering::SeqCst);
         Ok(())
     }
 
@@ -497,9 +482,9 @@ impl Account {
                     self.utxos.remove(UtxoEntryReference::from(entry.clone()).id());
                 }
             }
-            Notification::VirtualDaaScoreChanged(data) => {
-                self.handle_daa_score_change(data.virtual_daa_score).await?;
-            }
+            // Notification::VirtualDaaScoreChanged(data) => {
+            //     self.handle_daa_score_change(data.virtual_daa_score).await?;
+            // }
             _ => {
                 log_warning!("unknown notification: {:?}", notification);
             }
@@ -542,6 +527,11 @@ impl Account {
                                 Events::Disconnect => {
 
                                     self_.disconnect().await.unwrap_or_else(|err| {
+                                        log_error!("{err}");
+                                    });
+                                },
+                                Events::DAAScoreChange(virtual_daa_score) => {
+                                    self_.handle_daa_score_change(virtual_daa_score).await.unwrap_or_else(|err| {
                                         log_error!("{err}");
                                     });
                                 }

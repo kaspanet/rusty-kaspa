@@ -13,13 +13,12 @@ use kaspa_notify::{
     scope::{Scope, VirtualDaaScoreChangedScope},
 };
 use kaspa_rpc_core::{
-    api::rpc::RpcApi,
     notify::{connection::ChannelConnection, mode::NotificationMode},
     Notification,
 };
 use kaspa_wrpc_client::{KaspaRpcClient, WrpcEncoding};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use storage::{Payload, PubKeyData, Store, WalletSettings};
 use workflow_core::channel::{Channel, DuplexChannel, Multiplexer, Receiver};
@@ -46,19 +45,23 @@ impl AccountCreateArgs {
 pub enum Events {
     Connect,
     Disconnect,
+    DAAScoreChange(u64),
 }
 
 //#[derive(Clone)]
 pub struct Inner {
     // accounts: Vec<Arc<dyn WalletAccountTrait>>,
     accounts: Mutex<Vec<Arc<Account>>>,
-    listener_id: Mutex<ListenerId>,
-    notification_receiver: Receiver<Notification>,
+    listener_id: Mutex<Option<ListenerId>>,
+    // notification_receiver: Receiver<Notification>,
     #[allow(dead_code)] //TODO: remove me
     ctl_receiver: Receiver<Ctl>,
     pub task_ctl: DuplexChannel,
     pub selected_account: Mutex<Option<Arc<Account>>>,
     pub is_connected: AtomicBool,
+
+    // #[wasm_bindgen(skip)]
+    pub notification_channel: Channel<Notification>,
 }
 
 /// `Wallet` data structure
@@ -72,6 +75,8 @@ pub struct Wallet {
     // #[wasm_bindgen(skip)]
     // pub rpc_client: Arc<KaspaRpcClient>,
     inner: Arc<Inner>,
+    #[wasm_bindgen(skip)]
+    pub virtual_daa_score: Arc<AtomicU64>,
 }
 
 impl Wallet {
@@ -80,8 +85,8 @@ impl Wallet {
     }
 
     pub async fn try_with_rpc(rpc: Option<Arc<KaspaRpcClient>>) -> Result<Wallet> {
-        let _master_xprv =
-            "kprv5y2qurMHCsXYrNfU3GCihuwG3vMqFji7PZXajMEqyBkNh9UZUJgoHYBLTKu1eM4MvUtomcXPQ3Sw9HZ5ebbM4byoUciHo1zrPJBQfqpLorQ";
+        // let _master_xprv =
+        //     "kprv5y2qurMHCsXYrNfU3GCihuwG3vMqFji7PZXajMEqyBkNh9UZUJgoHYBLTKu1eM4MvUtomcXPQ3Sw9HZ5ebbM4byoUciHo1zrPJBQfqpLorQ";
 
         let rpc = if let Some(rpc) = rpc {
             rpc
@@ -90,14 +95,14 @@ impl Wallet {
             Arc::new(KaspaRpcClient::new_with_args(WrpcEncoding::Borsh, NotificationMode::MultiListeners, "wrpc://127.0.0.1:17110")?)
         };
 
-        let (listener_id, notification_receiver) = match rpc.notification_mode() {
-            NotificationMode::MultiListeners => {
-                let notification_channel = Channel::unbounded();
-                let connection = ChannelConnection::new(notification_channel.sender);
-                (rpc.register_new_listener(connection), notification_channel.receiver)
-            }
-            NotificationMode::Direct => (ListenerId::default(), rpc.notification_channel_receiver()),
-        };
+        // let (listener_id, notification_receiver) = match rpc.notification_mode() {
+        //     NotificationMode::MultiListeners => {
+        //         let notification_channel = Channel::unbounded();
+        //         let connection = ChannelConnection::new(notification_channel.sender);
+        //         (rpc.register_new_listener(connection), notification_channel.receiver)
+        //     }
+        //     NotificationMode::Direct => (ListenerId::default(), rpc.notification_channel_receiver()),
+        // };
 
         let ctl_receiver = rpc.ctl_channel_receiver();
 
@@ -107,14 +112,16 @@ impl Wallet {
             // rpc_client : rpc.clone(),
             rpc,
             multiplexer,
+            virtual_daa_score: Arc::new(AtomicU64::new(0)),
             inner: Arc::new(Inner {
                 accounts: Mutex::new(vec![]), //vec![Arc::new(WalletAccount::from_master_xprv(master_xprv, false, 0).await?)],
-                notification_receiver,
-                listener_id: Mutex::new(listener_id),
+                // notification_receiver,
+                listener_id: Mutex::new(None),
                 ctl_receiver,
                 task_ctl: DuplexChannel::oneshot(),
                 selected_account: Mutex::new(None),
                 is_connected: AtomicBool::new(false),
+                notification_channel: Channel::<Notification>::unbounded(),
             }),
         };
 
@@ -203,12 +210,12 @@ impl Wallet {
     }
 
     pub fn listener_id(&self) -> ListenerId {
-        *self.inner.listener_id.lock().unwrap()
+        self.inner.listener_id.lock().unwrap().expect("missing wallet.inner.listener_id in Wallet::listener_id()")
     }
 
-    pub fn notification_channel_receiver(&self) -> Receiver<Notification> {
-        self.inner.notification_receiver.clone()
-    }
+    // pub fn notification_channel_receiver(&self) -> Receiver<Notification> {
+    //     self.inner.notification_receiver.clone()
+    // }
 
     // ~~~
 
@@ -358,14 +365,54 @@ impl Wallet {
     pub async fn connect(&self) -> Result<()> {
         self.inner.is_connected.store(true, Ordering::SeqCst);
         // - TODO - register for daa change
-        // self.register_notification_listener().await?;
+        self.register_notification_listener().await?;
         Ok(())
     }
 
     /// handle disconnection event
     pub async fn disconnect(&self) -> Result<()> {
         self.inner.is_connected.store(false, Ordering::SeqCst);
-        // self.unregister_notification_listener().await?;
+        self.unregister_notification_listener().await?;
+        Ok(())
+    }
+
+    async fn register_notification_listener(&self) -> Result<()> {
+        let listener_id = self.rpc.register_new_listener(ChannelConnection::new(self.inner.notification_channel.sender.clone()));
+        *self.inner.listener_id.lock().unwrap() = Some(listener_id);
+
+        self.rpc.start_notify(listener_id, Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
+
+        Ok(())
+    }
+
+    async fn unregister_notification_listener(&self) -> Result<()> {
+        let listener_id = self.inner.listener_id.lock().unwrap().take();
+        if let Some(id) = listener_id {
+            // we do not need this as we are unregister the entire listener here...
+            // self.rpc.stop_notify(id, Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
+            self.rpc.unregister_listener(id).await?;
+        }
+        Ok(())
+    }
+
+    async fn handle_notification(&self, notification: Notification) -> Result<()> {
+        log_info!("handling notification: {:?}", notification);
+
+        match &notification {
+            Notification::VirtualDaaScoreChanged(data) => {
+                self.handle_daa_score_change(data.virtual_daa_score).await?;
+            }
+            _ => {
+                log_warning!("unknown notification: {:?}", notification);
+            }
+        }
+        Ok(())
+    }
+
+    async fn handle_daa_score_change(&self, virtual_daa_score: u64) -> Result<()> {
+        self.virtual_daa_score.store(virtual_daa_score, Ordering::SeqCst);
+
+        self.multiplexer.broadcast(Events::DAAScoreChange(virtual_daa_score)).await.map_err(|err| format!("{err}"))?;
         Ok(())
     }
 
@@ -379,12 +426,20 @@ impl Wallet {
         let task_ctl_receiver = self.inner.task_ctl.request.receiver.clone();
         let task_ctl_sender = self.inner.task_ctl.response.sender.clone();
         // let multiplexer = multiplexer.clone();
+        let notification_receiver = self.inner.notification_channel.receiver.clone();
 
         spawn(async move {
             loop {
                 select! {
                     _ = task_ctl_receiver.recv().fuse() => {
                         break;
+                    },
+                    notification = notification_receiver.recv().fuse() => {
+                        if let Ok(notification) = notification {
+                            self_.handle_notification(notification).await.unwrap_or_else(|err| {
+                                log_error!("error while handling notification: {err}");
+                            });
+                        }
                     },
                     msg = ctl_receiver.recv().fuse() => {
                         if let Ok(msg) = msg {
@@ -460,7 +515,8 @@ mod test {
     use kaspa_bip32::{ChildNumber, ExtendedPrivateKey, SecretKey};
     use kaspa_txscript::pay_to_address_script;
 
-    async fn get_utxos_set_by_addresses(rpc: Arc<KaspaRpcClient>, addresses: Vec<Address>) -> Result<UtxoSet> {
+    // async fn get_utxos_set_by_addresses(rpc: Arc<KaspaRpcClient>, addresses: Vec<Address>) -> Result<UtxoSet> {
+    async fn get_utxos_set_by_addresses(rpc: Arc<DynRpcApi>, addresses: Vec<Address>) -> Result<UtxoSet> {
         let utxos = rpc.get_utxos_by_addresses(addresses).await?;
         let utxo_set = UtxoSet::new();
         for utxo in utxos {
@@ -483,9 +539,10 @@ mod test {
 
         // wallet.load_accounts(stored_accounts);
 
-        let rpc = wallet.rpc_client();
+        let rpc = wallet.rpc();
+        let rpc_client = wallet.rpc_client();
 
-        let _connect_result = rpc.connect(true).await;
+        let _connect_result = rpc_client.connect(true).await;
         //println!("connect_result: {_connect_result:?}");
 
         let _result = wallet.start().await;
