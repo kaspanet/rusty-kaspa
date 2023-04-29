@@ -2,7 +2,7 @@ use crate::imports::*;
 use kaspa_hashes::Hash;
 use std::str::FromStr;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct TransactionOutpointInner {
     pub transaction_id: TransactionId,

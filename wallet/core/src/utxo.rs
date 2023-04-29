@@ -1,9 +1,10 @@
 use crate::imports::*;
 use crate::result::Result;
-use crate::tx::TransactionOutpoint;
+use crate::tx::{TransactionOutpoint, TransactionOutpointInner};
 use itertools::Itertools;
 use kaspa_rpc_core::{GetUtxosByAddressesResponse, RpcUtxosByAddressesEntry};
 use serde_wasm_bindgen::from_value;
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
 use workflow_wasm::abi::{ref_from_abi, TryFromJsValue};
 
@@ -89,10 +90,11 @@ impl SelectionContext {
 }
 
 /// UtxoOrdering enum denotes UTXO sort order (`Unordered`, `AscendingAmount`, `AscendingDaaScore`)
-#[derive(Clone, Copy)]
+#[derive(Default, Clone, Copy)]
 #[repr(u32)]
 #[wasm_bindgen]
 pub enum UtxoOrdering {
+    #[default]
     Unordered,
     AscendingAmount,
     AscendingDaaScore,
@@ -100,17 +102,18 @@ pub enum UtxoOrdering {
 
 #[derive(Default)]
 pub struct Inner {
-    entries: Mutex<Vec<UtxoEntryReference>>,
-    ordered: AtomicU32,
+    entries: Vec<UtxoEntryReference>,
+    // ordered: AtomicU32,
+    map: HashMap<TransactionOutpointInner, UtxoEntryReference>,
 }
 
 impl Inner {
     fn new() -> Self {
-        Self { entries: Mutex::new(vec![]), ordered: AtomicU32::new(UtxoOrdering::Unordered as u32) }
+        Self { entries: vec![], map: HashMap::default() }
     }
 
-    fn new_with_args(entries: Vec<UtxoEntryReference>, ordered: UtxoOrdering) -> Self {
-        Self { entries: Mutex::new(entries), ordered: AtomicU32::new(ordered as u32) }
+    fn new_with_args(entries: Vec<UtxoEntryReference>) -> Self {
+        Self { entries, map: HashMap::default() }
     }
 }
 
@@ -118,18 +121,28 @@ impl Inner {
 #[derive(Clone, Default)]
 #[wasm_bindgen]
 pub struct UtxoSet {
-    inner: Arc<Inner>,
+    inner: Arc<Mutex<Inner>>,
+    ordered: Arc<AtomicU32>,
 }
 
 #[wasm_bindgen]
 impl UtxoSet {
     pub fn clear(&self) {
-        self.inner.entries.lock().unwrap().clear();
+        let mut inner = self.inner();
+        inner.entries.clear();
+        inner.map.clear()
     }
 
+    /// Insert `utxo_entry` into the `UtxoSet`.
+    /// NOTE: The insert will be ignored if already present in the inner map.
     pub fn insert(&self, utxo_entry: UtxoEntryReference) {
-        self.inner.entries.lock().unwrap().push(utxo_entry);
-        self.inner.ordered.store(UtxoOrdering::Unordered as u32, Ordering::SeqCst);
+        let mut inner = self.inner();
+        if inner.map.insert(utxo_entry.utxo.outpoint.inner().clone(), utxo_entry.clone()).is_none() {
+            inner.entries.push(utxo_entry);
+            self.ordered.store(UtxoOrdering::Unordered as u32, Ordering::SeqCst);
+        } else {
+            log_warning!("ignoring duplicate utxo entry insert");
+        }
     }
 
     #[wasm_bindgen(js_name=select)]
@@ -144,7 +157,10 @@ impl UtxoSet {
         //log_info!("r: {:?}", r);
         let entries = r.entries.into_iter().map(|entry| entry.into()).collect::<Vec<UtxoEntryReference>>();
         //log_info!("entries ...");
-        let utxo_set = Self { inner: Arc::new(Inner::new_with_args(entries, UtxoOrdering::Unordered)) };
+        let utxo_set = Self {
+            inner: Arc::new(Mutex::new(Inner::new_with_args(entries))),
+            ordered: Arc::new(AtomicU32::new(UtxoOrdering::Unordered as u32)),
+        };
         //log_info!("utxo_set ...");
         Ok(utxo_set)
     }
@@ -152,16 +168,20 @@ impl UtxoSet {
 
 impl UtxoSet {
     pub fn new() -> Self {
-        Self { inner: Arc::new(Inner::new()) }
+        Self { inner: Arc::new(Mutex::new(Inner::new())), ordered: Arc::new(AtomicU32::new(UtxoOrdering::Unordered as u32)) }
+    }
+
+    pub fn inner(&self) -> MutexGuard<Inner> {
+        self.inner.lock().unwrap()
     }
 
     pub fn order(&self, order: UtxoOrdering) -> Result<()> {
         match order {
             UtxoOrdering::AscendingAmount => {
-                self.inner.entries.lock().unwrap().sort_by_key(|a| a.as_ref().amount());
+                self.inner().entries.sort_by_key(|a| a.as_ref().amount());
             }
             UtxoOrdering::AscendingDaaScore => {
-                self.inner.entries.lock().unwrap().sort_by_key(|a| a.as_ref().block_daa_score());
+                self.inner().entries.sort_by_key(|a| a.as_ref().block_daa_score());
             }
             UtxoOrdering::Unordered => {}
         }
@@ -170,28 +190,31 @@ impl UtxoSet {
     }
 
     pub fn extend(&self, utxo_entries: &[UtxoEntryReference]) {
-        self.inner.entries.lock().unwrap().extend(utxo_entries.to_vec());
-        self.inner.ordered.store(UtxoOrdering::Unordered as u32, Ordering::SeqCst);
+        let mut inner = self.inner();
+        inner.entries.extend(utxo_entries.to_vec());
+        for entry in utxo_entries {
+            inner.map.insert(entry.utxo.outpoint.inner().clone(), entry.clone());
+        }
+        // inner.map.extend(utxo_entries.to_vec());
+        self.ordered.store(UtxoOrdering::Unordered as u32, Ordering::SeqCst);
     }
 
     pub async fn chunks(&self, chunk_size: usize) -> Result<Vec<Vec<UtxoEntryReference>>> {
-        let entries = self.inner.entries.lock().unwrap();
+        let entries = &self.inner().entries;
         let l = entries.chunks(chunk_size).map(|v| v.to_owned()).collect();
         Ok(l)
     }
 
     pub async fn select(&self, transaction_amount: u64, order: UtxoOrdering) -> Result<SelectionContext> {
-        if self.inner.ordered.load(Ordering::SeqCst) != order as u32 {
+        if self.ordered.load(Ordering::SeqCst) != order as u32 {
             self.order(order)?;
         }
 
         let mut selected_entries = vec![];
 
         let total_selected_amount = self
-            .inner
+            .inner()
             .entries
-            .lock()
-            .unwrap()
             .iter()
             .scan(0u64, |total, entry| {
                 if *total >= transaction_amount {
@@ -210,7 +233,7 @@ impl UtxoSet {
     }
 
     pub async fn calculate_balance(&self) -> Result<u64> {
-        Ok(self.inner.entries.lock().unwrap().iter().map(|e| e.as_ref().utxo_entry.amount).sum())
+        Ok(self.inner().entries.iter().map(|e| e.as_ref().utxo_entry.amount).sum())
     }
 }
 
