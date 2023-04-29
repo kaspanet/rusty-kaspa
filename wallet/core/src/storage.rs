@@ -3,7 +3,7 @@ use crate::result::Result;
 use crate::secret::Secret;
 use crate::{encryption::sha256_hash, imports::*};
 use faster_hex::{hex_decode, hex_string};
-use kaspa_bip32::ExtendedPublicKey;
+use kaspa_bip32::{ExtendedPublicKey, Mnemonic};
 use serde::Serializer;
 use std::path::PathBuf;
 #[allow(unused_imports)]
@@ -102,11 +102,11 @@ pub struct PrvKeyData {
 impl PrvKeyData {
     pub async fn create_xpub(
         &self,
-        password: Secret,
+        payment_secret: Option<Secret>,
         account_kind: AccountKind,
         account_index: u64,
     ) -> Result<ExtendedPublicKey<secp256k1::PublicKey>> {
-        let payload = self.payload.decrypt(Some(password))?;
+        let payload = self.payload.decrypt(payment_secret)?;
         let seed_words = &payload.as_ref().mnemonic;
         create_xpub_from_mnemonic(seed_words, account_kind, account_index).await
     }
@@ -140,6 +140,11 @@ impl PrvKeyData {
             id: PrvKeyDataId::new_from_slice(&sha256_hash(mnemonic.as_bytes()).unwrap().as_ref()[0..8]),
             payload: Encryptable::Plain(KeyDataPayload::new(mnemonic.to_string())),
         }
+    }
+
+    pub fn encrypt(&mut self, secret: Secret) -> Result<()> {
+        self.payload = self.payload.into_encrypted(secret)?;
+        Ok(())
     }
 }
 
@@ -254,10 +259,21 @@ pub struct Payload {
 }
 
 impl Payload {
-    pub fn add_keydata(&mut self, mnemonic: String, password: Secret) -> Result<PrvKeyData> {
-        let key_data_payload = KeyDataPayload::new(mnemonic);
-        let prv_key_data = PrvKeyData::new(key_data_payload.id(), Encryptable::Plain(key_data_payload).into_encrypted(password)?);
-        self.prv_key_data.push(prv_key_data.clone());
+    pub fn add_prv_key_data(&mut self, mnemonic: Mnemonic, payment_secret: Option<Secret>) -> Result<PrvKeyData> {
+        let key_data_payload = KeyDataPayload::new(mnemonic.phrase().to_string());
+        let key_data_payload_id = key_data_payload.id();
+        let key_data_payload = Encryptable::Plain(key_data_payload);
+
+        let mut prv_key_data = PrvKeyData::new(key_data_payload_id, key_data_payload);
+        if let Some(payment_secret) = payment_secret {
+            prv_key_data.encrypt(payment_secret)?;
+        }
+
+        if !self.prv_key_data.iter().any(|existing_key_data| prv_key_data.id == existing_key_data.id) {
+            self.prv_key_data.push(prv_key_data.clone());
+        } else {
+            panic!("private key data id already exists in the wallet");
+        }
 
         Ok(prv_key_data)
     }

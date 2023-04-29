@@ -10,6 +10,7 @@ use chacha20poly1305::{
 use faster_hex::{hex_decode, hex_string};
 use serde::{de::DeserializeOwned, Serializer};
 use sha2::{Digest, Sha256};
+use std::ops::Deref;
 use zeroize::Zeroize;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -53,10 +54,17 @@ where
         }
     }
 
-    pub fn into_encrypted(self, secret: Secret) -> Result<Self> {
+    pub fn into_encrypted(&self, secret: Secret) -> Result<Self> {
         match self {
-            Self::Plain(v) => Ok(Self::XChaCha20Poly1305(Decrypted::new(v).encrypt(secret)?)),
-            Self::XChaCha20Poly1305(v) => Ok(Self::XChaCha20Poly1305(v)),
+            Self::Plain(v) => Ok(Self::XChaCha20Poly1305(Decrypted::new(v.clone()).encrypt(secret)?)),
+            Self::XChaCha20Poly1305(v) => Ok(Self::XChaCha20Poly1305(v.clone())),
+        }
+    }
+
+    pub fn into_decrypted(self, secret: Secret) -> Result<Self> {
+        match self {
+            Self::Plain(v) => Ok(Self::Plain(v)),
+            Self::XChaCha20Poly1305(v) => Ok(Self::Plain(v.decrypt::<T>(secret)?.clone())),
         }
     }
 }
@@ -127,6 +135,16 @@ where
     T: Zeroize,
 {
     fn as_ref(&self) -> &T {
+        &self.0
+    }
+}
+
+impl<T> Deref for Decrypted<T>
+where
+    T: Zeroize,
+{
+    type Target = T;
+    fn deref(&self) -> &T {
         &self.0
     }
 }

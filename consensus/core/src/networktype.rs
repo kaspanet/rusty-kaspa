@@ -3,6 +3,7 @@ use kaspa_addresses::Prefix;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Display, Formatter};
 use std::str::FromStr;
+use wasm_bindgen::prelude::*;
 
 #[derive(thiserror::Error, PartialEq, Eq, Debug, Clone)]
 pub enum NetworkTypeError {
@@ -12,6 +13,7 @@ pub enum NetworkTypeError {
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
+#[wasm_bindgen]
 pub enum NetworkType {
     Mainnet,
     Testnet,

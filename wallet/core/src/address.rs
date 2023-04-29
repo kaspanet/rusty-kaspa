@@ -103,6 +103,10 @@ impl AddressManager {
     }
 
     pub async fn get_range(&self, indexes: std::ops::Range<u32>) -> Result<Vec<Address>> {
+        self.get_range_with_args(indexes, true).await
+    }
+
+    pub async fn get_range_with_args(&self, indexes: std::ops::Range<u32>, update_indexes: bool) -> Result<Vec<Address>> {
         let manager_length = self.pubkey_managers.len();
 
         let list = self.pubkey_managers.iter().map(|m| m.get_range(indexes.clone()));
@@ -131,7 +135,9 @@ impl AddressManager {
             addresses.push(self.create_address(keys)?);
         }
 
-        self.update_address_to_index_map(indexes.start, &addresses)?;
+        if update_indexes {
+            self.update_address_to_index_map(indexes.start, &addresses)?;
+        }
         Ok(addresses)
     }
 

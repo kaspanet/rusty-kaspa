@@ -23,6 +23,7 @@ use kaspa_addresses::Address;
 use kaspa_consensus_core::hashing::sighash::calc_schnorr_signature_hash;
 use kaspa_consensus_core::hashing::sighash::SigHashReusedValues;
 use kaspa_consensus_core::hashing::sighash_type::SIG_HASH_ALL;
+use kaspa_consensus_core::networktype::NetworkType;
 use kaspa_consensus_core::subnets::SubnetworkId;
 use kaspa_consensus_core::tx::SignableTransaction;
 use kaspa_txscript::pay_to_address_script;

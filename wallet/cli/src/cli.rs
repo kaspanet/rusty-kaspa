@@ -95,8 +95,8 @@ impl WalletCli {
                 let payment_password = Secret::new(term.ask(true, "Enter payment password: ").await?.trim().as_bytes().to_vec());
                 let account_kind = AccountKind::Bip32;
                 let mut args = AccountCreateArgs::new(title, account_kind, wallet_password, Some(payment_password));
-                let res = self.wallet.create(&args).await;
-                let (path, secret) = if let Err(err) = res {
+                let res = self.wallet.create_wallet(&args).await;
+                let (path, mnemonic) = if let Err(err) = res {
                     if !matches!(err, Error::WalletAlreadyExists) {
                         return Err(err.into());
                     }
@@ -108,13 +108,13 @@ impl WalletCli {
                         return Ok(());
                     }
                     args.override_wallet = true;
-                    self.wallet.create(&args).await?
+                    self.wallet.create_wallet(&args).await?
                 } else {
                     res.ok().unwrap()
                 };
 
-                let mnemonic_phrase = String::from_utf8_lossy(secret.as_ref());
-                term.writeln(format!("Default account mnemonic:\n{}\n", mnemonic_phrase));
+                // let mnemonic_phrase = String::from_utf8_lossy(secret.as_ref());
+                term.writeln(format!("Default account mnemonic:\n{}\n", mnemonic.phrase()));
                 term.writeln(format!("Wrote the wallet into '{}'\n", path.to_str().unwrap()));
 
                 // - TODO - Select created as a current account

@@ -1,13 +1,16 @@
 use crate::result::Result;
 use crate::secret::Secret;
-use crate::storage::{self, KeyDataId, PrvKeyData};
+use crate::storage::{self, KeyDataId, PrvKeyData, PrvKeyDataId};
+// use crate::utils::NetworkType;
 #[allow(unused_imports)]
 use crate::{account::Account, accounts::gen0, accounts::gen0::import::*, accounts::gen1, accounts::gen1::import::*};
 use crate::{imports::*, DynRpcApi};
 use futures::future::join_all;
 use futures::{select, FutureExt};
+// use itertools::Itertools;
 use kaspa_addresses::Prefix as AddressPrefix;
 use kaspa_bip32::Mnemonic;
+use kaspa_consensus_core::networktype::NetworkType;
 use kaspa_notify::{
     listener::ListenerId,
     scope::{Scope, VirtualDaaScoreChangedScope},
@@ -33,6 +36,7 @@ pub struct AccountCreateArgs {
     pub wallet_password: Secret,
     pub payment_password: Option<Secret>,
     pub override_wallet: bool,
+    // pub priv_key_data_id: Option<PrvKeyDataId>,
 }
 
 impl AccountCreateArgs {
@@ -242,24 +246,81 @@ impl Wallet {
         Ok(())
     }
 
-    pub async fn create(self: &Arc<Wallet>, args: &AccountCreateArgs) -> Result<(PathBuf, Secret)> {
+    pub fn network(&self) -> NetworkType {
+        NetworkType::Mainnet
+    }
+
+    pub async fn create_private_key(self: &Arc<Wallet>, wallet_secret: Secret, payment_secret: Option<Secret>) -> Result<Mnemonic> {
+        let store = Store::new(storage::DEFAULT_WALLET_FILE)?;
+
+        let mnemonic = Mnemonic::create_random()?;
+        let wallet = storage::Wallet::try_load(&store).await?;
+        let mut payload = wallet.payload.decrypt::<Payload>(wallet_secret).unwrap();
+        payload.as_mut().add_prv_key_data(mnemonic.clone(), payment_secret)?;
+
+        Ok(mnemonic)
+    }
+
+    pub async fn create_account(
+        self: &Arc<Wallet>,
+        wallet_secret: Secret,
+        payment_secret: Option<Secret>,
+        _prv_key_data_id: PrvKeyDataId,
+        args: &AccountCreateArgs,
+    ) -> Result<(PathBuf, Secret)> {
+        // let prefix : AddressPrefix = self.network().into();
+        let store = Store::new(storage::DEFAULT_WALLET_FILE)?;
+
+        let wallet = storage::Wallet::try_load(&store).await?;
+        let mut payload = wallet.payload.decrypt::<Payload>(wallet_secret).unwrap();
+        let payload = payload.as_mut();
+
+        // - TODO - Get mnemonic from keydata id
+        let mnemonic = Mnemonic::create_random()?;
+
+        let account_index = 0;
+        let prv_key_data = payload.add_prv_key_data(mnemonic.clone(), None)?;
+        let xpub_key = prv_key_data.create_xpub(payment_secret, args.account_kind, account_index).await?;
+        let xpub_prefix = kaspa_bip32::Prefix::XPUB;
+        let pub_key_data = PubKeyData::new(vec![xpub_key.to_string(Some(xpub_prefix))], None, None);
+
+        let stored_account = storage::Account::new(
+            args.title.replace(' ', "-").to_lowercase(),
+            args.title.clone(),
+            args.account_kind,
+            account_index,
+            false,
+            pub_key_data,
+            Some(prv_key_data.id),
+            false,
+            1,
+            0,
+        );
+
+        let _account_id = stored_account.id.clone();
+        payload.accounts.push(stored_account);
+
+        todo!()
+    }
+
+    pub async fn create_wallet(self: &Arc<Wallet>, args: &AccountCreateArgs) -> Result<(PathBuf, Mnemonic)> {
         let store = Store::new(storage::DEFAULT_WALLET_FILE)?;
         if !args.override_wallet && store.exists().await? {
             return Err(Error::WalletAlreadyExists);
         }
 
-        let prefix = AddressPrefix::Mainnet;
+        let prefix: AddressPrefix = self.network().into();
 
         let xpub_prefix = kaspa_bip32::Prefix::XPUB;
 
-        let payment_password = args.payment_password.clone().unwrap_or(args.wallet_password.clone());
+        let payment_secret = args.payment_password.clone();
 
         let mnemonic = Mnemonic::create_random()?;
-        let mnemonic_phrase = Secret::new(mnemonic.phrase().as_bytes().to_vec());
+        // let mnemonic_phrase = Secret::new(mnemonic.phrase().as_bytes().to_vec());
         let mut payload = Payload::default();
         let account_index = 0;
-        let prv_key_data = payload.add_keydata(mnemonic.phrase_string(), payment_password.clone())?;
-        let xpub_key = prv_key_data.create_xpub(payment_password, args.account_kind, account_index).await?;
+        let prv_key_data = payload.add_prv_key_data(mnemonic.clone(), None)?;
+        let xpub_key = prv_key_data.create_xpub(payment_secret, args.account_kind, account_index).await?;
         let pub_key_data = PubKeyData::new(vec![xpub_key.to_string(Some(xpub_prefix))], None, None);
 
         let stored_account = storage::Account::new(
@@ -289,7 +350,7 @@ impl Wallet {
 
         self.select(Some(account)).await?;
 
-        Ok((store.filename().clone(), mnemonic_phrase))
+        Ok((store.filename().clone(), mnemonic))
     }
 
     pub async fn dump_unencrypted(&self) -> Result<()> {

@@ -227,9 +227,12 @@ impl Account {
     pub async fn scan_address_manager(&self, scan: Scan) -> Result<()> {
         let mut cursor = 0;
 
+        let mut last_address_index = std::cmp::max(scan.address_manager.index()?, scan.window_size);
+
         'scan: loop {
             let first = cursor;
-            let last = cursor + scan.window_size;
+            let last = if cursor == 0 { last_address_index } else { cursor + scan.window_size };
+            // window_size = scan.window_size;
             cursor = last;
 
             log_info!("first: {}, last: {}\r\n", first, last);
@@ -242,6 +245,18 @@ impl Account {
             //println!("{}", format!("addresses:{:#?}", address_str).replace('\n', "\r\n"));
             //println!("{}", format!("resp:{:#?}", resp.get(0).and_then(|a|a.address.clone())).replace('\n', "\r\n"));
 
+            for utxo_ref in refs.iter() {
+                if let Some(address) = utxo_ref.utxo.address.as_ref() {
+                    if let Some(utxo_address_index) = scan.address_manager.inner().address_to_index_map.get(address) {
+                        if last_address_index < *utxo_address_index {
+                            last_address_index = *utxo_address_index;
+                        }
+                    } else {
+                        panic!("Account::scan_address_manager() has received an unknown address: `{address}`");
+                    }
+                }
+            }
+
             self.utxos.extend(&refs);
             let balance = refs.iter().map(|r| r.as_ref().amount()).sum::<u64>();
 
@@ -253,7 +268,9 @@ impl Account {
             } else {
                 match &scan.extent {
                     ScanExtent::EmptyWindow => {
-                        break 'scan;
+                        if cursor > last_address_index + scan.window_size {
+                            break 'scan;
+                        }
                     }
                     ScanExtent::Depth(depth) => {
                         if &cursor > depth {

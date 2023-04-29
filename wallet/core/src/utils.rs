@@ -1,17 +1,12 @@
 use crate::tx::{Transaction, TransactionOutput};
 use kaspa_addresses::{Address, Prefix};
+use kaspa_consensus_core::networktype::NetworkType;
 use kaspa_consensus_core::{
     config::params::{Params, DEVNET_PARAMS, MAINNET_PARAMS},
     constants::*,
     mass::{self, MassCalculator},
 };
 use wasm_bindgen::prelude::*;
-
-#[wasm_bindgen]
-pub enum NetworkType {
-    Mainnet,
-    Testnet,
-}
 
 /// MINIMUM_RELAY_TRANSACTION_FEE specifies the minimum transaction fee for a transaction to be accepted to
 /// the mempool and relayed. It is specified in sompi per 1kg (or 1000 grams) of transaction mass.
