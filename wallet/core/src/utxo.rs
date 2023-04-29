@@ -49,6 +49,11 @@ impl UtxoEntryReference {
     pub fn data(&self) -> UtxoEntry {
         self.as_ref().clone()
     }
+
+    #[wasm_bindgen(getter)]
+    pub fn id(&self) -> String {
+        self.utxo.outpoint.id()
+    }
 }
 
 impl AsRef<UtxoEntry> for UtxoEntryReference {
@@ -127,9 +132,32 @@ impl UtxoSet {
         self.inner.entries.lock().unwrap().clear();
     }
 
-    pub fn insert(&self, utxo_entry: UtxoEntryReference) {
+    pub fn push(&self, utxo_entry: UtxoEntryReference) {
+        if self.exists(&utxo_entry) {
+            return;
+        }
         self.inner.entries.lock().unwrap().push(utxo_entry);
         self.inner.ordered.store(UtxoOrdering::Unordered as u32, Ordering::SeqCst);
+    }
+
+    pub fn remove(&self, id: String) -> bool {
+        let index = match self.inner.entries.lock().unwrap().iter().position(|entry| entry.id() == id) {
+            Some(index) => index,
+            None => return false,
+        };
+
+        self.inner.entries.lock().unwrap().remove(index);
+
+        true
+    }
+
+    pub fn exists(&self, utxo_entry: &UtxoEntryReference) -> bool {
+        let id = utxo_entry.id();
+        self.inner.entries.lock().unwrap().iter().find(|entry| entry.id() == id).cloned().is_some()
+    }
+
+    pub fn find(&self, id: String) -> Option<UtxoEntryReference> {
+        self.inner.entries.lock().unwrap().iter().find(|entry| entry.utxo.outpoint.id() == id).cloned()
     }
 
     #[wasm_bindgen(js_name=select)]
@@ -170,8 +198,9 @@ impl UtxoSet {
     }
 
     pub fn extend(&self, utxo_entries: &[UtxoEntryReference]) {
-        self.inner.entries.lock().unwrap().extend(utxo_entries.to_vec());
-        self.inner.ordered.store(UtxoOrdering::Unordered as u32, Ordering::SeqCst);
+        for utxo_entry in utxo_entries.iter().cloned() {
+            self.push(utxo_entry);
+        }
     }
 
     pub async fn chunks(&self, chunk_size: usize) -> Result<Vec<Vec<UtxoEntryReference>>> {

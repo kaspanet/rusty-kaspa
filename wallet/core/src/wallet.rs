@@ -464,7 +464,7 @@ mod test {
         let utxos = rpc.get_utxos_by_addresses(addresses).await?;
         let utxo_set = UtxoSet::new();
         for utxo in utxos {
-            utxo_set.insert(utxo.into());
+            utxo_set.push(utxo.into());
         }
         Ok(utxo_set)
     }
