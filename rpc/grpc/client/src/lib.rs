@@ -75,14 +75,18 @@ impl GrpcClient {
             return Err(Error::GrpcAddressSchema(address));
         }
         let notify_channel = NotificationChannel::default();
-        let inner =
-            Inner::connect(address, reconnect, notify_channel.sender(), connection_event_sender, override_handle_stop_notify).await?;
+        let inner = Inner::connect(address, notify_channel.sender(), connection_event_sender, override_handle_stop_notify).await?;
         let core_events = EVENT_TYPE_ARRAY[..].into();
         let converter = Arc::new(RpcCoreConverter::new());
         let collector = Arc::new(RpcCoreCollector::new(notify_channel.receiver(), converter));
         let subscriber = Arc::new(Subscriber::new(core_events, inner.clone(), 0));
 
         let notifier = Arc::new(Notifier::new(core_events, vec![collector], vec![subscriber], 10, GRPC_CLIENT));
+
+        if reconnect {
+            // Start the connection monitor
+            inner.clone().spawn_connection_monitor(notifier.clone());
+        }
 
         Ok(Self { inner, notifier })
     }
@@ -315,7 +319,6 @@ impl Inner {
     // TODO - remove the override (discuss how to handle this in relation to the golang client)
     async fn connect(
         address: String,
-        reconnect: bool,
         notify_sender: NotificationSender,
         connection_event_sender: Option<Sender<ConnectionEvent>>,
         override_handle_stop_notify: bool,
@@ -342,11 +345,6 @@ impl Inner {
 
         // Start the response receiving task
         inner.clone().spawn_response_receiver_task(stream);
-
-        if reconnect {
-            // Start the connection monitor
-            inner.clone().spawn_connection_monitor();
-        }
 
         Ok(inner)
     }
@@ -403,15 +401,16 @@ impl Inner {
         Ok((stream, server_features))
     }
 
-    async fn reconnect(self: Arc<Self>) -> Result<()> {
+    async fn reconnect(self: Arc<Self>, notifier: Arc<Notifier<Notification, ChannelConnection>>) -> Result<()> {
         // TODO: verify if server feature have changed since first connection
-        // TODO: re-register to notifications
 
         // Try to connect to the server
         let (stream, _) = Inner::try_connect(self.address.clone(), self.request_sender.clone(), self.request_receiver.clone()).await?;
 
         // Start the response receiving task
         self.spawn_response_receiver_task(stream);
+
+        notifier.try_renew_subscriptions()?;
 
         Ok(())
     }
@@ -564,7 +563,7 @@ impl Inner {
 
     /// Launch a task that periodically checks if the connection to the server is alive
     /// and if not that tries to reconnect to the server.
-    fn spawn_connection_monitor(self: Arc<Self>) {
+    fn spawn_connection_monitor(self: Arc<Self>, notifier: Arc<Notifier<Notification, ChannelConnection>>) {
         // Note: self is a cloned Arc here so that it can be used in the spawned task.
 
         // The task can only be spawned once
@@ -585,7 +584,7 @@ impl Inner {
                     _ = delay => {
                         trace!("[GrpcClient] running connection monitor task");
                         if !self.is_connected() {
-                            match self.clone().reconnect().await {
+                            match self.clone().reconnect(notifier.clone()).await {
                                 Ok(_) => {
                                     trace!("[GrpcClient] reconnection to server succeeded");
                                 },

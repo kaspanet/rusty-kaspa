@@ -1,3 +1,5 @@
+use crate::events::EVENT_TYPE_ARRAY;
+
 use super::{
     broadcaster::Broadcaster,
     collector::DynCollector,
@@ -100,6 +102,13 @@ where
 
     pub fn register_new_listener(&self, connection: C) -> ListenerId {
         self.inner.clone().register_new_listener(connection)
+    }
+
+    /// Resend the compounded subscription state of the notifier to its subscribers (its parents).
+    ///
+    /// The typical use case is a RPC client reconnecting to a server and resending the compounded subscriptions of its listeners.
+    pub fn try_renew_subscriptions(&self) -> Result<()> {
+        self.inner.clone().renew_subscriptions()
     }
 
     pub fn try_start_notify(&self, id: ListenerId, scope: Scope) -> Result<()> {
@@ -303,9 +312,9 @@ where
                 if let Some(mutations) = listener.mutate(Mutation::new(command, scope)) {
                     // Update broadcasters
                     let subscription = listener.subscriptions[event].clone_arc();
-                    self.broadcasters.iter().for_each(|broadcaster| {
-                        let _ = broadcaster.register(subscription.clone(), id, listener.connection());
-                    });
+                    self.broadcasters
+                        .iter()
+                        .try_for_each(|broadcaster| broadcaster.register(subscription.clone(), id, listener.connection()))?;
                     // Compound mutations
                     let mut compound_result = None;
                     for mutation in mutations {
@@ -313,9 +322,7 @@ where
                     }
                     // Report to the parents
                     if let Some(mutation) = compound_result {
-                        self.subscribers.iter().for_each(|x| {
-                            let _ = x.mutate(mutation.clone());
-                        });
+                        self.subscribers.iter().try_for_each(|x| x.mutate(mutation.clone()))?;
                     }
                 } else {
                     // In case we have a sync channel, report that the command was processed.
@@ -345,6 +352,15 @@ where
 
     fn stop_notify(&self, id: ListenerId, scope: Scope) -> Result<()> {
         self.execute_subscribe_command(id, scope, Command::Stop)
+    }
+
+    fn renew_subscriptions(&self) -> Result<()> {
+        let subscriptions = self.subscriptions.lock();
+        EVENT_TYPE_ARRAY.iter().copied().filter(|x| self.enabled_events[*x] && subscriptions[*x].active()).try_for_each(|x| {
+            let mutation = Mutation::new(Command::Start, subscriptions[x].scope());
+            self.subscribers.iter().try_for_each(|subscriber| subscriber.mutate(mutation.clone()))?;
+            Ok(())
+        })
     }
 
     async fn stop(self: Arc<Self>) -> Result<()> {
