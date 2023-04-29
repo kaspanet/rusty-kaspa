@@ -263,7 +263,7 @@ impl Account {
             self.subscribe_utxos_changed(&change_addresses).await?;
             let resp = self.rpc.get_utxos_by_addresses(change_addresses).await?;
 
-            //println!("{}", format!("addresses:{:#?}", address_str).replace('\n', "\r\n"));
+            //println!("{}", format!("addresses:{:#?}", change_address_str).replace('\n', "\r\n"));
             //println!("{}", format!("resp:{:#?}", resp.get(0).and_then(|a|a.address.clone())).replace('\n', "\r\n"));
 
             let refs: Vec<UtxoEntryReference> = resp.into_iter().map(UtxoEntryReference::from).collect();
