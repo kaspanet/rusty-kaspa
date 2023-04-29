@@ -30,11 +30,6 @@ impl OverallSubscription {
 }
 
 impl Single for OverallSubscription {
-    #[inline(always)]
-    fn active(&self) -> bool {
-        self.active
-    }
-
     fn mutate(&mut self, mutation: Mutation) -> Option<Vec<Mutation>> {
         assert_eq!(self.event_type(), mutation.event_type());
         if self.active != mutation.active() {
@@ -44,16 +39,21 @@ impl Single for OverallSubscription {
             None
         }
     }
-
-    fn scope(&self) -> Scope {
-        self.event_type.into()
-    }
 }
 
 impl Subscription for OverallSubscription {
     #[inline(always)]
     fn event_type(&self) -> EventType {
         self.event_type
+    }
+
+    #[inline(always)]
+    fn active(&self) -> bool {
+        self.active
+    }
+
+    fn scope(&self) -> Scope {
+        self.event_type.into()
     }
 }
 
@@ -74,11 +74,6 @@ impl VirtualChainChangedSubscription {
 }
 
 impl Single for VirtualChainChangedSubscription {
-    #[inline(always)]
-    fn active(&self) -> bool {
-        self.active
-    }
-
     fn mutate(&mut self, mutation: Mutation) -> Option<Vec<Mutation>> {
         assert_eq!(self.event_type(), mutation.event_type());
         if let Scope::VirtualChainChanged(ref scope) = mutation.scope {
@@ -135,16 +130,21 @@ impl Single for VirtualChainChangedSubscription {
             None
         }
     }
-
-    fn scope(&self) -> Scope {
-        Scope::VirtualChainChanged(VirtualChainChangedScope::new(self.include_accepted_transaction_ids))
-    }
 }
 
 impl Subscription for VirtualChainChangedSubscription {
     #[inline(always)]
     fn event_type(&self) -> EventType {
         EventType::VirtualChainChanged
+    }
+
+    #[inline(always)]
+    fn active(&self) -> bool {
+        self.active
+    }
+
+    fn scope(&self) -> Scope {
+        Scope::VirtualChainChanged(VirtualChainChangedScope::new(self.include_accepted_transaction_ids))
     }
 }
 
@@ -218,10 +218,6 @@ impl Hash for UtxosChangedSubscription {
 }
 
 impl Single for UtxosChangedSubscription {
-    fn active(&self) -> bool {
-        self.active
-    }
-
     fn mutate(&mut self, mutation: Mutation) -> Option<Vec<Mutation>> {
         if let Scope::UtxosChanged(ref scope) = mutation.scope {
             // Here we want the code to (almost) match a double entry table structure
@@ -304,15 +300,19 @@ impl Single for UtxosChangedSubscription {
             None
         }
     }
-
-    fn scope(&self) -> Scope {
-        Scope::UtxosChanged(UtxosChangedScope::new(self.addresses.values().map(|x| &**x).cloned().collect()))
-    }
 }
 
 impl Subscription for UtxosChangedSubscription {
     fn event_type(&self) -> EventType {
         EventType::UtxosChanged
+    }
+
+    fn active(&self) -> bool {
+        self.active
+    }
+
+    fn scope(&self) -> Scope {
+        Scope::UtxosChanged(UtxosChangedScope::new(self.addresses.values().map(|x| &**x).cloned().collect()))
     }
 }
 
