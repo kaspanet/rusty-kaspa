@@ -2494,6 +2494,7 @@ dependencies = [
  "workflow-core",
  "workflow-log",
  "workflow-rpc",
+ "workflow-wasm",
 ]
 
 [[package]]
