@@ -30,8 +30,8 @@ impl TransactionOutpoint {
         Ok(Self { inner: Arc::new(Mutex::new(TransactionOutpointInner { transaction_id: Hash::from_str(transaction_id)?, index })) })
     }
 
-    #[wasm_bindgen(getter)]
-    pub fn id(&self) -> String {
+    #[wasm_bindgen(js_name = "getId")]
+    pub fn id_string(&self) -> String {
         format!("{}-{}", self.get_transaction_id(), self.get_index())
     }
 

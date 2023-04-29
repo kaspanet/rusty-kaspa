@@ -8,6 +8,8 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
 use workflow_wasm::abi::{ref_from_abi, TryFromJsValue};
 
+type UtxoEntryId = TransactionOutpointInner;
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen(inspectable)]
@@ -51,9 +53,15 @@ impl UtxoEntryReference {
         self.as_ref().clone()
     }
 
-    #[wasm_bindgen(getter)]
-    pub fn id(&self) -> String {
-        self.utxo.outpoint.id()
+    #[wasm_bindgen(js_name = "getId")]
+    pub fn id_string(&self) -> String {
+        self.utxo.outpoint.id_string()
+    }
+}
+
+impl UtxoEntryReference {
+    pub fn id(&self) -> UtxoEntryId {
+        self.utxo.outpoint.inner().clone()
     }
 }
 
@@ -150,14 +158,16 @@ impl UtxoSet {
         }
     }
 
-    pub fn remove(&self, id: String) -> bool {
+    #[wasm_bindgen(js_name = "remove")]
+    pub fn remove_js(&self, id_string: String) -> bool {
         let mut inner = self.inner();
-        let index = match inner.entries.iter().position(|entry| entry.id() == id) {
+        let index = match inner.entries.iter().position(|entry| entry.id_string() == id_string) {
             Some(index) => index,
             None => return false,
         };
 
-        inner.entries.remove(index);
+        let entry = inner.entries.remove(index);
+        inner.map.remove(&entry.id());
 
         true
     }
@@ -199,6 +209,19 @@ impl UtxoSet {
 
     pub fn inner(&self) -> MutexGuard<Inner> {
         self.inner.lock().unwrap()
+    }
+
+    pub fn remove(&self, id: UtxoEntryId) -> bool {
+        let mut inner = self.inner();
+        let index = match inner.entries.iter().position(|entry| entry.id() == id) {
+            Some(index) => index,
+            None => return false,
+        };
+
+        let entry = inner.entries.remove(index);
+        inner.map.remove(&entry.id());
+
+        true
     }
 
     pub fn order(&self, order: UtxoOrdering) -> Result<()> {
