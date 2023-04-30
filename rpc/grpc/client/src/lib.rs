@@ -200,7 +200,7 @@ impl RpcApi<ChannelConnection> for GrpcClient {
 }
 
 pub const CONNECT_TIMEOUT_DURATION: u64 = 20_000;
-pub const KEEP_ALIVE_DURATION: u64 = 5_0000;
+pub const KEEP_ALIVE_DURATION: u64 = 5_000;
 pub const REQUEST_TIMEOUT_DURATION: u64 = 5_000;
 pub const TIMEOUT_MONITORING_INTERVAL: u64 = 10_000;
 pub const RECONNECT_INTERVAL: u64 = 2_000;

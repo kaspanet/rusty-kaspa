@@ -106,7 +106,7 @@ async fn main() {
     faster_hex::hex_decode(args.private_key.as_bytes(), &mut private_key_bytes).unwrap();
     let schnorr_key = secp256k1::KeyPair::from_seckey_slice(secp256k1::SECP256K1, &private_key_bytes).unwrap();
     let mut ticker = interval(Duration::from_secs_f64(1.0 / (args.tps as f64)));
-    ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
+    ticker.set_missed_tick_behavior(MissedTickBehavior::Burst);
 
     let mut maximize_inputs = false;
     let mut last_refresh = unix_now();
@@ -123,7 +123,8 @@ async fn main() {
             info!("Refetching UTXO set");
             tokio::time::sleep(Duration::from_millis(100)).await; // We don't want this operation to be too frequent since its heavy on the node, so we wait some time before executing it.
             utxos = refresh_utxos(&rpc_client, kaspa_addr.clone(), &mut pending).await;
-            last_refresh = now;
+            last_refresh = unix_now();
+            pause_if_mempool_is_full(&rpc_client).await;
         }
         clean_old_pending_outpoints(&mut pending);
     }
@@ -134,7 +135,7 @@ fn should_maximize_inputs(
     utxos: &Vec<(TransactionOutpoint, UtxoEntry)>,
     pending: &HashMap<TransactionOutpoint, u64>,
 ) -> bool {
-    let estimated_utxos = utxos.len() - pending.len();
+    let estimated_utxos = if utxos.len() > pending.len() { utxos.len() - pending.len() } else { 0 };
     if !old_value && estimated_utxos > 1_000_000 {
         info!("Starting to maximize inputs");
         true
@@ -143,6 +144,19 @@ fn should_maximize_inputs(
         false
     } else {
         old_value
+    }
+}
+
+async fn pause_if_mempool_is_full(rpc_client: &GrpcClient) {
+    loop {
+        let mempool_size = rpc_client.get_mempool_entries(true, false).await.unwrap().len();
+        if mempool_size < 100_000 {
+            break;
+        }
+
+        const PAUSE_DURATION: u64 = 10;
+        info!("Mempool has {} entries. Pausing for {} seconds to reduce mempool pressure", mempool_size, PAUSE_DURATION);
+        tokio::time::sleep(Duration::from_secs(PAUSE_DURATION)).await;
     }
 }
 
@@ -160,7 +174,7 @@ async fn populate_pending_outpoints_from_mempool(
     kaspa_addr: Address,
     pending_outpoints: &mut HashMap<TransactionOutpoint, u64>,
 ) {
-    let entries = rpc_client.get_mempool_entries_by_addresses(vec![kaspa_addr], false, false).await.unwrap();
+    let entries = rpc_client.get_mempool_entries_by_addresses(vec![kaspa_addr], true, false).await.unwrap();
     let now = unix_now();
     for entry in entries {
         for entry in entry.sending {
@@ -235,7 +249,7 @@ async fn maybe_send_tx(
             (stats.utxos_amount / stats.num_utxos as u64),
             stats.num_utxos / stats.num_txs,
             stats.num_outs / stats.num_txs,
-            utxos.len() - pending.len(),
+            if utxos.len() > pending.len() { utxos.len() - pending.len() } else { 0 },
         );
         stats.since = now;
         stats.num_txs = 0;
