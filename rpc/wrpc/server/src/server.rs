@@ -22,7 +22,7 @@ use std::{
 use workflow_log::*;
 use workflow_rpc::server::prelude::*;
 
-pub type DynRpcService = Arc<dyn RpcApi<ChannelConnection>>;
+pub type DynRpcService = Arc<dyn RpcApi>;
 pub type NotificationChannel = Channel<Notification>;
 
 pub struct ServerInner {
