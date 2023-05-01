@@ -1,7 +1,6 @@
 use crate::{connection::*, result::Result, router::*, server::*};
 use async_trait::async_trait;
 use kaspa_core::task::service::{AsyncService, AsyncServiceError, AsyncServiceFuture};
-use kaspa_notify::subscriber::DynSubscriptionManager;
 use kaspa_rpc_core::api::ops::RpcApiOps;
 use kaspa_rpc_service::service::RpcCoreService;
 use std::sync::Arc;
@@ -46,11 +45,10 @@ impl KaspaRpcHandler {
     pub fn new(
         tasks: usize,
         encoding: WrpcEncoding,
-        rpc_service: DynRpcService,
-        subscription_manager: DynSubscriptionManager,
+        core_service: Option<Arc<RpcCoreService>>,
         options: Arc<Options>,
     ) -> KaspaRpcHandler {
-        KaspaRpcHandler { server: Server::new(tasks, encoding, rpc_service, subscription_manager, options.clone()), options }
+        KaspaRpcHandler { server: Server::new(tasks, encoding, core_service, options.clone()), options }
     }
 }
 
@@ -78,7 +76,7 @@ impl RpcHandler for KaspaRpcHandler {
         // )
         // .await
 
-        let connection = self.server.connect(peer, messenger).map_err(|err| err.to_string())?;
+        let connection = self.server.connect(peer, messenger).await.map_err(|err| err.to_string())?;
         Ok(connection)
     }
 
@@ -86,7 +84,7 @@ impl RpcHandler for KaspaRpcHandler {
     /// before dropping it. This is the last chance to cleanup and resources owned by
     /// this connection. Delegate to Server.
     async fn disconnect(self: Arc<Self>, ctx: Self::Context, _result: WebSocketResult<()>) {
-        self.server.disconnect(ctx);
+        self.server.disconnect(ctx).await;
     }
 }
 
@@ -101,11 +99,10 @@ pub struct WrpcService {
 
 impl WrpcService {
     /// Create and initialize RpcServer
-    pub fn new(tasks: usize, core_service: Arc<RpcCoreService>, encoding: &Encoding, options: Options) -> Self {
+    pub fn new(tasks: usize, core_service: Option<Arc<RpcCoreService>>, encoding: &Encoding, options: Options) -> Self {
         let options = Arc::new(options);
         // Create handle to manage connections
-        let rpc_handler =
-            Arc::new(KaspaRpcHandler::new(tasks, *encoding, core_service.clone(), core_service.notifier(), options.clone()));
+        let rpc_handler = Arc::new(KaspaRpcHandler::new(tasks, *encoding, core_service, options.clone()));
 
         // Create router (initializes Interface registering RPC method and notification handlers)
         let router = Arc::new(Router::new(rpc_handler.server.clone()));

@@ -7,6 +7,7 @@
 use crate::{model::*, notify::connection::ChannelConnection, RpcResult};
 use async_trait::async_trait;
 use kaspa_notify::{listener::ListenerId, scope::Scope, subscription::Command};
+use std::sync::Arc;
 
 pub const MAX_SAFE_WINDOW_SIZE: u32 = 10_000;
 
@@ -298,3 +299,5 @@ pub trait RpcApi: Sync + Send {
         }
     }
 }
+
+pub type DynRpcService = Arc<dyn RpcApi>;

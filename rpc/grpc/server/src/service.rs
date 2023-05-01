@@ -5,10 +5,7 @@ use crate::{
 };
 use futures::Stream;
 use kaspa_core::trace;
-use kaspa_grpc_core::{
-    channel::NotificationChannel,
-    protowire::{kaspad_request::Payload, rpc_server::Rpc, NotifyNewBlockTemplateResponseMessage, *},
-};
+use kaspa_grpc_core::protowire::{kaspad_request::Payload, rpc_server::Rpc, NotifyNewBlockTemplateResponseMessage, *};
 use kaspa_notify::{
     events::EVENT_TYPE_ARRAY,
     listener::ListenerId,
@@ -20,7 +17,11 @@ use kaspa_notify::{
     },
     subscriber::{Subscriber, SubscriptionManager},
 };
-use kaspa_rpc_core::{api::rpc::RpcApi, notify::connection::ChannelConnection, Notification, RpcResult};
+use kaspa_rpc_core::{
+    api::rpc::RpcApi,
+    notify::{channel::NotificationChannel, connection::ChannelConnection},
+    Notification, RpcResult,
+};
 use kaspa_rpc_service::service::RpcCoreService;
 use std::{io::ErrorKind, net::SocketAddr, pin::Pin, sync::Arc};
 use tokio::sync::{mpsc, RwLock};
