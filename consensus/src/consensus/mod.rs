@@ -65,7 +65,7 @@ use kaspa_consensus_core::{
     },
     header::Header,
     muhash::MuHashExtensions,
-    pruning::{PruningPointProof, PruningPointsList},
+    pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
     sync_info::SyncInfo,
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
@@ -840,10 +840,7 @@ impl ConsensusApi for Consensus {
             .collect_vec()
     }
 
-    fn get_pruning_point_anticone_and_trusted_data(
-        &self,
-    ) -> Arc<(Vec<Hash>, Vec<kaspa_consensus_core::trusted::TrustedHeader>, Vec<kaspa_consensus_core::trusted::TrustedGhostdagData>)>
-    {
+    fn get_pruning_point_anticone_and_trusted_data(&self) -> ConsensusResult<Arc<PruningPointTrustedData>> {
         self.pruning_proof_manager.get_pruning_point_anticone_and_trusted_data()
     }
 

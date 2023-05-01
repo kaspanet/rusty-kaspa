@@ -8,9 +8,12 @@ use std::{
 use itertools::Itertools;
 use kaspa_consensus_core::{
     blockhash::{BlockHashExtensions, BlockHashes, ORIGIN},
-    errors::pruning::{PruningImportError, PruningImportResult},
+    errors::{
+        consensus::{ConsensusError, ConsensusResult},
+        pruning::{PruningImportError, PruningImportResult},
+    },
     header::Header,
-    pruning::PruningPointProof,
+    pruning::{PruningPointProof, PruningPointTrustedData},
     trusted::{TrustedBlock, TrustedGhostdagData, TrustedHeader},
     BlockHashMap, BlockHashSet, BlockLevel, HashMapCustomHasher, KType,
 };
@@ -51,11 +54,15 @@ use std::collections::hash_map::Entry::Vacant;
 use super::{ghostdag::protocol::GhostdagManager, parents_builder::ParentsManager, traversal_manager::DagTraversalManager};
 use kaspa_utils::binary_heap::BinaryHeapExtensions;
 
-#[derive(Clone)]
-struct CachedData {
+struct CachedPruningPointData<T: ?Sized> {
     pruning_point: Hash,
-    proof: Arc<PruningPointProof>,
-    pruning_point_anticone_and_trusted_data: Arc<(Vec<Hash>, Vec<TrustedHeader>, Vec<TrustedGhostdagData>)>,
+    data: Arc<T>,
+}
+
+impl<T> Clone for CachedPruningPointData<T> {
+    fn clone(&self) -> Self {
+        Self { pruning_point: self.pruning_point, data: self.data.clone() }
+    }
 }
 
 pub struct PruningProofManager {
@@ -78,7 +85,8 @@ pub struct PruningProofManager {
     traversal_manager:
         DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
 
-    cached_pruning_point_proof_and_anticone: RwLock<Option<CachedData>>,
+    cached_proof: RwLock<Option<CachedPruningPointData<PruningPointProof>>>,
+    cached_anticone: RwLock<Option<CachedPruningPointData<PruningPointTrustedData>>>,
 
     max_block_level: BlockLevel,
     genesis_hash: Hash,
@@ -216,7 +224,9 @@ impl PruningProofManager {
             depth_store,
             ghostdag_managers,
             traversal_manager,
-            cached_pruning_point_proof_and_anticone: RwLock::new(None),
+
+            cached_proof: RwLock::new(None),
+            cached_anticone: RwLock::new(None),
 
             max_block_level,
             genesis_hash,
@@ -731,7 +741,7 @@ impl PruningProofManager {
         &self,
         pruning_point: Hash,
         virtual_parents: impl Iterator<Item = Hash>,
-    ) -> (Vec<Hash>, Vec<TrustedHeader>, Vec<TrustedGhostdagData>) {
+    ) -> PruningPointTrustedData {
         let anticone = self
             .traversal_manager
             .anticone(pruning_point, virtual_parents, None)
@@ -770,44 +780,43 @@ impl PruningProofManager {
             }
         }
 
-        (
+        PruningPointTrustedData {
             anticone,
-            daa_window_blocks.into_values().collect_vec(),
-            ghostdag_blocks.into_iter().map(|(hash, ghostdag)| TrustedGhostdagData { hash, ghostdag }).collect_vec(),
-        )
+            daa_window_blocks: daa_window_blocks.into_values().collect_vec(),
+            ghostdag_blocks: ghostdag_blocks.into_iter().map(|(hash, ghostdag)| TrustedGhostdagData { hash, ghostdag }).collect_vec(),
+        }
     }
 
-    fn update_cache_if_needed(&self) -> CachedData {
+    pub fn get_pruning_point_proof(&self) -> Arc<PruningPointProof> {
         let pp = self.pruning_store.read().pruning_point().unwrap();
-        if let Some(cached_data) = self.cached_pruning_point_proof_and_anticone.read().clone() {
-            if cached_data.pruning_point == pp {
-                return cached_data;
+        if let Some(cache) = self.cached_proof.read().clone() {
+            if cache.pruning_point == pp {
+                return cache.data;
+            }
+        }
+        let proof = Arc::new(self.build_pruning_point_proof(pp));
+        self.cached_proof.write().replace(CachedPruningPointData { pruning_point: pp, data: proof.clone() });
+        proof
+    }
+
+    pub fn get_pruning_point_anticone_and_trusted_data(&self) -> ConsensusResult<Arc<PruningPointTrustedData>> {
+        let pp = self.pruning_store.read().pruning_point().unwrap();
+        if let Some(cache) = self.cached_anticone.read().clone() {
+            if cache.pruning_point == pp {
+                return Ok(cache.data);
             }
         }
 
         let virtual_state = self.virtual_stores.read().state.get().unwrap();
-        let cached_data = CachedData {
-            pruning_point: pp,
-            proof: Arc::new(self.build_pruning_point_proof(pp)),
-            pruning_point_anticone_and_trusted_data: Arc::new(
-                self.calculate_pruning_point_anticone_and_trusted_data(pp, virtual_state.parents.iter().copied()),
-            ),
-        };
         let pp_bs = self.headers_store.get_blue_score(pp).unwrap();
-        // Cache the proof and the anticone only if the pruning point is at correct depth. Otherwise
-        // the anticone might not be complete
+
+        // The anticone is considered final only if the pruning point is at sufficient depth from virtual
         if virtual_state.ghostdag_data.blue_score >= pp_bs + self.pruning_depth {
-            self.cached_pruning_point_proof_and_anticone.write().replace(cached_data.clone());
+            let anticone = Arc::new(self.calculate_pruning_point_anticone_and_trusted_data(pp, virtual_state.parents.iter().copied()));
+            self.cached_anticone.write().replace(CachedPruningPointData { pruning_point: pp, data: anticone.clone() });
+            Ok(anticone)
+        } else {
+            Err(ConsensusError::PruningPointInsufficientDepth)
         }
-
-        cached_data
-    }
-
-    pub fn get_pruning_point_proof(&self) -> Arc<PruningPointProof> {
-        self.update_cache_if_needed().proof
-    }
-
-    pub fn get_pruning_point_anticone_and_trusted_data(&self) -> Arc<(Vec<Hash>, Vec<TrustedHeader>, Vec<TrustedGhostdagData>)> {
-        self.update_cache_if_needed().pruning_point_anticone_and_trusted_data
     }
 }

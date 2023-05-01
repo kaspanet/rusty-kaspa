@@ -15,9 +15,9 @@ use crate::{
         tx::TxResult,
     },
     header::Header,
-    pruning::{PruningPointProof, PruningPointsList},
+    pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
     sync_info::SyncInfo,
-    trusted::{ExternalGhostdagData, TrustedBlock, TrustedGhostdagData, TrustedHeader},
+    trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     BlockHashSet, ChainPath,
 };
@@ -176,7 +176,7 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn get_pruning_point_anticone_and_trusted_data(&self) -> Arc<(Vec<Hash>, Vec<TrustedHeader>, Vec<TrustedGhostdagData>)> {
+    fn get_pruning_point_anticone_and_trusted_data(&self) -> ConsensusResult<Arc<PruningPointTrustedData>> {
         unimplemented!()
     }
 

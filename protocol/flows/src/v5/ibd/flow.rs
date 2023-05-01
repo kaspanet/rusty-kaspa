@@ -227,7 +227,9 @@ impl IbdFlow {
         let mut entry_stream = TrustedEntryStream::new(&self.router, &mut self.incoming_route);
         let Some(pruning_point_entry) = entry_stream.next().await? else { return Err(ProtocolError::Other("got `done` message before receiving the pruning point")); };
 
-        // TODO: verify trusted pruning point matches proof pruning point
+        if pruning_point_entry.block.hash() != proof_pruning_point {
+            return Err(ProtocolError::Other("the proof pruning point is not equal to the expected trusted entry"));
+        }
 
         let mut entries = vec![pruning_point_entry];
         while let Some(entry) = entry_stream.next().await? {
