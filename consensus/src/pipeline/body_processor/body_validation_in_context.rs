@@ -87,6 +87,7 @@ mod tests {
         model::stores::ghostdag::GhostdagStoreReader, params::DEVNET_PARAMS, processes::transaction_validator::errors::TxRuleError,
     };
     use kaspa_consensus_core::{
+        api::ConsensusApi,
         merkle::calc_hash_merkle_root,
         subnets::SUBNETWORK_ID_NATIVE,
         tx::{Transaction, TransactionInput, TransactionOutpoint},

@@ -112,6 +112,7 @@ mod tests {
         params::MAINNET_PARAMS,
     };
     use kaspa_consensus_core::{
+        api::ConsensusApi,
         block::MutableBlock,
         header::Header,
         merkle::calc_hash_merkle_root,

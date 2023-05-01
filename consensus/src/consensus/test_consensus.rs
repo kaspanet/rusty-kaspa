@@ -7,14 +7,8 @@ use std::{
 
 use async_channel::Sender;
 use kaspa_consensus_core::{
-    api::ConsensusApi,
-    block::{Block, MutableBlock},
-    blockstatus::BlockStatus,
-    header::Header,
-    merkle::calc_hash_merkle_root,
-    subnets::SUBNETWORK_ID_COINBASE,
-    tx::Transaction,
-    BlockHashSet,
+    api::ConsensusApi, block::MutableBlock, blockstatus::BlockStatus, header::Header, merkle::calc_hash_merkle_root,
+    subnets::SUBNETWORK_ID_COINBASE, tx::Transaction,
 };
 use kaspa_consensus_notify::{notification::Notification, root::ConsensusNotificationRoot};
 use kaspa_core::{core::Core, service::Service};
@@ -138,10 +132,6 @@ impl TestConsensus {
         MutableBlock::from_header(self.build_header_with_parents(hash, parents))
     }
 
-    pub fn validate_and_insert_block(&self, block: Block) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
-        self.consensus.validate_and_insert_block(block)
-    }
-
     pub fn init(&self) -> Vec<JoinHandle<()>> {
         self.consensus.run_processors()
     }
@@ -190,14 +180,6 @@ impl TestConsensus {
         MTRelationsService<DbRelationsStore>,
     > {
         &self.consensus.past_median_time_manager
-    }
-
-    pub fn body_tips(&self) -> Arc<BlockHashSet> {
-        self.consensus.body_tips()
-    }
-
-    pub fn block_status(&self, hash: Hash) -> BlockStatus {
-        self.consensus.block_status(hash)
     }
 
     pub fn ghostdag_manager(&self) -> &DbGhostdagManager {
