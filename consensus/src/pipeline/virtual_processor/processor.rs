@@ -723,10 +723,6 @@ impl VirtualStateProcessor {
         drop(virtual_read);
 
         let pruning_info = self.pruning_store.read().get().unwrap();
-        if pruning_info.pruning_point == virtual_state.ghostdag_data.selected_parent {
-            // Sanity test which indicates that virtual state was just recently initialized from the pruning point
-            return Err(RuleError::PrematureBlockTemplate);
-        }
         let header_pruning_point =
             self.pruning_manager.expected_header_pruning_point(virtual_state.ghostdag_data.to_compact(), pruning_info);
         let coinbase = self
@@ -741,7 +737,7 @@ impl VirtualStateProcessor {
             .unwrap();
         txs.insert(0, coinbase.tx);
         let version = BLOCK_VERSION;
-        let parents_by_level = self.parents_manager.calc_block_parents(header_pruning_point, &virtual_state.parents);
+        let parents_by_level = self.parents_manager.calc_block_parents(pruning_info.pruning_point, &virtual_state.parents);
         let hash_merkle_root = calc_hash_merkle_root(txs.iter());
         let accepted_id_merkle_root = kaspa_merkle::calc_merkle_root(virtual_state.accepted_tx_ids.iter().copied());
         let utxo_commitment = virtual_state.multiset.clone().finalize();

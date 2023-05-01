@@ -142,9 +142,6 @@ pub enum RuleError {
     #[error("invalid transactions in new block template")]
     InvalidTransactionsInNewBlock(Vec<(TransactionId, TxRuleError)>),
 
-    #[error("block template cannot be built yet")]
-    PrematureBlockTemplate,
-
     #[error("DAA window data has only {0} entries")]
     InsufficientDaaWindowSize(usize),
 }
