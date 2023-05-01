@@ -61,7 +61,7 @@ pub struct HeaderProcessingContext {
     pub ghostdag_data: Option<Vec<Arc<GhostdagData>>>,
     pub block_window_for_difficulty: Option<BlockWindowHeap>,
     pub block_window_for_past_median_time: Option<BlockWindowHeap>,
-    pub mergeset_non_daa: BlockHashSet,
+    pub mergeset_non_daa: Option<BlockHashSet>,
     pub merge_depth_root: Option<Hash>,
     pub finality_point: Option<Hash>,
 }
@@ -82,7 +82,7 @@ impl HeaderProcessingContext {
             known_parents,
             ghostdag_data: None,
             block_window_for_difficulty: None,
-            mergeset_non_daa: Default::default(),
+            mergeset_non_daa: None,
             block_window_for_past_median_time: None,
             merge_depth_root: None,
             finality_point: None,
@@ -347,6 +347,7 @@ impl HeaderProcessor {
         let block_level = self.validate_header_in_isolation(header)?;
         let mut ctx = self.build_processing_context(header, block_level);
         self.ghostdag(&mut ctx);
+        ctx.mergeset_non_daa = Some(Default::default());
         ctx.merge_depth_root = Some(ORIGIN);
         ctx.finality_point = Some(ORIGIN);
         Ok(ctx)
@@ -422,7 +423,7 @@ impl HeaderProcessor {
             self.block_window_cache_for_past_median_time.insert(ctx.hash, Arc::new(window));
         }
 
-        self.daa_store.insert_batch(&mut batch, ctx.hash, Arc::new(ctx.mergeset_non_daa)).unwrap();
+        self.daa_store.insert_batch(&mut batch, ctx.hash, Arc::new(ctx.mergeset_non_daa.unwrap())).unwrap();
 
         self.headers_store.insert_batch(&mut batch, ctx.hash, ctx.header, ctx.block_level).unwrap_or_exists();
 
@@ -524,6 +525,7 @@ impl HeaderProcessor {
             Some(self.ghostdag_managers.iter().map(|manager_by_level| Arc::new(manager_by_level.genesis_ghostdag_data())).collect());
         ctx.block_window_for_difficulty = Some(Default::default());
         ctx.block_window_for_past_median_time = Some(Default::default());
+        ctx.mergeset_non_daa = Some(Default::default());
         ctx.merge_depth_root = Some(ORIGIN);
         ctx.finality_point = Some(ORIGIN);
 
