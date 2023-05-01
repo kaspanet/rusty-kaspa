@@ -544,7 +544,6 @@ impl VirtualStateProcessor {
                 warn!("Finality Violation Detected. Block {} violates finality and is ignored from Virtual chain.", candidate);
             }
             for parent in self.relations_service.get_parents(candidate).unwrap().iter().copied() {
-                // TODO (short-term): consider failing gracefully if no reachability data here
                 if !self.reachability_service.is_dag_ancestor_of_any(parent, &mut heap.iter().map(|sb| sb.hash)) {
                     heap.push(SortableBlock { hash: parent, blue_work: self.ghostdag_store.get_blue_work(parent).unwrap() });
                 }
