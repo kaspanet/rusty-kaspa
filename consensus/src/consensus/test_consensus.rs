@@ -33,7 +33,7 @@ use crate::{
         },
     },
     params::Params,
-    pipeline::{body_processor::BlockBodyProcessor, ProcessingCounters},
+    pipeline::{body_processor::BlockBodyProcessor, virtual_processor::VirtualStateProcessor, ProcessingCounters},
     processes::{past_median_time::PastMedianTimeManager, traversal_manager::DagTraversalManager},
     test_helpers::header_from_precomputed_hash,
 };
@@ -41,8 +41,8 @@ use crate::{
 use super::{Consensus, DbGhostdagManager, VirtualStores};
 
 pub struct TestConsensus {
-    pub consensus: Arc<Consensus>,
-    pub params: Params,
+    consensus: Arc<Consensus>,
+    params: Params,
     temp_db_lifetime: TempDbLifetime,
 }
 
@@ -57,8 +57,13 @@ impl TestConsensus {
         }
     }
 
-    pub fn consensus(&self) -> Arc<Consensus> {
+    /// Clone the inner consensus Arc. For general usage of the underlying consensus simply deref
+    pub fn consensus_clone(&self) -> Arc<Consensus> {
         self.consensus.clone()
+    }
+
+    pub fn get_params(&self) -> &Params {
+        &self.params
     }
 
     pub fn create_from_temp_db(config: &Config, notification_sender: Sender<Notification>) -> Self {
@@ -168,6 +173,10 @@ impl TestConsensus {
 
     pub fn block_body_processor(&self) -> &Arc<BlockBodyProcessor> {
         &self.consensus.body_processor
+    }
+
+    pub fn virtual_processor(&self) -> &Arc<VirtualStateProcessor> {
+        &self.consensus.virtual_processor
     }
 
     pub fn past_median_time_manager(

@@ -237,7 +237,7 @@ mod tests {
         let (_utxoindex_db_lifetime, utxoindex_db) = create_temp_db();
         let config = Config::new(DEVNET_PARAMS);
         let tc = Arc::new(TestConsensus::create_from_temp_db_and_dummy_sender(&config));
-        let consensus_manager = Arc::new(ConsensusManager::from_consensus(tc.consensus()));
+        let consensus_manager = Arc::new(ConsensusManager::from_consensus(tc.consensus_clone()));
         let utxoindex = UtxoIndex::new(consensus_manager, utxoindex_db).unwrap();
 
         // Fill initial utxo collection in emulator.
@@ -251,14 +251,13 @@ mod tests {
             ..Default::default()
         });
         // Write virtual state from emulator to test_consensus db.
-        tc.consensus
-            .virtual_processor
+        tc.virtual_processor()
             .virtual_stores
             .write()
             .utxo_set
             .write_diff(&test_consensus_virtual_state.utxo_diff)
             .expect("expected write diff");
-        tc.consensus.virtual_processor.virtual_stores.write().state.set(test_consensus_virtual_state).expect("setting of state");
+        tc.virtual_processor().virtual_stores.write().state.set(test_consensus_virtual_state).expect("setting of state");
 
         // Sync utxoindex from scratch.
         assert!(!utxoindex.read().is_synced().expect("expected bool"));
@@ -272,7 +271,7 @@ mod tests {
         assert!(utxoindex.read().is_synced().expect("expected bool"));
 
         // Test the sync from scratch via consensus db.
-        let consensus_utxos = tc.consensus().get_virtual_utxos(None, usize::MAX, false); // `usize::MAX` to ensure to get all.
+        let consensus_utxos = tc.get_virtual_utxos(None, usize::MAX, false); // `usize::MAX` to ensure to get all.
         let mut i = 0;
         let mut consensus_supply: CirculatingSupply = 0;
         let consensus_utxo_set_size = consensus_utxos.len();
@@ -293,12 +292,8 @@ mod tests {
         }
 
         assert_eq!(i, consensus_utxo_set_size);
-
         assert_eq!(utxoindex.read().get_circulating_supply().expect("expected circulating supply"), consensus_supply);
-        assert_eq!(
-            *utxoindex.read().get_utxo_index_tips().expect("expected circulating supply"),
-            tc.consensus().get_virtual_parents()
-        );
+        assert_eq!(*utxoindex.read().get_utxo_index_tips().expect("expected circulating supply"), tc.get_virtual_parents());
 
         // Test update: Change and signal new virtual state.
         virtual_change_emulator.clear_virtual_state();
@@ -357,7 +352,7 @@ mod tests {
         // Since we changed virtual state in the emulator, but not in test-consensus db,
         // we expect the resync to get the utxo-set from the test-consensus,
         // these utxos correspond the the initial sync test.
-        let consensus_utxos = tc.consensus().get_virtual_utxos(None, usize::MAX, false); // `usize::MAX` to ensure to get all.
+        let consensus_utxos = tc.get_virtual_utxos(None, usize::MAX, false); // `usize::MAX` to ensure to get all.
         let mut i = 0;
         let consensus_utxo_set_size = consensus_utxos.len();
         for (tx_outpoint, utxo_entry) in consensus_utxos.into_iter() {
@@ -375,11 +370,7 @@ mod tests {
             }
         }
         assert_eq!(i, consensus_utxo_set_size);
-
-        assert_eq!(
-            *utxoindex.read().get_utxo_index_tips().expect("expected circulating supply"),
-            tc.consensus().get_virtual_parents()
-        );
+        assert_eq!(*utxoindex.read().get_utxo_index_tips().expect("expected circulating supply"), tc.get_virtual_parents());
 
         // Deconstruct
         drop(utxoindex);

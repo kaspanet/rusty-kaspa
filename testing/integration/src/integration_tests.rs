@@ -864,7 +864,7 @@ async fn json_test(file_path: &str, concurrency: bool) {
     let external_block_store = DbBlockTransactionsStore::new(external_storage, config.perf.block_data_cache_size);
 
     let (_utxoindex_db_lifetime, utxoindex_db) = create_temp_db();
-    let consensus_manager = Arc::new(ConsensusManager::from_consensus(tc.consensus()));
+    let consensus_manager = Arc::new(ConsensusManager::from_consensus(tc.consensus_clone()));
     let utxoindex = UtxoIndex::new(consensus_manager, utxoindex_db).unwrap();
     let index_service = Arc::new(IndexService::new(&notify_service.notifier(), Some(utxoindex.clone())));
 
@@ -889,17 +889,17 @@ async fn json_test(file_path: &str, concurrency: bool) {
 
         // TODO: Add consensus validation that the pruning point is one of the trusted blocks.
         let trusted_blocks = gzip_file_lines(&main_path.join("trusted.json.gz")).map(json_trusted_line_to_block_and_gd).collect_vec();
-        tc.consensus().apply_pruning_proof(proof, &trusted_blocks);
+        tc.apply_pruning_proof(proof, &trusted_blocks);
 
         let past_pruning_points =
             gzip_file_lines(&main_path.join("past-pps.json.gz")).map(|line| json_line_to_block(line).header).collect_vec();
         let pruning_point = past_pruning_points.last().unwrap().hash;
 
-        tc.consensus.as_ref().import_pruning_points(past_pruning_points);
+        tc.import_pruning_points(past_pruning_points);
 
         info!("Processing {} trusted blocks...", trusted_blocks.len());
         for tb in trusted_blocks.into_iter() {
-            tc.consensus.as_ref().validate_and_insert_trusted_block(tb).await.unwrap();
+            tc.validate_and_insert_trusted_block(tb).await.unwrap();
         }
         Some(pruning_point)
     } else {
@@ -932,9 +932,7 @@ async fn json_test(file_path: &str, concurrency: bool) {
 
             external_block_store.insert(hash, block.transactions).unwrap();
             let block = Block::from_header_arc(block.header);
-
-            let status =
-                tc.consensus().as_ref().validate_and_insert_block(block).await.unwrap_or_else(|e| panic!("block {hash} failed: {e}"));
+            let status = tc.validate_and_insert_block(block).await.unwrap_or_else(|e| panic!("block {hash} failed: {e}"));
             assert!(status.is_header_only());
         }
     }
@@ -943,15 +941,15 @@ async fn json_test(file_path: &str, concurrency: bool) {
         info!("Importing the UTXO set...");
         let mut multiset = MuHash::new();
         for outpoint_utxo_pairs in gzip_file_lines(&main_path.join("pp-utxo.json.gz")).map(json_line_to_utxo_pairs) {
-            tc.consensus.append_imported_pruning_point_utxos(&outpoint_utxo_pairs, &mut multiset);
+            tc.append_imported_pruning_point_utxos(&outpoint_utxo_pairs, &mut multiset);
         }
 
-        tc.consensus.import_pruning_point_utxo_set(pruning_point.unwrap(), &mut multiset).unwrap();
+        tc.import_pruning_point_utxo_set(pruning_point.unwrap(), &mut multiset).unwrap();
         utxoindex.write().resync().unwrap();
         // TODO: Add consensus validation that the pruning point is actually the right block according to the rules (in pruning depth etc).
     }
 
-    let missing_bodies = tc.consensus.get_missing_block_body_hashes(tc.consensus.get_headers_selected_tip()).unwrap();
+    let missing_bodies = tc.get_missing_block_body_hashes(tc.get_headers_selected_tip()).unwrap();
 
     info!("Processing {} block bodies...", missing_bodies.len());
 
@@ -972,9 +970,8 @@ async fn json_test(file_path: &str, concurrency: bool) {
         assert!(statuses.iter().all(|s| s.is_utxo_valid_or_pending()));
     } else {
         for hash in missing_bodies {
-            let block = Block::from_arcs(tc.consensus.get_header(hash).unwrap(), external_block_store.get(hash).unwrap());
-            let status =
-                tc.consensus().as_ref().validate_and_insert_block(block).await.unwrap_or_else(|e| panic!("block {hash} failed: {e}"));
+            let block = Block::from_arcs(tc.get_header(hash).unwrap(), external_block_store.get(hash).unwrap());
+            let status = tc.validate_and_insert_block(block).await.unwrap_or_else(|e| panic!("block {hash} failed: {e}"));
             assert!(status.is_utxo_valid_or_pending());
         }
     }
@@ -985,7 +982,7 @@ async fn json_test(file_path: &str, concurrency: bool) {
     // Assert that at least one body tip was resolved with valid UTXO
     assert!(tc.body_tips().iter().copied().any(|h| tc.block_status(h) == BlockStatus::StatusUTXOValid));
     let virtual_utxos: HashSet<TransactionOutpoint> =
-        HashSet::from_iter(tc.consensus().get_virtual_utxos(None, usize::MAX, false).into_iter().map(|(outpoint, _)| outpoint));
+        HashSet::from_iter(tc.get_virtual_utxos(None, usize::MAX, false).into_iter().map(|(outpoint, _)| outpoint));
     let utxoindex_utxos = utxoindex.read().get_all_outpoints().unwrap();
     assert_eq!(virtual_utxos.len(), utxoindex_utxos.len());
     assert!(virtual_utxos.is_subset(&utxoindex_utxos));
@@ -1002,7 +999,7 @@ fn submit_header_chunk(
         let block = json_line_to_block(line);
         external_block_store.insert(block.hash(), block.transactions).unwrap();
         let block = Block::from_header_arc(block.header);
-        let f = tc.consensus.as_ref().validate_and_insert_block(block);
+        let f = tc.validate_and_insert_block(block);
         futures.push(f);
     }
     futures
@@ -1015,8 +1012,8 @@ fn submit_body_chunk(
 ) -> Vec<impl Future<Output = BlockProcessResult<BlockStatus>>> {
     let mut futures = Vec::new();
     for hash in chunk {
-        let block = Block::from_arcs(tc.consensus.get_header(hash).unwrap(), external_block_store.get(hash).unwrap());
-        let f = tc.consensus.as_ref().validate_and_insert_block(block);
+        let block = Block::from_arcs(tc.get_header(hash).unwrap(), external_block_store.get(hash).unwrap());
+        let f = tc.validate_and_insert_block(block);
         futures.push(f);
     }
     futures
@@ -1242,7 +1239,7 @@ async fn difficulty_test() {
     async fn add_block(consensus: &TestConsensus, block_time: Option<u64>, parents: Vec<Hash>) -> Header {
         let selected_parent = consensus.ghostdag_manager().find_selected_parent(parents.iter().copied());
         let block_time = block_time.unwrap_or_else(|| {
-            consensus.headers_store().get_timestamp(selected_parent).unwrap() + consensus.params.target_time_per_block
+            consensus.headers_store().get_timestamp(selected_parent).unwrap() + consensus.get_params().target_time_per_block
         });
         let mut header = consensus.build_header_with_parents(new_unique(), parents);
         header.timestamp = block_time;
