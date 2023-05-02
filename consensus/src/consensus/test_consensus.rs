@@ -84,7 +84,7 @@ impl TestConsensus {
         self.consensus.clone()
     }
 
-    pub fn get_params(&self) -> &Params {
+    pub fn params(&self) -> &Params {
         &self.params
     }
 
