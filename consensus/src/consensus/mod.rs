@@ -491,7 +491,7 @@ impl Consensus {
             params.max_block_level,
             params.genesis.hash,
             params.pruning_proof_m,
-            params.pruning_depth,
+            params.anticone_finalization_depth(),
             params.difficulty_window_size,
             params.ghostdag_k,
         );

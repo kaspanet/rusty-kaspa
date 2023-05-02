@@ -91,7 +91,7 @@ pub struct PruningProofManager {
     max_block_level: BlockLevel,
     genesis_hash: Hash,
     pruning_proof_m: u64,
-    pruning_depth: u64,
+    anticone_finalization_depth: u64,
     difficulty_adjustment_window_size: usize,
     ghostdag_k: KType,
 }
@@ -203,7 +203,7 @@ impl PruningProofManager {
         max_block_level: BlockLevel,
         genesis_hash: Hash,
         pruning_proof_m: u64,
-        pruning_depth: u64,
+        anticone_finalization_depth: u64,
         difficulty_adjustment_window_size: usize,
         ghostdag_k: KType,
     ) -> Self {
@@ -231,7 +231,7 @@ impl PruningProofManager {
             max_block_level,
             genesis_hash,
             pruning_proof_m,
-            pruning_depth,
+            anticone_finalization_depth,
             difficulty_adjustment_window_size,
             ghostdag_k,
         }
@@ -811,7 +811,7 @@ impl PruningProofManager {
         let pp_bs = self.headers_store.get_blue_score(pp).unwrap();
 
         // The anticone is considered final only if the pruning point is at sufficient depth from virtual
-        if virtual_state.ghostdag_data.blue_score >= pp_bs + self.pruning_depth {
+        if virtual_state.ghostdag_data.blue_score >= pp_bs + self.anticone_finalization_depth {
             let anticone = Arc::new(self.calculate_pruning_point_anticone_and_trusted_data(pp, virtual_state.parents.iter().copied()));
             self.cached_anticone.write().replace(CachedPruningPointData { pruning_point: pp, data: anticone.clone() });
             Ok(anticone)
