@@ -17,7 +17,7 @@ use crate::{
     constants::TX_VERSION,
     errors::BlockProcessResult,
     model::{
-        services::relations::MTRelationsService,
+        services::{reachability::MTReachabilityService, relations::MTRelationsService},
         stores::{
             block_window_cache::BlockWindowCacheStore,
             ghostdag::DbGhostdagStore,
@@ -156,6 +156,10 @@ impl TestConsensus {
 
     pub fn reachability_store(&self) -> &Arc<RwLock<DbReachabilityStore>> {
         &self.consensus.reachability_store
+    }
+
+    pub fn reachability_service(&self) -> &MTReachabilityService<DbReachabilityStore> {
+        &self.consensus.reachability_service
     }
 
     pub fn headers_store(&self) -> Arc<impl HeaderStoreReader> {
