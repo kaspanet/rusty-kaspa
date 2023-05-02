@@ -44,6 +44,7 @@ const DEFAULT_DATA_DIR: &str = "datadir";
 const CONSENSUS_DB: &str = "consensus";
 const UTXOINDEX_DB: &str = "utxoindex";
 const META_DB: &str = "meta";
+const DEFAULT_LOG_DIR: &str = "logs";
 
 // TODO: add a Config
 // TODO: apply Args to Config
@@ -128,12 +129,6 @@ fn get_app_dir() -> PathBuf {
 pub fn main() {
     let args = Args::parse(&Defaults::default());
 
-    // Initialize the logger
-    kaspa_core::log::init_logger(&args.log_level);
-
-    // Print package name and version
-    info!("{} v{}", env!("CARGO_PKG_NAME"), version());
-
     // Configure the panic behavior
     kaspa_core::panic::configure_panic();
 
@@ -164,9 +159,20 @@ pub fn main() {
     let app_dir = if app_dir.is_empty() { get_app_dir() } else { PathBuf::from(app_dir) };
     let db_dir = app_dir.join(config.network_name()).join(DEFAULT_DATA_DIR);
 
+    // Logs directory is usually under the application directory, unless otherwise specified
+    let log_dir = args.logdir.unwrap_or_default().replace('~', get_home_dir().as_path().to_str().unwrap());
+    let log_dir = if log_dir.is_empty() { app_dir.join(config.network_name()).join(DEFAULT_LOG_DIR) } else { PathBuf::from(log_dir) };
+
+    // Initialize the logger
+    kaspa_core::log::init_logger(log_dir.to_str(), &args.log_level);
+
+    // Print package name and version
+    info!("{} v{}", env!("CARGO_PKG_NAME"), version());
+
     assert!(!db_dir.to_str().unwrap().is_empty());
     info!("Application directory: {}", app_dir.display());
     info!("Data directory: {}", db_dir.display());
+    info!("Logs directory: {}", log_dir.display());
 
     let consensus_db_dir = db_dir.join(CONSENSUS_DB);
     let utxoindex_db_dir = db_dir.join(UTXOINDEX_DB);

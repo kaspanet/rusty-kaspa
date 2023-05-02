@@ -19,19 +19,66 @@ cfg_if::cfg_if! {
     }
 }
 
-// TODO: enhance logger with parallel output to file, rotation, compression
-
 #[cfg(not(target_arch = "wasm32"))]
-pub fn init_logger(filters: &str) {
+pub fn init_logger(log_dir: Option<&str>, _filters: &str) {
+    use log4rs::{
+        append::{
+            console::ConsoleAppender,
+            rolling_file::{
+                policy::compound::{roll::fixed_window::FixedWindowRoller, trigger::size::SizeTrigger, CompoundPolicy},
+                RollingFileAppender,
+            },
+            Append,
+        },
+        config::{Appender, Root},
+        encode::pattern::PatternEncoder,
+        Config,
+    };
+    use std::{iter::once, path::PathBuf};
+
+    const CONSOLE_APPENDER: &str = "stdout";
+
+    const LOG_FILE_APPENDER: &str = "log_file";
+    const LOG_FILE_NAME: &str = "rusty-kaspa.log";
+    const LOG_FILE_NAME_PATTERN: &str = "rusty-kaspa.log.{}.gz";
+
+    const LOG_LINE_PATTERN_COLORED: &str = "[{d(%Y-%m-%dT%H:%M:%S %Z)} {h({({l}):5.5})}] {m}{n}";
+    const LOG_LINE_PATTERN: &str = "[{d(%Y-%m-%dT%H:%M:%S %Z)} {({l}):5.5}] {m}{n}";
+
     let level = log::LevelFilter::Info;
 
-    env_logger::Builder::new()
-        .format_target(false)
-        .format_timestamp_secs()
-        .filter_level(level)
-        .parse_default_env()
-        .parse_filters(filters)
-        .init();
+    let stdout_appender: (&'static str, Box<dyn Append>) = (
+        CONSOLE_APPENDER,
+        Box::new(ConsoleAppender::builder().encoder(Box::new(PatternEncoder::new(LOG_LINE_PATTERN_COLORED))).build()),
+    );
+
+    let file_appender: Option<(&'static str, Box<dyn Append>)> = log_dir.map(|x| {
+        let trigger_size: u64 = 10 * 1024 * 1024 * 1024;
+        let trigger = Box::new(SizeTrigger::new(trigger_size));
+
+        let file_path = PathBuf::from(x).join(LOG_FILE_NAME);
+        let roller_pattern = PathBuf::from(x).join(LOG_FILE_NAME_PATTERN);
+        let roller_count = 10;
+        let roller_base = 1;
+        let roller =
+            Box::new(FixedWindowRoller::builder().base(roller_base).build(roller_pattern.to_str().unwrap(), roller_count).unwrap());
+
+        let compound_policy = Box::new(CompoundPolicy::new(trigger, roller));
+        let file_appender = RollingFileAppender::builder()
+            .encoder(Box::new(PatternEncoder::new(LOG_LINE_PATTERN)))
+            .build(file_path, compound_policy)
+            .unwrap();
+
+        (LOG_FILE_APPENDER, Box::new(file_appender) as Box<dyn Append>)
+    });
+
+    let appender_names = once(&stdout_appender).chain(file_appender.iter()).map(|(name, _)| *name).collect::<Vec<_>>();
+    let appenders =
+        once(stdout_appender).chain(file_appender.into_iter()).map(|(name, appender)| Appender::builder().build(name, appender));
+
+    let config = Config::builder().appenders(appenders).build(Root::builder().appenders(appender_names).build(level)).unwrap();
+
+    let _handle = log4rs::init_config(config).unwrap();
 
     workflow_log::set_log_level(level);
 }

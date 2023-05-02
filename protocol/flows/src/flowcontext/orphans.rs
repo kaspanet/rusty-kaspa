@@ -115,7 +115,12 @@ impl OrphanBlocksPool {
         match unorphaned_blocks.len() {
             0 => {}
             1 => info!("Unorphaned block {}", unorphaned_blocks[0].hash()),
-            n => info!("Unorphaned {} blocks: {}", n, unorphaned_blocks.iter().map(|b| b.hash()).format(", ")),
+            n => {
+                // Evaluating block_list outside of info!() is required when the log system has multiples loggers.
+                // Otherwise the message is formatted more than once leading to a panic caused by fn format(sep).
+                let block_list = format!("{}", unorphaned_blocks.iter().map(|b| b.hash()).format(", "));
+                info!("Unorphaned {} blocks: {}", n, block_list);
+            }
         }
         unorphaned_blocks
     }

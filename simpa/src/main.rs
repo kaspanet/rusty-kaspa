@@ -106,7 +106,7 @@ fn main() {
     let args = Args::parse();
 
     // Initialize the logger
-    kaspa_core::log::init_logger(&args.log_level);
+    kaspa_core::log::init_logger(None, &args.log_level);
 
     // Print package name and version
     info!("{} v{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));

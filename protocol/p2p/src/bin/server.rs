@@ -5,7 +5,7 @@ use std::{sync::Arc, time::Duration};
 #[tokio::main]
 async fn main() {
     // [-] - init logger
-    kaspa_core::log::init_logger("debug");
+    kaspa_core::log::init_logger(None, "debug");
     // [0] - init p2p-adaptor - server side
     let ip_port = String::from("[::1]:50051");
     let initializer = Arc::new(EchoFlowInitializer::new());

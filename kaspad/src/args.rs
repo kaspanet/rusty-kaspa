@@ -41,6 +41,7 @@ impl Default for Defaults {
 pub struct Args {
     // NOTE: it is best if property names match config file fields
     pub appdir: Option<String>,
+    pub logdir: Option<String>,
     pub rpclisten: Option<String>,
     pub rpclisten_borsh: Option<String>,
     pub rpclisten_json: Option<String>,
@@ -64,6 +65,7 @@ pub fn cli(defaults: &Defaults) -> Command {
         .about(format!("{} (rusty-kaspa) v{}", env!("CARGO_PKG_DESCRIPTION"), version()))
         .version(env!("CARGO_PKG_VERSION"))
         .arg(arg!(-b --appdir <DATA_DIR> "Directory to store data."))
+        .arg(arg!(--logdir <LOG_DIR> "Directory to log output."))
         .arg(
             Arg::new("async_threads")
                 .short('t')
@@ -160,6 +162,7 @@ impl Args {
         let m = cli(defaults).get_matches();
         Args {
             appdir: m.get_one::<String>("appdir").cloned(),
+            logdir: m.get_one::<String>("logdir").cloned(),
             rpclisten: m.get_one::<String>("rpclisten").cloned(),
             rpclisten_borsh: m.get_one::<String>("rpclisten-borsh").cloned(),
             rpclisten_json: m.get_one::<String>("rpclisten-json").cloned(),
