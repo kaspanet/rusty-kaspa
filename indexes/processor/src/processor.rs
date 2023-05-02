@@ -170,7 +170,7 @@ mod tests {
             let (consensus_sender, consensus_receiver) = unbounded();
             let (utxoindex_db_lifetime, utxoindex_db) = create_temp_db();
             let config = Arc::new(Config::new(DEVNET_PARAMS));
-            let tc = TestConsensus::create_from_temp_db_and_dummy_sender(&config);
+            let tc = TestConsensus::new(&config);
             tc.init();
             let consensus_manager = Arc::new(ConsensusManager::from_consensus(tc.consensus_clone()));
             let utxoindex: DynUtxoIndexApi = Some(UtxoIndex::new(consensus_manager, utxoindex_db).unwrap());

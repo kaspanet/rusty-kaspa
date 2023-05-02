@@ -236,7 +236,7 @@ mod tests {
         let mut virtual_change_emulator = VirtualChangeEmulator::new();
         let (_utxoindex_db_lifetime, utxoindex_db) = create_temp_db();
         let config = Config::new(DEVNET_PARAMS);
-        let tc = Arc::new(TestConsensus::create_from_temp_db_and_dummy_sender(&config));
+        let tc = Arc::new(TestConsensus::new(&config));
         let consensus_manager = Arc::new(ConsensusManager::from_consensus(tc.consensus_clone()));
         let utxoindex = UtxoIndex::new(consensus_manager, utxoindex_db).unwrap();
 

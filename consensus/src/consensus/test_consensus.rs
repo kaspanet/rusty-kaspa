@@ -47,13 +47,39 @@ pub struct TestConsensus {
 }
 
 impl TestConsensus {
-    pub fn new(db: Arc<DB>, config: &Config, notification_sender: Sender<Notification>) -> Self {
+    /// Creates a test consensus instance based on `config` with the provided `db` and `notification_sender`
+    pub fn with_db(db: Arc<DB>, config: &Config, notification_sender: Sender<Notification>) -> Self {
         let notification_root = Arc::new(ConsensusNotificationRoot::new(notification_sender));
         let counters = Arc::new(ProcessingCounters::default());
         Self {
             consensus: Arc::new(Consensus::new(db, Arc::new(config.clone()), notification_root, counters)),
             params: config.params.clone(),
             temp_db_lifetime: Default::default(),
+        }
+    }
+
+    /// Creates a test consensus instance based on `config` with a temp DB and the provided `notification_sender`
+    pub fn with_notifier(config: &Config, notification_sender: Sender<Notification>) -> Self {
+        let (temp_db_lifetime, db) = create_temp_db();
+        let notification_root = Arc::new(ConsensusNotificationRoot::new(notification_sender));
+        let counters = Arc::new(ProcessingCounters::default());
+        Self {
+            consensus: Arc::new(Consensus::new(db, Arc::new(config.clone()), notification_root, counters)),
+            params: config.params.clone(),
+            temp_db_lifetime,
+        }
+    }
+
+    /// Creates a test consensus instance based on `config` with a temp DB and no notifier
+    pub fn new(config: &Config) -> Self {
+        let (temp_db_lifetime, db) = create_temp_db();
+        let (dummy_notification_sender, _) = async_channel::unbounded();
+        let notification_root = Arc::new(ConsensusNotificationRoot::new(dummy_notification_sender));
+        let counters = Arc::new(ProcessingCounters::default());
+        Self {
+            consensus: Arc::new(Consensus::new(db, Arc::new(config.clone()), notification_root, counters)),
+            params: config.params.clone(),
+            temp_db_lifetime,
         }
     }
 
@@ -64,29 +90,6 @@ impl TestConsensus {
 
     pub fn get_params(&self) -> &Params {
         &self.params
-    }
-
-    pub fn create_from_temp_db(config: &Config, notification_sender: Sender<Notification>) -> Self {
-        let (temp_db_lifetime, db) = create_temp_db();
-        let notification_root = Arc::new(ConsensusNotificationRoot::new(notification_sender));
-        let counters = Arc::new(ProcessingCounters::default());
-        Self {
-            consensus: Arc::new(Consensus::new(db, Arc::new(config.clone()), notification_root, counters)),
-            params: config.params.clone(),
-            temp_db_lifetime,
-        }
-    }
-
-    pub fn create_from_temp_db_and_dummy_sender(config: &Config) -> Self {
-        let (temp_db_lifetime, db) = create_temp_db();
-        let (dummy_notification_sender, _) = async_channel::unbounded();
-        let notification_root = Arc::new(ConsensusNotificationRoot::new(dummy_notification_sender));
-        let counters = Arc::new(ProcessingCounters::default());
-        Self {
-            consensus: Arc::new(Consensus::new(db, Arc::new(config.clone()), notification_root, counters)),
-            params: config.params.clone(),
-            temp_db_lifetime,
-        }
     }
 
     pub fn build_header_with_parents(&self, hash: Hash, parents: Vec<Hash>) -> Header {
