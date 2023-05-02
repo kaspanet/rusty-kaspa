@@ -1,12 +1,13 @@
 use futures_util::future::try_join_all;
 use kaspa_consensus::{
     config::ConfigBuilder,
-    consensus::test_consensus::{create_temp_db, TestConsensus},
+    consensus::test_consensus::TestConsensus,
     model::stores::reachability::{DbReachabilityStore, StagingReachabilityStore},
     params::MAINNET_PARAMS,
     processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions},
 };
 use kaspa_consensus_core::{api::ConsensusApi, blockhash};
+use kaspa_database::utils::create_temp_db;
 use kaspa_hashes::Hash;
 use parking_lot::RwLock;
 use rand_distr::{Distribution, Poisson};

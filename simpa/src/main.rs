@@ -4,10 +4,7 @@ use futures::{future::try_join_all, Future};
 use itertools::Itertools;
 use kaspa_consensus::{
     config::ConfigBuilder,
-    consensus::{
-        test_consensus::{create_temp_db_with_parallelism, load_existing_db},
-        Consensus,
-    },
+    consensus::Consensus,
     constants::perf::{PerfParams, PERF_PARAMS},
     model::stores::{
         block_transactions::BlockTransactionsStoreReader,
@@ -24,6 +21,7 @@ use kaspa_consensus_core::{
 };
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_core::{info, warn};
+use kaspa_database::utils::{create_temp_db_with_parallelism, load_existing_db};
 use kaspa_hashes::Hash;
 use simulator::network::KaspaNetworkSimulator;
 use std::{collections::VecDeque, mem::size_of, sync::Arc};

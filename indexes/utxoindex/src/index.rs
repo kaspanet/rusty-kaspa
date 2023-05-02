@@ -208,7 +208,7 @@ mod tests {
     use crate::{api::UtxoIndexApi, model::CirculatingSupply, testutils::virtual_change_emulator::VirtualChangeEmulator, UtxoIndex};
     use kaspa_consensus::{
         config::Config,
-        consensus::test_consensus::{create_temp_db, TestConsensus},
+        consensus::test_consensus::TestConsensus,
         model::stores::{
             utxo_set::UtxoSetStore,
             virtual_state::{VirtualState, VirtualStateStore},
@@ -221,6 +221,7 @@ mod tests {
     };
     use kaspa_consensusmanager::ConsensusManager;
     use kaspa_core::info;
+    use kaspa_database::utils::create_temp_db;
     use std::{collections::HashSet, sync::Arc, time::Instant};
 
     /// TODO: use proper Simnet when implemented.
