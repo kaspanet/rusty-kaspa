@@ -236,13 +236,13 @@ async fn double_search_disqualified_test() {
     // Get current sink
     let sink = ctx.consensus.get_sink();
 
-    ctx.consensus.reachability_service().is_chain_ancestor_of(original_sink, sink);
+    assert!(ctx.consensus.reachability_service().is_chain_ancestor_of(original_sink, sink));
 
-    // Mine a longer disqualified chain
-    let disqualified_tip_1 = ctx.build_and_insert_disqualified_chain(vec![root_1], 20).await;
+    // Mine a long disqualified chain
+    let disqualified_tip_1 = ctx.build_and_insert_disqualified_chain(vec![root_1], 30).await;
 
-    // And another longer disqualified chain
-    let disqualified_tip_2 = ctx.build_and_insert_disqualified_chain(vec![root_2], 30).await;
+    // And another shorter disqualified chain
+    let disqualified_tip_2 = ctx.build_and_insert_disqualified_chain(vec![root_2], 20).await;
 
     assert_eq!(ctx.consensus.get_block_status(root_1), Some(BlockStatus::StatusUTXOValid));
     assert_eq!(ctx.consensus.get_block_status(root_2), Some(BlockStatus::StatusUTXOValid));
