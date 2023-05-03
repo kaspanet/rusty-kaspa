@@ -105,7 +105,7 @@ impl ReachabilityStore for DbReachabilityStore {
 
     fn insert(&mut self, hash: Hash, parent: Hash, interval: Interval, height: u64) -> Result<(), StoreError> {
         if self.access.has(hash)? {
-            return Err(StoreError::KeyAlreadyExists(hash.to_string()));
+            return Err(StoreError::HashAlreadyExists(hash));
         }
         let data = Arc::new(ReachabilityData::new(parent, interval, height));
         self.access.write(DirectDbWriter::new(&self.db), hash, data)?;
@@ -204,13 +204,13 @@ impl ReachabilityStore for StagingReachabilityStore<'_> {
 
     fn insert(&mut self, hash: Hash, parent: Hash, interval: Interval, height: u64) -> Result<(), StoreError> {
         if self.store_read.has(hash)? {
-            return Err(StoreError::KeyAlreadyExists(hash.to_string()));
+            return Err(StoreError::HashAlreadyExists(hash));
         }
         if let Vacant(e) = self.staging_writes.entry(hash) {
             e.insert(ReachabilityData::new(parent, interval, height));
             Ok(())
         } else {
-            Err(StoreError::KeyAlreadyExists(hash.to_string()))
+            Err(StoreError::HashAlreadyExists(hash))
         }
     }
 
@@ -357,7 +357,7 @@ impl ReachabilityStore for MemoryReachabilityStore {
             e.insert(ReachabilityData::new(parent, interval, height));
             Ok(())
         } else {
-            Err(StoreError::KeyAlreadyExists(hash.to_string()))
+            Err(StoreError::HashAlreadyExists(hash))
         }
     }
 

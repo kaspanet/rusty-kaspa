@@ -35,7 +35,7 @@ impl DbAcceptanceDataStore {
 
     pub fn insert_batch(&self, batch: &mut WriteBatch, hash: Hash, acceptance_data: Arc<AcceptanceData>) -> Result<(), StoreError> {
         if self.access.has(hash)? {
-            return Err(StoreError::KeyAlreadyExists(hash.to_string()));
+            return Err(StoreError::HashAlreadyExists(hash));
         }
         self.access.write(BatchDbWriter::new(batch), hash, acceptance_data)?;
         Ok(())
@@ -51,7 +51,7 @@ impl AcceptanceDataStoreReader for DbAcceptanceDataStore {
 impl AcceptanceDataStore for DbAcceptanceDataStore {
     fn insert(&self, hash: Hash, acceptance_data: Arc<AcceptanceData>) -> Result<(), StoreError> {
         if self.access.has(hash)? {
-            return Err(StoreError::KeyAlreadyExists(hash.to_string()));
+            return Err(StoreError::HashAlreadyExists(hash));
         }
         self.access.write(DirectDbWriter::new(&self.db), hash, acceptance_data)?;
         Ok(())

@@ -53,6 +53,13 @@ impl Params {
         self.target_time_per_block * self.difficulty_window_size as u64
     }
 
+    /// Returns the depth at which the anticone of a chain block is final (i.e., is a permanently closed set).
+    /// Based on the analysis at https://github.com/kaspanet/docs/blob/main/Reference/prunality/Prunality.pdf
+    /// and on the decomposition of merge depth (rule R-I therein) from finality depth (φ)
+    pub fn anticone_finalization_depth(&self) -> u64 {
+        self.finality_depth + self.merge_depth + 4 * self.mergeset_size_limit * self.ghostdag_k as u64 + 2 * self.ghostdag_k as u64 + 2
+    }
+
     /// Returns whether the sink timestamp is recent enough and the node is considered synced or nearly synced.
     pub fn is_nearly_synced(&self, sink_timestamp: u64) -> bool {
         // We consider the node close to being synced if the sink (virtual selected parent) block
