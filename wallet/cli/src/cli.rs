@@ -167,9 +167,7 @@ impl WalletCli {
                 let ids = account.send(&address, amount_sompi, priority_fee_sompi, keydata.unwrap(), payment_secret).await?;
 
                 term.writeln(format!("\r\nSending {amount} KAS to {address}, tx ids:"));
-                for id in ids{
-                    term.writeln(format!("{id}"));
-                }
+                term.writeln(format!("{}\r\n", ids.into_iter().map(|a| a.to_string()).collect::<Vec<_>>().join("\r\n")));
             }
             Action::Address => {
                 let address = self.wallet.account()?.address().await?.to_string();
