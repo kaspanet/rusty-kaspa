@@ -138,9 +138,9 @@ pub fn sign(mut mutable_tx: SignableTransaction, privkeys: &Vec<[u8; 32]>) -> Re
         map.insert(script_pub_key_script.to_hex(), schnorr_key);
         //println!("schnorr_key.public_key().serialize(): {:x?}", schnorr_public_key.serialize())
     }
-    for i in 0..mutable_tx.tx.inputs.len() {
-        mutable_tx.tx.inputs[i].sig_op_count = 1;
-    }
+    // for i in 0..mutable_tx.tx.inputs.len() {
+    //     mutable_tx.tx.inputs[i].sig_op_count = 1;
+    // }
 
     let mut reused_values = SigHashReusedValues::new();
     for i in 0..mutable_tx.tx.inputs.len() {

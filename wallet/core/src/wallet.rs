@@ -25,7 +25,6 @@ use kaspa_rpc_core::{
 };
 use kaspa_wrpc_client::{KaspaRpcClient, WrpcEncoding};
 use std::collections::HashMap;
-// use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
@@ -75,7 +74,7 @@ pub struct Inner {
     // accounts: Mutex<Vec<Arc<Account>>>,
     // accounts: Mutex<HashMap<PrvKeyDataId,Vec<Arc<Account>>>>,
     account_map: AccountMap,
-    account_list: Mutex<AccountList>,
+    //account_list: Mutex<AccountList>,
     listener_id: Mutex<Option<ListenerId>>,
     // notification_receiver: Receiver<Notification>,
     #[allow(dead_code)] //TODO: remove me
@@ -141,7 +140,7 @@ impl Wallet {
             virtual_daa_score: Arc::new(AtomicU64::new(0)),
             inner: Arc::new(Inner {
                 account_map: AccountMap::default(), //Mutex::new(HashMap::new()),
-                account_list: Mutex::new(AccountList::default()),
+                // account_list: Mutex::new(AccountList::default()),
                 // notification_receiver,
                 listener_id: Mutex::new(None),
                 ctl_receiver,
@@ -161,15 +160,12 @@ impl Wallet {
     }
 
     pub async fn reset(&self) -> Result<()> {
-        let accounts = self.inner.account_list.lock().unwrap().clone();
+        let accounts = self.account_list()?;
 
-        // let accounts = self.inner.account_map.cloned_flat_list()?;
-        for account in accounts.iter() {
+        for account in accounts {
             account.stop().await?;
         }
         self.inner.account_map.clear();
-        self.inner.account_list.lock().unwrap().clear();
-
         self.inner.address_to_account_map.lock().unwrap().clear();
 
         Ok(())
@@ -424,10 +420,13 @@ impl Wallet {
 
     pub async fn select(&self, account: Option<Arc<Account>>) -> Result<()> {
         // log_info!(target: "term","selecting account");
-        log_info!("selecting account");
+
         *self.inner.selected_account.lock().unwrap() = account.clone();
         if let Some(account) = account {
+            log_info!("selecting account: {}", account.name());
             account.start().await?;
+        } else {
+            log_info!("selecting account");
         }
         Ok(())
     }
@@ -440,8 +439,8 @@ impl Wallet {
         &self.inner.account_map
     }
 
-    pub fn account_list(&self) -> &Mutex<AccountList> {
-        &self.inner.account_list
+    pub fn account_list(&self) -> Result<AccountList> {
+        self.inner.account_map.cloned_flat_list()
     }
     // pub fn accounts(&self) -> Vec<Arc<Account>> {
     //     self.accounts.flat_list()
@@ -538,7 +537,7 @@ impl Wallet {
     }
 
     async fn handle_notification(&self, notification: Notification) -> Result<()> {
-        log_info!("handling notification: {:?}", notification);
+        //log_info!("handling notification: {:?}", notification);
 
         match &notification {
             Notification::VirtualDaaScoreChanged(data) => {

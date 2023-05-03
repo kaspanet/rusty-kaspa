@@ -2,7 +2,7 @@ use crate::tx::{Transaction, TransactionOutput};
 use kaspa_addresses::{Address, Prefix};
 use kaspa_consensus_core::networktype::NetworkType;
 use kaspa_consensus_core::{
-    config::params::{Params, DEVNET_PARAMS, MAINNET_PARAMS},
+    config::params::{Params, DEVNET_PARAMS, MAINNET_PARAMS, SIMNET_PARAMS, TESTNET_PARAMS},
     constants::*,
     mass::{self, MassCalculator},
 };
@@ -102,15 +102,15 @@ pub fn is_transaction_output_dust(transaction_output: &TransactionOutput) -> boo
 
 pub fn calculate_mass(tx: &Transaction, params: &Params, estimate_signature_mass: bool) -> u64 {
     let mass_calculator = MassCalculator::new(params.mass_per_tx_byte, params.mass_per_script_pub_key_byte, params.mass_per_sig_op);
-    let mut mass = mass_calculator.calc_tx_mass(&tx.try_into().unwrap());
+    let mass = mass_calculator.calc_tx_mass(&tx.try_into().unwrap());
 
     if !estimate_signature_mass {
         return mass;
     }
 
-    //TODO: remove this sig_op_count mass calculation
-    let sig_op_count = 1;
-    mass += (sig_op_count * tx.inner().inputs.len() as u64) * params.mass_per_sig_op;
+    // //TODO: remove this sig_op_count mass calculation
+    // let sig_op_count = 1;
+    // mass += (sig_op_count * tx.inner().inputs.len() as u64) * params.mass_per_sig_op;
 
     let signature_mass = transaction_estimate_signature_mass(tx, params);
     mass + signature_mass
@@ -129,6 +129,8 @@ pub fn calculate_minimum_transaction_fee(tx: &Transaction, params: &Params, esti
 pub fn get_consensus_params_by_address(address: &Address) -> Params {
     match address.prefix {
         Prefix::Mainnet => MAINNET_PARAMS,
+        Prefix::Testnet => TESTNET_PARAMS,
+        Prefix::Simnet => SIMNET_PARAMS,
         _ => DEVNET_PARAMS,
     }
 }
@@ -137,6 +139,8 @@ pub fn get_consensus_params_by_address(address: &Address) -> Params {
 pub fn get_consensus_params_by_network(network: &NetworkType) -> Params {
     match network {
         NetworkType::Mainnet => MAINNET_PARAMS,
+        NetworkType::Testnet => TESTNET_PARAMS,
+        NetworkType::Simnet => SIMNET_PARAMS,
         _ => DEVNET_PARAMS,
     }
 }

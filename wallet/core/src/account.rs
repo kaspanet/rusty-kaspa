@@ -5,29 +5,23 @@ use crate::result::Result;
 use crate::secret::Secret;
 use crate::signer::sign_mutable_transaction;
 use crate::storage::{self, PrvKeyData, PrvKeyDataId, PubKeyData};
-use crate::tx::{create_transaction, PaymentOutput, PaymentOutputs};
+use crate::tx::{PaymentOutput, PaymentOutputs, VirtualTransaction};
 use crate::utxo::{UtxoEntryId, UtxoEntryReference, UtxoOrdering, UtxoSet};
-// use crate::wallet::Events;
 use crate::wallet::{BalanceUpdate, Events};
 use crate::AddressDerivationManager;
 use crate::{imports::*, Wallet};
 use futures::future::join_all;
-// use futures::{select, FutureExt};
 use itertools::Itertools;
 use kaspa_addresses::Prefix as AddressPrefix;
 use kaspa_bip32::{ChildNumber, ExtendedPrivateKey, Language, Mnemonic, PrivateKey, SecretKey};
-// use kaspa_hashes::Hash;
 use kaspa_notify::listener::ListenerId;
 use kaspa_notify::scope::{Scope, UtxosChangedScope};
 use kaspa_rpc_core::api::notifications::Notification;
-// use kaspa_rpc_core::notify::connection::ChannelConnection;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-// use workflow_core::channel::{oneshot, Channel, DuplexChannel};
 use workflow_core::channel::{Channel, DuplexChannel};
-// use workflow_core::task::spawn;
 
 #[derive(Default, Clone)]
 pub struct Estimate {
@@ -339,7 +333,7 @@ impl Account {
         priority_fee_sompi: u64,
         keydata: PrvKeyData,
         payment_secret: Option<Secret>,
-    ) -> Result<kaspa_hashes::Hash> {
+    ) -> Result<Vec<kaspa_hashes::Hash>> {
         let fee_margin = 1000; //TODO update select_utxos to remove this fee_margin
         let transaction_amount = amount_sompi + priority_fee_sompi + fee_margin;
         let utxo_selection = self.utxos.select_utxos(transaction_amount, UtxoOrdering::AscendingAmount).await?;
@@ -347,9 +341,11 @@ impl Account {
         let change_address = self.change_address().await?;
         let outputs = PaymentOutputs { outputs: vec![PaymentOutput::new(address.clone(), amount_sompi, None)] };
 
-        let priority_fee = Some(priority_fee_sompi);
-        let payload = None;
-        let mtx = create_transaction(utxo_selection, outputs, change_address, priority_fee, payload)?;
+        let priority_fee_sompi = Some(priority_fee_sompi);
+        let payload = vec![];
+        let sig_op_count = self.inner().stored.pub_key_data.keys.len() as u8;
+        //let mtx = create_transaction(utxo_selection, outputs, change_address, priority_fee, payload)?;
+        let vt = VirtualTransaction::new(sig_op_count, utxo_selection, outputs, change_address, priority_fee_sompi, payload)?;
 
         // TODO find path indexes by UTXOs/addresses;
         let receive_indexes = vec![0];
@@ -357,9 +353,14 @@ impl Account {
 
         let private_keys = self.create_private_keys(keydata, payment_secret, receive_indexes, change_indexes)?;
         let private_keys = &private_keys.iter().map(|k| k.to_bytes()).collect::<Vec<_>>();
-        let mtx = sign_mutable_transaction(mtx, private_keys, true)?;
-        let result = self.wallet.rpc().submit_transaction(mtx.try_into()?, false).await?;
-        Ok(result)
+        let mut tx_ids = vec![];
+        for mtx in vt.transactions() {
+            let mtx = sign_mutable_transaction(mtx, private_keys, true)?;
+            let id = self.wallet.rpc().submit_transaction(mtx.try_into()?, false).await?;
+            //println!("id: {id}\r\n");
+            tx_ids.push(id);
+        }
+        Ok(tx_ids)
     }
 
     fn create_private_keys(
@@ -468,10 +469,7 @@ impl Account {
 
     async fn subscribe_utxos_changed(self: &Arc<Self>, addresses: &[Address]) -> Result<()> {
         self.wallet.address_to_account_map().lock().unwrap().extend(addresses.iter().map(|a| (a.clone(), self.clone())));
-
-        let listener_id = self
-            .listener_id()
-            .expect("subscribe_utxos_changed() requires `listener_id` (must call `register_notification_listener()` before use)");
+        let listener_id = self.wallet.listener_id();
         let utxos_changed_scope = UtxosChangedScope { addresses: addresses.to_vec() };
         self.wallet.rpc.start_notify(listener_id, Scope::UtxosChanged(utxos_changed_scope)).await?;
 
@@ -491,53 +489,6 @@ impl Account {
         Ok(())
     }
 
-    // async fn register_notification_listener(&self) -> Result<()> {
-    //     let listener_id = self.wallet.rpc.register_new_listener(ChannelConnection::new(self.notification_channel.sender.clone()));
-    //     self.inner().listener_id = Some(listener_id);
-
-    //     // self.wallet.rpc.start_notify(listener_id, Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
-
-    //     Ok(())
-    // }
-
-    // async fn unregister_notification_listener(&self) -> Result<()> {
-    //     let listener_id = self.inner.lock().unwrap().listener_id.take();
-    //     if let Some(id) = listener_id {
-    //         // we do not need this as we are unregister the entire listener here...
-    //         // self.rpc.stop_notify(id, Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
-    //         self.wallet.rpc.unregister_listener(id).await?;
-    //     }
-    //     Ok(())
-    // }
-
-    // async fn handle_daa_score_change(&self, _virtual_daa_score: u64) -> Result<()> {
-    //     // self.virtual_daa_score.store(virtual_daa_score, Ordering::SeqCst);
-    //     Ok(())
-    // }
-
-    // async fn handle_notification(&self, notification: Notification) -> Result<()> {
-    //     log_info!("handling notification: {:?}", notification);
-
-    //     match &notification {
-    //         Notification::UtxosChanged(utxos) => {
-    //             for entry in utxos.added.iter() {
-    //                 self.utxos.insert(entry.clone().into());
-    //             }
-
-    //             for entry in utxos.removed.iter() {
-    //                 self.utxos.remove(UtxoEntryReference::from(entry.clone()).id());
-    //             }
-    //         }
-    //         // Notification::VirtualDaaScoreChanged(data) => {
-    //         //     self.handle_daa_score_change(data.virtual_daa_score).await?;
-    //         // }
-    //         _ => {
-    //             log_warning!("unknown notification: {:?}", notification);
-    //         }
-    //     }
-    //     Ok(())
-    // }
-
     pub(crate) async fn handle_utxo_added(&self, utxo: UtxoEntryReference) -> Result<()> {
         self.utxos.insert(utxo);
         Ok(())
@@ -548,79 +499,6 @@ impl Account {
 
         Ok(())
     }
-
-    // async fn start_task(self: &Arc<Self>) -> Result<()> {
-    //     let self_ = self.clone();
-
-    //     let multiplexer = self.wallet.multiplexer.clone();
-    //     let (mux_id, _mux_sender, mux_receiver) = multiplexer.register_event_channel();
-    //     let task_ctl_receiver = self.task_ctl.request.receiver.clone();
-    //     let task_ctl_sender = self.task_ctl.response.sender.clone();
-    //     let (task_start_sender, task_start_receiver) = oneshot::<()>();
-    //     let notification_receiver = self.notification_channel.receiver.clone();
-
-    //     if self.wallet.is_connected() {
-    //         self.connect().await?;
-    //     }
-
-    //     spawn(async move {
-    //         task_start_sender.send(()).await.unwrap();
-    //         loop {
-    //             select! {
-    //                 _ = task_ctl_receiver.recv().fuse() => {
-    //                     break;
-    //                 },
-    //                 notification = notification_receiver.recv().fuse() => {
-    //                     if let Ok(notification) = notification {
-    //                         self_.handle_notification(notification).await.unwrap_or_else(|err| {
-    //                             log_error!("error while handling notification: {err}");
-    //                         });
-    //                     }
-    //                 },
-    //                 msg = mux_receiver.recv().fuse() => {
-    //                     if let Ok(msg) = msg {
-    //                         match msg {
-    //                             Events::Connect => {
-    //                                 self_.connect().await.unwrap_or_else(|err| {
-    //                                     log_error!("{err}");
-    //                                 });
-    //                             },
-    //                             Events::Disconnect => {
-
-    //                                 self_.disconnect().await.unwrap_or_else(|err| {
-    //                                     log_error!("{err}");
-    //                                 });
-    //                             },
-    //                             Events::DAAScoreChange(virtual_daa_score) => {
-    //                                 self_.handle_daa_score_change(virtual_daa_score).await.unwrap_or_else(|err| {
-    //                                     log_error!("{err}");
-    //                                 });
-    //                             }
-    //                         }
-    //                     }
-    //                 }
-    //             }
-    //         }
-    //         multiplexer.unregister_event_channel(mux_id);
-
-    //         if self_.is_connected() {
-    //             self_.disconnect().await.unwrap_or_else(|err| {
-    //                 log_error!("{err}");
-    //             });
-    //         }
-
-    //         task_ctl_sender.send(()).await.unwrap();
-    //     });
-
-    //     task_start_receiver.recv().await.unwrap();
-
-    //     Ok(())
-    // }
-
-    // async fn stop_task(&self) -> Result<()> {
-    //     self.task_ctl.signal(()).await.expect("Account::stop_task() `signal` error");
-    //     Ok(())
-    // }
 }
 
 #[wasm_bindgen]

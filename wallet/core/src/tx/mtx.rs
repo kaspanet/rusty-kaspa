@@ -26,7 +26,7 @@ impl MutableTransaction {
 
     #[wasm_bindgen(getter=id)]
     pub fn id(&self) -> Result<String, JsError> {
-        Ok(self.tx.lock()?.id())
+        Ok(self.tx.lock()?.id_string())
     }
 
     #[wasm_bindgen(js_name=toJSON)]

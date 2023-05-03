@@ -62,6 +62,10 @@ impl Transaction {
     pub fn inner(&self) -> MutexGuard<'_, TransactionInner> {
         self.inner.lock().unwrap()
     }
+
+    pub fn id(&self) -> TransactionId {
+        self.inner().id
+    }
 }
 
 #[wasm_bindgen]
@@ -75,15 +79,15 @@ impl Transaction {
     }
 
     /// Recompute and finalize the tx id based on updated tx fields
-    pub fn finalize(&self) -> Result<()> {
+    pub fn finalize(&self) -> Result<TransactionId> {
         let tx: cctx::Transaction = self.try_into()?;
         self.inner().id = tx.id();
-        Ok(())
+        Ok(self.inner().id)
     }
 
     /// Returns the transaction ID
     #[wasm_bindgen(getter, js_name = id)]
-    pub fn id(&self) -> String {
+    pub fn id_string(&self) -> String {
         self.inner().id.to_string()
     }
 

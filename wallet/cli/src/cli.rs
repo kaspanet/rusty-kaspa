@@ -164,9 +164,12 @@ impl WalletCli {
                     return Err("It is read only wallet.".into());
                 }
 
-                let hash = account.send(&address, amount_sompi, priority_fee_sompi, keydata.unwrap(), payment_secret).await?;
+                let ids = account.send(&address, amount_sompi, priority_fee_sompi, keydata.unwrap(), payment_secret).await?;
 
-                term.writeln(format!("\r\ntxid: {hash}"));
+                term.writeln(format!("\r\nSending {amount} KAS to {address}, tx ids:"));
+                for id in ids{
+                    term.writeln(format!("{id}"));
+                }
             }
             Action::Address => {
                 let address = self.wallet.account()?.address().await?.to_string();
@@ -239,10 +242,8 @@ impl WalletCli {
                 } else {
                     let name = argv.remove(0);
                     let account = {
-                        let accounts = self.wallet.account_list().lock().unwrap(); //.as_ref(); //.cloned_flat_list()?;
-                                                                                   // let account =
+                        let accounts = self.wallet.account_list()?;
                         accounts.iter().position(|account| account.name() == name).map(|index| accounts.get(index).unwrap().clone())
-                        //;
                     };
                     self.wallet.select(account).await?;
                 }

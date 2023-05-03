@@ -2,6 +2,7 @@
 
 use crate::imports::*;
 use crate::tx::{MutableTransaction, PaymentOutputs, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
+use crate::utils::{calculate_minimum_transaction_fee, get_consensus_params_by_address};
 use crate::utxo::{SelectionContext, UtxoEntry, UtxoEntryReference};
 use kaspa_addresses::Address;
 use kaspa_consensus_core::{subnets::SubnetworkId, tx};
@@ -21,38 +22,35 @@ pub struct VirtualTransaction {
 impl VirtualTransaction {
     #[wasm_bindgen(constructor)]
     pub fn new(
+        sig_op_count: u8,
         utxo_selection: SelectionContext,
         outputs: PaymentOutputs,
         change_address: Address,
+        priority_fee_sompi: Option<u64>,
         payload: Vec<u8>,
     ) -> crate::Result<VirtualTransaction> {
         log_trace!("VirtualTransaction...");
         log_trace!("utxo_selection.transaction_amount: {:?}", utxo_selection.transaction_amount);
+        log_trace!("utxo_selection.total_selected_amount: {:?}", utxo_selection.total_selected_amount);
         log_trace!("outputs.outputs: {:?}", outputs.outputs);
-        log_trace!("change_address: {change_address:?}");
+        log_trace!("change_address: {:?}", change_address.to_string());
+
+        let consensus_params = get_consensus_params_by_address(&change_address);
 
         let entries = &utxo_selection.selected_entries;
 
+        log_trace!("entries.len(): {:?}", entries.len());
+
         let chunks = entries.chunks(80).collect::<Vec<&[UtxoEntryReference]>>();
 
-        //let mut mutable: std::vec::Vec<T> = vec![];
-
-        // ---------------------------------------------
-        // TODO - get a set of destination addresses
-        //let secp = Secp256k1::new();
-        //let (_secret_key, public_key) = secp.generate_keypair(&mut rand::thread_rng());
-        //let script_pub_key = ScriptVec::from_slice(&public_key.serialize());
-        //let prev_tx_id = TransactionId::from_str("880eb9819a31821d9d2399e2f35e2433b72637e393d71ecc9b8d0250f49153c3").unwrap();
-        // ---------------------------------------------
         let mut final_inputs = vec![];
         let mut final_utxos = vec![];
         let mut final_amount = 0;
         let mut transactions = chunks
             .into_iter()
-            .map(|chunk| {
+            .filter_map(|chunk| {
                 let utxos = chunk.iter().map(|reference| reference.utxo.clone()).collect::<Vec<Arc<UtxoEntry>>>();
 
-                // let prev_tx_id = TransactionId::default();
                 let mut amount = 0;
                 let mut entries = vec![];
 
@@ -60,19 +58,18 @@ impl VirtualTransaction {
                     .iter()
                     .enumerate()
                     .map(|(sequence, utxo)| {
+                        //println!("input txid: {}\r\n", utxo.outpoint.get_transaction_id());
                         amount += utxo.utxo_entry.amount;
                         entries.push(utxo.as_ref().clone());
-                        TransactionInput::new(utxo.outpoint.clone(), vec![], sequence as u64, 0)
+                        TransactionInput::new(utxo.outpoint.clone(), vec![], sequence as u64, sig_op_count)
                     })
                     .collect::<Vec<TransactionInput>>();
-
-                let amount_after_fee = amount - 500; //TODO: calculate Fee
 
                 let script_public_key = pay_to_address_script(&change_address);
                 let tx = Transaction::new(
                     0,
                     inputs,
-                    vec![TransactionOutput::new(amount_after_fee, &script_public_key)],
+                    vec![TransactionOutput::new(amount, &script_public_key)],
                     0,
                     SubnetworkId::from_bytes([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
                     0,
@@ -80,9 +77,23 @@ impl VirtualTransaction {
                 )
                 .unwrap();
 
-                let transaction_id = tx.id();
+                let fee = calculate_minimum_transaction_fee(&tx, &consensus_params, true);
+                if amount <= fee {
+                    println!("amount<=fee: {amount}, {fee}\r\n");
+                    return None;
+                }
+                let amount_after_fee = amount - fee;
+
+                tx.inner().outputs[0].set_value(amount_after_fee);
+                if tx.inner().outputs[0].is_dust() {
+                    println!("outputs is dust: {}\r\n", amount_after_fee);
+                    return None;
+                }
+
+                let transaction_id = tx.finalize().unwrap().to_str();
 
                 final_amount += amount_after_fee;
+                println!("final_amount: {final_amount}, transaction_id: {}\r\n", transaction_id);
                 final_utxos.push(UtxoEntry {
                     address: Some(change_address.clone()),
                     outpoint: TransactionOutpoint::new(&transaction_id, 0).unwrap(),
@@ -96,32 +107,40 @@ impl VirtualTransaction {
                 final_inputs.push(TransactionInput::new(
                     TransactionOutpoint::new(&transaction_id, 0).unwrap(),
                     vec![],
-                    final_inputs.len() as u64,
                     0,
+                    sig_op_count,
                 ));
 
-                MutableTransaction::new(&tx, &entries.into())
+                Some(MutableTransaction::new(&tx, &entries.into()))
             })
             .collect::<Vec<MutableTransaction>>();
 
-        let fee = 500; //TODO: calculate Fee
-        let amount_after_fee = final_amount - fee;
+        let priority_fee = priority_fee_sompi.unwrap_or(0);
+        if final_amount < priority_fee {
+            return Err(format!("final amount({final_amount}) < priority fee({priority_fee})").into());
+        }
+
+        let amount_after_priority_fee = final_amount - priority_fee;
 
         let mut outputs_ = vec![];
-        let mut total_amount = 0;
+        let mut output_amount = 0;
         for output in &outputs.outputs {
-            total_amount += output.amount;
+            output_amount += output.amount;
             outputs_.push(TransactionOutput::new(output.amount, &pay_to_address_script(&output.address)));
         }
 
-        if total_amount > amount_after_fee {
-            return Err("total_amount({total_amount}) > amount_after_fee({amount_after_fee})".to_string().into());
+        if output_amount > amount_after_priority_fee {
+            return Err(format!("output amount({output_amount}) > amount after priority fee({amount_after_priority_fee})").into());
         }
 
-        let change = amount_after_fee - total_amount;
-        let dust = 500;
-        if change > dust {
-            outputs_.push(TransactionOutput::new(change, &pay_to_address_script(&change_address)));
+        let change = amount_after_priority_fee - output_amount;
+        let mut change_output = None;
+        if change > 0 {
+            let output = TransactionOutput::new(change, &pay_to_address_script(&change_address));
+            if !output.is_dust() {
+                change_output = Some(output.clone());
+                outputs_.push(output);
+            }
         }
 
         let tx = Transaction::new(
@@ -134,11 +153,31 @@ impl VirtualTransaction {
             payload.clone(),
         )?;
 
+        let fee = calculate_minimum_transaction_fee(&tx, &consensus_params, true);
+        if change < fee {
+            return Err(format!("change({change}) <= minimum fee ({fee})").into());
+        }
+        if let Some(change_output) = change_output {
+            let new_change = change - fee;
+            change_output.inner().value = new_change;
+            if change_output.is_dust() {
+                let _change_output = tx.inner().outputs.pop();
+            }
+
+            tx.finalize().unwrap();
+        }
+
         let mtx = MutableTransaction::new(&tx, &final_utxos.into());
         transactions.push(mtx);
 
-        log_trace!("transactions: {transactions:#?}");
+        //log_trace!("transactions: {transactions:#?}");
 
         Ok(VirtualTransaction { transactions, payload })
+    }
+}
+
+impl VirtualTransaction {
+    pub fn transactions(&self) -> Vec<MutableTransaction> {
+        self.transactions.clone()
     }
 }
