@@ -123,7 +123,7 @@ pub fn cli(defaults: &Defaults) -> Command {
                 .action(ArgAction::Append)
                 .require_equals(true)
                 .value_parser(clap::value_parser!(ContextualNetAddress))
-                .help("Connect only to the specified peers at startup (maximum 10 peers)."),
+                .help("Connect only to the specified peers at startup."),
         )
         .arg(
             Arg::new("add-peers")
@@ -132,7 +132,7 @@ pub fn cli(defaults: &Defaults) -> Command {
                 .action(ArgAction::Append)
                 .require_equals(true)
                 .value_parser(clap::value_parser!(ContextualNetAddress))
-                .help("Add peers to connect with at startup (maximum 20 peers)."),
+                .help("Add peers to connect with at startup."),
         )
         .arg(
             Arg::new("listen")
