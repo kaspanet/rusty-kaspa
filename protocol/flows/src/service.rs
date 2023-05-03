@@ -75,11 +75,8 @@ impl AsyncService for P2pService {
 
         // Launch the service and wait for a shutdown signal
         Box::pin(async move {
-            for peer_address in self.connect_peers.iter().cloned() {
+            for peer_address in self.connect_peers.iter().cloned().chain(self.add_peers.iter().cloned()) {
                 connection_manager.add_connection_request(peer_address.into(), true).await;
-            }
-            for peer_address in self.add_peers.iter().cloned() {
-                connection_manager.add_connection_request(peer_address.into(), false).await;
             }
 
             // Keep the P2P server running until a service shutdown signal is received
