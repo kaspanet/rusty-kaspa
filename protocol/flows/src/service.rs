@@ -1,3 +1,6 @@
+use std::sync::Arc;
+
+use kaspa_addressmanager::NetAddress;
 use kaspa_connectionmanager::ConnectionManager;
 use kaspa_core::{
     task::service::{AsyncService, AsyncServiceFuture},
@@ -5,7 +8,6 @@ use kaspa_core::{
 };
 use kaspa_p2p_lib::Adaptor;
 use kaspa_utils::triggers::SingleTrigger;
-use std::{net::ToSocketAddrs, sync::Arc};
 
 use crate::flow_context::FlowContext;
 
@@ -13,8 +15,9 @@ const P2P_CORE_SERVICE: &str = "p2p-service";
 
 pub struct P2pService {
     flow_context: Arc<FlowContext>,
-    connect: Option<String>, // TEMP: optional connect peer
-    listen: Option<String>,
+    connect_peers: Vec<NetAddress>,
+    add_peers: Vec<NetAddress>,
+    listen: NetAddress,
     outbound_target: usize,
     inbound_limit: usize,
     dns_seeders: &'static [&'static str],
@@ -25,8 +28,9 @@ pub struct P2pService {
 impl P2pService {
     pub fn new(
         flow_context: Arc<FlowContext>,
-        connect: Option<String>,
-        listen: Option<String>,
+        connect_peers: Vec<NetAddress>,
+        add_peers: Vec<NetAddress>,
+        listen: NetAddress,
         outbound_target: usize,
         inbound_limit: usize,
         dns_seeders: &'static [&'static str],
@@ -34,7 +38,8 @@ impl P2pService {
     ) -> Self {
         Self {
             flow_context,
-            connect,
+            connect_peers,
+            add_peers,
             shutdown: SingleTrigger::default(),
             listen,
             outbound_target,
@@ -56,8 +61,7 @@ impl AsyncService for P2pService {
         // Prepare a shutdown signal receiver
         let shutdown_signal = self.shutdown.listener.clone();
 
-        let server_address = self.listen.clone().unwrap_or(format!("0.0.0.0:{}", self.default_port));
-        let p2p_adaptor = Adaptor::bidirectional(server_address, self.flow_context.hub().clone(), self.flow_context.clone()).unwrap();
+        let p2p_adaptor = Adaptor::bidirectional(self.listen, self.flow_context.hub().clone(), self.flow_context.clone()).unwrap();
         let connection_manager = ConnectionManager::new(
             p2p_adaptor.clone(),
             self.outbound_target,
@@ -71,8 +75,8 @@ impl AsyncService for P2pService {
 
         // Launch the service and wait for a shutdown signal
         Box::pin(async move {
-            if let Some(peer_address) = self.connect.clone() {
-                connection_manager.add_connection_request(peer_address.to_socket_addrs().unwrap().next().unwrap(), true).await;
+            for peer_address in self.connect_peers.iter().cloned().chain(self.add_peers.iter().cloned()) {
+                connection_manager.add_connection_request(peer_address.into(), true).await;
             }
 
             // Keep the P2P server running until a service shutdown signal is received

@@ -6,6 +6,8 @@ use kaspa_addressmanager::AddressManager;
 use kaspa_consensus::consensus::factory::Factory as ConsensusFactory;
 use kaspa_consensus::pipeline::monitor::ConsensusMonitor;
 use kaspa_consensus::pipeline::ProcessingCounters;
+use kaspa_consensus_core::config::Config;
+use kaspa_consensus_core::errors::config::{ConfigError, ConfigResult};
 use kaspa_consensus_core::networktype::NetworkType;
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_consensus_notify::service::NotifyService;
@@ -16,9 +18,11 @@ use kaspa_index_processor::service::IndexService;
 use kaspa_mining::manager::MiningManager;
 use kaspa_p2p_flows::flow_context::FlowContext;
 use kaspa_rpc_service::RpcCoreServer;
+use kaspa_utils::networking::ContextualNetAddress;
 
 use std::fs;
 use std::path::PathBuf;
+use std::process::exit;
 use std::sync::Arc;
 
 // ~~~
@@ -121,6 +125,13 @@ fn get_app_dir() -> PathBuf {
     return get_home_dir().join(".rusty-kaspa");
 }
 
+fn validate_config_and_args(_config: &Arc<Config>, args: &Args) -> ConfigResult<()> {
+    if !args.connect_peers.is_empty() && !args.add_peers.is_empty() {
+        return Err(ConfigError::MixedConnectAndAddPeers);
+    }
+    Ok(())
+}
+
 pub fn main() {
     let args = Args::parse(&Defaults::default());
 
@@ -142,6 +153,12 @@ pub fn main() {
     };
 
     let config = Arc::new(ConfigBuilder::new(network_type.into()).apply_args(|config| args.apply_to_config(config)).build());
+
+    // Make sure config and args form a valid set of properties
+    if let Err(err) = validate_config_and_args(&config, &args) {
+        println!("{}", err);
+        exit(1);
+    }
 
     // TODO: Refactor all this quick-and-dirty code
     let app_dir = args
@@ -175,7 +192,14 @@ pub fn main() {
     // DB used for addresses store and for multi-consensus management
     let meta_db = kaspa_database::prelude::open_db(meta_db_dir, true, 1);
 
-    let grpc_server_addr = args.rpclisten.unwrap_or_else(|| format!("0.0.0.0:{}", config.default_rpc_port())).parse().unwrap();
+    let connect_peers = args.connect_peers.iter().map(|x| x.normalize(config.default_p2p_port())).collect::<Vec<_>>();
+    let add_peers = args.add_peers.iter().map(|x| x.normalize(config.default_p2p_port())).collect();
+    let p2p_server_addr = args.listen.unwrap_or(ContextualNetAddress::unspecified()).normalize(config.default_p2p_port());
+    // connect_peers means no DNS seeding and no outbound peers
+    let outbound_target = if connect_peers.is_empty() { args.outbound_target } else { 0 };
+    let dns_seeders = if connect_peers.is_empty() { config.dns_seeders } else { &[] };
+
+    let grpc_server_addr = args.rpclisten.unwrap_or(ContextualNetAddress::unspecified()).normalize(config.default_rpc_port());
 
     let core = Arc::new(Core::new());
 
@@ -221,11 +245,12 @@ pub fn main() {
     ));
     let p2p_service = Arc::new(P2pService::new(
         flow_context.clone(),
-        args.connect,
-        args.listen,
-        args.outbound_target,
+        connect_peers,
+        add_peers,
+        p2p_server_addr,
+        outbound_target,
         args.inbound_limit,
-        config.dns_seeders,
+        dns_seeders,
         config.default_p2p_port(),
     ));
 
@@ -263,7 +288,7 @@ pub fn main() {
                     rpc_core_server.service(),
                     encoding,
                     WrpcServerOptions {
-                        listen_address: listen_address.to_string(),
+                        listen_address: listen_address.to_string(), // TODO: use a normalized ContextualNetAddress instead of a String
                         verbose: args.wrpc_verbose,
                         ..WrpcServerOptions::default()
                     },

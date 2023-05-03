@@ -322,7 +322,7 @@ impl ConnectionInitializer for FlowContext {
         // Build the local version message
         // Subnets are not currently supported
         let mut self_version_message = Version::new(None, self.node_id, network_name.clone(), None, PROTOCOL_VERSION);
-        self_version_message.add_user_agent(name(), version(), &[]);
+        self_version_message.add_user_agent(name(), version(), &self.config.user_agent_comments);
         // TODO: full and accurate version info
         // TODO: get number of live services
         // TODO: disable_relay_tx from config/cmd
