@@ -34,8 +34,8 @@ pub enum Action {
     Ping,
     #[describe("Get Info (testing)")]
     GetInfo,
-    #[describe("?Shows the balance of a public address")]
-    Balance,
+    // #[describe("?Shows the balance of a public address")]
+    // Balance,
     #[describe("?Broadcast the given transaction")]
     Broadcast,
     #[describe("?Create an unsigned Kaspa transaction")]

@@ -6,23 +6,28 @@ use crate::secret::Secret;
 use crate::signer::sign_mutable_transaction;
 use crate::storage::{self, PrvKeyData, PrvKeyDataId, PubKeyData};
 use crate::tx::{create_transaction, PaymentOutput, PaymentOutputs};
-use crate::utxo::{UtxoEntryReference, UtxoOrdering, UtxoSet};
-use crate::wallet::Events;
+use crate::utxo::{UtxoEntryId, UtxoEntryReference, UtxoOrdering, UtxoSet};
+// use crate::wallet::Events;
+use crate::wallet::{BalanceUpdate, Events};
 use crate::AddressDerivationManager;
 use crate::{imports::*, Wallet};
-use async_trait::async_trait;
 use futures::future::join_all;
-use futures::{select, FutureExt};
+// use futures::{select, FutureExt};
+use itertools::Itertools;
 use kaspa_addresses::Prefix as AddressPrefix;
 use kaspa_bip32::{ChildNumber, ExtendedPrivateKey, Language, Mnemonic, PrivateKey, SecretKey};
-use kaspa_hashes::Hash;
+// use kaspa_hashes::Hash;
 use kaspa_notify::listener::ListenerId;
 use kaspa_notify::scope::{Scope, UtxosChangedScope};
 use kaspa_rpc_core::api::notifications::Notification;
-use kaspa_rpc_core::notify::connection::ChannelConnection;
+// use kaspa_rpc_core::notify::connection::ChannelConnection;
+use std::collections::hash_map::DefaultHasher;
+use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use workflow_core::channel::{oneshot, Channel, DuplexChannel};
-use workflow_core::task::spawn;
+// use workflow_core::channel::{oneshot, Channel, DuplexChannel};
+use workflow_core::channel::{Channel, DuplexChannel};
+// use workflow_core::task::spawn;
 
 #[derive(Default, Clone)]
 pub struct Estimate {
@@ -31,13 +36,6 @@ pub struct Estimate {
     pub utxos: usize,
     pub transactions: usize,
 }
-
-// pub enum ScanExtent {
-//     /// Scan until an empty range is found
-//     EmptyRange(u32),
-//     /// Scan until a specific depth (a particular derivation index)
-//     Depth(u32),
-// }
 
 const DEFAULT_WINDOW_SIZE: u32 = 128;
 
@@ -65,7 +63,7 @@ impl Scan {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize, BorshSerialize, BorshDeserialize, Hash)]
 #[serde(rename_all = "kebab-case")]
 #[wasm_bindgen]
 pub enum AccountKind {
@@ -75,11 +73,23 @@ pub enum AccountKind {
     MultiSig,
 }
 
-#[async_trait]
-pub trait AccountT {
-    // async fn connect(&self);
-    // async fn disconnect(&self);
-    // async fn reset();
+#[derive(Hash)]
+struct AccountIdHashData {
+    prv_key_data_id: PrvKeyDataId,
+    ecdsa: bool,
+    account_kind: AccountKind,
+    account_index: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct AccountId(pub(crate) u64);
+
+impl AccountId {
+    fn new(prv_key_data_id: &PrvKeyDataId, ecdsa: bool, account_kind: &AccountKind, account_index: u64) -> AccountId {
+        let mut hasher = DefaultHasher::new();
+        AccountIdHashData { prv_key_data_id: *prv_key_data_id, ecdsa, account_kind: *account_kind, account_index }.hash(&mut hasher);
+        AccountId(hasher.finish())
+    }
 }
 
 pub struct Inner {
@@ -91,13 +101,9 @@ pub struct Inner {
 /// HD-key derivation (derived from a wallet or from an an external secret)
 #[wasm_bindgen(inspectable)]
 pub struct Account {
+    id: AccountId,
     inner: Arc<Mutex<Inner>>,
     wallet: Arc<Wallet>,
-    // interfaces: Interfaces,
-    // #[wasm_bindgen(skip)]
-    // pub rpc: Arc<DynRpcApi>,
-    // #[wasm_bindgen(skip)]
-    // pub multiplexer: Multiplexer<Events>,
     utxos: UtxoSet,
     balance: Arc<AtomicU64>,
     is_connected: AtomicBool,
@@ -105,19 +111,15 @@ pub struct Account {
     pub account_kind: AccountKind,
     pub account_index: u64,
     #[wasm_bindgen(skip)]
-    pub prv_key_data_id: Option<PrvKeyDataId>,
+    pub prv_key_data_id: PrvKeyDataId,
+    // pub prv_key_data_id: Option<PrvKeyDataId>,
     pub ecdsa: bool,
-    // ~
-    // pub derivation_path : DerivationPath,
     #[wasm_bindgen(skip)]
     pub derivation: Arc<AddressDerivationManager>,
-
     #[wasm_bindgen(skip)]
     pub task_ctl: DuplexChannel,
     #[wasm_bindgen(skip)]
     pub notification_channel: Channel<Notification>,
-    // #[wasm_bindgen(skip)]
-    // pub virtual_daa_score: Arc<AtomicU64>,
 }
 
 impl Account {
@@ -127,7 +129,7 @@ impl Account {
         title: &str,
         account_kind: AccountKind,
         account_index: u64,
-        prv_key_data_id: Option<PrvKeyDataId>,
+        prv_key_data_id: PrvKeyDataId,
         pub_key_data: PubKeyData,
         ecdsa: bool,
         address_prefix: AddressPrefix,
@@ -152,6 +154,7 @@ impl Account {
         let inner = Inner { listener_id: None, stored };
 
         Ok(Account {
+            id: AccountId::new(&prv_key_data_id, ecdsa, &account_kind, account_index),
             wallet: wallet.clone(),
             utxos: UtxoSet::default(),
             balance: Arc::new(AtomicU64::new(0)),
@@ -184,6 +187,7 @@ impl Account {
         let inner = Inner { listener_id: None, stored: stored.clone() };
 
         Ok(Account {
+            id: AccountId::new(&stored.prv_key_data_id, stored.ecdsa, &stored.account_kind, stored.account_index),
             wallet: wallet.clone(),
             utxos: UtxoSet::default(),
             balance: Arc::new(AtomicU64::new(0)),
@@ -200,9 +204,17 @@ impl Account {
         })
     }
 
-    pub async fn update_balance(&self) -> Result<u64> {
+    pub async fn update_balance(self: &Arc<Account>) -> Result<u64> {
         let balance = self.utxos.calculate_balance().await?;
         self.balance.store(balance, std::sync::atomic::Ordering::SeqCst);
+        let balance_update = Arc::new(BalanceUpdate { account_id: self.id, balance });
+        self.wallet
+            .multiplexer
+            .broadcast(Events::Balance(balance_update))
+            .await
+            .map_err(|_| Error::Custom("multiplexer channel error during update_balance".to_string()))?;
+        // self.wallet.multiplexer.broadcast(Events::Balance(balance_update)).await.map_err(Error::Custom("multiplexer channel error during update_balance".to_string()));
+        // self.wallet.multiplexer.broadcast(Events::Balance(self.clone())).await?;
         Ok(balance)
     }
 
@@ -224,7 +236,7 @@ impl Account {
         self.inner.lock().unwrap()
     }
 
-    pub async fn scan_address_manager(&self, scan: Scan) -> Result<()> {
+    pub async fn scan_address_manager(self: &Arc<Self>, scan: Scan) -> Result<()> {
         let mut cursor = 0;
 
         let mut last_address_index = std::cmp::max(scan.address_manager.index()?, scan.window_size);
@@ -284,7 +296,7 @@ impl Account {
         Ok(())
     }
 
-    pub async fn scan_utxos(&self, window_size: Option<u32>, extent: Option<u32>) -> Result<()> {
+    pub async fn scan_utxos(self: &Arc<Self>, window_size: Option<u32>, extent: Option<u32>) -> Result<()> {
         self.utxos.clear();
         self.balance.store(0, Ordering::SeqCst);
 
@@ -308,7 +320,7 @@ impl Account {
     }
 
     // - TODO
-    pub async fn scan_block(&self, addresses: Vec<Address>) -> Result<Vec<UtxoEntryReference>> {
+    pub async fn scan_block(self: &Arc<Self>, addresses: Vec<Address>) -> Result<Vec<UtxoEntryReference>> {
         self.subscribe_utxos_changed(&addresses).await?;
         let resp = self.wallet.rpc().get_utxos_by_addresses(addresses).await?;
         let refs: Vec<UtxoEntryReference> = resp.into_iter().map(UtxoEntryReference::from).collect();
@@ -327,7 +339,7 @@ impl Account {
         priority_fee_sompi: u64,
         keydata: PrvKeyData,
         payment_secret: Option<Secret>,
-    ) -> Result<Hash> {
+    ) -> Result<kaspa_hashes::Hash> {
         let fee_margin = 1000; //TODO update select_utxos to remove this fee_margin
         let transaction_amount = amount_sompi + priority_fee_sompi + fee_margin;
         let utxo_selection = self.utxos.select_utxos(transaction_amount, UtxoOrdering::AscendingAmount).await?;
@@ -421,30 +433,32 @@ impl Account {
 
     /// Start Account service task
     pub async fn start(self: &Arc<Self>) -> Result<()> {
-        self.start_task().await?;
+        // self.start_task().await
+        if self.wallet.is_connected() {
+            self.connect().await?;
+        }
 
         Ok(())
     }
 
     /// Stop Account service task
     pub async fn stop(&self) -> Result<()> {
-        self.stop_task().await?;
-
+        // self.stop_task().await
         Ok(())
     }
 
     /// handle connection event
-    pub async fn connect(&self) -> Result<()> {
-        self.is_connected.store(true, Ordering::SeqCst);
-        self.register_notification_listener().await?;
+    pub async fn connect(self: &Arc<Self>) -> Result<()> {
+        // self.is_connected.store(true, Ordering::SeqCst);
+        // self.register_notification_listener().await?;
         self.scan_utxos(Some(128), None).await?;
         Ok(())
     }
 
     /// handle disconnection event
     pub async fn disconnect(&self) -> Result<()> {
-        self.is_connected.store(false, Ordering::SeqCst);
-        self.unregister_notification_listener().await?;
+        // self.is_connected.store(false, Ordering::SeqCst);
+        // self.unregister_notification_listener().await?;
         Ok(())
     }
 
@@ -452,7 +466,9 @@ impl Account {
         self.inner.lock().unwrap().listener_id
     }
 
-    async fn subscribe_utxos_changed(&self, addresses: &[Address]) -> Result<()> {
+    async fn subscribe_utxos_changed(self: &Arc<Self>, addresses: &[Address]) -> Result<()> {
+        self.wallet.address_to_account_map().lock().unwrap().extend(addresses.iter().map(|a| (a.clone(), self.clone())));
+
         let listener_id = self
             .listener_id()
             .expect("subscribe_utxos_changed() requires `listener_id` (must call `register_notification_listener()` before use)");
@@ -462,114 +478,149 @@ impl Account {
         Ok(())
     }
 
-    async fn register_notification_listener(&self) -> Result<()> {
-        let listener_id = self.wallet.rpc.register_new_listener(ChannelConnection::new(self.notification_channel.sender.clone()));
-        self.inner().listener_id = Some(listener_id);
+    #[allow(dead_code)]
+    async fn unsubscribe_utxos_changed(self: &Arc<Self>, addresses: &[Address]) -> Result<()> {
+        self.wallet.address_to_account_map().lock().unwrap().extend(addresses.iter().map(|a| (a.clone(), self.clone())));
 
-        // self.wallet.rpc.start_notify(listener_id, Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
-
-        Ok(())
-    }
-
-    async fn unregister_notification_listener(&self) -> Result<()> {
-        let listener_id = self.inner.lock().unwrap().listener_id.take();
-        if let Some(id) = listener_id {
-            // we do not need this as we are unregister the entire listener here...
-            // self.rpc.stop_notify(id, Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
-            self.wallet.rpc.unregister_listener(id).await?;
-        }
-        Ok(())
-    }
-
-    async fn handle_daa_score_change(&self, _virtual_daa_score: u64) -> Result<()> {
-        // self.virtual_daa_score.store(virtual_daa_score, Ordering::SeqCst);
-        Ok(())
-    }
-
-    async fn handle_notification(&self, notification: Notification) -> Result<()> {
-        log_info!("handling notification: {:?}", notification);
-
-        match &notification {
-            Notification::UtxosChanged(utxos) => {
-                for entry in utxos.added.iter() {
-                    self.utxos.insert(entry.clone().into());
-                }
-
-                for entry in utxos.removed.iter() {
-                    self.utxos.remove(UtxoEntryReference::from(entry.clone()).id());
-                }
-            }
-            // Notification::VirtualDaaScoreChanged(data) => {
-            //     self.handle_daa_score_change(data.virtual_daa_score).await?;
-            // }
-            _ => {
-                log_warning!("unknown notification: {:?}", notification);
-            }
-        }
-        Ok(())
-    }
-
-    async fn start_task(self: &Arc<Self>) -> Result<()> {
-        let self_ = self.clone();
-
-        let multiplexer = self.wallet.multiplexer.clone();
-        let (mux_id, _mux_sender, mux_receiver) = multiplexer.register_event_channel();
-        let task_ctl_receiver = self.task_ctl.request.receiver.clone();
-        let task_ctl_sender = self.task_ctl.response.sender.clone();
-        let (task_start_sender, task_start_receiver) = oneshot::<()>();
-        let notification_receiver = self.notification_channel.receiver.clone();
-
-        spawn(async move {
-            task_start_sender.send(()).await.unwrap();
-            loop {
-                select! {
-                    _ = task_ctl_receiver.recv().fuse() => {
-                        break;
-                    },
-                    notification = notification_receiver.recv().fuse() => {
-                        if let Ok(notification) = notification {
-                            self_.handle_notification(notification).await.unwrap_or_else(|err| {
-                                log_error!("error while handling notification: {err}");
-                            });
-                        }
-                    },
-                    msg = mux_receiver.recv().fuse() => {
-                        if let Ok(msg) = msg {
-                            match msg {
-                                Events::Connect => {
-                                    self_.connect().await.unwrap_or_else(|err| {
-                                        log_error!("{err}");
-                                    });
-                                },
-                                Events::Disconnect => {
-
-                                    self_.disconnect().await.unwrap_or_else(|err| {
-                                        log_error!("{err}");
-                                    });
-                                },
-                                Events::DAAScoreChange(virtual_daa_score) => {
-                                    self_.handle_daa_score_change(virtual_daa_score).await.unwrap_or_else(|err| {
-                                        log_error!("{err}");
-                                    });
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            multiplexer.unregister_event_channel(mux_id);
-            task_ctl_sender.send(()).await.unwrap();
-        });
-
-        task_start_receiver.recv().await.unwrap();
+        let listener_id = self
+            .listener_id()
+            .expect("subscribe_utxos_changed() requires `listener_id` (must call `register_notification_listener()` before use)");
+        let utxos_changed_scope = UtxosChangedScope { addresses: addresses.to_vec() };
+        self.wallet.rpc.stop_notify(listener_id, Scope::UtxosChanged(utxos_changed_scope)).await?;
 
         Ok(())
     }
 
-    async fn stop_task(&self) -> Result<()> {
-        self.task_ctl.signal(()).await.expect("Account::stop_task() `signal` error");
+    // async fn register_notification_listener(&self) -> Result<()> {
+    //     let listener_id = self.wallet.rpc.register_new_listener(ChannelConnection::new(self.notification_channel.sender.clone()));
+    //     self.inner().listener_id = Some(listener_id);
+
+    //     // self.wallet.rpc.start_notify(listener_id, Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
+
+    //     Ok(())
+    // }
+
+    // async fn unregister_notification_listener(&self) -> Result<()> {
+    //     let listener_id = self.inner.lock().unwrap().listener_id.take();
+    //     if let Some(id) = listener_id {
+    //         // we do not need this as we are unregister the entire listener here...
+    //         // self.rpc.stop_notify(id, Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
+    //         self.wallet.rpc.unregister_listener(id).await?;
+    //     }
+    //     Ok(())
+    // }
+
+    // async fn handle_daa_score_change(&self, _virtual_daa_score: u64) -> Result<()> {
+    //     // self.virtual_daa_score.store(virtual_daa_score, Ordering::SeqCst);
+    //     Ok(())
+    // }
+
+    // async fn handle_notification(&self, notification: Notification) -> Result<()> {
+    //     log_info!("handling notification: {:?}", notification);
+
+    //     match &notification {
+    //         Notification::UtxosChanged(utxos) => {
+    //             for entry in utxos.added.iter() {
+    //                 self.utxos.insert(entry.clone().into());
+    //             }
+
+    //             for entry in utxos.removed.iter() {
+    //                 self.utxos.remove(UtxoEntryReference::from(entry.clone()).id());
+    //             }
+    //         }
+    //         // Notification::VirtualDaaScoreChanged(data) => {
+    //         //     self.handle_daa_score_change(data.virtual_daa_score).await?;
+    //         // }
+    //         _ => {
+    //             log_warning!("unknown notification: {:?}", notification);
+    //         }
+    //     }
+    //     Ok(())
+    // }
+
+    pub(crate) async fn handle_utxo_added(&self, utxo: UtxoEntryReference) -> Result<()> {
+        self.utxos.insert(utxo);
         Ok(())
     }
+
+    pub(crate) async fn handle_utxo_removed(&self, utxo_id: UtxoEntryId) -> Result<()> {
+        self.utxos.remove(utxo_id);
+
+        Ok(())
+    }
+
+    // async fn start_task(self: &Arc<Self>) -> Result<()> {
+    //     let self_ = self.clone();
+
+    //     let multiplexer = self.wallet.multiplexer.clone();
+    //     let (mux_id, _mux_sender, mux_receiver) = multiplexer.register_event_channel();
+    //     let task_ctl_receiver = self.task_ctl.request.receiver.clone();
+    //     let task_ctl_sender = self.task_ctl.response.sender.clone();
+    //     let (task_start_sender, task_start_receiver) = oneshot::<()>();
+    //     let notification_receiver = self.notification_channel.receiver.clone();
+
+    //     if self.wallet.is_connected() {
+    //         self.connect().await?;
+    //     }
+
+    //     spawn(async move {
+    //         task_start_sender.send(()).await.unwrap();
+    //         loop {
+    //             select! {
+    //                 _ = task_ctl_receiver.recv().fuse() => {
+    //                     break;
+    //                 },
+    //                 notification = notification_receiver.recv().fuse() => {
+    //                     if let Ok(notification) = notification {
+    //                         self_.handle_notification(notification).await.unwrap_or_else(|err| {
+    //                             log_error!("error while handling notification: {err}");
+    //                         });
+    //                     }
+    //                 },
+    //                 msg = mux_receiver.recv().fuse() => {
+    //                     if let Ok(msg) = msg {
+    //                         match msg {
+    //                             Events::Connect => {
+    //                                 self_.connect().await.unwrap_or_else(|err| {
+    //                                     log_error!("{err}");
+    //                                 });
+    //                             },
+    //                             Events::Disconnect => {
+
+    //                                 self_.disconnect().await.unwrap_or_else(|err| {
+    //                                     log_error!("{err}");
+    //                                 });
+    //                             },
+    //                             Events::DAAScoreChange(virtual_daa_score) => {
+    //                                 self_.handle_daa_score_change(virtual_daa_score).await.unwrap_or_else(|err| {
+    //                                     log_error!("{err}");
+    //                                 });
+    //                             }
+    //                         }
+    //                     }
+    //                 }
+    //             }
+    //         }
+    //         multiplexer.unregister_event_channel(mux_id);
+
+    //         if self_.is_connected() {
+    //             self_.disconnect().await.unwrap_or_else(|err| {
+    //                 log_error!("{err}");
+    //             });
+    //         }
+
+    //         task_ctl_sender.send(()).await.unwrap();
+    //     });
+
+    //     task_start_receiver.recv().await.unwrap();
+
+    //     Ok(())
+    // }
+
+    // async fn stop_task(&self) -> Result<()> {
+    //     self.task_ctl.signal(()).await.expect("Account::stop_task() `signal` error");
+    //     Ok(())
+    // }
 }
 
 #[wasm_bindgen]
@@ -577,5 +628,122 @@ impl Account {
     #[wasm_bindgen(getter)]
     pub fn balance(&self) -> u64 {
         self.balance.load(std::sync::atomic::Ordering::SeqCst)
+    }
+}
+
+pub type AccountList = Vec<Arc<Account>>;
+
+// #[derive(Default, Clone)]
+// pub struct AccountList(Vec<Arc<Account>>);
+
+// impl AsRef<Vec<Arc<Account>>> for AccountList {
+//     fn as_ref(&self) -> &Vec<Arc<Account>> {
+//         &self.0
+//     }
+// }
+
+// impl AsMut<Vec<Arc<Account>>> for AccountList {
+//     fn as_mut(&mut self) -> &mut Vec<Arc<Account>> {
+//         &mut self.0
+//     }
+// }
+
+// impl AccountList {
+//     pub fn new_with_accounts(accounts: &[Arc<Account>]) -> Self {
+//         AccountList(accounts.to_vec())
+//     }
+// }
+
+// impl From<Vec<Arc<Account>>> for AccountList {
+//     fn from(accounts: Vec<Arc<Account>>) -> Self {
+//         AccountList::new_with_accounts(&accounts)
+//     }
+// }
+
+#[derive(Default, Clone)]
+pub struct AccountMap(Arc<Mutex<HashMap<PrvKeyDataId, AccountList>>>);
+
+impl AccountMap {
+    // pub fn new(accounts: Vec<Account>) -> Result<HashMap<PrvKeyDataId, Vec<Arc<Account>>>> {
+    //     let mut map = HashMap::<PrvKeyDataId, Vec<Arc<Account>>>::new();
+    //     for account in accounts.into_iter() {
+    //         if let Some(list) = map.get_mut(&account.prv_key_data_id) {
+    //             list.push(Arc::new(account));
+    //         } else {
+    //             map.insert(account.prv_key_data_id, vec![Arc::new(account)]);
+    //         }
+    //     }
+    //     Ok(map)
+    // }
+
+    pub fn locked_map(&self) -> MutexGuard<HashMap<PrvKeyDataId, AccountList>> {
+        self.0.lock().unwrap()
+    }
+
+    pub fn clear(&self) {
+        self.0.lock().unwrap().clear();
+    }
+
+    pub fn extend(&self, accounts: Vec<Arc<Account>>) -> Result<()> {
+        let mut map = self.0.lock().unwrap();
+        for account in accounts.into_iter() {
+            if let Some(list) = map.get_mut(&account.prv_key_data_id) {
+                list.push(account.clone());
+            } else {
+                map.insert(account.prv_key_data_id, vec![account.clone()]);
+                // map.insert(account.prv_key_data_id, AccountList::new_with_accounts(&[account]));
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn insert(&self, account: Arc<Account>) -> Result<()> {
+        // let account = Arc::new(account);
+        let mut map = self.0.lock().unwrap();
+        if let Some(list) = map.get_mut(&account.prv_key_data_id) {
+            list.push(account.clone());
+        } else {
+            map.insert(account.prv_key_data_id, vec![account.clone()]);
+            // map.insert(account.prv_key_data_id, AccountList::new_with_accounts(&[account]));
+        }
+
+        Ok(())
+    }
+
+    pub fn remove(&self, account: &Account) -> Result<()> {
+        let mut map = self.0.lock().unwrap();
+        if let Some(list) = map.get_mut(&account.prv_key_data_id) {
+            list.retain(|existing_account| account.id != existing_account.id);
+        } else {
+            log_warning!("AccountMap::remove(): unknown account - no such prv_key_data_id: {}", account.prv_key_data_id.to_hex());
+        }
+        Ok(())
+    }
+
+    pub fn get_prv_key_data_list(&self, prv_key_data_id: &PrvKeyDataId) -> Result<AccountList> {
+        let map = self.0.lock().unwrap();
+        if let Some(list) = map.get(prv_key_data_id) {
+            Ok(list.clone())
+        } else {
+            Ok(AccountList::default())
+        }
+    }
+
+    pub fn cloned_flat_list(&self) -> Result<AccountList> {
+        Ok(
+            self
+            .0
+            .lock()
+            .unwrap()
+            .values()
+            .cloned()
+            .collect_vec()
+            // .into_iter()
+            // .map(|list| list.0)
+            .into_iter()
+            .flatten()
+            .collect_vec(), // .into()
+        )
     }
 }

@@ -12,6 +12,8 @@ use workflow_wasm::sendable::*;
 
 use thiserror::Error;
 
+// use crate::wallet::Events;
+
 #[derive(Debug, Error)]
 pub enum Error {
     #[error("Error: {0}")]
@@ -100,6 +102,11 @@ pub enum Error {
 
     #[error(transparent)]
     VarError(#[from] std::env::VarError),
+
+    #[error("private key {0} not found")]
+    PrivateKeyNotFound(String),
+    // #[error("invalid private key: {0}")]
+    // ChannelError(workflow_core::channel::ChannelError<Events>),
 }
 
 //unsafe impl Send for Error{}

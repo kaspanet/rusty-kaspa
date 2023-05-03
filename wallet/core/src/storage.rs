@@ -3,7 +3,7 @@ use crate::result::Result;
 use crate::secret::Secret;
 use crate::{encryption::sha256_hash, imports::*};
 use faster_hex::{hex_decode, hex_string};
-use kaspa_bip32::{ExtendedPublicKey, Mnemonic};
+use kaspa_bip32::{ExtendedPublicKey, Language, Mnemonic};
 use serde::Serializer;
 use std::path::PathBuf;
 #[allow(unused_imports)]
@@ -19,7 +19,7 @@ pub const DEFAULT_WALLET_FILE: &str = "~/.kaspa/kaspa.wallet";
 
 pub use kaspa_wallet_core::account::AccountKind;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct KeyDataId(pub(crate) [u8; 8]);
 
 impl KeyDataId {
@@ -110,6 +110,15 @@ impl PrvKeyData {
         let seed_words = &payload.as_ref().mnemonic;
         create_xpub_from_mnemonic(seed_words, account_kind, account_index).await
     }
+
+    pub fn as_mnemonic(&self, payment_secret: Option<Secret>) -> Result<Mnemonic> {
+        let payload = self.payload.decrypt(payment_secret)?;
+        let words = payload.as_ref().mnemonic.as_str();
+        // Mnemonic::new(phrase, language)
+        let mnemonic = Mnemonic::new(words, Language::English)?;
+        Ok(mnemonic)
+        // Ok(())
+    }
 }
 
 impl Zeroize for PrvKeyData {
@@ -184,7 +193,8 @@ pub struct Account {
     pub account_index: u64,
     pub is_visible: bool,
     pub pub_key_data: PubKeyData,
-    pub prv_key_data_id: Option<PrvKeyDataId>,
+    // pub prv_key_data_id: Option<PrvKeyDataId>,
+    pub prv_key_data_id: PrvKeyDataId,
     pub minimum_signatures: u16,
     pub cosigner_index: u32,
     pub ecdsa: bool,
@@ -198,7 +208,7 @@ impl Account {
         account_index: u64,
         is_visible: bool,
         pub_key_data: PubKeyData,
-        prv_key_data_id: Option<PrvKeyDataId>,
+        prv_key_data_id: PrvKeyDataId,
         ecdsa: bool,
         minimum_signatures: u16,
         cosigner_index: u32,
@@ -277,38 +287,44 @@ impl Payload {
 
         Ok(prv_key_data)
     }
+
+    pub fn find_prv_key_data(&self, id: &PrvKeyDataId) -> Option<&PrvKeyData> {
+        self.prv_key_data.iter().find(|prv_key_data| prv_key_data.id == *id)
+    }
 }
 
-impl Zeroize for Payload {
-    fn zeroize(&mut self) {
-        self.prv_key_data.iter_mut().for_each(Zeroize::zeroize);
-        // TODO
-        // self.keydata.zeroize();
-        // self.accounts.zeroize();
-    }
-}
-#[derive(Clone, Serialize, Deserialize)]
-pub struct WalletSettings {
-    pub account_id: String,
-}
-impl WalletSettings {
-    pub fn new(account_id: String) -> Self {
-        Self { account_id }
-    }
-}
+// impl Zeroize for Payload {
+//     fn zeroize(&mut self) {
+//         self.prv_key_data.iter_mut().for_each(Zeroize::zeroize);
+//         // TODO
+//         // self.keydata.zeroize();
+//         // self.accounts.zeroize();
+//     }
+// }
+
+// #[derive(Clone, Serialize, Deserialize)]
+// pub struct WalletSettings {
+//     pub account_id: String,
+// }
+// impl WalletSettings {
+//     pub fn new(account_id: String) -> Self {
+//         Self { account_id }
+//     }
+// }
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Wallet {
-    pub settings: WalletSettings,
+    // pub settings: WalletSettings,
     pub payload: Encrypted,
     pub metadata: Vec<Metadata>,
 }
 
 impl Wallet {
-    pub fn try_new(secret: Secret, settings: WalletSettings, payload: Payload) -> Result<Self> {
+    // pub fn try_new(secret: Secret, settings: WalletSettings, payload: Payload) -> Result<Self> {
+    pub fn try_new(secret: Secret, payload: Payload) -> Result<Self> {
         let metadata = payload.accounts.iter().filter(|account| account.is_visible).map(|account| account.clone().into()).collect();
         let payload = Decrypted::new(payload).encrypt(secret)?;
-        Ok(Self { settings, payload, metadata })
+        Ok(Self { payload, metadata })
     }
 
     pub fn payload(&self, secret: Secret) -> Result<Decrypted<Payload>> {
@@ -324,8 +340,9 @@ impl Wallet {
         }
     }
 
-    pub async fn try_store(store: &Store, secret: Secret, settings: WalletSettings, payload: Payload) -> Result<()> {
-        let wallet = Wallet::try_new(secret, settings, payload)?;
+    // pub async fn try_store(store: &Store, secret: Secret, settings: WalletSettings, payload: Payload) -> Result<()> {
+    pub async fn try_store(store: &Store, secret: Secret, payload: Payload) -> Result<()> {
+        let wallet = Wallet::try_new(secret, payload)?;
         store.ensure_dir().await?;
         fs::write_json(store.filename(), &wallet).await?;
         Ok(())
@@ -434,7 +451,7 @@ mod tests {
             0,
             true,
             pub_key_data1.clone(),
-            Some(prv_key_data1.id),
+            prv_key_data1.id,
             false,
             1,
             0,
@@ -449,7 +466,7 @@ mod tests {
             0,
             true,
             pub_key_data2.clone(),
-            Some(prv_key_data2.id),
+            prv_key_data2.id,
             false,
             1,
             0,
@@ -457,8 +474,8 @@ mod tests {
         payload.accounts.push(account2);
 
         let payload_json = serde_json::to_string(&payload).unwrap();
-        let settings = WalletSettings::new(account_id);
-        Wallet::try_store(&store, global_password.clone(), settings, payload).await?;
+        // let settings = WalletSettings::new(account_id);
+        Wallet::try_store(&store, global_password.clone(), payload).await?;
 
         let w2 = Wallet::try_load(&store).await?;
         let w2payload = w2.payload.decrypt::<Payload>(global_password.clone()).unwrap();

@@ -117,22 +117,22 @@ impl<T> From<T> for Encryptable<T> {
 //     }
 // }
 
-pub struct Decrypted<T>(pub(crate) T)
-where
-    T: Zeroize;
+pub struct Decrypted<T>(pub(crate) T);
+// where
+//     T: Zeroize;
 
-impl<T> Drop for Decrypted<T>
-where
-    T: Zeroize,
-{
-    fn drop(&mut self) {
-        self.0.zeroize();
-    }
-}
+// impl<T> Drop for Decrypted<T>
+// // where
+// //     T: Zeroize,
+// {
+//     fn drop(&mut self) {
+//         self.0.zeroize();
+//     }
+// }
 
 impl<T> AsRef<T> for Decrypted<T>
-where
-    T: Zeroize,
+// where
+//     T: Zeroize,
 {
     fn as_ref(&self) -> &T {
         &self.0
@@ -140,8 +140,8 @@ where
 }
 
 impl<T> Deref for Decrypted<T>
-where
-    T: Zeroize,
+// where
+//     T: Zeroize,
 {
     type Target = T;
     fn deref(&self) -> &T {
@@ -150,8 +150,8 @@ where
 }
 
 impl<T> AsMut<T> for Decrypted<T>
-where
-    T: Zeroize,
+// where
+//     T: Zeroize,
 {
     fn as_mut(&mut self) -> &mut T {
         &mut self.0
@@ -160,7 +160,8 @@ where
 
 impl<T> Decrypted<T>
 where
-    T: Zeroize + Serialize,
+    T: Serialize,
+    // T: Zeroize + Serialize,
 {
     pub fn new(value: T) -> Self {
         Self(value)
@@ -186,7 +187,8 @@ impl Encrypted {
 
     pub fn decrypt<T>(&self, secret: Secret) -> Result<Decrypted<T>>
     where
-        T: Zeroize + DeserializeOwned,
+        T: DeserializeOwned,
+        // T: Zeroize + DeserializeOwned,
     {
         let t: T = serde_json::from_slice(decrypt_xchacha20poly1305(&self.payload, secret)?.as_ref())?;
         Ok(Decrypted(t))

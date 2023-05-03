@@ -79,14 +79,14 @@ impl WalletCli {
                 self.wallet.ping().await?;
                 term.writeln("ok");
             }
-            Action::Balance => {
-                let accounts = self.wallet.accounts();
-                for account in accounts {
-                    let balance = account.balance();
-                    let name = account.name();
-                    log_info!("{name} - {balance} KAS");
-                }
-            }
+            // Action::Balance => {}
+            //     let accounts = self.wallet.accounts();
+            //     for account in accounts {
+            //         let balance = account.balance();
+            //         let name = account.name();
+            //         log_info!("{name} - {balance} KAS");
+            //     }
+            // }
             Action::Create => {
                 use kaspa_wallet_core::error::Error;
 
@@ -225,9 +225,12 @@ impl WalletCli {
 
             // ~~~
             Action::List => {
-                let accounts = self.wallet.accounts();
-                for account in accounts.iter() {
-                    term.writeln(account.get_ls_string());
+                let map = self.wallet.account_map().locked_map();
+                for (prv_key_data_id, list) in map.iter() {
+                    term.writeln(format!("key: {}", prv_key_data_id.to_hex()));
+                    for account in list.iter() {
+                        term.writeln(account.get_ls_string());
+                    }
                 }
             }
             Action::Select => {
@@ -235,9 +238,12 @@ impl WalletCli {
                     self.wallet.select(None).await?;
                 } else {
                     let name = argv.remove(0);
-                    let accounts = self.wallet.accounts();
-                    let account =
-                        accounts.iter().position(|account| account.name() == name).map(|index| accounts.get(index).unwrap().clone());
+                    let account = {
+                        let accounts = self.wallet.account_list().lock().unwrap(); //.as_ref(); //.cloned_flat_list()?;
+                                                                                   // let account =
+                        accounts.iter().position(|account| account.name() == name).map(|index| accounts.get(index).unwrap().clone())
+                        //;
+                    };
                     self.wallet.select(account).await?;
                 }
             }
@@ -251,10 +257,10 @@ impl WalletCli {
                     prefix = AddressPrefix::Devnet;
                 }
                 let secret = Secret::new(term.ask(true, "Enter wallet password:").await?.trim().as_bytes().to_vec());
-                self.wallet.load_accounts(secret, prefix).await?;
+                self.wallet.load(secret, prefix).await?;
             }
             Action::Close => {
-                self.wallet.clear().await?;
+                self.wallet.reset().await?;
             }
 
             #[cfg(target_arch = "wasm32")]

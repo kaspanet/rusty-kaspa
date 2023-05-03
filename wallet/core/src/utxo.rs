@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
 use workflow_wasm::abi::{ref_from_abi, TryFromJsValue};
 
-type UtxoEntryId = TransactionOutpointInner;
+pub type UtxoEntryId = TransactionOutpointInner;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
