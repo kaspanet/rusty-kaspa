@@ -39,6 +39,8 @@ pub struct Config {
     /// (this flag is mainly used for testing)
     // TODO: add and handle a matching kaspad command argument
     pub allow_submit_block_when_not_synced: bool,
+
+    pub user_agent_comments: Vec<String>,
 }
 
 impl Config {
@@ -50,6 +52,7 @@ impl Config {
             utxoindex: false,
             unsafe_rpc: false,
             allow_submit_block_when_not_synced: false,
+            user_agent_comments: Default::default(),
         }
     }
 
