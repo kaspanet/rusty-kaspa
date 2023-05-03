@@ -179,11 +179,13 @@ impl ContextualNetAddress {
     pub fn normalize(&self, default_port: u16) -> NetAddress {
         NetAddress::new(self.ip, self.port.unwrap_or(default_port))
     }
-}
 
-impl Default for ContextualNetAddress {
-    fn default() -> Self {
+    pub fn unspecified() -> Self {
         Self { ip: IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)).into(), port: None }
+    }
+
+    pub fn loopback() -> Self {
+        Self { ip: IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)).into(), port: None }
     }
 }
 
